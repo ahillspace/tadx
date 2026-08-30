@@ -1,0 +1,24 @@
+capability:
+  id: workbook.publish
+  domain: workbook
+  verb: publish
+  surface: tadx content workbook publish
+  outcome: Preview and publish one workbook.
+  operation_type: deliver
+  owner: cli
+  disposition: ship
+  evidence_level: docs-only
+  verification_readiness: ready
+  implementation_state: planned
+  selectors[1]: Workbook LUID; explicit target
+  availability: Cloud / Server
+  safety_guard: Preview by default; requires --apply
+  artifact_effect: Read / publish
+  upstream_operation: "POST /api/{version}/sites/{site-id}/workbooks"
+  evidence: Official REST documentation
+  validation: Captured contract test required
+  remote_mutation: true
+  requires_apply: true
+  local_write: false
+  raw_capable: false
+help[1]: tadx capability list

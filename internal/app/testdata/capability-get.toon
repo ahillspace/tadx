@@ -1,0 +1,25 @@
+capability:
+  id: capability.list
+  domain: capability
+  verb: list
+  surface: tadx capability list
+  outcome: Return a bounded inventory of discoverable operations and ownership.
+  operation_type: find
+  owner: cli
+  disposition: ship
+  evidence_level: local-contract
+  verification_readiness: ready
+  implementation_state: implemented
+  command: capability list
+  selectors[1]: Domain/resource/owner/product/mutation filters
+  availability: Local / all
+  safety_guard: Mutation discovery obeys TADX_ENABLE_MUTATIONS
+  artifact_effect: None
+  upstream_operation: Executable capability registry
+  evidence: "A1 §§1.5, 3.3, 5.2, 6.6; C1 §2.1"
+  validation: Architecture-locked local contract
+  remote_mutation: false
+  requires_apply: false
+  local_write: false
+  raw_capable: false
+help[1]: tadx capability list

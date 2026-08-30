@@ -37,3 +37,8 @@ TADX never calls or proxies MCP inside a command. CLI and MCP are peer surfaces;
 - action-guidelines: how to add one capability, including the dependency and import rules the architecture test enforces.
 - build-order: the order slices are built and what must be frozen first.
 - The arc42 and the V1 capability contract: the authoritative product and capability sources.
+
+## Archived material
+
+Files under `archived/` are obsolete historical inputs.
+Do not read them for current implementation guidance.

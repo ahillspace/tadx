@@ -1,38 +1,51 @@
-# TADX pre-build document set
+# TADX
 
-This is the control layer that must exist before the TADX repository is scaffolded, so that every agent building a CLI capability builds it the same way, and the work stays in scope and under control.
+TADX is a deterministic Tableau lifecycle and development CLI for coding agents and humans.
+It targets higher accuracy, lower token use, and lower latency for Tableau lifecycle work.
 
-These documents operationalize the two authoritative sources for builders; they do not replace them:
-- the arc42 (product behavior, architecture boundaries, safety, scope authority);
-- the V1 capability contract (the public capability inventory and per-capability status).
+Phase 0 provides the frozen repository foundation and two executable discovery commands:
 
-When a document here disagrees with a source, the source wins and the document is corrected.
+```text
+tadx capability list
+tadx capability get <id>
+```
 
-## Read in this order
+All other V1 capabilities remain registry metadata until their ordered build phase completes.
+Blocked and delegated capabilities never become executable TADX commands without their required evidence gates.
 
-| Document | Purpose | Suggested repository placement |
-| --- | --- | --- |
-| scope-v1 | Token-light, definitive in/out of scope for V1. | docs/scope-v1.md |
-| axi | The CLI behavioral contract: seven principles as checkable rules. | docs/axi.md |
-| toon | The output format contract: grammar, rendering, codec, conformance. | docs/toon.md |
-| AGENTS | Short agent routing and start-here guide. | AGENTS.md (repository root) |
-| action-guidelines | How to add one capability: layout, artifacts, action shape, checklist. | docs/contributing/adding-a-capability.md |
-| build-order | Foundation freeze and the dependency-ordered slice sequence. | docs/build-order.md |
-| task-template | Per-capability task you fill in and hand to one build agent. | docs/contributing/task-template.md |
-| runbook | The ordered steps and copy-paste prompts to scaffold and build. | docs/runbook.md |
+## Build the CLI
 
-## Companion docs the scaffold still produces
+Use Go 1.26 or later:
 
-These are not in this set because they describe the repository as built, not the pre-build contract:
-- repository-structure (the package layout and import diagram, as built); the dependency and import rules themselves live in action-guidelines;
-- the generated capability reference, derived from the executable registry.
+```shell
+go build ./cmd/tadx
+```
 
-## Notes
+## Validate the foundation
 
-These documents are intentionally pathless: they name artifacts rather than referencing any machine path, because they leave this machine.
+Run the local freeze gates:
 
-Decisions recorded here that resolve prior contradictions:
-- TOON conforms to the upstream toon-format specification (pin the version; prefer a Go implementation, else a conforming in-repo codec). It is a frozen foundation, not a per-action concern.
-- Published-datasource-field description write-back is a deferred fast-follow pending the near-release TDS datasource-field API; the Metadata API's upstream-table description write is a separate capability at a different granularity.
-- The configuration selector is the site content URL, not a site ID; the authoritative site LUID is resolved after authentication.
-- Registry tests assert invariants, not a hardcoded capability count.
+```shell
+gofmt -l .
+go vet ./...
+go test ./...
+go test -race ./...
+go mod tidy -diff
+go generate ./...
+go run ./cmd/gencapdocs -out docs/reference/capabilities.md
+```
+
+The CI workflow also cross-compiles `windows/amd64`, `darwin/amd64`, `darwin/arm64`, and `linux/amd64`.
+
+## Read the contracts
+
+Start with `AGENTS.md`, then read these files:
+
+- `docs/build-order.md` for the required implementation sequence.
+- `docs/contributing/adding-a-capability.md` for action and architecture rules.
+- `docs/axi.md` for CLI behavior.
+- `docs/toon.md` for output behavior.
+- `docs/scope-v1.md` for V1 scope.
+- `docs/reference/capabilities.md` for the generated capability inventory.
+
+The arc42 and V1 capability contract in the repository root remain the authoritative product and capability sources.

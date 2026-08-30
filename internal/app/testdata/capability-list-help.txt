@@ -1,0 +1,14 @@
+Return a bounded inventory of discoverable operations and ownership.
+
+Usage:
+  tadx capability list [flags]
+
+Flags:
+      --cursor string     continue from a prior result cursor
+      --domain string     filter by exact command domain
+  -h, --help              help for list
+      --limit int         maximum capabilities to return (default 20)
+      --mutation          filter by remote mutation status
+      --owner string      filter by exact owner
+      --product string    filter by product availability
+      --resource string   filter by exact resource

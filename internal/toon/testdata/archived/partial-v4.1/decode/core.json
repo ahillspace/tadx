@@ -1,0 +1,53 @@
+{
+  "version": "4.1",
+  "category": "decode",
+  "description": "Pinned TOON 4.1 decoder conformance fixtures",
+  "tests": [
+    {
+      "name": "strips comments before structural parsing",
+      "input": "# heading\r\nitems[2]{id}:\r\n  1\r\n  # ignored\r\n  2\r\n",
+      "expected": {"items":[{"id":1},{"id":2}]},
+      "specSection": "5.1"
+    },
+    {
+      "name": "decodes nested field groups",
+      "input": "users[2]{id,customer{name,country}}:\n  1,Ada,UK\n  2,Bob,US",
+      "expected": {"users":[{"id":1,"customer":{"name":"Ada","country":"UK"}},{"id":2,"customer":{"name":"Bob","country":"US"}}]},
+      "specSection": "9.3"
+    },
+    {
+      "name": "decodes a keyed root table",
+      "input": "[2:]{id,role}:\n  alice: 1,admin\n  bob: 2,user",
+      "expected": {"alice":{"id":1,"role":"admin"},"bob":{"id":2,"role":"user"}},
+      "specSection": "9.5"
+    },
+    {
+      "name": "rejects an inline count mismatch",
+      "input": "tags[2]: one",
+      "expected": null,
+      "shouldError": true,
+      "specSection": "14.1"
+    },
+    {
+      "name": "rejects duplicate sibling keys",
+      "input": "a: 1\na: 2",
+      "expected": null,
+      "shouldError": true,
+      "specSection": "14.3"
+    },
+    {
+      "name": "uses last write wins in non-strict mode",
+      "input": "a: 1\na: 2",
+      "expected": {"a":2},
+      "options": {"strict":false},
+      "specSection": "14.3"
+    },
+    {
+      "name": "falls through on malformed header in non-strict mode",
+      "input": "foo[2]extra: a,b",
+      "expected": {"foo[2]extra":"a,b"},
+      "options": {"strict":false},
+      "specSection": "6"
+    }
+  ]
+}
