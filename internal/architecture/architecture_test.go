@@ -61,10 +61,27 @@ var _ tableau.Client
 		"actions must not import CLI packages",
 		"actions must not import resource adapters",
 		"actions must not import Tableau clients",
-		"actions must not import third-party packages",
 		"actions must not import Cobra",
 		"actions must not use net/http directly",
 	})
+}
+
+func TestCheckAllowsThirdPartyImportsInActionsAndAdapters(t *testing.T) {
+	root := moduleFixture(t)
+	writeGo(t, root, "actions/workbook/pull/action.go", `package pull
+import "github.com/go-resty/resty/v2"
+var _ = resty.New
+`)
+	writeGo(t, root, "internal/resources/workbook/adapter.go", `package workbook
+import "github.com/go-resty/resty/v2"
+var _ = resty.New
+`)
+
+	violations, err := architecture.Check(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertViolationStrings(t, violations, nil)
 }
 
 func TestCheckRejectsUnapprovedLocalImportsFromEveryLayer(t *testing.T) {
@@ -279,7 +296,6 @@ var _ = workbook.Adapter{}
 		"resource adapters must not import the composition root",
 		"resource adapters must not import authentication logic",
 		"resource adapters must not import CLI packages",
-		"resource adapters must not import third-party packages",
 		"resource adapters must not import Cobra",
 		"resource adapters must not use net/http directly",
 		"Tableau clients must not import the composition root",

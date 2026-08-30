@@ -51,6 +51,18 @@ type EmbeddedConflictRight struct {
 	Value string `json:"value"`
 }
 
+type jsonMarshalerMapKey string
+
+func (jsonMarshalerMapKey) MarshalJSON() ([]byte, error) {
+	return []byte(`"valid"`), nil
+}
+
+type textMarshalerMapKey string
+
+func (textMarshalerMapKey) MarshalText() ([]byte, error) {
+	return []byte("valid"), nil
+}
+
 func TestEncodeV41Conformance(t *testing.T) {
 	t.Parallel()
 
@@ -253,6 +265,27 @@ func TestEncodeAllowsSharedAcyclicReferences(t *testing.T) {
 	}
 }
 
+func TestEncodeAllowsDistinctSliceViewsWithSharedBackingStorage(t *testing.T) {
+	t.Parallel()
+
+	outer := []any{"x", nil}
+	outer[1] = outer[:1]
+	value := struct {
+		Views []any   `json:"views"`
+		NaN   float64 `json:"nan"`
+	}{Views: outer, NaN: math.NaN()}
+
+	encoded, err := toon.Encode(value)
+	if err != nil {
+		t.Fatalf("Encode() error = %v", err)
+	}
+	decoded, err := toon.Decode(encoded)
+	if err != nil {
+		t.Fatalf("Decode() error = %v", err)
+	}
+	assertJSONEqual(t, `{"views":["x",["x"]],"nan":null}`, decoded)
+}
+
 func TestEncodeQuotesUnicodeEdgeWhitespace(t *testing.T) {
 	t.Parallel()
 
@@ -420,6 +453,41 @@ func TestEncodeSelectsJSONFieldNamedDash(t *testing.T) {
 	if _, err := toon.Encode(value); err == nil || !strings.Contains(err.Error(), "valid UTF-8") {
 		t.Fatalf("Encode() error = %v, want invalid UTF-8 error", err)
 	}
+}
+
+func TestEncodeValidatesNamedStringMapKeysBeforeMarshalerMethods(t *testing.T) {
+	t.Parallel()
+
+	invalid := string([]byte{0xff})
+	values := []any{
+		map[jsonMarshalerMapKey]string{jsonMarshalerMapKey(invalid): "value"},
+		map[textMarshalerMapKey]string{textMarshalerMapKey(invalid): "value"},
+	}
+
+	for _, value := range values {
+		if _, err := toon.Encode(value); err == nil || !strings.Contains(err.Error(), "valid UTF-8") {
+			t.Errorf("Encode(%T) error = %v, want invalid UTF-8 error", value, err)
+		}
+	}
+}
+
+func TestEncodePreservesJSONStringTagDuringNonFiniteFallback(t *testing.T) {
+	t.Parallel()
+
+	value := struct {
+		Count int     `json:"count,string"`
+		NaN   float64 `json:"nan"`
+	}{Count: 42, NaN: math.NaN()}
+
+	encoded, err := toon.Encode(value)
+	if err != nil {
+		t.Fatalf("Encode() error = %v", err)
+	}
+	decoded, err := toon.Decode(encoded)
+	if err != nil {
+		t.Fatalf("Decode() error = %v", err)
+	}
+	assertJSONEqual(t, `{"count":"42","nan":null}`, decoded)
 }
 
 func TestSpecVersion(t *testing.T) {

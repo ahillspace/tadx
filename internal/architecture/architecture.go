@@ -111,8 +111,6 @@ func forbiddenReason(file, imported, modulePath string) string {
 			return "actions must not use net/http directly"
 		case imported == "github.com/spf13/cobra":
 			return "actions must not import Cobra"
-		case isThirdParty(imported):
-			return "actions must not import third-party packages"
 		}
 	case hasPathPrefix(file, "internal/resources"):
 		if imported == "net/http" {
@@ -120,9 +118,6 @@ func forbiddenReason(file, imported, modulePath string) string {
 		}
 		if imported == "github.com/spf13/cobra" {
 			return "resource adapters must not import Cobra"
-		}
-		if isThirdParty(imported) {
-			return "resource adapters must not import third-party packages"
 		}
 	case hasPathPrefix(file, "internal/tableau"):
 		if imported == "github.com/spf13/cobra" {
@@ -138,11 +133,6 @@ func forbiddenReason(file, imported, modulePath string) string {
 		}
 	}
 	return ""
-}
-
-func isThirdParty(imported string) bool {
-	first, _, _ := strings.Cut(imported, "/")
-	return strings.Contains(first, ".")
 }
 
 type packageLayer string

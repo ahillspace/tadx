@@ -60,8 +60,9 @@ func normalize(value any) (*node, error) {
 }
 
 type visit struct {
-	typ reflect.Type
-	ptr uintptr
+	typ    reflect.Type
+	ptr    uintptr
+	length int
 }
 
 func marshalerBoundary(value reflect.Value) (any, bool) {
@@ -130,7 +131,7 @@ func validateStrings(value reflect.Value, seen map[visit]bool) error {
 		defer delete(seen, key)
 		iter := value.MapRange()
 		for iter.Next() {
-			if err := validateStrings(iter.Key(), seen); err != nil {
+			if err := validateJSONMapKey(iter.Key()); err != nil {
 				return err
 			}
 			if err := validateStrings(iter.Value(), seen); err != nil {
@@ -141,7 +142,7 @@ func validateStrings(value reflect.Value, seen map[visit]bool) error {
 		if value.IsNil() {
 			return nil
 		}
-		key := visit{typ: value.Type(), ptr: value.Pointer()}
+		key := visit{typ: value.Type(), ptr: value.Pointer(), length: value.Len()}
 		if seen[key] {
 			return fmt.Errorf("cyclic value")
 		}
@@ -168,6 +169,16 @@ func validateStrings(value reflect.Value, seen map[visit]bool) error {
 				return err
 			}
 		}
+	}
+	return nil
+}
+
+func validateJSONMapKey(value reflect.Value) error {
+	if value.Kind() != reflect.String {
+		return nil
+	}
+	if !utf8.ValidString(value.String()) {
+		return fmt.Errorf("TOON strings must contain valid UTF-8")
 	}
 	return nil
 }
@@ -232,12 +243,18 @@ func replaceNonFinite(value reflect.Value, seen map[visit]bool) any {
 			if !ok || jsonFieldOmitted(fieldValue, field) {
 				continue
 			}
-			result = append(result, orderedJSONField{key: field.name, value: replaceNonFinite(fieldValue, seen)})
+			replaced := replaceNonFinite(fieldValue, seen)
+			if field.quoted && replaced != nil {
+				if _, boundary := marshalerBoundary(fieldValue); !boundary {
+					replaced = jsonQuotedValue{value: replaced}
+				}
+			}
+			result = append(result, orderedJSONField{key: field.name, value: replaced})
 		}
 		return result
 	case reflect.Slice, reflect.Array:
 		if value.Kind() == reflect.Slice {
-			key := visit{typ: value.Type(), ptr: value.Pointer()}
+			key := visit{typ: value.Type(), ptr: value.Pointer(), length: value.Len()}
 			if seen[key] {
 				return nil
 			}
@@ -261,6 +278,7 @@ type jsonStructField struct {
 	typ       reflect.Type
 	omitEmpty bool
 	omitZero  bool
+	quoted    bool
 }
 
 var jsonStructFieldCache sync.Map
@@ -328,6 +346,7 @@ func discoverJSONStructFields(root reflect.Type) []jsonStructField {
 						typ:       fieldType,
 						omitEmpty: jsonTagOption(options, "omitempty"),
 						omitZero:  jsonTagOption(options, "omitzero"),
+						quoted:    jsonTagOption(options, "string") && isJSONQuotedKind(fieldType.Kind()),
 					}
 					if field.name == "" {
 						field.name = structField.Name
@@ -377,6 +396,19 @@ func discoverJSONStructFields(root reflect.Type) []jsonStructField {
 		return compareFieldIndex(selected[i].index, selected[j].index) < 0
 	})
 	return selected
+}
+
+func isJSONQuotedKind(kind reflect.Kind) bool {
+	switch kind {
+	case reflect.Bool,
+		reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64,
+		reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64, reflect.Uintptr,
+		reflect.Float32, reflect.Float64,
+		reflect.String:
+		return true
+	default:
+		return false
+	}
 }
 
 func compareFieldIndex(left, right []int) int {
@@ -484,6 +516,18 @@ func isZeroJSONValue(value reflect.Value) bool {
 type orderedJSONField struct {
 	key   string
 	value any
+}
+
+type jsonQuotedValue struct {
+	value any
+}
+
+func (value jsonQuotedValue) MarshalJSON() ([]byte, error) {
+	encoded, err := json.Marshal(value.value)
+	if err != nil {
+		return nil, err
+	}
+	return json.Marshal(string(encoded))
 }
 
 type orderedJSONObject []orderedJSONField
