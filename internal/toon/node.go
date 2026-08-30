@@ -65,6 +65,16 @@ func validateStrings(value reflect.Value, seen map[visit]bool) error {
 	if !value.IsValid() {
 		return nil
 	}
+	if value.CanInterface() {
+		if _, ok := value.Interface().(json.Marshaler); ok {
+			return nil
+		}
+	}
+	if value.Kind() != reflect.Pointer && value.CanAddr() && value.Addr().CanInterface() {
+		if _, ok := value.Addr().Interface().(json.Marshaler); ok {
+			return nil
+		}
+	}
 	if value.Kind() == reflect.Interface {
 		if value.IsNil() {
 			return nil
@@ -130,10 +140,12 @@ func validateStrings(value reflect.Value, seen map[visit]bool) error {
 		}
 	case reflect.Struct:
 		for i := 0; i < value.NumField(); i++ {
-			if value.Type().Field(i).IsExported() {
-				if err := validateStrings(value.Field(i), seen); err != nil {
-					return err
-				}
+			fieldType := value.Type().Field(i)
+			if !fieldType.IsExported() || strings.Split(fieldType.Tag.Get("json"), ",")[0] == "-" {
+				continue
+			}
+			if err := validateStrings(value.Field(i), seen); err != nil {
+				return err
 			}
 		}
 	}

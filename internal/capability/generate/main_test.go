@@ -57,6 +57,43 @@ func TestConvertRejectsUnsafeContractValues(t *testing.T) {
 	}
 }
 
+func TestConvertRestrictsDelegatedBooleanExceptionsByField(t *testing.T) {
+	tests := []struct {
+		name    string
+		column  int
+		value   string
+		wantErr string
+	}{
+		{name: "outside TADX in local write", column: 9, value: "N/A outside TADX"},
+		{name: "outside TADX in remote mutation", column: 10, value: "N/A outside TADX"},
+		{name: "outside TADX in requires apply", column: 11, value: "N/A outside TADX"},
+		{name: "optional change set in local write", column: 9, value: "Optional change set"},
+		{name: "optional change set in remote mutation", column: 10, value: "Optional change set", wantErr: "remote mutation"},
+		{name: "optional change set in requires apply", column: 11, value: "Optional change set", wantErr: "requires apply"},
+		{name: "reasoning stage in remote mutation", column: 10, value: "No at reasoning stage"},
+		{name: "reasoning stage in requires apply", column: 11, value: "No at reasoning stage"},
+		{name: "reasoning stage in local write", column: 9, value: "No at reasoning stage", wantErr: "local write"},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			row := validContractRow()
+			row[4] = "Delegated"
+			row[5] = "Agent / Skill"
+			row[16] = "Delegated reasoning"
+			row[test.column] = test.value
+
+			_, err := convert(row)
+			if test.wantErr == "" && err != nil {
+				t.Fatalf("convert() error = %v, want success", err)
+			}
+			if test.wantErr != "" && (err == nil || !strings.Contains(err.Error(), test.wantErr)) {
+				t.Fatalf("convert() error = %v, want error containing %q", err, test.wantErr)
+			}
+		})
+	}
+}
+
 func TestReadRowsRejectsMalformedCapabilityRow(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "contract.md")
 	contents := "| Capability ID | Surface |\n| --- | --- |\n| sample.get | `tadx sample get` |\n"

@@ -11,6 +11,14 @@ import (
 	"github.com/ahillspace/tadx/internal/toon"
 )
 
+type cycleMarshaler struct {
+	self *cycleMarshaler
+}
+
+func (value *cycleMarshaler) MarshalJSON() ([]byte, error) {
+	return []byte(`{"value":"custom"}`), nil
+}
+
 func TestEncodeV41Conformance(t *testing.T) {
 	t.Parallel()
 
@@ -260,6 +268,41 @@ func TestEncodeRejectsRealCycles(t *testing.T) {
 		if _, err := toon.Encode(value); err == nil || !strings.Contains(err.Error(), "cyclic value") {
 			t.Errorf("Encode(%T) error = %v, want cyclic-value error", value, err)
 		}
+	}
+}
+
+func TestEncodeIgnoresCycleInExcludedJSONField(t *testing.T) {
+	t.Parallel()
+
+	type valueWithExcludedCycle struct {
+		Name string                  `json:"name"`
+		Self *valueWithExcludedCycle `json:"-"`
+	}
+
+	value := &valueWithExcludedCycle{Name: "safe"}
+	value.Self = value
+
+	encoded, err := toon.Encode(value)
+	if err != nil {
+		t.Fatalf("Encode() error = %v", err)
+	}
+	if string(encoded) != "name: safe" {
+		t.Fatalf("Encode() = %q, want %q", encoded, "name: safe")
+	}
+}
+
+func TestEncodeStopsValidationAtJSONMarshaler(t *testing.T) {
+	t.Parallel()
+
+	value := &cycleMarshaler{}
+	value.self = value
+
+	encoded, err := toon.Encode(value)
+	if err != nil {
+		t.Fatalf("Encode() error = %v", err)
+	}
+	if string(encoded) != "value: custom" {
+		t.Fatalf("Encode() = %q, want %q", encoded, "value: custom")
 	}
 }
 

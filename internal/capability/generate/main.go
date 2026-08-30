@@ -139,15 +139,15 @@ func convert(row []string) (string, error) {
 		disposition = "DispositionDelegated"
 		implementation = "ImplementationExternalDelegated"
 	}
-	localWrite, err := yesNo(row[9], "local write", status)
+	localWrite, err := yesNo(row[9], "local write", status, "N/A outside TADX", "Optional change set")
 	if err != nil {
 		return "", fmt.Errorf("%s: %w", row[0], err)
 	}
-	remoteMutation, err := yesNo(row[10], "remote mutation", status)
+	remoteMutation, err := yesNo(row[10], "remote mutation", status, "N/A outside TADX", "No at reasoning stage")
 	if err != nil {
 		return "", fmt.Errorf("%s: %w", row[0], err)
 	}
-	requiresApply, err := yesNo(row[11], "requires apply", status)
+	requiresApply, err := yesNo(row[11], "requires apply", status, "N/A outside TADX", "No at reasoning stage")
 	if err != nil {
 		return "", fmt.Errorf("%s: %w", row[0], err)
 	}
@@ -176,19 +176,22 @@ func dashEmpty(value string) string {
 
 func quote(value string) string { return strconv.Quote(value) }
 
-func yesNo(value, field, status string) (bool, error) {
-	switch plain(value) {
+func yesNo(value, field, status string, delegatedValues ...string) (bool, error) {
+	value = plain(value)
+	switch value {
 	case "Yes":
 		return true, nil
 	case "No":
 		return false, nil
-	case "N/A outside TADX", "Optional change set", "No at reasoning stage":
-		if status == "Delegated" {
-			return false, nil
-		}
-	default:
 	}
-	return false, fmt.Errorf("%s must be Yes or No, got %q", field, plain(value))
+	if status == "Delegated" {
+		for _, delegatedValue := range delegatedValues {
+			if value == delegatedValue {
+				return false, nil
+			}
+		}
+	}
+	return false, fmt.Errorf("%s must be Yes or No, got %q", field, value)
 }
 
 func evidenceConstant(validation, status string) (string, error) {

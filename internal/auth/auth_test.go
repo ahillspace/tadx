@@ -138,6 +138,35 @@ func TestPATProviderRejectsEmptyVariableValues(t *testing.T) {
 	}
 }
 
+func TestPATProviderRejectsCaseInsensitiveDuplicateVariablesBeforeLookupOrSignIn(t *testing.T) {
+	t.Parallel()
+
+	lookupCalls := 0
+	lookup := auth.LookupEnvFunc(func(string) (string, bool) {
+		lookupCalls++
+		return "credential", true
+	})
+	signer := &recordingSigner{}
+	provider := auth.NewPATProvider(lookup, signer)
+
+	_, err := provider.Authenticate(context.Background(), auth.Target{
+		PATNameVariable:   "PAT",
+		PATSecretVariable: "pat",
+	})
+	if err == nil {
+		t.Fatal("Authenticate() error = nil")
+	}
+	if got, want := err.Error(), "PAT name and secret must use different environment variables"; got != want {
+		t.Fatalf("error = %q, want %q", got, want)
+	}
+	if lookupCalls != 0 {
+		t.Fatalf("environment lookup calls = %d, want 0", lookupCalls)
+	}
+	if signer.calls != 0 {
+		t.Fatalf("sign-in calls = %d, want 0", signer.calls)
+	}
+}
+
 func TestPATProviderRedactsCredentialsFromSignInErrors(t *testing.T) {
 	t.Parallel()
 
@@ -196,9 +225,11 @@ type recordingSigner struct {
 	request  auth.SignInRequest
 	response auth.SignInResponse
 	err      error
+	calls    int
 }
 
 func (s *recordingSigner) SignIn(_ context.Context, request auth.SignInRequest) (auth.SignInResponse, error) {
+	s.calls++
 	s.request = request
 	return s.response, s.err
 }

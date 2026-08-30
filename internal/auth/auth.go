@@ -130,7 +130,7 @@ func (p *patProvider) Authenticate(ctx context.Context, target Target) (Session,
 	if p.signer == nil {
 		return nil, errors.New("PAT sign-in client is not configured")
 	}
-	if target.PATNameVariable != "" && target.PATNameVariable == target.PATSecretVariable {
+	if target.PATNameVariable != "" && strings.EqualFold(target.PATNameVariable, target.PATSecretVariable) {
 		return nil, errors.New("PAT name and secret must use different environment variables")
 	}
 	values := make(map[string]string, 2)
