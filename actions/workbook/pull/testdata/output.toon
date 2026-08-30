@@ -1,0 +1,12 @@
+status: pulled
+workbook:
+  luid: wb-1
+  name: Finance
+  project_luid: project-1
+  project_path: Ops
+artifact:
+  path: "C:\\workspace\\artifacts\\workbook\\Finance"
+  canonical_path: "C:\\workspace\\artifacts\\workbook\\Finance\\Finance.twbx"
+  baseline_fingerprint: "sha256:abc"
+warnings[1]: existing clean artifact replaced
+tableau_request_id: request-1

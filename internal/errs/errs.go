@@ -36,6 +36,10 @@ type Error struct {
 	Retryable        *bool
 	CorrectiveAction string
 	Validation       []ValidationDetail
+	UpstreamStatus   int
+	UpstreamCode     string
+	UpstreamSummary  string
+	UpstreamDetail   string
 	TableauRequestID string
 	TableauJobID     string
 }
@@ -73,6 +77,19 @@ func (e *Error) Unwrap() error {
 // Bool returns a pointer suitable for optional boolean fields.
 func Bool(value bool) *bool { return &value }
 
+// TableauRequestID returns the first request ID carried by an error chain.
+func TableauRequestID(err error) string {
+	var structured *Error
+	if errors.As(err, &structured) && structured.TableauRequestID != "" {
+		return structured.TableauRequestID
+	}
+	var carrier interface{ RequestID() string }
+	if errors.As(err, &carrier) {
+		return carrier.RequestID()
+	}
+	return ""
+}
+
 // Payload is the stable serializable form of Error.
 type Payload struct {
 	ID               string             `json:"id,omitempty"`
@@ -87,6 +104,10 @@ type Payload struct {
 	Retryable        *bool              `json:"retryable,omitempty"`
 	CorrectiveAction string             `json:"corrective_action,omitempty"`
 	Validation       []ValidationDetail `json:"validation,omitempty"`
+	UpstreamStatus   int                `json:"upstream_status,omitempty"`
+	UpstreamCode     string             `json:"upstream_code,omitempty"`
+	UpstreamSummary  string             `json:"upstream_summary,omitempty"`
+	UpstreamDetail   string             `json:"upstream_detail,omitempty"`
 	TableauRequestID string             `json:"tableau_request_id,omitempty"`
 	TableauJobID     string             `json:"tableau_job_id,omitempty"`
 }
@@ -116,6 +137,10 @@ func Structure(err error) Envelope {
 			Retryable:        structured.Retryable,
 			CorrectiveAction: structured.CorrectiveAction,
 			Validation:       structured.Validation,
+			UpstreamStatus:   structured.UpstreamStatus,
+			UpstreamCode:     structured.UpstreamCode,
+			UpstreamSummary:  structured.UpstreamSummary,
+			UpstreamDetail:   structured.UpstreamDetail,
 			TableauRequestID: structured.TableauRequestID,
 			TableauJobID:     structured.TableauJobID,
 		}
@@ -124,6 +149,22 @@ func Structure(err error) Envelope {
 		}
 		if structured.Cause != nil {
 			payload.UpstreamCause = structured.Cause.Error()
+			status, code, summary, detail := tableauUpstream(structured.Cause)
+			if payload.UpstreamStatus == 0 {
+				payload.UpstreamStatus = status
+			}
+			if payload.UpstreamCode == "" {
+				payload.UpstreamCode = code
+			}
+			if payload.UpstreamSummary == "" {
+				payload.UpstreamSummary = summary
+			}
+			if payload.UpstreamDetail == "" {
+				payload.UpstreamDetail = detail
+			}
+			if payload.TableauRequestID == "" {
+				payload.TableauRequestID = TableauRequestID(structured.Cause)
+			}
 		}
 		return Envelope{Error: payload}
 	}
@@ -132,6 +173,19 @@ func Structure(err error) Envelope {
 		message = err.Error()
 	}
 	return Envelope{Error: Payload{Kind: KindRuntime, Summary: message}}
+}
+
+func tableauUpstream(err error) (int, string, string, string) {
+	var carrier interface {
+		HTTPStatus() int
+		TableauCode() string
+		TableauSummary() string
+		TableauDetail() string
+	}
+	if !errors.As(err, &carrier) {
+		return 0, "", "", ""
+	}
+	return carrier.HTTPStatus(), carrier.TableauCode(), carrier.TableauSummary(), carrier.TableauDetail()
 }
 
 // ExitCode maps errors to the AXI exit-code contract.

@@ -173,10 +173,13 @@ func localImportAllowed(file, imported string) bool {
 	case layerApp:
 		return matchesPrefix(imported, "actions", "internal/cli", "internal/resources", "internal/tableau") ||
 			matchesExact(imported,
+				"internal/artifact",
 				"internal/auth",
 				"internal/capability",
+				"internal/catalog",
 				"internal/config",
 				"internal/errs",
+				"internal/identity",
 				"internal/output",
 			)
 	case layerCLI:
@@ -318,9 +321,11 @@ func disallowedLocalImportReason(file, imported string) string {
 }
 
 func isFoundationPackage(file string) bool {
-	return hasPathPrefix(file, "internal/architecture") ||
+	return hasPathPrefix(file, "internal/artifact") ||
+		hasPathPrefix(file, "internal/architecture") ||
 		hasPathPrefix(file, "internal/auth") ||
 		hasPathPrefix(file, "internal/config") ||
+		hasPathPrefix(file, "internal/catalog") ||
 		hasPathPrefix(file, "internal/identity") ||
 		hasPathPrefix(file, "internal/capability") ||
 		hasPathPrefix(file, "internal/errs") ||

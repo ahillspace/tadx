@@ -17,7 +17,9 @@ docs/
 internal/
   app/                   Composition root and process-level orchestration
   architecture/          Executable import-boundary checks
+  artifact/              Canonical payloads, provenance, fingerprints, and dirty guards
   auth/                  PAT resolution and authenticated-session provider
+  catalog/               Bounded local normalized catalog search
   capability/            Executable capability registry and generation
   cli/                   Thin Cobra command and flag plumbing
   config/                Non-secret configuration and environment resolution
@@ -68,6 +70,7 @@ The local allowlists enforce these dependencies:
 - Resource adapters import only `internal/identity` and Tableau client packages.
 - Tableau clients import only `internal/auth` and the shared `internal/tableau` package.
 - `internal/output` imports only `internal/errs` and `internal/toon`; other foundation packages have no local dependencies.
+- `internal/artifact` and `internal/catalog` are independent foundation packages with no higher-layer imports.
 - The composition root imports only recognized actions, CLI packages, adapters, clients, and its required foundation packages.
 - `cmd/tadx` imports only `internal/app`, and `cmd/gencapdocs` imports only `internal/capability`.
 

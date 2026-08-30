@@ -8,6 +8,20 @@ import (
 	"github.com/ahillspace/tadx/internal/errs"
 )
 
+type requestIDError struct{ id string }
+
+func (e requestIDError) Error() string     { return "upstream failed" }
+func (e requestIDError) RequestID() string { return e.id }
+
+type upstreamError struct{}
+
+func (upstreamError) Error() string          { return "Tableau rejected the request" }
+func (upstreamError) HTTPStatus() int        { return 403 }
+func (upstreamError) TableauCode() string    { return "403007" }
+func (upstreamError) TableauSummary() string { return "Forbidden" }
+func (upstreamError) TableauDetail() string  { return "Missing permission" }
+func (upstreamError) RequestID() string      { return "request-403" }
+
 func TestExitCode(t *testing.T) {
 	t.Parallel()
 
@@ -55,5 +69,24 @@ func TestStructurePreservesFieldsAndCause(t *testing.T) {
 	}
 	if !errors.Is(err, cause) {
 		t.Fatal("structured error does not unwrap cause")
+	}
+}
+
+func TestTableauRequestIDFindsWrappedCarrier(t *testing.T) {
+	t.Parallel()
+
+	err := fmt.Errorf("workbook read: %w", requestIDError{id: "request-123"})
+	if got := errs.TableauRequestID(err); got != "request-123" {
+		t.Fatalf("TableauRequestID() = %q", got)
+	}
+}
+
+func TestStructurePreservesWrappedTableauUpstreamFields(t *testing.T) {
+	t.Parallel()
+
+	err := &errs.Error{Kind: errs.KindOperation, Summary: "Workbook read failed.", Cause: fmt.Errorf("adapter: %w", upstreamError{})}
+	payload := errs.Structure(err).Error
+	if payload.UpstreamStatus != 403 || payload.UpstreamCode != "403007" || payload.UpstreamSummary != "Forbidden" || payload.UpstreamDetail != "Missing permission" || payload.TableauRequestID != "request-403" {
+		t.Fatalf("upstream payload = %#v", payload)
 	}
 }

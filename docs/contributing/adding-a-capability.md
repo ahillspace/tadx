@@ -88,7 +88,7 @@ Do not force every operation into one universal interface. Keep operation-specif
 ## Registry entry
 
 - One row per public operation. Generated help and reference docs derive from the registry; do not maintain a second table.
-- Model the four independent status axes rather than one field: product disposition (ship or delegated), evidence level (architecture-locked, local-contract, docs-only, live-verified), verification readiness (ready or blocked), and implementation state (planned, implemented, external/delegated).
+- Model the four independent status axes rather than one field: product disposition (ship or delegated), evidence level (architecture-locked, local-contract, docs-only, contract-verified, live-verified), verification readiness (ready or blocked), and implementation state (planned, implemented, external/delegated).
 - Local write, remote mutation, and requires-apply are independent flags.
 - Registry validation must reject: duplicate IDs, duplicate implemented command paths, missing required fields, remote mutation without requires-apply, a delegated capability with a local command binding, an implemented CLI capability without a binding, a binding without a registry entry, a blocked capability marked executable, and invalid owner or blocker references.
 

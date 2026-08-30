@@ -26,6 +26,7 @@ const (
 	EvidenceArchitectureLocked EvidenceLevel = "architecture-locked"
 	EvidenceLocalContract      EvidenceLevel = "local-contract"
 	EvidenceDocsOnly           EvidenceLevel = "docs-only"
+	EvidenceContractVerified   EvidenceLevel = "contract-verified"
 	EvidenceLiveVerified       EvidenceLevel = "live-verified"
 )
 

@@ -2,6 +2,7 @@
 package config
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 	"net/url"
@@ -9,6 +10,8 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+
+	"gopkg.in/yaml.v3"
 )
 
 const (
@@ -33,6 +36,7 @@ type Environment struct {
 	Alias            string `yaml:"-" json:"alias,omitempty"`
 	URL              string `yaml:"url" json:"url"`
 	SiteContentURL   string `yaml:"site_content_url,omitempty" json:"site_content_url,omitempty"`
+	APIVersion       string `yaml:"api_version,omitempty" json:"api_version,omitempty"`
 	Auth             Auth   `yaml:"auth" json:"auth"`
 	DefaultWorkspace string `yaml:"default_workspace,omitempty" json:"default_workspace,omitempty"`
 }
@@ -144,6 +148,9 @@ func (c Config) ResolveEnvironment(alias string) (Environment, error) {
 	if environment.Auth.Type == "" {
 		environment.Auth.Type = AuthTypePAT
 	}
+	if environment.APIVersion == "" {
+		environment.APIVersion = "3.29"
+	}
 	defaultName, defaultSecret := DefaultPATVariableNames(alias)
 	if environment.Auth.PATNameEnv == "" {
 		environment.Auth.PATNameEnv = defaultName
@@ -152,6 +159,24 @@ func (c Config) ResolveEnvironment(alias string) (Environment, error) {
 		environment.Auth.PATSecretEnv = defaultSecret
 	}
 	return environment, nil
+}
+
+// Load reads and validates the non-secret user configuration.
+func Load(path string) (Config, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return Config{}, fmt.Errorf("read configuration: %w", err)
+	}
+	decoder := yaml.NewDecoder(bytes.NewReader(data))
+	decoder.KnownFields(true)
+	var configuration Config
+	if err := decoder.Decode(&configuration); err != nil {
+		return Config{}, fmt.Errorf("decode configuration: %w", err)
+	}
+	if err := configuration.Validate(); err != nil {
+		return Config{}, err
+	}
+	return configuration, nil
 }
 
 // DefaultPATVariableNames returns the conventional PAT variable references for an alias.

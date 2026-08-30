@@ -193,7 +193,11 @@ func (s *session) String() string {
 }
 
 func redactError(err error, secrets ...string) error {
-	message := err.Error()
+	return errors.New(Redact(err.Error(), secrets...))
+}
+
+// Redact replaces complete and overlapping secret intervals without exposing remainders.
+func Redact(message string, secrets ...string) string {
 	type interval struct {
 		start int
 		end   int
@@ -219,7 +223,7 @@ func redactError(err error, secrets ...string) error {
 		}
 	}
 	if len(intervals) == 0 {
-		return errors.New(message)
+		return message
 	}
 	sort.Slice(intervals, func(i, j int) bool {
 		if intervals[i].start != intervals[j].start {
@@ -244,5 +248,5 @@ func redactError(err error, secrets ...string) error {
 		position = current.end
 	}
 	redacted.WriteString(message[position:])
-	return errors.New(redacted.String())
+	return redacted.String()
 }

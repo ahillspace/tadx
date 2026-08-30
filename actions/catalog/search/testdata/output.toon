@@ -1,0 +1,14 @@
+page:
+  returned: 1
+  total: 2
+  limit: 1
+  next_cursor: "1"
+generation:
+  id: generation-1
+  environment: production
+  site: marketing
+  generated_at: "2026-08-30T00:00:00Z"
+  stale: false
+items[1]{luid,kind,name,project_path}:
+  wb-1,workbook,Finance,Ops
+help[1]: tadx capability get <luid>

@@ -1,0 +1,92 @@
+package publish
+
+import "github.com/ahillspace/tadx/internal/identity"
+
+// Input selects one local artifact and explicit remote destination.
+type Input struct {
+	ArtifactPath    string
+	Environment     string
+	Site            string
+	Name            string
+	ProjectSelector identity.Selector
+	ProjectLUID     string
+	ProjectPath     string
+	Overwrite       bool
+	AsJob           bool
+}
+
+// Artifact is the current local canonical workbook.
+type Artifact struct {
+	Path        string
+	Filename    string
+	Content     []byte
+	Name        string
+	TableauID   string
+	Fingerprint string
+}
+
+// Project is one authoritative remote destination.
+type Project struct {
+	LUID string
+	Name string
+	Path string
+}
+
+// Workbook is an exact remote collision candidate.
+type Workbook struct {
+	LUID        string
+	Name        string
+	ProjectLUID string
+}
+
+// Target is the stable preview target.
+type Target struct {
+	Environment  string `json:"environment"`
+	Site         string `json:"site"`
+	ProjectLUID  string `json:"project_luid"`
+	ProjectPath  string `json:"project_path"`
+	ExistingLUID string `json:"existing_workbook_luid,omitempty"`
+}
+
+// Plan is the deterministic preview and the only value Apply accepts.
+type Plan struct {
+	Mode                string   `json:"mode"`
+	Operation           string   `json:"operation"`
+	ArtifactPath        string   `json:"artifact_path"`
+	ArtifactFingerprint string   `json:"artifact_fingerprint"`
+	Filename            string   `json:"filename"`
+	WorkbookName        string   `json:"workbook_name"`
+	Target              Target   `json:"target"`
+	Overwrite           bool     `json:"overwrite"`
+	AsJob               bool     `json:"as_job"`
+	Substeps            []string `json:"substeps"`
+	request             PublishRequest
+	planned             bool
+}
+
+// PublishRequest is the explicit adapter mutation request.
+type PublishRequest struct {
+	Name        string
+	ProjectLUID string
+	Filename    string
+	Content     []byte
+	Overwrite   bool
+	AsJob       bool
+}
+
+// Result is the authoritative terminal mutation result.
+type Result struct {
+	Status           string `json:"status"`
+	WorkbookLUID     string `json:"workbook_luid,omitempty"`
+	WorkbookName     string `json:"workbook_name,omitempty"`
+	ProjectLUID      string `json:"project_luid,omitempty"`
+	JobID            string `json:"tableau_job_id,omitempty"`
+	TableauRequestID string `json:"tableau_request_id,omitempty"`
+}
+
+// Output keeps the applied result attached to the exact previewed plan.
+type Output struct {
+	Plan    Plan    `json:"plan"`
+	Applied bool    `json:"applied"`
+	Result  *Result `json:"result,omitempty"`
+}

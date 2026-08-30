@@ -7,8 +7,12 @@ var implementationManifest = map[string]struct {
 	CommandPath []string
 	RawCapable  bool
 }{
-	"capability.get":  {CommandPath: []string{"capability", "get"}},
-	"capability.list": {CommandPath: []string{"capability", "list"}},
+	"auth.check":       {CommandPath: []string{"auth", "check"}},
+	"capability.get":   {CommandPath: []string{"capability", "get"}},
+	"capability.list":  {CommandPath: []string{"capability", "list"}},
+	"catalog.search":   {CommandPath: []string{"catalog", "search"}},
+	"workbook.publish": {CommandPath: []string{"content", "workbook", "publish"}},
+	"workbook.pull":    {CommandPath: []string{"content", "workbook", "pull"}},
 }
 
 func applyImplementationManifest(definition Definition) Definition {

@@ -3,36 +3,71 @@ package app
 
 import (
 	"context"
+	"crypto/rand"
 	"errors"
+	"fmt"
 	"io"
+	"net/http"
+	"os"
+	"path/filepath"
 	"strings"
+	"time"
 
+	authcheck "github.com/ahillspace/tadx/actions/auth/check"
 	capabilityget "github.com/ahillspace/tadx/actions/capability/get"
 	capabilitylist "github.com/ahillspace/tadx/actions/capability/list"
+	catalogsearch "github.com/ahillspace/tadx/actions/catalog/search"
+	workbookpublish "github.com/ahillspace/tadx/actions/workbook/publish"
+	workbookpull "github.com/ahillspace/tadx/actions/workbook/pull"
+	"github.com/ahillspace/tadx/internal/artifact"
+	coreauth "github.com/ahillspace/tadx/internal/auth"
 	"github.com/ahillspace/tadx/internal/capability"
+	"github.com/ahillspace/tadx/internal/catalog"
 	"github.com/ahillspace/tadx/internal/cli"
+	"github.com/ahillspace/tadx/internal/config"
 	"github.com/ahillspace/tadx/internal/errs"
+	"github.com/ahillspace/tadx/internal/identity"
 	"github.com/ahillspace/tadx/internal/output"
+	resourceworkbook "github.com/ahillspace/tadx/internal/resources/workbook"
+	"github.com/ahillspace/tadx/internal/tableau"
+	tableauauth "github.com/ahillspace/tadx/internal/tableau/auth"
+	tableauworkbook "github.com/ahillspace/tadx/internal/tableau/workbook"
 )
 
 // Options contains process-level discovery settings.
 type Options struct {
 	MutationsEnabled bool
+	ConfigPath       string
+	HTTPClient       *http.Client
+	Now              func() time.Time
+	CorrelationID    func() string
 }
 
 // Run wires and runs the CLI, renders structured output, and returns an AXI exit code.
 func Run(ctx context.Context, args []string, stdout io.Writer, options Options) int {
 	definitions := capability.All()
 	source := registrySource{}
+	runtime, err := newRuntime(options)
+	if err != nil {
+		return renderError(stdout, err)
+	}
 	root := cli.NewRoot(cli.Dependencies{
-		Lister:           capabilitylist.New(source),
-		Getter:           capabilityget.New(source),
-		Renderer:         writerRenderer{writer: stdout},
-		MutationsEnabled: options.MutationsEnabled,
-		ListUse:          registryUse("capability.list"),
-		ListShort:        registryShort("capability.list"),
-		GetUse:           registryUse("capability.get"),
-		GetShort:         registryShort("capability.get"),
+		Lister:            capabilitylist.New(source),
+		Getter:            capabilityget.New(source),
+		Renderer:          writerRenderer{writer: stdout},
+		MutationsEnabled:  options.MutationsEnabled,
+		ListUse:           registryUse("capability.list"),
+		ListShort:         registryShort("capability.list"),
+		GetUse:            registryUse("capability.get"),
+		GetShort:          registryShort("capability.get"),
+		AuthChecker:       authcheck.New(runtime, runtime),
+		CatalogSearcher:   &catalogService{runtime: runtime},
+		WorkbookPuller:    &pullService{runtime: runtime},
+		WorkbookPublisher: &publishService{runtime: runtime},
+		AuthUse:           registryLeafUse("auth.check"), AuthShort: registryShort("auth.check"),
+		CatalogSearchUse: registryLeafUse("catalog.search"), CatalogSearchShort: registryShort("catalog.search"),
+		WorkbookPullUse: registryLeafUse("workbook.pull"), WorkbookPullShort: registryShort("workbook.pull"),
+		WorkbookPublishUse: registryLeafUse("workbook.publish"), WorkbookPublishShort: registryShort("workbook.publish"),
 	})
 	registrations, err := cli.RegisteredCommands(root)
 	if err != nil {
@@ -73,6 +108,212 @@ type writerRenderer struct {
 
 func (r writerRenderer) Render(value any) error {
 	return output.Render(r.writer, value)
+}
+
+type runtimeDependencies struct {
+	configPath    string
+	httpClient    *http.Client
+	now           func() time.Time
+	correlationID string
+}
+
+func newRuntime(options Options) (*runtimeDependencies, error) {
+	path := options.ConfigPath
+	if path == "" {
+		var err error
+		path, err = config.UserConfigPath()
+		if err != nil {
+			return nil, &errs.Error{Kind: errs.KindRuntime, Operation: "startup", Summary: "Configuration path resolution failed.", Cause: err}
+		}
+	}
+	client := options.HTTPClient
+	if client == nil {
+		client = &http.Client{Timeout: 2 * time.Minute}
+	}
+	now := options.Now
+	if now == nil {
+		now = time.Now
+	}
+	correlation := ""
+	if options.CorrelationID != nil {
+		correlation = options.CorrelationID()
+	}
+	if correlation == "" {
+		var value [16]byte
+		if _, err := rand.Read(value[:]); err == nil {
+			correlation = fmt.Sprintf("%x", value[:])
+		}
+	}
+	return &runtimeDependencies{configPath: path, httpClient: client, now: now, correlationID: correlation}, nil
+}
+
+func (r *runtimeDependencies) Resolve(_ context.Context, alias string) (authcheck.Target, error) {
+	_, environment, err := r.environment(alias, false)
+	if err != nil {
+		return authcheck.Target{}, err
+	}
+	return authcheck.Target{Environment: environment.Alias, ServerURL: environment.URL, SiteContentURL: environment.SiteContentURL, APIVersion: environment.APIVersion, PATNameVariable: environment.Auth.PATNameEnv, PATSecretVariable: environment.Auth.PATSecretEnv}, nil
+}
+
+func (r *runtimeDependencies) Authenticate(ctx context.Context, target authcheck.Target) (authcheck.Authentication, error) {
+	transport := tableau.NewTransport(r.httpClient, target.APIVersion, func() string { return r.correlationID })
+	provider := coreauth.NewPATProvider(coreauth.LookupEnvFunc(os.LookupEnv), tableauauth.NewClient(transport))
+	session, err := provider.Authenticate(ctx, coreauth.Target{Environment: target.Environment, ServerURL: target.ServerURL, SiteContentURL: target.SiteContentURL, PATNameVariable: target.PATNameVariable, PATSecretVariable: target.PATSecretVariable})
+	if err != nil {
+		return authcheck.Authentication{}, err
+	}
+	return authcheck.Authentication{SiteLUID: session.SiteLUID(), UserLUID: session.UserLUID()}, nil
+}
+
+func (r *runtimeDependencies) environment(alias string, explicit bool) (config.Config, config.Environment, error) {
+	if explicit && alias == "" {
+		return config.Config{}, config.Environment{}, errors.New("an explicit write environment is required")
+	}
+	configuration, err := config.Load(r.configPath)
+	if err != nil {
+		return config.Config{}, config.Environment{}, err
+	}
+	environment, err := configuration.ResolveEnvironment(alias)
+	return configuration, environment, err
+}
+
+func (r *runtimeDependencies) workbookAdapter(ctx context.Context, alias string, explicit bool) (config.Config, config.Environment, *resourceworkbook.Adapter, error) {
+	configuration, environment, err := r.environment(alias, explicit)
+	if err != nil {
+		return config.Config{}, config.Environment{}, nil, err
+	}
+	transport := tableau.NewTransport(r.httpClient, environment.APIVersion, func() string { return r.correlationID })
+	provider := coreauth.NewPATProvider(coreauth.LookupEnvFunc(os.LookupEnv), tableauauth.NewClient(transport))
+	session, err := provider.Authenticate(ctx, coreauth.Target{Environment: environment.Alias, ServerURL: environment.URL, SiteContentURL: environment.SiteContentURL, PATNameVariable: environment.Auth.PATNameEnv, PATSecretVariable: environment.Auth.PATSecretEnv})
+	if err != nil {
+		return config.Config{}, config.Environment{}, nil, err
+	}
+	client := tableauworkbook.NewClient(transport, session, environment.URL)
+	return configuration, environment, resourceworkbook.NewAdapter(client), nil
+}
+
+type catalogService struct{ runtime *runtimeDependencies }
+
+func (s *catalogService) Execute(ctx context.Context, input catalogsearch.Input) (catalogsearch.Output, error) {
+	_, environment, err := s.runtime.environment(input.Environment, false)
+	if err != nil {
+		return catalogsearch.Output{}, err
+	}
+	input.Environment = environment.Alias
+	if input.Site == "" {
+		input.Site = environment.SiteContentURL
+	}
+	store := catalog.NewFileStore(filepath.Dir(s.runtime.configPath), s.runtime.now)
+	return catalogsearch.New(catalogSource{store: store}).Execute(ctx, input)
+}
+
+type catalogSource struct{ store *catalog.FileStore }
+
+func (s catalogSource) Search(ctx context.Context, input catalogsearch.Input) (catalogsearch.Result, error) {
+	result, err := s.store.Search(ctx, catalog.Query{Text: input.Text, Kind: input.Kind, ProjectPath: input.ProjectPath, Owner: input.Owner, Environment: input.Environment, Site: input.Site, LUID: input.LUID, Cursor: input.Cursor, Limit: input.Limit})
+	if err != nil {
+		return catalogsearch.Result{}, err
+	}
+	items := make([]catalogsearch.Item, len(result.Records))
+	for index, item := range result.Records {
+		items[index] = catalogsearch.Item{LUID: item.LUID, Kind: item.Kind, Name: item.Name, ProjectPath: item.ProjectPath, Owner: item.Owner}
+	}
+	return catalogsearch.Result{Page: catalogsearch.Page{Returned: result.Page.Returned, Total: result.Page.Total, Limit: result.Page.Limit, NextCursor: result.Page.NextCursor}, GenerationID: result.GenerationID, Environment: result.Environment, Site: result.Site, GeneratedAt: result.GeneratedAt.UTC().Format(time.RFC3339Nano), Stale: result.Stale, Items: items, Warnings: result.Warnings}, nil
+}
+
+type pullService struct{ runtime *runtimeDependencies }
+
+func (s *pullService) Execute(ctx context.Context, input workbookpull.Input) (workbookpull.Output, error) {
+	configuration, environment, adapter, err := s.runtime.workbookAdapter(ctx, input.Environment, false)
+	if err != nil {
+		return workbookpull.Output{}, err
+	}
+	input.Environment, input.Site = environment.Alias, environment.SiteContentURL
+	if input.Workspace == "" {
+		input.Workspace, err = resolveWorkspace(configuration, environment)
+		if err != nil {
+			return workbookpull.Output{}, err
+		}
+	}
+	return workbookpull.New(pullReader{adapter: adapter}, artifactWriter{manager: artifact.NewWorkbookManager(s.runtime.now)}).Execute(ctx, input)
+}
+
+type pullReader struct{ adapter *resourceworkbook.Adapter }
+
+func (r pullReader) ResolveWorkbook(ctx context.Context, selector identity.Selector) (workbookpull.Workbook, error) {
+	item, err := r.adapter.ResolveWorkbook(ctx, selector)
+	return workbookpull.Workbook{LUID: item.LUID, Name: item.Name, ProjectLUID: item.ProjectLUID, ProjectPath: item.ProjectPath}, err
+}
+func (r pullReader) DownloadWorkbook(ctx context.Context, luid string, include *bool) (workbookpull.Download, error) {
+	item, err := r.adapter.DownloadWorkbook(ctx, luid, include)
+	return workbookpull.Download{Filename: item.Filename, Content: item.Content, TableauRequestID: item.TableauRequestID}, err
+}
+
+type artifactWriter struct{ manager *artifact.WorkbookManager }
+
+func (w artifactWriter) WriteWorkbook(ctx context.Context, input workbookpull.Artifact) (workbookpull.ArtifactResult, error) {
+	result, err := w.manager.Pull(ctx, artifact.WorkbookPull{Workspace: input.Workspace, Filename: input.Filename, Content: input.Content, Overwrite: input.Overwrite, Metadata: artifact.WorkbookMetadata{Kind: "workbook", Name: input.Name, TableauID: input.TableauID, SourceEnvironment: input.Environment, SourceSite: input.Site, SourceProjectName: input.ProjectName, SourceProjectID: input.ProjectID}})
+	return workbookpull.ArtifactResult{Path: result.ArtifactPath, CanonicalPath: result.CanonicalPath, BaselineFingerprint: result.BaselineFingerprint, Warnings: result.Warnings}, err
+}
+
+type publishService struct{ runtime *runtimeDependencies }
+
+func (s *publishService) Execute(ctx context.Context, input workbookpublish.Input, apply bool) (workbookpublish.Output, error) {
+	_, environment, adapter, err := s.runtime.workbookAdapter(ctx, input.Environment, true)
+	if err != nil {
+		return workbookpublish.Output{}, err
+	}
+	input.Environment, input.Site = environment.Alias, environment.SiteContentURL
+	action := workbookpublish.New(artifactReader{manager: artifact.NewWorkbookManager(s.runtime.now)}, publishAdapter{adapter: adapter}, publishAdapter{adapter: adapter})
+	return action.Execute(ctx, input, apply)
+}
+
+type artifactReader struct{ manager *artifact.WorkbookManager }
+
+func (r artifactReader) ReadWorkbook(ctx context.Context, path string) (workbookpublish.Artifact, error) {
+	item, err := r.manager.Read(ctx, path)
+	return workbookpublish.Artifact{Path: item.Path, Filename: item.Filename, Content: item.Content, Name: item.Name, TableauID: item.TableauID, Fingerprint: item.Fingerprint}, err
+}
+
+type publishAdapter struct{ adapter *resourceworkbook.Adapter }
+
+func (a publishAdapter) ResolveProject(ctx context.Context, selector identity.Selector) (workbookpublish.Project, error) {
+	item, err := a.adapter.ResolveProject(ctx, selector)
+	return workbookpublish.Project{LUID: item.LUID, Name: item.Name, Path: item.Path}, err
+}
+func (a publishAdapter) FindWorkbooks(ctx context.Context, name, project string) ([]workbookpublish.Workbook, error) {
+	items, err := a.adapter.FindWorkbooks(ctx, name, project)
+	result := make([]workbookpublish.Workbook, len(items))
+	for index, item := range items {
+		result[index] = workbookpublish.Workbook{LUID: item.LUID, Name: item.Name, ProjectLUID: item.ProjectLUID}
+	}
+	return result, err
+}
+func (a publishAdapter) Publish(ctx context.Context, input workbookpublish.PublishRequest) (workbookpublish.Result, error) {
+	result, err := a.adapter.PublishWorkbook(ctx, tableauworkbook.PublishRequest{Name: input.Name, ProjectLUID: input.ProjectLUID, Filename: input.Filename, Content: input.Content, Overwrite: input.Overwrite, AsJob: input.AsJob})
+	return workbookpublish.Result{Status: result.Status, WorkbookLUID: result.WorkbookLUID, WorkbookName: result.WorkbookName, ProjectLUID: result.ProjectLUID, JobID: result.JobID, TableauRequestID: result.TableauRequestID}, err
+}
+
+func resolveWorkspace(configuration config.Config, environment config.Environment) (string, error) {
+	current, err := os.Getwd()
+	if err == nil {
+		for directory := current; ; directory = filepath.Dir(directory) {
+			if _, statErr := os.Stat(filepath.Join(directory, config.WorkspaceConfigName)); statErr == nil {
+				return directory, nil
+			}
+			parent := filepath.Dir(directory)
+			if parent == directory {
+				break
+			}
+		}
+	}
+	if environment.DefaultWorkspace != "" {
+		return environment.DefaultWorkspace, nil
+	}
+	if configuration.DefaultWorkspace != "" {
+		return configuration.DefaultWorkspace, nil
+	}
+	return "", errors.New("no workspace selected or configured")
 }
 
 type registrySource struct{}
@@ -151,6 +392,14 @@ func registryShort(id string) string {
 		return ""
 	}
 	return definition.Outcome
+}
+
+func registryLeafUse(id string) string {
+	definition, ok := capability.Lookup(id)
+	if !ok || len(definition.CommandPath) == 0 {
+		return ""
+	}
+	return definition.CommandPath[len(definition.CommandPath)-1]
 }
 
 func filterDomain(definition capability.Definition) string {

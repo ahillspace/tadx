@@ -36,13 +36,13 @@ func TestCanonicalRegistryIsValidAndComplete(t *testing.T) {
 	}
 }
 
-func TestCanonicalExecutableBindingsArePhaseZeroOnly(t *testing.T) {
+func TestCanonicalExecutableBindingsIncludePhaseOneSlice(t *testing.T) {
 	definitions := Executable()
 	ids := make([]string, 0, len(definitions))
 	for _, definition := range definitions {
 		ids = append(ids, definition.ID)
 	}
-	if want := []string{"capability.get", "capability.list"}; !slices.Equal(ids, want) {
+	if want := []string{"auth.check", "capability.get", "capability.list", "catalog.search", "workbook.publish", "workbook.pull"}; !slices.Equal(ids, want) {
 		t.Fatalf("Executable IDs = %v, want %v", ids, want)
 	}
 	for _, definition := range definitions {

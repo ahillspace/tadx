@@ -38,6 +38,14 @@ TADX never calls or proxies MCP inside a command. CLI and MCP are peer surfaces;
 - build-order: the order slices are built and what must be frozen first.
 - The arc42 and the V1 capability contract: the authoritative product and capability sources.
 
+## Owned repos for reference
+
+- projects/tableau/tableau-tooling = tabget - core go CLI action for indexing an entire Tableau CLoud or Server instances all the way down to permissions. tabporter - app to get items from Tableau, unpackage them, convert them to csv, modify them with agents, publish them (incomplete).
+- projects/tableau/juju = Legacy monolithic application for creating Tableau Pulse and Tableau Next Metrics. 
+- projects/tableau/juju-local = Two more recent applications that mirror Juju capability, but are much smaller and easier to understand (incomplete, but metrics creation and forking works for Pulse)
+
+Assets in these repositories can be used as long as they align with all tadx guidelines. All code should be reviewed and optimized prior to implementation. 
+
 ## Archived material
 
 Files under `archived/` are obsolete historical inputs.

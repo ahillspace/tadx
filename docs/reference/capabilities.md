@@ -20,13 +20,13 @@ Use `tadx capability get <id>` for the same focused metadata at runtime.
 | `admin.user.get` | cli | ship | ready | planned | None |
 | `admin.user.list` | cli | ship | ready | planned | None |
 | `admin.user.update` | cli | ship | ready | planned | None |
-| `auth.check` | cli | ship | ready | planned | None |
+| `auth.check` | cli | ship | ready | implemented | `tadx auth check` |
 | `auth.status` | cli | ship | ready | planned | None |
 | `capability.get` | cli | ship | ready | implemented | `tadx capability get` |
 | `capability.list` | cli | ship | ready | implemented | `tadx capability list` |
 | `catalog.get` | cli | ship | ready | planned | None |
 | `catalog.refresh` | cli | ship | ready | planned | None |
-| `catalog.search` | cli | ship | ready | planned | None |
+| `catalog.search` | cli | ship | ready | implemented | `tadx catalog search` |
 | `catalog.status` | cli | ship | ready | planned | None |
 | `content.get` | cli | ship | ready | planned | None |
 | `content.search` | cli | ship | ready | planned | None |
@@ -73,8 +73,8 @@ Use `tadx capability get <id>` for the same focused metadata at runtime.
 | `workbook.author` | tableau/desktop-mcp | delegated | ready | external/delegated | None |
 | `workbook.get` | cli | ship | ready | planned | None |
 | `workbook.list` | cli | ship | ready | planned | None |
-| `workbook.publish` | cli | ship | ready | planned | None |
-| `workbook.pull` | cli | ship | ready | planned | None |
+| `workbook.publish` | cli | ship | ready | implemented | `tadx content workbook publish` |
+| `workbook.pull` | cli | ship | ready | implemented | `tadx content workbook pull` |
 | `workspace.clean` | cli | ship | ready | planned | None |
 | `workspace.create` | cli | ship | ready | planned | None |
 | `workspace.list` | cli | ship | ready | planned | None |
@@ -380,9 +380,9 @@ Resolve PAT references, sign in, and verify the selected Tableau site.
 - Selectors: Environment alias; site content URL
 - Products and availability: Cloud / Server
 - Product disposition: ship
-- Evidence level: docs-only
+- Evidence level: contract-verified
 - Verification readiness: ready
-- Implementation state: planned
+- Implementation state: implemented
 - Local write: No
 - Remote mutation: No
 - Requires `--apply`: No
@@ -390,10 +390,10 @@ Resolve PAT references, sign in, and verify the selected Tableau site.
 - Safety and guard: Never persist or echo PAT/token
 - Artifact effect: None
 - Upstream operation: POST /api/{version}/auth/signin; optional signout
-- Evidence: A1 §§5.4, 7.3–7.4; C1 §§2.1, 5.1
-- Validation or blocker: Docs-only; exact official source capture pending
+- Evidence: A1 §§5.4, 7.3–7.4; C1 §§2.1, 5.1; local official REST capture
+- Validation or blocker: Contract-verified; exact source and tests recorded in docs/evidence/phase1-rest-contract.md
 - Blocker ID: None
-- Command binding: None
+- Command binding: `tadx auth check`
 
 ### `auth.status`
 
@@ -538,7 +538,7 @@ Search cached inventory with bounded continuation and staleness metadata.
 - Product disposition: ship
 - Evidence level: local-contract
 - Verification readiness: ready
-- Implementation state: planned
+- Implementation state: implemented
 - Local write: No
 - Remote mutation: No
 - Requires `--apply`: No
@@ -549,7 +549,7 @@ Search cached inventory with bounded continuation and staleness metadata.
 - Evidence: A1 §§5.9, 8.11; C1 §2.1
 - Validation or blocker: Architecture-locked local contract
 - Blocker ID: None
-- Command binding: None
+- Command binding: `tadx catalog search`
 
 ### `catalog.status`
 
@@ -1758,9 +1758,9 @@ Preview and publish one local workbook to an explicit target.
 - Selectors: Workspace artifact; explicit environment/site/project; optional exact existing workbook
 - Products and availability: Cloud / Server; TWB validation API only on API 3.29 / Tableau 2026.2+ per C1
 - Product disposition: ship
-- Evidence level: docs-only
+- Evidence level: contract-verified
 - Verification readiness: ready
-- Implementation state: planned
+- Implementation state: implemented
 - Local write: No
 - Remote mutation: Yes
 - Requires `--apply`: Yes
@@ -1768,10 +1768,10 @@ Preview and publish one local workbook to an explicit target.
 - Safety and guard: Explicit write environment; collision/overwrite explicit; no fuzzy target
 - Artifact effect: Read / publish
 - Upstream operation: POST /api/{version}/sites/{site-id}/workbooks; upload sessions; optional internal validateWorkbook for TWB
-- Evidence: A1 §§5.11, 6.5–6.8, 8.6; C1 §§2.3, 5.4; S1 workbook-check correction
-- Validation or blocker: Docs-only; standalone workbook check not admitted
+- Evidence: A1 §§5.11, 6.5–6.8, 8.6; C1 §§2.3, 5.4; S1 workbook-check correction; local official REST capture
+- Validation or blocker: Contract-verified; exact source and tests recorded in docs/evidence/phase1-rest-contract.md; standalone workbook check not admitted
 - Blocker ID: None
-- Command binding: None
+- Command binding: `tadx content workbook publish`
 
 ### `workbook.pull`
 
@@ -1784,9 +1784,9 @@ Download one workbook into a provenance-bearing local artifact.
 - Selectors: Workbook LUID/exact path; workspace
 - Products and availability: Cloud / Server
 - Product disposition: ship
-- Evidence level: docs-only
+- Evidence level: contract-verified
 - Verification readiness: ready
-- Implementation state: planned
+- Implementation state: implemented
 - Local write: Yes
 - Remote mutation: No
 - Requires `--apply`: No
@@ -1794,10 +1794,10 @@ Download one workbook into a provenance-bearing local artifact.
 - Safety and guard: Dirty re-pull requires --overwrite
 - Artifact effect: Create / update
 - Upstream operation: GET /api/{version}/sites/{site-id}/workbooks/{workbook-id}/content
-- Evidence: A1 §§6.3–6.4, 8.2, 8.6; C1 §§2.3, 5.4, 5.13
-- Validation or blocker: Docs-only remote API; artifact contract architecture-locked
+- Evidence: A1 §§6.3–6.4, 8.2, 8.6; C1 §§2.3, 5.4, 5.13; local official REST capture
+- Validation or blocker: Contract-verified; exact source and tests recorded in docs/evidence/phase1-rest-contract.md; artifact contract architecture-locked
 - Blocker ID: None
-- Command binding: None
+- Command binding: `tadx content workbook pull`
 
 ### `workspace.clean`
 

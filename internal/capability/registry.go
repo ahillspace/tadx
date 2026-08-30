@@ -165,7 +165,7 @@ func validateRequired(prefix string, definition Definition) error {
 	if !slices.Contains([]Disposition{DispositionShip, DispositionDelegated}, definition.Disposition) {
 		return fmt.Errorf("%s has invalid disposition %q", prefix, definition.Disposition)
 	}
-	if !slices.Contains([]EvidenceLevel{EvidenceArchitectureLocked, EvidenceLocalContract, EvidenceDocsOnly, EvidenceLiveVerified}, definition.EvidenceLevel) {
+	if !slices.Contains([]EvidenceLevel{EvidenceArchitectureLocked, EvidenceLocalContract, EvidenceDocsOnly, EvidenceContractVerified, EvidenceLiveVerified}, definition.EvidenceLevel) {
 		return fmt.Errorf("%s has invalid evidence level %q", prefix, definition.EvidenceLevel)
 	}
 	if !slices.Contains([]VerificationReadiness{VerificationReady, VerificationBlocked}, definition.Verification) {

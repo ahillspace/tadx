@@ -199,6 +199,8 @@ func evidenceConstant(validation, status string) (string, error) {
 	switch {
 	case strings.Contains(lower, "live-verified"):
 		return "EvidenceLiveVerified", nil
+	case strings.Contains(lower, "contract-verified"):
+		return "EvidenceContractVerified", nil
 	case strings.Contains(lower, "docs-only") || status == "Blocked":
 		return "EvidenceDocsOnly", nil
 	case strings.Contains(lower, "local contract"):
