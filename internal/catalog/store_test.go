@@ -39,7 +39,7 @@ func TestFileStoreSearchIsBoundedAndReportsGenerationStaleness(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if result.Page.Returned != 1 || result.Page.Total != 2 || result.Page.NextCursor != "1" {
+	if result.Page.Returned != 1 || result.Page.Total != 2 || result.Page.NextCursor == "" {
 		t.Fatalf("page = %#v", result.Page)
 	}
 	if !result.Stale || result.GenerationID != "generation-1" || result.Environment != "production" || result.Site != "marketing" || len(result.Records) != 1 || result.Records[0].LUID != "wb-1" {
@@ -88,6 +88,21 @@ func TestFileStoreAcceptsMatchingDefaultSite(t *testing.T) {
 	}
 }
 
+func TestFileStoreRejectsDefaultSiteGenerationWithoutSourceSite(t *testing.T) {
+	root := t.TempDir()
+	writeGenerationData(t, root, "production.json", []byte(`{
+		"id":"generation-1",
+		"environment":"production",
+		"generated_at":"2026-08-30T00:00:00Z",
+		"complete":true,
+		"records":[]
+	}`))
+	store := catalog.NewFileStore(root, time.Now)
+	if _, err := store.Search(context.Background(), catalog.Query{Environment: "production", Site: "", SiteSelected: true}); err == nil {
+		t.Fatal("Search() error = nil")
+	}
+}
+
 func TestFileStoreRequiresResolvedSourceSite(t *testing.T) {
 	root := t.TempDir()
 	writeGeneration(t, root, "production.json", catalog.Generation{
@@ -116,6 +131,65 @@ func TestFileStoreRejectsMissingGenerationProvenance(t *testing.T) {
 				t.Fatal("Search() error = nil")
 			}
 		})
+	}
+}
+
+func TestFileStoreRejectsInvalidRecordIdentity(t *testing.T) {
+	tests := []struct {
+		name    string
+		records []catalog.Record
+	}{
+		{name: "missing LUID", records: []catalog.Record{{Kind: "workbook", Name: "Finance"}}},
+		{name: "missing kind", records: []catalog.Record{{LUID: "wb-1", Name: "Finance"}}},
+		{name: "missing name", records: []catalog.Record{{LUID: "wb-1", Kind: "workbook"}}},
+		{name: "duplicate LUID", records: []catalog.Record{
+			{LUID: "wb-1", Kind: "workbook", Name: "Finance"},
+			{LUID: "wb-1", Kind: "datasource", Name: "Finance Source"},
+		}},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			root := t.TempDir()
+			writeGeneration(t, root, "production.json", catalog.Generation{
+				ID: "generation-1", Environment: "production", Site: "marketing", GeneratedAt: time.Now(), Complete: true, Records: test.records,
+			})
+			store := catalog.NewFileStore(root, time.Now)
+			if _, err := store.Search(context.Background(), catalog.Query{Environment: "production", Site: "marketing", SiteSelected: true}); err == nil {
+				t.Fatal("Search() error = nil")
+			}
+		})
+	}
+}
+
+func TestFileStoreCursorIsBoundToGeneration(t *testing.T) {
+	root := t.TempDir()
+	generated := time.Now()
+	records := []catalog.Record{
+		{LUID: "wb-1", Kind: "workbook", Name: "Finance A"},
+		{LUID: "wb-2", Kind: "workbook", Name: "Finance B"},
+	}
+	writeGeneration(t, root, "production.json", catalog.Generation{
+		ID: "generation-1", Environment: "production", Site: "marketing", GeneratedAt: generated, Complete: true, Records: records,
+	})
+	store := catalog.NewFileStore(root, func() time.Time { return generated })
+	query := catalog.Query{Environment: "production", Site: "marketing", SiteSelected: true, Limit: 1}
+	first, err := store.Search(context.Background(), query)
+	if err != nil {
+		t.Fatal(err)
+	}
+	query.Cursor = first.Page.NextCursor
+	continued, err := store.Search(context.Background(), query)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(continued.Records) != 1 || continued.Records[0].LUID != "wb-2" {
+		t.Fatalf("continued records = %#v", continued.Records)
+	}
+	writeGeneration(t, root, "production.json", catalog.Generation{
+		ID: "generation-2", Environment: "production", Site: "marketing", GeneratedAt: generated, Complete: true, Records: records,
+	})
+	if _, err := store.Search(context.Background(), query); err == nil {
+		t.Fatal("Search() with replaced generation error = nil")
 	}
 }
 
@@ -160,6 +234,11 @@ func writeGeneration(t *testing.T, root, filename string, generation catalog.Gen
 	if err != nil {
 		t.Fatal(err)
 	}
+	writeGenerationData(t, root, filename, data)
+}
+
+func writeGenerationData(t *testing.T, root, filename string, data []byte) {
+	t.Helper()
 	if err := os.MkdirAll(filepath.Join(root, "catalog"), 0o700); err != nil {
 		t.Fatal(err)
 	}

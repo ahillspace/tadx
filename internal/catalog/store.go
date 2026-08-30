@@ -4,6 +4,7 @@ package catalog
 import (
 	"context"
 	"crypto/sha256"
+	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -37,6 +38,15 @@ type Generation struct {
 	ID          string    `json:"id"`
 	Environment string    `json:"environment"`
 	Site        string    `json:"site"`
+	GeneratedAt time.Time `json:"generated_at"`
+	Complete    bool      `json:"complete"`
+	Records     []Record  `json:"records"`
+}
+
+type generationDocument struct {
+	ID          string    `json:"id"`
+	Environment string    `json:"environment"`
+	Site        *string   `json:"site"`
 	GeneratedAt time.Time `json:"generated_at"`
 	Complete    bool      `json:"complete"`
 	Records     []Record  `json:"records"`
@@ -110,9 +120,16 @@ func (s *FileStore) Search(ctx context.Context, query Query) (SearchResult, erro
 	if err != nil {
 		return SearchResult{}, fmt.Errorf("read catalog generation for environment %q: %w", query.Environment, err)
 	}
-	var generation Generation
-	if err := json.Unmarshal(data, &generation); err != nil {
+	var document generationDocument
+	if err := json.Unmarshal(data, &document); err != nil {
 		return SearchResult{}, fmt.Errorf("decode catalog generation: %w", err)
+	}
+	generation := Generation{
+		ID: document.ID, Environment: document.Environment, GeneratedAt: document.GeneratedAt,
+		Complete: document.Complete, Records: document.Records,
+	}
+	if document.Site != nil {
+		generation.Site = *document.Site
 	}
 	if !generation.Complete {
 		return SearchResult{}, fmt.Errorf("catalog generation %q is incomplete", generation.ID)
@@ -126,8 +143,14 @@ func (s *FileStore) Search(ctx context.Context, query Query) (SearchResult, erro
 	if generation.Environment != query.Environment {
 		return SearchResult{}, fmt.Errorf("catalog source environment %q does not match selected environment %q", generation.Environment, query.Environment)
 	}
+	if document.Site == nil {
+		return SearchResult{}, fmt.Errorf("catalog generation %q source site is required", generation.ID)
+	}
 	if generation.Site != query.Site {
 		return SearchResult{}, fmt.Errorf("catalog source site %q does not match selected site %q", generation.Site, query.Site)
+	}
+	if err := validateRecords(generation); err != nil {
+		return SearchResult{}, err
 	}
 	items := make([]Record, 0, len(generation.Records))
 	text := strings.ToLower(query.Text)
@@ -170,16 +193,17 @@ func (s *FileStore) Search(ctx context.Context, query Query) (SearchResult, erro
 	}
 	offset := 0
 	if query.Cursor != "" {
-		offset, err = strconv.Atoi(query.Cursor)
-		if err != nil || offset < 0 || offset > len(items) {
+		cursorGeneration, cursorOffset, cursorErr := decodeCursor(query.Cursor)
+		if cursorErr != nil || cursorGeneration != generation.ID || cursorOffset < 0 || cursorOffset > len(items) {
 			return SearchResult{}, errors.New("catalog search cursor is invalid")
 		}
+		offset = cursorOffset
 	}
 	end := min(offset+limit, len(items))
 	pageItems := append([]Record(nil), items[offset:end]...)
 	next := ""
 	if end < len(items) {
-		next = strconv.Itoa(end)
+		next = encodeCursor(generation.ID, end)
 	}
 	stale := s.now().Sub(generation.GeneratedAt) > staleAfter
 	var warnings []string
@@ -191,6 +215,46 @@ func (s *FileStore) Search(ctx context.Context, query Query) (SearchResult, erro
 		GenerationID: generation.ID, Environment: generation.Environment, Site: generation.Site, GeneratedAt: generation.GeneratedAt, Stale: stale,
 		Records: pageItems, Warnings: warnings,
 	}, nil
+}
+
+func validateRecords(generation Generation) error {
+	seen := make(map[string]struct{}, len(generation.Records))
+	for index, record := range generation.Records {
+		if strings.TrimSpace(record.LUID) == "" {
+			return fmt.Errorf("catalog generation %q record %d LUID is required", generation.ID, index)
+		}
+		if strings.TrimSpace(record.Kind) == "" {
+			return fmt.Errorf("catalog generation %q record %d kind is required", generation.ID, index)
+		}
+		if strings.TrimSpace(record.Name) == "" {
+			return fmt.Errorf("catalog generation %q record %d name is required", generation.ID, index)
+		}
+		if _, exists := seen[record.LUID]; exists {
+			return fmt.Errorf("catalog generation %q contains duplicate LUID %q", generation.ID, record.LUID)
+		}
+		seen[record.LUID] = struct{}{}
+	}
+	return nil
+}
+
+func encodeCursor(generationID string, offset int) string {
+	return base64.RawURLEncoding.EncodeToString([]byte(generationID)) + "." + strconv.Itoa(offset)
+}
+
+func decodeCursor(value string) (string, int, error) {
+	generation, offsetText, found := strings.Cut(value, ".")
+	if !found || strings.Contains(offsetText, ".") {
+		return "", 0, errors.New("invalid cursor")
+	}
+	generationBytes, err := base64.RawURLEncoding.DecodeString(generation)
+	if err != nil {
+		return "", 0, err
+	}
+	offset, err := strconv.Atoi(offsetText)
+	if err != nil {
+		return "", 0, err
+	}
+	return string(generationBytes), offset, nil
 }
 
 // GenerationFilename returns the portable catalog filename for an exact environment alias.

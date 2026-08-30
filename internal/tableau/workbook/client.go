@@ -234,7 +234,7 @@ func (c *Client) Publish(ctx context.Context, input PublishRequest) (PublishResu
 	response, err := c.do(ctx, http.MethodPost, c.sitePath("workbooks"), query, body, contentType, "workbook.publish")
 	if err != nil {
 		var status interface{ HTTPStatus() int }
-		if errors.As(err, &status) && status.HTTPStatus() >= http.StatusOK && status.HTTPStatus() < http.StatusMultipleChoices {
+		if !errors.As(err, &status) || status.HTTPStatus() >= http.StatusOK && status.HTTPStatus() < http.StatusMultipleChoices {
 			return PublishResult{Status: "unknown", TableauRequestID: tableau.RequestID(err)}, err
 		}
 		return PublishResult{}, err

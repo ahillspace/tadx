@@ -25,6 +25,12 @@ func (session) SiteLUID() string                { return "site-1" }
 func (session) UserLUID() string                { return "user-1" }
 func (session) String() string                  { return "session" }
 
+type roundTripFunc func(*http.Request) (*http.Response, error)
+
+func (function roundTripFunc) RoundTrip(request *http.Request) (*http.Response, error) {
+	return function(request)
+}
+
 type multipartPart struct {
 	name     string
 	filename string
@@ -326,6 +332,28 @@ func TestClientReportsUnknownWhenAcceptedPublishResponseCannotBeRead(t *testing.
 	}
 	if result.Status != "unknown" || result.TableauRequestID != "accepted-request" {
 		t.Fatalf("accepted read failure result = %#v", result)
+	}
+}
+
+func TestClientReportsUnknownWhenFinalPublishTransportFails(t *testing.T) {
+	requests := 0
+	httpClient := &http.Client{Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
+		requests++
+		_, _ = io.Copy(io.Discard, request.Body)
+		return nil, errors.New("connection closed after request write")
+	})}
+	client := tableauworkbook.NewClient(tableau.NewTransport(httpClient, "3.29", nil), session{}, "https://tableau.example")
+	result, err := client.Publish(context.Background(), tableauworkbook.PublishRequest{
+		Name: "Finance", ProjectLUID: "project-1", Filename: "Finance.twb", Content: []byte("small"),
+	})
+	if err == nil {
+		t.Fatal("Publish() succeeded after an indeterminate final request")
+	}
+	if requests != 1 {
+		t.Fatalf("requests = %d, want 1", requests)
+	}
+	if result.Status != "unknown" {
+		t.Fatalf("transport failure result = %#v", result)
 	}
 }
 

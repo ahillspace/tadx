@@ -3,16 +3,26 @@ package search_test
 import (
 	"bytes"
 	"context"
+	"errors"
 	"os"
+	"strconv"
 	"testing"
 
 	search "github.com/ahillspace/tadx/actions/catalog/search"
+	"github.com/ahillspace/tadx/internal/errs"
 	"github.com/ahillspace/tadx/internal/output"
 )
 
 type source struct{ result search.Result }
 
 func (s source) Search(context.Context, search.Input) (search.Result, error) { return s.result, nil }
+
+type recordingSource struct{ called bool }
+
+func (s *recordingSource) Search(context.Context, search.Input) (search.Result, error) {
+	s.called = true
+	return search.Result{}, nil
+}
 
 func TestActionReturnsNormalizedBoundedSearchEnvelope(t *testing.T) {
 	action := search.New(source{result: search.Result{
@@ -26,6 +36,22 @@ func TestActionReturnsNormalizedBoundedSearchEnvelope(t *testing.T) {
 	}
 	if output.Page.Total != 2 || output.Generation.Environment != "production" || output.Generation.Site != "marketing" || len(output.Items) != 1 || len(output.Help) != 1 || output.Help[0] != "tadx catalog search --environment <alias> --id <luid>" {
 		t.Fatalf("output = %#v", output)
+	}
+}
+
+func TestActionRejectsInvalidLimitAsUsageBeforeSearching(t *testing.T) {
+	for _, limit := range []int{-1, 101} {
+		t.Run(strconv.Itoa(limit), func(t *testing.T) {
+			source := &recordingSource{}
+			_, err := search.New(source).Execute(context.Background(), search.Input{Environment: "production", Limit: limit})
+			var structured *errs.Error
+			if !errors.As(err, &structured) || structured.Kind != errs.KindUsage {
+				t.Fatalf("Execute() error = %#v", err)
+			}
+			if source.called {
+				t.Fatal("source Search() called")
+			}
+		})
 	}
 }
 

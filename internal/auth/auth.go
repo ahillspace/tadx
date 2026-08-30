@@ -231,11 +231,11 @@ func (e *redactedCarrierError) RequestID() string      { return e.requestID }
 
 // Redact replaces complete and overlapping secret intervals without exposing remainders.
 func Redact(message string, secrets ...string) string {
-	type interval struct {
-		start int
-		end   int
+	type secretMatch struct {
+		secret string
+		start  int
 	}
-	var intervals []interval
+	matches := make([]secretMatch, 0, len(secrets))
 	seen := make(map[string]struct{}, len(secrets))
 	for _, secret := range secrets {
 		if secret == "" {
@@ -245,41 +245,54 @@ func Redact(message string, secrets ...string) string {
 			continue
 		}
 		seen[secret] = struct{}{}
-		for offset := 0; offset <= len(message)-len(secret); {
-			index := strings.Index(message[offset:], secret)
-			if index < 0 {
-				break
-			}
-			start := offset + index
-			intervals = append(intervals, interval{start: start, end: start + len(secret)})
-			offset = start + 1
+		if start := strings.Index(message, secret); start >= 0 {
+			matches = append(matches, secretMatch{secret: secret, start: start})
 		}
 	}
-	if len(intervals) == 0 {
+	if len(matches) == 0 {
 		return message
 	}
-	sort.Slice(intervals, func(i, j int) bool {
-		if intervals[i].start != intervals[j].start {
-			return intervals[i].start < intervals[j].start
-		}
-		return intervals[i].end > intervals[j].end
-	})
-	merged := intervals[:1]
-	for _, current := range intervals[1:] {
-		last := &merged[len(merged)-1]
-		if current.start <= last.end {
-			last.end = max(last.end, current.end)
-			continue
-		}
-		merged = append(merged, current)
-	}
+
 	var redacted strings.Builder
 	position := 0
-	for _, current := range merged {
-		redacted.WriteString(message[position:current.start])
+	intervalStart := -1
+	intervalEnd := -1
+	for len(matches) > 0 {
+		next := 0
+		for index := 1; index < len(matches); index++ {
+			if matches[index].start < matches[next].start {
+				next = index
+			}
+		}
+
+		current := matches[next]
+		currentEnd := current.start + len(current.secret)
+		searchStart := current.start + 1
+		following := strings.Index(message[searchStart:], current.secret)
+		if following < 0 {
+			matches = append(matches[:next], matches[next+1:]...)
+		} else {
+			matches[next].start = searchStart + following
+		}
+
+		if intervalStart < 0 {
+			intervalStart = current.start
+			intervalEnd = currentEnd
+			continue
+		}
+		if current.start <= intervalEnd {
+			intervalEnd = max(intervalEnd, currentEnd)
+			continue
+		}
+		redacted.WriteString(message[position:intervalStart])
 		redacted.WriteString("[REDACTED]")
-		position = current.end
+		position = intervalEnd
+		intervalStart = current.start
+		intervalEnd = currentEnd
 	}
+	redacted.WriteString(message[position:intervalStart])
+	redacted.WriteString("[REDACTED]")
+	position = intervalEnd
 	redacted.WriteString(message[position:])
 	return redacted.String()
 }

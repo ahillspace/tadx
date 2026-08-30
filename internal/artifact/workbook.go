@@ -183,18 +183,63 @@ func (m *WorkbookManager) Read(_ context.Context, path string) (WorkbookArtifact
 	if err != nil {
 		return WorkbookArtifact{}, err
 	}
-	if metadata.Kind != "workbook" {
-		return WorkbookArtifact{}, errors.New("artifact metadata does not describe a workbook canonical payload")
+	if err := validateWorkbookMetadata(metadata); err != nil {
+		return WorkbookArtifact{}, err
 	}
 	canonical, err := canonicalWorkbookPath(directory, metadata.CanonicalPayload)
 	if err != nil {
 		return WorkbookArtifact{}, err
+	}
+	if !info.IsDir() && !samePath(absolute, canonical) {
+		return WorkbookArtifact{}, fmt.Errorf("workbook artifact file %q is not the canonical payload %q", path, metadata.CanonicalPayload)
 	}
 	content, err := os.ReadFile(canonical)
 	if err != nil {
 		return WorkbookArtifact{}, fmt.Errorf("read canonical workbook: %w", err)
 	}
 	return WorkbookArtifact{Path: directory, Filename: metadata.CanonicalPayload, Content: content, Name: metadata.Name, TableauID: metadata.TableauID, Fingerprint: fingerprint(content)}, nil
+}
+
+func validateWorkbookMetadata(metadata WorkbookMetadata) error {
+	if metadata.Kind != "workbook" {
+		return errors.New("artifact metadata does not describe a workbook canonical payload")
+	}
+	required := []struct {
+		name  string
+		value string
+	}{
+		{name: "name", value: metadata.Name},
+		{name: "tableau_id", value: metadata.TableauID},
+		{name: "source_environment", value: metadata.SourceEnvironment},
+		{name: "source_project_name", value: metadata.SourceProjectName},
+		{name: "source_project_id", value: metadata.SourceProjectID},
+		{name: "pulled_at", value: metadata.PulledAt},
+		{name: "local_baseline_fingerprint", value: metadata.LocalBaselineFingerprint},
+	}
+	for _, field := range required {
+		if strings.TrimSpace(field.value) == "" {
+			return fmt.Errorf("workbook artifact metadata requires %s", field.name)
+		}
+	}
+	if _, err := time.Parse(time.RFC3339Nano, metadata.PulledAt); err != nil {
+		return fmt.Errorf("workbook artifact metadata has invalid pulled_at: %w", err)
+	}
+	const prefix = "sha256:"
+	digest := strings.TrimPrefix(metadata.LocalBaselineFingerprint, prefix)
+	decoded, err := hex.DecodeString(digest)
+	if !strings.HasPrefix(metadata.LocalBaselineFingerprint, prefix) || err != nil || len(decoded) != sha256.Size {
+		return errors.New("workbook artifact metadata has invalid local_baseline_fingerprint")
+	}
+	return nil
+}
+
+func samePath(left, right string) bool {
+	left = filepath.Clean(left)
+	right = filepath.Clean(right)
+	if filepath.Separator == '\\' {
+		return strings.EqualFold(left, right)
+	}
+	return left == right
 }
 
 func findByTableauID(root, id string) (string, *WorkbookMetadata, error) {

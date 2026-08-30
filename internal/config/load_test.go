@@ -56,3 +56,24 @@ environments:
 		t.Fatal("Load() accepted persisted PAT values")
 	}
 }
+
+func TestLoadRejectsTrailingYAMLDocument(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.yaml")
+	contents := `version: 1
+environments: {}
+---
+version: 1
+default_environment: production
+environments:
+  production:
+    url: https://unexpected.example.test
+    auth:
+      type: pat
+`
+	if err := os.WriteFile(path, []byte(contents), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := config.Load(path); err == nil {
+		t.Fatal("Load() accepted multiple YAML documents")
+	}
+}

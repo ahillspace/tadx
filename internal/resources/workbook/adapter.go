@@ -55,15 +55,7 @@ func (a *Adapter) ResolveWorkbook(ctx context.Context, selector identity.Selecto
 		if err != nil || workbook.ProjectLUID == "" {
 			return workbook, err
 		}
-		projects, err := a.allProjects(ctx)
-		if err != nil {
-			return Workbook{}, err
-		}
-		workbook.ProjectPath, err = newProjectPathIndex(projects).path(workbook.ProjectLUID, make(map[string]bool))
-		if err != nil {
-			return Workbook{}, err
-		}
-		return workbook, nil
+		return a.resolveSelectedProjectPath(ctx, workbook)
 	}
 
 	var paths *projectPathIndex
@@ -83,7 +75,23 @@ func (a *Adapter) ResolveWorkbook(ctx context.Context, selector identity.Selecto
 			paths = newProjectPathIndex(projects)
 		}
 	}
-	return resolveWorkbook(selector, items, paths)
+	workbook, err := resolveWorkbook(selector, items, paths)
+	if err != nil || workbook.ProjectLUID == "" || paths != nil {
+		return workbook, err
+	}
+	return a.resolveSelectedProjectPath(ctx, workbook)
+}
+
+func (a *Adapter) resolveSelectedProjectPath(ctx context.Context, workbook Workbook) (Workbook, error) {
+	projects, err := a.allProjects(ctx)
+	if err != nil {
+		return Workbook{}, err
+	}
+	workbook.ProjectPath, err = newProjectPathIndex(projects).path(workbook.ProjectLUID, make(map[string]bool))
+	if err != nil {
+		return Workbook{}, err
+	}
+	return workbook, nil
 }
 
 func resolveWorkbook(selector identity.Selector, items []tableauworkbook.Workbook, paths *projectPathIndex) (Workbook, error) {

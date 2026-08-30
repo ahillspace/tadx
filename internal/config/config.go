@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"io"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -86,6 +87,9 @@ func (c Config) Validate() error {
 		}
 		if err := validateServerURL(environment.URL); err != nil {
 			violations = append(violations, fmt.Sprintf("environment %q URL: %v", alias, err))
+		}
+		if environment.APIVersion != "" && !isAPIVersion(environment.APIVersion) {
+			violations = append(violations, fmt.Sprintf("environment %q API version must use major.minor numeric format", alias))
 		}
 		if environment.Auth.Type != AuthTypePAT {
 			violations = append(violations, fmt.Sprintf("environment %q auth type must be %q", alias, AuthTypePAT))
@@ -173,6 +177,13 @@ func Load(path string) (Config, error) {
 	if err := decoder.Decode(&configuration); err != nil {
 		return Config{}, fmt.Errorf("decode configuration: %w", err)
 	}
+	var trailing yaml.Node
+	if err := decoder.Decode(&trailing); !errors.Is(err, io.EOF) {
+		if err != nil {
+			return Config{}, fmt.Errorf("decode configuration: %w", err)
+		}
+		return Config{}, errors.New("decode configuration: multiple YAML documents are not supported")
+	}
 	if err := configuration.Validate(); err != nil {
 		return Config{}, err
 	}
@@ -216,6 +227,21 @@ func validateServerURL(value string) error {
 		return errors.New("must not contain a query or fragment")
 	}
 	return nil
+}
+
+func isAPIVersion(value string) bool {
+	major, minor, found := strings.Cut(value, ".")
+	if !found || major == "" || minor == "" || strings.Contains(minor, ".") {
+		return false
+	}
+	for _, part := range []string{major, minor} {
+		for index := 0; index < len(part); index++ {
+			if part[index] < '0' || part[index] > '9' {
+				return false
+			}
+		}
+	}
+	return true
 }
 
 // UserConfigPath returns the standard user-global TADX configuration path.

@@ -6,6 +6,8 @@ import (
 	"github.com/ahillspace/tadx/internal/errs"
 )
 
+const maxLimit = 100
+
 // Source searches one complete normalized local catalog generation.
 type Source interface {
 	Search(context.Context, Input) (Result, error)
@@ -21,6 +23,13 @@ func New(source Source) *Action { return &Action{source: source} }
 func (a *Action) Execute(ctx context.Context, input Input) (Output, error) {
 	if a == nil || a.source == nil {
 		return Output{}, errs.New(errs.KindRuntime, "Catalog search is not configured.")
+	}
+	if input.Limit < 0 || input.Limit > maxLimit {
+		message := "Catalog search limit must be nonnegative and at most 100."
+		return Output{}, &errs.Error{
+			ID: "catalog.search.usage", Kind: errs.KindUsage, Operation: "catalog.search", Summary: message,
+			Validation: []errs.ValidationDetail{{Field: "limit", Code: "range", Message: message}},
+		}
 	}
 	result, err := a.source.Search(ctx, input)
 	if err != nil {

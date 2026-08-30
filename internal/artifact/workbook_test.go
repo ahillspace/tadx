@@ -197,7 +197,7 @@ func TestWorkbookManagerRejectsEscapingCanonicalPayload(t *testing.T) {
 	manager := artifact.NewWorkbookManager(time.Now)
 	result, err := manager.Pull(context.Background(), artifact.WorkbookPull{
 		Workspace: workspace, Filename: "Finance.twb", Content: []byte("remote"),
-		Metadata: artifact.WorkbookMetadata{Kind: "workbook", Name: "Finance", TableauID: "wb-1"},
+		Metadata: artifact.WorkbookMetadata{Kind: "workbook", Name: "Finance", TableauID: "wb-1", SourceEnvironment: "production", SourceProjectName: "Department/Ops", SourceProjectID: "project-1"},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -234,7 +234,7 @@ func TestWorkbookManagerRejectsCanonicalPayloadSymlink(t *testing.T) {
 	manager := artifact.NewWorkbookManager(time.Now)
 	result, err := manager.Pull(context.Background(), artifact.WorkbookPull{
 		Workspace: workspace, Filename: "Finance.twb", Content: []byte("remote"),
-		Metadata: artifact.WorkbookMetadata{Kind: "workbook", Name: "Finance", TableauID: "wb-1"},
+		Metadata: artifact.WorkbookMetadata{Kind: "workbook", Name: "Finance", TableauID: "wb-1", SourceEnvironment: "production", SourceProjectName: "Department/Ops", SourceProjectID: "project-1"},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -260,7 +260,7 @@ func TestWorkbookManagerRejectsUnsupportedCanonicalPayload(t *testing.T) {
 	manager := artifact.NewWorkbookManager(time.Now)
 	result, err := manager.Pull(context.Background(), artifact.WorkbookPull{
 		Workspace: workspace, Filename: "Finance.twb", Content: []byte("remote"),
-		Metadata: artifact.WorkbookMetadata{Kind: "workbook", Name: "Finance", TableauID: "wb-1"},
+		Metadata: artifact.WorkbookMetadata{Kind: "workbook", Name: "Finance", TableauID: "wb-1", SourceEnvironment: "production", SourceProjectName: "Department/Ops", SourceProjectID: "project-1"},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -285,6 +285,77 @@ func TestWorkbookManagerRejectsUnsupportedCanonicalPayload(t *testing.T) {
 
 	if _, err := manager.Read(context.Background(), result.ArtifactPath); err == nil || !strings.Contains(err.Error(), "unsupported workbook canonical payload") {
 		t.Fatalf("Read() error = %v", err)
+	}
+}
+
+func TestWorkbookManagerRejectsIncompleteMetadataBeforeReadingPayload(t *testing.T) {
+	tests := []struct {
+		name   string
+		field  string
+		modify func(*artifact.WorkbookMetadata)
+	}{
+		{name: "canonical name", field: "name", modify: func(metadata *artifact.WorkbookMetadata) { metadata.Name = "" }},
+		{name: "Tableau LUID", field: "tableau_id", modify: func(metadata *artifact.WorkbookMetadata) { metadata.TableauID = "" }},
+		{name: "source environment", field: "source_environment", modify: func(metadata *artifact.WorkbookMetadata) { metadata.SourceEnvironment = "" }},
+		{name: "source project name", field: "source_project_name", modify: func(metadata *artifact.WorkbookMetadata) { metadata.SourceProjectName = "" }},
+		{name: "source project LUID", field: "source_project_id", modify: func(metadata *artifact.WorkbookMetadata) { metadata.SourceProjectID = "" }},
+		{name: "pull time", field: "pulled_at", modify: func(metadata *artifact.WorkbookMetadata) { metadata.PulledAt = "" }},
+		{name: "baseline", field: "local_baseline_fingerprint", modify: func(metadata *artifact.WorkbookMetadata) { metadata.LocalBaselineFingerprint = "" }},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			workspace := createWorkspace(t)
+			manager := artifact.NewWorkbookManager(time.Now)
+			result, err := manager.Pull(context.Background(), artifact.WorkbookPull{
+				Workspace: workspace, Filename: "Finance.twb", Content: []byte("remote"),
+				Metadata: artifact.WorkbookMetadata{Name: "Finance", TableauID: "wb-1", SourceEnvironment: "production", SourceSite: "", SourceProjectName: "Department/Ops", SourceProjectID: "project-1"},
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			metadataPath := filepath.Join(result.ArtifactPath, "metadata.json")
+			metadataData, err := os.ReadFile(metadataPath)
+			if err != nil {
+				t.Fatal(err)
+			}
+			var metadata artifact.WorkbookMetadata
+			if err := json.Unmarshal(metadataData, &metadata); err != nil {
+				t.Fatal(err)
+			}
+			test.modify(&metadata)
+			metadataData, err = json.Marshal(metadata)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(metadataPath, metadataData, 0o600); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := manager.Read(context.Background(), result.ArtifactPath); err == nil || !strings.Contains(err.Error(), test.field) {
+				t.Fatalf("Read() error = %v", err)
+			}
+		})
+	}
+}
+
+func TestWorkbookManagerRejectsNoncanonicalFileSelector(t *testing.T) {
+	workspace := createWorkspace(t)
+	manager := artifact.NewWorkbookManager(time.Now)
+	result, err := manager.Pull(context.Background(), artifact.WorkbookPull{
+		Workspace: workspace, Filename: "Finance.twb", Content: []byte("remote"),
+		Metadata: artifact.WorkbookMetadata{Name: "Finance", TableauID: "wb-1", SourceEnvironment: "production", SourceProjectName: "Department/Ops", SourceProjectID: "project-1"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := manager.Read(context.Background(), filepath.Join(result.ArtifactPath, "view.md")); err == nil || !strings.Contains(err.Error(), "not the canonical payload") {
+		t.Fatalf("Read() error = %v", err)
+	}
+	workbook, err := manager.Read(context.Background(), result.CanonicalPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if workbook.Filename != "Finance.twb" || string(workbook.Content) != "remote" {
+		t.Fatalf("workbook = %#v", workbook)
 	}
 }
 

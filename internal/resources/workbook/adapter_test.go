@@ -121,6 +121,30 @@ func TestAdapterReportsNestedProjectPathForWorkbookLUID(t *testing.T) {
 	}
 }
 
+func TestAdapterReportsNestedProjectPathForUniqueWorkbookName(t *testing.T) {
+	adapter := resource.NewAdapter(client{
+		pages: map[int]tableauworkbook.WorkbookPage{
+			1: {Page: tableauworkbook.Page{Number: 1, Size: 100, Total: 1}, Items: []tableauworkbook.Workbook{
+				{LUID: "wb-1", Name: "Finance", ProjectLUID: "child", ProjectName: "Ops"},
+			}},
+		},
+		projectPages: map[int]tableauworkbook.ProjectPage{
+			1: {Page: tableauworkbook.Page{Number: 1, Size: 100, Total: 3}, Items: []tableauworkbook.Project{
+				{LUID: "broken", Name: "Broken", ParentLUID: "missing"},
+				{LUID: "parent", Name: "Department"},
+				{LUID: "child", Name: "Ops", ParentLUID: "parent"},
+			}},
+		},
+	})
+	workbook, err := adapter.ResolveWorkbook(context.Background(), identity.Selector{Name: "Finance"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if workbook.LUID != "wb-1" || workbook.ProjectPath != "Department/Ops" {
+		t.Fatalf("workbook = %#v", workbook)
+	}
+}
+
 func TestAdapterResolvesProjectLUIDWithoutUnrelatedHierarchy(t *testing.T) {
 	adapter := resource.NewAdapter(client{projectPages: map[int]tableauworkbook.ProjectPage{
 		1: {Page: tableauworkbook.Page{Number: 1, Size: 100, Total: 3}, Items: []tableauworkbook.Project{

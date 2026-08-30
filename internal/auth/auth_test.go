@@ -236,6 +236,22 @@ func TestPATProviderRedactsPartiallyOverlappingCredentialIntervals(t *testing.T)
 	}
 }
 
+func TestRedactTracksRepeatedMatchesWithBoundedMemory(t *testing.T) {
+	message := strings.Repeat("x", 1<<16)
+	var redacted string
+	result := testing.Benchmark(func(b *testing.B) {
+		for range b.N {
+			redacted = auth.Redact(message, "x")
+		}
+	})
+	if redacted != "[REDACTED]" {
+		t.Fatalf("Redact() = %q", redacted)
+	}
+	if allocated := result.AllocedBytesPerOp(); allocated > 64<<10 {
+		t.Fatalf("Redact() allocated %d bytes per operation for repeated matches", allocated)
+	}
+}
+
 func TestPATProviderPreservesRedactedUpstreamMetadata(t *testing.T) {
 	t.Parallel()
 
