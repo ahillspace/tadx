@@ -1,7 +1,9 @@
 package toon_test
 
 import (
+	"bytes"
 	"encoding/json"
+	"reflect"
 	"testing"
 	"unicode/utf8"
 
@@ -56,8 +58,35 @@ func FuzzJSONRoundTrip(f *testing.F) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if _, err := toon.Decode(encoded); err != nil {
+		decoded, err := toon.Decode(encoded)
+		if err != nil {
 			t.Fatalf("decode encoded JSON: %v\n%s", err, encoded)
+		}
+		want, err := json.Marshal(value)
+		if err != nil {
+			t.Fatal(err)
+		}
+		got, err := json.Marshal(decoded)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var wantValue any
+		var gotValue any
+		if err := json.Unmarshal(want, &wantValue); err != nil {
+			t.Fatal(err)
+		}
+		if err := json.Unmarshal(got, &gotValue); err != nil {
+			t.Fatal(err)
+		}
+		if !reflect.DeepEqual(gotValue, wantValue) {
+			t.Fatalf("JSON round trip mismatch\nwant: %s\ngot:  %s\nTOON:\n%s", want, got, encoded)
+		}
+		encodedAgain, err := toon.Encode(decoded)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !bytes.Equal(encodedAgain, encoded) {
+			t.Fatalf("encoding is not deterministic\nfirst:\n%s\nsecond:\n%s", encoded, encodedAgain)
 		}
 	})
 }

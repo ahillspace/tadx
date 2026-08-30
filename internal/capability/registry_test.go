@@ -132,6 +132,37 @@ func TestValidateBindingsRejectsBindingWithoutRegistryEntry(t *testing.T) {
 	}
 }
 
+func TestValidateBindingsRejectsNonExecutableBindings(t *testing.T) {
+	tests := []struct {
+		name    string
+		def     Definition
+		binding Binding
+		want    string
+	}{
+		{
+			name:    "planned capability",
+			def:     testDefinition("sample.get"),
+			binding: Binding{CapabilityID: "sample.get", CommandPath: []string{"sample", "get"}},
+			want:    "binding references non-implemented capability",
+		},
+		{
+			name:    "empty binding path",
+			def:     implemented(testDefinition("sample.get"), "sample", "get"),
+			binding: Binding{CapabilityID: "sample.get"},
+			want:    "binding has empty command path",
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			err := ValidateBindings([]Definition{test.def}, []Binding{test.binding})
+			if err == nil || !strings.Contains(err.Error(), test.want) {
+				t.Fatalf("ValidateBindings() error = %v, want error containing %q", err, test.want)
+			}
+		})
+	}
+}
+
 func testDefinition(id string) Definition {
 	return Definition{
 		ID:             id,

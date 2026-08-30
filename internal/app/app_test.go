@@ -28,6 +28,19 @@ func TestRunCapabilityGetRendersDetail(t *testing.T) {
 	assertGolden(t, "testdata/capability-get.toon", stdout.String())
 }
 
+func TestCapabilityGetUsesListDomainAndResourceClassification(t *testing.T) {
+	var stdout bytes.Buffer
+	exitCode := app.Run(context.Background(), []string{"capability", "get", "workbook.list"}, &stdout, app.Options{})
+	if exitCode != 0 {
+		t.Fatalf("exit code = %d, output = %s", exitCode, stdout.String())
+	}
+	for _, field := range []string{"domain: content", "resource: workbook"} {
+		if !strings.Contains(stdout.String(), field) {
+			t.Errorf("output missing %q: %s", field, stdout.String())
+		}
+	}
+}
+
 func TestCapabilityHelpDerivesFromRegistry(t *testing.T) {
 	var stdout bytes.Buffer
 	exitCode := app.Run(context.Background(), []string{"capability", "list", "--help"}, &stdout, app.Options{})

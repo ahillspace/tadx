@@ -9,6 +9,7 @@ type Input struct {
 type Capability struct {
 	ID                    string   `json:"id"`
 	Domain                string   `json:"domain"`
+	Resource              string   `json:"resource,omitempty"`
 	Verb                  string   `json:"verb"`
 	Surface               string   `json:"surface"`
 	Outcome               string   `json:"outcome"`

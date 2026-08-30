@@ -138,6 +138,35 @@ func TestPATProviderRejectsEmptyVariableValues(t *testing.T) {
 	}
 }
 
+func TestPATProviderRejectsCaseInsensitiveDuplicateVariablesBeforeLookupOrSignIn(t *testing.T) {
+	t.Parallel()
+
+	lookupCalls := 0
+	lookup := auth.LookupEnvFunc(func(string) (string, bool) {
+		lookupCalls++
+		return "credential", true
+	})
+	signer := &recordingSigner{}
+	provider := auth.NewPATProvider(lookup, signer)
+
+	_, err := provider.Authenticate(context.Background(), auth.Target{
+		PATNameVariable:   "PAT",
+		PATSecretVariable: "pat",
+	})
+	if err == nil {
+		t.Fatal("Authenticate() error = nil")
+	}
+	if got, want := err.Error(), "PAT name and secret must use different environment variables"; got != want {
+		t.Fatalf("error = %q, want %q", got, want)
+	}
+	if lookupCalls != 0 {
+		t.Fatalf("environment lookup calls = %d, want 0", lookupCalls)
+	}
+	if signer.calls != 0 {
+		t.Fatalf("sign-in calls = %d, want 0", signer.calls)
+	}
+}
+
 func TestPATProviderRedactsCredentialsFromSignInErrors(t *testing.T) {
 	t.Parallel()
 
@@ -156,13 +185,51 @@ func TestPATProviderRedactsCredentialsFromSignInErrors(t *testing.T) {
 	}
 }
 
+func TestPATProviderRedactsOverlappingCredentialsFromSignInErrors(t *testing.T) {
+	t.Parallel()
+
+	provider := auth.NewPATProvider(auth.LookupEnvFunc(func(key string) (string, bool) {
+		return map[string]string{"PAT_NAME": "agent", "PAT_SECRET": "agent-secret"}[key], true
+	}), &recordingSigner{err: errors.New("upstream rejected agent-secret for agent")})
+	_, err := provider.Authenticate(context.Background(), auth.Target{
+		PATNameVariable:   "PAT_NAME",
+		PATSecretVariable: "PAT_SECRET",
+	})
+	if err == nil {
+		t.Fatal("Authenticate() error = nil")
+	}
+	if got, want := err.Error(), "sign in: upstream rejected [REDACTED] for [REDACTED]"; got != want {
+		t.Fatalf("error = %q, want %q", got, want)
+	}
+}
+
+func TestPATProviderRedactsPartiallyOverlappingCredentialIntervals(t *testing.T) {
+	t.Parallel()
+
+	provider := auth.NewPATProvider(auth.LookupEnvFunc(func(key string) (string, bool) {
+		return map[string]string{"PAT_NAME": "abc123", "PAT_SECRET": "123xyz"}[key], true
+	}), &recordingSigner{err: errors.New("upstream rejected abc123xyz")})
+	_, err := provider.Authenticate(context.Background(), auth.Target{
+		PATNameVariable:   "PAT_NAME",
+		PATSecretVariable: "PAT_SECRET",
+	})
+	if err == nil {
+		t.Fatal("Authenticate() error = nil")
+	}
+	if got, want := err.Error(), "sign in: upstream rejected [REDACTED]"; got != want {
+		t.Fatalf("error = %q, want %q", got, want)
+	}
+}
+
 type recordingSigner struct {
 	request  auth.SignInRequest
 	response auth.SignInResponse
 	err      error
+	calls    int
 }
 
 func (s *recordingSigner) SignIn(_ context.Context, request auth.SignInRequest) (auth.SignInResponse, error) {
+	s.calls++
 	s.request = request
 	return s.response, s.err
 }

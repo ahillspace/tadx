@@ -3,6 +3,7 @@ package config_test
 import (
 	"path/filepath"
 	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/ahillspace/tadx/internal/config"
@@ -60,6 +61,7 @@ func TestConfigValidateRejectsInvalidModels(t *testing.T) {
 		{name: "URL has credentials", cfg: config.Config{Version: 1, Environments: map[string]config.Environment{"x": {URL: "https://user:secret@example.com", Auth: config.Auth{Type: config.AuthTypePAT}}}}},
 		{name: "empty alias", cfg: config.Config{Version: 1, Environments: map[string]config.Environment{"": {URL: "https://example.com", Auth: config.Auth{Type: config.AuthTypePAT}}}}},
 		{name: "same PAT variable", cfg: config.Config{Version: 1, Environments: map[string]config.Environment{"x": {URL: "https://example.com", Auth: config.Auth{Type: config.AuthTypePAT, PATNameEnv: "PAT", PATSecretEnv: "PAT"}}}}},
+		{name: "case-only same PAT variable", cfg: config.Config{Version: 1, Environments: map[string]config.Environment{"x": {URL: "https://example.com", Auth: config.Auth{Type: config.AuthTypePAT, PATNameEnv: "PAT", PATSecretEnv: "pat"}}}}},
 	}
 
 	for _, tt := range tests {
@@ -92,6 +94,74 @@ func TestResolveEnvironmentAppliesDefaultPATReferencesWithoutMutatingConfig(t *t
 	}
 	if cfg.Environments["production-us"].Auth.PATNameEnv != "" {
 		t.Fatal("ResolveEnvironment() mutated the source configuration")
+	}
+}
+
+func TestConfigValidateRejectsCollidingDefaultPATVariables(t *testing.T) {
+	t.Parallel()
+
+	cfg := config.Config{
+		Version: config.CurrentVersion,
+		Environments: map[string]config.Environment{
+			"prod-us": {URL: "https://prod-us.example.com", Auth: config.Auth{Type: config.AuthTypePAT}},
+			"prod_us": {URL: "https://prod-us-2.example.com", Auth: config.Auth{Type: config.AuthTypePAT}},
+		},
+	}
+
+	err := cfg.Validate()
+	if err == nil {
+		t.Fatal("Validate() error = nil")
+	}
+	for _, value := range []string{"prod-us", "prod_us", "TADX_PROD_US_PAT_NAME", "TADX_PROD_US_PAT_SECRET"} {
+		if !strings.Contains(err.Error(), value) {
+			t.Fatalf("Validate() error = %q, want collision context %q", err, value)
+		}
+	}
+}
+
+func TestConfigValidateAllowsExplicitNonCollidingPATVariables(t *testing.T) {
+	t.Parallel()
+
+	cfg := config.Config{
+		Version: config.CurrentVersion,
+		Environments: map[string]config.Environment{
+			"prod-us": {URL: "https://prod-us.example.com", Auth: config.Auth{Type: config.AuthTypePAT}},
+			"prod_us": {
+				URL: "https://prod-us-2.example.com",
+				Auth: config.Auth{
+					Type:         config.AuthTypePAT,
+					PATNameEnv:   "SECOND_PROD_PAT_NAME",
+					PATSecretEnv: "SECOND_PROD_PAT_SECRET",
+				},
+			},
+		},
+	}
+
+	if err := cfg.Validate(); err != nil {
+		t.Fatalf("Validate() error = %v", err)
+	}
+}
+
+func TestConfigValidateRejectsCaseOnlyCrossEnvironmentCollision(t *testing.T) {
+	t.Parallel()
+
+	cfg := config.Config{
+		Version: config.CurrentVersion,
+		Environments: map[string]config.Environment{
+			"prod": {URL: "https://prod.example.com", Auth: config.Auth{Type: config.AuthTypePAT}},
+			"other": {
+				URL: "https://other.example.com",
+				Auth: config.Auth{
+					Type:         config.AuthTypePAT,
+					PATNameEnv:   "tadx_prod_pat_name",
+					PATSecretEnv: "OTHER_SECRET",
+				},
+			},
+		},
+	}
+
+	if err := cfg.Validate(); err == nil {
+		t.Fatal("Validate() error = nil")
 	}
 }
 
