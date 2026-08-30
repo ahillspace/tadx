@@ -44,11 +44,11 @@ func (*cycleTextMarshaler) MarshalText() ([]byte, error) {
 }
 
 type EmbeddedConflictLeft struct {
-	Value string `json:"value"`
+	Value string
 }
 
 type EmbeddedConflictRight struct {
-	Value string `json:"value"`
+	Value string
 }
 
 type jsonMarshalerMapKey string
@@ -319,6 +319,26 @@ func TestEncodePreservesSharedReferencesWhenNormalizingNonFiniteValues(t *testin
 		t.Fatalf("Decode() error = %v", err)
 	}
 	assertJSONEqual(t, `{"maps":[{"value":null},{"value":null}],"slices":[[null],[null]]}`, decoded)
+}
+
+func TestEncodePreservesFiniteFloat32DuringNonFiniteFallback(t *testing.T) {
+	t.Parallel()
+
+	value := struct {
+		Finite    float32 `json:"finite"`
+		NonFinite float64 `json:"non_finite"`
+	}{
+		Finite:    1.2,
+		NonFinite: math.NaN(),
+	}
+
+	encoded, err := toon.Encode(value)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, want := string(encoded), "finite: 1.2\nnon_finite: null"; got != want {
+		t.Fatalf("Encode() = %q, want %q", got, want)
+	}
 }
 
 func TestEncodeRejectsRealCycles(t *testing.T) {
