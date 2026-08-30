@@ -113,6 +113,9 @@ func forbiddenReason(file, imported, modulePath string) string {
 			return "actions must not import Cobra"
 		}
 	case hasPathPrefix(file, "internal/resources"):
+		if imported == "net/http" {
+			return "resource adapters must not use net/http directly"
+		}
 		if imported == "github.com/spf13/cobra" {
 			return "resource adapters must not import Cobra"
 		}

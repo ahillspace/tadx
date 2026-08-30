@@ -58,6 +58,9 @@ func newList(deps Dependencies) *cobra.Command {
 	command := &cobra.Command{
 		Use:   deps.ListUse,
 		Short: deps.ListShort,
+		Annotations: map[string]string{
+			cliCapabilityAnnotation: "capability.list",
+		},
 		Args: func(command *cobra.Command, args []string) error {
 			if err := cobra.NoArgs(command, args); err != nil {
 				return usageError("capability.list", err)
@@ -93,6 +96,9 @@ func newGet(deps Dependencies) *cobra.Command {
 	return &cobra.Command{
 		Use:   deps.GetUse,
 		Short: deps.GetShort,
+		Annotations: map[string]string{
+			cliCapabilityAnnotation: "capability.get",
+		},
 		Args: func(command *cobra.Command, args []string) error {
 			if err := cobra.ExactArgs(1)(command, args); err != nil {
 				return usageError("capability.get", err)
@@ -108,6 +114,8 @@ func newGet(deps Dependencies) *cobra.Command {
 		},
 	}
 }
+
+const cliCapabilityAnnotation = "tadx.capability"
 
 func usageError(operation string, cause error) error {
 	return &errs.Error{Kind: errs.KindUsage, Operation: operation, Summary: cause.Error(), Cause: cause}

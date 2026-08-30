@@ -13,7 +13,7 @@ import (
 func All() []Definition {
 	definitions := make([]Definition, len(canonicalDefinitions))
 	for index, definition := range canonicalDefinitions {
-		definitions[index] = clone(definition)
+		definitions[index] = applyImplementationManifest(clone(definition))
 	}
 	slices.SortFunc(definitions, func(left, right Definition) int { return cmp.Compare(left.ID, right.ID) })
 	return definitions
@@ -122,6 +122,12 @@ func ValidateBindings(definitions []Definition, bindings []Binding) error {
 			return fmt.Errorf("duplicate binding for %q", binding.CapabilityID)
 		}
 		seen[binding.CapabilityID] = struct{}{}
+		if definition.Implementation != ImplementationImplemented {
+			return fmt.Errorf("binding references non-implemented capability: %q", binding.CapabilityID)
+		}
+		if len(binding.CommandPath) == 0 {
+			return fmt.Errorf("binding has empty command path: %q", binding.CapabilityID)
+		}
 		if !slices.Equal(binding.CommandPath, definition.CommandPath) {
 			return fmt.Errorf("binding path for %q does not match registry", binding.CapabilityID)
 		}

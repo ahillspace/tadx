@@ -76,7 +76,7 @@ func prepareLines(text string, indentSize int, strict bool) ([]decodedLine, erro
 		if spaces < len(raw) && raw[spaces] == '#' {
 			continue
 		}
-		if strings.TrimSpace(raw) == "" {
+		if strings.Trim(raw, " \t") == "" {
 			blankPending = true
 			continue
 		}
@@ -274,7 +274,7 @@ func (d decoder) parseArray(item header, headerDepth, start int) ([]any, int, er
 	if item.length == 0 {
 		return []any{}, start, nil
 	}
-	values := make([]any, 0, item.length)
+	values := make([]any, 0, min(item.length, len(d.lines)-start))
 	index := start
 	itemDepth := headerDepth + 1
 	for index < len(d.lines) {
@@ -357,7 +357,7 @@ func (d decoder) parseListItem(index, depth int) (any, int, error) {
 
 func (d decoder) parseTable(item header, headerDepth, start int) ([]any, int, error) {
 	leafCount := countLeaves(item.fields)
-	rows := make([]any, 0, item.length)
+	rows := make([]any, 0, min(item.length, len(d.lines)-start))
 	index := start
 	rowDepth := headerDepth + 1
 	for index < len(d.lines) {

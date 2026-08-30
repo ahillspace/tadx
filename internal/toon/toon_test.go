@@ -4,11 +4,64 @@ import (
 	"encoding/json"
 	"math"
 	"reflect"
+	"strconv"
 	"strings"
 	"testing"
 
 	"github.com/ahillspace/tadx/internal/toon"
 )
+
+type cycleMarshaler struct {
+	self *cycleMarshaler
+}
+
+func (value *cycleMarshaler) MarshalJSON() ([]byte, error) {
+	return []byte(`{"value":"custom"}`), nil
+}
+
+type pointerReceiverMarshaler struct {
+	Internal string `json:"internal"`
+}
+
+func (*pointerReceiverMarshaler) MarshalJSON() ([]byte, error) {
+	return []byte(`"custom"`), nil
+}
+
+type pointerReceiverTextMarshaler struct {
+	Internal string `json:"internal"`
+}
+
+func (*pointerReceiverTextMarshaler) MarshalText() ([]byte, error) {
+	return []byte("custom text"), nil
+}
+
+type cycleTextMarshaler struct {
+	Self *cycleTextMarshaler `json:"self"`
+}
+
+func (*cycleTextMarshaler) MarshalText() ([]byte, error) {
+	return []byte("custom"), nil
+}
+
+type EmbeddedConflictLeft struct {
+	Value string `json:"value"`
+}
+
+type EmbeddedConflictRight struct {
+	Value string `json:"value"`
+}
+
+type jsonMarshalerMapKey string
+
+func (jsonMarshalerMapKey) MarshalJSON() ([]byte, error) {
+	return []byte(`"valid"`), nil
+}
+
+type textMarshalerMapKey string
+
+func (textMarshalerMapKey) MarshalText() ([]byte, error) {
+	return []byte("valid"), nil
+}
 
 func TestEncodeV41Conformance(t *testing.T) {
 	t.Parallel()
@@ -181,6 +234,260 @@ func TestRoundTripJSONModel(t *testing.T) {
 	if !reflect.DeepEqual(encoded, encodedAgain) {
 		t.Fatalf("encoding is not deterministic\nfirst:\n%s\nsecond:\n%s", encoded, encodedAgain)
 	}
+}
+
+func TestDecodeBoundsCapacityFromDeclaredCollectionLength(t *testing.T) {
+	t.Parallel()
+
+	declared := strconv.Itoa(int(^uint(0) >> 1))
+	for _, input := range []string{
+		"items[" + declared + "]:",
+		"items[" + declared + "]{value}:",
+	} {
+		if _, err := toon.Decode([]byte(input)); err == nil || !strings.Contains(err.Error(), "declares") {
+			t.Errorf("Decode(%q) error = %v, want declared-count mismatch", input, err)
+		}
+	}
+}
+
+func TestEncodeAllowsSharedAcyclicReferences(t *testing.T) {
+	t.Parallel()
+
+	sharedMap := map[string]any{"value": "shared"}
+	sharedSlice := []any{"shared"}
+	value := map[string]any{
+		"maps":   []any{sharedMap, sharedMap},
+		"slices": []any{sharedSlice, sharedSlice},
+	}
+
+	if _, err := toon.Encode(value); err != nil {
+		t.Fatalf("Encode() error = %v", err)
+	}
+}
+
+func TestEncodeAllowsDistinctSliceViewsWithSharedBackingStorage(t *testing.T) {
+	t.Parallel()
+
+	outer := []any{"x", nil}
+	outer[1] = outer[:1]
+	value := struct {
+		Views []any   `json:"views"`
+		NaN   float64 `json:"nan"`
+	}{Views: outer, NaN: math.NaN()}
+
+	encoded, err := toon.Encode(value)
+	if err != nil {
+		t.Fatalf("Encode() error = %v", err)
+	}
+	decoded, err := toon.Decode(encoded)
+	if err != nil {
+		t.Fatalf("Decode() error = %v", err)
+	}
+	assertJSONEqual(t, `{"views":["x",["x"]],"nan":null}`, decoded)
+}
+
+func TestEncodeQuotesUnicodeEdgeWhitespace(t *testing.T) {
+	t.Parallel()
+
+	encoded, err := toon.Encode("\u00a0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	decoded, err := toon.Decode(encoded)
+	if err != nil {
+		t.Fatalf("Decode(%q) error = %v", encoded, err)
+	}
+	if decoded != "\u00a0" {
+		t.Fatalf("round trip = %#v, want non-breaking space", decoded)
+	}
+}
+
+func TestEncodePreservesSharedReferencesWhenNormalizingNonFiniteValues(t *testing.T) {
+	t.Parallel()
+
+	sharedMap := map[string]any{"value": math.NaN()}
+	sharedSlice := []any{math.Inf(1)}
+	encoded, err := toon.Encode(map[string]any{
+		"maps":   []any{sharedMap, sharedMap},
+		"slices": []any{sharedSlice, sharedSlice},
+	})
+	if err != nil {
+		t.Fatalf("Encode() error = %v", err)
+	}
+	decoded, err := toon.Decode(encoded)
+	if err != nil {
+		t.Fatalf("Decode() error = %v", err)
+	}
+	assertJSONEqual(t, `{"maps":[{"value":null},{"value":null}],"slices":[[null],[null]]}`, decoded)
+}
+
+func TestEncodeRejectsRealCycles(t *testing.T) {
+	t.Parallel()
+
+	cyclicMap := map[string]any{}
+	cyclicMap["self"] = cyclicMap
+	cyclicSlice := make([]any, 1)
+	cyclicSlice[0] = cyclicSlice
+
+	for _, value := range []any{cyclicMap, cyclicSlice} {
+		if _, err := toon.Encode(value); err == nil || !strings.Contains(err.Error(), "cyclic value") {
+			t.Errorf("Encode(%T) error = %v, want cyclic-value error", value, err)
+		}
+	}
+}
+
+func TestEncodeIgnoresCycleInExcludedJSONField(t *testing.T) {
+	t.Parallel()
+
+	type valueWithExcludedCycle struct {
+		Name string                  `json:"name"`
+		Self *valueWithExcludedCycle `json:"-"`
+	}
+
+	value := &valueWithExcludedCycle{Name: "safe"}
+	value.Self = value
+
+	encoded, err := toon.Encode(value)
+	if err != nil {
+		t.Fatalf("Encode() error = %v", err)
+	}
+	if string(encoded) != "name: safe" {
+		t.Fatalf("Encode() = %q, want %q", encoded, "name: safe")
+	}
+}
+
+func TestEncodeStopsValidationAtJSONMarshaler(t *testing.T) {
+	t.Parallel()
+
+	value := &cycleMarshaler{}
+	value.self = value
+
+	encoded, err := toon.Encode(value)
+	if err != nil {
+		t.Fatalf("Encode() error = %v", err)
+	}
+	if string(encoded) != "value: custom" {
+		t.Fatalf("Encode() = %q, want %q", encoded, "value: custom")
+	}
+}
+
+func TestEncodePreservesPointerReceiverMarshalerDuringNonFiniteFallback(t *testing.T) {
+	t.Parallel()
+
+	value := &struct {
+		Custom pointerReceiverMarshaler `json:"custom"`
+		NaN    float64                  `json:"nan"`
+	}{Custom: pointerReceiverMarshaler{Internal: "not custom"}, NaN: math.NaN()}
+
+	encoded, err := toon.Encode(value)
+	if err != nil {
+		t.Fatalf("Encode() error = %v", err)
+	}
+	if string(encoded) != "custom: custom\nnan: null" {
+		t.Fatalf("Encode() = %q, want pointer-receiver output", encoded)
+	}
+}
+
+func TestEncodePreservesPointerReceiverTextMarshalerDuringNonFiniteFallback(t *testing.T) {
+	t.Parallel()
+
+	value := &struct {
+		Custom pointerReceiverTextMarshaler `json:"custom"`
+		NaN    float64                      `json:"nan"`
+	}{Custom: pointerReceiverTextMarshaler{Internal: "not custom"}, NaN: math.NaN()}
+
+	encoded, err := toon.Encode(value)
+	if err != nil {
+		t.Fatalf("Encode() error = %v", err)
+	}
+	if string(encoded) != "custom: custom text\nnan: null" {
+		t.Fatalf("Encode() = %q, want pointer-receiver text output", encoded)
+	}
+}
+
+func TestEncodeStopsValidationAtTextMarshaler(t *testing.T) {
+	t.Parallel()
+
+	value := &cycleTextMarshaler{}
+	value.Self = value
+
+	encoded, err := toon.Encode(value)
+	if err != nil {
+		t.Fatalf("Encode() error = %v", err)
+	}
+	if string(encoded) != "custom" {
+		t.Fatalf("Encode() = %q, want %q", encoded, "custom")
+	}
+}
+
+func TestEncodeIgnoresConflictingEmbeddedJSONFields(t *testing.T) {
+	t.Parallel()
+
+	invalid := string([]byte{0xff})
+	value := struct {
+		EmbeddedConflictLeft
+		EmbeddedConflictRight
+		Safe string `json:"safe"`
+	}{
+		EmbeddedConflictLeft:  EmbeddedConflictLeft{Value: invalid},
+		EmbeddedConflictRight: EmbeddedConflictRight{Value: invalid},
+		Safe:                  "kept",
+	}
+
+	encoded, err := toon.Encode(value)
+	if err != nil {
+		t.Fatalf("Encode() error = %v", err)
+	}
+	if string(encoded) != "safe: kept" {
+		t.Fatalf("Encode() = %q, want %q", encoded, "safe: kept")
+	}
+}
+
+func TestEncodeSelectsJSONFieldNamedDash(t *testing.T) {
+	t.Parallel()
+
+	value := struct {
+		Dash string `json:"-,"`
+	}{Dash: string([]byte{0xff})}
+
+	if _, err := toon.Encode(value); err == nil || !strings.Contains(err.Error(), "valid UTF-8") {
+		t.Fatalf("Encode() error = %v, want invalid UTF-8 error", err)
+	}
+}
+
+func TestEncodeValidatesNamedStringMapKeysBeforeMarshalerMethods(t *testing.T) {
+	t.Parallel()
+
+	invalid := string([]byte{0xff})
+	values := []any{
+		map[jsonMarshalerMapKey]string{jsonMarshalerMapKey(invalid): "value"},
+		map[textMarshalerMapKey]string{textMarshalerMapKey(invalid): "value"},
+	}
+
+	for _, value := range values {
+		if _, err := toon.Encode(value); err == nil || !strings.Contains(err.Error(), "valid UTF-8") {
+			t.Errorf("Encode(%T) error = %v, want invalid UTF-8 error", value, err)
+		}
+	}
+}
+
+func TestEncodePreservesJSONStringTagDuringNonFiniteFallback(t *testing.T) {
+	t.Parallel()
+
+	value := struct {
+		Count int     `json:"count,string"`
+		NaN   float64 `json:"nan"`
+	}{Count: 42, NaN: math.NaN()}
+
+	encoded, err := toon.Encode(value)
+	if err != nil {
+		t.Fatalf("Encode() error = %v", err)
+	}
+	decoded, err := toon.Decode(encoded)
+	if err != nil {
+		t.Fatalf("Decode() error = %v", err)
+	}
+	assertJSONEqual(t, `{"count":"42","nan":null}`, decoded)
 }
 
 func TestSpecVersion(t *testing.T) {

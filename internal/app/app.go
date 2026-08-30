@@ -15,11 +15,6 @@ import (
 	"github.com/ahillspace/tadx/internal/output"
 )
 
-var bindings = []capability.Binding{
-	{CapabilityID: "capability.list", CommandPath: []string{"capability", "list"}},
-	{CapabilityID: "capability.get", CommandPath: []string{"capability", "get"}},
-}
-
 // Options contains process-level discovery settings.
 type Options struct {
 	MutationsEnabled bool
@@ -28,10 +23,6 @@ type Options struct {
 // Run wires and runs the CLI, renders structured output, and returns an AXI exit code.
 func Run(ctx context.Context, args []string, stdout io.Writer, options Options) int {
 	definitions := capability.All()
-	if err := capability.ValidateBindings(definitions, bindings); err != nil {
-		return renderError(stdout, &errs.Error{Kind: errs.KindRuntime, Operation: "startup", Summary: "Capability registry validation failed.", Cause: err})
-	}
-
 	source := registrySource{}
 	root := cli.NewRoot(cli.Dependencies{
 		Lister:           capabilitylist.New(source),
@@ -43,6 +34,17 @@ func Run(ctx context.Context, args []string, stdout io.Writer, options Options) 
 		GetUse:           registryUse("capability.get"),
 		GetShort:         registryShort("capability.get"),
 	})
+	registrations, err := cli.RegisteredCommands(root)
+	if err != nil {
+		return renderError(stdout, &errs.Error{Kind: errs.KindRuntime, Operation: "startup", Summary: "CLI command registration validation failed.", Cause: err})
+	}
+	bindings := make([]capability.Binding, len(registrations))
+	for index, registration := range registrations {
+		bindings[index] = capability.Binding{CapabilityID: registration.CapabilityID, CommandPath: registration.CommandPath}
+	}
+	if err := capability.ValidateBindings(definitions, bindings); err != nil {
+		return renderError(stdout, &errs.Error{Kind: errs.KindRuntime, Operation: "startup", Summary: "Capability registry validation failed.", Cause: err})
+	}
 	root.SetOut(stdout)
 	root.SetArgs(args)
 	if _, _, err := root.Find(args); err != nil {
@@ -104,9 +106,11 @@ func (registrySource) Get(_ context.Context, id string) (capabilityget.Capabilit
 		return capabilityget.Capability{}, false
 	}
 	parts := strings.Split(definition.ID, ".")
+	domain, resource := classify(definition)
 	return capabilityget.Capability{
 		ID:                    definition.ID,
-		Domain:                strings.Join(parts[:len(parts)-1], "."),
+		Domain:                domain,
+		Resource:              resource,
 		Verb:                  parts[len(parts)-1],
 		Owner:                 string(definition.Owner),
 		Surface:               definition.Surface,
@@ -150,20 +154,22 @@ func registryShort(id string) string {
 }
 
 func filterDomain(definition capability.Definition) string {
-	parts := strings.Split(definition.ID, ".")
-	if definition.Owner == capability.OwnerCLI && (parts[0] == "workbook" || parts[0] == "datasource" || parts[0] == "flow" || parts[0] == "project") {
-		return "content"
-	}
-	return parts[0]
+	domain, _ := classify(definition)
+	return domain
 }
 
 func filterResource(definition capability.Definition) string {
+	_, resource := classify(definition)
+	return resource
+}
+
+func classify(definition capability.Definition) (string, string) {
 	parts := strings.Split(definition.ID, ".")
 	if definition.Owner == capability.OwnerCLI && (parts[0] == "workbook" || parts[0] == "datasource" || parts[0] == "flow" || parts[0] == "project") {
-		return parts[0]
+		return "content", parts[0]
 	}
 	if len(parts) == 3 {
-		return parts[1]
+		return parts[0], parts[1]
 	}
-	return ""
+	return parts[0], ""
 }
