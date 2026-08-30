@@ -163,6 +163,66 @@ func TestClientReturnsFailingPollRequestID(t *testing.T) {
 	}
 }
 
+func TestClientReportsUnknownWhenAcceptedPublishResponseCannotBeDecoded(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		writer.Header().Set("Content-Type", "application/xml")
+		writer.Header().Set("X-Tableau-Request-Id", "publish-request")
+		writer.WriteHeader(http.StatusCreated)
+		_, _ = io.WriteString(writer, `<tsResponse><job id="job-visible"/></broken>`)
+	}))
+	defer server.Close()
+
+	client := tableauworkbook.NewClient(tableau.NewTransport(server.Client(), "3.29", nil), session{}, server.URL)
+	result, err := client.Publish(context.Background(), tableauworkbook.PublishRequest{
+		Name: "Finance", ProjectLUID: "project-1", Filename: "Finance.twb", Content: []byte("small"),
+	})
+	if err == nil {
+		t.Fatal("Publish() succeeded with an invalid accepted response")
+	}
+	if result.Status != "unknown" || result.JobID != "job-visible" || result.TableauRequestID != "publish-request" {
+		t.Fatalf("accepted response failure = %#v", result)
+	}
+}
+
+func TestClientRejectsIncompleteOrMismatchedTerminalJobResponses(t *testing.T) {
+	tests := []struct {
+		name      string
+		response  string
+		errorText string
+	}{
+		{name: "mismatched identity", response: `<tsResponse><job id="job-other" progress="100" finishCode="0"/></tsResponse>`, errorText: "expected"},
+		{name: "missing progress", response: `<tsResponse><job id="job-1" finishCode="0"/></tsResponse>`, errorText: "progress"},
+		{name: "missing terminal finish code", response: `<tsResponse><job id="job-1" progress="100"/></tsResponse>`, errorText: "finish code"},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+				writer.Header().Set("Content-Type", "application/xml")
+				if request.Method == http.MethodPost {
+					writer.Header().Set("X-Tableau-Request-Id", "publish-request")
+					writer.WriteHeader(http.StatusCreated)
+					_, _ = io.WriteString(writer, `<tsResponse><job id="job-1" progress="0" finishCode="1"/></tsResponse>`)
+					return
+				}
+				writer.Header().Set("X-Tableau-Request-Id", "poll-request")
+				_, _ = io.WriteString(writer, test.response)
+			}))
+			defer server.Close()
+
+			client := tableauworkbook.NewClient(tableau.NewTransport(server.Client(), "3.29", nil), session{}, server.URL)
+			result, err := client.Publish(context.Background(), tableauworkbook.PublishRequest{
+				Name: "Finance", ProjectLUID: "project-1", Filename: "Finance.twb", Content: []byte("small"), AsJob: true,
+			})
+			if err == nil || !strings.Contains(err.Error(), test.errorText) {
+				t.Fatalf("error = %v", err)
+			}
+			if result.Status != "unknown" || result.JobID != "job-1" || result.TableauRequestID != "poll-request" {
+				t.Fatalf("protocol failure result = %#v", result)
+			}
+		})
+	}
+}
+
 func TestClientRejectsMismatchedUploadAppendIdentity(t *testing.T) {
 	publishCalls := 0
 	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {

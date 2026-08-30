@@ -9,7 +9,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"math"
 	"net/http"
 	"net/url"
 	"strings"
@@ -155,10 +154,30 @@ func NewTransport(client *http.Client, apiVersion string, correlationID func() s
 	if client == nil {
 		client = http.DefaultClient
 	}
+	clientCopy := *client
+	previousCheckRedirect := clientCopy.CheckRedirect
+	clientCopy.CheckRedirect = func(request *http.Request, via []*http.Request) error {
+		if len(via) > 0 {
+			previous := via[len(via)-1].URL
+			if strings.EqualFold(previous.Scheme, "https") && !strings.EqualFold(request.URL.Scheme, "https") {
+				return fmt.Errorf("refusing Tableau redirect from %s to less secure scheme %s", previous.Scheme, request.URL.Scheme)
+			}
+			if !sameOrigin(via[0].URL, request.URL) {
+				return fmt.Errorf("refusing cross-origin Tableau redirect from %s to %s", via[0].URL.Host, request.URL.Host)
+			}
+		}
+		if previousCheckRedirect != nil {
+			return previousCheckRedirect(request, via)
+		}
+		if len(via) >= 10 {
+			return errors.New("stopped after 10 redirects")
+		}
+		return nil
+	}
 	if apiVersion == "" {
 		apiVersion = defaultAPIVersion
 	}
-	return &Transport{client: client, apiVersion: apiVersion, correlationID: correlationID}
+	return &Transport{client: &clientCopy, apiVersion: apiVersion, correlationID: correlationID}
 }
 
 // APIVersion returns the configured optimistic REST API version.
@@ -168,6 +187,10 @@ func (t *Transport) APIVersion() string { return t.apiVersion }
 func (t *Transport) Do(ctx context.Context, session auth.Session, input Request) (Response, error) {
 	if t == nil || t.client == nil {
 		return Response{}, errors.New("Tableau transport is not configured")
+	}
+	maxResponseBytes, err := responseLimit(input.MaxResponseBytes)
+	if err != nil {
+		return Response{}, err
 	}
 	base, err := url.Parse(strings.TrimRight(input.ServerURL, "/"))
 	if err != nil || base.Scheme == "" || base.Host == "" {
@@ -210,13 +233,6 @@ func (t *Transport) Do(ctx context.Context, session auth.Session, input Request)
 	}
 	defer response.Body.Close()
 	requestID := tableauRequestID(response.Header)
-	maxResponseBytes := input.MaxResponseBytes
-	if maxResponseBytes == 0 {
-		maxResponseBytes = defaultMaxResponseBytes
-	}
-	if maxResponseBytes < 0 || maxResponseBytes == math.MaxInt64 {
-		return Response{}, fmt.Errorf("invalid Tableau response limit %d", maxResponseBytes)
-	}
 	body, err := io.ReadAll(io.LimitReader(response.Body, maxResponseBytes+1))
 	if err != nil {
 		return Response{}, &responseReadError{operation: input.Operation, requestID: requestID, statusCode: response.StatusCode, cause: err}
@@ -232,6 +248,36 @@ func (t *Transport) Do(ctx context.Context, session auth.Session, input Request)
 	return Response{}, &UpstreamError{
 		Operation: input.Operation, StatusCode: response.StatusCode, Code: code,
 		Summary: redactText(summary, input.Secrets), Detail: redactText(detail, input.Secrets), TableauRequestID: requestID,
+	}
+}
+
+func responseLimit(requested int64) (int64, error) {
+	if requested == 0 {
+		return defaultMaxResponseBytes, nil
+	}
+	if requested < 0 || requested > defaultMaxResponseBytes {
+		return 0, fmt.Errorf("invalid Tableau response limit %d: maximum is %d bytes", requested, defaultMaxResponseBytes)
+	}
+	return requested, nil
+}
+
+func sameOrigin(left, right *url.URL) bool {
+	return strings.EqualFold(left.Scheme, right.Scheme) &&
+		strings.EqualFold(left.Hostname(), right.Hostname()) &&
+		originPort(left) == originPort(right)
+}
+
+func originPort(value *url.URL) string {
+	if port := value.Port(); port != "" {
+		return port
+	}
+	switch strings.ToLower(value.Scheme) {
+	case "http":
+		return "80"
+	case "https":
+		return "443"
+	default:
+		return ""
 	}
 }
 

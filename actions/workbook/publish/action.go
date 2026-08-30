@@ -45,7 +45,7 @@ func (a *Action) Plan(ctx context.Context, input Input) (Plan, error) {
 	if input.Environment == "" {
 		return Plan{}, usage("environment", "an explicit write environment is required")
 	}
-	if input.Site == "" {
+	if input.Site == "" && !input.TargetResolved {
 		return Plan{}, usage("site", "an explicit write site is required")
 	}
 	if input.ArtifactPath == "" {
@@ -97,11 +97,16 @@ func (a *Action) Plan(ctx context.Context, input Input) (Plan, error) {
 
 // Apply performs only the exact mutation request captured by Plan.
 func (a *Action) Apply(ctx context.Context, plan Plan) (Result, error) {
-	if a == nil || a.publisher == nil {
+	if a == nil || a.resolver == nil || a.publisher == nil {
 		return Result{}, errs.New(errs.KindRuntime, "Workbook publish is not configured.")
 	}
 	if !plan.planned || plan.Operation != "workbook.publish" || plan.request.Name == "" || plan.request.ProjectLUID == "" {
 		return Result{}, usage("plan", "workbook publish apply requires a plan produced by Plan")
+	}
+	if plan.request.Overwrite {
+		if err := a.verifyOverwriteTarget(ctx, plan); err != nil {
+			return Result{}, err
+		}
 	}
 	result, err := a.publisher.Publish(ctx, plan.request)
 	if err != nil {
@@ -112,14 +117,32 @@ func (a *Action) Apply(ctx context.Context, plan Plan) (Result, error) {
 		errorID := "workbook.publish.failed"
 		summary := "Workbook publish failed."
 		correctiveAction := "Review the upstream error before publishing again."
-		if result.JobID != "" && (result.Status == "unknown" || result.Status == "timed_out" || result.Status == "cancelled") {
+		if result.Status == "unknown" || result.Status == "timed_out" || result.Status == "cancelled" {
 			errorID = "workbook.publish.outcome_unknown"
 			summary = "Workbook publish was accepted, but its terminal outcome could not be determined."
-			correctiveAction = "Inspect the Tableau job by its exact job ID before attempting another publish."
+			correctiveAction = "Inspect the target site and Tableau request before attempting another publish."
+			if result.JobID != "" {
+				correctiveAction = "Inspect the Tableau job by its exact job ID before attempting another publish."
+			}
 		}
 		return Result{}, &errs.Error{ID: errorID, Kind: errs.KindOperation, Operation: "workbook.publish", Resource: plan.Target.ExistingLUID, Environment: plan.Target.Environment, Site: plan.Target.Site, Summary: summary, Cause: err, Retryable: errs.Bool(false), CorrectiveAction: correctiveAction, TableauJobID: result.JobID, TableauRequestID: requestID}
 	}
 	return result, nil
+}
+
+func (a *Action) verifyOverwriteTarget(ctx context.Context, plan Plan) error {
+	current, err := a.resolver.FindWorkbooks(ctx, plan.request.Name, plan.request.ProjectLUID)
+	if err != nil {
+		return &errs.Error{ID: "workbook.overwrite.revalidate", Kind: errs.KindOperation, Operation: "workbook.publish", Resource: plan.Target.ExistingLUID, Environment: plan.Target.Environment, Site: plan.Target.Site, Summary: "Workbook overwrite target revalidation failed.", Cause: err, Retryable: errs.Bool(false), CorrectiveAction: "Resolve the exact destination again before publishing.", TableauRequestID: errs.TableauRequestID(err)}
+	}
+	expected := plan.Target.ExistingLUID
+	if len(current) == 0 && expected == "" {
+		return nil
+	}
+	if len(current) == 1 && current[0].LUID == expected {
+		return nil
+	}
+	return &errs.Error{ID: "workbook.overwrite.target_changed", Kind: errs.KindOperation, Operation: "workbook.publish", Resource: expected, Environment: plan.Target.Environment, Site: plan.Target.Site, Summary: "Workbook overwrite target changed after planning.", Cause: fmt.Errorf("planned workbook LUID %q no longer matches the exact destination", expected), Retryable: errs.Bool(false), CorrectiveAction: "Review a new preview before publishing."}
 }
 
 // Execute plans every invocation and applies only when explicitly requested.

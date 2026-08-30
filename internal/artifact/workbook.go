@@ -96,15 +96,29 @@ func (m *WorkbookManager) Pull(ctx context.Context, input WorkbookPull) (Workboo
 	}
 	if target == "" {
 		target = filepath.Join(root, safeName(input.Metadata.Name))
-		if metadata, readErr := readMetadata(target); readErr == nil && metadata.TableauID != input.Metadata.TableauID {
-			return WorkbookPullResult{}, fmt.Errorf("artifact path %q belongs to Tableau ID %q", target, metadata.TableauID)
-		} else if readErr != nil && !errors.Is(readErr, os.ErrNotExist) {
-			return WorkbookPullResult{}, readErr
+		if info, statErr := os.Lstat(target); statErr == nil {
+			if !info.IsDir() {
+				return WorkbookPullResult{}, fmt.Errorf("artifact path %q is not a managed workbook directory", target)
+			}
+			metadata, readErr := readMetadata(target)
+			if readErr != nil {
+				return WorkbookPullResult{}, fmt.Errorf("artifact path %q is not a managed workbook artifact: %w", target, readErr)
+			}
+			if metadata.TableauID != input.Metadata.TableauID {
+				return WorkbookPullResult{}, fmt.Errorf("artifact path %q belongs to Tableau ID %q", target, metadata.TableauID)
+			}
+			existing = &metadata
+		} else if !errors.Is(statErr, os.ErrNotExist) {
+			return WorkbookPullResult{}, statErr
 		}
 	}
 	var warnings []string
 	if existing != nil {
-		current, err := os.ReadFile(filepath.Join(target, existing.CanonicalPayload))
+		canonical, err := canonicalWorkbookPath(target, existing.CanonicalPayload)
+		if err != nil {
+			return WorkbookPullResult{}, err
+		}
+		current, err := os.ReadFile(canonical)
 		if err != nil {
 			return WorkbookPullResult{}, fmt.Errorf("read existing canonical workbook: %w", err)
 		}
@@ -140,9 +154,11 @@ func (m *WorkbookManager) Pull(ctx context.Context, input WorkbookPull) (Workboo
 			return WorkbookPullResult{}, fmt.Errorf("write staged artifact %s: %w", name, err)
 		}
 	}
-	if err := replaceDirectory(staging, target); err != nil {
+	replacementWarnings, err := replaceDirectory(staging, target)
+	if err != nil {
 		return WorkbookPullResult{}, err
 	}
+	warnings = append(warnings, replacementWarnings...)
 	return WorkbookPullResult{ArtifactPath: target, CanonicalPath: filepath.Join(target, filename), BaselineFingerprint: baseline, Warnings: warnings}, nil
 }
 
@@ -164,10 +180,13 @@ func (m *WorkbookManager) Read(_ context.Context, path string) (WorkbookArtifact
 	if err != nil {
 		return WorkbookArtifact{}, err
 	}
-	if metadata.Kind != "workbook" || metadata.CanonicalPayload == "" {
+	if metadata.Kind != "workbook" {
 		return WorkbookArtifact{}, errors.New("artifact metadata does not describe a workbook canonical payload")
 	}
-	canonical := filepath.Join(directory, metadata.CanonicalPayload)
+	canonical, err := canonicalWorkbookPath(directory, metadata.CanonicalPayload)
+	if err != nil {
+		return WorkbookArtifact{}, err
+	}
 	content, err := os.ReadFile(canonical)
 	if err != nil {
 		return WorkbookArtifact{}, fmt.Errorf("read canonical workbook: %w", err)
@@ -218,27 +237,70 @@ func readMetadata(directory string) (WorkbookMetadata, error) {
 	return metadata, nil
 }
 
-func replaceDirectory(staging, target string) error {
-	if _, err := os.Stat(target); errors.Is(err, os.ErrNotExist) {
-		if err := os.Rename(staging, target); err != nil {
-			return fmt.Errorf("install workbook artifact: %w", err)
+func canonicalWorkbookPath(directory, payload string) (string, error) {
+	if payload == "" || filepath.IsAbs(payload) || filepath.Base(payload) != payload || filepath.Clean(payload) != payload {
+		return "", fmt.Errorf("invalid workbook canonical payload %q", payload)
+	}
+	extension := strings.ToLower(filepath.Ext(payload))
+	if extension != ".twb" && extension != ".twbx" {
+		return "", fmt.Errorf("unsupported workbook canonical payload %q", payload)
+	}
+	canonical := filepath.Join(directory, payload)
+	info, err := os.Lstat(canonical)
+	if err != nil {
+		return "", fmt.Errorf("inspect canonical workbook: %w", err)
+	}
+	if info.Mode()&os.ModeSymlink != 0 {
+		return "", fmt.Errorf("workbook canonical payload %q must not be a symbolic link", payload)
+	}
+	resolvedDirectory, err := filepath.EvalSymlinks(directory)
+	if err != nil {
+		return "", fmt.Errorf("resolve workbook artifact directory: %w", err)
+	}
+	resolvedCanonical, err := filepath.EvalSymlinks(canonical)
+	if err != nil {
+		return "", fmt.Errorf("resolve canonical workbook: %w", err)
+	}
+	relative, err := filepath.Rel(resolvedDirectory, resolvedCanonical)
+	if err != nil || filepath.IsAbs(relative) || relative == ".." || strings.HasPrefix(relative, ".."+string(filepath.Separator)) {
+		return "", fmt.Errorf("workbook canonical payload %q escapes its artifact directory", payload)
+	}
+	return canonical, nil
+}
+
+type directoryOperations struct {
+	stat      func(string) (os.FileInfo, error)
+	rename    func(string, string) error
+	removeAll func(string) error
+}
+
+func replaceDirectory(staging, target string) ([]string, error) {
+	return replaceDirectoryWithOperations(staging, target, directoryOperations{stat: os.Stat, rename: os.Rename, removeAll: os.RemoveAll})
+}
+
+func replaceDirectoryWithOperations(staging, target string, operations directoryOperations) ([]string, error) {
+	if _, err := operations.stat(target); errors.Is(err, os.ErrNotExist) {
+		if err := operations.rename(staging, target); err != nil {
+			return nil, fmt.Errorf("install workbook artifact: %w", err)
 		}
-		return nil
+		return nil, nil
 	} else if err != nil {
-		return err
+		return nil, err
 	}
-	backup := target + ".tadx-backup-" + strconvTimestamp()
-	if err := os.Rename(target, backup); err != nil {
-		return fmt.Errorf("stage existing workbook artifact: %w", err)
+	backup := filepath.Join(filepath.Dir(target), ".tadx-workbook-backup-"+filepath.Base(target)+"-"+strconvTimestamp())
+	if err := operations.rename(target, backup); err != nil {
+		return nil, fmt.Errorf("stage existing workbook artifact: %w", err)
 	}
-	if err := os.Rename(staging, target); err != nil {
-		_ = os.Rename(backup, target)
-		return fmt.Errorf("install workbook artifact: %w", err)
+	if err := operations.rename(staging, target); err != nil {
+		if restoreErr := operations.rename(backup, target); restoreErr != nil {
+			return nil, fmt.Errorf("install workbook artifact: %w; restore previous workbook artifact from %q: %v", err, backup, restoreErr)
+		}
+		return nil, fmt.Errorf("install workbook artifact: %w", err)
 	}
-	if err := os.RemoveAll(backup); err != nil {
-		return fmt.Errorf("remove replaced workbook artifact backup: %w", err)
+	if err := operations.removeAll(backup); err != nil {
+		return []string{fmt.Sprintf("workbook artifact replacement committed, but backup %q could not be removed: %v", backup, err)}, nil
 	}
-	return nil
+	return nil, nil
 }
 
 func strconvTimestamp() string { return fmt.Sprintf("%d", time.Now().UnixNano()) }

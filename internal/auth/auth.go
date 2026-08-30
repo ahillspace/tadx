@@ -193,8 +193,41 @@ func (s *session) String() string {
 }
 
 func redactError(err error, secrets ...string) error {
-	return errors.New(Redact(err.Error(), secrets...))
+	redacted := &redactedCarrierError{message: Redact(err.Error(), secrets...)}
+	var upstream interface {
+		HTTPStatus() int
+		TableauCode() string
+		TableauSummary() string
+		TableauDetail() string
+	}
+	if errors.As(err, &upstream) {
+		redacted.status = upstream.HTTPStatus()
+		redacted.code = Redact(upstream.TableauCode(), secrets...)
+		redacted.summary = Redact(upstream.TableauSummary(), secrets...)
+		redacted.detail = Redact(upstream.TableauDetail(), secrets...)
+	}
+	var requestID interface{ RequestID() string }
+	if errors.As(err, &requestID) {
+		redacted.requestID = Redact(requestID.RequestID(), secrets...)
+	}
+	return redacted
 }
+
+type redactedCarrierError struct {
+	message   string
+	status    int
+	code      string
+	summary   string
+	detail    string
+	requestID string
+}
+
+func (e *redactedCarrierError) Error() string          { return e.message }
+func (e *redactedCarrierError) HTTPStatus() int        { return e.status }
+func (e *redactedCarrierError) TableauCode() string    { return e.code }
+func (e *redactedCarrierError) TableauSummary() string { return e.summary }
+func (e *redactedCarrierError) TableauDetail() string  { return e.detail }
+func (e *redactedCarrierError) RequestID() string      { return e.requestID }
 
 // Redact replaces complete and overlapping secret intervals without exposing remainders.
 func Redact(message string, secrets ...string) string {

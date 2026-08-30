@@ -34,7 +34,7 @@ func TestFileStoreSearchIsBoundedAndReportsGenerationStaleness(t *testing.T) {
 	}
 
 	store := catalog.NewFileStore(root, func() time.Time { return generated.Add(13 * time.Hour) })
-	result, err := store.Search(context.Background(), catalog.Query{Environment: "production", Text: "Finance", Kind: "workbook", Limit: 1})
+	result, err := store.Search(context.Background(), catalog.Query{Environment: "production", Site: "marketing", SiteSelected: true, Text: "Finance", Kind: "workbook", Limit: 1})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -59,7 +59,111 @@ func TestFileStoreRejectsIncompleteGeneration(t *testing.T) {
 		t.Fatal(err)
 	}
 	store := catalog.NewFileStore(root, time.Now)
+	if _, err := store.Search(context.Background(), catalog.Query{Environment: "production", SiteSelected: true}); err == nil {
+		t.Fatal("Search() error = nil")
+	}
+}
+
+func TestFileStoreRejectsDefaultSiteSourceMismatch(t *testing.T) {
+	root := t.TempDir()
+	writeGeneration(t, root, "production.json", catalog.Generation{
+		ID: "generation-1", Environment: "production", Site: "other-site", GeneratedAt: time.Now(), Complete: true,
+	})
+	store := catalog.NewFileStore(root, time.Now)
+	if _, err := store.Search(context.Background(), catalog.Query{Environment: "production", Site: "", SiteSelected: true}); err == nil {
+		t.Fatal("Search() error = nil")
+	}
+}
+
+func TestFileStoreAcceptsMatchingDefaultSite(t *testing.T) {
+	root := t.TempDir()
+	generated := time.Now()
+	writeGeneration(t, root, "production.json", catalog.Generation{
+		ID: "generation-1", Environment: "production", Site: "", GeneratedAt: generated, Complete: true,
+	})
+	store := catalog.NewFileStore(root, func() time.Time { return generated })
+	if _, err := store.Search(context.Background(), catalog.Query{Environment: "production", Site: "", SiteSelected: true}); err != nil {
+		t.Fatalf("Search() error = %v", err)
+	}
+}
+
+func TestFileStoreRequiresResolvedSourceSite(t *testing.T) {
+	root := t.TempDir()
+	writeGeneration(t, root, "production.json", catalog.Generation{
+		ID: "generation-1", Environment: "production", Site: "", GeneratedAt: time.Now(), Complete: true,
+	})
+	store := catalog.NewFileStore(root, time.Now)
 	if _, err := store.Search(context.Background(), catalog.Query{Environment: "production"}); err == nil {
 		t.Fatal("Search() error = nil")
+	}
+}
+
+func TestFileStoreRejectsMissingGenerationProvenance(t *testing.T) {
+	tests := []struct {
+		name       string
+		generation catalog.Generation
+	}{
+		{name: "ID", generation: catalog.Generation{Environment: "production", Site: "marketing", GeneratedAt: time.Now(), Complete: true}},
+		{name: "generation time", generation: catalog.Generation{ID: "generation-1", Environment: "production", Site: "marketing", Complete: true}},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			root := t.TempDir()
+			writeGeneration(t, root, "production.json", test.generation)
+			store := catalog.NewFileStore(root, time.Now)
+			if _, err := store.Search(context.Background(), catalog.Query{Environment: "production", Site: "marketing", SiteSelected: true}); err == nil {
+				t.Fatal("Search() error = nil")
+			}
+		})
+	}
+}
+
+func TestFileStoreSupportsPortableEnvironmentAliasFilenames(t *testing.T) {
+	tests := []struct {
+		alias    string
+		filename string
+	}{
+		{alias: "prod/us", filename: "~70726f642f7573.json"},
+		{alias: `prod\us`, filename: "~70726f645c7573.json"},
+		{alias: "Production", filename: "~50726f64756374696f6e.json"},
+		{alias: "con", filename: "~636f6e.json"},
+	}
+	for _, test := range tests {
+		t.Run(test.alias, func(t *testing.T) {
+			root := t.TempDir()
+			generated := time.Now()
+			filename, err := catalog.GenerationFilename(test.alias)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if filename != test.filename {
+				t.Fatalf("filename = %q", filename)
+			}
+			writeGeneration(t, root, filename, catalog.Generation{
+				ID: "generation-1", Environment: test.alias, Site: "marketing", GeneratedAt: generated, Complete: true,
+			})
+			store := catalog.NewFileStore(root, func() time.Time { return generated })
+			result, err := store.Search(context.Background(), catalog.Query{Environment: test.alias, Site: "marketing", SiteSelected: true})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if result.Environment != test.alias {
+				t.Fatalf("environment = %q", result.Environment)
+			}
+		})
+	}
+}
+
+func writeGeneration(t *testing.T, root, filename string, generation catalog.Generation) {
+	t.Helper()
+	data, err := json.Marshal(generation)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(root, "catalog"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "catalog", filename), data, 0o600); err != nil {
+		t.Fatal(err)
 	}
 }

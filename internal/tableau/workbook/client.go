@@ -230,7 +230,9 @@ func (c *Client) Publish(ctx context.Context, input PublishRequest) (PublishResu
 	}
 	result, err := parsePublishResponse(response.Body)
 	if err != nil {
-		return PublishResult{}, err
+		result.Status = "unknown"
+		result.TableauRequestID = response.TableauRequestID
+		return result, err
 	}
 	result.TableauRequestID = response.TableauRequestID
 	if result.JobID == "" {
@@ -298,16 +300,22 @@ func (c *Client) pollJob(ctx context.Context, jobID string) (PublishResult, erro
 		}
 		var envelope jobEnvelope
 		if err := xml.Unmarshal(response.Body, &envelope); err != nil {
-			return PublishResult{Status: "failed", JobID: jobID, TableauRequestID: response.TableauRequestID}, fmt.Errorf("decode Tableau job response: %w", err)
+			return PublishResult{Status: "unknown", JobID: jobID, TableauRequestID: response.TableauRequestID}, fmt.Errorf("decode Tableau job response: %w", err)
 		}
-		if envelope.Job.ID == "" {
-			return PublishResult{Status: "failed", JobID: jobID, TableauRequestID: response.TableauRequestID}, errors.New("Tableau job response omitted job ID")
+		if envelope.Job.ID != jobID {
+			return PublishResult{Status: "unknown", JobID: jobID, TableauRequestID: response.TableauRequestID}, fmt.Errorf("Tableau job response returned job ID %q, expected %q", envelope.Job.ID, jobID)
 		}
-		if envelope.Job.Progress >= 100 {
-			if envelope.Job.FinishCode == 0 {
+		if envelope.Job.Progress == nil {
+			return PublishResult{Status: "unknown", JobID: jobID, TableauRequestID: response.TableauRequestID}, errors.New("Tableau job response omitted progress")
+		}
+		if *envelope.Job.Progress >= 100 {
+			if envelope.Job.FinishCode == nil {
+				return PublishResult{Status: "unknown", JobID: jobID, TableauRequestID: response.TableauRequestID}, errors.New("terminal Tableau job response omitted finish code")
+			}
+			if *envelope.Job.FinishCode == 0 {
 				return PublishResult{Status: "succeeded", JobID: jobID, TableauRequestID: response.TableauRequestID}, nil
 			}
-			return PublishResult{Status: "failed", JobID: jobID, TableauRequestID: response.TableauRequestID}, fmt.Errorf("Tableau workbook publish job %s failed with finish code %d", jobID, envelope.Job.FinishCode)
+			return PublishResult{Status: "failed", JobID: jobID, TableauRequestID: response.TableauRequestID}, fmt.Errorf("Tableau workbook publish job %s failed with finish code %d", jobID, *envelope.Job.FinishCode)
 		}
 		select {
 		case <-ctx.Done():
@@ -424,7 +432,10 @@ func appendBody(filename string, content []byte) ([]byte, string, error) {
 func parsePublishResponse(body []byte) (PublishResult, error) {
 	var envelope publishEnvelope
 	if err := xml.Unmarshal(body, &envelope); err != nil {
-		return PublishResult{}, fmt.Errorf("decode workbook publish response: %w", err)
+		return PublishResult{
+			JobID: envelope.Job.ID, WorkbookLUID: envelope.Workbook.ID,
+			WorkbookName: envelope.Workbook.Name, ProjectLUID: envelope.Workbook.Project.ID,
+		}, fmt.Errorf("decode workbook publish response: %w", err)
 	}
 	if envelope.Job.ID != "" {
 		return PublishResult{Status: "pending", JobID: envelope.Job.ID}, nil
@@ -499,6 +510,6 @@ type jobEnvelope struct {
 
 type jobXML struct {
 	ID         string `xml:"id,attr"`
-	Progress   int    `xml:"progress,attr"`
-	FinishCode int    `xml:"finishCode,attr"`
+	Progress   *int   `xml:"progress,attr"`
+	FinishCode *int   `xml:"finishCode,attr"`
 }

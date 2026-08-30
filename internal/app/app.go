@@ -203,6 +203,7 @@ func (s *catalogService) Execute(ctx context.Context, input catalogsearch.Input)
 	if input.Site == "" {
 		input.Site = environment.SiteContentURL
 	}
+	input.SiteResolved = true
 	store := catalog.NewFileStore(filepath.Dir(s.runtime.configPath), s.runtime.now)
 	return catalogsearch.New(catalogSource{store: store}).Execute(ctx, input)
 }
@@ -210,7 +211,7 @@ func (s *catalogService) Execute(ctx context.Context, input catalogsearch.Input)
 type catalogSource struct{ store *catalog.FileStore }
 
 func (s catalogSource) Search(ctx context.Context, input catalogsearch.Input) (catalogsearch.Result, error) {
-	result, err := s.store.Search(ctx, catalog.Query{Text: input.Text, Kind: input.Kind, ProjectPath: input.ProjectPath, Owner: input.Owner, Environment: input.Environment, Site: input.Site, LUID: input.LUID, Cursor: input.Cursor, Limit: input.Limit})
+	result, err := s.store.Search(ctx, catalog.Query{Text: input.Text, Kind: input.Kind, ProjectPath: input.ProjectPath, Owner: input.Owner, Environment: input.Environment, Site: input.Site, SiteSelected: input.SiteResolved, LUID: input.LUID, Cursor: input.Cursor, Limit: input.Limit})
 	if err != nil {
 		return catalogsearch.Result{}, err
 	}
@@ -263,7 +264,7 @@ func (s *publishService) Execute(ctx context.Context, input workbookpublish.Inpu
 	if err != nil {
 		return workbookpublish.Output{}, err
 	}
-	input.Environment, input.Site = environment.Alias, environment.SiteContentURL
+	input.Environment, input.Site, input.TargetResolved = environment.Alias, environment.SiteContentURL, true
 	action := workbookpublish.New(artifactReader{manager: artifact.NewWorkbookManager(s.runtime.now)}, publishAdapter{adapter: adapter}, publishAdapter{adapter: adapter})
 	return action.Execute(ctx, input, apply)
 }

@@ -2,7 +2,6 @@ package search
 
 import (
 	"context"
-	"fmt"
 
 	"github.com/ahillspace/tadx/internal/errs"
 )
@@ -27,10 +26,9 @@ func (a *Action) Execute(ctx context.Context, input Input) (Output, error) {
 	if err != nil {
 		return Output{}, &errs.Error{ID: "catalog.search.failed", Kind: errs.KindOperation, Operation: "catalog.search", Environment: input.Environment, Site: input.Site, Summary: "Catalog search failed.", Cause: err, Retryable: errs.Bool(false), CorrectiveAction: "Refresh or repair the selected catalog generation, then retry."}
 	}
-	help := fmt.Sprintf("tadx catalog get --environment %s --id <luid>", input.Environment)
 	return Output{
 		Page:       result.Page,
 		Generation: Generation{ID: result.GenerationID, Environment: result.Environment, Site: result.Site, GeneratedAt: result.GeneratedAt, Stale: result.Stale},
-		Items:      append([]Item(nil), result.Items...), Warnings: append([]string(nil), result.Warnings...), Help: []string{help},
+		Items:      append([]Item(nil), result.Items...), Warnings: append([]string(nil), result.Warnings...), Help: []string{"tadx catalog search --environment <alias> --id <luid>"},
 	}, nil
 }

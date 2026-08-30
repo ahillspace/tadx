@@ -4,10 +4,10 @@ import (
 	"context"
 	"errors"
 	"io"
-	"math"
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync/atomic"
 	"testing"
 )
 
@@ -114,15 +114,57 @@ func TestTransportRedactsOverlappingSecretsAtomically(t *testing.T) {
 	}
 }
 
-func TestTransportRejectsResponseLimitThatWouldOverflow(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {}))
+func TestTransportRejectsResponseLimitAboveSharedCeilingBeforeRequest(t *testing.T) {
+	var requests atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) { requests.Add(1) }))
 	defer server.Close()
 
 	transport := NewTransport(server.Client(), "3.29", nil)
 	_, err := transport.Do(context.Background(), nil, Request{
-		Method: http.MethodGet, ServerURL: server.URL, Path: "/large", Operation: "workbook.list", MaxResponseBytes: math.MaxInt64,
+		Method: http.MethodGet, ServerURL: server.URL, Path: "/large", Operation: "workbook.list", MaxResponseBytes: defaultMaxResponseBytes + 1,
 	})
 	if err == nil || !strings.Contains(err.Error(), "invalid Tableau response limit") {
+		t.Fatalf("error = %v", err)
+	}
+	if requests.Load() != 0 {
+		t.Fatalf("requests = %d, want 0", requests.Load())
+	}
+}
+
+func TestTransportRejectsCrossOriginRedirectBeforeReplayingCredentials(t *testing.T) {
+	var targetRequests atomic.Int32
+	target := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) { targetRequests.Add(1) }))
+	defer target.Close()
+	source := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		http.Redirect(writer, request, target.URL+"/signin", http.StatusTemporaryRedirect)
+	}))
+	defer source.Close()
+
+	transport := NewTransport(source.Client(), "3.29", nil)
+	_, err := transport.Do(context.Background(), testSession{token: "session-token"}, Request{
+		Method: http.MethodPost, ServerURL: source.URL, Path: "/signin", Operation: "auth.check", Body: []byte(`{"secret":"pat-secret"}`),
+	})
+	if err == nil || !strings.Contains(err.Error(), "cross-origin Tableau redirect") {
+		t.Fatalf("error = %v", err)
+	}
+	if targetRequests.Load() != 0 {
+		t.Fatalf("redirect target requests = %d, want 0", targetRequests.Load())
+	}
+}
+
+func TestTransportRejectsSchemeDowngradeRedirect(t *testing.T) {
+	var source *httptest.Server
+	source = httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		location := strings.Replace(source.URL, "https://", "http://", 1) + "/signin"
+		http.Redirect(writer, request, location, http.StatusTemporaryRedirect)
+	}))
+	defer source.Close()
+
+	transport := NewTransport(source.Client(), "3.29", nil)
+	_, err := transport.Do(context.Background(), testSession{token: "session-token"}, Request{
+		Method: http.MethodPost, ServerURL: source.URL, Path: "/signin", Operation: "auth.check", Body: []byte(`{"secret":"pat-secret"}`),
+	})
+	if err == nil || !strings.Contains(err.Error(), "less secure scheme") {
 		t.Fatalf("error = %v", err)
 	}
 }

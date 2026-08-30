@@ -40,6 +40,22 @@ type publisher struct {
 	err    error
 }
 
+type changingResolver struct {
+	project  publish.Project
+	results  [][]publish.Workbook
+	findCall int
+}
+
+func (r *changingResolver) ResolveProject(context.Context, identity.Selector) (publish.Project, error) {
+	return r.project, nil
+}
+
+func (r *changingResolver) FindWorkbooks(context.Context, string, string) ([]publish.Workbook, error) {
+	result := r.results[r.findCall]
+	r.findCall++
+	return result, nil
+}
+
 func (p *publisher) Publish(_ context.Context, input publish.PublishRequest) (publish.Result, error) {
 	p.calls++
 	p.input = input
@@ -105,6 +121,47 @@ func TestPlanRequiresExplicitWriteEnvironment(t *testing.T) {
 	}
 }
 
+func TestPlanAcceptsResolvedDefaultSite(t *testing.T) {
+	action := publish.New(
+		artifactReader{artifact: publish.Artifact{Path: `C:\workspace\Finance`, Filename: "Finance.twb", Name: "Finance", Content: []byte("native")}},
+		resolver{project: publish.Project{LUID: "project-1", Path: "Ops"}}, &publisher{},
+	)
+	plan, err := action.Plan(context.Background(), publish.Input{ArtifactPath: `C:\workspace\Finance`, Environment: "production", TargetResolved: true, ProjectSelector: identity.Selector{LUID: "project-1"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if plan.Target.Site != "" {
+		t.Fatalf("site = %q", plan.Target.Site)
+	}
+}
+
+func TestApplyRejectsChangedOverwriteTarget(t *testing.T) {
+	r := &changingResolver{
+		project: publish.Project{LUID: "project-1", Path: "Ops"},
+		results: [][]publish.Workbook{
+			{{LUID: "wb-planned", Name: "Finance", ProjectLUID: "project-1"}},
+			{{LUID: "wb-replacement", Name: "Finance", ProjectLUID: "project-1"}},
+		},
+	}
+	p := &publisher{}
+	action := publish.New(
+		artifactReader{artifact: publish.Artifact{Path: `C:\workspace\Finance`, Filename: "Finance.twb", Name: "Finance", Content: []byte("native")}},
+		r, p,
+	)
+	plan, err := action.Plan(context.Background(), publish.Input{ArtifactPath: `C:\workspace\Finance`, Environment: "production", Site: "marketing", ProjectSelector: identity.Selector{LUID: "project-1"}, Overwrite: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = action.Apply(context.Background(), plan)
+	var structured *errs.Error
+	if !errors.As(err, &structured) || structured.ID != "workbook.overwrite.target_changed" {
+		t.Fatalf("error = %T %v", err, err)
+	}
+	if p.calls != 0 {
+		t.Fatalf("publish calls = %d", p.calls)
+	}
+}
+
 func TestPreviewGoldenOutput(t *testing.T) {
 	value := publish.Output{Plan: publish.Plan{
 		Mode: "preview", Operation: "publish_workbook", ArtifactPath: `C:\workspace\Finance`,
@@ -143,6 +200,26 @@ func TestApplyReportsUnknownAsyncOutcomeWithoutSuggestingRetry(t *testing.T) {
 		t.Fatalf("error = %T %v", err, err)
 	}
 	if structured.TableauJobID != "job-1" || structured.TableauRequestID != "poll-request" || !strings.Contains(strings.ToLower(structured.Summary), "outcome") || structured.Retryable == nil || *structured.Retryable {
+		t.Fatalf("structured error = %#v", structured)
+	}
+}
+
+func TestApplyReportsAcceptedUnknownOutcomeWithoutJobID(t *testing.T) {
+	p := &publisher{result: publish.Result{Status: "unknown", TableauRequestID: "publish-request"}, err: errors.New("decode publish response")}
+	action := publish.New(
+		artifactReader{artifact: publish.Artifact{Path: `C:\workspace\Finance`, Filename: "Finance.twb", Name: "Finance", Content: []byte("native")}},
+		resolver{project: publish.Project{LUID: "project-1", Path: "Ops"}}, p,
+	)
+	plan, err := action.Plan(context.Background(), publish.Input{ArtifactPath: `C:\workspace\Finance`, Environment: "production", Site: "marketing", ProjectSelector: identity.Selector{LUID: "project-1"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = action.Apply(context.Background(), plan)
+	var structured *errs.Error
+	if !errors.As(err, &structured) {
+		t.Fatalf("error = %T %v", err, err)
+	}
+	if structured.ID != "workbook.publish.outcome_unknown" || structured.TableauRequestID != "publish-request" || !strings.Contains(structured.CorrectiveAction, "Inspect") {
 		t.Fatalf("structured error = %#v", structured)
 	}
 }

@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"os"
-	"strings"
 	"testing"
 
 	search "github.com/ahillspace/tadx/actions/catalog/search"
@@ -25,7 +24,7 @@ func TestActionReturnsNormalizedBoundedSearchEnvelope(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if output.Page.Total != 2 || output.Generation.Environment != "production" || output.Generation.Site != "marketing" || len(output.Items) != 1 || len(output.Help) != 1 || !strings.Contains(output.Help[0], "<luid>") {
+	if output.Page.Total != 2 || output.Generation.Environment != "production" || output.Generation.Site != "marketing" || len(output.Items) != 1 || len(output.Help) != 1 || output.Help[0] != "tadx catalog search --environment <alias> --id <luid>" {
 		t.Fatalf("output = %#v", output)
 	}
 }

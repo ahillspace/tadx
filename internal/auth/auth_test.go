@@ -11,7 +11,22 @@ import (
 	"testing"
 
 	"github.com/ahillspace/tadx/internal/auth"
+	"github.com/ahillspace/tadx/internal/errs"
 )
+
+type upstreamCredentialError struct {
+	message   string
+	summary   string
+	detail    string
+	requestID string
+}
+
+func (e upstreamCredentialError) Error() string          { return e.message }
+func (e upstreamCredentialError) HTTPStatus() int        { return http.StatusUnauthorized }
+func (e upstreamCredentialError) TableauCode() string    { return "401001" }
+func (e upstreamCredentialError) TableauSummary() string { return e.summary }
+func (e upstreamCredentialError) TableauDetail() string  { return e.detail }
+func (e upstreamCredentialError) RequestID() string      { return e.requestID }
 
 func TestPATProviderResolvesVariablesAndReturnsAuthenticatedSession(t *testing.T) {
 	t.Parallel()
@@ -218,6 +233,37 @@ func TestPATProviderRedactsPartiallyOverlappingCredentialIntervals(t *testing.T)
 	}
 	if got, want := err.Error(), "sign in: upstream rejected [REDACTED]"; got != want {
 		t.Fatalf("error = %q, want %q", got, want)
+	}
+}
+
+func TestPATProviderPreservesRedactedUpstreamMetadata(t *testing.T) {
+	t.Parallel()
+
+	provider := auth.NewPATProvider(auth.LookupEnvFunc(func(key string) (string, bool) {
+		return map[string]string{"PAT_NAME": "agent-name", "PAT_SECRET": "highly-secret"}[key], true
+	}), &recordingSigner{err: upstreamCredentialError{
+		message:   "sign-in rejected agent-name with highly-secret",
+		summary:   "Login failed for agent-name",
+		detail:    "Rejected highly-secret",
+		requestID: "request-401",
+	}})
+	_, err := provider.Authenticate(context.Background(), auth.Target{
+		PATNameVariable:   "PAT_NAME",
+		PATSecretVariable: "PAT_SECRET",
+	})
+	if err == nil {
+		t.Fatal("Authenticate() error = nil")
+	}
+	payload := errs.Structure(&errs.Error{Kind: errs.KindOperation, Summary: "Authentication failed.", Cause: err}).Error
+	if payload.UpstreamStatus != http.StatusUnauthorized || payload.UpstreamCode != "401001" || payload.TableauRequestID != "request-401" {
+		t.Fatalf("upstream metadata = %#v", payload)
+	}
+	if payload.UpstreamSummary != "Login failed for [REDACTED]" || payload.UpstreamDetail != "Rejected [REDACTED]" {
+		t.Fatalf("redacted upstream metadata = %#v", payload)
+	}
+	formatted := fmt.Sprintf("%#v", payload)
+	if strings.Contains(formatted, "agent-name") || strings.Contains(formatted, "highly-secret") {
+		t.Fatalf("upstream metadata leaked credentials: %s", formatted)
 	}
 }
 

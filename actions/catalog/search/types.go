@@ -2,15 +2,16 @@ package search
 
 // Input contains bounded local catalog filters.
 type Input struct {
-	Text        string
-	Kind        string
-	ProjectPath string
-	Owner       string
-	Environment string
-	Site        string
-	LUID        string
-	Cursor      string
-	Limit       int
+	Text         string
+	Kind         string
+	ProjectPath  string
+	Owner        string
+	Environment  string
+	Site         string
+	SiteResolved bool
+	LUID         string
+	Cursor       string
+	Limit        int
 }
 
 // Page is the normalized bounded continuation envelope.

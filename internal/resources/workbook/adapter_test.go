@@ -73,3 +73,43 @@ func TestAdapterResolvesExactNestedProjectPath(t *testing.T) {
 		t.Fatalf("project = %#v", project)
 	}
 }
+
+func TestAdapterResolvesWorkbookInExactNestedProjectPath(t *testing.T) {
+	adapter := resource.NewAdapter(client{
+		pages: map[int]tableauworkbook.WorkbookPage{
+			1: {Page: tableauworkbook.Page{Number: 1, Size: 100, Total: 1}, Items: []tableauworkbook.Workbook{
+				{LUID: "wb-1", Name: "Finance", ProjectLUID: "child", ProjectName: "Ops"},
+			}},
+		},
+		projectPages: map[int]tableauworkbook.ProjectPage{
+			1: {Page: tableauworkbook.Page{Number: 1, Size: 100, Total: 2}, Items: []tableauworkbook.Project{
+				{LUID: "parent", Name: "Department"},
+				{LUID: "child", Name: "Ops", ParentLUID: "parent"},
+			}},
+		},
+	})
+	workbook, err := adapter.ResolveWorkbook(context.Background(), identity.Selector{Name: "Finance", ProjectPath: "Department/Ops"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if workbook.LUID != "wb-1" || workbook.ProjectPath != "Department/Ops" {
+		t.Fatalf("workbook = %#v", workbook)
+	}
+}
+
+func TestAdapterResolvesProjectLUIDWithoutUnrelatedHierarchy(t *testing.T) {
+	adapter := resource.NewAdapter(client{projectPages: map[int]tableauworkbook.ProjectPage{
+		1: {Page: tableauworkbook.Page{Number: 1, Size: 100, Total: 3}, Items: []tableauworkbook.Project{
+			{LUID: "broken", Name: "Broken", ParentLUID: "missing"},
+			{LUID: "parent", Name: "Department"},
+			{LUID: "child", Name: "Ops", ParentLUID: "parent"},
+		}},
+	}})
+	project, err := adapter.ResolveProject(context.Background(), identity.Selector{LUID: "child"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if project.LUID != "child" || project.Path != "Department/Ops" {
+		t.Fatalf("project = %#v", project)
+	}
+}

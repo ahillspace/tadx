@@ -103,6 +103,128 @@ func TestWorkbookManagerCleanRepullWarnsAndReplaces(t *testing.T) {
 	}
 }
 
+func TestWorkbookManagerRejectsUnmanagedTargetWithoutChangingIt(t *testing.T) {
+	workspace := createWorkspace(t)
+	target := filepath.Join(workspace, "artifacts", "workbook", "Finance")
+	if err := os.MkdirAll(target, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	sentinel := filepath.Join(target, "notes.txt")
+	if err := os.WriteFile(sentinel, []byte("keep me"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	manager := artifact.NewWorkbookManager(time.Now)
+	_, err := manager.Pull(context.Background(), artifact.WorkbookPull{
+		Workspace: workspace, Filename: "Finance.twb", Content: []byte("remote"),
+		Metadata:  artifact.WorkbookMetadata{Kind: "workbook", Name: "Finance", TableauID: "wb-1"},
+		Overwrite: true,
+	})
+	if err == nil || !strings.Contains(err.Error(), "not a managed workbook artifact") {
+		t.Fatalf("Pull() error = %v", err)
+	}
+	content, readErr := os.ReadFile(sentinel)
+	if readErr != nil || string(content) != "keep me" {
+		t.Fatalf("unmanaged content = %q, error = %v", content, readErr)
+	}
+}
+
+func TestWorkbookManagerRejectsEscapingCanonicalPayload(t *testing.T) {
+	workspace := createWorkspace(t)
+	manager := artifact.NewWorkbookManager(time.Now)
+	result, err := manager.Pull(context.Background(), artifact.WorkbookPull{
+		Workspace: workspace, Filename: "Finance.twb", Content: []byte("remote"),
+		Metadata: artifact.WorkbookMetadata{Kind: "workbook", Name: "Finance", TableauID: "wb-1"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	outside := filepath.Join(workspace, "artifacts", "outside.twb")
+	if err := os.WriteFile(outside, []byte("outside"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	metadataPath := filepath.Join(result.ArtifactPath, "metadata.json")
+	metadataData, err := os.ReadFile(metadataPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var metadata artifact.WorkbookMetadata
+	if err := json.Unmarshal(metadataData, &metadata); err != nil {
+		t.Fatal(err)
+	}
+	metadata.CanonicalPayload = filepath.Join("..", "..", "outside.twb")
+	metadataData, err = json.Marshal(metadata)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(metadataPath, metadataData, 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := manager.Read(context.Background(), result.ArtifactPath); err == nil || !strings.Contains(err.Error(), "invalid workbook canonical payload") {
+		t.Fatalf("Read() error = %v", err)
+	}
+}
+
+func TestWorkbookManagerRejectsCanonicalPayloadSymlink(t *testing.T) {
+	workspace := createWorkspace(t)
+	manager := artifact.NewWorkbookManager(time.Now)
+	result, err := manager.Pull(context.Background(), artifact.WorkbookPull{
+		Workspace: workspace, Filename: "Finance.twb", Content: []byte("remote"),
+		Metadata: artifact.WorkbookMetadata{Kind: "workbook", Name: "Finance", TableauID: "wb-1"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	outside := filepath.Join(workspace, "outside.twb")
+	if err := os.WriteFile(outside, []byte("outside"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Remove(result.CanonicalPath); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(outside, result.CanonicalPath); err != nil {
+		t.Skipf("symbolic links are unavailable: %v", err)
+	}
+
+	if _, err := manager.Read(context.Background(), result.ArtifactPath); err == nil || !strings.Contains(err.Error(), "must not be a symbolic link") {
+		t.Fatalf("Read() error = %v", err)
+	}
+}
+
+func TestWorkbookManagerRejectsUnsupportedCanonicalPayload(t *testing.T) {
+	workspace := createWorkspace(t)
+	manager := artifact.NewWorkbookManager(time.Now)
+	result, err := manager.Pull(context.Background(), artifact.WorkbookPull{
+		Workspace: workspace, Filename: "Finance.twb", Content: []byte("remote"),
+		Metadata: artifact.WorkbookMetadata{Kind: "workbook", Name: "Finance", TableauID: "wb-1"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	metadataPath := filepath.Join(result.ArtifactPath, "metadata.json")
+	metadataData, err := os.ReadFile(metadataPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var metadata artifact.WorkbookMetadata
+	if err := json.Unmarshal(metadataData, &metadata); err != nil {
+		t.Fatal(err)
+	}
+	metadata.CanonicalPayload = "payload.txt"
+	metadataData, err = json.Marshal(metadata)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(metadataPath, metadataData, 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := manager.Read(context.Background(), result.ArtifactPath); err == nil || !strings.Contains(err.Error(), "unsupported workbook canonical payload") {
+		t.Fatalf("Read() error = %v", err)
+	}
+}
+
 func createWorkspace(t *testing.T) string {
 	t.Helper()
 	workspace := t.TempDir()

@@ -7,6 +7,7 @@ type Input struct {
 	ArtifactPath    string
 	Environment     string
 	Site            string
+	TargetResolved  bool
 	Name            string
 	ProjectSelector identity.Selector
 	ProjectLUID     string

@@ -50,12 +50,45 @@ func (a *Adapter) ResolveWorkbook(ctx context.Context, selector identity.Selecto
 	if err != nil {
 		return Workbook{}, err
 	}
+	if selector.LUID != "" {
+		return resolveWorkbook(selector, items, nil)
+	}
+
+	var paths *projectPathIndex
+	if selector.ProjectPath != "" {
+		needsProjects := false
+		for _, item := range items {
+			if (selector.Name == "" || item.Name == selector.Name) && item.ProjectLUID != "" {
+				needsProjects = true
+				break
+			}
+		}
+		if needsProjects {
+			projects, err := a.allProjects(ctx)
+			if err != nil {
+				return Workbook{}, err
+			}
+			paths = newProjectPathIndex(projects)
+		}
+	}
+	return resolveWorkbook(selector, items, paths)
+}
+
+func resolveWorkbook(selector identity.Selector, items []tableauworkbook.Workbook, paths *projectPathIndex) (Workbook, error) {
 	candidates := make([]identity.Candidate, len(items))
 	byID := make(map[identity.LUID]Workbook, len(items))
 	for index, item := range items {
-		candidate := identity.Candidate{LUID: identity.LUID(item.LUID), Name: item.Name, ProjectPath: item.ProjectName}
+		projectPath := item.ProjectName
+		if paths != nil && item.ProjectLUID != "" && (selector.Name == "" || item.Name == selector.Name) {
+			resolvedPath, err := paths.path(item.ProjectLUID, make(map[string]bool))
+			if err != nil {
+				return Workbook{}, err
+			}
+			projectPath = resolvedPath
+		}
+		candidate := identity.Candidate{LUID: identity.LUID(item.LUID), Name: item.Name, ProjectPath: projectPath}
 		candidates[index] = candidate
-		byID[candidate.LUID] = Workbook{LUID: item.LUID, Name: item.Name, ContentURL: item.ContentURL, ProjectLUID: item.ProjectLUID, ProjectPath: item.ProjectName, OwnerLUID: item.OwnerLUID}
+		byID[candidate.LUID] = Workbook{LUID: item.LUID, Name: item.Name, ContentURL: item.ContentURL, ProjectLUID: item.ProjectLUID, ProjectPath: projectPath, OwnerLUID: item.OwnerLUID}
 	}
 	resolved, err := identity.Resolve(selector, candidates)
 	if err != nil {
@@ -86,40 +119,23 @@ func (a *Adapter) ResolveProject(ctx context.Context, selector identity.Selector
 	if err != nil {
 		return Project{}, err
 	}
-	byID := make(map[string]tableauworkbook.Project, len(items))
-	for _, item := range items {
-		byID[item.LUID] = item
-	}
-	paths := make(map[string]string, len(items))
-	var buildPath func(string, map[string]bool) (string, error)
-	buildPath = func(id string, visiting map[string]bool) (string, error) {
-		if path, ok := paths[id]; ok {
-			return path, nil
-		}
-		item, ok := byID[id]
+	paths := newProjectPathIndex(items)
+	if selector.LUID != "" {
+		item, ok := paths.byID[string(selector.LUID)]
 		if !ok {
-			return "", fmt.Errorf("project %q references missing parent", id)
+			_, err := identity.Resolve(selector, nil)
+			return Project{}, err
 		}
-		if visiting[id] {
-			return "", fmt.Errorf("project hierarchy contains a cycle at %q", id)
+		path, err := paths.path(item.LUID, make(map[string]bool))
+		if err != nil {
+			return Project{}, err
 		}
-		visiting[id] = true
-		path := item.Name
-		if item.ParentLUID != "" {
-			parent, err := buildPath(item.ParentLUID, visiting)
-			if err != nil {
-				return "", err
-			}
-			path = parent + "/" + item.Name
-		}
-		delete(visiting, id)
-		paths[id] = path
-		return path, nil
+		return Project{LUID: item.LUID, Name: item.Name, Path: path}, nil
 	}
 	candidates := make([]identity.Candidate, 0, len(items))
 	projects := make(map[identity.LUID]Project, len(items))
 	for _, item := range items {
-		path, err := buildPath(item.LUID, make(map[string]bool))
+		path, err := paths.path(item.LUID, make(map[string]bool))
 		if err != nil {
 			return Project{}, err
 		}
@@ -132,6 +148,44 @@ func (a *Adapter) ResolveProject(ctx context.Context, selector identity.Selector
 		return Project{}, err
 	}
 	return projects[resolved.LUID], nil
+}
+
+type projectPathIndex struct {
+	byID  map[string]tableauworkbook.Project
+	paths map[string]string
+}
+
+func newProjectPathIndex(items []tableauworkbook.Project) *projectPathIndex {
+	index := &projectPathIndex{byID: make(map[string]tableauworkbook.Project, len(items)), paths: make(map[string]string, len(items))}
+	for _, item := range items {
+		index.byID[item.LUID] = item
+	}
+	return index
+}
+
+func (i *projectPathIndex) path(id string, visiting map[string]bool) (string, error) {
+	if path, ok := i.paths[id]; ok {
+		return path, nil
+	}
+	item, ok := i.byID[id]
+	if !ok {
+		return "", fmt.Errorf("project %q references missing parent", id)
+	}
+	if visiting[id] {
+		return "", fmt.Errorf("project hierarchy contains a cycle at %q", id)
+	}
+	visiting[id] = true
+	path := item.Name
+	if item.ParentLUID != "" {
+		parent, err := i.path(item.ParentLUID, visiting)
+		if err != nil {
+			return "", err
+		}
+		path = parent + "/" + item.Name
+	}
+	delete(visiting, id)
+	i.paths[id] = path
+	return path, nil
 }
 
 // DownloadWorkbook downloads one authoritative workbook.

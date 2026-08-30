@@ -3,6 +3,7 @@ package catalog
 
 import (
 	"context"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -41,15 +42,16 @@ type Generation struct {
 
 // Query contains exact filters plus an optional text search.
 type Query struct {
-	Text        string
-	Kind        string
-	ProjectPath string
-	Owner       string
-	Environment string
-	Site        string
-	LUID        string
-	Cursor      string
-	Limit       int
+	Text         string
+	Kind         string
+	ProjectPath  string
+	Owner        string
+	Environment  string
+	Site         string
+	SiteSelected bool
+	LUID         string
+	Cursor       string
+	Limit        int
 }
 
 // Page is the bounded local continuation envelope.
@@ -72,7 +74,7 @@ type SearchResult struct {
 	Warnings     []string
 }
 
-// FileStore reads complete normalized generations from <root>/catalog/<environment>.json.
+// FileStore reads complete normalized generations from portable environment filenames under <root>/catalog.
 type FileStore struct {
 	root string
 	now  func() time.Time
@@ -94,10 +96,14 @@ func (s *FileStore) Search(ctx context.Context, query Query) (SearchResult, erro
 	if query.Environment == "" {
 		return SearchResult{}, errors.New("catalog search requires an environment")
 	}
-	if strings.ContainsAny(query.Environment, `/\\`) || query.Environment == "." || query.Environment == ".." {
-		return SearchResult{}, errors.New("catalog environment alias contains a path separator")
+	if !query.SiteSelected {
+		return SearchResult{}, errors.New("catalog search requires a resolved source site")
 	}
-	path := filepath.Join(s.root, "catalog", query.Environment+".json")
+	filename, err := GenerationFilename(query.Environment)
+	if err != nil {
+		return SearchResult{}, err
+	}
+	path := filepath.Join(s.root, "catalog", filename)
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return SearchResult{}, fmt.Errorf("read catalog generation for environment %q: %w", query.Environment, err)
@@ -109,10 +115,16 @@ func (s *FileStore) Search(ctx context.Context, query Query) (SearchResult, erro
 	if !generation.Complete {
 		return SearchResult{}, fmt.Errorf("catalog generation %q is incomplete", generation.ID)
 	}
+	if strings.TrimSpace(generation.ID) == "" {
+		return SearchResult{}, errors.New("catalog generation ID is required")
+	}
+	if generation.GeneratedAt.IsZero() {
+		return SearchResult{}, fmt.Errorf("catalog generation %q generation time is required", generation.ID)
+	}
 	if generation.Environment != query.Environment {
 		return SearchResult{}, fmt.Errorf("catalog source environment %q does not match selected environment %q", generation.Environment, query.Environment)
 	}
-	if query.Site != "" && generation.Site != query.Site {
+	if generation.Site != query.Site {
 		return SearchResult{}, fmt.Errorf("catalog source site %q does not match selected site %q", generation.Site, query.Site)
 	}
 	items := make([]Record, 0, len(generation.Records))
@@ -177,4 +189,30 @@ func (s *FileStore) Search(ctx context.Context, query Query) (SearchResult, erro
 		GenerationID: generation.ID, Environment: generation.Environment, Site: generation.Site, GeneratedAt: generation.GeneratedAt, Stale: stale,
 		Records: pageItems, Warnings: warnings,
 	}, nil
+}
+
+// GenerationFilename returns the portable catalog filename for an exact environment alias.
+func GenerationFilename(environment string) (string, error) {
+	if environment == "" {
+		return "", errors.New("catalog generation requires an environment")
+	}
+	if isPortableEnvironmentFilename(environment) {
+		return environment + ".json", nil
+	}
+	return "~" + hex.EncodeToString([]byte(environment)) + ".json", nil
+}
+
+func isPortableEnvironmentFilename(environment string) bool {
+	for _, character := range environment {
+		if character >= 'a' && character <= 'z' || character >= '0' && character <= '9' || character == '-' || character == '_' {
+			continue
+		}
+		return false
+	}
+	switch environment {
+	case "con", "prn", "aux", "nul", "com1", "com2", "com3", "com4", "com5", "com6", "com7", "com8", "com9", "lpt1", "lpt2", "lpt3", "lpt4", "lpt5", "lpt6", "lpt7", "lpt8", "lpt9":
+		return false
+	default:
+		return true
+	}
 }

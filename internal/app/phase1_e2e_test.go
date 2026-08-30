@@ -17,7 +17,7 @@ import (
 	"github.com/ahillspace/tadx/internal/artifact"
 )
 
-func TestPhaseOneWorkbookPullAndPublishThroughCLI(t *testing.T) {
+func TestPhaseOneWorkbookPullAndPublishThroughCLIDefaultSite(t *testing.T) {
 	var publishCalls atomic.Int32
 	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		switch {
@@ -96,7 +96,7 @@ func TestWorkbookArtifactCreatedByE2EIsReadable(t *testing.T) {
 func writePhaseOneConfig(t *testing.T, serverURL string) string {
 	t.Helper()
 	path := filepath.Join(t.TempDir(), "config.yaml")
-	contents := fmt.Sprintf("version: 1\ndefault_environment: production\nenvironments:\n  production:\n    url: %s\n    site_content_url: marketing\n    api_version: \"3.29\"\n    auth:\n      type: pat\n      pat_name_env: PROD_PAT_NAME\n      pat_secret_env: PROD_PAT_SECRET\n", serverURL)
+	contents := fmt.Sprintf("version: 1\ndefault_environment: production\nenvironments:\n  production:\n    url: %s\n    site_content_url: \"\"\n    api_version: \"3.29\"\n    auth:\n      type: pat\n      pat_name_env: PROD_PAT_NAME\n      pat_secret_env: PROD_PAT_SECRET\n", serverURL)
 	if err := os.WriteFile(path, []byte(contents), 0o600); err != nil {
 		t.Fatal(err)
 	}

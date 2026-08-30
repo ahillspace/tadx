@@ -2,7 +2,7 @@
 
 This record freezes the upstream contract used by the Phase 1 remote capabilities.
 The captured official Tableau REST API help is `Tableau API Documentation/tableau_rest_api.md`.
-Its SHA-256 digest is `76d7f050a32ca354660039bdc18143506ce26472ff82f0f12b79fb5aaa584e0f`.
+Its SHA-256 digest is `89bf3a33175ddcfee15e45b13facfa1833b4a06218580c66ef48e04691f1842b`.
 
 The implementation uses these captured sections:
 
