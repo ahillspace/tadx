@@ -217,6 +217,9 @@ func replaceNonFinite(value reflect.Value, seen map[visit]bool) any {
 		if number == 0 {
 			return float64(0)
 		}
+		if value.Kind() == reflect.Float32 {
+			return float32(number)
+		}
 		return number
 	case reflect.Map:
 		if value.Type().Key().Kind() != reflect.String {
