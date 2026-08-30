@@ -2,3 +2,6 @@
 /dist/
 /coverage.out
 *.test
+/.agents/
+/agent-review/
+/tadx.exe
