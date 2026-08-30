@@ -156,6 +156,42 @@ func TestPATProviderRedactsCredentialsFromSignInErrors(t *testing.T) {
 	}
 }
 
+func TestPATProviderRedactsOverlappingCredentialsFromSignInErrors(t *testing.T) {
+	t.Parallel()
+
+	provider := auth.NewPATProvider(auth.LookupEnvFunc(func(key string) (string, bool) {
+		return map[string]string{"PAT_NAME": "agent", "PAT_SECRET": "agent-secret"}[key], true
+	}), &recordingSigner{err: errors.New("upstream rejected agent-secret for agent")})
+	_, err := provider.Authenticate(context.Background(), auth.Target{
+		PATNameVariable:   "PAT_NAME",
+		PATSecretVariable: "PAT_SECRET",
+	})
+	if err == nil {
+		t.Fatal("Authenticate() error = nil")
+	}
+	if got, want := err.Error(), "sign in: upstream rejected [REDACTED] for [REDACTED]"; got != want {
+		t.Fatalf("error = %q, want %q", got, want)
+	}
+}
+
+func TestPATProviderRedactsPartiallyOverlappingCredentialIntervals(t *testing.T) {
+	t.Parallel()
+
+	provider := auth.NewPATProvider(auth.LookupEnvFunc(func(key string) (string, bool) {
+		return map[string]string{"PAT_NAME": "abc123", "PAT_SECRET": "123xyz"}[key], true
+	}), &recordingSigner{err: errors.New("upstream rejected abc123xyz")})
+	_, err := provider.Authenticate(context.Background(), auth.Target{
+		PATNameVariable:   "PAT_NAME",
+		PATSecretVariable: "PAT_SECRET",
+	})
+	if err == nil {
+		t.Fatal("Authenticate() error = nil")
+	}
+	if got, want := err.Error(), "sign in: upstream rejected [REDACTED]"; got != want {
+		t.Fatalf("error = %q, want %q", got, want)
+	}
+}
+
 type recordingSigner struct {
 	request  auth.SignInRequest
 	response auth.SignInResponse

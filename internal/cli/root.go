@@ -3,6 +3,8 @@ package cli
 
 import (
 	"context"
+	"fmt"
+	"strings"
 
 	capabilityget "github.com/ahillspace/tadx/actions/capability/get"
 	capabilitylist "github.com/ahillspace/tadx/actions/capability/list"
@@ -10,6 +12,15 @@ import (
 	"github.com/ahillspace/tadx/internal/errs"
 	"github.com/spf13/cobra"
 )
+
+// CapabilityAnnotation associates an executable command with its registry ID.
+const CapabilityAnnotation = "tadx.capability"
+
+// RegisteredCommand describes a capability discovered from the actual Cobra tree.
+type RegisteredCommand struct {
+	CapabilityID string
+	CommandPath  []string
+}
 
 // Lister executes capability list.
 type Lister interface {
@@ -59,6 +70,39 @@ func NewRoot(deps Dependencies) *cobra.Command {
 	root.CompletionOptions.DisableDefaultCmd = true
 	setFlagErrorHandlers(root)
 	return root
+}
+
+// RegisteredCommands discovers capability bindings from the actual command tree.
+func RegisteredCommands(root *cobra.Command) ([]RegisteredCommand, error) {
+	var registrations []RegisteredCommand
+	var walk func(*cobra.Command) error
+	walk = func(command *cobra.Command) error {
+		id := command.Annotations[CapabilityAnnotation]
+		runnable := command.Run != nil || command.RunE != nil
+		if runnable && id == "" {
+			return fmt.Errorf("runnable command %q has no capability annotation", command.CommandPath())
+		}
+		if !runnable && id != "" {
+			return fmt.Errorf("non-runnable command %q has capability annotation %q", command.CommandPath(), id)
+		}
+		if id != "" {
+			path := strings.Fields(command.CommandPath())
+			if len(path) > 0 {
+				path = path[1:]
+			}
+			registrations = append(registrations, RegisteredCommand{CapabilityID: id, CommandPath: path})
+		}
+		for _, child := range command.Commands() {
+			if err := walk(child); err != nil {
+				return err
+			}
+		}
+		return nil
+	}
+	if err := walk(root); err != nil {
+		return nil, err
+	}
+	return registrations, nil
 }
 
 func setFlagErrorHandlers(command *cobra.Command) {

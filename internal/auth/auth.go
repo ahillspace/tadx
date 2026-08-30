@@ -194,10 +194,55 @@ func (s *session) String() string {
 
 func redactError(err error, secrets ...string) error {
 	message := err.Error()
+	type interval struct {
+		start int
+		end   int
+	}
+	var intervals []interval
+	seen := make(map[string]struct{}, len(secrets))
 	for _, secret := range secrets {
-		if secret != "" {
-			message = strings.ReplaceAll(message, secret, "[REDACTED]")
+		if secret == "" {
+			continue
+		}
+		if _, exists := seen[secret]; exists {
+			continue
+		}
+		seen[secret] = struct{}{}
+		for offset := 0; offset <= len(message)-len(secret); {
+			index := strings.Index(message[offset:], secret)
+			if index < 0 {
+				break
+			}
+			start := offset + index
+			intervals = append(intervals, interval{start: start, end: start + len(secret)})
+			offset = start + 1
 		}
 	}
-	return errors.New(message)
+	if len(intervals) == 0 {
+		return errors.New(message)
+	}
+	sort.Slice(intervals, func(i, j int) bool {
+		if intervals[i].start != intervals[j].start {
+			return intervals[i].start < intervals[j].start
+		}
+		return intervals[i].end > intervals[j].end
+	})
+	merged := intervals[:1]
+	for _, current := range intervals[1:] {
+		last := &merged[len(merged)-1]
+		if current.start <= last.end {
+			last.end = max(last.end, current.end)
+			continue
+		}
+		merged = append(merged, current)
+	}
+	var redacted strings.Builder
+	position := 0
+	for _, current := range merged {
+		redacted.WriteString(message[position:current.start])
+		redacted.WriteString("[REDACTED]")
+		position = current.end
+	}
+	redacted.WriteString(message[position:])
+	return errors.New(redacted.String())
 }

@@ -8,6 +8,7 @@ import (
 	capabilityget "github.com/ahillspace/tadx/actions/capability/get"
 	capabilitylist "github.com/ahillspace/tadx/actions/capability/list"
 	"github.com/ahillspace/tadx/internal/cli"
+	"github.com/spf13/cobra"
 )
 
 type lister struct {
@@ -50,6 +51,29 @@ func TestRootExposesOnlyPhaseZeroExecutableCommands(t *testing.T) {
 	want := []string{"capability get", "capability list"}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("commands = %v, want %v", got, want)
+	}
+}
+
+func TestRegisteredCommandsComeFromCobraTree(t *testing.T) {
+	cmd := cli.NewRoot(dependencies(&lister{}, &getter{}, &renderer{}))
+	got, err := cli.RegisteredCommands(cmd)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []cli.RegisteredCommand{
+		{CapabilityID: "capability.get", CommandPath: []string{"capability", "get"}},
+		{CapabilityID: "capability.list", CommandPath: []string{"capability", "list"}},
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("registrations = %#v, want %#v", got, want)
+	}
+}
+
+func TestRegisteredCommandsRejectsRunnableCommandWithoutCapabilityID(t *testing.T) {
+	cmd := cli.NewRoot(dependencies(&lister{}, &getter{}, &renderer{}))
+	cmd.AddCommand(&cobra.Command{Use: "unregistered", Run: func(*cobra.Command, []string) {}})
+	if _, err := cli.RegisteredCommands(cmd); err == nil {
+		t.Fatal("RegisteredCommands() error = nil")
 	}
 }
 

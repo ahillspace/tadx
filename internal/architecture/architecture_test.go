@@ -30,6 +30,7 @@ func TestCheckRejectsActionImports(t *testing.T) {
 	writeGo(t, root, "actions/workbook/pull/action.go", `package pull
 import (
 	"net/http"
+	"github.com/go-resty/resty/v2"
 	"github.com/spf13/cobra"
 	"example.test/tadx/actions/workbook/get"
 	"example.test/tadx/internal/app"
@@ -39,6 +40,7 @@ import (
 	"example.test/tadx/internal/tableau"
 )
 var _ = http.MethodGet
+var _ = resty.New
 var _ = cobra.NoArgs
 var _ = get.Output{}
 var _ = app.Run
@@ -59,6 +61,7 @@ var _ tableau.Client
 		"actions must not import CLI packages",
 		"actions must not import resource adapters",
 		"actions must not import Tableau clients",
+		"actions must not import third-party packages",
 		"actions must not import Cobra",
 		"actions must not use net/http directly",
 	})
@@ -183,10 +186,12 @@ func TestCheckRejectsImportsFromEveryFoundationPackage(t *testing.T) {
 			root := moduleFixture(t)
 			contents := fmt.Sprintf(`package %s
 import (
+	"github.com/go-resty/resty/v2"
 	"github.com/spf13/cobra"
 	"example.test/tadx/internal/app"
 )
 var _ = cobra.NoArgs
+var _ = resty.New
 var _ = app.Run
 `, foundation.name)
 			writeGo(t, root, foundation.path+"/foundation.go", contents)
@@ -240,12 +245,16 @@ func TestCheckRejectsAdapterAndTransportImports(t *testing.T) {
 	root := moduleFixture(t)
 	writeGo(t, root, "internal/resources/workbook/adapter.go", `package workbook
 import (
+	"net/http"
+	"github.com/go-resty/resty/v2"
 	"github.com/spf13/cobra"
 	"example.test/tadx/actions/workbook/get"
 	"example.test/tadx/internal/app"
 	"example.test/tadx/internal/auth"
 	"example.test/tadx/internal/cli"
 )
+var _ = http.MethodGet
+var _ = resty.New
 var _ = cobra.NoArgs
 var _ = get.Output{}
 var _ = app.Run
@@ -270,7 +279,9 @@ var _ = workbook.Adapter{}
 		"resource adapters must not import the composition root",
 		"resource adapters must not import authentication logic",
 		"resource adapters must not import CLI packages",
+		"resource adapters must not import third-party packages",
 		"resource adapters must not import Cobra",
+		"resource adapters must not use net/http directly",
 		"Tableau clients must not import the composition root",
 		"Tableau clients must not import resource adapters",
 	})

@@ -77,9 +77,10 @@ func validateStrings(value reflect.Value, seen map[visit]bool) error {
 		}
 		key := visit{typ: value.Type(), ptr: value.Pointer()}
 		if seen[key] {
-			return nil
+			return fmt.Errorf("cyclic value")
 		}
 		seen[key] = true
+		defer delete(seen, key)
 		return validateStrings(value.Elem(), seen)
 	}
 	switch value.Kind() {
@@ -96,6 +97,7 @@ func validateStrings(value reflect.Value, seen map[visit]bool) error {
 			return fmt.Errorf("cyclic value")
 		}
 		seen[key] = true
+		defer delete(seen, key)
 		iter := value.MapRange()
 		for iter.Next() {
 			if err := validateStrings(iter.Key(), seen); err != nil {
@@ -114,6 +116,7 @@ func validateStrings(value reflect.Value, seen map[visit]bool) error {
 			return fmt.Errorf("cyclic value")
 		}
 		seen[key] = true
+		defer delete(seen, key)
 		for i := 0; i < value.Len(); i++ {
 			if err := validateStrings(value.Index(i), seen); err != nil {
 				return err
@@ -161,6 +164,7 @@ func replaceNonFinite(value reflect.Value, seen map[visit]bool) any {
 			return nil
 		}
 		seen[key] = true
+		defer delete(seen, key)
 		return replaceNonFinite(value.Elem(), seen)
 	}
 	switch value.Kind() {
@@ -182,6 +186,7 @@ func replaceNonFinite(value reflect.Value, seen map[visit]bool) any {
 			return nil
 		}
 		seen[key] = true
+		defer delete(seen, key)
 		keys := value.MapKeys()
 		sort.Slice(keys, func(i, j int) bool { return keys[i].String() < keys[j].String() })
 		result := make(orderedJSONObject, 0, value.Len())
@@ -225,6 +230,7 @@ func replaceNonFinite(value reflect.Value, seen map[visit]bool) any {
 				return nil
 			}
 			seen[key] = true
+			defer delete(seen, key)
 		}
 		result := make([]any, value.Len())
 		for i := range result {

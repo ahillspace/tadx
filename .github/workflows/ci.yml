@@ -39,6 +39,13 @@ jobs:
       - name: Run race tests
         run: go test -race ./...
 
+      - name: Run bounded TOON fuzz tests
+        shell: bash
+        run: |
+          go test ./internal/toon -run='^$' -fuzz=FuzzEncodeDecodeStrings -fuzztime=5s
+          go test ./internal/toon -run='^$' -fuzz=FuzzDecodeNeverPanics -fuzztime=5s
+          go test ./internal/toon -run='^$' -fuzz=FuzzJSONRoundTrip -fuzztime=5s
+
       - name: Check module metadata
         shell: bash
         run: |
@@ -47,6 +54,50 @@ jobs:
 
       - name: Check generated files
         shell: bash
+        run: |
+          go generate ./...
+          go run ./cmd/gencapdocs -out docs/reference/capabilities.md
+          git diff --exit-code
+
+  windows-quality:
+    name: Windows quality gates
+    runs-on: windows-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Set up Go
+        uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Check formatting
+        shell: pwsh
+        run: |
+          $files = gofmt -l .
+          if ($files) {
+            $files
+            exit 1
+          }
+
+      - name: Run vet
+        run: go vet ./...
+
+      - name: Run tests
+        run: go test ./...
+
+      - name: Run race tests
+        run: go test -race ./...
+
+      - name: Check module metadata
+        shell: pwsh
+        run: |
+          go mod tidy
+          git diff --exit-code -- go.mod go.sum
+
+      - name: Check generated files
+        shell: pwsh
         run: |
           go generate ./...
           go run ./cmd/gencapdocs -out docs/reference/capabilities.md

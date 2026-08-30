@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"math"
 	"reflect"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -180,6 +181,85 @@ func TestRoundTripJSONModel(t *testing.T) {
 	}
 	if !reflect.DeepEqual(encoded, encodedAgain) {
 		t.Fatalf("encoding is not deterministic\nfirst:\n%s\nsecond:\n%s", encoded, encodedAgain)
+	}
+}
+
+func TestDecodeBoundsCapacityFromDeclaredCollectionLength(t *testing.T) {
+	t.Parallel()
+
+	declared := strconv.Itoa(int(^uint(0) >> 1))
+	for _, input := range []string{
+		"items[" + declared + "]:",
+		"items[" + declared + "]{value}:",
+	} {
+		if _, err := toon.Decode([]byte(input)); err == nil || !strings.Contains(err.Error(), "declares") {
+			t.Errorf("Decode(%q) error = %v, want declared-count mismatch", input, err)
+		}
+	}
+}
+
+func TestEncodeAllowsSharedAcyclicReferences(t *testing.T) {
+	t.Parallel()
+
+	sharedMap := map[string]any{"value": "shared"}
+	sharedSlice := []any{"shared"}
+	value := map[string]any{
+		"maps":   []any{sharedMap, sharedMap},
+		"slices": []any{sharedSlice, sharedSlice},
+	}
+
+	if _, err := toon.Encode(value); err != nil {
+		t.Fatalf("Encode() error = %v", err)
+	}
+}
+
+func TestEncodeQuotesUnicodeEdgeWhitespace(t *testing.T) {
+	t.Parallel()
+
+	encoded, err := toon.Encode("\u00a0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	decoded, err := toon.Decode(encoded)
+	if err != nil {
+		t.Fatalf("Decode(%q) error = %v", encoded, err)
+	}
+	if decoded != "\u00a0" {
+		t.Fatalf("round trip = %#v, want non-breaking space", decoded)
+	}
+}
+
+func TestEncodePreservesSharedReferencesWhenNormalizingNonFiniteValues(t *testing.T) {
+	t.Parallel()
+
+	sharedMap := map[string]any{"value": math.NaN()}
+	sharedSlice := []any{math.Inf(1)}
+	encoded, err := toon.Encode(map[string]any{
+		"maps":   []any{sharedMap, sharedMap},
+		"slices": []any{sharedSlice, sharedSlice},
+	})
+	if err != nil {
+		t.Fatalf("Encode() error = %v", err)
+	}
+	decoded, err := toon.Decode(encoded)
+	if err != nil {
+		t.Fatalf("Decode() error = %v", err)
+	}
+	assertJSONEqual(t, `{"maps":[{"value":null},{"value":null}],"slices":[[null],[null]]}`, decoded)
+}
+
+func TestEncodeRejectsRealCycles(t *testing.T) {
+	t.Parallel()
+
+	cyclicMap := map[string]any{}
+	cyclicMap["self"] = cyclicMap
+	cyclicSlice := make([]any, 1)
+	cyclicSlice[0] = cyclicSlice
+
+	for _, value := range []any{cyclicMap, cyclicSlice} {
+		if _, err := toon.Encode(value); err == nil || !strings.Contains(err.Error(), "cyclic value") {
+			t.Errorf("Encode(%T) error = %v, want cyclic-value error", value, err)
+		}
 	}
 }
 

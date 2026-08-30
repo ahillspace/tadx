@@ -56,6 +56,11 @@ func (e *ValidationError) Error() string {
 // Validate checks the complete configuration model without reading secrets.
 func (c Config) Validate() error {
 	var violations []string
+	type variableReference struct {
+		alias     string
+		defaulted bool
+	}
+	variableReferences := make(map[string]variableReference)
 	if c.Version != CurrentVersion {
 		violations = append(violations, fmt.Sprintf("version must be %d", CurrentVersion))
 	}
@@ -83,15 +88,37 @@ func (c Config) Validate() error {
 		}
 		defaultName, defaultSecret := DefaultPATVariableNames(alias)
 		nameVariable := environment.Auth.PATNameEnv
+		nameDefaulted := nameVariable == ""
 		if nameVariable == "" {
 			nameVariable = defaultName
 		}
 		secretVariable := environment.Auth.PATSecretEnv
+		secretDefaulted := secretVariable == ""
 		if secretVariable == "" {
 			secretVariable = defaultSecret
 		}
-		if nameVariable == secretVariable {
+		if strings.EqualFold(nameVariable, secretVariable) {
 			violations = append(violations, fmt.Sprintf("environment %q PAT name and secret must use different variables", alias))
+		}
+		for _, reference := range []struct {
+			variable  string
+			defaulted bool
+		}{
+			{variable: nameVariable, defaulted: nameDefaulted},
+			{variable: secretVariable, defaulted: secretDefaulted},
+		} {
+			identity := strings.ToUpper(reference.variable)
+			previous, exists := variableReferences[identity]
+			if exists && previous.alias != alias && (previous.defaulted || reference.defaulted) {
+				violations = append(violations, fmt.Sprintf(
+					"environment %q PAT variable %q conflicts with environment %q because at least one reference uses the default",
+					alias, reference.variable, previous.alias,
+				))
+				continue
+			}
+			if !exists {
+				variableReferences[identity] = variableReference{alias: alias, defaulted: reference.defaulted}
+			}
 		}
 	}
 	if len(violations) > 0 {
