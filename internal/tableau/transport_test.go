@@ -18,6 +18,16 @@ func (s testSession) SiteLUID() string                { return "site-luid" }
 func (s testSession) UserLUID() string                { return "user-luid" }
 func (s testSession) String() string                  { return "redacted session" }
 
+type roundTripFunc func(*http.Request) (*http.Response, error)
+
+func (f roundTripFunc) RoundTrip(request *http.Request) (*http.Response, error) { return f(request) }
+
+type errorReader struct{ err error }
+
+func (r errorReader) Read([]byte) (int, error) { return 0, r.err }
+
+func (errorReader) Close() error { return nil }
+
 func TestTransportAddsStableHeadersAndCapturesTableauRequestID(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		if got := request.Header.Get("X-Tableau-Auth"); got != "session-token" {
@@ -111,6 +121,75 @@ func TestTransportRedactsOverlappingSecretsAtomically(t *testing.T) {
 	}
 	if upstream.Detail != "rejected [REDACTED]" || strings.Contains(upstream.Detail, "abc") || strings.Contains(upstream.Detail, "xyz") {
 		t.Fatalf("redacted detail = %q", upstream.Detail)
+	}
+}
+
+func TestTransportRedactsAuthorizedSessionTokenFromUpstreamCarriers(t *testing.T) {
+	const token = "session-token"
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+		writer.Header().Set("X-Tableau-Request-Id", "request-"+token)
+		writer.Header().Set("Content-Type", "application/json")
+		writer.WriteHeader(http.StatusUnauthorized)
+		_, _ = io.WriteString(writer, `{"error":{"code":"code-session-token","summary":"summary session-token","detail":"detail session-token"}}`)
+	}))
+	defer server.Close()
+
+	transport := NewTransport(server.Client(), "3.29", nil)
+	_, err := transport.Do(context.Background(), testSession{token: token}, Request{
+		Method: http.MethodGet, ServerURL: server.URL, Path: "/workbooks", Operation: "workbook.list",
+	})
+	upstream, ok := err.(*UpstreamError)
+	if !ok {
+		t.Fatalf("error = %T %v", err, err)
+	}
+	for name, value := range map[string]string{
+		"error": upstream.Error(), "code": upstream.Code, "summary": upstream.Summary,
+		"detail": upstream.Detail, "request ID": upstream.TableauRequestID,
+	} {
+		if strings.Contains(value, token) || !strings.Contains(value, "[REDACTED]") {
+			t.Errorf("%s leaked authorized session token: %q", name, value)
+		}
+	}
+}
+
+func TestTransportRedactsAuthorizedSessionTokenFromRequestAndResponseReadErrors(t *testing.T) {
+	const token = "session-token"
+	tests := []struct {
+		name      string
+		transport http.RoundTripper
+		requestID string
+	}{
+		{
+			name: "request",
+			transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
+				return nil, errors.New("request exposed " + token)
+			}),
+		},
+		{
+			name: "response read",
+			transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
+				return &http.Response{
+					StatusCode: http.StatusOK,
+					Header:     http.Header{"X-Tableau-Request-Id": []string{"request-" + token}},
+					Body:       errorReader{err: errors.New("read exposed " + token)},
+				}, nil
+			}),
+			requestID: "request-[REDACTED]",
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			transport := NewTransport(&http.Client{Transport: test.transport}, "3.29", nil)
+			_, err := transport.Do(context.Background(), testSession{token: token}, Request{
+				Method: http.MethodGet, ServerURL: "https://tableau.example", Path: "/workbooks", Operation: "workbook.list",
+			})
+			if err == nil || strings.Contains(err.Error(), token) || !strings.Contains(err.Error(), "[REDACTED]") {
+				t.Fatalf("error leaked authorized session token: %v", err)
+			}
+			if got := RequestID(err); got != test.requestID {
+				t.Fatalf("RequestID() = %q, want %q", got, test.requestID)
+			}
+		})
 	}
 }
 

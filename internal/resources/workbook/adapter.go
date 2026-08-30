@@ -51,7 +51,19 @@ func (a *Adapter) ResolveWorkbook(ctx context.Context, selector identity.Selecto
 		return Workbook{}, err
 	}
 	if selector.LUID != "" {
-		return resolveWorkbook(selector, items, nil)
+		workbook, err := resolveWorkbook(selector, items, nil)
+		if err != nil || workbook.ProjectLUID == "" {
+			return workbook, err
+		}
+		projects, err := a.allProjects(ctx)
+		if err != nil {
+			return Workbook{}, err
+		}
+		workbook.ProjectPath, err = newProjectPathIndex(projects).path(workbook.ProjectLUID, make(map[string]bool))
+		if err != nil {
+			return Workbook{}, err
+		}
+		return workbook, nil
 	}
 
 	var paths *projectPathIndex

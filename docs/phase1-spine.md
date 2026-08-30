@@ -28,8 +28,8 @@ All public pages remain bounded.
 ## Catalog generation contract
 
 `catalog.search` reads one complete local generation from the `<config directory>/catalog` directory.
-Aliases containing only lowercase ASCII letters, digits, hyphens, and underscores use `<environment>.json`, except for reserved Windows filenames.
-Other aliases use `~<lowercase UTF-8 hex>.json`, as returned by `catalog.GenerationFilename`, so aliases remain distinct and portable.
+Aliases containing only lowercase ASCII letters, digits, hyphens, and underscores use `<environment>.json` when the complete filename fits within a 255-byte component, except for reserved Windows filenames.
+Other aliases, including aliases too long for a portable filename component, use `~<lowercase SHA-256 hex>.json` as returned by `catalog.GenerationFilename`.
 The generation records its ID, generation time, source environment and site, completion state, and bounded content items.
 Search rejects incomplete generations and source mismatches, sorts results deterministically, and warns when a generation is older than 12 hours.
 Phase 1 does not make catalog refresh executable.

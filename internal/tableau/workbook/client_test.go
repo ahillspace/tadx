@@ -3,7 +3,11 @@ package workbook_test
 import (
 	"bytes"
 	"context"
+	"encoding/xml"
+	"errors"
 	"io"
+	"mime"
+	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -20,6 +24,42 @@ func (session) Authorize(request *http.Request) { request.Header.Set("X-Tableau-
 func (session) SiteLUID() string                { return "site-1" }
 func (session) UserLUID() string                { return "user-1" }
 func (session) String() string                  { return "session" }
+
+type multipartPart struct {
+	name     string
+	filename string
+	content  []byte
+}
+
+func readMultipart(request *http.Request) ([]multipartPart, error) {
+	mediaType, parameters, err := mime.ParseMediaType(request.Header.Get("Content-Type"))
+	if err != nil {
+		return nil, err
+	}
+	if mediaType != "multipart/mixed" {
+		return nil, errors.New("request content type is not multipart/mixed")
+	}
+	reader := multipart.NewReader(request.Body, parameters["boundary"])
+	var parts []multipartPart
+	for {
+		part, err := reader.NextPart()
+		if errors.Is(err, io.EOF) {
+			return parts, nil
+		}
+		if err != nil {
+			return nil, err
+		}
+		_, disposition, err := mime.ParseMediaType("form-data; " + part.Header.Get("Content-Disposition"))
+		if err != nil {
+			return nil, err
+		}
+		content, err := io.ReadAll(part)
+		if err != nil {
+			return nil, err
+		}
+		parts = append(parts, multipartPart{name: disposition["name"], filename: disposition["filename"], content: content})
+	}
+}
 
 func TestClientNormalizesClassicWorkbookPagination(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
@@ -64,6 +104,10 @@ func TestClientDownloadsNativeWorkbookAndFilename(t *testing.T) {
 
 func TestClientUsesUploadSessionAndBoundedJobPolling(t *testing.T) {
 	var calls []string
+	var appendParts [][]multipartPart
+	var appendSequences []string
+	var publishParts []multipartPart
+	var handlerErr error
 	jobPolls := 0
 	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		calls = append(calls, request.Method+" "+request.URL.RequestURI())
@@ -73,13 +117,25 @@ func TestClientUsesUploadSessionAndBoundedJobPolling(t *testing.T) {
 			writer.WriteHeader(http.StatusCreated)
 			_, _ = io.WriteString(writer, `<tsResponse><fileUpload uploadSessionId="upload-1" fileSize="0"/></tsResponse>`)
 		case request.Method == http.MethodPut && strings.Contains(request.URL.Path, "/fileUploads/upload-1"):
-			if request.URL.Query().Get("sequenceID") == "" {
-				t.Fatal("append request omitted sequenceID")
+			parts, err := readMultipart(request)
+			if err != nil {
+				handlerErr = err
+				http.Error(writer, "invalid append body", http.StatusBadRequest)
+				return
 			}
+			appendParts = append(appendParts, parts)
+			appendSequences = append(appendSequences, request.URL.Query().Get("sequenceID"))
 			_, _ = io.WriteString(writer, `<tsResponse><fileUpload uploadSessionId="upload-1" fileSize="1"/></tsResponse>`)
 		case request.Method == http.MethodPost && strings.HasSuffix(request.URL.Path, "/workbooks"):
 			if request.URL.Query().Get("uploadSessionId") != "upload-1" || request.URL.Query().Get("asJob") != "true" {
 				t.Fatalf("publish query = %s", request.URL.RawQuery)
+			}
+			var err error
+			publishParts, err = readMultipart(request)
+			if err != nil {
+				handlerErr = err
+				http.Error(writer, "invalid publish body", http.StatusBadRequest)
+				return
 			}
 			writer.WriteHeader(http.StatusCreated)
 			_, _ = io.WriteString(writer, `<tsResponse><job id="job-1" mode="Asynchronous" type="PublishWorkbook" progress="0" finishCode="1"/></tsResponse>`)
@@ -98,15 +154,82 @@ func TestClientUsesUploadSessionAndBoundedJobPolling(t *testing.T) {
 
 	client := tableauworkbook.NewClient(tableau.NewTransport(server.Client(), "3.29", nil), session{}, server.URL)
 	client.SetUploadThreshold(1)
+	client.SetUploadChunkSize(3)
 	client.SetPollPolicy(5*time.Millisecond, 100*time.Millisecond)
 	result, err := client.Publish(context.Background(), tableauworkbook.PublishRequest{
-		Name: "Finance", ProjectLUID: "project-1", Filename: "Finance.twbx", Content: []byte("large"), Overwrite: true, AsJob: true,
+		Name: "Finance", ProjectLUID: "project-1", Filename: "Finance.twbx", Content: []byte("abcdefg"), Overwrite: true, AsJob: true,
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if result.JobID != "job-1" || result.Status != "succeeded" || jobPolls != 2 || len(calls) < 5 {
+	if handlerErr != nil {
+		t.Fatal(handlerErr)
+	}
+	if result.JobID != "job-1" || result.Status != "succeeded" || jobPolls != 2 || len(calls) != 7 {
 		t.Fatalf("result = %#v, polls = %d, calls = %v", result, jobPolls, calls)
+	}
+	if strings.Join(appendSequences, ",") != "1,2,3" {
+		t.Fatalf("append sequence IDs = %v", appendSequences)
+	}
+	var uploaded []byte
+	for index, parts := range appendParts {
+		if len(parts) != 2 || parts[0].name != "request_payload" || len(parts[0].content) != 0 || parts[1].name != "tableau_file" || parts[1].filename != "Finance.twbx" {
+			t.Fatalf("append %d parts = %#v", index+1, parts)
+		}
+		uploaded = append(uploaded, parts[1].content...)
+	}
+	if !bytes.Equal(uploaded, []byte("abcdefg")) {
+		t.Fatalf("uploaded content = %q", uploaded)
+	}
+	if len(publishParts) != 1 || publishParts[0].name != "request_payload" {
+		t.Fatalf("publish parts = %#v", publishParts)
+	}
+	var payload struct {
+		Workbook struct {
+			Name    string `xml:"name,attr"`
+			Project struct {
+				ID string `xml:"id,attr"`
+			} `xml:"project"`
+		} `xml:"workbook"`
+	}
+	if err := xml.Unmarshal(publishParts[0].content, &payload); err != nil {
+		t.Fatal(err)
+	}
+	if payload.Workbook.Name != "Finance" || payload.Workbook.Project.ID != "project-1" {
+		t.Fatalf("publish payload = %#v", payload)
+	}
+}
+
+func TestClientPublishesSmallWorkbookInMultipartBody(t *testing.T) {
+	var parts []multipartPart
+	var handlerErr error
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		parts, handlerErr = readMultipart(request)
+		if handlerErr != nil {
+			http.Error(writer, "invalid publish body", http.StatusBadRequest)
+			return
+		}
+		writer.Header().Set("Content-Type", "application/xml")
+		writer.WriteHeader(http.StatusCreated)
+		_, _ = io.WriteString(writer, `<tsResponse><workbook id="wb-1" name="Finance"><project id="project-1"/></workbook></tsResponse>`)
+	}))
+	defer server.Close()
+
+	client := tableauworkbook.NewClient(tableau.NewTransport(server.Client(), "3.29", nil), session{}, server.URL)
+	result, err := client.Publish(context.Background(), tableauworkbook.PublishRequest{
+		Name: "Finance", ProjectLUID: "project-1", Filename: "Finance.twb", Content: []byte("workbook-content"),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if handlerErr != nil {
+		t.Fatal(handlerErr)
+	}
+	if result.Status != "succeeded" || result.WorkbookLUID != "wb-1" {
+		t.Fatalf("result = %#v", result)
+	}
+	if len(parts) != 2 || parts[0].name != "request_payload" || parts[1].name != "tableau_workbook" || parts[1].filename != "Finance.twb" || !bytes.Equal(parts[1].content, []byte("workbook-content")) {
+		t.Fatalf("publish parts = %#v", parts)
 	}
 }
 
@@ -181,6 +304,61 @@ func TestClientReportsUnknownWhenAcceptedPublishResponseCannotBeDecoded(t *testi
 	}
 	if result.Status != "unknown" || result.JobID != "job-visible" || result.TableauRequestID != "publish-request" {
 		t.Fatalf("accepted response failure = %#v", result)
+	}
+}
+
+func TestClientReportsUnknownWhenAcceptedPublishResponseCannotBeRead(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		writer.Header().Set("Content-Type", "application/xml")
+		writer.Header().Set("Content-Length", "1024")
+		writer.Header().Set("X-Tableau-Request-Id", "accepted-request")
+		writer.WriteHeader(http.StatusCreated)
+		_, _ = io.WriteString(writer, `<tsResponse><job id="job-partial"`)
+	}))
+	defer server.Close()
+
+	client := tableauworkbook.NewClient(tableau.NewTransport(server.Client(), "3.29", nil), session{}, server.URL)
+	result, err := client.Publish(context.Background(), tableauworkbook.PublishRequest{
+		Name: "Finance", ProjectLUID: "project-1", Filename: "Finance.twb", Content: []byte("small"), AsJob: true,
+	})
+	if err == nil {
+		t.Fatal("Publish() succeeded with a truncated accepted response")
+	}
+	if result.Status != "unknown" || result.TableauRequestID != "accepted-request" {
+		t.Fatalf("accepted read failure result = %#v", result)
+	}
+}
+
+func TestClientPollingTimeoutBoundsInFlightRequest(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		writer.Header().Set("Content-Type", "application/xml")
+		if request.Method == http.MethodPost {
+			writer.Header().Set("X-Tableau-Request-Id", "publish-request")
+			writer.WriteHeader(http.StatusCreated)
+			_, _ = io.WriteString(writer, `<tsResponse><job id="job-blocked" progress="0" finishCode="1"/></tsResponse>`)
+			return
+		}
+		writer.Header().Set("X-Tableau-Request-Id", "poll-request")
+		writer.WriteHeader(http.StatusOK)
+		writer.(http.Flusher).Flush()
+		<-request.Context().Done()
+	}))
+	defer server.Close()
+
+	client := tableauworkbook.NewClient(tableau.NewTransport(server.Client(), "3.29", nil), session{}, server.URL)
+	client.SetPollPolicy(time.Millisecond, 20*time.Millisecond)
+	started := time.Now()
+	result, err := client.Publish(context.Background(), tableauworkbook.PublishRequest{
+		Name: "Finance", ProjectLUID: "project-1", Filename: "Finance.twb", Content: []byte("small"), AsJob: true,
+	})
+	if err == nil || !strings.Contains(err.Error(), "timed out") {
+		t.Fatalf("error = %v", err)
+	}
+	if time.Since(started) > time.Second {
+		t.Fatalf("polling exceeded bound: %s", time.Since(started))
+	}
+	if result.Status != "timed_out" || result.JobID != "job-blocked" || result.TableauRequestID != "poll-request" {
+		t.Fatalf("poll timeout result = %#v", result)
 	}
 }
 

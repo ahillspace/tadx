@@ -2,6 +2,7 @@ package app_test
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
@@ -33,7 +34,7 @@ func TestPhaseOneWorkbookPullAndPublishThroughCLIDefaultSite(t *testing.T) {
 			_, _ = io.WriteString(writer, `<workbook/>`)
 		case request.Method == http.MethodGet && request.URL.Path == "/api/3.29/sites/site-1/projects":
 			writer.Header().Set("Content-Type", "application/xml")
-			_, _ = io.WriteString(writer, `<tsResponse><pagination pageNumber="1" pageSize="1000" totalAvailable="1"/><projects><project id="project-1" name="Ops"/></projects></tsResponse>`)
+			_, _ = io.WriteString(writer, `<tsResponse><pagination pageNumber="1" pageSize="1000" totalAvailable="2"/><projects><project id="department" name="Department"/><project id="project-1" name="Ops" parentProjectId="department"/></projects></tsResponse>`)
 		case request.Method == http.MethodPost && request.URL.Path == "/api/3.29/sites/site-1/workbooks":
 			publishCalls.Add(1)
 			writer.Header().Set("Content-Type", "application/xml")
@@ -61,6 +62,17 @@ func TestPhaseOneWorkbookPullAndPublishThroughCLIDefaultSite(t *testing.T) {
 	artifactPath := filepath.Join(workspace, "artifacts", "workbook", "Finance")
 	if _, err := os.Stat(filepath.Join(artifactPath, "Finance.twb")); err != nil {
 		t.Fatalf("pull did not create canonical artifact: %v", err)
+	}
+	metadataData, err := os.ReadFile(filepath.Join(artifactPath, "metadata.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var metadata artifact.WorkbookMetadata
+	if err := json.Unmarshal(metadataData, &metadata); err != nil {
+		t.Fatal(err)
+	}
+	if metadata.SourceProjectName != "Department/Ops" || metadata.SourceProjectID != "project-1" {
+		t.Fatalf("artifact project provenance = %#v", metadata)
 	}
 
 	var previewOutput strings.Builder

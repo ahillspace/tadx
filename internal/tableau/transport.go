@@ -227,15 +227,17 @@ func (t *Transport) Do(ctx context.Context, session auth.Session, input Request)
 	if session != nil {
 		session.Authorize(request)
 	}
+	effectiveSecrets := append([]string(nil), input.Secrets...)
+	effectiveSecrets = append(effectiveSecrets, request.Header.Values(auth.TableauAuthHeader)...)
 	response, err := t.client.Do(request)
 	if err != nil {
-		return Response{}, fmt.Errorf("Tableau %s request: %w", input.Operation, redact(err, input.Secrets))
+		return Response{}, fmt.Errorf("Tableau %s request: %w", input.Operation, redact(err, effectiveSecrets))
 	}
 	defer response.Body.Close()
-	requestID := tableauRequestID(response.Header)
+	requestID := redactText(tableauRequestID(response.Header), effectiveSecrets)
 	body, err := io.ReadAll(io.LimitReader(response.Body, maxResponseBytes+1))
 	if err != nil {
-		return Response{}, &responseReadError{operation: input.Operation, requestID: requestID, statusCode: response.StatusCode, cause: err}
+		return Response{}, &responseReadError{operation: input.Operation, requestID: requestID, statusCode: response.StatusCode, cause: redact(err, effectiveSecrets)}
 	}
 	if int64(len(body)) > maxResponseBytes {
 		return Response{}, &responseReadError{operation: input.Operation, requestID: requestID, statusCode: response.StatusCode, cause: fmt.Errorf("body exceeded %d-byte limit", maxResponseBytes)}
@@ -246,8 +248,8 @@ func (t *Transport) Do(ctx context.Context, session auth.Session, input Request)
 	}
 	code, summary, detail := parseError(body)
 	return Response{}, &UpstreamError{
-		Operation: input.Operation, StatusCode: response.StatusCode, Code: code,
-		Summary: redactText(summary, input.Secrets), Detail: redactText(detail, input.Secrets), TableauRequestID: requestID,
+		Operation: input.Operation, StatusCode: response.StatusCode, Code: redactText(code, effectiveSecrets),
+		Summary: redactText(summary, effectiveSecrets), Detail: redactText(detail, effectiveSecrets), TableauRequestID: requestID,
 	}
 }
 

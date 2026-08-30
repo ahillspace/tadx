@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -119,35 +120,34 @@ func TestFileStoreRejectsMissingGenerationProvenance(t *testing.T) {
 }
 
 func TestFileStoreSupportsPortableEnvironmentAliasFilenames(t *testing.T) {
-	tests := []struct {
-		alias    string
-		filename string
-	}{
-		{alias: "prod/us", filename: "~70726f642f7573.json"},
-		{alias: `prod\us`, filename: "~70726f645c7573.json"},
-		{alias: "Production", filename: "~50726f64756374696f6e.json"},
-		{alias: "con", filename: "~636f6e.json"},
+	tests := []string{
+		"prod/us",
+		`prod\us`,
+		"Production",
+		"con",
+		strings.Repeat("A", 126),
+		strings.Repeat("a", 300),
 	}
-	for _, test := range tests {
-		t.Run(test.alias, func(t *testing.T) {
+	for _, alias := range tests {
+		t.Run(alias, func(t *testing.T) {
 			root := t.TempDir()
 			generated := time.Now()
-			filename, err := catalog.GenerationFilename(test.alias)
+			filename, err := catalog.GenerationFilename(alias)
 			if err != nil {
 				t.Fatal(err)
 			}
-			if filename != test.filename {
+			if len(filename) > 255 || filepath.Base(filename) != filename || !strings.HasSuffix(filename, ".json") {
 				t.Fatalf("filename = %q", filename)
 			}
 			writeGeneration(t, root, filename, catalog.Generation{
-				ID: "generation-1", Environment: test.alias, Site: "marketing", GeneratedAt: generated, Complete: true,
+				ID: "generation-1", Environment: alias, Site: "marketing", GeneratedAt: generated, Complete: true,
 			})
 			store := catalog.NewFileStore(root, func() time.Time { return generated })
-			result, err := store.Search(context.Background(), catalog.Query{Environment: test.alias, Site: "marketing", SiteSelected: true})
+			result, err := store.Search(context.Background(), catalog.Query{Environment: alias, Site: "marketing", SiteSelected: true})
 			if err != nil {
 				t.Fatal(err)
 			}
-			if result.Environment != test.alias {
+			if result.Environment != alias {
 				t.Fatalf("environment = %q", result.Environment)
 			}
 		})

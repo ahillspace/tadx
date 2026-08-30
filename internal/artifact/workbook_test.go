@@ -3,6 +3,7 @@ package artifact_test
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -126,6 +127,68 @@ func TestWorkbookManagerRejectsUnmanagedTargetWithoutChangingIt(t *testing.T) {
 	content, readErr := os.ReadFile(sentinel)
 	if readErr != nil || string(content) != "keep me" {
 		t.Fatalf("unmanaged content = %q, error = %v", content, readErr)
+	}
+}
+
+func TestWorkbookManagerRejectsArtifactRootOutsideWorkspaceBeforeWriting(t *testing.T) {
+	container := t.TempDir()
+	workspace := filepath.Join(container, "workspace")
+	outside := filepath.Join(container, "outside")
+	if err := os.MkdirAll(workspace, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(outside, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(workspace, "tadx.yaml"), []byte("version: 1\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(outside, filepath.Join(workspace, "artifacts")); err != nil {
+		t.Skipf("symbolic links are unavailable: %v", err)
+	}
+
+	manager := artifact.NewWorkbookManager(time.Now)
+	_, err := manager.Pull(context.Background(), artifact.WorkbookPull{
+		Workspace: workspace, Filename: "Finance.twb", Content: []byte("remote"),
+		Metadata: artifact.WorkbookMetadata{Kind: "workbook", Name: "Finance", TableauID: "wb-1"},
+	})
+	if err == nil || !strings.Contains(err.Error(), "escapes workspace") {
+		t.Fatalf("Pull() error = %v", err)
+	}
+	if _, statErr := os.Stat(filepath.Join(outside, "workbook")); !errors.Is(statErr, os.ErrNotExist) {
+		t.Fatalf("outside workbook directory was created: %v", statErr)
+	}
+}
+
+func TestWorkbookManagerRejectsTargetOutsideArtifactRootWithoutChangingIt(t *testing.T) {
+	workspace := createWorkspace(t)
+	root := filepath.Join(workspace, "artifacts", "workbook")
+	outside := filepath.Join(filepath.Dir(workspace), "outside")
+	if err := os.MkdirAll(root, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(outside, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	sentinel := filepath.Join(outside, "sentinel.txt")
+	if err := os.WriteFile(sentinel, []byte("keep me"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(outside, filepath.Join(root, "Finance")); err != nil {
+		t.Skipf("symbolic links are unavailable: %v", err)
+	}
+
+	manager := artifact.NewWorkbookManager(time.Now)
+	_, err := manager.Pull(context.Background(), artifact.WorkbookPull{
+		Workspace: workspace, Filename: "Finance.twb", Content: []byte("remote"), Overwrite: true,
+		Metadata: artifact.WorkbookMetadata{Kind: "workbook", Name: "Finance", TableauID: "wb-1"},
+	})
+	if err == nil || !strings.Contains(err.Error(), "escapes artifact root") {
+		t.Fatalf("Pull() error = %v", err)
+	}
+	content, readErr := os.ReadFile(sentinel)
+	if readErr != nil || string(content) != "keep me" {
+		t.Fatalf("outside content = %q, error = %v", content, readErr)
 	}
 }
 

@@ -116,6 +116,13 @@ func (c *Client) SetUploadThreshold(bytes int) {
 	}
 }
 
+// SetUploadChunkSize overrides the upload block size for deterministic tests.
+func (c *Client) SetUploadChunkSize(bytes int) {
+	if bytes > 0 {
+		c.uploadChunkSize = bytes
+	}
+}
+
 // SetPollPolicy configures bounded internal asynchronous polling.
 func (c *Client) SetPollPolicy(interval, timeout time.Duration) {
 	if interval > 0 {
@@ -226,6 +233,10 @@ func (c *Client) Publish(ctx context.Context, input PublishRequest) (PublishResu
 	}
 	response, err := c.do(ctx, http.MethodPost, c.sitePath("workbooks"), query, body, contentType, "workbook.publish")
 	if err != nil {
+		var status interface{ HTTPStatus() int }
+		if errors.As(err, &status) && status.HTTPStatus() >= http.StatusOK && status.HTTPStatus() < http.StatusMultipleChoices {
+			return PublishResult{Status: "unknown", TableauRequestID: tableau.RequestID(err)}, err
+		}
 		return PublishResult{}, err
 	}
 	result, err := parsePublishResponse(response.Body)
@@ -291,13 +302,25 @@ func (c *Client) upload(ctx context.Context, filename string, content []byte) (s
 }
 
 func (c *Client) pollJob(ctx context.Context, jobID string) (PublishResult, error) {
-	timeout := time.NewTimer(c.pollTimeout)
-	defer timeout.Stop()
+	pollCtx, cancel := context.WithTimeout(ctx, c.pollTimeout)
+	defer cancel()
+	lastRequestID := ""
 	for {
-		response, err := c.do(ctx, http.MethodGet, c.sitePath("jobs", jobID), nil, nil, "", "workbook.publish.poll")
+		response, err := c.do(pollCtx, http.MethodGet, c.sitePath("jobs", jobID), nil, nil, "", "workbook.publish.poll")
 		if err != nil {
-			return PublishResult{Status: "unknown", JobID: jobID, TableauRequestID: tableau.RequestID(err)}, err
+			requestID := tableau.RequestID(err)
+			if requestID == "" {
+				requestID = lastRequestID
+			}
+			if ctx.Err() != nil {
+				return PublishResult{Status: "cancelled", JobID: jobID, TableauRequestID: requestID}, ctx.Err()
+			}
+			if errors.Is(pollCtx.Err(), context.DeadlineExceeded) {
+				return PublishResult{Status: "timed_out", JobID: jobID, TableauRequestID: requestID}, fmt.Errorf("Tableau workbook publish job %s timed out after %s: %w", jobID, c.pollTimeout, err)
+			}
+			return PublishResult{Status: "unknown", JobID: jobID, TableauRequestID: requestID}, err
 		}
+		lastRequestID = response.TableauRequestID
 		var envelope jobEnvelope
 		if err := xml.Unmarshal(response.Body, &envelope); err != nil {
 			return PublishResult{Status: "unknown", JobID: jobID, TableauRequestID: response.TableauRequestID}, fmt.Errorf("decode Tableau job response: %w", err)
@@ -318,9 +341,10 @@ func (c *Client) pollJob(ctx context.Context, jobID string) (PublishResult, erro
 			return PublishResult{Status: "failed", JobID: jobID, TableauRequestID: response.TableauRequestID}, fmt.Errorf("Tableau workbook publish job %s failed with finish code %d", jobID, *envelope.Job.FinishCode)
 		}
 		select {
-		case <-ctx.Done():
-			return PublishResult{Status: "cancelled", JobID: jobID, TableauRequestID: response.TableauRequestID}, ctx.Err()
-		case <-timeout.C:
+		case <-pollCtx.Done():
+			if ctx.Err() != nil {
+				return PublishResult{Status: "cancelled", JobID: jobID, TableauRequestID: response.TableauRequestID}, ctx.Err()
+			}
 			return PublishResult{Status: "timed_out", JobID: jobID, TableauRequestID: response.TableauRequestID}, fmt.Errorf("Tableau workbook publish job %s timed out after %s", jobID, c.pollTimeout)
 		case <-time.After(c.pollInterval):
 		}

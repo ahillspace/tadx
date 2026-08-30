@@ -3,6 +3,7 @@ package catalog
 
 import (
 	"context"
+	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -16,9 +17,10 @@ import (
 )
 
 const (
-	defaultLimit = 20
-	maxLimit     = 100
-	staleAfter   = 12 * time.Hour
+	defaultLimit              = 20
+	maxLimit                  = 100
+	maxFilenameComponentBytes = 255
+	staleAfter                = 12 * time.Hour
 )
 
 // Record is one normalized catalog identity projection.
@@ -199,10 +201,14 @@ func GenerationFilename(environment string) (string, error) {
 	if isPortableEnvironmentFilename(environment) {
 		return environment + ".json", nil
 	}
-	return "~" + hex.EncodeToString([]byte(environment)) + ".json", nil
+	digest := sha256.Sum256([]byte(environment))
+	return "~" + hex.EncodeToString(digest[:]) + ".json", nil
 }
 
 func isPortableEnvironmentFilename(environment string) bool {
+	if len(environment)+len(".json") > maxFilenameComponentBytes {
+		return false
+	}
 	for _, character := range environment {
 		if character >= 'a' && character <= 'z' || character >= '0' && character <= '9' || character == '-' || character == '_' {
 			continue

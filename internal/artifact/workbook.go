@@ -86,9 +86,9 @@ func (m *WorkbookManager) Pull(ctx context.Context, input WorkbookPull) (Workboo
 	if _, err := os.Stat(filepath.Join(workspace, "tadx.yaml")); err != nil {
 		return WorkbookPullResult{}, fmt.Errorf("workspace %q does not contain tadx.yaml", workspace)
 	}
-	root := filepath.Join(workspace, "artifacts", "workbook")
-	if err := os.MkdirAll(root, 0o700); err != nil {
-		return WorkbookPullResult{}, fmt.Errorf("create workbook artifact root: %w", err)
+	root, err := ensureWorkbookRoot(workspace)
+	if err != nil {
+		return WorkbookPullResult{}, err
 	}
 	target, existing, err := findByTableauID(root, input.Metadata.TableauID)
 	if err != nil {
@@ -97,6 +97,9 @@ func (m *WorkbookManager) Pull(ctx context.Context, input WorkbookPull) (Workboo
 	if target == "" {
 		target = filepath.Join(root, safeName(input.Metadata.Name))
 		if info, statErr := os.Lstat(target); statErr == nil {
+			if err := validateContainedPath(root, target); err != nil {
+				return WorkbookPullResult{}, err
+			}
 			if !info.IsDir() {
 				return WorkbookPullResult{}, fmt.Errorf("artifact path %q is not a managed workbook directory", target)
 			}
@@ -206,6 +209,9 @@ func findByTableauID(root, id string) (string, *WorkbookMetadata, error) {
 			continue
 		}
 		candidate := filepath.Join(root, entry.Name())
+		if err := validateContainedPath(root, candidate); err != nil {
+			return "", nil, err
+		}
 		metadata, err := readMetadata(candidate)
 		if errors.Is(err, os.ErrNotExist) {
 			continue
@@ -223,6 +229,65 @@ func findByTableauID(root, id string) (string, *WorkbookMetadata, error) {
 		path, found = candidate, &copy
 	}
 	return path, found, nil
+}
+
+func ensureWorkbookRoot(workspace string) (string, error) {
+	resolvedWorkspace, err := filepath.EvalSymlinks(workspace)
+	if err != nil {
+		return "", fmt.Errorf("resolve workspace: %w", err)
+	}
+	current := workspace
+	for _, name := range []string{"artifacts", "workbook"} {
+		current = filepath.Join(current, name)
+		info, err := os.Lstat(current)
+		if errors.Is(err, os.ErrNotExist) {
+			if err := os.Mkdir(current, 0o700); err != nil {
+				return "", fmt.Errorf("create workbook artifact root: %w", err)
+			}
+			info, err = os.Lstat(current)
+		}
+		if err != nil {
+			return "", fmt.Errorf("inspect workbook artifact root: %w", err)
+		}
+		if !info.IsDir() && info.Mode()&os.ModeSymlink == 0 {
+			return "", fmt.Errorf("workbook artifact root %q is not a directory", current)
+		}
+		resolvedCurrent, err := filepath.EvalSymlinks(current)
+		if err != nil {
+			return "", fmt.Errorf("resolve workbook artifact root: %w", err)
+		}
+		if !pathContained(resolvedWorkspace, resolvedCurrent) {
+			return "", fmt.Errorf("workbook artifact root %q escapes workspace %q", current, workspace)
+		}
+		resolvedInfo, err := os.Stat(current)
+		if err != nil {
+			return "", fmt.Errorf("inspect resolved workbook artifact root: %w", err)
+		}
+		if !resolvedInfo.IsDir() {
+			return "", fmt.Errorf("workbook artifact root %q is not a directory", current)
+		}
+	}
+	return current, nil
+}
+
+func validateContainedPath(root, target string) error {
+	resolvedRoot, err := filepath.EvalSymlinks(root)
+	if err != nil {
+		return fmt.Errorf("resolve workbook artifact root: %w", err)
+	}
+	resolvedTarget, err := filepath.EvalSymlinks(target)
+	if err != nil {
+		return fmt.Errorf("resolve workbook artifact path %q: %w", target, err)
+	}
+	if !pathContained(resolvedRoot, resolvedTarget) {
+		return fmt.Errorf("workbook artifact path %q escapes artifact root %q", target, root)
+	}
+	return nil
+}
+
+func pathContained(root, target string) bool {
+	relative, err := filepath.Rel(root, target)
+	return err == nil && !filepath.IsAbs(relative) && relative != ".." && !strings.HasPrefix(relative, ".."+string(filepath.Separator))
 }
 
 func readMetadata(directory string) (WorkbookMetadata, error) {
