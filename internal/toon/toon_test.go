@@ -19,6 +19,38 @@ func (value *cycleMarshaler) MarshalJSON() ([]byte, error) {
 	return []byte(`{"value":"custom"}`), nil
 }
 
+type pointerReceiverMarshaler struct {
+	Internal string `json:"internal"`
+}
+
+func (*pointerReceiverMarshaler) MarshalJSON() ([]byte, error) {
+	return []byte(`"custom"`), nil
+}
+
+type pointerReceiverTextMarshaler struct {
+	Internal string `json:"internal"`
+}
+
+func (*pointerReceiverTextMarshaler) MarshalText() ([]byte, error) {
+	return []byte("custom text"), nil
+}
+
+type cycleTextMarshaler struct {
+	Self *cycleTextMarshaler `json:"self"`
+}
+
+func (*cycleTextMarshaler) MarshalText() ([]byte, error) {
+	return []byte("custom"), nil
+}
+
+type EmbeddedConflictLeft struct {
+	Value string `json:"value"`
+}
+
+type EmbeddedConflictRight struct {
+	Value string `json:"value"`
+}
+
 func TestEncodeV41Conformance(t *testing.T) {
 	t.Parallel()
 
@@ -303,6 +335,90 @@ func TestEncodeStopsValidationAtJSONMarshaler(t *testing.T) {
 	}
 	if string(encoded) != "value: custom" {
 		t.Fatalf("Encode() = %q, want %q", encoded, "value: custom")
+	}
+}
+
+func TestEncodePreservesPointerReceiverMarshalerDuringNonFiniteFallback(t *testing.T) {
+	t.Parallel()
+
+	value := &struct {
+		Custom pointerReceiverMarshaler `json:"custom"`
+		NaN    float64                  `json:"nan"`
+	}{Custom: pointerReceiverMarshaler{Internal: "not custom"}, NaN: math.NaN()}
+
+	encoded, err := toon.Encode(value)
+	if err != nil {
+		t.Fatalf("Encode() error = %v", err)
+	}
+	if string(encoded) != "custom: custom\nnan: null" {
+		t.Fatalf("Encode() = %q, want pointer-receiver output", encoded)
+	}
+}
+
+func TestEncodePreservesPointerReceiverTextMarshalerDuringNonFiniteFallback(t *testing.T) {
+	t.Parallel()
+
+	value := &struct {
+		Custom pointerReceiverTextMarshaler `json:"custom"`
+		NaN    float64                      `json:"nan"`
+	}{Custom: pointerReceiverTextMarshaler{Internal: "not custom"}, NaN: math.NaN()}
+
+	encoded, err := toon.Encode(value)
+	if err != nil {
+		t.Fatalf("Encode() error = %v", err)
+	}
+	if string(encoded) != "custom: custom text\nnan: null" {
+		t.Fatalf("Encode() = %q, want pointer-receiver text output", encoded)
+	}
+}
+
+func TestEncodeStopsValidationAtTextMarshaler(t *testing.T) {
+	t.Parallel()
+
+	value := &cycleTextMarshaler{}
+	value.Self = value
+
+	encoded, err := toon.Encode(value)
+	if err != nil {
+		t.Fatalf("Encode() error = %v", err)
+	}
+	if string(encoded) != "custom" {
+		t.Fatalf("Encode() = %q, want %q", encoded, "custom")
+	}
+}
+
+func TestEncodeIgnoresConflictingEmbeddedJSONFields(t *testing.T) {
+	t.Parallel()
+
+	invalid := string([]byte{0xff})
+	value := struct {
+		EmbeddedConflictLeft
+		EmbeddedConflictRight
+		Safe string `json:"safe"`
+	}{
+		EmbeddedConflictLeft:  EmbeddedConflictLeft{Value: invalid},
+		EmbeddedConflictRight: EmbeddedConflictRight{Value: invalid},
+		Safe:                  "kept",
+	}
+
+	encoded, err := toon.Encode(value)
+	if err != nil {
+		t.Fatalf("Encode() error = %v", err)
+	}
+	if string(encoded) != "safe: kept" {
+		t.Fatalf("Encode() = %q, want %q", encoded, "safe: kept")
+	}
+}
+
+func TestEncodeSelectsJSONFieldNamedDash(t *testing.T) {
+	t.Parallel()
+
+	value := struct {
+		Dash string `json:"-,"`
+	}{Dash: string([]byte{0xff})}
+
+	if _, err := toon.Encode(value); err == nil || !strings.Contains(err.Error(), "valid UTF-8") {
+		t.Fatalf("Encode() error = %v, want invalid UTF-8 error", err)
 	}
 }
 

@@ -2,6 +2,7 @@ package toon
 
 import (
 	"bytes"
+	"encoding"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -9,6 +10,8 @@ import (
 	"reflect"
 	"sort"
 	"strings"
+	"sync"
+	"unicode"
 	"unicode/utf8"
 )
 
@@ -61,19 +64,36 @@ type visit struct {
 	ptr uintptr
 }
 
+func marshalerBoundary(value reflect.Value) (any, bool) {
+	var direct any
+	if value.CanInterface() {
+		direct = value.Interface()
+	}
+	var address any
+	if value.Kind() != reflect.Pointer && value.CanAddr() && value.Addr().CanInterface() {
+		address = value.Addr().Interface()
+	}
+	if marshaler, ok := address.(json.Marshaler); ok {
+		return marshaler, true
+	}
+	if marshaler, ok := direct.(json.Marshaler); ok {
+		return marshaler, true
+	}
+	if marshaler, ok := address.(encoding.TextMarshaler); ok {
+		return marshaler, true
+	}
+	if marshaler, ok := direct.(encoding.TextMarshaler); ok {
+		return marshaler, true
+	}
+	return nil, false
+}
+
 func validateStrings(value reflect.Value, seen map[visit]bool) error {
 	if !value.IsValid() {
 		return nil
 	}
-	if value.CanInterface() {
-		if _, ok := value.Interface().(json.Marshaler); ok {
-			return nil
-		}
-	}
-	if value.Kind() != reflect.Pointer && value.CanAddr() && value.Addr().CanInterface() {
-		if _, ok := value.Addr().Interface().(json.Marshaler); ok {
-			return nil
-		}
+	if _, ok := marshalerBoundary(value); ok {
+		return nil
 	}
 	if value.Kind() == reflect.Interface {
 		if value.IsNil() {
@@ -139,12 +159,12 @@ func validateStrings(value reflect.Value, seen map[visit]bool) error {
 			}
 		}
 	case reflect.Struct:
-		for i := 0; i < value.NumField(); i++ {
-			fieldType := value.Type().Field(i)
-			if !fieldType.IsExported() || strings.Split(fieldType.Tag.Get("json"), ",")[0] == "-" {
+		for _, field := range jsonStructFields(value.Type()) {
+			fieldValue, ok := jsonFieldValue(value, field.index)
+			if !ok || jsonFieldOmitted(fieldValue, field) {
 				continue
 			}
-			if err := validateStrings(value.Field(i), seen); err != nil {
+			if err := validateStrings(fieldValue, seen); err != nil {
 				return err
 			}
 		}
@@ -156,10 +176,8 @@ func replaceNonFinite(value reflect.Value, seen map[visit]bool) any {
 	if !value.IsValid() {
 		return nil
 	}
-	if value.CanInterface() {
-		if _, ok := value.Interface().(json.Marshaler); ok {
-			return value.Interface()
-		}
+	if marshaler, ok := marshalerBoundary(value); ok {
+		return marshaler
 	}
 	if value.Kind() == reflect.Interface {
 		if value.IsNil() {
@@ -207,32 +225,14 @@ func replaceNonFinite(value reflect.Value, seen map[visit]bool) any {
 		}
 		return result
 	case reflect.Struct:
-		result := make(orderedJSONObject, 0, value.NumField())
-		for index := 0; index < value.NumField(); index++ {
-			fieldType := value.Type().Field(index)
-			if !fieldType.IsExported() {
+		fields := jsonStructFields(value.Type())
+		result := make(orderedJSONObject, 0, len(fields))
+		for _, field := range fields {
+			fieldValue, ok := jsonFieldValue(value, field.index)
+			if !ok || jsonFieldOmitted(fieldValue, field) {
 				continue
 			}
-			tag := fieldType.Tag.Get("json")
-			parts := strings.Split(tag, ",")
-			if parts[0] == "-" {
-				continue
-			}
-			name := parts[0]
-			if name == "" {
-				name = fieldType.Name
-			}
-			omitEmpty := false
-			for _, option := range parts[1:] {
-				if option == "omitempty" || option == "omitzero" {
-					omitEmpty = true
-				}
-			}
-			fieldValue := value.Field(index)
-			if omitEmpty && fieldValue.IsZero() {
-				continue
-			}
-			result = append(result, orderedJSONField{key: name, value: replaceNonFinite(fieldValue, seen)})
+			result = append(result, orderedJSONField{key: field.name, value: replaceNonFinite(fieldValue, seen)})
 		}
 		return result
 	case reflect.Slice, reflect.Array:
@@ -251,6 +251,233 @@ func replaceNonFinite(value reflect.Value, seen map[visit]bool) any {
 		return result
 	default:
 		return value.Interface()
+	}
+}
+
+type jsonStructField struct {
+	name      string
+	tagged    bool
+	index     []int
+	typ       reflect.Type
+	omitEmpty bool
+	omitZero  bool
+}
+
+var jsonStructFieldCache sync.Map
+
+func jsonStructFields(root reflect.Type) []jsonStructField {
+	if cached, ok := jsonStructFieldCache.Load(root); ok {
+		return cached.([]jsonStructField)
+	}
+	fields := discoverJSONStructFields(root)
+	actual, _ := jsonStructFieldCache.LoadOrStore(root, fields)
+	return actual.([]jsonStructField)
+}
+
+func discoverJSONStructFields(root reflect.Type) []jsonStructField {
+	current := []jsonStructField{}
+	next := []jsonStructField{{typ: root}}
+	var count map[reflect.Type]int
+	var nextCount map[reflect.Type]int
+	visited := make(map[reflect.Type]bool)
+	fields := make([]jsonStructField, 0, root.NumField())
+
+	for len(next) > 0 {
+		current, next = next, current[:0]
+		count, nextCount = nextCount, make(map[reflect.Type]int)
+		for _, parent := range current {
+			if visited[parent.typ] {
+				continue
+			}
+			visited[parent.typ] = true
+			for i := 0; i < parent.typ.NumField(); i++ {
+				structField := parent.typ.Field(i)
+				if structField.Anonymous {
+					fieldType := structField.Type
+					if fieldType.Kind() == reflect.Pointer {
+						fieldType = fieldType.Elem()
+					}
+					if !structField.IsExported() && fieldType.Kind() != reflect.Struct {
+						continue
+					}
+				} else if !structField.IsExported() {
+					continue
+				}
+
+				tag := structField.Tag.Get("json")
+				if tag == "-" {
+					continue
+				}
+				name, options, _ := strings.Cut(tag, ",")
+				if !isValidJSONTag(name) {
+					name = ""
+				}
+				index := make([]int, len(parent.index)+1)
+				copy(index, parent.index)
+				index[len(parent.index)] = i
+
+				fieldType := structField.Type
+				if fieldType.Name() == "" && fieldType.Kind() == reflect.Pointer {
+					fieldType = fieldType.Elem()
+				}
+				if name != "" || !structField.Anonymous || fieldType.Kind() != reflect.Struct {
+					field := jsonStructField{
+						name:      name,
+						tagged:    name != "",
+						index:     index,
+						typ:       fieldType,
+						omitEmpty: jsonTagOption(options, "omitempty"),
+						omitZero:  jsonTagOption(options, "omitzero"),
+					}
+					if field.name == "" {
+						field.name = structField.Name
+					}
+					fields = append(fields, field)
+					if count[parent.typ] > 1 {
+						fields = append(fields, field)
+					}
+					continue
+				}
+
+				nextCount[fieldType]++
+				if nextCount[fieldType] == 1 {
+					next = append(next, jsonStructField{name: fieldType.Name(), index: index, typ: fieldType})
+				}
+			}
+		}
+	}
+
+	sort.Slice(fields, func(i, j int) bool {
+		left, right := fields[i], fields[j]
+		if left.name != right.name {
+			return left.name < right.name
+		}
+		if len(left.index) != len(right.index) {
+			return len(left.index) < len(right.index)
+		}
+		if left.tagged != right.tagged {
+			return left.tagged
+		}
+		return compareFieldIndex(left.index, right.index) < 0
+	})
+
+	selected := fields[:0]
+	for i := 0; i < len(fields); {
+		end := i + 1
+		for end < len(fields) && fields[end].name == fields[i].name {
+			end++
+		}
+		if end-i == 1 || len(fields[i].index) != len(fields[i+1].index) || fields[i].tagged != fields[i+1].tagged {
+			selected = append(selected, fields[i])
+		}
+		i = end
+	}
+
+	sort.Slice(selected, func(i, j int) bool {
+		return compareFieldIndex(selected[i].index, selected[j].index) < 0
+	})
+	return selected
+}
+
+func compareFieldIndex(left, right []int) int {
+	for i := 0; i < len(left) && i < len(right); i++ {
+		if left[i] < right[i] {
+			return -1
+		}
+		if left[i] > right[i] {
+			return 1
+		}
+	}
+	if len(left) < len(right) {
+		return -1
+	}
+	if len(left) > len(right) {
+		return 1
+	}
+	return 0
+}
+
+func isValidJSONTag(name string) bool {
+	if name == "" {
+		return false
+	}
+	for _, character := range name {
+		if strings.ContainsRune("!#$%&()*+-./:;<=>?@[]^_{|}~ ", character) {
+			continue
+		}
+		if !unicode.IsLetter(character) && !unicode.IsDigit(character) {
+			return false
+		}
+	}
+	return true
+}
+
+func jsonTagOption(options, target string) bool {
+	for options != "" {
+		var option string
+		option, options, _ = strings.Cut(options, ",")
+		if option == target {
+			return true
+		}
+	}
+	return false
+}
+
+func jsonFieldValue(value reflect.Value, index []int) (reflect.Value, bool) {
+	for _, fieldIndex := range index {
+		if value.Kind() == reflect.Pointer {
+			if value.IsNil() {
+				return reflect.Value{}, false
+			}
+			value = value.Elem()
+		}
+		value = value.Field(fieldIndex)
+	}
+	return value, true
+}
+
+func jsonFieldOmitted(value reflect.Value, field jsonStructField) bool {
+	return field.omitEmpty && isEmptyJSONValue(value) || field.omitZero && isZeroJSONValue(value)
+}
+
+func isEmptyJSONValue(value reflect.Value) bool {
+	switch value.Kind() {
+	case reflect.Array, reflect.Map, reflect.Slice, reflect.String:
+		return value.Len() == 0
+	case reflect.Bool,
+		reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64,
+		reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64, reflect.Uintptr,
+		reflect.Float32, reflect.Float64,
+		reflect.Interface, reflect.Pointer:
+		return value.IsZero()
+	}
+	return false
+}
+
+type jsonIsZeroer interface {
+	IsZero() bool
+}
+
+var jsonIsZeroerType = reflect.TypeFor[jsonIsZeroer]()
+
+func isZeroJSONValue(value reflect.Value) bool {
+	valueType := value.Type()
+	switch {
+	case valueType.Kind() == reflect.Interface && valueType.Implements(jsonIsZeroerType):
+		return value.IsNil() || value.Elem().Kind() == reflect.Pointer && value.Elem().IsNil() || value.Interface().(jsonIsZeroer).IsZero()
+	case valueType.Kind() == reflect.Pointer && valueType.Implements(jsonIsZeroerType):
+		return value.IsNil() || value.Interface().(jsonIsZeroer).IsZero()
+	case valueType.Implements(jsonIsZeroerType):
+		return value.Interface().(jsonIsZeroer).IsZero()
+	case reflect.PointerTo(valueType).Implements(jsonIsZeroerType):
+		if !value.CanAddr() {
+			addressable := reflect.New(valueType).Elem()
+			addressable.Set(value)
+			value = addressable
+		}
+		return value.Addr().Interface().(jsonIsZeroer).IsZero()
+	default:
+		return value.IsZero()
 	}
 }
 
