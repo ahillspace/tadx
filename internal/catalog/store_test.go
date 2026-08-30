@@ -3,6 +3,7 @@ package catalog_test
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -103,6 +104,32 @@ func TestFileStoreRejectsDefaultSiteGenerationWithoutSourceSite(t *testing.T) {
 	}
 }
 
+func TestFileStoreRejectsGenerationWithoutRecordsArray(t *testing.T) {
+	tests := []struct {
+		name    string
+		records string
+	}{
+		{name: "missing", records: ""},
+		{name: "null", records: `,"records":null`},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			root := t.TempDir()
+			writeGenerationData(t, root, "production.json", []byte(`{
+				"id":"generation-1",
+				"environment":"production",
+				"site":"marketing",
+				"generated_at":"2026-08-30T00:00:00Z",
+				"complete":true`+test.records+`
+			}`))
+			store := catalog.NewFileStore(root, time.Now)
+			if _, err := store.Search(context.Background(), catalog.Query{Environment: "production", Site: "marketing", SiteSelected: true}); err == nil {
+				t.Fatal("Search() error = nil")
+			}
+		})
+	}
+}
+
 func TestFileStoreRequiresResolvedSourceSite(t *testing.T) {
 	root := t.TempDir()
 	writeGeneration(t, root, "production.json", catalog.Generation{
@@ -193,6 +220,32 @@ func TestFileStoreCursorIsBoundToGeneration(t *testing.T) {
 	}
 }
 
+func TestFileStoreCursorIsBoundToQuery(t *testing.T) {
+	root := t.TempDir()
+	generated := time.Now()
+	writeGeneration(t, root, "production.json", catalog.Generation{
+		ID: "generation-1", Environment: "production", Site: "marketing", GeneratedAt: generated, Complete: true,
+		Records: []catalog.Record{
+			{LUID: "wb-1", Kind: "workbook", Name: "Finance A"},
+			{LUID: "wb-2", Kind: "workbook", Name: "Finance B"},
+			{LUID: "wb-3", Kind: "workbook", Name: "Sales"},
+		},
+	})
+	store := catalog.NewFileStore(root, func() time.Time { return generated })
+	query := catalog.Query{Environment: "production", Site: "marketing", SiteSelected: true, Limit: 1}
+	first, err := store.Search(context.Background(), query)
+	if err != nil {
+		t.Fatal(err)
+	}
+	query.Cursor = first.Page.NextCursor
+	query.Text = "Finance"
+	_, err = store.Search(context.Background(), query)
+	var invalidCursor interface{ InvalidCatalogCursor() bool }
+	if !errors.As(err, &invalidCursor) || !invalidCursor.InvalidCatalogCursor() {
+		t.Fatalf("Search() error = %#v", err)
+	}
+}
+
 func TestFileStoreSupportsPortableEnvironmentAliasFilenames(t *testing.T) {
 	tests := []string{
 		"prod/us",
@@ -230,6 +283,9 @@ func TestFileStoreSupportsPortableEnvironmentAliasFilenames(t *testing.T) {
 
 func writeGeneration(t *testing.T, root, filename string, generation catalog.Generation) {
 	t.Helper()
+	if generation.Records == nil {
+		generation.Records = []catalog.Record{}
+	}
 	data, err := json.Marshal(generation)
 	if err != nil {
 		t.Fatal(err)

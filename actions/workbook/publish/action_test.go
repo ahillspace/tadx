@@ -163,13 +163,20 @@ func TestApplyRejectsChangedOverwriteTarget(t *testing.T) {
 }
 
 func TestPreviewGoldenOutput(t *testing.T) {
-	value := publish.Output{Plan: publish.Plan{
-		Mode: "preview", Operation: "publish_workbook", ArtifactPath: `C:\workspace\Finance`,
-		ArtifactFingerprint: "sha256:abc", Filename: "Finance.twbx", WorkbookName: "Finance",
-		Target:    publish.Target{Environment: "production", Site: "marketing", ProjectLUID: "project-1", ProjectPath: "Ops"},
-		Overwrite: false, AsJob: false,
-		Substeps: []string{"authenticate", "publish workbook synchronously"},
-	}, Applied: false}
+	action := publish.New(
+		artifactReader{artifact: publish.Artifact{Path: `C:\workspace\Finance`, Filename: "Finance.twbx", Name: "Finance", Content: []byte("native"), Fingerprint: "sha256:abc"}},
+		resolver{project: publish.Project{LUID: "project-1", Name: "Ops", Path: "Ops"}},
+		&publisher{},
+	)
+	value, err := action.Execute(context.Background(), publish.Input{
+		ArtifactPath:    `C:\workspace\Finance`,
+		Environment:     "production",
+		Site:            "marketing",
+		ProjectSelector: identity.Selector{LUID: "project-1"},
+	}, false)
+	if err != nil {
+		t.Fatal(err)
+	}
 	var actual bytes.Buffer
 	if err := output.Render(&actual, value); err != nil {
 		t.Fatal(err)
@@ -204,7 +211,7 @@ func TestApplyReportsUnknownAsyncOutcomeWithoutSuggestingRetry(t *testing.T) {
 	}
 }
 
-func TestApplyReportsAcceptedUnknownOutcomeWithoutJobID(t *testing.T) {
+func TestApplyReportsUnknownOutcomeWithoutClaimingAcceptance(t *testing.T) {
 	p := &publisher{result: publish.Result{Status: "unknown", TableauRequestID: "publish-request"}, err: errors.New("decode publish response")}
 	action := publish.New(
 		artifactReader{artifact: publish.Artifact{Path: `C:\workspace\Finance`, Filename: "Finance.twb", Name: "Finance", Content: []byte("native")}},
@@ -221,5 +228,8 @@ func TestApplyReportsAcceptedUnknownOutcomeWithoutJobID(t *testing.T) {
 	}
 	if structured.ID != "workbook.publish.outcome_unknown" || structured.TableauRequestID != "publish-request" || !strings.Contains(structured.CorrectiveAction, "Inspect") {
 		t.Fatalf("structured error = %#v", structured)
+	}
+	if strings.Contains(strings.ToLower(structured.Summary), "accepted") {
+		t.Fatalf("summary claims acceptance: %q", structured.Summary)
 	}
 }

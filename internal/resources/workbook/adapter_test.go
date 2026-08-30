@@ -58,6 +58,22 @@ func TestAdapterHardFailsAmbiguousWorkbookSelector(t *testing.T) {
 	}
 }
 
+func TestAdapterReturnsIdentityWinnerForDuplicateWorkbookLUID(t *testing.T) {
+	adapter := resource.NewAdapter(client{pages: map[int]tableauworkbook.WorkbookPage{
+		1: {Page: tableauworkbook.Page{Number: 1, Size: 100, Total: 2}, Items: []tableauworkbook.Workbook{
+			{LUID: "wb-1", Name: "Finance", ContentURL: "finance", ProjectName: "New"},
+			{LUID: "wb-1", Name: "Renamed Finance", ContentURL: "renamed-finance", ProjectName: "Old"},
+		}},
+	}})
+	workbook, err := adapter.ResolveWorkbook(context.Background(), identity.Selector{LUID: "wb-1"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if workbook.Name != "Finance" || workbook.ContentURL != "finance" || workbook.ProjectPath != "New" {
+		t.Fatalf("workbook = %#v", workbook)
+	}
+}
+
 func TestAdapterResolvesExactNestedProjectPath(t *testing.T) {
 	adapter := resource.NewAdapter(client{projectPages: map[int]tableauworkbook.ProjectPage{
 		1: {Page: tableauworkbook.Page{Number: 1, Size: 100, Total: 2}, Items: []tableauworkbook.Project{

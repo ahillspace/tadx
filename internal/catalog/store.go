@@ -49,8 +49,14 @@ type generationDocument struct {
 	Site        *string   `json:"site"`
 	GeneratedAt time.Time `json:"generated_at"`
 	Complete    bool      `json:"complete"`
-	Records     []Record  `json:"records"`
+	Records     *[]Record `json:"records"`
 }
+
+type invalidCursorError struct{}
+
+func (invalidCursorError) Error() string { return "catalog search cursor is invalid" }
+
+func (invalidCursorError) InvalidCatalogCursor() bool { return true }
 
 // Query contains exact filters plus an optional text search.
 type Query struct {
@@ -126,7 +132,7 @@ func (s *FileStore) Search(ctx context.Context, query Query) (SearchResult, erro
 	}
 	generation := Generation{
 		ID: document.ID, Environment: document.Environment, GeneratedAt: document.GeneratedAt,
-		Complete: document.Complete, Records: document.Records,
+		Complete: document.Complete,
 	}
 	if document.Site != nil {
 		generation.Site = *document.Site
@@ -149,6 +155,10 @@ func (s *FileStore) Search(ctx context.Context, query Query) (SearchResult, erro
 	if generation.Site != query.Site {
 		return SearchResult{}, fmt.Errorf("catalog source site %q does not match selected site %q", generation.Site, query.Site)
 	}
+	if document.Records == nil {
+		return SearchResult{}, fmt.Errorf("catalog generation %q records are required", generation.ID)
+	}
+	generation.Records = *document.Records
 	if err := validateRecords(generation); err != nil {
 		return SearchResult{}, err
 	}
@@ -193,9 +203,9 @@ func (s *FileStore) Search(ctx context.Context, query Query) (SearchResult, erro
 	}
 	offset := 0
 	if query.Cursor != "" {
-		cursorGeneration, cursorOffset, cursorErr := decodeCursor(query.Cursor)
-		if cursorErr != nil || cursorGeneration != generation.ID || cursorOffset < 0 || cursorOffset > len(items) {
-			return SearchResult{}, errors.New("catalog search cursor is invalid")
+		cursorGeneration, cursorQuery, cursorOffset, cursorErr := decodeCursor(query.Cursor)
+		if cursorErr != nil || cursorGeneration != generation.ID || cursorQuery != queryFingerprint(query) || cursorOffset < 0 || cursorOffset > len(items) {
+			return SearchResult{}, invalidCursorError{}
 		}
 		offset = cursorOffset
 	}
@@ -203,7 +213,7 @@ func (s *FileStore) Search(ctx context.Context, query Query) (SearchResult, erro
 	pageItems := append([]Record(nil), items[offset:end]...)
 	next := ""
 	if end < len(items) {
-		next = encodeCursor(generation.ID, end)
+		next = encodeCursor(generation.ID, queryFingerprint(query), end)
 	}
 	stale := s.now().Sub(generation.GeneratedAt) > staleAfter
 	var warnings []string
@@ -237,24 +247,46 @@ func validateRecords(generation Generation) error {
 	return nil
 }
 
-func encodeCursor(generationID string, offset int) string {
-	return base64.RawURLEncoding.EncodeToString([]byte(generationID)) + "." + strconv.Itoa(offset)
+func queryFingerprint(query Query) string {
+	value := struct {
+		Text        string `json:"text"`
+		Kind        string `json:"kind"`
+		ProjectPath string `json:"project_path"`
+		Owner       string `json:"owner"`
+		Environment string `json:"environment"`
+		Site        string `json:"site"`
+		LUID        string `json:"luid"`
+	}{
+		Text: strings.ToLower(query.Text), Kind: query.Kind, ProjectPath: query.ProjectPath,
+		Owner: query.Owner, Environment: query.Environment, Site: query.Site, LUID: query.LUID,
+	}
+	data, _ := json.Marshal(value)
+	digest := sha256.Sum256(data)
+	return base64.RawURLEncoding.EncodeToString(digest[:])
 }
 
-func decodeCursor(value string) (string, int, error) {
-	generation, offsetText, found := strings.Cut(value, ".")
-	if !found || strings.Contains(offsetText, ".") {
-		return "", 0, errors.New("invalid cursor")
+func encodeCursor(generationID, query string, offset int) string {
+	return base64.RawURLEncoding.EncodeToString([]byte(generationID)) + "." + query + "." + strconv.Itoa(offset)
+}
+
+func decodeCursor(value string) (string, string, int, error) {
+	parts := strings.Split(value, ".")
+	if len(parts) != 3 || parts[0] == "" || parts[1] == "" || parts[2] == "" {
+		return "", "", 0, errors.New("invalid cursor")
 	}
-	generationBytes, err := base64.RawURLEncoding.DecodeString(generation)
+	generationBytes, err := base64.RawURLEncoding.DecodeString(parts[0])
 	if err != nil {
-		return "", 0, err
+		return "", "", 0, err
 	}
-	offset, err := strconv.Atoi(offsetText)
+	queryBytes, err := base64.RawURLEncoding.DecodeString(parts[1])
+	if err != nil || len(queryBytes) != sha256.Size {
+		return "", "", 0, errors.New("invalid cursor")
+	}
+	offset, err := strconv.Atoi(parts[2])
 	if err != nil {
-		return "", 0, err
+		return "", "", 0, err
 	}
-	return string(generationBytes), offset, nil
+	return string(generationBytes), parts[1], offset, nil
 }
 
 // GenerationFilename returns the portable catalog filename for an exact environment alias.

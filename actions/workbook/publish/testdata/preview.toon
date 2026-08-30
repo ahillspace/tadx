@@ -1,6 +1,6 @@
 plan:
   mode: preview
-  operation: publish_workbook
+  operation: workbook.publish
   artifact_path: "C:\\workspace\\Finance"
   artifact_fingerprint: "sha256:abc"
   filename: Finance.twbx
@@ -12,5 +12,5 @@ plan:
     project_path: Ops
   overwrite: false
   as_job: false
-  substeps[2]: authenticate,publish workbook synchronously
+  substeps[5]: resolve exact destination,check workbook collision,upload workbook,publish workbook,poll asynchronous job when requested
 applied: false

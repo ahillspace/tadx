@@ -239,6 +239,73 @@ func TestClientPublishesSmallWorkbookInMultipartBody(t *testing.T) {
 	}
 }
 
+func TestClientEscapesMultipartFilenames(t *testing.T) {
+	t.Run("direct publish", func(t *testing.T) {
+		filename := `Finance "Q1".twb`
+		var parts []multipartPart
+		server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+			var err error
+			parts, err = readMultipart(request)
+			if err != nil {
+				http.Error(writer, err.Error(), http.StatusBadRequest)
+				return
+			}
+			writer.Header().Set("Content-Type", "application/xml")
+			writer.WriteHeader(http.StatusCreated)
+			_, _ = io.WriteString(writer, `<tsResponse><workbook id="wb-1" name="Finance"><project id="project-1"/></workbook></tsResponse>`)
+		}))
+		defer server.Close()
+
+		client := tableauworkbook.NewClient(tableau.NewTransport(server.Client(), "3.29", nil), session{}, server.URL)
+		if _, err := client.Publish(context.Background(), tableauworkbook.PublishRequest{
+			Name: "Finance", ProjectLUID: "project-1", Filename: filename, Content: []byte("workbook-content"),
+		}); err != nil {
+			t.Fatal(err)
+		}
+		if len(parts) != 2 || parts[1].filename != filename {
+			t.Fatalf("publish parts = %#v", parts)
+		}
+	})
+
+	t.Run("upload append", func(t *testing.T) {
+		filename := "Finance\nQ1.twbx"
+		var appendParts []multipartPart
+		server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+			writer.Header().Set("Content-Type", "application/xml")
+			switch {
+			case request.Method == http.MethodPost && strings.HasSuffix(request.URL.Path, "/fileUploads"):
+				writer.WriteHeader(http.StatusCreated)
+				_, _ = io.WriteString(writer, `<tsResponse><fileUpload uploadSessionId="upload-1" fileSize="0"/></tsResponse>`)
+			case request.Method == http.MethodPut:
+				var err error
+				appendParts, err = readMultipart(request)
+				if err != nil {
+					http.Error(writer, err.Error(), http.StatusBadRequest)
+					return
+				}
+				_, _ = io.WriteString(writer, `<tsResponse><fileUpload uploadSessionId="upload-1" fileSize="1"/></tsResponse>`)
+			case request.Method == http.MethodPost:
+				writer.WriteHeader(http.StatusCreated)
+				_, _ = io.WriteString(writer, `<tsResponse><workbook id="wb-1" name="Finance"><project id="project-1"/></workbook></tsResponse>`)
+			default:
+				http.Error(writer, "unexpected request", http.StatusNotFound)
+			}
+		}))
+		defer server.Close()
+
+		client := tableauworkbook.NewClient(tableau.NewTransport(server.Client(), "3.29", nil), session{}, server.URL)
+		client.SetUploadThreshold(1)
+		if _, err := client.Publish(context.Background(), tableauworkbook.PublishRequest{
+			Name: "Finance", ProjectLUID: "project-1", Filename: filename, Content: []byte("workbook-content"),
+		}); err != nil {
+			t.Fatal(err)
+		}
+		if len(appendParts) != 2 || appendParts[1].filename != filename {
+			t.Fatalf("append parts = %#v", appendParts)
+		}
+	})
+}
+
 func TestClientStopsPollingAtTimeout(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		writer.Header().Set("Content-Type", "application/xml")

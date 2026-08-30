@@ -13,9 +13,18 @@ import (
 	"github.com/ahillspace/tadx/internal/output"
 )
 
-type source struct{ result search.Result }
+type source struct {
+	result search.Result
+	err    error
+}
 
-func (s source) Search(context.Context, search.Input) (search.Result, error) { return s.result, nil }
+func (s source) Search(context.Context, search.Input) (search.Result, error) { return s.result, s.err }
+
+type invalidCursorError struct{}
+
+func (invalidCursorError) Error() string { return "invalid cursor" }
+
+func (invalidCursorError) InvalidCatalogCursor() bool { return true }
 
 type recordingSource struct{ called bool }
 
@@ -52,6 +61,19 @@ func TestActionRejectsInvalidLimitAsUsageBeforeSearching(t *testing.T) {
 				t.Fatal("source Search() called")
 			}
 		})
+	}
+}
+
+func TestActionClassifiesInvalidCursorAsUsage(t *testing.T) {
+	_, err := search.New(source{err: invalidCursorError{}}).Execute(context.Background(), search.Input{
+		Environment: "production", Cursor: "invalid",
+	})
+	var structured *errs.Error
+	if !errors.As(err, &structured) || structured.Kind != errs.KindUsage {
+		t.Fatalf("Execute() error = %#v", err)
+	}
+	if len(structured.Validation) != 1 || structured.Validation[0].Field != "cursor" {
+		t.Fatalf("validation = %#v", structured.Validation)
 	}
 }
 

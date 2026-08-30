@@ -96,7 +96,7 @@ func (a *Adapter) resolveSelectedProjectPath(ctx context.Context, workbook Workb
 
 func resolveWorkbook(selector identity.Selector, items []tableauworkbook.Workbook, paths *projectPathIndex) (Workbook, error) {
 	candidates := make([]identity.Candidate, len(items))
-	byID := make(map[identity.LUID]Workbook, len(items))
+	byCandidate := make(map[identity.Candidate]Workbook, len(items))
 	for index, item := range items {
 		projectPath := item.ProjectName
 		if paths != nil && item.ProjectLUID != "" && (selector.Name == "" || item.Name == selector.Name) {
@@ -108,13 +108,15 @@ func resolveWorkbook(selector identity.Selector, items []tableauworkbook.Workboo
 		}
 		candidate := identity.Candidate{LUID: identity.LUID(item.LUID), Name: item.Name, ProjectPath: projectPath}
 		candidates[index] = candidate
-		byID[candidate.LUID] = Workbook{LUID: item.LUID, Name: item.Name, ContentURL: item.ContentURL, ProjectLUID: item.ProjectLUID, ProjectPath: projectPath, OwnerLUID: item.OwnerLUID}
+		if _, exists := byCandidate[candidate]; !exists {
+			byCandidate[candidate] = Workbook{LUID: item.LUID, Name: item.Name, ContentURL: item.ContentURL, ProjectLUID: item.ProjectLUID, ProjectPath: projectPath, OwnerLUID: item.OwnerLUID}
+		}
 	}
 	resolved, err := identity.Resolve(selector, candidates)
 	if err != nil {
 		return Workbook{}, err
 	}
-	return byID[resolved.LUID], nil
+	return byCandidate[resolved], nil
 }
 
 // FindWorkbooks returns exact name and project matches for collision checks.

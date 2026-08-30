@@ -47,6 +47,48 @@ func TestWorkbookManagerWritesCanonicalArtifactAndProvenance(t *testing.T) {
 	}
 }
 
+func TestWorkbookManagerUsesPortableBoundedPathComponents(t *testing.T) {
+	tests := []struct {
+		name      string
+		workbook  string
+		filename  string
+		extension string
+	}{
+		{name: "reserved device name", workbook: "CON", filename: "CON.twb", extension: ".twb"},
+		{name: "long Unicode name", workbook: strings.Repeat("界", 100), filename: strings.Repeat("界", 100) + ".twbx", extension: ".twbx"},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			manager := artifact.NewWorkbookManager(time.Now)
+			result, err := manager.Pull(context.Background(), artifact.WorkbookPull{
+				Workspace: createWorkspace(t), Filename: test.filename, Content: []byte("native-package"),
+				Metadata: artifact.WorkbookMetadata{Name: test.workbook, TableauID: "wb-1", SourceEnvironment: "production", SourceProjectName: "Ops", SourceProjectID: "project-1"},
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			artifactName := filepath.Base(result.ArtifactPath)
+			payloadName := filepath.Base(result.CanonicalPath)
+			if len([]byte(artifactName)) > 180 || len([]byte(payloadName)) > 180 {
+				t.Fatalf("artifact component = %q, payload component = %q", artifactName, payloadName)
+			}
+			if strings.EqualFold(artifactName, "CON") || strings.EqualFold(payloadName, "CON.twb") {
+				t.Fatalf("reserved path components were retained: %q, %q", artifactName, payloadName)
+			}
+			if filepath.Ext(payloadName) != test.extension {
+				t.Fatalf("payload extension = %q", filepath.Ext(payloadName))
+			}
+			workbook, err := manager.Read(context.Background(), result.ArtifactPath)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if string(workbook.Content) != "native-package" || workbook.Filename != payloadName {
+				t.Fatalf("workbook = %#v", workbook)
+			}
+		})
+	}
+}
+
 func TestWorkbookManagerProtectsDirtyRepullAndOverwriteIsExplicit(t *testing.T) {
 	workspace := createWorkspace(t)
 	manager := artifact.NewWorkbookManager(time.Now)

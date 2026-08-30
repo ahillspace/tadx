@@ -415,7 +415,7 @@ func publishBody(input PublishRequest, includeFile bool) ([]byte, string, error)
 		return nil, "", err
 	}
 	if includeFile {
-		fileHeader := textproto.MIMEHeader{"Content-Disposition": {fmt.Sprintf(`name="tableau_workbook"; filename="%s"`, filepath.Base(input.Filename))}, "Content-Type": {"application/octet-stream"}}
+		fileHeader := textproto.MIMEHeader{"Content-Disposition": {multipartFileDisposition("tableau_workbook", input.Filename)}, "Content-Type": {"application/octet-stream"}}
 		part, err := writer.CreatePart(fileHeader)
 		if err != nil {
 			return nil, "", err
@@ -440,7 +440,7 @@ func appendBody(filename string, content []byte) ([]byte, string, error) {
 	if _, err := io.WriteString(payload, ""); err != nil {
 		return nil, "", err
 	}
-	part, err := writer.CreatePart(textproto.MIMEHeader{"Content-Disposition": {fmt.Sprintf(`name="tableau_file"; filename="%s"`, filepath.Base(filename))}, "Content-Type": {"application/octet-stream"}})
+	part, err := writer.CreatePart(textproto.MIMEHeader{"Content-Disposition": {multipartFileDisposition("tableau_file", filename)}, "Content-Type": {"application/octet-stream"}})
 	if err != nil {
 		return nil, "", err
 	}
@@ -451,6 +451,11 @@ func appendBody(filename string, content []byte) ([]byte, string, error) {
 		return nil, "", err
 	}
 	return buffer.Bytes(), "multipart/mixed; boundary=" + writer.Boundary(), nil
+}
+
+func multipartFileDisposition(name, filename string) string {
+	formatted := mime.FormatMediaType("form-data", map[string]string{"filename": filepath.Base(filename)})
+	return fmt.Sprintf(`name="%s"; %s`, name, strings.TrimPrefix(formatted, "form-data; "))
 }
 
 func parsePublishResponse(body []byte) (PublishResult, error) {

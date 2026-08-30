@@ -2,6 +2,7 @@ package search
 
 import (
 	"context"
+	"errors"
 
 	"github.com/ahillspace/tadx/internal/errs"
 )
@@ -33,6 +34,14 @@ func (a *Action) Execute(ctx context.Context, input Input) (Output, error) {
 	}
 	result, err := a.source.Search(ctx, input)
 	if err != nil {
+		var invalidCursor interface{ InvalidCatalogCursor() bool }
+		if errors.As(err, &invalidCursor) && invalidCursor.InvalidCatalogCursor() {
+			message := "Catalog search cursor is invalid."
+			return Output{}, &errs.Error{
+				ID: "catalog.search.usage", Kind: errs.KindUsage, Operation: "catalog.search", Summary: message, Cause: err,
+				Validation: []errs.ValidationDetail{{Field: "cursor", Code: "invalid", Message: message}},
+			}
+		}
 		return Output{}, &errs.Error{ID: "catalog.search.failed", Kind: errs.KindOperation, Operation: "catalog.search", Environment: input.Environment, Site: input.Site, Summary: "Catalog search failed.", Cause: err, Retryable: errs.Bool(false), CorrectiveAction: "Refresh or repair the selected catalog generation, then retry."}
 	}
 	return Output{

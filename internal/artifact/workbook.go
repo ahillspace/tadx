@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+	"unicode/utf8"
 )
 
 // WorkbookMetadata is the frozen workbook provenance contract.
@@ -75,10 +76,12 @@ func (m *WorkbookManager) Pull(ctx context.Context, input WorkbookPull) (Workboo
 		return WorkbookPullResult{}, errors.New("workbook artifact requires workspace, Tableau ID, and name")
 	}
 	filename := filepath.Base(input.Filename)
-	extension := strings.ToLower(filepath.Ext(filename))
+	nativeExtension := filepath.Ext(filename)
+	extension := strings.ToLower(nativeExtension)
 	if extension != ".twb" && extension != ".twbx" {
 		return WorkbookPullResult{}, fmt.Errorf("unsupported workbook artifact filename %q", input.Filename)
 	}
+	filename = portableComponent(strings.TrimSuffix(filename, nativeExtension), "workbook", maxPortableComponentBytes-len(nativeExtension)) + nativeExtension
 	workspace, err := filepath.Abs(input.Workspace)
 	if err != nil {
 		return WorkbookPullResult{}, err
@@ -95,7 +98,7 @@ func (m *WorkbookManager) Pull(ctx context.Context, input WorkbookPull) (Workboo
 		return WorkbookPullResult{}, err
 	}
 	if target == "" {
-		target = filepath.Join(root, safeName(input.Metadata.Name))
+		target = filepath.Join(root, portableComponent(input.Metadata.Name, "workbook", maxPortableComponentBytes))
 		if info, statErr := os.Lstat(target); statErr == nil {
 			if err := validateContainedPath(root, target); err != nil {
 				return WorkbookPullResult{}, err
@@ -440,6 +443,46 @@ func safeName(value string) string {
 		return "workbook"
 	}
 	return result
+}
+
+const maxPortableComponentBytes = 180
+
+func portableComponent(value, fallback string, maxBytes int) string {
+	original := strings.TrimSpace(value)
+	result := safeName(value)
+	if result == original && len(result) <= maxBytes && !windowsReservedComponent(result) {
+		return result
+	}
+	sum := sha256.Sum256([]byte(value))
+	suffix := "-" + hex.EncodeToString(sum[:8])
+	prefix := strings.TrimRight(truncateUTF8(result, maxBytes-len(suffix)), ". ")
+	if prefix == "" || windowsReservedComponent(prefix+suffix) {
+		prefix = fallback
+	}
+	return prefix + suffix
+}
+
+func truncateUTF8(value string, maxBytes int) string {
+	if len(value) <= maxBytes {
+		return value
+	}
+	cut := maxBytes
+	for cut > 0 && !utf8.RuneStart(value[cut]) {
+		cut--
+	}
+	return value[:cut]
+}
+
+func windowsReservedComponent(value string) bool {
+	base := strings.ToUpper(strings.SplitN(strings.TrimRight(value, ". "), ".", 2)[0])
+	switch base {
+	case "CON", "PRN", "AUX", "NUL", "CONIN$", "CONOUT$":
+		return true
+	}
+	if len(base) == 4 && base[3] >= '1' && base[3] <= '9' {
+		return base[:3] == "COM" || base[:3] == "LPT"
+	}
+	return false
 }
 
 func workbookView(metadata WorkbookMetadata) string {

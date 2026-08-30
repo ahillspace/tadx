@@ -119,7 +119,7 @@ func (a *Action) Apply(ctx context.Context, plan Plan) (Result, error) {
 		correctiveAction := "Review the upstream error before publishing again."
 		if result.Status == "unknown" || result.Status == "timed_out" || result.Status == "cancelled" {
 			errorID = "workbook.publish.outcome_unknown"
-			summary = "Workbook publish was accepted, but its terminal outcome could not be determined."
+			summary = "The workbook publish outcome could not be determined."
 			correctiveAction = "Inspect the target site and Tableau request before attempting another publish."
 			if result.JobID != "" {
 				correctiveAction = "Inspect the Tableau job by its exact job ID before attempting another publish."
