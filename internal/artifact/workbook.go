@@ -303,7 +303,17 @@ func findBySourceIdentity(root, serverOrigin, siteLUID, workbookLUID string) (st
 	var path string
 	var found *WorkbookMetadata
 	for _, entry := range entries {
-		if !entry.IsDir() || strings.HasPrefix(entry.Name(), ".tadx-") {
+		if strings.HasPrefix(entry.Name(), ".tadx-") {
+			continue
+		}
+		// A symbolic link inside the managed artifact root is a tamper or
+		// misconfiguration signal: the root is owned exclusively by tadx and
+		// never contains links. Refuse loudly rather than silently ignoring it,
+		// since a link can alias a path outside the artifact root.
+		if entry.Type()&os.ModeSymlink != 0 {
+			return "", nil, fmt.Errorf("workbook artifact path %q escapes artifact root %q", filepath.Join(root, entry.Name()), root)
+		}
+		if !entry.IsDir() {
 			continue
 		}
 		candidate := filepath.Join(root, entry.Name())
