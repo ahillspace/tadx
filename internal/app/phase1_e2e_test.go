@@ -28,6 +28,9 @@ func TestPhaseOneWorkbookPullAndPublishThroughCLIDefaultSite(t *testing.T) {
 		case request.Method == http.MethodGet && request.URL.Path == "/api/3.29/sites/site-1/workbooks":
 			writer.Header().Set("Content-Type", "application/xml")
 			_, _ = io.WriteString(writer, `<tsResponse><pagination pageNumber="1" pageSize="1000" totalAvailable="1"/><workbooks><workbook id="wb-1" name="Finance"><project id="project-1" name="Ops"/><owner id="user-1"/></workbook></workbooks></tsResponse>`)
+		case request.Method == http.MethodGet && request.URL.Path == "/api/3.29/sites/site-1/workbooks/wb-1":
+			writer.Header().Set("Content-Type", "application/xml")
+			_, _ = io.WriteString(writer, `<tsResponse><workbook id="wb-1" name="Finance"><project id="project-1" name="Ops"/><owner id="user-1"/></workbook></tsResponse>`)
 		case request.Method == http.MethodGet && request.URL.Path == "/api/3.29/sites/site-1/workbooks/wb-1/content":
 			writer.Header().Set("Content-Disposition", `name="tableau_workbook"; filename="Finance.twb"`)
 			writer.Header().Set("Content-Type", "application/xml")

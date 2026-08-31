@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/ahillspace/tadx/actions/workbook/pull"
+	"github.com/ahillspace/tadx/internal/errs"
 	"github.com/ahillspace/tadx/internal/identity"
 	"github.com/ahillspace/tadx/internal/output"
 )
@@ -36,6 +37,12 @@ type writer struct {
 	err    error
 	calls  int
 }
+
+type retryableReadError struct{}
+
+func (retryableReadError) Error() string            { return "Tableau unavailable" }
+func (retryableReadError) Retryable() bool          { return true }
+func (retryableReadError) CorrectiveAction() string { return "Retry after Tableau recovers." }
 
 func (w *writer) WriteWorkbook(_ context.Context, input pull.Artifact) (pull.ArtifactResult, error) {
 	w.calls++
@@ -69,6 +76,24 @@ func TestActionLeavesArtifactWriterUntouchedWhenDownloadFails(t *testing.T) {
 	_, err := action.Execute(context.Background(), pull.Input{Environment: "production", Site: "marketing", Workspace: `C:\workspace`, Selector: identity.Selector{LUID: "wb-1"}})
 	if err == nil || !strings.Contains(err.Error(), "download forbidden") || r.downloadCalls != 1 || w.calls != 0 {
 		t.Fatalf("error = %v, download calls = %d, write calls = %d", err, r.downloadCalls, w.calls)
+	}
+}
+
+func TestActionPreservesRetryAdviceForWorkbookReads(t *testing.T) {
+	for _, test := range []struct {
+		name   string
+		reader *reader
+	}{
+		{name: "resolve", reader: &reader{resolveErr: retryableReadError{}}},
+		{name: "download", reader: &reader{workbook: pull.Workbook{LUID: "wb-1"}, downloadErr: retryableReadError{}}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			_, err := pull.New(test.reader, &writer{}).Execute(context.Background(), pull.Input{Environment: "production", Site: "marketing", Selector: identity.Selector{LUID: "wb-1"}})
+			payload := errs.Structure(err).Error
+			if payload.Retryable == nil || !*payload.Retryable || payload.CorrectiveAction != "Retry after Tableau recovers." {
+				t.Fatalf("structured error = %#v", payload)
+			}
+		})
 	}
 }
 

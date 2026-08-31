@@ -116,6 +116,9 @@ func (m *WorkbookManager) Pull(ctx context.Context, input WorkbookPull) (Workboo
 			if metadata.TableauID != input.Metadata.TableauID {
 				return WorkbookPullResult{}, fmt.Errorf("artifact path %q belongs to Tableau ID %q", target, metadata.TableauID)
 			}
+			if err := validateManagedWorkbook(target, metadata); err != nil {
+				return WorkbookPullResult{}, fmt.Errorf("artifact path %q is not a managed workbook artifact: %w", target, err)
+			}
 			existing = &metadata
 		} else if !errors.Is(statErr, os.ErrNotExist) {
 			return WorkbookPullResult{}, statErr
@@ -194,6 +197,9 @@ func (m *WorkbookManager) Read(ctx context.Context, path string) (WorkbookArtifa
 		return WorkbookArtifact{}, err
 	}
 	if err := validateWorkbookMetadata(metadata); err != nil {
+		return WorkbookArtifact{}, err
+	}
+	if err := validateWorkbookView(directory); err != nil {
 		return WorkbookArtifact{}, err
 	}
 	canonical, err := canonicalWorkbookPath(directory, metadata.CanonicalPayload)
@@ -284,6 +290,9 @@ func findByTableauID(root, id string) (string, *WorkbookMetadata, error) {
 		if metadata.TableauID != id {
 			continue
 		}
+		if err := validateManagedWorkbook(candidate, metadata); err != nil {
+			return "", nil, fmt.Errorf("invalid workbook artifact %q: %w", candidate, err)
+		}
 		if found != nil {
 			return "", nil, fmt.Errorf("multiple local workbook artifacts claim Tableau ID %q", id)
 		}
@@ -353,9 +362,28 @@ func pathContained(root, target string) bool {
 }
 
 func readMetadata(directory string) (WorkbookMetadata, error) {
-	data, err := os.ReadFile(filepath.Join(directory, "metadata.json"))
+	path := filepath.Join(directory, "metadata.json")
+	info, err := os.Lstat(path)
 	if err != nil {
 		return WorkbookMetadata{}, err
+	}
+	if !info.Mode().IsRegular() {
+		return WorkbookMetadata{}, fmt.Errorf("workbook metadata in %q must be a regular file", directory)
+	}
+	if info.Size() > maxWorkbookMetadataBytes {
+		return WorkbookMetadata{}, fmt.Errorf("workbook metadata in %q exceeds %d-byte limit", directory, maxWorkbookMetadataBytes)
+	}
+	file, err := os.Open(path)
+	if err != nil {
+		return WorkbookMetadata{}, err
+	}
+	defer file.Close()
+	data, err := io.ReadAll(io.LimitReader(file, maxWorkbookMetadataBytes+1))
+	if err != nil {
+		return WorkbookMetadata{}, fmt.Errorf("read workbook metadata in %q: %w", directory, err)
+	}
+	if len(data) > maxWorkbookMetadataBytes {
+		return WorkbookMetadata{}, fmt.Errorf("workbook metadata in %q exceeds %d-byte limit", directory, maxWorkbookMetadataBytes)
 	}
 	var metadata WorkbookMetadata
 	if err := json.Unmarshal(data, &metadata); err != nil {
@@ -374,6 +402,27 @@ func readMetadata(directory string) (WorkbookMetadata, error) {
 	return metadata, nil
 }
 
+func validateManagedWorkbook(directory string, metadata WorkbookMetadata) error {
+	if err := validateWorkbookMetadata(metadata); err != nil {
+		return err
+	}
+	if _, err := canonicalWorkbookPath(directory, metadata.CanonicalPayload); err != nil {
+		return err
+	}
+	return validateWorkbookView(directory)
+}
+
+func validateWorkbookView(directory string) error {
+	info, err := os.Lstat(filepath.Join(directory, "view.md"))
+	if err != nil {
+		return fmt.Errorf("inspect workbook view: %w", err)
+	}
+	if !info.Mode().IsRegular() {
+		return errors.New("workbook view must be a regular file")
+	}
+	return nil
+}
+
 func canonicalWorkbookPath(directory, payload string) (string, error) {
 	if payload == "" || filepath.IsAbs(payload) || filepath.Base(payload) != payload || filepath.Clean(payload) != payload {
 		return "", fmt.Errorf("invalid workbook canonical payload %q", payload)
@@ -389,6 +438,9 @@ func canonicalWorkbookPath(directory, payload string) (string, error) {
 	}
 	if info.Mode()&os.ModeSymlink != 0 {
 		return "", fmt.Errorf("workbook canonical payload %q must not be a symbolic link", payload)
+	}
+	if !info.Mode().IsRegular() {
+		return "", fmt.Errorf("workbook canonical payload %q must be a regular file", payload)
 	}
 	resolvedDirectory, err := filepath.EvalSymlinks(directory)
 	if err != nil {
@@ -496,7 +548,10 @@ func safeName(value string) string {
 	return result
 }
 
-const maxPortableComponentBytes = 180
+const (
+	maxPortableComponentBytes = 180
+	maxWorkbookMetadataBytes  = 64 * 1024
+)
 
 func identityComponent(name, tableauID string) string {
 	sum := sha256.Sum256([]byte(tableauID))

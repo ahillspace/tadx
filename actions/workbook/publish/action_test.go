@@ -46,6 +46,29 @@ type changingResolver struct {
 	findCall int
 }
 
+type retryableResolverError struct{}
+
+func (retryableResolverError) Error() string            { return "Tableau unavailable" }
+func (retryableResolverError) Retryable() bool          { return true }
+func (retryableResolverError) CorrectiveAction() string { return "Retry after Tableau recovers." }
+
+type revalidationResolver struct {
+	project publish.Project
+	calls   int
+}
+
+func (r *revalidationResolver) ResolveProject(context.Context, identity.Selector) (publish.Project, error) {
+	return r.project, nil
+}
+
+func (r *revalidationResolver) FindWorkbooks(context.Context, string, string) ([]publish.Workbook, error) {
+	r.calls++
+	if r.calls == 1 {
+		return []publish.Workbook{{LUID: "wb-1", Name: "Finance", ProjectLUID: "project-1"}}, nil
+	}
+	return nil, retryableResolverError{}
+}
+
 func (r *changingResolver) ResolveProject(context.Context, identity.Selector) (publish.Project, error) {
 	return r.project, nil
 }
@@ -159,6 +182,23 @@ func TestApplyRejectsChangedOverwriteTarget(t *testing.T) {
 	}
 	if p.calls != 0 {
 		t.Fatalf("publish calls = %d", p.calls)
+	}
+}
+
+func TestApplyPreservesRetryAdviceForOverwriteRevalidation(t *testing.T) {
+	r := &revalidationResolver{project: publish.Project{LUID: "project-1", Path: "Ops"}}
+	action := publish.New(
+		artifactReader{artifact: publish.Artifact{Path: `C:\workspace\Finance`, Filename: "Finance.twb", Name: "Finance"}},
+		r, &publisher{},
+	)
+	plan, err := action.Plan(context.Background(), publish.Input{ArtifactPath: `C:\workspace\Finance`, Environment: "production", Site: "marketing", ProjectSelector: identity.Selector{LUID: "project-1"}, Overwrite: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = action.Apply(context.Background(), plan)
+	payload := errs.Structure(err).Error
+	if payload.Retryable == nil || !*payload.Retryable || payload.CorrectiveAction != "Retry after Tableau recovers." {
+		t.Fatalf("structured error = %#v", payload)
 	}
 }
 

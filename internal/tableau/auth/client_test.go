@@ -105,3 +105,30 @@ func TestClientClassifiesServiceUnavailableAsRetryable(t *testing.T) {
 		t.Fatalf("retry advice = %#v, error = %v", advice, err)
 	}
 }
+
+func TestClientPreservesSuccessfulResponseContextForProtocolErrors(t *testing.T) {
+	for _, test := range []struct {
+		name string
+		body string
+	}{
+		{name: "malformed JSON", body: `{"credentials":`},
+		{name: "missing credentials", body: `{"credentials":{"site":{"id":"site-1"}}}`},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+				writer.Header().Set("X-Tableau-Request-Id", "signin-request")
+				writer.Header().Set("Content-Type", "application/json")
+				_, _ = io.WriteString(writer, test.body)
+			}))
+			defer server.Close()
+
+			client := tableauauth.NewClient(tableau.NewTransport(server.Client(), "3.29", nil))
+			_, err := client.SignIn(context.Background(), coreauth.SignInRequest{ServerURL: server.URL, PATName: "pat-name", PATSecret: "pat-secret"})
+			var status interface{ HTTPStatus() int }
+			var advice interface{ Retryable() bool }
+			if err == nil || !errors.As(err, &status) || status.HTTPStatus() != http.StatusOK || tableau.RequestID(err) != "signin-request" || !errors.As(err, &advice) || !advice.Retryable() {
+				t.Fatalf("protocol error = %#v", err)
+			}
+		})
+	}
+}

@@ -34,6 +34,9 @@ func (a *Action) Execute(ctx context.Context, input Input) (Output, error) {
 	}
 	result, err := a.source.Search(ctx, input)
 	if err != nil {
+		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+			return Output{}, &errs.Error{ID: "catalog.search.cancelled", Kind: errs.KindOperation, Operation: "catalog.search", Environment: input.Environment, Site: input.Site, Summary: "Catalog search was canceled.", Cause: err, Retryable: errs.Bool(false), CorrectiveAction: "Run the catalog search again when ready."}
+		}
 		var invalidCursor interface{ InvalidCatalogCursor() bool }
 		if errors.As(err, &invalidCursor) && invalidCursor.InvalidCatalogCursor() {
 			message := "Catalog search cursor is invalid."

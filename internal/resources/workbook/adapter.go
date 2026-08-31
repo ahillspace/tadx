@@ -15,6 +15,7 @@ const adapterPageSize = 1000
 
 // Client is the narrow Tableau client family consumed by this adapter.
 type Client interface {
+	Get(context.Context, string) (tableauworkbook.Workbook, error)
 	List(context.Context, int, int) (tableauworkbook.WorkbookPage, error)
 	ListProjects(context.Context, int, int) (tableauworkbook.ProjectPage, error)
 	Download(context.Context, string, *bool) (tableauworkbook.Download, error)
@@ -46,34 +47,55 @@ func NewAdapter(client Client) *Adapter { return &Adapter{client: client} }
 
 // ResolveWorkbook applies LUID-authoritative exact selection across all pages.
 func (a *Adapter) ResolveWorkbook(ctx context.Context, selector identity.Selector) (Workbook, error) {
-	items, err := a.allWorkbooks(ctx)
-	if err != nil {
-		return Workbook{}, err
+	if a == nil || a.client == nil {
+		return Workbook{}, errors.New("workbook resource adapter is not configured")
 	}
 	if selector.LUID != "" {
-		workbook, err := resolveWorkbook(selector, items, nil)
-		if err != nil || workbook.ProjectLUID == "" {
-			return workbook, err
+		item, err := a.client.Get(ctx, string(selector.LUID))
+		if err != nil {
+			return Workbook{}, err
+		}
+		if item.LUID == "" || item.LUID != string(selector.LUID) {
+			return Workbook{}, fmt.Errorf("workbook response returned authoritative LUID %q, expected %q", item.LUID, selector.LUID)
+		}
+		workbook := normalizeWorkbook(item, item.ProjectName)
+		if workbook.ProjectLUID == "" {
+			return workbook, nil
 		}
 		return a.resolveSelectedProjectPath(ctx, workbook)
 	}
 
 	var paths *projectPathIndex
 	if selector.ProjectPath != "" {
-		needsProjects := false
-		for _, item := range items {
-			if (selector.Name == "" || item.Name == selector.Name) && item.ProjectLUID != "" {
-				needsProjects = true
-				break
+		projects, err := a.allProjects(ctx)
+		if err != nil {
+			return Workbook{}, err
+		}
+		paths = newProjectPathIndex(projects)
+	}
+	items := make([]tableauworkbook.Workbook, 0)
+	err := a.scanWorkbooks(ctx, func(item tableauworkbook.Workbook) error {
+		if selector.Name != "" && item.Name != selector.Name {
+			return nil
+		}
+		if selector.ProjectPath != "" {
+			projectPath := item.ProjectName
+			if item.ProjectLUID != "" {
+				path, err := paths.path(item.ProjectLUID, make(map[string]bool))
+				if err != nil {
+					return err
+				}
+				projectPath = path
+			}
+			if projectPath != selector.ProjectPath {
+				return nil
 			}
 		}
-		if needsProjects {
-			projects, err := a.allProjects(ctx)
-			if err != nil {
-				return Workbook{}, err
-			}
-			paths = newProjectPathIndex(projects)
-		}
+		items = append(items, item)
+		return nil
+	})
+	if err != nil {
+		return Workbook{}, err
 	}
 	workbook, err := resolveWorkbook(selector, items, paths)
 	if err != nil || workbook.ProjectLUID == "" || paths != nil {
@@ -109,7 +131,7 @@ func resolveWorkbook(selector identity.Selector, items []tableauworkbook.Workboo
 		candidate := identity.Candidate{LUID: identity.LUID(item.LUID), Name: item.Name, ProjectPath: projectPath}
 		candidates[index] = candidate
 		if _, exists := byCandidate[candidate]; !exists {
-			byCandidate[candidate] = Workbook{LUID: item.LUID, Name: item.Name, ContentURL: item.ContentURL, ProjectLUID: item.ProjectLUID, ProjectPath: projectPath, OwnerLUID: item.OwnerLUID}
+			byCandidate[candidate] = normalizeWorkbook(item, projectPath)
 		}
 	}
 	resolved, err := identity.Resolve(selector, candidates)
@@ -121,20 +143,20 @@ func resolveWorkbook(selector identity.Selector, items []tableauworkbook.Workboo
 
 // FindWorkbooks returns exact name and project matches for collision checks.
 func (a *Adapter) FindWorkbooks(ctx context.Context, name, projectLUID string) ([]Workbook, error) {
-	items, err := a.allWorkbooks(ctx)
-	if err != nil {
-		return nil, err
-	}
 	byLUID := make(map[string]Workbook)
-	for _, item := range items {
+	err := a.scanWorkbooks(ctx, func(item tableauworkbook.Workbook) error {
 		if item.Name == name && item.ProjectLUID == projectLUID {
 			if item.LUID == "" {
-				return nil, fmt.Errorf("workbook %q in project %q omitted its authoritative LUID", name, projectLUID)
+				return fmt.Errorf("workbook %q in project %q omitted its authoritative LUID", name, projectLUID)
 			}
 			if _, exists := byLUID[item.LUID]; !exists {
-				byLUID[item.LUID] = Workbook{LUID: item.LUID, Name: item.Name, ContentURL: item.ContentURL, ProjectLUID: item.ProjectLUID, ProjectPath: item.ProjectName, OwnerLUID: item.OwnerLUID}
+				byLUID[item.LUID] = normalizeWorkbook(item, item.ProjectName)
 			}
 		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
 	}
 	matches := make([]Workbook, 0, len(byLUID))
 	for _, workbook := range byLUID {
@@ -232,21 +254,30 @@ func (a *Adapter) PublishWorkbook(ctx context.Context, input tableauworkbook.Pub
 	return a.client.Publish(ctx, input)
 }
 
-func (a *Adapter) allWorkbooks(ctx context.Context) ([]tableauworkbook.Workbook, error) {
+func (a *Adapter) scanWorkbooks(ctx context.Context, visit func(tableauworkbook.Workbook) error) error {
 	if a == nil || a.client == nil {
-		return nil, errors.New("workbook resource adapter is not configured")
+		return errors.New("workbook resource adapter is not configured")
 	}
-	var result []tableauworkbook.Workbook
+	seen := 0
 	for number := 1; ; number++ {
 		page, err := a.client.List(ctx, number, adapterPageSize)
 		if err != nil {
-			return nil, err
+			return err
 		}
-		result = append(result, page.Items...)
-		if len(result) >= page.Page.Total || len(page.Items) == 0 {
-			return result, nil
+		for _, item := range page.Items {
+			if err := visit(item); err != nil {
+				return err
+			}
+		}
+		seen += len(page.Items)
+		if seen >= page.Page.Total || len(page.Items) == 0 {
+			return nil
 		}
 	}
+}
+
+func normalizeWorkbook(item tableauworkbook.Workbook, projectPath string) Workbook {
+	return Workbook{LUID: item.LUID, Name: item.Name, ContentURL: item.ContentURL, ProjectLUID: item.ProjectLUID, ProjectPath: projectPath, OwnerLUID: item.OwnerLUID}
 }
 
 func (a *Adapter) allProjects(ctx context.Context) ([]tableauworkbook.Project, error) {

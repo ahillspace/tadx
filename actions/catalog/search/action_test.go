@@ -6,6 +6,7 @@ import (
 	"errors"
 	"os"
 	"strconv"
+	"strings"
 	"testing"
 
 	search "github.com/ahillspace/tadx/actions/catalog/search"
@@ -87,12 +88,24 @@ func TestActionClassifiesInvalidCursorAsUsage(t *testing.T) {
 	}
 }
 
+func TestActionPreservesCatalogCancellation(t *testing.T) {
+	for _, cause := range []error{context.Canceled, context.DeadlineExceeded} {
+		_, err := search.New(source{err: cause}).Execute(context.Background(), search.Input{Environment: "production", Site: "marketing"})
+		var structured *errs.Error
+		if !errors.As(err, &structured) || !errors.Is(err, cause) || structured.ID != "catalog.search.cancelled" || structured.Retryable == nil || *structured.Retryable || strings.Contains(strings.ToLower(structured.CorrectiveAction), "repair") {
+			t.Fatalf("cancellation error = %#v", err)
+		}
+	}
+}
+
 func TestActionGoldenOutputShape(t *testing.T) {
-	value := search.Output{
-		Page:       search.Page{Returned: 1, Total: 2, Limit: 1, NextCursor: "1"},
-		Generation: search.Generation{ID: "generation-1", Environment: "production", Site: "marketing", GeneratedAt: "2026-08-30T00:00:00Z"},
-		Items:      []search.Item{{LUID: "wb-1", Kind: "workbook", Name: "Finance", ProjectPath: "Ops"}},
-		Help:       []string{"tadx capability get <luid>"},
+	value, err := search.New(source{result: search.Result{
+		Page:         search.Page{Returned: 1, Total: 2, Limit: 1, NextCursor: "1"},
+		GenerationID: "generation-1", Environment: "production", Site: "marketing", GeneratedAt: "2026-08-30T00:00:00Z",
+		Items: []search.Item{{LUID: "wb-1", Kind: "workbook", Name: "Finance", ProjectPath: "Ops"}},
+	}}).Execute(context.Background(), search.Input{Environment: "production", Site: "marketing", Limit: 1})
+	if err != nil {
+		t.Fatal(err)
 	}
 	var actual bytes.Buffer
 	if err := output.Render(&actual, value); err != nil {

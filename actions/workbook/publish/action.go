@@ -133,7 +133,14 @@ func (a *Action) Apply(ctx context.Context, plan Plan) (Result, error) {
 func (a *Action) verifyOverwriteTarget(ctx context.Context, plan Plan) error {
 	current, err := a.resolver.FindWorkbooks(ctx, plan.request.Name, plan.request.ProjectLUID)
 	if err != nil {
-		return &errs.Error{ID: "workbook.overwrite.revalidate", Kind: errs.KindOperation, Operation: "workbook.publish", Resource: plan.Target.ExistingLUID, Environment: plan.Target.Environment, Site: plan.Target.Site, Summary: "Workbook overwrite target revalidation failed.", Cause: err, Retryable: errs.Bool(false), CorrectiveAction: "Resolve the exact destination again before publishing.", TableauRequestID: errs.TableauRequestID(err)}
+		retryable, correctiveAction := errs.RetryAdvice(err)
+		if retryable == nil {
+			retryable = errs.Bool(false)
+		}
+		if correctiveAction == "" {
+			correctiveAction = "Resolve the exact destination again before publishing."
+		}
+		return &errs.Error{ID: "workbook.overwrite.revalidate", Kind: errs.KindOperation, Operation: "workbook.publish", Resource: plan.Target.ExistingLUID, Environment: plan.Target.Environment, Site: plan.Target.Site, Summary: "Workbook overwrite target revalidation failed.", Cause: err, Retryable: retryable, CorrectiveAction: correctiveAction, TableauRequestID: errs.TableauRequestID(err)}
 	}
 	expected := plan.Target.ExistingLUID
 	if len(current) == 0 && expected == "" {

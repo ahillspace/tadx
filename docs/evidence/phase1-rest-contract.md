@@ -9,6 +9,7 @@ The implementation uses these captured sections:
 - PAT sign-in request, response, and errors at lines 40901 through 41166.
 - Classic pagination at lines 1699 through 1751.
 - Workbook listing at lines 38650 through 38925.
+- Exact workbook reads at lines 27547 through 27610.
 - Project listing at lines 36768 through 37060.
 - Workbook download at lines 20889 through 20955.
 - Upload initiation at lines 28079 through 28146.

@@ -11,4 +11,4 @@ generation:
   stale: false
 items[1]{luid,kind,name,project_path}:
   wb-1,workbook,Finance,Ops
-help[1]: tadx capability get <luid>
+help[1]: tadx catalog search --environment <alias> --id <luid>

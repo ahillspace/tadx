@@ -17,8 +17,9 @@ import (
 )
 
 const (
-	defaultAPIVersion       = "3.29"
-	defaultMaxResponseBytes = 256 * 1024 * 1024
+	defaultAPIVersion          = "3.29"
+	defaultMaxResponseBytes    = 256 * 1024 * 1024
+	maxUpstreamDiagnosticBytes = 16 * 1024
 )
 
 // Request describes one released Tableau REST request.
@@ -56,11 +57,25 @@ type UpstreamError struct {
 }
 
 type responseReadError struct {
-	operation  string
-	requestID  string
-	statusCode int
-	cause      error
+	operation        string
+	requestID        string
+	statusCode       int
+	cause            error
+	retryable        bool
+	correctiveAction string
 }
+
+// ProtocolError preserves response context for an invalid successful response.
+type ProtocolError struct {
+	operation        string
+	requestID        string
+	statusCode       int
+	cause            error
+	retryable        bool
+	correctiveAction string
+}
+
+type redirectError struct{ cause error }
 
 type requestError struct {
 	operation        string
@@ -94,10 +109,34 @@ func (e *responseReadError) TableauDetail() string {
 	return ""
 }
 
-func (e *responseReadError) Retryable() bool { return false }
+func (e *responseReadError) Retryable() bool { return e.retryable }
 func (e *responseReadError) CorrectiveAction() string {
-	return "Inspect the remote operation outcome before retrying."
+	return e.correctiveAction
 }
+
+// NewProtocolError creates a response-context carrier for protocol validation failures.
+func NewProtocolError(operation string, response Response, cause error, retryable bool) *ProtocolError {
+	correctiveAction := "Inspect the remote operation outcome before retrying."
+	if retryable {
+		correctiveAction = "Retry after Tableau returns a complete valid response."
+	}
+	return &ProtocolError{operation: operation, requestID: response.TableauRequestID, statusCode: response.StatusCode, cause: cause, retryable: retryable, correctiveAction: correctiveAction}
+}
+
+func (e *ProtocolError) Error() string {
+	return fmt.Sprintf("invalid Tableau %s response: %v", e.operation, e.cause)
+}
+
+func (e *ProtocolError) Unwrap() error            { return e.cause }
+func (e *ProtocolError) RequestID() string        { return e.requestID }
+func (e *ProtocolError) HTTPStatus() int          { return e.statusCode }
+func (e *ProtocolError) TableauCode() string      { return "" }
+func (e *ProtocolError) TableauSummary() string   { return "" }
+func (e *ProtocolError) TableauDetail() string    { return "" }
+func (e *ProtocolError) Retryable() bool          { return e.retryable }
+func (e *ProtocolError) CorrectiveAction() string { return e.correctiveAction }
+func (e *redirectError) Error() string            { return e.cause.Error() }
+func (e *redirectError) Unwrap() error            { return e.cause }
 
 func (e *UpstreamError) Error() string {
 	parts := []string{fmt.Sprintf("Tableau request failed with HTTP %d", e.StatusCode)}
@@ -196,17 +235,20 @@ func NewTransport(client *http.Client, apiVersion string, correlationID func() s
 		if len(via) > 0 {
 			previous := via[len(via)-1].URL
 			if strings.EqualFold(previous.Scheme, "https") && !strings.EqualFold(request.URL.Scheme, "https") {
-				return fmt.Errorf("refusing Tableau redirect from %s to less secure scheme %s", previous.Scheme, request.URL.Scheme)
+				return &redirectError{cause: fmt.Errorf("refusing Tableau redirect from %s to less secure scheme %s", previous.Scheme, request.URL.Scheme)}
 			}
 			if !sameOrigin(via[0].URL, request.URL) {
-				return fmt.Errorf("refusing cross-origin Tableau redirect from %s to %s", via[0].URL.Host, request.URL.Host)
+				return &redirectError{cause: fmt.Errorf("refusing cross-origin Tableau redirect from %s to %s", via[0].URL.Host, request.URL.Host)}
 			}
 		}
 		if previousCheckRedirect != nil {
-			return previousCheckRedirect(request, via)
+			if err := previousCheckRedirect(request, via); err != nil {
+				return &redirectError{cause: err}
+			}
+			return nil
 		}
 		if len(via) >= 10 {
-			return errors.New("stopped after 10 redirects")
+			return &redirectError{cause: errors.New("stopped after 10 redirects")}
 		}
 		return nil
 	}
@@ -267,21 +309,18 @@ func (t *Transport) Do(ctx context.Context, session auth.Session, input Request)
 	effectiveSecrets = append(effectiveSecrets, request.Header.Values(auth.TableauAuthHeader)...)
 	response, err := t.client.Do(request)
 	if err != nil {
-		retryable := input.Method == http.MethodGet || input.Method == http.MethodHead || input.Method == http.MethodOptions || input.Operation == "auth.check"
-		correctiveAction := "Inspect the remote operation outcome before retrying."
-		if retryable {
-			correctiveAction = "Verify network, DNS, proxy, and TLS connectivity, then retry."
-		}
+		retryable, correctiveAction := requestAdvice(ctx, input.Method, input.Operation, err)
 		return Response{}, &requestError{operation: input.Operation, cause: redact(err, effectiveSecrets), retryable: retryable, correctiveAction: correctiveAction}
 	}
 	defer response.Body.Close()
 	requestID := redactText(tableauRequestID(response.Header), effectiveSecrets)
 	body, err := io.ReadAll(io.LimitReader(response.Body, maxResponseBytes+1))
 	if err != nil {
-		return Response{}, &responseReadError{operation: input.Operation, requestID: requestID, statusCode: response.StatusCode, cause: redact(err, effectiveSecrets)}
+		retryable, correctiveAction := responseReadAdvice(ctx, input.Method, input.Operation)
+		return Response{}, &responseReadError{operation: input.Operation, requestID: requestID, statusCode: response.StatusCode, cause: redact(err, effectiveSecrets), retryable: retryable, correctiveAction: correctiveAction}
 	}
 	if int64(len(body)) > maxResponseBytes {
-		return Response{}, &responseReadError{operation: input.Operation, requestID: requestID, statusCode: response.StatusCode, cause: fmt.Errorf("body exceeded %d-byte limit", maxResponseBytes)}
+		return Response{}, &responseReadError{operation: input.Operation, requestID: requestID, statusCode: response.StatusCode, cause: fmt.Errorf("body exceeded %d-byte limit", maxResponseBytes), correctiveAction: "Reduce the response size or use a bounded streaming workflow."}
 	}
 	result := Response{StatusCode: response.StatusCode, Header: response.Header.Clone(), Body: body, TableauRequestID: requestID}
 	if response.StatusCode >= 200 && response.StatusCode < 300 {
@@ -292,6 +331,34 @@ func (t *Transport) Do(ctx context.Context, session auth.Session, input Request)
 		Operation: input.Operation, StatusCode: response.StatusCode, Code: redactText(code, effectiveSecrets),
 		Summary: redactText(summary, effectiveSecrets), Detail: redactText(detail, effectiveSecrets), TableauRequestID: requestID,
 	}
+}
+
+func requestAdvice(ctx context.Context, method, operation string, err error) (bool, string) {
+	if ctx.Err() != nil || errors.Is(err, context.Canceled) {
+		return false, "Run the operation again only if the cancellation was intentional and the remote outcome is known."
+	}
+	var redirect *redirectError
+	if errors.As(err, &redirect) {
+		return false, "Verify the Tableau server URL and redirect policy before retrying."
+	}
+	if retrySafe(method, operation) {
+		return true, "Verify network, DNS, proxy, and TLS connectivity, then retry."
+	}
+	return false, "Inspect the remote operation outcome before retrying."
+}
+
+func responseReadAdvice(ctx context.Context, method, operation string) (bool, string) {
+	if ctx.Err() != nil {
+		return false, "Run the operation again only if the cancellation was intentional and the remote outcome is known."
+	}
+	if retrySafe(method, operation) {
+		return true, "Retry after Tableau returns a complete response."
+	}
+	return false, "Inspect the remote operation outcome before retrying."
+}
+
+func retrySafe(method, operation string) bool {
+	return method == http.MethodGet || method == http.MethodHead || method == http.MethodOptions || operation == "auth.check"
 }
 
 func upstreamAdvice(status int) (bool, string) {
@@ -371,7 +438,17 @@ func parseError(body []byte) (string, string, string) {
 	if xml.Unmarshal(body, &xmlEnvelope) == nil && (xmlEnvelope.Error.Code != "" || xmlEnvelope.Error.Summary != "") {
 		return xmlEnvelope.Error.Code, strings.TrimSpace(xmlEnvelope.Error.Summary), strings.TrimSpace(xmlEnvelope.Error.Detail)
 	}
-	return "", "Upstream request failed", strings.TrimSpace(string(body))
+	return "", "Upstream request failed", diagnosticExcerpt(body)
+}
+
+func diagnosticExcerpt(body []byte) string {
+	if len(body) <= maxUpstreamDiagnosticBytes {
+		return strings.TrimSpace(string(body))
+	}
+	const suffix = "\n[truncated]"
+	limit := maxUpstreamDiagnosticBytes - len(suffix)
+	excerpt := strings.ToValidUTF8(string(body[:limit]), "�")
+	return strings.TrimSpace(excerpt) + suffix
 }
 
 func redact(err error, secrets []string) error {

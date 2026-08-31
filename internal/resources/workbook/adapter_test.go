@@ -13,9 +13,32 @@ import (
 type client struct {
 	pages        map[int]tableauworkbook.WorkbookPage
 	projectPages map[int]tableauworkbook.ProjectPage
+	workbooks    map[string]tableauworkbook.Workbook
+	getCalls     *int
+	listCalls    *int
+}
+
+func (c client) Get(_ context.Context, luid string) (tableauworkbook.Workbook, error) {
+	if c.getCalls != nil {
+		(*c.getCalls)++
+	}
+	if item, ok := c.workbooks[luid]; ok {
+		return item, nil
+	}
+	for _, page := range c.pages {
+		for _, item := range page.Items {
+			if item.LUID == luid {
+				return item, nil
+			}
+		}
+	}
+	return tableauworkbook.Workbook{}, nil
 }
 
 func (c client) List(_ context.Context, page, _ int) (tableauworkbook.WorkbookPage, error) {
+	if c.listCalls != nil {
+		(*c.listCalls)++
+	}
 	return c.pages[page], nil
 }
 
@@ -71,6 +94,21 @@ func TestAdapterReturnsIdentityWinnerForDuplicateWorkbookLUID(t *testing.T) {
 	}
 	if workbook.Name != "Finance" || workbook.ContentURL != "finance" || workbook.ProjectPath != "New" {
 		t.Fatalf("workbook = %#v", workbook)
+	}
+}
+
+func TestAdapterUsesExactGetForWorkbookLUID(t *testing.T) {
+	getCalls, listCalls := 0, 0
+	adapter := resource.NewAdapter(client{
+		workbooks: map[string]tableauworkbook.Workbook{"wb-1": {LUID: "wb-1", Name: "Finance"}},
+		getCalls:  &getCalls, listCalls: &listCalls,
+	})
+	workbook, err := adapter.ResolveWorkbook(context.Background(), identity.Selector{LUID: "wb-1"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if workbook.LUID != "wb-1" || getCalls != 1 || listCalls != 0 {
+		t.Fatalf("workbook = %#v, get calls = %d, list calls = %d", workbook, getCalls, listCalls)
 	}
 }
 

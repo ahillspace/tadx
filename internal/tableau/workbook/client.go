@@ -154,13 +154,37 @@ func (c *Client) List(ctx context.Context, pageNumber, pageSize int) (WorkbookPa
 	}
 	var envelope workbookListEnvelope
 	if err := xml.Unmarshal(response.Body, &envelope); err != nil {
-		return WorkbookPage{}, fmt.Errorf("decode workbook list response: %w", err)
+		return WorkbookPage{}, tableau.NewProtocolError("workbook.list", response, fmt.Errorf("decode workbook list response: %w", err), true)
 	}
 	items := make([]Workbook, len(envelope.Workbooks))
 	for index, item := range envelope.Workbooks {
-		items[index] = Workbook{LUID: item.ID, Name: item.Name, ContentURL: item.ContentURL, ProjectLUID: item.Project.ID, ProjectName: item.Project.Name, OwnerLUID: item.Owner.ID}
+		items[index] = normalizeWorkbook(item)
 	}
-	return WorkbookPage{Page: Page{Number: envelope.Pagination.Number, Size: envelope.Pagination.Size, Total: envelope.Pagination.Total}, Items: items}, nil
+	page, err := normalizePagination(envelope.Pagination, pageNumber, pageSize, len(items))
+	if err != nil {
+		return WorkbookPage{}, tableau.NewProtocolError("workbook.list", response, err, true)
+	}
+	return WorkbookPage{Page: page, Items: items}, nil
+}
+
+// Get returns one workbook by its authoritative LUID.
+func (c *Client) Get(ctx context.Context, workbookLUID string) (Workbook, error) {
+	if workbookLUID == "" {
+		return Workbook{}, errors.New("workbook LUID is required")
+	}
+	response, err := c.do(ctx, http.MethodGet, c.sitePath("workbooks", workbookLUID), nil, nil, "", "workbook.get")
+	if err != nil {
+		return Workbook{}, err
+	}
+	var envelope workbookGetEnvelope
+	if err := xml.Unmarshal(response.Body, &envelope); err != nil {
+		return Workbook{}, tableau.NewProtocolError("workbook.get", response, fmt.Errorf("decode workbook response: %w", err), true)
+	}
+	workbook := normalizeWorkbook(envelope.Workbook)
+	if workbook.LUID == "" || workbook.LUID != workbookLUID {
+		return Workbook{}, tableau.NewProtocolError("workbook.get", response, fmt.Errorf("workbook response returned LUID %q, expected %q", workbook.LUID, workbookLUID), true)
+	}
+	return workbook, nil
 }
 
 // ListProjects returns one classic REST project page.
@@ -178,13 +202,17 @@ func (c *Client) ListProjects(ctx context.Context, pageNumber, pageSize int) (Pr
 	}
 	var envelope projectListEnvelope
 	if err := xml.Unmarshal(response.Body, &envelope); err != nil {
-		return ProjectPage{}, fmt.Errorf("decode project list response: %w", err)
+		return ProjectPage{}, tableau.NewProtocolError("project.list", response, fmt.Errorf("decode project list response: %w", err), true)
 	}
 	items := make([]Project, len(envelope.Projects))
 	for index, item := range envelope.Projects {
 		items[index] = Project{LUID: item.ID, Name: item.Name, ParentLUID: item.ParentProjectID}
 	}
-	return ProjectPage{Page: Page{Number: envelope.Pagination.Number, Size: envelope.Pagination.Size, Total: envelope.Pagination.Total}, Items: items}, nil
+	page, err := normalizePagination(envelope.Pagination, pageNumber, pageSize, len(items))
+	if err != nil {
+		return ProjectPage{}, tableau.NewProtocolError("project.list", response, err, true)
+	}
+	return ProjectPage{Page: page, Items: items}, nil
 }
 
 // Download preserves the native TWB or TWBX bytes and filename.
@@ -199,11 +227,11 @@ func (c *Client) Download(ctx context.Context, workbookLUID string, includeExtra
 	}
 	filename := dispositionFilename(response.Header.Get("Content-Disposition"))
 	if filename == "" {
-		return Download{}, errors.New("workbook download response omitted filename")
+		return Download{}, tableau.NewProtocolError("workbook.pull", response, errors.New("workbook download response omitted filename"), true)
 	}
 	extension := strings.ToLower(filepath.Ext(filename))
 	if extension != ".twb" && extension != ".twbx" {
-		return Download{}, fmt.Errorf("workbook download returned unsupported filename %q", filename)
+		return Download{}, tableau.NewProtocolError("workbook.pull", response, fmt.Errorf("workbook download returned unsupported filename %q", filename), true)
 	}
 	return Download{Filename: filepath.Base(filename), ContentType: response.Header.Get("Content-Type"), Content: response.Body, TableauRequestID: response.TableauRequestID}, nil
 }
@@ -216,6 +244,15 @@ func (c *Client) Publish(ctx context.Context, input PublishRequest) (PublishResu
 	extension := strings.TrimPrefix(strings.ToLower(filepath.Ext(input.Filename)), ".")
 	if extension != "twb" && extension != "twbx" {
 		return PublishResult{}, fmt.Errorf("unsupported workbook type %q", extension)
+	}
+	plannedSize := int64(len(input.Content))
+	if input.ContentPath != "" {
+		plannedSize = input.ContentSize
+	}
+	if plannedSize > int64(c.uploadThreshold) {
+		if err := validateUploadBlocks(plannedSize, c.uploadChunkSize); err != nil {
+			return PublishResult{}, err
+		}
 	}
 	source, err := openPublishContent(ctx, input)
 	if err != nil {
@@ -271,7 +308,7 @@ func (c *Client) Publish(ctx context.Context, input PublishRequest) (PublishResu
 	if err != nil {
 		result.Status = "unknown"
 		result.TableauRequestID = response.TableauRequestID
-		return result, err
+		return result, tableau.NewProtocolError("workbook.publish", response, err, false)
 	}
 	result.TableauRequestID = response.TableauRequestID
 	if result.JobID == "" {
@@ -292,17 +329,19 @@ func (c *Client) Publish(ctx context.Context, input PublishRequest) (PublishResu
 }
 
 func (c *Client) upload(ctx context.Context, filename string, content io.Reader, size int64) (string, error) {
-	blocks := (size + int64(c.uploadChunkSize) - 1) / int64(c.uploadChunkSize)
-	if blocks > maxUploadBlocks {
-		return "", fmt.Errorf("workbook requires %d upload blocks, exceeding conservative limit %d", blocks, maxUploadBlocks)
+	if err := validateUploadBlocks(size, c.uploadChunkSize); err != nil {
+		return "", err
 	}
 	response, err := c.do(ctx, http.MethodPost, c.sitePath("fileUploads"), nil, nil, "", "workbook.upload.initiate")
 	if err != nil {
 		return "", err
 	}
 	var initiated fileUploadEnvelope
-	if err := xml.Unmarshal(response.Body, &initiated); err != nil || initiated.FileUpload.SessionID == "" {
-		return "", errors.New("initiate file upload response omitted upload session ID")
+	if err := xml.Unmarshal(response.Body, &initiated); err != nil {
+		return "", tableau.NewProtocolError("workbook.upload.initiate", response, fmt.Errorf("decode initiate file upload response: %w", err), false)
+	}
+	if initiated.FileUpload.SessionID == "" {
+		return "", tableau.NewProtocolError("workbook.upload.initiate", response, errors.New("initiate file upload response omitted upload session ID"), false)
 	}
 	remaining := size
 	for index := 0; remaining > 0; index++ {
@@ -326,13 +365,27 @@ func (c *Client) upload(ctx context.Context, filename string, content io.Reader,
 		}
 		var appended fileUploadEnvelope
 		if err := xml.Unmarshal(response.Body, &appended); err != nil {
-			return "", fmt.Errorf("decode append upload response: %w", err)
+			return "", tableau.NewProtocolError("workbook.upload.append", response, fmt.Errorf("decode append upload response: %w", err), false)
 		}
 		if appended.FileUpload.SessionID != initiated.FileUpload.SessionID {
-			return "", fmt.Errorf("append upload response returned upload session ID %q, expected %q", appended.FileUpload.SessionID, initiated.FileUpload.SessionID)
+			return "", tableau.NewProtocolError("workbook.upload.append", response, fmt.Errorf("append upload response returned upload session ID %q, expected %q", appended.FileUpload.SessionID, initiated.FileUpload.SessionID), false)
 		}
 	}
 	return initiated.FileUpload.SessionID, nil
+}
+
+func validateUploadBlocks(size int64, chunkSize int) error {
+	if size < 0 || chunkSize <= 0 {
+		return errors.New("invalid workbook publish payload size")
+	}
+	blocks := size / int64(chunkSize)
+	if size%int64(chunkSize) != 0 {
+		blocks++
+	}
+	if blocks > maxUploadBlocks {
+		return fmt.Errorf("workbook requires %d upload blocks, exceeding conservative limit %d", blocks, maxUploadBlocks)
+	}
+	return nil
 }
 
 type publishContent struct {
@@ -454,32 +507,39 @@ func (c *Client) pollJob(ctx context.Context, jobID string) (PublishResult, erro
 			}
 			return PublishResult{Status: "unknown", JobID: jobID, TableauRequestID: requestID}, err
 		}
-		lastRequestID = response.TableauRequestID
+		if response.TableauRequestID != "" {
+			lastRequestID = response.TableauRequestID
+		}
+		requestID := response.TableauRequestID
+		if requestID == "" {
+			requestID = lastRequestID
+		}
+		response.TableauRequestID = requestID
 		var envelope jobEnvelope
 		if err := xml.Unmarshal(response.Body, &envelope); err != nil {
-			return PublishResult{Status: "unknown", JobID: jobID, TableauRequestID: response.TableauRequestID}, fmt.Errorf("decode Tableau job response: %w", err)
+			return PublishResult{Status: "unknown", JobID: jobID, TableauRequestID: requestID}, tableau.NewProtocolError("workbook.publish.poll", response, fmt.Errorf("decode Tableau job response: %w", err), true)
 		}
 		if envelope.Job.ID != jobID {
-			return PublishResult{Status: "unknown", JobID: jobID, TableauRequestID: response.TableauRequestID}, fmt.Errorf("Tableau job response returned job ID %q, expected %q", envelope.Job.ID, jobID)
+			return PublishResult{Status: "unknown", JobID: jobID, TableauRequestID: requestID}, tableau.NewProtocolError("workbook.publish.poll", response, fmt.Errorf("Tableau job response returned job ID %q, expected %q", envelope.Job.ID, jobID), true)
 		}
 		if envelope.Job.Progress == nil {
-			return PublishResult{Status: "unknown", JobID: jobID, TableauRequestID: response.TableauRequestID}, errors.New("Tableau job response omitted progress")
+			return PublishResult{Status: "unknown", JobID: jobID, TableauRequestID: requestID}, tableau.NewProtocolError("workbook.publish.poll", response, errors.New("Tableau job response omitted progress"), true)
 		}
 		if *envelope.Job.Progress >= 100 {
 			if envelope.Job.FinishCode == nil {
-				return PublishResult{Status: "unknown", JobID: jobID, TableauRequestID: response.TableauRequestID}, errors.New("terminal Tableau job response omitted finish code")
+				return PublishResult{Status: "unknown", JobID: jobID, TableauRequestID: requestID}, tableau.NewProtocolError("workbook.publish.poll", response, errors.New("terminal Tableau job response omitted finish code"), true)
 			}
 			if *envelope.Job.FinishCode == 0 {
-				return PublishResult{Status: "succeeded", JobID: jobID, TableauRequestID: response.TableauRequestID}, nil
+				return PublishResult{Status: "succeeded", JobID: jobID, TableauRequestID: requestID}, nil
 			}
-			return PublishResult{Status: "failed", JobID: jobID, TableauRequestID: response.TableauRequestID}, fmt.Errorf("Tableau workbook publish job %s failed with finish code %d", jobID, *envelope.Job.FinishCode)
+			return PublishResult{Status: "failed", JobID: jobID, TableauRequestID: requestID}, fmt.Errorf("Tableau workbook publish job %s failed with finish code %d", jobID, *envelope.Job.FinishCode)
 		}
 		select {
 		case <-pollCtx.Done():
 			if ctx.Err() != nil {
-				return PublishResult{Status: "cancelled", JobID: jobID, TableauRequestID: response.TableauRequestID}, ctx.Err()
+				return PublishResult{Status: "cancelled", JobID: jobID, TableauRequestID: requestID}, ctx.Err()
 			}
-			return PublishResult{Status: "timed_out", JobID: jobID, TableauRequestID: response.TableauRequestID}, fmt.Errorf("Tableau workbook publish job %s timed out after %s", jobID, c.pollTimeout)
+			return PublishResult{Status: "timed_out", JobID: jobID, TableauRequestID: requestID}, fmt.Errorf("Tableau workbook publish job %s timed out after %s", jobID, c.pollTimeout)
 		case <-time.After(c.pollInterval):
 		}
 	}
@@ -620,34 +680,64 @@ func apiAtLeast(value string, major, minor int) bool {
 }
 
 type paginationXML struct {
-	Number int `xml:"pageNumber,attr"`
-	Size   int `xml:"pageSize,attr"`
-	Total  int `xml:"totalAvailable,attr"`
+	Number *int `xml:"pageNumber,attr"`
+	Size   *int `xml:"pageSize,attr"`
+	Total  *int `xml:"totalAvailable,attr"`
 }
 
 type workbookListEnvelope struct {
-	Pagination paginationXML `xml:"pagination"`
-	Workbooks  []struct {
-		ID         string `xml:"id,attr"`
-		Name       string `xml:"name,attr"`
-		ContentURL string `xml:"contentUrl,attr"`
-		Project    struct {
-			ID   string `xml:"id,attr"`
-			Name string `xml:"name,attr"`
-		} `xml:"project"`
-		Owner struct {
-			ID string `xml:"id,attr"`
-		} `xml:"owner"`
-	} `xml:"workbooks>workbook"`
+	Pagination *paginationXML `xml:"pagination"`
+	Workbooks  []workbookXML  `xml:"workbooks>workbook"`
+}
+
+type workbookGetEnvelope struct {
+	Workbook workbookXML `xml:"workbook"`
+}
+
+type workbookXML struct {
+	ID         string `xml:"id,attr"`
+	Name       string `xml:"name,attr"`
+	ContentURL string `xml:"contentUrl,attr"`
+	Project    struct {
+		ID   string `xml:"id,attr"`
+		Name string `xml:"name,attr"`
+	} `xml:"project"`
+	Owner struct {
+		ID string `xml:"id,attr"`
+	} `xml:"owner"`
 }
 
 type projectListEnvelope struct {
-	Pagination paginationXML `xml:"pagination"`
+	Pagination *paginationXML `xml:"pagination"`
 	Projects   []struct {
 		ID              string `xml:"id,attr"`
 		Name            string `xml:"name,attr"`
 		ParentProjectID string `xml:"parentProjectId,attr"`
 	} `xml:"projects>project"`
+}
+
+func normalizeWorkbook(item workbookXML) Workbook {
+	return Workbook{LUID: item.ID, Name: item.Name, ContentURL: item.ContentURL, ProjectLUID: item.Project.ID, ProjectName: item.Project.Name, OwnerLUID: item.Owner.ID}
+}
+
+func normalizePagination(value *paginationXML, requestedNumber, requestedSize, itemCount int) (Page, error) {
+	if value == nil || value.Number == nil || value.Size == nil || value.Total == nil {
+		return Page{}, errors.New("Tableau list response omitted pagination")
+	}
+	number, size, total := *value.Number, *value.Size, *value.Total
+	if number != requestedNumber || number <= 0 {
+		return Page{}, fmt.Errorf("Tableau list response returned page number %d, expected %d", number, requestedNumber)
+	}
+	if size <= 0 || size > requestedSize {
+		return Page{}, fmt.Errorf("Tableau list response returned invalid page size %d", size)
+	}
+	if total < 0 || itemCount > size || total < itemCount {
+		return Page{}, fmt.Errorf("Tableau list response returned inconsistent pagination total %d, size %d, and item count %d", total, size, itemCount)
+	}
+	if number > 1 && total < (number-1)*size+itemCount {
+		return Page{}, fmt.Errorf("Tableau list response total %d is inconsistent with page %d", total, number)
+	}
+	return Page{Number: number, Size: size, Total: total}, nil
 }
 
 type fileUploadEnvelope struct {

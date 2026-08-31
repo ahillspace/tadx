@@ -186,7 +186,7 @@ func (r *runtimeDependencies) workbookAdapter(ctx context.Context, alias string,
 	provider := coreauth.NewPATProvider(coreauth.LookupEnvFunc(os.LookupEnv), tableauauth.NewClient(transport))
 	session, err := provider.Authenticate(ctx, coreauth.Target{Environment: environment.Alias, ServerURL: environment.URL, SiteContentURL: environment.SiteContentURL, PATNameVariable: environment.Auth.PATNameEnv, PATSecretVariable: environment.Auth.PATSecretEnv})
 	if err != nil {
-		return config.Config{}, config.Environment{}, nil, err
+		return configuration, environment, nil, err
 	}
 	client := tableauworkbook.NewClient(transport, session, environment.URL)
 	return configuration, environment, resourceworkbook.NewAdapter(client), nil
@@ -197,7 +197,7 @@ type catalogService struct{ runtime *runtimeDependencies }
 func (s *catalogService) Execute(ctx context.Context, input catalogsearch.Input) (catalogsearch.Output, error) {
 	_, environment, err := s.runtime.environment(input.Environment, false)
 	if err != nil {
-		return catalogsearch.Output{}, err
+		return catalogsearch.Output{}, capabilitySetupError("catalog.search.setup", "catalog.search", input.Environment, input.Site, "Catalog search setup failed.", "Review the selected environment and catalog configuration.", err)
 	}
 	input.Environment = environment.Alias
 	if input.Site == "" {
@@ -227,13 +227,14 @@ type pullService struct{ runtime *runtimeDependencies }
 func (s *pullService) Execute(ctx context.Context, input workbookpull.Input) (workbookpull.Output, error) {
 	configuration, environment, adapter, err := s.runtime.workbookAdapter(ctx, input.Environment, false)
 	if err != nil {
-		return workbookpull.Output{}, err
+		environmentAlias, site := resolvedTarget(input.Environment, input.Site, environment)
+		return workbookpull.Output{}, capabilitySetupError("workbook.pull.setup", "workbook.pull", environmentAlias, site, "Workbook pull setup failed.", "Review the environment, site, and PAT configuration.", err)
 	}
 	input.Environment, input.Site = environment.Alias, environment.SiteContentURL
 	if input.Workspace == "" {
 		input.Workspace, err = resolveWorkspace(configuration, environment)
 		if err != nil {
-			return workbookpull.Output{}, err
+			return workbookpull.Output{}, capabilitySetupError("workbook.pull.workspace", "workbook.pull", input.Environment, input.Site, "Workbook workspace resolution failed.", "Select or configure an exact workspace, then retry.", err)
 		}
 	}
 	return workbookpull.New(pullReader{adapter: adapter}, artifactWriter{manager: artifact.NewWorkbookManager(s.runtime.now)}).Execute(ctx, input)
@@ -262,11 +263,33 @@ type publishService struct{ runtime *runtimeDependencies }
 func (s *publishService) Execute(ctx context.Context, input workbookpublish.Input, apply bool) (workbookpublish.Output, error) {
 	_, environment, adapter, err := s.runtime.workbookAdapter(ctx, input.Environment, true)
 	if err != nil {
-		return workbookpublish.Output{}, err
+		environmentAlias, site := resolvedTarget(input.Environment, input.Site, environment)
+		return workbookpublish.Output{}, capabilitySetupError("workbook.publish.setup", "workbook.publish", environmentAlias, site, "Workbook publish setup failed.", "Review the explicit environment, site, and PAT configuration.", err)
 	}
 	input.Environment, input.Site, input.TargetResolved = environment.Alias, environment.SiteContentURL, true
 	action := workbookpublish.New(artifactReader{manager: artifact.NewWorkbookManager(s.runtime.now)}, publishAdapter{adapter: adapter}, publishAdapter{adapter: adapter})
 	return action.Execute(ctx, input, apply)
+}
+
+func resolvedTarget(environmentAlias, site string, environment config.Environment) (string, string) {
+	if environment.Alias != "" {
+		environmentAlias = environment.Alias
+	}
+	if environment.SiteContentURL != "" || environment.Alias != "" {
+		site = environment.SiteContentURL
+	}
+	return environmentAlias, site
+}
+
+func capabilitySetupError(id, operation, environment, site, summary, fallbackAction string, err error) error {
+	retryable, correctiveAction := errs.RetryAdvice(err)
+	if retryable == nil {
+		retryable = errs.Bool(false)
+	}
+	if correctiveAction == "" {
+		correctiveAction = fallbackAction
+	}
+	return &errs.Error{ID: id, Kind: errs.KindOperation, Operation: operation, Environment: environment, Site: site, Summary: summary, Cause: err, Retryable: retryable, CorrectiveAction: correctiveAction, TableauRequestID: errs.TableauRequestID(err)}
 }
 
 type artifactReader struct{ manager *artifact.WorkbookManager }

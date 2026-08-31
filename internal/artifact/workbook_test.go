@@ -1,6 +1,7 @@
 package artifact_test
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -324,6 +325,87 @@ func TestWorkbookManagerPreservesUnmanagedNamePath(t *testing.T) {
 	content, readErr := os.ReadFile(sentinel)
 	if readErr != nil || string(content) != "keep me" {
 		t.Fatalf("unmanaged content = %q, error = %v", content, readErr)
+	}
+}
+
+func TestWorkbookManagerRejectsIncompleteIdentityMatchWithoutReplacingFiles(t *testing.T) {
+	workspace := createWorkspace(t)
+	manager := artifact.NewWorkbookManager(time.Now)
+	result, err := manager.Pull(context.Background(), artifact.WorkbookPull{
+		Workspace: workspace, Filename: "Finance.twb", Content: []byte("remote-v1"), Metadata: validMetadata("Finance", "wb-1"),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	metadataPath := filepath.Join(result.ArtifactPath, "metadata.json")
+	data, err := os.ReadFile(metadataPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var fields map[string]any
+	if err := json.Unmarshal(data, &fields); err != nil {
+		t.Fatal(err)
+	}
+	delete(fields, "source_project_id")
+	data, err = json.Marshal(fields)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(metadataPath, data, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	sentinel := filepath.Join(result.ArtifactPath, "notes.txt")
+	if err := os.WriteFile(sentinel, []byte("keep me"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	_, err = manager.Pull(context.Background(), artifact.WorkbookPull{
+		Workspace: workspace, Filename: "Finance.twb", Content: []byte("remote-v2"), Metadata: validMetadata("Finance", "wb-1"),
+	})
+	if err == nil || !strings.Contains(err.Error(), "source_project_id") {
+		t.Fatalf("Pull() error = %v", err)
+	}
+	payload, payloadErr := os.ReadFile(result.CanonicalPath)
+	note, noteErr := os.ReadFile(sentinel)
+	if payloadErr != nil || string(payload) != "remote-v1" || noteErr != nil || string(note) != "keep me" {
+		t.Fatalf("payload = %q, payload error = %v, note = %q, note error = %v", payload, payloadErr, note, noteErr)
+	}
+}
+
+func TestWorkbookManagerRejectsOversizedMetadata(t *testing.T) {
+	workspace := createWorkspace(t)
+	manager := artifact.NewWorkbookManager(time.Now)
+	result, err := manager.Pull(context.Background(), artifact.WorkbookPull{
+		Workspace: workspace, Filename: "Finance.twb", Content: []byte("remote"), Metadata: validMetadata("Finance", "wb-1"),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(result.ArtifactPath, "metadata.json"), bytes.Repeat([]byte("x"), 64*1024+1), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := manager.Read(context.Background(), result.ArtifactPath); err == nil || !strings.Contains(err.Error(), "65536-byte limit") {
+		t.Fatalf("Read() error = %v", err)
+	}
+}
+
+func TestWorkbookManagerRejectsNonregularCanonicalPayload(t *testing.T) {
+	workspace := createWorkspace(t)
+	manager := artifact.NewWorkbookManager(time.Now)
+	result, err := manager.Pull(context.Background(), artifact.WorkbookPull{
+		Workspace: workspace, Filename: "Finance.twb", Content: []byte("remote"), Metadata: validMetadata("Finance", "wb-1"),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Remove(result.CanonicalPath); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Mkdir(result.CanonicalPath, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := manager.Read(context.Background(), result.ArtifactPath); err == nil || !strings.Contains(err.Error(), "regular file") {
+		t.Fatalf("Read() error = %v", err)
 	}
 }
 

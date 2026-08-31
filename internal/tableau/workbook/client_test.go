@@ -91,6 +91,82 @@ func TestClientNormalizesClassicWorkbookPagination(t *testing.T) {
 	}
 }
 
+func TestClientGetsWorkbookByAuthoritativeLUID(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		if request.Method != http.MethodGet || request.URL.Path != "/api/3.29/sites/site-1/workbooks/wb-1" {
+			t.Fatalf("request = %s %s", request.Method, request.URL.Path)
+		}
+		writer.Header().Set("Content-Type", "application/xml")
+		_, _ = io.WriteString(writer, `<tsResponse><workbook id="wb-1" name="Finance" contentUrl="finance"><project id="project-1" name="Ops"/><owner id="owner-1"/></workbook></tsResponse>`)
+	}))
+	defer server.Close()
+
+	client := tableauworkbook.NewClient(tableau.NewTransport(server.Client(), "3.29", nil), session{}, server.URL)
+	workbook, err := client.Get(context.Background(), "wb-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if workbook.LUID != "wb-1" || workbook.ProjectLUID != "project-1" || workbook.OwnerLUID != "owner-1" {
+		t.Fatalf("workbook = %#v", workbook)
+	}
+}
+
+func TestClientPreservesProtocolResponseContext(t *testing.T) {
+	t.Run("workbook pagination", func(t *testing.T) {
+		server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+			writer.Header().Set("X-Tableau-Request-Id", "workbook-list-request")
+			_, _ = io.WriteString(writer, `<tsResponse><workbooks><workbook id="wb-1" name="Finance"/></workbooks></tsResponse>`)
+		}))
+		defer server.Close()
+		client := tableauworkbook.NewClient(tableau.NewTransport(server.Client(), "3.29", nil), session{}, server.URL)
+		_, err := client.List(context.Background(), 1, 100)
+		assertProtocolContext(t, err, http.StatusOK, "workbook-list-request")
+	})
+
+	t.Run("project pagination", func(t *testing.T) {
+		server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+			writer.Header().Set("X-Tableau-Request-Id", "project-list-request")
+			_, _ = io.WriteString(writer, `<tsResponse><projects><project id="project-1" name="Ops"/></projects></tsResponse>`)
+		}))
+		defer server.Close()
+		client := tableauworkbook.NewClient(tableau.NewTransport(server.Client(), "3.29", nil), session{}, server.URL)
+		_, err := client.ListProjects(context.Background(), 1, 100)
+		assertProtocolContext(t, err, http.StatusOK, "project-list-request")
+	})
+
+	t.Run("download filename", func(t *testing.T) {
+		server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+			writer.Header().Set("X-Tableau-Request-Id", "download-request")
+			_, _ = writer.Write([]byte("workbook"))
+		}))
+		defer server.Close()
+		client := tableauworkbook.NewClient(tableau.NewTransport(server.Client(), "3.29", nil), session{}, server.URL)
+		_, err := client.Download(context.Background(), "wb-1", nil)
+		assertProtocolContext(t, err, http.StatusOK, "download-request")
+	})
+
+	t.Run("upload initiation", func(t *testing.T) {
+		server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+			writer.Header().Set("X-Tableau-Request-Id", "upload-request")
+			writer.WriteHeader(http.StatusCreated)
+			_, _ = io.WriteString(writer, `<tsResponse><fileUpload/></tsResponse>`)
+		}))
+		defer server.Close()
+		client := tableauworkbook.NewClient(tableau.NewTransport(server.Client(), "3.29", nil), session{}, server.URL)
+		client.SetUploadThreshold(1)
+		_, err := client.Publish(context.Background(), tableauworkbook.PublishRequest{Name: "Finance", ProjectLUID: "project-1", Filename: "Finance.twbx", Content: []byte("large")})
+		assertProtocolContext(t, err, http.StatusCreated, "upload-request")
+	})
+}
+
+func assertProtocolContext(t *testing.T, err error, statusCode int, requestID string) {
+	t.Helper()
+	var status interface{ HTTPStatus() int }
+	if err == nil || !errors.As(err, &status) || status.HTTPStatus() != statusCode || tableau.RequestID(err) != requestID {
+		t.Fatalf("protocol error = %#v", err)
+	}
+}
+
 func TestClientDownloadsNativeWorkbookAndFilename(t *testing.T) {
 	include := func(value bool) *bool { return &value }
 	tests := []struct {
@@ -298,6 +374,25 @@ func TestClientRejectsChangedArtifactBeforeStartingPublish(t *testing.T) {
 	}
 }
 
+func TestClientRejectsExcessUploadBlocksBeforeSnapshot(t *testing.T) {
+	payloadDirectory := t.TempDir()
+	client := tableauworkbook.NewClient(tableau.NewTransport(nil, "3.29", nil), session{}, "https://tableau.example")
+	client.SetUploadThreshold(1)
+	client.SetUploadChunkSize(1)
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	_, err := client.Publish(ctx, tableauworkbook.PublishRequest{
+		Name: "Finance", ProjectLUID: "project-1", Filename: "Finance.twbx",
+		ContentPath: filepath.Join(payloadDirectory, "Finance.twbx"), ContentSize: 1001, ExpectedFingerprint: "sha256:planned",
+	})
+	if err == nil || !strings.Contains(err.Error(), "1001 upload blocks") {
+		t.Fatalf("Publish() error = %v", err)
+	}
+	if snapshots, globErr := filepath.Glob(filepath.Join(payloadDirectory, ".tadx-publish-snapshot-*")); globErr != nil || len(snapshots) != 0 {
+		t.Fatalf("publish snapshots = %v, error = %v", snapshots, globErr)
+	}
+}
+
 func TestClientEscapesMultipartFilenames(t *testing.T) {
 	t.Run("direct publish", func(t *testing.T) {
 		filename := `Finance "Q1".twb`
@@ -415,6 +510,54 @@ func TestClientReturnsFailingPollRequestID(t *testing.T) {
 	}
 	if result.Status != "unknown" || result.JobID != "job-failed-poll" || result.TableauRequestID != "poll-request" {
 		t.Fatalf("poll failure result = %#v", result)
+	}
+}
+
+func TestClientRetainsLastPollRequestIDForProtocolFailure(t *testing.T) {
+	polls := 0
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		writer.Header().Set("Content-Type", "application/xml")
+		if request.Method == http.MethodPost {
+			writer.WriteHeader(http.StatusCreated)
+			_, _ = io.WriteString(writer, `<tsResponse><job id="job-1" progress="0" finishCode="1"/></tsResponse>`)
+			return
+		}
+		polls++
+		if polls == 1 {
+			writer.Header().Set("X-Tableau-Request-Id", "poll-request-1")
+			_, _ = io.WriteString(writer, `<tsResponse><job id="job-1" progress="0" finishCode="1"/></tsResponse>`)
+			return
+		}
+		_, _ = io.WriteString(writer, `<tsResponse><job id="job-1"`)
+	}))
+	defer server.Close()
+
+	client := tableauworkbook.NewClient(tableau.NewTransport(server.Client(), "3.29", nil), session{}, server.URL)
+	client.SetPollPolicy(time.Millisecond, 100*time.Millisecond)
+	result, err := client.Publish(context.Background(), tableauworkbook.PublishRequest{Name: "Finance", ProjectLUID: "project-1", Filename: "Finance.twb", Content: []byte("small"), AsJob: true})
+	if err == nil || result.Status != "unknown" || result.TableauRequestID != "poll-request-1" || tableau.RequestID(err) != "poll-request-1" {
+		t.Fatalf("result = %#v, error = %v", result, err)
+	}
+}
+
+func TestClientReturnsTerminalJobFailure(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		writer.Header().Set("Content-Type", "application/xml")
+		if request.Method == http.MethodPost {
+			writer.WriteHeader(http.StatusCreated)
+			_, _ = io.WriteString(writer, `<tsResponse><job id="job-1" progress="0" finishCode="1"/></tsResponse>`)
+			return
+		}
+		writer.Header().Set("X-Tableau-Request-Id", "terminal-poll-request")
+		_, _ = io.WriteString(writer, `<tsResponse><job id="job-1" progress="100" finishCode="2"/></tsResponse>`)
+	}))
+	defer server.Close()
+
+	client := tableauworkbook.NewClient(tableau.NewTransport(server.Client(), "3.29", nil), session{}, server.URL)
+	client.SetPollPolicy(time.Millisecond, 100*time.Millisecond)
+	result, err := client.Publish(context.Background(), tableauworkbook.PublishRequest{Name: "Finance", ProjectLUID: "project-1", Filename: "Finance.twb", Content: []byte("small"), AsJob: true})
+	if err == nil || !strings.Contains(err.Error(), "finish code 2") || result.Status != "failed" || result.JobID != "job-1" || result.TableauRequestID != "terminal-poll-request" {
+		t.Fatalf("result = %#v, error = %v", result, err)
 	}
 }
 
@@ -564,6 +707,7 @@ func TestClientRejectsMismatchedUploadAppendIdentity(t *testing.T) {
 			writer.WriteHeader(http.StatusCreated)
 			_, _ = io.WriteString(writer, `<tsResponse><fileUpload uploadSessionId="upload-1" fileSize="0"/></tsResponse>`)
 		case request.Method == http.MethodPut && strings.HasSuffix(request.URL.Path, "/fileUploads/upload-1"):
+			writer.Header().Set("X-Tableau-Request-Id", "append-request")
 			_, _ = io.WriteString(writer, `<tsResponse><fileUpload uploadSessionId="upload-other" fileSize="5"/></tsResponse>`)
 		case request.Method == http.MethodPost && strings.HasSuffix(request.URL.Path, "/workbooks"):
 			publishCalls++
@@ -581,6 +725,7 @@ func TestClientRejectsMismatchedUploadAppendIdentity(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), "upload session ID") {
 		t.Fatalf("error = %v", err)
 	}
+	assertProtocolContext(t, err, http.StatusOK, "append-request")
 	if publishCalls != 0 {
 		t.Fatalf("publish calls = %d", publishCalls)
 	}

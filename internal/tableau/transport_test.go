@@ -1,6 +1,7 @@
 package tableau
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"io"
@@ -210,6 +211,19 @@ func TestTransportRejectsResponseLimitAboveSharedCeilingBeforeRequest(t *testing
 	}
 }
 
+func TestTransportClassifiesOversizedResponseAsNonretryable(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+		_, _ = io.WriteString(writer, "oversized")
+	}))
+	defer server.Close()
+	transport := NewTransport(server.Client(), "3.29", nil)
+	_, err := transport.Do(context.Background(), nil, Request{Method: http.MethodGet, ServerURL: server.URL, Path: "/large", Operation: "workbook.list", MaxResponseBytes: 1})
+	var advice interface{ Retryable() bool }
+	if !errors.As(err, &advice) || advice.Retryable() {
+		t.Fatalf("retry advice = %#v, error = %v", advice, err)
+	}
+}
+
 func TestTransportRejectsCrossOriginRedirectBeforeReplayingCredentials(t *testing.T) {
 	var targetRequests atomic.Int32
 	target := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) { targetRequests.Add(1) }))
@@ -225,6 +239,10 @@ func TestTransportRejectsCrossOriginRedirectBeforeReplayingCredentials(t *testin
 	})
 	if err == nil || !strings.Contains(err.Error(), "cross-origin Tableau redirect") {
 		t.Fatalf("error = %v", err)
+	}
+	var advice interface{ Retryable() bool }
+	if !errors.As(err, &advice) || advice.Retryable() {
+		t.Fatalf("retry advice = %#v", advice)
 	}
 	if targetRequests.Load() != 0 {
 		t.Fatalf("redirect target requests = %d, want 0", targetRequests.Load())
@@ -245,6 +263,10 @@ func TestTransportRejectsSchemeDowngradeRedirect(t *testing.T) {
 	})
 	if err == nil || !strings.Contains(err.Error(), "less secure scheme") {
 		t.Fatalf("error = %v", err)
+	}
+	var advice interface{ Retryable() bool }
+	if !errors.As(err, &advice) || advice.Retryable() {
+		t.Fatalf("retry advice = %#v", advice)
 	}
 }
 
@@ -271,5 +293,82 @@ func TestTransportClassifiesRequestRetrySafety(t *testing.T) {
 		if !errors.As(err, &advice) || advice.Retryable() != test.want || advice.CorrectiveAction() == "" {
 			t.Fatalf("%s retry advice = %#v, error = %v", test.operation, advice, err)
 		}
+	}
+}
+
+func TestTransportClassifiesResponseReadRetrySafety(t *testing.T) {
+	t.Parallel()
+
+	for _, test := range []struct {
+		name      string
+		method    string
+		operation string
+		want      bool
+	}{
+		{name: "workbook read", method: http.MethodGet, operation: "workbook.list", want: true},
+		{name: "authentication", method: http.MethodPost, operation: "auth.check", want: true},
+		{name: "publish mutation", method: http.MethodPost, operation: "workbook.publish", want: false},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			transport := NewTransport(&http.Client{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
+				return &http.Response{StatusCode: http.StatusOK, Header: make(http.Header), Body: errorReader{err: io.ErrUnexpectedEOF}}, nil
+			})}, "3.29", nil)
+			_, err := transport.Do(context.Background(), nil, Request{Method: test.method, ServerURL: "https://tableau.example", Path: "/request", Operation: test.operation})
+			var advice interface {
+				Retryable() bool
+				CorrectiveAction() string
+			}
+			if !errors.As(err, &advice) || advice.Retryable() != test.want || advice.CorrectiveAction() == "" {
+				t.Fatalf("retry advice = %#v, error = %v", advice, err)
+			}
+		})
+	}
+}
+
+func TestTransportClassifiesCancellationAsNonretryable(t *testing.T) {
+	tests := []struct {
+		name   string
+		client *http.Client
+		url    string
+		ctx    context.Context
+	}{
+		{
+			name: "cancellation",
+			client: &http.Client{Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
+				return nil, request.Context().Err()
+			})},
+			url: "https://tableau.example",
+			ctx: func() context.Context {
+				ctx, cancel := context.WithCancel(context.Background())
+				cancel()
+				return ctx
+			}(),
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			transport := NewTransport(test.client, "3.29", nil)
+			_, err := transport.Do(test.ctx, nil, Request{Method: http.MethodPost, ServerURL: test.url, Path: "/signin", Operation: "auth.check"})
+			var advice interface{ Retryable() bool }
+			if !errors.As(err, &advice) || advice.Retryable() {
+				t.Fatalf("retry advice = %#v, error = %v", advice, err)
+			}
+		})
+	}
+}
+
+func TestTransportBoundsUnstructuredUpstreamDiagnostic(t *testing.T) {
+	body := bytes.Repeat([]byte("x"), maxUpstreamDiagnosticBytes*2)
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+		writer.WriteHeader(http.StatusBadGateway)
+		_, _ = writer.Write(body)
+	}))
+	defer server.Close()
+
+	transport := NewTransport(server.Client(), "3.29", nil)
+	_, err := transport.Do(context.Background(), nil, Request{Method: http.MethodGet, ServerURL: server.URL, Path: "/workbooks", Operation: "workbook.list"})
+	var upstream *UpstreamError
+	if !errors.As(err, &upstream) || len(upstream.Detail) > maxUpstreamDiagnosticBytes || !strings.HasSuffix(upstream.Detail, "[truncated]") {
+		t.Fatalf("upstream error = %#v", upstream)
 	}
 }
