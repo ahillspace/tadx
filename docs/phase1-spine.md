@@ -40,9 +40,22 @@ A pulled workbook artifact contains the native `.twb` or `.twbx`, `metadata.json
 Metadata records provenance, the authoritative Tableau LUID, the canonical payload name, and a SHA-256 baseline fingerprint.
 Artifact identity is scoped by normalized Tableau server origin, authenticated site LUID, resource kind, and workbook LUID.
 Environment aliases, site content URLs, and project paths remain provenance labels rather than identity keys.
-Artifacts never store a publish target.
+The recorded source origin is the default publish target, and an explicit environment overrides it.
 Clean re-pull warns and replaces.
 Dirty re-pull stops unless `--overwrite` is explicit.
+
+Workbook pull queries the Metadata API for direct published datasource references.
+A complete empty result records the workbook as `portable`.
+One or more authoritative published datasource LUIDs record the workbook as `source-site-bound`.
+Incomplete metadata leaves portability unknown on a normal pull and produces a warning.
+`--include-pds` requires complete metadata and acquires each unique direct dependency without recursion.
+Acquired dependencies are unchanged `.tds` or `.tdsx` sibling artifacts under `artifacts/datasource/`.
+Each sibling uses server origin, site LUID, and datasource LUID as its identity.
+The workbook records workspace-relative sibling paths and sets `dependencies_acquired` only when every direct dependency is present.
+Workbook and dependency artifacts are preflighted, staged, and committed as one recoverable local transaction.
+Workbook `--overwrite` never authorizes replacement of a dirty datasource dependency.
+Prepared and committed transaction journals restore the prior bundle or complete cleanup after a process exit.
+Dependency artifacts record `composition_status: unknown`, so later datasource publishing cannot claim composition fidelity before B2 closes.
 
 ## Publish contract
 

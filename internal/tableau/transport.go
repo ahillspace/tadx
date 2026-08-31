@@ -446,7 +446,7 @@ func responseReadAdvice(ctx context.Context, method, operation string, status in
 }
 
 func retrySafe(method, operation string) bool {
-	return method == http.MethodGet || method == http.MethodHead || method == http.MethodOptions || operation == "auth.check"
+	return method == http.MethodGet || method == http.MethodHead || method == http.MethodOptions || operation == "auth.check" || operation == "metadata.query"
 }
 
 // upstreamAdvice classifies an upstream status as retryable. When a retryable

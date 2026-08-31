@@ -57,11 +57,17 @@ type Renderer interface {
 	Render(any) error
 }
 
+// RenderOptions contains presentation-only flags shared by every command.
+type RenderOptions struct {
+	Full bool
+}
+
 // Dependencies contains the explicitly wired Phase 0 command dependencies.
 type Dependencies struct {
 	Lister               Lister
 	Getter               Getter
 	Renderer             Renderer
+	RenderOptions        *RenderOptions
 	MutationsEnabled     bool
 	ListUse              string
 	ListShort            string
@@ -83,12 +89,17 @@ type Dependencies struct {
 
 // NewRoot creates the root command. It contains no domain behavior.
 func NewRoot(deps Dependencies) *cobra.Command {
+	renderOptions := deps.RenderOptions
+	if renderOptions == nil {
+		renderOptions = &RenderOptions{}
+	}
 	root := &cobra.Command{
 		Use:           "tadx",
 		Short:         "Deterministic Tableau lifecycle and development CLI",
 		SilenceErrors: true,
 		SilenceUsage:  true,
 	}
+	root.PersistentFlags().BoolVar(&renderOptions.Full, "full", false, "show expanded bounded details")
 	root.AddCommand(capabilitycli.New(capabilitycli.Dependencies{
 		Lister:           deps.Lister,
 		Getter:           deps.Getter,

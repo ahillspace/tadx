@@ -89,6 +89,32 @@ func TestWorkbookManagerRecordsPublishedDatasourcePortability(t *testing.T) {
 	}
 }
 
+func TestWorkbookManagerPersistsExplicitUnknownPortability(t *testing.T) {
+	workspace := createWorkspace(t)
+	manager := artifact.NewWorkbookManager(time.Now)
+	result, err := manager.Pull(context.Background(), artifact.WorkbookPull{
+		Workspace: workspace, Filename: "Finance.twbx", Content: []byte("native"),
+		Metadata: artifact.WorkbookMetadata{
+			Kind: "workbook", Name: "Finance", TableauID: "wb-1", SourceServerOrigin: "https://tableau.example.com", SourceSiteLUID: "site-1", SourceEnvironment: "production", SourceSite: "marketing", SourceProjectName: "Ops", SourceProjectID: "project-1",
+			Portability: artifact.PortabilityUnknown,
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	data, err := os.ReadFile(filepath.Join(result.ArtifactPath, "metadata.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var fields map[string]any
+	if err := json.Unmarshal(data, &fields); err != nil {
+		t.Fatal(err)
+	}
+	if fields["portability"] != artifact.PortabilityUnknown {
+		t.Fatalf("portability = %#v", fields["portability"])
+	}
+}
+
 func TestWorkbookManagerRejectsInvalidPortabilityContract(t *testing.T) {
 	workspace := createWorkspace(t)
 	manager := artifact.NewWorkbookManager(time.Now)
@@ -102,6 +128,37 @@ func TestWorkbookManagerRejectsInvalidPortabilityContract(t *testing.T) {
 			m.Portability = "source-site-bound"
 			m.PublishedDatasources = []artifact.PublishedDatasourceRef{{Name: "Sales"}}
 		}, contains: "published_datasource"},
+		{name: "source-bound without references", mutate: func(m *artifact.WorkbookMetadata) {
+			m.Portability = "source-site-bound"
+		}, contains: "requires published_datasources"},
+		{name: "unknown portability with references", mutate: func(m *artifact.WorkbookMetadata) {
+			m.PublishedDatasources = []artifact.PublishedDatasourceRef{{LUID: "ds-1", Name: "Sales", SourceSite: "marketing"}}
+		}, contains: "requires source-site-bound"},
+		{name: "acquired without references", mutate: func(m *artifact.WorkbookMetadata) {
+			m.DependenciesAcquired = true
+		}, contains: "dependencies_acquired"},
+		{name: "acquired reference without path", mutate: func(m *artifact.WorkbookMetadata) {
+			m.Portability = "source-site-bound"
+			m.DependenciesAcquired = true
+			m.PublishedDatasources = []artifact.PublishedDatasourceRef{{LUID: "ds-1", Name: "Sales", SourceSite: "marketing"}}
+		}, contains: "local_artifact_path"},
+		{name: "unacquired reference with path", mutate: func(m *artifact.WorkbookMetadata) {
+			m.Portability = "source-site-bound"
+			m.PublishedDatasources = []artifact.PublishedDatasourceRef{{LUID: "ds-1", Name: "Sales", SourceSite: "marketing", LocalArtifactPath: "artifacts/datasource/Sales"}}
+		}, contains: "dependencies_acquired"},
+		{name: "duplicate reference identity", mutate: func(m *artifact.WorkbookMetadata) {
+			m.Portability = "source-site-bound"
+			m.PublishedDatasources = []artifact.PublishedDatasourceRef{{LUID: "ds-1", Name: "Sales", SourceSite: "marketing"}, {LUID: "ds-1", Name: "Sales", SourceSite: "marketing"}}
+		}, contains: "duplicate"},
+		{name: "references not sorted", mutate: func(m *artifact.WorkbookMetadata) {
+			m.Portability = "source-site-bound"
+			m.PublishedDatasources = []artifact.PublishedDatasourceRef{{LUID: "ds-2", Name: "Inventory", SourceSite: "marketing"}, {LUID: "ds-1", Name: "Sales", SourceSite: "marketing"}}
+		}, contains: "sorted"},
+		{name: "unsafe dependency path", mutate: func(m *artifact.WorkbookMetadata) {
+			m.Portability = "source-site-bound"
+			m.DependenciesAcquired = true
+			m.PublishedDatasources = []artifact.PublishedDatasourceRef{{LUID: "ds-1", Name: "Sales", SourceSite: "marketing", LocalArtifactPath: "../outside"}}
+		}, contains: "local_artifact_path"},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {

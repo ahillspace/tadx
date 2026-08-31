@@ -12,3 +12,6 @@ Flags:
       --owner string      filter by exact owner
       --product string    filter by product availability
       --resource string   filter by exact resource
+
+Global Flags:
+      --full   show expanded bounded details

@@ -203,6 +203,10 @@ Never fuzzy-match, prompt interactively, or silently redirect after a remote ren
 
 - Render through the output layer in TOON.
 Never build output in Cobra.
+- Follow `docs/contributing/output-guidelines.md` and classify every result field as compact or full before implementation.
+- Detail-bearing actions implement an explicit compact projection and retain a bounded full typed result.
+- Compact output includes `details: "--full"` only when expanded fields are available.
+- Never hide mutation authorization fields, continuation state, partial outcomes, warnings, retry safety, or corrective action.
 - `--raw` is available only if the registry marks the capability raw-capable.
 Secret redaction always precedes rendering.
 
@@ -229,7 +233,7 @@ Each domain still owns its own Cobra package under `internal/cli/<domain>`, but 
 3. The `implementationManifest` entry exists with the correct `CommandPath`.
 4. Behavior tests were written before implementation.
 5. Selector ambiguity behavior is tested.
-6. Human and TOON output are tested with golden fixtures (`output.toon` for reads, `preview.toon` for previews).
+6. Compact and full TOON output are tested with separate golden fixtures whenever a capability has expanded detail.
 7. Error and exit behavior is tested, and error IDs follow `<domain>.<verb>.<stage>`.
 8. Secret redaction is tested where applicable.
 9. Mutation discovery, preview, and `--apply` behavior are tested if consequential.
@@ -237,3 +241,4 @@ Each domain still owns its own Cobra package under `internal/cli/<domain>`, but 
 11. The command carries its `tadx.capability` annotation and startup binding validation passes.
 12. Upstream API behavior was verified against captured evidence (not docs-only) before any live wiring.
 13. `go run ./cmd/gencapdocs -out docs/reference/capabilities.md` was run as the final step and committed.
+14. Compact output remains bounded with many detail records, and `--full` changes presentation only.

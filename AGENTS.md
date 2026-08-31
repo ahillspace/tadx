@@ -24,6 +24,7 @@ TADX never calls or proxies MCP inside a command. CLI and MCP are peer surfaces;
 
 - PAT authentication only.
 - Default output is TOON.
+- Default output is an explicit compact projection. Add --full to the same command for expanded, bounded details.
 - Consequential mutations preview by default and require --apply. --force never means --apply.
 - Mutation discovery gating is not authorization.
 - Tableau LUIDs are authoritative; ambiguous selectors fail; no fuzzy or interactive resolution.
@@ -34,6 +35,7 @@ TADX never calls or proxies MCP inside a command. CLI and MCP are peer surfaces;
 - scope-v1: what V1 builds and does not build.
 - axi: the CLI behavioral contract.
 - toon: the output format contract.
+- contributing/output-guidelines: the required compact versus --full field-selection and test contract for every capability.
 - contributing/adding-a-capability: the end-to-end build guide for one capability, including the contract-row-to-manifest-to-CLI wiring chain and the dependency and import rules the architecture test enforces.
 - contributing/adding-an-adapter: the end-to-end build guide for one Tableau resource seam, including the client family, resource adapter, pagination envelope, redaction, and contract test.
 - build-order: the order slices are built and what must be frozen first.

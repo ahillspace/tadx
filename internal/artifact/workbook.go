@@ -13,6 +13,7 @@ import (
 	"net"
 	"net/url"
 	"os"
+	pathpkg "path"
 	"path/filepath"
 	"strings"
 	"time"
@@ -35,11 +36,9 @@ type WorkbookMetadata struct {
 	PulledAt                 string `json:"pulled_at"`
 	CanonicalPayload         string `json:"canonical_payload"`
 	LocalBaselineFingerprint string `json:"local_baseline_fingerprint"`
-	// Portability reports whether the workbook is self-contained or bound to its
-	// source site by published-datasource references. Empty means portability has
-	// not been detected yet. Detection is deferred (see the capability contract):
-	// only the Metadata API yields a referenced published datasource's LUID, and
-	// that contract is not yet captured with a passing contract test.
+	// Portability reports whether the workbook is self-contained, bound to its
+	// source site by published-datasource references, or not conclusively detected.
+	// Empty remains readable for artifacts created before explicit unknown state.
 	Portability string `json:"portability,omitempty"`
 	// PublishedDatasources are the direct published-datasource references detected
 	// in the workbook. Presence implies Portability "source-site-bound".
@@ -65,6 +64,7 @@ type PublishedDatasourceRef struct {
 const (
 	PortabilityPortable        = "portable"
 	PortabilitySourceSiteBound = "source-site-bound"
+	PortabilityUnknown         = "unknown"
 )
 
 // WorkbookPull is one complete local workbook replacement request.
@@ -372,16 +372,53 @@ func validateWorkbookMetadata(metadata WorkbookMetadata) error {
 	if !strings.HasPrefix(metadata.LocalBaselineFingerprint, prefix) || err != nil || len(decoded) != sha256.Size {
 		return errors.New("workbook artifact metadata has invalid local_baseline_fingerprint")
 	}
-	if metadata.Portability != "" && metadata.Portability != PortabilityPortable && metadata.Portability != PortabilitySourceSiteBound {
+	if metadata.Portability != "" && metadata.Portability != PortabilityPortable && metadata.Portability != PortabilitySourceSiteBound && metadata.Portability != PortabilityUnknown {
 		return fmt.Errorf("workbook artifact metadata has invalid portability %q", metadata.Portability)
 	}
+	if metadata.Portability == PortabilitySourceSiteBound && len(metadata.PublishedDatasources) == 0 {
+		return errors.New("source-site-bound workbook artifact metadata requires published_datasources")
+	}
+	if len(metadata.PublishedDatasources) > 0 && metadata.Portability != PortabilitySourceSiteBound {
+		return errors.New("workbook artifact metadata with published_datasources requires source-site-bound portability")
+	}
+	if metadata.DependenciesAcquired && len(metadata.PublishedDatasources) == 0 {
+		return errors.New("workbook artifact metadata dependencies_acquired requires published_datasources")
+	}
+	seenLUIDs := make(map[string]struct{}, len(metadata.PublishedDatasources))
+	seenPaths := make(map[string]struct{}, len(metadata.PublishedDatasources))
+	previousLUID := ""
 	for index, reference := range metadata.PublishedDatasources {
-		if strings.TrimSpace(reference.LUID) == "" {
+		luid := strings.TrimSpace(reference.LUID)
+		if luid == "" {
 			return fmt.Errorf("workbook artifact metadata published_datasource %d requires luid", index)
 		}
-	}
-	if len(metadata.PublishedDatasources) > 0 && metadata.Portability == PortabilityPortable {
-		return errors.New("workbook artifact metadata records published_datasources but claims portable portability")
+		if luid != reference.LUID {
+			return fmt.Errorf("workbook artifact metadata published_datasource %d requires canonical luid", index)
+		}
+		if _, exists := seenLUIDs[luid]; exists {
+			return fmt.Errorf("workbook artifact metadata contains duplicate published datasource LUID %q", luid)
+		}
+		seenLUIDs[luid] = struct{}{}
+		if previousLUID != "" && luid < previousLUID {
+			return errors.New("workbook artifact metadata published_datasources must be sorted by LUID")
+		}
+		previousLUID = luid
+		localPath := reference.LocalArtifactPath
+		if metadata.DependenciesAcquired && localPath == "" {
+			return fmt.Errorf("workbook artifact metadata published_datasource %d requires local_artifact_path when dependencies_acquired is true", index)
+		}
+		if !metadata.DependenciesAcquired && localPath != "" {
+			return fmt.Errorf("workbook artifact metadata published_datasource %d local_artifact_path requires dependencies_acquired", index)
+		}
+		if localPath != "" {
+			if strings.Contains(localPath, `\`) || pathpkg.IsAbs(localPath) || filepath.IsAbs(localPath) || pathpkg.Clean(localPath) != localPath || !strings.HasPrefix(localPath, "artifacts/datasource/") {
+				return fmt.Errorf("workbook artifact metadata published_datasource %d has invalid local_artifact_path %q", index, localPath)
+			}
+			if _, exists := seenPaths[localPath]; exists {
+				return fmt.Errorf("workbook artifact metadata contains duplicate local_artifact_path %q", localPath)
+			}
+			seenPaths[localPath] = struct{}{}
+		}
 	}
 	return nil
 }
@@ -687,6 +724,7 @@ func canonicalWorkbookPath(directory, payload string) (string, error) {
 type directoryOperations struct {
 	stat      func(string) (os.FileInfo, error)
 	rename    func(string, string) error
+	link      func(string, string) error
 	removeAll func(string) error
 	writeFile func(string, []byte, os.FileMode) error
 	syncDir   func(string) error
@@ -696,6 +734,7 @@ func defaultDirectoryOperations() directoryOperations {
 	return directoryOperations{
 		stat:      os.Stat,
 		rename:    os.Rename,
+		link:      os.Link,
 		removeAll: os.RemoveAll,
 		writeFile: writeFileSync,
 		syncDir:   fsyncDir,
@@ -710,6 +749,9 @@ func (o directoryOperations) withDefaults() directoryOperations {
 	}
 	if o.rename == nil {
 		o.rename = os.Rename
+	}
+	if o.link == nil {
+		o.link = os.Link
 	}
 	if o.removeAll == nil {
 		o.removeAll = os.RemoveAll
@@ -947,6 +989,7 @@ func workbookView(metadata WorkbookMetadata) string {
 	if metadata.Portability != "" {
 		view += fmt.Sprintf("- Portability: `%s`\n", metadata.Portability)
 	}
+	view += fmt.Sprintf("- Dependencies acquired: `%t`\n", metadata.DependenciesAcquired)
 	if len(metadata.PublishedDatasources) > 0 {
 		view += "\n## Published datasource references\n\n"
 		for _, reference := range metadata.PublishedDatasources {

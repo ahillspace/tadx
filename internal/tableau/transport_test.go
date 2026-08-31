@@ -282,6 +282,7 @@ func TestTransportClassifiesRequestRetrySafety(t *testing.T) {
 		want      bool
 	}{
 		{operation: "auth.check", want: true},
+		{operation: "metadata.query", want: true},
 		{operation: "workbook.publish", want: false},
 	} {
 		_, err := transport.Do(context.Background(), nil, Request{
@@ -309,6 +310,7 @@ func TestTransportClassifiesResponseReadRetrySafety(t *testing.T) {
 	}{
 		{name: "workbook read", method: http.MethodGet, operation: "workbook.list", status: http.StatusOK, want: true},
 		{name: "authentication", method: http.MethodPost, operation: "auth.check", status: http.StatusOK, want: true},
+		{name: "metadata query", method: http.MethodPost, operation: "metadata.query", status: http.StatusOK, want: true},
 		{name: "publish mutation", method: http.MethodPost, operation: "workbook.publish", status: http.StatusOK, want: false},
 		{name: "unauthorized authentication", method: http.MethodPost, operation: "auth.check", status: http.StatusUnauthorized, want: false},
 		{name: "unavailable workbook read", method: http.MethodGet, operation: "workbook.list", status: http.StatusServiceUnavailable, want: true},

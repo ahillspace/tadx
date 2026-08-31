@@ -677,6 +677,16 @@ func (c *Client) pollJob(ctx context.Context, jobID string) (PublishResult, erro
 		response.TableauRequestID = requestID
 		var envelope jobEnvelope
 		if err := xml.Unmarshal(response.Body, &envelope); err != nil {
+			// A response can yield its headers just before the polling deadline and
+			// then finish with an empty or truncated body as cancellation closes the
+			// stream. Preserve the bounded polling outcome instead of misclassifying
+			// that timing window as a retryable protocol response.
+			if ctx.Err() != nil {
+				return PublishResult{Status: "cancelled", JobID: jobID, TableauRequestID: requestID}, ctx.Err()
+			}
+			if errors.Is(pollCtx.Err(), context.DeadlineExceeded) {
+				return PublishResult{Status: "timed_out", JobID: jobID, TableauRequestID: requestID}, fmt.Errorf("Tableau workbook publish job %s timed out after %s: %w", jobID, c.pollTimeout, err)
+			}
 			return PublishResult{Status: "unknown", JobID: jobID, TableauRequestID: requestID}, tableau.NewProtocolError("workbook.publish.poll", response, fmt.Errorf("decode Tableau job response: %w", err), true)
 		}
 		if envelope.Job.ID != jobID {

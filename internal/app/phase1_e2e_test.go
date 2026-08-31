@@ -36,6 +36,9 @@ func TestPhaseOneWorkbookPullAndPublishThroughCLIDefaultSite(t *testing.T) {
 			writer.Header().Set("Content-Disposition", `name="tableau_workbook"; filename="Finance.twb"`)
 			writer.Header().Set("Content-Type", "application/xml")
 			_, _ = io.WriteString(writer, `<workbook/>`)
+		case request.Method == http.MethodPost && request.URL.Path == "/api/metadata/graphql":
+			writer.Header().Set("Content-Type", "application/json")
+			_, _ = io.WriteString(writer, `{"data":{"workbooksConnection":{"totalCount":1,"nodes":[{"luid":"wb-1","embeddedDatasourcesConnection":{"totalCount":0,"pageInfo":{"hasNextPage":false,"endCursor":""},"nodes":[]}}]}}}`)
 		case request.Method == http.MethodGet && request.URL.Path == "/api/3.29/sites/site-1/projects":
 			writer.Header().Set("Content-Type", "application/xml")
 			_, _ = io.WriteString(writer, `<tsResponse><pagination pageNumber="1" pageSize="1000" totalAvailable="2"/><projects><project id="department" name="Department"/><project id="project-1" name="Ops" parentProjectId="department"/></projects></tsResponse>`)
@@ -84,7 +87,7 @@ func TestPhaseOneWorkbookPullAndPublishThroughCLIDefaultSite(t *testing.T) {
 	if err := json.Unmarshal(metadataData, &metadata); err != nil {
 		t.Fatal(err)
 	}
-	if metadata.SourceServerOrigin != server.URL || metadata.SourceSiteLUID != "site-1" || metadata.SourceProjectName != "Department/Ops" || metadata.SourceProjectID != "project-1" {
+	if metadata.SourceServerOrigin != server.URL || metadata.SourceSiteLUID != "site-1" || metadata.SourceProjectName != "Department/Ops" || metadata.SourceProjectID != "project-1" || metadata.Portability != artifact.PortabilityPortable {
 		t.Fatalf("artifact source provenance = %#v", metadata)
 	}
 
@@ -131,6 +134,127 @@ func TestPhaseOneAuthCheckHappyPathThroughCLI(t *testing.T) {
 		if !strings.Contains(output, want) {
 			t.Fatalf("auth check output missing %q: %s", want, output)
 		}
+	}
+}
+
+func TestWorkbookPullAcquiresDirectPublishedDatasourceArtifactsThroughCLI(t *testing.T) {
+	var datasourceGets atomic.Int32
+	var datasourceDownloads atomic.Int32
+	server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		switch {
+		case request.URL.Path == "/api/3.29/auth/signin":
+			writer.Header().Set("Content-Type", "application/json")
+			_, _ = io.WriteString(writer, `{"credentials":{"token":"session-token","site":{"id":"site-1"},"user":{"id":"user-1"}}}`)
+		case request.Method == http.MethodGet && request.URL.Path == "/api/3.29/sites/site-1/workbooks/wb-bound":
+			writer.Header().Set("Content-Type", "application/xml")
+			_, _ = io.WriteString(writer, `<tsResponse><workbook id="wb-bound" name="Bound Book"><project id="workbook-project" name="Ops"/><owner id="user-1"/></workbook></tsResponse>`)
+		case request.Method == http.MethodGet && request.URL.Path == "/api/3.29/sites/site-1/projects":
+			writer.Header().Set("Content-Type", "application/xml")
+			_, _ = io.WriteString(writer, `<tsResponse><pagination pageNumber="1" pageSize="1000" totalAvailable="3"/><projects><project id="department" name="Department"/><project id="workbook-project" name="Ops" parentProjectId="department"/><project id="datasource-project" name="Shared" parentProjectId="department"/></projects></tsResponse>`)
+		case request.Method == http.MethodGet && request.URL.Path == "/api/3.29/sites/site-1/workbooks/wb-bound/content":
+			writer.Header().Set("Content-Disposition", `name="tableau_workbook"; filename="Bound Book.twbx"`)
+			writer.Header().Set("X-Tableau-Request-Id", "workbook-download")
+			_, _ = writer.Write([]byte("native-workbook"))
+		case request.Method == http.MethodPost && request.URL.Path == "/api/metadata/graphql":
+			writer.Header().Set("Content-Type", "application/json")
+			_, _ = io.WriteString(writer, `{"data":{"workbooksConnection":{"totalCount":1,"nodes":[{"luid":"wb-bound","embeddedDatasourcesConnection":{"totalCount":2,"pageInfo":{"hasNextPage":false,"endCursor":""},"nodes":[{"id":"embedded-1","name":"Sales","parentPublishedDatasourcesConnection":{"totalCount":1,"pageInfo":{"hasNextPage":false,"endCursor":""},"nodes":[{"luid":"ds-1","name":"Sales"}]}},{"id":"embedded-2","name":"Sales duplicate","parentPublishedDatasourcesConnection":{"totalCount":1,"pageInfo":{"hasNextPage":false,"endCursor":""},"nodes":[{"luid":"ds-1","name":"Sales"}]}}]}}]}}}`)
+		case request.Method == http.MethodGet && request.URL.Path == "/api/3.29/sites/site-1/datasources/ds-1":
+			datasourceGets.Add(1)
+			writer.Header().Set("Content-Type", "application/xml")
+			_, _ = io.WriteString(writer, `<tsResponse><datasource id="ds-1" name="Sales"><project id="datasource-project" name="Shared"/></datasource></tsResponse>`)
+		case request.Method == http.MethodGet && request.URL.Path == "/api/3.29/sites/site-1/datasources/ds-1/content":
+			datasourceDownloads.Add(1)
+			writer.Header().Set("Content-Disposition", `name="tableau_datasource"; filename="Sales.tdsx"`)
+			writer.Header().Set("X-Tableau-Request-Id", "datasource-download")
+			_, _ = writer.Write([]byte("native-datasource"))
+		default:
+			http.Error(writer, "unexpected request", http.StatusNotFound)
+		}
+	}))
+	defer server.Close()
+
+	configPath := writePhaseOneConfigWithSite(t, server.URL, "pace-dev")
+	workspace := t.TempDir()
+	if err := os.WriteFile(filepath.Join(workspace, "tadx.yaml"), []byte("version: 1\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PROD_PAT_NAME", "pat-name")
+	t.Setenv("PROD_PAT_SECRET", "pat-secret")
+	options := app.Options{ConfigPath: configPath, HTTPClient: server.Client(), Now: func() time.Time { return time.Date(2026, 8, 31, 12, 0, 0, 0, time.UTC) }}
+
+	var stdout strings.Builder
+	args := []string{"content", "workbook", "pull", "--environment", "production", "--workspace", workspace, "--id", "wb-bound", "--include-pds"}
+	if exit := app.Run(context.Background(), args, &stdout, options); exit != 0 {
+		t.Fatalf("pull exit = %d, output = %s", exit, stdout.String())
+	}
+	if datasourceGets.Load() != 1 || datasourceDownloads.Load() != 1 {
+		t.Fatalf("datasource calls: get=%d download=%d", datasourceGets.Load(), datasourceDownloads.Load())
+	}
+	datasourceEntries, err := os.ReadDir(filepath.Join(workspace, "artifacts", "datasource"))
+	if err != nil || len(datasourceEntries) != 1 {
+		t.Fatalf("datasource entries = %#v, error = %v", datasourceEntries, err)
+	}
+	datasourcePath := filepath.Join(workspace, "artifacts", "datasource", datasourceEntries[0].Name())
+	payload, err := os.ReadFile(filepath.Join(datasourcePath, "Sales.tdsx"))
+	if err != nil || string(payload) != "native-datasource" {
+		t.Fatalf("datasource payload = %q, error = %v", payload, err)
+	}
+	datasourceMetadataData, err := os.ReadFile(filepath.Join(datasourcePath, "metadata.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var datasourceMetadata artifact.DatasourceMetadata
+	if err := json.Unmarshal(datasourceMetadataData, &datasourceMetadata); err != nil {
+		t.Fatal(err)
+	}
+	if datasourceMetadata.SourceProjectName != "Department/Shared" || datasourceMetadata.SourceProjectID != "datasource-project" {
+		t.Fatalf("datasource project provenance = %#v", datasourceMetadata)
+	}
+	workbookEntries, err := os.ReadDir(filepath.Join(workspace, "artifacts", "workbook"))
+	if err != nil || len(workbookEntries) != 1 {
+		t.Fatalf("workbook entries = %#v, error = %v", workbookEntries, err)
+	}
+	metadataData, err := os.ReadFile(filepath.Join(workspace, "artifacts", "workbook", workbookEntries[0].Name(), "metadata.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var metadata artifact.WorkbookMetadata
+	if err := json.Unmarshal(metadataData, &metadata); err != nil {
+		t.Fatal(err)
+	}
+	if metadata.Portability != artifact.PortabilitySourceSiteBound || !metadata.DependenciesAcquired || len(metadata.PublishedDatasources) != 1 || metadata.PublishedDatasources[0].LUID != "ds-1" || metadata.PublishedDatasources[0].LocalArtifactPath == "" || filepath.IsAbs(metadata.PublishedDatasources[0].LocalArtifactPath) {
+		t.Fatalf("workbook dependency provenance = %#v", metadata)
+	}
+	for _, want := range []string{"portability: source-site-bound", "published_datasource_count: 1", "dependencies_acquired: true", "details: \"--full\""} {
+		if !strings.Contains(stdout.String(), want) {
+			t.Fatalf("output missing %q: %s", want, stdout.String())
+		}
+	}
+	for _, hidden := range []string{"ds-1,Sales", "baseline_fingerprint", "tableau_request_id"} {
+		if strings.Contains(stdout.String(), hidden) {
+			t.Fatalf("compact output exposed %q: %s", hidden, stdout.String())
+		}
+	}
+
+	fullWorkspace := t.TempDir()
+	if err := os.WriteFile(filepath.Join(fullWorkspace, "tadx.yaml"), []byte("version: 1\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	var fullOutput strings.Builder
+	fullArgs := []string{"content", "workbook", "pull", "--environment", "production", "--workspace", fullWorkspace, "--id", "wb-bound", "--include-pds", "--full"}
+	if exit := app.Run(context.Background(), fullArgs, &fullOutput, options); exit != 0 {
+		t.Fatalf("full pull exit = %d, output = %s", exit, fullOutput.String())
+	}
+	if datasourceGets.Load() != 2 || datasourceDownloads.Load() != 2 {
+		t.Fatalf("full datasource calls: get=%d download=%d", datasourceGets.Load(), datasourceDownloads.Load())
+	}
+	for _, want := range []string{"ds-1,Sales", "baseline_fingerprint", "tableau_request_id: workbook-download", "artifacts/datasource/"} {
+		if !strings.Contains(fullOutput.String(), want) {
+			t.Fatalf("full output missing %q: %s", want, fullOutput.String())
+		}
+	}
+	if strings.Contains(fullOutput.String(), "details: \"--full\"") || strings.Contains(fullOutput.String(), "dependencies[") {
+		t.Fatalf("full output retained compact hint or duplicate dependency list: %s", fullOutput.String())
 	}
 }
 

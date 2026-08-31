@@ -113,6 +113,25 @@ func TestCapabilityGetRequiresExactlyOneID(t *testing.T) {
 	}
 }
 
+func TestFullIsAUniversalPersistentPresentationFlag(t *testing.T) {
+	for _, args := range [][]string{
+		{"--full", "capability", "list"},
+		{"capability", "list", "--full"},
+	} {
+		mode := &cli.RenderOptions{}
+		deps := dependencies(&lister{}, &getter{}, &renderer{})
+		deps.RenderOptions = mode
+		cmd := cli.NewRoot(deps)
+		cmd.SetArgs(args)
+		if err := cmd.Execute(); err != nil {
+			t.Fatalf("Execute(%v) error = %v", args, err)
+		}
+		if !mode.Full {
+			t.Fatalf("Execute(%v) did not select full output", args)
+		}
+	}
+}
+
 func dependencies(l *lister, g *getter, r *renderer) cli.Dependencies {
 	return cli.Dependencies{
 		Lister:    l,

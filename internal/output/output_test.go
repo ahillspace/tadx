@@ -11,6 +11,25 @@ import (
 	"github.com/ahillspace/tadx/internal/output"
 )
 
+type projectableResult struct {
+	Status string `json:"status"`
+	Secret string `json:"secret"`
+}
+
+func (r projectableResult) CompactOutput() any {
+	return struct {
+		Status  string `json:"status"`
+		Details string `json:"details"`
+	}{Status: r.Status, Details: "--full"}
+}
+
+func (r projectableResult) FullOutput() any {
+	return struct {
+		Status string `json:"status"`
+		Secret string `json:"secret"`
+	}{Status: r.Status, Secret: r.Secret}
+}
+
 func TestRenderDefaultTOON(t *testing.T) {
 	t.Parallel()
 
@@ -23,6 +42,42 @@ func TestRenderDefaultTOON(t *testing.T) {
 	}
 	if got, want := buffer.String(), "name: workbooks\ncount: 2"; got != want {
 		t.Fatalf("got %q, want %q", got, want)
+	}
+}
+
+func TestRenderProjectsCompactOutputAndFullPreservesOriginal(t *testing.T) {
+	t.Parallel()
+
+	value := projectableResult{Status: "ready", Secret: "diagnostic"}
+	var compact bytes.Buffer
+	if err := output.RenderWithOptions(&compact, value, output.Options{}); err != nil {
+		t.Fatal(err)
+	}
+	if got := compact.String(); got != "status: ready\ndetails: \"--full\"" {
+		t.Fatalf("compact output = %q", got)
+	}
+
+	var full bytes.Buffer
+	if err := output.RenderWithOptions(&full, value, output.Options{Full: true}); err != nil {
+		t.Fatal(err)
+	}
+	if got := full.String(); got != "status: ready\nsecret: diagnostic" {
+		t.Fatalf("full output = %q", got)
+	}
+}
+
+func TestRenderRedactsAfterCompactProjection(t *testing.T) {
+	t.Parallel()
+
+	value := projectableResult{Status: "secret-value", Secret: "secret-value"}
+	for _, full := range []bool{false, true} {
+		var rendered bytes.Buffer
+		if err := output.RenderWithOptions(&rendered, value, output.Options{Full: full, Secrets: []string{"secret-value"}}); err != nil {
+			t.Fatal(err)
+		}
+		if strings.Contains(rendered.String(), "secret-value") || !strings.Contains(rendered.String(), output.Redacted) {
+			t.Fatalf("full=%v output = %q", full, rendered.String())
+		}
 	}
 }
 

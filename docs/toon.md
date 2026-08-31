@@ -68,6 +68,12 @@ Comments:
 - Default output is bounded and deterministic. --full does not license dumping an unbounded inventory.
 - Secret redaction runs before rendering and always takes precedence, including over --raw.
 
+Compact output is an explicit field projection, not merely full output with long strings truncated.
+Full output is a bounded superset for the same operation and never widens pagination or changes behavior.
+When compact output hides fields, it includes `details: "--full"` immediately before `help[]`.
+The marker is omitted from full output and from results whose compact and full shapes are identical.
+Field classification follows `docs/contributing/output-guidelines.md`.
+
 ## JSON interoperability
 
 - TOON is a lossless representation of the JSON data model; round-trips are deterministic and lossless.

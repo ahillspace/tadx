@@ -87,6 +87,7 @@ func newPull(deps Dependencies) *cobra.Command {
 	command.Flags().StringVar(&name, "name", "", "exact workbook name")
 	command.Flags().StringVar(&project, "project", "", "exact slash-delimited project path")
 	command.Flags().BoolVar(&includeExtract, "include-extract", true, "include workbook extracts")
+	command.Flags().BoolVar(&input.IncludePDS, "include-pds", false, "acquire direct published datasource dependencies as sibling artifacts without recursion")
 	command.Flags().BoolVar(&input.Overwrite, "overwrite", false, "replace a dirty local artifact")
 	return command
 }

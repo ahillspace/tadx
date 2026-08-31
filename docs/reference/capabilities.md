@@ -1775,13 +1775,13 @@ Preview and publish one local workbook to an explicit target.
 
 ### `workbook.pull`
 
-Download one workbook into a provenance-bearing local artifact.
+Download one workbook and optionally its direct published datasource dependencies into provenance-bearing local artifacts.
 
 - Surface: tadx content workbook pull
 - Operation type: deliver
 - Owner: cli
 - MCP overlap: download-workbook
-- Selectors: Workbook LUID/exact path; workspace
+- Selectors: Workbook LUID/exact path; workspace; optional --include-pds
 - Products and availability: Cloud / Server
 - Product disposition: ship
 - Evidence level: contract-verified
@@ -1791,11 +1791,11 @@ Download one workbook into a provenance-bearing local artifact.
 - Remote mutation: No
 - Requires `--apply`: No
 - Raw capable: No
-- Safety and guard: Dirty re-pull requires --overwrite
-- Artifact effect: Create / update
-- Upstream operation: GET /api/{version}/sites/{site-id}/workbooks/{workbook-id}/content
-- Evidence: A1 §§6.3–6.4, 8.2, 8.6; C1 §§2.3, 5.4, 5.13; local official REST capture
-- Validation or blocker: Contract-verified; exact source and tests recorded in docs/evidence/phase1-rest-contract.md; artifact contract architecture-locked
+- Safety and guard: Dirty workbook re-pull requires --overwrite; dirty dependencies stop acquisition; bundle persistence is recoverable
+- Artifact effect: Create / update workbook and optional datasource siblings
+- Upstream operation: Workbook content GET; Metadata GraphQL POST; datasource exact/content GET
+- Evidence: A1 §§6.3–6.4, 8.2, 8.6; C1 §§2.3, 5.4, 5.13; official REST and Metadata captures; Tableau Cloud happy-path capture
+- Validation or blocker: Contract-verified; published-datasource traversal captured live; exact sources and tests recorded in docs/evidence/phase1-rest-contract.md; artifact contract architecture-locked
 - Blocker ID: None
 - Command binding: `tadx content workbook pull`
 

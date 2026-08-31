@@ -15,7 +15,8 @@ You are building exactly one TADX capability in its own action package. Build on
 2. docs/contributing/adding-a-capability.md - the coding contract you must follow exactly (folder layout, required artifacts, action shape, identity, output/errors, evidence gate, registry rules, completion checklist).
 3. docs/axi.md - the behavioral contract and the concrete AXI conventions C1-C10.
 4. docs/toon.md - the output format you render through.
-5. docs/scope-v1.md - confirm this capability is in scope for V1 and not blocked.
+5. docs/contributing/output-guidelines.md - the compact versus --full field-selection and test contract.
+6. docs/scope-v1.md - confirm this capability is in scope for V1 and not blocked.
 
 If any two sources conflict, the arc42 and the V1 capability contract win, then AGENTS.md, then these docs. Stop and flag the conflict rather than guessing.
 
@@ -36,6 +37,9 @@ If any two sources conflict, the arc42 and the V1 capability contract win, then 
 - Write tests first (behavior, selector ambiguity, output shape, error/exit, and where applicable redaction, mutation discovery, preview/apply, artifact/provenance).
 - Then implement to pass them.
 - Render only through the output layer in TOON. Never build output in Cobra.
+- Classify every output field as compact or full before implementation.
+- Add separate compact and full goldens for detail-bearing output, plus a bounded compact-output test.
+- Keep safety-critical and next-decision fields compact, and use the exact `details: "--full"` marker when expanded fields exist.
 - Declare your own narrow dependency interfaces in this package. Do not import Cobra, net/http, or another action.
 
 ### Done means (all must hold)

@@ -78,6 +78,10 @@ Do: return only the few fields an agent needs to act on a list item (identity, n
 Do not: return ten-plus fields per list item by default; add fields silently as a resource grows.
 Enforced by: golden fixtures that fail on default-schema growth; a documented default field set per list capability.
 
+For non-list results, the default is an explicit compact allowlist projection and `--full` returns expanded bounded detail for the same operation.
+When compact output hides available detail, it includes the exact top-level marker `details: "--full"` so an agent never needs to hunt through help to discover the option.
+The complete field-selection and testing contract is in `docs/contributing/output-guidelines.md`.
+
 C3. Content truncation with a size hint (serves principle 2).
 Do: truncate a large text value and state what was cut, in the form `(truncated, N chars total - use --full to see complete body)`. `--full` returns the untruncated value.
 Do not: emit an unbounded text body by default; truncate silently with no hint or escape hatch.
@@ -116,6 +120,8 @@ C9. Contextual disclosure with next-step templates (serves principles 1, 4).
 Do: append a `help[]` block of concrete next-step command templates to a result, carrying forward the fixed disambiguating flags already in play and leaving runtime values as explicit placeholders such as `<luid>` (never a guessed value). For example, a list result suggests the get command for one item as a template.
 Do not: guess concrete IDs into a suggested command; suggest a next step that skips required apply or discovery gating.
 Enforced by: golden fixtures for `help[]` blocks; a placeholder-not-value assertion.
+
+The `details: "--full"` disclosure marker is not a next action and remains separate from `help[]`.
 
 C10. Consistent way to get help (serves principle 6).
 Do: give every subcommand a concise `--help` fallback whose content derives from the registry, for when contextual hints are not enough.

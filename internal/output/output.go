@@ -32,6 +32,16 @@ type Options struct {
 	TOON            toon.EncodeOptions
 }
 
+// CompactProjector provides an explicit token-bounded default view.
+type CompactProjector interface {
+	CompactOutput() any
+}
+
+// FullProjector provides an explicit bounded expanded view.
+type FullProjector interface {
+	FullOutput() any
+}
+
 // Render writes compact TOON with the default bounds.
 func Render(writer io.Writer, value any) error {
 	return RenderWithOptions(writer, value, Options{})
@@ -47,6 +57,15 @@ func RenderWithOptions(writer io.Writer, value any, options Options) error {
 	}
 	if options.Raw {
 		return renderRaw(writer, value, options)
+	}
+	if options.Full {
+		if projector, ok := value.(FullProjector); ok {
+			value = projector.FullOutput()
+		}
+	} else {
+		if projector, ok := value.(CompactProjector); ok {
+			value = projector.CompactOutput()
+		}
 	}
 	limit := options.MaxStringLength
 	if limit == 0 {

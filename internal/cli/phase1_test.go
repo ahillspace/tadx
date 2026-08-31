@@ -107,3 +107,57 @@ func TestWorkbookPullPreservesExplicitIncludeExtractFalse(t *testing.T) {
 		t.Fatalf("include extract = %#v", p.input.IncludeExtract)
 	}
 }
+
+func TestWorkbookPullPassesIncludePublishedDatasourcesChoice(t *testing.T) {
+	for _, test := range []struct {
+		name string
+		flag []string
+		want bool
+	}{
+		{name: "default"},
+		{name: "enabled", flag: []string{"--include-pds"}, want: true},
+		{name: "explicit false", flag: []string{"--include-pds=false"}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			p := &puller{}
+			deps := dependencies(&lister{}, &getter{}, &renderer{})
+			deps.AuthChecker, deps.CatalogSearcher, deps.WorkbookPuller, deps.WorkbookPublisher = &checker{}, &searcher{}, p, &publisher{}
+			root := cli.NewRoot(deps)
+			args := []string{"content", "workbook", "pull", "--environment", "production", "--workspace", "workspace", "--id", "wb-1"}
+			root.SetArgs(append(args, test.flag...))
+			if err := root.Execute(); err != nil {
+				t.Fatal(err)
+			}
+			if p.input.IncludePDS != test.want {
+				t.Fatalf("include PDS = %v, want %v", p.input.IncludePDS, test.want)
+			}
+		})
+	}
+}
+
+func TestFullChangesPresentationStateWithoutChangingWorkbookPullInput(t *testing.T) {
+	var inputs []workbookpull.Input
+	for _, full := range []bool{false, true} {
+		p := &puller{}
+		mode := &cli.RenderOptions{}
+		deps := dependencies(&lister{}, &getter{}, &renderer{})
+		deps.RenderOptions = mode
+		deps.AuthChecker, deps.CatalogSearcher, deps.WorkbookPuller, deps.WorkbookPublisher = &checker{}, &searcher{}, p, &publisher{}
+		root := cli.NewRoot(deps)
+		args := []string{"content", "workbook", "pull", "--environment", "production", "--workspace", "workspace", "--id", "wb-1", "--include-pds"}
+		if full {
+			args = append(args, "--full")
+		}
+		root.SetArgs(args)
+		if err := root.Execute(); err != nil {
+			t.Fatal(err)
+		}
+		if mode.Full != full {
+			t.Fatalf("full mode = %v, want %v", mode.Full, full)
+		}
+		inputs = append(inputs, p.input)
+	}
+	if !reflect.DeepEqual(inputs[0], inputs[1]) {
+		t.Fatalf("presentation flag changed action input: compact=%#v full=%#v", inputs[0], inputs[1])
+	}
+}
