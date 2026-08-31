@@ -22,6 +22,12 @@ func (upstreamError) TableauSummary() string { return "Forbidden" }
 func (upstreamError) TableauDetail() string  { return "Missing permission" }
 func (upstreamError) RequestID() string      { return "request-403" }
 
+type retryAdviceError struct{}
+
+func (retryAdviceError) Error() string            { return "upstream unavailable" }
+func (retryAdviceError) Retryable() bool          { return true }
+func (retryAdviceError) CorrectiveAction() string { return "Retry after recovery." }
+
 func TestExitCode(t *testing.T) {
 	t.Parallel()
 
@@ -78,6 +84,26 @@ func TestTableauRequestIDFindsWrappedCarrier(t *testing.T) {
 	err := fmt.Errorf("workbook read: %w", requestIDError{id: "request-123"})
 	if got := errs.TableauRequestID(err); got != "request-123" {
 		t.Fatalf("TableauRequestID() = %q", got)
+	}
+}
+
+func TestRetryAdviceFindsWrappedCarrier(t *testing.T) {
+	t.Parallel()
+
+	retryable, correctiveAction := errs.RetryAdvice(fmt.Errorf("auth: %w", retryAdviceError{}))
+	if retryable == nil || !*retryable || correctiveAction != "Retry after recovery." {
+		t.Fatalf("RetryAdvice() = %#v, %q", retryable, correctiveAction)
+	}
+}
+
+func TestStructureInfersRetryAdviceFromCause(t *testing.T) {
+	t.Parallel()
+
+	payload := errs.Structure(&errs.Error{
+		Kind: errs.KindOperation, Summary: "Authentication failed.", Cause: retryAdviceError{},
+	}).Error
+	if payload.Retryable == nil || !*payload.Retryable || payload.CorrectiveAction != "Retry after recovery." {
+		t.Fatalf("structured error = %#v", payload)
 	}
 }
 

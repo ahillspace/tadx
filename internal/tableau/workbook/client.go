@@ -4,6 +4,8 @@ package workbook
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/xml"
 	"errors"
 	"fmt"
@@ -13,6 +15,7 @@ import (
 	"net/http"
 	"net/textproto"
 	"net/url"
+	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -71,12 +74,15 @@ type Download struct {
 
 // PublishRequest contains only explicit publish choices.
 type PublishRequest struct {
-	Name        string
-	ProjectLUID string
-	Filename    string
-	Content     []byte
-	Overwrite   bool
-	AsJob       bool
+	Name                string
+	ProjectLUID         string
+	Filename            string
+	ContentPath         string
+	ContentSize         int64
+	ExpectedFingerprint string
+	Content             []byte
+	Overwrite           bool
+	AsJob               bool
 }
 
 // PublishResult is the authoritative terminal publish outcome.
@@ -111,14 +117,14 @@ func NewClient(transport *tableau.Transport, session auth.Session, serverURL str
 
 // SetUploadThreshold overrides the single-request threshold for deterministic tests.
 func (c *Client) SetUploadThreshold(bytes int) {
-	if bytes > 0 {
+	if bytes > 0 && bytes <= defaultUploadThreshold {
 		c.uploadThreshold = bytes
 	}
 }
 
 // SetUploadChunkSize overrides the upload block size for deterministic tests.
 func (c *Client) SetUploadChunkSize(bytes int) {
-	if bytes > 0 {
+	if bytes > 0 && bytes <= defaultUploadChunkSize {
 		c.uploadChunkSize = bytes
 	}
 }
@@ -211,17 +217,39 @@ func (c *Client) Publish(ctx context.Context, input PublishRequest) (PublishResu
 	if extension != "twb" && extension != "twbx" {
 		return PublishResult{}, fmt.Errorf("unsupported workbook type %q", extension)
 	}
+	source, err := openPublishContent(ctx, input)
+	if err != nil {
+		return PublishResult{}, err
+	}
+	sourceOpen := true
+	closeSource := func() error {
+		if !sourceOpen {
+			return nil
+		}
+		sourceOpen = false
+		return source.close()
+	}
+	defer func() {
+		_ = closeSource()
+	}()
 	var uploadSessionID string
-	if len(input.Content) > c.uploadThreshold {
-		var err error
-		uploadSessionID, err = c.upload(ctx, input.Filename, input.Content)
+	if source.size > int64(c.uploadThreshold) {
+		uploadSessionID, err = c.upload(ctx, input.Filename, source.reader, source.size)
 		if err != nil {
-			return PublishResult{}, err
+			return PublishResult{}, errors.Join(err, closeSource())
+		}
+	} else {
+		input.Content, err = readPublishContent(source.reader, source.size)
+		if err != nil {
+			return PublishResult{}, errors.Join(err, closeSource())
 		}
 	}
 	body, contentType, err := publishBody(input, uploadSessionID == "")
 	if err != nil {
-		return PublishResult{}, err
+		return PublishResult{}, errors.Join(err, closeSource())
+	}
+	if err := closeSource(); err != nil {
+		return PublishResult{}, fmt.Errorf("remove workbook publish snapshot: %w", err)
 	}
 	query := url.Values{"overwrite": {strconv.FormatBool(input.Overwrite)}}
 	if input.AsJob {
@@ -263,7 +291,11 @@ func (c *Client) Publish(ctx context.Context, input PublishRequest) (PublishResu
 	return terminal, nil
 }
 
-func (c *Client) upload(ctx context.Context, filename string, content []byte) (string, error) {
+func (c *Client) upload(ctx context.Context, filename string, content io.Reader, size int64) (string, error) {
+	blocks := (size + int64(c.uploadChunkSize) - 1) / int64(c.uploadChunkSize)
+	if blocks > maxUploadBlocks {
+		return "", fmt.Errorf("workbook requires %d upload blocks, exceeding conservative limit %d", blocks, maxUploadBlocks)
+	}
 	response, err := c.do(ctx, http.MethodPost, c.sitePath("fileUploads"), nil, nil, "", "workbook.upload.initiate")
 	if err != nil {
 		return "", err
@@ -272,13 +304,15 @@ func (c *Client) upload(ctx context.Context, filename string, content []byte) (s
 	if err := xml.Unmarshal(response.Body, &initiated); err != nil || initiated.FileUpload.SessionID == "" {
 		return "", errors.New("initiate file upload response omitted upload session ID")
 	}
-	blocks := (len(content) + c.uploadChunkSize - 1) / c.uploadChunkSize
-	if blocks > maxUploadBlocks {
-		return "", fmt.Errorf("workbook requires %d upload blocks, exceeding conservative limit %d", blocks, maxUploadBlocks)
-	}
-	for index, offset := 0, 0; offset < len(content); index, offset = index+1, offset+c.uploadChunkSize {
-		end := min(offset+c.uploadChunkSize, len(content))
-		body, contentType, err := appendBody(filename, content[offset:end])
+	remaining := size
+	for index := 0; remaining > 0; index++ {
+		chunkSize := min(remaining, int64(c.uploadChunkSize))
+		chunk, err := readPublishContent(content, chunkSize)
+		if err != nil {
+			return "", err
+		}
+		remaining -= chunkSize
+		body, contentType, err := appendBody(filename, chunk)
 		if err != nil {
 			return "", err
 		}
@@ -299,6 +333,106 @@ func (c *Client) upload(ctx context.Context, filename string, content []byte) (s
 		}
 	}
 	return initiated.FileUpload.SessionID, nil
+}
+
+type publishContent struct {
+	reader io.ReadSeeker
+	size   int64
+	close  func() error
+}
+
+func openPublishContent(ctx context.Context, input PublishRequest) (publishContent, error) {
+	if input.ContentPath == "" {
+		reader := bytes.NewReader(input.Content)
+		return publishContent{reader: reader, size: int64(reader.Len()), close: func() error { return nil }}, nil
+	}
+	if input.ExpectedFingerprint == "" {
+		return publishContent{}, errors.New("workbook publish payload requires the planned fingerprint")
+	}
+	source, err := os.Open(input.ContentPath)
+	if err != nil {
+		return publishContent{}, fmt.Errorf("open workbook publish payload: %w", err)
+	}
+	info, err := source.Stat()
+	if err != nil {
+		_ = source.Close()
+		return publishContent{}, fmt.Errorf("inspect workbook publish payload: %w", err)
+	}
+	if !info.Mode().IsRegular() {
+		_ = source.Close()
+		return publishContent{}, errors.New("workbook publish payload must be a regular file")
+	}
+	if info.Size() != input.ContentSize {
+		_ = source.Close()
+		return publishContent{}, fmt.Errorf("workbook publish payload size changed after planning: got %d, expected %d", info.Size(), input.ContentSize)
+	}
+	snapshot, err := os.CreateTemp(filepath.Dir(input.ContentPath), ".tadx-publish-snapshot-*")
+	if err != nil {
+		_ = source.Close()
+		return publishContent{}, fmt.Errorf("create workbook publish snapshot: %w", err)
+	}
+	cleanup := func() error {
+		return errors.Join(snapshot.Close(), os.Remove(snapshot.Name()))
+	}
+	fingerprint, copied, err := fingerprintCopy(ctx, snapshot, source)
+	sourceCloseErr := source.Close()
+	if err != nil {
+		return publishContent{}, fmt.Errorf("snapshot workbook publish payload: %w", errors.Join(err, sourceCloseErr, cleanup()))
+	}
+	if sourceCloseErr != nil {
+		return publishContent{}, fmt.Errorf("close workbook publish payload: %w", errors.Join(sourceCloseErr, cleanup()))
+	}
+	if copied != input.ContentSize {
+		sizeErr := fmt.Errorf("workbook publish payload size changed after planning: got %d, expected %d", copied, input.ContentSize)
+		return publishContent{}, errors.Join(sizeErr, cleanup())
+	}
+	if fingerprint != input.ExpectedFingerprint {
+		return publishContent{}, errors.Join(errors.New("workbook publish payload changed after planning"), cleanup())
+	}
+	if _, err := snapshot.Seek(0, io.SeekStart); err != nil {
+		return publishContent{}, fmt.Errorf("rewind workbook publish snapshot: %w", errors.Join(err, cleanup()))
+	}
+	return publishContent{reader: snapshot, size: copied, close: cleanup}, nil
+}
+
+func fingerprintCopy(ctx context.Context, destination io.Writer, source io.Reader) (string, int64, error) {
+	hash := sha256.New()
+	buffer := make([]byte, 1024*1024)
+	var total int64
+	for {
+		if err := ctx.Err(); err != nil {
+			return "", total, err
+		}
+		count, readErr := source.Read(buffer)
+		if count > 0 {
+			written, writeErr := destination.Write(buffer[:count])
+			if writeErr != nil {
+				return "", total, writeErr
+			}
+			if written != count {
+				return "", total, io.ErrShortWrite
+			}
+			_, _ = hash.Write(buffer[:count])
+			total += int64(count)
+		}
+		if errors.Is(readErr, io.EOF) {
+			return "sha256:" + hex.EncodeToString(hash.Sum(nil)), total, nil
+		}
+		if readErr != nil {
+			return "", total, readErr
+		}
+	}
+}
+
+func readPublishContent(reader io.Reader, size int64) ([]byte, error) {
+	if size < 0 || size > int64(^uint(0)>>1) {
+		return nil, errors.New("invalid workbook publish payload size")
+	}
+	content := make([]byte, int(size))
+	if _, err := io.ReadFull(reader, content); err != nil {
+		return nil, fmt.Errorf("read workbook publish payload: %w", err)
+	}
+	return content, nil
 }
 
 func (c *Client) pollJob(ctx context.Context, jobID string) (PublishResult, error) {

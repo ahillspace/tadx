@@ -19,8 +19,9 @@ type Input struct {
 // Artifact is the current local canonical workbook.
 type Artifact struct {
 	Path        string
+	PayloadPath string
 	Filename    string
-	Content     []byte
+	Size        int64
 	Name        string
 	TableauID   string
 	Fingerprint string
@@ -67,12 +68,14 @@ type Plan struct {
 
 // PublishRequest is the explicit adapter mutation request.
 type PublishRequest struct {
-	Name        string
-	ProjectLUID string
-	Filename    string
-	Content     []byte
-	Overwrite   bool
-	AsJob       bool
+	Name                string
+	ProjectLUID         string
+	Filename            string
+	ContentPath         string
+	ContentSize         int64
+	ExpectedFingerprint string
+	Overwrite           bool
+	AsJob               bool
 }
 
 // Result is the authoritative terminal mutation result.

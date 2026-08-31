@@ -104,7 +104,7 @@ func TestWorkbookManagerStoresSameNameWorkbooksByTableauIdentity(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if first.ArtifactPath == second.ArtifactPath || !strings.HasPrefix(filepath.Base(second.ArtifactPath), "Finance-") {
+	if first.ArtifactPath == second.ArtifactPath || !strings.HasPrefix(filepath.Base(first.ArtifactPath), "Finance--") || !strings.HasPrefix(filepath.Base(second.ArtifactPath), "Finance--") {
 		t.Fatalf("artifact paths = %q and %q", first.ArtifactPath, second.ArtifactPath)
 	}
 	for _, expected := range []struct {
@@ -116,8 +116,46 @@ func TestWorkbookManagerStoresSameNameWorkbooksByTableauIdentity(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if workbook.TableauID != expected.id || string(workbook.Content) != expected.content {
+		content, readErr := os.ReadFile(workbook.PayloadPath)
+		if readErr != nil {
+			t.Fatal(readErr)
+		}
+		if workbook.TableauID != expected.id || string(content) != expected.content {
 			t.Fatalf("workbook = %#v", workbook)
+		}
+	}
+}
+
+func TestWorkbookManagerIdentityPathsCannotCollideWithWorkbookNames(t *testing.T) {
+	workspace := createWorkspace(t)
+	manager := artifact.NewWorkbookManager(time.Now)
+	inputs := []struct {
+		name string
+		id   string
+	}{
+		{name: "Finance", id: "wb-a"},
+		{name: "Finance-a1986ff60b17b262", id: "wb-c"},
+		{name: "Finance", id: "wb-b"},
+	}
+	paths := make(map[string]bool, len(inputs))
+	for _, input := range inputs {
+		metadata := validMetadata(input.name, input.id)
+		result, err := manager.Pull(context.Background(), artifact.WorkbookPull{
+			Workspace: workspace, Filename: input.name + ".twb", Content: []byte(input.id), Metadata: metadata,
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if paths[result.ArtifactPath] {
+			t.Fatalf("artifact path reused for %q: %q", input.id, result.ArtifactPath)
+		}
+		paths[result.ArtifactPath] = true
+		workbook, err := manager.Read(context.Background(), result.ArtifactPath)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if workbook.TableauID != input.id {
+			t.Fatalf("workbook identity = %q, want %q", workbook.TableauID, input.id)
 		}
 	}
 }
@@ -192,7 +230,11 @@ func TestWorkbookManagerUsesPortableBoundedPathComponents(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if string(workbook.Content) != "native-package" || workbook.Filename != payloadName {
+			content, readErr := os.ReadFile(workbook.PayloadPath)
+			if readErr != nil {
+				t.Fatal(readErr)
+			}
+			if string(content) != "native-package" || workbook.Filename != payloadName {
 				t.Fatalf("workbook = %#v", workbook)
 			}
 		})
@@ -256,7 +298,7 @@ func TestWorkbookManagerCleanRepullWarnsAndReplaces(t *testing.T) {
 	}
 }
 
-func TestWorkbookManagerRejectsUnmanagedTargetWithoutChangingIt(t *testing.T) {
+func TestWorkbookManagerPreservesUnmanagedNamePath(t *testing.T) {
 	workspace := createWorkspace(t)
 	target := filepath.Join(workspace, "artifacts", "workbook", "Finance")
 	if err := os.MkdirAll(target, 0o700); err != nil {
@@ -268,13 +310,16 @@ func TestWorkbookManagerRejectsUnmanagedTargetWithoutChangingIt(t *testing.T) {
 	}
 
 	manager := artifact.NewWorkbookManager(time.Now)
-	_, err := manager.Pull(context.Background(), artifact.WorkbookPull{
+	result, err := manager.Pull(context.Background(), artifact.WorkbookPull{
 		Workspace: workspace, Filename: "Finance.twb", Content: []byte("remote"),
 		Metadata:  validMetadata("Finance", "wb-1"),
 		Overwrite: true,
 	})
-	if err == nil || !strings.Contains(err.Error(), "not a managed workbook artifact") {
-		t.Fatalf("Pull() error = %v", err)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.ArtifactPath == target {
+		t.Fatalf("managed artifact reused unmanaged path %q", target)
 	}
 	content, readErr := os.ReadFile(sentinel)
 	if readErr != nil || string(content) != "keep me" {
@@ -506,7 +551,11 @@ func TestWorkbookManagerRejectsNoncanonicalFileSelector(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if workbook.Filename != "Finance.twb" || string(workbook.Content) != "remote" {
+	content, readErr := os.ReadFile(workbook.PayloadPath)
+	if readErr != nil {
+		t.Fatal(readErr)
+	}
+	if workbook.Filename != "Finance.twb" || string(content) != "remote" {
 		t.Fatalf("workbook = %#v", workbook)
 	}
 }

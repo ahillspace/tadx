@@ -2,6 +2,7 @@
 package catalog
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"encoding/base64"
@@ -48,12 +49,41 @@ type Generation struct {
 }
 
 type generationDocument struct {
-	ID          string    `json:"id"`
-	Environment string    `json:"environment"`
-	Site        *string   `json:"site"`
-	GeneratedAt time.Time `json:"generated_at"`
-	Complete    bool      `json:"complete"`
-	Records     *[]Record `json:"records"`
+	ID          string             `json:"id"`
+	Environment string             `json:"environment"`
+	Site        *string            `json:"site"`
+	GeneratedAt time.Time          `json:"generated_at"`
+	Complete    bool               `json:"complete"`
+	Records     *boundedRecordList `json:"records"`
+}
+
+type boundedRecordList []Record
+
+func (records *boundedRecordList) UnmarshalJSON(data []byte) error {
+	decoder := json.NewDecoder(bytes.NewReader(data))
+	token, err := decoder.Token()
+	if err != nil {
+		return err
+	}
+	if delimiter, ok := token.(json.Delim); !ok || delimiter != '[' {
+		return errors.New("catalog generation records must be an array")
+	}
+	decoded := make([]Record, 0)
+	for decoder.More() {
+		if len(decoded) == maxGenerationRecords {
+			return fmt.Errorf("catalog generation exceeds %d-record limit", maxGenerationRecords)
+		}
+		var record Record
+		if err := decoder.Decode(&record); err != nil {
+			return err
+		}
+		decoded = append(decoded, record)
+	}
+	if _, err := decoder.Token(); err != nil {
+		return err
+	}
+	*records = decoded
+	return nil
 }
 
 type invalidCursorError struct{}
@@ -171,7 +201,7 @@ func (s *FileStore) Search(ctx context.Context, query Query) (SearchResult, erro
 	if document.Records == nil {
 		return SearchResult{}, fmt.Errorf("catalog generation %q records are required", generation.ID)
 	}
-	generation.Records = *document.Records
+	generation.Records = []Record(*document.Records)
 	if err := validateRecords(generation); err != nil {
 		return SearchResult{}, err
 	}

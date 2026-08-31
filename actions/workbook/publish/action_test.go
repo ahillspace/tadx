@@ -65,7 +65,7 @@ func (p *publisher) Publish(_ context.Context, input publish.PublishRequest) (pu
 func TestPlanIsPreviewOnlyAndIncludesExplicitTarget(t *testing.T) {
 	p := &publisher{}
 	action := publish.New(
-		artifactReader{artifact: publish.Artifact{Path: `C:\workspace\Finance`, Filename: "Finance.twbx", Name: "Finance", Content: []byte("native")}},
+		artifactReader{artifact: publish.Artifact{Path: `C:\workspace\Finance`, Filename: "Finance.twbx", Name: "Finance"}},
 		resolver{project: publish.Project{LUID: "project-1", Name: "Ops", Path: "Department/Ops"}}, p,
 	)
 	plan, err := action.Plan(context.Background(), publish.Input{
@@ -83,7 +83,7 @@ func TestPlanIsPreviewOnlyAndIncludesExplicitTarget(t *testing.T) {
 func TestApplyExecutesOnlyPlanProducedByPlan(t *testing.T) {
 	p := &publisher{result: publish.Result{Status: "succeeded", WorkbookLUID: "wb-new", JobID: "job-1"}}
 	action := publish.New(
-		artifactReader{artifact: publish.Artifact{Path: `C:\workspace\Finance`, Filename: "Finance.twb", Name: "Finance", Content: []byte("native")}},
+		artifactReader{artifact: publish.Artifact{Path: `C:\workspace\Finance`, Filename: "Finance.twb", Name: "Finance"}},
 		resolver{project: publish.Project{LUID: "project-1", Name: "Ops", Path: "Ops"}}, p,
 	)
 	plan, err := action.Plan(context.Background(), publish.Input{ArtifactPath: `C:\workspace\Finance`, Environment: "production", Site: "marketing", ProjectSelector: identity.Selector{LUID: "project-1"}, Overwrite: true})
@@ -104,7 +104,7 @@ func TestApplyExecutesOnlyPlanProducedByPlan(t *testing.T) {
 
 func TestPlanRejectsCollisionWithoutExplicitOverwrite(t *testing.T) {
 	action := publish.New(
-		artifactReader{artifact: publish.Artifact{Path: `C:\workspace\Finance`, Filename: "Finance.twb", Name: "Finance", Content: []byte("native")}},
+		artifactReader{artifact: publish.Artifact{Path: `C:\workspace\Finance`, Filename: "Finance.twb", Name: "Finance"}},
 		resolver{project: publish.Project{LUID: "project-1", Path: "Ops"}, existing: []publish.Workbook{{LUID: "wb-1", Name: "Finance", ProjectLUID: "project-1"}}}, &publisher{},
 	)
 	_, err := action.Plan(context.Background(), publish.Input{ArtifactPath: `C:\workspace\Finance`, Environment: "production", Site: "marketing", ProjectSelector: identity.Selector{LUID: "project-1"}})
@@ -123,7 +123,7 @@ func TestPlanRequiresExplicitWriteEnvironment(t *testing.T) {
 
 func TestPlanAcceptsResolvedDefaultSite(t *testing.T) {
 	action := publish.New(
-		artifactReader{artifact: publish.Artifact{Path: `C:\workspace\Finance`, Filename: "Finance.twb", Name: "Finance", Content: []byte("native")}},
+		artifactReader{artifact: publish.Artifact{Path: `C:\workspace\Finance`, Filename: "Finance.twb", Name: "Finance"}},
 		resolver{project: publish.Project{LUID: "project-1", Path: "Ops"}}, &publisher{},
 	)
 	plan, err := action.Plan(context.Background(), publish.Input{ArtifactPath: `C:\workspace\Finance`, Environment: "production", TargetResolved: true, ProjectSelector: identity.Selector{LUID: "project-1"}})
@@ -145,7 +145,7 @@ func TestApplyRejectsChangedOverwriteTarget(t *testing.T) {
 	}
 	p := &publisher{}
 	action := publish.New(
-		artifactReader{artifact: publish.Artifact{Path: `C:\workspace\Finance`, Filename: "Finance.twb", Name: "Finance", Content: []byte("native")}},
+		artifactReader{artifact: publish.Artifact{Path: `C:\workspace\Finance`, Filename: "Finance.twb", Name: "Finance"}},
 		r, p,
 	)
 	plan, err := action.Plan(context.Background(), publish.Input{ArtifactPath: `C:\workspace\Finance`, Environment: "production", Site: "marketing", ProjectSelector: identity.Selector{LUID: "project-1"}, Overwrite: true})
@@ -164,7 +164,7 @@ func TestApplyRejectsChangedOverwriteTarget(t *testing.T) {
 
 func TestPreviewGoldenOutput(t *testing.T) {
 	action := publish.New(
-		artifactReader{artifact: publish.Artifact{Path: `C:\workspace\Finance`, Filename: "Finance.twbx", Name: "Finance", Content: []byte("native"), Fingerprint: "sha256:abc"}},
+		artifactReader{artifact: publish.Artifact{Path: `C:\workspace\Finance`, Filename: "Finance.twbx", Name: "Finance", Fingerprint: "sha256:abc"}},
 		resolver{project: publish.Project{LUID: "project-1", Name: "Ops", Path: "Ops"}},
 		&publisher{},
 	)
@@ -194,7 +194,7 @@ func TestPreviewGoldenOutput(t *testing.T) {
 func TestApplyReportsUnknownAsyncOutcomeWithoutSuggestingRetry(t *testing.T) {
 	p := &publisher{result: publish.Result{Status: "unknown", JobID: "job-1", TableauRequestID: "poll-request"}, err: errors.New("poll forbidden")}
 	action := publish.New(
-		artifactReader{artifact: publish.Artifact{Path: `C:\workspace\Finance`, Filename: "Finance.twb", Name: "Finance", Content: []byte("native")}},
+		artifactReader{artifact: publish.Artifact{Path: `C:\workspace\Finance`, Filename: "Finance.twb", Name: "Finance"}},
 		resolver{project: publish.Project{LUID: "project-1", Path: "Ops"}}, p,
 	)
 	plan, err := action.Plan(context.Background(), publish.Input{ArtifactPath: `C:\workspace\Finance`, Environment: "production", Site: "marketing", ProjectSelector: identity.Selector{LUID: "project-1"}, AsJob: true})
@@ -214,7 +214,7 @@ func TestApplyReportsUnknownAsyncOutcomeWithoutSuggestingRetry(t *testing.T) {
 func TestApplyReportsUnknownOutcomeWithoutClaimingAcceptance(t *testing.T) {
 	p := &publisher{result: publish.Result{Status: "unknown", TableauRequestID: "publish-request"}, err: errors.New("decode publish response")}
 	action := publish.New(
-		artifactReader{artifact: publish.Artifact{Path: `C:\workspace\Finance`, Filename: "Finance.twb", Name: "Finance", Content: []byte("native")}},
+		artifactReader{artifact: publish.Artifact{Path: `C:\workspace\Finance`, Filename: "Finance.twb", Name: "Finance"}},
 		resolver{project: publish.Project{LUID: "project-1", Path: "Ops"}}, p,
 	)
 	plan, err := action.Plan(context.Background(), publish.Input{ArtifactPath: `C:\workspace\Finance`, Environment: "production", Site: "marketing", ProjectSelector: identity.Selector{LUID: "project-1"}})

@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -50,8 +51,9 @@ type WorkbookPullResult struct {
 // WorkbookArtifact is the current canonical payload used for publish.
 type WorkbookArtifact struct {
 	Path        string
+	PayloadPath string
 	Filename    string
-	Content     []byte
+	Size        int64
 	Name        string
 	TableauID   string
 	Fingerprint string
@@ -99,7 +101,7 @@ func (m *WorkbookManager) Pull(ctx context.Context, input WorkbookPull) (Workboo
 		return WorkbookPullResult{}, err
 	}
 	if target == "" {
-		target = filepath.Join(root, portableComponent(input.Metadata.Name, "workbook", maxPortableComponentBytes))
+		target = filepath.Join(root, identityComponent(input.Metadata.Name, input.Metadata.TableauID))
 		if info, statErr := os.Lstat(target); statErr == nil {
 			if err := validateContainedPath(root, target); err != nil {
 				return WorkbookPullResult{}, err
@@ -112,17 +114,9 @@ func (m *WorkbookManager) Pull(ctx context.Context, input WorkbookPull) (Workboo
 				return WorkbookPullResult{}, fmt.Errorf("artifact path %q is not a managed workbook artifact: %w", target, readErr)
 			}
 			if metadata.TableauID != input.Metadata.TableauID {
-				target = filepath.Join(root, collisionComponent(input.Metadata.Name, input.Metadata.TableauID))
-				metadata, info, readErr = inspectManagedTarget(root, target, input.Metadata.TableauID)
-				if readErr != nil {
-					return WorkbookPullResult{}, readErr
-				}
-				if info != nil {
-					existing = &metadata
-				}
-			} else {
-				existing = &metadata
+				return WorkbookPullResult{}, fmt.Errorf("artifact path %q belongs to Tableau ID %q", target, metadata.TableauID)
 			}
+			existing = &metadata
 		} else if !errors.Is(statErr, os.ErrNotExist) {
 			return WorkbookPullResult{}, statErr
 		}
@@ -133,11 +127,11 @@ func (m *WorkbookManager) Pull(ctx context.Context, input WorkbookPull) (Workboo
 		if err != nil {
 			return WorkbookPullResult{}, err
 		}
-		current, err := os.ReadFile(canonical)
+		currentFingerprint, err := fingerprintFile(ctx, canonical)
 		if err != nil {
-			return WorkbookPullResult{}, fmt.Errorf("read existing canonical workbook: %w", err)
+			return WorkbookPullResult{}, fmt.Errorf("fingerprint existing canonical workbook: %w", err)
 		}
-		dirty := fingerprint(current) != existing.LocalBaselineFingerprint
+		dirty := currentFingerprint != existing.LocalBaselineFingerprint
 		if dirty && !input.Overwrite {
 			return WorkbookPullResult{}, fmt.Errorf("workbook artifact %q is dirty; use --overwrite to replace local edits", target)
 		}
@@ -181,8 +175,8 @@ func (m *WorkbookManager) Pull(ctx context.Context, input WorkbookPull) (Workboo
 	return WorkbookPullResult{ArtifactPath: target, CanonicalPath: filepath.Join(target, filename), BaselineFingerprint: baseline, Warnings: warnings}, nil
 }
 
-// Read loads the current native workbook bytes without treating external edits as an error.
-func (m *WorkbookManager) Read(_ context.Context, path string) (WorkbookArtifact, error) {
+// Read validates the current native workbook and returns its publishable file contract.
+func (m *WorkbookManager) Read(ctx context.Context, path string) (WorkbookArtifact, error) {
 	absolute, err := filepath.Abs(path)
 	if err != nil {
 		return WorkbookArtifact{}, err
@@ -209,11 +203,15 @@ func (m *WorkbookManager) Read(_ context.Context, path string) (WorkbookArtifact
 	if !info.IsDir() && !samePath(absolute, canonical) {
 		return WorkbookArtifact{}, fmt.Errorf("workbook artifact file %q is not the canonical payload %q", path, metadata.CanonicalPayload)
 	}
-	content, err := os.ReadFile(canonical)
+	canonicalInfo, err := os.Stat(canonical)
 	if err != nil {
-		return WorkbookArtifact{}, fmt.Errorf("read canonical workbook: %w", err)
+		return WorkbookArtifact{}, fmt.Errorf("inspect canonical workbook: %w", err)
 	}
-	return WorkbookArtifact{Path: directory, Filename: metadata.CanonicalPayload, Content: content, Name: metadata.Name, TableauID: metadata.TableauID, Fingerprint: fingerprint(content)}, nil
+	currentFingerprint, err := fingerprintFile(ctx, canonical)
+	if err != nil {
+		return WorkbookArtifact{}, fmt.Errorf("fingerprint canonical workbook: %w", err)
+	}
+	return WorkbookArtifact{Path: directory, PayloadPath: canonical, Filename: metadata.CanonicalPayload, Size: canonicalInfo.Size(), Name: metadata.Name, TableauID: metadata.TableauID, Fingerprint: currentFingerprint}, nil
 }
 
 func validateWorkbookMetadata(metadata WorkbookMetadata) error {
@@ -376,30 +374,6 @@ func readMetadata(directory string) (WorkbookMetadata, error) {
 	return metadata, nil
 }
 
-func inspectManagedTarget(root, target, tableauID string) (WorkbookMetadata, os.FileInfo, error) {
-	info, err := os.Lstat(target)
-	if errors.Is(err, os.ErrNotExist) {
-		return WorkbookMetadata{}, nil, nil
-	}
-	if err != nil {
-		return WorkbookMetadata{}, nil, err
-	}
-	if err := validateContainedPath(root, target); err != nil {
-		return WorkbookMetadata{}, nil, err
-	}
-	if !info.IsDir() {
-		return WorkbookMetadata{}, nil, fmt.Errorf("artifact path %q is not a managed workbook directory", target)
-	}
-	metadata, err := readMetadata(target)
-	if err != nil {
-		return WorkbookMetadata{}, nil, fmt.Errorf("artifact path %q is not a managed workbook artifact: %w", target, err)
-	}
-	if metadata.TableauID != tableauID {
-		return WorkbookMetadata{}, nil, fmt.Errorf("artifact path %q belongs to Tableau ID %q", target, metadata.TableauID)
-	}
-	return metadata, info, nil
-}
-
 func canonicalWorkbookPath(directory, payload string) (string, error) {
 	if payload == "" || filepath.IsAbs(payload) || filepath.Base(payload) != payload || filepath.Clean(payload) != payload {
 		return "", fmt.Errorf("invalid workbook canonical payload %q", payload)
@@ -473,6 +447,33 @@ func fingerprint(content []byte) string {
 	return "sha256:" + hex.EncodeToString(sum[:])
 }
 
+func fingerprintFile(ctx context.Context, path string) (string, error) {
+	file, err := os.Open(path)
+	if err != nil {
+		return "", err
+	}
+	defer file.Close()
+	hash := sha256.New()
+	buffer := make([]byte, 1024*1024)
+	for {
+		if err := ctx.Err(); err != nil {
+			return "", err
+		}
+		count, readErr := file.Read(buffer)
+		if count > 0 {
+			if _, err := hash.Write(buffer[:count]); err != nil {
+				return "", err
+			}
+		}
+		if errors.Is(readErr, io.EOF) {
+			return "sha256:" + hex.EncodeToString(hash.Sum(nil)), nil
+		}
+		if readErr != nil {
+			return "", readErr
+		}
+	}
+}
+
 func safeName(value string) string {
 	value = strings.TrimSpace(value)
 	var builder strings.Builder
@@ -497,9 +498,9 @@ func safeName(value string) string {
 
 const maxPortableComponentBytes = 180
 
-func collisionComponent(name, tableauID string) string {
+func identityComponent(name, tableauID string) string {
 	sum := sha256.Sum256([]byte(tableauID))
-	suffix := "-" + hex.EncodeToString(sum[:8])
+	suffix := "--" + hex.EncodeToString(sum[:])
 	return portableComponent(name, "workbook", maxPortableComponentBytes-len(suffix)) + suffix
 }
 

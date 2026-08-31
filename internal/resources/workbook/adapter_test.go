@@ -90,6 +90,17 @@ func TestAdapterDeduplicatesCollisionMatchesByWorkbookLUID(t *testing.T) {
 	}
 }
 
+func TestAdapterRejectsCollisionMatchWithoutWorkbookLUID(t *testing.T) {
+	adapter := resource.NewAdapter(client{pages: map[int]tableauworkbook.WorkbookPage{
+		1: {Page: tableauworkbook.Page{Number: 1, Size: 100, Total: 1}, Items: []tableauworkbook.Workbook{
+			{Name: "Finance", ProjectLUID: "project-1", ProjectName: "Ops"},
+		}},
+	}})
+	if _, err := adapter.FindWorkbooks(context.Background(), "Finance", "project-1"); err == nil || !strings.Contains(err.Error(), "authoritative LUID") {
+		t.Fatalf("FindWorkbooks() error = %v", err)
+	}
+}
+
 func TestAdapterResolvesExactNestedProjectPath(t *testing.T) {
 	adapter := resource.NewAdapter(client{projectPages: map[int]tableauworkbook.ProjectPage{
 		1: {Page: tableauworkbook.Page{Number: 1, Size: 100, Total: 2}, Items: []tableauworkbook.Project{

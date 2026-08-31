@@ -210,6 +210,17 @@ func redactError(err error, secrets ...string) error {
 	if errors.As(err, &requestID) {
 		redacted.requestID = Redact(requestID.RequestID(), secrets...)
 	}
+	var retryAdvice interface {
+		Retryable() bool
+		CorrectiveAction() string
+	}
+	if errors.As(err, &retryAdvice) {
+		return &redactedClassifiedCarrierError{
+			redactedCarrierError: redacted,
+			retryable:            retryAdvice.Retryable(),
+			correctiveAction:     Redact(retryAdvice.CorrectiveAction(), secrets...),
+		}
+	}
 	return redacted
 }
 
@@ -229,6 +240,15 @@ func (e *redactedCarrierError) TableauSummary() string { return e.summary }
 func (e *redactedCarrierError) TableauDetail() string  { return e.detail }
 func (e *redactedCarrierError) RequestID() string      { return e.requestID }
 
+type redactedClassifiedCarrierError struct {
+	*redactedCarrierError
+	retryable        bool
+	correctiveAction string
+}
+
+func (e *redactedClassifiedCarrierError) Retryable() bool          { return e.retryable }
+func (e *redactedClassifiedCarrierError) CorrectiveAction() string { return e.correctiveAction }
+
 // Redact replaces complete and overlapping secret intervals without exposing remainders.
 func Redact(message string, secrets ...string) string {
 	const marker = "[REDACTED]"
@@ -238,6 +258,7 @@ func Redact(message string, secrets ...string) string {
 		start  int
 	}
 	matches := make([]secretMatch, 0, len(secrets))
+	redactionSecrets := make([]string, 0, len(secrets))
 	seen := make(map[string]struct{}, len(secrets))
 	for _, secret := range secrets {
 		if secret == "" {
@@ -247,6 +268,7 @@ func Redact(message string, secrets ...string) string {
 			continue
 		}
 		seen[secret] = struct{}{}
+		redactionSecrets = append(redactionSecrets, secret)
 		if start := strings.Index(message, secret); start >= 0 {
 			matches = append(matches, secretMatch{secret: secret, start: start})
 		}
@@ -296,7 +318,13 @@ func Redact(message string, secrets ...string) string {
 	writeRedaction(&redacted, marker, intervalEnd-intervalStart)
 	position = intervalEnd
 	redacted.WriteString(message[position:])
-	return redacted.String()
+	sort.Slice(redactionSecrets, func(left, right int) bool {
+		if len(redactionSecrets[left]) != len(redactionSecrets[right]) {
+			return len(redactionSecrets[left]) > len(redactionSecrets[right])
+		}
+		return redactionSecrets[left] < redactionSecrets[right]
+	})
+	return removeSecrets(redacted.String(), redactionSecrets)
 }
 
 func writeRedaction(output *strings.Builder, marker string, coveredBytes int) {
@@ -307,4 +335,36 @@ func writeRedaction(output *strings.Builder, marker string, coveredBytes int) {
 	for range coveredBytes {
 		output.WriteByte('*')
 	}
+}
+
+func removeSecrets(value string, secrets []string) string {
+	containsSecret := false
+	for _, secret := range secrets {
+		if strings.Contains(value, secret) {
+			containsSecret = true
+			break
+		}
+	}
+	if !containsSecret {
+		return value
+	}
+
+	output := make([]byte, 0, len(value))
+	for index := 0; index < len(value); index++ {
+		output = append(output, value[index])
+		for {
+			matched := 0
+			for _, secret := range secrets {
+				if len(secret) <= len(output) && string(output[len(output)-len(secret):]) == secret {
+					matched = len(secret)
+					break
+				}
+			}
+			if matched == 0 {
+				break
+			}
+			output = output[:len(output)-matched]
+		}
+	}
+	return string(output)
 }

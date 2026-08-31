@@ -273,7 +273,7 @@ type artifactReader struct{ manager *artifact.WorkbookManager }
 
 func (r artifactReader) ReadWorkbook(ctx context.Context, path string) (workbookpublish.Artifact, error) {
 	item, err := r.manager.Read(ctx, path)
-	return workbookpublish.Artifact{Path: item.Path, Filename: item.Filename, Content: item.Content, Name: item.Name, TableauID: item.TableauID, Fingerprint: item.Fingerprint}, err
+	return workbookpublish.Artifact{Path: item.Path, PayloadPath: item.PayloadPath, Filename: item.Filename, Size: item.Size, Name: item.Name, TableauID: item.TableauID, Fingerprint: item.Fingerprint}, err
 }
 
 type publishAdapter struct{ adapter *resourceworkbook.Adapter }
@@ -291,7 +291,7 @@ func (a publishAdapter) FindWorkbooks(ctx context.Context, name, project string)
 	return result, err
 }
 func (a publishAdapter) Publish(ctx context.Context, input workbookpublish.PublishRequest) (workbookpublish.Result, error) {
-	result, err := a.adapter.PublishWorkbook(ctx, tableauworkbook.PublishRequest{Name: input.Name, ProjectLUID: input.ProjectLUID, Filename: input.Filename, Content: input.Content, Overwrite: input.Overwrite, AsJob: input.AsJob})
+	result, err := a.adapter.PublishWorkbook(ctx, tableauworkbook.PublishRequest{Name: input.Name, ProjectLUID: input.ProjectLUID, Filename: input.Filename, ContentPath: input.ContentPath, ContentSize: input.ContentSize, ExpectedFingerprint: input.ExpectedFingerprint, Overwrite: input.Overwrite, AsJob: input.AsJob})
 	return workbookpublish.Result{Status: result.Status, WorkbookLUID: result.WorkbookLUID, WorkbookName: result.WorkbookName, ProjectLUID: result.ProjectLUID, JobID: result.JobID, TableauRequestID: result.TableauRequestID}, err
 }
 

@@ -119,7 +119,7 @@ func TestTransportRedactsOverlappingSecretsAtomically(t *testing.T) {
 	if !ok {
 		t.Fatalf("error = %T %v", err, err)
 	}
-	if upstream.Detail != "rejected [REDACTED]" || strings.Contains(upstream.Detail, "abc") || strings.Contains(upstream.Detail, "xyz") {
+	if upstream.Detail != "rejected *********" || strings.Contains(upstream.Detail, "abc") || strings.Contains(upstream.Detail, "xyz") {
 		t.Fatalf("redacted detail = %q", upstream.Detail)
 	}
 }
@@ -245,5 +245,31 @@ func TestTransportRejectsSchemeDowngradeRedirect(t *testing.T) {
 	})
 	if err == nil || !strings.Contains(err.Error(), "less secure scheme") {
 		t.Fatalf("error = %v", err)
+	}
+}
+
+func TestTransportClassifiesRequestRetrySafety(t *testing.T) {
+	t.Parallel()
+
+	transport := NewTransport(&http.Client{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
+		return nil, errors.New("network unavailable")
+	})}, "3.29", nil)
+	for _, test := range []struct {
+		operation string
+		want      bool
+	}{
+		{operation: "auth.check", want: true},
+		{operation: "workbook.publish", want: false},
+	} {
+		_, err := transport.Do(context.Background(), nil, Request{
+			Method: http.MethodPost, ServerURL: "https://tableau.example", Path: "/request", Operation: test.operation,
+		})
+		var advice interface {
+			Retryable() bool
+			CorrectiveAction() string
+		}
+		if !errors.As(err, &advice) || advice.Retryable() != test.want || advice.CorrectiveAction() == "" {
+			t.Fatalf("%s retry advice = %#v, error = %v", test.operation, advice, err)
+		}
 	}
 }

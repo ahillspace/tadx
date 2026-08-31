@@ -128,6 +128,9 @@ func (a *Adapter) FindWorkbooks(ctx context.Context, name, projectLUID string) (
 	byLUID := make(map[string]Workbook)
 	for _, item := range items {
 		if item.Name == name && item.ProjectLUID == projectLUID {
+			if item.LUID == "" {
+				return nil, fmt.Errorf("workbook %q in project %q omitted its authoritative LUID", name, projectLUID)
+			}
 			if _, exists := byLUID[item.LUID]; !exists {
 				byLUID[item.LUID] = Workbook{LUID: item.LUID, Name: item.Name, ContentURL: item.ContentURL, ProjectLUID: item.ProjectLUID, ProjectPath: item.ProjectName, OwnerLUID: item.OwnerLUID}
 			}

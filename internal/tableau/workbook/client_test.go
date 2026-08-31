@@ -3,6 +3,8 @@ package workbook_test
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/xml"
 	"errors"
 	"io"
@@ -10,6 +12,8 @@ import (
 	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -123,6 +127,13 @@ func TestClientDownloadsNativeWorkbookAndFilename(t *testing.T) {
 }
 
 func TestClientUsesUploadSessionAndBoundedJobPolling(t *testing.T) {
+	payloadDirectory := t.TempDir()
+	payloadPath := filepath.Join(payloadDirectory, "Finance.twbx")
+	payloadContent := []byte("abcdefg")
+	if err := os.WriteFile(payloadPath, payloadContent, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	payloadDigest := sha256.Sum256(payloadContent)
 	var calls []string
 	var appendParts [][]multipartPart
 	var appendSequences []string
@@ -177,13 +188,16 @@ func TestClientUsesUploadSessionAndBoundedJobPolling(t *testing.T) {
 	client.SetUploadChunkSize(3)
 	client.SetPollPolicy(5*time.Millisecond, 100*time.Millisecond)
 	result, err := client.Publish(context.Background(), tableauworkbook.PublishRequest{
-		Name: "Finance", ProjectLUID: "project-1", Filename: "Finance.twbx", Content: []byte("abcdefg"), Overwrite: true, AsJob: true,
+		Name: "Finance", ProjectLUID: "project-1", Filename: "Finance.twbx", ContentPath: payloadPath, ContentSize: int64(len(payloadContent)), ExpectedFingerprint: "sha256:" + hex.EncodeToString(payloadDigest[:]), Overwrite: true, AsJob: true,
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if handlerErr != nil {
 		t.Fatal(handlerErr)
+	}
+	if snapshots, globErr := filepath.Glob(filepath.Join(payloadDirectory, ".tadx-publish-snapshot-*")); globErr != nil || len(snapshots) != 0 {
+		t.Fatalf("publish snapshots = %v, error = %v", snapshots, globErr)
 	}
 	if result.JobID != "job-1" || result.Status != "succeeded" || jobPolls != 2 || len(calls) != 7 {
 		t.Fatalf("result = %#v, polls = %d, calls = %v", result, jobPolls, calls)
@@ -253,6 +267,34 @@ func TestClientPublishesSmallWorkbookInMultipartBody(t *testing.T) {
 	}
 	if len(parts) != 2 || parts[0].name != "request_payload" || parts[1].name != "tableau_workbook" || parts[1].filename != "Finance.twb" || !bytes.Equal(parts[1].content, []byte("workbook-content")) {
 		t.Fatalf("publish parts = %#v", parts)
+	}
+}
+
+func TestClientRejectsChangedArtifactBeforeStartingPublish(t *testing.T) {
+	payloadDirectory := t.TempDir()
+	payloadPath := filepath.Join(payloadDirectory, "Finance.twbx")
+	plannedContent := []byte("planned")
+	digest := sha256.Sum256(plannedContent)
+	if err := os.WriteFile(payloadPath, []byte("changed"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	requests := 0
+	httpClient := &http.Client{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
+		requests++
+		return nil, errors.New("unexpected request")
+	})}
+	client := tableauworkbook.NewClient(tableau.NewTransport(httpClient, "3.29", nil), session{}, "https://tableau.example")
+	_, err := client.Publish(context.Background(), tableauworkbook.PublishRequest{
+		Name: "Finance", ProjectLUID: "project-1", Filename: "Finance.twbx", ContentPath: payloadPath, ContentSize: int64(len(plannedContent)), ExpectedFingerprint: "sha256:" + hex.EncodeToString(digest[:]),
+	})
+	if err == nil || !strings.Contains(err.Error(), "changed after planning") {
+		t.Fatalf("Publish() error = %v", err)
+	}
+	if requests != 0 {
+		t.Fatalf("requests = %d", requests)
+	}
+	if snapshots, globErr := filepath.Glob(filepath.Join(payloadDirectory, ".tadx-publish-snapshot-*")); globErr != nil || len(snapshots) != 0 {
+		t.Fatalf("publish snapshots = %v, error = %v", snapshots, globErr)
 	}
 }
 

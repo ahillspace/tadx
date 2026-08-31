@@ -48,6 +48,16 @@ func TestActionReturnsNormalizedBoundedSearchEnvelope(t *testing.T) {
 	}
 }
 
+func TestActionPreservesEmptyItemsCollection(t *testing.T) {
+	result, err := search.New(source{result: search.Result{}}).Execute(context.Background(), search.Input{Environment: "production"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Items == nil || len(result.Items) != 0 {
+		t.Fatalf("items = %#v", result.Items)
+	}
+}
+
 func TestActionRejectsInvalidLimitAsUsageBeforeSearching(t *testing.T) {
 	for _, limit := range []int{-1, 101} {
 		t.Run(strconv.Itoa(limit), func(t *testing.T) {

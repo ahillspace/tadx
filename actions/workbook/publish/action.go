@@ -84,7 +84,7 @@ func (a *Action) Plan(ctx context.Context, input Input) (Plan, error) {
 	if len(existing) == 1 {
 		existingLUID = existing[0].LUID
 	}
-	request := PublishRequest{Name: name, ProjectLUID: project.LUID, Filename: artifact.Filename, Content: append([]byte(nil), artifact.Content...), Overwrite: input.Overwrite, AsJob: input.AsJob}
+	request := PublishRequest{Name: name, ProjectLUID: project.LUID, Filename: artifact.Filename, ContentPath: artifact.PayloadPath, ContentSize: artifact.Size, ExpectedFingerprint: artifact.Fingerprint, Overwrite: input.Overwrite, AsJob: input.AsJob}
 	return Plan{
 		Mode: "preview", Operation: "workbook.publish", ArtifactPath: artifact.Path,
 		ArtifactFingerprint: artifact.Fingerprint, Filename: artifact.Filename, WorkbookName: name,

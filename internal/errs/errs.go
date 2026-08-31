@@ -77,6 +77,18 @@ func (e *Error) Unwrap() error {
 // Bool returns a pointer suitable for optional boolean fields.
 func Bool(value bool) *bool { return &value }
 
+// RetryAdvice returns retryability and corrective action carried by an error chain.
+func RetryAdvice(err error) (*bool, string) {
+	var carrier interface {
+		Retryable() bool
+		CorrectiveAction() string
+	}
+	if !errors.As(err, &carrier) {
+		return nil, ""
+	}
+	return Bool(carrier.Retryable()), carrier.CorrectiveAction()
+}
+
 // TableauRequestID returns the first request ID carried by an error chain.
 func TableauRequestID(err error) string {
 	var structured *Error
@@ -149,6 +161,13 @@ func Structure(err error) Envelope {
 		}
 		if structured.Cause != nil {
 			payload.UpstreamCause = structured.Cause.Error()
+			retryable, correctiveAction := RetryAdvice(structured.Cause)
+			if payload.Retryable == nil {
+				payload.Retryable = retryable
+			}
+			if payload.CorrectiveAction == "" {
+				payload.CorrectiveAction = correctiveAction
+			}
 			status, code, summary, detail := tableauUpstream(structured.Cause)
 			if payload.UpstreamStatus == 0 {
 				payload.UpstreamStatus = status

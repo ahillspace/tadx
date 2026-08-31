@@ -7,6 +7,8 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"net/url"
+	"strings"
 
 	coreauth "github.com/ahillspace/tadx/internal/auth"
 	"github.com/ahillspace/tadx/internal/tableau"
@@ -22,6 +24,10 @@ func NewClient(transport *tableau.Transport) *Client { return &Client{transport:
 func (c *Client) SignIn(ctx context.Context, input coreauth.SignInRequest) (coreauth.SignInResponse, error) {
 	if c == nil || c.transport == nil {
 		return coreauth.SignInResponse{}, errors.New("Tableau sign-in client is not configured")
+	}
+	serverURL, err := url.Parse(input.ServerURL)
+	if err != nil || !strings.EqualFold(serverURL.Scheme, "https") || serverURL.Host == "" {
+		return coreauth.SignInResponse{}, errors.New("PAT sign-in requires an absolute HTTPS Tableau server URL")
 	}
 	payload := struct {
 		Credentials struct {

@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	check "github.com/ahillspace/tadx/actions/auth/check"
+	"github.com/ahillspace/tadx/internal/errs"
 	"github.com/ahillspace/tadx/internal/output"
 )
 
@@ -27,6 +28,12 @@ type authenticator struct {
 func (a authenticator) Authenticate(context.Context, check.Target) (check.Authentication, error) {
 	return a.result, a.err
 }
+
+type retryableAuthError struct{}
+
+func (retryableAuthError) Error() string            { return "Tableau unavailable" }
+func (retryableAuthError) Retryable() bool          { return true }
+func (retryableAuthError) CorrectiveAction() string { return "Retry after Tableau recovers." }
 
 func TestActionReturnsRedactedAuthenticatedIdentity(t *testing.T) {
 	target := check.Target{Environment: "production", ServerURL: "https://example.test", SiteContentURL: "marketing", PATNameVariable: "PAT_NAME", PATSecretVariable: "PAT_SECRET"}
@@ -47,6 +54,21 @@ func TestActionWrapsAuthenticationFailureWithStableContext(t *testing.T) {
 	_, err := action.Execute(context.Background(), check.Input{Environment: "production"})
 	if err == nil || !strings.Contains(err.Error(), "Authentication check failed") {
 		t.Fatalf("error = %v", err)
+	}
+}
+
+func TestActionPreservesAuthenticationRetryAdvice(t *testing.T) {
+	t.Parallel()
+
+	target := check.Target{Environment: "production", ServerURL: "https://example.test", SiteContentURL: "marketing"}
+	action := check.New(environmentResolver{target: target}, authenticator{err: retryableAuthError{}})
+	_, err := action.Execute(context.Background(), check.Input{Environment: "production"})
+	if err == nil {
+		t.Fatal("Execute() error = nil")
+	}
+	payload := errs.Structure(err).Error
+	if payload.Retryable == nil || !*payload.Retryable || payload.CorrectiveAction != "Retry after Tableau recovers." {
+		t.Fatalf("structured error = %#v", payload)
 	}
 }
 

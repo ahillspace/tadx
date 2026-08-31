@@ -20,7 +20,7 @@ import (
 
 func TestPhaseOneWorkbookPullAndPublishThroughCLIDefaultSite(t *testing.T) {
 	var publishCalls atomic.Int32
-	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+	server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		switch {
 		case request.URL.Path == "/api/3.29/auth/signin":
 			writer.Header().Set("Content-Type", "application/json")
@@ -59,7 +59,11 @@ func TestPhaseOneWorkbookPullAndPublishThroughCLIDefaultSite(t *testing.T) {
 	if exit := app.Run(context.Background(), []string{"content", "workbook", "pull", "--environment", "production", "--workspace", workspace, "--id", "wb-1"}, &pullOutput, options); exit != 0 {
 		t.Fatalf("pull exit = %d, output = %s", exit, pullOutput.String())
 	}
-	artifactPath := filepath.Join(workspace, "artifacts", "workbook", "Finance")
+	artifactEntries, err := os.ReadDir(filepath.Join(workspace, "artifacts", "workbook"))
+	if err != nil || len(artifactEntries) != 1 {
+		t.Fatalf("workbook artifact entries = %#v, error = %v", artifactEntries, err)
+	}
+	artifactPath := filepath.Join(workspace, "artifacts", "workbook", artifactEntries[0].Name())
 	if _, err := os.Stat(filepath.Join(artifactPath, "Finance.twb")); err != nil {
 		t.Fatalf("pull did not create canonical artifact: %v", err)
 	}
@@ -99,7 +103,7 @@ func TestWorkbookArtifactCreatedByE2EIsReadable(t *testing.T) {
 		t.Fatal(err)
 	}
 	manager := artifact.NewWorkbookManager(time.Now)
-	result, err := manager.Pull(context.Background(), artifact.WorkbookPull{Workspace: workspace, Filename: "Book.twb", Content: []byte("book"), Metadata: artifact.WorkbookMetadata{Name: "Book", TableauID: "wb"}})
+	result, err := manager.Pull(context.Background(), artifact.WorkbookPull{Workspace: workspace, Filename: "Book.twb", Content: []byte("book"), Metadata: artifact.WorkbookMetadata{Name: "Book", TableauID: "wb", SourceEnvironment: "production", SourceSite: "", SourceProjectName: "Ops", SourceProjectID: "project-1"}})
 	if err != nil || result.ArtifactPath == "" {
 		t.Fatalf("artifact result = %#v, error = %v", result, err)
 	}

@@ -42,7 +42,14 @@ func (a *Action) Execute(ctx context.Context, input Input) (Output, error) {
 	}
 	result, err := a.authenticator.Authenticate(ctx, target)
 	if err != nil {
-		return Output{}, &errs.Error{ID: "auth.check.failed", Kind: errs.KindOperation, Operation: "auth.check", Environment: target.Environment, Site: target.SiteContentURL, Summary: "Authentication check failed.", Cause: err, Retryable: errs.Bool(false), CorrectiveAction: "Verify the environment, site content URL, and PAT variable references.", TableauRequestID: errs.TableauRequestID(err)}
+		retryable, correctiveAction := errs.RetryAdvice(err)
+		if retryable == nil {
+			retryable = errs.Bool(false)
+		}
+		if correctiveAction == "" {
+			correctiveAction = "Verify the environment, site content URL, and PAT variable references."
+		}
+		return Output{}, &errs.Error{ID: "auth.check.failed", Kind: errs.KindOperation, Operation: "auth.check", Environment: target.Environment, Site: target.SiteContentURL, Summary: "Authentication check failed.", Cause: err, Retryable: retryable, CorrectiveAction: correctiveAction, TableauRequestID: errs.TableauRequestID(err)}
 	}
 	return Output{Status: "authenticated", Environment: target.Environment, ServerURL: target.ServerURL, SiteContentURL: target.SiteContentURL, SiteLUID: result.SiteLUID, UserLUID: result.UserLUID}, nil
 }

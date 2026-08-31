@@ -58,6 +58,7 @@ func TestConfigValidateRejectsInvalidModels(t *testing.T) {
 		{name: "missing default", cfg: config.Config{Version: 1, DefaultEnvironment: "missing", Environments: map[string]config.Environment{}}},
 		{name: "non PAT auth", cfg: config.Config{Version: 1, Environments: map[string]config.Environment{"x": {URL: "https://example.com", Auth: config.Auth{Type: "oauth"}}}}},
 		{name: "invalid URL", cfg: config.Config{Version: 1, Environments: map[string]config.Environment{"x": {URL: "example.com", Auth: config.Auth{Type: config.AuthTypePAT}}}}},
+		{name: "plaintext URL", cfg: config.Config{Version: 1, Environments: map[string]config.Environment{"x": {URL: "http://example.com", Auth: config.Auth{Type: config.AuthTypePAT}}}}},
 		{name: "URL has credentials", cfg: config.Config{Version: 1, Environments: map[string]config.Environment{"x": {URL: "https://user:secret@example.com", Auth: config.Auth{Type: config.AuthTypePAT}}}}},
 		{name: "invalid API version", cfg: config.Config{Version: 1, Environments: map[string]config.Environment{"x": {URL: "https://example.com", APIVersion: "3.29?x", Auth: config.Auth{Type: config.AuthTypePAT}}}}},
 		{name: "empty alias", cfg: config.Config{Version: 1, Environments: map[string]config.Environment{"": {URL: "https://example.com", Auth: config.Auth{Type: config.AuthTypePAT}}}}},

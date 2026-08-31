@@ -47,6 +47,6 @@ func (a *Action) Execute(ctx context.Context, input Input) (Output, error) {
 	return Output{
 		Page:       result.Page,
 		Generation: Generation{ID: result.GenerationID, Environment: result.Environment, Site: result.Site, GeneratedAt: result.GeneratedAt, Stale: result.Stale},
-		Items:      append([]Item(nil), result.Items...), Warnings: append([]string(nil), result.Warnings...), Help: []string{"tadx catalog search --environment <alias> --id <luid>"},
+		Items:      append([]Item{}, result.Items...), Warnings: append([]string(nil), result.Warnings...), Help: []string{"tadx catalog search --environment <alias> --id <luid>"},
 	}, nil
 }

@@ -214,8 +214,8 @@ func validateServerURL(value string) error {
 	if err != nil {
 		return errors.New("must be a valid absolute URL")
 	}
-	if parsed.Scheme != "https" && parsed.Scheme != "http" {
-		return errors.New("scheme must be http or https")
+	if !strings.EqualFold(parsed.Scheme, "https") {
+		return errors.New("scheme must be https")
 	}
 	if parsed.Host == "" {
 		return errors.New("host must not be empty")

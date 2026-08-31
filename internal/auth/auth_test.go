@@ -28,6 +28,14 @@ func (e upstreamCredentialError) TableauSummary() string { return e.summary }
 func (e upstreamCredentialError) TableauDetail() string  { return e.detail }
 func (e upstreamCredentialError) RequestID() string      { return e.requestID }
 
+type retryableCredentialError struct{ upstreamCredentialError }
+
+func (retryableCredentialError) HTTPStatus() int { return http.StatusServiceUnavailable }
+func (retryableCredentialError) Retryable() bool { return true }
+func (retryableCredentialError) CorrectiveAction() string {
+	return "Retry after highly-secret is accepted by the upstream service."
+}
+
 func TestPATProviderResolvesVariablesAndReturnsAuthenticatedSession(t *testing.T) {
 	t.Parallel()
 
@@ -265,6 +273,26 @@ func TestRedactDoesNotExpandSeparatedShortMatches(t *testing.T) {
 	}
 }
 
+func TestRedactDoesNotEmitConfiguredSecretsFromReplacementText(t *testing.T) {
+	t.Parallel()
+
+	for _, test := range []struct {
+		message string
+		secrets []string
+	}{
+		{message: "rejected *", secrets: []string{"*"}},
+		{message: "rejected [REDACTED]", secrets: []string{"[REDACTED]"}},
+		{message: "a*a", secrets: []string{"*", "aa"}},
+	} {
+		redacted := auth.Redact(test.message, test.secrets...)
+		for _, secret := range test.secrets {
+			if strings.Contains(redacted, secret) {
+				t.Fatalf("Redact(%q) = %q, contains configured secret %q", test.message, redacted, secret)
+			}
+		}
+	}
+}
+
 func TestPATProviderPreservesRedactedUpstreamMetadata(t *testing.T) {
 	t.Parallel()
 
@@ -293,6 +321,28 @@ func TestPATProviderPreservesRedactedUpstreamMetadata(t *testing.T) {
 	formatted := fmt.Sprintf("%#v", payload)
 	if strings.Contains(formatted, "agent-name") || strings.Contains(formatted, "highly-secret") {
 		t.Fatalf("upstream metadata leaked credentials: %s", formatted)
+	}
+}
+
+func TestPATProviderPreservesRedactedRetryAdvice(t *testing.T) {
+	t.Parallel()
+
+	provider := auth.NewPATProvider(auth.LookupEnvFunc(func(key string) (string, bool) {
+		return map[string]string{"PAT_NAME": "agent-name", "PAT_SECRET": "highly-secret"}[key], true
+	}), &recordingSigner{err: retryableCredentialError{upstreamCredentialError: upstreamCredentialError{message: "service unavailable"}}})
+	_, err := provider.Authenticate(context.Background(), auth.Target{
+		PATNameVariable:   "PAT_NAME",
+		PATSecretVariable: "PAT_SECRET",
+	})
+	if err == nil {
+		t.Fatal("Authenticate() error = nil")
+	}
+	retryable, correctiveAction := errs.RetryAdvice(err)
+	if retryable == nil || !*retryable {
+		t.Fatalf("retryable = %#v", retryable)
+	}
+	if strings.Contains(correctiveAction, "highly-secret") || !strings.Contains(correctiveAction, "[REDACTED]") {
+		t.Fatalf("corrective action = %q", correctiveAction)
 	}
 }
 

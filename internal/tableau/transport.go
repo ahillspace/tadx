@@ -62,6 +62,21 @@ type responseReadError struct {
 	cause      error
 }
 
+type requestError struct {
+	operation        string
+	cause            error
+	retryable        bool
+	correctiveAction string
+}
+
+func (e *requestError) Error() string {
+	return fmt.Sprintf("Tableau %s request: %v", e.operation, e.cause)
+}
+
+func (e *requestError) Unwrap() error            { return e.cause }
+func (e *requestError) Retryable() bool          { return e.retryable }
+func (e *requestError) CorrectiveAction() string { return e.correctiveAction }
+
 func (e *responseReadError) Error() string {
 	return fmt.Sprintf("read Tableau %s response: %v", e.operation, e.cause)
 }
@@ -77,6 +92,11 @@ func (e *responseReadError) TableauSummary() string {
 }
 func (e *responseReadError) TableauDetail() string {
 	return ""
+}
+
+func (e *responseReadError) Retryable() bool { return false }
+func (e *responseReadError) CorrectiveAction() string {
+	return "Inspect the remote operation outcome before retrying."
 }
 
 func (e *UpstreamError) Error() string {
@@ -131,6 +151,22 @@ func (e *UpstreamError) TableauDetail() string {
 		return ""
 	}
 	return e.Detail
+}
+
+func (e *UpstreamError) Retryable() bool {
+	if e == nil {
+		return false
+	}
+	retryable, _ := upstreamAdvice(e.StatusCode)
+	return retryable
+}
+
+func (e *UpstreamError) CorrectiveAction() string {
+	if e == nil {
+		return ""
+	}
+	_, correctiveAction := upstreamAdvice(e.StatusCode)
+	return correctiveAction
 }
 
 // RequestID returns the first upstream request identifier in an error chain.
@@ -231,7 +267,12 @@ func (t *Transport) Do(ctx context.Context, session auth.Session, input Request)
 	effectiveSecrets = append(effectiveSecrets, request.Header.Values(auth.TableauAuthHeader)...)
 	response, err := t.client.Do(request)
 	if err != nil {
-		return Response{}, fmt.Errorf("Tableau %s request: %w", input.Operation, redact(err, effectiveSecrets))
+		retryable := input.Method == http.MethodGet || input.Method == http.MethodHead || input.Method == http.MethodOptions || input.Operation == "auth.check"
+		correctiveAction := "Inspect the remote operation outcome before retrying."
+		if retryable {
+			correctiveAction = "Verify network, DNS, proxy, and TLS connectivity, then retry."
+		}
+		return Response{}, &requestError{operation: input.Operation, cause: redact(err, effectiveSecrets), retryable: retryable, correctiveAction: correctiveAction}
 	}
 	defer response.Body.Close()
 	requestID := redactText(tableauRequestID(response.Header), effectiveSecrets)
@@ -250,6 +291,23 @@ func (t *Transport) Do(ctx context.Context, session auth.Session, input Request)
 	return Response{}, &UpstreamError{
 		Operation: input.Operation, StatusCode: response.StatusCode, Code: redactText(code, effectiveSecrets),
 		Summary: redactText(summary, effectiveSecrets), Detail: redactText(detail, effectiveSecrets), TableauRequestID: requestID,
+	}
+}
+
+func upstreamAdvice(status int) (bool, string) {
+	switch {
+	case status == http.StatusRequestTimeout || status == http.StatusTooEarly || status == http.StatusTooManyRequests:
+		return true, "Wait for the upstream service, then retry."
+	case status >= http.StatusInternalServerError:
+		return true, "Retry after Tableau or the intermediary service recovers."
+	case status == http.StatusUnauthorized:
+		return false, "Verify the PAT credentials, expiration, and selected site."
+	case status == http.StatusForbidden:
+		return false, "Verify the PAT permissions and selected site."
+	case status == http.StatusNotFound:
+		return false, "Verify the server URL, site content URL, and REST API version."
+	default:
+		return false, "Review the upstream status and Tableau error details before retrying."
 	}
 }
 

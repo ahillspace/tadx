@@ -188,6 +188,24 @@ func TestFileStoreRejectsInvalidRecordIdentity(t *testing.T) {
 	}
 }
 
+func TestFileStoreRejectsRecordCountBeyondLimit(t *testing.T) {
+	root := t.TempDir()
+	records := strings.Repeat(`{},`, 100_000) + `{}`
+	writeGenerationData(t, root, "production.json", []byte(`{
+		"id":"generation-1",
+		"environment":"production",
+		"site":"marketing",
+		"generated_at":"2026-08-30T00:00:00Z",
+		"complete":true,
+		"records":[`+records+`]
+	}`))
+	store := catalog.NewFileStore(root, time.Now)
+	_, err := store.Search(context.Background(), catalog.Query{Environment: "production", Site: "marketing", SiteSelected: true})
+	if err == nil || !strings.Contains(err.Error(), "100000-record limit") {
+		t.Fatalf("Search() error = %v", err)
+	}
+}
+
 func TestFileStoreCursorIsBoundToGeneration(t *testing.T) {
 	root := t.TempDir()
 	generated := time.Now()
