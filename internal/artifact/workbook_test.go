@@ -48,6 +48,73 @@ func TestWorkbookManagerWritesCanonicalArtifactAndProvenance(t *testing.T) {
 	}
 }
 
+func TestWorkbookManagerRecordsPublishedDatasourcePortability(t *testing.T) {
+	workspace := createWorkspace(t)
+	manager := artifact.NewWorkbookManager(time.Now)
+	result, err := manager.Pull(context.Background(), artifact.WorkbookPull{
+		Workspace: workspace, Filename: "Finance.twbx", Content: []byte("native"),
+		Metadata: artifact.WorkbookMetadata{
+			Kind: "workbook", Name: "Finance", TableauID: "wb-1", SourceServerOrigin: "https://tableau.example.com", SourceSiteLUID: "site-1", SourceEnvironment: "production", SourceSite: "marketing", SourceProjectName: "Ops", SourceProjectID: "project-1",
+			Portability:          "source-site-bound",
+			PublishedDatasources: []artifact.PublishedDatasourceRef{{LUID: "ds-1", Name: "Sales", SourceSite: "marketing"}},
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	data, err := os.ReadFile(filepath.Join(result.ArtifactPath, "metadata.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var fields map[string]any
+	if err := json.Unmarshal(data, &fields); err != nil {
+		t.Fatal(err)
+	}
+	if fields["portability"] != "source-site-bound" {
+		t.Fatalf("portability = %#v", fields["portability"])
+	}
+	view, err := os.ReadFile(filepath.Join(result.ArtifactPath, "view.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(view), "source-site-bound") || !strings.Contains(string(view), "ds-1") {
+		t.Fatalf("view.md missing portability provenance:\n%s", view)
+	}
+	metadata, err := manager.ReadMetadata(context.Background(), result.ArtifactPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if metadata.Portability != "source-site-bound" || len(metadata.PublishedDatasources) != 1 || metadata.PublishedDatasources[0].LUID != "ds-1" {
+		t.Fatalf("metadata = %#v", metadata)
+	}
+}
+
+func TestWorkbookManagerRejectsInvalidPortabilityContract(t *testing.T) {
+	workspace := createWorkspace(t)
+	manager := artifact.NewWorkbookManager(time.Now)
+	tests := []struct {
+		name     string
+		mutate   func(*artifact.WorkbookMetadata)
+		contains string
+	}{
+		{name: "unknown enum", mutate: func(m *artifact.WorkbookMetadata) { m.Portability = "sometimes" }, contains: "portability"},
+		{name: "reference without luid", mutate: func(m *artifact.WorkbookMetadata) {
+			m.Portability = "source-site-bound"
+			m.PublishedDatasources = []artifact.PublishedDatasourceRef{{Name: "Sales"}}
+		}, contains: "published_datasource"},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			metadata := artifact.WorkbookMetadata{Kind: "workbook", Name: "Finance", TableauID: "wb-1", SourceServerOrigin: "https://tableau.example.com", SourceSiteLUID: "site-1", SourceEnvironment: "production", SourceSite: "marketing", SourceProjectName: "Ops", SourceProjectID: "project-1"}
+			test.mutate(&metadata)
+			_, err := manager.Pull(context.Background(), artifact.WorkbookPull{Workspace: workspace, Filename: "Finance.twb", Content: []byte("v"), Metadata: metadata})
+			if err == nil || !strings.Contains(err.Error(), test.contains) {
+				t.Fatalf("error = %v", err)
+			}
+		})
+	}
+}
+
 func TestWorkbookManagerReadExposesSourceProvenance(t *testing.T) {
 	workspace := createWorkspace(t)
 	manager := artifact.NewWorkbookManager(time.Now)

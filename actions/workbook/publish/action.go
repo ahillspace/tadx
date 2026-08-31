@@ -118,12 +118,19 @@ func (a *Action) Plan(ctx context.Context, input Input) (Plan, error) {
 	if len(existing) == 1 {
 		existingLUID = existing[0].LUID
 	}
+	// A source-site-bound workbook references published datasources that will not
+	// resolve on a different site. Publishing there will be rejected by Tableau,
+	// so surface it in the preview rather than after a failed apply.
+	var warnings []string
+	if artifact.Portability == "source-site-bound" && (input.Environment != artifact.SourceEnvironment || input.Site != artifact.SourceSite) {
+		warnings = append(warnings, fmt.Sprintf("This workbook references %d published datasource(s) bound to source site %q; publishing to environment %q site %q will fail until those datasources exist there. Acquire the dependencies with --include-pds and publish them to the target first.", artifact.PublishedDatasourceCount, artifact.SourceSite, input.Environment, input.Site))
+	}
 	request := PublishRequest{Name: name, ProjectLUID: project.LUID, Filename: artifact.Filename, ContentPath: artifact.PayloadPath, ContentSize: artifact.Size, ExpectedFingerprint: artifact.Fingerprint, Overwrite: overwrite, AsJob: input.AsJob}
 	return Plan{
 		Mode: "preview", Operation: "workbook.publish", ArtifactPath: artifact.Path,
 		ArtifactFingerprint: artifact.Fingerprint, Filename: artifact.Filename, WorkbookName: name,
 		Target:    Target{Origin: origin, Environment: input.Environment, Site: input.Site, ProjectLUID: project.LUID, ProjectPath: project.Path, ExistingLUID: existingLUID},
-		Overwrite: overwrite, AsJob: input.AsJob,
+		Overwrite: overwrite, AsJob: input.AsJob, Warnings: warnings,
 		Substeps: []string{"resolve exact destination", "check workbook collision", "upload workbook", "publish workbook", "poll asynchronous job when requested"},
 		request:  request, planned: true,
 	}, nil

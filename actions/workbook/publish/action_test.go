@@ -264,6 +264,37 @@ func TestApplyPreservesRetryAdviceForOverwriteRevalidation(t *testing.T) {
 	}
 }
 
+func TestPlanWarnsWhenSourceBoundWorkbookTargetsDifferentSite(t *testing.T) {
+	action := publish.New(
+		artifactReader{artifact: publish.Artifact{Path: "artifact", Filename: "Finance.twbx", Name: "Finance", TableauID: "wb-1", SourceEnvironment: "production", SourceSite: "marketing", Portability: "source-site-bound", PublishedDatasourceCount: 2}},
+		resolver{project: publish.Project{LUID: "project-1", Path: "Ops"}},
+		&publisher{},
+	)
+	plan, err := action.Plan(context.Background(), publish.Input{ArtifactPath: "artifact", Environment: "staging", Site: "analytics", ProjectSelector: identity.Selector{LUID: "project-1"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	joined := strings.Join(plan.Warnings, " ")
+	if !strings.Contains(joined, "published datasource") || !strings.Contains(joined, "marketing") {
+		t.Fatalf("warnings = %#v", plan.Warnings)
+	}
+}
+
+func TestPlanDoesNotWarnWhenTargetMatchesSource(t *testing.T) {
+	action := publish.New(
+		artifactReader{artifact: publish.Artifact{Path: "artifact", Filename: "Finance.twbx", Name: "Finance", TableauID: "wb-1", SourceEnvironment: "production", SourceSite: "marketing", SourceProjectName: "Ops", SourceProjectID: "project-1", Portability: "source-site-bound", PublishedDatasourceCount: 2}},
+		resolver{project: publish.Project{LUID: "project-1", Path: "Ops"}, existing: []publish.Workbook{{LUID: "wb-1", Name: "Finance", ProjectLUID: "project-1"}}},
+		&publisher{},
+	)
+	plan, err := action.Plan(context.Background(), publish.Input{ArtifactPath: "artifact", Environment: "production", Site: "marketing", TargetResolved: true, SourceDefaulted: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(plan.Warnings) != 0 {
+		t.Fatalf("unexpected warnings = %#v", plan.Warnings)
+	}
+}
+
 func TestPlanDefaultsTargetToArtifactSource(t *testing.T) {
 	action := publish.New(
 		artifactReader{artifact: publish.Artifact{

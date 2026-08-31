@@ -35,8 +35,37 @@ type WorkbookMetadata struct {
 	PulledAt                 string `json:"pulled_at"`
 	CanonicalPayload         string `json:"canonical_payload"`
 	LocalBaselineFingerprint string `json:"local_baseline_fingerprint"`
-	sourceSitePresent        bool
+	// Portability reports whether the workbook is self-contained or bound to its
+	// source site by published-datasource references. Empty means portability has
+	// not been detected yet. Detection is deferred (see the capability contract):
+	// only the Metadata API yields a referenced published datasource's LUID, and
+	// that contract is not yet captured with a passing contract test.
+	Portability string `json:"portability,omitempty"`
+	// PublishedDatasources are the direct published-datasource references detected
+	// in the workbook. Presence implies Portability "source-site-bound".
+	PublishedDatasources []PublishedDatasourceRef `json:"published_datasources,omitempty"`
+	// DependenciesAcquired reports that referenced published datasources were
+	// downloaded as sibling artifacts (via --include-pds).
+	DependenciesAcquired bool `json:"dependencies_acquired,omitempty"`
+	sourceSitePresent    bool
 }
+
+// PublishedDatasourceRef is one direct published-datasource reference recorded
+// on a workbook artifact. The LUID is authoritative; Name and SourceSite are
+// labels. LocalArtifactPath is set only when the dependency was acquired as a
+// sibling datasource artifact.
+type PublishedDatasourceRef struct {
+	LUID              string `json:"luid"`
+	Name              string `json:"name,omitempty"`
+	SourceSite        string `json:"source_site,omitempty"`
+	LocalArtifactPath string `json:"local_artifact_path,omitempty"`
+}
+
+// Portability values recorded on a workbook artifact.
+const (
+	PortabilityPortable        = "portable"
+	PortabilitySourceSiteBound = "source-site-bound"
+)
 
 // WorkbookPull is one complete local workbook replacement request.
 type WorkbookPull struct {
@@ -64,10 +93,12 @@ type WorkbookArtifact struct {
 	Name              string
 	TableauID         string
 	Fingerprint       string
-	SourceEnvironment string
-	SourceSite        string
-	SourceProjectName string
-	SourceProjectID   string
+	SourceEnvironment        string
+	SourceSite               string
+	SourceProjectName        string
+	SourceProjectID          string
+	Portability              string
+	PublishedDatasourceCount int
 }
 
 // WorkbookManager owns workbook artifact storage.
@@ -263,7 +294,7 @@ func (m *WorkbookManager) Read(ctx context.Context, path string) (WorkbookArtifa
 	if err != nil {
 		return WorkbookArtifact{}, fmt.Errorf("fingerprint canonical workbook: %w", err)
 	}
-	return WorkbookArtifact{Path: directory, PayloadPath: canonical, Filename: metadata.CanonicalPayload, Size: canonicalInfo.Size(), Name: metadata.Name, TableauID: metadata.TableauID, Fingerprint: currentFingerprint, SourceEnvironment: metadata.SourceEnvironment, SourceSite: metadata.SourceSite, SourceProjectName: metadata.SourceProjectName, SourceProjectID: metadata.SourceProjectID}, nil
+	return WorkbookArtifact{Path: directory, PayloadPath: canonical, Filename: metadata.CanonicalPayload, Size: canonicalInfo.Size(), Name: metadata.Name, TableauID: metadata.TableauID, Fingerprint: currentFingerprint, SourceEnvironment: metadata.SourceEnvironment, SourceSite: metadata.SourceSite, SourceProjectName: metadata.SourceProjectName, SourceProjectID: metadata.SourceProjectID, Portability: metadata.Portability, PublishedDatasourceCount: len(metadata.PublishedDatasources)}, nil
 }
 
 // ReadMetadata parses and validates one workbook artifact's recorded provenance
@@ -340,6 +371,17 @@ func validateWorkbookMetadata(metadata WorkbookMetadata) error {
 	decoded, err := hex.DecodeString(digest)
 	if !strings.HasPrefix(metadata.LocalBaselineFingerprint, prefix) || err != nil || len(decoded) != sha256.Size {
 		return errors.New("workbook artifact metadata has invalid local_baseline_fingerprint")
+	}
+	if metadata.Portability != "" && metadata.Portability != PortabilityPortable && metadata.Portability != PortabilitySourceSiteBound {
+		return fmt.Errorf("workbook artifact metadata has invalid portability %q", metadata.Portability)
+	}
+	for index, reference := range metadata.PublishedDatasources {
+		if strings.TrimSpace(reference.LUID) == "" {
+			return fmt.Errorf("workbook artifact metadata published_datasource %d requires luid", index)
+		}
+	}
+	if len(metadata.PublishedDatasources) > 0 && metadata.Portability == PortabilityPortable {
+		return errors.New("workbook artifact metadata records published_datasources but claims portable portability")
 	}
 	return nil
 }
@@ -901,5 +943,19 @@ func windowsReservedComponent(value string) bool {
 }
 
 func workbookView(metadata WorkbookMetadata) string {
-	return fmt.Sprintf("# %s\n\n- Kind: workbook\n- Tableau LUID: `%s`\n- Source server origin: `%s`\n- Source site LUID: `%s`\n- Source environment: `%s`\n- Source site: `%s`\n- Source project: `%s`\n- Pulled at: `%s`\n- Canonical payload: `%s`\n", metadata.Name, metadata.TableauID, metadata.SourceServerOrigin, metadata.SourceSiteLUID, metadata.SourceEnvironment, metadata.SourceSite, metadata.SourceProjectName, metadata.PulledAt, metadata.CanonicalPayload)
+	view := fmt.Sprintf("# %s\n\n- Kind: workbook\n- Tableau LUID: `%s`\n- Source server origin: `%s`\n- Source site LUID: `%s`\n- Source environment: `%s`\n- Source site: `%s`\n- Source project: `%s`\n- Pulled at: `%s`\n- Canonical payload: `%s`\n", metadata.Name, metadata.TableauID, metadata.SourceServerOrigin, metadata.SourceSiteLUID, metadata.SourceEnvironment, metadata.SourceSite, metadata.SourceProjectName, metadata.PulledAt, metadata.CanonicalPayload)
+	if metadata.Portability != "" {
+		view += fmt.Sprintf("- Portability: `%s`\n", metadata.Portability)
+	}
+	if len(metadata.PublishedDatasources) > 0 {
+		view += "\n## Published datasource references\n\n"
+		for _, reference := range metadata.PublishedDatasources {
+			view += fmt.Sprintf("- `%s` %s (source site `%s`)", reference.LUID, reference.Name, reference.SourceSite)
+			if reference.LocalArtifactPath != "" {
+				view += fmt.Sprintf(" -> `%s`", reference.LocalArtifactPath)
+			}
+			view += "\n"
+		}
+	}
+	return view
 }

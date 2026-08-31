@@ -310,7 +310,7 @@ type artifactReader struct{ manager *artifact.WorkbookManager }
 
 func (r artifactReader) ReadWorkbook(ctx context.Context, path string) (workbookpublish.Artifact, error) {
 	item, err := r.manager.Read(ctx, path)
-	return workbookpublish.Artifact{Path: item.Path, PayloadPath: item.PayloadPath, Filename: item.Filename, Size: item.Size, Name: item.Name, TableauID: item.TableauID, Fingerprint: item.Fingerprint, SourceEnvironment: item.SourceEnvironment, SourceSite: item.SourceSite, SourceProjectName: item.SourceProjectName, SourceProjectID: item.SourceProjectID}, err
+	return workbookpublish.Artifact{Path: item.Path, PayloadPath: item.PayloadPath, Filename: item.Filename, Size: item.Size, Name: item.Name, TableauID: item.TableauID, Fingerprint: item.Fingerprint, SourceEnvironment: item.SourceEnvironment, SourceSite: item.SourceSite, SourceProjectName: item.SourceProjectName, SourceProjectID: item.SourceProjectID, Portability: item.Portability, PublishedDatasourceCount: item.PublishedDatasourceCount}, err
 }
 
 type publishAdapter struct{ adapter *resourceworkbook.Adapter }

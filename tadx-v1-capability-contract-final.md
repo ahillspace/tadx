@@ -267,6 +267,29 @@ current fingerprint != baseline
 
 There is no automatic revision history. Pull is a local write and never requires `--apply`. Native workbook, datasource, and flow packages are preserved; TADX does not silently author workbook or flow semantics.
 
+#### Published datasource references and portability
+
+A workbook that references one or more published datasources is not portable: the references are bound to the source site and will not resolve when the workbook is published to a different site.
+To keep this from being a silent surprise, the workbook artifact provenance carries a portability contract:
+
+- `portability`: `portable` when the workbook is self-contained, or `source-site-bound` when it directly references published datasources.
+An empty value means portability has not been detected yet.
+- `published_datasources[]`: each direct published-datasource reference, recorded by authoritative REST LUID with the datasource name and source site as labels.
+When a dependency is acquired via `--include-pds`, its entry also records the sibling datasource artifact's local path.
+- `dependencies_acquired`: whether the referenced published datasources were downloaded as sibling artifacts.
+
+Acquired dependencies are first-class sibling datasource artifacts under `artifacts/datasource/`, deduplicated by (source site, datasource LUID); the workbook is never modified, dependencies are never published, and acquisition never recurses transitively.
+
+Two behaviors are built and do not depend on any remote contract:
+
+1. The schema above and its `view.md` rendering.
+2. A publish-time preview warning: publishing a `source-site-bound` workbook to an environment or site other than its recorded source surfaces a warning in the preview (before `--apply`) that the publish will fail until the referenced datasources exist on the target.
+Republishing to the artifact's recorded source (the default target) never warns.
+
+Detection that populates `portability` and `published_datasources[]` at pull, and the `--include-pds` acquisition, are deferred under blocker B5.
+The default `workbook pull` downloads the workbook unchanged regardless; detection only adds provenance and never alters the payload.
+Detection requires the Metadata API workbook-to-published-datasource LUID traversal, because the REST connections endpoint does not expose the referenced datasource's LUID; that contract is not yet captured with a passing contract test, so no command is wired against it.
+
 A1 explicitly rejects workspace/state locking in V1. Concurrent local races are the caller's responsibility; implementations must not introduce advisory locks or collaboration semantics.
 
 ## 4. CLI implementation evidence
@@ -414,6 +437,7 @@ Behavioral tests are authored before implementation. Cards below reference these
 | B2 — Composable datasource round-trip and serialization | `datasource.get`, `datasource.pull`, `datasource.composition.update`, `datasource.publish` | A controlled Tableau 2026.2/API 3.29 fixture with multiple immediate parents: publish, download, inspect native references, resolve parent identities through released APIs, edit deterministically, republish to a clean project, and verify composition through released metadata/VDS behavior. | The fixture proves which downloaded fields are authoritative, how they map to `parentDataSourceUrls`, that only immediate parents are sent, and that deterministic local `.tds`/`.tdsx` serialization does not corrupt the package. | Composable datasource fidelity/authoring is an explicit V1 decision. Evidence of impossibility or unsafe private-format dependence must be escalated. |
 | B3 — Pulse mutation schemas and destructive/idempotency behavior | `pulse.definition.create/update/delete`; `pulse.metric.create/update/delete/follow/unfollow` | Pinned official OpenAPI/operation artifacts plus live Cloud tests for exact request/response schemas, omitted-versus-null semantics, validation errors, create collisions, `getOrCreate` identity keys, definition/metric deletion cascades or constraints, subscription user/group shape, duplicate follow, and repeated unfollow. | Each mutation has fixture-backed preview fields, deterministic selector/idempotency rules, and negative tests for entitlement, permission, invalid references, and destructive dependencies. | Only the unsupported mutation is blocked; Pulse read/artifact operations remain admitted. A1 already limits mutations to current released API support. |
 | B4 — Shallow project direct-content enumeration | `project.pull`, `project.publish` | Nested-project fixtures on Tableau Cloud and representative Server versions demonstrate the exact filters/queries that enumerate only direct workbooks, datasources, and flows in the selected project, with no child-project inclusion. | Contract tests prove bounded direct membership, pagination, duplicate-name handling, and stop-on-first-failure reporting. Explicit target mapping behavior is pinned for publish. | Do not weaken the shallow boundary or introduce recursion. Keep project pull/publish blocked until a deterministic direct-content contract exists. |
+| B5 — Workbook published-datasource reference detection and acquisition | `workbook.pull` PDS detection/portability population and the `--include-pds` dependency acquisition | An authoritative captured contract that, given a workbook, yields each directly referenced published datasource's REST LUID, plus a passing contract test. The REST `GET .../workbooks/{id}/connections` response does not expose a datasource LUID (a published-datasource connection only surfaces as `type="sqlproxy"`), so REST alone is insufficient. The Metadata API traversal `workbook -> embeddedDatasources -> parentPublishedDatasources -> luid` (`POST /api/metadata/graphql`) does yield the LUID and is the justified path (per the "REST unless we benefit from Metadata API" rule), but it is captured only as vendor documentation with no request/response capture and no contract test, and is absent from `docs/evidence/phase1-rest-contract.md`. | Captured official Metadata API request/response for the workbook->PDS->luid traversal plus positive/negative contract tests, recorded in the evidence file. Then detection populates `portability` and `published_datasources[]` at pull, and `--include-pds` acquires each direct PDS as a sibling datasource artifact. | Detection and acquisition stay registry/schema metadata only until the contract is captured. The `portability`/`published_datasources[]` schema and the local-metadata-derived cross-site publish warning are already built and do not depend on this blocker; they simply remain unpopulated until detection lands. No command is wired against the unverified endpoint. |
 
 ### 6.2 Architecture conflicts and resolutions
 

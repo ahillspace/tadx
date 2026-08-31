@@ -38,6 +38,11 @@ type Artifact struct {
 	SourceSite        string
 	SourceProjectName string
 	SourceProjectID   string
+	// Portability and PublishedDatasourceCount drive the cross-site publish
+	// warning. A "source-site-bound" workbook references published datasources
+	// that will not resolve when published to a different site.
+	Portability              string
+	PublishedDatasourceCount int
 }
 
 // Project is one authoritative remote destination.
@@ -78,6 +83,7 @@ type Plan struct {
 	Target              Target   `json:"target"`
 	Overwrite           bool     `json:"overwrite"`
 	AsJob               bool     `json:"as_job"`
+	Warnings            []string `json:"warnings,omitempty"`
 	Substeps            []string `json:"substeps"`
 	request             PublishRequest
 	planned             bool
