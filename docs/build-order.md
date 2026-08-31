@@ -25,7 +25,7 @@ It must establish and freeze:
 Phase 0 exit gate:
 - Phase 0 merges green on all target platforms.
 - The TOON codec is chosen or implemented, conformance-tested, and frozen.
-- axi, toon, action-guidelines, scope-v1, and AGENTS are checked in.
+- axi, toon, contributing/adding-a-capability, scope-v1, and AGENTS are checked in.
 
 Do not start any resource slice before this gate closes.
 

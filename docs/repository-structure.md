@@ -91,7 +91,7 @@ It does not contain CLI plumbing or direct HTTP behavior.
 ### CLI
 
 The CLI parses arguments, invokes actions, passes results to the output layer, and maps errors to exit codes.
-Domain registrar functions own their implemented commands.
+Each domain owns its own thin Cobra package under `internal/cli/<domain>`, and the composition root (`internal/cli/root.go` `NewRoot`) is the single place those packages are mounted and their dependencies supplied.
 The CLI does not resolve Tableau identity, authenticate, call Tableau, or construct output payloads.
 
 ### Authentication and configuration

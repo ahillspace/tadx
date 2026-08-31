@@ -34,7 +34,8 @@ TADX never calls or proxies MCP inside a command. CLI and MCP are peer surfaces;
 - scope-v1: what V1 builds and does not build.
 - axi: the CLI behavioral contract.
 - toon: the output format contract.
-- action-guidelines: how to add one capability, including the dependency and import rules the architecture test enforces.
+- contributing/adding-a-capability: the end-to-end build guide for one capability, including the contract-row-to-manifest-to-CLI wiring chain and the dependency and import rules the architecture test enforces.
+- contributing/adding-an-adapter: the end-to-end build guide for one Tableau resource seam, including the client family, resource adapter, pagination envelope, redaction, and contract test.
 - build-order: the order slices are built and what must be frozen first.
 - The arc42 and the V1 capability contract: the authoritative product and capability sources.
 
