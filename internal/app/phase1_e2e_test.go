@@ -20,6 +20,7 @@ import (
 
 func TestPhaseOneWorkbookPullAndPublishThroughCLIDefaultSite(t *testing.T) {
 	var publishCalls atomic.Int32
+	var validationCalls atomic.Int32
 	server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		switch {
 		case request.URL.Path == "/api/3.29/auth/signin":
@@ -38,6 +39,11 @@ func TestPhaseOneWorkbookPullAndPublishThroughCLIDefaultSite(t *testing.T) {
 		case request.Method == http.MethodGet && request.URL.Path == "/api/3.29/sites/site-1/projects":
 			writer.Header().Set("Content-Type", "application/xml")
 			_, _ = io.WriteString(writer, `<tsResponse><pagination pageNumber="1" pageSize="1000" totalAvailable="2"/><projects><project id="department" name="Department"/><project id="project-1" name="Ops" parentProjectId="department"/></projects></tsResponse>`)
+		case request.Method == http.MethodPost && request.URL.Path == "/api/3.29/sites/site-1/workbooks/validateWorkbook":
+			validationCalls.Add(1)
+			writer.Header().Set("Content-Type", "application/json")
+			writer.Header().Set("X-Tableau-Request-Id", "validation-request")
+			_, _ = io.WriteString(writer, `{"warnings":[{"severity":"WARNING","message":"Unknown map source is used","line":245,"column":18,"elementName":"map"}]}`)
 		case request.Method == http.MethodPost && request.URL.Path == "/api/3.29/sites/site-1/workbooks":
 			publishCalls.Add(1)
 			writer.Header().Set("Content-Type", "application/xml")
@@ -78,8 +84,8 @@ func TestPhaseOneWorkbookPullAndPublishThroughCLIDefaultSite(t *testing.T) {
 	if err := json.Unmarshal(metadataData, &metadata); err != nil {
 		t.Fatal(err)
 	}
-	if metadata.SourceProjectName != "Department/Ops" || metadata.SourceProjectID != "project-1" {
-		t.Fatalf("artifact project provenance = %#v", metadata)
+	if metadata.SourceServerOrigin != server.URL || metadata.SourceSiteLUID != "site-1" || metadata.SourceProjectName != "Department/Ops" || metadata.SourceProjectID != "project-1" {
+		t.Fatalf("artifact source provenance = %#v", metadata)
 	}
 
 	var previewOutput strings.Builder
@@ -95,8 +101,8 @@ func TestPhaseOneWorkbookPullAndPublishThroughCLIDefaultSite(t *testing.T) {
 	if exit := app.Run(context.Background(), append(previewArgs, "--apply"), &applyOutput, options); exit != 0 {
 		t.Fatalf("apply exit = %d, output = %s", exit, applyOutput.String())
 	}
-	if publishCalls.Load() != 1 || !strings.Contains(applyOutput.String(), "applied: true") || !strings.Contains(applyOutput.String(), "workbook_luid: wb-2") {
-		t.Fatalf("apply result: calls=%d output=%s", publishCalls.Load(), applyOutput.String())
+	if validationCalls.Load() != 1 || publishCalls.Load() != 1 || !strings.Contains(applyOutput.String(), "applied: true") || !strings.Contains(applyOutput.String(), "workbook_luid: wb-2") || !strings.Contains(applyOutput.String(), "Unknown map source is used") {
+		t.Fatalf("apply result: validation_calls=%d publish_calls=%d output=%s", validationCalls.Load(), publishCalls.Load(), applyOutput.String())
 	}
 }
 
@@ -106,7 +112,7 @@ func TestWorkbookArtifactCreatedByE2EIsReadable(t *testing.T) {
 		t.Fatal(err)
 	}
 	manager := artifact.NewWorkbookManager(time.Now)
-	result, err := manager.Pull(context.Background(), artifact.WorkbookPull{Workspace: workspace, Filename: "Book.twb", Content: []byte("book"), Metadata: artifact.WorkbookMetadata{Name: "Book", TableauID: "wb", SourceEnvironment: "production", SourceSite: "", SourceProjectName: "Ops", SourceProjectID: "project-1"}})
+	result, err := manager.Pull(context.Background(), artifact.WorkbookPull{Workspace: workspace, Filename: "Book.twb", Content: []byte("book"), Metadata: artifact.WorkbookMetadata{Name: "Book", TableauID: "wb", SourceServerOrigin: "https://tableau.example.com", SourceSiteLUID: "site-1", SourceEnvironment: "production", SourceSite: "", SourceProjectName: "Ops", SourceProjectID: "project-1"}})
 	if err != nil || result.ArtifactPath == "" {
 		t.Fatalf("artifact result = %#v, error = %v", result, err)
 	}

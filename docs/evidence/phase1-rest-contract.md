@@ -15,11 +15,12 @@ The implementation uses these captured sections:
 - Upload initiation at lines 28079 through 28146.
 - Upload append at lines 10432 through 10506.
 - Workbook publish at lines 34005 through 34425.
+- TWB validation at lines 49525 through 49700.
 - Asynchronous publish jobs at lines 3475 through 3504.
 - Job queries at lines 36548 through 36643.
 
 Contract tests use local HTTP servers and parse the multipart publish and append bodies.
-They assert methods, paths, headers, payload identities, exact uploaded bytes, ordered multi-block sequence IDs, pagination, response parsing, errors, terminal jobs, and in-flight polling timeouts.
+They assert methods, paths, headers, payload identities, exact uploaded bytes, ordered multi-block sequence IDs, pagination, response parsing, validation warnings and errors, terminal jobs, and in-flight polling timeouts.
 No live Tableau deployment verification is claimed.
 
 The Query Job endpoint is documented as administrator-only while workbook publish can be available to non-administrator publishers.

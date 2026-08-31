@@ -177,19 +177,19 @@ func (r *runtimeDependencies) environment(alias string, explicit bool) (config.C
 	return configuration, environment, err
 }
 
-func (r *runtimeDependencies) workbookAdapter(ctx context.Context, alias string, explicit bool) (config.Config, config.Environment, *resourceworkbook.Adapter, error) {
+func (r *runtimeDependencies) workbookAdapter(ctx context.Context, alias string, explicit bool) (config.Config, config.Environment, *resourceworkbook.Adapter, string, error) {
 	configuration, environment, err := r.environment(alias, explicit)
 	if err != nil {
-		return config.Config{}, config.Environment{}, nil, err
+		return config.Config{}, config.Environment{}, nil, "", err
 	}
 	transport := tableau.NewTransport(r.httpClient, environment.APIVersion, func() string { return r.correlationID })
 	provider := coreauth.NewPATProvider(coreauth.LookupEnvFunc(os.LookupEnv), tableauauth.NewClient(transport))
 	session, err := provider.Authenticate(ctx, coreauth.Target{Environment: environment.Alias, ServerURL: environment.URL, SiteContentURL: environment.SiteContentURL, PATNameVariable: environment.Auth.PATNameEnv, PATSecretVariable: environment.Auth.PATSecretEnv})
 	if err != nil {
-		return configuration, environment, nil, err
+		return configuration, environment, nil, "", err
 	}
 	client := tableauworkbook.NewClient(transport, session, environment.URL)
-	return configuration, environment, resourceworkbook.NewAdapter(client), nil
+	return configuration, environment, resourceworkbook.NewAdapter(client), session.SiteLUID(), nil
 }
 
 type catalogService struct{ runtime *runtimeDependencies }
@@ -225,12 +225,17 @@ func (s catalogSource) Search(ctx context.Context, input catalogsearch.Input) (c
 type pullService struct{ runtime *runtimeDependencies }
 
 func (s *pullService) Execute(ctx context.Context, input workbookpull.Input) (workbookpull.Output, error) {
-	configuration, environment, adapter, err := s.runtime.workbookAdapter(ctx, input.Environment, false)
+	configuration, environment, adapter, siteLUID, err := s.runtime.workbookAdapter(ctx, input.Environment, false)
 	if err != nil {
 		environmentAlias, site := resolvedTarget(input.Environment, input.Site, environment)
 		return workbookpull.Output{}, capabilitySetupError("workbook.pull.setup", "workbook.pull", environmentAlias, site, "Workbook pull setup failed.", "Review the environment, site, and PAT configuration.", err)
 	}
 	input.Environment, input.Site = environment.Alias, environment.SiteContentURL
+	input.ServerOrigin, err = artifact.NormalizeServerOrigin(environment.URL)
+	if err != nil {
+		return workbookpull.Output{}, capabilitySetupError("workbook.pull.source", "workbook.pull", input.Environment, input.Site, "Workbook source identity resolution failed.", "Review the configured Tableau server URL, then retry.", err)
+	}
+	input.SiteLUID = siteLUID
 	if input.Workspace == "" {
 		input.Workspace, err = resolveWorkspace(configuration, environment)
 		if err != nil {
@@ -254,14 +259,14 @@ func (r pullReader) DownloadWorkbook(ctx context.Context, luid string, include *
 type artifactWriter struct{ manager *artifact.WorkbookManager }
 
 func (w artifactWriter) WriteWorkbook(ctx context.Context, input workbookpull.Artifact) (workbookpull.ArtifactResult, error) {
-	result, err := w.manager.Pull(ctx, artifact.WorkbookPull{Workspace: input.Workspace, Filename: input.Filename, Content: input.Content, Overwrite: input.Overwrite, Metadata: artifact.WorkbookMetadata{Kind: "workbook", Name: input.Name, TableauID: input.TableauID, SourceEnvironment: input.Environment, SourceSite: input.Site, SourceProjectName: input.ProjectName, SourceProjectID: input.ProjectID}})
+	result, err := w.manager.Pull(ctx, artifact.WorkbookPull{Workspace: input.Workspace, Filename: input.Filename, Content: input.Content, Overwrite: input.Overwrite, Metadata: artifact.WorkbookMetadata{Kind: "workbook", Name: input.Name, TableauID: input.TableauID, SourceServerOrigin: input.ServerOrigin, SourceSiteLUID: input.SiteLUID, SourceEnvironment: input.Environment, SourceSite: input.Site, SourceProjectName: input.ProjectName, SourceProjectID: input.ProjectID}})
 	return workbookpull.ArtifactResult{Path: result.ArtifactPath, CanonicalPath: result.CanonicalPath, BaselineFingerprint: result.BaselineFingerprint, Warnings: result.Warnings}, err
 }
 
 type publishService struct{ runtime *runtimeDependencies }
 
 func (s *publishService) Execute(ctx context.Context, input workbookpublish.Input, apply bool) (workbookpublish.Output, error) {
-	_, environment, adapter, err := s.runtime.workbookAdapter(ctx, input.Environment, true)
+	_, environment, adapter, _, err := s.runtime.workbookAdapter(ctx, input.Environment, true)
 	if err != nil {
 		environmentAlias, site := resolvedTarget(input.Environment, input.Site, environment)
 		return workbookpublish.Output{}, capabilitySetupError("workbook.publish.setup", "workbook.publish", environmentAlias, site, "Workbook publish setup failed.", "Review the explicit environment, site, and PAT configuration.", err)
@@ -321,7 +326,11 @@ type preparedPublishAdapter struct {
 
 func (a preparedPublishAdapter) Commit(ctx context.Context) (workbookpublish.Result, error) {
 	result, err := a.prepared.Commit(ctx)
-	return workbookpublish.Result{Status: result.Status, WorkbookLUID: result.WorkbookLUID, WorkbookName: result.WorkbookName, ProjectLUID: result.ProjectLUID, JobID: result.JobID, TableauRequestID: result.TableauRequestID}, err
+	warnings := make([]workbookpublish.ValidationIssue, len(result.Warnings))
+	for index, warning := range result.Warnings {
+		warnings[index] = workbookpublish.ValidationIssue{Severity: warning.Severity, Message: warning.Message, Line: warning.Line, Column: warning.Column, ElementName: warning.ElementName}
+	}
+	return workbookpublish.Result{Status: result.Status, WorkbookLUID: result.WorkbookLUID, WorkbookName: result.WorkbookName, ProjectLUID: result.ProjectLUID, JobID: result.JobID, TableauRequestID: result.TableauRequestID, ValidationWarnings: warnings}, err
 }
 
 func resolveWorkspace(configuration config.Config, environment config.Environment) (string, error) {

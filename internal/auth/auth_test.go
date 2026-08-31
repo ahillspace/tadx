@@ -84,6 +84,21 @@ func TestPATProviderResolvesVariablesAndReturnsAuthenticatedSession(t *testing.T
 	}
 }
 
+func TestPATProviderRejectsSessionWithoutUserLUID(t *testing.T) {
+	t.Parallel()
+
+	provider := auth.NewPATProvider(auth.LookupEnvFunc(func(key string) (string, bool) {
+		return map[string]string{"PAT_NAME": "agent-name", "PAT_SECRET": "highly-secret"}[key], true
+	}), &recordingSigner{response: auth.SignInResponse{Token: "session-token", SiteLUID: "site-luid"}})
+
+	_, err := provider.Authenticate(context.Background(), auth.Target{
+		PATNameVariable: "PAT_NAME", PATSecretVariable: "PAT_SECRET",
+	})
+	if err == nil || !strings.Contains(err.Error(), "empty user LUID") {
+		t.Fatalf("Authenticate() error = %v", err)
+	}
+}
+
 func TestProviderSeamDoesNotExposePATCredentials(t *testing.T) {
 	t.Parallel()
 

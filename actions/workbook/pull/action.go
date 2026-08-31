@@ -55,6 +55,7 @@ func (a *Action) Execute(ctx context.Context, input Input) (Output, error) {
 	artifact, err := a.writer.WriteWorkbook(ctx, Artifact{
 		Workspace: input.Workspace, Filename: download.Filename, Content: download.Content,
 		Name: workbook.Name, TableauID: workbook.LUID, Environment: input.Environment, Site: input.Site,
+		ServerOrigin: input.ServerOrigin, SiteLUID: input.SiteLUID,
 		ProjectName: workbook.ProjectPath, ProjectID: workbook.ProjectLUID, Overwrite: input.Overwrite, TableauRequestID: download.TableauRequestID,
 	})
 	if err != nil {

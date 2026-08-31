@@ -12,6 +12,7 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/ahillspace/tadx/internal/auth"
 )
@@ -317,7 +318,7 @@ func (t *Transport) Do(ctx context.Context, session auth.Session, input Request)
 		return Response{}, &requestError{operation: input.Operation, cause: redact(err, effectiveSecrets), retryable: retryable, correctiveAction: correctiveAction}
 	}
 	defer response.Body.Close()
-	requestID := redactText(tableauRequestID(response.Header), effectiveSecrets)
+	requestID := sanitizeDiagnostic(tableauRequestID(response.Header), effectiveSecrets)
 	body, err := io.ReadAll(io.LimitReader(response.Body, maxResponseBytes+1))
 	if err != nil {
 		retryable, correctiveAction := responseReadAdvice(ctx, input.Method, input.Operation, response.StatusCode)
@@ -329,15 +330,15 @@ func (t *Transport) Do(ctx context.Context, session auth.Session, input Request)
 	redactionSecrets := append([]string(nil), effectiveSecrets...)
 	result := Response{
 		StatusCode: response.StatusCode, Header: response.Header.Clone(), Body: body, TableauRequestID: requestID,
-		redact: func(value string) string { return redactText(value, redactionSecrets) },
+		redact: func(value string) string { return sanitizeDiagnostic(value, redactionSecrets) },
 	}
 	if response.StatusCode >= 200 && response.StatusCode < 300 {
 		return result, nil
 	}
 	code, summary, detail := parseError(body, effectiveSecrets)
 	return Response{}, &UpstreamError{
-		Operation: input.Operation, StatusCode: response.StatusCode, Code: redactText(code, effectiveSecrets),
-		Summary: redactText(summary, effectiveSecrets), Detail: redactText(detail, effectiveSecrets), TableauRequestID: requestID,
+		Operation: input.Operation, StatusCode: response.StatusCode, Code: code,
+		Summary: summary, Detail: detail, TableauRequestID: requestID,
 	}
 }
 
@@ -437,7 +438,7 @@ func parseError(body []byte, secrets []string) (string, string, string) {
 		} `json:"error"`
 	}
 	if json.Unmarshal(body, &jsonEnvelope) == nil && (jsonEnvelope.Error.Code != "" || jsonEnvelope.Error.Summary != "") {
-		return jsonEnvelope.Error.Code, jsonEnvelope.Error.Summary, jsonEnvelope.Error.Detail
+		return sanitizeDiagnostic(jsonEnvelope.Error.Code, secrets), sanitizeDiagnostic(jsonEnvelope.Error.Summary, secrets), sanitizeDiagnostic(jsonEnvelope.Error.Detail, secrets)
 	}
 	var xmlEnvelope struct {
 		Error struct {
@@ -447,54 +448,29 @@ func parseError(body []byte, secrets []string) (string, string, string) {
 		} `xml:"error"`
 	}
 	if xml.Unmarshal(body, &xmlEnvelope) == nil && (xmlEnvelope.Error.Code != "" || xmlEnvelope.Error.Summary != "") {
-		return xmlEnvelope.Error.Code, strings.TrimSpace(xmlEnvelope.Error.Summary), strings.TrimSpace(xmlEnvelope.Error.Detail)
+		return sanitizeDiagnostic(xmlEnvelope.Error.Code, secrets), sanitizeDiagnostic(xmlEnvelope.Error.Summary, secrets), sanitizeDiagnostic(xmlEnvelope.Error.Detail, secrets)
 	}
-	return "", "Upstream request failed", diagnosticExcerpt(body, secrets)
+	return "", "Upstream request failed", sanitizeDiagnostic(string(body), secrets)
 }
 
-func diagnosticExcerpt(body []byte, secrets []string) string {
-	if len(body) <= maxUpstreamDiagnosticBytes {
-		return strings.TrimSpace(redactText(string(body), secrets))
+func sanitizeDiagnostic(value string, secrets []string) string {
+	value = strings.TrimSpace(auth.Redact(strings.ToValidUTF8(value, "\uFFFD"), secrets...))
+	if len(value) <= maxUpstreamDiagnosticBytes {
+		return value
 	}
 	const suffix = "\n[truncated]"
-	limit := secretSafeCutoff(body, maxUpstreamDiagnosticBytes-len(suffix), secrets)
-	excerpt := strings.ToValidUTF8(string(body[:limit]), "�")
-	return strings.TrimSpace(redactText(excerpt, secrets)) + suffix
-}
-
-func secretSafeCutoff(body []byte, limit int, secrets []string) int {
-	for {
-		cutoff := limit
-		for _, secret := range secrets {
-			if secret == "" || len(secret) > len(body) || len(secret) <= 1 {
-				continue
-			}
-			first := max(0, limit-len(secret)+1)
-			last := min(limit-1, len(body)-len(secret))
-			if first > last {
-				continue
-			}
-			window := body[first : last+len(secret)]
-			if offset := bytes.Index(window, []byte(secret)); offset >= 0 {
-				cutoff = min(cutoff, first+offset)
-			}
-		}
-		if cutoff == limit || cutoff == 0 {
-			return cutoff
-		}
-		limit = cutoff
+	limit := maxUpstreamDiagnosticBytes - len(suffix)
+	for limit > 0 && !utf8.ValidString(value[:limit]) {
+		limit--
 	}
+	return strings.TrimSpace(value[:limit]) + suffix
 }
 
 func redact(err error, secrets []string) error {
 	if err == nil {
 		return nil
 	}
-	return errors.New(redactText(err.Error(), secrets))
-}
-
-func redactText(value string, secrets []string) string {
-	return auth.Redact(value, secrets...)
+	return errors.New(sanitizeDiagnostic(err.Error(), secrets))
 }
 
 // Page is the normalized classic REST pagination envelope.

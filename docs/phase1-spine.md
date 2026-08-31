@@ -38,6 +38,8 @@ Phase 1 does not make catalog refresh executable.
 
 A pulled workbook artifact contains the native `.twb` or `.twbx`, `metadata.json`, and `view.md`.
 Metadata records provenance, the authoritative Tableau LUID, the canonical payload name, and a SHA-256 baseline fingerprint.
+Artifact identity is scoped by normalized Tableau server origin, authenticated site LUID, resource kind, and workbook LUID.
+Environment aliases, site content URLs, and project paths remain provenance labels rather than identity keys.
 Artifacts never store a publish target.
 Clean re-pull warns and replaces.
 Dirty re-pull stops unless `--overwrite` is explicit.
@@ -50,5 +52,7 @@ Preview is the default.
 Overwrite remains explicit.
 Large files use bounded upload sessions.
 Every appended block response must return the expected upload-session identity before publishing can continue.
+TWB publish validates the native workbook through Tableau before the final publish request, preserves advisory warnings, and stops on validation errors.
+TWBX publish does not claim server-side validation because the validation endpoint accepts only TWB content.
 `--as-job` uses bounded internal polling and returns terminal success or failure with request and job IDs when available.
 If polling is forbidden, cancelled, or times out after Tableau accepts the publish, TADX reports the outcome as unknown, returns the exact job ID, and directs the operator to inspect that job before attempting another publish.

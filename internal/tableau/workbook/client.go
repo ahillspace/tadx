@@ -6,6 +6,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"encoding/xml"
 	"errors"
 	"fmt"
@@ -94,6 +95,38 @@ type PublishResult struct {
 	ProjectLUID      string
 	JobID            string
 	TableauRequestID string
+	Warnings         []ValidationIssue
+}
+
+// ValidationIssue is one server-side TWB validation diagnostic.
+type ValidationIssue struct {
+	Severity    string `json:"severity"`
+	Message     string `json:"message"`
+	Line        int    `json:"line,omitempty"`
+	Column      int    `json:"column,omitempty"`
+	ElementName string `json:"elementName,omitempty"`
+}
+
+// ValidationError reports TWB errors that stop publication.
+type ValidationError struct {
+	Errors           []ValidationIssue
+	Warnings         []ValidationIssue
+	TableauRequestID string
+}
+
+func (e *ValidationError) Error() string {
+	if e == nil || len(e.Errors) == 0 {
+		return "Tableau workbook validation failed"
+	}
+	return "Tableau workbook validation failed: " + e.Errors[0].Message
+}
+
+// RequestID returns the validation request identifier.
+func (e *ValidationError) RequestID() string {
+	if e == nil {
+		return ""
+	}
+	return e.TableauRequestID
 }
 
 // PreparedPublish holds an uploaded, validated workbook until the final publish request.
@@ -104,6 +137,7 @@ type PreparedPublish struct {
 	contentType string
 	mu          sync.Mutex
 	committed   bool
+	warnings    []ValidationIssue
 }
 
 // Client is the first released REST client family.
@@ -289,6 +323,13 @@ func (c *Client) Prepare(ctx context.Context, input PublishRequest) (*PreparedPu
 	defer func() {
 		_ = closeSource()
 	}()
+	var warnings []ValidationIssue
+	if extension == "twb" {
+		warnings, err = c.validateWorkbook(ctx, input.Filename, source.reader, source.size)
+		if err != nil {
+			return nil, err
+		}
+	}
 	var uploadSessionID string
 	if source.size > int64(c.uploadThreshold) {
 		uploadSessionID, err = c.upload(ctx, input.Filename, source.reader, source.size)
@@ -316,7 +357,7 @@ func (c *Client) Prepare(ctx context.Context, input PublishRequest) (*PreparedPu
 		query.Set("uploadSessionId", uploadSessionID)
 		query.Set("workbookType", extension)
 	}
-	return &PreparedPublish{client: c, query: query, body: body, contentType: contentType}, nil
+	return &PreparedPublish{client: c, query: query, body: body, contentType: contentType, warnings: warnings}, nil
 }
 
 // Commit issues the final publish request exactly once.
@@ -336,11 +377,12 @@ func (p *PreparedPublish) Commit(ctx context.Context) (PublishResult, error) {
 	if err != nil {
 		var status interface{ HTTPStatus() int }
 		if !errors.As(err, &status) || status.HTTPStatus() >= http.StatusOK && status.HTTPStatus() < http.StatusMultipleChoices {
-			return PublishResult{Status: "unknown", TableauRequestID: tableau.RequestID(err)}, err
+			return PublishResult{Status: "unknown", TableauRequestID: tableau.RequestID(err), Warnings: append([]ValidationIssue(nil), p.warnings...)}, err
 		}
 		return PublishResult{}, err
 	}
 	result, err := parsePublishResponse(response.Body)
+	result.Warnings = append([]ValidationIssue(nil), p.warnings...)
 	if err != nil {
 		result.Status = "unknown"
 		result.TableauRequestID = response.TableauRequestID
@@ -352,6 +394,7 @@ func (p *PreparedPublish) Commit(ctx context.Context) (PublishResult, error) {
 		return result, nil
 	}
 	terminal, err := p.client.pollJob(ctx, result.JobID)
+	terminal.Warnings = append([]ValidationIssue(nil), p.warnings...)
 	if terminal.JobID == "" {
 		terminal.JobID = result.JobID
 	}
@@ -524,6 +567,40 @@ func readPublishContent(reader io.Reader, size int64) ([]byte, error) {
 	return content, nil
 }
 
+func (c *Client) validateWorkbook(ctx context.Context, filename string, reader io.ReadSeeker, size int64) ([]ValidationIssue, error) {
+	content, err := readPublishContent(reader, size)
+	if err != nil {
+		return nil, fmt.Errorf("read workbook for validation: %w", err)
+	}
+	if _, err := reader.Seek(0, io.SeekStart); err != nil {
+		return nil, fmt.Errorf("rewind workbook after validation: %w", err)
+	}
+	body, contentType, err := validationBody(filename, content)
+	if err != nil {
+		return nil, fmt.Errorf("build workbook validation request: %w", err)
+	}
+	response, err := c.doAccept(ctx, http.MethodPost, c.sitePath("workbooks", "validateWorkbook"), nil, body, contentType, "application/json", "workbook.validate")
+	if err != nil {
+		var upstream *tableau.UpstreamError
+		if !errors.As(err, &upstream) || upstream.StatusCode != http.StatusUnprocessableEntity {
+			return nil, err
+		}
+		var envelope validationEnvelope
+		if json.Unmarshal([]byte(upstream.Detail), &envelope) != nil || len(envelope.Errors) == 0 {
+			return nil, err
+		}
+		return envelope.Warnings, &ValidationError{Errors: envelope.Errors, Warnings: envelope.Warnings, TableauRequestID: upstream.TableauRequestID}
+	}
+	var envelope validationEnvelope
+	if err := json.Unmarshal(response.Body, &envelope); err != nil {
+		return nil, tableau.NewProtocolError("workbook.validate", response, fmt.Errorf("decode workbook validation response: %w", err), false)
+	}
+	if len(envelope.Errors) > 0 {
+		return envelope.Warnings, &ValidationError{Errors: envelope.Errors, Warnings: envelope.Warnings, TableauRequestID: response.TableauRequestID}
+	}
+	return envelope.Warnings, nil
+}
+
 func (c *Client) pollJob(ctx context.Context, jobID string) (PublishResult, error) {
 	pollCtx, cancel := context.WithTimeout(ctx, c.pollTimeout)
 	defer cancel()
@@ -558,17 +635,27 @@ func (c *Client) pollJob(ctx context.Context, jobID string) (PublishResult, erro
 		if envelope.Job.ID != jobID {
 			return PublishResult{Status: "unknown", JobID: jobID, TableauRequestID: requestID}, tableau.NewProtocolError("workbook.publish.poll", response, fmt.Errorf("Tableau job response returned job ID %q, expected %q", envelope.Job.ID, jobID), true)
 		}
+		if envelope.Job.Type != "PublishWorkbook" {
+			return PublishResult{Status: "unknown", JobID: jobID, TableauRequestID: requestID}, tableau.NewProtocolError("workbook.publish.poll", response, fmt.Errorf("Tableau job response returned type %q, expected %q", envelope.Job.Type, "PublishWorkbook"), true)
+		}
 		if envelope.Job.Progress == nil {
 			return PublishResult{Status: "unknown", JobID: jobID, TableauRequestID: requestID}, tableau.NewProtocolError("workbook.publish.poll", response, errors.New("Tableau job response omitted progress"), true)
 		}
-		if *envelope.Job.Progress >= 100 {
-			if envelope.Job.FinishCode == nil {
-				return PublishResult{Status: "unknown", JobID: jobID, TableauRequestID: requestID}, tableau.NewProtocolError("workbook.publish.poll", response, errors.New("terminal Tableau job response omitted finish code"), true)
-			}
-			if *envelope.Job.FinishCode == 0 {
-				return PublishResult{Status: "succeeded", JobID: jobID, TableauRequestID: requestID}, nil
-			}
-			return PublishResult{Status: "failed", JobID: jobID, TableauRequestID: requestID}, fmt.Errorf("Tableau workbook publish job %s failed with finish code %d", jobID, *envelope.Job.FinishCode)
+		if envelope.Job.FinishCode == nil {
+			return PublishResult{Status: "unknown", JobID: jobID, TableauRequestID: requestID}, tableau.NewProtocolError("workbook.publish.poll", response, errors.New("Tableau job response omitted finish code"), true)
+		}
+		progress, finishCode := *envelope.Job.Progress, *envelope.Job.FinishCode
+		switch {
+		case progress == 0 && finishCode == 1:
+			// Tableau documents publish jobs as pending in this exact state.
+		case progress == 100 && finishCode == 0:
+			return PublishResult{Status: "succeeded", JobID: jobID, TableauRequestID: requestID}, nil
+		case progress == 100 && (finishCode == 1 || finishCode == 2):
+			return PublishResult{Status: "failed", JobID: jobID, TableauRequestID: requestID}, fmt.Errorf("Tableau workbook publish job %s failed with finish code %d", jobID, finishCode)
+		case progress == 100:
+			return PublishResult{Status: "unknown", JobID: jobID, TableauRequestID: requestID}, tableau.NewProtocolError("workbook.publish.poll", response, fmt.Errorf("Tableau job response returned unknown finish code %d", finishCode), true)
+		default:
+			return PublishResult{Status: "unknown", JobID: jobID, TableauRequestID: requestID}, tableau.NewProtocolError("workbook.publish.poll", response, fmt.Errorf("Tableau job response returned invalid state progress=%d finishCode=%d", progress, finishCode), true)
 		}
 		select {
 		case <-pollCtx.Done():
@@ -582,12 +669,16 @@ func (c *Client) pollJob(ctx context.Context, jobID string) (PublishResult, erro
 }
 
 func (c *Client) do(ctx context.Context, method, path string, query url.Values, body []byte, contentType, operation string) (tableau.Response, error) {
+	return c.doAccept(ctx, method, path, query, body, contentType, "application/xml", operation)
+}
+
+func (c *Client) doAccept(ctx context.Context, method, path string, query url.Values, body []byte, contentType, accept, operation string) (tableau.Response, error) {
 	if c == nil || c.transport == nil || c.session == nil {
 		return tableau.Response{}, errors.New("authenticated workbook client is not configured")
 	}
 	return c.transport.Do(ctx, c.session, tableau.Request{
 		Method: method, ServerURL: c.serverURL, Path: path, Query: query, Body: body,
-		ContentType: contentType, Accept: "application/xml", Operation: operation,
+		ContentType: contentType, Accept: accept, Operation: operation,
 	})
 }
 
@@ -686,6 +777,25 @@ func appendBody(filename string, content []byte) ([]byte, string, error) {
 func multipartFileDisposition(name, filename string) string {
 	formatted := mime.FormatMediaType("form-data", map[string]string{"filename": filepath.Base(filename)})
 	return fmt.Sprintf(`name="%s"; %s`, name, strings.TrimPrefix(formatted, "form-data; "))
+}
+
+func validationBody(filename string, content []byte) ([]byte, string, error) {
+	var buffer bytes.Buffer
+	writer := multipart.NewWriter(&buffer)
+	part, err := writer.CreatePart(textproto.MIMEHeader{
+		"Content-Disposition": {multipartFileDisposition("tableau_workbook", filename)},
+		"Content-Type":        {"application/octet-stream"},
+	})
+	if err != nil {
+		return nil, "", err
+	}
+	if _, err := part.Write(content); err != nil {
+		return nil, "", err
+	}
+	if err := writer.Close(); err != nil {
+		return nil, "", err
+	}
+	return buffer.Bytes(), "multipart/mixed; boundary=" + writer.Boundary(), nil
 }
 
 func parsePublishResponse(body []byte) (PublishResult, error) {
@@ -807,8 +917,14 @@ type jobEnvelope struct {
 	Job jobXML `xml:"job"`
 }
 
+type validationEnvelope struct {
+	Errors   []ValidationIssue `json:"errors"`
+	Warnings []ValidationIssue `json:"warnings"`
+}
+
 type jobXML struct {
 	ID         string `xml:"id,attr"`
+	Type       string `xml:"type,attr"`
 	Progress   *int   `xml:"progress,attr"`
 	FinishCode *int   `xml:"finishCode,attr"`
 }

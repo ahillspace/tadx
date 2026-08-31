@@ -9,6 +9,8 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -21,6 +23,8 @@ type WorkbookMetadata struct {
 	Kind                     string `json:"kind"`
 	Name                     string `json:"name"`
 	TableauID                string `json:"tableau_id"`
+	SourceServerOrigin       string `json:"source_server_origin"`
+	SourceSiteLUID           string `json:"source_site_luid"`
 	SourceEnvironment        string `json:"source_environment,omitempty"`
 	SourceSite               string `json:"source_site"`
 	SourceProjectName        string `json:"source_project_name,omitempty"`
@@ -78,6 +82,15 @@ func (m *WorkbookManager) Pull(ctx context.Context, input WorkbookPull) (Workboo
 	if input.Workspace == "" || input.Metadata.TableauID == "" || input.Metadata.Name == "" {
 		return WorkbookPullResult{}, errors.New("workbook artifact requires workspace, Tableau ID, and name")
 	}
+	serverOrigin, err := NormalizeServerOrigin(input.Metadata.SourceServerOrigin)
+	if err != nil {
+		return WorkbookPullResult{}, err
+	}
+	input.Metadata.SourceServerOrigin = serverOrigin
+	input.Metadata.SourceSiteLUID = strings.TrimSpace(input.Metadata.SourceSiteLUID)
+	if input.Metadata.SourceSiteLUID == "" {
+		return WorkbookPullResult{}, errors.New("workbook artifact metadata requires source_site_luid")
+	}
 	filename := filepath.Base(input.Filename)
 	nativeExtension := filepath.Ext(filename)
 	extension := strings.ToLower(nativeExtension)
@@ -96,12 +109,12 @@ func (m *WorkbookManager) Pull(ctx context.Context, input WorkbookPull) (Workboo
 	if err != nil {
 		return WorkbookPullResult{}, err
 	}
-	target, existing, err := findByTableauID(root, input.Metadata.TableauID)
+	target, existing, err := findBySourceIdentity(root, input.Metadata.SourceServerOrigin, input.Metadata.SourceSiteLUID, input.Metadata.TableauID)
 	if err != nil {
 		return WorkbookPullResult{}, err
 	}
 	if target == "" {
-		target = filepath.Join(root, identityComponent(input.Metadata.Name, input.Metadata.TableauID))
+		target = filepath.Join(root, identityComponent(input.Metadata.Name, input.Metadata.SourceServerOrigin, input.Metadata.SourceSiteLUID, input.Metadata.TableauID))
 		if info, statErr := os.Lstat(target); statErr == nil {
 			if err := validateContainedPath(root, target); err != nil {
 				return WorkbookPullResult{}, err
@@ -113,8 +126,8 @@ func (m *WorkbookManager) Pull(ctx context.Context, input WorkbookPull) (Workboo
 			if readErr != nil {
 				return WorkbookPullResult{}, fmt.Errorf("artifact path %q is not a managed workbook artifact: %w", target, readErr)
 			}
-			if metadata.TableauID != input.Metadata.TableauID {
-				return WorkbookPullResult{}, fmt.Errorf("artifact path %q belongs to Tableau ID %q", target, metadata.TableauID)
+			if !sameSourceIdentity(metadata, input.Metadata.SourceServerOrigin, input.Metadata.SourceSiteLUID, input.Metadata.TableauID) {
+				return WorkbookPullResult{}, fmt.Errorf("artifact path %q belongs to a different Tableau source identity", target)
 			}
 			if err := validateManagedWorkbook(target, metadata); err != nil {
 				return WorkbookPullResult{}, fmt.Errorf("artifact path %q is not a managed workbook artifact: %w", target, err)
@@ -195,9 +208,12 @@ func (m *WorkbookManager) Read(ctx context.Context, path string) (WorkbookArtifa
 	if err != nil {
 		return WorkbookArtifact{}, err
 	}
-	info, err := os.Stat(absolute)
+	info, err := os.Lstat(absolute)
 	if err != nil {
 		return WorkbookArtifact{}, fmt.Errorf("inspect workbook artifact: %w", err)
+	}
+	if info.Mode()&os.ModeSymlink != 0 {
+		return WorkbookArtifact{}, fmt.Errorf("workbook artifact selector %q must not be a symbolic link", path)
 	}
 	directory := absolute
 	if !info.IsDir() {
@@ -217,12 +233,12 @@ func (m *WorkbookManager) Read(ctx context.Context, path string) (WorkbookArtifa
 	if err != nil {
 		return WorkbookArtifact{}, err
 	}
-	if !info.IsDir() && !samePath(absolute, canonical) {
-		return WorkbookArtifact{}, fmt.Errorf("workbook artifact file %q is not the canonical payload %q", path, metadata.CanonicalPayload)
-	}
 	canonicalInfo, err := os.Stat(canonical)
 	if err != nil {
 		return WorkbookArtifact{}, fmt.Errorf("inspect canonical workbook: %w", err)
+	}
+	if !info.IsDir() && !os.SameFile(info, canonicalInfo) {
+		return WorkbookArtifact{}, fmt.Errorf("workbook artifact file %q is not the canonical payload %q", path, metadata.CanonicalPayload)
 	}
 	currentFingerprint, err := fingerprintFile(ctx, canonical)
 	if err != nil {
@@ -241,6 +257,8 @@ func validateWorkbookMetadata(metadata WorkbookMetadata) error {
 	}{
 		{name: "name", value: metadata.Name},
 		{name: "tableau_id", value: metadata.TableauID},
+		{name: "source_server_origin", value: metadata.SourceServerOrigin},
+		{name: "source_site_luid", value: metadata.SourceSiteLUID},
 		{name: "source_environment", value: metadata.SourceEnvironment},
 		{name: "source_project_name", value: metadata.SourceProjectName},
 		{name: "source_project_id", value: metadata.SourceProjectID},
@@ -255,6 +273,16 @@ func validateWorkbookMetadata(metadata WorkbookMetadata) error {
 	if !metadata.sourceSitePresent {
 		return errors.New("workbook artifact metadata requires source_site")
 	}
+	serverOrigin, err := NormalizeServerOrigin(metadata.SourceServerOrigin)
+	if err != nil {
+		return err
+	}
+	if serverOrigin != metadata.SourceServerOrigin {
+		return errors.New("workbook artifact metadata requires a canonical source_server_origin")
+	}
+	if metadata.SourceSiteLUID != strings.TrimSpace(metadata.SourceSiteLUID) {
+		return errors.New("workbook artifact metadata requires a canonical source_site_luid")
+	}
 	if _, err := time.Parse(time.RFC3339Nano, metadata.PulledAt); err != nil {
 		return fmt.Errorf("workbook artifact metadata has invalid pulled_at: %w", err)
 	}
@@ -267,16 +295,7 @@ func validateWorkbookMetadata(metadata WorkbookMetadata) error {
 	return nil
 }
 
-func samePath(left, right string) bool {
-	left = filepath.Clean(left)
-	right = filepath.Clean(right)
-	if filepath.Separator == '\\' {
-		return strings.EqualFold(left, right)
-	}
-	return left == right
-}
-
-func findByTableauID(root, id string) (string, *WorkbookMetadata, error) {
+func findBySourceIdentity(root, serverOrigin, siteLUID, workbookLUID string) (string, *WorkbookMetadata, error) {
 	entries, err := os.ReadDir(root)
 	if err != nil {
 		return "", nil, err
@@ -298,14 +317,14 @@ func findByTableauID(root, id string) (string, *WorkbookMetadata, error) {
 		if err != nil {
 			return "", nil, err
 		}
-		if metadata.TableauID != id {
+		if !sameSourceIdentity(metadata, serverOrigin, siteLUID, workbookLUID) {
 			continue
 		}
 		if err := validateManagedWorkbook(candidate, metadata); err != nil {
 			return "", nil, fmt.Errorf("invalid workbook artifact %q: %w", candidate, err)
 		}
 		if found != nil {
-			return "", nil, fmt.Errorf("multiple local workbook artifacts claim Tableau ID %q", id)
+			return "", nil, fmt.Errorf("multiple local workbook artifacts claim one Tableau source identity")
 		}
 		copy := metadata
 		path, found = candidate, &copy
@@ -564,10 +583,38 @@ const (
 	maxWorkbookMetadataBytes  = 64 * 1024
 )
 
-func identityComponent(name, tableauID string) string {
-	sum := sha256.Sum256([]byte(tableauID))
+func identityComponent(name, serverOrigin, siteLUID, workbookLUID string) string {
+	identity := fmt.Sprintf("%d:%s%d:%s%d:%s", len(serverOrigin), serverOrigin, len(siteLUID), siteLUID, len(workbookLUID), workbookLUID)
+	sum := sha256.Sum256([]byte(identity))
 	suffix := "--" + hex.EncodeToString(sum[:])
 	return portableComponent(name, "workbook", maxPortableComponentBytes-len(suffix)) + suffix
+}
+
+func sameSourceIdentity(metadata WorkbookMetadata, serverOrigin, siteLUID, workbookLUID string) bool {
+	return metadata.SourceServerOrigin == serverOrigin && metadata.SourceSiteLUID == siteLUID && metadata.TableauID == workbookLUID
+}
+
+// NormalizeServerOrigin returns the stable HTTPS origin used in workbook source identities.
+func NormalizeServerOrigin(value string) (string, error) {
+	parsed, err := url.Parse(strings.TrimSpace(value))
+	if err != nil || !strings.EqualFold(parsed.Scheme, "https") || parsed.Host == "" || parsed.User != nil {
+		return "", errors.New("workbook artifact metadata requires an absolute HTTPS source_server_origin")
+	}
+	hostname := strings.ToLower(parsed.Hostname())
+	if hostname == "" {
+		return "", errors.New("workbook artifact metadata requires an absolute HTTPS source_server_origin")
+	}
+	port := parsed.Port()
+	if port == "443" {
+		port = ""
+	}
+	host := hostname
+	if port != "" {
+		host = net.JoinHostPort(hostname, port)
+	} else if strings.Contains(hostname, ":") {
+		host = "[" + hostname + "]"
+	}
+	return (&url.URL{Scheme: "https", Host: host}).String(), nil
 }
 
 func portableComponent(value, fallback string, maxBytes int) string {
@@ -610,5 +657,5 @@ func windowsReservedComponent(value string) bool {
 }
 
 func workbookView(metadata WorkbookMetadata) string {
-	return fmt.Sprintf("# %s\n\n- Kind: workbook\n- Tableau LUID: `%s`\n- Source environment: `%s`\n- Source site: `%s`\n- Source project: `%s`\n- Pulled at: `%s`\n- Canonical payload: `%s`\n", metadata.Name, metadata.TableauID, metadata.SourceEnvironment, metadata.SourceSite, metadata.SourceProjectName, metadata.PulledAt, metadata.CanonicalPayload)
+	return fmt.Sprintf("# %s\n\n- Kind: workbook\n- Tableau LUID: `%s`\n- Source server origin: `%s`\n- Source site LUID: `%s`\n- Source environment: `%s`\n- Source site: `%s`\n- Source project: `%s`\n- Pulled at: `%s`\n- Canonical payload: `%s`\n", metadata.Name, metadata.TableauID, metadata.SourceServerOrigin, metadata.SourceSiteLUID, metadata.SourceEnvironment, metadata.SourceSite, metadata.SourceProjectName, metadata.PulledAt, metadata.CanonicalPayload)
 }

@@ -169,6 +169,9 @@ func (p *patProvider) Authenticate(ctx context.Context, target Target) (Session,
 	if response.SiteLUID == "" {
 		return nil, errors.New("sign in returned an empty site LUID")
 	}
+	if response.UserLUID == "" {
+		return nil, errors.New("sign in returned an empty user LUID")
+	}
 	return &session{token: response.Token, siteLUID: response.SiteLUID, userLUID: response.UserLUID}, nil
 }
 

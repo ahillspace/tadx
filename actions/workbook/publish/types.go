@@ -78,14 +78,24 @@ type PublishRequest struct {
 	AsJob               bool
 }
 
+// ValidationIssue is one advisory diagnostic returned by server-side TWB validation.
+type ValidationIssue struct {
+	Severity    string `json:"severity"`
+	Message     string `json:"message"`
+	Line        int    `json:"line,omitempty"`
+	Column      int    `json:"column,omitempty"`
+	ElementName string `json:"element_name,omitempty"`
+}
+
 // Result is the authoritative terminal mutation result.
 type Result struct {
-	Status           string `json:"status"`
-	WorkbookLUID     string `json:"workbook_luid,omitempty"`
-	WorkbookName     string `json:"workbook_name,omitempty"`
-	ProjectLUID      string `json:"project_luid,omitempty"`
-	JobID            string `json:"tableau_job_id,omitempty"`
-	TableauRequestID string `json:"tableau_request_id,omitempty"`
+	Status             string            `json:"status"`
+	WorkbookLUID       string            `json:"workbook_luid,omitempty"`
+	WorkbookName       string            `json:"workbook_name,omitempty"`
+	ProjectLUID        string            `json:"project_luid,omitempty"`
+	JobID              string            `json:"tableau_job_id,omitempty"`
+	TableauRequestID   string            `json:"tableau_request_id,omitempty"`
+	ValidationWarnings []ValidationIssue `json:"validation_warnings,omitempty"`
 }
 
 // Output keeps the applied result attached to the exact previewed plan.

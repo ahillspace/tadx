@@ -6,6 +6,8 @@ import "github.com/ahillspace/tadx/internal/identity"
 type Input struct {
 	Environment    string
 	Site           string
+	ServerOrigin   string
+	SiteLUID       string
 	Workspace      string
 	Selector       identity.Selector
 	LUID           string
@@ -39,6 +41,8 @@ type Artifact struct {
 	TableauID        string
 	Environment      string
 	Site             string
+	ServerOrigin     string
+	SiteLUID         string
 	ProjectName      string
 	ProjectID        string
 	Overwrite        bool

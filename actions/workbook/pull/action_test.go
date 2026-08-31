@@ -58,7 +58,7 @@ func TestActionPullsOneResolvedWorkbookIntoArtifact(t *testing.T) {
 	}, w)
 	include := false
 	output, err := action.Execute(context.Background(), pull.Input{
-		Environment: "production", Site: "marketing", Workspace: `C:\workspace`,
+		Environment: "production", Site: "marketing", ServerOrigin: "https://tableau.example.com", SiteLUID: "site-1", Workspace: `C:\workspace`,
 		Selector: identity.Selector{Name: "Finance", ProjectPath: "Ops"}, IncludeExtract: &include,
 	})
 	if err != nil {
@@ -66,6 +66,9 @@ func TestActionPullsOneResolvedWorkbookIntoArtifact(t *testing.T) {
 	}
 	if output.Workbook.LUID != "wb-1" || output.Artifact.BaselineFingerprint != "sha256:abc" || w.input.TableauID != "wb-1" {
 		t.Fatalf("output = %#v, artifact input = %#v", output, w.input)
+	}
+	if w.input.ServerOrigin != "https://tableau.example.com" || w.input.SiteLUID != "site-1" {
+		t.Fatalf("source identity was not preserved: %#v", w.input)
 	}
 }
 

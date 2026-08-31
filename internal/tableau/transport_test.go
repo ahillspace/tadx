@@ -397,3 +397,75 @@ func TestTransportRedactsSecretCrossingDiagnosticBoundary(t *testing.T) {
 		t.Fatalf("upstream detail = %q", upstream.Detail)
 	}
 }
+
+func TestTransportSanitizesStructuredUpstreamDiagnostics(t *testing.T) {
+	const secret = "structured-secret"
+	long := secret + strings.Repeat("x", maxUpstreamDiagnosticBytes*2)
+	for _, test := range []struct {
+		name        string
+		contentType string
+		body        string
+	}{
+		{name: "json", contentType: "application/json", body: `{"error":{"code":"` + long + `","summary":"` + long + `","detail":"` + long + `"}}`},
+		{name: "xml", contentType: "application/xml", body: `<tsResponse><error code="` + long + `"><summary>` + long + `</summary><detail>` + long + `</detail></error></tsResponse>`},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+				writer.Header().Set("Content-Type", test.contentType)
+				writer.WriteHeader(http.StatusBadRequest)
+				_, _ = io.WriteString(writer, test.body)
+			}))
+			defer server.Close()
+
+			transport := NewTransport(server.Client(), "3.29", nil)
+			_, err := transport.Do(context.Background(), nil, Request{Method: http.MethodGet, ServerURL: server.URL, Path: "/workbooks", Operation: "workbook.list", Secrets: []string{secret}})
+			var upstream *UpstreamError
+			if !errors.As(err, &upstream) {
+				t.Fatalf("error = %T %v", err, err)
+			}
+			for name, value := range map[string]string{"code": upstream.Code, "summary": upstream.Summary, "detail": upstream.Detail} {
+				if len(value) > maxUpstreamDiagnosticBytes || strings.Contains(value, secret) || !strings.HasSuffix(value, "[truncated]") {
+					t.Errorf("%s was not sanitized: length=%d suffix=%q", name, len(value), value[max(0, len(value)-20):])
+				}
+			}
+		})
+	}
+}
+
+func TestTransportSanitizesRequestID(t *testing.T) {
+	const secret = "request-secret"
+	requestID := secret + strings.Repeat("r", maxUpstreamDiagnosticBytes*2)
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+		writer.Header().Set("X-Tableau-Request-Id", requestID)
+		_, _ = io.WriteString(writer, `{}`)
+	}))
+	defer server.Close()
+
+	transport := NewTransport(server.Client(), "3.29", nil)
+	response, err := transport.Do(context.Background(), nil, Request{Method: http.MethodGet, ServerURL: server.URL, Path: "/workbooks", Operation: "workbook.list", Secrets: []string{secret}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(response.TableauRequestID) > maxUpstreamDiagnosticBytes || strings.Contains(response.TableauRequestID, secret) || !strings.HasSuffix(response.TableauRequestID, "[truncated]") {
+		t.Fatalf("request ID was not sanitized: length=%d", len(response.TableauRequestID))
+	}
+}
+
+func TestProtocolErrorSanitizesCause(t *testing.T) {
+	const secret = "protocol-secret"
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+		_, _ = io.WriteString(writer, `{}`)
+	}))
+	defer server.Close()
+
+	transport := NewTransport(server.Client(), "3.29", nil)
+	response, err := transport.Do(context.Background(), nil, Request{Method: http.MethodGet, ServerURL: server.URL, Path: "/workbooks", Operation: "workbook.list", Secrets: []string{secret}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	protocolErr := NewProtocolError("workbook.list", response, errors.New(secret+strings.Repeat("p", maxUpstreamDiagnosticBytes*2)), true)
+	cause := errors.Unwrap(protocolErr)
+	if cause == nil || len(cause.Error()) > maxUpstreamDiagnosticBytes || strings.Contains(cause.Error(), secret) || !strings.HasSuffix(cause.Error(), "[truncated]") {
+		t.Fatalf("protocol cause was not sanitized: %v", cause)
+	}
+}

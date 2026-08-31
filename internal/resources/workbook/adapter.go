@@ -60,10 +60,10 @@ func (a *Adapter) ResolveWorkbook(ctx context.Context, selector identity.Selecto
 		if item.LUID == "" || item.LUID != string(selector.LUID) {
 			return Workbook{}, fmt.Errorf("workbook response returned authoritative LUID %q, expected %q", item.LUID, selector.LUID)
 		}
-		workbook := normalizeWorkbook(item, item.ProjectName)
-		if workbook.ProjectLUID == "" {
-			return workbook, nil
+		if item.ProjectLUID == "" {
+			return Workbook{}, fmt.Errorf("workbook %q with LUID %q omitted its authoritative project LUID", item.Name, item.LUID)
 		}
+		workbook := normalizeWorkbook(item, item.ProjectName)
 		return a.resolveSelectedProjectPath(ctx, workbook)
 	}
 
@@ -75,10 +75,20 @@ func (a *Adapter) ResolveWorkbook(ctx context.Context, selector identity.Selecto
 		}
 		paths = newProjectPathIndex(projects)
 	}
+	seenByLUID := make(map[string]tableauworkbook.Workbook)
 	itemsByLUID := make(map[string]tableauworkbook.Workbook, 2)
 	err := a.scanWorkbooks(ctx, func(item tableauworkbook.Workbook) error {
 		if selector.Name != "" && item.Name != selector.Name {
 			return nil
+		}
+		if item.LUID == "" {
+			return fmt.Errorf("matching workbook %q omitted its authoritative LUID", item.Name)
+		}
+		if item.ProjectLUID == "" {
+			return fmt.Errorf("matching workbook %q with LUID %q omitted its authoritative project LUID", item.Name, item.LUID)
+		}
+		if err := recordWorkbookIdentity(seenByLUID, item); err != nil {
+			return err
 		}
 		if selector.ProjectPath != "" {
 			projectPath := item.ProjectName
@@ -93,15 +103,11 @@ func (a *Adapter) ResolveWorkbook(ctx context.Context, selector identity.Selecto
 				return nil
 			}
 		}
-		if item.LUID == "" {
-			return fmt.Errorf("matching workbook %q omitted its authoritative LUID", item.Name)
-		}
-		current, exists := itemsByLUID[item.LUID]
-		if !exists || workbookItemLess(item, current) {
+		if _, exists := itemsByLUID[item.LUID]; !exists {
 			itemsByLUID[item.LUID] = item
-		}
-		if !exists && len(itemsByLUID) == 2 {
-			return errWorkbookAmbiguityProven
+			if len(itemsByLUID) == 2 {
+				return errWorkbookAmbiguityProven
+			}
 		}
 		return nil
 	})
@@ -117,13 +123,6 @@ func (a *Adapter) ResolveWorkbook(ctx context.Context, selector identity.Selecto
 		return workbook, err
 	}
 	return a.resolveSelectedProjectPath(ctx, workbook)
-}
-
-func workbookItemLess(left, right tableauworkbook.Workbook) bool {
-	if left.Name != right.Name {
-		return left.Name < right.Name
-	}
-	return left.ProjectName < right.ProjectName
 }
 
 func (a *Adapter) resolveSelectedProjectPath(ctx context.Context, workbook Workbook) (Workbook, error) {
@@ -165,17 +164,28 @@ func resolveWorkbook(selector identity.Selector, items []tableauworkbook.Workboo
 
 // FindWorkbooks returns exact name and project matches for collision checks.
 func (a *Adapter) FindWorkbooks(ctx context.Context, name, projectLUID string) ([]Workbook, error) {
+	seenByLUID := make(map[string]tableauworkbook.Workbook)
 	byLUID := make(map[string]Workbook)
 	err := a.scanWorkbooks(ctx, func(item tableauworkbook.Workbook) error {
-		if item.Name == name && item.ProjectLUID == projectLUID {
-			if item.LUID == "" {
-				return fmt.Errorf("workbook %q in project %q omitted its authoritative LUID", name, projectLUID)
-			}
-			if _, exists := byLUID[item.LUID]; !exists {
-				byLUID[item.LUID] = normalizeWorkbook(item, item.ProjectName)
-				if len(byLUID) == 2 {
-					return errWorkbookAmbiguityProven
-				}
+		if item.Name != name {
+			return nil
+		}
+		if item.LUID == "" {
+			return fmt.Errorf("workbook %q omitted its authoritative LUID", name)
+		}
+		if item.ProjectLUID == "" {
+			return fmt.Errorf("workbook %q with LUID %q omitted its authoritative project LUID", name, item.LUID)
+		}
+		if err := recordWorkbookIdentity(seenByLUID, item); err != nil {
+			return err
+		}
+		if item.ProjectLUID != projectLUID {
+			return nil
+		}
+		if _, exists := byLUID[item.LUID]; !exists {
+			byLUID[item.LUID] = normalizeWorkbook(item, item.ProjectName)
+			if len(byLUID) == 2 {
+				return errWorkbookAmbiguityProven
 			}
 		}
 		return nil
@@ -189,6 +199,18 @@ func (a *Adapter) FindWorkbooks(ctx context.Context, name, projectLUID string) (
 	}
 	sort.Slice(matches, func(i, j int) bool { return matches[i].LUID < matches[j].LUID })
 	return matches, nil
+}
+
+func recordWorkbookIdentity(byLUID map[string]tableauworkbook.Workbook, item tableauworkbook.Workbook) error {
+	current, exists := byLUID[item.LUID]
+	if !exists {
+		byLUID[item.LUID] = item
+		return nil
+	}
+	if current != item {
+		return fmt.Errorf("Tableau workbook list returned conflicting records for LUID %q", item.LUID)
+	}
+	return nil
 }
 
 // ResolveProject resolves a LUID or exact slash-delimited project path.
@@ -309,7 +331,8 @@ func (a *Adapter) allProjects(ctx context.Context) ([]tableauworkbook.Project, e
 	if a == nil || a.client == nil {
 		return nil, errors.New("workbook resource adapter is not configured")
 	}
-	var result []tableauworkbook.Project
+	byLUID := make(map[string]tableauworkbook.Project)
+	seen := 0
 	for number := 1; ; number++ {
 		page, err := a.client.ListProjects(ctx, number, adapterPageSize)
 		if err != nil {
@@ -319,9 +342,21 @@ func (a *Adapter) allProjects(ctx context.Context) ([]tableauworkbook.Project, e
 			if item.LUID == "" {
 				return nil, fmt.Errorf("project %q omitted its authoritative LUID", item.Name)
 			}
-			result = append(result, item)
+			current, exists := byLUID[item.LUID]
+			if exists && current != item {
+				return nil, fmt.Errorf("Tableau project list returned conflicting records for LUID %q", item.LUID)
+			}
+			if !exists {
+				byLUID[item.LUID] = item
+			}
 		}
-		if len(result) >= page.Page.Total || len(page.Items) == 0 {
+		seen += len(page.Items)
+		if seen >= page.Page.Total || len(page.Items) == 0 {
+			result := make([]tableauworkbook.Project, 0, len(byLUID))
+			for _, item := range byLUID {
+				result = append(result, item)
+			}
+			sort.Slice(result, func(left, right int) bool { return result[left].LUID < result[right].LUID })
 			return result, nil
 		}
 	}

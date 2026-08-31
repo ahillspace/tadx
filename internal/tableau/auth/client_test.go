@@ -113,6 +113,7 @@ func TestClientPreservesSuccessfulResponseContextForProtocolErrors(t *testing.T)
 	}{
 		{name: "malformed JSON", body: `{"credentials":`},
 		{name: "missing credentials", body: `{"credentials":{"site":{"id":"site-1"}}}`},
+		{name: "missing user LUID", body: `{"credentials":{"token":"session-secret","site":{"id":"site-1"},"user":{}}}`},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {

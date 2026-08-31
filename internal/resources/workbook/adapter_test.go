@@ -55,10 +55,15 @@ func (client) Prepare(context.Context, tableauworkbook.PublishRequest) (*tableau
 }
 
 func TestAdapterResolvesExactWorkbookAcrossAllPages(t *testing.T) {
-	adapter := resource.NewAdapter(client{pages: map[int]tableauworkbook.WorkbookPage{
-		1: {Page: tableauworkbook.Page{Number: 1, Size: 1, Total: 2}, Items: []tableauworkbook.Workbook{{LUID: "wb-1", Name: "Other", ProjectName: "Ops"}}},
-		2: {Page: tableauworkbook.Page{Number: 2, Size: 1, Total: 2}, Items: []tableauworkbook.Workbook{{LUID: "wb-2", Name: "Finance", ProjectName: "Ops"}}},
-	}})
+	adapter := resource.NewAdapter(client{
+		pages: map[int]tableauworkbook.WorkbookPage{
+			1: {Page: tableauworkbook.Page{Number: 1, Size: 1, Total: 2}, Items: []tableauworkbook.Workbook{{LUID: "wb-1", Name: "Other", ProjectName: "Ops"}}},
+			2: {Page: tableauworkbook.Page{Number: 2, Size: 1, Total: 2}, Items: []tableauworkbook.Workbook{{LUID: "wb-2", Name: "Finance", ProjectLUID: "project-1", ProjectName: "Ops"}}},
+		},
+		projectPages: map[int]tableauworkbook.ProjectPage{
+			1: {Page: tableauworkbook.Page{Number: 1, Size: 100, Total: 1}, Items: []tableauworkbook.Project{{LUID: "project-1", Name: "Ops"}}},
+		},
+	})
 	workbook, err := adapter.ResolveWorkbook(context.Background(), identity.Selector{Name: "Finance", ProjectPath: "Ops"})
 	if err != nil {
 		t.Fatal(err)
@@ -69,12 +74,17 @@ func TestAdapterResolvesExactWorkbookAcrossAllPages(t *testing.T) {
 }
 
 func TestAdapterHardFailsAmbiguousWorkbookSelector(t *testing.T) {
-	adapter := resource.NewAdapter(client{pages: map[int]tableauworkbook.WorkbookPage{
-		1: {Page: tableauworkbook.Page{Number: 1, Size: 100, Total: 2}, Items: []tableauworkbook.Workbook{
-			{LUID: "wb-1", Name: "Finance", ProjectName: "Ops"},
-			{LUID: "wb-2", Name: "Finance", ProjectName: "Ops"},
-		}},
-	}})
+	adapter := resource.NewAdapter(client{
+		pages: map[int]tableauworkbook.WorkbookPage{
+			1: {Page: tableauworkbook.Page{Number: 1, Size: 100, Total: 2}, Items: []tableauworkbook.Workbook{
+				{LUID: "wb-1", Name: "Finance", ProjectLUID: "project-1", ProjectName: "Ops"},
+				{LUID: "wb-2", Name: "Finance", ProjectLUID: "project-1", ProjectName: "Ops"},
+			}},
+		},
+		projectPages: map[int]tableauworkbook.ProjectPage{
+			1: {Page: tableauworkbook.Page{Number: 1, Size: 100, Total: 1}, Items: []tableauworkbook.Project{{LUID: "project-1", Name: "Ops"}}},
+		},
+	})
 	_, err := adapter.ResolveWorkbook(context.Background(), identity.Selector{Name: "Finance", ProjectPath: "Ops"})
 	if err == nil || !strings.Contains(err.Error(), "ambiguous") {
 		t.Fatalf("error = %v", err)
@@ -85,8 +95,8 @@ func TestAdapterStopsAfterTwoDistinctWorkbookMatches(t *testing.T) {
 	listCalls := 0
 	adapter := resource.NewAdapter(client{listCalls: &listCalls, pages: map[int]tableauworkbook.WorkbookPage{
 		1: {Page: tableauworkbook.Page{Number: 1, Size: 2, Total: 10000}, Items: []tableauworkbook.Workbook{
-			{LUID: "wb-1", Name: "Finance", ProjectName: "Ops"},
-			{LUID: "wb-2", Name: "Finance", ProjectName: "Ops"},
+			{LUID: "wb-1", Name: "Finance", ProjectLUID: "project-1", ProjectName: "Ops"},
+			{LUID: "wb-2", Name: "Finance", ProjectLUID: "project-1", ProjectName: "Ops"},
 		}},
 	}})
 	_, err := adapter.ResolveWorkbook(context.Background(), identity.Selector{Name: "Finance"})
@@ -101,7 +111,7 @@ func TestAdapterStopsAfterTwoDistinctWorkbookMatches(t *testing.T) {
 func TestAdapterRejectsMatchingWorkbookWithoutLUID(t *testing.T) {
 	adapter := resource.NewAdapter(client{pages: map[int]tableauworkbook.WorkbookPage{
 		1: {Page: tableauworkbook.Page{Number: 1, Size: 2, Total: 2}, Items: []tableauworkbook.Workbook{
-			{LUID: "wb-1", Name: "Finance", ProjectName: "Ops"},
+			{LUID: "wb-1", Name: "Finance", ProjectLUID: "project-1", ProjectName: "Ops"},
 			{Name: "Finance", ProjectName: "Ops"},
 		}},
 	}})
@@ -110,13 +120,51 @@ func TestAdapterRejectsMatchingWorkbookWithoutLUID(t *testing.T) {
 	}
 }
 
+func TestAdapterRejectsMatchingWorkbookWithoutProjectLUID(t *testing.T) {
+	item := tableauworkbook.Workbook{LUID: "wb-1", Name: "Finance", ProjectName: "Ops"}
+	tests := []struct {
+		name     string
+		client   client
+		selector identity.Selector
+	}{
+		{
+			name: "name selector",
+			client: client{pages: map[int]tableauworkbook.WorkbookPage{
+				1: {Page: tableauworkbook.Page{Number: 1, Size: 100, Total: 1}, Items: []tableauworkbook.Workbook{item}},
+			}},
+			selector: identity.Selector{Name: "Finance"},
+		},
+		{
+			name:     "LUID selector",
+			client:   client{workbooks: map[string]tableauworkbook.Workbook{"wb-1": item}},
+			selector: identity.Selector{LUID: "wb-1"},
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			adapter := resource.NewAdapter(test.client)
+			if _, err := adapter.ResolveWorkbook(context.Background(), test.selector); err == nil || !strings.Contains(err.Error(), "project LUID") {
+				t.Fatalf("ResolveWorkbook() error = %v", err)
+			}
+		})
+	}
+}
+
 func TestAdapterReturnsIdentityWinnerForDuplicateWorkbookLUID(t *testing.T) {
-	adapter := resource.NewAdapter(client{pages: map[int]tableauworkbook.WorkbookPage{
-		1: {Page: tableauworkbook.Page{Number: 1, Size: 100, Total: 2}, Items: []tableauworkbook.Workbook{
-			{LUID: "wb-1", Name: "Finance", ContentURL: "finance", ProjectName: "New"},
-			{LUID: "wb-1", Name: "Renamed Finance", ContentURL: "renamed-finance", ProjectName: "Old"},
-		}},
-	}})
+	adapter := resource.NewAdapter(client{
+		pages: map[int]tableauworkbook.WorkbookPage{
+			1: {Page: tableauworkbook.Page{Number: 1, Size: 100, Total: 2}, Items: []tableauworkbook.Workbook{
+				{LUID: "wb-1", Name: "Finance", ContentURL: "finance", ProjectLUID: "project-new", ProjectName: "New"},
+				{LUID: "wb-1", Name: "Renamed Finance", ContentURL: "renamed-finance", ProjectLUID: "project-old", ProjectName: "Old"},
+			}},
+		},
+		projectPages: map[int]tableauworkbook.ProjectPage{
+			1: {Page: tableauworkbook.Page{Number: 1, Size: 100, Total: 2}, Items: []tableauworkbook.Project{
+				{LUID: "project-new", Name: "New"},
+				{LUID: "project-old", Name: "Old"},
+			}},
+		},
+	})
 	workbook, err := adapter.ResolveWorkbook(context.Background(), identity.Selector{LUID: "wb-1"})
 	if err != nil {
 		t.Fatal(err)
@@ -129,8 +177,11 @@ func TestAdapterReturnsIdentityWinnerForDuplicateWorkbookLUID(t *testing.T) {
 func TestAdapterUsesExactGetForWorkbookLUID(t *testing.T) {
 	getCalls, listCalls := 0, 0
 	adapter := resource.NewAdapter(client{
-		workbooks: map[string]tableauworkbook.Workbook{"wb-1": {LUID: "wb-1", Name: "Finance"}},
-		getCalls:  &getCalls, listCalls: &listCalls,
+		workbooks: map[string]tableauworkbook.Workbook{"wb-1": {LUID: "wb-1", Name: "Finance", ProjectLUID: "project-1", ProjectName: "Ops"}},
+		projectPages: map[int]tableauworkbook.ProjectPage{
+			1: {Page: tableauworkbook.Page{Number: 1, Size: 100, Total: 1}, Items: []tableauworkbook.Project{{LUID: "project-1", Name: "Ops"}}},
+		},
+		getCalls: &getCalls, listCalls: &listCalls,
 	})
 	workbook, err := adapter.ResolveWorkbook(context.Background(), identity.Selector{LUID: "wb-1"})
 	if err != nil {
@@ -168,6 +219,88 @@ func TestAdapterRejectsCollisionMatchWithoutWorkbookLUID(t *testing.T) {
 	}
 }
 
+func TestAdapterRejectsIncompleteSameNameCollisionIdentityBeforeProjectFiltering(t *testing.T) {
+	tests := []struct {
+		name      string
+		item      tableauworkbook.Workbook
+		errorText string
+	}{
+		{
+			name:      "missing workbook LUID in another project",
+			item:      tableauworkbook.Workbook{Name: "Finance", ProjectLUID: "project-other", ProjectName: "Other"},
+			errorText: "authoritative LUID",
+		},
+		{
+			name:      "missing project LUID",
+			item:      tableauworkbook.Workbook{LUID: "wb-1", Name: "Finance", ProjectName: "Ops"},
+			errorText: "project LUID",
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			adapter := resource.NewAdapter(client{pages: map[int]tableauworkbook.WorkbookPage{
+				1: {Page: tableauworkbook.Page{Number: 1, Size: 100, Total: 1}, Items: []tableauworkbook.Workbook{test.item}},
+			}})
+			if _, err := adapter.FindWorkbooks(context.Background(), "Finance", "project-1"); err == nil || !strings.Contains(err.Error(), test.errorText) {
+				t.Fatalf("FindWorkbooks() error = %v", err)
+			}
+		})
+	}
+}
+
+func TestAdapterRejectsConflictingDuplicateWorkbookLUIDRowsRegardlessOfOrder(t *testing.T) {
+	first := tableauworkbook.Workbook{LUID: "wb-1", Name: "Finance", ContentURL: "finance", ProjectLUID: "project-a", ProjectName: "Ops", OwnerLUID: "owner-1"}
+	second := first
+	second.ProjectLUID = "project-b"
+	for _, items := range [][]tableauworkbook.Workbook{{first, second}, {second, first}} {
+		adapter := resource.NewAdapter(client{
+			pages: map[int]tableauworkbook.WorkbookPage{
+				1: {Page: tableauworkbook.Page{Number: 1, Size: 100, Total: 2}, Items: items},
+			},
+			projectPages: map[int]tableauworkbook.ProjectPage{
+				1: {Page: tableauworkbook.Page{Number: 1, Size: 100, Total: 2}, Items: []tableauworkbook.Project{
+					{LUID: "project-a", Name: "Ops"},
+					{LUID: "project-b", Name: "Ops"},
+				}},
+			},
+		})
+		if _, err := adapter.ResolveWorkbook(context.Background(), identity.Selector{Name: "Finance"}); err == nil || !strings.Contains(err.Error(), "conflicting records") {
+			t.Fatalf("ResolveWorkbook() error = %v", err)
+		}
+	}
+}
+
+func TestAdapterDeduplicatesEquivalentWorkbookLUIDRows(t *testing.T) {
+	item := tableauworkbook.Workbook{LUID: "wb-1", Name: "Finance", ContentURL: "finance", ProjectLUID: "project-1", ProjectName: "Ops", OwnerLUID: "owner-1"}
+	adapter := resource.NewAdapter(client{
+		pages: map[int]tableauworkbook.WorkbookPage{
+			1: {Page: tableauworkbook.Page{Number: 1, Size: 100, Total: 2}, Items: []tableauworkbook.Workbook{item, item}},
+		},
+		projectPages: map[int]tableauworkbook.ProjectPage{
+			1: {Page: tableauworkbook.Page{Number: 1, Size: 100, Total: 1}, Items: []tableauworkbook.Project{{LUID: "project-1", Name: "Ops"}}},
+		},
+	})
+	workbook, err := adapter.ResolveWorkbook(context.Background(), identity.Selector{Name: "Finance"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if workbook.LUID != "wb-1" || workbook.ProjectPath != "Ops" {
+		t.Fatalf("workbook = %#v", workbook)
+	}
+}
+
+func TestAdapterRejectsConflictingCollisionRowsWithSameWorkbookLUID(t *testing.T) {
+	first := tableauworkbook.Workbook{LUID: "wb-1", Name: "Finance", ContentURL: "finance", ProjectLUID: "project-1", ProjectName: "Ops", OwnerLUID: "owner-1"}
+	second := first
+	second.OwnerLUID = "owner-2"
+	adapter := resource.NewAdapter(client{pages: map[int]tableauworkbook.WorkbookPage{
+		1: {Page: tableauworkbook.Page{Number: 1, Size: 100, Total: 2}, Items: []tableauworkbook.Workbook{first, second}},
+	}})
+	if _, err := adapter.FindWorkbooks(context.Background(), "Finance", "project-1"); err == nil || !strings.Contains(err.Error(), "conflicting records") {
+		t.Fatalf("FindWorkbooks() error = %v", err)
+	}
+}
+
 func TestAdapterResolvesExactNestedProjectPath(t *testing.T) {
 	adapter := resource.NewAdapter(client{projectPages: map[int]tableauworkbook.ProjectPage{
 		1: {Page: tableauworkbook.Page{Number: 1, Size: 100, Total: 2}, Items: []tableauworkbook.Project{
@@ -180,6 +313,43 @@ func TestAdapterResolvesExactNestedProjectPath(t *testing.T) {
 		t.Fatal(err)
 	}
 	if project.LUID != "child" || project.Path != "Department/Ops" {
+		t.Fatalf("project = %#v", project)
+	}
+}
+
+func TestAdapterRejectsConflictingDuplicateProjectLUIDRowsRegardlessOfOrder(t *testing.T) {
+	first := tableauworkbook.Project{LUID: "child", Name: "Ops", ParentLUID: "parent-a"}
+	second := first
+	second.ParentLUID = "parent-b"
+	for _, duplicates := range [][]tableauworkbook.Project{{first, second}, {second, first}} {
+		items := []tableauworkbook.Project{
+			{LUID: "parent-a", Name: "Department A"},
+			{LUID: "parent-b", Name: "Department B"},
+		}
+		items = append(items, duplicates...)
+		adapter := resource.NewAdapter(client{projectPages: map[int]tableauworkbook.ProjectPage{
+			1: {Page: tableauworkbook.Page{Number: 1, Size: 100, Total: len(items)}, Items: items},
+		}})
+		if _, err := adapter.ResolveProject(context.Background(), identity.Selector{LUID: "child"}); err == nil || !strings.Contains(err.Error(), "conflicting records") {
+			t.Fatalf("ResolveProject() error = %v", err)
+		}
+	}
+}
+
+func TestAdapterDeduplicatesEquivalentProjectLUIDRows(t *testing.T) {
+	child := tableauworkbook.Project{LUID: "child", Name: "Ops", ParentLUID: "parent"}
+	adapter := resource.NewAdapter(client{projectPages: map[int]tableauworkbook.ProjectPage{
+		1: {Page: tableauworkbook.Page{Number: 1, Size: 100, Total: 3}, Items: []tableauworkbook.Project{
+			{LUID: "parent", Name: "Department"},
+			child,
+			child,
+		}},
+	}})
+	project, err := adapter.ResolveProject(context.Background(), identity.Selector{LUID: "child"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if project.Path != "Department/Ops" {
 		t.Fatalf("project = %#v", project)
 	}
 }

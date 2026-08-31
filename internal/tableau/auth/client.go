@@ -67,8 +67,8 @@ func (c *Client) SignIn(ctx context.Context, input coreauth.SignInRequest) (core
 	if err := json.Unmarshal(response.Body, &envelope); err != nil {
 		return coreauth.SignInResponse{}, tableau.NewProtocolError("auth.check", response, fmt.Errorf("decode PAT sign-in response: %w", err), true)
 	}
-	if envelope.Credentials.Token == "" || envelope.Credentials.Site.ID == "" {
-		return coreauth.SignInResponse{}, tableau.NewProtocolError("auth.check", response, errors.New("PAT sign-in response omitted token or site LUID"), true)
+	if envelope.Credentials.Token == "" || envelope.Credentials.Site.ID == "" || envelope.Credentials.User.ID == "" {
+		return coreauth.SignInResponse{}, tableau.NewProtocolError("auth.check", response, errors.New("PAT sign-in response omitted token, site LUID, or user LUID"), true)
 	}
 	return coreauth.SignInResponse{Token: envelope.Credentials.Token, SiteLUID: envelope.Credentials.Site.ID, UserLUID: envelope.Credentials.User.ID}, nil
 }
