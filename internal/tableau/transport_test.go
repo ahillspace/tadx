@@ -10,6 +10,7 @@ import (
 	"strings"
 	"sync/atomic"
 	"testing"
+	"time"
 )
 
 type testSession struct{ token string }
@@ -30,7 +31,7 @@ func (r errorReader) Read([]byte) (int, error) { return 0, r.err }
 func (errorReader) Close() error { return nil }
 
 func TestTransportAddsStableHeadersAndCapturesTableauRequestID(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+	server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		if got := request.Header.Get("X-Tableau-Auth"); got != "session-token" {
 			t.Errorf("X-Tableau-Auth = %q", got)
 		}
@@ -127,7 +128,7 @@ func TestTransportRedactsOverlappingSecretsAtomically(t *testing.T) {
 
 func TestTransportRedactsAuthorizedSessionTokenFromUpstreamCarriers(t *testing.T) {
 	const token = "session-token"
-	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+	server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
 		writer.Header().Set("X-Tableau-Request-Id", "request-"+token)
 		writer.Header().Set("Content-Type", "application/json")
 		writer.WriteHeader(http.StatusUnauthorized)
@@ -226,9 +227,9 @@ func TestTransportClassifiesOversizedResponseAsNonretryable(t *testing.T) {
 
 func TestTransportRejectsCrossOriginRedirectBeforeReplayingCredentials(t *testing.T) {
 	var targetRequests atomic.Int32
-	target := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) { targetRequests.Add(1) }))
+	target := httptest.NewTLSServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) { targetRequests.Add(1) }))
 	defer target.Close()
-	source := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+	source := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		http.Redirect(writer, request, target.URL+"/signin", http.StatusTemporaryRedirect)
 	}))
 	defer source.Close()
@@ -448,6 +449,86 @@ func TestTransportSanitizesRequestID(t *testing.T) {
 	}
 	if len(response.TableauRequestID) > maxUpstreamDiagnosticBytes || strings.Contains(response.TableauRequestID, secret) || !strings.HasSuffix(response.TableauRequestID, "[truncated]") {
 		t.Fatalf("request ID was not sanitized: length=%d", len(response.TableauRequestID))
+	}
+}
+
+func TestTransportRejectsPlaintextAuthenticatedRequest(t *testing.T) {
+	var requests atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) { requests.Add(1) }))
+	defer server.Close()
+
+	transport := NewTransport(server.Client(), "3.29", nil)
+	_, err := transport.Do(context.Background(), testSession{token: "session-token"}, Request{
+		Method: http.MethodGet, ServerURL: server.URL, Path: "/workbooks", Operation: "workbook.list",
+	})
+	if err == nil || !strings.Contains(err.Error(), "HTTPS") {
+		t.Fatalf("error = %v", err)
+	}
+	if strings.Contains(err.Error(), "session-token") {
+		t.Fatalf("error leaked token: %v", err)
+	}
+	if requests.Load() != 0 {
+		t.Fatalf("requests = %d, want 0", requests.Load())
+	}
+}
+
+func TestTransportDefaultTimeoutBoundsDeadlinelessRequests(t *testing.T) {
+	release := make(chan struct{})
+	server := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) { <-release }))
+	defer server.Close()
+	defer close(release)
+
+	transport := NewTransport(server.Client(), "3.29", nil)
+	transport.SetRequestTimeout(20 * time.Millisecond)
+	started := time.Now()
+	_, err := transport.Do(context.Background(), nil, Request{
+		Method: http.MethodGet, ServerURL: server.URL, Path: "/hang", Operation: "workbook.list",
+	})
+	if err == nil {
+		t.Fatal("expected the default request timeout to fire")
+	}
+	if time.Since(started) > time.Second {
+		t.Fatalf("request was not bounded by the default timeout: %s", time.Since(started))
+	}
+}
+
+func TestTransportPreservesEscapedRequestPath(t *testing.T) {
+	var escapedPath string
+	server := httptest.NewServer(http.HandlerFunc(func(_ http.ResponseWriter, request *http.Request) {
+		escapedPath = request.URL.EscapedPath()
+	}))
+	defer server.Close()
+
+	transport := NewTransport(server.Client(), "3.29", nil)
+	_, err := transport.Do(context.Background(), nil, Request{
+		Method: http.MethodGet, ServerURL: server.URL, Path: "/api/3.29/sites/site/workbooks/wb%2Fslash", Operation: "workbook.list",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(escapedPath, "%2F") {
+		t.Fatalf("escaped request path was not preserved: %q", escapedPath)
+	}
+}
+
+func TestUpstreamErrorSurfacesRetryAfter(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+		writer.Header().Set("Retry-After", "2")
+		writer.Header().Set("Content-Type", "application/json")
+		writer.WriteHeader(http.StatusServiceUnavailable)
+		_, _ = io.WriteString(writer, `{"error":{"code":"503000","summary":"Unavailable"}}`)
+	}))
+	defer server.Close()
+
+	transport := NewTransport(server.Client(), "3.29", nil)
+	_, err := transport.Do(context.Background(), nil, Request{Method: http.MethodGet, ServerURL: server.URL, Path: "/workbooks", Operation: "workbook.list"})
+	wait, ok := RetryAfter(err)
+	if !ok || wait != 2*time.Second {
+		t.Fatalf("RetryAfter() = %s, %v", wait, ok)
+	}
+	var advice interface{ Retryable() bool }
+	if !errors.As(err, &advice) || !advice.Retryable() {
+		t.Fatalf("retry advice = %#v", advice)
 	}
 }
 

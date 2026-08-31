@@ -142,13 +142,14 @@ type PreparedPublish struct {
 
 // Client is the first released REST client family.
 type Client struct {
-	transport       *tableau.Transport
-	session         auth.Session
-	serverURL       string
-	uploadThreshold int
-	uploadChunkSize int
-	pollInterval    time.Duration
-	pollTimeout     time.Duration
+	transport        *tableau.Transport
+	session          auth.Session
+	serverURL        string
+	uploadThreshold  int
+	uploadChunkSize  int
+	pollInterval     time.Duration
+	pollTimeout      time.Duration
+	maxDownloadBytes int64
 }
 
 // NewClient creates an authenticated workbook REST client.
@@ -171,6 +172,19 @@ func (c *Client) SetUploadThreshold(bytes int) {
 func (c *Client) SetUploadChunkSize(bytes int) {
 	if bytes > 0 && bytes <= defaultUploadChunkSize {
 		c.uploadChunkSize = bytes
+	}
+}
+
+// SetMaxDownloadBytes bounds the buffered workbook download below the shared
+// transport ceiling. Zero keeps the default 256 MiB limit.
+//
+// The download is fully buffered because Download.Content is a []byte consumed
+// by internal/artifact and internal/app; a true streaming download (a bounded
+// temp file exposed as an io.ReadCloser, validated from disk, with a streaming
+// request body in the transport) would ripple those contracts and is deferred.
+func (c *Client) SetMaxDownloadBytes(limit int64) {
+	if limit > 0 {
+		c.maxDownloadBytes = limit
 	}
 }
 
@@ -261,12 +275,23 @@ func (c *Client) ListProjects(ctx context.Context, pageNumber, pageSize int) (Pr
 }
 
 // Download preserves the native TWB or TWBX bytes and filename.
+//
+// The response is buffered into Download.Content ([]byte) up to the configured
+// cap (see SetMaxDownloadBytes). Streaming to a bounded temp file would require
+// changing Download.Content's type, which ripples into internal/artifact and
+// internal/app, so it is intentionally out of scope here.
 func (c *Client) Download(ctx context.Context, workbookLUID string, includeExtract *bool) (Download, error) {
+	if c == nil || c.transport == nil || c.session == nil {
+		return Download{}, errors.New("authenticated workbook client is not configured")
+	}
 	query := url.Values{}
 	if includeExtract != nil {
 		query.Set("includeExtract", strconv.FormatBool(*includeExtract))
 	}
-	response, err := c.do(ctx, http.MethodGet, c.sitePath("workbooks", workbookLUID, "content"), query, nil, "", "workbook.pull")
+	response, err := c.transport.Do(ctx, c.session, tableau.Request{
+		Method: http.MethodGet, ServerURL: c.serverURL, Path: c.sitePath("workbooks", workbookLUID, "content"),
+		Query: query, Accept: "application/xml", Operation: "workbook.pull", MaxResponseBytes: c.maxDownloadBytes,
+	})
 	if err != nil {
 		return Download{}, err
 	}
@@ -376,7 +401,7 @@ func (p *PreparedPublish) Commit(ctx context.Context) (PublishResult, error) {
 	response, err := p.client.do(ctx, http.MethodPost, p.client.sitePath("workbooks"), p.query, p.body, p.contentType, "workbook.publish")
 	if err != nil {
 		var status interface{ HTTPStatus() int }
-		if !errors.As(err, &status) || status.HTTPStatus() >= http.StatusOK && status.HTTPStatus() < http.StatusMultipleChoices {
+		if !errors.As(err, &status) || (status.HTTPStatus() >= http.StatusOK && status.HTTPStatus() < http.StatusMultipleChoices) {
 			return PublishResult{Status: "unknown", TableauRequestID: tableau.RequestID(err), Warnings: append([]ValidationIssue(nil), p.warnings...)}, err
 		}
 		return PublishResult{}, err
@@ -435,7 +460,11 @@ func (c *Client) upload(ctx context.Context, filename string, content io.Reader,
 			return "", err
 		}
 		query := url.Values{}
-		if apiAtLeast(c.transport.APIVersion(), 3, 27) {
+		atLeast, err := apiAtLeast(c.transport.APIVersion(), 3, 27)
+		if err != nil {
+			return "", fmt.Errorf("interpret Tableau REST API version for chunked upload: %w", err)
+		}
+		if atLeast {
 			query.Set("sequenceID", strconv.Itoa(index+1))
 		}
 		response, err := c.do(ctx, http.MethodPut, c.sitePath("fileUploads", initiated.FileUpload.SessionID), query, body, contentType, "workbook.upload.append")
@@ -617,6 +646,24 @@ func (c *Client) pollJob(ctx context.Context, jobID string) (PublishResult, erro
 			}
 			if errors.Is(pollCtx.Err(), context.DeadlineExceeded) {
 				return PublishResult{Status: "timed_out", JobID: jobID, TableauRequestID: requestID}, fmt.Errorf("Tableau workbook publish job %s timed out after %s: %w", jobID, c.pollTimeout, err)
+			}
+			// A transient upstream failure (429/408/5xx) is not terminal: back off
+			// and keep polling until the job resolves or the deadline passes.
+			var retryable interface{ Retryable() bool }
+			if errors.As(err, &retryable) && retryable.Retryable() {
+				delay := c.pollInterval
+				if wait, ok := tableau.RetryAfter(err); ok {
+					delay = wait
+				}
+				select {
+				case <-pollCtx.Done():
+					if ctx.Err() != nil {
+						return PublishResult{Status: "cancelled", JobID: jobID, TableauRequestID: requestID}, ctx.Err()
+					}
+					return PublishResult{Status: "timed_out", JobID: jobID, TableauRequestID: requestID}, fmt.Errorf("Tableau workbook publish job %s timed out after %s: %w", jobID, c.pollTimeout, err)
+				case <-time.After(delay):
+				}
+				continue
 			}
 			return PublishResult{Status: "unknown", JobID: jobID, TableauRequestID: requestID}, err
 		}
@@ -815,14 +862,17 @@ func parsePublishResponse(body []byte) (PublishResult, error) {
 	return PublishResult{Status: "succeeded", WorkbookLUID: envelope.Workbook.ID, WorkbookName: envelope.Workbook.Name, ProjectLUID: envelope.Workbook.Project.ID}, nil
 }
 
-func apiAtLeast(value string, major, minor int) bool {
+func apiAtLeast(value string, major, minor int) (bool, error) {
 	parts := strings.SplitN(value, ".", 3)
 	if len(parts) < 2 {
-		return false
+		return false, fmt.Errorf("malformed Tableau REST API version %q", value)
 	}
 	gotMajor, errMajor := strconv.Atoi(parts[0])
 	gotMinor, errMinor := strconv.Atoi(parts[1])
-	return errMajor == nil && errMinor == nil && (gotMajor > major || gotMajor == major && gotMinor >= minor)
+	if errMajor != nil || errMinor != nil {
+		return false, fmt.Errorf("malformed Tableau REST API version %q", value)
+	}
+	return gotMajor > major || (gotMajor == major && gotMinor >= minor), nil
 }
 
 type paginationXML struct {

@@ -11,7 +11,9 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
+	"time"
 	"unicode/utf8"
 
 	"github.com/ahillspace/tadx/internal/auth"
@@ -21,6 +23,9 @@ const (
 	defaultAPIVersion          = "3.29"
 	defaultMaxResponseBytes    = 256 * 1024 * 1024
 	maxUpstreamDiagnosticBytes = 16 * 1024
+	// defaultRequestTimeout bounds a single request when the caller supplies a
+	// context without its own deadline, so a stalled server cannot hang forever.
+	defaultRequestTimeout = 120 * time.Second
 )
 
 // Request describes one released Tableau REST request.
@@ -56,6 +61,8 @@ type UpstreamError struct {
 	Summary          string
 	Detail           string
 	TableauRequestID string
+	retryAfter       time.Duration
+	retryAfterSet    bool
 }
 
 type responseReadError struct {
@@ -213,6 +220,25 @@ func (e *UpstreamError) CorrectiveAction() string {
 	return correctiveAction
 }
 
+// RetryAfter surfaces the upstream Retry-After hint so retrying callers can honor it.
+func (e *UpstreamError) RetryAfter() (time.Duration, bool) {
+	if e == nil {
+		return 0, false
+	}
+	return e.retryAfter, e.retryAfterSet
+}
+
+// RetryAfter returns the first Retry-After hint carried in an error chain.
+func RetryAfter(err error) (time.Duration, bool) {
+	var carrier interface {
+		RetryAfter() (time.Duration, bool)
+	}
+	if errors.As(err, &carrier) {
+		return carrier.RetryAfter()
+	}
+	return 0, false
+}
+
 // RequestID returns the first upstream request identifier in an error chain.
 func RequestID(err error) string {
 	var carrier interface{ RequestID() string }
@@ -224,9 +250,10 @@ func RequestID(err error) string {
 
 // Transport applies standard headers, authorization, response capture, and errors.
 type Transport struct {
-	client        *http.Client
-	apiVersion    string
-	correlationID func() string
+	client         *http.Client
+	apiVersion     string
+	correlationID  func() string
+	requestTimeout time.Duration
 }
 
 // NewTransport creates the shared Tableau REST transport.
@@ -260,11 +287,20 @@ func NewTransport(client *http.Client, apiVersion string, correlationID func() s
 	if apiVersion == "" {
 		apiVersion = defaultAPIVersion
 	}
-	return &Transport{client: &clientCopy, apiVersion: apiVersion, correlationID: correlationID}
+	return &Transport{client: &clientCopy, apiVersion: apiVersion, correlationID: correlationID, requestTimeout: defaultRequestTimeout}
 }
 
 // APIVersion returns the configured optimistic REST API version.
 func (t *Transport) APIVersion() string { return t.apiVersion }
+
+// SetRequestTimeout overrides the default per-request timeout applied when the
+// caller's context carries no deadline. A non-positive value disables the net.
+func (t *Transport) SetRequestTimeout(timeout time.Duration) {
+	if t == nil {
+		return
+	}
+	t.requestTimeout = timeout
+}
 
 // Do performs one request without automatic retries.
 func (t *Transport) Do(ctx context.Context, session auth.Session, input Request) (Response, error) {
@@ -279,12 +315,27 @@ func (t *Transport) Do(ctx context.Context, session auth.Session, input Request)
 	if err != nil || base.Scheme == "" || base.Host == "" {
 		return Response{}, fmt.Errorf("invalid Tableau server URL %q", input.ServerURL)
 	}
+	// Never attach a session credential over cleartext. This mirrors the sign-in
+	// HTTPS check so the X-Tableau-Auth token can't be sent in the clear.
+	if session != nil && !strings.EqualFold(base.Scheme, "https") {
+		return Response{}, fmt.Errorf("refusing to send Tableau session credentials to non-HTTPS server URL %q", input.ServerURL)
+	}
 	path, err := url.Parse(input.Path)
 	if err != nil {
 		return Response{}, fmt.Errorf("invalid Tableau request path: %w", err)
 	}
-	base.Path = strings.TrimRight(base.Path, "/") + "/" + strings.TrimLeft(path.Path, "/")
+	basePath := strings.TrimRight(base.Path, "/")
+	baseEscaped := strings.TrimRight(base.EscapedPath(), "/")
+	base.Path = basePath + "/" + strings.TrimLeft(path.Path, "/")
+	// Preserve the already percent-encoded request path so reserved characters
+	// (e.g. an escaped slash in a LUID segment) round-trip instead of decoding.
+	base.RawPath = baseEscaped + "/" + strings.TrimLeft(path.EscapedPath(), "/")
 	base.RawQuery = input.Query.Encode()
+	if _, hasDeadline := ctx.Deadline(); !hasDeadline && t.requestTimeout > 0 {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, t.requestTimeout)
+		defer cancel()
+	}
 	request, err := http.NewRequestWithContext(ctx, input.Method, base.String(), bytes.NewReader(input.Body))
 	if err != nil {
 		return Response{}, fmt.Errorf("create Tableau request: %w", err)
@@ -336,10 +387,35 @@ func (t *Transport) Do(ctx context.Context, session auth.Session, input Request)
 		return result, nil
 	}
 	code, summary, detail := parseError(body, effectiveSecrets)
+	retryAfter, retryAfterSet := parseRetryAfter(response.Header)
 	return Response{}, &UpstreamError{
 		Operation: input.Operation, StatusCode: response.StatusCode, Code: code,
 		Summary: summary, Detail: detail, TableauRequestID: requestID,
+		retryAfter: retryAfter, retryAfterSet: retryAfterSet,
 	}
+}
+
+// parseRetryAfter interprets the Retry-After header as delta-seconds or an HTTP
+// date so retryable classification can surface the upstream backoff hint.
+func parseRetryAfter(header http.Header) (time.Duration, bool) {
+	value := strings.TrimSpace(header.Get("Retry-After"))
+	if value == "" {
+		return 0, false
+	}
+	if seconds, err := strconv.Atoi(value); err == nil {
+		if seconds < 0 {
+			return 0, false
+		}
+		return time.Duration(seconds) * time.Second, true
+	}
+	if when, err := http.ParseTime(value); err == nil {
+		delay := time.Until(when)
+		if delay < 0 {
+			delay = 0
+		}
+		return delay, true
+	}
+	return 0, false
 }
 
 func requestAdvice(ctx context.Context, method, operation string, err error) (bool, string) {
@@ -373,6 +449,9 @@ func retrySafe(method, operation string) bool {
 	return method == http.MethodGet || method == http.MethodHead || method == http.MethodOptions || operation == "auth.check"
 }
 
+// upstreamAdvice classifies an upstream status as retryable. When a retryable
+// response also carries a Retry-After header, UpstreamError.RetryAfter exposes
+// the backoff hint so retrying callers (e.g. the publish poll loop) can honor it.
 func upstreamAdvice(status int) (bool, string) {
 	switch {
 	case status == http.StatusRequestTimeout || status == http.StatusTooEarly || status == http.StatusTooManyRequests:

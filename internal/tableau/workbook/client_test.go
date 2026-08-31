@@ -81,7 +81,7 @@ func readMultipart(request *http.Request) ([]multipartPart, error) {
 }
 
 func TestClientNormalizesClassicWorkbookPagination(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+	server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		if request.URL.Query().Get("pageNumber") != "2" || request.URL.Query().Get("pageSize") != "2" {
 			t.Fatalf("query = %s", request.URL.RawQuery)
 		}
@@ -128,7 +128,7 @@ func TestClientRejectsUnderfilledPagination(t *testing.T) {
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+			server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 				if request.URL.Path != test.path {
 					t.Fatalf("path = %q", request.URL.Path)
 				}
@@ -148,7 +148,7 @@ func TestClientRejectsUnderfilledPagination(t *testing.T) {
 
 func TestClientRedactsSessionTokenFromSuccessfulProtocolError(t *testing.T) {
 	secret := "sensitive-session-token"
-	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+	server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
 		writer.Header().Set("X-Tableau-Request-Id", "workbook-request")
 		_, _ = io.WriteString(writer, `<tsResponse><workbook id="`+secret+`" name="Finance"/></tsResponse>`)
 	}))
@@ -162,7 +162,7 @@ func TestClientRedactsSessionTokenFromSuccessfulProtocolError(t *testing.T) {
 }
 
 func TestClientGetsWorkbookByAuthoritativeLUID(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+	server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		if request.Method != http.MethodGet || request.URL.Path != "/api/3.29/sites/site-1/workbooks/wb-1" {
 			t.Fatalf("request = %s %s", request.Method, request.URL.Path)
 		}
@@ -183,7 +183,7 @@ func TestClientGetsWorkbookByAuthoritativeLUID(t *testing.T) {
 
 func TestClientPreservesProtocolResponseContext(t *testing.T) {
 	t.Run("workbook pagination", func(t *testing.T) {
-		server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+		server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
 			writer.Header().Set("X-Tableau-Request-Id", "workbook-list-request")
 			_, _ = io.WriteString(writer, `<tsResponse><workbooks><workbook id="wb-1" name="Finance"/></workbooks></tsResponse>`)
 		}))
@@ -194,7 +194,7 @@ func TestClientPreservesProtocolResponseContext(t *testing.T) {
 	})
 
 	t.Run("project pagination", func(t *testing.T) {
-		server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+		server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
 			writer.Header().Set("X-Tableau-Request-Id", "project-list-request")
 			_, _ = io.WriteString(writer, `<tsResponse><projects><project id="project-1" name="Ops"/></projects></tsResponse>`)
 		}))
@@ -205,7 +205,7 @@ func TestClientPreservesProtocolResponseContext(t *testing.T) {
 	})
 
 	t.Run("download filename", func(t *testing.T) {
-		server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+		server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
 			writer.Header().Set("X-Tableau-Request-Id", "download-request")
 			_, _ = writer.Write([]byte("workbook"))
 		}))
@@ -216,7 +216,7 @@ func TestClientPreservesProtocolResponseContext(t *testing.T) {
 	})
 
 	t.Run("upload initiation", func(t *testing.T) {
-		server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+		server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
 			writer.Header().Set("X-Tableau-Request-Id", "upload-request")
 			writer.WriteHeader(http.StatusCreated)
 			_, _ = io.WriteString(writer, `<tsResponse><fileUpload/></tsResponse>`)
@@ -250,7 +250,7 @@ func TestClientDownloadsNativeWorkbookAndFilename(t *testing.T) {
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+			server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 				if request.URL.Path != "/api/3.29/sites/site-1/workbooks/wb-1/content" || request.URL.RawQuery != test.wantQuery {
 					t.Fatalf("request URI = %s", request.URL.RequestURI())
 				}
@@ -286,7 +286,7 @@ func TestClientUsesUploadSessionAndBoundedJobPolling(t *testing.T) {
 	var publishParts []multipartPart
 	var handlerErr error
 	jobPolls := 0
-	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+	server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		calls = append(calls, request.Method+" "+request.URL.RequestURI())
 		writer.Header().Set("Content-Type", "application/xml")
 		switch {
@@ -382,7 +382,7 @@ func TestClientUsesUploadSessionAndBoundedJobPolling(t *testing.T) {
 
 func TestClientDefersFinalPublishUntilPreparedCommit(t *testing.T) {
 	uploadCalls, publishCalls := 0, 0
-	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+	server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		writer.Header().Set("Content-Type", "application/xml")
 		switch {
 		case request.Method == http.MethodPost && strings.HasSuffix(request.URL.Path, "/fileUploads"):
@@ -424,7 +424,7 @@ func TestClientDefersFinalPublishUntilPreparedCommit(t *testing.T) {
 func TestClientPublishesSmallWorkbookInMultipartBody(t *testing.T) {
 	var parts []multipartPart
 	var handlerErr error
-	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+	server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		if request.URL.Query().Get("overwrite") != "false" || request.URL.Query().Has("asJob") {
 			t.Fatalf("publish query = %s", request.URL.RawQuery)
 		}
@@ -461,7 +461,7 @@ func TestClientValidatesTWBAndSurfacesWarnings(t *testing.T) {
 	validationCalls, publishCalls := 0, 0
 	var validationParts []multipartPart
 	var handlerErr error
-	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+	server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		switch {
 		case strings.HasSuffix(request.URL.Path, "/workbooks/validateWorkbook"):
 			validationCalls++
@@ -500,7 +500,7 @@ func TestClientValidatesTWBAndSurfacesWarnings(t *testing.T) {
 
 func TestClientStopsTWBPublishOnValidationErrors(t *testing.T) {
 	publishCalls := 0
-	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+	server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		if strings.HasSuffix(request.URL.Path, "/workbooks/validateWorkbook") {
 			writer.Header().Set("Content-Type", "application/json")
 			writer.Header().Set("X-Tableau-Request-Id", "validation-request")
@@ -525,7 +525,7 @@ func TestClientStopsTWBPublishOnValidationErrors(t *testing.T) {
 
 func TestClientSkipsServerValidationForTWBX(t *testing.T) {
 	paths := []string{}
-	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+	server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		paths = append(paths, request.URL.Path)
 		writer.Header().Set("Content-Type", "application/xml")
 		writer.WriteHeader(http.StatusCreated)
@@ -593,7 +593,7 @@ func TestClientEscapesMultipartFilenames(t *testing.T) {
 	t.Run("direct publish", func(t *testing.T) {
 		filename := `Finance "Q1".twbx`
 		var parts []multipartPart
-		server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 			var err error
 			parts, err = readMultipart(request)
 			if err != nil {
@@ -620,7 +620,7 @@ func TestClientEscapesMultipartFilenames(t *testing.T) {
 	t.Run("upload append", func(t *testing.T) {
 		filename := "Finance\nQ1.twbx"
 		var appendParts []multipartPart
-		server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 			writer.Header().Set("Content-Type", "application/xml")
 			switch {
 			case request.Method == http.MethodPost && strings.HasSuffix(request.URL.Path, "/fileUploads"):
@@ -657,7 +657,7 @@ func TestClientEscapesMultipartFilenames(t *testing.T) {
 }
 
 func TestClientStopsPollingAtTimeout(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+	server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		writer.Header().Set("Content-Type", "application/xml")
 		if request.Method == http.MethodPost {
 			writer.Header().Set("X-Tableau-Request-Id", "publish-request-1")
@@ -683,7 +683,7 @@ func TestClientStopsPollingAtTimeout(t *testing.T) {
 }
 
 func TestClientReturnsFailingPollRequestID(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+	server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		writer.Header().Set("Content-Type", "application/xml")
 		if request.Method == http.MethodPost {
 			writer.Header().Set("X-Tableau-Request-Id", "publish-request")
@@ -711,7 +711,7 @@ func TestClientReturnsFailingPollRequestID(t *testing.T) {
 
 func TestClientRetainsLastPollRequestIDForProtocolFailure(t *testing.T) {
 	polls := 0
-	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+	server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		writer.Header().Set("Content-Type", "application/xml")
 		if request.Method == http.MethodPost {
 			writer.WriteHeader(http.StatusCreated)
@@ -737,7 +737,7 @@ func TestClientRetainsLastPollRequestIDForProtocolFailure(t *testing.T) {
 }
 
 func TestClientReturnsTerminalJobFailure(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+	server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		writer.Header().Set("Content-Type", "application/xml")
 		if request.Method == http.MethodPost {
 			writer.WriteHeader(http.StatusCreated)
@@ -758,7 +758,7 @@ func TestClientReturnsTerminalJobFailure(t *testing.T) {
 }
 
 func TestClientReportsUnknownWhenAcceptedPublishResponseCannotBeDecoded(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+	server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		writer.Header().Set("Content-Type", "application/xml")
 		writer.Header().Set("X-Tableau-Request-Id", "publish-request")
 		writer.WriteHeader(http.StatusCreated)
@@ -779,7 +779,7 @@ func TestClientReportsUnknownWhenAcceptedPublishResponseCannotBeDecoded(t *testi
 }
 
 func TestClientReportsUnknownWhenAcceptedPublishResponseCannotBeRead(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+	server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		writer.Header().Set("Content-Type", "application/xml")
 		writer.Header().Set("Content-Length", "1024")
 		writer.Header().Set("X-Tableau-Request-Id", "accepted-request")
@@ -823,7 +823,7 @@ func TestClientReportsUnknownWhenFinalPublishTransportFails(t *testing.T) {
 }
 
 func TestClientPollingTimeoutBoundsInFlightRequest(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+	server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		writer.Header().Set("Content-Type", "application/xml")
 		if request.Method == http.MethodPost {
 			writer.Header().Set("X-Tableau-Request-Id", "publish-request")
@@ -873,7 +873,7 @@ func TestClientRejectsIncompleteOrMismatchedTerminalJobResponses(t *testing.T) {
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+			server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 				writer.Header().Set("Content-Type", "application/xml")
 				if request.Method == http.MethodPost {
 					writer.Header().Set("X-Tableau-Request-Id", "publish-request")
@@ -901,9 +901,62 @@ func TestClientRejectsIncompleteOrMismatchedTerminalJobResponses(t *testing.T) {
 	}
 }
 
+func TestClientContinuesPollingAfterTransientPollError(t *testing.T) {
+	polls := 0
+	server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		writer.Header().Set("Content-Type", "application/xml")
+		if request.Method == http.MethodPost {
+			writer.WriteHeader(http.StatusCreated)
+			_, _ = io.WriteString(writer, `<tsResponse><job id="job-1" progress="0" finishCode="1"/></tsResponse>`)
+			return
+		}
+		polls++
+		if polls == 1 {
+			writer.Header().Set("Retry-After", "0")
+			writer.WriteHeader(http.StatusServiceUnavailable)
+			_, _ = io.WriteString(writer, `<tsResponse><error code="503000"><summary>Unavailable</summary></error></tsResponse>`)
+			return
+		}
+		writer.Header().Set("X-Tableau-Request-Id", "poll-success")
+		_, _ = io.WriteString(writer, `<tsResponse><job id="job-1" type="PublishWorkbook" progress="100" finishCode="0"/></tsResponse>`)
+	}))
+	defer server.Close()
+
+	client := tableauworkbook.NewClient(tableau.NewTransport(server.Client(), "3.29", nil), session{}, server.URL)
+	client.SetPollPolicy(time.Millisecond, 5*time.Second)
+	result, err := client.Publish(context.Background(), tableauworkbook.PublishRequest{
+		Name: "Finance", ProjectLUID: "project-1", Filename: "Finance.twbx", Content: []byte("small"), AsJob: true,
+	})
+	if err != nil {
+		t.Fatalf("Publish() error = %v", err)
+	}
+	if result.Status != "succeeded" || result.JobID != "job-1" || polls != 2 {
+		t.Fatalf("result = %#v, polls = %d", result, polls)
+	}
+}
+
+func TestClientSurfacesMalformedAPIVersionOnChunkedUpload(t *testing.T) {
+	server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+		writer.Header().Set("Content-Type", "application/xml")
+		writer.WriteHeader(http.StatusCreated)
+		_, _ = io.WriteString(writer, `<tsResponse><fileUpload uploadSessionId="upload-1"/></tsResponse>`)
+	}))
+	defer server.Close()
+
+	client := tableauworkbook.NewClient(tableau.NewTransport(server.Client(), "bogus", nil), session{}, server.URL)
+	client.SetUploadThreshold(1)
+	client.SetUploadChunkSize(3)
+	_, err := client.Publish(context.Background(), tableauworkbook.PublishRequest{
+		Name: "Finance", ProjectLUID: "project-1", Filename: "Finance.twbx", Content: []byte("large"),
+	})
+	if err == nil || !strings.Contains(err.Error(), "version") {
+		t.Fatalf("Publish() error = %v", err)
+	}
+}
+
 func TestClientRejectsMismatchedUploadAppendIdentity(t *testing.T) {
 	publishCalls := 0
-	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+	server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		writer.Header().Set("Content-Type", "application/xml")
 		switch {
 		case request.Method == http.MethodPost && strings.HasSuffix(request.URL.Path, "/fileUploads"):

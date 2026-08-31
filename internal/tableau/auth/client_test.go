@@ -82,6 +82,30 @@ func TestClientRejectsPlaintextPATSignInBeforeRequest(t *testing.T) {
 	}
 }
 
+func TestClientDoesNotLeakSessionTokenFromUndecodableSignInBody(t *testing.T) {
+	const token = "leaky-session-token"
+	server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+		writer.Header().Set("X-Tableau-Request-Id", "signin-request")
+		writer.Header().Set("Content-Type", "application/json")
+		// Valid JSON prefix carrying the token, then truncated so decoding fails.
+		_, _ = io.WriteString(writer, `{"credentials":{"token":"`+token+`","site":{"id":"s"},"user":{"id":"u"}`)
+	}))
+	defer server.Close()
+
+	client := tableauauth.NewClient(tableau.NewTransport(server.Client(), "3.29", nil))
+	_, err := client.SignIn(context.Background(), coreauth.SignInRequest{ServerURL: server.URL, PATName: "pat-name", PATSecret: "pat-secret"})
+	if err == nil {
+		t.Fatal("SignIn() succeeded with an undecodable body")
+	}
+	if strings.Contains(err.Error(), token) {
+		t.Fatalf("error leaked session token: %v", err)
+	}
+	var status interface{ HTTPStatus() int }
+	if !errors.As(err, &status) || status.HTTPStatus() != http.StatusOK || tableau.RequestID(err) != "signin-request" {
+		t.Fatalf("protocol error = %#v", err)
+	}
+}
+
 func TestClientClassifiesServiceUnavailableAsRetryable(t *testing.T) {
 	server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
 		writer.Header().Set("Content-Type", "application/json")
