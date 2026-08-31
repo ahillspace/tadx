@@ -271,6 +271,13 @@ func (s *FileStore) Search(ctx context.Context, query Query) (SearchResult, erro
 }
 
 func readGeneration(path string) ([]byte, error) {
+	pathInfo, err := os.Lstat(path)
+	if err != nil {
+		return nil, err
+	}
+	if !pathInfo.Mode().IsRegular() {
+		return nil, errors.New("catalog generation must be a regular file")
+	}
 	file, err := os.Open(path)
 	if err != nil {
 		return nil, err
@@ -279,6 +286,9 @@ func readGeneration(path string) ([]byte, error) {
 	info, err := file.Stat()
 	if err != nil {
 		return nil, err
+	}
+	if !info.Mode().IsRegular() {
+		return nil, errors.New("catalog generation must be a regular file")
 	}
 	if info.Size() > maxGenerationBytes {
 		return nil, fmt.Errorf("catalog generation exceeds %d-byte limit", maxGenerationBytes)

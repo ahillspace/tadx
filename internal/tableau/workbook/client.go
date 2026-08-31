@@ -19,6 +19,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/ahillspace/tadx/internal/auth"
@@ -93,6 +94,16 @@ type PublishResult struct {
 	ProjectLUID      string
 	JobID            string
 	TableauRequestID string
+}
+
+// PreparedPublish holds an uploaded, validated workbook until the final publish request.
+type PreparedPublish struct {
+	client      *Client
+	query       url.Values
+	body        []byte
+	contentType string
+	mu          sync.Mutex
+	committed   bool
 }
 
 // Client is the first released REST client family.
@@ -238,12 +249,21 @@ func (c *Client) Download(ctx context.Context, workbookLUID string, includeExtra
 
 // Publish uploads and publishes a workbook, then polls an explicit async job to a bounded terminal result.
 func (c *Client) Publish(ctx context.Context, input PublishRequest) (PublishResult, error) {
+	prepared, err := c.Prepare(ctx, input)
+	if err != nil {
+		return PublishResult{}, err
+	}
+	return prepared.Commit(ctx)
+}
+
+// Prepare validates and uploads a workbook without issuing the final publish request.
+func (c *Client) Prepare(ctx context.Context, input PublishRequest) (*PreparedPublish, error) {
 	if input.Name == "" || input.ProjectLUID == "" || input.Filename == "" {
-		return PublishResult{}, errors.New("workbook publish requires name, project LUID, and filename")
+		return nil, errors.New("workbook publish requires name, project LUID, and filename")
 	}
 	extension := strings.TrimPrefix(strings.ToLower(filepath.Ext(input.Filename)), ".")
 	if extension != "twb" && extension != "twbx" {
-		return PublishResult{}, fmt.Errorf("unsupported workbook type %q", extension)
+		return nil, fmt.Errorf("unsupported workbook type %q", extension)
 	}
 	plannedSize := int64(len(input.Content))
 	if input.ContentPath != "" {
@@ -251,12 +271,12 @@ func (c *Client) Publish(ctx context.Context, input PublishRequest) (PublishResu
 	}
 	if plannedSize > int64(c.uploadThreshold) {
 		if err := validateUploadBlocks(plannedSize, c.uploadChunkSize); err != nil {
-			return PublishResult{}, err
+			return nil, err
 		}
 	}
 	source, err := openPublishContent(ctx, input)
 	if err != nil {
-		return PublishResult{}, err
+		return nil, err
 	}
 	sourceOpen := true
 	closeSource := func() error {
@@ -273,20 +293,20 @@ func (c *Client) Publish(ctx context.Context, input PublishRequest) (PublishResu
 	if source.size > int64(c.uploadThreshold) {
 		uploadSessionID, err = c.upload(ctx, input.Filename, source.reader, source.size)
 		if err != nil {
-			return PublishResult{}, errors.Join(err, closeSource())
+			return nil, errors.Join(err, closeSource())
 		}
 	} else {
 		input.Content, err = readPublishContent(source.reader, source.size)
 		if err != nil {
-			return PublishResult{}, errors.Join(err, closeSource())
+			return nil, errors.Join(err, closeSource())
 		}
 	}
 	body, contentType, err := publishBody(input, uploadSessionID == "")
 	if err != nil {
-		return PublishResult{}, errors.Join(err, closeSource())
+		return nil, errors.Join(err, closeSource())
 	}
 	if err := closeSource(); err != nil {
-		return PublishResult{}, fmt.Errorf("remove workbook publish snapshot: %w", err)
+		return nil, fmt.Errorf("remove workbook publish snapshot: %w", err)
 	}
 	query := url.Values{"overwrite": {strconv.FormatBool(input.Overwrite)}}
 	if input.AsJob {
@@ -296,7 +316,23 @@ func (c *Client) Publish(ctx context.Context, input PublishRequest) (PublishResu
 		query.Set("uploadSessionId", uploadSessionID)
 		query.Set("workbookType", extension)
 	}
-	response, err := c.do(ctx, http.MethodPost, c.sitePath("workbooks"), query, body, contentType, "workbook.publish")
+	return &PreparedPublish{client: c, query: query, body: body, contentType: contentType}, nil
+}
+
+// Commit issues the final publish request exactly once.
+func (p *PreparedPublish) Commit(ctx context.Context) (PublishResult, error) {
+	if p == nil || p.client == nil {
+		return PublishResult{}, errors.New("workbook publish is not prepared")
+	}
+	p.mu.Lock()
+	if p.committed {
+		p.mu.Unlock()
+		return PublishResult{}, errors.New("prepared workbook publish was already committed")
+	}
+	p.committed = true
+	p.mu.Unlock()
+
+	response, err := p.client.do(ctx, http.MethodPost, p.client.sitePath("workbooks"), p.query, p.body, p.contentType, "workbook.publish")
 	if err != nil {
 		var status interface{ HTTPStatus() int }
 		if !errors.As(err, &status) || status.HTTPStatus() >= http.StatusOK && status.HTTPStatus() < http.StatusMultipleChoices {
@@ -315,7 +351,7 @@ func (c *Client) Publish(ctx context.Context, input PublishRequest) (PublishResu
 		result.Status = "succeeded"
 		return result, nil
 	}
-	terminal, err := c.pollJob(ctx, result.JobID)
+	terminal, err := p.client.pollJob(ctx, result.JobID)
 	if terminal.JobID == "" {
 		terminal.JobID = result.JobID
 	}
@@ -734,8 +770,18 @@ func normalizePagination(value *paginationXML, requestedNumber, requestedSize, i
 	if total < 0 || itemCount > size || total < itemCount {
 		return Page{}, fmt.Errorf("Tableau list response returned inconsistent pagination total %d, size %d, and item count %d", total, size, itemCount)
 	}
-	if number > 1 && total < (number-1)*size+itemCount {
+	pageIndex := int64(number - 1)
+	if pageIndex > int64(total)/int64(size) {
 		return Page{}, fmt.Errorf("Tableau list response total %d is inconsistent with page %d", total, number)
+	}
+	offset := pageIndex * int64(size)
+	remaining := int64(total) - offset
+	if remaining < 0 {
+		return Page{}, fmt.Errorf("Tableau list response total %d is inconsistent with page %d", total, number)
+	}
+	expected := min(int64(size), remaining)
+	if int64(itemCount) != expected {
+		return Page{}, fmt.Errorf("Tableau list response returned %d items for page %d; expected %d from total %d and size %d", itemCount, number, expected, total, size)
 	}
 	return Page{Number: number, Size: size, Total: total}, nil
 }

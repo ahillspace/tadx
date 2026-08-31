@@ -13,13 +13,15 @@ import (
 
 const adapterPageSize = 1000
 
+var errWorkbookAmbiguityProven = errors.New("workbook ambiguity proven")
+
 // Client is the narrow Tableau client family consumed by this adapter.
 type Client interface {
 	Get(context.Context, string) (tableauworkbook.Workbook, error)
 	List(context.Context, int, int) (tableauworkbook.WorkbookPage, error)
 	ListProjects(context.Context, int, int) (tableauworkbook.ProjectPage, error)
 	Download(context.Context, string, *bool) (tableauworkbook.Download, error)
-	Publish(context.Context, tableauworkbook.PublishRequest) (tableauworkbook.PublishResult, error)
+	Prepare(context.Context, tableauworkbook.PublishRequest) (*tableauworkbook.PreparedPublish, error)
 }
 
 // Workbook is the normalized resource identity.
@@ -73,7 +75,7 @@ func (a *Adapter) ResolveWorkbook(ctx context.Context, selector identity.Selecto
 		}
 		paths = newProjectPathIndex(projects)
 	}
-	items := make([]tableauworkbook.Workbook, 0)
+	itemsByLUID := make(map[string]tableauworkbook.Workbook, 2)
 	err := a.scanWorkbooks(ctx, func(item tableauworkbook.Workbook) error {
 		if selector.Name != "" && item.Name != selector.Name {
 			return nil
@@ -91,17 +93,37 @@ func (a *Adapter) ResolveWorkbook(ctx context.Context, selector identity.Selecto
 				return nil
 			}
 		}
-		items = append(items, item)
+		if item.LUID == "" {
+			return fmt.Errorf("matching workbook %q omitted its authoritative LUID", item.Name)
+		}
+		current, exists := itemsByLUID[item.LUID]
+		if !exists || workbookItemLess(item, current) {
+			itemsByLUID[item.LUID] = item
+		}
+		if !exists && len(itemsByLUID) == 2 {
+			return errWorkbookAmbiguityProven
+		}
 		return nil
 	})
-	if err != nil {
+	if err != nil && !errors.Is(err, errWorkbookAmbiguityProven) {
 		return Workbook{}, err
+	}
+	items := make([]tableauworkbook.Workbook, 0, len(itemsByLUID))
+	for _, item := range itemsByLUID {
+		items = append(items, item)
 	}
 	workbook, err := resolveWorkbook(selector, items, paths)
 	if err != nil || workbook.ProjectLUID == "" || paths != nil {
 		return workbook, err
 	}
 	return a.resolveSelectedProjectPath(ctx, workbook)
+}
+
+func workbookItemLess(left, right tableauworkbook.Workbook) bool {
+	if left.Name != right.Name {
+		return left.Name < right.Name
+	}
+	return left.ProjectName < right.ProjectName
 }
 
 func (a *Adapter) resolveSelectedProjectPath(ctx context.Context, workbook Workbook) (Workbook, error) {
@@ -151,11 +173,14 @@ func (a *Adapter) FindWorkbooks(ctx context.Context, name, projectLUID string) (
 			}
 			if _, exists := byLUID[item.LUID]; !exists {
 				byLUID[item.LUID] = normalizeWorkbook(item, item.ProjectName)
+				if len(byLUID) == 2 {
+					return errWorkbookAmbiguityProven
+				}
 			}
 		}
 		return nil
 	})
-	if err != nil {
+	if err != nil && !errors.Is(err, errWorkbookAmbiguityProven) {
 		return nil, err
 	}
 	matches := make([]Workbook, 0, len(byLUID))
@@ -249,9 +274,9 @@ func (a *Adapter) DownloadWorkbook(ctx context.Context, luid string, includeExtr
 	return a.client.Download(ctx, luid, includeExtract)
 }
 
-// PublishWorkbook publishes through the released workbook client family.
-func (a *Adapter) PublishWorkbook(ctx context.Context, input tableauworkbook.PublishRequest) (tableauworkbook.PublishResult, error) {
-	return a.client.Publish(ctx, input)
+// PrepareWorkbook uploads and validates content before the final publish request.
+func (a *Adapter) PrepareWorkbook(ctx context.Context, input tableauworkbook.PublishRequest) (*tableauworkbook.PreparedPublish, error) {
+	return a.client.Prepare(ctx, input)
 }
 
 func (a *Adapter) scanWorkbooks(ctx context.Context, visit func(tableauworkbook.Workbook) error) error {
@@ -290,7 +315,12 @@ func (a *Adapter) allProjects(ctx context.Context) ([]tableauworkbook.Project, e
 		if err != nil {
 			return nil, err
 		}
-		result = append(result, page.Items...)
+		for _, item := range page.Items {
+			if item.LUID == "" {
+				return nil, fmt.Errorf("project %q omitted its authoritative LUID", item.Name)
+			}
+			result = append(result, item)
+		}
 		if len(result) >= page.Page.Total || len(page.Items) == 0 {
 			return result, nil
 		}

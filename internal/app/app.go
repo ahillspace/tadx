@@ -282,13 +282,7 @@ func resolvedTarget(environmentAlias, site string, environment config.Environmen
 }
 
 func capabilitySetupError(id, operation, environment, site, summary, fallbackAction string, err error) error {
-	retryable, correctiveAction := errs.RetryAdvice(err)
-	if retryable == nil {
-		retryable = errs.Bool(false)
-	}
-	if correctiveAction == "" {
-		correctiveAction = fallbackAction
-	}
+	retryable, correctiveAction := errs.CompleteRetryAdvice(err, fallbackAction)
 	return &errs.Error{ID: id, Kind: errs.KindOperation, Operation: operation, Environment: environment, Site: site, Summary: summary, Cause: err, Retryable: retryable, CorrectiveAction: correctiveAction, TableauRequestID: errs.TableauRequestID(err)}
 }
 
@@ -313,8 +307,20 @@ func (a publishAdapter) FindWorkbooks(ctx context.Context, name, project string)
 	}
 	return result, err
 }
-func (a publishAdapter) Publish(ctx context.Context, input workbookpublish.PublishRequest) (workbookpublish.Result, error) {
-	result, err := a.adapter.PublishWorkbook(ctx, tableauworkbook.PublishRequest{Name: input.Name, ProjectLUID: input.ProjectLUID, Filename: input.Filename, ContentPath: input.ContentPath, ContentSize: input.ContentSize, ExpectedFingerprint: input.ExpectedFingerprint, Overwrite: input.Overwrite, AsJob: input.AsJob})
+func (a publishAdapter) Prepare(ctx context.Context, input workbookpublish.PublishRequest) (workbookpublish.PreparedPublish, error) {
+	prepared, err := a.adapter.PrepareWorkbook(ctx, tableauworkbook.PublishRequest{Name: input.Name, ProjectLUID: input.ProjectLUID, Filename: input.Filename, ContentPath: input.ContentPath, ContentSize: input.ContentSize, ExpectedFingerprint: input.ExpectedFingerprint, Overwrite: input.Overwrite, AsJob: input.AsJob})
+	if err != nil {
+		return nil, err
+	}
+	return preparedPublishAdapter{prepared: prepared}, nil
+}
+
+type preparedPublishAdapter struct {
+	prepared *tableauworkbook.PreparedPublish
+}
+
+func (a preparedPublishAdapter) Commit(ctx context.Context) (workbookpublish.Result, error) {
+	result, err := a.prepared.Commit(ctx)
 	return workbookpublish.Result{Status: result.Status, WorkbookLUID: result.WorkbookLUID, WorkbookName: result.WorkbookName, ProjectLUID: result.ProjectLUID, JobID: result.JobID, TableauRequestID: result.TableauRequestID}, err
 }
 

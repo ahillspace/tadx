@@ -50,8 +50,8 @@ func (client) Download(context.Context, string, *bool) (tableauworkbook.Download
 	return tableauworkbook.Download{}, nil
 }
 
-func (client) Publish(context.Context, tableauworkbook.PublishRequest) (tableauworkbook.PublishResult, error) {
-	return tableauworkbook.PublishResult{}, nil
+func (client) Prepare(context.Context, tableauworkbook.PublishRequest) (*tableauworkbook.PreparedPublish, error) {
+	return nil, nil
 }
 
 func TestAdapterResolvesExactWorkbookAcrossAllPages(t *testing.T) {
@@ -78,6 +78,35 @@ func TestAdapterHardFailsAmbiguousWorkbookSelector(t *testing.T) {
 	_, err := adapter.ResolveWorkbook(context.Background(), identity.Selector{Name: "Finance", ProjectPath: "Ops"})
 	if err == nil || !strings.Contains(err.Error(), "ambiguous") {
 		t.Fatalf("error = %v", err)
+	}
+}
+
+func TestAdapterStopsAfterTwoDistinctWorkbookMatches(t *testing.T) {
+	listCalls := 0
+	adapter := resource.NewAdapter(client{listCalls: &listCalls, pages: map[int]tableauworkbook.WorkbookPage{
+		1: {Page: tableauworkbook.Page{Number: 1, Size: 2, Total: 10000}, Items: []tableauworkbook.Workbook{
+			{LUID: "wb-1", Name: "Finance", ProjectName: "Ops"},
+			{LUID: "wb-2", Name: "Finance", ProjectName: "Ops"},
+		}},
+	}})
+	_, err := adapter.ResolveWorkbook(context.Background(), identity.Selector{Name: "Finance"})
+	if err == nil || !strings.Contains(err.Error(), "wb-1, wb-2") {
+		t.Fatalf("ResolveWorkbook() error = %v", err)
+	}
+	if listCalls != 1 {
+		t.Fatalf("list calls = %d", listCalls)
+	}
+}
+
+func TestAdapterRejectsMatchingWorkbookWithoutLUID(t *testing.T) {
+	adapter := resource.NewAdapter(client{pages: map[int]tableauworkbook.WorkbookPage{
+		1: {Page: tableauworkbook.Page{Number: 1, Size: 2, Total: 2}, Items: []tableauworkbook.Workbook{
+			{LUID: "wb-1", Name: "Finance", ProjectName: "Ops"},
+			{Name: "Finance", ProjectName: "Ops"},
+		}},
+	}})
+	if _, err := adapter.ResolveWorkbook(context.Background(), identity.Selector{Name: "Finance"}); err == nil || !strings.Contains(err.Error(), "authoritative LUID") {
+		t.Fatalf("ResolveWorkbook() error = %v", err)
 	}
 }
 
@@ -152,6 +181,15 @@ func TestAdapterResolvesExactNestedProjectPath(t *testing.T) {
 	}
 	if project.LUID != "child" || project.Path != "Department/Ops" {
 		t.Fatalf("project = %#v", project)
+	}
+}
+
+func TestAdapterRejectsProjectWithoutLUID(t *testing.T) {
+	adapter := resource.NewAdapter(client{projectPages: map[int]tableauworkbook.ProjectPage{
+		1: {Page: tableauworkbook.Page{Number: 1, Size: 1, Total: 1}, Items: []tableauworkbook.Project{{Name: "Ops"}}},
+	}})
+	if _, err := adapter.ResolveProject(context.Background(), identity.Selector{ProjectPath: "Ops"}); err == nil || !strings.Contains(err.Error(), "authoritative LUID") {
+		t.Fatalf("ResolveProject() error = %v", err)
 	}
 }
 

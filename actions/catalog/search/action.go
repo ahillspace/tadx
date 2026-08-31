@@ -23,12 +23,13 @@ func New(source Source) *Action { return &Action{source: source} }
 // Execute returns one bounded stable local page.
 func (a *Action) Execute(ctx context.Context, input Input) (Output, error) {
 	if a == nil || a.source == nil {
-		return Output{}, errs.New(errs.KindRuntime, "Catalog search is not configured.")
+		return Output{}, &errs.Error{ID: "catalog.search.unconfigured", Kind: errs.KindRuntime, Operation: "catalog.search", Summary: "Catalog search is not configured.", Retryable: errs.Bool(false), CorrectiveAction: "Configure a catalog source before retrying."}
 	}
 	if input.Limit < 0 || input.Limit > maxLimit {
 		message := "Catalog search limit must be nonnegative and at most 100."
 		return Output{}, &errs.Error{
 			ID: "catalog.search.usage", Kind: errs.KindUsage, Operation: "catalog.search", Summary: message,
+			Retryable: errs.Bool(false), CorrectiveAction: "Choose a limit from 0 through 100, then retry.",
 			Validation: []errs.ValidationDetail{{Field: "limit", Code: "range", Message: message}},
 		}
 	}
@@ -42,6 +43,7 @@ func (a *Action) Execute(ctx context.Context, input Input) (Output, error) {
 			message := "Catalog search cursor is invalid."
 			return Output{}, &errs.Error{
 				ID: "catalog.search.usage", Kind: errs.KindUsage, Operation: "catalog.search", Summary: message, Cause: err,
+				Retryable: errs.Bool(false), CorrectiveAction: "Start a new search without the invalid cursor.",
 				Validation: []errs.ValidationDetail{{Field: "cursor", Code: "invalid", Message: message}},
 			}
 		}

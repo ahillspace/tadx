@@ -89,6 +89,18 @@ func RetryAdvice(err error) (*bool, string) {
 	return Bool(carrier.Retryable()), carrier.CorrectiveAction()
 }
 
+// CompleteRetryAdvice preserves carried advice and supplies deterministic fallback guidance.
+func CompleteRetryAdvice(err error, fallback string) (*bool, string) {
+	retryable, correctiveAction := RetryAdvice(err)
+	if retryable == nil {
+		retryable = Bool(false)
+	}
+	if correctiveAction == "" {
+		correctiveAction = fallback
+	}
+	return retryable, correctiveAction
+}
+
 // TableauRequestID returns the first request ID carried by an error chain.
 func TableauRequestID(err error) string {
 	var structured *Error

@@ -14,30 +14,36 @@ import (
 	"github.com/ahillspace/tadx/internal/output"
 )
 
-type artifactReader struct{ artifact publish.Artifact }
+type artifactReader struct {
+	artifact publish.Artifact
+	err      error
+}
 
 func (r artifactReader) ReadWorkbook(context.Context, string) (publish.Artifact, error) {
-	return r.artifact, nil
+	return r.artifact, r.err
 }
 
 type resolver struct {
-	project  publish.Project
-	existing []publish.Workbook
+	project      publish.Project
+	existing     []publish.Workbook
+	projectErr   error
+	collisionErr error
 }
 
 func (r resolver) ResolveProject(context.Context, identity.Selector) (publish.Project, error) {
-	return r.project, nil
+	return r.project, r.projectErr
 }
 
 func (r resolver) FindWorkbooks(context.Context, string, string) ([]publish.Workbook, error) {
-	return r.existing, nil
+	return r.existing, r.collisionErr
 }
 
 type publisher struct {
-	calls  int
-	input  publish.PublishRequest
-	result publish.Result
-	err    error
+	calls     int
+	input     publish.PublishRequest
+	result    publish.Result
+	err       error
+	onPrepare func()
 }
 
 type changingResolver struct {
@@ -79,9 +85,16 @@ func (r *changingResolver) FindWorkbooks(context.Context, string, string) ([]pub
 	return result, nil
 }
 
-func (p *publisher) Publish(_ context.Context, input publish.PublishRequest) (publish.Result, error) {
-	p.calls++
+func (p *publisher) Prepare(_ context.Context, input publish.PublishRequest) (publish.PreparedPublish, error) {
 	p.input = input
+	if p.onPrepare != nil {
+		p.onPrepare()
+	}
+	return p, nil
+}
+
+func (p *publisher) Commit(context.Context) (publish.Result, error) {
+	p.calls++
 	return p.result, p.err
 }
 
@@ -144,6 +157,27 @@ func TestPlanRequiresExplicitWriteEnvironment(t *testing.T) {
 	}
 }
 
+func TestPlanCompletesPlanningErrorAdvice(t *testing.T) {
+	tests := []struct {
+		name      string
+		artifacts artifactReader
+		resolver  resolver
+	}{
+		{name: "artifact", artifacts: artifactReader{err: errors.New("artifact invalid")}, resolver: resolver{}},
+		{name: "project", artifacts: artifactReader{artifact: publish.Artifact{Path: "artifact", Filename: "Finance.twb", Name: "Finance"}}, resolver: resolver{projectErr: errors.New("project unavailable")}},
+		{name: "collision", artifacts: artifactReader{artifact: publish.Artifact{Path: "artifact", Filename: "Finance.twb", Name: "Finance"}}, resolver: resolver{project: publish.Project{LUID: "project-1"}, collisionErr: errors.New("list unavailable")}},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			_, err := publish.New(test.artifacts, test.resolver, &publisher{}).Plan(context.Background(), publish.Input{ArtifactPath: "artifact", Environment: "production", Site: "marketing", ProjectSelector: identity.Selector{LUID: "project-1"}})
+			payload := errs.Structure(err).Error
+			if payload.Retryable == nil || *payload.Retryable || payload.CorrectiveAction == "" || payload.Operation != "workbook.publish" {
+				t.Fatalf("structured error = %#v", payload)
+			}
+		})
+	}
+}
+
 func TestPlanAcceptsResolvedDefaultSite(t *testing.T) {
 	action := publish.New(
 		artifactReader{artifact: publish.Artifact{Path: `C:\workspace\Finance`, Filename: "Finance.twb", Name: "Finance"}},
@@ -182,6 +216,34 @@ func TestApplyRejectsChangedOverwriteTarget(t *testing.T) {
 	}
 	if p.calls != 0 {
 		t.Fatalf("publish calls = %d", p.calls)
+	}
+}
+
+func TestApplyRevalidatesOverwriteTargetAfterPublishPreparation(t *testing.T) {
+	r := &changingResolver{
+		project: publish.Project{LUID: "project-1", Path: "Ops"},
+		results: [][]publish.Workbook{
+			{{LUID: "wb-planned", Name: "Finance", ProjectLUID: "project-1"}},
+			{{LUID: "wb-planned", Name: "Finance", ProjectLUID: "project-1"}},
+			{{LUID: "wb-replacement", Name: "Finance", ProjectLUID: "project-1"}},
+		},
+	}
+	p := &publisher{}
+	action := publish.New(
+		artifactReader{artifact: publish.Artifact{Path: `C:\workspace\Finance`, Filename: "Finance.twb", Name: "Finance"}},
+		r, p,
+	)
+	plan, err := action.Plan(context.Background(), publish.Input{ArtifactPath: `C:\workspace\Finance`, Environment: "production", Site: "marketing", ProjectSelector: identity.Selector{LUID: "project-1"}, Overwrite: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = action.Apply(context.Background(), plan)
+	var structured *errs.Error
+	if !errors.As(err, &structured) || structured.ID != "workbook.overwrite.target_changed" {
+		t.Fatalf("error = %T %v", err, err)
+	}
+	if p.calls != 0 || r.findCall != 3 {
+		t.Fatalf("commit calls = %d, collision reads = %d", p.calls, r.findCall)
 	}
 }
 

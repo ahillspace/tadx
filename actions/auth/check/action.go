@@ -31,24 +31,19 @@ func New(environments EnvironmentResolver, authenticator Authenticator) *Action 
 // Execute signs in and returns only non-secret identity and target context.
 func (a *Action) Execute(ctx context.Context, input Input) (Output, error) {
 	if a == nil || a.environments == nil || a.authenticator == nil {
-		return Output{}, errs.New(errs.KindRuntime, "Authentication check is not configured.")
+		return Output{}, &errs.Error{ID: "auth.check.unconfigured", Kind: errs.KindRuntime, Operation: "auth.check", Summary: "Authentication check is not configured.", Retryable: errs.Bool(false), CorrectiveAction: "Configure authentication before retrying."}
 	}
 	target, err := a.environments.Resolve(ctx, input.Environment)
 	if err != nil {
-		return Output{}, &errs.Error{ID: "auth.environment.resolve", Kind: errs.KindOperation, Operation: "auth.check", Environment: input.Environment, Summary: "Environment resolution failed.", Cause: err}
+		retryable, correctiveAction := errs.CompleteRetryAdvice(err, "Review the selected environment configuration, then retry.")
+		return Output{}, &errs.Error{ID: "auth.environment.resolve", Kind: errs.KindOperation, Operation: "auth.check", Environment: input.Environment, Summary: "Environment resolution failed.", Cause: err, Retryable: retryable, CorrectiveAction: correctiveAction}
 	}
 	if target.Environment == "" || target.ServerURL == "" {
-		return Output{}, &errs.Error{ID: "auth.environment.invalid", Kind: errs.KindOperation, Operation: "auth.check", Environment: input.Environment, Summary: "Selected environment is incomplete.", Cause: errors.New("environment and server URL are required")}
+		return Output{}, &errs.Error{ID: "auth.environment.invalid", Kind: errs.KindOperation, Operation: "auth.check", Environment: input.Environment, Summary: "Selected environment is incomplete.", Cause: errors.New("environment and server URL are required"), Retryable: errs.Bool(false), CorrectiveAction: "Configure the environment name and Tableau server URL before retrying."}
 	}
 	result, err := a.authenticator.Authenticate(ctx, target)
 	if err != nil {
-		retryable, correctiveAction := errs.RetryAdvice(err)
-		if retryable == nil {
-			retryable = errs.Bool(false)
-		}
-		if correctiveAction == "" {
-			correctiveAction = "Verify the environment, site content URL, and PAT variable references."
-		}
+		retryable, correctiveAction := errs.CompleteRetryAdvice(err, "Verify the environment, site content URL, and PAT variable references.")
 		return Output{}, &errs.Error{ID: "auth.check.failed", Kind: errs.KindOperation, Operation: "auth.check", Environment: target.Environment, Site: target.SiteContentURL, Summary: "Authentication check failed.", Cause: err, Retryable: retryable, CorrectiveAction: correctiveAction, TableauRequestID: errs.TableauRequestID(err)}
 	}
 	return Output{Status: "authenticated", Environment: target.Environment, ServerURL: target.ServerURL, SiteContentURL: target.SiteContentURL, SiteLUID: result.SiteLUID, UserLUID: result.UserLUID}, nil

@@ -44,6 +44,7 @@ type Response struct {
 	Header           http.Header
 	Body             []byte
 	TableauRequestID string
+	redact           func(string) string
 }
 
 // UpstreamError preserves Tableau's stable error fields.
@@ -116,6 +117,9 @@ func (e *responseReadError) CorrectiveAction() string {
 
 // NewProtocolError creates a response-context carrier for protocol validation failures.
 func NewProtocolError(operation string, response Response, cause error, retryable bool) *ProtocolError {
+	if cause != nil && response.redact != nil {
+		cause = errors.New(response.redact(cause.Error()))
+	}
 	correctiveAction := "Inspect the remote operation outcome before retrying."
 	if retryable {
 		correctiveAction = "Retry after Tableau returns a complete valid response."
@@ -316,17 +320,21 @@ func (t *Transport) Do(ctx context.Context, session auth.Session, input Request)
 	requestID := redactText(tableauRequestID(response.Header), effectiveSecrets)
 	body, err := io.ReadAll(io.LimitReader(response.Body, maxResponseBytes+1))
 	if err != nil {
-		retryable, correctiveAction := responseReadAdvice(ctx, input.Method, input.Operation)
+		retryable, correctiveAction := responseReadAdvice(ctx, input.Method, input.Operation, response.StatusCode)
 		return Response{}, &responseReadError{operation: input.Operation, requestID: requestID, statusCode: response.StatusCode, cause: redact(err, effectiveSecrets), retryable: retryable, correctiveAction: correctiveAction}
 	}
 	if int64(len(body)) > maxResponseBytes {
 		return Response{}, &responseReadError{operation: input.Operation, requestID: requestID, statusCode: response.StatusCode, cause: fmt.Errorf("body exceeded %d-byte limit", maxResponseBytes), correctiveAction: "Reduce the response size or use a bounded streaming workflow."}
 	}
-	result := Response{StatusCode: response.StatusCode, Header: response.Header.Clone(), Body: body, TableauRequestID: requestID}
+	redactionSecrets := append([]string(nil), effectiveSecrets...)
+	result := Response{
+		StatusCode: response.StatusCode, Header: response.Header.Clone(), Body: body, TableauRequestID: requestID,
+		redact: func(value string) string { return redactText(value, redactionSecrets) },
+	}
 	if response.StatusCode >= 200 && response.StatusCode < 300 {
 		return result, nil
 	}
-	code, summary, detail := parseError(body)
+	code, summary, detail := parseError(body, effectiveSecrets)
 	return Response{}, &UpstreamError{
 		Operation: input.Operation, StatusCode: response.StatusCode, Code: redactText(code, effectiveSecrets),
 		Summary: redactText(summary, effectiveSecrets), Detail: redactText(detail, effectiveSecrets), TableauRequestID: requestID,
@@ -347,9 +355,12 @@ func requestAdvice(ctx context.Context, method, operation string, err error) (bo
 	return false, "Inspect the remote operation outcome before retrying."
 }
 
-func responseReadAdvice(ctx context.Context, method, operation string) (bool, string) {
+func responseReadAdvice(ctx context.Context, method, operation string, status int) (bool, string) {
 	if ctx.Err() != nil {
 		return false, "Run the operation again only if the cancellation was intentional and the remote outcome is known."
+	}
+	if status < http.StatusOK || status >= http.StatusMultipleChoices {
+		return upstreamAdvice(status)
 	}
 	if retrySafe(method, operation) {
 		return true, "Retry after Tableau returns a complete response."
@@ -417,7 +428,7 @@ func tableauRequestID(header http.Header) string {
 	return ""
 }
 
-func parseError(body []byte) (string, string, string) {
+func parseError(body []byte, secrets []string) (string, string, string) {
 	var jsonEnvelope struct {
 		Error struct {
 			Code    string `json:"code"`
@@ -438,17 +449,41 @@ func parseError(body []byte) (string, string, string) {
 	if xml.Unmarshal(body, &xmlEnvelope) == nil && (xmlEnvelope.Error.Code != "" || xmlEnvelope.Error.Summary != "") {
 		return xmlEnvelope.Error.Code, strings.TrimSpace(xmlEnvelope.Error.Summary), strings.TrimSpace(xmlEnvelope.Error.Detail)
 	}
-	return "", "Upstream request failed", diagnosticExcerpt(body)
+	return "", "Upstream request failed", diagnosticExcerpt(body, secrets)
 }
 
-func diagnosticExcerpt(body []byte) string {
+func diagnosticExcerpt(body []byte, secrets []string) string {
 	if len(body) <= maxUpstreamDiagnosticBytes {
-		return strings.TrimSpace(string(body))
+		return strings.TrimSpace(redactText(string(body), secrets))
 	}
 	const suffix = "\n[truncated]"
-	limit := maxUpstreamDiagnosticBytes - len(suffix)
+	limit := secretSafeCutoff(body, maxUpstreamDiagnosticBytes-len(suffix), secrets)
 	excerpt := strings.ToValidUTF8(string(body[:limit]), "�")
-	return strings.TrimSpace(excerpt) + suffix
+	return strings.TrimSpace(redactText(excerpt, secrets)) + suffix
+}
+
+func secretSafeCutoff(body []byte, limit int, secrets []string) int {
+	for {
+		cutoff := limit
+		for _, secret := range secrets {
+			if secret == "" || len(secret) > len(body) || len(secret) <= 1 {
+				continue
+			}
+			first := max(0, limit-len(secret)+1)
+			last := min(limit-1, len(body)-len(secret))
+			if first > last {
+				continue
+			}
+			window := body[first : last+len(secret)]
+			if offset := bytes.Index(window, []byte(secret)); offset >= 0 {
+				cutoff = min(cutoff, first+offset)
+			}
+		}
+		if cutoff == limit || cutoff == 0 {
+			return cutoff
+		}
+		limit = cutoff
+	}
 }
 
 func redact(err error, secrets []string) error {

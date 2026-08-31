@@ -14,10 +14,13 @@ import (
 	"github.com/ahillspace/tadx/internal/output"
 )
 
-type environmentResolver struct{ target check.Target }
+type environmentResolver struct {
+	target check.Target
+	err    error
+}
 
 func (r environmentResolver) Resolve(_ context.Context, _ string) (check.Target, error) {
-	return r.target, nil
+	return r.target, r.err
 }
 
 type authenticator struct {
@@ -68,6 +71,15 @@ func TestActionPreservesAuthenticationRetryAdvice(t *testing.T) {
 	}
 	payload := errs.Structure(err).Error
 	if payload.Retryable == nil || !*payload.Retryable || payload.CorrectiveAction != "Retry after Tableau recovers." {
+		t.Fatalf("structured error = %#v", payload)
+	}
+}
+
+func TestActionCompletesEnvironmentErrorAdvice(t *testing.T) {
+	action := check.New(environmentResolver{err: errors.New("profile missing")}, authenticator{})
+	_, err := action.Execute(context.Background(), check.Input{Environment: "production"})
+	payload := errs.Structure(err).Error
+	if payload.Retryable == nil || *payload.Retryable || payload.CorrectiveAction == "" || payload.Operation != "auth.check" {
 		t.Fatalf("structured error = %#v", payload)
 	}
 }

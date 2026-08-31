@@ -303,15 +303,18 @@ func TestTransportClassifiesResponseReadRetrySafety(t *testing.T) {
 		name      string
 		method    string
 		operation string
+		status    int
 		want      bool
 	}{
-		{name: "workbook read", method: http.MethodGet, operation: "workbook.list", want: true},
-		{name: "authentication", method: http.MethodPost, operation: "auth.check", want: true},
-		{name: "publish mutation", method: http.MethodPost, operation: "workbook.publish", want: false},
+		{name: "workbook read", method: http.MethodGet, operation: "workbook.list", status: http.StatusOK, want: true},
+		{name: "authentication", method: http.MethodPost, operation: "auth.check", status: http.StatusOK, want: true},
+		{name: "publish mutation", method: http.MethodPost, operation: "workbook.publish", status: http.StatusOK, want: false},
+		{name: "unauthorized authentication", method: http.MethodPost, operation: "auth.check", status: http.StatusUnauthorized, want: false},
+		{name: "unavailable workbook read", method: http.MethodGet, operation: "workbook.list", status: http.StatusServiceUnavailable, want: true},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			transport := NewTransport(&http.Client{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
-				return &http.Response{StatusCode: http.StatusOK, Header: make(http.Header), Body: errorReader{err: io.ErrUnexpectedEOF}}, nil
+				return &http.Response{StatusCode: test.status, Header: make(http.Header), Body: errorReader{err: io.ErrUnexpectedEOF}}, nil
 			})}, "3.29", nil)
 			_, err := transport.Do(context.Background(), nil, Request{Method: test.method, ServerURL: "https://tableau.example", Path: "/request", Operation: test.operation})
 			var advice interface {
@@ -370,5 +373,27 @@ func TestTransportBoundsUnstructuredUpstreamDiagnostic(t *testing.T) {
 	var upstream *UpstreamError
 	if !errors.As(err, &upstream) || len(upstream.Detail) > maxUpstreamDiagnosticBytes || !strings.HasSuffix(upstream.Detail, "[truncated]") {
 		t.Fatalf("upstream error = %#v", upstream)
+	}
+}
+
+func TestTransportRedactsSecretCrossingDiagnosticBoundary(t *testing.T) {
+	secret := "boundary-secret-value"
+	prefix := bytes.Repeat([]byte("x"), maxUpstreamDiagnosticBytes-len("\n[truncated]")-len(secret)/2)
+	body := append(prefix, []byte(secret)...)
+	body = append(body, bytes.Repeat([]byte("y"), maxUpstreamDiagnosticBytes)...)
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+		writer.WriteHeader(http.StatusBadGateway)
+		_, _ = writer.Write(body)
+	}))
+	defer server.Close()
+
+	transport := NewTransport(server.Client(), "3.29", nil)
+	_, err := transport.Do(context.Background(), nil, Request{Method: http.MethodGet, ServerURL: server.URL, Path: "/workbooks", Operation: "workbook.list", Secrets: []string{secret}})
+	var upstream *UpstreamError
+	if !errors.As(err, &upstream) {
+		t.Fatalf("error = %T %v", err, err)
+	}
+	if strings.Contains(upstream.Detail, secret) || strings.Contains(upstream.Detail, secret[:len(secret)/2]) || len(upstream.Detail) > maxUpstreamDiagnosticBytes || !strings.HasSuffix(upstream.Detail, "[truncated]") {
+		t.Fatalf("upstream detail = %q", upstream.Detail)
 	}
 }

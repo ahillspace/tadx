@@ -154,11 +154,10 @@ func (m *WorkbookManager) Pull(ctx context.Context, input WorkbookPull) (Workboo
 	if err := validateWorkbookMetadata(metadata); err != nil {
 		return WorkbookPullResult{}, err
 	}
-	metadataBytes, err := json.MarshalIndent(metadata, "", "  ")
+	metadataBytes, err := encodeWorkbookMetadata(metadata)
 	if err != nil {
-		return WorkbookPullResult{}, fmt.Errorf("encode workbook metadata: %w", err)
+		return WorkbookPullResult{}, err
 	}
-	metadataBytes = append(metadataBytes, '\n')
 	view := workbookView(metadata)
 	staging, err := os.MkdirTemp(root, ".tadx-workbook-stage-")
 	if err != nil {
@@ -176,6 +175,18 @@ func (m *WorkbookManager) Pull(ctx context.Context, input WorkbookPull) (Workboo
 	}
 	warnings = append(warnings, replacementWarnings...)
 	return WorkbookPullResult{ArtifactPath: target, CanonicalPath: filepath.Join(target, filename), BaselineFingerprint: baseline, Warnings: warnings}, nil
+}
+
+func encodeWorkbookMetadata(metadata WorkbookMetadata) ([]byte, error) {
+	data, err := json.MarshalIndent(metadata, "", "  ")
+	if err != nil {
+		return nil, fmt.Errorf("encode workbook metadata: %w", err)
+	}
+	data = append(data, '\n')
+	if len(data) > maxWorkbookMetadataBytes {
+		return nil, fmt.Errorf("workbook metadata exceeds %d-byte limit", maxWorkbookMetadataBytes)
+	}
+	return data, nil
 }
 
 // Read validates the current native workbook and returns its publishable file contract.

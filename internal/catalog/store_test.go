@@ -66,6 +66,18 @@ func TestFileStoreRejectsIncompleteGeneration(t *testing.T) {
 	}
 }
 
+func TestFileStoreRejectsNonregularGeneration(t *testing.T) {
+	root := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(root, "catalog", "production.json"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	store := catalog.NewFileStore(root, time.Now)
+	_, err := store.Search(context.Background(), catalog.Query{Environment: "production", SiteSelected: true})
+	if err == nil || !strings.Contains(err.Error(), "regular file") {
+		t.Fatalf("Search() error = %v", err)
+	}
+}
+
 func TestFileStoreRejectsDefaultSiteSourceMismatch(t *testing.T) {
 	root := t.TempDir()
 	writeGeneration(t, root, "production.json", catalog.Generation{

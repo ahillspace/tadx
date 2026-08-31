@@ -194,6 +194,26 @@ func TestWorkbookManagerRejectsIncompleteProvenanceBeforeStaging(t *testing.T) {
 	}
 }
 
+func TestWorkbookManagerRejectsOversizedMetadataBeforeStaging(t *testing.T) {
+	workspace := createWorkspace(t)
+	metadata := validMetadata("Finance", "wb-1")
+	metadata.SourceEnvironment = strings.Repeat("x", 64*1024)
+	manager := artifact.NewWorkbookManager(time.Now)
+	_, err := manager.Pull(context.Background(), artifact.WorkbookPull{
+		Workspace: workspace, Filename: "Finance.twb", Content: []byte("native-workbook"), Metadata: metadata,
+	})
+	if err == nil || !strings.Contains(err.Error(), "65536-byte limit") {
+		t.Fatalf("Pull() error = %v", err)
+	}
+	entries, readErr := os.ReadDir(filepath.Join(workspace, "artifacts", "workbook"))
+	if readErr != nil {
+		t.Fatal(readErr)
+	}
+	if len(entries) != 0 {
+		t.Fatalf("artifact entries = %#v", entries)
+	}
+}
+
 func TestWorkbookManagerUsesPortableBoundedPathComponents(t *testing.T) {
 	tests := []struct {
 		name      string

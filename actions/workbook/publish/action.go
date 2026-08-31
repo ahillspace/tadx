@@ -20,9 +20,14 @@ type Resolver interface {
 	FindWorkbooks(context.Context, string, string) ([]Workbook, error)
 }
 
-// Publisher performs the consequential remote mutation.
+// PreparedPublish is ready for the final consequential remote mutation.
+type PreparedPublish interface {
+	Commit(context.Context) (Result, error)
+}
+
+// Publisher prepares the publish content before the final target revalidation.
 type Publisher interface {
-	Publish(context.Context, PublishRequest) (Result, error)
+	Prepare(context.Context, PublishRequest) (PreparedPublish, error)
 }
 
 // Action orchestrates workbook.publish preview and apply.
@@ -40,7 +45,7 @@ func New(artifacts ArtifactReader, resolver Resolver, publisher Publisher) *Acti
 // Plan performs authoritative reads and returns a preview without mutation.
 func (a *Action) Plan(ctx context.Context, input Input) (Plan, error) {
 	if a == nil || a.artifacts == nil || a.resolver == nil || a.publisher == nil {
-		return Plan{}, errs.New(errs.KindRuntime, "Workbook publish is not configured.")
+		return Plan{}, unconfigured()
 	}
 	if input.Environment == "" {
 		return Plan{}, usage("environment", "an explicit write environment is required")
@@ -53,7 +58,8 @@ func (a *Action) Plan(ctx context.Context, input Input) (Plan, error) {
 	}
 	artifact, err := a.artifacts.ReadWorkbook(ctx, input.ArtifactPath)
 	if err != nil {
-		return Plan{}, &errs.Error{ID: "workbook.artifact.read", Kind: errs.KindOperation, Operation: "workbook.publish", Environment: input.Environment, Site: input.Site, Summary: "Workbook artifact read failed.", Cause: err}
+		retryable, correctiveAction := errs.CompleteRetryAdvice(err, "Repair or pull the exact workbook artifact, then review a new preview.")
+		return Plan{}, &errs.Error{ID: "workbook.artifact.read", Kind: errs.KindOperation, Operation: "workbook.publish", Environment: input.Environment, Site: input.Site, Summary: "Workbook artifact read failed.", Cause: err, Retryable: retryable, CorrectiveAction: correctiveAction}
 	}
 	name := input.Name
 	if name == "" {
@@ -68,17 +74,19 @@ func (a *Action) Plan(ctx context.Context, input Input) (Plan, error) {
 	}
 	project, err := a.resolver.ResolveProject(ctx, projectSelector)
 	if err != nil {
-		return Plan{}, &errs.Error{ID: "project.resolve.failed", Kind: errs.KindOperation, Operation: "workbook.publish", Environment: input.Environment, Site: input.Site, Summary: "Publish project resolution failed.", Cause: err, TableauRequestID: errs.TableauRequestID(err)}
+		retryable, correctiveAction := errs.CompleteRetryAdvice(err, "Review the exact destination project and target, then retry.")
+		return Plan{}, &errs.Error{ID: "project.resolve.failed", Kind: errs.KindOperation, Operation: "workbook.publish", Environment: input.Environment, Site: input.Site, Summary: "Publish project resolution failed.", Cause: err, Retryable: retryable, CorrectiveAction: correctiveAction, TableauRequestID: errs.TableauRequestID(err)}
 	}
 	existing, err := a.resolver.FindWorkbooks(ctx, name, project.LUID)
 	if err != nil {
-		return Plan{}, &errs.Error{ID: "workbook.collision.read", Kind: errs.KindOperation, Operation: "workbook.publish", Environment: input.Environment, Site: input.Site, Summary: "Workbook collision check failed.", Cause: err, TableauRequestID: errs.TableauRequestID(err)}
+		retryable, correctiveAction := errs.CompleteRetryAdvice(err, "Resolve the exact destination again before publishing.")
+		return Plan{}, &errs.Error{ID: "workbook.collision.read", Kind: errs.KindOperation, Operation: "workbook.publish", Environment: input.Environment, Site: input.Site, Summary: "Workbook collision check failed.", Cause: err, Retryable: retryable, CorrectiveAction: correctiveAction, TableauRequestID: errs.TableauRequestID(err)}
 	}
 	if len(existing) > 1 {
-		return Plan{}, &errs.Error{ID: "workbook.selector.ambiguous", Kind: errs.KindOperation, Operation: "workbook.publish", Environment: input.Environment, Site: input.Site, Summary: "Workbook publish target is ambiguous.", Cause: fmt.Errorf("%d workbooks named %q exist in project %q", len(existing), name, project.Path)}
+		return Plan{}, &errs.Error{ID: "workbook.selector.ambiguous", Kind: errs.KindOperation, Operation: "workbook.publish", Environment: input.Environment, Site: input.Site, Summary: "Workbook publish target is ambiguous.", Cause: fmt.Errorf("%d workbooks named %q exist in project %q", len(existing), name, project.Path), Retryable: errs.Bool(false), CorrectiveAction: "Select or rename one authoritative workbook target before publishing."}
 	}
 	if len(existing) == 1 && !input.Overwrite {
-		return Plan{}, &errs.Error{ID: "workbook.collision", Kind: errs.KindOperation, Operation: "workbook.publish", Resource: existing[0].LUID, Environment: input.Environment, Site: input.Site, Summary: "A workbook with this name already exists.", Cause: errors.New("use --overwrite to replace the exact existing workbook")}
+		return Plan{}, &errs.Error{ID: "workbook.collision", Kind: errs.KindOperation, Operation: "workbook.publish", Resource: existing[0].LUID, Environment: input.Environment, Site: input.Site, Summary: "A workbook with this name already exists.", Cause: errors.New("use --overwrite to replace the exact existing workbook"), Retryable: errs.Bool(false), CorrectiveAction: "Review the exact existing workbook, then use --overwrite only when replacement is intended."}
 	}
 	existingLUID := ""
 	if len(existing) == 1 {
@@ -98,7 +106,7 @@ func (a *Action) Plan(ctx context.Context, input Input) (Plan, error) {
 // Apply performs only the exact mutation request captured by Plan.
 func (a *Action) Apply(ctx context.Context, plan Plan) (Result, error) {
 	if a == nil || a.resolver == nil || a.publisher == nil {
-		return Result{}, errs.New(errs.KindRuntime, "Workbook publish is not configured.")
+		return Result{}, unconfigured()
 	}
 	if !plan.planned || plan.Operation != "workbook.publish" || plan.request.Name == "" || plan.request.ProjectLUID == "" {
 		return Result{}, usage("plan", "workbook publish apply requires a plan produced by Plan")
@@ -108,7 +116,20 @@ func (a *Action) Apply(ctx context.Context, plan Plan) (Result, error) {
 			return Result{}, err
 		}
 	}
-	result, err := a.publisher.Publish(ctx, plan.request)
+	prepared, err := a.publisher.Prepare(ctx, plan.request)
+	if err != nil {
+		retryable, correctiveAction := errs.CompleteRetryAdvice(err, "Review the artifact and upload response, then prepare the publish again.")
+		return Result{}, &errs.Error{ID: "workbook.publish.prepare", Kind: errs.KindOperation, Operation: "workbook.publish", Resource: plan.Target.ExistingLUID, Environment: plan.Target.Environment, Site: plan.Target.Site, Summary: "Workbook publish preparation failed.", Cause: err, Retryable: retryable, CorrectiveAction: correctiveAction, TableauRequestID: errs.TableauRequestID(err)}
+	}
+	if prepared == nil {
+		return Result{}, &errs.Error{ID: "workbook.publish.prepare", Kind: errs.KindRuntime, Operation: "workbook.publish", Resource: plan.Target.ExistingLUID, Environment: plan.Target.Environment, Site: plan.Target.Site, Summary: "Workbook publish preparation returned no commit operation.", Retryable: errs.Bool(false), CorrectiveAction: "Review the publish configuration before retrying."}
+	}
+	if plan.request.Overwrite {
+		if err := a.verifyOverwriteTarget(ctx, plan); err != nil {
+			return Result{}, err
+		}
+	}
+	result, err := prepared.Commit(ctx)
 	if err != nil {
 		requestID := result.TableauRequestID
 		if requestID == "" {
@@ -133,13 +154,7 @@ func (a *Action) Apply(ctx context.Context, plan Plan) (Result, error) {
 func (a *Action) verifyOverwriteTarget(ctx context.Context, plan Plan) error {
 	current, err := a.resolver.FindWorkbooks(ctx, plan.request.Name, plan.request.ProjectLUID)
 	if err != nil {
-		retryable, correctiveAction := errs.RetryAdvice(err)
-		if retryable == nil {
-			retryable = errs.Bool(false)
-		}
-		if correctiveAction == "" {
-			correctiveAction = "Resolve the exact destination again before publishing."
-		}
+		retryable, correctiveAction := errs.CompleteRetryAdvice(err, "Resolve the exact destination again before publishing.")
 		return &errs.Error{ID: "workbook.overwrite.revalidate", Kind: errs.KindOperation, Operation: "workbook.publish", Resource: plan.Target.ExistingLUID, Environment: plan.Target.Environment, Site: plan.Target.Site, Summary: "Workbook overwrite target revalidation failed.", Cause: err, Retryable: retryable, CorrectiveAction: correctiveAction, TableauRequestID: errs.TableauRequestID(err)}
 	}
 	expected := plan.Target.ExistingLUID
@@ -172,5 +187,9 @@ func (a *Action) Execute(ctx context.Context, input Input, apply bool) (Output, 
 }
 
 func usage(field, message string) error {
-	return &errs.Error{ID: "workbook.publish.usage", Kind: errs.KindUsage, Operation: "workbook.publish", Summary: message, Validation: []errs.ValidationDetail{{Field: field, Code: "required", Message: message}}}
+	return &errs.Error{ID: "workbook.publish.usage", Kind: errs.KindUsage, Operation: "workbook.publish", Summary: message, Retryable: errs.Bool(false), CorrectiveAction: "Correct the publish input and review a new preview.", Validation: []errs.ValidationDetail{{Field: field, Code: "required", Message: message}}}
+}
+
+func unconfigured() error {
+	return &errs.Error{ID: "workbook.publish.unconfigured", Kind: errs.KindRuntime, Operation: "workbook.publish", Summary: "Workbook publish is not configured.", Retryable: errs.Bool(false), CorrectiveAction: "Configure workbook publishing before retrying."}
 }

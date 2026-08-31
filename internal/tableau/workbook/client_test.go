@@ -29,6 +29,15 @@ func (session) SiteLUID() string                { return "site-1" }
 func (session) UserLUID() string                { return "user-1" }
 func (session) String() string                  { return "session" }
 
+type tokenSession string
+
+func (s tokenSession) Authorize(request *http.Request) {
+	request.Header.Set("X-Tableau-Auth", string(s))
+}
+func (tokenSession) SiteLUID() string { return "site-1" }
+func (tokenSession) UserLUID() string { return "user-1" }
+func (tokenSession) String() string   { return "session" }
+
 type roundTripFunc func(*http.Request) (*http.Response, error)
 
 func (function roundTripFunc) RoundTrip(request *http.Request) (*http.Response, error) {
@@ -89,6 +98,67 @@ func TestClientNormalizesClassicWorkbookPagination(t *testing.T) {
 	if page.Page.Number != 2 || page.Page.Size != 2 || page.Page.Total != 3 || len(page.Items) != 1 || page.Items[0].LUID != "wb-3" {
 		t.Fatalf("page = %#v", page)
 	}
+}
+
+func TestClientRejectsUnderfilledPagination(t *testing.T) {
+	tests := []struct {
+		name string
+		path string
+		body string
+		call func(*tableauworkbook.Client) error
+	}{
+		{
+			name: "workbooks",
+			path: "/api/3.29/sites/site-1/workbooks",
+			body: `<tsResponse><pagination pageNumber="1" pageSize="2" totalAvailable="3"/><workbooks><workbook id="wb-1" name="Finance"/></workbooks></tsResponse>`,
+			call: func(client *tableauworkbook.Client) error {
+				_, err := client.List(context.Background(), 1, 2)
+				return err
+			},
+		},
+		{
+			name: "projects",
+			path: "/api/3.29/sites/site-1/projects",
+			body: `<tsResponse><pagination pageNumber="1" pageSize="2" totalAvailable="3"/><projects><project id="project-1" name="Ops"/></projects></tsResponse>`,
+			call: func(client *tableauworkbook.Client) error {
+				_, err := client.ListProjects(context.Background(), 1, 2)
+				return err
+			},
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+				if request.URL.Path != test.path {
+					t.Fatalf("path = %q", request.URL.Path)
+				}
+				writer.Header().Set("X-Tableau-Request-Id", test.name+"-request")
+				_, _ = io.WriteString(writer, test.body)
+			}))
+			defer server.Close()
+			client := tableauworkbook.NewClient(tableau.NewTransport(server.Client(), "3.29", nil), session{}, server.URL)
+			err := test.call(client)
+			if err == nil || !strings.Contains(err.Error(), "expected 2") {
+				t.Fatalf("error = %v", err)
+			}
+			assertProtocolContext(t, err, http.StatusOK, test.name+"-request")
+		})
+	}
+}
+
+func TestClientRedactsSessionTokenFromSuccessfulProtocolError(t *testing.T) {
+	secret := "sensitive-session-token"
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+		writer.Header().Set("X-Tableau-Request-Id", "workbook-request")
+		_, _ = io.WriteString(writer, `<tsResponse><workbook id="`+secret+`" name="Finance"/></tsResponse>`)
+	}))
+	defer server.Close()
+	client := tableauworkbook.NewClient(tableau.NewTransport(server.Client(), "3.29", nil), tokenSession(secret), server.URL)
+	_, err := client.Get(context.Background(), "wb-1")
+	if err == nil || strings.Contains(err.Error(), secret) || !strings.Contains(err.Error(), "[REDACTED]") {
+		t.Fatalf("error = %v", err)
+	}
+	assertProtocolContext(t, err, http.StatusOK, "workbook-request")
 }
 
 func TestClientGetsWorkbookByAuthoritativeLUID(t *testing.T) {
@@ -307,6 +377,47 @@ func TestClientUsesUploadSessionAndBoundedJobPolling(t *testing.T) {
 	}
 	if payload.Workbook.Name != "Finance" || payload.Workbook.Project.ID != "project-1" {
 		t.Fatalf("publish payload = %#v", payload)
+	}
+}
+
+func TestClientDefersFinalPublishUntilPreparedCommit(t *testing.T) {
+	uploadCalls, publishCalls := 0, 0
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		writer.Header().Set("Content-Type", "application/xml")
+		switch {
+		case request.Method == http.MethodPost && strings.HasSuffix(request.URL.Path, "/fileUploads"):
+			uploadCalls++
+			writer.WriteHeader(http.StatusCreated)
+			_, _ = io.WriteString(writer, `<tsResponse><fileUpload uploadSessionId="upload-1"/></tsResponse>`)
+		case request.Method == http.MethodPut && strings.Contains(request.URL.Path, "/fileUploads/upload-1"):
+			uploadCalls++
+			_, _ = io.WriteString(writer, `<tsResponse><fileUpload uploadSessionId="upload-1"/></tsResponse>`)
+		case request.Method == http.MethodPost && strings.HasSuffix(request.URL.Path, "/workbooks"):
+			publishCalls++
+			writer.WriteHeader(http.StatusCreated)
+			_, _ = io.WriteString(writer, `<tsResponse><workbook id="wb-1" name="Finance"><project id="project-1"/></workbook></tsResponse>`)
+		default:
+			http.Error(writer, "unexpected request", http.StatusNotFound)
+		}
+	}))
+	defer server.Close()
+
+	client := tableauworkbook.NewClient(tableau.NewTransport(server.Client(), "3.29", nil), session{}, server.URL)
+	client.SetUploadThreshold(1)
+	client.SetUploadChunkSize(3)
+	prepared, err := client.Prepare(context.Background(), tableauworkbook.PublishRequest{Name: "Finance", ProjectLUID: "project-1", Filename: "Finance.twbx", Content: []byte("abc")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if uploadCalls != 2 || publishCalls != 0 {
+		t.Fatalf("upload calls = %d, publish calls = %d", uploadCalls, publishCalls)
+	}
+	result, err := prepared.Commit(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.WorkbookLUID != "wb-1" || publishCalls != 1 {
+		t.Fatalf("result = %#v, publish calls = %d", result, publishCalls)
 	}
 }
 

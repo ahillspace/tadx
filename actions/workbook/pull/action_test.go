@@ -97,6 +97,18 @@ func TestActionPreservesRetryAdviceForWorkbookReads(t *testing.T) {
 	}
 }
 
+func TestActionCompletesArtifactWriteErrorAdvice(t *testing.T) {
+	action := pull.New(&reader{
+		workbook: pull.Workbook{LUID: "wb-1", Name: "Finance"},
+		download: pull.Download{Filename: "Finance.twb", Content: []byte("native")},
+	}, &writer{err: errors.New("artifact is dirty")})
+	_, err := action.Execute(context.Background(), pull.Input{Environment: "production", Site: "marketing", Selector: identity.Selector{LUID: "wb-1"}})
+	payload := errs.Structure(err).Error
+	if payload.Retryable == nil || *payload.Retryable || payload.CorrectiveAction == "" || payload.Operation != "workbook.pull" {
+		t.Fatalf("structured error = %#v", payload)
+	}
+}
+
 func TestActionGoldenOutput(t *testing.T) {
 	value := pull.Output{
 		Status:   "pulled",
