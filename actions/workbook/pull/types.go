@@ -64,4 +64,5 @@ type Output struct {
 	Artifact  ArtifactResult `json:"artifact"`
 	Warnings  []string       `json:"warnings,omitempty"`
 	RequestID string         `json:"tableau_request_id,omitempty"`
+	Help      []string       `json:"help"`
 }

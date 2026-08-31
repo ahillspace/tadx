@@ -3,12 +3,14 @@ package list_test
 import (
 	"bytes"
 	"context"
+	"errors"
 	"os"
 	"reflect"
 	"strings"
 	"testing"
 
 	capabilitylist "github.com/ahillspace/tadx/actions/capability/list"
+	"github.com/ahillspace/tadx/internal/errs"
 	"github.com/ahillspace/tadx/internal/output"
 )
 
@@ -42,6 +44,21 @@ func TestExecuteSortsAndReturnsBoundedDiscovery(t *testing.T) {
 	}
 	if len(got.Help) == 0 {
 		t.Fatal("Help is empty")
+	}
+}
+
+func TestExecuteGuardsUnconfiguredSourceWithoutPanic(t *testing.T) {
+	for name, action := range map[string]*capabilitylist.Action{
+		"nil action": nil,
+		"nil source": capabilitylist.New(nil),
+	} {
+		t.Run(name, func(t *testing.T) {
+			_, err := action.Execute(context.Background(), capabilitylist.Input{})
+			var structured *errs.Error
+			if !errors.As(err, &structured) || structured.Kind != errs.KindRuntime || structured.ID != "capability.list.unconfigured" {
+				t.Fatalf("Execute() error = %#v", err)
+			}
+		})
 	}
 }
 

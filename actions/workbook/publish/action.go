@@ -59,7 +59,7 @@ func (a *Action) Plan(ctx context.Context, input Input) (Plan, error) {
 	artifact, err := a.artifacts.ReadWorkbook(ctx, input.ArtifactPath)
 	if err != nil {
 		retryable, correctiveAction := errs.CompleteRetryAdvice(err, "Repair or pull the exact workbook artifact, then review a new preview.")
-		return Plan{}, &errs.Error{ID: "workbook.artifact.read", Kind: errs.KindOperation, Operation: "workbook.publish", Environment: input.Environment, Site: input.Site, Summary: "Workbook artifact read failed.", Cause: err, Retryable: retryable, CorrectiveAction: correctiveAction}
+		return Plan{}, &errs.Error{ID: "workbook.publish.read", Kind: errs.KindOperation, Operation: "workbook.publish", Environment: input.Environment, Site: input.Site, Summary: "Workbook artifact read failed.", Cause: err, Retryable: retryable, CorrectiveAction: correctiveAction}
 	}
 	name := input.Name
 	if name == "" {
@@ -75,18 +75,18 @@ func (a *Action) Plan(ctx context.Context, input Input) (Plan, error) {
 	project, err := a.resolver.ResolveProject(ctx, projectSelector)
 	if err != nil {
 		retryable, correctiveAction := errs.CompleteRetryAdvice(err, "Review the exact destination project and target, then retry.")
-		return Plan{}, &errs.Error{ID: "project.resolve.failed", Kind: errs.KindOperation, Operation: "workbook.publish", Environment: input.Environment, Site: input.Site, Summary: "Publish project resolution failed.", Cause: err, Retryable: retryable, CorrectiveAction: correctiveAction, TableauRequestID: errs.TableauRequestID(err)}
+		return Plan{}, &errs.Error{ID: "workbook.publish.project", Kind: errs.KindOperation, Operation: "workbook.publish", Environment: input.Environment, Site: input.Site, Summary: "Publish project resolution failed.", Cause: err, Retryable: retryable, CorrectiveAction: correctiveAction, TableauRequestID: errs.TableauRequestID(err)}
 	}
 	existing, err := a.resolver.FindWorkbooks(ctx, name, project.LUID)
 	if err != nil {
 		retryable, correctiveAction := errs.CompleteRetryAdvice(err, "Resolve the exact destination again before publishing.")
-		return Plan{}, &errs.Error{ID: "workbook.collision.read", Kind: errs.KindOperation, Operation: "workbook.publish", Environment: input.Environment, Site: input.Site, Summary: "Workbook collision check failed.", Cause: err, Retryable: retryable, CorrectiveAction: correctiveAction, TableauRequestID: errs.TableauRequestID(err)}
+		return Plan{}, &errs.Error{ID: "workbook.publish.collision", Kind: errs.KindOperation, Operation: "workbook.publish", Environment: input.Environment, Site: input.Site, Summary: "Workbook collision check failed.", Cause: err, Retryable: retryable, CorrectiveAction: correctiveAction, TableauRequestID: errs.TableauRequestID(err)}
 	}
 	if len(existing) > 1 {
-		return Plan{}, &errs.Error{ID: "workbook.selector.ambiguous", Kind: errs.KindOperation, Operation: "workbook.publish", Environment: input.Environment, Site: input.Site, Summary: "Workbook publish target is ambiguous.", Cause: fmt.Errorf("%d workbooks named %q exist in project %q", len(existing), name, project.Path), Retryable: errs.Bool(false), CorrectiveAction: "Select or rename one authoritative workbook target before publishing."}
+		return Plan{}, &errs.Error{ID: "workbook.publish.ambiguous", Kind: errs.KindOperation, Operation: "workbook.publish", Environment: input.Environment, Site: input.Site, Summary: "Workbook publish target is ambiguous.", Cause: fmt.Errorf("%d workbooks named %q exist in project %q", len(existing), name, project.Path), Retryable: errs.Bool(false), CorrectiveAction: "Select or rename one authoritative workbook target before publishing."}
 	}
 	if len(existing) == 1 && !input.Overwrite {
-		return Plan{}, &errs.Error{ID: "workbook.collision", Kind: errs.KindOperation, Operation: "workbook.publish", Resource: existing[0].LUID, Environment: input.Environment, Site: input.Site, Summary: "A workbook with this name already exists.", Cause: errors.New("use --overwrite to replace the exact existing workbook"), Retryable: errs.Bool(false), CorrectiveAction: "Review the exact existing workbook, then use --overwrite only when replacement is intended."}
+		return Plan{}, &errs.Error{ID: "workbook.publish.conflict", Kind: errs.KindOperation, Operation: "workbook.publish", Resource: existing[0].LUID, Environment: input.Environment, Site: input.Site, Summary: "A workbook with this name already exists.", Cause: errors.New("use --overwrite to replace the exact existing workbook"), Retryable: errs.Bool(false), CorrectiveAction: "Review the exact existing workbook, then use --overwrite only when replacement is intended."}
 	}
 	existingLUID := ""
 	if len(existing) == 1 {
@@ -155,7 +155,7 @@ func (a *Action) verifyOverwriteTarget(ctx context.Context, plan Plan) error {
 	current, err := a.resolver.FindWorkbooks(ctx, plan.request.Name, plan.request.ProjectLUID)
 	if err != nil {
 		retryable, correctiveAction := errs.CompleteRetryAdvice(err, "Resolve the exact destination again before publishing.")
-		return &errs.Error{ID: "workbook.overwrite.revalidate", Kind: errs.KindOperation, Operation: "workbook.publish", Resource: plan.Target.ExistingLUID, Environment: plan.Target.Environment, Site: plan.Target.Site, Summary: "Workbook overwrite target revalidation failed.", Cause: err, Retryable: retryable, CorrectiveAction: correctiveAction, TableauRequestID: errs.TableauRequestID(err)}
+		return &errs.Error{ID: "workbook.publish.revalidate", Kind: errs.KindOperation, Operation: "workbook.publish", Resource: plan.Target.ExistingLUID, Environment: plan.Target.Environment, Site: plan.Target.Site, Summary: "Workbook overwrite target revalidation failed.", Cause: err, Retryable: retryable, CorrectiveAction: correctiveAction, TableauRequestID: errs.TableauRequestID(err)}
 	}
 	expected := plan.Target.ExistingLUID
 	if len(current) == 0 && expected == "" {
@@ -164,7 +164,7 @@ func (a *Action) verifyOverwriteTarget(ctx context.Context, plan Plan) error {
 	if len(current) == 1 && current[0].LUID == expected {
 		return nil
 	}
-	return &errs.Error{ID: "workbook.overwrite.target_changed", Kind: errs.KindOperation, Operation: "workbook.publish", Resource: expected, Environment: plan.Target.Environment, Site: plan.Target.Site, Summary: "Workbook overwrite target changed after planning.", Cause: fmt.Errorf("planned workbook LUID %q no longer matches the exact destination", expected), Retryable: errs.Bool(false), CorrectiveAction: "Review a new preview before publishing."}
+	return &errs.Error{ID: "workbook.publish.target_changed", Kind: errs.KindOperation, Operation: "workbook.publish", Resource: expected, Environment: plan.Target.Environment, Site: plan.Target.Site, Summary: "Workbook overwrite target changed after planning.", Cause: fmt.Errorf("planned workbook LUID %q no longer matches the exact destination", expected), Retryable: errs.Bool(false), CorrectiveAction: "Review a new preview before publishing."}
 }
 
 // Execute plans every invocation and applies only when explicitly requested.
@@ -173,7 +173,7 @@ func (a *Action) Execute(ctx context.Context, input Input, apply bool) (Output, 
 	if err != nil {
 		return Output{}, err
 	}
-	output := Output{Plan: plan, Applied: false}
+	output := Output{Plan: plan, Applied: false, Help: []string{"Re-run with --apply to publish this previewed change."}}
 	if !apply {
 		return output, nil
 	}
@@ -183,6 +183,7 @@ func (a *Action) Execute(ctx context.Context, input Input, apply bool) (Output, 
 	}
 	output.Applied = true
 	output.Result = &result
+	output.Help = []string{"tadx catalog search --environment <alias> to confirm the published workbook."}
 	return output, nil
 }
 

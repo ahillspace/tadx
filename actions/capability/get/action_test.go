@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	capabilityget "github.com/ahillspace/tadx/actions/capability/get"
+	"github.com/ahillspace/tadx/internal/errs"
 	"github.com/ahillspace/tadx/internal/output"
 )
 
@@ -29,6 +30,21 @@ func TestExecuteReturnsExactCapability(t *testing.T) {
 	}
 	if got.Capability.ID != want.ID || got.Capability.Command != want.Command {
 		t.Fatalf("Capability = %#v, want %#v", got.Capability, want)
+	}
+}
+
+func TestExecuteGuardsUnconfiguredSourceWithoutPanic(t *testing.T) {
+	for name, action := range map[string]*capabilityget.Action{
+		"nil action": nil,
+		"nil source": capabilityget.New(nil),
+	} {
+		t.Run(name, func(t *testing.T) {
+			_, err := action.Execute(context.Background(), capabilityget.Input{ID: "capability.get"})
+			var structured *errs.Error
+			if !errors.As(err, &structured) || structured.Kind != errs.KindRuntime || structured.ID != "capability.get.unconfigured" {
+				t.Fatalf("Execute() error = %#v", err)
+			}
+		})
 	}
 }
 

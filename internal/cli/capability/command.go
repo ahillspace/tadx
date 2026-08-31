@@ -6,7 +6,7 @@ import (
 
 	capabilityget "github.com/ahillspace/tadx/actions/capability/get"
 	capabilitylist "github.com/ahillspace/tadx/actions/capability/list"
-	"github.com/ahillspace/tadx/internal/errs"
+	"github.com/ahillspace/tadx/internal/cli/clierr"
 	"github.com/spf13/cobra"
 )
 
@@ -63,7 +63,7 @@ func newList(deps Dependencies) *cobra.Command {
 		},
 		Args: func(command *cobra.Command, args []string) error {
 			if err := cobra.NoArgs(command, args); err != nil {
-				return usageError("capability.list", err)
+				return clierr.Usage("capability.list", err)
 			}
 			return nil
 		},
@@ -101,7 +101,7 @@ func newGet(deps Dependencies) *cobra.Command {
 		},
 		Args: func(command *cobra.Command, args []string) error {
 			if err := cobra.ExactArgs(1)(command, args); err != nil {
-				return usageError("capability.get", err)
+				return clierr.Usage("capability.get", err)
 			}
 			return nil
 		},
@@ -116,7 +116,3 @@ func newGet(deps Dependencies) *cobra.Command {
 }
 
 const cliCapabilityAnnotation = "tadx.capability"
-
-func usageError(operation string, cause error) error {
-	return &errs.Error{Kind: errs.KindUsage, Operation: operation, Summary: cause.Error(), Cause: cause}
-}

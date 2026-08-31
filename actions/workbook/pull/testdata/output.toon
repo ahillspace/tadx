@@ -8,5 +8,7 @@ artifact:
   path: "C:\\workspace\\artifacts\\workbook\\Finance"
   canonical_path: "C:\\workspace\\artifacts\\workbook\\Finance\\Finance.twbx"
   baseline_fingerprint: "sha256:abc"
+  warnings[1]: existing clean artifact replaced
 warnings[1]: existing clean artifact replaced
 tableau_request_id: request-1
+help[1]: tadx content workbook publish --artifact <path> --environment <alias>

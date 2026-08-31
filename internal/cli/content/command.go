@@ -7,7 +7,7 @@ import (
 
 	workbookpublish "github.com/ahillspace/tadx/actions/workbook/publish"
 	workbookpull "github.com/ahillspace/tadx/actions/workbook/pull"
-	"github.com/ahillspace/tadx/internal/errs"
+	"github.com/ahillspace/tadx/internal/cli/clierr"
 	"github.com/spf13/cobra"
 )
 
@@ -61,10 +61,10 @@ func newPull(deps Dependencies) *cobra.Command {
 		Use: use, Short: short, Annotations: map[string]string{"tadx.capability": "workbook.pull"},
 		Args: func(command *cobra.Command, args []string) error {
 			if err := cobra.NoArgs(command, args); err != nil {
-				return usage("workbook.pull", err)
+				return clierr.Usage("workbook.pull", err)
 			}
 			if id == "" && name == "" {
-				return usage("workbook.pull", errors.New("one of --id or --name is required"))
+				return clierr.Usage("workbook.pull", errors.New("one of --id or --name is required"))
 			}
 			input.LUID, input.Name, input.ProjectPath = id, name, project
 			if command.Flags().Changed("include-extract") {
@@ -107,13 +107,13 @@ func newPublish(deps Dependencies) *cobra.Command {
 		Use: use, Short: short, Hidden: !deps.MutationsEnabled, Annotations: map[string]string{"tadx.capability": "workbook.publish"},
 		Args: func(command *cobra.Command, args []string) error {
 			if err := cobra.NoArgs(command, args); err != nil {
-				return usage("workbook.publish", err)
+				return clierr.Usage("workbook.publish", err)
 			}
 			if input.Environment == "" || input.ArtifactPath == "" {
-				return usage("workbook.publish", errors.New("--environment and --artifact are required"))
+				return clierr.Usage("workbook.publish", errors.New("--environment and --artifact are required"))
 			}
 			if projectID == "" && projectPath == "" {
-				return usage("workbook.publish", errors.New("one of --project-id or --project is required"))
+				return clierr.Usage("workbook.publish", errors.New("one of --project-id or --project is required"))
 			}
 			input.ProjectLUID, input.ProjectPath = projectID, projectPath
 			return nil
@@ -135,8 +135,4 @@ func newPublish(deps Dependencies) *cobra.Command {
 	command.Flags().BoolVar(&input.AsJob, "as-job", false, "publish asynchronously and poll to a bounded terminal result")
 	command.Flags().BoolVar(&apply, "apply", false, "apply the previewed remote mutation")
 	return command
-}
-
-func usage(operation string, cause error) error {
-	return &errs.Error{Kind: errs.KindUsage, Operation: operation, Summary: cause.Error(), Cause: cause}
 }

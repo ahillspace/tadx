@@ -15,8 +15,8 @@ import (
 	authcli "github.com/ahillspace/tadx/internal/cli/auth"
 	capabilitycli "github.com/ahillspace/tadx/internal/cli/capability"
 	catalogcli "github.com/ahillspace/tadx/internal/cli/catalog"
+	"github.com/ahillspace/tadx/internal/cli/clierr"
 	contentcli "github.com/ahillspace/tadx/internal/cli/content"
-	"github.com/ahillspace/tadx/internal/errs"
 	"github.com/spf13/cobra"
 )
 
@@ -148,7 +148,7 @@ func RegisteredCommands(root *cobra.Command) ([]RegisteredCommand, error) {
 
 func setFlagErrorHandlers(command *cobra.Command) {
 	command.SetFlagErrorFunc(func(command *cobra.Command, cause error) error {
-		return &errs.Error{Kind: errs.KindUsage, Operation: command.CommandPath(), Summary: cause.Error(), Cause: cause}
+		return clierr.Usage(command.CommandPath(), cause)
 	})
 	for _, child := range command.Commands() {
 		setFlagErrorHandlers(child)

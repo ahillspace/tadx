@@ -5,7 +5,7 @@ import (
 	"context"
 
 	search "github.com/ahillspace/tadx/actions/catalog/search"
-	"github.com/ahillspace/tadx/internal/errs"
+	"github.com/ahillspace/tadx/internal/cli/clierr"
 	"github.com/spf13/cobra"
 )
 
@@ -41,7 +41,7 @@ func New(deps Dependencies) *cobra.Command {
 		Use: use, Short: short, Annotations: map[string]string{"tadx.capability": "catalog.search"},
 		Args: func(command *cobra.Command, args []string) error {
 			if err := cobra.MaximumNArgs(1)(command, args); err != nil {
-				return usage("catalog.search", err)
+				return clierr.Usage("catalog.search", err)
 			}
 			if len(args) == 1 {
 				input.Text = args[0]
@@ -66,8 +66,4 @@ func New(deps Dependencies) *cobra.Command {
 	searchCommand.Flags().IntVar(&input.Limit, "limit", 20, "maximum records to return")
 	command.AddCommand(searchCommand)
 	return command
-}
-
-func usage(operation string, cause error) error {
-	return &errs.Error{Kind: errs.KindUsage, Operation: operation, Summary: cause.Error(), Cause: cause}
 }

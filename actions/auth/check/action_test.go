@@ -85,9 +85,10 @@ func TestActionCompletesEnvironmentErrorAdvice(t *testing.T) {
 }
 
 func TestActionGoldenOutput(t *testing.T) {
-	value := check.Output{
-		Status: "authenticated", Environment: "production", ServerURL: "https://example.test",
-		SiteContentURL: "marketing", SiteLUID: "site-1", UserLUID: "user-1",
+	target := check.Target{Environment: "production", ServerURL: "https://example.test", SiteContentURL: "marketing"}
+	value, err := check.New(environmentResolver{target: target}, authenticator{result: check.Authentication{SiteLUID: "site-1", UserLUID: "user-1"}}).Execute(context.Background(), check.Input{Environment: "production"})
+	if err != nil {
+		t.Fatal(err)
 	}
 	var actual bytes.Buffer
 	if err := output.Render(&actual, value); err != nil {

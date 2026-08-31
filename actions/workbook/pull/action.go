@@ -38,10 +38,14 @@ func (a *Action) Execute(ctx context.Context, input Input) (Output, error) {
 	if selector.LUID == "" && selector.Name == "" && selector.ProjectPath == "" {
 		selector = identity.Selector{LUID: identity.LUID(input.LUID), Name: input.Name, ProjectPath: input.ProjectPath}
 	}
+	if selector.LUID == "" && selector.Name == "" {
+		message := "One of workbook LUID or name is required."
+		return Output{}, &errs.Error{ID: "workbook.pull.usage", Kind: errs.KindUsage, Operation: "workbook.pull", Summary: message, Retryable: errs.Bool(false), CorrectiveAction: "Provide --id or --name, then retry.", Validation: []errs.ValidationDetail{{Field: "selector", Code: "required", Message: "one of --id or --name is required"}}}
+	}
 	workbook, err := a.reader.ResolveWorkbook(ctx, selector)
 	if err != nil {
 		retryable, correctiveAction := errs.CompleteRetryAdvice(err, "Review the exact workbook selector and target, then retry.")
-		return Output{}, &errs.Error{ID: "workbook.resolve.failed", Kind: errs.KindOperation, Operation: "workbook.pull", Environment: input.Environment, Site: input.Site, Summary: "Workbook resolution failed.", Cause: err, Retryable: retryable, CorrectiveAction: correctiveAction, TableauRequestID: errs.TableauRequestID(err)}
+		return Output{}, &errs.Error{ID: "workbook.pull.resolve", Kind: errs.KindOperation, Operation: "workbook.pull", Environment: input.Environment, Site: input.Site, Summary: "Workbook resolution failed.", Cause: err, Retryable: retryable, CorrectiveAction: correctiveAction, TableauRequestID: errs.TableauRequestID(err)}
 	}
 	download, err := a.reader.DownloadWorkbook(ctx, workbook.LUID, input.IncludeExtract)
 	if err != nil {
@@ -50,7 +54,7 @@ func (a *Action) Execute(ctx context.Context, input Input) (Output, error) {
 		if requestID == "" {
 			requestID = errs.TableauRequestID(err)
 		}
-		return Output{}, &errs.Error{ID: "workbook.download.failed", Kind: errs.KindOperation, Operation: "workbook.pull", Resource: workbook.LUID, Environment: input.Environment, Site: input.Site, Summary: "Workbook download failed.", Cause: err, Retryable: retryable, CorrectiveAction: correctiveAction, TableauRequestID: requestID}
+		return Output{}, &errs.Error{ID: "workbook.pull.download", Kind: errs.KindOperation, Operation: "workbook.pull", Resource: workbook.LUID, Environment: input.Environment, Site: input.Site, Summary: "Workbook download failed.", Cause: err, Retryable: retryable, CorrectiveAction: correctiveAction, TableauRequestID: requestID}
 	}
 	artifact, err := a.writer.WriteWorkbook(ctx, Artifact{
 		Workspace: input.Workspace, Filename: download.Filename, Content: download.Content,
@@ -60,7 +64,7 @@ func (a *Action) Execute(ctx context.Context, input Input) (Output, error) {
 	})
 	if err != nil {
 		retryable, correctiveAction := errs.CompleteRetryAdvice(err, "Resolve the local artifact conflict or use --overwrite after reviewing the current files.")
-		return Output{}, &errs.Error{ID: "workbook.artifact.write", Kind: errs.KindOperation, Operation: "workbook.pull", Resource: workbook.LUID, Environment: input.Environment, Site: input.Site, Summary: "Workbook artifact write failed.", Cause: err, Retryable: retryable, CorrectiveAction: correctiveAction, TableauRequestID: download.TableauRequestID}
+		return Output{}, &errs.Error{ID: "workbook.pull.write", Kind: errs.KindOperation, Operation: "workbook.pull", Resource: workbook.LUID, Environment: input.Environment, Site: input.Site, Summary: "Workbook artifact write failed.", Cause: err, Retryable: retryable, CorrectiveAction: correctiveAction, TableauRequestID: download.TableauRequestID}
 	}
-	return Output{Status: "pulled", Workbook: workbook, Artifact: artifact, Warnings: artifact.Warnings, RequestID: download.TableauRequestID}, nil
+	return Output{Status: "pulled", Workbook: workbook, Artifact: artifact, Warnings: artifact.Warnings, RequestID: download.TableauRequestID, Help: []string{"tadx content workbook publish --artifact <path> --environment <alias>"}}, nil
 }

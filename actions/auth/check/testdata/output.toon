@@ -4,3 +4,4 @@ server_url: "https://example.test"
 site_content_url: marketing
 site_luid: site-1
 user_luid: user-1
+help[1]: tadx catalog search --environment <alias>

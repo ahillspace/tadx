@@ -211,7 +211,7 @@ func TestApplyRejectsChangedOverwriteTarget(t *testing.T) {
 	}
 	_, err = action.Apply(context.Background(), plan)
 	var structured *errs.Error
-	if !errors.As(err, &structured) || structured.ID != "workbook.overwrite.target_changed" {
+	if !errors.As(err, &structured) || structured.ID != "workbook.publish.target_changed" {
 		t.Fatalf("error = %T %v", err, err)
 	}
 	if p.calls != 0 {
@@ -239,7 +239,7 @@ func TestApplyRevalidatesOverwriteTargetAfterPublishPreparation(t *testing.T) {
 	}
 	_, err = action.Apply(context.Background(), plan)
 	var structured *errs.Error
-	if !errors.As(err, &structured) || structured.ID != "workbook.overwrite.target_changed" {
+	if !errors.As(err, &structured) || structured.ID != "workbook.publish.target_changed" {
 		t.Fatalf("error = %T %v", err, err)
 	}
 	if p.calls != 0 || r.findCall != 3 {

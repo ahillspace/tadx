@@ -23,10 +23,11 @@ type Authentication struct {
 
 // Output is the stable authenticated target result.
 type Output struct {
-	Status         string `json:"status"`
-	Environment    string `json:"environment"`
-	ServerURL      string `json:"server_url"`
-	SiteContentURL string `json:"site_content_url"`
-	SiteLUID       string `json:"site_luid"`
-	UserLUID       string `json:"user_luid,omitempty"`
+	Status         string   `json:"status"`
+	Environment    string   `json:"environment"`
+	ServerURL      string   `json:"server_url"`
+	SiteContentURL string   `json:"site_content_url"`
+	SiteLUID       string   `json:"site_luid"`
+	UserLUID       string   `json:"user_luid,omitempty"`
+	Help           []string `json:"help"`
 }

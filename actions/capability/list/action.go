@@ -33,6 +33,9 @@ func New(source Source) *Action {
 
 // Execute returns a deterministic, bounded capability inventory.
 func (a *Action) Execute(ctx context.Context, input Input) (Output, error) {
+	if a == nil || a.source == nil {
+		return Output{}, &errs.Error{ID: "capability.list.unconfigured", Kind: errs.KindRuntime, Operation: "capability.list", Summary: "Capability list is not configured.", Retryable: errs.Bool(false), CorrectiveAction: "Configure a capability source before retrying."}
+	}
 	if input.Mutation != nil && *input.Mutation && !input.MutationsEnabled {
 		return Output{}, usageError("mutation discovery is disabled; set TADX_ENABLE_MUTATIONS=1")
 	}
@@ -127,5 +130,5 @@ func commandArgument(value string) string {
 }
 
 func usageError(summary string) error {
-	return &errs.Error{Kind: errs.KindUsage, Operation: "capability.list", Summary: summary}
+	return &errs.Error{ID: "capability.list.usage", Kind: errs.KindUsage, Operation: "capability.list", Summary: summary}
 }

@@ -5,7 +5,7 @@ import (
 	"context"
 
 	authcheck "github.com/ahillspace/tadx/actions/auth/check"
-	"github.com/ahillspace/tadx/internal/errs"
+	"github.com/ahillspace/tadx/internal/cli/clierr"
 	"github.com/spf13/cobra"
 )
 
@@ -41,7 +41,7 @@ func New(deps Dependencies) *cobra.Command {
 		Use: use, Short: short, Annotations: map[string]string{"tadx.capability": "auth.check"},
 		Args: func(command *cobra.Command, args []string) error {
 			if err := cobra.NoArgs(command, args); err != nil {
-				return usage("auth.check", err)
+				return clierr.Usage("auth.check", err)
 			}
 			return nil
 		},
@@ -56,8 +56,4 @@ func New(deps Dependencies) *cobra.Command {
 	check.Flags().StringVar(&environment, "environment", "", "exact environment alias; defaults to configured read environment")
 	command.AddCommand(check)
 	return command
-}
-
-func usage(operation string, cause error) error {
-	return &errs.Error{Kind: errs.KindUsage, Operation: operation, Summary: cause.Error(), Cause: cause}
 }

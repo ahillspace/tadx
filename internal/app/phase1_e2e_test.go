@@ -106,6 +106,58 @@ func TestPhaseOneWorkbookPullAndPublishThroughCLIDefaultSite(t *testing.T) {
 	}
 }
 
+func TestPhaseOneAuthCheckHappyPathThroughCLI(t *testing.T) {
+	server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		if request.Method == http.MethodPost && request.URL.Path == "/api/3.29/auth/signin" {
+			writer.Header().Set("Content-Type", "application/json")
+			_, _ = io.WriteString(writer, `{"credentials":{"token":"session-token","site":{"id":"site-1"},"user":{"id":"user-1"}}}`)
+			return
+		}
+		http.Error(writer, "unexpected request", http.StatusNotFound)
+	}))
+	defer server.Close()
+
+	configPath := writePhaseOneConfig(t, server.URL)
+	t.Setenv("PROD_PAT_NAME", "pat-name")
+	t.Setenv("PROD_PAT_SECRET", "pat-secret")
+	options := app.Options{ConfigPath: configPath, HTTPClient: server.Client(), CorrelationID: func() string { return "auth-e2e" }}
+
+	var stdout strings.Builder
+	if exit := app.Run(context.Background(), []string{"auth", "check", "--environment", "production"}, &stdout, options); exit != 0 {
+		t.Fatalf("auth check exit = %d, output = %s", exit, stdout.String())
+	}
+	output := stdout.String()
+	for _, want := range []string{"status: authenticated", "environment: production", "site_luid: site-1", "user_luid: user-1", "help[1]:"} {
+		if !strings.Contains(output, want) {
+			t.Fatalf("auth check output missing %q: %s", want, output)
+		}
+	}
+}
+
+func TestPhaseOneCatalogSearchHappyPathThroughCLI(t *testing.T) {
+	configPath := writePhaseOneConfigWithSite(t, "https://tableau.example.com", "marketing")
+	generation := `{"id":"generation-1","environment":"production","site":"marketing","generated_at":"2026-08-30T12:00:00Z","complete":true,"records":[{"luid":"wb-1","kind":"workbook","name":"Finance","project_path":"Ops","owner":"alice"}]}`
+	catalogDir := filepath.Join(filepath.Dir(configPath), "catalog")
+	if err := os.MkdirAll(catalogDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(catalogDir, "production.json"), []byte(generation), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	options := app.Options{ConfigPath: configPath, Now: func() time.Time { return time.Date(2026, 8, 30, 12, 0, 0, 0, time.UTC) }}
+
+	var stdout strings.Builder
+	if exit := app.Run(context.Background(), []string{"catalog", "search", "--environment", "production"}, &stdout, options); exit != 0 {
+		t.Fatalf("catalog search exit = %d, output = %s", exit, stdout.String())
+	}
+	output := stdout.String()
+	for _, want := range []string{"returned: 1", "total: 1", "id: generation-1", "wb-1", "help[1]:"} {
+		if !strings.Contains(output, want) {
+			t.Fatalf("catalog search output missing %q: %s", want, output)
+		}
+	}
+}
+
 func TestWorkbookArtifactCreatedByE2EIsReadable(t *testing.T) {
 	workspace := t.TempDir()
 	if err := os.WriteFile(filepath.Join(workspace, "tadx.yaml"), []byte("version: 1\n"), 0o600); err != nil {
@@ -120,8 +172,13 @@ func TestWorkbookArtifactCreatedByE2EIsReadable(t *testing.T) {
 
 func writePhaseOneConfig(t *testing.T, serverURL string) string {
 	t.Helper()
+	return writePhaseOneConfigWithSite(t, serverURL, "")
+}
+
+func writePhaseOneConfigWithSite(t *testing.T, serverURL, site string) string {
+	t.Helper()
 	path := filepath.Join(t.TempDir(), "config.yaml")
-	contents := fmt.Sprintf("version: 1\ndefault_environment: production\nenvironments:\n  production:\n    url: %s\n    site_content_url: \"\"\n    api_version: \"3.29\"\n    auth:\n      type: pat\n      pat_name_env: PROD_PAT_NAME\n      pat_secret_env: PROD_PAT_SECRET\n", serverURL)
+	contents := fmt.Sprintf("version: 1\ndefault_environment: production\nenvironments:\n  production:\n    url: %s\n    site_content_url: %q\n    api_version: \"3.29\"\n    auth:\n      type: pat\n      pat_name_env: PROD_PAT_NAME\n      pat_secret_env: PROD_PAT_SECRET\n", serverURL, site)
 	if err := os.WriteFile(path, []byte(contents), 0o600); err != nil {
 		t.Fatal(err)
 	}

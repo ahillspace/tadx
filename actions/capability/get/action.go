@@ -33,10 +33,13 @@ func New(source Source) *Action {
 
 // Execute returns one exact capability definition.
 func (a *Action) Execute(ctx context.Context, input Input) (Output, error) {
+	if a == nil || a.source == nil {
+		return Output{}, &errs.Error{ID: "capability.get.unconfigured", Kind: errs.KindRuntime, Operation: "capability.get", Summary: "Capability get is not configured.", Retryable: errs.Bool(false), CorrectiveAction: "Configure a capability source before retrying."}
+	}
 	id := strings.TrimSpace(input.ID)
 	if id == "" {
 		return Output{}, &errs.Error{
-			ID:         "capability.id.required",
+			ID:         "capability.get.usage",
 			Kind:       errs.KindUsage,
 			Operation:  "capability.get",
 			Summary:    ErrIDRequired.Error(),
@@ -47,7 +50,7 @@ func (a *Action) Execute(ctx context.Context, input Input) (Output, error) {
 	item, ok := a.source.Get(ctx, id)
 	if !ok {
 		return Output{}, &errs.Error{
-			ID:               "capability.not_found",
+			ID:               "capability.get.not_found",
 			Kind:             errs.KindOperation,
 			Operation:        "capability.get",
 			Selector:         id,

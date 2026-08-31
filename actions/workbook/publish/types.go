@@ -100,7 +100,8 @@ type Result struct {
 
 // Output keeps the applied result attached to the exact previewed plan.
 type Output struct {
-	Plan    Plan    `json:"plan"`
-	Applied bool    `json:"applied"`
-	Result  *Result `json:"result,omitempty"`
+	Plan    Plan     `json:"plan"`
+	Applied bool     `json:"applied"`
+	Result  *Result  `json:"result,omitempty"`
+	Help    []string `json:"help"`
 }

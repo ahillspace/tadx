@@ -19,10 +19,12 @@ type reader struct {
 	download      pull.Download
 	resolveErr    error
 	downloadErr   error
+	resolveCalls  int
 	downloadCalls int
 }
 
 func (r *reader) ResolveWorkbook(context.Context, identity.Selector) (pull.Workbook, error) {
+	r.resolveCalls++
 	return r.workbook, r.resolveErr
 }
 
@@ -72,6 +74,19 @@ func TestActionPullsOneResolvedWorkbookIntoArtifact(t *testing.T) {
 	}
 }
 
+func TestActionRejectsMissingSelectorAsUsageBeforeResolving(t *testing.T) {
+	r := &reader{}
+	w := &writer{}
+	_, err := pull.New(r, w).Execute(context.Background(), pull.Input{Environment: "production", Site: "marketing", Workspace: `C:\workspace`, ProjectPath: "Ops"})
+	var structured *errs.Error
+	if !errors.As(err, &structured) || structured.Kind != errs.KindUsage {
+		t.Fatalf("Execute() error = %#v", err)
+	}
+	if r.resolveCalls != 0 || r.downloadCalls != 0 || w.calls != 0 {
+		t.Fatalf("collaborators invoked: resolve=%d download=%d write=%d", r.resolveCalls, r.downloadCalls, w.calls)
+	}
+}
+
 func TestActionLeavesArtifactWriterUntouchedWhenDownloadFails(t *testing.T) {
 	r := &reader{workbook: pull.Workbook{LUID: "wb-1"}, downloadErr: errors.New("download forbidden")}
 	w := &writer{}
@@ -113,11 +128,20 @@ func TestActionCompletesArtifactWriteErrorAdvice(t *testing.T) {
 }
 
 func TestActionGoldenOutput(t *testing.T) {
-	value := pull.Output{
-		Status:   "pulled",
-		Workbook: pull.Workbook{LUID: "wb-1", Name: "Finance", ProjectLUID: "project-1", ProjectPath: "Ops"},
-		Artifact: pull.ArtifactResult{Path: `C:\workspace\artifacts\workbook\Finance`, CanonicalPath: `C:\workspace\artifacts\workbook\Finance\Finance.twbx`, BaselineFingerprint: "sha256:abc"},
-		Warnings: []string{"existing clean artifact replaced"}, RequestID: "request-1",
+	value, err := pull.New(&reader{
+		workbook: pull.Workbook{LUID: "wb-1", Name: "Finance", ProjectLUID: "project-1", ProjectPath: "Ops"},
+		download: pull.Download{Filename: "Finance.twbx", Content: []byte("native"), TableauRequestID: "request-1"},
+	}, &writer{result: pull.ArtifactResult{
+		Path:                `C:\workspace\artifacts\workbook\Finance`,
+		CanonicalPath:       `C:\workspace\artifacts\workbook\Finance\Finance.twbx`,
+		BaselineFingerprint: "sha256:abc",
+		Warnings:            []string{"existing clean artifact replaced"},
+	}}).Execute(context.Background(), pull.Input{
+		Environment: "production", Site: "marketing", Workspace: `C:\workspace`,
+		Selector: identity.Selector{LUID: "wb-1", Name: "Finance", ProjectPath: "Ops"},
+	})
+	if err != nil {
+		t.Fatal(err)
 	}
 	var actual bytes.Buffer
 	if err := output.Render(&actual, value); err != nil {
