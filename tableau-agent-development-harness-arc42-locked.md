@@ -802,7 +802,7 @@ No extra production-only confirmation.
 
 - ambiguity,
 - authentication,
-- required explicit write target,
+- required write-target resolution,
 - Tableau's own permission enforcement,
 - `--apply`.
 
@@ -1125,7 +1125,7 @@ pulled_at
 local_baseline_fingerprint
 ```
 
-The artifact does not store a publish target.
+The recorded source (`source_environment`, `source_site`, `name`, `tableau_id`) is the default publish target when the artifact is later published; an explicit `--environment` overrides it, for example to promote to a different environment. Apply re-resolves the recorded LUID against Tableau and fails deterministically if it was renamed, moved, or deleted rather than overwriting a different resource. A recorded source environment absent from local configuration is a deterministic error.
 
 ## 8.3 Composable datasources
 
@@ -1765,7 +1765,7 @@ The upstream compact structured text format used by default for TADX CLI output.
 
 ## Workspace
 
-A named local artifact-oriented working area. It may contain resources from multiple environments and does not persist a publish target.
+A named local artifact-oriented working area. It may contain resources from multiple environments. Each artifact records its own source origin, which is the default publish target for that artifact.
 
 ---
 

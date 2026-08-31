@@ -767,7 +767,7 @@ Preview and publish one local datasource, including explicit immediate-parent re
 - Operation type: deliver
 - Owner: cli
 - MCP overlap: None
-- Selectors: Workspace artifact; explicit environment/site/project; optional exact existing datasource; immediate parents for composed artifacts
+- Selectors: Workspace artifact; target defaults to artifact source, explicit environment/site/project overrides; optional exact existing datasource; immediate parents for composed artifacts
 - Products and availability: Cloud / Server; composed path API 3.29 / Tableau 2026.2 per C1
 - Product disposition: ship
 - Evidence level: docs-only
@@ -777,7 +777,7 @@ Preview and publish one local datasource, including explicit immediate-parent re
 - Remote mutation: Yes
 - Requires `--apply`: Yes
 - Raw capable: No
-- Safety and guard: Overwrite/append/replace never inferred; explicit write target; stop on terminal failure
+- Safety and guard: Overwrite/append/replace never inferred; preview shows resolved environment/name/LUID; stop on terminal failure
 - Artifact effect: Read / publish
 - Upstream operation: POST /api/{version}/sites/{site-id}/datasources; upload sessions; parentDataSourceUrls for composed path
 - Evidence: A1 §§6.5–6.8, 8.3, ADR-022; C1 §§2.4, 5.5
@@ -1079,7 +1079,7 @@ Preview and publish one local TFL/TFLX to an explicit project.
 - Operation type: deliver
 - Owner: cli
 - MCP overlap: None
-- Selectors: Workspace artifact; explicit environment/site/project; optional exact existing flow
+- Selectors: Workspace artifact; target defaults to artifact source, explicit environment/site/project overrides; optional exact existing flow
 - Products and availability: Cloud / Server with flow support
 - Product disposition: ship
 - Evidence level: docs-only
@@ -1089,7 +1089,7 @@ Preview and publish one local TFL/TFLX to an explicit project.
 - Remote mutation: Yes
 - Requires `--apply`: Yes
 - Raw capable: No
-- Safety and guard: Explicit write target; overwrite explicit
+- Safety and guard: Preview shows resolved environment/name/LUID; overwrite explicit
 - Artifact effect: Read / publish
 - Upstream operation: POST /api/{version}/sites/{site-id}/flows; upload sessions for large files
 - Evidence: A1 §§6.5–6.8; C1 §§2.5, 5.6
@@ -1209,7 +1209,7 @@ Preview and deliver one shallow project package without hidden mapping decisions
 - Operation type: deliver
 - Owner: cli
 - MCP overlap: None
-- Selectors: Project manifest/direct artifacts; explicit target mappings
+- Selectors: Project manifest/direct artifacts; target defaults to artifact source, explicit target mappings override
 - Products and availability: Cloud / Server
 - Product disposition: ship
 - Evidence level: docs-only
@@ -1755,7 +1755,7 @@ Preview and publish one local workbook to an explicit target.
 - Operation type: deliver
 - Owner: cli
 - MCP overlap: None
-- Selectors: Workspace artifact; explicit environment/site/project; optional exact existing workbook
+- Selectors: Workspace artifact; target defaults to artifact source, explicit environment/site/project overrides; optional exact existing workbook
 - Products and availability: Cloud / Server; TWB validation API only on API 3.29 / Tableau 2026.2+ per C1
 - Product disposition: ship
 - Evidence level: contract-verified
@@ -1765,7 +1765,7 @@ Preview and publish one local workbook to an explicit target.
 - Remote mutation: Yes
 - Requires `--apply`: Yes
 - Raw capable: No
-- Safety and guard: Explicit write environment; collision/overwrite explicit; no fuzzy target
+- Safety and guard: Preview shows resolved environment/name/LUID; collision/overwrite explicit; no fuzzy target
 - Artifact effect: Read / publish
 - Upstream operation: POST /api/{version}/sites/{site-id}/workbooks; upload sessions; optional internal validateWorkbook for TWB
 - Evidence: A1 §§5.11, 6.5–6.8, 8.6; C1 §§2.3, 5.4; S1 workbook-check correction; local official REST capture
