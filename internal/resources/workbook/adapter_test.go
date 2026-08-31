@@ -74,6 +74,22 @@ func TestAdapterReturnsIdentityWinnerForDuplicateWorkbookLUID(t *testing.T) {
 	}
 }
 
+func TestAdapterDeduplicatesCollisionMatchesByWorkbookLUID(t *testing.T) {
+	adapter := resource.NewAdapter(client{pages: map[int]tableauworkbook.WorkbookPage{
+		1: {Page: tableauworkbook.Page{Number: 1, Size: 100, Total: 2}, Items: []tableauworkbook.Workbook{
+			{LUID: "wb-1", Name: "Finance", ContentURL: "finance", ProjectLUID: "project-1", ProjectName: "Ops"},
+			{LUID: "wb-1", Name: "Finance", ContentURL: "finance", ProjectLUID: "project-1", ProjectName: "Ops"},
+		}},
+	}})
+	matches, err := adapter.FindWorkbooks(context.Background(), "Finance", "project-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(matches) != 1 || matches[0].LUID != "wb-1" {
+		t.Fatalf("matches = %#v", matches)
+	}
+}
+
 func TestAdapterResolvesExactNestedProjectPath(t *testing.T) {
 	adapter := resource.NewAdapter(client{projectPages: map[int]tableauworkbook.ProjectPage{
 		1: {Page: tableauworkbook.Page{Number: 1, Size: 100, Total: 2}, Items: []tableauworkbook.Project{

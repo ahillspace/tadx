@@ -21,12 +21,13 @@ type WorkbookMetadata struct {
 	Name                     string `json:"name"`
 	TableauID                string `json:"tableau_id"`
 	SourceEnvironment        string `json:"source_environment,omitempty"`
-	SourceSite               string `json:"source_site,omitempty"`
+	SourceSite               string `json:"source_site"`
 	SourceProjectName        string `json:"source_project_name,omitempty"`
 	SourceProjectID          string `json:"source_project_id,omitempty"`
 	PulledAt                 string `json:"pulled_at"`
 	CanonicalPayload         string `json:"canonical_payload"`
 	LocalBaselineFingerprint string `json:"local_baseline_fingerprint"`
+	sourceSitePresent        bool
 }
 
 // WorkbookPull is one complete local workbook replacement request.
@@ -111,9 +112,17 @@ func (m *WorkbookManager) Pull(ctx context.Context, input WorkbookPull) (Workboo
 				return WorkbookPullResult{}, fmt.Errorf("artifact path %q is not a managed workbook artifact: %w", target, readErr)
 			}
 			if metadata.TableauID != input.Metadata.TableauID {
-				return WorkbookPullResult{}, fmt.Errorf("artifact path %q belongs to Tableau ID %q", target, metadata.TableauID)
+				target = filepath.Join(root, collisionComponent(input.Metadata.Name, input.Metadata.TableauID))
+				metadata, info, readErr = inspectManagedTarget(root, target, input.Metadata.TableauID)
+				if readErr != nil {
+					return WorkbookPullResult{}, readErr
+				}
+				if info != nil {
+					existing = &metadata
+				}
+			} else {
+				existing = &metadata
 			}
-			existing = &metadata
 		} else if !errors.Is(statErr, os.ErrNotExist) {
 			return WorkbookPullResult{}, statErr
 		}
@@ -144,6 +153,10 @@ func (m *WorkbookManager) Pull(ctx context.Context, input WorkbookPull) (Workboo
 	metadata.PulledAt = m.now().UTC().Format(time.RFC3339Nano)
 	metadata.CanonicalPayload = filename
 	metadata.LocalBaselineFingerprint = baseline
+	metadata.sourceSitePresent = true
+	if err := validateWorkbookMetadata(metadata); err != nil {
+		return WorkbookPullResult{}, err
+	}
 	metadataBytes, err := json.MarshalIndent(metadata, "", "  ")
 	if err != nil {
 		return WorkbookPullResult{}, fmt.Errorf("encode workbook metadata: %w", err)
@@ -223,6 +236,9 @@ func validateWorkbookMetadata(metadata WorkbookMetadata) error {
 		if strings.TrimSpace(field.value) == "" {
 			return fmt.Errorf("workbook artifact metadata requires %s", field.name)
 		}
+	}
+	if !metadata.sourceSitePresent {
+		return errors.New("workbook artifact metadata requires source_site")
 	}
 	if _, err := time.Parse(time.RFC3339Nano, metadata.PulledAt); err != nil {
 		return fmt.Errorf("workbook artifact metadata has invalid pulled_at: %w", err)
@@ -347,7 +363,41 @@ func readMetadata(directory string) (WorkbookMetadata, error) {
 	if err := json.Unmarshal(data, &metadata); err != nil {
 		return WorkbookMetadata{}, fmt.Errorf("decode workbook metadata in %q: %w", directory, err)
 	}
+	var fields map[string]json.RawMessage
+	if err := json.Unmarshal(data, &fields); err != nil {
+		return WorkbookMetadata{}, fmt.Errorf("decode workbook metadata fields in %q: %w", directory, err)
+	}
+	if rawSite, exists := fields["source_site"]; exists {
+		var site *string
+		if err := json.Unmarshal(rawSite, &site); err == nil && site != nil {
+			metadata.sourceSitePresent = true
+		}
+	}
 	return metadata, nil
+}
+
+func inspectManagedTarget(root, target, tableauID string) (WorkbookMetadata, os.FileInfo, error) {
+	info, err := os.Lstat(target)
+	if errors.Is(err, os.ErrNotExist) {
+		return WorkbookMetadata{}, nil, nil
+	}
+	if err != nil {
+		return WorkbookMetadata{}, nil, err
+	}
+	if err := validateContainedPath(root, target); err != nil {
+		return WorkbookMetadata{}, nil, err
+	}
+	if !info.IsDir() {
+		return WorkbookMetadata{}, nil, fmt.Errorf("artifact path %q is not a managed workbook directory", target)
+	}
+	metadata, err := readMetadata(target)
+	if err != nil {
+		return WorkbookMetadata{}, nil, fmt.Errorf("artifact path %q is not a managed workbook artifact: %w", target, err)
+	}
+	if metadata.TableauID != tableauID {
+		return WorkbookMetadata{}, nil, fmt.Errorf("artifact path %q belongs to Tableau ID %q", target, metadata.TableauID)
+	}
+	return metadata, info, nil
 }
 
 func canonicalWorkbookPath(directory, payload string) (string, error) {
@@ -447,6 +497,12 @@ func safeName(value string) string {
 
 const maxPortableComponentBytes = 180
 
+func collisionComponent(name, tableauID string) string {
+	sum := sha256.Sum256([]byte(tableauID))
+	suffix := "-" + hex.EncodeToString(sum[:8])
+	return portableComponent(name, "workbook", maxPortableComponentBytes-len(suffix)) + suffix
+}
+
 func portableComponent(value, fallback string, maxBytes int) string {
 	original := strings.TrimSpace(value)
 	result := safeName(value)
@@ -479,8 +535,9 @@ func windowsReservedComponent(value string) bool {
 	case "CON", "PRN", "AUX", "NUL", "CONIN$", "CONOUT$":
 		return true
 	}
-	if len(base) == 4 && base[3] >= '1' && base[3] <= '9' {
-		return base[:3] == "COM" || base[:3] == "LPT"
+	runes := []rune(base)
+	if len(runes) == 4 && (string(runes[:3]) == "COM" || string(runes[:3]) == "LPT") {
+		return runes[3] >= '1' && runes[3] <= '9' || runes[3] == '¹' || runes[3] == '²' || runes[3] == '³'
 	}
 	return false
 }

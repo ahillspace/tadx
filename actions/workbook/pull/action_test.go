@@ -14,33 +14,38 @@ import (
 )
 
 type reader struct {
-	workbook pull.Workbook
-	download pull.Download
-	err      error
+	workbook      pull.Workbook
+	download      pull.Download
+	resolveErr    error
+	downloadErr   error
+	downloadCalls int
 }
 
-func (r reader) ResolveWorkbook(context.Context, identity.Selector) (pull.Workbook, error) {
-	return r.workbook, r.err
+func (r *reader) ResolveWorkbook(context.Context, identity.Selector) (pull.Workbook, error) {
+	return r.workbook, r.resolveErr
 }
 
-func (r reader) DownloadWorkbook(context.Context, string, *bool) (pull.Download, error) {
-	return r.download, r.err
+func (r *reader) DownloadWorkbook(context.Context, string, *bool) (pull.Download, error) {
+	r.downloadCalls++
+	return r.download, r.downloadErr
 }
 
 type writer struct {
 	input  pull.Artifact
 	result pull.ArtifactResult
 	err    error
+	calls  int
 }
 
 func (w *writer) WriteWorkbook(_ context.Context, input pull.Artifact) (pull.ArtifactResult, error) {
+	w.calls++
 	w.input = input
 	return w.result, w.err
 }
 
 func TestActionPullsOneResolvedWorkbookIntoArtifact(t *testing.T) {
 	w := &writer{result: pull.ArtifactResult{Path: `C:\workspace\artifacts\workbook\Finance`, BaselineFingerprint: "sha256:abc"}}
-	action := pull.New(reader{
+	action := pull.New(&reader{
 		workbook: pull.Workbook{LUID: "wb-1", Name: "Finance", ProjectLUID: "project-1", ProjectPath: "Ops"},
 		download: pull.Download{Filename: "Finance.twbx", Content: []byte("native")},
 	}, w)
@@ -58,11 +63,12 @@ func TestActionPullsOneResolvedWorkbookIntoArtifact(t *testing.T) {
 }
 
 func TestActionLeavesArtifactWriterUntouchedWhenDownloadFails(t *testing.T) {
+	r := &reader{workbook: pull.Workbook{LUID: "wb-1"}, downloadErr: errors.New("download forbidden")}
 	w := &writer{}
-	action := pull.New(reader{workbook: pull.Workbook{LUID: "wb-1"}, err: errors.New("download forbidden")}, w)
+	action := pull.New(r, w)
 	_, err := action.Execute(context.Background(), pull.Input{Environment: "production", Site: "marketing", Workspace: `C:\workspace`, Selector: identity.Selector{LUID: "wb-1"}})
-	if err == nil || !strings.Contains(err.Error(), "download forbidden") || w.input.TableauID != "" {
-		t.Fatalf("error = %v, write input = %#v", err, w.input)
+	if err == nil || !strings.Contains(err.Error(), "download forbidden") || r.downloadCalls != 1 || w.calls != 0 {
+		t.Fatalf("error = %v, download calls = %d, write calls = %d", err, r.downloadCalls, w.calls)
 	}
 }
 

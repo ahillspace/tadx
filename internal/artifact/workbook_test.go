@@ -47,6 +47,114 @@ func TestWorkbookManagerWritesCanonicalArtifactAndProvenance(t *testing.T) {
 	}
 }
 
+func TestWorkbookManagerPreservesEmptyDefaultSiteProvenance(t *testing.T) {
+	workspace := createWorkspace(t)
+	manager := artifact.NewWorkbookManager(time.Now)
+	result, err := manager.Pull(context.Background(), artifact.WorkbookPull{
+		Workspace: workspace, Filename: "Finance.twb", Content: []byte("native-workbook"),
+		Metadata: validMetadata("Finance", "wb-1"),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	metadataPath := filepath.Join(result.ArtifactPath, "metadata.json")
+	data, err := os.ReadFile(metadataPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var fields map[string]json.RawMessage
+	if err := json.Unmarshal(data, &fields); err != nil {
+		t.Fatal(err)
+	}
+	site, exists := fields["source_site"]
+	if !exists || string(site) != `""` {
+		t.Fatalf("source_site = %s, exists = %t", site, exists)
+	}
+	delete(fields, "source_site")
+	data, err = json.Marshal(fields)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(metadataPath, data, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := manager.Read(context.Background(), result.ArtifactPath); err == nil || !strings.Contains(err.Error(), "source_site") {
+		t.Fatalf("Read() error = %v", err)
+	}
+}
+
+func TestWorkbookManagerStoresSameNameWorkbooksByTableauIdentity(t *testing.T) {
+	workspace := createWorkspace(t)
+	manager := artifact.NewWorkbookManager(time.Now)
+	firstMetadata := validMetadata("Finance", "wb-1")
+	firstMetadata.SourceProjectName = "ProjectA"
+	firstMetadata.SourceProjectID = "project-a"
+	first, err := manager.Pull(context.Background(), artifact.WorkbookPull{
+		Workspace: workspace, Filename: "Finance.twb", Content: []byte("project-a"), Metadata: firstMetadata,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	secondMetadata := validMetadata("Finance", "wb-2")
+	secondMetadata.SourceProjectName = "ProjectB"
+	secondMetadata.SourceProjectID = "project-b"
+	second, err := manager.Pull(context.Background(), artifact.WorkbookPull{
+		Workspace: workspace, Filename: "Finance.twb", Content: []byte("project-b"), Metadata: secondMetadata,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if first.ArtifactPath == second.ArtifactPath || !strings.HasPrefix(filepath.Base(second.ArtifactPath), "Finance-") {
+		t.Fatalf("artifact paths = %q and %q", first.ArtifactPath, second.ArtifactPath)
+	}
+	for _, expected := range []struct {
+		path    string
+		id      string
+		content string
+	}{{first.ArtifactPath, "wb-1", "project-a"}, {second.ArtifactPath, "wb-2", "project-b"}} {
+		workbook, err := manager.Read(context.Background(), expected.path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if workbook.TableauID != expected.id || string(workbook.Content) != expected.content {
+			t.Fatalf("workbook = %#v", workbook)
+		}
+	}
+}
+
+func TestWorkbookManagerRejectsIncompleteProvenanceBeforeStaging(t *testing.T) {
+	tests := []struct {
+		name   string
+		field  string
+		modify func(*artifact.WorkbookMetadata)
+	}{
+		{name: "environment", field: "source_environment", modify: func(metadata *artifact.WorkbookMetadata) { metadata.SourceEnvironment = "" }},
+		{name: "project name", field: "source_project_name", modify: func(metadata *artifact.WorkbookMetadata) { metadata.SourceProjectName = "" }},
+		{name: "project LUID", field: "source_project_id", modify: func(metadata *artifact.WorkbookMetadata) { metadata.SourceProjectID = "" }},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			workspace := createWorkspace(t)
+			metadata := validMetadata("Finance", "wb-1")
+			test.modify(&metadata)
+			manager := artifact.NewWorkbookManager(time.Now)
+			_, err := manager.Pull(context.Background(), artifact.WorkbookPull{
+				Workspace: workspace, Filename: "Finance.twb", Content: []byte("native-workbook"), Metadata: metadata,
+			})
+			if err == nil || !strings.Contains(err.Error(), test.field) {
+				t.Fatalf("Pull() error = %v", err)
+			}
+			entries, readErr := os.ReadDir(filepath.Join(workspace, "artifacts", "workbook"))
+			if readErr != nil {
+				t.Fatal(readErr)
+			}
+			if len(entries) != 0 {
+				t.Fatalf("artifact entries = %#v", entries)
+			}
+		})
+	}
+}
+
 func TestWorkbookManagerUsesPortableBoundedPathComponents(t *testing.T) {
 	tests := []struct {
 		name      string
@@ -55,6 +163,8 @@ func TestWorkbookManagerUsesPortableBoundedPathComponents(t *testing.T) {
 		extension string
 	}{
 		{name: "reserved device name", workbook: "CON", filename: "CON.twb", extension: ".twb"},
+		{name: "superscript COM device name", workbook: "COM¹", filename: "COM¹.twb", extension: ".twb"},
+		{name: "superscript LPT device name", workbook: "LPT³", filename: "LPT³.twbx", extension: ".twbx"},
 		{name: "long Unicode name", workbook: strings.Repeat("界", 100), filename: strings.Repeat("界", 100) + ".twbx", extension: ".twbx"},
 	}
 	for _, test := range tests {
@@ -62,7 +172,7 @@ func TestWorkbookManagerUsesPortableBoundedPathComponents(t *testing.T) {
 			manager := artifact.NewWorkbookManager(time.Now)
 			result, err := manager.Pull(context.Background(), artifact.WorkbookPull{
 				Workspace: createWorkspace(t), Filename: test.filename, Content: []byte("native-package"),
-				Metadata: artifact.WorkbookMetadata{Name: test.workbook, TableauID: "wb-1", SourceEnvironment: "production", SourceProjectName: "Ops", SourceProjectID: "project-1"},
+				Metadata: validMetadata(test.workbook, "wb-1"),
 			})
 			if err != nil {
 				t.Fatal(err)
@@ -72,7 +182,7 @@ func TestWorkbookManagerUsesPortableBoundedPathComponents(t *testing.T) {
 			if len([]byte(artifactName)) > 180 || len([]byte(payloadName)) > 180 {
 				t.Fatalf("artifact component = %q, payload component = %q", artifactName, payloadName)
 			}
-			if strings.EqualFold(artifactName, "CON") || strings.EqualFold(payloadName, "CON.twb") {
+			if artifactName == test.workbook || payloadName == test.filename {
 				t.Fatalf("reserved path components were retained: %q, %q", artifactName, payloadName)
 			}
 			if filepath.Ext(payloadName) != test.extension {
@@ -94,7 +204,7 @@ func TestWorkbookManagerProtectsDirtyRepullAndOverwriteIsExplicit(t *testing.T) 
 	manager := artifact.NewWorkbookManager(time.Now)
 	first, err := manager.Pull(context.Background(), artifact.WorkbookPull{
 		Workspace: workspace, Filename: "Finance.twb", Content: []byte("remote-v1"),
-		Metadata: artifact.WorkbookMetadata{Kind: "workbook", Name: "Finance", TableauID: "wb-1"},
+		Metadata: validMetadata("Finance", "wb-1"),
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -105,7 +215,7 @@ func TestWorkbookManagerProtectsDirtyRepullAndOverwriteIsExplicit(t *testing.T) 
 	}
 	_, err = manager.Pull(context.Background(), artifact.WorkbookPull{
 		Workspace: workspace, Filename: "Finance.twb", Content: []byte("remote-v2"),
-		Metadata: artifact.WorkbookMetadata{Kind: "workbook", Name: "Finance", TableauID: "wb-1"},
+		Metadata: validMetadata("Finance", "wb-1"),
 	})
 	if err == nil || !strings.Contains(err.Error(), "dirty") {
 		t.Fatalf("dirty re-pull error = %v", err)
@@ -116,7 +226,7 @@ func TestWorkbookManagerProtectsDirtyRepullAndOverwriteIsExplicit(t *testing.T) 
 	}
 	overwritten, err := manager.Pull(context.Background(), artifact.WorkbookPull{
 		Workspace: workspace, Filename: "Finance.twb", Content: []byte("remote-v2"), Overwrite: true,
-		Metadata: artifact.WorkbookMetadata{Kind: "workbook", Name: "Finance", TableauID: "wb-1"},
+		Metadata: validMetadata("Finance", "wb-1"),
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -133,11 +243,11 @@ func TestWorkbookManagerProtectsDirtyRepullAndOverwriteIsExplicit(t *testing.T) 
 func TestWorkbookManagerCleanRepullWarnsAndReplaces(t *testing.T) {
 	workspace := createWorkspace(t)
 	manager := artifact.NewWorkbookManager(time.Now)
-	_, err := manager.Pull(context.Background(), artifact.WorkbookPull{Workspace: workspace, Filename: "Finance.twb", Content: []byte("v1"), Metadata: artifact.WorkbookMetadata{Kind: "workbook", Name: "Finance", TableauID: "wb-1"}})
+	_, err := manager.Pull(context.Background(), artifact.WorkbookPull{Workspace: workspace, Filename: "Finance.twb", Content: []byte("v1"), Metadata: validMetadata("Finance", "wb-1")})
 	if err != nil {
 		t.Fatal(err)
 	}
-	result, err := manager.Pull(context.Background(), artifact.WorkbookPull{Workspace: workspace, Filename: "Finance.twb", Content: []byte("v2"), Metadata: artifact.WorkbookMetadata{Kind: "workbook", Name: "Finance", TableauID: "wb-1"}})
+	result, err := manager.Pull(context.Background(), artifact.WorkbookPull{Workspace: workspace, Filename: "Finance.twb", Content: []byte("v2"), Metadata: validMetadata("Finance", "wb-1")})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -160,7 +270,7 @@ func TestWorkbookManagerRejectsUnmanagedTargetWithoutChangingIt(t *testing.T) {
 	manager := artifact.NewWorkbookManager(time.Now)
 	_, err := manager.Pull(context.Background(), artifact.WorkbookPull{
 		Workspace: workspace, Filename: "Finance.twb", Content: []byte("remote"),
-		Metadata:  artifact.WorkbookMetadata{Kind: "workbook", Name: "Finance", TableauID: "wb-1"},
+		Metadata:  validMetadata("Finance", "wb-1"),
 		Overwrite: true,
 	})
 	if err == nil || !strings.Contains(err.Error(), "not a managed workbook artifact") {
@@ -192,7 +302,7 @@ func TestWorkbookManagerRejectsArtifactRootOutsideWorkspaceBeforeWriting(t *test
 	manager := artifact.NewWorkbookManager(time.Now)
 	_, err := manager.Pull(context.Background(), artifact.WorkbookPull{
 		Workspace: workspace, Filename: "Finance.twb", Content: []byte("remote"),
-		Metadata: artifact.WorkbookMetadata{Kind: "workbook", Name: "Finance", TableauID: "wb-1"},
+		Metadata: validMetadata("Finance", "wb-1"),
 	})
 	if err == nil || !strings.Contains(err.Error(), "escapes workspace") {
 		t.Fatalf("Pull() error = %v", err)
@@ -223,7 +333,7 @@ func TestWorkbookManagerRejectsTargetOutsideArtifactRootWithoutChangingIt(t *tes
 	manager := artifact.NewWorkbookManager(time.Now)
 	_, err := manager.Pull(context.Background(), artifact.WorkbookPull{
 		Workspace: workspace, Filename: "Finance.twb", Content: []byte("remote"), Overwrite: true,
-		Metadata: artifact.WorkbookMetadata{Kind: "workbook", Name: "Finance", TableauID: "wb-1"},
+		Metadata: validMetadata("Finance", "wb-1"),
 	})
 	if err == nil || !strings.Contains(err.Error(), "escapes artifact root") {
 		t.Fatalf("Pull() error = %v", err)
@@ -408,4 +518,15 @@ func createWorkspace(t *testing.T) string {
 		t.Fatal(err)
 	}
 	return workspace
+}
+
+func validMetadata(name, tableauID string) artifact.WorkbookMetadata {
+	return artifact.WorkbookMetadata{
+		Name:              name,
+		TableauID:         tableauID,
+		SourceEnvironment: "production",
+		SourceSite:        "",
+		SourceProjectName: "Ops",
+		SourceProjectID:   "project-1",
+	}
 }

@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"sort"
@@ -20,6 +21,9 @@ import (
 const (
 	defaultLimit              = 20
 	maxLimit                  = 100
+	maxGenerationBytes        = 64 << 20
+	maxGenerationRecords      = 100_000
+	maxFieldBytes             = 64 << 10
 	maxFilenameComponentBytes = 255
 	staleAfter                = 12 * time.Hour
 )
@@ -122,7 +126,7 @@ func (s *FileStore) Search(ctx context.Context, query Query) (SearchResult, erro
 		return SearchResult{}, err
 	}
 	path := filepath.Join(s.root, "catalog", filename)
-	data, err := os.ReadFile(path)
+	data, err := readGeneration(path)
 	if err != nil {
 		return SearchResult{}, fmt.Errorf("read catalog generation for environment %q: %w", query.Environment, err)
 	}
@@ -143,14 +147,23 @@ func (s *FileStore) Search(ctx context.Context, query Query) (SearchResult, erro
 	if strings.TrimSpace(generation.ID) == "" {
 		return SearchResult{}, errors.New("catalog generation ID is required")
 	}
+	if err := validateField("generation ID", generation.ID); err != nil {
+		return SearchResult{}, err
+	}
 	if generation.GeneratedAt.IsZero() {
 		return SearchResult{}, fmt.Errorf("catalog generation %q generation time is required", generation.ID)
+	}
+	if err := validateField("source environment", generation.Environment); err != nil {
+		return SearchResult{}, err
 	}
 	if generation.Environment != query.Environment {
 		return SearchResult{}, fmt.Errorf("catalog source environment %q does not match selected environment %q", generation.Environment, query.Environment)
 	}
 	if document.Site == nil {
 		return SearchResult{}, fmt.Errorf("catalog generation %q source site is required", generation.ID)
+	}
+	if err := validateField("source site", generation.Site); err != nil {
+		return SearchResult{}, err
 	}
 	if generation.Site != query.Site {
 		return SearchResult{}, fmt.Errorf("catalog source site %q does not match selected site %q", generation.Site, query.Site)
@@ -227,7 +240,33 @@ func (s *FileStore) Search(ctx context.Context, query Query) (SearchResult, erro
 	}, nil
 }
 
+func readGeneration(path string) ([]byte, error) {
+	file, err := os.Open(path)
+	if err != nil {
+		return nil, err
+	}
+	defer file.Close()
+	info, err := file.Stat()
+	if err != nil {
+		return nil, err
+	}
+	if info.Size() > maxGenerationBytes {
+		return nil, fmt.Errorf("catalog generation exceeds %d-byte limit", maxGenerationBytes)
+	}
+	data, err := io.ReadAll(io.LimitReader(file, maxGenerationBytes+1))
+	if err != nil {
+		return nil, err
+	}
+	if len(data) > maxGenerationBytes {
+		return nil, fmt.Errorf("catalog generation exceeds %d-byte limit", maxGenerationBytes)
+	}
+	return data, nil
+}
+
 func validateRecords(generation Generation) error {
+	if len(generation.Records) > maxGenerationRecords {
+		return fmt.Errorf("catalog generation %q exceeds %d-record limit", generation.ID, maxGenerationRecords)
+	}
 	seen := make(map[string]struct{}, len(generation.Records))
 	for index, record := range generation.Records {
 		if strings.TrimSpace(record.LUID) == "" {
@@ -239,10 +278,32 @@ func validateRecords(generation Generation) error {
 		if strings.TrimSpace(record.Name) == "" {
 			return fmt.Errorf("catalog generation %q record %d name is required", generation.ID, index)
 		}
+		fields := []struct {
+			name  string
+			value string
+		}{
+			{name: "LUID", value: record.LUID},
+			{name: "kind", value: record.Kind},
+			{name: "name", value: record.Name},
+			{name: "project path", value: record.ProjectPath},
+			{name: "owner", value: record.Owner},
+		}
+		for _, field := range fields {
+			if err := validateField(fmt.Sprintf("catalog generation %q record %d %s", generation.ID, index, field.name), field.value); err != nil {
+				return err
+			}
+		}
 		if _, exists := seen[record.LUID]; exists {
 			return fmt.Errorf("catalog generation %q contains duplicate LUID %q", generation.ID, record.LUID)
 		}
 		seen[record.LUID] = struct{}{}
+	}
+	return nil
+}
+
+func validateField(name, value string) error {
+	if len(value) > maxFieldBytes {
+		return fmt.Errorf("%s exceeds %d-byte limit", name, maxFieldBytes)
 	}
 	return nil
 }

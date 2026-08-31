@@ -213,7 +213,7 @@ func TestPATProviderRedactsOverlappingCredentialsFromSignInErrors(t *testing.T) 
 	if err == nil {
 		t.Fatal("Authenticate() error = nil")
 	}
-	if got, want := err.Error(), "sign in: upstream rejected [REDACTED] for [REDACTED]"; got != want {
+	if got, want := err.Error(), "sign in: upstream rejected [REDACTED] for *****"; got != want {
 		t.Fatalf("error = %q, want %q", got, want)
 	}
 }
@@ -231,7 +231,7 @@ func TestPATProviderRedactsPartiallyOverlappingCredentialIntervals(t *testing.T)
 	if err == nil {
 		t.Fatal("Authenticate() error = nil")
 	}
-	if got, want := err.Error(), "sign in: upstream rejected [REDACTED]"; got != want {
+	if got, want := err.Error(), "sign in: upstream rejected *********"; got != want {
 		t.Fatalf("error = %q, want %q", got, want)
 	}
 }
@@ -249,6 +249,19 @@ func TestRedactTracksRepeatedMatchesWithBoundedMemory(t *testing.T) {
 	}
 	if allocated := result.AllocedBytesPerOp(); allocated > 64<<10 {
 		t.Fatalf("Redact() allocated %d bytes per operation for repeated matches", allocated)
+	}
+}
+
+func TestRedactDoesNotExpandSeparatedShortMatches(t *testing.T) {
+	t.Parallel()
+
+	message := strings.Repeat("a ", 1<<15)
+	redacted := auth.Redact(message, "a")
+	if len(redacted) > len(message) {
+		t.Fatalf("Redact() output length = %d, input length = %d", len(redacted), len(message))
+	}
+	if strings.Contains(redacted, "a") {
+		t.Fatal("Redact() output contains the secret")
 	}
 }
 

@@ -231,6 +231,8 @@ func (e *redactedCarrierError) RequestID() string      { return e.requestID }
 
 // Redact replaces complete and overlapping secret intervals without exposing remainders.
 func Redact(message string, secrets ...string) string {
+	const marker = "[REDACTED]"
+
 	type secretMatch struct {
 		secret string
 		start  int
@@ -285,14 +287,24 @@ func Redact(message string, secrets ...string) string {
 			continue
 		}
 		redacted.WriteString(message[position:intervalStart])
-		redacted.WriteString("[REDACTED]")
+		writeRedaction(&redacted, marker, intervalEnd-intervalStart)
 		position = intervalEnd
 		intervalStart = current.start
 		intervalEnd = currentEnd
 	}
 	redacted.WriteString(message[position:intervalStart])
-	redacted.WriteString("[REDACTED]")
+	writeRedaction(&redacted, marker, intervalEnd-intervalStart)
 	position = intervalEnd
 	redacted.WriteString(message[position:])
 	return redacted.String()
+}
+
+func writeRedaction(output *strings.Builder, marker string, coveredBytes int) {
+	if coveredBytes >= len(marker) {
+		output.WriteString(marker)
+		return
+	}
+	for range coveredBytes {
+		output.WriteByte('*')
+	}
 }

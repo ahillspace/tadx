@@ -125,11 +125,17 @@ func (a *Adapter) FindWorkbooks(ctx context.Context, name, projectLUID string) (
 	if err != nil {
 		return nil, err
 	}
-	var matches []Workbook
+	byLUID := make(map[string]Workbook)
 	for _, item := range items {
 		if item.Name == name && item.ProjectLUID == projectLUID {
-			matches = append(matches, Workbook{LUID: item.LUID, Name: item.Name, ContentURL: item.ContentURL, ProjectLUID: item.ProjectLUID, ProjectPath: item.ProjectName, OwnerLUID: item.OwnerLUID})
+			if _, exists := byLUID[item.LUID]; !exists {
+				byLUID[item.LUID] = Workbook{LUID: item.LUID, Name: item.Name, ContentURL: item.ContentURL, ProjectLUID: item.ProjectLUID, ProjectPath: item.ProjectName, OwnerLUID: item.OwnerLUID}
+			}
 		}
+	}
+	matches := make([]Workbook, 0, len(byLUID))
+	for _, workbook := range byLUID {
+		matches = append(matches, workbook)
 	}
 	sort.Slice(matches, func(i, j int) bool { return matches[i].LUID < matches[j].LUID })
 	return matches, nil

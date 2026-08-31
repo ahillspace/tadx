@@ -88,23 +88,37 @@ func TestClientNormalizesClassicWorkbookPagination(t *testing.T) {
 }
 
 func TestClientDownloadsNativeWorkbookAndFilename(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
-		if request.URL.Path != "/api/3.29/sites/site-1/workbooks/wb-1/content" {
-			t.Fatalf("path = %s", request.URL.Path)
-		}
-		writer.Header().Set("Content-Disposition", `name="tableau_workbook"; filename="Finance.twbx"`)
-		writer.Header().Set("Content-Type", "application/octet-stream")
-		_, _ = writer.Write([]byte("twbx-bytes"))
-	}))
-	defer server.Close()
-
-	client := tableauworkbook.NewClient(tableau.NewTransport(server.Client(), "3.29", nil), session{}, server.URL)
-	download, err := client.Download(context.Background(), "wb-1", nil)
-	if err != nil {
-		t.Fatal(err)
+	include := func(value bool) *bool { return &value }
+	tests := []struct {
+		name           string
+		includeExtract *bool
+		wantQuery      string
+	}{
+		{name: "unspecified", wantQuery: ""},
+		{name: "included", includeExtract: include(true), wantQuery: "includeExtract=true"},
+		{name: "excluded", includeExtract: include(false), wantQuery: "includeExtract=false"},
 	}
-	if download.Filename != "Finance.twbx" || !bytes.Equal(download.Content, []byte("twbx-bytes")) {
-		t.Fatalf("download = %#v", download)
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+				if request.URL.Path != "/api/3.29/sites/site-1/workbooks/wb-1/content" || request.URL.RawQuery != test.wantQuery {
+					t.Fatalf("request URI = %s", request.URL.RequestURI())
+				}
+				writer.Header().Set("Content-Disposition", `name="tableau_workbook"; filename="Finance.twbx"`)
+				writer.Header().Set("Content-Type", "application/octet-stream")
+				_, _ = writer.Write([]byte("twbx-bytes"))
+			}))
+			defer server.Close()
+
+			client := tableauworkbook.NewClient(tableau.NewTransport(server.Client(), "3.29", nil), session{}, server.URL)
+			download, err := client.Download(context.Background(), "wb-1", test.includeExtract)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if download.Filename != "Finance.twbx" || !bytes.Equal(download.Content, []byte("twbx-bytes")) {
+				t.Fatalf("download = %#v", download)
+			}
+		})
 	}
 }
 
@@ -133,7 +147,7 @@ func TestClientUsesUploadSessionAndBoundedJobPolling(t *testing.T) {
 			appendSequences = append(appendSequences, request.URL.Query().Get("sequenceID"))
 			_, _ = io.WriteString(writer, `<tsResponse><fileUpload uploadSessionId="upload-1" fileSize="1"/></tsResponse>`)
 		case request.Method == http.MethodPost && strings.HasSuffix(request.URL.Path, "/workbooks"):
-			if request.URL.Query().Get("uploadSessionId") != "upload-1" || request.URL.Query().Get("asJob") != "true" {
+			if request.URL.Query().Get("uploadSessionId") != "upload-1" || request.URL.Query().Get("asJob") != "true" || request.URL.Query().Get("overwrite") != "true" {
 				t.Fatalf("publish query = %s", request.URL.RawQuery)
 			}
 			var err error
@@ -210,6 +224,9 @@ func TestClientPublishesSmallWorkbookInMultipartBody(t *testing.T) {
 	var parts []multipartPart
 	var handlerErr error
 	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		if request.URL.Query().Get("overwrite") != "false" || request.URL.Query().Has("asJob") {
+			t.Fatalf("publish query = %s", request.URL.RawQuery)
+		}
 		parts, handlerErr = readMultipart(request)
 		if handlerErr != nil {
 			http.Error(writer, "invalid publish body", http.StatusBadRequest)
