@@ -532,7 +532,7 @@ func TestWorkbookManagerRejectsArtifactRootOutsideWorkspaceBeforeWriting(t *test
 		Workspace: workspace, Filename: "Finance.twb", Content: []byte("remote"),
 		Metadata: validMetadata("Finance", "wb-1"),
 	})
-	if err == nil || !strings.Contains(err.Error(), "escapes workspace") {
+	if err == nil || (!strings.Contains(err.Error(), "escapes workspace") && !strings.Contains(err.Error(), "must not be a symbolic link")) {
 		t.Fatalf("Pull() error = %v", err)
 	}
 	if _, statErr := os.Stat(filepath.Join(outside, "workbook")); !errors.Is(statErr, os.ErrNotExist) {

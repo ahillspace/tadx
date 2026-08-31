@@ -189,7 +189,15 @@ func localImportAllowed(file, imported string) bool {
 	case layerTableau:
 		return matchesExact(imported, "internal/auth", "internal/tableau")
 	case layerFoundation:
-		return hasPathPrefix(file, "internal/output") && matchesExact(imported, "internal/errs", "internal/toon")
+		if hasPathPrefix(file, "internal/output") {
+			return matchesExact(imported, "internal/errs", "internal/toon")
+		}
+		// The artifact manager owns the workspace mutation critical section and
+		// serializes it against other tadx processes via the leaf lock package.
+		if hasPathPrefix(file, "internal/artifact") {
+			return matchesExact(imported, "internal/lock")
+		}
+		return false
 	case layerTADXCommand:
 		return matchesExact(imported, "internal/app")
 	case layerDocsGenerator:
@@ -329,6 +337,7 @@ func isFoundationPackage(file string) bool {
 		hasPathPrefix(file, "internal/identity") ||
 		hasPathPrefix(file, "internal/capability") ||
 		hasPathPrefix(file, "internal/errs") ||
+		hasPathPrefix(file, "internal/lock") ||
 		hasPathPrefix(file, "internal/output") ||
 		hasPathPrefix(file, "internal/toon")
 }

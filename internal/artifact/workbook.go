@@ -3,6 +3,7 @@ package artifact
 
 import (
 	"context"
+	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -16,6 +17,8 @@ import (
 	"strings"
 	"time"
 	"unicode/utf8"
+
+	"github.com/ahillspace/tadx/internal/lock"
 )
 
 // WorkbookMetadata is the frozen workbook provenance contract.
@@ -105,10 +108,24 @@ func (m *WorkbookManager) Pull(ctx context.Context, input WorkbookPull) (Workboo
 	if _, err := os.Stat(filepath.Join(workspace, "tadx.yaml")); err != nil {
 		return WorkbookPullResult{}, fmt.Errorf("workspace %q does not contain tadx.yaml", workspace)
 	}
+	// Serialize the whole identity-match-and-replace critical section against
+	// other tadx processes on this workspace: concurrent pulls would otherwise
+	// race on the shared backup/stage window and corrupt or orphan state.
+	handle, err := lock.Acquire(filepath.Join(workspace, ".tadx.lock"))
+	if err != nil {
+		return WorkbookPullResult{}, fmt.Errorf("lock workspace %q: %w", workspace, err)
+	}
+	defer func() { _ = handle.Release() }()
 	root, err := ensureWorkbookRoot(workspace)
 	if err != nil {
 		return WorkbookPullResult{}, err
 	}
+	var warnings []string
+	recoveryWarnings, err := recoverWorkbookRoot(root, defaultDirectoryOperations())
+	if err != nil {
+		return WorkbookPullResult{}, err
+	}
+	warnings = append(warnings, recoveryWarnings...)
 	target, existing, err := findBySourceIdentity(root, input.Metadata.SourceServerOrigin, input.Metadata.SourceSiteLUID, input.Metadata.TableauID)
 	if err != nil {
 		return WorkbookPullResult{}, err
@@ -137,7 +154,6 @@ func (m *WorkbookManager) Pull(ctx context.Context, input WorkbookPull) (Workboo
 			return WorkbookPullResult{}, statErr
 		}
 	}
-	var warnings []string
 	if existing != nil {
 		canonical, err := canonicalWorkbookPath(target, existing.CanonicalPayload)
 		if err != nil {
@@ -172,17 +188,16 @@ func (m *WorkbookManager) Pull(ctx context.Context, input WorkbookPull) (Workboo
 		return WorkbookPullResult{}, err
 	}
 	view := workbookView(metadata)
+	operations := defaultDirectoryOperations()
 	staging, err := os.MkdirTemp(root, ".tadx-workbook-stage-")
 	if err != nil {
 		return WorkbookPullResult{}, fmt.Errorf("create artifact staging directory: %w", err)
 	}
 	defer os.RemoveAll(staging)
-	for name, data := range map[string][]byte{filename: input.Content, "metadata.json": metadataBytes, "view.md": []byte(view)} {
-		if err := os.WriteFile(filepath.Join(staging, name), data, 0o600); err != nil {
-			return WorkbookPullResult{}, fmt.Errorf("write staged artifact %s: %w", name, err)
-		}
+	if err := writeStagedArtifact(staging, map[string][]byte{filename: input.Content, "metadata.json": metadataBytes, "view.md": []byte(view)}, operations); err != nil {
+		return WorkbookPullResult{}, err
 	}
-	replacementWarnings, err := replaceDirectory(staging, target)
+	replacementWarnings, err := replaceDirectoryWithOperations(staging, target, operations)
 	if err != nil {
 		return WorkbookPullResult{}, err
 	}
@@ -342,6 +357,95 @@ func findBySourceIdentity(root, serverOrigin, siteLUID, workbookLUID string) (st
 	return path, found, nil
 }
 
+const (
+	backupPrefix = ".tadx-workbook-backup-"
+	stagePrefix  = ".tadx-workbook-stage-"
+)
+
+// recoverWorkbookRoot reconciles the durable state left by any interrupted
+// replacement before a pull consults the artifact root. A crash between the two
+// renames of replaceDirectory can leave a lone `.tadx-workbook-backup-*` while
+// its target is missing; because findBySourceIdentity skips every `.tadx-`
+// entry, the artifact would otherwise appear permanently deleted. This sweep
+// restores such a backup, garbage-collects committed backups, and removes
+// staging directories abandoned by crashed pulls. It must run while the
+// workspace lock is held so it cannot race a concurrent pull.
+func recoverWorkbookRoot(root string, operations directoryOperations) ([]string, error) {
+	operations = operations.withDefaults()
+	entries, err := os.ReadDir(root)
+	if err != nil {
+		return nil, err
+	}
+	live := map[string]bool{}
+	var backups, stages []string
+	for _, entry := range entries {
+		name := entry.Name()
+		switch {
+		case strings.HasPrefix(name, backupPrefix):
+			backups = append(backups, name)
+			continue
+		case strings.HasPrefix(name, stagePrefix):
+			stages = append(stages, name)
+			continue
+		case strings.HasPrefix(name, ".tadx-"):
+			continue
+		}
+		if entry.Type()&os.ModeSymlink != 0 || !entry.IsDir() {
+			continue
+		}
+		metadata, err := readMetadata(filepath.Join(root, name))
+		if err != nil {
+			continue
+		}
+		live[identityKey(metadata)] = true
+	}
+	var warnings []string
+	for _, name := range stages {
+		if err := operations.removeAll(filepath.Join(root, name)); err != nil {
+			warnings = append(warnings, fmt.Sprintf("stale staging directory %q could not be removed: %v", name, err))
+		}
+	}
+	changed := false
+	for _, name := range backups {
+		backupPath := filepath.Join(root, name)
+		metadata, err := readMetadata(backupPath)
+		if err != nil {
+			warnings = append(warnings, fmt.Sprintf("orphaned backup %q could not be read and was left in place: %v", name, err))
+			continue
+		}
+		key := identityKey(metadata)
+		if live[key] {
+			if err := operations.removeAll(backupPath); err != nil {
+				warnings = append(warnings, fmt.Sprintf("committed backup %q could not be removed: %v", name, err))
+			}
+			continue
+		}
+		restore := filepath.Join(root, identityComponent(metadata.Name, metadata.SourceServerOrigin, metadata.SourceSiteLUID, metadata.TableauID))
+		if _, statErr := os.Lstat(restore); statErr == nil {
+			warnings = append(warnings, fmt.Sprintf("orphaned backup %q could not be restored because %q already exists", name, filepath.Base(restore)))
+			continue
+		} else if !errors.Is(statErr, os.ErrNotExist) {
+			return warnings, statErr
+		}
+		if err := operations.rename(backupPath, restore); err != nil {
+			return warnings, fmt.Errorf("restore orphaned workbook artifact from %q: %w", name, err)
+		}
+		changed = true
+		live[key] = true
+		warnings = append(warnings, fmt.Sprintf("recovered workbook artifact %q from an interrupted replacement", filepath.Base(restore)))
+	}
+	if changed {
+		if err := operations.syncDir(root); err != nil {
+			return warnings, fmt.Errorf("sync workbook artifact root after recovery: %w", err)
+		}
+	}
+	return warnings, nil
+}
+
+func identityKey(metadata WorkbookMetadata) string {
+	return fmt.Sprintf("%d:%s\x00%d:%s\x00%d:%s", len(metadata.SourceServerOrigin), metadata.SourceServerOrigin, len(metadata.SourceSiteLUID), metadata.SourceSiteLUID, len(metadata.TableauID), metadata.TableauID)
+}
+
 func ensureWorkbookRoot(workspace string) (string, error) {
 	resolvedWorkspace, err := filepath.EvalSymlinks(workspace)
 	if err != nil {
@@ -360,7 +464,14 @@ func ensureWorkbookRoot(workspace string) (string, error) {
 		if err != nil {
 			return "", fmt.Errorf("inspect workbook artifact root: %w", err)
 		}
-		if !info.IsDir() && info.Mode()&os.ModeSymlink == 0 {
+		// Refuse symlinked root components outright, matching findBySourceIdentity
+		// and Read: the artifact root is owned exclusively by tadx and must be a
+		// real directory. This also removes a narrow TOCTOU between the Lstat here
+		// and later path resolution.
+		if info.Mode()&os.ModeSymlink != 0 {
+			return "", fmt.Errorf("workbook artifact root %q must not be a symbolic link", current)
+		}
+		if !info.IsDir() {
 			return "", fmt.Errorf("workbook artifact root %q is not a directory", current)
 		}
 		resolvedCurrent, err := filepath.EvalSymlinks(current)
@@ -501,22 +612,94 @@ type directoryOperations struct {
 	stat      func(string) (os.FileInfo, error)
 	rename    func(string, string) error
 	removeAll func(string) error
+	writeFile func(string, []byte, os.FileMode) error
+	syncDir   func(string) error
+}
+
+func defaultDirectoryOperations() directoryOperations {
+	return directoryOperations{
+		stat:      os.Stat,
+		rename:    os.Rename,
+		removeAll: os.RemoveAll,
+		writeFile: writeFileSync,
+		syncDir:   fsyncDir,
+	}
+}
+
+// withDefaults fills any unset hook with its production implementation so that
+// tests may inject a single seam without rewiring every operation.
+func (o directoryOperations) withDefaults() directoryOperations {
+	if o.stat == nil {
+		o.stat = os.Stat
+	}
+	if o.rename == nil {
+		o.rename = os.Rename
+	}
+	if o.removeAll == nil {
+		o.removeAll = os.RemoveAll
+	}
+	if o.writeFile == nil {
+		o.writeFile = writeFileSync
+	}
+	if o.syncDir == nil {
+		o.syncDir = fsyncDir
+	}
+	return o
+}
+
+// writeFileSync writes data to path and flushes it to stable storage before
+// returning, so a power loss cannot leave a torn or empty staged file.
+func writeFileSync(path string, data []byte, perm os.FileMode) error {
+	file, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, perm)
+	if err != nil {
+		return err
+	}
+	if _, err := file.Write(data); err != nil {
+		_ = file.Close()
+		return err
+	}
+	if err := file.Sync(); err != nil {
+		_ = file.Close()
+		return err
+	}
+	return file.Close()
+}
+
+// writeStagedArtifact writes each staged file durably and then flushes the
+// staging directory so both file contents and directory entries survive a
+// crash before the atomic rename into place.
+func writeStagedArtifact(staging string, files map[string][]byte, operations directoryOperations) error {
+	operations = operations.withDefaults()
+	for name, data := range files {
+		if err := operations.writeFile(filepath.Join(staging, name), data, 0o600); err != nil {
+			return fmt.Errorf("write staged artifact %s: %w", name, err)
+		}
+	}
+	if err := operations.syncDir(staging); err != nil {
+		return fmt.Errorf("sync staged artifact directory: %w", err)
+	}
+	return nil
 }
 
 func replaceDirectory(staging, target string) ([]string, error) {
-	return replaceDirectoryWithOperations(staging, target, directoryOperations{stat: os.Stat, rename: os.Rename, removeAll: os.RemoveAll})
+	return replaceDirectoryWithOperations(staging, target, defaultDirectoryOperations())
 }
 
 func replaceDirectoryWithOperations(staging, target string, operations directoryOperations) ([]string, error) {
+	operations = operations.withDefaults()
+	parent := filepath.Dir(target)
 	if _, err := operations.stat(target); errors.Is(err, os.ErrNotExist) {
 		if err := operations.rename(staging, target); err != nil {
 			return nil, fmt.Errorf("install workbook artifact: %w", err)
+		}
+		if err := operations.syncDir(parent); err != nil {
+			return nil, fmt.Errorf("sync workbook artifact root: %w", err)
 		}
 		return nil, nil
 	} else if err != nil {
 		return nil, err
 	}
-	backup := filepath.Join(filepath.Dir(target), ".tadx-workbook-backup-"+filepath.Base(target)+"-"+strconvTimestamp())
+	backup := filepath.Join(parent, ".tadx-workbook-backup-"+filepath.Base(target)+"-"+uniqueSuffix())
 	if err := operations.rename(target, backup); err != nil {
 		return nil, fmt.Errorf("stage existing workbook artifact: %w", err)
 	}
@@ -526,13 +709,30 @@ func replaceDirectoryWithOperations(staging, target string, operations directory
 		}
 		return nil, fmt.Errorf("install workbook artifact: %w", err)
 	}
+	// Flush the parent directory so both the removal of the old entry and the
+	// creation of the new one are durable before we report success. If a crash
+	// occurs before this point, the recovery sweep reconciles the lone backup.
+	if err := operations.syncDir(parent); err != nil {
+		return nil, fmt.Errorf("sync workbook artifact root: %w", err)
+	}
 	if err := operations.removeAll(backup); err != nil {
 		return []string{fmt.Sprintf("workbook artifact replacement committed, but backup %q could not be removed: %v", backup, err)}, nil
 	}
 	return nil, nil
 }
 
-func strconvTimestamp() string { return fmt.Sprintf("%d", time.Now().UnixNano()) }
+// uniqueSuffix returns a collision-resistant token combining a monotonic
+// timestamp with cryptographic randomness, so two replacements within the same
+// nanosecond cannot produce the same backup name.
+func uniqueSuffix() string {
+	var random [8]byte
+	if _, err := rand.Read(random[:]); err != nil {
+		// crypto/rand failure is fatal for security-sensitive uniqueness; fall
+		// back to the timestamp alone rather than a predictable constant.
+		return fmt.Sprintf("%d", time.Now().UnixNano())
+	}
+	return fmt.Sprintf("%d-%s", time.Now().UnixNano(), hex.EncodeToString(random[:]))
+}
 
 func fingerprint(content []byte) string {
 	sum := sha256.Sum256(content)
