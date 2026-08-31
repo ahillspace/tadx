@@ -109,11 +109,14 @@ func newPublish(deps Dependencies) *cobra.Command {
 			if err := cobra.NoArgs(command, args); err != nil {
 				return clierr.Usage("workbook.publish", err)
 			}
-			if input.Environment == "" || input.ArtifactPath == "" {
-				return clierr.Usage("workbook.publish", errors.New("--environment and --artifact are required"))
+			if input.ArtifactPath == "" {
+				return clierr.Usage("workbook.publish", errors.New("--artifact is required"))
 			}
-			if projectID == "" && projectPath == "" {
-				return clierr.Usage("workbook.publish", errors.New("one of --project-id or --project is required"))
+			// With no explicit --environment the publish target defaults to the
+			// artifact's recorded source (environment, site, project, name, and
+			// workbook LUID). An explicit --environment requires an explicit project.
+			if input.Environment != "" && projectID == "" && projectPath == "" {
+				return clierr.Usage("workbook.publish", errors.New("one of --project-id or --project is required with an explicit --environment"))
 			}
 			input.ProjectLUID, input.ProjectPath = projectID, projectPath
 			return nil
@@ -127,7 +130,7 @@ func newPublish(deps Dependencies) *cobra.Command {
 		},
 	}
 	command.Flags().StringVar(&input.ArtifactPath, "artifact", "", "workbook artifact directory or canonical payload")
-	command.Flags().StringVar(&input.Environment, "environment", "", "explicit write environment alias")
+	command.Flags().StringVar(&input.Environment, "environment", "", "explicit write environment alias; defaults to the artifact's recorded source environment")
 	command.Flags().StringVar(&input.Name, "name", "", "explicit published workbook name; defaults to artifact name")
 	command.Flags().StringVar(&projectID, "project-id", "", "authoritative destination project LUID")
 	command.Flags().StringVar(&projectPath, "project", "", "exact slash-delimited destination project path")

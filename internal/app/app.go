@@ -266,13 +266,28 @@ func (w artifactWriter) WriteWorkbook(ctx context.Context, input workbookpull.Ar
 type publishService struct{ runtime *runtimeDependencies }
 
 func (s *publishService) Execute(ctx context.Context, input workbookpublish.Input, apply bool) (workbookpublish.Output, error) {
+	manager := artifact.NewWorkbookManager(s.runtime.now)
+	if input.Environment == "" {
+		// Artifact-home: with no explicit --environment, default the write target
+		// to the artifact's recorded source environment before selecting an adapter.
+		metadata, err := manager.ReadMetadata(ctx, input.ArtifactPath)
+		if err != nil {
+			return workbookpublish.Output{}, capabilitySetupError("workbook.publish.source", "workbook.publish", "", input.Site, "Workbook publish source provenance read failed.", "Repair or pull the exact workbook artifact, then review a new preview.", err)
+		}
+		input.Environment = metadata.SourceEnvironment
+		input.SourceDefaulted = true
+	}
 	_, environment, adapter, _, err := s.runtime.workbookAdapter(ctx, input.Environment, true)
 	if err != nil {
 		environmentAlias, site := resolvedTarget(input.Environment, input.Site, environment)
-		return workbookpublish.Output{}, capabilitySetupError("workbook.publish.setup", "workbook.publish", environmentAlias, site, "Workbook publish setup failed.", "Review the explicit environment, site, and PAT configuration.", err)
+		summary, corrective := "Workbook publish setup failed.", "Review the explicit environment, site, and PAT configuration."
+		if input.SourceDefaulted {
+			summary, corrective = "The artifact's recorded source environment is not configured.", "Add the recorded source environment to configuration, or publish to an explicit environment."
+		}
+		return workbookpublish.Output{}, capabilitySetupError("workbook.publish.setup", "workbook.publish", environmentAlias, site, summary, corrective, err)
 	}
 	input.Environment, input.Site, input.TargetResolved = environment.Alias, environment.SiteContentURL, true
-	action := workbookpublish.New(artifactReader{manager: artifact.NewWorkbookManager(s.runtime.now)}, publishAdapter{adapter: adapter}, publishAdapter{adapter: adapter})
+	action := workbookpublish.New(artifactReader{manager: manager}, publishAdapter{adapter: adapter}, publishAdapter{adapter: adapter})
 	return action.Execute(ctx, input, apply)
 }
 
@@ -295,7 +310,7 @@ type artifactReader struct{ manager *artifact.WorkbookManager }
 
 func (r artifactReader) ReadWorkbook(ctx context.Context, path string) (workbookpublish.Artifact, error) {
 	item, err := r.manager.Read(ctx, path)
-	return workbookpublish.Artifact{Path: item.Path, PayloadPath: item.PayloadPath, Filename: item.Filename, Size: item.Size, Name: item.Name, TableauID: item.TableauID, Fingerprint: item.Fingerprint}, err
+	return workbookpublish.Artifact{Path: item.Path, PayloadPath: item.PayloadPath, Filename: item.Filename, Size: item.Size, Name: item.Name, TableauID: item.TableauID, Fingerprint: item.Fingerprint, SourceEnvironment: item.SourceEnvironment, SourceSite: item.SourceSite, SourceProjectName: item.SourceProjectName, SourceProjectID: item.SourceProjectID}, err
 }
 
 type publishAdapter struct{ adapter *resourceworkbook.Adapter }

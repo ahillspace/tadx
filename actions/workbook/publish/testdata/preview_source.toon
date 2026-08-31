@@ -6,12 +6,13 @@ plan:
   filename: Finance.twbx
   workbook_name: Finance
   target:
-    origin: explicit
+    origin: artifact-source
     environment: production
     site: marketing
     project_luid: project-1
-    project_path: Ops
-  overwrite: false
+    project_path: Department/Ops
+    existing_workbook_luid: wb-src
+  overwrite: true
   as_job: false
   substeps[5]: resolve exact destination,check workbook collision,upload workbook,publish workbook,poll asynchronous job when requested
 applied: false

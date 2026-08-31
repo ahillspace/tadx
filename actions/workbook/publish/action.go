@@ -61,16 +61,32 @@ func (a *Action) Plan(ctx context.Context, input Input) (Plan, error) {
 		retryable, correctiveAction := errs.CompleteRetryAdvice(err, "Repair or pull the exact workbook artifact, then review a new preview.")
 		return Plan{}, &errs.Error{ID: "workbook.publish.read", Kind: errs.KindOperation, Operation: "workbook.publish", Environment: input.Environment, Site: input.Site, Summary: "Workbook artifact read failed.", Cause: err, Retryable: retryable, CorrectiveAction: correctiveAction}
 	}
+	// Artifact-home republish: with no explicit write target, the composition
+	// root defaults the environment/site to the artifact's recorded source, and
+	// the action targets the exact recorded source project, name, and workbook
+	// LUID. Overwrite is implied because republishing to source replaces the
+	// same workbook; the preview and the --apply gate are the safeguard.
+	origin := "explicit"
 	name := input.Name
+	overwrite := input.Overwrite
+	projectSelector := input.ProjectSelector
+	if projectSelector.LUID == "" && projectSelector.ProjectPath == "" {
+		projectSelector = identity.Selector{LUID: identity.LUID(input.ProjectLUID), ProjectPath: input.ProjectPath}
+	}
+	if input.SourceDefaulted {
+		origin = "artifact-source"
+		name = artifact.Name
+		overwrite = true
+		if artifact.SourceProjectID == "" && artifact.SourceProjectName == "" {
+			return Plan{}, &errs.Error{ID: "workbook.publish.source_incomplete", Kind: errs.KindOperation, Operation: "workbook.publish", Resource: artifact.TableauID, Environment: input.Environment, Site: input.Site, Summary: "The artifact has no recorded source project.", Cause: errors.New("source provenance is missing the recorded project"), Retryable: errs.Bool(false), CorrectiveAction: "Re-pull the workbook or publish to an explicit environment and project."}
+		}
+		projectSelector = identity.Selector{LUID: identity.LUID(artifact.SourceProjectID), ProjectPath: artifact.SourceProjectName}
+	}
 	if name == "" {
 		name = artifact.Name
 	}
 	if name == "" {
 		return Plan{}, usage("name", "workbook name is required")
-	}
-	projectSelector := input.ProjectSelector
-	if projectSelector.LUID == "" && projectSelector.ProjectPath == "" {
-		projectSelector = identity.Selector{LUID: identity.LUID(input.ProjectLUID), ProjectPath: input.ProjectPath}
 	}
 	project, err := a.resolver.ResolveProject(ctx, projectSelector)
 	if err != nil {
@@ -82,22 +98,32 @@ func (a *Action) Plan(ctx context.Context, input Input) (Plan, error) {
 		retryable, correctiveAction := errs.CompleteRetryAdvice(err, "Resolve the exact destination again before publishing.")
 		return Plan{}, &errs.Error{ID: "workbook.publish.collision", Kind: errs.KindOperation, Operation: "workbook.publish", Environment: input.Environment, Site: input.Site, Summary: "Workbook collision check failed.", Cause: err, Retryable: retryable, CorrectiveAction: correctiveAction, TableauRequestID: errs.TableauRequestID(err)}
 	}
-	if len(existing) > 1 {
-		return Plan{}, &errs.Error{ID: "workbook.publish.ambiguous", Kind: errs.KindOperation, Operation: "workbook.publish", Environment: input.Environment, Site: input.Site, Summary: "Workbook publish target is ambiguous.", Cause: fmt.Errorf("%d workbooks named %q exist in project %q", len(existing), name, project.Path), Retryable: errs.Bool(false), CorrectiveAction: "Select or rename one authoritative workbook target before publishing."}
-	}
-	if len(existing) == 1 && !input.Overwrite {
-		return Plan{}, &errs.Error{ID: "workbook.publish.conflict", Kind: errs.KindOperation, Operation: "workbook.publish", Resource: existing[0].LUID, Environment: input.Environment, Site: input.Site, Summary: "A workbook with this name already exists.", Cause: errors.New("use --overwrite to replace the exact existing workbook"), Retryable: errs.Bool(false), CorrectiveAction: "Review the exact existing workbook, then use --overwrite only when replacement is intended."}
+	if input.SourceDefaulted {
+		// The recorded source workbook must still exist by name in its recorded
+		// project and carry the same LUID. Zero matches (deleted or moved out of
+		// the project), a different LUID (name now points to another workbook),
+		// or multiple matches all mean the source changed after it was pulled.
+		if len(existing) != 1 || existing[0].LUID != artifact.TableauID {
+			return Plan{}, &errs.Error{ID: "workbook.publish.source_changed", Kind: errs.KindOperation, Operation: "workbook.publish", Resource: artifact.TableauID, Environment: input.Environment, Site: input.Site, Summary: "The recorded source workbook changed after it was pulled.", Cause: fmt.Errorf("recorded source workbook %q named %q in project %q was renamed, moved, deleted, or replaced", artifact.TableauID, name, project.Path), Retryable: errs.Bool(false), CorrectiveAction: "Re-pull the workbook or publish to an explicit environment, then review a new preview."}
+		}
+	} else {
+		if len(existing) > 1 {
+			return Plan{}, &errs.Error{ID: "workbook.publish.ambiguous", Kind: errs.KindOperation, Operation: "workbook.publish", Environment: input.Environment, Site: input.Site, Summary: "Workbook publish target is ambiguous.", Cause: fmt.Errorf("%d workbooks named %q exist in project %q", len(existing), name, project.Path), Retryable: errs.Bool(false), CorrectiveAction: "Select or rename one authoritative workbook target before publishing."}
+		}
+		if len(existing) == 1 && !input.Overwrite {
+			return Plan{}, &errs.Error{ID: "workbook.publish.conflict", Kind: errs.KindOperation, Operation: "workbook.publish", Resource: existing[0].LUID, Environment: input.Environment, Site: input.Site, Summary: "A workbook with this name already exists.", Cause: errors.New("use --overwrite to replace the exact existing workbook"), Retryable: errs.Bool(false), CorrectiveAction: "Review the exact existing workbook, then use --overwrite only when replacement is intended."}
+		}
 	}
 	existingLUID := ""
 	if len(existing) == 1 {
 		existingLUID = existing[0].LUID
 	}
-	request := PublishRequest{Name: name, ProjectLUID: project.LUID, Filename: artifact.Filename, ContentPath: artifact.PayloadPath, ContentSize: artifact.Size, ExpectedFingerprint: artifact.Fingerprint, Overwrite: input.Overwrite, AsJob: input.AsJob}
+	request := PublishRequest{Name: name, ProjectLUID: project.LUID, Filename: artifact.Filename, ContentPath: artifact.PayloadPath, ContentSize: artifact.Size, ExpectedFingerprint: artifact.Fingerprint, Overwrite: overwrite, AsJob: input.AsJob}
 	return Plan{
 		Mode: "preview", Operation: "workbook.publish", ArtifactPath: artifact.Path,
 		ArtifactFingerprint: artifact.Fingerprint, Filename: artifact.Filename, WorkbookName: name,
-		Target:    Target{Environment: input.Environment, Site: input.Site, ProjectLUID: project.LUID, ProjectPath: project.Path, ExistingLUID: existingLUID},
-		Overwrite: input.Overwrite, AsJob: input.AsJob,
+		Target:    Target{Origin: origin, Environment: input.Environment, Site: input.Site, ProjectLUID: project.LUID, ProjectPath: project.Path, ExistingLUID: existingLUID},
+		Overwrite: overwrite, AsJob: input.AsJob,
 		Substeps: []string{"resolve exact destination", "check workbook collision", "upload workbook", "publish workbook", "poll asynchronous job when requested"},
 		request:  request, planned: true,
 	}, nil

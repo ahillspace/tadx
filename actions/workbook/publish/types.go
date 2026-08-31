@@ -4,10 +4,17 @@ import "github.com/ahillspace/tadx/internal/identity"
 
 // Input selects one local artifact and explicit remote destination.
 type Input struct {
-	ArtifactPath    string
-	Environment     string
-	Site            string
-	TargetResolved  bool
+	ArtifactPath string
+	Environment  string
+	Site         string
+	// TargetResolved reports that the composition root already resolved the
+	// exact write environment and site, so the action must not re-require them.
+	TargetResolved bool
+	// SourceDefaulted reports that no explicit --environment was given and the
+	// composition root defaulted the write target to the artifact's recorded
+	// source origin. In this mode the action republishes over the exact recorded
+	// source workbook and never creates a differently named or located workbook.
+	SourceDefaulted bool
 	Name            string
 	ProjectSelector identity.Selector
 	ProjectLUID     string
@@ -25,6 +32,12 @@ type Artifact struct {
 	Name        string
 	TableauID   string
 	Fingerprint string
+	// Source provenance recorded at pull time, used to default the publish
+	// target back to the artifact's origin when no explicit target is given.
+	SourceEnvironment string
+	SourceSite        string
+	SourceProjectName string
+	SourceProjectID   string
 }
 
 // Project is one authoritative remote destination.
@@ -43,6 +56,10 @@ type Workbook struct {
 
 // Target is the stable preview target.
 type Target struct {
+	// Origin is "artifact-source" when the target was defaulted from the
+	// artifact's recorded provenance, and "explicit" when a write target was
+	// given on the command line.
+	Origin       string `json:"origin"`
 	Environment  string `json:"environment"`
 	Site         string `json:"site"`
 	ProjectLUID  string `json:"project_luid"`

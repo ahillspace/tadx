@@ -57,13 +57,17 @@ type WorkbookPullResult struct {
 
 // WorkbookArtifact is the current canonical payload used for publish.
 type WorkbookArtifact struct {
-	Path        string
-	PayloadPath string
-	Filename    string
-	Size        int64
-	Name        string
-	TableauID   string
-	Fingerprint string
+	Path              string
+	PayloadPath       string
+	Filename          string
+	Size              int64
+	Name              string
+	TableauID         string
+	Fingerprint       string
+	SourceEnvironment string
+	SourceSite        string
+	SourceProjectName string
+	SourceProjectID   string
 }
 
 // WorkbookManager owns workbook artifact storage.
@@ -259,7 +263,37 @@ func (m *WorkbookManager) Read(ctx context.Context, path string) (WorkbookArtifa
 	if err != nil {
 		return WorkbookArtifact{}, fmt.Errorf("fingerprint canonical workbook: %w", err)
 	}
-	return WorkbookArtifact{Path: directory, PayloadPath: canonical, Filename: metadata.CanonicalPayload, Size: canonicalInfo.Size(), Name: metadata.Name, TableauID: metadata.TableauID, Fingerprint: currentFingerprint}, nil
+	return WorkbookArtifact{Path: directory, PayloadPath: canonical, Filename: metadata.CanonicalPayload, Size: canonicalInfo.Size(), Name: metadata.Name, TableauID: metadata.TableauID, Fingerprint: currentFingerprint, SourceEnvironment: metadata.SourceEnvironment, SourceSite: metadata.SourceSite, SourceProjectName: metadata.SourceProjectName, SourceProjectID: metadata.SourceProjectID}, nil
+}
+
+// ReadMetadata parses and validates one workbook artifact's recorded provenance
+// without touching the canonical payload or recomputing its fingerprint. The
+// composition root uses it to default a publish target to the artifact's source
+// before an environment adapter is constructed.
+func (m *WorkbookManager) ReadMetadata(_ context.Context, path string) (WorkbookMetadata, error) {
+	absolute, err := filepath.Abs(path)
+	if err != nil {
+		return WorkbookMetadata{}, err
+	}
+	info, err := os.Lstat(absolute)
+	if err != nil {
+		return WorkbookMetadata{}, fmt.Errorf("inspect workbook artifact: %w", err)
+	}
+	if info.Mode()&os.ModeSymlink != 0 {
+		return WorkbookMetadata{}, fmt.Errorf("workbook artifact selector %q must not be a symbolic link", path)
+	}
+	directory := absolute
+	if !info.IsDir() {
+		directory = filepath.Dir(absolute)
+	}
+	metadata, err := readMetadata(directory)
+	if err != nil {
+		return WorkbookMetadata{}, err
+	}
+	if err := validateWorkbookMetadata(metadata); err != nil {
+		return WorkbookMetadata{}, err
+	}
+	return metadata, nil
 }
 
 func validateWorkbookMetadata(metadata WorkbookMetadata) error {

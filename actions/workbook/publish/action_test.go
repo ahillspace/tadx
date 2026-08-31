@@ -264,6 +264,82 @@ func TestApplyPreservesRetryAdviceForOverwriteRevalidation(t *testing.T) {
 	}
 }
 
+func TestPlanDefaultsTargetToArtifactSource(t *testing.T) {
+	action := publish.New(
+		artifactReader{artifact: publish.Artifact{
+			Path: `C:\workspace\Finance`, Filename: "Finance.twbx", Name: "Finance", TableauID: "wb-src",
+			SourceEnvironment: "production", SourceSite: "marketing",
+			SourceProjectName: "Department/Ops", SourceProjectID: "project-1",
+		}},
+		resolver{
+			project:  publish.Project{LUID: "project-1", Name: "Ops", Path: "Department/Ops"},
+			existing: []publish.Workbook{{LUID: "wb-src", Name: "Finance", ProjectLUID: "project-1"}},
+		},
+		&publisher{},
+	)
+	plan, err := action.Plan(context.Background(), publish.Input{
+		ArtifactPath: `C:\workspace\Finance`, Environment: "production", Site: "marketing",
+		TargetResolved: true, SourceDefaulted: true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if plan.Target.Origin != "artifact-source" || plan.Target.ExistingLUID != "wb-src" || !plan.Overwrite || plan.WorkbookName != "Finance" || plan.Target.ProjectLUID != "project-1" {
+		t.Fatalf("plan = %#v", plan)
+	}
+}
+
+func TestPlanFailsWhenArtifactSourceChanged(t *testing.T) {
+	tests := []struct {
+		name     string
+		existing []publish.Workbook
+	}{
+		{name: "deleted-or-moved", existing: nil},
+		{name: "name-now-points-elsewhere", existing: []publish.Workbook{{LUID: "wb-other", Name: "Finance", ProjectLUID: "project-1"}}},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			action := publish.New(
+				artifactReader{artifact: publish.Artifact{Path: "artifact", Filename: "Finance.twbx", Name: "Finance", TableauID: "wb-src", SourceEnvironment: "production", SourceSite: "marketing", SourceProjectName: "Department/Ops", SourceProjectID: "project-1"}},
+				resolver{project: publish.Project{LUID: "project-1", Path: "Department/Ops"}, existing: test.existing},
+				&publisher{},
+			)
+			_, err := action.Plan(context.Background(), publish.Input{ArtifactPath: "artifact", Environment: "production", Site: "marketing", TargetResolved: true, SourceDefaulted: true})
+			var structured *errs.Error
+			if !errors.As(err, &structured) || structured.ID != "workbook.publish.source_changed" {
+				t.Fatalf("error = %T %v", err, err)
+			}
+			if structured.Retryable == nil || *structured.Retryable {
+				t.Fatalf("source_changed must be non-retryable: %#v", structured)
+			}
+		})
+	}
+}
+
+func TestSourcePreviewGoldenOutput(t *testing.T) {
+	action := publish.New(
+		artifactReader{artifact: publish.Artifact{Path: `C:\workspace\Finance`, Filename: "Finance.twbx", Name: "Finance", TableauID: "wb-src", Fingerprint: "sha256:abc", SourceEnvironment: "production", SourceSite: "marketing", SourceProjectName: "Department/Ops", SourceProjectID: "project-1"}},
+		resolver{project: publish.Project{LUID: "project-1", Name: "Ops", Path: "Department/Ops"}, existing: []publish.Workbook{{LUID: "wb-src", Name: "Finance", ProjectLUID: "project-1"}}},
+		&publisher{},
+	)
+	value, err := action.Execute(context.Background(), publish.Input{ArtifactPath: `C:\workspace\Finance`, Environment: "production", Site: "marketing", TargetResolved: true, SourceDefaulted: true}, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var actual bytes.Buffer
+	if err := output.Render(&actual, value); err != nil {
+		t.Fatal(err)
+	}
+	expected, err := os.ReadFile("testdata/preview_source.toon")
+	if err != nil {
+		t.Fatal(err)
+	}
+	expected = bytes.TrimSuffix(expected, []byte("\n"))
+	if !bytes.Equal(actual.Bytes(), expected) {
+		t.Fatalf("golden mismatch\nexpected:\n%s\nactual:\n%s", expected, actual.Bytes())
+	}
+}
+
 func TestPreviewGoldenOutput(t *testing.T) {
 	action := publish.New(
 		artifactReader{artifact: publish.Artifact{Path: `C:\workspace\Finance`, Filename: "Finance.twbx", Name: "Finance", Fingerprint: "sha256:abc"}},

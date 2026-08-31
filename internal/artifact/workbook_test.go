@@ -48,6 +48,35 @@ func TestWorkbookManagerWritesCanonicalArtifactAndProvenance(t *testing.T) {
 	}
 }
 
+func TestWorkbookManagerReadExposesSourceProvenance(t *testing.T) {
+	workspace := createWorkspace(t)
+	manager := artifact.NewWorkbookManager(time.Now)
+	result, err := manager.Pull(context.Background(), artifact.WorkbookPull{
+		Workspace: workspace, Filename: "Finance.twbx", Content: []byte("native"),
+		Metadata: artifact.WorkbookMetadata{Kind: "workbook", Name: "Finance", TableauID: "wb-1", SourceServerOrigin: "https://tableau.example.com", SourceSiteLUID: "site-1", SourceEnvironment: "production", SourceSite: "marketing", SourceProjectName: "Department/Ops", SourceProjectID: "project-1"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	workbook, err := manager.Read(context.Background(), result.ArtifactPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if workbook.SourceEnvironment != "production" || workbook.SourceSite != "marketing" || workbook.SourceProjectName != "Department/Ops" || workbook.SourceProjectID != "project-1" {
+		t.Fatalf("workbook = %#v", workbook)
+	}
+	metadata, err := manager.ReadMetadata(context.Background(), result.ArtifactPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if metadata.SourceEnvironment != "production" || metadata.TableauID != "wb-1" || metadata.Name != "Finance" {
+		t.Fatalf("metadata = %#v", metadata)
+	}
+	if _, err := manager.ReadMetadata(context.Background(), filepath.Join(workspace, "missing")); err == nil {
+		t.Fatal("ReadMetadata accepted a missing artifact")
+	}
+}
+
 func TestWorkbookManagerPreservesEmptyDefaultSiteProvenance(t *testing.T) {
 	workspace := createWorkspace(t)
 	manager := artifact.NewWorkbookManager(time.Now)
