@@ -86,13 +86,13 @@ type WorkbookPullResult struct {
 
 // WorkbookArtifact is the current canonical payload used for publish.
 type WorkbookArtifact struct {
-	Path              string
-	PayloadPath       string
-	Filename          string
-	Size              int64
-	Name              string
-	TableauID         string
-	Fingerprint       string
+	Path                     string
+	PayloadPath              string
+	Filename                 string
+	Size                     int64
+	Name                     string
+	TableauID                string
+	Fingerprint              string
 	SourceEnvironment        string
 	SourceSite               string
 	SourceProjectName        string
