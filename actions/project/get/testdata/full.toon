@@ -1,0 +1,13 @@
+status: found
+environment: dev
+site: sandbox
+project:
+  luid: project-1
+  name: Ops
+  path: Department/Ops
+  parent_luid: project-root
+  description: Operations
+  owner_luid: user-1
+  workbook_count: 2
+tableau_request_id: request-1
+help[1]: tadx content project list

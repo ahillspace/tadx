@@ -6,6 +6,7 @@ import (
 	"encoding/xml"
 	"errors"
 	"fmt"
+	"math"
 	"mime"
 	"net/http"
 	"net/url"
@@ -17,12 +18,32 @@ import (
 	"github.com/ahillspace/tadx/internal/tableau"
 )
 
+const (
+	maxPageSize          = 1000
+	maxListResponseBytes = 16 * 1024 * 1024
+)
+
 // Datasource is the authoritative identity projection needed by workbook dependency acquisition.
 type Datasource struct {
 	LUID        string
 	Name        string
 	ProjectLUID string
 	ProjectName string
+}
+
+// ListRequest selects one bounded published datasource page.
+type ListRequest struct {
+	PageNumber int
+	PageSize   int
+	Name       string
+}
+
+// Page contains one normalized classic REST datasource page.
+type Page struct {
+	Number int
+	Size   int
+	Total  int
+	Items  []Datasource
 }
 
 // Download is a preserved native datasource response.
@@ -52,6 +73,50 @@ func (c *Client) SetMaxDownloadBytes(limit int64) {
 	if limit > 0 {
 		c.maxDownloadBytes = limit
 	}
+}
+
+// List returns one bounded published datasource page.
+func (c *Client) List(ctx context.Context, input ListRequest) (Page, error) {
+	if err := c.validate(); err != nil {
+		return Page{}, err
+	}
+	query, err := datasourceListQuery(input)
+	if err != nil {
+		return Page{}, err
+	}
+	response, err := c.do(ctx, c.sitePath("datasources"), "datasource.list", maxListResponseBytes, query)
+	if err != nil {
+		return Page{}, err
+	}
+	var envelope datasourceListEnvelope
+	if err := xml.Unmarshal(response.Body, &envelope); err != nil {
+		return Page{}, tableau.NewProtocolError("datasource.list", response, fmt.Errorf("decode datasource list response: %w", err), true)
+	}
+	if len(envelope.Pagination) != 1 {
+		return Page{}, tableau.NewProtocolError("datasource.list", response, fmt.Errorf("datasource list response contained %d pagination elements; expected 1", len(envelope.Pagination)), true)
+	}
+	if len(envelope.Datasources) != 1 {
+		return Page{}, tableau.NewProtocolError("datasource.list", response, fmt.Errorf("datasource list response contained %d datasources elements; expected 1", len(envelope.Datasources)), true)
+	}
+	itemsXML := envelope.Datasources[0].Items
+	page, err := normalizeDatasourcePagination(envelope.Pagination[0], input.PageNumber, input.PageSize, len(itemsXML))
+	if err != nil {
+		return Page{}, tableau.NewProtocolError("datasource.list", response, err, true)
+	}
+	items := make([]Datasource, len(itemsXML))
+	seen := make(map[string]Datasource, len(itemsXML))
+	for index, item := range itemsXML {
+		datasource := normalizeDatasource(item)
+		if datasource.LUID == "" || datasource.Name == "" || datasource.ProjectLUID == "" || datasource.ProjectName == "" {
+			return Page{}, tableau.NewProtocolError("datasource.list", response, fmt.Errorf("datasource list response returned an incomplete authoritative identity at item %d", index), true)
+		}
+		if current, exists := seen[datasource.LUID]; exists && current != datasource {
+			return Page{}, tableau.NewProtocolError("datasource.list", response, fmt.Errorf("datasource list response returned conflicting records for LUID %q", datasource.LUID), true)
+		}
+		seen[datasource.LUID] = datasource
+		items[index] = datasource
+	}
+	return Page{Number: page.Number, Size: page.Size, Total: page.Total, Items: items}, nil
 }
 
 // Get returns one published datasource by its authoritative LUID.
@@ -173,12 +238,86 @@ func validFilename(filename string) bool {
 }
 
 type datasourceGetEnvelope struct {
-	Datasource struct {
-		ID      string `xml:"id,attr"`
-		Name    string `xml:"name,attr"`
-		Project struct {
-			ID   string `xml:"id,attr"`
-			Name string `xml:"name,attr"`
-		} `xml:"project"`
-	} `xml:"datasource"`
+	Datasource datasourceXML `xml:"datasource"`
+}
+
+type datasourceListEnvelope struct {
+	Pagination  []paginationXML     `xml:"pagination"`
+	Datasources []datasourceListXML `xml:"datasources"`
+}
+
+type datasourceListXML struct {
+	Items []datasourceXML `xml:"datasource"`
+}
+
+type datasourceXML struct {
+	ID      string `xml:"id,attr"`
+	Name    string `xml:"name,attr"`
+	Project struct {
+		ID   string `xml:"id,attr"`
+		Name string `xml:"name,attr"`
+	} `xml:"project"`
+}
+
+type paginationXML struct {
+	Number *int `xml:"pageNumber,attr"`
+	Size   *int `xml:"pageSize,attr"`
+	Total  *int `xml:"totalAvailable,attr"`
+}
+
+func datasourceListQuery(input ListRequest) (url.Values, error) {
+	if input.PageNumber <= 0 {
+		return nil, errors.New("datasource page number must be positive")
+	}
+	if input.PageSize <= 0 || input.PageSize > maxPageSize {
+		return nil, fmt.Errorf("datasource page size must be between 1 and %d", maxPageSize)
+	}
+	query := url.Values{
+		"pageNumber": {strconv.Itoa(input.PageNumber)},
+		"pageSize":   {strconv.Itoa(input.PageSize)},
+	}
+	if input.Name != "" {
+		if strings.ContainsAny(input.Name, ",&") {
+			return nil, errors.New("datasource name filter contains an unsupported comma or ampersand")
+		}
+		query.Set("filter", "name:eq:"+input.Name)
+	}
+	return query, nil
+}
+
+func normalizeDatasource(item datasourceXML) Datasource {
+	return Datasource{
+		LUID: strings.TrimSpace(item.ID), Name: strings.TrimSpace(item.Name),
+		ProjectLUID: strings.TrimSpace(item.Project.ID), ProjectName: strings.TrimSpace(item.Project.Name),
+	}
+}
+
+func normalizeDatasourcePagination(value paginationXML, requestedNumber, requestedSize, itemCount int) (tableau.Page, error) {
+	if value.Number == nil || value.Size == nil || value.Total == nil {
+		return tableau.Page{}, errors.New("datasource list response omitted required pagination attributes")
+	}
+	number, size, total := *value.Number, *value.Size, *value.Total
+	if number != requestedNumber || number <= 0 {
+		return tableau.Page{}, fmt.Errorf("datasource list response returned page number %d, expected %d", number, requestedNumber)
+	}
+	if size <= 0 || size > requestedSize || size > maxPageSize {
+		return tableau.Page{}, fmt.Errorf("datasource list response returned invalid page size %d", size)
+	}
+	if total < 0 || itemCount > size || total < itemCount {
+		return tableau.Page{}, fmt.Errorf("datasource list response returned inconsistent pagination total %d, size %d, and item count %d", total, size, itemCount)
+	}
+	pageIndex := int64(number - 1)
+	if pageIndex > math.MaxInt64/int64(size) {
+		return tableau.Page{}, fmt.Errorf("datasource list response page %d exceeds the pagination bound", number)
+	}
+	offset := pageIndex * int64(size)
+	remaining := int64(total) - offset
+	if remaining < 0 {
+		return tableau.Page{}, fmt.Errorf("datasource list response total %d is inconsistent with page %d", total, number)
+	}
+	expected := min(int64(size), remaining)
+	if int64(itemCount) != expected {
+		return tableau.Page{}, fmt.Errorf("datasource list response returned %d items for page %d; expected %d from total %d and size %d", itemCount, number, expected, total, size)
+	}
+	return tableau.Page{Number: number, Size: size, Total: total}, nil
 }

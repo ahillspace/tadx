@@ -225,6 +225,9 @@ import (
 	_ "example.test/tadx/internal/toon"
 )
 `)
+	writeGo(t, root, "internal/workspace/manager.go", `package workspace
+import _ "example.test/tadx/internal/config"
+`)
 	writeGo(t, root, "cmd/tadx/main.go", `package main
 import _ "example.test/tadx/internal/app"
 `)
@@ -251,6 +254,7 @@ func TestCheckRejectsImportsFromEveryFoundationPackage(t *testing.T) {
 		{path: "internal/errs", name: "errs"},
 		{path: "internal/identity", name: "identity"},
 		{path: "internal/output", name: "output"},
+		{path: "internal/workspace", name: "workspace"},
 		{path: "internal/toon", name: "toon"},
 	}
 

@@ -738,6 +738,13 @@ fail
 
 No automatic workspace creation as a `pull` fallback.
 
+`--workspace` accepts a logical registered name, never a machine path.
+Workspace names are globally unique within one TADX configuration under case-insensitive comparison.
+Canonical workspace roots are also unique.
+Commands may omit `--workspace` only when the deterministic chain above selects exactly one registered workspace.
+User-facing artifact selectors and persisted artifact references are workspace-relative and slash-delimited.
+CLI output never exposes the registered machine-local workspace root.
+
 ## 6.2 Selector resolution
 
 `[DECIDED]`
@@ -1002,20 +1009,30 @@ Illustrative contract:
 version: 1
 
 default_environment: production
-default_workspace: ./workspaces/default
+default_workspace: development
+
+workspaces:
+  development:
+    id: ws_0123456789abcdef0123456789abcdef
+    path: "<machine-local-development-workspace-root>"
+  production:
+    id: ws_fedcba9876543210fedcba9876543210
+    path: "<machine-local-production-workspace-root>"
 
 environments:
   production:
     url: https://example.tableau.com
-    site_id: example-site
+    site_content_url: example-site
     auth:
       type: pat
       pat_name_env: TADX_PRODUCTION_PAT_NAME
       pat_secret_env: TADX_PRODUCTION_PAT_SECRET
-    default_workspace: ./workspaces/prod
+    default_workspace: production
 ```
 
 Environment aliases are map keys.
+
+Workspace registrations bind one logical name and stable workspace ID to one machine-local root.
 
 Environment-scoped workspace default takes precedence over the general default.
 

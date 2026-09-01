@@ -1,0 +1,12 @@
+status: listed
+environment: dev
+site: sandbox
+page:
+  returned: 1
+  total: 3
+  limit: 1
+  next_cursor: next-page
+projects[1]{luid,name,parent_luid,description,owner_luid,top_level,project_count}:
+  project-1,Ops,project-root,Operations,user-1,false,3
+tableau_request_id: request-1
+help[1]: tadx content project get --id <project-luid>

@@ -29,6 +29,7 @@ import (
 	"github.com/ahillspace/tadx/internal/identity"
 	"github.com/ahillspace/tadx/internal/output"
 	resourcedatasource "github.com/ahillspace/tadx/internal/resources/datasource"
+	resourcelineage "github.com/ahillspace/tadx/internal/resources/lineage"
 	resourceworkbook "github.com/ahillspace/tadx/internal/resources/workbook"
 	"github.com/ahillspace/tadx/internal/tableau"
 	tableauauth "github.com/ahillspace/tadx/internal/tableau/auth"
@@ -55,21 +56,29 @@ func Run(ctx context.Context, args []string, stdout io.Writer, options Options) 
 	if err != nil {
 		return renderError(stdout, err)
 	}
+	environmentCommands := newEnvironmentCommands(runtime)
+	workspaceCommands := newWorkspaceCommands(runtime)
+	remoteContent := newRemoteContentCommands(runtime)
 	root := cli.NewRoot(cli.Dependencies{
-		Lister:            capabilitylist.New(source),
-		Getter:            capabilityget.New(source),
-		Renderer:          writerRenderer{writer: stdout, options: renderOptions},
-		RenderOptions:     renderOptions,
-		MutationsEnabled:  options.MutationsEnabled,
-		ListUse:           registryUse("capability.list"),
-		ListShort:         registryShort("capability.list"),
-		GetUse:            registryUse("capability.get"),
-		GetShort:          registryShort("capability.get"),
-		AuthChecker:       authcheck.New(runtime, runtime),
-		CatalogSearcher:   &catalogService{runtime: runtime},
-		WorkbookPuller:    &pullService{runtime: runtime},
-		WorkbookPublisher: &publishService{runtime: runtime},
-		AuthUse:           registryLeafUse("auth.check"), AuthShort: registryShort("auth.check"),
+		Lister:              capabilitylist.New(source),
+		Getter:              capabilityget.New(source),
+		Renderer:            writerRenderer{writer: stdout, options: renderOptions},
+		RenderOptions:       renderOptions,
+		ConfigPath:          &runtime.configPath,
+		MutationsEnabled:    options.MutationsEnabled,
+		ListUse:             registryUse("capability.list"),
+		ListShort:           registryShort("capability.list"),
+		GetUse:              registryUse("capability.get"),
+		GetShort:            registryShort("capability.get"),
+		AuthChecker:         authcheck.New(runtime, runtime),
+		CatalogSearcher:     &catalogService{runtime: runtime},
+		WorkbookPuller:      &pullService{runtime: runtime},
+		WorkbookPublisher:   &publishService{runtime: runtime},
+		Content:             remoteContent.dependencies(),
+		EnvironmentProfiles: environmentCommands.dependencies(),
+		Workspaces:          workspaceCommands.dependencies(),
+		AuthUse:             registryLeafUse("auth.check"), AuthShort: registryShort("auth.check"),
+		AuthStatuser: newAuthStatus(runtime), AuthStatusUse: registryLeafUse("auth.status"), AuthStatusShort: registryShort("auth.status"),
 		CatalogSearchUse: registryLeafUse("catalog.search"), CatalogSearchShort: registryShort("catalog.search"),
 		WorkbookPullUse: registryLeafUse("workbook.pull"), WorkbookPullShort: registryShort("workbook.pull"),
 		WorkbookPublishUse: registryLeafUse("workbook.publish"), WorkbookPublishShort: registryShort("workbook.publish"),
@@ -253,7 +262,7 @@ type pullService struct{ runtime *runtimeDependencies }
 
 func (s *pullService) Execute(ctx context.Context, input workbookpull.Input) (workbookpull.Output, error) {
 	connection, err := s.runtime.tableauConnection(ctx, input.Environment, false)
-	configuration, environment := connection.configuration, connection.environment
+	environment := connection.environment
 	if err != nil {
 		environmentAlias, site := resolvedTarget(input.Environment, input.Site, environment)
 		return workbookpull.Output{}, capabilitySetupError("workbook.pull.setup", "workbook.pull", environmentAlias, site, "Workbook pull setup failed.", "Review the environment, site, and PAT configuration.", err)
@@ -263,6 +272,7 @@ func (s *pullService) Execute(ctx context.Context, input workbookpull.Input) (wo
 	datasourceClient := tableaudatasource.NewClient(connection.transport, connection.session, environment.URL)
 	workbooks := resourceworkbook.NewAdapter(workbookClient)
 	references := resourceworkbook.NewReferenceAdapter(metadataClient)
+	lineage := resourcelineage.NewAdapter(metadataClient)
 	datasources := resourcedatasource.NewAdapter(datasourceClient)
 	input.Environment, input.Site = environment.Alias, environment.SiteContentURL
 	input.ServerOrigin, err = artifact.NormalizeServerOrigin(environment.URL)
@@ -270,14 +280,13 @@ func (s *pullService) Execute(ctx context.Context, input workbookpull.Input) (wo
 		return workbookpull.Output{}, capabilitySetupError("workbook.pull.source", "workbook.pull", input.Environment, input.Site, "Workbook source identity resolution failed.", "Review the configured Tableau server URL, then retry.", err)
 	}
 	input.SiteLUID = connection.session.SiteLUID()
-	if input.Workspace == "" {
-		input.Workspace, err = resolveWorkspace(configuration, environment)
-		if err != nil {
-			return workbookpull.Output{}, capabilitySetupError("workbook.pull.workspace", "workbook.pull", input.Environment, input.Site, "Workbook workspace resolution failed.", "Select or configure an exact workspace, then retry.", err)
-		}
+	resolvedWorkspace, err := (&workspaceRuntime{runtime: s.runtime}).resolveForEnvironment(ctx, input.Workspace, environment.Alias)
+	if err != nil {
+		return workbookpull.Output{}, capabilitySetupError("workbook.pull.workspace", "workbook.pull", input.Environment, input.Site, "Workbook workspace resolution failed.", "Select or configure an exact workspace, then retry.", err)
 	}
+	input.Workspace = resolvedWorkspace.Root
 	return workbookpull.New(
-		pullReader{workbooks: workbooks, references: references, datasources: datasources},
+		pullReader{workbooks: workbooks, references: references, datasources: datasources, lineage: lineage},
 		artifactWriter{workbooks: artifact.NewWorkbookManager(s.runtime.now), bundles: artifact.NewWorkbookBundleManager(s.runtime.now)},
 	).Execute(ctx, input)
 }
@@ -286,6 +295,7 @@ type pullReader struct {
 	workbooks   *resourceworkbook.Adapter
 	references  *resourceworkbook.ReferenceAdapter
 	datasources *resourcedatasource.Adapter
+	lineage     *resourcelineage.Adapter
 }
 
 func (r pullReader) ResolveWorkbook(ctx context.Context, selector identity.Selector) (workbookpull.Workbook, error) {
@@ -318,6 +328,19 @@ func (r pullReader) DownloadPublishedDatasource(ctx context.Context, luid string
 	return workbookpull.DatasourceDownload{LUID: item.LUID, Name: item.Name, ProjectLUID: item.ProjectLUID, ProjectPath: project.Path, Filename: item.Filename, Content: item.Content, TableauRequestID: item.TableauRequestID}, nil
 }
 
+func (r pullReader) CaptureWorkbookLineage(ctx context.Context, input workbookpull.LineageRequest) (workbookpull.LineageCapture, error) {
+	graph, err := r.lineage.Capture(ctx, resourcelineage.Request{Kind: "workbook", RESTLUID: input.RESTLUID, Direction: input.Direction, Depth: input.Depth})
+	nodes := make([]workbookpull.LineageNode, len(graph.Nodes))
+	for index, node := range graph.Nodes {
+		nodes[index] = workbookpull.LineageNode{MetadataID: node.MetadataID, Kind: node.Kind, RESTLUID: node.RESTLUID, Name: node.Name}
+	}
+	edges := make([]workbookpull.LineageEdge, len(graph.Edges))
+	for index, edge := range graph.Edges {
+		edges[index] = workbookpull.LineageEdge{FromMetadataID: edge.FromMetadataID, ToMetadataID: edge.ToMetadataID, Relationship: edge.Relationship}
+	}
+	return workbookpull.LineageCapture{RootMetadataID: graph.RootMetadataID, Complete: graph.Complete, Direction: graph.Direction, Depth: graph.Depth, Nodes: nodes, Edges: edges, Warnings: append([]string(nil), graph.Warnings...)}, err
+}
+
 type artifactWriter struct {
 	workbooks *artifact.WorkbookManager
 	bundles   *artifact.WorkbookBundleManager
@@ -328,8 +351,8 @@ func (w artifactWriter) WriteWorkbook(ctx context.Context, input workbookpull.Ar
 	for index, item := range input.PublishedDatasources {
 		references[index] = artifact.PublishedDatasourceRef{LUID: item.LUID, Name: item.Name, SourceSite: item.SourceSite, LocalArtifactPath: item.LocalArtifactPath}
 	}
-	result, err := w.workbooks.Pull(ctx, artifact.WorkbookPull{Workspace: input.Workspace, Filename: input.Filename, Content: input.Content, Overwrite: input.Overwrite, Metadata: artifact.WorkbookMetadata{Kind: "workbook", Name: input.Name, TableauID: input.TableauID, SourceServerOrigin: input.ServerOrigin, SourceSiteLUID: input.SiteLUID, SourceEnvironment: input.Environment, SourceSite: input.Site, SourceProjectName: input.ProjectName, SourceProjectID: input.ProjectID, Portability: input.Portability, PublishedDatasources: references, DependenciesAcquired: input.DependenciesAcquired}})
-	return workbookpull.ArtifactResult{Path: result.ArtifactPath, CanonicalPath: result.CanonicalPath, BaselineFingerprint: result.BaselineFingerprint, Warnings: result.Warnings}, err
+	result, err := w.workbooks.Pull(ctx, artifact.WorkbookPull{Workspace: input.Workspace, Filename: input.Filename, Content: input.Content, Overwrite: input.Overwrite, Lineage: workbookLineageDocument(input.Lineage), LineageCountsKnown: input.LineageCountsKnown, Metadata: artifact.WorkbookMetadata{Kind: "workbook", Name: input.Name, TableauID: input.TableauID, SourceServerOrigin: input.ServerOrigin, SourceSiteLUID: input.SiteLUID, SourceEnvironment: input.Environment, SourceSite: input.Site, SourceProjectName: input.ProjectName, SourceProjectID: input.ProjectID, Portability: input.Portability, PublishedDatasources: references, DependenciesAcquired: input.DependenciesAcquired}})
+	return workbookpull.ArtifactResult{Path: result.ArtifactPath, CanonicalPath: result.CanonicalPath, LineagePath: result.LineagePath, LineageStatus: result.LineageStatus, BaselineFingerprint: result.BaselineFingerprint, Warnings: result.Warnings}, err
 }
 
 func (w artifactWriter) WriteBundle(ctx context.Context, workbook workbookpull.Artifact, datasources []workbookpull.DatasourceArtifact) (workbookpull.ArtifactResult, error) {
@@ -338,7 +361,7 @@ func (w artifactWriter) WriteBundle(ctx context.Context, workbook workbookpull.A
 		references[index] = artifact.PublishedDatasourceRef{LUID: item.LUID, Name: item.Name, SourceSite: item.SourceSite}
 	}
 	bundle := artifact.WorkbookBundlePull{
-		Workbook:    artifact.WorkbookPull{Workspace: workbook.Workspace, Filename: workbook.Filename, Content: workbook.Content, Overwrite: workbook.Overwrite, Metadata: artifact.WorkbookMetadata{Kind: "workbook", Name: workbook.Name, TableauID: workbook.TableauID, SourceServerOrigin: workbook.ServerOrigin, SourceSiteLUID: workbook.SiteLUID, SourceEnvironment: workbook.Environment, SourceSite: workbook.Site, SourceProjectName: workbook.ProjectName, SourceProjectID: workbook.ProjectID, Portability: workbook.Portability, PublishedDatasources: references, DependenciesAcquired: true}},
+		Workbook:    artifact.WorkbookPull{Workspace: workbook.Workspace, Filename: workbook.Filename, Content: workbook.Content, Overwrite: workbook.Overwrite, Lineage: workbookLineageDocument(workbook.Lineage), LineageCountsKnown: workbook.LineageCountsKnown, Metadata: artifact.WorkbookMetadata{Kind: "workbook", Name: workbook.Name, TableauID: workbook.TableauID, SourceServerOrigin: workbook.ServerOrigin, SourceSiteLUID: workbook.SiteLUID, SourceEnvironment: workbook.Environment, SourceSite: workbook.Site, SourceProjectName: workbook.ProjectName, SourceProjectID: workbook.ProjectID, Portability: workbook.Portability, PublishedDatasources: references, DependenciesAcquired: true}},
 		Datasources: make([]artifact.DatasourcePull, len(datasources)),
 	}
 	for index, item := range datasources {
@@ -360,13 +383,45 @@ func (w artifactWriter) WriteBundle(ctx context.Context, workbook workbookpull.A
 		item.LocalArtifactPath = pathByLUID[item.LUID]
 		outputReferences[index] = item
 	}
-	return workbookpull.ArtifactResult{Path: result.Workbook.ArtifactPath, CanonicalPath: result.Workbook.CanonicalPath, BaselineFingerprint: result.Workbook.BaselineFingerprint, Portability: workbook.Portability, PublishedDatasources: outputReferences, DependenciesAcquired: true, Dependencies: dependencies, Warnings: result.Workbook.Warnings}, nil
+	return workbookpull.ArtifactResult{Path: result.Workbook.ArtifactPath, CanonicalPath: result.Workbook.CanonicalPath, LineagePath: result.Workbook.LineagePath, LineageStatus: result.Workbook.LineageStatus, BaselineFingerprint: result.Workbook.BaselineFingerprint, Portability: workbook.Portability, PublishedDatasources: outputReferences, DependenciesAcquired: true, Dependencies: dependencies, Warnings: result.Workbook.Warnings}, nil
+}
+
+func workbookLineageDocument(input workbookpull.LineageCapture) artifact.LineageDocument {
+	nodes := make([]artifact.LineageNode, len(input.Nodes))
+	for index, node := range input.Nodes {
+		nodes[index] = artifact.LineageNode{MetadataID: node.MetadataID, Kind: node.Kind, RESTLUID: node.RESTLUID, Name: node.Name}
+	}
+	edges := make([]artifact.LineageEdge, len(input.Edges))
+	for index, edge := range input.Edges {
+		edges[index] = artifact.LineageEdge{FromMetadataID: edge.FromMetadataID, ToMetadataID: edge.ToMetadataID, Relationship: edge.Relationship}
+	}
+	return artifact.LineageDocument{Complete: input.Complete, Direction: input.Direction, Depth: input.Depth, Nodes: nodes, Edges: edges, Warnings: append([]string(nil), input.Warnings...)}
 }
 
 type publishService struct{ runtime *runtimeDependencies }
 
 func (s *publishService) Execute(ctx context.Context, input workbookpublish.Input, apply bool) (workbookpublish.Output, error) {
 	manager := artifact.NewWorkbookManager(s.runtime.now)
+	var environment config.Environment
+	var adapter *resourceworkbook.Adapter
+	var err error
+	if input.Environment != "" {
+		_, environment, adapter, _, err = s.runtime.workbookAdapter(ctx, input.Environment, true)
+		if err != nil {
+			environmentAlias, site := resolvedTarget(input.Environment, input.Site, environment)
+			return workbookpublish.Output{}, capabilitySetupError("workbook.publish.setup", "workbook.publish", environmentAlias, site, "Workbook publish setup failed.", "Review the explicit environment, site, and PAT configuration.", err)
+		}
+		input.Environment, input.Site, input.TargetResolved = environment.Alias, environment.SiteContentURL, true
+	}
+	resolvedWorkspace, err := (&workspaceRuntime{runtime: s.runtime}).resolveForEnvironment(ctx, input.Workspace, environment.Alias)
+	if err != nil {
+		return workbookpublish.Output{}, capabilitySetupError("workbook.publish.workspace", "workbook.publish", input.Environment, input.Site, "Workbook workspace resolution failed.", "Select or configure an exact workspace, then retry.", err)
+	}
+	managedArtifact, err := artifact.Resolve(ctx, resolvedWorkspace.Root, artifact.Selector{Path: input.ArtifactPath, Kind: "workbook"})
+	if err != nil {
+		return workbookpublish.Output{}, capabilitySetupError("workbook.publish.artifact", "workbook.publish", input.Environment, input.Site, "Workbook artifact resolution failed.", "Select one exact workspace-relative managed workbook artifact, then retry.", err)
+	}
+	input.ArtifactPath = filepath.Join(resolvedWorkspace.Root, filepath.FromSlash(managedArtifact.Path))
 	if input.Environment == "" {
 		// Artifact-home: with no explicit --environment, default the write target
 		// to the artifact's recorded source environment before selecting an adapter.
@@ -376,18 +431,14 @@ func (s *publishService) Execute(ctx context.Context, input workbookpublish.Inpu
 		}
 		input.Environment = metadata.SourceEnvironment
 		input.SourceDefaulted = true
-	}
-	_, environment, adapter, _, err := s.runtime.workbookAdapter(ctx, input.Environment, true)
-	if err != nil {
-		environmentAlias, site := resolvedTarget(input.Environment, input.Site, environment)
-		summary, corrective := "Workbook publish setup failed.", "Review the explicit environment, site, and PAT configuration."
-		if input.SourceDefaulted {
-			summary, corrective = "The artifact's recorded source environment is not configured.", "Add the recorded source environment to configuration, or publish to an explicit environment."
+		_, environment, adapter, _, err = s.runtime.workbookAdapter(ctx, input.Environment, true)
+		if err != nil {
+			environmentAlias, site := resolvedTarget(input.Environment, input.Site, environment)
+			return workbookpublish.Output{}, capabilitySetupError("workbook.publish.setup", "workbook.publish", environmentAlias, site, "The artifact's recorded source environment is not configured.", "Add the recorded source environment to configuration, or publish to an explicit environment.", err)
 		}
-		return workbookpublish.Output{}, capabilitySetupError("workbook.publish.setup", "workbook.publish", environmentAlias, site, summary, corrective, err)
+		input.Environment, input.Site, input.TargetResolved = environment.Alias, environment.SiteContentURL, true
 	}
-	input.Environment, input.Site, input.TargetResolved = environment.Alias, environment.SiteContentURL, true
-	action := workbookpublish.New(artifactReader{manager: manager}, publishAdapter{adapter: adapter}, publishAdapter{adapter: adapter})
+	action := workbookpublish.New(artifactReader{manager: manager, displayPath: managedArtifact.Path}, publishAdapter{adapter: adapter}, publishAdapter{adapter: adapter})
 	return action.Execute(ctx, input, apply)
 }
 
@@ -406,10 +457,16 @@ func capabilitySetupError(id, operation, environment, site, summary, fallbackAct
 	return &errs.Error{ID: id, Kind: errs.KindOperation, Operation: operation, Environment: environment, Site: site, Summary: summary, Cause: err, Retryable: retryable, CorrectiveAction: correctiveAction, TableauRequestID: errs.TableauRequestID(err)}
 }
 
-type artifactReader struct{ manager *artifact.WorkbookManager }
+type artifactReader struct {
+	manager     *artifact.WorkbookManager
+	displayPath string
+}
 
 func (r artifactReader) ReadWorkbook(ctx context.Context, path string) (workbookpublish.Artifact, error) {
 	item, err := r.manager.Read(ctx, path)
+	if err == nil && r.displayPath != "" {
+		item.Path = r.displayPath
+	}
 	return workbookpublish.Artifact{Path: item.Path, PayloadPath: item.PayloadPath, Filename: item.Filename, Size: item.Size, Name: item.Name, TableauID: item.TableauID, Fingerprint: item.Fingerprint, SourceEnvironment: item.SourceEnvironment, SourceSite: item.SourceSite, SourceProjectName: item.SourceProjectName, SourceProjectID: item.SourceProjectID, Portability: item.Portability, PublishedDatasourceCount: item.PublishedDatasourceCount}, err
 }
 
@@ -446,28 +503,6 @@ func (a preparedPublishAdapter) Commit(ctx context.Context) (workbookpublish.Res
 		warnings[index] = workbookpublish.ValidationIssue{Severity: warning.Severity, Message: warning.Message, Line: warning.Line, Column: warning.Column, ElementName: warning.ElementName}
 	}
 	return workbookpublish.Result{Status: result.Status, WorkbookLUID: result.WorkbookLUID, WorkbookName: result.WorkbookName, ProjectLUID: result.ProjectLUID, JobID: result.JobID, TableauRequestID: result.TableauRequestID, ValidationWarnings: warnings}, err
-}
-
-func resolveWorkspace(configuration config.Config, environment config.Environment) (string, error) {
-	current, err := os.Getwd()
-	if err == nil {
-		for directory := current; ; directory = filepath.Dir(directory) {
-			if _, statErr := os.Stat(filepath.Join(directory, config.WorkspaceConfigName)); statErr == nil {
-				return directory, nil
-			}
-			parent := filepath.Dir(directory)
-			if parent == directory {
-				break
-			}
-		}
-	}
-	if environment.DefaultWorkspace != "" {
-		return environment.DefaultWorkspace, nil
-	}
-	if configuration.DefaultWorkspace != "" {
-		return configuration.DefaultWorkspace, nil
-	}
-	return "", errors.New("no workspace selected or configured")
 }
 
 type registrySource struct{}
@@ -568,7 +603,7 @@ func filterResource(definition capability.Definition) string {
 
 func classify(definition capability.Definition) (string, string) {
 	parts := strings.Split(definition.ID, ".")
-	if definition.Owner == capability.OwnerCLI && (parts[0] == "workbook" || parts[0] == "datasource" || parts[0] == "flow" || parts[0] == "project") {
+	if definition.Owner == capability.OwnerCLI && (parts[0] == "workbook" || parts[0] == "datasource" || parts[0] == "flow" || parts[0] == "lineage" || parts[0] == "project") {
 		return "content", parts[0]
 	}
 	if len(parts) == 3 {

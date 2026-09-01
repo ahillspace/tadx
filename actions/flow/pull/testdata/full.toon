@@ -1,0 +1,18 @@
+status: pulled
+flow:
+  luid: flow-1
+  name: Daily
+  project_luid: project-1
+  project_path: Ops
+  file_type: tflx
+artifact:
+  path: artifacts/flow/Daily
+  canonical_path: artifacts/flow/Daily/Daily.tflx
+  baseline_fingerprint: "sha256:abc"
+  lineage_path: artifacts/flow/Daily/lineage.json
+  lineage_status: complete
+  node_count: 2
+  edge_count: 1
+warnings[1]: One bounded warning.
+tableau_request_id: request-1
+help[1]: tadx content flow publish --artifact artifacts/flow/Daily

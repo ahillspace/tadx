@@ -1,0 +1,19 @@
+status: found
+environment: dev
+site: sandbox
+flow:
+  luid: flow-1
+  name: Daily
+  project_luid: project-1
+  project_path: Ops
+  file_type: tflx
+  updated_at: "2026-09-01T00:00:00Z"
+  description: Daily prep
+  owner_luid: user-1
+  tags[1]: daily
+  parameters[1]{name,type,required}:
+    Region,string,true
+  output_steps[1]{luid,name}:
+    step-1,Publish
+tableau_request_id: request-1
+help[1]: tadx content flow pull --id flow-1

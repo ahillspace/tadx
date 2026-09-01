@@ -14,7 +14,7 @@ import (
 	"strings"
 )
 
-var blockerPattern = regexp.MustCompile(`\b(B[1-4])\b`)
+var blockerPattern = regexp.MustCompile(`\b(B[1-46])\b`)
 var capabilityIDPattern = regexp.MustCompile(`^[a-z][a-z0-9-]*(\.[a-z][a-z0-9-]*){1,2}$`)
 
 func main() {

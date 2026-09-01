@@ -7,15 +7,18 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/ahillspace/tadx/internal/errs"
 	"github.com/ahillspace/tadx/internal/identity"
+	"github.com/ahillspace/tadx/internal/pathspec"
 )
 
 // Reader owns remote workbook resolution and download.
 type Reader interface {
 	ResolveWorkbook(context.Context, identity.Selector) (Workbook, error)
 	DownloadWorkbook(context.Context, string, *bool) (Download, error)
+	CaptureWorkbookLineage(context.Context, LineageRequest) (LineageCapture, error)
 	PublishedDatasources(context.Context, string) ([]PublishedDatasource, error)
 	DownloadPublishedDatasource(context.Context, string) (DatasourceDownload, error)
 }
@@ -64,15 +67,16 @@ func (a *Action) Execute(ctx context.Context, input Input) (Output, error) {
 		}
 		return Output{}, &errs.Error{ID: "workbook.pull.download", Kind: errs.KindOperation, Operation: "workbook.pull", Resource: workbook.LUID, Environment: input.Environment, Site: input.Site, Summary: "Workbook download failed.", Cause: err, Retryable: retryable, CorrectiveAction: correctiveAction, TableauRequestID: requestID}
 	}
+	lineage, lineageCountsKnown, lineageStatus, lineageWarnings := captureAutomaticLineage(ctx, a.reader, workbook.LUID)
 	references, detectionErr := a.reader.PublishedDatasources(ctx, workbook.LUID)
-	var warnings []string
+	warnings := append([]string(nil), lineageWarnings...)
 	portability := "unknown"
 	if detectionErr != nil {
 		if input.IncludePDS {
 			retryable, correctiveAction := errs.CompleteRetryAdvice(detectionErr, "Wait for complete Tableau metadata visibility, then retry.")
 			return Output{}, &errs.Error{ID: "workbook.pull.references", Kind: errs.KindOperation, Operation: "workbook.pull", Resource: workbook.LUID, Environment: input.Environment, Site: input.Site, Summary: "Published datasource detection was incomplete.", Cause: detectionErr, Retryable: retryable, CorrectiveAction: correctiveAction, TableauRequestID: errs.TableauRequestID(detectionErr)}
 		}
-		warnings = append(warnings, fmt.Sprintf("Published datasource detection was incomplete; workbook portability remains unknown. Detail: %v", detectionErr))
+		warnings = append(warnings, "Published datasource detection was incomplete; workbook portability remains unknown. Retry after Tableau metadata refreshes.")
 		references = nil
 	} else {
 		references, err = normalizePublishedDatasources(references)
@@ -117,6 +121,7 @@ func (a *Action) Execute(ctx context.Context, input Input) (Output, error) {
 		ServerOrigin: input.ServerOrigin, SiteLUID: input.SiteLUID,
 		ProjectName: workbook.ProjectPath, ProjectID: workbook.ProjectLUID, Portability: portability,
 		PublishedDatasources: provenance, DependenciesAcquired: dependenciesAcquired,
+		Lineage: lineage, LineageCountsKnown: lineageCountsKnown,
 		Overwrite: input.Overwrite, TableauRequestID: download.TableauRequestID,
 	}
 	var artifact ArtifactResult
@@ -168,6 +173,12 @@ func (a *Action) Execute(ctx context.Context, input Input) (Output, error) {
 	artifact.Portability = portability
 	artifact.PublishedDatasources = provenance
 	artifact.DependenciesAcquired = dependenciesAcquired
+	artifact.LineageStatus = lineageStatus
+	if lineageCountsKnown {
+		nodeCount, edgeCount := len(lineage.Nodes), len(lineage.Edges)
+		artifact.LineageNodeCount = &nodeCount
+		artifact.LineageEdgeCount = &edgeCount
+	}
 	artifact.Dependencies = dependencies
 	artifact.Path, err = workspaceRelativePath(input.Workspace, artifact.Path)
 	if err != nil {
@@ -177,8 +188,118 @@ func (a *Action) Execute(ctx context.Context, input Input) (Output, error) {
 	if err != nil {
 		return Output{}, invalidBundleResult(workbook, input, fmt.Errorf("project workbook canonical path: %w", err))
 	}
+	artifact.LineagePath, err = workspaceRelativePath(input.Workspace, artifact.LineagePath)
+	if err != nil {
+		return Output{}, invalidBundleResult(workbook, input, fmt.Errorf("project workbook lineage path: %w", err))
+	}
 	warnings = append(warnings, artifact.Warnings...)
 	return Output{Status: "pulled", Workbook: workbook, Artifact: artifact, Warnings: warnings, RequestID: download.TableauRequestID, Help: []string{"tadx content workbook publish --artifact <path> --environment <alias>"}}, nil
+}
+
+func captureAutomaticLineage(ctx context.Context, reader Reader, workbookLUID string) (LineageCapture, bool, string, []string) {
+	request := LineageRequest{RESTLUID: workbookLUID, Direction: "both", Depth: 1}
+	capture, err := reader.CaptureWorkbookLineage(ctx, request)
+	if err != nil {
+		return unavailableLineage(), false, "unavailable", []string{"Lineage capture was unavailable. The workbook download remains valid; retry after reviewing Metadata API access."}
+	}
+	capture.Direction = request.Direction
+	capture.Depth = request.Depth
+	capture.RootMetadataID = strings.TrimSpace(capture.RootMetadataID)
+	if err := validateLineageCapture(capture, workbookLUID); err != nil {
+		return unavailableLineage(), false, "unavailable", []string{"Lineage capture returned an invalid or incomplete graph. The workbook download remains valid; retry after Tableau metadata refreshes."}
+	}
+	warnings := boundedLineageWarnings(capture.Warnings)
+	status := "complete"
+	if !capture.Complete {
+		status = "incomplete"
+		if len(warnings) == 0 {
+			warnings = []string{"Lineage capture was incomplete. The workbook download remains valid; use lineage.pull after Tableau metadata refreshes."}
+		}
+	}
+	capture.Warnings = warnings
+	return capture, true, status, warnings
+}
+
+func unavailableLineage() LineageCapture {
+	return LineageCapture{Complete: false, Direction: "both", Depth: 1, Nodes: []LineageNode{}, Edges: []LineageEdge{}}
+}
+
+func validateLineageCapture(capture LineageCapture, workbookLUID string) error {
+	if capture.Direction != "both" || capture.Depth != 1 {
+		return errors.New("automatic lineage must use direction both and depth one")
+	}
+	if len(capture.Nodes) > maxLineageNodes || len(capture.Edges) > maxLineageEdges {
+		return errors.New("lineage graph exceeds its artifact bound")
+	}
+	seen := make(map[string]LineageNode, len(capture.Nodes))
+	for index := range capture.Nodes {
+		node := &capture.Nodes[index]
+		node.MetadataID = strings.TrimSpace(node.MetadataID)
+		node.Kind = strings.TrimSpace(node.Kind)
+		node.RESTLUID = strings.TrimSpace(node.RESTLUID)
+		node.Name = strings.TrimSpace(node.Name)
+		if node.MetadataID == "" || node.Kind == "" {
+			return errors.New("lineage node omitted identity")
+		}
+		if _, exists := seen[node.MetadataID]; exists {
+			return errors.New("lineage Metadata ID is duplicated")
+		}
+		seen[node.MetadataID] = *node
+	}
+	rootID := strings.TrimSpace(capture.RootMetadataID)
+	if capture.Complete && rootID == "" {
+		return errors.New("complete lineage omitted root Metadata ID")
+	}
+	if rootID != "" {
+		root, exists := seen[rootID]
+		if !exists || root.Kind != "workbook" || root.RESTLUID != workbookLUID {
+			return errors.New("lineage root does not map to the authoritative workbook")
+		}
+	}
+	for index := range capture.Edges {
+		edge := &capture.Edges[index]
+		edge.FromMetadataID = strings.TrimSpace(edge.FromMetadataID)
+		edge.ToMetadataID = strings.TrimSpace(edge.ToMetadataID)
+		edge.Relationship = strings.TrimSpace(edge.Relationship)
+		if strings.TrimSpace(edge.Relationship) == "" {
+			return errors.New("lineage edge omitted relationship")
+		}
+		if _, exists := seen[edge.FromMetadataID]; !exists {
+			return errors.New("lineage edge omitted source node")
+		}
+		if _, exists := seen[edge.ToMetadataID]; !exists {
+			return errors.New("lineage edge omitted destination node")
+		}
+	}
+	return nil
+}
+
+func boundedLineageWarnings(input []string) []string {
+	unique := make([]string, 0, len(input))
+	seen := make(map[string]struct{}, len(input))
+	for _, warning := range input {
+		warning = strings.TrimSpace(warning)
+		if warning == "" {
+			continue
+		}
+		if len(warning) > maxLineageWarningBytes {
+			cut := maxLineageWarningBytes
+			for cut > 0 && !utf8.RuneStart(warning[cut]) {
+				cut--
+			}
+			warning = warning[:cut]
+		}
+		if _, exists := seen[warning]; exists {
+			continue
+		}
+		seen[warning] = struct{}{}
+		unique = append(unique, warning)
+	}
+	sort.Strings(unique)
+	if len(unique) > maxOutputWarnings {
+		unique = unique[:maxOutputWarnings]
+	}
+	return unique
 }
 
 func workspaceRelativePath(workspace, path string) (string, error) {
@@ -187,8 +308,12 @@ func workspaceRelativePath(workspace, path string) (string, error) {
 	if path == "" {
 		return "", nil
 	}
-	if !filepath.IsAbs(path) && !looksLikeWindowsAbsolutePath(path) {
-		return filepath.ToSlash(filepath.Clean(path)), nil
+	if !pathspec.IsAbs(path) {
+		cleaned := filepath.ToSlash(filepath.Clean(path))
+		if cleaned == ".." || strings.HasPrefix(cleaned, "../") {
+			return "", errors.New("artifact path escapes the resolved workspace")
+		}
+		return cleaned, nil
 	}
 	if workspace == "" {
 		return "", errors.New("absolute artifact path requires a resolved workspace")
@@ -202,10 +327,6 @@ func workspaceRelativePath(workspace, path string) (string, error) {
 		return "", errors.New("artifact path escapes the resolved workspace")
 	}
 	return relative, nil
-}
-
-func looksLikeWindowsAbsolutePath(path string) bool {
-	return len(path) >= 3 && path[1] == ':' && (path[2] == '\\' || path[2] == '/')
 }
 
 func invalidBundleResult(workbook Workbook, input Input, cause error) error {

@@ -152,8 +152,8 @@ Set `RawCapable: true` only if the capability may emit `--raw` output.
 
 Note that the action-package domain is not the CLI command path.
 `CommandPath` is the exact path a user types.
-The workbook, datasource, flow, and project verbs all nest under `content`, so `actions/workbook/pull` has `CommandPath` `["content", "workbook", "pull"]` and surfaces as `tadx content workbook pull`.
-This mapping is applied by `classify()` in `internal/app/app.go`: a CLI-owned capability whose ID starts with `workbook`, `datasource`, `flow`, or `project` is classified under the `content` domain.
+The workbook, datasource, flow, lineage, and project verbs all nest under `content`, so `actions/workbook/pull` has `CommandPath` `["content", "workbook", "pull"]` and surfaces as `tadx content workbook pull`.
+This mapping is applied by `classify()` in `internal/app/app.go`: a CLI-owned capability whose ID starts with `workbook`, `datasource`, `flow`, `lineage`, or `project` is classified under the `content` domain.
 
 ### 7. Integration owner: wire the CLI command
 

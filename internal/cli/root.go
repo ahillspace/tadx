@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	authcheck "github.com/ahillspace/tadx/actions/auth/check"
+	authstatus "github.com/ahillspace/tadx/actions/auth/status"
 	capabilityget "github.com/ahillspace/tadx/actions/capability/get"
 	capabilitylist "github.com/ahillspace/tadx/actions/capability/list"
 	catalogsearch "github.com/ahillspace/tadx/actions/catalog/search"
@@ -17,6 +18,8 @@ import (
 	catalogcli "github.com/ahillspace/tadx/internal/cli/catalog"
 	"github.com/ahillspace/tadx/internal/cli/clierr"
 	contentcli "github.com/ahillspace/tadx/internal/cli/content"
+	envcli "github.com/ahillspace/tadx/internal/cli/env"
+	workspacecli "github.com/ahillspace/tadx/internal/cli/workspace"
 	"github.com/spf13/cobra"
 )
 
@@ -41,6 +44,9 @@ type Getter interface {
 
 type AuthChecker interface {
 	Execute(context.Context, authcheck.Input) (authcheck.Output, error)
+}
+type AuthStatuser interface {
+	Execute(context.Context, authstatus.Input) (authstatus.Output, error)
 }
 type CatalogSearcher interface {
 	Execute(context.Context, catalogsearch.Input) (catalogsearch.Output, error)
@@ -68,6 +74,7 @@ type Dependencies struct {
 	Getter               Getter
 	Renderer             Renderer
 	RenderOptions        *RenderOptions
+	ConfigPath           *string
 	MutationsEnabled     bool
 	ListUse              string
 	ListShort            string
@@ -77,8 +84,14 @@ type Dependencies struct {
 	CatalogSearcher      CatalogSearcher
 	WorkbookPuller       WorkbookPuller
 	WorkbookPublisher    WorkbookPublisher
+	Content              *contentcli.Dependencies
+	EnvironmentProfiles  *envcli.Dependencies
+	Workspaces           *workspacecli.Dependencies
 	AuthUse              string
 	AuthShort            string
+	AuthStatuser         AuthStatuser
+	AuthStatusUse        string
+	AuthStatusShort      string
 	CatalogSearchUse     string
 	CatalogSearchShort   string
 	WorkbookPullUse      string
@@ -93,6 +106,10 @@ func NewRoot(deps Dependencies) *cobra.Command {
 	if renderOptions == nil {
 		renderOptions = &RenderOptions{}
 	}
+	configPath := deps.ConfigPath
+	if configPath == nil {
+		configPath = new(string)
+	}
 	root := &cobra.Command{
 		Use:           "tadx",
 		Short:         "Deterministic Tableau lifecycle and development CLI",
@@ -100,6 +117,8 @@ func NewRoot(deps Dependencies) *cobra.Command {
 		SilenceUsage:  true,
 	}
 	root.PersistentFlags().BoolVar(&renderOptions.Full, "full", false, "show expanded bounded details")
+	root.PersistentFlags().StringVar(configPath, "config", *configPath, "path to the non-secret TADX configuration file")
+	root.PersistentFlags().Lookup("config").DefValue = ""
 	root.AddCommand(capabilitycli.New(capabilitycli.Dependencies{
 		Lister:           deps.Lister,
 		Getter:           deps.Getter,
@@ -110,14 +129,36 @@ func NewRoot(deps Dependencies) *cobra.Command {
 		GetUse:           deps.GetUse,
 		GetShort:         deps.GetShort,
 	}))
+	if deps.EnvironmentProfiles != nil {
+		environmentProfiles := *deps.EnvironmentProfiles
+		environmentProfiles.Renderer = deps.Renderer
+		root.AddCommand(envcli.New(environmentProfiles))
+	}
+	if deps.Workspaces != nil {
+		workspaces := *deps.Workspaces
+		workspaces.Renderer = deps.Renderer
+		root.AddCommand(workspacecli.New(workspaces))
+	}
 	if deps.AuthChecker != nil {
-		root.AddCommand(authcli.New(authcli.Dependencies{Checker: deps.AuthChecker, Renderer: deps.Renderer, Use: deps.AuthUse, Short: deps.AuthShort}))
+		root.AddCommand(authcli.New(authcli.Dependencies{Checker: deps.AuthChecker, Statuser: deps.AuthStatuser, Renderer: deps.Renderer, Use: deps.AuthUse, Short: deps.AuthShort, StatusUse: deps.AuthStatusUse, StatusShort: deps.AuthStatusShort}))
 	}
 	if deps.CatalogSearcher != nil {
 		root.AddCommand(catalogcli.New(catalogcli.Dependencies{Searcher: deps.CatalogSearcher, Renderer: deps.Renderer, Use: deps.CatalogSearchUse, Short: deps.CatalogSearchShort}))
 	}
 	if deps.WorkbookPuller != nil && deps.WorkbookPublisher != nil {
-		root.AddCommand(contentcli.New(contentcli.Dependencies{Puller: deps.WorkbookPuller, Publisher: deps.WorkbookPublisher, Renderer: deps.Renderer, MutationsEnabled: deps.MutationsEnabled, PullUse: deps.WorkbookPullUse, PullShort: deps.WorkbookPullShort, PublishUse: deps.WorkbookPublishUse, PublishShort: deps.WorkbookPublishShort}))
+		contentDependencies := contentcli.Dependencies{}
+		if deps.Content != nil {
+			contentDependencies = *deps.Content
+		}
+		contentDependencies.Puller = deps.WorkbookPuller
+		contentDependencies.Publisher = deps.WorkbookPublisher
+		contentDependencies.Renderer = deps.Renderer
+		contentDependencies.MutationsEnabled = deps.MutationsEnabled
+		contentDependencies.PullUse = deps.WorkbookPullUse
+		contentDependencies.PullShort = deps.WorkbookPullShort
+		contentDependencies.PublishUse = deps.WorkbookPublishUse
+		contentDependencies.PublishShort = deps.WorkbookPublishShort
+		root.AddCommand(contentcli.New(contentDependencies))
 	}
 	root.CompletionOptions.DisableDefaultCmd = true
 	setFlagErrorHandlers(root)

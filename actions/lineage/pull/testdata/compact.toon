@@ -1,0 +1,16 @@
+status: pulled
+resource:
+  kind: flow
+  luid: flow-1
+  name: Daily
+  project_path: Ops
+artifact:
+  path: artifacts/lineage/flow/Daily
+  direction: both
+  depth: 1
+  complete: true
+  node_count: 2
+  edge_count: 1
+warnings[1]: One bounded warning.
+details: "--full"
+help[1]: tadx content lineage pull --kind flow --id flow-1 --direction both

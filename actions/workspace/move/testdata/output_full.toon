@@ -1,0 +1,13 @@
+status: moved
+artifact:
+  kind: workbook
+  luid: wb-1
+  name: Finance
+  path: artifacts/workbook/Finance
+  old_path: artifacts/workbook/Finance
+  state: dirty
+  current_fingerprint: "sha256:new"
+source_workspace: one
+destination_workspace: two
+warnings[1]: The moved artifact contains local changes relative to its pulled baseline.
+help[1]: tadx workspace status --workspace two

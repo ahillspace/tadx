@@ -1,0 +1,12 @@
+status: pulled
+flow:
+  luid: flow-1
+  name: Daily
+  project_luid: project-1
+  project_path: Ops
+  file_type: tflx
+artifact:
+  path: artifacts/flow/Daily
+warnings[1]: One bounded warning.
+details: "--full"
+help[1]: tadx content flow publish --artifact artifacts/flow/Daily

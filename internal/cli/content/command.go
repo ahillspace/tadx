@@ -4,10 +4,13 @@ package content
 import (
 	"context"
 	"errors"
+	"path"
+	"strings"
 
 	workbookpublish "github.com/ahillspace/tadx/actions/workbook/publish"
 	workbookpull "github.com/ahillspace/tadx/actions/workbook/pull"
 	"github.com/ahillspace/tadx/internal/cli/clierr"
+	"github.com/ahillspace/tadx/internal/pathspec"
 	"github.com/spf13/cobra"
 )
 
@@ -28,6 +31,15 @@ type Renderer interface{ Render(any) error }
 type Dependencies struct {
 	Puller           Puller
 	Publisher        Publisher
+	ProjectLister    ProjectLister
+	ProjectGetter    ProjectGetter
+	FlowLister       FlowLister
+	FlowGetter       FlowGetter
+	FlowPuller       FlowPuller
+	FlowPublisher    FlowPublisher
+	FlowMover        FlowMover
+	FlowDeleter      FlowDeleter
+	LineagePuller    LineagePuller
 	Renderer         Renderer
 	MutationsEnabled bool
 	PullUse          string
@@ -42,6 +54,15 @@ func New(deps Dependencies) *cobra.Command {
 	workbook := &cobra.Command{Use: "workbook", Short: "Operate Tableau workbooks"}
 	workbook.AddCommand(newPull(deps), newPublish(deps))
 	content.AddCommand(workbook)
+	if deps.ProjectLister != nil && deps.ProjectGetter != nil {
+		content.AddCommand(newProject(deps))
+	}
+	if deps.FlowLister != nil && deps.FlowGetter != nil && deps.FlowPuller != nil && deps.FlowPublisher != nil && deps.FlowMover != nil && deps.FlowDeleter != nil {
+		content.AddCommand(newFlow(deps))
+	}
+	if deps.LineagePuller != nil {
+		content.AddCommand(newLineage(deps))
+	}
 	return content
 }
 
@@ -82,7 +103,7 @@ func newPull(deps Dependencies) *cobra.Command {
 		},
 	}
 	command.Flags().StringVar(&input.Environment, "environment", "", "exact environment alias; defaults to configured read environment")
-	command.Flags().StringVar(&input.Workspace, "workspace", "", "existing workspace path")
+	command.Flags().StringVar(&input.Workspace, "workspace", "", "logical workspace name; uses deterministic defaults when omitted")
 	command.Flags().StringVar(&id, "id", "", "authoritative workbook LUID")
 	command.Flags().StringVar(&name, "name", "", "exact workbook name")
 	command.Flags().StringVar(&project, "project", "", "exact slash-delimited project path")
@@ -113,6 +134,9 @@ func newPublish(deps Dependencies) *cobra.Command {
 			if input.ArtifactPath == "" {
 				return clierr.Usage("workbook.publish", errors.New("--artifact is required"))
 			}
+			if err := validateManagedArtifactPath(input.ArtifactPath, "workbook"); err != nil {
+				return clierr.Usage("workbook.publish", err)
+			}
 			// With no explicit --environment the publish target defaults to the
 			// artifact's recorded source (environment, site, project, name, and
 			// workbook LUID). An explicit --environment requires an explicit project.
@@ -130,7 +154,8 @@ func newPublish(deps Dependencies) *cobra.Command {
 			return deps.Renderer.Render(result)
 		},
 	}
-	command.Flags().StringVar(&input.ArtifactPath, "artifact", "", "workbook artifact directory or canonical payload")
+	command.Flags().StringVar(&input.Workspace, "workspace", "", "logical workspace name; uses deterministic defaults when omitted")
+	command.Flags().StringVar(&input.ArtifactPath, "artifact", "", "exact workspace-relative managed workbook path")
 	command.Flags().StringVar(&input.Environment, "environment", "", "explicit write environment alias; defaults to the artifact's recorded source environment")
 	command.Flags().StringVar(&input.Name, "name", "", "explicit published workbook name; defaults to artifact name")
 	command.Flags().StringVar(&projectID, "project-id", "", "authoritative destination project LUID")
@@ -139,4 +164,15 @@ func newPublish(deps Dependencies) *cobra.Command {
 	command.Flags().BoolVar(&input.AsJob, "as-job", false, "publish asynchronously and poll to a bounded terminal result")
 	command.Flags().BoolVar(&apply, "apply", false, "apply the previewed remote mutation")
 	return command
+}
+
+func validateManagedArtifactPath(value, kind string) error {
+	if pathspec.IsAbs(value) || strings.Contains(value, `\`) || path.Clean(value) != value {
+		return errors.New("--artifact must be a workspace-relative slash-delimited managed " + kind + " path")
+	}
+	parts := strings.Split(value, "/")
+	if len(parts) != 3 || parts[0] != "artifacts" || parts[1] != kind || parts[2] == "" {
+		return errors.New("--artifact must identify one managed " + kind + " directory under artifacts/" + kind)
+	}
+	return nil
 }

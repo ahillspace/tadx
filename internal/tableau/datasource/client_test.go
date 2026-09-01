@@ -35,12 +35,99 @@ func TestClientRejectsUnconfiguredDatasourceReads(t *testing.T) {
 			_, err := client.Download(context.Background(), "ds-1", nil)
 			return err
 		}},
+		{name: "list", call: func() error {
+			_, err := client.List(context.Background(), tableaudatasource.ListRequest{PageNumber: 1, PageSize: 100})
+			return err
+		}},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			if err := test.call(); err == nil || err.Error() != "authenticated datasource client is not configured" {
 				t.Fatalf("error = %v", err)
 			}
+		})
+	}
+}
+
+func TestClientListsOneBoundedDatasourcePage(t *testing.T) {
+	server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		if request.Method != http.MethodGet || request.URL.Path != "/api/3.29/sites/site-1/datasources" {
+			t.Fatalf("request = %s %s", request.Method, request.URL.Path)
+		}
+		if got := request.URL.Query(); got.Get("pageNumber") != "2" || got.Get("pageSize") != "2" || got.Get("filter") != "name:eq:Sales" {
+			t.Fatalf("query = %v", got)
+		}
+		writer.Header().Set("Content-Type", "application/xml")
+		writer.Header().Set("X-Tableau-Request-Id", "datasource-list-request")
+		_, _ = io.WriteString(writer, `<tsResponse><pagination pageNumber="2" pageSize="2" totalAvailable="3"/><datasources><datasource id="ds-3" name="Sales"><project id="project-2" name="Shared"/></datasource></datasources></tsResponse>`)
+	}))
+	defer server.Close()
+
+	client := tableaudatasource.NewClient(tableau.NewTransport(server.Client(), "3.29", nil), session{}, server.URL)
+	page, err := client.List(context.Background(), tableaudatasource.ListRequest{PageNumber: 2, PageSize: 2, Name: "Sales"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if page.Number != 2 || page.Size != 2 || page.Total != 3 || len(page.Items) != 1 {
+		t.Fatalf("page = %#v", page)
+	}
+	item := page.Items[0]
+	if item.LUID != "ds-3" || item.Name != "Sales" || item.ProjectLUID != "project-2" || item.ProjectName != "Shared" {
+		t.Fatalf("item = %#v", item)
+	}
+}
+
+func TestClientRejectsInvalidDatasourceListInput(t *testing.T) {
+	client := tableaudatasource.NewClient(tableau.NewTransport(http.DefaultClient, "3.29", nil), session{}, "https://example.invalid")
+	tests := []struct {
+		name  string
+		input tableaudatasource.ListRequest
+	}{
+		{name: "zero page", input: tableaudatasource.ListRequest{PageSize: 100}},
+		{name: "zero size", input: tableaudatasource.ListRequest{PageNumber: 1}},
+		{name: "oversize", input: tableaudatasource.ListRequest{PageNumber: 1, PageSize: 1001}},
+		{name: "unsafe comma", input: tableaudatasource.ListRequest{PageNumber: 1, PageSize: 100, Name: "Sales,Other"}},
+		{name: "unsafe ampersand", input: tableaudatasource.ListRequest{PageNumber: 1, PageSize: 100, Name: "Sales&Other"}},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			if _, err := client.List(context.Background(), test.input); err == nil {
+				t.Fatal("List() succeeded")
+			}
+		})
+	}
+}
+
+func TestClientRejectsInvalidDatasourceListResponse(t *testing.T) {
+	tests := []struct {
+		name string
+		body string
+		want string
+	}{
+		{name: "malformed XML", body: `<tsResponse><pagination`, want: "decode datasource list response"},
+		{name: "missing pagination", body: `<tsResponse><datasources/></tsResponse>`, want: "pagination elements"},
+		{name: "duplicate pagination", body: `<tsResponse><pagination pageNumber="1" pageSize="2" totalAvailable="0"/><pagination pageNumber="1" pageSize="2" totalAvailable="0"/><datasources/></tsResponse>`, want: "pagination elements"},
+		{name: "missing container", body: `<tsResponse><pagination pageNumber="1" pageSize="2" totalAvailable="0"/></tsResponse>`, want: "datasources elements"},
+		{name: "wrong page", body: `<tsResponse><pagination pageNumber="2" pageSize="2" totalAvailable="1"/><datasources/></tsResponse>`, want: "page number"},
+		{name: "incomplete identity", body: `<tsResponse><pagination pageNumber="1" pageSize="2" totalAvailable="1"/><datasources><datasource name="Sales"><project id="p-1" name="Shared"/></datasource></datasources></tsResponse>`, want: "incomplete authoritative identity"},
+		{name: "missing project name", body: `<tsResponse><pagination pageNumber="1" pageSize="2" totalAvailable="1"/><datasources><datasource id="ds-1" name="Sales"><project id="p-1"/></datasource></datasources></tsResponse>`, want: "incomplete authoritative identity"},
+		{name: "conflicting duplicate", body: `<tsResponse><pagination pageNumber="1" pageSize="2" totalAvailable="2"/><datasources><datasource id="ds-1" name="Sales"><project id="p-1" name="One"/></datasource><datasource id="ds-1" name="Changed"><project id="p-1" name="One"/></datasource></datasources></tsResponse>`, want: `conflicting records for LUID "ds-1"`},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+				writer.Header().Set("X-Tableau-Request-Id", "datasource-list-protocol-request")
+				_, _ = io.WriteString(writer, test.body)
+			}))
+			defer server.Close()
+
+			client := tableaudatasource.NewClient(tableau.NewTransport(server.Client(), "3.29", nil), session{}, server.URL)
+			_, err := client.List(context.Background(), tableaudatasource.ListRequest{PageNumber: 1, PageSize: 2})
+			if err == nil || !strings.Contains(err.Error(), test.want) {
+				t.Fatalf("error = %v, want substring %q", err, test.want)
+			}
+			assertProtocolContext(t, err, http.StatusOK, "datasource-list-protocol-request")
 		})
 	}
 }

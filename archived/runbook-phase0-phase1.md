@@ -1,4 +1,7 @@
-# TADX build runbook
+# Archived TADX Phase 0 and Phase 1 build runbook
+
+This runbook is obsolete and retained only as historical build evidence.
+Use `docs/build-order.md` and `docs/contributing/build-context.md` for current build routing.
 
 Run these steps in order on the build machine.
 Each step is one action. The fenced blocks are copy-paste prompts for a fresh agent.

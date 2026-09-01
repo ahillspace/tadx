@@ -5,9 +5,13 @@ import (
 	"reflect"
 	"testing"
 
+	authcheck "github.com/ahillspace/tadx/actions/auth/check"
+	authstatus "github.com/ahillspace/tadx/actions/auth/status"
 	capabilityget "github.com/ahillspace/tadx/actions/capability/get"
 	capabilitylist "github.com/ahillspace/tadx/actions/capability/list"
 	"github.com/ahillspace/tadx/internal/cli"
+	envcli "github.com/ahillspace/tadx/internal/cli/env"
+	workspacecli "github.com/ahillspace/tadx/internal/cli/workspace"
 	"github.com/spf13/cobra"
 )
 
@@ -34,6 +38,18 @@ type renderer struct{ values []any }
 func (r *renderer) Render(value any) error {
 	r.values = append(r.values, value)
 	return nil
+}
+
+type authChecker struct{}
+
+func (authChecker) Execute(context.Context, authcheck.Input) (authcheck.Output, error) {
+	return authcheck.Output{}, nil
+}
+
+type authStatuser struct{}
+
+func (authStatuser) Execute(context.Context, authstatus.Input) (authstatus.Output, error) {
+	return authstatus.Output{}, nil
 }
 
 func TestRootExposesOnlyPhaseZeroExecutableCommands(t *testing.T) {
@@ -74,6 +90,30 @@ func TestRegisteredCommandsRejectsRunnableCommandWithoutCapabilityID(t *testing.
 	cmd.AddCommand(&cobra.Command{Use: "unregistered", Run: func(*cobra.Command, []string) {}})
 	if _, err := cli.RegisteredCommands(cmd); err == nil {
 		t.Fatal("RegisteredCommands() error = nil")
+	}
+}
+
+func TestRootAddsEnvironmentAndAuthStatusCommands(t *testing.T) {
+	profiles := &envcli.Dependencies{}
+	deps := dependencies(&lister{}, &getter{}, &renderer{})
+	deps.EnvironmentProfiles = profiles
+	deps.Workspaces = &workspacecli.Dependencies{}
+	deps.AuthChecker = authChecker{}
+	deps.AuthStatuser = authStatuser{}
+	root := cli.NewRoot(deps)
+	registrations, err := cli.RegisteredCommands(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got []string
+	for _, registration := range registrations {
+		if registration.CapabilityID == "auth.status" || len(registration.CommandPath) > 0 && (registration.CommandPath[0] == "env" || registration.CommandPath[0] == "workspace") {
+			got = append(got, registration.CapabilityID)
+		}
+	}
+	want := []string{"auth.status", "env.profile.add", "env.profile.set-default", "env.profile.get", "env.profile.list", "env.profile.remove", "env.profile.update", "workspace.artifact.delete", "workspace.clone", "workspace.create", "workspace.list", "workspace.move", "workspace.register", "workspace.status"}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("registrations = %v, want %v", got, want)
 	}
 }
 
@@ -128,6 +168,25 @@ func TestFullIsAUniversalPersistentPresentationFlag(t *testing.T) {
 		}
 		if !mode.Full {
 			t.Fatalf("Execute(%v) did not select full output", args)
+		}
+	}
+}
+
+func TestConfigIsAUniversalPersistentPathFlag(t *testing.T) {
+	for _, args := range [][]string{
+		{"--config", "portable/config.yaml", "capability", "list"},
+		{"capability", "list", "--config", "portable/config.yaml"},
+	} {
+		path := ""
+		deps := dependencies(&lister{}, &getter{}, &renderer{})
+		deps.ConfigPath = &path
+		cmd := cli.NewRoot(deps)
+		cmd.SetArgs(args)
+		if err := cmd.Execute(); err != nil {
+			t.Fatalf("Execute(%v) error = %v", args, err)
+		}
+		if path != "portable/config.yaml" {
+			t.Fatalf("Execute(%v) config path = %q", args, path)
 		}
 	}
 }

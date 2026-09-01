@@ -1,0 +1,22 @@
+plan:
+  mode: preview
+  operation: flow.move
+  environment: dev
+  site: sandbox
+  source:
+    luid: flow-1
+    name: Daily
+    project_luid: project-1
+    project_path: Old
+  destination:
+    luid: project-2
+    name: New
+    path: New
+  no_op: false
+applied: true
+result:
+  status: succeeded
+  flow_luid: flow-1
+  project_luid: project-2
+  tableau_request_id: request-1
+help[1]: tadx content flow get --id flow-1

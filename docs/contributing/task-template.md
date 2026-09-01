@@ -26,7 +26,7 @@ Stop when this accepted task contract conflicts with code or tests.
 - Domain / verb: `<domain>` / `<verb>`
 - Product disposition: `<ship | delegated>`
 - Read-only or mutation: `<read | consequential-mutation>`
-- Evidence level: `<architecture-locked | local-contract | docs-only | live-verified>`
+- Evidence level: `<architecture-locked | local-contract | docs-only | contract-verified | live-verified>`
 - Selectors: `<luid, exact name, project path, ...>`
 - Upstream operation (if remote): `<endpoint + API version, or "none">`
 
@@ -59,7 +59,7 @@ Stop when this accepted task contract conflicts with code or tests.
 
 ### Evidence gate (decides how far you may build)
 - If evidence is docs-only: build only to the adapter seam - types, validation, local orchestration, fixtures, tests. Do not write live API-calling code. Do not make the command executable. Stop at the seam and report what upstream contract is still needed.
-- If evidence is live-verified or the upstream contract is captured with a passing contract test: build the full slice.
+- If evidence is contract-verified or live-verified: build the full slice.
 
 ### Method
 - Write tests first (behavior, selector ambiguity, output shape, error/exit, and where applicable redaction, mutation discovery, preview/apply, artifact/provenance).

@@ -1,0 +1,14 @@
+status: attention
+workspace:
+  name: development
+  id: ws_1
+artifacts:
+  returned: 1
+  limit: 20
+  scan_complete: true
+  clean: 0
+  dirty: 1
+  missing: 0
+  invalid: 0
+details: "--full"
+help[1]: tadx workspace status --workspace development --full

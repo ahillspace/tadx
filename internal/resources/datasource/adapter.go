@@ -5,15 +5,31 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sort"
 	"strings"
 
+	"github.com/ahillspace/tadx/internal/identity"
 	tableaudatasource "github.com/ahillspace/tadx/internal/tableau/datasource"
 )
 
-// Client is the narrow Tableau datasource client used by dependency acquisition.
+// Client is the narrow Tableau datasource client used by identity resolution and dependency acquisition.
 type Client interface {
 	Get(context.Context, string) (tableaudatasource.Datasource, error)
+	List(context.Context, tableaudatasource.ListRequest) (tableaudatasource.Page, error)
 	Download(context.Context, string, *bool) (tableaudatasource.Download, error)
+}
+
+// ProjectPathResolver supplies canonical project paths without coupling resource packages.
+type ProjectPathResolver interface {
+	ResolveProjectPath(context.Context, string) (string, error)
+}
+
+// Datasource is one normalized authoritative published datasource identity.
+type Datasource struct {
+	LUID        string
+	Name        string
+	ProjectLUID string
+	ProjectPath string
 }
 
 // Download is one authoritative datasource and its unchanged native package.
@@ -28,10 +44,135 @@ type Download struct {
 }
 
 // Adapter owns published datasource identity and download sequencing.
-type Adapter struct{ client Client }
+type Adapter struct {
+	client   Client
+	projects ProjectPathResolver
+}
 
 // NewAdapter creates a datasource resource adapter.
 func NewAdapter(client Client) *Adapter { return &Adapter{client: client} }
+
+// NewAdapterWithProjectResolver creates a datasource adapter that supports exact selection.
+func NewAdapterWithProjectResolver(client Client, projects ProjectPathResolver) *Adapter {
+	return &Adapter{client: client, projects: projects}
+}
+
+// ResolveDatasource resolves one authoritative LUID or exact name and canonical project path.
+func (a *Adapter) ResolveDatasource(ctx context.Context, selector identity.Selector) (Datasource, error) {
+	if a == nil || a.client == nil || a.projects == nil {
+		return Datasource{}, errors.New("datasource resource adapter is not configured for identity resolution")
+	}
+	if selector.LUID != "" {
+		item, err := a.client.Get(ctx, string(selector.LUID))
+		if err != nil {
+			return Datasource{}, err
+		}
+		if strings.TrimSpace(item.LUID) != string(selector.LUID) {
+			return Datasource{}, fmt.Errorf("datasource response returned LUID %q, expected %q", item.LUID, selector.LUID)
+		}
+		if err := validateDatasourceIdentity(item); err != nil {
+			return Datasource{}, err
+		}
+		path, err := a.projects.ResolveProjectPath(ctx, item.ProjectLUID)
+		if err != nil {
+			return Datasource{}, err
+		}
+		return normalizeDatasource(item, path), nil
+	}
+	if strings.TrimSpace(selector.Name) == "" || strings.TrimSpace(selector.ProjectPath) == "" {
+		return Datasource{}, errors.New("datasource selection requires a LUID or exact name and project path")
+	}
+
+	byLUID := make(map[string]Datasource)
+	seen := make(map[string]tableaudatasource.Datasource)
+	const pageSize = 1000
+	expectedTotal, expectedSize := -1, -1
+	for number := 1; number <= 1000; number++ {
+		page, err := a.client.List(ctx, tableaudatasource.ListRequest{PageNumber: number, PageSize: pageSize, Name: selector.Name})
+		if err != nil {
+			return Datasource{}, err
+		}
+		if err := validateDatasourcePage(page, number, pageSize); err != nil {
+			return Datasource{}, err
+		}
+		if expectedTotal < 0 {
+			expectedTotal, expectedSize = page.Total, page.Size
+		} else if page.Total != expectedTotal {
+			return Datasource{}, fmt.Errorf("datasource pagination total changed from %d to %d", expectedTotal, page.Total)
+		} else if page.Size != expectedSize {
+			return Datasource{}, fmt.Errorf("datasource pagination size changed from %d to %d", expectedSize, page.Size)
+		}
+		for _, item := range page.Items {
+			if err := recordDatasource(seen, item); err != nil {
+				return Datasource{}, err
+			}
+			if item.Name != selector.Name {
+				continue
+			}
+			path, err := a.projects.ResolveProjectPath(ctx, item.ProjectLUID)
+			if err != nil {
+				return Datasource{}, err
+			}
+			if path == selector.ProjectPath {
+				byLUID[item.LUID] = normalizeDatasource(item, path)
+			}
+		}
+		offset := (page.Number-1)*page.Size + len(page.Items)
+		if offset == page.Total {
+			items := make([]Datasource, 0, len(byLUID))
+			for _, item := range byLUID {
+				items = append(items, item)
+			}
+			sort.Slice(items, func(i, j int) bool { return items[i].LUID < items[j].LUID })
+			candidates := make([]identity.Candidate, len(items))
+			for index, item := range items {
+				candidates[index] = identity.Candidate{LUID: identity.LUID(item.LUID), Name: item.Name, ProjectPath: item.ProjectPath}
+			}
+			resolved, err := identity.Resolve(selector, candidates)
+			if err != nil {
+				return Datasource{}, err
+			}
+			return byLUID[string(resolved.LUID)], nil
+		}
+		if len(page.Items) == 0 {
+			return Datasource{}, errors.New("datasource pagination ended before the reported total")
+		}
+	}
+	return Datasource{}, errors.New("datasource resolution exceeded the 1000-page bound")
+}
+
+func validateDatasourceIdentity(item tableaudatasource.Datasource) error {
+	if strings.TrimSpace(item.LUID) == "" || strings.TrimSpace(item.Name) == "" || strings.TrimSpace(item.ProjectLUID) == "" || strings.TrimSpace(item.ProjectName) == "" {
+		return errors.New("datasource response omitted an authoritative LUID, name, project LUID, or project name")
+	}
+	return nil
+}
+
+func recordDatasource(seen map[string]tableaudatasource.Datasource, item tableaudatasource.Datasource) error {
+	if err := validateDatasourceIdentity(item); err != nil {
+		return err
+	}
+	if current, exists := seen[item.LUID]; exists && current != item {
+		return fmt.Errorf("Tableau datasource list returned conflicting records for LUID %q", item.LUID)
+	}
+	seen[item.LUID] = item
+	return nil
+}
+
+func validateDatasourcePage(page tableaudatasource.Page, number, requestedSize int) error {
+	if number <= 0 || requestedSize <= 0 || page.Number != number || page.Size <= 0 || page.Size > requestedSize || page.Total < 0 || len(page.Items) > page.Size {
+		return errors.New("datasource list returned inconsistent pagination")
+	}
+	offset := int64(page.Number-1) * int64(page.Size)
+	if offset > int64(page.Total) || offset+int64(len(page.Items)) > int64(page.Total) {
+		return errors.New("datasource list returned inconsistent pagination")
+	}
+	return nil
+}
+
+func normalizeDatasource(item tableaudatasource.Datasource, path string) Datasource {
+	return Datasource{LUID: item.LUID, Name: item.Name, ProjectLUID: item.ProjectLUID, ProjectPath: path}
+}
 
 // DownloadDatasource reads authoritative identity before downloading native content.
 func (a *Adapter) DownloadDatasource(ctx context.Context, luid string) (Download, error) {

@@ -21,7 +21,7 @@ Use `tadx capability get <id>` for the same focused metadata at runtime.
 | `admin.user.list` | cli | ship | ready | planned | None |
 | `admin.user.update` | cli | ship | ready | planned | None |
 | `auth.check` | cli | ship | ready | implemented | `tadx auth check` |
-| `auth.status` | cli | ship | ready | planned | None |
+| `auth.status` | cli | ship | ready | implemented | `tadx auth status` |
 | `capability.get` | cli | ship | ready | implemented | `tadx capability get` |
 | `capability.list` | cli | ship | ready | implemented | `tadx capability list` |
 | `catalog.get` | cli | ship | ready | planned | None |
@@ -31,7 +31,7 @@ Use `tadx capability get <id>` for the same focused metadata at runtime.
 | `content.get` | cli | ship | ready | planned | None |
 | `content.search` | cli | ship | ready | planned | None |
 | `datasource.composition.update` | cli | ship | blocked | planned | None |
-| `datasource.delete` | cli | ship | ready | planned | None |
+| `datasource.delete` | cli | ship | blocked | planned | None |
 | `datasource.field-description.generate` | agent/skill | delegated | ready | external/delegated | None |
 | `datasource.field-description.update` | cli | ship | blocked | planned | None |
 | `datasource.get` | cli | ship | ready | planned | None |
@@ -40,22 +40,22 @@ Use `tadx capability get <id>` for the same focused metadata at runtime.
 | `datasource.pull` | cli | ship | blocked | planned | None |
 | `datasource.query` | mcp | delegated | ready | external/delegated | None |
 | `doctor.run` | cli | ship | ready | planned | None |
-| `env.profile.add` | cli | ship | ready | planned | None |
-| `env.profile.get` | cli | ship | ready | planned | None |
-| `env.profile.list` | cli | ship | ready | planned | None |
-| `env.profile.remove` | cli | ship | ready | planned | None |
-| `env.profile.set-default` | cli | ship | ready | planned | None |
-| `env.profile.update` | cli | ship | ready | planned | None |
-| `flow.delete` | cli | ship | ready | planned | None |
-| `flow.get` | cli | ship | ready | planned | None |
-| `flow.list` | cli | ship | ready | planned | None |
-| `flow.move` | cli | ship | ready | planned | None |
-| `flow.publish` | cli | ship | ready | planned | None |
-| `flow.pull` | cli | ship | ready | planned | None |
-| `lineage.pull` | cli | ship | ready | planned | None |
+| `env.profile.add` | cli | ship | ready | implemented | `tadx env add` |
+| `env.profile.get` | cli | ship | ready | implemented | `tadx env get` |
+| `env.profile.list` | cli | ship | ready | implemented | `tadx env list` |
+| `env.profile.remove` | cli | ship | ready | implemented | `tadx env remove` |
+| `env.profile.set-default` | cli | ship | ready | implemented | `tadx env default` |
+| `env.profile.update` | cli | ship | ready | implemented | `tadx env update` |
+| `flow.delete` | cli | ship | ready | implemented | `tadx content flow delete` |
+| `flow.get` | cli | ship | ready | implemented | `tadx content flow get` |
+| `flow.list` | cli | ship | ready | implemented | `tadx content flow list` |
+| `flow.move` | cli | ship | ready | implemented | `tadx content flow move` |
+| `flow.publish` | cli | ship | ready | implemented | `tadx content flow publish` |
+| `flow.pull` | cli | ship | ready | implemented | `tadx content flow pull` |
+| `lineage.pull` | cli | ship | ready | implemented | `tadx content lineage pull` |
 | `project.create` | cli | ship | ready | planned | None |
-| `project.get` | cli | ship | ready | planned | None |
-| `project.list` | cli | ship | ready | planned | None |
+| `project.get` | cli | ship | ready | implemented | `tadx content project get` |
+| `project.list` | cli | ship | ready | implemented | `tadx content project list` |
 | `project.publish` | cli | ship | blocked | planned | None |
 | `project.pull` | cli | ship | blocked | planned | None |
 | `project.update` | cli | ship | ready | planned | None |
@@ -75,17 +75,19 @@ Use `tadx capability get <id>` for the same focused metadata at runtime.
 | `pulse.metric.values-insights` | mcp | delegated | ready | external/delegated | None |
 | `view.read` | mcp | delegated | ready | external/delegated | None |
 | `workbook.author` | tableau/desktop-mcp | delegated | ready | external/delegated | None |
-| `workbook.delete` | cli | ship | ready | planned | None |
+| `workbook.delete` | cli | ship | blocked | planned | None |
 | `workbook.get` | cli | ship | ready | planned | None |
 | `workbook.list` | cli | ship | ready | planned | None |
 | `workbook.publish` | cli | ship | ready | implemented | `tadx content workbook publish` |
 | `workbook.pull` | cli | ship | ready | implemented | `tadx content workbook pull` |
-| `workspace.artifact.delete` | cli | ship | ready | planned | None |
+| `workspace.artifact.delete` | cli | ship | ready | implemented | `tadx workspace artifact delete` |
 | `workspace.clean` | cli | ship | ready | planned | None |
-| `workspace.create` | cli | ship | ready | planned | None |
-| `workspace.list` | cli | ship | ready | planned | None |
-| `workspace.move` | cli | ship | ready | planned | None |
-| `workspace.status` | cli | ship | ready | planned | None |
+| `workspace.clone` | cli | ship | ready | implemented | `tadx workspace clone` |
+| `workspace.create` | cli | ship | ready | implemented | `tadx workspace create` |
+| `workspace.list` | cli | ship | ready | implemented | `tadx workspace list` |
+| `workspace.move` | cli | ship | ready | implemented | `tadx workspace move` |
+| `workspace.register` | cli | ship | ready | implemented | `tadx workspace register` |
+| `workspace.status` | cli | ship | ready | implemented | `tadx workspace status` |
 
 ## Capability definitions
 
@@ -414,7 +416,7 @@ Report resolved auth configuration and PAT-reference presence without revealing 
 - Product disposition: ship
 - Evidence level: architecture-locked
 - Verification readiness: ready
-- Implementation state: planned
+- Implementation state: implemented
 - Local write: No
 - Remote mutation: No
 - Requires `--apply`: No
@@ -425,7 +427,7 @@ Report resolved auth configuration and PAT-reference presence without revealing 
 - Evidence: A1 §§1.5, 5.4, 9.2; S1 notes missing distinct row
 - Validation or blocker: Architecture-locked; remote-validity semantics intentionally belong to auth check
 - Blocker ID: None
-- Command binding: None
+- Command binding: `tadx auth status`
 
 ### `capability.get`
 
@@ -673,7 +675,7 @@ Preview and delete one exact remote datasource.
 - Products and availability: Cloud / Server
 - Product disposition: ship
 - Evidence level: docs-only
-- Verification readiness: ready
+- Verification readiness: blocked
 - Implementation state: planned
 - Local write: No
 - Remote mutation: Yes
@@ -683,8 +685,8 @@ Preview and delete one exact remote datasource.
 - Artifact effect: Delete
 - Upstream operation: DELETE /api/{version}/sites/{site-id}/datasources/{datasource-id}
 - Evidence: Maintainer decision; official REST source capture pending
-- Validation or blocker: Docs-only
-- Blocker ID: None
+- Validation or blocker: B6: live DELETE contract test pending
+- Blocker ID: B6
 - Command binding: None
 
 ### `datasource.field-description.generate`
@@ -799,7 +801,7 @@ Preview and publish one local datasource, including explicit immediate-parent re
 - Operation type: deliver
 - Owner: cli
 - MCP overlap: None
-- Selectors: Workspace artifact; target defaults to artifact source, explicit environment/site/project overrides; optional exact existing datasource; immediate parents for composed artifacts
+- Selectors: Logical workspace plus exact workspace-relative managed datasource directory; target defaults to artifact source, explicit environment/site/project overrides; optional exact existing datasource; immediate parents for composed artifacts
 - Products and availability: Cloud / Server; composed path API 3.29 / Tableau 2026.2 per C1
 - Product disposition: ship
 - Evidence level: docs-only
@@ -825,7 +827,7 @@ Download one datasource while preserving its native package and composition prov
 - Operation type: deliver
 - Owner: cli
 - MCP overlap: None
-- Selectors: Datasource LUID/exact path; workspace
+- Selectors: Datasource LUID/exact path; logical workspace
 - Products and availability: Cloud / Server; composed round-trip requires Tableau 2026.2 behavior per C1
 - Product disposition: ship
 - Evidence level: docs-only
@@ -839,7 +841,7 @@ Download one datasource while preserving its native package and composition prov
 - Artifact effect: Create / update package and lineage sidecar
 - Upstream operation: GET /api/{version}/sites/{site-id}/datasources/{datasource-id}/content plus focused Metadata GraphQL reads
 - Evidence: A1 §§6.3–6.4, 8.2–8.4, ADR-022; C1 §§2.4, 5.5, 5.13
-- Validation or blocker: B2 blocks composed-datasource completion; lineage extension docs-only until its schema is captured
+- Validation or blocker: B2 blocks composed-datasource completion; lineage contract is captured in docs/evidence/lineage-metadata-contract.md
 - Blocker ID: B2
 - Command binding: None
 
@@ -908,7 +910,7 @@ Add one named environment profile containing secret references, not secret value
 - Product disposition: ship
 - Evidence level: local-contract
 - Verification readiness: ready
-- Implementation state: planned
+- Implementation state: implemented
 - Local write: Yes
 - Remote mutation: No
 - Requires `--apply`: No
@@ -919,7 +921,7 @@ Add one named environment profile containing secret references, not secret value
 - Evidence: A1 §§7.2–7.4, ADR-010; C1 §2.1
 - Validation or blocker: Architecture-locked local contract
 - Blocker ID: None
-- Command binding: None
+- Command binding: `tadx env add`
 
 ### `env.profile.get`
 
@@ -934,7 +936,7 @@ Inspect one resolved non-secret environment profile.
 - Product disposition: ship
 - Evidence level: local-contract
 - Verification readiness: ready
-- Implementation state: planned
+- Implementation state: implemented
 - Local write: No
 - Remote mutation: No
 - Requires `--apply`: No
@@ -945,7 +947,7 @@ Inspect one resolved non-secret environment profile.
 - Evidence: A1 §§5.3, 7.2–7.4; C1 §2.1
 - Validation or blocker: Architecture-locked local contract
 - Blocker ID: None
-- Command binding: None
+- Command binding: `tadx env get`
 
 ### `env.profile.list`
 
@@ -960,7 +962,7 @@ List named non-secret environment profiles.
 - Product disposition: ship
 - Evidence level: local-contract
 - Verification readiness: ready
-- Implementation state: planned
+- Implementation state: implemented
 - Local write: No
 - Remote mutation: No
 - Requires `--apply`: No
@@ -971,7 +973,7 @@ List named non-secret environment profiles.
 - Evidence: A1 §§1.5, 7.2–7.4, 9.2; C1 §2.1
 - Validation or blocker: Architecture-locked local contract
 - Blocker ID: None
-- Command binding: None
+- Command binding: `tadx env list`
 
 ### `env.profile.remove`
 
@@ -986,7 +988,7 @@ Remove one named environment profile.
 - Product disposition: ship
 - Evidence level: local-contract
 - Verification readiness: ready
-- Implementation state: planned
+- Implementation state: implemented
 - Local write: Yes
 - Remote mutation: No
 - Requires `--apply`: No
@@ -997,7 +999,7 @@ Remove one named environment profile.
 - Evidence: A1 §§7.2–7.4; C1 §2.1
 - Validation or blocker: Architecture-locked local contract
 - Blocker ID: None
-- Command binding: None
+- Command binding: `tadx env remove`
 
 ### `env.profile.set-default`
 
@@ -1012,7 +1014,7 @@ Set the default read environment.
 - Product disposition: ship
 - Evidence level: local-contract
 - Verification readiness: ready
-- Implementation state: planned
+- Implementation state: implemented
 - Local write: Yes
 - Remote mutation: No
 - Requires `--apply`: No
@@ -1023,7 +1025,7 @@ Set the default read environment.
 - Evidence: A1 §§1.5, 7.2–7.3, 9.2; S1 “one capability row per public operation”
 - Validation or blocker: Architecture-locked local contract
 - Blocker ID: None
-- Command binding: None
+- Command binding: `tadx env default`
 
 ### `env.profile.update`
 
@@ -1038,7 +1040,7 @@ Update explicit fields of one environment profile.
 - Product disposition: ship
 - Evidence level: local-contract
 - Verification readiness: ready
-- Implementation state: planned
+- Implementation state: implemented
 - Local write: Yes
 - Remote mutation: No
 - Requires `--apply`: No
@@ -1049,7 +1051,7 @@ Update explicit fields of one environment profile.
 - Evidence: A1 §§7.2–7.4; C1 §2.1
 - Validation or blocker: Architecture-locked local contract
 - Blocker ID: None
-- Command binding: None
+- Command binding: `tadx env update`
 
 ### `flow.delete`
 
@@ -1062,9 +1064,9 @@ Preview and delete one exact remote flow.
 - Selectors: Flow LUID or exact name/project path; explicit environment/site
 - Products and availability: Cloud / Server with flow support
 - Product disposition: ship
-- Evidence level: docs-only
+- Evidence level: contract-verified
 - Verification readiness: ready
-- Implementation state: planned
+- Implementation state: implemented
 - Local write: No
 - Remote mutation: Yes
 - Requires `--apply`: Yes
@@ -1072,10 +1074,10 @@ Preview and delete one exact remote flow.
 - Safety and guard: Re-resolve authoritative LUID immediately before delete; preserve dependency failures; no cascade claims
 - Artifact effect: Delete
 - Upstream operation: DELETE /api/{version}/sites/{site-id}/flows/{flow-id}
-- Evidence: Maintainer decision; official REST source capture pending
-- Validation or blocker: Docs-only
+- Evidence: Official REST capture and hermetic contract tests in docs/evidence/flow-rest-contract.md
+- Validation or blocker: Contract-verified; live deployment verification is not claimed
 - Blocker ID: None
-- Command binding: None
+- Command binding: `tadx content flow delete`
 
 ### `flow.get`
 
@@ -1088,9 +1090,9 @@ Inspect one authoritative flow and its direct lifecycle metadata.
 - Selectors: Flow LUID or exact name/project path
 - Products and availability: Cloud / Server with flow support
 - Product disposition: ship
-- Evidence level: docs-only
+- Evidence level: contract-verified
 - Verification readiness: ready
-- Implementation state: planned
+- Implementation state: implemented
 - Local write: No
 - Remote mutation: No
 - Requires `--apply`: No
@@ -1098,10 +1100,10 @@ Inspect one authoritative flow and its direct lifecycle metadata.
 - Safety and guard: Exact resolution; ambiguity fails
 - Artifact effect: None
 - Upstream operation: GET /api/{version}/sites/{site-id}/flows/{flow-id}
-- Evidence: A1 §§1.5, 3.4; C1 §§2.5, 5.6
-- Validation or blocker: Docs-only
+- Evidence: Official REST capture and hermetic contract tests in docs/evidence/flow-rest-contract.md
+- Validation or blocker: Contract-verified; live deployment verification is not claimed
 - Blocker ID: None
-- Command binding: None
+- Command binding: `tadx content flow get`
 
 ### `flow.list`
 
@@ -1114,9 +1116,9 @@ List flows with bounded lifecycle metadata.
 - Selectors: Environment/site; project/owner/filter
 - Products and availability: Cloud / Server with flow support; REST API 3.3+ per C1
 - Product disposition: ship
-- Evidence level: docs-only
+- Evidence level: contract-verified
 - Verification readiness: ready
-- Implementation state: planned
+- Implementation state: implemented
 - Local write: No
 - Remote mutation: No
 - Requires `--apply`: No
@@ -1124,10 +1126,10 @@ List flows with bounded lifecycle metadata.
 - Safety and guard: Bounded continuation
 - Artifact effect: None
 - Upstream operation: GET /api/{version}/sites/{site-id}/flows
-- Evidence: A1 §§1.5, 3.4; C1 §§2.5, 5.6
-- Validation or blocker: Docs-only
+- Evidence: Official REST capture and hermetic contract tests in docs/evidence/flow-rest-contract.md
+- Validation or blocker: Contract-verified; live deployment verification is not claimed
 - Blocker ID: None
-- Command binding: None
+- Command binding: `tadx content flow list`
 
 ### `flow.move`
 
@@ -1140,35 +1142,35 @@ Preview and move one exact flow to one exact project on the same site.
 - Selectors: Flow LUID or exact name/project path; exact destination project LUID/path; explicit environment/site
 - Products and availability: Cloud / Server with flow support
 - Product disposition: ship
-- Evidence level: docs-only
+- Evidence level: contract-verified
 - Verification readiness: ready
-- Implementation state: planned
+- Implementation state: implemented
 - Local write: No
 - Remote mutation: Yes
 - Requires `--apply`: Yes
 - Raw capable: No
 - Safety and guard: Source and destination re-resolved; cross-site move rejected; no connection or schedule rewrite
 - Artifact effect: None
-- Upstream operation: Released flow update operation with destination project field
-- Evidence: Maintainer decision; exact official source capture pending
-- Validation or blocker: Docs-only
+- Upstream operation: PUT /api/{version}/sites/{site-id}/flows/{flow-id} with an exact destination project
+- Evidence: Official REST capture and hermetic contract tests in docs/evidence/flow-rest-contract.md
+- Validation or blocker: Contract-verified; live deployment verification is not claimed
 - Blocker ID: None
-- Command binding: None
+- Command binding: `tadx content flow move`
 
 ### `flow.publish`
 
-Preview and publish one local TFL/TFLX to an explicit project.
+Preview and publish one local TFL/TFLX to its source target or an explicit target.
 
 - Surface: tadx content flow publish
 - Operation type: deliver
 - Owner: cli
 - MCP overlap: None
-- Selectors: Workspace artifact; target defaults to artifact source, explicit environment/site/project overrides; optional exact existing flow
+- Selectors: Logical workspace plus exact workspace-relative managed flow directory; target defaults to artifact source, explicit environment/site/project overrides; optional exact existing flow
 - Products and availability: Cloud / Server with flow support
 - Product disposition: ship
-- Evidence level: docs-only
+- Evidence level: contract-verified
 - Verification readiness: ready
-- Implementation state: planned
+- Implementation state: implemented
 - Local write: No
 - Remote mutation: Yes
 - Requires `--apply`: Yes
@@ -1176,10 +1178,10 @@ Preview and publish one local TFL/TFLX to an explicit project.
 - Safety and guard: Preview shows resolved environment/name/LUID; overwrite explicit
 - Artifact effect: Read / publish
 - Upstream operation: POST /api/{version}/sites/{site-id}/flows; upload sessions for large files
-- Evidence: A1 §§6.5–6.8; C1 §§2.5, 5.6
-- Validation or blocker: Docs-only
+- Evidence: Official REST capture and hermetic contract tests in docs/evidence/flow-rest-contract.md
+- Validation or blocker: Contract-verified; live deployment verification is not claimed
 - Blocker ID: None
-- Command binding: None
+- Command binding: `tadx content flow publish`
 
 ### `flow.pull`
 
@@ -1189,12 +1191,12 @@ Download one flow unchanged, capture bounded lineage, and create a provenance-be
 - Operation type: deliver
 - Owner: cli
 - MCP overlap: get-flow is metadata-only overlap
-- Selectors: Flow LUID/exact path; workspace
+- Selectors: Flow LUID or exact name/project path; logical workspace
 - Products and availability: Cloud / Server with flow support
 - Product disposition: ship
-- Evidence level: docs-only
+- Evidence level: contract-verified
 - Verification readiness: ready
-- Implementation state: planned
+- Implementation state: implemented
 - Local write: Yes
 - Remote mutation: No
 - Requires `--apply`: No
@@ -1202,25 +1204,25 @@ Download one flow unchanged, capture bounded lineage, and create a provenance-be
 - Safety and guard: Dirty re-pull requires --overwrite; incomplete lineage warns
 - Artifact effect: Create / update package and lineage sidecar
 - Upstream operation: Flow content GET plus focused Metadata GraphQL reads
-- Evidence: A1 §§6.3–6.4; C1 §§2.5, 5.6, 5.13; maintainer flow and lineage decisions
-- Validation or blocker: Docs-only remote API and lineage schema; artifact contract architecture-locked
+- Evidence: Official REST and Metadata captures plus hermetic contract tests in docs/evidence/flow-rest-contract.md and docs/evidence/lineage-metadata-contract.md
+- Validation or blocker: Contract-verified; live deployment verification is not claimed; artifact contract architecture-locked
 - Blocker ID: None
-- Command binding: None
+- Command binding: `tadx content flow pull`
 
 ### `lineage.pull`
 
-Capture bounded lineage for one exact workbook, datasource, or flow without downloading its native package.
+Capture bounded lineage for one exact workbook, published datasource, or flow without downloading its native package.
 
 - Surface: tadx content lineage pull
 - Operation type: deliver
 - Owner: cli
 - MCP overlap: Metadata reads overlap with resource metadata tools
-- Selectors: Resource kind plus REST LUID or exact name/project path; workspace; bounded direction and depth
+- Selectors: Resource kind plus REST LUID or exact name/project path; logical workspace; bounded direction and depth
 - Products and availability: Cloud / Server with Metadata API
 - Product disposition: ship
-- Evidence level: docs-only
+- Evidence level: contract-verified
 - Verification readiness: ready
-- Implementation state: planned
+- Implementation state: implemented
 - Local write: Yes
 - Remote mutation: No
 - Requires `--apply`: No
@@ -1228,10 +1230,10 @@ Capture bounded lineage for one exact workbook, datasource, or flow without down
 - Safety and guard: REST and Metadata identities remain distinct; incomplete results are explicit; no dependency acquisition
 - Artifact effect: Create metadata-only lineage artifact
 - Upstream operation: Focused Metadata GraphQL reads plus authoritative REST identity resolution
-- Evidence: Maintainer decision; exact schema/source capture pending
-- Validation or blocker: Docs-only; architecture contract defined in §3.7
+- Evidence: Official Metadata guide and schema captures plus hermetic contract tests in docs/evidence/lineage-metadata-contract.md
+- Validation or blocker: Contract-verified; live deployment verification is not claimed
 - Blocker ID: None
-- Command binding: None
+- Command binding: `tadx content lineage pull`
 
 ### `project.create`
 
@@ -1270,20 +1272,20 @@ Resolve and inspect one exact shallow project context.
 - Selectors: Project LUID or exact slash-delimited path
 - Products and availability: Cloud / Server
 - Product disposition: ship
-- Evidence level: docs-only
+- Evidence level: contract-verified
 - Verification readiness: ready
-- Implementation state: planned
+- Implementation state: implemented
 - Local write: No
 - Remote mutation: No
 - Requires `--apply`: No
 - Raw capable: No
 - Safety and guard: Ambiguous path fails
 - Artifact effect: None
-- Upstream operation: Exact resolution from project list/filter response
-- Evidence: A1 §§5.7, 6.2, 6.10; C1 §§2.6, 5.7
-- Validation or blocker: Docs-only
+- Upstream operation: Exact resolution from authoritative project pages
+- Evidence: Official REST capture and hermetic contract tests in docs/evidence/project-rest-contract.md
+- Validation or blocker: Contract-verified; live deployment verification is not claimed
 - Blocker ID: None
-- Command binding: None
+- Command binding: `tadx content project get`
 
 ### `project.list`
 
@@ -1296,9 +1298,9 @@ List projects and their authoritative parent identity.
 - Selectors: Environment/site; filters
 - Products and availability: Cloud / Server
 - Product disposition: ship
-- Evidence level: docs-only
+- Evidence level: contract-verified
 - Verification readiness: ready
-- Implementation state: planned
+- Implementation state: implemented
 - Local write: No
 - Remote mutation: No
 - Requires `--apply`: No
@@ -1306,10 +1308,10 @@ List projects and their authoritative parent identity.
 - Safety and guard: Bounded continuation
 - Artifact effect: None
 - Upstream operation: GET /api/{version}/sites/{site-id}/projects
-- Evidence: A1 §§1.5, 6.2, 6.10; C1 §§2.6, 5.7
-- Validation or blocker: Docs-only
+- Evidence: Official REST capture and hermetic contract tests in docs/evidence/project-rest-contract.md
+- Validation or blocker: Contract-verified; live deployment verification is not claimed
 - Blocker ID: None
-- Command binding: None
+- Command binding: `tadx content project list`
 
 ### `project.publish`
 
@@ -1817,7 +1819,7 @@ Preview and delete one exact remote workbook.
 - Products and availability: Cloud / Server
 - Product disposition: ship
 - Evidence level: docs-only
-- Verification readiness: ready
+- Verification readiness: blocked
 - Implementation state: planned
 - Local write: No
 - Remote mutation: Yes
@@ -1827,8 +1829,8 @@ Preview and delete one exact remote workbook.
 - Artifact effect: Delete
 - Upstream operation: DELETE /api/{version}/sites/{site-id}/workbooks/{workbook-id}
 - Evidence: Maintainer decision; official REST source capture pending
-- Validation or blocker: Docs-only
-- Blocker ID: None
+- Validation or blocker: B6: live DELETE contract test pending
+- Blocker ID: B6
 - Command binding: None
 
 ### `workbook.get`
@@ -1891,7 +1893,7 @@ Preview and publish one local workbook to an explicit target.
 - Operation type: deliver
 - Owner: cli
 - MCP overlap: None
-- Selectors: Workspace artifact; target defaults to artifact source, explicit environment/site/project overrides; optional exact existing workbook
+- Selectors: Logical workspace plus exact workspace-relative managed workbook directory; target defaults to artifact source, explicit environment/site/project overrides; optional exact existing workbook
 - Products and availability: Cloud / Server; TWB validation API only on API 3.29 / Tableau 2026.2+ per C1
 - Product disposition: ship
 - Evidence level: contract-verified
@@ -1917,7 +1919,7 @@ Download one workbook, capture bounded lineage, and optionally acquire its direc
 - Operation type: deliver
 - Owner: cli
 - MCP overlap: download-workbook
-- Selectors: Workbook LUID/exact path; workspace; optional --include-pds
+- Selectors: Workbook LUID/exact path; logical workspace; optional --include-pds
 - Products and availability: Cloud / Server
 - Product disposition: ship
 - Evidence level: contract-verified
@@ -1931,7 +1933,7 @@ Download one workbook, capture bounded lineage, and optionally acquire its direc
 - Artifact effect: Create / update workbook, lineage sidecar, and optional datasource siblings
 - Upstream operation: Workbook content GET; Metadata GraphQL POST; datasource exact/content GET
 - Evidence: A1 §§6.3–6.4, 8.2, 8.6; C1 §§2.3, 5.4, 5.13; official REST and Metadata captures; Tableau Cloud happy-path capture
-- Validation or blocker: Contract-verified; published-datasource traversal captured live; lineage extension docs-only until its schema is captured; exact sources and tests recorded in docs/evidence/phase1-rest-contract.md; artifact contract architecture-locked
+- Validation or blocker: Contract-verified; published-datasource traversal captured live; lineage schema and hermetic tests recorded in docs/evidence/lineage-metadata-contract.md; remaining exact sources and tests recorded in docs/evidence/phase1-rest-contract.md; artifact contract architecture-locked
 - Blocker ID: None
 - Command binding: `tadx content workbook pull`
 
@@ -1943,12 +1945,12 @@ Delete one exact managed local artifact.
 - Operation type: change
 - Owner: cli
 - MCP overlap: None
-- Selectors: Workspace plus artifact kind and LUID, or exact managed artifact path
+- Selectors: Logical workspace name plus kind and LUID, or exact workspace-relative managed artifact path
 - Products and availability: Local / all
 - Product disposition: ship
 - Evidence level: architecture-locked
 - Verification readiness: ready
-- Implementation state: planned
+- Implementation state: implemented
 - Local write: Yes
 - Remote mutation: No
 - Requires `--apply`: Yes
@@ -1959,7 +1961,7 @@ Delete one exact managed local artifact.
 - Evidence: Maintainer decision; A1 §§6.1, 7.5–7.6, 8.1–8.2
 - Validation or blocker: Architecture-locked local boundary; detailed cleanup policy remains deferred
 - Blocker ID: None
-- Command binding: None
+- Command binding: `tadx workspace artifact delete`
 
 ### `workspace.clean`
 
@@ -1987,6 +1989,32 @@ Remove explicitly selected disposable local state while preserving canonical art
 - Blocker ID: None
 - Command binding: None
 
+### `workspace.clone`
+
+Copy an existing managed workspace to a new local root under a new workspace identity.
+
+- Surface: tadx workspace clone
+- Operation type: change
+- Owner: cli
+- MCP overlap: None
+- Selectors: Path/name
+- Products and availability: Local / all
+- Product disposition: ship
+- Evidence level: local-contract
+- Verification readiness: ready
+- Implementation state: implemented
+- Local write: Yes
+- Remote mutation: No
+- Requires `--apply`: No
+- Raw capable: No
+- Safety and guard: Rejects existing destination and symlinked entries; new identity; name/ID/path collision checks
+- Artifact effect: None
+- Upstream operation: Local filesystem
+- Evidence: A1 §§6.1, 7.5–7.6, 9.2; C1 §2.1
+- Validation or blocker: Architecture-locked local contract
+- Blocker ID: None
+- Command binding: `tadx workspace clone`
+
 ### `workspace.create`
 
 Create an explicit named workspace with tadx.yaml, artifacts/, and .tadx/.
@@ -2000,7 +2028,7 @@ Create an explicit named workspace with tadx.yaml, artifacts/, and .tadx/.
 - Product disposition: ship
 - Evidence level: local-contract
 - Verification readiness: ready
-- Implementation state: planned
+- Implementation state: implemented
 - Local write: Yes
 - Remote mutation: No
 - Requires `--apply`: No
@@ -2011,33 +2039,33 @@ Create an explicit named workspace with tadx.yaml, artifacts/, and .tadx/.
 - Evidence: A1 §§6.1, 7.5–7.6, 9.2; C1 §2.1
 - Validation or blocker: Architecture-locked local contract
 - Blocker ID: None
-- Command binding: None
+- Command binding: `tadx workspace create`
 
 ### `workspace.list`
 
-List configured or boundedly discoverable workspaces.
+List registered named workspaces.
 
 - Surface: tadx workspace list
 - Operation type: find
 - Owner: cli
 - MCP overlap: None
-- Selectors: Configured roots/current repository
+- Selectors: Bounded registered-workspace page
 - Products and availability: Local / all
 - Product disposition: ship
 - Evidence level: local-contract
 - Verification readiness: ready
-- Implementation state: planned
+- Implementation state: implemented
 - Local write: No
 - Remote mutation: No
 - Requires `--apply`: No
 - Raw capable: No
-- Safety and guard: No unbounded filesystem scan
+- Safety and guard: No unbounded filesystem scan; machine-local roots are not rendered
 - Artifact effect: None
 - Upstream operation: Local config/filesystem
 - Evidence: A1 §§6.1, 7.2, 9.2; C1 §2.1
 - Validation or blocker: Architecture-locked local contract
 - Blocker ID: None
-- Command binding: None
+- Command binding: `tadx workspace list`
 
 ### `workspace.move`
 
@@ -2047,12 +2075,12 @@ Move one local artifact without changing Tableau identity.
 - Operation type: change
 - Owner: cli
 - MCP overlap: None
-- Selectors: Artifact path or Tableau ID; destination path
+- Selectors: Source and destination logical workspace names plus workspace-relative artifact path, or kind and Tableau LUID
 - Products and availability: Local / all
 - Product disposition: ship
 - Evidence level: local-contract
 - Verification readiness: ready
-- Implementation state: planned
+- Implementation state: implemented
 - Local write: Yes
 - Remote mutation: No
 - Requires `--apply`: No
@@ -2063,7 +2091,33 @@ Move one local artifact without changing Tableau identity.
 - Evidence: A1 §§7.5, 8.1 and V1 exclusions; C1 §2.1
 - Validation or blocker: Architecture-locked local contract
 - Blocker ID: None
-- Command binding: None
+- Command binding: `tadx workspace move`
+
+### `workspace.register`
+
+Adopt an existing on-disk workspace directory into the local registry using its tadx.yaml identity.
+
+- Surface: tadx workspace register
+- Operation type: change
+- Owner: cli
+- MCP overlap: None
+- Selectors: Path/name
+- Products and availability: Local / all
+- Product disposition: ship
+- Evidence level: local-contract
+- Verification readiness: ready
+- Implementation state: implemented
+- Local write: Yes
+- Remote mutation: No
+- Requires `--apply`: No
+- Raw capable: No
+- Safety and guard: Requires a valid tadx.yaml; name/ID/path collision checks; adopts existing identity, no directory mutation
+- Artifact effect: None
+- Upstream operation: Local filesystem
+- Evidence: A1 §§6.1, 7.5–7.6, 9.2; C1 §2.1
+- Validation or blocker: Architecture-locked local contract
+- Blocker ID: None
+- Command binding: `tadx workspace register`
 
 ### `workspace.status`
 
@@ -2078,7 +2132,7 @@ Report effective workspace, artifact state, provenance, and dirty/missing status
 - Product disposition: ship
 - Evidence level: architecture-locked
 - Verification readiness: ready
-- Implementation state: planned
+- Implementation state: implemented
 - Local write: No
 - Remote mutation: No
 - Requires `--apply`: No
@@ -2089,4 +2143,4 @@ Report effective workspace, artifact state, provenance, and dirty/missing status
 - Evidence: A1 §§6.1, 6.3–6.4, 8.2, ADR-032; C1 §2.1
 - Validation or blocker: Architecture-locked; C1 lock suggestion rejected
 - Blocker ID: None
-- Command binding: None
+- Command binding: `tadx workspace status`

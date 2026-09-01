@@ -27,6 +27,7 @@ internal/
   identity/              Exact LUID, name, and project-path resolution
   output/                Structured rendering boundary
   toon/                  Frozen TOON codec
+  workspace/             Named workspace registration and deterministic resolution
   resources/             Resource adapters added with implemented slices
   tableau/               Released Tableau API clients and transport added in Phase 1
 ```
@@ -52,6 +53,7 @@ actions -> internal/{capability,config,errs,identity,output}
 resource adapters -> internal/{identity,tableau}
 Tableau clients -> internal/auth
 internal/output -> internal/{errs,toon}
+internal/workspace -> internal/config
 ```
 
 Actions declare the narrow interfaces they consume.
@@ -69,7 +71,8 @@ The local allowlists enforce these dependencies:
 - CLI packages import only action packages, CLI subpackages, and `internal/errs`.
 - Resource adapters import only `internal/identity` and Tableau client packages.
 - Tableau clients import only `internal/auth` and the shared `internal/tableau` package.
-- `internal/output` imports only `internal/errs` and `internal/toon`; other foundation packages have no local dependencies.
+- `internal/output` imports only `internal/errs` and `internal/toon`.
+- `internal/workspace` imports only `internal/config`.
 - `internal/artifact` and `internal/catalog` are independent foundation packages with no higher-layer imports.
 - The composition root imports only recognized actions, CLI packages, adapters, clients, and its required foundation packages.
 - `cmd/tadx` imports only `internal/app`, and `cmd/gencapdocs` imports only `internal/capability`.

@@ -81,6 +81,11 @@ func (m *WorkbookBundleManager) Pull(ctx context.Context, input WorkbookBundlePu
 	if _, err := os.Stat(filepath.Join(workspace, "tadx.yaml")); err != nil {
 		return WorkbookBundlePullResult{}, fmt.Errorf("workspace %q does not contain tadx.yaml", workspace)
 	}
+	handle, err := lockWorkspace(workspace)
+	if err != nil {
+		return WorkbookBundlePullResult{}, err
+	}
+	defer func() { _ = handle.Release() }()
 	workbookRoot, err := ensureWorkbookRoot(workspace)
 	if err != nil {
 		return WorkbookBundlePullResult{}, err
@@ -338,6 +343,10 @@ func (m *WorkbookBundleManager) prepareWorkbook(ctx context.Context, workspace, 
 	metadata.CanonicalPayload = filename
 	metadata.LocalBaselineFingerprint = baseline
 	metadata.sourceSitePresent = true
+	lineage, err := applyWorkbookLineageMetadata(&metadata, input.Lineage, input.LineageCountsKnown)
+	if err != nil {
+		return preparedDirectory{}, WorkbookPullResult{}, err
+	}
 	if err := validateWorkbookMetadata(metadata); err != nil {
 		return preparedDirectory{}, WorkbookPullResult{}, err
 	}
@@ -345,16 +354,20 @@ func (m *WorkbookBundleManager) prepareWorkbook(ctx context.Context, workspace, 
 	if err != nil {
 		return preparedDirectory{}, WorkbookPullResult{}, err
 	}
+	lineageBytes, err := encodeWorkbookLineage(lineage)
+	if err != nil {
+		return preparedDirectory{}, WorkbookPullResult{}, err
+	}
 	staging, err := os.MkdirTemp(root, ".tadx-workbook-stage-")
 	if err != nil {
 		return preparedDirectory{}, WorkbookPullResult{}, fmt.Errorf("create artifact staging directory: %w", err)
 	}
-	if err := writeStagedArtifact(staging, map[string][]byte{filename: input.Content, "metadata.json": metadataBytes, "view.md": []byte(workbookView(metadata))}, operations); err != nil {
+	if err := writeStagedArtifact(staging, map[string][]byte{filename: input.Content, "metadata.json": metadataBytes, "lineage.json": lineageBytes, "view.md": []byte(workbookView(metadata))}, operations); err != nil {
 		_ = operations.removeAll(staging)
 		return preparedDirectory{}, WorkbookPullResult{}, err
 	}
 	return preparedDirectory{target: target, staging: staging, backupPrefix: ".tadx-workbook-backup-"}, WorkbookPullResult{
-		ArtifactPath: target, CanonicalPath: filepath.Join(target, filename), BaselineFingerprint: baseline, Warnings: warnings,
+		ArtifactPath: target, CanonicalPath: filepath.Join(target, filename), LineagePath: filepath.Join(target, "lineage.json"), LineageStatus: metadata.LineageStatus, BaselineFingerprint: baseline, Warnings: warnings,
 	}, nil
 }
 

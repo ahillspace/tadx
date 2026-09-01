@@ -35,6 +35,37 @@ func TestWorkbookBundleRejectsLaterDirtyDependencyWithoutChangingAnyArtifact(t *
 	assertFileContent(t, initial.Datasources[1].CanonicalPath, "local datasource edit")
 }
 
+func TestWorkbookBundlePersistsWorkbookLineageInSameTransaction(t *testing.T) {
+	workspace := createDatasourceWorkspace(t)
+	input := validWorkbookBundle(workspace, "v1")
+	input.Workbook.Lineage = LineageDocument{
+		Complete: true, Direction: "both", Depth: 1,
+		Nodes: []LineageNode{{MetadataID: "meta-wb-1", Kind: "workbook", RESTLUID: "wb-1"}},
+		Edges: []LineageEdge{},
+	}
+	input.Workbook.LineageCountsKnown = true
+
+	result, err := NewWorkbookBundleManager(time.Now).Pull(context.Background(), input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Workbook.LineageStatus != LineageStatusComplete || result.Workbook.LineagePath != filepath.Join(result.Workbook.ArtifactPath, "lineage.json") {
+		t.Fatalf("workbook result = %#v", result.Workbook)
+	}
+	for _, name := range []string{"metadata.json", "lineage.json", "view.md", "Finance.twbx"} {
+		if _, err := os.Stat(filepath.Join(result.Workbook.ArtifactPath, name)); err != nil {
+			t.Fatalf("missing workbook bundle file %q: %v", name, err)
+		}
+	}
+	metadata, err := readMetadata(result.Workbook.ArtifactPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if metadata.LineageNodeCount == nil || *metadata.LineageNodeCount != 1 || metadata.LineageEdgeCount == nil || *metadata.LineageEdgeCount != 0 {
+		t.Fatalf("metadata = %#v", metadata)
+	}
+}
+
 func TestWorkbookBundleRestoresEveryArtifactWhenLaterInstallFails(t *testing.T) {
 	workspace := createDatasourceWorkspace(t)
 	manager := NewWorkbookBundleManager(time.Now)

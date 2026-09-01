@@ -9,7 +9,7 @@ import (
 
 func TestCanonicalRegistryIsValidAndComplete(t *testing.T) {
 	definitions := All()
-	if got, want := len(definitions), 77; got != want {
+	if got, want := len(definitions), 79; got != want {
 		t.Fatalf("All() returned %d definitions, want %d", got, want)
 	}
 	if err := Validate(definitions); err != nil {
@@ -31,18 +31,18 @@ func TestCanonicalRegistryIsValidAndComplete(t *testing.T) {
 			blocked++
 		}
 	}
-	if cli != 72 || delegated != 5 || ship != 72 || blocked != 14 {
-		t.Fatalf("registry totals = cli:%d delegated:%d ship-disposition:%d blocked:%d, want 72/5/72/14", cli, delegated, ship, blocked)
+	if cli != 74 || delegated != 5 || ship != 74 || blocked != 16 {
+		t.Fatalf("registry totals = cli:%d delegated:%d ship-disposition:%d blocked:%d, want 74/5/74/16", cli, delegated, ship, blocked)
 	}
 }
 
-func TestCanonicalExecutableBindingsIncludePhaseOneSlice(t *testing.T) {
+func TestCanonicalExecutableBindingsIncludeImplementedSlices(t *testing.T) {
 	definitions := Executable()
 	ids := make([]string, 0, len(definitions))
 	for _, definition := range definitions {
 		ids = append(ids, definition.ID)
 	}
-	if want := []string{"auth.check", "capability.get", "capability.list", "catalog.search", "workbook.publish", "workbook.pull"}; !slices.Equal(ids, want) {
+	if want := []string{"auth.check", "auth.status", "capability.get", "capability.list", "catalog.search", "env.profile.add", "env.profile.get", "env.profile.list", "env.profile.remove", "env.profile.set-default", "env.profile.update", "flow.delete", "flow.get", "flow.list", "flow.move", "flow.publish", "flow.pull", "lineage.pull", "project.get", "project.list", "workbook.publish", "workbook.pull", "workspace.artifact.delete", "workspace.clone", "workspace.create", "workspace.list", "workspace.move", "workspace.register", "workspace.status"}; !slices.Equal(ids, want) {
 		t.Fatalf("Executable IDs = %v, want %v", ids, want)
 	}
 	for _, definition := range definitions {
@@ -51,6 +51,26 @@ func TestCanonicalExecutableBindingsIncludePhaseOneSlice(t *testing.T) {
 		}
 		if len(definition.CommandPath) == 0 {
 			t.Errorf("%s has no command path", definition.ID)
+		}
+	}
+}
+
+// TestExecutableCapabilitiesAreShipAndProven guards CLI availability against
+// registry disposition rather than only against non-nil dependencies. Every
+// capability wired to a runnable CLI command (Executable) must be dispositioned
+// to ship and verification-ready, so a future misconfiguration that wires a
+// blocked or non-ship capability into the manifest fails here instead of
+// exposing an unproven command through the CLI.
+func TestExecutableCapabilitiesAreShipAndProven(t *testing.T) {
+	for _, definition := range Executable() {
+		if definition.Disposition != DispositionShip {
+			t.Errorf("%s is wired to the CLI but has disposition %q, want %q", definition.ID, definition.Disposition, DispositionShip)
+		}
+		if definition.Verification != VerificationReady {
+			t.Errorf("%s is wired to the CLI but has verification %q, want %q", definition.ID, definition.Verification, VerificationReady)
+		}
+		if definition.Blocker != "" {
+			t.Errorf("%s is wired to the CLI but references blocker %q", definition.ID, definition.Blocker)
 		}
 	}
 }

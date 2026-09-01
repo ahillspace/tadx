@@ -95,6 +95,83 @@ func TestLiveWorkbookPublishedDatasourceContract(t *testing.T) {
 	t.Logf("redacted Metadata API request and response capture:\n%s", evidence)
 }
 
+func TestLiveLineageContract(t *testing.T) {
+	kind := tableaumetadata.ResourceKind(strings.TrimSpace(os.Getenv("TADX_LIVE_LINEAGE_KIND")))
+	if kind == "" {
+		kind = tableaumetadata.KindWorkbook
+	}
+	rootLUID := strings.TrimSpace(os.Getenv("TADX_LIVE_LINEAGE_LUID"))
+	if rootLUID == "" && kind == tableaumetadata.KindWorkbook {
+		rootLUID = strings.TrimSpace(os.Getenv("TADX_LIVE_PDS_WORKBOOK_LUID"))
+	}
+	if rootLUID == "" {
+		t.Skip("set TADX_LIVE_LINEAGE_LUID and optional TADX_LIVE_LINEAGE_KIND to run the live lineage contract test")
+	}
+
+	configPath := strings.TrimSpace(os.Getenv("TADX_LIVE_CONFIG"))
+	if configPath == "" {
+		var err error
+		configPath, err = config.UserConfigPath()
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	configuration, err := config.Load(configPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	environment, err := configuration.ResolveEnvironment(strings.TrimSpace(os.Getenv("TADX_LIVE_ENVIRONMENT")))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	captureTransport := &metadataEvidenceTransport{base: http.DefaultTransport}
+	httpClient := &http.Client{Transport: captureTransport, Timeout: 2 * time.Minute}
+	transport := tableau.NewTransport(httpClient, environment.APIVersion, func() string { return "lineage-live-contract" })
+	provider := coreauth.NewPATProvider(coreauth.LookupEnvFunc(os.LookupEnv), tableauauth.NewClient(transport))
+	session, err := provider.Authenticate(context.Background(), coreauth.Target{
+		Environment: environment.Alias, ServerURL: environment.URL, SiteContentURL: environment.SiteContentURL,
+		PATNameVariable: environment.Auth.PATNameEnv, PATSecretVariable: environment.Auth.PATSecretEnv,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	lineage, err := tableaumetadata.NewClient(transport, session, environment.URL).CaptureLineage(context.Background(), tableaumetadata.CaptureRequest{
+		Kind: kind, RESTLUID: rootLUID, Direction: tableaumetadata.DirectionBoth, Depth: 1,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !lineage.Complete {
+		t.Fatalf("live lineage was incomplete: %v", lineage.Warnings)
+	}
+	if lineage.RootRESTLUID != rootLUID || lineage.RootMetadataID == "" || lineage.RootMetadataID == rootLUID {
+		t.Fatalf("root identity mapping = REST %q, Metadata %q", lineage.RootRESTLUID, lineage.RootMetadataID)
+	}
+	identities := make(map[string]struct{}, len(lineage.Nodes))
+	for _, node := range lineage.Nodes {
+		if node.MetadataID == "" || node.RESTLUID == "" || node.MetadataID == node.RESTLUID {
+			t.Fatalf("invalid live lineage node identity: %#v", node)
+		}
+		identities[node.MetadataID] = struct{}{}
+	}
+	for _, edge := range lineage.Edges {
+		if _, exists := identities[edge.FromMetadataID]; !exists {
+			t.Fatalf("edge source %q was not captured", edge.FromMetadataID)
+		}
+		if _, exists := identities[edge.ToMetadataID]; !exists {
+			t.Fatalf("edge destination %q was not captured", edge.ToMetadataID)
+		}
+	}
+	evidence, err := captureTransport.JSON()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Logf("verified %s lineage root REST %s to Metadata %s with %d nodes and %d edges", kind, evidenceIdentifier(rootLUID), evidenceIdentifier(lineage.RootMetadataID), len(lineage.Nodes), len(lineage.Edges))
+	t.Logf("redacted Metadata API lineage request and response capture:\n%s", evidence)
+}
+
 type metadataEvidenceTransport struct {
 	base      http.RoundTripper
 	mu        sync.Mutex
@@ -208,7 +285,7 @@ func redactMetadataValue(value any) {
 			switch strings.ToLower(key) {
 			case "query", "code":
 				// The static query and stable Tableau issue codes carry no fixture identity.
-			case "luid", "workbookluid":
+			case "luid", "workbookluid", "rootluid":
 				if identifier, ok := child.(string); ok {
 					typed[key] = evidenceIdentifier(identifier)
 				} else {

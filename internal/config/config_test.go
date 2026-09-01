@@ -27,7 +27,11 @@ func TestConfigValidateAcceptsNonSecretPATReferences(t *testing.T) {
 	cfg := config.Config{
 		Version:            config.CurrentVersion,
 		DefaultEnvironment: "production",
-		DefaultWorkspace:   "./workspaces/default",
+		DefaultWorkspace:   "default",
+		Workspaces: map[string]config.WorkspaceRegistration{
+			"default": {ID: "ws_11111111111111111111111111111111", Path: filepath.Join("workspaces", "default")},
+			"prod":    {ID: "ws_22222222222222222222222222222222", Path: filepath.Join("workspaces", "prod")},
+		},
 		Environments: map[string]config.Environment{
 			"production": {
 				URL:            "https://example.tableau.com",
@@ -37,7 +41,7 @@ func TestConfigValidateAcceptsNonSecretPATReferences(t *testing.T) {
 					PATNameEnv:   "TADX_PRODUCTION_PAT_NAME",
 					PATSecretEnv: "TADX_PRODUCTION_PAT_SECRET",
 				},
-				DefaultWorkspace: "./workspaces/prod",
+				DefaultWorkspace: "prod",
 			},
 		},
 	}
@@ -190,5 +194,76 @@ func TestPathContracts(t *testing.T) {
 	}
 	if config.WorkspaceConfigName != "tadx.yaml" {
 		t.Fatalf("WorkspaceConfigName = %q", config.WorkspaceConfigName)
+	}
+}
+
+func TestConfigValidateRejectsCaseInsensitiveWorkspaceCollisions(t *testing.T) {
+	t.Parallel()
+
+	cfg := config.Config{
+		Version: config.CurrentVersion,
+		Workspaces: map[string]config.WorkspaceRegistration{
+			"Development": {ID: "ws_11111111111111111111111111111111", Path: filepath.Join("root", "one")},
+			"development": {ID: "ws_22222222222222222222222222222222", Path: filepath.Join("root", "two")},
+		},
+	}
+
+	if err := cfg.Validate(); err == nil || !strings.Contains(err.Error(), "case-insensitive") {
+		t.Fatalf("Validate() error = %v", err)
+	}
+}
+
+func TestConfigValidateRejectsDuplicateWorkspaceIdentityAndCanonicalRoot(t *testing.T) {
+	t.Parallel()
+
+	root := filepath.Join(t.TempDir(), "workspace")
+	cfg := config.Config{
+		Version: config.CurrentVersion,
+		Workspaces: map[string]config.WorkspaceRegistration{
+			"one": {ID: "ws_11111111111111111111111111111111", Path: root},
+			"two": {ID: "ws_11111111111111111111111111111111", Path: filepath.Join(root, ".")},
+		},
+	}
+
+	err := cfg.Validate()
+	if err == nil || !strings.Contains(err.Error(), "workspace ID") || !strings.Contains(err.Error(), "canonical root") {
+		t.Fatalf("Validate() error = %v", err)
+	}
+}
+
+func TestConfigValidateRejectsCaseOnlyCanonicalRootCollisionOnEveryPlatform(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	cfg := config.Config{
+		Version: config.CurrentVersion,
+		Workspaces: map[string]config.WorkspaceRegistration{
+			"one": {ID: "ws_11111111111111111111111111111111", Path: filepath.Join(root, "Development")},
+			"two": {ID: "ws_22222222222222222222222222222222", Path: filepath.Join(root, "development")},
+		},
+	}
+
+	if err := cfg.Validate(); err == nil || !strings.Contains(err.Error(), "canonical root") {
+		t.Fatalf("Validate() error = %v", err)
+	}
+}
+
+func TestResolveWorkspaceUsesLogicalDefaults(t *testing.T) {
+	t.Parallel()
+
+	cfg := config.Config{
+		Version:          config.CurrentVersion,
+		DefaultWorkspace: "Development",
+		Workspaces: map[string]config.WorkspaceRegistration{
+			"development": {ID: "ws_11111111111111111111111111111111", Path: filepath.Join("root", "workspace")},
+		},
+	}
+
+	name, registration, err := cfg.ResolveWorkspace("")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if name != "development" || registration.ID != "ws_11111111111111111111111111111111" {
+		t.Fatalf("ResolveWorkspace() = %q, %#v", name, registration)
 	}
 }

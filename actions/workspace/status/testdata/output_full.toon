@@ -1,0 +1,15 @@
+status: attention
+workspace:
+  name: development
+  id: ws_1
+artifacts:
+  returned: 1
+  limit: 20
+  scan_complete: true
+  clean: 0
+  dirty: 1
+  missing: 0
+  invalid: 0
+  artifacts[1]{kind,luid,name,path,state,canonical_path,baseline_fingerprint,current_fingerprint}:
+    workbook,wb-1,Finance,artifacts/workbook/Finance,dirty,artifacts/workbook/Finance/Finance.twbx,"sha256:old","sha256:new"
+help[1]: tadx workspace status --workspace development --full

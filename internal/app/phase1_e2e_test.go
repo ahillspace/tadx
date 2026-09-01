@@ -16,6 +16,7 @@ import (
 
 	"github.com/ahillspace/tadx/internal/app"
 	"github.com/ahillspace/tadx/internal/artifact"
+	workspacecore "github.com/ahillspace/tadx/internal/workspace"
 )
 
 func TestPhaseOneWorkbookPullAndPublishThroughCLIDefaultSite(t *testing.T) {
@@ -59,16 +60,13 @@ func TestPhaseOneWorkbookPullAndPublishThroughCLIDefaultSite(t *testing.T) {
 	defer server.Close()
 
 	configPath := writePhaseOneConfig(t, server.URL)
-	workspace := t.TempDir()
-	if err := os.WriteFile(filepath.Join(workspace, "tadx.yaml"), []byte("version: 1\n"), 0o600); err != nil {
-		t.Fatal(err)
-	}
+	workspace := createNamedWorkspace(t, configPath, "development")
 	t.Setenv("PROD_PAT_NAME", "pat-name")
 	t.Setenv("PROD_PAT_SECRET", "pat-secret")
 	options := app.Options{ConfigPath: configPath, HTTPClient: server.Client(), Now: func() time.Time { return time.Date(2026, 8, 30, 12, 0, 0, 0, time.UTC) }, CorrelationID: func() string { return "e2e-correlation" }}
 
 	var pullOutput strings.Builder
-	if exit := app.Run(context.Background(), []string{"content", "workbook", "pull", "--environment", "production", "--workspace", workspace, "--id", "wb-1"}, &pullOutput, options); exit != 0 {
+	if exit := app.Run(context.Background(), []string{"content", "workbook", "pull", "--environment", "production", "--workspace", "development", "--id", "wb-1"}, &pullOutput, options); exit != 0 {
 		t.Fatalf("pull exit = %d, output = %s", exit, pullOutput.String())
 	}
 	artifactEntries, err := os.ReadDir(filepath.Join(workspace, "artifacts", "workbook"))
@@ -76,6 +74,7 @@ func TestPhaseOneWorkbookPullAndPublishThroughCLIDefaultSite(t *testing.T) {
 		t.Fatalf("workbook artifact entries = %#v, error = %v", artifactEntries, err)
 	}
 	artifactPath := filepath.Join(workspace, "artifacts", "workbook", artifactEntries[0].Name())
+	artifactSelector := filepath.ToSlash(filepath.Join("artifacts", "workbook", artifactEntries[0].Name()))
 	if _, err := os.Stat(filepath.Join(artifactPath, "Finance.twb")); err != nil {
 		t.Fatalf("pull did not create canonical artifact: %v", err)
 	}
@@ -92,12 +91,15 @@ func TestPhaseOneWorkbookPullAndPublishThroughCLIDefaultSite(t *testing.T) {
 	}
 
 	var previewOutput strings.Builder
-	previewArgs := []string{"content", "workbook", "publish", "--artifact", artifactPath, "--environment", "production", "--project-id", "project-1", "--overwrite"}
+	previewArgs := []string{"content", "workbook", "publish", "--workspace", "development", "--artifact", artifactSelector, "--environment", "production", "--project-id", "project-1", "--overwrite"}
 	if exit := app.Run(context.Background(), previewArgs, &previewOutput, options); exit != 0 {
 		t.Fatalf("preview exit = %d, output = %s", exit, previewOutput.String())
 	}
 	if publishCalls.Load() != 0 || !strings.Contains(previewOutput.String(), "applied: false") {
 		t.Fatalf("preview mutated Tableau or omitted preview state: calls=%d output=%s", publishCalls.Load(), previewOutput.String())
+	}
+	if strings.Contains(previewOutput.String(), workspace) || !strings.Contains(previewOutput.String(), artifactSelector) {
+		t.Fatalf("preview did not preserve the portable artifact selector: %s", previewOutput.String())
 	}
 
 	var applyOutput strings.Builder
@@ -174,16 +176,13 @@ func TestWorkbookPullAcquiresDirectPublishedDatasourceArtifactsThroughCLI(t *tes
 	defer server.Close()
 
 	configPath := writePhaseOneConfigWithSite(t, server.URL, "test-site")
-	workspace := t.TempDir()
-	if err := os.WriteFile(filepath.Join(workspace, "tadx.yaml"), []byte("version: 1\n"), 0o600); err != nil {
-		t.Fatal(err)
-	}
+	workspace := createNamedWorkspace(t, configPath, "development")
 	t.Setenv("PROD_PAT_NAME", "pat-name")
 	t.Setenv("PROD_PAT_SECRET", "pat-secret")
 	options := app.Options{ConfigPath: configPath, HTTPClient: server.Client(), Now: func() time.Time { return time.Date(2026, 8, 31, 12, 0, 0, 0, time.UTC) }}
 
 	var stdout strings.Builder
-	args := []string{"content", "workbook", "pull", "--environment", "production", "--workspace", workspace, "--id", "wb-bound", "--include-pds"}
+	args := []string{"content", "workbook", "pull", "--environment", "production", "--workspace", "development", "--id", "wb-bound", "--include-pds"}
 	if exit := app.Run(context.Background(), args, &stdout, options); exit != 0 {
 		t.Fatalf("pull exit = %d, output = %s", exit, stdout.String())
 	}
@@ -236,12 +235,9 @@ func TestWorkbookPullAcquiresDirectPublishedDatasourceArtifactsThroughCLI(t *tes
 		}
 	}
 
-	fullWorkspace := t.TempDir()
-	if err := os.WriteFile(filepath.Join(fullWorkspace, "tadx.yaml"), []byte("version: 1\n"), 0o600); err != nil {
-		t.Fatal(err)
-	}
+	fullWorkspace := createNamedWorkspace(t, configPath, "full-output")
 	var fullOutput strings.Builder
-	fullArgs := []string{"content", "workbook", "pull", "--environment", "production", "--workspace", fullWorkspace, "--id", "wb-bound", "--include-pds", "--full"}
+	fullArgs := []string{"content", "workbook", "pull", "--environment", "production", "--workspace", "full-output", "--id", "wb-bound", "--include-pds", "--full"}
 	if exit := app.Run(context.Background(), fullArgs, &fullOutput, options); exit != 0 {
 		t.Fatalf("full pull exit = %d, output = %s", exit, fullOutput.String())
 	}
@@ -310,4 +306,13 @@ func writePhaseOneConfigWithSite(t *testing.T, serverURL, site string) string {
 		t.Fatal(err)
 	}
 	return path
+}
+
+func createNamedWorkspace(t *testing.T, configPath, name string) string {
+	t.Helper()
+	root := filepath.Join(t.TempDir(), name)
+	if _, err := workspacecore.NewManager(configPath, nil).Create(context.Background(), name, root); err != nil {
+		t.Fatal(err)
+	}
+	return root
 }

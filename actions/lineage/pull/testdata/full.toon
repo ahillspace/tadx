@@ -1,0 +1,29 @@
+status: pulled
+resource:
+  kind: flow
+  luid: flow-1
+  metadata_id: metadata-flow-1
+  name: Daily
+  project_path: Ops
+artifact:
+  path: artifacts/lineage/flow/Daily
+  lineage_path: artifacts/lineage/flow/Daily/lineage.json
+  fingerprint: "sha256:abc"
+  direction: both
+  depth: 1
+  complete: true
+  node_count: 2
+  edge_count: 1
+nodes[2]{metadata_id,kind,rest_luid,name}:
+  metadata-flow-1,flow,flow-1,Daily
+  metadata-datasource-1,published_datasource,datasource-1,Sales
+edges[1]{from_metadata_id,to_metadata_id,relationship}:
+  metadata-flow-1,metadata-datasource-1,uses
+warnings[1]: One bounded warning.
+provenance:
+  environment: dev
+  site: sandbox
+  server_origin: "https://tableau.example.com"
+  site_luid: site-1
+request_ids[1]: request-1
+help[1]: tadx content lineage pull --kind flow --id flow-1 --direction both
