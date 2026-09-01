@@ -31,6 +31,7 @@ Use `tadx capability get <id>` for the same focused metadata at runtime.
 | `content.get` | cli | ship | ready | planned | None |
 | `content.search` | cli | ship | ready | planned | None |
 | `datasource.composition.update` | cli | ship | blocked | planned | None |
+| `datasource.delete` | cli | ship | ready | planned | None |
 | `datasource.field-description.generate` | agent/skill | delegated | ready | external/delegated | None |
 | `datasource.field-description.update` | cli | ship | blocked | planned | None |
 | `datasource.get` | cli | ship | ready | planned | None |
@@ -45,10 +46,13 @@ Use `tadx capability get <id>` for the same focused metadata at runtime.
 | `env.profile.remove` | cli | ship | ready | planned | None |
 | `env.profile.set-default` | cli | ship | ready | planned | None |
 | `env.profile.update` | cli | ship | ready | planned | None |
+| `flow.delete` | cli | ship | ready | planned | None |
 | `flow.get` | cli | ship | ready | planned | None |
 | `flow.list` | cli | ship | ready | planned | None |
+| `flow.move` | cli | ship | ready | planned | None |
 | `flow.publish` | cli | ship | ready | planned | None |
 | `flow.pull` | cli | ship | ready | planned | None |
+| `lineage.pull` | cli | ship | ready | planned | None |
 | `project.create` | cli | ship | ready | planned | None |
 | `project.get` | cli | ship | ready | planned | None |
 | `project.list` | cli | ship | ready | planned | None |
@@ -71,10 +75,12 @@ Use `tadx capability get <id>` for the same focused metadata at runtime.
 | `pulse.metric.values-insights` | mcp | delegated | ready | external/delegated | None |
 | `view.read` | mcp | delegated | ready | external/delegated | None |
 | `workbook.author` | tableau/desktop-mcp | delegated | ready | external/delegated | None |
+| `workbook.delete` | cli | ship | ready | planned | None |
 | `workbook.get` | cli | ship | ready | planned | None |
 | `workbook.list` | cli | ship | ready | planned | None |
 | `workbook.publish` | cli | ship | ready | implemented | `tadx content workbook publish` |
 | `workbook.pull` | cli | ship | ready | implemented | `tadx content workbook pull` |
+| `workspace.artifact.delete` | cli | ship | ready | planned | None |
 | `workspace.clean` | cli | ship | ready | planned | None |
 | `workspace.create` | cli | ship | ready | planned | None |
 | `workspace.list` | cli | ship | ready | planned | None |
@@ -655,6 +661,32 @@ Apply explicit immediate-parent composition changes to a local datasource artifa
 - Blocker ID: B2
 - Command binding: None
 
+### `datasource.delete`
+
+Preview and delete one exact remote datasource.
+
+- Surface: tadx content datasource delete
+- Operation type: change
+- Owner: cli
+- MCP overlap: None
+- Selectors: Datasource LUID or exact name/project path; explicit environment/site
+- Products and availability: Cloud / Server
+- Product disposition: ship
+- Evidence level: docs-only
+- Verification readiness: ready
+- Implementation state: planned
+- Local write: No
+- Remote mutation: Yes
+- Requires `--apply`: Yes
+- Raw capable: No
+- Safety and guard: Re-resolve authoritative LUID immediately before delete; preserve dependency failures; no cascade claims
+- Artifact effect: Delete
+- Upstream operation: DELETE /api/{version}/sites/{site-id}/datasources/{datasource-id}
+- Evidence: Maintainer decision; official REST source capture pending
+- Validation or blocker: Docs-only
+- Blocker ID: None
+- Command binding: None
+
 ### `datasource.field-description.generate`
 
 Generate/revise field descriptions using metadata and optional sampled statistics.
@@ -787,7 +819,7 @@ Preview and publish one local datasource, including explicit immediate-parent re
 
 ### `datasource.pull`
 
-Download one datasource while preserving native package and composition provenance.
+Download one datasource while preserving its native package and composition provenance, and capture bounded lineage.
 
 - Surface: tadx content datasource pull
 - Operation type: deliver
@@ -803,11 +835,11 @@ Download one datasource while preserving native package and composition provenan
 - Remote mutation: No
 - Requires `--apply`: No
 - Raw capable: No
-- Safety and guard: Dirty re-pull requires --overwrite; no package-semantic loss
-- Artifact effect: Create / update
-- Upstream operation: GET /api/{version}/sites/{site-id}/datasources/{datasource-id}/content plus focused metadata reads
+- Safety and guard: Dirty re-pull requires --overwrite; incomplete lineage warns; no package-semantic loss
+- Artifact effect: Create / update package and lineage sidecar
+- Upstream operation: GET /api/{version}/sites/{site-id}/datasources/{datasource-id}/content plus focused Metadata GraphQL reads
 - Evidence: A1 §§6.3–6.4, 8.2–8.4, ADR-022; C1 §§2.4, 5.5, 5.13
-- Validation or blocker: B2 blocks composed-datasource completion
+- Validation or blocker: B2 blocks composed-datasource completion; lineage extension docs-only until its schema is captured
 - Blocker ID: B2
 - Command binding: None
 
@@ -1019,6 +1051,32 @@ Update explicit fields of one environment profile.
 - Blocker ID: None
 - Command binding: None
 
+### `flow.delete`
+
+Preview and delete one exact remote flow.
+
+- Surface: tadx content flow delete
+- Operation type: change
+- Owner: cli
+- MCP overlap: None
+- Selectors: Flow LUID or exact name/project path; explicit environment/site
+- Products and availability: Cloud / Server with flow support
+- Product disposition: ship
+- Evidence level: docs-only
+- Verification readiness: ready
+- Implementation state: planned
+- Local write: No
+- Remote mutation: Yes
+- Requires `--apply`: Yes
+- Raw capable: No
+- Safety and guard: Re-resolve authoritative LUID immediately before delete; preserve dependency failures; no cascade claims
+- Artifact effect: Delete
+- Upstream operation: DELETE /api/{version}/sites/{site-id}/flows/{flow-id}
+- Evidence: Maintainer decision; official REST source capture pending
+- Validation or blocker: Docs-only
+- Blocker ID: None
+- Command binding: None
+
 ### `flow.get`
 
 Inspect one authoritative flow and its direct lifecycle metadata.
@@ -1071,6 +1129,32 @@ List flows with bounded lifecycle metadata.
 - Blocker ID: None
 - Command binding: None
 
+### `flow.move`
+
+Preview and move one exact flow to one exact project on the same site.
+
+- Surface: tadx content flow move
+- Operation type: change
+- Owner: cli
+- MCP overlap: None
+- Selectors: Flow LUID or exact name/project path; exact destination project LUID/path; explicit environment/site
+- Products and availability: Cloud / Server with flow support
+- Product disposition: ship
+- Evidence level: docs-only
+- Verification readiness: ready
+- Implementation state: planned
+- Local write: No
+- Remote mutation: Yes
+- Requires `--apply`: Yes
+- Raw capable: No
+- Safety and guard: Source and destination re-resolved; cross-site move rejected; no connection or schedule rewrite
+- Artifact effect: None
+- Upstream operation: Released flow update operation with destination project field
+- Evidence: Maintainer decision; exact official source capture pending
+- Validation or blocker: Docs-only
+- Blocker ID: None
+- Command binding: None
+
 ### `flow.publish`
 
 Preview and publish one local TFL/TFLX to an explicit project.
@@ -1099,7 +1183,7 @@ Preview and publish one local TFL/TFLX to an explicit project.
 
 ### `flow.pull`
 
-Download one flow into a provenance-bearing local artifact.
+Download one flow unchanged, capture bounded lineage, and create a provenance-bearing local artifact.
 
 - Surface: tadx content flow pull
 - Operation type: deliver
@@ -1115,11 +1199,37 @@ Download one flow into a provenance-bearing local artifact.
 - Remote mutation: No
 - Requires `--apply`: No
 - Raw capable: No
-- Safety and guard: Dirty re-pull requires --overwrite
-- Artifact effect: Create / update
-- Upstream operation: GET /api/{version}/sites/{site-id}/flows/{flow-id}/content
-- Evidence: A1 §§6.3–6.4; C1 §§2.5, 5.6, 5.13
-- Validation or blocker: Docs-only remote API; artifact contract architecture-locked
+- Safety and guard: Dirty re-pull requires --overwrite; incomplete lineage warns
+- Artifact effect: Create / update package and lineage sidecar
+- Upstream operation: Flow content GET plus focused Metadata GraphQL reads
+- Evidence: A1 §§6.3–6.4; C1 §§2.5, 5.6, 5.13; maintainer flow and lineage decisions
+- Validation or blocker: Docs-only remote API and lineage schema; artifact contract architecture-locked
+- Blocker ID: None
+- Command binding: None
+
+### `lineage.pull`
+
+Capture bounded lineage for one exact workbook, datasource, or flow without downloading its native package.
+
+- Surface: tadx content lineage pull
+- Operation type: deliver
+- Owner: cli
+- MCP overlap: Metadata reads overlap with resource metadata tools
+- Selectors: Resource kind plus REST LUID or exact name/project path; workspace; bounded direction and depth
+- Products and availability: Cloud / Server with Metadata API
+- Product disposition: ship
+- Evidence level: docs-only
+- Verification readiness: ready
+- Implementation state: planned
+- Local write: Yes
+- Remote mutation: No
+- Requires `--apply`: No
+- Raw capable: No
+- Safety and guard: REST and Metadata identities remain distinct; incomplete results are explicit; no dependency acquisition
+- Artifact effect: Create metadata-only lineage artifact
+- Upstream operation: Focused Metadata GraphQL reads plus authoritative REST identity resolution
+- Evidence: Maintainer decision; exact schema/source capture pending
+- Validation or blocker: Docs-only; architecture contract defined in §3.7
 - Blocker ID: None
 - Command binding: None
 
@@ -1695,6 +1805,32 @@ Create or semantically modify workbook content.
 - Blocker ID: None
 - Command binding: None
 
+### `workbook.delete`
+
+Preview and delete one exact remote workbook.
+
+- Surface: tadx content workbook delete
+- Operation type: change
+- Owner: cli
+- MCP overlap: None
+- Selectors: Workbook LUID or exact name/project path; explicit environment/site
+- Products and availability: Cloud / Server
+- Product disposition: ship
+- Evidence level: docs-only
+- Verification readiness: ready
+- Implementation state: planned
+- Local write: No
+- Remote mutation: Yes
+- Requires `--apply`: Yes
+- Raw capable: No
+- Safety and guard: Re-resolve authoritative LUID immediately before delete; no cascade claims; repeated missing target is explicit
+- Artifact effect: Delete
+- Upstream operation: DELETE /api/{version}/sites/{site-id}/workbooks/{workbook-id}
+- Evidence: Maintainer decision; official REST source capture pending
+- Validation or blocker: Docs-only
+- Blocker ID: None
+- Command binding: None
+
 ### `workbook.get`
 
 Inspect one authoritative workbook and lifecycle metadata.
@@ -1775,7 +1911,7 @@ Preview and publish one local workbook to an explicit target.
 
 ### `workbook.pull`
 
-Download one workbook and optionally its direct published datasource dependencies into provenance-bearing local artifacts.
+Download one workbook, capture bounded lineage, and optionally acquire its direct published datasource dependencies.
 
 - Surface: tadx content workbook pull
 - Operation type: deliver
@@ -1791,13 +1927,39 @@ Download one workbook and optionally its direct published datasource dependencie
 - Remote mutation: No
 - Requires `--apply`: No
 - Raw capable: No
-- Safety and guard: Dirty workbook re-pull requires --overwrite; dirty dependencies stop acquisition; bundle persistence is recoverable
-- Artifact effect: Create / update workbook and optional datasource siblings
+- Safety and guard: Dirty workbook re-pull requires --overwrite; dirty dependencies stop acquisition; incomplete lineage warns; bundle persistence is recoverable
+- Artifact effect: Create / update workbook, lineage sidecar, and optional datasource siblings
 - Upstream operation: Workbook content GET; Metadata GraphQL POST; datasource exact/content GET
 - Evidence: A1 §§6.3–6.4, 8.2, 8.6; C1 §§2.3, 5.4, 5.13; official REST and Metadata captures; Tableau Cloud happy-path capture
-- Validation or blocker: Contract-verified; published-datasource traversal captured live; exact sources and tests recorded in docs/evidence/phase1-rest-contract.md; artifact contract architecture-locked
+- Validation or blocker: Contract-verified; published-datasource traversal captured live; lineage extension docs-only until its schema is captured; exact sources and tests recorded in docs/evidence/phase1-rest-contract.md; artifact contract architecture-locked
 - Blocker ID: None
 - Command binding: `tadx content workbook pull`
+
+### `workspace.artifact.delete`
+
+Delete one exact managed local artifact.
+
+- Surface: tadx workspace artifact delete
+- Operation type: change
+- Owner: cli
+- MCP overlap: None
+- Selectors: Workspace plus artifact kind and LUID, or exact managed artifact path
+- Products and availability: Local / all
+- Product disposition: ship
+- Evidence level: architecture-locked
+- Verification readiness: ready
+- Implementation state: planned
+- Local write: Yes
+- Remote mutation: No
+- Requires `--apply`: Yes
+- Raw capable: No
+- Safety and guard: Preview by default; exact identity; workspace boundary; dirty state explicit; never expands into generic cleanup
+- Artifact effect: Delete
+- Upstream operation: Local filesystem removal plus workspace metadata update
+- Evidence: Maintainer decision; A1 §§6.1, 7.5–7.6, 8.1–8.2
+- Validation or blocker: Architecture-locked local boundary; detailed cleanup policy remains deferred
+- Blocker ID: None
+- Command binding: None
 
 ### `workspace.clean`
 

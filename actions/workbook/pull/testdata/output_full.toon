@@ -5,13 +5,13 @@ workbook:
   project_luid: project-1
   project_path: Ops
 artifact:
-  path: "C:/workspace/artifacts/workbook/Finance"
-  canonical_path: "C:/workspace/artifacts/workbook/Finance/Finance.twbx"
+  path: artifacts/workbook/Finance
+  canonical_path: artifacts/workbook/Finance/Finance.twbx
   baseline_fingerprint: "sha256:abc"
   portability: source-site-bound
   published_datasource_count: 1
   published_datasources[1]{luid,name,source_site,local_artifact_path,canonical_path,baseline_fingerprint}:
-    ds-1,Sales,marketing,artifacts/datasource/Sales,"C:/workspace/artifacts/datasource/Sales/Sales.tdsx","sha256:def"
+    ds-1,Sales,marketing,artifacts/datasource/Sales,artifacts/datasource/Sales/Sales.tdsx,"sha256:def"
   dependencies_acquired: true
 warnings[1]: existing clean artifact replaced
 tableau_request_id: request-1

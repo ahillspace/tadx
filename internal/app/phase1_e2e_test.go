@@ -173,7 +173,7 @@ func TestWorkbookPullAcquiresDirectPublishedDatasourceArtifactsThroughCLI(t *tes
 	}))
 	defer server.Close()
 
-	configPath := writePhaseOneConfigWithSite(t, server.URL, "pace-dev")
+	configPath := writePhaseOneConfigWithSite(t, server.URL, "test-site")
 	workspace := t.TempDir()
 	if err := os.WriteFile(filepath.Join(workspace, "tadx.yaml"), []byte("version: 1\n"), 0o600); err != nil {
 		t.Fatal(err)
@@ -255,6 +255,9 @@ func TestWorkbookPullAcquiresDirectPublishedDatasourceArtifactsThroughCLI(t *tes
 	}
 	if strings.Contains(fullOutput.String(), "details: \"--full\"") || strings.Contains(fullOutput.String(), "dependencies[") {
 		t.Fatalf("full output retained compact hint or duplicate dependency list: %s", fullOutput.String())
+	}
+	if strings.Contains(fullOutput.String(), filepath.ToSlash(fullWorkspace)) || strings.Contains(fullOutput.String(), fullWorkspace) {
+		t.Fatalf("full output exposed the runtime workspace root: %s", fullOutput.String())
 	}
 }
 

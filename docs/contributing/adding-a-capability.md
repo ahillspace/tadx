@@ -1,16 +1,27 @@
 # Adding a TADX capability
 
-This is the end-to-end build guide for one capability slice.
+This is the maintainer reference for building and integrating one capability slice.
 The goal is that every capability, built by any contributor or agent, looks and behaves the same way.
 A reviewer starting in one action package must understand its complete public behavior without searching the whole codebase.
 
-This guide names every real file you touch and gives the mechanical steps in order.
+This guide names the files each role may touch and gives the mechanical steps in order.
 The module path is `github.com/ahillspace/tadx`.
 Read `docs/repository-structure.md` for the enforced import boundaries and `docs/build-order.md` for when a slice may be built.
 
+## Roles
+
+The slice agent owns the assigned action package, tests, fixtures, and any explicitly assigned adapter package.
+The slice agent returns integration requirements and does not edit shared integration files.
+
+One integration owner owns the capability contract row, generated registry, implementation manifest, CLI mounting, app composition, generated reference documentation, and shared binding tests.
+This keeps parallel slices independent and makes contract reconciliation a single responsibility.
+
+Start each build from updated `main` on one new feature branch.
+Agents share that branch and checkout unless the user explicitly requests worktrees.
+
 ## Mental model: how a capability becomes an executable command
 
-There are two separate sources of truth, and you edit both.
+There are two separate sources of truth, and the integration owner edits both.
 
 - The capability registry describes product intent.
 It is generated from a markdown table and every generated row starts as `planned`.
@@ -105,7 +116,7 @@ Use `errs.CompleteRetryAdvice` to carry retry advice from the cause and `errs.Ta
 
 Exit codes come from `errs.ExitCode`: `0` success or no-op, `1` operation or runtime failure, `2` usage error (`errs.KindUsage`).
 
-### 5. Add the contract row and regenerate the registry
+### 5. Integration owner: add the contract row and regenerate the registry
 
 Add exactly one row to the capability registry table in `tadx-v1-capability-contract-final.md`.
 The table has 17 columns, matching this header:
@@ -128,7 +139,7 @@ The `//go:generate` directive in `internal/capability/registry.go` runs `interna
 That file is generated and marked `DO NOT EDIT`; never hand-edit it.
 Every generated row is `ImplementationPlanned` and has no command binding.
 
-### 6. Flip planned to implemented in the manifest
+### 6. Integration owner: flip planned to implemented in the manifest
 
 Add one entry to the hand-edited `implementationManifest` map in `internal/capability/implementation.go`, keyed by the capability ID.
 
@@ -144,7 +155,7 @@ Note that the action-package domain is not the CLI command path.
 The workbook, datasource, flow, and project verbs all nest under `content`, so `actions/workbook/pull` has `CommandPath` `["content", "workbook", "pull"]` and surfaces as `tadx content workbook pull`.
 This mapping is applied by `classify()` in `internal/app/app.go`: a CLI-owned capability whose ID starts with `workbook`, `datasource`, `flow`, or `project` is classified under the `content` domain.
 
-### 7. Wire the CLI command
+### 7. Integration owner: wire the CLI command
 
 Each CLI domain owns a thin Cobra package at `internal/cli/<domain>/command.go` (for example `internal/cli/content/command.go`).
 The command that runs the action must carry the capability annotation:
@@ -157,7 +168,7 @@ The annotation key is the exported constant `cli.CapabilityAnnotation` in `inter
 A read-only command calls `deps.<Action>.Execute(ctx, input)`; a mutation command reads an `--apply` flag and calls `deps.<Action>.Execute(ctx, input, apply)`, and sets `Hidden: !deps.MutationsEnabled`.
 Cobra code contains no Tableau behavior, identity resolution, authentication, or output construction.
 
-### 8. Wire the composition root
+### 8. Integration owner: wire the composition root
 
 The composition root wires everything in two files; this is intentional and there is no global mutable state.
 
@@ -173,13 +184,13 @@ In `internal/app/app.go`:
 - Supply `Use` and `Short` from the registry via the `registryUse`, `registryLeafUse`, and `registryShort` helpers so command help derives from the registry.
 - Adapt the resource adapter to the action-owned interface here (see `pullReader` and `publishAdapter` for the bridge pattern).
 
-### 9. Let startup validation prove the wiring
+### 9. Integration owner: let startup validation prove the wiring
 
 At startup, `Run` calls `cli.RegisteredCommands` to walk the real Cobra tree and then `capability.ValidateBindings`.
 This hard-fails the process if a runnable command has no capability annotation, if an annotation or command path drifts from the manifest `CommandPath`, if a binding has no registry entry, or if an implemented registry entry has no binding.
 There is no way to ship a command whose annotation, manifest path, and registry state disagree.
 
-### 10. Regenerate the capability reference docs
+### 10. Integration owner: regenerate the capability reference docs
 
 As the final step, regenerate the reference from the registry:
 
@@ -207,6 +218,9 @@ Never build output in Cobra.
 - Detail-bearing actions implement an explicit compact projection and retain a bounded full typed result.
 - Compact output includes `details: "--full"` only when expanded fields are available.
 - Never hide mutation authorization fields, continuation state, partial outcomes, warnings, retry safety, or corrective action.
+- Persist and render artifact paths relative to the resolved workspace with forward slashes.
+- Resolve absolute filesystem paths only at runtime.
+- Never store or emit a developer username, home directory, checkout path, or unrelated local project name.
 - `--raw` is available only if the registry marks the capability raw-capable.
 Secret redaction always precedes rendering.
 
@@ -228,8 +242,8 @@ Each domain still owns its own Cobra package under `internal/cli/<domain>`, but 
 
 ## Completion checklist
 
-1. The contract row exists and its status axes and ownership are correct.
-2. `go generate ./...` was run and `internal/capability/registry_gen.go` is regenerated, not hand-edited.
+1. The integration owner confirmed the contract row and its status axes and ownership.
+2. The integration owner ran `go generate ./...` and regenerated `internal/capability/registry_gen.go` without hand editing it.
 3. The `implementationManifest` entry exists with the correct `CommandPath`.
 4. Behavior tests were written before implementation.
 5. Selector ambiguity behavior is tested.

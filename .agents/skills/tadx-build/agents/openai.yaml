@@ -1,0 +1,7 @@
+interface:
+  display_name: "TADX build"
+  short_description: "Apply local Superpowers practices"
+  default_prompt: "Use $tadx-build to complete this TADX build task: "
+
+policy:
+  allow_implicit_invocation: false

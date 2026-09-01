@@ -104,7 +104,7 @@ func TestActionRecordsPortableWorkbookWithoutDatasourceDownloads(t *testing.T) {
 	w := &writer{result: pull.ArtifactResult{Path: "artifact", BaselineFingerprint: "sha256:workbook"}}
 
 	result, err := pull.New(r, w).Execute(context.Background(), pull.Input{
-		Environment: "dev", Site: "pace-dev", SiteLUID: "site-1", ServerOrigin: "https://tableau.example.com",
+		Environment: "dev", Site: "test-site", SiteLUID: "site-1", ServerOrigin: "https://tableau.example.com",
 		Workspace: "workspace", Selector: identity.Selector{LUID: "wb-1"},
 	})
 	if err != nil {
@@ -154,7 +154,7 @@ func TestActionAcquiresUniquePublishedDatasourcesWhenRequested(t *testing.T) {
 	}
 
 	result, err := pull.New(r, w).Execute(context.Background(), pull.Input{
-		Environment: "dev", Site: "pace-dev", SiteLUID: "site-1", ServerOrigin: "https://tableau.example.com",
+		Environment: "dev", Site: "test-site", SiteLUID: "site-1", ServerOrigin: "https://tableau.example.com",
 		Workspace: "workspace", Selector: identity.Selector{LUID: "wb-1"}, IncludePDS: true, Overwrite: true,
 	})
 	if err != nil {
@@ -188,7 +188,7 @@ func TestActionLeavesPortabilityUnknownWhenOptionalDetectionIsIncomplete(t *test
 	}
 	w := &writer{result: pull.ArtifactResult{Path: "artifact", BaselineFingerprint: "sha256:workbook"}}
 
-	result, err := pull.New(r, w).Execute(context.Background(), pull.Input{Environment: "dev", Site: "pace-dev", Workspace: "workspace", Selector: identity.Selector{LUID: "wb-1"}})
+	result, err := pull.New(r, w).Execute(context.Background(), pull.Input{Environment: "dev", Site: "test-site", Workspace: "workspace", Selector: identity.Selector{LUID: "wb-1"}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -208,7 +208,7 @@ func TestActionRequiresCompleteDetectionBeforeIncludePDSAcquisition(t *testing.T
 	}
 	w := &writer{}
 
-	_, err := pull.New(r, w).Execute(context.Background(), pull.Input{Environment: "dev", Site: "pace-dev", Workspace: "workspace", Selector: identity.Selector{LUID: "wb-1"}, IncludePDS: true})
+	_, err := pull.New(r, w).Execute(context.Background(), pull.Input{Environment: "dev", Site: "test-site", Workspace: "workspace", Selector: identity.Selector{LUID: "wb-1"}, IncludePDS: true})
 	payload := errs.Structure(err).Error
 	if payload.ID != "workbook.pull.references" || payload.Retryable == nil || !*payload.Retryable {
 		t.Fatalf("structured error = %#v", payload)
@@ -302,9 +302,8 @@ func TestActionGoldenOutput(t *testing.T) {
 			"ds-1": {LUID: "ds-1", Name: "Sales", ProjectLUID: "datasource-project", ProjectPath: "Shared", Filename: "Sales.tdsx", Content: []byte("native-datasource")},
 		},
 	}, &writer{result: pull.ArtifactResult{
-		// FromSlash yields OS-native separators (backslashes on Windows) so the
-		// action's normalization is exercised on every runner; the golden stays
-		// forward-slash and deterministic across platforms.
+		// The artifact manager returns runtime absolute paths.
+		// Public output must project them relative to the selected workspace.
 		Path:                filepath.FromSlash("C:/workspace/artifacts/workbook/Finance"),
 		CanonicalPath:       filepath.FromSlash("C:/workspace/artifacts/workbook/Finance/Finance.twbx"),
 		BaselineFingerprint: "sha256:abc",

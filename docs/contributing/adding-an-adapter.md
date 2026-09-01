@@ -5,7 +5,7 @@ An adapter is the boundary that isolates all Tableau API complexity for one reso
 It is built once per resource, frozen, and copied by later resources.
 
 The frozen worked example is the workbook resource: the REST client family `internal/tableau/workbook`, the resource adapter `internal/resources/workbook`, and the contract evidence in `docs/evidence/phase1-rest-contract.md`.
-Read `docs/phase1-spine.md` for the shared spine this pattern froze and `docs/repository-structure.md` for the enforced import boundaries.
+Read those exact packages and evidence sections instead of broad product documents.
 
 ## The two layers
 
@@ -26,6 +26,9 @@ The composition root bridges the adapter to the narrow interfaces that actions o
 ### 1. Capture the upstream contract first
 
 Do not write any live API code until the exact upstream contract is captured.
+Follow `docs/contributing/api-documentation-routing.md`.
+Search the relevant local capture with `rg`, read only the matching operation section and shared concepts it cites, and record the canonical Git blob digest plus exact headings or bounded line ranges.
+Use current official Tableau web documentation only when the local capture is missing, unclear, contradictory, or version-sensitive.
 Record the official Tableau REST sections you rely on the way `docs/evidence/phase1-rest-contract.md` does: pin the source document and its digest, and list the endpoint sections with their line ranges (sign-in, pagination, list, get, download, upload initiate and append, publish, validation, async jobs, and job queries).
 State explicitly what is and is not verified, and any conservative choices (for example the conservative 1,000-block upload limit).
 

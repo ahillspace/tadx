@@ -14,11 +14,12 @@ These are the capabilities an agent may build to completion once each row's upst
 - Authentication: PAT sign-in check (remote) and local auth status. PAT only.
 - Capability discovery: capability list, capability get.
 - Catalog: refresh, search, get, status (normalized local cache; refresh may exhaust remote pages internally).
-- Workspace: create, list, status, move, clean (local; no locking).
+- Workspace: create, list, status, move, delete one explicit artifact, and clean disposable state (local; no locking).
 - Cross-content read: content search, content get.
-- Workbook: list, get, pull, publish.
-- Datasource: list, get, pull (ordinary), publish (ordinary).
-- Flow: list, get, pull, publish.
+- Lineage: bounded automatic capture with workbook, datasource, and flow pulls; standalone pull into a metadata-only artifact.
+- Workbook: list, get, pull, publish, delete.
+- Datasource: list, get, pull (ordinary), publish (ordinary), delete.
+- Flow: list, get, pull, publish, move, delete.
 - Project: list, get, create, update.
 - Pulse: definition list/get/pull; metric list/get; definition/metric artifacts.
 - Administration: user list/get/create/update/delete; group list/get/create/update/delete; permission get (read only).
@@ -49,10 +50,10 @@ Discoverable through the registry so agents are routed correctly, but TADX never
 - A separate datasource SDK product. The 12 SDK primitives are internal concerns, not a second product.
 - Hyper API, and pack / unpack, and Hyper to CSV conversion.
 - TDS remote work-copy editing, work-copy diff, and staged-change impact analysis.
-- Generic lineage or dependency-graph traversal.
 - Recursive project migration; generic bulk pull/publish.
 - Permission mutation.
-- Generic remote content move or hierarchy migration.
+- Generic remote content move or hierarchy migration beyond the admitted resource-specific `flow move` operation.
+- Project deletion, recycle-bin recovery, permanent purge, and automatic cleanup policy.
 - OAuth, JWT, UAT, Connected App authentication.
 - Plugin system, background daemon or sync, offline mutation queue.
 - Phone-home telemetry, embedded auto-update, binary signing.
@@ -66,6 +67,13 @@ Discoverable through the registry so agents are routed correctly, but TADX never
 - Consequential remote mutations are preview by default and require --apply. --force never means --apply.
 - Mutation discovery gating (TADX_ENABLE_MUTATIONS=1) changes discovery only; it is never authorization.
 - Tableau LUIDs are authoritative identity; names and paths are selectors; ambiguity is a deterministic error; no fuzzy or interactive resolution.
+- Workspace selectors are logical names, unique case-insensitively, and resolved through one canonical registry.
+- A publish without an explicit target uses the artifact's recorded source environment, site, and project.
+- An explicit environment override requires an exact target project.
+- An artifact without complete source provenance requires an explicit target.
+- Automatic lineage capture is bounded and best-effort, records incomplete results, and never hides a successful artifact pull.
+- Persisted artifact paths are relative and slash-delimited.
+- First-party source, documentation, generated files, fixtures, and persisted metadata contain no developer names, private project names, or machine-specific paths.
 - Secrets TADX handles are never persisted in config values, output, logs, artifacts, catalog, fixtures, or diagnostics.
 - One Go module, one primary binary, modular monolith.
 - Release platforms: windows/amd64, darwin/amd64, darwin/arm64, linux/amd64.

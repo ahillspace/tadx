@@ -81,12 +81,13 @@ func TestCLIProcessMutationDiscoveryEnvironment(t *testing.T) {
 	}
 	enabledDocument := decodeDocument(t, enabled.stdout)
 	capabilities, ok := enabledDocument["capabilities"].([]any)
-	if !ok || len(capabilities) != 1 {
-		t.Fatalf("enabled mutation discovery capabilities = %#v, want one capability", enabledDocument["capabilities"])
+	if !ok || len(capabilities) != 2 {
+		t.Fatalf("enabled mutation discovery capabilities = %#v, want workbook.delete and workbook.publish", enabledDocument["capabilities"])
 	}
-	capability, ok := capabilities[0].(map[string]any)
-	if !ok || capability["id"] != "workbook.publish" {
-		t.Fatalf("enabled mutation discovery result = %#v, want workbook.publish", capabilities[0])
+	deleteCapability, deleteOK := capabilities[0].(map[string]any)
+	publishCapability, publishOK := capabilities[1].(map[string]any)
+	if !deleteOK || !publishOK || deleteCapability["id"] != "workbook.delete" || publishCapability["id"] != "workbook.publish" {
+		t.Fatalf("enabled mutation discovery result = %#v, want workbook.delete then workbook.publish", capabilities)
 	}
 }
 

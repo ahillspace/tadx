@@ -138,8 +138,14 @@ func (a *Action) Execute(ctx context.Context, input Input) (Output, error) {
 		for index := range dependencies {
 			dependency := &dependencies[index]
 			dependency.LUID = strings.TrimSpace(dependency.LUID)
-			dependency.Path = filepath.ToSlash(strings.TrimSpace(dependency.Path))
-			dependency.CanonicalPath = filepath.ToSlash(strings.TrimSpace(dependency.CanonicalPath))
+			dependency.Path, err = workspaceRelativePath(input.Workspace, dependency.Path)
+			if err != nil {
+				return Output{}, invalidBundleResult(workbook, input, fmt.Errorf("project datasource artifact path: %w", err))
+			}
+			dependency.CanonicalPath, err = workspaceRelativePath(input.Workspace, dependency.CanonicalPath)
+			if err != nil {
+				return Output{}, invalidBundleResult(workbook, input, fmt.Errorf("project datasource canonical path: %w", err))
+			}
 			if dependency.LUID == "" || dependency.Path == "" {
 				return Output{}, invalidBundleResult(workbook, input, errors.New("bundle datasource result requires LUID and path"))
 			}
@@ -163,12 +169,43 @@ func (a *Action) Execute(ctx context.Context, input Input) (Output, error) {
 	artifact.PublishedDatasources = provenance
 	artifact.DependenciesAcquired = dependenciesAcquired
 	artifact.Dependencies = dependencies
-	// Normalize artifact paths to forward slashes so output is deterministic and
-	// consistent across platforms, matching the published-datasource treatment above.
-	artifact.Path = filepath.ToSlash(artifact.Path)
-	artifact.CanonicalPath = filepath.ToSlash(artifact.CanonicalPath)
+	artifact.Path, err = workspaceRelativePath(input.Workspace, artifact.Path)
+	if err != nil {
+		return Output{}, invalidBundleResult(workbook, input, fmt.Errorf("project workbook artifact path: %w", err))
+	}
+	artifact.CanonicalPath, err = workspaceRelativePath(input.Workspace, artifact.CanonicalPath)
+	if err != nil {
+		return Output{}, invalidBundleResult(workbook, input, fmt.Errorf("project workbook canonical path: %w", err))
+	}
 	warnings = append(warnings, artifact.Warnings...)
 	return Output{Status: "pulled", Workbook: workbook, Artifact: artifact, Warnings: warnings, RequestID: download.TableauRequestID, Help: []string{"tadx content workbook publish --artifact <path> --environment <alias>"}}, nil
+}
+
+func workspaceRelativePath(workspace, path string) (string, error) {
+	workspace = strings.TrimSpace(workspace)
+	path = strings.TrimSpace(path)
+	if path == "" {
+		return "", nil
+	}
+	if !filepath.IsAbs(path) && !looksLikeWindowsAbsolutePath(path) {
+		return filepath.ToSlash(filepath.Clean(path)), nil
+	}
+	if workspace == "" {
+		return "", errors.New("absolute artifact path requires a resolved workspace")
+	}
+	relative, err := filepath.Rel(workspace, path)
+	if err != nil {
+		return "", fmt.Errorf("resolve path relative to workspace: %w", err)
+	}
+	relative = filepath.ToSlash(filepath.Clean(relative))
+	if relative == ".." || strings.HasPrefix(relative, "../") {
+		return "", errors.New("artifact path escapes the resolved workspace")
+	}
+	return relative, nil
+}
+
+func looksLikeWindowsAbsolutePath(path string) bool {
+	return len(path) >= 3 && path[1] == ':' && (path[2] == '\\' || path[2] == '/')
 }
 
 func invalidBundleResult(workbook Workbook, input Input, cause error) error {

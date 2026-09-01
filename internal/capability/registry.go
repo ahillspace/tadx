@@ -58,8 +58,8 @@ func Validate(definitions []Definition) error {
 		if definition.RemoteMutation && !definition.RequiresApply {
 			return fmt.Errorf("%s: remote mutation requires apply", prefix)
 		}
-		if definition.RequiresApply && !definition.RemoteMutation {
-			return fmt.Errorf("%s: requires apply without remote mutation", prefix)
+		if definition.RequiresApply && !definition.RemoteMutation && !definition.LocalWrite {
+			return fmt.Errorf("%s: requires apply without consequential write", prefix)
 		}
 		if definition.Disposition == DispositionDelegated && len(definition.CommandPath) != 0 {
 			return fmt.Errorf("%s: delegated capability has local command binding", prefix)

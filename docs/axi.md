@@ -61,6 +61,12 @@ Do: preview consequential mutations by default and require --apply; require an e
 Do not: add a second confirmation prompt or a production-only prompt; let --force mean --apply; let discovery visibility imply permission; persist secrets TADX handles.
 Enforced by: preview/apply tests; mutation-discovery tests; secret-redaction tests; exit-code mapping tests.
 
+For artifact publish, an explicit write target means the preview contains the fully resolved environment, site, project, and collision decision.
+The caller does not need to repeat `--environment` when trusted artifact provenance supplies the source environment, site, and project defaults.
+An explicit environment override selects a different target and requires the exact target project.
+An artifact without source provenance requires an explicit target environment and project.
+Source LUIDs remain provenance on cross-site publish and never identify the target resource.
+
 ## Concrete AXI conventions (upstream code guidelines)
 
 These are the ten AXI spec conventions, restated as exact TADX code obligations.

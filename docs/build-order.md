@@ -6,6 +6,10 @@ Governing rule: freeze the foundation before fanning out actions.
 A shared dependency (transport, an adapter pattern, the pagination envelope, the output codec) is built once by a single agent and frozen before the actions that depend on it fan out to parallel agents.
 Do not let two agents invent the same foundation twice.
 
+Create one feature branch for each build.
+Agents share that checkout, work on assigned non-overlapping paths, and do not create separate worktrees unless the build owner explicitly requests them.
+One integration owner controls shared wiring, manifests, contract rows, generated files, and final verification.
+
 ## Phase 0: repository foundation
 
 Scope: the one-time scaffold. It establishes structure and implements only capability list and capability get; no other command becomes executable.
@@ -48,17 +52,40 @@ Phase 1 exit gate: the slice passes contract and golden tests; the transport, ad
 
 ## Phase 2: fan-out waves (buildable-now capabilities)
 
-Within a wave, one agent builds the wave's shared dependency (the resource adapter) first; then the wave's actions fan out to parallel agents, each in its own action package.
+Before broad action fan-out, finish these shared foundation slices in order:
+
+1. Freeze compact versus `--full` output projections and their bounded output tests.
+2. Freeze named workspace resolution and portable relative artifact paths.
+3. Freeze the no-lock artifact envelope, local move behavior, and explicit artifact deletion boundary.
+4. Freeze the lineage sidecar schema, bounded traversal contract, and workbook live proof.
+5. Freeze the bounded read patterns used by resource adapters.
+6. Freeze shared publish targeting, preview, upload, and terminal result behavior.
+7. Prove an unchanged TFL/TFLX flow pull and publish round trip.
+
+Within a wave, one agent builds the wave's shared dependency first.
+After that dependency is frozen, action packages fan out to agents on the shared feature branch.
 A capability whose evidence is docs-only is built only to the adapter seam until its upstream contract is captured.
 
 - Wave A, local-contract (no remote calls): environment profiles, auth status, workspace commands, catalog search/get/status. These depend only on Phase 0.
 - Wave B, remote read: catalog refresh, content get, and list/get for workbook, datasource, flow, project. Proves each adapter's read path and pagination.
-- Wave C, deliver in: pull for datasource (ordinary), flow, and Pulse definition; plus the Pulse definition and metric read commands and their artifacts.
-- Wave D, deliver out: publish for datasource (ordinary), flow; project create and update.
-- Wave E, administration: user list/get/create/update/delete, group list/get/create/update/delete, permission get.
-- Wave F, doctor: full diagnostics once auth, catalog, workspace, and MCP-availability checks exist.
+- Wave C, deliver in: pull for datasource (ordinary), flow, lineage, and Pulse definition; plus Pulse definition and metric reads and their artifacts.
+- Wave D, deliver out: publish for datasource (ordinary) and flow; move flow; create and update project.
+- Wave E, explicit deletion: delete one local artifact or one exact workbook, datasource, or flow.
+- Wave F, administration: user list/get/create/update/delete, group list/get/create/update/delete, permission get.
+- Wave G, doctor: full diagnostics after auth, catalog, workspace, and MCP-availability checks exist.
 
-Fan-out rule: a resource adapter is written once by one agent and frozen before that resource's actions fan out. Mutations in any wave still preview by default and require --apply, and are hidden from default discovery unless mutation discovery is enabled.
+Fan-out rule: a resource adapter is written once by one agent and frozen before that resource's actions fan out.
+Slice agents own only assigned action and resource packages unless the integration owner assigns a shared file.
+Mutations in any wave still preview by default and require `--apply`, and remain hidden from default discovery unless mutation discovery is enabled.
+
+Flow scope stays narrow.
+Pull and publish preserve TFL/TFLX bytes and let Tableau validate embedded published datasource, file, and database references.
+TADX does not rewrite flow connections, credentials, published datasource bindings, schedules, linked tasks, or execution settings.
+
+Use the local Tableau API documentation as the first targeted search surface.
+Search only the relevant endpoint or schema section, and do not load an entire reference file into agent context.
+Use official Tableau web documentation when the local capture is missing, ambiguous, or version-sensitive.
+Every implemented remote contract still requires captured evidence and contract tests.
 
 ## Blocked: not scheduled until proof
 
