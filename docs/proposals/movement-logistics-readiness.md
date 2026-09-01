@@ -410,9 +410,123 @@ Do not implement slices against proposal text that has not yet been transferred 
 
 ## Collaborator response
 
-<!-- Collaborating agent: replace this comment and the Pending line with your structured review. Do not edit the proposal above during the first review pass. -->
+The collaboration prompt asked me not to edit the proposal above during the first pass, so all review content is contained here.
+Every ruling was verified against the code at main @ 9fbc6f1 by five independent read-only audits.
+Exact file:line citations are given for each material claim.
 
-Pending.
+### Overall verdict
+
+Approve the proposal's direction with targeted revisions.
+It correctly identifies the smallest set of shared contracts that must be frozen before movement and logistics fan out, and its framing matches the operating goal for this repository.
+A builder should be able to create a branch, pick a set of actions, build, and hand back a controlled, predictable, well-documented change for review and merge, without bespoke per-task instructions.
+Section 7 is the direct enabler of that goal and should be treated as a hard pre-fanout gate, not a nicety.
+Two corrections to the proposal body are required (see Factual corrections), and four sections need scoping revisions rather than acceptance as written.
+
+### Section-by-section
+
+1. Named workspace identity and one resolver: APPROVE.
+Verified path-based today (`internal/cli/content/command.go:85`, help text "existing workspace path"), and ADR-007 codifies path-based resolution (`tableau-agent-development-harness-arc42-locked.md:1916-1918`, chain at `:708-718`).
+Registered logical names are an ADR-007 amendment, not an implementation detail, and require Andrew's approval before Slice A.
+
+2. Common artifact identity and movement semantics: APPROVE.
+No shared envelope or `schema_version` exists; `WorkbookMetadata` (`internal/artifact/workbook.go:26-50`) and `DatasourceMetadata` (`internal/artifact/datasource.go:28-43`) duplicate origin/site-LUID/kind/LUID field-for-field, and inspection is per-resource (`workbook.go:255`, `datasource.go:230`).
+Freeze the envelope and a generic inspection contract now, and include an explicit `schema_version` from day one so later changes are detectable.
+
+3. One workspace concurrency policy: APPROVE, and treat as urgent.
+Genuine contradiction confirmed: the contract and ADR-032 forbid V1 workspace locks (`tadx-v1-capability-contract-final.md:294, 327, 449`; `arc42:2018-2020`), yet the implementation acquires `.tadx.lock` (`internal/artifact/workbook.go:149`) and the architecture allowlist permits `internal/lock` for `internal/artifact` (`internal/architecture/architecture.go:195-199`).
+A contractually forbidden but architecturally endorsed capability is exactly the ambiguity that makes parallel slices diverge.
+Decide one policy before any second local mutation is written; my recommendation is to keep the single-writer critical section and reconcile the authoritative text, not to leave the split state.
+
+4. Shared destination and promotion semantics: REVISE to narrow the scope.
+No shared destination model exists; all collision/overwrite/pre-POST-revalidation logic is workbook-local (`actions/workbook/publish/action.go:46-201`).
+The proposal understates current safety: the source-site LUID is used only in same-site `SourceDefaulted` republish (`action.go:101-108`), cross-site targets resolve purely by exact name plus target project LUID (`action.go:96, 117-119`), ambiguity is rejected (`action.go:110-112`), and the overwrite target is re-resolved on the target site immediately before Commit (`action.go:160-165, 187-200`).
+The real, narrower gap is identity semantics: equivalence is computed from alias labels (`action.go:125`) and the publish `Artifact` carries only `SourceEnvironment`/`SourceSite` strings (`actions/workbook/publish/types.go:36-40`), while pull already records stable `ServerOrigin`/`SiteLUID` (`actions/workbook/pull/types.go:15-16`).
+Name the workbook publish action as the reference model to extract, and scope the pre-fanout fix to adding stable server-origin plus site-LUID identity.
+
+5. Shared publish infrastructure: APPROVE.
+Upload-session and job-poll behavior is entirely workbook-local (`internal/tableau/workbook/client.go:133-141, 319-386, 435-483, 633-726`); `transport.go` is the only shared layer and is generic (`:306-396`).
+Copy-paste erosion has already begun: `dispositionFilename` and `sitePath` are duplicated between `workbook/client.go:742-763` and `datasource/client.go:151-168`.
+Extract before the second publisher, not after.
+
+6. Output contract enforcement: APPROVE, and elevate to a hard gate.
+Pull implements `CompactOutput()`/`FullOutput()` with the `details: "--full"` marker (`actions/workbook/pull/types.go:186-229`); publish implements neither, and the renderer silently emits the whole struct when a value has no projector (`internal/output/output.go:61-69`), so publish previews already dump the full plan tree with no marker (`actions/workbook/publish/testdata/preview_source.toon:14`).
+`docs/axi.md:44-48, 72-83` and `docs/contributing/output-guidelines.md:71-81` mandate projectors on every detail-bearing output.
+The single most valuable pre-fanout artifact is the guard test that fails when a detail-bearing output ships without projectors; `internal/output/output_test.go` has no such assertion today, and that test is a truer gate than the per-capability projections themselves.
+
+7. Fanout-safe CLI integration: APPROVE, this is the keystone for the operating goal.
+Hot-file convergence verified (`internal/capability/implementation.go:6`, `internal/cli/root.go:66, 91`, `internal/app/app.go`, `internal/cli/content/command.go:40`).
+Contributor contradiction verified: `docs/contributing/task-template.md:4` assumes the registry row already exists, while `docs/contributing/adding-a-capability.md:108-129` tells each builder to add it.
+Split command mounting per capability, designate one integration owner for the manifest and generated files, and resolve the contributor-doc contradiction in the same change.
+
+8. Live development testing policy: REVISE to document what already exists.
+The policy exists in practice (the only live test is build-tagged at `internal/tableau/metadata/live_contract_test.go:1` via `//go:build live`, the standard suite is hermetic, and opt-in is documented at `docs/evidence/phase1-rest-contract.md:129`), but it is not stated in `AGENTS.md`, so a new builder cannot discover it without asking.
+Write the policy into `AGENTS.md` and cite the live test as the reference pattern.
+
+### Contract-gap rulings
+
+Ordinary versus composed datasource: contradiction CONFIRMED.
+`internal/capability/registry_gen.go:34, 37` block the entire `datasource.pull`/`datasource.publish` capabilities under B2, but B2 is scoped to composed multi-parent behavior only, and `docs/scope-v1.md:20` with `docs/build-order.md:56-57` list ordinary datasource pull/publish as buildable.
+Approve the proposed resolution: unblock the standalone path with a fail-closed composition preflight, and keep composed and `unknown` artifacts rejected until B2 closes.
+Acquired PDS siblings correctly record `composition_status: unknown` today (`internal/artifact/datasource.go:189`), so they are already non-promotable, which is the correct default.
+
+Cross-site published datasource promotion: proof required.
+The current slice proves discovery and acquisition only, not rebinding after the dependency is published to a target site.
+Before TADX advertises dependency-aware promotion, a live contract must prove publish order, target datasource identity mapping, unchanged workbook bytes, same-name collision behavior, and deterministic failure for missing or inaccessible dependencies.
+Until that evidence exists, applying a source-site-bound workbook to a different site should fail closed, not merely warn; this warrants a named evidence gate and, realistically, a second disposable site.
+
+### Answers to the specific questions
+
+Additional vertical slices required before fanout: none beyond A through D, provided Section 6's guard test and Section 7's integration split land first.
+True pre-fanout gates: Sections 3, 6, and 7, plus Slice A; Sections 1 and 2 are prerequisites for Slices A and B specifically, and Sections 4 and 5 are pre-fanout only for the second publisher (Slice D onward), not for reads.
+Ordinary versus composed datasource while B2 is open: keep the public capability IDs stable, unblock only the authoritatively standalone path, and fail closed on composed or unknown at a preflight before any mutation.
+Proof before cross-site PDS promotion: the live rebinding contract above, behind a new evidence gate, with fail-closed cross-site publish until then.
+Minimum safe build order with exit gates: see below.
+
+### Recommended build order
+
+1. Freeze decisions and amend every controlling contract (ADR-007, the lock policy in ADR-032, the datasource registry rows, output-guidelines, contributor docs). Exit: authoritative sources are internally consistent and no contract-versus-code contradiction remains.
+2. Land the Section 6 output guard test and the Section 7 integration split and contributor-doc fix. Exit: a capability compiles and tests without sibling services, and a detail-bearing output without projectors fails the guard test.
+3. Slice A, config and named-workspace lifecycle. Exit per proposal.
+4. Slice B, local workspace and artifact logistics. Exit per proposal.
+5. Slice C, bounded read. Exit per proposal.
+6. Extract shared destination identity fields plus upload-session and job infrastructure. Exit: workbook publish unchanged behaviorally, and the shared layer has terminal-state, timeout, and malformed-session tests.
+7. Slice D, flow full round trip reusing the extracted infrastructure. Exit: no workbook-specific imports, and local plus live pass.
+8. Fan out independent reads and unblocked actions under one integration owner.
+9. Amend the datasource registry to unblock ordinary standalone, then build Slice E; composed and unknown fail closed.
+10. Build Slice F before advertising dependency-aware cross-site promotion.
+11. Close B2 and B4 with captured contracts, then unblock composed datasource and project actions.
+12. Build Slice G through the first natural multi-item capability, then fan out multi-item mutations.
+
+Corrections versus the draft order: step 2 pulls the output guard and integration split forward as an explicit gate, step 6 states the reuse dependency for step 7, and steps 9 through 12 make the unblock-then-build sequence and the B4-to-Slice-G dependency explicit rather than implied.
+
+### Vertical slices to lock
+
+Lock A, B, C, and D as the shared-foundation proof.
+Lock F as the gate for cross-site promotion.
+Lock G as the gate for multi-item mutations.
+E is valid only after the datasource registry contradiction is resolved.
+
+### Factual corrections the proposal must make before it becomes authoritative
+
+Line 46 overstates verification: it claims workbook pull and publish both passed a live round trip, but the repo's own evidence states no live verification is claimed for publish and upload (`docs/evidence/phase1-rest-contract.md:24`); publish has local contract verification only.
+Section 4 is too pessimistic about cross-site overwrite risk; the workbook implementation already resolves target identity on the target site, so the residual risk is the alias-versus-LUID identity gap, not overwrite-by-source-LUID.
+
+### Decisions that require Andrew
+
+The ADR-007 amendment to allow registered logical workspace names (Section 1).
+The single concurrency policy and whether to amend or reverse ADR-032 (Section 3).
+Whether ordinary standalone datasource is unblocked within existing capability IDs while composed and unknown fail closed (datasource gap).
+Whether cross-site PDS promotion gets a new named evidence gate and a second disposable site (promotion gap).
+Which natural capability first carries the partial-outcome contract (Slice G).
+
+### Build-health and evidence notes (outside the proposal's scope)
+
+Main was red at review time: `TestActionGoldenOutput` failed because the full-output golden used a forward-slash `canonical_path` for the PDS sibling while the code emits OS-native separators, matching the workbook `canonical_path` in the same fixture (`actions/workbook/pull/testdata/output_full.toon`).
+This is a golden typo, not a code defect, and is corrected on the review branch so main returns to green.
+Separately, the datasource REST endpoints now executed under `--include-pds` (`internal/tableau/datasource/client.go:58, 106`) have hermetic tests plus one live call but are not enumerated as captured official-doc sections in `docs/evidence/phase1-rest-contract.md`, even though the workbook.pull evidence card claims official REST captures; close that enumeration gap for completeness.
+The published datasource slice itself was audited against the evidence gate and RESPECTS it: the Metadata GraphQL traversal is genuinely captured with hermetic and opt-in live tests, acquisition is direct-only, non-recursive, byte-preserving, and non-publishing, blocked datasource capabilities remain B2 and unwired, and both generated files were regenerated rather than hand-edited.
+
+Reviewed by the collaborating TADX architecture agent against main @ 9fbc6f1.
 
 ## Final decision record
 
