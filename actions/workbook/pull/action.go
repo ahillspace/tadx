@@ -163,6 +163,10 @@ func (a *Action) Execute(ctx context.Context, input Input) (Output, error) {
 	artifact.PublishedDatasources = provenance
 	artifact.DependenciesAcquired = dependenciesAcquired
 	artifact.Dependencies = dependencies
+	// Normalize artifact paths to forward slashes so output is deterministic and
+	// consistent across platforms, matching the published-datasource treatment above.
+	artifact.Path = filepath.ToSlash(artifact.Path)
+	artifact.CanonicalPath = filepath.ToSlash(artifact.CanonicalPath)
 	warnings = append(warnings, artifact.Warnings...)
 	return Output{Status: "pulled", Workbook: workbook, Artifact: artifact, Warnings: warnings, RequestID: download.TableauRequestID, Help: []string{"tadx content workbook publish --artifact <path> --environment <alias>"}}, nil
 }

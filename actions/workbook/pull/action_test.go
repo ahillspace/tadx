@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -301,14 +302,17 @@ func TestActionGoldenOutput(t *testing.T) {
 			"ds-1": {LUID: "ds-1", Name: "Sales", ProjectLUID: "datasource-project", ProjectPath: "Shared", Filename: "Sales.tdsx", Content: []byte("native-datasource")},
 		},
 	}, &writer{result: pull.ArtifactResult{
-		Path:                `C:\workspace\artifacts\workbook\Finance`,
-		CanonicalPath:       `C:\workspace\artifacts\workbook\Finance\Finance.twbx`,
+		// FromSlash yields OS-native separators (backslashes on Windows) so the
+		// action's normalization is exercised on every runner; the golden stays
+		// forward-slash and deterministic across platforms.
+		Path:                filepath.FromSlash("C:/workspace/artifacts/workbook/Finance"),
+		CanonicalPath:       filepath.FromSlash("C:/workspace/artifacts/workbook/Finance/Finance.twbx"),
 		BaselineFingerprint: "sha256:abc",
 		Warnings:            []string{"existing clean artifact replaced"},
 	}, datasourceResults: map[string]pull.DependencyArtifactResult{
-		"ds-1": {LUID: "ds-1", Name: "Sales", Path: "artifacts/datasource/Sales", CanonicalPath: `C:\workspace\artifacts\datasource\Sales\Sales.tdsx`, BaselineFingerprint: "sha256:def"},
+		"ds-1": {LUID: "ds-1", Name: "Sales", Path: "artifacts/datasource/Sales", CanonicalPath: filepath.FromSlash("C:/workspace/artifacts/datasource/Sales/Sales.tdsx"), BaselineFingerprint: "sha256:def"},
 	}}).Execute(context.Background(), pull.Input{
-		Environment: "production", Site: "marketing", Workspace: `C:\workspace`,
+		Environment: "production", Site: "marketing", Workspace: filepath.FromSlash("C:/workspace"),
 		Selector: identity.Selector{LUID: "wb-1", Name: "Finance", ProjectPath: "Ops"}, IncludePDS: true,
 	})
 	if err != nil {
