@@ -1,0 +1,8 @@
+status: created
+workspace:
+  name: development
+  id: ws_11111111111111111111111111111111
+  manifest_version: 1
+  registered: true
+  created_entries[3]: tadx.yaml,artifacts,.tadx
+help[1]: tadx workspace status --workspace development

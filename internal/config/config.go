@@ -3,12 +3,14 @@ package config
 
 import (
 	"bytes"
+	"crypto/sha256"
 	"errors"
 	"fmt"
 	"io"
 	"net/url"
 	"os"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strings"
 
@@ -21,15 +23,26 @@ const (
 	// WorkspaceConfigName is the visible, versionable workspace configuration file.
 	WorkspaceConfigName = "tadx.yaml"
 	// AuthTypePAT is the only authentication type supported in V1.
-	AuthTypePAT = "pat"
+	AuthTypePAT           = "pat"
+	maxConfigBytes        = 1024 * 1024
+	maxWorkspaces         = 1000
+	migrationBackupSuffix = ".pre-workspace-migration-v1.bak"
 )
 
 // Config is the user-global, non-secret TADX configuration model.
 type Config struct {
-	Version            int                    `yaml:"version" json:"version"`
-	DefaultEnvironment string                 `yaml:"default_environment,omitempty" json:"default_environment,omitempty"`
-	DefaultWorkspace   string                 `yaml:"default_workspace,omitempty" json:"default_workspace,omitempty"`
-	Environments       map[string]Environment `yaml:"environments,omitempty" json:"environments,omitempty"`
+	Version            int                              `yaml:"version" json:"version"`
+	DefaultEnvironment string                           `yaml:"default_environment,omitempty" json:"default_environment,omitempty"`
+	DefaultWorkspace   string                           `yaml:"default_workspace,omitempty" json:"default_workspace,omitempty"`
+	Environments       map[string]Environment           `yaml:"environments,omitempty" json:"environments,omitempty"`
+	Workspaces         map[string]WorkspaceRegistration `yaml:"workspaces,omitempty" json:"workspaces,omitempty"`
+}
+
+// WorkspaceRegistration maps one logical workspace name to a stable identity
+// and its machine-local root.
+type WorkspaceRegistration struct {
+	ID   string `yaml:"id" json:"id"`
+	Path string `yaml:"path" json:"path"`
 }
 
 // Environment describes one named Tableau target without storing credentials.
@@ -54,6 +67,8 @@ type ValidationError struct {
 	Violations []string
 }
 
+var workspaceIDPattern = regexp.MustCompile(`^ws_[0-9a-f]{32}$`)
+
 func (e *ValidationError) Error() string {
 	return "invalid configuration: " + strings.Join(e.Violations, "; ")
 }
@@ -72,6 +87,50 @@ func (c Config) Validate() error {
 	if c.DefaultEnvironment != "" {
 		if _, ok := c.Environments[c.DefaultEnvironment]; !ok {
 			violations = append(violations, fmt.Sprintf("default environment %q does not exist", c.DefaultEnvironment))
+		}
+	}
+	workspaceNames := make(map[string]string, len(c.Workspaces))
+	workspaceIDs := make(map[string]string, len(c.Workspaces))
+	workspaceRoots := make(map[string]string, len(c.Workspaces))
+	if len(c.Workspaces) > maxWorkspaces {
+		violations = append(violations, fmt.Sprintf("workspace registry must not exceed %d entries", maxWorkspaces))
+	}
+	for name, registration := range c.Workspaces {
+		if err := ValidateWorkspaceName(name); err != nil {
+			violations = append(violations, fmt.Sprintf("workspace %q name: %v", name, err))
+		}
+		foldedName := strings.ToLower(name)
+		for _, previous := range workspaceNames {
+			if strings.EqualFold(previous, name) {
+				violations = append(violations, fmt.Sprintf("workspace names %q and %q collide under case-insensitive matching", previous, name))
+				break
+			}
+		}
+		workspaceNames[foldedName] = name
+		if !workspaceIDPattern.MatchString(registration.ID) {
+			violations = append(violations, fmt.Sprintf("workspace %q ID must match ws_<32 lowercase hex>", name))
+		} else if previous, exists := workspaceIDs[registration.ID]; exists {
+			violations = append(violations, fmt.Sprintf("workspace ID %q is shared by %q and %q", registration.ID, previous, name))
+		} else {
+			workspaceIDs[registration.ID] = name
+		}
+		root, err := canonicalWorkspaceRoot(registration.Path)
+		if err != nil {
+			violations = append(violations, fmt.Sprintf("workspace %q path: %v", name, err))
+		} else {
+			key := workspaceRootKey(root)
+			if previous, exists := workspaceRoots[key]; exists {
+				violations = append(violations, fmt.Sprintf("workspace canonical root %q is shared by %q and %q", root, previous, name))
+			} else {
+				workspaceRoots[key] = name
+			}
+		}
+	}
+	if c.DefaultWorkspace != "" {
+		if looksLikePath(c.DefaultWorkspace) {
+			violations = append(violations, "default workspace must be a logical name, not a path")
+		} else if _, _, ok := resolveWorkspaceRegistration(c.Workspaces, c.DefaultWorkspace); !ok {
+			violations = append(violations, fmt.Sprintf("default workspace %q does not exist", c.DefaultWorkspace))
 		}
 	}
 
@@ -93,6 +152,13 @@ func (c Config) Validate() error {
 		}
 		if environment.Auth.Type != AuthTypePAT {
 			violations = append(violations, fmt.Sprintf("environment %q auth type must be %q", alias, AuthTypePAT))
+		}
+		if environment.DefaultWorkspace != "" {
+			if looksLikePath(environment.DefaultWorkspace) {
+				violations = append(violations, fmt.Sprintf("environment %q default workspace must be a logical name, not a path", alias))
+			} else if _, _, ok := resolveWorkspaceRegistration(c.Workspaces, environment.DefaultWorkspace); !ok {
+				violations = append(violations, fmt.Sprintf("environment %q default workspace %q does not exist", alias, environment.DefaultWorkspace))
+			}
 		}
 		defaultName, defaultSecret := DefaultPATVariableNames(alias)
 		nameVariable := environment.Auth.PATNameEnv
@@ -135,6 +201,65 @@ func (c Config) Validate() error {
 	return nil
 }
 
+// ValidateWorkspaceName validates one user-facing logical workspace name.
+func ValidateWorkspaceName(name string) error {
+	if name == "" || strings.TrimSpace(name) != name {
+		return errors.New("must not be empty or have surrounding whitespace")
+	}
+	if len(name) > 128 {
+		return errors.New("must not exceed 128 bytes")
+	}
+	if name == "." || name == ".." || looksLikePath(name) {
+		return errors.New("must be a logical name, not a path")
+	}
+	for _, r := range name {
+		if r < 0x20 || r == 0x7f {
+			return errors.New("must not contain control characters")
+		}
+	}
+	return nil
+}
+
+// ResolveWorkspace returns an exact case-insensitive logical workspace match.
+// An empty selector uses DefaultWorkspace.
+func (c Config) ResolveWorkspace(selector string) (string, WorkspaceRegistration, error) {
+	if selector == "" {
+		selector = c.DefaultWorkspace
+	}
+	if selector == "" {
+		return "", WorkspaceRegistration{}, errors.New("no workspace selected and no default workspace is configured")
+	}
+	name, registration, ok := resolveWorkspaceRegistration(c.Workspaces, selector)
+	if !ok {
+		return "", WorkspaceRegistration{}, fmt.Errorf("workspace %q does not exist", selector)
+	}
+	return name, registration, nil
+}
+
+func resolveWorkspaceRegistration(workspaces map[string]WorkspaceRegistration, selector string) (string, WorkspaceRegistration, bool) {
+	for name, registration := range workspaces {
+		if strings.EqualFold(name, selector) {
+			return name, registration, true
+		}
+	}
+	return "", WorkspaceRegistration{}, false
+}
+
+func looksLikePath(value string) bool {
+	return strings.ContainsAny(value, `/\`) || filepath.IsAbs(value) || filepath.VolumeName(value) != ""
+}
+
+func canonicalWorkspaceRoot(value string) (string, error) {
+	if strings.TrimSpace(value) == "" {
+		return "", errors.New("must not be empty")
+	}
+	absolute, err := filepath.Abs(value)
+	if err != nil {
+		return "", err
+	}
+	return filepath.Clean(absolute), nil
+}
+
 // ResolveEnvironment returns an exact alias match with default PAT references applied.
 // An empty alias selects DefaultEnvironment.
 func (c Config) ResolveEnvironment(alias string) (Environment, error) {
@@ -167,9 +292,29 @@ func (c Config) ResolveEnvironment(alias string) (Environment, error) {
 
 // Load reads and validates the non-secret user configuration.
 func Load(path string) (Config, error) {
-	data, err := os.ReadFile(path)
+	file, err := os.Open(path)
 	if err != nil {
 		return Config{}, fmt.Errorf("read configuration: %w", err)
+	}
+	info, err := file.Stat()
+	if err != nil {
+		file.Close()
+		return Config{}, fmt.Errorf("inspect configuration: %w", err)
+	}
+	if !info.Mode().IsRegular() || info.Size() > maxConfigBytes {
+		file.Close()
+		return Config{}, fmt.Errorf("configuration must be a regular file no larger than %d bytes", maxConfigBytes)
+	}
+	data, err := io.ReadAll(io.LimitReader(file, maxConfigBytes+1))
+	if err != nil {
+		file.Close()
+		return Config{}, fmt.Errorf("read configuration: %w", err)
+	}
+	if err := file.Close(); err != nil {
+		return Config{}, fmt.Errorf("close configuration: %w", err)
+	}
+	if len(data) > maxConfigBytes {
+		return Config{}, fmt.Errorf("configuration exceeds %d bytes", maxConfigBytes)
 	}
 	decoder := yaml.NewDecoder(bytes.NewReader(data))
 	decoder.KnownFields(true)
@@ -184,10 +329,263 @@ func Load(path string) (Config, error) {
 		}
 		return Config{}, errors.New("decode configuration: multiple YAML documents are not supported")
 	}
+	configuration, migrated, err := migrateLegacyWorkspaceDefaults(configuration)
+	if err != nil {
+		return Config{}, err
+	}
 	if err := configuration.Validate(); err != nil {
 		return Config{}, err
 	}
+	if migrated {
+		if err := preserveWorkspaceMigrationBackup(path, data); err != nil {
+			return Config{}, err
+		}
+		if err := Save(path, configuration); err != nil {
+			return Config{}, fmt.Errorf("persist migrated workspace configuration: %w", err)
+		}
+	}
 	return configuration, nil
+}
+
+func preserveWorkspaceMigrationBackup(path string, original []byte) error {
+	backupPath := path + migrationBackupSuffix
+	backup, err := os.OpenFile(backupPath, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
+	if err == nil {
+		if _, writeErr := backup.Write(original); writeErr != nil {
+			backup.Close()
+			_ = os.Remove(backupPath)
+			return fmt.Errorf("write workspace migration backup: %w", writeErr)
+		}
+		if syncErr := backup.Sync(); syncErr != nil {
+			backup.Close()
+			_ = os.Remove(backupPath)
+			return fmt.Errorf("sync workspace migration backup: %w", syncErr)
+		}
+		if closeErr := backup.Close(); closeErr != nil {
+			_ = os.Remove(backupPath)
+			return fmt.Errorf("close workspace migration backup: %w", closeErr)
+		}
+		return nil
+	}
+	if !errors.Is(err, os.ErrExist) {
+		return fmt.Errorf("create workspace migration backup: %w", err)
+	}
+	existing, readErr := readBoundedConfigurationFile(backupPath)
+	if readErr != nil {
+		return fmt.Errorf("inspect existing workspace migration backup: %w", readErr)
+	}
+	if !bytes.Equal(existing, original) {
+		return errors.New("existing workspace migration backup differs from the current legacy configuration; preserve or remove that backup after reviewing both files")
+	}
+	return nil
+}
+
+func readBoundedConfigurationFile(path string) ([]byte, error) {
+	file, err := os.Open(path)
+	if err != nil {
+		return nil, err
+	}
+	info, err := file.Stat()
+	if err != nil {
+		file.Close()
+		return nil, err
+	}
+	if !info.Mode().IsRegular() || info.Size() > maxConfigBytes {
+		file.Close()
+		return nil, fmt.Errorf("file must be a regular file no larger than %d bytes", maxConfigBytes)
+	}
+	data, err := io.ReadAll(io.LimitReader(file, maxConfigBytes+1))
+	closeErr := file.Close()
+	if err != nil {
+		return nil, err
+	}
+	if closeErr != nil {
+		return nil, closeErr
+	}
+	if len(data) > maxConfigBytes {
+		return nil, fmt.Errorf("file exceeds %d bytes", maxConfigBytes)
+	}
+	return data, nil
+}
+
+func migrateLegacyWorkspaceDefaults(configuration Config) (Config, bool, error) {
+	type workspaceReference struct {
+		label string
+		value string
+		set   func(string)
+	}
+	references := make([]workspaceReference, 0, len(configuration.Environments)+1)
+	if looksLikePath(configuration.DefaultWorkspace) {
+		references = append(references, workspaceReference{
+			label: "default workspace",
+			value: configuration.DefaultWorkspace,
+			set:   func(name string) { configuration.DefaultWorkspace = name },
+		})
+	}
+	aliases := make([]string, 0, len(configuration.Environments))
+	for alias := range configuration.Environments {
+		aliases = append(aliases, alias)
+	}
+	sort.Strings(aliases)
+	for _, alias := range aliases {
+		environment := configuration.Environments[alias]
+		if !looksLikePath(environment.DefaultWorkspace) {
+			continue
+		}
+		currentAlias := alias
+		references = append(references, workspaceReference{
+			label: fmt.Sprintf("environment %q default workspace", alias),
+			value: environment.DefaultWorkspace,
+			set: func(name string) {
+				updated := configuration.Environments[currentAlias]
+				updated.DefaultWorkspace = name
+				configuration.Environments[currentAlias] = updated
+			},
+		})
+	}
+	if len(references) == 0 {
+		return configuration, false, nil
+	}
+
+	if configuration.Workspaces == nil {
+		configuration.Workspaces = make(map[string]WorkspaceRegistration)
+	}
+	type registeredRoot struct {
+		name string
+		root string
+	}
+	registered := make(map[string]registeredRoot, len(configuration.Workspaces))
+	ids := make(map[string]string, len(configuration.Workspaces))
+	for name, registration := range configuration.Workspaces {
+		root, err := canonicalWorkspaceRoot(registration.Path)
+		if err != nil {
+			continue
+		}
+		registered[workspaceRootKey(root)] = registeredRoot{name: name, root: root}
+		ids[registration.ID] = name
+	}
+
+	for _, reference := range references {
+		if !filepath.IsAbs(reference.value) {
+			return Config{}, false, fmt.Errorf(
+				"migrate legacy %s: path %q is not absolute; register it with workspace create, then set the default workspace to its logical name",
+				reference.label,
+				reference.value,
+			)
+		}
+		root, err := canonicalWorkspaceRoot(reference.value)
+		if err != nil {
+			return Config{}, false, fmt.Errorf("migrate legacy %s: resolve path: %w", reference.label, err)
+		}
+		key := workspaceRootKey(root)
+		if existing, ok := registered[key]; ok {
+			reference.set(existing.name)
+			continue
+		}
+
+		name, err := availableLegacyWorkspaceName(configuration.Workspaces, root)
+		if err != nil {
+			return Config{}, false, fmt.Errorf("migrate legacy %s: %w", reference.label, err)
+		}
+		id := legacyWorkspaceID(root)
+		if previous, exists := ids[id]; exists {
+			return Config{}, false, fmt.Errorf(
+				"migrate legacy %s: generated workspace identity conflicts with registered workspace %q; register the path with workspace create",
+				reference.label,
+				previous,
+			)
+		}
+		configuration.Workspaces[name] = WorkspaceRegistration{ID: id, Path: root}
+		registered[key] = registeredRoot{name: name, root: root}
+		ids[id] = name
+		reference.set(name)
+	}
+	return configuration, true, nil
+}
+
+func availableLegacyWorkspaceName(workspaces map[string]WorkspaceRegistration, root string) (string, error) {
+	name := filepath.Base(root)
+	if err := ValidateWorkspaceName(name); err != nil {
+		name = "workspace"
+	}
+	if _, _, exists := resolveWorkspaceRegistration(workspaces, name); !exists {
+		return name, nil
+	}
+	hash := sha256.Sum256([]byte("tadx-legacy-workspace-name-v1\x00" + workspaceRootKey(root)))
+	for hashBytes := 6; hashBytes <= len(hash); hashBytes++ {
+		suffix := fmt.Sprintf("-%x", hash[:hashBytes])
+		candidate := truncateUTF8(name, 128-len(suffix)) + suffix
+		if _, _, exists := resolveWorkspaceRegistration(workspaces, candidate); !exists {
+			return candidate, nil
+		}
+	}
+	return "", errors.New("cannot derive a unique logical workspace name; register the path with workspace create")
+}
+
+func truncateUTF8(value string, limit int) string {
+	if len(value) <= limit {
+		return value
+	}
+	end := 0
+	for index := range value {
+		if index > limit {
+			break
+		}
+		end = index
+	}
+	return value[:end]
+}
+
+func legacyWorkspaceID(root string) string {
+	hash := sha256.Sum256([]byte("tadx-legacy-workspace-id-v1\x00" + workspaceRootKey(root)))
+	return fmt.Sprintf("ws_%x", hash[:16])
+}
+
+func workspaceRootKey(root string) string {
+	return strings.ToLower(filepath.Clean(root))
+}
+
+// Save validates and atomically replaces the non-secret user configuration.
+func Save(path string, configuration Config) error {
+	if err := configuration.Validate(); err != nil {
+		return err
+	}
+	directory := filepath.Dir(path)
+	if err := os.MkdirAll(directory, 0o700); err != nil {
+		return fmt.Errorf("create configuration directory: %w", err)
+	}
+	data, err := yaml.Marshal(configuration)
+	if err != nil {
+		return fmt.Errorf("encode configuration: %w", err)
+	}
+	if len(data) > maxConfigBytes {
+		return fmt.Errorf("configuration exceeds %d bytes", maxConfigBytes)
+	}
+	temporary, err := os.CreateTemp(directory, ".tadx-config-*.yaml")
+	if err != nil {
+		return fmt.Errorf("create configuration staging file: %w", err)
+	}
+	temporaryPath := temporary.Name()
+	defer os.Remove(temporaryPath)
+	if err := temporary.Chmod(0o600); err != nil {
+		temporary.Close()
+		return fmt.Errorf("protect configuration staging file: %w", err)
+	}
+	if _, err := temporary.Write(data); err != nil {
+		temporary.Close()
+		return fmt.Errorf("write configuration staging file: %w", err)
+	}
+	if err := temporary.Sync(); err != nil {
+		temporary.Close()
+		return fmt.Errorf("sync configuration staging file: %w", err)
+	}
+	if err := temporary.Close(); err != nil {
+		return fmt.Errorf("close configuration staging file: %w", err)
+	}
+	if err := os.Rename(temporaryPath, path); err != nil {
+		return fmt.Errorf("install configuration: %w", err)
+	}
+	return nil
 }
 
 // DefaultPATVariableNames returns the conventional PAT variable references for an alias.

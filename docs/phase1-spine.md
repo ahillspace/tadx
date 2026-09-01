@@ -36,13 +36,17 @@ Phase 1 does not make catalog refresh executable.
 
 ## Artifact contract
 
-A pulled workbook artifact contains the native `.twb` or `.twbx`, `metadata.json`, and `view.md`.
-Metadata records provenance, the authoritative Tableau LUID, the canonical payload name, and a SHA-256 baseline fingerprint.
+A pulled workbook artifact contains the native `.twb` or `.twbx`, `metadata.json`, `lineage.json`, and `view.md`.
+Metadata records provenance, the authoritative Tableau LUID, the canonical payload name, a SHA-256 baseline fingerprint, bounded lineage status and counts, and a workspace-relative lineage sidecar pointer.
 Artifact identity is scoped by normalized Tableau server origin, authenticated site LUID, resource kind, and workbook LUID.
 Environment aliases, site content URLs, and project paths remain provenance labels rather than identity keys.
 The recorded source origin is the default publish target, and an explicit environment overrides it.
 Clean re-pull warns and replaces.
 Dirty re-pull stops unless `--overwrite` is explicit.
+
+Workbook pull captures bounded direct upstream and downstream lineage automatically.
+Lineage capture is best effort, and incomplete or unavailable lineage is recorded explicitly without discarding a successfully downloaded workbook.
+Compact success output omits lineage details while preserving actionable warnings.
 
 Workbook pull queries the Metadata API for direct published datasource references.
 A complete empty result records the workbook as `portable`.
@@ -59,6 +63,8 @@ Dependency artifacts record `composition_status: unknown`, so later datasource p
 
 ## Publish contract
 
+Workbook publish resolves a logical workspace name through the deterministic workspace chain and accepts one exact workspace-relative managed workbook directory.
+Absolute machine paths are not public publish selectors and never appear in output.
 Workbook publish plans authoritative target and collision reads before mutation.
 Preview is the default.
 `--apply` runs only the plan produced in the same invocation.

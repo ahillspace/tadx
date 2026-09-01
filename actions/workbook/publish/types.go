@@ -4,6 +4,7 @@ import "github.com/ahillspace/tadx/internal/identity"
 
 // Input selects one local artifact and explicit remote destination.
 type Input struct {
+	Workspace    string
 	ArtifactPath string
 	Environment  string
 	Site         string

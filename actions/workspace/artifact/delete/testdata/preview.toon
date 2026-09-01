@@ -1,0 +1,15 @@
+plan:
+  mode: preview
+  operation: workspace.artifact.delete
+  workspace: development
+  artifact:
+    kind: workbook
+    luid: wb-1
+    name: Finance
+    path: artifacts/workbook/Finance
+    state: clean
+  dirty: false
+  force: false
+applied: false
+details: "--full"
+help[1]: Re-run with --apply to delete this previewed artifact.

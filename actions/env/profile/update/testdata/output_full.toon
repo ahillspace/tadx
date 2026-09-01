@@ -1,0 +1,13 @@
+status: updated
+environment:
+  alias: production
+  default: true
+  server_url: "https://example.test"
+  site_content_url: marketing
+  api_version: "3.29"
+  auth_type: pat
+  pat_name_env: PROD_PAT_NAME
+  pat_secret_env: PROD_PAT_SECRET
+  default_workspace: primary
+changed_fields[1]: site_content_url
+help[1]: tadx env get <alias>

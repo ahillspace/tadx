@@ -18,8 +18,6 @@ import (
 	"strings"
 	"time"
 	"unicode/utf8"
-
-	"github.com/ahillspace/tadx/internal/lock"
 )
 
 // WorkbookMetadata is the frozen workbook provenance contract.
@@ -45,8 +43,15 @@ type WorkbookMetadata struct {
 	PublishedDatasources []PublishedDatasourceRef `json:"published_datasources,omitempty"`
 	// DependenciesAcquired reports that referenced published datasources were
 	// downloaded as sibling artifacts (via --include-pds).
-	DependenciesAcquired bool `json:"dependencies_acquired,omitempty"`
+	DependenciesAcquired bool   `json:"dependencies_acquired,omitempty"`
+	LineageSidecar       string `json:"lineage_sidecar,omitempty"`
+	LineageStatus        string `json:"lineage_status,omitempty"`
+	LineageDirection     string `json:"lineage_direction,omitempty"`
+	LineageDepth         int    `json:"lineage_depth,omitempty"`
+	LineageNodeCount     *int   `json:"lineage_node_count,omitempty"`
+	LineageEdgeCount     *int   `json:"lineage_edge_count,omitempty"`
 	sourceSitePresent    bool
+	lineagePresent       bool
 }
 
 // PublishedDatasourceRef is one direct published-datasource reference recorded
@@ -65,21 +70,28 @@ const (
 	PortabilityPortable        = "portable"
 	PortabilitySourceSiteBound = "source-site-bound"
 	PortabilityUnknown         = "unknown"
+	LineageStatusComplete      = "complete"
+	LineageStatusIncomplete    = "incomplete"
+	LineageStatusUnavailable   = "unavailable"
 )
 
 // WorkbookPull is one complete local workbook replacement request.
 type WorkbookPull struct {
-	Workspace string
-	Filename  string
-	Content   []byte
-	Metadata  WorkbookMetadata
-	Overwrite bool
+	Workspace          string
+	Filename           string
+	Content            []byte
+	Metadata           WorkbookMetadata
+	Lineage            LineageDocument
+	LineageCountsKnown bool
+	Overwrite          bool
 }
 
 // WorkbookPullResult reports the materialized artifact.
 type WorkbookPullResult struct {
 	ArtifactPath        string
 	CanonicalPath       string
+	LineagePath         string
+	LineageStatus       string
 	BaselineFingerprint string
 	Warnings            []string
 }
@@ -143,14 +155,6 @@ func (m *WorkbookManager) Pull(ctx context.Context, input WorkbookPull) (Workboo
 	if _, err := os.Stat(filepath.Join(workspace, "tadx.yaml")); err != nil {
 		return WorkbookPullResult{}, fmt.Errorf("workspace %q does not contain tadx.yaml", workspace)
 	}
-	// Serialize the whole identity-match-and-replace critical section against
-	// other tadx processes on this workspace: concurrent pulls would otherwise
-	// race on the shared backup/stage window and corrupt or orphan state.
-	handle, err := lock.Acquire(filepath.Join(workspace, ".tadx.lock"))
-	if err != nil {
-		return WorkbookPullResult{}, fmt.Errorf("lock workspace %q: %w", workspace, err)
-	}
-	defer func() { _ = handle.Release() }()
 	root, err := ensureWorkbookRoot(workspace)
 	if err != nil {
 		return WorkbookPullResult{}, err
@@ -215,6 +219,10 @@ func (m *WorkbookManager) Pull(ctx context.Context, input WorkbookPull) (Workboo
 	metadata.CanonicalPayload = filename
 	metadata.LocalBaselineFingerprint = baseline
 	metadata.sourceSitePresent = true
+	lineage, err := applyWorkbookLineageMetadata(&metadata, input.Lineage, input.LineageCountsKnown)
+	if err != nil {
+		return WorkbookPullResult{}, err
+	}
 	if err := validateWorkbookMetadata(metadata); err != nil {
 		return WorkbookPullResult{}, err
 	}
@@ -223,13 +231,17 @@ func (m *WorkbookManager) Pull(ctx context.Context, input WorkbookPull) (Workboo
 		return WorkbookPullResult{}, err
 	}
 	view := workbookView(metadata)
+	lineageBytes, err := encodeWorkbookLineage(lineage)
+	if err != nil {
+		return WorkbookPullResult{}, err
+	}
 	operations := defaultDirectoryOperations()
 	staging, err := os.MkdirTemp(root, ".tadx-workbook-stage-")
 	if err != nil {
 		return WorkbookPullResult{}, fmt.Errorf("create artifact staging directory: %w", err)
 	}
 	defer os.RemoveAll(staging)
-	if err := writeStagedArtifact(staging, map[string][]byte{filename: input.Content, "metadata.json": metadataBytes, "view.md": []byte(view)}, operations); err != nil {
+	if err := writeStagedArtifact(staging, map[string][]byte{filename: input.Content, "metadata.json": metadataBytes, "lineage.json": lineageBytes, "view.md": []byte(view)}, operations); err != nil {
 		return WorkbookPullResult{}, err
 	}
 	replacementWarnings, err := replaceDirectoryWithOperations(staging, target, operations)
@@ -237,7 +249,55 @@ func (m *WorkbookManager) Pull(ctx context.Context, input WorkbookPull) (Workboo
 		return WorkbookPullResult{}, err
 	}
 	warnings = append(warnings, replacementWarnings...)
-	return WorkbookPullResult{ArtifactPath: target, CanonicalPath: filepath.Join(target, filename), BaselineFingerprint: baseline, Warnings: warnings}, nil
+	return WorkbookPullResult{ArtifactPath: target, CanonicalPath: filepath.Join(target, filename), LineagePath: filepath.Join(target, "lineage.json"), LineageStatus: metadata.LineageStatus, BaselineFingerprint: baseline, Warnings: warnings}, nil
+}
+
+func applyWorkbookLineageMetadata(metadata *WorkbookMetadata, lineage LineageDocument, countsKnown bool) (LineageDocument, error) {
+	if lineage.Direction == "" && lineage.Depth == 0 && len(lineage.Nodes) == 0 && len(lineage.Edges) == 0 && len(lineage.Warnings) == 0 {
+		lineage = LineageDocument{Complete: false, Direction: "both", Depth: 1, Nodes: []LineageNode{}, Edges: []LineageEdge{}}
+		countsKnown = false
+	}
+	if err := validateLineage(lineage); err != nil {
+		return LineageDocument{}, fmt.Errorf("validate workbook lineage: %w", err)
+	}
+	if len(lineage.Warnings) > maxWorkbookLineageWarnings {
+		return LineageDocument{}, fmt.Errorf("workbook lineage exceeds the %d-warning bound", maxWorkbookLineageWarnings)
+	}
+	for _, warning := range lineage.Warnings {
+		if len(warning) > maxWorkbookLineageWarningBytes {
+			return LineageDocument{}, fmt.Errorf("workbook lineage warning exceeds the %d-byte bound", maxWorkbookLineageWarningBytes)
+		}
+	}
+	metadata.LineageSidecar = "lineage.json"
+	metadata.LineageDirection = lineage.Direction
+	metadata.LineageDepth = lineage.Depth
+	metadata.lineagePresent = true
+	metadata.LineageStatus = LineageStatusUnavailable
+	if countsKnown {
+		nodes, edges := len(lineage.Nodes), len(lineage.Edges)
+		metadata.LineageNodeCount = &nodes
+		metadata.LineageEdgeCount = &edges
+		metadata.LineageStatus = LineageStatusIncomplete
+		if lineage.Complete {
+			metadata.LineageStatus = LineageStatusComplete
+		}
+	} else {
+		metadata.LineageNodeCount = nil
+		metadata.LineageEdgeCount = nil
+	}
+	return lineage, nil
+}
+
+func encodeWorkbookLineage(lineage LineageDocument) ([]byte, error) {
+	data, err := json.MarshalIndent(lineage, "", "  ")
+	if err != nil {
+		return nil, fmt.Errorf("encode workbook lineage: %w", err)
+	}
+	data = append(data, '\n')
+	if len(data) > maxLineageBytes {
+		return nil, fmt.Errorf("workbook lineage sidecar exceeds %d-byte limit", maxLineageBytes)
+	}
+	return data, nil
 }
 
 func encodeWorkbookMetadata(metadata WorkbookMetadata) ([]byte, error) {
@@ -278,6 +338,11 @@ func (m *WorkbookManager) Read(ctx context.Context, path string) (WorkbookArtifa
 	}
 	if err := validateWorkbookView(directory); err != nil {
 		return WorkbookArtifact{}, err
+	}
+	if metadata.lineagePresent {
+		if err := validateWorkbookLineageSidecar(directory, metadata); err != nil {
+			return WorkbookArtifact{}, err
+		}
 	}
 	canonical, err := canonicalWorkbookPath(directory, metadata.CanonicalPayload)
 	if err != nil {
@@ -384,6 +449,29 @@ func validateWorkbookMetadata(metadata WorkbookMetadata) error {
 	if metadata.DependenciesAcquired && len(metadata.PublishedDatasources) == 0 {
 		return errors.New("workbook artifact metadata dependencies_acquired requires published_datasources")
 	}
+	if metadata.lineagePresent {
+		if metadata.LineageSidecar != "lineage.json" || metadata.LineageDirection != "both" || metadata.LineageDepth != 1 {
+			return errors.New("workbook artifact metadata has an invalid lineage sidecar contract")
+		}
+		switch metadata.LineageStatus {
+		case LineageStatusComplete, LineageStatusIncomplete:
+			if metadata.LineageNodeCount == nil || metadata.LineageEdgeCount == nil {
+				return errors.New("known workbook lineage requires node and edge counts")
+			}
+		case LineageStatusUnavailable:
+			if metadata.LineageNodeCount != nil || metadata.LineageEdgeCount != nil {
+				return errors.New("unavailable workbook lineage cannot claim node or edge counts")
+			}
+		default:
+			return fmt.Errorf("workbook artifact metadata has invalid lineage_status %q", metadata.LineageStatus)
+		}
+		if metadata.LineageNodeCount != nil && (*metadata.LineageNodeCount < 0 || *metadata.LineageNodeCount > MaxLineageNodes) {
+			return errors.New("workbook artifact metadata has invalid lineage_node_count")
+		}
+		if metadata.LineageEdgeCount != nil && (*metadata.LineageEdgeCount < 0 || *metadata.LineageEdgeCount > MaxLineageEdges) {
+			return errors.New("workbook artifact metadata has invalid lineage_edge_count")
+		}
+	}
 	seenLUIDs := make(map[string]struct{}, len(metadata.PublishedDatasources))
 	seenPaths := make(map[string]struct{}, len(metadata.PublishedDatasources))
 	previousLUID := ""
@@ -481,8 +569,7 @@ const (
 // its target is missing; because findBySourceIdentity skips every `.tadx-`
 // entry, the artifact would otherwise appear permanently deleted. This sweep
 // restores such a backup, garbage-collects committed backups, and removes
-// staging directories abandoned by crashed pulls. It must run while the
-// workspace lock is held so it cannot race a concurrent pull.
+// staging directories abandoned by crashed pulls.
 func recoverWorkbookRoot(root string, operations directoryOperations) ([]string, error) {
 	operations = operations.withDefaults()
 	entries, err := os.ReadDir(root)
@@ -663,6 +750,9 @@ func readMetadata(directory string) (WorkbookMetadata, error) {
 			metadata.sourceSitePresent = true
 		}
 	}
+	if _, exists := fields["lineage_sidecar"]; exists {
+		metadata.lineagePresent = true
+	}
 	return metadata, nil
 }
 
@@ -673,7 +763,50 @@ func validateManagedWorkbook(directory string, metadata WorkbookMetadata) error 
 	if _, err := canonicalWorkbookPath(directory, metadata.CanonicalPayload); err != nil {
 		return err
 	}
+	if metadata.lineagePresent {
+		if err := validateWorkbookLineageSidecar(directory, metadata); err != nil {
+			return err
+		}
+	}
 	return validateWorkbookView(directory)
+}
+
+func validateWorkbookLineageSidecar(directory string, metadata WorkbookMetadata) error {
+	path := filepath.Join(directory, metadata.LineageSidecar)
+	info, err := os.Lstat(path)
+	if err != nil {
+		return fmt.Errorf("inspect workbook lineage: %w", err)
+	}
+	if info.Mode()&os.ModeSymlink != 0 || !info.Mode().IsRegular() {
+		return errors.New("workbook lineage sidecar must be a regular file and not a symbolic link")
+	}
+	data, err := readBoundedFile(path, maxLineageBytes)
+	if err != nil {
+		return fmt.Errorf("inspect workbook lineage: %w", err)
+	}
+	var lineage LineageDocument
+	if err := json.Unmarshal(data, &lineage); err != nil {
+		return fmt.Errorf("decode workbook lineage: %w", err)
+	}
+	if err := validateLineage(lineage); err != nil {
+		return fmt.Errorf("validate workbook lineage: %w", err)
+	}
+	if lineage.Direction != metadata.LineageDirection || lineage.Depth != metadata.LineageDepth {
+		return errors.New("workbook lineage does not match metadata direction or depth")
+	}
+	if metadata.LineageStatus == LineageStatusComplete && !lineage.Complete {
+		return errors.New("workbook lineage metadata claims complete but the sidecar is incomplete")
+	}
+	if metadata.LineageStatus != LineageStatusComplete && lineage.Complete {
+		return errors.New("workbook lineage graph completeness does not match metadata")
+	}
+	if metadata.LineageNodeCount != nil && *metadata.LineageNodeCount != len(lineage.Nodes) {
+		return errors.New("workbook lineage node count does not match sidecar")
+	}
+	if metadata.LineageEdgeCount != nil && *metadata.LineageEdgeCount != len(lineage.Edges) {
+		return errors.New("workbook lineage edge count does not match sidecar")
+	}
+	return nil
 }
 
 func validateWorkbookView(directory string) error {
@@ -907,8 +1040,10 @@ func safeName(value string) string {
 }
 
 const (
-	maxPortableComponentBytes = 180
-	maxWorkbookMetadataBytes  = 64 * 1024
+	maxPortableComponentBytes      = 180
+	maxWorkbookMetadataBytes       = 64 * 1024
+	maxWorkbookLineageWarnings     = 20
+	maxWorkbookLineageWarningBytes = 512
 )
 
 func identityComponent(name, serverOrigin, siteLUID, workbookLUID string) string {
@@ -990,6 +1125,9 @@ func workbookView(metadata WorkbookMetadata) string {
 		view += fmt.Sprintf("- Portability: `%s`\n", metadata.Portability)
 	}
 	view += fmt.Sprintf("- Dependencies acquired: `%t`\n", metadata.DependenciesAcquired)
+	if metadata.lineagePresent {
+		view += fmt.Sprintf("- Lineage: `%s` (`%s`, depth `%d`)\n", metadata.LineageStatus, metadata.LineageDirection, metadata.LineageDepth)
+	}
 	if len(metadata.PublishedDatasources) > 0 {
 		view += "\n## Published datasource references\n\n"
 		for _, reference := range metadata.PublishedDatasources {

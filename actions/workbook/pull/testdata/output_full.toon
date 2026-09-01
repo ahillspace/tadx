@@ -13,6 +13,10 @@ artifact:
   published_datasources[1]{luid,name,source_site,local_artifact_path,canonical_path,baseline_fingerprint}:
     ds-1,Sales,marketing,artifacts/datasource/Sales,artifacts/datasource/Sales/Sales.tdsx,"sha256:def"
   dependencies_acquired: true
+  lineage_path: artifacts/workbook/Finance/lineage.json
+  lineage_status: complete
+  lineage_node_count: 1
+  lineage_edge_count: 0
 warnings[1]: existing clean artifact replaced
 tableau_request_id: request-1
 help[1]: tadx content workbook publish --artifact <path> --environment <alias>

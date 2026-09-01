@@ -81,7 +81,7 @@ func TestWorkbookPublishPreviewsByDefaultAndRequiresApplyFlagToApply(t *testing.
 			deps := dependencies(&lister{}, &getter{}, &renderer{})
 			deps.AuthChecker, deps.CatalogSearcher, deps.WorkbookPuller, deps.WorkbookPublisher = &checker{}, &searcher{}, &puller{}, p
 			root := cli.NewRoot(deps)
-			args := []string{"content", "workbook", "publish", "--artifact", "artifact", "--environment", "production", "--project-id", "project-1"}
+			args := []string{"content", "workbook", "publish", "--workspace", "development", "--artifact", "artifacts/workbook/Finance--identity", "--environment", "production", "--project-id", "project-1"}
 			args = append(args, test.applyFlag...)
 			root.SetArgs(args)
 			if err := root.Execute(); err != nil {

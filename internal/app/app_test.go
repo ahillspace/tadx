@@ -24,6 +24,90 @@ func TestRunCapabilityListRendersTOON(t *testing.T) {
 	assertGolden(t, "testdata/capability-list.toon", stdout.String())
 }
 
+func TestRunUsesExplicitCLIConfigPath(t *testing.T) {
+	server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		if request.URL.Path != "/api/3.29/auth/signin" {
+			t.Fatalf("request path = %q", request.URL.Path)
+		}
+		writer.Header().Set("Content-Type", "application/json")
+		_, _ = io.WriteString(writer, `{"credentials":{"token":"session-token","site":{"id":"site-1"},"user":{"id":"user-1"}}}`)
+	}))
+	defer server.Close()
+
+	configPath := filepath.Join(t.TempDir(), "config.yaml")
+	configContents := fmt.Sprintf("version: 1\ndefault_environment: production\nenvironments:\n  production:\n    url: %s\n    site_content_url: marketing\n    auth:\n      type: pat\n      pat_name_env: PROD_PAT_NAME\n      pat_secret_env: PROD_PAT_SECRET\n", server.URL)
+	if err := os.WriteFile(configPath, []byte(configContents), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PROD_PAT_NAME", "pat-name")
+	t.Setenv("PROD_PAT_SECRET", "pat-secret")
+
+	var stdout bytes.Buffer
+	exitCode := app.Run(context.Background(), []string{"auth", "check", "--config", configPath}, &stdout, app.Options{
+		ConfigPath: filepath.Join(t.TempDir(), "missing.yaml"), HTTPClient: server.Client(),
+	})
+	if exitCode != 0 || !strings.Contains(stdout.String(), "status: authenticated") {
+		t.Fatalf("exit code = %d, output = %s", exitCode, stdout.String())
+	}
+}
+
+func TestEnvironmentProfileAndAuthStatusThroughCLI(t *testing.T) {
+	configPath := filepath.Join(t.TempDir(), "config.yaml")
+	options := app.Options{ConfigPath: configPath}
+
+	run := func(args ...string) string {
+		t.Helper()
+		var stdout bytes.Buffer
+		if exit := app.Run(context.Background(), args, &stdout, options); exit != 0 {
+			t.Fatalf("Run(%v) exit = %d, output = %s", args, exit, stdout.String())
+		}
+		return stdout.String()
+	}
+
+	added := run("env", "add", "dev", "--url", "https://tableau.example.com", "--site", "test-site")
+	if !strings.Contains(added, "status: added") || strings.Contains(added, "PAT_SECRET") {
+		t.Fatalf("add output = %s", added)
+	}
+	run("env", "default", "dev")
+	listed := run("env", "list")
+	if !strings.Contains(listed, "environments[1]{alias,default}") || !strings.Contains(listed, "dev,true") {
+		t.Fatalf("list output = %s", listed)
+	}
+	t.Setenv("TADX_DEV_PAT_NAME", "pat-name")
+	t.Setenv("TADX_DEV_PAT_SECRET", "pat-secret")
+	status := run("auth", "status")
+	if !strings.Contains(status, "status: ready") || !strings.Contains(status, "environment: dev") || strings.Contains(status, "pat-name") || strings.Contains(status, "pat-secret") {
+		t.Fatalf("auth status output = %s", status)
+	}
+}
+
+func TestNamedWorkspaceCreateListAndStatusThroughCLI(t *testing.T) {
+	root := filepath.Join(t.TempDir(), "workspace-root")
+	configPath := filepath.Join(t.TempDir(), "config.yaml")
+	options := app.Options{ConfigPath: configPath}
+	run := func(args ...string) string {
+		t.Helper()
+		var stdout bytes.Buffer
+		if exit := app.Run(context.Background(), args, &stdout, options); exit != 0 {
+			t.Fatalf("Run(%v) exit = %d, output = %s", args, exit, stdout.String())
+		}
+		return stdout.String()
+	}
+
+	created := run("workspace", "create", "development", "--path", root)
+	if !strings.Contains(created, "status: created") || strings.Contains(created, root) {
+		t.Fatalf("create output = %s", created)
+	}
+	listed := run("workspace", "list")
+	if !strings.Contains(listed, "development,true,true") {
+		t.Fatalf("list output = %s", listed)
+	}
+	status := run("workspace", "status", "--workspace", "development")
+	if !strings.Contains(status, "status: ready") || !strings.Contains(status, "name: development") || strings.Contains(status, root) {
+		t.Fatalf("status output = %s", status)
+	}
+}
+
 func TestRunPreservesCapabilityContextForSetupFailures(t *testing.T) {
 	t.Run("catalog configuration", func(t *testing.T) {
 		var stdout bytes.Buffer
@@ -54,7 +138,7 @@ func TestRunPreservesCapabilityContextForSetupFailures(t *testing.T) {
 		args      []string
 	}{
 		{name: "pull authentication", operation: "workbook.pull", args: []string{"content", "workbook", "pull", "--environment", "production", "--id", "wb-1"}},
-		{name: "publish authentication", operation: "workbook.publish", args: []string{"content", "workbook", "publish", "--environment", "production", "--artifact", "artifact", "--project-id", "project-1"}},
+		{name: "publish authentication", operation: "workbook.publish", args: []string{"content", "workbook", "publish", "--environment", "production", "--artifact", "artifacts/workbook/Finance--identity", "--project-id", "project-1"}},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			var stdout bytes.Buffer

@@ -65,7 +65,7 @@ Before broad action fan-out, freeze these shared foundation slices in order:
 4. Freeze the lineage sidecar schema, bounded traversal contract, and workbook live proof.
 5. Freeze the bounded read patterns used by resource adapters.
 6. Freeze shared publish targeting, preview, upload, and terminal result behavior.
-7. Prove an unchanged TFL/TFLX flow pull and publish round trip.
+7. Prove unchanged TFL/TFLX flow pull and publish behavior with hermetic contract tests, and provide an opt-in live lifecycle test for deployment verification.
 
 Within a group, one agent builds the group's shared dependency first.
 After that dependency is frozen, action packages fan out to agents on the shared feature branch.
@@ -85,6 +85,9 @@ Build the 21 capabilities that establish daily operator setup and prove a comple
 This group also freezes named workspace uniqueness, portable relative paths, compact and `--full` output, lineage sidecars, and unchanged TFL/TFLX round trips.
 Workbook and flow pulls capture bounded lineage automatically while keeping lineage details out of compact output.
 Flow actions do not rewrite packages, connections, credentials, schedules, linked tasks, or published datasource bindings.
+The official-source captures and hermetic tests establish contract-verified project, flow, and lineage evidence.
+They do not establish live-verified evidence.
+Do not claim the build-tagged flow or lineage live tests have run until their opt-in deployment checks complete.
 
 The build agents perform task-level review, focused tests, contract tests, and assigned integration tests.
 They stop after those checks pass.

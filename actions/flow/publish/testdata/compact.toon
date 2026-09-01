@@ -1,0 +1,22 @@
+plan:
+  mode: preview
+  operation: flow.publish
+  artifact_path: artifacts/flow/Daily
+  artifact_fingerprint: "sha256:abc"
+  filename: Daily.tflx
+  flow_name: Daily
+  target:
+    environment: dev
+    site: sandbox
+    project_luid: project-1
+    project_path: Ops
+  overwrite: false
+  substeps[2]: resolve exact destination,publish flow
+applied: true
+result:
+  status: succeeded
+  flow_luid: flow-1
+  flow_name: Daily
+  project_luid: project-1
+details: "--full"
+help[1]: tadx content flow get --id flow-1

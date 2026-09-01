@@ -1,0 +1,108 @@
+package list
+
+const fullTagsPerFlowLimit = 50
+
+// Input selects one flow page.
+type Input struct {
+	Environment, Site, Cursor, Name, OwnerName, ProjectLUID, ProjectName string
+	Limit                                                                int
+}
+
+// PageRequest is the action-owned request.
+type PageRequest struct {
+	PageNumber, PageSize                      int
+	Name, OwnerName, ProjectLUID, ProjectName string
+}
+
+// Flow is one complete lifecycle projection.
+type Flow struct {
+	LUID        string   `json:"luid"`
+	Name        string   `json:"name"`
+	ProjectLUID string   `json:"project_luid"`
+	ProjectName string   `json:"project_name,omitempty"`
+	FileType    string   `json:"file_type,omitempty"`
+	UpdatedAt   string   `json:"updated_at,omitempty"`
+	Description string   `json:"description,omitempty"`
+	OwnerLUID   string   `json:"owner_luid,omitempty"`
+	CreatedAt   string   `json:"created_at,omitempty"`
+	Tags        []string `json:"tags,omitempty"`
+	TagsOmitted int      `json:"tags_omitted,omitempty"`
+}
+
+// Page is one complete reader page.
+type Page struct {
+	Number, Size, Total int
+	Flows               []Flow
+	RequestID           string
+}
+
+// OutputPage is continuation metadata.
+type OutputPage struct {
+	Returned   int    `json:"returned"`
+	Total      int    `json:"total"`
+	Limit      int    `json:"limit"`
+	NextCursor string `json:"next_cursor,omitempty"`
+}
+
+// Output retains details before projection.
+type Output struct {
+	Status, Environment, Site string
+	Page                      OutputPage
+	Flows                     []Flow
+	RequestID                 string
+	Help                      []string
+}
+
+// CompactFlow identifies one lifecycle resource.
+type CompactFlow struct {
+	LUID        string `json:"luid"`
+	Name        string `json:"name"`
+	ProjectLUID string `json:"project_luid"`
+	ProjectName string `json:"project_name,omitempty"`
+	FileType    string `json:"file_type,omitempty"`
+	UpdatedAt   string `json:"updated_at,omitempty"`
+}
+
+// CompactResult is the default projection.
+type CompactResult struct {
+	Status      string        `json:"status"`
+	Environment string        `json:"environment,omitempty"`
+	Site        string        `json:"site,omitempty"`
+	Page        OutputPage    `json:"page"`
+	Flows       []CompactFlow `json:"flows"`
+	Details     string        `json:"details"`
+	Help        []string      `json:"help"`
+}
+
+// FullResult is the current expanded page.
+type FullResult struct {
+	Status      string     `json:"status"`
+	Environment string     `json:"environment,omitempty"`
+	Site        string     `json:"site,omitempty"`
+	Page        OutputPage `json:"page"`
+	Flows       []Flow     `json:"flows"`
+	RequestID   string     `json:"tableau_request_id,omitempty"`
+	Help        []string   `json:"help"`
+}
+
+// CompactOutput returns selected fields.
+func (o Output) CompactOutput() any {
+	items := make([]CompactFlow, len(o.Flows))
+	for i, item := range o.Flows {
+		items[i] = CompactFlow{LUID: item.LUID, Name: item.Name, ProjectLUID: item.ProjectLUID, ProjectName: item.ProjectName, FileType: item.FileType, UpdatedAt: item.UpdatedAt}
+	}
+	return CompactResult{Status: o.Status, Environment: o.Environment, Site: o.Site, Page: o.Page, Flows: items, Details: "--full", Help: o.Help}
+}
+
+// FullOutput returns all bounded current-page fields.
+func (o Output) FullOutput() any {
+	flows := append([]Flow(nil), o.Flows...)
+	for index := range flows {
+		flows[index].Tags = append([]string(nil), flows[index].Tags...)
+		if len(flows[index].Tags) > fullTagsPerFlowLimit {
+			flows[index].TagsOmitted = len(flows[index].Tags) - fullTagsPerFlowLimit
+			flows[index].Tags = flows[index].Tags[:fullTagsPerFlowLimit]
+		}
+	}
+	return FullResult{Status: o.Status, Environment: o.Environment, Site: o.Site, Page: o.Page, Flows: flows, RequestID: o.RequestID, Help: o.Help}
+}

@@ -1,0 +1,10 @@
+status: found
+environment: dev
+site: sandbox
+project:
+  luid: project-1
+  name: Ops
+  path: Department/Ops
+  parent_luid: project-root
+details: "--full"
+help[1]: tadx content project list

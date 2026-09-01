@@ -48,6 +48,83 @@ func TestWorkbookManagerWritesCanonicalArtifactAndProvenance(t *testing.T) {
 	}
 }
 
+func TestWorkbookManagerPersistsBoundedLineageBesideUnchangedNativePayload(t *testing.T) {
+	workspace := createWorkspace(t)
+	manager := artifact.NewWorkbookManager(func() time.Time { return time.Date(2026, 9, 1, 12, 0, 0, 0, time.UTC) })
+	lineage := artifact.LineageDocument{
+		Complete: true, Direction: "both", Depth: 1,
+		Nodes: []artifact.LineageNode{
+			{MetadataID: "meta-wb-1", Kind: "workbook", RESTLUID: "wb-1", Name: "Finance"},
+			{MetadataID: "meta-ds-1", Kind: "published_datasource", RESTLUID: "ds-1", Name: "Sales"},
+		},
+		Edges: []artifact.LineageEdge{{FromMetadataID: "meta-ds-1", ToMetadataID: "meta-wb-1", Relationship: "upstream"}},
+	}
+	native := []byte("native-package-must-not-change")
+	result, err := manager.Pull(context.Background(), artifact.WorkbookPull{
+		Workspace: workspace, Filename: "Finance.twbx", Content: native, Metadata: validMetadata("Finance", "wb-1"),
+		Lineage: lineage, LineageCountsKnown: true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	stored, err := os.ReadFile(result.CanonicalPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(stored, native) {
+		t.Fatalf("native workbook changed: %q", stored)
+	}
+	lineageData, err := os.ReadFile(filepath.Join(result.ArtifactPath, "lineage.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var storedLineage artifact.LineageDocument
+	if err := json.Unmarshal(lineageData, &storedLineage); err != nil {
+		t.Fatal(err)
+	}
+	if !storedLineage.Complete || len(storedLineage.Nodes) != 2 || len(storedLineage.Edges) != 1 {
+		t.Fatalf("lineage = %#v", storedLineage)
+	}
+	metadata, err := manager.ReadMetadata(context.Background(), result.ArtifactPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if metadata.LineageSidecar != "lineage.json" || metadata.LineageStatus != artifact.LineageStatusComplete || metadata.LineageNodeCount == nil || *metadata.LineageNodeCount != 2 || metadata.LineageEdgeCount == nil || *metadata.LineageEdgeCount != 1 {
+		t.Fatalf("metadata = %#v", metadata)
+	}
+	if result.LineagePath != filepath.Join(result.ArtifactPath, "lineage.json") || result.LineageStatus != artifact.LineageStatusComplete {
+		t.Fatalf("result = %#v", result)
+	}
+}
+
+func TestWorkbookManagerPersistsUnavailableLineageWithoutClaimingZeroCounts(t *testing.T) {
+	workspace := createWorkspace(t)
+	result, err := artifact.NewWorkbookManager(time.Now).Pull(context.Background(), artifact.WorkbookPull{
+		Workspace: workspace, Filename: "Finance.twb", Content: []byte("native"), Metadata: validMetadata("Finance", "wb-1"),
+		Lineage: artifact.LineageDocument{Complete: false, Direction: "both", Depth: 1, Nodes: []artifact.LineageNode{}, Edges: []artifact.LineageEdge{}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	metadataData, err := os.ReadFile(filepath.Join(result.ArtifactPath, "metadata.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var fields map[string]json.RawMessage
+	if err := json.Unmarshal(metadataData, &fields); err != nil {
+		t.Fatal(err)
+	}
+	if string(fields["lineage_status"]) != `"unavailable"` || string(fields["lineage_sidecar"]) != `"lineage.json"` {
+		t.Fatalf("lineage fields = %s", metadataData)
+	}
+	if _, exists := fields["lineage_node_count"]; exists {
+		t.Fatalf("unknown lineage_node_count persisted: %s", metadataData)
+	}
+	if _, exists := fields["lineage_edge_count"]; exists {
+		t.Fatalf("unknown lineage_edge_count persisted: %s", metadataData)
+	}
+}
+
 func TestWorkbookManagerRecordsPublishedDatasourcePortability(t *testing.T) {
 	workspace := createWorkspace(t)
 	manager := artifact.NewWorkbookManager(time.Now)

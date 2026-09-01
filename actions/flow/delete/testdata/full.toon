@@ -1,0 +1,16 @@
+plan:
+  mode: preview
+  operation: flow.delete
+  environment: dev
+  site: sandbox
+  target:
+    luid: flow-1
+    name: Daily
+    project_luid: project-1
+    project_path: Ops
+applied: true
+result:
+  status: succeeded
+  flow_luid: flow-1
+  tableau_request_id: request-1
+help[1]: tadx content flow list

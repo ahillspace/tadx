@@ -5,6 +5,9 @@ import "github.com/ahillspace/tadx/internal/identity"
 const (
 	maxFullPublishedDatasourceDetails = 50
 	maxOutputWarnings                 = 20
+	maxLineageNodes                   = 500
+	maxLineageEdges                   = 1000
+	maxLineageWarningBytes            = 512
 )
 
 // Input selects one remote workbook and explicit existing workspace.
@@ -36,6 +39,39 @@ type Download struct {
 	Filename         string
 	Content          []byte
 	TableauRequestID string
+}
+
+// LineageRequest selects the automatic bounded workbook lineage capture.
+type LineageRequest struct {
+	RESTLUID  string
+	Direction string
+	Depth     int
+}
+
+// LineageNode preserves distinct Metadata and REST identities.
+type LineageNode struct {
+	MetadataID string `json:"metadata_id"`
+	Kind       string `json:"kind"`
+	RESTLUID   string `json:"rest_luid,omitempty"`
+	Name       string `json:"name,omitempty"`
+}
+
+// LineageEdge is one factual directed relationship.
+type LineageEdge struct {
+	FromMetadataID string `json:"from_metadata_id"`
+	ToMetadataID   string `json:"to_metadata_id"`
+	Relationship   string `json:"relationship"`
+}
+
+// LineageCapture is one bounded best-effort workbook graph.
+type LineageCapture struct {
+	RootMetadataID string        `json:"root_metadata_id,omitempty"`
+	Complete       bool          `json:"complete"`
+	Direction      string        `json:"direction"`
+	Depth          int           `json:"depth"`
+	Nodes          []LineageNode `json:"nodes"`
+	Edges          []LineageEdge `json:"edges"`
+	Warnings       []string      `json:"warnings,omitempty"`
 }
 
 // PublishedDatasource is one direct dependency discovered through authoritative metadata.
@@ -108,6 +144,8 @@ type Artifact struct {
 	Portability          string
 	PublishedDatasources []PublishedDatasourceRef
 	DependenciesAcquired bool
+	Lineage              LineageCapture
+	LineageCountsKnown   bool
 	Overwrite            bool
 	TableauRequestID     string
 }
@@ -120,6 +158,10 @@ type ArtifactResult struct {
 	Portability          string                     `json:"portability,omitempty"`
 	PublishedDatasources []PublishedDatasourceRef   `json:"published_datasources,omitempty"`
 	DependenciesAcquired bool                       `json:"dependencies_acquired"`
+	LineagePath          string                     `json:"lineage_path,omitempty"`
+	LineageStatus        string                     `json:"lineage_status,omitempty"`
+	LineageNodeCount     *int                       `json:"lineage_node_count,omitempty"`
+	LineageEdgeCount     *int                       `json:"lineage_edge_count,omitempty"`
 	Dependencies         []DependencyArtifactResult `json:"-"`
 	Warnings             []string                   `json:"-"`
 }
@@ -170,6 +212,10 @@ type FullArtifact struct {
 	PublishedDatasources        []PublishedDatasourceRef `json:"published_datasources,omitempty"`
 	PublishedDatasourcesOmitted int                      `json:"published_datasources_omitted,omitempty"`
 	DependenciesAcquired        bool                     `json:"dependencies_acquired"`
+	LineagePath                 string                   `json:"lineage_path,omitempty"`
+	LineageStatus               string                   `json:"lineage_status,omitempty"`
+	LineageNodeCount            *int                     `json:"lineage_node_count,omitempty"`
+	LineageEdgeCount            *int                     `json:"lineage_edge_count,omitempty"`
 }
 
 // FullResult is the bounded expanded workbook.pull response.
@@ -222,6 +268,8 @@ func (o Output) FullOutput() any {
 			PublishedDatasourceCount: knownPublishedDatasourceCount(o.Artifact),
 			PublishedDatasources:     publishedDatasources, PublishedDatasourcesOmitted: publishedDatasourcesOmitted,
 			DependenciesAcquired: o.Artifact.DependenciesAcquired,
+			LineagePath:          o.Artifact.LineagePath, LineageStatus: o.Artifact.LineageStatus,
+			LineageNodeCount: o.Artifact.LineageNodeCount, LineageEdgeCount: o.Artifact.LineageEdgeCount,
 		},
 		Warnings: warnings, WarningsOmitted: warningsOmitted,
 		RequestID: o.RequestID, Help: o.Help,

@@ -19,14 +19,17 @@ import (
 type reader struct {
 	workbook                pull.Workbook
 	download                pull.Download
+	lineage                 pull.LineageCapture
 	publishedDatasources    []pull.PublishedDatasource
 	datasourceDownloads     map[string]pull.DatasourceDownload
 	resolveErr              error
 	downloadErr             error
+	lineageErr              error
 	publishedDatasourcesErr error
 	datasourceDownloadErr   error
 	resolveCalls            int
 	downloadCalls           int
+	lineageRequests         []pull.LineageRequest
 	referenceCalls          int
 	datasourceCalls         []string
 }
@@ -39,6 +42,18 @@ func (r *reader) ResolveWorkbook(context.Context, identity.Selector) (pull.Workb
 func (r *reader) DownloadWorkbook(context.Context, string, *bool) (pull.Download, error) {
 	r.downloadCalls++
 	return r.download, r.downloadErr
+}
+
+func (r *reader) CaptureWorkbookLineage(_ context.Context, request pull.LineageRequest) (pull.LineageCapture, error) {
+	r.lineageRequests = append(r.lineageRequests, request)
+	if r.lineage.RootMetadataID == "" && !r.lineage.Complete && r.lineage.Direction == "" && r.lineage.Depth == 0 && len(r.lineage.Nodes) == 0 && len(r.lineage.Edges) == 0 && len(r.lineage.Warnings) == 0 && r.lineageErr == nil {
+		return pull.LineageCapture{
+			RootMetadataID: "meta-" + request.RESTLUID,
+			Complete:       true,
+			Nodes:          []pull.LineageNode{{MetadataID: "meta-" + request.RESTLUID, Kind: "workbook", RESTLUID: request.RESTLUID}},
+		}, nil
+	}
+	return r.lineage, r.lineageErr
 }
 
 func (r *reader) PublishedDatasources(context.Context, string) ([]pull.PublishedDatasource, error) {
@@ -131,6 +146,76 @@ func TestActionRecordsPortableWorkbookWithoutDatasourceDownloads(t *testing.T) {
 	}
 }
 
+func TestActionCapturesBoundedWorkbookLineageAutomatically(t *testing.T) {
+	r := &reader{
+		workbook: pull.Workbook{LUID: "wb-1", Name: "Finance"},
+		download: pull.Download{Filename: "Finance.twbx", Content: []byte("native-workbook")},
+		lineage: pull.LineageCapture{
+			RootMetadataID: "meta-wb-1",
+			Complete:       true,
+			Nodes: []pull.LineageNode{
+				{MetadataID: "meta-wb-1", Kind: "workbook", RESTLUID: "wb-1", Name: "Finance"},
+				{MetadataID: "meta-ds-1", Kind: "published_datasource", RESTLUID: "ds-1", Name: "Sales"},
+			},
+			Edges: []pull.LineageEdge{{FromMetadataID: "meta-ds-1", ToMetadataID: "meta-wb-1", Relationship: "upstream"}},
+		},
+	}
+	w := &writer{result: pull.ArtifactResult{Path: "artifact", BaselineFingerprint: "sha256:workbook", LineagePath: "artifact/lineage.json"}}
+
+	result, err := pull.New(r, w).Execute(context.Background(), pull.Input{
+		Environment: "dev", Site: "test-site", SiteLUID: "site-1", ServerOrigin: "https://tableau.example.com",
+		Workspace: "workspace", Selector: identity.Selector{LUID: "wb-1"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(r.lineageRequests) != 1 || r.lineageRequests[0] != (pull.LineageRequest{RESTLUID: "wb-1", Direction: "both", Depth: 1}) {
+		t.Fatalf("lineage requests = %#v", r.lineageRequests)
+	}
+	if !w.input.Lineage.Complete || !w.input.LineageCountsKnown || len(w.input.Lineage.Nodes) != 2 || len(w.input.Lineage.Edges) != 1 {
+		t.Fatalf("workbook lineage artifact input = %#v", w.input)
+	}
+	if result.Artifact.LineageStatus != "complete" || result.Artifact.LineageNodeCount == nil || *result.Artifact.LineageNodeCount != 2 || result.Artifact.LineageEdgeCount == nil || *result.Artifact.LineageEdgeCount != 1 {
+		t.Fatalf("artifact lineage result = %#v", result.Artifact)
+	}
+	var compact bytes.Buffer
+	if err := output.Render(&compact, result); err != nil {
+		t.Fatal(err)
+	}
+	for _, omitted := range []string{"lineage", "meta-wb-1", "meta-ds-1"} {
+		if strings.Contains(strings.ToLower(compact.String()), omitted) {
+			t.Fatalf("compact output exposed lineage detail %q: %s", omitted, compact.String())
+		}
+	}
+}
+
+func TestActionPreservesDownloadWhenLineageCaptureIsUnavailable(t *testing.T) {
+	r := &reader{
+		workbook:   pull.Workbook{LUID: "wb-1", Name: "Finance"},
+		download:   pull.Download{Filename: "Finance.twbx", Content: []byte("native-workbook")},
+		lineageErr: errors.New("credential secret and unbounded upstream diagnostic"),
+	}
+	w := &writer{result: pull.ArtifactResult{Path: "artifact", BaselineFingerprint: "sha256:workbook", LineagePath: "artifact/lineage.json"}}
+
+	result, err := pull.New(r, w).Execute(context.Background(), pull.Input{
+		Environment: "dev", Site: "test-site", SiteLUID: "site-1", ServerOrigin: "https://tableau.example.com",
+		Workspace: "workspace", Selector: identity.Selector{LUID: "wb-1"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if w.calls != 1 || w.input.Lineage.Complete || w.input.LineageCountsKnown || w.input.Lineage.Direction != "both" || w.input.Lineage.Depth != 1 {
+		t.Fatalf("workbook lineage artifact input = %#v", w.input)
+	}
+	if result.Artifact.LineageStatus != "unavailable" || result.Artifact.LineageNodeCount != nil || result.Artifact.LineageEdgeCount != nil {
+		t.Fatalf("artifact lineage result = %#v", result.Artifact)
+	}
+	joined := strings.Join(result.Warnings, "\n")
+	if !strings.Contains(joined, "Lineage capture was unavailable") || strings.Contains(joined, "credential secret") || strings.Contains(joined, "unbounded") {
+		t.Fatalf("warnings = %#v", result.Warnings)
+	}
+}
+
 func TestActionAcquiresUniquePublishedDatasourcesWhenRequested(t *testing.T) {
 	r := &reader{
 		workbook: pull.Workbook{LUID: "wb-1", Name: "Finance"},
@@ -192,7 +277,7 @@ func TestActionLeavesPortabilityUnknownWhenOptionalDetectionIsIncomplete(t *test
 	if err != nil {
 		t.Fatal(err)
 	}
-	if result.Artifact.Portability != "unknown" || len(result.Warnings) != 1 || !strings.Contains(result.Warnings[0], "portability remains unknown") || !strings.Contains(result.Warnings[0], "metadata indexing incomplete") {
+	if result.Artifact.Portability != "unknown" || len(result.Warnings) != 1 || !strings.Contains(result.Warnings[0], "portability remains unknown") || strings.Contains(result.Warnings[0], "metadata indexing incomplete") {
 		t.Fatalf("result = %#v", result)
 	}
 	if w.calls != 1 || w.input.Portability != "unknown" {
@@ -306,6 +391,7 @@ func TestActionGoldenOutput(t *testing.T) {
 		// Public output must project them relative to the selected workspace.
 		Path:                filepath.FromSlash("C:/workspace/artifacts/workbook/Finance"),
 		CanonicalPath:       filepath.FromSlash("C:/workspace/artifacts/workbook/Finance/Finance.twbx"),
+		LineagePath:         filepath.FromSlash("C:/workspace/artifacts/workbook/Finance/lineage.json"),
 		BaselineFingerprint: "sha256:abc",
 		Warnings:            []string{"existing clean artifact replaced"},
 	}, datasourceResults: map[string]pull.DependencyArtifactResult{

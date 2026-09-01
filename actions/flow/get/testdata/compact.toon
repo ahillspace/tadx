@@ -1,0 +1,12 @@
+status: found
+environment: dev
+site: sandbox
+flow:
+  luid: flow-1
+  name: Daily
+  project_luid: project-1
+  project_path: Ops
+  file_type: tflx
+  updated_at: "2026-09-01T00:00:00Z"
+details: "--full"
+help[1]: tadx content flow pull --id flow-1

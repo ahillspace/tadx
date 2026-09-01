@@ -1,0 +1,8 @@
+status: ready
+environment: production
+server_url: "https://example.test"
+site_content_url: marketing
+pat_name_present: true
+pat_secret_present: true
+details: "--full"
+help[1]: tadx auth check --environment <alias>

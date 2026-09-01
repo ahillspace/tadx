@@ -1,0 +1,12 @@
+status: listed
+environment: dev
+site: sandbox
+page:
+  returned: 1
+  total: 3
+  limit: 1
+  next_cursor: next-page
+projects[1]{luid,name,parent_luid}:
+  project-1,Ops,project-root
+details: "--full"
+help[1]: tadx content project get --id <project-luid>
