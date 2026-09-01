@@ -49,6 +49,11 @@ func moveWithOperations(ctx context.Context, request MoveRequest, operations mov
 	if sameFilesystemPath(sourceRoot, destinationRoot) {
 		return Item{}, errors.New("source and destination workspaces must differ")
 	}
+	release, err := lockWorkspaces(sourceRoot, destinationRoot)
+	if err != nil {
+		return Item{}, err
+	}
+	defer release()
 	source, err := Resolve(ctx, sourceRoot, request.Selector)
 	if err != nil {
 		return Item{}, err
@@ -83,10 +88,6 @@ func moveWithOperations(ctx context.Context, request MoveRequest, operations mov
 		return Item{}, errors.New("source artifact changed while the move was staged")
 	}
 	sourcePath := filepath.Join(sourceRoot, filepath.FromSlash(source.Path))
-	currentSource, err = Resolve(ctx, sourceRoot, Selector{Path: source.Path, Kind: source.Kind, LUID: source.LUID})
-	if err != nil || !sameArtifactSnapshot(currentSource, source) {
-		return Item{}, errors.New("source artifact changed before the move committed")
-	}
 	tombstone, err := os.MkdirTemp(filepath.Dir(sourcePath), ".tadx-move-source-")
 	if err != nil {
 		return Item{}, err

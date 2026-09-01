@@ -2,7 +2,6 @@ package app
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"os"
 	"sort"
@@ -94,21 +93,20 @@ func (s configProfileStore) Get(_ context.Context, alias string) (profileget.Pro
 }
 
 func (s configProfileStore) Add(_ context.Context, input profileadd.Profile) (profileadd.Profile, error) {
-	configuration, err := s.loadOrNew()
+	updated, err := config.Update(*s.path, true, func(configuration config.Config) (config.Config, error) {
+		if _, exists := configuration.Environments[input.Alias]; exists {
+			return config.Config{}, fmt.Errorf("environment %q already exists", input.Alias)
+		}
+		if configuration.Environments == nil {
+			configuration.Environments = make(map[string]config.Environment)
+		}
+		configuration.Environments[input.Alias] = config.Environment{URL: input.ServerURL, SiteContentURL: input.SiteContentURL, APIVersion: input.APIVersion, Auth: config.Auth{Type: config.AuthTypePAT, PATNameEnv: input.PATNameEnv, PATSecretEnv: input.PATSecretEnv}, DefaultWorkspace: input.DefaultWorkspace}
+		return configuration, nil
+	})
 	if err != nil {
 		return profileadd.Profile{}, err
 	}
-	if _, exists := configuration.Environments[input.Alias]; exists {
-		return profileadd.Profile{}, fmt.Errorf("environment %q already exists", input.Alias)
-	}
-	if configuration.Environments == nil {
-		configuration.Environments = make(map[string]config.Environment)
-	}
-	configuration.Environments[input.Alias] = config.Environment{URL: input.ServerURL, SiteContentURL: input.SiteContentURL, APIVersion: input.APIVersion, Auth: config.Auth{Type: config.AuthTypePAT, PATNameEnv: input.PATNameEnv, PATSecretEnv: input.PATSecretEnv}, DefaultWorkspace: input.DefaultWorkspace}
-	if err := config.Save(*s.path, configuration); err != nil {
-		return profileadd.Profile{}, err
-	}
-	environment, err := configuration.ResolveEnvironment(input.Alias)
+	environment, err := updated.ResolveEnvironment(input.Alias)
 	if err != nil {
 		return profileadd.Profile{}, err
 	}
@@ -116,68 +114,72 @@ func (s configProfileStore) Add(_ context.Context, input profileadd.Profile) (pr
 }
 
 func (s configProfileStore) Update(_ context.Context, alias string, patch profileupdate.Patch) (profileupdate.UpdateResult, error) {
-	configuration, err := config.Load(*s.path)
+	var changed []string
+	updated, err := config.Update(*s.path, false, func(configuration config.Config) (config.Config, error) {
+		environment, exists := configuration.Environments[alias]
+		if !exists {
+			return config.Config{}, fmt.Errorf("environment %q does not exist", alias)
+		}
+		changed = make([]string, 0, 6)
+		apply := func(field profileupdate.StringField, name string, target *string) {
+			if field.Set && *target != field.Value {
+				*target = field.Value
+				changed = append(changed, name)
+			}
+		}
+		apply(patch.ServerURL, "server_url", &environment.URL)
+		apply(patch.SiteContentURL, "site_content_url", &environment.SiteContentURL)
+		apply(patch.APIVersion, "api_version", &environment.APIVersion)
+		apply(patch.PATNameEnv, "pat_name_env", &environment.Auth.PATNameEnv)
+		apply(patch.PATSecretEnv, "pat_secret_env", &environment.Auth.PATSecretEnv)
+		apply(patch.DefaultWorkspace, "default_workspace", &environment.DefaultWorkspace)
+		if len(changed) == 0 {
+			return config.Config{}, config.ErrNoChange
+		}
+		configuration.Environments[alias] = environment
+		return configuration, nil
+	})
 	if err != nil {
 		return profileupdate.UpdateResult{}, err
 	}
-	environment, exists := configuration.Environments[alias]
-	if !exists {
-		return profileupdate.UpdateResult{}, fmt.Errorf("environment %q does not exist", alias)
-	}
-	changed := make([]string, 0, 6)
-	apply := func(field profileupdate.StringField, name string, target *string) {
-		if field.Set && *target != field.Value {
-			*target = field.Value
-			changed = append(changed, name)
-		}
-	}
-	apply(patch.ServerURL, "server_url", &environment.URL)
-	apply(patch.SiteContentURL, "site_content_url", &environment.SiteContentURL)
-	apply(patch.APIVersion, "api_version", &environment.APIVersion)
-	apply(patch.PATNameEnv, "pat_name_env", &environment.Auth.PATNameEnv)
-	apply(patch.PATSecretEnv, "pat_secret_env", &environment.Auth.PATSecretEnv)
-	apply(patch.DefaultWorkspace, "default_workspace", &environment.DefaultWorkspace)
-	configuration.Environments[alias] = environment
-	if len(changed) > 0 {
-		if err := config.Save(*s.path, configuration); err != nil {
-			return profileupdate.UpdateResult{}, err
-		}
-	}
-	effective, err := configuration.ResolveEnvironment(alias)
+	effective, err := updated.ResolveEnvironment(alias)
 	if err != nil {
 		return profileupdate.UpdateResult{}, err
 	}
-	return profileupdate.UpdateResult{Profile: profileupdate.Profile{Alias: effective.Alias, Default: effective.Alias == configuration.DefaultEnvironment, ServerURL: effective.URL, SiteContentURL: effective.SiteContentURL, APIVersion: effective.APIVersion, AuthType: effective.Auth.Type, PATNameEnv: effective.Auth.PATNameEnv, PATSecretEnv: effective.Auth.PATSecretEnv, DefaultWorkspace: effective.DefaultWorkspace}, ChangedFields: changed}, nil
+	return profileupdate.UpdateResult{Profile: profileupdate.Profile{Alias: effective.Alias, Default: effective.Alias == updated.DefaultEnvironment, ServerURL: effective.URL, SiteContentURL: effective.SiteContentURL, APIVersion: effective.APIVersion, AuthType: effective.Auth.Type, PATNameEnv: effective.Auth.PATNameEnv, PATSecretEnv: effective.Auth.PATSecretEnv, DefaultWorkspace: effective.DefaultWorkspace}, ChangedFields: changed}, nil
 }
 
 func (s configProfileStore) Remove(_ context.Context, alias string) error {
-	configuration, err := config.Load(*s.path)
-	if err != nil {
-		return err
-	}
-	if _, exists := configuration.Environments[alias]; !exists {
-		return fmt.Errorf("environment %q does not exist", alias)
-	}
-	if configuration.DefaultEnvironment == alias {
-		return fmt.Errorf("environment %q is the default and cannot be removed", alias)
-	}
-	delete(configuration.Environments, alias)
-	return config.Save(*s.path, configuration)
+	_, err := config.Update(*s.path, false, func(configuration config.Config) (config.Config, error) {
+		if _, exists := configuration.Environments[alias]; !exists {
+			return config.Config{}, fmt.Errorf("environment %q does not exist", alias)
+		}
+		if configuration.DefaultEnvironment == alias {
+			return config.Config{}, fmt.Errorf("environment %q is the default and cannot be removed", alias)
+		}
+		delete(configuration.Environments, alias)
+		return configuration, nil
+	})
+	return err
 }
 
 func (s configProfileStore) SetDefault(_ context.Context, alias string) (bool, error) {
-	configuration, err := config.Load(*s.path)
+	changed := false
+	_, err := config.Update(*s.path, false, func(configuration config.Config) (config.Config, error) {
+		if _, exists := configuration.Environments[alias]; !exists {
+			return config.Config{}, fmt.Errorf("environment %q does not exist", alias)
+		}
+		if configuration.DefaultEnvironment == alias {
+			return config.Config{}, config.ErrNoChange
+		}
+		configuration.DefaultEnvironment = alias
+		changed = true
+		return configuration, nil
+	})
 	if err != nil {
 		return false, err
 	}
-	if _, exists := configuration.Environments[alias]; !exists {
-		return false, fmt.Errorf("environment %q does not exist", alias)
-	}
-	if configuration.DefaultEnvironment == alias {
-		return false, nil
-	}
-	configuration.DefaultEnvironment = alias
-	return true, config.Save(*s.path, configuration)
+	return changed, nil
 }
 
 func (s configProfileStore) resolve(alias string) (config.Config, config.Environment, error) {
@@ -187,17 +189,6 @@ func (s configProfileStore) resolve(alias string) (config.Config, config.Environ
 	}
 	environment, err := configuration.ResolveEnvironment(alias)
 	return configuration, environment, err
-}
-
-func (s configProfileStore) loadOrNew() (config.Config, error) {
-	configuration, err := config.Load(*s.path)
-	if err == nil {
-		return configuration, nil
-	}
-	if !errors.Is(err, os.ErrNotExist) {
-		return config.Config{}, err
-	}
-	return config.Config{Version: config.CurrentVersion, Environments: make(map[string]config.Environment), Workspaces: make(map[string]config.WorkspaceRegistration)}, nil
 }
 
 func listProfile(configuration config.Config, environment config.Environment) profilelist.Profile {

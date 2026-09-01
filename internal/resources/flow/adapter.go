@@ -105,6 +105,7 @@ func (a *Adapter) ResolveFlow(ctx context.Context, selector identity.Selector) (
 	}
 	byLUID := make(map[string]Flow)
 	seen := make(map[string]tableauflow.Flow)
+	expectedTotal, expectedSize := -1, -1
 	for number := 1; number <= 1000; number++ {
 		page, err := a.client.List(ctx, tableauflow.ListRequest{PageNumber: number, PageSize: resolutionPageSize, Name: selector.Name})
 		if err != nil {
@@ -112,6 +113,13 @@ func (a *Adapter) ResolveFlow(ctx context.Context, selector identity.Selector) (
 		}
 		if err := validatePage(page, number, resolutionPageSize); err != nil {
 			return Flow{}, err
+		}
+		if expectedTotal < 0 {
+			expectedTotal, expectedSize = page.Total, page.Size
+		} else if page.Total != expectedTotal {
+			return Flow{}, fmt.Errorf("flow pagination total changed from %d to %d", expectedTotal, page.Total)
+		} else if page.Size != expectedSize {
+			return Flow{}, fmt.Errorf("flow pagination size changed from %d to %d", expectedSize, page.Size)
 		}
 		for _, item := range page.Items {
 			if item.Name != selector.Name {
@@ -174,6 +182,7 @@ func (a *Adapter) FindFlows(ctx context.Context, name, projectLUID string) ([]Fl
 	}
 	seen := make(map[string]tableauflow.Flow)
 	matches := make(map[string]Flow)
+	expectedTotal, expectedSize := -1, -1
 	for number := 1; number <= 1000; number++ {
 		page, err := a.client.List(ctx, tableauflow.ListRequest{PageNumber: number, PageSize: resolutionPageSize, Name: name, ProjectLUID: projectLUID})
 		if err != nil {
@@ -181,6 +190,13 @@ func (a *Adapter) FindFlows(ctx context.Context, name, projectLUID string) ([]Fl
 		}
 		if err := validatePage(page, number, resolutionPageSize); err != nil {
 			return nil, err
+		}
+		if expectedTotal < 0 {
+			expectedTotal, expectedSize = page.Total, page.Size
+		} else if page.Total != expectedTotal {
+			return nil, fmt.Errorf("flow pagination total changed from %d to %d", expectedTotal, page.Total)
+		} else if page.Size != expectedSize {
+			return nil, fmt.Errorf("flow pagination size changed from %d to %d", expectedSize, page.Size)
 		}
 		for _, item := range page.Items {
 			if err := recordFlow(seen, item); err != nil {

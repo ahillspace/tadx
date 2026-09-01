@@ -8,7 +8,8 @@ import (
 	tableauflow "github.com/ahillspace/tadx/internal/tableau/flow"
 )
 
-// MutationClient is the narrow docs-only flow mutation seam.
+// MutationClient is the narrow flow mutation seam, now covered by a live
+// contract test (internal/tableau/flow live_contract_test.go).
 type MutationClient interface {
 	Prepare(context.Context, tableauflow.PublishRequest) (tableauflow.PreparedPublish, error)
 	Move(context.Context, string, string) (tableauflow.MutationResult, error)

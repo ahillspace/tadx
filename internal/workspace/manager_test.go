@@ -36,7 +36,7 @@ func TestManagerCreatesAndResolvesNamedWorkspace(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if resolved.Name != "Development" || resolved.ID != created.ID || resolved.Root != workspaceRoot {
+	if resolved.Name != "Development" || resolved.ID != created.ID || resolved.Root != created.Root {
 		t.Fatalf("resolved = %#v", resolved)
 	}
 }

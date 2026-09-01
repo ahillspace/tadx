@@ -46,3 +46,14 @@ The move fails on a destination collision or any concurrent payload, metadata, o
 `workspace.artifact.delete` previews one exact local deletion and requires `--apply` to perform it.
 A dirty artifact also requires `--force`, and the artifact is revalidated atomically before removal.
 Remote content deletion remains a separate resource action.
+
+## Breaking changes
+
+Named workspaces change two previously accepted invocations.
+Update existing scripts before upgrading.
+
+`--workspace` now takes a logical registry name, not a filesystem path.
+A directory path passed to `--workspace` no longer resolves to that directory; register the root once with `tadx workspace create <name> --path <root>` and pass `<name>` thereafter.
+
+`content workbook publish --artifact` now requires a workspace-relative managed path such as `artifacts/workbook/<artifact-directory>`.
+It no longer accepts a bare directory or a canonical payload path; absolute selectors, parent traversal, and backslash-delimited selectors are rejected.

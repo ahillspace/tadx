@@ -4,8 +4,6 @@ package workspace
 import (
 	"context"
 	"errors"
-	"path/filepath"
-	"strings"
 
 	artifactdelete "github.com/ahillspace/tadx/actions/workspace/artifact/delete"
 	workspacecreate "github.com/ahillspace/tadx/actions/workspace/create"
@@ -13,6 +11,7 @@ import (
 	workspacemove "github.com/ahillspace/tadx/actions/workspace/move"
 	workspacestatus "github.com/ahillspace/tadx/actions/workspace/status"
 	"github.com/ahillspace/tadx/internal/cli/clierr"
+	"github.com/ahillspace/tadx/internal/pathspec"
 	"github.com/spf13/cobra"
 )
 
@@ -182,8 +181,7 @@ func selectorFlags(command *cobra.Command, path, kind, luid *string) {
 
 func validateSelector(operation, path, kind, luid string) error {
 	if path != "" {
-		clean := filepath.Clean(path)
-		if filepath.IsAbs(path) || clean == ".." || strings.HasPrefix(clean, ".."+string(filepath.Separator)) {
+		if pathspec.Escapes(path) {
 			return clierr.Usage(operation, errors.New("--artifact must be a workspace-relative managed path"))
 		}
 		if kind != "" || luid != "" {

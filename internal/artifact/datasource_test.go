@@ -185,13 +185,12 @@ func TestDatasourceManagerRestoresPreviousArtifactWhenReplacementInstallFails(t 
 	}
 }
 
-func TestDatasourceManagerDoesNotUseWorkspaceLock(t *testing.T) {
+func TestDatasourceManagerHonorsWorkspaceLock(t *testing.T) {
 	workspace := createDatasourceWorkspace(t)
 	handle, err := lock.Acquire(filepath.Join(workspace, ".tadx.lock"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer func() { _ = handle.Release() }()
 	done := make(chan error, 1)
 	go func() {
 		_, pullErr := NewDatasourceManager(time.Now).Pull(context.Background(), DatasourcePull{
@@ -204,14 +203,21 @@ func TestDatasourceManagerDoesNotUseWorkspaceLock(t *testing.T) {
 	}()
 	select {
 	case pullErr := <-done:
+		_ = handle.Release()
+		t.Fatalf("Pull mutated the workspace while another process held the lock: %v", pullErr)
+	case <-time.After(300 * time.Millisecond):
+		// Expected: the pull is serialized behind the advisory workspace lock.
+	}
+	if err := handle.Release(); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case pullErr := <-done:
 		if pullErr != nil {
 			t.Fatal(pullErr)
 		}
-	case <-time.After(2 * time.Second):
-		if err := handle.Release(); err != nil {
-			t.Fatal(err)
-		}
-		t.Fatal("Pull waited for the workspace lock")
+	case <-time.After(5 * time.Second):
+		t.Fatal("Pull did not proceed after the workspace lock was released")
 	}
 }
 

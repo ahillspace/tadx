@@ -5,12 +5,12 @@ import (
 	"context"
 	"errors"
 	"path"
-	"path/filepath"
 	"strings"
 
 	workbookpublish "github.com/ahillspace/tadx/actions/workbook/publish"
 	workbookpull "github.com/ahillspace/tadx/actions/workbook/pull"
 	"github.com/ahillspace/tadx/internal/cli/clierr"
+	"github.com/ahillspace/tadx/internal/pathspec"
 	"github.com/spf13/cobra"
 )
 
@@ -167,8 +167,8 @@ func newPublish(deps Dependencies) *cobra.Command {
 }
 
 func validateManagedArtifactPath(value, kind string) error {
-	if filepath.IsAbs(value) || path.IsAbs(value) || strings.Contains(value, `\`) || path.Clean(value) != value {
-		return errors.New("--artifact must be a workspace-relative slash-delimited managed workbook path")
+	if pathspec.IsAbs(value) || strings.Contains(value, `\`) || path.Clean(value) != value {
+		return errors.New("--artifact must be a workspace-relative slash-delimited managed " + kind + " path")
 	}
 	parts := strings.Split(value, "/")
 	if len(parts) != 3 || parts[0] != "artifacts" || parts[1] != kind || parts[2] == "" {

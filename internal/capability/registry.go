@@ -182,5 +182,5 @@ func validOwner(owner Owner) bool {
 }
 
 func validBlocker(blocker BlockerID) bool {
-	return slices.Contains([]BlockerID{BlockerB1, BlockerB2, BlockerB3, BlockerB4}, blocker)
+	return slices.Contains([]BlockerID{BlockerB1, BlockerB2, BlockerB3, BlockerB4, BlockerB6}, blocker)
 }

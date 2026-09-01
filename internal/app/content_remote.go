@@ -150,7 +150,12 @@ func (c *remoteContentCommands) PublishFlow(ctx context.Context, input flowpubli
 	}
 	if input.Environment == "" {
 		input.Environment = local.Metadata.SourceEnvironment
-		input.SetProjectSelector(local.Metadata.SourceProjectID, "")
+		// Only default the destination project to the artifact source when the
+		// user supplied no project selector. An explicit --project/--project-id
+		// must be honored even when --environment is omitted.
+		if input.ProjectSelector.LUID == "" && input.ProjectSelector.ProjectPath == "" {
+			input.SetProjectSelector(local.Metadata.SourceProjectID, "")
+		}
 	}
 	connection, err := c.connect(ctx, input.Environment, true)
 	if err != nil {
@@ -312,15 +317,30 @@ func (w flowArtifactWriter) WriteFlow(ctx context.Context, input flowpull.Artifa
 	if err != nil {
 		return flowpull.ArtifactResult{}, err
 	}
-	canonicalPath, err := filepath.Rel(input.Workspace, result.CanonicalPath)
+	canonicalPath, err := containWorkspacePath(input.Workspace, result.CanonicalPath, "canonical path")
 	if err != nil {
 		return flowpull.ArtifactResult{}, err
 	}
-	canonicalPath = filepath.ToSlash(filepath.Clean(canonicalPath))
-	if canonicalPath == ".." || strings.HasPrefix(canonicalPath, "../") {
-		return flowpull.ArtifactResult{}, errors.New("flow artifact canonical path escapes the resolved workspace")
+	lineagePath, err := containWorkspacePath(input.Workspace, filepath.Join(input.Workspace, filepath.FromSlash(result.LineagePath)), "lineage path")
+	if err != nil {
+		return flowpull.ArtifactResult{}, err
 	}
-	return flowpull.ArtifactResult{Path: result.WorkspaceRelativePath, CanonicalPath: canonicalPath, BaselineFingerprint: result.BaselineFingerprint, LineagePath: result.LineagePath, Warnings: append([]string(nil), result.Warnings...)}, nil
+	return flowpull.ArtifactResult{Path: result.WorkspaceRelativePath, CanonicalPath: canonicalPath, BaselineFingerprint: result.BaselineFingerprint, LineagePath: lineagePath, Warnings: append([]string(nil), result.Warnings...)}, nil
+}
+
+// containWorkspacePath normalizes an absolute artifact path to a
+// workspace-relative slash path and rejects any path that escapes the
+// resolved workspace tree.
+func containWorkspacePath(workspace, absolute, label string) (string, error) {
+	relative, err := filepath.Rel(workspace, absolute)
+	if err != nil {
+		return "", err
+	}
+	relative = filepath.ToSlash(filepath.Clean(relative))
+	if relative == ".." || strings.HasPrefix(relative, "../") {
+		return "", errors.New("flow artifact " + label + " escapes the resolved workspace")
+	}
+	return relative, nil
 }
 
 type flowArtifactReader struct {

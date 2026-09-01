@@ -3,11 +3,13 @@ package publish_test
 import (
 	"bytes"
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"testing"
 
 	flowpublish "github.com/ahillspace/tadx/actions/flow/publish"
+	"github.com/ahillspace/tadx/internal/errs"
 	"github.com/ahillspace/tadx/internal/identity"
 	render "github.com/ahillspace/tadx/internal/output"
 )
@@ -84,7 +86,7 @@ func TestPreviewDoesNotPrepareOrCommitPublish(t *testing.T) {
 	}
 }
 
-func TestApplyPreparesThenRevalidatesAndCommits(t *testing.T) {
+func TestApplyRevalidatesThenPreparesAndCommits(t *testing.T) {
 	r := &resolver{project: flowpublish.Project{LUID: "p-1", Path: "Ops"}}
 	p := &publisher{}
 	output, err := flowpublish.New(artifactReader{artifact: flowpublish.Artifact{Path: "artifact", PayloadPath: "Daily.tfl", Filename: "Daily.tfl", Size: 10, Name: "Daily", Fingerprint: "sha256:x"}}, r, p).Execute(context.Background(), flowpublish.Input{Environment: "dev", Site: "site", ArtifactPath: "artifact", ProjectSelector: identity.Selector{LUID: "p-1"}}, true)
@@ -93,5 +95,40 @@ func TestApplyPreparesThenRevalidatesAndCommits(t *testing.T) {
 	}
 	if !output.Applied || p.calls != 1 || !p.prepared.committed || r.resolveCalls != 2 || r.findCalls != 2 {
 		t.Fatalf("output=%#v resolver=%#v publisher=%#v", output, r, p)
+	}
+}
+
+// driftingResolver returns a different destination project on its second
+// resolution, simulating the destination changing between preview and apply.
+type driftingResolver struct {
+	first, second flowpublish.Project
+	collisions    []flowpublish.Flow
+	resolveCalls  int
+}
+
+func (r *driftingResolver) ResolveProject(context.Context, identity.Selector) (flowpublish.Project, error) {
+	r.resolveCalls++
+	if r.resolveCalls == 1 {
+		return r.first, nil
+	}
+	return r.second, nil
+}
+func (r *driftingResolver) FindFlows(context.Context, string, string) ([]flowpublish.Flow, error) {
+	return r.collisions, nil
+}
+
+func TestApplyDoesNotPrepareWhenRevalidationFails(t *testing.T) {
+	r := &driftingResolver{first: flowpublish.Project{LUID: "p-1", Path: "Ops"}, second: flowpublish.Project{LUID: "p-2", Path: "Ops"}}
+	p := &publisher{}
+	_, err := flowpublish.New(artifactReader{artifact: flowpublish.Artifact{Path: "artifact", PayloadPath: "Daily.tfl", Filename: "Daily.tfl", Size: 10, Name: "Daily", Fingerprint: "sha256:x"}}, r, p).Execute(context.Background(), flowpublish.Input{Environment: "dev", Site: "site", ArtifactPath: "artifact", ProjectSelector: identity.Selector{LUID: "p-1"}}, true)
+	if err == nil {
+		t.Fatal("expected revalidation to fail when the destination changed after preview")
+	}
+	if p.calls != 0 {
+		t.Fatalf("prepare must not upload when revalidation fails: prepare calls=%d", p.calls)
+	}
+	var structured *errs.Error
+	if !errors.As(err, &structured) || structured.ID != "flow.publish.target_changed" {
+		t.Fatalf("unexpected error: %#v", err)
 	}
 }

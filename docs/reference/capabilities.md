@@ -31,7 +31,7 @@ Use `tadx capability get <id>` for the same focused metadata at runtime.
 | `content.get` | cli | ship | ready | planned | None |
 | `content.search` | cli | ship | ready | planned | None |
 | `datasource.composition.update` | cli | ship | blocked | planned | None |
-| `datasource.delete` | cli | ship | ready | planned | None |
+| `datasource.delete` | cli | ship | blocked | planned | None |
 | `datasource.field-description.generate` | agent/skill | delegated | ready | external/delegated | None |
 | `datasource.field-description.update` | cli | ship | blocked | planned | None |
 | `datasource.get` | cli | ship | ready | planned | None |
@@ -75,7 +75,7 @@ Use `tadx capability get <id>` for the same focused metadata at runtime.
 | `pulse.metric.values-insights` | mcp | delegated | ready | external/delegated | None |
 | `view.read` | mcp | delegated | ready | external/delegated | None |
 | `workbook.author` | tableau/desktop-mcp | delegated | ready | external/delegated | None |
-| `workbook.delete` | cli | ship | ready | planned | None |
+| `workbook.delete` | cli | ship | blocked | planned | None |
 | `workbook.get` | cli | ship | ready | planned | None |
 | `workbook.list` | cli | ship | ready | planned | None |
 | `workbook.publish` | cli | ship | ready | implemented | `tadx content workbook publish` |
@@ -673,7 +673,7 @@ Preview and delete one exact remote datasource.
 - Products and availability: Cloud / Server
 - Product disposition: ship
 - Evidence level: docs-only
-- Verification readiness: ready
+- Verification readiness: blocked
 - Implementation state: planned
 - Local write: No
 - Remote mutation: Yes
@@ -683,8 +683,8 @@ Preview and delete one exact remote datasource.
 - Artifact effect: Delete
 - Upstream operation: DELETE /api/{version}/sites/{site-id}/datasources/{datasource-id}
 - Evidence: Maintainer decision; official REST source capture pending
-- Validation or blocker: Docs-only
-- Blocker ID: None
+- Validation or blocker: B6: live DELETE contract test pending
+- Blocker ID: B6
 - Command binding: None
 
 ### `datasource.field-description.generate`
@@ -1817,7 +1817,7 @@ Preview and delete one exact remote workbook.
 - Products and availability: Cloud / Server
 - Product disposition: ship
 - Evidence level: docs-only
-- Verification readiness: ready
+- Verification readiness: blocked
 - Implementation state: planned
 - Local write: No
 - Remote mutation: Yes
@@ -1827,8 +1827,8 @@ Preview and delete one exact remote workbook.
 - Artifact effect: Delete
 - Upstream operation: DELETE /api/{version}/sites/{site-id}/workbooks/{workbook-id}
 - Evidence: Maintainer decision; official REST source capture pending
-- Validation or blocker: Docs-only
-- Blocker ID: None
+- Validation or blocker: B6: live DELETE contract test pending
+- Blocker ID: B6
 - Command binding: None
 
 ### `workbook.get`

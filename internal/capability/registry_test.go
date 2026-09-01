@@ -31,8 +31,8 @@ func TestCanonicalRegistryIsValidAndComplete(t *testing.T) {
 			blocked++
 		}
 	}
-	if cli != 72 || delegated != 5 || ship != 72 || blocked != 14 {
-		t.Fatalf("registry totals = cli:%d delegated:%d ship-disposition:%d blocked:%d, want 72/5/72/14", cli, delegated, ship, blocked)
+	if cli != 72 || delegated != 5 || ship != 72 || blocked != 16 {
+		t.Fatalf("registry totals = cli:%d delegated:%d ship-disposition:%d blocked:%d, want 72/5/72/16", cli, delegated, ship, blocked)
 	}
 }
 
@@ -51,6 +51,26 @@ func TestCanonicalExecutableBindingsIncludeImplementedSlices(t *testing.T) {
 		}
 		if len(definition.CommandPath) == 0 {
 			t.Errorf("%s has no command path", definition.ID)
+		}
+	}
+}
+
+// TestExecutableCapabilitiesAreShipAndProven guards CLI availability against
+// registry disposition rather than only against non-nil dependencies. Every
+// capability wired to a runnable CLI command (Executable) must be dispositioned
+// to ship and verification-ready, so a future misconfiguration that wires a
+// blocked or non-ship capability into the manifest fails here instead of
+// exposing an unproven command through the CLI.
+func TestExecutableCapabilitiesAreShipAndProven(t *testing.T) {
+	for _, definition := range Executable() {
+		if definition.Disposition != DispositionShip {
+			t.Errorf("%s is wired to the CLI but has disposition %q, want %q", definition.ID, definition.Disposition, DispositionShip)
+		}
+		if definition.Verification != VerificationReady {
+			t.Errorf("%s is wired to the CLI but has verification %q, want %q", definition.ID, definition.Verification, VerificationReady)
+		}
+		if definition.Blocker != "" {
+			t.Errorf("%s is wired to the CLI but references blocker %q", definition.ID, definition.Blocker)
 		}
 	}
 }

@@ -61,6 +61,7 @@ const (
 	BlockerB2 BlockerID = "B2"
 	BlockerB3 BlockerID = "B3"
 	BlockerB4 BlockerID = "B4"
+	BlockerB6 BlockerID = "B6"
 )
 
 // Definition is one public CLI operation or delegated discoverable operation.

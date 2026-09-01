@@ -80,30 +80,9 @@ func (m *Manager) Create(ctx context.Context, name, root string) (Record, error)
 	if err := config.ValidateWorkspaceName(name); err != nil {
 		return Record{}, fmt.Errorf("workspace name: %w", err)
 	}
-	configuration, err := config.Load(m.configPath)
-	if err != nil {
-		if !errors.Is(err, os.ErrNotExist) {
-			return Record{}, err
-		}
-		configuration = config.Config{Version: config.CurrentVersion}
-	}
-	for existingName := range configuration.Workspaces {
-		if strings.EqualFold(existingName, name) {
-			return Record{}, fmt.Errorf("workspace name %q already exists", existingName)
-		}
-	}
 	resolvedRoot, err := canonicalRoot(root)
 	if err != nil {
 		return Record{}, err
-	}
-	for existingName, registration := range configuration.Workspaces {
-		existingRoot, rootErr := canonicalRoot(registration.Path)
-		if rootErr != nil {
-			return Record{}, fmt.Errorf("registered workspace %q: %w", existingName, rootErr)
-		}
-		if samePath(existingRoot, resolvedRoot) {
-			return Record{}, fmt.Errorf("workspace root is already registered as %q", existingName)
-		}
 	}
 	id, err := m.newID()
 	if err != nil {
@@ -120,18 +99,46 @@ func (m *Manager) Create(ctx context.Context, name, root string) (Record, error)
 			_ = os.RemoveAll(resolvedRoot)
 		}
 	}()
-	if configuration.Workspaces == nil {
-		configuration.Workspaces = make(map[string]config.WorkspaceRegistration)
-	}
-	configuration.Workspaces[name] = config.WorkspaceRegistration{ID: id, Path: resolvedRoot}
-	if configuration.DefaultWorkspace == "" {
-		configuration.DefaultWorkspace = name
-	}
-	if err := config.Save(m.configPath, configuration); err != nil {
-		return Record{}, fmt.Errorf("register workspace: %w", err)
+	// Register under the interprocess configuration lock so the name/root
+	// collision checks and the write are one atomic transaction; a concurrent
+	// tadx process cannot slip a colliding registration between the check and
+	// the save.
+	updated, err := config.Update(m.configPath, true, func(configuration config.Config) (config.Config, error) {
+		for existingName := range configuration.Workspaces {
+			if strings.EqualFold(existingName, name) {
+				return config.Config{}, fmt.Errorf("workspace name %q already exists", existingName)
+			}
+		}
+		for existingName, registration := range configuration.Workspaces {
+			existingRoot, rootErr := canonicalRoot(registration.Path)
+			if rootErr != nil {
+				// The registered root is currently unresolvable (for example an
+				// unavailable volume). Fall back to a lexical comparison so an
+				// offline workspace cannot block creating an unrelated one, while
+				// still rejecting an exact duplicate registration.
+				if samePath(registration.Path, resolvedRoot) {
+					return config.Config{}, fmt.Errorf("workspace root is already registered as %q", existingName)
+				}
+				continue
+			}
+			if samePath(existingRoot, resolvedRoot) {
+				return config.Config{}, fmt.Errorf("workspace root is already registered as %q", existingName)
+			}
+		}
+		if configuration.Workspaces == nil {
+			configuration.Workspaces = make(map[string]config.WorkspaceRegistration)
+		}
+		configuration.Workspaces[name] = config.WorkspaceRegistration{ID: id, Path: resolvedRoot}
+		if configuration.DefaultWorkspace == "" {
+			configuration.DefaultWorkspace = name
+		}
+		return configuration, nil
+	})
+	if err != nil {
+		return Record{}, err
 	}
 	rollback = false
-	return Record{Name: name, ID: id, Root: resolvedRoot, Default: strings.EqualFold(configuration.DefaultWorkspace, name), Available: true, ManifestValid: true}, nil
+	return Record{Name: name, ID: id, Root: resolvedRoot, Default: strings.EqualFold(updated.DefaultWorkspace, name), Available: true, ManifestValid: true}, nil
 }
 
 // Resolve resolves one logical name or the nearest configured default and validates its manifest.

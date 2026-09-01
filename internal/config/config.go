@@ -14,6 +14,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/ahillspace/tadx/internal/lock"
 	"gopkg.in/yaml.v3"
 )
 
@@ -586,6 +587,51 @@ func Save(path string, configuration Config) error {
 		return fmt.Errorf("install configuration: %w", err)
 	}
 	return nil
+}
+
+// ErrNoChange lets an Update mutator report that the configuration is already
+// in the desired state so Update skips the write and leaves the file untouched.
+var ErrNoChange = errors.New("configuration unchanged")
+
+const configLockSuffix = ".lock"
+
+// Update performs one serialized read-modify-write of the user configuration.
+// It holds an advisory interprocess lock across the load, the mutation, and the
+// atomic save so concurrent env or workspace updates in separate tadx processes
+// cannot lose writes. When createIfMissing is true a missing configuration file
+// is treated as an empty current-version configuration; otherwise a missing
+// file is returned as an error. A mutator that returns ErrNoChange leaves the
+// file untouched and Update returns the loaded configuration unchanged.
+func Update(path string, createIfMissing bool, mutate func(Config) (Config, error)) (Config, error) {
+	if strings.TrimSpace(path) == "" {
+		return Config{}, errors.New("configuration path is required")
+	}
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+		return Config{}, fmt.Errorf("create configuration directory: %w", err)
+	}
+	handle, err := lock.Acquire(path + configLockSuffix)
+	if err != nil {
+		return Config{}, fmt.Errorf("acquire configuration lock: %w", err)
+	}
+	defer func() { _ = handle.Release() }()
+	current, err := Load(path)
+	if err != nil {
+		if !(createIfMissing && errors.Is(err, os.ErrNotExist)) {
+			return Config{}, err
+		}
+		current = Config{Version: CurrentVersion}
+	}
+	next, err := mutate(current)
+	if err != nil {
+		if errors.Is(err, ErrNoChange) {
+			return current, nil
+		}
+		return Config{}, err
+	}
+	if err := Save(path, next); err != nil {
+		return Config{}, err
+	}
+	return next, nil
 }
 
 // DefaultPATVariableNames returns the conventional PAT variable references for an alias.

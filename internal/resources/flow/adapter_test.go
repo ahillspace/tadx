@@ -3,6 +3,7 @@ package flow_test
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 
 	"github.com/ahillspace/tadx/internal/identity"
@@ -84,5 +85,16 @@ func TestAdapterFindsProjectScopedCaseInsensitiveCollision(t *testing.T) {
 	}
 	if len(items) != 1 || items[0].LUID != "f-2" {
 		t.Fatalf("items = %#v", items)
+	}
+}
+
+func TestAdapterRejectsChangingFlowPagination(t *testing.T) {
+	client := flowClient{pages: map[int]tableauflow.Page{
+		1: {Number: 1, Size: 1, Total: 2, Items: []tableauflow.Flow{{LUID: "f-1", Name: "Daily", ProjectLUID: "p-1", ProjectName: "Ops"}}},
+		2: {Number: 2, Size: 1, Total: 3, Items: []tableauflow.Flow{{LUID: "f-2", Name: "Daily", ProjectLUID: "p-2", ProjectName: "Ops"}}},
+	}}
+	_, err := resourceflow.NewAdapter(client, paths{"p-1": "One", "p-2": "Two"}).ResolveFlow(context.Background(), identity.Selector{Name: "Daily", ProjectPath: "One"})
+	if err == nil || !strings.Contains(err.Error(), "pagination total changed") {
+		t.Fatalf("error = %v", err)
 	}
 }

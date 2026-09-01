@@ -38,16 +38,21 @@ func deleteWithOperations(ctx context.Context, request DeleteRequest, operations
 	if request.Expected.Path == "" || request.Expected.Kind == "" || request.Expected.LUID == "" {
 		return Item{}, errors.New("artifact delete requires an exact planned identity")
 	}
-	current, err := Resolve(ctx, request.Workspace, Selector{Path: request.Expected.Path, Kind: request.Expected.Kind, LUID: request.Expected.LUID})
+	root, err := validateWorkspaceRoot(request.Workspace)
+	if err != nil {
+		return Item{}, err
+	}
+	handle, err := lockWorkspace(root)
+	if err != nil {
+		return Item{}, err
+	}
+	defer func() { _ = handle.Release() }()
+	current, err := Resolve(ctx, root, Selector{Path: request.Expected.Path, Kind: request.Expected.Kind, LUID: request.Expected.LUID})
 	if err != nil {
 		return Item{}, err
 	}
 	if !sameArtifactSnapshot(current, request.Expected) {
 		return Item{}, errors.New("artifact changed after deletion was planned")
-	}
-	root, err := validateWorkspaceRoot(request.Workspace)
-	if err != nil {
-		return Item{}, err
 	}
 	target := filepath.Join(root, filepath.FromSlash(current.Path))
 	parent := filepath.Dir(target)
@@ -55,12 +60,23 @@ func deleteWithOperations(ctx context.Context, request DeleteRequest, operations
 	if err != nil {
 		return Item{}, err
 	}
+	// Until the artifact is renamed into the tombstone, the reserved temp
+	// directory is transient scaffolding; clean it up on any early error path so
+	// it cannot leak. Once staged, the artifact lives there and the explicit
+	// restore/removeAll logic below owns its lifecycle, so leave it untouched.
+	tombstoneStaged := false
+	defer func() {
+		if !tombstoneStaged {
+			_ = operations.removeAll(tombstone)
+		}
+	}()
 	if err := os.Remove(tombstone); err != nil {
 		return Item{}, err
 	}
 	if err := operations.rename(target, tombstone); err != nil {
 		return Item{}, fmt.Errorf("stage artifact deletion: %w", err)
 	}
+	tombstoneStaged = true
 	seized, err := inspectArtifact(ctx, root, current.Kind, tombstone)
 	if err != nil || !sameArtifactSnapshot(seized, request.Expected) {
 		if restoreErr := operations.rename(tombstone, target); restoreErr != nil {

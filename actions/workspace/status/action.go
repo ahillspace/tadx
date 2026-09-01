@@ -35,7 +35,7 @@ type Artifact struct {
 	CurrentFingerprint  string `json:"current_fingerprint,omitempty"`
 }
 
-// Inventory is one bounded artifact page and its page-local state counts.
+// Inventory is one bounded artifact page and its workspace-wide state counts.
 type Inventory struct {
 	Returned     int        `json:"returned"`
 	Total        int        `json:"total,omitempty"`
@@ -129,10 +129,18 @@ func (a *Action) Execute(ctx context.Context, input Input) (Output, error) {
 }
 
 func boundWarnings(input []string) ([]string, int) {
-	if len(input) <= maxWarnings {
-		return input, 0
+	limit := len(input)
+	omitted := 0
+	if limit > maxWarnings {
+		omitted = limit - maxWarnings
+		limit = maxWarnings
 	}
-	return input[:maxWarnings], len(input) - maxWarnings
+	// Copy into a fresh slice rather than reslicing the caller's backing array,
+	// matching the other warning bounders so a later append by the caller cannot
+	// mutate the returned view.
+	bounded := make([]string, limit)
+	copy(bounded, input[:limit])
+	return bounded, omitted
 }
 
 func usage(message string) error {

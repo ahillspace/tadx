@@ -81,6 +81,11 @@ func (m *WorkbookBundleManager) Pull(ctx context.Context, input WorkbookBundlePu
 	if _, err := os.Stat(filepath.Join(workspace, "tadx.yaml")); err != nil {
 		return WorkbookBundlePullResult{}, fmt.Errorf("workspace %q does not contain tadx.yaml", workspace)
 	}
+	handle, err := lockWorkspace(workspace)
+	if err != nil {
+		return WorkbookBundlePullResult{}, err
+	}
+	defer func() { _ = handle.Release() }()
 	workbookRoot, err := ensureWorkbookRoot(workspace)
 	if err != nil {
 		return WorkbookBundlePullResult{}, err

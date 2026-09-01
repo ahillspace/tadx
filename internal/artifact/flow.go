@@ -114,6 +114,9 @@ func (m *FlowManager) Pull(ctx context.Context, input FlowPull) (FlowPullResult,
 	if err := ctx.Err(); err != nil {
 		return FlowPullResult{}, err
 	}
+	if m == nil {
+		return FlowPullResult{}, errors.New("flow artifact manager is not configured")
+	}
 	if strings.TrimSpace(input.Workspace) == "" || strings.TrimSpace(input.Metadata.Name) == "" || strings.TrimSpace(input.Metadata.TableauID) == "" {
 		return FlowPullResult{}, errors.New("flow artifact requires workspace, name, and Tableau ID")
 	}
@@ -144,6 +147,11 @@ func (m *FlowManager) Pull(ctx context.Context, input FlowPull) (FlowPullResult,
 	if _, err := os.Stat(filepath.Join(workspace, "tadx.yaml")); err != nil {
 		return FlowPullResult{}, fmt.Errorf("workspace %q does not contain tadx.yaml", workspace)
 	}
+	handle, err := lockWorkspace(workspace)
+	if err != nil {
+		return FlowPullResult{}, err
+	}
+	defer func() { _ = handle.Release() }()
 	root, err := ensureFlowRoot(workspace)
 	if err != nil {
 		return FlowPullResult{}, err
@@ -181,6 +189,7 @@ func (m *FlowManager) Pull(ctx context.Context, input FlowPull) (FlowPullResult,
 	input.Metadata.LineageSidecar = "lineage.json"
 	input.Metadata.LineageComplete = input.Lineage.Complete
 	input.Metadata.LocalBaselineFingerprint = fingerprint(input.Content)
+	input.Lineage = normalizedLineage(input.Lineage)
 	metadataData, err := json.MarshalIndent(input.Metadata, "", "  ")
 	if err != nil {
 		return FlowPullResult{}, err

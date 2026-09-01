@@ -304,14 +304,14 @@ func TestActionRequiresCompleteDetectionBeforeIncludePDSAcquisition(t *testing.T
 }
 
 func TestActionPullsOneResolvedWorkbookIntoArtifact(t *testing.T) {
-	w := &writer{result: pull.ArtifactResult{Path: `C:\workspace\artifacts\workbook\Finance`, BaselineFingerprint: "sha256:abc"}}
+	w := &writer{result: pull.ArtifactResult{Path: filepath.FromSlash("C:/workspace/artifacts/workbook/Finance"), BaselineFingerprint: "sha256:abc"}}
 	action := pull.New(&reader{
 		workbook: pull.Workbook{LUID: "wb-1", Name: "Finance", ProjectLUID: "project-1", ProjectPath: "Ops"},
 		download: pull.Download{Filename: "Finance.twbx", Content: []byte("native")},
 	}, w)
 	include := false
 	output, err := action.Execute(context.Background(), pull.Input{
-		Environment: "production", Site: "marketing", ServerOrigin: "https://tableau.example.com", SiteLUID: "site-1", Workspace: `C:\workspace`,
+		Environment: "production", Site: "marketing", ServerOrigin: "https://tableau.example.com", SiteLUID: "site-1", Workspace: filepath.FromSlash("C:/workspace"),
 		Selector: identity.Selector{Name: "Finance", ProjectPath: "Ops"}, IncludeExtract: &include,
 	})
 	if err != nil {

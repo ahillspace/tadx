@@ -122,6 +122,7 @@ func (a *Adapter) all(ctx context.Context) ([]tableauproject.Project, string, er
 	}
 	byLUID := make(map[string]tableauproject.Project)
 	requestID := ""
+	expectedTotal, expectedSize := -1, -1
 	for pageNumber := 1; pageNumber <= 1000; pageNumber++ {
 		page, err := a.client.List(ctx, tableauproject.ListRequest{PageNumber: pageNumber, PageSize: resolutionPageSize})
 		if err != nil {
@@ -130,6 +131,13 @@ func (a *Adapter) all(ctx context.Context) ([]tableauproject.Project, string, er
 		requestID = page.TableauRequestID
 		if err := validatePage(page, pageNumber, resolutionPageSize); err != nil {
 			return nil, "", err
+		}
+		if expectedTotal < 0 {
+			expectedTotal, expectedSize = page.Total, page.Size
+		} else if page.Total != expectedTotal {
+			return nil, "", fmt.Errorf("project pagination total changed from %d to %d", expectedTotal, page.Total)
+		} else if page.Size != expectedSize {
+			return nil, "", fmt.Errorf("project pagination size changed from %d to %d", expectedSize, page.Size)
 		}
 		for _, item := range page.Items {
 			if err := recordProject(byLUID, item); err != nil {
@@ -167,6 +175,13 @@ func recordProject(items map[string]tableauproject.Project, item tableauproject.
 	item.Name = strings.TrimSpace(item.Name)
 	if item.LUID == "" || item.Name == "" {
 		return errors.New("project list returned an incomplete authoritative identity")
+	}
+	// Project paths are slash-delimited, so a name containing "/" would make the
+	// hierarchy path ambiguous (parent "A" with child "B/C" is indistinguishable
+	// from parent "A/B" with child "C"). Reject it at the authoritative boundary
+	// rather than risk resolving an exact project path to the wrong project.
+	if strings.Contains(item.Name, "/") {
+		return fmt.Errorf("Tableau project %q has a name containing %q, which is not addressable by an exact project path", item.LUID, "/")
 	}
 	if current, exists := items[item.LUID]; exists && current != item {
 		return fmt.Errorf("Tableau project list returned conflicting records for LUID %q", item.LUID)

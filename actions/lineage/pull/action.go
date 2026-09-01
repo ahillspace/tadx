@@ -7,6 +7,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/ahillspace/tadx/internal/errs"
 	"github.com/ahillspace/tadx/internal/identity"
 )
 
@@ -42,7 +43,7 @@ func New(resolver Resolver, reader Reader, writer Writer) *Action {
 // Execute resolves, captures, and persists one metadata-only graph.
 func (a *Action) Execute(ctx context.Context, input Input) (Output, error) {
 	if a == nil || a.resolver == nil || a.reader == nil || a.writer == nil {
-		return Output{}, errors.New("lineage pull dependencies are not configured")
+		return Output{}, &errs.Error{ID: "lineage.pull.unconfigured", Kind: errs.KindRuntime, Operation: "lineage.pull", Summary: "Lineage pull is not configured.", Retryable: errs.Bool(false), CorrectiveAction: "Configure lineage pull before retrying."}
 	}
 	normalized, err := validateInput(input)
 	if err != nil {
@@ -50,7 +51,8 @@ func (a *Action) Execute(ctx context.Context, input Input) (Output, error) {
 	}
 	resource, err := a.resolver.ResolveLineageResource(ctx, normalized.Kind, normalized.Selector)
 	if err != nil {
-		return Output{}, err
+		retryable, correctiveAction := errs.CompleteRetryAdvice(err, "Review the exact lineage root selector, then retry.")
+		return Output{}, &errs.Error{ID: "lineage.pull.resolve", Kind: errs.KindOperation, Operation: "lineage.pull", Environment: normalized.Environment, Site: normalized.Site, Summary: "Lineage root resolution failed.", Cause: err, Retryable: retryable, CorrectiveAction: correctiveAction, TableauRequestID: errs.TableauRequestID(err)}
 	}
 	if err := validateResolvedResource(normalized, resource); err != nil {
 		return Output{}, err
@@ -72,7 +74,8 @@ func (a *Action) Execute(ctx context.Context, input Input) (Output, error) {
 	}
 	result, err := a.writer.WriteLineage(ctx, artifact)
 	if err != nil {
-		return Output{}, err
+		retryable, correctiveAction := errs.CompleteRetryAdvice(err, "Review the workspace and artifact target, then pull again.")
+		return Output{}, &errs.Error{ID: "lineage.pull.write", Kind: errs.KindOperation, Operation: "lineage.pull", Resource: resource.LUID, Environment: normalized.Environment, Site: normalized.Site, Summary: "Lineage artifact write failed.", Cause: err, Retryable: retryable, CorrectiveAction: correctiveAction}
 	}
 	return Output{
 		Status: "pulled", Resource: resource, Artifact: result, Direction: normalized.Direction, Depth: normalized.Depth,
@@ -88,25 +91,25 @@ func validateInput(input Input) (Input, error) {
 	input.Kind = strings.TrimSpace(input.Kind)
 	input.Direction = strings.TrimSpace(input.Direction)
 	if strings.TrimSpace(input.Workspace) == "" {
-		return Input{}, errors.New("lineage pull requires a workspace")
+		return Input{}, usage("workspace", "lineage pull requires a workspace")
 	}
 	if input.Kind != "workbook" && input.Kind != "published_datasource" && input.Kind != "flow" {
-		return Input{}, fmt.Errorf("unsupported lineage root kind %q", input.Kind)
+		return Input{}, usageCause("kind", "unsupported lineage root kind", fmt.Errorf("unsupported lineage root kind %q", input.Kind))
 	}
 	if input.Selector.LUID == "" && strings.TrimSpace(input.Selector.Name) == "" {
-		return Input{}, errors.New("lineage pull requires a REST LUID or exact name selector")
+		return Input{}, usage("selector", "lineage pull requires a REST LUID or exact name selector")
 	}
 	if input.Direction == "" {
 		input.Direction = "both"
 	}
 	if input.Direction != "upstream" && input.Direction != "downstream" && input.Direction != "both" {
-		return Input{}, fmt.Errorf("unsupported lineage direction %q", input.Direction)
+		return Input{}, usageCause("direction", "unsupported lineage direction", fmt.Errorf("unsupported lineage direction %q", input.Direction))
 	}
 	if input.Depth == 0 {
 		input.Depth = 1
 	}
 	if input.Depth < 1 || input.Depth > 3 {
-		return Input{}, errors.New("lineage depth must be between 1 and 3")
+		return Input{}, usage("depth", "lineage depth must be between 1 and 3")
 	}
 	return input, nil
 }
@@ -116,12 +119,20 @@ func validateResolvedResource(input Input, resource Resource) error {
 	resource.LUID = strings.TrimSpace(resource.LUID)
 	resource.Name = strings.TrimSpace(resource.Name)
 	if resource.Kind != input.Kind || resource.LUID == "" || resource.Name == "" {
-		return errors.New("resolved lineage root omitted or changed its authoritative kind, LUID, or name")
+		return &errs.Error{ID: "lineage.pull.resolved_invariant", Kind: errs.KindOperation, Operation: "lineage.pull", Environment: input.Environment, Site: input.Site, Summary: "The resolved lineage root omitted or changed its authoritative identity.", Cause: errors.New("resolved lineage root omitted or changed its authoritative kind, LUID, or name"), Retryable: errs.Bool(false), CorrectiveAction: "Review the exact lineage root selector, then retry."}
 	}
 	if input.Selector.LUID != "" && resource.LUID != string(input.Selector.LUID) {
-		return errors.New("resolved lineage root does not match the requested authoritative LUID")
+		return &errs.Error{ID: "lineage.pull.resolved_invariant", Kind: errs.KindOperation, Operation: "lineage.pull", Environment: input.Environment, Site: input.Site, Summary: "The resolved lineage root does not match the requested LUID.", Cause: errors.New("resolved lineage root does not match the requested authoritative LUID"), Retryable: errs.Bool(false), CorrectiveAction: "Review the exact lineage root LUID, then retry."}
 	}
 	return nil
+}
+
+func usage(field, message string) error {
+	return &errs.Error{ID: "lineage.pull.usage", Kind: errs.KindUsage, Operation: "lineage.pull", Summary: message, Retryable: errs.Bool(false), CorrectiveAction: "Correct the lineage pull input, then retry.", Validation: []errs.ValidationDetail{{Field: field, Code: "invalid", Message: message}}}
+}
+
+func usageCause(field, message string, cause error) error {
+	return &errs.Error{ID: "lineage.pull.usage", Kind: errs.KindUsage, Operation: "lineage.pull", Summary: message, Cause: cause, Retryable: errs.Bool(false), CorrectiveAction: "Correct the lineage pull input, then retry.", Validation: []errs.ValidationDetail{{Field: field, Code: "invalid", Message: message}}}
 }
 
 func boundedStrings(values []string, limit int) ([]string, int) {

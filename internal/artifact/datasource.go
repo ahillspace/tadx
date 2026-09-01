@@ -123,6 +123,11 @@ func (m *DatasourceManager) Pull(ctx context.Context, input DatasourcePull) (Dat
 	if _, err := os.Stat(filepath.Join(workspace, "tadx.yaml")); err != nil {
 		return DatasourcePullResult{}, fmt.Errorf("workspace %q does not contain tadx.yaml", workspace)
 	}
+	handle, err := lockWorkspace(workspace)
+	if err != nil {
+		return DatasourcePullResult{}, err
+	}
+	defer func() { _ = handle.Release() }()
 	root, err := ensureDatasourceRoot(workspace)
 	if err != nil {
 		return DatasourcePullResult{}, err

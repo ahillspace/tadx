@@ -92,6 +92,11 @@ func (m *LineageManager) Pull(ctx context.Context, input LineagePull) (LineagePu
 	if _, err := os.Stat(filepath.Join(workspace, "tadx.yaml")); err != nil {
 		return LineagePullResult{}, fmt.Errorf("workspace %q does not contain tadx.yaml", workspace)
 	}
+	handle, err := lockWorkspace(workspace)
+	if err != nil {
+		return LineagePullResult{}, err
+	}
+	defer func() { _ = handle.Release() }()
 	root, err := ensureStandaloneLineageRoot(workspace, input.Metadata.ResourceKind)
 	if err != nil {
 		return LineagePullResult{}, err
@@ -101,6 +106,7 @@ func (m *LineageManager) Pull(ctx context.Context, input LineagePull) (LineagePu
 		return LineagePullResult{}, err
 	}
 
+	input.Lineage = normalizedLineage(input.Lineage)
 	lineageData, err := json.MarshalIndent(input.Lineage, "", "  ")
 	if err != nil {
 		return LineagePullResult{}, fmt.Errorf("encode lineage graph: %w", err)
@@ -159,11 +165,30 @@ func (m *LineageManager) Pull(ctx context.Context, input LineagePull) (LineagePu
 	return LineagePullResult{Path: path, LineagePath: filepath.ToSlash(filepath.Join(relative, "lineage.json")), Fingerprint: fingerprintValue}, nil
 }
 
+// isLineageResourceKind reports whether kind is a supported standalone lineage
+// resource kind. It is the single source of truth for both persistence and the
+// artifacts/lineage/<resourceKind> layout recognized during inventory.
+func isLineageResourceKind(kind string) bool {
+	return kind == "workbook" || kind == "published_datasource" || kind == "flow"
+}
+
+// normalizedLineage returns a copy whose Nodes and Edges are non-nil so an
+// empty graph serializes as JSON [] rather than null.
+func normalizedLineage(document LineageDocument) LineageDocument {
+	if document.Nodes == nil {
+		document.Nodes = []LineageNode{}
+	}
+	if document.Edges == nil {
+		document.Edges = []LineageEdge{}
+	}
+	return document
+}
+
 func validateLineagePull(input LineagePull) error {
 	if strings.TrimSpace(input.Workspace) == "" || strings.TrimSpace(input.Metadata.Name) == "" || strings.TrimSpace(input.Metadata.TableauID) == "" {
 		return errors.New("lineage artifact requires workspace, name, and authoritative Tableau LUID")
 	}
-	if input.Metadata.ResourceKind != "workbook" && input.Metadata.ResourceKind != "published_datasource" && input.Metadata.ResourceKind != "flow" {
+	if !isLineageResourceKind(input.Metadata.ResourceKind) {
 		return fmt.Errorf("unsupported lineage resource kind %q", input.Metadata.ResourceKind)
 	}
 	if strings.TrimSpace(input.Metadata.SourceEnvironment) == "" || strings.TrimSpace(input.Metadata.SourceSiteLUID) == "" {

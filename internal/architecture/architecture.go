@@ -169,6 +169,7 @@ func localImportAllowed(file, imported string) bool {
 			"internal/errs",
 			"internal/identity",
 			"internal/output",
+			"internal/pathspec",
 		)
 	case layerApp:
 		return matchesPrefix(imported, "actions", "internal/cli", "internal/resources", "internal/tableau") ||
@@ -184,7 +185,7 @@ func localImportAllowed(file, imported string) bool {
 				"internal/workspace",
 			)
 	case layerCLI:
-		return matchesPrefix(imported, "actions", "internal/cli") || matchesExact(imported, "internal/errs")
+		return matchesPrefix(imported, "actions", "internal/cli") || matchesExact(imported, "internal/errs", "internal/pathspec")
 	case layerResource:
 		return matchesExact(imported, "internal/identity") || matchesPrefix(imported, "internal/tableau")
 	case layerTableau:
@@ -199,6 +200,13 @@ func localImportAllowed(file, imported string) bool {
 		// The artifact manager owns the workspace mutation critical section and
 		// serializes it against other tadx processes via the leaf lock package.
 		if hasPathPrefix(file, "internal/artifact") {
+			return matchesExact(imported, "internal/lock")
+		}
+		// The config package owns the user-configuration read-modify-write
+		// critical section and serializes it against other tadx processes via
+		// the leaf lock package so concurrent env/workspace updates cannot lose
+		// writes.
+		if hasPathPrefix(file, "internal/config") {
 			return matchesExact(imported, "internal/lock")
 		}
 		return false
@@ -343,6 +351,7 @@ func isFoundationPackage(file string) bool {
 		hasPathPrefix(file, "internal/errs") ||
 		hasPathPrefix(file, "internal/lock") ||
 		hasPathPrefix(file, "internal/output") ||
+		hasPathPrefix(file, "internal/pathspec") ||
 		hasPathPrefix(file, "internal/workspace") ||
 		hasPathPrefix(file, "internal/toon")
 }

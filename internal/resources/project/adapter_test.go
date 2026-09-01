@@ -68,3 +68,27 @@ func TestAdapterRejectsConflictingProjectRowsAndCycles(t *testing.T) {
 		})
 	}
 }
+
+func TestAdapterRejectsProjectNameContainingPathSeparator(t *testing.T) {
+	client := &projectClient{pages: map[int]tableauproject.Page{
+		1: {Number: 1, Size: 2, Total: 1, Items: []tableauproject.Project{{LUID: "p", Name: "Ops/Reports"}}},
+	}}
+	adapter := resourceproject.NewAdapter(client)
+	if _, err := adapter.ResolveProject(context.Background(), identity.Selector{ProjectPath: "Ops/Reports"}); err == nil || !strings.Contains(err.Error(), "not addressable by an exact project path") {
+		t.Fatalf("ResolveProject error = %v", err)
+	}
+	if _, err := adapter.ListProjects(context.Background(), resourceproject.ListRequest{PageNumber: 1, PageSize: 2}); err == nil || !strings.Contains(err.Error(), "not addressable by an exact project path") {
+		t.Fatalf("ListProjects error = %v", err)
+	}
+}
+
+func TestAdapterRejectsChangingProjectPagination(t *testing.T) {
+	client := &projectClient{pages: map[int]tableauproject.Page{
+		1: {Number: 1, Size: 1, Total: 2, Items: []tableauproject.Project{{LUID: "root", Name: "Department"}}},
+		2: {Number: 2, Size: 1, Total: 3, Items: []tableauproject.Project{{LUID: "child", Name: "Ops", ParentLUID: "root"}}},
+	}}
+	_, err := resourceproject.NewAdapter(client).ResolveProject(context.Background(), identity.Selector{ProjectPath: "Department/Ops"})
+	if err == nil || !strings.Contains(err.Error(), "pagination total changed") {
+		t.Fatalf("error = %v", err)
+	}
+}

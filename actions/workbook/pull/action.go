@@ -11,6 +11,7 @@ import (
 
 	"github.com/ahillspace/tadx/internal/errs"
 	"github.com/ahillspace/tadx/internal/identity"
+	"github.com/ahillspace/tadx/internal/pathspec"
 )
 
 // Reader owns remote workbook resolution and download.
@@ -307,8 +308,12 @@ func workspaceRelativePath(workspace, path string) (string, error) {
 	if path == "" {
 		return "", nil
 	}
-	if !filepath.IsAbs(path) && !looksLikeWindowsAbsolutePath(path) {
-		return filepath.ToSlash(filepath.Clean(path)), nil
+	if !pathspec.IsAbs(path) {
+		cleaned := filepath.ToSlash(filepath.Clean(path))
+		if cleaned == ".." || strings.HasPrefix(cleaned, "../") {
+			return "", errors.New("artifact path escapes the resolved workspace")
+		}
+		return cleaned, nil
 	}
 	if workspace == "" {
 		return "", errors.New("absolute artifact path requires a resolved workspace")
@@ -322,10 +327,6 @@ func workspaceRelativePath(workspace, path string) (string, error) {
 		return "", errors.New("artifact path escapes the resolved workspace")
 	}
 	return relative, nil
-}
-
-func looksLikeWindowsAbsolutePath(path string) bool {
-	return len(path) >= 3 && path[1] == ':' && (path[2] == '\\' || path[2] == '/')
 }
 
 func invalidBundleResult(workbook Workbook, input Input, cause error) error {

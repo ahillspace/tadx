@@ -80,6 +80,9 @@ func (o Output) CompactOutput() any {
 }
 func (o Output) FullOutput() any {
 	flow := o.Flow
+	flow.Tags = append([]string(nil), flow.Tags...)
+	flow.Parameters = append([]Parameter(nil), flow.Parameters...)
+	flow.OutputSteps = append([]OutputStep(nil), flow.OutputSteps...)
 	if len(flow.Tags) > detailLimit {
 		flow.TagsOmitted = len(flow.Tags) - detailLimit
 		flow.Tags = flow.Tags[:detailLimit]
