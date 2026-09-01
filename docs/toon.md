@@ -72,7 +72,7 @@ Compact output is an explicit field projection, not merely full output with long
 Full output is a bounded superset for the same operation and never widens pagination or changes behavior.
 When compact output hides fields, it includes `details: "--full"` immediately before `help[]`.
 The marker is omitted from full output and from results whose compact and full shapes are identical.
-Field classification follows `docs/contributing/output-guidelines.md`.
+Field classification follows [`CONTRIBUTING.md`](../CONTRIBUTING.md#preserve-output-and-safety-contracts).
 
 ## JSON interoperability
 

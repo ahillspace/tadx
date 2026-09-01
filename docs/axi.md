@@ -86,7 +86,7 @@ Enforced by: golden fixtures that fail on default-schema growth; a documented de
 
 For non-list results, the default is an explicit compact allowlist projection and `--full` returns expanded bounded detail for the same operation.
 When compact output hides available detail, it includes the exact top-level marker `details: "--full"` so an agent never needs to hunt through help to discover the option.
-The complete field-selection and testing contract is in `docs/contributing/output-guidelines.md`.
+The current field-selection and testing workflow is in [`CONTRIBUTING.md`](../CONTRIBUTING.md#preserve-output-and-safety-contracts).
 
 C3. Content truncation with a size hint (serves principle 2).
 Do: truncate a large text value and state what was cut, in the form `(truncated, N chars total - use --full to see complete body)`. `--full` returns the untruncated value.

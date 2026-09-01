@@ -1,7 +1,6 @@
 # TADX
 
-Read AGENTS.md first. The binding contracts live in docs/.
-
-Never build a capability except through docs/contributing/adding-a-capability.md,
-using docs/contributing/task-template.md. Do not weaken or route around an
-enforcement gate to make work pass; if a gate blocks correct work, stop and flag it.
+Read `AGENTS.md` first and use `CONTRIBUTING.md` for the current build workflow.
+Follow `.agents/skills/tadx-build/SKILL.md` only when the user explicitly invokes `$tadx-build` for a named task.
+Do not weaken or route around an enforcement gate to make work pass.
+If a gate blocks correct work, stop and flag it.

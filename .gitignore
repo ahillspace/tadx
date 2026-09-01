@@ -8,4 +8,5 @@
 !/.agents/skills/tadx-build/
 !/.agents/skills/tadx-build/**
 /agent-review/
+/archived/
 /tadx.exe
