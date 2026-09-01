@@ -8,7 +8,8 @@ Do not let two agents invent the same foundation twice.
 
 Create one feature branch for each build.
 Agents share that checkout, work on assigned non-overlapping paths, and do not create separate worktrees unless the build owner explicitly requests them.
-One integration owner controls shared wiring, manifests, contract rows, generated files, and final verification.
+One integration owner controls shared wiring, manifests, contract rows, generated files, and required build verification.
+Required build verification does not include a comprehensive branch review unless the build owner requests one.
 
 ## Phase 0: repository foundation
 
@@ -50,9 +51,13 @@ Building the slice also builds and freezes the shared spine:
 
 Phase 1 exit gate: the slice passes contract and golden tests; the transport, adapter pattern, pagination envelope, artifact contract, and publish pattern are frozen and documented.
 
-## Phase 2: fan-out waves (buildable-now capabilities)
+## Phase 2: grouped non-Pulse builds
 
-Before broad action fan-out, finish these shared foundation slices in order:
+The registry contains 59 CLI-owned non-Pulse capabilities.
+Phase 1 already implements six: `auth.check`, `capability.list`, `capability.get`, `catalog.search`, `workbook.pull`, and `workbook.publish`.
+The following groups cover the remaining 53 capabilities.
+
+Before broad action fan-out, freeze these shared foundation slices in order:
 
 1. Freeze compact versus `--full` output projections and their bounded output tests.
 2. Freeze named workspace resolution and portable relative artifact paths.
@@ -62,21 +67,84 @@ Before broad action fan-out, finish these shared foundation slices in order:
 6. Freeze shared publish targeting, preview, upload, and terminal result behavior.
 7. Prove an unchanged TFL/TFLX flow pull and publish round trip.
 
-Within a wave, one agent builds the wave's shared dependency first.
+Within a group, one agent builds the group's shared dependency first.
 After that dependency is frozen, action packages fan out to agents on the shared feature branch.
 A capability whose evidence is docs-only is built only to the adapter seam until its upstream contract is captured.
 
-- Wave A, local-contract (no remote calls): environment profiles, auth status, workspace commands, catalog search/get/status. These depend only on Phase 0.
-- Wave B, remote read: catalog refresh, content get, and list/get for workbook, datasource, flow, project. Proves each adapter's read path and pagination.
-- Wave C, deliver in: pull for datasource (ordinary), flow, lineage, and Pulse definition; plus Pulse definition and metric reads and their artifacts.
-- Wave D, deliver out: publish for datasource (ordinary) and flow; move flow; create and update project.
-- Wave E, explicit deletion: delete one local artifact or one exact workbook, datasource, or flow.
-- Wave F, administration: user list/get/create/update/delete, group list/get/create/update/delete, permission get.
-- Wave G, doctor: full diagnostics after auth, catalog, workspace, and MCP-availability checks exist.
+### Group 1: operator setup and flow lifecycle
+
+Build the 21 capabilities that establish daily operator setup and prove a complete second content-resource lifecycle:
+
+- Environment profiles: `env.profile.list`, `env.profile.get`, `env.profile.add`, `env.profile.update`, `env.profile.remove`, and `env.profile.set-default`.
+- Authentication state: `auth.status`.
+- Named workspaces: `workspace.create`, `workspace.list`, `workspace.status`, `workspace.move`, and `workspace.artifact.delete`.
+- Project selection: `project.list` and `project.get`.
+- Flow lifecycle: `flow.list`, `flow.get`, `flow.pull`, `flow.publish`, `flow.move`, and `flow.delete`.
+- Lineage: `lineage.pull`.
+
+This group also freezes named workspace uniqueness, portable relative paths, compact and `--full` output, lineage sidecars, and unchanged TFL/TFLX round trips.
+Workbook and flow pulls capture bounded lineage automatically while keeping lineage details out of compact output.
+Flow actions do not rewrite packages, connections, credentials, schedules, linked tasks, or published datasource bindings.
+
+The build agents perform task-level review, focused tests, contract tests, and assigned integration tests.
+They stop after those checks pass.
+The build owner then performs manual testing and separately decides when to start the multi-agent branch review.
+Do not start a comprehensive branch review, a review board, or the no-mistakes pipeline automatically.
+
+Do not start Group 2 until the build owner accepts Group 1 after manual testing and branch review.
+After that acceptance, proceed through Groups 2 through 5 in order to complete the remaining non-Pulse scope.
+A comprehensive review between later groups is optional unless the build owner requests one.
+
+### Group 2: discovery and remote inventory
+
+Build these nine read-oriented capabilities:
+
+- Catalog: `catalog.refresh`, `catalog.get`, and `catalog.status`.
+- Generic content discovery: `content.search` and `content.get`.
+- Workbook inventory: `workbook.list` and `workbook.get`.
+- Datasource inventory: `datasource.list` and `datasource.get`.
+
+This group freezes bounded pagination, exact selection, catalog generations, staleness reporting, and shared remote read behavior.
+
+### Group 3: remaining content lifecycle
+
+Address these ten capabilities:
+
+- Workbook deletion: `workbook.delete`.
+- Datasources: `datasource.pull`, `datasource.composition.update`, `datasource.field-description.update`, `datasource.publish`, and `datasource.delete`.
+- Projects: `project.create`, `project.update`, `project.pull`, and `project.publish`.
+
+Build the capabilities whose evidence gates are open.
+Keep blocked capabilities as registry metadata until their exact evidence gates close.
+Do not guess an upstream contract to claim group completion.
+
+Before implementing ordinary datasource pull or publish, revise the capability contract so authoritative composition preflight selects the ordinary path.
+Composed or unknown composition must fail closed until B2 closes.
+`datasource.composition.update` remains blocked by B2, `datasource.field-description.update` remains blocked by B1, and project pull and publish remain blocked by B4.
+
+### Group 4: administration
+
+Build these 11 capabilities:
+
+- Users: `admin.user.list`, `admin.user.get`, `admin.user.create`, `admin.user.update`, and `admin.user.delete`.
+- Groups: `admin.group.list`, `admin.group.get`, `admin.group.create`, `admin.group.update`, and `admin.group.delete`.
+- Permissions: `admin.permission.get`.
+
+This group freezes exact administrative identity, bounded membership handling, preview and apply behavior, and permission inspection output.
+
+### Group 5: diagnostics and closure
+
+Build `doctor.run` after its auth, catalog, workspace, and MCP-availability checks exist.
+Build `workspace.clean` last because it removes only explicitly selected disposable `.tadx/` state and never managed artifacts by default.
+
+### Pulse exclusion
+
+Do not include Tableau Pulse capabilities in these groups.
+Pulse remains a separate body of work with its own evidence and review gates.
 
 Fan-out rule: a resource adapter is written once by one agent and frozen before that resource's actions fan out.
 Slice agents own only assigned action and resource packages unless the integration owner assigns a shared file.
-Mutations in any wave still preview by default and require `--apply`, and remain hidden from default discovery unless mutation discovery is enabled.
+Mutations in any group still preview by default and require `--apply`, and remain hidden from default discovery unless mutation discovery is enabled.
 
 Flow scope stays narrow.
 Pull and publish preserve TFL/TFLX bytes and let Tableau validate embedded published datasource, file, and database references.

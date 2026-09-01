@@ -11,6 +11,18 @@ The coordinator assigns disjoint files and owns shared registry, manifest, CLI r
 The coordinator may reconcile `docs/build-order.md`, the arc42, and the full capability contract.
 Those are authoritative source documents, not routine slice-agent reading.
 
+## Build completion and review handoff
+
+The coordinator creates each build branch from updated `main`.
+Build agents run only the focused tests, contract tests, and task-level review named in their task cards.
+When those checks pass, build agents report their results and stop.
+Build agents and the coordinator do not start a comprehensive branch review, a review board, or the no-mistakes pipeline unless the build owner requests it.
+
+For the first grouped build, the build owner performs manual testing after the agents stop.
+The build owner then decides when to start the separate multi-agent branch review.
+Review findings return to the same branch for focused fixes and verification.
+The coordinator's final verification covers the required build checks only and does not authorize a comprehensive branch review.
+
 ## Slice-agent context
 
 Give each slice agent only:
