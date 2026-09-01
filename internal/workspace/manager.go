@@ -104,41 +104,135 @@ func (m *Manager) Create(ctx context.Context, name, root string) (Record, error)
 	// tadx process cannot slip a colliding registration between the check and
 	// the save.
 	updated, err := config.Update(m.configPath, true, func(configuration config.Config) (config.Config, error) {
-		for existingName := range configuration.Workspaces {
-			if strings.EqualFold(existingName, name) {
-				return config.Config{}, fmt.Errorf("workspace name %q already exists", existingName)
-			}
-		}
-		for existingName, registration := range configuration.Workspaces {
-			existingRoot, rootErr := canonicalRoot(registration.Path)
-			if rootErr != nil {
-				// The registered root is currently unresolvable (for example an
-				// unavailable volume). Fall back to a lexical comparison so an
-				// offline workspace cannot block creating an unrelated one, while
-				// still rejecting an exact duplicate registration.
-				if samePath(registration.Path, resolvedRoot) {
-					return config.Config{}, fmt.Errorf("workspace root is already registered as %q", existingName)
-				}
-				continue
-			}
-			if samePath(existingRoot, resolvedRoot) {
-				return config.Config{}, fmt.Errorf("workspace root is already registered as %q", existingName)
-			}
-		}
-		if configuration.Workspaces == nil {
-			configuration.Workspaces = make(map[string]config.WorkspaceRegistration)
-		}
-		configuration.Workspaces[name] = config.WorkspaceRegistration{ID: id, Path: resolvedRoot}
-		if configuration.DefaultWorkspace == "" {
-			configuration.DefaultWorkspace = name
-		}
-		return configuration, nil
+		return applyRegistration(configuration, name, id, resolvedRoot)
 	})
 	if err != nil {
 		return Record{}, err
 	}
 	rollback = false
 	return Record{Name: name, ID: id, Root: resolvedRoot, Default: strings.EqualFold(updated.DefaultWorkspace, name), Available: true, ManifestValid: true}, nil
+}
+
+// Register adopts one existing on-disk workspace into the registry using the
+// identity already recorded in its manifest. It creates nothing on disk: a
+// missing or invalid tadx.yaml is a hard error, because register never
+// initializes a workspace, it only adopts one that already exists.
+func (m *Manager) Register(ctx context.Context, name, root string) (Record, error) {
+	if err := ctx.Err(); err != nil {
+		return Record{}, err
+	}
+	if m == nil || strings.TrimSpace(m.configPath) == "" {
+		return Record{}, errors.New("workspace manager is not configured")
+	}
+	resolvedRoot, err := canonicalRoot(root)
+	if err != nil {
+		return Record{}, err
+	}
+	manifest, err := ReadManifest(resolvedRoot)
+	if err != nil {
+		return Record{}, fmt.Errorf("%q is not a workspace (no valid tadx.yaml); create one first with tadx workspace create: %w", root, err)
+	}
+	if name == "" {
+		name = manifest.Workspace.Name
+	}
+	if err := config.ValidateWorkspaceName(name); err != nil {
+		return Record{}, fmt.Errorf("workspace name: %w", err)
+	}
+	id := manifest.Workspace.ID
+	updated, err := config.Update(m.configPath, true, func(configuration config.Config) (config.Config, error) {
+		return applyRegistration(configuration, name, id, resolvedRoot)
+	})
+	if err != nil {
+		return Record{}, err
+	}
+	return Record{Name: name, ID: id, Root: resolvedRoot, Default: strings.EqualFold(updated.DefaultWorkspace, name), Available: true, ManifestValid: true}, nil
+}
+
+// Clone copies one existing managed workspace to a new machine-local root under
+// a freshly minted identity. Only the artifacts tree is carried over; the clone
+// receives its own empty local state so nothing machine-specific leaks across.
+func (m *Manager) Clone(ctx context.Context, source, newName, newRoot string) (Record, error) {
+	if err := ctx.Err(); err != nil {
+		return Record{}, err
+	}
+	if m == nil || strings.TrimSpace(m.configPath) == "" {
+		return Record{}, errors.New("workspace manager is not configured")
+	}
+	if err := config.ValidateWorkspaceName(newName); err != nil {
+		return Record{}, fmt.Errorf("workspace name: %w", err)
+	}
+	sourceRecord, err := m.Resolve(ctx, source, "")
+	if err != nil {
+		return Record{}, err
+	}
+	if _, err := ReadManifest(sourceRecord.Root); err != nil {
+		return Record{}, fmt.Errorf("source workspace %q manifest: %w", sourceRecord.Name, err)
+	}
+	resolvedRoot, err := canonicalRoot(newRoot)
+	if err != nil {
+		return Record{}, err
+	}
+	if samePath(sourceRecord.Root, resolvedRoot) {
+		return Record{}, errors.New("clone source and destination roots must differ")
+	}
+	id, err := m.newID()
+	if err != nil {
+		return Record{}, fmt.Errorf("generate workspace identity: %w", err)
+	}
+	manifest := Manifest{Version: manifestVersion, Workspace: ManifestWorkspace{ID: id, Name: newName}}
+	if err := cloneRoot(ctx, sourceRecord.Root, resolvedRoot, manifest); err != nil {
+		return Record{}, err
+	}
+	rollback := true
+	defer func() {
+		if rollback {
+			_ = os.RemoveAll(resolvedRoot)
+		}
+	}()
+	updated, err := config.Update(m.configPath, true, func(configuration config.Config) (config.Config, error) {
+		return applyRegistration(configuration, newName, id, resolvedRoot)
+	})
+	if err != nil {
+		return Record{}, err
+	}
+	rollback = false
+	return Record{Name: newName, ID: id, Root: resolvedRoot, Default: strings.EqualFold(updated.DefaultWorkspace, newName), Available: true, ManifestValid: true}, nil
+}
+
+// applyRegistration performs the name, identity, and root collision checks and
+// installs one registration. It runs inside the config.Update lock so the check
+// and the write are one atomic transaction against other tadx processes.
+func applyRegistration(configuration config.Config, name, id, resolvedRoot string) (config.Config, error) {
+	for existingName, registration := range configuration.Workspaces {
+		if strings.EqualFold(existingName, name) {
+			return config.Config{}, fmt.Errorf("workspace name %q already exists", existingName)
+		}
+		if registration.ID == id {
+			return config.Config{}, fmt.Errorf("workspace identity %q is already registered as %q", id, existingName)
+		}
+		existingRoot, rootErr := canonicalRoot(registration.Path)
+		if rootErr != nil {
+			// The registered root is currently unresolvable (for example an
+			// unavailable volume). Fall back to a lexical comparison so an
+			// offline workspace cannot block registering an unrelated one, while
+			// still rejecting an exact duplicate registration.
+			if samePath(registration.Path, resolvedRoot) {
+				return config.Config{}, fmt.Errorf("workspace root is already registered as %q", existingName)
+			}
+			continue
+		}
+		if samePath(existingRoot, resolvedRoot) {
+			return config.Config{}, fmt.Errorf("workspace root is already registered as %q", existingName)
+		}
+	}
+	if configuration.Workspaces == nil {
+		configuration.Workspaces = make(map[string]config.WorkspaceRegistration)
+	}
+	configuration.Workspaces[name] = config.WorkspaceRegistration{ID: id, Path: resolvedRoot}
+	if configuration.DefaultWorkspace == "" {
+		configuration.DefaultWorkspace = name
+	}
+	return configuration, nil
 }
 
 // Resolve resolves one logical name or the nearest configured default and validates its manifest.
@@ -413,6 +507,125 @@ func createRoot(root string, manifest Manifest) (bool, error) {
 		return false, fmt.Errorf("install workspace root: %w", err)
 	}
 	return true, nil
+}
+
+// cloneRoot builds a fresh workspace root from an existing source. It mirrors
+// createRoot's atomic staged-then-renamed construction, copying only the source
+// artifacts tree (rejecting symbolic links) and writing a fresh manifest and an
+// empty local-state directory.
+func cloneRoot(ctx context.Context, sourceRoot, root string, manifest Manifest) error {
+	if _, err := os.Lstat(root); err == nil {
+		return fmt.Errorf("workspace root %q already exists", root)
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return err
+	}
+	parent := filepath.Dir(root)
+	if err := os.MkdirAll(parent, 0o700); err != nil {
+		return err
+	}
+	stage, err := os.MkdirTemp(parent, ".tadx-workspace-stage-")
+	if err != nil {
+		return err
+	}
+	defer os.RemoveAll(stage)
+	stagedArtifacts := filepath.Join(stage, "artifacts")
+	if err := os.MkdirAll(stagedArtifacts, 0o700); err != nil {
+		return err
+	}
+	if err := os.MkdirAll(filepath.Join(stage, ".tadx"), 0o700); err != nil {
+		return err
+	}
+	if err := copyManagedTree(ctx, filepath.Join(sourceRoot, "artifacts"), stagedArtifacts); err != nil {
+		return err
+	}
+	data, err := yaml.Marshal(manifest)
+	if err != nil {
+		return err
+	}
+	if err := os.WriteFile(filepath.Join(stage, config.WorkspaceConfigName), data, 0o600); err != nil {
+		return err
+	}
+	if err := os.Rename(stage, root); err != nil {
+		return fmt.Errorf("install workspace root: %w", err)
+	}
+	return nil
+}
+
+// copyManagedTree recursively copies a managed directory, rejecting symbolic
+// links and any non-regular entry. It mirrors the artifact manager's copy so a
+// clone carries exactly the same containment guarantees as a move. A missing
+// source directory copies as an empty tree.
+func copyManagedTree(ctx context.Context, source, destination string) error {
+	entries, err := os.ReadDir(source)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return nil
+		}
+		return err
+	}
+	for _, entry := range entries {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		from := filepath.Join(source, entry.Name())
+		to := filepath.Join(destination, entry.Name())
+		info, err := os.Lstat(from)
+		if err != nil {
+			return err
+		}
+		if info.Mode()&os.ModeSymlink != 0 {
+			return fmt.Errorf("workspace entry %q must not be a symbolic link", entry.Name())
+		}
+		if info.IsDir() {
+			if err := os.Mkdir(to, 0o700); err != nil {
+				return err
+			}
+			if err := copyManagedTree(ctx, from, to); err != nil {
+				return err
+			}
+			continue
+		}
+		if !info.Mode().IsRegular() {
+			return fmt.Errorf("workspace entry %q must be a regular file or directory", entry.Name())
+		}
+		if err := copyManagedFile(ctx, from, to, info.Mode().Perm()); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func copyManagedFile(ctx context.Context, source, destination string, mode os.FileMode) error {
+	input, err := os.Open(source)
+	if err != nil {
+		return err
+	}
+	defer input.Close()
+	output, err := os.OpenFile(destination, os.O_WRONLY|os.O_CREATE|os.O_EXCL, mode)
+	if err != nil {
+		return err
+	}
+	_, copyErr := io.Copy(output, &contextReader{ctx: ctx, reader: input})
+	if copyErr == nil {
+		copyErr = output.Sync()
+	}
+	closeErr := output.Close()
+	if copyErr != nil {
+		return copyErr
+	}
+	return closeErr
+}
+
+type contextReader struct {
+	ctx    context.Context
+	reader io.Reader
+}
+
+func (r *contextReader) Read(buffer []byte) (int, error) {
+	if err := r.ctx.Err(); err != nil {
+		return 0, err
+	}
+	return r.reader.Read(buffer)
 }
 
 func canonicalRoot(root string) (string, error) {

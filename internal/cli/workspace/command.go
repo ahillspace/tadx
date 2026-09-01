@@ -6,9 +6,11 @@ import (
 	"errors"
 
 	artifactdelete "github.com/ahillspace/tadx/actions/workspace/artifact/delete"
+	workspaceclone "github.com/ahillspace/tadx/actions/workspace/clone"
 	workspacecreate "github.com/ahillspace/tadx/actions/workspace/create"
 	workspacelist "github.com/ahillspace/tadx/actions/workspace/list"
 	workspacemove "github.com/ahillspace/tadx/actions/workspace/move"
+	workspaceregister "github.com/ahillspace/tadx/actions/workspace/register"
 	workspacestatus "github.com/ahillspace/tadx/actions/workspace/status"
 	"github.com/ahillspace/tadx/internal/cli/clierr"
 	"github.com/ahillspace/tadx/internal/pathspec"
@@ -17,6 +19,12 @@ import (
 
 type Creator interface {
 	Create(context.Context, workspacecreate.Input) (workspacecreate.Output, error)
+}
+type Registrar interface {
+	Register(context.Context, workspaceregister.Input) (workspaceregister.Output, error)
+}
+type Cloner interface {
+	Clone(context.Context, workspaceclone.Input) (workspaceclone.Output, error)
 }
 type Lister interface {
 	List(context.Context, workspacelist.Input) (workspacelist.Output, error)
@@ -33,19 +41,21 @@ type Deleter interface {
 type Renderer interface{ Render(any) error }
 
 type Dependencies struct {
-	Creator  Creator
-	Lister   Lister
-	Statuser Statuser
-	Mover    Mover
-	Deleter  Deleter
-	Renderer Renderer
-	Uses     map[string]string
-	Shorts   map[string]string
+	Creator   Creator
+	Registrar Registrar
+	Cloner    Cloner
+	Lister    Lister
+	Statuser  Statuser
+	Mover     Mover
+	Deleter   Deleter
+	Renderer  Renderer
+	Uses      map[string]string
+	Shorts    map[string]string
 }
 
 func New(deps Dependencies) *cobra.Command {
 	command := &cobra.Command{Use: "workspace", Short: "Manage named local workspaces"}
-	command.AddCommand(newCreate(deps), newList(deps), newStatus(deps), newMove(deps), newArtifact(deps))
+	command.AddCommand(newCreate(deps), newRegister(deps), newClone(deps), newList(deps), newStatus(deps), newMove(deps), newArtifact(deps))
 	return command
 }
 
@@ -73,6 +83,63 @@ func newCreate(deps Dependencies) *cobra.Command {
 		},
 	}
 	command.Flags().StringVar(&input.Path, "path", "", "machine-local workspace root")
+	return command
+}
+
+func newRegister(deps Dependencies) *cobra.Command {
+	var input workspaceregister.Input
+	command := &cobra.Command{
+		Use: use(deps, "workspace.register", "register [name]"), Short: short(deps, "workspace.register", "Adopt an existing workspace directory."),
+		Annotations: map[string]string{"tadx.capability": "workspace.register"},
+		Args: func(command *cobra.Command, args []string) error {
+			if err := cobra.MaximumNArgs(1)(command, args); err != nil {
+				return clierr.Usage("workspace.register", err)
+			}
+			if input.Path == "" {
+				return clierr.Usage("workspace.register", errors.New("--path is required"))
+			}
+			if len(args) == 1 {
+				input.Name = args[0]
+			}
+			return nil
+		},
+		RunE: func(command *cobra.Command, _ []string) error {
+			result, err := deps.Registrar.Register(command.Context(), input)
+			if err != nil {
+				return err
+			}
+			return deps.Renderer.Render(result)
+		},
+	}
+	command.Flags().StringVar(&input.Path, "path", "", "existing machine-local workspace root")
+	return command
+}
+
+func newClone(deps Dependencies) *cobra.Command {
+	var input workspaceclone.Input
+	command := &cobra.Command{
+		Use: use(deps, "workspace.clone", "clone <source>"), Short: short(deps, "workspace.clone", "Copy a workspace to a new root."),
+		Annotations: map[string]string{"tadx.capability": "workspace.clone"},
+		Args: func(command *cobra.Command, args []string) error {
+			if err := exactArgs("workspace.clone", 1)(command, args); err != nil {
+				return err
+			}
+			if input.Name == "" || input.Path == "" {
+				return clierr.Usage("workspace.clone", errors.New("--name and --path are required"))
+			}
+			input.Source = args[0]
+			return nil
+		},
+		RunE: func(command *cobra.Command, _ []string) error {
+			result, err := deps.Cloner.Clone(command.Context(), input)
+			if err != nil {
+				return err
+			}
+			return deps.Renderer.Render(result)
+		},
+	}
+	command.Flags().StringVar(&input.Name, "name", "", "new logical workspace name")
+	command.Flags().StringVar(&input.Path, "path", "", "machine-local root for the clone")
 	return command
 }
 

@@ -1,0 +1,5 @@
+status: registered
+workspace:
+  name: adopted
+details: "--full"
+help[1]: tadx workspace status --workspace adopted

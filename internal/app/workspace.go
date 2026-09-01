@@ -6,9 +6,11 @@ import (
 	"strconv"
 
 	artifactdelete "github.com/ahillspace/tadx/actions/workspace/artifact/delete"
+	workspaceclone "github.com/ahillspace/tadx/actions/workspace/clone"
 	workspacecreate "github.com/ahillspace/tadx/actions/workspace/create"
 	workspacelist "github.com/ahillspace/tadx/actions/workspace/list"
 	workspacemove "github.com/ahillspace/tadx/actions/workspace/move"
+	workspaceregister "github.com/ahillspace/tadx/actions/workspace/register"
 	workspacestatus "github.com/ahillspace/tadx/actions/workspace/status"
 	"github.com/ahillspace/tadx/internal/artifact"
 	workspacecli "github.com/ahillspace/tadx/internal/cli/workspace"
@@ -17,31 +19,40 @@ import (
 )
 
 type workspaceCommands struct {
-	runtime *workspaceRuntime
-	create  *workspacecreate.Action
-	list    *workspacelist.Action
-	status  *workspacestatus.Action
-	move    *workspacemove.Action
-	delete  *artifactdelete.Action
+	runtime  *workspaceRuntime
+	create   *workspacecreate.Action
+	register *workspaceregister.Action
+	clone    *workspaceclone.Action
+	list     *workspacelist.Action
+	status   *workspacestatus.Action
+	move     *workspacemove.Action
+	delete   *artifactdelete.Action
 }
 
 func newWorkspaceCommands(runtime *runtimeDependencies) *workspaceCommands {
 	shared := &workspaceRuntime{runtime: runtime}
 	return &workspaceCommands{
 		runtime: shared,
-		create:  workspacecreate.New(workspaceCreator{shared}), list: workspacelist.New(workspaceLister{shared}),
+		create:  workspacecreate.New(workspaceCreator{shared}), register: workspaceregister.New(workspaceRegistrar{shared}),
+		clone: workspaceclone.New(workspaceCloner{shared}), list: workspacelist.New(workspaceLister{shared}),
 		status: workspacestatus.New(workspaceStatusReader{shared}), move: workspacemove.New(workspaceMover{shared}),
 		delete: artifactdelete.New(workspaceDeleteStore{shared}),
 	}
 }
 
 func (c *workspaceCommands) dependencies() *workspacecli.Dependencies {
-	ids := []string{"workspace.create", "workspace.list", "workspace.status", "workspace.move", "workspace.artifact.delete"}
-	return &workspacecli.Dependencies{Creator: c, Lister: c, Statuser: c, Mover: c, Deleter: c, Uses: registryUses(ids...), Shorts: registryShorts(ids...)}
+	ids := []string{"workspace.create", "workspace.register", "workspace.clone", "workspace.list", "workspace.status", "workspace.move", "workspace.artifact.delete"}
+	return &workspacecli.Dependencies{Creator: c, Registrar: c, Cloner: c, Lister: c, Statuser: c, Mover: c, Deleter: c, Uses: registryUses(ids...), Shorts: registryShorts(ids...)}
 }
 
 func (c *workspaceCommands) Create(ctx context.Context, input workspacecreate.Input) (workspacecreate.Output, error) {
 	return c.create.Execute(ctx, input)
+}
+func (c *workspaceCommands) Register(ctx context.Context, input workspaceregister.Input) (workspaceregister.Output, error) {
+	return c.register.Execute(ctx, input)
+}
+func (c *workspaceCommands) Clone(ctx context.Context, input workspaceclone.Input) (workspaceclone.Output, error) {
+	return c.clone.Execute(ctx, input)
 }
 func (c *workspaceCommands) List(ctx context.Context, input workspacelist.Input) (workspacelist.Output, error) {
 	return c.list.Execute(ctx, input)
@@ -87,6 +98,20 @@ type workspaceCreator struct{ runtime *workspaceRuntime }
 func (a workspaceCreator) Create(ctx context.Context, input workspacecreate.Input) (workspacecreate.Workspace, error) {
 	item, err := a.runtime.manager().Create(ctx, input.Name, input.Path)
 	return workspacecreate.Workspace{Name: item.Name, ID: item.ID, ManifestVersion: 1, Registered: item.Available && item.ManifestValid, CreatedEntries: []string{"tadx.yaml", "artifacts", ".tadx"}}, err
+}
+
+type workspaceRegistrar struct{ runtime *workspaceRuntime }
+
+func (a workspaceRegistrar) Register(ctx context.Context, input workspaceregister.Input) (workspaceregister.Workspace, error) {
+	item, err := a.runtime.manager().Register(ctx, input.Name, input.Path)
+	return workspaceregister.Workspace{Name: item.Name, ID: item.ID, ManifestVersion: 1, Registered: item.Available && item.ManifestValid}, err
+}
+
+type workspaceCloner struct{ runtime *workspaceRuntime }
+
+func (a workspaceCloner) Clone(ctx context.Context, input workspaceclone.Input) (workspaceclone.Workspace, error) {
+	item, err := a.runtime.manager().Clone(ctx, input.Source, input.Name, input.Path)
+	return workspaceclone.Workspace{Name: item.Name, ID: item.ID, ManifestVersion: 1, Registered: item.Available && item.ManifestValid, CreatedEntries: []string{"tadx.yaml", "artifacts", ".tadx"}}, err
 }
 
 type workspaceLister struct{ runtime *workspaceRuntime }

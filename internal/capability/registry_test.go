@@ -9,7 +9,7 @@ import (
 
 func TestCanonicalRegistryIsValidAndComplete(t *testing.T) {
 	definitions := All()
-	if got, want := len(definitions), 77; got != want {
+	if got, want := len(definitions), 79; got != want {
 		t.Fatalf("All() returned %d definitions, want %d", got, want)
 	}
 	if err := Validate(definitions); err != nil {
@@ -31,8 +31,8 @@ func TestCanonicalRegistryIsValidAndComplete(t *testing.T) {
 			blocked++
 		}
 	}
-	if cli != 72 || delegated != 5 || ship != 72 || blocked != 16 {
-		t.Fatalf("registry totals = cli:%d delegated:%d ship-disposition:%d blocked:%d, want 72/5/72/16", cli, delegated, ship, blocked)
+	if cli != 74 || delegated != 5 || ship != 74 || blocked != 16 {
+		t.Fatalf("registry totals = cli:%d delegated:%d ship-disposition:%d blocked:%d, want 74/5/74/16", cli, delegated, ship, blocked)
 	}
 }
 
@@ -42,7 +42,7 @@ func TestCanonicalExecutableBindingsIncludeImplementedSlices(t *testing.T) {
 	for _, definition := range definitions {
 		ids = append(ids, definition.ID)
 	}
-	if want := []string{"auth.check", "auth.status", "capability.get", "capability.list", "catalog.search", "env.profile.add", "env.profile.get", "env.profile.list", "env.profile.remove", "env.profile.set-default", "env.profile.update", "flow.delete", "flow.get", "flow.list", "flow.move", "flow.publish", "flow.pull", "lineage.pull", "project.get", "project.list", "workbook.publish", "workbook.pull", "workspace.artifact.delete", "workspace.create", "workspace.list", "workspace.move", "workspace.status"}; !slices.Equal(ids, want) {
+	if want := []string{"auth.check", "auth.status", "capability.get", "capability.list", "catalog.search", "env.profile.add", "env.profile.get", "env.profile.list", "env.profile.remove", "env.profile.set-default", "env.profile.update", "flow.delete", "flow.get", "flow.list", "flow.move", "flow.publish", "flow.pull", "lineage.pull", "project.get", "project.list", "workbook.publish", "workbook.pull", "workspace.artifact.delete", "workspace.clone", "workspace.create", "workspace.list", "workspace.move", "workspace.register", "workspace.status"}; !slices.Equal(ids, want) {
 		t.Fatalf("Executable IDs = %v, want %v", ids, want)
 	}
 	for _, definition := range definitions {

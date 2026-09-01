@@ -82,9 +82,11 @@ Use `tadx capability get <id>` for the same focused metadata at runtime.
 | `workbook.pull` | cli | ship | ready | implemented | `tadx content workbook pull` |
 | `workspace.artifact.delete` | cli | ship | ready | implemented | `tadx workspace artifact delete` |
 | `workspace.clean` | cli | ship | ready | planned | None |
+| `workspace.clone` | cli | ship | ready | implemented | `tadx workspace clone` |
 | `workspace.create` | cli | ship | ready | implemented | `tadx workspace create` |
 | `workspace.list` | cli | ship | ready | implemented | `tadx workspace list` |
 | `workspace.move` | cli | ship | ready | implemented | `tadx workspace move` |
+| `workspace.register` | cli | ship | ready | implemented | `tadx workspace register` |
 | `workspace.status` | cli | ship | ready | implemented | `tadx workspace status` |
 
 ## Capability definitions
@@ -1987,6 +1989,32 @@ Remove explicitly selected disposable local state while preserving canonical art
 - Blocker ID: None
 - Command binding: None
 
+### `workspace.clone`
+
+Copy an existing managed workspace to a new local root under a new workspace identity.
+
+- Surface: tadx workspace clone
+- Operation type: change
+- Owner: cli
+- MCP overlap: None
+- Selectors: Path/name
+- Products and availability: Local / all
+- Product disposition: ship
+- Evidence level: local-contract
+- Verification readiness: ready
+- Implementation state: implemented
+- Local write: Yes
+- Remote mutation: No
+- Requires `--apply`: No
+- Raw capable: No
+- Safety and guard: Rejects existing destination and symlinked entries; new identity; name/ID/path collision checks
+- Artifact effect: None
+- Upstream operation: Local filesystem
+- Evidence: A1 §§6.1, 7.5–7.6, 9.2; C1 §2.1
+- Validation or blocker: Architecture-locked local contract
+- Blocker ID: None
+- Command binding: `tadx workspace clone`
+
 ### `workspace.create`
 
 Create an explicit named workspace with tadx.yaml, artifacts/, and .tadx/.
@@ -2064,6 +2092,32 @@ Move one local artifact without changing Tableau identity.
 - Validation or blocker: Architecture-locked local contract
 - Blocker ID: None
 - Command binding: `tadx workspace move`
+
+### `workspace.register`
+
+Adopt an existing on-disk workspace directory into the local registry using its tadx.yaml identity.
+
+- Surface: tadx workspace register
+- Operation type: change
+- Owner: cli
+- MCP overlap: None
+- Selectors: Path/name
+- Products and availability: Local / all
+- Product disposition: ship
+- Evidence level: local-contract
+- Verification readiness: ready
+- Implementation state: implemented
+- Local write: Yes
+- Remote mutation: No
+- Requires `--apply`: No
+- Raw capable: No
+- Safety and guard: Requires a valid tadx.yaml; name/ID/path collision checks; adopts existing identity, no directory mutation
+- Artifact effect: None
+- Upstream operation: Local filesystem
+- Evidence: A1 §§6.1, 7.5–7.6, 9.2; C1 §2.1
+- Validation or blocker: Architecture-locked local contract
+- Blocker ID: None
+- Command binding: `tadx workspace register`
 
 ### `workspace.status`
 
