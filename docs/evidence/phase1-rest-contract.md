@@ -12,6 +12,8 @@ The implementation uses these captured sections:
 - Exact workbook reads at lines 27547 through 27610.
 - Project listing at lines 36768 through 37060.
 - Workbook download at lines 20889 through 20955.
+- Datasource download at lines 20063 through 20131.
+- Exact datasource reads at lines 35015 through 35168.
 - Upload initiation at lines 28079 through 28146.
 - Upload append at lines 10432 through 10506.
 - Workbook publish at lines 34005 through 34425.
@@ -21,7 +23,8 @@ The implementation uses these captured sections:
 
 Contract tests use local HTTP servers and parse the multipart publish and append bodies.
 They assert methods, paths, headers, payload identities, exact uploaded bytes, ordered multi-block sequence IDs, pagination, response parsing, validation warnings and errors, terminal jobs, and in-flight polling timeouts.
-No live Tableau deployment verification is claimed for the publish and upload contracts in this section.
+The local contract tests do not claim live Tableau deployment verification.
+The separate live records below cover one successful workbook round trip and one cross-site rejection.
 
 The Query Job endpoint is documented as administrator-only while workbook publish can be available to non-administrator publishers.
 Synchronous publish is the default, and asynchronous polling requires the explicit `--as-job` option.
@@ -29,6 +32,28 @@ When Tableau accepts an asynchronous publish but job polling is forbidden, cance
 The error retains the job and request IDs and does not advise an automatic retry.
 The capture disagrees on a 1,000-block versus 10,000-block upload limit.
 TADX applies the conservative 1,000-block limit.
+
+## Live workbook publish behavior
+
+A live Tableau Cloud workbook round trip completed on 2026-08-31 against an authorized disposable development site.
+The sequence pulled a native workbook package, previewed an exact project target, applied the publish, and received a new authoritative workbook LUID.
+This record omits environment aliases, site names, project names, workbook names, LUIDs, and request IDs.
+
+### Cross-site published datasource rejection
+
+A second live test on 2026-09-01 used an unchanged workbook package with a direct published datasource binding.
+The source and target were different sites on the same Tableau Cloud pod.
+Preview identified the cross-site provenance and retained the explicit target project.
+Apply sent the native workbook package unchanged.
+
+Tableau returned HTTP 400 with upstream error code `400011` because the bound published datasource was unavailable on the target site.
+TADX preserved the structured upstream error and Tableau request ID in the live CLI response.
+This evidence redacts the datasource name and request ID.
+The follow-up preview found no workbook collision, which confirmed that the rejected publish did not create the target workbook.
+
+This behavior makes Tableau authoritative for package compatibility at publish time.
+TADX warns when artifact provenance differs from the explicit target, but it does not add a separate fail-closed published-datasource gate.
+TADX does not rewrite the workbook package, rebind dependencies, or claim dependency-aware promotion.
 
 ## Workbook published datasource detection
 

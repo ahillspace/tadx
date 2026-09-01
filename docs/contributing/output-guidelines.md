@@ -18,7 +18,9 @@ Include a field in the compact response only when it serves at least one of thes
 - Provide a concrete next-step command template in `help[]`.
 
 Prefer aggregate counts over item detail.
-Do not include canonical paths, fingerprints, provenance internals, secondary identifiers, successful request IDs, or repeated records unless the next safe decision requires them.
+Render actionable artifact paths relative to the resolved workspace with forward slashes.
+Resolve absolute filesystem paths only at runtime and never emit a developer home or checkout path.
+Do not include fingerprints, provenance internals, secondary identifiers, successful request IDs, or repeated records unless the next safe decision requires them.
 Warnings appear once at the top level unless their location is necessary to understand an independently meaningful partial outcome.
 
 When the compact projection omits fields available through `--full`, include this exact top-level field immediately before `help[]`:
@@ -34,7 +36,7 @@ Omit the marker when compact and full output are identical.
 ## Expanded full output
 
 Full output is a strict, bounded superset of the compact information for the same completed operation.
-It may add canonical paths, fingerprints, nonsecret provenance, secondary LUIDs, successful request IDs, validation diagnostics, and bounded item details.
+It may add relative canonical artifact paths, fingerprints, nonsecret provenance, secondary LUIDs, successful request IDs, validation diagnostics, and bounded item details.
 It must not change the remote request, local mutation, result semantics, selector resolution, or safety behavior.
 Every full-detail collection has an explicit capability-specific maximum and reports the total or omitted count when truncation occurs.
 Full output retains compact aggregate counts even when it adds the underlying detail records.

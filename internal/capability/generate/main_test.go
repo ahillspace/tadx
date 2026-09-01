@@ -13,7 +13,7 @@ func TestGeneratedRegistryIsClean(t *testing.T) {
 	if err != nil {
 		t.Fatalf("readRows returned error: %v", err)
 	}
-	if got, want := len(rows), 71; got != want {
+	if got, want := len(rows), 77; got != want {
 		t.Fatalf("readRows returned %d capability rows, want %d", got, want)
 	}
 	generated, err := render(rows)

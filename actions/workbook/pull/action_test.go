@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -103,7 +104,7 @@ func TestActionRecordsPortableWorkbookWithoutDatasourceDownloads(t *testing.T) {
 	w := &writer{result: pull.ArtifactResult{Path: "artifact", BaselineFingerprint: "sha256:workbook"}}
 
 	result, err := pull.New(r, w).Execute(context.Background(), pull.Input{
-		Environment: "dev", Site: "pace-dev", SiteLUID: "site-1", ServerOrigin: "https://tableau.example.com",
+		Environment: "dev", Site: "test-site", SiteLUID: "site-1", ServerOrigin: "https://tableau.example.com",
 		Workspace: "workspace", Selector: identity.Selector{LUID: "wb-1"},
 	})
 	if err != nil {
@@ -153,7 +154,7 @@ func TestActionAcquiresUniquePublishedDatasourcesWhenRequested(t *testing.T) {
 	}
 
 	result, err := pull.New(r, w).Execute(context.Background(), pull.Input{
-		Environment: "dev", Site: "pace-dev", SiteLUID: "site-1", ServerOrigin: "https://tableau.example.com",
+		Environment: "dev", Site: "test-site", SiteLUID: "site-1", ServerOrigin: "https://tableau.example.com",
 		Workspace: "workspace", Selector: identity.Selector{LUID: "wb-1"}, IncludePDS: true, Overwrite: true,
 	})
 	if err != nil {
@@ -187,7 +188,7 @@ func TestActionLeavesPortabilityUnknownWhenOptionalDetectionIsIncomplete(t *test
 	}
 	w := &writer{result: pull.ArtifactResult{Path: "artifact", BaselineFingerprint: "sha256:workbook"}}
 
-	result, err := pull.New(r, w).Execute(context.Background(), pull.Input{Environment: "dev", Site: "pace-dev", Workspace: "workspace", Selector: identity.Selector{LUID: "wb-1"}})
+	result, err := pull.New(r, w).Execute(context.Background(), pull.Input{Environment: "dev", Site: "test-site", Workspace: "workspace", Selector: identity.Selector{LUID: "wb-1"}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -207,7 +208,7 @@ func TestActionRequiresCompleteDetectionBeforeIncludePDSAcquisition(t *testing.T
 	}
 	w := &writer{}
 
-	_, err := pull.New(r, w).Execute(context.Background(), pull.Input{Environment: "dev", Site: "pace-dev", Workspace: "workspace", Selector: identity.Selector{LUID: "wb-1"}, IncludePDS: true})
+	_, err := pull.New(r, w).Execute(context.Background(), pull.Input{Environment: "dev", Site: "test-site", Workspace: "workspace", Selector: identity.Selector{LUID: "wb-1"}, IncludePDS: true})
 	payload := errs.Structure(err).Error
 	if payload.ID != "workbook.pull.references" || payload.Retryable == nil || !*payload.Retryable {
 		t.Fatalf("structured error = %#v", payload)
@@ -301,14 +302,16 @@ func TestActionGoldenOutput(t *testing.T) {
 			"ds-1": {LUID: "ds-1", Name: "Sales", ProjectLUID: "datasource-project", ProjectPath: "Shared", Filename: "Sales.tdsx", Content: []byte("native-datasource")},
 		},
 	}, &writer{result: pull.ArtifactResult{
-		Path:                `C:\workspace\artifacts\workbook\Finance`,
-		CanonicalPath:       `C:\workspace\artifacts\workbook\Finance\Finance.twbx`,
+		// The artifact manager returns runtime absolute paths.
+		// Public output must project them relative to the selected workspace.
+		Path:                filepath.FromSlash("C:/workspace/artifacts/workbook/Finance"),
+		CanonicalPath:       filepath.FromSlash("C:/workspace/artifacts/workbook/Finance/Finance.twbx"),
 		BaselineFingerprint: "sha256:abc",
 		Warnings:            []string{"existing clean artifact replaced"},
 	}, datasourceResults: map[string]pull.DependencyArtifactResult{
-		"ds-1": {LUID: "ds-1", Name: "Sales", Path: "artifacts/datasource/Sales", CanonicalPath: `C:\workspace\artifacts\datasource\Sales\Sales.tdsx`, BaselineFingerprint: "sha256:def"},
+		"ds-1": {LUID: "ds-1", Name: "Sales", Path: "artifacts/datasource/Sales", CanonicalPath: filepath.FromSlash("C:/workspace/artifacts/datasource/Sales/Sales.tdsx"), BaselineFingerprint: "sha256:def"},
 	}}).Execute(context.Background(), pull.Input{
-		Environment: "production", Site: "marketing", Workspace: `C:\workspace`,
+		Environment: "production", Site: "marketing", Workspace: filepath.FromSlash("C:/workspace"),
 		Selector: identity.Selector{LUID: "wb-1", Name: "Finance", ProjectPath: "Ops"}, IncludePDS: true,
 	})
 	if err != nil {

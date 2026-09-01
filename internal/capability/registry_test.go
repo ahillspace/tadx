@@ -9,7 +9,7 @@ import (
 
 func TestCanonicalRegistryIsValidAndComplete(t *testing.T) {
 	definitions := All()
-	if got, want := len(definitions), 71; got != want {
+	if got, want := len(definitions), 77; got != want {
 		t.Fatalf("All() returned %d definitions, want %d", got, want)
 	}
 	if err := Validate(definitions); err != nil {
@@ -31,8 +31,8 @@ func TestCanonicalRegistryIsValidAndComplete(t *testing.T) {
 			blocked++
 		}
 	}
-	if cli != 66 || delegated != 5 || ship != 66 || blocked != 14 {
-		t.Fatalf("registry totals = cli:%d delegated:%d ship-disposition:%d blocked:%d, want 66/5/66/14", cli, delegated, ship, blocked)
+	if cli != 72 || delegated != 5 || ship != 72 || blocked != 14 {
+		t.Fatalf("registry totals = cli:%d delegated:%d ship-disposition:%d blocked:%d, want 72/5/72/14", cli, delegated, ship, blocked)
 	}
 }
 
@@ -101,6 +101,7 @@ func TestValidateRejectsEveryRegistryInvariant(t *testing.T) {
 		{name: "duplicate implemented command paths", defs: []Definition{implemented(testDefinition("one.get"), "one", "get"), implemented(testDefinition("two.get"), "one", "get")}, want: "duplicate implemented command path"},
 		{name: "missing required fields", defs: []Definition{{ID: "incomplete"}}, want: "missing required field"},
 		{name: "remote mutation without apply", defs: []Definition{with(valid, func(d *Definition) { d.RemoteMutation = true })}, want: "remote mutation requires apply"},
+		{name: "apply without consequential write", defs: []Definition{with(valid, func(d *Definition) { d.RequiresApply = true })}, want: "requires apply without consequential write"},
 		{name: "delegated with binding", defs: []Definition{with(valid, func(d *Definition) {
 			d.Disposition = DispositionDelegated
 			d.Owner = OwnerMCP
@@ -122,6 +123,16 @@ func TestValidateRejectsEveryRegistryInvariant(t *testing.T) {
 				t.Fatalf("Validate() error = %v, want error containing %q", err, test.want)
 			}
 		})
+	}
+}
+
+func TestValidateAllowsApplyForConsequentialLocalWrite(t *testing.T) {
+	definition := with(testDefinition("workspace.artifact.delete"), func(d *Definition) {
+		d.LocalWrite = true
+		d.RequiresApply = true
+	})
+	if err := Validate([]Definition{definition}); err != nil {
+		t.Fatalf("Validate() rejected consequential local write with apply: %v", err)
 	}
 }
 

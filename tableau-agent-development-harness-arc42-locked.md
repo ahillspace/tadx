@@ -1,7 +1,7 @@
 # Tableau agent development harness
 
 **Document type:** Lean arc42 system definition  
-**Status:** Architecture complete — implementation handoff  
+**Status:** Architecture complete - implementation handoff
 **Working repository / product / binary:** `tadx`  
 **Primary implementation language:** Go  
 **Primary interface:** AXI-style CLI  
@@ -13,6 +13,11 @@
 ## Document purpose
 
 This document is the authoritative architecture definition for TADX.
+
+This document is coordinator authority, not default slice-agent context.
+Slice agents must use the focused capability registry result, a filled task card, the closest implementation example, and task-specific evidence.
+Do not read this document end to end during ordinary slice implementation.
+Use targeted searches and bounded sections only when the task card identifies an architecture decision that needs reconciliation.
 
 The architecture interview is complete. There are no remaining product or architecture questions that require another user decision before implementation can begin. Items that still require API verification, implementation choices, or later product work are explicitly classified as implementation work or deferred work rather than unresolved architecture.
 
@@ -39,11 +44,11 @@ External repositories and prototype applications are evidence and reusable code 
 
 ## Status markers
 
-- `[DECIDED]` — implementation must preserve this behavior or boundary.
-- `[IMPLEMENTATION]` — coding agents may choose the exact mechanism without reopening architecture unless the choice changes user-visible behavior or a major boundary.
-- `[VERIFY]` — factual API behavior must be checked during implementation, but the product decision is already made.
-- `[DEFERRED]` — valid work intentionally excluded from V1.
-- `[OUT OF SCOPE]` — not part of the product direction.
+- `[DECIDED]` - implementation must preserve this behavior or boundary.
+- `[IMPLEMENTATION]` - coding agents may choose the exact mechanism without reopening architecture unless the choice changes user-visible behavior or a major boundary.
+- `[VERIFY]` - factual API behavior must be checked during implementation, but the product decision is already made.
+- `[DEFERRED]` - valid work intentionally excluded from V1.
+- `[OUT OF SCOPE]` - not part of the product direction.
 
 No `[OPEN]` architecture items remain.
 
@@ -162,7 +167,8 @@ V1 must include enough coherent deterministic primitives that coding agents can 
 - PAT authentication.
 - Environment-variable / local `.env` secret resolution.
 - Read-only default environment support.
-- Explicit target environment for remote writes.
+- Source-provenance default targets for artifact-backed remote writes.
+- Explicit target selection when source provenance is absent or intentionally overridden.
 - `doctor` diagnostics.
 
 ### Capability discovery
@@ -198,6 +204,8 @@ V1 must include enough coherent deterministic primitives that coding agents can 
 - Baseline fingerprint.
 - Local modification detection.
 - Local move/organization/status.
+- Exact local artifact deletion.
+- Relative, slash-delimited persisted artifact paths.
 - External tooling may modify local artifacts.
 
 ### Content lifecycle
@@ -210,9 +218,13 @@ V1 must include enough coherent deterministic primitives that coding agents can 
 - Get/inspect.
 - Pull.
 - Publish.
+- Exact workbook, datasource, and flow deletion.
+- Exact flow movement between projects.
 - Preview/apply.
 - Re-pull with dirty-state protection.
 - Shallow project behavior.
+- Bounded factual lineage capture during workbook, datasource, and flow pulls.
+- Standalone bounded factual lineage pull.
 - Composable datasource round-trip fidelity.
 - Composable datasource authoring.
 - Datasource field metadata read/enrichment.
@@ -250,12 +262,15 @@ V1 must include enough coherent deterministic primitives that coding agents can 
 - TDS remote datasource work-copy editing.
 - TDS work-copy diff.
 - TDS staged-change impact analysis.
-- Lineage/downstream traversal as a general CLI capability.
+- Generic dependency-driven migration or unbounded lineage traversal.
 - Recursive project migration.
 - Generic bulk pull/publish.
 - Permission mutation.
 - Deep semantic diffing.
-- Generic remote content move.
+- Generic remote content move other than the admitted flow move capability.
+- Flow runs, cancellation, scheduling, linked tasks, and run monitoring.
+- Flow connection rewriting, credential rewriting, and permission mutation.
+- Flow tags, failure monitoring, migration keychains, and recycle-bin recovery.
 - Plugin architecture.
 - Background daemons/synchronization.
 - Tableau Next.
@@ -455,13 +470,14 @@ The repository's `AGENTS.md` is the high-level agent-routing guide. Focused capa
 | Content search | TADX CLI + deliberate MCP overlap | CLI-first for lifecycle |
 | Workbook pull/publish | TADX CLI | V1 |
 | Datasource pull/publish | TADX CLI | V1 |
-| Flow pull/publish | TADX CLI | V1 where released APIs support it |
+| Flow pull/publish/move/delete | TADX CLI | V1 where released APIs support it |
 | Project shallow lifecycle | TADX CLI | V1 |
 | Composable datasource lifecycle | TADX CLI | V1 |
 | Datasource metadata enrichment/write-back | TADX CLI | V1 released path |
 | Users/groups | TADX CLI | Narrow deterministic admin |
 | Permissions | TADX CLI | Read/inspect only |
-| Generic lineage traversal | Later | Deferred |
+| Bounded factual lineage capture and pull | TADX CLI | V1 |
+| Generic dependency-driven or unbounded lineage traversal | Later | Deferred |
 | TDS work-copy editing | Later | Fast follow after API maturity |
 
 ---
@@ -642,7 +658,9 @@ Owns:
 - artifact provenance,
 - baseline fingerprints,
 - local modification detection,
-- local move/status/cleanup,
+- local move/status,
+- exact local artifact deletion,
+- portable relative-path persistence,
 
 ## 5.9 Catalog subsystem
 
@@ -656,7 +674,8 @@ Owns:
 
 The catalog may internally hydrate a complete site inventory. That full inventory is cache input, not model output.
 
-SQLite is a preferred starting implementation because the existing Go `tabget` implementation already supports it effectively. Exact schema/index tuning remains an implementation decision.
+SQLite is a preferred starting implementation because an existing user-owned Go implementation already demonstrates it effectively.
+Exact schema and index tuning remain implementation decisions.
 
 ## 5.10 Output/error layer
 
@@ -750,9 +769,15 @@ A content pull:
 3. Selects a deterministic local artifact directory.
 4. Retrieves the canonical representation.
 5. Writes provenance metadata.
-6. Writes a baseline fingerprint.
-7. Writes the required human-readable representation.
-8. Applies re-pull rules if the same authoritative resource already exists.
+6. Captures bounded factual lineage where the resource supports it.
+7. Writes lineage status and a relative sidecar pointer in provenance metadata.
+8. Writes a baseline fingerprint.
+9. Writes the required human-readable representation.
+10. Applies re-pull rules if the same authoritative resource already exists.
+
+Automatic lineage capture is best effort and bounded to direct upstream and downstream relationships.
+If Tableau returns partial or unavailable lineage, TADX preserves the pulled artifact and emits a warning with the recorded lineage status.
+Successful compact output omits lineage details.
 
 ## 6.4 Re-pull
 
@@ -806,6 +831,10 @@ No extra production-only confirmation.
 - Tableau's own permission enforcement,
 - `--apply`.
 
+Artifact-backed mutations use the recorded source environment, site, project, and resource identity as the default target.
+If the artifact has no complete source provenance, the caller must provide an exact target.
+An explicit environment override also requires an exact target project.
+
 ## 6.6 Mutation discovery gating
 
 `[DECIDED]`
@@ -841,6 +870,11 @@ TADX does not perform optimistic-concurrency or remote-change detection before p
 It validates the requested target and operation, previews by default, and on `--apply` invokes the Tableau operation. TADX does not compare current remote state with the state observed at pull time and does not block publication merely because the remote resource may have changed.
 
 Tableau remains authoritative. API-level conflicts or rejected updates are surfaced as normal actionable operation failures.
+
+For cross-site workbook publication, TADX preserves the package and its published-datasource references without rewriting them.
+Preview warns when source provenance shows a site change.
+On apply, Tableau decides whether the target site can resolve those references.
+TADX preserves Tableau's actionable rejection if the target site cannot resolve them.
 
 ## 6.8 Async Tableau operations
 
@@ -895,6 +929,22 @@ On failure:
 - do not provide automatic resume in V1.
 
 A future version may add resumability if completed work can be identified deterministically.
+
+## 6.11 Deletion and flow movement
+
+`[DECIDED]`
+
+V1 includes exact deletion for local artifacts and supported remote workbooks, datasources, and flows.
+Every deletion previews by default and requires `--apply`.
+Local deletion resolves one artifact by authoritative metadata within one named workspace.
+Remote deletion resolves one resource by Tableau LUID and revalidates that identity immediately before mutation.
+
+V1 also includes exact flow movement between projects.
+Flow movement resolves one flow and one destination project, previews the resolved LUIDs, and requires `--apply`.
+
+Project deletion, generic cleanup policy, recycle-bin recovery, permanent purge, and generic remote movement remain deferred.
+The mutation-discovery switch keeps its existing discovery-only behavior.
+No separate deletion-policy switch is defined in this architecture revision.
 
 ---
 
@@ -1032,6 +1082,7 @@ workspace/
       <human-name>/
         <canonical-payload>
         metadata.json
+        lineage.json
         view.md
   .tadx/
 ```
@@ -1040,10 +1091,13 @@ Conventions:
 
 - `.tadx/` is hidden implementation state.
 - `metadata.json` stores machine-readable provenance/baseline metadata.
+- `lineage.json` stores the bounded factual lineage graph when lineage is requested or automatically captured.
 - `view.md` is the required human-readable view.
 - Native packaged/file resources preserve their native extension for the canonical payload.
 - API-native resources use `resource.json` as the canonical payload.
 - Exact safe-name sanitization is an implementation detail; local path is never authoritative identity.
+- Persisted artifact paths and pointers are relative to the resolved workspace and use forward slashes.
+- TADX resolves absolute filesystem paths only at runtime and never persists a developer home or checkout path.
 
 ## 7.6 Local state concurrency
 
@@ -1123,9 +1177,31 @@ source_project_name
 source_project_id
 pulled_at
 local_baseline_fingerprint
+lineage_status
+lineage_path
 ```
 
-The recorded source (`source_environment`, `source_site`, `name`, `tableau_id`) is the default publish target when the artifact is later published; an explicit `--environment` overrides it, for example to promote to a different environment. Apply re-resolves the recorded LUID against Tableau and fails deterministically if it was renamed, moved, or deleted rather than overwriting a different resource. A recorded source environment absent from local configuration is a deterministic error.
+The recorded source environment, site, project, name, and Tableau ID form the default publish target when the artifact is later published.
+An explicit `--environment` overrides that target for promotion and requires an exact target project.
+Apply re-resolves the recorded LUID against Tableau and fails deterministically if it was renamed, moved, or deleted rather than overwriting a different resource.
+A recorded source environment absent from local configuration is a deterministic error.
+
+### Lineage artifacts
+
+Automatic lineage capture records a bounded direct graph in `lineage.json` and stores status, counts, and a relative pointer in `metadata.json`.
+The graph keeps Metadata API node IDs separate from Tableau REST LUIDs.
+TADX never uses a Metadata API node ID as a mutation identity.
+
+The standalone `content.lineage.pull` capability supports bounded direction, depth, and transitive traversal.
+It creates a metadata-only lineage artifact directory containing `metadata.json`, `lineage.json`, and `view.md`, without a native Tableau package.
+Partial or unavailable lineage remains an explicit status and warning rather than an apparently complete result.
+
+### Flow artifacts
+
+TADX downloads, stores, and publishes native `.tfl` or `.tflx` content unchanged.
+TADX does not rewrite file, database, credential, or published-datasource connections inside a flow.
+A flow package can contain those native references, and Tableau remains authoritative when it accepts or rejects publication.
+Flow runs, schedules, linked tasks, connection management, permission mutation, tags, and operational monitoring remain deferred.
 
 ## 8.3 Composable datasources
 
@@ -1181,7 +1257,7 @@ Separate two Pulse concerns:
 - analytical Pulse reads,
 - insights.
 
-Implementation should use the existing local `juju-local` Pulse work as a behavioral/API reference while explicitly avoiding its Tableau Next portions.
+Implementation can use user-supplied Pulse lifecycle evidence as a behavioral API reference while excluding unrelated Tableau Next material.
 
 ## 8.6 Workbook modification
 
@@ -1215,7 +1291,7 @@ Group membership is handled through group update semantics unless implementation
 
 Permissions are read/inspect only in V1.
 
-Reuse the existing Go `tabget` inventory/permissions behavior aggressively where appropriate.
+Reuse reviewed behavior from user-supplied Go inventory and permissions code where appropriate.
 
 No independent permission inference engine.
 
@@ -1231,12 +1307,15 @@ TADX does not own:
 
 - transitive dependency discovery for project migration,
 - generic cycle handling,
-- dependency graph serialization,
+- generic dependency graph planning or mutation,
 - automatic acquisition of external dependencies.
 
 A resource's own native references remain part of that resource and must be preserved for fidelity.
 
 The user/agent is responsible for understanding higher-level dependencies unless a later specific capability justifies a dedicated deterministic primitive.
+
+Bounded lineage capture is a read-only factual metadata snapshot, not a dependency engine.
+It does not acquire dependencies, plan migrations, rewrite references, or authorize mutations.
 
 ## 8.10 Output model
 
@@ -1372,16 +1451,17 @@ tadx workspace
   list
   status
   move
-  clean
+  artifact delete
 
 tadx content
   search
   get
   pull
   publish
-  workbook ...
-  datasource ...
-  flow ...
+  lineage pull
+  workbook ... delete
+  datasource ... delete
+  flow ... move delete
   project ...
 
 tadx pulse
@@ -1498,7 +1578,7 @@ Every reused component is still reviewed for:
 
 Behavior may be ported instead of code when that produces a cleaner TADX implementation.
 
-## 11.2 `tabget`
+## 11.2 Existing Go lifecycle reference
 
 Primary trusted Go foundation.
 
@@ -1513,13 +1593,13 @@ Use aggressively as the starting point for:
 - SQLite cache/output patterns,
 - throttling/pagination behavior where suitable.
 
-`tabget` is the existing implementation with the strongest confidence level.
+This user-supplied implementation is the existing reference with the strongest confidence level.
 
 ## 11.3 Pulse reference
 
-Use the existing `~projects/tableau/juju-local` Pulse implementation as a behavioral/API reference.
+Use user-supplied Pulse lifecycle evidence as a behavioral API reference.
 
-Be careful to distinguish the Pulse implementation from the unrelated/similar Tableau Next application in that repository.
+Exclude unrelated Tableau Next behavior from that evidence.
 
 The repository also contains a Markdown reference for the Pulse metric-create API flow.
 
@@ -1689,11 +1769,12 @@ After TDS work copies are admitted:
 - factual affected-resource emission may be a deterministic primitive if Metadata API supports it,
 - semantic classification such as breaking/visible/safe remains skill/agent reasoning.
 
-## 13.6 Lineage
+## 13.6 Generic dependency orchestration
 
 `[DEFERRED]` Not V1.
 
-Reconsider only if a concrete lifecycle/change workflow proves a dedicated bounded traversal primitive materially valuable and MCP remains insufficient.
+Bounded factual lineage capture and standalone lineage pull are V1 capabilities.
+Generic migration planning, dependency acquisition, reference rewriting, and unbounded graph traversal remain deferred.
 
 ---
 
@@ -1779,14 +1860,24 @@ A named local artifact-oriented working area. It may contain resources from mult
 | Catalog/site hydration | Ship | TADX |
 | Content lifecycle search | Ship | TADX |
 | Workbook pull/publish | Ship | TADX |
+| `workbook.delete` | Ship | TADX |
 | Workbook authoring/modification | Do not build | Desktop MCP/Tableau |
 | Datasource pull/publish | Ship | TADX |
+| `datasource.delete` | Ship | TADX |
 | Composable datasource round-trip | Ship | TADX |
 | Composable datasource authoring | Ship | TADX |
 | Datasource field metadata read | Ship | TADX |
 | Datasource field-description write-back | Ship after released-API verification | TADX |
 | Flow pull/publish | Ship where released API supports it | TADX |
+| `flow.delete` | Ship where released API supports it | TADX |
+| `flow.move` between projects | Ship where released API supports it | TADX |
+| Flow run/cancel/schedule/monitor | Deferred | TADX later |
+| Flow connection, permission, and tag management | Deferred | TADX later |
+| `workspace.artifact.delete` | Ship | TADX |
+| Automatic bounded lineage capture on pull | Ship | TADX |
+| `content.lineage.pull` | Ship | TADX |
 | Shallow project lifecycle | Ship | TADX |
+| Project delete | Deferred | TADX later |
 | Recursive project migration | Deferred | TADX later |
 | Pulse definition/config retrieval | Ship | TADX |
 | Pulse definition/config artifacts | Ship | TADX |
@@ -1798,7 +1889,8 @@ A named local artifact-oriented working area. It may contain resources from mult
 | Group membership | Ship via group update semantics | TADX |
 | Permission inspection | Ship | TADX |
 | Permission mutation | Deferred | TADX later |
-| Generic lineage traversal | Deferred | Re-evaluate later |
+| Generic dependency-driven or unbounded lineage traversal | Deferred | TADX later |
+| Generic remote content move other than flow move | Deferred | TADX later |
 | `pack` / `unpack` | Deferred | TADX later |
 | Hyper <-> CSV | Deferred | TADX later/optional Python fallback |
 | TDS work-copy lifecycle | Deferred fast follow | TADX later |
@@ -1823,16 +1915,19 @@ No user decision is required unless evidence contradicts an architecture decisio
 - Verify composed datasource parent/reference publish requirements.
 - Verify released API for composable datasource authoring.
 - Verify flow download/publish behavior.
+- Verify workbook, datasource, and flow deletion behavior.
+- Verify flow movement between projects.
+- Verify bounded workbook, datasource, and flow lineage behavior through the Metadata API.
 - Verify shallow project lifecycle API calls.
 - Verify field metadata/ID mapping/write-back API behavior.
-- Verify Pulse definition/metric lifecycle APIs using `juju-local` and current official docs.
+- Verify Pulse definition/metric lifecycle APIs using captured evidence and current official docs.
 - Verify user/group/group-membership REST endpoints.
-- Verify permission inspection behavior using `tabget`.
+- Verify permission inspection behavior using captured evidence and reviewed user-supplied code.
 - Record runtime differences as capability notes, not as a global version gate.
 
 ## B.2 Code reuse review
 
-- Start with `tabget` for REST/auth/catalog/permissions where possible.
+- Start with reviewed user-supplied Go code for REST, auth, catalog, and permissions where possible.
 - Review each reused component for quality, latency, simplicity, and unnecessary coupling.
 - Port behavior rather than scaffolding from non-Go apps.
 - Review external dependency licenses before redistribution.
@@ -1884,15 +1979,15 @@ A capability is ready to merge when:
 
 # Appendix D. Decision ledger
 
-## ADR-001 — Go modular monolith
+## ADR-001 - Go modular monolith
 
 Use Go, one module, one primary binary, thin Cobra commands, reusable internal packages.
 
-## ADR-002 — MCP and CLI are peer surfaces
+## ADR-002 - MCP and CLI are peer surfaces
 
 The agent chooses. TADX never proxies MCP.
 
-## ADR-003 — Tools / workflows / reasoning / presentation separation
+## ADR-003 - Tools / workflows / reasoning / presentation separation
 
 ```text
 TOOLS        -> CLI / MCP
@@ -1901,139 +1996,179 @@ REASONING    -> Agent
 PRESENTATION -> VS Code
 ```
 
-## ADR-004 — AXI controls CLI behavior
+## ADR-004 - AXI controls CLI behavior
 
 Cobra is plumbing; AXI is the UX/agent contract.
 
-## ADR-005 — High-frequency lifecycle overlap is intentional
+## ADR-005 - High-frequency lifecycle overlap is intentional
 
 Get/list/search/publish/auth-style primitives may overlap MCP because they recur across many workflows. VDS remains MCP-primary.
 
-## ADR-006 — Local artifact-oriented workspaces
+## ADR-006 - Local artifact-oriented workspaces
 
 Visible artifacts/provenance; minimal hidden state; multi-environment; no persistent publish target.
 
-## ADR-007 — Deterministic workspace resolution
+## ADR-007 - Deterministic workspace resolution
 
 Explicit -> cwd -> environment default -> general default -> fail.
 
-## ADR-008 — Tableau IDs are authoritative
+## ADR-008 - Tableau IDs are authoritative
 
 Names and paths are selectors; ambiguity fails.
 
-## ADR-009 — Re-pull protects local edits
+## ADR-009 - Re-pull protects local edits
 
 Baseline fingerprint; unchanged repull refreshes with warning; dirty repull requires `--overwrite`.
 
-## ADR-010 — Consequential writes use preview/apply
+## ADR-010 - Consequential writes use preview/apply
 
 Preview by default; `--apply` mutates; no second confirmation; production is not special-cased.
 
-## ADR-011 — Mutation gating is discovery-only
+## ADR-011 - Mutation gating is discovery-only
 
 `TADX_ENABLE_MUTATIONS=1` persistently exposes mutation capabilities; it is not execution authorization.
 
-## ADR-012 — Minimal exit codes
+## ADR-012 - Minimal exit codes
 
 0 success/no-op, 1 operation/runtime error, 2 usage error.
 
-## ADR-013 — TOON is default output
+## ADR-013 - TOON is default output
 
 Compact TOON by default, `--full`, explicit `--raw`, upstream TOON conformance.
 
-## ADR-014 — No telemetry
+## ADR-014 - No telemetry
 
 No phone home. Local redacted diagnostics only.
 
-## ADR-015 — Pre-1.0 additive best effort
+## ADR-015 - Pre-1.0 additive best effort
 
 No formal compatibility guarantee; prefer additive evolution.
 
-## ADR-016 — Platform release matrix
+## ADR-016 - Platform release matrix
 
 Windows AMD64; macOS AMD64/ARM64; Linux AMD64.
 
-## ADR-017 — No global Tableau version gate
+## ADR-017 - No global Tableau version gate
 
 Attempt admitted capabilities optimistically; surface upstream failure.
 
-## ADR-018 — GitHub Releases + SHA-256
+## ADR-018 - GitHub Releases + SHA-256
 
 No V1 signing or auto-update.
 
-## ADR-019 — No special offline/air-gap mode
+## ADR-019 - No special offline/air-gap mode
 
 Local commands naturally work offline; remote commands require network.
 
-## ADR-020 — No generic dependency engine
+## ADR-020 - No generic dependency engine
 
 Preserve resource-native references; higher-level dependency reasoning stays with user/agent.
 
-## ADR-021 — Shallow project stop-on-failure
+## ADR-021 - Shallow project stop-on-failure
 
 Direct content only; stop on failure; report success/failure; no rollback/resume.
 
-## ADR-022 — Composable datasources are V1
+## ADR-022 - Composable datasources are V1
 
 Preserve and author published-datasource composition relationships through deterministic CLI capabilities.
 
-## ADR-023 — Pulse definition lifecycle is CLI-owned
+## ADR-023 - Pulse definition lifecycle is CLI-owned
 
 Definition/config retrieval and materialization belong in TADX; metric values/insights stay MCP-primary.
 
-## ADR-024 — First-party skills are selective
+## ADR-024 - First-party skills are selective
 
 Ship skills only for common multi-command orchestration patterns not intentionally abstracted into deterministic CLI commands.
 
-## ADR-025 — Test-first capability implementation
+## ADR-025 - Test-first capability implementation
 
 Tests defining externally visible behavior are written before feature implementation. Live Tableau execution is verification evidence, not a mandatory release gate.
 
-## ADR-026 — No generic secret policing
+## ADR-026 - No generic secret policing
 
 TADX protects secrets it handles; it does not act as a DLP scanner over arbitrary user-authored content.
 
-## ADR-027 — Async polling belongs in CLI where deterministic
+## ADR-027 - Async polling belongs in CLI where deterministic
 
 The CLI waits/polls internally for bounded asynchronous Tableau jobs rather than making the LLM repeatedly poll.
 
-## ADR-028 — Reuse user-owned code freely but review it
+## ADR-028 - Reuse user-owned code freely but review it
 
-Local/user-owned repositories are reusable. `tabget` is the preferred trusted foundation; every lift still gets quality/latency/simplicity review.
+User-owned repositories are reusable evidence sources.
+The reviewed Go lifecycle implementation is the preferred foundation, and every lift still gets quality, latency, and simplicity review.
 
-## ADR-029 — `pack` / `unpack` move after V1
+## ADR-029 - `pack` / `unpack` move after V1
 
 Keep V1 focused. Hyper conversion moves with this fast-follow capability.
 
-## ADR-030 — TDS work-copy editing waits for API maturity
+## ADR-030 - TDS work-copy editing waits for API maturity
 
 Do not ship until work-copy management can be implemented safely with the released API.
 
 ---
 
-## ADR-031 — MCP is the data analyst; CLI owns lifecycle
+## ADR-031 - MCP is the data analyst; CLI owns lifecycle
 
 MCP owns analysis, actual file/datasource data querying, and Pulse metric values/insights. TADX owns deterministic Tableau development/lifecycle operations, including Pulse definitions/configuration.
 
-## ADR-032 — Concurrent local races are caller responsibility
+## ADR-032 - Concurrent local races are caller responsibility
 
 V1 provides no workspace/state locking. Concurrent processes racing on the same local state are the caller's responsibility.
 
-## ADR-033 — No special enterprise networking requirement
+## ADR-033 - No special enterprise networking requirement
 
 V1 adds no product-specific proxy/custom-CA subsystem beyond ordinary platform/Go HTTP behavior.
 
-## ADR-034 — Agent routing starts in AGENTS.md
+## ADR-034 - Agent routing starts in AGENTS.md
 
 `AGENTS.md` provides high-level ownership guidance; capability discovery provides focused detail and points agents to MCP for analytical/querying tools.
 
-## ADR-035 — Logging is environment-variable opt-in
+## ADR-035 - Logging is environment-variable opt-in
 
 Persistent local logging is off by default and enabled with `TADX_LOG_LEVEL`.
 
-## ADR-036 — External Tableau tooling may be admitted after V1
+## ADR-036 - External Tableau tooling may be admitted after V1
 
 Tableau Desktop MCP is an expected peer integration; Hyper API may be used later if equivalent Go implementation is impractical.
+
+## ADR-037 - Bounded factual lineage is V1
+
+Workbook, datasource, and flow pulls capture bounded direct lineage automatically when available.
+Standalone lineage pull supports bounded direction, depth, and transitive traversal.
+Lineage is read-only artifact metadata, not a dependency or migration engine.
+
+## ADR-038 - Exact local and remote deletion is V1
+
+V1 includes exact local artifact deletion and exact workbook, datasource, and flow deletion.
+Deletion previews by default, requires `--apply`, and uses authoritative identity.
+Project deletion, generic cleanup, recovery, and purge remain deferred.
+Deletion-policy environment flags remain tabled.
+
+## ADR-039 - Flow movement is the admitted remote move
+
+V1 includes exact flow movement between projects.
+Generic remote content movement remains deferred.
+
+## ADR-040 - Artifact source provenance supplies the default target
+
+Artifact-backed mutations default to the recorded source environment, site, project, and identity.
+An explicit environment override requires an exact project target.
+Artifacts without complete source provenance require an explicit target.
+
+## ADR-041 - Tableau decides cross-site published-datasource validity
+
+TADX warns on a source-site change and submits the workbook package unchanged.
+Tableau accepts or rejects published-datasource references on the target site, and TADX preserves that result.
+
+## ADR-042 - Persisted artifact paths are portable
+
+Persisted paths are workspace-relative and slash-delimited.
+TADX resolves absolute filesystem paths only at runtime and never persists developer-specific machine paths.
+
+## ADR-043 - Slice agents use focused context
+
+The arc42 document remains coordinator authority.
+Slice agents use focused registry output, task cards, one close example, and task-specific evidence instead of reading this document end to end.
 
 
 # Appendix E. Handoff status

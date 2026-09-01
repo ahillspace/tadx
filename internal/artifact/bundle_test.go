@@ -261,7 +261,7 @@ func validWorkbookBundle(workspace, version string) WorkbookBundlePull {
 	workbookMetadata := WorkbookMetadata{
 		Kind: "workbook", Name: "Finance", TableauID: "wb-1",
 		SourceServerOrigin: "https://tableau.example.com", SourceSiteLUID: "site-1",
-		SourceEnvironment: "dev", SourceSite: "pace-dev", SourceProjectName: "Ops", SourceProjectID: "project-1",
+		SourceEnvironment: "dev", SourceSite: "test-site", SourceProjectName: "Ops", SourceProjectID: "project-1",
 		Portability: PortabilitySourceSiteBound, DependenciesAcquired: true,
 		PublishedDatasources: []PublishedDatasourceRef{{LUID: "ds-1", Name: "Sales"}, {LUID: "ds-2", Name: "Inventory"}},
 	}

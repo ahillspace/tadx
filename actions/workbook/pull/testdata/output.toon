@@ -4,7 +4,7 @@ workbook:
   name: Finance
   project_path: Ops
 artifact:
-  path: "C:\\workspace\\artifacts\\workbook\\Finance"
+  path: artifacts/workbook/Finance
   portability: source-site-bound
   published_datasource_count: 1
   dependencies_acquired: true

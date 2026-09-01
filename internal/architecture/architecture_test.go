@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 
@@ -22,6 +23,61 @@ func TestRepositoryRespectsImportBoundaries(t *testing.T) {
 			lines = append(lines, violation.String())
 		}
 		t.Fatalf("architecture violations:\n%s", strings.Join(lines, "\n"))
+	}
+}
+
+func TestFirstPartyFilesDoNotContainDeveloperHomePaths(t *testing.T) {
+	root := repositoryRoot(t)
+	patterns := []*regexp.Regexp{
+		regexp.MustCompile(`(?i)[a-z]:[\\/]users[\\/][^\\/\s]+`),
+		regexp.MustCompile(`/` + `Users/[^/\s]+`),
+		regexp.MustCompile(`/` + `home/[^/\s]+`),
+	}
+	excludedDirectories := map[string]bool{
+		".git": true, ".agents": true, "agent-review": true, "archived": true,
+		"Tableau API Documentation": true,
+	}
+	textExtensions := map[string]bool{
+		".go": true, ".md": true, ".yaml": true, ".yml": true, ".json": true, ".toon": true,
+	}
+	var violations []string
+	err := filepath.WalkDir(root, func(path string, entry os.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+		if entry.IsDir() {
+			if path != root && excludedDirectories[entry.Name()] {
+				return filepath.SkipDir
+			}
+			if filepath.ToSlash(path) == filepath.ToSlash(filepath.Join(root, "internal", "toon", "testdata", "upstream-v4.1.1")) {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		if !textExtensions[strings.ToLower(filepath.Ext(path))] {
+			return nil
+		}
+		content, err := os.ReadFile(path)
+		if err != nil {
+			return err
+		}
+		for _, pattern := range patterns {
+			if pattern.Match(content) {
+				relative, err := filepath.Rel(root, path)
+				if err != nil {
+					return err
+				}
+				violations = append(violations, filepath.ToSlash(relative))
+				break
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("scan first-party files: %v", err)
+	}
+	if len(violations) > 0 {
+		t.Fatalf("developer home paths found in first-party files:\n%s", strings.Join(violations, "\n"))
 	}
 }
 

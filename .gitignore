@@ -2,6 +2,10 @@
 /dist/
 /coverage.out
 *.test
-/.agents/
+/.agents/*
+!/.agents/skills/
+/.agents/skills/*
+!/.agents/skills/tadx-build/
+!/.agents/skills/tadx-build/**
 /agent-review/
 /tadx.exe
