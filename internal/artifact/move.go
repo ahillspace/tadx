@@ -8,6 +8,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/ahillspace/tadx/internal/pathspec"
 )
 
 // MoveRequest moves one exact managed artifact between named workspace roots.
@@ -57,6 +59,12 @@ func moveWithOperations(ctx context.Context, request MoveRequest, operations mov
 	source, err := Resolve(ctx, sourceRoot, request.Selector)
 	if err != nil {
 		return Item{}, err
+	}
+	// Defense in depth: Resolve only ever yields a validated, within-root
+	// artifacts/<kind>/<component> path, but this is a destructive mutation
+	// boundary, so assert non-escape locally before joining onto either root.
+	if pathspec.Escapes(source.Path) {
+		return Item{}, fmt.Errorf("artifact path escapes workspace root: %q", source.Path)
 	}
 	destinationPath := filepath.Join(destinationRoot, filepath.FromSlash(source.Path))
 	if _, err := os.Lstat(destinationPath); err == nil {

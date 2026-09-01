@@ -198,9 +198,12 @@ func localImportAllowed(file, imported string) bool {
 			return matchesExact(imported, "internal/config")
 		}
 		// The artifact manager owns the workspace mutation critical section and
-		// serializes it against other tadx processes via the leaf lock package.
+		// serializes it against other tadx processes via the leaf lock package. It
+		// also asserts, at the destructive mutation boundary, that resolved artifact
+		// paths cannot escape the workspace root, using the OS-independent pathspec
+		// predicates as defense in depth over the upstream Resolve invariant.
 		if hasPathPrefix(file, "internal/artifact") {
-			return matchesExact(imported, "internal/lock")
+			return matchesExact(imported, "internal/lock", "internal/pathspec")
 		}
 		// The config package owns the user-configuration read-modify-write
 		// critical section and serializes it against other tadx processes via

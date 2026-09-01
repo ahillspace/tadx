@@ -27,6 +27,8 @@ environments:
 		t.Fatal(err)
 	}
 
+	// Load migrates in memory but never writes: the on-disk file stays legacy
+	// and no backup is produced until a locked Update persists the upgrade.
 	loaded, err := config.Load(path)
 	if err != nil {
 		t.Fatal(err)
@@ -38,7 +40,20 @@ environments:
 	if !ok || registration.Path != workspaceRoot || !strings.HasPrefix(registration.ID, "ws_") {
 		t.Fatalf("migrated workspace = %#v, present = %t", registration, ok)
 	}
+	if afterLoad, readErr := os.ReadFile(path); readErr != nil || string(afterLoad) != contents {
+		t.Fatalf("Load persisted a migration: err=%v contents=\n%s", readErr, afterLoad)
+	}
+	if _, statErr := os.Stat(path + ".pre-workspace-migration-v1.bak"); !os.IsNotExist(statErr) {
+		t.Fatalf("Load wrote a migration backup: %v", statErr)
+	}
 
+	// A locked Update persists the migration and preserves the legacy backup,
+	// even when the mutator reports no logical change of its own.
+	if _, err := config.Update(path, false, func(c config.Config) (config.Config, error) {
+		return config.Config{}, config.ErrNoChange
+	}); err != nil {
+		t.Fatal(err)
+	}
 	persisted, err := os.ReadFile(path)
 	if err != nil {
 		t.Fatal(err)
@@ -53,16 +68,21 @@ environments:
 	if string(backup) != contents {
 		t.Fatalf("migration backup differs from original config:\n%s", backup)
 	}
+	// Once persisted, the workspace identity is stable across reloads.
+	first, err := config.Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
 	reloaded, err := config.Load(path)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if reloaded.Workspaces["dev"].ID != registration.ID {
-		t.Fatalf("workspace ID changed from %q to %q", registration.ID, reloaded.Workspaces["dev"].ID)
+	if first.Workspaces["dev"].ID == "" || reloaded.Workspaces["dev"].ID != first.Workspaces["dev"].ID {
+		t.Fatalf("workspace ID changed from %q to %q", first.Workspaces["dev"].ID, reloaded.Workspaces["dev"].ID)
 	}
 }
 
-func TestLoadDoesNotOverwriteDifferentWorkspaceMigrationBackup(t *testing.T) {
+func TestUpdateDoesNotOverwriteDifferentWorkspaceMigrationBackup(t *testing.T) {
 	directory := t.TempDir()
 	path := filepath.Join(directory, "config.yaml")
 	workspaceRoot := filepath.Join(directory, "workspaces", "dev")
@@ -75,9 +95,18 @@ func TestLoadDoesNotOverwriteDifferentWorkspaceMigrationBackup(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	_, err := config.Load(path)
+	// The conflicting-backup guard now lives on the write path: Load reads the
+	// legacy config without touching the backup, and Update refuses to persist
+	// the migration (and does not clobber the legacy config) when a differing
+	// backup already exists.
+	if _, err := config.Load(path); err != nil {
+		t.Fatalf("Load() over a differing backup should still read: %v", err)
+	}
+	_, err := config.Update(path, false, func(c config.Config) (config.Config, error) {
+		return config.Config{}, config.ErrNoChange
+	})
 	if err == nil || !strings.Contains(err.Error(), "existing workspace migration backup differs") {
-		t.Fatalf("Load() error = %v", err)
+		t.Fatalf("Update() error = %v", err)
 	}
 	current, readErr := os.ReadFile(path)
 	if readErr != nil {

@@ -292,60 +292,65 @@ func (c Config) ResolveEnvironment(alias string) (Environment, error) {
 }
 
 // Load reads and validates the non-secret user configuration.
+// Load reads and validates the user configuration, applying the legacy
+// workspace-defaults migration in memory. Load never writes: persisting a
+// migration is exclusively Update's responsibility, performed under the
+// interprocess lock, so a read on one code path cannot race a concurrent locked
+// Update and clobber its write.
 func Load(path string) (Config, error) {
+	configuration, _, _, err := load(path)
+	return configuration, err
+}
+
+// load is the pure read used by both Load and Update. It returns the decoded
+// configuration, the exact bytes read from disk, and whether the in-memory
+// legacy migration changed anything. It performs no writes.
+func load(path string) (Config, []byte, bool, error) {
 	file, err := os.Open(path)
 	if err != nil {
-		return Config{}, fmt.Errorf("read configuration: %w", err)
+		return Config{}, nil, false, fmt.Errorf("read configuration: %w", err)
 	}
 	info, err := file.Stat()
 	if err != nil {
 		file.Close()
-		return Config{}, fmt.Errorf("inspect configuration: %w", err)
+		return Config{}, nil, false, fmt.Errorf("inspect configuration: %w", err)
 	}
 	if !info.Mode().IsRegular() || info.Size() > maxConfigBytes {
 		file.Close()
-		return Config{}, fmt.Errorf("configuration must be a regular file no larger than %d bytes", maxConfigBytes)
+		return Config{}, nil, false, fmt.Errorf("configuration must be a regular file no larger than %d bytes", maxConfigBytes)
 	}
 	data, err := io.ReadAll(io.LimitReader(file, maxConfigBytes+1))
 	if err != nil {
 		file.Close()
-		return Config{}, fmt.Errorf("read configuration: %w", err)
+		return Config{}, nil, false, fmt.Errorf("read configuration: %w", err)
 	}
 	if err := file.Close(); err != nil {
-		return Config{}, fmt.Errorf("close configuration: %w", err)
+		return Config{}, nil, false, fmt.Errorf("close configuration: %w", err)
 	}
 	if len(data) > maxConfigBytes {
-		return Config{}, fmt.Errorf("configuration exceeds %d bytes", maxConfigBytes)
+		return Config{}, nil, false, fmt.Errorf("configuration exceeds %d bytes", maxConfigBytes)
 	}
 	decoder := yaml.NewDecoder(bytes.NewReader(data))
 	decoder.KnownFields(true)
 	var configuration Config
 	if err := decoder.Decode(&configuration); err != nil {
-		return Config{}, fmt.Errorf("decode configuration: %w", err)
+		return Config{}, nil, false, fmt.Errorf("decode configuration: %w", err)
 	}
 	var trailing yaml.Node
 	if err := decoder.Decode(&trailing); !errors.Is(err, io.EOF) {
 		if err != nil {
-			return Config{}, fmt.Errorf("decode configuration: %w", err)
+			return Config{}, nil, false, fmt.Errorf("decode configuration: %w", err)
 		}
-		return Config{}, errors.New("decode configuration: multiple YAML documents are not supported")
+		return Config{}, nil, false, errors.New("decode configuration: multiple YAML documents are not supported")
 	}
 	configuration, migrated, err := migrateLegacyWorkspaceDefaults(configuration)
 	if err != nil {
-		return Config{}, err
+		return Config{}, nil, false, err
 	}
 	if err := configuration.Validate(); err != nil {
-		return Config{}, err
+		return Config{}, nil, false, err
 	}
-	if migrated {
-		if err := preserveWorkspaceMigrationBackup(path, data); err != nil {
-			return Config{}, err
-		}
-		if err := Save(path, configuration); err != nil {
-			return Config{}, fmt.Errorf("persist migrated workspace configuration: %w", err)
-		}
-	}
-	return configuration, nil
+	return configuration, data, migrated, nil
 }
 
 func preserveWorkspaceMigrationBackup(path string, original []byte) error {
@@ -614,19 +619,35 @@ func Update(path string, createIfMissing bool, mutate func(Config) (Config, erro
 		return Config{}, fmt.Errorf("acquire configuration lock: %w", err)
 	}
 	defer func() { _ = handle.Release() }()
-	current, err := Load(path)
+	current, original, migrated, err := load(path)
 	if err != nil {
 		if !(createIfMissing && errors.Is(err, os.ErrNotExist)) {
 			return Config{}, err
 		}
-		current = Config{Version: CurrentVersion}
+		current, original, migrated = Config{Version: CurrentVersion}, nil, false
 	}
 	next, err := mutate(current)
 	if err != nil {
 		if errors.Is(err, ErrNoChange) {
+			// The mutator reports no logical change, but an in-memory legacy
+			// migration may still be pending on disk. Persist it now, under the
+			// lock, rather than leaving the upgrade to a future write.
+			if migrated {
+				if err := preserveWorkspaceMigrationBackup(path, original); err != nil {
+					return Config{}, err
+				}
+				if err := Save(path, current); err != nil {
+					return Config{}, fmt.Errorf("persist migrated workspace configuration: %w", err)
+				}
+			}
 			return current, nil
 		}
 		return Config{}, err
+	}
+	if migrated {
+		if err := preserveWorkspaceMigrationBackup(path, original); err != nil {
+			return Config{}, err
+		}
 	}
 	if err := Save(path, next); err != nil {
 		return Config{}, err

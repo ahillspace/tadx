@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+
+	"github.com/ahillspace/tadx/internal/pathspec"
 )
 
 // DeleteRequest removes one exact revalidated managed artifact.
@@ -53,6 +55,12 @@ func deleteWithOperations(ctx context.Context, request DeleteRequest, operations
 	}
 	if !sameArtifactSnapshot(current, request.Expected) {
 		return Item{}, errors.New("artifact changed after deletion was planned")
+	}
+	// Defense in depth: Resolve only ever yields a validated, within-root
+	// artifacts/<kind>/<component> path, but this is a destructive mutation
+	// boundary, so assert non-escape locally before joining onto the root.
+	if pathspec.Escapes(current.Path) {
+		return Item{}, fmt.Errorf("artifact path escapes workspace root: %q", current.Path)
 	}
 	target := filepath.Join(root, filepath.FromSlash(current.Path))
 	parent := filepath.Dir(target)
