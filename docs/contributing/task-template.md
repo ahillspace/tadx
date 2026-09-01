@@ -81,7 +81,10 @@ Stop when this accepted task contract conflicts with code or tests.
 - Focused: `<commands>`
 - Contract: `<commands>`
 - Live opt-in: `<commands or none>`
-- Final integration owner: `<commands>`
+- Final integration owner: `<integration test commands only>`
+
+These commands do not authorize a comprehensive branch review, a review board, or the no-mistakes pipeline.
+After the assigned checks pass, report the results and stop.
 
 ### Do not
 - Do not build any other capability, invent a blocked or docs-only capability into existence, or add a second confirmation prompt.
