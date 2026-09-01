@@ -1,7 +1,7 @@
 interface:
   display_name: "TADX build"
-  short_description: "Apply local Superpowers practices"
-  default_prompt: "Use $tadx-build to complete this TADX build task: "
+  short_description: "Build one TADX slice with bounded context"
+  default_prompt: "Use $tadx-build to complete this explicitly named TADX slice: "
 
 policy:
   allow_implicit_invocation: false
