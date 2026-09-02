@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -397,6 +398,75 @@ func TestPreviewGoldenOutput(t *testing.T) {
 	expected = bytes.TrimSuffix(expected, []byte("\n"))
 	if !bytes.Equal(actual.Bytes(), expected) {
 		t.Fatalf("golden mismatch\nexpected:\n%s\nactual:\n%s", expected, actual.Bytes())
+	}
+}
+
+func TestOutputGoldens(t *testing.T) {
+	value := publish.Output{
+		Plan: publish.Plan{
+			Mode: "preview", Operation: "workbook.publish", ArtifactPath: "artifacts/workbook/Finance",
+			ArtifactFingerprint: "sha256:diagnostic", Filename: "Finance.twbx", WorkbookName: "Finance",
+			Target:    publish.Target{Origin: "explicit", Environment: "production", Site: "marketing", ProjectLUID: "project-1", ProjectPath: "Ops", ExistingLUID: "wb-existing"},
+			Overwrite: true, AsJob: true,
+			Warnings: []string{"Detailed portability warning."},
+			Substeps: []string{"resolve exact destination", "publish workbook"},
+		},
+		Applied: true,
+		Result: &publish.Result{
+			Status: "succeeded", WorkbookLUID: "wb-new", WorkbookName: "Finance", ProjectLUID: "project-1", JobID: "job-1", TableauRequestID: "request-1",
+			ValidationWarnings: []publish.ValidationIssue{{Severity: "warning", Message: "Detailed validation warning.", Line: 12, ElementName: "map"}},
+		},
+		Help: []string{"tadx catalog search --environment <alias> to confirm the published workbook."},
+	}
+	assertOutputGolden(t, "compact.toon", value, false)
+	assertOutputGolden(t, "full.toon", value, true)
+
+	var compact bytes.Buffer
+	if err := output.Render(&compact, value); err != nil {
+		t.Fatal(err)
+	}
+	for _, omitted := range []string{"artifact_fingerprint", "sha256:diagnostic", "substeps", "Detailed portability warning.", "tableau_request_id", "request-1", "Detailed validation warning."} {
+		if strings.Contains(compact.String(), omitted) {
+			t.Fatalf("compact output exposed %q:\n%s", omitted, compact.String())
+		}
+	}
+	if !strings.Contains(compact.String(), "details: \"--full\"\nhelp[1]") {
+		t.Fatalf("details must immediately precede help:\n%s", compact.String())
+	}
+}
+
+func assertOutputGolden(t *testing.T, name string, value any, full bool) {
+	t.Helper()
+	var actual bytes.Buffer
+	if err := output.RenderWithOptions(&actual, value, output.Options{Full: full}); err != nil {
+		t.Fatal(err)
+	}
+	want, err := os.ReadFile(filepath.Join("testdata", name))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(bytes.TrimSpace(actual.Bytes()), bytes.TrimSpace(want)) {
+		t.Fatalf("%s mismatch\nwant:\n%s\ngot:\n%s", name, want, actual.Bytes())
+	}
+}
+
+func TestFullOutputBoundsDetailedWarnings(t *testing.T) {
+	warnings := make([]string, 25)
+	validationWarnings := make([]publish.ValidationIssue, 25)
+	for index := range warnings {
+		warnings[index] = "warning"
+		validationWarnings[index] = publish.ValidationIssue{Severity: "warning", Message: "validation warning"}
+	}
+	value := publish.Output{Plan: publish.Plan{Warnings: warnings}, Result: &publish.Result{ValidationWarnings: validationWarnings}}
+	full, ok := value.FullOutput().(publish.FullResult)
+	if !ok {
+		t.Fatalf("full projection type = %T", value.FullOutput())
+	}
+	if len(full.Plan.Warnings) != 20 || full.Plan.WarningsOmitted != 5 {
+		t.Fatalf("plan warnings = %d, omitted = %d", len(full.Plan.Warnings), full.Plan.WarningsOmitted)
+	}
+	if len(full.Result.ValidationWarnings) != 20 || full.Result.ValidationWarningsOmitted != 5 {
+		t.Fatalf("validation warnings = %d, omitted = %d", len(full.Result.ValidationWarnings), full.Result.ValidationWarningsOmitted)
 	}
 }
 

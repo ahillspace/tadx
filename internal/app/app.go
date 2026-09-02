@@ -59,6 +59,8 @@ func Run(ctx context.Context, args []string, stdout io.Writer, options Options) 
 	environmentCommands := newEnvironmentCommands(runtime)
 	workspaceCommands := newWorkspaceCommands(runtime)
 	remoteContent := newRemoteContentCommands(runtime)
+	remoteAdmin := newRemoteAdminCommands(runtime)
+	doctorCommands := newDoctorCommands(runtime)
 	catalogGroup2 := newCatalogGroup2Commands(runtime)
 	root := cli.NewRoot(cli.Dependencies{
 		Lister:              capabilitylist.New(source),
@@ -81,6 +83,10 @@ func Run(ctx context.Context, args []string, stdout io.Writer, options Options) 
 		Content:             remoteContent.dependencies(),
 		EnvironmentProfiles: environmentCommands.dependencies(),
 		Workspaces:          workspaceCommands.dependencies(),
+		Admin:               remoteAdmin.dependencies(),
+		DoctorRunner:        doctorCommands,
+		DoctorUse:           registryLeafUse("doctor.run"),
+		DoctorShort:         registryShort("doctor.run"),
 		AuthUse:             registryLeafUse("auth.check"), AuthShort: registryShort("auth.check"),
 		AuthStatuser: newAuthStatus(runtime), AuthStatusUse: registryLeafUse("auth.status"), AuthStatusShort: registryShort("auth.status"),
 		CatalogSearchUse: registryLeafUse("catalog.search"), CatalogSearchShort: registryShort("catalog.search"),

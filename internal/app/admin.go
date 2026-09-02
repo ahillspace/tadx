@@ -1,0 +1,340 @@
+package app
+
+import (
+	"context"
+	"errors"
+
+	groupcreate "github.com/ahillspace/tadx/actions/admin/group/create"
+	groupdelete "github.com/ahillspace/tadx/actions/admin/group/delete"
+	groupget "github.com/ahillspace/tadx/actions/admin/group/get"
+	grouplist "github.com/ahillspace/tadx/actions/admin/group/list"
+	groupupdate "github.com/ahillspace/tadx/actions/admin/group/update"
+	permissionget "github.com/ahillspace/tadx/actions/admin/permission/get"
+	usercreate "github.com/ahillspace/tadx/actions/admin/user/create"
+	userdelete "github.com/ahillspace/tadx/actions/admin/user/delete"
+	userget "github.com/ahillspace/tadx/actions/admin/user/get"
+	userlist "github.com/ahillspace/tadx/actions/admin/user/list"
+	userupdate "github.com/ahillspace/tadx/actions/admin/user/update"
+	admincli "github.com/ahillspace/tadx/internal/cli/admin"
+	"github.com/ahillspace/tadx/internal/config"
+	"github.com/ahillspace/tadx/internal/errs"
+	resourceadmin "github.com/ahillspace/tadx/internal/resources/admin"
+	tableauadmin "github.com/ahillspace/tadx/internal/tableau/admin"
+)
+
+// remoteAdminCommands composes administration actions without owning CLI behavior.
+type remoteAdminCommands struct{ runtime *runtimeDependencies }
+
+// newRemoteAdminCommands creates the administration composition service used by root wiring.
+func newRemoteAdminCommands(runtime *runtimeDependencies) *remoteAdminCommands {
+	return &remoteAdminCommands{runtime: runtime}
+}
+
+// dependencies returns every action executor required by the administration CLI tree.
+func (c *remoteAdminCommands) dependencies() *admincli.Dependencies {
+	return &admincli.Dependencies{
+		UserLister: c, UserGetter: c, UserCreator: c, UserUpdater: c, UserDeleter: c,
+		GroupLister: c, GroupGetter: c, GroupCreator: c, GroupUpdater: c, GroupDeleter: c,
+		PermissionGetter: c,
+	}
+}
+
+type adminConnection struct {
+	environment config.Environment
+	adapter     *resourceadmin.Adapter
+}
+
+func (c *remoteAdminCommands) connect(ctx context.Context, alias string, explicit bool) (adminConnection, error) {
+	connection, err := c.runtime.tableauConnection(ctx, alias, explicit)
+	if err != nil {
+		return adminConnection{environment: connection.environment}, err
+	}
+	client := tableauadmin.NewClient(connection.transport, connection.session, connection.environment.URL)
+	return adminConnection{environment: connection.environment, adapter: resourceadmin.NewAdapter(client)}, nil
+}
+
+func (c *remoteAdminCommands) ListAdminUsers(ctx context.Context, input userlist.Input) (userlist.Output, error) {
+	connection, err := c.connect(ctx, input.Environment, false)
+	if err != nil {
+		return userlist.Output{}, remoteSetupError("admin.user.list", input.Environment, input.Site, connection.environment, err)
+	}
+	input.Environment, input.Site = connection.environment.Alias, connection.environment.SiteContentURL
+	output, err := userlist.New(adminUserListReader{connection.adapter}).Execute(ctx, input)
+	return output, adminActionError("admin.user.list", input.Environment, input.Site, err)
+}
+
+func (c *remoteAdminCommands) GetAdminUser(ctx context.Context, input userget.Input) (userget.Output, error) {
+	connection, err := c.connect(ctx, input.Environment, false)
+	if err != nil {
+		return userget.Output{}, remoteSetupError("admin.user.get", input.Environment, input.Site, connection.environment, err)
+	}
+	input.Environment, input.Site = connection.environment.Alias, connection.environment.SiteContentURL
+	output, err := userget.New(adminUserGetResolver{connection.adapter}).Execute(ctx, input)
+	return output, adminActionError("admin.user.get", input.Environment, input.Site, err)
+}
+
+func (c *remoteAdminCommands) CreateAdminUser(ctx context.Context, input usercreate.Input, apply bool) (usercreate.Output, error) {
+	connection, err := c.connect(ctx, input.Environment, true)
+	if err != nil {
+		return usercreate.Output{}, remoteSetupError("admin.user.create", input.Environment, input.Site, connection.environment, err)
+	}
+	input.Environment, input.Site = connection.environment.Alias, connection.environment.SiteContentURL
+	adapter := adminUserCreateAdapter{connection.adapter}
+	output, err := usercreate.New(adapter, adapter).Execute(ctx, input, apply)
+	return output, adminActionError("admin.user.create", input.Environment, input.Site, err)
+}
+
+func (c *remoteAdminCommands) UpdateAdminUser(ctx context.Context, input userupdate.Input, apply bool) (userupdate.Output, error) {
+	connection, err := c.connect(ctx, input.Environment, true)
+	if err != nil {
+		return userupdate.Output{}, remoteSetupError("admin.user.update", input.Environment, input.Site, connection.environment, err)
+	}
+	input.Environment, input.Site = connection.environment.Alias, connection.environment.SiteContentURL
+	adapter := adminUserUpdateAdapter{connection.adapter}
+	output, err := userupdate.New(adapter, adapter).Execute(ctx, input, apply)
+	return output, adminActionError("admin.user.update", input.Environment, input.Site, err)
+}
+
+func (c *remoteAdminCommands) DeleteAdminUser(ctx context.Context, input userdelete.Input, apply bool) (userdelete.Output, error) {
+	connection, err := c.connect(ctx, input.Environment, true)
+	if err != nil {
+		return userdelete.Output{}, remoteSetupError("admin.user.delete", input.Environment, input.Site, connection.environment, err)
+	}
+	input.Environment, input.Site = connection.environment.Alias, connection.environment.SiteContentURL
+	adapter := adminUserDeleteAdapter{connection.adapter}
+	output, err := userdelete.New(adapter, adapter).Execute(ctx, input, apply)
+	return output, adminActionError("admin.user.delete", input.Environment, input.Site, err)
+}
+
+func (c *remoteAdminCommands) ListAdminGroups(ctx context.Context, input grouplist.Input) (grouplist.Output, error) {
+	connection, err := c.connect(ctx, input.Environment, false)
+	if err != nil {
+		return grouplist.Output{}, remoteSetupError("admin.group.list", input.Environment, input.Site, connection.environment, err)
+	}
+	input.Environment, input.Site = connection.environment.Alias, connection.environment.SiteContentURL
+	output, err := grouplist.New(adminGroupListReader{connection.adapter}).Execute(ctx, input)
+	return output, adminActionError("admin.group.list", input.Environment, input.Site, err)
+}
+
+func (c *remoteAdminCommands) GetAdminGroup(ctx context.Context, input groupget.Input) (groupget.Output, error) {
+	connection, err := c.connect(ctx, input.Environment, false)
+	if err != nil {
+		return groupget.Output{}, remoteSetupError("admin.group.get", input.Environment, input.Site, connection.environment, err)
+	}
+	input.Environment, input.Site = connection.environment.Alias, connection.environment.SiteContentURL
+	output, err := groupget.New(adminGroupGetResolver{connection.adapter}).Execute(ctx, input)
+	return output, adminActionError("admin.group.get", input.Environment, input.Site, err)
+}
+
+func (c *remoteAdminCommands) CreateAdminGroup(ctx context.Context, input groupcreate.Input, apply bool) (groupcreate.Output, error) {
+	connection, err := c.connect(ctx, input.Environment, true)
+	if err != nil {
+		return groupcreate.Output{}, remoteSetupError("admin.group.create", input.Environment, input.Site, connection.environment, err)
+	}
+	input.Environment, input.Site = connection.environment.Alias, connection.environment.SiteContentURL
+	adapter := adminGroupCreateAdapter{connection.adapter}
+	output, err := groupcreate.New(adapter, adapter).Execute(ctx, input, apply)
+	return output, adminActionError("admin.group.create", input.Environment, input.Site, err)
+}
+
+func (c *remoteAdminCommands) UpdateAdminGroup(ctx context.Context, input groupupdate.Input, apply bool) (groupupdate.Output, error) {
+	connection, err := c.connect(ctx, input.Environment, true)
+	if err != nil {
+		return groupupdate.Output{}, remoteSetupError("admin.group.update", input.Environment, input.Site, connection.environment, err)
+	}
+	input.Environment, input.Site = connection.environment.Alias, connection.environment.SiteContentURL
+	adapter := adminGroupUpdateAdapter{connection.adapter}
+	output, err := groupupdate.New(adapter, adapter, adapter).Execute(ctx, input, apply)
+	return output, adminActionError("admin.group.update", input.Environment, input.Site, err)
+}
+
+func (c *remoteAdminCommands) DeleteAdminGroup(ctx context.Context, input groupdelete.Input, apply bool) (groupdelete.Output, error) {
+	connection, err := c.connect(ctx, input.Environment, true)
+	if err != nil {
+		return groupdelete.Output{}, remoteSetupError("admin.group.delete", input.Environment, input.Site, connection.environment, err)
+	}
+	input.Environment, input.Site = connection.environment.Alias, connection.environment.SiteContentURL
+	adapter := adminGroupDeleteAdapter{connection.adapter}
+	output, err := groupdelete.New(adapter, adapter).Execute(ctx, input, apply)
+	return output, adminActionError("admin.group.delete", input.Environment, input.Site, err)
+}
+
+func (c *remoteAdminCommands) GetAdminPermission(ctx context.Context, input permissionget.Input) (permissionget.Output, error) {
+	connection, err := c.connect(ctx, input.Environment, false)
+	if err != nil {
+		return permissionget.Output{}, remoteSetupError("admin.permission.get", input.Environment, input.Site, connection.environment, err)
+	}
+	input.Environment, input.Site = connection.environment.Alias, connection.environment.SiteContentURL
+	output, err := permissionget.New(adminPermissionReader{connection.adapter}).Execute(ctx, input)
+	return output, adminActionError("admin.permission.get", input.Environment, input.Site, err)
+}
+
+func adminActionError(operation, environment, site string, err error) error {
+	if err == nil {
+		return nil
+	}
+	var structured *errs.Error
+	if errors.As(err, &structured) {
+		return err
+	}
+	retryable, correctiveAction := errs.CompleteRetryAdvice(err, "Review the exact administration target and upstream response, then retry.")
+	return &errs.Error{ID: operation + ".failed", Kind: errs.KindOperation, Operation: operation, Environment: environment, Site: site, Summary: "Tableau administration operation failed.", Cause: err, Retryable: retryable, CorrectiveAction: correctiveAction, TableauRequestID: errs.TableauRequestID(err)}
+}
+
+type adminUserListReader struct{ adapter *resourceadmin.Adapter }
+
+func (a adminUserListReader) ListUsers(ctx context.Context, input userlist.PageRequest) (userlist.Page, error) {
+	page, err := a.adapter.ListUsers(ctx, tableauadmin.ListUsersRequest{PageNumber: input.PageNumber, PageSize: input.PageSize, Name: input.Name, SiteRole: input.SiteRole})
+	items := make([]userlist.User, len(page.Items))
+	for i, item := range page.Items {
+		items[i] = toUserList(item)
+	}
+	return userlist.Page{Number: page.Number, Size: page.Size, Total: page.Total, Users: items, RequestID: page.RequestID}, err
+}
+func toUserList(item tableauadmin.User) userlist.User {
+	return userlist.User{LUID: item.LUID, Name: item.Name, FullName: item.FullName, Email: item.Email, SiteRole: item.SiteRole, LastLogin: item.LastLogin, AuthSetting: item.AuthSetting, Domain: item.Domain}
+}
+
+type adminUserGetResolver struct{ adapter *resourceadmin.Adapter }
+
+func (a adminUserGetResolver) ResolveUser(ctx context.Context, selector userget.Selector) (userget.User, error) {
+	item, err := a.adapter.ResolveUser(ctx, resourceadmin.UserSelector{LUID: selector.LUID, NameOrEmail: selector.NameOrEmail})
+	return toUserGet(item), err
+}
+func toUserGet(item tableauadmin.User) userget.User {
+	return userget.User{LUID: item.LUID, Name: item.Name, FullName: item.FullName, Email: item.Email, SiteRole: item.SiteRole, LastLogin: item.LastLogin, ExternalAuthUserID: item.ExternalAuthUserID, AuthSetting: item.AuthSetting, IdentityPoolName: item.IdentityPoolName, IdPConfigurationID: item.IdPConfigurationID, Language: item.Language, Locale: item.Locale, Domain: item.Domain, RequestID: item.RequestID}
+}
+
+type adminUserCreateAdapter struct{ adapter *resourceadmin.Adapter }
+
+func (a adminUserCreateAdapter) FindUsers(ctx context.Context, name string) ([]usercreate.User, error) {
+	items, err := a.adapter.FindUsers(ctx, name)
+	out := make([]usercreate.User, len(items))
+	for i, v := range items {
+		out[i] = usercreate.User{LUID: v.LUID, Name: v.Name, SiteRole: v.SiteRole, AuthSetting: v.AuthSetting, IdPConfigurationID: v.IdPConfigurationID}
+	}
+	return out, err
+}
+func (a adminUserCreateAdapter) CreateUser(ctx context.Context, input usercreate.Request) (usercreate.User, error) {
+	item, err := a.adapter.CreateUser(ctx, tableauadmin.CreateUserRequest{Name: input.Name, SiteRole: input.SiteRole, AuthSetting: input.AuthSetting, IdentityPoolName: input.IdentityPoolName, IdPConfigurationID: input.IdPConfigurationID, Email: input.Email, Language: input.Language, Locale: input.Locale})
+	return usercreate.User{LUID: item.LUID, Name: item.Name, SiteRole: item.SiteRole, AuthSetting: item.AuthSetting, IdPConfigurationID: item.IdPConfigurationID, RequestID: item.RequestID}, err
+}
+
+type adminUserUpdateAdapter struct{ adapter *resourceadmin.Adapter }
+
+func (a adminUserUpdateAdapter) ResolveUser(ctx context.Context, luid string) (userupdate.User, error) {
+	item, err := a.adapter.ResolveUser(ctx, resourceadmin.UserSelector{LUID: luid})
+	return userupdate.User{LUID: item.LUID, Name: item.Name, FullName: item.FullName, Email: item.Email, SiteRole: item.SiteRole, AuthSetting: item.AuthSetting, IdentityPoolName: item.IdentityPoolName, IdPConfigurationID: item.IdPConfigurationID, Language: item.Language, Locale: item.Locale}, err
+}
+func (a adminUserUpdateAdapter) UpdateUser(ctx context.Context, luid string, input userupdate.Request) (userupdate.User, error) {
+	item, err := a.adapter.UpdateUser(ctx, luid, tableauadmin.UpdateUserRequest{FullName: input.FullName, Email: input.Email, SiteRole: input.SiteRole, AuthSetting: input.AuthSetting, IdentityPoolName: input.IdentityPoolName, IdPConfigurationID: input.IdPConfigurationID, Language: input.Language, Locale: input.Locale})
+	return userupdate.User{LUID: item.LUID, Name: item.Name, FullName: item.FullName, Email: item.Email, SiteRole: item.SiteRole, AuthSetting: item.AuthSetting, IdentityPoolName: item.IdentityPoolName, IdPConfigurationID: item.IdPConfigurationID, Language: item.Language, Locale: item.Locale, RequestID: item.RequestID}, err
+}
+
+type adminUserDeleteAdapter struct{ adapter *resourceadmin.Adapter }
+
+func (a adminUserDeleteAdapter) ResolveUser(ctx context.Context, luid string) (userdelete.User, error) {
+	item, err := a.adapter.ResolveUser(ctx, resourceadmin.UserSelector{LUID: luid})
+	return userdelete.User{LUID: item.LUID, Name: item.Name, SiteRole: item.SiteRole}, err
+}
+func (a adminUserDeleteAdapter) DeleteUser(ctx context.Context, luid string) (userdelete.Result, error) {
+	item, err := a.adapter.DeleteUser(ctx, luid)
+	return userdelete.Result{Status: item.Status, UserLUID: item.ResourceLUID, TableauRequestID: item.RequestID}, err
+}
+
+type adminGroupListReader struct{ adapter *resourceadmin.Adapter }
+
+func (a adminGroupListReader) ListGroups(ctx context.Context, input grouplist.PageRequest) (grouplist.Page, error) {
+	page, err := a.adapter.ListGroups(ctx, tableauadmin.ListGroupsRequest{PageNumber: input.PageNumber, PageSize: input.PageSize, Name: input.Name, Domain: input.Domain})
+	items := make([]grouplist.Group, len(page.Items))
+	for i, v := range page.Items {
+		items[i] = grouplist.Group{LUID: v.LUID, Name: v.Name, Domain: v.Domain, MinimumSiteRole: v.MinimumSiteRole, GrantLicenseMode: v.GrantLicenseMode, ExternalUserEnabled: v.ExternalUserEnabled}
+	}
+	return grouplist.Page{Number: page.Number, Size: page.Size, Total: page.Total, Groups: items, RequestID: page.RequestID}, err
+}
+
+type adminGroupGetResolver struct{ adapter *resourceadmin.Adapter }
+
+func (a adminGroupGetResolver) ResolveGroup(ctx context.Context, selector groupget.Selector, members bool) (groupget.Group, error) {
+	detail, err := a.adapter.ResolveGroup(ctx, resourceadmin.GroupSelector{LUID: selector.LUID, Name: selector.Name}, members)
+	items := make([]groupget.Member, len(detail.Members))
+	for i, v := range detail.Members {
+		items[i] = groupget.Member{LUID: v.LUID, Name: v.Name, SiteRole: v.SiteRole}
+	}
+	g := detail.Group
+	return groupget.Group{LUID: g.LUID, Name: g.Name, Domain: g.Domain, MinimumSiteRole: g.MinimumSiteRole, GrantLicenseMode: g.GrantLicenseMode, ExternalUserEnabled: g.ExternalUserEnabled, Members: items, RequestID: g.RequestID}, err
+}
+
+type adminGroupCreateAdapter struct{ adapter *resourceadmin.Adapter }
+
+func (a adminGroupCreateAdapter) FindGroups(ctx context.Context, name string) ([]groupcreate.Group, error) {
+	items, err := a.adapter.FindGroups(ctx, name)
+	out := make([]groupcreate.Group, len(items))
+	for i, v := range items {
+		out[i] = groupcreate.Group{LUID: v.LUID, Name: v.Name}
+	}
+	return out, err
+}
+func (a adminGroupCreateAdapter) CreateGroup(ctx context.Context, input groupcreate.Request) (groupcreate.Group, error) {
+	item, err := a.adapter.CreateGroup(ctx, tableauadmin.CreateGroupRequest{Name: input.Name, MinimumSiteRole: input.MinimumSiteRole, ExternalUserEnabled: input.ExternalUserEnabled})
+	return groupcreate.Group{LUID: item.LUID, Name: item.Name, RequestID: item.RequestID}, err
+}
+
+type adminGroupUpdateAdapter struct{ adapter *resourceadmin.Adapter }
+
+func (a adminGroupUpdateAdapter) ResolveGroup(ctx context.Context, luid string, members bool) (groupupdate.Group, error) {
+	detail, err := a.adapter.ResolveGroup(ctx, resourceadmin.GroupSelector{LUID: luid}, members)
+	items := make([]groupupdate.Member, len(detail.Members))
+	for i, v := range detail.Members {
+		items[i] = groupupdate.Member{LUID: v.LUID, Name: v.Name}
+	}
+	g := detail.Group
+	return groupupdate.Group{LUID: g.LUID, Name: g.Name, Domain: g.Domain, MinimumSiteRole: g.MinimumSiteRole, ExternalUserEnabled: g.ExternalUserEnabled, Members: items}, err
+}
+func (a adminGroupUpdateAdapter) UpdateGroup(ctx context.Context, luid string, input groupupdate.Request) (groupupdate.Group, error) {
+	item, err := a.adapter.UpdateGroup(ctx, luid, tableauadmin.UpdateGroupRequest{Name: input.Name, MinimumSiteRole: input.MinimumSiteRole, ExternalUserEnabled: input.ExternalUserEnabled})
+	return groupupdate.Group{LUID: item.LUID, Name: item.Name, Domain: item.Domain, MinimumSiteRole: item.MinimumSiteRole, ExternalUserEnabled: item.ExternalUserEnabled, RequestID: item.RequestID}, err
+}
+func (a adminGroupUpdateAdapter) AddGroupUser(ctx context.Context, group, user string) (string, error) {
+	item, err := a.adapter.AddGroupUser(ctx, group, user)
+	return item.RequestID, err
+}
+func (a adminGroupUpdateAdapter) RemoveGroupUser(ctx context.Context, group, user string) (string, error) {
+	item, err := a.adapter.RemoveGroupUser(ctx, group, user)
+	return item.RequestID, err
+}
+
+type adminGroupDeleteAdapter struct{ adapter *resourceadmin.Adapter }
+
+func (a adminGroupDeleteAdapter) ResolveGroup(ctx context.Context, luid string) (groupdelete.Group, error) {
+	detail, err := a.adapter.ResolveGroup(ctx, resourceadmin.GroupSelector{LUID: luid}, false)
+	g := detail.Group
+	return groupdelete.Group{LUID: g.LUID, Name: g.Name, Domain: g.Domain}, err
+}
+func (a adminGroupDeleteAdapter) DeleteGroup(ctx context.Context, luid string) (groupdelete.Result, error) {
+	item, err := a.adapter.DeleteGroup(ctx, luid)
+	return groupdelete.Result{Status: item.Status, GroupLUID: item.ResourceLUID, TableauRequestID: item.RequestID}, err
+}
+
+type adminPermissionReader struct{ adapter *resourceadmin.Adapter }
+
+func (a adminPermissionReader) GetPermissions(ctx context.Context, input permissionget.Input) (permissionget.PermissionSet, error) {
+	item, err := a.adapter.GetPermissions(ctx, tableauadmin.PermissionRequest{ResourceKind: input.ResourceKind, ResourceLUID: input.ResourceLUID, DefaultFor: input.DefaultFor})
+	rules := make([]permissionget.Rule, len(item.Rules))
+	for i, v := range item.Rules {
+		rules[i] = permissionget.Rule{PrincipalType: v.PrincipalType, PrincipalLUID: v.PrincipalLUID, Capability: v.Capability, Mode: v.Mode}
+	}
+	return permissionget.PermissionSet{ResourceKind: item.ResourceKind, ResourceLUID: item.ResourceLUID, Source: item.Source, ParentProjectLUID: item.ParentProjectLUID, Rules: rules, RequestID: item.RequestID}, err
+}
+
+var _ admincli.UserLister = (*remoteAdminCommands)(nil)
+var _ admincli.UserGetter = (*remoteAdminCommands)(nil)
+var _ admincli.UserCreator = (*remoteAdminCommands)(nil)
+var _ admincli.UserUpdater = (*remoteAdminCommands)(nil)
+var _ admincli.UserDeleter = (*remoteAdminCommands)(nil)
+var _ admincli.GroupLister = (*remoteAdminCommands)(nil)
+var _ admincli.GroupGetter = (*remoteAdminCommands)(nil)
+var _ admincli.GroupCreator = (*remoteAdminCommands)(nil)
+var _ admincli.GroupUpdater = (*remoteAdminCommands)(nil)
+var _ admincli.GroupDeleter = (*remoteAdminCommands)(nil)
+var _ admincli.PermissionGetter = (*remoteAdminCommands)(nil)

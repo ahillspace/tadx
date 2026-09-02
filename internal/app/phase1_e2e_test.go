@@ -107,7 +107,7 @@ func TestPhaseOneWorkbookPullAndPublishThroughCLIDefaultSite(t *testing.T) {
 	if exit := app.Run(context.Background(), append(previewArgs, "--apply"), &applyOutput, options); exit != 0 {
 		t.Fatalf("apply exit = %d, output = %s", exit, applyOutput.String())
 	}
-	if validationCalls.Load() != 1 || publishCalls.Load() != 1 || !strings.Contains(applyOutput.String(), "applied: true") || !strings.Contains(applyOutput.String(), "workbook_luid: wb-2") || !strings.Contains(applyOutput.String(), "Unknown map source is used") {
+	if validationCalls.Load() != 1 || publishCalls.Load() != 1 || !strings.Contains(applyOutput.String(), "applied: true") || !strings.Contains(applyOutput.String(), "workbook_luid: wb-2") || !strings.Contains(applyOutput.String(), "validation_warnings_omitted: 1") || !strings.Contains(applyOutput.String(), "details: \"--full\"") || strings.Contains(applyOutput.String(), "Unknown map source is used") {
 		t.Fatalf("apply result: validation_calls=%d publish_calls=%d output=%s", validationCalls.Load(), publishCalls.Load(), applyOutput.String())
 	}
 }

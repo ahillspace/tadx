@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	artifactdelete "github.com/ahillspace/tadx/actions/workspace/artifact/delete"
+	workspaceclean "github.com/ahillspace/tadx/actions/workspace/clean"
 	workspacecreate "github.com/ahillspace/tadx/actions/workspace/create"
 	workspacelist "github.com/ahillspace/tadx/actions/workspace/list"
 	workspacemove "github.com/ahillspace/tadx/actions/workspace/move"
@@ -19,6 +20,7 @@ type actions struct {
 	status []workspacestatus.Input
 	move   []workspacemove.Input
 	delete []artifactdelete.Input
+	clean  []workspaceclean.Input
 	apply  []bool
 }
 
@@ -43,6 +45,10 @@ func (a *actions) Delete(_ context.Context, input artifactdelete.Input, apply bo
 	a.apply = append(a.apply, apply)
 	return artifactdelete.Output{}, nil
 }
+func (a *actions) Clean(_ context.Context, input workspaceclean.Input) (workspaceclean.Output, error) {
+	a.clean = append(a.clean, input)
+	return workspaceclean.Output{}, nil
+}
 
 type renderer struct{ calls int }
 
@@ -51,13 +57,14 @@ func (r *renderer) Render(any) error { r.calls++; return nil }
 func TestWorkspaceCommandsMapExactInputs(t *testing.T) {
 	a := &actions{}
 	r := &renderer{}
-	command := workspacecli.New(workspacecli.Dependencies{Creator: a, Lister: a, Statuser: a, Mover: a, Deleter: a, Renderer: r})
+	command := workspacecli.New(workspacecli.Dependencies{Creator: a, Lister: a, Statuser: a, Mover: a, Deleter: a, Cleaner: a, Renderer: r})
 	commands := [][]string{
 		{"create", "development", "--path", "relative/workspace"},
 		{"list", "--limit", "5", "--cursor", "10"},
 		{"status", "--workspace", "development", "--limit", "7", "--cursor", "3"},
 		{"move", "--source", "development", "--destination", "archive", "--kind", "workbook", "--id", "wb-1"},
 		{"artifact", "delete", "--workspace", "archive", "--artifact", "artifacts/workbook/Finance", "--force", "--apply"},
+		{"clean", "--workspace", "archive", "--class", "temporary"},
 	}
 	for _, args := range commands {
 		command.SetArgs(args)
@@ -79,6 +86,9 @@ func TestWorkspaceCommandsMapExactInputs(t *testing.T) {
 	}
 	if !reflect.DeepEqual(a.delete, []artifactdelete.Input{{Workspace: "archive", Path: "artifacts/workbook/Finance", Force: true}}) || !reflect.DeepEqual(a.apply, []bool{true}) {
 		t.Fatalf("delete = %#v apply = %#v", a.delete, a.apply)
+	}
+	if !reflect.DeepEqual(a.clean, []workspaceclean.Input{{Workspace: "archive", Class: "temporary"}}) {
+		t.Fatalf("clean = %#v", a.clean)
 	}
 	if r.calls != len(commands) {
 		t.Fatalf("render calls = %d", r.calls)

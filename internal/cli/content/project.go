@@ -4,8 +4,10 @@ import (
 	"context"
 	"errors"
 
+	projectcreate "github.com/ahillspace/tadx/actions/project/create"
 	projectget "github.com/ahillspace/tadx/actions/project/get"
 	projectlist "github.com/ahillspace/tadx/actions/project/list"
+	projectupdate "github.com/ahillspace/tadx/actions/project/update"
 	"github.com/ahillspace/tadx/internal/cli/clierr"
 	"github.com/spf13/cobra"
 )
@@ -18,9 +20,108 @@ type ProjectGetter interface {
 	GetProject(context.Context, projectget.Input) (projectget.Output, error)
 }
 
+type ProjectCreator interface {
+	CreateProject(context.Context, projectcreate.Input, bool) (projectcreate.Output, error)
+}
+
+type ProjectUpdater interface {
+	UpdateProject(context.Context, projectupdate.Input, bool) (projectupdate.Output, error)
+}
+
 func newProject(deps Dependencies) *cobra.Command {
 	command := &cobra.Command{Use: "project", Short: "Inspect Tableau projects"}
 	command.AddCommand(newProjectList(deps), newProjectGet(deps))
+	if deps.ProjectCreator != nil {
+		command.AddCommand(newProjectCreate(deps))
+	}
+	if deps.ProjectUpdater != nil {
+		command.AddCommand(newProjectUpdate(deps))
+	}
+	return command
+}
+
+func newProjectCreate(deps Dependencies) *cobra.Command {
+	var input projectcreate.Input
+	var parentLUID, parentPath string
+	var apply bool
+	command := &cobra.Command{
+		Use: "create", Short: "Preview or create one project.", Hidden: !deps.MutationsEnabled,
+		Annotations: map[string]string{"tadx.capability": "project.create"},
+		Args: func(command *cobra.Command, args []string) error {
+			if err := noContentArgs("project.create")(command, args); err != nil {
+				return err
+			}
+			if input.Environment == "" || input.Name == "" {
+				return clierr.Usage("project.create", errors.New("--environment and --name are required"))
+			}
+			if parentLUID != "" && parentPath != "" {
+				return clierr.Usage("project.create", errors.New("use at most one of --parent-id or --parent"))
+			}
+			input.SetParentSelector(parentLUID, parentPath)
+			return nil
+		},
+		RunE: func(command *cobra.Command, _ []string) error {
+			result, err := deps.ProjectCreator.CreateProject(command.Context(), input, apply)
+			if err != nil {
+				return err
+			}
+			return deps.Renderer.Render(result)
+		},
+	}
+	command.Flags().StringVar(&input.Environment, "environment", "", "explicit write environment alias")
+	command.Flags().StringVar(&input.Name, "name", "", "exact new project name")
+	command.Flags().StringVar(&input.Description, "description", "", "project description")
+	command.Flags().StringVar(&input.ContentPermissions, "content-permissions", "", "explicit Tableau content permission mode")
+	command.Flags().StringVar(&parentLUID, "parent-id", "", "authoritative parent project LUID")
+	command.Flags().StringVar(&parentPath, "parent", "", "exact slash-delimited parent project path")
+	command.Flags().BoolVar(&apply, "apply", false, "apply the previewed remote mutation")
+	return command
+}
+
+func newProjectUpdate(deps Dependencies) *cobra.Command {
+	var input projectupdate.Input
+	var luid, projectPath, name, description, contentPermissions string
+	var apply bool
+	command := &cobra.Command{
+		Use: "update", Short: "Preview or update one exact project.", Hidden: !deps.MutationsEnabled,
+		Annotations: map[string]string{"tadx.capability": "project.update"},
+		Args: func(command *cobra.Command, args []string) error {
+			if err := noContentArgs("project.update")(command, args); err != nil {
+				return err
+			}
+			if input.Environment == "" || (luid == "") == (projectPath == "") {
+				return clierr.Usage("project.update", errors.New("--environment and exactly one of --id or --project are required"))
+			}
+			if !command.Flags().Changed("name") && !command.Flags().Changed("description") && !command.Flags().Changed("content-permissions") {
+				return clierr.Usage("project.update", errors.New("at least one metadata change is required"))
+			}
+			input.SetSelector(luid, projectPath)
+			if command.Flags().Changed("name") {
+				input.Name = &name
+			}
+			if command.Flags().Changed("description") {
+				input.Description = &description
+			}
+			if command.Flags().Changed("content-permissions") {
+				input.ContentPermissions = &contentPermissions
+			}
+			return nil
+		},
+		RunE: func(command *cobra.Command, _ []string) error {
+			result, err := deps.ProjectUpdater.UpdateProject(command.Context(), input, apply)
+			if err != nil {
+				return err
+			}
+			return deps.Renderer.Render(result)
+		},
+	}
+	command.Flags().StringVar(&input.Environment, "environment", "", "explicit write environment alias")
+	command.Flags().StringVar(&luid, "id", "", "authoritative project LUID")
+	command.Flags().StringVar(&projectPath, "project", "", "exact slash-delimited project path")
+	command.Flags().StringVar(&name, "name", "", "replacement project name")
+	command.Flags().StringVar(&description, "description", "", "replacement project description")
+	command.Flags().StringVar(&contentPermissions, "content-permissions", "", "replacement Tableau content permission mode")
+	command.Flags().BoolVar(&apply, "apply", false, "apply the previewed remote mutation")
 	return command
 }
 

@@ -18,6 +18,10 @@ type client struct {
 	listCalls    *int
 }
 
+func (c client) Delete(ctx context.Context, luid string) (tableauworkbook.MutationResult, error) {
+	return tableauworkbook.MutationResult{Status: "succeeded", WorkbookLUID: luid, TableauRequestID: "request-1"}, nil
+}
+
 type inventoryClient struct {
 	client
 	page    tableauworkbook.WorkbookPage

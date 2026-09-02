@@ -37,3 +37,26 @@ type Page struct {
 	Items            []Project
 	TableauRequestID string
 }
+
+// CreateRequest describes one exact project create request.
+type CreateRequest struct {
+	Name               string
+	Description        string
+	ParentLUID         string
+	ContentPermissions string
+}
+
+// UpdateRequest describes explicit bounded project metadata changes.
+type UpdateRequest struct {
+	LUID               string
+	Name               *string
+	Description        *string
+	ContentPermissions *string
+}
+
+// MutationResult is one authoritative project mutation result.
+type MutationResult struct {
+	Status           string
+	Project          Project
+	TableauRequestID string
+}

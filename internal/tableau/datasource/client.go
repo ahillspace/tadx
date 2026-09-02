@@ -15,14 +15,17 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/ahillspace/tadx/internal/auth"
 	"github.com/ahillspace/tadx/internal/tableau"
 )
 
 const (
-	maxPageSize          = 1000
-	maxListResponseBytes = 16 * 1024 * 1024
+	maxPageSize            = 1000
+	maxListResponseBytes   = 16 * 1024 * 1024
+	defaultUploadThreshold = 64 * 1024 * 1024
+	defaultUploadChunkSize = 64 * 1024 * 1024
 )
 
 // Datasource is the bounded REST metadata used by inventory and workbook dependency acquisition.
@@ -85,11 +88,39 @@ type Client struct {
 	session          auth.Session
 	serverURL        string
 	maxDownloadBytes int64
+	uploadThreshold  int64
+	uploadChunkSize  int64
+	pollInterval     time.Duration
+	pollTimeout      time.Duration
 }
 
 // NewClient creates an authenticated datasource REST client.
 func NewClient(transport *tableau.Transport, session auth.Session, serverURL string) *Client {
-	return &Client{transport: transport, session: session, serverURL: serverURL}
+	return &Client{transport: transport, session: session, serverURL: serverURL, uploadThreshold: defaultUploadThreshold, uploadChunkSize: defaultUploadChunkSize, pollInterval: time.Second, pollTimeout: 10 * time.Minute}
+}
+
+func (c *Client) SetUploadThreshold(limit int64) {
+	if c != nil && limit > 0 && limit <= defaultUploadThreshold {
+		c.uploadThreshold = limit
+	}
+}
+func (c *Client) SetUploadChunkSize(limit int64) {
+	if c != nil && limit > 0 && limit <= defaultUploadChunkSize {
+		c.uploadChunkSize = limit
+	}
+}
+
+// SetPollPolicy configures bounded internal asynchronous publish polling.
+func (c *Client) SetPollPolicy(interval, timeout time.Duration) {
+	if c == nil {
+		return
+	}
+	if interval > 0 {
+		c.pollInterval = interval
+	}
+	if timeout > 0 {
+		c.pollTimeout = timeout
+	}
 }
 
 // SetMaxDownloadBytes bounds the buffered native datasource download below the shared transport ceiling.

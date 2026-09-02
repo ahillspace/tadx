@@ -116,6 +116,55 @@ func (a *Adapter) ResolveProjectPath(ctx context.Context, luid string) (string, 
 	return project.Path, err
 }
 
+// FindProjectCollisions returns case-insensitive sibling-name collisions.
+func (a *Adapter) FindProjectCollisions(ctx context.Context, name, parentLUID string) ([]Project, error) {
+	if strings.TrimSpace(name) == "" {
+		return nil, errors.New("project collision check requires a name")
+	}
+	items, requestID, err := a.all(ctx)
+	if err != nil {
+		return nil, err
+	}
+	index := newPathIndex(items)
+	matches := make([]Project, 0, 1)
+	for _, item := range items {
+		if !strings.EqualFold(item.Name, name) || item.ParentLUID != parentLUID {
+			continue
+		}
+		path, pathErr := index.path(item.LUID, make(map[string]bool))
+		if pathErr != nil {
+			return nil, pathErr
+		}
+		project := normalize(item, path)
+		project.RequestID = requestID
+		matches = append(matches, project)
+	}
+	sort.Slice(matches, func(left, right int) bool { return matches[left].LUID < matches[right].LUID })
+	return matches, nil
+}
+
+// NormalizeMutationProject builds a canonical path from the authoritative
+// mutation response without waiting for the new identity to enter the search index.
+func (a *Adapter) NormalizeMutationProject(ctx context.Context, item tableauproject.Project) (Project, error) {
+	item.LUID = strings.TrimSpace(item.LUID)
+	item.Name = strings.TrimSpace(item.Name)
+	if item.LUID == "" || item.Name == "" {
+		return Project{}, errors.New("project mutation returned an incomplete authoritative identity")
+	}
+	if strings.Contains(item.Name, "/") {
+		return Project{}, fmt.Errorf("Tableau project %q has a name containing %q, which is not addressable by an exact project path", item.LUID, "/")
+	}
+	path := item.Name
+	if item.ParentLUID != "" {
+		parentPath, err := a.ResolveProjectPath(ctx, item.ParentLUID)
+		if err != nil {
+			return Project{}, fmt.Errorf("resolve project mutation parent %q: %w", item.ParentLUID, err)
+		}
+		path = parentPath + "/" + item.Name
+	}
+	return normalize(item, path), nil
+}
+
 func (a *Adapter) all(ctx context.Context) ([]tableauproject.Project, string, error) {
 	if a == nil || a.client == nil {
 		return nil, "", errors.New("project resource adapter is not configured")

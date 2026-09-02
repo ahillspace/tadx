@@ -9,17 +9,17 @@ Use `tadx capability get <id>` for the same focused metadata at runtime.
 
 | Capability ID | Owner | Disposition | Verification | Implementation | Command |
 | --- | --- | --- | --- | --- | --- |
-| `admin.group.create` | cli | ship | ready | planned | None |
-| `admin.group.delete` | cli | ship | ready | planned | None |
-| `admin.group.get` | cli | ship | ready | planned | None |
-| `admin.group.list` | cli | ship | ready | planned | None |
-| `admin.group.update` | cli | ship | ready | planned | None |
-| `admin.permission.get` | cli | ship | ready | planned | None |
-| `admin.user.create` | cli | ship | ready | planned | None |
-| `admin.user.delete` | cli | ship | ready | planned | None |
-| `admin.user.get` | cli | ship | ready | planned | None |
-| `admin.user.list` | cli | ship | ready | planned | None |
-| `admin.user.update` | cli | ship | ready | planned | None |
+| `admin.group.create` | cli | ship | ready | implemented | `tadx admin group create` |
+| `admin.group.delete` | cli | ship | ready | implemented | `tadx admin group delete` |
+| `admin.group.get` | cli | ship | ready | implemented | `tadx admin group get` |
+| `admin.group.list` | cli | ship | ready | implemented | `tadx admin group list` |
+| `admin.group.update` | cli | ship | ready | implemented | `tadx admin group update` |
+| `admin.permission.get` | cli | ship | ready | implemented | `tadx admin permission get` |
+| `admin.user.create` | cli | ship | ready | implemented | `tadx admin user create` |
+| `admin.user.delete` | cli | ship | ready | implemented | `tadx admin user delete` |
+| `admin.user.get` | cli | ship | ready | implemented | `tadx admin user get` |
+| `admin.user.list` | cli | ship | ready | implemented | `tadx admin user list` |
+| `admin.user.update` | cli | ship | ready | implemented | `tadx admin user update` |
 | `auth.check` | cli | ship | ready | implemented | `tadx auth check` |
 | `auth.status` | cli | ship | ready | implemented | `tadx auth status` |
 | `capability.get` | cli | ship | ready | implemented | `tadx capability get` |
@@ -31,15 +31,15 @@ Use `tadx capability get <id>` for the same focused metadata at runtime.
 | `content.get` | cli | ship | ready | planned | None |
 | `content.search` | cli | ship | ready | planned | None |
 | `datasource.composition.update` | cli | ship | blocked | planned | None |
-| `datasource.delete` | cli | ship | blocked | planned | None |
+| `datasource.delete` | cli | ship | ready | implemented | `tadx content datasource delete` |
 | `datasource.field-description.generate` | agent/skill | delegated | ready | external/delegated | None |
 | `datasource.field-description.update` | cli | ship | blocked | planned | None |
 | `datasource.get` | cli | ship | ready | implemented | `tadx content datasource get` |
 | `datasource.list` | cli | ship | ready | implemented | `tadx content datasource list` |
-| `datasource.publish` | cli | ship | blocked | planned | None |
-| `datasource.pull` | cli | ship | blocked | planned | None |
+| `datasource.publish` | cli | ship | ready | implemented | `tadx content datasource publish` |
+| `datasource.pull` | cli | ship | ready | implemented | `tadx content datasource pull` |
 | `datasource.query` | mcp | delegated | ready | external/delegated | None |
-| `doctor.run` | cli | ship | ready | planned | None |
+| `doctor.run` | cli | ship | ready | implemented | `tadx doctor` |
 | `env.profile.add` | cli | ship | ready | implemented | `tadx env add` |
 | `env.profile.get` | cli | ship | ready | implemented | `tadx env get` |
 | `env.profile.list` | cli | ship | ready | implemented | `tadx env list` |
@@ -53,12 +53,12 @@ Use `tadx capability get <id>` for the same focused metadata at runtime.
 | `flow.publish` | cli | ship | ready | implemented | `tadx content flow publish` |
 | `flow.pull` | cli | ship | ready | implemented | `tadx content flow pull` |
 | `lineage.pull` | cli | ship | ready | implemented | `tadx content lineage pull` |
-| `project.create` | cli | ship | ready | planned | None |
+| `project.create` | cli | ship | ready | implemented | `tadx content project create` |
 | `project.get` | cli | ship | ready | implemented | `tadx content project get` |
 | `project.list` | cli | ship | ready | implemented | `tadx content project list` |
 | `project.publish` | cli | ship | blocked | planned | None |
 | `project.pull` | cli | ship | blocked | planned | None |
-| `project.update` | cli | ship | ready | planned | None |
+| `project.update` | cli | ship | ready | implemented | `tadx content project update` |
 | `pulse.definition.create` | cli | ship | blocked | planned | None |
 | `pulse.definition.delete` | cli | ship | blocked | planned | None |
 | `pulse.definition.get` | cli | ship | ready | planned | None |
@@ -75,13 +75,13 @@ Use `tadx capability get <id>` for the same focused metadata at runtime.
 | `pulse.metric.values-insights` | mcp | delegated | ready | external/delegated | None |
 | `view.read` | mcp | delegated | ready | external/delegated | None |
 | `workbook.author` | tableau/desktop-mcp | delegated | ready | external/delegated | None |
-| `workbook.delete` | cli | ship | blocked | planned | None |
+| `workbook.delete` | cli | ship | ready | implemented | `tadx content workbook delete` |
 | `workbook.get` | cli | ship | ready | implemented | `tadx content workbook get` |
 | `workbook.list` | cli | ship | ready | implemented | `tadx content workbook list` |
 | `workbook.publish` | cli | ship | ready | implemented | `tadx content workbook publish` |
 | `workbook.pull` | cli | ship | ready | implemented | `tadx content workbook pull` |
 | `workspace.artifact.delete` | cli | ship | ready | implemented | `tadx workspace artifact delete` |
-| `workspace.clean` | cli | ship | ready | planned | None |
+| `workspace.clean` | cli | ship | ready | implemented | `tadx workspace clean` |
 | `workspace.clone` | cli | ship | ready | implemented | `tadx workspace clone` |
 | `workspace.create` | cli | ship | ready | implemented | `tadx workspace create` |
 | `workspace.list` | cli | ship | ready | implemented | `tadx workspace list` |
@@ -102,9 +102,9 @@ Preview and create one site group with explicit supported settings.
 - Selectors: Explicit site; group name
 - Products and availability: Cloud / Server; directory/import fields vary
 - Product disposition: ship
-- Evidence level: docs-only
+- Evidence level: contract-verified
 - Verification readiness: ready
-- Implementation state: planned
+- Implementation state: implemented
 - Local write: No
 - Remote mutation: Yes
 - Requires `--apply`: Yes
@@ -112,10 +112,10 @@ Preview and create one site group with explicit supported settings.
 - Safety and guard: Collision and directory-setting failures preserved
 - Artifact effect: None
 - Upstream operation: POST /api/{version}/sites/{site-id}/groups
-- Evidence: A1 §§6.5, 8.7; C1 §§2.8, 5.10
-- Validation or blocker: Docs-only
+- Evidence: docs/evidence/admin-rest-contract.md
+- Validation or blocker: Contract-verified explicit create and collision behavior
 - Blocker ID: None
-- Command binding: None
+- Command binding: `tadx admin group create`
 
 ### `admin.group.delete`
 
@@ -128,9 +128,9 @@ Preview and delete one exact group without deleting its users.
 - Selectors: Group LUID
 - Products and availability: Cloud / Server
 - Product disposition: ship
-- Evidence level: docs-only
+- Evidence level: contract-verified
 - Verification readiness: ready
-- Implementation state: planned
+- Implementation state: implemented
 - Local write: No
 - Remote mutation: Yes
 - Requires `--apply`: Yes
@@ -138,10 +138,10 @@ Preview and delete one exact group without deleting its users.
 - Safety and guard: Known direct facts only; no claim of full permission-impact analysis
 - Artifact effect: None
 - Upstream operation: DELETE /api/{version}/sites/{site-id}/groups/{group-id}
-- Evidence: A1 §§6.5, 8.7; C1 §§2.8, 5.10
-- Validation or blocker: Docs-only
+- Evidence: docs/evidence/admin-rest-contract.md
+- Validation or blocker: Contract-verified exact group deletion without user deletion
 - Blocker ID: None
-- Command binding: None
+- Command binding: `tadx admin group delete`
 
 ### `admin.group.get`
 
@@ -154,9 +154,9 @@ Inspect one exact group and, when requested, its direct membership.
 - Selectors: Group LUID or exact name
 - Products and availability: Cloud / Server
 - Product disposition: ship
-- Evidence level: docs-only
+- Evidence level: contract-verified
 - Verification readiness: ready
-- Implementation state: planned
+- Implementation state: implemented
 - Local write: No
 - Remote mutation: No
 - Requires `--apply`: No
@@ -164,10 +164,10 @@ Inspect one exact group and, when requested, its direct membership.
 - Safety and guard: Exact group; membership pages normalized
 - Artifact effect: None
 - Upstream operation: GET .../groups; GET .../groups/{group-id}/users
-- Evidence: A1 §8.7; C1 §§2.8, 5.10; S1 internal-members correction
-- Validation or blocker: Docs-only
+- Evidence: docs/evidence/admin-rest-contract.md
+- Validation or blocker: Contract-verified exact group and bounded direct membership
 - Blocker ID: None
-- Command binding: None
+- Command binding: `tadx admin group get`
 
 ### `admin.group.list`
 
@@ -180,9 +180,9 @@ List groups with bounded identity and directory metadata.
 - Selectors: Environment/site; filters
 - Products and availability: Cloud / Server
 - Product disposition: ship
-- Evidence level: docs-only
+- Evidence level: contract-verified
 - Verification readiness: ready
-- Implementation state: planned
+- Implementation state: implemented
 - Local write: No
 - Remote mutation: No
 - Requires `--apply`: No
@@ -190,10 +190,10 @@ List groups with bounded identity and directory metadata.
 - Safety and guard: Bounded continuation
 - Artifact effect: None
 - Upstream operation: GET /api/{version}/sites/{site-id}/groups
-- Evidence: A1 §8.7; C1 §§2.8, 5.10
-- Validation or blocker: Docs-only
+- Evidence: docs/evidence/admin-rest-contract.md
+- Validation or blocker: Contract-verified bounded group pagination
 - Blocker ID: None
-- Command binding: None
+- Command binding: `tadx admin group list`
 
 ### `admin.group.update`
 
@@ -206,9 +206,9 @@ Preview and update group attributes and/or converge direct membership to explici
 - Selectors: Group LUID; exact user LUIDs
 - Products and availability: Cloud / Server
 - Product disposition: ship
-- Evidence level: docs-only
+- Evidence level: contract-verified
 - Verification readiness: ready
-- Implementation state: planned
+- Implementation state: implemented
 - Local write: No
 - Remote mutation: Yes
 - Requires `--apply`: Yes
@@ -216,10 +216,10 @@ Preview and update group attributes and/or converge direct membership to explici
 - Safety and guard: Full membership diff preview; ordered calls; stop on first failure; no rollback/resume
 - Artifact effect: None
 - Upstream operation: PUT .../groups/{group-id}; member pre-read; POST .../groups/{group-id}/users; DELETE .../users/{user-id}
-- Evidence: A1 §§4.2, 6.5, 8.7, 8.12; C1 §§2.8, 5.10; S1 internal-members correction
-- Validation or blocker: Docs-only
+- Evidence: docs/evidence/admin-rest-contract.md
+- Validation or blocker: Contract-verified metadata and deterministic membership convergence
 - Blocker ID: None
-- Command binding: None
+- Command binding: `tadx admin group update`
 
 ### `admin.permission.get`
 
@@ -232,9 +232,9 @@ Inspect explicit/default permission rules for one supported resource.
 - Selectors: Resource kind plus exact LUID; optional principal/capability filters
 - Products and availability: Cloud / Server
 - Product disposition: ship
-- Evidence level: docs-only
+- Evidence level: contract-verified
 - Verification readiness: ready
-- Implementation state: planned
+- Implementation state: implemented
 - Local write: No
 - Remote mutation: No
 - Requires `--apply`: No
@@ -242,10 +242,10 @@ Inspect explicit/default permission rules for one supported resource.
 - Safety and guard: Distinguish direct/default/inherited/unknown; no effective-permission engine
 - Artifact effect: None
 - Upstream operation: Workbook/datasource/flow/project permission GET endpoints
-- Evidence: A1 §§8.8, 11.2; C1 §§2.8, 5.11
-- Validation or blocker: Docs-only; tabget normalization review is implementation backlog, not capability blocker
+- Evidence: docs/evidence/admin-rest-contract.md
+- Validation or blocker: Contract-verified normalized permission source facts; no effective-permission claim
 - Blocker ID: None
-- Command binding: None
+- Command binding: `tadx admin permission get`
 
 ### `admin.user.create`
 
@@ -258,9 +258,9 @@ Preview and add one user to a site with explicit role/auth settings.
 - Selectors: Explicit site; username
 - Products and availability: Cloud / Server; fields vary by product/version
 - Product disposition: ship
-- Evidence level: docs-only
+- Evidence level: contract-verified
 - Verification readiness: ready
-- Implementation state: planned
+- Implementation state: implemented
 - Local write: No
 - Remote mutation: Yes
 - Requires `--apply`: Yes
@@ -268,10 +268,10 @@ Preview and add one user to a site with explicit role/auth settings.
 - Safety and guard: No inferred role/auth setting; quota/license failures preserved
 - Artifact effect: None
 - Upstream operation: POST /api/{version}/sites/{site-id}/users
-- Evidence: A1 §§6.5, 8.7; C1 §§2.8, 5.9
-- Validation or blocker: Docs-only
+- Evidence: docs/evidence/admin-rest-contract.md
+- Validation or blocker: Contract-verified explicit create and preview/apply behavior
 - Blocker ID: None
-- Command binding: None
+- Command binding: `tadx admin user create`
 
 ### `admin.user.delete`
 
@@ -284,9 +284,9 @@ Preview and remove one exact user from a site without hidden ownership reassignm
 - Selectors: User LUID
 - Products and availability: Cloud / Server
 - Product disposition: ship
-- Evidence level: docs-only
+- Evidence level: contract-verified
 - Verification readiness: ready
-- Implementation state: planned
+- Implementation state: implemented
 - Local write: No
 - Remote mutation: Yes
 - Requires `--apply`: Yes
@@ -294,10 +294,10 @@ Preview and remove one exact user from a site without hidden ownership reassignm
 - Safety and guard: Ownership constraints surfaced; never silently transfer content
 - Artifact effect: None
 - Upstream operation: DELETE /api/{version}/sites/{site-id}/users/{user-id}
-- Evidence: A1 §§6.5, 8.7; C1 §§2.8, 5.9
-- Validation or blocker: Docs-only
+- Evidence: docs/evidence/admin-rest-contract.md
+- Validation or blocker: Contract-verified exact delete without ownership reassignment
 - Blocker ID: None
-- Command binding: None
+- Command binding: `tadx admin user delete`
 
 ### `admin.user.get`
 
@@ -310,9 +310,9 @@ Inspect one exact site user.
 - Selectors: User LUID or exact username/email where supported
 - Products and availability: Cloud / Server
 - Product disposition: ship
-- Evidence level: docs-only
+- Evidence level: contract-verified
 - Verification readiness: ready
-- Implementation state: planned
+- Implementation state: implemented
 - Local write: No
 - Remote mutation: No
 - Requires `--apply`: No
@@ -320,10 +320,10 @@ Inspect one exact site user.
 - Safety and guard: Ambiguity fails
 - Artifact effect: None
 - Upstream operation: GET /api/{version}/sites/{site-id}/users/{user-id}
-- Evidence: A1 §8.7; C1 §§2.8, 5.9
-- Validation or blocker: Docs-only
+- Evidence: docs/evidence/admin-rest-contract.md
+- Validation or blocker: Contract-verified exact user identity resolution
 - Blocker ID: None
-- Command binding: None
+- Command binding: `tadx admin user get`
 
 ### `admin.user.list`
 
@@ -336,9 +336,9 @@ List site users with bounded administration metadata.
 - Selectors: Environment/site; filters
 - Products and availability: Cloud / Server
 - Product disposition: ship
-- Evidence level: docs-only
+- Evidence level: contract-verified
 - Verification readiness: ready
-- Implementation state: planned
+- Implementation state: implemented
 - Local write: No
 - Remote mutation: No
 - Requires `--apply`: No
@@ -346,10 +346,10 @@ List site users with bounded administration metadata.
 - Safety and guard: Bounded continuation; secret-free
 - Artifact effect: None
 - Upstream operation: GET /api/{version}/sites/{site-id}/users
-- Evidence: A1 §§1.5, 8.7; C1 §§2.8, 5.9
-- Validation or blocker: Docs-only
+- Evidence: docs/evidence/admin-rest-contract.md
+- Validation or blocker: Contract-verified bounded user pagination
 - Blocker ID: None
-- Command binding: None
+- Command binding: `tadx admin user list`
 
 ### `admin.user.update`
 
@@ -362,9 +362,9 @@ Preview and update supported attributes of one exact user.
 - Selectors: User LUID
 - Products and availability: Cloud / Server; fields vary
 - Product disposition: ship
-- Evidence level: docs-only
+- Evidence level: contract-verified
 - Verification readiness: ready
-- Implementation state: planned
+- Implementation state: implemented
 - Local write: No
 - Remote mutation: Yes
 - Requires `--apply`: Yes
@@ -372,10 +372,10 @@ Preview and update supported attributes of one exact user.
 - Safety and guard: Equal values no-op when authoritative pre-read exists
 - Artifact effect: None
 - Upstream operation: PUT /api/{version}/sites/{site-id}/users/{user-id}
-- Evidence: A1 §§6.5, 8.7; C1 §§2.8, 5.9
-- Validation or blocker: Docs-only
+- Evidence: docs/evidence/admin-rest-contract.md
+- Validation or blocker: Contract-verified bounded user update and no-op behavior
 - Blocker ID: None
-- Command binding: None
+- Command binding: `tadx admin user update`
 
 ### `auth.check`
 
@@ -639,14 +639,14 @@ Search current remote content for lifecycle selection.
 
 ### `datasource.composition.update`
 
-Apply explicit immediate-parent composition changes to a local datasource artifact.
+Author or change immediate-parent composition relationships.
 
 - Surface: tadx content datasource composition update
 - Operation type: change
 - Owner: cli
 - MCP overlap: None
-- Selectors: Local datasource artifact; exact immediate parent LUIDs/content URLs
-- Products and availability: Local; resulting publish requires Cloud/Server support for composable datasources
+- Selectors: Local datasource artifact; exact immediate parent identities
+- Products and availability: Deferred pending a supported Tableau TDS authoring API
 - Product disposition: ship
 - Evidence level: docs-only
 - Verification readiness: blocked
@@ -655,11 +655,11 @@ Apply explicit immediate-parent composition changes to a local datasource artifa
 - Remote mutation: No
 - Requires `--apply`: No
 - Raw capable: No
-- Safety and guard: Never choose parents or relationships; deterministic no-op on equal normalized state
+- Safety and guard: Never edit private .tds or .tdsx structure to author composition
 - Artifact effect: Update
-- Upstream operation: Local .tds/.tdsx serialization proven by fixtures
-- Evidence: A1 §§4.3, 8.3, ADR-022; C1 §2.4; S1 datasource-update split
-- Validation or blocker: B2: safe serialization and round-trip contract unverified
+- Upstream operation: Supported TDS authoring API
+- Evidence: Maintainer decision
+- Validation or blocker: B2: deferred indefinitely; ordinary and composed pull and publish remain in V1
 - Blocker ID: B2
 - Command binding: None
 
@@ -674,9 +674,9 @@ Preview and delete one exact remote datasource.
 - Selectors: Datasource LUID or exact name/project path; explicit environment/site
 - Products and availability: Cloud / Server
 - Product disposition: ship
-- Evidence level: docs-only
-- Verification readiness: blocked
-- Implementation state: planned
+- Evidence level: contract-verified
+- Verification readiness: ready
+- Implementation state: implemented
 - Local write: No
 - Remote mutation: Yes
 - Requires `--apply`: Yes
@@ -684,10 +684,10 @@ Preview and delete one exact remote datasource.
 - Safety and guard: Re-resolve authoritative LUID immediately before delete; preserve dependency failures; no cascade claims
 - Artifact effect: Delete
 - Upstream operation: DELETE /api/{version}/sites/{site-id}/datasources/{datasource-id}
-- Evidence: Maintainer decision; official REST source capture pending
-- Validation or blocker: B6: live DELETE contract test pending
-- Blocker ID: B6
-- Command binding: None
+- Evidence: docs/evidence/datasource-lifecycle-rest-contract.md
+- Validation or blocker: Contract-verified exact DELETE with authoritative LUID revalidation
+- Blocker ID: None
+- Command binding: `tadx content datasource delete`
 
 ### `datasource.field-description.generate`
 
@@ -804,9 +804,9 @@ Preview and publish one local datasource, including explicit immediate-parent re
 - Selectors: Logical workspace plus exact workspace-relative managed datasource directory; target defaults to artifact source, explicit environment/site/project overrides; optional exact existing datasource; immediate parents for composed artifacts
 - Products and availability: Cloud / Server; composed path API 3.29 / Tableau 2026.2 per C1
 - Product disposition: ship
-- Evidence level: docs-only
-- Verification readiness: blocked
-- Implementation state: planned
+- Evidence level: contract-verified
+- Verification readiness: ready
+- Implementation state: implemented
 - Local write: No
 - Remote mutation: Yes
 - Requires `--apply`: Yes
@@ -814,10 +814,10 @@ Preview and publish one local datasource, including explicit immediate-parent re
 - Safety and guard: Overwrite/append/replace never inferred; preview shows resolved environment/name/LUID; stop on terminal failure
 - Artifact effect: Read / publish
 - Upstream operation: POST /api/{version}/sites/{site-id}/datasources; upload sessions; parentDataSourceUrls for composed path
-- Evidence: A1 §§6.5–6.8, 8.3, ADR-022; C1 §§2.4, 5.5
-- Validation or blocker: B2 blocks full composed-path contract; ordinary publish is docs-only
-- Blocker ID: B2
-- Command binding: None
+- Evidence: docs/evidence/datasource-lifecycle-rest-contract.md
+- Validation or blocker: Contract-verified ordinary and composed package publication; composition authoring remains blocked
+- Blocker ID: None
+- Command binding: `tadx content datasource publish`
 
 ### `datasource.pull`
 
@@ -830,9 +830,9 @@ Download one datasource while preserving its native package and composition prov
 - Selectors: Datasource LUID/exact path; logical workspace
 - Products and availability: Cloud / Server; composed round-trip requires Tableau 2026.2 behavior per C1
 - Product disposition: ship
-- Evidence level: docs-only
-- Verification readiness: blocked
-- Implementation state: planned
+- Evidence level: contract-verified
+- Verification readiness: ready
+- Implementation state: implemented
 - Local write: Yes
 - Remote mutation: No
 - Requires `--apply`: No
@@ -840,10 +840,10 @@ Download one datasource while preserving its native package and composition prov
 - Safety and guard: Dirty re-pull requires --overwrite; incomplete lineage warns; no package-semantic loss
 - Artifact effect: Create / update package and lineage sidecar
 - Upstream operation: GET /api/{version}/sites/{site-id}/datasources/{datasource-id}/content plus focused Metadata GraphQL reads
-- Evidence: A1 §§6.3–6.4, 8.2–8.4, ADR-022; C1 §§2.4, 5.5, 5.13
-- Validation or blocker: B2 blocks composed-datasource completion; lineage contract is captured in docs/evidence/lineage-metadata-contract.md
-- Blocker ID: B2
-- Command binding: None
+- Evidence: docs/evidence/datasource-lifecycle-rest-contract.md; docs/evidence/lineage-metadata-contract.md
+- Validation or blocker: Contract-verified native package preservation and bounded lineage; composition authoring remains blocked
+- Blocker ID: None
+- Command binding: `tadx content datasource pull`
 
 ### `datasource.query`
 
@@ -884,7 +884,7 @@ Diagnose config, PAT presence/validity, connectivity, MCP availability, catalog,
 - Product disposition: ship
 - Evidence level: architecture-locked
 - Verification readiness: ready
-- Implementation state: planned
+- Implementation state: implemented
 - Local write: No
 - Remote mutation: No
 - Requires `--apply`: No
@@ -895,7 +895,7 @@ Diagnose config, PAT presence/validity, connectivity, MCP availability, catalog,
 - Evidence: A1 §§1.5, 5.12, 7.7, 9.1; C1 §2.1
 - Validation or blocker: Architecture-locked; exact MCP probe is ordinary implementation work
 - Blocker ID: None
-- Command binding: None
+- Command binding: `tadx doctor`
 
 ### `env.profile.add`
 
@@ -1246,9 +1246,9 @@ Preview and create one project, optionally under an explicit parent.
 - Selectors: Explicit environment/site; optional parent LUID/path
 - Products and availability: Cloud / Server
 - Product disposition: ship
-- Evidence level: docs-only
+- Evidence level: contract-verified
 - Verification readiness: ready
-- Implementation state: planned
+- Implementation state: implemented
 - Local write: No
 - Remote mutation: Yes
 - Requires `--apply`: Yes
@@ -1256,10 +1256,10 @@ Preview and create one project, optionally under an explicit parent.
 - Safety and guard: Same-name collision and ambiguous parent fail
 - Artifact effect: None
 - Upstream operation: POST /api/{version}/sites/{site-id}/projects
-- Evidence: A1 §§6.5, 6.10; C1 §§2.6, 5.7
-- Validation or blocker: Docs-only
+- Evidence: docs/evidence/project-rest-contract.md
+- Validation or blocker: Contract-verified exact create, parent, collision, and response identity behavior
 - Blocker ID: None
-- Command binding: None
+- Command binding: `tadx content project create`
 
 ### `project.get`
 
@@ -1376,9 +1376,9 @@ Preview and update bounded project metadata without generic hierarchy migration.
 - Selectors: Project LUID/exact path
 - Products and availability: Cloud / Server
 - Product disposition: ship
-- Evidence level: docs-only
+- Evidence level: contract-verified
 - Verification readiness: ready
-- Implementation state: planned
+- Implementation state: implemented
 - Local write: No
 - Remote mutation: Yes
 - Requires `--apply`: Yes
@@ -1386,10 +1386,10 @@ Preview and update bounded project metadata without generic hierarchy migration.
 - Safety and guard: Parent-tree move excluded; equal values no-op
 - Artifact effect: None
 - Upstream operation: PUT /api/{version}/sites/{site-id}/projects/{project-id}
-- Evidence: A1 §§6.5, 6.10 and remote-move exclusion; C1 §§2.6, 5.7
-- Validation or blocker: Docs-only
+- Evidence: docs/evidence/project-rest-contract.md
+- Validation or blocker: Contract-verified bounded metadata update and authoritative no-op behavior
 - Blocker ID: None
-- Command binding: None
+- Command binding: `tadx content project update`
 
 ### `pulse.definition.create`
 
@@ -1818,9 +1818,9 @@ Preview and delete one exact remote workbook.
 - Selectors: Workbook LUID or exact name/project path; explicit environment/site
 - Products and availability: Cloud / Server
 - Product disposition: ship
-- Evidence level: docs-only
-- Verification readiness: blocked
-- Implementation state: planned
+- Evidence level: contract-verified
+- Verification readiness: ready
+- Implementation state: implemented
 - Local write: No
 - Remote mutation: Yes
 - Requires `--apply`: Yes
@@ -1828,10 +1828,10 @@ Preview and delete one exact remote workbook.
 - Safety and guard: Re-resolve authoritative LUID immediately before delete; no cascade claims; repeated missing target is explicit
 - Artifact effect: Delete
 - Upstream operation: DELETE /api/{version}/sites/{site-id}/workbooks/{workbook-id}
-- Evidence: Maintainer decision; official REST source capture pending
-- Validation or blocker: B6: live DELETE contract test pending
-- Blocker ID: B6
-- Command binding: None
+- Evidence: docs/evidence/phase1-rest-contract.md
+- Validation or blocker: Contract-verified exact DELETE with authoritative LUID revalidation
+- Blocker ID: None
+- Command binding: `tadx content workbook delete`
 
 ### `workbook.get`
 
@@ -1976,7 +1976,7 @@ Remove explicitly selected disposable local state while preserving canonical art
 - Product disposition: ship
 - Evidence level: local-contract
 - Verification readiness: ready
-- Implementation state: planned
+- Implementation state: implemented
 - Local write: Yes
 - Remote mutation: No
 - Requires `--apply`: No
@@ -1987,7 +1987,7 @@ Remove explicitly selected disposable local state while preserving canonical art
 - Evidence: A1 §§5.8, 7.5–7.6, 9.2; C1 §2.1
 - Validation or blocker: Architecture-locked local contract
 - Blocker ID: None
-- Command binding: None
+- Command binding: `tadx workspace clean`
 
 ### `workspace.clone`
 

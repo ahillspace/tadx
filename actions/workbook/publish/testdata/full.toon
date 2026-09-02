@@ -1,0 +1,29 @@
+plan:
+  mode: preview
+  operation: workbook.publish
+  artifact_path: artifacts/workbook/Finance
+  artifact_fingerprint: "sha256:diagnostic"
+  filename: Finance.twbx
+  workbook_name: Finance
+  target:
+    origin: explicit
+    environment: production
+    site: marketing
+    project_luid: project-1
+    project_path: Ops
+    existing_workbook_luid: wb-existing
+  overwrite: true
+  as_job: true
+  warnings[1]: Detailed portability warning.
+  substeps[2]: resolve exact destination,publish workbook
+applied: true
+result:
+  status: succeeded
+  workbook_luid: wb-new
+  workbook_name: Finance
+  project_luid: project-1
+  tableau_job_id: job-1
+  tableau_request_id: request-1
+  validation_warnings[1]{severity,message,line,element_name}:
+    warning,Detailed validation warning.,12,map
+help[1]: tadx catalog search --environment <alias> to confirm the published workbook.

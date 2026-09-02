@@ -2,7 +2,7 @@
 
 This record freezes the upstream contract used by the Phase 1 remote capabilities.
 The captured official Tableau REST API help is `Tableau API Documentation/tableau_rest_api.md`.
-Its SHA-256 digest is `89bf3a33175ddcfee15e45b13facfa1833b4a06218580c66ef48e04691f1842b`.
+Its SHA-256 digest is `76d7f050a32ca354660039bdc18143506ce26472ff82f0f12b79fb5aaa584e0f`.
 
 The implementation uses these captured sections:
 
@@ -17,6 +17,7 @@ The implementation uses these captured sections:
 - Upload initiation at lines 28079 through 28146.
 - Upload append at lines 10432 through 10506.
 - Workbook publish at lines 34005 through 34425.
+- Workbook delete at lines 19862 through 19916.
 - TWB validation at lines 49525 through 49700.
 - Asynchronous publish jobs at lines 3475 through 3504.
 - Job queries at lines 36548 through 36643.
@@ -32,6 +33,21 @@ When Tableau accepts an asynchronous publish but job polling is forbidden, cance
 The error retains the job and request IDs and does not advise an automatic retry.
 The capture disagrees on a 1,000-block versus 10,000-block upload limit.
 TADX applies the conservative 1,000-block limit.
+
+## Workbook delete contract
+
+Workbook deletion uses `DELETE /api/{version}/sites/{site-luid}/workbooks/{workbook-luid}`.
+The request has no body, and successful deletion returns HTTP 204 with no body.
+The endpoint is available in REST API 2.0 and later.
+Documented missing-site and missing-workbook responses use HTTP 404 with upstream codes `404000` and `404006`.
+
+Preview performs no DELETE.
+Apply re-resolves the planned authoritative workbook LUID immediately before the final request.
+A rename or project move does not change the selected identity.
+TADX sends no separate view, connection, schedule, or dependency mutation.
+Hermetic client and action tests freeze the exact request, empty response, preview behavior, LUID revalidation, metadata-change behavior, and uncertain non-204 outcome.
+Authorized disposable Tableau Cloud verification completed on 2026-09-02 for publishing a workbook with a published datasource binding and deleting the resulting exact workbook by LUID.
+The temporary workbook was removed after verification.
 
 ## Live workbook publish behavior
 

@@ -1,0 +1,26 @@
+plan:
+  mode: preview
+  operation: workbook.publish
+  artifact_path: artifacts/workbook/Finance
+  filename: Finance.twbx
+  workbook_name: Finance
+  target:
+    origin: explicit
+    environment: production
+    site: marketing
+    project_luid: project-1
+    project_path: Ops
+    existing_workbook_luid: wb-existing
+  overwrite: true
+  as_job: true
+  warnings_omitted: 1
+applied: true
+result:
+  status: succeeded
+  workbook_luid: wb-new
+  workbook_name: Finance
+  project_luid: project-1
+  tableau_job_id: job-1
+  validation_warnings_omitted: 1
+details: "--full"
+help[1]: tadx catalog search --environment <alias> to confirm the published workbook.

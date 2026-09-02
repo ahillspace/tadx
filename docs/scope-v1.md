@@ -18,7 +18,7 @@ These are the capabilities an agent may build to completion once each row's upst
 - Cross-content read: content search, content get.
 - Lineage: bounded automatic capture with workbook, datasource, and flow pulls; standalone pull into a metadata-only artifact.
 - Workbook: list, get, pull, publish, delete.
-- Datasource: list, get, pull (ordinary), publish (ordinary), delete.
+- Datasource: list, get, pull, publish, delete; pull and publish preserve existing ordinary or composed packages without authoring composition.
 - Flow: list, get, pull, publish, move, delete.
 - Project: list, get, create, update.
 - Pulse: definition list/get/pull; metric list/get; definition/metric artifacts.
@@ -31,7 +31,7 @@ These are real V1 commitments, present as registry metadata, but not executable 
 Each unblocks only when its named gate closes with captured official source plus a passing contract test.
 
 - B1 datasource field-description write (published-datasource-field level): deferred fast-follow, pending the near-release TDS datasource-field API. Metadata API writes descriptions only at the upstream-table granularity, which is a different resource and not this row.
-- B2 composable datasource round-trip and serialization: datasource pull/composition-update/publish for composed artifacts.
+- B2 datasource composition authoring: `datasource.composition.update` is deferred indefinitely pending a supported TDS authoring API.
 - B3 Pulse mutation schemas: pulse definition/metric create/update/delete/follow/unfollow.
 - B4 shallow project direct-content enumeration: project pull, project publish.
 

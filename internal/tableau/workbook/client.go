@@ -117,6 +117,13 @@ type PublishResult struct {
 	Warnings         []ValidationIssue
 }
 
+// MutationResult is the authoritative outcome of one workbook mutation.
+type MutationResult struct {
+	Status           string
+	WorkbookLUID     string
+	TableauRequestID string
+}
+
 // ValidationIssue is one server-side TWB validation diagnostic.
 type ValidationIssue struct {
 	Severity    string `json:"severity"`
@@ -178,6 +185,22 @@ func NewClient(transport *tableau.Transport, session auth.Session, serverURL str
 		uploadThreshold: defaultUploadThreshold, uploadChunkSize: defaultUploadChunkSize,
 		pollInterval: time.Second, pollTimeout: 10 * time.Minute,
 	}
+}
+
+// Delete removes one exact workbook and accepts only Tableau's documented empty HTTP 204 response.
+func (c *Client) Delete(ctx context.Context, workbookLUID string) (MutationResult, error) {
+	if strings.TrimSpace(workbookLUID) == "" {
+		return MutationResult{}, errors.New("workbook delete requires an exact workbook LUID")
+	}
+	response, err := c.do(ctx, http.MethodDelete, c.sitePath("workbooks", workbookLUID), nil, nil, "", "workbook.delete")
+	if err != nil {
+		return MutationResult{Status: "unknown", WorkbookLUID: workbookLUID, TableauRequestID: tableau.RequestID(err)}, err
+	}
+	if response.StatusCode != http.StatusNoContent || len(response.Body) != 0 {
+		result := MutationResult{Status: "unknown", WorkbookLUID: workbookLUID, TableauRequestID: response.TableauRequestID}
+		return result, tableau.NewProtocolError("workbook.delete", response, fmt.Errorf("workbook delete returned HTTP %d with %d response bytes, expected empty HTTP 204", response.StatusCode, len(response.Body)), false)
+	}
+	return MutationResult{Status: "succeeded", WorkbookLUID: workbookLUID, TableauRequestID: response.TableauRequestID}, nil
 }
 
 // SetUploadThreshold overrides the single-request threshold for deterministic tests.

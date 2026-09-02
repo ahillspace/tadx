@@ -42,6 +42,8 @@ type Error struct {
 	UpstreamDetail   string
 	TableauRequestID string
 	TableauJobID     string
+	Completed        []string
+	Failed           string
 }
 
 // New creates a structured error with a classification and summary.
@@ -134,6 +136,8 @@ type Payload struct {
 	UpstreamDetail   string             `json:"upstream_detail,omitempty"`
 	TableauRequestID string             `json:"tableau_request_id,omitempty"`
 	TableauJobID     string             `json:"tableau_job_id,omitempty"`
+	Completed        []string           `json:"completed,omitempty"`
+	Failed           string             `json:"failed,omitempty"`
 }
 
 // Envelope is the top-level structured error document.
@@ -167,6 +171,8 @@ func Structure(err error) Envelope {
 			UpstreamDetail:   structured.UpstreamDetail,
 			TableauRequestID: structured.TableauRequestID,
 			TableauJobID:     structured.TableauJobID,
+			Completed:        append([]string(nil), structured.Completed...),
+			Failed:           structured.Failed,
 		}
 		if payload.Summary == "" {
 			payload.Summary = structured.Error()

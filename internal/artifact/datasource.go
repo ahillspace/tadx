@@ -10,6 +10,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 )
@@ -17,7 +18,9 @@ import (
 const (
 	// CompositionStatusUnknown records that TADX preserved the datasource package
 	// without attempting to classify or rewrite its internal composition.
-	CompositionStatusUnknown = "unknown"
+	CompositionStatusUnknown  = "unknown"
+	CompositionStatusOrdinary = "ordinary"
+	CompositionStatusComposed = "composed"
 
 	maxDatasourceMetadataBytes = 64 * 1024
 	datasourceBackupPrefix     = ".tadx-datasource-backup-"
@@ -26,19 +29,22 @@ const (
 
 // DatasourceMetadata is the persisted provenance for one native datasource.
 type DatasourceMetadata struct {
-	Kind                     string `json:"kind"`
-	Name                     string `json:"name"`
-	TableauID                string `json:"tableau_id"`
-	SourceServerOrigin       string `json:"source_server_origin"`
-	SourceSiteLUID           string `json:"source_site_luid"`
-	SourceEnvironment        string `json:"source_environment"`
-	SourceSite               string `json:"source_site"`
-	SourceProjectName        string `json:"source_project_name"`
-	SourceProjectID          string `json:"source_project_id"`
-	PulledAt                 string `json:"pulled_at"`
-	CanonicalPayload         string `json:"canonical_payload"`
-	LocalBaselineFingerprint string `json:"local_baseline_fingerprint"`
-	CompositionStatus        string `json:"composition_status"`
+	Kind                     string   `json:"kind"`
+	Name                     string   `json:"name"`
+	TableauID                string   `json:"tableau_id"`
+	SourceServerOrigin       string   `json:"source_server_origin"`
+	SourceSiteLUID           string   `json:"source_site_luid"`
+	SourceEnvironment        string   `json:"source_environment"`
+	SourceSite               string   `json:"source_site"`
+	SourceProjectName        string   `json:"source_project_name"`
+	SourceProjectID          string   `json:"source_project_id"`
+	PulledAt                 string   `json:"pulled_at"`
+	CanonicalPayload         string   `json:"canonical_payload"`
+	LocalBaselineFingerprint string   `json:"local_baseline_fingerprint"`
+	CompositionStatus        string   `json:"composition_status"`
+	ParentDataSourceURLs     []string `json:"parent_datasource_urls,omitempty"`
+	LineageSidecar           string   `json:"lineage_sidecar"`
+	LineageComplete          bool     `json:"lineage_complete"`
 	sourceSitePresent        bool
 }
 
@@ -48,6 +54,7 @@ type DatasourcePull struct {
 	Filename  string
 	Content   []byte
 	Metadata  DatasourceMetadata
+	Lineage   LineageDocument
 	Overwrite bool
 }
 
@@ -58,24 +65,29 @@ type DatasourcePullResult struct {
 	WorkspaceRelativePath string
 	BaselineFingerprint   string
 	Warnings              []string
+	CompositionStatus     string
+	ParentDataSourceURLs  []string
+	LineagePath           string
 }
 
 // DatasourceArtifact is the validated native payload and its provenance.
 type DatasourceArtifact struct {
-	Path               string
-	PayloadPath        string
-	Filename           string
-	Size               int64
-	Name               string
-	TableauID          string
-	Fingerprint        string
-	SourceServerOrigin string
-	SourceSiteLUID     string
-	SourceEnvironment  string
-	SourceSite         string
-	SourceProjectName  string
-	SourceProjectID    string
-	CompositionStatus  string
+	Path                 string
+	PayloadPath          string
+	Filename             string
+	Size                 int64
+	Name                 string
+	TableauID            string
+	Fingerprint          string
+	SourceServerOrigin   string
+	SourceSiteLUID       string
+	SourceEnvironment    string
+	SourceSite           string
+	SourceProjectName    string
+	SourceProjectID      string
+	CompositionStatus    string
+	ParentDataSourceURLs []string
+	Lineage              LineageDocument
 }
 
 // DatasourceManager owns first-class datasource artifact persistence.
@@ -191,7 +203,16 @@ func (m *DatasourceManager) Pull(ctx context.Context, input DatasourcePull) (Dat
 	metadata.PulledAt = m.now().UTC().Format(time.RFC3339Nano)
 	metadata.CanonicalPayload = filename
 	metadata.LocalBaselineFingerprint = baseline
-	metadata.CompositionStatus = CompositionStatusUnknown
+	metadata.CompositionStatus, metadata.ParentDataSourceURLs = classifyDatasourcePackage(filename, input.Content)
+	metadata.LineageSidecar = "lineage.json"
+	if input.Lineage.Depth == 0 {
+		input.Lineage = LineageDocument{Complete: false, Direction: "both", Depth: 1, Warnings: []string{"Lineage was not captured for this datasource pull."}}
+	}
+	input.Lineage = normalizedLineage(input.Lineage)
+	if err := validateLineage(input.Lineage); err != nil {
+		return DatasourcePullResult{}, fmt.Errorf("validate datasource lineage: %w", err)
+	}
+	metadata.LineageComplete = input.Lineage.Complete
 	metadata.sourceSitePresent = true
 	if err := validateDatasourceMetadata(metadata); err != nil {
 		return DatasourcePullResult{}, err
@@ -199,6 +220,14 @@ func (m *DatasourceManager) Pull(ctx context.Context, input DatasourcePull) (Dat
 	metadataBytes, err := encodeDatasourceMetadata(metadata)
 	if err != nil {
 		return DatasourcePullResult{}, err
+	}
+	lineageBytes, err := json.MarshalIndent(input.Lineage, "", "  ")
+	if err != nil {
+		return DatasourcePullResult{}, fmt.Errorf("encode datasource lineage: %w", err)
+	}
+	lineageBytes = append(lineageBytes, '\n')
+	if len(lineageBytes) > maxLineageBytes {
+		return DatasourcePullResult{}, errors.New("datasource lineage sidecar exceeds its byte limit")
 	}
 	staging, err := os.MkdirTemp(root, datasourceStagePrefix)
 	if err != nil {
@@ -208,6 +237,7 @@ func (m *DatasourceManager) Pull(ctx context.Context, input DatasourcePull) (Dat
 	files := map[string][]byte{
 		filename:        input.Content,
 		"metadata.json": metadataBytes,
+		"lineage.json":  lineageBytes,
 		"view.md":       []byte(datasourceView(metadata)),
 	}
 	if err := writeStagedArtifact(staging, files, operations); err != nil {
@@ -228,6 +258,9 @@ func (m *DatasourceManager) Pull(ctx context.Context, input DatasourcePull) (Dat
 		WorkspaceRelativePath: filepath.ToSlash(relative),
 		BaselineFingerprint:   baseline,
 		Warnings:              warnings,
+		CompositionStatus:     metadata.CompositionStatus,
+		ParentDataSourceURLs:  append([]string(nil), metadata.ParentDataSourceURLs...),
+		LineagePath:           filepath.ToSlash(filepath.Join(relative, "lineage.json")),
 	}, nil
 }
 
@@ -273,13 +306,28 @@ func (m *DatasourceManager) Read(ctx context.Context, path string) (DatasourceAr
 	if err != nil {
 		return DatasourceArtifact{}, fmt.Errorf("fingerprint canonical datasource: %w", err)
 	}
+	lineage := LineageDocument{Complete: false, Direction: "both", Depth: 1, Nodes: []LineageNode{}, Edges: []LineageEdge{}, Warnings: []string{"This legacy datasource artifact has no lineage sidecar."}}
+	if metadata.LineageSidecar != "" {
+		lineageBytes, err := readBoundedFile(filepath.Join(directory, metadata.LineageSidecar), maxLineageBytes)
+		if err != nil {
+			return DatasourceArtifact{}, fmt.Errorf("read datasource lineage: %w", err)
+		}
+		if err := json.Unmarshal(lineageBytes, &lineage); err != nil {
+			return DatasourceArtifact{}, fmt.Errorf("decode datasource lineage: %w", err)
+		}
+		if err := validateLineage(lineage); err != nil {
+			return DatasourceArtifact{}, fmt.Errorf("validate datasource lineage: %w", err)
+		}
+	}
 	return DatasourceArtifact{
 		Path: directory, PayloadPath: canonical, Filename: metadata.CanonicalPayload, Size: canonicalInfo.Size(),
 		Name: metadata.Name, TableauID: metadata.TableauID, Fingerprint: current,
 		SourceServerOrigin: metadata.SourceServerOrigin, SourceSiteLUID: metadata.SourceSiteLUID,
 		SourceEnvironment: metadata.SourceEnvironment, SourceSite: metadata.SourceSite,
 		SourceProjectName: metadata.SourceProjectName, SourceProjectID: metadata.SourceProjectID,
-		CompositionStatus: metadata.CompositionStatus,
+		CompositionStatus:    metadata.CompositionStatus,
+		ParentDataSourceURLs: append([]string(nil), metadata.ParentDataSourceURLs...),
+		Lineage:              lineage,
 	}, nil
 }
 
@@ -397,8 +445,25 @@ func validateDatasourceMetadata(metadata DatasourceMetadata) error {
 	if !strings.HasPrefix(metadata.LocalBaselineFingerprint, "sha256:") || err != nil || len(decoded) != sha256.Size {
 		return errors.New("datasource artifact metadata has invalid local_baseline_fingerprint")
 	}
-	if metadata.CompositionStatus != CompositionStatusUnknown {
+	if metadata.CompositionStatus != CompositionStatusUnknown && metadata.CompositionStatus != CompositionStatusOrdinary && metadata.CompositionStatus != CompositionStatusComposed {
 		return fmt.Errorf("datasource artifact metadata has invalid composition_status %q", metadata.CompositionStatus)
+	}
+	if metadata.LineageSidecar != "" && metadata.LineageSidecar != "lineage.json" {
+		return errors.New("datasource artifact metadata requires lineage_sidecar lineage.json")
+	}
+	if metadata.CompositionStatus == CompositionStatusOrdinary && len(metadata.ParentDataSourceURLs) != 0 {
+		return errors.New("ordinary datasource artifact metadata must not contain parent datasource URLs")
+	}
+	if metadata.CompositionStatus == CompositionStatusComposed && len(metadata.ParentDataSourceURLs) == 0 {
+		return errors.New("composed datasource artifact metadata requires parent datasource URLs")
+	}
+	if !sort.StringsAreSorted(metadata.ParentDataSourceURLs) {
+		return errors.New("datasource parent URLs must be sorted")
+	}
+	for index, value := range metadata.ParentDataSourceURLs {
+		if strings.TrimSpace(value) == "" || (index > 0 && value == metadata.ParentDataSourceURLs[index-1]) {
+			return errors.New("datasource parent URLs must be non-empty and unique")
+		}
 	}
 	return nil
 }

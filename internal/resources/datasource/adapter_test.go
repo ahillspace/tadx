@@ -6,6 +6,7 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/ahillspace/tadx/internal/identity"
 	resourcedatasource "github.com/ahillspace/tadx/internal/resources/datasource"
@@ -13,18 +14,26 @@ import (
 )
 
 type client struct {
-	metadata    tableaudatasource.Datasource
-	download    tableaudatasource.Download
-	getErr      error
-	downloadErr error
-	calls       []string
-	pages       map[int]tableaudatasource.Page
-	listInputs  []tableaudatasource.ListRequest
+	metadata     tableaudatasource.Datasource
+	download     tableaudatasource.Download
+	getErr       error
+	downloadErr  error
+	calls        []string
+	pages        map[int]tableaudatasource.Page
+	pageSequence []tableaudatasource.Page
+	listInputs   []tableaudatasource.ListRequest
 }
 
 func (c *client) List(_ context.Context, input tableaudatasource.ListRequest) (tableaudatasource.Page, error) {
 	c.calls = append(c.calls, "list:"+input.Name)
 	c.listInputs = append(c.listInputs, input)
+	if len(c.pageSequence) > 0 {
+		index := len(c.listInputs) - 1
+		if index >= len(c.pageSequence) {
+			index = len(c.pageSequence) - 1
+		}
+		return c.pageSequence[index], nil
+	}
 	return c.pages[input.PageNumber], nil
 }
 
@@ -145,6 +154,62 @@ func TestAdapterRejectsChangingDatasourcePagination(t *testing.T) {
 	_, err := resourcedatasource.NewAdapterWithProjectResolver(c, projectPaths{"project-1": "One", "project-2": "Two"}).ResolveDatasource(context.Background(), identity.Selector{Name: "Sales", ProjectPath: "One"})
 	if err == nil || !strings.Contains(err.Error(), "pagination total changed") {
 		t.Fatalf("error = %v", err)
+	}
+}
+
+func TestAdapterFindsExactDatasourceCollisionsByProjectLUID(t *testing.T) {
+	c := &client{pages: map[int]tableaudatasource.Page{
+		1: {Number: 1, Size: 3, Total: 3, Items: []tableaudatasource.Datasource{
+			{LUID: "ds-z", Name: "Sales", ProjectLUID: "other", ProjectName: "Ops"},
+			{LUID: "ds-b", Name: "Sales", ProjectLUID: "project-1", ProjectName: "Ops"},
+			{LUID: "ds-a", Name: "Sales", ProjectLUID: "project-1", ProjectName: "Ops"},
+		}},
+	}}
+	items, err := resourcedatasource.NewAdapter(c).FindDatasources(context.Background(), "Sales", "project-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(items) != 2 || items[0].LUID != "ds-a" || items[1].LUID != "ds-b" {
+		t.Fatalf("items = %#v", items)
+	}
+}
+
+func TestAdapterWaitsForCompletedDatasourceToBecomeAuthoritativelyVisible(t *testing.T) {
+	c := &client{pageSequence: []tableaudatasource.Page{
+		{Number: 1, Size: 1000, Total: 0},
+		{Number: 1, Size: 1000, Total: 1, TableauRequestID: "resolve-request", Items: []tableaudatasource.Datasource{{LUID: "ds-new", Name: "Sales", ProjectLUID: "project-1", ProjectName: "Analytics"}}},
+	}}
+	adapter := resourcedatasource.NewAdapter(c)
+	adapter.SetCompletionResolvePolicy(time.Millisecond, 100*time.Millisecond)
+	item, err := adapter.ResolvePublishedDatasource(context.Background(), "Sales", "project-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if item.LUID != "ds-new" || item.Name != "Sales" || item.ProjectLUID != "project-1" || len(c.listInputs) != 2 {
+		t.Fatalf("item = %#v, calls = %#v", item, c.listInputs)
+	}
+}
+
+func TestAdapterBoundsMissingCompletedDatasourceResolution(t *testing.T) {
+	c := &client{pageSequence: []tableaudatasource.Page{{Number: 1, Size: 1000, Total: 0}}}
+	adapter := resourcedatasource.NewAdapter(c)
+	adapter.SetCompletionResolvePolicy(time.Millisecond, 10*time.Millisecond)
+	_, err := adapter.ResolvePublishedDatasource(context.Background(), "Sales", "project-1")
+	if err == nil || !strings.Contains(err.Error(), "resolution deadline") || len(c.listInputs) < 2 {
+		t.Fatalf("error = %v, calls = %d", err, len(c.listInputs))
+	}
+}
+
+func TestAdapterRejectsAmbiguousCompletedDatasourceResolution(t *testing.T) {
+	c := &client{pageSequence: []tableaudatasource.Page{{Number: 1, Size: 1000, Total: 2, Items: []tableaudatasource.Datasource{
+		{LUID: "ds-b", Name: "Sales", ProjectLUID: "project-1", ProjectName: "Analytics"},
+		{LUID: "ds-a", Name: "Sales", ProjectLUID: "project-1", ProjectName: "Analytics"},
+	}}}}
+	adapter := resourcedatasource.NewAdapter(c)
+	adapter.SetCompletionResolvePolicy(time.Millisecond, 100*time.Millisecond)
+	_, err := adapter.ResolvePublishedDatasource(context.Background(), "Sales", "project-1")
+	if err == nil || !strings.Contains(err.Error(), "ambiguous: [ds-a, ds-b]") || len(c.listInputs) != 1 {
+		t.Fatalf("error = %v, calls = %d", err, len(c.listInputs))
 	}
 }
 

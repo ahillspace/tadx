@@ -411,8 +411,14 @@ func TestSQLiteStoreRecordCountExcludesPermissions(t *testing.T) {
 	}
 }
 
-func TestSQLiteStoreOpensWhenRootPathContainsQuestionMark(t *testing.T) {
-	root := filepath.Join(t.TempDir(), "cfg?x#y")
+func TestSQLiteStoreOpensWhenRootPathContainsURLSignificantCharacters(t *testing.T) {
+	directory := "cfg?x#y"
+	if runtime.GOOS == "windows" {
+		// Windows forbids question marks in filesystem names, but spaces and
+		// fragments still exercise SQLite URI escaping on that platform.
+		directory = "cfg x#y"
+	}
+	root := filepath.Join(t.TempDir(), directory)
 	if err := os.MkdirAll(root, 0o755); err != nil {
 		t.Fatal(err)
 	}

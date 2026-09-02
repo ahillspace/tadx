@@ -1,0 +1,21 @@
+plan:
+  mode: overwrite
+  operation: datasource.publish
+  artifact_path: artifacts/datasource/Sales
+  datasource_name: Sales
+  target:
+    environment: dev
+    site: sandbox
+    project_luid: project-1
+    project_path: Analytics
+    existing_datasource_luid: ds-1
+  as_job: true
+applied: true
+result:
+  status: succeeded
+  datasource_luid: ds-1
+  datasource_name: Sales
+  project_luid: project-1
+  tableau_job_id: job-1
+details: "--full"
+help[1]: tadx content datasource get --id ds-1

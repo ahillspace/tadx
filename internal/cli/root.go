@@ -13,11 +13,13 @@ import (
 	catalogsearch "github.com/ahillspace/tadx/actions/catalog/search"
 	workbookpublish "github.com/ahillspace/tadx/actions/workbook/publish"
 	workbookpull "github.com/ahillspace/tadx/actions/workbook/pull"
+	admincli "github.com/ahillspace/tadx/internal/cli/admin"
 	authcli "github.com/ahillspace/tadx/internal/cli/auth"
 	capabilitycli "github.com/ahillspace/tadx/internal/cli/capability"
 	catalogcli "github.com/ahillspace/tadx/internal/cli/catalog"
 	"github.com/ahillspace/tadx/internal/cli/clierr"
 	contentcli "github.com/ahillspace/tadx/internal/cli/content"
+	doctorcli "github.com/ahillspace/tadx/internal/cli/doctor"
 	envcli "github.com/ahillspace/tadx/internal/cli/env"
 	workspacecli "github.com/ahillspace/tadx/internal/cli/workspace"
 	"github.com/spf13/cobra"
@@ -90,6 +92,10 @@ type Dependencies struct {
 	Content              *contentcli.Dependencies
 	EnvironmentProfiles  *envcli.Dependencies
 	Workspaces           *workspacecli.Dependencies
+	Admin                *admincli.Dependencies
+	DoctorRunner         doctorcli.Runner
+	DoctorUse            string
+	DoctorShort          string
 	AuthUse              string
 	AuthShort            string
 	AuthStatuser         AuthStatuser
@@ -147,6 +153,15 @@ func NewRoot(deps Dependencies) *cobra.Command {
 		workspaces := *deps.Workspaces
 		workspaces.Renderer = deps.Renderer
 		root.AddCommand(workspacecli.New(workspaces))
+	}
+	if deps.Admin != nil {
+		admin := *deps.Admin
+		admin.Renderer = deps.Renderer
+		admin.MutationsEnabled = deps.MutationsEnabled
+		root.AddCommand(admincli.New(admin))
+	}
+	if deps.DoctorRunner != nil {
+		root.AddCommand(doctorcli.New(doctorcli.Dependencies{Runner: deps.DoctorRunner, Renderer: deps.Renderer, Use: deps.DoctorUse, Short: deps.DoctorShort}))
 	}
 	if deps.AuthChecker != nil {
 		root.AddCommand(authcli.New(authcli.Dependencies{Checker: deps.AuthChecker, Statuser: deps.AuthStatuser, Renderer: deps.Renderer, Use: deps.AuthUse, Short: deps.AuthShort, StatusUse: deps.AuthStatusUse, StatusShort: deps.AuthStatusShort}))

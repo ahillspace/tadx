@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"reflect"
 	"sort"
+	"strings"
 
 	"github.com/ahillspace/tadx/internal/identity"
 	tableauworkbook "github.com/ahillspace/tadx/internal/tableau/workbook"
@@ -28,6 +29,11 @@ type Client interface {
 // InventoryClient is the filtered workbook list seam.
 type InventoryClient interface {
 	ListWorkbooks(context.Context, tableauworkbook.ListRequest) (tableauworkbook.WorkbookPage, error)
+}
+
+// MutationClient is the exact workbook mutation seam.
+type MutationClient interface {
+	Delete(context.Context, string) (tableauworkbook.MutationResult, error)
 }
 
 // ProjectPathResolver supplies canonical hierarchy paths without a resource-package dependency.
@@ -381,6 +387,18 @@ func (a *Adapter) DownloadWorkbook(ctx context.Context, luid string, includeExtr
 // PrepareWorkbook uploads and validates content before the final publish request.
 func (a *Adapter) PrepareWorkbook(ctx context.Context, input tableauworkbook.PublishRequest) (*tableauworkbook.PreparedPublish, error) {
 	return a.client.Prepare(ctx, input)
+}
+
+// DeleteWorkbook removes one exact authoritative workbook LUID.
+func (a *Adapter) DeleteWorkbook(ctx context.Context, luid string) (tableauworkbook.MutationResult, error) {
+	if a == nil || a.client == nil || strings.TrimSpace(luid) == "" {
+		return tableauworkbook.MutationResult{}, errors.New("workbook LUID and configured client are required")
+	}
+	client, ok := a.client.(MutationClient)
+	if !ok {
+		return tableauworkbook.MutationResult{}, errors.New("workbook mutation client is not configured")
+	}
+	return client.Delete(ctx, luid)
 }
 
 func (a *Adapter) scanWorkbooks(ctx context.Context, request tableauworkbook.ListRequest, visit func(tableauworkbook.Workbook) error) error {

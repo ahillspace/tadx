@@ -114,19 +114,20 @@ This group freezes bounded concurrent pagination, exact selection, selectable ca
 
 ### Group 3: remaining content lifecycle
 
-Address these ten capabilities:
+Address these nine active capabilities:
 
 - Workbook deletion: `workbook.delete`.
-- Datasources: `datasource.pull`, `datasource.composition.update`, `datasource.field-description.update`, `datasource.publish`, and `datasource.delete`.
+- Datasources: `datasource.pull`, `datasource.field-description.update`, `datasource.publish`, and `datasource.delete`.
 - Projects: `project.create`, `project.update`, `project.pull`, and `project.publish`.
 
 Build the capabilities whose evidence gates are open.
 Keep blocked capabilities as registry metadata until their exact evidence gates close.
 Do not guess an upstream contract to claim group completion.
 
-Before implementing ordinary datasource pull or publish, revise the capability contract so authoritative composition preflight selects the ordinary path.
-Composed or unknown composition must fail closed until B2 closes.
-`datasource.composition.update` remains blocked by B2, `datasource.field-description.update` remains blocked by B1, and project pull and publish remain blocked by B4.
+Datasource pull and publish preserve ordinary and composed packages through the same user-facing workflow.
+TADX preserves existing composition and required parent references without authoring or changing relationships.
+`datasource.composition.update` is deferred indefinitely pending a supported TDS authoring API.
+`datasource.field-description.update` remains blocked by B1, and project pull and publish remain blocked by B4.
 
 ### Group 4: administration
 
@@ -166,6 +167,6 @@ Every implemented remote contract still requires captured evidence and contract 
 These stay registry metadata only and are not assigned to a build wave until their gate closes with captured official source and a passing contract test.
 
 - B1 datasource field-description write (published-datasource-field level): unblocks on the released TDS datasource-field API.
-- B2 composable datasource round-trip: datasource pull/composition-update/publish for composed artifacts; needs a controlled multi-parent fixture proving safe serialization and round-trip.
+- B2 datasource composition authoring: `datasource.composition.update` is deferred indefinitely pending a supported TDS authoring API.
 - B3 Pulse mutations: definition and metric create/update/delete/follow/unfollow; needs pinned schemas and destructive/idempotency behavior.
 - B4 shallow project enumeration: project pull and publish; needs a proven direct-content enumeration contract with no child recursion.

@@ -2,6 +2,8 @@ package publish
 
 import "github.com/ahillspace/tadx/internal/identity"
 
+const maxFullWarnings = 20
+
 // Input selects one local artifact and explicit remote destination.
 type Input struct {
 	Workspace    string
@@ -128,4 +130,128 @@ type Output struct {
 	Applied bool     `json:"applied"`
 	Result  *Result  `json:"result,omitempty"`
 	Help    []string `json:"help"`
+}
+
+// CompactPlan preserves the exact target and mutation decision without diagnostics.
+type CompactPlan struct {
+	Mode            string `json:"mode"`
+	Operation       string `json:"operation"`
+	ArtifactPath    string `json:"artifact_path"`
+	Filename        string `json:"filename"`
+	WorkbookName    string `json:"workbook_name"`
+	Target          Target `json:"target"`
+	Overwrite       bool   `json:"overwrite"`
+	AsJob           bool   `json:"as_job"`
+	WarningsOmitted int    `json:"warnings_omitted,omitempty"`
+}
+
+// CompactPublishResult preserves authoritative identities without request diagnostics.
+type CompactPublishResult struct {
+	Status          string `json:"status"`
+	WorkbookLUID    string `json:"workbook_luid,omitempty"`
+	WorkbookName    string `json:"workbook_name,omitempty"`
+	ProjectLUID     string `json:"project_luid,omitempty"`
+	JobID           string `json:"tableau_job_id,omitempty"`
+	WarningsOmitted int    `json:"validation_warnings_omitted,omitempty"`
+}
+
+// CompactResult is the bounded default projection.
+type CompactResult struct {
+	Plan    CompactPlan           `json:"plan"`
+	Applied bool                  `json:"applied"`
+	Result  *CompactPublishResult `json:"result,omitempty"`
+	Details string                `json:"details"`
+	Help    []string              `json:"help"`
+}
+
+// FullPlan includes bounded publish diagnostics.
+type FullPlan struct {
+	Mode                string   `json:"mode"`
+	Operation           string   `json:"operation"`
+	ArtifactPath        string   `json:"artifact_path"`
+	ArtifactFingerprint string   `json:"artifact_fingerprint"`
+	Filename            string   `json:"filename"`
+	WorkbookName        string   `json:"workbook_name"`
+	Target              Target   `json:"target"`
+	Overwrite           bool     `json:"overwrite"`
+	AsJob               bool     `json:"as_job"`
+	Warnings            []string `json:"warnings,omitempty"`
+	WarningsOmitted     int      `json:"warnings_omitted,omitempty"`
+	Substeps            []string `json:"substeps"`
+}
+
+// FullPublishResult includes bounded validation and request diagnostics.
+type FullPublishResult struct {
+	Status                    string            `json:"status"`
+	WorkbookLUID              string            `json:"workbook_luid,omitempty"`
+	WorkbookName              string            `json:"workbook_name,omitempty"`
+	ProjectLUID               string            `json:"project_luid,omitempty"`
+	JobID                     string            `json:"tableau_job_id,omitempty"`
+	TableauRequestID          string            `json:"tableau_request_id,omitempty"`
+	ValidationWarnings        []ValidationIssue `json:"validation_warnings,omitempty"`
+	ValidationWarningsOmitted int               `json:"validation_warnings_omitted,omitempty"`
+}
+
+// FullResult is the bounded expanded projection.
+type FullResult struct {
+	Plan    FullPlan           `json:"plan"`
+	Applied bool               `json:"applied"`
+	Result  *FullPublishResult `json:"result,omitempty"`
+	Help    []string           `json:"help"`
+}
+
+// CompactOutput returns the target, safety decision, and resulting identities.
+func (o Output) CompactOutput() any {
+	plan := CompactPlan{
+		Mode: o.Plan.Mode, Operation: o.Plan.Operation, ArtifactPath: o.Plan.ArtifactPath,
+		Filename: o.Plan.Filename, WorkbookName: o.Plan.WorkbookName, Target: o.Plan.Target,
+		Overwrite: o.Plan.Overwrite, AsJob: o.Plan.AsJob, WarningsOmitted: len(o.Plan.Warnings),
+	}
+	var result *CompactPublishResult
+	if o.Result != nil {
+		result = &CompactPublishResult{
+			Status: o.Result.Status, WorkbookLUID: o.Result.WorkbookLUID, WorkbookName: o.Result.WorkbookName,
+			ProjectLUID: o.Result.ProjectLUID, JobID: o.Result.JobID,
+			WarningsOmitted: len(o.Result.ValidationWarnings),
+		}
+	}
+	return CompactResult{Plan: plan, Applied: o.Applied, Result: result, Details: "--full", Help: o.Help}
+}
+
+// FullOutput returns bounded diagnostics for the same publish operation.
+func (o Output) FullOutput() any {
+	warnings, warningsOmitted := boundWarnings(o.Plan.Warnings)
+	full := FullResult{
+		Plan: FullPlan{
+			Mode: o.Plan.Mode, Operation: o.Plan.Operation, ArtifactPath: o.Plan.ArtifactPath,
+			ArtifactFingerprint: o.Plan.ArtifactFingerprint, Filename: o.Plan.Filename,
+			WorkbookName: o.Plan.WorkbookName, Target: o.Plan.Target, Overwrite: o.Plan.Overwrite,
+			AsJob: o.Plan.AsJob, Warnings: warnings, WarningsOmitted: warningsOmitted, Substeps: o.Plan.Substeps,
+		},
+		Applied: o.Applied,
+		Help:    o.Help,
+	}
+	if o.Result != nil {
+		validationWarnings, validationWarningsOmitted := boundValidationWarnings(o.Result.ValidationWarnings)
+		full.Result = &FullPublishResult{
+			Status: o.Result.Status, WorkbookLUID: o.Result.WorkbookLUID, WorkbookName: o.Result.WorkbookName,
+			ProjectLUID: o.Result.ProjectLUID, JobID: o.Result.JobID, TableauRequestID: o.Result.TableauRequestID,
+			ValidationWarnings: validationWarnings, ValidationWarningsOmitted: validationWarningsOmitted,
+		}
+	}
+	return full
+}
+
+func boundWarnings(warnings []string) ([]string, int) {
+	if len(warnings) <= maxFullWarnings {
+		return warnings, 0
+	}
+	return warnings[:maxFullWarnings], len(warnings) - maxFullWarnings
+}
+
+func boundValidationWarnings(warnings []ValidationIssue) ([]ValidationIssue, int) {
+	if len(warnings) <= maxFullWarnings {
+		return warnings, 0
+	}
+	return warnings[:maxFullWarnings], len(warnings) - maxFullWarnings
 }

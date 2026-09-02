@@ -1,0 +1,107 @@
+package pull
+
+import (
+	"context"
+	"errors"
+	"strings"
+
+	"github.com/ahillspace/tadx/internal/errs"
+	"github.com/ahillspace/tadx/internal/identity"
+	"github.com/ahillspace/tadx/internal/pathspec"
+)
+
+// Reader owns exact datasource resolution, native download, and bounded lineage.
+type Reader interface {
+	ResolveDatasource(context.Context, identity.Selector) (Datasource, error)
+	DownloadDatasource(context.Context, string) (Download, error)
+	CaptureLineage(context.Context, LineageRequest) (Lineage, error)
+}
+
+// Writer materializes one recoverable datasource artifact.
+type Writer interface {
+	WriteDatasource(context.Context, Artifact) (ArtifactResult, error)
+}
+
+type Action struct {
+	reader Reader
+	writer Writer
+}
+
+func New(reader Reader, writer Writer) *Action { return &Action{reader: reader, writer: writer} }
+
+func (a *Action) Execute(ctx context.Context, input Input) (Output, error) {
+	if a == nil || a.reader == nil || a.writer == nil {
+		return Output{}, &errs.Error{ID: "datasource.pull.unconfigured", Kind: errs.KindRuntime, Operation: "datasource.pull", Summary: "Datasource pull is not configured.", Retryable: errs.Bool(false), CorrectiveAction: "Configure datasource pull before retrying."}
+	}
+	if strings.TrimSpace(input.Workspace) == "" {
+		return Output{}, usage("workspace", "datasource pull requires a workspace")
+	}
+	item, err := a.reader.ResolveDatasource(ctx, input.Selector)
+	if err != nil {
+		return Output{}, operationError("datasource.pull.resolve", "Datasource resolution failed.", "Review the exact datasource selector, then retry.", input, "", err)
+	}
+	download, err := a.reader.DownloadDatasource(ctx, item.LUID)
+	if err != nil {
+		return Output{}, operationError("datasource.pull.download", "Datasource download failed.", "Review the exact datasource and target site, then pull again.", input, item.LUID, err)
+	}
+	lineage, lineageErr := a.reader.CaptureLineage(ctx, LineageRequest{Kind: "published_datasource", RESTLUID: item.LUID, Direction: "both", Depth: 1})
+	warnings := []string{}
+	if lineageErr != nil {
+		lineage = Lineage{Complete: false, Direction: "both", Depth: 1}
+		warnings = append(warnings, "Lineage capture was incomplete. Use lineage.pull or --full for bounded diagnostics.")
+	}
+	result, err := a.writer.WriteDatasource(ctx, Artifact{
+		Workspace: input.Workspace, Filename: download.Filename, Content: download.Content,
+		Name: item.Name, TableauID: item.LUID, Environment: input.Environment, Site: input.Site,
+		ServerOrigin: input.ServerOrigin, SiteLUID: input.SiteLUID, ProjectName: item.ProjectPath,
+		ProjectID: item.ProjectLUID, Lineage: lineage, Overwrite: input.Overwrite,
+	})
+	if err != nil {
+		return Output{}, operationError("datasource.pull.write", "Datasource artifact write failed.", "Review the workspace and artifact target, then pull again.", input, item.LUID, err)
+	}
+	if err := normalizeArtifactPaths(&result); err != nil {
+		return Output{}, err
+	}
+	if result.LineageStatus == "" {
+		if lineage.Complete {
+			result.LineageStatus = "complete"
+		} else {
+			result.LineageStatus = "incomplete"
+		}
+	}
+	result.NodeCount, result.EdgeCount = len(lineage.Nodes), len(lineage.Edges)
+	result.CountsKnown = lineageErr == nil
+	warnings = append(warnings, result.Warnings...)
+	return Output{Status: "pulled", Datasource: item, Artifact: result, Warnings: warnings, RequestID: download.TableauRequestID, Help: []string{"tadx content datasource publish --artifact " + result.Path}}, nil
+}
+
+func normalizeArtifactPaths(result *ArtifactResult) error {
+	for _, candidate := range []struct {
+		name  string
+		value *string
+	}{{"artifact path", &result.Path}, {"canonical path", &result.CanonicalPath}, {"lineage path", &result.LineagePath}} {
+		if *candidate.value == "" {
+			continue
+		}
+		if pathspec.IsAbs(*candidate.value) {
+			return &errs.Error{ID: "datasource.pull.normalize", Kind: errs.KindOperation, Operation: "datasource.pull", Summary: "Datasource artifact path normalization failed.", Cause: errors.New("datasource artifact writer returned an absolute " + candidate.name), Retryable: errs.Bool(false), CorrectiveAction: "Report this datasource artifact writer defect; artifact paths must be workspace-relative."}
+		}
+		normalized := strings.ReplaceAll(*candidate.value, "\\", "/")
+		for _, segment := range strings.Split(normalized, "/") {
+			if segment == ".." {
+				return &errs.Error{ID: "datasource.pull.normalize", Kind: errs.KindOperation, Operation: "datasource.pull", Summary: "Datasource artifact path normalization failed.", Cause: errors.New("datasource artifact writer returned an escaping " + candidate.name), Retryable: errs.Bool(false), CorrectiveAction: "Report this datasource artifact writer defect; artifact paths must stay within the workspace."}
+			}
+		}
+		*candidate.value = normalized
+	}
+	return nil
+}
+
+func usage(field, message string) error {
+	return &errs.Error{ID: "datasource.pull.usage", Kind: errs.KindUsage, Operation: "datasource.pull", Summary: message, Retryable: errs.Bool(false), CorrectiveAction: "Correct the datasource pull input and retry.", Validation: []errs.ValidationDetail{{Field: field, Code: "required", Message: message}}}
+}
+
+func operationError(id, summary, corrective string, input Input, resource string, cause error) error {
+	retryable, action := errs.CompleteRetryAdvice(cause, corrective)
+	return &errs.Error{ID: id, Kind: errs.KindOperation, Operation: "datasource.pull", Resource: resource, Environment: input.Environment, Site: input.Site, Summary: summary, Cause: cause, Retryable: retryable, CorrectiveAction: action, TableauRequestID: errs.TableauRequestID(cause)}
+}

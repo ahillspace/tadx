@@ -1,0 +1,16 @@
+plan:
+  mode: preview
+  operation: workbook.delete
+  environment: dev
+  site: sandbox
+  target:
+    luid: wb-1
+    name: Finance
+    project_luid: project-1
+    project_path: Ops
+applied: true
+result:
+  status: succeeded
+  workbook_luid: wb-1
+details: "--full"
+help[1]: tadx content workbook list --environment dev

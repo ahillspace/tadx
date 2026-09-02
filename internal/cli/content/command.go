@@ -29,27 +29,33 @@ type Renderer interface{ Render(any) error }
 
 // Dependencies contains content command wiring.
 type Dependencies struct {
-	Puller           Puller
-	Publisher        Publisher
-	WorkbookLister   WorkbookLister
-	WorkbookGetter   WorkbookGetter
-	DatasourceLister DatasourceLister
-	DatasourceGetter DatasourceGetter
-	ProjectLister    ProjectLister
-	ProjectGetter    ProjectGetter
-	FlowLister       FlowLister
-	FlowGetter       FlowGetter
-	FlowPuller       FlowPuller
-	FlowPublisher    FlowPublisher
-	FlowMover        FlowMover
-	FlowDeleter      FlowDeleter
-	LineagePuller    LineagePuller
-	Renderer         Renderer
-	MutationsEnabled bool
-	PullUse          string
-	PullShort        string
-	PublishUse       string
-	PublishShort     string
+	Puller              Puller
+	Publisher           Publisher
+	WorkbookLister      WorkbookLister
+	WorkbookGetter      WorkbookGetter
+	WorkbookDeleter     WorkbookDeleter
+	DatasourceLister    DatasourceLister
+	DatasourceGetter    DatasourceGetter
+	DatasourcePuller    DatasourcePuller
+	DatasourcePublisher DatasourcePublisher
+	DatasourceDeleter   DatasourceDeleter
+	ProjectLister       ProjectLister
+	ProjectGetter       ProjectGetter
+	ProjectCreator      ProjectCreator
+	ProjectUpdater      ProjectUpdater
+	FlowLister          FlowLister
+	FlowGetter          FlowGetter
+	FlowPuller          FlowPuller
+	FlowPublisher       FlowPublisher
+	FlowMover           FlowMover
+	FlowDeleter         FlowDeleter
+	LineagePuller       LineagePuller
+	Renderer            Renderer
+	MutationsEnabled    bool
+	PullUse             string
+	PullShort           string
+	PublishUse          string
+	PublishShort        string
 }
 
 // New creates the content workbook command tree.
@@ -60,9 +66,16 @@ func New(deps Dependencies) *cobra.Command {
 	if deps.WorkbookLister != nil && deps.WorkbookGetter != nil {
 		workbook.AddCommand(newWorkbookList(deps.WorkbookLister, deps.Renderer), newWorkbookGet(deps.WorkbookGetter, deps.Renderer))
 	}
+	if deps.WorkbookDeleter != nil {
+		workbook.AddCommand(newWorkbookDelete(deps.WorkbookDeleter, deps.Renderer, deps.MutationsEnabled))
+	}
 	content.AddCommand(workbook)
 	if deps.DatasourceLister != nil && deps.DatasourceGetter != nil {
-		content.AddCommand(newDatasourceInventory(deps.DatasourceLister, deps.DatasourceGetter, deps.Renderer))
+		datasource := newDatasourceInventory(deps.DatasourceLister, deps.DatasourceGetter, deps.Renderer)
+		if deps.DatasourcePuller != nil && deps.DatasourcePublisher != nil && deps.DatasourceDeleter != nil {
+			addDatasourceLifecycle(datasource, datasourceLifecycleDependencies{puller: deps.DatasourcePuller, publisher: deps.DatasourcePublisher, deleter: deps.DatasourceDeleter, renderer: deps.Renderer, mutationsEnabled: deps.MutationsEnabled})
+		}
+		content.AddCommand(datasource)
 	}
 	if deps.ProjectLister != nil && deps.ProjectGetter != nil {
 		content.AddCommand(newProject(deps))

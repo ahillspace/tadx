@@ -20,6 +20,8 @@ const (
 	maxPageSize      = 1000
 	maxResponseBytes = 16 * 1024 * 1024
 	listOperation    = "project.list"
+	createOperation  = "project.create"
+	updateOperation  = "project.update"
 )
 
 // Client is an authenticated project REST client.
@@ -88,6 +90,141 @@ func (c *Client) List(ctx context.Context, input ListRequest) (Page, error) {
 	return Page{Number: page.Number, Size: page.Size, Total: page.Total, Items: items, TableauRequestID: response.TableauRequestID}, nil
 }
 
+// Create creates one project under an optional exact parent.
+func (c *Client) Create(ctx context.Context, input CreateRequest) (MutationResult, error) {
+	if err := c.validateMutationClient(); err != nil {
+		return MutationResult{}, err
+	}
+	if strings.TrimSpace(input.Name) == "" {
+		return MutationResult{}, errors.New("project create requires a name")
+	}
+	if strings.Contains(input.Name, "/") {
+		return MutationResult{}, errors.New("project create name cannot contain a slash")
+	}
+	if err := validateContentPermissions(input.ContentPermissions); err != nil {
+		return MutationResult{}, err
+	}
+	body, err := xml.Marshal(createEnvelopeXML{Project: createProjectXML{
+		Name: input.Name, Description: input.Description, ParentLUID: input.ParentLUID, ContentPermissions: input.ContentPermissions,
+	}})
+	if err != nil {
+		return MutationResult{}, fmt.Errorf("encode project create request: %w", err)
+	}
+	response, err := c.transport.Do(ctx, c.session, tableau.Request{
+		Method: http.MethodPost, ServerURL: c.serverURL, Path: c.sitePath("projects"), Body: body,
+		Accept: "application/xml", ContentType: "application/xml", Operation: createOperation, MaxResponseBytes: maxResponseBytes,
+	})
+	if err != nil {
+		return MutationResult{Status: "unknown", Project: Project{Name: input.Name, ParentLUID: input.ParentLUID}, TableauRequestID: tableau.RequestID(err)}, err
+	}
+	if response.StatusCode != http.StatusCreated {
+		return MutationResult{}, tableau.NewProtocolError(createOperation, response, fmt.Errorf("project create returned HTTP %d, expected 201", response.StatusCode), false)
+	}
+	project, err := decodeMutationProject(response, createOperation)
+	if err != nil {
+		return MutationResult{}, err
+	}
+	if project.Name != input.Name || project.ParentLUID != input.ParentLUID {
+		return MutationResult{}, tableau.NewProtocolError(createOperation, response, errors.New("project create response changed the requested name or parent identity"), false)
+	}
+	if input.Description != "" && project.Description != input.Description {
+		return MutationResult{}, tableau.NewProtocolError(createOperation, response, errors.New("project create response changed the requested description"), false)
+	}
+	if input.ContentPermissions != "" && project.ContentPermissions != input.ContentPermissions {
+		return MutationResult{}, tableau.NewProtocolError(createOperation, response, errors.New("project create response changed the requested content permissions"), false)
+	}
+	return MutationResult{Status: "succeeded", Project: project, TableauRequestID: response.TableauRequestID}, nil
+}
+
+// Update updates only explicit bounded project metadata fields.
+func (c *Client) Update(ctx context.Context, input UpdateRequest) (MutationResult, error) {
+	if err := c.validateMutationClient(); err != nil {
+		return MutationResult{}, err
+	}
+	if strings.TrimSpace(input.LUID) == "" {
+		return MutationResult{}, errors.New("project update requires an exact project LUID")
+	}
+	if input.Name == nil && input.Description == nil && input.ContentPermissions == nil {
+		return MutationResult{}, errors.New("project update requires at least one explicit metadata field")
+	}
+	if input.Name != nil && strings.TrimSpace(*input.Name) == "" {
+		return MutationResult{}, errors.New("project update name cannot be empty")
+	}
+	if input.Name != nil && strings.Contains(*input.Name, "/") {
+		return MutationResult{}, errors.New("project update name cannot contain a slash")
+	}
+	if input.ContentPermissions != nil {
+		if err := validateContentPermissions(*input.ContentPermissions); err != nil {
+			return MutationResult{}, err
+		}
+	}
+	body, err := xml.Marshal(updateEnvelopeXML{Project: updateProjectXML{Name: input.Name, Description: input.Description, ContentPermissions: input.ContentPermissions}})
+	if err != nil {
+		return MutationResult{}, fmt.Errorf("encode project update request: %w", err)
+	}
+	response, err := c.transport.Do(ctx, c.session, tableau.Request{
+		Method: http.MethodPut, ServerURL: c.serverURL, Path: c.sitePath("projects", input.LUID), Body: body,
+		Accept: "application/xml", ContentType: "application/xml", Operation: updateOperation, MaxResponseBytes: maxResponseBytes,
+	})
+	if err != nil {
+		return MutationResult{Status: "unknown", Project: Project{LUID: input.LUID}, TableauRequestID: tableau.RequestID(err)}, err
+	}
+	if response.StatusCode != http.StatusOK {
+		return MutationResult{}, tableau.NewProtocolError(updateOperation, response, fmt.Errorf("project update returned HTTP %d, expected 200", response.StatusCode), false)
+	}
+	project, err := decodeMutationProject(response, updateOperation)
+	if err != nil {
+		return MutationResult{}, err
+	}
+	if project.LUID != input.LUID {
+		return MutationResult{}, tableau.NewProtocolError(updateOperation, response, fmt.Errorf("project update response returned LUID %q, expected %q", project.LUID, input.LUID), false)
+	}
+	if input.Name != nil && project.Name != *input.Name {
+		return MutationResult{}, tableau.NewProtocolError(updateOperation, response, errors.New("project update response changed the requested name"), false)
+	}
+	if input.Description != nil && project.Description != *input.Description {
+		return MutationResult{}, tableau.NewProtocolError(updateOperation, response, errors.New("project update response changed the requested description"), false)
+	}
+	if input.ContentPermissions != nil && project.ContentPermissions != *input.ContentPermissions {
+		return MutationResult{}, tableau.NewProtocolError(updateOperation, response, errors.New("project update response changed the requested content permissions"), false)
+	}
+	return MutationResult{Status: "succeeded", Project: project, TableauRequestID: response.TableauRequestID}, nil
+}
+
+func (c *Client) validateMutationClient() error {
+	if c == nil || c.transport == nil || c.session == nil || strings.TrimSpace(c.serverURL) == "" {
+		return errors.New("Tableau project client is not configured")
+	}
+	return nil
+}
+
+func validateContentPermissions(value string) error {
+	if value == "" {
+		return nil
+	}
+	switch value {
+	case "ManagedByOwner", "LockedToProject", "LockedToProjectWithoutNested":
+		return nil
+	default:
+		return fmt.Errorf("unsupported project content permissions %q", value)
+	}
+}
+
+func decodeMutationProject(response tableau.Response, operation string) (Project, error) {
+	var envelope mutationEnvelopeXML
+	if err := xml.Unmarshal(response.Body, &envelope); err != nil {
+		return Project{}, tableau.NewProtocolError(operation, response, fmt.Errorf("decode project mutation response: %w", err), false)
+	}
+	if len(envelope.Projects) != 1 {
+		return Project{}, tableau.NewProtocolError(operation, response, fmt.Errorf("project mutation response contained %d project elements; expected 1", len(envelope.Projects)), false)
+	}
+	project := normalizeProject(envelope.Projects[0])
+	if project.LUID == "" || project.Name == "" {
+		return Project{}, tableau.NewProtocolError(operation, response, errors.New("project mutation response omitted authoritative identity"), false)
+	}
+	return project, nil
+}
+
 func (c *Client) sitePath(parts ...string) string {
 	segments := []string{"api", c.transport.APIVersion(), "sites", c.session.SiteLUID()}
 	segments = append(segments, parts...)
@@ -138,6 +275,34 @@ type listEnvelopeXML struct {
 	XMLName    xml.Name         `xml:"tsResponse"`
 	Pagination []paginationXML  `xml:"pagination"`
 	Projects   []projectListXML `xml:"projects"`
+}
+
+type createEnvelopeXML struct {
+	XMLName xml.Name         `xml:"tsRequest"`
+	Project createProjectXML `xml:"project"`
+}
+
+type createProjectXML struct {
+	Name               string `xml:"name,attr"`
+	Description        string `xml:"description,attr,omitempty"`
+	ParentLUID         string `xml:"parentProjectId,attr,omitempty"`
+	ContentPermissions string `xml:"contentPermissions,attr,omitempty"`
+}
+
+type updateEnvelopeXML struct {
+	XMLName xml.Name         `xml:"tsRequest"`
+	Project updateProjectXML `xml:"project"`
+}
+
+type updateProjectXML struct {
+	Name               *string `xml:"name,attr,omitempty"`
+	Description        *string `xml:"description,attr,omitempty"`
+	ContentPermissions *string `xml:"contentPermissions,attr,omitempty"`
+}
+
+type mutationEnvelopeXML struct {
+	XMLName  xml.Name     `xml:"tsResponse"`
+	Projects []projectXML `xml:"project"`
 }
 
 type paginationXML struct {

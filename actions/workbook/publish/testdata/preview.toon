@@ -2,7 +2,6 @@ plan:
   mode: preview
   operation: workbook.publish
   artifact_path: "C:\\workspace\\Finance"
-  artifact_fingerprint: "sha256:abc"
   filename: Finance.twbx
   workbook_name: Finance
   target:
@@ -13,6 +12,6 @@ plan:
     project_path: Ops
   overwrite: false
   as_job: false
-  substeps[5]: resolve exact destination,check workbook collision,upload workbook,publish workbook,poll asynchronous job when requested
 applied: false
+details: "--full"
 help[1]: Re-run with --apply to publish this previewed change.

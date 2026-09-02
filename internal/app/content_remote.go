@@ -13,8 +13,11 @@ import (
 	flowpublish "github.com/ahillspace/tadx/actions/flow/publish"
 	flowpull "github.com/ahillspace/tadx/actions/flow/pull"
 	lineagepull "github.com/ahillspace/tadx/actions/lineage/pull"
+	projectcreate "github.com/ahillspace/tadx/actions/project/create"
 	projectget "github.com/ahillspace/tadx/actions/project/get"
 	projectlist "github.com/ahillspace/tadx/actions/project/list"
+	projectupdate "github.com/ahillspace/tadx/actions/project/update"
+	workbookdelete "github.com/ahillspace/tadx/actions/workbook/delete"
 	"github.com/ahillspace/tadx/internal/artifact"
 	contentcli "github.com/ahillspace/tadx/internal/cli/content"
 	"github.com/ahillspace/tadx/internal/config"
@@ -39,23 +42,25 @@ func newRemoteContentCommands(runtime *runtimeDependencies) *remoteContentComman
 
 func (c *remoteContentCommands) dependencies() *contentcli.Dependencies {
 	return &contentcli.Dependencies{
-		WorkbookLister: c, WorkbookGetter: c,
-		DatasourceLister: c, DatasourceGetter: c,
-		ProjectLister: c, ProjectGetter: c,
+		WorkbookLister: c, WorkbookGetter: c, WorkbookDeleter: c,
+		DatasourceLister: c, DatasourceGetter: c, DatasourcePuller: c, DatasourcePublisher: c, DatasourceDeleter: c,
+		ProjectLister: c, ProjectGetter: c, ProjectCreator: c, ProjectUpdater: c,
 		FlowLister: c, FlowGetter: c, FlowPuller: c, FlowPublisher: c, FlowMover: c, FlowDeleter: c,
 		LineagePuller: c,
 	}
 }
 
 type remoteConnection struct {
-	environment config.Environment
-	siteLUID    string
-	projects    *resourceproject.Adapter
-	flows       *resourceflow.Adapter
-	flowChanges *resourceflow.MutationAdapter
-	lineage     *resourcelineage.Adapter
-	workbooks   *resourceworkbook.Adapter
-	datasources *resourcedatasource.Adapter
+	environment       config.Environment
+	siteLUID          string
+	projects          *resourceproject.Adapter
+	projectChanges    *resourceproject.MutationAdapter
+	flows             *resourceflow.Adapter
+	flowChanges       *resourceflow.MutationAdapter
+	lineage           *resourcelineage.Adapter
+	workbooks         *resourceworkbook.Adapter
+	datasources       *resourcedatasource.Adapter
+	datasourceChanges *resourcedatasource.MutationAdapter
 }
 
 func (c *remoteContentCommands) connect(ctx context.Context, alias string, explicit bool) (remoteConnection, error) {
@@ -68,14 +73,16 @@ func (c *remoteContentCommands) connect(ctx context.Context, alias string, expli
 	flowClient := tableauflow.NewClient(connection.transport, connection.session, connection.environment.URL)
 	datasourceClient := tableaudatasource.NewClient(connection.transport, connection.session, connection.environment.URL)
 	return remoteConnection{
-		environment: connection.environment,
-		siteLUID:    connection.session.SiteLUID(),
-		projects:    projects,
-		flows:       resourceflow.NewAdapter(flowClient, projects),
-		flowChanges: resourceflow.NewMutationAdapter(flowClient),
-		lineage:     resourcelineage.NewAdapter(tableaumetadata.NewClient(connection.transport, connection.session, connection.environment.URL)),
-		workbooks:   resourceworkbook.NewAdapterWithProjectResolver(tableauworkbook.NewClient(connection.transport, connection.session, connection.environment.URL), projects),
-		datasources: resourcedatasource.NewAdapterWithProjectResolver(datasourceClient, projects),
+		environment:       connection.environment,
+		siteLUID:          connection.session.SiteLUID(),
+		projects:          projects,
+		projectChanges:    resourceproject.NewMutationAdapter(projectClient),
+		flows:             resourceflow.NewAdapter(flowClient, projects),
+		flowChanges:       resourceflow.NewMutationAdapter(flowClient),
+		lineage:           resourcelineage.NewAdapter(tableaumetadata.NewClient(connection.transport, connection.session, connection.environment.URL)),
+		workbooks:         resourceworkbook.NewAdapterWithProjectResolver(tableauworkbook.NewClient(connection.transport, connection.session, connection.environment.URL), projects),
+		datasources:       resourcedatasource.NewAdapterWithProjectResolver(datasourceClient, projects),
+		datasourceChanges: resourcedatasource.NewMutationAdapter(datasourceClient),
 	}, nil
 }
 
@@ -95,6 +102,26 @@ func (c *remoteContentCommands) GetProject(ctx context.Context, input projectget
 	}
 	input.Environment, input.Site = connection.environment.Alias, connection.environment.SiteContentURL
 	return projectget.New(projectGetResolver{connection.projects}).Execute(ctx, input)
+}
+
+func (c *remoteContentCommands) CreateProject(ctx context.Context, input projectcreate.Input, apply bool) (projectcreate.Output, error) {
+	connection, err := c.connect(ctx, input.Environment, true)
+	if err != nil {
+		return projectcreate.Output{}, remoteSetupError("project.create", input.Environment, input.Site, connection.environment, err)
+	}
+	input.Environment, input.Site = connection.environment.Alias, connection.environment.SiteContentURL
+	adapter := projectCreateAdapter{projects: connection.projects, changes: connection.projectChanges}
+	return projectcreate.New(adapter, adapter).Execute(ctx, input, apply)
+}
+
+func (c *remoteContentCommands) UpdateProject(ctx context.Context, input projectupdate.Input, apply bool) (projectupdate.Output, error) {
+	connection, err := c.connect(ctx, input.Environment, true)
+	if err != nil {
+		return projectupdate.Output{}, remoteSetupError("project.update", input.Environment, input.Site, connection.environment, err)
+	}
+	input.Environment, input.Site = connection.environment.Alias, connection.environment.SiteContentURL
+	adapter := projectUpdateAdapter{projects: connection.projects, changes: connection.projectChanges}
+	return projectupdate.New(adapter, adapter).Execute(ctx, input, apply)
 }
 
 func (c *remoteContentCommands) ListFlows(ctx context.Context, input flowlist.Input) (flowlist.Output, error) {
@@ -188,6 +215,16 @@ func (c *remoteContentCommands) DeleteFlow(ctx context.Context, input flowdelete
 	return flowdelete.New(adapter, adapter).Execute(ctx, input, apply)
 }
 
+func (c *remoteContentCommands) DeleteWorkbook(ctx context.Context, input workbookdelete.Input, apply bool) (workbookdelete.Output, error) {
+	connection, err := c.connect(ctx, input.Environment, true)
+	if err != nil {
+		return workbookdelete.Output{}, remoteSetupError("workbook.delete", input.Environment, input.Site, connection.environment, err)
+	}
+	input.Environment, input.Site = connection.environment.Alias, connection.environment.SiteContentURL
+	adapter := workbookDeleteAdapter{workbooks: connection.workbooks}
+	return workbookdelete.New(adapter, adapter).Execute(ctx, input, apply)
+}
+
 func (c *remoteContentCommands) PullLineage(ctx context.Context, input lineagepull.Input) (lineagepull.Output, error) {
 	connection, err := c.connect(ctx, input.Environment, false)
 	if err != nil {
@@ -233,6 +270,61 @@ type projectGetResolver struct{ adapter *resourceproject.Adapter }
 func (r projectGetResolver) ResolveProject(ctx context.Context, selector identity.Selector) (projectget.Project, error) {
 	item, err := r.adapter.ResolveProject(ctx, selector)
 	return projectget.Project{LUID: item.LUID, Name: item.Name, Path: item.Path, ParentLUID: item.ParentLUID, Description: item.Description, OwnerLUID: item.OwnerLUID, TopLevel: item.TopLevel, ContentPermissions: item.ContentPermissions, ControllingPermissionsProjectID: item.ControllingPermissionsProjectID, CreatedAt: item.CreatedAt, UpdatedAt: item.UpdatedAt, ProjectCount: item.ProjectCount, WorkbookCount: item.WorkbookCount, ViewCount: item.ViewCount, DatasourceCount: item.DatasourceCount, RequestID: item.RequestID}, err
+}
+
+type projectCreateAdapter struct {
+	projects *resourceproject.Adapter
+	changes  *resourceproject.MutationAdapter
+}
+
+func (a projectCreateAdapter) ResolveProject(ctx context.Context, selector identity.Selector) (projectcreate.Project, error) {
+	item, err := a.projects.ResolveProject(ctx, selector)
+	return toProjectCreate(item), err
+}
+
+func (a projectCreateAdapter) FindProjectCollisions(ctx context.Context, name, parentLUID string) ([]projectcreate.Project, error) {
+	items, err := a.projects.FindProjectCollisions(ctx, name, parentLUID)
+	result := make([]projectcreate.Project, len(items))
+	for index, item := range items {
+		result[index] = toProjectCreate(item)
+	}
+	return result, err
+}
+
+func (a projectCreateAdapter) CreateProject(ctx context.Context, input projectcreate.CreateRequest) (projectcreate.Result, error) {
+	result, err := a.changes.CreateProject(ctx, tableauproject.CreateRequest{Name: input.Name, Description: input.Description, ParentLUID: input.ParentLUID, ContentPermissions: input.ContentPermissions})
+	if err != nil {
+		return projectcreate.Result{}, err
+	}
+	item, err := a.projects.NormalizeMutationProject(ctx, result.Project)
+	return projectcreate.Result{Status: result.Status, Project: toProjectCreate(item), TableauRequestID: result.TableauRequestID}, err
+}
+
+func toProjectCreate(item resourceproject.Project) projectcreate.Project {
+	return projectcreate.Project{LUID: item.LUID, Name: item.Name, Path: item.Path, ParentLUID: item.ParentLUID, Description: item.Description, ContentPermissions: item.ContentPermissions}
+}
+
+type projectUpdateAdapter struct {
+	projects *resourceproject.Adapter
+	changes  *resourceproject.MutationAdapter
+}
+
+func (a projectUpdateAdapter) ResolveProject(ctx context.Context, selector identity.Selector) (projectupdate.Project, error) {
+	item, err := a.projects.ResolveProject(ctx, selector)
+	return toProjectUpdate(item), err
+}
+
+func (a projectUpdateAdapter) UpdateProject(ctx context.Context, input projectupdate.UpdateRequest) (projectupdate.Result, error) {
+	result, err := a.changes.UpdateProject(ctx, tableauproject.UpdateRequest{LUID: input.LUID, Name: input.Name, Description: input.Description, ContentPermissions: input.ContentPermissions})
+	if err != nil {
+		return projectupdate.Result{}, err
+	}
+	item, err := a.projects.NormalizeMutationProject(ctx, result.Project)
+	return projectupdate.Result{Status: result.Status, Project: toProjectUpdate(item), TableauRequestID: result.TableauRequestID}, err
+}
+
+func toProjectUpdate(item resourceproject.Project) projectupdate.Project {
+	return projectupdate.Project{LUID: item.LUID, Name: item.Name, Path: item.Path, ParentLUID: item.ParentLUID, Description: item.Description, ContentPermissions: item.ContentPermissions}
 }
 
 type flowListReader struct{ adapter *resourceflow.Adapter }
@@ -414,6 +506,18 @@ func (a flowMoveAdapter) MoveFlow(ctx context.Context, flowLUID, projectLUID str
 type flowDeleteAdapter struct {
 	flows   *resourceflow.Adapter
 	changes *resourceflow.MutationAdapter
+}
+
+type workbookDeleteAdapter struct{ workbooks *resourceworkbook.Adapter }
+
+func (a workbookDeleteAdapter) ResolveWorkbook(ctx context.Context, selector identity.Selector) (workbookdelete.Workbook, error) {
+	item, err := a.workbooks.ResolveWorkbook(ctx, selector)
+	return workbookdelete.Workbook{LUID: item.LUID, Name: item.Name, ProjectLUID: item.ProjectLUID, ProjectPath: item.ProjectPath}, err
+}
+
+func (a workbookDeleteAdapter) DeleteWorkbook(ctx context.Context, luid string) (workbookdelete.Result, error) {
+	result, err := a.workbooks.DeleteWorkbook(ctx, luid)
+	return workbookdelete.Result{Status: result.Status, WorkbookLUID: result.WorkbookLUID, TableauRequestID: result.TableauRequestID}, err
 }
 
 func (a flowDeleteAdapter) ResolveFlow(ctx context.Context, selector identity.Selector) (flowdelete.Flow, error) {

@@ -6,6 +6,7 @@ import (
 	"strconv"
 
 	artifactdelete "github.com/ahillspace/tadx/actions/workspace/artifact/delete"
+	workspaceclean "github.com/ahillspace/tadx/actions/workspace/clean"
 	workspaceclone "github.com/ahillspace/tadx/actions/workspace/clone"
 	workspacecreate "github.com/ahillspace/tadx/actions/workspace/create"
 	workspacelist "github.com/ahillspace/tadx/actions/workspace/list"
@@ -27,6 +28,7 @@ type workspaceCommands struct {
 	status   *workspacestatus.Action
 	move     *workspacemove.Action
 	delete   *artifactdelete.Action
+	clean    *workspaceclean.Action
 }
 
 func newWorkspaceCommands(runtime *runtimeDependencies) *workspaceCommands {
@@ -37,12 +39,13 @@ func newWorkspaceCommands(runtime *runtimeDependencies) *workspaceCommands {
 		clone: workspaceclone.New(workspaceCloner{shared}), list: workspacelist.New(workspaceLister{shared}),
 		status: workspacestatus.New(workspaceStatusReader{shared}), move: workspacemove.New(workspaceMover{shared}),
 		delete: artifactdelete.New(workspaceDeleteStore{shared}),
+		clean:  workspaceclean.New(workspaceCleanStore{shared}),
 	}
 }
 
 func (c *workspaceCommands) dependencies() *workspacecli.Dependencies {
-	ids := []string{"workspace.create", "workspace.register", "workspace.clone", "workspace.list", "workspace.status", "workspace.move", "workspace.artifact.delete"}
-	return &workspacecli.Dependencies{Creator: c, Registrar: c, Cloner: c, Lister: c, Statuser: c, Mover: c, Deleter: c, Uses: registryUses(ids...), Shorts: registryShorts(ids...)}
+	ids := []string{"workspace.create", "workspace.register", "workspace.clone", "workspace.list", "workspace.status", "workspace.move", "workspace.artifact.delete", "workspace.clean"}
+	return &workspacecli.Dependencies{Creator: c, Registrar: c, Cloner: c, Lister: c, Statuser: c, Mover: c, Deleter: c, Cleaner: c, Uses: registryUses(ids...), Shorts: registryShorts(ids...)}
 }
 
 func (c *workspaceCommands) Create(ctx context.Context, input workspacecreate.Input) (workspacecreate.Output, error) {
@@ -65,6 +68,9 @@ func (c *workspaceCommands) Move(ctx context.Context, input workspacemove.Input)
 }
 func (c *workspaceCommands) Delete(ctx context.Context, input artifactdelete.Input, apply bool) (artifactdelete.Output, error) {
 	return c.delete.Execute(ctx, input, apply)
+}
+func (c *workspaceCommands) Clean(ctx context.Context, input workspaceclean.Input) (workspaceclean.Output, error) {
+	return c.clean.Execute(ctx, input)
 }
 
 type workspaceRuntime struct{ runtime *runtimeDependencies }
@@ -170,6 +176,17 @@ func (a workspaceMover) Move(ctx context.Context, input workspacemove.Input) (wo
 }
 
 type workspaceDeleteStore struct{ runtime *workspaceRuntime }
+
+type workspaceCleanStore struct{ runtime *workspaceRuntime }
+
+func (a workspaceCleanStore) Clean(ctx context.Context, request workspaceclean.Request) (workspaceclean.Result, error) {
+	resolved, err := a.runtime.resolve(ctx, request.Workspace)
+	if err != nil {
+		return workspaceclean.Result{}, err
+	}
+	result, err := workspacecore.Clean(ctx, resolved.Root, request.Class)
+	return workspaceclean.Result{EntriesRemoved: result.EntriesRemoved, BytesRemoved: result.BytesRemoved, Removed: result.Removed}, err
+}
 
 func (a workspaceDeleteStore) Resolve(ctx context.Context, input artifactdelete.Input) (artifactdelete.Artifact, error) {
 	workspace, err := a.runtime.resolve(ctx, input.Workspace)

@@ -1,0 +1,25 @@
+plan:
+  mode: preview
+  operation: project.create
+  environment: dev
+  site: sandbox
+  project:
+    name: Operations
+    description: Direct operations
+    content_permissions: LockedToProject
+  parent:
+    luid: parent-1
+    name: Department
+    path: Department
+applied: true
+result:
+  status: succeeded
+  project:
+    luid: project-1
+    name: Operations
+    path: Department/Operations
+    parent_luid: parent-1
+    description: Direct operations
+    content_permissions: LockedToProject
+  tableau_request_id: request-1
+help[1]: tadx content project get --id project-1

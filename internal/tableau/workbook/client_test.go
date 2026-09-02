@@ -44,6 +44,40 @@ func (function roundTripFunc) RoundTrip(request *http.Request) (*http.Response, 
 	return function(request)
 }
 
+func TestDeleteWorkbookUsesExactRESTContract(t *testing.T) {
+	server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		if request.Method != http.MethodDelete || request.URL.Path != "/api/3.29/sites/site-1/workbooks/wb-1" {
+			t.Fatalf("request = %s %s", request.Method, request.URL.Path)
+		}
+		writer.Header().Set("X-Tableau-Request-Id", "request-1")
+		writer.WriteHeader(http.StatusNoContent)
+	}))
+	defer server.Close()
+	client := tableauworkbook.NewClient(tableau.NewTransport(server.Client(), "3.29", nil), session{}, server.URL)
+	result, err := client.Delete(context.Background(), "wb-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Status != "succeeded" || result.WorkbookLUID != "wb-1" || result.TableauRequestID != "request-1" {
+		t.Fatalf("result = %#v", result)
+	}
+}
+
+func TestDeleteWorkbookRejectsNonEmptyOrNon204Response(t *testing.T) {
+	for _, status := range []int{http.StatusOK, http.StatusAccepted} {
+		server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+			writer.WriteHeader(status)
+			_, _ = writer.Write([]byte("unexpected"))
+		}))
+		client := tableauworkbook.NewClient(tableau.NewTransport(server.Client(), "3.29", nil), session{}, server.URL)
+		result, err := client.Delete(context.Background(), "wb-1")
+		server.Close()
+		if err == nil || result.Status != "unknown" || result.WorkbookLUID != "wb-1" {
+			t.Fatalf("status=%d result=%#v err=%v", status, result, err)
+		}
+	}
+}
+
 type multipartPart struct {
 	name     string
 	filename string

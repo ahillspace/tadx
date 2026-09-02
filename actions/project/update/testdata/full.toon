@@ -1,0 +1,28 @@
+plan:
+  mode: preview
+  operation: project.update
+  environment: dev
+  site: sandbox
+  target:
+    luid: project-1
+    name: Operations
+    path: Department/Operations
+    parent_luid: parent-1
+    description: Old
+    content_permissions: LockedToProject
+  changes:
+    name: Renamed
+    content_permissions: ManagedByOwner
+  no_op: false
+applied: true
+result:
+  status: succeeded
+  project:
+    luid: project-1
+    name: Renamed
+    path: Department/Renamed
+    parent_luid: parent-1
+    description: Old
+    content_permissions: ManagedByOwner
+  tableau_request_id: request-1
+help[1]: tadx content project get --id project-1

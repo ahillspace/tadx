@@ -104,6 +104,34 @@ func TestDatasourceManagerUsesNormalizedSourceIdentityForRefresh(t *testing.T) {
 	}
 }
 
+func TestDatasourceManagerPersistsCompositionReferencesAndLineageSidecar(t *testing.T) {
+	workspace := createDatasourceWorkspace(t)
+	manager := NewDatasourceManager(time.Now)
+	lineage := LineageDocument{Complete: true, Direction: "both", Depth: 1, Nodes: []LineageNode{{MetadataID: "metadata-ds-1", Kind: "published_datasource", RESTLUID: "ds-1"}}}
+	content := []byte(`<datasource><relation datasource-url="parent-b"/><relation datasource-url="parent-a"/></datasource>`)
+	result, err := manager.Pull(context.Background(), DatasourcePull{Workspace: workspace, Filename: "Sales.tds", Content: content, Metadata: validDatasourceMetadata("Sales", "ds-1"), Lineage: lineage})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.CompositionStatus != CompositionStatusComposed || strings.Join(result.ParentDataSourceURLs, ",") != "parent-a,parent-b" || !strings.HasSuffix(result.LineagePath, "/lineage.json") {
+		t.Fatalf("result = %#v", result)
+	}
+	artifact, err := manager.Read(context.Background(), result.ArtifactPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if artifact.CompositionStatus != CompositionStatusComposed || strings.Join(artifact.ParentDataSourceURLs, ",") != "parent-a,parent-b" || len(artifact.Lineage.Nodes) != 1 || !artifact.Lineage.Complete {
+		t.Fatalf("artifact = %#v", artifact)
+	}
+	got, err := os.ReadFile(artifact.PayloadPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(got) != string(content) {
+		t.Fatal("artifact manager rewrote native datasource bytes")
+	}
+}
+
 func TestDatasourceManagerKeepsSameLUIDFromDifferentSitesDistinct(t *testing.T) {
 	workspace := createDatasourceWorkspace(t)
 	manager := NewDatasourceManager(time.Now)

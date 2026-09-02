@@ -6,6 +6,7 @@ import (
 	"errors"
 
 	artifactdelete "github.com/ahillspace/tadx/actions/workspace/artifact/delete"
+	workspaceclean "github.com/ahillspace/tadx/actions/workspace/clean"
 	workspaceclone "github.com/ahillspace/tadx/actions/workspace/clone"
 	workspacecreate "github.com/ahillspace/tadx/actions/workspace/create"
 	workspacelist "github.com/ahillspace/tadx/actions/workspace/list"
@@ -38,6 +39,9 @@ type Mover interface {
 type Deleter interface {
 	Delete(context.Context, artifactdelete.Input, bool) (artifactdelete.Output, error)
 }
+type Cleaner interface {
+	Clean(context.Context, workspaceclean.Input) (workspaceclean.Output, error)
+}
 type Renderer interface{ Render(any) error }
 
 type Dependencies struct {
@@ -48,6 +52,7 @@ type Dependencies struct {
 	Statuser  Statuser
 	Mover     Mover
 	Deleter   Deleter
+	Cleaner   Cleaner
 	Renderer  Renderer
 	Uses      map[string]string
 	Shorts    map[string]string
@@ -55,7 +60,34 @@ type Dependencies struct {
 
 func New(deps Dependencies) *cobra.Command {
 	command := &cobra.Command{Use: "workspace", Short: "Manage named local workspaces"}
-	command.AddCommand(newCreate(deps), newRegister(deps), newClone(deps), newList(deps), newStatus(deps), newMove(deps), newArtifact(deps))
+	command.AddCommand(newCreate(deps), newRegister(deps), newClone(deps), newList(deps), newStatus(deps), newMove(deps), newArtifact(deps), newClean(deps))
+	return command
+}
+
+func newClean(deps Dependencies) *cobra.Command {
+	var input workspaceclean.Input
+	command := &cobra.Command{
+		Use: use(deps, "workspace.clean", "clean"), Short: short(deps, "workspace.clean", "Remove selected disposable workspace state."),
+		Annotations: map[string]string{"tadx.capability": "workspace.clean"},
+		Args: func(command *cobra.Command, args []string) error {
+			if err := noArgs("workspace.clean")(command, args); err != nil {
+				return err
+			}
+			if input.Workspace == "" || input.Class == "" {
+				return clierr.Usage("workspace.clean", errors.New("--workspace and --class are required"))
+			}
+			return nil
+		},
+		RunE: func(command *cobra.Command, _ []string) error {
+			result, err := deps.Cleaner.Clean(command.Context(), input)
+			if err != nil {
+				return err
+			}
+			return deps.Renderer.Render(result)
+		},
+	}
+	command.Flags().StringVar(&input.Workspace, "workspace", "", "logical workspace name")
+	command.Flags().StringVar(&input.Class, "class", "", "disposable state class: temporary, cache, logs, or all")
 	return command
 }
 
