@@ -37,29 +37,63 @@ var requiredTables = []string{"catalog_schema", "generations", "current_generati
 func resourceDDL(table, columns, key string) string {
 	return fmt.Sprintf(`CREATE TABLE %s (generation_key INTEGER NOT NULL REFERENCES generations(generation_key) ON DELETE CASCADE,%s,PRIMARY KEY(generation_key,%s)) STRICT`, table, columns, key)
 }
-func initializeSchema(ctx context.Context, db *sql.DB) error {
-	if _, err := db.ExecContext(ctx, `PRAGMA journal_mode=WAL`); err != nil {
-		return fmt.Errorf("enable catalog WAL: %w", err)
+
+// ensureSchema initializes the catalog schema exactly once, safely across
+// concurrent Store instances and separate CLI processes pointed at the same
+// root. user_version is the commit marker: it is written inside the same
+// transaction as the DDL (SQLite rolls it back with the transaction), so a run
+// that fails or is interrupted leaves user_version at 0 and the next open
+// re-initializes rather than wedging on a half-built database. A brand-new
+// database's rows are never partially visible because the whole schema commits
+// atomically.
+func ensureSchema(ctx context.Context, db *sql.DB) error {
+	var userVersion int
+	if err := db.QueryRowContext(ctx, `PRAGMA user_version`).Scan(&userVersion); err != nil {
+		return fmt.Errorf("read catalog schema version: %w", err)
 	}
-	if _, err := db.ExecContext(ctx, `PRAGMA synchronous=FULL`); err != nil {
-		return fmt.Errorf("configure catalog synchronization: %w", err)
+	// A non-zero version is either the version we expect or a foreign version;
+	// either way the schema is fully committed and validateSchema decides. Only a
+	// zero version needs (re-)initialization, so take the write lock only then.
+	if userVersion != 0 {
+		return nil
 	}
-	tx, err := db.BeginTx(ctx, nil)
+	conn, err := db.Conn(ctx)
 	if err != nil {
 		return err
 	}
-	defer tx.Rollback()
-	for _, statement := range schemaStatements {
-		if _, err := tx.ExecContext(ctx, statement); err != nil {
-			return fmt.Errorf("initialize catalog schema: %w", err)
-		}
+	defer conn.Close()
+	if _, err := conn.ExecContext(ctx, `PRAGMA journal_mode=WAL`); err != nil {
+		return fmt.Errorf("enable catalog WAL: %w", err)
 	}
-	if err := tx.Commit(); err != nil {
+	// BEGIN IMMEDIATE takes the write lock up front so two processes cannot both
+	// run the DDL; the loser blocks (busy_timeout) and then observes the winner's
+	// committed schema below.
+	if _, err := conn.ExecContext(ctx, `BEGIN IMMEDIATE`); err != nil {
+		return fmt.Errorf("lock catalog for initialization: %w", err)
+	}
+	committed := false
+	defer func() {
+		if !committed {
+			_, _ = conn.ExecContext(ctx, `ROLLBACK`)
+		}
+	}()
+	if err := conn.QueryRowContext(ctx, `PRAGMA user_version`).Scan(&userVersion); err != nil {
 		return err
 	}
-	if _, err := db.ExecContext(ctx, `PRAGMA user_version=1`); err != nil {
-		return fmt.Errorf("version catalog schema: %w", err)
+	if userVersion == 0 {
+		for _, statement := range schemaStatements {
+			if _, err := conn.ExecContext(ctx, statement); err != nil {
+				return fmt.Errorf("initialize catalog schema: %w", err)
+			}
+		}
+		if _, err := conn.ExecContext(ctx, fmt.Sprintf(`PRAGMA user_version=%d`, schemaVersion)); err != nil {
+			return fmt.Errorf("version catalog schema: %w", err)
+		}
 	}
+	if _, err := conn.ExecContext(ctx, `COMMIT`); err != nil {
+		return fmt.Errorf("commit catalog schema: %w", err)
+	}
+	committed = true
 	return checkIntegrity(ctx, db)
 }
 func validateSchema(ctx context.Context, db *sql.DB) error {

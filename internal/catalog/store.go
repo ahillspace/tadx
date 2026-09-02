@@ -10,6 +10,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/url"
 	"os"
 	"path/filepath"
 	"sort"
@@ -29,6 +30,11 @@ const (
 	staleAfter           = 12 * time.Hour
 	schemaVersion        = 1
 	databaseRelativePath = "catalog/catalog.sqlite"
+	// generationTimeLayout is a fixed-width RFC3339 form: unlike time.RFC3339Nano
+	// (which trims trailing fractional-second zeros and so varies in width), every
+	// value is the same length, keeping the lexical DESC index on generated_at
+	// consistent with chronological order.
+	generationTimeLayout = "2006-01-02T15:04:05.000000000Z07:00"
 )
 
 var publicScopes = []string{"users", "groups", "projects", "workbooks", "datasources", "flows", "views", "permissions"}
@@ -141,6 +147,20 @@ func (e unavailableScopeError) Error() string {
 }
 func (unavailableScopeError) CatalogScopeUnavailable() bool { return true }
 
+type duplicateScopeError struct{ scope string }
+
+func (e duplicateScopeError) Error() string {
+	return fmt.Sprintf("catalog scope %q is duplicated", e.scope)
+}
+func (duplicateScopeError) CatalogDuplicateScope() bool { return true }
+
+type duplicateContentError struct{ existingID string }
+
+func (e duplicateContentError) Error() string {
+	return fmt.Sprintf("catalog content is already published under generation %q", e.existingID)
+}
+func (duplicateContentError) CatalogDuplicateContent() bool { return true }
+
 // Store owns one config-root SQLite catalog database.
 type Store struct {
 	root   string
@@ -166,29 +186,53 @@ func (s *Store) open(ctx context.Context) (*sql.DB, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	if err := os.MkdirAll(filepath.Dir(s.databasePath()), 0o700); err != nil {
+	path := s.databasePath()
+	dir := filepath.Dir(path)
+	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return nil, fmt.Errorf("create catalog directory: %w", err)
 	}
-	path := s.databasePath()
-	newDatabase := false
+	// The catalog now stores users, emails, permissions, and inventory; refuse to
+	// follow a symlinked directory so the database cannot be redirected elsewhere.
+	dirInfo, err := os.Lstat(dir)
+	if err != nil {
+		return nil, fmt.Errorf("inspect catalog directory: %w", err)
+	}
+	if dirInfo.Mode()&os.ModeSymlink != 0 {
+		return nil, errors.New("catalog directory must not be a symlink")
+	}
+	preExisted := true
 	info, err := os.Lstat(path)
 	if errors.Is(err, os.ErrNotExist) {
-		newDatabase = true
+		preExisted = false
 	} else if err != nil {
 		return nil, fmt.Errorf("inspect catalog database: %w", err)
 	} else if !info.Mode().IsRegular() {
 		return nil, errors.New("catalog database must be a regular file")
 	}
-	dsn := "file:" + filepath.ToSlash(path) + "?_pragma=foreign_keys(1)&_pragma=busy_timeout(5000)&_pragma=synchronous(FULL)"
+	dsn, err := catalogDSN(path)
+	if err != nil {
+		return nil, err
+	}
 	db, err := sql.Open("sqlite", dsn)
 	if err != nil {
 		return nil, fmt.Errorf("open catalog database: %w", err)
 	}
 	db.SetMaxOpenConns(8)
 	db.SetMaxIdleConns(8)
-	if newDatabase {
-		if err := initializeSchema(ctx, db); err != nil {
+	if err := ensureSchema(ctx, db); err != nil {
+		db.Close()
+		// A file we created this call could hold a partially-initialized schema;
+		// remove it so the next open re-initializes rather than wedging. Only our
+		// own newly-created file is removed, never a pre-existing database.
+		if !preExisted {
+			removeDatabaseFiles(path)
+		}
+		return nil, err
+	}
+	if !preExisted {
+		if err := restrictDatabasePermissions(path); err != nil {
 			db.Close()
+			removeDatabaseFiles(path)
 			return nil, err
 		}
 	}
@@ -199,7 +243,60 @@ func (s *Store) open(ctx context.Context) (*sql.DB, error) {
 	return db, nil
 }
 
+// catalogDSN builds a SQLite "file:" URI for path. Building the URI with net/url
+// percent-encodes any '?' or '#' in the path so the SQLite URI parser does not
+// mistake them for the query/fragment delimiters (which would drop the pragmas
+// or fail to open). The pragma set below is authoritative for every pooled
+// connection (foreign keys, busy timeout, and synchronous=FULL durability).
+func catalogDSN(path string) (string, error) {
+	abs, err := filepath.Abs(path)
+	if err != nil {
+		return "", fmt.Errorf("resolve catalog database path: %w", err)
+	}
+	uri := filepath.ToSlash(abs)
+	if !strings.HasPrefix(uri, "/") {
+		uri = "/" + uri
+	}
+	dsn := url.URL{
+		Scheme:   "file",
+		Path:     uri,
+		RawQuery: "_pragma=foreign_keys(1)&_pragma=busy_timeout(5000)&_pragma=synchronous(FULL)",
+	}
+	return dsn.String(), nil
+}
+
+// restrictDatabasePermissions narrows the database (and its WAL sidecars) to
+// owner-only 0600. On Windows os.Chmod only honors the read-only bit, so the
+// call is harmless there while enforcing least privilege on POSIX filesystems.
+func restrictDatabasePermissions(path string) error {
+	for _, p := range []string{path, path + "-wal", path + "-shm"} {
+		if err := os.Chmod(p, 0o600); err != nil && !errors.Is(err, os.ErrNotExist) {
+			return fmt.Errorf("restrict catalog database permissions: %w", err)
+		}
+	}
+	return nil
+}
+
+func removeDatabaseFiles(path string) {
+	for _, p := range []string{path, path + "-wal", path + "-shm"} {
+		_ = os.Remove(p)
+	}
+}
+
 func (s *Store) BeginGeneration(ctx context.Context, metadata GenerationMetadata) (*GenerationWriter, error) {
+	// Normalize environment and site once at the boundary so the values stored
+	// here match the values Search/Get/Status later compare against exactly.
+	metadata.Environment = strings.TrimSpace(metadata.Environment)
+	metadata.Site = strings.TrimSpace(metadata.Site)
+	// Reject duplicate scopes explicitly rather than letting normalizedScopes
+	// silently deduplicate them: internal callers must see the same contract as
+	// actions/catalog/refresh, and silent dedup hides caller bugs.
+	if err := ensureUniqueScopes(metadata.RequestedScopes); err != nil {
+		return nil, err
+	}
+	if err := ensureUniqueScopes(metadata.ImplicitScopes); err != nil {
+		return nil, err
+	}
 	metadata.RequestedScopes = normalizedScopes(metadata.RequestedScopes, true)
 	metadata.ImplicitScopes = normalizedScopes(metadata.ImplicitScopes, false)
 	if err := validateMetadata(metadata); err != nil {
@@ -214,7 +311,7 @@ func (s *Store) BeginGeneration(ctx context.Context, metadata GenerationMetadata
 		db.Close()
 		return nil, fmt.Errorf("begin catalog generation: %w", err)
 	}
-	result, err := tx.ExecContext(ctx, `INSERT INTO generations(id,fingerprint,environment,site,generated_at,complete,source,record_count,created_at) VALUES(NULL,NULL,?,?,?,0,?,0,?)`, metadata.Environment, metadata.Site, metadata.GeneratedAt.UTC().Format(time.RFC3339Nano), metadata.Source, s.now().UTC().Format(time.RFC3339Nano))
+	result, err := tx.ExecContext(ctx, `INSERT INTO generations(id,fingerprint,environment,site,generated_at,complete,source,record_count,created_at) VALUES(NULL,NULL,?,?,?,0,?,0,?)`, metadata.Environment, metadata.Site, metadata.GeneratedAt.UTC().Format(generationTimeLayout), metadata.Source, s.now().UTC().Format(generationTimeLayout))
 	if err != nil {
 		tx.Rollback()
 		db.Close()
@@ -267,6 +364,10 @@ func (s *Store) Replace(ctx context.Context, generation Generation) (ReplaceResu
 }
 
 func (s *Store) Search(ctx context.Context, query Query) (SearchResult, error) {
+	// Normalize at the query boundary to match the trimmed values persisted at
+	// write time; otherwise a padded selector silently misses the stored rows.
+	query.Environment = strings.TrimSpace(query.Environment)
+	query.Site = strings.TrimSpace(query.Site)
 	if err := validateSelection(query.Environment, query.SiteSelected); err != nil {
 		return SearchResult{}, err
 	}
@@ -370,6 +471,8 @@ func (s *Store) Get(ctx context.Context, lookup Lookup) (GetResult, error) {
 	return GetResult{r.Records[0], r.GenerationID, r.Environment, r.Site, r.GeneratedAt, r.Stale, append([]string(nil), r.Warnings...)}, nil
 }
 func (s *Store) Status(ctx context.Context, selection Selection) (StatusResult, error) {
+	selection.Environment = strings.TrimSpace(selection.Environment)
+	selection.Site = strings.TrimSpace(selection.Site)
 	if err := validateSelection(selection.Environment, selection.SiteSelected); err != nil {
 		return StatusResult{}, err
 	}
@@ -410,8 +513,22 @@ func currentGeneration(ctx context.Context, q queryRower, environment, site stri
 	if err != nil {
 		return m, fmt.Errorf("read current catalog generation for environment %q and site %q: %w", environment, site, err)
 	}
-	m.generatedAt, err = time.Parse(time.RFC3339Nano, generated)
+	m.generatedAt, err = time.Parse(generationTimeLayout, generated)
 	return m, err
+}
+func ensureUniqueScopes(scopes []string) error {
+	seen := map[string]bool{}
+	for _, scope := range scopes {
+		trimmed := strings.TrimSpace(scope)
+		if trimmed == "" {
+			continue
+		}
+		if seen[trimmed] {
+			return duplicateScopeError{trimmed}
+		}
+		seen[trimmed] = true
+	}
+	return nil
 }
 func searchWhere(key int64, q Query) (string, []any) {
 	parts := []string{"WHERE generation_key=?", "requested=1"}

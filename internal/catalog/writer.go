@@ -74,7 +74,10 @@ func (w *GenerationWriter) CompleteScopes(ctx context.Context, scopes []string) 
 		if err != nil {
 			return err
 		}
-		count, _ := result.RowsAffected()
+		count, err := result.RowsAffected()
+		if err != nil {
+			return err
+		}
 		if count != 1 {
 			return fmt.Errorf("catalog scope %q was not admitted for this generation", scope)
 		}
@@ -129,6 +132,18 @@ func (w *GenerationWriter) Publish(ctx context.Context) (ReplaceResult, error) {
 	} else if !errors.Is(err, sql.ErrNoRows) {
 		return ReplaceResult{}, err
 	} else {
+		// This id is new for the environment/site, but the same content may already
+		// be published under a different id. Promoting our fingerprint would violate
+		// UNIQUE(environment,site,fingerprint) and surface a raw driver error, so
+		// detect the collision and return a typed error instead of reconciling.
+		var conflictID string
+		conflictErr := w.tx.QueryRowContext(ctx, `SELECT id FROM generations WHERE environment=? AND site=? AND fingerprint=?`, w.metadata.Environment, w.metadata.Site, fingerprint).Scan(&conflictID)
+		if conflictErr == nil {
+			return ReplaceResult{}, duplicateContentError{conflictID}
+		}
+		if !errors.Is(conflictErr, sql.ErrNoRows) {
+			return ReplaceResult{}, conflictErr
+		}
 		if _, err := w.tx.ExecContext(ctx, `UPDATE generations SET id=?,fingerprint=?,complete=1,record_count=? WHERE generation_key=?`, id, fingerprint, count, w.key); err != nil {
 			return ReplaceResult{}, err
 		}
@@ -243,6 +258,9 @@ func (w *GenerationWriter) buildCatalogRecords(ctx context.Context) error {
 		if err := rows.Close(); err != nil {
 			return err
 		}
+		if err := rows.Err(); err != nil {
+			return err
+		}
 	}
 	rows, err := w.tx.QueryContext(ctx, `SELECT v.id,v.name,w.project_id,w.owner_id FROM views v LEFT JOIN workbooks w ON w.generation_key=v.generation_key AND w.id=v.workbook_id WHERE v.generation_key=? ORDER BY v.id`, w.key)
 	if err != nil {
@@ -264,7 +282,10 @@ func (w *GenerationWriter) buildCatalogRecords(ctx context.Context) error {
 			return err
 		}
 	}
-	return rows.Close()
+	if err := rows.Close(); err != nil {
+		return err
+	}
+	return rows.Err()
 }
 func (w *GenerationWriter) requestedScopes(ctx context.Context) (map[string]bool, error) {
 	rows, err := w.tx.QueryContext(ctx, `SELECT scope,requested FROM generation_scopes WHERE generation_key=?`, w.key)
@@ -297,6 +318,9 @@ func (w *GenerationWriter) projectPaths(ctx context.Context) (map[string]string,
 			return nil, err
 		}
 		projects[id] = project{name, parent}
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
 	}
 	paths := map[string]string{}
 	visiting := map[string]bool{}
@@ -360,30 +384,32 @@ func scanStrings(rows *sql.Rows) ([]string, error) {
 	return values, nil
 }
 
+// totalHydratedRows reports the number of gettable catalog records. It counts
+// catalog_records (built by buildCatalogRecords, or written directly by the
+// Replace path) rather than summing the typed scope tables: the permissions
+// scope populates its own table but never yields a catalog_record, so summing
+// scopes would inflate RecordCount past what Search/Get can return.
 func (w *GenerationWriter) totalHydratedRows(ctx context.Context) (int, error) {
-	total := 0
-	for scope := range batchColumns {
-		var count int
-		query := fmt.Sprintf(`SELECT count(*) FROM %s WHERE generation_key=?`, scope)
-		if err := w.tx.QueryRowContext(ctx, query, w.key).Scan(&count); err != nil {
-			return 0, fmt.Errorf("count catalog scope %q: %w", scope, err)
-		}
-		total += count
-	}
-	if total != 0 {
-		return total, nil
-	}
+	var total int
 	if err := w.tx.QueryRowContext(ctx, `SELECT count(*) FROM catalog_records WHERE generation_key=?`, w.key).Scan(&total); err != nil {
-		return 0, fmt.Errorf("count normalized catalog records: %w", err)
+		return 0, fmt.Errorf("count catalog records: %w", err)
 	}
 	return total, nil
 }
 
 func (w *GenerationWriter) fingerprint(ctx context.Context) (string, error) {
+	// The fingerprint is the content identity backing UNIQUE(environment,site,
+	// fingerprint). The caller-assigned generation ID is a mutable label, not
+	// content, so it is excluded here; otherwise identical content published under
+	// two different IDs would produce two different fingerprints and defeat the
+	// constraint. The real refresh path leaves ID empty, so this changes no
+	// generated identifier there.
+	metadata := w.metadata
+	metadata.ID = ""
 	payload := struct {
 		Metadata GenerationMetadata
 		Tables   map[string][][]any
-	}{w.metadata, map[string][][]any{}}
+	}{metadata, map[string][][]any{}}
 	for scope, columns := range batchColumns {
 		rows, err := w.tx.QueryContext(ctx, fmt.Sprintf(`SELECT %s FROM %s WHERE generation_key=? ORDER BY %s`, strings.Join(columns, ","), scope, strings.Join(columns, ",")), w.key)
 		if err != nil {
@@ -404,6 +430,9 @@ func (w *GenerationWriter) fingerprint(ctx context.Context) (string, error) {
 		if err := rows.Close(); err != nil {
 			return "", err
 		}
+		if err := rows.Err(); err != nil {
+			return "", err
+		}
 	}
 	rows, err := w.tx.QueryContext(ctx, `SELECT luid,kind,name,project_path,owner,requested FROM catalog_records WHERE generation_key=? ORDER BY kind,name,project_path,luid`, w.key)
 	if err != nil {
@@ -422,6 +451,9 @@ func (w *GenerationWriter) fingerprint(ctx context.Context) (string, error) {
 		payload.Tables["catalog_records"] = append(payload.Tables["catalog_records"], values)
 	}
 	if err := rows.Close(); err != nil {
+		return "", err
+	}
+	if err := rows.Err(); err != nil {
 		return "", err
 	}
 	data, err := json.Marshal(payload)
