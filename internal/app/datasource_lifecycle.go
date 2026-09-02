@@ -137,11 +137,9 @@ func (w datasourceArtifactWriter) WriteDatasource(ctx context.Context, input dat
 	if err != nil {
 		return datasourcepull.ArtifactResult{}, err
 	}
-	lineageStatus := "incomplete"
-	if input.Lineage.Complete {
-		lineageStatus = "complete"
-	}
-	return datasourcepull.ArtifactResult{Path: result.WorkspaceRelativePath, CanonicalPath: canonicalPath, BaselineFingerprint: result.BaselineFingerprint, LineagePath: lineagePath, LineageStatus: lineageStatus, CompositionStatus: result.CompositionStatus, ParentDataSourceURLs: append([]string(nil), result.ParentDataSourceURLs...), Warnings: append([]string(nil), result.Warnings...)}, nil
+	// LineageStatus and CountsKnown are single-sourced from lineage completeness in the
+	// pull action; leave LineageStatus unset here so the two fields cannot diverge.
+	return datasourcepull.ArtifactResult{Path: result.WorkspaceRelativePath, CanonicalPath: canonicalPath, BaselineFingerprint: result.BaselineFingerprint, LineagePath: lineagePath, CompositionStatus: result.CompositionStatus, ParentDataSourceURLs: append([]string(nil), result.ParentDataSourceURLs...), Warnings: append([]string(nil), result.Warnings...)}, nil
 }
 
 func containDatasourceWorkspacePath(workspace, absolute, label string) (string, error) {

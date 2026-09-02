@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	workbookdelete "github.com/ahillspace/tadx/actions/workbook/delete"
+	"github.com/ahillspace/tadx/internal/errs"
 	"github.com/ahillspace/tadx/internal/identity"
 	render "github.com/ahillspace/tadx/internal/output"
 )
@@ -80,6 +81,32 @@ func TestDeleteRequiresExplicitEnvironmentAndSite(t *testing.T) {
 	_, err := workbookdelete.New(&resolver{}, &deleter{}).Execute(context.Background(), workbookdelete.Input{}, false)
 	if err == nil {
 		t.Fatal("expected explicit target error")
+	}
+}
+
+func TestDeleteRejectsInvalidSelectorAtSeam(t *testing.T) {
+	cases := []struct {
+		name     string
+		selector identity.Selector
+	}{
+		{"empty", identity.Selector{}},
+		{"whitespace only", identity.Selector{Name: "   ", ProjectPath: "\t"}},
+		{"name without project", identity.Selector{Name: "Finance"}},
+		{"conflicting luid and name", identity.Selector{LUID: "wb-1", Name: "Finance", ProjectPath: "Ops"}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			r := &resolver{}
+			d := &deleter{}
+			_, err := workbookdelete.New(r, d).Execute(context.Background(), workbookdelete.Input{Environment: "dev", Site: "sandbox", Selector: tc.selector}, false)
+			var structured *errs.Error
+			if !errors.As(err, &structured) || structured.Kind != errs.KindUsage || structured.ID != "workbook.delete.usage" {
+				t.Fatalf("error = %#v", structured)
+			}
+			if len(r.inputs) != 0 || len(d.calls) != 0 {
+				t.Fatalf("seam validation must not reach adapters: resolve=%v delete=%v", r.inputs, d.calls)
+			}
+		})
 	}
 }
 

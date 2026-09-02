@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"reflect"
+
+	"github.com/ahillspace/tadx/internal/errs"
 )
 
 type Input struct {
@@ -22,6 +24,7 @@ type User struct {
 	Language           string `json:"language,omitempty"`
 	Locale             string `json:"locale,omitempty"`
 	RequestID          string `json:"-"`
+	MutationStatus     string `json:"-"`
 }
 type Request struct{ FullName, Email, SiteRole, AuthSetting, IdentityPoolName, IdPConfigurationID, Language, Locale *string }
 type Change struct {
@@ -89,14 +92,14 @@ func (a *Action) Execute(ctx context.Context, in Input, apply bool) (Output, err
 		return Output{}, errors.New("admin user update is not configured")
 	}
 	if in.Environment == "" || in.Site == "" || in.UserLUID == "" {
-		return Output{}, errors.New("admin user update requires explicit environment, site, and user LUID")
+		return Output{}, usage("selector", "admin user update requires explicit environment, site, and user LUID")
 	}
 	if in.AuthSetting != nil && in.IdPConfigurationID != nil {
-		return Output{}, errors.New("admin user update cannot set auth setting and IdP configuration ID together")
+		return Output{}, usage("auth_setting", "admin user update cannot set auth setting and IdP configuration ID together")
 	}
 	req := Request{in.FullName, in.Email, in.SiteRole, in.AuthSetting, in.IdentityPoolName, in.IdPConfigurationID, in.Language, in.Locale}
 	if reflect.DeepEqual(req, Request{}) {
-		return Output{}, errors.New("admin user update requires at least one explicit field")
+		return Output{}, usage("fields", "admin user update requires at least one explicit field")
 	}
 	user, err := a.resolver.ResolveUser(ctx, in.UserLUID)
 	if err != nil {
@@ -122,11 +125,25 @@ func (a *Action) Execute(ctx context.Context, in Input, apply bool) (Output, err
 	}
 	updated, err := a.updater.UpdateUser(ctx, user.LUID, req)
 	if err != nil {
+		if updated.MutationStatus == "unknown" {
+			luid := updated.LUID
+			if luid == "" {
+				luid = user.LUID
+			}
+			return Output{}, outcomeUnknown(in, luid, updated.RequestID, err)
+		}
 		return Output{}, err
 	}
 	out.Result = &Result{Status: "updated", UserLUID: updated.LUID, TableauRequestID: updated.RequestID}
 	out.Help = []string{"tadx admin user get --id " + updated.LUID}
 	return out, nil
+}
+
+func usage(field, message string) error {
+	return &errs.Error{ID: "admin.user.update.usage", Kind: errs.KindUsage, Operation: "admin.user.update", Summary: message, Retryable: errs.Bool(false), CorrectiveAction: "Correct the user update input and review a new preview.", Validation: []errs.ValidationDetail{{Field: field, Code: "invalid", Message: message}}}
+}
+func outcomeUnknown(in Input, luid, requestID string, cause error) error {
+	return &errs.Error{ID: "admin.user.update.outcome_unknown", Kind: errs.KindOperation, Operation: "admin.user.update", Resource: luid, Environment: in.Environment, Site: in.Site, Summary: "The user update outcome could not be determined safely.", Cause: cause, Retryable: errs.Bool(false), CorrectiveAction: "Inspect the target site and Tableau request before attempting another user update.", TableauRequestID: requestID}
 }
 func userChanges(u User, r Request) []Change {
 	v := []Change{}

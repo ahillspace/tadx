@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"reflect"
+
+	"github.com/ahillspace/tadx/internal/errs"
 )
 
 type Input struct{ Environment, Site, UserLUID string }
@@ -78,7 +80,7 @@ func (a *Action) Execute(ctx context.Context, in Input, apply bool) (Output, err
 		return Output{}, errors.New("admin user delete is not configured")
 	}
 	if in.Environment == "" || in.Site == "" || in.UserLUID == "" {
-		return Output{}, errors.New("admin user delete requires explicit environment, site, and user LUID")
+		return Output{}, &errs.Error{ID: "admin.user.delete.usage", Kind: errs.KindUsage, Operation: "admin.user.delete", Summary: "admin user delete requires explicit environment, site, and user LUID", Retryable: errs.Bool(false), CorrectiveAction: "Provide an exact environment, site, and user LUID.", Validation: []errs.ValidationDetail{{Field: "selector", Code: "required", Message: "admin user delete requires explicit environment, site, and user LUID"}}}
 	}
 	user, err := a.resolver.ResolveUser(ctx, in.UserLUID)
 	if err != nil {
@@ -97,6 +99,13 @@ func (a *Action) Execute(ctx context.Context, in Input, apply bool) (Output, err
 	}
 	result, err := a.deleter.DeleteUser(ctx, user.LUID)
 	if err != nil {
+		if result.Status == "unknown" {
+			luid := result.UserLUID
+			if luid == "" {
+				luid = user.LUID
+			}
+			return Output{}, &errs.Error{ID: "admin.user.delete.outcome_unknown", Kind: errs.KindOperation, Operation: "admin.user.delete", Resource: luid, Environment: in.Environment, Site: in.Site, Summary: "The user delete outcome could not be determined safely.", Cause: err, Retryable: errs.Bool(false), CorrectiveAction: "Inspect the target site and Tableau request before attempting another user delete.", TableauRequestID: result.TableauRequestID}
+		}
 		return Output{}, err
 	}
 	out.Applied = true

@@ -72,7 +72,7 @@ func (c *Client) CreateUser(ctx context.Context, input CreateUserRequest) (User,
 	if strings.TrimSpace(input.Name) == "" || strings.TrimSpace(input.SiteRole) == "" {
 		return User{}, errors.New("user name and site role are required")
 	}
-	payload := userWriteXML{Name: input.Name, SiteRole: input.SiteRole, AuthSetting: input.AuthSetting, IdentityPoolName: input.IdentityPoolName, IdPConfigurationID: input.IdPConfigurationID, Email: input.Email, Language: input.Language, Locale: input.Locale}
+	payload := userWriteXML{Name: optional(input.Name), SiteRole: optional(input.SiteRole), AuthSetting: optional(input.AuthSetting), IdentityPoolName: optional(input.IdentityPoolName), IdPConfigurationID: optional(input.IdPConfigurationID), Email: optional(input.Email), Language: optional(input.Language), Locale: optional(input.Locale)}
 	response, err := c.write(ctx, http.MethodPost, "admin.user.create", []string{"users"}, payload)
 	if err != nil {
 		return User{}, err
@@ -93,7 +93,7 @@ func (c *Client) UpdateUser(ctx context.Context, luid string, input UpdateUserRe
 	if strings.TrimSpace(luid) == "" {
 		return User{}, errors.New("user LUID is required")
 	}
-	payload := userWriteXML{FullName: value(input.FullName), Email: value(input.Email), SiteRole: value(input.SiteRole), AuthSetting: value(input.AuthSetting), IdentityPoolName: value(input.IdentityPoolName), IdPConfigurationID: value(input.IdPConfigurationID), Language: value(input.Language), Locale: value(input.Locale)}
+	payload := userWriteXML{FullName: input.FullName, Email: input.Email, SiteRole: input.SiteRole, AuthSetting: input.AuthSetting, IdentityPoolName: input.IdentityPoolName, IdPConfigurationID: input.IdPConfigurationID, Language: input.Language, Locale: input.Locale}
 	if payload.empty() {
 		return User{}, errors.New("at least one user update field is required")
 	}
@@ -173,7 +173,7 @@ func (c *Client) CreateGroup(ctx context.Context, input CreateGroupRequest) (Gro
 	if strings.TrimSpace(input.Name) == "" {
 		return Group{}, errors.New("group name is required")
 	}
-	payload := groupWriteXML{Name: input.Name, MinimumSiteRole: input.MinimumSiteRole, ExternalUserEnabled: boolValue(input.ExternalUserEnabled)}
+	payload := groupWriteXML{Name: optional(input.Name), MinimumSiteRole: optional(input.MinimumSiteRole), ExternalUserEnabled: boolAttr(input.ExternalUserEnabled)}
 	response, err := c.write(ctx, http.MethodPost, "admin.group.create", []string{"groups"}, payload)
 	if err != nil {
 		return Group{}, err
@@ -194,8 +194,8 @@ func (c *Client) UpdateGroup(ctx context.Context, luid string, input UpdateGroup
 	if strings.TrimSpace(luid) == "" {
 		return Group{}, errors.New("group LUID is required")
 	}
-	payload := groupWriteXML{Name: value(input.Name), MinimumSiteRole: value(input.MinimumSiteRole), ExternalUserEnabled: boolValue(input.ExternalUserEnabled)}
-	if payload.Name == "" && payload.MinimumSiteRole == "" && payload.ExternalUserEnabled == "" {
+	payload := groupWriteXML{Name: input.Name, MinimumSiteRole: input.MinimumSiteRole, ExternalUserEnabled: boolAttr(input.ExternalUserEnabled)}
+	if payload.empty() {
 		return Group{}, errors.New("at least one group update field is required")
 	}
 	response, err := c.write(ctx, http.MethodPut, "admin.group.update", []string{"groups", luid}, payload)
@@ -414,17 +414,23 @@ func first(values ...string) string {
 	}
 	return ""
 }
-func value(item *string) string {
-	if item == nil {
-		return ""
+
+// optional returns a non-nil pointer only for a set create field so unset
+// create fields stay omitted from the request.
+func optional(item string) *string {
+	if item == "" {
+		return nil
 	}
-	return *item
+	return &item
 }
-func boolValue(item *bool) string {
+
+// boolAttr renders an optional Boolean as a serializable string pointer.
+func boolAttr(item *bool) *string {
 	if item == nil {
-		return ""
+		return nil
 	}
-	return strconv.FormatBool(*item)
+	value := strconv.FormatBool(*item)
+	return &value
 }
 func protocol(operation string, response tableau.Response, err error) error {
 	return tableau.NewProtocolError(operation, response, err, true)
@@ -541,27 +547,34 @@ type groupEnvelope struct {
 }
 type userWriteXML struct {
 	XMLName            xml.Name `xml:"user"`
-	Name               string   `xml:"name,attr,omitempty"`
-	FullName           string   `xml:"fullName,attr,omitempty"`
-	Email              string   `xml:"email,attr,omitempty"`
-	SiteRole           string   `xml:"siteRole,attr,omitempty"`
-	AuthSetting        string   `xml:"authSetting,attr,omitempty"`
-	IdentityPoolName   string   `xml:"identityPoolName,attr,omitempty"`
-	IdPConfigurationID string   `xml:"idpConfigurationId,attr,omitempty"`
-	Language           string   `xml:"language,attr,omitempty"`
-	Locale             string   `xml:"locale,attr,omitempty"`
+	Name               *string  `xml:"name,attr,omitempty"`
+	FullName           *string  `xml:"fullName,attr,omitempty"`
+	Email              *string  `xml:"email,attr,omitempty"`
+	SiteRole           *string  `xml:"siteRole,attr,omitempty"`
+	AuthSetting        *string  `xml:"authSetting,attr,omitempty"`
+	IdentityPoolName   *string  `xml:"identityPoolName,attr,omitempty"`
+	IdPConfigurationID *string  `xml:"idpConfigurationId,attr,omitempty"`
+	Language           *string  `xml:"language,attr,omitempty"`
+	Locale             *string  `xml:"locale,attr,omitempty"`
 }
 
+// empty reports whether an update carries no explicitly selected field. A
+// non-nil pointer to "" is an explicit field clear and is therefore not empty.
 func (u userWriteXML) empty() bool {
-	return u.FullName == "" && u.Email == "" && u.SiteRole == "" && u.AuthSetting == "" && u.IdentityPoolName == "" && u.IdPConfigurationID == "" && u.Language == "" && u.Locale == ""
+	return u.FullName == nil && u.Email == nil && u.SiteRole == nil && u.AuthSetting == nil && u.IdentityPoolName == nil && u.IdPConfigurationID == nil && u.Language == nil && u.Locale == nil
 }
 
 type groupWriteXML struct {
 	XMLName             xml.Name `xml:"group"`
-	Name                string   `xml:"name,attr,omitempty"`
-	MinimumSiteRole     string   `xml:"minimumSiteRole,attr,omitempty"`
-	ExternalUserEnabled string   `xml:"externalUserEnabled,attr,omitempty"`
+	Name                *string  `xml:"name,attr,omitempty"`
+	MinimumSiteRole     *string  `xml:"minimumSiteRole,attr,omitempty"`
+	ExternalUserEnabled *string  `xml:"externalUserEnabled,attr,omitempty"`
 }
+
+func (g groupWriteXML) empty() bool {
+	return g.Name == nil && g.MinimumSiteRole == nil && g.ExternalUserEnabled == nil
+}
+
 type idXML struct {
 	ID string `xml:"id,attr"`
 }

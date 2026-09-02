@@ -217,7 +217,7 @@ func (a adminUserCreateAdapter) FindUsers(ctx context.Context, name string) ([]u
 }
 func (a adminUserCreateAdapter) CreateUser(ctx context.Context, input usercreate.Request) (usercreate.User, error) {
 	item, err := a.adapter.CreateUser(ctx, tableauadmin.CreateUserRequest{Name: input.Name, SiteRole: input.SiteRole, AuthSetting: input.AuthSetting, IdentityPoolName: input.IdentityPoolName, IdPConfigurationID: input.IdPConfigurationID, Email: input.Email, Language: input.Language, Locale: input.Locale})
-	return usercreate.User{LUID: item.LUID, Name: item.Name, SiteRole: item.SiteRole, AuthSetting: item.AuthSetting, IdPConfigurationID: item.IdPConfigurationID, RequestID: item.RequestID}, err
+	return usercreate.User{LUID: item.LUID, Name: item.Name, SiteRole: item.SiteRole, AuthSetting: item.AuthSetting, IdPConfigurationID: item.IdPConfigurationID, RequestID: item.RequestID, MutationStatus: item.MutationStatus}, err
 }
 
 type adminUserUpdateAdapter struct{ adapter *resourceadmin.Adapter }
@@ -228,7 +228,7 @@ func (a adminUserUpdateAdapter) ResolveUser(ctx context.Context, luid string) (u
 }
 func (a adminUserUpdateAdapter) UpdateUser(ctx context.Context, luid string, input userupdate.Request) (userupdate.User, error) {
 	item, err := a.adapter.UpdateUser(ctx, luid, tableauadmin.UpdateUserRequest{FullName: input.FullName, Email: input.Email, SiteRole: input.SiteRole, AuthSetting: input.AuthSetting, IdentityPoolName: input.IdentityPoolName, IdPConfigurationID: input.IdPConfigurationID, Language: input.Language, Locale: input.Locale})
-	return userupdate.User{LUID: item.LUID, Name: item.Name, FullName: item.FullName, Email: item.Email, SiteRole: item.SiteRole, AuthSetting: item.AuthSetting, IdentityPoolName: item.IdentityPoolName, IdPConfigurationID: item.IdPConfigurationID, Language: item.Language, Locale: item.Locale, RequestID: item.RequestID}, err
+	return userupdate.User{LUID: item.LUID, Name: item.Name, FullName: item.FullName, Email: item.Email, SiteRole: item.SiteRole, AuthSetting: item.AuthSetting, IdentityPoolName: item.IdentityPoolName, IdPConfigurationID: item.IdPConfigurationID, Language: item.Language, Locale: item.Locale, RequestID: item.RequestID, MutationStatus: item.MutationStatus}, err
 }
 
 type adminUserDeleteAdapter struct{ adapter *resourceadmin.Adapter }
@@ -277,7 +277,7 @@ func (a adminGroupCreateAdapter) FindGroups(ctx context.Context, name string) ([
 }
 func (a adminGroupCreateAdapter) CreateGroup(ctx context.Context, input groupcreate.Request) (groupcreate.Group, error) {
 	item, err := a.adapter.CreateGroup(ctx, tableauadmin.CreateGroupRequest{Name: input.Name, MinimumSiteRole: input.MinimumSiteRole, ExternalUserEnabled: input.ExternalUserEnabled})
-	return groupcreate.Group{LUID: item.LUID, Name: item.Name, RequestID: item.RequestID}, err
+	return groupcreate.Group{LUID: item.LUID, Name: item.Name, RequestID: item.RequestID, MutationStatus: item.MutationStatus}, err
 }
 
 type adminGroupUpdateAdapter struct{ adapter *resourceadmin.Adapter }
@@ -293,7 +293,7 @@ func (a adminGroupUpdateAdapter) ResolveGroup(ctx context.Context, luid string, 
 }
 func (a adminGroupUpdateAdapter) UpdateGroup(ctx context.Context, luid string, input groupupdate.Request) (groupupdate.Group, error) {
 	item, err := a.adapter.UpdateGroup(ctx, luid, tableauadmin.UpdateGroupRequest{Name: input.Name, MinimumSiteRole: input.MinimumSiteRole, ExternalUserEnabled: input.ExternalUserEnabled})
-	return groupupdate.Group{LUID: item.LUID, Name: item.Name, Domain: item.Domain, MinimumSiteRole: item.MinimumSiteRole, ExternalUserEnabled: item.ExternalUserEnabled, RequestID: item.RequestID}, err
+	return groupupdate.Group{LUID: item.LUID, Name: item.Name, Domain: item.Domain, MinimumSiteRole: item.MinimumSiteRole, ExternalUserEnabled: item.ExternalUserEnabled, RequestID: item.RequestID, MutationStatus: item.MutationStatus}, err
 }
 func (a adminGroupUpdateAdapter) AddGroupUser(ctx context.Context, group, user string) (string, error) {
 	item, err := a.adapter.AddGroupUser(ctx, group, user)

@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"reflect"
+
+	"github.com/ahillspace/tadx/internal/errs"
 )
 
 type Input struct{ Environment, Site, GroupLUID string }
@@ -79,7 +81,7 @@ func (a *Action) Execute(ctx context.Context, in Input, apply bool) (Output, err
 		return Output{}, errors.New("admin group delete is not configured")
 	}
 	if in.Environment == "" || in.Site == "" || in.GroupLUID == "" {
-		return Output{}, errors.New("admin group delete requires explicit environment, site, and group LUID")
+		return Output{}, &errs.Error{ID: "admin.group.delete.usage", Kind: errs.KindUsage, Operation: "admin.group.delete", Summary: "admin group delete requires explicit environment, site, and group LUID", Retryable: errs.Bool(false), CorrectiveAction: "Provide an exact environment, site, and group LUID.", Validation: []errs.ValidationDetail{{Field: "selector", Code: "required", Message: "admin group delete requires explicit environment, site, and group LUID"}}}
 	}
 	g, err := a.resolver.ResolveGroup(ctx, in.GroupLUID)
 	if err != nil {
@@ -98,6 +100,13 @@ func (a *Action) Execute(ctx context.Context, in Input, apply bool) (Output, err
 	}
 	result, err := a.deleter.DeleteGroup(ctx, g.LUID)
 	if err != nil {
+		if result.Status == "unknown" {
+			luid := result.GroupLUID
+			if luid == "" {
+				luid = g.LUID
+			}
+			return Output{}, &errs.Error{ID: "admin.group.delete.outcome_unknown", Kind: errs.KindOperation, Operation: "admin.group.delete", Resource: luid, Environment: in.Environment, Site: in.Site, Summary: "The group delete outcome could not be determined safely.", Cause: err, Retryable: errs.Bool(false), CorrectiveAction: "Inspect the target site and Tableau request before attempting another group delete.", TableauRequestID: result.TableauRequestID}
+		}
 		return Output{}, err
 	}
 	out.Applied = true

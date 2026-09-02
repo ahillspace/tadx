@@ -5,6 +5,8 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"io"
+	"mime"
+	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -16,6 +18,33 @@ import (
 	"github.com/ahillspace/tadx/internal/tableau"
 	tableaudatasource "github.com/ahillspace/tadx/internal/tableau/datasource"
 )
+
+// uploadedDatasourceBytes extracts the native payload part from a multipart/mixed publish body.
+func uploadedDatasourceBytes(t *testing.T, request *http.Request) []byte {
+	t.Helper()
+	mediaType, params, err := mime.ParseMediaType(request.Header.Get("Content-Type"))
+	if err != nil || !strings.HasPrefix(mediaType, "multipart/") {
+		t.Fatalf("content type = %q, err = %v", request.Header.Get("Content-Type"), err)
+	}
+	reader := multipart.NewReader(request.Body, params["boundary"])
+	for {
+		part, err := reader.NextPart()
+		if err == io.EOF {
+			return nil
+		}
+		if err != nil {
+			t.Fatalf("read multipart part: %v", err)
+		}
+		disposition := part.Header.Get("Content-Disposition")
+		if strings.Contains(disposition, `name="tableau_datasource"`) {
+			data, err := io.ReadAll(part)
+			if err != nil {
+				t.Fatalf("read payload part: %v", err)
+			}
+			return data
+		}
+	}
+}
 
 func publishFixture(t *testing.T, content string) (string, string) {
 	t.Helper()
@@ -53,6 +82,109 @@ func TestClientPublishesComposedDatasourceWithExactParentReferences(t *testing.T
 	}
 	if result.DatasourceLUID != "ds-new" || result.Status != "succeeded" {
 		t.Fatalf("result = %#v", result)
+	}
+}
+
+func TestClientPublishesExactlyTheFingerprintedBytes(t *testing.T) {
+	content := `<datasource><column name="Sales"/></datasource>`
+	path, fingerprint := publishFixture(t, content)
+	var uploaded []byte
+	server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		if request.Method != http.MethodPost || request.URL.Path != "/api/3.29/sites/site-1/datasources" {
+			t.Fatalf("request = %s %s", request.Method, request.URL.Path)
+		}
+		uploaded = uploadedDatasourceBytes(t, request)
+		writer.WriteHeader(http.StatusCreated)
+		_, _ = io.WriteString(writer, `<tsResponse><datasource id="ds-new" name="Sales"><project id="project-1" name="Analytics"/></datasource></tsResponse>`)
+	}))
+	defer server.Close()
+	client := tableaudatasource.NewClient(tableau.NewTransport(server.Client(), "3.29", nil), session{}, server.URL)
+	prepared, err := client.Prepare(context.Background(), tableaudatasource.PublishRequest{Name: "Sales", ProjectLUID: "project-1", Filename: "Sales.tds", ContentPath: path, ContentSize: int64(len(content)), ExpectedFingerprint: fingerprint, Mode: tableaudatasource.PublishCreate})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := prepared.Commit(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	digest := sha256.Sum256(uploaded)
+	if got := "sha256:" + hex.EncodeToString(digest[:]); got != fingerprint {
+		t.Fatalf("uploaded fingerprint = %s, expected %s (uploaded %q)", got, fingerprint, uploaded)
+	}
+}
+
+func TestClientUploadsFingerprintedSnapshotDespitePostPrepareMutation(t *testing.T) {
+	content := "abcdefgh"
+	path, fingerprint := publishFixture(t, content)
+	var uploaded []byte
+	appended := 0
+	server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		switch {
+		case request.Method == http.MethodPost && request.URL.Path == "/api/3.29/sites/site-1/fileUploads":
+			writer.WriteHeader(http.StatusCreated)
+			_, _ = io.WriteString(writer, `<tsResponse><fileUpload uploadSessionId="upload-1"/></tsResponse>`)
+		case request.Method == http.MethodPut && request.URL.Path == "/api/3.29/sites/site-1/fileUploads/upload-1":
+			appended++
+			mediaType, params, err := mime.ParseMediaType(request.Header.Get("Content-Type"))
+			if err != nil || !strings.HasPrefix(mediaType, "multipart/") {
+				t.Fatalf("append content type = %q, err = %v", request.Header.Get("Content-Type"), err)
+			}
+			reader := multipart.NewReader(request.Body, params["boundary"])
+			for {
+				part, err := reader.NextPart()
+				if err == io.EOF {
+					break
+				}
+				if err != nil {
+					t.Fatalf("append part: %v", err)
+				}
+				if strings.Contains(part.Header.Get("Content-Disposition"), `name="tableau_file"`) {
+					data, err := io.ReadAll(part)
+					if err != nil {
+						t.Fatalf("read append part: %v", err)
+					}
+					uploaded = append(uploaded, data...)
+				}
+			}
+			writer.WriteHeader(http.StatusOK)
+			_, _ = io.WriteString(writer, `<tsResponse><fileUpload uploadSessionId="upload-1"/></tsResponse>`)
+		case request.Method == http.MethodPost && request.URL.Path == "/api/3.29/sites/site-1/datasources":
+			writer.WriteHeader(http.StatusCreated)
+			_, _ = io.WriteString(writer, `<tsResponse><datasource id="ds-new" name="Sales"><project id="project-1" name="Analytics"/></datasource></tsResponse>`)
+		default:
+			t.Fatalf("unexpected request = %s %s", request.Method, request.URL.String())
+		}
+	}))
+	defer server.Close()
+	client := tableaudatasource.NewClient(tableau.NewTransport(server.Client(), "3.29", nil), session{}, server.URL)
+	client.SetUploadThreshold(1)
+	client.SetUploadChunkSize(4)
+	prepared, err := client.Prepare(context.Background(), tableaudatasource.PublishRequest{Name: "Sales", ProjectLUID: "project-1", Filename: "Sales.tds", ContentPath: path, ContentSize: int64(len(content)), ExpectedFingerprint: fingerprint, Mode: tableaudatasource.PublishCreate})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Mutating the managed artifact after Prepare must not change what Commit uploads.
+	if err := os.WriteFile(path, []byte("ZZZZZZZZ"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := prepared.Commit(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if string(uploaded) != content {
+		t.Fatalf("uploaded %q, expected %q", uploaded, content)
+	}
+	digest := sha256.Sum256(uploaded)
+	if got := "sha256:" + hex.EncodeToString(digest[:]); got != fingerprint {
+		t.Fatalf("uploaded fingerprint = %s, expected %s", got, fingerprint)
+	}
+}
+
+func TestClientRejectsDatasourcePublishWhenFingerprintMismatches(t *testing.T) {
+	content := `<datasource/>`
+	path, _ := publishFixture(t, content)
+	client := tableaudatasource.NewClient(tableau.NewTransport(http.DefaultClient, "3.29", nil), session{}, "https://example.invalid")
+	_, err := client.Prepare(context.Background(), tableaudatasource.PublishRequest{Name: "Sales", ProjectLUID: "project-1", Filename: "Sales.tds", ContentPath: path, ContentSize: int64(len(content)), ExpectedFingerprint: "sha256:0000000000000000000000000000000000000000000000000000000000000000", Mode: tableaudatasource.PublishCreate})
+	if err == nil || !strings.Contains(err.Error(), "changed after planning") {
+		t.Fatalf("error = %v, want fingerprint mismatch rejection", err)
 	}
 }
 

@@ -12,8 +12,9 @@ import (
 )
 
 type pullReader struct {
-	lineageErr error
-	calls      []string
+	lineageErr     error
+	partialLineage bool
+	calls          []string
 }
 
 func (r *pullReader) ResolveDatasource(_ context.Context, selector identity.Selector) (datasourcepull.Datasource, error) {
@@ -30,6 +31,9 @@ func (r *pullReader) CaptureLineage(_ context.Context, request datasourcepull.Li
 	r.calls = append(r.calls, "lineage:"+request.RESTLUID)
 	if r.lineageErr != nil {
 		return datasourcepull.Lineage{}, r.lineageErr
+	}
+	if r.partialLineage {
+		return datasourcepull.Lineage{Complete: false, Direction: "both", Depth: 1, Nodes: []datasourcepull.LineageNode{{MetadataID: "metadata-ds-1", Kind: "published_datasource", RESTLUID: "ds-1"}}}, nil
 	}
 	return datasourcepull.Lineage{Complete: true, Direction: "both", Depth: 1, Nodes: []datasourcepull.LineageNode{{MetadataID: "metadata-ds-1", Kind: "published_datasource", RESTLUID: "ds-1"}}}, nil
 }
@@ -93,4 +97,57 @@ type absolutePullWriter struct{}
 
 func (*absolutePullWriter) WriteDatasource(context.Context, datasourcepull.Artifact) (datasourcepull.ArtifactResult, error) {
 	return datasourcepull.ArtifactResult{Path: "artifacts/datasource/Sales", CanonicalPath: `C:\workspace\Sales.tds`}, nil
+}
+
+// pathPullWriter returns a caller-supplied artifact path so path normalization can be exercised directly.
+type pathPullWriter struct{ path string }
+
+func (w *pathPullWriter) WriteDatasource(context.Context, datasourcepull.Artifact) (datasourcepull.ArtifactResult, error) {
+	return datasourcepull.ArtifactResult{Path: w.path}, nil
+}
+
+func TestPullSingleSourcesLineageStatusAndCountsKnown(t *testing.T) {
+	cases := []struct {
+		name       string
+		partial    bool
+		lineageErr error
+		wantStatus string
+		wantKnown  bool
+	}{
+		{name: "complete", wantStatus: "complete", wantKnown: true},
+		{name: "partial without error", partial: true, wantStatus: "incomplete", wantKnown: false},
+		{name: "capture error", lineageErr: errors.New("metadata disabled"), wantStatus: "incomplete", wantKnown: false},
+	}
+	for _, test := range cases {
+		t.Run(test.name, func(t *testing.T) {
+			r := &pullReader{partialLineage: test.partial, lineageErr: test.lineageErr}
+			output, err := datasourcepull.New(r, &pullWriter{}).Execute(context.Background(), datasourcepull.Input{Workspace: "workspace", Selector: identity.Selector{LUID: "ds-1"}})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if output.Artifact.LineageStatus != test.wantStatus || output.Artifact.CountsKnown != test.wantKnown {
+				t.Fatalf("lineage_status = %q, counts_known = %v; want %q, %v", output.Artifact.LineageStatus, output.Artifact.CountsKnown, test.wantStatus, test.wantKnown)
+			}
+			// The two fields must never disagree: incomplete implies counts unknown.
+			if (output.Artifact.LineageStatus == "incomplete") == output.Artifact.CountsKnown {
+				t.Fatalf("lineage_status %q and counts_known %v are contradictory", output.Artifact.LineageStatus, output.Artifact.CountsKnown)
+			}
+		})
+	}
+}
+
+func TestPullNormalizesTraversalWithinWorkspaceAndRejectsEscapes(t *testing.T) {
+	output, err := datasourcepull.New(&pullReader{}, &pathPullWriter{path: "a/b/../c"}).Execute(context.Background(), datasourcepull.Input{Workspace: "workspace", Selector: identity.Selector{LUID: "ds-1"}})
+	if err != nil {
+		t.Fatalf("expected a/b/../c to be accepted, got error %v", err)
+	}
+	if output.Artifact.Path != "a/c" {
+		t.Fatalf("normalized path = %q, want %q", output.Artifact.Path, "a/c")
+	}
+	for _, escaping := range []string{"../x", "a/../../x"} {
+		_, err := datasourcepull.New(&pullReader{}, &pathPullWriter{path: escaping}).Execute(context.Background(), datasourcepull.Input{Workspace: "workspace", Selector: identity.Selector{LUID: "ds-1"}})
+		if err == nil || !strings.Contains(err.Error(), "escaping") {
+			t.Fatalf("path %q: error = %v, want escaping rejection", escaping, err)
+		}
+	}
 }

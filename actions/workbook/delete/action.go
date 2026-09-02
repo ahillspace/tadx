@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 
 	"github.com/ahillspace/tadx/internal/errs"
 	"github.com/ahillspace/tadx/internal/identity"
@@ -37,6 +38,15 @@ func (a *Action) Execute(ctx context.Context, input Input, apply bool) (Output, 
 	}
 	if input.Environment == "" || input.Site == "" {
 		return Output{}, usage("environment", "workbook delete requires an explicit resolved environment and site")
+	}
+	input.Selector.LUID = identity.LUID(strings.TrimSpace(string(input.Selector.LUID)))
+	input.Selector.Name = strings.TrimSpace(input.Selector.Name)
+	input.Selector.ProjectPath = strings.TrimSpace(input.Selector.ProjectPath)
+	if input.Selector.LUID == "" && (input.Selector.Name == "" || input.Selector.ProjectPath == "") {
+		return Output{}, selectorUsage("required", "workbook selection requires a LUID or exact name and project path", "Workbook selection requires a LUID or exact name and project path.")
+	}
+	if input.Selector.LUID != "" && (input.Selector.Name != "" || input.Selector.ProjectPath != "") {
+		return Output{}, selectorUsage("conflict", "a LUID is authoritative and cannot be combined with name or project selectors", "A LUID is authoritative and cannot be combined with name or project selectors.")
 	}
 	target, err := a.resolver.ResolveWorkbook(ctx, input.Selector)
 	if err != nil {
@@ -74,4 +84,8 @@ func operationError(id string, input Input, summary, fallback string, cause erro
 
 func usage(field, message string) error {
 	return &errs.Error{ID: "workbook.delete.usage", Kind: errs.KindUsage, Operation: "workbook.delete", Summary: message, Retryable: errs.Bool(false), CorrectiveAction: "Correct the workbook delete input and review a new preview.", Validation: []errs.ValidationDetail{{Field: field, Code: "required", Message: message}}}
+}
+
+func selectorUsage(code, message, summary string) error {
+	return &errs.Error{ID: "workbook.delete.usage", Kind: errs.KindUsage, Operation: "workbook.delete", Summary: summary, Retryable: errs.Bool(false), CorrectiveAction: "Provide a LUID or an exact name and project path.", Validation: []errs.ValidationDetail{{Field: "selector", Code: code, Message: message}}}
 }

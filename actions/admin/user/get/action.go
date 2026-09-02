@@ -3,6 +3,8 @@ package get
 import (
 	"context"
 	"errors"
+
+	"github.com/ahillspace/tadx/internal/errs"
 )
 
 type Selector struct{ LUID, NameOrEmail string }
@@ -77,7 +79,7 @@ func (a *Action) Execute(ctx context.Context, input Input) (Output, error) {
 		return Output{}, errors.New("admin user get resolver is not configured")
 	}
 	if input.Selector.LUID == "" && input.Selector.NameOrEmail == "" {
-		return Output{}, errors.New("admin user get requires a LUID or exact username/email")
+		return Output{}, &errs.Error{ID: "admin.user.get.usage", Kind: errs.KindUsage, Operation: "admin.user.get", Summary: "admin user get requires a LUID or exact username/email", Retryable: errs.Bool(false), CorrectiveAction: "Provide a user LUID or an exact username or email.", Validation: []errs.ValidationDetail{{Field: "selector", Code: "required", Message: "admin user get requires a LUID or exact username/email"}}}
 	}
 	user, err := a.resolver.ResolveUser(ctx, input.Selector)
 	if err != nil {

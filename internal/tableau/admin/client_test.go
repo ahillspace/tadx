@@ -283,6 +283,28 @@ func TestClientWritesExplicitUsersAndGroups(t *testing.T) {
 	}
 }
 
+func TestClientUpdateUserSendsExplicitFieldClear(t *testing.T) {
+	var body string
+	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		data, _ := io.ReadAll(r.Body)
+		body = string(data)
+		_, _ = io.WriteString(w, `<tsResponse><user id="user-1" name="alex" siteRole="Viewer"/></tsResponse>`)
+	}))
+	defer server.Close()
+	client := admin.NewClient(tableau.NewTransport(server.Client(), "3.29", nil), session{}, server.URL)
+	// A clear-only update (explicit empty email) must be valid and must serialize email="".
+	if _, err := client.UpdateUser(context.Background(), "user-1", admin.UpdateUserRequest{Email: admin.String("")}); err != nil {
+		t.Fatalf("clear-only update returned error: %v", err)
+	}
+	if !strings.Contains(body, `email=""`) {
+		t.Fatalf("update request omitted explicit field clear: %q", body)
+	}
+	// A nil field pointer must still be omitted from the wire.
+	if strings.Contains(body, "fullName") {
+		t.Fatalf("update request included an unset field: %q", body)
+	}
+}
+
 func TestClientNormalizesPermissionFacts(t *testing.T) {
 	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/api/3.29/sites/site-1/workbooks/workbook-1/permissions" {

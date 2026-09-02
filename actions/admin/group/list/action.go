@@ -6,7 +6,8 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
-	"fmt"
+
+	"github.com/ahillspace/tadx/internal/errs"
 )
 
 type Input struct {
@@ -132,17 +133,17 @@ func selectPage(encoded string, requested int, filter string) (int, int, error) 
 			requested = 25
 		}
 		if requested < 1 || requested > 100 {
-			return 0, 0, fmt.Errorf("admin group list limit must be between 1 and 100")
+			return 0, 0, errs.New(errs.KindUsage, "admin group list limit must be between 1 and 100")
 		}
 		return 1, requested, nil
 	}
 	data, err := base64.RawURLEncoding.DecodeString(encoded)
 	var v cursorValue
 	if len(encoded) > 256 || err != nil || json.Unmarshal(data, &v) != nil || v.Version != 1 || v.Page < 2 || v.Size < 1 || v.Size > 100 || v.Filter != filter {
-		return 0, 0, errors.New("invalid admin group list continuation cursor")
+		return 0, 0, errs.New(errs.KindUsage, "invalid admin group list continuation cursor")
 	}
 	if requested != 0 && requested != v.Size {
-		return 0, 0, errors.New("admin group list limit must match the continuation cursor")
+		return 0, 0, errs.New(errs.KindUsage, "admin group list limit must match the continuation cursor")
 	}
 	return v.Page, v.Size, nil
 }

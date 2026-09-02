@@ -3,6 +3,8 @@ package create
 import (
 	"context"
 	"errors"
+
+	"github.com/ahillspace/tadx/internal/errs"
 )
 
 type Input struct {
@@ -10,9 +12,10 @@ type Input struct {
 	ExternalUserEnabled                      *bool
 }
 type Group struct {
-	LUID      string `json:"luid"`
-	Name      string `json:"name"`
-	RequestID string `json:"-"`
+	LUID           string `json:"luid"`
+	Name           string `json:"name"`
+	RequestID      string `json:"-"`
+	MutationStatus string `json:"-"`
 }
 type Request struct {
 	Name, MinimumSiteRole string
@@ -85,7 +88,7 @@ func (a *Action) Execute(ctx context.Context, in Input, apply bool) (Output, err
 		return Output{}, errors.New("admin group create is not configured")
 	}
 	if in.Environment == "" || in.Site == "" || in.Name == "" {
-		return Output{}, errors.New("admin group create requires explicit environment, site, and name")
+		return Output{}, &errs.Error{ID: "admin.group.create.usage", Kind: errs.KindUsage, Operation: "admin.group.create", Summary: "admin group create requires explicit environment, site, and name", Retryable: errs.Bool(false), CorrectiveAction: "Provide an exact environment, site, and group name.", Validation: []errs.ValidationDetail{{Field: "selector", Code: "required", Message: "admin group create requires explicit environment, site, and name"}}}
 	}
 	found, err := a.finder.FindGroups(ctx, in.Name)
 	if err != nil {
@@ -107,6 +110,9 @@ func (a *Action) Execute(ctx context.Context, in Input, apply bool) (Output, err
 	}
 	g, err := a.creator.CreateGroup(ctx, Request{Name: in.Name, MinimumSiteRole: in.MinimumSiteRole, ExternalUserEnabled: in.ExternalUserEnabled})
 	if err != nil {
+		if g.MutationStatus == "unknown" {
+			return Output{}, &errs.Error{ID: "admin.group.create.outcome_unknown", Kind: errs.KindOperation, Operation: "admin.group.create", Resource: g.LUID, Environment: in.Environment, Site: in.Site, Summary: "The group create outcome could not be determined safely.", Cause: err, Retryable: errs.Bool(false), CorrectiveAction: "Inspect the target site and Tableau request before attempting another group create.", TableauRequestID: g.RequestID}
+		}
 		return Output{}, err
 	}
 	out.Applied = true

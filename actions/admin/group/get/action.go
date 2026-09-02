@@ -3,6 +3,8 @@ package get
 import (
 	"context"
 	"errors"
+
+	"github.com/ahillspace/tadx/internal/errs"
 )
 
 const memberLimit = 100
@@ -85,7 +87,7 @@ func (a *Action) Execute(ctx context.Context, in Input) (Output, error) {
 		return Output{}, errors.New("admin group get resolver is not configured")
 	}
 	if in.Selector.LUID == "" && in.Selector.Name == "" {
-		return Output{}, errors.New("admin group get requires a LUID or exact name")
+		return Output{}, &errs.Error{ID: "admin.group.get.usage", Kind: errs.KindUsage, Operation: "admin.group.get", Summary: "admin group get requires a LUID or exact name", Retryable: errs.Bool(false), CorrectiveAction: "Provide a group LUID or an exact group name.", Validation: []errs.ValidationDetail{{Field: "selector", Code: "required", Message: "admin group get requires a LUID or exact name"}}}
 	}
 	g, err := a.resolver.ResolveGroup(ctx, in.Selector, in.IncludeMembers)
 	if err != nil {

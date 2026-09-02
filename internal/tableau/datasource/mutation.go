@@ -72,25 +72,19 @@ func (c *Client) Prepare(ctx context.Context, input PublishRequest) (PreparedPub
 			return nil, errors.New("datasource replace requires Tableau REST API 3.25 or later")
 		}
 	}
-	file, err := os.Open(input.ContentPath)
+	snapshot, err := openDatasourcePublishSnapshot(ctx, input)
 	if err != nil {
-		return nil, fmt.Errorf("open datasource publish payload: %w", err)
-	}
-	defer file.Close()
-	info, err := file.Stat()
-	if err != nil || !info.Mode().IsRegular() || info.Size() != input.ContentSize {
-		return nil, errors.New("datasource publish payload changed after planning")
-	}
-	digest := sha256.New()
-	if _, err := io.Copy(digest, file); err != nil {
 		return nil, err
 	}
-	if "sha256:"+hex.EncodeToString(digest.Sum(nil)) != input.ExpectedFingerprint {
-		return nil, errors.New("datasource publish payload changed after planning")
+	closed := false
+	closeSnapshot := func() error {
+		if closed {
+			return nil
+		}
+		closed = true
+		return snapshot.close()
 	}
-	if _, err := file.Seek(0, io.SeekStart); err != nil {
-		return nil, err
-	}
+	defer func() { _ = closeSnapshot() }()
 	query := url.Values{}
 	if input.Mode != PublishCreate {
 		query.Set(string(input.Mode), "true")
@@ -101,27 +95,107 @@ func (c *Client) Prepare(ctx context.Context, input PublishRequest) (PreparedPub
 	var body []byte
 	var contentType string
 	if input.ContentSize <= c.uploadThreshold {
-		content, err := io.ReadAll(file)
+		content, err := io.ReadAll(snapshot.reader)
 		if err != nil {
-			return nil, err
+			return nil, errors.Join(err, closeSnapshot())
 		}
 		body, contentType, err = datasourcePublishBody(input, content, true)
 		if err != nil {
-			return nil, err
+			return nil, errors.Join(err, closeSnapshot())
 		}
 	} else {
-		session, err := c.uploadDatasource(ctx, input.Filename, file, input.ContentSize)
+		session, err := c.uploadDatasource(ctx, input.Filename, snapshot.reader, input.ContentSize)
 		if err != nil {
-			return nil, err
+			return nil, errors.Join(err, closeSnapshot())
 		}
 		query.Set("uploadSessionId", session)
 		query.Set("datasourceType", fileType)
 		body, contentType, err = datasourcePublishBody(input, nil, false)
 		if err != nil {
-			return nil, err
+			return nil, errors.Join(err, closeSnapshot())
 		}
 	}
+	// The full request body is now materialized in memory, so the snapshot can be released.
+	if err := closeSnapshot(); err != nil {
+		return nil, fmt.Errorf("remove datasource publish snapshot: %w", err)
+	}
 	return &preparedDatasourcePublish{client: c, query: query, body: body, contentType: contentType, name: input.Name, project: input.ProjectLUID, asJob: input.AsJob}, nil
+}
+
+// datasourcePublishSnapshot is an immutable, fingerprint-verified copy of the publish payload.
+type datasourcePublishSnapshot struct {
+	reader io.ReadSeeker
+	size   int64
+	close  func() error
+}
+
+// openDatasourcePublishSnapshot copies the managed artifact once into a temp snapshot, hashing it in
+// the same pass, and verifies the snapshot against the planned fingerprint. All subsequent reads
+// (inline body or chunked upload) come from the snapshot, so the bytes published are exactly the
+// bytes fingerprinted, even if the source file is mutated after planning.
+func openDatasourcePublishSnapshot(ctx context.Context, input PublishRequest) (datasourcePublishSnapshot, error) {
+	source, err := os.Open(input.ContentPath)
+	if err != nil {
+		return datasourcePublishSnapshot{}, fmt.Errorf("open datasource publish payload: %w", err)
+	}
+	info, err := source.Stat()
+	if err != nil || !info.Mode().IsRegular() || info.Size() != input.ContentSize {
+		_ = source.Close()
+		return datasourcePublishSnapshot{}, errors.New("datasource publish payload changed after planning")
+	}
+	snapshot, err := os.CreateTemp(filepath.Dir(input.ContentPath), ".tadx-datasource-publish-snapshot-*")
+	if err != nil {
+		_ = source.Close()
+		return datasourcePublishSnapshot{}, fmt.Errorf("create datasource publish snapshot: %w", err)
+	}
+	cleanup := func() error {
+		return errors.Join(snapshot.Close(), os.Remove(snapshot.Name()))
+	}
+	fingerprint, copied, err := fingerprintCopy(ctx, snapshot, source)
+	sourceCloseErr := source.Close()
+	if err != nil {
+		return datasourcePublishSnapshot{}, errors.Join(fmt.Errorf("snapshot datasource publish payload: %w", err), sourceCloseErr, cleanup())
+	}
+	if sourceCloseErr != nil {
+		return datasourcePublishSnapshot{}, errors.Join(fmt.Errorf("close datasource publish payload: %w", sourceCloseErr), cleanup())
+	}
+	if copied != input.ContentSize || fingerprint != input.ExpectedFingerprint {
+		return datasourcePublishSnapshot{}, errors.Join(errors.New("datasource publish payload changed after planning"), cleanup())
+	}
+	if _, err := snapshot.Seek(0, io.SeekStart); err != nil {
+		return datasourcePublishSnapshot{}, errors.Join(fmt.Errorf("rewind datasource publish snapshot: %w", err), cleanup())
+	}
+	return datasourcePublishSnapshot{reader: snapshot, size: copied, close: cleanup}, nil
+}
+
+// fingerprintCopy streams source into destination once, returning the sha256 fingerprint and byte count.
+func fingerprintCopy(ctx context.Context, destination io.Writer, source io.Reader) (string, int64, error) {
+	hash := sha256.New()
+	buffer := make([]byte, 1024*1024)
+	var total int64
+	for {
+		if err := ctx.Err(); err != nil {
+			return "", total, err
+		}
+		count, readErr := source.Read(buffer)
+		if count > 0 {
+			written, writeErr := destination.Write(buffer[:count])
+			if writeErr != nil {
+				return "", total, writeErr
+			}
+			if written != count {
+				return "", total, io.ErrShortWrite
+			}
+			_, _ = hash.Write(buffer[:count])
+			total += int64(count)
+		}
+		if errors.Is(readErr, io.EOF) {
+			return "sha256:" + hex.EncodeToString(hash.Sum(nil)), total, nil
+		}
+		if readErr != nil {
+			return "", total, readErr
+		}
+	}
 }
 
 func (c *Client) Delete(ctx context.Context, luid string) (MutationResult, error) {

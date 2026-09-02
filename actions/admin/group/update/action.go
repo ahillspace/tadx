@@ -30,6 +30,7 @@ type Group struct {
 	ExternalUserEnabled *bool    `json:"external_user_enabled,omitempty"`
 	Members             []Member `json:"members,omitempty"`
 	RequestID           string   `json:"-"`
+	MutationStatus      string   `json:"-"`
 }
 type Request struct {
 	Name, MinimumSiteRole *string
@@ -142,10 +143,10 @@ func (a *Action) Execute(ctx context.Context, in Input, apply bool) (Output, err
 		return Output{}, errors.New("admin group update is not configured")
 	}
 	if in.Environment == "" || in.Site == "" || in.GroupLUID == "" {
-		return Output{}, errors.New("admin group update requires explicit environment, site, and group LUID")
+		return Output{}, usage("selector", "admin group update requires explicit environment, site, and group LUID")
 	}
 	if in.Name == nil && in.MinimumSiteRole == nil && in.ExternalUserEnabled == nil && !in.MembershipSet {
-		return Output{}, errors.New("admin group update requires metadata or an explicit desired membership")
+		return Output{}, usage("fields", "admin group update requires metadata or an explicit desired membership")
 	}
 	desired, err := normalizeDesired(in.DesiredMemberLUIDs, in.MembershipSet)
 	if err != nil {
@@ -185,6 +186,9 @@ func (a *Action) Execute(ctx context.Context, in Input, apply bool) (Output, err
 	if len(changes) > 0 {
 		updated, err := a.updater.UpdateGroup(ctx, group.LUID, Request{in.Name, in.MinimumSiteRole, in.ExternalUserEnabled})
 		if err != nil {
+			if updated.MutationStatus == "unknown" {
+				return Output{}, outcomeUnknown(in, group.LUID, updated.RequestID, err)
+			}
 			return Output{}, err
 		}
 		if updated.RequestID != "" {
@@ -224,6 +228,12 @@ func (a *Action) Execute(ctx context.Context, in Input, apply bool) (Output, err
 	return out, nil
 }
 
+func usage(field, message string) error {
+	return &errs.Error{ID: "admin.group.update.usage", Kind: errs.KindUsage, Operation: "admin.group.update", Summary: message, Retryable: errs.Bool(false), CorrectiveAction: "Correct the group update input and review a new preview.", Validation: []errs.ValidationDetail{{Field: field, Code: "invalid", Message: message}}}
+}
+func outcomeUnknown(in Input, luid, requestID string, cause error) error {
+	return &errs.Error{ID: "admin.group.update.outcome_unknown", Kind: errs.KindOperation, Operation: "admin.group.update", Resource: luid, Environment: in.Environment, Site: in.Site, Summary: "The group update outcome could not be determined safely.", Cause: cause, Retryable: errs.Bool(false), CorrectiveAction: "Inspect the target site and Tableau request before attempting another group update.", TableauRequestID: requestID}
+}
 func partialError(input Input, groupLUID string, completed []string, failed string, cause error) error {
 	return &errs.Error{ID: "admin.group.update.partial", Kind: errs.KindOperation, Operation: "admin.group.update", Resource: groupLUID, Environment: input.Environment, Site: input.Site, Summary: "Group update stopped after a partial remote mutation.", Cause: cause, Retryable: errs.Bool(false), CorrectiveAction: "Re-read the exact group membership, then review a new update plan before applying again.", Completed: append([]string(nil), completed...), Failed: failed, TableauRequestID: errs.TableauRequestID(cause)}
 }
@@ -232,16 +242,16 @@ func normalizeDesired(values []string, enabled bool) ([]string, error) {
 		return nil, nil
 	}
 	if len(values) > maxDesiredMembers {
-		return nil, errors.New("desired group membership exceeds the 1000-member action bound")
+		return nil, usage("members", "desired group membership exceeds the 1000-member action bound")
 	}
 	seen := map[string]bool{}
 	result := append([]string(nil), values...)
 	for _, v := range result {
 		if v == "" {
-			return nil, errors.New("desired group member LUID cannot be empty")
+			return nil, usage("members", "desired group member LUID cannot be empty")
 		}
 		if seen[v] {
-			return nil, errors.New("desired group membership contains a duplicate LUID")
+			return nil, usage("members", "desired group membership contains a duplicate LUID")
 		}
 		seen[v] = true
 	}

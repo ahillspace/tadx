@@ -3,6 +3,7 @@ package pull
 import (
 	"context"
 	"errors"
+	"path"
 	"strings"
 
 	"github.com/ahillspace/tadx/internal/errs"
@@ -62,15 +63,15 @@ func (a *Action) Execute(ctx context.Context, input Input) (Output, error) {
 	if err := normalizeArtifactPaths(&result); err != nil {
 		return Output{}, err
 	}
-	if result.LineageStatus == "" {
-		if lineage.Complete {
-			result.LineageStatus = "complete"
-		} else {
-			result.LineageStatus = "incomplete"
-		}
+	// Single-source lineage completeness so LineageStatus and CountsKnown can never disagree.
+	// lineage.Complete is already forced false on any capture error above, so a partial
+	// capture (no error, Complete == false) reports incomplete with counts unknown.
+	result.LineageStatus = "incomplete"
+	if lineage.Complete {
+		result.LineageStatus = "complete"
 	}
 	result.NodeCount, result.EdgeCount = len(lineage.Nodes), len(lineage.Edges)
-	result.CountsKnown = lineageErr == nil
+	result.CountsKnown = lineage.Complete
 	warnings = append(warnings, result.Warnings...)
 	return Output{Status: "pulled", Datasource: item, Artifact: result, Warnings: warnings, RequestID: download.TableauRequestID, Help: []string{"tadx content datasource publish --artifact " + result.Path}}, nil
 }
@@ -86,7 +87,10 @@ func normalizeArtifactPaths(result *ArtifactResult) error {
 		if pathspec.IsAbs(*candidate.value) {
 			return &errs.Error{ID: "datasource.pull.normalize", Kind: errs.KindOperation, Operation: "datasource.pull", Summary: "Datasource artifact path normalization failed.", Cause: errors.New("datasource artifact writer returned an absolute " + candidate.name), Retryable: errs.Bool(false), CorrectiveAction: "Report this datasource artifact writer defect; artifact paths must be workspace-relative."}
 		}
-		normalized := strings.ReplaceAll(*candidate.value, "\\", "/")
+		// Clean with the slash-based path package first so a valid path like a/b/../c
+		// collapses to a/c, matching the app-layer filepath.Clean+Rel containment check,
+		// while a genuine escape (../x or a/../../x) still surfaces a leading ".." segment.
+		normalized := path.Clean(strings.ReplaceAll(*candidate.value, "\\", "/"))
 		for _, segment := range strings.Split(normalized, "/") {
 			if segment == ".." {
 				return &errs.Error{ID: "datasource.pull.normalize", Kind: errs.KindOperation, Operation: "datasource.pull", Summary: "Datasource artifact path normalization failed.", Cause: errors.New("datasource artifact writer returned an escaping " + candidate.name), Retryable: errs.Bool(false), CorrectiveAction: "Report this datasource artifact writer defect; artifact paths must stay within the workspace."}

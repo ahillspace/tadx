@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"sort"
+
+	"github.com/ahillspace/tadx/internal/errs"
 )
 
 type Input struct{ Environment, Site, Name, SiteRole, AuthSetting, IdentityPoolName, IdPConfigurationID, Email, Language, Locale string }
@@ -14,6 +16,7 @@ type User struct {
 	AuthSetting        string `json:"auth_setting,omitempty"`
 	IdPConfigurationID string `json:"idp_configuration_id,omitempty"`
 	RequestID          string `json:"-"`
+	MutationStatus     string `json:"-"`
 }
 type Request struct{ Name, SiteRole, AuthSetting, IdentityPoolName, IdPConfigurationID, Email, Language, Locale string }
 type Plan struct {
@@ -25,6 +28,10 @@ type Plan struct {
 	SiteRole           string `json:"site_role"`
 	AuthSetting        string `json:"auth_setting,omitempty"`
 	IdPConfigurationID string `json:"idp_configuration_id,omitempty"`
+	IdentityPoolName   string `json:"identity_pool_name,omitempty"`
+	Email              string `json:"email,omitempty"`
+	Language           string `json:"language,omitempty"`
+	Locale             string `json:"locale,omitempty"`
 }
 type Result struct {
 	Status           string `json:"status"`
@@ -77,10 +84,10 @@ func (a *Action) Execute(ctx context.Context, in Input, apply bool) (Output, err
 		return Output{}, errors.New("admin user create is not configured")
 	}
 	if in.Environment == "" || in.Site == "" || in.Name == "" || in.SiteRole == "" {
-		return Output{}, errors.New("admin user create requires explicit environment, site, name, and site role")
+		return Output{}, usage("selector", "admin user create requires explicit environment, site, name, and site role")
 	}
 	if (in.AuthSetting == "") == (in.IdPConfigurationID == "") {
-		return Output{}, errors.New("admin user create requires exactly one explicit auth setting or IdP configuration ID")
+		return Output{}, usage("auth_setting", "admin user create requires exactly one explicit auth setting or IdP configuration ID")
 	}
 	found, err := a.finder.FindUsers(ctx, in.Name)
 	if err != nil {
@@ -90,7 +97,7 @@ func (a *Action) Execute(ctx context.Context, in Input, apply bool) (Output, err
 	if len(found) > 0 {
 		return Output{}, errors.New("an exact user name or email collision exists")
 	}
-	plan := Plan{Mode: "preview", Operation: "admin.user.create", Environment: in.Environment, Site: in.Site, Name: in.Name, SiteRole: in.SiteRole, AuthSetting: in.AuthSetting, IdPConfigurationID: in.IdPConfigurationID}
+	plan := Plan{Mode: "preview", Operation: "admin.user.create", Environment: in.Environment, Site: in.Site, Name: in.Name, SiteRole: in.SiteRole, AuthSetting: in.AuthSetting, IdPConfigurationID: in.IdPConfigurationID, IdentityPoolName: in.IdentityPoolName, Email: in.Email, Language: in.Language, Locale: in.Locale}
 	out := Output{Plan: plan, Help: []string{"Add --apply to create this exact user."}}
 	if !apply {
 		return out, nil
@@ -104,10 +111,20 @@ func (a *Action) Execute(ctx context.Context, in Input, apply bool) (Output, err
 	}
 	user, err := a.creator.CreateUser(ctx, Request{Name: in.Name, SiteRole: in.SiteRole, AuthSetting: in.AuthSetting, IdentityPoolName: in.IdentityPoolName, IdPConfigurationID: in.IdPConfigurationID, Email: in.Email, Language: in.Language, Locale: in.Locale})
 	if err != nil {
+		if user.MutationStatus == "unknown" {
+			return Output{}, outcomeUnknown(in, user.LUID, user.RequestID, err)
+		}
 		return Output{}, err
 	}
 	out.Applied = true
 	out.Result = &Result{Status: "created", User: user, TableauRequestID: user.RequestID}
 	out.Help = []string{"tadx admin user get --id " + user.LUID}
 	return out, nil
+}
+
+func usage(field, message string) error {
+	return &errs.Error{ID: "admin.user.create.usage", Kind: errs.KindUsage, Operation: "admin.user.create", Summary: message, Retryable: errs.Bool(false), CorrectiveAction: "Correct the user create input and review a new preview.", Validation: []errs.ValidationDetail{{Field: field, Code: "invalid", Message: message}}}
+}
+func outcomeUnknown(in Input, luid, requestID string, cause error) error {
+	return &errs.Error{ID: "admin.user.create.outcome_unknown", Kind: errs.KindOperation, Operation: "admin.user.create", Resource: luid, Environment: in.Environment, Site: in.Site, Summary: "The user create outcome could not be determined safely.", Cause: cause, Retryable: errs.Bool(false), CorrectiveAction: "Inspect the target site and Tableau request before attempting another user create.", TableauRequestID: requestID}
 }

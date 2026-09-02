@@ -84,7 +84,7 @@ func (a *Action) Execute(ctx context.Context, in Input) (Output, error) {
 	if err != nil {
 		return Output{}, err
 	}
-	filtered := p.Rules[:0]
+	filtered := make([]Rule, 0, len(p.Rules))
 	for _, rule := range p.Rules {
 		if in.PrincipalType != "" && rule.PrincipalType != in.PrincipalType {
 			continue
