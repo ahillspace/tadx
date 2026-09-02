@@ -189,7 +189,7 @@ func localImportAllowed(file, imported string) bool {
 	case layerResource:
 		return matchesExact(imported, "internal/identity") || matchesPrefix(imported, "internal/tableau")
 	case layerTableau:
-		return matchesExact(imported, "internal/auth", "internal/tableau")
+		return matchesExact(imported, "internal/auth", "internal/tableau", "internal/tableau/catalog/tabxml")
 	case layerFoundation:
 		if hasPathPrefix(file, "internal/output") {
 			return matchesExact(imported, "internal/errs", "internal/toon")

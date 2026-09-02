@@ -59,9 +59,18 @@ func TestCatalogMountsRefreshGetAndStatusWithBoundedInputs(t *testing.T) {
 	if err := command.Execute(); err != nil {
 		t.Fatal(err)
 	}
-	wantScopes := []string{"projects", "workbooks", "datasources", "flows"}
+	var wantScopes []string
 	if len(recorded.refreshInputs) != 1 || !reflect.DeepEqual(recorded.refreshInputs[0].Scopes, wantScopes) {
 		t.Fatalf("refresh inputs = %#v", recorded.refreshInputs)
+	}
+
+	command.SetArgs([]string{"refresh", "--environment", "production", "--scope", "workbooks", "--scope", "permissions"})
+	if err := command.Execute(); err != nil {
+		t.Fatal(err)
+	}
+	wantScopes = []string{"workbooks", "permissions"}
+	if len(recorded.refreshInputs) != 2 || !reflect.DeepEqual(recorded.refreshInputs[1].Scopes, wantScopes) {
+		t.Fatalf("scoped refresh inputs = %#v", recorded.refreshInputs)
 	}
 
 	command.SetArgs([]string{"get", "--environment", "production", "--site", "marketing", "--kind", "workbook", "--id", "wb-1"})

@@ -4,8 +4,17 @@ generation:
   environment: production
   site: marketing
   generated_at: "2026-09-01T12:00:00Z"
-  records: 1
+  records: 3
   source: tableau-rest
   scopes[1]: workbooks
-path: catalog/production.json
+  implicit_scopes[1]: projects
+  scope_counts[2]{scope,records}:
+    projects,1
+    workbooks,2
+path: catalog/catalog.sqlite
+warnings[1]: one workbook permission request was forbidden
+diagnostics:
+  requests: 2
+  failed_requests: 0
+  duration: 1.211s
 help[1]: tadx catalog status --environment production

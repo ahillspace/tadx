@@ -16,6 +16,7 @@ import (
 
 	"github.com/ahillspace/tadx/internal/app"
 	"github.com/ahillspace/tadx/internal/artifact"
+	corecatalog "github.com/ahillspace/tadx/internal/catalog"
 	workspacecore "github.com/ahillspace/tadx/internal/workspace"
 )
 
@@ -259,15 +260,15 @@ func TestWorkbookPullAcquiresDirectPublishedDatasourceArtifactsThroughCLI(t *tes
 
 func TestPhaseOneCatalogSearchHappyPathThroughCLI(t *testing.T) {
 	configPath := writePhaseOneConfigWithSite(t, "https://tableau.example.com", "marketing")
-	generation := `{"id":"generation-1","environment":"production","site":"marketing","generated_at":"2026-08-30T12:00:00Z","complete":true,"records":[{"luid":"wb-1","kind":"workbook","name":"Finance","project_path":"Ops","owner":"alice"}]}`
-	catalogDir := filepath.Join(filepath.Dir(configPath), "catalog")
-	if err := os.MkdirAll(catalogDir, 0o700); err != nil {
+	now := time.Date(2026, 8, 30, 12, 0, 0, 0, time.UTC)
+	store := corecatalog.NewStore(filepath.Dir(configPath), func() time.Time { return now })
+	if _, err := store.Replace(context.Background(), corecatalog.Generation{
+		ID: "generation-1", Environment: "production", Site: "marketing", GeneratedAt: now, Complete: true, Source: "test-fixture", Scopes: []string{"workbooks"},
+		Records: []corecatalog.Record{{LUID: "wb-1", Kind: "workbook", Name: "Finance", ProjectPath: "Ops", Owner: "user-1"}},
+	}); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(catalogDir, "production.json"), []byte(generation), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	options := app.Options{ConfigPath: configPath, Now: func() time.Time { return time.Date(2026, 8, 30, 12, 0, 0, 0, time.UTC) }}
+	options := app.Options{ConfigPath: configPath, Now: func() time.Time { return now }}
 
 	var stdout strings.Builder
 	if exit := app.Run(context.Background(), []string{"catalog", "search", "--environment", "production"}, &stdout, options); exit != 0 {

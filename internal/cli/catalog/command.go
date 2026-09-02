@@ -105,7 +105,7 @@ func New(deps Dependencies) *cobra.Command {
 }
 
 func newRefreshCommand(deps Dependencies) *cobra.Command {
-	input := catalogrefresh.Input{Scopes: []string{"projects", "workbooks", "datasources", "flows"}}
+	input := catalogrefresh.Input{}
 	use := deps.RefreshUse
 	if use == "" {
 		use = "refresh"
@@ -126,7 +126,7 @@ func newRefreshCommand(deps Dependencies) *cobra.Command {
 	}
 	command.Flags().StringVar(&input.Environment, "environment", "", "exact environment alias")
 	command.Flags().StringVar(&input.Site, "site", "", "exact source site content URL")
-	command.Flags().StringSliceVar(&input.Scopes, "scope", input.Scopes, "inventory scopes: projects, workbooks, datasources, flows")
+	command.Flags().StringSliceVar(&input.Scopes, "scope", nil, "inventory scope; repeat for users, groups, projects, workbooks, datasources, flows, views, or permissions; omit for all")
 	return command
 }
 

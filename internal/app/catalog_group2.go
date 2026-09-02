@@ -4,369 +4,178 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math"
+	"net/http"
+	"net/url"
 	"path/filepath"
-	"reflect"
-	"sort"
+	"slices"
 	"strings"
 	"time"
 
 	catalogget "github.com/ahillspace/tadx/actions/catalog/get"
 	catalogrefresh "github.com/ahillspace/tadx/actions/catalog/refresh"
 	catalogstatus "github.com/ahillspace/tadx/actions/catalog/status"
+	coreauth "github.com/ahillspace/tadx/internal/auth"
 	corecatalog "github.com/ahillspace/tadx/internal/catalog"
 	"github.com/ahillspace/tadx/internal/config"
-	resourcedatasource "github.com/ahillspace/tadx/internal/resources/datasource"
-	resourceflow "github.com/ahillspace/tadx/internal/resources/flow"
-	resourceproject "github.com/ahillspace/tadx/internal/resources/project"
-	resourceworkbook "github.com/ahillspace/tadx/internal/resources/workbook"
-	tableaudatasource "github.com/ahillspace/tadx/internal/tableau/datasource"
-	tableauflow "github.com/ahillspace/tadx/internal/tableau/flow"
-	tableauworkbook "github.com/ahillspace/tadx/internal/tableau/workbook"
+	"github.com/ahillspace/tadx/internal/tableau"
+	tableaucatalog "github.com/ahillspace/tadx/internal/tableau/catalog"
 )
 
-const (
-	catalogInventoryPageSize = 1000
-	catalogInventoryMaxPages = 1000
-)
+const catalogSourceName = "tableau-rest"
 
-type catalogProjectPager interface {
-	ListProjects(context.Context, resourceproject.ListRequest) (resourceproject.Page, error)
+type catalogRunner interface {
+	Run(context.Context, tableaucatalog.RunRequest, tableaucatalog.BatchWriter) (tableaucatalog.Result, error)
 }
 
-type catalogWorkbookPager interface {
-	ListWorkbooks(context.Context, tableauworkbook.ListRequest) (resourceworkbook.Page, error)
-}
+type catalogExecutorFactory func(context.Context, string, string) (tableaucatalog.Executor, error)
+type catalogRunnerFactory func(tableaucatalog.Executor) (catalogRunner, error)
 
-type catalogDatasourcePager interface {
-	ListDatasources(context.Context, tableaudatasource.ListRequest) (resourcedatasource.Page, error)
-}
-
-type catalogFlowPager interface {
-	ListFlows(context.Context, tableauflow.ListRequest) (resourceflow.Page, error)
-}
-
-type catalogInventory struct {
-	projects    catalogProjectPager
-	workbooks   catalogWorkbookPager
-	datasources catalogDatasourcePager
-	flows       catalogFlowPager
+type catalogHydrator struct {
+	store       *corecatalog.Store
 	now         func() time.Time
+	executorFor catalogExecutorFactory
+	newRunner   catalogRunnerFactory
 }
 
-type catalogRemoteInventory struct {
-	remote *remoteContentCommands
-	now    func() time.Time
-}
-
-func (i catalogRemoteInventory) Read(ctx context.Context, input catalogrefresh.Input) (catalogrefresh.Snapshot, error) {
-	if i.remote == nil {
-		return catalogrefresh.Snapshot{}, errors.New("catalog remote inventory is not configured")
+func (h catalogHydrator) Hydrate(ctx context.Context, input catalogrefresh.HydrationRequest) (catalogrefresh.HydrationResult, error) {
+	if h.store == nil || h.executorFor == nil || h.newRunner == nil {
+		return catalogrefresh.HydrationResult{}, errors.New("catalog hydrator is not configured")
 	}
-	connection, err := i.remote.connect(ctx, input.Environment, false)
+	requested, err := catalogScopes(input.RequestedScopes)
 	if err != nil {
-		return catalogrefresh.Snapshot{}, remoteSetupError("catalog.refresh", input.Environment, input.Site, connection.environment, err)
+		return catalogrefresh.HydrationResult{}, err
 	}
-	if connection.environment.Alias != input.Environment || connection.environment.SiteContentURL != input.Site {
-		return catalogrefresh.Snapshot{}, errors.New("catalog refresh resolved a different remote source")
-	}
-	return (catalogInventory{projects: connection.projects, workbooks: connection.workbooks, datasources: connection.datasources, flows: connection.flows, now: i.now}).Read(ctx, input)
-}
-
-func (i catalogInventory) Read(ctx context.Context, input catalogrefresh.Input) (catalogrefresh.Snapshot, error) {
-	selected := make(map[string]bool, len(input.Scopes))
-	for _, scope := range input.Scopes {
-		selected[scope] = true
-	}
-	needProjects := selected["projects"] || selected["workbooks"] || selected["datasources"] || selected["flows"]
-	var projects []resourceproject.Project
-	var err error
-	if needProjects {
-		projects, err = i.readProjects(ctx)
-		if err != nil {
-			return catalogrefresh.Snapshot{}, err
-		}
-	}
-	paths, err := catalogProjectPaths(projects)
+	plan, err := tableaucatalog.PlanScopes(requested)
 	if err != nil {
-		return catalogrefresh.Snapshot{}, err
+		return catalogrefresh.HydrationResult{}, err
 	}
-	records := make([]catalogrefresh.Record, 0)
-	if selected["projects"] {
-		for _, item := range projects {
-			records = append(records, catalogrefresh.Record{LUID: item.LUID, Kind: "project", Name: item.Name, ProjectPath: paths[item.LUID], Owner: item.OwnerLUID})
-		}
+	if !slices.Equal(scopeStrings(plan.Requested), input.RequestedScopes) || !slices.Equal(scopeStrings(plan.Implicit), input.ImplicitScopes) {
+		return catalogrefresh.HydrationResult{}, errors.New("catalog action and collector scope plans differ")
 	}
-	if selected["workbooks"] {
-		items, readErr := i.readWorkbooks(ctx)
-		if readErr != nil {
-			return catalogrefresh.Snapshot{}, readErr
-		}
-		for _, item := range items {
-			path, pathErr := catalogItemProjectPath("workbook", item.LUID, item.ProjectLUID, paths)
-			if pathErr != nil {
-				return catalogrefresh.Snapshot{}, pathErr
-			}
-			records = append(records, catalogrefresh.Record{LUID: item.LUID, Kind: "workbook", Name: item.Name, ProjectPath: path, Owner: item.OwnerLUID})
-		}
+	executor, err := h.executorFor(ctx, input.Environment, input.Site)
+	if err != nil {
+		return catalogrefresh.HydrationResult{}, err
 	}
-	if selected["datasources"] {
-		items, readErr := i.readDatasources(ctx)
-		if readErr != nil {
-			return catalogrefresh.Snapshot{}, readErr
-		}
-		for _, item := range items {
-			path, pathErr := catalogItemProjectPath("datasource", item.LUID, item.ProjectLUID, paths)
-			if pathErr != nil {
-				return catalogrefresh.Snapshot{}, pathErr
-			}
-			records = append(records, catalogrefresh.Record{LUID: item.LUID, Kind: "datasource", Name: item.Name, ProjectPath: path, Owner: item.OwnerLUID})
-		}
+	runner, err := h.newRunner(executor)
+	if err != nil {
+		return catalogrefresh.HydrationResult{}, err
 	}
-	if selected["flows"] {
-		items, readErr := i.readFlows(ctx)
-		if readErr != nil {
-			return catalogrefresh.Snapshot{}, readErr
-		}
-		for _, item := range items {
-			path, pathErr := catalogItemProjectPath("flow", item.LUID, item.ProjectLUID, paths)
-			if pathErr != nil {
-				return catalogrefresh.Snapshot{}, pathErr
-			}
-			records = append(records, catalogrefresh.Record{LUID: item.LUID, Kind: "flow", Name: item.Name, ProjectPath: path, Owner: item.OwnerLUID})
-		}
-	}
-	sort.Slice(records, func(left, right int) bool {
-		if records[left].Kind != records[right].Kind {
-			return records[left].Kind < records[right].Kind
-		}
-		if records[left].Name != records[right].Name {
-			return records[left].Name < records[right].Name
-		}
-		if records[left].ProjectPath != records[right].ProjectPath {
-			return records[left].ProjectPath < records[right].ProjectPath
-		}
-		return records[left].LUID < records[right].LUID
-	})
-	now := i.now
+	now := h.now
 	if now == nil {
 		now = time.Now
 	}
-	return catalogrefresh.Snapshot{GeneratedAt: now().UTC(), Source: "tableau-rest", Records: records}, nil
+	generatedAt := now().UTC()
+	writer, err := h.store.BeginGeneration(ctx, corecatalog.GenerationMetadata{
+		Environment: input.Environment, Site: input.Site, GeneratedAt: generatedAt, Source: catalogSourceName,
+		RequestedScopes: append([]string(nil), input.RequestedScopes...), ImplicitScopes: append([]string(nil), input.ImplicitScopes...),
+	})
+	if err != nil {
+		return catalogrefresh.HydrationResult{}, err
+	}
+	defer writer.Rollback()
+	started := time.Now()
+	result, err := runner.Run(ctx, tableaucatalog.RunRequest{RequestedScopes: requested}, catalogBatchWriter{writer: writer})
+	if err != nil {
+		return catalogrefresh.HydrationResult{}, err
+	}
+	if !slices.Equal(scopeStrings(result.RequestedScopes), input.RequestedScopes) || !slices.Equal(scopeStrings(result.ImplicitScopes), input.ImplicitScopes) {
+		return catalogrefresh.HydrationResult{}, errors.New("catalog collector returned a different scope plan")
+	}
+	collected := append(append([]tableaucatalog.Scope(nil), result.RequestedScopes...), result.ImplicitScopes...)
+	if err := writer.CompleteScopes(ctx, scopeStrings(collected)); err != nil {
+		return catalogrefresh.HydrationResult{}, err
+	}
+	published, err := writer.Publish(ctx)
+	if err != nil {
+		return catalogrefresh.HydrationResult{}, err
+	}
+	counts, total, err := catalogScopeCounts(plan.Collected, result.Counts)
+	if err != nil {
+		return catalogrefresh.HydrationResult{}, err
+	}
+	if result.Requests > math.MaxInt {
+		return catalogrefresh.HydrationResult{}, errors.New("catalog request count exceeds the receipt bound")
+	}
+	return catalogrefresh.HydrationResult{
+		GenerationID: published.GenerationID, GeneratedAt: generatedAt, Complete: true, Source: catalogSourceName,
+		Path: published.Path, RecordCount: total,
+		RequestedScopes: append([]string(nil), input.RequestedScopes...), ImplicitScopes: append([]string(nil), input.ImplicitScopes...),
+		ScopeCounts: counts,
+		Diagnostics: catalogrefresh.Diagnostics{Requests: int(result.Requests), Duration: time.Since(started).Round(time.Millisecond).String()},
+	}, nil
 }
 
-func (i catalogInventory) readProjects(ctx context.Context) ([]resourceproject.Project, error) {
-	if i.projects == nil {
-		return nil, errors.New("catalog project inventory is not configured")
+func catalogScopes(values []string) ([]tableaucatalog.Scope, error) {
+	result := make([]tableaucatalog.Scope, len(values))
+	for index, value := range values {
+		scope := tableaucatalog.Scope(value)
+		if _, ok := tableaucatalog.ColumnsForScope(scope); !ok {
+			return nil, fmt.Errorf("catalog scope %q is unsupported", value)
+		}
+		result[index] = scope
 	}
-	items := make([]resourceproject.Project, 0)
-	seen := make(map[string]resourceproject.Project)
-	expectedTotal, expectedSize := -1, -1
-	for number := 1; number <= catalogInventoryMaxPages; number++ {
-		page, err := i.projects.ListProjects(ctx, resourceproject.ListRequest{PageNumber: number, PageSize: catalogInventoryPageSize})
-		if err != nil {
-			return nil, err
-		}
-		if err := validateCatalogPage("project", number, page.Number, page.Size, page.Total, len(page.Items), &expectedTotal, &expectedSize); err != nil {
-			return nil, err
-		}
-		for _, item := range page.Items {
-			if current, exists := seen[item.LUID]; exists {
-				if !reflect.DeepEqual(current, item) {
-					return nil, fmt.Errorf("catalog project inventory returned conflicting LUID %q", item.LUID)
-				}
-				return nil, fmt.Errorf("catalog project inventory repeated LUID %q", item.LUID)
-			}
-			seen[item.LUID] = item
-			items = append(items, item)
-		}
-		if number*page.Size >= page.Total {
-			if len(items) != page.Total {
-				return nil, fmt.Errorf("catalog project inventory returned %d of %d records", len(items), page.Total)
-			}
-			return items, nil
-		}
-	}
-	return nil, errors.New("catalog project inventory exceeded the page bound")
+	return result, nil
 }
 
-func (i catalogInventory) readWorkbooks(ctx context.Context) ([]resourceworkbook.Workbook, error) {
-	if i.workbooks == nil {
-		return nil, errors.New("catalog workbook inventory is not configured")
+func scopeStrings(values []tableaucatalog.Scope) []string {
+	result := make([]string, len(values))
+	for index, value := range values {
+		result[index] = string(value)
 	}
-	items := make([]resourceworkbook.Workbook, 0)
-	seen := make(map[string]bool)
-	expectedTotal, expectedSize := -1, -1
-	for number := 1; number <= catalogInventoryMaxPages; number++ {
-		page, err := i.workbooks.ListWorkbooks(ctx, tableauworkbook.ListRequest{PageNumber: number, PageSize: catalogInventoryPageSize})
-		if err != nil {
-			return nil, err
-		}
-		if err := validateCatalogPage("workbook", number, page.Number, page.Size, page.Total, len(page.Items), &expectedTotal, &expectedSize); err != nil {
-			return nil, err
-		}
-		for _, item := range page.Items {
-			if seen[item.LUID] {
-				return nil, fmt.Errorf("catalog workbook inventory repeated LUID %q", item.LUID)
-			}
-			seen[item.LUID] = true
-			items = append(items, item)
-		}
-		if number*page.Size >= page.Total {
-			if len(items) != page.Total {
-				return nil, fmt.Errorf("catalog workbook inventory returned %d of %d records", len(items), page.Total)
-			}
-			return items, nil
-		}
-	}
-	return nil, errors.New("catalog workbook inventory exceeded the page bound")
+	return result
 }
 
-func (i catalogInventory) readDatasources(ctx context.Context) ([]resourcedatasource.Datasource, error) {
-	if i.datasources == nil {
-		return nil, errors.New("catalog datasource inventory is not configured")
+func catalogScopeCounts(scopes []tableaucatalog.Scope, counts map[tableaucatalog.Scope]int64) ([]catalogrefresh.ScopeCount, int, error) {
+	result := make([]catalogrefresh.ScopeCount, 0, len(scopes))
+	total := 0
+	for _, scope := range scopes {
+		count := counts[scope]
+		if count < 0 || count > math.MaxInt-int64(total) {
+			return nil, 0, errors.New("catalog record count exceeds the receipt bound")
+		}
+		total += int(count)
+		result = append(result, catalogrefresh.ScopeCount{Scope: string(scope), Records: int(count)})
 	}
-	items := make([]resourcedatasource.Datasource, 0)
-	seen := make(map[string]bool)
-	expectedTotal, expectedSize := -1, -1
-	for number := 1; number <= catalogInventoryMaxPages; number++ {
-		page, err := i.datasources.ListDatasources(ctx, tableaudatasource.ListRequest{PageNumber: number, PageSize: catalogInventoryPageSize})
-		if err != nil {
-			return nil, err
-		}
-		if err := validateCatalogPage("datasource", number, page.Number, page.Size, page.Total, len(page.Items), &expectedTotal, &expectedSize); err != nil {
-			return nil, err
-		}
-		for _, item := range page.Items {
-			if seen[item.LUID] {
-				return nil, fmt.Errorf("catalog datasource inventory repeated LUID %q", item.LUID)
-			}
-			seen[item.LUID] = true
-			items = append(items, item)
-		}
-		if number*page.Size >= page.Total {
-			if len(items) != page.Total {
-				return nil, fmt.Errorf("catalog datasource inventory returned %d of %d records", len(items), page.Total)
-			}
-			return items, nil
-		}
-	}
-	return nil, errors.New("catalog datasource inventory exceeded the page bound")
+	return result, total, nil
 }
 
-func (i catalogInventory) readFlows(ctx context.Context) ([]resourceflow.Flow, error) {
-	if i.flows == nil {
-		return nil, errors.New("catalog flow inventory is not configured")
+type catalogBatchWriter struct{ writer *corecatalog.GenerationWriter }
+
+func (w catalogBatchWriter) WriteBatch(ctx context.Context, batch tableaucatalog.Batch) error {
+	if w.writer == nil {
+		return errors.New("catalog generation writer is not configured")
 	}
-	items := make([]resourceflow.Flow, 0)
-	seen := make(map[string]bool)
-	expectedTotal, expectedSize := -1, -1
-	for number := 1; number <= catalogInventoryMaxPages; number++ {
-		page, err := i.flows.ListFlows(ctx, tableauflow.ListRequest{PageNumber: number, PageSize: catalogInventoryPageSize})
-		if err != nil {
-			return nil, err
-		}
-		if err := validateCatalogPage("flow", number, page.Number, page.Size, page.Total, len(page.Items), &expectedTotal, &expectedSize); err != nil {
-			return nil, err
-		}
-		for _, item := range page.Items {
-			if seen[item.LUID] {
-				return nil, fmt.Errorf("catalog flow inventory repeated LUID %q", item.LUID)
-			}
-			seen[item.LUID] = true
-			items = append(items, item)
-		}
-		if number*page.Size >= page.Total {
-			if len(items) != page.Total {
-				return nil, fmt.Errorf("catalog flow inventory returned %d of %d records", len(items), page.Total)
-			}
-			return items, nil
-		}
+	columns := make([]string, len(batch.Columns))
+	for index, column := range batch.Columns {
+		columns[index] = column.Name
 	}
-	return nil, errors.New("catalog flow inventory exceeded the page bound")
+	return w.writer.WriteBatch(ctx, corecatalog.Batch{Scope: string(batch.Scope), Columns: columns, Rows: batch.Rows})
 }
 
-func validateCatalogPage(kind string, requested, number, size, total, count int, expectedTotal, expectedSize *int) error {
-	if number != requested || size <= 0 || size > catalogInventoryPageSize || total < 0 || count > size || (number-1)*size+count > total {
-		return fmt.Errorf("catalog %s inventory returned inconsistent pagination", kind)
-	}
-	if *expectedTotal < 0 {
-		*expectedTotal, *expectedSize = total, size
-		return nil
-	}
-	if total != *expectedTotal || size != *expectedSize {
-		return fmt.Errorf("catalog %s inventory pagination changed during refresh", kind)
-	}
-	return nil
+type catalogTableauExecutor struct {
+	transport *tableau.Transport
+	session   coreauth.Session
+	serverURL string
+	siteLUID  string
 }
 
-func catalogProjectPaths(projects []resourceproject.Project) (map[string]string, error) {
-	byID := make(map[string]resourceproject.Project, len(projects))
-	for _, item := range projects {
-		if strings.TrimSpace(item.LUID) == "" || strings.TrimSpace(item.Name) == "" {
-			return nil, errors.New("catalog project inventory omitted authoritative identity")
-		}
-		if _, exists := byID[item.LUID]; exists {
-			return nil, fmt.Errorf("catalog project inventory repeated LUID %q", item.LUID)
-		}
-		byID[item.LUID] = item
+func (e catalogTableauExecutor) Do(ctx context.Context, input tableaucatalog.Request) (tableaucatalog.Response, error) {
+	if e.transport == nil || e.session == nil || strings.TrimSpace(e.serverURL) == "" || strings.TrimSpace(e.siteLUID) == "" {
+		return tableaucatalog.Response{}, errors.New("authenticated catalog transport is not configured")
 	}
-	paths := make(map[string]string, len(projects))
-	var resolve func(string, map[string]bool) (string, error)
-	resolve = func(luid string, visiting map[string]bool) (string, error) {
-		if path, exists := paths[luid]; exists {
-			return path, nil
-		}
-		item, exists := byID[luid]
-		if !exists {
-			return "", fmt.Errorf("catalog project %q references a missing parent", luid)
-		}
-		if visiting[luid] {
-			return "", fmt.Errorf("catalog project hierarchy contains a cycle at %q", luid)
-		}
-		visiting[luid] = true
-		path := item.Name
-		if item.ParentLUID != "" {
-			parent, err := resolve(item.ParentLUID, visiting)
-			if err != nil {
-				return "", err
-			}
-			path = parent + "/" + item.Name
-		}
-		delete(visiting, luid)
-		paths[luid] = path
-		return path, nil
+	response, err := e.transport.Do(ctx, e.session, tableau.Request{
+		Method: http.MethodGet, ServerURL: e.serverURL,
+		Path:  fmt.Sprintf("/api/%s/sites/%s%s", e.transport.APIVersion(), url.PathEscape(e.siteLUID), input.Path),
+		Query: input.Query, Accept: "application/xml", Operation: input.Operation, MaxResponseBytes: input.MaxResponseBytes,
+	})
+	if err != nil {
+		return tableaucatalog.Response{}, err
 	}
-	for luid := range byID {
-		if _, err := resolve(luid, make(map[string]bool)); err != nil {
-			return nil, err
-		}
-	}
-	return paths, nil
+	return tableaucatalog.Response{StatusCode: response.StatusCode, Body: response.Body, TableauRequestID: response.TableauRequestID}, nil
 }
 
-func catalogItemProjectPath(kind, luid, projectLUID string, paths map[string]string) (string, error) {
-	if strings.TrimSpace(projectLUID) == "" {
-		return "", fmt.Errorf("catalog %s %q omitted its authoritative project LUID", kind, luid)
-	}
-	path, exists := paths[projectLUID]
-	if !exists {
-		return "", fmt.Errorf("catalog %s %q references missing project %q", kind, luid, projectLUID)
-	}
-	return path, nil
-}
-
-type catalogGenerationWriter struct{ store *corecatalog.FileStore }
-
-func (w catalogGenerationWriter) Replace(ctx context.Context, input catalogrefresh.Generation) (catalogrefresh.WriteResult, error) {
-	records := make([]corecatalog.Record, len(input.Records))
-	for index, item := range input.Records {
-		records[index] = corecatalog.Record{LUID: item.LUID, Kind: item.Kind, Name: item.Name, ProjectPath: item.ProjectPath, Owner: item.Owner}
-	}
-	result, err := w.store.Replace(ctx, corecatalog.Generation{Environment: input.Environment, Site: input.Site, GeneratedAt: input.GeneratedAt, Complete: input.Complete, Source: input.Source, Scopes: append([]string(nil), input.Scopes...), Records: records})
-	return catalogrefresh.WriteResult{GenerationID: result.GenerationID, Path: result.Path, RecordCount: result.RecordCount}, err
-}
-
-type catalogStoreGetter struct{ store *corecatalog.FileStore }
+type catalogStoreGetter struct{ store *corecatalog.Store }
 
 func (g catalogStoreGetter) Get(ctx context.Context, input catalogget.Input) (catalogget.Result, error) {
 	result, err := g.store.Get(ctx, corecatalog.Lookup{Environment: input.Environment, Site: input.Site, SiteSelected: input.SiteResolved, LUID: input.LUID, Kind: input.Kind, Name: input.Name, ProjectPath: input.ProjectPath})
@@ -376,7 +185,7 @@ func (g catalogStoreGetter) Get(ctx context.Context, input catalogget.Input) (ca
 	return catalogget.Result{Item: catalogget.Item{LUID: result.Record.LUID, Kind: result.Record.Kind, Name: result.Record.Name, ProjectPath: result.Record.ProjectPath, Owner: result.Record.Owner}, Generation: catalogget.Generation{ID: result.GenerationID, Environment: result.Environment, Site: result.Site, GeneratedAt: result.GeneratedAt.UTC().Format(time.RFC3339Nano), Stale: result.Stale}, Warnings: append([]string(nil), result.Warnings...)}, nil
 }
 
-type catalogStoreStatuser struct{ store *corecatalog.FileStore }
+type catalogStoreStatuser struct{ store *corecatalog.Store }
 
 func (s catalogStoreStatuser) Status(ctx context.Context, input catalogstatus.Input) (catalogstatus.Result, error) {
 	result, err := s.store.Status(ctx, corecatalog.Selection{Environment: input.Environment, Site: input.Site, SiteSelected: input.SiteResolved})
@@ -386,29 +195,14 @@ func (s catalogStoreStatuser) Status(ctx context.Context, input catalogstatus.In
 	return catalogstatus.Result{ID: result.GenerationID, Environment: result.Environment, Site: result.Site, GeneratedAt: result.GeneratedAt.UTC().Format(time.RFC3339Nano), Age: result.Age.String(), Complete: result.Complete, Stale: result.Stale, Source: result.Source, Path: result.Path, Records: result.RecordCount, Warnings: append([]string(nil), result.Warnings...)}, nil
 }
 
-type catalogGroup2Commands struct {
-	runtime *runtimeDependencies
-	remote  *remoteContentCommands
+type catalogGroup2Commands struct{ runtime *runtimeDependencies }
+
+func newCatalogGroup2Commands(runtime *runtimeDependencies) *catalogGroup2Commands {
+	return &catalogGroup2Commands{runtime: runtime}
 }
 
-func newCatalogGroup2Commands(runtime *runtimeDependencies, remote *remoteContentCommands) *catalogGroup2Commands {
-	return &catalogGroup2Commands{runtime: runtime, remote: remote}
-}
-
-func (c *catalogGroup2Commands) refresher() *catalogRefreshService {
-	return &catalogRefreshService{commands: c}
-}
-
-func (c *catalogGroup2Commands) getter() *catalogGetService {
-	return &catalogGetService{commands: c}
-}
-
-func (c *catalogGroup2Commands) statuser() *catalogStatusService {
-	return &catalogStatusService{commands: c}
-}
-
-func (c *catalogGroup2Commands) store() *corecatalog.FileStore {
-	return corecatalog.NewFileStore(filepath.Dir(c.runtime.configPath), c.runtime.now)
+func (c *catalogGroup2Commands) store() *corecatalog.Store {
+	return corecatalog.NewStore(filepath.Dir(c.runtime.configPath), c.runtime.now)
 }
 
 func (c *catalogGroup2Commands) resolve(inputEnvironment, inputSite, operation string) (config.Environment, error) {
@@ -422,6 +216,14 @@ func (c *catalogGroup2Commands) resolve(inputEnvironment, inputSite, operation s
 	return environment, nil
 }
 
+func (c *catalogGroup2Commands) refresher() *catalogRefreshService {
+	return &catalogRefreshService{commands: c}
+}
+func (c *catalogGroup2Commands) getter() *catalogGetService { return &catalogGetService{commands: c} }
+func (c *catalogGroup2Commands) statuser() *catalogStatusService {
+	return &catalogStatusService{commands: c}
+}
+
 type catalogRefreshService struct{ commands *catalogGroup2Commands }
 
 func (s *catalogRefreshService) Execute(ctx context.Context, input catalogrefresh.Input) (catalogrefresh.Output, error) {
@@ -430,8 +232,23 @@ func (s *catalogRefreshService) Execute(ctx context.Context, input catalogrefres
 		return catalogrefresh.Output{}, err
 	}
 	input.Environment, input.Site, input.SiteResolved = environment.Alias, environment.SiteContentURL, true
-	inventory := catalogRemoteInventory{remote: s.commands.remote, now: s.commands.runtime.now}
-	return catalogrefresh.New(inventory, catalogGenerationWriter{store: s.commands.store()}).Execute(ctx, input)
+	hydrator := catalogHydrator{
+		store: s.commands.store(), now: s.commands.runtime.now,
+		executorFor: func(ctx context.Context, alias, site string) (tableaucatalog.Executor, error) {
+			connection, err := s.commands.runtime.tableauConnection(ctx, alias, false)
+			if err != nil {
+				return nil, remoteSetupError("catalog.refresh", alias, site, connection.environment, err)
+			}
+			if connection.environment.SiteContentURL != site {
+				return nil, errors.New("catalog refresh authenticated to a different site")
+			}
+			return catalogTableauExecutor{transport: connection.transport, session: connection.session, serverURL: connection.environment.URL, siteLUID: connection.session.SiteLUID()}, nil
+		},
+		newRunner: func(executor tableaucatalog.Executor) (catalogRunner, error) {
+			return tableaucatalog.NewEngine(executor, tableaucatalog.Config{})
+		},
+	}
+	return catalogrefresh.New(hydrator).Execute(ctx, input)
 }
 
 type catalogGetService struct{ commands *catalogGroup2Commands }

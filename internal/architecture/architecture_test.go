@@ -219,6 +219,9 @@ import (
 	_ "example.test/tadx/internal/tableau"
 )
 `)
+	writeGo(t, root, "internal/tableau/catalog/client.go", `package catalog
+import _ "example.test/tadx/internal/tableau/catalog/tabxml"
+`)
 	writeGo(t, root, "internal/output/output.go", `package output
 import (
 	_ "example.test/tadx/internal/errs"

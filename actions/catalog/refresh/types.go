@@ -2,7 +2,7 @@ package refresh
 
 import "time"
 
-// Input selects one resolved site inventory and its admitted scopes.
+// Input selects one resolved site and the catalog scopes to hydrate.
 type Input struct {
 	Environment  string
 	Site         string
@@ -10,59 +10,63 @@ type Input struct {
 	Scopes       []string
 }
 
-// Record is one normalized cross-resource catalog identity.
-type Record struct {
-	LUID        string `json:"luid"`
-	Kind        string `json:"kind"`
-	Name        string `json:"name"`
-	ProjectPath string `json:"project_path,omitempty"`
-	Owner       string `json:"owner,omitempty"`
+// HydrationRequest is the normalized action-owned request passed to storage-backed hydration.
+type HydrationRequest struct {
+	Environment     string
+	Site            string
+	RequestedScopes []string
+	ImplicitScopes  []string
 }
 
-// Snapshot is one complete remote inventory read.
-type Snapshot struct {
-	GeneratedAt time.Time
-	Source      string
-	Records     []Record
-	Warnings    []string
+// ScopeCount is one bounded per-scope hydration count.
+type ScopeCount struct {
+	Scope   string `json:"scope"`
+	Records int    `json:"records"`
 }
 
-// Generation is the complete normalized value passed to durable storage.
-type Generation struct {
-	Environment string
-	Site        string
-	GeneratedAt time.Time
-	Complete    bool
-	Source      string
-	Scopes      []string
-	Records     []Record
+// Diagnostics contains bounded operational hydration measurements.
+type Diagnostics struct {
+	Requests       int    `json:"requests"`
+	FailedRequests int    `json:"failed_requests"`
+	Duration       string `json:"duration,omitempty"`
 }
 
-// WriteResult identifies the generation published by storage.
-type WriteResult struct {
-	GenerationID string
-	Path         string
-	RecordCount  int
+// HydrationResult is a row-free receipt for one internally persisted generation.
+type HydrationResult struct {
+	GenerationID    string
+	GeneratedAt     time.Time
+	Complete        bool
+	Source          string
+	Path            string
+	RecordCount     int
+	RequestedScopes []string
+	ImplicitScopes  []string
+	ScopeCounts     []ScopeCount
+	Diagnostics     Diagnostics
+	Warnings        []string
 }
 
 // GenerationOutput is the bounded refresh generation projection.
 type GenerationOutput struct {
-	ID          string   `json:"id"`
-	Environment string   `json:"environment"`
-	Site        string   `json:"site"`
-	GeneratedAt string   `json:"generated_at"`
-	Records     int      `json:"records"`
-	Source      string   `json:"source,omitempty"`
-	Scopes      []string `json:"scopes,omitempty"`
+	ID             string       `json:"id"`
+	Environment    string       `json:"environment"`
+	Site           string       `json:"site"`
+	GeneratedAt    string       `json:"generated_at"`
+	Records        int          `json:"records"`
+	Source         string       `json:"source,omitempty"`
+	Scopes         []string     `json:"scopes,omitempty"`
+	ImplicitScopes []string     `json:"implicit_scopes,omitempty"`
+	ScopeCounts    []ScopeCount `json:"scope_counts,omitempty"`
 }
 
 // Output is the stable catalog.refresh document.
 type Output struct {
-	Status     string
-	Generation GenerationOutput
-	Path       string
-	Warnings   []string
-	Help       []string
+	Status      string
+	Generation  GenerationOutput
+	Path        string
+	Warnings    []string
+	Diagnostics Diagnostics
+	Help        []string
 }
 
 // CompactGeneration contains refresh decision fields.
@@ -86,20 +90,21 @@ type CompactResult struct {
 
 // FullResult is the expanded bounded refresh projection.
 type FullResult struct {
-	Status     string           `json:"status"`
-	Generation GenerationOutput `json:"generation"`
-	Path       string           `json:"path"`
-	Warnings   []string         `json:"warnings,omitempty"`
-	Help       []string         `json:"help"`
+	Status      string           `json:"status"`
+	Generation  GenerationOutput `json:"generation"`
+	Path        string           `json:"path"`
+	Warnings    []string         `json:"warnings,omitempty"`
+	Diagnostics Diagnostics      `json:"diagnostics"`
+	Help        []string         `json:"help"`
 }
 
-// CompactOutput returns refresh decision fields.
+// CompactOutput returns a row-free operational receipt.
 func (o Output) CompactOutput() any {
 	g := o.Generation
 	return CompactResult{Status: o.Status, Generation: CompactGeneration{ID: g.ID, Environment: g.Environment, Site: g.Site, GeneratedAt: g.GeneratedAt, Records: g.Records}, Path: o.Path, Warnings: o.Warnings, Details: "--full", Help: o.Help}
 }
 
-// FullOutput returns bounded generation provenance.
+// FullOutput returns bounded generation provenance and diagnostics.
 func (o Output) FullOutput() any {
-	return FullResult{Status: o.Status, Generation: o.Generation, Path: o.Path, Warnings: o.Warnings, Help: o.Help}
+	return FullResult{Status: o.Status, Generation: o.Generation, Path: o.Path, Warnings: o.Warnings, Diagnostics: o.Diagnostics, Help: o.Help}
 }

@@ -2,147 +2,146 @@ package app
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
-	"os"
-	"path/filepath"
-	"reflect"
+	"fmt"
+	"net/http"
+	"net/http/httptest"
+	"net/url"
+	"strings"
 	"testing"
 	"time"
 
-	catalogget "github.com/ahillspace/tadx/actions/catalog/get"
 	catalogrefresh "github.com/ahillspace/tadx/actions/catalog/refresh"
-	catalogstatus "github.com/ahillspace/tadx/actions/catalog/status"
 	corecatalog "github.com/ahillspace/tadx/internal/catalog"
-	resourcedatasource "github.com/ahillspace/tadx/internal/resources/datasource"
-	resourceflow "github.com/ahillspace/tadx/internal/resources/flow"
-	resourceproject "github.com/ahillspace/tadx/internal/resources/project"
-	resourceworkbook "github.com/ahillspace/tadx/internal/resources/workbook"
-	tableaudatasource "github.com/ahillspace/tadx/internal/tableau/datasource"
-	tableauflow "github.com/ahillspace/tadx/internal/tableau/flow"
-	tableauworkbook "github.com/ahillspace/tadx/internal/tableau/workbook"
+	"github.com/ahillspace/tadx/internal/tableau"
+	tableaucatalog "github.com/ahillspace/tadx/internal/tableau/catalog"
 )
 
-type projectPages struct {
-	pages map[int]resourceproject.Page
-	errAt int
-	calls []int
+type catalogExecutorFunc func(context.Context, tableaucatalog.Request) (tableaucatalog.Response, error)
+
+func (f catalogExecutorFunc) Do(ctx context.Context, input tableaucatalog.Request) (tableaucatalog.Response, error) {
+	return f(ctx, input)
 }
 
-func (p *projectPages) ListProjects(_ context.Context, input resourceproject.ListRequest) (resourceproject.Page, error) {
-	p.calls = append(p.calls, input.PageNumber)
-	if input.PageNumber == p.errAt {
-		return resourceproject.Page{}, errors.New("project page failed")
-	}
-	return p.pages[input.PageNumber], nil
-}
-
-type workbookPages struct {
-	pages map[int]resourceworkbook.Page
-	calls []int
-}
-
-func (p *workbookPages) ListWorkbooks(_ context.Context, input tableauworkbook.ListRequest) (resourceworkbook.Page, error) {
-	p.calls = append(p.calls, input.PageNumber)
-	return p.pages[input.PageNumber], nil
-}
-
-type datasourcePages struct {
-	pages map[int]resourcedatasource.Page
-	calls []int
-}
-
-func (p *datasourcePages) ListDatasources(_ context.Context, input tableaudatasource.ListRequest) (resourcedatasource.Page, error) {
-	p.calls = append(p.calls, input.PageNumber)
-	return p.pages[input.PageNumber], nil
-}
-
-type flowPages struct {
-	pages map[int]resourceflow.Page
-	calls []int
-	errAt int
-}
-
-func (p *flowPages) ListFlows(_ context.Context, input tableauflow.ListRequest) (resourceflow.Page, error) {
-	p.calls = append(p.calls, input.PageNumber)
-	if input.PageNumber == p.errAt {
-		return resourceflow.Page{}, errors.New("flow page failed")
-	}
-	return p.pages[input.PageNumber], nil
-}
-
-func TestCatalogInventoryExhaustsAdmittedPagesAndNormalizesProjectPaths(t *testing.T) {
-	projects := &projectPages{pages: map[int]resourceproject.Page{
-		1: {Number: 1, Size: 1, Total: 2, Items: []resourceproject.Project{{LUID: "project-root", Name: "Department", OwnerLUID: "user-1"}}},
-		2: {Number: 2, Size: 1, Total: 2, Items: []resourceproject.Project{{LUID: "project-ops", Name: "Operations", ParentLUID: "project-root", OwnerLUID: "user-2"}}},
-	}}
-	workbooks := &workbookPages{pages: map[int]resourceworkbook.Page{1: {Number: 1, Size: 1, Total: 1, Items: []resourceworkbook.Workbook{{LUID: "wb-1", Name: "Finance", ProjectLUID: "project-ops", OwnerLUID: "user-3"}}}}}
-	datasources := &datasourcePages{pages: map[int]resourcedatasource.Page{1: {Number: 1, Size: 1, Total: 1, Items: []resourcedatasource.Datasource{{LUID: "ds-1", Name: "Warehouse", ProjectLUID: "project-ops", OwnerLUID: "user-4"}}}}}
-	flows := &flowPages{pages: map[int]resourceflow.Page{1: {Number: 1, Size: 1, Total: 1, Items: []resourceflow.Flow{{LUID: "flow-1", Name: "Prepare", ProjectLUID: "project-ops", OwnerLUID: "user-5"}}}}}
-	generatedAt := time.Date(2026, 9, 1, 12, 0, 0, 0, time.UTC)
-	inventory := catalogInventory{projects: projects, workbooks: workbooks, datasources: datasources, flows: flows, now: func() time.Time { return generatedAt }}
-
-	snapshot, err := inventory.Read(context.Background(), catalogrefresh.Input{Environment: "production", Site: "marketing", SiteResolved: true, Scopes: []string{"projects", "workbooks", "datasources", "flows"}})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !reflect.DeepEqual(projects.calls, []int{1, 2}) || !reflect.DeepEqual(workbooks.calls, []int{1}) || !reflect.DeepEqual(datasources.calls, []int{1}) || !reflect.DeepEqual(flows.calls, []int{1}) {
-		t.Fatalf("page calls: projects=%v workbooks=%v datasources=%v flows=%v", projects.calls, workbooks.calls, datasources.calls, flows.calls)
-	}
-	want := []catalogrefresh.Record{
-		{LUID: "ds-1", Kind: "datasource", Name: "Warehouse", ProjectPath: "Department/Operations", Owner: "user-4"},
-		{LUID: "flow-1", Kind: "flow", Name: "Prepare", ProjectPath: "Department/Operations", Owner: "user-5"},
-		{LUID: "project-root", Kind: "project", Name: "Department", ProjectPath: "Department", Owner: "user-1"},
-		{LUID: "project-ops", Kind: "project", Name: "Operations", ProjectPath: "Department/Operations", Owner: "user-2"},
-		{LUID: "wb-1", Kind: "workbook", Name: "Finance", ProjectPath: "Department/Operations", Owner: "user-3"},
-	}
-	if snapshot.GeneratedAt != generatedAt || snapshot.Source != "tableau-rest" || !reflect.DeepEqual(snapshot.Records, want) {
-		t.Fatalf("snapshot = %#v", snapshot)
-	}
-}
-
-func TestCatalogInventoryStopsOnAnyPageFailureWithoutPartialSnapshot(t *testing.T) {
-	projects := &projectPages{pages: map[int]resourceproject.Page{1: {Number: 1, Size: 1, Total: 1, Items: []resourceproject.Project{{LUID: "project-1", Name: "Ops"}}}}}
-	flows := &flowPages{pages: map[int]resourceflow.Page{1: {Number: 1, Size: 1, Total: 2, Items: []resourceflow.Flow{{LUID: "flow-1", Name: "One", ProjectLUID: "project-1"}}}}, errAt: 2}
-	inventory := catalogInventory{projects: projects, flows: flows, now: time.Now}
-	snapshot, err := inventory.Read(context.Background(), catalogrefresh.Input{Scopes: []string{"flows"}})
-	if err == nil || snapshot.Records != nil || !reflect.DeepEqual(flows.calls, []int{1, 2}) {
-		t.Fatalf("snapshot=%#v error=%v calls=%v", snapshot, err, flows.calls)
-	}
-}
-
-func TestCatalogRefreshDoesNotPublishWhenAnyInventoryPageFails(t *testing.T) {
-	root := t.TempDir()
-	projects := &projectPages{pages: map[int]resourceproject.Page{1: {Number: 1, Size: 1, Total: 1, Items: []resourceproject.Project{{LUID: "project-1", Name: "Ops"}}}}}
-	flows := &flowPages{pages: map[int]resourceflow.Page{1: {Number: 1, Size: 1, Total: 2, Items: []resourceflow.Flow{{LUID: "flow-1", Name: "One", ProjectLUID: "project-1"}}}}, errAt: 2}
-	inventory := catalogInventory{projects: projects, flows: flows, now: time.Now}
-	action := catalogrefresh.New(inventory, catalogGenerationWriter{store: corecatalog.NewFileStore(root, time.Now)})
-	_, err := action.Execute(context.Background(), catalogrefresh.Input{Environment: "production", Site: "marketing", SiteResolved: true, Scopes: []string{"flows"}})
-	if err == nil {
-		t.Fatal("Execute() error = nil")
-	}
-	if _, statErr := os.Stat(filepath.Join(root, "catalog", "production.json")); !os.IsNotExist(statErr) {
-		t.Fatalf("incomplete generation was published: %v", statErr)
-	}
-}
-
-func TestCatalogStoreBridgesRoundTripWithoutAbsolutePaths(t *testing.T) {
-	root := t.TempDir()
+func TestCatalogHydratorStreamsSQLiteAndReturnsOnlyReceipt(t *testing.T) {
 	now := time.Date(2026, 9, 1, 12, 0, 0, 0, time.UTC)
-	store := corecatalog.NewFileStore(root, func() time.Time { return now })
-	writer := catalogGenerationWriter{store: store}
-	written, err := writer.Replace(context.Background(), catalogrefresh.Generation{Environment: "production", Site: "marketing", GeneratedAt: now, Complete: true, Source: "tableau-rest", Scopes: []string{"workbooks"}, Records: []catalogrefresh.Record{{LUID: "wb-1", Kind: "workbook", Name: "Finance", ProjectPath: "Ops", Owner: "user-1"}}})
+	executor := catalogExecutorFunc(func(_ context.Context, input tableaucatalog.Request) (tableaucatalog.Response, error) {
+		var body string
+		switch input.Scope {
+		case tableaucatalog.ScopeProjects:
+			body = catalogListXML("projects", "project", `<project id="project-1" name="Operations"><owner id="user-1"/></project>`)
+		case tableaucatalog.ScopeWorkbooks:
+			body = catalogListXML("workbooks", "workbook", `<workbook id="workbook-1" name="Finance"><project id="project-1"/><owner id="user-2"/></workbook>`)
+		default:
+			return tableaucatalog.Response{}, fmt.Errorf("unexpected scope %q", input.Scope)
+		}
+		return tableaucatalog.Response{StatusCode: http.StatusOK, Body: []byte(body), TableauRequestID: "request-" + string(input.Scope)}, nil
+	})
+	store := corecatalog.NewStore(t.TempDir(), func() time.Time { return now })
+	hydrator := catalogHydrator{
+		store: store, now: func() time.Time { return now },
+		executorFor: func(_ context.Context, environment, site string) (tableaucatalog.Executor, error) {
+			if environment != "production" || site != "marketing" {
+				t.Fatalf("target = %s/%s", environment, site)
+			}
+			return executor, nil
+		},
+		newRunner: func(executor tableaucatalog.Executor) (catalogRunner, error) {
+			return tableaucatalog.NewEngine(executor, tableaucatalog.Config{MaxConcurrency: 2})
+		},
+	}
+	output, err := catalogrefresh.New(hydrator).Execute(context.Background(), catalogrefresh.Input{
+		Environment: "production", Site: "marketing", SiteResolved: true, Scopes: []string{"workbooks"},
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if filepath.IsAbs(written.Path) || written.Path != "catalog/production.json" {
-		t.Fatalf("write path = %q", written.Path)
+	if output.Status != "refreshed" || output.Path != "catalog/catalog.sqlite" || output.Generation.Records != 2 {
+		t.Fatalf("output = %#v", output)
 	}
-	got, err := (catalogStoreGetter{store: store}).Get(context.Background(), catalogget.Input{Environment: "production", Site: "marketing", SiteResolved: true, LUID: "wb-1"})
-	if err != nil || got.Item.LUID != "wb-1" || got.Generation.ID != written.GenerationID {
-		t.Fatalf("get = %#v, error = %v", got, err)
+	compact, err := json.Marshal(output.CompactOutput())
+	if err != nil {
+		t.Fatal(err)
 	}
-	status, err := (catalogStoreStatuser{store: store}).Status(context.Background(), catalogstatus.Input{Environment: "production", Site: "marketing", SiteResolved: true})
-	if err != nil || filepath.IsAbs(status.Path) || status.Path != written.Path || status.Records != 1 {
+	if strings.Contains(string(compact), "Finance") || strings.Contains(string(compact), "Operations") || strings.Contains(string(compact), "workbook-1") {
+		t.Fatalf("refresh receipt exposed catalog content: %s", compact)
+	}
+	item, err := store.Get(context.Background(), corecatalog.Lookup{Environment: "production", Site: "marketing", SiteSelected: true, LUID: "workbook-1"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if item.Record.Name != "Finance" || item.Record.ProjectPath != "Operations" || item.Record.Owner != "user-2" {
+		t.Fatalf("stored workbook = %#v", item.Record)
+	}
+	status, err := store.Status(context.Background(), corecatalog.Selection{Environment: "production", Site: "marketing", SiteSelected: true})
+	if err != nil || status.RecordCount != 2 {
 		t.Fatalf("status = %#v, error = %v", status, err)
 	}
+}
+
+func TestCatalogHydratorRollsBackPartialCollection(t *testing.T) {
+	store := corecatalog.NewStore(t.TempDir(), time.Now)
+	executor := catalogExecutorFunc(func(_ context.Context, input tableaucatalog.Request) (tableaucatalog.Response, error) {
+		if input.Scope == tableaucatalog.ScopeWorkbooks {
+			return tableaucatalog.Response{}, errors.New("workbook inventory failed")
+		}
+		return tableaucatalog.Response{StatusCode: http.StatusOK, Body: []byte(catalogListXML("projects", "project", `<project id="project-1" name="Operations"/>`))}, nil
+	})
+	hydrator := catalogHydrator{
+		store: store, now: time.Now,
+		executorFor: func(context.Context, string, string) (tableaucatalog.Executor, error) { return executor, nil },
+		newRunner: func(executor tableaucatalog.Executor) (catalogRunner, error) {
+			return tableaucatalog.NewEngine(executor, tableaucatalog.Config{MaxConcurrency: 2})
+		},
+	}
+	_, err := hydrator.Hydrate(context.Background(), catalogrefresh.HydrationRequest{
+		Environment: "production", Site: "marketing", RequestedScopes: []string{"workbooks"}, ImplicitScopes: []string{"projects"},
+	})
+	if err == nil {
+		t.Fatal("Hydrate() error = nil")
+	}
+	if _, statusErr := store.Status(context.Background(), corecatalog.Selection{Environment: "production", Site: "marketing", SiteSelected: true}); statusErr == nil {
+		t.Fatal("partial generation became current")
+	}
+}
+
+type catalogTestSession struct{}
+
+func (catalogTestSession) Authorize(request *http.Request) {
+	request.Header.Set("X-Tableau-Auth", "secret-token")
+}
+func (catalogTestSession) SiteLUID() string { return "site-luid" }
+func (catalogTestSession) UserLUID() string { return "user-luid" }
+func (catalogTestSession) String() string   { return "redacted session" }
+
+func TestCatalogExecutorUsesSharedAuthenticatedTransport(t *testing.T) {
+	server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		if request.URL.Path != "/api/3.29/sites/site-luid/workbooks" || request.URL.Query().Get("pageSize") != "1000" {
+			t.Fatalf("request URL = %s", request.URL.String())
+		}
+		if request.Header.Get("X-Tableau-Auth") != "secret-token" || request.Header.Get("Accept") != "application/xml" {
+			t.Fatalf("request headers = %#v", request.Header)
+		}
+		writer.Header().Set("X-Tableau-Request-Id", "request-1")
+		_, _ = writer.Write([]byte(catalogListXML("workbooks", "workbook", "")))
+	}))
+	defer server.Close()
+	transport := tableau.NewTransport(server.Client(), "3.29", func() string { return "correlation-1" })
+	executor := catalogTableauExecutor{transport: transport, session: catalogTestSession{}, serverURL: server.URL, siteLUID: "site-luid"}
+	response, err := executor.Do(context.Background(), tableaucatalog.Request{
+		Path: "/workbooks", Query: url.Values{"pageNumber": {"1"}, "pageSize": {"1000"}},
+		Operation: "catalog.workbooks.list", MaxResponseBytes: 1024,
+	})
+	if err != nil || response.StatusCode != http.StatusOK || response.TableauRequestID != "request-1" {
+		t.Fatalf("response = %#v, error = %v", response, err)
+	}
+}
+
+func catalogListXML(container, item, rows string) string {
+	total := 0
+	if rows != "" {
+		total = 1
+	}
+	return fmt.Sprintf(`<tsResponse><pagination pageNumber="1" pageSize="1000" totalAvailable="%d"/><%s>%s</%s></tsResponse>`, total, container, rows, container)
 }

@@ -527,9 +527,9 @@ Hydrate and replace one normalized site inventory generation.
 - Raw capable: No
 - Safety and guard: Incomplete generations never become current
 - Artifact effect: None
-- Upstream operation: Admitted REST list endpoints
+- Upstream operation: Admitted REST list and permissions endpoints
 - Evidence: docs/evidence/group2-inventory-rest-contract.md
-- Validation or blocker: Contract-verified four-resource inventory composition and atomic local replacement
+- Validation or blocker: Contract-verified eight-scope concurrent hydration and transactional SQLite publication
 - Blocker ID: None
 - Command binding: `tadx catalog refresh`
 
