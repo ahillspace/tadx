@@ -45,6 +45,8 @@ type Generation struct {
 	Site        string    `json:"site"`
 	GeneratedAt time.Time `json:"generated_at"`
 	Complete    bool      `json:"complete"`
+	Source      string    `json:"source,omitempty"`
+	Scopes      []string  `json:"scopes,omitempty"`
 	Records     []Record  `json:"records"`
 }
 
@@ -54,6 +56,8 @@ type generationDocument struct {
 	Site        *string            `json:"site"`
 	GeneratedAt time.Time          `json:"generated_at"`
 	Complete    bool               `json:"complete"`
+	Source      string             `json:"source,omitempty"`
+	Scopes      []string           `json:"scopes,omitempty"`
 	Records     *boundedRecordList `json:"records"`
 }
 
@@ -96,6 +100,7 @@ func (invalidCursorError) InvalidCatalogCursor() bool { return true }
 type Query struct {
 	Text         string
 	Kind         string
+	Name         string
 	ProjectPath  string
 	Owner        string
 	Environment  string
@@ -122,9 +127,73 @@ type SearchResult struct {
 	Site         string
 	GeneratedAt  time.Time
 	Stale        bool
+	Source       string
 	Records      []Record
 	Warnings     []string
 }
+
+// Selection identifies one resolved local catalog source.
+type Selection struct {
+	Environment  string
+	Site         string
+	SiteSelected bool
+}
+
+// Lookup identifies one record by authoritative LUID or exact labels.
+type Lookup struct {
+	Environment  string
+	Site         string
+	SiteSelected bool
+	LUID         string
+	Kind         string
+	Name         string
+	ProjectPath  string
+}
+
+// GetResult includes one exact record and its generation provenance.
+type GetResult struct {
+	Record       Record
+	GenerationID string
+	Environment  string
+	Site         string
+	GeneratedAt  time.Time
+	Stale        bool
+	Warnings     []string
+}
+
+// StatusResult describes the current complete local generation.
+type StatusResult struct {
+	GenerationID string
+	Environment  string
+	Site         string
+	GeneratedAt  time.Time
+	Age          time.Duration
+	Complete     bool
+	Stale        bool
+	Source       string
+	Path         string
+	RecordCount  int
+	Warnings     []string
+}
+
+// ReplaceResult describes one atomically published generation.
+type ReplaceResult struct {
+	GenerationID string
+	Path         string
+	RecordCount  int
+}
+
+type ambiguousSelectorError struct{}
+
+func (ambiguousSelectorError) Error() string { return "catalog selector is ambiguous" }
+
+func (ambiguousSelectorError) AmbiguousCatalogSelector() bool { return true }
+
+type notFoundError struct{}
+
+func (notFoundError) Error() string { return "catalog record was not found" }
+
+func (notFoundError) CatalogRecordNotFound() bool { return true }
 
 // FileStore reads complete normalized generations from portable environment filenames under <root>/catalog.
 type FileStore struct {
@@ -138,6 +207,131 @@ func NewFileStore(root string, now func() time.Time) *FileStore {
 		now = time.Now
 	}
 	return &FileStore{root: root, now: now}
+}
+
+// Replace validates and atomically publishes one deterministic complete generation.
+func (s *FileStore) Replace(ctx context.Context, generation Generation) (ReplaceResult, error) {
+	if err := ctx.Err(); err != nil {
+		return ReplaceResult{}, err
+	}
+	if !generation.Complete {
+		return ReplaceResult{}, errors.New("catalog replacement generation must be complete")
+	}
+	if strings.TrimSpace(generation.Environment) == "" || generation.GeneratedAt.IsZero() {
+		return ReplaceResult{}, errors.New("catalog replacement requires environment and generation time")
+	}
+	if generation.Records == nil {
+		return ReplaceResult{}, errors.New("catalog replacement records are required")
+	}
+	generation.Records = append([]Record(nil), generation.Records...)
+	sortRecords(generation.Records)
+	generation.Scopes = append([]string(nil), generation.Scopes...)
+	sort.Strings(generation.Scopes)
+	if err := validateRecords(generation); err != nil {
+		return ReplaceResult{}, err
+	}
+	if generation.ID == "" {
+		canonical := generation
+		canonical.ID = ""
+		data, err := json.Marshal(canonical)
+		if err != nil {
+			return ReplaceResult{}, err
+		}
+		digest := sha256.Sum256(data)
+		generation.ID = "sha256:" + hex.EncodeToString(digest[:])
+	}
+	if err := validateField("generation ID", generation.ID); err != nil {
+		return ReplaceResult{}, err
+	}
+	data, err := json.Marshal(generation)
+	if err != nil {
+		return ReplaceResult{}, err
+	}
+	if len(data) > maxGenerationBytes {
+		return ReplaceResult{}, fmt.Errorf("catalog generation exceeds %d-byte limit", maxGenerationBytes)
+	}
+	filename, err := GenerationFilename(generation.Environment)
+	if err != nil {
+		return ReplaceResult{}, err
+	}
+	directory := filepath.Join(s.root, "catalog")
+	if err := os.MkdirAll(directory, 0o700); err != nil {
+		return ReplaceResult{}, err
+	}
+	temporary, err := os.CreateTemp(directory, ".generation-*.tmp")
+	if err != nil {
+		return ReplaceResult{}, err
+	}
+	temporaryPath := temporary.Name()
+	defer os.Remove(temporaryPath)
+	if err := temporary.Chmod(0o600); err != nil {
+		temporary.Close()
+		return ReplaceResult{}, err
+	}
+	if _, err := temporary.Write(data); err != nil {
+		temporary.Close()
+		return ReplaceResult{}, err
+	}
+	if err := temporary.Sync(); err != nil {
+		temporary.Close()
+		return ReplaceResult{}, err
+	}
+	if err := temporary.Close(); err != nil {
+		return ReplaceResult{}, err
+	}
+	if err := ctx.Err(); err != nil {
+		return ReplaceResult{}, err
+	}
+	if err := os.Rename(temporaryPath, filepath.Join(directory, filename)); err != nil {
+		return ReplaceResult{}, err
+	}
+	return ReplaceResult{GenerationID: generation.ID, Path: filepath.ToSlash(filepath.Join("catalog", filename)), RecordCount: len(generation.Records)}, nil
+}
+
+// Get resolves one exact record from the current complete generation.
+func (s *FileStore) Get(ctx context.Context, lookup Lookup) (GetResult, error) {
+	if lookup.LUID == "" && (lookup.Kind == "" || lookup.Name == "") {
+		return GetResult{}, errors.New("catalog get requires a LUID or exact kind and name")
+	}
+	query := Query{Environment: lookup.Environment, Site: lookup.Site, SiteSelected: lookup.SiteSelected, Limit: 2}
+	if lookup.LUID != "" {
+		query.LUID = lookup.LUID
+		query.Limit = 1
+	} else {
+		query.Kind = lookup.Kind
+		query.Name = lookup.Name
+		query.ProjectPath = lookup.ProjectPath
+	}
+	result, err := s.Search(ctx, query)
+	if err != nil {
+		return GetResult{}, err
+	}
+	if lookup.LUID == "" {
+		if len(result.Records) > 1 || result.Page.Total > 1 {
+			return GetResult{}, ambiguousSelectorError{}
+		}
+	}
+	if len(result.Records) == 0 {
+		return GetResult{}, notFoundError{}
+	}
+	return GetResult{Record: result.Records[0], GenerationID: result.GenerationID, Environment: result.Environment, Site: result.Site, GeneratedAt: result.GeneratedAt, Stale: result.Stale, Warnings: append([]string(nil), result.Warnings...)}, nil
+}
+
+// Status reports the current complete generation without exposing absolute paths.
+func (s *FileStore) Status(ctx context.Context, selection Selection) (StatusResult, error) {
+	result, err := s.Search(ctx, Query{Environment: selection.Environment, Site: selection.Site, SiteSelected: selection.SiteSelected, Limit: 1})
+	if err != nil {
+		return StatusResult{}, err
+	}
+	filename, err := GenerationFilename(selection.Environment)
+	if err != nil {
+		return StatusResult{}, err
+	}
+	age := s.now().Sub(result.GeneratedAt)
+	if age < 0 {
+		age = 0
+	}
+	return StatusResult{GenerationID: result.GenerationID, Environment: result.Environment, Site: result.Site, GeneratedAt: result.GeneratedAt, Age: age, Complete: true, Stale: result.Stale, Source: result.Source, Path: filepath.ToSlash(filepath.Join("catalog", filename)), RecordCount: result.Page.Total, Warnings: append([]string(nil), result.Warnings...)}, nil
 }
 
 // Search returns a deterministic bounded slice from one complete generation.
@@ -166,7 +360,7 @@ func (s *FileStore) Search(ctx context.Context, query Query) (SearchResult, erro
 	}
 	generation := Generation{
 		ID: document.ID, Environment: document.Environment, GeneratedAt: document.GeneratedAt,
-		Complete: document.Complete,
+		Complete: document.Complete, Source: document.Source, Scopes: append([]string(nil), document.Scopes...),
 	}
 	if document.Site != nil {
 		generation.Site = *document.Site
@@ -214,6 +408,9 @@ func (s *FileStore) Search(ctx context.Context, query Query) (SearchResult, erro
 		if query.Kind != "" && record.Kind != query.Kind {
 			continue
 		}
+		if query.Name != "" && record.Name != query.Name {
+			continue
+		}
 		if query.ProjectPath != "" && record.ProjectPath != query.ProjectPath {
 			continue
 		}
@@ -225,18 +422,7 @@ func (s *FileStore) Search(ctx context.Context, query Query) (SearchResult, erro
 		}
 		items = append(items, record)
 	}
-	sort.Slice(items, func(i, j int) bool {
-		if items[i].Kind != items[j].Kind {
-			return items[i].Kind < items[j].Kind
-		}
-		if items[i].Name != items[j].Name {
-			return items[i].Name < items[j].Name
-		}
-		if items[i].ProjectPath != items[j].ProjectPath {
-			return items[i].ProjectPath < items[j].ProjectPath
-		}
-		return items[i].LUID < items[j].LUID
-	})
+	sortRecords(items)
 	limit := query.Limit
 	if limit == 0 {
 		limit = defaultLimit
@@ -244,6 +430,7 @@ func (s *FileStore) Search(ctx context.Context, query Query) (SearchResult, erro
 	if limit < 1 || limit > maxLimit {
 		return SearchResult{}, fmt.Errorf("catalog search limit must be between 1 and %d", maxLimit)
 	}
+	query.Limit = limit
 	offset := 0
 	if query.Cursor != "" {
 		cursorGeneration, cursorQuery, cursorOffset, cursorErr := decodeCursor(query.Cursor)
@@ -266,7 +453,7 @@ func (s *FileStore) Search(ctx context.Context, query Query) (SearchResult, erro
 	return SearchResult{
 		Page:         Page{Returned: len(pageItems), Total: len(items), Limit: limit, NextCursor: next},
 		GenerationID: generation.ID, Environment: generation.Environment, Site: generation.Site, GeneratedAt: generation.GeneratedAt, Stale: stale,
-		Records: pageItems, Warnings: warnings,
+		Source: generation.Source, Records: pageItems, Warnings: warnings,
 	}, nil
 }
 
@@ -341,6 +528,21 @@ func validateRecords(generation Generation) error {
 	return nil
 }
 
+func sortRecords(records []Record) {
+	sort.Slice(records, func(i, j int) bool {
+		if records[i].Kind != records[j].Kind {
+			return records[i].Kind < records[j].Kind
+		}
+		if records[i].Name != records[j].Name {
+			return records[i].Name < records[j].Name
+		}
+		if records[i].ProjectPath != records[j].ProjectPath {
+			return records[i].ProjectPath < records[j].ProjectPath
+		}
+		return records[i].LUID < records[j].LUID
+	})
+}
+
 func validateField(name, value string) error {
 	if len(value) > maxFieldBytes {
 		return fmt.Errorf("%s exceeds %d-byte limit", name, maxFieldBytes)
@@ -352,14 +554,16 @@ func queryFingerprint(query Query) string {
 	value := struct {
 		Text        string `json:"text"`
 		Kind        string `json:"kind"`
+		Name        string `json:"name"`
 		ProjectPath string `json:"project_path"`
 		Owner       string `json:"owner"`
 		Environment string `json:"environment"`
 		Site        string `json:"site"`
+		Limit       int    `json:"limit"`
 		LUID        string `json:"luid"`
 	}{
-		Text: strings.ToLower(query.Text), Kind: query.Kind, ProjectPath: query.ProjectPath,
-		Owner: query.Owner, Environment: query.Environment, Site: query.Site, LUID: query.LUID,
+		Text: strings.ToLower(query.Text), Kind: query.Kind, Name: query.Name, ProjectPath: query.ProjectPath,
+		Owner: query.Owner, Environment: query.Environment, Site: query.Site, Limit: query.Limit, LUID: query.LUID,
 	}
 	data, _ := json.Marshal(value)
 	digest := sha256.Sum256(data)

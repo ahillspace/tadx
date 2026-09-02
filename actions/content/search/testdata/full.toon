@@ -1,0 +1,8 @@
+page:
+  returned: 1
+  limit: 1
+  next_cursor: eyJ2IjoxLCJmIjoiNTA4ODc2ZjdkZDZhYjA3YjMzZWFhN2Q2YmIxYTU0NmJkYTIxZWM1ZjgzNjc2NmIyMzNjNzNmYTc1OTVkYmYzOSIsImMiOiJuZXh0IiwicyI6IjllOWMwNjllMDVlNzk3NGNlYzdlY2M5MTY5MDQzNTg2NmQ2ZjNmOGM3NGI0ODVhYjIzNjhiZjdjOWFkNTgyMmQifQ
+items[1]{luid,kind,name,project_path,owner,modified_at}:
+  wb-1,workbook,Finance,Ops,alice,"2026-09-01T10:00:00Z"
+warnings[1]: results reflect current remote visibility
+help[1]: tadx content get --kind <kind> --id <luid>

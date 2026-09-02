@@ -59,6 +59,7 @@ func Run(ctx context.Context, args []string, stdout io.Writer, options Options) 
 	environmentCommands := newEnvironmentCommands(runtime)
 	workspaceCommands := newWorkspaceCommands(runtime)
 	remoteContent := newRemoteContentCommands(runtime)
+	catalogGroup2 := newCatalogGroup2Commands(runtime, remoteContent)
 	root := cli.NewRoot(cli.Dependencies{
 		Lister:              capabilitylist.New(source),
 		Getter:              capabilityget.New(source),
@@ -72,6 +73,9 @@ func Run(ctx context.Context, args []string, stdout io.Writer, options Options) 
 		GetShort:            registryShort("capability.get"),
 		AuthChecker:         authcheck.New(runtime, runtime),
 		CatalogSearcher:     &catalogService{runtime: runtime},
+		CatalogRefresher:    catalogGroup2.refresher(),
+		CatalogGetter:       catalogGroup2.getter(),
+		CatalogStatuser:     catalogGroup2.statuser(),
 		WorkbookPuller:      &pullService{runtime: runtime},
 		WorkbookPublisher:   &publishService{runtime: runtime},
 		Content:             remoteContent.dependencies(),
@@ -80,6 +84,9 @@ func Run(ctx context.Context, args []string, stdout io.Writer, options Options) 
 		AuthUse:             registryLeafUse("auth.check"), AuthShort: registryShort("auth.check"),
 		AuthStatuser: newAuthStatus(runtime), AuthStatusUse: registryLeafUse("auth.status"), AuthStatusShort: registryShort("auth.status"),
 		CatalogSearchUse: registryLeafUse("catalog.search"), CatalogSearchShort: registryShort("catalog.search"),
+		CatalogRefreshUse: registryLeafUse("catalog.refresh"), CatalogRefreshShort: registryShort("catalog.refresh"),
+		CatalogGetUse: registryLeafUse("catalog.get"), CatalogGetShort: registryShort("catalog.get"),
+		CatalogStatusUse: registryLeafUse("catalog.status"), CatalogStatusShort: registryShort("catalog.status"),
 		WorkbookPullUse: registryLeafUse("workbook.pull"), WorkbookPullShort: registryShort("workbook.pull"),
 		WorkbookPublishUse: registryLeafUse("workbook.publish"), WorkbookPublishShort: registryShort("workbook.publish"),
 	})

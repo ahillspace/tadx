@@ -77,6 +77,55 @@ func TestClientListsOneBoundedDatasourcePage(t *testing.T) {
 	}
 }
 
+func TestClientListsRichDatasourceMetadataWithStableFiltersAndRequestID(t *testing.T) {
+	server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		query := request.URL.Query()
+		if query.Get("filter") != "name:eq:Sales,ownerName:eq:owner,projectName:eq:Ops,type:eq:hyper,tags:eq:daily,updatedAt:gte:2026-01-01T00:00:00Z,updatedAt:lte:2026-09-01T00:00:00Z" {
+			t.Fatalf("filter = %q", query.Get("filter"))
+		}
+		if query.Get("sort") != "name:asc,updatedAt:asc" {
+			t.Fatalf("sort = %q", query.Get("sort"))
+		}
+		writer.Header().Set("X-Tableau-Request-Id", "datasource-list-rich-request")
+		_, _ = io.WriteString(writer, `<tsResponse><pagination pageNumber="1" pageSize="1" totalAvailable="1"/><datasources><datasource id="ds-1" name="Sales" description="Sales data" type="hyper" contentUrl="sales" size="42" createdAt="2026-08-01T00:00:00Z" updatedAt="2026-09-01T00:00:00Z" encryptExtracts="false" hasExtracts="true" isCertified="true" certificationNote="Reviewed" useRemoteQueryAgent="false" webpageUrl="https://tableau.example/datasources/1"><project id="project-1" name="Ops"/><owner id="user-1"/><tags><tag label="daily"/></tags><askData enablement="Enabled"/></datasource></datasources></tsResponse>`)
+	}))
+	defer server.Close()
+
+	client := tableaudatasource.NewClient(tableau.NewTransport(server.Client(), "3.29", nil), session{}, server.URL)
+	page, err := client.List(context.Background(), tableaudatasource.ListRequest{
+		PageNumber: 1, PageSize: 1, Name: "Sales", OwnerName: "owner", ProjectName: "Ops", Type: "hyper", Tag: "daily",
+		UpdatedAfter: "2026-01-01T00:00:00Z", UpdatedBefore: "2026-09-01T00:00:00Z",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	item := page.Items[0]
+	if page.TableauRequestID != "datasource-list-rich-request" || item.Description != "Sales data" || item.OwnerLUID != "user-1" || item.ContentURL != "sales" || item.Type != "hyper" || item.Size == nil || *item.Size != 42 || item.HasExtracts == nil || !*item.HasExtracts || len(item.Tags) != 1 || item.Tags[0] != "daily" {
+		t.Fatalf("page = %#v", page)
+	}
+}
+
+func TestClientAvoidsLiveRejectedDatasourceContentURLSort(t *testing.T) {
+	server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		sortValue := request.URL.Query().Get("sort")
+		if strings.Contains(sortValue, "contentUrl") {
+			writer.WriteHeader(http.StatusBadRequest)
+			_, _ = io.WriteString(writer, `<tsResponse><error code="400066"><summary>Bad Request</summary><detail>The sort contains a key 'contentUrl' which is not recognized for this api version.</detail></error></tsResponse>`)
+			return
+		}
+		if sortValue != "name:asc,updatedAt:asc" {
+			t.Fatalf("sort = %q", sortValue)
+		}
+		_, _ = io.WriteString(writer, `<tsResponse><pagination pageNumber="1" pageSize="1" totalAvailable="0"/><datasources/></tsResponse>`)
+	}))
+	defer server.Close()
+
+	client := tableaudatasource.NewClient(tableau.NewTransport(server.Client(), "3.29", nil), session{}, server.URL)
+	if _, err := client.List(context.Background(), tableaudatasource.ListRequest{PageNumber: 1, PageSize: 1}); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestClientRejectsInvalidDatasourceListInput(t *testing.T) {
 	client := tableaudatasource.NewClient(tableau.NewTransport(http.DefaultClient, "3.29", nil), session{}, "https://example.invalid")
 	tests := []struct {
@@ -153,6 +202,23 @@ func TestClientGetsDatasourceByAuthoritativeLUID(t *testing.T) {
 	}
 	if datasource.LUID != "ds-1" || datasource.Name != "Sales" || datasource.ProjectLUID != "project-1" || datasource.ProjectName != "Analytics" {
 		t.Fatalf("datasource = %#v", datasource)
+	}
+}
+
+func TestClientGetsRichDatasourceMetadataAndRequestID(t *testing.T) {
+	server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+		writer.Header().Set("X-Tableau-Request-Id", "datasource-get-rich-request")
+		_, _ = io.WriteString(writer, `<tsResponse><datasource id="ds-1" name="Sales" description="Sales data" type="hyper" contentUrl="sales" updatedAt="2026-09-01T00:00:00Z"><project id="project-1" name="Ops"/><owner id="user-1"/><tags><tag label="daily"/></tags><askData enablement="Enabled"/></datasource></tsResponse>`)
+	}))
+	defer server.Close()
+
+	client := tableaudatasource.NewClient(tableau.NewTransport(server.Client(), "3.29", nil), session{}, server.URL)
+	item, err := client.Get(context.Background(), "ds-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if item.TableauRequestID != "datasource-get-rich-request" || item.Description != "Sales data" || item.OwnerLUID != "user-1" || item.AskDataEnablement != "Enabled" || len(item.Tags) != 1 {
+		t.Fatalf("datasource = %#v", item)
 	}
 }
 

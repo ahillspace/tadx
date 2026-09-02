@@ -31,6 +31,10 @@ type Renderer interface{ Render(any) error }
 type Dependencies struct {
 	Puller           Puller
 	Publisher        Publisher
+	WorkbookLister   WorkbookLister
+	WorkbookGetter   WorkbookGetter
+	DatasourceLister DatasourceLister
+	DatasourceGetter DatasourceGetter
 	ProjectLister    ProjectLister
 	ProjectGetter    ProjectGetter
 	FlowLister       FlowLister
@@ -53,7 +57,13 @@ func New(deps Dependencies) *cobra.Command {
 	content := &cobra.Command{Use: "content", Short: "Operate Tableau content lifecycle"}
 	workbook := &cobra.Command{Use: "workbook", Short: "Operate Tableau workbooks"}
 	workbook.AddCommand(newPull(deps), newPublish(deps))
+	if deps.WorkbookLister != nil && deps.WorkbookGetter != nil {
+		workbook.AddCommand(newWorkbookList(deps.WorkbookLister, deps.Renderer), newWorkbookGet(deps.WorkbookGetter, deps.Renderer))
+	}
 	content.AddCommand(workbook)
+	if deps.DatasourceLister != nil && deps.DatasourceGetter != nil {
+		content.AddCommand(newDatasourceInventory(deps.DatasourceLister, deps.DatasourceGetter, deps.Renderer))
+	}
 	if deps.ProjectLister != nil && deps.ProjectGetter != nil {
 		content.AddCommand(newProject(deps))
 	}

@@ -1,0 +1,14 @@
+item:
+  luid: wb-1
+  kind: workbook
+  name: Finance
+  project_path: Ops
+  owner: alice
+generation:
+  id: generation-1
+  environment: production
+  site: marketing
+  generated_at: "2026-09-01T12:00:00Z"
+  stale: true
+warnings[1]: catalog generation is older than 12 hours
+help[1]: tadx content get --kind workbook --id wb-1

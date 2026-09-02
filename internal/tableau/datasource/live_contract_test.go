@@ -95,6 +95,31 @@ func TestLiveDatasourceListContract(t *testing.T) {
 	)
 }
 
+// TestLiveDatasourceGetContract exercises one exact authoritative read without mutation.
+func TestLiveDatasourceGetContract(t *testing.T) {
+	datasourceLUID := strings.TrimSpace(os.Getenv("TADX_LIVE_DATASOURCE_LUID"))
+	if datasourceLUID == "" {
+		t.Skip("set TADX_LIVE_DATASOURCE_LUID to run the live datasource get contract test")
+	}
+
+	environment, session, transport := liveDatasourceConnection(t)
+	client := tableaudatasource.NewClient(transport, session, environment.URL)
+	item, err := client.Get(context.Background(), datasourceLUID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if item.LUID != datasourceLUID || strings.TrimSpace(item.Name) == "" || strings.TrimSpace(item.ProjectLUID) == "" || strings.TrimSpace(item.ProjectName) == "" {
+		t.Fatal("live datasource get omitted authoritative identity")
+	}
+	if strings.TrimSpace(item.Type) == "" || strings.TrimSpace(item.ContentURL) == "" || strings.TrimSpace(item.TableauRequestID) == "" {
+		t.Fatal("live datasource get omitted documented metadata or request ID")
+	}
+	t.Logf(
+		"sanitized datasource get evidence: method=GET path=/api/{version}/sites/{site}/datasources/{datasource} luid=%s project=%s type_present=true tags=%d request_id=%s",
+		hashLiveDatasourceID(item.LUID), hashLiveDatasourceID(item.ProjectLUID), len(item.Tags), hashLiveDatasourceID(item.TableauRequestID),
+	)
+}
+
 // TestLiveDatasourceDownloadContract exercises the includeExtract native download path.
 // It is gated on TADX_LIVE_DATASOURCE_LUID so it only runs against a known-good datasource.
 func TestLiveDatasourceDownloadContract(t *testing.T) {
@@ -165,17 +190,24 @@ func liveDatasourceConnection(t *testing.T) (config.Environment, coreauth.Sessio
 	}
 	alias := strings.TrimSpace(os.Getenv("TADX_LIVE_ENVIRONMENT"))
 	if alias == "" {
-		alias = "dev"
+		t.Skip("set TADX_LIVE_ENVIRONMENT to run the live datasource contract test")
 	}
 	environment, err := configuration.ResolveEnvironment(alias)
 	if err != nil {
 		t.Fatal(err)
 	}
+	expectedSite := strings.TrimSpace(os.Getenv("TADX_LIVE_SITE_CONTENT_URL"))
+	if expectedSite == "" {
+		t.Skip("set TADX_LIVE_SITE_CONTENT_URL to guard the live datasource contract test")
+	}
+	if environment.SiteContentURL != expectedSite {
+		t.Fatalf("live datasource contract expected the configured site content URL")
+	}
 	if _, ok := os.LookupEnv(environment.Auth.PATNameEnv); !ok {
-		t.Skip("configured dev PAT variables are not available in this process")
+		t.Skip("configured PAT name variable is not available in this process")
 	}
 	if _, ok := os.LookupEnv(environment.Auth.PATSecretEnv); !ok {
-		t.Skip("configured dev PAT variables are not available in this process")
+		t.Skip("configured PAT secret variable is not available in this process")
 	}
 	transport := tableau.NewTransport(http.DefaultClient, environment.APIVersion, func() string { return "datasource-live-contract" })
 	provider := coreauth.NewPATProvider(coreauth.LookupEnvFunc(os.LookupEnv), tableauauth.NewClient(transport))

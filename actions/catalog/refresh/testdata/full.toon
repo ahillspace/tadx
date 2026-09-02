@@ -1,0 +1,11 @@
+status: refreshed
+generation:
+  id: generation-1
+  environment: production
+  site: marketing
+  generated_at: "2026-09-01T12:00:00Z"
+  records: 1
+  source: tableau-rest
+  scopes[1]: workbooks
+path: catalog/production.json
+help[1]: tadx catalog status --environment production

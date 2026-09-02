@@ -1,0 +1,10 @@
+item:
+  luid: wb-1
+  kind: workbook
+  name: Finance
+  project_path: Ops
+  owner: alice
+  modified_at: "2026-09-01T10:00:00Z"
+  url: "https://tableau.example/views/Finance"
+warnings[1]: resource-specific fields are bounded
+help[1]: tadx capability get workbook.get --full

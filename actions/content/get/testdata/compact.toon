@@ -1,0 +1,8 @@
+item:
+  luid: wb-1
+  kind: workbook
+  name: Finance
+  project_path: Ops
+warnings[1]: resource-specific fields are bounded
+details: "--full"
+help[1]: tadx capability get workbook.get --full

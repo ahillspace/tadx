@@ -12,6 +12,11 @@ var implementationManifest = map[string]struct {
 	"capability.get":            {CommandPath: []string{"capability", "get"}},
 	"capability.list":           {CommandPath: []string{"capability", "list"}},
 	"catalog.search":            {CommandPath: []string{"catalog", "search"}},
+	"catalog.refresh":           {CommandPath: []string{"catalog", "refresh"}},
+	"catalog.get":               {CommandPath: []string{"catalog", "get"}},
+	"catalog.status":            {CommandPath: []string{"catalog", "status"}},
+	"datasource.get":            {CommandPath: []string{"content", "datasource", "get"}},
+	"datasource.list":           {CommandPath: []string{"content", "datasource", "list"}},
 	"env.profile.add":           {CommandPath: []string{"env", "add"}},
 	"env.profile.get":           {CommandPath: []string{"env", "get"}},
 	"env.profile.list":          {CommandPath: []string{"env", "list"}},
@@ -35,6 +40,8 @@ var implementationManifest = map[string]struct {
 	"workspace.move":            {CommandPath: []string{"workspace", "move"}},
 	"workspace.status":          {CommandPath: []string{"workspace", "status"}},
 	"workbook.publish":          {CommandPath: []string{"content", "workbook", "publish"}},
+	"workbook.get":              {CommandPath: []string{"content", "workbook", "get"}},
+	"workbook.list":             {CommandPath: []string{"content", "workbook", "list"}},
 	"workbook.pull":             {CommandPath: []string{"content", "workbook", "pull"}},
 }
 

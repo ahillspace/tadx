@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"reflect"
 	"sort"
 
 	"github.com/ahillspace/tadx/internal/identity"
@@ -24,14 +25,28 @@ type Client interface {
 	Prepare(context.Context, tableauworkbook.PublishRequest) (*tableauworkbook.PreparedPublish, error)
 }
 
+// InventoryClient is the filtered workbook list seam.
+type InventoryClient interface {
+	ListWorkbooks(context.Context, tableauworkbook.ListRequest) (tableauworkbook.WorkbookPage, error)
+}
+
+// ProjectPathResolver supplies canonical hierarchy paths without a resource-package dependency.
+type ProjectPathResolver interface {
+	ResolveProjectPath(context.Context, string) (string, error)
+}
+
 // Workbook is the normalized resource identity.
 type Workbook struct {
-	LUID        string
-	Name        string
-	ContentURL  string
-	ProjectLUID string
-	ProjectPath string
-	OwnerLUID   string
+	LUID, Name, ContentURL, ProjectLUID, ProjectPath, OwnerLUID string
+	Description, CreatedAt, UpdatedAt, RequestID                string
+	Tags                                                        []string
+}
+
+// Page is one bounded normalized workbook page.
+type Page struct {
+	Number, Size, Total int
+	Items               []Workbook
+	RequestID           string
 }
 
 // Project is a normalized exact destination project.
@@ -42,10 +57,63 @@ type Project struct {
 }
 
 // Adapter isolates workbook-specific Tableau API behavior.
-type Adapter struct{ client Client }
+type Adapter struct {
+	client   Client
+	projects ProjectPathResolver
+}
 
 // NewAdapter creates the first resource adapter.
 func NewAdapter(client Client) *Adapter { return &Adapter{client: client} }
+
+// NewAdapterWithProjectResolver uses the shared canonical project hierarchy resolver.
+func NewAdapterWithProjectResolver(client Client, projects ProjectPathResolver) *Adapter {
+	return &Adapter{client: client, projects: projects}
+}
+
+// ListWorkbooks returns one validated, bounded page.
+func (a *Adapter) ListWorkbooks(ctx context.Context, input tableauworkbook.ListRequest) (Page, error) {
+	if a == nil || a.client == nil {
+		return Page{}, errors.New("workbook resource adapter is not configured")
+	}
+	client, ok := a.client.(InventoryClient)
+	if !ok {
+		return Page{}, errors.New("workbook inventory client is not configured")
+	}
+	page, err := client.ListWorkbooks(ctx, input)
+	if err != nil {
+		return Page{}, err
+	}
+	if err := validateWorkbookPage(page, input.PageNumber, input.PageSize); err != nil {
+		return Page{}, err
+	}
+	items := make([]Workbook, len(page.Items))
+	seen := make(map[string]tableauworkbook.Workbook, len(page.Items))
+	var legacyPaths *projectPathIndex
+	if a.projects == nil && len(page.Items) > 0 {
+		projects, err := a.allProjects(ctx)
+		if err != nil {
+			return Page{}, err
+		}
+		legacyPaths = newProjectPathIndex(projects)
+	}
+	for index, item := range page.Items {
+		if item.LUID == "" {
+			return Page{}, fmt.Errorf("workbook %q omitted its authoritative LUID", item.Name)
+		}
+		if item.ProjectLUID == "" {
+			return Page{}, fmt.Errorf("workbook %q with LUID %q omitted its authoritative project LUID", item.Name, item.LUID)
+		}
+		if err := recordWorkbookIdentity(seen, item); err != nil {
+			return Page{}, err
+		}
+		path, err := a.resolveProjectPath(ctx, item.ProjectLUID, legacyPaths)
+		if err != nil {
+			return Page{}, err
+		}
+		items[index] = normalizeWorkbook(item, path)
+	}
+	return Page{Number: page.Page.Number, Size: page.Page.Size, Total: page.Page.Total, Items: items, RequestID: page.TableauRequestID}, nil
+}
 
 // ResolveWorkbook applies LUID-authoritative exact selection across all pages.
 func (a *Adapter) ResolveWorkbook(ctx context.Context, selector identity.Selector) (Workbook, error) {
@@ -68,7 +136,7 @@ func (a *Adapter) ResolveWorkbook(ctx context.Context, selector identity.Selecto
 	}
 
 	var paths *projectPathIndex
-	if selector.ProjectPath != "" {
+	if selector.ProjectPath != "" && a.projects == nil {
 		projects, err := a.allProjects(ctx)
 		if err != nil {
 			return Workbook{}, err
@@ -77,7 +145,7 @@ func (a *Adapter) ResolveWorkbook(ctx context.Context, selector identity.Selecto
 	}
 	seenByLUID := make(map[string]tableauworkbook.Workbook)
 	itemsByLUID := make(map[string]tableauworkbook.Workbook, 2)
-	err := a.scanWorkbooks(ctx, func(item tableauworkbook.Workbook) error {
+	err := a.scanWorkbooks(ctx, tableauworkbook.ListRequest{Name: selector.Name}, func(item tableauworkbook.Workbook) error {
 		if selector.Name != "" && item.Name != selector.Name {
 			return nil
 		}
@@ -93,7 +161,7 @@ func (a *Adapter) ResolveWorkbook(ctx context.Context, selector identity.Selecto
 		if selector.ProjectPath != "" {
 			projectPath := item.ProjectName
 			if item.ProjectLUID != "" {
-				path, err := paths.path(item.ProjectLUID, make(map[string]bool))
+				path, err := a.resolveProjectPath(ctx, item.ProjectLUID, paths)
 				if err != nil {
 					return err
 				}
@@ -102,6 +170,7 @@ func (a *Adapter) ResolveWorkbook(ctx context.Context, selector identity.Selecto
 			if projectPath != selector.ProjectPath {
 				return nil
 			}
+			item.ProjectName = projectPath
 		}
 		if _, exists := itemsByLUID[item.LUID]; !exists {
 			itemsByLUID[item.LUID] = item
@@ -126,6 +195,11 @@ func (a *Adapter) ResolveWorkbook(ctx context.Context, selector identity.Selecto
 }
 
 func (a *Adapter) resolveSelectedProjectPath(ctx context.Context, workbook Workbook) (Workbook, error) {
+	if a.projects != nil {
+		var err error
+		workbook.ProjectPath, err = a.projects.ResolveProjectPath(ctx, workbook.ProjectLUID)
+		return workbook, err
+	}
 	projects, err := a.allProjects(ctx)
 	if err != nil {
 		return Workbook{}, err
@@ -166,7 +240,7 @@ func resolveWorkbook(selector identity.Selector, items []tableauworkbook.Workboo
 func (a *Adapter) FindWorkbooks(ctx context.Context, name, projectLUID string) ([]Workbook, error) {
 	seenByLUID := make(map[string]tableauworkbook.Workbook)
 	byLUID := make(map[string]Workbook)
-	err := a.scanWorkbooks(ctx, func(item tableauworkbook.Workbook) error {
+	err := a.scanWorkbooks(ctx, tableauworkbook.ListRequest{Name: name}, func(item tableauworkbook.Workbook) error {
 		if item.Name != name {
 			return nil
 		}
@@ -207,7 +281,9 @@ func recordWorkbookIdentity(byLUID map[string]tableauworkbook.Workbook, item tab
 		byLUID[item.LUID] = item
 		return nil
 	}
-	if current != item {
+	current.TableauRequestID = ""
+	item.TableauRequestID = ""
+	if !reflect.DeepEqual(current, item) {
 		return fmt.Errorf("Tableau workbook list returned conflicting records for LUID %q", item.LUID)
 	}
 	return nil
@@ -301,15 +377,33 @@ func (a *Adapter) PrepareWorkbook(ctx context.Context, input tableauworkbook.Pub
 	return a.client.Prepare(ctx, input)
 }
 
-func (a *Adapter) scanWorkbooks(ctx context.Context, visit func(tableauworkbook.Workbook) error) error {
+func (a *Adapter) scanWorkbooks(ctx context.Context, request tableauworkbook.ListRequest, visit func(tableauworkbook.Workbook) error) error {
 	if a == nil || a.client == nil {
 		return errors.New("workbook resource adapter is not configured")
 	}
 	seen := 0
-	for number := 1; ; number++ {
-		page, err := a.client.List(ctx, number, adapterPageSize)
+	expectedTotal, expectedSize := -1, -1
+	for number := 1; number <= 1000; number++ {
+		request.PageNumber, request.PageSize = number, adapterPageSize
+		var page tableauworkbook.WorkbookPage
+		var err error
+		if inventory, ok := a.client.(InventoryClient); ok {
+			page, err = inventory.ListWorkbooks(ctx, request)
+		} else {
+			page, err = a.client.List(ctx, number, adapterPageSize)
+		}
 		if err != nil {
 			return err
+		}
+		if err := validateWorkbookPage(page, number, adapterPageSize); err != nil {
+			return err
+		}
+		if expectedTotal < 0 {
+			expectedTotal, expectedSize = page.Page.Total, page.Page.Size
+		} else if page.Page.Total != expectedTotal {
+			return fmt.Errorf("workbook pagination total changed from %d to %d", expectedTotal, page.Page.Total)
+		} else if page.Page.Size != expectedSize {
+			return fmt.Errorf("workbook pagination size changed from %d to %d", expectedSize, page.Page.Size)
 		}
 		for _, item := range page.Items {
 			if err := visit(item); err != nil {
@@ -321,10 +415,28 @@ func (a *Adapter) scanWorkbooks(ctx context.Context, visit func(tableauworkbook.
 			return nil
 		}
 	}
+	return errors.New("workbook resolution exceeded the bounded page limit")
 }
 
 func normalizeWorkbook(item tableauworkbook.Workbook, projectPath string) Workbook {
-	return Workbook{LUID: item.LUID, Name: item.Name, ContentURL: item.ContentURL, ProjectLUID: item.ProjectLUID, ProjectPath: projectPath, OwnerLUID: item.OwnerLUID}
+	return Workbook{LUID: item.LUID, Name: item.Name, ContentURL: item.ContentURL, ProjectLUID: item.ProjectLUID, ProjectPath: projectPath, OwnerLUID: item.OwnerLUID, Description: item.Description, CreatedAt: item.CreatedAt, UpdatedAt: item.UpdatedAt, Tags: append([]string(nil), item.Tags...), RequestID: item.TableauRequestID}
+}
+
+func (a *Adapter) resolveProjectPath(ctx context.Context, projectLUID string, paths *projectPathIndex) (string, error) {
+	if a.projects != nil {
+		return a.projects.ResolveProjectPath(ctx, projectLUID)
+	}
+	if paths == nil {
+		return "", errors.New("workbook project hierarchy is not configured")
+	}
+	return paths.path(projectLUID, make(map[string]bool))
+}
+
+func validateWorkbookPage(page tableauworkbook.WorkbookPage, number, size int) error {
+	if number <= 0 || size <= 0 || page.Page.Number != number || page.Page.Size <= 0 || page.Page.Size > size || page.Page.Total < 0 || len(page.Items) > page.Page.Size || (page.Page.Number-1)*page.Page.Size+len(page.Items) > page.Page.Total {
+		return errors.New("workbook list returned inconsistent pagination")
+	}
+	return nil
 }
 
 func (a *Adapter) allProjects(ctx context.Context) ([]tableauworkbook.Project, error) {

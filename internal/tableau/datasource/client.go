@@ -11,6 +11,8 @@ import (
 	"net/http"
 	"net/url"
 	"path/filepath"
+	"reflect"
+	"sort"
 	"strconv"
 	"strings"
 
@@ -23,27 +25,50 @@ const (
 	maxListResponseBytes = 16 * 1024 * 1024
 )
 
-// Datasource is the authoritative identity projection needed by workbook dependency acquisition.
+// Datasource is the bounded REST metadata used by inventory and workbook dependency acquisition.
 type Datasource struct {
-	LUID        string
-	Name        string
-	ProjectLUID string
-	ProjectName string
+	LUID                string
+	Name                string
+	ProjectLUID         string
+	ProjectName         string
+	Description         string
+	Type                string
+	ContentURL          string
+	OwnerLUID           string
+	CreatedAt           string
+	UpdatedAt           string
+	Size                *int64
+	EncryptExtracts     *bool
+	HasExtracts         *bool
+	IsCertified         *bool
+	CertificationNote   string
+	UseRemoteQueryAgent *bool
+	WebpageURL          string
+	Tags                []string
+	AskDataEnablement   string
+	TableauRequestID    string
 }
 
 // ListRequest selects one bounded published datasource page.
 type ListRequest struct {
-	PageNumber int
-	PageSize   int
-	Name       string
+	PageNumber    int
+	PageSize      int
+	Name          string
+	OwnerName     string
+	ProjectName   string
+	Type          string
+	Tag           string
+	UpdatedAfter  string
+	UpdatedBefore string
 }
 
 // Page contains one normalized classic REST datasource page.
 type Page struct {
-	Number int
-	Size   int
-	Total  int
-	Items  []Datasource
+	Number           int
+	Size             int
+	Total            int
+	Items            []Datasource
+	TableauRequestID string
 }
 
 // Download is a preserved native datasource response.
@@ -110,13 +135,13 @@ func (c *Client) List(ctx context.Context, input ListRequest) (Page, error) {
 		if datasource.LUID == "" || datasource.Name == "" || datasource.ProjectLUID == "" || datasource.ProjectName == "" {
 			return Page{}, tableau.NewProtocolError("datasource.list", response, fmt.Errorf("datasource list response returned an incomplete authoritative identity at item %d", index), true)
 		}
-		if current, exists := seen[datasource.LUID]; exists && current != datasource {
+		if current, exists := seen[datasource.LUID]; exists && !reflect.DeepEqual(current, datasource) {
 			return Page{}, tableau.NewProtocolError("datasource.list", response, fmt.Errorf("datasource list response returned conflicting records for LUID %q", datasource.LUID), true)
 		}
 		seen[datasource.LUID] = datasource
 		items[index] = datasource
 	}
-	return Page{Number: page.Number, Size: page.Size, Total: page.Total, Items: items}, nil
+	return Page{Number: page.Number, Size: page.Size, Total: page.Total, Items: items, TableauRequestID: response.TableauRequestID}, nil
 }
 
 // Get returns one published datasource by its authoritative LUID.
@@ -127,7 +152,7 @@ func (c *Client) Get(ctx context.Context, datasourceLUID string) (Datasource, er
 	if err := c.validate(); err != nil {
 		return Datasource{}, err
 	}
-	response, err := c.do(ctx, c.sitePath("datasources", datasourceLUID), "datasource.get", 0, nil)
+	response, err := c.do(ctx, c.sitePath("datasources", datasourceLUID), "datasource.get", maxListResponseBytes, nil)
 	if err != nil {
 		return Datasource{}, err
 	}
@@ -135,12 +160,8 @@ func (c *Client) Get(ctx context.Context, datasourceLUID string) (Datasource, er
 	if err := xml.Unmarshal(response.Body, &envelope); err != nil {
 		return Datasource{}, tableau.NewProtocolError("datasource.get", response, fmt.Errorf("decode datasource response: %w", err), true)
 	}
-	result := Datasource{
-		LUID:        envelope.Datasource.ID,
-		Name:        envelope.Datasource.Name,
-		ProjectLUID: envelope.Datasource.Project.ID,
-		ProjectName: envelope.Datasource.Project.Name,
-	}
+	result := normalizeDatasource(envelope.Datasource)
+	result.TableauRequestID = response.TableauRequestID
 	if result.LUID != datasourceLUID {
 		return Datasource{}, tableau.NewProtocolError("datasource.get", response, fmt.Errorf("datasource response returned LUID %q, expected %q", result.LUID, datasourceLUID), true)
 	}
@@ -251,12 +272,33 @@ type datasourceListXML struct {
 }
 
 type datasourceXML struct {
-	ID      string `xml:"id,attr"`
-	Name    string `xml:"name,attr"`
-	Project struct {
+	ID                  string `xml:"id,attr"`
+	Name                string `xml:"name,attr"`
+	Description         string `xml:"description,attr"`
+	Type                string `xml:"type,attr"`
+	ContentURL          string `xml:"contentUrl,attr"`
+	CreatedAt           string `xml:"createdAt,attr"`
+	UpdatedAt           string `xml:"updatedAt,attr"`
+	Size                *int64 `xml:"size,attr"`
+	EncryptExtracts     *bool  `xml:"encryptExtracts,attr"`
+	HasExtracts         *bool  `xml:"hasExtracts,attr"`
+	IsCertified         *bool  `xml:"isCertified,attr"`
+	CertificationNote   string `xml:"certificationNote,attr"`
+	UseRemoteQueryAgent *bool  `xml:"useRemoteQueryAgent,attr"`
+	WebpageURL          string `xml:"webpageUrl,attr"`
+	Project             struct {
 		ID   string `xml:"id,attr"`
 		Name string `xml:"name,attr"`
 	} `xml:"project"`
+	Owner struct {
+		ID string `xml:"id,attr"`
+	} `xml:"owner"`
+	Tags []struct {
+		Label string `xml:"label,attr"`
+	} `xml:"tags>tag"`
+	AskData struct {
+		Enablement string `xml:"enablement,attr"`
+	} `xml:"askData"`
 }
 
 type paginationXML struct {
@@ -275,20 +317,54 @@ func datasourceListQuery(input ListRequest) (url.Values, error) {
 	query := url.Values{
 		"pageNumber": {strconv.Itoa(input.PageNumber)},
 		"pageSize":   {strconv.Itoa(input.PageSize)},
+		"sort":       {"name:asc,updatedAt:asc"},
 	}
-	if input.Name != "" {
-		if strings.ContainsAny(input.Name, ",&") {
-			return nil, errors.New("datasource name filter contains an unsupported comma or ampersand")
+	fields := []struct {
+		name     string
+		operator string
+		value    string
+	}{
+		{name: "name", operator: "eq", value: input.Name},
+		{name: "ownerName", operator: "eq", value: input.OwnerName},
+		{name: "projectName", operator: "eq", value: input.ProjectName},
+		{name: "type", operator: "eq", value: input.Type},
+		{name: "tags", operator: "eq", value: input.Tag},
+		{name: "updatedAt", operator: "gte", value: input.UpdatedAfter},
+		{name: "updatedAt", operator: "lte", value: input.UpdatedBefore},
+	}
+	filters := make([]string, 0, len(fields))
+	for _, field := range fields {
+		if field.value == "" {
+			continue
 		}
-		query.Set("filter", "name:eq:"+input.Name)
+		if strings.ContainsAny(field.value, ",&") {
+			return nil, fmt.Errorf("datasource filter %s cannot contain ampersand or comma", field.name)
+		}
+		filters = append(filters, field.name+":"+field.operator+":"+field.value)
+	}
+	if len(filters) > 0 {
+		query.Set("filter", strings.Join(filters, ","))
 	}
 	return query, nil
 }
 
 func normalizeDatasource(item datasourceXML) Datasource {
+	tags := make([]string, 0, len(item.Tags))
+	for _, tag := range item.Tags {
+		label := strings.TrimSpace(tag.Label)
+		if label != "" {
+			tags = append(tags, label)
+		}
+	}
+	sort.Strings(tags)
 	return Datasource{
 		LUID: strings.TrimSpace(item.ID), Name: strings.TrimSpace(item.Name),
 		ProjectLUID: strings.TrimSpace(item.Project.ID), ProjectName: strings.TrimSpace(item.Project.Name),
+		Description: item.Description, Type: strings.TrimSpace(item.Type), ContentURL: strings.TrimSpace(item.ContentURL),
+		OwnerLUID: strings.TrimSpace(item.Owner.ID), CreatedAt: strings.TrimSpace(item.CreatedAt), UpdatedAt: strings.TrimSpace(item.UpdatedAt),
+		Size: item.Size, EncryptExtracts: item.EncryptExtracts, HasExtracts: item.HasExtracts, IsCertified: item.IsCertified,
+		CertificationNote: item.CertificationNote, UseRemoteQueryAgent: item.UseRemoteQueryAgent,
+		WebpageURL: strings.TrimSpace(item.WebpageURL), Tags: tags, AskDataEnablement: strings.TrimSpace(item.AskData.Enablement),
 	}
 }
 

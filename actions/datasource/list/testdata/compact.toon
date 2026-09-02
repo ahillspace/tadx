@@ -1,0 +1,12 @@
+status: listed
+environment: dev
+site: sandbox
+page:
+  returned: 1
+  total: 2
+  limit: 1
+  next_cursor: next-page
+datasources[1]{luid,name,project_luid,project_name,type,content_url,updated_at}:
+  datasource-1,Sales,project-1,Ops,hyper,sales,"2026-09-01T00:00:00Z"
+details: "--full"
+help[1]: tadx content datasource get --id <datasource-luid>
