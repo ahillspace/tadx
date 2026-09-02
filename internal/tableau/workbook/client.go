@@ -18,6 +18,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -235,7 +236,7 @@ func (c *Client) ListWorkbooks(ctx context.Context, input ListRequest) (Workbook
 	if input.PageSize < 1 || input.PageSize > maximumPageSize {
 		return WorkbookPage{}, fmt.Errorf("workbook list page size must be between 1 and %d", maximumPageSize)
 	}
-	query := url.Values{"pageNumber": {strconv.Itoa(input.PageNumber)}, "pageSize": {strconv.Itoa(input.PageSize)}}
+	query := url.Values{"pageNumber": {strconv.Itoa(input.PageNumber)}, "pageSize": {strconv.Itoa(input.PageSize)}, "sort": {"name:asc,updatedAt:asc"}}
 	filters, err := workbookFilters(input)
 	if err != nil {
 		return WorkbookPage{}, err
@@ -974,10 +975,14 @@ type projectListEnvelope struct {
 }
 
 func normalizeWorkbook(item workbookXML) Workbook {
-	tags := make([]string, len(item.Tags))
-	for index, tag := range item.Tags {
-		tags[index] = tag.Label
+	tags := make([]string, 0, len(item.Tags))
+	for _, tag := range item.Tags {
+		label := strings.TrimSpace(tag.Label)
+		if label != "" {
+			tags = append(tags, label)
+		}
 	}
+	sort.Strings(tags)
 	return Workbook{LUID: item.ID, Name: item.Name, ContentURL: item.ContentURL, ProjectLUID: item.Project.ID, ProjectName: item.Project.Name, OwnerLUID: item.Owner.ID, Description: item.Description, CreatedAt: item.CreatedAt, UpdatedAt: item.UpdatedAt, Tags: tags}
 }
 

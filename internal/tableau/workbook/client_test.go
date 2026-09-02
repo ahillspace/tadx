@@ -133,6 +133,45 @@ func TestClientListsFilteredWorkbookMetadataAndRequestID(t *testing.T) {
 	}
 }
 
+func TestClientListsWorkbooksWithStablePaginationSort(t *testing.T) {
+	server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		if got := request.URL.Query().Get("sort"); got != "name:asc,updatedAt:asc" {
+			t.Fatalf("sort = %q", got)
+		}
+		writer.Header().Set("Content-Type", "application/xml")
+		_, _ = io.WriteString(writer, `<tsResponse><pagination pageNumber="1" pageSize="100" totalAvailable="0"/><workbooks/></tsResponse>`)
+	}))
+	defer server.Close()
+
+	client := tableauworkbook.NewClient(tableau.NewTransport(server.Client(), "3.29", nil), session{}, server.URL)
+	if _, err := client.ListWorkbooks(context.Background(), tableauworkbook.ListRequest{PageNumber: 1, PageSize: 100}); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestClientNormalizesWorkbookTagsRegardlessOfOrder(t *testing.T) {
+	bodies := []string{
+		`<tsResponse><pagination pageNumber="1" pageSize="100" totalAvailable="1"/><workbooks><workbook id="wb-1" name="Finance"><project id="project-1" name="Ops"/><owner id="owner-1"/><tags><tag label="  zeta "/><tag label="alpha"/><tag label=""/><tag label="  "/></tags></workbook></workbooks></tsResponse>`,
+		`<tsResponse><pagination pageNumber="1" pageSize="100" totalAvailable="1"/><workbooks><workbook id="wb-1" name="Finance"><project id="project-1" name="Ops"/><owner id="owner-1"/><tags><tag label="alpha"/><tag label="zeta"/></tags></workbook></workbooks></tsResponse>`,
+	}
+	for _, body := range bodies {
+		server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+			writer.Header().Set("Content-Type", "application/xml")
+			_, _ = io.WriteString(writer, body)
+		}))
+		client := tableauworkbook.NewClient(tableau.NewTransport(server.Client(), "3.29", nil), session{}, server.URL)
+		page, err := client.ListWorkbooks(context.Background(), tableauworkbook.ListRequest{PageNumber: 1, PageSize: 100})
+		server.Close()
+		if err != nil {
+			t.Fatal(err)
+		}
+		tags := page.Items[0].Tags
+		if len(tags) != 2 || tags[0] != "alpha" || tags[1] != "zeta" {
+			t.Fatalf("tags = %#v", tags)
+		}
+	}
+}
+
 func TestClientRejectsUnsafeWorkbookFilter(t *testing.T) {
 	client := tableauworkbook.NewClient(tableau.NewTransport(http.DefaultClient, "3.29", nil), session{}, "https://example.invalid")
 	_, err := client.ListWorkbooks(context.Background(), tableauworkbook.ListRequest{Name: "Finance,Other"})

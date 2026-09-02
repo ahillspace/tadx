@@ -85,6 +85,32 @@ func TestAdapterListsOneBoundedWorkbookPage(t *testing.T) {
 	}
 }
 
+func TestAdapterRejectsInvalidWorkbookPageInput(t *testing.T) {
+	c := &inventoryClient{page: tableauworkbook.WorkbookPage{Page: tableauworkbook.Page{Number: 1, Size: 25, Total: 0}}}
+	adapter := resource.NewAdapterWithProjectResolver(c, projectPaths{})
+	tests := []struct {
+		name    string
+		request tableauworkbook.ListRequest
+		wantErr string
+	}{
+		{name: "zero page number", request: tableauworkbook.ListRequest{PageNumber: 0, PageSize: 25}, wantErr: "page number must be positive"},
+		{name: "negative page number", request: tableauworkbook.ListRequest{PageNumber: -1, PageSize: 25}, wantErr: "page number must be positive"},
+		{name: "zero page size", request: tableauworkbook.ListRequest{PageNumber: 1, PageSize: 0}, wantErr: "page size must be between 1 and 1000"},
+		{name: "oversized page", request: tableauworkbook.ListRequest{PageNumber: 1, PageSize: 1001}, wantErr: "page size must be between 1 and 1000"},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			_, err := adapter.ListWorkbooks(context.Background(), test.request)
+			if err == nil || !strings.Contains(err.Error(), test.wantErr) {
+				t.Fatalf("error = %v", err)
+			}
+			if err != nil && strings.Contains(err.Error(), "inconsistent pagination") {
+				t.Fatalf("input error masked as pagination error: %v", err)
+			}
+		})
+	}
+}
+
 func TestAdapterUsesSharedProjectResolverForExactWorkbook(t *testing.T) {
 	c := client{workbooks: map[string]tableauworkbook.Workbook{"wb-1": {LUID: "wb-1", Name: "Finance", ProjectLUID: "project-1", ProjectName: "Ops", TableauRequestID: "request-1"}}}
 	workbook, err := resource.NewAdapterWithProjectResolver(c, projectPaths{"project-1": "Department/Ops"}).ResolveWorkbook(context.Background(), identity.Selector{LUID: "wb-1"})

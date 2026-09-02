@@ -75,6 +75,12 @@ func (a *Adapter) ListWorkbooks(ctx context.Context, input tableauworkbook.ListR
 	if a == nil || a.client == nil {
 		return Page{}, errors.New("workbook resource adapter is not configured")
 	}
+	if input.PageNumber <= 0 {
+		return Page{}, errors.New("workbook page number must be positive")
+	}
+	if input.PageSize <= 0 || input.PageSize > adapterPageSize {
+		return Page{}, fmt.Errorf("workbook page size must be between 1 and %d", adapterPageSize)
+	}
 	client, ok := a.client.(InventoryClient)
 	if !ok {
 		return Page{}, errors.New("workbook inventory client is not configured")
