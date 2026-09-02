@@ -12,7 +12,9 @@ import (
 )
 
 const (
+	defaultLimit    = 25
 	maxLimit        = 100
+	maxCursorPage   = 1_000_000
 	cursorVersion   = 1
 	maxCursorLength = 256
 )
@@ -45,11 +47,11 @@ func (a *Action) Execute(ctx context.Context, input Input) (Output, error) {
 	if err != nil {
 		return Output{}, err
 	}
-	if page.Number != pageNumber || page.Size <= 0 || page.Size > pageSize || page.Total < 0 || len(page.Workbooks) > page.Size || (page.Number-1)*page.Size+len(page.Workbooks) > page.Total {
+	if page.Number != pageNumber || page.Size <= 0 || page.Size > pageSize || page.Total < 0 || len(page.Workbooks) > page.Size || int64(page.Number-1)*int64(page.Size)+int64(len(page.Workbooks)) > int64(page.Total) {
 		return Output{}, errors.New("workbook list reader returned inconsistent pagination")
 	}
 	next := ""
-	if page.Number*page.Size < page.Total {
+	if int64(page.Number)*int64(page.Size) < int64(page.Total) {
 		next, err = encodeCursor(page.Number+1, page.Size, fingerprint)
 		if err != nil {
 			return Output{}, err
@@ -61,10 +63,10 @@ func (a *Action) Execute(ctx context.Context, input Input) (Output, error) {
 func selectPage(value string, requested int, expectedFilter string) (int, int, error) {
 	if value == "" {
 		if requested == 0 {
-			requested = 25
+			requested = defaultLimit
 		}
 		if requested < 1 || requested > maxLimit {
-			return 0, 0, fmt.Errorf("workbook list limit must be between 1 and %d", maxLimit)
+			return 0, 0, errs.New(errs.KindUsage, fmt.Sprintf("workbook list limit must be between 1 and %d", maxLimit))
 		}
 		return 1, requested, nil
 	}
@@ -73,7 +75,7 @@ func selectPage(value string, requested int, expectedFilter string) (int, int, e
 	}
 	data, err := base64.RawURLEncoding.DecodeString(value)
 	var cursor cursorValue
-	if err != nil || json.Unmarshal(data, &cursor) != nil || cursor.Version != cursorVersion || cursor.Page < 2 || cursor.Size < 1 || cursor.Size > maxLimit || cursor.Filter == "" {
+	if err != nil || json.Unmarshal(data, &cursor) != nil || cursor.Version != cursorVersion || cursor.Page < 2 || cursor.Page > maxCursorPage || cursor.Size < 1 || cursor.Size > maxLimit || cursor.Filter == "" {
 		return 0, 0, errs.New(errs.KindUsage, "invalid workbook continuation cursor")
 	}
 	if requested != 0 && requested != cursor.Size {
@@ -87,7 +89,10 @@ func selectPage(value string, requested int, expectedFilter string) (int, int, e
 
 func encodeCursor(page, size int, filter string) (string, error) {
 	data, err := json.Marshal(cursorValue{Version: cursorVersion, Page: page, Size: size, Filter: filter})
-	return base64.RawURLEncoding.EncodeToString(data), err
+	if err != nil {
+		return "", err
+	}
+	return base64.RawURLEncoding.EncodeToString(data), nil
 }
 
 type cursorValue struct {

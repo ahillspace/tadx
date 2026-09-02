@@ -125,6 +125,31 @@ func TestActionCursorIsBoundToEveryDatasourceFilter(t *testing.T) {
 	}
 }
 
+func TestActionRejectsCursorWithAbsurdPageNumber(t *testing.T) {
+	cursor := base64.RawURLEncoding.EncodeToString([]byte(`{"v":1,"p":999999999999,"s":25,"f":"x"}`))
+	r := &reader{}
+	_, err := datasourcelist.New(r).Execute(context.Background(), datasourcelist.Input{Environment: "dev", Site: "site", Cursor: cursor})
+	if err == nil || err.Error() != "invalid datasource continuation cursor" || r.calls != 0 {
+		t.Fatalf("error = %v, calls = %d", err, r.calls)
+	}
+	var structured *errs.Error
+	if !errors.As(err, &structured) || structured.Kind != errs.KindUsage {
+		t.Fatalf("error kind = %#v", structured)
+	}
+}
+
+func TestActionRejectsOutOfRangeLimitAsUsage(t *testing.T) {
+	r := &reader{}
+	_, err := datasourcelist.New(r).Execute(context.Background(), datasourcelist.Input{Environment: "dev", Site: "site", Limit: 500})
+	if err == nil || r.calls != 0 {
+		t.Fatalf("error = %v, calls = %d", err, r.calls)
+	}
+	var structured *errs.Error
+	if !errors.As(err, &structured) || structured.Kind != errs.KindUsage {
+		t.Fatalf("error kind = %#v", structured)
+	}
+}
+
 func TestFullDatasourceListBoundsTags(t *testing.T) {
 	tags := make([]string, 60)
 	output := datasourcelist.Output{Datasources: []datasourcelist.Datasource{{LUID: "ds-1", Tags: tags}}}

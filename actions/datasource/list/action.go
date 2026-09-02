@@ -14,6 +14,7 @@ import (
 const (
 	defaultLimit    = 25
 	maxLimit        = 100
+	maxCursorPage   = 1_000_000
 	cursorVersion   = 1
 	maxCursorLength = 256
 )
@@ -32,7 +33,7 @@ func New(reader Reader) *Action { return &Action{reader: reader} }
 // Execute lists one page without hidden continuation reads.
 func (a *Action) Execute(ctx context.Context, input Input) (Output, error) {
 	if a == nil || a.reader == nil {
-		return Output{}, errors.New("datasource list reader is not configured")
+		return Output{}, &errs.Error{ID: "datasource.list.unconfigured", Kind: errs.KindRuntime, Operation: "datasource.list", Summary: "Datasource list is not configured.", Retryable: errs.Bool(false), CorrectiveAction: "Configure datasource listing before retrying."}
 	}
 	fingerprint, err := datasourceFilterFingerprint(input)
 	if err != nil {
@@ -51,11 +52,11 @@ func (a *Action) Execute(ctx context.Context, input Input) (Output, error) {
 	if err != nil {
 		return Output{}, err
 	}
-	if page.Number != pageNumber || page.Size <= 0 || page.Size > pageSize || page.Total < 0 || len(page.Datasources) > page.Size || (page.Number-1)*page.Size+len(page.Datasources) > page.Total {
+	if page.Number != pageNumber || page.Size <= 0 || page.Size > pageSize || page.Total < 0 || len(page.Datasources) > page.Size || int64(page.Number-1)*int64(page.Size)+int64(len(page.Datasources)) > int64(page.Total) {
 		return Output{}, errors.New("datasource list reader returned inconsistent pagination")
 	}
 	next := ""
-	if page.Number*page.Size < page.Total {
+	if int64(page.Number)*int64(page.Size) < int64(page.Total) {
 		next, err = encodeCursor(page.Number+1, page.Size, fingerprint)
 		if err != nil {
 			return Output{}, err
@@ -75,7 +76,7 @@ func pageSelection(value string, requested int, expectedFilter string) (int, int
 			requested = defaultLimit
 		}
 		if requested < 1 || requested > maxLimit {
-			return 0, 0, fmt.Errorf("datasource list limit must be between 1 and %d", maxLimit)
+			return 0, 0, errs.New(errs.KindUsage, fmt.Sprintf("datasource list limit must be between 1 and %d", maxLimit))
 		}
 		return 1, requested, nil
 	}
@@ -84,7 +85,7 @@ func pageSelection(value string, requested int, expectedFilter string) (int, int
 	}
 	data, err := base64.RawURLEncoding.DecodeString(value)
 	var cursor cursorValue
-	if err != nil || json.Unmarshal(data, &cursor) != nil || cursor.Version != cursorVersion || cursor.Page < 2 || cursor.Size < 1 || cursor.Size > maxLimit || cursor.Filter == "" {
+	if err != nil || json.Unmarshal(data, &cursor) != nil || cursor.Version != cursorVersion || cursor.Page < 2 || cursor.Page > maxCursorPage || cursor.Size < 1 || cursor.Size > maxLimit || cursor.Filter == "" {
 		return 0, 0, errs.New(errs.KindUsage, "invalid datasource continuation cursor")
 	}
 	if requested != 0 && requested != cursor.Size {

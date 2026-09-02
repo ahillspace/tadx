@@ -7,11 +7,7 @@ import (
 	"strings"
 
 	"github.com/ahillspace/tadx/internal/errs"
-)
-
-const (
-	maxWarnings     = 20
-	maxWarningRunes = 512
+	"github.com/ahillspace/tadx/internal/output"
 )
 
 // Source reads one local catalog generation status.
@@ -46,24 +42,9 @@ func (a *Action) Execute(ctx context.Context, input Input) (Output, error) {
 		state = "stale"
 	}
 	generation := Generation{ID: result.ID, Environment: result.Environment, Site: result.Site, GeneratedAt: result.GeneratedAt, Records: result.Records, Complete: result.Complete, Stale: result.Stale, Age: result.Age, Source: result.Source}
-	return Output{Status: state, Generation: generation, Path: result.Path, Warnings: bounded(result.Warnings), Help: []string{"tadx catalog refresh --environment " + result.Environment}}, nil
+	return Output{Status: state, Generation: generation, Path: result.Path, Warnings: output.BoundWarnings(result.Warnings), Help: []string{"tadx catalog refresh --environment " + result.Environment}}, nil
 }
 
 func statusError(id string, kind errs.Kind, input Input, summary string, cause error) error {
 	return &errs.Error{ID: id, Kind: kind, Operation: "catalog.status", Environment: input.Environment, Site: input.Site, Summary: summary, Cause: cause, Retryable: errs.Bool(false), CorrectiveAction: "Refresh or repair the selected catalog generation, then retry."}
-}
-
-func bounded(values []string) []string {
-	if len(values) > maxWarnings {
-		values = values[:maxWarnings]
-	}
-	bounded := make([]string, len(values))
-	for index, value := range values {
-		runes := []rune(value)
-		if len(runes) > maxWarningRunes {
-			value = string(runes[:maxWarningRunes-3]) + "..."
-		}
-		bounded[index] = value
-	}
-	return bounded
 }

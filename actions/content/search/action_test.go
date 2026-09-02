@@ -104,6 +104,63 @@ func TestActionBoundsWarningsAndPreservesEmptyItems(t *testing.T) {
 	}
 }
 
+type pagingSource struct {
+	page1, page2 search.Result
+	cursors      []string
+}
+
+func (s *pagingSource) Search(_ context.Context, input search.Input) (search.Result, error) {
+	s.cursors = append(s.cursors, input.Cursor)
+	if input.Cursor == "" {
+		return s.page1, nil
+	}
+	return s.page2, nil
+}
+
+// TestActionPreservesUpstreamOrderAcrossPages proves the action does not re-sort
+// pages locally: the upstream cursor owns global ordering, so concatenating
+// page 1 then page 2 must reproduce the upstream order verbatim (monotonic).
+func TestActionPreservesUpstreamOrderAcrossPages(t *testing.T) {
+	src := &pagingSource{
+		page1: search.Result{
+			Page:  search.Page{Returned: 2, Limit: 2, NextCursor: "upstream-next"},
+			Items: []search.Item{{LUID: "1", Kind: "workbook", Name: "Alpha"}, {LUID: "2", Kind: "datasource", Name: "Beta"}},
+		},
+		page2: search.Result{
+			Page:  search.Page{Returned: 2, Limit: 2},
+			Items: []search.Item{{LUID: "3", Kind: "workbook", Name: "Gamma"}, {LUID: "4", Kind: "datasource", Name: "Delta"}},
+		},
+	}
+	base := search.Input{Terms: "x", Limit: 2}
+	first, err := search.New(src).Execute(context.Background(), base)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Local (Kind,Name) sorting would have reordered page 1 to [datasource/Beta, workbook/Alpha].
+	if first.Items[0].LUID != "1" || first.Items[1].LUID != "2" {
+		t.Fatalf("page 1 order not preserved: %#v", first.Items)
+	}
+	next := base
+	next.Cursor = first.Page.NextCursor
+	second, err := search.New(src).Execute(context.Background(), next)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if second.Items[0].LUID != "3" || second.Items[1].LUID != "4" {
+		t.Fatalf("page 2 order not preserved: %#v", second.Items)
+	}
+	got := []string{first.Items[0].LUID, first.Items[1].LUID, second.Items[0].LUID, second.Items[1].LUID}
+	want := []string{"1", "2", "3", "4"}
+	for index := range want {
+		if got[index] != want[index] {
+			t.Fatalf("global order = %v, want %v", got, want)
+		}
+	}
+	if len(src.cursors) != 2 || src.cursors[1] != "upstream-next" {
+		t.Fatalf("upstream cursors = %#v", src.cursors)
+	}
+}
+
 func assertGolden(t *testing.T, path string, value any, full bool) {
 	t.Helper()
 	var actual bytes.Buffer

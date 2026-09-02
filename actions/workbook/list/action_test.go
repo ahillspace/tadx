@@ -113,6 +113,31 @@ func TestActionCursorIsBoundToEveryWorkbookFilterAndTarget(t *testing.T) {
 	}
 }
 
+func TestActionRejectsCursorWithAbsurdPageNumber(t *testing.T) {
+	cursor := base64.RawURLEncoding.EncodeToString([]byte(`{"v":1,"p":999999999999,"s":25,"f":"x"}`))
+	r := &reader{}
+	_, err := workbooklist.New(r).Execute(context.Background(), workbooklist.Input{Environment: "dev", Site: "site", Cursor: cursor})
+	if err == nil || err.Error() != "invalid workbook continuation cursor" || r.calls != 0 {
+		t.Fatalf("error = %v, calls = %d", err, r.calls)
+	}
+	var structured *errs.Error
+	if !errors.As(err, &structured) || structured.Kind != errs.KindUsage {
+		t.Fatalf("error kind = %#v", structured)
+	}
+}
+
+func TestActionRejectsOutOfRangeLimitAsUsage(t *testing.T) {
+	r := &reader{}
+	_, err := workbooklist.New(r).Execute(context.Background(), workbooklist.Input{Environment: "dev", Site: "site", Limit: 500})
+	if err == nil || r.calls != 0 {
+		t.Fatalf("error = %v, calls = %d", err, r.calls)
+	}
+	var structured *errs.Error
+	if !errors.As(err, &structured) || structured.Kind != errs.KindUsage {
+		t.Fatalf("error kind = %#v", structured)
+	}
+}
+
 func assertGolden(t *testing.T, name string, value any, full bool) {
 	t.Helper()
 	var buffer bytes.Buffer

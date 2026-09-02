@@ -10,11 +10,10 @@ import (
 	"unicode/utf8"
 
 	"github.com/ahillspace/tadx/internal/errs"
+	"github.com/ahillspace/tadx/internal/output"
 )
 
 const (
-	maxWarnings     = 20
-	maxWarningRunes = 512
 	maxReceiptRunes = 512
 )
 
@@ -71,7 +70,7 @@ func (a *Action) Execute(ctx context.Context, input Input) (Output, error) {
 		Status:      "refreshed",
 		Generation:  generation,
 		Path:        result.Path,
-		Warnings:    boundWarnings(result.Warnings),
+		Warnings:    output.BoundWarnings(result.Warnings),
 		Diagnostics: result.Diagnostics,
 		Help:        []string{"tadx catalog status --environment " + input.Environment},
 	}, nil
@@ -186,19 +185,4 @@ func failure(id string, kind errs.Kind, input Input, summary string, cause error
 		Summary: summary, Cause: cause, Retryable: retryable, CorrectiveAction: correctiveAction,
 		TableauRequestID: errs.TableauRequestID(cause),
 	}
-}
-
-func boundWarnings(values []string) []string {
-	if len(values) > maxWarnings {
-		values = values[:maxWarnings]
-	}
-	bounded := make([]string, len(values))
-	for index, value := range values {
-		runes := []rune(value)
-		if len(runes) > maxWarningRunes {
-			value = string(runes[:maxWarningRunes-3]) + "..."
-		}
-		bounded[index] = value
-	}
-	return bounded
 }

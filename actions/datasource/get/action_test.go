@@ -3,14 +3,55 @@ package get_test
 import (
 	"bytes"
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"testing"
 
 	datasourceget "github.com/ahillspace/tadx/actions/datasource/get"
+	"github.com/ahillspace/tadx/internal/errs"
 	"github.com/ahillspace/tadx/internal/identity"
 	render "github.com/ahillspace/tadx/internal/output"
 )
+
+type erroringResolver struct{ err error }
+
+func (r erroringResolver) ResolveDatasource(context.Context, identity.Selector) (datasourceget.Datasource, error) {
+	return datasourceget.Datasource{}, r.err
+}
+
+func TestActionClassifiesResolutionFailures(t *testing.T) {
+	cases := []struct {
+		name    string
+		kind    identity.ResolutionErrorKind
+		wantID  string
+		wantErr errs.Kind
+	}{
+		{"ambiguous", identity.ResolutionAmbiguous, "datasource.get.ambiguous", errs.KindUsage},
+		{"not found", identity.ResolutionNotFound, "datasource.get.not_found", errs.KindUsage},
+		{"invalid selector", identity.ResolutionInvalidSelector, "datasource.get.usage", errs.KindUsage},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			cause := &identity.ResolutionError{Kind: tc.kind, Selector: identity.Selector{Name: "Sales", ProjectPath: "Ops"}}
+			input := datasourceget.Input{Environment: "dev", Site: "site", Selector: identity.Selector{Name: "Sales", ProjectPath: "Ops"}}
+			_, err := datasourceget.New(erroringResolver{err: cause}).Execute(context.Background(), input)
+			var structured *errs.Error
+			if !errors.As(err, &structured) || structured.Kind != tc.wantErr || structured.ID != tc.wantID {
+				t.Fatalf("error = %#v", structured)
+			}
+		})
+	}
+}
+
+func TestActionClassifiesOpaqueResolverErrorAsOperation(t *testing.T) {
+	input := datasourceget.Input{Environment: "dev", Site: "site", Selector: identity.Selector{Name: "Sales", ProjectPath: "Ops"}}
+	_, err := datasourceget.New(erroringResolver{err: errors.New("upstream unavailable")}).Execute(context.Background(), input)
+	var structured *errs.Error
+	if !errors.As(err, &structured) || structured.Kind != errs.KindOperation || structured.ID != "datasource.get.resolve" {
+		t.Fatalf("error = %#v", structured)
+	}
+}
 
 type resolver struct {
 	datasource datasourceget.Datasource
@@ -38,6 +79,64 @@ func TestOutputGolden(t *testing.T) {
 	}
 	assertGolden(t, "compact.toon", output, false)
 	assertGolden(t, "full.toon", output, true)
+}
+
+type spyResolver struct {
+	called     bool
+	datasource datasourceget.Datasource
+}
+
+func (r *spyResolver) ResolveDatasource(_ context.Context, _ identity.Selector) (datasourceget.Datasource, error) {
+	r.called = true
+	return r.datasource, nil
+}
+
+func TestActionRejectsConflictingSelector(t *testing.T) {
+	r := &spyResolver{}
+	input := datasourceget.Input{Selector: identity.Selector{LUID: "ds-1", Name: "Sales"}}
+	_, err := datasourceget.New(r).Execute(context.Background(), input)
+	var structured *errs.Error
+	if !errors.As(err, &structured) || structured.Kind != errs.KindUsage || structured.ID != "datasource.get.usage" {
+		t.Fatalf("error = %#v", structured)
+	}
+	if r.called {
+		t.Fatal("resolver called for conflicting selector")
+	}
+}
+
+func TestActionRejectsWhitespaceOnlySelector(t *testing.T) {
+	r := &spyResolver{}
+	input := datasourceget.Input{Selector: identity.Selector{LUID: "   ", Name: " ", ProjectPath: "\t"}}
+	_, err := datasourceget.New(r).Execute(context.Background(), input)
+	var structured *errs.Error
+	if !errors.As(err, &structured) || structured.Kind != errs.KindUsage || structured.ID != "datasource.get.usage" {
+		t.Fatalf("error = %#v", structured)
+	}
+	if r.called {
+		t.Fatal("resolver called for whitespace-only selector")
+	}
+}
+
+func TestActionRejectsMismatchedIdentity(t *testing.T) {
+	cases := []struct {
+		name       string
+		selector   identity.Selector
+		datasource datasourceget.Datasource
+	}{
+		{"empty LUID", identity.Selector{Name: "Sales", ProjectPath: "Ops"}, datasourceget.Datasource{Name: "Sales"}},
+		{"empty Name", identity.Selector{Name: "Sales", ProjectPath: "Ops"}, datasourceget.Datasource{LUID: "ds-1"}},
+		{"LUID differs from request", identity.Selector{LUID: "ds-1"}, datasourceget.Datasource{LUID: "other", Name: "Sales"}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			r := &spyResolver{datasource: tc.datasource}
+			_, err := datasourceget.New(r).Execute(context.Background(), datasourceget.Input{Selector: tc.selector})
+			var structured *errs.Error
+			if !errors.As(err, &structured) || structured.Kind != errs.KindOperation || structured.ID != "datasource.get.identity_mismatch" {
+				t.Fatalf("error = %#v", structured)
+			}
+		})
+	}
 }
 
 func assertGolden(t *testing.T, name string, value any, full bool) {

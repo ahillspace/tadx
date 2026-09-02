@@ -12,13 +12,12 @@ import (
 	"strings"
 
 	"github.com/ahillspace/tadx/internal/errs"
+	"github.com/ahillspace/tadx/internal/output"
 )
 
 const (
-	defaultLimit    = 20
-	maxLimit        = 100
-	maxWarnings     = 20
-	maxWarningRunes = 512
+	defaultLimit = 20
+	maxLimit     = 100
 )
 
 // Source searches current remote content through a resource adapter.
@@ -62,31 +61,22 @@ func (a *Action) Execute(ctx context.Context, input Input) (Output, error) {
 	if len(result.Items) > request.Limit {
 		return Output{}, searchError("content.search.failed", errs.KindOperation, input, "Content search source exceeded the requested result bound.", nil)
 	}
+	// Preserve the upstream order verbatim: pagination continues on the upstream
+	// cursor, so the adapter/upstream owns global ordering across pages. A local
+	// per-page re-sort would break monotonic ordering across the cursor sequence.
 	items := append([]Item{}, result.Items...)
 	for index := range items {
 		if strings.TrimSpace(items[index].LUID) == "" || strings.TrimSpace(items[index].Kind) == "" || strings.TrimSpace(items[index].Name) == "" {
 			return Output{}, searchError("content.search.failed", errs.KindOperation, input, "Content search source returned an item without authoritative identity.", nil)
 		}
 	}
-	sort.SliceStable(items, func(i, j int) bool {
-		if items[i].Kind != items[j].Kind {
-			return items[i].Kind < items[j].Kind
-		}
-		if items[i].Name != items[j].Name {
-			return items[i].Name < items[j].Name
-		}
-		if items[i].ProjectPath != items[j].ProjectPath {
-			return items[i].ProjectPath < items[j].ProjectPath
-		}
-		return items[i].LUID < items[j].LUID
-	})
 	page := result.Page
 	page.Returned = len(items)
 	page.Limit = request.Limit
 	if page.NextCursor != "" {
 		page.NextCursor = encodeCursor(page.NextCursor, request)
 	}
-	return Output{Page: page, Items: items, Warnings: boundWarnings(result.Warnings), Help: []string{"tadx content get --kind <kind> --id <luid>"}}, nil
+	return Output{Page: page, Items: items, Warnings: output.BoundWarnings(result.Warnings), Help: []string{"tadx content get --kind <kind> --id <luid>"}}, nil
 }
 
 type cursorEnvelope struct {
@@ -142,19 +132,4 @@ func checksum(version int, fingerprint, cursor string) string {
 
 func searchError(id string, kind errs.Kind, input Input, summary string, cause error) error {
 	return &errs.Error{ID: id, Kind: kind, Operation: "content.search", Environment: input.Environment, Site: input.Site, Summary: summary, Cause: cause, Retryable: errs.Bool(false), CorrectiveAction: "Adjust the bounded search filters, then retry."}
-}
-
-func boundWarnings(values []string) []string {
-	if len(values) > maxWarnings {
-		values = values[:maxWarnings]
-	}
-	bounded := make([]string, len(values))
-	for index, value := range values {
-		runes := []rune(value)
-		if len(runes) > maxWarningRunes {
-			value = string(runes[:maxWarningRunes-3]) + "..."
-		}
-		bounded[index] = value
-	}
-	return bounded
 }

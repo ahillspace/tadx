@@ -3,15 +3,55 @@ package get_test
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
 
 	workbookget "github.com/ahillspace/tadx/actions/workbook/get"
+	"github.com/ahillspace/tadx/internal/errs"
 	"github.com/ahillspace/tadx/internal/identity"
 	render "github.com/ahillspace/tadx/internal/output"
 )
+
+type erroringResolver struct{ err error }
+
+func (r erroringResolver) ResolveWorkbook(context.Context, identity.Selector) (workbookget.Workbook, error) {
+	return workbookget.Workbook{}, r.err
+}
+
+func TestActionClassifiesResolutionFailures(t *testing.T) {
+	cases := []struct {
+		name   string
+		kind   identity.ResolutionErrorKind
+		wantID string
+	}{
+		{"ambiguous", identity.ResolutionAmbiguous, "workbook.get.ambiguous"},
+		{"not found", identity.ResolutionNotFound, "workbook.get.not_found"},
+		{"invalid selector", identity.ResolutionInvalidSelector, "workbook.get.usage"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			cause := &identity.ResolutionError{Kind: tc.kind, Selector: identity.Selector{Name: "Finance", ProjectPath: "Ops"}}
+			input := workbookget.Input{Environment: "dev", Site: "site", Selector: identity.Selector{Name: "Finance", ProjectPath: "Ops"}}
+			_, err := workbookget.New(erroringResolver{err: cause}).Execute(context.Background(), input)
+			var structured *errs.Error
+			if !errors.As(err, &structured) || structured.Kind != errs.KindUsage || structured.ID != tc.wantID {
+				t.Fatalf("error = %#v", structured)
+			}
+		})
+	}
+}
+
+func TestActionClassifiesOpaqueResolverErrorAsOperation(t *testing.T) {
+	input := workbookget.Input{Environment: "dev", Site: "site", Selector: identity.Selector{Name: "Finance", ProjectPath: "Ops"}}
+	_, err := workbookget.New(erroringResolver{err: errors.New("upstream unavailable")}).Execute(context.Background(), input)
+	var structured *errs.Error
+	if !errors.As(err, &structured) || structured.Kind != errs.KindOperation || structured.ID != "workbook.get.resolve" {
+		t.Fatalf("error = %#v", structured)
+	}
+}
 
 type resolver struct {
 	workbook workbookget.Workbook
@@ -52,6 +92,64 @@ func TestActionGetsExactWorkbookAndBoundsTags(t *testing.T) {
 	full := output.FullOutput().(workbookget.FullResult)
 	if len(full.Workbook.Tags) != 50 || full.Workbook.TagsOmitted != 10 {
 		t.Fatalf("full = %#v", full)
+	}
+}
+
+type spyResolver struct {
+	called   bool
+	workbook workbookget.Workbook
+}
+
+func (r *spyResolver) ResolveWorkbook(_ context.Context, _ identity.Selector) (workbookget.Workbook, error) {
+	r.called = true
+	return r.workbook, nil
+}
+
+func TestActionRejectsConflictingSelector(t *testing.T) {
+	r := &spyResolver{}
+	input := workbookget.Input{Selector: identity.Selector{LUID: "wb-1", Name: "Finance"}}
+	_, err := workbookget.New(r).Execute(context.Background(), input)
+	var structured *errs.Error
+	if !errors.As(err, &structured) || structured.Kind != errs.KindUsage || structured.ID != "workbook.get.usage" {
+		t.Fatalf("error = %#v", structured)
+	}
+	if r.called {
+		t.Fatal("resolver called for conflicting selector")
+	}
+}
+
+func TestActionRejectsWhitespaceOnlySelector(t *testing.T) {
+	r := &spyResolver{}
+	input := workbookget.Input{Selector: identity.Selector{LUID: "   ", Name: " ", ProjectPath: "\t"}}
+	_, err := workbookget.New(r).Execute(context.Background(), input)
+	var structured *errs.Error
+	if !errors.As(err, &structured) || structured.Kind != errs.KindUsage || structured.ID != "workbook.get.usage" {
+		t.Fatalf("error = %#v", structured)
+	}
+	if r.called {
+		t.Fatal("resolver called for whitespace-only selector")
+	}
+}
+
+func TestActionRejectsMismatchedIdentity(t *testing.T) {
+	cases := []struct {
+		name     string
+		selector identity.Selector
+		workbook workbookget.Workbook
+	}{
+		{"empty LUID", identity.Selector{Name: "Finance", ProjectPath: "Ops"}, workbookget.Workbook{Name: "Finance"}},
+		{"empty Name", identity.Selector{Name: "Finance", ProjectPath: "Ops"}, workbookget.Workbook{LUID: "wb-1"}},
+		{"LUID differs from request", identity.Selector{LUID: "wb-1"}, workbookget.Workbook{LUID: "other", Name: "Finance"}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			r := &spyResolver{workbook: tc.workbook}
+			_, err := workbookget.New(r).Execute(context.Background(), workbookget.Input{Selector: tc.selector})
+			var structured *errs.Error
+			if !errors.As(err, &structured) || structured.Kind != errs.KindOperation || structured.ID != "workbook.get.identity_mismatch" {
+				t.Fatalf("error = %#v", structured)
+			}
+		})
 	}
 }
 
