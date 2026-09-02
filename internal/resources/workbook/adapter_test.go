@@ -18,6 +18,23 @@ type client struct {
 	listCalls    *int
 }
 
+type inventoryClient struct {
+	client
+	page    tableauworkbook.WorkbookPage
+	request tableauworkbook.ListRequest
+}
+
+func (c *inventoryClient) ListWorkbooks(_ context.Context, request tableauworkbook.ListRequest) (tableauworkbook.WorkbookPage, error) {
+	c.request = request
+	return c.page, nil
+}
+
+type projectPaths map[string]string
+
+func (p projectPaths) ResolveProjectPath(_ context.Context, luid string) (string, error) {
+	return p[luid], nil
+}
+
 func (c client) Get(_ context.Context, luid string) (tableauworkbook.Workbook, error) {
 	if c.getCalls != nil {
 		(*c.getCalls)++
@@ -52,6 +69,68 @@ func (client) Download(context.Context, string, *bool) (tableauworkbook.Download
 
 func (client) Prepare(context.Context, tableauworkbook.PublishRequest) (*tableauworkbook.PreparedPublish, error) {
 	return nil, nil
+}
+
+func TestAdapterListsOneBoundedWorkbookPage(t *testing.T) {
+	c := &inventoryClient{page: tableauworkbook.WorkbookPage{
+		Page: tableauworkbook.Page{Number: 1, Size: 25, Total: 1}, TableauRequestID: "request-1",
+		Items: []tableauworkbook.Workbook{{LUID: "wb-1", Name: "Finance", ProjectLUID: "project-1", ProjectName: "Ops", Description: "Finance reporting", Tags: []string{"finance"}}},
+	}}
+	page, err := resource.NewAdapterWithProjectResolver(c, projectPaths{"project-1": "Department/Ops"}).ListWorkbooks(context.Background(), tableauworkbook.ListRequest{PageNumber: 1, PageSize: 25, Name: "Finance"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if c.request.Name != "Finance" || page.RequestID != "request-1" || len(page.Items) != 1 || page.Items[0].ProjectPath != "Department/Ops" || page.Items[0].Description != "Finance reporting" {
+		t.Fatalf("page = %#v, request = %#v", page, c.request)
+	}
+}
+
+func TestAdapterRejectsInvalidWorkbookPageInput(t *testing.T) {
+	c := &inventoryClient{page: tableauworkbook.WorkbookPage{Page: tableauworkbook.Page{Number: 1, Size: 25, Total: 0}}}
+	adapter := resource.NewAdapterWithProjectResolver(c, projectPaths{})
+	tests := []struct {
+		name    string
+		request tableauworkbook.ListRequest
+		wantErr string
+	}{
+		{name: "zero page number", request: tableauworkbook.ListRequest{PageNumber: 0, PageSize: 25}, wantErr: "page number must be positive"},
+		{name: "negative page number", request: tableauworkbook.ListRequest{PageNumber: -1, PageSize: 25}, wantErr: "page number must be positive"},
+		{name: "zero page size", request: tableauworkbook.ListRequest{PageNumber: 1, PageSize: 0}, wantErr: "page size must be between 1 and 1000"},
+		{name: "oversized page", request: tableauworkbook.ListRequest{PageNumber: 1, PageSize: 1001}, wantErr: "page size must be between 1 and 1000"},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			_, err := adapter.ListWorkbooks(context.Background(), test.request)
+			if err == nil || !strings.Contains(err.Error(), test.wantErr) {
+				t.Fatalf("error = %v", err)
+			}
+			if err != nil && strings.Contains(err.Error(), "inconsistent pagination") {
+				t.Fatalf("input error masked as pagination error: %v", err)
+			}
+		})
+	}
+}
+
+func TestAdapterUsesSharedProjectResolverForExactWorkbook(t *testing.T) {
+	c := client{workbooks: map[string]tableauworkbook.Workbook{"wb-1": {LUID: "wb-1", Name: "Finance", ProjectLUID: "project-1", ProjectName: "Ops", TableauRequestID: "request-1"}}}
+	workbook, err := resource.NewAdapterWithProjectResolver(c, projectPaths{"project-1": "Department/Ops"}).ResolveWorkbook(context.Background(), identity.Selector{LUID: "wb-1"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if workbook.ProjectPath != "Department/Ops" || workbook.RequestID != "request-1" {
+		t.Fatalf("workbook = %#v", workbook)
+	}
+}
+
+func TestAdapterRejectsWorkbookPaginationDrift(t *testing.T) {
+	adapter := resource.NewAdapter(client{pages: map[int]tableauworkbook.WorkbookPage{
+		1: {Page: tableauworkbook.Page{Number: 1, Size: 1, Total: 2}, Items: []tableauworkbook.Workbook{{LUID: "wb-1", Name: "Other"}}},
+		2: {Page: tableauworkbook.Page{Number: 2, Size: 1, Total: 3}, Items: []tableauworkbook.Workbook{{LUID: "wb-2", Name: "Other"}}},
+	}})
+	_, err := adapter.ResolveWorkbook(context.Background(), identity.Selector{Name: "Finance"})
+	if err == nil || !strings.Contains(err.Error(), "pagination total changed") {
+		t.Fatalf("error = %v", err)
+	}
 }
 
 func TestAdapterResolvesExactWorkbookAcrossAllPages(t *testing.T) {

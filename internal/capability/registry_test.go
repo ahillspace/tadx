@@ -42,7 +42,7 @@ func TestCanonicalExecutableBindingsIncludeImplementedSlices(t *testing.T) {
 	for _, definition := range definitions {
 		ids = append(ids, definition.ID)
 	}
-	if want := []string{"auth.check", "auth.status", "capability.get", "capability.list", "catalog.search", "env.profile.add", "env.profile.get", "env.profile.list", "env.profile.remove", "env.profile.set-default", "env.profile.update", "flow.delete", "flow.get", "flow.list", "flow.move", "flow.publish", "flow.pull", "lineage.pull", "project.get", "project.list", "workbook.publish", "workbook.pull", "workspace.artifact.delete", "workspace.clone", "workspace.create", "workspace.list", "workspace.move", "workspace.register", "workspace.status"}; !slices.Equal(ids, want) {
+	if want := []string{"auth.check", "auth.status", "capability.get", "capability.list", "catalog.get", "catalog.refresh", "catalog.search", "catalog.status", "datasource.get", "datasource.list", "env.profile.add", "env.profile.get", "env.profile.list", "env.profile.remove", "env.profile.set-default", "env.profile.update", "flow.delete", "flow.get", "flow.list", "flow.move", "flow.publish", "flow.pull", "lineage.pull", "project.get", "project.list", "workbook.get", "workbook.list", "workbook.publish", "workbook.pull", "workspace.artifact.delete", "workspace.clone", "workspace.create", "workspace.list", "workspace.move", "workspace.register", "workspace.status"}; !slices.Equal(ids, want) {
 		t.Fatalf("Executable IDs = %v, want %v", ids, want)
 	}
 	for _, definition := range definitions {

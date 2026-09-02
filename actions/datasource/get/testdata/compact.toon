@@ -1,0 +1,13 @@
+status: found
+environment: dev
+site: sandbox
+datasource:
+  luid: datasource-1
+  name: Sales
+  project_luid: project-1
+  project_path: Department/Ops
+  type: hyper
+  content_url: sales
+  updated_at: "2026-09-01T00:00:00Z"
+details: "--full"
+help[1]: tadx content datasource list

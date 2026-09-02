@@ -24,18 +24,18 @@ Use `tadx capability get <id>` for the same focused metadata at runtime.
 | `auth.status` | cli | ship | ready | implemented | `tadx auth status` |
 | `capability.get` | cli | ship | ready | implemented | `tadx capability get` |
 | `capability.list` | cli | ship | ready | implemented | `tadx capability list` |
-| `catalog.get` | cli | ship | ready | planned | None |
-| `catalog.refresh` | cli | ship | ready | planned | None |
+| `catalog.get` | cli | ship | ready | implemented | `tadx catalog get` |
+| `catalog.refresh` | cli | ship | ready | implemented | `tadx catalog refresh` |
 | `catalog.search` | cli | ship | ready | implemented | `tadx catalog search` |
-| `catalog.status` | cli | ship | ready | planned | None |
+| `catalog.status` | cli | ship | ready | implemented | `tadx catalog status` |
 | `content.get` | cli | ship | ready | planned | None |
 | `content.search` | cli | ship | ready | planned | None |
 | `datasource.composition.update` | cli | ship | blocked | planned | None |
 | `datasource.delete` | cli | ship | blocked | planned | None |
 | `datasource.field-description.generate` | agent/skill | delegated | ready | external/delegated | None |
 | `datasource.field-description.update` | cli | ship | blocked | planned | None |
-| `datasource.get` | cli | ship | ready | planned | None |
-| `datasource.list` | cli | ship | ready | planned | None |
+| `datasource.get` | cli | ship | ready | implemented | `tadx content datasource get` |
+| `datasource.list` | cli | ship | ready | implemented | `tadx content datasource list` |
 | `datasource.publish` | cli | ship | blocked | planned | None |
 | `datasource.pull` | cli | ship | blocked | planned | None |
 | `datasource.query` | mcp | delegated | ready | external/delegated | None |
@@ -76,8 +76,8 @@ Use `tadx capability get <id>` for the same focused metadata at runtime.
 | `view.read` | mcp | delegated | ready | external/delegated | None |
 | `workbook.author` | tableau/desktop-mcp | delegated | ready | external/delegated | None |
 | `workbook.delete` | cli | ship | blocked | planned | None |
-| `workbook.get` | cli | ship | ready | planned | None |
-| `workbook.list` | cli | ship | ready | planned | None |
+| `workbook.get` | cli | ship | ready | implemented | `tadx content workbook get` |
+| `workbook.list` | cli | ship | ready | implemented | `tadx content workbook list` |
 | `workbook.publish` | cli | ship | ready | implemented | `tadx content workbook publish` |
 | `workbook.pull` | cli | ship | ready | implemented | `tadx content workbook pull` |
 | `workspace.artifact.delete` | cli | ship | ready | implemented | `tadx workspace artifact delete` |
@@ -494,7 +494,7 @@ Inspect one cached resource record by authoritative ID or exact selector.
 - Product disposition: ship
 - Evidence level: local-contract
 - Verification readiness: ready
-- Implementation state: planned
+- Implementation state: implemented
 - Local write: No
 - Remote mutation: No
 - Requires `--apply`: No
@@ -505,7 +505,7 @@ Inspect one cached resource record by authoritative ID or exact selector.
 - Evidence: A1 §§5.7, 5.9, 8.1; C1 §2.1
 - Validation or blocker: Architecture-locked local contract
 - Blocker ID: None
-- Command binding: None
+- Command binding: `tadx catalog get`
 
 ### `catalog.refresh`
 
@@ -518,20 +518,20 @@ Hydrate and replace one normalized site inventory generation.
 - Selectors: Environment/site; admitted scopes
 - Products and availability: Cloud / Server
 - Product disposition: ship
-- Evidence level: docs-only
+- Evidence level: contract-verified
 - Verification readiness: ready
-- Implementation state: planned
+- Implementation state: implemented
 - Local write: Yes
 - Remote mutation: No
 - Requires `--apply`: No
 - Raw capable: No
 - Safety and guard: Incomplete generations never become current
 - Artifact effect: None
-- Upstream operation: REST list/read endpoints; focused Metadata API reads
-- Evidence: A1 §§5.9, 8.11, 11.2; C1 §§2.1, 5.3
-- Validation or blocker: Docs-only remote facts; local generation contract architecture-derived
+- Upstream operation: Admitted REST list and permissions endpoints
+- Evidence: docs/evidence/group2-inventory-rest-contract.md
+- Validation or blocker: Contract-verified eight-scope concurrent hydration and transactional SQLite publication
 - Blocker ID: None
-- Command binding: None
+- Command binding: `tadx catalog refresh`
 
 ### `catalog.search`
 
@@ -572,7 +572,7 @@ Report generation age, completeness, source, and stale state.
 - Product disposition: ship
 - Evidence level: local-contract
 - Verification readiness: ready
-- Implementation state: planned
+- Implementation state: implemented
 - Local write: No
 - Remote mutation: No
 - Requires `--apply`: No
@@ -583,7 +583,7 @@ Report generation age, completeness, source, and stale state.
 - Evidence: A1 §§5.9, 12.8; C1 §2.1
 - Validation or blocker: Architecture-locked local contract
 - Blocker ID: None
-- Command binding: None
+- Command binding: `tadx catalog status`
 
 ### `content.get`
 
@@ -752,20 +752,20 @@ Inspect one datasource, with bounded field/model/composition detail when request
 - Selectors: Datasource LUID or exact name/project path; bounded detail options
 - Products and availability: Cloud / Server; VDS metadata/model Server 2025.1+ per C1
 - Product disposition: ship
-- Evidence level: docs-only
+- Evidence level: contract-verified
 - Verification readiness: ready
-- Implementation state: planned
+- Implementation state: implemented
 - Local write: No
 - Remote mutation: No
 - Requires `--apply`: No
 - Raw capable: No
 - Safety and guard: Record Metadata API permission mode and partial warnings
 - Artifact effect: None
-- Upstream operation: GET .../datasources/{id}; POST /api/metadata/graphql; optional VDS metadata/model
-- Evidence: A1 §§8.3–8.4, 11.4; C1 §§2.4, 5.5, 5.12; S1 internal-capability correction
-- Validation or blocker: Docs-only; composed-parent ID mapping remains B2
+- Upstream operation: GET .../datasources/{id}; optional Metadata API and VDS detail
+- Evidence: docs/evidence/group2-inventory-rest-contract.md
+- Validation or blocker: Contract-verified base REST identity and lifecycle read; Metadata, VDS, and composition detail remain gated
 - Blocker ID: None
-- Command binding: None
+- Command binding: `tadx content datasource get`
 
 ### `datasource.list`
 
@@ -778,9 +778,9 @@ List published datasources with bounded lifecycle metadata.
 - Selectors: Environment/site; project/owner/filter
 - Products and availability: Cloud / Server
 - Product disposition: ship
-- Evidence level: docs-only
+- Evidence level: contract-verified
 - Verification readiness: ready
-- Implementation state: planned
+- Implementation state: implemented
 - Local write: No
 - Remote mutation: No
 - Requires `--apply`: No
@@ -788,10 +788,10 @@ List published datasources with bounded lifecycle metadata.
 - Safety and guard: Bounded continuation
 - Artifact effect: None
 - Upstream operation: GET /api/{version}/sites/{site-id}/datasources
-- Evidence: A1 §§1.5, 3.2; C1 §§2.4, 5.5
-- Validation or blocker: Docs-only
+- Evidence: docs/evidence/group2-inventory-rest-contract.md
+- Validation or blocker: Contract-verified REST inventory read with bounded continuation
 - Blocker ID: None
-- Command binding: None
+- Command binding: `tadx content datasource list`
 
 ### `datasource.publish`
 
@@ -1844,9 +1844,9 @@ Inspect one authoritative workbook and lifecycle metadata.
 - Selectors: Workbook LUID or exact name/project path
 - Products and availability: Cloud / Server
 - Product disposition: ship
-- Evidence level: docs-only
+- Evidence level: contract-verified
 - Verification readiness: ready
-- Implementation state: planned
+- Implementation state: implemented
 - Local write: No
 - Remote mutation: No
 - Requires `--apply`: No
@@ -1854,10 +1854,10 @@ Inspect one authoritative workbook and lifecycle metadata.
 - Safety and guard: Exact resolution; ambiguity fails
 - Artifact effect: None
 - Upstream operation: GET /api/{version}/sites/{site-id}/workbooks/{workbook-id}
-- Evidence: A1 §§3.2, 8.1; C1 §§2.3, 5.4
-- Validation or blocker: Docs-only
+- Evidence: docs/evidence/group2-inventory-rest-contract.md
+- Validation or blocker: Contract-verified exact REST read and canonical project selection
 - Blocker ID: None
-- Command binding: None
+- Command binding: `tadx content workbook get`
 
 ### `workbook.list`
 
@@ -1870,9 +1870,9 @@ List remote workbooks with bounded lifecycle metadata.
 - Selectors: Environment/site; project/owner/filter
 - Products and availability: Cloud / Server
 - Product disposition: ship
-- Evidence level: docs-only
+- Evidence level: contract-verified
 - Verification readiness: ready
-- Implementation state: planned
+- Implementation state: implemented
 - Local write: No
 - Remote mutation: No
 - Requires `--apply`: No
@@ -1880,10 +1880,10 @@ List remote workbooks with bounded lifecycle metadata.
 - Safety and guard: Bounded continuation
 - Artifact effect: None
 - Upstream operation: GET /api/{version}/sites/{site-id}/workbooks
-- Evidence: A1 §§1.5, 3.2; C1 §§2.3, 5.4
-- Validation or blocker: Docs-only
+- Evidence: docs/evidence/group2-inventory-rest-contract.md
+- Validation or blocker: Contract-verified REST inventory read with bounded continuation
 - Blocker ID: None
-- Command binding: None
+- Command binding: `tadx content workbook list`
 
 ### `workbook.publish`
 

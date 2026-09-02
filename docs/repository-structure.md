@@ -19,7 +19,7 @@ internal/
   architecture/          Executable import-boundary checks
   artifact/              Canonical payloads, provenance, fingerprints, and dirty guards
   auth/                  PAT resolution and authenticated-session provider
-  catalog/               Bounded local normalized catalog search
+  catalog/               Versioned SQLite generations, ingestion, and bounded local queries
   capability/            Executable capability registry and generation
   cli/                   Thin Cobra command and flag plumbing
   config/                Non-secret configuration and environment resolution
@@ -29,7 +29,7 @@ internal/
   toon/                  Frozen TOON codec
   workspace/             Named workspace registration and deterministic resolution
   resources/             Resource adapters added with implemented slices
-  tableau/               Released Tableau API clients and transport added in Phase 1
+  tableau/               Released Tableau API clients, shared transport, and fast catalog collectors
 ```
 
 Only implemented slices create action or resource packages.
@@ -51,7 +51,8 @@ cmd/tadx -> internal/app
 
 actions -> internal/{capability,config,errs,identity,output}
 resource adapters -> internal/{identity,tableau}
-Tableau clients -> internal/auth
+Tableau clients -> internal/{auth,tableau}
+internal/tableau/catalog -> internal/tableau/catalog/tabxml
 internal/output -> internal/{errs,toon}
 internal/workspace -> internal/config
 ```
@@ -70,10 +71,11 @@ The local allowlists enforce these dependencies:
 - Actions import only `internal/capability`, `internal/config`, `internal/errs`, `internal/identity`, and `internal/output`.
 - CLI packages import only action packages, CLI subpackages, and `internal/errs`.
 - Resource adapters import only `internal/identity` and Tableau client packages.
-- Tableau clients import only `internal/auth` and the shared `internal/tableau` package.
+- Tableau clients import only `internal/auth`, the shared `internal/tableau` package, and the catalog client's private `tabxml` parser.
 - `internal/output` imports only `internal/errs` and `internal/toon`.
 - `internal/workspace` imports only `internal/config`.
 - `internal/artifact` and `internal/catalog` are independent foundation packages with no higher-layer imports.
+- `internal/catalog` owns one config-root `catalog/catalog.sqlite` database with immutable environment and site generations.
 - The composition root imports only recognized actions, CLI packages, adapters, clients, and its required foundation packages.
 - `cmd/tadx` imports only `internal/app`, and `cmd/gencapdocs` imports only `internal/capability`.
 

@@ -100,6 +100,86 @@ func TestClientNormalizesClassicWorkbookPagination(t *testing.T) {
 	}
 }
 
+func TestClientListsFilteredWorkbookMetadataAndRequestID(t *testing.T) {
+	server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		if request.Method != http.MethodGet || request.URL.Path != "/api/3.29/sites/site-1/workbooks" {
+			t.Fatalf("request = %s %s", request.Method, request.URL.Path)
+		}
+		query := request.URL.Query()
+		if query.Get("pageNumber") != "2" || query.Get("pageSize") != "2" {
+			t.Fatalf("pagination = %s", query.Encode())
+		}
+		wantFilter := "name:eq:Finance,ownerName:eq:Analyst,projectName:eq:Ops,tags:eq:quarterly"
+		if query.Get("filter") != wantFilter {
+			t.Fatalf("filter = %q", query.Get("filter"))
+		}
+		writer.Header().Set("X-Tableau-Request-Id", "request-1")
+		writer.Header().Set("Content-Type", "application/xml")
+		_, _ = io.WriteString(writer, `<tsResponse><pagination pageNumber="2" pageSize="2" totalAvailable="3"/><workbooks><workbook id="wb-3" name="Finance" description="Finance reporting" contentUrl="Finance" createdAt="2026-08-01T00:00:00Z" updatedAt="2026-09-01T00:00:00Z"><project id="project-1" name="Ops"/><owner id="owner-1"/><tags><tag label="quarterly"/></tags></workbook></workbooks></tsResponse>`)
+	}))
+	defer server.Close()
+
+	client := tableauworkbook.NewClient(tableau.NewTransport(server.Client(), "3.29", nil), session{}, server.URL)
+	page, err := client.ListWorkbooks(context.Background(), tableauworkbook.ListRequest{PageNumber: 2, PageSize: 2, Name: "Finance", OwnerName: "Analyst", ProjectName: "Ops", Tag: "quarterly"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if page.TableauRequestID != "request-1" || len(page.Items) != 1 {
+		t.Fatalf("page = %#v", page)
+	}
+	item := page.Items[0]
+	if item.Description != "Finance reporting" || item.CreatedAt != "2026-08-01T00:00:00Z" || item.UpdatedAt != "2026-09-01T00:00:00Z" || len(item.Tags) != 1 || item.Tags[0] != "quarterly" {
+		t.Fatalf("workbook = %#v", item)
+	}
+}
+
+func TestClientListsWorkbooksWithStablePaginationSort(t *testing.T) {
+	server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		if got := request.URL.Query().Get("sort"); got != "name:asc,updatedAt:asc" {
+			t.Fatalf("sort = %q", got)
+		}
+		writer.Header().Set("Content-Type", "application/xml")
+		_, _ = io.WriteString(writer, `<tsResponse><pagination pageNumber="1" pageSize="100" totalAvailable="0"/><workbooks/></tsResponse>`)
+	}))
+	defer server.Close()
+
+	client := tableauworkbook.NewClient(tableau.NewTransport(server.Client(), "3.29", nil), session{}, server.URL)
+	if _, err := client.ListWorkbooks(context.Background(), tableauworkbook.ListRequest{PageNumber: 1, PageSize: 100}); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestClientNormalizesWorkbookTagsRegardlessOfOrder(t *testing.T) {
+	bodies := []string{
+		`<tsResponse><pagination pageNumber="1" pageSize="100" totalAvailable="1"/><workbooks><workbook id="wb-1" name="Finance"><project id="project-1" name="Ops"/><owner id="owner-1"/><tags><tag label="  zeta "/><tag label="alpha"/><tag label=""/><tag label="  "/></tags></workbook></workbooks></tsResponse>`,
+		`<tsResponse><pagination pageNumber="1" pageSize="100" totalAvailable="1"/><workbooks><workbook id="wb-1" name="Finance"><project id="project-1" name="Ops"/><owner id="owner-1"/><tags><tag label="alpha"/><tag label="zeta"/></tags></workbook></workbooks></tsResponse>`,
+	}
+	for _, body := range bodies {
+		server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+			writer.Header().Set("Content-Type", "application/xml")
+			_, _ = io.WriteString(writer, body)
+		}))
+		client := tableauworkbook.NewClient(tableau.NewTransport(server.Client(), "3.29", nil), session{}, server.URL)
+		page, err := client.ListWorkbooks(context.Background(), tableauworkbook.ListRequest{PageNumber: 1, PageSize: 100})
+		server.Close()
+		if err != nil {
+			t.Fatal(err)
+		}
+		tags := page.Items[0].Tags
+		if len(tags) != 2 || tags[0] != "alpha" || tags[1] != "zeta" {
+			t.Fatalf("tags = %#v", tags)
+		}
+	}
+}
+
+func TestClientRejectsUnsafeWorkbookFilter(t *testing.T) {
+	client := tableauworkbook.NewClient(tableau.NewTransport(http.DefaultClient, "3.29", nil), session{}, "https://example.invalid")
+	_, err := client.ListWorkbooks(context.Background(), tableauworkbook.ListRequest{Name: "Finance,Other"})
+	if err == nil || !strings.Contains(err.Error(), "cannot contain ampersand or comma") {
+		t.Fatalf("error = %v", err)
+	}
+}
+
 func TestClientRejectsUnderfilledPagination(t *testing.T) {
 	tests := []struct {
 		name string
@@ -167,7 +247,8 @@ func TestClientGetsWorkbookByAuthoritativeLUID(t *testing.T) {
 			t.Fatalf("request = %s %s", request.Method, request.URL.Path)
 		}
 		writer.Header().Set("Content-Type", "application/xml")
-		_, _ = io.WriteString(writer, `<tsResponse><workbook id="wb-1" name="Finance" contentUrl="finance"><project id="project-1" name="Ops"/><owner id="owner-1"/></workbook></tsResponse>`)
+		writer.Header().Set("X-Tableau-Request-Id", "request-1")
+		_, _ = io.WriteString(writer, `<tsResponse><workbook id="wb-1" name="Finance" description="Finance reporting" contentUrl="finance" createdAt="2026-08-01T00:00:00Z" updatedAt="2026-09-01T00:00:00Z"><project id="project-1" name="Ops"/><owner id="owner-1"/><tags><tag label="finance"/></tags></workbook></tsResponse>`)
 	}))
 	defer server.Close()
 
@@ -176,7 +257,7 @@ func TestClientGetsWorkbookByAuthoritativeLUID(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if workbook.LUID != "wb-1" || workbook.ProjectLUID != "project-1" || workbook.OwnerLUID != "owner-1" {
+	if workbook.LUID != "wb-1" || workbook.ProjectLUID != "project-1" || workbook.OwnerLUID != "owner-1" || workbook.Description != "Finance reporting" || workbook.TableauRequestID != "request-1" || len(workbook.Tags) != 1 {
 		t.Fatalf("workbook = %#v", workbook)
 	}
 }

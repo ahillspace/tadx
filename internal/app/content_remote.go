@@ -39,6 +39,8 @@ func newRemoteContentCommands(runtime *runtimeDependencies) *remoteContentComman
 
 func (c *remoteContentCommands) dependencies() *contentcli.Dependencies {
 	return &contentcli.Dependencies{
+		WorkbookLister: c, WorkbookGetter: c,
+		DatasourceLister: c, DatasourceGetter: c,
 		ProjectLister: c, ProjectGetter: c,
 		FlowLister: c, FlowGetter: c, FlowPuller: c, FlowPublisher: c, FlowMover: c, FlowDeleter: c,
 		LineagePuller: c,
@@ -72,7 +74,7 @@ func (c *remoteContentCommands) connect(ctx context.Context, alias string, expli
 		flows:       resourceflow.NewAdapter(flowClient, projects),
 		flowChanges: resourceflow.NewMutationAdapter(flowClient),
 		lineage:     resourcelineage.NewAdapter(tableaumetadata.NewClient(connection.transport, connection.session, connection.environment.URL)),
-		workbooks:   resourceworkbook.NewAdapter(tableauworkbook.NewClient(connection.transport, connection.session, connection.environment.URL)),
+		workbooks:   resourceworkbook.NewAdapterWithProjectResolver(tableauworkbook.NewClient(connection.transport, connection.session, connection.environment.URL), projects),
 		datasources: resourcedatasource.NewAdapterWithProjectResolver(datasourceClient, projects),
 	}, nil
 }

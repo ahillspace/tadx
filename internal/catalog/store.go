@@ -1,35 +1,55 @@
-// Package catalog defines the frozen local normalized catalog search contract.
+// Package catalog stores immutable Tableau catalog generations in SQLite.
 package catalog
 
 import (
-	"bytes"
 	"context"
 	"crypto/sha256"
+	"database/sql"
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
+	"net/url"
 	"os"
 	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
+
+	_ "modernc.org/sqlite"
 )
 
 const (
-	defaultLimit              = 20
-	maxLimit                  = 100
-	maxGenerationBytes        = 64 << 20
-	maxGenerationRecords      = 100_000
-	maxFieldBytes             = 64 << 10
-	maxFilenameComponentBytes = 255
-	staleAfter                = 12 * time.Hour
+	defaultLimit         = 20
+	maxLimit             = 100
+	maxBatchRows         = 10_000
+	maxFieldBytes        = 64 << 10
+	staleAfter           = 12 * time.Hour
+	schemaVersion        = 1
+	databaseRelativePath = "catalog/catalog.sqlite"
+	// generationTimeLayout is a fixed-width RFC3339 form: unlike time.RFC3339Nano
+	// (which trims trailing fractional-second zeros and so varies in width), every
+	// value is the same length, keeping the lexical DESC index on generated_at
+	// consistent with chronological order.
+	generationTimeLayout = "2006-01-02T15:04:05.000000000Z07:00"
 )
 
-// Record is one normalized catalog identity projection.
+var publicScopes = []string{"users", "groups", "projects", "workbooks", "datasources", "flows", "views", "permissions"}
+
+var batchColumns = map[string][]string{
+	"users":       {"id", "name", "email", "site_role", "last_login"},
+	"groups":      {"id", "name", "domain"},
+	"projects":    {"id", "name", "parent_project_id", "description", "owner_id"},
+	"workbooks":   {"id", "name", "project_id", "owner_id", "size", "updated_at"},
+	"datasources": {"id", "name", "project_id", "owner_id", "updated_at"},
+	"flows":       {"id", "name", "project_id", "owner_id", "updated_at"},
+	"views":       {"id", "name", "workbook_id"},
+	"permissions": {"content_type", "content_id", "grantee_type", "grantee_id", "capability", "mode"},
+}
+
 type Record struct {
 	LUID        string `json:"luid"`
 	Kind        string `json:"kind"`
@@ -37,206 +57,320 @@ type Record struct {
 	ProjectPath string `json:"project_path,omitempty"`
 	Owner       string `json:"owner,omitempty"`
 }
-
-// Generation is one complete, immutable catalog generation.
 type Generation struct {
-	ID          string    `json:"id"`
-	Environment string    `json:"environment"`
-	Site        string    `json:"site"`
-	GeneratedAt time.Time `json:"generated_at"`
-	Complete    bool      `json:"complete"`
-	Records     []Record  `json:"records"`
+	ID, Environment, Site    string
+	GeneratedAt              time.Time
+	Complete                 bool
+	Source                   string
+	Scopes, DependencyScopes []string
+	Records                  []Record
 }
-
-type generationDocument struct {
-	ID          string             `json:"id"`
-	Environment string             `json:"environment"`
-	Site        *string            `json:"site"`
-	GeneratedAt time.Time          `json:"generated_at"`
-	Complete    bool               `json:"complete"`
-	Records     *boundedRecordList `json:"records"`
+type GenerationMetadata struct {
+	ID, Environment, Site           string
+	GeneratedAt                     time.Time
+	Source                          string
+	RequestedScopes, ImplicitScopes []string
 }
-
-type boundedRecordList []Record
-
-func (records *boundedRecordList) UnmarshalJSON(data []byte) error {
-	decoder := json.NewDecoder(bytes.NewReader(data))
-	token, err := decoder.Token()
-	if err != nil {
-		return err
-	}
-	if delimiter, ok := token.(json.Delim); !ok || delimiter != '[' {
-		return errors.New("catalog generation records must be an array")
-	}
-	decoded := make([]Record, 0)
-	for decoder.More() {
-		if len(decoded) == maxGenerationRecords {
-			return fmt.Errorf("catalog generation exceeds %d-record limit", maxGenerationRecords)
-		}
-		var record Record
-		if err := decoder.Decode(&record); err != nil {
-			return err
-		}
-		decoded = append(decoded, record)
-	}
-	if _, err := decoder.Token(); err != nil {
-		return err
-	}
-	*records = decoded
-	return nil
+type Batch struct {
+	Scope   string
+	Columns []string
+	Rows    [][]any
+}
+type Query struct {
+	Text, Kind, Name, ProjectPath, Owner, Environment, Site string
+	SiteSelected                                            bool
+	LUID, Cursor                                            string
+	Limit                                                   int
+}
+type Page struct {
+	Returned, Total, Limit int
+	NextCursor             string
+}
+type SearchResult struct {
+	Page                            Page
+	GenerationID, Environment, Site string
+	GeneratedAt                     time.Time
+	Stale                           bool
+	Source                          string
+	Records                         []Record
+	Warnings                        []string
+}
+type Selection struct {
+	Environment, Site string
+	SiteSelected      bool
+}
+type Lookup struct {
+	Environment, Site             string
+	SiteSelected                  bool
+	LUID, Kind, Name, ProjectPath string
+}
+type GetResult struct {
+	Record                          Record
+	GenerationID, Environment, Site string
+	GeneratedAt                     time.Time
+	Stale                           bool
+	Warnings                        []string
+}
+type StatusResult struct {
+	GenerationID, Environment, Site string
+	GeneratedAt                     time.Time
+	Age                             time.Duration
+	Complete, Stale                 bool
+	Source, Path                    string
+	RecordCount                     int
+	Warnings                        []string
+}
+type ReplaceResult struct {
+	GenerationID, Path string
+	RecordCount        int
 }
 
 type invalidCursorError struct{}
 
-func (invalidCursorError) Error() string { return "catalog search cursor is invalid" }
-
+func (invalidCursorError) Error() string              { return "catalog search cursor is invalid" }
 func (invalidCursorError) InvalidCatalogCursor() bool { return true }
 
-// Query contains exact filters plus an optional text search.
-type Query struct {
-	Text         string
-	Kind         string
-	ProjectPath  string
-	Owner        string
-	Environment  string
-	Site         string
-	SiteSelected bool
-	LUID         string
-	Cursor       string
-	Limit        int
+type ambiguousSelectorError struct{}
+
+func (ambiguousSelectorError) Error() string                  { return "catalog selector is ambiguous" }
+func (ambiguousSelectorError) AmbiguousCatalogSelector() bool { return true }
+
+type notFoundError struct{}
+
+func (notFoundError) Error() string               { return "catalog record was not found" }
+func (notFoundError) CatalogRecordNotFound() bool { return true }
+
+type unavailableScopeError struct{ scope string }
+
+func (e unavailableScopeError) Error() string {
+	return fmt.Sprintf("catalog scope %q is not present in the current generation", e.scope)
+}
+func (unavailableScopeError) CatalogScopeUnavailable() bool { return true }
+
+type duplicateScopeError struct{ scope string }
+
+func (e duplicateScopeError) Error() string {
+	return fmt.Sprintf("catalog scope %q is duplicated", e.scope)
+}
+func (duplicateScopeError) CatalogDuplicateScope() bool { return true }
+
+type duplicateContentError struct{ existingID string }
+
+func (e duplicateContentError) Error() string {
+	return fmt.Sprintf("catalog content is already published under generation %q", e.existingID)
+}
+func (duplicateContentError) CatalogDuplicateContent() bool { return true }
+
+// Store owns one config-root SQLite catalog database.
+type Store struct {
+	root   string
+	now    func() time.Time
+	initMu sync.Mutex
 }
 
-// Page is the bounded local continuation envelope.
-type Page struct {
-	Returned   int
-	Total      int
-	Limit      int
-	NextCursor string
-}
-
-// SearchResult includes source generation and staleness provenance.
-type SearchResult struct {
-	Page         Page
-	GenerationID string
-	Environment  string
-	Site         string
-	GeneratedAt  time.Time
-	Stale        bool
-	Records      []Record
-	Warnings     []string
-}
-
-// FileStore reads complete normalized generations from portable environment filenames under <root>/catalog.
-type FileStore struct {
-	root string
-	now  func() time.Time
-}
-
-// NewFileStore creates a local catalog reader.
-func NewFileStore(root string, now func() time.Time) *FileStore {
+// NewStore creates a catalog store.
+func NewStore(root string, now func() time.Time) *Store {
 	if now == nil {
 		now = time.Now
 	}
-	return &FileStore{root: root, now: now}
+	return &Store{root: root, now: now}
+}
+func DatabasePath() string { return databaseRelativePath }
+func (s *Store) databasePath() string {
+	return filepath.Join(s.root, filepath.FromSlash(databaseRelativePath))
 }
 
-// Search returns a deterministic bounded slice from one complete generation.
-func (s *FileStore) Search(ctx context.Context, query Query) (SearchResult, error) {
+func (s *Store) open(ctx context.Context) (*sql.DB, error) {
+	s.initMu.Lock()
+	defer s.initMu.Unlock()
 	if err := ctx.Err(); err != nil {
-		return SearchResult{}, err
+		return nil, err
 	}
-	if query.Environment == "" {
-		return SearchResult{}, errors.New("catalog search requires an environment")
+	path := s.databasePath()
+	dir := filepath.Dir(path)
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		return nil, fmt.Errorf("create catalog directory: %w", err)
 	}
-	if !query.SiteSelected {
-		return SearchResult{}, errors.New("catalog search requires a resolved source site")
-	}
-	filename, err := GenerationFilename(query.Environment)
+	// The catalog now stores users, emails, permissions, and inventory; refuse to
+	// follow a symlinked directory so the database cannot be redirected elsewhere.
+	dirInfo, err := os.Lstat(dir)
 	if err != nil {
-		return SearchResult{}, err
+		return nil, fmt.Errorf("inspect catalog directory: %w", err)
 	}
-	path := filepath.Join(s.root, "catalog", filename)
-	data, err := readGeneration(path)
+	if dirInfo.Mode()&os.ModeSymlink != 0 {
+		return nil, errors.New("catalog directory must not be a symlink")
+	}
+	preExisted := true
+	info, err := os.Lstat(path)
+	if errors.Is(err, os.ErrNotExist) {
+		preExisted = false
+	} else if err != nil {
+		return nil, fmt.Errorf("inspect catalog database: %w", err)
+	} else if !info.Mode().IsRegular() {
+		return nil, errors.New("catalog database must be a regular file")
+	}
+	dsn, err := catalogDSN(path)
 	if err != nil {
-		return SearchResult{}, fmt.Errorf("read catalog generation for environment %q: %w", query.Environment, err)
+		return nil, err
 	}
-	var document generationDocument
-	if err := json.Unmarshal(data, &document); err != nil {
-		return SearchResult{}, fmt.Errorf("decode catalog generation: %w", err)
+	db, err := sql.Open("sqlite", dsn)
+	if err != nil {
+		return nil, fmt.Errorf("open catalog database: %w", err)
 	}
-	generation := Generation{
-		ID: document.ID, Environment: document.Environment, GeneratedAt: document.GeneratedAt,
-		Complete: document.Complete,
+	db.SetMaxOpenConns(8)
+	db.SetMaxIdleConns(8)
+	if err := ensureSchema(ctx, db); err != nil {
+		db.Close()
+		// A file we created this call could hold a partially-initialized schema;
+		// remove it so the next open re-initializes rather than wedging. Only our
+		// own newly-created file is removed, never a pre-existing database.
+		if !preExisted {
+			removeDatabaseFiles(path)
+		}
+		return nil, err
 	}
-	if document.Site != nil {
-		generation.Site = *document.Site
+	if !preExisted {
+		if err := restrictDatabasePermissions(path); err != nil {
+			db.Close()
+			removeDatabaseFiles(path)
+			return nil, err
+		}
 	}
+	if err := validateSchema(ctx, db); err != nil {
+		db.Close()
+		return nil, err
+	}
+	return db, nil
+}
+
+// catalogDSN builds a SQLite "file:" URI for path. Building the URI with net/url
+// percent-encodes any '?' or '#' in the path so the SQLite URI parser does not
+// mistake them for the query/fragment delimiters (which would drop the pragmas
+// or fail to open). The pragma set below is authoritative for every pooled
+// connection (foreign keys, busy timeout, and synchronous=FULL durability).
+func catalogDSN(path string) (string, error) {
+	abs, err := filepath.Abs(path)
+	if err != nil {
+		return "", fmt.Errorf("resolve catalog database path: %w", err)
+	}
+	uri := filepath.ToSlash(abs)
+	if !strings.HasPrefix(uri, "/") {
+		uri = "/" + uri
+	}
+	dsn := url.URL{
+		Scheme:   "file",
+		Path:     uri,
+		RawQuery: "_pragma=foreign_keys(1)&_pragma=busy_timeout(5000)&_pragma=synchronous(FULL)",
+	}
+	return dsn.String(), nil
+}
+
+// restrictDatabasePermissions narrows the database (and its WAL sidecars) to
+// owner-only 0600. On Windows os.Chmod only honors the read-only bit, so the
+// call is harmless there while enforcing least privilege on POSIX filesystems.
+func restrictDatabasePermissions(path string) error {
+	for _, p := range []string{path, path + "-wal", path + "-shm"} {
+		if err := os.Chmod(p, 0o600); err != nil && !errors.Is(err, os.ErrNotExist) {
+			return fmt.Errorf("restrict catalog database permissions: %w", err)
+		}
+	}
+	return nil
+}
+
+func removeDatabaseFiles(path string) {
+	for _, p := range []string{path, path + "-wal", path + "-shm"} {
+		_ = os.Remove(p)
+	}
+}
+
+func (s *Store) BeginGeneration(ctx context.Context, metadata GenerationMetadata) (*GenerationWriter, error) {
+	// Normalize environment and site once at the boundary so the values stored
+	// here match the values Search/Get/Status later compare against exactly.
+	metadata.Environment = strings.TrimSpace(metadata.Environment)
+	metadata.Site = strings.TrimSpace(metadata.Site)
+	// Reject duplicate scopes explicitly rather than letting normalizedScopes
+	// silently deduplicate them: internal callers must see the same contract as
+	// actions/catalog/refresh, and silent dedup hides caller bugs.
+	if err := ensureUniqueScopes(metadata.RequestedScopes); err != nil {
+		return nil, err
+	}
+	if err := ensureUniqueScopes(metadata.ImplicitScopes); err != nil {
+		return nil, err
+	}
+	metadata.RequestedScopes = normalizedScopes(metadata.RequestedScopes, true)
+	metadata.ImplicitScopes = normalizedScopes(metadata.ImplicitScopes, false)
+	if err := validateMetadata(metadata); err != nil {
+		return nil, err
+	}
+	db, err := s.open(ctx)
+	if err != nil {
+		return nil, err
+	}
+	tx, err := db.BeginTx(ctx, nil)
+	if err != nil {
+		db.Close()
+		return nil, fmt.Errorf("begin catalog generation: %w", err)
+	}
+	result, err := tx.ExecContext(ctx, `INSERT INTO generations(id,fingerprint,environment,site,generated_at,complete,source,record_count,created_at) VALUES(NULL,NULL,?,?,?,0,?,0,?)`, metadata.Environment, metadata.Site, metadata.GeneratedAt.UTC().Format(generationTimeLayout), metadata.Source, s.now().UTC().Format(generationTimeLayout))
+	if err != nil {
+		tx.Rollback()
+		db.Close()
+		return nil, fmt.Errorf("stage catalog generation: %w", err)
+	}
+	key, err := result.LastInsertId()
+	if err != nil {
+		tx.Rollback()
+		db.Close()
+		return nil, err
+	}
+	requested := map[string]bool{}
+	for _, scope := range metadata.RequestedScopes {
+		requested[scope] = true
+	}
+	seen := map[string]bool{}
+	for _, scope := range append(append([]string{}, metadata.RequestedScopes...), metadata.ImplicitScopes...) {
+		if seen[scope] {
+			continue
+		}
+		seen[scope] = true
+		if _, err := tx.ExecContext(ctx, `INSERT INTO generation_scopes(generation_key,scope,requested,complete) VALUES(?,?,?,0)`, key, scope, requested[scope]); err != nil {
+			tx.Rollback()
+			db.Close()
+			return nil, err
+		}
+	}
+	return &GenerationWriter{store: s, db: db, tx: tx, key: key, metadata: metadata}, nil
+}
+
+func (s *Store) Replace(ctx context.Context, generation Generation) (ReplaceResult, error) {
 	if !generation.Complete {
-		return SearchResult{}, fmt.Errorf("catalog generation %q is incomplete", generation.ID)
+		return ReplaceResult{}, errors.New("catalog replacement generation must be complete")
 	}
-	if strings.TrimSpace(generation.ID) == "" {
-		return SearchResult{}, errors.New("catalog generation ID is required")
+	if generation.Records == nil {
+		return ReplaceResult{}, errors.New("catalog replacement records are required")
 	}
-	if err := validateField("generation ID", generation.ID); err != nil {
+	w, err := s.BeginGeneration(ctx, GenerationMetadata{ID: generation.ID, Environment: generation.Environment, Site: generation.Site, GeneratedAt: generation.GeneratedAt, Source: generation.Source, RequestedScopes: generation.Scopes, ImplicitScopes: generation.DependencyScopes})
+	if err != nil {
+		return ReplaceResult{}, err
+	}
+	defer w.Rollback()
+	if err := w.writeRecords(ctx, generation.Records); err != nil {
+		return ReplaceResult{}, err
+	}
+	if err := w.CompleteScopes(ctx, append(append([]string{}, w.metadata.RequestedScopes...), w.metadata.ImplicitScopes...)); err != nil {
+		return ReplaceResult{}, err
+	}
+	return w.Publish(ctx)
+}
+
+func (s *Store) Search(ctx context.Context, query Query) (SearchResult, error) {
+	// Normalize at the query boundary to match the trimmed values persisted at
+	// write time; otherwise a padded selector silently misses the stored rows.
+	query.Environment = strings.TrimSpace(query.Environment)
+	query.Site = strings.TrimSpace(query.Site)
+	if err := validateSelection(query.Environment, query.SiteSelected); err != nil {
 		return SearchResult{}, err
 	}
-	if generation.GeneratedAt.IsZero() {
-		return SearchResult{}, fmt.Errorf("catalog generation %q generation time is required", generation.ID)
-	}
-	if err := validateField("source environment", generation.Environment); err != nil {
-		return SearchResult{}, err
-	}
-	if generation.Environment != query.Environment {
-		return SearchResult{}, fmt.Errorf("catalog source environment %q does not match selected environment %q", generation.Environment, query.Environment)
-	}
-	if document.Site == nil {
-		return SearchResult{}, fmt.Errorf("catalog generation %q source site is required", generation.ID)
-	}
-	if err := validateField("source site", generation.Site); err != nil {
-		return SearchResult{}, err
-	}
-	if generation.Site != query.Site {
-		return SearchResult{}, fmt.Errorf("catalog source site %q does not match selected site %q", generation.Site, query.Site)
-	}
-	if document.Records == nil {
-		return SearchResult{}, fmt.Errorf("catalog generation %q records are required", generation.ID)
-	}
-	generation.Records = []Record(*document.Records)
-	if err := validateRecords(generation); err != nil {
-		return SearchResult{}, err
-	}
-	items := make([]Record, 0, len(generation.Records))
-	text := strings.ToLower(query.Text)
-	for _, record := range generation.Records {
-		if query.LUID != "" && record.LUID != query.LUID {
-			continue
-		}
-		if query.Kind != "" && record.Kind != query.Kind {
-			continue
-		}
-		if query.ProjectPath != "" && record.ProjectPath != query.ProjectPath {
-			continue
-		}
-		if query.Owner != "" && record.Owner != query.Owner {
-			continue
-		}
-		if text != "" && !strings.Contains(strings.ToLower(record.Name+" "+record.ProjectPath+" "+record.Owner+" "+record.LUID), text) {
-			continue
-		}
-		items = append(items, record)
-	}
-	sort.Slice(items, func(i, j int) bool {
-		if items[i].Kind != items[j].Kind {
-			return items[i].Kind < items[j].Kind
-		}
-		if items[i].Name != items[j].Name {
-			return items[i].Name < items[j].Name
-		}
-		if items[i].ProjectPath != items[j].ProjectPath {
-			return items[i].ProjectPath < items[j].ProjectPath
-		}
-		return items[i].LUID < items[j].LUID
-	})
 	limit := query.Limit
 	if limit == 0 {
 		limit = defaultLimit
@@ -244,178 +378,282 @@ func (s *FileStore) Search(ctx context.Context, query Query) (SearchResult, erro
 	if limit < 1 || limit > maxLimit {
 		return SearchResult{}, fmt.Errorf("catalog search limit must be between 1 and %d", maxLimit)
 	}
-	offset := 0
-	if query.Cursor != "" {
-		cursorGeneration, cursorQuery, cursorOffset, cursorErr := decodeCursor(query.Cursor)
-		if cursorErr != nil || cursorGeneration != generation.ID || cursorQuery != queryFingerprint(query) || cursorOffset < 0 || cursorOffset > len(items) {
-			return SearchResult{}, invalidCursorError{}
-		}
-		offset = cursorOffset
-	}
-	end := min(offset+limit, len(items))
-	pageItems := append([]Record(nil), items[offset:end]...)
-	next := ""
-	if end < len(items) {
-		next = encodeCursor(generation.ID, queryFingerprint(query), end)
-	}
-	stale := s.now().Sub(generation.GeneratedAt) > staleAfter
-	var warnings []string
-	if stale {
-		warnings = []string{fmt.Sprintf("catalog generation %q is older than 12 hours", generation.ID)}
-	}
-	return SearchResult{
-		Page:         Page{Returned: len(pageItems), Total: len(items), Limit: limit, NextCursor: next},
-		GenerationID: generation.ID, Environment: generation.Environment, Site: generation.Site, GeneratedAt: generation.GeneratedAt, Stale: stale,
-		Records: pageItems, Warnings: warnings,
-	}, nil
-}
-
-func readGeneration(path string) ([]byte, error) {
-	pathInfo, err := os.Lstat(path)
+	query.Limit = limit
+	db, err := s.open(ctx)
 	if err != nil {
-		return nil, err
+		return SearchResult{}, err
 	}
-	if !pathInfo.Mode().IsRegular() {
-		return nil, errors.New("catalog generation must be a regular file")
-	}
-	file, err := os.Open(path)
+	defer db.Close()
+	tx, err := db.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
 	if err != nil {
-		return nil, err
+		return SearchResult{}, err
 	}
-	defer file.Close()
-	info, err := file.Stat()
+	defer tx.Rollback()
+	meta, err := currentGeneration(ctx, tx, query.Environment, query.Site)
 	if err != nil {
-		return nil, err
+		return SearchResult{}, err
 	}
-	if !info.Mode().IsRegular() {
-		return nil, errors.New("catalog generation must be a regular file")
-	}
-	if info.Size() > maxGenerationBytes {
-		return nil, fmt.Errorf("catalog generation exceeds %d-byte limit", maxGenerationBytes)
-	}
-	data, err := io.ReadAll(io.LimitReader(file, maxGenerationBytes+1))
-	if err != nil {
-		return nil, err
-	}
-	if len(data) > maxGenerationBytes {
-		return nil, fmt.Errorf("catalog generation exceeds %d-byte limit", maxGenerationBytes)
-	}
-	return data, nil
-}
-
-func validateRecords(generation Generation) error {
-	if len(generation.Records) > maxGenerationRecords {
-		return fmt.Errorf("catalog generation %q exceeds %d-record limit", generation.ID, maxGenerationRecords)
-	}
-	seen := make(map[string]struct{}, len(generation.Records))
-	for index, record := range generation.Records {
-		if strings.TrimSpace(record.LUID) == "" {
-			return fmt.Errorf("catalog generation %q record %d LUID is required", generation.ID, index)
-		}
-		if strings.TrimSpace(record.Kind) == "" {
-			return fmt.Errorf("catalog generation %q record %d kind is required", generation.ID, index)
-		}
-		if strings.TrimSpace(record.Name) == "" {
-			return fmt.Errorf("catalog generation %q record %d name is required", generation.ID, index)
-		}
-		fields := []struct {
-			name  string
-			value string
-		}{
-			{name: "LUID", value: record.LUID},
-			{name: "kind", value: record.Kind},
-			{name: "name", value: record.Name},
-			{name: "project path", value: record.ProjectPath},
-			{name: "owner", value: record.Owner},
-		}
-		for _, field := range fields {
-			if err := validateField(fmt.Sprintf("catalog generation %q record %d %s", generation.ID, index, field.name), field.value); err != nil {
-				return err
+	if query.Kind != "" {
+		if scope := kindScope(query.Kind); scope != "" {
+			var requested bool
+			err := tx.QueryRowContext(ctx, `SELECT requested FROM generation_scopes WHERE generation_key=? AND scope=?`, meta.key, scope).Scan(&requested)
+			if errors.Is(err, sql.ErrNoRows) || (err == nil && !requested) {
+				return SearchResult{}, unavailableScopeError{scope}
+			}
+			if err != nil {
+				return SearchResult{}, err
 			}
 		}
-		if _, exists := seen[record.LUID]; exists {
-			return fmt.Errorf("catalog generation %q contains duplicate LUID %q", generation.ID, record.LUID)
+	}
+	where, args := searchWhere(meta.key, query)
+	var total int
+	if err := tx.QueryRowContext(ctx, `SELECT count(*) FROM catalog_records `+where, args...).Scan(&total); err != nil {
+		return SearchResult{}, fmt.Errorf("count catalog records: %w", err)
+	}
+	offset := 0
+	if query.Cursor != "" {
+		id, fingerprint, decoded, decodeErr := decodeCursor(query.Cursor)
+		if decodeErr != nil || id != meta.id || fingerprint != queryFingerprint(query) || decoded < 0 || decoded > total {
+			return SearchResult{}, invalidCursorError{}
 		}
-		seen[record.LUID] = struct{}{}
+		offset = decoded
+	}
+	rows, err := tx.QueryContext(ctx, `SELECT luid,kind,name,project_path,owner FROM catalog_records `+where+` ORDER BY kind,name,project_path,luid LIMIT ? OFFSET ?`, append(args, limit, offset)...)
+	if err != nil {
+		return SearchResult{}, err
+	}
+	defer rows.Close()
+	records := make([]Record, 0)
+	for rows.Next() {
+		var r Record
+		if err := rows.Scan(&r.LUID, &r.Kind, &r.Name, &r.ProjectPath, &r.Owner); err != nil {
+			return SearchResult{}, err
+		}
+		records = append(records, r)
+	}
+	if err := rows.Err(); err != nil {
+		return SearchResult{}, err
+	}
+	end := offset + len(records)
+	next := ""
+	if end < total {
+		next = encodeCursor(meta.id, queryFingerprint(query), end)
+	}
+	stale, warnings := staleness(s.now, meta.generatedAt, meta.id)
+	if err := tx.Commit(); err != nil {
+		return SearchResult{}, err
+	}
+	return SearchResult{Page: Page{len(records), total, limit, next}, GenerationID: meta.id, Environment: meta.environment, Site: meta.site, GeneratedAt: meta.generatedAt, Stale: stale, Source: meta.source, Records: records, Warnings: warnings}, nil
+}
+
+func (s *Store) Get(ctx context.Context, lookup Lookup) (GetResult, error) {
+	if lookup.LUID == "" && (lookup.Kind == "" || lookup.Name == "") {
+		return GetResult{}, errors.New("catalog get requires a LUID or exact kind and name")
+	}
+	q := Query{Environment: lookup.Environment, Site: lookup.Site, SiteSelected: lookup.SiteSelected, Limit: 2}
+	if lookup.LUID != "" {
+		q.LUID = lookup.LUID
+	} else {
+		q.Kind = lookup.Kind
+		q.Name = lookup.Name
+		q.ProjectPath = lookup.ProjectPath
+	}
+	r, err := s.Search(ctx, q)
+	if err != nil {
+		return GetResult{}, err
+	}
+	if r.Page.Total > 1 {
+		return GetResult{}, ambiguousSelectorError{}
+	}
+	if len(r.Records) == 0 {
+		return GetResult{}, notFoundError{}
+	}
+	return GetResult{r.Records[0], r.GenerationID, r.Environment, r.Site, r.GeneratedAt, r.Stale, append([]string(nil), r.Warnings...)}, nil
+}
+func (s *Store) Status(ctx context.Context, selection Selection) (StatusResult, error) {
+	selection.Environment = strings.TrimSpace(selection.Environment)
+	selection.Site = strings.TrimSpace(selection.Site)
+	if err := validateSelection(selection.Environment, selection.SiteSelected); err != nil {
+		return StatusResult{}, err
+	}
+	db, err := s.open(ctx)
+	if err != nil {
+		return StatusResult{}, err
+	}
+	defer db.Close()
+	if err := checkIntegrity(ctx, db); err != nil {
+		return StatusResult{}, err
+	}
+	meta, err := currentGeneration(ctx, db, selection.Environment, selection.Site)
+	if err != nil {
+		return StatusResult{}, err
+	}
+	age := s.now().Sub(meta.generatedAt)
+	if age < 0 {
+		age = 0
+	}
+	stale, warnings := staleness(s.now, meta.generatedAt, meta.id)
+	return StatusResult{meta.id, meta.environment, meta.site, meta.generatedAt, age, true, stale, meta.source, databaseRelativePath, meta.recordCount, warnings}, nil
+}
+
+type generationMeta struct {
+	key                           int64
+	id, environment, site, source string
+	generatedAt                   time.Time
+	recordCount                   int
+}
+type queryRower interface {
+	QueryRowContext(context.Context, string, ...any) *sql.Row
+}
+
+func currentGeneration(ctx context.Context, q queryRower, environment, site string) (generationMeta, error) {
+	var m generationMeta
+	var generated string
+	err := q.QueryRowContext(ctx, `SELECT g.generation_key,g.id,g.environment,g.site,g.generated_at,g.source,g.record_count FROM current_generations c JOIN generations g ON g.generation_key=c.generation_key WHERE c.environment=? AND c.site=? AND g.complete=1`, environment, site).Scan(&m.key, &m.id, &m.environment, &m.site, &generated, &m.source, &m.recordCount)
+	if err != nil {
+		return m, fmt.Errorf("read current catalog generation for environment %q and site %q: %w", environment, site, err)
+	}
+	m.generatedAt, err = time.Parse(generationTimeLayout, generated)
+	return m, err
+}
+func ensureUniqueScopes(scopes []string) error {
+	seen := map[string]bool{}
+	for _, scope := range scopes {
+		trimmed := strings.TrimSpace(scope)
+		if trimmed == "" {
+			continue
+		}
+		if seen[trimmed] {
+			return duplicateScopeError{trimmed}
+		}
+		seen[trimmed] = true
 	}
 	return nil
 }
-
+func searchWhere(key int64, q Query) (string, []any) {
+	parts := []string{"WHERE generation_key=?", "requested=1"}
+	args := []any{key}
+	filters := [][2]string{{"luid", q.LUID}, {"kind", q.Kind}, {"name", q.Name}, {"project_path", q.ProjectPath}, {"owner", q.Owner}}
+	for _, f := range filters {
+		if f[1] != "" {
+			parts = append(parts, f[0]+"=?")
+			args = append(args, f[1])
+		}
+	}
+	if q.Text != "" {
+		parts = append(parts, `instr(lower(name || ' ' || project_path || ' ' || owner || ' ' || luid),lower(?)) > 0`)
+		args = append(args, q.Text)
+	}
+	return strings.Join(parts, " AND "), args
+}
+func validateSelection(environment string, selected bool) error {
+	if strings.TrimSpace(environment) == "" {
+		return errors.New("catalog search requires an environment")
+	}
+	if !selected {
+		return errors.New("catalog search requires a resolved source site")
+	}
+	return validateField("environment", environment)
+}
+func normalizedScopes(scopes []string, defaults bool) []string {
+	if len(scopes) == 0 && defaults {
+		return append([]string(nil), publicScopes...)
+	}
+	set := map[string]bool{}
+	for _, scope := range scopes {
+		set[strings.TrimSpace(scope)] = true
+	}
+	result := make([]string, 0, len(set))
+	for scope := range set {
+		if scope != "" {
+			result = append(result, scope)
+		}
+	}
+	sort.Strings(result)
+	return result
+}
+func validateMetadata(m GenerationMetadata) error {
+	if strings.TrimSpace(m.Environment) == "" || m.GeneratedAt.IsZero() {
+		return errors.New("catalog generation requires environment and generation time")
+	}
+	for name, value := range map[string]string{"generation ID": m.ID, "environment": m.Environment, "site": m.Site, "source": m.Source} {
+		if err := validateField(name, value); err != nil {
+			return err
+		}
+	}
+	seen := map[string]bool{}
+	for _, scope := range append(append([]string{}, m.RequestedScopes...), m.ImplicitScopes...) {
+		if _, ok := batchColumns[scope]; !ok {
+			return fmt.Errorf("catalog scope %q is unsupported", scope)
+		}
+		if seen[scope] {
+			return fmt.Errorf("catalog scope %q cannot be both requested and implicit", scope)
+		}
+		seen[scope] = true
+	}
+	return nil
+}
 func validateField(name, value string) error {
 	if len(value) > maxFieldBytes {
 		return fmt.Errorf("%s exceeds %d-byte limit", name, maxFieldBytes)
 	}
 	return nil
 }
-
-func queryFingerprint(query Query) string {
-	value := struct {
-		Text        string `json:"text"`
-		Kind        string `json:"kind"`
-		ProjectPath string `json:"project_path"`
-		Owner       string `json:"owner"`
-		Environment string `json:"environment"`
-		Site        string `json:"site"`
-		LUID        string `json:"luid"`
-	}{
-		Text: strings.ToLower(query.Text), Kind: query.Kind, ProjectPath: query.ProjectPath,
-		Owner: query.Owner, Environment: query.Environment, Site: query.Site, LUID: query.LUID,
+func kindScope(kind string) string {
+	switch kind {
+	case "user":
+		return "users"
+	case "group":
+		return "groups"
+	case "project":
+		return "projects"
+	case "workbook":
+		return "workbooks"
+	case "datasource":
+		return "datasources"
+	case "flow":
+		return "flows"
+	case "view":
+		return "views"
 	}
+	return ""
+}
+func staleness(now func() time.Time, generated time.Time, id string) (bool, []string) {
+	stale := now().Sub(generated) > staleAfter
+	if !stale {
+		return false, nil
+	}
+	return true, []string{fmt.Sprintf("catalog generation %q is older than 12 hours", id)}
+}
+func queryFingerprint(q Query) string {
+	value := struct {
+		Text, Kind, Name, ProjectPath, Owner, Environment, Site, LUID string
+		Limit                                                         int
+	}{strings.ToLower(q.Text), q.Kind, q.Name, q.ProjectPath, q.Owner, q.Environment, q.Site, q.LUID, q.Limit}
 	data, _ := json.Marshal(value)
 	digest := sha256.Sum256(data)
 	return base64.RawURLEncoding.EncodeToString(digest[:])
 }
-
-func encodeCursor(generationID, query string, offset int) string {
-	return base64.RawURLEncoding.EncodeToString([]byte(generationID)) + "." + query + "." + strconv.Itoa(offset)
+func encodeCursor(id, query string, offset int) string {
+	return base64.RawURLEncoding.EncodeToString([]byte(id)) + "." + query + "." + strconv.Itoa(offset)
 }
-
 func decodeCursor(value string) (string, string, int, error) {
 	parts := strings.Split(value, ".")
 	if len(parts) != 3 || parts[0] == "" || parts[1] == "" || parts[2] == "" {
 		return "", "", 0, errors.New("invalid cursor")
 	}
-	generationBytes, err := base64.RawURLEncoding.DecodeString(parts[0])
+	generation, err := base64.RawURLEncoding.DecodeString(parts[0])
 	if err != nil {
 		return "", "", 0, err
 	}
-	queryBytes, err := base64.RawURLEncoding.DecodeString(parts[1])
-	if err != nil || len(queryBytes) != sha256.Size {
+	query, err := base64.RawURLEncoding.DecodeString(parts[1])
+	if err != nil || len(query) != sha256.Size {
 		return "", "", 0, errors.New("invalid cursor")
 	}
 	offset, err := strconv.Atoi(parts[2])
-	if err != nil {
-		return "", "", 0, err
-	}
-	return string(generationBytes), parts[1], offset, nil
+	return string(generation), parts[1], offset, err
 }
-
-// GenerationFilename returns the portable catalog filename for an exact environment alias.
-func GenerationFilename(environment string) (string, error) {
-	if environment == "" {
-		return "", errors.New("catalog generation requires an environment")
-	}
-	if isPortableEnvironmentFilename(environment) {
-		return environment + ".json", nil
-	}
-	digest := sha256.Sum256([]byte(environment))
-	return "~" + hex.EncodeToString(digest[:]) + ".json", nil
-}
-
-func isPortableEnvironmentFilename(environment string) bool {
-	if len(environment)+len(".json") > maxFilenameComponentBytes {
-		return false
-	}
-	for _, character := range environment {
-		if character >= 'a' && character <= 'z' || character >= '0' && character <= '9' || character == '-' || character == '_' {
-			continue
-		}
-		return false
-	}
-	switch environment {
-	case "con", "prn", "aux", "nul", "com1", "com2", "com3", "com4", "com5", "com6", "com7", "com8", "com9", "lpt1", "lpt2", "lpt3", "lpt4", "lpt5", "lpt6", "lpt7", "lpt8", "lpt9":
-		return false
-	default:
-		return true
-	}
+func digestID(data []byte) string {
+	digest := sha256.Sum256(data)
+	return hex.EncodeToString(digest[:])
 }

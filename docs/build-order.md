@@ -107,7 +107,10 @@ Build these nine read-oriented capabilities:
 - Workbook inventory: `workbook.list` and `workbook.get`.
 - Datasource inventory: `datasource.list` and `datasource.get`.
 
-This group freezes bounded pagination, exact selection, catalog generations, staleness reporting, and shared remote read behavior.
+The Group 2 build releases the catalog, workbook inventory, and datasource inventory actions above.
+`content.search` and `content.get` remain non-executable action seams until their separate normalization evidence closes.
+
+This group freezes bounded concurrent pagination, exact selection, selectable catalog scopes, transactional SQLite generations, staleness reporting, and shared remote read behavior.
 
 ### Group 3: remaining content lifecycle
 

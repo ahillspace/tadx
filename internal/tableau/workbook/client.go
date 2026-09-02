@@ -18,6 +18,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -29,6 +30,8 @@ import (
 
 const (
 	defaultPageSize        = 100
+	maximumPageSize        = 1000
+	metadataResponseLimit  = 4 * 1024 * 1024
 	defaultUploadThreshold = 64 * 1024 * 1024
 	defaultUploadChunkSize = 64 * 1024 * 1024
 	maxUploadBlocks        = 1000
@@ -39,18 +42,34 @@ type Page = tableau.Page
 
 // Workbook is the workbook identity projection needed by lifecycle actions.
 type Workbook struct {
-	LUID        string
-	Name        string
-	ContentURL  string
-	ProjectLUID string
-	ProjectName string
-	OwnerLUID   string
+	LUID             string
+	Name             string
+	ContentURL       string
+	ProjectLUID      string
+	ProjectName      string
+	OwnerLUID        string
+	Description      string
+	CreatedAt        string
+	UpdatedAt        string
+	Tags             []string
+	TableauRequestID string
 }
 
 // WorkbookPage contains one normalized upstream page.
 type WorkbookPage struct {
-	Page  Page
-	Items []Workbook
+	Page             Page
+	Items            []Workbook
+	TableauRequestID string
+}
+
+// ListRequest selects one bounded REST workbook page.
+type ListRequest struct {
+	PageNumber  int
+	PageSize    int
+	Name        string
+	OwnerName   string
+	ProjectName string
+	Tag         string
 }
 
 // Project contains enough hierarchy data to build exact project paths.
@@ -200,14 +219,32 @@ func (c *Client) SetPollPolicy(interval, timeout time.Duration) {
 
 // List returns one classic REST workbook page.
 func (c *Client) List(ctx context.Context, pageNumber, pageSize int) (WorkbookPage, error) {
-	if pageNumber <= 0 {
-		pageNumber = 1
+	return c.ListWorkbooks(ctx, ListRequest{PageNumber: pageNumber, PageSize: pageSize})
+}
+
+// ListWorkbooks returns one filtered classic REST workbook page.
+func (c *Client) ListWorkbooks(ctx context.Context, input ListRequest) (WorkbookPage, error) {
+	if input.PageNumber == 0 {
+		input.PageNumber = 1
 	}
-	if pageSize <= 0 {
-		pageSize = defaultPageSize
+	if input.PageSize == 0 {
+		input.PageSize = defaultPageSize
 	}
-	query := url.Values{"pageNumber": {strconv.Itoa(pageNumber)}, "pageSize": {strconv.Itoa(pageSize)}}
-	response, err := c.do(ctx, http.MethodGet, c.sitePath("workbooks"), query, nil, "", "workbook.list")
+	if input.PageNumber < 1 {
+		return WorkbookPage{}, errors.New("workbook list page number must be positive")
+	}
+	if input.PageSize < 1 || input.PageSize > maximumPageSize {
+		return WorkbookPage{}, fmt.Errorf("workbook list page size must be between 1 and %d", maximumPageSize)
+	}
+	query := url.Values{"pageNumber": {strconv.Itoa(input.PageNumber)}, "pageSize": {strconv.Itoa(input.PageSize)}, "sort": {"name:asc,updatedAt:asc"}}
+	filters, err := workbookFilters(input)
+	if err != nil {
+		return WorkbookPage{}, err
+	}
+	if len(filters) > 0 {
+		query.Set("filter", strings.Join(filters, ","))
+	}
+	response, err := c.doMetadata(ctx, http.MethodGet, c.sitePath("workbooks"), query, "workbook.list")
 	if err != nil {
 		return WorkbookPage{}, err
 	}
@@ -218,12 +255,13 @@ func (c *Client) List(ctx context.Context, pageNumber, pageSize int) (WorkbookPa
 	items := make([]Workbook, len(envelope.Workbooks))
 	for index, item := range envelope.Workbooks {
 		items[index] = normalizeWorkbook(item)
+		items[index].TableauRequestID = response.TableauRequestID
 	}
-	page, err := normalizePagination(envelope.Pagination, pageNumber, pageSize, len(items))
+	page, err := normalizePagination(envelope.Pagination, input.PageNumber, input.PageSize, len(items))
 	if err != nil {
 		return WorkbookPage{}, tableau.NewProtocolError("workbook.list", response, err, true)
 	}
-	return WorkbookPage{Page: page, Items: items}, nil
+	return WorkbookPage{Page: page, Items: items, TableauRequestID: response.TableauRequestID}, nil
 }
 
 // Get returns one workbook by its authoritative LUID.
@@ -231,7 +269,7 @@ func (c *Client) Get(ctx context.Context, workbookLUID string) (Workbook, error)
 	if workbookLUID == "" {
 		return Workbook{}, errors.New("workbook LUID is required")
 	}
-	response, err := c.do(ctx, http.MethodGet, c.sitePath("workbooks", workbookLUID), nil, nil, "", "workbook.get")
+	response, err := c.doMetadata(ctx, http.MethodGet, c.sitePath("workbooks", workbookLUID), nil, "workbook.get")
 	if err != nil {
 		return Workbook{}, err
 	}
@@ -240,6 +278,7 @@ func (c *Client) Get(ctx context.Context, workbookLUID string) (Workbook, error)
 		return Workbook{}, tableau.NewProtocolError("workbook.get", response, fmt.Errorf("decode workbook response: %w", err), true)
 	}
 	workbook := normalizeWorkbook(envelope.Workbook)
+	workbook.TableauRequestID = response.TableauRequestID
 	if workbook.LUID == "" || workbook.LUID != workbookLUID {
 		return Workbook{}, tableau.NewProtocolError("workbook.get", response, fmt.Errorf("workbook response returned LUID %q, expected %q", workbook.LUID, workbookLUID), true)
 	}
@@ -729,6 +768,13 @@ func (c *Client) do(ctx context.Context, method, path string, query url.Values, 
 	return c.doAccept(ctx, method, path, query, body, contentType, "application/xml", operation)
 }
 
+func (c *Client) doMetadata(ctx context.Context, method, path string, query url.Values, operation string) (tableau.Response, error) {
+	if c == nil || c.transport == nil || c.session == nil {
+		return tableau.Response{}, errors.New("authenticated workbook client is not configured")
+	}
+	return c.transport.Do(ctx, c.session, tableau.Request{Method: method, ServerURL: c.serverURL, Path: path, Query: query, Accept: "application/xml", Operation: operation, MaxResponseBytes: metadataResponseLimit})
+}
+
 func (c *Client) doAccept(ctx context.Context, method, path string, query url.Values, body []byte, contentType, accept, operation string) (tableau.Response, error) {
 	if c == nil || c.transport == nil || c.session == nil {
 		return tableau.Response{}, errors.New("authenticated workbook client is not configured")
@@ -901,16 +947,22 @@ type workbookGetEnvelope struct {
 }
 
 type workbookXML struct {
-	ID         string `xml:"id,attr"`
-	Name       string `xml:"name,attr"`
-	ContentURL string `xml:"contentUrl,attr"`
-	Project    struct {
+	ID          string `xml:"id,attr"`
+	Name        string `xml:"name,attr"`
+	ContentURL  string `xml:"contentUrl,attr"`
+	Description string `xml:"description,attr"`
+	CreatedAt   string `xml:"createdAt,attr"`
+	UpdatedAt   string `xml:"updatedAt,attr"`
+	Project     struct {
 		ID   string `xml:"id,attr"`
 		Name string `xml:"name,attr"`
 	} `xml:"project"`
 	Owner struct {
 		ID string `xml:"id,attr"`
 	} `xml:"owner"`
+	Tags []struct {
+		Label string `xml:"label,attr"`
+	} `xml:"tags>tag"`
 }
 
 type projectListEnvelope struct {
@@ -923,7 +975,35 @@ type projectListEnvelope struct {
 }
 
 func normalizeWorkbook(item workbookXML) Workbook {
-	return Workbook{LUID: item.ID, Name: item.Name, ContentURL: item.ContentURL, ProjectLUID: item.Project.ID, ProjectName: item.Project.Name, OwnerLUID: item.Owner.ID}
+	tags := make([]string, 0, len(item.Tags))
+	for _, tag := range item.Tags {
+		label := strings.TrimSpace(tag.Label)
+		if label != "" {
+			tags = append(tags, label)
+		}
+	}
+	sort.Strings(tags)
+	return Workbook{LUID: item.ID, Name: item.Name, ContentURL: item.ContentURL, ProjectLUID: item.Project.ID, ProjectName: item.Project.Name, OwnerLUID: item.Owner.ID, Description: item.Description, CreatedAt: item.CreatedAt, UpdatedAt: item.UpdatedAt, Tags: tags}
+}
+
+func workbookFilters(input ListRequest) ([]string, error) {
+	fields := []struct{ name, value string }{
+		{name: "name", value: input.Name},
+		{name: "ownerName", value: input.OwnerName},
+		{name: "projectName", value: input.ProjectName},
+		{name: "tags", value: input.Tag},
+	}
+	filters := make([]string, 0, len(fields))
+	for _, field := range fields {
+		if field.value == "" {
+			continue
+		}
+		if strings.ContainsAny(field.value, "&,") {
+			return nil, fmt.Errorf("workbook filter %s cannot contain ampersand or comma", field.name)
+		}
+		filters = append(filters, field.name+":eq:"+field.value)
+	}
+	return filters, nil
 }
 
 func normalizePagination(value *paginationXML, requestedNumber, requestedSize, itemCount int) (Page, error) {

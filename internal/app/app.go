@@ -59,6 +59,7 @@ func Run(ctx context.Context, args []string, stdout io.Writer, options Options) 
 	environmentCommands := newEnvironmentCommands(runtime)
 	workspaceCommands := newWorkspaceCommands(runtime)
 	remoteContent := newRemoteContentCommands(runtime)
+	catalogGroup2 := newCatalogGroup2Commands(runtime)
 	root := cli.NewRoot(cli.Dependencies{
 		Lister:              capabilitylist.New(source),
 		Getter:              capabilityget.New(source),
@@ -72,6 +73,9 @@ func Run(ctx context.Context, args []string, stdout io.Writer, options Options) 
 		GetShort:            registryShort("capability.get"),
 		AuthChecker:         authcheck.New(runtime, runtime),
 		CatalogSearcher:     &catalogService{runtime: runtime},
+		CatalogRefresher:    catalogGroup2.refresher(),
+		CatalogGetter:       catalogGroup2.getter(),
+		CatalogStatuser:     catalogGroup2.statuser(),
 		WorkbookPuller:      &pullService{runtime: runtime},
 		WorkbookPublisher:   &publishService{runtime: runtime},
 		Content:             remoteContent.dependencies(),
@@ -80,6 +84,9 @@ func Run(ctx context.Context, args []string, stdout io.Writer, options Options) 
 		AuthUse:             registryLeafUse("auth.check"), AuthShort: registryShort("auth.check"),
 		AuthStatuser: newAuthStatus(runtime), AuthStatusUse: registryLeafUse("auth.status"), AuthStatusShort: registryShort("auth.status"),
 		CatalogSearchUse: registryLeafUse("catalog.search"), CatalogSearchShort: registryShort("catalog.search"),
+		CatalogRefreshUse: registryLeafUse("catalog.refresh"), CatalogRefreshShort: registryShort("catalog.refresh"),
+		CatalogGetUse: registryLeafUse("catalog.get"), CatalogGetShort: registryShort("catalog.get"),
+		CatalogStatusUse: registryLeafUse("catalog.status"), CatalogStatusShort: registryShort("catalog.status"),
 		WorkbookPullUse: registryLeafUse("workbook.pull"), WorkbookPullShort: registryShort("workbook.pull"),
 		WorkbookPublishUse: registryLeafUse("workbook.publish"), WorkbookPublishShort: registryShort("workbook.publish"),
 	})
@@ -240,11 +247,11 @@ func (s *catalogService) Execute(ctx context.Context, input catalogsearch.Input)
 		input.Site = environment.SiteContentURL
 	}
 	input.SiteResolved = true
-	store := catalog.NewFileStore(filepath.Dir(s.runtime.configPath), s.runtime.now)
+	store := catalog.NewStore(filepath.Dir(s.runtime.configPath), s.runtime.now)
 	return catalogsearch.New(catalogSource{store: store}).Execute(ctx, input)
 }
 
-type catalogSource struct{ store *catalog.FileStore }
+type catalogSource struct{ store *catalog.Store }
 
 func (s catalogSource) Search(ctx context.Context, input catalogsearch.Input) (catalogsearch.Result, error) {
 	result, err := s.store.Search(ctx, catalog.Query{Text: input.Text, Kind: input.Kind, ProjectPath: input.ProjectPath, Owner: input.Owner, Environment: input.Environment, Site: input.Site, SiteSelected: input.SiteResolved, LUID: input.LUID, Cursor: input.Cursor, Limit: input.Limit})

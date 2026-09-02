@@ -19,10 +19,12 @@ type client struct {
 	downloadErr error
 	calls       []string
 	pages       map[int]tableaudatasource.Page
+	listInputs  []tableaudatasource.ListRequest
 }
 
 func (c *client) List(_ context.Context, input tableaudatasource.ListRequest) (tableaudatasource.Page, error) {
 	c.calls = append(c.calls, "list:"+input.Name)
+	c.listInputs = append(c.listInputs, input)
 	return c.pages[input.PageNumber], nil
 }
 
@@ -42,12 +44,12 @@ func (p projectPaths) ResolveProjectPath(_ context.Context, luid string) (string
 }
 
 func TestAdapterResolvesDatasourceByAuthoritativeLUID(t *testing.T) {
-	c := &client{metadata: tableaudatasource.Datasource{LUID: "ds-1", Name: "Sales", ProjectLUID: "project-1", ProjectName: "Ops"}}
+	c := &client{metadata: tableaudatasource.Datasource{LUID: "ds-1", Name: "Sales", ProjectLUID: "project-1", ProjectName: "Ops", TableauRequestID: "get-request"}}
 	item, err := resourcedatasource.NewAdapterWithProjectResolver(c, projectPaths{"project-1": "Department/Ops"}).ResolveDatasource(context.Background(), identity.Selector{LUID: "ds-1"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if item.LUID != "ds-1" || item.Name != "Sales" || item.ProjectLUID != "project-1" || item.ProjectPath != "Department/Ops" {
+	if item.LUID != "ds-1" || item.Name != "Sales" || item.ProjectLUID != "project-1" || item.ProjectPath != "Department/Ops" || item.RequestID != "get-request" {
 		t.Fatalf("item = %#v", item)
 	}
 	if !reflect.DeepEqual(c.calls, []string{"get:ds-1"}) {
@@ -55,13 +57,32 @@ func TestAdapterResolvesDatasourceByAuthoritativeLUID(t *testing.T) {
 	}
 }
 
+func TestAdapterListsOneRichDatasourcePage(t *testing.T) {
+	size := int64(42)
+	c := &client{pages: map[int]tableaudatasource.Page{1: {
+		Number: 1, Size: 1, Total: 1, TableauRequestID: "request-1",
+		Items: []tableaudatasource.Datasource{{LUID: "ds-1", Name: "Sales", ProjectLUID: "project-1", ProjectName: "Ops", Description: "Sales data", OwnerLUID: "user-1", Type: "hyper", Size: &size, Tags: []string{"daily"}}},
+	}}}
+	request := tableaudatasource.ListRequest{PageNumber: 1, PageSize: 1, ProjectName: "Ops", OwnerName: "owner", Tag: "daily"}
+	page, err := resourcedatasource.NewAdapter(c).ListDatasources(context.Background(), request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if page.RequestID != "request-1" || len(page.Items) != 1 || page.Items[0].Description != "Sales data" || page.Items[0].Size == nil || *page.Items[0].Size != 42 || len(page.Items[0].Tags) != 1 {
+		t.Fatalf("page = %#v", page)
+	}
+	if !reflect.DeepEqual(c.listInputs, []tableaudatasource.ListRequest{request}) {
+		t.Fatalf("inputs = %#v", c.listInputs)
+	}
+}
+
 func TestAdapterResolvesDatasourceByExactNameAndCanonicalProjectPath(t *testing.T) {
 	c := &client{pages: map[int]tableaudatasource.Page{
-		1: {Number: 1, Size: 2, Total: 3, Items: []tableaudatasource.Datasource{
+		1: {Number: 1, Size: 2, Total: 3, TableauRequestID: "list-request-1", Items: []tableaudatasource.Datasource{
 			{LUID: "ds-1", Name: "Sales", ProjectLUID: "project-1", ProjectName: "Ops"},
 			{LUID: "ds-2", Name: "Sales", ProjectLUID: "project-2", ProjectName: "Ops"},
 		}},
-		2: {Number: 2, Size: 2, Total: 3, Items: []tableaudatasource.Datasource{
+		2: {Number: 2, Size: 2, Total: 3, TableauRequestID: "list-request-2", Items: []tableaudatasource.Datasource{
 			{LUID: "ds-3", Name: "Other", ProjectLUID: "project-1", ProjectName: "Ops"},
 		}},
 	}}
@@ -72,7 +93,7 @@ func TestAdapterResolvesDatasourceByExactNameAndCanonicalProjectPath(t *testing.
 	if err != nil {
 		t.Fatal(err)
 	}
-	if item.LUID != "ds-1" || item.ProjectPath != "Department/Ops" {
+	if item.LUID != "ds-1" || item.ProjectPath != "Department/Ops" || item.RequestID != "list-request-2" {
 		t.Fatalf("item = %#v", item)
 	}
 }

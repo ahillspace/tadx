@@ -1,0 +1,25 @@
+status: listed
+environment: dev
+site: sandbox
+page:
+  returned: 1
+  total: 2
+  limit: 1
+  next_cursor: next-page
+datasources[1]:
+  - luid: datasource-1
+    name: Sales
+    project_luid: project-1
+    project_name: Ops
+    type: hyper
+    content_url: sales
+    description: Sales data
+    owner_luid: user-1
+    created_at: "2026-08-01T00:00:00Z"
+    updated_at: "2026-09-01T00:00:00Z"
+    size: 42
+    has_extracts: true
+    is_certified: false
+    tags[1]: daily
+tableau_request_id: request-1
+help[1]: tadx content datasource get --id <datasource-luid>

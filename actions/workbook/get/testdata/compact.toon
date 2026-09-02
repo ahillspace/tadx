@@ -1,0 +1,12 @@
+status: found
+environment: dev
+site: sandbox
+workbook:
+  luid: wb-1
+  name: Finance
+  project_luid: project-1
+  project_path: Department/Ops
+  content_url: Finance
+  updated_at: "2026-09-01T00:00:00Z"
+details: "--full"
+help[1]: tadx content workbook pull --id wb-1

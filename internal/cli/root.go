@@ -82,6 +82,9 @@ type Dependencies struct {
 	GetShort             string
 	AuthChecker          AuthChecker
 	CatalogSearcher      CatalogSearcher
+	CatalogRefresher     catalogcli.Refresher
+	CatalogGetter        catalogcli.Getter
+	CatalogStatuser      catalogcli.Statuser
 	WorkbookPuller       WorkbookPuller
 	WorkbookPublisher    WorkbookPublisher
 	Content              *contentcli.Dependencies
@@ -94,6 +97,12 @@ type Dependencies struct {
 	AuthStatusShort      string
 	CatalogSearchUse     string
 	CatalogSearchShort   string
+	CatalogRefreshUse    string
+	CatalogRefreshShort  string
+	CatalogGetUse        string
+	CatalogGetShort      string
+	CatalogStatusUse     string
+	CatalogStatusShort   string
 	WorkbookPullUse      string
 	WorkbookPullShort    string
 	WorkbookPublishUse   string
@@ -143,7 +152,13 @@ func NewRoot(deps Dependencies) *cobra.Command {
 		root.AddCommand(authcli.New(authcli.Dependencies{Checker: deps.AuthChecker, Statuser: deps.AuthStatuser, Renderer: deps.Renderer, Use: deps.AuthUse, Short: deps.AuthShort, StatusUse: deps.AuthStatusUse, StatusShort: deps.AuthStatusShort}))
 	}
 	if deps.CatalogSearcher != nil {
-		root.AddCommand(catalogcli.New(catalogcli.Dependencies{Searcher: deps.CatalogSearcher, Renderer: deps.Renderer, Use: deps.CatalogSearchUse, Short: deps.CatalogSearchShort}))
+		root.AddCommand(catalogcli.New(catalogcli.Dependencies{
+			Searcher: deps.CatalogSearcher, Refresher: deps.CatalogRefresher, Getter: deps.CatalogGetter, Statuser: deps.CatalogStatuser,
+			Renderer: deps.Renderer, Use: deps.CatalogSearchUse, Short: deps.CatalogSearchShort,
+			RefreshUse: deps.CatalogRefreshUse, RefreshShort: deps.CatalogRefreshShort,
+			GetUse: deps.CatalogGetUse, GetShort: deps.CatalogGetShort,
+			StatusUse: deps.CatalogStatusUse, StatusShort: deps.CatalogStatusShort,
+		}))
 	}
 	if deps.WorkbookPuller != nil && deps.WorkbookPublisher != nil {
 		contentDependencies := contentcli.Dependencies{}

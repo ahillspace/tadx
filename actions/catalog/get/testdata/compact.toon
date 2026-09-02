@@ -1,0 +1,13 @@
+item:
+  luid: wb-1
+  kind: workbook
+  name: Finance
+  project_path: Ops
+generation:
+  id: generation-1
+  environment: production
+  site: marketing
+  stale: true
+warnings[1]: catalog generation is older than 12 hours
+details: "--full"
+help[1]: tadx content get --kind workbook --id wb-1

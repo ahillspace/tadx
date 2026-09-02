@@ -1,0 +1,22 @@
+status: found
+environment: dev
+site: sandbox
+datasource:
+  luid: datasource-1
+  name: Sales
+  project_luid: project-1
+  project_path: Department/Ops
+  type: hyper
+  content_url: sales
+  description: Sales data
+  owner_luid: user-1
+  created_at: "2026-08-01T00:00:00Z"
+  updated_at: "2026-09-01T00:00:00Z"
+  size: 42
+  has_extracts: true
+  is_certified: true
+  certification_note: Reviewed
+  tags[1]: daily
+  ask_data_enablement: Enabled
+tableau_request_id: request-1
+help[1]: tadx content datasource list
