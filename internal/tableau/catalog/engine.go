@@ -133,15 +133,13 @@ func (e *Engine) Run(ctx context.Context, input RunRequest, writer BatchWriter) 
 				remaining = append(remaining, collectTask{definition: result.task.definition, request: request, baseline: &result.page})
 			}
 		}
-		_, runErr = runner.runTasks(runCtx, remaining)
+		_, runErr = runner.runTaskStream(runCtx, len(remaining), func(index int) collectTask { return remaining[index] }, false)
 	}
 	if runErr == nil && containsScope(collected, ScopePermissions) {
 		workbookIDs := state.identitiesFor(ScopeWorkbooks)
-		permissionTasks := make([]collectTask, 0, len(workbookIDs))
-		for _, workbookID := range workbookIDs {
-			permissionTasks = append(permissionTasks, collectTask{request: e.permissionRequest(workbookID), permission: true})
-		}
-		_, runErr = runner.runTasks(runCtx, permissionTasks)
+		_, runErr = runner.runTaskStream(runCtx, len(workbookIDs), func(index int) collectTask {
+			return collectTask{request: e.permissionRequest(workbookIDs[index]), permission: true}
+		}, false)
 	}
 	if runErr != nil {
 		cancel()
@@ -208,15 +206,31 @@ type runExecutor struct {
 	state   *runState
 }
 
+// runTasks executes a materialized task slice and retains each result. Use it
+// only for phases whose results are consumed by a later phase (e.g. the first
+// list page, whose pagination drives the remaining page fan-out).
 func (r *runExecutor) runTasks(ctx context.Context, tasks []collectTask) ([]taskResult, error) {
-	if len(tasks) == 0 {
+	return r.runTaskStream(ctx, len(tasks), func(index int) collectTask { return tasks[index] }, true)
+}
+
+// runTaskStream drives count tasks through the bounded worker pool, producing
+// each task lazily via at(index) so callers can stream large fan-outs (e.g. the
+// per-workbook permission phase) without materializing every collectTask up
+// front. When collect is false no taskResult is retained, avoiding a discarded
+// result slice for phases whose outputs are not consumed downstream.
+//
+// The main goroutine is the sole producer and closes jobs exactly once on every
+// return path; workers honor phaseCtx cancellation; limiter Acquire/Release
+// pairing lives untouched inside executeTask.
+func (r *runExecutor) runTaskStream(ctx context.Context, count int, at func(index int) collectTask, collect bool) ([]taskResult, error) {
+	if count <= 0 {
 		return nil, nil
 	}
 	phaseCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
-	workers := min(r.engine.config.MaxConcurrency, len(tasks))
-	jobs := make(chan collectTask, min(r.engine.config.RequestQueueSize, len(tasks)))
-	results := make(chan taskResult, min(r.engine.config.RequestQueueSize, len(tasks)))
+	workers := min(r.engine.config.MaxConcurrency, count)
+	jobs := make(chan collectTask, min(r.engine.config.RequestQueueSize, count))
+	results := make(chan taskResult, min(r.engine.config.RequestQueueSize, count))
 	var wait sync.WaitGroup
 	for index := 0; index < workers; index++ {
 		wait.Add(1)
@@ -243,13 +257,20 @@ func (r *runExecutor) runTasks(ctx context.Context, tasks []collectTask) ([]task
 
 	next := 0
 	completed := 0
-	collected := make([]taskResult, 0, len(tasks))
-	for completed < len(tasks) {
+	var pending collectTask
+	pendingReady := false
+	var collected []taskResult
+	if collect {
+		collected = make([]taskResult, 0, count)
+	}
+	for completed < count {
 		var output chan collectTask
-		var task collectTask
-		if next < len(tasks) {
+		if next < count {
+			if !pendingReady {
+				pending = at(next)
+				pendingReady = true
+			}
 			output = jobs
-			task = tasks[next]
 		}
 		select {
 		case <-ctx.Done():
@@ -257,8 +278,9 @@ func (r *runExecutor) runTasks(ctx context.Context, tasks []collectTask) ([]task
 			close(jobs)
 			wait.Wait()
 			return nil, ctx.Err()
-		case output <- task:
+		case output <- pending:
 			next++
+			pendingReady = false
 		case result := <-results:
 			completed++
 			if result.err != nil {
@@ -267,7 +289,9 @@ func (r *runExecutor) runTasks(ctx context.Context, tasks []collectTask) ([]task
 				wait.Wait()
 				return nil, result.err
 			}
-			collected = append(collected, result)
+			if collect {
+				collected = append(collected, result)
+			}
 		}
 	}
 	close(jobs)
@@ -549,7 +573,7 @@ func (s *runState) sortedRequestIDs() []string {
 }
 
 func printableIdentity(identity string) string {
-	if index := strings.IndexByte(identity, 0); index >= 0 {
+	if strings.IndexByte(identity, 0) >= 0 {
 		return strings.ReplaceAll(identity, "\x00", "/")
 	}
 	return identity
@@ -570,7 +594,11 @@ func (e *protocolError) Error() string {
 }
 func (e *protocolError) Unwrap() error     { return e.cause }
 func (e *protocolError) RequestID() string { return e.requestID }
-func (e *protocolError) HTTPStatus() int   { return http.StatusOK }
+
+// HTTPStatus returns 0 because a protocol error is a post-fetch parse or
+// validation failure, not an HTTP transport failure. Reporting 200 here would
+// mislead status-based classifiers into treating it as a successful response.
+func (e *protocolError) HTTPStatus() int { return 0 }
 func (e *protocolError) TableauCode() string {
 	return ""
 }
@@ -580,9 +608,13 @@ func (e *protocolError) TableauSummary() string {
 func (e *protocolError) TableauDetail() string {
 	return ""
 }
-func (e *protocolError) Retryable() bool { return true }
+
+// Retryable is false: these errors surface after fetch returns, outside the
+// bounded re-fetch loop in fetch, so the engine never retries them. Advertising
+// retryability here would misrepresent the engine's actual behavior.
+func (e *protocolError) Retryable() bool { return false }
 func (e *protocolError) CorrectiveAction() string {
-	return "Retry after Tableau returns a complete valid response."
+	return "Re-run the collection after Tableau returns a complete, valid response."
 }
 
 type responseStatusError struct {

@@ -49,8 +49,16 @@ func (l *adaptiveLimiter) Release(success, throttled bool) {
 			l.limit++
 		}
 	}
-	close(l.notify)
-	l.notify = make(chan struct{})
+	// Wake waiters only when a slot is actually available. When a throttle just
+	// halved the limit the freed in-flight slot may still leave inFlight >=
+	// limit, so broadcasting would wake every waiter for a guaranteed re-block
+	// (a thundering herd at high concurrency). Any transition into available
+	// capacity happens here and closes the current notify channel, so a parked
+	// waiter is never stranded.
+	if l.inFlight < l.limit {
+		close(l.notify)
+		l.notify = make(chan struct{})
+	}
 	l.mu.Unlock()
 }
 

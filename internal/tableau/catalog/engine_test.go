@@ -226,6 +226,30 @@ func TestEngineUsesCollectedWorkbooksForPermissionFanout(t *testing.T) {
 	}
 }
 
+func TestEngineRejectsAllowDenyDuplicatePermission(t *testing.T) {
+	executor := executorFunc(func(_ context.Context, request Request) (Response, error) {
+		switch request.Scope {
+		case ScopeProjects:
+			return Response{StatusCode: 200, Body: []byte(listXML("projects", "project", 1, 1000, 1, `<project id="p1" name="P"/>`))}, nil
+		case ScopeWorkbooks:
+			return Response{StatusCode: 200, Body: []byte(listXML("workbooks", "workbook", 1, 1000, 1, `<workbook id="w1" name="One"><project id="p1"/></workbook>`))}, nil
+		case ScopePermissions:
+			body := `<tsResponse><permissions><workbook id="w1"/><granteeCapabilities><group id="g1"/><capabilities><capability name="Read" mode="Allow"/><capability name="Read" mode="Deny"/></capabilities></granteeCapabilities></permissions></tsResponse>`
+			return Response{StatusCode: 200, Body: []byte(body), TableauRequestID: "permission-w1"}, nil
+		default:
+			return Response{}, fmt.Errorf("unexpected request: %#v", request)
+		}
+	})
+	engine, _ := NewEngine(executor, Config{MaxConcurrency: 4})
+	_, err := engine.Run(context.Background(), RunRequest{RequestedScopes: []Scope{ScopePermissions}}, &memoryWriter{})
+	if err == nil || !strings.Contains(err.Error(), "duplicate permissions identity") {
+		t.Fatalf("error = %v", err)
+	}
+	if requestID(err) != "permission-w1" {
+		t.Fatalf("protocol error dropped the Tableau request ID: %v", err)
+	}
+}
+
 func TestEnginePropagatesWriterFailureAndCancellation(t *testing.T) {
 	want := errors.New("database write failed")
 	executor := executorFunc(func(_ context.Context, request Request) (Response, error) {

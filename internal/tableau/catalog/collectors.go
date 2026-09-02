@@ -136,7 +136,7 @@ func parsePermissions(itemID string, body []byte) ([][]any, []string, error) {
 		for _, capability := range grantee.Capabilities {
 			row := []any{"workbook", itemID, grantee.Type, grantee.ID, capability.Name, capability.Mode}
 			rows = append(rows, row)
-			identities = append(identities, strings.Join([]string{"workbook", itemID, grantee.Type, grantee.ID, capability.Name, capability.Mode}, "\x00"))
+			identities = append(identities, strings.Join([]string{"workbook", itemID, grantee.Type, grantee.ID, capability.Name}, "\x00"))
 		}
 	}
 	return rows, identities, nil
