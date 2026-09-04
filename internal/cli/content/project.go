@@ -152,6 +152,7 @@ func newProjectList(deps Dependencies) *cobra.Command {
 	command.Flags().BoolVar(&topLevel, "top-level", false, "filter by top-level project status")
 	command.Flags().IntVar(&input.Limit, "limit", 0, "maximum projects to return")
 	command.Flags().StringVar(&input.Cursor, "cursor", "", "opaque continuation cursor")
+	command.Flags().BoolVar(&input.Catalog, "catalog", false, "read indexed local catalog data without contacting Tableau")
 	return command
 }
 
@@ -185,6 +186,7 @@ func newProjectGet(deps Dependencies) *cobra.Command {
 	command.Flags().StringVar(&input.Environment, "environment", "", "exact environment alias; defaults to the configured read environment")
 	addProjectIDFlags(command, &projectLUID, &legacyProjectLUID)
 	command.Flags().StringVar(&projectPath, "project", "", "exact slash-delimited project path")
+	command.Flags().BoolVar(&input.Catalog, "catalog", false, "read indexed local catalog data without contacting Tableau")
 	return command
 }
 

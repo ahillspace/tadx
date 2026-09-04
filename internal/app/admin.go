@@ -15,6 +15,7 @@ import (
 	userget "github.com/ahillspace/tadx/actions/admin/user/get"
 	userlist "github.com/ahillspace/tadx/actions/admin/user/list"
 	userupdate "github.com/ahillspace/tadx/actions/admin/user/update"
+	"github.com/ahillspace/tadx/internal/catalog"
 	admincli "github.com/ahillspace/tadx/internal/cli/admin"
 	"github.com/ahillspace/tadx/internal/config"
 	"github.com/ahillspace/tadx/internal/errs"
@@ -54,23 +55,71 @@ func (c *remoteAdminCommands) connect(ctx context.Context, alias string, explici
 }
 
 func (c *remoteAdminCommands) ListAdminUsers(ctx context.Context, input userlist.Input) (userlist.Output, error) {
+	if input.Catalog {
+		environment, site, err := c.resolveCatalogTarget(input.Environment)
+		if err != nil {
+			return userlist.Output{}, err
+		}
+		input.Environment, input.Site = environment, site
+		reader := &catalogUserListReader{store: c.catalogStore(), environment: environment, site: site}
+		output, err := userlist.New(reader).Execute(ctx, input)
+		if err == nil {
+			output.Source = reader.source
+		}
+		return output, err
+	}
 	connection, err := c.connect(ctx, input.Environment, false)
 	if err != nil {
 		return userlist.Output{}, remoteSetupError("admin.user.list", input.Environment, input.Site, connection.environment, err)
 	}
 	input.Environment, input.Site = connection.environment.Alias, connection.environment.SiteContentURL
 	output, err := userlist.New(adminUserListReader{connection.adapter}).Execute(ctx, input)
-	return output, adminActionError("admin.user.list", input.Environment, input.Site, err)
+	if err != nil {
+		return output, adminActionError("admin.user.list", input.Environment, input.Site, err)
+	}
+	observedAt := c.runtime.now().UTC()
+	output.Source = liveSource(c.runtime.now)
+	entries := make([]catalog.ResourceEntry, 0, len(output.Users))
+	for _, item := range output.Users {
+		entry, encodeErr := resourceEntry(input.Environment, input.Site, "user", item.LUID, item.Name, "", "", "summary", observedAt, item)
+		if encodeErr == nil {
+			entries = append(entries, entry)
+		}
+	}
+	writeThrough(c.catalogStore(), entries)
+	return output, nil
 }
 
 func (c *remoteAdminCommands) GetAdminUser(ctx context.Context, input userget.Input) (userget.Output, error) {
+	if input.Catalog {
+		environment, site, err := c.resolveCatalogTarget(input.Environment)
+		if err != nil {
+			return userget.Output{}, err
+		}
+		input.Environment, input.Site = environment, site
+		resolver := &catalogUserGetResolver{store: c.catalogStore(), environment: environment, site: site}
+		output, err := userget.New(resolver).Execute(ctx, input)
+		if err == nil {
+			output.Source = resolver.source
+		}
+		return output, err
+	}
 	connection, err := c.connect(ctx, input.Environment, false)
 	if err != nil {
 		return userget.Output{}, remoteSetupError("admin.user.get", input.Environment, input.Site, connection.environment, err)
 	}
 	input.Environment, input.Site = connection.environment.Alias, connection.environment.SiteContentURL
 	output, err := userget.New(adminUserGetResolver{connection.adapter}).Execute(ctx, input)
-	return output, adminActionError("admin.user.get", input.Environment, input.Site, err)
+	if err != nil {
+		return output, adminActionError("admin.user.get", input.Environment, input.Site, err)
+	}
+	observedAt := c.runtime.now().UTC()
+	output.Source = liveSource(c.runtime.now)
+	entry, encodeErr := resourceEntry(input.Environment, input.Site, "user", output.User.LUID, output.User.Name, "", "", "detail", observedAt, output.User)
+	if encodeErr == nil {
+		writeThrough(c.catalogStore(), []catalog.ResourceEntry{entry})
+	}
+	return output, nil
 }
 
 func (c *remoteAdminCommands) CreateAdminUser(ctx context.Context, input usercreate.Input, apply bool) (usercreate.Output, error) {
@@ -107,23 +156,71 @@ func (c *remoteAdminCommands) DeleteAdminUser(ctx context.Context, input userdel
 }
 
 func (c *remoteAdminCommands) ListAdminGroups(ctx context.Context, input grouplist.Input) (grouplist.Output, error) {
+	if input.Catalog {
+		environment, site, err := c.resolveCatalogTarget(input.Environment)
+		if err != nil {
+			return grouplist.Output{}, err
+		}
+		input.Environment, input.Site = environment, site
+		reader := &catalogGroupListReader{store: c.catalogStore(), environment: environment, site: site}
+		output, err := grouplist.New(reader).Execute(ctx, input)
+		if err == nil {
+			output.Source = reader.source
+		}
+		return output, err
+	}
 	connection, err := c.connect(ctx, input.Environment, false)
 	if err != nil {
 		return grouplist.Output{}, remoteSetupError("admin.group.list", input.Environment, input.Site, connection.environment, err)
 	}
 	input.Environment, input.Site = connection.environment.Alias, connection.environment.SiteContentURL
 	output, err := grouplist.New(adminGroupListReader{connection.adapter}).Execute(ctx, input)
-	return output, adminActionError("admin.group.list", input.Environment, input.Site, err)
+	if err != nil {
+		return output, adminActionError("admin.group.list", input.Environment, input.Site, err)
+	}
+	observedAt := c.runtime.now().UTC()
+	output.Source = liveSource(c.runtime.now)
+	entries := make([]catalog.ResourceEntry, 0, len(output.Groups))
+	for _, item := range output.Groups {
+		entry, encodeErr := resourceEntry(input.Environment, input.Site, "group", item.LUID, item.Name, "", "", "summary", observedAt, item)
+		if encodeErr == nil {
+			entries = append(entries, entry)
+		}
+	}
+	writeThrough(c.catalogStore(), entries)
+	return output, nil
 }
 
 func (c *remoteAdminCommands) GetAdminGroup(ctx context.Context, input groupget.Input) (groupget.Output, error) {
+	if input.Catalog {
+		environment, site, err := c.resolveCatalogTarget(input.Environment)
+		if err != nil {
+			return groupget.Output{}, err
+		}
+		input.Environment, input.Site = environment, site
+		resolver := &catalogGroupGetResolver{store: c.catalogStore(), environment: environment, site: site}
+		output, err := groupget.New(resolver).Execute(ctx, input)
+		if err == nil {
+			output.Source = resolver.source
+		}
+		return output, err
+	}
 	connection, err := c.connect(ctx, input.Environment, false)
 	if err != nil {
 		return groupget.Output{}, remoteSetupError("admin.group.get", input.Environment, input.Site, connection.environment, err)
 	}
 	input.Environment, input.Site = connection.environment.Alias, connection.environment.SiteContentURL
 	output, err := groupget.New(adminGroupGetResolver{connection.adapter}).Execute(ctx, input)
-	return output, adminActionError("admin.group.get", input.Environment, input.Site, err)
+	if err != nil {
+		return output, adminActionError("admin.group.get", input.Environment, input.Site, err)
+	}
+	observedAt := c.runtime.now().UTC()
+	output.Source = liveSource(c.runtime.now)
+	entry, encodeErr := resourceEntry(input.Environment, input.Site, "group", output.Group.LUID, output.Group.Name, "", "", "detail", observedAt, output.Group)
+	if encodeErr == nil {
+		writeThrough(c.catalogStore(), []catalog.ResourceEntry{entry})
+	}
+	return output, nil
 }
 
 func (c *remoteAdminCommands) CreateAdminGroup(ctx context.Context, input groupcreate.Input, apply bool) (groupcreate.Output, error) {

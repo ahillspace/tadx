@@ -2,6 +2,7 @@ package get
 
 import (
 	"context"
+	"errors"
 
 	"github.com/ahillspace/tadx/internal/errs"
 	"github.com/ahillspace/tadx/internal/identity"
@@ -28,6 +29,10 @@ func (a *Action) Execute(ctx context.Context, input Input) (Output, error) {
 	}
 	project, err := a.resolver.ResolveProject(ctx, input.Selector)
 	if err != nil {
+		var structured *errs.Error
+		if errors.As(err, &structured) {
+			return Output{}, err
+		}
 		retryable, correctiveAction := errs.CompleteRetryAdvice(err, "Review the exact project selector, then retry.")
 		return Output{}, &errs.Error{ID: "project.get.resolve", Kind: errs.KindOperation, Operation: "project.get", Environment: input.Environment, Site: input.Site, Summary: "Project resolution failed.", Cause: err, Retryable: retryable, CorrectiveAction: correctiveAction, TableauRequestID: errs.TableauRequestID(err)}
 	}

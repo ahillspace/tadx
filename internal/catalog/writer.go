@@ -154,6 +154,9 @@ func (w *GenerationWriter) Publish(ctx context.Context) (ReplaceResult, error) {
 	if _, err := w.tx.ExecContext(ctx, `DELETE FROM generations WHERE environment=? AND site=? AND generation_key<>?`, w.metadata.Environment, w.metadata.Site, w.key); err != nil {
 		return ReplaceResult{}, fmt.Errorf("prune superseded catalog generations: %w", err)
 	}
+	if err := w.replaceResourceEntries(ctx); err != nil {
+		return ReplaceResult{}, err
+	}
 	if err := checkIntegrity(ctx, w.tx); err != nil {
 		return ReplaceResult{}, err
 	}
@@ -165,6 +168,19 @@ func (w *GenerationWriter) Publish(ctx context.Context) (ReplaceResult, error) {
 		return ReplaceResult{}, err
 	}
 	return ReplaceResult{id, databaseRelativePath, count}, nil
+}
+
+func (w *GenerationWriter) replaceResourceEntries(ctx context.Context) error {
+	if _, err := w.tx.ExecContext(ctx, `DELETE FROM resource_entries WHERE environment=? AND site=?`, w.metadata.Environment, w.metadata.Site); err != nil {
+		return fmt.Errorf("replace catalog resource entries: %w", err)
+	}
+	_, err := w.tx.ExecContext(ctx, `INSERT INTO resource_entries(environment,site,kind,luid,name,project_path,owner,payload,coverage,observed_at)
+		SELECT ?,?,kind,luid,name,project_path,owner,X'','summary',? FROM catalog_records WHERE generation_key=? AND requested=1`,
+		w.metadata.Environment, w.metadata.Site, w.metadata.GeneratedAt.UTC().Format(generationTimeLayout), w.key)
+	if err != nil {
+		return fmt.Errorf("seed catalog resource entries: %w", err)
+	}
+	return nil
 }
 func (w *GenerationWriter) Rollback() error {
 	w.mu.Lock()

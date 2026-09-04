@@ -1,11 +1,14 @@
 package list
 
+import "github.com/ahillspace/tadx/internal/readsource"
+
 const fullTagsPerFlowLimit = 50
 
 // Input selects one flow page.
 type Input struct {
 	Environment, Site, Cursor, Name, OwnerName, ProjectLUID, ProjectName string
 	Limit                                                                int
+	Catalog                                                              bool
 }
 
 // PageRequest is the action-owned request.
@@ -51,6 +54,7 @@ type Output struct {
 	Flows                     []Flow
 	RequestID                 string
 	Help                      []string
+	Source                    *readsource.Metadata
 }
 
 // CompactFlow identifies one lifecycle resource.
@@ -65,24 +69,26 @@ type CompactFlow struct {
 
 // CompactResult is the default projection.
 type CompactResult struct {
-	Status      string        `json:"status"`
-	Environment string        `json:"environment,omitempty"`
-	Site        string        `json:"site,omitempty"`
-	Page        OutputPage    `json:"page"`
-	Flows       []CompactFlow `json:"flows"`
-	Details     string        `json:"details"`
-	Help        []string      `json:"help"`
+	Status      string               `json:"status"`
+	Environment string               `json:"environment,omitempty"`
+	Site        string               `json:"site,omitempty"`
+	Page        OutputPage           `json:"page"`
+	Flows       []CompactFlow        `json:"flows"`
+	Details     string               `json:"details"`
+	Help        []string             `json:"help"`
+	Source      *readsource.Metadata `json:"source,omitempty"`
 }
 
 // FullResult is the current expanded page.
 type FullResult struct {
-	Status      string     `json:"status"`
-	Environment string     `json:"environment,omitempty"`
-	Site        string     `json:"site,omitempty"`
-	Page        OutputPage `json:"page"`
-	Flows       []Flow     `json:"flows"`
-	RequestID   string     `json:"tableau_request_id,omitempty"`
-	Help        []string   `json:"help"`
+	Status      string               `json:"status"`
+	Environment string               `json:"environment,omitempty"`
+	Site        string               `json:"site,omitempty"`
+	Page        OutputPage           `json:"page"`
+	Flows       []Flow               `json:"flows"`
+	RequestID   string               `json:"tableau_request_id,omitempty"`
+	Help        []string             `json:"help"`
+	Source      *readsource.Metadata `json:"source,omitempty"`
 }
 
 // CompactOutput returns selected fields.
@@ -91,7 +97,7 @@ func (o Output) CompactOutput() any {
 	for i, item := range o.Flows {
 		items[i] = CompactFlow{LUID: item.LUID, Name: item.Name, ProjectLUID: item.ProjectLUID, ProjectName: item.ProjectName, FileType: item.FileType, UpdatedAt: item.UpdatedAt}
 	}
-	return CompactResult{Status: o.Status, Environment: o.Environment, Site: o.Site, Page: o.Page, Flows: items, Details: "--full", Help: o.Help}
+	return CompactResult{Status: o.Status, Environment: o.Environment, Site: o.Site, Page: o.Page, Flows: items, Details: "--full", Help: o.Help, Source: o.Source}
 }
 
 // FullOutput returns all bounded current-page fields.
@@ -104,5 +110,5 @@ func (o Output) FullOutput() any {
 			flows[index].Tags = flows[index].Tags[:fullTagsPerFlowLimit]
 		}
 	}
-	return FullResult{Status: o.Status, Environment: o.Environment, Site: o.Site, Page: o.Page, Flows: flows, RequestID: o.RequestID, Help: o.Help}
+	return FullResult{Status: o.Status, Environment: o.Environment, Site: o.Site, Page: o.Page, Flows: flows, RequestID: o.RequestID, Help: o.Help, Source: o.Source}
 }

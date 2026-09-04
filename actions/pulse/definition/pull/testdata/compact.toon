@@ -1,0 +1,8 @@
+status: pulled
+definition:
+  luid: definition-1
+  name: Revenue
+artifact:
+  path: artifacts/pulse-definition/Revenue--identity
+details: "--full"
+help[1]: Inspect artifacts/pulse-definition/Revenue--identity/resource.json.

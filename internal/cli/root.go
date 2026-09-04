@@ -22,6 +22,7 @@ import (
 	contentcli "github.com/ahillspace/tadx/internal/cli/content"
 	doctorcli "github.com/ahillspace/tadx/internal/cli/doctor"
 	envcli "github.com/ahillspace/tadx/internal/cli/env"
+	pulsecli "github.com/ahillspace/tadx/internal/cli/pulse"
 	workspacecli "github.com/ahillspace/tadx/internal/cli/workspace"
 	"github.com/ahillspace/tadx/internal/errs"
 	"github.com/spf13/cobra"
@@ -93,7 +94,6 @@ type Dependencies struct {
 	AuthChecker          AuthChecker
 	CatalogSearcher      CatalogSearcher
 	CatalogRefresher     catalogcli.Refresher
-	CatalogGetter        catalogcli.Getter
 	CatalogStatuser      catalogcli.Statuser
 	WorkbookPuller       WorkbookPuller
 	WorkbookPublisher    WorkbookPublisher
@@ -101,6 +101,7 @@ type Dependencies struct {
 	EnvironmentProfiles  *envcli.Dependencies
 	Workspaces           *workspacecli.Dependencies
 	Admin                *admincli.Dependencies
+	Pulse                *pulsecli.Dependencies
 	DoctorRunner         doctorcli.Runner
 	DoctorUse            string
 	DoctorShort          string
@@ -113,8 +114,6 @@ type Dependencies struct {
 	CatalogSearchShort   string
 	CatalogRefreshUse    string
 	CatalogRefreshShort  string
-	CatalogGetUse        string
-	CatalogGetShort      string
 	CatalogStatusUse     string
 	CatalogStatusShort   string
 	WorkbookPullUse      string
@@ -140,6 +139,7 @@ func NewRoot(deps Dependencies) *cobra.Command {
 
 Run tadx capability list to discover available operations and tadx capability get <id> for bounded details.
 TADX returns compact TOON by default. Use --full to show expanded bounded details for the same operation.
+Read commands query Tableau by default. Pass --catalog on supported reads to use local catalog data without contacting Tableau.
 
 Remote mutation commands remain visible when execution is disabled. Set TADX_ENABLE_MUTATIONS=1 to enable them.
 When enabled, mutation commands preview changes by default. Pass --apply to perform the previewed remote mutation.`,
@@ -175,6 +175,11 @@ When enabled, mutation commands preview changes by default. Pass --apply to perf
 		admin.MutationsEnabled = deps.MutationsEnabled
 		root.AddCommand(admincli.New(admin))
 	}
+	if deps.Pulse != nil {
+		pulse := *deps.Pulse
+		pulse.Renderer = deps.Renderer
+		root.AddCommand(pulsecli.New(pulse))
+	}
 	if deps.DoctorRunner != nil {
 		root.AddCommand(doctorcli.New(doctorcli.Dependencies{Runner: deps.DoctorRunner, Renderer: deps.Renderer, Use: deps.DoctorUse, Short: deps.DoctorShort}))
 	}
@@ -183,10 +188,9 @@ When enabled, mutation commands preview changes by default. Pass --apply to perf
 	}
 	if deps.CatalogSearcher != nil {
 		root.AddCommand(catalogcli.New(catalogcli.Dependencies{
-			Searcher: deps.CatalogSearcher, Refresher: deps.CatalogRefresher, Getter: deps.CatalogGetter, Statuser: deps.CatalogStatuser,
+			Searcher: deps.CatalogSearcher, Refresher: deps.CatalogRefresher, Statuser: deps.CatalogStatuser,
 			Renderer: deps.Renderer, Use: deps.CatalogSearchUse, Short: deps.CatalogSearchShort,
 			RefreshUse: deps.CatalogRefreshUse, RefreshShort: deps.CatalogRefreshShort,
-			GetUse: deps.CatalogGetUse, GetShort: deps.CatalogGetShort,
 			StatusUse: deps.CatalogStatusUse, StatusShort: deps.CatalogStatusShort,
 		}))
 	}

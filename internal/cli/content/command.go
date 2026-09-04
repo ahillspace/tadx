@@ -36,6 +36,7 @@ type Dependencies struct {
 	WorkbookDeleter     WorkbookDeleter
 	DatasourceLister    DatasourceLister
 	DatasourceGetter    DatasourceGetter
+	DatasourceSchema    DatasourceSchemaGetter
 	DatasourcePuller    DatasourcePuller
 	DatasourcePublisher DatasourcePublisher
 	DatasourceDeleter   DatasourceDeleter
@@ -72,6 +73,9 @@ func New(deps Dependencies) *cobra.Command {
 	content.AddCommand(workbook)
 	if deps.DatasourceLister != nil && deps.DatasourceGetter != nil {
 		datasource := newDatasourceInventory(deps.DatasourceLister, deps.DatasourceGetter, deps.Renderer)
+		if deps.DatasourceSchema != nil {
+			datasource.AddCommand(newDatasourceSchema(deps.DatasourceSchema, deps.Renderer))
+		}
 		if deps.DatasourcePuller != nil && deps.DatasourcePublisher != nil && deps.DatasourceDeleter != nil {
 			addDatasourceLifecycle(datasource, datasourceLifecycleDependencies{puller: deps.DatasourcePuller, publisher: deps.DatasourcePublisher, deleter: deps.DatasourceDeleter, renderer: deps.Renderer, mutationsEnabled: deps.MutationsEnabled})
 		}

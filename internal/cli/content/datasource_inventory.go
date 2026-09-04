@@ -55,6 +55,7 @@ func newDatasourceList(deps datasourceInventoryDependencies) *cobra.Command {
 	command.Flags().StringVar(&input.UpdatedBefore, "updated-before", "", "include datasources updated at or before this UTC timestamp")
 	command.Flags().IntVar(&input.Limit, "limit", 0, "maximum datasources to return")
 	command.Flags().StringVar(&input.Cursor, "cursor", "", "opaque continuation cursor")
+	command.Flags().BoolVar(&input.Catalog, "catalog", false, "read indexed local catalog data without contacting Tableau")
 	return command
 }
 
@@ -77,5 +78,6 @@ func newDatasourceGet(deps datasourceInventoryDependencies) *cobra.Command {
 	command.Flags().StringVar(&luid, "id", "", "authoritative datasource LUID")
 	command.Flags().StringVar(&name, "name", "", "exact datasource name")
 	command.Flags().StringVar(&projectPath, "project", "", "exact slash-delimited project path")
+	command.Flags().BoolVar(&input.Catalog, "catalog", false, "read indexed local catalog data without contacting Tableau")
 	return command
 }

@@ -60,6 +60,7 @@ func Run(ctx context.Context, args []string, stdout io.Writer, options Options) 
 	workspaceCommands := newWorkspaceCommands(runtime)
 	remoteContent := newRemoteContentCommands(runtime)
 	remoteAdmin := newRemoteAdminCommands(runtime)
+	pulseActions := newPulseCommands(runtime)
 	doctorCommands := newDoctorCommands(runtime)
 	catalogGroup2 := newCatalogGroup2Commands(runtime)
 	root := cli.NewRoot(cli.Dependencies{
@@ -77,7 +78,6 @@ func Run(ctx context.Context, args []string, stdout io.Writer, options Options) 
 		AuthChecker:         authcheck.New(runtime, runtime),
 		CatalogSearcher:     &catalogService{runtime: runtime},
 		CatalogRefresher:    catalogGroup2.refresher(),
-		CatalogGetter:       catalogGroup2.getter(),
 		CatalogStatuser:     catalogGroup2.statuser(),
 		WorkbookPuller:      &pullService{runtime: runtime},
 		WorkbookPublisher:   &publishService{runtime: runtime},
@@ -85,6 +85,7 @@ func Run(ctx context.Context, args []string, stdout io.Writer, options Options) 
 		EnvironmentProfiles: environmentCommands.dependencies(),
 		Workspaces:          workspaceCommands.dependencies(),
 		Admin:               remoteAdmin.dependencies(),
+		Pulse:               pulseActions.dependencies(),
 		DoctorRunner:        doctorCommands,
 		DoctorUse:           registryLeafUse("doctor.run"),
 		DoctorShort:         registryShort("doctor.run"),
@@ -92,7 +93,6 @@ func Run(ctx context.Context, args []string, stdout io.Writer, options Options) 
 		AuthStatuser: newAuthStatus(runtime), AuthStatusUse: registryLeafUse("auth.status"), AuthStatusShort: registryShort("auth.status"),
 		CatalogSearchUse: registryLeafUse("catalog.search"), CatalogSearchShort: registryShort("catalog.search"),
 		CatalogRefreshUse: registryLeafUse("catalog.refresh"), CatalogRefreshShort: registryShort("catalog.refresh"),
-		CatalogGetUse: registryLeafUse("catalog.get"), CatalogGetShort: registryShort("catalog.get"),
 		CatalogStatusUse: registryLeafUse("catalog.status"), CatalogStatusShort: registryShort("catalog.status"),
 		WorkbookPullUse: registryLeafUse("workbook.pull"), WorkbookPullShort: registryShort("workbook.pull"),
 		WorkbookPublishUse: registryLeafUse("workbook.publish"), WorkbookPublishShort: registryShort("workbook.publish"),

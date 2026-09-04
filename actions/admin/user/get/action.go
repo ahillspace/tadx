@@ -5,12 +5,14 @@ import (
 	"errors"
 
 	"github.com/ahillspace/tadx/internal/errs"
+	"github.com/ahillspace/tadx/internal/readsource"
 )
 
 type Selector struct{ LUID, NameOrEmail string }
 type Input struct {
 	Environment, Site string
 	Selector          Selector
+	Catalog           bool
 }
 
 func (i *Input) SetSelector(luid, nameOrEmail string) {
@@ -38,6 +40,7 @@ type Output struct {
 	User                      User
 	RequestID                 string
 	Help                      []string
+	Source                    *readsource.Metadata
 }
 type CompactUser struct {
 	LUID     string `json:"luid"`
@@ -45,27 +48,29 @@ type CompactUser struct {
 	SiteRole string `json:"site_role,omitempty"`
 }
 type CompactResult struct {
-	Status      string      `json:"status"`
-	Environment string      `json:"environment,omitempty"`
-	Site        string      `json:"site,omitempty"`
-	User        CompactUser `json:"user"`
-	Details     string      `json:"details"`
-	Help        []string    `json:"help"`
+	Status      string               `json:"status"`
+	Environment string               `json:"environment,omitempty"`
+	Site        string               `json:"site,omitempty"`
+	User        CompactUser          `json:"user"`
+	Details     string               `json:"details"`
+	Help        []string             `json:"help"`
+	Source      *readsource.Metadata `json:"source,omitempty"`
 }
 type FullResult struct {
-	Status      string   `json:"status"`
-	Environment string   `json:"environment,omitempty"`
-	Site        string   `json:"site,omitempty"`
-	User        User     `json:"user"`
-	RequestID   string   `json:"tableau_request_id,omitempty"`
-	Help        []string `json:"help"`
+	Status      string               `json:"status"`
+	Environment string               `json:"environment,omitempty"`
+	Site        string               `json:"site,omitempty"`
+	User        User                 `json:"user"`
+	RequestID   string               `json:"tableau_request_id,omitempty"`
+	Help        []string             `json:"help"`
+	Source      *readsource.Metadata `json:"source,omitempty"`
 }
 
 func (o Output) CompactOutput() any {
-	return CompactResult{Status: o.Status, Environment: o.Environment, Site: o.Site, User: CompactUser{LUID: o.User.LUID, Name: o.User.Name, SiteRole: o.User.SiteRole}, Details: "--full", Help: o.Help}
+	return CompactResult{Status: o.Status, Environment: o.Environment, Site: o.Site, User: CompactUser{LUID: o.User.LUID, Name: o.User.Name, SiteRole: o.User.SiteRole}, Details: "--full", Help: o.Help, Source: o.Source}
 }
 func (o Output) FullOutput() any {
-	return FullResult{Status: o.Status, Environment: o.Environment, Site: o.Site, User: o.User, RequestID: o.RequestID, Help: o.Help}
+	return FullResult{Status: o.Status, Environment: o.Environment, Site: o.Site, User: o.User, RequestID: o.RequestID, Help: o.Help, Source: o.Source}
 }
 
 type Resolver interface {

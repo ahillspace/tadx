@@ -102,7 +102,8 @@ A comprehensive review between later groups is optional unless the build owner r
 
 Build these nine read-oriented capabilities:
 
-- Catalog: `catalog.refresh`, `catalog.get`, and `catalog.status`.
+- Catalog: `catalog.refresh`, `catalog.search`, and `catalog.status`.
+- Resource reads query Tableau by default and use the local catalog only when you pass `--catalog`.
 - Generic content discovery: `content.search` and `content.get`.
 - Workbook inventory: `workbook.list` and `workbook.get`.
 - Datasource inventory: `datasource.list` and `datasource.get`.

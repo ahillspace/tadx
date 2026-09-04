@@ -1,6 +1,9 @@
 package get
 
-import "github.com/ahillspace/tadx/internal/identity"
+import (
+	"github.com/ahillspace/tadx/internal/identity"
+	"github.com/ahillspace/tadx/internal/readsource"
+)
 
 const detailLimit = 50
 
@@ -8,6 +11,7 @@ const detailLimit = 50
 type Input struct {
 	Environment, Site string
 	Selector          identity.Selector
+	Catalog           bool
 }
 
 // SetSelector records one exact CLI selector.
@@ -37,6 +41,7 @@ type Output struct {
 	Workbook                  Workbook
 	RequestID                 string
 	Help                      []string
+	Source                    *readsource.Metadata
 }
 
 // CompactWorkbook identifies the authoritative target.
@@ -51,28 +56,30 @@ type CompactWorkbook struct {
 
 // CompactResult is the default projection.
 type CompactResult struct {
-	Status      string          `json:"status"`
-	Environment string          `json:"environment,omitempty"`
-	Site        string          `json:"site,omitempty"`
-	Workbook    CompactWorkbook `json:"workbook"`
-	Details     string          `json:"details"`
-	Help        []string        `json:"help"`
+	Status      string               `json:"status"`
+	Environment string               `json:"environment,omitempty"`
+	Site        string               `json:"site,omitempty"`
+	Workbook    CompactWorkbook      `json:"workbook"`
+	Details     string               `json:"details"`
+	Help        []string             `json:"help"`
+	Source      *readsource.Metadata `json:"source,omitempty"`
 }
 
 // FullResult is the bounded expanded projection.
 type FullResult struct {
-	Status      string   `json:"status"`
-	Environment string   `json:"environment,omitempty"`
-	Site        string   `json:"site,omitempty"`
-	Workbook    Workbook `json:"workbook"`
-	RequestID   string   `json:"tableau_request_id,omitempty"`
-	Help        []string `json:"help"`
+	Status      string               `json:"status"`
+	Environment string               `json:"environment,omitempty"`
+	Site        string               `json:"site,omitempty"`
+	Workbook    Workbook             `json:"workbook"`
+	RequestID   string               `json:"tableau_request_id,omitempty"`
+	Help        []string             `json:"help"`
+	Source      *readsource.Metadata `json:"source,omitempty"`
 }
 
 // CompactOutput returns selected fields.
 func (o Output) CompactOutput() any {
 	item := CompactWorkbook{LUID: o.Workbook.LUID, Name: o.Workbook.Name, ProjectLUID: o.Workbook.ProjectLUID, ProjectPath: o.Workbook.ProjectPath, ContentURL: o.Workbook.ContentURL, UpdatedAt: o.Workbook.UpdatedAt}
-	return CompactResult{Status: o.Status, Environment: o.Environment, Site: o.Site, Workbook: item, Details: "--full", Help: o.Help}
+	return CompactResult{Status: o.Status, Environment: o.Environment, Site: o.Site, Workbook: item, Details: "--full", Help: o.Help, Source: o.Source}
 }
 
 // FullOutput returns all bounded fields.
@@ -83,5 +90,5 @@ func (o Output) FullOutput() any {
 		item.TagsOmitted = len(item.Tags) - detailLimit
 		item.Tags = item.Tags[:detailLimit]
 	}
-	return FullResult{Status: o.Status, Environment: o.Environment, Site: o.Site, Workbook: item, RequestID: o.RequestID, Help: o.Help}
+	return FullResult{Status: o.Status, Environment: o.Environment, Site: o.Site, Workbook: item, RequestID: o.RequestID, Help: o.Help, Source: o.Source}
 }

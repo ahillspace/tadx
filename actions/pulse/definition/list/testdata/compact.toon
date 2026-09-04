@@ -1,0 +1,16 @@
+status: listed
+environment: dev
+site: sales
+page:
+  returned: 1
+  limit: 10
+  next_cursor: next-page
+definitions[1]{luid,name,datasource_luid}:
+  definition-1,Revenue,datasource-1
+details: "--full"
+help[1]: tadx pulse definition get --id <definition-luid>
+source:
+  mode: tableau
+  observed_at: "2026-09-04T12:00:00Z"
+  coverage: complete
+  stale: false

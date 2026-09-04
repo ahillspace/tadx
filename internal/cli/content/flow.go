@@ -55,6 +55,7 @@ func newFlowList(deps Dependencies) *cobra.Command {
 	command.Flags().StringVar(&input.ProjectName, "project-name", "", "exact leaf project name filter; not a project path")
 	command.Flags().IntVar(&input.Limit, "limit", 0, "maximum flows to return")
 	command.Flags().StringVar(&input.Cursor, "cursor", "", "opaque continuation cursor")
+	command.Flags().BoolVar(&input.Catalog, "catalog", false, "read indexed local catalog data without contacting Tableau")
 	return command
 }
 
@@ -69,6 +70,7 @@ func newFlowGet(deps Dependencies) *cobra.Command {
 		return deps.Renderer.Render(result)
 	}}
 	readTargetFlags(command, &input.Environment, &luid, &name, &projectPath)
+	command.Flags().BoolVar(&input.Catalog, "catalog", false, "read indexed local catalog data without contacting Tableau")
 	return command
 }
 

@@ -24,7 +24,6 @@ Use `tadx capability get <id>` for the same focused metadata at runtime.
 | `auth.status` | cli | ship | ready | implemented | `tadx auth status` |
 | `capability.get` | cli | ship | ready | implemented | `tadx capability get` |
 | `capability.list` | cli | ship | ready | implemented | `tadx capability list` |
-| `catalog.get` | cli | ship | ready | implemented | `tadx catalog get` |
 | `catalog.refresh` | cli | ship | ready | implemented | `tadx catalog refresh` |
 | `catalog.search` | cli | ship | ready | implemented | `tadx catalog search` |
 | `catalog.status` | cli | ship | ready | implemented | `tadx catalog status` |
@@ -39,6 +38,7 @@ Use `tadx capability get <id>` for the same focused metadata at runtime.
 | `datasource.publish` | cli | ship | ready | implemented | `tadx content datasource publish` |
 | `datasource.pull` | cli | ship | ready | implemented | `tadx content datasource pull` |
 | `datasource.query` | mcp | delegated | ready | external/delegated | None |
+| `datasource.schema` | cli | ship | ready | implemented | `tadx content datasource schema` |
 | `doctor.run` | cli | ship | ready | implemented | `tadx doctor` |
 | `env.profile.add` | cli | ship | ready | implemented | `tadx env add` |
 | `env.profile.get` | cli | ship | ready | implemented | `tadx env get` |
@@ -59,18 +59,19 @@ Use `tadx capability get <id>` for the same focused metadata at runtime.
 | `project.publish` | cli | ship | blocked | planned | None |
 | `project.pull` | cli | ship | blocked | planned | None |
 | `project.update` | cli | ship | ready | implemented | `tadx content project update` |
-| `pulse.definition.create` | cli | ship | blocked | planned | None |
+| `pulse.definition.create` | cli | ship | ready | implemented | `tadx pulse definition create` |
 | `pulse.definition.delete` | cli | ship | blocked | planned | None |
-| `pulse.definition.get` | cli | ship | ready | planned | None |
-| `pulse.definition.list` | cli | ship | ready | planned | None |
-| `pulse.definition.pull` | cli | ship | ready | planned | None |
+| `pulse.definition.get` | cli | ship | ready | implemented | `tadx pulse definition get` |
+| `pulse.definition.list` | cli | ship | ready | implemented | `tadx pulse definition list` |
+| `pulse.definition.pull` | cli | ship | ready | implemented | `tadx pulse definition pull` |
 | `pulse.definition.update` | cli | ship | blocked | planned | None |
-| `pulse.metric.create` | cli | ship | blocked | planned | None |
 | `pulse.metric.delete` | cli | ship | blocked | planned | None |
-| `pulse.metric.follow` | cli | ship | blocked | planned | None |
-| `pulse.metric.get` | cli | ship | ready | planned | None |
-| `pulse.metric.list` | cli | ship | ready | planned | None |
-| `pulse.metric.unfollow` | cli | ship | blocked | planned | None |
+| `pulse.metric.follow` | cli | ship | ready | implemented | `tadx pulse metric follow` |
+| `pulse.metric.followers` | cli | ship | ready | implemented | `tadx pulse metric followers` |
+| `pulse.metric.fork` | cli | ship | ready | implemented | `tadx pulse metric fork` |
+| `pulse.metric.get` | cli | ship | ready | implemented | `tadx pulse metric get` |
+| `pulse.metric.list` | cli | ship | ready | implemented | `tadx pulse metric list` |
+| `pulse.metric.unfollow` | cli | ship | ready | implemented | `tadx pulse metric unfollow` |
 | `pulse.metric.update` | cli | ship | blocked | planned | None |
 | `pulse.metric.values-insights` | mcp | delegated | ready | external/delegated | None |
 | `view.read` | mcp | delegated | ready | external/delegated | None |
@@ -161,11 +162,11 @@ Inspect one exact group and, when requested, its direct membership.
 - Remote mutation: No
 - Requires `--apply`: No
 - Raw capable: No
-- Safety and guard: Exact group; membership pages normalized
+- Safety and guard: Live Tableau by default; --catalog is local-only; no fallback; exact group; membership pages normalized
 - Artifact effect: None
 - Upstream operation: GET .../groups; GET .../groups/{group-id}/users
-- Evidence: docs/evidence/admin-rest-contract.md
-- Validation or blocker: Contract-verified exact group and bounded direct membership
+- Evidence: docs/evidence/admin-rest-contract.md; hermetic catalog source-selection tests
+- Validation or blocker: Contract-verified exact group, bounded direct membership, and explicit source selection
 - Blocker ID: None
 - Command binding: `tadx admin group get`
 
@@ -187,11 +188,11 @@ List groups with bounded identity and directory metadata.
 - Remote mutation: No
 - Requires `--apply`: No
 - Raw capable: No
-- Safety and guard: Bounded continuation
+- Safety and guard: Live Tableau by default; --catalog is local-only; no fallback; bounded continuation
 - Artifact effect: None
 - Upstream operation: GET /api/{version}/sites/{site-id}/groups
-- Evidence: docs/evidence/admin-rest-contract.md
-- Validation or blocker: Contract-verified bounded group pagination
+- Evidence: docs/evidence/admin-rest-contract.md; hermetic catalog source-selection tests
+- Validation or blocker: Contract-verified bounded group pagination and explicit source selection
 - Blocker ID: None
 - Command binding: `tadx admin group list`
 
@@ -317,11 +318,11 @@ Inspect one exact site user.
 - Remote mutation: No
 - Requires `--apply`: No
 - Raw capable: No
-- Safety and guard: Ambiguity fails
+- Safety and guard: Live Tableau by default; --catalog is local-only; no fallback; ambiguity fails
 - Artifact effect: None
 - Upstream operation: GET /api/{version}/sites/{site-id}/users/{user-id}
-- Evidence: docs/evidence/admin-rest-contract.md
-- Validation or blocker: Contract-verified exact user identity resolution
+- Evidence: docs/evidence/admin-rest-contract.md; hermetic catalog source-selection tests
+- Validation or blocker: Contract-verified exact user identity resolution and explicit source selection
 - Blocker ID: None
 - Command binding: `tadx admin user get`
 
@@ -343,11 +344,11 @@ List site users with bounded administration metadata.
 - Remote mutation: No
 - Requires `--apply`: No
 - Raw capable: No
-- Safety and guard: Bounded continuation; secret-free
+- Safety and guard: Live Tableau by default; --catalog is local-only; no fallback; bounded continuation; secret-free
 - Artifact effect: None
 - Upstream operation: GET /api/{version}/sites/{site-id}/users
-- Evidence: docs/evidence/admin-rest-contract.md
-- Validation or blocker: Contract-verified bounded user pagination
+- Evidence: docs/evidence/admin-rest-contract.md; hermetic catalog source-selection tests
+- Validation or blocker: Contract-verified bounded user pagination and explicit source selection
 - Blocker ID: None
 - Command binding: `tadx admin user list`
 
@@ -480,32 +481,6 @@ Return a bounded inventory of discoverable operations, ownership, and execution 
 - Validation or blocker: Architecture-locked local contract
 - Blocker ID: None
 - Command binding: `tadx capability list`
-
-### `catalog.get`
-
-Inspect one cached resource record by authoritative ID or exact selector.
-
-- Surface: tadx catalog get
-- Operation type: inspect
-- Owner: cli
-- MCP overlap: None
-- Selectors: Tableau LUID or exact name/project path
-- Products and availability: Local / all
-- Product disposition: ship
-- Evidence level: local-contract
-- Verification readiness: ready
-- Implementation state: implemented
-- Local write: No
-- Remote mutation: No
-- Requires `--apply`: No
-- Raw capable: No
-- Safety and guard: Ambiguity fails; report generation/staleness
-- Artifact effect: None
-- Upstream operation: Local normalized catalog index
-- Evidence: A1 §§5.7, 5.9, 8.1; C1 §2.1
-- Validation or blocker: Architecture-locked local contract
-- Blocker ID: None
-- Command binding: `tadx catalog get`
 
 ### `catalog.refresh`
 
@@ -759,11 +734,11 @@ Inspect one datasource, with bounded field/model/composition detail when request
 - Remote mutation: No
 - Requires `--apply`: No
 - Raw capable: No
-- Safety and guard: Record Metadata API permission mode and partial warnings
+- Safety and guard: Live Tableau by default; --catalog is local-only; no fallback; record Metadata API permission mode and partial warnings
 - Artifact effect: None
 - Upstream operation: GET .../datasources/{id}; optional Metadata API and VDS detail
-- Evidence: docs/evidence/group2-inventory-rest-contract.md
-- Validation or blocker: Contract-verified base REST identity and lifecycle read; Metadata, VDS, and composition detail remain gated
+- Evidence: docs/evidence/group2-inventory-rest-contract.md; hermetic catalog source-selection tests
+- Validation or blocker: Contract-verified base REST identity, lifecycle read, and explicit source selection; Metadata, VDS, and composition detail remain gated
 - Blocker ID: None
 - Command binding: `tadx content datasource get`
 
@@ -785,11 +760,11 @@ List published datasources with bounded lifecycle metadata.
 - Remote mutation: No
 - Requires `--apply`: No
 - Raw capable: No
-- Safety and guard: Bounded continuation
+- Safety and guard: Live Tableau by default; --catalog is local-only; no fallback; bounded continuation
 - Artifact effect: None
 - Upstream operation: GET /api/{version}/sites/{site-id}/datasources
-- Evidence: docs/evidence/group2-inventory-rest-contract.md
-- Validation or blocker: Contract-verified REST inventory read with bounded continuation
+- Evidence: docs/evidence/group2-inventory-rest-contract.md; hermetic catalog source-selection tests
+- Validation or blocker: Contract-verified REST inventory read, bounded continuation, and explicit source selection
 - Blocker ID: None
 - Command binding: `tadx content datasource list`
 
@@ -870,6 +845,32 @@ Run analytical queries against datasource data.
 - Validation or blocker: Delegated; not executed by TADX
 - Blocker ID: None
 - Command binding: None
+
+### `datasource.schema`
+
+Inspect one datasource's logical tables and search a bounded field projection.
+
+- Surface: tadx content datasource schema
+- Operation type: inspect
+- Owner: cli
+- MCP overlap: get-datasource-metadata
+- Selectors: Authoritative datasource LUID; optional field text, role, table, and raw field ID filters
+- Products and availability: Cloud / Server with VDS or Metadata API access
+- Product disposition: ship
+- Evidence level: contract-verified
+- Verification readiness: ready
+- Implementation state: implemented
+- Local write: No
+- Remote mutation: No
+- Requires `--apply`: No
+- Raw capable: No
+- Safety and guard: Query Tableau by default; --catalog is local-only with no source fallback; preserve raw field identity separately from display captions
+- Artifact effect: None
+- Upstream operation: VDS read-metadata, VDS describe-datasource, then Metadata API fallback
+- Evidence: Proven existing field-catalog implementation plus hermetic TADX contract tests
+- Validation or blocker: Contract-verified VDS-first field discovery with bounded output and Metadata API fallback
+- Blocker ID: None
+- Command binding: `tadx content datasource schema`
 
 ### `doctor.run`
 
@@ -1097,11 +1098,11 @@ Inspect one authoritative flow and its direct lifecycle metadata.
 - Remote mutation: No
 - Requires `--apply`: No
 - Raw capable: No
-- Safety and guard: Exact resolution; ambiguity fails
+- Safety and guard: Live Tableau by default; --catalog is local-only; no fallback; exact resolution; ambiguity fails
 - Artifact effect: None
 - Upstream operation: GET /api/{version}/sites/{site-id}/flows/{flow-id}
-- Evidence: Official REST capture and hermetic contract tests in docs/evidence/flow-rest-contract.md
-- Validation or blocker: Contract-verified; live deployment verification is not claimed
+- Evidence: Official REST capture in docs/evidence/flow-rest-contract.md; hermetic API and catalog source-selection tests
+- Validation or blocker: Contract-verified exact read and explicit source selection; live deployment verification is not claimed
 - Blocker ID: None
 - Command binding: `tadx content flow get`
 
@@ -1123,11 +1124,11 @@ List flows with bounded lifecycle metadata.
 - Remote mutation: No
 - Requires `--apply`: No
 - Raw capable: No
-- Safety and guard: Bounded continuation
+- Safety and guard: Live Tableau by default; --catalog is local-only; no fallback; bounded continuation
 - Artifact effect: None
 - Upstream operation: GET /api/{version}/sites/{site-id}/flows
-- Evidence: Official REST capture and hermetic contract tests in docs/evidence/flow-rest-contract.md
-- Validation or blocker: Contract-verified; live deployment verification is not claimed
+- Evidence: Official REST capture in docs/evidence/flow-rest-contract.md; hermetic API and catalog source-selection tests
+- Validation or blocker: Contract-verified bounded inventory and explicit source selection; live deployment verification is not claimed
 - Blocker ID: None
 - Command binding: `tadx content flow list`
 
@@ -1279,11 +1280,11 @@ Resolve and inspect one exact shallow project context.
 - Remote mutation: No
 - Requires `--apply`: No
 - Raw capable: No
-- Safety and guard: Ambiguous path fails
+- Safety and guard: Live Tableau by default; --catalog is local-only; no fallback; ambiguous path fails
 - Artifact effect: None
 - Upstream operation: Exact resolution from authoritative project pages
-- Evidence: Official REST capture and hermetic contract tests in docs/evidence/project-rest-contract.md
-- Validation or blocker: Contract-verified; live deployment verification is not claimed
+- Evidence: Official REST capture in docs/evidence/project-rest-contract.md; hermetic API and catalog source-selection tests
+- Validation or blocker: Contract-verified exact path resolution and explicit source selection; live deployment verification is not claimed
 - Blocker ID: None
 - Command binding: `tadx content project get`
 
@@ -1305,11 +1306,11 @@ List projects and their authoritative parent identity.
 - Remote mutation: No
 - Requires `--apply`: No
 - Raw capable: No
-- Safety and guard: Bounded continuation
+- Safety and guard: Live Tableau by default; --catalog is local-only; no fallback; bounded continuation
 - Artifact effect: None
 - Upstream operation: GET /api/{version}/sites/{site-id}/projects
-- Evidence: Official REST capture and hermetic contract tests in docs/evidence/project-rest-contract.md
-- Validation or blocker: Contract-verified; live deployment verification is not claimed
+- Evidence: Official REST capture in docs/evidence/project-rest-contract.md; hermetic API and catalog source-selection tests
+- Validation or blocker: Contract-verified bounded inventory and explicit source selection; live deployment verification is not claimed
 - Blocker ID: None
 - Command binding: `tadx content project list`
 
@@ -1393,29 +1394,29 @@ Preview and update bounded project metadata without generic hierarchy migration.
 
 ### `pulse.definition.create`
 
-Preview and create one definition from explicit configuration.
+Preview and create one definition plus its Tableau-created default metric from bounded intent.
 
 - Surface: tadx pulse definition create
 - Operation type: change
 - Owner: cli
 - MCP overlap: None
-- Selectors: Explicit site; released request fields or local resource.json
+- Selectors: Explicit site; datasource LUID; exact raw measure/date field IDs; bounded configuration
 - Products and availability: Tableau Cloud / Pulse only
 - Product disposition: ship
-- Evidence level: docs-only
-- Verification readiness: blocked
-- Implementation state: planned
+- Evidence level: contract-verified
+- Verification readiness: ready
+- Implementation state: implemented
 - Local write: No
 - Remote mutation: Yes
 - Requires `--apply`: Yes
 - Raw capable: No
-- Safety and guard: No inferred datasource/field mapping; collision explicit
+- Safety and guard: Validate fields live; exact name/datasource collision; revalidate after preview; unknown outcomes preserve created identity
 - Artifact effect: Read / publish
-- Upstream operation: POST /api/-/pulse/definitions
-- Evidence: A1 §§6.5, 8.5; C1 §§2.7, 5.8
-- Validation or blocker: B3: exact payload/validation semantics pending
-- Blocker ID: B3
-- Command binding: None
+- Upstream operation: POST /api/-/pulse/definitions; bounded default-metric polling
+- Evidence: Proven Pulse payload and request behavior plus hermetic TADX action and client tests
+- Validation or blocker: Contract-verified deterministic payload, media types, collision handling, apply revalidation, and bounded default-metric resolution; no live deployment claim
+- Blocker ID: None
+- Command binding: `tadx pulse definition create`
 
 ### `pulse.definition.delete`
 
@@ -1445,29 +1446,29 @@ Preview and delete one exact definition.
 
 ### `pulse.definition.get`
 
-Retrieve one complete Pulse definition/configuration.
+Retrieve one complete Pulse definition and configuration.
 
 - Surface: tadx pulse definition get
 - Operation type: inspect
 - Owner: cli
 - MCP overlap: list-pulse-metric-definitions-from-definition-ids
-- Selectors: Definition ID
+- Selectors: Exact definition LUID
 - Products and availability: Tableau Cloud / Pulse only
 - Product disposition: ship
-- Evidence level: docs-only
+- Evidence level: contract-verified
 - Verification readiness: ready
-- Implementation state: planned
+- Implementation state: implemented
 - Local write: No
 - Remote mutation: No
 - Requires `--apply`: No
 - Raw capable: No
-- Safety and guard: Exact ID
+- Safety and guard: Exact LUID; --catalog never contacts Tableau or falls back
 - Artifact effect: None
 - Upstream operation: GET /api/-/pulse/definitions/{definition_id}
-- Evidence: A1 §§8.5, 11.3; C1 §§2.7, 5.8
-- Validation or blocker: Docs-only
+- Evidence: Captured Pulse request contract plus hermetic TADX client and action tests
+- Validation or blocker: Contract-verified exact identity and preserved configuration; no live deployment claim
 - Blocker ID: None
-- Command binding: None
+- Command binding: `tadx pulse definition get`
 
 ### `pulse.definition.list`
 
@@ -1477,49 +1478,49 @@ List Pulse metric definitions with bounded token continuation.
 - Operation type: find
 - Owner: cli
 - MCP overlap: list-all-pulse-metric-definitions; list-pulse-metric-definitions-from-definition-ids
-- Selectors: Site; supported filters/IDs
-- Products and availability: Tableau Cloud / Pulse only; API 3.21+ per C1
+- Selectors: Site; optional bounded cursor
+- Products and availability: Tableau Cloud / Pulse only
 - Product disposition: ship
-- Evidence level: docs-only
+- Evidence level: contract-verified
 - Verification readiness: ready
-- Implementation state: planned
+- Implementation state: implemented
 - Local write: No
 - Remote mutation: No
 - Requires `--apply`: No
 - Raw capable: No
-- Safety and guard: Bounded page token output
+- Safety and guard: Bounded page token output; --catalog never contacts Tableau or falls back
 - Artifact effect: None
 - Upstream operation: GET /api/-/pulse/definitions
-- Evidence: A1 §§8.5, 11.3, ADR-023; C1 §§2.7, 5.8
-- Validation or blocker: Docs-only
+- Evidence: Captured Pulse request contract plus hermetic TADX client and action tests
+- Validation or blocker: Contract-verified bounded list envelope and continuation; no live deployment claim
 - Blocker ID: None
-- Command binding: None
+- Command binding: `tadx pulse definition list`
 
 ### `pulse.definition.pull`
 
-Materialize one definition as JSON-backed artifact with provenance and baseline.
+Materialize one definition as a JSON-backed artifact with provenance and baseline.
 
 - Surface: tadx pulse definition pull
 - Operation type: deliver
 - Owner: cli
 - MCP overlap: Read overlap only
-- Selectors: Definition ID; workspace
+- Selectors: Exact definition LUID; logical workspace
 - Products and availability: Tableau Cloud / Pulse only
 - Product disposition: ship
-- Evidence level: docs-only
+- Evidence level: contract-verified
 - Verification readiness: ready
-- Implementation state: planned
+- Implementation state: implemented
 - Local write: Yes
 - Remote mutation: No
 - Requires `--apply`: No
 - Raw capable: No
-- Safety and guard: Dirty re-pull requires --overwrite
+- Safety and guard: Dirty re-pull requires --overwrite; remote read is authoritative
 - Artifact effect: Create / update
 - Upstream operation: Definition GET plus local artifact manager
-- Evidence: A1 §§8.2, 8.5, ADR-023; C1 §§2.7, 5.8, 5.13
-- Validation or blocker: Docs-only API; artifact contract architecture-locked
+- Evidence: Captured Pulse request contract plus hermetic TADX action and artifact tests
+- Validation or blocker: Contract-verified exact read and recoverable artifact write; no live deployment claim
 - Blocker ID: None
-- Command binding: None
+- Command binding: `tadx pulse definition pull`
 
 ### `pulse.definition.update`
 
@@ -1544,32 +1545,6 @@ Preview and patch one exact definition.
 - Upstream operation: PATCH /api/-/pulse/definitions/{definition_id}
 - Evidence: A1 §§6.5, 8.5; C1 §§2.7, 5.8
 - Validation or blocker: B3
-- Blocker ID: B3
-- Command binding: None
-
-### `pulse.metric.create`
-
-Preview and create one metric in an exact definition.
-
-- Surface: tadx pulse metric create
-- Operation type: change
-- Owner: cli
-- MCP overlap: None
-- Selectors: Definition ID; explicit metric specification
-- Products and availability: Tableau Cloud / Pulse only
-- Product disposition: ship
-- Evidence level: docs-only
-- Verification readiness: blocked
-- Implementation state: planned
-- Local write: No
-- Remote mutation: Yes
-- Requires `--apply`: Yes
-- Raw capable: No
-- Safety and guard: Plain create not assumed idempotent; get-or-create only under explicit desired-state mode
-- Artifact effect: None
-- Upstream operation: POST /api/-/pulse/metrics; optional explicit POST .../metrics:getOrCreate mode
-- Evidence: A1 §8.5; C1 §§2.7, 5.8
-- Validation or blocker: B3: exact identity/request/idempotency semantics pending
 - Blocker ID: B3
 - Command binding: None
 
@@ -1601,29 +1576,81 @@ Preview and delete one exact metric.
 
 ### `pulse.metric.follow`
 
-Preview and create one exact user/group metric subscription.
+Preview and converge one exact user or group metric subscription.
 
 - Surface: tadx pulse metric follow
 - Operation type: change
 - Owner: cli
 - MCP overlap: list-pulse-metric-subscriptions for resolution
-- Selectors: Metric ID plus exact user/group ID
+- Selectors: Exact metric LUID plus exactly one user or group LUID
 - Products and availability: Tableau Cloud / Pulse only
 - Product disposition: ship
-- Evidence level: docs-only
-- Verification readiness: blocked
-- Implementation state: planned
+- Evidence level: contract-verified
+- Verification readiness: ready
+- Implementation state: implemented
 - Local write: No
 - Remote mutation: Yes
 - Requires `--apply`: Yes
 - Raw capable: No
-- Safety and guard: Duplicate behavior must be pinned; no ambiguous subscriber
+- Safety and guard: No ambiguous subscriber; a proven duplicate response converges to already-following
 - Artifact effect: None
-- Upstream operation: POST /api/-/pulse/subscriptions
-- Evidence: A1 §§4.2, 8.5; C1 §§2.7, 5.8
-- Validation or blocker: B3: request shape and duplicate semantics pending
-- Blocker ID: B3
-- Command binding: None
+- Upstream operation: POST /api/-/pulse/subscriptions:batchCreate
+- Evidence: Captured Pulse subscription contract plus hermetic TADX action and client tests
+- Validation or blocker: Contract-verified batch-create shape and duplicate convergence; no live deployment claim
+- Blocker ID: None
+- Command binding: `tadx pulse metric follow`
+
+### `pulse.metric.followers`
+
+List exact user and group subscriptions for one metric.
+
+- Surface: tadx pulse metric followers
+- Operation type: find
+- Owner: cli
+- MCP overlap: list-pulse-metric-subscriptions
+- Selectors: Exact metric LUID
+- Products and availability: Tableau Cloud / Pulse only
+- Product disposition: ship
+- Evidence level: contract-verified
+- Verification readiness: ready
+- Implementation state: implemented
+- Local write: No
+- Remote mutation: No
+- Requires `--apply`: No
+- Raw capable: No
+- Safety and guard: Bound normalized output; reject incomplete or mismatched subscription identity; --catalog never contacts Tableau or falls back
+- Artifact effect: None
+- Upstream operation: GET /api/-/pulse/subscriptions?metric_id={metric_id}
+- Evidence: Captured Pulse subscription contract plus hermetic TADX action and client tests
+- Validation or blocker: Contract-verified user/group follower normalization; no live deployment claim
+- Blocker ID: None
+- Command binding: `tadx pulse metric followers`
+
+### `pulse.metric.fork`
+
+Preview and derive one metric by changing bounded timeframe or dimension filters.
+
+- Surface: tadx pulse metric fork
+- Operation type: change
+- Owner: cli
+- MCP overlap: None
+- Selectors: Exact source metric LUID; timeframe or allowed-dimension filters
+- Products and availability: Tableau Cloud / Pulse only
+- Product disposition: ship
+- Evidence level: contract-verified
+- Verification readiness: ready
+- Implementation state: implemented
+- Local write: No
+- Remote mutation: Yes
+- Requires `--apply`: Yes
+- Raw capable: No
+- Safety and guard: Preserve source specification; require a meaningful change; use get-or-create; reconcile metric, definition, datasource, and site ownership
+- Artifact effect: None
+- Upstream operation: POST /api/-/pulse/metrics:getOrCreate plus bounded exact-read reconciliation
+- Evidence: Captured Pulse get-or-create contract plus hermetic TADX action and client tests
+- Validation or blocker: Contract-verified deterministic fork, created/reused status, preserved unknown fields, and bounded ownership reconciliation; no live deployment claim
+- Blocker ID: None
+- Command binding: `tadx pulse metric fork`
 
 ### `pulse.metric.get`
 
@@ -1633,23 +1660,23 @@ Retrieve one exact Pulse metric specification.
 - Operation type: inspect
 - Owner: cli
 - MCP overlap: list-pulse-metrics-from-metric-ids
-- Selectors: Metric ID
+- Selectors: Exact metric LUID
 - Products and availability: Tableau Cloud / Pulse only
 - Product disposition: ship
-- Evidence level: docs-only
+- Evidence level: contract-verified
 - Verification readiness: ready
-- Implementation state: planned
+- Implementation state: implemented
 - Local write: No
 - Remote mutation: No
 - Requires `--apply`: No
 - Raw capable: No
-- Safety and guard: Exact ID
+- Safety and guard: Exact LUID; preserve unrecognized specification fields; --catalog never contacts Tableau or falls back
 - Artifact effect: None
-- Upstream operation: GET /api/-/pulse/metrics/{metric_id} or documented batch get
-- Evidence: A1 §8.5; C1 §§2.7, 5.8
-- Validation or blocker: Docs-only; exact batch/single schema capture pending
+- Upstream operation: GET /api/-/pulse/metrics/{metric_id}
+- Evidence: Captured Pulse request contract plus hermetic TADX client and action tests
+- Validation or blocker: Contract-verified exact metric identity and complete specification preservation; no live deployment claim
 - Blocker ID: None
-- Command binding: None
+- Command binding: `tadx pulse metric get`
 
 ### `pulse.metric.list`
 
@@ -1659,23 +1686,23 @@ List metrics in one definition with bounded continuation.
 - Operation type: find
 - Owner: cli
 - MCP overlap: list-pulse-metrics-from-metric-definition-id
-- Selectors: Definition ID
+- Selectors: Exact definition LUID; optional bounded cursor
 - Products and availability: Tableau Cloud / Pulse only
 - Product disposition: ship
-- Evidence level: docs-only
+- Evidence level: contract-verified
 - Verification readiness: ready
-- Implementation state: planned
+- Implementation state: implemented
 - Local write: No
 - Remote mutation: No
 - Requires `--apply`: No
 - Raw capable: No
-- Safety and guard: Bounded endpoint-specific continuation
+- Safety and guard: Definition-scoped identity; --catalog never contacts Tableau or falls back
 - Artifact effect: None
 - Upstream operation: GET /api/-/pulse/definitions/{definition_id}/metrics
-- Evidence: A1 §8.5; C1 §§2.7, 5.8
-- Validation or blocker: Docs-only
+- Evidence: Captured Pulse request contract plus hermetic TADX client and action tests
+- Validation or blocker: Contract-verified definition-scoped pagination; no live deployment claim
 - Blocker ID: None
-- Command binding: None
+- Command binding: `tadx pulse metric list`
 
 ### `pulse.metric.unfollow`
 
@@ -1685,23 +1712,23 @@ Preview and remove one exact metric subscription.
 - Operation type: change
 - Owner: cli
 - MCP overlap: list-pulse-metric-subscriptions for resolution
-- Selectors: Subscription ID, or metric+subscriber resolving to exactly one
+- Selectors: Exact subscription LUID, or metric plus exact user/group resolving to one subscription
 - Products and availability: Tableau Cloud / Pulse only
 - Product disposition: ship
-- Evidence level: docs-only
-- Verification readiness: blocked
-- Implementation state: planned
+- Evidence level: contract-verified
+- Verification readiness: ready
+- Implementation state: implemented
 - Local write: No
 - Remote mutation: Yes
 - Requires `--apply`: Yes
 - Raw capable: No
-- Safety and guard: Ambiguity fails; missing-as-no-op only if desired-state contract explicitly chosen
+- Safety and guard: Ambiguity fails; relationship selectors revalidate to the same subscription after preview
 - Artifact effect: None
 - Upstream operation: DELETE /api/-/pulse/subscriptions/{subscription_id}
-- Evidence: A1 §§4.2, 8.5; C1 §§2.7, 5.8
-- Validation or blocker: B3
-- Blocker ID: B3
-- Command binding: None
+- Evidence: Captured Pulse subscription contract plus hermetic TADX action and client tests
+- Validation or blocker: Contract-verified exact delete, relationship resolution, ambiguity failure, and apply revalidation; no live deployment claim
+- Blocker ID: None
+- Command binding: `tadx pulse metric unfollow`
 
 ### `pulse.metric.update`
 
@@ -1851,17 +1878,17 @@ Inspect one authoritative workbook and lifecycle metadata.
 - Remote mutation: No
 - Requires `--apply`: No
 - Raw capable: No
-- Safety and guard: Exact resolution; ambiguity fails
+- Safety and guard: Live Tableau by default; --catalog is local-only; no fallback; exact resolution; ambiguity fails
 - Artifact effect: None
 - Upstream operation: GET /api/{version}/sites/{site-id}/workbooks/{workbook-id}
-- Evidence: docs/evidence/group2-inventory-rest-contract.md
-- Validation or blocker: Contract-verified exact REST read and canonical project selection
+- Evidence: docs/evidence/group2-inventory-rest-contract.md; hermetic catalog source-selection tests
+- Validation or blocker: Contract-verified exact REST read, canonical project selection, and explicit source selection
 - Blocker ID: None
 - Command binding: `tadx content workbook get`
 
 ### `workbook.list`
 
-List remote workbooks with bounded lifecycle metadata.
+List workbooks with bounded lifecycle metadata.
 
 - Surface: tadx content workbook list
 - Operation type: find
@@ -1877,11 +1904,11 @@ List remote workbooks with bounded lifecycle metadata.
 - Remote mutation: No
 - Requires `--apply`: No
 - Raw capable: No
-- Safety and guard: Bounded continuation
+- Safety and guard: Live Tableau by default; --catalog is local-only; no fallback; bounded continuation
 - Artifact effect: None
 - Upstream operation: GET /api/{version}/sites/{site-id}/workbooks
-- Evidence: docs/evidence/group2-inventory-rest-contract.md
-- Validation or blocker: Contract-verified REST inventory read with bounded continuation
+- Evidence: docs/evidence/group2-inventory-rest-contract.md; hermetic catalog source-selection tests
+- Validation or blocker: Contract-verified REST inventory read, bounded continuation, and explicit source selection
 - Blocker ID: None
 - Command binding: `tadx content workbook list`
 

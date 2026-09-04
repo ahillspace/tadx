@@ -1,11 +1,14 @@
 package list
 
+import "github.com/ahillspace/tadx/internal/readsource"
+
 const fullTagsPerWorkbookLimit = 50
 
 // Input selects one workbook page and its exact upstream filters.
 type Input struct {
 	Environment, Site, Cursor, Name, OwnerName, ProjectName, Tag string
 	Limit                                                        int
+	Catalog                                                      bool
 }
 
 // PageRequest is the action-owned request.
@@ -51,6 +54,7 @@ type Output struct {
 	Workbooks                 []Workbook
 	RequestID                 string
 	Help                      []string
+	Source                    *readsource.Metadata
 }
 
 // CompactWorkbook identifies one lifecycle resource.
@@ -65,24 +69,26 @@ type CompactWorkbook struct {
 
 // CompactResult is the default projection.
 type CompactResult struct {
-	Status      string            `json:"status"`
-	Environment string            `json:"environment,omitempty"`
-	Site        string            `json:"site,omitempty"`
-	Page        OutputPage        `json:"page"`
-	Workbooks   []CompactWorkbook `json:"workbooks"`
-	Details     string            `json:"details"`
-	Help        []string          `json:"help"`
+	Status      string               `json:"status"`
+	Environment string               `json:"environment,omitempty"`
+	Site        string               `json:"site,omitempty"`
+	Page        OutputPage           `json:"page"`
+	Workbooks   []CompactWorkbook    `json:"workbooks"`
+	Details     string               `json:"details"`
+	Help        []string             `json:"help"`
+	Source      *readsource.Metadata `json:"source,omitempty"`
 }
 
 // FullResult is the bounded expanded page.
 type FullResult struct {
-	Status      string     `json:"status"`
-	Environment string     `json:"environment,omitempty"`
-	Site        string     `json:"site,omitempty"`
-	Page        OutputPage `json:"page"`
-	Workbooks   []Workbook `json:"workbooks"`
-	RequestID   string     `json:"tableau_request_id,omitempty"`
-	Help        []string   `json:"help"`
+	Status      string               `json:"status"`
+	Environment string               `json:"environment,omitempty"`
+	Site        string               `json:"site,omitempty"`
+	Page        OutputPage           `json:"page"`
+	Workbooks   []Workbook           `json:"workbooks"`
+	RequestID   string               `json:"tableau_request_id,omitempty"`
+	Help        []string             `json:"help"`
+	Source      *readsource.Metadata `json:"source,omitempty"`
 }
 
 // CompactOutput returns selected fields.
@@ -91,7 +97,7 @@ func (o Output) CompactOutput() any {
 	for index, item := range o.Workbooks {
 		items[index] = CompactWorkbook{LUID: item.LUID, Name: item.Name, ProjectLUID: item.ProjectLUID, ProjectPath: item.ProjectPath, ContentURL: item.ContentURL, UpdatedAt: item.UpdatedAt}
 	}
-	return CompactResult{Status: o.Status, Environment: o.Environment, Site: o.Site, Page: o.Page, Workbooks: items, Details: "--full", Help: o.Help}
+	return CompactResult{Status: o.Status, Environment: o.Environment, Site: o.Site, Page: o.Page, Workbooks: items, Details: "--full", Help: o.Help, Source: o.Source}
 }
 
 // FullOutput returns all bounded current-page fields.
@@ -104,5 +110,5 @@ func (o Output) FullOutput() any {
 			items[index].Tags = items[index].Tags[:fullTagsPerWorkbookLimit]
 		}
 	}
-	return FullResult{Status: o.Status, Environment: o.Environment, Site: o.Site, Page: o.Page, Workbooks: items, RequestID: o.RequestID, Help: o.Help}
+	return FullResult{Status: o.Status, Environment: o.Environment, Site: o.Site, Page: o.Page, Workbooks: items, RequestID: o.RequestID, Help: o.Help, Source: o.Source}
 }

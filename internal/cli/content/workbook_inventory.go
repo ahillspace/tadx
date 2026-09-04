@@ -37,6 +37,7 @@ func newWorkbookList(lister WorkbookLister, renderer Renderer) *cobra.Command {
 	command.Flags().StringVar(&input.Tag, "tag", "", "exact workbook-tag filter")
 	command.Flags().IntVar(&input.Limit, "limit", 0, "maximum workbooks to return")
 	command.Flags().StringVar(&input.Cursor, "cursor", "", "opaque continuation cursor")
+	command.Flags().BoolVar(&input.Catalog, "catalog", false, "read indexed local catalog data without contacting Tableau")
 	return command
 }
 
@@ -57,5 +58,6 @@ func newWorkbookGet(getter WorkbookGetter, renderer Renderer) *cobra.Command {
 	command.Flags().StringVar(&luid, "id", "", "authoritative workbook LUID")
 	command.Flags().StringVar(&name, "name", "", "exact workbook name")
 	command.Flags().StringVar(&projectPath, "project", "", "exact slash-delimited project path")
+	command.Flags().BoolVar(&input.Catalog, "catalog", false, "read indexed local catalog data without contacting Tableau")
 	return command
 }

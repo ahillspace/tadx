@@ -1,12 +1,16 @@
 package get
 
-import "github.com/ahillspace/tadx/internal/identity"
+import (
+	"github.com/ahillspace/tadx/internal/identity"
+	"github.com/ahillspace/tadx/internal/readsource"
+)
 
 const detailLimit = 50
 
 type Input struct {
 	Environment, Site string
 	Selector          identity.Selector
+	Catalog           bool
 }
 
 // SetSelector records one exact CLI selector without exposing identity plumbing to Cobra.
@@ -49,6 +53,7 @@ type Output struct {
 	Flow                      Flow
 	RequestID                 string
 	Help                      []string
+	Source                    *readsource.Metadata
 }
 type CompactFlow struct {
 	LUID        string `json:"luid"`
@@ -59,24 +64,26 @@ type CompactFlow struct {
 	UpdatedAt   string `json:"updated_at,omitempty"`
 }
 type CompactResult struct {
-	Status      string      `json:"status"`
-	Environment string      `json:"environment,omitempty"`
-	Site        string      `json:"site,omitempty"`
-	Flow        CompactFlow `json:"flow"`
-	Details     string      `json:"details"`
-	Help        []string    `json:"help"`
+	Status      string               `json:"status"`
+	Environment string               `json:"environment,omitempty"`
+	Site        string               `json:"site,omitempty"`
+	Flow        CompactFlow          `json:"flow"`
+	Details     string               `json:"details"`
+	Help        []string             `json:"help"`
+	Source      *readsource.Metadata `json:"source,omitempty"`
 }
 type FullResult struct {
-	Status      string   `json:"status"`
-	Environment string   `json:"environment,omitempty"`
-	Site        string   `json:"site,omitempty"`
-	Flow        Flow     `json:"flow"`
-	RequestID   string   `json:"tableau_request_id,omitempty"`
-	Help        []string `json:"help"`
+	Status      string               `json:"status"`
+	Environment string               `json:"environment,omitempty"`
+	Site        string               `json:"site,omitempty"`
+	Flow        Flow                 `json:"flow"`
+	RequestID   string               `json:"tableau_request_id,omitempty"`
+	Help        []string             `json:"help"`
+	Source      *readsource.Metadata `json:"source,omitempty"`
 }
 
 func (o Output) CompactOutput() any {
-	return CompactResult{Status: o.Status, Environment: o.Environment, Site: o.Site, Flow: CompactFlow{LUID: o.Flow.LUID, Name: o.Flow.Name, ProjectLUID: o.Flow.ProjectLUID, ProjectPath: o.Flow.ProjectPath, FileType: o.Flow.FileType, UpdatedAt: o.Flow.UpdatedAt}, Details: "--full", Help: o.Help}
+	return CompactResult{Status: o.Status, Environment: o.Environment, Site: o.Site, Flow: CompactFlow{LUID: o.Flow.LUID, Name: o.Flow.Name, ProjectLUID: o.Flow.ProjectLUID, ProjectPath: o.Flow.ProjectPath, FileType: o.Flow.FileType, UpdatedAt: o.Flow.UpdatedAt}, Details: "--full", Help: o.Help, Source: o.Source}
 }
 func (o Output) FullOutput() any {
 	flow := o.Flow
@@ -95,5 +102,5 @@ func (o Output) FullOutput() any {
 		flow.OutputStepsOmitted = len(flow.OutputSteps) - detailLimit
 		flow.OutputSteps = flow.OutputSteps[:detailLimit]
 	}
-	return FullResult{Status: o.Status, Environment: o.Environment, Site: o.Site, Flow: flow, RequestID: o.RequestID, Help: o.Help}
+	return FullResult{Status: o.Status, Environment: o.Environment, Site: o.Site, Flow: flow, RequestID: o.RequestID, Help: o.Help, Source: o.Source}
 }

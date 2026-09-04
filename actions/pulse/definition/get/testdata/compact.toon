@@ -1,0 +1,16 @@
+status: found
+environment: dev
+site: sales
+definition:
+  luid: definition-1
+  name: Revenue
+  datasource_luid: datasource-1
+details: "--full"
+help[1]: tadx pulse definition pull --id definition-1
+source:
+  mode: catalog
+  observed_at: "2026-09-04T12:00:00Z"
+  coverage: complete
+  stale: false
+  generation_id: generation-1
+  generation_generated_at: "2026-09-04T11:00:00Z"

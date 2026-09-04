@@ -1,5 +1,7 @@
 package list
 
+import "github.com/ahillspace/tadx/internal/readsource"
+
 const fullTagsPerDatasourceLimit = 50
 
 // Input selects one published datasource page.
@@ -15,6 +17,7 @@ type Input struct {
 	UpdatedAfter  string
 	UpdatedBefore string
 	Limit         int
+	Catalog       bool
 }
 
 // PageRequest is the action-owned bounded read request.
@@ -80,6 +83,7 @@ type Output struct {
 	Datasources []Datasource
 	RequestID   string
 	Help        []string
+	Source      *readsource.Metadata
 }
 
 // CompactDatasource contains the identity and lifecycle fields used for the next decision.
@@ -95,24 +99,26 @@ type CompactDatasource struct {
 
 // CompactResult is the default bounded projection.
 type CompactResult struct {
-	Status      string              `json:"status"`
-	Environment string              `json:"environment,omitempty"`
-	Site        string              `json:"site,omitempty"`
-	Page        OutputPage          `json:"page"`
-	Datasources []CompactDatasource `json:"datasources"`
-	Details     string              `json:"details"`
-	Help        []string            `json:"help"`
+	Status      string               `json:"status"`
+	Environment string               `json:"environment,omitempty"`
+	Site        string               `json:"site,omitempty"`
+	Page        OutputPage           `json:"page"`
+	Datasources []CompactDatasource  `json:"datasources"`
+	Details     string               `json:"details"`
+	Help        []string             `json:"help"`
+	Source      *readsource.Metadata `json:"source,omitempty"`
 }
 
 // FullResult is the bounded expanded current page.
 type FullResult struct {
-	Status      string       `json:"status"`
-	Environment string       `json:"environment,omitempty"`
-	Site        string       `json:"site,omitempty"`
-	Page        OutputPage   `json:"page"`
-	Datasources []Datasource `json:"datasources"`
-	RequestID   string       `json:"tableau_request_id,omitempty"`
-	Help        []string     `json:"help"`
+	Status      string               `json:"status"`
+	Environment string               `json:"environment,omitempty"`
+	Site        string               `json:"site,omitempty"`
+	Page        OutputPage           `json:"page"`
+	Datasources []Datasource         `json:"datasources"`
+	RequestID   string               `json:"tableau_request_id,omitempty"`
+	Help        []string             `json:"help"`
+	Source      *readsource.Metadata `json:"source,omitempty"`
 }
 
 // CompactOutput returns explicit compact fields.
@@ -121,7 +127,7 @@ func (o Output) CompactOutput() any {
 	for index, item := range o.Datasources {
 		items[index] = CompactDatasource{LUID: item.LUID, Name: item.Name, ProjectLUID: item.ProjectLUID, ProjectName: item.ProjectName, Type: item.Type, ContentURL: item.ContentURL, UpdatedAt: item.UpdatedAt}
 	}
-	return CompactResult{Status: o.Status, Environment: o.Environment, Site: o.Site, Page: o.Page, Datasources: items, Details: "--full", Help: o.Help}
+	return CompactResult{Status: o.Status, Environment: o.Environment, Site: o.Site, Page: o.Page, Datasources: items, Details: "--full", Help: o.Help, Source: o.Source}
 }
 
 // FullOutput returns the same page with bounded lifecycle metadata and tags.
@@ -134,5 +140,5 @@ func (o Output) FullOutput() any {
 			items[index].Tags = items[index].Tags[:fullTagsPerDatasourceLimit]
 		}
 	}
-	return FullResult{Status: o.Status, Environment: o.Environment, Site: o.Site, Page: o.Page, Datasources: items, RequestID: o.RequestID, Help: o.Help}
+	return FullResult{Status: o.Status, Environment: o.Environment, Site: o.Site, Page: o.Page, Datasources: items, RequestID: o.RequestID, Help: o.Help, Source: o.Source}
 }

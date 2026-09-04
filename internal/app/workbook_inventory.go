@@ -5,27 +5,78 @@ import (
 
 	workbookget "github.com/ahillspace/tadx/actions/workbook/get"
 	workbooklist "github.com/ahillspace/tadx/actions/workbook/list"
+	"github.com/ahillspace/tadx/internal/catalog"
 	"github.com/ahillspace/tadx/internal/identity"
 	resourceworkbook "github.com/ahillspace/tadx/internal/resources/workbook"
 	tableauworkbook "github.com/ahillspace/tadx/internal/tableau/workbook"
 )
 
 func (c *remoteContentCommands) ListWorkbooks(ctx context.Context, input workbooklist.Input) (workbooklist.Output, error) {
+	if input.Catalog {
+		environment, site, err := c.resolveCatalogTarget(input.Environment)
+		if err != nil {
+			return workbooklist.Output{}, err
+		}
+		input.Environment, input.Site = environment, site
+		reader := &catalogWorkbookListReader{store: c.catalogStore(), environment: environment, site: site}
+		output, err := workbooklist.New(reader).Execute(ctx, input)
+		if err == nil {
+			output.Source = reader.source
+		}
+		return output, err
+	}
 	connection, err := c.connect(ctx, input.Environment, false)
 	if err != nil {
 		return workbooklist.Output{}, remoteSetupError("workbook.list", input.Environment, input.Site, connection.environment, err)
 	}
 	input.Environment, input.Site = connection.environment.Alias, connection.environment.SiteContentURL
-	return workbooklist.New(workbookListReader{adapter: connection.workbooks}).Execute(ctx, input)
+	output, err := workbooklist.New(workbookListReader{adapter: connection.workbooks}).Execute(ctx, input)
+	if err != nil {
+		return output, err
+	}
+	observedAt := c.runtime.now().UTC()
+	output.Source = liveSource(c.runtime.now)
+	entries := make([]catalog.ResourceEntry, 0, len(output.Workbooks))
+	for _, item := range output.Workbooks {
+		entry, encodeErr := resourceEntry(input.Environment, input.Site, "workbook", item.LUID, item.Name, item.ProjectPath, item.OwnerLUID, "summary", observedAt, item)
+		if encodeErr == nil {
+			entries = append(entries, entry)
+		}
+	}
+	writeThrough(c.catalogStore(), entries)
+	return output, nil
 }
 
 func (c *remoteContentCommands) GetWorkbook(ctx context.Context, input workbookget.Input) (workbookget.Output, error) {
+	if input.Catalog {
+		environment, site, err := c.resolveCatalogTarget(input.Environment)
+		if err != nil {
+			return workbookget.Output{}, err
+		}
+		input.Environment, input.Site = environment, site
+		resolver := &catalogWorkbookGetResolver{store: c.catalogStore(), environment: environment, site: site}
+		output, err := workbookget.New(resolver).Execute(ctx, input)
+		if err == nil {
+			output.Source = resolver.source
+		}
+		return output, err
+	}
 	connection, err := c.connect(ctx, input.Environment, false)
 	if err != nil {
 		return workbookget.Output{}, remoteSetupError("workbook.get", input.Environment, input.Site, connection.environment, err)
 	}
 	input.Environment, input.Site = connection.environment.Alias, connection.environment.SiteContentURL
-	return workbookget.New(workbookGetResolver{adapter: connection.workbooks}).Execute(ctx, input)
+	output, err := workbookget.New(workbookGetResolver{adapter: connection.workbooks}).Execute(ctx, input)
+	if err != nil {
+		return output, err
+	}
+	observedAt := c.runtime.now().UTC()
+	output.Source = liveSource(c.runtime.now)
+	entry, encodeErr := resourceEntry(input.Environment, input.Site, "workbook", output.Workbook.LUID, output.Workbook.Name, output.Workbook.ProjectPath, output.Workbook.OwnerLUID, "detail", observedAt, output.Workbook)
+	if encodeErr == nil {
+		writeThrough(c.catalogStore(), []catalog.ResourceEntry{entry})
+	}
+	return output, nil
 }
 
 type workbookInventoryAdapter interface {

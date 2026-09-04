@@ -5,7 +5,6 @@ import (
 	"reflect"
 	"testing"
 
-	catalogget "github.com/ahillspace/tadx/actions/catalog/get"
 	catalogrefresh "github.com/ahillspace/tadx/actions/catalog/refresh"
 	catalogsearch "github.com/ahillspace/tadx/actions/catalog/search"
 	catalogstatus "github.com/ahillspace/tadx/actions/catalog/status"
@@ -14,7 +13,6 @@ import (
 
 type actions struct {
 	refreshInputs []catalogrefresh.Input
-	getInputs     []catalogget.Input
 	statusInputs  []catalogstatus.Input
 }
 
@@ -23,13 +21,6 @@ type refresher struct{ actions *actions }
 func (r refresher) Execute(_ context.Context, input catalogrefresh.Input) (catalogrefresh.Output, error) {
 	r.actions.refreshInputs = append(r.actions.refreshInputs, input)
 	return catalogrefresh.Output{}, nil
-}
-
-type getter struct{ actions *actions }
-
-func (g getter) Execute(_ context.Context, input catalogget.Input) (catalogget.Output, error) {
-	g.actions.getInputs = append(g.actions.getInputs, input)
-	return catalogget.Output{}, nil
 }
 
 type statuser struct{ actions *actions }
@@ -49,10 +40,10 @@ type renderer struct{}
 
 func (renderer) Render(any) error { return nil }
 
-func TestCatalogMountsRefreshGetAndStatusWithBoundedInputs(t *testing.T) {
+func TestCatalogMountsRefreshAndStatusWithBoundedInputs(t *testing.T) {
 	recorded := &actions{}
 	command := catalogcli.New(catalogcli.Dependencies{
-		Searcher: searcher{}, Refresher: refresher{recorded}, Getter: getter{recorded}, Statuser: statuser{recorded}, Renderer: renderer{},
+		Searcher: searcher{}, Refresher: refresher{recorded}, Statuser: statuser{recorded}, Renderer: renderer{},
 	})
 
 	command.SetArgs([]string{"refresh", "--environment", "production", "--site", "marketing"})
@@ -73,14 +64,6 @@ func TestCatalogMountsRefreshGetAndStatusWithBoundedInputs(t *testing.T) {
 		t.Fatalf("scoped refresh inputs = %#v", recorded.refreshInputs)
 	}
 
-	command.SetArgs([]string{"get", "--environment", "production", "--site", "marketing", "--kind", "workbook", "--id", "wb-1"})
-	if err := command.Execute(); err != nil {
-		t.Fatal(err)
-	}
-	if len(recorded.getInputs) != 1 || recorded.getInputs[0].LUID != "wb-1" || recorded.getInputs[0].Kind != "workbook" {
-		t.Fatalf("get inputs = %#v", recorded.getInputs)
-	}
-
 	command.SetArgs([]string{"status", "--environment", "production", "--site", "marketing"})
 	if err := command.Execute(); err != nil {
 		t.Fatal(err)
@@ -91,13 +74,13 @@ func TestCatalogMountsRefreshGetAndStatusWithBoundedInputs(t *testing.T) {
 }
 
 func TestCatalogDoesNotMountGatedContentCommands(t *testing.T) {
-	command := catalogcli.New(catalogcli.Dependencies{Searcher: searcher{}, Refresher: refresher{&actions{}}, Getter: getter{&actions{}}, Statuser: statuser{&actions{}}, Renderer: renderer{}})
-	for _, name := range []string{"search", "refresh", "get", "status"} {
+	command := catalogcli.New(catalogcli.Dependencies{Searcher: searcher{}, Refresher: refresher{&actions{}}, Statuser: statuser{&actions{}}, Renderer: renderer{}})
+	for _, name := range []string{"search", "refresh", "status"} {
 		if child, _, err := command.Find([]string{name}); err != nil || child == command || child.Name() != name {
 			t.Fatalf("catalog command %q missing: child=%v err=%v", name, child, err)
 		}
 	}
-	for _, name := range []string{"content-search", "content-get"} {
+	for _, name := range []string{"get", "content-search", "content-get"} {
 		if child, _, err := command.Find([]string{name}); err == nil && child != command {
 			t.Fatalf("gated command %q was mounted", name)
 		}

@@ -5,6 +5,7 @@ import (
 	"errors"
 
 	"github.com/ahillspace/tadx/internal/errs"
+	"github.com/ahillspace/tadx/internal/readsource"
 )
 
 const memberLimit = 100
@@ -14,6 +15,7 @@ type Input struct {
 	Environment, Site string
 	Selector          Selector
 	IncludeMembers    bool
+	Catalog           bool
 }
 
 func (i *Input) SetSelector(luid, name string) { i.Selector = Selector{LUID: luid, Name: name} }
@@ -39,6 +41,7 @@ type Output struct {
 	Group                     Group
 	RequestID                 string
 	Help                      []string
+	Source                    *readsource.Metadata
 }
 type CompactGroup struct {
 	LUID        string `json:"luid"`
@@ -47,24 +50,26 @@ type CompactGroup struct {
 	MemberCount int    `json:"member_count,omitempty"`
 }
 type CompactResult struct {
-	Status      string       `json:"status"`
-	Environment string       `json:"environment,omitempty"`
-	Site        string       `json:"site,omitempty"`
-	Group       CompactGroup `json:"group"`
-	Details     string       `json:"details"`
-	Help        []string     `json:"help"`
+	Status      string               `json:"status"`
+	Environment string               `json:"environment,omitempty"`
+	Site        string               `json:"site,omitempty"`
+	Group       CompactGroup         `json:"group"`
+	Details     string               `json:"details"`
+	Help        []string             `json:"help"`
+	Source      *readsource.Metadata `json:"source,omitempty"`
 }
 type FullResult struct {
-	Status      string   `json:"status"`
-	Environment string   `json:"environment,omitempty"`
-	Site        string   `json:"site,omitempty"`
-	Group       Group    `json:"group"`
-	RequestID   string   `json:"tableau_request_id,omitempty"`
-	Help        []string `json:"help"`
+	Status      string               `json:"status"`
+	Environment string               `json:"environment,omitempty"`
+	Site        string               `json:"site,omitempty"`
+	Group       Group                `json:"group"`
+	RequestID   string               `json:"tableau_request_id,omitempty"`
+	Help        []string             `json:"help"`
+	Source      *readsource.Metadata `json:"source,omitempty"`
 }
 
 func (o Output) CompactOutput() any {
-	return CompactResult{Status: o.Status, Environment: o.Environment, Site: o.Site, Group: CompactGroup{LUID: o.Group.LUID, Name: o.Group.Name, Domain: o.Group.Domain, MemberCount: len(o.Group.Members)}, Details: "--full", Help: o.Help}
+	return CompactResult{Status: o.Status, Environment: o.Environment, Site: o.Site, Group: CompactGroup{LUID: o.Group.LUID, Name: o.Group.Name, Domain: o.Group.Domain, MemberCount: len(o.Group.Members)}, Details: "--full", Help: o.Help, Source: o.Source}
 }
 func (o Output) FullOutput() any {
 	g := o.Group
@@ -73,7 +78,7 @@ func (o Output) FullOutput() any {
 		g.MembersOmitted = len(g.Members) - memberLimit
 		g.Members = g.Members[:memberLimit]
 	}
-	return FullResult{Status: o.Status, Environment: o.Environment, Site: o.Site, Group: g, RequestID: o.RequestID, Help: o.Help}
+	return FullResult{Status: o.Status, Environment: o.Environment, Site: o.Site, Group: g, RequestID: o.RequestID, Help: o.Help, Source: o.Source}
 }
 
 type Resolver interface {

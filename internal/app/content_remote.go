@@ -19,6 +19,7 @@ import (
 	projectupdate "github.com/ahillspace/tadx/actions/project/update"
 	workbookdelete "github.com/ahillspace/tadx/actions/workbook/delete"
 	"github.com/ahillspace/tadx/internal/artifact"
+	"github.com/ahillspace/tadx/internal/catalog"
 	contentcli "github.com/ahillspace/tadx/internal/cli/content"
 	"github.com/ahillspace/tadx/internal/config"
 	"github.com/ahillspace/tadx/internal/identity"
@@ -43,7 +44,7 @@ func newRemoteContentCommands(runtime *runtimeDependencies) *remoteContentComman
 func (c *remoteContentCommands) dependencies() *contentcli.Dependencies {
 	return &contentcli.Dependencies{
 		WorkbookLister: c, WorkbookGetter: c, WorkbookDeleter: c,
-		DatasourceLister: c, DatasourceGetter: c, DatasourcePuller: c, DatasourcePublisher: c, DatasourceDeleter: c,
+		DatasourceLister: c, DatasourceGetter: c, DatasourceSchema: c, DatasourcePuller: c, DatasourcePublisher: c, DatasourceDeleter: c,
 		ProjectLister: c, ProjectGetter: c, ProjectCreator: c, ProjectUpdater: c,
 		FlowLister: c, FlowGetter: c, FlowPuller: c, FlowPublisher: c, FlowMover: c, FlowDeleter: c,
 		LineagePuller: c,
@@ -87,21 +88,71 @@ func (c *remoteContentCommands) connect(ctx context.Context, alias string, expli
 }
 
 func (c *remoteContentCommands) ListProjects(ctx context.Context, input projectlist.Input) (projectlist.Output, error) {
+	if input.Catalog {
+		environment, site, err := c.resolveCatalogTarget(input.Environment)
+		if err != nil {
+			return projectlist.Output{}, err
+		}
+		input.Environment, input.Site = environment, site
+		reader := &catalogProjectListReader{store: c.catalogStore(), environment: environment, site: site}
+		output, err := projectlist.New(reader).Execute(ctx, input)
+		if err == nil {
+			output.Source = reader.source
+		}
+		return output, err
+	}
 	connection, err := c.connect(ctx, input.Environment, false)
 	if err != nil {
 		return projectlist.Output{}, remoteSetupError("project.list", input.Environment, input.Site, connection.environment, err)
 	}
 	input.Environment, input.Site = connection.environment.Alias, connection.environment.SiteContentURL
-	return projectlist.New(projectListReader{connection.projects}).Execute(ctx, input)
+	output, err := projectlist.New(projectListReader{connection.projects}).Execute(ctx, input)
+	if err != nil {
+		return output, err
+	}
+	observedAt := c.runtime.now().UTC()
+	output.Source = liveSource(c.runtime.now)
+	entries := make([]catalog.ResourceEntry, 0, len(output.Projects))
+	for _, item := range output.Projects {
+		entry, encodeErr := resourceEntry(input.Environment, input.Site, "project", item.LUID, item.Name, "", item.OwnerLUID, "summary", observedAt, item)
+		if encodeErr == nil {
+			entries = append(entries, entry)
+		}
+	}
+	writeThrough(c.catalogStore(), entries)
+	return output, nil
 }
 
 func (c *remoteContentCommands) GetProject(ctx context.Context, input projectget.Input) (projectget.Output, error) {
+	if input.Catalog {
+		environment, site, err := c.resolveCatalogTarget(input.Environment)
+		if err != nil {
+			return projectget.Output{}, err
+		}
+		input.Environment, input.Site = environment, site
+		resolver := &catalogProjectGetResolver{store: c.catalogStore(), environment: environment, site: site}
+		output, err := projectget.New(resolver).Execute(ctx, input)
+		if err == nil {
+			output.Source = resolver.source
+		}
+		return output, err
+	}
 	connection, err := c.connect(ctx, input.Environment, false)
 	if err != nil {
 		return projectget.Output{}, remoteSetupError("project.get", input.Environment, input.Site, connection.environment, err)
 	}
 	input.Environment, input.Site = connection.environment.Alias, connection.environment.SiteContentURL
-	return projectget.New(projectGetResolver{connection.projects}).Execute(ctx, input)
+	output, err := projectget.New(projectGetResolver{connection.projects}).Execute(ctx, input)
+	if err != nil {
+		return output, err
+	}
+	observedAt := c.runtime.now().UTC()
+	output.Source = liveSource(c.runtime.now)
+	entry, encodeErr := resourceEntry(input.Environment, input.Site, "project", output.Project.LUID, output.Project.Name, output.Project.Path, output.Project.OwnerLUID, "detail", observedAt, output.Project)
+	if encodeErr == nil {
+		writeThrough(c.catalogStore(), []catalog.ResourceEntry{entry})
+	}
+	return output, nil
 }
 
 func (c *remoteContentCommands) CreateProject(ctx context.Context, input projectcreate.Input, apply bool) (projectcreate.Output, error) {
@@ -125,21 +176,71 @@ func (c *remoteContentCommands) UpdateProject(ctx context.Context, input project
 }
 
 func (c *remoteContentCommands) ListFlows(ctx context.Context, input flowlist.Input) (flowlist.Output, error) {
+	if input.Catalog {
+		environment, site, err := c.resolveCatalogTarget(input.Environment)
+		if err != nil {
+			return flowlist.Output{}, err
+		}
+		input.Environment, input.Site = environment, site
+		reader := &catalogFlowListReader{store: c.catalogStore(), environment: environment, site: site}
+		output, err := flowlist.New(reader).Execute(ctx, input)
+		if err == nil {
+			output.Source = reader.source
+		}
+		return output, err
+	}
 	connection, err := c.connect(ctx, input.Environment, false)
 	if err != nil {
 		return flowlist.Output{}, remoteSetupError("flow.list", input.Environment, input.Site, connection.environment, err)
 	}
 	input.Environment, input.Site = connection.environment.Alias, connection.environment.SiteContentURL
-	return flowlist.New(flowListReader{connection.flows}).Execute(ctx, input)
+	output, err := flowlist.New(flowListReader{connection.flows}).Execute(ctx, input)
+	if err != nil {
+		return output, err
+	}
+	observedAt := c.runtime.now().UTC()
+	output.Source = liveSource(c.runtime.now)
+	entries := make([]catalog.ResourceEntry, 0, len(output.Flows))
+	for _, item := range output.Flows {
+		entry, encodeErr := resourceEntry(input.Environment, input.Site, "flow", item.LUID, item.Name, "", item.OwnerLUID, "summary", observedAt, item)
+		if encodeErr == nil {
+			entries = append(entries, entry)
+		}
+	}
+	writeThrough(c.catalogStore(), entries)
+	return output, nil
 }
 
 func (c *remoteContentCommands) GetFlow(ctx context.Context, input flowget.Input) (flowget.Output, error) {
+	if input.Catalog {
+		environment, site, err := c.resolveCatalogTarget(input.Environment)
+		if err != nil {
+			return flowget.Output{}, err
+		}
+		input.Environment, input.Site = environment, site
+		resolver := &catalogFlowGetResolver{store: c.catalogStore(), environment: environment, site: site}
+		output, err := flowget.New(resolver).Execute(ctx, input)
+		if err == nil {
+			output.Source = resolver.source
+		}
+		return output, err
+	}
 	connection, err := c.connect(ctx, input.Environment, false)
 	if err != nil {
 		return flowget.Output{}, remoteSetupError("flow.get", input.Environment, input.Site, connection.environment, err)
 	}
 	input.Environment, input.Site = connection.environment.Alias, connection.environment.SiteContentURL
-	return flowget.New(flowGetResolver{connection.flows}).Execute(ctx, input)
+	output, err := flowget.New(flowGetResolver{connection.flows}).Execute(ctx, input)
+	if err != nil {
+		return output, err
+	}
+	observedAt := c.runtime.now().UTC()
+	output.Source = liveSource(c.runtime.now)
+	entry, encodeErr := resourceEntry(input.Environment, input.Site, "flow", output.Flow.LUID, output.Flow.Name, output.Flow.ProjectPath, output.Flow.OwnerLUID, "detail", observedAt, output.Flow)
+	if encodeErr == nil {
+		writeThrough(c.catalogStore(), []catalog.ResourceEntry{entry})
+	}
+	return output, nil
 }
 
 func (c *remoteContentCommands) PullFlow(ctx context.Context, input flowpull.Input) (flowpull.Output, error) {

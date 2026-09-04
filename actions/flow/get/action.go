@@ -2,6 +2,7 @@ package get
 
 import (
 	"context"
+	"errors"
 
 	"github.com/ahillspace/tadx/internal/errs"
 	"github.com/ahillspace/tadx/internal/identity"
@@ -23,6 +24,10 @@ func (a *Action) Execute(ctx context.Context, input Input) (Output, error) {
 	}
 	flow, err := a.resolver.ResolveFlow(ctx, input.Selector)
 	if err != nil {
+		var structured *errs.Error
+		if errors.As(err, &structured) {
+			return Output{}, err
+		}
 		retryable, correctiveAction := errs.CompleteRetryAdvice(err, "Review the exact flow selector, then retry.")
 		return Output{}, &errs.Error{ID: "flow.get.resolve", Kind: errs.KindOperation, Operation: "flow.get", Environment: input.Environment, Site: input.Site, Summary: "Flow resolution failed.", Cause: err, Retryable: retryable, CorrectiveAction: correctiveAction, TableauRequestID: errs.TableauRequestID(err)}
 	}

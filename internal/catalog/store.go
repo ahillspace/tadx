@@ -28,7 +28,7 @@ const (
 	maxBatchRows         = 10_000
 	maxFieldBytes        = 64 << 10
 	staleAfter           = 12 * time.Hour
-	schemaVersion        = 1
+	schemaVersion        = 2
 	databaseRelativePath = "catalog/catalog.sqlite"
 	// generationTimeLayout is a fixed-width RFC3339 form: unlike time.RFC3339Nano
 	// (which trims trailing fractional-second zeros and so varies in width), every
@@ -56,6 +56,45 @@ type Record struct {
 	Name        string `json:"name"`
 	ProjectPath string `json:"project_path,omitempty"`
 	Owner       string `json:"owner,omitempty"`
+}
+
+// ResourceEntry is one resource projection available to explicit catalog reads.
+// Payload contains opaque JSON supplied by the composition root. Catalog
+// storage never interprets its contents.
+type ResourceEntry struct {
+	Environment string
+	Site        string
+	Kind        string
+	LUID        string
+	Name        string
+	ProjectPath string
+	Owner       string
+	Payload     []byte
+	Coverage    string
+	ObservedAt  time.Time
+}
+
+// ResourceQuery selects one bounded page from the local read-through index.
+type ResourceQuery struct {
+	Environment string
+	Site        string
+	Kind        string
+	LUID        string
+	Name        string
+	ProjectPath string
+	Offset      int
+	Limit       int
+}
+
+// ResourceResult contains a local page and its snapshot coverage provenance.
+type ResourceResult struct {
+	Entries        []ResourceEntry
+	Total          int
+	Coverage       string
+	GenerationID   string
+	GeneratedAt    time.Time
+	NewestObserved time.Time
+	Stale          bool
 }
 type Generation struct {
 	ID, Environment, Site    string
@@ -146,6 +185,18 @@ func (e unavailableScopeError) Error() string {
 	return fmt.Sprintf("catalog scope %q is not present in the current generation", e.scope)
 }
 func (unavailableScopeError) CatalogScopeUnavailable() bool { return true }
+
+type uninitializedError struct{}
+
+func (uninitializedError) Error() string {
+	return "catalog is not initialized for the selected environment and site"
+}
+func (uninitializedError) CatalogUninitialized() bool { return true }
+
+type resourceNotFoundError struct{}
+
+func (resourceNotFoundError) Error() string                 { return "catalog resource was not found" }
+func (resourceNotFoundError) CatalogResourceNotFound() bool { return true }
 
 type duplicateScopeError struct{ scope string }
 
@@ -511,6 +562,9 @@ func currentGeneration(ctx context.Context, q queryRower, environment, site stri
 	var generated string
 	err := q.QueryRowContext(ctx, `SELECT g.generation_key,g.id,g.environment,g.site,g.generated_at,g.source,g.record_count FROM current_generations c JOIN generations g ON g.generation_key=c.generation_key WHERE c.environment=? AND c.site=? AND g.complete=1`, environment, site).Scan(&m.key, &m.id, &m.environment, &m.site, &generated, &m.source, &m.recordCount)
 	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return m, sql.ErrNoRows
+		}
 		return m, fmt.Errorf("read current catalog generation for environment %q and site %q: %w", environment, site, err)
 	}
 	m.generatedAt, err = time.Parse(generationTimeLayout, generated)

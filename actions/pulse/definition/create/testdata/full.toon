@@ -1,0 +1,55 @@
+plan:
+  mode: preview
+  operation: pulse.definition.create
+  name: Revenue
+  datasource_luid: datasource-1
+  measure:
+    field: Sales
+    aggregation: AGGREGATION_SUM
+  time_dimension: Order Date
+  allowed_dimensions[1]: Region
+  request_fingerprint: "sha256:value"
+  request:
+    name: Revenue
+    description: Recognized revenue
+    specification:
+      datasource:
+        id: datasource-1
+      basic_specification:
+        measure:
+          field: Sales
+          aggregation: AGGREGATION_SUM
+        time_dimension:
+          field: Order Date
+        filters: []
+      is_running_total: false
+      temporality: TEMPORALITY_OVER_TIME
+    extension_options:
+      allowed_dimensions[1]: Region
+      allowed_granularities[1]: GRANULARITY_BY_MONTH
+      offset_from_today: 0
+      use_dynamic_offset: false
+    representation_options:
+      type: NUMBER_FORMAT_TYPE_CURRENCY
+      sentiment_type: SENTIMENT_TYPE_UP_IS_GOOD
+      currency_code: CURRENCY_CODE_USD
+    insights_options:
+      show_insights: true
+      settings[1]{type,disabled}:
+        INSIGHT_TYPE_TOP_DRIVERS,false
+    comparisons:
+      comparisons[1]{compare_config{comparison},index}:
+        TIME_COMPARISON_PREVIOUS_PERIOD,0
+    datasource_goals: []
+    related_links: []
+    certification:
+      is_certified: false
+applied: true
+result:
+  status: succeeded
+  definition_luid: definition-1
+  default_metric_luid: metric-1
+  default_metric_status: ready
+  tableau_request_id: request-1
+  poll_request_id: poll-1
+help[1]: tadx pulse metric get --id metric-1

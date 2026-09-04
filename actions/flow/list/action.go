@@ -105,7 +105,8 @@ func flowFilterFingerprint(input Input) (string, error) {
 		OwnerName   string `json:"owner_name"`
 		ProjectLUID string `json:"project_luid"`
 		ProjectName string `json:"project_name"`
-	}{Environment: input.Environment, Site: input.Site, Name: input.Name, OwnerName: input.OwnerName, ProjectLUID: input.ProjectLUID, ProjectName: input.ProjectName})
+		Catalog     bool   `json:"catalog"`
+	}{Environment: input.Environment, Site: input.Site, Name: input.Name, OwnerName: input.OwnerName, ProjectLUID: input.ProjectLUID, ProjectName: input.ProjectName, Catalog: input.Catalog})
 	if err != nil {
 		return "", err
 	}
