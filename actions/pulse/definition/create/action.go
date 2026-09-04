@@ -100,7 +100,7 @@ func (a *Action) Apply(ctx context.Context, input Input, plan Plan) (CreateResul
 		AllowedDimensions: append([]string(nil), plan.Request.ExtensionOptions.AllowedDimensions...),
 	}
 	if err := a.validator.ValidateDefinitionFields(ctx, references); err != nil {
-		return CreateResult{}, &errs.Error{ID: "pulse.definition.create.target_changed", Kind: errs.KindOperation, Operation: "pulse.definition.create", Environment: input.Environment, Site: input.Site, Summary: "Pulse definition field state changed after preview.", Cause: err, Retryable: errs.Bool(false), CorrectiveAction: "Inspect current datasource fields, then review a new definition preview.", TableauRequestID: errs.TableauRequestID(err)}
+		return CreateResult{}, &errs.Error{ID: "pulse.definition.create.target_changed", Kind: errs.KindOperation, Operation: "pulse.definition.create", Environment: input.Environment, Site: input.Site, Summary: "Pulse definition field state changed during revalidation.", Cause: err, Retryable: errs.Bool(false), CorrectiveAction: "Inspect current datasource fields, then review a new definition preview.", TableauRequestID: errs.TableauRequestID(err)}
 	}
 	if err := a.checkCollision(ctx, input, plan.Request); err != nil {
 		return CreateResult{}, err
@@ -119,23 +119,23 @@ func (a *Action) Apply(ctx context.Context, input Input, plan Plan) (CreateResul
 	return result, nil
 }
 
-// Execute previews every call and applies only when explicitly requested.
-func (a *Action) Execute(ctx context.Context, input Input, apply bool) (Output, error) {
+// Execute plans every call and creates unless preview is requested.
+func (a *Action) Execute(ctx context.Context, input Input, preview bool) (Output, error) {
 	plan, err := a.Plan(ctx, input)
 	if err != nil {
 		return Output{}, err
 	}
-	output := Output{Plan: plan, Applied: false, Help: []string{"Re-run with --apply to create this Pulse definition."}}
-	if !apply {
+	output := Output{Plan: plan, Help: []string{"Run without --preview to create this Pulse definition."}}
+	if preview {
 		return output, nil
 	}
+	output.Plan.Mode = "execute"
 	result, err := a.Apply(ctx, input, plan)
 	if err != nil {
 		return Output{}, err
 	}
-	output.Applied = true
 	output.Result = &result
-	output.Help = []string{"tadx pulse metric get --id " + result.DefaultMetricLUID}
+	output.Help = []string{"tadx pulse metric inspect --id " + result.DefaultMetricLUID}
 	return output, nil
 }
 

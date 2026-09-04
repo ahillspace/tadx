@@ -61,10 +61,9 @@ type Result struct {
 
 // Output retains complete details before projection.
 type Output struct {
-	Plan    Plan     `json:"plan"`
-	Applied bool     `json:"applied"`
-	Result  *Result  `json:"result,omitempty"`
-	Help    []string `json:"help"`
+	Plan   Plan     `json:"plan"`
+	Result *Result  `json:"result,omitempty"`
+	Help   []string `json:"help"`
 }
 
 // CompactProject is the exact identity needed by a later action.
@@ -84,7 +83,6 @@ type CompactMutationResult struct {
 // CompactResult is the default projection.
 type CompactResult struct {
 	Plan    Plan                   `json:"plan"`
-	Applied bool                   `json:"applied"`
 	Result  *CompactMutationResult `json:"result,omitempty"`
 	Details string                 `json:"details"`
 	Help    []string               `json:"help"`
@@ -99,7 +97,7 @@ func (o Output) CompactOutput() any {
 	if o.Result != nil {
 		result = &CompactMutationResult{Status: o.Result.Status, Project: CompactProject{LUID: o.Result.Project.LUID, Name: o.Result.Project.Name, Path: o.Result.Project.Path, ParentLUID: o.Result.Project.ParentLUID}}
 	}
-	return CompactResult{Plan: o.Plan, Applied: o.Applied, Result: result, Details: "--full", Help: o.Help}
+	return CompactResult{Plan: o.Plan, Result: result, Details: "--full", Help: o.Help}
 }
 
 // FullOutput returns bounded mutation details.

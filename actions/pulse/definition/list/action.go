@@ -72,7 +72,7 @@ func (a *Action) Execute(ctx context.Context, input Input) (Output, error) {
 		Status: "listed", Environment: input.Environment, Site: input.Site,
 		Page:        OutputPage{Returned: len(page.Definitions), Limit: limit, NextCursor: next},
 		Definitions: page.Definitions, RequestID: page.RequestID,
-		Help: []string{"tadx pulse definition get --id <definition-luid>"},
+		Help: []string{"tadx pulse definition inspect --id <definition-luid>"},
 	}, nil
 }
 

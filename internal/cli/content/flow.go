@@ -5,7 +5,7 @@ import (
 	"errors"
 
 	flowdelete "github.com/ahillspace/tadx/actions/flow/delete"
-	flowget "github.com/ahillspace/tadx/actions/flow/get"
+	flowinspect "github.com/ahillspace/tadx/actions/flow/inspect"
 	flowlist "github.com/ahillspace/tadx/actions/flow/list"
 	flowmove "github.com/ahillspace/tadx/actions/flow/move"
 	flowpublish "github.com/ahillspace/tadx/actions/flow/publish"
@@ -17,8 +17,8 @@ import (
 type FlowLister interface {
 	ListFlows(context.Context, flowlist.Input) (flowlist.Output, error)
 }
-type FlowGetter interface {
-	GetFlow(context.Context, flowget.Input) (flowget.Output, error)
+type FlowInspector interface {
+	InspectFlow(context.Context, flowinspect.Input) (flowinspect.Output, error)
 }
 type FlowPuller interface {
 	PullFlow(context.Context, flowpull.Input) (flowpull.Output, error)
@@ -35,7 +35,7 @@ type FlowDeleter interface {
 
 func newFlow(deps Dependencies) *cobra.Command {
 	command := &cobra.Command{Use: "flow", Short: "Operate Tableau flows"}
-	command.AddCommand(newFlowList(deps), newFlowGet(deps), newFlowPull(deps), newFlowPublish(deps), newFlowMove(deps), newFlowDelete(deps))
+	command.AddCommand(newFlowList(deps), newFlowInspect(deps), newFlowPull(deps), newFlowPublish(deps), newFlowMove(deps), newFlowDelete(deps))
 	return command
 }
 
@@ -59,11 +59,11 @@ func newFlowList(deps Dependencies) *cobra.Command {
 	return command
 }
 
-func newFlowGet(deps Dependencies) *cobra.Command {
-	var input flowget.Input
+func newFlowInspect(deps Dependencies) *cobra.Command {
+	var input flowinspect.Input
 	var luid, name, projectPath string
-	command := &cobra.Command{Use: "get", Short: "Inspect one exact flow.", Annotations: map[string]string{"tadx.capability": "flow.get"}, Args: selectorArgs("flow.get", &luid, &name, &projectPath, input.SetSelector), RunE: func(command *cobra.Command, _ []string) error {
-		result, err := deps.FlowGetter.GetFlow(command.Context(), input)
+	command := &cobra.Command{Use: "inspect", Short: "Inspect one exact flow.", Annotations: map[string]string{"tadx.capability": "flow.inspect"}, Args: selectorArgs("flow.inspect", &luid, &name, &projectPath, input.SetSelector), RunE: func(command *cobra.Command, _ []string) error {
+		result, err := deps.FlowInspector.InspectFlow(command.Context(), input)
 		if err != nil {
 			return err
 		}
@@ -93,8 +93,8 @@ func newFlowPull(deps Dependencies) *cobra.Command {
 func newFlowPublish(deps Dependencies) *cobra.Command {
 	var input flowpublish.Input
 	var projectLUID, projectPath string
-	var apply bool
-	command := &cobra.Command{Use: "publish", Short: "Preview or publish one native flow artifact.", Annotations: map[string]string{"tadx.capability": "flow.publish"}, Args: func(command *cobra.Command, args []string) error {
+	var preview bool
+	command := &cobra.Command{Use: "publish", Short: "Publish one native flow artifact.", Annotations: map[string]string{"tadx.capability": "flow.publish"}, Args: func(command *cobra.Command, args []string) error {
 		if err := noContentArgs("flow.publish")(command, args); err != nil {
 			return err
 		}
@@ -110,7 +110,7 @@ func newFlowPublish(deps Dependencies) *cobra.Command {
 		input.SetProjectSelector(projectLUID, projectPath)
 		return nil
 	}, RunE: func(command *cobra.Command, _ []string) error {
-		result, err := deps.FlowPublisher.PublishFlow(command.Context(), input, apply)
+		result, err := deps.FlowPublisher.PublishFlow(command.Context(), input, preview)
 		if err != nil {
 			return err
 		}
@@ -123,15 +123,15 @@ func newFlowPublish(deps Dependencies) *cobra.Command {
 	command.Flags().StringVar(&projectLUID, "project-id", "", "authoritative destination project LUID")
 	command.Flags().StringVar(&projectPath, "project", "", "exact destination project path")
 	command.Flags().BoolVar(&input.Overwrite, "overwrite", false, "replace the exact colliding flow")
-	command.Flags().BoolVar(&apply, "apply", false, "apply the previewed remote mutation")
+	command.Flags().BoolVar(&preview, "preview", false, "preview the remote mutation without performing it")
 	return command
 }
 
 func newFlowMove(deps Dependencies) *cobra.Command {
 	var input flowmove.Input
 	var flowLUID, name, sourceProject, projectLUID, projectPath string
-	var apply bool
-	command := &cobra.Command{Use: "move", Short: "Preview or move one exact flow.", Annotations: map[string]string{"tadx.capability": "flow.move"}, Args: func(command *cobra.Command, args []string) error {
+	var preview bool
+	command := &cobra.Command{Use: "move", Short: "Move one exact flow.", Annotations: map[string]string{"tadx.capability": "flow.move"}, Args: func(command *cobra.Command, args []string) error {
 		if err := selectorArgs("flow.move", &flowLUID, &name, &sourceProject, input.SetFlowSelector)(command, args); err != nil {
 			return err
 		}
@@ -144,7 +144,7 @@ func newFlowMove(deps Dependencies) *cobra.Command {
 		input.SetProjectSelector(projectLUID, projectPath)
 		return nil
 	}, RunE: func(command *cobra.Command, _ []string) error {
-		result, err := deps.FlowMover.MoveFlow(command.Context(), input, apply)
+		result, err := deps.FlowMover.MoveFlow(command.Context(), input, preview)
 		if err != nil {
 			return err
 		}
@@ -153,15 +153,15 @@ func newFlowMove(deps Dependencies) *cobra.Command {
 	readTargetFlags(command, &input.Environment, &flowLUID, &name, &sourceProject)
 	command.Flags().StringVar(&projectLUID, "destination-project-id", "", "authoritative destination project LUID")
 	command.Flags().StringVar(&projectPath, "destination-project", "", "exact destination project path")
-	command.Flags().BoolVar(&apply, "apply", false, "apply the previewed remote mutation")
+	command.Flags().BoolVar(&preview, "preview", false, "preview the remote mutation without performing it")
 	return command
 }
 
 func newFlowDelete(deps Dependencies) *cobra.Command {
 	var input flowdelete.Input
 	var luid, name, projectPath string
-	var apply bool
-	command := &cobra.Command{Use: "delete", Short: "Preview or delete one exact remote flow.", Annotations: map[string]string{"tadx.capability": "flow.delete"}, Args: func(command *cobra.Command, args []string) error {
+	var preview bool
+	command := &cobra.Command{Use: "delete", Short: "Delete one exact remote flow.", Annotations: map[string]string{"tadx.capability": "flow.delete"}, Args: func(command *cobra.Command, args []string) error {
 		if err := selectorArgs("flow.delete", &luid, &name, &projectPath, input.SetSelector)(command, args); err != nil {
 			return err
 		}
@@ -170,14 +170,14 @@ func newFlowDelete(deps Dependencies) *cobra.Command {
 		}
 		return nil
 	}, RunE: func(command *cobra.Command, _ []string) error {
-		result, err := deps.FlowDeleter.DeleteFlow(command.Context(), input, apply)
+		result, err := deps.FlowDeleter.DeleteFlow(command.Context(), input, preview)
 		if err != nil {
 			return err
 		}
 		return deps.Renderer.Render(result)
 	}}
 	readTargetFlags(command, &input.Environment, &luid, &name, &projectPath)
-	command.Flags().BoolVar(&apply, "apply", false, "apply the previewed remote deletion")
+	command.Flags().BoolVar(&preview, "preview", false, "preview the remote deletion without performing it")
 	return command
 }
 

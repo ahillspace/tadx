@@ -38,24 +38,23 @@ Do not start any resource slice before this gate closes.
 
 Scope: prove the whole spine end to end on one narrow path before broad fan-out.
 
-The slice: auth check, then catalog search (or content search), then workbook pull, then workbook publish (preview and apply), all driven through the registry, rendered in TOON, under the evidence gate.
+The slice: auth check, then search, then workbook pull, then workbook publish with optional preview, all driven through the registry, rendered in TOON, under the evidence gate.
 
-Why this slice: it exercises PAT sign-in, the transport, REST read, pagination, identity resolution, the artifact model (pull), and preview/apply plus async upload (publish). If the spine holds here, it holds for the rest.
+Why this slice: it exercises PAT sign-in, transport, REST reads, pagination, identity resolution, artifact pull, optional preview, and asynchronous publish.
 
 Building the slice also builds and freezes the shared spine:
 - Tableau transport (HTTP execution, base URL, request authorization, standard headers, correlation and Tableau request IDs, response reading, upstream error capture, redaction). Port from the trusted Go inventory implementation.
 - The first REST client family and the first resource adapter, establishing the adapter pattern other resources copy.
 - The pagination normalization envelope.
 - The pull artifact contract (canonical payload, metadata/provenance, required human-readable view, baseline fingerprint) and the re-pull dirty-guard.
-- The publish preview/apply pattern with bounded internal async polling and upload sessions.
+- The default publish and optional preview pattern with bounded internal async polling and upload sessions.
 
 Phase 1 exit gate: the slice passes contract and golden tests; the transport, adapter pattern, pagination envelope, artifact contract, and publish pattern are frozen and documented.
 
 ## Phase 2: grouped non-Pulse builds
 
-The registry contains 59 CLI-owned non-Pulse capabilities.
-Phase 1 already implements six: `auth.check`, `capability.list`, `capability.get`, `catalog.search`, `workbook.pull`, and `workbook.publish`.
-The following groups cover the remaining 53 capabilities.
+The current registry and generated capability reference define the authoritative counts.
+Phase 1 implements `auth.check`, `capability.list`, `capability.get`, `search.run`, `workbook.pull`, and `workbook.publish`.
 
 Before broad action fan-out, freeze these shared foundation slices in order:
 
@@ -78,8 +77,8 @@ Build the 21 capabilities that establish daily operator setup and prove a comple
 - Environment profiles: `env.profile.list`, `env.profile.get`, `env.profile.add`, `env.profile.update`, `env.profile.remove`, and `env.profile.set-default`.
 - Authentication state: `auth.status`.
 - Named workspaces: `workspace.create`, `workspace.list`, `workspace.status`, `workspace.move`, and `workspace.artifact.delete`.
-- Project selection: `project.list` and `project.get`.
-- Flow lifecycle: `flow.list`, `flow.get`, `flow.pull`, `flow.publish`, `flow.move`, and `flow.delete`.
+- Project selection: `project.list` and `project.inspect`.
+- Flow lifecycle: `flow.list`, `flow.inspect`, `flow.pull`, `flow.publish`, `flow.move`, and `flow.delete`.
 - Lineage: `lineage.pull`.
 
 This group also freezes named workspace uniqueness, portable relative paths, compact and `--full` output, lineage sidecars, and unchanged TFL/TFLX round trips.
@@ -100,45 +99,42 @@ A comprehensive review between later groups is optional unless the build owner r
 
 ### Group 2: discovery and remote inventory
 
-Build these nine read-oriented capabilities:
+Build these read-oriented capabilities:
 
-- Catalog: `catalog.refresh`, `catalog.search`, and `catalog.status`.
+- Catalog: `catalog.refresh` and `catalog.status`.
 - Resource reads query Tableau by default and use the local catalog only when you pass `--catalog`.
-- Generic content discovery: `content.search` and `content.get`.
-- Workbook inventory: `workbook.list` and `workbook.get`.
-- Datasource inventory: `datasource.list` and `datasource.get`.
+- Shared discovery: `search.run` searches live by default and uses the local catalog with `--catalog`.
+- Workbook inventory: `workbook.list` and `workbook.inspect`.
+- Datasource inventory: `datasource.list` and `datasource.inspect`.
 
-The Group 2 build releases the catalog, workbook inventory, and datasource inventory actions above.
-`content.search` and `content.get` remain non-executable action seams until their separate normalization evidence closes.
+The Group 2 build releases catalog, shared search, workbook inventory, and datasource inventory actions.
 
 This group freezes bounded concurrent pagination, exact selection, selectable catalog scopes, transactional SQLite generations, staleness reporting, and shared remote read behavior.
 
 ### Group 3: remaining content lifecycle
 
-Address these nine active capabilities:
+Address these active capabilities:
 
 - Workbook deletion: `workbook.delete`.
-- Datasources: `datasource.pull`, `datasource.field-description.update`, `datasource.publish`, and `datasource.delete`.
-- Projects: `project.create`, `project.update`, `project.pull`, and `project.publish`.
+- Datasources: `datasource.pull`, `datasource.publish`, and `datasource.delete`.
+- Projects: `project.create` and `project.update`.
 
 Build the capabilities whose evidence gates are open.
-Keep blocked capabilities as registry metadata until their exact evidence gates close.
-Do not guess an upstream contract to claim group completion.
+Keep deferred capabilities outside the executable registry.
 
 Datasource pull and publish preserve ordinary and composed packages through the same user-facing workflow.
 TADX preserves existing composition and required parent references without authoring or changing relationships.
-`datasource.composition.update` is deferred indefinitely pending a supported TDS authoring API.
-`datasource.field-description.update` remains blocked by B1, and project pull and publish remain blocked by B4.
+Datasource composition authoring, datasource field-description updates, and project pull and publish are deferred.
 
 ### Group 4: administration
 
 Build these 11 capabilities:
 
-- Users: `admin.user.list`, `admin.user.get`, `admin.user.create`, `admin.user.update`, and `admin.user.delete`.
-- Groups: `admin.group.list`, `admin.group.get`, `admin.group.create`, `admin.group.update`, and `admin.group.delete`.
-- Permissions: `admin.permission.get`.
+- Users: `admin.user.list`, `admin.user.inspect`, `admin.user.create`, `admin.user.update`, and `admin.user.delete`.
+- Groups: `admin.group.list`, `admin.group.inspect`, `admin.group.create`, `admin.group.update`, and `admin.group.delete`.
+- Permissions: `admin.permission.inspect`.
 
-This group freezes exact administrative identity, bounded membership handling, preview and apply behavior, and permission inspection output.
+This group freezes exact administrative identity, bounded membership handling, optional preview behavior, and permission inspection output.
 
 ### Group 5: diagnostics and closure
 
@@ -153,7 +149,8 @@ Pulse remains a separate body of work with its own evidence and review gates.
 Fan-out rule: a resource adapter is written once by one agent and frozen before that resource's actions fan out.
 Slice agents own only assigned action and resource packages unless the integration owner assigns a shared file.
 Remote mutation commands and capabilities remain visible regardless of execution policy.
-`TADX_ENABLE_MUTATIONS=1` enables mutation command execution; enabled commands still preview by default and require `--apply` for the remote change.
+`TADX_ENABLE_MUTATIONS=1` enables mutation command execution.
+Enabled commands mutate by default and support `--preview` for a read-only plan.
 
 Flow scope stays narrow.
 Pull and publish preserve TFL/TFLX bytes and let Tableau validate embedded published datasource, file, and database references.
@@ -164,11 +161,11 @@ Search only the relevant endpoint or schema section, and do not load an entire r
 Use official Tableau web documentation when the local capture is missing, ambiguous, or version-sensitive.
 Every implemented remote contract still requires captured evidence and contract tests.
 
-## Blocked: not scheduled until proof
+## Deferred capabilities
 
-These stay registry metadata only and are not assigned to a build wave until their gate closes with captured official source and a passing contract test.
+These capabilities remain outside the executable V1 registry.
 
-- B1 datasource field-description write (published-datasource-field level): unblocks on the released TDS datasource-field API.
-- B2 datasource composition authoring: `datasource.composition.update` is deferred indefinitely pending a supported TDS authoring API.
-- B3 Pulse mutations: definition and metric create/update/delete/follow/unfollow; needs pinned schemas and destructive/idempotency behavior.
-- B4 shallow project enumeration: project pull and publish; needs a proven direct-content enumeration contract with no child recursion.
+- Datasource field-description updates.
+- Datasource composition authoring.
+- Pulse definition and metric updates.
+- Project pull and publish.

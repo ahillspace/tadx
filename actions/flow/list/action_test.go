@@ -29,7 +29,7 @@ func (r *reader) ListFlows(_ context.Context, input flowlist.PageRequest) (flowl
 }
 
 func TestOutputGolden(t *testing.T) {
-	output := flowlist.Output{Status: "listed", Environment: "dev", Site: "sandbox", Page: flowlist.OutputPage{Returned: 1, Total: 2, Limit: 1, NextCursor: "next-page"}, Flows: []flowlist.Flow{{LUID: "flow-1", Name: "Daily", ProjectLUID: "project-1", ProjectName: "Ops", FileType: "tflx", Description: "Daily prep", OwnerLUID: "user-1", Tags: []string{"daily"}}}, RequestID: "request-1", Help: []string{"tadx content flow get --id <flow-luid>"}}
+	output := flowlist.Output{Status: "listed", Environment: "dev", Site: "sandbox", Page: flowlist.OutputPage{Returned: 1, Total: 2, Limit: 1, NextCursor: "next-page"}, Flows: []flowlist.Flow{{LUID: "flow-1", Name: "Daily", ProjectLUID: "project-1", ProjectName: "Ops", FileType: "tflx", Description: "Daily prep", OwnerLUID: "user-1", Tags: []string{"daily"}}}, RequestID: "request-1", Help: []string{"tadx content flow inspect --id <flow-luid>"}}
 	assertGolden(t, "compact.toon", output, false)
 	assertGolden(t, "full.toon", output, true)
 }

@@ -31,7 +31,7 @@ func New(resolver Resolver, updater Updater) *Action {
 }
 
 // Execute previews or updates one exact project.
-func (a *Action) Execute(ctx context.Context, input Input, apply bool) (Output, error) {
+func (a *Action) Execute(ctx context.Context, input Input, preview bool) (Output, error) {
 	if a == nil || a.resolver == nil || a.updater == nil {
 		return Output{}, &errs.Error{ID: "project.update.unconfigured", Kind: errs.KindRuntime, Operation: "project.update", Summary: "Project update is not configured.", Retryable: errs.Bool(false), CorrectiveAction: "Configure project update before retrying."}
 	}
@@ -44,24 +44,24 @@ func (a *Action) Execute(ctx context.Context, input Input, apply bool) (Output, 
 	}
 	request, noOp := changedRequest(project, input)
 	plan := Plan{Mode: "preview", Operation: "project.update", Environment: input.Environment, Site: input.Site, Target: project, Changes: Changes{Name: input.Name, Description: input.Description, ContentPermissions: input.ContentPermissions}, NoOp: noOp}
-	output := Output{Plan: plan, Help: []string{"Add --apply to update this exact project."}}
-	if !apply {
+	output := Output{Plan: plan, Help: []string{"Run without --preview to update this exact project."}}
+	if preview {
 		return output, nil
 	}
+	output.Plan.Mode = "execute"
 	current, err := a.resolver.ResolveProject(ctx, input.Selector)
 	if err != nil {
 		return Output{}, resolutionError(input, "Project revalidation failed.", err)
 	}
 	if current.LUID != project.LUID {
-		return Output{}, &errs.Error{ID: "project.update.target_changed", Kind: errs.KindOperation, Operation: "project.update", Resource: project.LUID, Environment: input.Environment, Site: input.Site, Summary: "The project identity changed after preview.", Cause: errors.New("project LUID changed after preview"), Retryable: errs.Bool(false), CorrectiveAction: "Review a new preview before updating the project."}
+		return Output{}, &errs.Error{ID: "project.update.target_changed", Kind: errs.KindOperation, Operation: "project.update", Resource: project.LUID, Environment: input.Environment, Site: input.Site, Summary: "The project identity changed during revalidation.", Cause: errors.New("project LUID changed during revalidation"), Retryable: errs.Bool(false), CorrectiveAction: "Review a new preview before updating the project."}
 	}
 	request, noOp = changedRequest(current, input)
 	output.Plan.Target = current
 	output.Plan.NoOp = noOp
 	if noOp {
-		output.Applied = true
 		output.Result = &Result{Status: "unchanged", Project: current}
-		output.Help = []string{"tadx content project get --project-id " + current.LUID}
+		output.Help = []string{"tadx content project inspect --project-id " + current.LUID}
 		return output, nil
 	}
 	result, err := a.updater.UpdateProject(ctx, request)
@@ -69,9 +69,8 @@ func (a *Action) Execute(ctx context.Context, input Input, apply bool) (Output, 
 		retryable, correctiveAction := errs.CompleteRetryAdvice(err, "Inspect the remote project update outcome before retrying.")
 		return Output{}, &errs.Error{ID: "project.update.failed", Kind: errs.KindOperation, Operation: "project.update", Resource: current.LUID, Environment: input.Environment, Site: input.Site, Summary: "Project update failed.", Cause: err, Retryable: retryable, CorrectiveAction: correctiveAction, TableauRequestID: errs.TableauRequestID(err)}
 	}
-	output.Applied = true
 	output.Result = &result
-	output.Help = []string{"tadx content project get --project-id " + current.LUID}
+	output.Help = []string{"tadx content project inspect --project-id " + current.LUID}
 	return output, nil
 }
 

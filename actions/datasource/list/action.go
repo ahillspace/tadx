@@ -66,7 +66,7 @@ func (a *Action) Execute(ctx context.Context, input Input) (Output, error) {
 		Status: "listed", Environment: input.Environment, Site: input.Site,
 		Page:        OutputPage{Returned: len(page.Datasources), Total: page.Total, Limit: page.Size, NextCursor: next},
 		Datasources: page.Datasources, RequestID: page.RequestID,
-		Help: []string{"tadx content datasource get --id <datasource-luid>"},
+		Help: []string{"tadx content datasource inspect --id <datasource-luid>"},
 	}, nil
 }
 

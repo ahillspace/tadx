@@ -5,14 +5,14 @@ import (
 	"reflect"
 	"testing"
 
-	datasourceget "github.com/ahillspace/tadx/actions/datasource/get"
+	datasourceinspect "github.com/ahillspace/tadx/actions/datasource/inspect"
 	datasourcelist "github.com/ahillspace/tadx/actions/datasource/list"
 	"github.com/ahillspace/tadx/internal/identity"
 )
 
 type datasourceInventoryActions struct {
-	listInputs []datasourcelist.Input
-	getInputs  []datasourceget.Input
+	listInputs    []datasourcelist.Input
+	inspectInputs []datasourceinspect.Input
 }
 
 func (a *datasourceInventoryActions) ListDatasources(_ context.Context, input datasourcelist.Input) (datasourcelist.Output, error) {
@@ -20,9 +20,9 @@ func (a *datasourceInventoryActions) ListDatasources(_ context.Context, input da
 	return datasourcelist.Output{Status: "listed"}, nil
 }
 
-func (a *datasourceInventoryActions) GetDatasource(_ context.Context, input datasourceget.Input) (datasourceget.Output, error) {
-	a.getInputs = append(a.getInputs, input)
-	return datasourceget.Output{Status: "found"}, nil
+func (a *datasourceInventoryActions) InspectDatasource(_ context.Context, input datasourceinspect.Input) (datasourceinspect.Output, error) {
+	a.inspectInputs = append(a.inspectInputs, input)
+	return datasourceinspect.Output{Status: "found"}, nil
 }
 
 type datasourceInventoryRenderer struct{ values []any }
@@ -57,14 +57,14 @@ func TestDatasourceListForwardsEveryBoundedFilterAndRendersOutput(t *testing.T) 
 	}
 }
 
-func TestDatasourceGetUsesAuthoritativeOrExactSelectorGrammar(t *testing.T) {
+func TestDatasourceInspectUsesAuthoritativeOrExactSelectorGrammar(t *testing.T) {
 	tests := []struct {
 		name string
 		args []string
-		want datasourceget.Input
+		want datasourceinspect.Input
 	}{
-		{name: "LUID", args: []string{"get", "--environment", "dev", "--id", "ds-1", "--catalog"}, want: datasourceget.Input{Environment: "dev", Selector: datasourceSelector("ds-1", "", ""), Catalog: true}},
-		{name: "exact labels", args: []string{"get", "--name", "Sales", "--project", "Department/Ops"}, want: datasourceget.Input{Selector: datasourceSelector("", "Sales", "Department/Ops")}},
+		{name: "LUID", args: []string{"inspect", "--environment", "dev", "--id", "ds-1", "--catalog"}, want: datasourceinspect.Input{Environment: "dev", Selector: datasourceSelector("ds-1", "", ""), Catalog: true}},
+		{name: "exact labels", args: []string{"inspect", "--name", "Sales", "--project", "Department/Ops"}, want: datasourceinspect.Input{Selector: datasourceSelector("", "Sales", "Department/Ops")}},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -75,31 +75,31 @@ func TestDatasourceGetUsesAuthoritativeOrExactSelectorGrammar(t *testing.T) {
 			if err := command.Execute(); err != nil {
 				t.Fatal(err)
 			}
-			if !reflect.DeepEqual(actions.getInputs, []datasourceget.Input{test.want}) || len(renderer.values) != 1 {
-				t.Fatalf("inputs = %#v, rendered = %#v", actions.getInputs, renderer.values)
+			if !reflect.DeepEqual(actions.inspectInputs, []datasourceinspect.Input{test.want}) || len(renderer.values) != 1 {
+				t.Fatalf("inputs = %#v, rendered = %#v", actions.inspectInputs, renderer.values)
 			}
 		})
 	}
 }
 
-func TestDatasourceGetRejectsIncompleteOrConflictingSelectors(t *testing.T) {
+func TestDatasourceInspectRejectsIncompleteOrConflictingSelectors(t *testing.T) {
 	for _, args := range [][]string{
-		{"get"},
-		{"get", "--name", "Sales"},
-		{"get", "--project", "Department/Ops"},
-		{"get", "--id", "ds-1", "--name", "Sales", "--project", "Department/Ops"},
+		{"inspect"},
+		{"inspect", "--name", "Sales"},
+		{"inspect", "--project", "Department/Ops"},
+		{"inspect", "--id", "ds-1", "--name", "Sales", "--project", "Department/Ops"},
 	} {
 		actions := &datasourceInventoryActions{}
 		command := newDatasourceInventory(actions, actions, &datasourceInventoryRenderer{})
 		command.SetArgs(args)
-		if err := command.Execute(); err == nil || len(actions.getInputs) != 0 {
-			t.Fatalf("args %v: error = %v, inputs = %#v", args, err, actions.getInputs)
+		if err := command.Execute(); err == nil || len(actions.inspectInputs) != 0 {
+			t.Fatalf("args %v: error = %v, inputs = %#v", args, err, actions.inspectInputs)
 		}
 	}
 }
 
 func datasourceSelector(luid, name, projectPath string) identity.Selector {
-	var input datasourceget.Input
+	var input datasourceinspect.Input
 	input.SetSelector(luid, name, projectPath)
 	return input.Selector
 }

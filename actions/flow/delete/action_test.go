@@ -17,7 +17,7 @@ type resolver struct {
 }
 
 func TestOutputGolden(t *testing.T) {
-	output := flowdelete.Output{Plan: flowdelete.Plan{Mode: "preview", Operation: "flow.delete", Environment: "dev", Site: "sandbox", Target: flowdelete.Flow{LUID: "flow-1", Name: "Daily", ProjectLUID: "project-1", ProjectPath: "Ops"}}, Applied: true, Result: &flowdelete.Result{Status: "succeeded", FlowLUID: "flow-1", TableauRequestID: "request-1"}, Help: []string{"tadx content flow list"}}
+	output := flowdelete.Output{Plan: flowdelete.Plan{Mode: "execute", Operation: "flow.delete", Environment: "dev", Site: "sandbox", Target: flowdelete.Flow{LUID: "flow-1", Name: "Daily", ProjectLUID: "project-1", ProjectPath: "Ops"}}, Result: &flowdelete.Result{Status: "succeeded", FlowLUID: "flow-1", TableauRequestID: "request-1"}, Help: []string{"tadx content flow list"}}
 	assertGolden(t, "compact.toon", output, false)
 	assertGolden(t, "full.toon", output, true)
 }
@@ -52,19 +52,19 @@ func TestDeletePreviewsThenRevalidatesOnApply(t *testing.T) {
 	r := &resolver{flow: flowdelete.Flow{LUID: "f-1", Name: "Daily", ProjectLUID: "p-1", ProjectPath: "Ops"}}
 	d := &deleter{}
 	a := flowdelete.New(r, d)
-	preview, err := a.Execute(context.Background(), flowdelete.Input{Environment: "dev", Site: "site", Selector: identity.Selector{LUID: "f-1"}}, false)
+	preview, err := a.Execute(context.Background(), flowdelete.Input{Environment: "dev", Site: "site", Selector: identity.Selector{LUID: "f-1"}}, true)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if preview.Applied || d.calls != 0 {
+	if preview.Result != nil || d.calls != 0 {
 		t.Fatalf("preview=%#v", preview)
 	}
-	applied, err := a.Execute(context.Background(), flowdelete.Input{Environment: "dev", Site: "site", Selector: identity.Selector{LUID: "f-1"}}, true)
+	result, err := a.Execute(context.Background(), flowdelete.Input{Environment: "dev", Site: "site", Selector: identity.Selector{LUID: "f-1"}}, false)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !applied.Applied || d.calls != 1 || r.calls != 3 {
-		t.Fatalf("applied=%#v calls=%d", applied, r.calls)
+	if result.Result == nil || d.calls != 1 || r.calls != 3 {
+		t.Fatalf("result=%#v calls=%d", result, r.calls)
 	}
 }
 

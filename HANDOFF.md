@@ -20,23 +20,21 @@ Trust the symbol, command, and flag names over the exact line numbers, and re-co
 The maintainer accepted mutation visibility and execution gating as the first CLI discoverability change.
 Mutation commands and capability rows remain visible regardless of policy state.
 When `TADX_ENABLE_MUTATIONS=1` is absent, a mutation command returns a stable actionable error before its action runs.
-When the flag is present, the existing preview and `--apply` contract remains unchanged.
-The maintainer has not decided whether to retain `--apply` long term.
+When the flag is present, mutation commands run by default and support `--preview` for a read-only plan.
 
 ## Build now
 
 1. Keep all mutation commands and capability rows discoverable.
 Report whether execution is enabled.
 Use one centralized registry-driven execution policy for current and future remote mutations.
-Keep `--apply` unchanged in this branch.
+Expose `--preview` on consequential mutations, which otherwise run by default when enabled.
 
 2. Normalize exact project selectors.
-Use `--project` for canonical paths and `--project-id` for authoritative LUIDs.
-Preserve `--id` temporarily as a deprecated compatibility alias for project get and update.
-Keep list-only `--project-name` semantics explicit rather than pretending different selectors are universal aliases.
+Use `--project` for canonical paths and `--project-id` for authoritative LUIDs on project inspect and update.
+Keep list-only `--project-name` semantics explicit rather than treating different selectors as universal aliases.
 
 3. Explain the CLI operating model in root and command help.
-Name capability discovery, compact TOON, `--full`, the mutation policy, preview, `--apply`, logical workspaces, and portable artifact selectors.
+Name capability discovery, compact TOON, `--full`, the mutation policy, optional preview, logical workspaces, and portable artifact selectors.
 
 4. Fix datasource collision checks for names containing ampersands or commas.
 Do not weaken collision safety or add a bypass flag.

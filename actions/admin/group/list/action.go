@@ -119,7 +119,7 @@ func (a *Action) Execute(ctx context.Context, in Input) (Output, error) {
 			return Output{}, err
 		}
 	}
-	return Output{Status: "listed", Environment: in.Environment, Site: in.Site, Page: OutputPage{Returned: len(p.Groups), Total: p.Total, Limit: p.Size, NextCursor: next}, Groups: p.Groups, RequestID: p.RequestID, Help: []string{"tadx admin group get --id <group-luid>"}}, nil
+	return Output{Status: "listed", Environment: in.Environment, Site: in.Site, Page: OutputPage{Returned: len(p.Groups), Total: p.Total, Limit: p.Size, NextCursor: next}, Groups: p.Groups, RequestID: p.RequestID, Help: []string{"tadx admin group inspect --id <group-luid>"}}, nil
 }
 
 type cursorValue struct {

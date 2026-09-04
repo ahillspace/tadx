@@ -5,9 +5,9 @@ import (
 	"encoding/json"
 	"path/filepath"
 
-	groupget "github.com/ahillspace/tadx/actions/admin/group/get"
+	groupinspect "github.com/ahillspace/tadx/actions/admin/group/inspect"
 	grouplist "github.com/ahillspace/tadx/actions/admin/group/list"
-	userget "github.com/ahillspace/tadx/actions/admin/user/get"
+	userinspect "github.com/ahillspace/tadx/actions/admin/user/inspect"
 	userlist "github.com/ahillspace/tadx/actions/admin/user/list"
 	"github.com/ahillspace/tadx/internal/catalog"
 	"github.com/ahillspace/tadx/internal/errs"
@@ -59,18 +59,18 @@ type catalogUserGetResolver struct {
 	source      *readsource.Metadata
 }
 
-func (r *catalogUserGetResolver) ResolveUser(ctx context.Context, selector userget.Selector) (userget.User, error) {
+func (r *catalogUserGetResolver) ResolveUser(ctx context.Context, selector userinspect.Selector) (userinspect.User, error) {
 	result, err := r.store.ReadResources(ctx, catalog.ResourceQuery{Environment: r.environment, Site: r.site, Kind: "user", LUID: selector.LUID, Name: selector.NameOrEmail, Limit: 2})
 	if err != nil {
-		return userget.User{}, catalogReadError("admin.user.get", r.environment, r.site, err)
+		return userinspect.User{}, catalogReadError("admin.user.inspect", r.environment, r.site, err)
 	}
 	entry := result.Entries[0]
 	r.source = catalogRecordSource(result, entry)
-	var item userget.User
+	var item userinspect.User
 	if len(entry.Payload) != 0 && json.Unmarshal(entry.Payload, &item) == nil {
 		return item, nil
 	}
-	return userget.User{LUID: entry.LUID, Name: entry.Name}, nil
+	return userinspect.User{LUID: entry.LUID, Name: entry.Name}, nil
 }
 
 type catalogGroupListReader struct {
@@ -106,19 +106,19 @@ type catalogGroupGetResolver struct {
 	source      *readsource.Metadata
 }
 
-func (r *catalogGroupGetResolver) ResolveGroup(ctx context.Context, selector groupget.Selector, members bool) (groupget.Group, error) {
+func (r *catalogGroupGetResolver) ResolveGroup(ctx context.Context, selector groupinspect.Selector, members bool) (groupinspect.Group, error) {
 	result, err := r.store.ReadResources(ctx, catalog.ResourceQuery{Environment: r.environment, Site: r.site, Kind: "group", LUID: selector.LUID, Name: selector.Name, Limit: 2})
 	if err != nil {
-		return groupget.Group{}, catalogReadError("admin.group.get", r.environment, r.site, err)
+		return groupinspect.Group{}, catalogReadError("admin.group.inspect", r.environment, r.site, err)
 	}
 	entry := result.Entries[0]
 	if members && entry.Coverage != "detail" {
-		return groupget.Group{}, &errs.Error{ID: "catalog.detail_not_indexed", Kind: errs.KindUsage, Operation: "admin.group.get", Environment: r.environment, Site: r.site, Summary: "Group membership is not indexed for this catalog record.", Retryable: errs.Bool(false), CorrectiveAction: "Run the command without --catalog to query Tableau and update the catalog."}
+		return groupinspect.Group{}, &errs.Error{ID: "catalog.detail_not_indexed", Kind: errs.KindUsage, Operation: "admin.group.inspect", Environment: r.environment, Site: r.site, Summary: "Group membership is not indexed for this catalog record.", Retryable: errs.Bool(false), CorrectiveAction: "Run the command without --catalog to query Tableau and update the catalog."}
 	}
-	var item groupget.Group
+	var item groupinspect.Group
 	r.source = catalogRecordSource(result, entry)
 	if len(entry.Payload) != 0 && json.Unmarshal(entry.Payload, &item) == nil {
 		return item, nil
 	}
-	return groupget.Group{LUID: entry.LUID, Name: entry.Name}, nil
+	return groupinspect.Group{LUID: entry.LUID, Name: entry.Name}, nil
 }

@@ -5,8 +5,8 @@
 Workbook and published datasource list and exact-get behavior is contract-verified for the bounded REST fields implemented in Group 2.
 Catalog refresh uses the ported TabGet collector and parser design to hydrate eight selectable scopes through TADX authentication and transport.
 Catalog generations are stored in one versioned SQLite database with transactional publication, environment and site isolation, and indexed local queries.
-Catalog get, search, and status use the architecture-locked SQLite generation contract.
-Generic content search and content get remain non-executable action seams until their separate normalization evidence closes.
+Catalog status and `search.run --catalog` use the architecture-locked SQLite generation contract.
+`search.run` uses existing bounded resource readers instead of a separate undocumented search endpoint.
 
 ## Captured upstream behavior
 
@@ -36,8 +36,8 @@ Canonical project paths come from the separately verified project hierarchy adap
 ## Live verification
 
 Build-tagged read-only workbook and datasource contract tests require a separately configured environment alias, expected site content URL, and authorized resource LUIDs.
-The live workbook test verified exact get plus supported name and project-name list filtering against an authorized workbook LUID.
-The live datasource test verified exact get plus bounded list and exact-name filtering against an authorized datasource LUID.
+The live workbook test verified exact inspect plus supported name and project-name list filtering against an authorized workbook LUID.
+The live datasource test verified exact inspect plus bounded list and exact-name filtering against an authorized datasource LUID.
 An isolated CLI lane verified workbook list/get, datasource list/get, catalog refresh/status/get, compact/full projections, and catalog identity lookup.
 Live testing found and removed unsupported workbook `projectId` filtering and unsupported datasource `contentUrl` sorting before the final passing run.
 No live test mutates Tableau content.

@@ -10,7 +10,7 @@ metrics[2]{luid,name,definition_luid,is_default}:
   metric-1,Revenue,definition-1,true
   metric-2,Revenue West,definition-1,false
 tableau_request_id: request-1
-help[1]: tadx pulse metric get --id metric-1
+help[1]: tadx pulse metric inspect --id metric-1
 source:
   mode: tableau
   observed_at: "2026-09-04T10:00:00Z"

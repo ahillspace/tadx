@@ -37,7 +37,6 @@ type Result struct {
 }
 type Output struct {
 	Plan    Plan     `json:"plan"`
-	Applied bool     `json:"applied"`
 	Result  *Result  `json:"result,omitempty"`
 	Details string   `json:"details"`
 	Help    []string `json:"help"`
@@ -48,16 +47,14 @@ type CompactMutationResult struct {
 }
 type CompactResult struct {
 	Plan    Plan                   `json:"plan"`
-	Applied bool                   `json:"applied"`
 	Result  *CompactMutationResult `json:"result,omitempty"`
 	Details string                 `json:"details"`
 	Help    []string               `json:"help"`
 }
 type FullResult struct {
-	Plan    Plan     `json:"plan"`
-	Applied bool     `json:"applied"`
-	Result  *Result  `json:"result,omitempty"`
-	Help    []string `json:"help"`
+	Plan   Plan     `json:"plan"`
+	Result *Result  `json:"result,omitempty"`
+	Help   []string `json:"help"`
 }
 
 func (o Output) CompactOutput() any {
@@ -65,10 +62,10 @@ func (o Output) CompactOutput() any {
 	if o.Result != nil {
 		result = &CompactMutationResult{Status: o.Result.Status, GroupLUID: o.Result.GroupLUID}
 	}
-	return CompactResult{Plan: o.Plan, Applied: o.Applied, Result: result, Details: "--full", Help: o.Help}
+	return CompactResult{Plan: o.Plan, Result: result, Details: "--full", Help: o.Help}
 }
 func (o Output) FullOutput() any {
-	return FullResult{Plan: o.Plan, Applied: o.Applied, Result: o.Result, Help: o.Help}
+	return FullResult{Plan: o.Plan, Result: o.Result, Help: o.Help}
 }
 
 type Finder interface {
@@ -83,7 +80,7 @@ type Action struct {
 }
 
 func New(f Finder, c Creator) *Action { return &Action{finder: f, creator: c} }
-func (a *Action) Execute(ctx context.Context, in Input, apply bool) (Output, error) {
+func (a *Action) Execute(ctx context.Context, in Input, preview bool) (Output, error) {
 	if a == nil || a.finder == nil || a.creator == nil {
 		return Output{}, errors.New("admin group create is not configured")
 	}
@@ -97,16 +94,17 @@ func (a *Action) Execute(ctx context.Context, in Input, apply bool) (Output, err
 	if len(found) > 0 {
 		return Output{}, errors.New("an exact group name collision exists")
 	}
-	out := Output{Plan: Plan{Mode: "preview", Operation: "admin.group.create", Environment: in.Environment, Site: in.Site, Name: in.Name, MinimumSiteRole: in.MinimumSiteRole, ExternalUserEnabled: in.ExternalUserEnabled}, Details: "--full", Help: []string{"Add --apply to create this exact group."}}
-	if !apply {
+	out := Output{Plan: Plan{Mode: "preview", Operation: "admin.group.create", Environment: in.Environment, Site: in.Site, Name: in.Name, MinimumSiteRole: in.MinimumSiteRole, ExternalUserEnabled: in.ExternalUserEnabled}, Details: "--full", Help: []string{"Run without --preview to create this exact group."}}
+	if preview {
 		return out, nil
 	}
+	out.Plan.Mode = "execute"
 	found, err = a.finder.FindGroups(ctx, in.Name)
 	if err != nil {
 		return Output{}, err
 	}
 	if len(found) > 0 {
-		return Output{}, errors.New("the group create target changed after preview")
+		return Output{}, errors.New("the group create target changed during revalidation")
 	}
 	g, err := a.creator.CreateGroup(ctx, Request{Name: in.Name, MinimumSiteRole: in.MinimumSiteRole, ExternalUserEnabled: in.ExternalUserEnabled})
 	if err != nil {
@@ -115,8 +113,7 @@ func (a *Action) Execute(ctx context.Context, in Input, apply bool) (Output, err
 		}
 		return Output{}, err
 	}
-	out.Applied = true
 	out.Result = &Result{Status: "created", GroupLUID: g.LUID, TableauRequestID: g.RequestID}
-	out.Help = []string{"tadx admin group get --id " + g.LUID}
+	out.Help = []string{"tadx admin group inspect --id " + g.LUID}
 	return out, nil
 }

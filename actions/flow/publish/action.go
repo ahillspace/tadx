@@ -32,7 +32,7 @@ type Action struct {
 func New(artifacts ArtifactReader, resolver Resolver, publisher Publisher) *Action {
 	return &Action{artifacts: artifacts, resolver: resolver, publisher: publisher}
 }
-func (a *Action) Execute(ctx context.Context, input Input, apply bool) (Output, error) {
+func (a *Action) Execute(ctx context.Context, input Input, preview bool) (Output, error) {
 	if a == nil || a.artifacts == nil || a.resolver == nil || a.publisher == nil {
 		return Output{}, unconfigured()
 	}
@@ -40,10 +40,11 @@ func (a *Action) Execute(ctx context.Context, input Input, apply bool) (Output, 
 	if err != nil {
 		return Output{}, err
 	}
-	output := Output{Plan: plan, Applied: false, Help: []string{"Add --apply to publish this exact plan."}}
-	if !apply {
+	output := Output{Plan: plan, Help: []string{"Run without --preview to publish this exact plan."}}
+	if preview {
 		return output, nil
 	}
+	output.Plan.Mode = "execute"
 	// Revalidate the exact artifact, destination, and collision BEFORE preparing
 	// the upload. Prepare uploads the native flow (a server-side side effect); a
 	// revalidation failure after Prepare would strand that upload with no cleanup
@@ -55,7 +56,7 @@ func (a *Action) Execute(ctx context.Context, input Input, apply bool) (Output, 
 		return Output{}, &errs.Error{ID: "flow.publish.reread", Kind: errs.KindOperation, Operation: "flow.publish", Environment: input.Environment, Site: input.Site, Summary: "Flow artifact revalidation read failed.", Cause: err, Retryable: retryable, CorrectiveAction: correctiveAction}
 	}
 	if current.Fingerprint != plan.ArtifactFingerprint {
-		return Output{}, &errs.Error{ID: "flow.publish.artifact_changed", Kind: errs.KindOperation, Operation: "flow.publish", Environment: input.Environment, Site: input.Site, Summary: "The flow artifact changed after preview.", Cause: errors.New("flow artifact changed after preview"), Retryable: errs.Bool(false), CorrectiveAction: "Review a new preview before publishing."}
+		return Output{}, &errs.Error{ID: "flow.publish.artifact_changed", Kind: errs.KindOperation, Operation: "flow.publish", Environment: input.Environment, Site: input.Site, Summary: "The flow artifact changed during revalidation.", Cause: errors.New("flow artifact changed during revalidation"), Retryable: errs.Bool(false), CorrectiveAction: "Review a new preview before publishing."}
 	}
 	project, err := a.resolver.ResolveProject(ctx, input.ProjectSelector)
 	if err != nil {
@@ -63,14 +64,14 @@ func (a *Action) Execute(ctx context.Context, input Input, apply bool) (Output, 
 		return Output{}, &errs.Error{ID: "flow.publish.project", Kind: errs.KindOperation, Operation: "flow.publish", Environment: input.Environment, Site: input.Site, Summary: "Publish project resolution failed.", Cause: err, Retryable: retryable, CorrectiveAction: correctiveAction, TableauRequestID: errs.TableauRequestID(err)}
 	}
 	if project.LUID != plan.Target.ProjectLUID || project.Path != plan.Target.ProjectPath {
-		return Output{}, &errs.Error{ID: "flow.publish.target_changed", Kind: errs.KindOperation, Operation: "flow.publish", Environment: input.Environment, Site: input.Site, Summary: "The flow publish destination changed after preview.", Cause: errors.New("flow publish destination changed after preview"), Retryable: errs.Bool(false), CorrectiveAction: "Review a new preview before publishing."}
+		return Output{}, &errs.Error{ID: "flow.publish.target_changed", Kind: errs.KindOperation, Operation: "flow.publish", Environment: input.Environment, Site: input.Site, Summary: "The flow publish destination changed during revalidation.", Cause: errors.New("flow publish destination changed during revalidation"), Retryable: errs.Bool(false), CorrectiveAction: "Review a new preview before publishing."}
 	}
 	existing, err := exactCollision(ctx, a.resolver, plan.FlowName, project.LUID, input.Environment, input.Site, input.Overwrite)
 	if err != nil {
 		return Output{}, err
 	}
 	if existing != plan.Target.ExistingLUID {
-		return Output{}, &errs.Error{ID: "flow.publish.collision_changed", Kind: errs.KindOperation, Operation: "flow.publish", Environment: input.Environment, Site: input.Site, Summary: "The flow publish collision changed after preview.", Cause: errors.New("flow publish collision changed after preview"), Retryable: errs.Bool(false), CorrectiveAction: "Review a new preview before publishing."}
+		return Output{}, &errs.Error{ID: "flow.publish.collision_changed", Kind: errs.KindOperation, Operation: "flow.publish", Environment: input.Environment, Site: input.Site, Summary: "The flow publish collision changed during revalidation.", Cause: errors.New("flow publish collision changed during revalidation"), Retryable: errs.Bool(false), CorrectiveAction: "Review a new preview before publishing."}
 	}
 	prepared, err := a.publisher.Prepare(ctx, plan.request)
 	if err != nil {
@@ -82,9 +83,8 @@ func (a *Action) Execute(ctx context.Context, input Input, apply bool) (Output, 
 		retryable, correctiveAction := errs.CompleteRetryAdvice(err, "Review the upstream error before publishing again.")
 		return Output{}, &errs.Error{ID: "flow.publish.failed", Kind: errs.KindOperation, Operation: "flow.publish", Environment: input.Environment, Site: input.Site, Summary: "Flow publish failed.", Cause: err, Retryable: retryable, CorrectiveAction: correctiveAction, TableauRequestID: errs.TableauRequestID(err)}
 	}
-	output.Applied = true
 	output.Result = &result
-	output.Help = []string{"tadx content flow get --id " + result.FlowLUID}
+	output.Help = []string{"tadx content flow inspect --id " + result.FlowLUID}
 	return output, nil
 }
 func (a *Action) plan(ctx context.Context, input Input) (Plan, error) {

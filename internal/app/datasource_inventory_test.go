@@ -6,7 +6,7 @@ import (
 	"reflect"
 	"testing"
 
-	datasourceget "github.com/ahillspace/tadx/actions/datasource/get"
+	datasourceget "github.com/ahillspace/tadx/actions/datasource/inspect"
 	datasourcelist "github.com/ahillspace/tadx/actions/datasource/list"
 	"github.com/ahillspace/tadx/internal/identity"
 	resourcedatasource "github.com/ahillspace/tadx/internal/resources/datasource"

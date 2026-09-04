@@ -57,9 +57,9 @@ Enforced by: registry validation (every implemented command has exactly one regi
 ## 7. Agent ergonomics and safety
 
 Rule: the interface is safe for an autonomous caller and legible to a human.
-Do: keep mutation commands discoverable; block their execution when the mutation policy is disabled; preview enabled consequential mutations by default and require --apply; require an explicit write target; redact secrets everywhere; use the three exit codes 0, 1, 2; include Tableau request and job IDs in errors where available; emit a required human-readable view for artifacts.
-Do not: add a second confirmation prompt or a production-only prompt; let --force mean --apply; let discovery visibility imply permission; persist secrets TADX handles.
-Enforced by: preview/apply tests; mutation-discovery tests; secret-redaction tests; exit-code mapping tests.
+Do: keep mutation commands discoverable; block their execution when mutation policy is disabled; run enabled mutations by default; support --preview; require an explicit write target; redact secrets everywhere; use exit codes 0, 1, and 2; include Tableau request and job IDs in errors where available; emit a required human-readable view for artifacts.
+Do not: add a second confirmation prompt or a production-only prompt; let --force bypass mutation policy; let discovery visibility imply permission; persist secrets TADX handles.
+Enforced by: mutation and preview tests; mutation-discovery tests; secret-redaction tests; exit-code mapping tests.
 
 For artifact publish, an explicit write target means the preview contains the fully resolved environment, site, project, and collision decision.
 The caller does not need to repeat `--environment` when trusted artifact provenance supplies the source environment, site, and project defaults.
@@ -137,7 +137,7 @@ Enforced by: the generated-doc clean-diff check; registry-derived help.
 ## Where TADX intentionally diverges
 
 TADX adds obligations the general AXI spec does not, because Tableau is a stateful system of record with consequential writes:
-- consequential mutations preview by default and require `--apply`; `--force` never means `--apply`;
+- consequential mutations run by default when enabled and support `--preview`; `--force` does not bypass mutation policy;
 - mutation discovery remains available when mutation execution is disabled;
 - identity is LUID-authoritative and ambiguity is a hard error, with no fuzzy or interactive resolution;
 - secret redaction runs before rendering and takes precedence over `--raw`;

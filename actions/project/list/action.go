@@ -61,7 +61,7 @@ func (a *Action) Execute(ctx context.Context, input Input) (Output, error) {
 		Status: "listed", Environment: input.Environment, Site: input.Site, Projects: page.Projects,
 		Page:      OutputPage{Returned: len(page.Projects), Total: page.Total, Limit: page.Size, NextCursor: next},
 		RequestID: page.RequestID,
-		Help:      []string{"tadx content project get --project-id <project-luid>"},
+		Help:      []string{"tadx content project inspect --project-id <project-luid>"},
 	}, nil
 }
 

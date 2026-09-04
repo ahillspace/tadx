@@ -57,7 +57,7 @@ func (a *Action) Execute(ctx context.Context, input Input) (Output, error) {
 			return Output{}, err
 		}
 	}
-	return Output{Status: "listed", Environment: input.Environment, Site: input.Site, Page: OutputPage{Returned: len(page.Workbooks), Total: page.Total, Limit: page.Size, NextCursor: next}, Workbooks: page.Workbooks, RequestID: page.RequestID, Help: []string{"tadx content workbook get --id <workbook-luid>"}}, nil
+	return Output{Status: "listed", Environment: input.Environment, Site: input.Site, Page: OutputPage{Returned: len(page.Workbooks), Total: page.Total, Limit: page.Size, NextCursor: next}, Workbooks: page.Workbooks, RequestID: page.RequestID, Help: []string{"tadx content workbook inspect --id <workbook-luid>"}}, nil
 }
 
 func selectPage(value string, requested int, expectedFilter string) (int, int, error) {

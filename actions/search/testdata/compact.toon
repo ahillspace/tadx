@@ -1,0 +1,8 @@
+source: live
+page:
+  returned: 1
+  limit: 20
+items[1]{luid,type,name,project_path}:
+  wb-1,workbook,Finance,Ops
+details: "--full"
+help[1]: tadx capability list --resource <type>

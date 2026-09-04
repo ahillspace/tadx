@@ -111,8 +111,8 @@ func TestNamedWorkspaceCreateListAndStatusThroughCLI(t *testing.T) {
 func TestRunPreservesCapabilityContextForSetupFailures(t *testing.T) {
 	t.Run("catalog configuration", func(t *testing.T) {
 		var stdout bytes.Buffer
-		exit := app.Run(context.Background(), []string{"catalog", "search", "--environment", "production"}, &stdout, app.Options{ConfigPath: filepath.Join(t.TempDir(), "missing.yaml")})
-		if exit == 0 || !strings.Contains(stdout.String(), "operation: catalog.search") || !strings.Contains(stdout.String(), "environment: production") {
+		exit := app.Run(context.Background(), []string{"search", "--catalog", "--type", "workbook", "--environment", "production"}, &stdout, app.Options{ConfigPath: filepath.Join(t.TempDir(), "missing.yaml")})
+		if exit == 0 || !strings.Contains(stdout.String(), "operation: search") || !strings.Contains(stdout.String(), "environment: production") {
 			t.Fatalf("exit = %d, output = %s", exit, stdout.String())
 		}
 	})
@@ -238,6 +238,7 @@ func TestCapabilityGetReportsMutationExecutionState(t *testing.T) {
 func TestRemoteMutationGatePrecedesRuntimeSetupAcrossDomains(t *testing.T) {
 	tests := [][]string{
 		{"content", "workbook", "delete", "--environment", "missing", "--id", "workbook-1"},
+		{"content", "workbook", "delete", "--environment", "missing", "--id", "workbook-1", "--preview"},
 		{"content", "datasource", "delete", "--environment", "missing", "--id", "datasource-1"},
 		{"content", "flow", "delete", "--environment", "missing", "--id", "flow-1"},
 		{"content", "project", "create", "--environment", "missing", "--name", "New project"},

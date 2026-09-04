@@ -59,6 +59,6 @@ The action does not calculate effective permissions and reports `unknown` when t
 Hermetic client tests assert methods, escaped paths, pagination, mutation payloads, membership ordering primitives, permission normalization, and malformed response handling.
 Resource adapter tests assert exact identity, ambiguity failure, bounded full-page scans, and normalized membership.
 Authorized disposable Tableau Cloud verification completed on 2026-09-02.
-The live matrix covered user list, get, create, update, and delete; group list, get, create, update, direct-member add and remove, and delete; and permission reads for workbook, datasource, flow, and project resources.
+The live matrix covered user list, inspect, create, update, and delete; group list, inspect, create, update, direct-member add and remove, and delete; and permission reads for workbook, datasource, flow, and project resources.
 Temporary users and groups were deleted after verification.
 The live check exposed and then verified the repair of a double-wrapped add-member XML request.

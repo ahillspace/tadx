@@ -18,7 +18,7 @@ type resolver struct {
 }
 
 func TestOutputGolden(t *testing.T) {
-	output := flowmove.Output{Plan: flowmove.Plan{Mode: "preview", Operation: "flow.move", Environment: "dev", Site: "sandbox", Source: flowmove.Flow{LUID: "flow-1", Name: "Daily", ProjectLUID: "project-1", ProjectPath: "Old"}, Destination: flowmove.Project{LUID: "project-2", Name: "New", Path: "New"}}, Applied: true, Result: &flowmove.Result{Status: "succeeded", FlowLUID: "flow-1", ProjectLUID: "project-2", TableauRequestID: "request-1"}, Help: []string{"tadx content flow get --id flow-1"}}
+	output := flowmove.Output{Plan: flowmove.Plan{Mode: "execute", Operation: "flow.move", Environment: "dev", Site: "sandbox", Source: flowmove.Flow{LUID: "flow-1", Name: "Daily", ProjectLUID: "project-1", ProjectPath: "Old"}, Destination: flowmove.Project{LUID: "project-2", Name: "New", Path: "New"}}, Result: &flowmove.Result{Status: "succeeded", FlowLUID: "flow-1", ProjectLUID: "project-2", TableauRequestID: "request-1"}, Help: []string{"tadx content flow inspect --id flow-1"}}
 	assertGolden(t, "compact.toon", output, false)
 	assertGolden(t, "full.toon", output, true)
 }
@@ -57,19 +57,19 @@ func TestMovePreviewsThenRevalidatesOnApply(t *testing.T) {
 	r := &resolver{flow: flowmove.Flow{LUID: "f-1", Name: "Daily", ProjectLUID: "p-1", ProjectPath: "Old"}, project: flowmove.Project{LUID: "p-2", Path: "New"}}
 	m := &mover{}
 	a := flowmove.New(r, m)
-	preview, err := a.Execute(context.Background(), flowmove.Input{Environment: "dev", Site: "site", FlowSelector: identity.Selector{LUID: "f-1"}, ProjectSelector: identity.Selector{LUID: "p-2"}}, false)
+	preview, err := a.Execute(context.Background(), flowmove.Input{Environment: "dev", Site: "site", FlowSelector: identity.Selector{LUID: "f-1"}, ProjectSelector: identity.Selector{LUID: "p-2"}}, true)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if preview.Applied || m.calls != 0 {
+	if preview.Result != nil || m.calls != 0 {
 		t.Fatalf("preview=%#v", preview)
 	}
-	applied, err := a.Execute(context.Background(), flowmove.Input{Environment: "dev", Site: "site", FlowSelector: identity.Selector{LUID: "f-1"}, ProjectSelector: identity.Selector{LUID: "p-2"}}, true)
+	result, err := a.Execute(context.Background(), flowmove.Input{Environment: "dev", Site: "site", FlowSelector: identity.Selector{LUID: "f-1"}, ProjectSelector: identity.Selector{LUID: "p-2"}}, false)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !applied.Applied || m.calls != 1 || r.flowCalls != 3 || r.projectCalls != 3 {
-		t.Fatalf("applied=%#v resolver=%#v", applied, r)
+	if result.Result == nil || m.calls != 1 || r.flowCalls != 3 || r.projectCalls != 3 {
+		t.Fatalf("result=%#v resolver=%#v", result, r)
 	}
 }
 

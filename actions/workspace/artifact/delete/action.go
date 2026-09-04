@@ -59,7 +59,6 @@ type Result struct {
 // Output keeps the result attached to its previewed plan.
 type Output struct {
 	Plan            Plan     `json:"plan"`
-	Applied         bool     `json:"applied"`
 	Result          *Result  `json:"result,omitempty"`
 	Warnings        []string `json:"warnings,omitempty"`
 	WarningsOmitted int      `json:"warnings_omitted,omitempty"`
@@ -91,7 +90,6 @@ type compactPlan struct {
 
 type compactOutput struct {
 	Plan            compactPlan `json:"plan"`
-	Applied         bool        `json:"applied"`
 	Result          *Result     `json:"result,omitempty"`
 	Warnings        []string    `json:"warnings,omitempty"`
 	WarningsOmitted int         `json:"warnings_omitted,omitempty"`
@@ -102,7 +100,7 @@ type compactOutput struct {
 // CompactOutput returns every field needed to authorize deletion.
 func (o Output) CompactOutput() any {
 	artifact := o.Plan.Artifact
-	return compactOutput{Plan: compactPlan{Mode: o.Plan.Mode, Operation: o.Plan.Operation, Workspace: o.Plan.Workspace, Artifact: compactArtifact{Kind: artifact.Kind, LUID: artifact.LUID, Name: artifact.Name, Path: artifact.Path, State: artifact.State}, Dirty: o.Plan.Dirty, Force: o.Plan.Force}, Applied: o.Applied, Result: o.Result, Warnings: o.Warnings, WarningsOmitted: o.WarningsOmitted, Details: "--full", Help: o.Help}
+	return compactOutput{Plan: compactPlan{Mode: o.Plan.Mode, Operation: o.Plan.Operation, Workspace: o.Plan.Workspace, Artifact: compactArtifact{Kind: artifact.Kind, LUID: artifact.LUID, Name: artifact.Name, Path: artifact.Path, State: artifact.State}, Dirty: o.Plan.Dirty, Force: o.Plan.Force}, Result: o.Result, Warnings: o.Warnings, WarningsOmitted: o.WarningsOmitted, Details: "--full", Help: o.Help}
 }
 
 // FullOutput returns bounded provenance and fingerprint details.
@@ -144,7 +142,7 @@ func (a *Action) Apply(ctx context.Context, plan Plan) (Result, error) {
 		return Result{}, usage("artifact deletion apply requires a plan produced by Plan")
 	}
 	if plan.Dirty && !plan.Force {
-		return Result{}, &errs.Error{ID: "workspace.artifact.delete.dirty", Kind: errs.KindOperation, Operation: "workspace.artifact.delete", Resource: plan.Artifact.LUID, Summary: "Dirty artifact deletion requires explicit force.", Cause: errors.New("the canonical payload differs from its pulled baseline"), Retryable: errs.Bool(false), CorrectiveAction: "Review local changes, then add --force together with --apply only when deletion is intended."}
+		return Result{}, &errs.Error{ID: "workspace.artifact.delete.dirty", Kind: errs.KindOperation, Operation: "workspace.artifact.delete", Resource: plan.Artifact.LUID, Summary: "Dirty artifact deletion requires explicit force.", Cause: errors.New("the canonical payload differs from its pulled baseline"), Retryable: errs.Bool(false), CorrectiveAction: "Review local changes, then add --force only when deletion is intended."}
 	}
 	deleted, err := a.store.Delete(ctx, DeleteRequest{Workspace: plan.Workspace, Expected: plan.Artifact})
 	if err != nil {
@@ -153,21 +151,21 @@ func (a *Action) Apply(ctx context.Context, plan Plan) (Result, error) {
 	return Result{Status: "deleted", Kind: deleted.Kind, LUID: deleted.LUID, Name: deleted.Name, Path: deleted.Path, Warnings: append([]string(nil), deleted.Warnings...)}, nil
 }
 
-// Execute always plans and applies only when explicitly requested.
-func (a *Action) Execute(ctx context.Context, input Input, apply bool) (Output, error) {
+// Execute plans every call and deletes unless preview is requested.
+func (a *Action) Execute(ctx context.Context, input Input, preview bool) (Output, error) {
 	plan, err := a.Plan(ctx, input)
 	if err != nil {
 		return Output{}, err
 	}
-	output := Output{Plan: plan, Help: []string{"Re-run with --apply to delete this previewed artifact."}}
-	if !apply {
+	output := Output{Plan: plan, Help: []string{"Run without --preview to delete this exact artifact."}}
+	if preview {
 		return output, nil
 	}
+	output.Plan.Mode = "execute"
 	result, err := a.Apply(ctx, plan)
 	if err != nil {
 		return Output{}, err
 	}
-	output.Applied = true
 	output.Result = &result
 	output.Warnings, output.WarningsOmitted = boundDeleteWarnings(result.Warnings)
 	output.Help = []string{"tadx workspace status --workspace " + input.Workspace}

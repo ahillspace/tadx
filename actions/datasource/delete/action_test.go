@@ -33,13 +33,13 @@ func TestDeletePreviewsWithoutMutationAndRevalidatesOnApply(t *testing.T) {
 	resolver := &deleteResolver{items: []datasourcedelete.Datasource{item, item, item}}
 	deleter := &deleter{}
 	action := datasourcedelete.New(resolver, deleter)
-	preview, err := action.Execute(context.Background(), datasourcedelete.Input{Environment: "dev", Site: "sandbox", Selector: identity.Selector{LUID: "ds-1"}}, false)
-	if err != nil || preview.Applied || deleter.calls != 0 {
+	preview, err := action.Execute(context.Background(), datasourcedelete.Input{Environment: "dev", Site: "sandbox", Selector: identity.Selector{LUID: "ds-1"}}, true)
+	if err != nil || preview.Result != nil || deleter.calls != 0 {
 		t.Fatalf("preview = %#v, error = %v, delete calls = %d", preview, err, deleter.calls)
 	}
-	applied, err := action.Execute(context.Background(), datasourcedelete.Input{Environment: "dev", Site: "sandbox", Selector: identity.Selector{LUID: "ds-1"}}, true)
-	if err != nil || !applied.Applied || deleter.calls != 1 || resolver.calls != 3 {
-		t.Fatalf("applied = %#v, error = %v, resolver calls = %d", applied, err, resolver.calls)
+	result, err := action.Execute(context.Background(), datasourcedelete.Input{Environment: "dev", Site: "sandbox", Selector: identity.Selector{LUID: "ds-1"}}, false)
+	if err != nil || result.Result == nil || deleter.calls != 1 || resolver.calls != 3 {
+		t.Fatalf("result = %#v, error = %v, resolver calls = %d", result, err, resolver.calls)
 	}
 }
 
@@ -49,7 +49,7 @@ func TestDeleteStopsWhenExactTargetChanges(t *testing.T) {
 	second.ProjectPath = "Moved"
 	resolver := &deleteResolver{items: []datasourcedelete.Datasource{first, second}}
 	deleter := &deleter{}
-	_, err := datasourcedelete.New(resolver, deleter).Execute(context.Background(), datasourcedelete.Input{Environment: "dev", Site: "sandbox", Selector: identity.Selector{LUID: "ds-1"}}, true)
+	_, err := datasourcedelete.New(resolver, deleter).Execute(context.Background(), datasourcedelete.Input{Environment: "dev", Site: "sandbox", Selector: identity.Selector{LUID: "ds-1"}}, false)
 	var structured *errs.Error
 	if err == nil || !errors.As(err, &structured) || structured.ID != "datasource.delete.target_changed" || deleter.calls != 0 {
 		t.Fatalf("error = %#v, delete calls = %d", err, deleter.calls)

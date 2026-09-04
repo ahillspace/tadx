@@ -51,8 +51,8 @@ The REST reference section `Update Data Source` begins at line 42682.
 That released API updates metadata and connection-related properties, not datasource composition.
 The captured Metadata API is read-only and cannot update field descriptions or composition.
 The captured virtual datasource guidance for Tableau 2026.2 describes re-publishing the latest composed datasource rather than mutating composition through a released relationship API.
-`datasource.composition.update` is therefore deferred indefinitely and has no executable action or transport method.
-`datasource.field-description.update` remains metadata-only until released mutation evidence exists.
+Datasource composition authoring is deferred indefinitely and has no executable action or transport method.
+Datasource field-description updates are deferred.
 
 ## Verification status
 

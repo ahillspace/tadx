@@ -65,7 +65,7 @@ func (a *Action) Plan(ctx context.Context, input Input) (Plan, error) {
 	// root defaults the environment/site to the artifact's recorded source, and
 	// the action targets the exact recorded source project, name, and workbook
 	// LUID. Overwrite is implied because republishing to source replaces the
-	// same workbook; the preview and the --apply gate are the safeguard.
+	// same workbook; the resolved plan and optional preview are the safeguards.
 	origin := "explicit"
 	name := input.Name
 	overwrite := input.Overwrite
@@ -200,23 +200,23 @@ func (a *Action) verifyOverwriteTarget(ctx context.Context, plan Plan) error {
 	return &errs.Error{ID: "workbook.publish.target_changed", Kind: errs.KindOperation, Operation: "workbook.publish", Resource: expected, Environment: plan.Target.Environment, Site: plan.Target.Site, Summary: "Workbook overwrite target changed after planning.", Cause: fmt.Errorf("planned workbook LUID %q no longer matches the exact destination", expected), Retryable: errs.Bool(false), CorrectiveAction: "Review a new preview before publishing."}
 }
 
-// Execute plans every invocation and applies only when explicitly requested.
-func (a *Action) Execute(ctx context.Context, input Input, apply bool) (Output, error) {
+// Execute plans every invocation and publishes unless preview is requested.
+func (a *Action) Execute(ctx context.Context, input Input, preview bool) (Output, error) {
 	plan, err := a.Plan(ctx, input)
 	if err != nil {
 		return Output{}, err
 	}
-	output := Output{Plan: plan, Applied: false, Help: []string{"Re-run with --apply to publish this previewed change."}}
-	if !apply {
+	output := Output{Plan: plan, Help: []string{"Run without --preview to publish this exact plan."}}
+	if preview {
 		return output, nil
 	}
+	output.Plan.Mode = "execute"
 	result, err := a.Apply(ctx, plan)
 	if err != nil {
 		return Output{}, err
 	}
-	output.Applied = true
 	output.Result = &result
-	output.Help = []string{"tadx catalog search --environment <alias> to confirm the published workbook."}
+	output.Help = []string{"tadx search --type workbook --environment <alias> to confirm the published workbook."}
 	return output, nil
 }
 

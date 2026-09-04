@@ -4,7 +4,7 @@ import (
 	"context"
 	"testing"
 
-	workbookget "github.com/ahillspace/tadx/actions/workbook/get"
+	workbookget "github.com/ahillspace/tadx/actions/workbook/inspect"
 	workbooklist "github.com/ahillspace/tadx/actions/workbook/list"
 	"github.com/ahillspace/tadx/internal/identity"
 	resourceworkbook "github.com/ahillspace/tadx/internal/resources/workbook"

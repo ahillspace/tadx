@@ -1,5 +1,5 @@
 plan:
-  mode: preview
+  mode: execute
   operation: flow.publish
   artifact_path: artifacts/flow/Daily
   artifact_fingerprint: "sha256:abc"
@@ -12,11 +12,10 @@ plan:
     project_path: Ops
   overwrite: false
   substeps[2]: resolve exact destination,publish flow
-applied: true
 result:
   status: succeeded
   flow_luid: flow-1
   flow_name: Daily
   project_luid: project-1
   tableau_request_id: request-1
-help[1]: tadx content flow get --id flow-1
+help[1]: tadx content flow inspect --id flow-1

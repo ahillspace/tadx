@@ -6,7 +6,7 @@ import (
 	"testing"
 
 	authcheck "github.com/ahillspace/tadx/actions/auth/check"
-	catalogsearch "github.com/ahillspace/tadx/actions/catalog/search"
+	searchaction "github.com/ahillspace/tadx/actions/search"
 	workbookpublish "github.com/ahillspace/tadx/actions/workbook/publish"
 	workbookpull "github.com/ahillspace/tadx/actions/workbook/pull"
 	"github.com/ahillspace/tadx/internal/cli"
@@ -19,11 +19,11 @@ func (c *checker) Execute(_ context.Context, input authcheck.Input) (authcheck.O
 	return authcheck.Output{Status: "authenticated"}, nil
 }
 
-type searcher struct{ input catalogsearch.Input }
+type searcher struct{ input searchaction.Input }
 
-func (s *searcher) Execute(_ context.Context, input catalogsearch.Input) (catalogsearch.Output, error) {
+func (s *searcher) Execute(_ context.Context, input searchaction.Input) (searchaction.Output, error) {
 	s.input = input
-	return catalogsearch.Output{Items: []catalogsearch.Item{}, Help: []string{}}, nil
+	return searchaction.Output{Items: []searchaction.Item{}, Help: []string{}}, nil
 }
 
 type puller struct{ input workbookpull.Input }
@@ -34,19 +34,19 @@ func (p *puller) Execute(_ context.Context, input workbookpull.Input) (workbookp
 }
 
 type publisher struct {
-	input workbookpublish.Input
-	apply bool
+	input   workbookpublish.Input
+	preview bool
 }
 
-func (p *publisher) Execute(_ context.Context, input workbookpublish.Input, apply bool) (workbookpublish.Output, error) {
-	p.input, p.apply = input, apply
-	return workbookpublish.Output{Plan: workbookpublish.Plan{Mode: "preview"}, Applied: apply}, nil
+func (p *publisher) Execute(_ context.Context, input workbookpublish.Input, preview bool) (workbookpublish.Output, error) {
+	p.input, p.preview = input, preview
+	return workbookpublish.Output{Plan: workbookpublish.Plan{Mode: "preview"}}, nil
 }
 
 func TestRootRegistersPhaseOneCapabilities(t *testing.T) {
 	deps := dependencies(&lister{}, &getter{}, &renderer{})
 	deps.AuthChecker = &checker{}
-	deps.CatalogSearcher = &searcher{}
+	deps.Searcher = &searcher{}
 	deps.WorkbookPuller = &puller{}
 	deps.WorkbookPublisher = &publisher{}
 	root := cli.NewRoot(deps)
@@ -58,37 +58,55 @@ func TestRootRegistersPhaseOneCapabilities(t *testing.T) {
 		{CapabilityID: "auth.check", CommandPath: []string{"auth", "check"}},
 		{CapabilityID: "capability.get", CommandPath: []string{"capability", "get"}},
 		{CapabilityID: "capability.list", CommandPath: []string{"capability", "list"}},
-		{CapabilityID: "catalog.search", CommandPath: []string{"catalog", "search"}},
 		{CapabilityID: "workbook.publish", CommandPath: []string{"content", "workbook", "publish"}},
 		{CapabilityID: "workbook.pull", CommandPath: []string{"content", "workbook", "pull"}},
+		{CapabilityID: "search.run", CommandPath: []string{"search"}},
 	}
 	if !reflect.DeepEqual(registered, want) {
 		t.Fatalf("registered = %#v, want %#v", registered, want)
 	}
 }
 
-func TestWorkbookPublishPreviewsByDefaultAndRequiresApplyFlagToApply(t *testing.T) {
+func TestTopLevelSearchMapsCanonicalFlags(t *testing.T) {
+	s := &searcher{}
+	deps := dependencies(&lister{}, &getter{}, &renderer{})
+	deps.Searcher = s
+	root := cli.NewRoot(deps)
+	root.SetArgs([]string{"search", "revenue", "--environment", "production", "--type", "workbook", "--catalog", "--cursor", "next", "--limit", "12"})
+	if err := root.Execute(); err != nil {
+		t.Fatal(err)
+	}
+	want := searchaction.Input{Terms: "revenue", Environment: "production", Type: "workbook", Catalog: true, Cursor: "next", Limit: 12}
+	if !reflect.DeepEqual(s.input, want) {
+		t.Fatalf("search input = %#v, want %#v", s.input, want)
+	}
+	if child, _, err := root.Find([]string{"catalog", "search"}); err == nil && child.Name() == "search" {
+		t.Fatal("obsolete catalog search command is mounted")
+	}
+}
+
+func TestWorkbookPublishPerformsByDefaultAndSupportsPreviewFlag(t *testing.T) {
 	for _, test := range []struct {
-		name      string
-		applyFlag []string
-		wantApply bool
+		name        string
+		previewFlag []string
+		wantPreview bool
 	}{
-		{name: "preview"},
-		{name: "apply", applyFlag: []string{"--apply"}, wantApply: true},
+		{name: "perform"},
+		{name: "preview", previewFlag: []string{"--preview"}, wantPreview: true},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			p := &publisher{}
 			deps := dependencies(&lister{}, &getter{}, &renderer{})
-			deps.AuthChecker, deps.CatalogSearcher, deps.WorkbookPuller, deps.WorkbookPublisher = &checker{}, &searcher{}, &puller{}, p
+			deps.AuthChecker, deps.Searcher, deps.WorkbookPuller, deps.WorkbookPublisher = &checker{}, &searcher{}, &puller{}, p
 			root := cli.NewRoot(deps)
 			args := []string{"content", "workbook", "publish", "--workspace", "development", "--artifact", "artifacts/workbook/Finance--identity", "--environment", "production", "--project-id", "project-1"}
-			args = append(args, test.applyFlag...)
+			args = append(args, test.previewFlag...)
 			root.SetArgs(args)
 			if err := root.Execute(); err != nil {
 				t.Fatal(err)
 			}
-			if p.apply != test.wantApply || p.input.Environment != "production" || p.input.ProjectLUID != "project-1" {
-				t.Fatalf("input = %#v, apply = %v", p.input, p.apply)
+			if p.preview != test.wantPreview || p.input.Environment != "production" || p.input.ProjectLUID != "project-1" {
+				t.Fatalf("input = %#v, preview = %v", p.input, p.preview)
 			}
 		})
 	}
@@ -97,7 +115,7 @@ func TestWorkbookPublishPreviewsByDefaultAndRequiresApplyFlagToApply(t *testing.
 func TestWorkbookPullPreservesExplicitIncludeExtractFalse(t *testing.T) {
 	p := &puller{}
 	deps := dependencies(&lister{}, &getter{}, &renderer{})
-	deps.AuthChecker, deps.CatalogSearcher, deps.WorkbookPuller, deps.WorkbookPublisher = &checker{}, &searcher{}, p, &publisher{}
+	deps.AuthChecker, deps.Searcher, deps.WorkbookPuller, deps.WorkbookPublisher = &checker{}, &searcher{}, p, &publisher{}
 	root := cli.NewRoot(deps)
 	root.SetArgs([]string{"content", "workbook", "pull", "--environment", "production", "--workspace", "workspace", "--id", "wb-1", "--include-extract=false"})
 	if err := root.Execute(); err != nil {
@@ -121,7 +139,7 @@ func TestWorkbookPullPassesIncludePublishedDatasourcesChoice(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			p := &puller{}
 			deps := dependencies(&lister{}, &getter{}, &renderer{})
-			deps.AuthChecker, deps.CatalogSearcher, deps.WorkbookPuller, deps.WorkbookPublisher = &checker{}, &searcher{}, p, &publisher{}
+			deps.AuthChecker, deps.Searcher, deps.WorkbookPuller, deps.WorkbookPublisher = &checker{}, &searcher{}, p, &publisher{}
 			root := cli.NewRoot(deps)
 			args := []string{"content", "workbook", "pull", "--environment", "production", "--workspace", "workspace", "--id", "wb-1"}
 			root.SetArgs(append(args, test.flag...))
@@ -142,7 +160,7 @@ func TestFullChangesPresentationStateWithoutChangingWorkbookPullInput(t *testing
 		mode := &cli.RenderOptions{}
 		deps := dependencies(&lister{}, &getter{}, &renderer{})
 		deps.RenderOptions = mode
-		deps.AuthChecker, deps.CatalogSearcher, deps.WorkbookPuller, deps.WorkbookPublisher = &checker{}, &searcher{}, p, &publisher{}
+		deps.AuthChecker, deps.Searcher, deps.WorkbookPuller, deps.WorkbookPublisher = &checker{}, &searcher{}, p, &publisher{}
 		root := cli.NewRoot(deps)
 		args := []string{"content", "workbook", "pull", "--environment", "production", "--workspace", "workspace", "--id", "wb-1", "--include-pds"}
 		if full {

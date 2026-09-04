@@ -19,7 +19,7 @@ type Puller interface {
 	Execute(context.Context, workbookpull.Input) (workbookpull.Output, error)
 }
 
-// Publisher executes workbook.publish preview or apply.
+// Publisher executes workbook.publish or returns a preview.
 type Publisher interface {
 	Execute(context.Context, workbookpublish.Input, bool) (workbookpublish.Output, error)
 }
@@ -32,20 +32,20 @@ type Dependencies struct {
 	Puller              Puller
 	Publisher           Publisher
 	WorkbookLister      WorkbookLister
-	WorkbookGetter      WorkbookGetter
+	WorkbookInspector   WorkbookInspector
 	WorkbookDeleter     WorkbookDeleter
 	DatasourceLister    DatasourceLister
-	DatasourceGetter    DatasourceGetter
+	DatasourceInspector DatasourceInspector
 	DatasourceSchema    DatasourceSchemaGetter
 	DatasourcePuller    DatasourcePuller
 	DatasourcePublisher DatasourcePublisher
 	DatasourceDeleter   DatasourceDeleter
 	ProjectLister       ProjectLister
-	ProjectGetter       ProjectGetter
+	ProjectInspector    ProjectInspector
 	ProjectCreator      ProjectCreator
 	ProjectUpdater      ProjectUpdater
 	FlowLister          FlowLister
-	FlowGetter          FlowGetter
+	FlowInspector       FlowInspector
 	FlowPuller          FlowPuller
 	FlowPublisher       FlowPublisher
 	FlowMover           FlowMover
@@ -64,15 +64,15 @@ func New(deps Dependencies) *cobra.Command {
 	content := &cobra.Command{Use: "content", Short: "Operate Tableau content lifecycle"}
 	workbook := &cobra.Command{Use: "workbook", Short: "Operate Tableau workbooks"}
 	workbook.AddCommand(newPull(deps), newPublish(deps))
-	if deps.WorkbookLister != nil && deps.WorkbookGetter != nil {
-		workbook.AddCommand(newWorkbookList(deps.WorkbookLister, deps.Renderer), newWorkbookGet(deps.WorkbookGetter, deps.Renderer))
+	if deps.WorkbookLister != nil && deps.WorkbookInspector != nil {
+		workbook.AddCommand(newWorkbookList(deps.WorkbookLister, deps.Renderer), newWorkbookInspect(deps.WorkbookInspector, deps.Renderer))
 	}
 	if deps.WorkbookDeleter != nil {
 		workbook.AddCommand(newWorkbookDelete(deps.WorkbookDeleter, deps.Renderer, deps.MutationsEnabled))
 	}
 	content.AddCommand(workbook)
-	if deps.DatasourceLister != nil && deps.DatasourceGetter != nil {
-		datasource := newDatasourceInventory(deps.DatasourceLister, deps.DatasourceGetter, deps.Renderer)
+	if deps.DatasourceLister != nil && deps.DatasourceInspector != nil {
+		datasource := newDatasourceInventory(deps.DatasourceLister, deps.DatasourceInspector, deps.Renderer)
 		if deps.DatasourceSchema != nil {
 			datasource.AddCommand(newDatasourceSchema(deps.DatasourceSchema, deps.Renderer))
 		}
@@ -81,10 +81,10 @@ func New(deps Dependencies) *cobra.Command {
 		}
 		content.AddCommand(datasource)
 	}
-	if deps.ProjectLister != nil && deps.ProjectGetter != nil {
+	if deps.ProjectLister != nil && deps.ProjectInspector != nil {
 		content.AddCommand(newProject(deps))
 	}
-	if deps.FlowLister != nil && deps.FlowGetter != nil && deps.FlowPuller != nil && deps.FlowPublisher != nil && deps.FlowMover != nil && deps.FlowDeleter != nil {
+	if deps.FlowLister != nil && deps.FlowInspector != nil && deps.FlowPuller != nil && deps.FlowPublisher != nil && deps.FlowMover != nil && deps.FlowDeleter != nil {
 		content.AddCommand(newFlow(deps))
 	}
 	if deps.LineagePuller != nil {
@@ -147,11 +147,11 @@ func newPublish(deps Dependencies) *cobra.Command {
 	}
 	short := deps.PublishShort
 	if short == "" {
-		short = "Preview or publish one workbook artifact."
+		short = "Publish one workbook artifact."
 	}
 	var input workbookpublish.Input
 	var projectID, projectPath string
-	var apply bool
+	var preview bool
 	command := &cobra.Command{
 		Use: use, Short: short, Annotations: map[string]string{"tadx.capability": "workbook.publish"},
 		Args: func(command *cobra.Command, args []string) error {
@@ -174,7 +174,7 @@ func newPublish(deps Dependencies) *cobra.Command {
 			return nil
 		},
 		RunE: func(command *cobra.Command, _ []string) error {
-			result, err := deps.Publisher.Execute(command.Context(), input, apply)
+			result, err := deps.Publisher.Execute(command.Context(), input, preview)
 			if err != nil {
 				return err
 			}
@@ -189,7 +189,7 @@ func newPublish(deps Dependencies) *cobra.Command {
 	command.Flags().StringVar(&projectPath, "project", "", "exact slash-delimited destination project path")
 	command.Flags().BoolVar(&input.Overwrite, "overwrite", false, "replace the exact colliding workbook")
 	command.Flags().BoolVar(&input.AsJob, "as-job", false, "publish asynchronously and poll to a bounded terminal result")
-	command.Flags().BoolVar(&apply, "apply", false, "apply the previewed remote mutation")
+	command.Flags().BoolVar(&preview, "preview", false, "preview the remote mutation without performing it")
 	return command
 }
 

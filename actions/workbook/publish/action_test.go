@@ -354,7 +354,7 @@ func TestSourcePreviewGoldenOutput(t *testing.T) {
 		resolver{project: publish.Project{LUID: "project-1", Name: "Ops", Path: "Department/Ops"}, existing: []publish.Workbook{{LUID: "wb-src", Name: "Finance", ProjectLUID: "project-1"}}},
 		&publisher{},
 	)
-	value, err := action.Execute(context.Background(), publish.Input{ArtifactPath: `C:\workspace\Finance`, Environment: "production", Site: "marketing", TargetResolved: true, SourceDefaulted: true}, false)
+	value, err := action.Execute(context.Background(), publish.Input{ArtifactPath: `C:\workspace\Finance`, Environment: "production", Site: "marketing", TargetResolved: true, SourceDefaulted: true}, true)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -383,7 +383,7 @@ func TestPreviewGoldenOutput(t *testing.T) {
 		Environment:     "production",
 		Site:            "marketing",
 		ProjectSelector: identity.Selector{LUID: "project-1"},
-	}, false)
+	}, true)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -404,19 +404,18 @@ func TestPreviewGoldenOutput(t *testing.T) {
 func TestOutputGoldens(t *testing.T) {
 	value := publish.Output{
 		Plan: publish.Plan{
-			Mode: "preview", Operation: "workbook.publish", ArtifactPath: "artifacts/workbook/Finance",
+			Mode: "execute", Operation: "workbook.publish", ArtifactPath: "artifacts/workbook/Finance",
 			ArtifactFingerprint: "sha256:diagnostic", Filename: "Finance.twbx", WorkbookName: "Finance",
 			Target:    publish.Target{Origin: "explicit", Environment: "production", Site: "marketing", ProjectLUID: "project-1", ProjectPath: "Ops", ExistingLUID: "wb-existing"},
 			Overwrite: true, AsJob: true,
 			Warnings: []string{"Detailed portability warning."},
 			Substeps: []string{"resolve exact destination", "publish workbook"},
 		},
-		Applied: true,
 		Result: &publish.Result{
 			Status: "succeeded", WorkbookLUID: "wb-new", WorkbookName: "Finance", ProjectLUID: "project-1", JobID: "job-1", TableauRequestID: "request-1",
 			ValidationWarnings: []publish.ValidationIssue{{Severity: "warning", Message: "Detailed validation warning.", Line: 12, ElementName: "map"}},
 		},
-		Help: []string{"tadx catalog search --environment <alias> to confirm the published workbook."},
+		Help: []string{"tadx search --type workbook --environment <alias> to confirm the published workbook."},
 	}
 	assertOutputGolden(t, "compact.toon", value, false)
 	assertOutputGolden(t, "full.toon", value, true)

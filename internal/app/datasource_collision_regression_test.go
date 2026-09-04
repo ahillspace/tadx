@@ -55,11 +55,12 @@ func TestDatasourcePublishPreviewFindsSpecialCharacterCollisionThroughRemoteComp
 	var output bytes.Buffer
 	exitCode := Run(context.Background(), []string{
 		"content", "datasource", "publish", "--workspace", "analytics", "--artifact", pulled.Artifact.Path, "--overwrite",
+		"--preview",
 	}, &output, Options{ConfigPath: runtime.configPath, HTTPClient: server.Client(), MutationsEnabled: true, Now: runtime.now})
 	if exitCode != 0 {
 		t.Fatalf("publish preview exit = %d, output = %s", exitCode, output.String())
 	}
-	for _, expected := range []string{datasourceName, "existing_datasource_luid: ds-special", "project_luid: project-1", "applied: false"} {
+	for _, expected := range []string{datasourceName, "existing_datasource_luid: ds-special", "project_luid: project-1"} {
 		if !strings.Contains(output.String(), expected) {
 			t.Fatalf("publish preview omitted %q: %s", expected, output.String())
 		}

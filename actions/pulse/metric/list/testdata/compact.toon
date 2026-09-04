@@ -10,7 +10,7 @@ metrics[2]{luid,name,is_default}:
   metric-1,Revenue,true
   metric-2,Revenue West,false
 details: "--full"
-help[1]: tadx pulse metric get --id metric-1
+help[1]: tadx pulse metric inspect --id metric-1
 source:
   mode: tableau
   observed_at: "2026-09-04T10:00:00Z"

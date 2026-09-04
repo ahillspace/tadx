@@ -73,19 +73,19 @@ func TestDatasourceLifecycleCompositionPreservesCompositionIdentityAndRelativePa
 		t.Fatalf("stored artifact = %#v", stored)
 	}
 
-	preview, err := commands.PublishDatasource(context.Background(), datasourcepublish.Input{Workspace: "analytics", ArtifactPath: pulled.Artifact.Path, SourceDefaulted: true, Mode: datasourcepublish.ModeOverwrite}, false)
+	preview, err := commands.PublishDatasource(context.Background(), datasourcepublish.Input{Workspace: "analytics", ArtifactPath: pulled.Artifact.Path, SourceDefaulted: true, Mode: datasourcepublish.ModeOverwrite}, true)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if preview.Applied || preview.Plan.Target.ExistingLUID != "ds-1" || preview.Plan.Target.ProjectLUID != "project-1" || preview.Plan.ArtifactPath != pulled.Artifact.Path || preview.Plan.CompositionStatus != artifact.CompositionStatusComposed || strings.Join(preview.Plan.ParentDataSourceURLs, ",") != "parent-sales" {
+	if preview.Result != nil || preview.Plan.Target.ExistingLUID != "ds-1" || preview.Plan.Target.ProjectLUID != "project-1" || preview.Plan.ArtifactPath != pulled.Artifact.Path || preview.Plan.CompositionStatus != artifact.CompositionStatusComposed || strings.Join(preview.Plan.ParentDataSourceURLs, ",") != "parent-sales" {
 		t.Fatalf("publish preview = %#v", preview)
 	}
 
-	deleted, err := commands.DeleteDatasource(context.Background(), datasourcedelete.Input{Environment: "production", Selector: identity.Selector{LUID: "ds-1"}}, true)
+	deleted, err := commands.DeleteDatasource(context.Background(), datasourcedelete.Input{Environment: "production", Selector: identity.Selector{LUID: "ds-1"}}, false)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !deleted.Applied || deleted.Result == nil || deleted.Result.DatasourceLUID != "ds-1" || deleted.Result.TableauRequestID != "delete-request" || deletes.Load() != 1 {
+	if deleted.Result == nil || deleted.Result.DatasourceLUID != "ds-1" || deleted.Result.TableauRequestID != "delete-request" || deletes.Load() != 1 {
 		t.Fatalf("delete = %#v, calls = %d", deleted, deletes.Load())
 	}
 }

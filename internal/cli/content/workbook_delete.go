@@ -17,10 +17,10 @@ type WorkbookDeleter interface {
 func newWorkbookDelete(deleter WorkbookDeleter, renderer Renderer, _ bool) *cobra.Command {
 	var input workbookdelete.Input
 	var luid, name, projectPath string
-	var apply bool
+	var preview bool
 	command := &cobra.Command{
 		Use:         "delete",
-		Short:       "Preview or delete one exact remote workbook.",
+		Short:       "Delete one exact remote workbook.",
 		Annotations: map[string]string{"tadx.capability": "workbook.delete"},
 		Args: func(command *cobra.Command, args []string) error {
 			if err := selectorArgs("workbook.delete", &luid, &name, &projectPath, input.SetSelector)(command, args); err != nil {
@@ -32,7 +32,7 @@ func newWorkbookDelete(deleter WorkbookDeleter, renderer Renderer, _ bool) *cobr
 			return nil
 		},
 		RunE: func(command *cobra.Command, _ []string) error {
-			result, err := deleter.DeleteWorkbook(command.Context(), input, apply)
+			result, err := deleter.DeleteWorkbook(command.Context(), input, preview)
 			if err != nil {
 				return err
 			}
@@ -43,6 +43,6 @@ func newWorkbookDelete(deleter WorkbookDeleter, renderer Renderer, _ bool) *cobr
 	command.Flags().StringVar(&luid, "id", "", "authoritative workbook LUID")
 	command.Flags().StringVar(&name, "name", "", "exact workbook name")
 	command.Flags().StringVar(&projectPath, "project", "", "exact slash-delimited project path")
-	command.Flags().BoolVar(&apply, "apply", false, "apply the previewed remote deletion")
+	command.Flags().BoolVar(&preview, "preview", false, "preview the remote deletion without performing it")
 	return command
 }

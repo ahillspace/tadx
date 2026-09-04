@@ -17,13 +17,13 @@ func (c *creator) CreateSubscription(context.Context, metricfollow.CreateRequest
 func TestFollowPreviewsAndTreatsDuplicateAsConverged(t *testing.T) {
 	c := &creator{}
 	input := metricfollow.Input{MetricLUID: "metric-1", UserLUID: "user-1"}
-	preview, err := metricfollow.New(c).Execute(context.Background(), input, false)
-	if err != nil || preview.Applied || c.calls != 0 {
+	preview, err := metricfollow.New(c).Execute(context.Background(), input, true)
+	if err != nil || preview.Result != nil || c.calls != 0 {
 		t.Fatalf("preview=%#v calls=%d err=%v", preview, c.calls, err)
 	}
-	applied, err := metricfollow.New(c).Execute(context.Background(), input, true)
-	if err != nil || !applied.Applied || applied.Result.Status != "already_following" {
-		t.Fatalf("output=%#v err=%v", applied, err)
+	result, err := metricfollow.New(c).Execute(context.Background(), input, false)
+	if err != nil || result.Result.Status != "already_following" {
+		t.Fatalf("output=%#v err=%v", result, err)
 	}
 }
 

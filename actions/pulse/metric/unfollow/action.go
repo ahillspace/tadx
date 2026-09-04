@@ -19,7 +19,7 @@ type Action struct {
 }
 
 func New(reader Reader, deleter Deleter) *Action { return &Action{reader: reader, deleter: deleter} }
-func (a *Action) Execute(ctx context.Context, input Input, apply bool) (Output, error) {
+func (a *Action) Execute(ctx context.Context, input Input, preview bool) (Output, error) {
 	if a == nil || a.reader == nil || a.deleter == nil {
 		return Output{}, fail("pulse.metric.unfollow.unconfigured", errs.KindRuntime, input, "Pulse metric unfollow is not configured.", nil)
 	}
@@ -43,24 +43,24 @@ func (a *Action) Execute(ctx context.Context, input Input, apply bool) (Output, 
 		plan.FollowerType = sub.FollowerType
 		plan.FollowerLUID = sub.FollowerLUID
 	}
-	output := Output{Plan: plan, Help: []string{"Add --apply to remove this exact Pulse subscription."}}
-	if !apply {
+	output := Output{Plan: plan, Help: []string{"Run without --preview to remove this exact Pulse subscription."}}
+	if preview {
 		return output, nil
 	}
+	output.Plan.Mode = "execute"
 	if relation {
 		current, err := a.resolve(ctx, input)
 		if err != nil {
 			return Output{}, err
 		}
 		if current.LUID != plan.SubscriptionLUID {
-			return Output{}, fail("pulse.metric.unfollow.changed", errs.KindOperation, input, "The Pulse subscription identity changed after preview.", errors.New("subscription LUID changed"))
+			return Output{}, fail("pulse.metric.unfollow.changed", errs.KindOperation, input, "The Pulse subscription identity changed during revalidation.", errors.New("subscription LUID changed"))
 		}
 	}
 	if err := a.deleter.DeleteSubscription(ctx, plan.SubscriptionLUID); err != nil {
 		retryable, corrective := errs.CompleteRetryAdvice(err, "Inspect the remote unfollow outcome before retrying.")
 		return Output{}, &errs.Error{ID: "pulse.metric.unfollow.failed", Kind: errs.KindOperation, Operation: "pulse.metric.unfollow", Resource: plan.SubscriptionLUID, Environment: input.Environment, Site: input.Site, Summary: "Pulse metric unfollow failed.", Cause: err, Retryable: retryable, CorrectiveAction: corrective, TableauRequestID: errs.TableauRequestID(err)}
 	}
-	output.Applied = true
 	output.Result = &Result{Status: "unfollowed", SubscriptionLUID: plan.SubscriptionLUID}
 	output.Help = []string{"tadx pulse metric followers --id " + plan.MetricLUID}
 	return output, nil

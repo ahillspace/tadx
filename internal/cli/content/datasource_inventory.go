@@ -3,7 +3,7 @@ package content
 import (
 	"context"
 
-	datasourceget "github.com/ahillspace/tadx/actions/datasource/get"
+	datasourceinspect "github.com/ahillspace/tadx/actions/datasource/inspect"
 	datasourcelist "github.com/ahillspace/tadx/actions/datasource/list"
 	"github.com/spf13/cobra"
 )
@@ -13,21 +13,21 @@ type DatasourceLister interface {
 	ListDatasources(context.Context, datasourcelist.Input) (datasourcelist.Output, error)
 }
 
-// DatasourceGetter gets one exact published datasource.
-type DatasourceGetter interface {
-	GetDatasource(context.Context, datasourceget.Input) (datasourceget.Output, error)
+// DatasourceInspector inspects one exact published datasource.
+type DatasourceInspector interface {
+	InspectDatasource(context.Context, datasourceinspect.Input) (datasourceinspect.Output, error)
 }
 
 type datasourceInventoryDependencies struct {
-	lister   DatasourceLister
-	getter   DatasourceGetter
-	renderer Renderer
+	lister    DatasourceLister
+	inspector DatasourceInspector
+	renderer  Renderer
 }
 
-func newDatasourceInventory(lister DatasourceLister, getter DatasourceGetter, renderer Renderer) *cobra.Command {
-	deps := datasourceInventoryDependencies{lister: lister, getter: getter, renderer: renderer}
+func newDatasourceInventory(lister DatasourceLister, inspector DatasourceInspector, renderer Renderer) *cobra.Command {
+	deps := datasourceInventoryDependencies{lister: lister, inspector: inspector, renderer: renderer}
 	command := &cobra.Command{Use: "datasource", Short: "Inspect published Tableau datasources"}
-	command.AddCommand(newDatasourceList(deps), newDatasourceGet(deps))
+	command.AddCommand(newDatasourceList(deps), newDatasourceInspect(deps))
 	return command
 }
 
@@ -59,15 +59,15 @@ func newDatasourceList(deps datasourceInventoryDependencies) *cobra.Command {
 	return command
 }
 
-func newDatasourceGet(deps datasourceInventoryDependencies) *cobra.Command {
-	var input datasourceget.Input
+func newDatasourceInspect(deps datasourceInventoryDependencies) *cobra.Command {
+	var input datasourceinspect.Input
 	var luid, name, projectPath string
 	command := &cobra.Command{
-		Use: "get", Short: "Inspect one exact published datasource.",
-		Annotations: map[string]string{"tadx.capability": "datasource.get"},
-		Args:        selectorArgs("datasource.get", &luid, &name, &projectPath, input.SetSelector),
+		Use: "inspect", Short: "Inspect one exact published datasource.",
+		Annotations: map[string]string{"tadx.capability": "datasource.inspect"},
+		Args:        selectorArgs("datasource.inspect", &luid, &name, &projectPath, input.SetSelector),
 		RunE: func(command *cobra.Command, _ []string) error {
-			result, err := deps.getter.GetDatasource(command.Context(), input)
+			result, err := deps.inspector.InspectDatasource(command.Context(), input)
 			if err != nil {
 				return err
 			}

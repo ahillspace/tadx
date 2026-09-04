@@ -15,7 +15,7 @@ definitions[1]:
     time_dimension: Order Date
     allowed_dimensions[1]: Region
 tableau_request_id: request-1
-help[1]: tadx pulse definition get --id <definition-luid>
+help[1]: tadx pulse definition inspect --id <definition-luid>
 source:
   mode: tableau
   observed_at: "2026-09-04T12:00:00Z"

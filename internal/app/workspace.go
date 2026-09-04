@@ -66,8 +66,8 @@ func (c *workspaceCommands) Status(ctx context.Context, input workspacestatus.In
 func (c *workspaceCommands) Move(ctx context.Context, input workspacemove.Input) (workspacemove.Output, error) {
 	return c.move.Execute(ctx, input)
 }
-func (c *workspaceCommands) Delete(ctx context.Context, input artifactdelete.Input, apply bool) (artifactdelete.Output, error) {
-	return c.delete.Execute(ctx, input, apply)
+func (c *workspaceCommands) Delete(ctx context.Context, input artifactdelete.Input, preview bool) (artifactdelete.Output, error) {
+	return c.delete.Execute(ctx, input, preview)
 }
 func (c *workspaceCommands) Clean(ctx context.Context, input workspaceclean.Input) (workspaceclean.Output, error) {
 	return c.clean.Execute(ctx, input)

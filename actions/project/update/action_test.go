@@ -36,13 +36,12 @@ func TestOutputGolden(t *testing.T) {
 	permissions := "ManagedByOwner"
 	output := projectupdate.Output{
 		Plan: projectupdate.Plan{
-			Mode: "preview", Operation: "project.update", Environment: "dev", Site: "sandbox",
+			Mode: "execute", Operation: "project.update", Environment: "dev", Site: "sandbox",
 			Target:  projectupdate.Project{LUID: "project-1", Name: "Operations", Path: "Department/Operations", ParentLUID: "parent-1", Description: "Old", ContentPermissions: "LockedToProject"},
 			Changes: projectupdate.Changes{Name: &name, ContentPermissions: &permissions},
 		},
-		Applied: true,
-		Result:  &projectupdate.Result{Status: "succeeded", Project: projectupdate.Project{LUID: "project-1", Name: "Renamed", Path: "Department/Renamed", ParentLUID: "parent-1", Description: "Old", ContentPermissions: "ManagedByOwner"}, TableauRequestID: "request-1"},
-		Help:    []string{"tadx content project get --project-id project-1"},
+		Result: &projectupdate.Result{Status: "succeeded", Project: projectupdate.Project{LUID: "project-1", Name: "Renamed", Path: "Department/Renamed", ParentLUID: "parent-1", Description: "Old", ContentPermissions: "ManagedByOwner"}, TableauRequestID: "request-1"},
+		Help:   []string{"tadx content project inspect --project-id project-1"},
 	}
 	assertGolden(t, "compact.toon", output, false)
 	assertGolden(t, "full.toon", output, true)
@@ -81,20 +80,20 @@ func TestUpdatePreviewsAndAppliesOnlyChangedFields(t *testing.T) {
 	action := projectupdate.New(r, u)
 	input := projectupdate.Input{Environment: "dev", Site: "sandbox", Selector: identity.Selector{LUID: "project-1"}, Name: stringPointer("Renamed"), Description: stringPointer("Current"), ContentPermissions: stringPointer("ManagedByOwner")}
 
-	preview, err := action.Execute(context.Background(), input, false)
+	preview, err := action.Execute(context.Background(), input, true)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if preview.Applied || preview.Plan.NoOp || u.calls != 0 {
+	if preview.Result != nil || preview.Plan.NoOp || u.calls != 0 {
 		t.Fatalf("preview=%#v updater=%#v", preview, u)
 	}
 
-	applied, err := action.Execute(context.Background(), input, true)
+	result, err := action.Execute(context.Background(), input, false)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !applied.Applied || u.calls != 1 || u.input.LUID != "project-1" || u.input.Name == nil || *u.input.Name != "Renamed" || u.input.Description != nil || u.input.ContentPermissions == nil {
-		t.Fatalf("applied=%#v updater=%#v", applied, u)
+	if result.Result == nil || u.calls != 1 || u.input.LUID != "project-1" || u.input.Name == nil || *u.input.Name != "Renamed" || u.input.Description != nil || u.input.ContentPermissions == nil {
+		t.Fatalf("result=%#v updater=%#v", result, u)
 	}
 }
 
@@ -102,11 +101,11 @@ func TestUpdateEqualValuesAreNoOpWithoutPut(t *testing.T) {
 	project := projectupdate.Project{LUID: "project-1", Name: "Operations", Path: "Operations", Description: "Same", ContentPermissions: "ManagedByOwner"}
 	r := &resolver{projects: []projectupdate.Project{project}}
 	u := &updater{}
-	output, err := projectupdate.New(r, u).Execute(context.Background(), projectupdate.Input{Environment: "dev", Site: "sandbox", Selector: identity.Selector{LUID: "project-1"}, Description: stringPointer("Same")}, true)
+	output, err := projectupdate.New(r, u).Execute(context.Background(), projectupdate.Input{Environment: "dev", Site: "sandbox", Selector: identity.Selector{LUID: "project-1"}, Description: stringPointer("Same")}, false)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !output.Applied || !output.Plan.NoOp || output.Result == nil || output.Result.Status != "unchanged" || u.calls != 0 {
+	if !output.Plan.NoOp || output.Result == nil || output.Result.Status != "unchanged" || u.calls != 0 {
 		t.Fatalf("output=%#v updater=%#v", output, u)
 	}
 }
@@ -114,7 +113,7 @@ func TestUpdateEqualValuesAreNoOpWithoutPut(t *testing.T) {
 func TestUpdateRejectsChangedTargetIdentity(t *testing.T) {
 	r := &resolver{projects: []projectupdate.Project{{LUID: "project-1", Name: "Operations"}, {LUID: "project-2", Name: "Operations"}}}
 	u := &updater{}
-	_, err := projectupdate.New(r, u).Execute(context.Background(), projectupdate.Input{Environment: "dev", Site: "sandbox", Selector: identity.Selector{LUID: "project-1"}, Name: stringPointer("Renamed")}, true)
+	_, err := projectupdate.New(r, u).Execute(context.Background(), projectupdate.Input{Environment: "dev", Site: "sandbox", Selector: identity.Selector{LUID: "project-1"}, Name: stringPointer("Renamed")}, false)
 	if err == nil || u.calls != 0 {
 		t.Fatalf("error=%v calls=%d", err, u.calls)
 	}

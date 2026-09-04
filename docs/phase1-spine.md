@@ -27,7 +27,7 @@ All public pages remain bounded.
 
 ## Catalog generation contract
 
-`catalog.search` reads one complete local generation from the `<config directory>/catalog` directory.
+`search.run --catalog` reads one complete local generation from the `<config directory>/catalog` directory.
 Aliases containing only lowercase ASCII letters, digits, hyphens, and underscores use `<environment>.json` when the complete filename fits within a 255-byte component, except for reserved Windows filenames.
 Other aliases, including aliases too long for a portable filename component, use `~<lowercase SHA-256 hex>.json` as returned by `catalog.GenerationFilename`.
 The generation records its ID, generation time, source environment and site, completion state, and bounded content items.
@@ -59,15 +59,15 @@ The workbook records workspace-relative sibling paths and sets `dependencies_acq
 Workbook and dependency artifacts are preflighted, staged, and committed as one recoverable local transaction.
 Workbook `--overwrite` never authorizes replacement of a dirty datasource dependency.
 Prepared and committed transaction journals restore the prior bundle or complete cleanup after a process exit.
-Dependency artifacts record `composition_status: unknown`, so later datasource publishing cannot claim composition fidelity before B2 closes.
+Dependency artifacts record `composition_status: unknown`, so later datasource publishing does not claim composition authoring support.
 
 ## Publish contract
 
 Workbook publish resolves a logical workspace name through the deterministic workspace chain and accepts one exact workspace-relative managed workbook directory.
 Absolute machine paths are not public publish selectors and never appear in output.
 Workbook publish plans authoritative target and collision reads before mutation.
-Preview is the default.
-`--apply` runs only the plan produced in the same invocation.
+Mutation is the default when mutation execution is enabled.
+`--preview` emits the plan without publishing.
 Overwrite remains explicit.
 Large files use bounded upload sessions.
 Every appended block response must return the expected upload-session identity before publishing can continue.

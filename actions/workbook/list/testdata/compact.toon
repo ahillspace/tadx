@@ -9,4 +9,4 @@ page:
 workbooks[1]{luid,name,project_luid,project_path,content_url,updated_at}:
   wb-1,Finance,project-1,Department/Ops,Finance,"2026-09-01T00:00:00Z"
 details: "--full"
-help[1]: tadx content workbook get --id <workbook-luid>
+help[1]: tadx content workbook inspect --id <workbook-luid>

@@ -58,7 +58,7 @@ func (a *Action) Execute(ctx context.Context, input Input) (Output, error) {
 	if err != nil {
 		return Output{}, err
 	}
-	return Output{Status: "listed", Environment: input.Environment, Site: input.Site, DefinitionLUID: input.DefinitionLUID, Page: OutputPage{Returned: len(page.Metrics), Limit: limit, NextCursor: next}, Metrics: page.Metrics, RequestID: page.RequestID, Help: []string{"tadx pulse metric get --id <metric-luid>"}}, nil
+	return Output{Status: "listed", Environment: input.Environment, Site: input.Site, DefinitionLUID: input.DefinitionLUID, Page: OutputPage{Returned: len(page.Metrics), Limit: limit, NextCursor: next}, Metrics: page.Metrics, RequestID: page.RequestID, Help: []string{"tadx pulse metric inspect --id <metric-luid>"}}, nil
 }
 
 type cursor struct {

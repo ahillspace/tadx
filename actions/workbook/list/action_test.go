@@ -33,7 +33,7 @@ func TestOutputGolden(t *testing.T) {
 		Status: "listed", Environment: "dev", Site: "sandbox",
 		Page:      workbooklist.OutputPage{Returned: 1, Total: 2, Limit: 1, NextCursor: "next-page"},
 		Workbooks: []workbooklist.Workbook{{LUID: "wb-1", Name: "Finance", ProjectLUID: "project-1", ProjectPath: "Department/Ops", ContentURL: "Finance", UpdatedAt: "2026-09-01T00:00:00Z", Description: "Finance reporting", OwnerLUID: "user-1", CreatedAt: "2026-08-01T00:00:00Z", Tags: []string{"finance"}}},
-		RequestID: "request-1", Help: []string{"tadx content workbook get --id <workbook-luid>"},
+		RequestID: "request-1", Help: []string{"tadx content workbook inspect --id <workbook-luid>"},
 	}
 	assertGolden(t, "compact.toon", output, false)
 	assertGolden(t, "full.toon", output, true)

@@ -92,11 +92,11 @@ func TestPhaseOneWorkbookPullAndPublishThroughCLIDefaultSite(t *testing.T) {
 	}
 
 	var previewOutput strings.Builder
-	previewArgs := []string{"content", "workbook", "publish", "--workspace", "development", "--artifact", artifactSelector, "--environment", "production", "--project-id", "project-1", "--overwrite"}
+	previewArgs := []string{"content", "workbook", "publish", "--workspace", "development", "--artifact", artifactSelector, "--environment", "production", "--project-id", "project-1", "--overwrite", "--preview"}
 	if exit := app.Run(context.Background(), previewArgs, &previewOutput, options); exit != 0 {
 		t.Fatalf("preview exit = %d, output = %s", exit, previewOutput.String())
 	}
-	if publishCalls.Load() != 0 || !strings.Contains(previewOutput.String(), "applied: false") {
+	if publishCalls.Load() != 0 || !strings.Contains(previewOutput.String(), "mode: preview") {
 		t.Fatalf("preview mutated Tableau or omitted preview state: calls=%d output=%s", publishCalls.Load(), previewOutput.String())
 	}
 	if strings.Contains(previewOutput.String(), workspace) || !strings.Contains(previewOutput.String(), artifactSelector) {
@@ -104,10 +104,11 @@ func TestPhaseOneWorkbookPullAndPublishThroughCLIDefaultSite(t *testing.T) {
 	}
 
 	var applyOutput strings.Builder
-	if exit := app.Run(context.Background(), append(previewArgs, "--apply"), &applyOutput, options); exit != 0 {
+	applyArgs := append([]string(nil), previewArgs[:len(previewArgs)-1]...)
+	if exit := app.Run(context.Background(), applyArgs, &applyOutput, options); exit != 0 {
 		t.Fatalf("apply exit = %d, output = %s", exit, applyOutput.String())
 	}
-	if validationCalls.Load() != 1 || publishCalls.Load() != 1 || !strings.Contains(applyOutput.String(), "applied: true") || !strings.Contains(applyOutput.String(), "workbook_luid: wb-2") || !strings.Contains(applyOutput.String(), "validation_warnings_omitted: 1") || !strings.Contains(applyOutput.String(), "details: \"--full\"") || strings.Contains(applyOutput.String(), "Unknown map source is used") {
+	if validationCalls.Load() != 1 || publishCalls.Load() != 1 || !strings.Contains(applyOutput.String(), "workbook_luid: wb-2") || !strings.Contains(applyOutput.String(), "validation_warnings_omitted: 1") || !strings.Contains(applyOutput.String(), "details: \"--full\"") || strings.Contains(applyOutput.String(), "Unknown map source is used") {
 		t.Fatalf("apply result: validation_calls=%d publish_calls=%d output=%s", validationCalls.Load(), publishCalls.Load(), applyOutput.String())
 	}
 }
@@ -271,11 +272,11 @@ func TestPhaseOneCatalogSearchHappyPathThroughCLI(t *testing.T) {
 	options := app.Options{ConfigPath: configPath, Now: func() time.Time { return now }}
 
 	var stdout strings.Builder
-	if exit := app.Run(context.Background(), []string{"catalog", "search", "--environment", "production"}, &stdout, options); exit != 0 {
+	if exit := app.Run(context.Background(), []string{"search", "--catalog", "--type", "workbook", "--environment", "production"}, &stdout, options); exit != 0 {
 		t.Fatalf("catalog search exit = %d, output = %s", exit, stdout.String())
 	}
 	output := stdout.String()
-	for _, want := range []string{"returned: 1", "total: 1", "id: generation-1", "wb-1", "help[1]:"} {
+	for _, want := range []string{"source: catalog", "returned: 1", "id: generation-1", "wb-1", "help[1]:"} {
 		if !strings.Contains(output, want) {
 			t.Fatalf("catalog search output missing %q: %s", want, output)
 		}

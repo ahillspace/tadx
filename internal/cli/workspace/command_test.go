@@ -15,13 +15,13 @@ import (
 )
 
 type actions struct {
-	create []workspacecreate.Input
-	list   []workspacelist.Input
-	status []workspacestatus.Input
-	move   []workspacemove.Input
-	delete []artifactdelete.Input
-	clean  []workspaceclean.Input
-	apply  []bool
+	create  []workspacecreate.Input
+	list    []workspacelist.Input
+	status  []workspacestatus.Input
+	move    []workspacemove.Input
+	delete  []artifactdelete.Input
+	clean   []workspaceclean.Input
+	preview []bool
 }
 
 func (a *actions) Create(_ context.Context, input workspacecreate.Input) (workspacecreate.Output, error) {
@@ -40,9 +40,9 @@ func (a *actions) Move(_ context.Context, input workspacemove.Input) (workspacem
 	a.move = append(a.move, input)
 	return workspacemove.Output{}, nil
 }
-func (a *actions) Delete(_ context.Context, input artifactdelete.Input, apply bool) (artifactdelete.Output, error) {
+func (a *actions) Delete(_ context.Context, input artifactdelete.Input, preview bool) (artifactdelete.Output, error) {
 	a.delete = append(a.delete, input)
-	a.apply = append(a.apply, apply)
+	a.preview = append(a.preview, preview)
 	return artifactdelete.Output{}, nil
 }
 func (a *actions) Clean(_ context.Context, input workspaceclean.Input) (workspaceclean.Output, error) {
@@ -63,7 +63,7 @@ func TestWorkspaceCommandsMapExactInputs(t *testing.T) {
 		{"list", "--limit", "5", "--cursor", "10"},
 		{"status", "--workspace", "development", "--limit", "7", "--cursor", "3"},
 		{"move", "--source", "development", "--destination", "archive", "--kind", "workbook", "--id", "wb-1"},
-		{"artifact", "delete", "--workspace", "archive", "--artifact", "artifacts/workbook/Finance", "--force", "--apply"},
+		{"artifact", "delete", "--workspace", "archive", "--artifact", "artifacts/workbook/Finance", "--force", "--preview"},
 		{"clean", "--workspace", "archive", "--class", "temporary"},
 	}
 	for _, args := range commands {
@@ -84,8 +84,8 @@ func TestWorkspaceCommandsMapExactInputs(t *testing.T) {
 	if !reflect.DeepEqual(a.move, []workspacemove.Input{{SourceWorkspace: "development", DestinationWorkspace: "archive", Kind: "workbook", LUID: "wb-1"}}) {
 		t.Fatalf("move = %#v", a.move)
 	}
-	if !reflect.DeepEqual(a.delete, []artifactdelete.Input{{Workspace: "archive", Path: "artifacts/workbook/Finance", Force: true}}) || !reflect.DeepEqual(a.apply, []bool{true}) {
-		t.Fatalf("delete = %#v apply = %#v", a.delete, a.apply)
+	if !reflect.DeepEqual(a.delete, []artifactdelete.Input{{Workspace: "archive", Path: "artifacts/workbook/Finance", Force: true}}) || !reflect.DeepEqual(a.preview, []bool{true}) {
+		t.Fatalf("delete = %#v preview = %#v", a.delete, a.preview)
 	}
 	if !reflect.DeepEqual(a.clean, []workspaceclean.Input{{Workspace: "archive", Class: "temporary"}}) {
 		t.Fatalf("clean = %#v", a.clean)

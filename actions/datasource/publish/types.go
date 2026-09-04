@@ -45,7 +45,8 @@ type Target struct {
 	ExistingLUID string `json:"existing_datasource_luid,omitempty"`
 }
 type Plan struct {
-	Mode                 Mode     `json:"mode"`
+	Mode                 string   `json:"mode"`
+	PublishMode          Mode     `json:"publish_mode"`
 	Operation            string   `json:"operation"`
 	ArtifactPath         string   `json:"artifact_path"`
 	ArtifactFingerprint  string   `json:"artifact_fingerprint"`
@@ -62,7 +63,8 @@ type Plan struct {
 // CompactPlan keeps only the fields needed to understand the publish decision.
 // Diagnostic artifact and composition detail remains available through --full.
 type CompactPlan struct {
-	Mode           Mode   `json:"mode"`
+	Mode           string `json:"mode"`
+	PublishMode    Mode   `json:"publish_mode"`
 	Operation      string `json:"operation"`
 	ArtifactPath   string `json:"artifact_path"`
 	DatasourceName string `json:"datasource_name"`
@@ -86,10 +88,9 @@ type Result struct {
 	TableauRequestID string `json:"tableau_request_id,omitempty"`
 }
 type Output struct {
-	Plan    Plan     `json:"plan"`
-	Applied bool     `json:"applied"`
-	Result  *Result  `json:"result,omitempty"`
-	Help    []string `json:"help"`
+	Plan   Plan     `json:"plan"`
+	Result *Result  `json:"result,omitempty"`
+	Help   []string `json:"help"`
 }
 
 type CompactPublishResult struct {
@@ -102,30 +103,28 @@ type CompactPublishResult struct {
 
 type CompactResult struct {
 	Plan    CompactPlan           `json:"plan"`
-	Applied bool                  `json:"applied"`
 	Result  *CompactPublishResult `json:"result,omitempty"`
 	Details string                `json:"details"`
 	Help    []string              `json:"help"`
 }
 
 type FullResult struct {
-	Plan    Plan     `json:"plan"`
-	Applied bool     `json:"applied"`
-	Result  *Result  `json:"result,omitempty"`
-	Help    []string `json:"help"`
+	Plan   Plan     `json:"plan"`
+	Result *Result  `json:"result,omitempty"`
+	Help   []string `json:"help"`
 }
 
 func (o Output) CompactOutput() any {
 	compact := CompactResult{
 		Plan: CompactPlan{
 			Mode:           o.Plan.Mode,
+			PublishMode:    o.Plan.PublishMode,
 			Operation:      o.Plan.Operation,
 			ArtifactPath:   o.Plan.ArtifactPath,
 			DatasourceName: o.Plan.DatasourceName,
 			Target:         o.Plan.Target,
 			AsJob:          o.Plan.AsJob,
 		},
-		Applied: o.Applied,
 		Details: "--full",
 		Help:    o.Help,
 	}
@@ -142,7 +141,7 @@ func (o Output) CompactOutput() any {
 }
 
 func (o Output) FullOutput() any {
-	return FullResult{Plan: o.Plan, Applied: o.Applied, Result: o.Result, Help: o.Help}
+	return FullResult{Plan: o.Plan, Result: o.Result, Help: o.Help}
 }
 
 type PreparedPublish interface {

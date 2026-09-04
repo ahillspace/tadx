@@ -189,7 +189,7 @@ V1 must include enough coherent deterministic primitives that coding agents can 
 - Content items.
 - Read-only permissions.
 - Users/groups where useful.
-- First-class lifecycle-oriented content search.
+- First-class shared search across content, administration, and Pulse.
 - Bounded agent-facing list/search results.
 - Full site hydration may consume the complete remote inventory internally because it is written to cache rather than returned wholesale to the model.
 
@@ -214,13 +214,13 @@ V1 must include enough coherent deterministic primitives that coding agents can 
 - Datasources.
 - Flows.
 - Projects.
-- Search.
-- Get/inspect.
+- Shared search across content, administration, and Pulse.
+- Resource inspection.
 - Pull.
 - Publish.
 - Exact workbook, datasource, and flow deletion.
 - Exact flow movement between projects.
-- Preview/apply.
+- Optional mutation preview.
 - Re-pull with dirty-state protection.
 - Shallow project behavior.
 - Bounded factual lineage capture during workbook, datasource, and flow pulls.
@@ -696,7 +696,7 @@ Owns:
 
 - explicit target resolution,
 - preview,
-- `--apply`,
+- default mutation when enabled,
 - capability-specific validation,
 - remote collision handling,
 - optional native revision checks where Tableau exposes trustworthy concurrency state.
@@ -819,8 +819,9 @@ Every consequential remote mutation follows:
 ```text
 resolve exact target
 validate
-preview by default
---apply to mutate
+preview and stop when --preview is set
+revalidate exact target
+mutate by default
 report deterministic outcome
 ```
 
@@ -828,7 +829,7 @@ No second confirmation prompt.
 
 No extra production-only confirmation.
 
-`--force` never means `--apply`.
+`--force` does not bypass mutation policy.
 
 `--force` has no universal global semantics. It may exist only for a specific capability-specific guard. It never bypasses:
 
@@ -836,7 +837,7 @@ No extra production-only confirmation.
 - authentication,
 - required write-target resolution,
 - Tableau's own permission enforcement,
-- `--apply`.
+- mutation execution policy.
 
 Artifact-backed mutations use the recorded source environment, site, project, and resource identity as the default target.
 If the artifact has no complete source provenance, the caller must provide an exact target.
@@ -856,14 +857,14 @@ TADX_ENABLE_MUTATIONS=1
 
 When unset/false:
 
-- mutation commands remain visible and return `mutation.disabled` before action setup, remote reads, local writes, preview, or apply.
+- mutation commands remain visible and return `mutation.disabled` before action setup, remote reads, local writes, preview, or mutation.
 - capability discovery reports `execution_enabled: false` for implemented remote mutations.
 
 When set:
 
 - mutation command execution is enabled.
 - capability discovery reports `execution_enabled: true` for implemented remote mutations.
-- mutation commands remain preview-only unless the caller also supplies `--apply`.
+- mutation commands run by default and support `--preview` for a read-only plan.
 
 The switch may be made persistent by the user through normal shell/OS environment configuration.
 Do not store mutation-execution state in a workspace.
@@ -874,7 +875,9 @@ Do not store mutation-execution state in a workspace.
 
 TADX does not perform optimistic-concurrency or remote-change detection before publish/mutation.
 
-It validates the requested target and operation, previews by default, and on `--apply` invokes the Tableau operation. TADX does not compare current remote state with the state observed at pull time and does not block publication merely because the remote resource may have changed.
+TADX validates the requested target and operation, then invokes the Tableau operation unless the caller supplies `--preview`.
+TADX does not compare current remote state with the state observed at pull time.
+TADX does not block publication because the remote resource might have changed.
 
 Tableau remains authoritative. API-level conflicts or rejected updates are surfaced as normal actionable operation failures.
 
@@ -941,13 +944,13 @@ A future version may add resumability if completed work can be identified determ
 
 `[DECIDED]`
 
-V1 includes exact deletion for local artifacts and supported remote workbooks, datasources, and flows.
-Every deletion previews by default and requires `--apply`.
+V1 includes exact deletion for local artifacts, workbooks, datasources, flows, Pulse definitions, and Pulse metrics.
+Every deletion runs by default when enabled and supports `--preview`.
 Local deletion resolves one artifact by authoritative metadata within one named workspace.
 Remote deletion resolves one resource by Tableau LUID and revalidates that identity immediately before mutation.
 
 V1 also includes exact flow movement between projects.
-Flow movement resolves one flow and one destination project, previews the resolved LUIDs, and requires `--apply`.
+Flow movement resolves one flow and one destination project, and `--preview` shows the resolved LUIDs without mutation.
 
 Project deletion, generic cleanup policy, recycle-bin recovery, permanent purge, and generic remote movement remain deferred.
 The mutation-execution switch applies to every registry-defined remote deletion and movement command while leaving discovery visible.
@@ -1295,7 +1298,7 @@ This is narrow REST-backed administration.
 Preferred vocabulary:
 
 - list,
-- get,
+- inspect,
 - create,
 - update,
 - delete.
@@ -1459,9 +1462,11 @@ tadx capability
 
 tadx catalog
   refresh
-  search
-  get
   status
+
+tadx search [term]
+  --type <type>
+  --catalog
 
 tadx workspace
   create
@@ -1471,15 +1476,13 @@ tadx workspace
   artifact delete
 
 tadx content
-  search
-  get
   pull
   publish
   lineage pull
-  workbook ... delete
-  datasource ... delete
-  flow ... move delete
-  project ...
+  workbook list inspect pull publish delete
+  datasource list inspect schema pull publish delete
+  flow list inspect pull publish move delete
+  project list inspect create update
 
 tadx pulse
   definition ...
@@ -1675,7 +1678,7 @@ They are not required V1 dependencies.
 
 **Risk:** discovery enablement or `--force` becomes a hidden authorization bypass.
 
-**Mitigation:** discovery gating only; `--apply` invariant; `--force` capability-specific.
+**Mitigation:** execution gating; optional preview; capability-specific `--force` behavior.
 
 ## 12.6 Secret leakage
 
@@ -1841,7 +1844,7 @@ A capability that TADX can describe in discovery but which the agent should norm
 
 The mechanism controlled by `TADX_ENABLE_MUTATIONS` that enables registry-defined remote mutation commands.
 Mutation capabilities and commands remain discoverable when execution is disabled.
-Enabled mutation commands still require `--apply` for the remote change.
+Enabled mutation commands run by default and support `--preview`.
 
 ## Project
 
@@ -1853,7 +1856,8 @@ Retrieve one remote Tableau resource into a local workspace and create its artif
 
 ## Publish
 
-Send one local resource/artifact to an explicitly selected Tableau environment/destination. Preview is default; `--apply` executes.
+Send one local resource or artifact to an explicitly selected Tableau environment and destination.
+`--preview` returns the plan without publishing.
 
 ## Skill
 
@@ -1928,7 +1932,7 @@ No user decision is required unless evidence contradicts an architecture decisio
 ## B.1 Tableau capability verification
 
 - Verify current official MCP capability inventory.
-- Verify the API used for lifecycle-oriented content search.
+- Verify the bounded list APIs used by shared live search.
 - Verify workbook download/publish contracts.
 - Verify datasource download/publish contracts.
 - Verify composed datasource parent/reference publish requirements.
@@ -1988,7 +1992,7 @@ A capability is ready to merge when:
 6. Error/exit behavior is tested.
 7. Secret redaction is tested where applicable.
 8. Mutation discovery behavior is tested if mutating.
-9. Preview/`--apply` behavior is tested if consequential.
+9. Default mutation and `--preview` behavior is tested if consequential.
 10. Relevant local artifact/provenance behavior is tested.
 11. Reused prototype code has been reviewed for fit.
 12. API-specific behavior has been verified against current evidence.
@@ -2039,14 +2043,15 @@ Names and paths are selectors; ambiguity fails.
 
 Baseline fingerprint; unchanged repull refreshes with warning; dirty repull requires `--overwrite`.
 
-## ADR-010 - Consequential writes use preview/apply
+## ADR-010 - Consequential writes support preview
 
-Preview by default; `--apply` mutates; no second confirmation; production is not special-cased.
+Mutation runs by default when enabled; `--preview` does not mutate; no second confirmation; production is not special-cased.
 
 ## ADR-011 - Mutation commands are visible and execution-gated
 
 Mutation capabilities and commands remain discoverable regardless of policy state.
-`TADX_ENABLE_MUTATIONS=1` enables mutation command execution, and `--apply` remains the per-command remote commit boundary.
+`TADX_ENABLE_MUTATIONS=1` enables mutation command execution.
+Each enabled command supports `--preview` for a read-only plan.
 
 ## ADR-012 - Minimal exit codes
 
@@ -2159,8 +2164,8 @@ Lineage is read-only artifact metadata, not a dependency or migration engine.
 
 ## ADR-038 - Exact local and remote deletion is V1
 
-V1 includes exact local artifact deletion and exact workbook, datasource, and flow deletion.
-Deletion previews by default, requires `--apply`, and uses authoritative identity.
+V1 includes exact local artifact, workbook, datasource, flow, Pulse definition, and Pulse metric deletion.
+Deletion runs by default when enabled, supports `--preview`, and uses authoritative identity.
 Project deletion, generic cleanup, recovery, and purge remain deferred.
 Deletion-policy environment flags remain tabled.
 

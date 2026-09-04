@@ -40,10 +40,9 @@ type Result struct {
 
 // Output contains preview and optional applied outcome.
 type Output struct {
-	Plan    Plan     `json:"plan"`
-	Applied bool     `json:"applied"`
-	Result  *Result  `json:"result,omitempty"`
-	Help    []string `json:"help"`
+	Plan   Plan     `json:"plan"`
+	Result *Result  `json:"result,omitempty"`
+	Help   []string `json:"help"`
 }
 
 // CompactDeleteResult omits successful request diagnostics.
@@ -55,7 +54,6 @@ type CompactDeleteResult struct {
 // CompactResult is the bounded default projection.
 type CompactResult struct {
 	Plan    Plan                 `json:"plan"`
-	Applied bool                 `json:"applied"`
 	Result  *CompactDeleteResult `json:"result,omitempty"`
 	Details string               `json:"details"`
 	Help    []string             `json:"help"`
@@ -70,7 +68,7 @@ func (o Output) CompactOutput() any {
 	if o.Result != nil {
 		result = &CompactDeleteResult{Status: o.Result.Status, WorkbookLUID: o.Result.WorkbookLUID}
 	}
-	return CompactResult{Plan: o.Plan, Applied: o.Applied, Result: result, Details: "--full", Help: o.Help}
+	return CompactResult{Plan: o.Plan, Result: result, Details: "--full", Help: o.Help}
 }
 
 // FullOutput returns bounded request diagnostics.

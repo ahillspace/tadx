@@ -43,7 +43,7 @@ Compact and full output contain portable relative artifact paths and never revea
 `workspace.move` transfers one exact managed artifact between two registered workspaces without changing its Tableau identity.
 The move fails on a destination collision or any concurrent payload, metadata, or sidecar change.
 
-`workspace.artifact.delete` previews one exact local deletion and requires `--apply` to perform it.
+`workspace.artifact.delete` removes one exact local artifact by default and supports `--preview`.
 A dirty artifact also requires `--force`, and the artifact is revalidated atomically before removal.
 Remote content deletion remains a separate resource action.
 

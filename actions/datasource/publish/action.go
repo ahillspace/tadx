@@ -32,7 +32,7 @@ func New(artifacts ArtifactReader, resolver Resolver, publisher Publisher) *Acti
 	return &Action{artifacts: artifacts, resolver: resolver, publisher: publisher}
 }
 
-func (a *Action) Execute(ctx context.Context, input Input, apply bool) (Output, error) {
+func (a *Action) Execute(ctx context.Context, input Input, preview bool) (Output, error) {
 	if a == nil || a.artifacts == nil || a.resolver == nil || a.publisher == nil {
 		return Output{}, runtimeError("datasource.publish.unconfigured", "Datasource publish is not configured.", nil)
 	}
@@ -40,30 +40,31 @@ func (a *Action) Execute(ctx context.Context, input Input, apply bool) (Output, 
 	if err != nil {
 		return Output{}, err
 	}
-	out := Output{Plan: plan, Help: []string{"Add --apply to publish this exact plan."}}
-	if !apply {
+	out := Output{Plan: plan, Help: []string{"Run without --preview to publish this exact plan."}}
+	if preview {
 		return out, nil
 	}
+	out.Plan.Mode = "execute"
 	artifact, err := a.artifacts.ReadDatasource(ctx, input.ArtifactPath)
 	if err != nil {
 		return Output{}, operationError("datasource.publish.reread", "Datasource artifact revalidation failed.", input, err)
 	}
 	if artifact.Fingerprint != plan.ArtifactFingerprint || artifact.CompositionStatus != plan.CompositionStatus || !slices.Equal(artifact.ParentDataSourceURLs, plan.ParentDataSourceURLs) {
-		return Output{}, operationError("datasource.publish.artifact_changed", "The datasource artifact changed after preview.", input, errors.New("datasource artifact or composition references changed after preview"))
+		return Output{}, operationError("datasource.publish.artifact_changed", "The datasource artifact changed during revalidation.", input, errors.New("datasource artifact or composition references changed during revalidation"))
 	}
 	project, err := a.resolveProject(ctx, input, artifact)
 	if err != nil {
 		return Output{}, err
 	}
 	if project.LUID != plan.Target.ProjectLUID || project.Path != plan.Target.ProjectPath {
-		return Output{}, operationError("datasource.publish.target_changed", "The datasource publish destination changed after preview.", input, errors.New("datasource publish destination changed after preview"))
+		return Output{}, operationError("datasource.publish.target_changed", "The datasource publish destination changed during revalidation.", input, errors.New("datasource publish destination changed during revalidation"))
 	}
 	existing, err := collision(ctx, a.resolver, plan.DatasourceName, project.LUID, input, artifact)
 	if err != nil {
 		return Output{}, err
 	}
 	if existing != plan.Target.ExistingLUID {
-		return Output{}, operationError("datasource.publish.collision_changed", "The datasource publish collision changed after preview.", input, errors.New("datasource publish collision changed after preview"))
+		return Output{}, operationError("datasource.publish.collision_changed", "The datasource publish collision changed during revalidation.", input, errors.New("datasource publish collision changed during revalidation"))
 	}
 	prepared, err := a.publisher.Prepare(ctx, plan.request)
 	if err != nil {
@@ -108,8 +109,8 @@ func (a *Action) Execute(ctx context.Context, input Input, apply bool) (Output, 
 			return Output{}, unknownOutcomeError(plan, input, result, errors.New("completed datasource job returned identity conflicting with the exact publish target"))
 		}
 	}
-	out.Applied, out.Result = true, &result
-	out.Help = []string{"tadx content datasource get --id " + result.DatasourceLUID}
+	out.Result = &result
+	out.Help = []string{"tadx content datasource inspect --id " + result.DatasourceLUID}
 	return out, nil
 }
 
@@ -171,7 +172,7 @@ func (a *Action) plan(ctx context.Context, input Input) (Plan, error) {
 		return Plan{}, err
 	}
 	req := PublishRequest{Name: name, ProjectLUID: project.LUID, Filename: artifact.Filename, ContentPath: artifact.PayloadPath, ContentSize: artifact.Size, ExpectedFingerprint: artifact.Fingerprint, Mode: input.Mode, ParentDataSourceURLs: parents, AsJob: input.AsJob}
-	return Plan{Mode: input.Mode, Operation: "datasource.publish", ArtifactPath: artifact.Path, ArtifactFingerprint: artifact.Fingerprint, Filename: artifact.Filename, DatasourceName: name, CompositionStatus: artifact.CompositionStatus, ParentDataSourceURLs: parents, Target: Target{Environment: input.Environment, Site: input.Site, ProjectLUID: project.LUID, ProjectPath: project.Path, ExistingLUID: existing}, Substeps: []string{"resolve exact destination", "check datasource collision", "revalidate artifact and destination", "upload native datasource package", "publish datasource", "poll asynchronous job when requested"}, AsJob: input.AsJob, request: req}, nil
+	return Plan{Mode: "preview", PublishMode: input.Mode, Operation: "datasource.publish", ArtifactPath: artifact.Path, ArtifactFingerprint: artifact.Fingerprint, Filename: artifact.Filename, DatasourceName: name, CompositionStatus: artifact.CompositionStatus, ParentDataSourceURLs: parents, Target: Target{Environment: input.Environment, Site: input.Site, ProjectLUID: project.LUID, ProjectPath: project.Path, ExistingLUID: existing}, Substeps: []string{"resolve exact destination", "check datasource collision", "revalidate artifact and destination", "upload native datasource package", "publish datasource", "poll asynchronous job when requested"}, AsJob: input.AsJob, request: req}, nil
 }
 
 func (a *Action) resolveProject(ctx context.Context, input Input, artifact Artifact) (Project, error) {

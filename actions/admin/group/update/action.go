@@ -64,10 +64,9 @@ type Result struct {
 	TableauRequestIDsOmitted int      `json:"tableau_request_ids_omitted,omitempty"`
 }
 type Output struct {
-	Plan    Plan     `json:"plan"`
-	Applied bool     `json:"applied"`
-	Result  *Result  `json:"result,omitempty"`
-	Help    []string `json:"help"`
+	Plan   Plan     `json:"plan"`
+	Result *Result  `json:"result,omitempty"`
+	Help   []string `json:"help"`
 }
 type CompactPlan struct {
 	Mode        string `json:"mode"`
@@ -82,7 +81,6 @@ type CompactPlan struct {
 }
 type CompactResult struct {
 	Plan    CompactPlan            `json:"plan"`
-	Applied bool                   `json:"applied"`
 	Result  *CompactMutationResult `json:"result,omitempty"`
 	Details string                 `json:"details"`
 	Help    []string               `json:"help"`
@@ -103,7 +101,7 @@ func (o Output) CompactOutput() any {
 	if o.Result != nil {
 		result = &CompactMutationResult{Status: o.Result.Status, GroupLUID: o.Result.GroupLUID, Added: o.Result.Added, Removed: o.Result.Removed}
 	}
-	return CompactResult{Plan: CompactPlan{Mode: o.Plan.Mode, Operation: o.Plan.Operation, Environment: o.Plan.Environment, Site: o.Plan.Site, GroupLUID: o.Plan.Target.LUID, ChangeCount: len(o.Plan.Changes), AddCount: add, RemoveCount: remove, NoOp: o.Plan.NoOp}, Applied: o.Applied, Result: result, Details: "--full", Help: o.Help}
+	return CompactResult{Plan: CompactPlan{Mode: o.Plan.Mode, Operation: o.Plan.Operation, Environment: o.Plan.Environment, Site: o.Plan.Site, GroupLUID: o.Plan.Target.LUID, ChangeCount: len(o.Plan.Changes), AddCount: add, RemoveCount: remove, NoOp: o.Plan.NoOp}, Result: result, Details: "--full", Help: o.Help}
 }
 func (o Output) FullOutput() any {
 	out := o
@@ -138,7 +136,7 @@ type Action struct {
 func New(r Resolver, u Updater, m MembershipWriter) *Action {
 	return &Action{resolver: r, updater: u, members: m}
 }
-func (a *Action) Execute(ctx context.Context, in Input, apply bool) (Output, error) {
+func (a *Action) Execute(ctx context.Context, in Input, preview bool) (Output, error) {
 	if a == nil || a.resolver == nil || a.updater == nil || a.members == nil {
 		return Output{}, errors.New("admin group update is not configured")
 	}
@@ -166,18 +164,18 @@ func (a *Action) Execute(ctx context.Context, in Input, apply bool) (Output, err
 		membership = &diff
 	}
 	noOp := len(changes) == 0 && (membership == nil || (len(membership.Add) == 0 && len(membership.Remove) == 0))
-	out := Output{Plan: Plan{Mode: "preview", Operation: "admin.group.update", Environment: in.Environment, Site: in.Site, Target: group, Changes: changes, Membership: membership, NoOp: noOp}, Help: []string{"Add --apply to update this exact group and converge direct membership."}}
-	if !apply {
+	out := Output{Plan: Plan{Mode: "preview", Operation: "admin.group.update", Environment: in.Environment, Site: in.Site, Target: group, Changes: changes, Membership: membership, NoOp: noOp}, Help: []string{"Run without --preview to update this exact group and converge direct membership."}}
+	if preview {
 		return out, nil
 	}
+	out.Plan.Mode = "execute"
 	current, err := a.resolver.ResolveGroup(ctx, in.GroupLUID, in.MembershipSet)
 	if err != nil {
 		return Output{}, err
 	}
 	if !reflect.DeepEqual(current, group) {
-		return Output{}, errors.New("the group or its direct membership changed after preview")
+		return Output{}, errors.New("the group or its direct membership changed during revalidation")
 	}
-	out.Applied = true
 	result := &Result{Status: "unchanged", GroupLUID: group.LUID}
 	out.Result = result
 	if noOp {
@@ -224,7 +222,7 @@ func (a *Action) Execute(ctx context.Context, in Input, apply bool) (Output, err
 		}
 	}
 	result.Status = "updated"
-	out.Help = []string{"tadx admin group get --id " + group.LUID + " --members"}
+	out.Help = []string{"tadx admin group inspect --id " + group.LUID + " --members"}
 	return out, nil
 }
 

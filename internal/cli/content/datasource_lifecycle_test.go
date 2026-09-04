@@ -11,23 +11,23 @@ import (
 )
 
 type datasourceLifecycleCommands struct {
-	pullInput    datasourcepull.Input
-	publishInput datasourcepublish.Input
-	publishApply bool
-	deleteInput  datasourcedelete.Input
-	deleteApply  bool
+	pullInput      datasourcepull.Input
+	publishInput   datasourcepublish.Input
+	publishPreview bool
+	deleteInput    datasourcedelete.Input
+	deletePreview  bool
 }
 
 func (c *datasourceLifecycleCommands) PullDatasource(_ context.Context, input datasourcepull.Input) (datasourcepull.Output, error) {
 	c.pullInput = input
 	return datasourcepull.Output{}, nil
 }
-func (c *datasourceLifecycleCommands) PublishDatasource(_ context.Context, input datasourcepublish.Input, apply bool) (datasourcepublish.Output, error) {
-	c.publishInput, c.publishApply = input, apply
+func (c *datasourceLifecycleCommands) PublishDatasource(_ context.Context, input datasourcepublish.Input, preview bool) (datasourcepublish.Output, error) {
+	c.publishInput, c.publishPreview = input, preview
 	return datasourcepublish.Output{}, nil
 }
-func (c *datasourceLifecycleCommands) DeleteDatasource(_ context.Context, input datasourcedelete.Input, apply bool) (datasourcedelete.Output, error) {
-	c.deleteInput, c.deleteApply = input, apply
+func (c *datasourceLifecycleCommands) DeleteDatasource(_ context.Context, input datasourcedelete.Input, preview bool) (datasourcedelete.Output, error) {
+	c.deleteInput, c.deletePreview = input, preview
 	return datasourcedelete.Output{}, nil
 }
 
@@ -62,20 +62,20 @@ func TestDatasourcePublishDefaultsToRecordedSourceWithExplicitMode(t *testing.T)
 	if err := command.ExecuteContext(context.Background()); err != nil {
 		t.Fatal(err)
 	}
-	if !actions.publishInput.SourceDefaulted || actions.publishInput.Mode != datasourcepublish.ModeOverwrite || actions.publishInput.Workspace != "analytics" || actions.publishInput.ArtifactPath != "artifacts/datasource/Sales" || actions.publishApply || renderer.calls != 1 {
-		t.Fatalf("input = %#v, apply = %t, renders = %d", actions.publishInput, actions.publishApply, renderer.calls)
+	if !actions.publishInput.SourceDefaulted || actions.publishInput.Mode != datasourcepublish.ModeOverwrite || actions.publishInput.Workspace != "analytics" || actions.publishInput.ArtifactPath != "artifacts/datasource/Sales" || actions.publishPreview || renderer.calls != 1 {
+		t.Fatalf("input = %#v, preview = %t, renders = %d", actions.publishInput, actions.publishPreview, renderer.calls)
 	}
 }
 
-func TestDatasourcePublishParsesExplicitDestinationModeAndApply(t *testing.T) {
+func TestDatasourcePublishParsesExplicitDestinationModeAndPreview(t *testing.T) {
 	actions := &datasourceLifecycleCommands{}
 	command := datasourceLifecycleRoot(actions, &datasourceLifecycleRenderer{}, true)
-	command.SetArgs([]string{"publish", "--artifact", "artifacts/datasource/Sales", "--environment", "prod", "--project-id", "project-1", "--create", "--as-job", "--apply"})
+	command.SetArgs([]string{"publish", "--artifact", "artifacts/datasource/Sales", "--environment", "prod", "--project-id", "project-1", "--create", "--as-job", "--preview"})
 	if err := command.ExecuteContext(context.Background()); err != nil {
 		t.Fatal(err)
 	}
-	if actions.publishInput.SourceDefaulted || actions.publishInput.Environment != "prod" || actions.publishInput.ProjectSelector.LUID != "project-1" || actions.publishInput.Mode != datasourcepublish.ModeCreate || !actions.publishInput.AsJob || !actions.publishApply {
-		t.Fatalf("input = %#v, apply = %t", actions.publishInput, actions.publishApply)
+	if actions.publishInput.SourceDefaulted || actions.publishInput.Environment != "prod" || actions.publishInput.ProjectSelector.LUID != "project-1" || actions.publishInput.Mode != datasourcepublish.ModeCreate || !actions.publishInput.AsJob || !actions.publishPreview {
+		t.Fatalf("input = %#v, preview = %t", actions.publishInput, actions.publishPreview)
 	}
 }
 
@@ -114,7 +114,7 @@ func TestDatasourcePublishRejectsUnsafeTargetAndModeCombinations(t *testing.T) {
 	}
 }
 
-func TestDatasourceDeleteRequiresExplicitEnvironmentAndParsesApply(t *testing.T) {
+func TestDatasourceDeleteRequiresExplicitEnvironmentAndParsesPreview(t *testing.T) {
 	actions := &datasourceLifecycleCommands{}
 	missing := datasourceLifecycleRoot(actions, &datasourceLifecycleRenderer{}, true)
 	missing.SetArgs([]string{"delete", "--id", "ds-1"})
@@ -122,12 +122,12 @@ func TestDatasourceDeleteRequiresExplicitEnvironmentAndParsesApply(t *testing.T)
 		t.Fatal("delete without environment succeeded")
 	}
 	command := datasourceLifecycleRoot(actions, &datasourceLifecycleRenderer{}, true)
-	command.SetArgs([]string{"delete", "--environment", "prod", "--id", "ds-1", "--apply"})
+	command.SetArgs([]string{"delete", "--environment", "prod", "--id", "ds-1", "--preview"})
 	if err := command.ExecuteContext(context.Background()); err != nil {
 		t.Fatal(err)
 	}
-	if actions.deleteInput.Environment != "prod" || actions.deleteInput.Selector.LUID != "ds-1" || !actions.deleteApply {
-		t.Fatalf("input = %#v, apply = %t", actions.deleteInput, actions.deleteApply)
+	if actions.deleteInput.Environment != "prod" || actions.deleteInput.Selector.LUID != "ds-1" || !actions.deletePreview {
+		t.Fatalf("input = %#v, preview = %t", actions.deleteInput, actions.deletePreview)
 	}
 }
 

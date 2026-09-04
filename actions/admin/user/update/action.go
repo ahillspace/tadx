@@ -47,15 +47,13 @@ type Result struct {
 	TableauRequestID string `json:"tableau_request_id,omitempty"`
 }
 type Output struct {
-	Plan    Plan     `json:"plan"`
-	Applied bool     `json:"applied"`
-	Result  *Result  `json:"result,omitempty"`
-	Help    []string `json:"help"`
+	Plan   Plan     `json:"plan"`
+	Result *Result  `json:"result,omitempty"`
+	Help   []string `json:"help"`
 }
 type CompactResult struct {
-	Plan    Plan `json:"plan"`
-	Applied bool `json:"applied"`
-	Result  *struct {
+	Plan   Plan `json:"plan"`
+	Result *struct {
 		Status   string `json:"status"`
 		UserLUID string `json:"user_luid"`
 	} `json:"result,omitempty"`
@@ -64,7 +62,7 @@ type CompactResult struct {
 }
 
 func (o Output) CompactOutput() any {
-	v := CompactResult{Plan: o.Plan, Applied: o.Applied, Details: "--full", Help: o.Help}
+	v := CompactResult{Plan: o.Plan, Details: "--full", Help: o.Help}
 	if o.Result != nil {
 		v.Result = &struct {
 			Status   string `json:"status"`
@@ -87,7 +85,7 @@ type Action struct {
 }
 
 func New(r Resolver, u Updater) *Action { return &Action{resolver: r, updater: u} }
-func (a *Action) Execute(ctx context.Context, in Input, apply bool) (Output, error) {
+func (a *Action) Execute(ctx context.Context, in Input, preview bool) (Output, error) {
 	if a == nil || a.resolver == nil || a.updater == nil {
 		return Output{}, errors.New("admin user update is not configured")
 	}
@@ -107,18 +105,18 @@ func (a *Action) Execute(ctx context.Context, in Input, apply bool) (Output, err
 	}
 	changes := userChanges(user, req)
 	plan := Plan{Mode: "preview", Operation: "admin.user.update", Environment: in.Environment, Site: in.Site, Target: user, Changes: changes, NoOp: len(changes) == 0}
-	out := Output{Plan: plan, Help: []string{"Add --apply to update this exact user."}}
-	if !apply {
+	out := Output{Plan: plan, Help: []string{"Run without --preview to update this exact user."}}
+	if preview {
 		return out, nil
 	}
+	out.Plan.Mode = "execute"
 	current, err := a.resolver.ResolveUser(ctx, in.UserLUID)
 	if err != nil {
 		return Output{}, err
 	}
 	if !reflect.DeepEqual(current, user) {
-		return Output{}, errors.New("the user update target changed after preview")
+		return Output{}, errors.New("the user update target changed during revalidation")
 	}
-	out.Applied = true
 	if plan.NoOp {
 		out.Result = &Result{Status: "unchanged", UserLUID: user.LUID}
 		return out, nil
@@ -135,7 +133,7 @@ func (a *Action) Execute(ctx context.Context, in Input, apply bool) (Output, err
 		return Output{}, err
 	}
 	out.Result = &Result{Status: "updated", UserLUID: updated.LUID, TableauRequestID: updated.RequestID}
-	out.Help = []string{"tadx admin user get --id " + updated.LUID}
+	out.Help = []string{"tadx admin user inspect --id " + updated.LUID}
 	return out, nil
 }
 

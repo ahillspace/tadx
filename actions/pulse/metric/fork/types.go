@@ -74,10 +74,9 @@ type Result struct {
 	ReconciliationRequestID string `json:"reconciliation_request_id,omitempty"`
 }
 type Output struct {
-	Plan    Plan     `json:"plan"`
-	Applied bool     `json:"applied"`
-	Result  *Result  `json:"result,omitempty"`
-	Help    []string `json:"help"`
+	Plan   Plan     `json:"plan"`
+	Result *Result  `json:"result,omitempty"`
+	Help   []string `json:"help"`
 }
 type CompactResult struct {
 	Status               string `json:"status"`
@@ -87,7 +86,6 @@ type CompactResult struct {
 }
 type CompactOutput struct {
 	Plan    Plan           `json:"plan"`
-	Applied bool           `json:"applied"`
 	Result  *CompactResult `json:"result,omitempty"`
 	Details string         `json:"details"`
 	Help    []string       `json:"help"`
@@ -98,6 +96,6 @@ func (o Output) CompactOutput() any {
 	if o.Result != nil {
 		result = &CompactResult{Status: o.Result.Status, MetricLUID: o.Result.MetricLUID, Created: o.Result.Created, ReconciliationStatus: o.Result.ReconciliationStatus}
 	}
-	return CompactOutput{Plan: o.Plan, Applied: o.Applied, Result: result, Details: "--full", Help: o.Help}
+	return CompactOutput{Plan: o.Plan, Result: result, Details: "--full", Help: o.Help}
 }
 func (o Output) FullOutput() any { return o }

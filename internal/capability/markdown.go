@@ -44,7 +44,7 @@ func GenerateMarkdown(definitions []Definition) ([]byte, error) {
 			{"Implementation state", string(definition.Implementation)},
 			{"Local write", yesNo(definition.LocalWrite)},
 			{"Remote mutation", yesNo(definition.RemoteMutation)},
-			{"Requires `--apply`", yesNo(definition.RequiresApply)},
+			{"Supports `--preview`", yesNo(definition.SupportsPreview)},
 			{"Raw capable", yesNo(definition.RawCapable)},
 			{"Safety and guard", definition.SafetyGuard},
 			{"Artifact effect", definition.ArtifactEffect},

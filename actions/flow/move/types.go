@@ -44,10 +44,9 @@ type Result struct {
 	TableauRequestID string `json:"tableau_request_id,omitempty"`
 }
 type Output struct {
-	Plan    Plan     `json:"plan"`
-	Applied bool     `json:"applied"`
-	Result  *Result  `json:"result,omitempty"`
-	Help    []string `json:"help"`
+	Plan   Plan     `json:"plan"`
+	Result *Result  `json:"result,omitempty"`
+	Help   []string `json:"help"`
 }
 type CompactMoveResult struct {
 	Status      string `json:"status"`
@@ -56,16 +55,14 @@ type CompactMoveResult struct {
 }
 type CompactResult struct {
 	Plan    Plan               `json:"plan"`
-	Applied bool               `json:"applied"`
 	Result  *CompactMoveResult `json:"result,omitempty"`
 	Details string             `json:"details"`
 	Help    []string           `json:"help"`
 }
 type FullResult struct {
-	Plan    Plan     `json:"plan"`
-	Applied bool     `json:"applied"`
-	Result  *Result  `json:"result,omitempty"`
-	Help    []string `json:"help"`
+	Plan   Plan     `json:"plan"`
+	Result *Result  `json:"result,omitempty"`
+	Help   []string `json:"help"`
 }
 
 func (o Output) CompactOutput() any {
@@ -77,9 +74,9 @@ func (o Output) CompactOutput() any {
 			ProjectLUID: o.Result.ProjectLUID,
 		}
 	}
-	return CompactResult{Plan: o.Plan, Applied: o.Applied, Result: result, Details: "--full", Help: o.Help}
+	return CompactResult{Plan: o.Plan, Result: result, Details: "--full", Help: o.Help}
 }
 
 func (o Output) FullOutput() any {
-	return FullResult{Plan: o.Plan, Applied: o.Applied, Result: o.Result, Help: o.Help}
+	return FullResult{Plan: o.Plan, Result: o.Result, Help: o.Help}
 }

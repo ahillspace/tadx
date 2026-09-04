@@ -3,7 +3,7 @@ package app
 import (
 	"context"
 
-	workbookget "github.com/ahillspace/tadx/actions/workbook/get"
+	workbookinspect "github.com/ahillspace/tadx/actions/workbook/inspect"
 	workbooklist "github.com/ahillspace/tadx/actions/workbook/list"
 	"github.com/ahillspace/tadx/internal/catalog"
 	"github.com/ahillspace/tadx/internal/identity"
@@ -47,15 +47,15 @@ func (c *remoteContentCommands) ListWorkbooks(ctx context.Context, input workboo
 	return output, nil
 }
 
-func (c *remoteContentCommands) GetWorkbook(ctx context.Context, input workbookget.Input) (workbookget.Output, error) {
+func (c *remoteContentCommands) InspectWorkbook(ctx context.Context, input workbookinspect.Input) (workbookinspect.Output, error) {
 	if input.Catalog {
 		environment, site, err := c.resolveCatalogTarget(input.Environment)
 		if err != nil {
-			return workbookget.Output{}, err
+			return workbookinspect.Output{}, err
 		}
 		input.Environment, input.Site = environment, site
 		resolver := &catalogWorkbookGetResolver{store: c.catalogStore(), environment: environment, site: site}
-		output, err := workbookget.New(resolver).Execute(ctx, input)
+		output, err := workbookinspect.New(resolver).Execute(ctx, input)
 		if err == nil {
 			output.Source = resolver.source
 		}
@@ -63,10 +63,10 @@ func (c *remoteContentCommands) GetWorkbook(ctx context.Context, input workbookg
 	}
 	connection, err := c.connect(ctx, input.Environment, false)
 	if err != nil {
-		return workbookget.Output{}, remoteSetupError("workbook.get", input.Environment, input.Site, connection.environment, err)
+		return workbookinspect.Output{}, remoteSetupError("workbook.inspect", input.Environment, input.Site, connection.environment, err)
 	}
 	input.Environment, input.Site = connection.environment.Alias, connection.environment.SiteContentURL
-	output, err := workbookget.New(workbookGetResolver{adapter: connection.workbooks}).Execute(ctx, input)
+	output, err := workbookinspect.New(workbookGetResolver{adapter: connection.workbooks}).Execute(ctx, input)
 	if err != nil {
 		return output, err
 	}
@@ -97,7 +97,7 @@ func (r workbookListReader) ListWorkbooks(ctx context.Context, input workbooklis
 
 type workbookGetResolver struct{ adapter workbookInventoryAdapter }
 
-func (r workbookGetResolver) ResolveWorkbook(ctx context.Context, selector identity.Selector) (workbookget.Workbook, error) {
+func (r workbookGetResolver) ResolveWorkbook(ctx context.Context, selector identity.Selector) (workbookinspect.Workbook, error) {
 	item, err := r.adapter.ResolveWorkbook(ctx, selector)
-	return workbookget.Workbook{LUID: item.LUID, Name: item.Name, ProjectLUID: item.ProjectLUID, ProjectPath: item.ProjectPath, ContentURL: item.ContentURL, UpdatedAt: item.UpdatedAt, Description: item.Description, OwnerLUID: item.OwnerLUID, CreatedAt: item.CreatedAt, Tags: append([]string(nil), item.Tags...), RequestID: item.RequestID}, err
+	return workbookinspect.Workbook{LUID: item.LUID, Name: item.Name, ProjectLUID: item.ProjectLUID, ProjectPath: item.ProjectPath, ContentURL: item.ContentURL, UpdatedAt: item.UpdatedAt, Description: item.Description, OwnerLUID: item.OwnerLUID, CreatedAt: item.CreatedAt, Tags: append([]string(nil), item.Tags...), RequestID: item.RequestID}, err
 }

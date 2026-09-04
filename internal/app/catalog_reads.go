@@ -8,13 +8,13 @@ import (
 	"strings"
 	"time"
 
-	datasourceget "github.com/ahillspace/tadx/actions/datasource/get"
+	datasourceinspect "github.com/ahillspace/tadx/actions/datasource/inspect"
 	datasourcelist "github.com/ahillspace/tadx/actions/datasource/list"
-	flowget "github.com/ahillspace/tadx/actions/flow/get"
+	flowinspect "github.com/ahillspace/tadx/actions/flow/inspect"
 	flowlist "github.com/ahillspace/tadx/actions/flow/list"
-	projectget "github.com/ahillspace/tadx/actions/project/get"
+	projectinspect "github.com/ahillspace/tadx/actions/project/inspect"
 	projectlist "github.com/ahillspace/tadx/actions/project/list"
-	workbookget "github.com/ahillspace/tadx/actions/workbook/get"
+	workbookinspect "github.com/ahillspace/tadx/actions/workbook/inspect"
 	workbooklist "github.com/ahillspace/tadx/actions/workbook/list"
 	"github.com/ahillspace/tadx/internal/catalog"
 	"github.com/ahillspace/tadx/internal/errs"
@@ -129,18 +129,18 @@ type catalogWorkbookGetResolver struct {
 	source      *readsource.Metadata
 }
 
-func (r *catalogWorkbookGetResolver) ResolveWorkbook(ctx context.Context, selector identity.Selector) (workbookget.Workbook, error) {
+func (r *catalogWorkbookGetResolver) ResolveWorkbook(ctx context.Context, selector identity.Selector) (workbookinspect.Workbook, error) {
 	result, err := r.store.ReadResources(ctx, catalog.ResourceQuery{Environment: r.environment, Site: r.site, Kind: "workbook", LUID: string(selector.LUID), Name: selector.Name, ProjectPath: selector.ProjectPath, Limit: 2})
 	if err != nil {
-		return workbookget.Workbook{}, catalogReadError("workbook.get", r.environment, r.site, err)
+		return workbookinspect.Workbook{}, catalogReadError("workbook.inspect", r.environment, r.site, err)
 	}
 	entry := result.Entries[0]
 	r.source = catalogRecordSource(result, entry)
-	var item workbookget.Workbook
+	var item workbookinspect.Workbook
 	if len(entry.Payload) != 0 && json.Unmarshal(entry.Payload, &item) == nil {
 		return item, nil
 	}
-	return workbookget.Workbook{LUID: entry.LUID, Name: entry.Name, ProjectPath: entry.ProjectPath, OwnerLUID: entry.Owner}, nil
+	return workbookinspect.Workbook{LUID: entry.LUID, Name: entry.Name, ProjectPath: entry.ProjectPath, OwnerLUID: entry.Owner}, nil
 }
 
 type catalogDatasourceListReader struct {
@@ -176,18 +176,18 @@ type catalogDatasourceGetResolver struct {
 	source      *readsource.Metadata
 }
 
-func (r *catalogDatasourceGetResolver) ResolveDatasource(ctx context.Context, selector identity.Selector) (datasourceget.Datasource, error) {
+func (r *catalogDatasourceGetResolver) ResolveDatasource(ctx context.Context, selector identity.Selector) (datasourceinspect.Datasource, error) {
 	result, err := r.store.ReadResources(ctx, catalog.ResourceQuery{Environment: r.environment, Site: r.site, Kind: "datasource", LUID: string(selector.LUID), Name: selector.Name, ProjectPath: selector.ProjectPath, Limit: 2})
 	if err != nil {
-		return datasourceget.Datasource{}, catalogReadError("datasource.get", r.environment, r.site, err)
+		return datasourceinspect.Datasource{}, catalogReadError("datasource.inspect", r.environment, r.site, err)
 	}
 	entry := result.Entries[0]
 	r.source = catalogRecordSource(result, entry)
-	var item datasourceget.Datasource
+	var item datasourceinspect.Datasource
 	if len(entry.Payload) != 0 && json.Unmarshal(entry.Payload, &item) == nil {
 		return item, nil
 	}
-	return datasourceget.Datasource{LUID: entry.LUID, Name: entry.Name, ProjectPath: entry.ProjectPath, OwnerLUID: entry.Owner}, nil
+	return datasourceinspect.Datasource{LUID: entry.LUID, Name: entry.Name, ProjectPath: entry.ProjectPath, OwnerLUID: entry.Owner}, nil
 }
 
 type catalogFlowListReader struct {
@@ -223,18 +223,18 @@ type catalogFlowGetResolver struct {
 	source      *readsource.Metadata
 }
 
-func (r *catalogFlowGetResolver) ResolveFlow(ctx context.Context, selector identity.Selector) (flowget.Flow, error) {
+func (r *catalogFlowGetResolver) ResolveFlow(ctx context.Context, selector identity.Selector) (flowinspect.Flow, error) {
 	result, err := r.store.ReadResources(ctx, catalog.ResourceQuery{Environment: r.environment, Site: r.site, Kind: "flow", LUID: string(selector.LUID), Name: selector.Name, ProjectPath: selector.ProjectPath, Limit: 2})
 	if err != nil {
-		return flowget.Flow{}, catalogReadError("flow.get", r.environment, r.site, err)
+		return flowinspect.Flow{}, catalogReadError("flow.inspect", r.environment, r.site, err)
 	}
 	entry := result.Entries[0]
 	r.source = catalogRecordSource(result, entry)
-	var item flowget.Flow
+	var item flowinspect.Flow
 	if len(entry.Payload) != 0 && json.Unmarshal(entry.Payload, &item) == nil {
 		return item, nil
 	}
-	return flowget.Flow{LUID: entry.LUID, Name: entry.Name, ProjectPath: entry.ProjectPath, OwnerLUID: entry.Owner}, nil
+	return flowinspect.Flow{LUID: entry.LUID, Name: entry.Name, ProjectPath: entry.ProjectPath, OwnerLUID: entry.Owner}, nil
 }
 
 type catalogProjectListReader struct {
@@ -270,7 +270,7 @@ type catalogProjectGetResolver struct {
 	source      *readsource.Metadata
 }
 
-func (r *catalogProjectGetResolver) ResolveProject(ctx context.Context, selector identity.Selector) (projectget.Project, error) {
+func (r *catalogProjectGetResolver) ResolveProject(ctx context.Context, selector identity.Selector) (projectinspect.Project, error) {
 	path := selector.ProjectPath
 	name := ""
 	if path != "" {
@@ -279,13 +279,13 @@ func (r *catalogProjectGetResolver) ResolveProject(ctx context.Context, selector
 	}
 	result, err := r.store.ReadResources(ctx, catalog.ResourceQuery{Environment: r.environment, Site: r.site, Kind: "project", LUID: string(selector.LUID), Name: name, ProjectPath: path, Limit: 2})
 	if err != nil {
-		return projectget.Project{}, catalogReadError("project.get", r.environment, r.site, err)
+		return projectinspect.Project{}, catalogReadError("project.inspect", r.environment, r.site, err)
 	}
 	entry := result.Entries[0]
 	r.source = catalogRecordSource(result, entry)
-	var item projectget.Project
+	var item projectinspect.Project
 	if len(entry.Payload) != 0 && json.Unmarshal(entry.Payload, &item) == nil {
 		return item, nil
 	}
-	return projectget.Project{LUID: entry.LUID, Name: entry.Name, Path: entry.ProjectPath, OwnerLUID: entry.Owner}, nil
+	return projectinspect.Project{LUID: entry.LUID, Name: entry.Name, Path: entry.ProjectPath, OwnerLUID: entry.Owner}, nil
 }

@@ -42,7 +42,7 @@ func TestListOutputGolden(t *testing.T) {
 		},
 		RequestID: "request-1",
 		Source:    &source,
-		Help:      []string{"tadx pulse metric get --id metric-1"},
+		Help:      []string{"tadx pulse metric inspect --id metric-1"},
 	}
 	assertGolden(t, "compact.toon", output, false)
 	assertGolden(t, "full.toon", output, true)

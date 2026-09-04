@@ -43,13 +43,12 @@ type creator struct {
 func TestOutputGolden(t *testing.T) {
 	output := projectcreate.Output{
 		Plan: projectcreate.Plan{
-			Mode: "preview", Operation: "project.create", Environment: "dev", Site: "sandbox",
+			Mode: "execute", Operation: "project.create", Environment: "dev", Site: "sandbox",
 			Project: projectcreate.ProjectSpec{Name: "Operations", Description: "Direct operations", ContentPermissions: "LockedToProject"},
 			Parent:  &projectcreate.Project{LUID: "parent-1", Name: "Department", Path: "Department"},
 		},
-		Applied: true,
-		Result:  &projectcreate.Result{Status: "succeeded", Project: projectcreate.Project{LUID: "project-1", Name: "Operations", Path: "Department/Operations", ParentLUID: "parent-1", Description: "Direct operations", ContentPermissions: "LockedToProject"}, TableauRequestID: "request-1"},
-		Help:    []string{"tadx content project get --project-id project-1"},
+		Result: &projectcreate.Result{Status: "succeeded", Project: projectcreate.Project{LUID: "project-1", Name: "Operations", Path: "Department/Operations", ParentLUID: "parent-1", Description: "Direct operations", ContentPermissions: "LockedToProject"}, TableauRequestID: "request-1"},
+		Help:   []string{"tadx content project inspect --project-id project-1"},
 	}
 	assertGolden(t, "compact.toon", output, false)
 	assertGolden(t, "full.toon", output, true)
@@ -82,27 +81,27 @@ func TestCreatePreviewsThenRevalidatesParentAndCollisionOnApply(t *testing.T) {
 	action := projectcreate.New(r, c)
 	input := projectcreate.Input{Environment: "dev", Site: "sandbox", Name: "Operations", Description: "Direct operations", ContentPermissions: "LockedToProject", ParentSelector: identity.Selector{LUID: "parent-1"}}
 
-	preview, err := action.Execute(context.Background(), input, false)
+	preview, err := action.Execute(context.Background(), input, true)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if preview.Applied || c.calls != 0 || preview.Plan.Parent == nil || preview.Plan.Parent.LUID != "parent-1" {
+	if preview.Result != nil || c.calls != 0 || preview.Plan.Parent == nil || preview.Plan.Parent.LUID != "parent-1" {
 		t.Fatalf("preview=%#v creator=%#v", preview, c)
 	}
 
-	applied, err := action.Execute(context.Background(), input, true)
+	result, err := action.Execute(context.Background(), input, false)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !applied.Applied || c.calls != 1 || c.input.ParentLUID != "parent-1" || applied.Result == nil || applied.Result.Project.LUID != "project-1" {
-		t.Fatalf("applied=%#v creator=%#v", applied, c)
+	if result.Result == nil || c.calls != 1 || c.input.ParentLUID != "parent-1" || result.Result.Project.LUID != "project-1" {
+		t.Fatalf("result=%#v creator=%#v", result, c)
 	}
 }
 
 func TestCreateRootDoesNotResolveOrInferParent(t *testing.T) {
 	r := &resolver{}
 	c := &creator{}
-	output, err := projectcreate.New(r, c).Execute(context.Background(), projectcreate.Input{Environment: "dev", Site: "sandbox", Name: "Root"}, true)
+	output, err := projectcreate.New(r, c).Execute(context.Background(), projectcreate.Input{Environment: "dev", Site: "sandbox", Name: "Root"}, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -115,7 +114,7 @@ func TestCreateRejectsCollisionAndChangedParentIdentity(t *testing.T) {
 	t.Run("collision", func(t *testing.T) {
 		r := &resolver{collisions: []projectcreate.Project{{LUID: "existing", Name: "Operations"}}}
 		c := &creator{}
-		_, err := projectcreate.New(r, c).Execute(context.Background(), projectcreate.Input{Environment: "dev", Site: "sandbox", Name: "operations"}, false)
+		_, err := projectcreate.New(r, c).Execute(context.Background(), projectcreate.Input{Environment: "dev", Site: "sandbox", Name: "operations"}, true)
 		if err == nil || c.calls != 0 {
 			t.Fatalf("error=%v calls=%d", err, c.calls)
 		}
@@ -123,7 +122,7 @@ func TestCreateRejectsCollisionAndChangedParentIdentity(t *testing.T) {
 	t.Run("parent identity changed", func(t *testing.T) {
 		r := &resolver{parents: []projectcreate.Project{{LUID: "parent-1"}, {LUID: "parent-2"}}}
 		c := &creator{}
-		_, err := projectcreate.New(r, c).Execute(context.Background(), projectcreate.Input{Environment: "dev", Site: "sandbox", Name: "Operations", ParentSelector: identity.Selector{LUID: "parent-1"}}, true)
+		_, err := projectcreate.New(r, c).Execute(context.Background(), projectcreate.Input{Environment: "dev", Site: "sandbox", Name: "Operations", ParentSelector: identity.Selector{LUID: "parent-1"}}, false)
 		if err == nil || c.calls != 0 {
 			t.Fatalf("error=%v calls=%d", err, c.calls)
 		}

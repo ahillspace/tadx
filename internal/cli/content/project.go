@@ -5,7 +5,7 @@ import (
 	"errors"
 
 	projectcreate "github.com/ahillspace/tadx/actions/project/create"
-	projectget "github.com/ahillspace/tadx/actions/project/get"
+	projectinspect "github.com/ahillspace/tadx/actions/project/inspect"
 	projectlist "github.com/ahillspace/tadx/actions/project/list"
 	projectupdate "github.com/ahillspace/tadx/actions/project/update"
 	"github.com/ahillspace/tadx/internal/cli/clierr"
@@ -16,8 +16,8 @@ type ProjectLister interface {
 	ListProjects(context.Context, projectlist.Input) (projectlist.Output, error)
 }
 
-type ProjectGetter interface {
-	GetProject(context.Context, projectget.Input) (projectget.Output, error)
+type ProjectInspector interface {
+	InspectProject(context.Context, projectinspect.Input) (projectinspect.Output, error)
 }
 
 type ProjectCreator interface {
@@ -30,7 +30,7 @@ type ProjectUpdater interface {
 
 func newProject(deps Dependencies) *cobra.Command {
 	command := &cobra.Command{Use: "project", Short: "Inspect Tableau projects"}
-	command.AddCommand(newProjectList(deps), newProjectGet(deps))
+	command.AddCommand(newProjectList(deps), newProjectInspect(deps))
 	if deps.ProjectCreator != nil {
 		command.AddCommand(newProjectCreate(deps))
 	}
@@ -43,9 +43,9 @@ func newProject(deps Dependencies) *cobra.Command {
 func newProjectCreate(deps Dependencies) *cobra.Command {
 	var input projectcreate.Input
 	var parentLUID, parentPath string
-	var apply bool
+	var preview bool
 	command := &cobra.Command{
-		Use: "create", Short: "Preview or create one project.",
+		Use: "create", Short: "Create one project.",
 		Annotations: map[string]string{"tadx.capability": "project.create"},
 		Args: func(command *cobra.Command, args []string) error {
 			if err := noContentArgs("project.create")(command, args); err != nil {
@@ -61,7 +61,7 @@ func newProjectCreate(deps Dependencies) *cobra.Command {
 			return nil
 		},
 		RunE: func(command *cobra.Command, _ []string) error {
-			result, err := deps.ProjectCreator.CreateProject(command.Context(), input, apply)
+			result, err := deps.ProjectCreator.CreateProject(command.Context(), input, preview)
 			if err != nil {
 				return err
 			}
@@ -74,16 +74,16 @@ func newProjectCreate(deps Dependencies) *cobra.Command {
 	command.Flags().StringVar(&input.ContentPermissions, "content-permissions", "", "explicit Tableau content permission mode")
 	command.Flags().StringVar(&parentLUID, "parent-id", "", "authoritative parent project LUID")
 	command.Flags().StringVar(&parentPath, "parent", "", "exact slash-delimited parent project path")
-	command.Flags().BoolVar(&apply, "apply", false, "apply the previewed remote mutation")
+	command.Flags().BoolVar(&preview, "preview", false, "preview the remote mutation without performing it")
 	return command
 }
 
 func newProjectUpdate(deps Dependencies) *cobra.Command {
 	var input projectupdate.Input
 	var projectLUID, legacyProjectLUID, projectPath, name, description, contentPermissions string
-	var apply bool
+	var preview bool
 	command := &cobra.Command{
-		Use: "update", Short: "Preview or update one exact project.",
+		Use: "update", Short: "Update one exact project.",
 		Annotations: map[string]string{"tadx.capability": "project.update"},
 		Args: func(command *cobra.Command, args []string) error {
 			if err := noContentArgs("project.update")(command, args); err != nil {
@@ -112,7 +112,7 @@ func newProjectUpdate(deps Dependencies) *cobra.Command {
 			return nil
 		},
 		RunE: func(command *cobra.Command, _ []string) error {
-			result, err := deps.ProjectUpdater.UpdateProject(command.Context(), input, apply)
+			result, err := deps.ProjectUpdater.UpdateProject(command.Context(), input, preview)
 			if err != nil {
 				return err
 			}
@@ -125,7 +125,7 @@ func newProjectUpdate(deps Dependencies) *cobra.Command {
 	command.Flags().StringVar(&name, "name", "", "replacement project name")
 	command.Flags().StringVar(&description, "description", "", "replacement project description")
 	command.Flags().StringVar(&contentPermissions, "content-permissions", "", "replacement Tableau content permission mode")
-	command.Flags().BoolVar(&apply, "apply", false, "apply the previewed remote mutation")
+	command.Flags().BoolVar(&preview, "preview", false, "preview the remote mutation without performing it")
 	return command
 }
 
@@ -156,27 +156,27 @@ func newProjectList(deps Dependencies) *cobra.Command {
 	return command
 }
 
-func newProjectGet(deps Dependencies) *cobra.Command {
-	var input projectget.Input
+func newProjectInspect(deps Dependencies) *cobra.Command {
+	var input projectinspect.Input
 	var projectLUID, legacyProjectLUID, projectPath string
 	command := &cobra.Command{
-		Use: "get", Short: "Inspect one exact project.", Annotations: map[string]string{"tadx.capability": "project.get"},
+		Use: "inspect", Short: "Inspect one exact project.", Annotations: map[string]string{"tadx.capability": "project.inspect"},
 		Args: func(command *cobra.Command, args []string) error {
-			if err := noContentArgs("project.get")(command, args); err != nil {
+			if err := noContentArgs("project.inspect")(command, args); err != nil {
 				return err
 			}
 			luid, err := selectProjectLUID(command, projectLUID, legacyProjectLUID)
 			if err != nil {
-				return clierr.Usage("project.get", err)
+				return clierr.Usage("project.inspect", err)
 			}
 			if (luid == "") == (projectPath == "") {
-				return clierr.Usage("project.get", errors.New("use exactly one of --project-id or --project"))
+				return clierr.Usage("project.inspect", errors.New("use exactly one of --project-id or --project"))
 			}
 			input.SetSelector(luid, projectPath)
 			return nil
 		},
 		RunE: func(command *cobra.Command, _ []string) error {
-			result, err := deps.ProjectGetter.GetProject(command.Context(), input)
+			result, err := deps.ProjectInspector.InspectProject(command.Context(), input)
 			if err != nil {
 				return err
 			}

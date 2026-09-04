@@ -55,7 +55,7 @@ Planned experiment.
 - Logging shim: a `tadx` wrapper on PATH that appends every invocation (argv + exit code + stderr) to a log file, then calls the real binary - objective command trace, independent of agent self-report.
 - Fresh agents that know only that a `tadx` binary exists, explicitly forbidden from reading the tadx source tree (source access would fake the confusion signal). One realistic, human-phrased task each.
 - Tasks: (1) connect to my site and confirm it works; (2) find all workbooks owned by an email; (3) download a named workbook locally; (4) list every user; (5) "what can this tool do?" (pure discovery - tests help / --help / capability list).
-- Optional broader pass: mutation attempts (create/update/delete user), --apply preview flow, ambiguous selectors, bad inputs - stresses mutation-safety and error-message surface.
+- Optional broader pass: mutation attempts, `--preview`, ambiguous selectors, and invalid inputs to exercise mutation safety and error messages.
 - Output: collect command traces + confusion notes, synthesize a ranked friction report, map each point to a fix (rename, AGENTS.md, help-string, defect). That report decides skill vs AGENTS.md vs better help empirically.
 
 Status / notes.
