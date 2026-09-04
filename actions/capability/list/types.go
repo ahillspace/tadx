@@ -14,16 +14,17 @@ type Input struct {
 
 // Capability is the bounded discovery view of one registry entry.
 type Capability struct {
-	ID             string `json:"id"`
-	Owner          string `json:"owner"`
-	Disposition    string `json:"disposition,omitempty"`
-	State          string `json:"state"`
-	Command        string `json:"command,omitempty"`
-	Blocked        bool   `json:"blocked"`
-	Domain         string `json:"-"`
-	Resource       string `json:"-"`
-	Product        string `json:"-"`
-	RemoteMutation bool   `json:"-"`
+	ID               string `json:"id"`
+	Owner            string `json:"owner"`
+	Disposition      string `json:"disposition,omitempty"`
+	State            string `json:"state"`
+	Command          string `json:"command,omitempty"`
+	Blocked          bool   `json:"blocked"`
+	Domain           string `json:"-"`
+	Resource         string `json:"-"`
+	Product          string `json:"-"`
+	RemoteMutation   bool   `json:"-"`
+	ExecutionEnabled bool   `json:"execution_enabled"`
 }
 
 // Pagination describes a bounded result page and its continuation.

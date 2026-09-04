@@ -25,4 +25,4 @@ result:
     description: Old
     content_permissions: ManagedByOwner
   tableau_request_id: request-1
-help[1]: tadx content project get --id project-1
+help[1]: tadx content project get --project-id project-1

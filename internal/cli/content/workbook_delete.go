@@ -14,14 +14,13 @@ type WorkbookDeleter interface {
 	DeleteWorkbook(context.Context, workbookdelete.Input, bool) (workbookdelete.Output, error)
 }
 
-func newWorkbookDelete(deleter WorkbookDeleter, renderer Renderer, mutationsEnabled bool) *cobra.Command {
+func newWorkbookDelete(deleter WorkbookDeleter, renderer Renderer, _ bool) *cobra.Command {
 	var input workbookdelete.Input
 	var luid, name, projectPath string
 	var apply bool
 	command := &cobra.Command{
 		Use:         "delete",
 		Short:       "Preview or delete one exact remote workbook.",
-		Hidden:      !mutationsEnabled,
 		Annotations: map[string]string{"tadx.capability": "workbook.delete"},
 		Args: func(command *cobra.Command, args []string) error {
 			if err := selectorArgs("workbook.delete", &luid, &name, &projectPath, input.SetSelector)(command, args); err != nil {

@@ -131,7 +131,7 @@ func TestDatasourceDeleteRequiresExplicitEnvironmentAndParsesApply(t *testing.T)
 	}
 }
 
-func TestDatasourceMutationDiscoveryIsHiddenWhenDisabled(t *testing.T) {
+func TestDatasourceMutationDiscoveryStaysVisibleWhenDisabled(t *testing.T) {
 	command := datasourceLifecycleRoot(&datasourceLifecycleCommands{}, &datasourceLifecycleRenderer{}, false)
 	publish, _, err := command.Find([]string{"publish"})
 	if err != nil {
@@ -145,7 +145,7 @@ func TestDatasourceMutationDiscoveryIsHiddenWhenDisabled(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !publish.Hidden || !deleteCommand.Hidden || pull.Hidden {
+	if publish.Hidden || deleteCommand.Hidden || pull.Hidden {
 		t.Fatalf("hidden states: pull=%t publish=%t delete=%t", pull.Hidden, publish.Hidden, deleteCommand.Hidden)
 	}
 }

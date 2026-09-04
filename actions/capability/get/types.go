@@ -2,7 +2,8 @@ package get
 
 // Input selects one capability by its exact registry ID.
 type Input struct {
-	ID string `json:"id"`
+	ID               string `json:"id"`
+	MutationsEnabled bool   `json:"-"`
 }
 
 // Capability is the detailed discovery view of one registry entry.
@@ -30,6 +31,7 @@ type Capability struct {
 	Validation            string   `json:"validation"`
 	Blocker               string   `json:"blocker,omitempty"`
 	RemoteMutation        bool     `json:"remote_mutation"`
+	ExecutionEnabled      bool     `json:"execution_enabled"`
 	RequiresApply         bool     `json:"requires_apply"`
 	LocalWrite            bool     `json:"local_write"`
 	RawCapable            bool     `json:"raw_capable"`

@@ -388,8 +388,8 @@ func newPermissionGet(deps Dependencies) *cobra.Command {
 	return cmd
 }
 
-func mutation(use, short, capability string, enabled bool, args cobra.PositionalArgs, run func(*cobra.Command) error) *cobra.Command {
-	return &cobra.Command{Use: use, Short: short, Hidden: !enabled, Annotations: map[string]string{"tadx.capability": capability}, Args: args, RunE: func(cmd *cobra.Command, _ []string) error { return run(cmd) }}
+func mutation(use, short, capability string, _ bool, args cobra.PositionalArgs, run func(*cobra.Command) error) *cobra.Command {
+	return &cobra.Command{Use: use, Short: short, Annotations: map[string]string{"tadx.capability": capability}, Args: args, RunE: func(cmd *cobra.Command, _ []string) error { return run(cmd) }}
 }
 func noArgs(operation string) cobra.PositionalArgs {
 	return func(cmd *cobra.Command, args []string) error {

@@ -52,6 +52,17 @@ func (p projectPaths) ResolveProjectPath(_ context.Context, luid string) (string
 	return path, nil
 }
 
+type filterRejectingClient struct {
+	client
+}
+
+func (c *filterRejectingClient) List(ctx context.Context, input tableaudatasource.ListRequest) (tableaudatasource.Page, error) {
+	if strings.ContainsAny(input.Name, ",&") {
+		return tableaudatasource.Page{}, errors.New("Tableau rejected the datasource name filter")
+	}
+	return c.client.List(ctx, input)
+}
+
 func TestAdapterResolvesDatasourceByAuthoritativeLUID(t *testing.T) {
 	c := &client{metadata: tableaudatasource.Datasource{LUID: "ds-1", Name: "Sales", ProjectLUID: "project-1", ProjectName: "Ops", TableauRequestID: "get-request"}}
 	item, err := resourcedatasource.NewAdapterWithProjectResolver(c, projectPaths{"project-1": "Department/Ops"}).ResolveDatasource(context.Background(), identity.Selector{LUID: "ds-1"})
@@ -171,6 +182,32 @@ func TestAdapterFindsExactDatasourceCollisionsByProjectLUID(t *testing.T) {
 	}
 	if len(items) != 2 || items[0].LUID != "ds-a" || items[1].LUID != "ds-b" {
 		t.Fatalf("items = %#v", items)
+	}
+	if len(c.listInputs) != 1 || c.listInputs[0].Name != "Sales" {
+		t.Fatalf("list inputs = %#v", c.listInputs)
+	}
+}
+
+func TestAdapterFindsExactDatasourceCollisionWhenNameCannotUseTableauFilterGrammar(t *testing.T) {
+	c := &filterRejectingClient{client: client{pages: map[int]tableaudatasource.Page{
+		1: {Number: 1, Size: 2, Total: 3, Items: []tableaudatasource.Datasource{
+			{LUID: "ds-other", Name: "Other", ProjectLUID: "project-1", ProjectName: "Ops"},
+			{LUID: "ds-wrong-project", Name: "Revenue & Profit, Daily", ProjectLUID: "project-2", ProjectName: "Other"},
+		}},
+		2: {Number: 2, Size: 2, Total: 3, Items: []tableaudatasource.Datasource{
+			{LUID: "ds-match", Name: "Revenue & Profit, Daily", ProjectLUID: "project-1", ProjectName: "Ops"},
+		}},
+	}}}
+
+	items, err := resourcedatasource.NewAdapter(c).FindDatasources(context.Background(), "Revenue & Profit, Daily", "project-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(items) != 1 || items[0].LUID != "ds-match" {
+		t.Fatalf("items = %#v", items)
+	}
+	if len(c.listInputs) != 2 || c.listInputs[0].Name != "" || c.listInputs[1].Name != "" {
+		t.Fatalf("list inputs = %#v", c.listInputs)
 	}
 }
 

@@ -176,8 +176,8 @@ V1 must include enough coherent deterministic primitives that coding agents can 
 - `capability list`.
 - `capability get`.
 - Capability ownership metadata.
-- Mutation capabilities hidden from default discovery.
-- Persistent environment-variable switch for mutation discovery.
+- Mutation capabilities remain visible with execution availability metadata.
+- Persistent environment-variable switch for mutation execution.
 - Bounded, agent-efficient discovery.
 - MCP-only / MCP-preferred capability guidance when TADX is not the preferred execution surface.
 
@@ -842,11 +842,11 @@ Artifact-backed mutations use the recorded source environment, site, project, an
 If the artifact has no complete source provenance, the caller must provide an exact target.
 An explicit environment override also requires an exact target project.
 
-## 6.6 Mutation discovery gating
+## 6.6 Mutation execution gating
 
 `[DECIDED]`
 
-Mutation gating changes discovery only.
+Mutation capabilities and commands remain discoverable regardless of execution policy.
 
 The persistent switch is:
 
@@ -856,17 +856,17 @@ TADX_ENABLE_MUTATIONS=1
 
 When unset/false:
 
-- mutation commands are absent from default agent-facing help/capability discovery.
+- mutation commands remain visible and return `mutation.disabled` before action setup, remote reads, local writes, preview, or apply.
+- capability discovery reports `execution_enabled: false` for implemented remote mutations.
 
 When set:
 
-- mutation capabilities appear in discovery/help.
+- mutation command execution is enabled.
+- capability discovery reports `execution_enabled: true` for implemented remote mutations.
+- mutation commands remain preview-only unless the caller also supplies `--apply`.
 
-It does not authorize execution.
-
-A caller that already knows the command may invoke it regardless of discovery visibility; remote mutation still requires `--apply`.
-
-The switch may be made persistent by the user through normal shell/OS environment configuration. Do not store mutation-discovery state in a workspace.
+The switch may be made persistent by the user through normal shell/OS environment configuration.
+Do not store mutation-execution state in a workspace.
 
 ## 6.7 Remote conflict behavior
 
@@ -950,7 +950,7 @@ V1 also includes exact flow movement between projects.
 Flow movement resolves one flow and one destination project, previews the resolved LUIDs, and requires `--apply`.
 
 Project deletion, generic cleanup policy, recycle-bin recovery, permanent purge, and generic remote movement remain deferred.
-The mutation-discovery switch keeps its existing discovery-only behavior.
+The mutation-execution switch applies to every registry-defined remote deletion and movement command while leaving discovery visible.
 No separate deletion-policy switch is defined in this architecture revision.
 
 ---
@@ -1837,9 +1837,11 @@ A named Tableau Cloud/Server endpoint/site configuration with non-secret setting
 
 A capability that TADX can describe in discovery but which the agent should normally execute through Tableau MCP.
 
-## Mutation discovery gating
+## Mutation execution gating
 
-The mechanism controlled by `TADX_ENABLE_MUTATIONS` that changes which mutation capabilities appear in agent-facing discovery/help. It is not execution authorization.
+The mechanism controlled by `TADX_ENABLE_MUTATIONS` that enables registry-defined remote mutation commands.
+Mutation capabilities and commands remain discoverable when execution is disabled.
+Enabled mutation commands still require `--apply` for the remote change.
 
 ## Project
 
@@ -2041,9 +2043,10 @@ Baseline fingerprint; unchanged repull refreshes with warning; dirty repull requ
 
 Preview by default; `--apply` mutates; no second confirmation; production is not special-cased.
 
-## ADR-011 - Mutation gating is discovery-only
+## ADR-011 - Mutation commands are visible and execution-gated
 
-`TADX_ENABLE_MUTATIONS=1` persistently exposes mutation capabilities; it is not execution authorization.
+Mutation capabilities and commands remain discoverable regardless of policy state.
+`TADX_ENABLE_MUTATIONS=1` enables mutation command execution, and `--apply` remains the per-command remote commit boundary.
 
 ## ADR-012 - Minimal exit codes
 

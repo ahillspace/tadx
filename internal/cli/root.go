@@ -4,6 +4,7 @@ package cli
 import (
 	"context"
 	"fmt"
+	"reflect"
 	"strings"
 
 	authcheck "github.com/ahillspace/tadx/actions/auth/check"
@@ -22,6 +23,7 @@ import (
 	doctorcli "github.com/ahillspace/tadx/internal/cli/doctor"
 	envcli "github.com/ahillspace/tadx/internal/cli/env"
 	workspacecli "github.com/ahillspace/tadx/internal/cli/workspace"
+	"github.com/ahillspace/tadx/internal/errs"
 	"github.com/spf13/cobra"
 )
 
@@ -32,6 +34,11 @@ const CapabilityAnnotation = "tadx.capability"
 type RegisteredCommand struct {
 	CapabilityID string
 	CommandPath  []string
+}
+
+// MutationPolicy identifies registry-defined remote mutation capabilities.
+type MutationPolicy interface {
+	IsRemoteMutation(string) bool
 }
 
 // Lister executes capability list.
@@ -78,6 +85,7 @@ type Dependencies struct {
 	RenderOptions        *RenderOptions
 	ConfigPath           *string
 	MutationsEnabled     bool
+	MutationPolicy       MutationPolicy
 	ListUse              string
 	ListShort            string
 	GetUse               string
@@ -126,8 +134,15 @@ func NewRoot(deps Dependencies) *cobra.Command {
 		configPath = new(string)
 	}
 	root := &cobra.Command{
-		Use:           "tadx",
-		Short:         "Deterministic Tableau lifecycle and development CLI",
+		Use:   "tadx",
+		Short: "Deterministic Tableau lifecycle and development CLI",
+		Long: `Deterministic Tableau lifecycle and development CLI.
+
+Run tadx capability list to discover available operations and tadx capability get <id> for bounded details.
+TADX returns compact TOON by default. Use --full to show expanded bounded details for the same operation.
+
+Remote mutation commands remain visible when execution is disabled. Set TADX_ENABLE_MUTATIONS=1 to enable them.
+When enabled, mutation commands preview changes by default. Pass --apply to perform the previewed remote mutation.`,
 		SilenceErrors: true,
 		SilenceUsage:  true,
 	}
@@ -190,9 +205,74 @@ func NewRoot(deps Dependencies) *cobra.Command {
 		contentDependencies.PublishShort = deps.WorkbookPublishShort
 		root.AddCommand(contentcli.New(contentDependencies))
 	}
+	applyMutationExecutionPolicy(root, deps.MutationPolicy, deps.MutationsEnabled)
 	root.CompletionOptions.DisableDefaultCmd = true
 	setFlagErrorHandlers(root)
 	return root
+}
+
+func applyMutationExecutionPolicy(root *cobra.Command, policy MutationPolicy, enabled bool) {
+	if root == nil {
+		return
+	}
+	policyMissing := mutationPolicyMissing(policy)
+	var walk func(*cobra.Command)
+	walk = func(command *cobra.Command) {
+		runnable := command.RunE != nil || command.Run != nil
+		if runnable && command.Annotations[CapabilityAnnotation] != "" && policyMissing {
+			command.Run = nil
+			command.RunE = func(*cobra.Command, []string) error {
+				return &errs.Error{
+					ID:               "mutation.policy.unconfigured",
+					Kind:             errs.KindRuntime,
+					Operation:        "startup",
+					Summary:          "Remote mutation policy is not configured.",
+					Retryable:        errs.Bool(false),
+					CorrectiveAction: "Configure the registry-backed mutation policy before running TADX.",
+				}
+			}
+		}
+		if capabilityID := command.Annotations[CapabilityAnnotation]; runnable && capabilityID != "" && !policyMissing && policy.IsRemoteMutation(capabilityID) {
+			command.Hidden = false
+			originalRunE := command.RunE
+			originalRun := command.Run
+			command.Run = nil
+			command.RunE = func(command *cobra.Command, args []string) error {
+				if !enabled {
+					return &errs.Error{
+						ID:               "mutation.disabled",
+						Kind:             errs.KindOperation,
+						Operation:        capabilityID,
+						Summary:          "Remote mutation execution is disabled.",
+						Retryable:        errs.Bool(false),
+						CorrectiveAction: "Set TADX_ENABLE_MUTATIONS=1, then retry. Without --apply, the enabled command returns a preview only.",
+					}
+				}
+				if originalRunE != nil {
+					return originalRunE(command, args)
+				}
+				originalRun(command, args)
+				return nil
+			}
+		}
+		for _, child := range command.Commands() {
+			walk(child)
+		}
+	}
+	walk(root)
+}
+
+func mutationPolicyMissing(policy MutationPolicy) bool {
+	if policy == nil {
+		return true
+	}
+	value := reflect.ValueOf(policy)
+	switch value.Kind() {
+	case reflect.Chan, reflect.Func, reflect.Interface, reflect.Map, reflect.Pointer, reflect.Slice:
+		return value.IsNil()
+	default:
+		return false
+	}
 }
 
 // RegisteredCommands discovers capability bindings from the actual command tree.

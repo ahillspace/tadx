@@ -33,7 +33,7 @@ func newWorkbookList(lister WorkbookLister, renderer Renderer) *cobra.Command {
 	command.Flags().StringVar(&input.Environment, "environment", "", "exact environment alias; defaults to the configured read environment")
 	command.Flags().StringVar(&input.Name, "name", "", "exact workbook-name filter")
 	command.Flags().StringVar(&input.OwnerName, "owner", "", "exact owner-name filter")
-	command.Flags().StringVar(&input.ProjectName, "project-name", "", "exact project-name filter")
+	command.Flags().StringVar(&input.ProjectName, "project-name", "", "exact leaf project name filter; not a project path")
 	command.Flags().StringVar(&input.Tag, "tag", "", "exact workbook-tag filter")
 	command.Flags().IntVar(&input.Limit, "limit", 0, "maximum workbooks to return")
 	command.Flags().StringVar(&input.Cursor, "cursor", "", "opaque continuation cursor")

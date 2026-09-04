@@ -457,7 +457,7 @@ Return focused execution, ownership, selector, safety, and availability guidance
 
 ### `capability.list`
 
-Return a bounded inventory of discoverable operations and ownership.
+Return a bounded inventory of discoverable operations, ownership, and execution availability.
 
 - Surface: tadx capability list
 - Operation type: find
@@ -473,7 +473,7 @@ Return a bounded inventory of discoverable operations and ownership.
 - Remote mutation: No
 - Requires `--apply`: No
 - Raw capable: No
-- Safety and guard: Mutation discovery obeys TADX_ENABLE_MUTATIONS
+- Safety and guard: Always discoverable; mutation rows report whether execution is enabled
 - Artifact effect: None
 - Upstream operation: Executable capability registry
 - Evidence: A1 §§1.5, 3.3, 5.2, 6.6; C1 §2.1

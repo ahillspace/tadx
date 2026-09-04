@@ -18,7 +18,7 @@ const (
 
 // Source supplies registry discovery views.
 type Source interface {
-	List(context.Context, bool) ([]Capability, error)
+	List(context.Context) ([]Capability, error)
 }
 
 // Action lists capabilities without depending on CLI plumbing.
@@ -36,9 +36,6 @@ func (a *Action) Execute(ctx context.Context, input Input) (Output, error) {
 	if a == nil || a.source == nil {
 		return Output{}, &errs.Error{ID: "capability.list.unconfigured", Kind: errs.KindRuntime, Operation: "capability.list", Summary: "Capability list is not configured.", Retryable: errs.Bool(false), CorrectiveAction: "Configure a capability source before retrying."}
 	}
-	if input.Mutation != nil && *input.Mutation && !input.MutationsEnabled {
-		return Output{}, usageError("mutation discovery is disabled; set TADX_ENABLE_MUTATIONS=1")
-	}
 	limit := input.Limit
 	if limit == 0 {
 		limit = DefaultLimit
@@ -55,12 +52,15 @@ func (a *Action) Execute(ctx context.Context, input Input) (Output, error) {
 		offset = parsed
 	}
 
-	items, err := a.source.List(ctx, input.MutationsEnabled)
+	items, err := a.source.List(ctx)
 	if err != nil {
 		return Output{}, err
 	}
 	if items == nil {
 		items = []Capability{}
+	}
+	for index := range items {
+		items[index].ExecutionEnabled = items[index].State == "implemented" && (!items[index].RemoteMutation || input.MutationsEnabled)
 	}
 	sort.Slice(items, func(i, j int) bool { return items[i].ID < items[j].ID })
 	filtered := items[:0]

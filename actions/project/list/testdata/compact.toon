@@ -9,4 +9,4 @@ page:
 projects[1]{luid,name,parent_luid}:
   project-1,Ops,project-root
 details: "--full"
-help[1]: tadx content project get --id <project-luid>
+help[1]: tadx content project get --project-id <project-luid>

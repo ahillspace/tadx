@@ -69,7 +69,7 @@ func newDatasourcePublish(deps datasourceLifecycleDependencies) *cobra.Command {
 	var create, overwrite, appendMode, replace bool
 	var apply bool
 	command := &cobra.Command{
-		Use: "publish", Short: "Preview or publish one native datasource artifact.", Hidden: !deps.mutationsEnabled,
+		Use: "publish", Short: "Preview or publish one native datasource artifact.",
 		Annotations: map[string]string{"tadx.capability": "datasource.publish"},
 		Args: func(command *cobra.Command, args []string) error {
 			if err := noContentArgs("datasource.publish")(command, args); err != nil {
@@ -119,7 +119,7 @@ func newDatasourcePublish(deps datasourceLifecycleDependencies) *cobra.Command {
 			return deps.renderer.Render(result)
 		},
 	}
-	command.Flags().StringVar(&input.ArtifactPath, "artifact", "", "exact workspace-relative managed datasource path")
+	command.Flags().StringVar(&input.ArtifactPath, "artifact", "", managedArtifactFlagHelp("datasource", "Sales--identity"))
 	command.Flags().StringVar(&input.Workspace, "workspace", "", "logical workspace name; uses deterministic defaults when omitted")
 	command.Flags().StringVar(&input.Environment, "environment", "", "explicit write environment alias; defaults to the artifact source")
 	command.Flags().StringVar(&input.Name, "name", "", "published datasource name; defaults to the artifact name")
@@ -139,7 +139,7 @@ func newDatasourceDelete(deps datasourceLifecycleDependencies) *cobra.Command {
 	var luid, name, projectPath string
 	var apply bool
 	command := &cobra.Command{
-		Use: "delete", Short: "Preview or delete one exact remote datasource.", Hidden: !deps.mutationsEnabled,
+		Use: "delete", Short: "Preview or delete one exact remote datasource.",
 		Annotations: map[string]string{"tadx.capability": "datasource.delete"},
 		Args: func(command *cobra.Command, args []string) error {
 			if err := selectorArgs("datasource.delete", &luid, &name, &projectPath, input.SetSelector)(command, args); err != nil {

@@ -151,7 +151,8 @@ Pulse remains a separate body of work with its own evidence and review gates.
 
 Fan-out rule: a resource adapter is written once by one agent and frozen before that resource's actions fan out.
 Slice agents own only assigned action and resource packages unless the integration owner assigns a shared file.
-Mutations in any group still preview by default and require `--apply`, and remain hidden from default discovery unless mutation discovery is enabled.
+Remote mutation commands and capabilities remain visible regardless of execution policy.
+`TADX_ENABLE_MUTATIONS=1` enables mutation command execution; enabled commands still preview by default and require `--apply` for the remote change.
 
 Flow scope stays narrow.
 Pull and publish preserve TFL/TFLX bytes and let Tableau validate embedded published datasource, file, and database references.

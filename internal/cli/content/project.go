@@ -45,7 +45,7 @@ func newProjectCreate(deps Dependencies) *cobra.Command {
 	var parentLUID, parentPath string
 	var apply bool
 	command := &cobra.Command{
-		Use: "create", Short: "Preview or create one project.", Hidden: !deps.MutationsEnabled,
+		Use: "create", Short: "Preview or create one project.",
 		Annotations: map[string]string{"tadx.capability": "project.create"},
 		Args: func(command *cobra.Command, args []string) error {
 			if err := noContentArgs("project.create")(command, args); err != nil {
@@ -80,17 +80,21 @@ func newProjectCreate(deps Dependencies) *cobra.Command {
 
 func newProjectUpdate(deps Dependencies) *cobra.Command {
 	var input projectupdate.Input
-	var luid, projectPath, name, description, contentPermissions string
+	var projectLUID, legacyProjectLUID, projectPath, name, description, contentPermissions string
 	var apply bool
 	command := &cobra.Command{
-		Use: "update", Short: "Preview or update one exact project.", Hidden: !deps.MutationsEnabled,
+		Use: "update", Short: "Preview or update one exact project.",
 		Annotations: map[string]string{"tadx.capability": "project.update"},
 		Args: func(command *cobra.Command, args []string) error {
 			if err := noContentArgs("project.update")(command, args); err != nil {
 				return err
 			}
+			luid, err := selectProjectLUID(command, projectLUID, legacyProjectLUID)
+			if err != nil {
+				return clierr.Usage("project.update", err)
+			}
 			if input.Environment == "" || (luid == "") == (projectPath == "") {
-				return clierr.Usage("project.update", errors.New("--environment and exactly one of --id or --project are required"))
+				return clierr.Usage("project.update", errors.New("--environment and exactly one of --project-id or --project are required"))
 			}
 			if !command.Flags().Changed("name") && !command.Flags().Changed("description") && !command.Flags().Changed("content-permissions") {
 				return clierr.Usage("project.update", errors.New("at least one metadata change is required"))
@@ -116,7 +120,7 @@ func newProjectUpdate(deps Dependencies) *cobra.Command {
 		},
 	}
 	command.Flags().StringVar(&input.Environment, "environment", "", "explicit write environment alias")
-	command.Flags().StringVar(&luid, "id", "", "authoritative project LUID")
+	addProjectIDFlags(command, &projectLUID, &legacyProjectLUID)
 	command.Flags().StringVar(&projectPath, "project", "", "exact slash-delimited project path")
 	command.Flags().StringVar(&name, "name", "", "replacement project name")
 	command.Flags().StringVar(&description, "description", "", "replacement project description")
@@ -153,15 +157,19 @@ func newProjectList(deps Dependencies) *cobra.Command {
 
 func newProjectGet(deps Dependencies) *cobra.Command {
 	var input projectget.Input
-	var luid, projectPath string
+	var projectLUID, legacyProjectLUID, projectPath string
 	command := &cobra.Command{
 		Use: "get", Short: "Inspect one exact project.", Annotations: map[string]string{"tadx.capability": "project.get"},
 		Args: func(command *cobra.Command, args []string) error {
 			if err := noContentArgs("project.get")(command, args); err != nil {
 				return err
 			}
+			luid, err := selectProjectLUID(command, projectLUID, legacyProjectLUID)
+			if err != nil {
+				return clierr.Usage("project.get", err)
+			}
 			if (luid == "") == (projectPath == "") {
-				return clierr.Usage("project.get", errors.New("use exactly one of --id or --project"))
+				return clierr.Usage("project.get", errors.New("use exactly one of --project-id or --project"))
 			}
 			input.SetSelector(luid, projectPath)
 			return nil
@@ -175,9 +183,27 @@ func newProjectGet(deps Dependencies) *cobra.Command {
 		},
 	}
 	command.Flags().StringVar(&input.Environment, "environment", "", "exact environment alias; defaults to the configured read environment")
-	command.Flags().StringVar(&luid, "id", "", "authoritative project LUID")
+	addProjectIDFlags(command, &projectLUID, &legacyProjectLUID)
 	command.Flags().StringVar(&projectPath, "project", "", "exact slash-delimited project path")
 	return command
+}
+
+func addProjectIDFlags(command *cobra.Command, projectLUID, legacyProjectLUID *string) {
+	command.Flags().StringVar(projectLUID, "project-id", "", "authoritative project LUID")
+	command.Flags().StringVar(legacyProjectLUID, "id", "", "compatibility alias for --project-id")
+	if err := command.Flags().MarkHidden("id"); err != nil {
+		panic(err)
+	}
+}
+
+func selectProjectLUID(command *cobra.Command, projectLUID, legacyProjectLUID string) (string, error) {
+	if command.Flags().Changed("project-id") && command.Flags().Changed("id") {
+		return "", errors.New("use at most one of --project-id or --id")
+	}
+	if command.Flags().Changed("id") {
+		return legacyProjectLUID, nil
+	}
+	return projectLUID, nil
 }
 
 func noContentArgs(operation string) cobra.PositionalArgs {

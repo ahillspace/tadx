@@ -71,7 +71,7 @@ func deps(f *fake, enabled bool) cli.Dependencies {
 	return cli.Dependencies{UserLister: f, UserGetter: f, UserCreator: f, UserUpdater: f, UserDeleter: f, GroupLister: f, GroupGetter: f, GroupCreator: f, GroupUpdater: f, GroupDeleter: f, PermissionGetter: f, Renderer: f, MutationsEnabled: enabled}
 }
 
-func TestCommandMountsAllCapabilitiesAndHidesMutationDiscovery(t *testing.T) {
+func TestCommandMountsAllCapabilitiesAndShowsMutations(t *testing.T) {
 	f := &fake{}
 	root := cli.New(deps(f, false))
 	var got []string
@@ -79,8 +79,8 @@ func TestCommandMountsAllCapabilitiesAndHidesMutationDiscovery(t *testing.T) {
 		for _, child := range parent.Commands() {
 			got = append(got, child.Annotations["tadx.capability"])
 			mutation := strings.HasSuffix(child.Name(), "create") || strings.HasSuffix(child.Name(), "update") || strings.HasSuffix(child.Name(), "delete")
-			if mutation && !child.Hidden {
-				t.Errorf("%s is visible", child.CommandPath())
+			if mutation && child.Hidden {
+				t.Errorf("%s is hidden", child.CommandPath())
 			}
 		}
 	}

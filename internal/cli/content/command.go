@@ -149,7 +149,7 @@ func newPublish(deps Dependencies) *cobra.Command {
 	var projectID, projectPath string
 	var apply bool
 	command := &cobra.Command{
-		Use: use, Short: short, Hidden: !deps.MutationsEnabled, Annotations: map[string]string{"tadx.capability": "workbook.publish"},
+		Use: use, Short: short, Annotations: map[string]string{"tadx.capability": "workbook.publish"},
 		Args: func(command *cobra.Command, args []string) error {
 			if err := cobra.NoArgs(command, args); err != nil {
 				return clierr.Usage("workbook.publish", err)
@@ -178,7 +178,7 @@ func newPublish(deps Dependencies) *cobra.Command {
 		},
 	}
 	command.Flags().StringVar(&input.Workspace, "workspace", "", "logical workspace name; uses deterministic defaults when omitted")
-	command.Flags().StringVar(&input.ArtifactPath, "artifact", "", "exact workspace-relative managed workbook path")
+	command.Flags().StringVar(&input.ArtifactPath, "artifact", "", managedArtifactFlagHelp("workbook", "Finance--identity"))
 	command.Flags().StringVar(&input.Environment, "environment", "", "explicit write environment alias; defaults to the artifact's recorded source environment")
 	command.Flags().StringVar(&input.Name, "name", "", "explicit published workbook name; defaults to artifact name")
 	command.Flags().StringVar(&projectID, "project-id", "", "authoritative destination project LUID")
@@ -187,6 +187,10 @@ func newPublish(deps Dependencies) *cobra.Command {
 	command.Flags().BoolVar(&input.AsJob, "as-job", false, "publish asynchronously and poll to a bounded terminal result")
 	command.Flags().BoolVar(&apply, "apply", false, "apply the previewed remote mutation")
 	return command
+}
+
+func managedArtifactFlagHelp(kind, exampleName string) string {
+	return "managed " + kind + " directory relative to the logical workspace, using forward slashes; for example, artifacts/" + kind + "/" + exampleName
 }
 
 func validateManagedArtifactPath(value, kind string) error {

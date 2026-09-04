@@ -57,7 +57,7 @@ Enforced by: registry validation (every implemented command has exactly one regi
 ## 7. Agent ergonomics and safety
 
 Rule: the interface is safe for an autonomous caller and legible to a human.
-Do: preview consequential mutations by default and require --apply; require an explicit write target; keep mutation discovery gating separate from authorization; redact secrets everywhere; use the three exit codes 0, 1, 2; include Tableau request and job IDs in errors where available; emit a required human-readable view for artifacts.
+Do: keep mutation commands discoverable; block their execution when the mutation policy is disabled; preview enabled consequential mutations by default and require --apply; require an explicit write target; redact secrets everywhere; use the three exit codes 0, 1, 2; include Tableau request and job IDs in errors where available; emit a required human-readable view for artifacts.
 Do not: add a second confirmation prompt or a production-only prompt; let --force mean --apply; let discovery visibility imply permission; persist secrets TADX handles.
 Enforced by: preview/apply tests; mutation-discovery tests; secret-redaction tests; exit-code mapping tests.
 
@@ -138,7 +138,7 @@ Enforced by: the generated-doc clean-diff check; registry-derived help.
 
 TADX adds obligations the general AXI spec does not, because Tableau is a stateful system of record with consequential writes:
 - consequential mutations preview by default and require `--apply`; `--force` never means `--apply`;
-- mutation discovery gating is separate from authorization;
+- mutation discovery remains available when mutation execution is disabled;
 - identity is LUID-authoritative and ambiguity is a hard error, with no fuzzy or interactive resolution;
 - secret redaction runs before rendering and takes precedence over `--raw`;
 - a docs-only capability is built only to the adapter seam until its upstream contract is captured.

@@ -33,6 +33,23 @@ func TestExecuteReturnsExactCapability(t *testing.T) {
 	}
 }
 
+func TestExecuteReportsMutationExecutionState(t *testing.T) {
+	item := capabilityget.Capability{ID: "workbook.publish", RemoteMutation: true, ImplementationState: "implemented"}
+	action := capabilityget.New(source{item: item, ok: true})
+	for _, test := range []struct {
+		enabled bool
+		want    bool
+	}{{false, false}, {true, true}} {
+		got, err := action.Execute(context.Background(), capabilityget.Input{ID: item.ID, MutationsEnabled: test.enabled})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got.Capability.ExecutionEnabled != test.want {
+			t.Fatalf("enabled = %t, execution_enabled = %t", test.enabled, got.Capability.ExecutionEnabled)
+		}
+	}
+}
+
 func TestExecuteGuardsUnconfiguredSourceWithoutPanic(t *testing.T) {
 	for name, action := range map[string]*capabilityget.Action{
 		"nil action": nil,
