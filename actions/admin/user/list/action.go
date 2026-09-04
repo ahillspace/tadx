@@ -8,11 +8,13 @@ import (
 	"errors"
 
 	"github.com/ahillspace/tadx/internal/errs"
+	"github.com/ahillspace/tadx/internal/readsource"
 )
 
 type Input struct {
 	Environment, Site, Cursor, Name, SiteRole string
 	Limit                                     int
+	Catalog                                   bool
 }
 type PageRequest struct {
 	PageNumber, PageSize int
@@ -45,6 +47,7 @@ type Output struct {
 	Users                     []User
 	RequestID                 string
 	Help                      []string
+	Source                    *readsource.Metadata
 }
 type CompactUser struct {
 	LUID     string `json:"luid"`
@@ -52,22 +55,24 @@ type CompactUser struct {
 	SiteRole string `json:"site_role,omitempty"`
 }
 type CompactResult struct {
-	Status      string        `json:"status"`
-	Environment string        `json:"environment,omitempty"`
-	Site        string        `json:"site,omitempty"`
-	Page        OutputPage    `json:"page"`
-	Users       []CompactUser `json:"users"`
-	Details     string        `json:"details"`
-	Help        []string      `json:"help"`
+	Status      string               `json:"status"`
+	Environment string               `json:"environment,omitempty"`
+	Site        string               `json:"site,omitempty"`
+	Page        OutputPage           `json:"page"`
+	Users       []CompactUser        `json:"users"`
+	Details     string               `json:"details"`
+	Help        []string             `json:"help"`
+	Source      *readsource.Metadata `json:"source,omitempty"`
 }
 type FullResult struct {
-	Status      string     `json:"status"`
-	Environment string     `json:"environment,omitempty"`
-	Site        string     `json:"site,omitempty"`
-	Page        OutputPage `json:"page"`
-	Users       []User     `json:"users"`
-	RequestID   string     `json:"tableau_request_id,omitempty"`
-	Help        []string   `json:"help"`
+	Status      string               `json:"status"`
+	Environment string               `json:"environment,omitempty"`
+	Site        string               `json:"site,omitempty"`
+	Page        OutputPage           `json:"page"`
+	Users       []User               `json:"users"`
+	RequestID   string               `json:"tableau_request_id,omitempty"`
+	Help        []string             `json:"help"`
+	Source      *readsource.Metadata `json:"source,omitempty"`
 }
 
 func (o Output) CompactOutput() any {
@@ -75,10 +80,10 @@ func (o Output) CompactOutput() any {
 	for i, v := range o.Users {
 		items[i] = CompactUser{LUID: v.LUID, Name: v.Name, SiteRole: v.SiteRole}
 	}
-	return CompactResult{Status: o.Status, Environment: o.Environment, Site: o.Site, Page: o.Page, Users: items, Details: "--full", Help: o.Help}
+	return CompactResult{Status: o.Status, Environment: o.Environment, Site: o.Site, Page: o.Page, Users: items, Details: "--full", Help: o.Help, Source: o.Source}
 }
 func (o Output) FullOutput() any {
-	return FullResult{Status: o.Status, Environment: o.Environment, Site: o.Site, Page: o.Page, Users: append([]User(nil), o.Users...), RequestID: o.RequestID, Help: o.Help}
+	return FullResult{Status: o.Status, Environment: o.Environment, Site: o.Site, Page: o.Page, Users: append([]User(nil), o.Users...), RequestID: o.RequestID, Help: o.Help, Source: o.Source}
 }
 
 type Reader interface {
@@ -91,7 +96,10 @@ func (a *Action) Execute(ctx context.Context, input Input) (Output, error) {
 	if a == nil || a.reader == nil {
 		return Output{}, errors.New("admin user list reader is not configured")
 	}
-	fingerprint, err := cursorFingerprint(struct{ Environment, Site, Name, SiteRole string }{input.Environment, input.Site, input.Name, input.SiteRole})
+	fingerprint, err := cursorFingerprint(struct {
+		Environment, Site, Name, SiteRole string
+		Catalog                           bool
+	}{input.Environment, input.Site, input.Name, input.SiteRole, input.Catalog})
 	if err != nil {
 		return Output{}, err
 	}

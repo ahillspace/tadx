@@ -156,6 +156,34 @@ func TestSQLiteStoreRejectsSchemaVersionAndCorruption(t *testing.T) {
 	}
 }
 
+func TestSQLiteStoreMigratesVersionOneAndBackfillsResourceReads(t *testing.T) {
+	root := t.TempDir()
+	now := time.Date(2026, 9, 4, 12, 0, 0, 0, time.UTC)
+	store := catalog.NewStore(root, func() time.Time { return now })
+	publishRecords(t, store, now, "Finance")
+	db := openRaw(t, filepath.Join(root, "catalog", "catalog.sqlite"))
+	for _, statement := range []string{
+		`DROP INDEX resource_entries_order_idx`,
+		`DROP TABLE resource_entries`,
+		`UPDATE catalog_schema SET version=1,signature='tadx-catalog-v1' WHERE singleton=1`,
+		`PRAGMA user_version=1`,
+	} {
+		if _, err := db.Exec(statement); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := db.Close(); err != nil {
+		t.Fatal(err)
+	}
+	result, err := store.ReadResources(context.Background(), catalog.ResourceQuery{Environment: "production", Site: "marketing", Kind: "workbook", Limit: 25})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Coverage != "complete" || result.Total != 1 || result.Entries[0].Name != "Finance" {
+		t.Fatalf("migrated resource result = %#v", result)
+	}
+}
+
 func TestSQLiteStoreSupportsConcurrentReaders(t *testing.T) {
 	root := t.TempDir()
 	now := time.Now().UTC()

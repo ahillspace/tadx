@@ -40,13 +40,14 @@ func TestDatasourceListForwardsEveryBoundedFilterAndRendersOutput(t *testing.T) 
 		"list", "--environment", "dev", "--name", "Sales", "--owner", "owner", "--project-name", "Ops",
 		"--type", "hyper", "--tag", "daily", "--updated-after", "2026-01-01T00:00:00Z",
 		"--updated-before", "2026-09-01T00:00:00Z", "--limit", "10", "--cursor", "opaque",
+		"--catalog",
 	})
 	if err := command.Execute(); err != nil {
 		t.Fatal(err)
 	}
 	want := datasourcelist.Input{
 		Environment: "dev", Name: "Sales", OwnerName: "owner", ProjectName: "Ops", Type: "hyper", Tag: "daily",
-		UpdatedAfter: "2026-01-01T00:00:00Z", UpdatedBefore: "2026-09-01T00:00:00Z", Limit: 10, Cursor: "opaque",
+		UpdatedAfter: "2026-01-01T00:00:00Z", UpdatedBefore: "2026-09-01T00:00:00Z", Limit: 10, Cursor: "opaque", Catalog: true,
 	}
 	if !reflect.DeepEqual(actions.listInputs, []datasourcelist.Input{want}) || len(renderer.values) != 1 {
 		t.Fatalf("inputs = %#v, rendered = %#v", actions.listInputs, renderer.values)
@@ -62,7 +63,7 @@ func TestDatasourceGetUsesAuthoritativeOrExactSelectorGrammar(t *testing.T) {
 		args []string
 		want datasourceget.Input
 	}{
-		{name: "LUID", args: []string{"get", "--environment", "dev", "--id", "ds-1"}, want: datasourceget.Input{Environment: "dev", Selector: datasourceSelector("ds-1", "", "")}},
+		{name: "LUID", args: []string{"get", "--environment", "dev", "--id", "ds-1", "--catalog"}, want: datasourceget.Input{Environment: "dev", Selector: datasourceSelector("ds-1", "", ""), Catalog: true}},
 		{name: "exact labels", args: []string{"get", "--name", "Sales", "--project", "Department/Ops"}, want: datasourceget.Input{Selector: datasourceSelector("", "Sales", "Department/Ops")}},
 	}
 	for _, test := range tests {

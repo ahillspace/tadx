@@ -19,7 +19,7 @@ type source struct {
 	err   error
 }
 
-func (s source) List(context.Context, bool) ([]capabilitylist.Capability, error) {
+func (s source) List(context.Context) ([]capabilitylist.Capability, error) {
 	return append([]capabilitylist.Capability(nil), s.items...), s.err
 }
 
@@ -99,11 +99,22 @@ func TestExecuteFiltersAndPaginatesDeterministically(t *testing.T) {
 	}
 }
 
-func TestExecuteRejectsMutationDiscoveryWithoutGate(t *testing.T) {
+func TestExecuteMutationFilterDoesNotAuthorizeOrHideDiscovery(t *testing.T) {
 	mutation := true
-	_, err := capabilitylist.New(source{}).Execute(context.Background(), capabilitylist.Input{Mutation: &mutation})
-	if err == nil {
-		t.Fatal("Execute() error = nil, want mutation discovery error")
+	got, err := capabilitylist.New(source{items: []capabilitylist.Capability{
+		{ID: "workbook.publish", RemoteMutation: true},
+		{ID: "workbook.get"},
+	}}).Execute(context.Background(), capabilitylist.Input{Mutation: &mutation})
+	if err != nil {
+		t.Fatalf("Execute() error = %v", err)
+	}
+	if len(got.Capabilities) != 1 || got.Capabilities[0].ID != "workbook.publish" || got.Capabilities[0].ExecutionEnabled {
+		t.Fatalf("capabilities = %#v", got.Capabilities)
+	}
+
+	got, err = capabilitylist.New(source{items: []capabilitylist.Capability{{ID: "workbook.publish", State: "implemented", RemoteMutation: true}}}).Execute(context.Background(), capabilitylist.Input{MutationsEnabled: true})
+	if err != nil || len(got.Capabilities) != 1 || !got.Capabilities[0].ExecutionEnabled {
+		t.Fatalf("enabled capabilities = %#v, error = %v", got.Capabilities, err)
 	}
 }
 

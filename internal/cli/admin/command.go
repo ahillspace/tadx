@@ -97,6 +97,7 @@ func newUserList(deps Dependencies) *cobra.Command {
 	cmd.Flags().StringVar(&input.SiteRole, "site-role", "", "exact site-role filter")
 	cmd.Flags().IntVar(&input.Limit, "limit", 0, "maximum users to return")
 	cmd.Flags().StringVar(&input.Cursor, "cursor", "", "opaque continuation cursor")
+	cmd.Flags().BoolVar(&input.Catalog, "catalog", false, "read indexed local catalog data without contacting Tableau")
 	return cmd
 }
 func newUserGet(deps Dependencies) *cobra.Command {
@@ -121,6 +122,7 @@ func newUserGet(deps Dependencies) *cobra.Command {
 	cmd.Flags().StringVar(&in.Environment, "environment", "", "exact environment alias; defaults to the configured read environment")
 	cmd.Flags().StringVar(&id, "id", "", "authoritative user LUID")
 	cmd.Flags().StringVar(&name, "name", "", "exact username or email")
+	cmd.Flags().BoolVar(&in.Catalog, "catalog", false, "read indexed local catalog data without contacting Tableau")
 	return cmd
 }
 func newUserCreate(deps Dependencies) *cobra.Command {
@@ -234,6 +236,7 @@ func newGroupList(deps Dependencies) *cobra.Command {
 	cmd.Flags().StringVar(&in.Domain, "domain", "", "exact directory-domain filter")
 	cmd.Flags().IntVar(&in.Limit, "limit", 0, "maximum groups to return")
 	cmd.Flags().StringVar(&in.Cursor, "cursor", "", "opaque continuation cursor")
+	cmd.Flags().BoolVar(&in.Catalog, "catalog", false, "read indexed local catalog data without contacting Tableau")
 	return cmd
 }
 func newGroupGet(deps Dependencies) *cobra.Command {
@@ -259,6 +262,7 @@ func newGroupGet(deps Dependencies) *cobra.Command {
 	cmd.Flags().StringVar(&id, "id", "", "authoritative group LUID")
 	cmd.Flags().StringVar(&name, "name", "", "exact group name")
 	cmd.Flags().BoolVar(&in.IncludeMembers, "members", false, "include bounded direct membership")
+	cmd.Flags().BoolVar(&in.Catalog, "catalog", false, "read indexed local catalog data without contacting Tableau")
 	return cmd
 }
 func newGroupCreate(deps Dependencies) *cobra.Command {
@@ -388,8 +392,8 @@ func newPermissionGet(deps Dependencies) *cobra.Command {
 	return cmd
 }
 
-func mutation(use, short, capability string, enabled bool, args cobra.PositionalArgs, run func(*cobra.Command) error) *cobra.Command {
-	return &cobra.Command{Use: use, Short: short, Hidden: !enabled, Annotations: map[string]string{"tadx.capability": capability}, Args: args, RunE: func(cmd *cobra.Command, _ []string) error { return run(cmd) }}
+func mutation(use, short, capability string, _ bool, args cobra.PositionalArgs, run func(*cobra.Command) error) *cobra.Command {
+	return &cobra.Command{Use: use, Short: short, Annotations: map[string]string{"tadx.capability": capability}, Args: args, RunE: func(cmd *cobra.Command, _ []string) error { return run(cmd) }}
 }
 func noArgs(operation string) cobra.PositionalArgs {
 	return func(cmd *cobra.Command, args []string) error {

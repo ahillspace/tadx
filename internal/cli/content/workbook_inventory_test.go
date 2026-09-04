@@ -34,12 +34,12 @@ func TestWorkbookListParsesEveryBoundedFilter(t *testing.T) {
 	actions := &workbookInventoryCommands{}
 	renderer := &workbookInventoryRenderer{}
 	command := newWorkbookList(actions, renderer)
-	command.SetArgs([]string{"--environment", "dev", "--name", "Finance", "--owner", "Analyst", "--project-name", "Ops", "--tag", "quarterly", "--limit", "20", "--cursor", "next"})
+	command.SetArgs([]string{"--environment", "dev", "--name", "Finance", "--owner", "Analyst", "--project-name", "Ops", "--tag", "quarterly", "--limit", "20", "--cursor", "next", "--catalog"})
 	if err := command.Execute(); err != nil {
 		t.Fatal(err)
 	}
 	input := actions.listInput
-	if input.Environment != "dev" || input.Name != "Finance" || input.OwnerName != "Analyst" || input.ProjectName != "Ops" || input.Tag != "quarterly" || input.Limit != 20 || input.Cursor != "next" {
+	if input.Environment != "dev" || input.Name != "Finance" || input.OwnerName != "Analyst" || input.ProjectName != "Ops" || input.Tag != "quarterly" || input.Limit != 20 || input.Cursor != "next" || !input.Catalog {
 		t.Fatalf("input = %#v", input)
 	}
 	if _, ok := renderer.value.(workbooklist.Output); !ok {
@@ -64,7 +64,7 @@ func TestWorkbookGetAcceptsOnlyExactSelectorGrammar(t *testing.T) {
 		wantName    string
 		wantProject string
 	}{
-		{name: "LUID", args: []string{"--environment", "dev", "--id", "wb-1"}, wantLUID: "wb-1"},
+		{name: "LUID", args: []string{"--environment", "dev", "--id", "wb-1", "--catalog"}, wantLUID: "wb-1"},
 		{name: "name and project", args: []string{"--name", "Finance", "--project", "Department/Ops"}, wantName: "Finance", wantProject: "Department/Ops"},
 		{name: "mixed selectors", args: []string{"--id", "wb-1", "--name", "Finance", "--project", "Ops"}, wantError: true},
 		{name: "name only", args: []string{"--name", "Finance"}, wantError: true},
@@ -90,6 +90,9 @@ func TestWorkbookGetAcceptsOnlyExactSelectorGrammar(t *testing.T) {
 			selector := actions.getInput.Selector
 			if string(selector.LUID) != test.wantLUID || selector.Name != test.wantName || selector.ProjectPath != test.wantProject {
 				t.Fatalf("selector = %#v", selector)
+			}
+			if test.name == "LUID" && !actions.getInput.Catalog {
+				t.Fatal("--catalog was not forwarded")
 			}
 			if _, ok := renderer.value.(workbookget.Output); !ok {
 				t.Fatalf("rendered value = %T", renderer.value)

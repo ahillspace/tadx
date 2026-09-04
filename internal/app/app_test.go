@@ -198,27 +198,60 @@ func TestRunUnknownFlagReturnsStructuredUsageError(t *testing.T) {
 	}
 }
 
-func TestMutationDiscoveryGate(t *testing.T) {
+func TestMutationDiscoveryFilterReportsExecutionEnabled(t *testing.T) {
 	var stdout bytes.Buffer
 	exitCode := app.Run(context.Background(), []string{"capability", "list", "--domain", "content", "--resource", "workbook", "--mutation=true"}, &stdout, app.Options{MutationsEnabled: true})
+	if exitCode != 0 || !strings.Contains(stdout.String(), "workbook.publish") || !strings.Contains(stdout.String(), "false,true") {
+		t.Fatalf("exit code = %d, output = %s", exitCode, stdout.String())
+	}
+}
+
+func TestMutationDiscoveryDoesNotRequireExecutionGate(t *testing.T) {
+	var stdout bytes.Buffer
+	exitCode := app.Run(context.Background(), []string{"capability", "list", "--domain", "content", "--resource", "workbook", "--mutation=true"}, &stdout, app.Options{})
+	if exitCode != 0 || !strings.Contains(stdout.String(), "workbook.publish") || !strings.Contains(stdout.String(), "false,false") {
+		t.Fatalf("exit code = %d, output = %s", exitCode, stdout.String())
+	}
+}
+
+func TestDefaultDiscoveryIncludesMutations(t *testing.T) {
+	var stdout bytes.Buffer
+	exitCode := app.Run(context.Background(), []string{"capability", "list", "--domain", "content", "--resource", "workbook", "--limit", "100"}, &stdout, app.Options{})
 	if exitCode != 0 || !strings.Contains(stdout.String(), "workbook.publish") {
 		t.Fatalf("exit code = %d, output = %s", exitCode, stdout.String())
 	}
 }
 
-func TestMutationDiscoveryRequiresEnvironmentGate(t *testing.T) {
-	var stdout bytes.Buffer
-	exitCode := app.Run(context.Background(), []string{"capability", "list", "--domain", "content", "--resource", "workbook", "--mutation=true"}, &stdout, app.Options{})
-	if exitCode != 2 || !strings.Contains(stdout.String(), "kind: usage") || strings.Contains(stdout.String(), "workbook.publish") {
-		t.Fatalf("exit code = %d, output = %s", exitCode, stdout.String())
+func TestCapabilityGetReportsMutationExecutionState(t *testing.T) {
+	for _, test := range []struct {
+		enabled bool
+		want    string
+	}{{false, "execution_enabled: false"}, {true, "execution_enabled: true"}} {
+		var stdout bytes.Buffer
+		exitCode := app.Run(context.Background(), []string{"capability", "get", "workbook.publish"}, &stdout, app.Options{MutationsEnabled: test.enabled})
+		if exitCode != 0 || !strings.Contains(stdout.String(), "remote_mutation: true") || !strings.Contains(stdout.String(), test.want) {
+			t.Fatalf("enabled = %t, exit code = %d, output = %s", test.enabled, exitCode, stdout.String())
+		}
 	}
 }
 
-func TestDefaultDiscoveryHidesMutations(t *testing.T) {
-	var stdout bytes.Buffer
-	exitCode := app.Run(context.Background(), []string{"capability", "list", "--domain", "content", "--resource", "workbook", "--limit", "100"}, &stdout, app.Options{})
-	if exitCode != 0 || strings.Contains(stdout.String(), "workbook.publish") {
-		t.Fatalf("exit code = %d, output = %s", exitCode, stdout.String())
+func TestRemoteMutationGatePrecedesRuntimeSetupAcrossDomains(t *testing.T) {
+	tests := [][]string{
+		{"content", "workbook", "delete", "--environment", "missing", "--id", "workbook-1"},
+		{"content", "datasource", "delete", "--environment", "missing", "--id", "datasource-1"},
+		{"content", "flow", "delete", "--environment", "missing", "--id", "flow-1"},
+		{"content", "project", "create", "--environment", "missing", "--name", "New project"},
+		{"admin", "user", "create", "--environment", "missing", "--name", "test@example.com", "--site-role", "Viewer"},
+		{"admin", "group", "create", "--environment", "missing", "--name", "Test group"},
+	}
+	for _, args := range tests {
+		t.Run(strings.Join(args[:3], " "), func(t *testing.T) {
+			var stdout bytes.Buffer
+			exitCode := app.Run(context.Background(), args, &stdout, app.Options{ConfigPath: filepath.Join(t.TempDir(), "missing.yaml")})
+			if exitCode != 1 || !strings.Contains(stdout.String(), "id: mutation.disabled") || !strings.Contains(stdout.String(), "TADX_ENABLE_MUTATIONS=1") {
+				t.Fatalf("exit code = %d, output = %s", exitCode, stdout.String())
+			}
+		})
 	}
 }
 

@@ -1,0 +1,19 @@
+plan:
+  mode: preview
+  operation: pulse.definition.create
+  name: Revenue
+  datasource_luid: datasource-1
+  measure:
+    field: Sales
+    aggregation: AGGREGATION_SUM
+  time_dimension: Order Date
+  allowed_dimensions[1]: Region
+  request_fingerprint: "sha256:value"
+applied: true
+result:
+  status: succeeded
+  definition_luid: definition-1
+  default_metric_luid: metric-1
+  default_metric_status: ready
+details: "--full"
+help[1]: tadx pulse metric get --id metric-1

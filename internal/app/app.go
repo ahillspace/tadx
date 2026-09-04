@@ -60,6 +60,7 @@ func Run(ctx context.Context, args []string, stdout io.Writer, options Options) 
 	workspaceCommands := newWorkspaceCommands(runtime)
 	remoteContent := newRemoteContentCommands(runtime)
 	remoteAdmin := newRemoteAdminCommands(runtime)
+	pulseActions := newPulseCommands(runtime)
 	doctorCommands := newDoctorCommands(runtime)
 	catalogGroup2 := newCatalogGroup2Commands(runtime)
 	root := cli.NewRoot(cli.Dependencies{
@@ -69,6 +70,7 @@ func Run(ctx context.Context, args []string, stdout io.Writer, options Options) 
 		RenderOptions:       renderOptions,
 		ConfigPath:          &runtime.configPath,
 		MutationsEnabled:    options.MutationsEnabled,
+		MutationPolicy:      registryMutationPolicy{},
 		ListUse:             registryUse("capability.list"),
 		ListShort:           registryShort("capability.list"),
 		GetUse:              registryUse("capability.get"),
@@ -76,7 +78,6 @@ func Run(ctx context.Context, args []string, stdout io.Writer, options Options) 
 		AuthChecker:         authcheck.New(runtime, runtime),
 		CatalogSearcher:     &catalogService{runtime: runtime},
 		CatalogRefresher:    catalogGroup2.refresher(),
-		CatalogGetter:       catalogGroup2.getter(),
 		CatalogStatuser:     catalogGroup2.statuser(),
 		WorkbookPuller:      &pullService{runtime: runtime},
 		WorkbookPublisher:   &publishService{runtime: runtime},
@@ -84,6 +85,7 @@ func Run(ctx context.Context, args []string, stdout io.Writer, options Options) 
 		EnvironmentProfiles: environmentCommands.dependencies(),
 		Workspaces:          workspaceCommands.dependencies(),
 		Admin:               remoteAdmin.dependencies(),
+		Pulse:               pulseActions.dependencies(),
 		DoctorRunner:        doctorCommands,
 		DoctorUse:           registryLeafUse("doctor.run"),
 		DoctorShort:         registryShort("doctor.run"),
@@ -91,7 +93,6 @@ func Run(ctx context.Context, args []string, stdout io.Writer, options Options) 
 		AuthStatuser: newAuthStatus(runtime), AuthStatusUse: registryLeafUse("auth.status"), AuthStatusShort: registryShort("auth.status"),
 		CatalogSearchUse: registryLeafUse("catalog.search"), CatalogSearchShort: registryShort("catalog.search"),
 		CatalogRefreshUse: registryLeafUse("catalog.refresh"), CatalogRefreshShort: registryShort("catalog.refresh"),
-		CatalogGetUse: registryLeafUse("catalog.get"), CatalogGetShort: registryShort("catalog.get"),
 		CatalogStatusUse: registryLeafUse("catalog.status"), CatalogStatusShort: registryShort("catalog.status"),
 		WorkbookPullUse: registryLeafUse("workbook.pull"), WorkbookPullShort: registryShort("workbook.pull"),
 		WorkbookPublishUse: registryLeafUse("workbook.publish"), WorkbookPublishShort: registryShort("workbook.publish"),
@@ -520,13 +521,10 @@ func (a preparedPublishAdapter) Commit(ctx context.Context) (workbookpublish.Res
 
 type registrySource struct{}
 
-func (registrySource) List(_ context.Context, includeMutations bool) ([]capabilitylist.Capability, error) {
+func (registrySource) List(_ context.Context) ([]capabilitylist.Capability, error) {
 	definitions := capability.All()
 	items := make([]capabilitylist.Capability, 0, len(definitions))
 	for _, definition := range definitions {
-		if definition.RemoteMutation && !includeMutations {
-			continue
-		}
 		items = append(items, capabilitylist.Capability{
 			ID:             definition.ID,
 			Owner:          string(definition.Owner),
@@ -541,6 +539,13 @@ func (registrySource) List(_ context.Context, includeMutations bool) ([]capabili
 		})
 	}
 	return items, nil
+}
+
+type registryMutationPolicy struct{}
+
+func (registryMutationPolicy) IsRemoteMutation(id string) bool {
+	definition, ok := capability.Lookup(id)
+	return ok && definition.RemoteMutation
 }
 
 func (registrySource) Get(_ context.Context, id string) (capabilityget.Capability, bool) {

@@ -3,7 +3,7 @@ capability:
   domain: capability
   verb: list
   surface: tadx capability list
-  outcome: Return a bounded inventory of discoverable operations and ownership.
+  outcome: "Return a bounded inventory of discoverable operations, ownership, and execution availability."
   operation_type: find
   owner: cli
   disposition: ship
@@ -13,12 +13,13 @@ capability:
   command: capability list
   selectors[1]: Domain/resource/owner/product/mutation filters
   availability: Local / all
-  safety_guard: Mutation discovery obeys TADX_ENABLE_MUTATIONS
+  safety_guard: Always discoverable; mutation rows report whether execution is enabled
   artifact_effect: None
   upstream_operation: Executable capability registry
   evidence: "A1 §§1.5, 3.3, 5.2, 6.6; C1 §2.1"
   validation: Architecture-locked local contract
   remote_mutation: false
+  execution_enabled: true
   requires_apply: false
   local_write: false
   raw_capable: false

@@ -1,0 +1,19 @@
+status: found
+environment: dev
+site: sandbox
+metric:
+  luid: metric-1
+  name: Revenue
+  definition_luid: definition-1
+  site_luid: site-1
+  is_default: true
+  specification:
+    measurement_period:
+      granularity: GRANULARITY_BY_DAY
+tableau_request_id: request-1
+help[1]: tadx pulse metric list --definition definition-1
+source:
+  mode: tableau
+  observed_at: "2026-09-04T10:00:00Z"
+  coverage: complete
+  stale: false

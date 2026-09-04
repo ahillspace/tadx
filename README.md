@@ -10,22 +10,27 @@ Tableau LUIDs remain authoritative, ambiguous selectors fail, and consequential 
 ## Current status
 
 TADX is usable and actively developed.
-The executable registry marks roughly half of the core V1 action set as implemented.
+The executable registry now covers the core content, workspace, catalog, administration, and initial Pulse workflows planned for V1.
 
 The current build supports:
 
 - Managing named environment profiles that reference PAT environment variables.
 - Checking local authentication configuration and signing in to verify a Tableau site.
 - Discovering capability ownership, availability, selectors, safety rules, and blockers.
-- Searching the local catalog.
+- Querying Tableau live by default, with explicit local catalog reads through `--catalog`.
+- Refreshing, searching, and inspecting the status of the local SQLite catalog.
 - Creating, registering, cloning, listing, inspecting, and moving named workspaces, plus deleting one local artifact safely.
-- Listing and inspecting projects.
+- Listing, inspecting, creating, and updating projects.
 - Listing, inspecting, and pulling flows, plus previewed publishing, moves, and deletions.
-- Pulling workbooks with optional direct published datasource acquisition, plus previewed publishing.
+- Listing and inspecting workbooks, plus pulls, previewed publishing, and deletions.
+- Listing and inspecting published datasources, inspecting bounded field metadata, plus pulls, previewed publishing, and deletions.
 - Capturing bounded lineage for workbooks, published datasources, and flows.
+- Listing, inspecting, pulling, and creating Pulse definitions.
+- Listing, inspecting, and forking Pulse metrics, plus managing exact user and group followers.
+- Managing Tableau site users, groups, memberships, and permission inspection.
 
-Remaining V1 work includes broader catalog and content coverage, direct datasource lifecycle, administration, Pulse definitions and configuration, and diagnostics.
-Some datasource composition and project pull work remains blocked until the required upstream evidence exists.
+Remaining work focuses on release hardening and capabilities that still lack a supported or proven upstream contract.
+Datasource composition, project pull and publish, Pulse update, and Pulse delete remain blocked until that evidence exists.
 
 Use the registry in your installed build as the source of truth:
 
@@ -123,6 +128,27 @@ tadx content workbook pull --environment dev --workspace development --id <workb
 
 Add `--include-pds` to acquire direct published datasource dependencies as sibling artifacts.
 Add `--full` to the same command when you need expanded, bounded details.
+
+## Choose live or catalog reads
+
+Supported read commands query Tableau by default and update their local catalog projection after a successful response.
+Pass `--catalog` to read only from the local SQLite catalog without authenticating or contacting Tableau:
+
+```text
+tadx content workbook list --environment dev
+tadx content workbook list --environment dev --catalog
+```
+
+TADX reports the selected source, freshness, and coverage in the same output shape.
+Catalog reads never fall back to Tableau.
+
+Refresh the complete local inventory when you need broad offline search:
+
+```text
+tadx catalog refresh --environment dev
+tadx catalog search revenue --environment dev
+tadx catalog status --environment dev
+```
 
 ## TADX and Tableau MCP
 

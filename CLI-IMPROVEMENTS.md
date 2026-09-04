@@ -9,6 +9,11 @@ Everything that slowed it down or blocked it was a place where the CLI knew some
 
 This is a proposal, not a patch.
 Every recommendation below is grounded in the current source (file and line references are given so each point can be verified before any change is made).
+The maintainer reviewed the proposal on 2026-09-03.
+Mutation visibility and execution gating, canonical project selectors, portable artifact help, and the datasource collision bug were accepted for implementation.
+The existing `--apply` contract remains unchanged pending a separate decision.
+Published datasource guidance and long-operation handling are tabled.
+Agent guidance and skill changes remain deferred until CLI discoverability is stable.
 The three themes match the three friction areas the test surfaced:
 
 1. Tool and capability discoverability and documentation.

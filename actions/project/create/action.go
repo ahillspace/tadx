@@ -78,7 +78,7 @@ func (a *Action) Execute(ctx context.Context, input Input, apply bool) (Output, 
 	output.Plan.Parent = currentParent
 	output.Applied = true
 	output.Result = &result
-	output.Help = []string{"tadx content project get --id " + result.Project.LUID}
+	output.Help = []string{"tadx content project get --project-id " + result.Project.LUID}
 	return output, nil
 }
 

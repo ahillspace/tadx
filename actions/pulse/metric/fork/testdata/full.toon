@@ -1,0 +1,31 @@
+plan:
+  mode: preview
+  operation: pulse.metric.fork
+  environment: dev
+  site: sandbox
+  source_metric_luid: metric-1
+  definition_luid: definition-1
+  datasource_luid: datasource-1
+  timeframe: LAST_30_DAYS
+  filters[1]:
+    - field: Region
+      values[1]: West
+      exclude: false
+  specification:
+    measurement_period:
+      granularity: GRANULARITY_BY_DAY
+      range: RANGE_BY_CONFIG
+  request_fingerprint: "sha256:0000000000000000000000000000000000000000000000000000000000000000"
+applied: true
+result:
+  status: created
+  metric_luid: metric-fork
+  metric_name: Revenue West
+  created: true
+  reconciliation_status: visible
+  reconciliation_attempts: 1
+  ownership_verified: true
+  inventory_visible: true
+  tableau_request_id: request-1
+  reconciliation_request_id: request-2
+help[1]: tadx pulse metric get --id metric-fork

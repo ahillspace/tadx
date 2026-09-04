@@ -2,7 +2,7 @@ page:
   returned: 2
   total: 2
   limit: 20
-capabilities[2]{id,owner,disposition,state,command,blocked}:
-  capability.get,cli,ship,implemented,capability get,false
-  capability.list,cli,ship,implemented,capability list,false
+capabilities[2]{id,owner,disposition,state,command,blocked,execution_enabled}:
+  capability.get,cli,ship,implemented,capability get,false,true
+  capability.list,cli,ship,implemented,capability list,false,true
 help[1]: tadx capability get <id>

@@ -45,9 +45,9 @@ func TestWorkbookDeleteRequiresExplicitEnvironment(t *testing.T) {
 	}
 }
 
-func TestWorkbookDeleteIsHiddenWhenMutationsAreDisabled(t *testing.T) {
+func TestWorkbookDeleteStaysDiscoverableWhenMutationsAreDisabled(t *testing.T) {
 	command := newWorkbookDelete(&workbookDeleteCommands{}, &workbookDeleteRenderer{}, false)
-	if !command.Hidden {
-		t.Fatal("expected workbook delete discovery to be hidden")
+	if command.Hidden {
+		t.Fatal("workbook delete is hidden")
 	}
 }

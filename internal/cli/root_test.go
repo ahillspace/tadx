@@ -40,6 +40,10 @@ func (r *renderer) Render(value any) error {
 	return nil
 }
 
+type noMutationPolicy struct{}
+
+func (noMutationPolicy) IsRemoteMutation(string) bool { return false }
+
 type authChecker struct{}
 
 func (authChecker) Execute(context.Context, authcheck.Input) (authcheck.Output, error) {
@@ -193,12 +197,13 @@ func TestConfigIsAUniversalPersistentPathFlag(t *testing.T) {
 
 func dependencies(l *lister, g *getter, r *renderer) cli.Dependencies {
 	return cli.Dependencies{
-		Lister:    l,
-		Getter:    g,
-		Renderer:  r,
-		ListUse:   "list",
-		ListShort: "List registered capabilities.",
-		GetUse:    "get <id>",
-		GetShort:  "Get one capability.",
+		Lister:         l,
+		Getter:         g,
+		Renderer:       r,
+		MutationPolicy: noMutationPolicy{},
+		ListUse:        "list",
+		ListShort:      "List registered capabilities.",
+		GetUse:         "get <id>",
+		GetShort:       "Get one capability.",
 	}
 }

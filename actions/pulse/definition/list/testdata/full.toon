@@ -1,0 +1,23 @@
+status: listed
+environment: dev
+site: sales
+page:
+  returned: 1
+  limit: 10
+  next_cursor: next-page
+definitions[1]:
+  - luid: definition-1
+    name: Revenue
+    description: Recognized revenue
+    datasource_luid: datasource-1
+    measure_field: Sales
+    aggregation: AGGREGATION_SUM
+    time_dimension: Order Date
+    allowed_dimensions[1]: Region
+tableau_request_id: request-1
+help[1]: tadx pulse definition get --id <definition-luid>
+source:
+  mode: tableau
+  observed_at: "2026-09-04T12:00:00Z"
+  coverage: complete
+  stale: false

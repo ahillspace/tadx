@@ -1,12 +1,16 @@
 package get
 
-import "github.com/ahillspace/tadx/internal/identity"
+import (
+	"github.com/ahillspace/tadx/internal/identity"
+	"github.com/ahillspace/tadx/internal/readsource"
+)
 
 // Input selects one exact project.
 type Input struct {
 	Environment string
 	Site        string
 	Selector    identity.Selector
+	Catalog     bool
 }
 
 // SetSelector records one exact CLI selector without exposing identity plumbing to Cobra.
@@ -42,6 +46,7 @@ type Output struct {
 	Project     Project
 	RequestID   string
 	Help        []string
+	Source      *readsource.Metadata
 }
 
 // CompactProject is the exact identity needed for another action.
@@ -54,30 +59,32 @@ type CompactProject struct {
 
 // CompactResult is the default projection.
 type CompactResult struct {
-	Status      string         `json:"status"`
-	Environment string         `json:"environment,omitempty"`
-	Site        string         `json:"site,omitempty"`
-	Project     CompactProject `json:"project"`
-	Details     string         `json:"details"`
-	Help        []string       `json:"help"`
+	Status      string               `json:"status"`
+	Environment string               `json:"environment,omitempty"`
+	Site        string               `json:"site,omitempty"`
+	Project     CompactProject       `json:"project"`
+	Details     string               `json:"details"`
+	Help        []string             `json:"help"`
+	Source      *readsource.Metadata `json:"source,omitempty"`
 }
 
 // FullResult is the expanded projection.
 type FullResult struct {
-	Status      string   `json:"status"`
-	Environment string   `json:"environment,omitempty"`
-	Site        string   `json:"site,omitempty"`
-	Project     Project  `json:"project"`
-	RequestID   string   `json:"tableau_request_id,omitempty"`
-	Help        []string `json:"help"`
+	Status      string               `json:"status"`
+	Environment string               `json:"environment,omitempty"`
+	Site        string               `json:"site,omitempty"`
+	Project     Project              `json:"project"`
+	RequestID   string               `json:"tableau_request_id,omitempty"`
+	Help        []string             `json:"help"`
+	Source      *readsource.Metadata `json:"source,omitempty"`
 }
 
 // CompactOutput returns exact identity fields.
 func (o Output) CompactOutput() any {
-	return CompactResult{Status: o.Status, Environment: o.Environment, Site: o.Site, Project: CompactProject{LUID: o.Project.LUID, Name: o.Project.Name, Path: o.Project.Path, ParentLUID: o.Project.ParentLUID}, Details: "--full", Help: o.Help}
+	return CompactResult{Status: o.Status, Environment: o.Environment, Site: o.Site, Project: CompactProject{LUID: o.Project.LUID, Name: o.Project.Name, Path: o.Project.Path, ParentLUID: o.Project.ParentLUID}, Details: "--full", Help: o.Help, Source: o.Source}
 }
 
 // FullOutput returns bounded lifecycle details.
 func (o Output) FullOutput() any {
-	return FullResult{Status: o.Status, Environment: o.Environment, Site: o.Site, Project: o.Project, RequestID: o.RequestID, Help: o.Help}
+	return FullResult{Status: o.Status, Environment: o.Environment, Site: o.Site, Project: o.Project, RequestID: o.RequestID, Help: o.Help, Source: o.Source}
 }

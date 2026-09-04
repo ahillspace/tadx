@@ -1,5 +1,7 @@
 package list
 
+import "github.com/ahillspace/tadx/internal/readsource"
+
 // Input selects one bounded project page.
 type Input struct {
 	Environment string
@@ -10,6 +12,7 @@ type Input struct {
 	ParentLUID  string
 	OwnerName   string
 	TopLevel    *bool
+	Catalog     bool
 }
 
 // PageRequest is the action-owned read request.
@@ -66,6 +69,7 @@ type Output struct {
 	Projects    []Project
 	RequestID   string
 	Help        []string
+	Source      *readsource.Metadata
 }
 
 // CompactProject identifies one project and its direct parent.
@@ -77,24 +81,26 @@ type CompactProject struct {
 
 // CompactResult is the default bounded projection.
 type CompactResult struct {
-	Status      string           `json:"status"`
-	Environment string           `json:"environment,omitempty"`
-	Site        string           `json:"site,omitempty"`
-	Page        OutputPage       `json:"page"`
-	Projects    []CompactProject `json:"projects"`
-	Details     string           `json:"details"`
-	Help        []string         `json:"help"`
+	Status      string               `json:"status"`
+	Environment string               `json:"environment,omitempty"`
+	Site        string               `json:"site,omitempty"`
+	Page        OutputPage           `json:"page"`
+	Projects    []CompactProject     `json:"projects"`
+	Details     string               `json:"details"`
+	Help        []string             `json:"help"`
+	Source      *readsource.Metadata `json:"source,omitempty"`
 }
 
 // FullResult is the bounded expanded current page.
 type FullResult struct {
-	Status      string     `json:"status"`
-	Environment string     `json:"environment,omitempty"`
-	Site        string     `json:"site,omitempty"`
-	Page        OutputPage `json:"page"`
-	Projects    []Project  `json:"projects"`
-	RequestID   string     `json:"tableau_request_id,omitempty"`
-	Help        []string   `json:"help"`
+	Status      string               `json:"status"`
+	Environment string               `json:"environment,omitempty"`
+	Site        string               `json:"site,omitempty"`
+	Page        OutputPage           `json:"page"`
+	Projects    []Project            `json:"projects"`
+	RequestID   string               `json:"tableau_request_id,omitempty"`
+	Help        []string             `json:"help"`
+	Source      *readsource.Metadata `json:"source,omitempty"`
 }
 
 // CompactOutput returns explicit compact fields.
@@ -103,10 +109,10 @@ func (o Output) CompactOutput() any {
 	for index, project := range o.Projects {
 		projects[index] = CompactProject{LUID: project.LUID, Name: project.Name, ParentLUID: project.ParentLUID}
 	}
-	return CompactResult{Status: o.Status, Environment: o.Environment, Site: o.Site, Page: o.Page, Projects: projects, Details: "--full", Help: o.Help}
+	return CompactResult{Status: o.Status, Environment: o.Environment, Site: o.Site, Page: o.Page, Projects: projects, Details: "--full", Help: o.Help, Source: o.Source}
 }
 
 // FullOutput returns the same page with bounded lifecycle fields.
 func (o Output) FullOutput() any {
-	return FullResult{Status: o.Status, Environment: o.Environment, Site: o.Site, Page: o.Page, Projects: o.Projects, RequestID: o.RequestID, Help: o.Help}
+	return FullResult{Status: o.Status, Environment: o.Environment, Site: o.Site, Page: o.Page, Projects: o.Projects, RequestID: o.RequestID, Help: o.Help, Source: o.Source}
 }

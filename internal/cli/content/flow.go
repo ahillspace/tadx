@@ -52,9 +52,10 @@ func newFlowList(deps Dependencies) *cobra.Command {
 	command.Flags().StringVar(&input.Name, "name", "", "exact flow-name filter")
 	command.Flags().StringVar(&input.OwnerName, "owner", "", "exact owner-name filter")
 	command.Flags().StringVar(&input.ProjectLUID, "project-id", "", "authoritative project LUID filter")
-	command.Flags().StringVar(&input.ProjectName, "project-name", "", "exact project-name filter")
+	command.Flags().StringVar(&input.ProjectName, "project-name", "", "exact leaf project name filter; not a project path")
 	command.Flags().IntVar(&input.Limit, "limit", 0, "maximum flows to return")
 	command.Flags().StringVar(&input.Cursor, "cursor", "", "opaque continuation cursor")
+	command.Flags().BoolVar(&input.Catalog, "catalog", false, "read indexed local catalog data without contacting Tableau")
 	return command
 }
 
@@ -69,6 +70,7 @@ func newFlowGet(deps Dependencies) *cobra.Command {
 		return deps.Renderer.Render(result)
 	}}
 	readTargetFlags(command, &input.Environment, &luid, &name, &projectPath)
+	command.Flags().BoolVar(&input.Catalog, "catalog", false, "read indexed local catalog data without contacting Tableau")
 	return command
 }
 
@@ -92,7 +94,7 @@ func newFlowPublish(deps Dependencies) *cobra.Command {
 	var input flowpublish.Input
 	var projectLUID, projectPath string
 	var apply bool
-	command := &cobra.Command{Use: "publish", Short: "Preview or publish one native flow artifact.", Hidden: !deps.MutationsEnabled, Annotations: map[string]string{"tadx.capability": "flow.publish"}, Args: func(command *cobra.Command, args []string) error {
+	command := &cobra.Command{Use: "publish", Short: "Preview or publish one native flow artifact.", Annotations: map[string]string{"tadx.capability": "flow.publish"}, Args: func(command *cobra.Command, args []string) error {
 		if err := noContentArgs("flow.publish")(command, args); err != nil {
 			return err
 		}
@@ -115,7 +117,7 @@ func newFlowPublish(deps Dependencies) *cobra.Command {
 		return deps.Renderer.Render(result)
 	}}
 	command.Flags().StringVar(&input.Workspace, "workspace", "", "logical workspace name; uses deterministic defaults when omitted")
-	command.Flags().StringVar(&input.ArtifactPath, "artifact", "", "exact workspace-relative managed flow path")
+	command.Flags().StringVar(&input.ArtifactPath, "artifact", "", managedArtifactFlagHelp("flow", "DailyPrep--identity"))
 	command.Flags().StringVar(&input.Environment, "environment", "", "explicit write environment alias; defaults to artifact source")
 	command.Flags().StringVar(&input.Name, "name", "", "published flow name; defaults to artifact name")
 	command.Flags().StringVar(&projectLUID, "project-id", "", "authoritative destination project LUID")
@@ -129,7 +131,7 @@ func newFlowMove(deps Dependencies) *cobra.Command {
 	var input flowmove.Input
 	var flowLUID, name, sourceProject, projectLUID, projectPath string
 	var apply bool
-	command := &cobra.Command{Use: "move", Short: "Preview or move one exact flow.", Hidden: !deps.MutationsEnabled, Annotations: map[string]string{"tadx.capability": "flow.move"}, Args: func(command *cobra.Command, args []string) error {
+	command := &cobra.Command{Use: "move", Short: "Preview or move one exact flow.", Annotations: map[string]string{"tadx.capability": "flow.move"}, Args: func(command *cobra.Command, args []string) error {
 		if err := selectorArgs("flow.move", &flowLUID, &name, &sourceProject, input.SetFlowSelector)(command, args); err != nil {
 			return err
 		}
@@ -159,7 +161,7 @@ func newFlowDelete(deps Dependencies) *cobra.Command {
 	var input flowdelete.Input
 	var luid, name, projectPath string
 	var apply bool
-	command := &cobra.Command{Use: "delete", Short: "Preview or delete one exact remote flow.", Hidden: !deps.MutationsEnabled, Annotations: map[string]string{"tadx.capability": "flow.delete"}, Args: func(command *cobra.Command, args []string) error {
+	command := &cobra.Command{Use: "delete", Short: "Preview or delete one exact remote flow.", Annotations: map[string]string{"tadx.capability": "flow.delete"}, Args: func(command *cobra.Command, args []string) error {
 		if err := selectorArgs("flow.delete", &luid, &name, &projectPath, input.SetSelector)(command, args); err != nil {
 			return err
 		}

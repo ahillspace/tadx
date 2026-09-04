@@ -230,13 +230,25 @@ func (a *Adapter) FindDatasources(ctx context.Context, name, projectLUID string)
 	const pageSize = 1000
 	seen := map[string]tableaudatasource.Datasource{}
 	result := []Datasource{}
+	expectedTotal, expectedSize := -1, -1
+	filterName := name
+	if strings.ContainsAny(filterName, ",&") {
+		filterName = ""
+	}
 	for number := 1; number <= 1000; number++ {
-		page, err := a.client.List(ctx, tableaudatasource.ListRequest{PageNumber: number, PageSize: pageSize, Name: name})
+		page, err := a.client.List(ctx, tableaudatasource.ListRequest{PageNumber: number, PageSize: pageSize, Name: filterName})
 		if err != nil {
 			return nil, err
 		}
 		if err := validateDatasourcePage(page, number, pageSize); err != nil {
 			return nil, err
+		}
+		if expectedTotal < 0 {
+			expectedTotal, expectedSize = page.Total, page.Size
+		} else if page.Total != expectedTotal {
+			return nil, fmt.Errorf("datasource collision pagination total changed from %d to %d", expectedTotal, page.Total)
+		} else if page.Size != expectedSize {
+			return nil, fmt.Errorf("datasource collision pagination size changed from %d to %d", expectedSize, page.Size)
 		}
 		for _, item := range page.Items {
 			if err := recordDatasource(seen, item); err != nil {

@@ -61,7 +61,7 @@ func (a *Action) Execute(ctx context.Context, input Input, apply bool) (Output, 
 	if noOp {
 		output.Applied = true
 		output.Result = &Result{Status: "unchanged", Project: current}
-		output.Help = []string{"tadx content project get --id " + current.LUID}
+		output.Help = []string{"tadx content project get --project-id " + current.LUID}
 		return output, nil
 	}
 	result, err := a.updater.UpdateProject(ctx, request)
@@ -71,7 +71,7 @@ func (a *Action) Execute(ctx context.Context, input Input, apply bool) (Output, 
 	}
 	output.Applied = true
 	output.Result = &result
-	output.Help = []string{"tadx content project get --id " + current.LUID}
+	output.Help = []string{"tadx content project get --project-id " + current.LUID}
 	return output, nil
 }
 

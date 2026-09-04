@@ -48,13 +48,14 @@ func newDatasourceList(deps datasourceInventoryDependencies) *cobra.Command {
 	command.Flags().StringVar(&input.Environment, "environment", "", "exact environment alias; defaults to the configured read environment")
 	command.Flags().StringVar(&input.Name, "name", "", "exact datasource-name filter")
 	command.Flags().StringVar(&input.OwnerName, "owner", "", "exact owner-name filter")
-	command.Flags().StringVar(&input.ProjectName, "project-name", "", "exact project-name filter")
+	command.Flags().StringVar(&input.ProjectName, "project-name", "", "exact leaf project name filter; not a project path")
 	command.Flags().StringVar(&input.Type, "type", "", "exact datasource-type filter")
 	command.Flags().StringVar(&input.Tag, "tag", "", "exact tag filter")
 	command.Flags().StringVar(&input.UpdatedAfter, "updated-after", "", "include datasources updated at or after this UTC timestamp")
 	command.Flags().StringVar(&input.UpdatedBefore, "updated-before", "", "include datasources updated at or before this UTC timestamp")
 	command.Flags().IntVar(&input.Limit, "limit", 0, "maximum datasources to return")
 	command.Flags().StringVar(&input.Cursor, "cursor", "", "opaque continuation cursor")
+	command.Flags().BoolVar(&input.Catalog, "catalog", false, "read indexed local catalog data without contacting Tableau")
 	return command
 }
 
@@ -77,5 +78,6 @@ func newDatasourceGet(deps datasourceInventoryDependencies) *cobra.Command {
 	command.Flags().StringVar(&luid, "id", "", "authoritative datasource LUID")
 	command.Flags().StringVar(&name, "name", "", "exact datasource name")
 	command.Flags().StringVar(&projectPath, "project", "", "exact slash-delimited project path")
+	command.Flags().BoolVar(&input.Catalog, "catalog", false, "read indexed local catalog data without contacting Tableau")
 	return command
 }

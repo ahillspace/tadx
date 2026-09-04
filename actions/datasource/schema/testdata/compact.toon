@@ -1,0 +1,32 @@
+status: listed
+environment: dev
+site: sandbox
+datasource_luid: datasource-1
+datasource_name: Sales
+source:
+  mode: tableau
+  observed_at: "2026-09-04T10:00:00Z"
+  coverage: complete
+  stale: false
+tables[1]{id,name,field_count}:
+  orders-id,Orders,2
+page:
+  returned: 2
+  total: 2
+  limit: 20
+fields[2]:
+  - id: order_date
+    caption: Order Date
+    table: Orders
+    role: date
+    data_type: date
+    requires_user_aggregation: false
+  - id: sales
+    caption: Revenue Amount
+    table: Orders
+    role: measure
+    data_type: number
+    default_aggregation: sum
+    requires_user_aggregation: false
+details: "--full"
+help[1]: tadx pulse definition create -h

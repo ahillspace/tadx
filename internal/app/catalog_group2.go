@@ -12,7 +12,6 @@ import (
 	"strings"
 	"time"
 
-	catalogget "github.com/ahillspace/tadx/actions/catalog/get"
 	catalogrefresh "github.com/ahillspace/tadx/actions/catalog/refresh"
 	catalogstatus "github.com/ahillspace/tadx/actions/catalog/status"
 	coreauth "github.com/ahillspace/tadx/internal/auth"
@@ -175,16 +174,6 @@ func (e catalogTableauExecutor) Do(ctx context.Context, input tableaucatalog.Req
 	return tableaucatalog.Response{StatusCode: response.StatusCode, Body: response.Body, TableauRequestID: response.TableauRequestID}, nil
 }
 
-type catalogStoreGetter struct{ store *corecatalog.Store }
-
-func (g catalogStoreGetter) Get(ctx context.Context, input catalogget.Input) (catalogget.Result, error) {
-	result, err := g.store.Get(ctx, corecatalog.Lookup{Environment: input.Environment, Site: input.Site, SiteSelected: input.SiteResolved, LUID: input.LUID, Kind: input.Kind, Name: input.Name, ProjectPath: input.ProjectPath})
-	if err != nil {
-		return catalogget.Result{}, err
-	}
-	return catalogget.Result{Item: catalogget.Item{LUID: result.Record.LUID, Kind: result.Record.Kind, Name: result.Record.Name, ProjectPath: result.Record.ProjectPath, Owner: result.Record.Owner}, Generation: catalogget.Generation{ID: result.GenerationID, Environment: result.Environment, Site: result.Site, GeneratedAt: result.GeneratedAt.UTC().Format(time.RFC3339Nano), Stale: result.Stale}, Warnings: append([]string(nil), result.Warnings...)}, nil
-}
-
 type catalogStoreStatuser struct{ store *corecatalog.Store }
 
 func (s catalogStoreStatuser) Status(ctx context.Context, input catalogstatus.Input) (catalogstatus.Result, error) {
@@ -219,7 +208,6 @@ func (c *catalogGroup2Commands) resolve(inputEnvironment, inputSite, operation s
 func (c *catalogGroup2Commands) refresher() *catalogRefreshService {
 	return &catalogRefreshService{commands: c}
 }
-func (c *catalogGroup2Commands) getter() *catalogGetService { return &catalogGetService{commands: c} }
 func (c *catalogGroup2Commands) statuser() *catalogStatusService {
 	return &catalogStatusService{commands: c}
 }
@@ -249,17 +237,6 @@ func (s *catalogRefreshService) Execute(ctx context.Context, input catalogrefres
 		},
 	}
 	return catalogrefresh.New(hydrator).Execute(ctx, input)
-}
-
-type catalogGetService struct{ commands *catalogGroup2Commands }
-
-func (s *catalogGetService) Execute(ctx context.Context, input catalogget.Input) (catalogget.Output, error) {
-	environment, err := s.commands.resolve(input.Environment, input.Site, "catalog.get")
-	if err != nil {
-		return catalogget.Output{}, err
-	}
-	input.Environment, input.Site, input.SiteResolved = environment.Alias, environment.SiteContentURL, true
-	return catalogget.New(catalogStoreGetter{store: s.commands.store()}).Execute(ctx, input)
 }
 
 type catalogStatusService struct{ commands *catalogGroup2Commands }

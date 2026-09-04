@@ -65,7 +65,8 @@ Discoverable through the registry so agents are routed correctly, but TADX never
 - PAT authentication only.
 - Default output is TOON; JSON is an interop conversion target, not a second output mode.
 - Consequential remote mutations are preview by default and require --apply. --force never means --apply.
-- Mutation discovery gating (TADX_ENABLE_MUTATIONS=1) changes discovery only; it is never authorization.
+- Remote mutation commands and capabilities are always discoverable.
+- `TADX_ENABLE_MUTATIONS=1` enables mutation command execution; enabled commands still preview by default and require `--apply` for the remote change.
 - Tableau LUIDs are authoritative identity; names and paths are selectors; ambiguity is a deterministic error; no fuzzy or interactive resolution.
 - Workspace selectors are logical names, unique case-insensitively, and resolved through one canonical registry.
 - A publish without an explicit target uses the artifact's recorded source environment, site, and project.

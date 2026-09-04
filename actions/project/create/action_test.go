@@ -49,7 +49,7 @@ func TestOutputGolden(t *testing.T) {
 		},
 		Applied: true,
 		Result:  &projectcreate.Result{Status: "succeeded", Project: projectcreate.Project{LUID: "project-1", Name: "Operations", Path: "Department/Operations", ParentLUID: "parent-1", Description: "Direct operations", ContentPermissions: "LockedToProject"}, TableauRequestID: "request-1"},
-		Help:    []string{"tadx content project get --id project-1"},
+		Help:    []string{"tadx content project get --project-id project-1"},
 	}
 	assertGolden(t, "compact.toon", output, false)
 	assertGolden(t, "full.toon", output, true)

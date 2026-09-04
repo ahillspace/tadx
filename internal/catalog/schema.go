@@ -9,7 +9,7 @@ import (
 
 var schemaStatements = []string{
 	`CREATE TABLE catalog_schema (singleton INTEGER PRIMARY KEY CHECK(singleton=1), version INTEGER NOT NULL, signature TEXT NOT NULL) STRICT`,
-	`INSERT INTO catalog_schema(singleton,version,signature) VALUES(1,1,'tadx-catalog-v1')`,
+	`INSERT INTO catalog_schema(singleton,version,signature) VALUES(1,2,'tadx-catalog-v2')`,
 	`CREATE TABLE generations (generation_key INTEGER PRIMARY KEY,id TEXT,fingerprint TEXT,environment TEXT NOT NULL,site TEXT NOT NULL,generated_at TEXT NOT NULL,complete INTEGER NOT NULL CHECK(complete IN (0,1)),source TEXT NOT NULL,record_count INTEGER NOT NULL CHECK(record_count>=0),created_at TEXT NOT NULL,UNIQUE(environment,site,id),UNIQUE(environment,site,fingerprint),CHECK((complete=0 AND id IS NULL AND fingerprint IS NULL) OR (complete=1 AND id IS NOT NULL AND fingerprint IS NOT NULL))) STRICT`,
 	`CREATE TABLE current_generations (environment TEXT NOT NULL,site TEXT NOT NULL,generation_key INTEGER NOT NULL UNIQUE REFERENCES generations(generation_key) ON DELETE RESTRICT,PRIMARY KEY(environment,site)) STRICT`,
 	`CREATE TABLE generation_scopes (generation_key INTEGER NOT NULL REFERENCES generations(generation_key) ON DELETE CASCADE,scope TEXT NOT NULL CHECK(scope IN ('users','groups','projects','workbooks','datasources','flows','views','permissions')),requested INTEGER NOT NULL CHECK(requested IN (0,1)),complete INTEGER NOT NULL CHECK(complete IN (0,1)),PRIMARY KEY(generation_key,scope)) STRICT`,
@@ -22,6 +22,7 @@ var schemaStatements = []string{
 	resourceDDL("views", `id TEXT NOT NULL,name TEXT NOT NULL,workbook_id TEXT NOT NULL`, "id"),
 	`CREATE TABLE permissions (generation_key INTEGER NOT NULL REFERENCES generations(generation_key) ON DELETE CASCADE,content_type TEXT NOT NULL,content_id TEXT NOT NULL,grantee_type TEXT NOT NULL,grantee_id TEXT NOT NULL,capability TEXT NOT NULL,mode TEXT NOT NULL,PRIMARY KEY(generation_key,content_type,content_id,grantee_type,grantee_id,capability)) STRICT`,
 	`CREATE TABLE catalog_records (generation_key INTEGER NOT NULL REFERENCES generations(generation_key) ON DELETE CASCADE,luid TEXT NOT NULL,kind TEXT NOT NULL,name TEXT NOT NULL,project_path TEXT NOT NULL,owner TEXT NOT NULL,requested INTEGER NOT NULL CHECK(requested IN (0,1)),PRIMARY KEY(generation_key,kind,luid)) STRICT`,
+	`CREATE TABLE resource_entries (environment TEXT NOT NULL,site TEXT NOT NULL,kind TEXT NOT NULL,luid TEXT NOT NULL,name TEXT NOT NULL,project_path TEXT NOT NULL,owner TEXT NOT NULL,payload BLOB NOT NULL,coverage TEXT NOT NULL CHECK(coverage IN ('summary','detail')),observed_at TEXT NOT NULL,PRIMARY KEY(environment,site,kind,luid)) STRICT`,
 	`CREATE INDEX generations_source_idx ON generations(environment,site,complete,generated_at DESC)`,
 	`CREATE INDEX generation_scopes_requested_idx ON generation_scopes(generation_key,requested,scope)`,
 	`CREATE INDEX projects_parent_idx ON projects(generation_key,parent_project_id)`,
@@ -30,9 +31,10 @@ var schemaStatements = []string{
 	`CREATE INDEX datasources_project_idx ON datasources(generation_key,project_id)`, `CREATE INDEX flows_project_idx ON flows(generation_key,project_id)`, `CREATE INDEX views_workbook_idx ON views(generation_key,workbook_id)`,
 	`CREATE INDEX permissions_content_idx ON permissions(generation_key,content_type,content_id)`, `CREATE INDEX permissions_grantee_idx ON permissions(generation_key,grantee_type,grantee_id)`,
 	`CREATE INDEX catalog_records_order_idx ON catalog_records(generation_key,requested,kind,name,project_path,luid)`, `CREATE INDEX catalog_records_lookup_idx ON catalog_records(generation_key,requested,kind,name,project_path)`,
+	`CREATE INDEX resource_entries_order_idx ON resource_entries(environment,site,kind,name,project_path,luid)`,
 }
 
-var requiredTables = []string{"catalog_schema", "generations", "current_generations", "generation_scopes", "users", "groups", "projects", "workbooks", "datasources", "flows", "views", "permissions", "catalog_records"}
+var requiredTables = []string{"catalog_schema", "generations", "current_generations", "generation_scopes", "users", "groups", "projects", "workbooks", "datasources", "flows", "views", "permissions", "catalog_records", "resource_entries"}
 
 func resourceDDL(table, columns, key string) string {
 	return fmt.Sprintf(`CREATE TABLE %s (generation_key INTEGER NOT NULL REFERENCES generations(generation_key) ON DELETE CASCADE,%s,PRIMARY KEY(generation_key,%s)) STRICT`, table, columns, key)
@@ -55,7 +57,7 @@ func ensureSchema(ctx context.Context, db *sql.DB) error {
 	// either way the schema is fully committed and validateSchema decides. Only a
 	// zero version needs (re-)initialization, so take the write lock only then.
 	if userVersion != 0 {
-		return nil
+		return migrateSchema(ctx, db, userVersion)
 	}
 	conn, err := db.Conn(ctx)
 	if err != nil {
@@ -109,7 +111,7 @@ func validateSchema(ctx context.Context, db *sql.DB) error {
 	if err := db.QueryRowContext(ctx, `SELECT version,signature FROM catalog_schema WHERE singleton=1`).Scan(&version, &signature); err != nil {
 		return fmt.Errorf("catalog schema is missing or unreadable: %w", err)
 	}
-	if version != schemaVersion || signature != "tadx-catalog-v1" {
+	if version != schemaVersion || signature != "tadx-catalog-v2" {
 		return fmt.Errorf("catalog schema version %d is unsupported", version)
 	}
 	for _, table := range requiredTables {
@@ -122,6 +124,67 @@ func validateSchema(ctx context.Context, db *sql.DB) error {
 			return err
 		}
 	}
+	return nil
+}
+
+func migrateSchema(ctx context.Context, db *sql.DB, version int) error {
+	if version == schemaVersion {
+		return nil
+	}
+	if version != 1 {
+		return nil
+	}
+	conn, err := db.Conn(ctx)
+	if err != nil {
+		return err
+	}
+	defer conn.Close()
+	if _, err := conn.ExecContext(ctx, `BEGIN IMMEDIATE`); err != nil {
+		return fmt.Errorf("lock catalog schema migration: %w", err)
+	}
+	committed := false
+	defer func() {
+		if !committed {
+			_, _ = conn.ExecContext(ctx, `ROLLBACK`)
+		}
+	}()
+	if err := conn.QueryRowContext(ctx, `PRAGMA user_version`).Scan(&version); err != nil {
+		return fmt.Errorf("recheck catalog schema migration version: %w", err)
+	}
+	if version == schemaVersion {
+		if _, err := conn.ExecContext(ctx, `COMMIT`); err != nil {
+			return err
+		}
+		committed = true
+		return nil
+	}
+	if version != 1 {
+		return nil
+	}
+	if _, err := conn.ExecContext(ctx, `CREATE TABLE resource_entries (environment TEXT NOT NULL,site TEXT NOT NULL,kind TEXT NOT NULL,luid TEXT NOT NULL,name TEXT NOT NULL,project_path TEXT NOT NULL,owner TEXT NOT NULL,payload BLOB NOT NULL,coverage TEXT NOT NULL CHECK(coverage IN ('summary','detail')),observed_at TEXT NOT NULL,PRIMARY KEY(environment,site,kind,luid)) STRICT`); err != nil {
+		return fmt.Errorf("migrate catalog resource entries: %w", err)
+	}
+	if _, err := conn.ExecContext(ctx, `CREATE INDEX resource_entries_order_idx ON resource_entries(environment,site,kind,name,project_path,luid)`); err != nil {
+		return fmt.Errorf("index catalog resource entries: %w", err)
+	}
+	if _, err := conn.ExecContext(ctx, `INSERT INTO resource_entries(environment,site,kind,luid,name,project_path,owner,payload,coverage,observed_at)
+		SELECT g.environment,g.site,r.kind,r.luid,r.name,r.project_path,r.owner,X'','summary',g.generated_at
+		FROM current_generations c
+		JOIN generations g ON g.generation_key=c.generation_key
+		JOIN catalog_records r ON r.generation_key=g.generation_key
+		WHERE g.complete=1 AND r.requested=1`); err != nil {
+		return fmt.Errorf("backfill catalog resource entries: %w", err)
+	}
+	if _, err := conn.ExecContext(ctx, `UPDATE catalog_schema SET version=2,signature='tadx-catalog-v2' WHERE singleton=1`); err != nil {
+		return fmt.Errorf("update catalog schema marker: %w", err)
+	}
+	if _, err := conn.ExecContext(ctx, `PRAGMA user_version=2`); err != nil {
+		return fmt.Errorf("update catalog schema version: %w", err)
+	}
+	if _, err := conn.ExecContext(ctx, `COMMIT`); err != nil {
+		return fmt.Errorf("commit catalog schema migration: %w", err)
+	}
+	committed = true
 	return nil
 }
 

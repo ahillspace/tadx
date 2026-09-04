@@ -106,7 +106,7 @@ func newGet(deps Dependencies) *cobra.Command {
 			return nil
 		},
 		RunE: func(command *cobra.Command, args []string) error {
-			output, err := deps.Getter.Execute(command.Context(), capabilityget.Input{ID: args[0]})
+			output, err := deps.Getter.Execute(command.Context(), capabilityget.Input{ID: args[0], MutationsEnabled: deps.MutationsEnabled})
 			if err != nil {
 				return err
 			}

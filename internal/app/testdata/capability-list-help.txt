@@ -1,4 +1,4 @@
-Return a bounded inventory of discoverable operations and ownership.
+Return a bounded inventory of discoverable operations, ownership, and execution availability.
 
 Usage:
   tadx capability list [flags]

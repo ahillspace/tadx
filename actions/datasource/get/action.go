@@ -38,6 +38,10 @@ func (a *Action) Execute(ctx context.Context, input Input) (Output, error) {
 	}
 	item, err := a.resolver.ResolveDatasource(ctx, input.Selector)
 	if err != nil {
+		var structured *errs.Error
+		if errors.As(err, &structured) {
+			return Output{}, err
+		}
 		var resolution *identity.ResolutionError
 		if errors.As(err, &resolution) {
 			switch resolution.Kind {

@@ -4,7 +4,6 @@ package catalog
 import (
 	"context"
 
-	catalogget "github.com/ahillspace/tadx/actions/catalog/get"
 	catalogrefresh "github.com/ahillspace/tadx/actions/catalog/refresh"
 	search "github.com/ahillspace/tadx/actions/catalog/search"
 	catalogstatus "github.com/ahillspace/tadx/actions/catalog/status"
@@ -22,11 +21,6 @@ type Refresher interface {
 	Execute(context.Context, catalogrefresh.Input) (catalogrefresh.Output, error)
 }
 
-// Getter executes catalog.get.
-type Getter interface {
-	Execute(context.Context, catalogget.Input) (catalogget.Output, error)
-}
-
 // Statuser executes catalog.status.
 type Statuser interface {
 	Execute(context.Context, catalogstatus.Input) (catalogstatus.Output, error)
@@ -39,15 +33,12 @@ type Renderer interface{ Render(any) error }
 type Dependencies struct {
 	Searcher     Searcher
 	Refresher    Refresher
-	Getter       Getter
 	Statuser     Statuser
 	Renderer     Renderer
 	Use          string
 	Short        string
 	RefreshUse   string
 	RefreshShort string
-	GetUse       string
-	GetShort     string
 	StatusUse    string
 	StatusShort  string
 }
@@ -95,9 +86,6 @@ func New(deps Dependencies) *cobra.Command {
 	if deps.Refresher != nil {
 		command.AddCommand(newRefreshCommand(deps))
 	}
-	if deps.Getter != nil {
-		command.AddCommand(newGetCommand(deps))
-	}
 	if deps.Statuser != nil {
 		command.AddCommand(newStatusCommand(deps))
 	}
@@ -127,35 +115,6 @@ func newRefreshCommand(deps Dependencies) *cobra.Command {
 	command.Flags().StringVar(&input.Environment, "environment", "", "exact environment alias")
 	command.Flags().StringVar(&input.Site, "site", "", "exact source site content URL")
 	command.Flags().StringSliceVar(&input.Scopes, "scope", nil, "inventory scope; repeat for users, groups, projects, workbooks, datasources, flows, views, or permissions; omit for all")
-	return command
-}
-
-func newGetCommand(deps Dependencies) *cobra.Command {
-	var input catalogget.Input
-	use := deps.GetUse
-	if use == "" {
-		use = "get"
-	}
-	short := deps.GetShort
-	if short == "" {
-		short = "Inspect one exact cached catalog record."
-	}
-	command := &cobra.Command{
-		Use: use, Short: short, Annotations: map[string]string{"tadx.capability": "catalog.get"}, Args: noArgs("catalog.get"),
-		RunE: func(command *cobra.Command, _ []string) error {
-			result, err := deps.Getter.Execute(command.Context(), input)
-			if err != nil {
-				return err
-			}
-			return deps.Renderer.Render(result)
-		},
-	}
-	command.Flags().StringVar(&input.Environment, "environment", "", "exact environment alias")
-	command.Flags().StringVar(&input.Site, "site", "", "exact source site content URL")
-	command.Flags().StringVar(&input.Kind, "kind", "", "exact resource kind")
-	command.Flags().StringVar(&input.Name, "name", "", "exact resource name")
-	command.Flags().StringVar(&input.ProjectPath, "project", "", "exact slash-delimited project path")
-	command.Flags().StringVar(&input.LUID, "id", "", "authoritative Tableau LUID")
 	return command
 }
 

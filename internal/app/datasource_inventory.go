@@ -5,27 +5,78 @@ import (
 
 	datasourceget "github.com/ahillspace/tadx/actions/datasource/get"
 	datasourcelist "github.com/ahillspace/tadx/actions/datasource/list"
+	"github.com/ahillspace/tadx/internal/catalog"
 	"github.com/ahillspace/tadx/internal/identity"
 	resourcedatasource "github.com/ahillspace/tadx/internal/resources/datasource"
 	tableaudatasource "github.com/ahillspace/tadx/internal/tableau/datasource"
 )
 
 func (c *remoteContentCommands) ListDatasources(ctx context.Context, input datasourcelist.Input) (datasourcelist.Output, error) {
+	if input.Catalog {
+		environment, site, err := c.resolveCatalogTarget(input.Environment)
+		if err != nil {
+			return datasourcelist.Output{}, err
+		}
+		input.Environment, input.Site = environment, site
+		reader := &catalogDatasourceListReader{store: c.catalogStore(), environment: environment, site: site}
+		output, err := datasourcelist.New(reader).Execute(ctx, input)
+		if err == nil {
+			output.Source = reader.source
+		}
+		return output, err
+	}
 	connection, err := c.connect(ctx, input.Environment, false)
 	if err != nil {
 		return datasourcelist.Output{}, remoteSetupError("datasource.list", input.Environment, input.Site, connection.environment, err)
 	}
 	input.Environment, input.Site = connection.environment.Alias, connection.environment.SiteContentURL
-	return datasourcelist.New(datasourceListReader{connection.datasources}).Execute(ctx, input)
+	output, err := datasourcelist.New(datasourceListReader{connection.datasources}).Execute(ctx, input)
+	if err != nil {
+		return output, err
+	}
+	observedAt := c.runtime.now().UTC()
+	output.Source = liveSource(c.runtime.now)
+	entries := make([]catalog.ResourceEntry, 0, len(output.Datasources))
+	for _, item := range output.Datasources {
+		entry, encodeErr := resourceEntry(input.Environment, input.Site, "datasource", item.LUID, item.Name, "", item.OwnerLUID, "summary", observedAt, item)
+		if encodeErr == nil {
+			entries = append(entries, entry)
+		}
+	}
+	writeThrough(c.catalogStore(), entries)
+	return output, nil
 }
 
 func (c *remoteContentCommands) GetDatasource(ctx context.Context, input datasourceget.Input) (datasourceget.Output, error) {
+	if input.Catalog {
+		environment, site, err := c.resolveCatalogTarget(input.Environment)
+		if err != nil {
+			return datasourceget.Output{}, err
+		}
+		input.Environment, input.Site = environment, site
+		resolver := &catalogDatasourceGetResolver{store: c.catalogStore(), environment: environment, site: site}
+		output, err := datasourceget.New(resolver).Execute(ctx, input)
+		if err == nil {
+			output.Source = resolver.source
+		}
+		return output, err
+	}
 	connection, err := c.connect(ctx, input.Environment, false)
 	if err != nil {
 		return datasourceget.Output{}, remoteSetupError("datasource.get", input.Environment, input.Site, connection.environment, err)
 	}
 	input.Environment, input.Site = connection.environment.Alias, connection.environment.SiteContentURL
-	return datasourceget.New(datasourceGetResolver{connection.datasources}).Execute(ctx, input)
+	output, err := datasourceget.New(datasourceGetResolver{connection.datasources}).Execute(ctx, input)
+	if err != nil {
+		return output, err
+	}
+	observedAt := c.runtime.now().UTC()
+	output.Source = liveSource(c.runtime.now)
+	entry, encodeErr := resourceEntry(input.Environment, input.Site, "datasource", output.Datasource.LUID, output.Datasource.Name, output.Datasource.ProjectPath, output.Datasource.OwnerLUID, "detail", observedAt, output.Datasource)
+	if encodeErr == nil {
+		writeThrough(c.catalogStore(), []catalog.ResourceEntry{entry})
+	}
+	return output, nil
 }
 
 type datasourceListReader struct{ adapter *resourcedatasource.Adapter }

@@ -63,16 +63,19 @@ func TestCLIProcessMutationDiscoveryEnvironment(t *testing.T) {
 	args := []string{"capability", "list", "--domain", "content", "--resource", "workbook", "--mutation=true"}
 
 	disabled := runCLI(t, binary, args, nil)
-	if disabled.exitCode != 2 || disabled.stderr != "" {
-		t.Fatalf("disabled gate returned exit %d and stderr %q, want exit 2 and empty stderr\nstdout:\n%s", disabled.exitCode, disabled.stderr, disabled.stdout)
+	if disabled.exitCode != 0 || disabled.stderr != "" {
+		t.Fatalf("disabled gate returned exit %d and stderr %q, want exit 0 and empty stderr\nstdout:\n%s", disabled.exitCode, disabled.stderr, disabled.stdout)
 	}
 	disabledDocument := decodeDocument(t, disabled.stdout)
-	disabledError, ok := disabledDocument["error"].(map[string]any)
-	if !ok || disabledError["kind"] != "usage" {
-		t.Fatalf("disabled gate output = %#v, want structured usage error", disabledDocument)
+	disabledCapabilities, ok := disabledDocument["capabilities"].([]any)
+	if !ok || len(disabledCapabilities) != 2 {
+		t.Fatalf("disabled mutation discovery = %#v", disabledDocument)
 	}
-	if strings.Contains(disabled.stdout, "workbook.publish") {
-		t.Fatalf("disabled mutation discovery exposed workbook.publish: %s", disabled.stdout)
+	for _, raw := range disabledCapabilities {
+		capability, rowOK := raw.(map[string]any)
+		if !rowOK || capability["execution_enabled"] != false {
+			t.Fatalf("disabled capability = %#v", raw)
+		}
 	}
 
 	enabled := runCLI(t, binary, args, map[string]string{"TADX_ENABLE_MUTATIONS": "1"})
@@ -88,6 +91,21 @@ func TestCLIProcessMutationDiscoveryEnvironment(t *testing.T) {
 	publishCapability, publishOK := capabilities[1].(map[string]any)
 	if !deleteOK || !publishOK || deleteCapability["id"] != "workbook.delete" || publishCapability["id"] != "workbook.publish" {
 		t.Fatalf("enabled mutation discovery result = %#v, want workbook.delete then workbook.publish", capabilities)
+	}
+}
+
+func TestCLIProcessMutationCommandsAreVisibleAndGated(t *testing.T) {
+	binary := buildCLI(t)
+	help := runCLI(t, binary, []string{"content", "workbook", "--help"}, nil)
+	if help.exitCode != 0 || !strings.Contains(help.stdout, "publish") || !strings.Contains(help.stdout, "delete") {
+		t.Fatalf("workbook help did not expose mutations: exit = %d, stdout = %s", help.exitCode, help.stdout)
+	}
+
+	result := runCLI(t, binary, []string{"content", "workbook", "delete", "--environment", "missing", "--id", "workbook-1"}, nil)
+	document := decodeDocument(t, result.stdout)
+	errorDocument, ok := document["error"].(map[string]any)
+	if result.exitCode != 1 || !ok || errorDocument["id"] != "mutation.disabled" || errorDocument["operation"] != "workbook.delete" {
+		t.Fatalf("mutation gate result = %#v, exit = %d", document, result.exitCode)
 	}
 }
 
