@@ -10,3 +10,5 @@
 /agent-review/
 /archived/
 /tadx.exe
+/data/
+.DS_Store
