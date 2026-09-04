@@ -1,0 +1,18 @@
+status: listed
+environment: dev
+site: sandbox
+definition_luid: definition-1
+page:
+  returned: 2
+  limit: 20
+  next_cursor: cursor-2
+metrics[2]{luid,name,is_default}:
+  metric-1,Revenue,true
+  metric-2,Revenue West,false
+details: "--full"
+help[1]: tadx pulse metric get --id metric-1
+source:
+  mode: tableau
+  observed_at: "2026-09-04T10:00:00Z"
+  coverage: complete
+  stale: false

@@ -89,8 +89,11 @@ func (a *Action) Execute(ctx context.Context, input Input) (Output, error) {
 	}
 	source := readsource.Live(parseObservedAt(observedAt, a.now()))
 	if input.Catalog {
-		// The composition root replaces this with authoritative catalog generation metadata.
-		source = readsource.Cached(parseObservedAt(observedAt, a.now()), readsource.CoverageComplete, "", time.Time{}, false)
+		// The composition root replaces this with authoritative catalog generation
+		// metadata. This action has no generation provenance of its own, so the
+		// placeholder must not claim complete, fresh coverage: if it is ever
+		// surfaced unwrapped it stays honest as partial and stale.
+		source = readsource.Cached(parseObservedAt(observedAt, a.now()), readsource.CoveragePartial, "", time.Time{}, true)
 	}
 	return Output{
 		Status: "listed", Environment: input.Environment, Site: input.Site,

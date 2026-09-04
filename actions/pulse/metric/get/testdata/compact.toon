@@ -1,0 +1,15 @@
+status: found
+environment: dev
+site: sandbox
+metric:
+  luid: metric-1
+  name: Revenue
+  definition_luid: definition-1
+  is_default: true
+details: "--full"
+help[1]: tadx pulse metric list --definition definition-1
+source:
+  mode: tableau
+  observed_at: "2026-09-04T10:00:00Z"
+  coverage: complete
+  stale: false

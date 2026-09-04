@@ -1,6 +1,7 @@
 package fork
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
@@ -207,10 +208,22 @@ func validFilterValues(values []string) bool {
 	}
 	return true
 }
+
+// cloneMap deep-copies a decoded JSON object while preserving numeric fidelity.
+// It decodes with UseNumber so integers and large numbers survive the round-trip
+// as json.Number instead of being coerced to float64, which would silently alter
+// the forked specification before it is fingerprinted and sent to Tableau.
 func cloneMap(value map[string]any) map[string]any {
-	data, _ := json.Marshal(value)
+	data, err := json.Marshal(value)
+	if err != nil {
+		return map[string]any{}
+	}
+	decoder := json.NewDecoder(bytes.NewReader(data))
+	decoder.UseNumber()
 	var result map[string]any
-	_ = json.Unmarshal(data, &result)
+	if err := decoder.Decode(&result); err != nil {
+		return map[string]any{}
+	}
 	return result
 }
 func stringValue(value any) string { result, _ := value.(string); return result }

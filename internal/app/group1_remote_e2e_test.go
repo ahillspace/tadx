@@ -107,6 +107,47 @@ func TestGroupOneProjectAndFlowReadsPullAndLineageThroughCLI(t *testing.T) {
 	}
 }
 
+// TestGroupOneLiveReadSucceedsWhenCatalogWriteThroughFails proves that a live
+// read remains authoritative even when the local catalog write-through cannot
+// persist. The catalog directory is poisoned with a regular file so the store
+// cannot create catalog/catalog.sqlite; the read must still return the live
+// result with a Tableau source stamp rather than failing on the cache write.
+func TestGroupOneLiveReadSucceedsWhenCatalogWriteThroughFails(t *testing.T) {
+	server, mutations := newGroupOneTableauServer(t)
+	defer server.Close()
+
+	configPath := writePhaseOneConfigWithSite(t, server.URL, "team-site")
+	t.Setenv("PROD_PAT_NAME", "pat-name")
+	t.Setenv("PROD_PAT_SECRET", "pat-secret")
+
+	// Poison the catalog directory: a regular file where the store needs a
+	// directory forces every write-through UpsertResources to fail.
+	catalogPath := filepath.Join(filepath.Dir(configPath), "catalog")
+	if err := os.WriteFile(catalogPath, []byte("not a directory"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	options := app.Options{
+		ConfigPath: configPath,
+		HTTPClient: server.Client(),
+		Now:        func() time.Time { return time.Date(2026, 9, 1, 12, 0, 0, 0, time.UTC) },
+	}
+	output := runGroupOneCLI(t, options, "content", "project", "list", "--limit", "3")
+	for _, want := range []string{"status: listed", "environment: production", "project-ops", "mode: tableau"} {
+		if !strings.Contains(output, want) {
+			t.Fatalf("live read did not survive a failed catalog write-through; output missing %q:\n%s", want, output)
+		}
+	}
+	// The catalog file must remain the untouched poison, proving write-through
+	// neither succeeded nor removed it.
+	if data, err := os.ReadFile(catalogPath); err != nil || string(data) != "not a directory" {
+		t.Fatalf("catalog poison file = %q, error = %v", data, err)
+	}
+	if mutations.Load() != 0 {
+		t.Fatalf("live read made %d remote mutation requests", mutations.Load())
+	}
+}
+
 func TestGroupOneFlowMutationPreviewsDoNotMutateThroughCLI(t *testing.T) {
 	server, mutations := newGroupOneTableauServer(t)
 	defer server.Close()
