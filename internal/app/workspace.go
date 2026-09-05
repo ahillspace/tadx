@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io/fs"
+	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -12,10 +14,13 @@ import (
 	workspaceclean "github.com/ahillspace/tadx/actions/workspace/clean"
 	workspaceclone "github.com/ahillspace/tadx/actions/workspace/clone"
 	workspacecreate "github.com/ahillspace/tadx/actions/workspace/create"
+	workspacedelete "github.com/ahillspace/tadx/actions/workspace/delete"
 	workspacelist "github.com/ahillspace/tadx/actions/workspace/list"
 	workspacemove "github.com/ahillspace/tadx/actions/workspace/move"
 	workspaceregister "github.com/ahillspace/tadx/actions/workspace/register"
+	workspacesetdefault "github.com/ahillspace/tadx/actions/workspace/setdefault"
 	workspacestatus "github.com/ahillspace/tadx/actions/workspace/status"
+	workspaceunregister "github.com/ahillspace/tadx/actions/workspace/unregister"
 	"github.com/ahillspace/tadx/internal/artifact"
 	workspacecli "github.com/ahillspace/tadx/internal/cli/workspace"
 	"github.com/ahillspace/tadx/internal/config"
@@ -23,15 +28,18 @@ import (
 )
 
 type workspaceCommands struct {
-	runtime  *workspaceRuntime
-	create   *workspacecreate.Action
-	register *workspaceregister.Action
-	clone    *workspaceclone.Action
-	list     *workspacelist.Action
-	status   *workspacestatus.Action
-	move     *workspacemove.Action
-	delete   *artifactdelete.Action
-	clean    *workspaceclean.Action
+	runtime         *workspaceRuntime
+	create          *workspacecreate.Action
+	register        *workspaceregister.Action
+	clone           *workspaceclone.Action
+	list            *workspacelist.Action
+	status          *workspacestatus.Action
+	move            *workspacemove.Action
+	delete          *artifactdelete.Action
+	clean           *workspaceclean.Action
+	setDefault      *workspacesetdefault.Action
+	unregister      *workspaceunregister.Action
+	deleteWorkspace *workspacedelete.Action
 }
 
 func newWorkspaceCommands(runtime *runtimeDependencies) *workspaceCommands {
@@ -41,14 +49,17 @@ func newWorkspaceCommands(runtime *runtimeDependencies) *workspaceCommands {
 		create:  workspacecreate.New(workspaceCreator{shared}), register: workspaceregister.New(workspaceRegistrar{shared}),
 		clone: workspaceclone.New(workspaceCloner{shared}), list: workspacelist.New(workspaceLister{shared}),
 		status: workspacestatus.New(workspaceStatusReader{shared}), move: workspacemove.New(workspaceMover{shared}),
-		delete: artifactdelete.New(workspaceDeleteStore{shared}),
-		clean:  workspaceclean.New(workspaceCleanStore{shared}),
+		delete:          artifactdelete.New(workspaceDeleteStore{shared}),
+		clean:           workspaceclean.New(workspaceCleanStore{shared}),
+		setDefault:      workspacesetdefault.New(workspaceDefaultStore{shared}),
+		unregister:      workspaceunregister.New(workspaceRegistryStore{shared}),
+		deleteWorkspace: workspacedelete.New(workspaceRootDeleteStore{shared}),
 	}
 }
 
 func (c *workspaceCommands) dependencies() *workspacecli.Dependencies {
-	ids := []string{"workspace.create", "workspace.register", "workspace.clone", "workspace.list", "workspace.status", "workspace.move", "workspace.artifact.delete", "workspace.clean"}
-	return &workspacecli.Dependencies{Creator: c, Registrar: c, Cloner: c, Lister: c, Statuser: c, Mover: c, Deleter: c, Cleaner: c, Uses: registryUses(ids...), Shorts: registryShorts(ids...)}
+	ids := []string{"workspace.create", "workspace.register", "workspace.clone", "workspace.list", "workspace.status", "workspace.set-default", "workspace.unregister", "workspace.delete", "workspace.move", "workspace.artifact.delete", "workspace.clean"}
+	return &workspacecli.Dependencies{Creator: c, Registrar: c, Cloner: c, Lister: c, Statuser: c, DefaultSetter: c, Unregistrar: c, WorkspaceDeleter: c, Mover: c, Deleter: c, Cleaner: c, Uses: registryUses(ids...), Shorts: registryShorts(ids...)}
 }
 
 func (c *workspaceCommands) Create(ctx context.Context, input workspacecreate.Input) (workspacecreate.Output, error) {
@@ -74,6 +85,15 @@ func (c *workspaceCommands) Delete(ctx context.Context, input artifactdelete.Inp
 }
 func (c *workspaceCommands) Clean(ctx context.Context, input workspaceclean.Input) (workspaceclean.Output, error) {
 	return c.clean.Execute(ctx, input)
+}
+func (c *workspaceCommands) SetDefault(ctx context.Context, input workspacesetdefault.Input) (workspacesetdefault.Output, error) {
+	return c.setDefault.Execute(ctx, input)
+}
+func (c *workspaceCommands) Unregister(ctx context.Context, input workspaceunregister.Input) (workspaceunregister.Output, error) {
+	return c.unregister.Execute(ctx, input)
+}
+func (c *workspaceCommands) DeleteWorkspace(ctx context.Context, input workspacedelete.Input, preview bool) (workspacedelete.Output, error) {
+	return c.deleteWorkspace.Execute(ctx, input, preview)
 }
 
 type workspaceRuntime struct{ runtime *runtimeDependencies }
@@ -209,6 +229,128 @@ func (a workspaceMover) Move(ctx context.Context, input workspacemove.Input) (wo
 type workspaceDeleteStore struct{ runtime *workspaceRuntime }
 
 type workspaceCleanStore struct{ runtime *workspaceRuntime }
+
+type workspaceDefaultStore struct{ runtime *workspaceRuntime }
+
+func (a workspaceDefaultStore) SetDefault(ctx context.Context, name string) (workspacesetdefault.Workspace, error) {
+	item, err := a.runtime.manager().SetDefault(ctx, name)
+	return workspacesetdefault.Workspace{Name: item.Name, ID: item.ID, Root: item.Root}, err
+}
+
+type workspaceRegistryStore struct{ runtime *workspaceRuntime }
+
+func (a workspaceRegistryStore) Unregister(ctx context.Context, name string) (workspaceunregister.Workspace, error) {
+	item, err := a.runtime.manager().Unregister(ctx, name)
+	return workspaceunregister.Workspace{Name: item.Name, ID: item.ID, Root: item.Root}, err
+}
+
+type workspaceRootDeleteStore struct{ runtime *workspaceRuntime }
+
+func (a workspaceRootDeleteStore) Resolve(ctx context.Context, name string) (workspacedelete.Workspace, error) {
+	item, err := a.runtime.manager().Resolve(ctx, name, "")
+	if err != nil {
+		return workspacedelete.Workspace{}, err
+	}
+	page, err := artifact.Inventory(ctx, item.Root, artifact.InventoryOptions{Limit: 1})
+	if err != nil {
+		return workspacedelete.Workspace{}, err
+	}
+	unmanaged, err := workspaceHasUnmanagedEntries(ctx, item.Root)
+	if err != nil {
+		return workspacedelete.Workspace{}, err
+	}
+	return workspacedelete.Workspace{Name: item.Name, ID: item.ID, Root: item.Root, Dirty: page.Dirty > 0 || page.Invalid > 0 || page.Missing > 0 || unmanaged, DirtyArtifacts: page.Dirty, InvalidArtifacts: page.Invalid + page.Missing}, nil
+}
+func (a workspaceRootDeleteStore) Delete(ctx context.Context, request workspacedelete.DeleteRequest) error {
+	current, err := a.Resolve(ctx, request.Expected.Name)
+	if err != nil {
+		return err
+	}
+	if current.ID != request.Expected.ID || !sameWorkspaceRoot(current.Root, request.Expected.Root) {
+		return errors.New("workspace identity changed during deletion revalidation")
+	}
+	if current.Dirty && !request.Force {
+		return errors.New("workspace became dirty during deletion revalidation")
+	}
+	_, err = a.runtime.manager().Delete(ctx, workspacecore.Record{Name: current.Name, ID: current.ID, Root: current.Root})
+	return err
+}
+
+func sameWorkspaceRoot(left, right string) bool {
+	leftPath, leftErr := filepath.Abs(left)
+	rightPath, rightErr := filepath.Abs(right)
+	if leftErr != nil || rightErr != nil {
+		return false
+	}
+	leftPath, rightPath = filepath.Clean(leftPath), filepath.Clean(rightPath)
+	if leftPath == rightPath {
+		return true
+	}
+	leftInfo, leftErr := os.Stat(leftPath)
+	rightInfo, rightErr := os.Stat(rightPath)
+	return leftErr == nil && rightErr == nil && os.SameFile(leftInfo, rightInfo)
+}
+
+func workspaceHasUnmanagedEntries(ctx context.Context, root string) (bool, error) {
+	const maxEntries = 10000
+	entries := 0
+	managedKinds := map[string]bool{"workbook": true, "datasource": true, "flow": true, "pulse-definition": true, "lineage": true}
+	dirty := false
+	err := filepath.WalkDir(root, func(path string, entry fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		entries++
+		if entries > maxEntries {
+			return errors.New("workspace deletion inspection exceeds its bounded entry limit")
+		}
+		if path == root {
+			return nil
+		}
+		relative, err := filepath.Rel(root, path)
+		if err != nil {
+			return err
+		}
+		parts := strings.Split(filepath.ToSlash(relative), "/")
+		if entry.Type()&os.ModeSymlink != 0 {
+			dirty = true
+			if entry.IsDir() {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		switch parts[0] {
+		case config.WorkspaceConfigName:
+			if len(parts) != 1 {
+				dirty = true
+			}
+		case ".tadx":
+			if len(parts) == 1 {
+				return nil
+			}
+		case "artifacts":
+			if len(parts) == 1 {
+				return nil
+			}
+			if !managedKinds[parts[1]] && !strings.HasPrefix(parts[1], ".tadx-") {
+				dirty = true
+				if entry.IsDir() && len(parts) == 2 {
+					return filepath.SkipDir
+				}
+			}
+		default:
+			dirty = true
+			if entry.IsDir() && len(parts) == 1 {
+				return filepath.SkipDir
+			}
+		}
+		return nil
+	})
+	return dirty, err
+}
 
 func (a workspaceCleanStore) Clean(ctx context.Context, request workspaceclean.Request) (workspaceclean.Result, error) {
 	resolved, err := a.runtime.resolve(ctx, request.Workspace)

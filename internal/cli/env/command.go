@@ -4,6 +4,7 @@ package env
 import (
 	"context"
 	"errors"
+	"strings"
 
 	profileadd "github.com/ahillspace/tadx/actions/env/profile/add"
 	profileget "github.com/ahillspace/tadx/actions/env/profile/get"
@@ -217,10 +218,14 @@ func exactAlias(operation string) cobra.PositionalArgs {
 }
 
 func use(deps Dependencies, id, fallback string) string {
-	if deps.Uses[id] != "" {
-		return deps.Uses[id]
+	registered := deps.Uses[id]
+	if registered == "" {
+		return fallback
 	}
-	return fallback
+	if _, arguments, found := strings.Cut(fallback, " "); found && !strings.Contains(registered, " ") {
+		return registered + " " + arguments
+	}
+	return registered
 }
 func short(deps Dependencies, id, fallback string) string {
 	if deps.Shorts[id] != "" {

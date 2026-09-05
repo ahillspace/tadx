@@ -166,3 +166,34 @@ func TestInstallRejectsNonDirectoryDestinationAndOversizedPackages(t *testing.T)
 		})
 	}
 }
+
+func TestUninstallRemovesMatchingPackagesAndProtectsDivergentPackages(t *testing.T) {
+	home := t.TempDir()
+	installer := Installer{Home: func() (string, error) { return home, nil }}
+	if _, err := installer.Install(context.Background(), "codex", false, false); err != nil {
+		t.Fatal(err)
+	}
+	preview, err := installer.Uninstall(context.Background(), "codex", true, false)
+	if err != nil || preview.Status != "preview" || preview.Skills[0].Status != "remove" {
+		t.Fatalf("preview = %#v, %v", preview, err)
+	}
+	if err := os.WriteFile(filepath.Join(home, ".codex", "skills", "tadx", "custom.txt"), []byte("keep"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := installer.Uninstall(context.Background(), "codex", false, false); err == nil {
+		t.Fatal("uninstall accepted a divergent package without force")
+	}
+	result, err := installer.Uninstall(context.Background(), "codex", false, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Status != "uninstalled" || result.Skills[0].Status != "backed-up" || result.Skills[0].Backup == "" || result.Skills[1].Status != "removed" {
+		t.Fatalf("result = %#v", result)
+	}
+	if _, err := os.Stat(filepath.Join(home, ".codex", "skills", "tadx")); !os.IsNotExist(err) {
+		t.Fatalf("installed package remains: %v", err)
+	}
+	if data, err := os.ReadFile(filepath.Join(home, filepath.FromSlash(result.Skills[0].Backup), "custom.txt")); err != nil || string(data) != "keep" {
+		t.Fatalf("backup content = %q, %v", data, err)
+	}
+}

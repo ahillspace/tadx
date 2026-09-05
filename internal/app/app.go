@@ -87,6 +87,7 @@ func Run(ctx context.Context, args []string, stdout io.Writer, options Options) 
 		Admin:               remoteAdmin.dependencies(),
 		Agent:               newAgentCommands(runtime),
 		Pulse:               pulseActions.dependencies(),
+		Version:             newVersionCommand(runtime),
 		DoctorRunner:        doctorCommands,
 		DoctorUse:           registryLeafUse("doctor.run"),
 		DoctorShort:         registryShort("doctor.run"),
@@ -602,7 +603,7 @@ func classify(definition capability.Definition) (string, string) {
 	if definition.Owner == capability.OwnerCLI && (parts[0] == "workbook" || parts[0] == "datasource" || parts[0] == "flow" || parts[0] == "lineage" || parts[0] == "project") {
 		return "content", parts[0]
 	}
-	if len(parts) == 3 {
+	if len(parts) >= 3 {
 		return parts[0], parts[1]
 	}
 	return parts[0], ""

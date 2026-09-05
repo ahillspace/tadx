@@ -80,17 +80,6 @@ func (c *loggingChecker) CheckLogging(context.Context, doctorrun.Scope) (doctorr
 	return c.state, c.err
 }
 
-type mcpChecker struct {
-	state doctorrun.MCPState
-	err   error
-	calls int
-}
-
-func (c *mcpChecker) InspectTableauMCPAvailability(context.Context, doctorrun.Scope) (doctorrun.MCPState, error) {
-	c.calls++
-	return c.state, c.err
-}
-
 func TestDoctorRunsEveryIndependentCheckAndRedactsDependencyErrors(t *testing.T) {
 	secret := "super-secret-pat"
 	privatePath := strings.Join([]string{"private", "config.yaml"}, string(os.PathSeparator))
@@ -100,24 +89,20 @@ func TestDoctorRunsEveryIndependentCheckAndRedactsDependencyErrors(t *testing.T)
 	catalog := &catalogChecker{state: doctorrun.CatalogState{Present: true, Complete: true, Stale: true}}
 	workspace := &workspaceChecker{state: doctorrun.WorkspaceState{Selected: true, Available: false}}
 	logging := &loggingChecker{state: doctorrun.LoggingState{Valid: true}}
-	mcp := &mcpChecker{err: errors.New(secret + " at " + privatePath)}
-	action := doctorrun.New(doctorrun.Dependencies{Configuration: configuration, PAT: pat, Connectivity: connectivity, Catalog: catalog, Workspace: workspace, Logging: logging, MCP: mcp})
+	action := doctorrun.New(doctorrun.Dependencies{Configuration: configuration, PAT: pat, Connectivity: connectivity, Catalog: catalog, Workspace: workspace, Logging: logging})
 
 	output, err := action.Execute(context.Background(), doctorrun.Input{Environment: "dev", Workspace: "development"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if configuration.calls != 1 || pat.calls != 1 || connectivity.calls != 1 || catalog.calls != 1 || workspace.calls != 1 || logging.calls != 1 || mcp.calls != 1 {
-		t.Fatalf("check calls = %d %d %d %d %d %d %d", configuration.calls, pat.calls, connectivity.calls, catalog.calls, workspace.calls, logging.calls, mcp.calls)
+	if configuration.calls != 1 || pat.calls != 1 || connectivity.calls != 1 || catalog.calls != 1 || workspace.calls != 1 || logging.calls != 1 {
+		t.Fatalf("check calls = %d %d %d %d %d %d", configuration.calls, pat.calls, connectivity.calls, catalog.calls, workspace.calls, logging.calls)
 	}
-	if len(output.Checks) != 7 || output.Checks[0].ID != "config.valid" || output.Checks[6].ID != "mcp.tableau.available" {
+	if len(output.Checks) != 6 || output.Checks[0].ID != "config.valid" || output.Checks[5].ID != "logging.context" {
 		t.Fatalf("checks = %#v", output.Checks)
 	}
-	if output.Status != doctorrun.StatusFail || output.Counts.Pass != 3 || output.Counts.Warn != 2 || output.Counts.Fail != 2 {
+	if output.Status != doctorrun.StatusFail || output.Counts.Pass != 3 || output.Counts.Warn != 1 || output.Counts.Fail != 2 {
 		t.Fatalf("output = %#v", output)
-	}
-	if output.Checks[6].Status != doctorrun.StatusWarn {
-		t.Fatalf("MCP check = %#v", output.Checks[6])
 	}
 	data, marshalErr := json.Marshal(output)
 	if marshalErr != nil {
@@ -128,7 +113,7 @@ func TestDoctorRunsEveryIndependentCheckAndRedactsDependencyErrors(t *testing.T)
 	}
 }
 
-func TestDoctorTreatsAbsentMCPAsWarningAndDisabledLoggingAsPass(t *testing.T) {
+func TestDoctorTreatsDisabledLoggingAsPass(t *testing.T) {
 	action := doctorrun.New(doctorrun.Dependencies{
 		Configuration: &configurationChecker{state: doctorrun.ConfigurationState{Present: true, Valid: true, EnvironmentResolved: true}},
 		PAT:           &patChecker{state: doctorrun.PATState{ReferencesConfigured: true, NameVariablePresent: true, SecretVariablePresent: true}},
@@ -136,17 +121,38 @@ func TestDoctorTreatsAbsentMCPAsWarningAndDisabledLoggingAsPass(t *testing.T) {
 		Catalog:       &catalogChecker{state: doctorrun.CatalogState{Present: true, Complete: true}},
 		Workspace:     &workspaceChecker{state: doctorrun.WorkspaceState{Selected: true, Available: true, ManifestValid: true}},
 		Logging:       &loggingChecker{state: doctorrun.LoggingState{Valid: true, Enabled: false}},
-		MCP:           &mcpChecker{state: doctorrun.MCPState{Configured: false, Available: false}},
 	})
 	output, err := action.Execute(context.Background(), doctorrun.Input{})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if output.Status != doctorrun.StatusWarn || output.Counts.Pass != 6 || output.Counts.Warn != 1 || output.Counts.Fail != 0 {
+	if output.Status != doctorrun.StatusPass || output.Counts.Pass != 6 || output.Counts.Warn != 0 || output.Counts.Fail != 0 {
 		t.Fatalf("output = %#v", output)
 	}
-	if output.Checks[5].Status != doctorrun.StatusPass || output.Checks[6].Status != doctorrun.StatusWarn {
-		t.Fatalf("logging=%#v mcp=%#v", output.Checks[5], output.Checks[6])
+	if output.Checks[5].Status != doctorrun.StatusPass {
+		t.Fatalf("logging=%#v", output.Checks[5])
+	}
+}
+
+func TestDoctorDoesNotInspectOrReportTableauMCP(t *testing.T) {
+	action := doctorrun.New(doctorrun.Dependencies{
+		Configuration: &configurationChecker{state: doctorrun.ConfigurationState{Present: true, Valid: true, EnvironmentResolved: true}},
+		PAT:           &patChecker{state: doctorrun.PATState{ReferencesConfigured: true, NameVariablePresent: true, SecretVariablePresent: true}},
+		Connectivity:  &connectivityChecker{state: doctorrun.ConnectivityState{Reachable: true, Authenticated: true}},
+		Catalog:       &catalogChecker{state: doctorrun.CatalogState{Present: true, Complete: true}},
+		Workspace:     &workspaceChecker{state: doctorrun.WorkspaceState{Selected: true, Available: true, ManifestValid: true}},
+		Logging:       &loggingChecker{state: doctorrun.LoggingState{Valid: true}},
+	})
+	output, err := action.Execute(context.Background(), doctorrun.Input{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	data, err := json.Marshal(output)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(output.Checks) != 6 || strings.Contains(strings.ToLower(string(data)), "mcp") {
+		t.Fatalf("doctor reported MCP state: %s", data)
 	}
 }
 
@@ -155,7 +161,7 @@ func TestDoctorMissingDependenciesStillReturnEveryCheck(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(output.Checks) != 7 || output.Counts.Fail != 5 || output.Counts.Warn != 2 {
+	if len(output.Checks) != 6 || output.Counts.Fail != 5 || output.Counts.Warn != 1 {
 		t.Fatalf("output = %#v", output)
 	}
 }
@@ -193,7 +199,6 @@ func TestDoctorOutputGolden(t *testing.T) {
 		Catalog:       &catalogChecker{state: doctorrun.CatalogState{Present: true, Complete: true}},
 		Workspace:     &workspaceChecker{state: doctorrun.WorkspaceState{Selected: true, Available: true, ManifestValid: true}},
 		Logging:       &loggingChecker{state: doctorrun.LoggingState{Valid: true, Enabled: true}},
-		MCP:           &mcpChecker{state: doctorrun.MCPState{Configured: true, Available: true}},
 	})
 	output, err := action.Execute(context.Background(), doctorrun.Input{Environment: "dev", Workspace: "development"})
 	if err != nil {

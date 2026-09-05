@@ -108,6 +108,37 @@ func TestClientRejectsInvalidProjectMutationsBeforeSending(t *testing.T) {
 	}
 }
 
+func TestClientMovesProjectToParentAndTopLevel(t *testing.T) {
+	requests := 0
+	server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		requests++
+		body, err := io.ReadAll(request.Body)
+		if err != nil {
+			t.Fatal(err)
+		}
+		wantParent := "parent-2"
+		if requests == 2 {
+			wantParent = ""
+		}
+		want := `<tsRequest><project parentProjectId="` + wantParent + `"></project></tsRequest>`
+		if request.Method != http.MethodPut || string(body) != want {
+			t.Fatalf("request=%s body=%q want=%q", request.Method, body, want)
+		}
+		writer.WriteHeader(http.StatusOK)
+		_, _ = io.WriteString(writer, `<tsResponse><project id="project-1" name="Child" parentProjectId="`+wantParent+`"><owner id="owner-1"/></project></tsResponse>`)
+	}))
+	defer server.Close()
+	client := tableauproject.NewClient(tableau.NewTransport(server.Client(), "3.29", nil), session{}, server.URL)
+	parent := "parent-2"
+	if result, err := client.Update(context.Background(), tableauproject.UpdateRequest{LUID: "project-1", ParentLUID: &parent}); err != nil || result.Project.ParentLUID != parent {
+		t.Fatalf("parent result=%#v err=%v", result, err)
+	}
+	topLevel := ""
+	if result, err := client.Update(context.Background(), tableauproject.UpdateRequest{LUID: "project-1", ParentLUID: &topLevel}); err != nil || result.Project.ParentLUID != "" {
+		t.Fatalf("top-level result=%#v err=%v", result, err)
+	}
+}
+
 func TestClientDeletesProjectWithExactLUID(t *testing.T) {
 	server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		if request.Method != http.MethodDelete || request.URL.EscapedPath() != "/api/3.29/sites/site%2Fone/projects/project-1" || request.URL.RawQuery != "" {

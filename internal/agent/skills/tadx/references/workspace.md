@@ -7,6 +7,12 @@ Workspace commands are local and do not accept `--environment`.
 Creation establishes `tadx.yaml`, `artifacts/`, and `.tadx/`; registration uses the existing workspace identity.
 Workspace names are portable and unique without case sensitivity.
 
+Set the general default only to an available registered workspace:
+
+```text
+tadx workspace set-default <workspace>
+```
+
 Workspace selection follows this order:
 
 1. Explicit logical `--workspace` name.
@@ -29,3 +35,22 @@ Inspect help for supported classes.
 `workspace artifact delete` removes one exact artifact by default and supports `--preview`.
 A dirty artifact additionally requires `--force`; use it only when discarding those edits is authorized.
 Local cleanup does not remove remote Tableau content.
+
+## Remove a workspace registration or root
+
+Use unregister when the files must remain available outside the TADX registry:
+
+```text
+tadx workspace unregister <workspace>
+```
+
+Unregister clears general and environment defaults that reference the workspace, but preserves every file.
+Use delete only for an exact registered workspace whose managed root must also be removed:
+
+```text
+tadx workspace delete <workspace> --preview
+tadx workspace delete <workspace>
+```
+
+Delete rejects filesystem roots, identity drift, nested registered workspaces, and dirty or invalid local content.
+Add `--force` only when the task authorizes discarding dirty, invalid, or unmanaged files.

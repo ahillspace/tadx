@@ -138,7 +138,8 @@ This group freezes exact administrative identity, bounded membership handling, o
 
 ### Group 5: diagnostics and closure
 
-Build `doctor.run` after its auth, catalog, workspace, and MCP-availability checks exist.
+Build `doctor.run` after its authentication, catalog, workspace, and logging checks exist.
+Doctor does not inspect Tableau MCP configuration, selection, availability, or connection state.
 Build `workspace.clean` last because it removes only explicitly selected disposable `.tadx/` state and never managed artifacts by default.
 
 ### Pulse exclusion

@@ -62,12 +62,6 @@ type LoggingState struct {
 	Valid   bool
 }
 
-// MCPState reports best-effort Tableau MCP discovery without invoking MCP.
-type MCPState struct {
-	Configured bool
-	Available  bool
-}
-
 // Check is one bounded full doctor result.
 type Check struct {
 	ID               string `json:"id"`
@@ -123,5 +117,5 @@ func (o Output) CompactOutput() any {
 	return CompactResult{Status: o.Status, Scope: o.Scope, Counts: o.Counts, Summary: o.Summary, Checks: checks, Details: "--full", Help: o.Help}
 }
 
-// FullOutput returns all seven checks with corrective actions.
+// FullOutput returns all six checks with corrective actions.
 func (o Output) FullOutput() any { return FullResult(o) }

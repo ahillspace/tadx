@@ -2,7 +2,7 @@
 
 ## Observed Luna baseline
 
-The completed primary-agent trials report these approximate totals before the skill revision.
+The completed primary-agent trials report these approximate totals before the Guidance revision.
 Counts come from trial observations, not a new instrumented rerun; token accounting is the reported aggregate.
 
 | Trial | Action attempts | Help/capability probes | Elapsed minutes | Reported tokens |
@@ -35,13 +35,13 @@ Count every TADX process, including retries, previews, auth checks, and probes, 
 Track shell tool calls separately from TADX commands so sequential batching does not hide extra commands.
 Run authenticated calls sequentially for a shared PAT, including across agents.
 Use identical tasks, model/reasoning settings, source data, and upstream exclusion rules for baseline and revised runs.
-Record the binary revision and bundled-skill digest; keep cold-configuration setup separate from these known-target workflows.
+Record the binary revision and bundled-Guidance digest; keep cold-configuration setup separate from these known-target workflows.
 
 ## Record a rerun
 
 Record one row per scenario and repeat each scenario three times:
 
-| Scenario/run | Binary/skill revision | Raw seconds | Long-job seconds | Adjusted seconds | Command attempts | Shell calls | Leaf/exact probes | Broad probes | Tokens | Correct outcome |
+| Scenario/run | Binary/Guidance revision | Raw seconds | Long-job seconds | Adjusted seconds | Command attempts | Shell calls | Leaf/exact probes | Broad probes | Tokens | Correct outcome |
 | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- |
 
 A scenario passes when all three runs meet correctness, safety, latency, and command/probe targets.
@@ -53,6 +53,9 @@ CLI flag/link validation and installer tests verify the bundle structure and rec
 
 Follow-up Luna trials identify redundant alias validation, missing project/group recipes, ambiguous datasource names, and table-name schema matches as remaining overhead.
 Bundled guidance now uses supplied aliases verbatim, supplies project-create/group-list recipes, and resolves datasource ambiguity through project paths or LUIDs.
+The Guidance supplies exact permission and project workflows instead of requiring category-help discovery.
+It treats `Imported` as the portable selector for Tableau's managed `(imported)` project path.
+Compact TOON remains the default, and agents request `--full` only when one bounded detail is missing.
 Multiple schema matches do not trigger broader pagination when a semantically exact field is already available.
 Pulse authoring checks existing datasource definitions before creation and avoids retrying duplicate semantic payloads.
 Default-metric removal requires authorized definition deletion; metric deletion applies only to non-default variants.
@@ -65,8 +68,9 @@ This single run does not establish the three-run acceptance target.
 The second Pulse rerun takes 129.9 seconds, exceeding the 120-second target.
 The next revision removes the obsolete table-name schema-query caveat, uses direct datasource inspection for known name/project selectors, and avoids rereading unchanged forks.
 Successful deletes need no confirmation list unless the outcome is uncertain or verification is explicitly requested.
-Two fresh Codex agents first look for skills under `.codex/skills`, costing a model turn each; Codex installation now targets that recognized runtime root.
-The installer preserves existing `.agents/skills` packages without legacy cleanup.
+Two fresh Codex agents first look for Guidance under `.codex/skills`, costing a model turn each.
+Codex installation now targets that recognized runtime root.
+The installer preserves existing `.agents/skills` Guidance packages without legacy cleanup.
 
 ## Post-change live sample
 

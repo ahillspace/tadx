@@ -29,6 +29,40 @@ func (session) UserLUID() string        { return "user-1" }
 
 var _ coreauth.Session = session{}
 
+func TestClientUpdatesOnlyExplicitFlowOwner(t *testing.T) {
+	server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		if request.Method != http.MethodPut || request.URL.EscapedPath() != "/api/3.29/sites/site-1/flows/flow-1/owner/owner-2" || request.URL.RawQuery != "" {
+			t.Fatalf("request = %s %s?%s", request.Method, request.URL.EscapedPath(), request.URL.RawQuery)
+		}
+		body, err := io.ReadAll(request.Body)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(body) != 0 {
+			t.Fatalf("body = %q, want empty", body)
+		}
+		writer.Header().Set("X-Tableau-Request-Id", "request-update")
+		writer.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+	owner := "owner-2"
+	client := tableauflow.NewClient(tableau.NewTransport(server.Client(), "3.29", nil), session{}, server.URL)
+	result, err := client.Update(context.Background(), tableauflow.UpdateRequest{LUID: "flow-1", OwnerLUID: &owner})
+	if err != nil || result.Status != "succeeded" || result.OwnerLUID != owner || result.TableauRequestID != "request-update" {
+		t.Fatalf("result=%#v err=%v", result, err)
+	}
+}
+
+func TestClientRejectsFlowUpdateWithoutExactOwner(t *testing.T) {
+	client := tableauflow.NewClient(nil, nil, "")
+	empty := ""
+	for _, input := range []tableauflow.UpdateRequest{{LUID: "flow-1"}, {OwnerLUID: &empty}, {LUID: "flow-1", OwnerLUID: &empty}} {
+		if _, err := client.Update(context.Background(), input); err == nil {
+			t.Fatalf("Update(%#v) succeeded", input)
+		}
+	}
+}
+
 type emptySiteSession struct{ session }
 
 func (emptySiteSession) SiteLUID() string { return "" }

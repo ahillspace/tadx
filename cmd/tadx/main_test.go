@@ -117,7 +117,7 @@ func TestCLIProcessMutationDiscoveryEnvironment(t *testing.T) {
 	}
 	disabledDocument := decodeDocument(t, disabled.stdout)
 	disabledCapabilities, ok := disabledDocument["capabilities"].([]any)
-	if !ok || len(disabledCapabilities) != 2 {
+	if !ok || len(disabledCapabilities) != 4 {
 		t.Fatalf("disabled mutation discovery = %#v", disabledDocument)
 	}
 	for _, raw := range disabledCapabilities {
@@ -133,13 +133,14 @@ func TestCLIProcessMutationDiscoveryEnvironment(t *testing.T) {
 	}
 	enabledDocument := decodeDocument(t, enabled.stdout)
 	capabilities, ok := enabledDocument["capabilities"].([]any)
-	if !ok || len(capabilities) != 2 {
-		t.Fatalf("enabled mutation discovery capabilities = %#v, want workbook.delete and workbook.publish", enabledDocument["capabilities"])
+	if !ok || len(capabilities) != 4 {
+		t.Fatalf("enabled mutation discovery capabilities = %#v, want four workbook mutations", enabledDocument["capabilities"])
 	}
-	deleteCapability, deleteOK := capabilities[0].(map[string]any)
-	publishCapability, publishOK := capabilities[1].(map[string]any)
-	if !deleteOK || !publishOK || deleteCapability["id"] != "workbook.delete" || publishCapability["id"] != "workbook.publish" {
-		t.Fatalf("enabled mutation discovery result = %#v, want workbook.delete then workbook.publish", capabilities)
+	for index, want := range []string{"workbook.delete", "workbook.move", "workbook.publish", "workbook.update"} {
+		capability, rowOK := capabilities[index].(map[string]any)
+		if !rowOK || capability["id"] != want || capability["execution_enabled"] != true {
+			t.Fatalf("enabled capability %d = %#v, want %s enabled", index, capabilities[index], want)
+		}
 	}
 }
 

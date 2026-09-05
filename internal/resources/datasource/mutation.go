@@ -13,6 +13,21 @@ type MutationClient interface {
 	Delete(context.Context, string) (tableaudatasource.MutationResult, error)
 }
 
+type updateClient interface {
+	Update(context.Context, tableaudatasource.UpdateRequest) (tableaudatasource.MutationResult, error)
+}
+
+func (a *MutationAdapter) UpdateDatasource(ctx context.Context, input tableaudatasource.UpdateRequest) (tableaudatasource.MutationResult, error) {
+	if a == nil || a.client == nil || strings.TrimSpace(input.LUID) == "" {
+		return tableaudatasource.MutationResult{}, errors.New("datasource update requires a configured client and exact datasource LUID")
+	}
+	client, ok := a.client.(updateClient)
+	if !ok {
+		return tableaudatasource.MutationResult{}, errors.New("datasource update client is not configured")
+	}
+	return client.Update(ctx, input)
+}
+
 type MutationAdapter struct{ client MutationClient }
 
 func NewMutationAdapter(client MutationClient) *MutationAdapter {

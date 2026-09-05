@@ -45,6 +45,149 @@ type packagePlan struct {
 	committed bool
 }
 
+// Uninstall removes bundled packages from one supported agent target.
+// Divergent packages require force and move to recoverable backups.
+func (in Installer) Uninstall(ctx context.Context, target string, preview, force bool) (Result, error) {
+	base, ok := map[string]string{"claude": ".claude/skills", "codex": ".codex/skills", "cursor": ".cursor/skills"}[target]
+	if !ok {
+		return Result{}, errors.New("unsupported agent target")
+	}
+	if in.Home == nil {
+		return Result{}, errors.New("user home resolution is not configured")
+	}
+	home, err := in.Home()
+	if err != nil || strings.TrimSpace(home) == "" || !filepath.IsAbs(home) {
+		return Result{}, errors.New("cannot resolve an absolute user home directory")
+	}
+	root, err := os.OpenRoot(home)
+	if err != nil {
+		return Result{}, errors.New("cannot open the user home directory")
+	}
+	defer root.Close()
+	if err := checkParents(root, base); err != nil {
+		return Result{}, err
+	}
+	var plans []*packagePlan
+	result := Result{Status: "unchanged"}
+	for _, name := range []string{"tadx", "tadx-pulse"} {
+		if err := ctx.Err(); err != nil {
+			return Result{}, err
+		}
+		files, err := readBundle(name)
+		if err != nil {
+			return Result{}, err
+		}
+		destination := path.Join(base, name)
+		before, err := fingerprint(root, destination)
+		if err != nil {
+			return Result{}, fmt.Errorf("cannot inspect %s: %s", name, err)
+		}
+		status := "remove"
+		if before == "" {
+			status = "absent"
+		} else if before != bundleFingerprint(files) {
+			status = "divergent"
+			if !force {
+				result.Warnings = append(result.Warnings, name+" differs from the bundled skill; --force is required and retains a backup")
+			}
+		}
+		plans = append(plans, &packagePlan{skill: Skill{Name: name, Status: status, Path: destination, SHA256: before}, before: before})
+	}
+	if preview {
+		result.Status = "preview"
+		for _, plan := range plans {
+			result.Skills = append(result.Skills, plan.skill)
+		}
+		return result, nil
+	}
+	for _, plan := range plans {
+		if plan.skill.Status == "divergent" && !force {
+			return Result{}, fmt.Errorf("%s differs from the bundled skill; --force is required to uninstall it with a recoverable backup", plan.skill.Name)
+		}
+	}
+	changed := false
+	for _, plan := range plans {
+		changed = changed || plan.before != ""
+	}
+	if !changed {
+		for _, plan := range plans {
+			result.Skills = append(result.Skills, plan.skill)
+		}
+		return result, nil
+	}
+	lock := path.Join(base, ".tadx-install.lock")
+	file, err := root.OpenFile(lock, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o600)
+	if err != nil {
+		return Result{}, errors.New("cannot acquire the skill installation lock; another install or a stale .tadx-install.lock requires attention")
+	}
+	if err := file.Close(); err != nil {
+		_ = root.Remove(lock)
+		return Result{}, errors.New("cannot close the installation lock")
+	}
+	defer root.Remove(lock)
+	for _, plan := range plans {
+		current, err := fingerprint(root, plan.skill.Path)
+		if err != nil || current != plan.before {
+			return Result{}, errors.New("installed skills changed during preparation; retry after reviewing them")
+		}
+	}
+	rollback := func(cause error) (Result, error) {
+		for index := len(plans) - 1; index >= 0; index-- {
+			plan := plans[index]
+			if plan.stage != "" {
+				if err := root.Rename(plan.stage, plan.skill.Path); err != nil {
+					return Result{}, errors.New("uninstall failed and rollback is incomplete; inspect target packages")
+				}
+			}
+		}
+		return Result{}, cause
+	}
+	for _, plan := range plans {
+		if plan.before == "" {
+			continue
+		}
+		if err := ctx.Err(); err != nil {
+			return rollback(err)
+		}
+		if plan.skill.Status == "divergent" {
+			backupBase := path.Join(path.Dir(base), ".tadx-skill-backups")
+			if err := checkParents(root, backupBase); err != nil {
+				return rollback(err)
+			}
+			if err := root.MkdirAll(backupBase, 0o700); err != nil {
+				return rollback(errors.New("cannot create the skill backup directory"))
+			}
+			plan.stage = path.Join(backupBase, plan.skill.Name+"-"+rand.Text())
+		} else {
+			plan.stage = path.Join(base, ".tadx-uninstall-"+plan.skill.Name+"-"+rand.Text())
+		}
+		if err := root.Rename(plan.skill.Path, plan.stage); err != nil {
+			return rollback(errors.New("cannot stage the installed skill for removal"))
+		}
+	}
+	for _, plan := range plans {
+		if plan.before == "" {
+			result.Skills = append(result.Skills, plan.skill)
+			continue
+		}
+		if plan.skill.Status == "divergent" {
+			plan.skill.Status = "backed-up"
+			plan.skill.Backup = plan.stage
+			plan.stage = ""
+			result.Warnings = append(result.Warnings, "Divergent "+plan.skill.Name+" package retained as a backup; use --full for its home-relative path")
+		} else {
+			if err := root.RemoveAll(plan.stage); err != nil {
+				return Result{}, errors.New("skill was uninstalled but its staged files could not be removed")
+			}
+			plan.stage = ""
+			plan.skill.Status = "removed"
+		}
+		result.Skills = append(result.Skills, plan.skill)
+	}
+	result.Status = "uninstalled"
+	return result, nil
+}
+
 // Install stages complete packages before replacing destinations.
 // A force replacement retains the previous directory as a recoverable backup.
 func (in Installer) Install(ctx context.Context, target string, preview, force bool) (Result, error) {

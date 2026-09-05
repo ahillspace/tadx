@@ -3,17 +3,16 @@ scope:
   environment: dev
   workspace: development
 counts:
-  pass: 7
+  pass: 6
   warn: 0
   fail: 0
-summary: "7 checks completed: 7 passed, 0 warnings, 0 failed."
-checks[7]{id,status,summary}:
+summary: "6 checks completed: 6 passed, 0 warnings, 0 failed."
+checks[6]{id,status,summary}:
   config.valid,pass,Configuration and environment resolution are valid.
   auth.pat.references,pass,PAT references and referenced variables are present.
   auth.tableau.connectivity,pass,Tableau connectivity and PAT authentication succeeded.
   catalog.status,pass,The current catalog generation is complete and fresh.
   workspace.status,pass,The selected workspace is available and valid.
   logging.context,pass,Explicit logging context is configured.
-  mcp.tableau.available,pass,Tableau MCP is available to this context.
 details: "--full"
 help[1]: tadx doctor --full

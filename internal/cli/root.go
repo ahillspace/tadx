@@ -24,6 +24,7 @@ import (
 	doctorcli "github.com/ahillspace/tadx/internal/cli/doctor"
 	envcli "github.com/ahillspace/tadx/internal/cli/env"
 	pulsecli "github.com/ahillspace/tadx/internal/cli/pulse"
+	versioncli "github.com/ahillspace/tadx/internal/cli/version"
 	workspacecli "github.com/ahillspace/tadx/internal/cli/workspace"
 	"github.com/ahillspace/tadx/internal/errs"
 	"github.com/spf13/cobra"
@@ -106,6 +107,7 @@ type Dependencies struct {
 	Admin                *admincli.Dependencies
 	Agent                *agentcli.Dependencies
 	Pulse                *pulsecli.Dependencies
+	Version              *versioncli.Dependencies
 	DoctorRunner         doctorcli.Runner
 	DoctorUse            string
 	DoctorShort          string
@@ -144,7 +146,10 @@ TADX returns compact TOON by default. Use --full to show expanded bounded detail
 Read commands query Tableau by default. Pass --catalog on supported reads to use local catalog data without contacting Tableau.
 
 Remote mutation commands remain visible when execution is disabled. Set TADX_ENABLE_MUTATIONS=1 to enable them.
-When enabled, mutation commands perform changes by default. Pass --preview to inspect the plan without performing the mutation.`,
+When enabled, mutation commands perform changes by default. Pass --preview to inspect the plan without performing the mutation.
+
+TADX owns lifecycle operations. Use Tableau MCP directly for view data or images, datasource queries, and Pulse values or insights.
+TADX never configures, selects, proxies, or reports Tableau MCP connections. The host agent owns that connection.`,
 		SilenceErrors: true,
 		SilenceUsage:  true,
 	}
@@ -187,6 +192,11 @@ When enabled, mutation commands perform changes by default. Pass --preview to in
 		pulse.Renderer = deps.Renderer
 		root.AddCommand(pulsecli.New(pulse))
 	}
+	if deps.Version != nil {
+		version := *deps.Version
+		version.Renderer = deps.Renderer
+		root.AddCommand(versioncli.New(version))
+	}
 	if deps.DoctorRunner != nil {
 		root.AddCommand(doctorcli.New(doctorcli.Dependencies{Runner: deps.DoctorRunner, Renderer: deps.Renderer, Use: deps.DoctorUse, Short: deps.DoctorShort}))
 	}
@@ -219,6 +229,7 @@ When enabled, mutation commands perform changes by default. Pass --preview to in
 		contentDependencies.PublishShort = deps.WorkbookPublishShort
 		root.AddCommand(contentcli.New(contentDependencies))
 	}
+	root.AddCommand(NewCompletion(root))
 	rejectGroupingArguments(root)
 	applyMutationExecutionPolicy(root, deps.MutationPolicy, deps.MutationsEnabled)
 	root.CompletionOptions.DisableDefaultCmd = true

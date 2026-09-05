@@ -49,7 +49,7 @@ type Owner string
 
 const (
 	OwnerCLI               Owner = "cli"
-	OwnerMCP               Owner = "mcp"
+	OwnerMCP               Owner = "tableau-mcp"
 	OwnerTableauDesktopMCP Owner = "tableau/desktop-mcp"
 	OwnerAgentSkill        Owner = "agent/skill"
 )

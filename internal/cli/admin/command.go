@@ -9,6 +9,8 @@ import (
 	groupdelete "github.com/ahillspace/tadx/actions/admin/group/delete"
 	groupinspect "github.com/ahillspace/tadx/actions/admin/group/inspect"
 	grouplist "github.com/ahillspace/tadx/actions/admin/group/list"
+	groupmemberadd "github.com/ahillspace/tadx/actions/admin/group/member/add"
+	groupmemberremove "github.com/ahillspace/tadx/actions/admin/group/member/remove"
 	groupupdate "github.com/ahillspace/tadx/actions/admin/group/update"
 	permissioninspect "github.com/ahillspace/tadx/actions/admin/permission/inspect"
 	usercreate "github.com/ahillspace/tadx/actions/admin/user/create"
@@ -51,6 +53,12 @@ type GroupUpdater interface {
 type GroupDeleter interface {
 	DeleteAdminGroup(context.Context, groupdelete.Input, bool) (groupdelete.Output, error)
 }
+type GroupMemberAdder interface {
+	AddAdminGroupMember(context.Context, groupmemberadd.Input, bool) (groupmemberadd.Output, error)
+}
+type GroupMemberRemover interface {
+	RemoveAdminGroupMember(context.Context, groupmemberremove.Input, bool) (groupmemberremove.Output, error)
+}
 type PermissionInspector interface {
 	InspectAdminPermission(context.Context, permissioninspect.Input) (permissioninspect.Output, error)
 }
@@ -68,6 +76,8 @@ type Dependencies struct {
 	GroupCreator        GroupCreator
 	GroupUpdater        GroupUpdater
 	GroupDeleter        GroupDeleter
+	GroupMemberAdder    GroupMemberAdder
+	GroupMemberRemover  GroupMemberRemover
 	PermissionInspector PermissionInspector
 	Renderer            Renderer
 	MutationsEnabled    bool
@@ -79,10 +89,69 @@ func New(deps Dependencies) *cobra.Command {
 	user.AddCommand(newUserList(deps), newUserInspect(deps), newUserCreate(deps), newUserUpdate(deps), newUserDelete(deps))
 	group := &cobra.Command{Use: "group", Short: "Administer site groups"}
 	group.AddCommand(newGroupList(deps), newGroupInspect(deps), newGroupCreate(deps), newGroupUpdate(deps), newGroupDelete(deps))
+	member := &cobra.Command{Use: "member", Short: "Change direct group membership"}
+	member.AddCommand(newGroupMemberAdd(deps), newGroupMemberRemove(deps))
+	group.AddCommand(member)
 	permission := &cobra.Command{Use: "permission", Short: "Manage exact permission rules"}
 	permission.AddCommand(newPermissionInspect(deps), newPermissionCreate(deps), newPermissionDelete(deps))
 	command.AddCommand(user, group, permission)
 	return command
+}
+
+func newGroupMemberAdd(deps Dependencies) *cobra.Command {
+	var in groupmemberadd.Input
+	var preview bool
+	cmd := mutation("add", "Add one user to one group.", "admin.group.member.add", deps.MutationsEnabled, func(cmd *cobra.Command, args []string) error {
+		if err := noArgs("admin.group.member.add")(cmd, args); err != nil {
+			return err
+		}
+		if err := requireMutation(cmd, "admin.group.member.add", in.Environment); err != nil {
+			return err
+		}
+		if in.GroupLUID == "" || in.UserLUID == "" {
+			return clierr.Usage("admin.group.member.add", errors.New("--group-id and --user-id are required"))
+		}
+		return nil
+	}, func(cmd *cobra.Command) error {
+		out, err := deps.GroupMemberAdder.AddAdminGroupMember(cmd.Context(), in, preview)
+		if err != nil {
+			return err
+		}
+		return deps.Renderer.Render(out)
+	})
+	cmd.Flags().StringVar(&in.Environment, "environment", "", "explicit write environment alias")
+	cmd.Flags().StringVar(&in.GroupLUID, "group-id", "", "authoritative group LUID")
+	cmd.Flags().StringVar(&in.UserLUID, "user-id", "", "authoritative user LUID")
+	cmd.Flags().BoolVar(&preview, "preview", false, "preview the remote mutation without performing it")
+	return cmd
+}
+
+func newGroupMemberRemove(deps Dependencies) *cobra.Command {
+	var in groupmemberremove.Input
+	var preview bool
+	cmd := mutation("remove", "Remove one user from one group.", "admin.group.member.remove", deps.MutationsEnabled, func(cmd *cobra.Command, args []string) error {
+		if err := noArgs("admin.group.member.remove")(cmd, args); err != nil {
+			return err
+		}
+		if err := requireMutation(cmd, "admin.group.member.remove", in.Environment); err != nil {
+			return err
+		}
+		if in.GroupLUID == "" || in.UserLUID == "" {
+			return clierr.Usage("admin.group.member.remove", errors.New("--group-id and --user-id are required"))
+		}
+		return nil
+	}, func(cmd *cobra.Command) error {
+		out, err := deps.GroupMemberRemover.RemoveAdminGroupMember(cmd.Context(), in, preview)
+		if err != nil {
+			return err
+		}
+		return deps.Renderer.Render(out)
+	})
+	cmd.Flags().StringVar(&in.Environment, "environment", "", "explicit write environment alias")
+	cmd.Flags().StringVar(&in.GroupLUID, "group-id", "", "authoritative group LUID")
+	cmd.Flags().StringVar(&in.UserLUID, "user-id", "", "authoritative user LUID")
+	cmd.Flags().BoolVar(&preview, "preview", false, "preview the remote mutation without performing it")
+	return cmd
 }
 
 func newUserList(deps Dependencies) *cobra.Command {

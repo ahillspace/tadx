@@ -4,15 +4,19 @@ package workspace
 import (
 	"context"
 	"errors"
+	"strings"
 
 	artifactdelete "github.com/ahillspace/tadx/actions/workspace/artifact/delete"
 	workspaceclean "github.com/ahillspace/tadx/actions/workspace/clean"
 	workspaceclone "github.com/ahillspace/tadx/actions/workspace/clone"
 	workspacecreate "github.com/ahillspace/tadx/actions/workspace/create"
+	workspacedelete "github.com/ahillspace/tadx/actions/workspace/delete"
 	workspacelist "github.com/ahillspace/tadx/actions/workspace/list"
 	workspacemove "github.com/ahillspace/tadx/actions/workspace/move"
 	workspaceregister "github.com/ahillspace/tadx/actions/workspace/register"
+	workspacesetdefault "github.com/ahillspace/tadx/actions/workspace/setdefault"
 	workspacestatus "github.com/ahillspace/tadx/actions/workspace/status"
+	workspaceunregister "github.com/ahillspace/tadx/actions/workspace/unregister"
 	"github.com/ahillspace/tadx/internal/cli/clierr"
 	"github.com/ahillspace/tadx/internal/pathspec"
 	"github.com/spf13/cobra"
@@ -42,25 +46,92 @@ type Deleter interface {
 type Cleaner interface {
 	Clean(context.Context, workspaceclean.Input) (workspaceclean.Output, error)
 }
+type DefaultSetter interface {
+	SetDefault(context.Context, workspacesetdefault.Input) (workspacesetdefault.Output, error)
+}
+type Unregistrar interface {
+	Unregister(context.Context, workspaceunregister.Input) (workspaceunregister.Output, error)
+}
+type WorkspaceDeleter interface {
+	DeleteWorkspace(context.Context, workspacedelete.Input, bool) (workspacedelete.Output, error)
+}
 type Renderer interface{ Render(any) error }
 
 type Dependencies struct {
-	Creator   Creator
-	Registrar Registrar
-	Cloner    Cloner
-	Lister    Lister
-	Statuser  Statuser
-	Mover     Mover
-	Deleter   Deleter
-	Cleaner   Cleaner
-	Renderer  Renderer
-	Uses      map[string]string
-	Shorts    map[string]string
+	Creator          Creator
+	Registrar        Registrar
+	Cloner           Cloner
+	Lister           Lister
+	Statuser         Statuser
+	Mover            Mover
+	Deleter          Deleter
+	Cleaner          Cleaner
+	DefaultSetter    DefaultSetter
+	Unregistrar      Unregistrar
+	WorkspaceDeleter WorkspaceDeleter
+	Renderer         Renderer
+	Uses             map[string]string
+	Shorts           map[string]string
 }
 
 func New(deps Dependencies) *cobra.Command {
 	command := &cobra.Command{Use: "workspace", Short: "Manage named local workspaces"}
-	command.AddCommand(newCreate(deps), newRegister(deps), newClone(deps), newList(deps), newStatus(deps), newMove(deps), newArtifact(deps), newClean(deps))
+	command.AddCommand(newCreate(deps), newRegister(deps), newClone(deps), newList(deps), newStatus(deps), newSetDefault(deps), newUnregister(deps), newDeleteWorkspace(deps), newMove(deps), newArtifact(deps), newClean(deps))
+	return command
+}
+
+func newSetDefault(deps Dependencies) *cobra.Command {
+	var input workspacesetdefault.Input
+	return &cobra.Command{Use: use(deps, "workspace.set-default", "set-default <name>"), Short: short(deps, "workspace.set-default", "Set the default workspace."), Annotations: map[string]string{"tadx.capability": "workspace.set-default"}, Args: func(command *cobra.Command, args []string) error {
+		if err := exactArgs("workspace.set-default", 1)(command, args); err != nil {
+			return err
+		}
+		input.Name = args[0]
+		return nil
+	}, RunE: func(command *cobra.Command, _ []string) error {
+		result, err := deps.DefaultSetter.SetDefault(command.Context(), input)
+		if err != nil {
+			return err
+		}
+		return deps.Renderer.Render(result)
+	}}
+}
+
+func newUnregister(deps Dependencies) *cobra.Command {
+	var input workspaceunregister.Input
+	return &cobra.Command{Use: use(deps, "workspace.unregister", "unregister <name>"), Short: short(deps, "workspace.unregister", "Unregister a workspace and preserve its files."), Annotations: map[string]string{"tadx.capability": "workspace.unregister"}, Args: func(command *cobra.Command, args []string) error {
+		if err := exactArgs("workspace.unregister", 1)(command, args); err != nil {
+			return err
+		}
+		input.Name = args[0]
+		return nil
+	}, RunE: func(command *cobra.Command, _ []string) error {
+		result, err := deps.Unregistrar.Unregister(command.Context(), input)
+		if err != nil {
+			return err
+		}
+		return deps.Renderer.Render(result)
+	}}
+}
+
+func newDeleteWorkspace(deps Dependencies) *cobra.Command {
+	var input workspacedelete.Input
+	var preview bool
+	command := &cobra.Command{Use: use(deps, "workspace.delete", "delete <name>"), Short: short(deps, "workspace.delete", "Delete one exact registered workspace and its files."), Annotations: map[string]string{"tadx.capability": "workspace.delete"}, Args: func(command *cobra.Command, args []string) error {
+		if err := exactArgs("workspace.delete", 1)(command, args); err != nil {
+			return err
+		}
+		input.Name = args[0]
+		return nil
+	}, RunE: func(command *cobra.Command, _ []string) error {
+		result, err := deps.WorkspaceDeleter.DeleteWorkspace(command.Context(), input, preview)
+		if err != nil {
+			return err
+		}
+		return deps.Renderer.Render(result)
+	}}
+	command.Flags().BoolVar(&input.Force, "force", false, "acknowledge deletion of dirty or invalid local artifacts")
+	command.Flags().BoolVar(&preview, "preview", false, "preview the local deletion without performing it")
 	return command
 }
 
@@ -301,10 +372,14 @@ func exactArgs(operation string, count int) cobra.PositionalArgs {
 	}
 }
 func use(deps Dependencies, id, fallback string) string {
-	if deps.Uses[id] != "" {
-		return deps.Uses[id]
+	registered := deps.Uses[id]
+	if registered == "" {
+		return fallback
 	}
-	return fallback
+	if _, arguments, found := strings.Cut(fallback, " "); found && !strings.Contains(registered, " ") {
+		return registered + " " + arguments
+	}
+	return registered
 }
 func short(deps Dependencies, id, fallback string) string {
 	if deps.Shorts[id] != "" {

@@ -36,8 +36,11 @@ func TestDoctorRunsAllChecksWithoutExposingSecretsOrPaths(t *testing.T) {
 	var stdout bytes.Buffer
 	exitCode := app.Run(context.Background(), []string{"doctor", "--environment", "production", "--full"}, &stdout, app.Options{ConfigPath: configPath, HTTPClient: server.Client()})
 	output := stdout.String()
-	if exitCode != 0 || !strings.Contains(output, "7 checks completed") || !strings.Contains(output, "auth.tableau.connectivity") {
+	if exitCode != 0 || !strings.Contains(output, "6 checks completed") || !strings.Contains(output, "auth.tableau.connectivity") {
 		t.Fatalf("exit code = %d, output = %s", exitCode, output)
+	}
+	if strings.Contains(strings.ToLower(output), "mcp") {
+		t.Fatalf("doctor reported Tableau MCP state: %s", output)
 	}
 	for _, forbidden := range []string{"private-name", "private-secret", configPath, server.URL} {
 		if strings.Contains(output, forbidden) {

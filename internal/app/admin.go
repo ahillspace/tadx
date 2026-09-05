@@ -8,6 +8,8 @@ import (
 	groupdelete "github.com/ahillspace/tadx/actions/admin/group/delete"
 	groupinspect "github.com/ahillspace/tadx/actions/admin/group/inspect"
 	grouplist "github.com/ahillspace/tadx/actions/admin/group/list"
+	groupmemberadd "github.com/ahillspace/tadx/actions/admin/group/member/add"
+	groupmemberremove "github.com/ahillspace/tadx/actions/admin/group/member/remove"
 	groupupdate "github.com/ahillspace/tadx/actions/admin/group/update"
 	permissioninspect "github.com/ahillspace/tadx/actions/admin/permission/inspect"
 	usercreate "github.com/ahillspace/tadx/actions/admin/user/create"
@@ -36,6 +38,7 @@ func (c *remoteAdminCommands) dependencies() *admincli.Dependencies {
 	return &admincli.Dependencies{
 		UserLister: c, UserInspector: c, UserCreator: c, UserUpdater: c, UserDeleter: c,
 		GroupLister: c, GroupInspector: c, GroupCreator: c, GroupUpdater: c, GroupDeleter: c,
+		GroupMemberAdder: c, GroupMemberRemover: c,
 		PermissionInspector: c, PermissionCreator: c, PermissionDeleter: c,
 	}
 }
@@ -256,6 +259,28 @@ func (c *remoteAdminCommands) DeleteAdminGroup(ctx context.Context, input groupd
 	return output, adminActionError("admin.group.delete", input.Environment, input.Site, err)
 }
 
+func (c *remoteAdminCommands) AddAdminGroupMember(ctx context.Context, input groupmemberadd.Input, preview bool) (groupmemberadd.Output, error) {
+	connection, err := c.connect(ctx, input.Environment, true)
+	if err != nil {
+		return groupmemberadd.Output{}, remoteSetupError("admin.group.member.add", input.Environment, input.Site, connection.environment, err)
+	}
+	input.Environment, input.Site = connection.environment.Alias, connection.environment.SiteContentURL
+	adapter := adminGroupMemberAddAdapter{adapter: connection.adapter}
+	out, err := groupmemberadd.New(adapter, adapter).Execute(ctx, input, preview)
+	return out, adminActionError("admin.group.member.add", input.Environment, input.Site, err)
+}
+
+func (c *remoteAdminCommands) RemoveAdminGroupMember(ctx context.Context, input groupmemberremove.Input, preview bool) (groupmemberremove.Output, error) {
+	connection, err := c.connect(ctx, input.Environment, true)
+	if err != nil {
+		return groupmemberremove.Output{}, remoteSetupError("admin.group.member.remove", input.Environment, input.Site, connection.environment, err)
+	}
+	input.Environment, input.Site = connection.environment.Alias, connection.environment.SiteContentURL
+	adapter := adminGroupMemberRemoveAdapter{adapter: connection.adapter}
+	out, err := groupmemberremove.New(adapter, adapter).Execute(ctx, input, preview)
+	return out, adminActionError("admin.group.member.remove", input.Environment, input.Site, err)
+}
+
 func (c *remoteAdminCommands) InspectAdminPermission(ctx context.Context, input permissioninspect.Input) (permissioninspect.Output, error) {
 	connection, err := c.connect(ctx, input.Environment, false)
 	if err != nil {
@@ -403,6 +428,36 @@ func (a adminGroupUpdateAdapter) RemoveGroupUser(ctx context.Context, group, use
 
 type adminGroupDeleteAdapter struct{ adapter *resourceadmin.Adapter }
 
+type adminGroupMemberAddAdapter struct{ adapter *resourceadmin.Adapter }
+
+func (a adminGroupMemberAddAdapter) ResolveGroup(ctx context.Context, luid string) (groupmemberadd.Group, error) {
+	detail, err := a.adapter.ResolveGroup(ctx, resourceadmin.GroupSelector{LUID: luid}, true)
+	members := make([]groupmemberadd.Member, len(detail.Members))
+	for i, v := range detail.Members {
+		members[i] = groupmemberadd.Member{LUID: v.LUID, Name: v.Name}
+	}
+	return groupmemberadd.Group{LUID: detail.Group.LUID, Name: detail.Group.Name, Members: members}, err
+}
+func (a adminGroupMemberAddAdapter) AddGroupUser(ctx context.Context, group, user string) (groupmemberadd.Result, error) {
+	item, err := a.adapter.AddGroupUser(ctx, group, user)
+	return groupmemberadd.Result{Status: item.Status, GroupLUID: group, UserLUID: item.ResourceLUID, TableauRequestID: item.RequestID}, err
+}
+
+type adminGroupMemberRemoveAdapter struct{ adapter *resourceadmin.Adapter }
+
+func (a adminGroupMemberRemoveAdapter) ResolveGroup(ctx context.Context, luid string) (groupmemberremove.Group, error) {
+	detail, err := a.adapter.ResolveGroup(ctx, resourceadmin.GroupSelector{LUID: luid}, true)
+	members := make([]groupmemberremove.Member, len(detail.Members))
+	for i, v := range detail.Members {
+		members[i] = groupmemberremove.Member{LUID: v.LUID, Name: v.Name}
+	}
+	return groupmemberremove.Group{LUID: detail.Group.LUID, Name: detail.Group.Name, Members: members}, err
+}
+func (a adminGroupMemberRemoveAdapter) RemoveGroupUser(ctx context.Context, group, user string) (groupmemberremove.Result, error) {
+	item, err := a.adapter.RemoveGroupUser(ctx, group, user)
+	return groupmemberremove.Result{Status: item.Status, GroupLUID: group, UserLUID: item.ResourceLUID, TableauRequestID: item.RequestID}, err
+}
+
 func (a adminGroupDeleteAdapter) ResolveGroup(ctx context.Context, luid string) (groupdelete.Group, error) {
 	detail, err := a.adapter.ResolveGroup(ctx, resourceadmin.GroupSelector{LUID: luid}, false)
 	g := detail.Group
@@ -434,4 +489,6 @@ var _ admincli.GroupInspector = (*remoteAdminCommands)(nil)
 var _ admincli.GroupCreator = (*remoteAdminCommands)(nil)
 var _ admincli.GroupUpdater = (*remoteAdminCommands)(nil)
 var _ admincli.GroupDeleter = (*remoteAdminCommands)(nil)
+var _ admincli.GroupMemberAdder = (*remoteAdminCommands)(nil)
+var _ admincli.GroupMemberRemover = (*remoteAdminCommands)(nil)
 var _ admincli.PermissionInspector = (*remoteAdminCommands)(nil)

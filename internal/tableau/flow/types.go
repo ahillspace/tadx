@@ -88,12 +88,20 @@ type PreparedPublish interface {
 
 // MutationResult is one exact move or delete result.
 type MutationResult struct {
-	Status, FlowLUID, ProjectLUID, TableauRequestID string
+	Status, FlowLUID, FlowName, ProjectLUID, OwnerLUID, TableauRequestID string
+}
+
+// UpdateRequest contains the flow fields supported by Tableau's Update Flow endpoint.
+// Tableau does not support flow renaming through this endpoint.
+type UpdateRequest struct {
+	LUID      string
+	OwnerLUID *string
 }
 
 // MutationClient is the docs-only flow mutation seam.
 type MutationClient interface {
 	Prepare(context.Context, PublishRequest) (PreparedPublish, error)
 	Move(context.Context, string, string) (MutationResult, error)
+	Update(context.Context, UpdateRequest) (MutationResult, error)
 	Delete(context.Context, string) (MutationResult, error)
 }

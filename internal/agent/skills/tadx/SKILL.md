@@ -1,12 +1,14 @@
 ---
 name: tadx
-description: Operate Tableau content, catalogs, workspaces, local artifacts, and administration with the TADX CLI. Use tadx-pulse for Pulse authoring; use Tableau MCP for data queries and metric insights.
+description: Operate Tableau content, catalogs, workspaces, local artifacts, and administration with TADX Guidance. Use tadx-pulse for Pulse authoring and Tableau MCP for analytical work.
 ---
 
 # Operate Tableau with TADX
 
 TADX owns content lifecycle, artifacts, workspaces, administration, and Pulse definitions.
-Tableau MCP owns data queries, view data/images, and Pulse values/insights; TADX never calls or proxies MCP.
+Tableau MCP owns datasource queries, view data and images, custom-view data and images, and Pulse values and insights.
+TADX never configures, selects, calls, proxies, or reports the connection state of Tableau MCP.
+The host agent and user own the active Tableau MCP connection.
 
 ## Run with bounded discovery
 
@@ -27,17 +29,34 @@ Avoid root/category help, broad capability dumps, repeated probes, and delegatio
 If installed guidance is insufficient, use at most one relevant leaf `--help` probe per workflow; unresolved gaps require a concrete limitation report.
 For availability uncertainty, one exact `tadx capability get <id>` can replace that help probe.
 
+## Choose the owning tool
+
+Use TADX for content identity, lifecycle, local artifacts, workspaces, administration, configuration, and Pulse definition or metric lifecycle.
+Use Tableau MCP directly for analytical results:
+
+- Use `list-views` and `get-view` for view discovery and metadata.
+- Use `get-view-data` or `get-view-image` for published-view results.
+- Use `list-custom-views`, `get-custom-view-data`, or `get-custom-view-image` for saved view states.
+- Use `get-datasource-metadata` before `query-datasource` for business questions against published data.
+- Use the Pulse insight tools described by the `tadx-pulse` Guidance for current values and explanations.
+
+Do not use `tadx doctor` or capability discovery to test whether Tableau MCP is connected.
+Read [Tableau MCP routing](references/tableau-mcp.md) only when an analytical request needs a more specific tool choice.
+
 ## Content lifecycle
 
 Discover with an exact bounded list; use returned LUIDs for subsequent operations.
 Search only when the name is unknown: `tadx search "<term>" --type workbook --environment <alias>` matches substrings, not exact identity.
 Ambiguity fails; never select the first fuzzy match.
+For the Tableau-managed imported project, use `Imported`; TADX normalizes that selector to Tableau's `(imported)` project path.
 
 ```text
 tadx content workbook list --environment <alias> --name "<name>" --limit 5
 tadx content workbook inspect --environment <alias> --id <workbook-luid>
 tadx content workbook pull --environment <alias> --id <workbook-luid> --workspace <workspace> --include-extract=false
 tadx content workbook publish --environment <destination-alias> --workspace <workspace> --artifact "artifacts/workbook/<directory>" --project-id <project-luid> --preview
+tadx content workbook move --environment <alias> --id <workbook-luid> --destination-project-id <project-luid> --preview
+tadx content workbook update --environment <alias> --id <workbook-luid> --new-name "<name>" --preview
 tadx content workbook delete --environment <alias> --id <workbook-luid> --preview
 ```
 
@@ -75,11 +94,14 @@ Lineage is bounded evidence; missing edges do not prove independence.
 tadx admin user list --environment <alias> --name "<username>" --limit 5
 tadx admin group list --environment <alias> --name "<group-name>" --limit 5
 tadx admin group inspect --environment <alias> --id <group-luid> --members
+tadx admin group member add --environment <alias> --group-id <group-luid> --user-id <user-luid> --preview
+tadx admin group member remove --environment <alias> --group-id <group-luid> --user-id <user-luid> --preview
 tadx admin permission inspect --environment <alias> --kind workbook --id <workbook-luid> --principal-id <principal-luid> --full
 tadx admin permission create --environment <alias> --kind workbook --id <workbook-luid> --principal-type group --principal-id <group-luid> --capability Read --mode Allow --preview
 tadx admin permission delete --environment <alias> --kind workbook --id <workbook-luid> --principal-type group --principal-id <group-luid> --capability Read --mode Allow --preview
 tadx content project create --environment <alias> --name "<project-name>" --parent-id <parent-project-luid> --preview
 tadx content project update --environment <alias> --project-id <project-luid> --description "<description>" --preview
+tadx content project move --environment <alias> --project-id <project-luid> --parent-id <parent-project-luid> --preview
 tadx content project delete --environment <alias> --project-id <project-luid> --preview
 ```
 
@@ -94,6 +116,7 @@ Read [administration details](references/administration.md) only for permission 
 tadx workspace status --workspace <workspace>
 tadx workspace create <workspace>
 tadx workspace register <workspace> --path "<existing root>"
+tadx workspace set-default <workspace>
 ```
 
 Run only the needed local command; workspace commands take no `--environment` and make no Tableau changes.
@@ -105,4 +128,12 @@ Remote mutations require `TADX_ENABLE_MUTATIONS=1` and run by default; `--previe
 Use previews when review or uncertainty warrants them; existing authorization does not require repeated approval.
 Discovery/previews do not authorize changes, and `--force` never bypasses policy.
 Inspect uncertain remote outcomes before retrying; report unresolved failures without repeated writes.
-Use the separate `tadx-pulse` skill for Pulse work.
+Use the separate `tadx-pulse` Guidance for Pulse work.
+
+## Local Guidance and CLI utilities
+
+Use `tadx agent uninstall --target codex --preview` before removing installed Guidance for Codex.
+Replace `codex` with `claude` or `cursor` for the other supported targets.
+Run without `--preview` to remove matching packages; divergent packages require `--force` and remain in recoverable backups.
+Use `tadx version` offline, or use `tadx version --check` for one bounded GitHub release check.
+Use `tadx completion <shell>` to print completion for `bash`, `zsh`, `fish`, or `powershell`.

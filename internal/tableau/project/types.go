@@ -52,6 +52,7 @@ type UpdateRequest struct {
 	Name               *string
 	Description        *string
 	ContentPermissions *string
+	ParentLUID         *string
 }
 
 // MutationResult is one authoritative project mutation result.

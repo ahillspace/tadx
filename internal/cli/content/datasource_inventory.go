@@ -26,7 +26,12 @@ type datasourceInventoryDependencies struct {
 
 func newDatasourceInventory(lister DatasourceLister, inspector DatasourceInspector, renderer Renderer) *cobra.Command {
 	deps := datasourceInventoryDependencies{lister: lister, inspector: inspector, renderer: renderer}
-	command := &cobra.Command{Use: "datasource", Short: "Inspect published Tableau datasources"}
+	command := &cobra.Command{
+		Use:   "datasource",
+		Short: "Operate published Tableau datasources",
+		Long: "Operate published datasource lifecycle and inspect schema with TADX.\n\n" +
+			"Use Tableau MCP get-datasource-metadata for analytical metadata and query-datasource for datasource data.",
+	}
 	command.AddCommand(newDatasourceList(deps), newDatasourceInspect(deps))
 	return command
 }

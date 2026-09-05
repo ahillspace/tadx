@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 
@@ -28,7 +27,6 @@ func newDoctorCommands(runtime *runtimeDependencies) *doctorCommands {
 		Catalog:       commands,
 		Workspace:     commands,
 		Logging:       commands,
-		MCP:           commands,
 	})
 	return commands
 }
@@ -113,12 +111,4 @@ func (c *doctorCommands) CheckWorkspace(ctx context.Context, scope doctorrun.Sco
 func (*doctorCommands) CheckLogging(_ context.Context, _ doctorrun.Scope) (doctorrun.LoggingState, error) {
 	value, enabled := os.LookupEnv("TADX_LOG_LEVEL")
 	return doctorrun.LoggingState{Enabled: enabled, Valid: !enabled || strings.TrimSpace(value) != ""}, nil
-}
-
-func (*doctorCommands) InspectTableauMCPAvailability(_ context.Context, _ doctorrun.Scope) (doctorrun.MCPState, error) {
-	_, err := exec.LookPath("tableau-mcp")
-	if err != nil {
-		return doctorrun.MCPState{}, nil
-	}
-	return doctorrun.MCPState{Configured: true, Available: true}, nil
 }

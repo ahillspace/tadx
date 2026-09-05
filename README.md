@@ -89,7 +89,7 @@ Verify the installed command:
 tadx --help
 ```
 
-## Install agent skills
+## Install agent Guidance
 
 Choose the command for your coding agent:
 
@@ -99,9 +99,10 @@ tadx agent install --target codex
 tadx agent install --target cursor
 ```
 
-Each command installs both `tadx` and `tadx-pulse` as standard `SKILL.md` packages bundled into the TADX binary.
+Each command installs the root TADX Guidance and the complete Pulse authoring Guidance as standard `SKILL.md` packages.
+The root package includes optional references for content lifecycle, workspaces, administration, and Tableau MCP routing.
 Claude uses `~/.claude/skills`, Codex uses `~/.codex/skills`, and Cursor uses `~/.cursor/skills`.
-Existing skills under `~/.agents/skills` remain untouched.
+Existing packages under `~/.agents/skills` remain untouched.
 No repository checkout or Tableau credentials are required.
 The installer creates no `AGENTS.md`, `CLAUDE.md`, or Cursor rules.
 
@@ -181,8 +182,11 @@ tadx catalog status --environment dev
 ## TADX and Tableau MCP
 
 TADX owns Tableau development and lifecycle work, including content artifacts, workspaces, administration, and configuration lifecycle.
-Tableau MCP owns analytical work, including datasource queries, view data and images, and Pulse metric values and insights.
-They are peer tools, and TADX does not call or proxy Tableau MCP.
+Tableau MCP owns analytical work, including datasource queries, view and custom-view results, and Pulse values and insights.
+Use `get-datasource-metadata` before `query-datasource` for published datasource questions.
+Use Tableau MCP view tools for data or images, and use its Pulse tools for current values, insight bundles, and briefs.
+The user and host agent own Tableau MCP configuration and connection selection.
+TADX does not configure, select, call, proxy, or report the connection state of Tableau MCP.
 
 ## Contribute
 

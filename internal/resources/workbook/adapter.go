@@ -36,6 +36,22 @@ type MutationClient interface {
 	Delete(context.Context, string) (tableauworkbook.MutationResult, error)
 }
 
+type updateClient interface {
+	Update(context.Context, tableauworkbook.UpdateRequest) (tableauworkbook.MutationResult, error)
+}
+
+// UpdateWorkbook changes explicit fields on one exact authoritative workbook.
+func (a *Adapter) UpdateWorkbook(ctx context.Context, input tableauworkbook.UpdateRequest) (tableauworkbook.MutationResult, error) {
+	if a == nil || a.client == nil || strings.TrimSpace(input.LUID) == "" {
+		return tableauworkbook.MutationResult{}, errors.New("workbook LUID and configured client are required")
+	}
+	client, ok := a.client.(updateClient)
+	if !ok {
+		return tableauworkbook.MutationResult{}, errors.New("workbook mutation client is not configured")
+	}
+	return client.Update(ctx, input)
+}
+
 // ProjectPathResolver supplies canonical hierarchy paths without a resource-package dependency.
 type ProjectPathResolver interface {
 	ResolveProjectPath(context.Context, string) (string, error)
@@ -253,7 +269,7 @@ func (a *Adapter) FindWorkbooks(ctx context.Context, name, projectLUID string) (
 	seenByLUID := make(map[string]tableauworkbook.Workbook)
 	byLUID := make(map[string]Workbook)
 	err := a.scanWorkbooks(ctx, tableauworkbook.ListRequest{Name: name}, func(item tableauworkbook.Workbook) error {
-		if item.Name != name {
+		if !strings.EqualFold(item.Name, name) {
 			return nil
 		}
 		if item.LUID == "" {

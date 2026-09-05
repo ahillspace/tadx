@@ -269,7 +269,7 @@ func (a *Adapter) FindDatasources(ctx context.Context, name, projectLUID string)
 			if err := recordDatasource(seen, item); err != nil {
 				return nil, err
 			}
-			if item.Name == name && item.ProjectLUID == projectLUID {
+			if strings.EqualFold(item.Name, name) && item.ProjectLUID == projectLUID {
 				result = append(result, normalizeDatasource(item, ""))
 			}
 		}

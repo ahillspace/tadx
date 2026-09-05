@@ -1,12 +1,14 @@
 ---
 name: tadx-pulse
-description: Author Tableau Pulse definitions from business intent and published datasource fields, verify definitions, fork variants, and manage followers through TADX. Use Tableau MCP for metric values or insights.
+description: Author Tableau Pulse definitions from business intent, verify definitions, fork variants, and manage followers with TADX Guidance. Use Tableau MCP for Pulse analytics.
 ---
 
 # Author Tableau Pulse metrics
 
-Use TADX for definition/metric lifecycle and subscriptions; Tableau MCP separately owns values and insights.
-TADX never calls or proxies MCP.
+Use TADX for definition and metric lifecycle, including follower changes.
+Use Tableau MCP for current-user subscription discovery, current values, and insights.
+TADX never configures, selects, calls, proxies, or reports the connection state of Tableau MCP.
+The host agent and user own the active Tableau MCP connection.
 
 ## Start from known context
 
@@ -21,6 +23,19 @@ Avoid broad help/capability dumps; allow at most one relevant leaf `--help` prob
 Resolve the requested quantity, population, audience, and event/snapshot date from available context.
 Ask only when unresolved meaning changes the result.
 A recommendation request does not authorize creation or subscriptions.
+
+## Route Pulse analytics
+
+Use the exact Tableau MCP tool that owns the requested analytical result:
+
+- Use `list-pulse-metric-subscriptions` to find the current user's subscriptions.
+- Use `generate-pulse-metric-value-insight-bundle` for a metric's current value, comparison, and ranked insights.
+- Use `generate-pulse-insight-brief` for a natural-language answer, summary, or advice across related metrics.
+
+Load complete metric context through Tableau MCP before generating an insight bundle or brief.
+Group brief metrics by datasource, and use separate requests for different datasources.
+Keep follow, unfollow, fork, and delete operations in TADX.
+Do not probe TADX for Tableau MCP connection status.
 
 ## Find only the fields needed
 

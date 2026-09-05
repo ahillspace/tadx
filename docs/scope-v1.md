@@ -14,16 +14,17 @@ These are the capabilities an agent may build to completion once each row's upst
 - Authentication: PAT sign-in check (remote) and local auth status. PAT only.
 - Capability discovery: capability list, capability get.
 - Catalog: refresh and status for the normalized local cache.
-- Workspace: create, list, status, move, delete one explicit artifact, and clean disposable state (local; no locking).
+- Workspace: create, register, clone, list, status, set default, move, unregister, delete, delete one explicit artifact, and clean disposable state.
 - Shared search: live by default across content, administration, and Pulse, with optional `--catalog`.
 - Lineage: bounded automatic capture with workbook, datasource, and flow pulls; standalone pull into a metadata-only artifact.
-- Workbook: list, inspect, pull, publish, delete.
-- Datasource: list, inspect, pull, publish, delete; pull and publish preserve existing ordinary or composed packages without authoring composition.
-- Flow: list, inspect, pull, publish, move, delete.
-- Project: list, inspect, create, update.
+- Workbook: list, inspect, pull, publish, update, move, and delete.
+- Datasource: list, inspect, pull, publish, update, move, and delete; pull and publish preserve existing ordinary or composed packages.
+- Flow: list, inspect, pull, publish, update, move, and delete.
+- Project: list, inspect, create, update, move, and delete.
 - Pulse: definition list/inspect/pull/create/delete; metric list/inspect/fork/delete/follow/unfollow/followers; definition/metric artifacts.
-- Administration: user list/inspect/create/update/delete; group list/inspect/create/update/delete; permission inspect (read only).
-- Doctor: non-mutating diagnostics.
+- Administration: user list/inspect/create/update/delete; group list/inspect/create/update/delete; incremental group membership; permission inspect/create/delete.
+- Local utilities: version reporting, optional release checks, shell completion generation, and bundled Guidance install and uninstall.
+- Doctor: non-mutating authentication, catalog, workspace, and logging diagnostics.
 
 ## Deferred from V1
 
@@ -36,13 +37,17 @@ These capabilities do not appear in the executable V1 registry.
 
 ## Delegated (discoverable, executed elsewhere)
 
-Discoverable through the registry so agents are routed correctly, but TADX never executes them and never proxies MCP.
+Discoverable through the registry so agents route work correctly, but TADX never executes or proxies them.
 
-- Datasource analytical query / VDS: Tableau MCP.
-- View and custom-view data/images: Tableau MCP.
-- Pulse current values, insight bundles, briefs: Tableau MCP.
+- Published datasource metadata and analytical queries: Tableau MCP `get-datasource-metadata` and `query-datasource`.
+- View discovery and metadata: Tableau MCP `list-views`, `get-view`, and `list-custom-views`.
+- View and custom-view data and images: Tableau MCP view and custom-view result tools.
+- Pulse current-user subscriptions, current values, insight bundles, and briefs: Tableau MCP Pulse analytical tools.
 - Workbook semantic authoring/modification: Tableau Desktop / Desktop MCP.
-- Datasource field-description generation: agent reasoning or a first-party skill.
+- Datasource field-description generation: agent reasoning or first-party Guidance.
+
+The user and host agent own Tableau MCP configuration, connection selection, and availability.
+TADX never configures, selects, calls, proxies, or reports the connection state of Tableau MCP.
 
 ## Out of scope or deferred (do not build in V1)
 
@@ -50,9 +55,8 @@ Discoverable through the registry so agents are routed correctly, but TADX never
 - Hyper API, and pack / unpack, and Hyper to CSV conversion.
 - TDS remote work-copy editing, work-copy diff, and staged-change impact analysis.
 - Recursive project migration; generic bulk pull/publish.
-- Permission mutation.
-- Generic remote content move or hierarchy migration beyond the admitted resource-specific `flow move` operation.
-- Project deletion, recycle-bin recovery, permanent purge, and automatic cleanup policy.
+- Recursive content or project hierarchy migration.
+- Recycle-bin recovery, permanent purge, and automatic cleanup policy.
 - OAuth, JWT, UAT, Connected App authentication.
 - Plugin system, background daemon or sync, offline mutation queue.
 - Phone-home telemetry, embedded auto-update, binary signing.

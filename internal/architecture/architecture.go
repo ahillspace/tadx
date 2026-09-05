@@ -185,6 +185,7 @@ func localImportAllowed(file, imported string) bool {
 				"internal/identity",
 				"internal/output",
 				"internal/readsource",
+				"internal/version",
 				"internal/workspace",
 			)
 	case layerCLI:
@@ -362,6 +363,7 @@ func isFoundationPackage(file string) bool {
 		hasPathPrefix(file, "internal/output") ||
 		hasPathPrefix(file, "internal/pathspec") ||
 		hasPathPrefix(file, "internal/readsource") ||
+		hasPathPrefix(file, "internal/version") ||
 		hasPathPrefix(file, "internal/workspace") ||
 		hasPathPrefix(file, "internal/toon")
 }

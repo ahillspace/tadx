@@ -121,7 +121,18 @@ type PublishResult struct {
 type MutationResult struct {
 	Status           string
 	WorkbookLUID     string
+	WorkbookName     string
+	ProjectLUID      string
+	OwnerLUID        string
 	TableauRequestID string
+}
+
+// UpdateRequest contains only explicit workbook metadata changes.
+type UpdateRequest struct {
+	LUID        string
+	Name        *string
+	ProjectLUID *string
+	OwnerLUID   *string
 }
 
 // ValidationIssue is one server-side TWB validation diagnostic.
@@ -185,6 +196,62 @@ func NewClient(transport *tableau.Transport, session auth.Session, serverURL str
 		uploadThreshold: defaultUploadThreshold, uploadChunkSize: defaultUploadChunkSize,
 		pollInterval: time.Second, pollTimeout: 10 * time.Minute,
 	}
+}
+
+// Update changes only explicit fields on one exact workbook.
+func (c *Client) Update(ctx context.Context, input UpdateRequest) (MutationResult, error) {
+	if c == nil || c.transport == nil || c.session == nil || strings.TrimSpace(c.serverURL) == "" {
+		return MutationResult{}, errors.New("authenticated workbook client is not configured")
+	}
+	input.LUID = strings.TrimSpace(input.LUID)
+	if input.LUID == "" {
+		return MutationResult{}, errors.New("workbook update requires an exact workbook LUID")
+	}
+	if input.Name == nil && input.ProjectLUID == nil && input.OwnerLUID == nil {
+		return MutationResult{}, errors.New("workbook update requires at least one explicit field")
+	}
+	if input.Name != nil && strings.TrimSpace(*input.Name) == "" {
+		return MutationResult{}, errors.New("workbook update name cannot be empty")
+	}
+	if input.ProjectLUID != nil && strings.TrimSpace(*input.ProjectLUID) == "" {
+		return MutationResult{}, errors.New("workbook update project LUID cannot be empty")
+	}
+	if input.OwnerLUID != nil && strings.TrimSpace(*input.OwnerLUID) == "" {
+		return MutationResult{}, errors.New("workbook update owner LUID cannot be empty")
+	}
+	if input.ProjectLUID != nil {
+		value := strings.TrimSpace(*input.ProjectLUID)
+		input.ProjectLUID = &value
+	}
+	if input.OwnerLUID != nil {
+		value := strings.TrimSpace(*input.OwnerLUID)
+		input.OwnerLUID = &value
+	}
+	body, err := xml.Marshal(workbookUpdateEnvelope{Workbook: workbookUpdateXML{Name: input.Name, Project: optionalLUIDXML(input.ProjectLUID), Owner: optionalLUIDXML(input.OwnerLUID)}})
+	if err != nil {
+		return MutationResult{}, fmt.Errorf("encode workbook update request: %w", err)
+	}
+	response, err := c.do(ctx, http.MethodPut, c.sitePath("workbooks", input.LUID), nil, body, "application/xml", "workbook.update")
+	if err != nil {
+		return MutationResult{Status: "unknown", WorkbookLUID: input.LUID, TableauRequestID: tableau.RequestID(err)}, err
+	}
+	if response.StatusCode != http.StatusOK {
+		result := MutationResult{Status: "unknown", WorkbookLUID: input.LUID, TableauRequestID: response.TableauRequestID}
+		return result, tableau.NewProtocolError("workbook.update", response, fmt.Errorf("workbook update returned HTTP %d, expected 200", response.StatusCode), false)
+	}
+	var envelope workbookGetEnvelope
+	if err := xml.Unmarshal(response.Body, &envelope); err != nil {
+		result := MutationResult{Status: "unknown", WorkbookLUID: input.LUID, TableauRequestID: response.TableauRequestID}
+		return result, tableau.NewProtocolError("workbook.update", response, fmt.Errorf("decode workbook update response: %w", err), false)
+	}
+	workbook := normalizeWorkbook(envelope.Workbook)
+	if workbook.LUID != input.LUID || workbook.Name == "" || workbook.ProjectLUID == "" || workbook.OwnerLUID == "" {
+		return MutationResult{Status: "unknown", WorkbookLUID: input.LUID, TableauRequestID: response.TableauRequestID}, tableau.NewProtocolError("workbook.update", response, errors.New("workbook update response omitted or changed authoritative identity"), false)
+	}
+	if (input.Name != nil && workbook.Name != *input.Name) || (input.ProjectLUID != nil && workbook.ProjectLUID != *input.ProjectLUID) || (input.OwnerLUID != nil && workbook.OwnerLUID != *input.OwnerLUID) {
+		return MutationResult{Status: "unknown", WorkbookLUID: workbook.LUID, WorkbookName: workbook.Name, ProjectLUID: workbook.ProjectLUID, OwnerLUID: workbook.OwnerLUID, TableauRequestID: response.TableauRequestID}, tableau.NewProtocolError("workbook.update", response, errors.New("workbook update response did not preserve the requested changes"), false)
+	}
+	return MutationResult{Status: "succeeded", WorkbookLUID: workbook.LUID, WorkbookName: workbook.Name, ProjectLUID: workbook.ProjectLUID, OwnerLUID: workbook.OwnerLUID, TableauRequestID: response.TableauRequestID}, nil
 }
 
 // Delete removes one exact workbook and accepts only Tableau's documented empty HTTP 204 response.
@@ -967,6 +1034,28 @@ type workbookListEnvelope struct {
 
 type workbookGetEnvelope struct {
 	Workbook workbookXML `xml:"workbook"`
+}
+
+type workbookUpdateEnvelope struct {
+	XMLName  xml.Name          `xml:"tsRequest"`
+	Workbook workbookUpdateXML `xml:"workbook"`
+}
+
+type workbookUpdateXML struct {
+	Name    *string  `xml:"name,attr,omitempty"`
+	Project *luidXML `xml:"project,omitempty"`
+	Owner   *luidXML `xml:"owner,omitempty"`
+}
+
+type luidXML struct {
+	ID string `xml:"id,attr"`
+}
+
+func optionalLUIDXML(value *string) *luidXML {
+	if value == nil {
+		return nil
+	}
+	return &luidXML{ID: strings.TrimSpace(*value)}
 }
 
 type workbookXML struct {

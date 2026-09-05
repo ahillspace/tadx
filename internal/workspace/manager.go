@@ -148,6 +148,180 @@ func (m *Manager) Register(ctx context.Context, name, root string) (Record, erro
 	return Record{Name: name, ID: id, Root: resolvedRoot, Default: strings.EqualFold(updated.DefaultWorkspace, name), Available: true, ManifestValid: true}, nil
 }
 
+// SetDefault selects one available registered workspace as the global default.
+func (m *Manager) SetDefault(ctx context.Context, name string) (Record, error) {
+	if err := ctx.Err(); err != nil {
+		return Record{}, err
+	}
+	if m == nil || strings.TrimSpace(m.configPath) == "" {
+		return Record{}, errors.New("workspace manager is not configured")
+	}
+	resolved, err := m.Resolve(ctx, name, "")
+	if err != nil {
+		return Record{}, err
+	}
+	updated, err := config.Update(m.configPath, false, func(configuration config.Config) (config.Config, error) {
+		registeredName, registration, ok := exactRegistration(configuration, resolved.Name)
+		if !ok || registration.ID != resolved.ID || !samePath(registration.Path, resolved.Root) {
+			return config.Config{}, errors.New("workspace registration changed during default selection")
+		}
+		if configuration.DefaultWorkspace == registeredName {
+			return config.Config{}, config.ErrNoChange
+		}
+		configuration.DefaultWorkspace = registeredName
+		return configuration, nil
+	})
+	if err != nil {
+		return Record{}, err
+	}
+	resolved.Default = strings.EqualFold(updated.DefaultWorkspace, resolved.Name)
+	return resolved, nil
+}
+
+// Unregister removes one exact registry entry without changing workspace files.
+func (m *Manager) Unregister(ctx context.Context, name string) (Record, error) {
+	if err := ctx.Err(); err != nil {
+		return Record{}, err
+	}
+	if m == nil || strings.TrimSpace(m.configPath) == "" {
+		return Record{}, errors.New("workspace manager is not configured")
+	}
+	var removed Record
+	_, err := config.Update(m.configPath, false, func(configuration config.Config) (config.Config, error) {
+		registeredName, registration, ok := exactRegistration(configuration, name)
+		if !ok {
+			return config.Config{}, fmt.Errorf("workspace %q is not registered", name)
+		}
+		removed = recordFromRegistration(registeredName, registration, configuration.DefaultWorkspace)
+		removeRegistration(&configuration, registeredName)
+		return configuration, nil
+	})
+	return removed, err
+}
+
+// Delete removes one exact registered workspace root and its registry entry.
+// The caller must pass a record obtained from Resolve so identity changes fail closed.
+func (m *Manager) Delete(ctx context.Context, expected Record) (Record, error) {
+	if err := ctx.Err(); err != nil {
+		return Record{}, err
+	}
+	if m == nil || strings.TrimSpace(m.configPath) == "" {
+		return Record{}, errors.New("workspace manager is not configured")
+	}
+	if expected.Name == "" || expected.ID == "" || expected.Root == "" {
+		return Record{}, errors.New("workspace deletion requires an exact resolved identity")
+	}
+	configuration, err := config.Load(m.configPath)
+	if err != nil {
+		return Record{}, err
+	}
+	registeredName, registration, ok := exactRegistration(configuration, expected.Name)
+	if !ok || registration.ID != expected.ID {
+		return Record{}, errors.New("workspace registration changed before deletion")
+	}
+	root, err := canonicalRoot(registration.Path)
+	if err != nil || !samePath(root, expected.Root) {
+		return Record{}, errors.New("workspace root changed before deletion")
+	}
+	if err := validateDeletionRoot(root, registeredName, registration.ID); err != nil {
+		return Record{}, err
+	}
+	for otherName, other := range configuration.Workspaces {
+		if strings.EqualFold(otherName, registeredName) {
+			continue
+		}
+		otherRoot, resolveErr := canonicalRoot(other.Path)
+		if resolveErr == nil && containsPath(root, otherRoot) {
+			return Record{}, fmt.Errorf("workspace %q contains registered workspace %q", registeredName, otherName)
+		}
+	}
+	tombstone := filepath.Join(filepath.Dir(root), ".tadx-workspace-delete-"+registration.ID)
+	if _, err := os.Lstat(tombstone); !errors.Is(err, os.ErrNotExist) {
+		if err == nil {
+			return Record{}, errors.New("workspace deletion staging path already exists")
+		}
+		return Record{}, err
+	}
+	if err := os.Rename(root, tombstone); err != nil {
+		return Record{}, fmt.Errorf("stage workspace deletion: %w", err)
+	}
+	restore := func(cause error) (Record, error) {
+		if restoreErr := os.Rename(tombstone, root); restoreErr != nil {
+			return Record{}, fmt.Errorf("%v; workspace restore failed: %w", cause, restoreErr)
+		}
+		return Record{}, cause
+	}
+	_, err = config.Update(m.configPath, false, func(current config.Config) (config.Config, error) {
+		currentName, currentRegistration, exists := exactRegistration(current, registeredName)
+		if !exists || currentRegistration.ID != registration.ID || !samePath(currentRegistration.Path, root) {
+			return config.Config{}, errors.New("workspace registration changed during deletion")
+		}
+		removeRegistration(&current, currentName)
+		return current, nil
+	})
+	if err != nil {
+		return restore(err)
+	}
+	if err := os.RemoveAll(tombstone); err != nil {
+		return Record{}, fmt.Errorf("workspace was unregistered but staged files remain at %q: %w", tombstone, err)
+	}
+	return recordFromRegistration(registeredName, registration, configuration.DefaultWorkspace), nil
+}
+
+func exactRegistration(configuration config.Config, selector string) (string, config.WorkspaceRegistration, bool) {
+	if strings.TrimSpace(selector) == "" {
+		return "", config.WorkspaceRegistration{}, false
+	}
+	for name, registration := range configuration.Workspaces {
+		if strings.EqualFold(name, selector) {
+			return name, registration, true
+		}
+	}
+	return "", config.WorkspaceRegistration{}, false
+}
+
+func recordFromRegistration(name string, registration config.WorkspaceRegistration, defaultName string) Record {
+	record := Record{Name: name, ID: registration.ID, Root: registration.Path, Default: strings.EqualFold(defaultName, name)}
+	root, err := canonicalRoot(registration.Path)
+	if err != nil {
+		return record
+	}
+	record.Root = root
+	manifest, err := ReadManifest(root)
+	record.Available = err == nil
+	record.ManifestValid = err == nil && manifest.Workspace.ID == registration.ID && strings.EqualFold(manifest.Workspace.Name, name)
+	return record
+}
+
+func removeRegistration(configuration *config.Config, name string) {
+	delete(configuration.Workspaces, name)
+	if strings.EqualFold(configuration.DefaultWorkspace, name) {
+		configuration.DefaultWorkspace = ""
+	}
+	for alias, environment := range configuration.Environments {
+		if strings.EqualFold(environment.DefaultWorkspace, name) {
+			environment.DefaultWorkspace = ""
+			configuration.Environments[alias] = environment
+		}
+	}
+}
+
+func validateDeletionRoot(root, name, id string) error {
+	info, err := os.Lstat(root)
+	if err != nil || !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
+		return errors.New("workspace deletion target must be an available real directory")
+	}
+	volume := filepath.VolumeName(root) + string(filepath.Separator)
+	if samePath(root, volume) || filepath.Dir(root) == root {
+		return errors.New("workspace deletion target must not be a filesystem root")
+	}
+	manifest, err := ReadManifest(root)
+	if err != nil || manifest.Workspace.ID != id || !strings.EqualFold(manifest.Workspace.Name, name) {
+		return errors.New("workspace registry and manifest identities do not match")
+	}
+	return nil
+}
+
 // Clone copies one existing managed workspace to a new machine-local root under
 // a freshly minted identity. Only the artifacts tree is carried over; the clone
 // receives its own empty local state so nothing machine-specific leaks across.

@@ -41,6 +41,108 @@ func TestManagerCreatesAndResolvesNamedWorkspace(t *testing.T) {
 	}
 }
 
+func TestSetDefaultRequiresAvailableRegisteredWorkspace(t *testing.T) {
+	directory := t.TempDir()
+	configPath := filepath.Join(directory, "config.yaml")
+	if err := config.Save(configPath, config.Config{Version: config.CurrentVersion}); err != nil {
+		t.Fatal(err)
+	}
+	manager := workspace.NewManager(configPath, strings.NewReader(strings.Repeat("a", 16)+strings.Repeat("b", 16)))
+	if _, err := manager.Create(context.Background(), "first", filepath.Join(directory, "first")); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := manager.Create(context.Background(), "second", filepath.Join(directory, "second")); err != nil {
+		t.Fatal(err)
+	}
+	record, err := manager.SetDefault(context.Background(), "SECOND")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if record.Name != "second" || !record.Default {
+		t.Fatalf("record = %#v", record)
+	}
+	loaded, err := config.Load(configPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if loaded.DefaultWorkspace != "second" {
+		t.Fatalf("default workspace = %q", loaded.DefaultWorkspace)
+	}
+	if err := os.Remove(filepath.Join(directory, "first", config.WorkspaceConfigName)); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := manager.SetDefault(context.Background(), "first"); err == nil {
+		t.Fatal("SetDefault accepted an unavailable workspace")
+	}
+}
+
+func TestUnregisterPreservesFilesAndClearsDefaults(t *testing.T) {
+	directory := t.TempDir()
+	configPath := filepath.Join(directory, "config.yaml")
+	if err := config.Save(configPath, config.Config{Version: config.CurrentVersion}); err != nil {
+		t.Fatal(err)
+	}
+	manager := workspace.NewManager(configPath, strings.NewReader(strings.Repeat("a", 16)))
+	record, err := manager.Create(context.Background(), "development", filepath.Join(directory, "development"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	loaded, err := config.Load(configPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	loaded.Environments = map[string]config.Environment{"dev": {URL: "https://example.test", Auth: config.Auth{Type: config.AuthTypePAT}, DefaultWorkspace: "development"}}
+	if err := config.Save(configPath, loaded); err != nil {
+		t.Fatal(err)
+	}
+	removed, err := manager.Unregister(context.Background(), "DEVELOPMENT")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if removed.ID != record.ID {
+		t.Fatalf("removed = %#v", removed)
+	}
+	if _, err := os.Stat(filepath.Join(record.Root, config.WorkspaceConfigName)); err != nil {
+		t.Fatalf("workspace files were removed: %v", err)
+	}
+	loaded, err = config.Load(configPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(loaded.Workspaces) != 0 || loaded.DefaultWorkspace != "" || loaded.Environments["dev"].DefaultWorkspace != "" {
+		t.Fatalf("configuration = %#v", loaded)
+	}
+}
+
+func TestDeleteRejectsNestedRegistrationAndRemovesExactRoot(t *testing.T) {
+	directory := t.TempDir()
+	configPath := filepath.Join(directory, "config.yaml")
+	if err := config.Save(configPath, config.Config{Version: config.CurrentVersion}); err != nil {
+		t.Fatal(err)
+	}
+	manager := workspace.NewManager(configPath, strings.NewReader(strings.Repeat("a", 16)+strings.Repeat("b", 16)))
+	parent, err := manager.Create(context.Background(), "parent", filepath.Join(directory, "parent"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	child, err := manager.Create(context.Background(), "child", filepath.Join(parent.Root, "nested"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := manager.Delete(context.Background(), parent); err == nil || !strings.Contains(err.Error(), "contains registered workspace") {
+		t.Fatalf("Delete(parent) error = %v", err)
+	}
+	if _, err := manager.Delete(context.Background(), child); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(child.Root); !os.IsNotExist(err) {
+		t.Fatalf("child root still exists: %v", err)
+	}
+	if _, err := os.Stat(parent.Root); err != nil {
+		t.Fatalf("parent root changed: %v", err)
+	}
+}
+
 func TestManagerRejectsCaseOnlyNameAndCanonicalRootCollisions(t *testing.T) {
 	root := t.TempDir()
 	configPath := filepath.Join(root, "config.yaml")

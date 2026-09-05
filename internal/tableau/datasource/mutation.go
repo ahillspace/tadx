@@ -41,7 +41,15 @@ type PublishRequest struct {
 	AsJob                                                         bool
 }
 type PublishResult struct{ Status, DatasourceLUID, DatasourceName, ProjectLUID, JobID, TableauRequestID string }
-type MutationResult struct{ Status, DatasourceLUID, TableauRequestID string }
+type MutationResult struct{ Status, DatasourceLUID, DatasourceName, ProjectLUID, OwnerLUID, TableauRequestID string }
+
+// UpdateRequest contains only explicit datasource metadata changes.
+type UpdateRequest struct {
+	LUID        string
+	Name        *string
+	ProjectLUID *string
+	OwnerLUID   *string
+}
 type PreparedPublish interface {
 	Commit(context.Context) (PublishResult, error)
 }
@@ -216,6 +224,85 @@ func (c *Client) Delete(ctx context.Context, luid string) (MutationResult, error
 		return MutationResult{Status: "unknown", DatasourceLUID: luid, TableauRequestID: response.TableauRequestID}, tableau.NewProtocolError("datasource.delete", response, fmt.Errorf("datasource delete returned HTTP %d with %d response bytes, expected empty HTTP 204", response.StatusCode, len(response.Body)), false)
 	}
 	return MutationResult{Status: "succeeded", DatasourceLUID: luid, TableauRequestID: response.TableauRequestID}, nil
+}
+
+// Update changes only explicit fields on one exact datasource.
+func (c *Client) Update(ctx context.Context, input UpdateRequest) (MutationResult, error) {
+	if err := c.validate(); err != nil {
+		return MutationResult{}, err
+	}
+	input.LUID = strings.TrimSpace(input.LUID)
+	if input.LUID == "" {
+		return MutationResult{}, errors.New("datasource update requires an exact LUID")
+	}
+	if input.Name == nil && input.ProjectLUID == nil && input.OwnerLUID == nil {
+		return MutationResult{}, errors.New("datasource update requires at least one explicit field")
+	}
+	if input.Name != nil && strings.TrimSpace(*input.Name) == "" {
+		return MutationResult{}, errors.New("datasource update name cannot be empty")
+	}
+	if input.ProjectLUID != nil && strings.TrimSpace(*input.ProjectLUID) == "" {
+		return MutationResult{}, errors.New("datasource update project LUID cannot be empty")
+	}
+	if input.OwnerLUID != nil && strings.TrimSpace(*input.OwnerLUID) == "" {
+		return MutationResult{}, errors.New("datasource update owner LUID cannot be empty")
+	}
+	if input.ProjectLUID != nil {
+		value := strings.TrimSpace(*input.ProjectLUID)
+		input.ProjectLUID = &value
+	}
+	if input.OwnerLUID != nil {
+		value := strings.TrimSpace(*input.OwnerLUID)
+		input.OwnerLUID = &value
+	}
+	body, err := xml.Marshal(datasourceUpdateEnvelope{Datasource: datasourceUpdateXML{Name: input.Name, Project: optionalDatasourceLUID(input.ProjectLUID), Owner: optionalDatasourceLUID(input.OwnerLUID)}})
+	if err != nil {
+		return MutationResult{}, fmt.Errorf("encode datasource update request: %w", err)
+	}
+	response, err := c.transport.Do(ctx, c.session, tableau.Request{Method: http.MethodPut, ServerURL: c.serverURL, Path: c.sitePath("datasources", input.LUID), Body: body, ContentType: "application/xml", Accept: "application/xml", Operation: "datasource.update", MaxResponseBytes: maxListResponseBytes})
+	if err != nil {
+		if isUncertainDatasourceMutation(err) {
+			return MutationResult{Status: "unknown", DatasourceLUID: input.LUID, TableauRequestID: tableau.RequestID(err)}, err
+		}
+		return MutationResult{}, err
+	}
+	if response.StatusCode != http.StatusOK {
+		return MutationResult{Status: "unknown", DatasourceLUID: input.LUID, TableauRequestID: response.TableauRequestID}, tableau.NewProtocolError("datasource.update", response, fmt.Errorf("datasource update returned HTTP %d, expected 200", response.StatusCode), false)
+	}
+	var envelope datasourceGetEnvelope
+	if err := xml.Unmarshal(response.Body, &envelope); err != nil {
+		return MutationResult{Status: "unknown", DatasourceLUID: input.LUID, TableauRequestID: response.TableauRequestID}, tableau.NewProtocolError("datasource.update", response, fmt.Errorf("decode datasource update response: %w", err), false)
+	}
+	datasource := normalizeDatasource(envelope.Datasource)
+	if datasource.LUID != input.LUID || datasource.Name == "" || datasource.ProjectLUID == "" || datasource.OwnerLUID == "" {
+		return MutationResult{Status: "unknown", DatasourceLUID: input.LUID, TableauRequestID: response.TableauRequestID}, tableau.NewProtocolError("datasource.update", response, errors.New("datasource update response omitted or changed authoritative identity"), false)
+	}
+	if (input.Name != nil && datasource.Name != *input.Name) || (input.ProjectLUID != nil && datasource.ProjectLUID != *input.ProjectLUID) || (input.OwnerLUID != nil && datasource.OwnerLUID != *input.OwnerLUID) {
+		return MutationResult{Status: "unknown", DatasourceLUID: datasource.LUID, DatasourceName: datasource.Name, ProjectLUID: datasource.ProjectLUID, OwnerLUID: datasource.OwnerLUID, TableauRequestID: response.TableauRequestID}, tableau.NewProtocolError("datasource.update", response, errors.New("datasource update response did not preserve the requested changes"), false)
+	}
+	return MutationResult{Status: "succeeded", DatasourceLUID: datasource.LUID, DatasourceName: datasource.Name, ProjectLUID: datasource.ProjectLUID, OwnerLUID: datasource.OwnerLUID, TableauRequestID: response.TableauRequestID}, nil
+}
+
+type datasourceUpdateEnvelope struct {
+	XMLName    xml.Name            `xml:"tsRequest"`
+	Datasource datasourceUpdateXML `xml:"datasource"`
+}
+
+type datasourceUpdateXML struct {
+	Name    *string            `xml:"name,attr,omitempty"`
+	Project *datasourceLUIDXML `xml:"project,omitempty"`
+	Owner   *datasourceLUIDXML `xml:"owner,omitempty"`
+}
+
+type datasourceLUIDXML struct {
+	ID string `xml:"id,attr"`
+}
+
+func optionalDatasourceLUID(value *string) *datasourceLUIDXML {
+	if value == nil {
+		return nil
+	}
+	return &datasourceLUIDXML{ID: strings.TrimSpace(*value)}
 }
 
 type preparedDatasourcePublish struct {

@@ -15,7 +15,7 @@ import (
 )
 
 var blockerPattern = regexp.MustCompile(`\b(B[1-46])\b`)
-var capabilityIDPattern = regexp.MustCompile(`^[a-z][a-z0-9-]*(\.[a-z][a-z0-9-]*){1,2}$`)
+var capabilityIDPattern = regexp.MustCompile(`^[a-z][a-z0-9-]*(\.[a-z][a-z0-9-]*)+$`)
 
 func main() {
 	contract := flag.String("contract", "../../tadx-v1-capability-contract-final.md", "path to the V1 capability contract")

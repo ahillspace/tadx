@@ -36,7 +36,7 @@ func (a *MutationAdapter) UpdateProject(ctx context.Context, input tableauprojec
 	if a == nil || a.client == nil || strings.TrimSpace(input.LUID) == "" {
 		return tableauproject.MutationResult{}, errors.New("project update requires a configured client and exact project LUID")
 	}
-	if input.Name == nil && input.Description == nil && input.ContentPermissions == nil {
+	if input.Name == nil && input.Description == nil && input.ContentPermissions == nil && input.ParentLUID == nil {
 		return tableauproject.MutationResult{}, errors.New("project update requires at least one explicit metadata field")
 	}
 	return a.client.Update(ctx, input)

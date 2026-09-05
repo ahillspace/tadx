@@ -11,6 +11,8 @@ import (
 	groupdelete "github.com/ahillspace/tadx/actions/admin/group/delete"
 	groupinspect "github.com/ahillspace/tadx/actions/admin/group/inspect"
 	grouplist "github.com/ahillspace/tadx/actions/admin/group/list"
+	groupmemberadd "github.com/ahillspace/tadx/actions/admin/group/member/add"
+	groupmemberremove "github.com/ahillspace/tadx/actions/admin/group/member/remove"
 	groupupdate "github.com/ahillspace/tadx/actions/admin/group/update"
 	permissioninspect "github.com/ahillspace/tadx/actions/admin/permission/inspect"
 	usercreate "github.com/ahillspace/tadx/actions/admin/user/create"
@@ -19,6 +21,7 @@ import (
 	userlist "github.com/ahillspace/tadx/actions/admin/user/list"
 	userupdate "github.com/ahillspace/tadx/actions/admin/user/update"
 	cli "github.com/ahillspace/tadx/internal/cli/admin"
+	"github.com/spf13/cobra"
 )
 
 type fake struct {
@@ -27,6 +30,8 @@ type fake struct {
 	userPreview  bool
 	groupUpdate  groupupdate.Input
 	groupPreview bool
+	memberAdd    groupmemberadd.Input
+	memberRemove groupmemberremove.Input
 }
 
 func (f *fake) Render(any) error { f.rendered++; return nil }
@@ -64,31 +69,60 @@ func (f *fake) UpdateAdminGroup(_ context.Context, in groupupdate.Input, preview
 func (f *fake) DeleteAdminGroup(context.Context, groupdelete.Input, bool) (groupdelete.Output, error) {
 	return groupdelete.Output{}, nil
 }
+func (f *fake) AddAdminGroupMember(_ context.Context, input groupmemberadd.Input, _ bool) (groupmemberadd.Output, error) {
+	f.memberAdd = input
+	return groupmemberadd.Output{}, nil
+}
+func (f *fake) RemoveAdminGroupMember(_ context.Context, input groupmemberremove.Input, _ bool) (groupmemberremove.Output, error) {
+	f.memberRemove = input
+	return groupmemberremove.Output{}, nil
+}
 func (f *fake) InspectAdminPermission(context.Context, permissioninspect.Input) (permissioninspect.Output, error) {
 	return permissioninspect.Output{}, nil
 }
 
 func deps(f *fake, enabled bool) cli.Dependencies {
-	return cli.Dependencies{UserLister: f, UserInspector: f, UserCreator: f, UserUpdater: f, UserDeleter: f, GroupLister: f, GroupInspector: f, GroupCreator: f, GroupUpdater: f, GroupDeleter: f, PermissionInspector: f, Renderer: f, MutationsEnabled: enabled}
+	return cli.Dependencies{UserLister: f, UserInspector: f, UserCreator: f, UserUpdater: f, UserDeleter: f, GroupLister: f, GroupInspector: f, GroupCreator: f, GroupUpdater: f, GroupDeleter: f, GroupMemberAdder: f, GroupMemberRemover: f, PermissionInspector: f, Renderer: f, MutationsEnabled: enabled}
 }
 
 func TestCommandMountsAllCapabilitiesAndShowsMutations(t *testing.T) {
 	f := &fake{}
 	root := cli.New(deps(f, false))
 	var got []string
-	for _, parent := range root.Commands() {
+	var walk func(*cobra.Command)
+	walk = func(parent *cobra.Command) {
 		for _, child := range parent.Commands() {
-			got = append(got, child.Annotations["tadx.capability"])
-			mutation := strings.HasSuffix(child.Name(), "create") || strings.HasSuffix(child.Name(), "update") || strings.HasSuffix(child.Name(), "delete")
+			if id := child.Annotations["tadx.capability"]; id != "" {
+				got = append(got, id)
+			}
+			mutation := strings.HasSuffix(child.Name(), "create") || strings.HasSuffix(child.Name(), "update") || strings.HasSuffix(child.Name(), "delete") || child.Name() == "add" || child.Name() == "remove"
 			if mutation && child.Hidden {
 				t.Errorf("%s is hidden", child.CommandPath())
 			}
+			walk(child)
 		}
 	}
+	walk(root)
 	sort.Strings(got)
-	want := []string{"admin.group.create", "admin.group.delete", "admin.group.inspect", "admin.group.list", "admin.group.update", "admin.permission.create", "admin.permission.delete", "admin.permission.inspect", "admin.user.create", "admin.user.delete", "admin.user.inspect", "admin.user.list", "admin.user.update"}
+	want := []string{"admin.group.create", "admin.group.delete", "admin.group.inspect", "admin.group.list", "admin.group.member.add", "admin.group.member.remove", "admin.group.update", "admin.permission.create", "admin.permission.delete", "admin.permission.inspect", "admin.user.create", "admin.user.delete", "admin.user.inspect", "admin.user.list", "admin.user.update"}
 	if strings.Join(got, ",") != strings.Join(want, ",") {
 		t.Fatalf("capabilities = %v", got)
+	}
+}
+
+func TestGroupMemberCommandsMapExactIdentities(t *testing.T) {
+	f := &fake{}
+	cmd := cli.New(deps(f, true))
+	cmd.SetArgs([]string{"group", "member", "add", "--environment", "dev", "--group-id", "g1", "--user-id", "u1", "--preview"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatal(err)
+	}
+	cmd.SetArgs([]string{"group", "member", "remove", "--environment", "dev", "--group-id", "g1", "--user-id", "u2"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatal(err)
+	}
+	if f.memberAdd.GroupLUID != "g1" || f.memberAdd.UserLUID != "u1" || f.memberRemove.UserLUID != "u2" {
+		t.Fatalf("add=%#v remove=%#v", f.memberAdd, f.memberRemove)
 	}
 }
 

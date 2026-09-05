@@ -198,6 +198,7 @@ import (
 	_ "example.test/tadx/internal/output"
 	_ "example.test/tadx/internal/resources/workbook"
 	_ "example.test/tadx/internal/tableau/workbook"
+	_ "example.test/tadx/internal/version"
 )
 `)
 	writeGo(t, root, "internal/cli/root.go", `package cli

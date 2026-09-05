@@ -263,6 +263,32 @@ func (c *RESTClient) Move(ctx context.Context, flowLUID, projectLUID string) (Mu
 	return MutationResult{Status: "succeeded", FlowLUID: flowLUID, ProjectLUID: projectLUID, TableauRequestID: response.TableauRequestID}, nil
 }
 
+// Update changes the owner of one exact flow.
+// Tableau's Update Flow endpoint does not support changing the flow name.
+func (c *RESTClient) Update(ctx context.Context, input UpdateRequest) (MutationResult, error) {
+	input.LUID = strings.TrimSpace(input.LUID)
+	if input.LUID == "" || input.OwnerLUID == nil || strings.TrimSpace(*input.OwnerLUID) == "" {
+		return MutationResult{}, errors.New("flow update requires exact flow and owner LUIDs")
+	}
+	if err := c.validate(); err != nil {
+		return MutationResult{}, err
+	}
+	ownerLUID := strings.TrimSpace(*input.OwnerLUID)
+	response, err := c.do(ctx, http.MethodPut, c.sitePath("flows", input.LUID, "owner", ownerLUID), nil, nil, "", "flow.update", metadataResponseLimit)
+	if err != nil {
+		return uncertainMutation(input.LUID, "", err)
+	}
+	if response.StatusCode != http.StatusOK {
+		result := MutationResult{Status: "unknown", FlowLUID: input.LUID, TableauRequestID: response.TableauRequestID}
+		return result, tableau.NewProtocolError("flow.update", response, fmt.Errorf("flow update returned HTTP %d, expected 200", response.StatusCode), false)
+	}
+	if len(response.Body) != 0 {
+		result := MutationResult{Status: "unknown", FlowLUID: input.LUID, OwnerLUID: ownerLUID, TableauRequestID: response.TableauRequestID}
+		return result, tableau.NewProtocolError("flow.update", response, fmt.Errorf("flow owner update returned %d response bytes, expected an empty response", len(response.Body)), false)
+	}
+	return MutationResult{Status: "succeeded", FlowLUID: input.LUID, OwnerLUID: ownerLUID, TableauRequestID: response.TableauRequestID}, nil
+}
+
 // Delete deletes one exact flow and accepts only Tableau's documented 204 response.
 func (c *RESTClient) Delete(ctx context.Context, flowLUID string) (MutationResult, error) {
 	if strings.TrimSpace(flowLUID) == "" {

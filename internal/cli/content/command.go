@@ -7,8 +7,14 @@ import (
 	"path"
 	"strings"
 
+	datasourcemove "github.com/ahillspace/tadx/actions/datasource/move"
+	datasourceupdate "github.com/ahillspace/tadx/actions/datasource/update"
+	flowupdate "github.com/ahillspace/tadx/actions/flow/update"
+	projectmove "github.com/ahillspace/tadx/actions/project/move"
+	workbookmove "github.com/ahillspace/tadx/actions/workbook/move"
 	workbookpublish "github.com/ahillspace/tadx/actions/workbook/publish"
 	workbookpull "github.com/ahillspace/tadx/actions/workbook/pull"
+	workbookupdate "github.com/ahillspace/tadx/actions/workbook/update"
 	"github.com/ahillspace/tadx/internal/cli/clierr"
 	"github.com/ahillspace/tadx/internal/pathspec"
 	"github.com/spf13/cobra"
@@ -24,6 +30,25 @@ type Publisher interface {
 	Execute(context.Context, workbookpublish.Input, bool) (workbookpublish.Output, error)
 }
 
+type WorkbookMover interface {
+	MoveWorkbook(context.Context, workbookmove.Input, bool) (workbookmove.Output, error)
+}
+type WorkbookUpdater interface {
+	UpdateWorkbook(context.Context, workbookupdate.Input, bool) (workbookupdate.Output, error)
+}
+type DatasourceMover interface {
+	MoveDatasource(context.Context, datasourcemove.Input, bool) (datasourcemove.Output, error)
+}
+type DatasourceUpdater interface {
+	UpdateDatasource(context.Context, datasourceupdate.Input, bool) (datasourceupdate.Output, error)
+}
+type FlowUpdater interface {
+	UpdateFlow(context.Context, flowupdate.Input, bool) (flowupdate.Output, error)
+}
+type ProjectMover interface {
+	MoveProject(context.Context, projectmove.Input, bool) (projectmove.Output, error)
+}
+
 // Renderer writes one structured result.
 type Renderer interface{ Render(any) error }
 
@@ -34,23 +59,29 @@ type Dependencies struct {
 	WorkbookLister      WorkbookLister
 	WorkbookInspector   WorkbookInspector
 	WorkbookDeleter     WorkbookDeleter
+	WorkbookMover       WorkbookMover
+	WorkbookUpdater     WorkbookUpdater
 	DatasourceLister    DatasourceLister
 	DatasourceInspector DatasourceInspector
 	DatasourceSchema    DatasourceSchemaGetter
 	DatasourcePuller    DatasourcePuller
 	DatasourcePublisher DatasourcePublisher
 	DatasourceDeleter   DatasourceDeleter
+	DatasourceMover     DatasourceMover
+	DatasourceUpdater   DatasourceUpdater
 	ProjectLister       ProjectLister
 	ProjectInspector    ProjectInspector
 	ProjectCreator      ProjectCreator
 	ProjectUpdater      ProjectUpdater
 	ProjectDeleter      ProjectDeleter
+	ProjectMover        ProjectMover
 	FlowLister          FlowLister
 	FlowInspector       FlowInspector
 	FlowPuller          FlowPuller
 	FlowPublisher       FlowPublisher
 	FlowMover           FlowMover
 	FlowDeleter         FlowDeleter
+	FlowUpdater         FlowUpdater
 	LineagePuller       LineagePuller
 	Renderer            Renderer
 	MutationsEnabled    bool
@@ -62,7 +93,12 @@ type Dependencies struct {
 
 // New creates the content workbook command tree.
 func New(deps Dependencies) *cobra.Command {
-	content := &cobra.Command{Use: "content", Short: "Operate Tableau content lifecycle"}
+	content := &cobra.Command{
+		Use:   "content",
+		Short: "Operate Tableau content lifecycle",
+		Long: "Operate workbook, datasource, flow, project, and lineage lifecycle with TADX.\n\n" +
+			"For analytical reads, use Tableau MCP tools such as list-views, get-view, get-view-data, get-view-image, get-datasource-metadata, and query-datasource.",
+	}
 	workbook := &cobra.Command{Use: "workbook", Short: "Operate Tableau workbooks"}
 	workbook.AddCommand(newPull(deps), newPublish(deps))
 	if deps.WorkbookLister != nil && deps.WorkbookInspector != nil {
@@ -70,6 +106,12 @@ func New(deps Dependencies) *cobra.Command {
 	}
 	if deps.WorkbookDeleter != nil {
 		workbook.AddCommand(newWorkbookDelete(deps.WorkbookDeleter, deps.Renderer, deps.MutationsEnabled))
+	}
+	if deps.WorkbookMover != nil {
+		workbook.AddCommand(newWorkbookMove(deps))
+	}
+	if deps.WorkbookUpdater != nil {
+		workbook.AddCommand(newWorkbookUpdate(deps))
 	}
 	content.AddCommand(workbook)
 	if deps.DatasourceLister != nil && deps.DatasourceInspector != nil {
@@ -79,6 +121,12 @@ func New(deps Dependencies) *cobra.Command {
 		}
 		if deps.DatasourcePuller != nil && deps.DatasourcePublisher != nil && deps.DatasourceDeleter != nil {
 			addDatasourceLifecycle(datasource, datasourceLifecycleDependencies{puller: deps.DatasourcePuller, publisher: deps.DatasourcePublisher, deleter: deps.DatasourceDeleter, renderer: deps.Renderer, mutationsEnabled: deps.MutationsEnabled})
+		}
+		if deps.DatasourceMover != nil {
+			datasource.AddCommand(newDatasourceMove(deps))
+		}
+		if deps.DatasourceUpdater != nil {
+			datasource.AddCommand(newDatasourceUpdate(deps))
 		}
 		content.AddCommand(datasource)
 	}

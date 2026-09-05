@@ -45,6 +45,9 @@ func newProject(deps Dependencies) *cobra.Command {
 	if deps.ProjectDeleter != nil {
 		command.AddCommand(newProjectDelete(deps))
 	}
+	if deps.ProjectMover != nil {
+		command.AddCommand(newProjectMove(deps))
+	}
 	return command
 }
 

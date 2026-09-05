@@ -11,21 +11,27 @@ import (
 	workspaceclean "github.com/ahillspace/tadx/actions/workspace/clean"
 	workspaceclone "github.com/ahillspace/tadx/actions/workspace/clone"
 	workspacecreate "github.com/ahillspace/tadx/actions/workspace/create"
+	workspacedelete "github.com/ahillspace/tadx/actions/workspace/delete"
 	workspacelist "github.com/ahillspace/tadx/actions/workspace/list"
 	workspacemove "github.com/ahillspace/tadx/actions/workspace/move"
+	workspacesetdefault "github.com/ahillspace/tadx/actions/workspace/setdefault"
 	workspacestatus "github.com/ahillspace/tadx/actions/workspace/status"
+	workspaceunregister "github.com/ahillspace/tadx/actions/workspace/unregister"
 	workspacecli "github.com/ahillspace/tadx/internal/cli/workspace"
 )
 
 type actions struct {
-	create  []workspacecreate.Input
-	clone   []workspaceclone.Input
-	list    []workspacelist.Input
-	status  []workspacestatus.Input
-	move    []workspacemove.Input
-	delete  []artifactdelete.Input
-	clean   []workspaceclean.Input
-	preview []bool
+	create          []workspacecreate.Input
+	clone           []workspaceclone.Input
+	list            []workspacelist.Input
+	status          []workspacestatus.Input
+	move            []workspacemove.Input
+	delete          []artifactdelete.Input
+	clean           []workspaceclean.Input
+	preview         []bool
+	setDefault      []workspacesetdefault.Input
+	unregister      []workspaceunregister.Input
+	deleteWorkspace []workspacedelete.Input
 }
 
 func (a *actions) Create(_ context.Context, input workspacecreate.Input) (workspacecreate.Output, error) {
@@ -57,6 +63,19 @@ func (a *actions) Clean(_ context.Context, input workspaceclean.Input) (workspac
 	a.clean = append(a.clean, input)
 	return workspaceclean.Output{}, nil
 }
+func (a *actions) SetDefault(_ context.Context, input workspacesetdefault.Input) (workspacesetdefault.Output, error) {
+	a.setDefault = append(a.setDefault, input)
+	return workspacesetdefault.Output{}, nil
+}
+func (a *actions) Unregister(_ context.Context, input workspaceunregister.Input) (workspaceunregister.Output, error) {
+	a.unregister = append(a.unregister, input)
+	return workspaceunregister.Output{}, nil
+}
+func (a *actions) DeleteWorkspace(_ context.Context, input workspacedelete.Input, preview bool) (workspacedelete.Output, error) {
+	a.deleteWorkspace = append(a.deleteWorkspace, input)
+	a.preview = append(a.preview, preview)
+	return workspacedelete.Output{}, nil
+}
 
 type renderer struct{ calls int }
 
@@ -65,11 +84,14 @@ func (r *renderer) Render(any) error { r.calls++; return nil }
 func TestWorkspaceCommandsMapExactInputs(t *testing.T) {
 	a := &actions{}
 	r := &renderer{}
-	command := workspacecli.New(workspacecli.Dependencies{Creator: a, Lister: a, Statuser: a, Mover: a, Deleter: a, Cleaner: a, Renderer: r})
+	command := workspacecli.New(workspacecli.Dependencies{Creator: a, Lister: a, Statuser: a, DefaultSetter: a, Unregistrar: a, WorkspaceDeleter: a, Mover: a, Deleter: a, Cleaner: a, Renderer: r})
 	commands := [][]string{
 		{"create", "development"},
 		{"list", "--limit", "5", "--cursor", "10"},
 		{"status", "--workspace", "development", "--limit", "7", "--cursor", "3"},
+		{"set-default", "development"},
+		{"unregister", "old"},
+		{"delete", "throwaway", "--force", "--preview"},
 		{"move", "--source", "development", "--destination", "archive", "--kind", "workbook", "--id", "wb-1"},
 		{"artifact", "delete", "--workspace", "archive", "--artifact", "artifacts/workbook/Finance", "--force", "--preview"},
 		{"clean", "--workspace", "archive", "--class", "temporary"},
@@ -89,10 +111,19 @@ func TestWorkspaceCommandsMapExactInputs(t *testing.T) {
 	if !reflect.DeepEqual(a.status, []workspacestatus.Input{{Workspace: "development", Limit: 7, Cursor: "3"}}) {
 		t.Fatalf("status = %#v", a.status)
 	}
+	if !reflect.DeepEqual(a.setDefault, []workspacesetdefault.Input{{Name: "development"}}) {
+		t.Fatalf("set default = %#v", a.setDefault)
+	}
+	if !reflect.DeepEqual(a.unregister, []workspaceunregister.Input{{Name: "old"}}) {
+		t.Fatalf("unregister = %#v", a.unregister)
+	}
+	if !reflect.DeepEqual(a.deleteWorkspace, []workspacedelete.Input{{Name: "throwaway", Force: true}}) {
+		t.Fatalf("delete workspace = %#v", a.deleteWorkspace)
+	}
 	if !reflect.DeepEqual(a.move, []workspacemove.Input{{SourceWorkspace: "development", DestinationWorkspace: "archive", Kind: "workbook", LUID: "wb-1"}}) {
 		t.Fatalf("move = %#v", a.move)
 	}
-	if !reflect.DeepEqual(a.delete, []artifactdelete.Input{{Workspace: "archive", Path: "artifacts/workbook/Finance", Force: true}}) || !reflect.DeepEqual(a.preview, []bool{true}) {
+	if !reflect.DeepEqual(a.delete, []artifactdelete.Input{{Workspace: "archive", Path: "artifacts/workbook/Finance", Force: true}}) || !reflect.DeepEqual(a.preview, []bool{true, true}) {
 		t.Fatalf("delete = %#v preview = %#v", a.delete, a.preview)
 	}
 	if !reflect.DeepEqual(a.clean, []workspaceclean.Input{{Workspace: "archive", Class: "temporary"}}) {
@@ -100,6 +131,29 @@ func TestWorkspaceCommandsMapExactInputs(t *testing.T) {
 	}
 	if r.calls != len(commands) {
 		t.Fatalf("render calls = %d", r.calls)
+	}
+}
+
+func TestWorkspaceRegistryUsePreservesPositionalArguments(t *testing.T) {
+	command := workspacecli.New(workspacecli.Dependencies{Uses: map[string]string{
+		"workspace.create":      "create",
+		"workspace.set-default": "set-default",
+		"workspace.unregister":  "unregister",
+		"workspace.delete":      "delete",
+	}})
+	for _, test := range []struct {
+		path string
+		want string
+	}{
+		{path: "create", want: "create <name>"},
+		{path: "set-default", want: "set-default <name>"},
+		{path: "unregister", want: "unregister <name>"},
+		{path: "delete", want: "delete <name>"},
+	} {
+		found, _, err := command.Find([]string{test.path})
+		if err != nil || found.Use != test.want {
+			t.Fatalf("Find(%s) use = %q, error = %v, want %q", test.path, found.Use, err, test.want)
+		}
 	}
 }
 

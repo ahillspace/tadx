@@ -34,5 +34,23 @@ The `--as-job` option polls supported publishes to a bounded result; do not inte
 
 Content `delete` removes remote Tableau content.
 `workspace artifact delete` removes a local managed artifact.
-`workspace move` transfers a local artifact between workspaces and preserves Tableau identity; `content flow move` changes the remote project.
+`workspace move` transfers a local artifact between workspaces and preserves Tableau identity.
+Content `move` changes the remote project without downloading or republishing the item.
 Inspect the exact target and applicable help before destructive changes.
+
+## Move and update remote content
+
+Use authoritative LUIDs after discovery, and use `--preview` when the requested destination or field change needs review.
+
+```text
+tadx content workbook move --environment <alias> --id <workbook-luid> --destination-project-id <project-luid> --preview
+tadx content datasource move --environment <alias> --id <datasource-luid> --destination-project-id <project-luid> --preview
+tadx content workbook update --environment <alias> --id <workbook-luid> --new-name "<name>" --owner-id <user-luid> --preview
+tadx content datasource update --environment <alias> --id <datasource-luid> --new-name "<name>" --owner-id <user-luid> --preview
+tadx content flow update --environment <alias> --id <flow-luid> --owner-id <user-luid> --preview
+```
+
+For move, use exactly one destination selector: `--destination-project-id` or `--destination-project`.
+Workbook and datasource update accept `--new-name`, `--owner-id`, or both.
+Flow update changes only the owner because Tableau has no supported flow rename operation.
+Every content update or move requires an explicit environment and revalidates the exact remote identity.

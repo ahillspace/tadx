@@ -44,10 +44,10 @@ func newRemoteContentCommands(runtime *runtimeDependencies) *remoteContentComman
 
 func (c *remoteContentCommands) dependencies() *contentcli.Dependencies {
 	return &contentcli.Dependencies{
-		WorkbookLister: c, WorkbookInspector: c, WorkbookDeleter: c,
-		DatasourceLister: c, DatasourceInspector: c, DatasourceSchema: c, DatasourcePuller: c, DatasourcePublisher: c, DatasourceDeleter: c,
-		ProjectLister: c, ProjectInspector: c, ProjectCreator: c, ProjectUpdater: c, ProjectDeleter: c,
-		FlowLister: c, FlowInspector: c, FlowPuller: c, FlowPublisher: c, FlowMover: c, FlowDeleter: c,
+		WorkbookLister: c, WorkbookInspector: c, WorkbookDeleter: c, WorkbookMover: c, WorkbookUpdater: c,
+		DatasourceLister: c, DatasourceInspector: c, DatasourceSchema: c, DatasourcePuller: c, DatasourcePublisher: c, DatasourceDeleter: c, DatasourceMover: c, DatasourceUpdater: c,
+		ProjectLister: c, ProjectInspector: c, ProjectCreator: c, ProjectUpdater: c, ProjectDeleter: c, ProjectMover: c,
+		FlowLister: c, FlowInspector: c, FlowPuller: c, FlowPublisher: c, FlowMover: c, FlowDeleter: c, FlowUpdater: c,
 		LineagePuller: c,
 	}
 }

@@ -71,6 +71,18 @@ func TestMutationAdapterRejectsIncompleteInputs(t *testing.T) {
 	}
 }
 
+func TestMutationAdapterAcceptsParentOnlyProjectUpdate(t *testing.T) {
+	client := &projectMutationClient{}
+	adapter := resourceproject.NewMutationAdapter(client)
+	parent := "parent-2"
+	if _, err := adapter.UpdateProject(context.Background(), tableauproject.UpdateRequest{LUID: "project-1", ParentLUID: &parent}); err != nil {
+		t.Fatal(err)
+	}
+	if client.update.ParentLUID == nil || *client.update.ParentLUID != parent {
+		t.Fatalf("update = %#v", client.update)
+	}
+}
+
 func TestAdapterFindsCaseInsensitiveSiblingCollisionOnly(t *testing.T) {
 	client := &projectClient{pages: map[int]tableauproject.Page{1: {
 		Number: 1, Size: 4, Total: 4,

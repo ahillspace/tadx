@@ -1,8 +1,10 @@
 package cli_test
 
 import (
+	"bytes"
 	"context"
 	"reflect"
+	"strings"
 	"testing"
 
 	authcheck "github.com/ahillspace/tadx/actions/auth/check"
@@ -116,17 +118,29 @@ func TestRootAddsEnvironmentAndAuthStatusCommands(t *testing.T) {
 			got = append(got, registration.CapabilityID)
 		}
 	}
-	want := []string{"auth.status", "env.profile.add", "env.profile.set-default", "env.profile.get", "env.profile.list", "env.profile.remove", "env.profile.update", "workspace.artifact.delete", "workspace.clean", "workspace.clone", "workspace.create", "workspace.list", "workspace.move", "workspace.register", "workspace.status"}
+	want := []string{"auth.status", "env.profile.add", "env.profile.set-default", "env.profile.get", "env.profile.list", "env.profile.remove", "env.profile.update", "workspace.artifact.delete", "workspace.clean", "workspace.clone", "workspace.create", "workspace.delete", "workspace.list", "workspace.move", "workspace.register", "workspace.set-default", "workspace.status", "workspace.unregister"}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("registrations = %v, want %v", got, want)
 	}
 }
 
-func TestRootDisablesDefaultCompletionCommand(t *testing.T) {
+func TestRootEnablesUnregisteredLocalCompletionCommand(t *testing.T) {
 	cmd := cli.NewRoot(dependencies(&lister{}, &getter{}, &renderer{}))
+	var output bytes.Buffer
+	cmd.SetOut(&output)
 	cmd.SetArgs([]string{"completion", "bash"})
-	if err := cmd.Execute(); err == nil {
-		t.Fatal("completion command executed, want usage error")
+	if err := cmd.Execute(); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(output.String(), "__start_tadx") {
+		t.Fatalf("completion output = %q", output.String())
+	}
+	completion, _, err := cmd.Find([]string{"completion"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if completion.Annotations["tadx.capability"] != "" || completion.Annotations["tadx.grouping"] != "true" {
+		t.Fatalf("completion annotations = %#v", completion.Annotations)
 	}
 }
 

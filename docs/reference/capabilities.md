@@ -13,6 +13,8 @@ Use `tadx capability get <id>` for the same focused metadata at runtime.
 | `admin.group.delete` | cli | ship | ready | implemented | `tadx admin group delete` |
 | `admin.group.inspect` | cli | ship | ready | implemented | `tadx admin group inspect` |
 | `admin.group.list` | cli | ship | ready | implemented | `tadx admin group list` |
+| `admin.group.member.add` | cli | ship | ready | implemented | `tadx admin group member add` |
+| `admin.group.member.remove` | cli | ship | ready | implemented | `tadx admin group member remove` |
 | `admin.group.update` | cli | ship | ready | implemented | `tadx admin group update` |
 | `admin.permission.create` | cli | ship | ready | implemented | `tadx admin permission create` |
 | `admin.permission.delete` | cli | ship | ready | implemented | `tadx admin permission delete` |
@@ -23,20 +25,27 @@ Use `tadx capability get <id>` for the same focused metadata at runtime.
 | `admin.user.list` | cli | ship | ready | implemented | `tadx admin user list` |
 | `admin.user.update` | cli | ship | ready | implemented | `tadx admin user update` |
 | `agent.install` | cli | ship | ready | implemented | `tadx agent install` |
+| `agent.uninstall` | cli | ship | ready | implemented | `tadx agent uninstall` |
 | `auth.check` | cli | ship | ready | implemented | `tadx auth check` |
 | `auth.status` | cli | ship | ready | implemented | `tadx auth status` |
 | `capability.get` | cli | ship | ready | implemented | `tadx capability get` |
 | `capability.list` | cli | ship | ready | implemented | `tadx capability list` |
 | `catalog.refresh` | cli | ship | ready | implemented | `tadx catalog refresh` |
 | `catalog.status` | cli | ship | ready | implemented | `tadx catalog status` |
+| `custom-view.data` | tableau-mcp | delegated | ready | external/delegated | None |
+| `custom-view.image` | tableau-mcp | delegated | ready | external/delegated | None |
+| `custom-view.list` | tableau-mcp | delegated | ready | external/delegated | None |
 | `datasource.delete` | cli | ship | ready | implemented | `tadx content datasource delete` |
 | `datasource.field-description.generate` | agent/skill | delegated | ready | external/delegated | None |
 | `datasource.inspect` | cli | ship | ready | implemented | `tadx content datasource inspect` |
 | `datasource.list` | cli | ship | ready | implemented | `tadx content datasource list` |
+| `datasource.metadata` | tableau-mcp | delegated | ready | external/delegated | None |
+| `datasource.move` | cli | ship | ready | implemented | `tadx content datasource move` |
 | `datasource.publish` | cli | ship | ready | implemented | `tadx content datasource publish` |
 | `datasource.pull` | cli | ship | ready | implemented | `tadx content datasource pull` |
-| `datasource.query` | mcp | delegated | ready | external/delegated | None |
+| `datasource.query` | tableau-mcp | delegated | ready | external/delegated | None |
 | `datasource.schema` | cli | ship | ready | implemented | `tadx content datasource schema` |
+| `datasource.update` | cli | ship | ready | implemented | `tadx content datasource update` |
 | `doctor.run` | cli | ship | ready | implemented | `tadx doctor` |
 | `env.profile.add` | cli | ship | ready | implemented | `tadx env add` |
 | `env.profile.get` | cli | ship | ready | implemented | `tadx env get` |
@@ -50,41 +59,53 @@ Use `tadx capability get <id>` for the same focused metadata at runtime.
 | `flow.move` | cli | ship | ready | implemented | `tadx content flow move` |
 | `flow.publish` | cli | ship | ready | implemented | `tadx content flow publish` |
 | `flow.pull` | cli | ship | ready | implemented | `tadx content flow pull` |
+| `flow.update` | cli | ship | ready | implemented | `tadx content flow update` |
 | `lineage.pull` | cli | ship | ready | implemented | `tadx content lineage pull` |
 | `project.create` | cli | ship | ready | implemented | `tadx content project create` |
 | `project.delete` | cli | ship | ready | implemented | `tadx content project delete` |
 | `project.inspect` | cli | ship | ready | implemented | `tadx content project inspect` |
 | `project.list` | cli | ship | ready | implemented | `tadx content project list` |
+| `project.move` | cli | ship | ready | implemented | `tadx content project move` |
 | `project.update` | cli | ship | ready | implemented | `tadx content project update` |
 | `pulse.definition.create` | cli | ship | ready | implemented | `tadx pulse definition create` |
 | `pulse.definition.delete` | cli | ship | ready | implemented | `tadx pulse definition delete` |
 | `pulse.definition.inspect` | cli | ship | ready | implemented | `tadx pulse definition inspect` |
 | `pulse.definition.list` | cli | ship | ready | implemented | `tadx pulse definition list` |
 | `pulse.definition.pull` | cli | ship | ready | implemented | `tadx pulse definition pull` |
+| `pulse.insight.brief` | tableau-mcp | delegated | ready | external/delegated | None |
 | `pulse.metric.delete` | cli | ship | ready | implemented | `tadx pulse metric delete` |
 | `pulse.metric.follow` | cli | ship | ready | implemented | `tadx pulse metric follow` |
 | `pulse.metric.followers` | cli | ship | ready | implemented | `tadx pulse metric followers` |
 | `pulse.metric.fork` | cli | ship | ready | implemented | `tadx pulse metric fork` |
+| `pulse.metric.insight-bundle` | tableau-mcp | delegated | ready | external/delegated | None |
 | `pulse.metric.inspect` | cli | ship | ready | implemented | `tadx pulse metric inspect` |
 | `pulse.metric.list` | cli | ship | ready | implemented | `tadx pulse metric list` |
 | `pulse.metric.unfollow` | cli | ship | ready | implemented | `tadx pulse metric unfollow` |
-| `pulse.metric.values-insights` | mcp | delegated | ready | external/delegated | None |
 | `search.run` | cli | ship | ready | implemented | `tadx search` |
-| `view.read` | mcp | delegated | ready | external/delegated | None |
+| `version.get` | cli | ship | ready | implemented | `tadx version` |
+| `view.data` | tableau-mcp | delegated | ready | external/delegated | None |
+| `view.image` | tableau-mcp | delegated | ready | external/delegated | None |
+| `view.inspect` | tableau-mcp | delegated | ready | external/delegated | None |
+| `view.list` | tableau-mcp | delegated | ready | external/delegated | None |
 | `workbook.author` | tableau/desktop-mcp | delegated | ready | external/delegated | None |
 | `workbook.delete` | cli | ship | ready | implemented | `tadx content workbook delete` |
 | `workbook.inspect` | cli | ship | ready | implemented | `tadx content workbook inspect` |
 | `workbook.list` | cli | ship | ready | implemented | `tadx content workbook list` |
+| `workbook.move` | cli | ship | ready | implemented | `tadx content workbook move` |
 | `workbook.publish` | cli | ship | ready | implemented | `tadx content workbook publish` |
 | `workbook.pull` | cli | ship | ready | implemented | `tadx content workbook pull` |
+| `workbook.update` | cli | ship | ready | implemented | `tadx content workbook update` |
 | `workspace.artifact.delete` | cli | ship | ready | implemented | `tadx workspace artifact delete` |
 | `workspace.clean` | cli | ship | ready | implemented | `tadx workspace clean` |
 | `workspace.clone` | cli | ship | ready | implemented | `tadx workspace clone` |
 | `workspace.create` | cli | ship | ready | implemented | `tadx workspace create` |
+| `workspace.delete` | cli | ship | ready | implemented | `tadx workspace delete` |
 | `workspace.list` | cli | ship | ready | implemented | `tadx workspace list` |
 | `workspace.move` | cli | ship | ready | implemented | `tadx workspace move` |
 | `workspace.register` | cli | ship | ready | implemented | `tadx workspace register` |
+| `workspace.set-default` | cli | ship | ready | implemented | `tadx workspace set-default` |
 | `workspace.status` | cli | ship | ready | implemented | `tadx workspace status` |
+| `workspace.unregister` | cli | ship | ready | implemented | `tadx workspace unregister` |
 
 ## Capability definitions
 
@@ -191,6 +212,58 @@ List groups with bounded identity and directory metadata.
 - Validation or blocker: Contract-verified bounded group pagination and explicit source selection
 - Blocker ID: None
 - Command binding: `tadx admin group list`
+
+### `admin.group.member.add`
+
+Add one exact user to one exact group without replacing other members, or preview the operation.
+
+- Surface: tadx admin group member add
+- Operation type: change
+- Owner: cli
+- MCP overlap: None
+- Selectors: Exact group LUID and user LUID; explicit environment/site
+- Products and availability: Cloud / Server
+- Product disposition: ship
+- Evidence level: contract-verified
+- Verification readiness: ready
+- Implementation state: implemented
+- Local write: No
+- Remote mutation: Yes
+- Supports `--preview`: Yes
+- Raw capable: No
+- Safety and guard: Authoritative membership pre-read; existing membership is an exit-zero no-op; preserve unrelated members
+- Artifact effect: None
+- Upstream operation: GET .../groups/{group-id}/users; POST .../groups/{group-id}/users
+- Evidence: docs/evidence/admin-rest-contract.md
+- Validation or blocker: Contract-verified exact incremental add, preview, no-op, revalidation, and uncertain outcome
+- Blocker ID: None
+- Command binding: `tadx admin group member add`
+
+### `admin.group.member.remove`
+
+Remove one exact user from one exact group without replacing other members, or preview the operation.
+
+- Surface: tadx admin group member remove
+- Operation type: change
+- Owner: cli
+- MCP overlap: None
+- Selectors: Exact group LUID and user LUID; explicit environment/site
+- Products and availability: Cloud / Server
+- Product disposition: ship
+- Evidence level: contract-verified
+- Verification readiness: ready
+- Implementation state: implemented
+- Local write: No
+- Remote mutation: Yes
+- Supports `--preview`: Yes
+- Raw capable: No
+- Safety and guard: Authoritative membership pre-read; absent membership is an exit-zero no-op; preserve unrelated members
+- Artifact effect: None
+- Upstream operation: GET .../groups/{group-id}/users; DELETE .../groups/{group-id}/users/{user-id}
+- Evidence: docs/evidence/admin-rest-contract.md
+- Validation or blocker: Contract-verified exact incremental removal, preview, no-op, revalidation, and uncertain outcome
+- Blocker ID: None
+- Command binding: `tadx admin group member remove`
 
 ### `admin.group.update`
 
@@ -428,7 +501,7 @@ Update supported attributes of one exact user, or preview the operation.
 
 ### `agent.install`
 
-Install the bundled tadx and tadx-pulse skill packages into the selected agent's global skill directory.
+Install the bundled TADX Guidance packages into the selected agent's global skill directory.
 
 - Surface: tadx agent install
 - Operation type: change
@@ -451,6 +524,32 @@ Install the bundled tadx and tadx-pulse skill packages into the selected agent's
 - Validation or blocker: Local contract verified by installer and CLI tests
 - Blocker ID: None
 - Command binding: `tadx agent install`
+
+### `agent.uninstall`
+
+Remove TADX Guidance packages from one selected agent target.
+
+- Surface: tadx agent uninstall
+- Operation type: change
+- Owner: cli
+- MCP overlap: None
+- Selectors: Required target: claude, codex, or cursor
+- Products and availability: Local / all
+- Product disposition: ship
+- Evidence level: local-contract
+- Verification readiness: ready
+- Implementation state: implemented
+- Local write: Yes
+- Remote mutation: No
+- Supports `--preview`: Yes
+- Raw capable: No
+- Safety and guard: Exact bounded package paths; symlink rejection; divergent installed Guidance requires --force and retains a backup
+- Artifact effect: None
+- Upstream operation: Local agent Guidance directories
+- Evidence: Standard Agent Skills package format; installer manifest and local filesystem
+- Validation or blocker: Local contract verified by uninstaller and CLI tests
+- Blocker ID: None
+- Command binding: `tadx agent uninstall`
 
 ### `auth.check`
 
@@ -608,6 +707,84 @@ Report generation age, completeness, source, and stale state.
 - Blocker ID: None
 - Command binding: `tadx catalog status`
 
+### `custom-view.data`
+
+Retrieve rendered data from one custom view.
+
+- Surface: Tableau MCP get-custom-view-data
+- Operation type: inspect
+- Owner: tableau-mcp
+- MCP overlap: get-custom-view-data
+- Selectors: Exact custom-view LUID and bounded filters
+- Products and availability: Cloud / Server with Tableau MCP availability
+- Product disposition: delegated
+- Evidence level: architecture-locked
+- Verification readiness: ready
+- Implementation state: external/delegated
+- Local write: No
+- Remote mutation: No
+- Supports `--preview`: No
+- Raw capable: No
+- Safety and guard: The host agent selects and connects Tableau MCP; TADX does not inspect that connection
+- Artifact effect: None
+- Upstream operation: Tableau MCP get-custom-view-data
+- Evidence: docs/evidence/tableau-mcp-delegation.md
+- Validation or blocker: Delegated; not executed or proxied by TADX
+- Blocker ID: None
+- Command binding: None
+
+### `custom-view.image`
+
+Retrieve a rendered image from one custom view.
+
+- Surface: Tableau MCP get-custom-view-image
+- Operation type: inspect
+- Owner: tableau-mcp
+- MCP overlap: get-custom-view-image
+- Selectors: Exact custom-view LUID and bounded render options
+- Products and availability: Cloud / Server with Tableau MCP availability
+- Product disposition: delegated
+- Evidence level: architecture-locked
+- Verification readiness: ready
+- Implementation state: external/delegated
+- Local write: No
+- Remote mutation: No
+- Supports `--preview`: No
+- Raw capable: No
+- Safety and guard: The host agent selects and connects Tableau MCP; TADX does not inspect that connection
+- Artifact effect: None
+- Upstream operation: Tableau MCP get-custom-view-image
+- Evidence: docs/evidence/tableau-mcp-delegation.md
+- Validation or blocker: Delegated; not executed or proxied by TADX
+- Blocker ID: None
+- Command binding: None
+
+### `custom-view.list`
+
+List saved custom views for analytical read workflows.
+
+- Surface: Tableau MCP list-custom-views
+- Operation type: find
+- Owner: tableau-mcp
+- MCP overlap: list-custom-views
+- Selectors: Workbook, owner, and name filters
+- Products and availability: Cloud / Server with Tableau MCP availability
+- Product disposition: delegated
+- Evidence level: architecture-locked
+- Verification readiness: ready
+- Implementation state: external/delegated
+- Local write: No
+- Remote mutation: No
+- Supports `--preview`: No
+- Raw capable: No
+- Safety and guard: The host agent selects and connects Tableau MCP; TADX does not inspect that connection
+- Artifact effect: None
+- Upstream operation: Tableau MCP list-custom-views
+- Evidence: docs/evidence/tableau-mcp-delegation.md
+- Validation or blocker: Delegated; not executed or proxied by TADX
+- Blocker ID: None
+- Command binding: None
+
 ### `datasource.delete`
 
 Delete one exact remote datasource, or preview the operation.
@@ -712,6 +889,58 @@ List published datasources with bounded lifecycle metadata.
 - Blocker ID: None
 - Command binding: `tadx content datasource list`
 
+### `datasource.metadata`
+
+Retrieve analytical field and datasource metadata for reasoning and query construction.
+
+- Surface: Tableau MCP get-datasource-metadata
+- Operation type: inspect
+- Owner: tableau-mcp
+- MCP overlap: get-datasource-metadata
+- Selectors: Published datasource LUID
+- Products and availability: Cloud / Server with Tableau MCP availability
+- Product disposition: delegated
+- Evidence level: architecture-locked
+- Verification readiness: ready
+- Implementation state: external/delegated
+- Local write: No
+- Remote mutation: No
+- Supports `--preview`: No
+- Raw capable: No
+- Safety and guard: The host agent selects and connects Tableau MCP; TADX does not inspect that connection
+- Artifact effect: None
+- Upstream operation: Tableau MCP get-datasource-metadata
+- Evidence: docs/evidence/tableau-mcp-delegation.md
+- Validation or blocker: Delegated; not executed or proxied by TADX
+- Blocker ID: None
+- Command binding: None
+
+### `datasource.move`
+
+Move one exact published datasource to one exact project on the same site, or preview the operation.
+
+- Surface: tadx content datasource move
+- Operation type: change
+- Owner: cli
+- MCP overlap: None
+- Selectors: Datasource LUID or exact name/project path; exact destination project LUID/path; explicit environment/site
+- Products and availability: Cloud / Server
+- Product disposition: ship
+- Evidence level: contract-verified
+- Verification readiness: ready
+- Implementation state: implemented
+- Local write: No
+- Remote mutation: Yes
+- Supports `--preview`: Yes
+- Raw capable: No
+- Safety and guard: Re-resolve source and destination immediately before mutation; equal destination is an exit-zero no-op; no cross-site move
+- Artifact effect: None
+- Upstream operation: PUT /api/{version}/sites/{site-id}/datasources/{datasource-id} with destination project
+- Evidence: docs/evidence/content-update-rest-contract.md
+- Validation or blocker: Contract-verified exact same-site movement, preview, no-op, drift, and uncertain outcome
+- Blocker ID: None
+- Command binding: `tadx content datasource move`
+
 ### `datasource.publish`
 
 Publish one local datasource, including explicit immediate-parent references for composed artifacts, or preview the operation.
@@ -770,10 +999,10 @@ Run analytical queries against datasource data.
 
 - Surface: Tableau MCP query-datasource
 - Operation type: inspect
-- Owner: mcp
-- MCP overlap: Primary tool
-- Selectors: Datasource/workbook datasource identity
-- Products and availability: Cloud / Server with VDS/MCP availability
+- Owner: tableau-mcp
+- MCP overlap: query-datasource
+- Selectors: Datasource and query identity
+- Products and availability: Cloud / Server with Tableau MCP availability
 - Product disposition: delegated
 - Evidence level: architecture-locked
 - Verification readiness: ready
@@ -782,11 +1011,11 @@ Run analytical queries against datasource data.
 - Remote mutation: No
 - Supports `--preview`: No
 - Raw capable: No
-- Safety and guard: MCP contract
+- Safety and guard: The host agent selects and connects Tableau MCP; TADX does not inspect that connection
 - Artifact effect: None
-- Upstream operation: MCP / VDS query-datasource
-- Evidence: A1 §§3.2–3.4, 8.5, ADR-031; C1 §§2.4, 3
-- Validation or blocker: Delegated; not executed by TADX
+- Upstream operation: Tableau MCP query-datasource
+- Evidence: docs/evidence/tableau-mcp-delegation.md
+- Validation or blocker: Delegated; not executed or proxied by TADX
 - Blocker ID: None
 - Command binding: None
 
@@ -816,16 +1045,42 @@ Inspect one datasource's logical tables and search a bounded field projection.
 - Blocker ID: None
 - Command binding: `tadx content datasource schema`
 
+### `datasource.update`
+
+Rename one exact published datasource or replace its owner, or preview the operation.
+
+- Surface: tadx content datasource update
+- Operation type: change
+- Owner: cli
+- MCP overlap: None
+- Selectors: Datasource LUID or exact name/project path; explicit new name and/or owner LUID; explicit environment/site
+- Products and availability: Cloud / Server
+- Product disposition: ship
+- Evidence level: contract-verified
+- Verification readiness: ready
+- Implementation state: implemented
+- Local write: No
+- Remote mutation: Yes
+- Supports `--preview`: Yes
+- Raw capable: No
+- Safety and guard: Re-resolve authoritative identity immediately before mutation; at least one change required; equal values are an exit-zero no-op
+- Artifact effect: None
+- Upstream operation: PUT /api/{version}/sites/{site-id}/datasources/{datasource-id}
+- Evidence: docs/evidence/content-update-rest-contract.md
+- Validation or blocker: Contract-verified bounded rename and owner replacement with preview, no-op, drift, and uncertain outcome
+- Blocker ID: None
+- Command binding: `tadx content datasource update`
+
 ### `doctor.run`
 
-Diagnose config, PAT presence/validity, connectivity, MCP availability, catalog, workspace, and logging context without mutation.
+Diagnose config, PAT presence and validity, Tableau connectivity, catalog, workspace, and logging context without mutation.
 
 - Surface: tadx doctor
 - Operation type: inspect
 - Owner: cli
 - MCP overlap: None
 - Selectors: Optional environment/workspace scopes
-- Products and availability: Cloud / Server / Desktop / Pulse as configured
+- Products and availability: Cloud / Server / Pulse as configured
 - Product disposition: ship
 - Evidence level: architecture-locked
 - Verification readiness: ready
@@ -834,11 +1089,11 @@ Diagnose config, PAT presence/validity, connectivity, MCP availability, catalog,
 - Remote mutation: No
 - Supports `--preview`: No
 - Raw capable: No
-- Safety and guard: Redacted checks; no persistent logging unless TADX_LOG_LEVEL is set
+- Safety and guard: Redacted checks; never probes or reports Tableau MCP connectivity; no persistent logging unless TADX_LOG_LEVEL is set
 - Artifact effect: None
-- Upstream operation: Local validators plus read-only auth/connectivity probes
-- Evidence: A1 §§1.5, 5.12, 7.7, 9.1; C1 §2.1
-- Validation or blocker: Architecture-locked; exact MCP probe is ordinary implementation work
+- Upstream operation: Local validators plus read-only Tableau auth and connectivity probes
+- Evidence: A1 §§1.5, 5.12, 7.7, 9.1; maintainer MCP ownership decision
+- Validation or blocker: Architecture-locked; the user and host agent own Tableau MCP connection state
 - Blocker ID: None
 - Command binding: `tadx doctor`
 
@@ -1154,6 +1409,32 @@ Download one flow unchanged, capture bounded lineage, and create a provenance-be
 - Blocker ID: None
 - Command binding: `tadx content flow pull`
 
+### `flow.update`
+
+Replace the owner of one exact flow, or preview the operation.
+
+- Surface: tadx content flow update
+- Operation type: change
+- Owner: cli
+- MCP overlap: None
+- Selectors: Flow LUID or exact name/project path; explicit owner LUID; explicit environment/site
+- Products and availability: Cloud / Server with flow support; owner endpoint requires API 3.27+
+- Product disposition: ship
+- Evidence level: contract-verified
+- Verification readiness: ready
+- Implementation state: implemented
+- Local write: No
+- Remote mutation: Yes
+- Supports `--preview`: Yes
+- Raw capable: No
+- Safety and guard: Re-resolve authoritative identity immediately before mutation; equal owner is an exit-zero no-op; Tableau does not expose a flow rename field
+- Artifact effect: None
+- Upstream operation: PUT /api/{version}/sites/{site-id}/flows/{flow-id}/owner/{user-id}
+- Evidence: docs/evidence/content-update-rest-contract.md
+- Validation or blocker: Contract-verified owner replacement with preview, no-op, drift, and uncertain outcome; flow rename is excluded
+- Blocker ID: None
+- Command binding: `tadx content flow update`
+
 ### `lineage.pull`
 
 Capture bounded lineage for one exact workbook, published datasource, or flow without downloading its native package.
@@ -1284,9 +1565,35 @@ List projects and their authoritative parent identity.
 - Blocker ID: None
 - Command binding: `tadx content project list`
 
+### `project.move`
+
+Reparent one exact project under one exact parent on the same site, or preview the operation.
+
+- Surface: tadx content project move
+- Operation type: change
+- Owner: cli
+- MCP overlap: None
+- Selectors: Project LUID/exact path; exact destination parent LUID/path; explicit environment/site
+- Products and availability: Cloud / Server
+- Product disposition: ship
+- Evidence level: contract-verified
+- Verification readiness: ready
+- Implementation state: implemented
+- Local write: No
+- Remote mutation: Yes
+- Supports `--preview`: Yes
+- Raw capable: No
+- Safety and guard: Re-resolve project and parent immediately before mutation; equal parent is an exit-zero no-op; prevent self-parent and descendant cycles
+- Artifact effect: None
+- Upstream operation: PUT /api/{version}/sites/{site-id}/projects/{project-id} with parent project
+- Evidence: docs/evidence/content-update-rest-contract.md
+- Validation or blocker: Contract-verified exact reparenting, preview, no-op, cycle guards, drift, and uncertain outcome
+- Blocker ID: None
+- Command binding: `tadx content project move`
+
 ### `project.update`
 
-Update bounded project metadata without generic hierarchy migration, or preview the operation.
+Update bounded project metadata without changing its parent, or preview the operation.
 
 - Surface: tadx content project update
 - Operation type: change
@@ -1302,7 +1609,7 @@ Update bounded project metadata without generic hierarchy migration, or preview 
 - Remote mutation: Yes
 - Supports `--preview`: Yes
 - Raw capable: No
-- Safety and guard: Parent-tree move excluded; equal values no-op
+- Safety and guard: Equal values are an exit-zero no-op; hierarchy changes use project.move
 - Artifact effect: None
 - Upstream operation: PUT /api/{version}/sites/{site-id}/projects/{project-id}
 - Evidence: docs/evidence/project-rest-contract.md
@@ -1440,6 +1747,32 @@ Materialize one definition as a JSON-backed artifact with provenance and baselin
 - Blocker ID: None
 - Command binding: `tadx pulse definition pull`
 
+### `pulse.insight.brief`
+
+Generate a Pulse insight brief from exact metrics.
+
+- Surface: Tableau MCP generate-pulse-insight-brief
+- Operation type: inspect
+- Owner: tableau-mcp
+- MCP overlap: generate-pulse-insight-brief
+- Selectors: Exact metric LUIDs and brief context
+- Products and availability: Tableau Cloud / Pulse with Tableau MCP availability
+- Product disposition: delegated
+- Evidence level: architecture-locked
+- Verification readiness: ready
+- Implementation state: external/delegated
+- Local write: No
+- Remote mutation: No
+- Supports `--preview`: No
+- Raw capable: No
+- Safety and guard: The host agent selects and connects Tableau MCP; TADX does not inspect that connection
+- Artifact effect: None
+- Upstream operation: Tableau MCP generate-pulse-insight-brief
+- Evidence: docs/evidence/tableau-mcp-delegation.md
+- Validation or blocker: Delegated; not executed or proxied by TADX
+- Blocker ID: None
+- Command binding: None
+
 ### `pulse.metric.delete`
 
 Delete one exact metric, or preview the operation.
@@ -1544,6 +1877,32 @@ Derive one metric by changing bounded timeframe or dimension filters, or preview
 - Blocker ID: None
 - Command binding: `tadx pulse metric fork`
 
+### `pulse.metric.insight-bundle`
+
+Retrieve current Pulse metric values and generated insights.
+
+- Surface: Tableau MCP generate-pulse-metric-value-insight-bundle
+- Operation type: inspect
+- Owner: tableau-mcp
+- MCP overlap: generate-pulse-metric-value-insight-bundle
+- Selectors: Exact metric LUIDs
+- Products and availability: Tableau Cloud / Pulse with Tableau MCP availability
+- Product disposition: delegated
+- Evidence level: architecture-locked
+- Verification readiness: ready
+- Implementation state: external/delegated
+- Local write: No
+- Remote mutation: No
+- Supports `--preview`: No
+- Raw capable: No
+- Safety and guard: The host agent selects and connects Tableau MCP; TADX does not inspect that connection
+- Artifact effect: None
+- Upstream operation: Tableau MCP generate-pulse-metric-value-insight-bundle
+- Evidence: docs/evidence/tableau-mcp-delegation.md
+- Validation or blocker: Delegated; not executed or proxied by TADX
+- Blocker ID: None
+- Command binding: None
+
 ### `pulse.metric.inspect`
 
 Inspect one exact Pulse metric specification.
@@ -1622,32 +1981,6 @@ Remove one exact metric subscription, or preview the operation.
 - Blocker ID: None
 - Command binding: `tadx pulse metric unfollow`
 
-### `pulse.metric.values-insights`
-
-Query current Pulse values, insight bundles, and briefs.
-
-- Surface: Tableau MCP Pulse insight tools
-- Operation type: inspect
-- Owner: mcp
-- MCP overlap: generate-pulse-metric-value-insight-bundle; generate-pulse-insight-brief
-- Selectors: Metric IDs
-- Products and availability: Tableau Cloud / Pulse with MCP availability
-- Product disposition: delegated
-- Evidence level: architecture-locked
-- Verification readiness: ready
-- Implementation state: external/delegated
-- Local write: No
-- Remote mutation: No
-- Supports `--preview`: No
-- Raw capable: No
-- Safety and guard: MCP contract
-- Artifact effect: None
-- Upstream operation: Tableau MCP / Pulse insight APIs
-- Evidence: A1 §§3.4, 8.5, ADR-023/031; C1 §§2.7, 3
-- Validation or blocker: Delegated; not executed by TADX
-- Blocker ID: None
-- Command binding: None
-
 ### `search.run`
 
 Search supported content, administration, and Pulse resources.
@@ -1674,16 +2007,42 @@ Search supported content, administration, and Pulse resources.
 - Blocker ID: None
 - Command binding: `tadx search`
 
-### `view.read`
+### `version.get`
 
-Retrieve rendered view data or images for analysis/presentation.
+Report the installed TADX version and optionally check the latest published release.
 
-- Surface: Tableau MCP view/custom-view read tools
+- Surface: tadx version
 - Operation type: inspect
-- Owner: mcp
-- MCP overlap: get-view-data, get-view-image, get-custom-view-data, get-custom-view-image
-- Selectors: View/custom-view identity
-- Products and availability: Cloud / Server with MCP availability
+- Owner: cli
+- MCP overlap: None
+- Selectors: Optional --check
+- Products and availability: Local / all; release check requires GitHub access
+- Product disposition: ship
+- Evidence level: local-contract
+- Verification readiness: ready
+- Implementation state: implemented
+- Local write: No
+- Remote mutation: No
+- Supports `--preview`: No
+- Raw capable: No
+- Safety and guard: Offline by default; optional check performs one bounded request and never changes the binary
+- Artifact effect: None
+- Upstream operation: Build metadata; optional GitHub latest-release endpoint
+- Evidence: Go build information and bounded HTTP contract
+- Validation or blocker: Local contract verified by version and CLI tests
+- Blocker ID: None
+- Command binding: `tadx version`
+
+### `view.data`
+
+Retrieve rendered view data for analysis.
+
+- Surface: Tableau MCP get-view-data
+- Operation type: inspect
+- Owner: tableau-mcp
+- MCP overlap: get-view-data
+- Selectors: Exact view LUID and bounded filters
+- Products and availability: Cloud / Server with Tableau MCP availability
 - Product disposition: delegated
 - Evidence level: architecture-locked
 - Verification readiness: ready
@@ -1692,11 +2051,89 @@ Retrieve rendered view data or images for analysis/presentation.
 - Remote mutation: No
 - Supports `--preview`: No
 - Raw capable: No
-- Safety and guard: MCP contract
+- Safety and guard: The host agent selects and connects Tableau MCP; TADX does not inspect that connection
 - Artifact effect: None
-- Upstream operation: Tableau MCP / underlying view APIs
-- Evidence: A1 §§3.2–3.4; C1 §§2.3, 3
-- Validation or blocker: Delegated; not executed by TADX
+- Upstream operation: Tableau MCP get-view-data
+- Evidence: docs/evidence/tableau-mcp-delegation.md
+- Validation or blocker: Delegated; not executed or proxied by TADX
+- Blocker ID: None
+- Command binding: None
+
+### `view.image`
+
+Retrieve a rendered view image.
+
+- Surface: Tableau MCP get-view-image
+- Operation type: inspect
+- Owner: tableau-mcp
+- MCP overlap: get-view-image
+- Selectors: Exact view LUID and bounded render options
+- Products and availability: Cloud / Server with Tableau MCP availability
+- Product disposition: delegated
+- Evidence level: architecture-locked
+- Verification readiness: ready
+- Implementation state: external/delegated
+- Local write: No
+- Remote mutation: No
+- Supports `--preview`: No
+- Raw capable: No
+- Safety and guard: The host agent selects and connects Tableau MCP; TADX does not inspect that connection
+- Artifact effect: None
+- Upstream operation: Tableau MCP get-view-image
+- Evidence: docs/evidence/tableau-mcp-delegation.md
+- Validation or blocker: Delegated; not executed or proxied by TADX
+- Blocker ID: None
+- Command binding: None
+
+### `view.inspect`
+
+Inspect one view before requesting rendered data or an image.
+
+- Surface: Tableau MCP get-view
+- Operation type: inspect
+- Owner: tableau-mcp
+- MCP overlap: get-view
+- Selectors: Exact view LUID
+- Products and availability: Cloud / Server with Tableau MCP availability
+- Product disposition: delegated
+- Evidence level: architecture-locked
+- Verification readiness: ready
+- Implementation state: external/delegated
+- Local write: No
+- Remote mutation: No
+- Supports `--preview`: No
+- Raw capable: No
+- Safety and guard: The host agent selects and connects Tableau MCP; TADX does not inspect that connection
+- Artifact effect: None
+- Upstream operation: Tableau MCP get-view
+- Evidence: docs/evidence/tableau-mcp-delegation.md
+- Validation or blocker: Delegated; not executed or proxied by TADX
+- Blocker ID: None
+- Command binding: None
+
+### `view.list`
+
+List views for analytical read workflows.
+
+- Surface: Tableau MCP list-views
+- Operation type: find
+- Owner: tableau-mcp
+- MCP overlap: list-views
+- Selectors: Workbook, project, owner, and name filters
+- Products and availability: Cloud / Server with Tableau MCP availability
+- Product disposition: delegated
+- Evidence level: architecture-locked
+- Verification readiness: ready
+- Implementation state: external/delegated
+- Local write: No
+- Remote mutation: No
+- Supports `--preview`: No
+- Raw capable: No
+- Safety and guard: The host agent selects and connects Tableau MCP; TADX does not inspect that connection
+- Artifact effect: None
+- Upstream operation: Tableau MCP list-views
+- Evidence: docs/evidence/tableau-mcp-delegation.md
+- Validation or blocker: Delegated; not executed or proxied by TADX
 - Blocker ID: None
 - Command binding: None
 
@@ -1804,6 +2241,32 @@ List workbooks with bounded lifecycle metadata.
 - Blocker ID: None
 - Command binding: `tadx content workbook list`
 
+### `workbook.move`
+
+Move one exact workbook to one exact project on the same site, or preview the operation.
+
+- Surface: tadx content workbook move
+- Operation type: change
+- Owner: cli
+- MCP overlap: None
+- Selectors: Workbook LUID or exact name/project path; exact destination project LUID/path; explicit environment/site
+- Products and availability: Cloud / Server
+- Product disposition: ship
+- Evidence level: contract-verified
+- Verification readiness: ready
+- Implementation state: implemented
+- Local write: No
+- Remote mutation: Yes
+- Supports `--preview`: Yes
+- Raw capable: No
+- Safety and guard: Re-resolve source and destination immediately before mutation; equal destination is an exit-zero no-op; no cross-site move
+- Artifact effect: None
+- Upstream operation: PUT /api/{version}/sites/{site-id}/workbooks/{workbook-id} with destination project
+- Evidence: docs/evidence/content-update-rest-contract.md
+- Validation or blocker: Contract-verified exact same-site movement, preview, no-op, drift, and uncertain outcome
+- Blocker ID: None
+- Command binding: `tadx content workbook move`
+
 ### `workbook.publish`
 
 Publish one local workbook to an explicit target, or preview the operation.
@@ -1855,6 +2318,32 @@ Download one workbook, capture bounded lineage, and optionally acquire its direc
 - Validation or blocker: Contract-verified; published-datasource traversal captured live; lineage schema and hermetic tests recorded in docs/evidence/lineage-metadata-contract.md; remaining exact sources and tests recorded in docs/evidence/phase1-rest-contract.md; artifact contract architecture-locked
 - Blocker ID: None
 - Command binding: `tadx content workbook pull`
+
+### `workbook.update`
+
+Rename one exact workbook or replace its owner, or preview the operation.
+
+- Surface: tadx content workbook update
+- Operation type: change
+- Owner: cli
+- MCP overlap: None
+- Selectors: Workbook LUID or exact name/project path; explicit new name and/or owner LUID; explicit environment/site
+- Products and availability: Cloud / Server
+- Product disposition: ship
+- Evidence level: contract-verified
+- Verification readiness: ready
+- Implementation state: implemented
+- Local write: No
+- Remote mutation: Yes
+- Supports `--preview`: Yes
+- Raw capable: No
+- Safety and guard: Re-resolve authoritative identity immediately before mutation; at least one change required; equal values are an exit-zero no-op
+- Artifact effect: None
+- Upstream operation: PUT /api/{version}/sites/{site-id}/workbooks/{workbook-id}
+- Evidence: docs/evidence/content-update-rest-contract.md
+- Validation or blocker: Contract-verified bounded rename and owner replacement with preview, no-op, drift, and uncertain outcome
+- Blocker ID: None
+- Command binding: `tadx content workbook update`
 
 ### `workspace.artifact.delete`
 
@@ -1960,6 +2449,32 @@ Create a named workspace with tadx.yaml, artifacts/, and .tadx/ under &lt;home&g
 - Blocker ID: None
 - Command binding: `tadx workspace create`
 
+### `workspace.delete`
+
+Remove one exact registered workspace and its managed root, or preview the operation.
+
+- Surface: tadx workspace delete
+- Operation type: change
+- Owner: cli
+- MCP overlap: None
+- Selectors: Exact logical workspace name
+- Products and availability: Local / all
+- Product disposition: ship
+- Evidence level: local-contract
+- Verification readiness: ready
+- Implementation state: implemented
+- Local write: Yes
+- Remote mutation: No
+- Supports `--preview`: Yes
+- Raw capable: No
+- Safety and guard: Registered root, canonical containment, dirty-state, manifest, symlink, and broad-target guards; default-reference guard
+- Artifact effect: Delete
+- Upstream operation: Local workspace registry and managed root
+- Evidence: Workspace architecture and local manager tests
+- Validation or blocker: Local contract verified by manager and CLI tests
+- Blocker ID: None
+- Command binding: `tadx workspace delete`
+
 ### `workspace.list`
 
 List registered named workspaces.
@@ -2038,6 +2553,32 @@ Adopt an existing on-disk workspace directory into the local registry using its 
 - Blocker ID: None
 - Command binding: `tadx workspace register`
 
+### `workspace.set-default`
+
+Set one registered and available workspace as the general default.
+
+- Surface: tadx workspace set-default
+- Operation type: change
+- Owner: cli
+- MCP overlap: None
+- Selectors: Exact logical workspace name
+- Products and availability: Local / all
+- Product disposition: ship
+- Evidence level: local-contract
+- Verification readiness: ready
+- Implementation state: implemented
+- Local write: Yes
+- Remote mutation: No
+- Supports `--preview`: No
+- Raw capable: No
+- Safety and guard: Workspace must exist, remain registered, and have a valid manifest
+- Artifact effect: None
+- Upstream operation: Local workspace registry configuration
+- Evidence: Workspace architecture and local manager tests
+- Validation or blocker: Local contract verified by manager and CLI tests
+- Blocker ID: None
+- Command binding: `tadx workspace set-default`
+
 ### `workspace.status`
 
 Report effective workspace, artifact state, provenance, dirty/missing status, and the registered root under --full.
@@ -2063,3 +2604,29 @@ Report effective workspace, artifact state, provenance, dirty/missing status, an
 - Validation or blocker: Architecture-locked; C1 lock suggestion rejected
 - Blocker ID: None
 - Command binding: `tadx workspace status`
+
+### `workspace.unregister`
+
+Remove one workspace registration while preserving every file in its root.
+
+- Surface: tadx workspace unregister
+- Operation type: change
+- Owner: cli
+- MCP overlap: None
+- Selectors: Exact logical workspace name
+- Products and availability: Local / all
+- Product disposition: ship
+- Evidence level: local-contract
+- Verification readiness: ready
+- Implementation state: implemented
+- Local write: Yes
+- Remote mutation: No
+- Supports `--preview`: No
+- Raw capable: No
+- Safety and guard: Exact registration; default-reference guard; filesystem remains untouched
+- Artifact effect: None
+- Upstream operation: Local workspace registry configuration
+- Evidence: Workspace architecture and local manager tests
+- Validation or blocker: Local contract verified by manager and CLI tests
+- Blocker ID: None
+- Command binding: `tadx workspace unregister`

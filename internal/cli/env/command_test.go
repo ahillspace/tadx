@@ -102,6 +102,14 @@ func TestEnvCommandsMapInputsAndRender(t *testing.T) {
 	}
 }
 
+func TestEnvironmentRegistryUsePreservesAliasArgument(t *testing.T) {
+	command := envcli.New(envcli.Dependencies{Uses: map[string]string{"env.profile.add": "add"}})
+	found, _, err := command.Find([]string{"add"})
+	if err != nil || found.Use != "add <alias>" {
+		t.Fatalf("Find(add) use = %q, error = %v, want add <alias>", found.Use, err)
+	}
+}
+
 func TestEnvUpdateRejectsSetAndClearForSameField(t *testing.T) {
 	command := envcli.New(envcli.Dependencies{Lister: &actions{}, Getter: &actions{}, Adder: &actions{}, Updater: &actions{}, Remover: &actions{}, DefaultSetter: &actions{}, Renderer: &renderer{}})
 	command.SetArgs([]string{"update", "dev", "--site", "test-site", "--clear-site"})

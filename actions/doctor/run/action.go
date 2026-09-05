@@ -32,11 +32,6 @@ type LoggingChecker interface {
 	CheckLogging(context.Context, Scope) (LoggingState, error)
 }
 
-// MCPChecker inspects configuration or tool discovery only. It must never invoke or proxy MCP.
-type MCPChecker interface {
-	InspectTableauMCPAvailability(context.Context, Scope) (MCPState, error)
-}
-
 // Dependencies contains independent bounded doctor probes.
 type Dependencies struct {
 	Configuration ConfigurationChecker
@@ -45,7 +40,6 @@ type Dependencies struct {
 	Catalog       CatalogChecker
 	Workspace     WorkspaceChecker
 	Logging       LoggingChecker
-	MCP           MCPChecker
 }
 
 // Action runs every independent doctor probe.
@@ -70,7 +64,6 @@ func (a *Action) Execute(ctx context.Context, input Input) (Output, error) {
 		a.checkCatalog(ctx, scope),
 		a.checkWorkspace(ctx, scope),
 		a.checkLogging(ctx, scope),
-		a.checkMCP(ctx, scope),
 	}
 	counts := Counts{}
 	status := StatusPass
@@ -88,7 +81,7 @@ func (a *Action) Execute(ctx context.Context, input Input) (Output, error) {
 			status = StatusFail
 		}
 	}
-	summary := fmt.Sprintf("7 checks completed: %d passed, %d warnings, %d failed.", counts.Pass, counts.Warn, counts.Fail)
+	summary := fmt.Sprintf("%d checks completed: %d passed, %d warnings, %d failed.", len(checks), counts.Pass, counts.Warn, counts.Fail)
 	return Output{Status: status, Scope: scope, Counts: counts, Summary: summary, Checks: checks, Help: []string{"tadx doctor --full"}}, nil
 }
 
@@ -210,18 +203,6 @@ func (a *Action) checkLogging(ctx context.Context, scope Scope) Check {
 		return pass(id, "Explicit logging context is configured.")
 	}
 	return pass(id, "Logging uses the nonpersistent default context.")
-}
-
-func (a *Action) checkMCP(ctx context.Context, scope Scope) Check {
-	const id = "mcp.tableau.available"
-	if a.dependencies.MCP == nil {
-		return warn(id, "Tableau MCP availability cannot be inspected.", "Configure Tableau MCP separately when data-query tools are needed.")
-	}
-	state, err := a.dependencies.MCP.InspectTableauMCPAvailability(ctx, scope)
-	if err != nil || !state.Configured || !state.Available {
-		return warn(id, "Tableau MCP is not available to this context.", "Configure Tableau MCP separately when data-query tools are needed.")
-	}
-	return pass(id, "Tableau MCP is available to this context.")
 }
 
 func pass(id, summary string) Check {

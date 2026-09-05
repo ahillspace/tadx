@@ -29,6 +29,48 @@ func (session) SiteLUID() string                { return "site-1" }
 func (session) UserLUID() string                { return "user-1" }
 func (session) String() string                  { return "session" }
 
+func TestClientUpdatesOnlyExplicitWorkbookFields(t *testing.T) {
+	server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		if request.Method != http.MethodPut || request.URL.EscapedPath() != "/api/3.29/sites/site-1/workbooks/wb-1" || request.URL.RawQuery != "" {
+			t.Fatalf("request = %s %s?%s", request.Method, request.URL.EscapedPath(), request.URL.RawQuery)
+		}
+		body, err := io.ReadAll(request.Body)
+		if err != nil {
+			t.Fatal(err)
+		}
+		want := `<tsRequest><workbook name="Renamed"><owner id="owner-2"></owner></workbook></tsRequest>`
+		if string(body) != want || strings.Contains(string(body), "project") {
+			t.Fatalf("body = %q, want %q", body, want)
+		}
+		writer.Header().Set("X-Tableau-Request-Id", "request-update")
+		writer.WriteHeader(http.StatusOK)
+		_, _ = io.WriteString(writer, `<tsResponse><workbook id="wb-1" name="Renamed"><project id="project-1"/><owner id="owner-2"/></workbook></tsResponse>`)
+	}))
+	defer server.Close()
+	name, owner := "Renamed", "owner-2"
+	client := tableauworkbook.NewClient(tableau.NewTransport(server.Client(), "3.29", nil), session{}, server.URL)
+	result, err := client.Update(context.Background(), tableauworkbook.UpdateRequest{LUID: "wb-1", Name: &name, OwnerLUID: &owner})
+	if err != nil || result.Status != "succeeded" || result.WorkbookName != name || result.OwnerLUID != owner || result.TableauRequestID != "request-update" {
+		t.Fatalf("result=%#v err=%v", result, err)
+	}
+}
+
+func TestClientRejectsIncompleteWorkbookUpdatesBeforeSending(t *testing.T) {
+	var requests int
+	server := httptest.NewTLSServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) { requests++ }))
+	defer server.Close()
+	client := tableauworkbook.NewClient(tableau.NewTransport(server.Client(), "3.29", nil), session{}, server.URL)
+	empty := ""
+	for _, input := range []tableauworkbook.UpdateRequest{{LUID: "wb-1"}, {Name: &empty}, {LUID: "wb-1", OwnerLUID: &empty}} {
+		if _, err := client.Update(context.Background(), input); err == nil {
+			t.Fatalf("Update(%#v) succeeded", input)
+		}
+	}
+	if requests != 0 {
+		t.Fatalf("requests = %d", requests)
+	}
+}
+
 type tokenSession string
 
 func (s tokenSession) Authorize(request *http.Request) {

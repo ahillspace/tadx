@@ -3,6 +3,7 @@ package app
 import (
 	"bytes"
 	"context"
+	"os"
 	"path/filepath"
 	"reflect"
 	"strings"
@@ -13,6 +14,29 @@ import (
 	"github.com/ahillspace/tadx/internal/config"
 	workspacecore "github.com/ahillspace/tadx/internal/workspace"
 )
+
+func TestWorkspaceDeletionInspectionTreatsUnmanagedFilesAsDirty(t *testing.T) {
+	root := t.TempDir()
+	for _, directory := range []string{"artifacts", ".tadx"} {
+		if err := os.MkdirAll(filepath.Join(root, directory), 0o700); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.WriteFile(filepath.Join(root, "tadx.yaml"), []byte("version: 1\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	dirty, err := workspaceHasUnmanagedEntries(context.Background(), root)
+	if err != nil || dirty {
+		t.Fatalf("clean workspace: dirty=%t err=%v", dirty, err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "notes.txt"), []byte("keep"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	dirty, err = workspaceHasUnmanagedEntries(context.Background(), root)
+	if err != nil || !dirty {
+		t.Fatalf("unmanaged file: dirty=%t err=%v", dirty, err)
+	}
+}
 
 func TestWorkspaceArtifactAdaptersPreserveCleanupWarnings(t *testing.T) {
 	item := artifact.Item{Warnings: []string{"cleanup remains"}}
@@ -32,6 +56,17 @@ func TestLineageCapabilityIsClassifiedUnderContent(t *testing.T) {
 	domain, resource := classify(definition)
 	if domain != "content" || resource != "lineage" {
 		t.Fatalf("classify(lineage.pull) = %q, %q", domain, resource)
+	}
+}
+
+func TestNestedCapabilityIDUsesItsFirstResourceSegment(t *testing.T) {
+	definition, ok := capability.Lookup("admin.group.member.add")
+	if !ok {
+		t.Fatal("admin.group.member.add is missing from the registry")
+	}
+	domain, resource := classify(definition)
+	if domain != "admin" || resource != "group" {
+		t.Fatalf("classify(admin.group.member.add) = %q, %q", domain, resource)
 	}
 }
 

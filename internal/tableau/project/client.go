@@ -145,7 +145,7 @@ func (c *Client) Update(ctx context.Context, input UpdateRequest) (MutationResul
 	if strings.TrimSpace(input.LUID) == "" {
 		return MutationResult{}, errors.New("project update requires an exact project LUID")
 	}
-	if input.Name == nil && input.Description == nil && input.ContentPermissions == nil {
+	if input.Name == nil && input.Description == nil && input.ContentPermissions == nil && input.ParentLUID == nil {
 		return MutationResult{}, errors.New("project update requires at least one explicit metadata field")
 	}
 	if input.Name != nil && strings.TrimSpace(*input.Name) == "" {
@@ -159,7 +159,7 @@ func (c *Client) Update(ctx context.Context, input UpdateRequest) (MutationResul
 			return MutationResult{}, err
 		}
 	}
-	body, err := xml.Marshal(updateEnvelopeXML{Project: updateProjectXML{Name: input.Name, Description: input.Description, ContentPermissions: input.ContentPermissions}})
+	body, err := xml.Marshal(updateEnvelopeXML{Project: updateProjectXML{Name: input.Name, Description: input.Description, ContentPermissions: input.ContentPermissions, ParentLUID: input.ParentLUID}})
 	if err != nil {
 		return MutationResult{}, fmt.Errorf("encode project update request: %w", err)
 	}
@@ -188,6 +188,9 @@ func (c *Client) Update(ctx context.Context, input UpdateRequest) (MutationResul
 	}
 	if input.ContentPermissions != nil && project.ContentPermissions != *input.ContentPermissions {
 		return MutationResult{}, tableau.NewProtocolError(updateOperation, response, errors.New("project update response changed the requested content permissions"), false)
+	}
+	if input.ParentLUID != nil && project.ParentLUID != *input.ParentLUID {
+		return MutationResult{}, tableau.NewProtocolError(updateOperation, response, errors.New("project update response changed the requested parent identity"), false)
 	}
 	return MutationResult{Status: "succeeded", Project: project, TableauRequestID: response.TableauRequestID}, nil
 }
@@ -321,6 +324,7 @@ type updateProjectXML struct {
 	Name               *string `xml:"name,attr,omitempty"`
 	Description        *string `xml:"description,attr,omitempty"`
 	ContentPermissions *string `xml:"contentPermissions,attr,omitempty"`
+	ParentLUID         *string `xml:"parentProjectId,attr,omitempty"`
 }
 
 type mutationEnvelopeXML struct {

@@ -35,9 +35,10 @@ Enforced by: identity tests (explicit LUID, exact name/path, zero and duplicate 
 
 ## 4. Composability
 
-Rule: commands are small primitives an agent or skill composes; a command does not hide a workflow.
+Rule: commands are small primitives that an agent or Guidance composes; a command does not hide a workflow.
 Do: keep one public operation per command; allow a deterministic pseudo-primitive only when every step always belongs together and there is no meaningful mid-flow decision (for example, pull may resolve, download, write provenance, fingerprint, and render the view).
-Do not: embed branching, judgment, mapping, or review inside a CLI verb. If a meaningful decision exists in the middle, it belongs in a skill or the agent.
+Do not: embed branching, judgment, mapping, or review inside a CLI verb.
+If a meaningful decision exists in the middle, it belongs in Guidance or the agent.
 Enforced by: capability-admission review; one-operation-per-row registry validation.
 
 ## 5. Structured output
@@ -113,7 +114,8 @@ Enforced by: exit-code mapping tests; structured-error rendering tests; a no-int
 ### Discoverability
 
 C7. Ambient context (serves principle 6).
-Do: provide the agent's operating context before it acts through the capability registry and the workspace and status commands. TADX may ship an optional Agent Skill generated from the same guidance; that skill is delegated surface, not a CLI verb.
+Do: provide the agent's operating context before it acts through the capability registry and the workspace and status commands.
+TADX can ship optional installed Guidance from the same source; that Guidance is delegated surface, not a CLI verb.
 Do not: require an agent to reconstruct environment, site, or auth state by trial and error.
 Enforced by: capability discovery tests; workspace and auth-status behavior tests.
 

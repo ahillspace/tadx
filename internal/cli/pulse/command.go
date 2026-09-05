@@ -110,7 +110,8 @@ func New(deps Dependencies) *cobra.Command {
 		Use:   "pulse",
 		Short: "Manage Tableau Pulse definitions and metrics",
 		Long: "Manage Tableau Pulse definitions, metric variants, and followers.\n\n" +
-			"Discover source fields with tadx content datasource schema --id <datasource-luid> --query <term> before creating a definition.",
+			"Discover source fields with tadx content datasource schema --id <datasource-luid> --query <term> before creating a definition.\n\n" +
+			"Use Tableau MCP generate-pulse-metric-value-insight-bundle for values and insights, and generate-pulse-insight-brief for briefs. TADX does not inspect the MCP connection.",
 	}
 	definition := &cobra.Command{Use: "definition", Short: "Manage Pulse metric definitions"}
 	definition.AddCommand(

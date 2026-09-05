@@ -36,6 +36,9 @@ type FlowDeleter interface {
 func newFlow(deps Dependencies) *cobra.Command {
 	command := &cobra.Command{Use: "flow", Short: "Operate Tableau flows"}
 	command.AddCommand(newFlowList(deps), newFlowInspect(deps), newFlowPull(deps), newFlowPublish(deps), newFlowMove(deps), newFlowDelete(deps))
+	if deps.FlowUpdater != nil {
+		command.AddCommand(newFlowUpdate(deps))
+	}
 	return command
 }
 

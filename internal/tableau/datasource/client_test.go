@@ -21,6 +21,48 @@ func (session) SiteLUID() string                { return "site-1" }
 func (session) UserLUID() string                { return "user-1" }
 func (session) String() string                  { return "session" }
 
+func TestClientUpdatesOnlyExplicitDatasourceFields(t *testing.T) {
+	server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		if request.Method != http.MethodPut || request.URL.EscapedPath() != "/api/3.29/sites/site-1/datasources/ds-1" || request.URL.RawQuery != "" {
+			t.Fatalf("request = %s %s?%s", request.Method, request.URL.EscapedPath(), request.URL.RawQuery)
+		}
+		body, err := io.ReadAll(request.Body)
+		if err != nil {
+			t.Fatal(err)
+		}
+		want := `<tsRequest><datasource name="Renamed"><project id="project-2"></project></datasource></tsRequest>`
+		if string(body) != want || strings.Contains(string(body), "owner") {
+			t.Fatalf("body = %q, want %q", body, want)
+		}
+		writer.Header().Set("X-Tableau-Request-Id", "request-update")
+		writer.WriteHeader(http.StatusOK)
+		_, _ = io.WriteString(writer, `<tsResponse><datasource id="ds-1" name="Renamed"><project id="project-2" name="New"/><owner id="owner-1"/></datasource></tsResponse>`)
+	}))
+	defer server.Close()
+	name, project := "Renamed", "project-2"
+	client := tableaudatasource.NewClient(tableau.NewTransport(server.Client(), "3.29", nil), session{}, server.URL)
+	result, err := client.Update(context.Background(), tableaudatasource.UpdateRequest{LUID: "ds-1", Name: &name, ProjectLUID: &project})
+	if err != nil || result.Status != "succeeded" || result.DatasourceName != name || result.ProjectLUID != project || result.TableauRequestID != "request-update" {
+		t.Fatalf("result=%#v err=%v", result, err)
+	}
+}
+
+func TestClientRejectsIncompleteDatasourceUpdatesBeforeSending(t *testing.T) {
+	var requests int
+	server := httptest.NewTLSServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) { requests++ }))
+	defer server.Close()
+	client := tableaudatasource.NewClient(tableau.NewTransport(server.Client(), "3.29", nil), session{}, server.URL)
+	empty := ""
+	for _, input := range []tableaudatasource.UpdateRequest{{LUID: "ds-1"}, {Name: &empty}, {LUID: "ds-1", ProjectLUID: &empty}} {
+		if _, err := client.Update(context.Background(), input); err == nil {
+			t.Fatalf("Update(%#v) succeeded", input)
+		}
+	}
+	if requests != 0 {
+		t.Fatalf("requests = %d", requests)
+	}
+}
+
 func TestClientRejectsUnconfiguredDatasourceReads(t *testing.T) {
 	client := tableaudatasource.NewClient(nil, nil, "")
 	tests := []struct {
