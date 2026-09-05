@@ -8,6 +8,10 @@ type Input struct {
 	MetricLUID  string
 	Catalog     bool
 }
+type Metric struct {
+	LUID      string
+	RequestID string
+}
 type Subscription struct {
 	LUID         string `json:"luid"`
 	MetricLUID   string `json:"metric_luid"`

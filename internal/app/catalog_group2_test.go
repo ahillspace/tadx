@@ -24,6 +24,12 @@ func (f catalogExecutorFunc) Do(ctx context.Context, input tableaucatalog.Reques
 	return f(ctx, input)
 }
 
+type catalogRunnerFunc func(context.Context, tableaucatalog.RunRequest, tableaucatalog.BatchWriter) (tableaucatalog.Result, error)
+
+func (f catalogRunnerFunc) Run(ctx context.Context, input tableaucatalog.RunRequest, writer tableaucatalog.BatchWriter) (tableaucatalog.Result, error) {
+	return f(ctx, input, writer)
+}
+
 func TestCatalogHydratorStreamsSQLiteAndReturnsOnlyReceipt(t *testing.T) {
 	now := time.Date(2026, 9, 1, 12, 0, 0, 0, time.UTC)
 	executor := catalogExecutorFunc(func(_ context.Context, input tableaucatalog.Request) (tableaucatalog.Response, error) {
@@ -78,6 +84,66 @@ func TestCatalogHydratorStreamsSQLiteAndReturnsOnlyReceipt(t *testing.T) {
 	if err != nil || status.RecordCount != 2 {
 		t.Fatalf("status = %#v, error = %v", status, err)
 	}
+}
+
+func TestCatalogHydratorReportsPersistedSearchableRecordCount(t *testing.T) {
+	now := time.Date(2026, 9, 1, 12, 0, 0, 0, time.UTC)
+	store := corecatalog.NewStore(t.TempDir(), func() time.Time { return now })
+	runner := catalogRunnerFunc(func(ctx context.Context, _ tableaucatalog.RunRequest, writer tableaucatalog.BatchWriter) (tableaucatalog.Result, error) {
+		batches := []tableaucatalog.Batch{
+			{Scope: tableaucatalog.ScopeProjects, Columns: mustCatalogColumns(t, tableaucatalog.ScopeProjects), Rows: [][]any{{"project-1", "Operations", "", "", "user-1"}}},
+			{Scope: tableaucatalog.ScopeWorkbooks, Columns: mustCatalogColumns(t, tableaucatalog.ScopeWorkbooks), Rows: [][]any{{"workbook-1", "Finance", "project-1", "user-1", int64(1), "2026-09-01T00:00:00Z"}}},
+			{Scope: tableaucatalog.ScopePermissions, Columns: mustCatalogColumns(t, tableaucatalog.ScopePermissions), Rows: [][]any{{"workbook", "workbook-1", "user", "user-1", "Read", "Allow"}}},
+		}
+		for _, batch := range batches {
+			if err := writer.WriteBatch(ctx, batch); err != nil {
+				return tableaucatalog.Result{}, err
+			}
+		}
+		return tableaucatalog.Result{
+			RequestedScopes: []tableaucatalog.Scope{tableaucatalog.ScopePermissions},
+			ImplicitScopes:  []tableaucatalog.Scope{tableaucatalog.ScopeProjects, tableaucatalog.ScopeWorkbooks},
+			Counts: map[tableaucatalog.Scope]int64{
+				tableaucatalog.ScopeProjects: 1, tableaucatalog.ScopeWorkbooks: 1, tableaucatalog.ScopePermissions: 1,
+			},
+		}, nil
+	})
+	hydrator := catalogHydrator{
+		store: store,
+		now:   func() time.Time { return now },
+		executorFor: func(context.Context, string, string) (tableaucatalog.Executor, error) {
+			return catalogExecutorFunc(func(context.Context, tableaucatalog.Request) (tableaucatalog.Response, error) {
+				return tableaucatalog.Response{}, errors.New("unexpected request")
+			}), nil
+		},
+		newRunner: func(tableaucatalog.Executor) (catalogRunner, error) { return runner, nil },
+	}
+
+	result, err := hydrator.Hydrate(context.Background(), catalogrefresh.HydrationRequest{
+		Environment: "production", Site: "marketing", RequestedScopes: []string{"permissions"}, ImplicitScopes: []string{"projects", "workbooks"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.RecordCount != 2 || result.HydratedRecordCount != 3 {
+		t.Fatalf("result = %#v", result)
+	}
+	status, err := store.Status(context.Background(), corecatalog.Selection{Environment: "production", Site: "marketing", SiteSelected: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if status.RecordCount != result.RecordCount {
+		t.Fatalf("refresh records = %d, status records = %d", result.RecordCount, status.RecordCount)
+	}
+}
+
+func mustCatalogColumns(t *testing.T, scope tableaucatalog.Scope) []tableaucatalog.Column {
+	t.Helper()
+	columns, ok := tableaucatalog.ColumnsForScope(scope)
+	if !ok {
+		t.Fatalf("missing columns for %q", scope)
+	}
+	return columns
 }
 
 func TestCatalogHydratorRollsBackPartialCollection(t *testing.T) {

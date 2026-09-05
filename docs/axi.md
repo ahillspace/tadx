@@ -123,8 +123,8 @@ Do not: make a bare command print only usage text when live data is the more use
 Enforced by: no-argument behavior tests for content-first commands.
 
 C9. Contextual disclosure with next-step templates (serves principles 1, 4).
-Do: append a `help[]` block of concrete next-step command templates to a result, carrying forward the fixed disambiguating flags already in play and leaving runtime values as explicit placeholders such as `<luid>` (never a guessed value). For example, a list result suggests the get command for one item as a template.
-Do not: guess concrete IDs into a suggested command; suggest a next step that skips required apply or discovery gating.
+Do: append a `help[]` block of concrete next-step command templates to a result, carrying forward the fixed disambiguating flags already in play and leaving runtime values as explicit placeholders such as `<luid>` (never a guessed value). For example, a list result suggests the inspect command for one item as a template.
+Do not: guess concrete IDs into a suggested command or suggest a next step that bypasses mutation policy or required selector resolution.
 Enforced by: golden fixtures for `help[]` blocks; a placeholder-not-value assertion.
 
 The `details: "--full"` disclosure marker is not a next action and remains separate from `help[]`.

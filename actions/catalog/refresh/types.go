@@ -33,30 +33,32 @@ type Diagnostics struct {
 
 // HydrationResult is a row-free receipt for one internally persisted generation.
 type HydrationResult struct {
-	GenerationID    string
-	GeneratedAt     time.Time
-	Complete        bool
-	Source          string
-	Path            string
-	RecordCount     int
-	RequestedScopes []string
-	ImplicitScopes  []string
-	ScopeCounts     []ScopeCount
-	Diagnostics     Diagnostics
-	Warnings        []string
+	GenerationID        string
+	GeneratedAt         time.Time
+	Complete            bool
+	Source              string
+	Path                string
+	RecordCount         int
+	HydratedRecordCount int
+	RequestedScopes     []string
+	ImplicitScopes      []string
+	ScopeCounts         []ScopeCount
+	Diagnostics         Diagnostics
+	Warnings            []string
 }
 
 // GenerationOutput is the bounded refresh generation projection.
 type GenerationOutput struct {
-	ID             string       `json:"id"`
-	Environment    string       `json:"environment"`
-	Site           string       `json:"site"`
-	GeneratedAt    string       `json:"generated_at"`
-	Records        int          `json:"records"`
-	Source         string       `json:"source,omitempty"`
-	Scopes         []string     `json:"scopes,omitempty"`
-	ImplicitScopes []string     `json:"implicit_scopes,omitempty"`
-	ScopeCounts    []ScopeCount `json:"scope_counts,omitempty"`
+	ID              string       `json:"id"`
+	Environment     string       `json:"environment"`
+	Site            string       `json:"site"`
+	GeneratedAt     string       `json:"generated_at"`
+	Records         int          `json:"records"`
+	HydratedRecords int          `json:"hydrated_records,omitempty"`
+	Source          string       `json:"source,omitempty"`
+	Scopes          []string     `json:"scopes,omitempty"`
+	ImplicitScopes  []string     `json:"implicit_scopes,omitempty"`
+	ScopeCounts     []ScopeCount `json:"scope_counts,omitempty"`
 }
 
 // Output is the stable catalog.refresh document.

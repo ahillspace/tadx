@@ -562,6 +562,14 @@ type pulseFollowerAdapter struct {
 	items  []tableaupulse.Subscription
 }
 
+func (a *pulseFollowerAdapter) GetMetric(ctx context.Context, luid string) (metricfollowers.Metric, error) {
+	item, err := a.client.GetMetric(ctx, luid)
+	if err != nil {
+		return metricfollowers.Metric{}, err
+	}
+	return metricfollowers.Metric{LUID: item.LUID, RequestID: item.TableauRequestID}, nil
+}
+
 func (a *pulseFollowerAdapter) ListSubscriptions(ctx context.Context, metricLUID string) ([]metricfollowers.Subscription, error) {
 	items, err := a.client.ListSubscriptions(ctx, metricLUID)
 	if err != nil {
@@ -727,6 +735,19 @@ type catalogPulseFollowerReader struct {
 	environment string
 	site        string
 	source      *readsource.Metadata
+}
+
+func (r *catalogPulseFollowerReader) GetMetric(ctx context.Context, luid string) (metricfollowers.Metric, error) {
+	result, err := r.store.ReadResources(ctx, catalog.ResourceQuery{Environment: r.environment, Site: r.site, Kind: pulseMetricKind, LUID: luid, Limit: 1})
+	if err != nil {
+		return metricfollowers.Metric{}, catalogReadError("pulse.metric.followers", r.environment, r.site, err)
+	}
+	r.source = catalogRecordSource(result, result.Entries[0])
+	var item tableaupulse.Metric
+	if err := json.Unmarshal(result.Entries[0].Payload, &item); err != nil {
+		return metricfollowers.Metric{}, fmt.Errorf("decode catalog Pulse metric %q: %w", luid, err)
+	}
+	return metricfollowers.Metric{LUID: item.LUID}, nil
 }
 
 func (r *catalogPulseFollowerReader) ListSubscriptions(ctx context.Context, metricLUID string) ([]metricfollowers.Subscription, error) {

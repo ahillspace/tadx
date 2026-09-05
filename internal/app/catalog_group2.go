@@ -98,7 +98,7 @@ func (h catalogHydrator) Hydrate(ctx context.Context, input catalogrefresh.Hydra
 	}
 	return catalogrefresh.HydrationResult{
 		GenerationID: published.GenerationID, GeneratedAt: generatedAt, Complete: true, Source: catalogSourceName,
-		Path: published.Path, RecordCount: total,
+		Path: published.Path, RecordCount: published.RecordCount, HydratedRecordCount: total,
 		RequestedScopes: append([]string(nil), input.RequestedScopes...), ImplicitScopes: append([]string(nil), input.ImplicitScopes...),
 		ScopeCounts: counts,
 		Diagnostics: catalogrefresh.Diagnostics{Requests: int(result.Requests), Duration: time.Since(started).Round(time.Millisecond).String()},

@@ -45,3 +45,15 @@ func TestDoctorRunsAllChecksWithoutExposingSecretsOrPaths(t *testing.T) {
 		}
 	}
 }
+
+func TestDoctorFailResultExitsOneWithoutRenderingASecondDocument(t *testing.T) {
+	var stdout bytes.Buffer
+	exitCode := app.Run(context.Background(), []string{"doctor"}, &stdout, app.Options{ConfigPath: filepath.Join(t.TempDir(), "missing.yaml")})
+	output := stdout.String()
+	if exitCode != 1 {
+		t.Fatalf("exit code = %d, output = %s", exitCode, output)
+	}
+	if strings.Count(output, "counts:") != 1 || strings.Contains(output, "error:") {
+		t.Fatalf("doctor rendered more than one diagnostic document: %s", output)
+	}
+}

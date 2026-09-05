@@ -31,6 +31,8 @@ import (
 // CapabilityAnnotation associates an executable command with its registry ID.
 const CapabilityAnnotation = "tadx.capability"
 
+const groupingAnnotation = "tadx.grouping"
+
 // RegisteredCommand describes a capability discovered from the actual Cobra tree.
 type RegisteredCommand struct {
 	CapabilityID string
@@ -210,10 +212,37 @@ When enabled, mutation commands perform changes by default. Pass --preview to in
 		contentDependencies.PublishShort = deps.WorkbookPublishShort
 		root.AddCommand(contentcli.New(contentDependencies))
 	}
+	rejectGroupingArguments(root)
 	applyMutationExecutionPolicy(root, deps.MutationPolicy, deps.MutationsEnabled)
 	root.CompletionOptions.DisableDefaultCmd = true
 	setFlagErrorHandlers(root)
 	return root
+}
+
+func rejectGroupingArguments(root *cobra.Command) {
+	var walk func(*cobra.Command)
+	walk = func(command *cobra.Command) {
+		if command.Args == nil && command.HasSubCommands() && command.Run == nil && command.RunE == nil {
+			operation := strings.TrimPrefix(command.CommandPath(), root.Name()+" ")
+			if command.Annotations == nil {
+				command.Annotations = map[string]string{}
+			}
+			command.Annotations[groupingAnnotation] = "true"
+			command.Args = func(command *cobra.Command, args []string) error {
+				if err := cobra.NoArgs(command, args); err != nil {
+					return clierr.Usage(operation, err)
+				}
+				return nil
+			}
+			command.RunE = func(command *cobra.Command, _ []string) error {
+				return command.Help()
+			}
+		}
+		for _, child := range command.Commands() {
+			walk(child)
+		}
+	}
+	walk(root)
 }
 
 func applyMutationExecutionPolicy(root *cobra.Command, policy MutationPolicy, enabled bool) {
@@ -287,7 +316,7 @@ func RegisteredCommands(root *cobra.Command) ([]RegisteredCommand, error) {
 	walk = func(command *cobra.Command) error {
 		id := command.Annotations[CapabilityAnnotation]
 		runnable := command.Run != nil || command.RunE != nil
-		if runnable && id == "" {
+		if runnable && id == "" && command.Annotations[groupingAnnotation] != "true" {
 			return fmt.Errorf("runnable command %q has no capability annotation", command.CommandPath())
 		}
 		if !runnable && id != "" {

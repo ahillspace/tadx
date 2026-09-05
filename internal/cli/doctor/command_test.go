@@ -64,6 +64,21 @@ func TestDoctorAcceptsOmittedScopes(t *testing.T) {
 	}
 }
 
+func TestDoctorRendersFailResultOnceAndReturnsExitOne(t *testing.T) {
+	want := doctorrun.Output{Status: doctorrun.StatusFail}
+	render := &renderer{}
+	command := doctorcli.New(doctorcli.Dependencies{Runner: &runner{output: want}, Renderer: render})
+	command.SetArgs(nil)
+
+	err := command.ExecuteContext(context.Background())
+	if err == nil || errs.ExitCode(err) != 1 {
+		t.Fatalf("error = %v, exit = %d", err, errs.ExitCode(err))
+	}
+	if len(render.values) != 1 || !reflect.DeepEqual(render.values[0], want) {
+		t.Fatalf("rendered = %#v", render.values)
+	}
+}
+
 func TestDoctorRejectsArgumentsBeforeRunning(t *testing.T) {
 	run := &runner{}
 	command := doctorcli.New(doctorcli.Dependencies{Runner: run, Renderer: &renderer{}})
