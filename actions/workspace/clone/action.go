@@ -8,8 +8,8 @@ import (
 	"github.com/ahillspace/tadx/internal/errs"
 )
 
-// Input names an existing source workspace and the new logical name and
-// machine-local root for its copy.
+// Input names an existing source workspace, the new logical name, and an
+// optional machine-local root override for its copy.
 type Input struct {
 	Source string
 	Name   string
@@ -20,6 +20,7 @@ type Input struct {
 type Workspace struct {
 	Name            string   `json:"name"`
 	ID              string   `json:"id"`
+	Root            string   `json:"root"`
 	ManifestVersion int      `json:"manifest_version"`
 	Registered      bool     `json:"registered"`
 	CreatedEntries  []string `json:"created_entries"`
@@ -62,19 +63,19 @@ type Action struct{ cloner Cloner }
 // New creates workspace.clone.
 func New(cloner Cloner) *Action { return &Action{cloner: cloner} }
 
-// Execute copies one existing workspace to a new root.
+// Execute copies one existing workspace under a new identity.
 func (a *Action) Execute(ctx context.Context, input Input) (Output, error) {
 	if a == nil || a.cloner == nil {
 		return Output{}, runtimeError("workspace cloning is not configured")
 	}
-	if input.Source == "" || input.Name == "" || input.Path == "" {
-		return Output{}, usage("source, name, and path are required")
+	if input.Source == "" || input.Name == "" {
+		return Output{}, usage("source and name are required")
 	}
 	cloned, err := a.cloner.Clone(ctx, input)
 	if err != nil {
 		return Output{}, &errs.Error{ID: "workspace.clone.failed", Kind: errs.KindOperation, Operation: "workspace.clone", Resource: input.Name, Summary: "Workspace clone failed.", Cause: err, Retryable: errs.Bool(false), CorrectiveAction: "Confirm the source workspace exists and the destination path is empty, then retry."}
 	}
-	if cloned.Name == "" || cloned.ID == "" || !cloned.Registered {
+	if cloned.Name == "" || cloned.ID == "" || cloned.Root == "" || !cloned.Registered {
 		return Output{}, runtimeError("workspace clone returned an incomplete identity")
 	}
 	if len(cloned.CreatedEntries) == 0 {
@@ -84,7 +85,7 @@ func (a *Action) Execute(ctx context.Context, input Input) (Output, error) {
 }
 
 func usage(message string) error {
-	return &errs.Error{ID: "workspace.clone.usage", Kind: errs.KindUsage, Operation: "workspace.clone", Summary: message, Cause: errors.New(message), Retryable: errs.Bool(false), CorrectiveAction: "Provide one existing source workspace, one new logical name, and one new creation path."}
+	return &errs.Error{ID: "workspace.clone.usage", Kind: errs.KindUsage, Operation: "workspace.clone", Summary: message, Cause: errors.New(message), Retryable: errs.Bool(false), CorrectiveAction: "Provide one existing source workspace and one new logical name. Use --path only to override the default location."}
 }
 
 func runtimeError(message string) error {

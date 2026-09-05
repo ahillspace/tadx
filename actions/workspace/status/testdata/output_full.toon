@@ -2,6 +2,7 @@ status: attention
 workspace:
   name: development
   id: ws_1
+  root: /var/tmp/tadx-tests/workspaces/development
 artifacts:
   returned: 1
   limit: 20

@@ -13,7 +13,7 @@ import (
 type reader struct{}
 
 func (reader) Status(context.Context, status.Input) (status.Workspace, status.Inventory, error) {
-	return status.Workspace{Name: "development", ID: "ws_1"}, status.Inventory{
+	return status.Workspace{Name: "development", ID: "ws_1", Root: "/var/tmp/tadx-tests/workspaces/development"}, status.Inventory{
 		Returned: 1, Limit: 20, ScanComplete: true, Dirty: 1,
 		Items: []status.Artifact{{Kind: "workbook", LUID: "wb-1", Name: "Finance", Path: "artifacts/workbook/Finance", State: "dirty", CanonicalPath: "artifacts/workbook/Finance/Finance.twbx", BaselineFingerprint: "sha256:old", CurrentFingerprint: "sha256:new"}},
 	}, nil
@@ -28,7 +28,7 @@ func TestExecuteKeepsDetailsOutOfCompactStatus(t *testing.T) {
 	if err := output.Render(&compact, result); err != nil {
 		t.Fatal(err)
 	}
-	if bytes.Contains(compact.Bytes(), []byte("sha256:new")) || !bytes.Contains(compact.Bytes(), []byte("dirty: 1")) || !bytes.Contains(compact.Bytes(), []byte("status: attention")) {
+	if bytes.Contains(compact.Bytes(), []byte("sha256:new")) || bytes.Contains(compact.Bytes(), []byte("/var/tmp/tadx-tests")) || !bytes.Contains(compact.Bytes(), []byte("dirty: 1")) || !bytes.Contains(compact.Bytes(), []byte("status: attention")) {
 		t.Fatalf("compact output:\n%s", compact.String())
 	}
 	assertGolden(t, compact.Bytes(), "testdata/output.toon")
@@ -38,6 +38,9 @@ func TestExecuteKeepsDetailsOutOfCompactStatus(t *testing.T) {
 	}
 	if !bytes.Contains(full.Bytes(), []byte("\"sha256:new\"")) {
 		t.Fatalf("full output:\n%s", full.String())
+	}
+	if !bytes.Contains(full.Bytes(), []byte("/var/tmp/tadx-tests/workspaces/development")) {
+		t.Fatalf("full output omits the registered root:\n%s", full.String())
 	}
 	assertGolden(t, full.Bytes(), "testdata/output_full.toon")
 }

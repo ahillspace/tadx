@@ -3,6 +3,7 @@ package app_test
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -13,6 +14,7 @@ import (
 	"testing"
 
 	"github.com/ahillspace/tadx/internal/app"
+	"github.com/ahillspace/tadx/internal/config"
 )
 
 func TestRunCapabilityListRendersTOON(t *testing.T) {
@@ -84,7 +86,9 @@ func TestEnvironmentProfileAndAuthStatusThroughCLI(t *testing.T) {
 func TestNamedWorkspaceCreateListAndStatusThroughCLI(t *testing.T) {
 	root := filepath.Join(t.TempDir(), "workspace-root")
 	configPath := filepath.Join(t.TempDir(), "config.yaml")
-	options := app.Options{ConfigPath: configPath}
+	options := app.Options{ConfigPath: configPath, UserHomeDir: func() (string, error) {
+		return "", errors.New("explicit path must not resolve the user home directory")
+	}}
 	run := func(args ...string) string {
 		t.Helper()
 		var stdout bytes.Buffer
@@ -105,6 +109,72 @@ func TestNamedWorkspaceCreateListAndStatusThroughCLI(t *testing.T) {
 	status := run("workspace", "status", "--workspace", "development")
 	if !strings.Contains(status, "status: ready") || !strings.Contains(status, "name: development") || strings.Contains(status, root) {
 		t.Fatalf("status output = %s", status)
+	}
+}
+
+func TestNamedWorkspaceCreateUsesDefaultHumanAccessibleRoot(t *testing.T) {
+	home := t.TempDir()
+	configPath := filepath.Join(t.TempDir(), "config.yaml")
+	options := app.Options{ConfigPath: configPath, UserHomeDir: func() (string, error) { return home, nil }}
+	var stdout bytes.Buffer
+	if exit := app.Run(context.Background(), []string{"workspace", "create", "development"}, &stdout, options); exit != 0 {
+		t.Fatalf("exit = %d, output = %s", exit, stdout.String())
+	}
+	want := filepath.Join(home, "TADX", "workspaces", "development")
+	if _, err := os.Stat(filepath.Join(want, "tadx.yaml")); err != nil {
+		t.Fatalf("default workspace manifest: %v", err)
+	}
+	configuration, err := config.Load(configPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := configuration.Workspaces["development"].Path; got != want {
+		t.Fatalf("workspace root = %q, want %q", got, want)
+	}
+	stdout.Reset()
+	if exit := app.Run(context.Background(), []string{"workspace", "create", "development"}, &stdout, options); exit == 0 {
+		t.Fatalf("duplicate workspace name succeeded, output = %s", stdout.String())
+	}
+}
+
+func TestNamedWorkspaceCloneUsesDefaultHumanAccessibleRoot(t *testing.T) {
+	home := t.TempDir()
+	configPath := filepath.Join(t.TempDir(), "config.yaml")
+	options := app.Options{ConfigPath: configPath, UserHomeDir: func() (string, error) { return home, nil }}
+	run := func(args ...string) {
+		t.Helper()
+		var stdout bytes.Buffer
+		if exit := app.Run(context.Background(), args, &stdout, options); exit != 0 {
+			t.Fatalf("Run(%v) exit = %d, output = %s", args, exit, stdout.String())
+		}
+	}
+	run("workspace", "create", "development")
+	run("workspace", "clone", "development", "--name", "experiment")
+	want := filepath.Join(home, "TADX", "workspaces", "experiment")
+	if _, err := os.Stat(filepath.Join(want, "tadx.yaml")); err != nil {
+		t.Fatalf("default clone manifest: %v", err)
+	}
+	configuration, err := config.Load(configPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := configuration.Workspaces["experiment"].Path; got != want {
+		t.Fatalf("clone root = %q, want %q", got, want)
+	}
+}
+
+func TestNamedWorkspaceCreateRejectsEscapingDefaultName(t *testing.T) {
+	home := t.TempDir()
+	configPath := filepath.Join(t.TempDir(), "config.yaml")
+	options := app.Options{ConfigPath: configPath, UserHomeDir: func() (string, error) { return home, nil }}
+	for _, name := range []string{"..", "nested/workspace", `nested\workspace`} {
+		var stdout bytes.Buffer
+		if exit := app.Run(context.Background(), []string{"workspace", "create", name}, &stdout, options); exit == 0 {
+			t.Fatalf("name %q succeeded, output = %s", name, stdout.String())
+		}
+	}
+	if _, err := os.Stat(filepath.Join(home, "TADX")); !os.IsNotExist(err) {
+		t.Fatalf("default root created for invalid name: %v", err)
 	}
 }
 

@@ -1,18 +1,24 @@
 # Named workspaces
 
 TADX separates a portable logical workspace name from its machine-local root.
-The root path is supplied once during registration.
+Create and clone use `<home>/TADX/workspaces/<name>` by default.
+Use `--path` to override that location.
+Register still requires the exact existing root.
 Lifecycle commands use the logical name and never accept that root as the `--workspace` value.
 
-## Register a workspace
+## Create a workspace
 
 ```text
-tadx workspace create development --path "<machine-local-workspace-root>"
+tadx workspace create development
 ```
 
 The command creates `tadx.yaml`, `artifacts/`, and `.tadx/` at the new root and records a stable workspace ID in the non-secret user configuration.
+The default root is `<home>/TADX/workspaces/development` on Windows, macOS, and Linux.
+Pass `--path <machine-local-workspace-root>` to create or clone at another location.
 Workspace names are unique under case-insensitive comparison.
+Names must remain portable across supported operating systems, so path separators, Windows-invalid characters, reserved device names, and trailing dots or spaces are rejected.
 Canonical roots are also unique, so one directory cannot be registered under two names.
+Use `--full` with workspace create, clone, list, or status to discover registered machine-local roots.
 
 ## Select a workspace
 
@@ -36,11 +42,13 @@ tadx content workbook publish --workspace development --artifact "artifacts/work
 ```
 
 TADX rejects absolute artifact selectors, parent traversal, backslash-delimited persisted selectors, and paths outside a managed artifact root.
-Compact and full output contain portable relative artifact paths and never reveal the registered machine-local root.
+Artifact fields remain portable and workspace-relative in compact and full output.
+Workspace create, clone, list, and status omit the registered root from compact output and expose it only under `--full`.
 
 ## Move or delete local artifacts
 
 `workspace.move` transfers one exact managed artifact between two registered workspaces without changing its Tableau identity.
+Move requires explicit source and destination workspace names.
 The move fails on a destination collision or any concurrent payload, metadata, or sidecar change.
 
 `workspace.artifact.delete` removes one exact local artifact by default and supports `--preview`.
@@ -53,7 +61,8 @@ Named workspaces change two previously accepted invocations.
 Update existing scripts before upgrading.
 
 `--workspace` now takes a logical registry name, not a filesystem path.
-A directory path passed to `--workspace` no longer resolves to that directory; register the root once with `tadx workspace create <name> --path <root>` and pass `<name>` thereafter.
+A directory path passed to `--workspace` no longer resolves to that directory; create or register the root under a logical name and pass that name thereafter.
+Use `tadx workspace register <name> --path <root>` to adopt an existing workspace directory.
 
 `content workbook publish --artifact` now requires a workspace-relative managed path such as `artifacts/workbook/<artifact-directory>`.
 It no longer accepts a bare directory or a canonical payload path; absolute selectors, parent traversal, and backslash-delimited selectors are rejected.

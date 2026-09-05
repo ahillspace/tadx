@@ -5,29 +5,7 @@ Add new items under Backlog; move to Done when shipped.
 
 ## Backlog
 
-### 1. Workspace location handling
-
-Problem.
-`tadx workspace create` and `workspace register` both require `--path` (hard usage error if omitted).
-There is no default location - not home, not XDG, not the current project.
-Worse, the staging dir is created in `filepath.Dir(root)`, so a shallow path like `/tableau` aims the mkdir at `/` and fails with a cryptic `mkdir /.tadx-workspace-stage-...: read-only file system` on macOS.
-The corrective_action does not point at the real cause.
-
-Recommended change.
-- Make `--path` optional. When omitted, default to a platform data dir: `<data-dir>/tadx/workspaces/<name>` (macOS `~/Library/Application Support/tadx/workspaces/`). This mirrors the pattern tadx already uses for config via `os.UserConfigDir()`.
-- Keep `--path` as an explicit override.
-- Validate the resolved root: reject a path whose parent resolves to `/` (or any non-writable / too-shallow root) with a real usage error, instead of letting the downstream mkdir blow up.
-- Offer a project-local mode (`--path .` or a `--here` flag) for the case where the workspace should sit beside the code.
-- VS Code extension: the extension supplies the workspace root automatically (the open folder); the human never types a path. The `containingWorkspace` cwd-matching already exists as the resolution seam - reuse it.
-
-Recommendation.
-Default to the data dir, not the current project folder, because workspaces hold pulled artifacts and should not spray into whatever directory you happen to be in.
-Provide the project-local mode as opt-in.
-
-Code seams.
-`internal/cli/workspace/command.go:103` and `:130` (the empty-path rejection), and `internal/workspace/manager.go:632` (canonicalRoot empty-root guard) plus `createRoot` (`manager.go:478`) for the root validation.
-
-### 2. Auth secret management
+### 1. Auth secret management
 
 Problem.
 tadx today resolves PAT secrets only from environment variables referenced by name in the env profile (`--pat-name-env` / `--pat-secret-env`).
@@ -44,11 +22,11 @@ Recommendation.
 This keeps the existing "never persist plaintext" invariant intact while giving humans the frictionless experience they expect (docker and gh already prove this model).
 It is additive - the env-var-reference path stays; the keychain becomes the default interactive path.
 
-### 3. Decide how to expose the CLI to an LLM (empirical, not theoretical)
+### 2. Decide how to expose the CLI to an LLM (empirical, not theoretical)
 
 Problem.
 Open question: how does an agent best learn to drive tadx - just `--help`, a repo skill, an AGENTS.md, or improved help strings / command renames?
-Known friction candidates already: broken `help` subcommand and missing `version`, `--path` required on workspace create with a cryptic read-only-root error, the env-var secret indirection, and the catalog-vs-content split.
+Known friction candidates already include the broken `help` subcommand, missing `version`, env-var secret indirection, and catalog-versus-content split.
 Rather than pick blind, run fresh agents against the CLI with logging and watch where they get confused.
 
 Planned experiment.
@@ -64,4 +42,10 @@ Status / notes.
 
 ## Done
 
-(nothing yet)
+### Workspace location handling
+
+`workspace create` and `workspace clone` use `<home>/TADX/workspaces/<name>` when you omit `--path`.
+An explicit `--path` remains authoritative.
+`workspace register` still requires the existing root, and artifact moves still require source and destination workspace names.
+Workspace names follow portable path-safe rules across Windows, macOS, and Linux.
+Workspace create, clone, list, and status expose the registered root only in `--full` output.

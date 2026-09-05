@@ -8,7 +8,7 @@ import (
 	"github.com/ahillspace/tadx/internal/errs"
 )
 
-// Input names one workspace and its machine-local creation root.
+// Input names one workspace and an optional machine-local root override.
 type Input struct {
 	Name string
 	Path string
@@ -18,6 +18,7 @@ type Input struct {
 type Workspace struct {
 	Name            string   `json:"name"`
 	ID              string   `json:"id"`
+	Root            string   `json:"root"`
 	ManifestVersion int      `json:"manifest_version"`
 	Registered      bool     `json:"registered"`
 	CreatedEntries  []string `json:"created_entries"`
@@ -60,19 +61,19 @@ type Action struct{ creator Creator }
 // New creates workspace.create.
 func New(creator Creator) *Action { return &Action{creator: creator} }
 
-// Execute creates one explicit workspace.
+// Execute creates one named workspace.
 func (a *Action) Execute(ctx context.Context, input Input) (Output, error) {
 	if a == nil || a.creator == nil {
 		return Output{}, runtimeError("workspace creation is not configured")
 	}
-	if input.Name == "" || input.Path == "" {
-		return Output{}, usage("name and path are required")
+	if input.Name == "" {
+		return Output{}, usage("name is required")
 	}
 	created, err := a.creator.Create(ctx, input)
 	if err != nil {
 		return Output{}, &errs.Error{ID: "workspace.create.failed", Kind: errs.KindOperation, Operation: "workspace.create", Resource: input.Name, Summary: "Workspace creation failed.", Cause: err, Retryable: errs.Bool(false), CorrectiveAction: "Review the exact workspace name and root, then retry."}
 	}
-	if created.Name == "" || created.ID == "" || !created.Registered {
+	if created.Name == "" || created.ID == "" || created.Root == "" || !created.Registered {
 		return Output{}, runtimeError("workspace creation returned an incomplete identity")
 	}
 	if len(created.CreatedEntries) == 0 {
@@ -82,7 +83,7 @@ func (a *Action) Execute(ctx context.Context, input Input) (Output, error) {
 }
 
 func usage(message string) error {
-	return &errs.Error{ID: "workspace.create.usage", Kind: errs.KindUsage, Operation: "workspace.create", Summary: message, Cause: errors.New(message), Retryable: errs.Bool(false), CorrectiveAction: "Provide one logical workspace name and one creation path."}
+	return &errs.Error{ID: "workspace.create.usage", Kind: errs.KindUsage, Operation: "workspace.create", Summary: message, Cause: errors.New(message), Retryable: errs.Bool(false), CorrectiveAction: "Provide one logical workspace name. Use --path only to override the default location."}
 }
 
 func runtimeError(message string) error {

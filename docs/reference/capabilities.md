@@ -1802,13 +1802,13 @@ Remove explicitly selected disposable local state while preserving canonical art
 
 ### `workspace.clone`
 
-Copy an existing managed workspace to a new local root under a new workspace identity.
+Copy an existing managed workspace under a new identity at &lt;home&gt;/TADX/workspaces/&lt;name&gt; or an explicit --path.
 
 - Surface: tadx workspace clone
 - Operation type: change
 - Owner: cli
 - MCP overlap: None
-- Selectors: Path/name
+- Selectors: Source/name; optional path override
 - Products and availability: Local / all
 - Product disposition: ship
 - Evidence level: local-contract
@@ -1818,7 +1818,7 @@ Copy an existing managed workspace to a new local root under a new workspace ide
 - Remote mutation: No
 - Supports `--preview`: No
 - Raw capable: No
-- Safety and guard: Rejects existing destination and symlinked entries; new identity; name/ID/path collision checks
+- Safety and guard: Rejects existing destination and symlinked entries; portable name; new identity; name/ID/path collision checks; registered root appears only under --full
 - Artifact effect: None
 - Upstream operation: Local filesystem
 - Evidence: A1 §§6.1, 7.5–7.6, 9.2; C1 §2.1
@@ -1828,13 +1828,13 @@ Copy an existing managed workspace to a new local root under a new workspace ide
 
 ### `workspace.create`
 
-Create an explicit named workspace with tadx.yaml, artifacts/, and .tadx/.
+Create a named workspace with tadx.yaml, artifacts/, and .tadx/ under &lt;home&gt;/TADX/workspaces/&lt;name&gt; or an explicit --path.
 
 - Surface: tadx workspace create
 - Operation type: change
 - Owner: cli
 - MCP overlap: None
-- Selectors: Path/name
+- Selectors: Name; optional path override
 - Products and availability: Local / all
 - Product disposition: ship
 - Evidence level: local-contract
@@ -1844,7 +1844,7 @@ Create an explicit named workspace with tadx.yaml, artifacts/, and .tadx/.
 - Remote mutation: No
 - Supports `--preview`: No
 - Raw capable: No
-- Safety and guard: Collision and path-boundary checks; no implicit creation by pull
+- Safety and guard: Portable name, identity, root collision, and path-boundary checks; no implicit creation by pull; registered root appears only under --full
 - Artifact effect: None
 - Upstream operation: Local filesystem
 - Evidence: A1 §§6.1, 7.5–7.6, 9.2; C1 §2.1
@@ -1870,7 +1870,7 @@ List registered named workspaces.
 - Remote mutation: No
 - Supports `--preview`: No
 - Raw capable: No
-- Safety and guard: No unbounded filesystem scan; machine-local roots are not rendered
+- Safety and guard: No unbounded filesystem scan; machine-local roots appear only under --full
 - Artifact effect: None
 - Upstream operation: Local config/filesystem
 - Evidence: A1 §§6.1, 7.2, 9.2; C1 §2.1
@@ -1932,7 +1932,7 @@ Adopt an existing on-disk workspace directory into the local registry using its 
 
 ### `workspace.status`
 
-Report effective workspace, artifact state, provenance, and dirty/missing status.
+Report effective workspace, artifact state, provenance, dirty/missing status, and the registered root under --full.
 
 - Surface: tadx workspace status
 - Operation type: inspect
@@ -1948,7 +1948,7 @@ Report effective workspace, artifact state, provenance, and dirty/missing status
 - Remote mutation: No
 - Supports `--preview`: No
 - Raw capable: No
-- Safety and guard: No locking; concurrent races are caller responsibility
+- Safety and guard: No locking; concurrent races are caller responsibility; machine-local root appears only under --full
 - Artifact effect: Read
 - Upstream operation: Fingerprint managed local content
 - Evidence: A1 §§6.1, 6.3–6.4, 8.2, ADR-032; C1 §2.1

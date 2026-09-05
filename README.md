@@ -109,14 +109,20 @@ tadx auth check --environment dev
 
 ## Create a named workspace
 
-Register a unique logical name for one machine-local workspace root:
+Create a unique logical workspace at the default human-accessible location:
 
 ```text
-tadx workspace create development --path "<workspace-root>"
+tadx workspace create development
 tadx env update dev --default-workspace development
-tadx workspace status --workspace development
+tadx workspace status --workspace development --full
 ```
 
+The default root is `<home>/TADX/workspaces/development` on Windows, macOS, and Linux.
+Use `--path <workspace-root>` with `workspace create` or `workspace clone` to override the default.
+The `--full` output for workspace creation, cloning, listing, and status includes the registered machine-local root.
+Workspace registration still requires an explicit root path.
+Artifact moves still require explicit source and destination workspace names plus an artifact selector.
+Workspace names are portable across supported operating systems and cannot contain path separators, Windows-invalid characters, reserved device names, or trailing dots or spaces.
 Lifecycle commands use the logical workspace name, while artifact paths remain relative and portable.
 
 ## Pull a workbook

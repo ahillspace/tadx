@@ -21,6 +21,12 @@ type Input struct {
 type Workspace struct {
 	Name string `json:"name"`
 	ID   string `json:"id"`
+	Root string `json:"root"`
+}
+
+type compactWorkspace struct {
+	Name string `json:"name"`
+	ID   string `json:"id"`
 }
 
 // Artifact is one full managed artifact state.
@@ -60,13 +66,13 @@ type Output struct {
 }
 
 type compactOutput struct {
-	Status          string    `json:"status"`
-	Workspace       Workspace `json:"workspace"`
-	Inventory       Inventory `json:"artifacts"`
-	Warnings        []string  `json:"warnings,omitempty"`
-	WarningsOmitted int       `json:"warnings_omitted,omitempty"`
-	Details         string    `json:"details"`
-	Help            []string  `json:"help"`
+	Status          string           `json:"status"`
+	Workspace       compactWorkspace `json:"workspace"`
+	Inventory       Inventory        `json:"artifacts"`
+	Warnings        []string         `json:"warnings,omitempty"`
+	WarningsOmitted int              `json:"warnings_omitted,omitempty"`
+	Details         string           `json:"details"`
+	Help            []string         `json:"help"`
 }
 
 type fullOutput struct {
@@ -83,7 +89,8 @@ func (o Output) CompactOutput() any {
 	inventory := o.Inventory
 	inventory.Items = nil
 	warnings, omitted := boundWarnings(o.Warnings)
-	return compactOutput{Status: o.Status, Workspace: o.Workspace, Inventory: inventory, Warnings: warnings, WarningsOmitted: omitted, Details: "--full", Help: o.Help}
+	workspace := compactWorkspace{Name: o.Workspace.Name, ID: o.Workspace.ID}
+	return compactOutput{Status: o.Status, Workspace: workspace, Inventory: inventory, Warnings: warnings, WarningsOmitted: omitted, Details: "--full", Help: o.Help}
 }
 
 // FullOutput returns the same bounded page with artifact details.

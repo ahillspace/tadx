@@ -100,9 +100,6 @@ func newCreate(deps Dependencies) *cobra.Command {
 			if err := exactArgs("workspace.create", 1)(command, args); err != nil {
 				return err
 			}
-			if input.Path == "" {
-				return clierr.Usage("workspace.create", errors.New("--path is required"))
-			}
 			input.Name = args[0]
 			return nil
 		},
@@ -114,7 +111,7 @@ func newCreate(deps Dependencies) *cobra.Command {
 			return deps.Renderer.Render(result)
 		},
 	}
-	command.Flags().StringVar(&input.Path, "path", "", "machine-local workspace root")
+	command.Flags().StringVar(&input.Path, "path", "", "override the default workspace root")
 	return command
 }
 
@@ -156,8 +153,8 @@ func newClone(deps Dependencies) *cobra.Command {
 			if err := exactArgs("workspace.clone", 1)(command, args); err != nil {
 				return err
 			}
-			if input.Name == "" || input.Path == "" {
-				return clierr.Usage("workspace.clone", errors.New("--name and --path are required"))
+			if input.Name == "" {
+				return clierr.Usage("workspace.clone", errors.New("--name is required"))
 			}
 			input.Source = args[0]
 			return nil
@@ -171,7 +168,7 @@ func newClone(deps Dependencies) *cobra.Command {
 		},
 	}
 	command.Flags().StringVar(&input.Name, "name", "", "new logical workspace name")
-	command.Flags().StringVar(&input.Path, "path", "", "machine-local root for the clone")
+	command.Flags().StringVar(&input.Path, "path", "", "override the default root for the clone")
 	return command
 }
 

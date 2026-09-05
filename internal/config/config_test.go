@@ -21,6 +21,26 @@ func TestDefaultPATVariableNames(t *testing.T) {
 	}
 }
 
+func TestValidateWorkspaceNameUsesPortablePathRules(t *testing.T) {
+	t.Parallel()
+
+	for _, name := range []string{"development", "team workspace", "finance-2026", "data_set"} {
+		if err := config.ValidateWorkspaceName(name); err != nil {
+			t.Errorf("ValidateWorkspaceName(%q) error = %v", name, err)
+		}
+	}
+	for _, name := range []string{
+		".", "..", "nested/workspace", `nested\workspace`, "workspace:", "work*space", "work?space",
+		`work"space`, "work<space", "work>space", "work|space", "trailing.", "trailing ",
+		"CON", "con.txt", "NUL", "AUX.json", "PRN", "COM1", "com9.log", "LPT1", "lpt9.txt",
+		"COM¹", "com².txt", "CoM³.log", "LPT¹", "lpt².txt", "LpT³.log",
+	} {
+		if err := config.ValidateWorkspaceName(name); err == nil {
+			t.Errorf("ValidateWorkspaceName(%q) error = nil", name)
+		}
+	}
+}
+
 func TestConfigValidateAcceptsNonSecretPATReferences(t *testing.T) {
 	t.Parallel()
 

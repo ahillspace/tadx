@@ -7,6 +7,7 @@ import (
 
 	artifactdelete "github.com/ahillspace/tadx/actions/workspace/artifact/delete"
 	workspaceclean "github.com/ahillspace/tadx/actions/workspace/clean"
+	workspaceclone "github.com/ahillspace/tadx/actions/workspace/clone"
 	workspacecreate "github.com/ahillspace/tadx/actions/workspace/create"
 	workspacelist "github.com/ahillspace/tadx/actions/workspace/list"
 	workspacemove "github.com/ahillspace/tadx/actions/workspace/move"
@@ -16,6 +17,7 @@ import (
 
 type actions struct {
 	create  []workspacecreate.Input
+	clone   []workspaceclone.Input
 	list    []workspacelist.Input
 	status  []workspacestatus.Input
 	move    []workspacemove.Input
@@ -27,6 +29,10 @@ type actions struct {
 func (a *actions) Create(_ context.Context, input workspacecreate.Input) (workspacecreate.Output, error) {
 	a.create = append(a.create, input)
 	return workspacecreate.Output{}, nil
+}
+func (a *actions) Clone(_ context.Context, input workspaceclone.Input) (workspaceclone.Output, error) {
+	a.clone = append(a.clone, input)
+	return workspaceclone.Output{}, nil
 }
 func (a *actions) List(_ context.Context, input workspacelist.Input) (workspacelist.Output, error) {
 	a.list = append(a.list, input)
@@ -59,7 +65,7 @@ func TestWorkspaceCommandsMapExactInputs(t *testing.T) {
 	r := &renderer{}
 	command := workspacecli.New(workspacecli.Dependencies{Creator: a, Lister: a, Statuser: a, Mover: a, Deleter: a, Cleaner: a, Renderer: r})
 	commands := [][]string{
-		{"create", "development", "--path", "relative/workspace"},
+		{"create", "development"},
 		{"list", "--limit", "5", "--cursor", "10"},
 		{"status", "--workspace", "development", "--limit", "7", "--cursor", "3"},
 		{"move", "--source", "development", "--destination", "archive", "--kind", "workbook", "--id", "wb-1"},
@@ -72,7 +78,7 @@ func TestWorkspaceCommandsMapExactInputs(t *testing.T) {
 			t.Fatalf("Execute(%v) error = %v", args, err)
 		}
 	}
-	if !reflect.DeepEqual(a.create, []workspacecreate.Input{{Name: "development", Path: "relative/workspace"}}) {
+	if !reflect.DeepEqual(a.create, []workspacecreate.Input{{Name: "development"}}) {
 		t.Fatalf("create = %#v", a.create)
 	}
 	if !reflect.DeepEqual(a.list, []workspacelist.Input{{Limit: 5, Cursor: "10"}}) {
@@ -92,6 +98,26 @@ func TestWorkspaceCommandsMapExactInputs(t *testing.T) {
 	}
 	if r.calls != len(commands) {
 		t.Fatalf("render calls = %d", r.calls)
+	}
+}
+
+func TestWorkspaceCreateAndClonePreserveExplicitPaths(t *testing.T) {
+	a := &actions{}
+	r := &renderer{}
+	command := workspacecli.New(workspacecli.Dependencies{Creator: a, Cloner: a, Lister: a, Statuser: a, Mover: a, Deleter: a, Cleaner: a, Renderer: r})
+	command.SetArgs([]string{"create", "development", "--path", "relative/workspace"})
+	if err := command.Execute(); err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(a.create, []workspacecreate.Input{{Name: "development", Path: "relative/workspace"}}) {
+		t.Fatalf("create = %#v", a.create)
+	}
+	command.SetArgs([]string{"clone", "development", "--name", "experiment"})
+	if err := command.Execute(); err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(a.clone, []workspaceclone.Input{{Source: "development", Name: "experiment"}}) {
+		t.Fatalf("clone = %#v", a.clone)
 	}
 }
 

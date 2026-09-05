@@ -44,6 +44,7 @@ type Options struct {
 	HTTPClient       *http.Client
 	Now              func() time.Time
 	CorrelationID    func() string
+	UserHomeDir      func() (string, error)
 }
 
 // Run wires and runs the CLI, renders structured output, and returns an AXI exit code.
@@ -154,6 +155,7 @@ type runtimeDependencies struct {
 	httpClient    *http.Client
 	now           func() time.Time
 	correlationID string
+	userHomeDir   func() (string, error)
 }
 
 func newRuntime(options Options) (*runtimeDependencies, error) {
@@ -183,7 +185,11 @@ func newRuntime(options Options) (*runtimeDependencies, error) {
 			correlation = fmt.Sprintf("%x", value[:])
 		}
 	}
-	return &runtimeDependencies{configPath: path, httpClient: client, now: now, correlationID: correlation}, nil
+	userHomeDir := options.UserHomeDir
+	if userHomeDir == nil {
+		userHomeDir = os.UserHomeDir
+	}
+	return &runtimeDependencies{configPath: path, httpClient: client, now: now, correlationID: correlation, userHomeDir: userHomeDir}, nil
 }
 
 func (r *runtimeDependencies) Resolve(_ context.Context, alias string) (authcheck.Target, error) {

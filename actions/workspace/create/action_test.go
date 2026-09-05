@@ -14,7 +14,7 @@ type creator struct{ input create.Input }
 
 func (c *creator) Create(_ context.Context, input create.Input) (create.Workspace, error) {
 	c.input = input
-	return create.Workspace{Name: input.Name, ID: "ws_11111111111111111111111111111111", ManifestVersion: 1, Registered: true}, nil
+	return create.Workspace{Name: input.Name, ID: "ws_11111111111111111111111111111111", Root: "/var/tmp/tadx-tests/workspaces/development", ManifestVersion: 1, Registered: true}, nil
 }
 
 func TestExecuteCreatesNamedWorkspaceAndProjectsOutput(t *testing.T) {
@@ -35,10 +35,20 @@ func TestExecuteCreatesNamedWorkspaceAndProjectsOutput(t *testing.T) {
 	if err := output.RenderWithOptions(&full, result, output.Options{Full: true}); err != nil {
 		t.Fatal(err)
 	}
-	if bytes.Contains(full.Bytes(), []byte("runtime-root")) {
-		t.Fatalf("full output:\n%s", full.String())
+	if !bytes.Contains(full.Bytes(), []byte("/var/tmp/tadx-tests/workspaces/development")) {
+		t.Fatalf("full output omits the registered root:\n%s", full.String())
 	}
 	assertGolden(t, full.Bytes(), "testdata/output_full.toon")
+}
+
+func TestExecuteAcceptsDefaultCreationPath(t *testing.T) {
+	dependency := &creator{}
+	if _, err := create.New(dependency).Execute(context.Background(), create.Input{Name: "development"}); err != nil {
+		t.Fatal(err)
+	}
+	if dependency.input != (create.Input{Name: "development"}) {
+		t.Fatalf("input = %#v", dependency.input)
+	}
 }
 
 func assertGolden(t *testing.T, actual []byte, path string) {
