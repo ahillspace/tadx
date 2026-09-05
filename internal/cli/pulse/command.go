@@ -407,9 +407,9 @@ func newMetricUnfollow(deps Dependencies) *cobra.Command {
 			if input.Environment == "" {
 				return usage("pulse.metric.unfollow", "--environment is required")
 			}
-			direct := input.SubscriptionLUID != ""
-			relation := input.MetricLUID != "" && (input.UserLUID != "") != (input.GroupLUID != "")
-			if direct == relation {
+			direct := input.SubscriptionLUID != "" && input.MetricLUID == "" && input.UserLUID == "" && input.GroupLUID == ""
+			relation := input.SubscriptionLUID == "" && input.MetricLUID != "" && (input.UserLUID != "") != (input.GroupLUID != "")
+			if !direct && !relation {
 				return usage("pulse.metric.unfollow", "use either --subscription-id or --id with exactly one of --user-id or --group-id")
 			}
 			return nil

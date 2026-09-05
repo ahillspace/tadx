@@ -7,9 +7,11 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
+	"github.com/ahillspace/tadx/internal/auth"
 	"github.com/ahillspace/tadx/internal/tableau"
 	tableaupulse "github.com/ahillspace/tadx/internal/tableau/pulse"
 )
@@ -21,22 +23,57 @@ func (session) SiteLUID() string                { return "site-1" }
 func (session) UserLUID() string                { return "user-1" }
 func (session) String() string                  { return "session" }
 
+type sessionWithoutSite struct{ session }
+
+func (sessionWithoutSite) SiteLUID() string { return " " }
+
+func newPulseClient(t *testing.T, transport *tableau.Transport, authenticated auth.Session, serverURL string) *tableaupulse.Client {
+	t.Helper()
+	client, err := tableaupulse.NewClient(transport, authenticated, serverURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return client
+}
+
 func TestListDefinitionsUsesBoundedPulseTokenContract(t *testing.T) {
 	server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		if request.Method != http.MethodGet || request.URL.Path != "/api/-/pulse/definitions" || request.URL.Query().Get("page_size") != "2" || request.URL.Query().Get("page_token") != "token-1" {
 			t.Fatalf("request=%s %s?%s", request.Method, request.URL.Path, request.URL.RawQuery)
 		}
+		if got := request.Header.Get("X-Tableau-Site-Id"); got != "site-1" {
+			t.Fatalf("site header=%q", got)
+		}
 		writer.Header().Set("X-Tableau-Request-Id", "request-1")
 		_, _ = io.WriteString(writer, `{"definitions":[{"metadata":{"id":"definition-1","name":"Revenue","description":"Recognized revenue"},"specification":{"datasource":{"id":"datasource-1"},"basic_specification":{"measure":{"field":"Sales","aggregation":"AGGREGATION_SUM"},"time_dimension":{"field":"Order Date"},"filters":[]}},"extension_options":{"allowed_dimensions":["Region"]}}],"next_page_token":"token-2"}`)
 	}))
 	defer server.Close()
-	client := tableaupulse.NewClient(tableau.NewTransport(server.Client(), "3.29", nil), session{}, server.URL)
+	client := newPulseClient(t, tableau.NewTransport(server.Client(), "3.29", nil), session{}, server.URL)
 	page, err := client.ListDefinitions(context.Background(), tableaupulse.PageRequest{PageSize: 2, PageToken: "token-1"})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if len(page.Definitions) != 1 || page.Definitions[0].LUID != "definition-1" || page.Definitions[0].DatasourceLUID != "datasource-1" || page.NextPageToken != "token-2" || page.TableauRequestID != "request-1" {
 		t.Fatalf("page=%#v", page)
+	}
+}
+
+func TestNewClientRejectsMissingAuthenticatedSiteBeforeNetwork(t *testing.T) {
+	calls := 0
+	server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		calls++
+		writer.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+	client, err := tableaupulse.NewClient(tableau.NewTransport(server.Client(), "3.29", nil), sessionWithoutSite{}, server.URL)
+	if err == nil || !strings.Contains(err.Error(), "site LUID") {
+		t.Fatalf("err=%v", err)
+	}
+	if client != nil {
+		t.Fatalf("client=%#v", client)
+	}
+	if calls != 0 {
+		t.Fatalf("calls=%d", calls)
 	}
 }
 
@@ -48,7 +85,7 @@ func TestGetDefinitionAcceptsDocumentedEnvelopeAndPreservesConfiguration(t *test
 		_, _ = io.WriteString(writer, `{"definition":{"metadata":{"id":"definition-1","name":"Revenue"},"specification":{"datasource":{"id":"datasource-1"},"basic_specification":{"measure":{"field":"Sales","aggregation":"AGGREGATION_SUM"},"time_dimension":{"field":"Order Date"}}},"extension_options":{"allowed_dimensions":["Region"]}}}`)
 	}))
 	defer server.Close()
-	client := tableaupulse.NewClient(tableau.NewTransport(server.Client(), "3.29", nil), session{}, server.URL)
+	client := newPulseClient(t, tableau.NewTransport(server.Client(), "3.29", nil), session{}, server.URL)
 	definition, err := client.GetDefinition(context.Background(), "definition-1")
 	if err != nil {
 		t.Fatal(err)
@@ -99,7 +136,7 @@ func TestCreateDefinitionUsesProvenMediaTypesAndResolvesExplicitDefaultMetric(t 
 		}
 	}))
 	defer server.Close()
-	client := tableaupulse.NewClient(tableau.NewTransport(server.Client(), "3.29", nil), session{}, server.URL)
+	client := newPulseClient(t, tableau.NewTransport(server.Client(), "3.29", nil), session{}, server.URL)
 	result, err := client.CreateDefinition(context.Background(), createRequest())
 	if err != nil {
 		t.Fatal(err)
@@ -119,7 +156,7 @@ func TestCreateDefinitionReturnsCreatedIdentityWhenDefaultMetricPollingTimesOut(
 		_, _ = io.WriteString(writer, `{"metrics":[]}`)
 	}))
 	defer server.Close()
-	client := tableaupulse.NewClient(tableau.NewTransport(server.Client(), "3.29", nil), session{}, server.URL)
+	client := newPulseClient(t, tableau.NewTransport(server.Client(), "3.29", nil), session{}, server.URL)
 	client.SetPollPolicy(time.Millisecond, 4*time.Millisecond)
 	result, err := client.CreateDefinition(context.Background(), createRequest())
 	if err == nil || result.DefinitionLUID != "definition-1" || result.DefaultMetricStatus != "pending" {
@@ -172,7 +209,7 @@ func TestMetricContractsPreserveExactSpecificationAndMediaTypes(t *testing.T) {
 		}
 	}))
 	defer server.Close()
-	client := tableaupulse.NewClient(tableau.NewTransport(server.Client(), "3.29", nil), session{}, server.URL)
+	client := newPulseClient(t, tableau.NewTransport(server.Client(), "3.29", nil), session{}, server.URL)
 	metric, err := client.GetMetric(context.Background(), "metric-1")
 	if err != nil || metric.LUID != "metric-1" || metric.DefinitionLUID != "definition-1" || metric.SiteLUID != "site-1" {
 		t.Fatalf("metric=%#v err=%v", metric, err)
@@ -210,7 +247,7 @@ func TestSubscriptionsUseCapturedShapesAndExactDelete(t *testing.T) {
 		}
 	}))
 	defer server.Close()
-	client := tableaupulse.NewClient(tableau.NewTransport(server.Client(), "3.29", nil), session{}, server.URL)
+	client := newPulseClient(t, tableau.NewTransport(server.Client(), "3.29", nil), session{}, server.URL)
 	subscriptions, err := client.ListSubscriptions(context.Background(), "metric-1")
 	if err != nil || len(subscriptions) != 2 || subscriptions[0].FollowerLUID != "user-1" || subscriptions[1].FollowerType != "GROUP" {
 		t.Fatalf("subscriptions=%#v err=%v", subscriptions, err)
@@ -229,7 +266,7 @@ func TestGetOrCreateRejectsMissingCreatedFlag(t *testing.T) {
 		_, _ = io.WriteString(writer, `{"metric":{"metadata":{"id":"metric-2"}}}`)
 	}))
 	defer server.Close()
-	client := tableaupulse.NewClient(tableau.NewTransport(server.Client(), "3.29", nil), session{}, server.URL)
+	client := newPulseClient(t, tableau.NewTransport(server.Client(), "3.29", nil), session{}, server.URL)
 	_, err := client.GetOrCreateMetric(context.Background(), tableaupulse.GetOrCreateRequest{DefinitionLUID: "definition-1", Specification: map[string]any{"filters": []any{}}})
 	if err == nil {
 		t.Fatal("missing is_metric_created accepted")
@@ -249,7 +286,7 @@ func TestListMetricsUsesBoundedDefinitionTokenContract(t *testing.T) {
 		_, _ = io.WriteString(writer, `{"metrics":[{"metadata":{"id":"metric-1","name":"Revenue"},"definition_id":"definition-1","is_default":true,"specification":{"filters":[]}}],"next_page_token":"page-2"}`)
 	}))
 	defer server.Close()
-	client := tableaupulse.NewClient(tableau.NewTransport(server.Client(), "3.29", nil), session{}, server.URL)
+	client := newPulseClient(t, tableau.NewTransport(server.Client(), "3.29", nil), session{}, server.URL)
 	page, err := client.ListMetrics(context.Background(), "definition-1", tableaupulse.PageRequest{PageSize: 25, PageToken: "page-1"})
 	if err != nil || len(page.Metrics) != 1 || page.Metrics[0].LUID != "metric-1" || !page.Metrics[0].IsDefault || page.NextPageToken != "page-2" || page.TableauRequestID != "request-1" {
 		t.Fatalf("page=%#v err=%v", page, err)
@@ -262,7 +299,7 @@ func TestCreateSubscriptionTreatsProvenDuplicateAsConverged(t *testing.T) {
 		_, _ = io.WriteString(writer, `{"error":{"code":"ALREADY_EXISTS","summary":"Subscription already exists for this follower"}}`)
 	}))
 	defer server.Close()
-	client := tableaupulse.NewClient(tableau.NewTransport(server.Client(), "3.29", nil), session{}, server.URL)
+	client := newPulseClient(t, tableau.NewTransport(server.Client(), "3.29", nil), session{}, server.URL)
 	result, err := client.CreateSubscription(context.Background(), tableaupulse.CreateSubscriptionRequest{MetricLUID: "metric-1", FollowerType: "GROUP", FollowerLUID: "group-1"})
 	if err != nil || result.Status != "already_following" {
 		t.Fatalf("result=%#v err=%v", result, err)
@@ -285,7 +322,7 @@ func TestReconcileMetricVerifiesExactOwnershipAndInventory(t *testing.T) {
 		}
 	}))
 	defer server.Close()
-	client := tableaupulse.NewClient(tableau.NewTransport(server.Client(), "3.29", nil), session{}, server.URL)
+	client := newPulseClient(t, tableau.NewTransport(server.Client(), "3.29", nil), session{}, server.URL)
 	result, err := client.ReconcileMetric(context.Background(), tableaupulse.ExpectedMetric{MetricLUID: "metric-1", DefinitionLUID: "definition-1", DatasourceLUID: "datasource-1", SiteLUID: "site-1"})
 	if err != nil || result.Status != "visible" || !result.OwnershipVerified || !result.InventoryVisible || result.Attempts != 1 {
 		t.Fatalf("result=%#v err=%v", result, err)

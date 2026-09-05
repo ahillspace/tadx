@@ -26,6 +26,8 @@ const (
 	maxInventoryScan  = 10000
 )
 
+var directManagedArtifactKinds = [...]string{"datasource", "flow", "pulse-definition", "workbook"}
+
 // Selector identifies one exact managed artifact.
 type Selector struct {
 	Kind         string
@@ -188,7 +190,7 @@ func Resolve(ctx context.Context, workspace string, selector Selector) (Item, er
 
 func scanManagedArtifacts(ctx context.Context, workspace string, scanLimit int) ([]Item, bool, error) {
 	var items []Item
-	for _, kind := range []string{"datasource", "flow", "workbook"} {
+	for _, kind := range directManagedArtifactKinds {
 		kindRoot := filepath.Join(workspace, "artifacts", kind)
 		entries, err := os.ReadDir(kindRoot)
 		if errors.Is(err, os.ErrNotExist) {
@@ -282,7 +284,7 @@ func resolveRelativePath(ctx context.Context, workspace string, selector Selecto
 	parts := strings.Split(clean, "/")
 	var kind string
 	switch {
-	case len(parts) == 3 && parts[0] == "artifacts" && (parts[1] == "workbook" || parts[1] == "datasource" || parts[1] == "flow"):
+	case len(parts) == 3 && parts[0] == "artifacts" && isDirectManagedArtifactKind(parts[1]):
 		kind = parts[1]
 	case len(parts) == 4 && parts[0] == "artifacts" && parts[1] == "lineage" && isLineageResourceKind(parts[2]):
 		kind = "lineage"
@@ -362,6 +364,18 @@ func inspectArtifact(ctx context.Context, workspace, kind, directory string) (It
 		if err := validateLineage(lineage); err != nil {
 			return Item{}, err
 		}
+	case "pulse-definition":
+		metadata, err := readPulseDefinitionMetadata(directory)
+		if err != nil {
+			return Item{}, err
+		}
+		item.LUID, item.Name = metadata.TableauID, metadata.Name
+		item.ServerOrigin, item.SiteLUID = metadata.SourceServerOrigin, metadata.SourceSiteLUID
+		item.BaselineFingerprint = metadata.LocalBaselineFingerprint
+		canonical, err = inventoryCanonicalPath(directory, metadata.CanonicalPayload, ".json")
+		if err != nil {
+			return Item{}, err
+		}
 	case "lineage":
 		metadata, err := readStandaloneLineageMetadata(directory)
 		if err != nil {
@@ -409,6 +423,15 @@ func inspectArtifact(ctx context.Context, workspace, kind, directory string) (It
 		return Item{}, err
 	}
 	return item, nil
+}
+
+func isDirectManagedArtifactKind(kind string) bool {
+	for _, candidate := range directManagedArtifactKinds {
+		if kind == candidate {
+			return true
+		}
+	}
+	return false
 }
 
 func invalidArtifactWarning(err error) string {

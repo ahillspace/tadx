@@ -27,6 +27,9 @@ func TestDeleteUsesOneExactRequestAndPreservesOutcome(t *testing.T) {
 					if r.Header.Get("X-Tableau-Auth") != "token" {
 						t.Error("missing session authentication")
 					}
+					if r.Header.Get("X-Tableau-Site-Id") != "site-1" {
+						t.Error("missing authenticated site identity")
+					}
 					w.Header().Set("X-Tableau-Request-Id", "delete-request")
 					w.WriteHeader(status)
 					if status >= 400 {
@@ -34,7 +37,7 @@ func TestDeleteUsesOneExactRequestAndPreservesOutcome(t *testing.T) {
 					}
 				}))
 				defer server.Close()
-				client := pulse.NewClient(tableau.NewTransport(server.Client(), "3.29", nil), session{}, server.URL)
+				client := newPulseClient(t, tableau.NewTransport(server.Client(), "3.29", nil), session{}, server.URL)
 				var result pulse.DeleteResult
 				var err error
 				if kind == "definition" {
@@ -67,7 +70,7 @@ func TestDeleteRejectsEmptyIdentityBeforeRequest(t *testing.T) {
 	calls := 0
 	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { calls++; w.WriteHeader(204) }))
 	defer server.Close()
-	client := pulse.NewClient(tableau.NewTransport(server.Client(), "3.29", nil), session{}, server.URL)
+	client := newPulseClient(t, tableau.NewTransport(server.Client(), "3.29", nil), session{}, server.URL)
 	if _, err := client.DeleteDefinition(context.Background(), " "); err == nil {
 		t.Error("accepted empty definition ID")
 	}

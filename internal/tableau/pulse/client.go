@@ -34,9 +34,13 @@ type Client struct {
 	pollTimeout  time.Duration
 }
 
-// NewClient creates a Pulse client.
-func NewClient(transport *tableau.Transport, session auth.Session, serverURL string) *Client {
-	return &Client{transport: transport, session: session, serverURL: serverURL, pollInterval: time.Second, pollTimeout: 12 * time.Second}
+// NewClient creates a Pulse client with authoritative authenticated site identity.
+func NewClient(transport *tableau.Transport, session auth.Session, serverURL string) (*Client, error) {
+	client := &Client{transport: transport, session: session, serverURL: serverURL, pollInterval: time.Second, pollTimeout: 12 * time.Second}
+	if err := client.validate(); err != nil {
+		return nil, err
+	}
+	return client, nil
 }
 
 // SetPollPolicy sets bounded default-metric and reconciliation polling.
@@ -52,6 +56,9 @@ func (c *Client) SetPollPolicy(interval, timeout time.Duration) {
 func (c *Client) validate() error {
 	if c == nil || c.transport == nil || c.session == nil || strings.TrimSpace(c.serverURL) == "" {
 		return errors.New("authenticated Pulse client is not configured")
+	}
+	if strings.TrimSpace(c.session.SiteLUID()) == "" {
+		return errors.New("authenticated Pulse client requires a site LUID")
 	}
 	return nil
 }
@@ -340,7 +347,9 @@ func (c *Client) do(ctx context.Context, method, path string, query url.Values, 
 	if err := c.validate(); err != nil {
 		return tableau.Response{}, err
 	}
-	return c.transport.Do(ctx, c.session, tableau.Request{Method: method, ServerURL: c.serverURL, Path: path, Query: query, Body: body, ContentType: contentType, Accept: accept, Operation: operation, MaxResponseBytes: maxResponseBytes})
+	header := http.Header{}
+	header.Set("X-Tableau-Site-Id", strings.TrimSpace(c.session.SiteLUID()))
+	return c.transport.Do(ctx, c.session, tableau.Request{Method: method, ServerURL: c.serverURL, Path: path, Query: query, Header: header, Body: body, ContentType: contentType, Accept: accept, Operation: operation, MaxResponseBytes: maxResponseBytes})
 }
 
 func pageQuery(input PageRequest) (url.Values, error) {

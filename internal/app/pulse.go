@@ -63,11 +63,15 @@ func (c *pulseCommands) connect(ctx context.Context, alias string, explicit bool
 	if err != nil {
 		return pulseConnection{environment: connection.environment}, err
 	}
+	pulseClient, err := tableaupulse.NewClient(connection.transport, connection.session, connection.environment.URL)
+	if err != nil {
+		return pulseConnection{environment: connection.environment}, fmt.Errorf("configure authenticated Pulse client: %w", err)
+	}
 	datasourceClient := tableaudatasource.NewClient(connection.transport, connection.session, connection.environment.URL)
 	return pulseConnection{
 		environment: connection.environment,
 		siteLUID:    connection.session.SiteLUID(),
-		client:      tableaupulse.NewClient(connection.transport, connection.session, connection.environment.URL),
+		client:      pulseClient,
 		schema:      resourcedatasource.NewSchemaAdapter(datasourceClient, fieldcatalog.NewClient(connection.transport, connection.session, connection.environment.URL)),
 	}, nil
 }
@@ -444,7 +448,7 @@ func (v *pulseDefinitionFieldValidator) ValidateDefinitionFields(ctx context.Con
 		aggregation = "AGGREGATION_SUM"
 	}
 	if measure.RequiresUserAggregation && aggregation != "AGGREGATION_USER" {
-		return fmt.Errorf("field %q requires USER aggregation", measure.ID)
+		return fmt.Errorf("field %q is already aggregated; use --aggregation USER", measure.ID)
 	}
 	if !measure.RequiresUserAggregation && aggregation == "AGGREGATION_USER" {
 		return fmt.Errorf("field %q does not support USER aggregation", measure.ID)
@@ -463,6 +467,9 @@ func exactPulseField(fields map[string][]fieldcatalog.Field, id, role string) (f
 	}
 	field := matches[0]
 	if field.Excluded || field.Role == "excluded" {
+		if field.ExclusionReason == "table_calc" && role == "measure" {
+			return fieldcatalog.Field{}, fmt.Errorf("field %q is a table calculation; table calculations cannot be used as Pulse measures", id)
+		}
 		return fieldcatalog.Field{}, fmt.Errorf("field %q is excluded: %s", id, field.ExclusionReason)
 	}
 	if field.Role != role {

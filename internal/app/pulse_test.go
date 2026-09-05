@@ -9,6 +9,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -194,6 +195,8 @@ func TestPulseDefinitionFieldValidatorUsesExactRawIDsAndAggregationRules(t *test
 		Fields: []fieldcatalog.Field{
 			{ID: "[Revenue]", Caption: "Revenue", Role: "measure", DataType: "NUMBER"},
 			{ID: "[Margin Ratio]", Caption: "Margin Ratio", Role: "measure", DataType: "NUMBER", RequiresUserAggregation: true},
+			{ID: "[Flat Fee]", Caption: "Flat Fee", Role: "measure", DataType: "NUMBER", DefaultAggregation: "SUM"},
+			{ID: "[Nested Rank]", Caption: "Nested Rank", Role: "excluded", DataType: "NUMBER", Excluded: true, ExclusionReason: "table_calc"},
 			{ID: "[Order Date]", Caption: "Order Date", Role: "date", DataType: "DATE"},
 			{ID: "[Region]", Caption: "Region", Role: "dimension", DataType: "STRING"},
 			{ID: "[Hidden]", Caption: "Hidden", Role: "excluded", DataType: "STRING", Excluded: true, ExclusionReason: "internal"},
@@ -206,23 +209,41 @@ func TestPulseDefinitionFieldValidatorUsesExactRawIDsAndAggregationRules(t *test
 	if err := validator.ValidateDefinitionFields(context.Background(), valid); err != nil {
 		t.Fatal(err)
 	}
-	for name, input := range map[string]definitioncreate.FieldReferences{
-		"caption instead of raw ID":   {DatasourceLUID: schema.DatasourceLUID, MeasureField: "Revenue", Aggregation: "AGGREGATION_SUM", TimeDimension: "[Order Date]"},
-		"wrong date role":             {DatasourceLUID: schema.DatasourceLUID, MeasureField: "[Revenue]", Aggregation: "AGGREGATION_SUM", TimeDimension: "[Region]"},
-		"excluded dimension":          {DatasourceLUID: schema.DatasourceLUID, MeasureField: "[Revenue]", Aggregation: "AGGREGATION_SUM", TimeDimension: "[Order Date]", AllowedDimensions: []string{"[Hidden]"}},
-		"missing user aggregation":    {DatasourceLUID: schema.DatasourceLUID, MeasureField: "[Margin Ratio]", Aggregation: "AGGREGATION_SUM", TimeDimension: "[Order Date]"},
-		"unexpected user aggregation": {DatasourceLUID: schema.DatasourceLUID, MeasureField: "[Revenue]", Aggregation: "AGGREGATION_USER", TimeDimension: "[Order Date]"},
+	for name, test := range map[string]struct {
+		input       definitioncreate.FieldReferences
+		wantMessage string
+	}{
+		"caption instead of raw ID":      {input: definitioncreate.FieldReferences{DatasourceLUID: schema.DatasourceLUID, MeasureField: "Revenue", Aggregation: "AGGREGATION_SUM", TimeDimension: "[Order Date]"}},
+		"wrong date role":                {input: definitioncreate.FieldReferences{DatasourceLUID: schema.DatasourceLUID, MeasureField: "[Revenue]", Aggregation: "AGGREGATION_SUM", TimeDimension: "[Region]"}},
+		"excluded dimension":             {input: definitioncreate.FieldReferences{DatasourceLUID: schema.DatasourceLUID, MeasureField: "[Revenue]", Aggregation: "AGGREGATION_SUM", TimeDimension: "[Order Date]", AllowedDimensions: []string{"[Hidden]"}}},
+		"nested table calculation":       {input: definitioncreate.FieldReferences{DatasourceLUID: schema.DatasourceLUID, MeasureField: "[Nested Rank]", Aggregation: "AGGREGATION_USER", TimeDimension: "[Order Date]"}, wantMessage: "table calculations cannot be used as Pulse measures"},
+		"aggregate calculation plus SUM": {input: definitioncreate.FieldReferences{DatasourceLUID: schema.DatasourceLUID, MeasureField: "[Margin Ratio]", Aggregation: "AGGREGATION_SUM", TimeDimension: "[Order Date]"}, wantMessage: "already aggregated; use --aggregation USER"},
+		"unexpected user aggregation":    {input: definitioncreate.FieldReferences{DatasourceLUID: schema.DatasourceLUID, MeasureField: "[Revenue]", Aggregation: "AGGREGATION_USER", TimeDimension: "[Order Date]"}},
 	} {
 		t.Run(name, func(t *testing.T) {
-			if err := validator.ValidateDefinitionFields(context.Background(), input); err == nil {
+			err := validator.ValidateDefinitionFields(context.Background(), test.input)
+			if err == nil {
 				t.Fatal("expected validation failure")
+			}
+			if test.wantMessage != "" && !strings.Contains(err.Error(), test.wantMessage) {
+				t.Fatalf("error = %q, want substring %q", err, test.wantMessage)
 			}
 		})
 	}
-	valid.MeasureField = "[Margin Ratio]"
-	valid.Aggregation = "AGGREGATION_USER"
-	if err := validator.ValidateDefinitionFields(context.Background(), valid); err != nil {
-		t.Fatal(err)
+	for name, measure := range map[string]struct {
+		field       string
+		aggregation string
+	}{
+		"aggregate calculation plus USER": {field: "[Margin Ratio]", aggregation: "AGGREGATION_USER"},
+		"row-level calculation plus SUM":  {field: "[Flat Fee]", aggregation: "AGGREGATION_SUM"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			valid.MeasureField = measure.field
+			valid.Aggregation = measure.aggregation
+			if err := validator.ValidateDefinitionFields(context.Background(), valid); err != nil {
+				t.Fatal(err)
+			}
+		})
 	}
 }
 

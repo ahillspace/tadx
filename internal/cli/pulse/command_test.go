@@ -31,6 +31,8 @@ type actions struct {
 	metricDeleteInput       metricdelete.Input
 	metricFollowInput       metricfollow.Input
 	metricFollowPreview     bool
+	metricUnfollowInput     metricunfollow.Input
+	metricUnfollowPreview   bool
 }
 
 func (a *actions) ListPulseDefinitions(_ context.Context, input definitionlist.Input) (definitionlist.Output, error) {
@@ -86,7 +88,9 @@ func (a *actions) FollowPulseMetric(_ context.Context, input metricfollow.Input,
 	return metricfollow.Output{}, nil
 }
 
-func (*actions) UnfollowPulseMetric(context.Context, metricunfollow.Input, bool) (metricunfollow.Output, error) {
+func (a *actions) UnfollowPulseMetric(_ context.Context, input metricunfollow.Input, preview bool) (metricunfollow.Output, error) {
+	a.metricUnfollowInput = input
+	a.metricUnfollowPreview = preview
 	return metricunfollow.Output{}, nil
 }
 
@@ -222,6 +226,52 @@ func TestDefinitionCreateMapsSmallIntentAndPreview(t *testing.T) {
 	}
 	if !input.Intent.RunningTotal || !a.definitionCreatePreview {
 		t.Fatalf("running total = %t, preview = %t", input.Intent.RunningTotal, a.definitionCreatePreview)
+	}
+}
+
+func TestMetricUnfollowMapsEachCompleteSelectorForm(t *testing.T) {
+	a := &actions{}
+	command := newCommand(a)
+	command.SetArgs([]string{"metric", "unfollow", "--environment", "development", "--subscription-id", "sub-1", "--preview"})
+	if err := command.Execute(); err != nil {
+		t.Fatal(err)
+	}
+	if a.metricUnfollowInput.Environment != "development" || a.metricUnfollowInput.SubscriptionLUID != "sub-1" || !a.metricUnfollowPreview {
+		t.Fatalf("direct unfollow input=%#v preview=%t", a.metricUnfollowInput, a.metricUnfollowPreview)
+	}
+
+	a = &actions{}
+	command = newCommand(a)
+	command.SetArgs([]string{"metric", "unfollow", "--environment", "development", "--id", "metric-1", "--user-id", "user-1"})
+	if err := command.Execute(); err != nil {
+		t.Fatal(err)
+	}
+	if a.metricUnfollowInput.MetricLUID != "metric-1" || a.metricUnfollowInput.UserLUID != "user-1" || a.metricUnfollowPreview {
+		t.Fatalf("relationship unfollow input=%#v preview=%t", a.metricUnfollowInput, a.metricUnfollowPreview)
+	}
+}
+
+func TestMetricUnfollowRejectsMixedAndIncompleteSelectorFlags(t *testing.T) {
+	tests := [][]string{
+		{},
+		{"--subscription-id", "sub-1", "--id", "metric-1"},
+		{"--subscription-id", "sub-1", "--user-id", "user-1"},
+		{"--subscription-id", "sub-1", "--group-id", "group-1"},
+		{"--id", "metric-1"},
+		{"--user-id", "user-1"},
+		{"--group-id", "group-1"},
+		{"--id", "metric-1", "--user-id", "user-1", "--group-id", "group-1"},
+	}
+	for _, flags := range tests {
+		a := &actions{}
+		command := newCommand(a)
+		command.SetArgs(append([]string{"metric", "unfollow", "--environment", "development"}, flags...))
+		if err := command.Execute(); err == nil {
+			t.Fatalf("invalid selectors accepted: %v", flags)
+		}
+		if a.metricUnfollowInput != (metricunfollow.Input{}) {
+			t.Fatalf("invalid selectors reached action: flags=%v input=%#v", flags, a.metricUnfollowInput)
+		}
 	}
 }
 
