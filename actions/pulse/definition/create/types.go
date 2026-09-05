@@ -217,7 +217,7 @@ type FullResult struct {
 
 // CompactOutput returns the safety-critical plan and identities.
 func (o Output) CompactOutput() any {
-	plan := CompactPlan{Mode: o.Plan.Mode, Operation: o.Plan.Operation, Name: o.Plan.Name, Datasource: o.Plan.Datasource, Measure: o.Plan.Measure, TimeField: o.Plan.TimeField, Dimensions: append([]string(nil), o.Plan.Dimensions...), Fingerprint: o.Plan.Fingerprint}
+	plan := CompactPlan{Mode: o.Plan.Mode, Operation: o.Plan.Operation, Name: o.Plan.Name, Datasource: o.Plan.Datasource, Measure: o.Plan.Measure, TimeField: o.Plan.TimeField, Dimensions: append(make([]string, 0, len(o.Plan.Dimensions)), o.Plan.Dimensions...), Fingerprint: o.Plan.Fingerprint}
 	var result *CompactCreateResult
 	if o.Result != nil {
 		result = &CompactCreateResult{Status: o.Result.Status, DefinitionLUID: o.Result.DefinitionLUID, DefaultMetricLUID: o.Result.DefaultMetricLUID, DefaultMetricStatus: o.Result.DefaultMetricStatus}

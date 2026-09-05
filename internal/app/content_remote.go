@@ -14,6 +14,7 @@ import (
 	flowpull "github.com/ahillspace/tadx/actions/flow/pull"
 	lineagepull "github.com/ahillspace/tadx/actions/lineage/pull"
 	projectcreate "github.com/ahillspace/tadx/actions/project/create"
+	projectdelete "github.com/ahillspace/tadx/actions/project/delete"
 	projectinspect "github.com/ahillspace/tadx/actions/project/inspect"
 	projectlist "github.com/ahillspace/tadx/actions/project/list"
 	projectupdate "github.com/ahillspace/tadx/actions/project/update"
@@ -45,7 +46,7 @@ func (c *remoteContentCommands) dependencies() *contentcli.Dependencies {
 	return &contentcli.Dependencies{
 		WorkbookLister: c, WorkbookInspector: c, WorkbookDeleter: c,
 		DatasourceLister: c, DatasourceInspector: c, DatasourceSchema: c, DatasourcePuller: c, DatasourcePublisher: c, DatasourceDeleter: c,
-		ProjectLister: c, ProjectInspector: c, ProjectCreator: c, ProjectUpdater: c,
+		ProjectLister: c, ProjectInspector: c, ProjectCreator: c, ProjectUpdater: c, ProjectDeleter: c,
 		FlowLister: c, FlowInspector: c, FlowPuller: c, FlowPublisher: c, FlowMover: c, FlowDeleter: c,
 		LineagePuller: c,
 	}
@@ -173,6 +174,16 @@ func (c *remoteContentCommands) UpdateProject(ctx context.Context, input project
 	input.Environment, input.Site = connection.environment.Alias, connection.environment.SiteContentURL
 	adapter := projectUpdateAdapter{projects: connection.projects, changes: connection.projectChanges}
 	return projectupdate.New(adapter, adapter).Execute(ctx, input, preview)
+}
+
+func (c *remoteContentCommands) DeleteProject(ctx context.Context, input projectdelete.Input, preview bool) (projectdelete.Output, error) {
+	connection, err := c.connect(ctx, input.Environment, true)
+	if err != nil {
+		return projectdelete.Output{}, remoteSetupError("project.delete", input.Environment, input.Site, connection.environment, err)
+	}
+	input.Environment, input.Site = connection.environment.Alias, connection.environment.SiteContentURL
+	adapter := projectDeleteAdapter{projects: connection.projects, changes: connection.projectChanges}
+	return projectdelete.New(adapter, adapter).Execute(ctx, input, preview)
 }
 
 func (c *remoteContentCommands) ListFlows(ctx context.Context, input flowlist.Input) (flowlist.Output, error) {
@@ -426,6 +437,21 @@ func (a projectUpdateAdapter) UpdateProject(ctx context.Context, input projectup
 
 func toProjectUpdate(item resourceproject.Project) projectupdate.Project {
 	return projectupdate.Project{LUID: item.LUID, Name: item.Name, Path: item.Path, ParentLUID: item.ParentLUID, Description: item.Description, ContentPermissions: item.ContentPermissions}
+}
+
+type projectDeleteAdapter struct {
+	projects *resourceproject.Adapter
+	changes  *resourceproject.MutationAdapter
+}
+
+func (a projectDeleteAdapter) ResolveProject(ctx context.Context, selector identity.Selector) (projectdelete.Project, error) {
+	item, err := a.projects.ResolveProject(ctx, selector)
+	return projectdelete.Project{LUID: item.LUID, Name: item.Name, Path: item.Path}, err
+}
+
+func (a projectDeleteAdapter) DeleteProject(ctx context.Context, luid string) (projectdelete.Result, error) {
+	result, err := a.changes.DeleteProject(ctx, luid)
+	return projectdelete.Result{Status: result.Status, ProjectLUID: result.ProjectLUID, TableauRequestID: result.TableauRequestID}, err
 }
 
 type flowListReader struct{ adapter *resourceflow.Adapter }

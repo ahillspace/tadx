@@ -76,8 +76,7 @@ func RenderWithOptions(writer io.Writer, value any, options Options) error {
 		if err != nil {
 			return fmt.Errorf("render TOON: %w", err)
 		}
-		_, err = writer.Write(encoded)
-		return err
+		return writeDocument(writer, encoded)
 	}
 	normalized, err := normalize(value)
 	if err != nil {
@@ -89,8 +88,7 @@ func RenderWithOptions(writer io.Writer, value any, options Options) error {
 	if err != nil {
 		return fmt.Errorf("render TOON: %w", err)
 	}
-	_, err = writer.Write(encoded)
-	return err
+	return writeDocument(writer, encoded)
 }
 
 // RenderError writes a structured error document through the same renderer.
@@ -120,14 +118,19 @@ func renderRaw(writer io.Writer, value any, options Options) error {
 		if err != nil {
 			return fmt.Errorf("render raw JSON: %w", err)
 		}
-		_, err = writer.Write(raw)
-		return err
+		return writeDocument(writer, raw)
 	}
 	text := redactor(string(raw))
 	if !options.Full && limit > 0 {
 		text = truncate(text, limit)
 	}
-	_, err := io.WriteString(writer, text)
+	return writeDocument(writer, []byte(text))
+}
+
+func writeDocument(writer io.Writer, document []byte) error {
+	document = bytes.TrimRight(document, "\r\n")
+	document = append(document, '\n')
+	_, err := writer.Write(document)
 	return err
 }
 

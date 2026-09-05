@@ -44,6 +44,7 @@ type Dependencies struct {
 	ProjectInspector    ProjectInspector
 	ProjectCreator      ProjectCreator
 	ProjectUpdater      ProjectUpdater
+	ProjectDeleter      ProjectDeleter
 	FlowLister          FlowLister
 	FlowInspector       FlowInspector
 	FlowPuller          FlowPuller

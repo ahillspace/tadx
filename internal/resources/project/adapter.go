@@ -82,6 +82,17 @@ func (a *Adapter) ListProjects(ctx context.Context, input ListRequest) (Page, er
 
 // ResolveProject resolves one LUID or exact slash-delimited path.
 func (a *Adapter) ResolveProject(ctx context.Context, selector identity.Selector) (Project, error) {
+	return a.resolveProject(ctx, selector, false)
+}
+
+// ResolveProjectSelectorPath accepts the Imported display label only when no real
+// top-level project occupies that label. The returned path retains Tableau's name.
+func (a *Adapter) ResolveProjectSelectorPath(ctx context.Context, path string) (string, error) {
+	project, err := a.resolveProject(ctx, identity.Selector{ProjectPath: path}, true)
+	return project.Path, err
+}
+
+func (a *Adapter) resolveProject(ctx context.Context, selector identity.Selector, importedAlias bool) (Project, error) {
 	if selector.LUID == "" && strings.TrimSpace(selector.ProjectPath) == "" {
 		return Project{}, errors.New("project LUID or exact project path is required")
 	}
@@ -102,6 +113,18 @@ func (a *Adapter) ResolveProject(ctx context.Context, selector identity.Selector
 		project := normalize(item, path)
 		project.RequestID = requestID
 		byLUID[candidate.LUID] = project
+	}
+	if importedAlias && selector.LUID == "" && strings.EqualFold(selector.ProjectPath, "Imported") {
+		occupied := false
+		for _, candidate := range candidates {
+			if strings.EqualFold(candidate.ProjectPath, "Imported") {
+				occupied = true
+				break
+			}
+		}
+		if !occupied {
+			selector.ProjectPath = "(imported)"
+		}
 	}
 	resolved, err := identity.Resolve(selector, candidates)
 	if err != nil {

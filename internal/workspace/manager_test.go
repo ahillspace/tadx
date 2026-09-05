@@ -136,6 +136,26 @@ func TestManagerCreateInitializesMissingUserConfiguration(t *testing.T) {
 	}
 }
 
+func TestManagerCreateRejectsAnExistingEmptyRootWithNextStep(t *testing.T) {
+	root := t.TempDir()
+	configPath := filepath.Join(root, "config.yaml")
+	if err := config.Save(configPath, config.Config{Version: config.CurrentVersion}); err != nil {
+		t.Fatal(err)
+	}
+	workspaceRoot := filepath.Join(root, "existing-empty")
+	if err := os.Mkdir(workspaceRoot, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	_, err := workspace.NewManager(configPath, nil).Create(context.Background(), "development", workspaceRoot)
+	if err == nil || !strings.Contains(err.Error(), "must not already exist") {
+		t.Fatalf("error = %v", err)
+	}
+	entries, readErr := os.ReadDir(workspaceRoot)
+	if readErr != nil || len(entries) != 0 {
+		t.Fatalf("existing root changed: entries=%v error=%v", entries, readErr)
+	}
+}
+
 func TestManagerCreateDoesNotReplaceMalformedUserConfiguration(t *testing.T) {
 	root := t.TempDir()
 	configPath := filepath.Join(root, "config.yaml")

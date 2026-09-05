@@ -258,6 +258,10 @@ func (c *Client) GetPermissions(ctx context.Context, input PermissionRequest) (P
 	if err := exactStatus("admin.permission.get", response, http.StatusOK); err != nil {
 		return PermissionSet{}, err
 	}
+	rules, err := decodePermissionRules("admin.permission.get", response, input, true)
+	if err != nil {
+		return PermissionSet{}, err
+	}
 	var envelope permissionEnvelope
 	if err := xml.Unmarshal(response.Body, &envelope); err != nil {
 		return PermissionSet{}, protocol("admin.permission.get", response, err)
@@ -268,28 +272,6 @@ func (c *Client) GetPermissions(ctx context.Context, input PermissionRequest) (P
 	}
 	if parent.ID != "" {
 		source = "inherited"
-	}
-	rules := make([]PermissionRule, 0)
-	for _, grantee := range envelope.Permissions.Grantees {
-		principalType, principalLUID := "", ""
-		if grantee.User.ID != "" {
-			principalType, principalLUID = "user", grantee.User.ID
-		}
-		if grantee.Group.ID != "" {
-			if principalType != "" {
-				return PermissionSet{}, protocol("admin.permission.get", response, errors.New("permission grantee contains both user and group"))
-			}
-			principalType, principalLUID = "group", grantee.Group.ID
-		}
-		if principalType == "" {
-			return PermissionSet{}, protocol("admin.permission.get", response, errors.New("permission grantee omitted principal identity"))
-		}
-		for _, capability := range grantee.Capabilities.Items {
-			if capability.Name == "" || capability.Mode == "" {
-				return PermissionSet{}, protocol("admin.permission.get", response, errors.New("permission rule omitted capability or mode"))
-			}
-			rules = append(rules, PermissionRule{PrincipalType: principalType, PrincipalLUID: principalLUID, Capability: capability.Name, Mode: capability.Mode})
-		}
 	}
 	return PermissionSet{ResourceKind: input.ResourceKind, ResourceLUID: input.ResourceLUID, Source: source, ParentProjectLUID: parent.ID, Rules: rules, RequestID: response.TableauRequestID}, nil
 }

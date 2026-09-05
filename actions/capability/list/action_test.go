@@ -143,7 +143,7 @@ func TestOutputGoldenIsBoundedAndUsesPlaceholders(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	wantText := strings.TrimSuffix(string(want), "\n")
+	wantText := string(want)
 	if rendered.String() != wantText {
 		t.Fatalf("golden mismatch\nwant:\n%s\ngot:\n%s", want, rendered.String())
 	}

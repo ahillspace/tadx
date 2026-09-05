@@ -40,7 +40,7 @@ func TestRenderDefaultTOON(t *testing.T) {
 	}{Name: "workbooks", Count: 2}); err != nil {
 		t.Fatal(err)
 	}
-	if got, want := buffer.String(), "name: workbooks\ncount: 2"; got != want {
+	if got, want := buffer.String(), "name: workbooks\ncount: 2\n"; got != want {
 		t.Fatalf("got %q, want %q", got, want)
 	}
 }
@@ -53,7 +53,7 @@ func TestRenderProjectsCompactOutputAndFullPreservesOriginal(t *testing.T) {
 	if err := output.RenderWithOptions(&compact, value, output.Options{}); err != nil {
 		t.Fatal(err)
 	}
-	if got := compact.String(); got != "status: ready\ndetails: \"--full\"" {
+	if got := compact.String(); got != "status: ready\ndetails: \"--full\"\n" {
 		t.Fatalf("compact output = %q", got)
 	}
 
@@ -61,7 +61,7 @@ func TestRenderProjectsCompactOutputAndFullPreservesOriginal(t *testing.T) {
 	if err := output.RenderWithOptions(&full, value, output.Options{Full: true}); err != nil {
 		t.Fatal(err)
 	}
-	if got := full.String(); got != "status: ready\nsecret: diagnostic" {
+	if got := full.String(); got != "status: ready\nsecret: diagnostic\n" {
 		t.Fatalf("full output = %q", got)
 	}
 }
@@ -89,14 +89,14 @@ func TestRenderCompactAndFullGolden(t *testing.T) {
 	if err := output.RenderWithOptions(&compact, value, output.Options{MaxStringLength: 5}); err != nil {
 		t.Fatal(err)
 	}
-	if got, want := compact.String(), readGolden(t, "testdata/compact.golden"); got != want {
+	if got, want := compact.String(), readGolden(t, "testdata/compact.golden")+"\n"; got != want {
 		t.Fatalf("compact got %q, want %q", got, want)
 	}
 	var full bytes.Buffer
 	if err := output.RenderWithOptions(&full, value, output.Options{Full: true, MaxStringLength: 5}); err != nil {
 		t.Fatal(err)
 	}
-	if got, want := full.String(), readGolden(t, "testdata/full.golden"); got != want {
+	if got, want := full.String(), readGolden(t, "testdata/full.golden")+"\n"; got != want {
 		t.Fatalf("full got %q, want %q", got, want)
 	}
 }
@@ -148,7 +148,7 @@ func TestRenderStructuredError(t *testing.T) {
 	if renderErr := output.RenderError(&buffer, err, output.Options{}); renderErr != nil {
 		t.Fatal(renderErr)
 	}
-	want := "error:\n  kind: operation\n  operation: catalog.search\n  summary: Search failed\n  upstream_cause: timeout\n  tableau_request_id: req-1"
+	want := "error:\n  kind: operation\n  operation: catalog.search\n  summary: Search failed\n  upstream_cause: timeout\n  tableau_request_id: req-1\n"
 	if buffer.String() != want {
 		t.Fatalf("render mismatch\nwant:\n%s\ngot:\n%s", want, buffer.String())
 	}

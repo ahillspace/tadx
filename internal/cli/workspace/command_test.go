@@ -1,8 +1,10 @@
 package workspace_test
 
 import (
+	"bytes"
 	"context"
 	"reflect"
+	"strings"
 	"testing"
 
 	artifactdelete "github.com/ahillspace/tadx/actions/workspace/artifact/delete"
@@ -118,6 +120,19 @@ func TestWorkspaceCreateAndClonePreserveExplicitPaths(t *testing.T) {
 	}
 	if !reflect.DeepEqual(a.clone, []workspaceclone.Input{{Source: "development", Name: "experiment"}}) {
 		t.Fatalf("clone = %#v", a.clone)
+	}
+}
+
+func TestWorkspaceCreateHelpDefinesPathAsNewRoot(t *testing.T) {
+	var stdout bytes.Buffer
+	command := workspacecli.New(workspacecli.Dependencies{Creator: &actions{}, Renderer: &renderer{}})
+	command.SetOut(&stdout)
+	command.SetArgs([]string{"create", "--help"})
+	if err := command.Execute(); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(stdout.String(), "new workspace root that must not already exist") {
+		t.Fatalf("help = %q", stdout.String())
 	}
 }
 

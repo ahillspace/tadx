@@ -84,7 +84,7 @@ func assertGolden(t *testing.T, actual []byte, path string) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !bytes.Equal(actual, bytes.TrimSuffix(expected, []byte("\n"))) {
+	if !bytes.Equal(actual, expected) {
 		t.Fatalf("golden mismatch for %s\nexpected:\n%s\nactual:\n%s", path, expected, actual)
 	}
 }

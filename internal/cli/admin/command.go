@@ -56,6 +56,8 @@ type PermissionInspector interface {
 }
 
 type Dependencies struct {
+	PermissionCreator   PermissionCreator
+	PermissionDeleter   PermissionDeleter
 	UserLister          UserLister
 	UserInspector       UserInspector
 	UserCreator         UserCreator
@@ -77,8 +79,8 @@ func New(deps Dependencies) *cobra.Command {
 	user.AddCommand(newUserList(deps), newUserInspect(deps), newUserCreate(deps), newUserUpdate(deps), newUserDelete(deps))
 	group := &cobra.Command{Use: "group", Short: "Administer site groups"}
 	group.AddCommand(newGroupList(deps), newGroupInspect(deps), newGroupCreate(deps), newGroupUpdate(deps), newGroupDelete(deps))
-	permission := &cobra.Command{Use: "permission", Short: "Inspect permission rules"}
-	permission.AddCommand(newPermissionInspect(deps))
+	permission := &cobra.Command{Use: "permission", Short: "Manage exact permission rules"}
+	permission.AddCommand(newPermissionInspect(deps), newPermissionCreate(deps), newPermissionDelete(deps))
 	command.AddCommand(user, group, permission)
 	return command
 }
@@ -140,6 +142,7 @@ func newUserCreate(deps Dependencies) *cobra.Command {
 		}
 		return deps.Renderer.Render(out)
 	})
+	cmd.Long = "Add one exact site user.\n\nProvide exactly one of --auth-setting or --idp-configuration-id."
 	cmd.Flags().StringVar(&in.Environment, "environment", "", "explicit write environment alias")
 	cmd.Flags().StringVar(&in.Name, "name", "", "exact username or email")
 	cmd.Flags().StringVar(&in.SiteRole, "site-role", "", "explicit site role")

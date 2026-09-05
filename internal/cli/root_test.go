@@ -12,6 +12,7 @@ import (
 	"github.com/ahillspace/tadx/internal/cli"
 	envcli "github.com/ahillspace/tadx/internal/cli/env"
 	workspacecli "github.com/ahillspace/tadx/internal/cli/workspace"
+	"github.com/ahillspace/tadx/internal/errs"
 	"github.com/spf13/cobra"
 )
 
@@ -126,6 +127,17 @@ func TestRootDisablesDefaultCompletionCommand(t *testing.T) {
 	cmd.SetArgs([]string{"completion", "bash"})
 	if err := cmd.Execute(); err == nil {
 		t.Fatal("completion command executed, want usage error")
+	}
+}
+
+func TestGroupingCommandRejectsUnknownChildWithUsageExit(t *testing.T) {
+	deps := dependencies(&lister{}, &getter{}, &renderer{})
+	deps.Workspaces = &workspacecli.Dependencies{}
+	command := cli.NewRoot(deps)
+	command.SetArgs([]string{"workspace", "not-a-command"})
+	err := command.Execute()
+	if err == nil || errs.ExitCode(err) != 2 {
+		t.Fatalf("error=%v exit=%d", err, errs.ExitCode(err))
 	}
 }
 

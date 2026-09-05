@@ -189,6 +189,11 @@ func (c *Client) CaptureLineage(ctx context.Context, input CaptureRequest) (Capt
 					break
 				}
 				edge := lineageEdge(current.node, neighbor, relation.direction)
+				if edge.FromMetadataID == edge.ToMetadataID {
+					capture.Complete = false
+					capture.Warnings = append(capture.Warnings, "Lineage omitted a self-referential edge; the capture is incomplete.")
+					continue
+				}
 				edges[lineageEdgeKey(edge)] = edge
 				if len(edges) > MaxLineageEdges {
 					delete(edges, lineageEdgeKey(edge))

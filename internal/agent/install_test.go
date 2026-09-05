@@ -11,7 +11,7 @@ import (
 func TestInstallPreflightsBothPackagesAndPreservesBackups(t *testing.T) {
 	home := t.TempDir()
 	installer := Installer{Home: func() (string, error) { return home, nil }}
-	divergent := filepath.Join(home, ".agents", "skills", "tadx-pulse")
+	divergent := filepath.Join(home, ".codex", "skills", "tadx-pulse")
 	if err := os.MkdirAll(divergent, 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -24,7 +24,7 @@ func TestInstallPreflightsBothPackagesAndPreservesBackups(t *testing.T) {
 	if _, err := installer.Install(context.Background(), "codex", false, false); err == nil {
 		t.Fatal("expected collision")
 	}
-	if _, err := os.Stat(filepath.Join(home, ".agents", "skills", "tadx")); !os.IsNotExist(err) {
+	if _, err := os.Stat(filepath.Join(home, ".codex", "skills", "tadx")); !os.IsNotExist(err) {
 		t.Fatalf("partial installation: %v", err)
 	}
 	preview, err := installer.Install(context.Background(), "codex", true, false)
@@ -36,7 +36,7 @@ func TestInstallPreflightsBothPackagesAndPreservesBackups(t *testing.T) {
 		t.Fatal(err)
 	}
 	backup := result.Skills[1].Backup
-	if !strings.HasPrefix(backup, ".agents/.tadx-skill-backups/") {
+	if !strings.HasPrefix(backup, ".codex/.tadx-skill-backups/") {
 		t.Fatalf("backup = %q", backup)
 	}
 	for file, expected := range map[string]string{"SKILL.md": "custom pulse", "notes.txt": "keep notes"} {
@@ -45,14 +45,14 @@ func TestInstallPreflightsBothPackagesAndPreservesBackups(t *testing.T) {
 			t.Fatalf("backup %s = %q, %v", file, data, err)
 		}
 	}
-	entries, err := os.ReadDir(filepath.Join(home, ".agents", "skills"))
+	entries, err := os.ReadDir(filepath.Join(home, ".codex", "skills"))
 	if err != nil || len(entries) != 2 {
 		t.Fatalf("staging/lock leftovers: %v, %v", entries, err)
 	}
 }
 
 func TestInstallRejectsSymlinks(t *testing.T) {
-	for _, location := range []string{".agents", ".agents/skills", ".agents/skills/tadx", ".agents/skills/tadx/references"} {
+	for _, location := range []string{".codex", ".codex/skills", ".codex/skills/tadx", ".codex/skills/tadx/references"} {
 		t.Run(location, func(t *testing.T) {
 			home, outside := t.TempDir(), t.TempDir()
 			link := filepath.Join(home, filepath.FromSlash(location))
@@ -76,7 +76,7 @@ func TestInstallRejectsSymlinks(t *testing.T) {
 
 func TestInstallRollsBackFirstPackageWhenSecondCommitFails(t *testing.T) {
 	home := t.TempDir()
-	base := filepath.Join(home, ".agents")
+	base := filepath.Join(home, ".codex")
 	pulse := filepath.Join(base, "skills", "tadx-pulse")
 	if err := os.MkdirAll(pulse, 0o755); err != nil {
 		t.Fatal(err)
@@ -113,10 +113,10 @@ func TestInstallRejectsCancellationAndConcurrentInstall(t *testing.T) {
 	if _, err := installer.Install(ctx, "codex", false, false); err == nil {
 		t.Fatal("accepted canceled context")
 	}
-	if _, err := os.Stat(filepath.Join(home, ".agents")); !os.IsNotExist(err) {
+	if _, err := os.Stat(filepath.Join(home, ".codex")); !os.IsNotExist(err) {
 		t.Fatalf("canceled install wrote files: %v", err)
 	}
-	base := filepath.Join(home, ".agents", "skills")
+	base := filepath.Join(home, ".codex", "skills")
 	if err := os.MkdirAll(base, 0o755); err != nil {
 		t.Fatal(err)
 	}

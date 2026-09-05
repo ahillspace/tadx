@@ -11,6 +11,7 @@ import (
 type projectMutationClient struct {
 	create tableauproject.CreateRequest
 	update tableauproject.UpdateRequest
+	delete string
 	calls  int
 }
 
@@ -26,6 +27,12 @@ func (c *projectMutationClient) Update(_ context.Context, input tableauproject.U
 	return tableauproject.MutationResult{Status: "succeeded", Project: tableauproject.Project{LUID: input.LUID, Name: "Renamed"}}, nil
 }
 
+func (c *projectMutationClient) Delete(_ context.Context, luid string) (tableauproject.DeleteResult, error) {
+	c.calls++
+	c.delete = luid
+	return tableauproject.DeleteResult{Status: "succeeded", ProjectLUID: luid}, nil
+}
+
 func TestMutationAdapterValidatesAndDelegatesExactProjectMutations(t *testing.T) {
 	client := &projectMutationClient{}
 	adapter := resourceproject.NewMutationAdapter(client)
@@ -38,7 +45,11 @@ func TestMutationAdapterValidatesAndDelegatesExactProjectMutations(t *testing.T)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if client.calls != 2 || client.create.ParentLUID != "parent-1" || client.update.LUID != "project-1" || created.Project.LUID != "project-1" || updated.Project.Name != "Renamed" {
+	deleted, err := adapter.DeleteProject(context.Background(), "project-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if client.calls != 3 || client.create.ParentLUID != "parent-1" || client.update.LUID != "project-1" || client.delete != "project-1" || created.Project.LUID != "project-1" || updated.Project.Name != "Renamed" || deleted.ProjectLUID != "project-1" {
 		t.Fatalf("client=%#v created=%#v updated=%#v", client, created, updated)
 	}
 }
@@ -51,6 +62,9 @@ func TestMutationAdapterRejectsIncompleteInputs(t *testing.T) {
 	}
 	if _, err := adapter.UpdateProject(context.Background(), tableauproject.UpdateRequest{}); err == nil {
 		t.Fatal("UpdateProject() accepted a missing LUID and fields")
+	}
+	if _, err := adapter.DeleteProject(context.Background(), ""); err == nil {
+		t.Fatal("DeleteProject() accepted a missing LUID")
 	}
 	if client.calls != 0 {
 		t.Fatalf("calls = %d", client.calls)

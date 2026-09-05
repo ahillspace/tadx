@@ -33,7 +33,7 @@ func TestSearchCompactAndFullOutput(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if !bytes.Equal(actual.Bytes(), bytes.TrimSuffix(expected, []byte("\n"))) {
+		if !bytes.Equal(actual.Bytes(), expected) {
 			t.Errorf("%s mismatch:\n%s", path, actual.String())
 		}
 	}

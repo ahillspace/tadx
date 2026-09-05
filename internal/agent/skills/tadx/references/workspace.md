@@ -1,8 +1,9 @@
 # Manage workspaces and local artifacts
 
 Create a named workspace with `tadx workspace create <name>`.
-Use `--path <root>` only when choosing a different filesystem location.
-To adopt an existing workspace, use `tadx workspace register <name> --path <root>`.
+Use `--path "<root>"` only when choosing a different filesystem location.
+To adopt an existing workspace, use `tadx workspace register <name> --path "<root>"`.
+Workspace commands are local and do not accept `--environment`.
 Creation establishes `tadx.yaml`, `artifacts/`, and `.tadx/`; registration uses the existing workspace identity.
 Workspace names are portable and unique without case sensitivity.
 

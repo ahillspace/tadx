@@ -150,3 +150,28 @@ func TestSchemaWrapsReadFailure(t *testing.T) {
 		t.Fatalf("error = %v", err)
 	}
 }
+
+func TestSchemaQueryMatchesFieldMetadataAndKeepsTableFilterSeparate(t *testing.T) {
+	r := &reader{result: datasourceschema.Schema{DatasourceLUID: "ds-1", DatasourceName: "Sales", Fields: []datasourceschema.Field{
+		{ID: "sales-id", Caption: "By identity", Table: "Sales"},
+		{ID: "name", Name: "sales-name", Caption: "By name", Table: "Sales"},
+		{ID: "caption", Caption: "Sales caption", Table: "Sales"},
+		{ID: "label", Caption: "By label", Label: "Sales label", Table: "Sales"},
+		{ID: "formula", Caption: "By formula", Formula: "SUM([Sales])", Table: "Sales"},
+		{ID: "profit", Caption: "Profit", Table: "Sales"},
+		{ID: "other", Caption: "Sales elsewhere", Table: "Other"},
+	}}}
+	out, err := datasourceschema.New(r, time.Now).Execute(context.Background(), datasourceschema.Input{DatasourceLUID: "ds-1", Query: "sAlEs", Table: "Sales"})
+	if err != nil || out.Page.Total != 5 {
+		t.Fatalf("out=%+v err=%v", out, err)
+	}
+	for _, field := range out.Fields {
+		if field.ID == "profit" || field.ID == "other" {
+			t.Fatalf("unrelated field included: %+v", field)
+		}
+	}
+	unfiltered, err := datasourceschema.New(r, time.Now).Execute(context.Background(), datasourceschema.Input{DatasourceLUID: "ds-1", Table: "Sales"})
+	if err != nil || unfiltered.Page.Total != 6 {
+		t.Fatalf("table filter changed: out=%+v err=%v", unfiltered, err)
+	}
+}

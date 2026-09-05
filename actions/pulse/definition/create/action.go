@@ -75,7 +75,7 @@ func (a *Action) Plan(ctx context.Context, input Input) (Plan, error) {
 		Mode: "preview", Operation: "pulse.definition.create", Name: request.Name,
 		Datasource: request.Specification.Datasource.ID, Measure: request.Specification.BasicSpecification.Measure,
 		TimeField:   request.Specification.BasicSpecification.TimeDimension.Field,
-		Dimensions:  append([]string(nil), request.ExtensionOptions.AllowedDimensions...),
+		Dimensions:  append(make([]string, 0, len(request.ExtensionOptions.AllowedDimensions)), request.ExtensionOptions.AllowedDimensions...),
 		Fingerprint: fingerprint, Request: request, planned: true,
 	}, nil
 }

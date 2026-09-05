@@ -37,6 +37,42 @@ func TestAdapterListsOneBoundedPage(t *testing.T) {
 	}
 }
 
+func TestImportedSelectorAliasPreservesRealProjectCollisions(t *testing.T) {
+	tests := []struct {
+		name, selector, realName, want string
+		wantError                      bool
+	}{
+		{name: "display label", selector: "Imported", want: "(imported)"},
+		{name: "lowercase label", selector: "imported", want: "(imported)"},
+		{name: "literal label", selector: "(imported)", want: "(imported)"},
+		{name: "real exact project wins", selector: "Imported", realName: "Imported", want: "Imported"},
+		{name: "real lowercase project wins", selector: "imported", realName: "imported", want: "imported"},
+		{name: "real differently cased project blocks alias", selector: "imported", realName: "Imported", wantError: true},
+		{name: "unrelated path stays exact", selector: "Import", wantError: true},
+		{name: "nested path is not normalized", selector: "Team/Imported", wantError: true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			items := []tableauproject.Project{{LUID: "system-project", Name: "(imported)"}}
+			if tt.realName != "" {
+				items = append(items, tableauproject.Project{LUID: "real-project", Name: tt.realName})
+			}
+			client := &projectClient{pages: map[int]tableauproject.Page{1: {Number: 1, Size: 1000, Total: len(items), Items: items}}}
+			path, err := resourceproject.NewAdapter(client).ResolveProjectSelectorPath(context.Background(), tt.selector)
+			if tt.wantError {
+				if err == nil {
+					t.Fatalf("unsafe selector resolved to %q", path)
+				}
+			} else if err != nil || path != tt.want {
+				t.Fatalf("path=%q err=%v", path, err)
+			}
+			if len(client.calls) != 1 {
+				t.Fatalf("calls=%d", len(client.calls))
+			}
+		})
+	}
+}
+
 func TestAdapterResolvesNestedPathAcrossPages(t *testing.T) {
 	client := &projectClient{pages: map[int]tableauproject.Page{
 		1: {Number: 1, Size: 2, Total: 3, Items: []tableauproject.Project{{LUID: "root", Name: "Department"}, {LUID: "other", Name: "Ops"}}},

@@ -22,6 +22,7 @@ const (
 	listOperation    = "project.list"
 	createOperation  = "project.create"
 	updateOperation  = "project.update"
+	deleteOperation  = "project.delete"
 )
 
 // Client is an authenticated project REST client.
@@ -189,6 +190,28 @@ func (c *Client) Update(ctx context.Context, input UpdateRequest) (MutationResul
 		return MutationResult{}, tableau.NewProtocolError(updateOperation, response, errors.New("project update response changed the requested content permissions"), false)
 	}
 	return MutationResult{Status: "succeeded", Project: project, TableauRequestID: response.TableauRequestID}, nil
+}
+
+// Delete deletes one project by its authoritative LUID.
+func (c *Client) Delete(ctx context.Context, luid string) (DeleteResult, error) {
+	if err := c.validateMutationClient(); err != nil {
+		return DeleteResult{}, err
+	}
+	luid = strings.TrimSpace(luid)
+	if luid == "" {
+		return DeleteResult{}, errors.New("project delete requires an exact project LUID")
+	}
+	response, err := c.transport.Do(ctx, c.session, tableau.Request{
+		Method: http.MethodDelete, ServerURL: c.serverURL, Path: c.sitePath("projects", luid),
+		Operation: deleteOperation, MaxResponseBytes: maxResponseBytes,
+	})
+	if err != nil {
+		return DeleteResult{Status: "unknown", ProjectLUID: luid, TableauRequestID: tableau.RequestID(err)}, err
+	}
+	if response.StatusCode != http.StatusNoContent || len(response.Body) != 0 {
+		return DeleteResult{Status: "unknown", ProjectLUID: luid, TableauRequestID: response.TableauRequestID}, tableau.NewProtocolError(deleteOperation, response, fmt.Errorf("project delete returned HTTP %d with %d response bytes, expected empty HTTP 204", response.StatusCode, len(response.Body)), false)
+	}
+	return DeleteResult{Status: "succeeded", ProjectLUID: luid, TableauRequestID: response.TableauRequestID}, nil
 }
 
 func (c *Client) validateMutationClient() error {

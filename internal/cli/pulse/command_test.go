@@ -143,6 +143,18 @@ func TestCommandTreeHasExpectedCapabilities(t *testing.T) {
 	}
 }
 
+func TestDefinitionListAcceptsExactName(t *testing.T) {
+	a := &actions{}
+	command := newCommand(a)
+	command.SetArgs([]string{"definition", "list", "--environment", "dev", "--name", "Sales", "--limit", "7"})
+	if err := command.Execute(); err != nil {
+		t.Fatal(err)
+	}
+	if a.definitionListInput.Name != "Sales" || a.definitionListInput.Limit != 7 || a.definitionListInput.Environment != "dev" {
+		t.Fatalf("input=%+v", a.definitionListInput)
+	}
+}
+
 func TestCatalogFlagAppearsOnlyOnEligibleReads(t *testing.T) {
 	command := newCommand(&actions{})
 	eligible := []string{"definition/list", "definition/inspect", "metric/list", "metric/inspect", "metric/followers"}
@@ -248,6 +260,13 @@ func TestMetricUnfollowMapsEachCompleteSelectorForm(t *testing.T) {
 	}
 	if a.metricUnfollowInput.MetricLUID != "metric-1" || a.metricUnfollowInput.UserLUID != "user-1" || a.metricUnfollowPreview {
 		t.Fatalf("relationship unfollow input=%#v preview=%t", a.metricUnfollowInput, a.metricUnfollowPreview)
+	}
+}
+
+func TestMetricUnfollowHelpExplainsSelectorForms(t *testing.T) {
+	command := newCommand(&actions{})
+	if got := childAt(t, command, "metric/unfollow").Long; !strings.Contains(got, "--subscription-id") || !strings.Contains(got, "--id with exactly one") {
+		t.Fatalf("help = %q", got)
 	}
 }
 

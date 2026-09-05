@@ -179,6 +179,7 @@ func newDefinitionList(deps Dependencies) *cobra.Command {
 	})
 	readFlags(command, &input.Environment, &input.Catalog)
 	command.Flags().IntVar(&input.Limit, "limit", 0, "maximum definitions to return; defaults to 25")
+	command.Flags().StringVar(&input.Name, "name", "", "filter this page by exact definition name; follow --cursor even when the page has no matches")
 	command.Flags().StringVar(&input.Cursor, "cursor", "", "opaque continuation cursor")
 	return command
 }
@@ -397,8 +398,11 @@ func newMetricUnfollow(deps Dependencies) *cobra.Command {
 	var input metricunfollow.Input
 	var preview bool
 	command := &cobra.Command{
-		Use:         "unfollow",
-		Short:       "Remove one Pulse metric follower.",
+		Use:   "unfollow",
+		Short: "Remove one Pulse metric follower.",
+		Long: "Remove one Pulse metric follower.\n\n" +
+			"Use --subscription-id to remove one known subscription.\n" +
+			"Otherwise, use --id with exactly one of --user-id or --group-id to resolve one subscription.",
 		Annotations: capability("pulse.metric.unfollow"),
 		Args: func(command *cobra.Command, args []string) error {
 			if err := noArgs("pulse.metric.unfollow", command, args); err != nil {
@@ -423,10 +427,10 @@ func newMetricUnfollow(deps Dependencies) *cobra.Command {
 		},
 	}
 	command.Flags().StringVar(&input.Environment, "environment", "", "explicit write environment alias")
-	command.Flags().StringVar(&input.SubscriptionLUID, "subscription-id", "", "authoritative Pulse subscription LUID")
-	command.Flags().StringVar(&input.MetricLUID, "id", "", "authoritative metric LUID for exact follower resolution")
-	command.Flags().StringVar(&input.UserLUID, "user-id", "", "authoritative follower user LUID")
-	command.Flags().StringVar(&input.GroupLUID, "group-id", "", "authoritative follower group LUID")
+	command.Flags().StringVar(&input.SubscriptionLUID, "subscription-id", "", "authoritative subscription LUID; cannot be combined with other selectors")
+	command.Flags().StringVar(&input.MetricLUID, "id", "", "authoritative metric LUID; requires exactly one follower selector")
+	command.Flags().StringVar(&input.UserLUID, "user-id", "", "authoritative user follower LUID; requires --id")
+	command.Flags().StringVar(&input.GroupLUID, "group-id", "", "authoritative group follower LUID; requires --id")
 	command.Flags().BoolVar(&preview, "preview", false, "preview the remote mutation without performing it")
 	return command
 }

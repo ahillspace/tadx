@@ -1,82 +1,108 @@
 ---
 name: tadx
-description: Operate Tableau content, catalogs, workspaces, local artifacts, and administration with the TADX CLI. Use tadx-pulse for Pulse definition authoring; use Tableau MCP for data queries and metric insights.
+description: Operate Tableau content, catalogs, workspaces, local artifacts, and administration with the TADX CLI. Use tadx-pulse for Pulse authoring; use Tableau MCP for data queries and metric insights.
 ---
 
 # Operate Tableau with TADX
 
-TADX owns Tableau content lifecycle, local artifacts, workspaces, administration, and Pulse definitions.
-Tableau MCP owns data queries, view data and images, and Pulse metric values and insights.
-TADX never calls or proxies MCP.
+TADX owns content lifecycle, artifacts, workspaces, administration, and Pulse definitions.
+Tableau MCP owns data queries, view data/images, and Pulse values/insights; TADX never calls or proxies MCP.
 
-## Establish the target
+## Run with bounded discovery
 
-Use `tadx env list` and `tadx env get <alias>` to identify the configured environment.
-Pass its exact alias with `--environment` when target selection matters.
-Use `tadx auth status --environment <alias>` to inspect PAT references without revealing values.
-Use `auth check` to verify sign-in and the selected site, or `tadx doctor` for broader diagnostics.
-Profiles store environment-variable references, never PAT values; never print or persist PATs or session tokens.
+Reuse the task's known environment, workspace, and LUIDs.
+Use a provided environment alias verbatim without revalidating it through `env get`, `env list`, or a preliminary auth check.
+When no alias is provided or known, use `env list`; diagnose configuration/authentication only after an actual command fails.
+Avoid chaining environment list/get, auth status/check, and doctor for an already working target.
+PATs remain environment-variable references; never print or persist PATs or session tokens.
 
-Use `tadx workspace list` and `tadx workspace status --workspace <name>` before artifact work.
-`--workspace` takes a registered logical name, not a directory.
-Pull and publish do not create workspaces implicitly.
-Artifact selectors use workspace-relative managed paths with forward slashes.
-For creation, selection defaults, and local cleanup, read [workspace and artifact guidance](references/workspace.md).
+Batch independent commands into one shell tool call as separate sequential lines.
+Never run authenticated TADX calls concurrently with the same PAT, including across agents or background jobs.
+Wait for each process to finish; gate dependent commands on successful prior results.
+Quote names, field IDs, and paths containing spaces; quote a spaced executable path using the shell's invocation syntax.
 
-## Choose live or catalog reads
+Use these recipes directly, replacing bracketed placeholders with known values.
+Use compact TOON and returned `help[]`; request `--full` only for a specific missing detail.
+Avoid root/category help, broad capability dumps, repeated probes, and delegation for bounded CLI reads.
+If installed guidance is insufficient, use at most one relevant leaf `--help` probe per workflow; unresolved gaps require a concrete limitation report.
+For availability uncertainty, one exact `tadx capability get <id>` can replace that help probe.
 
-Reads contact Tableau by default.
-On supported commands, `--catalog` reads local inventory without contacting Tableau; it does not refresh or silently fall back to live data.
-Use live reads for current state and final identity checks before mutations.
-Use catalog reads for repeated discovery when their age and coverage suit the task.
-Catalog absence does not establish remote absence.
+## Content lifecycle
 
-Check `tadx catalog status --environment <alias>` for generation age, completeness, source, and staleness.
-Successful supported live reads also cache observed resources, but those observations do not establish complete site coverage.
-For a few known resources, live `inspect`, bounded `list`, or datasource `schema` reads provide targeted refreshes without hydrating the site.
-
-For broader inventory, request only needed scopes:
+Discover with an exact bounded list; use returned LUIDs for subsequent operations.
+Search only when the name is unknown: `tadx search "<term>" --type workbook --environment <alias>` matches substrings, not exact identity.
+Ambiguity fails; never select the first fuzzy match.
 
 ```text
-tadx catalog refresh --environment <alias> --scope workbooks
-tadx catalog refresh --environment <alias> --scope users --scope groups
+tadx content workbook list --environment <alias> --name "<name>" --limit 5
+tadx content workbook inspect --environment <alias> --id <workbook-luid>
+tadx content workbook pull --environment <alias> --id <workbook-luid> --workspace <workspace> --include-extract=false
+tadx content workbook publish --environment <destination-alias> --workspace <workspace> --artifact "artifacts/workbook/<directory>" --project-id <project-luid> --preview
+tadx content workbook delete --environment <alias> --id <workbook-luid> --preview
 ```
 
-Workbook, datasource, and flow scopes also collect projects; views and permissions also collect workbooks and projects.
-Implicit dependencies do not become requested inventory scopes; request projects explicitly if you need project inventory.
-A refresh replaces the current generation and its cached resource entries for that environment and site, rather than merging previous scopes.
-Request all scopes needed together; omit `--scope` only when full inventory is useful.
-After remote changes, refresh affected observations or scopes before relying on catalog data again.
+Keep extracts when required; `--include-pds` acquires direct published datasource dependencies without recursion.
+Publish selects the managed artifact directory, not its payload file.
+Use the returned artifact path and explicit destination environment/project.
+Pull `--overwrite` discards dirty local edits; publish `--overwrite` replaces a remote collision.
+Use either only when that replacement is authorized.
+For datasource publish modes or uncertain jobs, read [content details](references/content-lifecycle.md).
 
-## Resolve exact identity
+## Catalog, flow, and lineage
 
-Use `tadx search <term> --type <resource> --environment <alias>` to discover candidates; add `--catalog` for local discovery.
-Search terms match name substrings without case sensitivity; they are not exact selectors.
-Narrow the type to avoid scanning unrelated resources.
-Use returned Tableau LUIDs for `--id`; otherwise use exact names and supported slash-delimited project selectors.
-Never fuzzy-match or choose the first ambiguous result.
-Follow returned cursors with the same source and filters when further pages are needed.
+Live reads are the default; supported `--catalog` reads stay local without refresh or live fallback.
+Reuse a sufficiently fresh catalog for repeated discovery; a miss or partial page does not prove remote absence.
+Follow cursors only when the task needs more results.
 
-## Perform the requested operation
+```text
+tadx catalog status --environment <alias>
+tadx catalog refresh --environment <alias> --scope projects --scope workbooks --scope flows
+tadx content flow list --environment <alias> --name "<name>" --limit 5 --catalog
+tadx content flow pull --environment <alias> --id <flow-luid> --workspace <workspace>
+tadx content flow move --environment <alias> --id <flow-luid> --destination-project-id <project-luid> --preview
+tadx content lineage pull --environment <alias> --kind workbook --id <workbook-luid> --workspace <workspace> --direction upstream --depth 1
+```
 
-Remote mutations remain discoverable when disabled; `TADX_ENABLE_MUTATIONS=1` enables them.
-When enabled, mutation commands perform changes by default.
-Use `--preview` for a read-only plan; there is no separate `--apply` step.
-Discovery and previews do not authorize changes; act within the user's existing authorization.
-`--force` does not bypass mutation policy.
-Before retrying an uncertain mutation, inspect the remote outcome and follow the reported retry guidance.
+A refresh replaces the environment/site's current generation and cached entries; it does not merge earlier scopes.
+Request all required scopes together; dependency collection does not establish complete inventory for unrequested scopes.
+Successful live reads cache targeted observations without proving full site coverage.
+Prefer a targeted live inspect after mutation over a full refresh.
+Lineage is bounded evidence; missing edges do not prove independence.
 
-For specific work, read only the applicable guidance:
+## Administration and projects
 
-- [Content lifecycle](references/content-lifecycle.md): inspect, pull, publish, delete, and bounded lineage.
-- [Administration](references/administration.md): users, groups, and permission rules.
-- Use the separate `tadx-pulse` skill for Pulse authoring and definition lifecycle.
-  Resolve datasource LUIDs and fields before authoring; route metric values and insights to Tableau MCP.
+```text
+tadx admin user list --environment <alias> --name "<username>" --limit 5
+tadx admin group list --environment <alias> --name "<group-name>" --limit 5
+tadx admin group inspect --environment <alias> --id <group-luid> --members
+tadx admin permission inspect --environment <alias> --kind workbook --id <workbook-luid> --principal-id <principal-luid> --full
+tadx admin permission create --environment <alias> --kind workbook --id <workbook-luid> --principal-type group --principal-id <group-luid> --capability Read --mode Allow --preview
+tadx admin permission delete --environment <alias> --kind workbook --id <workbook-luid> --principal-type group --principal-id <group-luid> --capability Read --mode Allow --preview
+tadx content project create --environment <alias> --name "<project-name>" --parent-id <parent-project-luid> --preview
+tadx content project update --environment <alias> --project-id <project-luid> --description "<description>" --preview
+tadx content project delete --environment <alias> --project-id <project-luid> --preview
+```
 
-## Discover details as needed
+Choose the requested capability and exact `Allow`/`Deny` mode; there is no atomic permission update.
+Omit project create's `--parent-id` for a top-level project.
+Project deletion selects `--project-id`; its preview identifies the project without enumerating descendant deletion effects.
+Read [administration details](references/administration.md) only for permission semantics, membership replacement, or project deletion.
 
-Use `tadx <category> --help`, then the operation's `--help` for supported selectors and flags.
-For availability or ownership, use `tadx capability list --resource <resource>` and `tadx capability get <id> --full`.
-Do not infer executability from discovery; unavailable or blocked capabilities remain non-executable.
-Use compact TOON by default and follow `help[]` for the next command.
-Use `--full` when expanded bounded detail is needed; it changes presentation, not requests, pagination, or mutation behavior.
+## Local workspaces and safe changes
+
+```text
+tadx workspace status --workspace <workspace>
+tadx workspace create <workspace>
+tadx workspace register <workspace> --path "<existing root>"
+```
+
+Run only the needed local command; workspace commands take no `--environment` and make no Tableau changes.
+`--workspace` is a logical registered name; pull/publish never create workspaces implicitly.
+Artifact paths remain workspace-relative with forward slashes.
+Read [workspace details](references/workspace.md) only for defaults, cloning, moving, or cleanup.
+
+Remote mutations require `TADX_ENABLE_MUTATIONS=1` and run by default; `--preview` plans without applying, and there is no `--apply`.
+Use previews when review or uncertainty warrants them; existing authorization does not require repeated approval.
+Discovery/previews do not authorize changes, and `--force` never bypasses policy.
+Inspect uncertain remote outcomes before retrying; report unresolved failures without repeated writes.
+Use the separate `tadx-pulse` skill for Pulse work.

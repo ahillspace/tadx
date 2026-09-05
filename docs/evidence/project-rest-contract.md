@@ -1,6 +1,6 @@
 # Project REST contract evidence
 
-This record freezes the upstream project contract used by `project.list`, `project.inspect`, `project.create`, and `project.update`.
+This record freezes the upstream project contract used by `project.list`, `project.inspect`, `project.create`, `project.update`, and `project.delete`.
 The captured official Tableau REST API help is `Tableau API Documentation/tableau_rest_api.md`.
 Its SHA-256 digest is `76d7f050a32ca354660039bdc18143506ce26472ff82f0f12b79fb5aaa584e0f`.
 
@@ -10,6 +10,7 @@ Its SHA-256 digest is `76d7f050a32ca354660039bdc18143506ce26472ff82f0f12b79fb5aa
 - Create Project is at lines 13694 through 13771.
 - Query Projects is at lines 36768 through 37060.
 - Update Project is at lines 45703 through 45785.
+- Delete Project is at lines 18063 through 18127.
 - Classic pagination behavior is at lines 1699 through 1751.
 
 ## Frozen request contract
@@ -53,6 +54,17 @@ Preview performs no POST or PUT.
 Apply re-resolves every selected project identity and repeats collision or equal-value checks immediately before mutation.
 No generic automatic retry follows an uncertain POST or PUT outcome.
 
+Project deletion uses `DELETE /api/{version}/sites/{site-luid}/projects/{project-luid}` and expects an empty HTTP 204 response.
+The request body is empty.
+The project LUID in the URI is authoritative.
+The upstream endpoint deletes all Tableau assets inside the project, including associated workbooks, data sources, project view options, and rights.
+External databases and tables are not deleted.
+Tableau remains authoritative for default-project and permission rejection.
+TADX emits an explicit cascade warning during preview and before apply.
+The documented project content counts cover child projects, workbooks, views, and datasources, but do not cover every asset class that the delete operation can remove.
+TADX therefore does not claim to verify project emptiness and does not install an incomplete empty-project guard.
+No generic automatic retry follows an uncertain DELETE outcome.
+
 ## Shallow project evidence gate
 
 The captured filter table does not establish a shallow project package contract.
@@ -74,4 +86,4 @@ Hermetic client tests assert the exact read and mutation methods, paths, bodies,
 A build-tagged live test is available for opt-in deployment verification against a configured profile.
 That test currently covers reads only and records sanitized request shapes, counts, and hashed identifiers.
 Authorized disposable Tableau Cloud verification completed on 2026-09-02 for top-level project creation, explicit name and description update, and authoritative LUID readback.
-The disposable project remains on the authorized development site because project deletion is outside the admitted V1 command surface.
+The disposable project remains on the authorized development site because project deletion has no authorized live verification.

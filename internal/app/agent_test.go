@@ -12,7 +12,7 @@ import (
 )
 
 func TestAgentInstallThroughCLI(t *testing.T) {
-	for target, directory := range map[string]string{"claude": ".claude", "codex": ".agents", "cursor": ".cursor"} {
+	for target, directory := range map[string]string{"claude": ".claude", "codex": ".codex", "cursor": ".cursor"} {
 		t.Run(target, func(t *testing.T) {
 			home := t.TempDir()
 			options := app.Options{ConfigPath: filepath.Join(home, "config.yaml"), UserHomeDir: func() (string, error) { return home, nil }}

@@ -36,7 +36,7 @@ func (c *remoteAdminCommands) dependencies() *admincli.Dependencies {
 	return &admincli.Dependencies{
 		UserLister: c, UserInspector: c, UserCreator: c, UserUpdater: c, UserDeleter: c,
 		GroupLister: c, GroupInspector: c, GroupCreator: c, GroupUpdater: c, GroupDeleter: c,
-		PermissionInspector: c,
+		PermissionInspector: c, PermissionCreator: c, PermissionDeleter: c,
 	}
 }
 

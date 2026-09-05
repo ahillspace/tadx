@@ -5,6 +5,7 @@ import (
 	"errors"
 
 	projectcreate "github.com/ahillspace/tadx/actions/project/create"
+	projectdelete "github.com/ahillspace/tadx/actions/project/delete"
 	projectinspect "github.com/ahillspace/tadx/actions/project/inspect"
 	projectlist "github.com/ahillspace/tadx/actions/project/list"
 	projectupdate "github.com/ahillspace/tadx/actions/project/update"
@@ -28,6 +29,10 @@ type ProjectUpdater interface {
 	UpdateProject(context.Context, projectupdate.Input, bool) (projectupdate.Output, error)
 }
 
+type ProjectDeleter interface {
+	DeleteProject(context.Context, projectdelete.Input, bool) (projectdelete.Output, error)
+}
+
 func newProject(deps Dependencies) *cobra.Command {
 	command := &cobra.Command{Use: "project", Short: "Inspect Tableau projects"}
 	command.AddCommand(newProjectList(deps), newProjectInspect(deps))
@@ -36,6 +41,9 @@ func newProject(deps Dependencies) *cobra.Command {
 	}
 	if deps.ProjectUpdater != nil {
 		command.AddCommand(newProjectUpdate(deps))
+	}
+	if deps.ProjectDeleter != nil {
+		command.AddCommand(newProjectDelete(deps))
 	}
 	return command
 }
@@ -121,6 +129,35 @@ func newProjectUpdate(deps Dependencies) *cobra.Command {
 	command.Flags().StringVar(&name, "name", "", "replacement project name")
 	command.Flags().StringVar(&description, "description", "", "replacement project description")
 	command.Flags().StringVar(&contentPermissions, "content-permissions", "", "replacement Tableau content permission mode")
+	command.Flags().BoolVar(&preview, "preview", false, "preview the remote mutation without performing it")
+	return command
+}
+
+func newProjectDelete(deps Dependencies) *cobra.Command {
+	var input projectdelete.Input
+	var preview bool
+	command := &cobra.Command{
+		Use: "delete", Short: "Delete one exact project.",
+		Annotations: map[string]string{"tadx.capability": "project.delete"},
+		Args: func(command *cobra.Command, args []string) error {
+			if err := noContentArgs("project.delete")(command, args); err != nil {
+				return err
+			}
+			if input.Environment == "" || input.ProjectLUID == "" {
+				return clierr.Usage("project.delete", errors.New("--environment and --project-id are required"))
+			}
+			return nil
+		},
+		RunE: func(command *cobra.Command, _ []string) error {
+			result, err := deps.ProjectDeleter.DeleteProject(command.Context(), input, preview)
+			if err != nil {
+				return err
+			}
+			return deps.Renderer.Render(result)
+		},
+	}
+	command.Flags().StringVar(&input.Environment, "environment", "", "explicit write environment alias")
+	command.Flags().StringVar(&input.ProjectLUID, "project-id", "", "authoritative project LUID")
 	command.Flags().BoolVar(&preview, "preview", false, "preview the remote mutation without performing it")
 	return command
 }

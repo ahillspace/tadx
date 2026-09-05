@@ -121,7 +121,7 @@ func filterFields(fields []Field, input Input) []Field {
 			continue
 		}
 		if query != "" {
-			haystack := strings.ToLower(strings.Join([]string{field.ID, field.Name, field.Caption, field.Label, field.Table, field.Formula}, "\x00"))
+			haystack := strings.ToLower(strings.Join([]string{field.ID, field.Name, field.Caption, field.Label, field.Formula}, "\x00"))
 			if !strings.Contains(haystack, query) {
 				continue
 			}

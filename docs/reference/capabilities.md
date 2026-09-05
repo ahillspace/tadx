@@ -14,6 +14,8 @@ Use `tadx capability get <id>` for the same focused metadata at runtime.
 | `admin.group.inspect` | cli | ship | ready | implemented | `tadx admin group inspect` |
 | `admin.group.list` | cli | ship | ready | implemented | `tadx admin group list` |
 | `admin.group.update` | cli | ship | ready | implemented | `tadx admin group update` |
+| `admin.permission.create` | cli | ship | ready | implemented | `tadx admin permission create` |
+| `admin.permission.delete` | cli | ship | ready | implemented | `tadx admin permission delete` |
 | `admin.permission.inspect` | cli | ship | ready | implemented | `tadx admin permission inspect` |
 | `admin.user.create` | cli | ship | ready | implemented | `tadx admin user create` |
 | `admin.user.delete` | cli | ship | ready | implemented | `tadx admin user delete` |
@@ -50,6 +52,7 @@ Use `tadx capability get <id>` for the same focused metadata at runtime.
 | `flow.pull` | cli | ship | ready | implemented | `tadx content flow pull` |
 | `lineage.pull` | cli | ship | ready | implemented | `tadx content lineage pull` |
 | `project.create` | cli | ship | ready | implemented | `tadx content project create` |
+| `project.delete` | cli | ship | ready | implemented | `tadx content project delete` |
 | `project.inspect` | cli | ship | ready | implemented | `tadx content project inspect` |
 | `project.list` | cli | ship | ready | implemented | `tadx content project list` |
 | `project.update` | cli | ship | ready | implemented | `tadx content project update` |
@@ -214,6 +217,58 @@ Update group attributes or converge direct membership, or preview the operation.
 - Validation or blocker: Contract-verified metadata and deterministic membership convergence
 - Blocker ID: None
 - Command binding: `tadx admin group update`
+
+### `admin.permission.create`
+
+Add one explicit permission capability and mode for an exact principal, or preview the operation.
+
+- Surface: tadx admin permission create
+- Operation type: change
+- Owner: cli
+- MCP overlap: None
+- Selectors: Resource kind/LUID, principal type/LUID, capability, mode; optional project default kind
+- Products and availability: Cloud / Server
+- Product disposition: ship
+- Evidence level: contract-verified
+- Verification readiness: ready
+- Implementation state: implemented
+- Local write: No
+- Remote mutation: Yes
+- Supports `--preview`: Yes
+- Raw capable: No
+- Safety and guard: Direct or project-default rules only; inherited and conflicting opposite modes fail; identical rules are no-op
+- Artifact effect: None
+- Upstream operation: Permission PUT endpoints for workbook, datasource, flow, project, and project defaults
+- Evidence: docs/evidence/permission-mutations-rest-contract.md
+- Validation or blocker: Contract-verified exact rule creation, no-op, preview, revalidation, and conflict handling
+- Blocker ID: None
+- Command binding: `tadx admin permission create`
+
+### `admin.permission.delete`
+
+Delete one explicit permission capability and mode for an exact principal, or preview the operation.
+
+- Surface: tadx admin permission delete
+- Operation type: change
+- Owner: cli
+- MCP overlap: None
+- Selectors: Resource kind/LUID, principal type/LUID, capability, mode; optional project default kind
+- Products and availability: Cloud / Server
+- Product disposition: ship
+- Evidence level: contract-verified
+- Verification readiness: ready
+- Implementation state: implemented
+- Local write: No
+- Remote mutation: Yes
+- Supports `--preview`: Yes
+- Raw capable: No
+- Safety and guard: Direct or project-default rules only; inherited and mismatched modes fail; absent rules are no-op
+- Artifact effect: None
+- Upstream operation: Permission DELETE endpoints for workbook, datasource, flow, project, and project defaults
+- Evidence: docs/evidence/permission-mutations-rest-contract.md
+- Validation or blocker: Contract-verified exact rule deletion, no-op, preview, revalidation, and uncertain-outcome handling
+- Blocker ID: None
+- Command binding: `tadx admin permission delete`
 
 ### `admin.permission.inspect`
 
@@ -1150,6 +1205,32 @@ Create one project, optionally under an explicit parent, or preview the operatio
 - Validation or blocker: Contract-verified exact create, parent, collision, and response identity behavior
 - Blocker ID: None
 - Command binding: `tadx content project create`
+
+### `project.delete`
+
+Delete one exact project, or preview the operation.
+
+- Surface: tadx content project delete
+- Operation type: change
+- Owner: cli
+- MCP overlap: None
+- Selectors: Authoritative project LUID
+- Products and availability: Cloud / Server
+- Product disposition: ship
+- Evidence level: contract-verified
+- Verification readiness: ready
+- Implementation state: implemented
+- Local write: No
+- Remote mutation: Yes
+- Supports `--preview`: Yes
+- Raw capable: No
+- Safety and guard: Exact LUID revalidated; preview identifies the target; upstream cascade behavior is explicit
+- Artifact effect: None
+- Upstream operation: DELETE /api/{version}/sites/{site-id}/projects/{project-id}
+- Evidence: docs/evidence/project-rest-contract.md
+- Validation or blocker: Contract-verified exact deletion, preview, identity revalidation, and uncertain-outcome handling
+- Blocker ID: None
+- Command binding: `tadx content project delete`
 
 ### `project.inspect`
 

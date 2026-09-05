@@ -1,6 +1,6 @@
 status: preview
 target: codex
 skills[2]{name,status,path,sha256,files}:
-  tadx,install,.agents/skills/tadx,bundle-tadx,4
-  tadx-pulse,install,.agents/skills/tadx-pulse,bundle-pulse,2
+  tadx,install,.codex/skills/tadx,bundle-tadx,4
+  tadx-pulse,install,.codex/skills/tadx-pulse,bundle-pulse,2
 help[2]: tadx capability list,tadx capability get agent.install --full

@@ -1,0 +1,20 @@
+plan:
+  mode: execute
+  operation: admin.permission.delete
+  environment: dev
+  site: site
+  target:
+    resource_kind: workbook
+    resource_luid: w1
+    principal_type: group
+    principal_luid: g1
+    capability: Read
+    mode: Allow
+  source: direct
+  current_mode: Allow
+  change: delete
+result:
+  status: deleted
+  resource_luid: w1
+details: "--full"
+help[1]: tadx admin permission inspect --kind workbook --id w1

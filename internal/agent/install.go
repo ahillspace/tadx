@@ -48,7 +48,7 @@ type packagePlan struct {
 // Install stages complete packages before replacing destinations.
 // A force replacement retains the previous directory as a recoverable backup.
 func (in Installer) Install(ctx context.Context, target string, preview, force bool) (Result, error) {
-	base, ok := map[string]string{"claude": ".claude/skills", "codex": ".agents/skills", "cursor": ".cursor/skills"}[target]
+	base, ok := map[string]string{"claude": ".claude/skills", "codex": ".codex/skills", "cursor": ".cursor/skills"}[target]
 	if !ok {
 		return Result{}, errors.New("unsupported agent target")
 	}

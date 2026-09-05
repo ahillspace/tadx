@@ -1,0 +1,20 @@
+plan:
+  mode: execute
+  operation: admin.permission.create
+  environment: dev
+  site: site
+  target:
+    resource_kind: workbook
+    resource_luid: w1
+    principal_type: group
+    principal_luid: g1
+    capability: Read
+    mode: Allow
+  source: direct
+  change: create
+result:
+  status: created
+  resource_luid: w1
+  tableau_request_id: request-1
+help[1]: tadx admin permission inspect --kind workbook --id w1
+

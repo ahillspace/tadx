@@ -91,6 +91,28 @@ func TestCaptureLineageUsesLinkedFlowConnectionsForDirectFlowEdges(t *testing.T)
 	}
 }
 
+func TestCaptureLineageDropsSelfReferentialFlowEdges(t *testing.T) {
+	responses := []string{
+		`{"data":{"flowsConnection":{"totalCount":1,"pageInfo":{"hasNextPage":false},"nodes":[{"id":"flow-meta","luid":"flow-rest","name":"Current"}]}}}`,
+		`{"data":{"flowsConnection":{"totalCount":1,"pageInfo":{"hasNextPage":false},"nodes":[{"id":"flow-meta","luid":"flow-rest","name":"Current","upstreamDatasourcesConnection":{"totalCount":0,"pageInfo":{"hasNextPage":false},"nodes":[]}}]}}}`,
+		`{"data":{"flowsConnection":{"totalCount":1,"pageInfo":{"hasNextPage":false},"nodes":[{"id":"flow-meta","luid":"flow-rest","name":"Current","upstreamLinkedFlowsConnection":{"totalCount":1,"pageInfo":{"hasNextPage":false},"nodes":[{"asset":{"id":"flow-meta","luid":"flow-rest","name":"Current"},"fromEdges":[],"toEdges":["step-1"]}]}}]}}}`,
+		`{"data":{"flowsConnection":{"totalCount":1,"pageInfo":{"hasNextPage":false},"nodes":[{"id":"flow-meta","luid":"flow-rest","name":"Current","downstreamDatasourcesConnection":{"totalCount":0,"pageInfo":{"hasNextPage":false},"nodes":[]}}]}}}`,
+		`{"data":{"flowsConnection":{"totalCount":1,"pageInfo":{"hasNextPage":false},"nodes":[{"id":"flow-meta","luid":"flow-rest","name":"Current","downstreamLinkedFlowsConnection":{"totalCount":1,"pageInfo":{"hasNextPage":false},"nodes":[{"asset":{"id":"flow-meta","luid":"flow-rest","name":"Current"},"fromEdges":["step-2"],"toEdges":[]}]}}]}}}`,
+		`{"data":{"flowsConnection":{"totalCount":1,"pageInfo":{"hasNextPage":false},"nodes":[{"id":"flow-meta","luid":"flow-rest","name":"Current","downstreamWorkbooksConnection":{"totalCount":0,"pageInfo":{"hasNextPage":false},"nodes":[]}}]}}}`,
+	}
+	server, _ := lineageTestServer(t, responses)
+	defer server.Close()
+
+	client := NewClient(tableau.NewTransport(server.Client(), "3.29", nil), testSession{token: "session-token", siteLUID: "site-1"}, server.URL)
+	capture, err := client.CaptureLineage(context.Background(), CaptureRequest{Kind: KindFlow, RESTLUID: "flow-rest", Direction: DirectionBoth, Depth: 1})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if capture.Complete || len(capture.Edges) != 0 || len(capture.Warnings) != 1 || !strings.Contains(capture.Warnings[0], "self-referential") {
+		t.Fatalf("capture=%#v", capture)
+	}
+}
+
 func TestCaptureLineageTraversesDepthWithoutInferringCycles(t *testing.T) {
 	responses := []string{
 		`{"data":{"publishedDatasourcesConnection":{"totalCount":1,"pageInfo":{"hasNextPage":false},"nodes":[{"id":"ds-a-meta","luid":"ds-a","name":"A"}]}}}`,

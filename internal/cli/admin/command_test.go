@@ -1,6 +1,7 @@
 package admin_test
 
 import (
+	"bytes"
 	"context"
 	"sort"
 	"strings"
@@ -85,7 +86,7 @@ func TestCommandMountsAllCapabilitiesAndShowsMutations(t *testing.T) {
 		}
 	}
 	sort.Strings(got)
-	want := []string{"admin.group.create", "admin.group.delete", "admin.group.inspect", "admin.group.list", "admin.group.update", "admin.permission.inspect", "admin.user.create", "admin.user.delete", "admin.user.inspect", "admin.user.list", "admin.user.update"}
+	want := []string{"admin.group.create", "admin.group.delete", "admin.group.inspect", "admin.group.list", "admin.group.update", "admin.permission.create", "admin.permission.delete", "admin.permission.inspect", "admin.user.create", "admin.user.delete", "admin.user.inspect", "admin.user.list", "admin.user.update"}
 	if strings.Join(got, ",") != strings.Join(want, ",") {
 		t.Fatalf("capabilities = %v", got)
 	}
@@ -115,6 +116,19 @@ func TestUserCreateRequiresEnvironmentAndSupportsPreview(t *testing.T) {
 	}
 	if !f.userPreview {
 		t.Fatal("--preview was not delegated")
+	}
+}
+
+func TestUserCreateHelpExplainsAuthenticationSelectorRule(t *testing.T) {
+	var stdout bytes.Buffer
+	cmd := cli.New(deps(&fake{}, true))
+	cmd.SetOut(&stdout)
+	cmd.SetArgs([]string{"user", "create", "--help"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(stdout.String(), "exactly one of --auth-setting or --idp-configuration-id") {
+		t.Fatalf("help = %q", stdout.String())
 	}
 }
 

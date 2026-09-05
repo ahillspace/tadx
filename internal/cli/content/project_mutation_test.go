@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	projectcreate "github.com/ahillspace/tadx/actions/project/create"
+	projectdelete "github.com/ahillspace/tadx/actions/project/delete"
 	projectinspect "github.com/ahillspace/tadx/actions/project/inspect"
 	projectupdate "github.com/ahillspace/tadx/actions/project/update"
 	"github.com/spf13/cobra"
@@ -19,6 +20,8 @@ type projectMutationCommands struct {
 	createPreview bool
 	updateInput   projectupdate.Input
 	updatePreview bool
+	deleteInput   projectdelete.Input
+	deletePreview bool
 }
 
 func (c *projectMutationCommands) InspectProject(_ context.Context, input projectinspect.Input) (projectinspect.Output, error) {
@@ -35,6 +38,11 @@ func (c *projectMutationCommands) CreateProject(_ context.Context, input project
 func (c *projectMutationCommands) UpdateProject(_ context.Context, input projectupdate.Input, preview bool) (projectupdate.Output, error) {
 	c.updateInput, c.updatePreview = input, preview
 	return projectupdate.Output{}, nil
+}
+
+func (c *projectMutationCommands) DeleteProject(_ context.Context, input projectdelete.Input, preview bool) (projectdelete.Output, error) {
+	c.deleteInput, c.deletePreview = input, preview
+	return projectdelete.Output{}, nil
 }
 
 func TestProjectCreateParsesExplicitParentAndMutation(t *testing.T) {
@@ -58,6 +66,24 @@ func TestProjectUpdatePreservesExplicitEmptyDescription(t *testing.T) {
 	}
 	if actions.updateInput.Selector.LUID != "project-1" || actions.updateInput.Description == nil || *actions.updateInput.Description != "" || !actions.updatePreview {
 		t.Fatalf("input=%#v preview=%t", actions.updateInput, actions.updatePreview)
+	}
+}
+
+func TestProjectDeleteRequiresExactProjectID(t *testing.T) {
+	actions := &projectMutationCommands{}
+	command := newProjectDelete(Dependencies{ProjectDeleter: actions, Renderer: &workbookDeleteRenderer{}, MutationsEnabled: true})
+	command.SetArgs([]string{"--environment", "dev", "--project-id", "project-1", "--preview"})
+	if err := command.ExecuteContext(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if actions.deleteInput.Environment != "dev" || actions.deleteInput.ProjectLUID != "project-1" || !actions.deletePreview {
+		t.Fatalf("input=%#v preview=%t", actions.deleteInput, actions.deletePreview)
+	}
+
+	command = newProjectDelete(Dependencies{ProjectDeleter: actions, Renderer: &workbookDeleteRenderer{}, MutationsEnabled: true})
+	command.SetArgs([]string{"--environment", "dev", "--project", "Department/Operations"})
+	if err := command.ExecuteContext(context.Background()); err == nil {
+		t.Fatal("expected project delete selector error")
 	}
 }
 
@@ -134,5 +160,10 @@ func TestProjectMutationsRequireExplicitEnvironment(t *testing.T) {
 	update.SetArgs([]string{"--project-id", "project-1", "--name", "Operations"})
 	if err := update.ExecuteContext(context.Background()); err == nil {
 		t.Fatal("expected project update environment error")
+	}
+	deleteCommand := newProjectDelete(Dependencies{ProjectDeleter: &projectMutationCommands{}, Renderer: &workbookDeleteRenderer{}, MutationsEnabled: true})
+	deleteCommand.SetArgs([]string{"--project-id", "project-1"})
+	if err := deleteCommand.ExecuteContext(context.Background()); err == nil {
+		t.Fatal("expected project delete environment error")
 	}
 }

@@ -3,6 +3,7 @@ package create_test
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"os"
 	"path/filepath"
@@ -106,6 +107,35 @@ func TestCreatePlansSmallIntentAndAppliesOnlyWhenRequested(t *testing.T) {
 	}
 	if c.request.Name != "Revenue" || c.request.Specification.Datasource.ID != "datasource-1" {
 		t.Fatalf("request=%#v", c.request)
+	}
+}
+
+func TestCreateSerializesZeroDimensionsAsAnEmptyArray(t *testing.T) {
+	v, f, c := &validator{}, &finder{}, &creator{}
+	plan, err := definitioncreate.New(v, f, c).Plan(context.Background(), definitioncreate.Input{Environment: "dev", Site: "sales", Intent: definitioncreate.Intent{
+		Name: "Revenue", DatasourceLUID: "datasource-1", MeasureField: "Sales", TimeDimension: "Order Date",
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if plan.Dimensions == nil || plan.Request.ExtensionOptions.AllowedDimensions == nil {
+		t.Fatalf("plan dimensions=%#v request dimensions=%#v", plan.Dimensions, plan.Request.ExtensionOptions.AllowedDimensions)
+	}
+	compact := definitioncreate.Output{Plan: plan}.CompactOutput().(definitioncreate.CompactResult)
+	if compact.Plan.Dimensions == nil {
+		t.Fatalf("compact dimensions=%#v", compact.Plan.Dimensions)
+	}
+	encoded, err := json.Marshal(plan.Request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var payload map[string]any
+	if err := json.Unmarshal(encoded, &payload); err != nil {
+		t.Fatal(err)
+	}
+	extension := payload["extension_options"].(map[string]any)
+	if dimensions, ok := extension["allowed_dimensions"].([]any); !ok || len(dimensions) != 0 {
+		t.Fatalf("payload dimensions=%#v", extension["allowed_dimensions"])
 	}
 }
 

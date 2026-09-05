@@ -31,7 +31,7 @@ func TestOutputGolden(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !bytes.Equal(actual.Bytes(), bytes.TrimSuffix(want, []byte("\n"))) {
+	if !bytes.Equal(actual.Bytes(), want) {
 		t.Fatalf("golden mismatch\nwant:\n%s\ngot:\n%s", want, actual.Bytes())
 	}
 }

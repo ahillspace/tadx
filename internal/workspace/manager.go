@@ -477,7 +477,7 @@ func (m *Manager) newID() (string, error) {
 
 func createRoot(root string, manifest Manifest) (bool, error) {
 	if _, err := os.Lstat(root); err == nil {
-		return false, fmt.Errorf("workspace root %q already exists", root)
+		return false, fmt.Errorf("workspace root %q must not already exist; use a new path for create or tadx workspace register for an existing workspace", root)
 	} else if !errors.Is(err, os.ErrNotExist) {
 		return false, err
 	}

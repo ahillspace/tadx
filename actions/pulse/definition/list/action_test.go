@@ -102,3 +102,34 @@ func TestListRejectsInvalidLimitBeforeReader(t *testing.T) {
 		t.Fatalf("error=%#v calls=%d", err, r.calls)
 	}
 }
+
+func TestListNameFilterIsExactAndPreservesProviderContinuation(t *testing.T) {
+	r := &reader{page: definitionlist.Page{Definitions: []definitionlist.Definition{
+		{LUID: "one", Name: "Sales", DatasourceLUID: "ds"},
+		{LUID: "two", Name: "sales", DatasourceLUID: "ds"},
+		{LUID: "three", Name: "Sales Target", DatasourceLUID: "ds"},
+	}, NextPageToken: "second-page"}}
+	in := definitionlist.Input{Environment: "dev", Site: "site", Name: "Sales", Limit: 3}
+	out, err := definitionlist.New(r).Execute(context.Background(), in)
+	if err != nil || r.calls != 1 || r.input.PageSize != 3 || out.Page.Returned != 1 || len(out.Definitions) != 1 || out.Definitions[0].LUID != "one" || out.Page.NextCursor == "" {
+		t.Fatalf("out=%+v err=%v reader=%+v", out, err, r)
+	}
+	if len(r.page.Definitions) != 3 || r.page.Definitions[1].LUID != "two" {
+		t.Fatal("filter mutated the provider page")
+	}
+	in.Cursor = out.Page.NextCursor
+	continuation := &reader{page: definitionlist.Page{Definitions: []definitionlist.Definition{{LUID: "four", Name: "Other", DatasourceLUID: "ds"}}, NextPageToken: "third-page"}}
+	out, err = definitionlist.New(continuation).Execute(context.Background(), in)
+	if err != nil || continuation.calls != 1 || continuation.input.PageToken != "second-page" || out.Page.Returned != 0 || out.Page.NextCursor == "" {
+		t.Fatalf("empty filtered page must preserve continuation: out=%+v err=%v reader=%+v", out, err, continuation)
+	}
+	for _, name := range []string{"", "sales", "Sales Target"} {
+		in.Name = name
+		r := &reader{}
+		_, err := definitionlist.New(r).Execute(context.Background(), in)
+		var structured *errs.Error
+		if !errors.As(err, &structured) || structured.Kind != errs.KindUsage || r.calls != 0 {
+			t.Fatalf("changed name %q accepted cursor: err=%v calls=%d", name, err, r.calls)
+		}
+	}
+}

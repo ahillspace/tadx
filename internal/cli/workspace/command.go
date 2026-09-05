@@ -111,7 +111,7 @@ func newCreate(deps Dependencies) *cobra.Command {
 			return deps.Renderer.Render(result)
 		},
 	}
-	command.Flags().StringVar(&input.Path, "path", "", "override the default workspace root")
+	command.Flags().StringVar(&input.Path, "path", "", "new workspace root that must not already exist")
 	return command
 }
 

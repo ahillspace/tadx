@@ -108,6 +108,52 @@ func TestClientRejectsInvalidProjectMutationsBeforeSending(t *testing.T) {
 	}
 }
 
+func TestClientDeletesProjectWithExactLUID(t *testing.T) {
+	server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		if request.Method != http.MethodDelete || request.URL.EscapedPath() != "/api/3.29/sites/site%2Fone/projects/project-1" || request.URL.RawQuery != "" {
+			t.Fatalf("delete request = %s %s?%s", request.Method, request.URL.EscapedPath(), request.URL.RawQuery)
+		}
+		body, err := io.ReadAll(request.Body)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(body) != 0 {
+			t.Fatalf("delete body = %q", body)
+		}
+		writer.Header().Set("X-Tableau-Request-Id", "project-delete-request")
+		writer.WriteHeader(http.StatusNoContent)
+	}))
+	defer server.Close()
+
+	client := tableauproject.NewClient(tableau.NewTransport(server.Client(), "3.29", nil), session{}, server.URL)
+	result, err := client.Delete(context.Background(), "project-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Status != "succeeded" || result.ProjectLUID != "project-1" || result.TableauRequestID != "project-delete-request" {
+		t.Fatalf("result = %#v", result)
+	}
+}
+
+func TestClientRejectsNonEmptyProjectDeleteSuccessContract(t *testing.T) {
+	server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		if request.Method != http.MethodDelete {
+			t.Fatalf("method = %s", request.Method)
+		}
+		writer.Header().Set("X-Tableau-Request-Id", "project-delete-invalid-response")
+		writer.WriteHeader(http.StatusOK)
+		_, _ = io.WriteString(writer, `<tsResponse/>`)
+	}))
+	defer server.Close()
+
+	client := tableauproject.NewClient(tableau.NewTransport(server.Client(), "3.29", nil), session{}, server.URL)
+	result, err := client.Delete(context.Background(), "project-1")
+	var protocol *tableau.ProtocolError
+	if !errors.As(err, &protocol) || result.Status != "unknown" || result.ProjectLUID != "project-1" || tableau.RequestID(err) != "project-delete-invalid-response" {
+		t.Fatalf("result=%#v error=%#v", result, err)
+	}
+}
+
 func TestClientRejectsMalformedProjectMutationResponses(t *testing.T) {
 	tests := []struct {
 		name       string

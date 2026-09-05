@@ -19,8 +19,8 @@ func (i *installer) Install(_ context.Context, input install.Input) (install.Res
 	i.calls++
 	i.input = input
 	return install.Result{Status: "preview", Skills: []install.Skill{
-		{Name: "tadx", Status: "install", Path: ".agents/skills/tadx", SHA256: "bundle-tadx", Files: 4},
-		{Name: "tadx-pulse", Status: "install", Path: ".agents/skills/tadx-pulse", SHA256: "bundle-pulse", Files: 2},
+		{Name: "tadx", Status: "install", Path: ".codex/skills/tadx", SHA256: "bundle-tadx", Files: 4},
+		{Name: "tadx-pulse", Status: "install", Path: ".codex/skills/tadx-pulse", SHA256: "bundle-pulse", Files: 2},
 	}}, nil
 }
 
@@ -59,7 +59,8 @@ func TestPreviewProjections(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if !bytes.Equal(actual.Bytes(), bytes.TrimSuffix(expected, []byte("\n"))) {
+		expected = bytes.ReplaceAll(expected, []byte("\r\n"), []byte("\n"))
+		if !bytes.Equal(actual.Bytes(), expected) {
 			t.Fatalf("%s mismatch:\n%s", name, actual.String())
 		}
 	}

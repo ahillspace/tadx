@@ -60,3 +60,10 @@ type MutationResult struct {
 	Project          Project
 	TableauRequestID string
 }
+
+// DeleteResult is one authoritative project deletion result.
+type DeleteResult struct {
+	Status           string
+	ProjectLUID      string
+	TableauRequestID string
+}

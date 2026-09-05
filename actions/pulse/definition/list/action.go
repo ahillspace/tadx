@@ -42,10 +42,10 @@ func (a *Action) Execute(ctx context.Context, input Input) (Output, error) {
 	if limit < 1 || limit > maxLimit {
 		return Output{}, listError("pulse.definition.list.usage", errs.KindUsage, input, "Pulse definition list limit must be between 1 and 100.", nil)
 	}
-	fingerprint := targetFingerprint(input.Environment, input.Site, limit, input.Catalog)
+	fingerprint := targetFingerprint(input.Environment, input.Site, input.Name, limit, input.Catalog)
 	token, err := decodeCursor(input.Cursor, fingerprint)
 	if err != nil {
-		return Output{}, listError("pulse.definition.list.usage", errs.KindUsage, input, "Pulse definition cursor does not match the selected target and limit.", err)
+		return Output{}, listError("pulse.definition.list.usage", errs.KindUsage, input, "Pulse definition cursor does not match the selected target, name, and limit.", err)
 	}
 	page, err := a.reader.ListDefinitions(ctx, PageRequest{PageSize: limit, PageToken: token})
 	if err != nil {
@@ -68,10 +68,19 @@ func (a *Action) Execute(ctx context.Context, input Input) (Output, error) {
 	if err != nil {
 		return Output{}, fmt.Errorf("encode Pulse definition cursor: %w", err)
 	}
+	definitions := page.Definitions
+	if input.Name != "" {
+		definitions = make([]Definition, 0, len(page.Definitions))
+		for _, item := range page.Definitions {
+			if item.Name == input.Name {
+				definitions = append(definitions, item)
+			}
+		}
+	}
 	return Output{
 		Status: "listed", Environment: input.Environment, Site: input.Site,
-		Page:        OutputPage{Returned: len(page.Definitions), Limit: limit, NextCursor: next},
-		Definitions: page.Definitions, RequestID: page.RequestID,
+		Page:        OutputPage{Returned: len(definitions), Limit: limit, NextCursor: next},
+		Definitions: definitions, RequestID: page.RequestID,
 		Help: []string{"tadx pulse definition inspect --id <definition-luid>"},
 	}, nil
 }
@@ -82,8 +91,8 @@ type cursorValue struct {
 	Fingerprint string `json:"f"`
 }
 
-func targetFingerprint(environment, site string, limit int, catalog bool) string {
-	sum := sha256.Sum256([]byte(environment + "\x00" + site + "\x00" + fmt.Sprint(limit) + "\x00" + fmt.Sprint(catalog)))
+func targetFingerprint(environment, site, name string, limit int, catalog bool) string {
+	sum := sha256.Sum256([]byte(environment + "\x00" + site + "\x00" + name + "\x00" + fmt.Sprint(limit) + "\x00" + fmt.Sprint(catalog)))
 	return base64.RawURLEncoding.EncodeToString(sum[:])
 }
 

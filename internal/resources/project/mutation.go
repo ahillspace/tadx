@@ -12,6 +12,7 @@ import (
 type MutationClient interface {
 	Create(context.Context, tableauproject.CreateRequest) (tableauproject.MutationResult, error)
 	Update(context.Context, tableauproject.UpdateRequest) (tableauproject.MutationResult, error)
+	Delete(context.Context, string) (tableauproject.DeleteResult, error)
 }
 
 // MutationAdapter validates exact project mutation inputs before delegation.
@@ -39,4 +40,12 @@ func (a *MutationAdapter) UpdateProject(ctx context.Context, input tableauprojec
 		return tableauproject.MutationResult{}, errors.New("project update requires at least one explicit metadata field")
 	}
 	return a.client.Update(ctx, input)
+}
+
+// DeleteProject deletes one project by its authoritative LUID.
+func (a *MutationAdapter) DeleteProject(ctx context.Context, luid string) (tableauproject.DeleteResult, error) {
+	if a == nil || a.client == nil || strings.TrimSpace(luid) == "" {
+		return tableauproject.DeleteResult{}, errors.New("project delete requires a configured client and exact project LUID")
+	}
+	return a.client.Delete(ctx, luid)
 }

@@ -100,7 +100,8 @@ tadx agent install --target cursor
 ```
 
 Each command installs both `tadx` and `tadx-pulse` as standard `SKILL.md` packages bundled into the TADX binary.
-Claude uses `~/.claude/skills`, Codex uses `~/.agents/skills`, and Cursor uses `~/.cursor/skills`.
+Claude uses `~/.claude/skills`, Codex uses `~/.codex/skills`, and Cursor uses `~/.cursor/skills`.
+Existing skills under `~/.agents/skills` remain untouched.
 No repository checkout or Tableau credentials are required.
 The installer creates no `AGENTS.md`, `CLAUDE.md`, or Cursor rules.
 

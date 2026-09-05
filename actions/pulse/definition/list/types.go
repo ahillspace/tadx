@@ -6,6 +6,7 @@ import "github.com/ahillspace/tadx/internal/readsource"
 type Input struct {
 	Environment string
 	Site        string
+	Name        string
 	Cursor      string
 	Limit       int
 	Catalog     bool
