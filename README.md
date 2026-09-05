@@ -89,6 +89,26 @@ Verify the installed command:
 tadx --help
 ```
 
+## Install agent skills
+
+Choose the command for your coding agent:
+
+```text
+tadx agent install --target claude
+tadx agent install --target codex
+tadx agent install --target cursor
+```
+
+Each command installs both `tadx` and `tadx-pulse` as standard `SKILL.md` packages bundled into the TADX binary.
+Claude uses `~/.claude/skills`, Codex uses `~/.agents/skills`, and Cursor uses `~/.cursor/skills`.
+No repository checkout or Tableau credentials are required.
+The installer creates no `AGENTS.md`, `CLAUDE.md`, or Cursor rules.
+
+Use `--preview` to inspect changes without writing files and `--full` to see home-relative paths and package fingerprints.
+Identical packages remain unchanged.
+Replacing a divergent package requires `--force`, which preserves the previous package under the agent directory's `.tadx-skill-backups` directory.
+This local operation does not require `TADX_ENABLE_MUTATIONS`.
+
 ## Configure a Tableau environment
 
 TADX uses Tableau personal access tokens and never stores their values in its configuration.

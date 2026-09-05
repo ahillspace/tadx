@@ -175,6 +175,7 @@ func localImportAllowed(file, imported string) bool {
 	case layerApp:
 		return matchesPrefix(imported, "actions", "internal/cli", "internal/resources", "internal/tableau") ||
 			matchesExact(imported,
+				"internal/agent",
 				"internal/artifact",
 				"internal/auth",
 				"internal/capability",

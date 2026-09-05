@@ -42,8 +42,8 @@ Persist and render artifact paths relative to the resolved workspace with forwar
 
 Treat Tableau LUIDs as authoritative, fail ambiguous selectors, and never fuzzy-match or prompt interactively.
 Authenticate to Tableau with PATs only.
-Consequential mutations preview by default and require `--apply`.
-`--force` never means `--apply`, and mutation discovery never grants authorization.
+Consequential mutations execute by default when enabled with `TADX_ENABLE_MUTATIONS=1`; use `--preview` for a read-only plan.
+`--force` does not bypass mutation policy, and mutation discovery never grants authorization.
 Never persist or print PATs, session tokens, or machine-specific paths.
 
 ## Integrate without generated drift

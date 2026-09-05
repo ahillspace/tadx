@@ -15,6 +15,7 @@ import (
 	workbookpublish "github.com/ahillspace/tadx/actions/workbook/publish"
 	workbookpull "github.com/ahillspace/tadx/actions/workbook/pull"
 	admincli "github.com/ahillspace/tadx/internal/cli/admin"
+	agentcli "github.com/ahillspace/tadx/internal/cli/agent"
 	authcli "github.com/ahillspace/tadx/internal/cli/auth"
 	capabilitycli "github.com/ahillspace/tadx/internal/cli/capability"
 	catalogcli "github.com/ahillspace/tadx/internal/cli/catalog"
@@ -103,6 +104,7 @@ type Dependencies struct {
 	EnvironmentProfiles  *envcli.Dependencies
 	Workspaces           *workspacecli.Dependencies
 	Admin                *admincli.Dependencies
+	Agent                *agentcli.Dependencies
 	Pulse                *pulsecli.Dependencies
 	DoctorRunner         doctorcli.Runner
 	DoctorUse            string
@@ -174,6 +176,11 @@ When enabled, mutation commands perform changes by default. Pass --preview to in
 		admin.Renderer = deps.Renderer
 		admin.MutationsEnabled = deps.MutationsEnabled
 		root.AddCommand(admincli.New(admin))
+	}
+	if deps.Agent != nil {
+		agent := *deps.Agent
+		agent.Renderer = deps.Renderer
+		root.AddCommand(agentcli.New(agent))
 	}
 	if deps.Pulse != nil {
 		pulse := *deps.Pulse

@@ -85,6 +85,7 @@ func Run(ctx context.Context, args []string, stdout io.Writer, options Options) 
 		EnvironmentProfiles: environmentCommands.dependencies(),
 		Workspaces:          workspaceCommands.dependencies(),
 		Admin:               remoteAdmin.dependencies(),
+		Agent:               newAgentCommands(runtime),
 		Pulse:               pulseActions.dependencies(),
 		DoctorRunner:        doctorCommands,
 		DoctorUse:           registryLeafUse("doctor.run"),

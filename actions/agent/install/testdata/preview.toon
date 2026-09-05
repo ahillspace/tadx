@@ -1,0 +1,7 @@
+status: preview
+target: codex
+skills[2]{name,status}:
+  tadx,install
+  tadx-pulse,install
+details: "--full"
+help[2]: tadx capability list,tadx capability get agent.install --full

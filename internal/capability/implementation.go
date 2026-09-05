@@ -7,6 +7,7 @@ var implementationManifest = map[string]struct {
 	CommandPath []string
 	RawCapable  bool
 }{
+	"agent.install":             {CommandPath: []string{"agent", "install"}},
 	"auth.check":                {CommandPath: []string{"auth", "check"}},
 	"auth.status":               {CommandPath: []string{"auth", "status"}},
 	"admin.group.create":        {CommandPath: []string{"admin", "group", "create"}},

@@ -20,6 +20,7 @@ Use `tadx capability get <id>` for the same focused metadata at runtime.
 | `admin.user.inspect` | cli | ship | ready | implemented | `tadx admin user inspect` |
 | `admin.user.list` | cli | ship | ready | implemented | `tadx admin user list` |
 | `admin.user.update` | cli | ship | ready | implemented | `tadx admin user update` |
+| `agent.install` | cli | ship | ready | implemented | `tadx agent install` |
 | `auth.check` | cli | ship | ready | implemented | `tadx auth check` |
 | `auth.status` | cli | ship | ready | implemented | `tadx auth status` |
 | `capability.get` | cli | ship | ready | implemented | `tadx capability get` |
@@ -369,6 +370,32 @@ Update supported attributes of one exact user, or preview the operation.
 - Validation or blocker: Contract-verified bounded user update and no-op behavior
 - Blocker ID: None
 - Command binding: `tadx admin user update`
+
+### `agent.install`
+
+Install the bundled tadx and tadx-pulse skill packages into the selected agent's global skill directory.
+
+- Surface: tadx agent install
+- Operation type: change
+- Owner: cli
+- MCP overlap: None
+- Selectors: Required target: claude, codex, or cursor
+- Products and availability: Local / all
+- Product disposition: ship
+- Evidence level: local-contract
+- Verification readiness: ready
+- Implementation state: implemented
+- Local write: Yes
+- Remote mutation: No
+- Supports `--preview`: Yes
+- Raw capable: No
+- Safety and guard: Bounded home-relative paths; symlink rejection; staged package replacement; divergent packages require --force and retain backups; no instruction or rules files
+- Artifact effect: None
+- Upstream operation: Embedded packages and local filesystem
+- Evidence: Standard Agent Skills package format; official agent skill discovery directories
+- Validation or blocker: Local contract verified by installer and CLI tests
+- Blocker ID: None
+- Command binding: `tadx agent install`
 
 ### `auth.check`
 
