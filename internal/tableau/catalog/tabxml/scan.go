@@ -20,9 +20,10 @@ type Pagination struct {
 
 // Element contains one item's attributes and direct-child values.
 type Element struct {
-	attrs      map[string]string
-	children   map[string]string
-	childAttrs map[string]map[string]string
+	attrs           map[string]string
+	children        map[string]string
+	childAttrs      map[string]map[string]string
+	grandchildAttrs map[string]map[string][]map[string]string
 }
 
 // Attr returns an attribute by local XML name.
@@ -34,6 +35,16 @@ func (e Element) ChildText(name string) string { return strings.TrimSpace(e.chil
 // ChildAttr returns an attribute from the first matching direct child.
 func (e Element) ChildAttr(child, attribute string) string {
 	return e.childAttrs[child][attribute]
+}
+
+// GrandchildAttrValues returns one attribute from each matching grandchild.
+func (e Element) GrandchildAttrValues(parent, child, attribute string) []string {
+	children := e.grandchildAttrs[parent][child]
+	values := make([]string, 0, len(children))
+	for _, attributes := range children {
+		values = append(values, attributes[attribute])
+	}
+	return values
 }
 
 // DecodeList validates and streams one classic REST list response.
@@ -136,9 +147,10 @@ func decodeContainer(decoder *xml.Decoder, start xml.StartElement, item string, 
 
 func decodeElement(decoder *xml.Decoder, start xml.StartElement) (Element, error) {
 	element := Element{
-		attrs:      attributes(start.Attr),
-		children:   make(map[string]string),
-		childAttrs: make(map[string]map[string]string),
+		attrs:           attributes(start.Attr),
+		children:        make(map[string]string),
+		childAttrs:      make(map[string]map[string]string),
+		grandchildAttrs: make(map[string]map[string][]map[string]string),
 	}
 	for {
 		token, err := decoder.Token()
@@ -151,9 +163,12 @@ func decodeElement(decoder *xml.Decoder, start xml.StartElement) (Element, error
 			if _, exists := element.childAttrs[name]; !exists {
 				element.childAttrs[name] = attributes(value.Attr)
 			}
-			text, err := decodeChild(decoder, value)
+			text, grandchildren, err := decodeChild(decoder, value)
 			if err != nil {
 				return Element{}, err
+			}
+			if _, exists := element.grandchildAttrs[name]; !exists {
+				element.grandchildAttrs[name] = grandchildren
 			}
 			if _, exists := element.children[name]; !exists {
 				element.children[name] = text
@@ -166,16 +181,20 @@ func decodeElement(decoder *xml.Decoder, start xml.StartElement) (Element, error
 	}
 }
 
-func decodeChild(decoder *xml.Decoder, start xml.StartElement) (string, error) {
+func decodeChild(decoder *xml.Decoder, start xml.StartElement) (string, map[string][]map[string]string, error) {
 	var text strings.Builder
+	grandchildren := make(map[string][]map[string]string)
 	depth := 1
 	for depth > 0 {
 		token, err := decoder.Token()
 		if err != nil {
-			return "", xmlError(err)
+			return "", nil, xmlError(err)
 		}
 		switch value := token.(type) {
 		case xml.StartElement:
+			if depth == 1 {
+				grandchildren[value.Name.Local] = append(grandchildren[value.Name.Local], attributes(value.Attr))
+			}
 			depth++
 		case xml.CharData:
 			if depth == 1 {
@@ -184,11 +203,11 @@ func decodeChild(decoder *xml.Decoder, start xml.StartElement) (string, error) {
 		case xml.EndElement:
 			depth--
 			if depth == 0 && value.Name.Local != start.Name.Local {
-				return "", fmt.Errorf("malformed Tableau XML child %q", start.Name.Local)
+				return "", nil, fmt.Errorf("malformed Tableau XML child %q", start.Name.Local)
 			}
 		}
 	}
-	return text.String(), nil
+	return text.String(), grandchildren, nil
 }
 
 func decodePagination(decoder *xml.Decoder, start xml.StartElement) (Pagination, error) {

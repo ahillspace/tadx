@@ -352,7 +352,7 @@ func TestNewEngineRejectsInvalidConfigurationAndScopes(t *testing.T) {
 
 func TestColumnsAreFixedAndDefensivelyCopied(t *testing.T) {
 	columns, ok := ColumnsForScope(ScopeWorkbooks)
-	if !ok || len(columns) != 6 || columns[0].Name != "id" || columns[5].Name != "updated_at" {
+	if !ok || len(columns) != 7 || columns[0].Name != "id" || columns[6].Name != "list_payload" {
 		t.Fatalf("columns = %#v", columns)
 	}
 	columns[0].Name = "remote_controlled"

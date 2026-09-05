@@ -15,6 +15,7 @@ type Input struct {
 type PageRequest struct {
 	PageNumber, PageSize                      int
 	Name, OwnerName, ProjectLUID, ProjectName string
+	SnapshotCursor                            string
 }
 
 // Flow is one complete lifecycle projection.
@@ -23,6 +24,7 @@ type Flow struct {
 	Name        string   `json:"name"`
 	ProjectLUID string   `json:"project_luid"`
 	ProjectName string   `json:"project_name,omitempty"`
+	ProjectPath string   `json:"project_path,omitempty"`
 	FileType    string   `json:"file_type,omitempty"`
 	UpdatedAt   string   `json:"updated_at,omitempty"`
 	Description string   `json:"description,omitempty"`
@@ -34,9 +36,11 @@ type Flow struct {
 
 // Page is one complete reader page.
 type Page struct {
-	Number, Size, Total int
-	Flows               []Flow
-	RequestID           string
+	Number, Size, Total  int
+	Flows                []Flow
+	RequestID            string
+	SnapshotCursor       string
+	SuppressContinuation bool
 }
 
 // OutputPage is continuation metadata.

@@ -8,7 +8,7 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// WorkbookLister runs bounded remote workbook inventory.
+// WorkbookLister runs complete remote workbook inventory.
 type WorkbookLister interface {
 	ListWorkbooks(context.Context, workbooklist.Input) (workbooklist.Output, error)
 }
@@ -21,7 +21,7 @@ type WorkbookInspector interface {
 func newWorkbookList(lister WorkbookLister, renderer Renderer) *cobra.Command {
 	var input workbooklist.Input
 	command := &cobra.Command{
-		Use: "list", Short: "List one bounded workbook page.", Annotations: map[string]string{"tadx.capability": "workbook.list"}, Args: noContentArgs("workbook.list"),
+		Use: "list", Short: "List workbooks and refresh their catalog snapshot.", Annotations: map[string]string{"tadx.capability": "workbook.list"}, Args: noContentArgs("workbook.list"),
 		RunE: func(command *cobra.Command, _ []string) error {
 			result, err := lister.ListWorkbooks(command.Context(), input)
 			if err != nil {
@@ -35,7 +35,7 @@ func newWorkbookList(lister WorkbookLister, renderer Renderer) *cobra.Command {
 	command.Flags().StringVar(&input.OwnerName, "owner", "", "exact owner-name filter")
 	command.Flags().StringVar(&input.ProjectName, "project-name", "", "exact leaf project name filter; not a project path")
 	command.Flags().StringVar(&input.Tag, "tag", "", "exact workbook-tag filter")
-	command.Flags().IntVar(&input.Limit, "limit", 0, "maximum workbooks to return")
+	command.Flags().IntVar(&input.Limit, "limit", 0, "maximum workbooks to render")
 	command.Flags().StringVar(&input.Cursor, "cursor", "", "opaque continuation cursor")
 	command.Flags().BoolVar(&input.Catalog, "catalog", false, "read indexed local catalog data without contacting Tableau")
 	return command

@@ -37,7 +37,7 @@ func (r *catalogUserListReader) ListUsers(ctx context.Context, input userlist.Pa
 	if input.SiteRole != "" {
 		return userlist.Page{}, unsupportedCatalogFilters("admin.user.list", r.environment, r.site)
 	}
-	result, err := r.store.ReadResources(ctx, catalog.ResourceQuery{Environment: r.environment, Site: r.site, Kind: "user", Name: input.Name, Offset: (input.PageNumber - 1) * input.PageSize, Limit: input.PageSize})
+	result, err := r.store.ReadResources(ctx, catalog.ResourceQuery{Environment: r.environment, Site: r.site, Kind: "user", Name: input.Name, Offset: snapshotOffset(input.PageNumber, input.PageSize, input.SnapshotCursor), Limit: input.PageSize, Cursor: input.SnapshotCursor})
 	if err != nil {
 		return userlist.Page{}, catalogReadError("admin.user.list", r.environment, r.site, err)
 	}
@@ -49,7 +49,7 @@ func (r *catalogUserListReader) ListUsers(ctx context.Context, input userlist.Pa
 		}
 		items[index] = userlist.User{LUID: entry.LUID, Name: entry.Name}
 	}
-	return userlist.Page{Number: input.PageNumber, Size: input.PageSize, Total: result.Total, Users: items}, nil
+	return userlist.Page{Number: input.PageNumber, Size: input.PageSize, Total: result.Total, Users: items, SnapshotCursor: result.NextCursor}, nil
 }
 
 type catalogUserGetResolver struct {
@@ -84,7 +84,7 @@ func (r *catalogGroupListReader) ListGroups(ctx context.Context, input grouplist
 	if input.Domain != "" {
 		return grouplist.Page{}, unsupportedCatalogFilters("admin.group.list", r.environment, r.site)
 	}
-	result, err := r.store.ReadResources(ctx, catalog.ResourceQuery{Environment: r.environment, Site: r.site, Kind: "group", Name: input.Name, Offset: (input.PageNumber - 1) * input.PageSize, Limit: input.PageSize})
+	result, err := r.store.ReadResources(ctx, catalog.ResourceQuery{Environment: r.environment, Site: r.site, Kind: "group", Name: input.Name, Offset: snapshotOffset(input.PageNumber, input.PageSize, input.SnapshotCursor), Limit: input.PageSize, Cursor: input.SnapshotCursor})
 	if err != nil {
 		return grouplist.Page{}, catalogReadError("admin.group.list", r.environment, r.site, err)
 	}
@@ -96,7 +96,7 @@ func (r *catalogGroupListReader) ListGroups(ctx context.Context, input grouplist
 		}
 		items[index] = grouplist.Group{LUID: entry.LUID, Name: entry.Name}
 	}
-	return grouplist.Page{Number: input.PageNumber, Size: input.PageSize, Total: result.Total, Groups: items}, nil
+	return grouplist.Page{Number: input.PageNumber, Size: input.PageSize, Total: result.Total, Groups: items, SnapshotCursor: result.NextCursor}, nil
 }
 
 type catalogGroupGetResolver struct {

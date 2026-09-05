@@ -139,6 +139,35 @@ func (a *Adapter) ResolveProjectPath(ctx context.Context, luid string) (string, 
 	return project.Path, err
 }
 
+// ResolveProjectPaths returns canonical hierarchy paths for authoritative LUIDs
+// from one project inventory traversal.
+func (a *Adapter) ResolveProjectPaths(ctx context.Context, luids []string) (map[string]string, error) {
+	if a == nil || a.client == nil {
+		return nil, errors.New("project resource adapter is not configured")
+	}
+	items, _, err := a.all(ctx)
+	if err != nil {
+		return nil, err
+	}
+	index := newPathIndex(items)
+	paths := make(map[string]string, len(luids))
+	for _, luid := range luids {
+		luid = strings.TrimSpace(luid)
+		if luid == "" {
+			return nil, errors.New("project path resolution requires authoritative LUIDs")
+		}
+		if _, exists := paths[luid]; exists {
+			continue
+		}
+		path, pathErr := index.path(luid, make(map[string]bool))
+		if pathErr != nil {
+			return nil, pathErr
+		}
+		paths[luid] = path
+	}
+	return paths, nil
+}
+
 // FindProjectCollisions returns case-insensitive sibling-name collisions.
 func (a *Adapter) FindProjectCollisions(ctx context.Context, name, parentLUID string) ([]Project, error) {
 	if strings.TrimSpace(name) == "" {

@@ -14,7 +14,7 @@ import (
 const (
 	maxLimit        = 100
 	cursorVersion   = 1
-	maxCursorLength = 256
+	maxCursorLength = 2048
 )
 
 // Reader is the action-owned list seam.
@@ -37,11 +37,11 @@ func (a *Action) Execute(ctx context.Context, input Input) (Output, error) {
 	if err != nil {
 		return Output{}, fmt.Errorf("build flow continuation cursor: %w", err)
 	}
-	pageNumber, pageSize, err := selectPage(input.Cursor, input.Limit, filterFingerprint)
+	pageNumber, pageSize, snapshotCursor, err := selectPage(input.Cursor, input.Limit, filterFingerprint)
 	if err != nil {
 		return Output{}, err
 	}
-	page, err := a.reader.ListFlows(ctx, PageRequest{PageNumber: pageNumber, PageSize: pageSize, Name: input.Name, OwnerName: input.OwnerName, ProjectLUID: input.ProjectLUID, ProjectName: input.ProjectName})
+	page, err := a.reader.ListFlows(ctx, PageRequest{PageNumber: pageNumber, PageSize: pageSize, Name: input.Name, OwnerName: input.OwnerName, ProjectLUID: input.ProjectLUID, ProjectName: input.ProjectName, SnapshotCursor: snapshotCursor})
 	if err != nil {
 		return Output{}, err
 	}
@@ -49,8 +49,8 @@ func (a *Action) Execute(ctx context.Context, input Input) (Output, error) {
 		return Output{}, errors.New("flow list reader returned inconsistent pagination")
 	}
 	next := ""
-	if page.Number*page.Size < page.Total {
-		next, err = encodeCursor(page.Number+1, page.Size, filterFingerprint)
+	if !page.SuppressContinuation && (page.SnapshotCursor != "" || page.Number*page.Size < page.Total) {
+		next, err = encodeCursor(page.Number+1, page.Size, filterFingerprint, page.SnapshotCursor)
 		if err != nil {
 			return Output{}, err
 		}
@@ -58,43 +58,44 @@ func (a *Action) Execute(ctx context.Context, input Input) (Output, error) {
 	return Output{Status: "listed", Environment: input.Environment, Site: input.Site, Page: OutputPage{Returned: len(page.Flows), Total: page.Total, Limit: page.Size, NextCursor: next}, Flows: page.Flows, RequestID: page.RequestID, Help: []string{"tadx content flow inspect --id <flow-luid>"}}, nil
 }
 
-func selectPage(value string, requested int, expectedFilter string) (int, int, error) {
+func selectPage(value string, requested int, expectedFilter string) (int, int, string, error) {
 	if value == "" {
 		if requested == 0 {
 			requested = 25
 		}
 		if requested < 1 || requested > maxLimit {
-			return 0, 0, fmt.Errorf("flow list limit must be between 1 and %d", maxLimit)
+			return 0, 0, "", fmt.Errorf("flow list limit must be between 1 and %d", maxLimit)
 		}
-		return 1, requested, nil
+		return 1, requested, "", nil
 	}
 	if len(value) > maxCursorLength {
-		return 0, 0, errs.New(errs.KindUsage, "invalid flow continuation cursor")
+		return 0, 0, "", errs.New(errs.KindUsage, "invalid flow continuation cursor")
 	}
 	data, err := base64.RawURLEncoding.DecodeString(value)
 	var cursor cursorValue
-	if err != nil || json.Unmarshal(data, &cursor) != nil || cursor.Version != cursorVersion || cursor.Page < 2 || cursor.Size < 1 || cursor.Size > maxLimit || cursor.Filter == "" {
-		return 0, 0, errs.New(errs.KindUsage, "invalid flow continuation cursor")
+	if err != nil || json.Unmarshal(data, &cursor) != nil || cursor.Version != cursorVersion || cursor.Page < 2 || cursor.Size < 1 || cursor.Size > maxLimit || cursor.Filter == "" || len(cursor.Snapshot) > 1024 {
+		return 0, 0, "", errs.New(errs.KindUsage, "invalid flow continuation cursor")
 	}
 	if requested != 0 && requested != cursor.Size {
-		return 0, 0, errs.New(errs.KindUsage, "flow list limit must match the continuation cursor")
+		return 0, 0, "", errs.New(errs.KindUsage, "flow list limit must match the continuation cursor")
 	}
 	if cursor.Filter != expectedFilter {
-		return 0, 0, errs.New(errs.KindUsage, "flow continuation cursor does not match the current filters")
+		return 0, 0, "", errs.New(errs.KindUsage, "flow continuation cursor does not match the current filters")
 	}
-	return cursor.Page, cursor.Size, nil
+	return cursor.Page, cursor.Size, cursor.Snapshot, nil
 }
 
-func encodeCursor(page, size int, filter string) (string, error) {
-	data, err := json.Marshal(cursorValue{Version: cursorVersion, Page: page, Size: size, Filter: filter})
+func encodeCursor(page, size int, filter, snapshot string) (string, error) {
+	data, err := json.Marshal(cursorValue{Version: cursorVersion, Page: page, Size: size, Filter: filter, Snapshot: snapshot})
 	return base64.RawURLEncoding.EncodeToString(data), err
 }
 
 type cursorValue struct {
-	Version int    `json:"v"`
-	Page    int    `json:"p"`
-	Size    int    `json:"s"`
-	Filter  string `json:"f"`
+	Version  int    `json:"v"`
+	Page     int    `json:"p"`
+	Size     int    `json:"s"`
+	Filter   string `json:"f"`
+	Snapshot string `json:"c,omitempty"`
 }
 
 func flowFilterFingerprint(input Input) (string, error) {

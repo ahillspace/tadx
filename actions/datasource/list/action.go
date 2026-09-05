@@ -16,7 +16,7 @@ const (
 	maxLimit        = 100
 	maxCursorPage   = 1_000_000
 	cursorVersion   = 1
-	maxCursorLength = 256
+	maxCursorLength = 2048
 )
 
 // Reader is the action-owned published datasource listing seam.
@@ -39,7 +39,7 @@ func (a *Action) Execute(ctx context.Context, input Input) (Output, error) {
 	if err != nil {
 		return Output{}, fmt.Errorf("build datasource continuation cursor: %w", err)
 	}
-	pageNumber, pageSize, err := pageSelection(input.Cursor, input.Limit, fingerprint)
+	pageNumber, pageSize, snapshotCursor, err := pageSelection(input.Cursor, input.Limit, fingerprint)
 	if err != nil {
 		return Output{}, err
 	}
@@ -47,6 +47,7 @@ func (a *Action) Execute(ctx context.Context, input Input) (Output, error) {
 		PageNumber: pageNumber, PageSize: pageSize, Name: input.Name, OwnerName: input.OwnerName,
 		ProjectName: input.ProjectName, Type: input.Type, Tag: input.Tag,
 		UpdatedAfter: input.UpdatedAfter, UpdatedBefore: input.UpdatedBefore,
+		SnapshotCursor: snapshotCursor,
 	}
 	page, err := a.reader.ListDatasources(ctx, request)
 	if err != nil {
@@ -56,8 +57,8 @@ func (a *Action) Execute(ctx context.Context, input Input) (Output, error) {
 		return Output{}, errors.New("datasource list reader returned inconsistent pagination")
 	}
 	next := ""
-	if int64(page.Number)*int64(page.Size) < int64(page.Total) {
-		next, err = encodeCursor(page.Number+1, page.Size, fingerprint)
+	if !page.SuppressContinuation && (page.SnapshotCursor != "" || int64(page.Number)*int64(page.Size) < int64(page.Total)) {
+		next, err = encodeCursor(page.Number+1, page.Size, fingerprint, page.SnapshotCursor)
 		if err != nil {
 			return Output{}, err
 		}
@@ -70,35 +71,35 @@ func (a *Action) Execute(ctx context.Context, input Input) (Output, error) {
 	}, nil
 }
 
-func pageSelection(value string, requested int, expectedFilter string) (int, int, error) {
+func pageSelection(value string, requested int, expectedFilter string) (int, int, string, error) {
 	if value == "" {
 		if requested == 0 {
 			requested = defaultLimit
 		}
 		if requested < 1 || requested > maxLimit {
-			return 0, 0, errs.New(errs.KindUsage, fmt.Sprintf("datasource list limit must be between 1 and %d", maxLimit))
+			return 0, 0, "", errs.New(errs.KindUsage, fmt.Sprintf("datasource list limit must be between 1 and %d", maxLimit))
 		}
-		return 1, requested, nil
+		return 1, requested, "", nil
 	}
 	if len(value) > maxCursorLength {
-		return 0, 0, errs.New(errs.KindUsage, "invalid datasource continuation cursor")
+		return 0, 0, "", errs.New(errs.KindUsage, "invalid datasource continuation cursor")
 	}
 	data, err := base64.RawURLEncoding.DecodeString(value)
 	var cursor cursorValue
-	if err != nil || json.Unmarshal(data, &cursor) != nil || cursor.Version != cursorVersion || cursor.Page < 2 || cursor.Page > maxCursorPage || cursor.Size < 1 || cursor.Size > maxLimit || cursor.Filter == "" {
-		return 0, 0, errs.New(errs.KindUsage, "invalid datasource continuation cursor")
+	if err != nil || json.Unmarshal(data, &cursor) != nil || cursor.Version != cursorVersion || cursor.Page < 2 || cursor.Page > maxCursorPage || cursor.Size < 1 || cursor.Size > maxLimit || cursor.Filter == "" || len(cursor.Snapshot) > 1024 {
+		return 0, 0, "", errs.New(errs.KindUsage, "invalid datasource continuation cursor")
 	}
 	if requested != 0 && requested != cursor.Size {
-		return 0, 0, errs.New(errs.KindUsage, "datasource list limit must match the continuation cursor")
+		return 0, 0, "", errs.New(errs.KindUsage, "datasource list limit must match the continuation cursor")
 	}
 	if cursor.Filter != expectedFilter {
-		return 0, 0, errs.New(errs.KindUsage, "datasource continuation cursor does not match the current filters")
+		return 0, 0, "", errs.New(errs.KindUsage, "datasource continuation cursor does not match the current filters")
 	}
-	return cursor.Page, cursor.Size, nil
+	return cursor.Page, cursor.Size, cursor.Snapshot, nil
 }
 
-func encodeCursor(page, size int, filter string) (string, error) {
-	data, err := json.Marshal(cursorValue{Version: cursorVersion, Page: page, Size: size, Filter: filter})
+func encodeCursor(page, size int, filter, snapshot string) (string, error) {
+	data, err := json.Marshal(cursorValue{Version: cursorVersion, Page: page, Size: size, Filter: filter, Snapshot: snapshot})
 	if err != nil {
 		return "", err
 	}
@@ -106,10 +107,11 @@ func encodeCursor(page, size int, filter string) (string, error) {
 }
 
 type cursorValue struct {
-	Version int    `json:"v"`
-	Page    int    `json:"p"`
-	Size    int    `json:"s"`
-	Filter  string `json:"f"`
+	Version  int    `json:"v"`
+	Page     int    `json:"p"`
+	Size     int    `json:"s"`
+	Filter   string `json:"f"`
+	Snapshot string `json:"c,omitempty"`
 }
 
 func datasourceFilterFingerprint(input Input) (string, error) {

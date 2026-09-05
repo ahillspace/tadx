@@ -107,3 +107,22 @@ func TestAdapterOrdersTypesAndAppliesExactScopeFilters(t *testing.T) {
 		t.Fatalf("items=%+v", page.Items)
 	}
 }
+
+func TestAdapterSearchBoundedUsesPartialBudgetWithoutBindingCursorToIt(t *testing.T) {
+	s := &lister{pages: map[string]search.Page{"user:": {Items: []search.Item{
+		{LUID: "1", Type: "user", Name: "A"},
+		{LUID: "2", Type: "user", Name: "B"},
+		{LUID: "3", Type: "user", Name: "C"},
+	}}}}
+	adapter := search.NewAdapter(s)
+	input := search.Input{Types: []string{"user"}, Limit: 3}
+	first, err := adapter.SearchBounded(context.Background(), input, 1)
+	if err != nil || len(first.Items) != 1 || first.Items[0].LUID != "1" || first.NextCursor == "" {
+		t.Fatalf("first=%+v error=%v", first, err)
+	}
+	input.Cursor = first.NextCursor
+	second, err := adapter.Search(context.Background(), input)
+	if err != nil || len(second.Items) != 2 || second.Items[0].LUID != "2" || second.Items[1].LUID != "3" || second.NextCursor != "" {
+		t.Fatalf("second=%+v error=%v", second, err)
+	}
+}

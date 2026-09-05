@@ -45,8 +45,9 @@ Read [Tableau MCP routing](references/tableau-mcp.md) only when an analytical re
 
 ## Content lifecycle
 
-Discover with an exact bounded list; use returned LUIDs for subsequent operations.
-Search only when the name is unknown: `tadx search "<term>" --type workbook --environment <alias>` matches substrings, not exact identity.
+Use native live search when the name is unknown: `tadx search "<term>" --type workbook --environment <alias>`.
+Use an explicitly filtered list for a bounded exact candidate query, and use returned LUIDs for subsequent operations.
+Run an unfiltered resource list only when the task needs complete live inventory; it refreshes that catalog scope before rendering a bounded page.
 Ambiguity fails; never select the first fuzzy match.
 For the Tableau-managed imported project, use `Imported`; TADX normalizes that selector to Tableau's `(imported)` project path.
 
@@ -70,8 +71,12 @@ For datasource publish modes or uncertain jobs, read [content details](reference
 ## Catalog, flow, and lineage
 
 Live reads are the default; supported `--catalog` reads stay local without refresh or live fallback.
-Reuse a sufficiently fresh catalog for repeated discovery; a miss or partial page does not prove remote absence.
-Follow cursors only when the task needs more results.
+Live content terms use Tableau native search; administration and Pulse searches use their dedicated APIs.
+An unfiltered workbook, datasource, flow, project, user, or group list collects the complete live scope and atomically replaces only that catalog scope.
+For those complete lists, `--limit` bounds rendered rows only, and continuation reads the same local snapshot without repeating the live traversal.
+Adding an exact resource filter keeps the list bounded against Tableau and records a partial cache update; it does not prove complete scope coverage.
+Reuse a sufficiently fresh catalog for repeated discovery; a miss or partial scope does not prove remote absence.
+Follow cursors only when the task needs more rendered results.
 
 ```text
 tadx catalog status --environment <alias>
@@ -82,7 +87,7 @@ tadx content flow move --environment <alias> --id <flow-luid> --destination-proj
 tadx content lineage pull --environment <alias> --kind workbook --id <workbook-luid> --workspace <workspace> --direction upstream --depth 1
 ```
 
-A refresh replaces the environment/site's current generation and cached entries; it does not merge earlier scopes.
+A full catalog refresh replaces the environment/site's current generation and cached entries; it does not merge earlier scopes.
 Request all required scopes together; dependency collection does not establish complete inventory for unrequested scopes.
 Successful live reads cache targeted observations without proving full site coverage.
 Prefer a targeted live inspect after mutation over a full refresh.

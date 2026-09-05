@@ -3,6 +3,17 @@
 Workbooks, published datasources, and flows share exact discovery, inspect, pull, publish, and delete operations.
 Check the resource's operation help for differences; flags and publish modes are not interchangeable.
 
+## Search and inventory
+
+Use `tadx search "<term>" --type <type> --environment <alias>` for live name discovery.
+Workbook, datasource, flow, and project terms use Tableau native search.
+Use `--catalog` only when local snapshot freshness is sufficient and no Tableau request should occur.
+
+An unfiltered resource `list` performs complete live inventory and refreshes that catalog scope before rendering.
+Its `--limit` controls rendered rows only, and its cursor continues through the same catalog snapshot.
+Adding an exact filter keeps the list bounded against Tableau and writes only a partial cache observation.
+Use filtered list for exact candidate discovery, not as proof that the complete remote scope was inventoried.
+
 ## Inspect and pull
 
 Resolve the remote LUID and source environment, then inspect current state before acquiring or changing content.

@@ -1,7 +1,9 @@
 # Administer users, groups, and permissions
 
 Select the exact environment and site before administration.
-Discover candidates with typed search or bounded resource lists, then inspect the authoritative user or group LUID live.
+Discover candidates with typed search or an explicitly filtered bounded resource list, then inspect the authoritative user or group LUID live.
+An unfiltered user or group list inventories the complete live scope, refreshes that catalog scope, and renders only the requested `--limit` rows.
+Its continuation reads the same local snapshot.
 Resolve supported exact selectors through command help; do not assume display names uniquely identify principals.
 Use the root Guidance's direct recipes; consult the requested leaf help only when its accepted fields remain unclear.
 Apply the root Guidance's mutation gate and preview behavior.

@@ -154,7 +154,7 @@ func (w *GenerationWriter) Publish(ctx context.Context) (ReplaceResult, error) {
 	if _, err := w.tx.ExecContext(ctx, `DELETE FROM generations WHERE environment=? AND site=? AND generation_key<>?`, w.metadata.Environment, w.metadata.Site, w.key); err != nil {
 		return ReplaceResult{}, fmt.Errorf("prune superseded catalog generations: %w", err)
 	}
-	if err := w.replaceResourceEntries(ctx); err != nil {
+	if err := w.replaceResourceEntries(ctx, id); err != nil {
 		return ReplaceResult{}, err
 	}
 	if err := checkIntegrity(ctx, w.tx); err != nil {
@@ -170,7 +170,7 @@ func (w *GenerationWriter) Publish(ctx context.Context) (ReplaceResult, error) {
 	return ReplaceResult{id, databaseRelativePath, count}, nil
 }
 
-func (w *GenerationWriter) replaceResourceEntries(ctx context.Context) error {
+func (w *GenerationWriter) replaceResourceEntries(ctx context.Context, generationID string) error {
 	if _, err := w.tx.ExecContext(ctx, `DELETE FROM resource_entries WHERE environment=? AND site=?`, w.metadata.Environment, w.metadata.Site); err != nil {
 		return fmt.Errorf("replace catalog resource entries: %w", err)
 	}
@@ -179,6 +179,19 @@ func (w *GenerationWriter) replaceResourceEntries(ctx context.Context) error {
 		w.metadata.Environment, w.metadata.Site, w.metadata.GeneratedAt.UTC().Format(generationTimeLayout), w.key)
 	if err != nil {
 		return fmt.Errorf("seed catalog resource entries: %w", err)
+	}
+	if _, err := w.tx.ExecContext(ctx, `DELETE FROM resource_scope_snapshots WHERE environment=? AND site=?`, w.metadata.Environment, w.metadata.Site); err != nil {
+		return fmt.Errorf("replace catalog resource scope snapshots: %w", err)
+	}
+	_, err = w.tx.ExecContext(ctx, `INSERT INTO resource_scope_snapshots(environment,site,kind,generation_id,generated_at,complete,source,record_count)
+		SELECT ?,?,
+			CASE scope WHEN 'users' THEN 'user' WHEN 'groups' THEN 'group' WHEN 'projects' THEN 'project' WHEN 'workbooks' THEN 'workbook' WHEN 'datasources' THEN 'datasource' WHEN 'flows' THEN 'flow' WHEN 'views' THEN 'view' END,
+			?,?,complete,?,
+			(SELECT count(*) FROM catalog_records r WHERE r.generation_key=? AND r.requested=1 AND r.kind=CASE generation_scopes.scope WHEN 'users' THEN 'user' WHEN 'groups' THEN 'group' WHEN 'projects' THEN 'project' WHEN 'workbooks' THEN 'workbook' WHEN 'datasources' THEN 'datasource' WHEN 'flows' THEN 'flow' WHEN 'views' THEN 'view' END)
+		FROM generation_scopes WHERE generation_key=? AND requested=1 AND scope<>'permissions'`,
+		w.metadata.Environment, w.metadata.Site, generationID, w.metadata.GeneratedAt.UTC().Format(generationTimeLayout), w.metadata.Source, w.key, w.key)
+	if err != nil {
+		return fmt.Errorf("seed catalog resource scope snapshots: %w", err)
 	}
 	return nil
 }

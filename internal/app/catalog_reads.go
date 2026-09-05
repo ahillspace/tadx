@@ -63,6 +63,7 @@ func catalogReadError(operation, environment, site string, err error) error {
 	var unavailable interface{ CatalogScopeUnavailable() bool }
 	var missing interface{ CatalogResourceNotFound() bool }
 	var ambiguous interface{ AmbiguousCatalogSelector() bool }
+	var invalidCursor interface{ InvalidCatalogCursor() bool }
 	switch {
 	case errors.As(err, &uninitialized) && uninitialized.CatalogUninitialized():
 		id, summary = "catalog.uninitialized", "The catalog is not initialized for this environment and site."
@@ -72,6 +73,8 @@ func catalogReadError(operation, environment, site string, err error) error {
 		id, summary, kind = "catalog.record_not_found", "No catalog record matched the selector.", errs.KindUsage
 	case errors.As(err, &ambiguous) && ambiguous.AmbiguousCatalogSelector():
 		id, summary, kind = "catalog.selector_ambiguous", "The catalog selector matched more than one record.", errs.KindUsage
+	case errors.As(err, &invalidCursor) && invalidCursor.InvalidCatalogCursor():
+		id, summary, kind = "catalog.cursor_invalid", "The catalog continuation cursor no longer identifies the current snapshot.", errs.KindUsage
 	}
 	return &errs.Error{ID: id, Kind: kind, Operation: operation, Environment: environment, Site: site, Summary: summary, Cause: err, Retryable: errs.Bool(false), CorrectiveAction: "Run the command without --catalog to query Tableau and update the catalog."}
 }
@@ -107,7 +110,7 @@ func (r *catalogWorkbookListReader) ListWorkbooks(ctx context.Context, input wor
 	if input.OwnerName != "" || input.ProjectName != "" || input.Tag != "" {
 		return workbooklist.Page{}, unsupportedCatalogFilters("workbook.list", r.environment, r.site)
 	}
-	result, err := r.store.ReadResources(ctx, catalog.ResourceQuery{Environment: r.environment, Site: r.site, Kind: "workbook", Name: input.Name, Offset: (input.PageNumber - 1) * input.PageSize, Limit: input.PageSize})
+	result, err := r.store.ReadResources(ctx, catalog.ResourceQuery{Environment: r.environment, Site: r.site, Kind: "workbook", Name: input.Name, Offset: snapshotOffset(input.PageNumber, input.PageSize, input.SnapshotCursor), Limit: input.PageSize, Cursor: input.SnapshotCursor})
 	if err != nil {
 		return workbooklist.Page{}, catalogReadError("workbook.list", r.environment, r.site, err)
 	}
@@ -119,7 +122,7 @@ func (r *catalogWorkbookListReader) ListWorkbooks(ctx context.Context, input wor
 		}
 		items[index] = workbooklist.Workbook{LUID: entry.LUID, Name: entry.Name, ProjectPath: entry.ProjectPath, OwnerLUID: entry.Owner}
 	}
-	return workbooklist.Page{Number: input.PageNumber, Size: input.PageSize, Total: result.Total, Workbooks: items}, nil
+	return workbooklist.Page{Number: input.PageNumber, Size: input.PageSize, Total: result.Total, Workbooks: items, SnapshotCursor: result.NextCursor}, nil
 }
 
 type catalogWorkbookGetResolver struct {
@@ -154,19 +157,19 @@ func (r *catalogDatasourceListReader) ListDatasources(ctx context.Context, input
 	if input.OwnerName != "" || input.ProjectName != "" || input.Type != "" || input.Tag != "" || input.UpdatedAfter != "" || input.UpdatedBefore != "" {
 		return datasourcelist.Page{}, unsupportedCatalogFilters("datasource.list", r.environment, r.site)
 	}
-	result, err := r.store.ReadResources(ctx, catalog.ResourceQuery{Environment: r.environment, Site: r.site, Kind: "datasource", Name: input.Name, Offset: (input.PageNumber - 1) * input.PageSize, Limit: input.PageSize})
+	result, err := r.store.ReadResources(ctx, catalog.ResourceQuery{Environment: r.environment, Site: r.site, Kind: "datasource", Name: input.Name, Offset: snapshotOffset(input.PageNumber, input.PageSize, input.SnapshotCursor), Limit: input.PageSize, Cursor: input.SnapshotCursor})
 	if err != nil {
 		return datasourcelist.Page{}, catalogReadError("datasource.list", r.environment, r.site, err)
 	}
 	r.source = catalogReadSource(result)
 	items := make([]datasourcelist.Datasource, len(result.Entries))
 	for index, entry := range result.Entries {
-		if len(entry.Payload) != 0 && json.Unmarshal(entry.Payload, &items[index]) == nil {
-			continue
+		if len(entry.Payload) == 0 || json.Unmarshal(entry.Payload, &items[index]) != nil {
+			items[index] = datasourcelist.Datasource{LUID: entry.LUID, Name: entry.Name, OwnerLUID: entry.Owner}
 		}
-		items[index] = datasourcelist.Datasource{LUID: entry.LUID, Name: entry.Name, OwnerLUID: entry.Owner}
+		items[index].ProjectPath = entry.ProjectPath
 	}
-	return datasourcelist.Page{Number: input.PageNumber, Size: input.PageSize, Total: result.Total, Datasources: items}, nil
+	return datasourcelist.Page{Number: input.PageNumber, Size: input.PageSize, Total: result.Total, Datasources: items, SnapshotCursor: result.NextCursor}, nil
 }
 
 type catalogDatasourceGetResolver struct {
@@ -201,19 +204,19 @@ func (r *catalogFlowListReader) ListFlows(ctx context.Context, input flowlist.Pa
 	if input.OwnerName != "" || input.ProjectLUID != "" || input.ProjectName != "" {
 		return flowlist.Page{}, unsupportedCatalogFilters("flow.list", r.environment, r.site)
 	}
-	result, err := r.store.ReadResources(ctx, catalog.ResourceQuery{Environment: r.environment, Site: r.site, Kind: "flow", Name: input.Name, Offset: (input.PageNumber - 1) * input.PageSize, Limit: input.PageSize})
+	result, err := r.store.ReadResources(ctx, catalog.ResourceQuery{Environment: r.environment, Site: r.site, Kind: "flow", Name: input.Name, Offset: snapshotOffset(input.PageNumber, input.PageSize, input.SnapshotCursor), Limit: input.PageSize, Cursor: input.SnapshotCursor})
 	if err != nil {
 		return flowlist.Page{}, catalogReadError("flow.list", r.environment, r.site, err)
 	}
 	r.source = catalogReadSource(result)
 	items := make([]flowlist.Flow, len(result.Entries))
 	for index, entry := range result.Entries {
-		if len(entry.Payload) != 0 && json.Unmarshal(entry.Payload, &items[index]) == nil {
-			continue
+		if len(entry.Payload) == 0 || json.Unmarshal(entry.Payload, &items[index]) != nil {
+			items[index] = flowlist.Flow{LUID: entry.LUID, Name: entry.Name, OwnerLUID: entry.Owner}
 		}
-		items[index] = flowlist.Flow{LUID: entry.LUID, Name: entry.Name, OwnerLUID: entry.Owner}
+		items[index].ProjectPath = entry.ProjectPath
 	}
-	return flowlist.Page{Number: input.PageNumber, Size: input.PageSize, Total: result.Total, Flows: items}, nil
+	return flowlist.Page{Number: input.PageNumber, Size: input.PageSize, Total: result.Total, Flows: items, SnapshotCursor: result.NextCursor}, nil
 }
 
 type catalogFlowGetResolver struct {
@@ -248,7 +251,7 @@ func (r *catalogProjectListReader) ListProjects(ctx context.Context, input proje
 	if input.ParentLUID != "" || input.OwnerName != "" || input.TopLevel != nil {
 		return projectlist.Page{}, unsupportedCatalogFilters("project.list", r.environment, r.site)
 	}
-	result, err := r.store.ReadResources(ctx, catalog.ResourceQuery{Environment: r.environment, Site: r.site, Kind: "project", Name: input.Name, Offset: (input.PageNumber - 1) * input.PageSize, Limit: input.PageSize})
+	result, err := r.store.ReadResources(ctx, catalog.ResourceQuery{Environment: r.environment, Site: r.site, Kind: "project", Name: input.Name, Offset: snapshotOffset(input.PageNumber, input.PageSize, input.SnapshotCursor), Limit: input.PageSize, Cursor: input.SnapshotCursor})
 	if err != nil {
 		return projectlist.Page{}, catalogReadError("project.list", r.environment, r.site, err)
 	}
@@ -260,7 +263,14 @@ func (r *catalogProjectListReader) ListProjects(ctx context.Context, input proje
 		}
 		items[index] = projectlist.Project{LUID: entry.LUID, Name: entry.Name, OwnerLUID: entry.Owner}
 	}
-	return projectlist.Page{Number: input.PageNumber, Size: input.PageSize, Total: result.Total, Projects: items}, nil
+	return projectlist.Page{Number: input.PageNumber, Size: input.PageSize, Total: result.Total, Projects: items, SnapshotCursor: result.NextCursor}, nil
+}
+
+func snapshotOffset(pageNumber, pageSize int, cursor string) int {
+	if cursor != "" {
+		return 0
+	}
+	return (pageNumber - 1) * pageSize
 }
 
 type catalogProjectGetResolver struct {

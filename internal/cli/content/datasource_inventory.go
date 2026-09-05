@@ -8,7 +8,7 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// DatasourceLister lists one bounded published datasource page.
+// DatasourceLister lists a complete published datasource inventory.
 type DatasourceLister interface {
 	ListDatasources(context.Context, datasourcelist.Input) (datasourcelist.Output, error)
 }
@@ -39,7 +39,7 @@ func newDatasourceInventory(lister DatasourceLister, inspector DatasourceInspect
 func newDatasourceList(deps datasourceInventoryDependencies) *cobra.Command {
 	var input datasourcelist.Input
 	command := &cobra.Command{
-		Use: "list", Short: "List one bounded published datasource page.",
+		Use: "list", Short: "List datasources and refresh their catalog snapshot.",
 		Annotations: map[string]string{"tadx.capability": "datasource.list"},
 		Args:        noContentArgs("datasource.list"),
 		RunE: func(command *cobra.Command, _ []string) error {
@@ -58,7 +58,7 @@ func newDatasourceList(deps datasourceInventoryDependencies) *cobra.Command {
 	command.Flags().StringVar(&input.Tag, "tag", "", "exact tag filter")
 	command.Flags().StringVar(&input.UpdatedAfter, "updated-after", "", "include datasources updated at or after this UTC timestamp")
 	command.Flags().StringVar(&input.UpdatedBefore, "updated-before", "", "include datasources updated at or before this UTC timestamp")
-	command.Flags().IntVar(&input.Limit, "limit", 0, "maximum datasources to return")
+	command.Flags().IntVar(&input.Limit, "limit", 0, "maximum datasources to render")
 	command.Flags().StringVar(&input.Cursor, "cursor", "", "opaque continuation cursor")
 	command.Flags().BoolVar(&input.Catalog, "catalog", false, "read indexed local catalog data without contacting Tableau")
 	return command

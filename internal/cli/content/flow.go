@@ -44,7 +44,7 @@ func newFlow(deps Dependencies) *cobra.Command {
 
 func newFlowList(deps Dependencies) *cobra.Command {
 	var input flowlist.Input
-	command := &cobra.Command{Use: "list", Short: "List one bounded flow page.", Annotations: map[string]string{"tadx.capability": "flow.list"}, Args: noContentArgs("flow.list"), RunE: func(command *cobra.Command, _ []string) error {
+	command := &cobra.Command{Use: "list", Short: "List flows and refresh their catalog snapshot.", Annotations: map[string]string{"tadx.capability": "flow.list"}, Args: noContentArgs("flow.list"), RunE: func(command *cobra.Command, _ []string) error {
 		result, err := deps.FlowLister.ListFlows(command.Context(), input)
 		if err != nil {
 			return err
@@ -56,7 +56,7 @@ func newFlowList(deps Dependencies) *cobra.Command {
 	command.Flags().StringVar(&input.OwnerName, "owner", "", "exact owner-name filter")
 	command.Flags().StringVar(&input.ProjectLUID, "project-id", "", "authoritative project LUID filter")
 	command.Flags().StringVar(&input.ProjectName, "project-name", "", "exact leaf project name filter; not a project path")
-	command.Flags().IntVar(&input.Limit, "limit", 0, "maximum flows to return")
+	command.Flags().IntVar(&input.Limit, "limit", 0, "maximum flows to render")
 	command.Flags().StringVar(&input.Cursor, "cursor", "", "opaque continuation cursor")
 	command.Flags().BoolVar(&input.Catalog, "catalog", false, "read indexed local catalog data without contacting Tableau")
 	return command

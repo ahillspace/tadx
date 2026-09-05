@@ -39,6 +39,17 @@ func TestSearchCompactAndFullOutput(t *testing.T) {
 	}
 }
 
+func TestSearchPreservesSourceReportedByComposedListContinuation(t *testing.T) {
+	s := &source{result: search.Result{Source: "catalog", Items: []search.Item{{LUID: "wb-1", Type: "workbook", Name: "Finance"}}}}
+	out, err := search.New(s).Execute(context.Background(), search.Input{Type: "workbook"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if out.Source != "catalog" {
+		t.Fatalf("source=%q", out.Source)
+	}
+}
+
 type source struct {
 	inputs []search.Input
 	result search.Result

@@ -169,7 +169,7 @@ func newProjectList(deps Dependencies) *cobra.Command {
 	var input projectlist.Input
 	var topLevel bool
 	command := &cobra.Command{
-		Use: "list", Short: "List one bounded project page.", Annotations: map[string]string{"tadx.capability": "project.list"}, Args: noContentArgs("project.list"),
+		Use: "list", Short: "List projects and refresh their catalog snapshot.", Annotations: map[string]string{"tadx.capability": "project.list"}, Args: noContentArgs("project.list"),
 		RunE: func(command *cobra.Command, _ []string) error {
 			if command.Flags().Changed("top-level") {
 				input.TopLevel = &topLevel
@@ -186,7 +186,7 @@ func newProjectList(deps Dependencies) *cobra.Command {
 	command.Flags().StringVar(&input.ParentLUID, "parent-id", "", "authoritative direct parent project LUID filter")
 	command.Flags().StringVar(&input.OwnerName, "owner", "", "exact owner-name filter")
 	command.Flags().BoolVar(&topLevel, "top-level", false, "filter by top-level project status")
-	command.Flags().IntVar(&input.Limit, "limit", 0, "maximum projects to return")
+	command.Flags().IntVar(&input.Limit, "limit", 0, "maximum projects to render")
 	command.Flags().StringVar(&input.Cursor, "cursor", "", "opaque continuation cursor")
 	command.Flags().BoolVar(&input.Catalog, "catalog", false, "read indexed local catalog data without contacting Tableau")
 	return command

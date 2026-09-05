@@ -29,6 +29,7 @@ import (
 	resourcelineage "github.com/ahillspace/tadx/internal/resources/lineage"
 	resourceproject "github.com/ahillspace/tadx/internal/resources/project"
 	resourceworkbook "github.com/ahillspace/tadx/internal/resources/workbook"
+	tableaucatalog "github.com/ahillspace/tadx/internal/tableau/catalog"
 	tableaudatasource "github.com/ahillspace/tadx/internal/tableau/datasource"
 	tableauflow "github.com/ahillspace/tadx/internal/tableau/flow"
 	tableaumetadata "github.com/ahillspace/tadx/internal/tableau/metadata"
@@ -63,6 +64,7 @@ type remoteConnection struct {
 	workbooks         *resourceworkbook.Adapter
 	datasources       *resourcedatasource.Adapter
 	datasourceChanges *resourcedatasource.MutationAdapter
+	inventory         tableaucatalog.Executor
 }
 
 func (c *remoteContentCommands) connect(ctx context.Context, alias string, explicit bool) (remoteConnection, error) {
@@ -85,6 +87,7 @@ func (c *remoteContentCommands) connect(ctx context.Context, alias string, expli
 		workbooks:         resourceworkbook.NewAdapterWithProjectResolver(tableauworkbook.NewClient(connection.transport, connection.session, connection.environment.URL), projects),
 		datasources:       resourcedatasource.NewAdapterWithProjectResolver(datasourceClient, projects),
 		datasourceChanges: resourcedatasource.NewMutationAdapter(datasourceClient),
+		inventory:         catalogTableauExecutor{transport: connection.transport, session: connection.session, serverURL: connection.environment.URL, siteLUID: connection.session.SiteLUID()},
 	}, nil
 }
 
@@ -102,11 +105,50 @@ func (c *remoteContentCommands) ListProjects(ctx context.Context, input projectl
 		}
 		return output, err
 	}
+	if input.Cursor != "" && projectListIsUnfiltered(input) {
+		environment, site, err := c.resolveCatalogTarget(input.Environment)
+		if err != nil {
+			return projectlist.Output{}, err
+		}
+		input.Environment, input.Site = environment, site
+		reader := &catalogProjectListReader{store: c.catalogStore(), environment: environment, site: site}
+		output, err := projectlist.New(reader).Execute(ctx, input)
+		if err == nil {
+			output.Source = reader.source
+		}
+		return output, err
+	}
 	connection, err := c.connect(ctx, input.Environment, false)
 	if err != nil {
 		return projectlist.Output{}, remoteSetupError("project.list", input.Environment, input.Site, connection.environment, err)
 	}
 	input.Environment, input.Site = connection.environment.Alias, connection.environment.SiteContentURL
+	if projectListIsUnfiltered(input) {
+		observedAt := c.runtime.now().UTC()
+		inventory, err := collectResourceInventory(ctx, connection.inventory, c.catalogStore(), tableaucatalog.ScopeProjects, input.Environment, input.Site, observedAt)
+		if err != nil {
+			return projectlist.Output{}, inventoryRefreshError("project.list", input.Environment, input.Site, err)
+		}
+		if inventory.publishErr != nil {
+			reader := inventoryMemoryReader{entries: inventory.entries, requestID: finalRequestID(inventory.requestIDs)}
+			output, err := projectlist.New(reader).Execute(ctx, input)
+			if err != nil {
+				return output, err
+			}
+			output.Source = liveInventoryWarningSource(observedAt)
+			output.Help = append(output.Help, inventoryRefreshWarningHelp)
+			return output, nil
+		}
+		reader := &catalogProjectListReader{store: c.catalogStore(), environment: input.Environment, site: input.Site}
+		output, err := projectlist.New(reader).Execute(ctx, input)
+		if err != nil {
+			return output, err
+		}
+		output.Source = liveInventorySource(observedAt, inventory.published.GenerationID)
+		output.RequestID = finalRequestID(inventory.requestIDs)
+		output.Help = append(output.Help, inventoryRefreshHelp)
+		return output, nil
+	}
 	output, err := projectlist.New(projectListReader{connection.projects}).Execute(ctx, input)
 	if err != nil {
 		return output, err
@@ -122,6 +164,10 @@ func (c *remoteContentCommands) ListProjects(ctx context.Context, input projectl
 	}
 	writeThrough(c.catalogStore(), entries)
 	return output, nil
+}
+
+func projectListIsUnfiltered(input projectlist.Input) bool {
+	return input.Name == "" && input.ParentLUID == "" && input.OwnerName == "" && input.TopLevel == nil
 }
 
 func (c *remoteContentCommands) InspectProject(ctx context.Context, input projectinspect.Input) (projectinspect.Output, error) {
@@ -200,11 +246,50 @@ func (c *remoteContentCommands) ListFlows(ctx context.Context, input flowlist.In
 		}
 		return output, err
 	}
+	if input.Cursor != "" && flowListIsUnfiltered(input) {
+		environment, site, err := c.resolveCatalogTarget(input.Environment)
+		if err != nil {
+			return flowlist.Output{}, err
+		}
+		input.Environment, input.Site = environment, site
+		reader := &catalogFlowListReader{store: c.catalogStore(), environment: environment, site: site}
+		output, err := flowlist.New(reader).Execute(ctx, input)
+		if err == nil {
+			output.Source = reader.source
+		}
+		return output, err
+	}
 	connection, err := c.connect(ctx, input.Environment, false)
 	if err != nil {
 		return flowlist.Output{}, remoteSetupError("flow.list", input.Environment, input.Site, connection.environment, err)
 	}
 	input.Environment, input.Site = connection.environment.Alias, connection.environment.SiteContentURL
+	if flowListIsUnfiltered(input) {
+		observedAt := c.runtime.now().UTC()
+		inventory, err := collectResourceInventory(ctx, connection.inventory, c.catalogStore(), tableaucatalog.ScopeFlows, input.Environment, input.Site, observedAt)
+		if err != nil {
+			return flowlist.Output{}, inventoryRefreshError("flow.list", input.Environment, input.Site, err)
+		}
+		if inventory.publishErr != nil {
+			reader := inventoryMemoryReader{entries: inventory.entries, requestID: finalRequestID(inventory.requestIDs)}
+			output, err := flowlist.New(reader).Execute(ctx, input)
+			if err != nil {
+				return output, err
+			}
+			output.Source = liveInventoryWarningSource(observedAt)
+			output.Help = append(output.Help, inventoryRefreshWarningHelp)
+			return output, nil
+		}
+		reader := &catalogFlowListReader{store: c.catalogStore(), environment: input.Environment, site: input.Site}
+		output, err := flowlist.New(reader).Execute(ctx, input)
+		if err != nil {
+			return output, err
+		}
+		output.Source = liveInventorySource(observedAt, inventory.published.GenerationID)
+		output.RequestID = finalRequestID(inventory.requestIDs)
+		output.Help = append(output.Help, inventoryRefreshHelp)
+		return output, nil
+	}
 	output, err := flowlist.New(flowListReader{connection.flows}).Execute(ctx, input)
 	if err != nil {
 		return output, err
@@ -220,6 +305,10 @@ func (c *remoteContentCommands) ListFlows(ctx context.Context, input flowlist.In
 	}
 	writeThrough(c.catalogStore(), entries)
 	return output, nil
+}
+
+func flowListIsUnfiltered(input flowlist.Input) bool {
+	return input.Name == "" && input.OwnerName == "" && input.ProjectLUID == "" && input.ProjectName == ""
 }
 
 func (c *remoteContentCommands) InspectFlow(ctx context.Context, input flowinspect.Input) (flowinspect.Output, error) {
@@ -460,7 +549,7 @@ func (r flowListReader) ListFlows(ctx context.Context, input flowlist.PageReques
 	page, err := r.adapter.ListFlows(ctx, tableauflow.ListRequest{PageNumber: input.PageNumber, PageSize: input.PageSize, Name: input.Name, OwnerName: input.OwnerName, ProjectLUID: input.ProjectLUID, ProjectName: input.ProjectName})
 	items := make([]flowlist.Flow, len(page.Items))
 	for index, item := range page.Items {
-		items[index] = flowlist.Flow{LUID: item.LUID, Name: item.Name, ProjectLUID: item.ProjectLUID, ProjectName: item.ProjectName, FileType: item.FileType, UpdatedAt: item.UpdatedAt, Description: item.Description, OwnerLUID: item.OwnerLUID, CreatedAt: item.CreatedAt, Tags: append([]string(nil), item.Tags...)}
+		items[index] = flowlist.Flow{LUID: item.LUID, Name: item.Name, ProjectLUID: item.ProjectLUID, ProjectName: item.ProjectName, ProjectPath: item.ProjectPath, FileType: item.FileType, UpdatedAt: item.UpdatedAt, Description: item.Description, OwnerLUID: item.OwnerLUID, CreatedAt: item.CreatedAt, Tags: append([]string(nil), item.Tags...)}
 	}
 	return flowlist.Page{Number: page.Number, Size: page.Size, Total: page.Total, Flows: items, RequestID: page.RequestID}, err
 }

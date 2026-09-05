@@ -9,20 +9,21 @@ import (
 
 var schemaStatements = []string{
 	`CREATE TABLE catalog_schema (singleton INTEGER PRIMARY KEY CHECK(singleton=1), version INTEGER NOT NULL, signature TEXT NOT NULL) STRICT`,
-	`INSERT INTO catalog_schema(singleton,version,signature) VALUES(1,2,'tadx-catalog-v2')`,
+	`INSERT INTO catalog_schema(singleton,version,signature) VALUES(1,5,'tadx-catalog-v5')`,
 	`CREATE TABLE generations (generation_key INTEGER PRIMARY KEY,id TEXT,fingerprint TEXT,environment TEXT NOT NULL,site TEXT NOT NULL,generated_at TEXT NOT NULL,complete INTEGER NOT NULL CHECK(complete IN (0,1)),source TEXT NOT NULL,record_count INTEGER NOT NULL CHECK(record_count>=0),created_at TEXT NOT NULL,UNIQUE(environment,site,id),UNIQUE(environment,site,fingerprint),CHECK((complete=0 AND id IS NULL AND fingerprint IS NULL) OR (complete=1 AND id IS NOT NULL AND fingerprint IS NOT NULL))) STRICT`,
 	`CREATE TABLE current_generations (environment TEXT NOT NULL,site TEXT NOT NULL,generation_key INTEGER NOT NULL UNIQUE REFERENCES generations(generation_key) ON DELETE RESTRICT,PRIMARY KEY(environment,site)) STRICT`,
 	`CREATE TABLE generation_scopes (generation_key INTEGER NOT NULL REFERENCES generations(generation_key) ON DELETE CASCADE,scope TEXT NOT NULL CHECK(scope IN ('users','groups','projects','workbooks','datasources','flows','views','permissions')),requested INTEGER NOT NULL CHECK(requested IN (0,1)),complete INTEGER NOT NULL CHECK(complete IN (0,1)),PRIMARY KEY(generation_key,scope)) STRICT`,
-	resourceDDL("users", `id TEXT NOT NULL,name TEXT NOT NULL,email TEXT NOT NULL,site_role TEXT NOT NULL,last_login TEXT NOT NULL`, "id"),
-	resourceDDL("groups", `id TEXT NOT NULL,name TEXT NOT NULL,domain TEXT NOT NULL`, "id"),
-	resourceDDL("projects", `id TEXT NOT NULL,name TEXT NOT NULL,parent_project_id TEXT NOT NULL,description TEXT NOT NULL,owner_id TEXT NOT NULL`, "id"),
-	resourceDDL("workbooks", `id TEXT NOT NULL,name TEXT NOT NULL,project_id TEXT NOT NULL,owner_id TEXT NOT NULL,size INTEGER,updated_at TEXT NOT NULL`, "id"),
-	resourceDDL("datasources", `id TEXT NOT NULL,name TEXT NOT NULL,project_id TEXT NOT NULL,owner_id TEXT NOT NULL,updated_at TEXT NOT NULL`, "id"),
-	resourceDDL("flows", `id TEXT NOT NULL,name TEXT NOT NULL,project_id TEXT NOT NULL,owner_id TEXT NOT NULL,updated_at TEXT NOT NULL`, "id"),
+	resourceDDL("users", `id TEXT NOT NULL,name TEXT NOT NULL,email TEXT NOT NULL,site_role TEXT NOT NULL,last_login TEXT NOT NULL,list_payload TEXT NOT NULL`, "id"),
+	resourceDDL("groups", `id TEXT NOT NULL,name TEXT NOT NULL,domain TEXT NOT NULL,list_payload TEXT NOT NULL`, "id"),
+	resourceDDL("projects", `id TEXT NOT NULL,name TEXT NOT NULL,parent_project_id TEXT NOT NULL,description TEXT NOT NULL,owner_id TEXT NOT NULL,list_payload TEXT NOT NULL`, "id"),
+	resourceDDL("workbooks", `id TEXT NOT NULL,name TEXT NOT NULL,project_id TEXT NOT NULL,owner_id TEXT NOT NULL,size INTEGER,updated_at TEXT NOT NULL,list_payload TEXT NOT NULL`, "id"),
+	resourceDDL("datasources", `id TEXT NOT NULL,name TEXT NOT NULL,project_id TEXT NOT NULL,owner_id TEXT NOT NULL,updated_at TEXT NOT NULL,list_payload TEXT NOT NULL`, "id"),
+	resourceDDL("flows", `id TEXT NOT NULL,name TEXT NOT NULL,project_id TEXT NOT NULL,owner_id TEXT NOT NULL,file_type TEXT NOT NULL,updated_at TEXT NOT NULL,list_payload TEXT NOT NULL`, "id"),
 	resourceDDL("views", `id TEXT NOT NULL,name TEXT NOT NULL,workbook_id TEXT NOT NULL`, "id"),
 	`CREATE TABLE permissions (generation_key INTEGER NOT NULL REFERENCES generations(generation_key) ON DELETE CASCADE,content_type TEXT NOT NULL,content_id TEXT NOT NULL,grantee_type TEXT NOT NULL,grantee_id TEXT NOT NULL,capability TEXT NOT NULL,mode TEXT NOT NULL,PRIMARY KEY(generation_key,content_type,content_id,grantee_type,grantee_id,capability)) STRICT`,
 	`CREATE TABLE catalog_records (generation_key INTEGER NOT NULL REFERENCES generations(generation_key) ON DELETE CASCADE,luid TEXT NOT NULL,kind TEXT NOT NULL,name TEXT NOT NULL,project_path TEXT NOT NULL,owner TEXT NOT NULL,requested INTEGER NOT NULL CHECK(requested IN (0,1)),PRIMARY KEY(generation_key,kind,luid)) STRICT`,
 	`CREATE TABLE resource_entries (environment TEXT NOT NULL,site TEXT NOT NULL,kind TEXT NOT NULL,luid TEXT NOT NULL,name TEXT NOT NULL,project_path TEXT NOT NULL,owner TEXT NOT NULL,payload BLOB NOT NULL,coverage TEXT NOT NULL CHECK(coverage IN ('summary','detail')),observed_at TEXT NOT NULL,PRIMARY KEY(environment,site,kind,luid)) STRICT`,
+	`CREATE TABLE resource_scope_snapshots (environment TEXT NOT NULL,site TEXT NOT NULL,kind TEXT NOT NULL,generation_id TEXT NOT NULL,generated_at TEXT NOT NULL,complete INTEGER NOT NULL CHECK(complete IN (0,1)),source TEXT NOT NULL,record_count INTEGER NOT NULL CHECK(record_count>=0),PRIMARY KEY(environment,site,kind)) STRICT`,
 	`CREATE INDEX generations_source_idx ON generations(environment,site,complete,generated_at DESC)`,
 	`CREATE INDEX generation_scopes_requested_idx ON generation_scopes(generation_key,requested,scope)`,
 	`CREATE INDEX projects_parent_idx ON projects(generation_key,parent_project_id)`,
@@ -32,9 +33,10 @@ var schemaStatements = []string{
 	`CREATE INDEX permissions_content_idx ON permissions(generation_key,content_type,content_id)`, `CREATE INDEX permissions_grantee_idx ON permissions(generation_key,grantee_type,grantee_id)`,
 	`CREATE INDEX catalog_records_order_idx ON catalog_records(generation_key,requested,kind,name,project_path,luid)`, `CREATE INDEX catalog_records_lookup_idx ON catalog_records(generation_key,requested,kind,name,project_path)`,
 	`CREATE INDEX resource_entries_order_idx ON resource_entries(environment,site,kind,name,project_path,luid)`,
+	`CREATE INDEX resource_scope_snapshots_generation_idx ON resource_scope_snapshots(environment,site,generation_id)`,
 }
 
-var requiredTables = []string{"catalog_schema", "generations", "current_generations", "generation_scopes", "users", "groups", "projects", "workbooks", "datasources", "flows", "views", "permissions", "catalog_records", "resource_entries"}
+var requiredTables = []string{"catalog_schema", "generations", "current_generations", "generation_scopes", "users", "groups", "projects", "workbooks", "datasources", "flows", "views", "permissions", "catalog_records", "resource_entries", "resource_scope_snapshots"}
 
 func resourceDDL(table, columns, key string) string {
 	return fmt.Sprintf(`CREATE TABLE %s (generation_key INTEGER NOT NULL REFERENCES generations(generation_key) ON DELETE CASCADE,%s,PRIMARY KEY(generation_key,%s)) STRICT`, table, columns, key)
@@ -111,7 +113,7 @@ func validateSchema(ctx context.Context, db *sql.DB) error {
 	if err := db.QueryRowContext(ctx, `SELECT version,signature FROM catalog_schema WHERE singleton=1`).Scan(&version, &signature); err != nil {
 		return fmt.Errorf("catalog schema is missing or unreadable: %w", err)
 	}
-	if version != schemaVersion || signature != "tadx-catalog-v2" {
+	if version != schemaVersion || signature != "tadx-catalog-v5" {
 		return fmt.Errorf("catalog schema version %d is unsupported", version)
 	}
 	for _, table := range requiredTables {
@@ -131,7 +133,7 @@ func migrateSchema(ctx context.Context, db *sql.DB, version int) error {
 	if version == schemaVersion {
 		return nil
 	}
-	if version != 1 {
+	if version != 1 && version != 2 && version != 3 && version != 4 {
 		return nil
 	}
 	conn, err := db.Conn(ctx)
@@ -158,27 +160,75 @@ func migrateSchema(ctx context.Context, db *sql.DB, version int) error {
 		committed = true
 		return nil
 	}
-	if version != 1 {
+	if version != 1 && version != 2 && version != 3 && version != 4 {
 		return nil
 	}
-	if _, err := conn.ExecContext(ctx, `CREATE TABLE resource_entries (environment TEXT NOT NULL,site TEXT NOT NULL,kind TEXT NOT NULL,luid TEXT NOT NULL,name TEXT NOT NULL,project_path TEXT NOT NULL,owner TEXT NOT NULL,payload BLOB NOT NULL,coverage TEXT NOT NULL CHECK(coverage IN ('summary','detail')),observed_at TEXT NOT NULL,PRIMARY KEY(environment,site,kind,luid)) STRICT`); err != nil {
-		return fmt.Errorf("migrate catalog resource entries: %w", err)
-	}
-	if _, err := conn.ExecContext(ctx, `CREATE INDEX resource_entries_order_idx ON resource_entries(environment,site,kind,name,project_path,luid)`); err != nil {
-		return fmt.Errorf("index catalog resource entries: %w", err)
-	}
-	if _, err := conn.ExecContext(ctx, `INSERT INTO resource_entries(environment,site,kind,luid,name,project_path,owner,payload,coverage,observed_at)
+	if version == 1 {
+		if _, err := conn.ExecContext(ctx, `CREATE TABLE resource_entries (environment TEXT NOT NULL,site TEXT NOT NULL,kind TEXT NOT NULL,luid TEXT NOT NULL,name TEXT NOT NULL,project_path TEXT NOT NULL,owner TEXT NOT NULL,payload BLOB NOT NULL,coverage TEXT NOT NULL CHECK(coverage IN ('summary','detail')),observed_at TEXT NOT NULL,PRIMARY KEY(environment,site,kind,luid)) STRICT`); err != nil {
+			return fmt.Errorf("migrate catalog resource entries: %w", err)
+		}
+		if _, err := conn.ExecContext(ctx, `CREATE INDEX resource_entries_order_idx ON resource_entries(environment,site,kind,name,project_path,luid)`); err != nil {
+			return fmt.Errorf("index catalog resource entries: %w", err)
+		}
+		if _, err := conn.ExecContext(ctx, `INSERT INTO resource_entries(environment,site,kind,luid,name,project_path,owner,payload,coverage,observed_at)
 		SELECT g.environment,g.site,r.kind,r.luid,r.name,r.project_path,r.owner,X'','summary',g.generated_at
 		FROM current_generations c
 		JOIN generations g ON g.generation_key=c.generation_key
 		JOIN catalog_records r ON r.generation_key=g.generation_key
 		WHERE g.complete=1 AND r.requested=1`); err != nil {
-		return fmt.Errorf("backfill catalog resource entries: %w", err)
+			return fmt.Errorf("backfill catalog resource entries: %w", err)
+		}
+		version = 2
 	}
-	if _, err := conn.ExecContext(ctx, `UPDATE catalog_schema SET version=2,signature='tadx-catalog-v2' WHERE singleton=1`); err != nil {
+	if version == 2 {
+		if _, err := conn.ExecContext(ctx, `CREATE TABLE resource_scope_snapshots (environment TEXT NOT NULL,site TEXT NOT NULL,kind TEXT NOT NULL,generation_id TEXT NOT NULL,generated_at TEXT NOT NULL,complete INTEGER NOT NULL CHECK(complete IN (0,1)),source TEXT NOT NULL,record_count INTEGER NOT NULL CHECK(record_count>=0),PRIMARY KEY(environment,site,kind)) STRICT`); err != nil {
+			return fmt.Errorf("migrate catalog resource scope snapshots: %w", err)
+		}
+		if _, err := conn.ExecContext(ctx, `CREATE INDEX resource_scope_snapshots_generation_idx ON resource_scope_snapshots(environment,site,generation_id)`); err != nil {
+			return fmt.Errorf("index catalog resource scope snapshots: %w", err)
+		}
+		if _, err := conn.ExecContext(ctx, `INSERT INTO resource_scope_snapshots(environment,site,kind,generation_id,generated_at,complete,source,record_count)
+			SELECT g.environment,g.site,
+				CASE gs.scope WHEN 'users' THEN 'user' WHEN 'groups' THEN 'group' WHEN 'projects' THEN 'project' WHEN 'workbooks' THEN 'workbook' WHEN 'datasources' THEN 'datasource' WHEN 'flows' THEN 'flow' WHEN 'views' THEN 'view' END,
+				g.id,g.generated_at,gs.complete,g.source,
+				(SELECT count(*) FROM catalog_records r WHERE r.generation_key=g.generation_key AND r.requested=1 AND r.kind=CASE gs.scope WHEN 'users' THEN 'user' WHEN 'groups' THEN 'group' WHEN 'projects' THEN 'project' WHEN 'workbooks' THEN 'workbook' WHEN 'datasources' THEN 'datasource' WHEN 'flows' THEN 'flow' WHEN 'views' THEN 'view' END)
+			FROM current_generations c
+			JOIN generations g ON g.generation_key=c.generation_key
+			JOIN generation_scopes gs ON gs.generation_key=g.generation_key
+			WHERE g.complete=1 AND gs.requested=1 AND gs.scope<>'permissions'`); err != nil {
+			return fmt.Errorf("backfill catalog resource scope snapshots: %w", err)
+		}
+		version = 3
+	}
+	if version == 3 {
+		hasFileType, err := tableHasColumn(ctx, conn, "flows", "file_type")
+		if err != nil {
+			return fmt.Errorf("inspect flow catalog schema: %w", err)
+		}
+		if !hasFileType {
+			if _, err := conn.ExecContext(ctx, `ALTER TABLE flows ADD COLUMN file_type TEXT NOT NULL DEFAULT ''`); err != nil {
+				return fmt.Errorf("migrate flow file type: %w", err)
+			}
+		}
+		version = 4
+	}
+	if version == 4 {
+		for _, table := range []string{"users", "groups", "projects", "workbooks", "datasources", "flows"} {
+			hasPayload, err := tableHasColumn(ctx, conn, table, "list_payload")
+			if err != nil {
+				return fmt.Errorf("inspect %s catalog schema: %w", table, err)
+			}
+			if !hasPayload {
+				if _, err := conn.ExecContext(ctx, `ALTER TABLE `+table+` ADD COLUMN list_payload TEXT NOT NULL DEFAULT '{}'`); err != nil {
+					return fmt.Errorf("migrate %s list payload: %w", table, err)
+				}
+			}
+		}
+	}
+	if _, err := conn.ExecContext(ctx, `UPDATE catalog_schema SET version=5,signature='tadx-catalog-v5' WHERE singleton=1`); err != nil {
 		return fmt.Errorf("update catalog schema marker: %w", err)
 	}
-	if _, err := conn.ExecContext(ctx, `PRAGMA user_version=2`); err != nil {
+	if _, err := conn.ExecContext(ctx, `PRAGMA user_version=5`); err != nil {
 		return fmt.Errorf("update catalog schema version: %w", err)
 	}
 	if _, err := conn.ExecContext(ctx, `COMMIT`); err != nil {
@@ -186,6 +236,26 @@ func migrateSchema(ctx context.Context, db *sql.DB, version int) error {
 	}
 	committed = true
 	return nil
+}
+
+func tableHasColumn(ctx context.Context, q interface {
+	QueryContext(context.Context, string, ...any) (*sql.Rows, error)
+}, table, column string) (bool, error) {
+	rows, err := q.QueryContext(ctx, `SELECT name FROM pragma_table_info(?)`, table)
+	if err != nil {
+		return false, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var name string
+		if err := rows.Scan(&name); err != nil {
+			return false, err
+		}
+		if name == column {
+			return true, nil
+		}
+	}
+	return false, rows.Err()
 }
 
 func checkIntegrity(ctx context.Context, q queryRower) error {

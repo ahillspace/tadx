@@ -156,7 +156,7 @@ func newGroupMemberRemove(deps Dependencies) *cobra.Command {
 
 func newUserList(deps Dependencies) *cobra.Command {
 	var input userlist.Input
-	cmd := &cobra.Command{Use: "list", Short: "List one bounded site-user page.", Annotations: map[string]string{"tadx.capability": "admin.user.list"}, Args: noArgs("admin.user.list"), RunE: func(cmd *cobra.Command, _ []string) error {
+	cmd := &cobra.Command{Use: "list", Short: "List site users and refresh their catalog snapshot.", Annotations: map[string]string{"tadx.capability": "admin.user.list"}, Args: noArgs("admin.user.list"), RunE: func(cmd *cobra.Command, _ []string) error {
 		out, err := deps.UserLister.ListAdminUsers(cmd.Context(), input)
 		if err != nil {
 			return err
@@ -166,7 +166,7 @@ func newUserList(deps Dependencies) *cobra.Command {
 	cmd.Flags().StringVar(&input.Environment, "environment", "", "exact environment alias; defaults to the configured read environment")
 	cmd.Flags().StringVar(&input.Name, "name", "", "exact username filter")
 	cmd.Flags().StringVar(&input.SiteRole, "site-role", "", "exact site-role filter")
-	cmd.Flags().IntVar(&input.Limit, "limit", 0, "maximum users to return")
+	cmd.Flags().IntVar(&input.Limit, "limit", 0, "maximum users to render")
 	cmd.Flags().StringVar(&input.Cursor, "cursor", "", "opaque continuation cursor")
 	cmd.Flags().BoolVar(&input.Catalog, "catalog", false, "read indexed local catalog data without contacting Tableau")
 	return cmd
@@ -296,7 +296,7 @@ func newUserDelete(deps Dependencies) *cobra.Command {
 
 func newGroupList(deps Dependencies) *cobra.Command {
 	var in grouplist.Input
-	cmd := &cobra.Command{Use: "list", Short: "List one bounded group page.", Annotations: map[string]string{"tadx.capability": "admin.group.list"}, Args: noArgs("admin.group.list"), RunE: func(cmd *cobra.Command, _ []string) error {
+	cmd := &cobra.Command{Use: "list", Short: "List groups and refresh their catalog snapshot.", Annotations: map[string]string{"tadx.capability": "admin.group.list"}, Args: noArgs("admin.group.list"), RunE: func(cmd *cobra.Command, _ []string) error {
 		out, err := deps.GroupLister.ListAdminGroups(cmd.Context(), in)
 		if err != nil {
 			return err
@@ -306,7 +306,7 @@ func newGroupList(deps Dependencies) *cobra.Command {
 	cmd.Flags().StringVar(&in.Environment, "environment", "", "exact environment alias; defaults to the configured read environment")
 	cmd.Flags().StringVar(&in.Name, "name", "", "exact group-name filter")
 	cmd.Flags().StringVar(&in.Domain, "domain", "", "exact directory-domain filter")
-	cmd.Flags().IntVar(&in.Limit, "limit", 0, "maximum groups to return")
+	cmd.Flags().IntVar(&in.Limit, "limit", 0, "maximum groups to render")
 	cmd.Flags().StringVar(&in.Cursor, "cursor", "", "opaque continuation cursor")
 	cmd.Flags().BoolVar(&in.Catalog, "catalog", false, "read indexed local catalog data without contacting Tableau")
 	return cmd

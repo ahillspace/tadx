@@ -15,6 +15,7 @@ type Input struct {
 type PageRequest struct {
 	PageNumber, PageSize              int
 	Name, OwnerName, ProjectName, Tag string
+	SnapshotCursor                    string
 }
 
 // Workbook is one complete bounded lifecycle projection.
@@ -34,9 +35,11 @@ type Workbook struct {
 
 // Page is one complete reader page.
 type Page struct {
-	Number, Size, Total int
-	Workbooks           []Workbook
-	RequestID           string
+	Number, Size, Total  int
+	Workbooks            []Workbook
+	RequestID            string
+	SnapshotCursor       string
+	SuppressContinuation bool
 }
 
 // OutputPage is continuation metadata.

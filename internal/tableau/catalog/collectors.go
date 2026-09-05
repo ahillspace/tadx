@@ -1,8 +1,10 @@
 package catalog
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
+	"sort"
 	"strconv"
 	"strings"
 
@@ -25,7 +27,15 @@ var collectors = map[Scope]collectorDefinition{
 			if err != nil {
 				return nil, "", err
 			}
-			return []any{id, name, element.ChildText("email"), strings.TrimSpace(element.Attr("siteRole")), strings.TrimSpace(element.Attr("lastLogin"))}, id, nil
+			email := strings.TrimSpace(element.Attr("email"))
+			siteRole := strings.TrimSpace(element.Attr("siteRole"))
+			lastLogin := strings.TrimSpace(element.Attr("lastLogin"))
+			payload, err := listPayload(map[string]any{
+				"luid": id, "name": name, "full_name": element.Attr("fullName"), "email": email,
+				"site_role": siteRole, "last_login": lastLogin, "auth_setting": element.Attr("authSetting"),
+				"domain": strings.TrimSpace(element.ChildAttr("domain", "name")),
+			})
+			return []any{id, name, email, siteRole, lastLogin, payload}, id, err
 		},
 	},
 	ScopeGroups: {
@@ -35,7 +45,21 @@ var collectors = map[Scope]collectorDefinition{
 			if err != nil {
 				return nil, "", err
 			}
-			return []any{id, name, strings.TrimSpace(element.Attr("domain"))}, id, nil
+			domain := strings.TrimSpace(element.ChildAttr("domain", "name"))
+			externalUserEnabled, err := optionalBoolean(element.Attr("externalUserEnabled"), "group external user enabled")
+			if err != nil {
+				return nil, "", err
+			}
+			minimumSiteRole := strings.TrimSpace(element.Attr("minimumSiteRole"))
+			if minimumSiteRole == "" {
+				minimumSiteRole = strings.TrimSpace(element.ChildAttr("import", "siteRole"))
+			}
+			payload, err := listPayload(map[string]any{
+				"luid": id, "name": name, "domain": domain, "minimum_site_role": minimumSiteRole,
+				"grant_license_mode":    strings.TrimSpace(element.ChildAttr("import", "grantLicenseMode")),
+				"external_user_enabled": externalUserEnabled,
+			})
+			return []any{id, name, domain, payload}, id, err
 		},
 	},
 	ScopeProjects: {
@@ -45,7 +69,27 @@ var collectors = map[Scope]collectorDefinition{
 			if err != nil {
 				return nil, "", err
 			}
-			return []any{id, name, strings.TrimSpace(element.Attr("parentProjectId")), element.Attr("description"), strings.TrimSpace(element.ChildAttr("owner", "id"))}, id, nil
+			parentID := strings.TrimSpace(element.Attr("parentProjectId"))
+			ownerID := strings.TrimSpace(element.ChildAttr("owner", "id"))
+			topLevel, err := optionalBoolean(element.Attr("topLevelProject"), "project top-level status")
+			if err != nil {
+				return nil, "", err
+			}
+			counts := make([]any, 4)
+			for index, field := range []string{"projectCount", "workbookCount", "viewCount", "datasourceCount"} {
+				counts[index], err = optionalInteger(element.ChildAttr("contentCounts", field), "project "+field)
+				if err != nil {
+					return nil, "", err
+				}
+			}
+			payload, err := listPayload(map[string]any{
+				"luid": id, "name": name, "parent_luid": parentID, "description": element.Attr("description"),
+				"owner_luid": ownerID, "top_level": topLevel, "content_permissions": element.Attr("contentPermissions"),
+				"controlling_permissions_project_luid": element.Attr("controllingPermissionsProjectId"),
+				"created_at":                           element.Attr("createdAt"), "updated_at": element.Attr("updatedAt"),
+				"project_count": counts[0], "workbook_count": counts[1], "view_count": counts[2], "datasource_count": counts[3],
+			})
+			return []any{id, name, parentID, element.Attr("description"), ownerID, payload}, id, err
 		},
 	},
 	ScopeWorkbooks: {
@@ -59,7 +103,15 @@ var collectors = map[Scope]collectorDefinition{
 			if err != nil {
 				return nil, "", err
 			}
-			return []any{id, name, strings.TrimSpace(element.ChildAttr("project", "id")), strings.TrimSpace(element.ChildAttr("owner", "id")), size, strings.TrimSpace(element.Attr("updatedAt"))}, id, nil
+			projectID := strings.TrimSpace(element.ChildAttr("project", "id"))
+			ownerID := strings.TrimSpace(element.ChildAttr("owner", "id"))
+			updatedAt := strings.TrimSpace(element.Attr("updatedAt"))
+			payload, err := listPayload(map[string]any{
+				"luid": id, "name": name, "project_luid": projectID, "project_path": "", "content_url": element.Attr("contentUrl"),
+				"updated_at": updatedAt, "description": element.Attr("description"), "owner_luid": ownerID,
+				"created_at": element.Attr("createdAt"), "tags": tagLabels(element),
+			})
+			return []any{id, name, projectID, ownerID, size, updatedAt, payload}, id, err
 		},
 	},
 	ScopeDatasources: {
@@ -69,7 +121,30 @@ var collectors = map[Scope]collectorDefinition{
 			if err != nil {
 				return nil, "", err
 			}
-			return []any{id, name, strings.TrimSpace(element.ChildAttr("project", "id")), strings.TrimSpace(element.ChildAttr("owner", "id")), strings.TrimSpace(element.Attr("updatedAt"))}, id, nil
+			projectID := strings.TrimSpace(element.ChildAttr("project", "id"))
+			ownerID := strings.TrimSpace(element.ChildAttr("owner", "id"))
+			updatedAt := strings.TrimSpace(element.Attr("updatedAt"))
+			size, err := optionalInteger(element.Attr("size"), "datasource size")
+			if err != nil {
+				return nil, "", err
+			}
+			flags := make([]*bool, 4)
+			for index, field := range []string{"encryptExtracts", "hasExtracts", "isCertified", "useRemoteQueryAgent"} {
+				flags[index], err = optionalBoolean(element.Attr(field), "datasource "+field)
+				if err != nil {
+					return nil, "", err
+				}
+			}
+			payload, err := listPayload(map[string]any{
+				"luid": id, "name": name, "project_luid": projectID, "project_name": strings.TrimSpace(element.ChildAttr("project", "name")),
+				"type": element.Attr("type"), "content_url": element.Attr("contentUrl"), "description": element.Attr("description"),
+				"owner_luid": ownerID, "created_at": element.Attr("createdAt"), "updated_at": updatedAt, "size": size,
+				"encrypt_extracts": flags[0], "has_extracts": flags[1], "is_certified": flags[2],
+				"certification_note": element.Attr("certificationNote"), "use_remote_query_agent": flags[3],
+				"webpage_url": element.Attr("webpageUrl"), "tags": tagLabels(element),
+				"ask_data_enablement": strings.TrimSpace(element.ChildAttr("askData", "enablement")),
+			})
+			return []any{id, name, projectID, ownerID, updatedAt, payload}, id, err
 		},
 	},
 	ScopeFlows: {
@@ -79,7 +154,16 @@ var collectors = map[Scope]collectorDefinition{
 			if err != nil {
 				return nil, "", err
 			}
-			return []any{id, name, strings.TrimSpace(element.ChildAttr("project", "id")), strings.TrimSpace(element.ChildAttr("owner", "id")), strings.TrimSpace(element.Attr("updatedAt"))}, id, nil
+			projectID := strings.TrimSpace(element.ChildAttr("project", "id"))
+			ownerID := strings.TrimSpace(element.ChildAttr("owner", "id"))
+			fileType := strings.TrimSpace(element.Attr("fileType"))
+			updatedAt := strings.TrimSpace(element.Attr("updatedAt"))
+			payload, err := listPayload(map[string]any{
+				"luid": id, "name": name, "project_luid": projectID, "project_name": strings.TrimSpace(element.ChildAttr("project", "name")),
+				"file_type": fileType, "updated_at": updatedAt, "description": element.Attr("description"),
+				"owner_luid": ownerID, "created_at": element.Attr("createdAt"), "tags": tagLabels(element),
+			})
+			return []any{id, name, projectID, ownerID, fileType, updatedAt, payload}, id, err
 		},
 	},
 	ScopeViews: {
@@ -161,4 +245,36 @@ func optionalInteger(value, field string) (any, error) {
 		return nil, fmt.Errorf("%s %q is not a nonnegative integer", field, value)
 	}
 	return parsed, nil
+}
+
+func optionalBoolean(value, field string) (*bool, error) {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return nil, nil
+	}
+	parsed, err := strconv.ParseBool(value)
+	if err != nil {
+		return nil, fmt.Errorf("%s %q is not a Boolean", field, value)
+	}
+	return &parsed, nil
+}
+
+func tagLabels(element tabxml.Element) []string {
+	values := element.GrandchildAttrValues("tags", "tag", "label")
+	labels := make([]string, 0, len(values))
+	for _, value := range values {
+		if value = strings.TrimSpace(value); value != "" {
+			labels = append(labels, value)
+		}
+	}
+	sort.Strings(labels)
+	return labels
+}
+
+func listPayload(value map[string]any) (string, error) {
+	encoded, err := json.Marshal(value)
+	if err != nil {
+		return "", fmt.Errorf("encode Tableau list projection: %w", err)
+	}
+	return string(encoded), nil
 }

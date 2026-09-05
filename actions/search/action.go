@@ -90,7 +90,10 @@ func (a *Action) Execute(ctx context.Context, input Input) (Output, error) {
 	if page.NextCursor != "" {
 		page.NextCursor = encodeCursor(page.NextCursor, input)
 	}
-	sourceName := "live"
+	sourceName := result.Source
+	if sourceName == "" {
+		sourceName = "live"
+	}
 	warnings := append([]string{}, result.Warnings...)
 	if input.Catalog {
 		sourceName = "catalog"

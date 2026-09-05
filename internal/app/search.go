@@ -10,6 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 
@@ -22,6 +23,7 @@ import (
 	searchaction "github.com/ahillspace/tadx/actions/search"
 	workbooklist "github.com/ahillspace/tadx/actions/workbook/list"
 	"github.com/ahillspace/tadx/internal/catalog"
+	"github.com/ahillspace/tadx/internal/readsource"
 	resourceadmin "github.com/ahillspace/tadx/internal/resources/admin"
 	resourcedatasource "github.com/ahillspace/tadx/internal/resources/datasource"
 	resourceflow "github.com/ahillspace/tadx/internal/resources/flow"
@@ -33,6 +35,7 @@ import (
 	tableauflow "github.com/ahillspace/tadx/internal/tableau/flow"
 	tableauproject "github.com/ahillspace/tadx/internal/tableau/project"
 	tableaupulse "github.com/ahillspace/tadx/internal/tableau/pulse"
+	tableausearch "github.com/ahillspace/tadx/internal/tableau/search"
 	tableauworkbook "github.com/ahillspace/tadx/internal/tableau/workbook"
 )
 
@@ -57,6 +60,19 @@ func (c *searchCommands) Execute(ctx context.Context, input searchaction.Input) 
 		store := catalog.NewStore(filepath.Dir(c.runtime.configPath), c.runtime.now)
 		return searchaction.New(catalogGlobalSearchSource{store: store}).Execute(ctx, input)
 	}
+	if strings.TrimSpace(input.Terms) == "" && completeListSearchSelector(input.Type) {
+		_, environment, err := c.runtime.environment(input.Environment, false)
+		if err != nil {
+			return searchaction.Output{}, remoteSetupError("search", input.Environment, input.Site, environment, err)
+		}
+		input.Environment, input.Site, input.SiteResolved = environment.Alias, environment.SiteContentURL, true
+		lister := &completeLiveSearchLister{
+			environment: environment.Alias,
+			content:     newRemoteContentCommands(c.runtime),
+			admin:       newRemoteAdminCommands(c.runtime),
+		}
+		return searchaction.New(globalSearchSource{lists: &completeLiveSearchAdapter{lister: lister}}).Execute(ctx, input)
+	}
 
 	connection, err := c.runtime.tableauConnection(ctx, input.Environment, false)
 	if err != nil {
@@ -67,21 +83,220 @@ func (c *searchCommands) Execute(ctx context.Context, input searchaction.Input) 
 	if err != nil {
 		return searchaction.Output{}, remoteSetupError("search", input.Environment, input.Site, connection.environment, err)
 	}
-	return searchaction.New(globalSearchSource{adapter: resourcesearch.NewAdapter(lister)}).Execute(ctx, input)
+	nativeClient, err := tableausearch.NewClient(connection.transport, connection.session, connection.environment.URL)
+	if err != nil {
+		return searchaction.Output{}, remoteSetupError("search", input.Environment, input.Site, connection.environment, err)
+	}
+	datasourceResolver := tableaudatasource.NewClient(connection.transport, connection.session, connection.environment.URL)
+	return searchaction.New(globalSearchSource{native: resourcesearch.NewNativeAdapter(nativeClient, datasourceResolver), dedicated: resourcesearch.NewAdapter(lister)}).Execute(ctx, input)
 }
 
-type globalSearchSource struct{ adapter *resourcesearch.Adapter }
+type appSearchAdapter interface {
+	Search(context.Context, resourcesearch.Input) (resourcesearch.Page, error)
+}
+
+type appBoundedSearchAdapter interface {
+	SearchBounded(context.Context, resourcesearch.Input, int) (resourcesearch.Page, error)
+}
+
+type globalSearchSource struct {
+	native    appSearchAdapter
+	lists     appSearchAdapter
+	dedicated appSearchAdapter
+}
 
 func (s globalSearchSource) Search(ctx context.Context, input searchaction.Input) (searchaction.Result, error) {
 	types, err := searchaction.Types(input.Type)
 	if err != nil {
 		return searchaction.Result{}, err
 	}
-	page, err := s.adapter.Search(ctx, resourcesearch.Input{Types: types, Terms: input.Terms, ProjectPath: input.ProjectPath, Owner: input.Owner, Cursor: input.Cursor, Limit: input.Limit})
+	resourceInput := resourcesearch.Input{Types: types, Terms: input.Terms, ProjectPath: input.ProjectPath, Owner: input.Owner, Cursor: input.Cursor, Limit: input.Limit}
+	if strings.TrimSpace(input.Terms) == "" {
+		if completeListSearchSelector(input.Type) {
+			return executeAppSearch(ctx, s.lists, resourceInput)
+		}
+		return executeAppSearch(ctx, s.dedicated, resourceInput)
+	}
+	if dedicatedSearchSelector(input.Type) {
+		return executeAppSearch(ctx, s.dedicated, resourceInput)
+	}
+	if contentSearchSelector(input.Type) {
+		return executeAppSearch(ctx, s.native, resourceInput)
+	}
+	if input.Type != "" {
+		return searchaction.Result{}, fmt.Errorf("unsupported live search selector %q", input.Type)
+	}
+	return s.searchAll(ctx, input)
+}
+
+func completeListSearchSelector(selector string) bool {
+	switch selector {
+	case "content", "admin", "workbook", "datasource", "flow", "project", "user", "group":
+		return true
+	default:
+		return false
+	}
+}
+
+func executeAppSearch(ctx context.Context, adapter appSearchAdapter, input resourcesearch.Input) (searchaction.Result, error) {
+	if adapter == nil {
+		return searchaction.Result{}, errors.New("live search adapter is not configured")
+	}
+	page, err := adapter.Search(ctx, input)
 	if err != nil {
 		return searchaction.Result{}, err
 	}
 	return searchResult(page, nil), nil
+}
+
+func dedicatedSearchSelector(selector string) bool {
+	switch selector {
+	case "admin", "user", "group", "pulse", "definition", "metric":
+		return true
+	default:
+		return false
+	}
+}
+
+func contentSearchSelector(selector string) bool {
+	switch selector {
+	case "content", "workbook", "datasource", "flow", "project":
+		return true
+	default:
+		return false
+	}
+}
+
+const (
+	combinedSearchContent   = "content"
+	combinedSearchDedicated = "dedicated"
+	maxCombinedCursorBytes  = 8192
+	maxCombinedSourceBytes  = 4096
+)
+
+type combinedSearchCursor struct {
+	Version     int    `json:"v"`
+	Fingerprint string `json:"f"`
+	Phase       string `json:"p"`
+	Source      string `json:"c,omitempty"`
+	Checksum    string `json:"s"`
+}
+
+type invalidCombinedSearchCursor struct{}
+
+func (invalidCombinedSearchCursor) Error() string             { return "combined live search cursor is invalid" }
+func (invalidCombinedSearchCursor) InvalidSearchCursor() bool { return true }
+
+func (s globalSearchSource) searchAll(ctx context.Context, input searchaction.Input) (searchaction.Result, error) {
+	if s.native == nil || s.dedicated == nil {
+		return searchaction.Result{}, errors.New("live search adapters are not configured")
+	}
+	state, err := decodeCombinedSearchCursor(input.Cursor, input)
+	if err != nil {
+		return searchaction.Result{}, err
+	}
+	if state.Phase == combinedSearchContent {
+		page, err := s.native.Search(ctx, resourcesearch.Input{
+			Types: []string{"datasource", "flow", "project", "workbook"}, Terms: input.Terms,
+			ProjectPath: input.ProjectPath, Owner: input.Owner, Cursor: state.Source, Limit: input.Limit,
+		})
+		if err != nil {
+			return searchaction.Result{}, err
+		}
+		if page.NextCursor != "" {
+			if len(page.NextCursor) > maxCombinedSourceBytes {
+				return searchaction.Result{}, errors.New("native search continuation exceeded the combined cursor bound")
+			}
+			page.NextCursor = encodeCombinedSearchCursor(combinedSearchCursor{Version: 1, Fingerprint: combinedSearchFingerprint(input), Phase: combinedSearchContent, Source: page.NextCursor})
+			return searchResult(page, nil), nil
+		}
+		if len(page.Items) == input.Limit {
+			page.NextCursor = encodeCombinedSearchCursor(combinedSearchCursor{Version: 1, Fingerprint: combinedSearchFingerprint(input), Phase: combinedSearchDedicated})
+			return searchResult(page, nil), nil
+		}
+		state.Phase = combinedSearchDedicated
+		state.Source = ""
+		remaining := input.Limit - len(page.Items)
+		dedicatedPage, err := executeBoundedAppSearch(ctx, s.dedicated, resourcesearch.Input{
+			Types: []string{"definition", "group", "metric", "user"}, Terms: input.Terms,
+			ProjectPath: input.ProjectPath, Owner: input.Owner, Limit: input.Limit,
+		}, remaining)
+		if err != nil {
+			return searchaction.Result{}, err
+		}
+		page.Items = append(page.Items, dedicatedPage.Items...)
+		page.Warnings = append(page.Warnings, dedicatedPage.Warnings...)
+		if dedicatedPage.TableauRequestID != "" {
+			page.TableauRequestID = dedicatedPage.TableauRequestID
+		}
+		if dedicatedPage.NextCursor != "" {
+			if len(dedicatedPage.NextCursor) > maxCombinedSourceBytes {
+				return searchaction.Result{}, errors.New("dedicated search continuation exceeded the combined cursor bound")
+			}
+			page.NextCursor = encodeCombinedSearchCursor(combinedSearchCursor{Version: 1, Fingerprint: combinedSearchFingerprint(input), Phase: combinedSearchDedicated, Source: dedicatedPage.NextCursor})
+		}
+		return searchResult(page, nil), nil
+	}
+	page, err := s.dedicated.Search(ctx, resourcesearch.Input{
+		Types: []string{"definition", "group", "metric", "user"}, Terms: input.Terms,
+		ProjectPath: input.ProjectPath, Owner: input.Owner, Cursor: state.Source, Limit: input.Limit,
+	})
+	if err != nil {
+		return searchaction.Result{}, err
+	}
+	if page.NextCursor != "" {
+		if len(page.NextCursor) > maxCombinedSourceBytes {
+			return searchaction.Result{}, errors.New("dedicated search continuation exceeded the combined cursor bound")
+		}
+		page.NextCursor = encodeCombinedSearchCursor(combinedSearchCursor{Version: 1, Fingerprint: combinedSearchFingerprint(input), Phase: combinedSearchDedicated, Source: page.NextCursor})
+	}
+	return searchResult(page, nil), nil
+}
+
+func executeBoundedAppSearch(ctx context.Context, adapter appSearchAdapter, input resourcesearch.Input, budget int) (resourcesearch.Page, error) {
+	if budget == input.Limit {
+		return adapter.Search(ctx, input)
+	}
+	bounded, ok := adapter.(appBoundedSearchAdapter)
+	if !ok {
+		return resourcesearch.Page{}, errors.New("dedicated search adapter does not support a partial row budget")
+	}
+	return bounded.SearchBounded(ctx, input, budget)
+}
+
+func decodeCombinedSearchCursor(value string, input searchaction.Input) (combinedSearchCursor, error) {
+	if value == "" {
+		return combinedSearchCursor{Version: 1, Fingerprint: combinedSearchFingerprint(input), Phase: combinedSearchContent}, nil
+	}
+	if len(value) > maxCombinedCursorBytes {
+		return combinedSearchCursor{}, invalidCombinedSearchCursor{}
+	}
+	data, err := base64.RawURLEncoding.DecodeString(value)
+	var state combinedSearchCursor
+	if err != nil || json.Unmarshal(data, &state) != nil || state.Version != 1 || state.Fingerprint != combinedSearchFingerprint(input) || (state.Phase != combinedSearchContent && state.Phase != combinedSearchDedicated) || state.Checksum != combinedSearchChecksum(state) || (state.Phase == combinedSearchContent && state.Source == "") {
+		return combinedSearchCursor{}, invalidCombinedSearchCursor{}
+	}
+	return state, nil
+}
+
+func encodeCombinedSearchCursor(state combinedSearchCursor) string {
+	state.Checksum = combinedSearchChecksum(state)
+	data, _ := json.Marshal(state)
+	return base64.RawURLEncoding.EncodeToString(data)
+}
+
+func combinedSearchFingerprint(input searchaction.Input) string {
+	input.Cursor = ""
+	data, _ := json.Marshal(input)
+	sum := sha256.Sum256(data)
+	return hex.EncodeToString(sum[:])
+}
+
+func combinedSearchChecksum(state combinedSearchCursor) string {
+	state.Checksum = ""
+	data, _ := json.Marshal(state)
+	sum := sha256.Sum256(data)
+	return hex.EncodeToString(sum[:])
 }
 
 type catalogGlobalSearchSource struct {
@@ -219,7 +434,172 @@ func searchResult(page resourcesearch.Page, generation *searchaction.Generation)
 	for index, item := range page.Items {
 		items[index] = searchaction.Item{LUID: item.LUID, Type: item.Type, Name: item.Name, ProjectPath: item.ProjectPath, Owner: item.Owner, ModifiedAt: item.ModifiedAt}
 	}
-	return searchaction.Result{Items: items, Page: searchaction.Page{NextCursor: page.NextCursor}, Warnings: page.Warnings, Generation: generation}
+	return searchaction.Result{Items: items, Page: searchaction.Page{NextCursor: page.NextCursor}, Warnings: page.Warnings, Generation: generation, Source: page.Source}
+}
+
+// completeLiveSearchLister routes blank typed searches through the same
+// complete-inventory services as the public list commands.
+type completeLiveSearchLister struct {
+	environment string
+	content     *remoteContentCommands
+	admin       *remoteAdminCommands
+}
+
+type completeListSearchPager interface {
+	searchPage(context.Context, string, string, int, resourcesearch.Input) (resourcesearch.Page, error)
+}
+
+type completeLiveSearchAdapter struct{ lister completeListSearchPager }
+
+type completeListSearchCursor struct {
+	Version      int    `json:"v"`
+	Fingerprint  string `json:"f"`
+	TypeIndex    int    `json:"t"`
+	SourceCursor string `json:"c,omitempty"`
+	SourceLimit  int    `json:"l,omitempty"`
+}
+
+type invalidCompleteListSearchCursor struct{}
+
+func (invalidCompleteListSearchCursor) Error() string {
+	return "complete list search cursor is invalid"
+}
+func (invalidCompleteListSearchCursor) InvalidSearchCursor() bool { return true }
+
+func (a *completeLiveSearchAdapter) Search(ctx context.Context, input resourcesearch.Input) (resourcesearch.Page, error) {
+	if a == nil || a.lister == nil || len(input.Types) == 0 || input.Limit < 1 || input.Limit > 100 {
+		return resourcesearch.Page{}, errors.New("complete live search requires configured list services, types, and a bounded limit")
+	}
+	types := append([]string(nil), input.Types...)
+	if len(types) == 1 {
+		return a.lister.searchPage(ctx, types[0], input.Cursor, input.Limit, input)
+	}
+	sort.Strings(types)
+	state := completeListSearchCursor{Version: 1, Fingerprint: completeListSearchFingerprint(input)}
+	if input.Cursor != "" {
+		data, err := base64.RawURLEncoding.DecodeString(input.Cursor)
+		if len(input.Cursor) > 12000 || err != nil || json.Unmarshal(data, &state) != nil || state.Version != 1 || state.Fingerprint != completeListSearchFingerprint(input) || state.TypeIndex < 0 || state.TypeIndex >= len(types) || (state.SourceCursor != "" && (state.SourceLimit < 1 || state.SourceLimit > input.Limit)) || (state.SourceCursor == "" && state.SourceLimit != 0) {
+			return resourcesearch.Page{}, invalidCompleteListSearchCursor{}
+		}
+	}
+	result := resourcesearch.Page{Items: []resourcesearch.Item{}}
+	for state.TypeIndex < len(types) && len(result.Items) < input.Limit {
+		remaining := input.Limit - len(result.Items)
+		sourceLimit := remaining
+		if state.SourceCursor != "" {
+			sourceLimit = state.SourceLimit
+		}
+		page, err := a.lister.searchPage(ctx, types[state.TypeIndex], state.SourceCursor, sourceLimit, input)
+		if err != nil {
+			return resourcesearch.Page{}, err
+		}
+		if len(page.Items) > remaining {
+			return resourcesearch.Page{}, errors.New("complete live search list service exceeded the requested result bound")
+		}
+		result.Items = append(result.Items, page.Items...)
+		result.Warnings = append(result.Warnings, page.Warnings...)
+		if result.Source == "" {
+			result.Source = page.Source
+		} else if page.Source != "" && result.Source != page.Source {
+			result.Source = "mixed"
+		}
+		if page.TableauRequestID != "" {
+			result.TableauRequestID = page.TableauRequestID
+		}
+		if page.NextCursor != "" {
+			state.SourceCursor = page.NextCursor
+			state.SourceLimit = sourceLimit
+			result.NextCursor = encodeCompleteListSearchCursor(state)
+			return result, nil
+		}
+		state.TypeIndex++
+		state.SourceCursor = ""
+		state.SourceLimit = 0
+	}
+	if state.TypeIndex < len(types) {
+		result.NextCursor = encodeCompleteListSearchCursor(state)
+	}
+	return result, nil
+}
+
+func completeListSearchFingerprint(input resourcesearch.Input) string {
+	input.Cursor = ""
+	data, _ := json.Marshal(input)
+	sum := sha256.Sum256(data)
+	return hex.EncodeToString(sum[:])
+}
+
+func encodeCompleteListSearchCursor(state completeListSearchCursor) string {
+	data, _ := json.Marshal(state)
+	return base64.RawURLEncoding.EncodeToString(data)
+}
+
+func (s *completeLiveSearchLister) searchPage(ctx context.Context, resourceType, cursor string, limit int, searchInput resourcesearch.Input) (resourcesearch.Page, error) {
+	if s == nil || s.content == nil || s.admin == nil {
+		return resourcesearch.Page{}, errors.New("complete live search list services are not configured")
+	}
+	switch resourceType {
+	case "workbook":
+		out, err := s.content.ListWorkbooks(ctx, workbooklist.Input{Environment: s.environment, Cursor: cursor, Limit: limit, ProjectName: searchInput.ProjectPath, OwnerName: searchInput.Owner})
+		items := make([]resourcesearch.Item, len(out.Workbooks))
+		for i, item := range out.Workbooks {
+			items[i] = resourcesearch.Item{LUID: item.LUID, Type: resourceType, Name: item.Name, ProjectPath: item.ProjectPath, Owner: item.OwnerLUID, ModifiedAt: item.UpdatedAt}
+		}
+		return completeListSearchPage(items, out.Page.NextCursor, out.RequestID, out.Source), err
+	case "datasource":
+		out, err := s.content.ListDatasources(ctx, datasourcelist.Input{Environment: s.environment, Cursor: cursor, Limit: limit, ProjectName: searchInput.ProjectPath, OwnerName: searchInput.Owner})
+		items := make([]resourcesearch.Item, len(out.Datasources))
+		for i, item := range out.Datasources {
+			items[i] = resourcesearch.Item{LUID: item.LUID, Type: resourceType, Name: item.Name, ProjectPath: item.ProjectPath, Owner: item.OwnerLUID, ModifiedAt: item.UpdatedAt}
+		}
+		return completeListSearchPage(items, out.Page.NextCursor, out.RequestID, out.Source), err
+	case "flow":
+		out, err := s.content.ListFlows(ctx, flowlist.Input{Environment: s.environment, Cursor: cursor, Limit: limit, ProjectName: searchInput.ProjectPath, OwnerName: searchInput.Owner})
+		items := make([]resourcesearch.Item, len(out.Flows))
+		for i, item := range out.Flows {
+			items[i] = resourcesearch.Item{LUID: item.LUID, Type: resourceType, Name: item.Name, ProjectPath: item.ProjectPath, Owner: item.OwnerLUID, ModifiedAt: item.UpdatedAt}
+		}
+		return completeListSearchPage(items, out.Page.NextCursor, out.RequestID, out.Source), err
+	case "project":
+		out, err := s.content.ListProjects(ctx, projectlist.Input{Environment: s.environment, Cursor: cursor, Limit: limit, OwnerName: searchInput.Owner})
+		items := make([]resourcesearch.Item, len(out.Projects))
+		for i, item := range out.Projects {
+			items[i] = resourcesearch.Item{LUID: item.LUID, Type: resourceType, Name: item.Name, Owner: item.OwnerLUID, ModifiedAt: item.UpdatedAt}
+		}
+		return completeListSearchPage(items, out.Page.NextCursor, out.RequestID, out.Source), err
+	case "user":
+		out, err := s.admin.ListAdminUsers(ctx, userlist.Input{Environment: s.environment, Cursor: cursor, Limit: limit})
+		items := make([]resourcesearch.Item, len(out.Users))
+		for i, item := range out.Users {
+			items[i] = resourcesearch.Item{LUID: item.LUID, Type: resourceType, Name: item.Name}
+		}
+		return completeListSearchPage(items, out.Page.NextCursor, out.RequestID, out.Source), err
+	case "group":
+		out, err := s.admin.ListAdminGroups(ctx, adminlist.Input{Environment: s.environment, Cursor: cursor, Limit: limit})
+		items := make([]resourcesearch.Item, len(out.Groups))
+		for i, item := range out.Groups {
+			items[i] = resourcesearch.Item{LUID: item.LUID, Type: resourceType, Name: item.Name}
+		}
+		return completeListSearchPage(items, out.Page.NextCursor, out.RequestID, out.Source), err
+	default:
+		return resourcesearch.Page{}, fmt.Errorf("unsupported complete live search type %q", resourceType)
+	}
+}
+
+func completeListSearchPage(items []resourcesearch.Item, nextCursor, requestID string, source *readsource.Metadata) resourcesearch.Page {
+	page := resourcesearch.Page{Items: items, NextCursor: nextCursor, TableauRequestID: requestID}
+	if source != nil {
+		switch source.Mode {
+		case readsource.Tableau:
+			page.Source = "live"
+		case readsource.Catalog:
+			page.Source = "catalog"
+		}
+		if source.CatalogWarning != "" {
+			page.Warnings = []string{source.CatalogWarning}
+		}
+	}
+	return page
 }
 
 type liveSearchLister struct {

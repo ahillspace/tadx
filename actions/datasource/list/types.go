@@ -22,15 +22,16 @@ type Input struct {
 
 // PageRequest is the action-owned bounded read request.
 type PageRequest struct {
-	PageNumber    int
-	PageSize      int
-	Name          string
-	OwnerName     string
-	ProjectName   string
-	Type          string
-	Tag           string
-	UpdatedAfter  string
-	UpdatedBefore string
+	PageNumber     int
+	PageSize       int
+	Name           string
+	OwnerName      string
+	ProjectName    string
+	Type           string
+	Tag            string
+	UpdatedAfter   string
+	UpdatedBefore  string
+	SnapshotCursor string
 }
 
 // Datasource is one complete lifecycle projection.
@@ -39,6 +40,7 @@ type Datasource struct {
 	Name                string   `json:"name"`
 	ProjectLUID         string   `json:"project_luid"`
 	ProjectName         string   `json:"project_name,omitempty"`
+	ProjectPath         string   `json:"project_path,omitempty"`
 	Type                string   `json:"type,omitempty"`
 	ContentURL          string   `json:"content_url,omitempty"`
 	Description         string   `json:"description,omitempty"`
@@ -59,11 +61,13 @@ type Datasource struct {
 
 // Page is one complete reader page.
 type Page struct {
-	Number      int
-	Size        int
-	Total       int
-	Datasources []Datasource
-	RequestID   string
+	Number               int
+	Size                 int
+	Total                int
+	Datasources          []Datasource
+	RequestID            string
+	SnapshotCursor       string
+	SuppressContinuation bool
 }
 
 // OutputPage is bounded continuation metadata.

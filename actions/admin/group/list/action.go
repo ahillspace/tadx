@@ -19,6 +19,7 @@ type Input struct {
 type PageRequest struct {
 	PageNumber, PageSize int
 	Name, Domain         string
+	SnapshotCursor       string
 }
 type Group struct {
 	LUID                string `json:"luid"`
@@ -29,9 +30,11 @@ type Group struct {
 	ExternalUserEnabled *bool  `json:"external_user_enabled,omitempty"`
 }
 type Page struct {
-	Number, Size, Total int
-	Groups              []Group
-	RequestID           string
+	Number, Size, Total  int
+	Groups               []Group
+	RequestID            string
+	SnapshotCursor       string
+	SuppressContinuation bool
 }
 type OutputPage struct {
 	Returned   int    `json:"returned"`
@@ -101,11 +104,11 @@ func (a *Action) Execute(ctx context.Context, in Input) (Output, error) {
 	if err != nil {
 		return Output{}, err
 	}
-	n, s, err := selectPage(in.Cursor, in.Limit, fp)
+	n, s, snapshotCursor, err := selectPage(in.Cursor, in.Limit, fp)
 	if err != nil {
 		return Output{}, err
 	}
-	p, err := a.reader.ListGroups(ctx, PageRequest{PageNumber: n, PageSize: s, Name: in.Name, Domain: in.Domain})
+	p, err := a.reader.ListGroups(ctx, PageRequest{PageNumber: n, PageSize: s, Name: in.Name, Domain: in.Domain, SnapshotCursor: snapshotCursor})
 	if err != nil {
 		return Output{}, err
 	}
@@ -113,8 +116,8 @@ func (a *Action) Execute(ctx context.Context, in Input) (Output, error) {
 		return Output{}, errors.New("admin group list reader returned inconsistent pagination")
 	}
 	next := ""
-	if p.Number*p.Size < p.Total {
-		next, err = encodeCursor(p.Number+1, p.Size, fp)
+	if !p.SuppressContinuation && (p.SnapshotCursor != "" || p.Number*p.Size < p.Total) {
+		next, err = encodeCursor(p.Number+1, p.Size, fp, p.SnapshotCursor)
 		if err != nil {
 			return Output{}, err
 		}
@@ -125,6 +128,7 @@ func (a *Action) Execute(ctx context.Context, in Input) (Output, error) {
 type cursorValue struct {
 	Version, Page, Size int
 	Filter              string
+	Snapshot            string
 }
 
 func cursorFingerprint(value any) (string, error) {
@@ -135,27 +139,27 @@ func cursorFingerprint(value any) (string, error) {
 	sum := sha256.Sum256(data)
 	return base64.RawURLEncoding.EncodeToString(sum[:]), nil
 }
-func selectPage(encoded string, requested int, filter string) (int, int, error) {
+func selectPage(encoded string, requested int, filter string) (int, int, string, error) {
 	if encoded == "" {
 		if requested == 0 {
 			requested = 25
 		}
 		if requested < 1 || requested > 100 {
-			return 0, 0, errs.New(errs.KindUsage, "admin group list limit must be between 1 and 100")
+			return 0, 0, "", errs.New(errs.KindUsage, "admin group list limit must be between 1 and 100")
 		}
-		return 1, requested, nil
+		return 1, requested, "", nil
 	}
 	data, err := base64.RawURLEncoding.DecodeString(encoded)
 	var v cursorValue
-	if len(encoded) > 256 || err != nil || json.Unmarshal(data, &v) != nil || v.Version != 1 || v.Page < 2 || v.Size < 1 || v.Size > 100 || v.Filter != filter {
-		return 0, 0, errs.New(errs.KindUsage, "invalid admin group list continuation cursor")
+	if len(encoded) > 2048 || err != nil || json.Unmarshal(data, &v) != nil || v.Version != 1 || v.Page < 2 || v.Size < 1 || v.Size > 100 || v.Filter != filter || len(v.Snapshot) > 1024 {
+		return 0, 0, "", errs.New(errs.KindUsage, "invalid admin group list continuation cursor")
 	}
 	if requested != 0 && requested != v.Size {
-		return 0, 0, errs.New(errs.KindUsage, "admin group list limit must match the continuation cursor")
+		return 0, 0, "", errs.New(errs.KindUsage, "admin group list limit must match the continuation cursor")
 	}
-	return v.Page, v.Size, nil
+	return v.Page, v.Size, v.Snapshot, nil
 }
-func encodeCursor(page, size int, filter string) (string, error) {
-	data, err := json.Marshal(cursorValue{1, page, size, filter})
+func encodeCursor(page, size int, filter, snapshot string) (string, error) {
+	data, err := json.Marshal(cursorValue{Version: 1, Page: page, Size: size, Filter: filter, Snapshot: snapshot})
 	return base64.RawURLEncoding.EncodeToString(data), err
 }

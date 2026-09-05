@@ -189,27 +189,27 @@ Inspect one exact group and, when requested, its direct membership.
 
 ### `admin.group.list`
 
-List groups with bounded identity and directory metadata.
+Inventory all live groups and render a bounded page, or run an explicitly filtered bounded query.
 
 - Surface: tadx admin group list
 - Operation type: find
 - Owner: cli
 - MCP overlap: None
-- Selectors: Environment/site; filters
+- Selectors: Environment/site; optional group filters; rendered-row limit; snapshot cursor; optional --catalog
 - Products and availability: Cloud / Server
 - Product disposition: ship
 - Evidence level: contract-verified
 - Verification readiness: ready
 - Implementation state: implemented
-- Local write: No
+- Local write: Yes
 - Remote mutation: No
 - Supports `--preview`: No
 - Raw capable: No
-- Safety and guard: Live Tableau by default; --catalog is local-only; no fallback; bounded continuation
-- Artifact effect: None
-- Upstream operation: GET /api/{version}/sites/{site-id}/groups
-- Evidence: docs/evidence/admin-rest-contract.md; hermetic catalog source-selection tests
-- Validation or blocker: Contract-verified bounded group pagination and explicit source selection
+- Safety and guard: An unfiltered live list atomically refreshes the complete group catalog scope before rendering; --limit bounds output only; continuation reads that snapshot; filtered lists are bounded live queries with partial cache updates; --catalog is local-only
+- Artifact effect: Update catalog scope
+- Upstream operation: Catalog traversal over GET /api/{version}/sites/{site-id}/groups; filtered direct REST query; SQLite scope snapshot
+- Evidence: docs/evidence/group2-inventory-rest-contract.md; docs/evidence/admin-rest-contract.md; hermetic inventory, snapshot, and source-selection tests
+- Validation or blocker: Contract-verified complete scoped inventory, bounded rendering, snapshot continuation, filtered partial caching, and explicit local catalog selection
 - Blocker ID: None
 - Command binding: `tadx admin group list`
 
@@ -449,27 +449,27 @@ Inspect one exact site user.
 
 ### `admin.user.list`
 
-List site users with bounded administration metadata.
+Inventory all live site users and render a bounded page, or run an explicitly filtered bounded query.
 
 - Surface: tadx admin user list
 - Operation type: find
 - Owner: cli
 - MCP overlap: list-users
-- Selectors: Environment/site; filters
+- Selectors: Environment/site; optional user filters; rendered-row limit; snapshot cursor; optional --catalog
 - Products and availability: Cloud / Server
 - Product disposition: ship
 - Evidence level: contract-verified
 - Verification readiness: ready
 - Implementation state: implemented
-- Local write: No
+- Local write: Yes
 - Remote mutation: No
 - Supports `--preview`: No
 - Raw capable: No
-- Safety and guard: Live Tableau by default; --catalog is local-only; no fallback; bounded continuation; secret-free
-- Artifact effect: None
-- Upstream operation: GET /api/{version}/sites/{site-id}/users
-- Evidence: docs/evidence/admin-rest-contract.md; hermetic catalog source-selection tests
-- Validation or blocker: Contract-verified bounded user pagination and explicit source selection
+- Safety and guard: An unfiltered live list atomically refreshes the complete user catalog scope before rendering; --limit bounds output only; continuation reads that snapshot; filtered lists are bounded live queries with partial cache updates; --catalog is local-only; secret-free
+- Artifact effect: Update catalog scope
+- Upstream operation: Catalog traversal over GET /api/{version}/sites/{site-id}/users; filtered direct REST query; SQLite scope snapshot
+- Evidence: docs/evidence/group2-inventory-rest-contract.md; docs/evidence/admin-rest-contract.md; hermetic inventory, snapshot, and source-selection tests
+- Validation or blocker: Contract-verified complete scoped inventory, bounded rendering, snapshot continuation, filtered partial caching, and explicit local catalog selection
 - Blocker ID: None
 - Command binding: `tadx admin user list`
 
@@ -865,27 +865,27 @@ Inspect one datasource, with bounded field/model/composition detail when request
 
 ### `datasource.list`
 
-List published datasources with bounded lifecycle metadata.
+Inventory all live published datasources and render a bounded page, or run an explicitly filtered bounded query.
 
 - Surface: tadx content datasource list
 - Operation type: find
 - Owner: cli
 - MCP overlap: list-datasources
-- Selectors: Environment/site; project/owner/filter
+- Selectors: Environment/site; optional project/owner/name/type/tag/time filters; rendered-row limit; snapshot cursor; optional --catalog
 - Products and availability: Cloud / Server
 - Product disposition: ship
 - Evidence level: contract-verified
 - Verification readiness: ready
 - Implementation state: implemented
-- Local write: No
+- Local write: Yes
 - Remote mutation: No
 - Supports `--preview`: No
 - Raw capable: No
-- Safety and guard: Live Tableau by default; --catalog is local-only; no fallback; bounded continuation
-- Artifact effect: None
-- Upstream operation: GET /api/{version}/sites/{site-id}/datasources
-- Evidence: docs/evidence/group2-inventory-rest-contract.md; hermetic catalog source-selection tests
-- Validation or blocker: Contract-verified REST inventory read, bounded continuation, and explicit source selection
+- Safety and guard: An unfiltered live list atomically refreshes the complete datasource catalog scope before rendering; --limit bounds output only; continuation reads that snapshot; filtered lists are bounded live queries with partial cache updates; --catalog is local-only
+- Artifact effect: Update catalog scope
+- Upstream operation: Catalog traversal over GET /api/{version}/sites/{site-id}/datasources; filtered direct REST query; SQLite scope snapshot
+- Evidence: docs/evidence/group2-inventory-rest-contract.md; hermetic inventory, snapshot, and source-selection tests
+- Validation or blocker: Contract-verified complete scoped inventory, bounded rendering, snapshot continuation, filtered partial caching, and explicit local catalog selection
 - Blocker ID: None
 - Command binding: `tadx content datasource list`
 
@@ -1307,27 +1307,27 @@ Inspect one authoritative flow and its direct lifecycle metadata.
 
 ### `flow.list`
 
-List flows with bounded lifecycle metadata.
+Inventory all live flows and render a bounded page, or run an explicitly filtered bounded query.
 
 - Surface: tadx content flow list
 - Operation type: find
 - Owner: cli
 - MCP overlap: list-flows
-- Selectors: Environment/site; project/owner/filter
+- Selectors: Environment/site; optional project/owner/name filters; rendered-row limit; snapshot cursor; optional --catalog
 - Products and availability: Cloud / Server with flow support; REST API 3.3+ per C1
 - Product disposition: ship
 - Evidence level: contract-verified
 - Verification readiness: ready
 - Implementation state: implemented
-- Local write: No
+- Local write: Yes
 - Remote mutation: No
 - Supports `--preview`: No
 - Raw capable: No
-- Safety and guard: Live Tableau by default; --catalog is local-only; no fallback; bounded continuation
-- Artifact effect: None
-- Upstream operation: GET /api/{version}/sites/{site-id}/flows
-- Evidence: Official REST capture in docs/evidence/flow-rest-contract.md; hermetic API and catalog source-selection tests
-- Validation or blocker: Contract-verified bounded inventory and explicit source selection; live deployment verification is not claimed
+- Safety and guard: An unfiltered live list atomically refreshes the complete flow catalog scope before rendering; --limit bounds output only; continuation reads that snapshot; filtered lists are bounded live queries with partial cache updates; --catalog is local-only
+- Artifact effect: Update catalog scope
+- Upstream operation: Catalog traversal over GET /api/{version}/sites/{site-id}/flows; filtered direct REST query; SQLite scope snapshot
+- Evidence: docs/evidence/group2-inventory-rest-contract.md; docs/evidence/flow-rest-contract.md; hermetic inventory, snapshot, and source-selection tests
+- Validation or blocker: Contract-verified complete scoped inventory, bounded rendering, snapshot continuation, filtered partial caching, and explicit local catalog selection; live deployment verification is not claimed
 - Blocker ID: None
 - Command binding: `tadx content flow list`
 
@@ -1541,27 +1541,27 @@ Resolve and inspect one exact shallow project context.
 
 ### `project.list`
 
-List projects and their authoritative parent identity.
+Inventory all live projects and render a bounded page with authoritative parent identity, or run an explicitly filtered bounded query.
 
 - Surface: tadx content project list
 - Operation type: find
 - Owner: cli
 - MCP overlap: list-projects
-- Selectors: Environment/site; filters
+- Selectors: Environment/site; optional name/parent/owner/top-level filters; rendered-row limit; snapshot cursor; optional --catalog
 - Products and availability: Cloud / Server
 - Product disposition: ship
 - Evidence level: contract-verified
 - Verification readiness: ready
 - Implementation state: implemented
-- Local write: No
+- Local write: Yes
 - Remote mutation: No
 - Supports `--preview`: No
 - Raw capable: No
-- Safety and guard: Live Tableau by default; --catalog is local-only; no fallback; bounded continuation
-- Artifact effect: None
-- Upstream operation: GET /api/{version}/sites/{site-id}/projects
-- Evidence: Official REST capture in docs/evidence/project-rest-contract.md; hermetic API and catalog source-selection tests
-- Validation or blocker: Contract-verified bounded inventory and explicit source selection; live deployment verification is not claimed
+- Safety and guard: An unfiltered live list atomically refreshes the complete project catalog scope before rendering; --limit bounds output only; continuation reads that snapshot; filtered lists are bounded live queries with partial cache updates; --catalog is local-only
+- Artifact effect: Update catalog scope
+- Upstream operation: Catalog traversal over GET /api/{version}/sites/{site-id}/projects; filtered direct REST query; SQLite scope snapshot
+- Evidence: docs/evidence/group2-inventory-rest-contract.md; docs/evidence/project-rest-contract.md; hermetic inventory, snapshot, and source-selection tests
+- Validation or blocker: Contract-verified complete scoped inventory, bounded rendering, snapshot continuation, filtered partial caching, and explicit local catalog selection; live deployment verification is not claimed
 - Blocker ID: None
 - Command binding: `tadx content project list`
 
@@ -1983,27 +1983,27 @@ Remove one exact metric subscription, or preview the operation.
 
 ### `search.run`
 
-Search supported content, administration, and Pulse resources.
+Search native Tableau content plus administration and Pulse resources through one bounded interface.
 
 - Surface: tadx search [term]
 - Operation type: find
 - Owner: cli
 - MCP overlap: search-content
 - Selectors: Optional text; broad or concrete --type; environment; optional --catalog
-- Products and availability: Cloud / Server; Pulse types require Tableau Cloud
+- Products and availability: Cloud / Server 2022.3+ for native content search; Pulse types require Tableau Cloud
 - Product disposition: ship
-- Evidence level: architecture-locked
+- Evidence level: contract-verified
 - Verification readiness: ready
 - Implementation state: implemented
 - Local write: No
 - Remote mutation: No
 - Supports `--preview`: No
 - Raw capable: No
-- Safety and guard: Live Tableau by default; --catalog is local-only; bounded output; blank text requires a concrete type and uses list semantics
+- Safety and guard: Nonempty live content terms use native search; native datasource results are translated to classic REST LUIDs; administration and Pulse retain dedicated adapters; --catalog is local-only; blank text requires a concrete type and uses list semantics
 - Artifact effect: None
-- Upstream operation: Existing bounded resource list adapters or local normalized catalog index
-- Evidence: Architecture decision; existing list and catalog contracts
-- Validation or blocker: Architecture-locked shared search contract with hermetic action and adapter tests
+- Upstream operation: GET /api/-/search for content; Query Datasources by contentUrl for classic datasource LUIDs; dedicated administration and Pulse adapters; local normalized catalog index
+- Evidence: docs/evidence/group2-inventory-rest-contract.md; current official content exploration and datasource filter contracts; hermetic transport, adapter, and app tests
+- Validation or blocker: Contract-verified native content routing, authoritative identity normalization, bounded composite continuation, and explicit local catalog selection
 - Blocker ID: None
 - Command binding: `tadx search`
 
@@ -2217,27 +2217,27 @@ Inspect one authoritative workbook and lifecycle metadata.
 
 ### `workbook.list`
 
-List workbooks with bounded lifecycle metadata.
+Inventory all live workbooks and render a bounded page, or run an explicitly filtered bounded query.
 
 - Surface: tadx content workbook list
 - Operation type: find
 - Owner: cli
 - MCP overlap: list-workbooks
-- Selectors: Environment/site; project/owner/filter
+- Selectors: Environment/site; optional project/owner/name/tag filters; rendered-row limit; snapshot cursor; optional --catalog
 - Products and availability: Cloud / Server
 - Product disposition: ship
 - Evidence level: contract-verified
 - Verification readiness: ready
 - Implementation state: implemented
-- Local write: No
+- Local write: Yes
 - Remote mutation: No
 - Supports `--preview`: No
 - Raw capable: No
-- Safety and guard: Live Tableau by default; --catalog is local-only; no fallback; bounded continuation
-- Artifact effect: None
-- Upstream operation: GET /api/{version}/sites/{site-id}/workbooks
-- Evidence: docs/evidence/group2-inventory-rest-contract.md; hermetic catalog source-selection tests
-- Validation or blocker: Contract-verified REST inventory read, bounded continuation, and explicit source selection
+- Safety and guard: An unfiltered live list atomically refreshes the complete workbook catalog scope before rendering; --limit bounds output only; continuation reads that snapshot; filtered lists are bounded live queries with partial cache updates; --catalog is local-only
+- Artifact effect: Update catalog scope
+- Upstream operation: Catalog traversal over GET /api/{version}/sites/{site-id}/workbooks; filtered direct REST query; SQLite scope snapshot
+- Evidence: docs/evidence/group2-inventory-rest-contract.md; hermetic inventory, snapshot, and source-selection tests
+- Validation or blocker: Contract-verified complete scoped inventory, bounded rendering, snapshot continuation, filtered partial caching, and explicit local catalog selection
 - Blocker ID: None
 - Command binding: `tadx content workbook list`
 

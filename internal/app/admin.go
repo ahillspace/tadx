@@ -23,6 +23,7 @@ import (
 	"github.com/ahillspace/tadx/internal/errs"
 	resourceadmin "github.com/ahillspace/tadx/internal/resources/admin"
 	tableauadmin "github.com/ahillspace/tadx/internal/tableau/admin"
+	tableaucatalog "github.com/ahillspace/tadx/internal/tableau/catalog"
 )
 
 // remoteAdminCommands composes administration actions without owning CLI behavior.
@@ -46,6 +47,7 @@ func (c *remoteAdminCommands) dependencies() *admincli.Dependencies {
 type adminConnection struct {
 	environment config.Environment
 	adapter     *resourceadmin.Adapter
+	inventory   tableaucatalog.Executor
 }
 
 func (c *remoteAdminCommands) connect(ctx context.Context, alias string, explicit bool) (adminConnection, error) {
@@ -54,11 +56,24 @@ func (c *remoteAdminCommands) connect(ctx context.Context, alias string, explici
 		return adminConnection{environment: connection.environment}, err
 	}
 	client := tableauadmin.NewClient(connection.transport, connection.session, connection.environment.URL)
-	return adminConnection{environment: connection.environment, adapter: resourceadmin.NewAdapter(client)}, nil
+	return adminConnection{environment: connection.environment, adapter: resourceadmin.NewAdapter(client), inventory: catalogTableauExecutor{transport: connection.transport, session: connection.session, serverURL: connection.environment.URL, siteLUID: connection.session.SiteLUID()}}, nil
 }
 
 func (c *remoteAdminCommands) ListAdminUsers(ctx context.Context, input userlist.Input) (userlist.Output, error) {
 	if input.Catalog {
+		environment, site, err := c.resolveCatalogTarget(input.Environment)
+		if err != nil {
+			return userlist.Output{}, err
+		}
+		input.Environment, input.Site = environment, site
+		reader := &catalogUserListReader{store: c.catalogStore(), environment: environment, site: site}
+		output, err := userlist.New(reader).Execute(ctx, input)
+		if err == nil {
+			output.Source = reader.source
+		}
+		return output, err
+	}
+	if input.Cursor != "" && adminUserListIsUnfiltered(input) {
 		environment, site, err := c.resolveCatalogTarget(input.Environment)
 		if err != nil {
 			return userlist.Output{}, err
@@ -76,6 +91,32 @@ func (c *remoteAdminCommands) ListAdminUsers(ctx context.Context, input userlist
 		return userlist.Output{}, remoteSetupError("admin.user.list", input.Environment, input.Site, connection.environment, err)
 	}
 	input.Environment, input.Site = connection.environment.Alias, connection.environment.SiteContentURL
+	if adminUserListIsUnfiltered(input) {
+		observedAt := c.runtime.now().UTC()
+		inventory, err := collectResourceInventory(ctx, connection.inventory, c.catalogStore(), tableaucatalog.ScopeUsers, input.Environment, input.Site, observedAt)
+		if err != nil {
+			return userlist.Output{}, inventoryRefreshError("admin.user.list", input.Environment, input.Site, err)
+		}
+		if inventory.publishErr != nil {
+			reader := inventoryMemoryReader{entries: inventory.entries, requestID: finalRequestID(inventory.requestIDs)}
+			output, err := userlist.New(reader).Execute(ctx, input)
+			if err != nil {
+				return output, adminActionError("admin.user.list", input.Environment, input.Site, err)
+			}
+			output.Source = liveInventoryWarningSource(observedAt)
+			output.Help = append(output.Help, inventoryRefreshWarningHelp)
+			return output, nil
+		}
+		reader := &catalogUserListReader{store: c.catalogStore(), environment: input.Environment, site: input.Site}
+		output, err := userlist.New(reader).Execute(ctx, input)
+		if err != nil {
+			return output, adminActionError("admin.user.list", input.Environment, input.Site, err)
+		}
+		output.Source = liveInventorySource(observedAt, inventory.published.GenerationID)
+		output.RequestID = finalRequestID(inventory.requestIDs)
+		output.Help = append(output.Help, inventoryRefreshHelp)
+		return output, nil
+	}
 	output, err := userlist.New(adminUserListReader{connection.adapter}).Execute(ctx, input)
 	if err != nil {
 		return output, adminActionError("admin.user.list", input.Environment, input.Site, err)
@@ -91,6 +132,10 @@ func (c *remoteAdminCommands) ListAdminUsers(ctx context.Context, input userlist
 	}
 	writeThrough(c.catalogStore(), entries)
 	return output, nil
+}
+
+func adminUserListIsUnfiltered(input userlist.Input) bool {
+	return input.Name == "" && input.SiteRole == ""
 }
 
 func (c *remoteAdminCommands) InspectAdminUser(ctx context.Context, input userinspect.Input) (userinspect.Output, error) {
@@ -172,11 +217,50 @@ func (c *remoteAdminCommands) ListAdminGroups(ctx context.Context, input groupli
 		}
 		return output, err
 	}
+	if input.Cursor != "" && adminGroupListIsUnfiltered(input) {
+		environment, site, err := c.resolveCatalogTarget(input.Environment)
+		if err != nil {
+			return grouplist.Output{}, err
+		}
+		input.Environment, input.Site = environment, site
+		reader := &catalogGroupListReader{store: c.catalogStore(), environment: environment, site: site}
+		output, err := grouplist.New(reader).Execute(ctx, input)
+		if err == nil {
+			output.Source = reader.source
+		}
+		return output, err
+	}
 	connection, err := c.connect(ctx, input.Environment, false)
 	if err != nil {
 		return grouplist.Output{}, remoteSetupError("admin.group.list", input.Environment, input.Site, connection.environment, err)
 	}
 	input.Environment, input.Site = connection.environment.Alias, connection.environment.SiteContentURL
+	if adminGroupListIsUnfiltered(input) {
+		observedAt := c.runtime.now().UTC()
+		inventory, err := collectResourceInventory(ctx, connection.inventory, c.catalogStore(), tableaucatalog.ScopeGroups, input.Environment, input.Site, observedAt)
+		if err != nil {
+			return grouplist.Output{}, inventoryRefreshError("admin.group.list", input.Environment, input.Site, err)
+		}
+		if inventory.publishErr != nil {
+			reader := inventoryMemoryReader{entries: inventory.entries, requestID: finalRequestID(inventory.requestIDs)}
+			output, err := grouplist.New(reader).Execute(ctx, input)
+			if err != nil {
+				return output, adminActionError("admin.group.list", input.Environment, input.Site, err)
+			}
+			output.Source = liveInventoryWarningSource(observedAt)
+			output.Help = append(output.Help, inventoryRefreshWarningHelp)
+			return output, nil
+		}
+		reader := &catalogGroupListReader{store: c.catalogStore(), environment: input.Environment, site: input.Site}
+		output, err := grouplist.New(reader).Execute(ctx, input)
+		if err != nil {
+			return output, adminActionError("admin.group.list", input.Environment, input.Site, err)
+		}
+		output.Source = liveInventorySource(observedAt, inventory.published.GenerationID)
+		output.RequestID = finalRequestID(inventory.requestIDs)
+		output.Help = append(output.Help, inventoryRefreshHelp)
+		return output, nil
+	}
 	output, err := grouplist.New(adminGroupListReader{connection.adapter}).Execute(ctx, input)
 	if err != nil {
 		return output, adminActionError("admin.group.list", input.Environment, input.Site, err)
@@ -192,6 +276,10 @@ func (c *remoteAdminCommands) ListAdminGroups(ctx context.Context, input groupli
 	}
 	writeThrough(c.catalogStore(), entries)
 	return output, nil
+}
+
+func adminGroupListIsUnfiltered(input grouplist.Input) bool {
+	return input.Name == "" && input.Domain == ""
 }
 
 func (c *remoteAdminCommands) InspectAdminGroup(ctx context.Context, input groupinspect.Input) (groupinspect.Output, error) {

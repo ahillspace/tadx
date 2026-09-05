@@ -28,7 +28,7 @@ const (
 	maxBatchRows         = 10_000
 	maxFieldBytes        = 64 << 10
 	staleAfter           = 12 * time.Hour
-	schemaVersion        = 2
+	schemaVersion        = 5
 	databaseRelativePath = "catalog/catalog.sqlite"
 	// generationTimeLayout is a fixed-width RFC3339 form: unlike time.RFC3339Nano
 	// (which trims trailing fractional-second zeros and so varies in width), every
@@ -40,12 +40,12 @@ const (
 var publicScopes = []string{"users", "groups", "projects", "workbooks", "datasources", "flows", "views", "permissions"}
 
 var batchColumns = map[string][]string{
-	"users":       {"id", "name", "email", "site_role", "last_login"},
-	"groups":      {"id", "name", "domain"},
-	"projects":    {"id", "name", "parent_project_id", "description", "owner_id"},
-	"workbooks":   {"id", "name", "project_id", "owner_id", "size", "updated_at"},
-	"datasources": {"id", "name", "project_id", "owner_id", "updated_at"},
-	"flows":       {"id", "name", "project_id", "owner_id", "updated_at"},
+	"users":       {"id", "name", "email", "site_role", "last_login", "list_payload"},
+	"groups":      {"id", "name", "domain", "list_payload"},
+	"projects":    {"id", "name", "parent_project_id", "description", "owner_id", "list_payload"},
+	"workbooks":   {"id", "name", "project_id", "owner_id", "size", "updated_at", "list_payload"},
+	"datasources": {"id", "name", "project_id", "owner_id", "updated_at", "list_payload"},
+	"flows":       {"id", "name", "project_id", "owner_id", "file_type", "updated_at", "list_payload"},
 	"views":       {"id", "name", "workbook_id"},
 	"permissions": {"content_type", "content_id", "grantee_type", "grantee_id", "capability", "mode"},
 }
@@ -84,6 +84,7 @@ type ResourceQuery struct {
 	ProjectPath string
 	Offset      int
 	Limit       int
+	Cursor      string
 }
 
 // ResourceResult contains a local page and its snapshot coverage provenance.
@@ -95,6 +96,18 @@ type ResourceResult struct {
 	GeneratedAt    time.Time
 	NewestObserved time.Time
 	Stale          bool
+	NextCursor     string
+}
+
+// ResourceScopeReplacement is one complete authoritative inventory for a
+// single resource kind. Partial live reads belong in UpsertResources instead.
+type ResourceScopeReplacement struct {
+	Environment string
+	Site        string
+	Kind        string
+	Source      string
+	GeneratedAt time.Time
+	Entries     []ResourceEntry
 }
 type Generation struct {
 	ID, Environment, Site    string

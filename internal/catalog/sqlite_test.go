@@ -28,9 +28,9 @@ func TestSQLiteStorePublishesTypedGenerationAtomically(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, batch := range []catalog.Batch{
-		{Scope: "projects", Columns: []string{"id", "name", "parent_project_id", "description", "owner_id"}, Rows: [][]any{{"p1", "Ops", "", "", "u1"}}},
-		{Scope: "users", Columns: []string{"id", "name", "email", "site_role", "last_login"}, Rows: [][]any{{"u1", "alice", "a@example.com", "Creator", "2026-09-01T00:00:00Z"}}},
-		{Scope: "workbooks", Columns: []string{"id", "name", "project_id", "owner_id", "size", "updated_at"}, Rows: [][]any{{"w1", "Finance", "p1", "u1", int64(42), "2026-09-01T00:00:00Z"}}},
+		{Scope: "projects", Columns: batchColumnsFor("projects"), Rows: [][]any{{"p1", "Ops", "", "", "u1", `{}`}}},
+		{Scope: "users", Columns: batchColumnsFor("users"), Rows: [][]any{{"u1", "alice", "a@example.com", "Creator", "2026-09-01T00:00:00Z", `{}`}}},
+		{Scope: "workbooks", Columns: batchColumnsFor("workbooks"), Rows: [][]any{{"w1", "Finance", "p1", "u1", int64(42), "2026-09-01T00:00:00Z", `{}`}}},
 	} {
 		if err := writer.WriteBatch(context.Background(), batch); err != nil {
 			t.Fatal(err)
@@ -79,8 +79,8 @@ func TestSQLiteStoreFailedGenerationKeepsCurrentVisible(t *testing.T) {
 		t.Fatal(err)
 	}
 	err = writer.WriteBatch(context.Background(), catalog.Batch{
-		Scope: "workbooks", Columns: []string{"id", "name", "project_id", "owner_id", "size", "updated_at"},
-		Rows: [][]any{{"w2", "", "", "", 0, ""}},
+		Scope: "workbooks", Columns: batchColumnsFor("workbooks"),
+		Rows: [][]any{{"w2", "", "", "", 0, "", `{}`}},
 	})
 	if err == nil {
 		_, err = writer.Publish(context.Background())
@@ -163,6 +163,8 @@ func TestSQLiteStoreMigratesVersionOneAndBackfillsResourceReads(t *testing.T) {
 	publishRecords(t, store, now, "Finance")
 	db := openRaw(t, filepath.Join(root, "catalog", "catalog.sqlite"))
 	for _, statement := range []string{
+		`DROP INDEX resource_scope_snapshots_generation_idx`,
+		`DROP TABLE resource_scope_snapshots`,
 		`DROP INDEX resource_entries_order_idx`,
 		`DROP TABLE resource_entries`,
 		`UPDATE catalog_schema SET version=1,signature='tadx-catalog-v1' WHERE singleton=1`,
@@ -181,6 +183,48 @@ func TestSQLiteStoreMigratesVersionOneAndBackfillsResourceReads(t *testing.T) {
 	}
 	if result.Coverage != "complete" || result.Total != 1 || result.Entries[0].Name != "Finance" {
 		t.Fatalf("migrated resource result = %#v", result)
+	}
+}
+
+func TestSQLiteStoreMigratesVersionThreeFlowFileType(t *testing.T) {
+	root := t.TempDir()
+	now := time.Date(2026, 9, 4, 12, 0, 0, 0, time.UTC)
+	store := catalog.NewStore(root, func() time.Time { return now })
+	publishRecords(t, store, now, "Finance")
+	db := openRaw(t, filepath.Join(root, "catalog", "catalog.sqlite"))
+	for _, statement := range []string{
+		`DROP INDEX flows_project_idx`,
+		`DROP TABLE flows`,
+		`CREATE TABLE flows (generation_key INTEGER NOT NULL REFERENCES generations(generation_key) ON DELETE CASCADE,id TEXT NOT NULL,name TEXT NOT NULL,project_id TEXT NOT NULL,owner_id TEXT NOT NULL,updated_at TEXT NOT NULL,PRIMARY KEY(generation_key,id)) STRICT`,
+		`CREATE INDEX flows_project_idx ON flows(generation_key,project_id)`,
+		`UPDATE catalog_schema SET version=3,signature='tadx-catalog-v3' WHERE singleton=1`,
+		`PRAGMA user_version=3`,
+	} {
+		if _, err := db.Exec(statement); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := db.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	writer, err := store.BeginGeneration(context.Background(), catalog.GenerationMetadata{
+		Environment: "production", Site: "marketing", GeneratedAt: now.Add(time.Minute), Source: "tableau-rest",
+		RequestedScopes: []string{"flows"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := writer.WriteBatch(context.Background(), catalog.Batch{
+		Scope: "flows", Columns: batchColumnsFor("flows"), Rows: [][]any{{"f1", "Prep", "", "u1", "tflx", "2026-09-04T00:00:00Z", `{}`}},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := writer.CompleteScopes(context.Background(), []string{"flows"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := writer.Publish(context.Background()); err != nil {
+		t.Fatal(err)
 	}
 }
 
@@ -221,14 +265,14 @@ func TestSQLiteStorePublishesWorkbookScopeWithoutUsersAndAllowsMissingSize(t *te
 	}
 	defer writer.Rollback()
 	if err := writer.WriteBatch(context.Background(), catalog.Batch{
-		Scope: "projects", Columns: []string{"id", "name", "parent_project_id", "description", "owner_id"},
-		Rows: [][]any{{"p1", "Ops", "", "", "project-owner-luid"}},
+		Scope: "projects", Columns: batchColumnsFor("projects"),
+		Rows: [][]any{{"p1", "Ops", "", "", "project-owner-luid", `{}`}},
 	}); err != nil {
 		t.Fatal(err)
 	}
 	if err := writer.WriteBatch(context.Background(), catalog.Batch{
-		Scope: "workbooks", Columns: []string{"id", "name", "project_id", "owner_id", "size", "updated_at"},
-		Rows: [][]any{{"w1", "Finance", "p1", "workbook-owner-luid", nil, ""}},
+		Scope: "workbooks", Columns: batchColumnsFor("workbooks"),
+		Rows: [][]any{{"w1", "Finance", "p1", "workbook-owner-luid", nil, "", `{}`}},
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -409,14 +453,14 @@ func TestSQLiteStoreRecordCountExcludesPermissions(t *testing.T) {
 	}
 	defer writer.Rollback()
 	if err := writer.WriteBatch(context.Background(), catalog.Batch{
-		Scope: "projects", Columns: []string{"id", "name", "parent_project_id", "description", "owner_id"},
-		Rows: [][]any{{"p1", "Ops", "", "", "u1"}},
+		Scope: "projects", Columns: batchColumnsFor("projects"),
+		Rows: [][]any{{"p1", "Ops", "", "", "u1", `{}`}},
 	}); err != nil {
 		t.Fatal(err)
 	}
 	if err := writer.WriteBatch(context.Background(), catalog.Batch{
-		Scope: "workbooks", Columns: []string{"id", "name", "project_id", "owner_id", "size", "updated_at"},
-		Rows: [][]any{{"w1", "Finance", "p1", "u1", int64(1), "2026-09-01T00:00:00Z"}},
+		Scope: "workbooks", Columns: batchColumnsFor("workbooks"),
+		Rows: [][]any{{"w1", "Finance", "p1", "u1", int64(1), "2026-09-01T00:00:00Z", `{}`}},
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -594,25 +638,25 @@ func TestSQLiteStoreDeterministicFingerprintOverFullRowSet(t *testing.T) {
 	scopes := []string{"users", "groups", "projects", "workbooks", "datasources", "flows", "views"}
 	batches := []catalog.Batch{
 		{Scope: "users", Columns: batchColumnsFor("users"), Rows: [][]any{
-			{"u1", "alice", "a@example.com", "Creator", "2026-09-01T00:00:00Z"},
-			{"u2", "bob", "b@example.com", "Explorer", "2026-09-01T00:00:00Z"},
+			{"u1", "alice", "a@example.com", "Creator", "2026-09-01T00:00:00Z", `{}`},
+			{"u2", "bob", "b@example.com", "Explorer", "2026-09-01T00:00:00Z", `{}`},
 		}},
 		{Scope: "groups", Columns: batchColumnsFor("groups"), Rows: [][]any{
-			{"g1", "Analysts", "local"},
-			{"g2", "Admins", "local"},
+			{"g1", "Analysts", "local", `{}`},
+			{"g2", "Admins", "local", `{}`},
 		}},
 		{Scope: "projects", Columns: batchColumnsFor("projects"), Rows: [][]any{
-			{"root", "Root", "", "top", "u1"},
-			{"child", "Child", "root", "nested", "u1"},
+			{"root", "Root", "", "top", "u1", `{}`},
+			{"child", "Child", "root", "nested", "u1", `{}`},
 		}},
 		{Scope: "workbooks", Columns: batchColumnsFor("workbooks"), Rows: [][]any{
-			{"w1", "Finance", "child", "u1", int64(42), "2026-09-01T00:00:00Z"},
+			{"w1", "Finance", "child", "u1", int64(42), "2026-09-01T00:00:00Z", `{}`},
 		}},
 		{Scope: "datasources", Columns: batchColumnsFor("datasources"), Rows: [][]any{
-			{"d1", "Sales", "child", "u2", "2026-09-01T00:00:00Z"},
+			{"d1", "Sales", "child", "u2", "2026-09-01T00:00:00Z", `{}`},
 		}},
 		{Scope: "flows", Columns: batchColumnsFor("flows"), Rows: [][]any{
-			{"f1", "Prep", "root", "u2", "2026-09-01T00:00:00Z"},
+			{"f1", "Prep", "root", "u2", "tflx", "2026-09-01T00:00:00Z", `{}`},
 		}},
 		{Scope: "views", Columns: batchColumnsFor("views"), Rows: [][]any{
 			{"v1", "Overview", "w1"},
@@ -685,12 +729,12 @@ func TestSQLiteStoreDeterministicFingerprintOverFullRowSet(t *testing.T) {
 
 func batchColumnsFor(scope string) []string {
 	columns := map[string][]string{
-		"users":       {"id", "name", "email", "site_role", "last_login"},
-		"groups":      {"id", "name", "domain"},
-		"projects":    {"id", "name", "parent_project_id", "description", "owner_id"},
-		"workbooks":   {"id", "name", "project_id", "owner_id", "size", "updated_at"},
-		"datasources": {"id", "name", "project_id", "owner_id", "updated_at"},
-		"flows":       {"id", "name", "project_id", "owner_id", "updated_at"},
+		"users":       {"id", "name", "email", "site_role", "last_login", "list_payload"},
+		"groups":      {"id", "name", "domain", "list_payload"},
+		"projects":    {"id", "name", "parent_project_id", "description", "owner_id", "list_payload"},
+		"workbooks":   {"id", "name", "project_id", "owner_id", "size", "updated_at", "list_payload"},
+		"datasources": {"id", "name", "project_id", "owner_id", "updated_at", "list_payload"},
+		"flows":       {"id", "name", "project_id", "owner_id", "file_type", "updated_at", "list_payload"},
 		"views":       {"id", "name", "workbook_id"},
 	}
 	return columns[scope]

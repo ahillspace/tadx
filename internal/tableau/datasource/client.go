@@ -63,6 +63,66 @@ type ListRequest struct {
 	Tag           string
 	UpdatedAfter  string
 	UpdatedBefore string
+	ContentURLs   []string
+}
+
+const maxContentURLResolveBatch = 25
+
+// ResolveContentURLs maps native-search datasource content URLs to classic
+// REST LUIDs in bounded batches. Search-service datasource LUIDs are not
+// authoritative for classic lifecycle operations.
+func (c *Client) ResolveContentURLs(ctx context.Context, contentURLs []string) (map[string]string, error) {
+	if len(contentURLs) == 0 || len(contentURLs) > maxPageSize {
+		return nil, fmt.Errorf("datasource content URL resolution requires between 1 and %d values", maxPageSize)
+	}
+	unique := make([]string, 0, len(contentURLs))
+	requested := make(map[string]struct{}, len(contentURLs))
+	for index, value := range contentURLs {
+		value = strings.TrimSpace(value)
+		if value == "" || strings.ContainsAny(value, ",&") {
+			return nil, fmt.Errorf("datasource content URL %d is empty or cannot be represented in a Tableau filter", index)
+		}
+		if _, exists := requested[value]; exists {
+			continue
+		}
+		requested[value] = struct{}{}
+		unique = append(unique, value)
+	}
+	sort.Strings(unique)
+	resolved := make(map[string]string, len(unique))
+	for start := 0; start < len(unique); start += maxContentURLResolveBatch {
+		end := start + maxContentURLResolveBatch
+		if end > len(unique) {
+			end = len(unique)
+		}
+		batch := unique[start:end]
+		page, err := c.List(ctx, ListRequest{PageNumber: 1, PageSize: len(batch), ContentURLs: batch})
+		if err != nil {
+			return nil, err
+		}
+		if page.Total != len(page.Items) {
+			return nil, errors.New("datasource content URL resolution exceeded its bounded result page")
+		}
+		batchRequested := make(map[string]struct{}, len(batch))
+		for _, value := range batch {
+			batchRequested[value] = struct{}{}
+		}
+		for _, item := range page.Items {
+			if _, expected := batchRequested[item.ContentURL]; !expected || strings.TrimSpace(item.LUID) == "" {
+				return nil, errors.New("datasource content URL resolution returned an unexpected identity")
+			}
+			if _, duplicate := resolved[item.ContentURL]; duplicate {
+				return nil, fmt.Errorf("datasource content URL %q resolved ambiguously", item.ContentURL)
+			}
+			resolved[item.ContentURL] = item.LUID
+		}
+	}
+	for _, value := range unique {
+		if resolved[value] == "" {
+			return nil, fmt.Errorf("datasource content URL %q did not resolve to a classic REST LUID", value)
+		}
+	}
+	return resolved, nil
 }
 
 // Page contains one normalized classic REST datasource page.
@@ -374,6 +434,22 @@ func datasourceListQuery(input ListRequest) (url.Values, error) {
 		filters = append(filters, field.name+":"+field.operator+":"+field.value)
 	}
 	if len(filters) > 0 {
+		query.Set("filter", strings.Join(filters, ","))
+	}
+	if len(input.ContentURLs) > 0 {
+		values := make([]string, len(input.ContentURLs))
+		for index, value := range input.ContentURLs {
+			value = strings.TrimSpace(value)
+			if value == "" || strings.ContainsAny(value, ",&") {
+				return nil, fmt.Errorf("datasource filter contentUrl value %d cannot be empty or contain ampersand or comma", index)
+			}
+			values[index] = value
+		}
+		operator, value := "eq", values[0]
+		if len(values) > 1 {
+			operator, value = "in", "["+strings.Join(values, ",")+"]"
+		}
+		filters = append(filters, "contentUrl:"+operator+":"+value)
 		query.Set("filter", strings.Join(filters, ","))
 	}
 	return query, nil

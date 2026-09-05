@@ -19,7 +19,7 @@ The current build supports:
 - Discovering capability ownership, availability, selectors, safety rules, and blockers.
 - Querying Tableau live by default, with explicit local catalog reads through `--catalog`.
 - Refreshing and inspecting the status of the local SQLite catalog.
-- Searching supported content, administration, and Pulse resources live or through `--catalog`.
+- Searching workbooks, published datasources, flows, and projects through Tableau native search, while administration and Pulse use their dedicated APIs.
 - Creating, registering, cloning, listing, inspecting, and moving named workspaces, plus deleting one local artifact safely.
 - Listing, inspecting, creating, and updating projects.
 - Listing, inspecting, and pulling flows, plus publishing, moves, deletions, and optional previews.
@@ -160,7 +160,7 @@ Add `--full` to the same command when you need expanded, bounded details.
 
 ## Choose live or catalog reads
 
-Supported read commands query Tableau by default and update their local catalog projection after a successful response.
+Supported read commands query Tableau by default.
 Pass `--catalog` to read only from the local SQLite catalog without authenticating or contacting Tableau:
 
 ```text
@@ -170,6 +170,15 @@ tadx content workbook list --environment dev --catalog
 
 TADX reports the selected source, freshness, and coverage in the same output shape.
 Catalog reads never fall back to Tableau.
+
+An unfiltered workbook, datasource, flow, project, user, or group `list` performs a complete live inventory of that resource scope and atomically refreshes the scope in the catalog.
+`--limit` bounds the rows rendered to the terminal, not the live inventory work.
+Use the returned cursor to read the same catalog snapshot without repeating the remote traversal.
+Adding a resource filter changes the operation to a bounded live query and records only the observed rows as a partial cache update.
+
+Live searches with content terms use Tableau's native content search.
+Administration and Pulse searches use their dedicated APIs, and a broad search returns native content before their results.
+Use `--catalog` when local freshness is sufficient and no Tableau request should occur.
 
 Refresh the complete local inventory when you need broad offline search:
 

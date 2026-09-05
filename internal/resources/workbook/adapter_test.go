@@ -2,6 +2,7 @@ package workbook_test
 
 import (
 	"context"
+	"fmt"
 	"strings"
 	"testing"
 
@@ -37,6 +38,24 @@ type projectPaths map[string]string
 
 func (p projectPaths) ResolveProjectPath(_ context.Context, luid string) (string, error) {
 	return p[luid], nil
+}
+
+type batchedProjectPaths struct {
+	projectPaths
+	calls int
+}
+
+func (p *batchedProjectPaths) ResolveProjectPaths(_ context.Context, luids []string) (map[string]string, error) {
+	p.calls++
+	result := make(map[string]string, len(luids))
+	for _, luid := range luids {
+		path, ok := p.projectPaths[luid]
+		if !ok {
+			return nil, fmt.Errorf("missing project %s", luid)
+		}
+		result[luid] = path
+	}
+	return result, nil
 }
 
 func (c client) Get(_ context.Context, luid string) (tableauworkbook.Workbook, error) {
@@ -86,6 +105,24 @@ func TestAdapterListsOneBoundedWorkbookPage(t *testing.T) {
 	}
 	if c.request.Name != "Finance" || page.RequestID != "request-1" || len(page.Items) != 1 || page.Items[0].ProjectPath != "Department/Ops" || page.Items[0].Description != "Finance reporting" {
 		t.Fatalf("page = %#v, request = %#v", page, c.request)
+	}
+}
+
+func TestAdapterListsWorkbookPageWithOneProjectHierarchyResolution(t *testing.T) {
+	c := &inventoryClient{page: tableauworkbook.WorkbookPage{
+		Page: tableauworkbook.Page{Number: 1, Size: 25, Total: 2},
+		Items: []tableauworkbook.Workbook{
+			{LUID: "wb-1", Name: "One", ProjectLUID: "project-1"},
+			{LUID: "wb-2", Name: "Two", ProjectLUID: "project-2"},
+		},
+	}}
+	paths := &batchedProjectPaths{projectPaths: projectPaths{"project-1": "Department/Ops", "project-2": "Shared"}}
+	page, err := resource.NewAdapterWithProjectResolver(c, paths).ListWorkbooks(context.Background(), tableauworkbook.ListRequest{PageNumber: 1, PageSize: 25})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if paths.calls != 1 || page.Items[0].ProjectPath != "Department/Ops" || page.Items[1].ProjectPath != "Shared" {
+		t.Fatalf("batch calls = %d, page = %#v", paths.calls, page)
 	}
 }
 

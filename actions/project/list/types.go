@@ -17,12 +17,13 @@ type Input struct {
 
 // PageRequest is the action-owned read request.
 type PageRequest struct {
-	PageNumber int
-	PageSize   int
-	Name       string
-	ParentLUID string
-	OwnerName  string
-	TopLevel   *bool
+	PageNumber     int
+	PageSize       int
+	Name           string
+	ParentLUID     string
+	OwnerName      string
+	TopLevel       *bool
+	SnapshotCursor string
 }
 
 // Project is one complete project projection.
@@ -45,11 +46,13 @@ type Project struct {
 
 // Page is one complete page returned by the reader.
 type Page struct {
-	Number    int
-	Size      int
-	Total     int
-	Projects  []Project
-	RequestID string
+	Number               int
+	Size                 int
+	Total                int
+	Projects             []Project
+	RequestID            string
+	SnapshotCursor       string
+	SuppressContinuation bool
 }
 
 // OutputPage is bounded continuation metadata.

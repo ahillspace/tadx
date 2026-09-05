@@ -19,6 +19,7 @@ type Input struct {
 type PageRequest struct {
 	PageNumber, PageSize int
 	Name, SiteRole       string
+	SnapshotCursor       string
 }
 type User struct {
 	LUID        string `json:"luid"`
@@ -31,9 +32,11 @@ type User struct {
 	Domain      string `json:"domain,omitempty"`
 }
 type Page struct {
-	Number, Size, Total int
-	Users               []User
-	RequestID           string
+	Number, Size, Total  int
+	Users                []User
+	RequestID            string
+	SnapshotCursor       string
+	SuppressContinuation bool
 }
 type OutputPage struct {
 	Returned   int    `json:"returned"`
@@ -103,11 +106,11 @@ func (a *Action) Execute(ctx context.Context, input Input) (Output, error) {
 	if err != nil {
 		return Output{}, err
 	}
-	number, size, err := selectPage(input.Cursor, input.Limit, fingerprint)
+	number, size, snapshotCursor, err := selectPage(input.Cursor, input.Limit, fingerprint)
 	if err != nil {
 		return Output{}, err
 	}
-	page, err := a.reader.ListUsers(ctx, PageRequest{PageNumber: number, PageSize: size, Name: input.Name, SiteRole: input.SiteRole})
+	page, err := a.reader.ListUsers(ctx, PageRequest{PageNumber: number, PageSize: size, Name: input.Name, SiteRole: input.SiteRole, SnapshotCursor: snapshotCursor})
 	if err != nil {
 		return Output{}, err
 	}
@@ -115,8 +118,8 @@ func (a *Action) Execute(ctx context.Context, input Input) (Output, error) {
 		return Output{}, errors.New("admin user list reader returned inconsistent pagination")
 	}
 	next := ""
-	if page.Number*page.Size < page.Total {
-		next, err = encodeCursor(page.Number+1, page.Size, fingerprint)
+	if !page.SuppressContinuation && (page.SnapshotCursor != "" || page.Number*page.Size < page.Total) {
+		next, err = encodeCursor(page.Number+1, page.Size, fingerprint, page.SnapshotCursor)
 		if err != nil {
 			return Output{}, err
 		}
@@ -127,6 +130,7 @@ func (a *Action) Execute(ctx context.Context, input Input) (Output, error) {
 type cursorValue struct {
 	Version, Page, Size int
 	Filter              string
+	Snapshot            string
 }
 
 func cursorFingerprint(value any) (string, error) {
@@ -137,27 +141,27 @@ func cursorFingerprint(value any) (string, error) {
 	sum := sha256.Sum256(data)
 	return base64.RawURLEncoding.EncodeToString(sum[:]), nil
 }
-func selectPage(encoded string, requested int, filter string) (int, int, error) {
+func selectPage(encoded string, requested int, filter string) (int, int, string, error) {
 	if encoded == "" {
 		if requested == 0 {
 			requested = 25
 		}
 		if requested < 1 || requested > 100 {
-			return 0, 0, errs.New(errs.KindUsage, "admin user list limit must be between 1 and 100")
+			return 0, 0, "", errs.New(errs.KindUsage, "admin user list limit must be between 1 and 100")
 		}
-		return 1, requested, nil
+		return 1, requested, "", nil
 	}
 	data, err := base64.RawURLEncoding.DecodeString(encoded)
 	var v cursorValue
-	if len(encoded) > 256 || err != nil || json.Unmarshal(data, &v) != nil || v.Version != 1 || v.Page < 2 || v.Size < 1 || v.Size > 100 || v.Filter != filter {
-		return 0, 0, errs.New(errs.KindUsage, "invalid admin user list continuation cursor")
+	if len(encoded) > 2048 || err != nil || json.Unmarshal(data, &v) != nil || v.Version != 1 || v.Page < 2 || v.Size < 1 || v.Size > 100 || v.Filter != filter || len(v.Snapshot) > 1024 {
+		return 0, 0, "", errs.New(errs.KindUsage, "invalid admin user list continuation cursor")
 	}
 	if requested != 0 && requested != v.Size {
-		return 0, 0, errs.New(errs.KindUsage, "admin user list limit must match the continuation cursor")
+		return 0, 0, "", errs.New(errs.KindUsage, "admin user list limit must match the continuation cursor")
 	}
-	return v.Page, v.Size, nil
+	return v.Page, v.Size, v.Snapshot, nil
 }
-func encodeCursor(page, size int, filter string) (string, error) {
-	data, err := json.Marshal(cursorValue{1, page, size, filter})
+func encodeCursor(page, size int, filter, snapshot string) (string, error) {
+	data, err := json.Marshal(cursorValue{Version: 1, Page: page, Size: size, Filter: filter, Snapshot: snapshot})
 	return base64.RawURLEncoding.EncodeToString(data), err
 }

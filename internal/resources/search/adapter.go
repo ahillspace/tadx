@@ -17,9 +17,11 @@ const maxPages = 100
 
 type Item struct{ LUID, Type, Name, ProjectPath, Owner, ModifiedAt string }
 type Page struct {
-	Items      []Item
-	NextCursor string
-	Warnings   []string
+	Items            []Item
+	NextCursor       string
+	Warnings         []string
+	TableauRequestID string
+	Source           string
 }
 type Input struct {
 	Types                             []string
@@ -51,10 +53,17 @@ func (cursorError) InvalidSearchCursor() bool { return true }
 // Search streams selected types and preserves progress when the scan budget ends.
 // Type order is lexical; items within each upstream page sort by name and LUID.
 func (a *Adapter) Search(ctx context.Context, input Input) (Page, error) {
+	return a.SearchBounded(ctx, input, input.Limit)
+}
+
+// SearchBounded returns at most budget rows while binding continuation to the
+// original input limit. This lets a composed source fill a partial output page,
+// then resume with the caller's normal limit without weakening cursor checks.
+func (a *Adapter) SearchBounded(ctx context.Context, input Input, budget int) (Page, error) {
 	if a == nil || a.source == nil {
 		return Page{}, errors.New("search adapter is not configured")
 	}
-	if input.Limit < 1 || input.Limit > 100 || len(input.Types) == 0 || len(input.Types) > 8 {
+	if input.Limit < 1 || input.Limit > 100 || budget < 1 || budget > input.Limit || len(input.Types) == 0 || len(input.Types) > 8 {
 		return Page{}, errors.New("search requires bounded types and limit")
 	}
 	input.Types = append([]string{}, input.Types...)
@@ -120,7 +129,7 @@ func (a *Adapter) Search(ctx context.Context, input Input) (Page, error) {
 			if matches(item, input) {
 				result.Items = append(result.Items, item)
 			}
-			if len(result.Items) == input.Limit {
+			if len(result.Items) == budget {
 				if i+1 < len(page.Items) {
 					state.Offset = i + 1
 					state.PageDigest = digest

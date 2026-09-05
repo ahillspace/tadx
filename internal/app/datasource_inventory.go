@@ -8,6 +8,7 @@ import (
 	"github.com/ahillspace/tadx/internal/catalog"
 	"github.com/ahillspace/tadx/internal/identity"
 	resourcedatasource "github.com/ahillspace/tadx/internal/resources/datasource"
+	tableaucatalog "github.com/ahillspace/tadx/internal/tableau/catalog"
 	tableaudatasource "github.com/ahillspace/tadx/internal/tableau/datasource"
 )
 
@@ -25,11 +26,50 @@ func (c *remoteContentCommands) ListDatasources(ctx context.Context, input datas
 		}
 		return output, err
 	}
+	if input.Cursor != "" && datasourceListIsUnfiltered(input) {
+		environment, site, err := c.resolveCatalogTarget(input.Environment)
+		if err != nil {
+			return datasourcelist.Output{}, err
+		}
+		input.Environment, input.Site = environment, site
+		reader := &catalogDatasourceListReader{store: c.catalogStore(), environment: environment, site: site}
+		output, err := datasourcelist.New(reader).Execute(ctx, input)
+		if err == nil {
+			output.Source = reader.source
+		}
+		return output, err
+	}
 	connection, err := c.connect(ctx, input.Environment, false)
 	if err != nil {
 		return datasourcelist.Output{}, remoteSetupError("datasource.list", input.Environment, input.Site, connection.environment, err)
 	}
 	input.Environment, input.Site = connection.environment.Alias, connection.environment.SiteContentURL
+	if datasourceListIsUnfiltered(input) {
+		observedAt := c.runtime.now().UTC()
+		inventory, err := collectResourceInventory(ctx, connection.inventory, c.catalogStore(), tableaucatalog.ScopeDatasources, input.Environment, input.Site, observedAt)
+		if err != nil {
+			return datasourcelist.Output{}, inventoryRefreshError("datasource.list", input.Environment, input.Site, err)
+		}
+		if inventory.publishErr != nil {
+			reader := inventoryMemoryReader{entries: inventory.entries, requestID: finalRequestID(inventory.requestIDs)}
+			output, err := datasourcelist.New(reader).Execute(ctx, input)
+			if err != nil {
+				return output, err
+			}
+			output.Source = liveInventoryWarningSource(observedAt)
+			output.Help = append(output.Help, inventoryRefreshWarningHelp)
+			return output, nil
+		}
+		reader := &catalogDatasourceListReader{store: c.catalogStore(), environment: input.Environment, site: input.Site}
+		output, err := datasourcelist.New(reader).Execute(ctx, input)
+		if err != nil {
+			return output, err
+		}
+		output.Source = liveInventorySource(observedAt, inventory.published.GenerationID)
+		output.RequestID = finalRequestID(inventory.requestIDs)
+		output.Help = append(output.Help, inventoryRefreshHelp)
+		return output, nil
+	}
 	output, err := datasourcelist.New(datasourceListReader{connection.datasources}).Execute(ctx, input)
 	if err != nil {
 		return output, err
@@ -45,6 +85,10 @@ func (c *remoteContentCommands) ListDatasources(ctx context.Context, input datas
 	}
 	writeThrough(c.catalogStore(), entries)
 	return output, nil
+}
+
+func datasourceListIsUnfiltered(input datasourcelist.Input) bool {
+	return input.Name == "" && input.OwnerName == "" && input.ProjectName == "" && input.Type == "" && input.Tag == "" && input.UpdatedAfter == "" && input.UpdatedBefore == ""
 }
 
 func (c *remoteContentCommands) InspectDatasource(ctx context.Context, input datasourceinspect.Input) (datasourceinspect.Output, error) {
@@ -96,7 +140,7 @@ func (r datasourceListReader) ListDatasources(ctx context.Context, input datasou
 
 func datasourceListItem(item resourcedatasource.Datasource) datasourcelist.Datasource {
 	return datasourcelist.Datasource{
-		LUID: item.LUID, Name: item.Name, ProjectLUID: item.ProjectLUID, ProjectName: item.ProjectName,
+		LUID: item.LUID, Name: item.Name, ProjectLUID: item.ProjectLUID, ProjectName: item.ProjectName, ProjectPath: item.ProjectPath,
 		Type: item.Type, ContentURL: item.ContentURL, Description: item.Description, OwnerLUID: item.OwnerLUID,
 		CreatedAt: item.CreatedAt, UpdatedAt: item.UpdatedAt, Size: item.Size, EncryptExtracts: item.EncryptExtracts,
 		HasExtracts: item.HasExtracts, IsCertified: item.IsCertified, CertificationNote: item.CertificationNote,

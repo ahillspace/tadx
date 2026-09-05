@@ -91,8 +91,8 @@ func TestCatalogHydratorReportsPersistedSearchableRecordCount(t *testing.T) {
 	store := corecatalog.NewStore(t.TempDir(), func() time.Time { return now })
 	runner := catalogRunnerFunc(func(ctx context.Context, _ tableaucatalog.RunRequest, writer tableaucatalog.BatchWriter) (tableaucatalog.Result, error) {
 		batches := []tableaucatalog.Batch{
-			{Scope: tableaucatalog.ScopeProjects, Columns: mustCatalogColumns(t, tableaucatalog.ScopeProjects), Rows: [][]any{{"project-1", "Operations", "", "", "user-1"}}},
-			{Scope: tableaucatalog.ScopeWorkbooks, Columns: mustCatalogColumns(t, tableaucatalog.ScopeWorkbooks), Rows: [][]any{{"workbook-1", "Finance", "project-1", "user-1", int64(1), "2026-09-01T00:00:00Z"}}},
+			{Scope: tableaucatalog.ScopeProjects, Columns: mustCatalogColumns(t, tableaucatalog.ScopeProjects), Rows: [][]any{{"project-1", "Operations", "", "", "user-1", `{}`}}},
+			{Scope: tableaucatalog.ScopeWorkbooks, Columns: mustCatalogColumns(t, tableaucatalog.ScopeWorkbooks), Rows: [][]any{{"workbook-1", "Finance", "project-1", "user-1", int64(1), "2026-09-01T00:00:00Z", `{}`}}},
 			{Scope: tableaucatalog.ScopePermissions, Columns: mustCatalogColumns(t, tableaucatalog.ScopePermissions), Rows: [][]any{{"workbook", "workbook-1", "user", "user-1", "Read", "Allow"}}},
 		}
 		for _, batch := range batches {

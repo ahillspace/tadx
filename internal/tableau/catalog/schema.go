@@ -20,11 +20,13 @@ var fixedColumns = map[Scope][]Column{
 		{Name: "email", Type: ColumnText},
 		{Name: "site_role", Type: ColumnText},
 		{Name: "last_login", Type: ColumnTimestamp},
+		{Name: "list_payload", Type: ColumnText},
 	},
 	ScopeGroups: {
 		{Name: "id", Type: ColumnText},
 		{Name: "name", Type: ColumnText},
 		{Name: "domain", Type: ColumnText},
+		{Name: "list_payload", Type: ColumnText},
 	},
 	ScopeProjects: {
 		{Name: "id", Type: ColumnText},
@@ -32,6 +34,7 @@ var fixedColumns = map[Scope][]Column{
 		{Name: "parent_project_id", Type: ColumnText},
 		{Name: "description", Type: ColumnText},
 		{Name: "owner_id", Type: ColumnText},
+		{Name: "list_payload", Type: ColumnText},
 	},
 	ScopeWorkbooks: {
 		{Name: "id", Type: ColumnText},
@@ -40,6 +43,7 @@ var fixedColumns = map[Scope][]Column{
 		{Name: "owner_id", Type: ColumnText},
 		{Name: "size", Type: ColumnInteger},
 		{Name: "updated_at", Type: ColumnTimestamp},
+		{Name: "list_payload", Type: ColumnText},
 	},
 	ScopeDatasources: {
 		{Name: "id", Type: ColumnText},
@@ -47,13 +51,16 @@ var fixedColumns = map[Scope][]Column{
 		{Name: "project_id", Type: ColumnText},
 		{Name: "owner_id", Type: ColumnText},
 		{Name: "updated_at", Type: ColumnTimestamp},
+		{Name: "list_payload", Type: ColumnText},
 	},
 	ScopeFlows: {
 		{Name: "id", Type: ColumnText},
 		{Name: "name", Type: ColumnText},
 		{Name: "project_id", Type: ColumnText},
 		{Name: "owner_id", Type: ColumnText},
+		{Name: "file_type", Type: ColumnText},
 		{Name: "updated_at", Type: ColumnTimestamp},
+		{Name: "list_payload", Type: ColumnText},
 	},
 	ScopeViews: {
 		{Name: "id", Type: ColumnText},

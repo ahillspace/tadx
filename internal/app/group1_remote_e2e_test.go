@@ -111,7 +111,8 @@ func TestGroupOneProjectAndFlowReadsPullAndLineageThroughCLI(t *testing.T) {
 // read remains authoritative even when the local catalog write-through cannot
 // persist. The catalog directory is poisoned with a regular file so the store
 // cannot create catalog/catalog.sqlite; the read must still return the live
-// result with a Tableau source stamp rather than failing on the cache write.
+// result with a Tableau source stamp and a bounded warning rather than failing
+// on the cache write or issuing an unsafe cursor for an older snapshot.
 func TestGroupOneLiveReadSucceedsWhenCatalogWriteThroughFails(t *testing.T) {
 	server, mutations := newGroupOneTableauServer(t)
 	defer server.Close()
@@ -121,7 +122,7 @@ func TestGroupOneLiveReadSucceedsWhenCatalogWriteThroughFails(t *testing.T) {
 	t.Setenv("PROD_PAT_SECRET", "pat-secret")
 
 	// Poison the catalog directory: a regular file where the store needs a
-	// directory forces every write-through UpsertResources to fail.
+	// directory forces complete scope publication to fail.
 	catalogPath := filepath.Join(filepath.Dir(configPath), "catalog")
 	if err := os.WriteFile(catalogPath, []byte("not a directory"), 0o600); err != nil {
 		t.Fatal(err)
@@ -133,10 +134,13 @@ func TestGroupOneLiveReadSucceedsWhenCatalogWriteThroughFails(t *testing.T) {
 		Now:        func() time.Time { return time.Date(2026, 9, 1, 12, 0, 0, 0, time.UTC) },
 	}
 	output := runGroupOneCLI(t, options, "content", "project", "list", "--limit", "3")
-	for _, want := range []string{"status: listed", "environment: production", "project-ops", "mode: tableau"} {
+	for _, want := range []string{"status: listed", "environment: production", "project-ops", "mode: tableau", "catalog_warning:", "catalog was not updated"} {
 		if !strings.Contains(output, want) {
 			t.Fatalf("live read did not survive a failed catalog write-through; output missing %q:\n%s", want, output)
 		}
+	}
+	if strings.Contains(output, "next_cursor:") || strings.Contains(output, configPath) {
+		t.Fatalf("failed catalog publication exposed an unsafe cursor or local path:\n%s", output)
 	}
 	// The catalog file must remain the untouched poison, proving write-through
 	// neither succeeded nor removed it.

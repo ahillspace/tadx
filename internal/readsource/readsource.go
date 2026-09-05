@@ -23,6 +23,26 @@ type Metadata struct {
 	Stale             bool   `json:"stale"`
 	GenerationID      string `json:"generation_id,omitempty"`
 	GenerationCreated string `json:"generation_generated_at,omitempty"`
+	CatalogRefreshed  bool   `json:"catalog_refreshed,omitempty"`
+	CatalogGeneration string `json:"catalog_generation_id,omitempty"`
+	CatalogWarning    string `json:"catalog_warning,omitempty"`
+}
+
+// LiveInventoryWarning identifies an authoritative live inventory whose local
+// catalog publication failed. The returned data remains authoritative.
+func LiveInventoryWarning(observedAt time.Time) Metadata {
+	value := Live(observedAt)
+	value.CatalogWarning = "The live inventory succeeded, but the local catalog snapshot was not updated."
+	return value
+}
+
+// LiveInventory identifies an authoritative live read that also published a
+// complete local catalog scope snapshot.
+func LiveInventory(observedAt time.Time, generationID string) Metadata {
+	value := Live(observedAt)
+	value.CatalogRefreshed = true
+	value.CatalogGeneration = generationID
+	return value
 }
 
 // Live returns metadata for an authoritative Tableau response.

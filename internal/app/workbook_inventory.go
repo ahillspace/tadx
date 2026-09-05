@@ -8,6 +8,7 @@ import (
 	"github.com/ahillspace/tadx/internal/catalog"
 	"github.com/ahillspace/tadx/internal/identity"
 	resourceworkbook "github.com/ahillspace/tadx/internal/resources/workbook"
+	tableaucatalog "github.com/ahillspace/tadx/internal/tableau/catalog"
 	tableauworkbook "github.com/ahillspace/tadx/internal/tableau/workbook"
 )
 
@@ -25,11 +26,50 @@ func (c *remoteContentCommands) ListWorkbooks(ctx context.Context, input workboo
 		}
 		return output, err
 	}
+	if input.Cursor != "" && workbookListIsUnfiltered(input) {
+		environment, site, err := c.resolveCatalogTarget(input.Environment)
+		if err != nil {
+			return workbooklist.Output{}, err
+		}
+		input.Environment, input.Site = environment, site
+		reader := &catalogWorkbookListReader{store: c.catalogStore(), environment: environment, site: site}
+		output, err := workbooklist.New(reader).Execute(ctx, input)
+		if err == nil {
+			output.Source = reader.source
+		}
+		return output, err
+	}
 	connection, err := c.connect(ctx, input.Environment, false)
 	if err != nil {
 		return workbooklist.Output{}, remoteSetupError("workbook.list", input.Environment, input.Site, connection.environment, err)
 	}
 	input.Environment, input.Site = connection.environment.Alias, connection.environment.SiteContentURL
+	if workbookListIsUnfiltered(input) {
+		observedAt := c.runtime.now().UTC()
+		inventory, err := collectResourceInventory(ctx, connection.inventory, c.catalogStore(), tableaucatalog.ScopeWorkbooks, input.Environment, input.Site, observedAt)
+		if err != nil {
+			return workbooklist.Output{}, inventoryRefreshError("workbook.list", input.Environment, input.Site, err)
+		}
+		if inventory.publishErr != nil {
+			reader := inventoryMemoryReader{entries: inventory.entries, requestID: finalRequestID(inventory.requestIDs)}
+			output, err := workbooklist.New(reader).Execute(ctx, input)
+			if err != nil {
+				return output, err
+			}
+			output.Source = liveInventoryWarningSource(observedAt)
+			output.Help = append(output.Help, inventoryRefreshWarningHelp)
+			return output, nil
+		}
+		reader := &catalogWorkbookListReader{store: c.catalogStore(), environment: input.Environment, site: input.Site}
+		output, err := workbooklist.New(reader).Execute(ctx, input)
+		if err != nil {
+			return output, err
+		}
+		output.Source = liveInventorySource(observedAt, inventory.published.GenerationID)
+		output.RequestID = finalRequestID(inventory.requestIDs)
+		output.Help = append(output.Help, inventoryRefreshHelp)
+		return output, nil
+	}
 	output, err := workbooklist.New(workbookListReader{adapter: connection.workbooks}).Execute(ctx, input)
 	if err != nil {
 		return output, err
@@ -45,6 +85,10 @@ func (c *remoteContentCommands) ListWorkbooks(ctx context.Context, input workboo
 	}
 	writeThrough(c.catalogStore(), entries)
 	return output, nil
+}
+
+func workbookListIsUnfiltered(input workbooklist.Input) bool {
+	return input.Name == "" && input.OwnerName == "" && input.ProjectName == "" && input.Tag == ""
 }
 
 func (c *remoteContentCommands) InspectWorkbook(ctx context.Context, input workbookinspect.Input) (workbookinspect.Output, error) {

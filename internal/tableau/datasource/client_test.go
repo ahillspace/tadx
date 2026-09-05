@@ -147,6 +147,38 @@ func TestClientListsRichDatasourceMetadataWithStableFiltersAndRequestID(t *testi
 	}
 }
 
+func TestClientResolvesDatasourceContentURLsToClassicLUIDsInOneBatch(t *testing.T) {
+	requests := 0
+	server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		requests++
+		query := request.URL.Query()
+		if query.Get("filter") != "contentUrl:in:[alpha,beta]" || query.Get("pageNumber") != "1" || query.Get("pageSize") != "2" {
+			t.Fatalf("query = %v", query)
+		}
+		_, _ = io.WriteString(writer, `<tsResponse><pagination pageNumber="1" pageSize="2" totalAvailable="2"/><datasources><datasource id="ds-b" name="Beta" contentUrl="beta"><project id="project-1" name="Ops"/></datasource><datasource id="ds-a" name="Alpha" contentUrl="alpha"><project id="project-1" name="Ops"/></datasource></datasources></tsResponse>`)
+	}))
+	defer server.Close()
+	client := tableaudatasource.NewClient(tableau.NewTransport(server.Client(), "3.29", nil), session{}, server.URL)
+	resolved, err := client.ResolveContentURLs(context.Background(), []string{"beta", "alpha", "beta"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if requests != 1 || resolved["alpha"] != "ds-a" || resolved["beta"] != "ds-b" {
+		t.Fatalf("requests=%d resolved=%v", requests, resolved)
+	}
+}
+
+func TestClientFailsClosedWhenContentURLResolutionIsIncomplete(t *testing.T) {
+	server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		_, _ = io.WriteString(writer, `<tsResponse><pagination pageNumber="1" pageSize="2" totalAvailable="1"/><datasources><datasource id="ds-a" name="Alpha" contentUrl="alpha"><project id="project-1" name="Ops"/></datasource></datasources></tsResponse>`)
+	}))
+	defer server.Close()
+	client := tableaudatasource.NewClient(tableau.NewTransport(server.Client(), "3.29", nil), session{}, server.URL)
+	if _, err := client.ResolveContentURLs(context.Background(), []string{"alpha", "missing"}); err == nil || !strings.Contains(err.Error(), "did not resolve") {
+		t.Fatalf("error = %v", err)
+	}
+}
+
 func TestClientAvoidsLiveRejectedDatasourceContentURLSort(t *testing.T) {
 	server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		sortValue := request.URL.Query().Get("sort")

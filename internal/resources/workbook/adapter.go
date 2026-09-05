@@ -57,6 +57,10 @@ type ProjectPathResolver interface {
 	ResolveProjectPath(context.Context, string) (string, error)
 }
 
+type projectPathBatchResolver interface {
+	ResolveProjectPaths(context.Context, []string) (map[string]string, error)
+}
+
 // Workbook is the normalized resource identity.
 type Workbook struct {
 	LUID, Name, ContentURL, ProjectLUID, ProjectPath, OwnerLUID string
@@ -117,12 +121,22 @@ func (a *Adapter) ListWorkbooks(ctx context.Context, input tableauworkbook.ListR
 	items := make([]Workbook, len(page.Items))
 	seen := make(map[string]tableauworkbook.Workbook, len(page.Items))
 	var legacyPaths *projectPathIndex
+	var resolvedPaths map[string]string
 	if a.projects == nil && len(page.Items) > 0 {
 		projects, err := a.allProjects(ctx)
 		if err != nil {
 			return Page{}, err
 		}
 		legacyPaths = newProjectPathIndex(projects)
+	} else if resolver, ok := a.projects.(projectPathBatchResolver); ok && len(page.Items) > 0 {
+		projectLUIDs := make([]string, 0, len(page.Items))
+		for _, item := range page.Items {
+			projectLUIDs = append(projectLUIDs, item.ProjectLUID)
+		}
+		resolvedPaths, err = resolver.ResolveProjectPaths(ctx, projectLUIDs)
+		if err != nil {
+			return Page{}, err
+		}
 	}
 	for index, item := range page.Items {
 		if item.LUID == "" {
@@ -134,9 +148,14 @@ func (a *Adapter) ListWorkbooks(ctx context.Context, input tableauworkbook.ListR
 		if err := recordWorkbookIdentity(seen, item); err != nil {
 			return Page{}, err
 		}
-		path, err := a.resolveProjectPath(ctx, item.ProjectLUID, legacyPaths)
-		if err != nil {
-			return Page{}, err
+		path := resolvedPaths[item.ProjectLUID]
+		if resolvedPaths == nil {
+			path, err = a.resolveProjectPath(ctx, item.ProjectLUID, legacyPaths)
+			if err != nil {
+				return Page{}, err
+			}
+		} else if path == "" {
+			return Page{}, fmt.Errorf("project hierarchy omitted workbook project LUID %q", item.ProjectLUID)
 		}
 		items[index] = normalizeWorkbook(item, path)
 	}

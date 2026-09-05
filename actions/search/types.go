@@ -41,6 +41,7 @@ type Result struct {
 	Items      []Item
 	Warnings   []string
 	Generation *Generation
+	Source     string
 }
 
 // Output is the stable search document.

@@ -1,6 +1,7 @@
 package tabxml
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 )
@@ -20,6 +21,18 @@ func TestDecodeListStreamsAttributesAndDirectChildren(t *testing.T) {
 	}
 	if got.Attr("id") != "u1" || got.ChildText("email") != "alice@example.com" || got.ChildAttr("owner", "id") != "ignored" {
 		t.Fatalf("element = %#v", got)
+	}
+}
+
+func TestDecodeListPreservesGrandchildAttributes(t *testing.T) {
+	body := []byte(`<tsResponse><pagination pageNumber="1" pageSize="1" totalAvailable="1"/><workbooks><workbook id="w1" name="Sales"><tags><tag label="daily"/><tag label="certified"/></tags></workbook></workbooks></tsResponse>`)
+	var got Element
+	_, _, err := DecodeList(body, "workbooks", "workbook", func(element Element) error { got = element; return nil })
+	if err != nil {
+		t.Fatal(err)
+	}
+	if values := got.GrandchildAttrValues("tags", "tag", "label"); fmt.Sprint(values) != "[daily certified]" {
+		t.Fatalf("tag labels = %v", values)
 	}
 }
 

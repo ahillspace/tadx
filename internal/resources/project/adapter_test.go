@@ -87,6 +87,26 @@ func TestAdapterResolvesNestedPathAcrossPages(t *testing.T) {
 	}
 }
 
+func TestAdapterResolvesManyPathsWithOneHierarchyTraversal(t *testing.T) {
+	client := &projectClient{pages: map[int]tableauproject.Page{
+		1: {Number: 1, Size: 1000, Total: 3, Items: []tableauproject.Project{
+			{LUID: "root", Name: "Department"},
+			{LUID: "child", Name: "Ops", ParentLUID: "root"},
+			{LUID: "other", Name: "Shared"},
+		}},
+	}}
+	paths, err := resourceproject.NewAdapter(client).ResolveProjectPaths(context.Background(), []string{"child", "other", "child"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if paths["child"] != "Department/Ops" || paths["other"] != "Shared" || len(paths) != 2 {
+		t.Fatalf("paths = %#v", paths)
+	}
+	if len(client.calls) != 1 {
+		t.Fatalf("project hierarchy calls = %d, want 1", len(client.calls))
+	}
+}
+
 func TestAdapterRejectsConflictingProjectRowsAndCycles(t *testing.T) {
 	for name, pages := range map[string]map[int]tableauproject.Page{
 		"conflict": {
