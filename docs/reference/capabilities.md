@@ -1213,7 +1213,7 @@ Create one definition plus its Tableau-created default metric from bounded inten
 - Selectors: Explicit site; datasource LUID; exact raw measure/date field IDs; bounded configuration
 - Products and availability: Tableau Cloud / Pulse only
 - Product disposition: ship
-- Evidence level: contract-verified
+- Evidence level: live-verified
 - Verification readiness: ready
 - Implementation state: implemented
 - Local write: No
@@ -1223,8 +1223,8 @@ Create one definition plus its Tableau-created default metric from bounded inten
 - Safety and guard: Validate fields live; exact name/datasource collision; revalidate before mutation; unknown outcomes preserve created identity
 - Artifact effect: Read / publish
 - Upstream operation: POST /api/-/pulse/definitions; bounded default-metric polling
-- Evidence: Proven Pulse payload and request behavior plus hermetic TADX action and client tests
-- Validation or blocker: Contract-verified deterministic payload, media types, collision handling, revalidation, and bounded default-metric resolution; no live deployment claim
+- Evidence: docs/evidence/pulse-live-contract.md; proven Pulse payload and hermetic TADX action and client tests
+- Validation or blocker: Live-verified creation and bounded default-metric resolution for a Pulse-eligible datasource on Tableau Cloud
 - Blocker ID: None
 - Command binding: `tadx pulse definition create`
 
@@ -1239,7 +1239,7 @@ Delete one exact definition, or preview the operation.
 - Selectors: Definition ID
 - Products and availability: Tableau Cloud / Pulse only
 - Product disposition: ship
-- Evidence level: contract-verified
+- Evidence level: live-verified
 - Verification readiness: ready
 - Implementation state: implemented
 - Local write: No
@@ -1249,8 +1249,8 @@ Delete one exact definition, or preview the operation.
 - Safety and guard: Exact GET before deletion; Tableau remains authoritative for dependency and cascade behavior
 - Artifact effect: None
 - Upstream operation: DELETE /api/-/pulse/definitions/{definition_id}
-- Evidence: Proven Pulse request behavior plus hermetic TADX action and client tests
-- Validation or blocker: Contract-verified exact deletion and optional preview; no live deployment claim
+- Evidence: docs/evidence/pulse-live-contract.md; hermetic TADX action and client tests
+- Validation or blocker: Live-verified exact deletion with HTTP 204 on Tableau Cloud
 - Blocker ID: None
 - Command binding: `tadx pulse definition delete`
 
@@ -1265,7 +1265,7 @@ Inspect one complete Pulse definition and configuration.
 - Selectors: Exact definition LUID
 - Products and availability: Tableau Cloud / Pulse only
 - Product disposition: ship
-- Evidence level: contract-verified
+- Evidence level: live-verified
 - Verification readiness: ready
 - Implementation state: implemented
 - Local write: No
@@ -1275,8 +1275,8 @@ Inspect one complete Pulse definition and configuration.
 - Safety and guard: Exact LUID; --catalog never contacts Tableau or falls back
 - Artifact effect: None
 - Upstream operation: GET /api/-/pulse/definitions/{definition_id}
-- Evidence: Captured Pulse request contract plus hermetic TADX client and action tests
-- Validation or blocker: Contract-verified exact identity and preserved configuration; no live deployment claim
+- Evidence: docs/evidence/pulse-live-contract.md; hermetic TADX client and action tests
+- Validation or blocker: Live-verified exact identity and preserved configuration on Tableau Cloud
 - Blocker ID: None
 - Command binding: `tadx pulse definition inspect`
 
@@ -1291,7 +1291,7 @@ List Pulse metric definitions with bounded token continuation.
 - Selectors: Site; optional bounded cursor
 - Products and availability: Tableau Cloud / Pulse only
 - Product disposition: ship
-- Evidence level: contract-verified
+- Evidence level: live-verified
 - Verification readiness: ready
 - Implementation state: implemented
 - Local write: No
@@ -1301,8 +1301,8 @@ List Pulse metric definitions with bounded token continuation.
 - Safety and guard: Bounded page token output; --catalog never contacts Tableau or falls back
 - Artifact effect: None
 - Upstream operation: GET /api/-/pulse/definitions
-- Evidence: Captured Pulse request contract plus hermetic TADX client and action tests
-- Validation or blocker: Contract-verified bounded list envelope and continuation; no live deployment claim
+- Evidence: docs/evidence/pulse-live-contract.md; hermetic TADX client and action tests
+- Validation or blocker: Live-verified bounded list envelope and continuation on Tableau Cloud
 - Blocker ID: None
 - Command binding: `tadx pulse definition list`
 
@@ -1317,7 +1317,7 @@ Materialize one definition as a JSON-backed artifact with provenance and baselin
 - Selectors: Exact definition LUID; logical workspace
 - Products and availability: Tableau Cloud / Pulse only
 - Product disposition: ship
-- Evidence level: contract-verified
+- Evidence level: live-verified
 - Verification readiness: ready
 - Implementation state: implemented
 - Local write: Yes
@@ -1327,8 +1327,8 @@ Materialize one definition as a JSON-backed artifact with provenance and baselin
 - Safety and guard: Dirty re-pull requires --overwrite; remote read is authoritative
 - Artifact effect: Create / update
 - Upstream operation: Definition GET plus local artifact manager
-- Evidence: Captured Pulse request contract plus hermetic TADX action and artifact tests
-- Validation or blocker: Contract-verified exact read and recoverable artifact write; no live deployment claim
+- Evidence: docs/evidence/pulse-live-contract.md; hermetic TADX action and artifact tests
+- Validation or blocker: Live-verified exact read and recoverable artifact write on Tableau Cloud
 - Blocker ID: None
 - Command binding: `tadx pulse definition pull`
 
@@ -1343,7 +1343,7 @@ Delete one exact metric, or preview the operation.
 - Selectors: Metric ID
 - Products and availability: Tableau Cloud / Pulse only
 - Product disposition: ship
-- Evidence level: contract-verified
+- Evidence level: live-verified
 - Verification readiness: ready
 - Implementation state: implemented
 - Local write: No
@@ -1353,8 +1353,8 @@ Delete one exact metric, or preview the operation.
 - Safety and guard: Exact GET before deletion; Tableau remains authoritative for dependency behavior
 - Artifact effect: None
 - Upstream operation: DELETE /api/-/pulse/metrics/{metric_id}
-- Evidence: Proven Pulse request behavior plus hermetic TADX action and client tests
-- Validation or blocker: Contract-verified exact deletion and optional preview; no live deployment claim
+- Evidence: docs/evidence/pulse-live-contract.md; hermetic TADX action and client tests
+- Validation or blocker: Live-verified exact deletion with HTTP 204 on Tableau Cloud
 - Blocker ID: None
 - Command binding: `tadx pulse metric delete`
 
@@ -1369,7 +1369,7 @@ Converge one exact user or group metric subscription, or preview the operation.
 - Selectors: Exact metric LUID plus exactly one user or group LUID
 - Products and availability: Tableau Cloud / Pulse only
 - Product disposition: ship
-- Evidence level: contract-verified
+- Evidence level: live-verified
 - Verification readiness: ready
 - Implementation state: implemented
 - Local write: No
@@ -1379,8 +1379,8 @@ Converge one exact user or group metric subscription, or preview the operation.
 - Safety and guard: No ambiguous subscriber; a proven duplicate response converges to already-following
 - Artifact effect: None
 - Upstream operation: POST /api/-/pulse/subscriptions:batchCreate
-- Evidence: Captured Pulse subscription contract plus hermetic TADX action and client tests
-- Validation or blocker: Contract-verified batch-create shape and duplicate convergence; no live deployment claim
+- Evidence: docs/evidence/pulse-live-contract.md; hermetic TADX action and client tests
+- Validation or blocker: Live-verified user subscription creation on Tableau Cloud
 - Blocker ID: None
 - Command binding: `tadx pulse metric follow`
 
@@ -1395,7 +1395,7 @@ List exact user and group subscriptions for one metric.
 - Selectors: Exact metric LUID
 - Products and availability: Tableau Cloud / Pulse only
 - Product disposition: ship
-- Evidence level: contract-verified
+- Evidence level: live-verified
 - Verification readiness: ready
 - Implementation state: implemented
 - Local write: No
@@ -1405,8 +1405,8 @@ List exact user and group subscriptions for one metric.
 - Safety and guard: Bound normalized output; reject incomplete or mismatched subscription identity; --catalog never contacts Tableau or falls back
 - Artifact effect: None
 - Upstream operation: GET /api/-/pulse/subscriptions?metric_id={metric_id}
-- Evidence: Captured Pulse subscription contract plus hermetic TADX action and client tests
-- Validation or blocker: Contract-verified user/group follower normalization; no live deployment claim
+- Evidence: docs/evidence/pulse-live-contract.md; hermetic TADX action and client tests
+- Validation or blocker: Live-verified exact subscription inventory on Tableau Cloud
 - Blocker ID: None
 - Command binding: `tadx pulse metric followers`
 
@@ -1421,7 +1421,7 @@ Derive one metric by changing bounded timeframe or dimension filters, or preview
 - Selectors: Exact source metric LUID; timeframe or allowed-dimension filters
 - Products and availability: Tableau Cloud / Pulse only
 - Product disposition: ship
-- Evidence level: contract-verified
+- Evidence level: live-verified
 - Verification readiness: ready
 - Implementation state: implemented
 - Local write: No
@@ -1431,8 +1431,8 @@ Derive one metric by changing bounded timeframe or dimension filters, or preview
 - Safety and guard: Preserve source specification; require a meaningful change; use get-or-create; reconcile metric, definition, datasource, and site ownership
 - Artifact effect: None
 - Upstream operation: POST /api/-/pulse/metrics:getOrCreate plus bounded exact-read reconciliation
-- Evidence: Captured Pulse get-or-create contract plus hermetic TADX action and client tests
-- Validation or blocker: Contract-verified deterministic fork, created/reused status, preserved unknown fields, and bounded ownership reconciliation; no live deployment claim
+- Evidence: docs/evidence/pulse-live-contract.md; hermetic TADX action and client tests
+- Validation or blocker: Live-verified fork creation and ownership reconciliation on Tableau Cloud
 - Blocker ID: None
 - Command binding: `tadx pulse metric fork`
 
@@ -1447,7 +1447,7 @@ Inspect one exact Pulse metric specification.
 - Selectors: Exact metric LUID
 - Products and availability: Tableau Cloud / Pulse only
 - Product disposition: ship
-- Evidence level: contract-verified
+- Evidence level: live-verified
 - Verification readiness: ready
 - Implementation state: implemented
 - Local write: No
@@ -1457,8 +1457,8 @@ Inspect one exact Pulse metric specification.
 - Safety and guard: Exact LUID; preserve unrecognized specification fields; --catalog never contacts Tableau or falls back
 - Artifact effect: None
 - Upstream operation: GET /api/-/pulse/metrics/{metric_id}
-- Evidence: Captured Pulse request contract plus hermetic TADX client and action tests
-- Validation or blocker: Contract-verified exact metric identity and complete specification preservation; no live deployment claim
+- Evidence: docs/evidence/pulse-live-contract.md; hermetic TADX client and action tests
+- Validation or blocker: Live-verified exact metric identity and specification preservation on Tableau Cloud
 - Blocker ID: None
 - Command binding: `tadx pulse metric inspect`
 
@@ -1473,7 +1473,7 @@ List metrics in one definition with bounded continuation.
 - Selectors: Exact definition LUID; optional bounded cursor
 - Products and availability: Tableau Cloud / Pulse only
 - Product disposition: ship
-- Evidence level: contract-verified
+- Evidence level: live-verified
 - Verification readiness: ready
 - Implementation state: implemented
 - Local write: No
@@ -1483,8 +1483,8 @@ List metrics in one definition with bounded continuation.
 - Safety and guard: Definition-scoped identity; --catalog never contacts Tableau or falls back
 - Artifact effect: None
 - Upstream operation: GET /api/-/pulse/definitions/{definition_id}/metrics
-- Evidence: Captured Pulse request contract plus hermetic TADX client and action tests
-- Validation or blocker: Contract-verified definition-scoped pagination; no live deployment claim
+- Evidence: docs/evidence/pulse-live-contract.md; hermetic TADX client and action tests
+- Validation or blocker: Live-verified definition-scoped metric inventory on Tableau Cloud
 - Blocker ID: None
 - Command binding: `tadx pulse metric list`
 
@@ -1499,7 +1499,7 @@ Remove one exact metric subscription, or preview the operation.
 - Selectors: Exact subscription LUID, or metric plus exact user/group resolving to one subscription
 - Products and availability: Tableau Cloud / Pulse only
 - Product disposition: ship
-- Evidence level: contract-verified
+- Evidence level: live-verified
 - Verification readiness: ready
 - Implementation state: implemented
 - Local write: No
@@ -1509,8 +1509,8 @@ Remove one exact metric subscription, or preview the operation.
 - Safety and guard: Ambiguity fails; relationship selectors revalidate to the same subscription before mutation
 - Artifact effect: None
 - Upstream operation: DELETE /api/-/pulse/subscriptions/{subscription_id}
-- Evidence: Captured Pulse subscription contract plus hermetic TADX action and client tests
-- Validation or blocker: Contract-verified exact delete, relationship resolution, ambiguity failure, and revalidation; no live deployment claim
+- Evidence: docs/evidence/pulse-live-contract.md; hermetic TADX action and client tests
+- Validation or blocker: Live-verified exact subscription deletion with HTTP 204 on Tableau Cloud
 - Blocker ID: None
 - Command binding: `tadx pulse metric unfollow`
 

@@ -27,9 +27,9 @@ func (a *Action) Execute(ctx context.Context, input Input, preview bool) (Output
 	trim(&input.MetricLUID)
 	trim(&input.UserLUID)
 	trim(&input.GroupLUID)
-	direct := input.SubscriptionLUID != ""
-	relation := input.MetricLUID != "" && (input.UserLUID != "") != (input.GroupLUID != "")
-	if direct == relation {
+	direct := input.SubscriptionLUID != "" && input.MetricLUID == "" && input.UserLUID == "" && input.GroupLUID == ""
+	relation := input.SubscriptionLUID == "" && input.MetricLUID != "" && (input.UserLUID != "") != (input.GroupLUID != "")
+	if !direct && !relation {
 		return Output{}, fail("pulse.metric.unfollow.usage", errs.KindUsage, input, "Use either one exact subscription LUID or one exact metric and follower pair.", nil)
 	}
 	plan := Plan{Mode: "preview", Operation: "pulse.metric.unfollow", Environment: input.Environment, Site: input.Site, SubscriptionLUID: input.SubscriptionLUID}
@@ -62,7 +62,11 @@ func (a *Action) Execute(ctx context.Context, input Input, preview bool) (Output
 		return Output{}, &errs.Error{ID: "pulse.metric.unfollow.failed", Kind: errs.KindOperation, Operation: "pulse.metric.unfollow", Resource: plan.SubscriptionLUID, Environment: input.Environment, Site: input.Site, Summary: "Pulse metric unfollow failed.", Cause: err, Retryable: retryable, CorrectiveAction: corrective, TableauRequestID: errs.TableauRequestID(err)}
 	}
 	output.Result = &Result{Status: "unfollowed", SubscriptionLUID: plan.SubscriptionLUID}
-	output.Help = []string{"tadx pulse metric followers --id " + plan.MetricLUID}
+	if plan.MetricLUID != "" {
+		output.Help = []string{"tadx pulse metric followers --id " + plan.MetricLUID}
+	} else {
+		output.Help = nil
+	}
 	return output, nil
 }
 func (a *Action) resolve(ctx context.Context, input Input) (Subscription, error) {

@@ -126,6 +126,32 @@ func TestCreateRejectsUnsafeIntentBeforeRemoteCalls(t *testing.T) {
 	}
 }
 
+func TestCreatePreservesFieldValidationErrorContract(t *testing.T) {
+	v := &validator{err: errors.New(`field "Calculation_margin" is already aggregated; use --aggregation USER`)}
+	f, c := &finder{}, &creator{}
+	_, err := definitioncreate.New(v, f, c).Execute(context.Background(), definitioncreate.Input{
+		Environment: "dev",
+		Site:        "sales",
+		Intent: definitioncreate.Intent{
+			Name:           "Margin",
+			DatasourceLUID: "datasource-1",
+			MeasureField:   "Calculation_margin",
+			Aggregation:    "SUM",
+			TimeDimension:  "Order Date",
+		},
+	}, false)
+	var structured *errs.Error
+	if !errors.As(err, &structured) {
+		t.Fatalf("error = %#v", err)
+	}
+	if structured.ID != "pulse.definition.create.fields" || structured.Operation != "pulse.definition.create" || structured.Retryable == nil || *structured.Retryable {
+		t.Fatalf("structured error = %#v", structured)
+	}
+	if v.calls != 1 || f.calls != 0 || c.calls != 0 {
+		t.Fatalf("calls = validator:%d finder:%d creator:%d", v.calls, f.calls, c.calls)
+	}
+}
+
 func TestCreateStopsOnExactNameDatasourceCollision(t *testing.T) {
 	v := &validator{}
 	f := &finder{items: []definitioncreate.ExistingDefinition{{LUID: "definition-old", Name: "Revenue", DatasourceLUID: "datasource-1"}}}

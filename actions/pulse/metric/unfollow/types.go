@@ -32,7 +32,7 @@ type Result struct {
 type Output struct {
 	Plan   Plan     `json:"plan"`
 	Result *Result  `json:"result,omitempty"`
-	Help   []string `json:"help"`
+	Help   []string `json:"help,omitempty"`
 }
 
 func (o Output) CompactOutput() any { return o }

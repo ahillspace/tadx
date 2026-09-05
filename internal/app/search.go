@@ -63,7 +63,10 @@ func (c *searchCommands) Execute(ctx context.Context, input searchaction.Input) 
 		return searchaction.Output{}, remoteSetupError("search", input.Environment, input.Site, connection.environment, err)
 	}
 	input.Environment, input.Site, input.SiteResolved = connection.environment.Alias, connection.environment.SiteContentURL, true
-	lister := newLiveSearchLister(connection)
+	lister, err := newLiveSearchLister(connection)
+	if err != nil {
+		return searchaction.Output{}, remoteSetupError("search", input.Environment, input.Site, connection.environment, err)
+	}
 	return searchaction.New(globalSearchSource{adapter: resourcesearch.NewAdapter(lister)}).Execute(ctx, input)
 }
 
@@ -231,12 +234,16 @@ type liveSearchLister struct {
 	definitionPages   map[string]tableaupulse.DefinitionPage
 }
 
-func newLiveSearchLister(connection authenticatedTableau) *liveSearchLister {
+func newLiveSearchLister(connection authenticatedTableau) (*liveSearchLister, error) {
 	projectClient := tableauproject.NewClient(connection.transport, connection.session, connection.environment.URL)
 	projects := resourceproject.NewAdapter(projectClient)
 	datasourceClient := tableaudatasource.NewClient(connection.transport, connection.session, connection.environment.URL)
 	flowClient := tableauflow.NewClient(connection.transport, connection.session, connection.environment.URL)
 	adminClient := tableauadmin.NewClient(connection.transport, connection.session, connection.environment.URL)
+	pulseClient, err := tableaupulse.NewClient(connection.transport, connection.session, connection.environment.URL)
+	if err != nil {
+		return nil, fmt.Errorf("configure authenticated Pulse search client: %w", err)
+	}
 	return &liveSearchLister{
 		environment:     connection.environment.Alias,
 		site:            connection.environment.SiteContentURL,
@@ -246,9 +253,9 @@ func newLiveSearchLister(connection authenticatedTableau) *liveSearchLister {
 		projects:        projectListReader{adapter: projects},
 		users:           adminUserListReader{adapter: resourceadmin.NewAdapter(adminClient)},
 		groups:          adminGroupListReader{adapter: resourceadmin.NewAdapter(adminClient)},
-		pulse:           tableaupulse.NewClient(connection.transport, connection.session, connection.environment.URL),
+		pulse:           pulseClient,
 		definitionPages: make(map[string]tableaupulse.DefinitionPage),
-	}
+	}, nil
 }
 
 func (s *liveSearchLister) List(ctx context.Context, resourceType, cursor string, limit int) (resourcesearch.Page, error) {

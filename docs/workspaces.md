@@ -36,6 +36,7 @@ Use `tadx workspace list` to discover registered names and `tadx workspace statu
 ## Select an artifact
 
 Artifact selectors are relative to the resolved workspace and use slash-delimited managed paths.
+Managed artifact roots include workbooks, datasources, flows, Pulse definitions, and standalone lineage captures.
 
 ```text
 tadx content workbook publish --workspace development --artifact "artifacts/workbook/<artifact-directory>" --environment production --project "Department/Ops"

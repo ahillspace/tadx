@@ -36,7 +36,7 @@ func TestClientUsesVDSReadMetadataAndPreservesRawFieldIdentity(t *testing.T) {
 		}
 		writer.Header().Set("Content-Type", "application/json")
 		writer.Header().Set("X-Tableau-Request-Id", "schema-request")
-		_, _ = writer.Write([]byte(`{"data":[{"fieldName":"Calculation_123","fieldCaption":"Revenue","dataType":"REAL","fieldRole":"MEASURE","defaultAggregation":"AGG","columnClass":"CALCULATION","logicalTableId":"Orders_A1B2C3D4"},{"fieldName":"Order Date","fieldCaption":"Order Date","dataType":"DATE","fieldRole":"DIMENSION","logicalTableId":"Orders_A1B2C3D4"},{"fieldName":"Rank","fieldCaption":"Rank","dataType":"INTEGER","fieldRole":"MEASURE","columnClass":"TABLE_CALCULATION"}]}`))
+		_, _ = writer.Write([]byte(`{"data":[{"fieldName":"Calculation_123","fieldCaption":"Revenue","dataType":"REAL","fieldRole":"MEASURE","defaultAggregation":"AGG","columnClass":"CALCULATION","logicalTableId":"Orders_A1B2C3D4"},{"fieldName":"Calculation_456","fieldCaption":"Flat Fee","dataType":"INTEGER","fieldRole":"MEASURE","defaultAggregation":"SUM","columnClass":"CALCULATION","logicalTableId":"Orders_A1B2C3D4"},{"fieldName":"Order Date","fieldCaption":"Order Date","dataType":"DATE","fieldRole":"DIMENSION","logicalTableId":"Orders_A1B2C3D4"},{"fieldName":"Rank","fieldCaption":"Rank","dataType":"INTEGER","fieldRole":"MEASURE","columnClass":"TABLE_CALCULATION"}]}`))
 	}))
 	defer server.Close()
 	client := fieldcatalog.NewClient(tableau.NewTransport(server.Client(), "3.29", nil), session{}, server.URL)
@@ -44,16 +44,17 @@ func TestClientUsesVDSReadMetadataAndPreservesRawFieldIdentity(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got.RequestID != "schema-request" || got.DatasourceLUID != "ds-1" || got.DatasourceName != "Sales" || len(got.Tables) != 1 || len(got.Fields) != 3 {
+	if got.RequestID != "schema-request" || got.DatasourceLUID != "ds-1" || got.DatasourceName != "Sales" || len(got.Tables) != 1 || len(got.Fields) != 4 {
 		t.Fatalf("schema = %#v", got)
 	}
-	foundMeasure, foundDate, foundExcluded := false, false, false
+	foundAggregate, foundRowLevel, foundDate, foundExcluded := false, false, false, false
 	for _, field := range got.Fields {
-		foundMeasure = foundMeasure || field.ID == "Calculation_123" && field.Caption == "Revenue" && field.RequiresUserAggregation
+		foundAggregate = foundAggregate || field.ID == "Calculation_123" && field.Caption == "Revenue" && field.DefaultAggregation == "AGG" && field.RequiresUserAggregation
+		foundRowLevel = foundRowLevel || field.ID == "Calculation_456" && field.Caption == "Flat Fee" && field.DefaultAggregation == "SUM" && !field.RequiresUserAggregation
 		foundDate = foundDate || field.ID == "Order Date" && field.Role == "date" && field.TimeType == "DATE"
 		foundExcluded = foundExcluded || field.ID == "Rank" && field.Excluded && field.ExclusionReason == "table_calc"
 	}
-	if !foundMeasure || !foundDate || !foundExcluded {
+	if !foundAggregate || !foundRowLevel || !foundDate || !foundExcluded {
 		t.Fatalf("fields = %#v", got.Fields)
 	}
 }
