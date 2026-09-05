@@ -128,9 +128,7 @@ func TestNamedWorkspaceCreateUsesDefaultHumanAccessibleRoot(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := configuration.Workspaces["development"].Path; got != want {
-		t.Fatalf("workspace root = %q, want %q", got, want)
-	}
+	assertSameExistingPath(t, configuration.Workspaces["development"].Path, want)
 	stdout.Reset()
 	if exit := app.Run(context.Background(), []string{"workspace", "create", "development"}, &stdout, options); exit == 0 {
 		t.Fatalf("duplicate workspace name succeeded, output = %s", stdout.String())
@@ -158,9 +156,7 @@ func TestNamedWorkspaceCloneUsesDefaultHumanAccessibleRoot(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := configuration.Workspaces["experiment"].Path; got != want {
-		t.Fatalf("clone root = %q, want %q", got, want)
-	}
+	assertSameExistingPath(t, configuration.Workspaces["experiment"].Path, want)
 }
 
 func TestNamedWorkspaceCreateRejectsEscapingDefaultName(t *testing.T) {
@@ -334,5 +330,20 @@ func assertGolden(t *testing.T, path, got string) {
 	}
 	if got != strings.TrimSuffix(string(want), "\n") && got != string(want) {
 		t.Fatalf("golden mismatch\nwant:\n%s\ngot:\n%s", want, got)
+	}
+}
+
+func assertSameExistingPath(t *testing.T, got, want string) {
+	t.Helper()
+	gotInfo, err := os.Stat(got)
+	if err != nil {
+		t.Fatalf("stat path %q: %v", got, err)
+	}
+	wantInfo, err := os.Stat(want)
+	if err != nil {
+		t.Fatalf("stat expected path %q: %v", want, err)
+	}
+	if !os.SameFile(gotInfo, wantInfo) {
+		t.Fatalf("path %q does not identify expected path %q", got, want)
 	}
 }
