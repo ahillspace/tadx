@@ -3,7 +3,7 @@ package content
 import (
 	"context"
 
-	workbookget "github.com/ahillspace/tadx/actions/workbook/get"
+	workbookinspect "github.com/ahillspace/tadx/actions/workbook/inspect"
 	workbooklist "github.com/ahillspace/tadx/actions/workbook/list"
 	"github.com/spf13/cobra"
 )
@@ -13,9 +13,9 @@ type WorkbookLister interface {
 	ListWorkbooks(context.Context, workbooklist.Input) (workbooklist.Output, error)
 }
 
-// WorkbookGetter inspects one exact remote workbook.
-type WorkbookGetter interface {
-	GetWorkbook(context.Context, workbookget.Input) (workbookget.Output, error)
+// WorkbookInspector inspects one exact remote workbook.
+type WorkbookInspector interface {
+	InspectWorkbook(context.Context, workbookinspect.Input) (workbookinspect.Output, error)
 }
 
 func newWorkbookList(lister WorkbookLister, renderer Renderer) *cobra.Command {
@@ -41,13 +41,13 @@ func newWorkbookList(lister WorkbookLister, renderer Renderer) *cobra.Command {
 	return command
 }
 
-func newWorkbookGet(getter WorkbookGetter, renderer Renderer) *cobra.Command {
-	var input workbookget.Input
+func newWorkbookInspect(inspector WorkbookInspector, renderer Renderer) *cobra.Command {
+	var input workbookinspect.Input
 	var luid, name, projectPath string
 	command := &cobra.Command{
-		Use: "get", Short: "Inspect one exact workbook.", Annotations: map[string]string{"tadx.capability": "workbook.get"}, Args: selectorArgs("workbook.get", &luid, &name, &projectPath, input.SetSelector),
+		Use: "inspect", Short: "Inspect one exact workbook.", Annotations: map[string]string{"tadx.capability": "workbook.inspect"}, Args: selectorArgs("workbook.inspect", &luid, &name, &projectPath, input.SetSelector),
 		RunE: func(command *cobra.Command, _ []string) error {
-			result, err := getter.GetWorkbook(command.Context(), input)
+			result, err := inspector.InspectWorkbook(command.Context(), input)
 			if err != nil {
 				return err
 			}

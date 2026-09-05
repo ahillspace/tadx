@@ -147,7 +147,7 @@ func convert(row []string) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("%s: %w", row[0], err)
 	}
-	requiresApply, err := yesNo(row[11], "requires apply", status, "N/A outside TADX", "No at reasoning stage")
+	supportsPreview, err := yesNo(row[11], "supports preview", status, "N/A outside TADX", "No at reasoning stage")
 	if err != nil {
 		return "", fmt.Errorf("%s: %w", row[0], err)
 	}
@@ -155,9 +155,9 @@ func convert(row []string) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("%s: %w", row[0], err)
 	}
-	return fmt.Sprintf("Definition{ID:%s, Surface:%s, Outcome:%s, Type:%s, Disposition:%s, Owner:%s, MCPOverlap:%s, Selectors:%s, Availability:%s, LocalWrite:%t, RemoteMutation:%t, RequiresApply:%t, SafetyGuard:%s, ArtifactEffect:%s, Upstream:%s, Evidence:%s, EvidenceLevel:%s, Verification:%s, Implementation:%s, Validation:%s, Blocker:%s, CommandPath:%s}",
+	return fmt.Sprintf("Definition{ID:%s, Surface:%s, Outcome:%s, Type:%s, Disposition:%s, Owner:%s, MCPOverlap:%s, Selectors:%s, Availability:%s, LocalWrite:%t, RemoteMutation:%t, SupportsPreview:%t, SafetyGuard:%s, ArtifactEffect:%s, Upstream:%s, Evidence:%s, EvidenceLevel:%s, Verification:%s, Implementation:%s, Validation:%s, Blocker:%s, CommandPath:%s}",
 		quote(row[0]), quote(plain(row[1])), quote(plain(row[2])), "Operation"+operationType, disposition, owner,
-		quote(dashEmpty(plain(row[6]))), quote(plain(row[7])), quote(plain(row[8])), localWrite, remoteMutation, requiresApply,
+		quote(dashEmpty(plain(row[6]))), quote(plain(row[7])), quote(plain(row[8])), localWrite, remoteMutation, supportsPreview,
 		quote(plain(row[12])), quote(plain(row[13])), quote(plain(row[14])), quote(plain(row[15])), evidence,
 		verification, implementation, quote(plain(row[16])), blocker, "nil"), nil
 }

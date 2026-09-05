@@ -2,6 +2,7 @@ status: cloned
 workspace:
   name: experiment
   id: ws_33333333333333333333333333333333
+  root: /var/tmp/tadx-tests/workspaces/experiment
   manifest_version: 1
   registered: true
   created_entries[3]: tadx.yaml,artifacts,.tadx

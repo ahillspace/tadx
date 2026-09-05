@@ -14,8 +14,8 @@ Tests define externally visible behavior before implementation.
 Blocked and docs-only capabilities remain non-executable until bounded upstream evidence closes the gate.
 
 Default output is compact TOON, and `--full` returns expanded bounded details for the same operation.
-Consequential mutations preview by default and require `--apply`.
-Mutation discovery is not authorization, and `--force` never means `--apply`.
+Consequential mutations run by default when enabled and support `--preview` for a read-only plan.
+Mutation discovery is not authorization, and `--force` does not bypass mutation policy.
 Tableau LUIDs are authoritative, ambiguous selectors fail, and resolution is never fuzzy or interactive.
 Tableau authentication uses PATs only.
 PATs and session tokens are never persisted or printed.

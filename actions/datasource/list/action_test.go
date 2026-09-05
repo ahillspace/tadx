@@ -40,7 +40,7 @@ func TestOutputGolden(t *testing.T) {
 			Description: "Sales data", OwnerLUID: "user-1", CreatedAt: "2026-08-01T00:00:00Z",
 			Size: &size, HasExtracts: &hasExtracts, IsCertified: &isCertified, Tags: []string{"daily"},
 		}},
-		RequestID: "request-1", Help: []string{"tadx content datasource get --id <datasource-luid>"},
+		RequestID: "request-1", Help: []string{"tadx content datasource inspect --id <datasource-luid>"},
 	}
 	assertGolden(t, "compact.toon", output, false)
 	assertGolden(t, "full.toon", output, true)

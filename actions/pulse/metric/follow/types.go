@@ -27,10 +27,9 @@ type Plan struct {
 	FollowerLUID string `json:"follower_luid"`
 }
 type Output struct {
-	Plan    Plan          `json:"plan"`
-	Applied bool          `json:"applied"`
-	Result  *CreateResult `json:"result,omitempty"`
-	Help    []string      `json:"help"`
+	Plan   Plan          `json:"plan"`
+	Result *CreateResult `json:"result,omitempty"`
+	Help   []string      `json:"help"`
 }
 
 func (o Output) CompactOutput() any {

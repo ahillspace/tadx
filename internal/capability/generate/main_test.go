@@ -13,7 +13,7 @@ func TestGeneratedRegistryIsClean(t *testing.T) {
 	if err != nil {
 		t.Fatalf("readRows returned error: %v", err)
 	}
-	if got, want := len(rows), 80; got != want {
+	if got, want := len(rows), 72; got != want {
 		t.Fatalf("readRows returned %d capability rows, want %d", got, want)
 	}
 	generated, err := render(rows)
@@ -41,7 +41,7 @@ func TestConvertRejectsUnsafeContractValues(t *testing.T) {
 		{name: "operation type", column: 3, value: "Read", want: "unknown operation type"},
 		{name: "local write", column: 9, value: "Maybe", want: "local write"},
 		{name: "remote mutation", column: 10, value: "Yse", want: "remote mutation"},
-		{name: "requires apply", column: 11, value: "", want: "requires apply"},
+		{name: "supports preview", column: 11, value: "", want: "supports preview"},
 		{name: "evidence", column: 16, value: "Unclassified", want: "unknown evidence level"},
 	}
 
@@ -66,12 +66,12 @@ func TestConvertRestrictsDelegatedBooleanExceptionsByField(t *testing.T) {
 	}{
 		{name: "outside TADX in local write", column: 9, value: "N/A outside TADX"},
 		{name: "outside TADX in remote mutation", column: 10, value: "N/A outside TADX"},
-		{name: "outside TADX in requires apply", column: 11, value: "N/A outside TADX"},
+		{name: "outside TADX in supports preview", column: 11, value: "N/A outside TADX"},
 		{name: "optional change set in local write", column: 9, value: "Optional change set"},
 		{name: "optional change set in remote mutation", column: 10, value: "Optional change set", wantErr: "remote mutation"},
-		{name: "optional change set in requires apply", column: 11, value: "Optional change set", wantErr: "requires apply"},
+		{name: "optional change set in supports preview", column: 11, value: "Optional change set", wantErr: "supports preview"},
 		{name: "reasoning stage in remote mutation", column: 10, value: "No at reasoning stage"},
-		{name: "reasoning stage in requires apply", column: 11, value: "No at reasoning stage"},
+		{name: "reasoning stage in supports preview", column: 11, value: "No at reasoning stage"},
 		{name: "reasoning stage in local write", column: 9, value: "No at reasoning stage", wantErr: "local write"},
 	}
 

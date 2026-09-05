@@ -1,5 +1,5 @@
 plan:
-  mode: preview
+  mode: execute
   operation: workbook.publish
   artifact_path: artifacts/workbook/Finance
   filename: Finance.twbx
@@ -14,7 +14,6 @@ plan:
   overwrite: true
   as_job: true
   warnings_omitted: 1
-applied: true
 result:
   status: succeeded
   workbook_luid: wb-new
@@ -23,4 +22,4 @@ result:
   tableau_job_id: job-1
   validation_warnings_omitted: 1
 details: "--full"
-help[1]: tadx catalog search --environment <alias> to confirm the published workbook.
+help[1]: tadx search --type workbook --environment <alias> to confirm the published workbook.

@@ -7,14 +7,14 @@ import (
 	"strings"
 
 	flowdelete "github.com/ahillspace/tadx/actions/flow/delete"
-	flowget "github.com/ahillspace/tadx/actions/flow/get"
+	flowinspect "github.com/ahillspace/tadx/actions/flow/inspect"
 	flowlist "github.com/ahillspace/tadx/actions/flow/list"
 	flowmove "github.com/ahillspace/tadx/actions/flow/move"
 	flowpublish "github.com/ahillspace/tadx/actions/flow/publish"
 	flowpull "github.com/ahillspace/tadx/actions/flow/pull"
 	lineagepull "github.com/ahillspace/tadx/actions/lineage/pull"
 	projectcreate "github.com/ahillspace/tadx/actions/project/create"
-	projectget "github.com/ahillspace/tadx/actions/project/get"
+	projectinspect "github.com/ahillspace/tadx/actions/project/inspect"
 	projectlist "github.com/ahillspace/tadx/actions/project/list"
 	projectupdate "github.com/ahillspace/tadx/actions/project/update"
 	workbookdelete "github.com/ahillspace/tadx/actions/workbook/delete"
@@ -43,10 +43,10 @@ func newRemoteContentCommands(runtime *runtimeDependencies) *remoteContentComman
 
 func (c *remoteContentCommands) dependencies() *contentcli.Dependencies {
 	return &contentcli.Dependencies{
-		WorkbookLister: c, WorkbookGetter: c, WorkbookDeleter: c,
-		DatasourceLister: c, DatasourceGetter: c, DatasourceSchema: c, DatasourcePuller: c, DatasourcePublisher: c, DatasourceDeleter: c,
-		ProjectLister: c, ProjectGetter: c, ProjectCreator: c, ProjectUpdater: c,
-		FlowLister: c, FlowGetter: c, FlowPuller: c, FlowPublisher: c, FlowMover: c, FlowDeleter: c,
+		WorkbookLister: c, WorkbookInspector: c, WorkbookDeleter: c,
+		DatasourceLister: c, DatasourceInspector: c, DatasourceSchema: c, DatasourcePuller: c, DatasourcePublisher: c, DatasourceDeleter: c,
+		ProjectLister: c, ProjectInspector: c, ProjectCreator: c, ProjectUpdater: c,
+		FlowLister: c, FlowInspector: c, FlowPuller: c, FlowPublisher: c, FlowMover: c, FlowDeleter: c,
 		LineagePuller: c,
 	}
 }
@@ -123,15 +123,15 @@ func (c *remoteContentCommands) ListProjects(ctx context.Context, input projectl
 	return output, nil
 }
 
-func (c *remoteContentCommands) GetProject(ctx context.Context, input projectget.Input) (projectget.Output, error) {
+func (c *remoteContentCommands) InspectProject(ctx context.Context, input projectinspect.Input) (projectinspect.Output, error) {
 	if input.Catalog {
 		environment, site, err := c.resolveCatalogTarget(input.Environment)
 		if err != nil {
-			return projectget.Output{}, err
+			return projectinspect.Output{}, err
 		}
 		input.Environment, input.Site = environment, site
 		resolver := &catalogProjectGetResolver{store: c.catalogStore(), environment: environment, site: site}
-		output, err := projectget.New(resolver).Execute(ctx, input)
+		output, err := projectinspect.New(resolver).Execute(ctx, input)
 		if err == nil {
 			output.Source = resolver.source
 		}
@@ -139,10 +139,10 @@ func (c *remoteContentCommands) GetProject(ctx context.Context, input projectget
 	}
 	connection, err := c.connect(ctx, input.Environment, false)
 	if err != nil {
-		return projectget.Output{}, remoteSetupError("project.get", input.Environment, input.Site, connection.environment, err)
+		return projectinspect.Output{}, remoteSetupError("project.inspect", input.Environment, input.Site, connection.environment, err)
 	}
 	input.Environment, input.Site = connection.environment.Alias, connection.environment.SiteContentURL
-	output, err := projectget.New(projectGetResolver{connection.projects}).Execute(ctx, input)
+	output, err := projectinspect.New(projectGetResolver{connection.projects}).Execute(ctx, input)
 	if err != nil {
 		return output, err
 	}
@@ -155,24 +155,24 @@ func (c *remoteContentCommands) GetProject(ctx context.Context, input projectget
 	return output, nil
 }
 
-func (c *remoteContentCommands) CreateProject(ctx context.Context, input projectcreate.Input, apply bool) (projectcreate.Output, error) {
+func (c *remoteContentCommands) CreateProject(ctx context.Context, input projectcreate.Input, preview bool) (projectcreate.Output, error) {
 	connection, err := c.connect(ctx, input.Environment, true)
 	if err != nil {
 		return projectcreate.Output{}, remoteSetupError("project.create", input.Environment, input.Site, connection.environment, err)
 	}
 	input.Environment, input.Site = connection.environment.Alias, connection.environment.SiteContentURL
 	adapter := projectCreateAdapter{projects: connection.projects, changes: connection.projectChanges}
-	return projectcreate.New(adapter, adapter).Execute(ctx, input, apply)
+	return projectcreate.New(adapter, adapter).Execute(ctx, input, preview)
 }
 
-func (c *remoteContentCommands) UpdateProject(ctx context.Context, input projectupdate.Input, apply bool) (projectupdate.Output, error) {
+func (c *remoteContentCommands) UpdateProject(ctx context.Context, input projectupdate.Input, preview bool) (projectupdate.Output, error) {
 	connection, err := c.connect(ctx, input.Environment, true)
 	if err != nil {
 		return projectupdate.Output{}, remoteSetupError("project.update", input.Environment, input.Site, connection.environment, err)
 	}
 	input.Environment, input.Site = connection.environment.Alias, connection.environment.SiteContentURL
 	adapter := projectUpdateAdapter{projects: connection.projects, changes: connection.projectChanges}
-	return projectupdate.New(adapter, adapter).Execute(ctx, input, apply)
+	return projectupdate.New(adapter, adapter).Execute(ctx, input, preview)
 }
 
 func (c *remoteContentCommands) ListFlows(ctx context.Context, input flowlist.Input) (flowlist.Output, error) {
@@ -211,15 +211,15 @@ func (c *remoteContentCommands) ListFlows(ctx context.Context, input flowlist.In
 	return output, nil
 }
 
-func (c *remoteContentCommands) GetFlow(ctx context.Context, input flowget.Input) (flowget.Output, error) {
+func (c *remoteContentCommands) InspectFlow(ctx context.Context, input flowinspect.Input) (flowinspect.Output, error) {
 	if input.Catalog {
 		environment, site, err := c.resolveCatalogTarget(input.Environment)
 		if err != nil {
-			return flowget.Output{}, err
+			return flowinspect.Output{}, err
 		}
 		input.Environment, input.Site = environment, site
 		resolver := &catalogFlowGetResolver{store: c.catalogStore(), environment: environment, site: site}
-		output, err := flowget.New(resolver).Execute(ctx, input)
+		output, err := flowinspect.New(resolver).Execute(ctx, input)
 		if err == nil {
 			output.Source = resolver.source
 		}
@@ -227,10 +227,10 @@ func (c *remoteContentCommands) GetFlow(ctx context.Context, input flowget.Input
 	}
 	connection, err := c.connect(ctx, input.Environment, false)
 	if err != nil {
-		return flowget.Output{}, remoteSetupError("flow.get", input.Environment, input.Site, connection.environment, err)
+		return flowinspect.Output{}, remoteSetupError("flow.inspect", input.Environment, input.Site, connection.environment, err)
 	}
 	input.Environment, input.Site = connection.environment.Alias, connection.environment.SiteContentURL
-	output, err := flowget.New(flowGetResolver{connection.flows}).Execute(ctx, input)
+	output, err := flowinspect.New(flowGetResolver{connection.flows}).Execute(ctx, input)
 	if err != nil {
 		return output, err
 	}
@@ -263,7 +263,7 @@ func (c *remoteContentCommands) PullFlow(ctx context.Context, input flowpull.Inp
 	return flowpull.New(reader, flowArtifactWriter{artifact.NewFlowManager(c.runtime.now)}).Execute(ctx, input)
 }
 
-func (c *remoteContentCommands) PublishFlow(ctx context.Context, input flowpublish.Input, apply bool) (flowpublish.Output, error) {
+func (c *remoteContentCommands) PublishFlow(ctx context.Context, input flowpublish.Input, preview bool) (flowpublish.Output, error) {
 	manager := artifact.NewFlowManager(c.runtime.now)
 	workspace, err := (&workspaceRuntime{runtime: c.runtime}).resolveForEnvironment(ctx, input.Workspace, input.Environment)
 	if err != nil {
@@ -293,37 +293,37 @@ func (c *remoteContentCommands) PublishFlow(ctx context.Context, input flowpubli
 	}
 	input.Environment, input.Site, input.ArtifactPath = connection.environment.Alias, connection.environment.SiteContentURL, absolutePath
 	adapter := flowPublishAdapter{flows: connection.flows, projects: connection.projects, changes: connection.flowChanges}
-	return flowpublish.New(flowArtifactReader{manager: manager, displayPath: managed.Path}, adapter, adapter).Execute(ctx, input, apply)
+	return flowpublish.New(flowArtifactReader{manager: manager, displayPath: managed.Path}, adapter, adapter).Execute(ctx, input, preview)
 }
 
-func (c *remoteContentCommands) MoveFlow(ctx context.Context, input flowmove.Input, apply bool) (flowmove.Output, error) {
+func (c *remoteContentCommands) MoveFlow(ctx context.Context, input flowmove.Input, preview bool) (flowmove.Output, error) {
 	connection, err := c.connect(ctx, input.Environment, true)
 	if err != nil {
 		return flowmove.Output{}, remoteSetupError("flow.move", input.Environment, input.Site, connection.environment, err)
 	}
 	input.Environment, input.Site = connection.environment.Alias, connection.environment.SiteContentURL
 	adapter := flowMoveAdapter{flows: connection.flows, projects: connection.projects, changes: connection.flowChanges}
-	return flowmove.New(adapter, adapter).Execute(ctx, input, apply)
+	return flowmove.New(adapter, adapter).Execute(ctx, input, preview)
 }
 
-func (c *remoteContentCommands) DeleteFlow(ctx context.Context, input flowdelete.Input, apply bool) (flowdelete.Output, error) {
+func (c *remoteContentCommands) DeleteFlow(ctx context.Context, input flowdelete.Input, preview bool) (flowdelete.Output, error) {
 	connection, err := c.connect(ctx, input.Environment, true)
 	if err != nil {
 		return flowdelete.Output{}, remoteSetupError("flow.delete", input.Environment, input.Site, connection.environment, err)
 	}
 	input.Environment, input.Site = connection.environment.Alias, connection.environment.SiteContentURL
 	adapter := flowDeleteAdapter{flows: connection.flows, changes: connection.flowChanges}
-	return flowdelete.New(adapter, adapter).Execute(ctx, input, apply)
+	return flowdelete.New(adapter, adapter).Execute(ctx, input, preview)
 }
 
-func (c *remoteContentCommands) DeleteWorkbook(ctx context.Context, input workbookdelete.Input, apply bool) (workbookdelete.Output, error) {
+func (c *remoteContentCommands) DeleteWorkbook(ctx context.Context, input workbookdelete.Input, preview bool) (workbookdelete.Output, error) {
 	connection, err := c.connect(ctx, input.Environment, true)
 	if err != nil {
 		return workbookdelete.Output{}, remoteSetupError("workbook.delete", input.Environment, input.Site, connection.environment, err)
 	}
 	input.Environment, input.Site = connection.environment.Alias, connection.environment.SiteContentURL
 	adapter := workbookDeleteAdapter{workbooks: connection.workbooks}
-	return workbookdelete.New(adapter, adapter).Execute(ctx, input, apply)
+	return workbookdelete.New(adapter, adapter).Execute(ctx, input, preview)
 }
 
 func (c *remoteContentCommands) PullLineage(ctx context.Context, input lineagepull.Input) (lineagepull.Output, error) {
@@ -368,9 +368,9 @@ func projectListItem(item resourceproject.Project) projectlist.Project {
 
 type projectGetResolver struct{ adapter *resourceproject.Adapter }
 
-func (r projectGetResolver) ResolveProject(ctx context.Context, selector identity.Selector) (projectget.Project, error) {
+func (r projectGetResolver) ResolveProject(ctx context.Context, selector identity.Selector) (projectinspect.Project, error) {
 	item, err := r.adapter.ResolveProject(ctx, selector)
-	return projectget.Project{LUID: item.LUID, Name: item.Name, Path: item.Path, ParentLUID: item.ParentLUID, Description: item.Description, OwnerLUID: item.OwnerLUID, TopLevel: item.TopLevel, ContentPermissions: item.ContentPermissions, ControllingPermissionsProjectID: item.ControllingPermissionsProjectID, CreatedAt: item.CreatedAt, UpdatedAt: item.UpdatedAt, ProjectCount: item.ProjectCount, WorkbookCount: item.WorkbookCount, ViewCount: item.ViewCount, DatasourceCount: item.DatasourceCount, RequestID: item.RequestID}, err
+	return projectinspect.Project{LUID: item.LUID, Name: item.Name, Path: item.Path, ParentLUID: item.ParentLUID, Description: item.Description, OwnerLUID: item.OwnerLUID, TopLevel: item.TopLevel, ContentPermissions: item.ContentPermissions, ControllingPermissionsProjectID: item.ControllingPermissionsProjectID, CreatedAt: item.CreatedAt, UpdatedAt: item.UpdatedAt, ProjectCount: item.ProjectCount, WorkbookCount: item.WorkbookCount, ViewCount: item.ViewCount, DatasourceCount: item.DatasourceCount, RequestID: item.RequestID}, err
 }
 
 type projectCreateAdapter struct {
@@ -441,21 +441,21 @@ func (r flowListReader) ListFlows(ctx context.Context, input flowlist.PageReques
 
 type flowGetResolver struct{ adapter *resourceflow.Adapter }
 
-func (r flowGetResolver) ResolveFlow(ctx context.Context, selector identity.Selector) (flowget.Flow, error) {
+func (r flowGetResolver) ResolveFlow(ctx context.Context, selector identity.Selector) (flowinspect.Flow, error) {
 	item, err := r.adapter.ResolveFlow(ctx, selector)
 	return toFlowGet(item), err
 }
 
-func toFlowGet(item resourceflow.Flow) flowget.Flow {
-	parameters := make([]flowget.Parameter, len(item.Parameters))
+func toFlowGet(item resourceflow.Flow) flowinspect.Flow {
+	parameters := make([]flowinspect.Parameter, len(item.Parameters))
 	for index, parameter := range item.Parameters {
-		parameters[index] = flowget.Parameter{LUID: parameter.LUID, Name: parameter.Name, Type: parameter.Type, Description: parameter.Description, Value: parameter.Value, Required: parameter.Required}
+		parameters[index] = flowinspect.Parameter{LUID: parameter.LUID, Name: parameter.Name, Type: parameter.Type, Description: parameter.Description, Value: parameter.Value, Required: parameter.Required}
 	}
-	steps := make([]flowget.OutputStep, len(item.OutputSteps))
+	steps := make([]flowinspect.OutputStep, len(item.OutputSteps))
 	for index, step := range item.OutputSteps {
-		steps[index] = flowget.OutputStep{LUID: step.LUID, Name: step.Name}
+		steps[index] = flowinspect.OutputStep{LUID: step.LUID, Name: step.Name}
 	}
-	return flowget.Flow{LUID: item.LUID, Name: item.Name, ProjectLUID: item.ProjectLUID, ProjectPath: item.ProjectPath, FileType: item.FileType, UpdatedAt: item.UpdatedAt, Description: item.Description, OwnerLUID: item.OwnerLUID, CreatedAt: item.CreatedAt, Tags: append([]string(nil), item.Tags...), Parameters: parameters, OutputSteps: steps, RequestID: item.RequestID}
+	return flowinspect.Flow{LUID: item.LUID, Name: item.Name, ProjectLUID: item.ProjectLUID, ProjectPath: item.ProjectPath, FileType: item.FileType, UpdatedAt: item.UpdatedAt, Description: item.Description, OwnerLUID: item.OwnerLUID, CreatedAt: item.CreatedAt, Tags: append([]string(nil), item.Tags...), Parameters: parameters, OutputSteps: steps, RequestID: item.RequestID}
 }
 
 type flowPullReader struct {

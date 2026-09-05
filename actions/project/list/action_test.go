@@ -33,7 +33,7 @@ func TestOutputGolden(t *testing.T) {
 			LUID: "project-1", Name: "Ops", ParentLUID: "project-root", Description: "Operations",
 			OwnerLUID: "user-1", TopLevel: &topLevel, ProjectCount: &count,
 		}},
-		RequestID: "request-1", Help: []string{"tadx content project get --project-id <project-luid>"},
+		RequestID: "request-1", Help: []string{"tadx content project inspect --project-id <project-luid>"},
 	}
 	assertGolden(t, "compact.toon", output, false)
 	assertGolden(t, "full.toon", output, true)

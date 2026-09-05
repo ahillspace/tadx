@@ -20,7 +20,7 @@ capability:
   validation: Architecture-locked local contract
   remote_mutation: false
   execution_enabled: true
-  requires_apply: false
+  supports_preview: false
   local_write: false
   raw_capable: false
 help[1]: tadx capability list

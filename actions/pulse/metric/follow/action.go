@@ -12,7 +12,7 @@ type Creator interface {
 type Action struct{ creator Creator }
 
 func New(creator Creator) *Action { return &Action{creator: creator} }
-func (a *Action) Execute(ctx context.Context, input Input, apply bool) (Output, error) {
+func (a *Action) Execute(ctx context.Context, input Input, preview bool) (Output, error) {
 	if a == nil || a.creator == nil {
 		return Output{}, fail("pulse.metric.follow.unconfigured", errs.KindRuntime, input, "Pulse metric follow is not configured.", nil)
 	}
@@ -26,10 +26,11 @@ func (a *Action) Execute(ctx context.Context, input Input, apply bool) (Output, 
 	if input.GroupLUID != "" {
 		typeName, luid = "GROUP", input.GroupLUID
 	}
-	output := Output{Plan: Plan{Mode: "preview", Operation: "pulse.metric.follow", Environment: input.Environment, Site: input.Site, MetricLUID: input.MetricLUID, FollowerType: typeName, FollowerLUID: luid}, Help: []string{"Add --apply to follow this exact Pulse metric."}}
-	if !apply {
+	output := Output{Plan: Plan{Mode: "preview", Operation: "pulse.metric.follow", Environment: input.Environment, Site: input.Site, MetricLUID: input.MetricLUID, FollowerType: typeName, FollowerLUID: luid}, Help: []string{"Run without --preview to follow this exact Pulse metric."}}
+	if preview {
 		return output, nil
 	}
+	output.Plan.Mode = "execute"
 	result, err := a.creator.CreateSubscription(ctx, CreateRequest{MetricLUID: input.MetricLUID, FollowerType: typeName, FollowerLUID: luid})
 	if err != nil {
 		retryable, corrective := errs.CompleteRetryAdvice(err, "Inspect the remote follow outcome before retrying.")
@@ -38,7 +39,6 @@ func (a *Action) Execute(ctx context.Context, input Input, apply bool) (Output, 
 	if result.Status != "followed" && result.Status != "already_following" {
 		return Output{}, fail("pulse.metric.follow.invalid_response", errs.KindOperation, input, "Tableau returned an unknown Pulse follow status.", nil)
 	}
-	output.Applied = true
 	output.Result = &result
 	output.Help = []string{"tadx pulse metric followers --id " + input.MetricLUID}
 	return output, nil

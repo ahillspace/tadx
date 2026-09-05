@@ -4,13 +4,13 @@ import (
 	"context"
 	"testing"
 
-	workbookget "github.com/ahillspace/tadx/actions/workbook/get"
+	workbookinspect "github.com/ahillspace/tadx/actions/workbook/inspect"
 	workbooklist "github.com/ahillspace/tadx/actions/workbook/list"
 )
 
 type workbookInventoryCommands struct {
-	listInput workbooklist.Input
-	getInput  workbookget.Input
+	listInput    workbooklist.Input
+	inspectInput workbookinspect.Input
 }
 
 func (c *workbookInventoryCommands) ListWorkbooks(_ context.Context, input workbooklist.Input) (workbooklist.Output, error) {
@@ -18,9 +18,9 @@ func (c *workbookInventoryCommands) ListWorkbooks(_ context.Context, input workb
 	return workbooklist.Output{Status: "listed"}, nil
 }
 
-func (c *workbookInventoryCommands) GetWorkbook(_ context.Context, input workbookget.Input) (workbookget.Output, error) {
-	c.getInput = input
-	return workbookget.Output{Status: "found"}, nil
+func (c *workbookInventoryCommands) InspectWorkbook(_ context.Context, input workbookinspect.Input) (workbookinspect.Output, error) {
+	c.inspectInput = input
+	return workbookinspect.Output{Status: "found"}, nil
 }
 
 type workbookInventoryRenderer struct{ value any }
@@ -55,7 +55,7 @@ func TestWorkbookListRejectsUnsupportedProjectLUIDFilter(t *testing.T) {
 	}
 }
 
-func TestWorkbookGetAcceptsOnlyExactSelectorGrammar(t *testing.T) {
+func TestWorkbookInspectAcceptsOnlyExactSelectorGrammar(t *testing.T) {
 	tests := []struct {
 		name        string
 		args        []string
@@ -75,7 +75,7 @@ func TestWorkbookGetAcceptsOnlyExactSelectorGrammar(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			actions := &workbookInventoryCommands{}
 			renderer := &workbookInventoryRenderer{}
-			command := newWorkbookGet(actions, renderer)
+			command := newWorkbookInspect(actions, renderer)
 			command.SetArgs(test.args)
 			err := command.Execute()
 			if test.wantError {
@@ -87,14 +87,14 @@ func TestWorkbookGetAcceptsOnlyExactSelectorGrammar(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			selector := actions.getInput.Selector
+			selector := actions.inspectInput.Selector
 			if string(selector.LUID) != test.wantLUID || selector.Name != test.wantName || selector.ProjectPath != test.wantProject {
 				t.Fatalf("selector = %#v", selector)
 			}
-			if test.name == "LUID" && !actions.getInput.Catalog {
+			if test.name == "LUID" && !actions.inspectInput.Catalog {
 				t.Fatal("--catalog was not forwarded")
 			}
-			if _, ok := renderer.value.(workbookget.Output); !ok {
+			if _, ok := renderer.value.(workbookinspect.Output); !ok {
 				t.Fatalf("rendered value = %T", renderer.value)
 			}
 		})

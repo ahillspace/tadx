@@ -55,7 +55,7 @@ func (a *Action) Execute(ctx context.Context, input Input) (Output, error) {
 			return Output{}, err
 		}
 	}
-	return Output{Status: "listed", Environment: input.Environment, Site: input.Site, Page: OutputPage{Returned: len(page.Flows), Total: page.Total, Limit: page.Size, NextCursor: next}, Flows: page.Flows, RequestID: page.RequestID, Help: []string{"tadx content flow get --id <flow-luid>"}}, nil
+	return Output{Status: "listed", Environment: input.Environment, Site: input.Site, Page: OutputPage{Returned: len(page.Flows), Total: page.Total, Limit: page.Size, NextCursor: next}, Flows: page.Flows, RequestID: page.RequestID, Help: []string{"tadx content flow inspect --id <flow-luid>"}}, nil
 }
 
 func selectPage(value string, requested int, expectedFilter string) (int, int, error) {

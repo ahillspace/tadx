@@ -9,13 +9,15 @@ import (
 	"strings"
 
 	definitioncreate "github.com/ahillspace/tadx/actions/pulse/definition/create"
-	definitionget "github.com/ahillspace/tadx/actions/pulse/definition/get"
+	definitiondelete "github.com/ahillspace/tadx/actions/pulse/definition/delete"
+	definitioninspect "github.com/ahillspace/tadx/actions/pulse/definition/inspect"
 	definitionlist "github.com/ahillspace/tadx/actions/pulse/definition/list"
 	definitionpull "github.com/ahillspace/tadx/actions/pulse/definition/pull"
+	metricdelete "github.com/ahillspace/tadx/actions/pulse/metric/delete"
 	metricfollow "github.com/ahillspace/tadx/actions/pulse/metric/follow"
 	metricfollowers "github.com/ahillspace/tadx/actions/pulse/metric/followers"
 	metricfork "github.com/ahillspace/tadx/actions/pulse/metric/fork"
-	metricget "github.com/ahillspace/tadx/actions/pulse/metric/get"
+	metricinspect "github.com/ahillspace/tadx/actions/pulse/metric/inspect"
 	metriclist "github.com/ahillspace/tadx/actions/pulse/metric/list"
 	metricunfollow "github.com/ahillspace/tadx/actions/pulse/metric/unfollow"
 	"github.com/ahillspace/tadx/internal/cli/clierr"
@@ -30,9 +32,9 @@ type DefinitionLister interface {
 	ListPulseDefinitions(context.Context, definitionlist.Input) (definitionlist.Output, error)
 }
 
-// DefinitionGetter gets one Pulse definition.
-type DefinitionGetter interface {
-	GetPulseDefinition(context.Context, definitionget.Input) (definitionget.Output, error)
+// DefinitionInspector inspects one Pulse definition.
+type DefinitionInspector interface {
+	InspectPulseDefinition(context.Context, definitioninspect.Input) (definitioninspect.Output, error)
 }
 
 // DefinitionPuller pulls one Pulse definition artifact.
@@ -40,9 +42,14 @@ type DefinitionPuller interface {
 	PullPulseDefinition(context.Context, definitionpull.Input) (definitionpull.Output, error)
 }
 
-// DefinitionCreator previews or creates one Pulse definition.
+// DefinitionCreator creates one Pulse definition or returns a preview.
 type DefinitionCreator interface {
 	CreatePulseDefinition(context.Context, definitioncreate.Input, bool) (definitioncreate.Output, error)
+}
+
+// DefinitionDeleter deletes one Pulse definition or returns a preview.
+type DefinitionDeleter interface {
+	DeletePulseDefinition(context.Context, definitiondelete.Input) (definitiondelete.Output, error)
 }
 
 // MetricLister lists the metrics for one definition.
@@ -50,14 +57,19 @@ type MetricLister interface {
 	ListPulseMetrics(context.Context, metriclist.Input) (metriclist.Output, error)
 }
 
-// MetricGetter gets one Pulse metric.
-type MetricGetter interface {
-	GetPulseMetric(context.Context, metricget.Input) (metricget.Output, error)
+// MetricInspector inspects one Pulse metric.
+type MetricInspector interface {
+	InspectPulseMetric(context.Context, metricinspect.Input) (metricinspect.Output, error)
 }
 
-// MetricForker previews or creates one Pulse metric variant.
+// MetricForker creates one Pulse metric variant or returns a preview.
 type MetricForker interface {
 	ForkPulseMetric(context.Context, metricfork.Input, bool) (metricfork.Output, error)
+}
+
+// MetricDeleter deletes one Pulse metric or returns a preview.
+type MetricDeleter interface {
+	DeletePulseMetric(context.Context, metricdelete.Input) (metricdelete.Output, error)
 }
 
 // MetricFollowers lists one metric's subscriptions.
@@ -65,29 +77,31 @@ type MetricFollowers interface {
 	ListPulseMetricFollowers(context.Context, metricfollowers.Input) (metricfollowers.Output, error)
 }
 
-// MetricFollower previews or creates one Pulse subscription.
+// MetricFollower creates one Pulse subscription or returns a preview.
 type MetricFollower interface {
 	FollowPulseMetric(context.Context, metricfollow.Input, bool) (metricfollow.Output, error)
 }
 
-// MetricUnfollower previews or removes one Pulse subscription.
+// MetricUnfollower removes one Pulse subscription or returns a preview.
 type MetricUnfollower interface {
 	UnfollowPulseMetric(context.Context, metricunfollow.Input, bool) (metricunfollow.Output, error)
 }
 
 // Dependencies contains Pulse command wiring.
 type Dependencies struct {
-	DefinitionLister  DefinitionLister
-	DefinitionGetter  DefinitionGetter
-	DefinitionPuller  DefinitionPuller
-	DefinitionCreator DefinitionCreator
-	MetricLister      MetricLister
-	MetricGetter      MetricGetter
-	MetricForker      MetricForker
-	MetricFollowers   MetricFollowers
-	MetricFollower    MetricFollower
-	MetricUnfollower  MetricUnfollower
-	Renderer          Renderer
+	DefinitionLister    DefinitionLister
+	DefinitionInspector DefinitionInspector
+	DefinitionPuller    DefinitionPuller
+	DefinitionCreator   DefinitionCreator
+	DefinitionDeleter   DefinitionDeleter
+	MetricLister        MetricLister
+	MetricInspector     MetricInspector
+	MetricForker        MetricForker
+	MetricDeleter       MetricDeleter
+	MetricFollowers     MetricFollowers
+	MetricFollower      MetricFollower
+	MetricUnfollower    MetricUnfollower
+	Renderer            Renderer
 }
 
 // New creates the Pulse command tree.
@@ -101,20 +115,56 @@ func New(deps Dependencies) *cobra.Command {
 	definition := &cobra.Command{Use: "definition", Short: "Manage Pulse metric definitions"}
 	definition.AddCommand(
 		newDefinitionList(deps),
-		newDefinitionGet(deps),
+		newDefinitionInspect(deps),
 		newDefinitionPull(deps),
 		newDefinitionCreate(deps),
+		newDefinitionDelete(deps),
 	)
 	metric := &cobra.Command{Use: "metric", Short: "Manage Pulse metric variants and followers"}
 	metric.AddCommand(
 		newMetricList(deps),
-		newMetricGet(deps),
+		newMetricInspect(deps),
 		newMetricFork(deps),
+		newMetricDelete(deps),
 		newMetricFollowers(deps),
 		newMetricFollow(deps),
 		newMetricUnfollow(deps),
 	)
 	command.AddCommand(definition, metric)
+	return command
+}
+
+func newDefinitionDelete(deps Dependencies) *cobra.Command {
+	var input definitiondelete.Input
+	command := exactIDCommand("delete", "Delete one exact Pulse definition.", "pulse.definition.delete", &input.LUID, func(command *cobra.Command) error {
+		if input.Environment == "" {
+			return usage("pulse.definition.delete", "--environment is required")
+		}
+		result, err := deps.DefinitionDeleter.DeletePulseDefinition(command.Context(), input)
+		if err != nil {
+			return err
+		}
+		return deps.Renderer.Render(result)
+	})
+	command.Flags().StringVar(&input.Environment, "environment", "", "explicit write environment alias")
+	command.Flags().BoolVar(&input.Preview, "preview", false, "preview the remote mutation without performing it")
+	return command
+}
+
+func newMetricDelete(deps Dependencies) *cobra.Command {
+	var input metricdelete.Input
+	command := exactIDCommand("delete", "Delete one exact Pulse metric.", "pulse.metric.delete", &input.LUID, func(command *cobra.Command) error {
+		if input.Environment == "" {
+			return usage("pulse.metric.delete", "--environment is required")
+		}
+		result, err := deps.MetricDeleter.DeletePulseMetric(command.Context(), input)
+		if err != nil {
+			return err
+		}
+		return deps.Renderer.Render(result)
+	})
+	command.Flags().StringVar(&input.Environment, "environment", "", "explicit write environment alias")
+	command.Flags().BoolVar(&input.Preview, "preview", false, "preview the remote mutation without performing it")
 	return command
 }
 
@@ -133,10 +183,10 @@ func newDefinitionList(deps Dependencies) *cobra.Command {
 	return command
 }
 
-func newDefinitionGet(deps Dependencies) *cobra.Command {
-	var input definitionget.Input
-	command := exactIDCommand("get", "Inspect one exact Pulse definition.", "pulse.definition.get", &input.LUID, func(command *cobra.Command) error {
-		result, err := deps.DefinitionGetter.GetPulseDefinition(command.Context(), input)
+func newDefinitionInspect(deps Dependencies) *cobra.Command {
+	var input definitioninspect.Input
+	command := exactIDCommand("inspect", "Inspect one exact Pulse definition.", "pulse.definition.inspect", &input.LUID, func(command *cobra.Command) error {
+		result, err := deps.DefinitionInspector.InspectPulseDefinition(command.Context(), input)
 		if err != nil {
 			return err
 		}
@@ -163,10 +213,10 @@ func newDefinitionPull(deps Dependencies) *cobra.Command {
 
 func newDefinitionCreate(deps Dependencies) *cobra.Command {
 	var input definitioncreate.Input
-	var apply bool
+	var preview bool
 	command := &cobra.Command{
 		Use:         "create",
-		Short:       "Preview or create one Pulse definition.",
+		Short:       "Create one Pulse definition.",
 		Annotations: capability("pulse.definition.create"),
 		Args: func(command *cobra.Command, args []string) error {
 			if err := noArgs("pulse.definition.create", command, args); err != nil {
@@ -178,7 +228,7 @@ func newDefinitionCreate(deps Dependencies) *cobra.Command {
 			return nil
 		},
 		RunE: func(command *cobra.Command, _ []string) error {
-			result, err := deps.DefinitionCreator.CreatePulseDefinition(command.Context(), input, apply)
+			result, err := deps.DefinitionCreator.CreatePulseDefinition(command.Context(), input, preview)
 			if err != nil {
 				return err
 			}
@@ -199,7 +249,7 @@ func newDefinitionCreate(deps Dependencies) *cobra.Command {
 	command.Flags().StringVar(&input.Intent.Sentiment, "sentiment", "", "sentiment: UP, DOWN, or NONE; defaults to NONE")
 	command.Flags().StringVar(&input.Intent.Temporality, "temporality", "", "temporality: OVER_TIME or LATEST; defaults to OVER_TIME")
 	command.Flags().BoolVar(&input.Intent.RunningTotal, "running-total", false, "create a running total; requires SUM and OVER_TIME")
-	command.Flags().BoolVar(&apply, "apply", false, "apply the previewed remote mutation")
+	command.Flags().BoolVar(&preview, "preview", false, "preview the remote mutation without performing it")
 	return command
 }
 
@@ -233,10 +283,10 @@ func newMetricList(deps Dependencies) *cobra.Command {
 	return command
 }
 
-func newMetricGet(deps Dependencies) *cobra.Command {
-	var input metricget.Input
-	command := exactIDCommand("get", "Inspect one exact Pulse metric.", "pulse.metric.get", &input.LUID, func(command *cobra.Command) error {
-		result, err := deps.MetricGetter.GetPulseMetric(command.Context(), input)
+func newMetricInspect(deps Dependencies) *cobra.Command {
+	var input metricinspect.Input
+	command := exactIDCommand("inspect", "Inspect one exact Pulse metric.", "pulse.metric.inspect", &input.LUID, func(command *cobra.Command) error {
+		result, err := deps.MetricInspector.InspectPulseMetric(command.Context(), input)
 		if err != nil {
 			return err
 		}
@@ -249,11 +299,11 @@ func newMetricGet(deps Dependencies) *cobra.Command {
 func newMetricFork(deps Dependencies) *cobra.Command {
 	var input metricfork.Input
 	var includeFilters, excludeFilters []string
-	var apply bool
+	var preview bool
 	command := &cobra.Command{
 		Use:   "fork",
-		Short: "Preview or create one Pulse metric variant.",
-		Long: "Preview or create one Pulse metric variant from an existing metric.\n\n" +
+		Short: "Create one Pulse metric variant.",
+		Long: "Create one Pulse metric variant from an existing metric.\n\n" +
 			"Repeat --filter '<field>=<value>' to add values or fields. Use --exclude-filter for excluded values.",
 		Annotations: capability("pulse.metric.fork"),
 		Args: func(command *cobra.Command, args []string) error {
@@ -281,7 +331,7 @@ func newMetricFork(deps Dependencies) *cobra.Command {
 			return nil
 		},
 		RunE: func(command *cobra.Command, _ []string) error {
-			result, err := deps.MetricForker.ForkPulseMetric(command.Context(), input, apply)
+			result, err := deps.MetricForker.ForkPulseMetric(command.Context(), input, preview)
 			if err != nil {
 				return err
 			}
@@ -294,7 +344,7 @@ func newMetricFork(deps Dependencies) *cobra.Command {
 	command.Flags().IntVar(&input.CustomDays, "days", 0, "custom trailing day count from 1 through 3650")
 	command.Flags().StringArrayVar(&includeFilters, "filter", nil, "included dimensional value as <field>=<value>; repeat for more values or fields")
 	command.Flags().StringArrayVar(&excludeFilters, "exclude-filter", nil, "excluded dimensional value as <field>=<value>; repeat for more values or fields")
-	command.Flags().BoolVar(&apply, "apply", false, "apply the previewed remote mutation")
+	command.Flags().BoolVar(&preview, "preview", false, "preview the remote mutation without performing it")
 	return command
 }
 
@@ -313,10 +363,10 @@ func newMetricFollowers(deps Dependencies) *cobra.Command {
 
 func newMetricFollow(deps Dependencies) *cobra.Command {
 	var input metricfollow.Input
-	var apply bool
+	var preview bool
 	command := &cobra.Command{
 		Use:         "follow",
-		Short:       "Preview or add one Pulse metric follower.",
+		Short:       "Add one Pulse metric follower.",
 		Annotations: capability("pulse.metric.follow"),
 		Args: func(command *cobra.Command, args []string) error {
 			if err := noArgs("pulse.metric.follow", command, args); err != nil {
@@ -328,7 +378,7 @@ func newMetricFollow(deps Dependencies) *cobra.Command {
 			return nil
 		},
 		RunE: func(command *cobra.Command, _ []string) error {
-			result, err := deps.MetricFollower.FollowPulseMetric(command.Context(), input, apply)
+			result, err := deps.MetricFollower.FollowPulseMetric(command.Context(), input, preview)
 			if err != nil {
 				return err
 			}
@@ -339,16 +389,16 @@ func newMetricFollow(deps Dependencies) *cobra.Command {
 	command.Flags().StringVar(&input.MetricLUID, "id", "", "authoritative metric LUID")
 	command.Flags().StringVar(&input.UserLUID, "user-id", "", "authoritative follower user LUID")
 	command.Flags().StringVar(&input.GroupLUID, "group-id", "", "authoritative follower group LUID")
-	command.Flags().BoolVar(&apply, "apply", false, "apply the previewed remote mutation")
+	command.Flags().BoolVar(&preview, "preview", false, "preview the remote mutation without performing it")
 	return command
 }
 
 func newMetricUnfollow(deps Dependencies) *cobra.Command {
 	var input metricunfollow.Input
-	var apply bool
+	var preview bool
 	command := &cobra.Command{
 		Use:         "unfollow",
-		Short:       "Preview or remove one Pulse metric follower.",
+		Short:       "Remove one Pulse metric follower.",
 		Annotations: capability("pulse.metric.unfollow"),
 		Args: func(command *cobra.Command, args []string) error {
 			if err := noArgs("pulse.metric.unfollow", command, args); err != nil {
@@ -365,7 +415,7 @@ func newMetricUnfollow(deps Dependencies) *cobra.Command {
 			return nil
 		},
 		RunE: func(command *cobra.Command, _ []string) error {
-			result, err := deps.MetricUnfollower.UnfollowPulseMetric(command.Context(), input, apply)
+			result, err := deps.MetricUnfollower.UnfollowPulseMetric(command.Context(), input, preview)
 			if err != nil {
 				return err
 			}
@@ -377,7 +427,7 @@ func newMetricUnfollow(deps Dependencies) *cobra.Command {
 	command.Flags().StringVar(&input.MetricLUID, "id", "", "authoritative metric LUID for exact follower resolution")
 	command.Flags().StringVar(&input.UserLUID, "user-id", "", "authoritative follower user LUID")
 	command.Flags().StringVar(&input.GroupLUID, "group-id", "", "authoritative follower group LUID")
-	command.Flags().BoolVar(&apply, "apply", false, "apply the previewed remote mutation")
+	command.Flags().BoolVar(&preview, "preview", false, "preview the remote mutation without performing it")
 	return command
 }
 

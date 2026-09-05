@@ -42,8 +42,8 @@ func TestWorkbookDeletePreviewAndApplyThroughCLI(t *testing.T) {
 	t.Setenv("PROD_PAT_SECRET", "pat-secret")
 	options := app.Options{MutationsEnabled: true, ConfigPath: configPath, HTTPClient: server.Client()}
 
-	preview := runWorkbookDeleteCLI(t, options, "content", "workbook", "delete", "--environment", "production", "--id", "wb-1")
-	for _, want := range []string{"mode: preview", "operation: workbook.delete", "luid: wb-1", "applied: false", "details: \"--full\""} {
+	preview := runWorkbookDeleteCLI(t, options, "content", "workbook", "delete", "--environment", "production", "--id", "wb-1", "--preview")
+	for _, want := range []string{"mode: preview", "operation: workbook.delete", "luid: wb-1", "details: \"--full\""} {
 		if !strings.Contains(preview, want) {
 			t.Fatalf("preview missing %q:\n%s", want, preview)
 		}
@@ -52,8 +52,8 @@ func TestWorkbookDeletePreviewAndApplyThroughCLI(t *testing.T) {
 		t.Fatalf("preview made %d delete requests", deletes.Load())
 	}
 
-	applied := runWorkbookDeleteCLI(t, options, "content", "workbook", "delete", "--environment", "production", "--id", "wb-1", "--apply", "--full")
-	for _, want := range []string{"applied: true", "status: succeeded", "workbook_luid: wb-1", "tableau_request_id: delete-request"} {
+	applied := runWorkbookDeleteCLI(t, options, "content", "workbook", "delete", "--environment", "production", "--id", "wb-1", "--full")
+	for _, want := range []string{"status: succeeded", "workbook_luid: wb-1", "tableau_request_id: delete-request"} {
 		if !strings.Contains(applied, want) {
 			t.Fatalf("apply output missing %q:\n%s", want, applied)
 		}

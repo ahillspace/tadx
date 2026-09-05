@@ -1,5 +1,5 @@
 plan:
-  mode: preview
+  mode: execute
   operation: flow.move
   environment: dev
   site: sandbox
@@ -13,10 +13,9 @@ plan:
     name: New
     path: New
   no_op: false
-applied: true
 result:
   status: succeeded
   flow_luid: flow-1
   project_luid: project-2
 details: "--full"
-help[1]: tadx content flow get --id flow-1
+help[1]: tadx content flow inspect --id flow-1

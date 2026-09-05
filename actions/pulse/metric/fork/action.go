@@ -32,7 +32,7 @@ type Action struct {
 func New(reader Reader, creator Creator, reconciler Reconciler) *Action {
 	return &Action{reader: reader, creator: creator, reconciler: reconciler}
 }
-func (a *Action) Execute(ctx context.Context, input Input, apply bool) (Output, error) {
+func (a *Action) Execute(ctx context.Context, input Input, preview bool) (Output, error) {
 	if a == nil || a.reader == nil || a.creator == nil || a.reconciler == nil {
 		return Output{}, fail("pulse.metric.fork.unconfigured", errs.KindRuntime, input, "Pulse metric fork is not configured.", nil)
 	}
@@ -48,16 +48,17 @@ func (a *Action) Execute(ctx context.Context, input Input, apply bool) (Output, 
 	if err != nil {
 		return Output{}, err
 	}
-	output := Output{Plan: plan, Help: []string{"Add --apply to get or create this exact Pulse metric variant."}}
-	if !apply {
+	output := Output{Plan: plan, Help: []string{"Run without --preview to get or create this exact Pulse metric variant."}}
+	if preview {
 		return output, nil
 	}
+	output.Plan.Mode = "execute"
 	current, err := a.plan(ctx, input)
 	if err != nil {
 		return Output{}, err
 	}
 	if current.Fingerprint != plan.Fingerprint {
-		return Output{}, fail("pulse.metric.fork.changed", errs.KindOperation, input, "The source Pulse metric changed after preview.", errors.New("planned specification fingerprint changed"))
+		return Output{}, fail("pulse.metric.fork.changed", errs.KindOperation, input, "The source Pulse metric changed during revalidation.", errors.New("planned specification fingerprint changed"))
 	}
 	created, err := a.creator.GetOrCreateMetric(ctx, CreateRequest{DefinitionLUID: plan.DefinitionLUID, Specification: cloneMap(plan.Specification)})
 	if err != nil {
@@ -78,9 +79,8 @@ func (a *Action) Execute(ctx context.Context, input Input, apply bool) (Output, 
 	if created.Created {
 		status = "created"
 	}
-	output.Applied = true
 	output.Result = &Result{Status: status, MetricLUID: created.MetricLUID, MetricName: created.MetricName, Created: created.Created, ReconciliationStatus: reconciled.Status, ReconciliationAttempts: reconciled.Attempts, OwnershipVerified: reconciled.OwnershipVerified, InventoryVisible: reconciled.InventoryVisible, RequestID: created.RequestID, ReconciliationRequestID: reconciled.RequestID}
-	output.Help = []string{"tadx pulse metric get --id " + created.MetricLUID}
+	output.Help = []string{"tadx pulse metric inspect --id " + created.MetricLUID}
 	return output, nil
 }
 func (a *Action) plan(ctx context.Context, input Input) (Plan, error) {

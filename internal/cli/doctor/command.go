@@ -53,7 +53,13 @@ func New(deps Dependencies) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			return deps.Renderer.Render(result)
+			if err := deps.Renderer.Render(result); err != nil {
+				return err
+			}
+			if result.Status == doctorrun.StatusFail {
+				return clierr.Rendered(&errs.Error{ID: "doctor.run.failed", Kind: errs.KindOperation, Operation: "doctor.run", Summary: result.Summary, Retryable: errs.Bool(false), CorrectiveAction: "Resolve the failed doctor checks, then retry."})
+			}
+			return nil
 		},
 	}
 	command.Flags().StringVar(&input.Environment, "environment", "", "exact environment alias; defaults to the configured read environment")

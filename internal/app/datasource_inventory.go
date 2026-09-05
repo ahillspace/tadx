@@ -3,7 +3,7 @@ package app
 import (
 	"context"
 
-	datasourceget "github.com/ahillspace/tadx/actions/datasource/get"
+	datasourceinspect "github.com/ahillspace/tadx/actions/datasource/inspect"
 	datasourcelist "github.com/ahillspace/tadx/actions/datasource/list"
 	"github.com/ahillspace/tadx/internal/catalog"
 	"github.com/ahillspace/tadx/internal/identity"
@@ -47,15 +47,15 @@ func (c *remoteContentCommands) ListDatasources(ctx context.Context, input datas
 	return output, nil
 }
 
-func (c *remoteContentCommands) GetDatasource(ctx context.Context, input datasourceget.Input) (datasourceget.Output, error) {
+func (c *remoteContentCommands) InspectDatasource(ctx context.Context, input datasourceinspect.Input) (datasourceinspect.Output, error) {
 	if input.Catalog {
 		environment, site, err := c.resolveCatalogTarget(input.Environment)
 		if err != nil {
-			return datasourceget.Output{}, err
+			return datasourceinspect.Output{}, err
 		}
 		input.Environment, input.Site = environment, site
 		resolver := &catalogDatasourceGetResolver{store: c.catalogStore(), environment: environment, site: site}
-		output, err := datasourceget.New(resolver).Execute(ctx, input)
+		output, err := datasourceinspect.New(resolver).Execute(ctx, input)
 		if err == nil {
 			output.Source = resolver.source
 		}
@@ -63,10 +63,10 @@ func (c *remoteContentCommands) GetDatasource(ctx context.Context, input datasou
 	}
 	connection, err := c.connect(ctx, input.Environment, false)
 	if err != nil {
-		return datasourceget.Output{}, remoteSetupError("datasource.get", input.Environment, input.Site, connection.environment, err)
+		return datasourceinspect.Output{}, remoteSetupError("datasource.inspect", input.Environment, input.Site, connection.environment, err)
 	}
 	input.Environment, input.Site = connection.environment.Alias, connection.environment.SiteContentURL
-	output, err := datasourceget.New(datasourceGetResolver{connection.datasources}).Execute(ctx, input)
+	output, err := datasourceinspect.New(datasourceGetResolver{connection.datasources}).Execute(ctx, input)
 	if err != nil {
 		return output, err
 	}
@@ -107,9 +107,9 @@ func datasourceListItem(item resourcedatasource.Datasource) datasourcelist.Datas
 
 type datasourceGetResolver struct{ adapter *resourcedatasource.Adapter }
 
-func (r datasourceGetResolver) ResolveDatasource(ctx context.Context, selector identity.Selector) (datasourceget.Datasource, error) {
+func (r datasourceGetResolver) ResolveDatasource(ctx context.Context, selector identity.Selector) (datasourceinspect.Datasource, error) {
 	item, err := r.adapter.ResolveDatasource(ctx, selector)
-	return datasourceget.Datasource{
+	return datasourceinspect.Datasource{
 		LUID: item.LUID, Name: item.Name, ProjectLUID: item.ProjectLUID, ProjectPath: item.ProjectPath,
 		Type: item.Type, ContentURL: item.ContentURL, Description: item.Description, OwnerLUID: item.OwnerLUID,
 		CreatedAt: item.CreatedAt, UpdatedAt: item.UpdatedAt, Size: item.Size, EncryptExtracts: item.EncryptExtracts,

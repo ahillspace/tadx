@@ -17,7 +17,7 @@ import (
 )
 
 func TestDatasourcePublishOutputGoldens(t *testing.T) {
-	value := datasourcepublish.Output{Plan: datasourcepublish.Plan{Mode: datasourcepublish.ModeOverwrite, Operation: "datasource.publish", ArtifactPath: "artifacts/datasource/Sales", ArtifactFingerprint: "sha256:secret-diagnostic", Filename: "Sales.tds", DatasourceName: "Sales", CompositionStatus: "composed", ParentDataSourceURLs: []string{"parent-a", "parent-b"}, Target: datasourcepublish.Target{Environment: "dev", Site: "sandbox", ProjectLUID: "project-1", ProjectPath: "Analytics", ExistingLUID: "ds-1"}, Substeps: []string{"resolve exact destination", "poll asynchronous job"}, AsJob: true}, Applied: true, Result: &datasourcepublish.Result{Status: "succeeded", DatasourceLUID: "ds-1", DatasourceName: "Sales", ProjectLUID: "project-1", JobID: "job-1", TableauRequestID: "request-1"}, Help: []string{"tadx content datasource get --id ds-1"}}
+	value := datasourcepublish.Output{Plan: datasourcepublish.Plan{Mode: "execute", PublishMode: datasourcepublish.ModeOverwrite, Operation: "datasource.publish", ArtifactPath: "artifacts/datasource/Sales", ArtifactFingerprint: "sha256:secret-diagnostic", Filename: "Sales.tds", DatasourceName: "Sales", CompositionStatus: "composed", ParentDataSourceURLs: []string{"parent-a", "parent-b"}, Target: datasourcepublish.Target{Environment: "dev", Site: "sandbox", ProjectLUID: "project-1", ProjectPath: "Analytics", ExistingLUID: "ds-1"}, Substeps: []string{"resolve exact destination", "poll asynchronous job"}, AsJob: true}, Result: &datasourcepublish.Result{Status: "succeeded", DatasourceLUID: "ds-1", DatasourceName: "Sales", ProjectLUID: "project-1", JobID: "job-1", TableauRequestID: "request-1"}, Help: []string{"tadx content datasource inspect --id ds-1"}}
 	assertDatasourcePublishGolden(t, "compact.toon", value, false)
 	assertDatasourcePublishGolden(t, "full.toon", value, true)
 	var compact bytes.Buffer
@@ -120,27 +120,27 @@ func TestPublishPreviewDoesNotUploadAndIncludesExactParents(t *testing.T) {
 	output, err := datasourcepublish.New(artifacts, resolver, publisher).Execute(context.Background(), datasourcepublish.Input{
 		ArtifactPath: "artifacts/datasource/Sales", Environment: "dev", Site: "sandbox",
 		ProjectSelector: identity.Selector{LUID: "project-1"}, Mode: datasourcepublish.ModeCreate,
-	}, false)
+	}, true)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if output.Applied || publisher.calls != 0 || output.Plan.CompositionStatus != "composed" || !reflect.DeepEqual(output.Plan.ParentDataSourceURLs, []string{"parent-a", "parent-b"}) {
+	if output.Result != nil || publisher.calls != 0 || output.Plan.CompositionStatus != "composed" || !reflect.DeepEqual(output.Plan.ParentDataSourceURLs, []string{"parent-a", "parent-b"}) {
 		t.Fatalf("output = %#v, publisher = %#v", output, publisher)
 	}
 }
 
-func TestPublishApplyRevalidatesThenForwardsExactParents(t *testing.T) {
+func TestPublishRevalidatesThenForwardsExactParents(t *testing.T) {
 	artifacts := &publishArtifactReader{artifact: composedArtifact()}
 	resolver := &publishResolver{project: datasourcepublish.Project{LUID: "project-1", Path: "Analytics"}}
 	publisher := &publisher{}
 	output, err := datasourcepublish.New(artifacts, resolver, publisher).Execute(context.Background(), datasourcepublish.Input{
 		ArtifactPath: "artifacts/datasource/Sales", Environment: "dev", Site: "sandbox",
 		ProjectSelector: identity.Selector{LUID: "project-1"}, Mode: datasourcepublish.ModeCreate, AsJob: true,
-	}, true)
+	}, false)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !output.Applied || artifacts.calls != 2 || resolver.resolveCalls != 2 || resolver.findCalls != 2 || publisher.calls != 1 || !publisher.prepared.committed {
+	if output.Result == nil || artifacts.calls != 2 || resolver.resolveCalls != 2 || resolver.findCalls != 2 || publisher.calls != 1 || !publisher.prepared.committed {
 		t.Fatalf("output = %#v, artifacts = %#v, resolver = %#v, publisher = %#v", output, artifacts, resolver, publisher)
 	}
 	if publisher.request.Mode != datasourcepublish.ModeCreate || !reflect.DeepEqual(publisher.request.ParentDataSourceURLs, []string{"parent-a", "parent-b"}) {
@@ -155,7 +155,7 @@ func TestPublishUnknownAsyncOutcomePreservesJobAndDisablesRetryAdvice(t *testing
 	artifacts := &publishArtifactReader{artifact: composedArtifact()}
 	resolver := &publishResolver{project: datasourcepublish.Project{LUID: "project-1", Path: "Analytics"}}
 	publisher := &outcomePublisher{result: datasourcepublish.Result{Status: "timed_out", JobID: "job-1", TableauRequestID: "poll-request"}, err: errors.New("poll timeout")}
-	_, err := datasourcepublish.New(artifacts, resolver, publisher).Execute(context.Background(), datasourcepublish.Input{ArtifactPath: "artifacts/datasource/Sales", Environment: "dev", Site: "sandbox", ProjectSelector: identity.Selector{LUID: "project-1"}, Mode: datasourcepublish.ModeCreate, AsJob: true}, true)
+	_, err := datasourcepublish.New(artifacts, resolver, publisher).Execute(context.Background(), datasourcepublish.Input{ArtifactPath: "artifacts/datasource/Sales", Environment: "dev", Site: "sandbox", ProjectSelector: identity.Selector{LUID: "project-1"}, Mode: datasourcepublish.ModeCreate, AsJob: true}, false)
 	var structured *errs.Error
 	if err == nil || !errors.As(err, &structured) || structured.ID != "datasource.publish.outcome_unknown" || structured.TableauJobID != "job-1" || structured.TableauRequestID != "poll-request" || structured.Retryable == nil || *structured.Retryable {
 		t.Fatalf("error = %#v", err)
@@ -169,11 +169,11 @@ func TestPublishResolvesAuthoritativeIdentityAfterCompletedJobOmitsIt(t *testing
 		completion: datasourcepublish.Datasource{LUID: "ds-new", Name: "Sales", ProjectLUID: "project-1"},
 	}
 	publisher := &outcomePublisher{result: datasourcepublish.Result{Status: "succeeded", JobID: "job-1", TableauRequestID: "poll-request"}}
-	output, err := datasourcepublish.New(artifacts, resolver, publisher).Execute(context.Background(), datasourcepublish.Input{ArtifactPath: "artifacts/datasource/Sales", Environment: "dev", Site: "sandbox", ProjectSelector: identity.Selector{LUID: "project-1"}, Mode: datasourcepublish.ModeCreate, AsJob: true}, true)
+	output, err := datasourcepublish.New(artifacts, resolver, publisher).Execute(context.Background(), datasourcepublish.Input{ArtifactPath: "artifacts/datasource/Sales", Environment: "dev", Site: "sandbox", ProjectSelector: identity.Selector{LUID: "project-1"}, Mode: datasourcepublish.ModeCreate, AsJob: true}, false)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !output.Applied || output.Result == nil || output.Result.Status != "succeeded" || output.Result.DatasourceLUID != "ds-new" || output.Result.DatasourceName != "Sales" || output.Result.ProjectLUID != "project-1" || output.Result.JobID != "job-1" || output.Result.TableauRequestID != "poll-request" || resolver.completionCalls != 1 {
+	if output.Result == nil || output.Result.Status != "succeeded" || output.Result.DatasourceLUID != "ds-new" || output.Result.DatasourceName != "Sales" || output.Result.ProjectLUID != "project-1" || output.Result.JobID != "job-1" || output.Result.TableauRequestID != "poll-request" || resolver.completionCalls != 1 {
 		t.Fatalf("output = %#v, completion calls = %d", output, resolver.completionCalls)
 	}
 }
@@ -194,7 +194,7 @@ func TestPublishKeepsCompletedJobOutcomeUnknownWhenIdentityCannotBeResolved(t *t
 		t.Run(test.name, func(t *testing.T) {
 			resolver := &publishResolver{project: datasourcepublish.Project{LUID: "project-1", Path: "Analytics"}, completion: test.completion, completionErr: test.err}
 			publisher := &outcomePublisher{result: datasourcepublish.Result{Status: "succeeded", JobID: "job-1", TableauRequestID: "poll-request"}}
-			_, err := datasourcepublish.New(&publishArtifactReader{artifact: composedArtifact()}, resolver, publisher).Execute(context.Background(), datasourcepublish.Input{ArtifactPath: "artifacts/datasource/Sales", Environment: "dev", Site: "sandbox", ProjectSelector: identity.Selector{LUID: "project-1"}, Mode: datasourcepublish.ModeCreate, AsJob: true}, true)
+			_, err := datasourcepublish.New(&publishArtifactReader{artifact: composedArtifact()}, resolver, publisher).Execute(context.Background(), datasourcepublish.Input{ArtifactPath: "artifacts/datasource/Sales", Environment: "dev", Site: "sandbox", ProjectSelector: identity.Selector{LUID: "project-1"}, Mode: datasourcepublish.ModeCreate, AsJob: true}, false)
 			var structured *errs.Error
 			if err == nil || !errors.As(err, &structured) || structured.ID != "datasource.publish.outcome_unknown" || structured.TableauJobID != "job-1" || structured.TableauRequestID != "poll-request" || structured.Retryable == nil || *structured.Retryable || resolver.completionCalls != 1 {
 				t.Fatalf("error = %#v, completion calls = %d", err, resolver.completionCalls)

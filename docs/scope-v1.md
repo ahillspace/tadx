@@ -13,27 +13,26 @@ These are the capabilities an agent may build to completion once each row's upst
 - Environment profiles: list, get, add, update, remove, set-default (local config).
 - Authentication: PAT sign-in check (remote) and local auth status. PAT only.
 - Capability discovery: capability list, capability get.
-- Catalog: refresh, search, get, status (normalized local cache; refresh may exhaust remote pages internally).
+- Catalog: refresh and status for the normalized local cache.
 - Workspace: create, list, status, move, delete one explicit artifact, and clean disposable state (local; no locking).
-- Cross-content read: content search, content get.
+- Shared search: live by default across content, administration, and Pulse, with optional `--catalog`.
 - Lineage: bounded automatic capture with workbook, datasource, and flow pulls; standalone pull into a metadata-only artifact.
-- Workbook: list, get, pull, publish, delete.
-- Datasource: list, get, pull, publish, delete; pull and publish preserve existing ordinary or composed packages without authoring composition.
-- Flow: list, get, pull, publish, move, delete.
-- Project: list, get, create, update.
-- Pulse: definition list/get/pull; metric list/get; definition/metric artifacts.
-- Administration: user list/get/create/update/delete; group list/get/create/update/delete; permission get (read only).
+- Workbook: list, inspect, pull, publish, delete.
+- Datasource: list, inspect, pull, publish, delete; pull and publish preserve existing ordinary or composed packages without authoring composition.
+- Flow: list, inspect, pull, publish, move, delete.
+- Project: list, inspect, create, update.
+- Pulse: definition list/inspect/pull/create/delete; metric list/inspect/fork/delete/follow/unfollow/followers; definition/metric artifacts.
+- Administration: user list/inspect/create/update/delete; group list/inspect/create/update/delete; permission inspect (read only).
 - Doctor: non-mutating diagnostics.
 
-## In the V1 registry but blocked (not executable until proof)
+## Deferred from V1
 
-These are real V1 commitments, present as registry metadata, but not executable and not to be guessed into existence.
-Each unblocks only when its named gate closes with captured official source plus a passing contract test.
+These capabilities do not appear in the executable V1 registry.
 
-- B1 datasource field-description write (published-datasource-field level): deferred fast-follow, pending the near-release TDS datasource-field API. Metadata API writes descriptions only at the upstream-table granularity, which is a different resource and not this row.
-- B2 datasource composition authoring: `datasource.composition.update` is deferred indefinitely pending a supported TDS authoring API.
-- B3 Pulse mutation schemas: pulse definition/metric create/update/delete/follow/unfollow.
-- B4 shallow project direct-content enumeration: project pull, project publish.
+- Datasource field-description updates.
+- Datasource composition authoring.
+- Pulse definition and metric updates.
+- Project pull and publish.
 
 ## Delegated (discoverable, executed elsewhere)
 
@@ -43,7 +42,7 @@ Discoverable through the registry so agents are routed correctly, but TADX never
 - View and custom-view data/images: Tableau MCP.
 - Pulse current values, insight bundles, briefs: Tableau MCP.
 - Workbook semantic authoring/modification: Tableau Desktop / Desktop MCP.
-- Datasource field-description generation: agent reasoning or a first-party skill (the reviewed write remains B1).
+- Datasource field-description generation: agent reasoning or a first-party skill.
 
 ## Out of scope or deferred (do not build in V1)
 
@@ -64,9 +63,10 @@ Discoverable through the registry so agents are routed correctly, but TADX never
 
 - PAT authentication only.
 - Default output is TOON; JSON is an interop conversion target, not a second output mode.
-- Consequential remote mutations are preview by default and require --apply. --force never means --apply.
+- Consequential mutations run by default when enabled and support `--preview` for a read-only plan.
 - Remote mutation commands and capabilities are always discoverable.
-- `TADX_ENABLE_MUTATIONS=1` enables mutation command execution; enabled commands still preview by default and require `--apply` for the remote change.
+- `TADX_ENABLE_MUTATIONS=1` enables mutation command execution.
+- `--force` does not bypass mutation policy.
 - Tableau LUIDs are authoritative identity; names and paths are selectors; ambiguity is a deterministic error; no fuzzy or interactive resolution.
 - Workspace selectors are logical names, unique case-insensitively, and resolved through one canonical registry.
 - A publish without an explicit target uses the artifact's recorded source environment, site, and project.

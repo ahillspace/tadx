@@ -5,7 +5,7 @@ It reduces token use and ambiguity by combining exact selectors, safe previews, 
 
 Commands return only the fields needed for the next decision by default.
 When more bounded detail is available, the response advertises `--full` instead of making the caller search for another command.
-Tableau LUIDs remain authoritative, ambiguous selectors fail, and consequential mutations preview before `--apply`.
+Tableau LUIDs remain authoritative, ambiguous selectors fail, and consequential mutations support `--preview` before you run them.
 
 ## Current status
 
@@ -18,19 +18,20 @@ The current build supports:
 - Checking local authentication configuration and signing in to verify a Tableau site.
 - Discovering capability ownership, availability, selectors, safety rules, and blockers.
 - Querying Tableau live by default, with explicit local catalog reads through `--catalog`.
-- Refreshing, searching, and inspecting the status of the local SQLite catalog.
+- Refreshing and inspecting the status of the local SQLite catalog.
+- Searching supported content, administration, and Pulse resources live or through `--catalog`.
 - Creating, registering, cloning, listing, inspecting, and moving named workspaces, plus deleting one local artifact safely.
 - Listing, inspecting, creating, and updating projects.
-- Listing, inspecting, and pulling flows, plus previewed publishing, moves, and deletions.
-- Listing and inspecting workbooks, plus pulls, previewed publishing, and deletions.
-- Listing and inspecting published datasources, inspecting bounded field metadata, plus pulls, previewed publishing, and deletions.
+- Listing, inspecting, and pulling flows, plus publishing, moves, deletions, and optional previews.
+- Listing and inspecting workbooks, plus pulls, publishing, deletions, and optional previews.
+- Listing and inspecting published datasources and bounded field metadata, plus pulls, publishing, deletions, and optional previews.
 - Capturing bounded lineage for workbooks, published datasources, and flows.
-- Listing, inspecting, pulling, and creating Pulse definitions.
-- Listing, inspecting, and forking Pulse metrics, plus managing exact user and group followers.
+- Listing, inspecting, pulling, creating, and deleting Pulse definitions.
+- Listing, inspecting, forking, and deleting Pulse metrics, plus managing exact user and group followers.
 - Managing Tableau site users, groups, memberships, and permission inspection.
 
 Remaining work focuses on release hardening and capabilities that still lack a supported or proven upstream contract.
-Datasource composition, project pull and publish, Pulse update, and Pulse delete remain blocked until that evidence exists.
+Datasource composition, datasource field-description updates, project pull and publish, and Pulse updates are deferred.
 
 Use the registry in your installed build as the source of truth:
 
@@ -108,14 +109,20 @@ tadx auth check --environment dev
 
 ## Create a named workspace
 
-Register a unique logical name for one machine-local workspace root:
+Create a unique logical workspace at the default human-accessible location:
 
 ```text
-tadx workspace create development --path "<workspace-root>"
+tadx workspace create development
 tadx env update dev --default-workspace development
-tadx workspace status --workspace development
+tadx workspace status --workspace development --full
 ```
 
+The default root is `<home>/TADX/workspaces/development` on Windows, macOS, and Linux.
+Use `--path <workspace-root>` with `workspace create` or `workspace clone` to override the default.
+The `--full` output for workspace creation, cloning, listing, and status includes the registered machine-local root.
+Workspace registration still requires an explicit root path.
+Artifact moves still require explicit source and destination workspace names plus an artifact selector.
+Workspace names are portable across supported operating systems and cannot contain path separators, Windows-invalid characters, reserved device names, or trailing dots or spaces.
 Lifecycle commands use the logical workspace name, while artifact paths remain relative and portable.
 
 ## Pull a workbook
@@ -146,7 +153,7 @@ Refresh the complete local inventory when you need broad offline search:
 
 ```text
 tadx catalog refresh --environment dev
-tadx catalog search revenue --environment dev
+tadx search revenue --environment dev --catalog
 tadx catalog status --environment dev
 ```
 

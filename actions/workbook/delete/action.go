@@ -32,7 +32,7 @@ func New(resolver Resolver, deleter Deleter) *Action {
 }
 
 // Execute previews by default and revalidates the authoritative LUID before apply.
-func (a *Action) Execute(ctx context.Context, input Input, apply bool) (Output, error) {
+func (a *Action) Execute(ctx context.Context, input Input, preview bool) (Output, error) {
 	if a == nil || a.resolver == nil || a.deleter == nil {
 		return Output{}, &errs.Error{ID: "workbook.delete.unconfigured", Kind: errs.KindRuntime, Operation: "workbook.delete", Summary: "Workbook delete is not configured.", Retryable: errs.Bool(false), CorrectiveAction: "Configure workbook delete before retrying."}
 	}
@@ -56,22 +56,22 @@ func (a *Action) Execute(ctx context.Context, input Input, apply bool) (Output, 
 		return Output{}, operationError("workbook.delete.resolve", input, "Workbook resolution failed.", "Review the exact workbook selector, then retry.", errors.New("resolved workbook omitted its authoritative LUID"), "")
 	}
 	plan := Plan{Mode: "preview", Operation: "workbook.delete", Environment: input.Environment, Site: input.Site, Target: target}
-	output := Output{Plan: plan, Help: []string{"Add --apply to delete this exact workbook."}}
-	if !apply {
+	output := Output{Plan: plan, Help: []string{"Run without --preview to delete this exact workbook."}}
+	if preview {
 		return output, nil
 	}
+	output.Plan.Mode = "execute"
 	current, err := a.resolver.ResolveWorkbook(ctx, identity.Selector{LUID: identity.LUID(target.LUID)})
 	if err != nil {
 		return Output{}, operationError("workbook.delete.resolve", input, "Workbook revalidation failed.", "Review a new preview before deleting.", err, target.LUID)
 	}
 	if current.LUID != target.LUID {
-		return Output{}, operationError("workbook.delete.target_changed", input, "The workbook delete target identity changed after preview.", "Review a new preview before deleting.", fmt.Errorf("resolved workbook LUID changed from %q to %q", target.LUID, current.LUID), target.LUID)
+		return Output{}, operationError("workbook.delete.target_changed", input, "The workbook delete target identity changed during revalidation.", "Review a new preview before deleting.", fmt.Errorf("resolved workbook LUID changed from %q to %q", target.LUID, current.LUID), target.LUID)
 	}
 	result, err := a.deleter.DeleteWorkbook(ctx, target.LUID)
 	if err != nil {
 		return Output{}, operationError("workbook.delete.failed", input, "Workbook delete failed.", "Review the upstream error before deleting again.", err, target.LUID)
 	}
-	output.Applied = true
 	output.Result = &result
 	output.Help = []string{"tadx content workbook list --environment " + input.Environment}
 	return output, nil

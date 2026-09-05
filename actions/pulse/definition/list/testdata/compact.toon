@@ -8,7 +8,7 @@ page:
 definitions[1]{luid,name,datasource_luid}:
   definition-1,Revenue,datasource-1
 details: "--full"
-help[1]: tadx pulse definition get --id <definition-luid>
+help[1]: tadx pulse definition inspect --id <definition-luid>
 source:
   mode: tableau
   observed_at: "2026-09-04T12:00:00Z"

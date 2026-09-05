@@ -11,7 +11,7 @@ This is a proposal, not a patch.
 Every recommendation below is grounded in the current source (file and line references are given so each point can be verified before any change is made).
 The maintainer reviewed the proposal on 2026-09-03.
 Mutation visibility and execution gating, canonical project selectors, portable artifact help, and the datasource collision bug were accepted for implementation.
-The existing `--apply` contract remains unchanged pending a separate decision.
+Mutation commands now run by default when enabled and support `--preview` for a read-only plan.
 Published datasource guidance and long-operation handling are tabled.
 Agent guidance and skill changes remain deferred until CLI discoverability is stable.
 The three themes match the three friction areas the test surfaced:
@@ -96,12 +96,12 @@ Let `capability list --mutation` list them rather than refuse.
 Keep the environment variable as the gate on actually applying a mutation, not on learning that mutations exist.
 
 2. Make gated verbs visible but inert, instead of hidden and silently runnable.
-Show them in help with a suffix like "(requires TADX_ENABLE_MUTATIONS=1 to apply)".
+Show them in help with a suffix like "(requires TADX_ENABLE_MUTATIONS=1)".
 Have their `RunE` refuse with a clear, actionable error when the flag is off, rather than running while hidden.
 This replaces two confusing states (invisible-but-runs, absent-errors) with one honest state (visible, and it tells you exactly how to enable it).
 
 3. Put the operating model in root help.
-`tadx --help` should state, in a few lines, that the tool is preview-first (mutations preview by default and require `--apply`), that write verbs require `TADX_ENABLE_MUTATIONS=1`, and that `tadx capability list` is the way to enumerate everything.
+`tadx --help` should state, in a few lines, that mutations run by default, `--preview` returns a read-only plan, write verbs require `TADX_ENABLE_MUTATIONS=1`, and `tadx capability list` enumerates everything.
 An agent reads root help first; that is the highest-leverage place for these three facts.
 
 4. Normalize project-selection flags.
@@ -109,7 +109,7 @@ Accept `--project`, `--project-name`, and `--project-id` as aliases on every ver
 Consistency here removes a whole class of "unknown flag" retries.
 
 5. Ship an `AGENTS.md` (or equivalent) at the repo root.
-A short, example-driven reference covering the mutation gate, the preview/apply model, the `--artifact` managed-directory contract with one worked example, and the project-flag matrix.
+A short, example-driven reference covering the mutation gate, optional preview, the `--artifact` managed-directory contract with one worked example, and the project-flag matrix.
 This is the documentation the test was missing, and it belongs with the tool, not in each caller's private config.
 
 ---

@@ -121,7 +121,7 @@ func (a *Action) Execute(ctx context.Context, input Input) (Output, error) {
 			return Output{}, err
 		}
 	}
-	return Output{Status: "listed", Environment: input.Environment, Site: input.Site, Page: OutputPage{Returned: len(page.Users), Total: page.Total, Limit: page.Size, NextCursor: next}, Users: page.Users, RequestID: page.RequestID, Help: []string{"tadx admin user get --id <user-luid>"}}, nil
+	return Output{Status: "listed", Environment: input.Environment, Site: input.Site, Page: OutputPage{Returned: len(page.Users), Total: page.Total, Limit: page.Size, NextCursor: next}, Users: page.Users, RequestID: page.RequestID, Help: []string{"tadx admin user inspect --id <user-luid>"}}, nil
 }
 
 type cursorValue struct {

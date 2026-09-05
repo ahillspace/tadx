@@ -10,6 +10,7 @@ import (
 const maxFollowers = 1000
 
 type Reader interface {
+	GetMetric(context.Context, string) (Metric, error)
 	ListSubscriptions(context.Context, string) ([]Subscription, error)
 }
 type Action struct{ reader Reader }
@@ -23,19 +24,21 @@ func (a *Action) Execute(ctx context.Context, input Input) (Output, error) {
 	if input.MetricLUID == "" {
 		return Output{}, fail("pulse.metric.followers.usage", errs.KindUsage, input, "Pulse metric followers requires an exact metric LUID.", nil)
 	}
+	metric, err := a.reader.GetMetric(ctx, input.MetricLUID)
+	if err != nil {
+		return Output{}, readError(input, err)
+	}
+	if metric.LUID != input.MetricLUID {
+		return Output{}, fail("pulse.metric.followers.invalid_response", errs.KindOperation, input, "Tableau returned a mismatched Pulse metric.", errors.New("metric identity mismatch"))
+	}
 	items, err := a.reader.ListSubscriptions(ctx, input.MetricLUID)
 	if err != nil {
-		var structured *errs.Error
-		if input.Catalog && errors.As(err, &structured) {
-			return Output{}, err
-		}
-		retryable, corrective := errs.CompleteRetryAdvice(err, "Review the exact metric LUID and selected site, then retry.")
-		return Output{}, &errs.Error{ID: "pulse.metric.followers.failed", Kind: errs.KindOperation, Operation: "pulse.metric.followers", Resource: input.MetricLUID, Environment: input.Environment, Site: input.Site, Summary: "Pulse metric follower listing failed.", Cause: err, Retryable: retryable, CorrectiveAction: corrective, TableauRequestID: errs.TableauRequestID(err)}
+		return Output{}, readError(input, err)
 	}
 	if len(items) > maxFollowers {
 		return Output{}, fail("pulse.metric.followers.invalid_response", errs.KindOperation, input, "Pulse metric follower listing exceeded its bounded output.", errors.New("more than 1000 subscriptions"))
 	}
-	requestID := ""
+	requestID := metric.RequestID
 	for _, item := range items {
 		if item.LUID == "" || item.MetricLUID != input.MetricLUID || item.FollowerLUID == "" || (item.FollowerType != "USER" && item.FollowerType != "GROUP") {
 			return Output{}, fail("pulse.metric.followers.invalid_response", errs.KindOperation, input, "Tableau returned an incomplete or mismatched subscription.", errors.New("subscription identity mismatch"))
@@ -46,6 +49,16 @@ func (a *Action) Execute(ctx context.Context, input Input) (Output, error) {
 	}
 	return Output{Status: "listed", Environment: input.Environment, Site: input.Site, MetricLUID: input.MetricLUID, Count: len(items), Subscriptions: items, RequestID: requestID, Help: []string{"tadx pulse metric follow --id " + input.MetricLUID + " --user-id <user-luid>"}}, nil
 }
+
+func readError(input Input, err error) error {
+	var structured *errs.Error
+	if input.Catalog && errors.As(err, &structured) {
+		return err
+	}
+	retryable, corrective := errs.CompleteRetryAdvice(err, "Review the exact metric LUID and selected site, then retry.")
+	return &errs.Error{ID: "pulse.metric.followers.failed", Kind: errs.KindOperation, Operation: "pulse.metric.followers", Resource: input.MetricLUID, Environment: input.Environment, Site: input.Site, Summary: "Pulse metric follower listing failed.", Cause: err, Retryable: retryable, CorrectiveAction: corrective, TableauRequestID: errs.TableauRequestID(err)}
+}
+
 func fail(id string, kind errs.Kind, input Input, summary string, cause error) error {
 	return &errs.Error{ID: id, Kind: kind, Operation: "pulse.metric.followers", Resource: input.MetricLUID, Environment: input.Environment, Site: input.Site, Summary: summary, Cause: cause, Retryable: errs.Bool(false), CorrectiveAction: "Provide one exact Pulse metric LUID and review its subscriptions."}
 }

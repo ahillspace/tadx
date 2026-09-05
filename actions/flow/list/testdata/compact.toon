@@ -9,4 +9,4 @@ page:
 flows[1]{luid,name,project_luid,project_name,file_type}:
   flow-1,Daily,project-1,Ops,tflx
 details: "--full"
-help[1]: tadx content flow get --id <flow-luid>
+help[1]: tadx content flow inspect --id <flow-luid>

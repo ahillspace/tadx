@@ -124,12 +124,11 @@ type Result struct {
 	ValidationWarnings []ValidationIssue `json:"validation_warnings,omitempty"`
 }
 
-// Output keeps the applied result attached to the exact previewed plan.
+// Output keeps the result attached to the exact previewed plan.
 type Output struct {
-	Plan    Plan     `json:"plan"`
-	Applied bool     `json:"applied"`
-	Result  *Result  `json:"result,omitempty"`
-	Help    []string `json:"help"`
+	Plan   Plan     `json:"plan"`
+	Result *Result  `json:"result,omitempty"`
+	Help   []string `json:"help"`
 }
 
 // CompactPlan preserves the exact target and mutation decision without diagnostics.
@@ -158,7 +157,6 @@ type CompactPublishResult struct {
 // CompactResult is the bounded default projection.
 type CompactResult struct {
 	Plan    CompactPlan           `json:"plan"`
-	Applied bool                  `json:"applied"`
 	Result  *CompactPublishResult `json:"result,omitempty"`
 	Details string                `json:"details"`
 	Help    []string              `json:"help"`
@@ -194,10 +192,9 @@ type FullPublishResult struct {
 
 // FullResult is the bounded expanded projection.
 type FullResult struct {
-	Plan    FullPlan           `json:"plan"`
-	Applied bool               `json:"applied"`
-	Result  *FullPublishResult `json:"result,omitempty"`
-	Help    []string           `json:"help"`
+	Plan   FullPlan           `json:"plan"`
+	Result *FullPublishResult `json:"result,omitempty"`
+	Help   []string           `json:"help"`
 }
 
 // CompactOutput returns the target, safety decision, and resulting identities.
@@ -215,7 +212,7 @@ func (o Output) CompactOutput() any {
 			WarningsOmitted: len(o.Result.ValidationWarnings),
 		}
 	}
-	return CompactResult{Plan: plan, Applied: o.Applied, Result: result, Details: "--full", Help: o.Help}
+	return CompactResult{Plan: plan, Result: result, Details: "--full", Help: o.Help}
 }
 
 // FullOutput returns bounded diagnostics for the same publish operation.
@@ -228,8 +225,7 @@ func (o Output) FullOutput() any {
 			WorkbookName: o.Plan.WorkbookName, Target: o.Plan.Target, Overwrite: o.Plan.Overwrite,
 			AsJob: o.Plan.AsJob, Warnings: warnings, WarningsOmitted: warningsOmitted, Substeps: o.Plan.Substeps,
 		},
-		Applied: o.Applied,
-		Help:    o.Help,
+		Help: o.Help,
 	}
 	if o.Result != nil {
 		validationWarnings, validationWarningsOmitted := boundValidationWarnings(o.Result.ValidationWarnings)

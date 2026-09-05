@@ -16,14 +16,13 @@ import (
 	authcheck "github.com/ahillspace/tadx/actions/auth/check"
 	capabilityget "github.com/ahillspace/tadx/actions/capability/get"
 	capabilitylist "github.com/ahillspace/tadx/actions/capability/list"
-	catalogsearch "github.com/ahillspace/tadx/actions/catalog/search"
 	workbookpublish "github.com/ahillspace/tadx/actions/workbook/publish"
 	workbookpull "github.com/ahillspace/tadx/actions/workbook/pull"
 	"github.com/ahillspace/tadx/internal/artifact"
 	coreauth "github.com/ahillspace/tadx/internal/auth"
 	"github.com/ahillspace/tadx/internal/capability"
-	"github.com/ahillspace/tadx/internal/catalog"
 	"github.com/ahillspace/tadx/internal/cli"
+	"github.com/ahillspace/tadx/internal/cli/clierr"
 	"github.com/ahillspace/tadx/internal/config"
 	"github.com/ahillspace/tadx/internal/errs"
 	"github.com/ahillspace/tadx/internal/identity"
@@ -45,6 +44,7 @@ type Options struct {
 	HTTPClient       *http.Client
 	Now              func() time.Time
 	CorrelationID    func() string
+	UserHomeDir      func() (string, error)
 }
 
 // Run wires and runs the CLI, renders structured output, and returns an AXI exit code.
@@ -76,7 +76,7 @@ func Run(ctx context.Context, args []string, stdout io.Writer, options Options) 
 		GetUse:              registryUse("capability.get"),
 		GetShort:            registryShort("capability.get"),
 		AuthChecker:         authcheck.New(runtime, runtime),
-		CatalogSearcher:     &catalogService{runtime: runtime},
+		Searcher:            newSearchCommands(runtime),
 		CatalogRefresher:    catalogGroup2.refresher(),
 		CatalogStatuser:     catalogGroup2.statuser(),
 		WorkbookPuller:      &pullService{runtime: runtime},
@@ -91,7 +91,6 @@ func Run(ctx context.Context, args []string, stdout io.Writer, options Options) 
 		DoctorShort:         registryShort("doctor.run"),
 		AuthUse:             registryLeafUse("auth.check"), AuthShort: registryShort("auth.check"),
 		AuthStatuser: newAuthStatus(runtime), AuthStatusUse: registryLeafUse("auth.status"), AuthStatusShort: registryShort("auth.status"),
-		CatalogSearchUse: registryLeafUse("catalog.search"), CatalogSearchShort: registryShort("catalog.search"),
 		CatalogRefreshUse: registryLeafUse("catalog.refresh"), CatalogRefreshShort: registryShort("catalog.refresh"),
 		CatalogStatusUse: registryLeafUse("catalog.status"), CatalogStatusShort: registryShort("catalog.status"),
 		WorkbookPullUse: registryLeafUse("workbook.pull"), WorkbookPullShort: registryShort("workbook.pull"),
@@ -114,6 +113,9 @@ func Run(ctx context.Context, args []string, stdout io.Writer, options Options) 
 		return renderError(stdout, &errs.Error{Kind: errs.KindUsage, Operation: "cli", Summary: err.Error(), Cause: err})
 	}
 	if err := root.ExecuteContext(ctx); err != nil {
+		if clierr.IsRendered(err) {
+			return errs.ExitCode(err)
+		}
 		var structured *errs.Error
 		if !errors.As(err, &structured) {
 			err = &errs.Error{Kind: errs.KindRuntime, Operation: "cli", Summary: err.Error(), Cause: err}
@@ -153,6 +155,7 @@ type runtimeDependencies struct {
 	httpClient    *http.Client
 	now           func() time.Time
 	correlationID string
+	userHomeDir   func() (string, error)
 }
 
 func newRuntime(options Options) (*runtimeDependencies, error) {
@@ -182,7 +185,11 @@ func newRuntime(options Options) (*runtimeDependencies, error) {
 			correlation = fmt.Sprintf("%x", value[:])
 		}
 	}
-	return &runtimeDependencies{configPath: path, httpClient: client, now: now, correlationID: correlation}, nil
+	userHomeDir := options.UserHomeDir
+	if userHomeDir == nil {
+		userHomeDir = os.UserHomeDir
+	}
+	return &runtimeDependencies{configPath: path, httpClient: client, now: now, correlationID: correlation, userHomeDir: userHomeDir}, nil
 }
 
 func (r *runtimeDependencies) Resolve(_ context.Context, alias string) (authcheck.Target, error) {
@@ -240,36 +247,6 @@ func (r *runtimeDependencies) tableauConnection(ctx context.Context, alias strin
 	provider := coreauth.NewPATProvider(coreauth.LookupEnvFunc(os.LookupEnv), tableauauth.NewClient(transport))
 	session, err := provider.Authenticate(ctx, coreauth.Target{Environment: environment.Alias, ServerURL: environment.URL, SiteContentURL: environment.SiteContentURL, PATNameVariable: environment.Auth.PATNameEnv, PATSecretVariable: environment.Auth.PATSecretEnv})
 	return authenticatedTableau{configuration: configuration, environment: environment, transport: transport, session: session}, err
-}
-
-type catalogService struct{ runtime *runtimeDependencies }
-
-func (s *catalogService) Execute(ctx context.Context, input catalogsearch.Input) (catalogsearch.Output, error) {
-	_, environment, err := s.runtime.environment(input.Environment, false)
-	if err != nil {
-		return catalogsearch.Output{}, capabilitySetupError("catalog.search.setup", "catalog.search", input.Environment, input.Site, "Catalog search setup failed.", "Review the selected environment and catalog configuration.", err)
-	}
-	input.Environment = environment.Alias
-	if input.Site == "" {
-		input.Site = environment.SiteContentURL
-	}
-	input.SiteResolved = true
-	store := catalog.NewStore(filepath.Dir(s.runtime.configPath), s.runtime.now)
-	return catalogsearch.New(catalogSource{store: store}).Execute(ctx, input)
-}
-
-type catalogSource struct{ store *catalog.Store }
-
-func (s catalogSource) Search(ctx context.Context, input catalogsearch.Input) (catalogsearch.Result, error) {
-	result, err := s.store.Search(ctx, catalog.Query{Text: input.Text, Kind: input.Kind, ProjectPath: input.ProjectPath, Owner: input.Owner, Environment: input.Environment, Site: input.Site, SiteSelected: input.SiteResolved, LUID: input.LUID, Cursor: input.Cursor, Limit: input.Limit})
-	if err != nil {
-		return catalogsearch.Result{}, err
-	}
-	items := make([]catalogsearch.Item, len(result.Records))
-	for index, item := range result.Records {
-		items[index] = catalogsearch.Item{LUID: item.LUID, Kind: item.Kind, Name: item.Name, ProjectPath: item.ProjectPath, Owner: item.Owner}
-	}
-	return catalogsearch.Result{Page: catalogsearch.Page{Returned: result.Page.Returned, Total: result.Page.Total, Limit: result.Page.Limit, NextCursor: result.Page.NextCursor}, GenerationID: result.GenerationID, Environment: result.Environment, Site: result.Site, GeneratedAt: result.GeneratedAt.UTC().Format(time.RFC3339Nano), Stale: result.Stale, Items: items, Warnings: result.Warnings}, nil
 }
 
 type pullService struct{ runtime *runtimeDependencies }
@@ -414,7 +391,7 @@ func workbookLineageDocument(input workbookpull.LineageCapture) artifact.Lineage
 
 type publishService struct{ runtime *runtimeDependencies }
 
-func (s *publishService) Execute(ctx context.Context, input workbookpublish.Input, apply bool) (workbookpublish.Output, error) {
+func (s *publishService) Execute(ctx context.Context, input workbookpublish.Input, preview bool) (workbookpublish.Output, error) {
 	manager := artifact.NewWorkbookManager(s.runtime.now)
 	var environment config.Environment
 	var adapter *resourceworkbook.Adapter
@@ -453,7 +430,7 @@ func (s *publishService) Execute(ctx context.Context, input workbookpublish.Inpu
 		input.Environment, input.Site, input.TargetResolved = environment.Alias, environment.SiteContentURL, true
 	}
 	action := workbookpublish.New(artifactReader{manager: manager, displayPath: managedArtifact.Path}, publishAdapter{adapter: adapter}, publishAdapter{adapter: adapter})
-	return action.Execute(ctx, input, apply)
+	return action.Execute(ctx, input, preview)
 }
 
 func resolvedTarget(environmentAlias, site string, environment config.Environment) (string, string) {
@@ -579,7 +556,7 @@ func (registrySource) Get(_ context.Context, id string) (capabilityget.Capabilit
 		Validation:            definition.Validation,
 		Blocker:               string(definition.Blocker),
 		RemoteMutation:        definition.RemoteMutation,
-		RequiresApply:         definition.RequiresApply,
+		SupportsPreview:       definition.SupportsPreview,
 		LocalWrite:            definition.LocalWrite,
 		RawCapable:            definition.RawCapable,
 	}, true

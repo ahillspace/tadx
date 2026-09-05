@@ -3,6 +3,7 @@ package refresh_test
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"os"
 	"reflect"
@@ -42,14 +43,15 @@ func (h *recordingHydrator) Hydrate(_ context.Context, request refresh.Hydration
 
 func completeResult() refresh.HydrationResult {
 	return refresh.HydrationResult{
-		GenerationID: "generation-1",
-		GeneratedAt:  time.Date(2026, 9, 1, 12, 0, 0, 0, time.UTC),
-		Complete:     true,
-		Source:       "tableau-rest",
-		Path:         "catalog/catalog.sqlite",
-		RecordCount:  3,
-		ScopeCounts:  []refresh.ScopeCount{{Scope: "projects", Records: 1}, {Scope: "workbooks", Records: 2}},
-		Diagnostics:  refresh.Diagnostics{Requests: 2, FailedRequests: 0, Duration: "1.211s"},
+		GenerationID:        "generation-1",
+		GeneratedAt:         time.Date(2026, 9, 1, 12, 0, 0, 0, time.UTC),
+		Complete:            true,
+		Source:              "tableau-rest",
+		Path:                "catalog/catalog.sqlite",
+		RecordCount:         3,
+		HydratedRecordCount: 3,
+		ScopeCounts:         []refresh.ScopeCount{{Scope: "projects", Records: 1}, {Scope: "workbooks", Records: 2}},
+		Diagnostics:         refresh.Diagnostics{Requests: 2, FailedRequests: 0, Duration: "1.211s"},
 	}
 }
 
@@ -189,6 +191,37 @@ func TestActionCompactAndFullOutputContainOnlyBoundedOperationalMetadata(t *test
 			}
 			assertGolden(t, test.golden, actual)
 		})
+	}
+}
+
+func TestActionSeparatesSearchableRecordsFromWiderHydrationCounts(t *testing.T) {
+	result := completeResult()
+	result.RecordCount = 2
+	result.HydratedRecordCount = 3
+	hydrator := &recordingHydrator{result: result}
+
+	value, err := refresh.New(hydrator).Execute(context.Background(), refresh.Input{
+		Environment: "production", Site: "marketing", SiteResolved: true, Scopes: []string{"workbooks"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if value.Generation.Records != 2 || value.Generation.HydratedRecords != 3 {
+		t.Fatalf("generation = %#v", value.Generation)
+	}
+	compact, err := json.Marshal(value.CompactOutput())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(compact), "hydrated_records") {
+		t.Fatalf("compact output exposed diagnostic hydration count: %s", compact)
+	}
+	full, err := json.Marshal(value.FullOutput())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(full), `"records":2`) || !strings.Contains(string(full), `"hydrated_records":3`) {
+		t.Fatalf("full output did not distinguish catalog and hydration counts: %s", full)
 	}
 }
 

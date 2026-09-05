@@ -18,6 +18,7 @@ type Input struct {
 type Workspace struct {
 	Name          string `json:"name"`
 	ID            string `json:"id"`
+	Root          string `json:"root"`
 	Default       bool   `json:"default"`
 	Available     bool   `json:"available"`
 	ManifestValid bool   `json:"manifest_valid"`

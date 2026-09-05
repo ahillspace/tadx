@@ -30,10 +30,9 @@ type Result struct {
 	SubscriptionLUID string `json:"subscription_luid"`
 }
 type Output struct {
-	Plan    Plan     `json:"plan"`
-	Applied bool     `json:"applied"`
-	Result  *Result  `json:"result,omitempty"`
-	Help    []string `json:"help"`
+	Plan   Plan     `json:"plan"`
+	Result *Result  `json:"result,omitempty"`
+	Help   []string `json:"help"`
 }
 
 func (o Output) CompactOutput() any { return o }

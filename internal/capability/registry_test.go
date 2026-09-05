@@ -9,7 +9,7 @@ import (
 
 func TestCanonicalRegistryIsValidAndComplete(t *testing.T) {
 	definitions := All()
-	if got, want := len(definitions), 80; got != want {
+	if got, want := len(definitions), 72; got != want {
 		t.Fatalf("All() returned %d definitions, want %d", got, want)
 	}
 	if err := Validate(definitions); err != nil {
@@ -31,8 +31,8 @@ func TestCanonicalRegistryIsValidAndComplete(t *testing.T) {
 			blocked++
 		}
 	}
-	if cli != 75 || delegated != 5 || ship != 75 || blocked != 8 {
-		t.Fatalf("registry totals = cli:%d delegated:%d ship-disposition:%d blocked:%d, want 75/5/75/8", cli, delegated, ship, blocked)
+	if cli != 67 || delegated != 5 || ship != 67 || blocked != 0 {
+		t.Fatalf("registry totals = cli:%d delegated:%d ship-disposition:%d blocked:%d, want 67/5/67/0", cli, delegated, ship, blocked)
 	}
 }
 
@@ -42,7 +42,7 @@ func TestCanonicalExecutableBindingsIncludeImplementedSlices(t *testing.T) {
 	for _, definition := range definitions {
 		ids = append(ids, definition.ID)
 	}
-	if want := []string{"admin.group.create", "admin.group.delete", "admin.group.get", "admin.group.list", "admin.group.update", "admin.permission.get", "admin.user.create", "admin.user.delete", "admin.user.get", "admin.user.list", "admin.user.update", "auth.check", "auth.status", "capability.get", "capability.list", "catalog.refresh", "catalog.search", "catalog.status", "datasource.delete", "datasource.get", "datasource.list", "datasource.publish", "datasource.pull", "datasource.schema", "doctor.run", "env.profile.add", "env.profile.get", "env.profile.list", "env.profile.remove", "env.profile.set-default", "env.profile.update", "flow.delete", "flow.get", "flow.list", "flow.move", "flow.publish", "flow.pull", "lineage.pull", "project.create", "project.get", "project.list", "project.update", "pulse.definition.create", "pulse.definition.get", "pulse.definition.list", "pulse.definition.pull", "pulse.metric.follow", "pulse.metric.followers", "pulse.metric.fork", "pulse.metric.get", "pulse.metric.list", "pulse.metric.unfollow", "workbook.delete", "workbook.get", "workbook.list", "workbook.publish", "workbook.pull", "workspace.artifact.delete", "workspace.clean", "workspace.clone", "workspace.create", "workspace.list", "workspace.move", "workspace.register", "workspace.status"}; !slices.Equal(ids, want) {
+	if want := []string{"admin.group.create", "admin.group.delete", "admin.group.inspect", "admin.group.list", "admin.group.update", "admin.permission.inspect", "admin.user.create", "admin.user.delete", "admin.user.inspect", "admin.user.list", "admin.user.update", "auth.check", "auth.status", "capability.get", "capability.list", "catalog.refresh", "catalog.status", "datasource.delete", "datasource.inspect", "datasource.list", "datasource.publish", "datasource.pull", "datasource.schema", "doctor.run", "env.profile.add", "env.profile.get", "env.profile.list", "env.profile.remove", "env.profile.set-default", "env.profile.update", "flow.delete", "flow.inspect", "flow.list", "flow.move", "flow.publish", "flow.pull", "lineage.pull", "project.create", "project.inspect", "project.list", "project.update", "pulse.definition.create", "pulse.definition.delete", "pulse.definition.inspect", "pulse.definition.list", "pulse.definition.pull", "pulse.metric.delete", "pulse.metric.follow", "pulse.metric.followers", "pulse.metric.fork", "pulse.metric.inspect", "pulse.metric.list", "pulse.metric.unfollow", "search.run", "workbook.delete", "workbook.inspect", "workbook.list", "workbook.publish", "workbook.pull", "workspace.artifact.delete", "workspace.clean", "workspace.clone", "workspace.create", "workspace.list", "workspace.move", "workspace.register", "workspace.status"}; !slices.Equal(ids, want) {
 		t.Fatalf("Executable IDs = %v, want %v", ids, want)
 	}
 	for _, definition := range definitions {
@@ -102,7 +102,7 @@ func TestDefinitionJSONContainsIndependentStatusAndSafetyFields(t *testing.T) {
 	}
 	for _, field := range []string{
 		`"disposition"`, `"evidence_level"`, `"verification"`, `"implementation"`,
-		`"local_write"`, `"remote_mutation"`, `"requires_apply"`,
+		`"local_write"`, `"remote_mutation"`, `"supports_preview"`,
 	} {
 		if !strings.Contains(string(encoded), field) {
 			t.Errorf("JSON does not contain %s: %s", field, encoded)
@@ -120,8 +120,8 @@ func TestValidateRejectsEveryRegistryInvariant(t *testing.T) {
 		{name: "duplicate IDs", defs: []Definition{valid, valid}, want: "duplicate capability ID"},
 		{name: "duplicate implemented command paths", defs: []Definition{implemented(testDefinition("one.get"), "one", "get"), implemented(testDefinition("two.get"), "one", "get")}, want: "duplicate implemented command path"},
 		{name: "missing required fields", defs: []Definition{{ID: "incomplete"}}, want: "missing required field"},
-		{name: "remote mutation without apply", defs: []Definition{with(valid, func(d *Definition) { d.RemoteMutation = true })}, want: "remote mutation requires apply"},
-		{name: "apply without consequential write", defs: []Definition{with(valid, func(d *Definition) { d.RequiresApply = true })}, want: "requires apply without consequential write"},
+		{name: "remote mutation without preview", defs: []Definition{with(valid, func(d *Definition) { d.RemoteMutation = true })}, want: "remote mutation must support preview"},
+		{name: "preview without consequential write", defs: []Definition{with(valid, func(d *Definition) { d.SupportsPreview = true })}, want: "supports preview without consequential write"},
 		{name: "delegated with binding", defs: []Definition{with(valid, func(d *Definition) {
 			d.Disposition = DispositionDelegated
 			d.Owner = OwnerMCP
@@ -146,13 +146,13 @@ func TestValidateRejectsEveryRegistryInvariant(t *testing.T) {
 	}
 }
 
-func TestValidateAllowsApplyForConsequentialLocalWrite(t *testing.T) {
+func TestValidateAllowsPreviewForConsequentialLocalWrite(t *testing.T) {
 	definition := with(testDefinition("workspace.artifact.delete"), func(d *Definition) {
 		d.LocalWrite = true
-		d.RequiresApply = true
+		d.SupportsPreview = true
 	})
 	if err := Validate([]Definition{definition}); err != nil {
-		t.Fatalf("Validate() rejected consequential local write with apply: %v", err)
+		t.Fatalf("Validate() rejected consequential local write with preview: %v", err)
 	}
 }
 

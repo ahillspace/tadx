@@ -58,6 +58,55 @@ func TestCLIProcessExitCodesAndStreams(t *testing.T) {
 	}
 }
 
+func TestCLIProcessRejectsRetiredRoutesAndLegacyProjectSelectors(t *testing.T) {
+	binary := buildCLI(t)
+	tests := []struct {
+		name string
+		args []string
+	}{
+		{name: "retired content get", args: []string{"content", "get"}},
+		{name: "retired content search", args: []string{"content", "search"}},
+		{name: "retired workbook get", args: []string{"content", "workbook", "get"}},
+		{name: "retired catalog search", args: []string{"catalog", "search"}},
+		{name: "retired admin user get", args: []string{"admin", "user", "get"}},
+		{name: "retired Pulse metric get", args: []string{"pulse", "metric", "get"}},
+		{name: "legacy project inspect ID", args: []string{"content", "project", "inspect", "--id", "project-1"}},
+		{name: "legacy project update ID", args: []string{"content", "project", "update", "--id", "project-1"}},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			result := runCLI(t, binary, test.args, nil)
+			if result.exitCode != 2 {
+				t.Fatalf("exit code = %d, want 2\nstdout:\n%s\nstderr:\n%s", result.exitCode, result.stdout, result.stderr)
+			}
+			if result.stderr != "" {
+				t.Fatalf("stderr = %q, want empty", result.stderr)
+			}
+			document := decodeDocument(t, result.stdout)
+			errorDocument, ok := document["error"].(map[string]any)
+			if !ok || errorDocument["kind"] != "usage" {
+				t.Fatalf("error = %#v, want structured usage error", document)
+			}
+		})
+	}
+}
+
+func TestCLIProcessBareGroupsKeepHelpBehavior(t *testing.T) {
+	binary := buildCLI(t)
+	for _, args := range [][]string{
+		{"content", "workbook"},
+		{"catalog"},
+		{"admin", "user"},
+		{"pulse", "metric"},
+	} {
+		result := runCLI(t, binary, args, nil)
+		if result.exitCode != 0 || result.stderr != "" || !strings.Contains(result.stdout, "Usage:") {
+			t.Fatalf("args = %v, exit = %d, stdout = %q, stderr = %q", args, result.exitCode, result.stdout, result.stderr)
+		}
+	}
+}
+
 func TestCLIProcessMutationDiscoveryEnvironment(t *testing.T) {
 	binary := buildCLI(t)
 	args := []string{"capability", "list", "--domain", "content", "--resource", "workbook", "--mutation=true"}

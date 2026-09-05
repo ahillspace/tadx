@@ -16,4 +16,4 @@ flows[1]:
     owner_luid: user-1
     tags[1]: daily
 tableau_request_id: request-1
-help[1]: tadx content flow get --id <flow-luid>
+help[1]: tadx content flow inspect --id <flow-luid>

@@ -1,5 +1,5 @@
 plan:
-  mode: preview
+  mode: execute
   operation: workbook.delete
   environment: dev
   site: sandbox
@@ -8,7 +8,6 @@ plan:
     name: Finance
     project_luid: project-1
     project_path: Ops
-applied: true
 result:
   status: succeeded
   workbook_luid: wb-1

@@ -213,12 +213,34 @@ func ValidateWorkspaceName(name string) error {
 	if name == "." || name == ".." || looksLikePath(name) {
 		return errors.New("must be a logical name, not a path")
 	}
+	if strings.ContainsAny(name, `<>:"|?*`) {
+		return errors.New("must not contain characters that are invalid in portable file names")
+	}
+	if strings.HasSuffix(name, ".") || strings.HasSuffix(name, " ") {
+		return errors.New("must not end with a dot or space")
+	}
+	stem := strings.ToUpper(strings.SplitN(name, ".", 2)[0])
+	if isReservedWorkspaceStem(stem) {
+		return errors.New("must not use a reserved device name")
+	}
 	for _, r := range name {
 		if r < 0x20 || r == 0x7f {
 			return errors.New("must not contain control characters")
 		}
 	}
 	return nil
+}
+
+func isReservedWorkspaceStem(stem string) bool {
+	switch stem {
+	case "CON", "PRN", "AUX", "NUL", "CONIN$", "CONOUT$", "CLOCK$",
+		"COM¹", "COM²", "COM³", "LPT¹", "LPT²", "LPT³":
+		return true
+	}
+	if len(stem) == 4 && stem[3] >= '1' && stem[3] <= '9' {
+		return strings.HasPrefix(stem, "COM") || strings.HasPrefix(stem, "LPT")
+	}
+	return false
 }
 
 // ResolveWorkspace returns an exact case-insensitive logical workspace match.

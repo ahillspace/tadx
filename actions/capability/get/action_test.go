@@ -82,12 +82,12 @@ func TestExecuteRejectsUnknownID(t *testing.T) {
 func TestOutputGoldenIncludesExecutionGuidance(t *testing.T) {
 	item := capabilityget.Capability{
 		ID: "workbook.publish", Domain: "workbook", Verb: "publish", Surface: "tadx content workbook publish",
-		Outcome: "Preview and publish one workbook.", OperationType: "deliver", Owner: "cli", Disposition: "ship",
+		Outcome: "Publish one workbook, or preview the operation.", OperationType: "deliver", Owner: "cli", Disposition: "ship",
 		EvidenceLevel: "docs-only", VerificationReadiness: "ready", ImplementationState: "planned",
 		Selectors: []string{"Workbook LUID; explicit target"}, Availability: "Cloud / Server",
-		SafetyGuard: "Preview by default; requires --apply", ArtifactEffect: "Read / publish",
+		SafetyGuard: "Exact target; optional --preview", ArtifactEffect: "Read / publish",
 		UpstreamOperation: "POST /api/{version}/sites/{site-id}/workbooks", Evidence: "Official REST documentation",
-		Validation: "Captured contract test required", RemoteMutation: true, RequiresApply: true,
+		Validation: "Captured contract test required", RemoteMutation: true, SupportsPreview: true,
 	}
 	result, err := capabilityget.New(source{item: item, ok: true}).Execute(context.Background(), capabilityget.Input{ID: item.ID})
 	if err != nil {

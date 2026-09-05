@@ -42,11 +42,11 @@ func TestDeletePreviewsWithoutMutation(t *testing.T) {
 	target := workbookdelete.Workbook{LUID: "wb-1", Name: "Finance", ProjectLUID: "project-1", ProjectPath: "Ops"}
 	r := &resolver{results: []workbookdelete.Workbook{target}}
 	d := &deleter{}
-	output, err := workbookdelete.New(r, d).Execute(context.Background(), workbookdelete.Input{Environment: "dev", Site: "sandbox", Selector: identity.Selector{LUID: "wb-1"}}, false)
+	output, err := workbookdelete.New(r, d).Execute(context.Background(), workbookdelete.Input{Environment: "dev", Site: "sandbox", Selector: identity.Selector{LUID: "wb-1"}}, true)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if output.Applied || len(d.calls) != 0 || len(r.inputs) != 1 {
+	if output.Result != nil || len(d.calls) != 0 || len(r.inputs) != 1 {
 		t.Fatalf("output=%#v delete_calls=%v resolve_calls=%v", output, d.calls, r.inputs)
 	}
 }
@@ -56,11 +56,11 @@ func TestDeleteRevalidatesAuthoritativeLUIDAndAllowsMetadataChange(t *testing.T)
 	current := workbookdelete.Workbook{LUID: "wb-1", Name: "Finance Renamed", ProjectLUID: "project-2", ProjectPath: "Archive"}
 	r := &resolver{results: []workbookdelete.Workbook{planned, current}}
 	d := &deleter{}
-	output, err := workbookdelete.New(r, d).Execute(context.Background(), workbookdelete.Input{Environment: "dev", Site: "sandbox", Selector: identity.Selector{Name: "Finance", ProjectPath: "Ops"}}, true)
+	output, err := workbookdelete.New(r, d).Execute(context.Background(), workbookdelete.Input{Environment: "dev", Site: "sandbox", Selector: identity.Selector{Name: "Finance", ProjectPath: "Ops"}}, false)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !output.Applied || len(d.calls) != 1 || d.calls[0] != "wb-1" {
+	if output.Result == nil || len(d.calls) != 1 || d.calls[0] != "wb-1" {
 		t.Fatalf("output=%#v delete_calls=%v", output, d.calls)
 	}
 	if len(r.inputs) != 2 || r.inputs[1].LUID != "wb-1" || r.inputs[1].Name != "" || r.inputs[1].ProjectPath != "" {
@@ -71,7 +71,7 @@ func TestDeleteRevalidatesAuthoritativeLUIDAndAllowsMetadataChange(t *testing.T)
 func TestDeleteRejectsAuthoritativeIdentityChange(t *testing.T) {
 	r := &resolver{results: []workbookdelete.Workbook{{LUID: "wb-1", Name: "Finance"}, {LUID: "wb-2", Name: "Finance"}}}
 	d := &deleter{}
-	_, err := workbookdelete.New(r, d).Execute(context.Background(), workbookdelete.Input{Environment: "dev", Site: "sandbox", Selector: identity.Selector{LUID: "wb-1"}}, true)
+	_, err := workbookdelete.New(r, d).Execute(context.Background(), workbookdelete.Input{Environment: "dev", Site: "sandbox", Selector: identity.Selector{LUID: "wb-1"}}, false)
 	if err == nil || len(d.calls) != 0 {
 		t.Fatalf("err=%v delete_calls=%v", err, d.calls)
 	}
@@ -111,7 +111,7 @@ func TestDeleteRejectsInvalidSelectorAtSeam(t *testing.T) {
 }
 
 func TestOutputGolden(t *testing.T) {
-	output := workbookdelete.Output{Plan: workbookdelete.Plan{Mode: "preview", Operation: "workbook.delete", Environment: "dev", Site: "sandbox", Target: workbookdelete.Workbook{LUID: "wb-1", Name: "Finance", ProjectLUID: "project-1", ProjectPath: "Ops"}}, Applied: true, Result: &workbookdelete.Result{Status: "succeeded", WorkbookLUID: "wb-1", TableauRequestID: "request-1"}, Help: []string{"tadx content workbook list --environment dev"}}
+	output := workbookdelete.Output{Plan: workbookdelete.Plan{Mode: "execute", Operation: "workbook.delete", Environment: "dev", Site: "sandbox", Target: workbookdelete.Workbook{LUID: "wb-1", Name: "Finance", ProjectLUID: "project-1", ProjectPath: "Ops"}}, Result: &workbookdelete.Result{Status: "succeeded", WorkbookLUID: "wb-1", TableauRequestID: "request-1"}, Help: []string{"tadx content workbook list --environment dev"}}
 	for _, test := range []struct {
 		name string
 		full bool

@@ -1,5 +1,5 @@
 plan:
-  mode: preview
+  mode: execute
   operation: workbook.publish
   artifact_path: artifacts/workbook/Finance
   artifact_fingerprint: "sha256:diagnostic"
@@ -16,7 +16,6 @@ plan:
   as_job: true
   warnings[1]: Detailed portability warning.
   substeps[2]: resolve exact destination,publish workbook
-applied: true
 result:
   status: succeeded
   workbook_luid: wb-new
@@ -26,4 +25,4 @@ result:
   tableau_request_id: request-1
   validation_warnings[1]{severity,message,line,element_name}:
     warning,Detailed validation warning.,12,map
-help[1]: tadx catalog search --environment <alias> to confirm the published workbook.
+help[1]: tadx search --type workbook --environment <alias> to confirm the published workbook.

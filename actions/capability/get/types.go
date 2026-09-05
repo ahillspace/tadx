@@ -32,7 +32,7 @@ type Capability struct {
 	Blocker               string   `json:"blocker,omitempty"`
 	RemoteMutation        bool     `json:"remote_mutation"`
 	ExecutionEnabled      bool     `json:"execution_enabled"`
-	RequiresApply         bool     `json:"requires_apply"`
+	SupportsPreview       bool     `json:"supports_preview"`
 	LocalWrite            bool     `json:"local_write"`
 	RawCapable            bool     `json:"raw_capable"`
 }

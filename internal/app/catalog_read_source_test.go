@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	workbookget "github.com/ahillspace/tadx/actions/workbook/get"
+	workbookget "github.com/ahillspace/tadx/actions/workbook/inspect"
 	"github.com/ahillspace/tadx/internal/catalog"
 )
 
@@ -56,7 +56,7 @@ environments:
 	}
 	input := workbookget.Input{Catalog: true}
 	input.SetSelector("wb-1", "", "")
-	output, err := newRemoteContentCommands(runtime).GetWorkbook(context.Background(), input)
+	output, err := newRemoteContentCommands(runtime).InspectWorkbook(context.Background(), input)
 	if err != nil {
 		t.Fatal(err)
 	}

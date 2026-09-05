@@ -6,7 +6,6 @@ import (
 	"testing"
 
 	catalogrefresh "github.com/ahillspace/tadx/actions/catalog/refresh"
-	catalogsearch "github.com/ahillspace/tadx/actions/catalog/search"
 	catalogstatus "github.com/ahillspace/tadx/actions/catalog/status"
 	catalogcli "github.com/ahillspace/tadx/internal/cli/catalog"
 )
@@ -30,12 +29,6 @@ func (s statuser) Execute(_ context.Context, input catalogstatus.Input) (catalog
 	return catalogstatus.Output{}, nil
 }
 
-type searcher struct{}
-
-func (searcher) Execute(context.Context, catalogsearch.Input) (catalogsearch.Output, error) {
-	return catalogsearch.Output{}, nil
-}
-
 type renderer struct{}
 
 func (renderer) Render(any) error { return nil }
@@ -43,7 +36,7 @@ func (renderer) Render(any) error { return nil }
 func TestCatalogMountsRefreshAndStatusWithBoundedInputs(t *testing.T) {
 	recorded := &actions{}
 	command := catalogcli.New(catalogcli.Dependencies{
-		Searcher: searcher{}, Refresher: refresher{recorded}, Statuser: statuser{recorded}, Renderer: renderer{},
+		Refresher: refresher{recorded}, Statuser: statuser{recorded}, Renderer: renderer{},
 	})
 
 	command.SetArgs([]string{"refresh", "--environment", "production", "--site", "marketing"})
@@ -74,13 +67,13 @@ func TestCatalogMountsRefreshAndStatusWithBoundedInputs(t *testing.T) {
 }
 
 func TestCatalogDoesNotMountGatedContentCommands(t *testing.T) {
-	command := catalogcli.New(catalogcli.Dependencies{Searcher: searcher{}, Refresher: refresher{&actions{}}, Statuser: statuser{&actions{}}, Renderer: renderer{}})
-	for _, name := range []string{"search", "refresh", "status"} {
+	command := catalogcli.New(catalogcli.Dependencies{Refresher: refresher{&actions{}}, Statuser: statuser{&actions{}}, Renderer: renderer{}})
+	for _, name := range []string{"refresh", "status"} {
 		if child, _, err := command.Find([]string{name}); err != nil || child == command || child.Name() != name {
 			t.Fatalf("catalog command %q missing: child=%v err=%v", name, child, err)
 		}
 	}
-	for _, name := range []string{"get", "content-search", "content-get"} {
+	for _, name := range []string{"search", "get", "content-search", "content-get"} {
 		if child, _, err := command.Find([]string{name}); err == nil && child != command {
 			t.Fatalf("gated command %q was mounted", name)
 		}

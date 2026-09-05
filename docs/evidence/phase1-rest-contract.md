@@ -52,7 +52,7 @@ The temporary workbook was removed after verification.
 ## Live workbook publish behavior
 
 A live Tableau Cloud workbook round trip completed on 2026-08-31 against an authorized disposable development site.
-The sequence pulled a native workbook package, previewed an exact project target, applied the publish, and received a new authoritative workbook LUID.
+The sequence pulled a native workbook package, previewed an exact project target, published it, and received a new authoritative workbook LUID.
 This record omits environment aliases, site names, project names, workbook names, LUIDs, and request IDs.
 
 ### Cross-site published datasource rejection

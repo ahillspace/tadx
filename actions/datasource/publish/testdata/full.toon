@@ -1,5 +1,6 @@
 plan:
-  mode: overwrite
+  mode: execute
+  publish_mode: overwrite
   operation: datasource.publish
   artifact_path: artifacts/datasource/Sales
   artifact_fingerprint: "sha256:secret-diagnostic"
@@ -15,7 +16,6 @@ plan:
     existing_datasource_luid: ds-1
   substeps[2]: resolve exact destination,poll asynchronous job
   as_job: true
-applied: true
 result:
   status: succeeded
   datasource_luid: ds-1
@@ -23,4 +23,4 @@ result:
   project_luid: project-1
   tableau_job_id: job-1
   tableau_request_id: request-1
-help[1]: tadx content datasource get --id ds-1
+help[1]: tadx content datasource inspect --id ds-1

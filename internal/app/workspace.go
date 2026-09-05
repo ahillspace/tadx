@@ -2,8 +2,11 @@ package app
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"path/filepath"
 	"strconv"
+	"strings"
 
 	artifactdelete "github.com/ahillspace/tadx/actions/workspace/artifact/delete"
 	workspaceclean "github.com/ahillspace/tadx/actions/workspace/clean"
@@ -66,8 +69,8 @@ func (c *workspaceCommands) Status(ctx context.Context, input workspacestatus.In
 func (c *workspaceCommands) Move(ctx context.Context, input workspacemove.Input) (workspacemove.Output, error) {
 	return c.move.Execute(ctx, input)
 }
-func (c *workspaceCommands) Delete(ctx context.Context, input artifactdelete.Input, apply bool) (artifactdelete.Output, error) {
-	return c.delete.Execute(ctx, input, apply)
+func (c *workspaceCommands) Delete(ctx context.Context, input artifactdelete.Input, preview bool) (artifactdelete.Output, error) {
+	return c.delete.Execute(ctx, input, preview)
 }
 func (c *workspaceCommands) Clean(ctx context.Context, input workspaceclean.Input) (workspaceclean.Output, error) {
 	return c.clean.Execute(ctx, input)
@@ -102,8 +105,12 @@ func (w *workspaceRuntime) resolveForEnvironment(ctx context.Context, selector, 
 type workspaceCreator struct{ runtime *workspaceRuntime }
 
 func (a workspaceCreator) Create(ctx context.Context, input workspacecreate.Input) (workspacecreate.Workspace, error) {
-	item, err := a.runtime.manager().Create(ctx, input.Name, input.Path)
-	return workspacecreate.Workspace{Name: item.Name, ID: item.ID, ManifestVersion: 1, Registered: item.Available && item.ManifestValid, CreatedEntries: []string{"tadx.yaml", "artifacts", ".tadx"}}, err
+	root, err := a.runtime.creationRoot(input.Name, input.Path)
+	if err != nil {
+		return workspacecreate.Workspace{}, err
+	}
+	item, err := a.runtime.manager().Create(ctx, input.Name, root)
+	return workspacecreate.Workspace{Name: item.Name, ID: item.ID, Root: item.Root, ManifestVersion: 1, Registered: item.Available && item.ManifestValid, CreatedEntries: []string{"tadx.yaml", "artifacts", ".tadx"}}, err
 }
 
 type workspaceRegistrar struct{ runtime *workspaceRuntime }
@@ -116,8 +123,32 @@ func (a workspaceRegistrar) Register(ctx context.Context, input workspaceregiste
 type workspaceCloner struct{ runtime *workspaceRuntime }
 
 func (a workspaceCloner) Clone(ctx context.Context, input workspaceclone.Input) (workspaceclone.Workspace, error) {
-	item, err := a.runtime.manager().Clone(ctx, input.Source, input.Name, input.Path)
-	return workspaceclone.Workspace{Name: item.Name, ID: item.ID, ManifestVersion: 1, Registered: item.Available && item.ManifestValid, CreatedEntries: []string{"tadx.yaml", "artifacts", ".tadx"}}, err
+	root, err := a.runtime.creationRoot(input.Name, input.Path)
+	if err != nil {
+		return workspaceclone.Workspace{}, err
+	}
+	item, err := a.runtime.manager().Clone(ctx, input.Source, input.Name, root)
+	return workspaceclone.Workspace{Name: item.Name, ID: item.ID, Root: item.Root, ManifestVersion: 1, Registered: item.Available && item.ManifestValid, CreatedEntries: []string{"tadx.yaml", "artifacts", ".tadx"}}, err
+}
+
+func (w *workspaceRuntime) creationRoot(name, explicit string) (string, error) {
+	if explicit != "" {
+		return explicit, nil
+	}
+	if err := config.ValidateWorkspaceName(name); err != nil {
+		return "", fmt.Errorf("workspace name: %w", err)
+	}
+	if w == nil || w.runtime == nil || w.runtime.userHomeDir == nil {
+		return "", errors.New("user home directory resolution is not configured")
+	}
+	home, err := w.runtime.userHomeDir()
+	if err != nil {
+		return "", fmt.Errorf("resolve user home directory: %w", err)
+	}
+	if strings.TrimSpace(home) == "" {
+		return "", errors.New("resolve user home directory: path is empty")
+	}
+	return filepath.Join(home, "TADX", "workspaces", name), nil
 }
 
 type workspaceLister struct{ runtime *workspaceRuntime }
@@ -137,7 +168,7 @@ func (a workspaceLister) List(ctx context.Context, limit int, cursor string) (wo
 	}
 	items := make([]workspacelist.Workspace, len(page.Items))
 	for index, item := range page.Items {
-		items[index] = workspacelist.Workspace{Name: item.Name, ID: item.ID, Default: item.Default, Available: item.Available, ManifestValid: item.ManifestValid}
+		items[index] = workspacelist.Workspace{Name: item.Name, ID: item.ID, Root: item.Root, Default: item.Default, Available: item.Available, ManifestValid: item.ManifestValid}
 	}
 	return workspacelist.Page{Returned: page.Returned, Total: page.Total, Limit: page.Limit, NextCursor: page.NextCursor, Items: items}, nil
 }
@@ -157,7 +188,7 @@ func (a workspaceStatusReader) Status(ctx context.Context, input workspacestatus
 	for index, item := range page.Items {
 		items[index] = statusArtifact(item)
 	}
-	return workspacestatus.Workspace{Name: resolved.Name, ID: resolved.ID}, workspacestatus.Inventory{Returned: page.Returned, Total: page.Total, Limit: page.Limit, NextCursor: page.NextCursor, ScanComplete: page.ScanComplete, Clean: page.Clean, Dirty: page.Dirty, Missing: page.Missing, Invalid: page.Invalid, Items: items, Warnings: append([]string(nil), page.Warnings...)}, nil
+	return workspacestatus.Workspace{Name: resolved.Name, ID: resolved.ID, Root: resolved.Root}, workspacestatus.Inventory{Returned: page.Returned, Total: page.Total, Limit: page.Limit, NextCursor: page.NextCursor, ScanComplete: page.ScanComplete, Clean: page.Clean, Dirty: page.Dirty, Missing: page.Missing, Invalid: page.Invalid, Items: items, Warnings: append([]string(nil), page.Warnings...)}, nil
 }
 
 type workspaceMover struct{ runtime *workspaceRuntime }

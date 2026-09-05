@@ -103,7 +103,7 @@ func TestExecuteMutationFilterDoesNotAuthorizeOrHideDiscovery(t *testing.T) {
 	mutation := true
 	got, err := capabilitylist.New(source{items: []capabilitylist.Capability{
 		{ID: "workbook.publish", RemoteMutation: true},
-		{ID: "workbook.get"},
+		{ID: "workbook.inspect"},
 	}}).Execute(context.Background(), capabilitylist.Input{Mutation: &mutation})
 	if err != nil {
 		t.Fatalf("Execute() error = %v", err)

@@ -37,7 +37,7 @@ func (c *remoteContentCommands) PullDatasource(ctx context.Context, input dataso
 	return datasourcepull.New(reader, datasourceArtifactWriter{artifact.NewDatasourceManager(c.runtime.now)}).Execute(ctx, input)
 }
 
-func (c *remoteContentCommands) PublishDatasource(ctx context.Context, input datasourcepublish.Input, apply bool) (datasourcepublish.Output, error) {
+func (c *remoteContentCommands) PublishDatasource(ctx context.Context, input datasourcepublish.Input, preview bool) (datasourcepublish.Output, error) {
 	manager := artifact.NewDatasourceManager(c.runtime.now)
 	workspace, err := (&workspaceRuntime{runtime: c.runtime}).resolveForEnvironment(ctx, input.Workspace, input.Environment)
 	if err != nil {
@@ -62,17 +62,17 @@ func (c *remoteContentCommands) PublishDatasource(ctx context.Context, input dat
 	}
 	input.Environment, input.Site, input.ArtifactPath = connection.environment.Alias, connection.environment.SiteContentURL, absolutePath
 	adapter := datasourcePublishAdapter{datasources: connection.datasources, projects: connection.projects, changes: connection.datasourceChanges}
-	return datasourcepublish.New(datasourceArtifactReader{manager: manager, displayPath: managed.Path}, adapter, adapter).Execute(ctx, input, apply)
+	return datasourcepublish.New(datasourceArtifactReader{manager: manager, displayPath: managed.Path}, adapter, adapter).Execute(ctx, input, preview)
 }
 
-func (c *remoteContentCommands) DeleteDatasource(ctx context.Context, input datasourcedelete.Input, apply bool) (datasourcedelete.Output, error) {
+func (c *remoteContentCommands) DeleteDatasource(ctx context.Context, input datasourcedelete.Input, preview bool) (datasourcedelete.Output, error) {
 	connection, err := c.connect(ctx, input.Environment, true)
 	if err != nil {
 		return datasourcedelete.Output{}, remoteSetupError("datasource.delete", input.Environment, input.Site, connection.environment, err)
 	}
 	input.Environment, input.Site = connection.environment.Alias, connection.environment.SiteContentURL
 	adapter := datasourceDeleteAdapter{datasources: connection.datasources, changes: connection.datasourceChanges}
-	return datasourcedelete.New(adapter, adapter).Execute(ctx, input, apply)
+	return datasourcedelete.New(adapter, adapter).Execute(ctx, input, preview)
 }
 
 type datasourcePullReader struct {

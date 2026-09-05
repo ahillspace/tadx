@@ -8,6 +8,7 @@
 !/.agents/skills/tadx-build/
 !/.agents/skills/tadx-build/**
 /agent-review/
+/openspec/
 /archived/
 /tadx.exe
 /data/

@@ -7,13 +7,13 @@ import (
 
 	groupcreate "github.com/ahillspace/tadx/actions/admin/group/create"
 	groupdelete "github.com/ahillspace/tadx/actions/admin/group/delete"
-	groupget "github.com/ahillspace/tadx/actions/admin/group/get"
+	groupinspect "github.com/ahillspace/tadx/actions/admin/group/inspect"
 	grouplist "github.com/ahillspace/tadx/actions/admin/group/list"
 	groupupdate "github.com/ahillspace/tadx/actions/admin/group/update"
-	permissionget "github.com/ahillspace/tadx/actions/admin/permission/get"
+	permissioninspect "github.com/ahillspace/tadx/actions/admin/permission/inspect"
 	usercreate "github.com/ahillspace/tadx/actions/admin/user/create"
 	userdelete "github.com/ahillspace/tadx/actions/admin/user/delete"
-	userget "github.com/ahillspace/tadx/actions/admin/user/get"
+	userinspect "github.com/ahillspace/tadx/actions/admin/user/inspect"
 	userlist "github.com/ahillspace/tadx/actions/admin/user/list"
 	userupdate "github.com/ahillspace/tadx/actions/admin/user/update"
 	"github.com/ahillspace/tadx/internal/cli/clierr"
@@ -24,8 +24,8 @@ type Renderer interface{ Render(any) error }
 type UserLister interface {
 	ListAdminUsers(context.Context, userlist.Input) (userlist.Output, error)
 }
-type UserGetter interface {
-	GetAdminUser(context.Context, userget.Input) (userget.Output, error)
+type UserInspector interface {
+	InspectAdminUser(context.Context, userinspect.Input) (userinspect.Output, error)
 }
 type UserCreator interface {
 	CreateAdminUser(context.Context, usercreate.Input, bool) (usercreate.Output, error)
@@ -39,8 +39,8 @@ type UserDeleter interface {
 type GroupLister interface {
 	ListAdminGroups(context.Context, grouplist.Input) (grouplist.Output, error)
 }
-type GroupGetter interface {
-	GetAdminGroup(context.Context, groupget.Input) (groupget.Output, error)
+type GroupInspector interface {
+	InspectAdminGroup(context.Context, groupinspect.Input) (groupinspect.Output, error)
 }
 type GroupCreator interface {
 	CreateAdminGroup(context.Context, groupcreate.Input, bool) (groupcreate.Output, error)
@@ -51,34 +51,34 @@ type GroupUpdater interface {
 type GroupDeleter interface {
 	DeleteAdminGroup(context.Context, groupdelete.Input, bool) (groupdelete.Output, error)
 }
-type PermissionGetter interface {
-	GetAdminPermission(context.Context, permissionget.Input) (permissionget.Output, error)
+type PermissionInspector interface {
+	InspectAdminPermission(context.Context, permissioninspect.Input) (permissioninspect.Output, error)
 }
 
 type Dependencies struct {
-	UserLister       UserLister
-	UserGetter       UserGetter
-	UserCreator      UserCreator
-	UserUpdater      UserUpdater
-	UserDeleter      UserDeleter
-	GroupLister      GroupLister
-	GroupGetter      GroupGetter
-	GroupCreator     GroupCreator
-	GroupUpdater     GroupUpdater
-	GroupDeleter     GroupDeleter
-	PermissionGetter PermissionGetter
-	Renderer         Renderer
-	MutationsEnabled bool
+	UserLister          UserLister
+	UserInspector       UserInspector
+	UserCreator         UserCreator
+	UserUpdater         UserUpdater
+	UserDeleter         UserDeleter
+	GroupLister         GroupLister
+	GroupInspector      GroupInspector
+	GroupCreator        GroupCreator
+	GroupUpdater        GroupUpdater
+	GroupDeleter        GroupDeleter
+	PermissionInspector PermissionInspector
+	Renderer            Renderer
+	MutationsEnabled    bool
 }
 
 func New(deps Dependencies) *cobra.Command {
 	command := &cobra.Command{Use: "admin", Short: "Administer Tableau users, groups, and permissions"}
 	user := &cobra.Command{Use: "user", Short: "Administer site users"}
-	user.AddCommand(newUserList(deps), newUserGet(deps), newUserCreate(deps), newUserUpdate(deps), newUserDelete(deps))
+	user.AddCommand(newUserList(deps), newUserInspect(deps), newUserCreate(deps), newUserUpdate(deps), newUserDelete(deps))
 	group := &cobra.Command{Use: "group", Short: "Administer site groups"}
-	group.AddCommand(newGroupList(deps), newGroupGet(deps), newGroupCreate(deps), newGroupUpdate(deps), newGroupDelete(deps))
+	group.AddCommand(newGroupList(deps), newGroupInspect(deps), newGroupCreate(deps), newGroupUpdate(deps), newGroupDelete(deps))
 	permission := &cobra.Command{Use: "permission", Short: "Inspect permission rules"}
-	permission.AddCommand(newPermissionGet(deps))
+	permission.AddCommand(newPermissionInspect(deps))
 	command.AddCommand(user, group, permission)
 	return command
 }
@@ -100,20 +100,20 @@ func newUserList(deps Dependencies) *cobra.Command {
 	cmd.Flags().BoolVar(&input.Catalog, "catalog", false, "read indexed local catalog data without contacting Tableau")
 	return cmd
 }
-func newUserGet(deps Dependencies) *cobra.Command {
-	var in userget.Input
+func newUserInspect(deps Dependencies) *cobra.Command {
+	var in userinspect.Input
 	var id, name string
-	cmd := &cobra.Command{Use: "get", Short: "Inspect one exact site user.", Annotations: map[string]string{"tadx.capability": "admin.user.get"}, Args: func(cmd *cobra.Command, args []string) error {
-		if err := noArgs("admin.user.get")(cmd, args); err != nil {
+	cmd := &cobra.Command{Use: "inspect", Short: "Inspect one exact site user.", Annotations: map[string]string{"tadx.capability": "admin.user.inspect"}, Args: func(cmd *cobra.Command, args []string) error {
+		if err := noArgs("admin.user.inspect")(cmd, args); err != nil {
 			return err
 		}
 		if (id == "") == (name == "") {
-			return clierr.Usage("admin.user.get", errors.New("use exactly one of --id or --name"))
+			return clierr.Usage("admin.user.inspect", errors.New("use exactly one of --id or --name"))
 		}
 		in.SetSelector(id, name)
 		return nil
 	}, RunE: func(cmd *cobra.Command, _ []string) error {
-		out, err := deps.UserGetter.GetAdminUser(cmd.Context(), in)
+		out, err := deps.UserInspector.InspectAdminUser(cmd.Context(), in)
 		if err != nil {
 			return err
 		}
@@ -127,14 +127,14 @@ func newUserGet(deps Dependencies) *cobra.Command {
 }
 func newUserCreate(deps Dependencies) *cobra.Command {
 	var in usercreate.Input
-	var apply bool
-	cmd := mutation("create", "Preview or add one exact site user.", "admin.user.create", deps.MutationsEnabled, func(cmd *cobra.Command, args []string) error {
+	var preview bool
+	cmd := mutation("create", "Add one exact site user.", "admin.user.create", deps.MutationsEnabled, func(cmd *cobra.Command, args []string) error {
 		if err := noArgs("admin.user.create")(cmd, args); err != nil {
 			return err
 		}
 		return requireMutation(cmd, "admin.user.create", in.Environment)
 	}, func(cmd *cobra.Command) error {
-		out, err := deps.UserCreator.CreateAdminUser(cmd.Context(), in, apply)
+		out, err := deps.UserCreator.CreateAdminUser(cmd.Context(), in, preview)
 		if err != nil {
 			return err
 		}
@@ -149,14 +149,14 @@ func newUserCreate(deps Dependencies) *cobra.Command {
 	cmd.Flags().StringVar(&in.Email, "email", "", "notification email address")
 	cmd.Flags().StringVar(&in.Language, "language", "", "explicit language code")
 	cmd.Flags().StringVar(&in.Locale, "locale", "", "explicit locale code")
-	cmd.Flags().BoolVar(&apply, "apply", false, "apply the previewed remote mutation")
+	cmd.Flags().BoolVar(&preview, "preview", false, "preview the remote mutation without performing it")
 	return cmd
 }
 func newUserUpdate(deps Dependencies) *cobra.Command {
 	var in userupdate.Input
-	var apply bool
+	var preview bool
 	var fullName, email, siteRole, auth, identityPool, idp, language, locale string
-	cmd := mutation("update", "Preview or update one exact site user.", "admin.user.update", deps.MutationsEnabled, func(cmd *cobra.Command, args []string) error {
+	cmd := mutation("update", "Update one exact site user.", "admin.user.update", deps.MutationsEnabled, func(cmd *cobra.Command, args []string) error {
 		if err := noArgs("admin.user.update")(cmd, args); err != nil {
 			return err
 		}
@@ -176,7 +176,7 @@ func newUserUpdate(deps Dependencies) *cobra.Command {
 		setString(cmd, "locale", locale, &in.Locale)
 		return nil
 	}, func(cmd *cobra.Command) error {
-		out, err := deps.UserUpdater.UpdateAdminUser(cmd.Context(), in, apply)
+		out, err := deps.UserUpdater.UpdateAdminUser(cmd.Context(), in, preview)
 		if err != nil {
 			return err
 		}
@@ -192,13 +192,13 @@ func newUserUpdate(deps Dependencies) *cobra.Command {
 	cmd.Flags().StringVar(&idp, "idp-configuration-id", "", "explicit IdP configuration LUID")
 	cmd.Flags().StringVar(&language, "language", "", "explicit language code")
 	cmd.Flags().StringVar(&locale, "locale", "", "explicit locale code")
-	cmd.Flags().BoolVar(&apply, "apply", false, "apply the previewed remote mutation")
+	cmd.Flags().BoolVar(&preview, "preview", false, "preview the remote mutation without performing it")
 	return cmd
 }
 func newUserDelete(deps Dependencies) *cobra.Command {
 	var in userdelete.Input
-	var apply bool
-	cmd := mutation("delete", "Preview or remove one exact site user.", "admin.user.delete", deps.MutationsEnabled, func(cmd *cobra.Command, args []string) error {
+	var preview bool
+	cmd := mutation("delete", "Remove one exact site user.", "admin.user.delete", deps.MutationsEnabled, func(cmd *cobra.Command, args []string) error {
 		if err := noArgs("admin.user.delete")(cmd, args); err != nil {
 			return err
 		}
@@ -210,7 +210,7 @@ func newUserDelete(deps Dependencies) *cobra.Command {
 		}
 		return nil
 	}, func(cmd *cobra.Command) error {
-		out, err := deps.UserDeleter.DeleteAdminUser(cmd.Context(), in, apply)
+		out, err := deps.UserDeleter.DeleteAdminUser(cmd.Context(), in, preview)
 		if err != nil {
 			return err
 		}
@@ -218,7 +218,7 @@ func newUserDelete(deps Dependencies) *cobra.Command {
 	})
 	cmd.Flags().StringVar(&in.Environment, "environment", "", "explicit write environment alias")
 	cmd.Flags().StringVar(&in.UserLUID, "id", "", "authoritative user LUID")
-	cmd.Flags().BoolVar(&apply, "apply", false, "apply the previewed remote mutation")
+	cmd.Flags().BoolVar(&preview, "preview", false, "preview the remote mutation without performing it")
 	return cmd
 }
 
@@ -239,20 +239,20 @@ func newGroupList(deps Dependencies) *cobra.Command {
 	cmd.Flags().BoolVar(&in.Catalog, "catalog", false, "read indexed local catalog data without contacting Tableau")
 	return cmd
 }
-func newGroupGet(deps Dependencies) *cobra.Command {
-	var in groupget.Input
+func newGroupInspect(deps Dependencies) *cobra.Command {
+	var in groupinspect.Input
 	var id, name string
-	cmd := &cobra.Command{Use: "get", Short: "Inspect one exact group.", Annotations: map[string]string{"tadx.capability": "admin.group.get"}, Args: func(cmd *cobra.Command, args []string) error {
-		if err := noArgs("admin.group.get")(cmd, args); err != nil {
+	cmd := &cobra.Command{Use: "inspect", Short: "Inspect one exact group.", Annotations: map[string]string{"tadx.capability": "admin.group.inspect"}, Args: func(cmd *cobra.Command, args []string) error {
+		if err := noArgs("admin.group.inspect")(cmd, args); err != nil {
 			return err
 		}
 		if (id == "") == (name == "") {
-			return clierr.Usage("admin.group.get", errors.New("use exactly one of --id or --name"))
+			return clierr.Usage("admin.group.inspect", errors.New("use exactly one of --id or --name"))
 		}
 		in.SetSelector(id, name)
 		return nil
 	}, RunE: func(cmd *cobra.Command, _ []string) error {
-		out, err := deps.GroupGetter.GetAdminGroup(cmd.Context(), in)
+		out, err := deps.GroupInspector.InspectAdminGroup(cmd.Context(), in)
 		if err != nil {
 			return err
 		}
@@ -268,8 +268,8 @@ func newGroupGet(deps Dependencies) *cobra.Command {
 func newGroupCreate(deps Dependencies) *cobra.Command {
 	var in groupcreate.Input
 	var external bool
-	var apply bool
-	cmd := mutation("create", "Preview or create one exact group.", "admin.group.create", deps.MutationsEnabled, func(cmd *cobra.Command, args []string) error {
+	var preview bool
+	cmd := mutation("create", "Create one exact group.", "admin.group.create", deps.MutationsEnabled, func(cmd *cobra.Command, args []string) error {
 		if err := noArgs("admin.group.create")(cmd, args); err != nil {
 			return err
 		}
@@ -281,7 +281,7 @@ func newGroupCreate(deps Dependencies) *cobra.Command {
 		}
 		return nil
 	}, func(cmd *cobra.Command) error {
-		out, err := deps.GroupCreator.CreateAdminGroup(cmd.Context(), in, apply)
+		out, err := deps.GroupCreator.CreateAdminGroup(cmd.Context(), in, preview)
 		if err != nil {
 			return err
 		}
@@ -291,15 +291,15 @@ func newGroupCreate(deps Dependencies) *cobra.Command {
 	cmd.Flags().StringVar(&in.Name, "name", "", "exact group name")
 	cmd.Flags().StringVar(&in.MinimumSiteRole, "minimum-site-role", "", "explicit minimum site role")
 	cmd.Flags().BoolVar(&external, "external-user-enabled", false, "explicit on-demand external-user setting")
-	cmd.Flags().BoolVar(&apply, "apply", false, "apply the previewed remote mutation")
+	cmd.Flags().BoolVar(&preview, "preview", false, "preview the remote mutation without performing it")
 	return cmd
 }
 func newGroupUpdate(deps Dependencies) *cobra.Command {
 	var in groupupdate.Input
 	var name, role string
-	var external, setMembers, apply bool
+	var external, setMembers, preview bool
 	var members []string
-	cmd := mutation("update", "Preview or update one exact group.", "admin.group.update", deps.MutationsEnabled, func(cmd *cobra.Command, args []string) error {
+	cmd := mutation("update", "Update one exact group.", "admin.group.update", deps.MutationsEnabled, func(cmd *cobra.Command, args []string) error {
 		if err := noArgs("admin.group.update")(cmd, args); err != nil {
 			return err
 		}
@@ -323,7 +323,7 @@ func newGroupUpdate(deps Dependencies) *cobra.Command {
 		}
 		return nil
 	}, func(cmd *cobra.Command) error {
-		out, err := deps.GroupUpdater.UpdateAdminGroup(cmd.Context(), in, apply)
+		out, err := deps.GroupUpdater.UpdateAdminGroup(cmd.Context(), in, preview)
 		if err != nil {
 			return err
 		}
@@ -336,13 +336,13 @@ func newGroupUpdate(deps Dependencies) *cobra.Command {
 	cmd.Flags().BoolVar(&external, "external-user-enabled", false, "explicit on-demand external-user setting")
 	cmd.Flags().BoolVar(&setMembers, "set-members", false, "converge direct membership to the repeated --member-id values, including an empty set")
 	cmd.Flags().StringArrayVar(&members, "member-id", nil, "authoritative desired direct-member LUID; repeat for each member")
-	cmd.Flags().BoolVar(&apply, "apply", false, "apply the previewed remote mutation")
+	cmd.Flags().BoolVar(&preview, "preview", false, "preview the remote mutation without performing it")
 	return cmd
 }
 func newGroupDelete(deps Dependencies) *cobra.Command {
 	var in groupdelete.Input
-	var apply bool
-	cmd := mutation("delete", "Preview or delete one exact group.", "admin.group.delete", deps.MutationsEnabled, func(cmd *cobra.Command, args []string) error {
+	var preview bool
+	cmd := mutation("delete", "Delete one exact group.", "admin.group.delete", deps.MutationsEnabled, func(cmd *cobra.Command, args []string) error {
 		if err := noArgs("admin.group.delete")(cmd, args); err != nil {
 			return err
 		}
@@ -354,7 +354,7 @@ func newGroupDelete(deps Dependencies) *cobra.Command {
 		}
 		return nil
 	}, func(cmd *cobra.Command) error {
-		out, err := deps.GroupDeleter.DeleteAdminGroup(cmd.Context(), in, apply)
+		out, err := deps.GroupDeleter.DeleteAdminGroup(cmd.Context(), in, preview)
 		if err != nil {
 			return err
 		}
@@ -362,21 +362,21 @@ func newGroupDelete(deps Dependencies) *cobra.Command {
 	})
 	cmd.Flags().StringVar(&in.Environment, "environment", "", "explicit write environment alias")
 	cmd.Flags().StringVar(&in.GroupLUID, "id", "", "authoritative group LUID")
-	cmd.Flags().BoolVar(&apply, "apply", false, "apply the previewed remote mutation")
+	cmd.Flags().BoolVar(&preview, "preview", false, "preview the remote mutation without performing it")
 	return cmd
 }
-func newPermissionGet(deps Dependencies) *cobra.Command {
-	var in permissionget.Input
-	cmd := &cobra.Command{Use: "get", Short: "Inspect permission rules for one exact resource.", Annotations: map[string]string{"tadx.capability": "admin.permission.get"}, Args: func(cmd *cobra.Command, args []string) error {
-		if err := noArgs("admin.permission.get")(cmd, args); err != nil {
+func newPermissionInspect(deps Dependencies) *cobra.Command {
+	var in permissioninspect.Input
+	cmd := &cobra.Command{Use: "inspect", Short: "Inspect permission rules for one exact resource.", Annotations: map[string]string{"tadx.capability": "admin.permission.inspect"}, Args: func(cmd *cobra.Command, args []string) error {
+		if err := noArgs("admin.permission.inspect")(cmd, args); err != nil {
 			return err
 		}
 		if in.ResourceKind == "" || in.ResourceLUID == "" {
-			return clierr.Usage("admin.permission.get", errors.New("--kind and --id are required"))
+			return clierr.Usage("admin.permission.inspect", errors.New("--kind and --id are required"))
 		}
 		return nil
 	}, RunE: func(cmd *cobra.Command, _ []string) error {
-		out, err := deps.PermissionGetter.GetAdminPermission(cmd.Context(), in)
+		out, err := deps.PermissionInspector.InspectAdminPermission(cmd.Context(), in)
 		if err != nil {
 			return err
 		}

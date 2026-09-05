@@ -33,10 +33,9 @@ type Result struct {
 }
 
 type Output struct {
-	Plan    Plan     `json:"plan"`
-	Applied bool     `json:"applied"`
-	Result  *Result  `json:"result,omitempty"`
-	Help    []string `json:"help"`
+	Plan   Plan     `json:"plan"`
+	Result *Result  `json:"result,omitempty"`
+	Help   []string `json:"help"`
 }
 
 type CompactResultValue struct {
@@ -46,7 +45,6 @@ type CompactResultValue struct {
 
 type CompactResult struct {
 	Plan    Plan                `json:"plan"`
-	Applied bool                `json:"applied"`
 	Result  *CompactResultValue `json:"result,omitempty"`
 	Details string              `json:"details"`
 	Help    []string            `json:"help"`
@@ -57,7 +55,7 @@ func (o Output) CompactOutput() any {
 	if o.Result != nil {
 		result = &CompactResultValue{Status: o.Result.Status, DatasourceLUID: o.Result.DatasourceLUID}
 	}
-	return CompactResult{Plan: o.Plan, Applied: o.Applied, Result: result, Details: "--full", Help: o.Help}
+	return CompactResult{Plan: o.Plan, Result: result, Details: "--full", Help: o.Help}
 }
 
 func (o Output) FullOutput() any { return o }

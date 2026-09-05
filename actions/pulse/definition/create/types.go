@@ -173,12 +173,11 @@ type CreateResult struct {
 	PollRequestID       string `json:"poll_request_id,omitempty"`
 }
 
-// Output keeps an applied result attached to its exact preview.
+// Output keeps a result attached to its exact preview.
 type Output struct {
-	Plan    Plan
-	Applied bool
-	Result  *CreateResult
-	Help    []string
+	Plan   Plan
+	Result *CreateResult
+	Help   []string
 }
 
 // CompactPlan contains the safety-critical target and references.
@@ -204,7 +203,6 @@ type CompactCreateResult struct {
 // CompactResult is the default mutation projection.
 type CompactResult struct {
 	Plan    CompactPlan          `json:"plan"`
-	Applied bool                 `json:"applied"`
 	Result  *CompactCreateResult `json:"result,omitempty"`
 	Details string               `json:"details"`
 	Help    []string             `json:"help"`
@@ -212,10 +210,9 @@ type CompactResult struct {
 
 // FullResult contains the exact normalized request and bounded diagnostics.
 type FullResult struct {
-	Plan    Plan          `json:"plan"`
-	Applied bool          `json:"applied"`
-	Result  *CreateResult `json:"result,omitempty"`
-	Help    []string      `json:"help"`
+	Plan   Plan          `json:"plan"`
+	Result *CreateResult `json:"result,omitempty"`
+	Help   []string      `json:"help"`
 }
 
 // CompactOutput returns the safety-critical plan and identities.
@@ -225,10 +222,10 @@ func (o Output) CompactOutput() any {
 	if o.Result != nil {
 		result = &CompactCreateResult{Status: o.Result.Status, DefinitionLUID: o.Result.DefinitionLUID, DefaultMetricLUID: o.Result.DefaultMetricLUID, DefaultMetricStatus: o.Result.DefaultMetricStatus}
 	}
-	return CompactResult{Plan: plan, Applied: o.Applied, Result: result, Details: "--full", Help: o.Help}
+	return CompactResult{Plan: plan, Result: result, Details: "--full", Help: o.Help}
 }
 
 // FullOutput returns the exact normalized request.
 func (o Output) FullOutput() any {
-	return FullResult{Plan: o.Plan, Applied: o.Applied, Result: o.Result, Help: o.Help}
+	return FullResult{Plan: o.Plan, Result: o.Result, Help: o.Help}
 }

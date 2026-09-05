@@ -1,5 +1,5 @@
 plan:
-  mode: preview
+  mode: execute
   operation: pulse.metric.fork
   environment: dev
   site: sandbox
@@ -16,7 +16,6 @@ plan:
       granularity: GRANULARITY_BY_DAY
       range: RANGE_BY_CONFIG
   request_fingerprint: "sha256:0000000000000000000000000000000000000000000000000000000000000000"
-applied: true
 result:
   status: created
   metric_luid: metric-fork
@@ -28,4 +27,4 @@ result:
   inventory_visible: true
   tableau_request_id: request-1
   reconciliation_request_id: request-2
-help[1]: tadx pulse metric get --id metric-fork
+help[1]: tadx pulse metric inspect --id metric-fork

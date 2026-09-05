@@ -1,5 +1,5 @@
 plan:
-  mode: preview
+  mode: execute
   operation: flow.delete
   environment: dev
   site: sandbox
@@ -8,7 +8,6 @@ plan:
     name: Daily
     project_luid: project-1
     project_path: Ops
-applied: true
 result:
   status: succeeded
   flow_luid: flow-1

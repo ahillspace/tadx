@@ -66,6 +66,9 @@ func (a *Action) Execute(ctx context.Context, input Input) (Output, error) {
 		ImplicitScopes: slices.Clone(implicit),
 		ScopeCounts:    slices.Clone(result.ScopeCounts),
 	}
+	if result.HydratedRecordCount != result.RecordCount {
+		generation.HydratedRecords = result.HydratedRecordCount
+	}
 	return Output{
 		Status:      "refreshed",
 		Generation:  generation,
@@ -129,7 +132,7 @@ func validateResult(result HydrationResult, request HydrationRequest) error {
 			return errors.New("catalog hydration receipt exceeds the output bound")
 		}
 	}
-	if result.RecordCount < 0 || result.Diagnostics.Requests < 0 || result.Diagnostics.FailedRequests < 0 {
+	if result.RecordCount < 0 || result.HydratedRecordCount < result.RecordCount || result.Diagnostics.Requests < 0 || result.Diagnostics.FailedRequests < 0 {
 		return errors.New("catalog hydration returned invalid operational counts")
 	}
 	if result.Diagnostics.FailedRequests != 0 {
@@ -154,8 +157,8 @@ func validateResult(result HydrationResult, request HydrationRequest) error {
 		lastIndex = index
 		countedRecords += count.Records
 	}
-	if len(result.ScopeCounts) > 0 && countedRecords != result.RecordCount {
-		return errors.New("catalog hydration scope counts do not equal the total record count")
+	if len(result.ScopeCounts) > 0 && countedRecords != result.HydratedRecordCount {
+		return errors.New("catalog hydration scope counts do not equal the total hydrated record count")
 	}
 	return nil
 }

@@ -11,7 +11,7 @@ import (
 	authstatus "github.com/ahillspace/tadx/actions/auth/status"
 	capabilityget "github.com/ahillspace/tadx/actions/capability/get"
 	capabilitylist "github.com/ahillspace/tadx/actions/capability/list"
-	catalogsearch "github.com/ahillspace/tadx/actions/catalog/search"
+	searchaction "github.com/ahillspace/tadx/actions/search"
 	workbookpublish "github.com/ahillspace/tadx/actions/workbook/publish"
 	workbookpull "github.com/ahillspace/tadx/actions/workbook/pull"
 	admincli "github.com/ahillspace/tadx/internal/cli/admin"
@@ -30,6 +30,8 @@ import (
 
 // CapabilityAnnotation associates an executable command with its registry ID.
 const CapabilityAnnotation = "tadx.capability"
+
+const groupingAnnotation = "tadx.grouping"
 
 // RegisteredCommand describes a capability discovered from the actual Cobra tree.
 type RegisteredCommand struct {
@@ -58,8 +60,8 @@ type AuthChecker interface {
 type AuthStatuser interface {
 	Execute(context.Context, authstatus.Input) (authstatus.Output, error)
 }
-type CatalogSearcher interface {
-	Execute(context.Context, catalogsearch.Input) (catalogsearch.Output, error)
+type Searcher interface {
+	Execute(context.Context, searchaction.Input) (searchaction.Output, error)
 }
 type WorkbookPuller interface {
 	Execute(context.Context, workbookpull.Input) (workbookpull.Output, error)
@@ -92,7 +94,7 @@ type Dependencies struct {
 	GetUse               string
 	GetShort             string
 	AuthChecker          AuthChecker
-	CatalogSearcher      CatalogSearcher
+	Searcher             Searcher
 	CatalogRefresher     catalogcli.Refresher
 	CatalogStatuser      catalogcli.Statuser
 	WorkbookPuller       WorkbookPuller
@@ -110,8 +112,6 @@ type Dependencies struct {
 	AuthStatuser         AuthStatuser
 	AuthStatusUse        string
 	AuthStatusShort      string
-	CatalogSearchUse     string
-	CatalogSearchShort   string
 	CatalogRefreshUse    string
 	CatalogRefreshShort  string
 	CatalogStatusUse     string
@@ -142,7 +142,7 @@ TADX returns compact TOON by default. Use --full to show expanded bounded detail
 Read commands query Tableau by default. Pass --catalog on supported reads to use local catalog data without contacting Tableau.
 
 Remote mutation commands remain visible when execution is disabled. Set TADX_ENABLE_MUTATIONS=1 to enable them.
-When enabled, mutation commands preview changes by default. Pass --apply to perform the previewed remote mutation.`,
+When enabled, mutation commands perform changes by default. Pass --preview to inspect the plan without performing the mutation.`,
 		SilenceErrors: true,
 		SilenceUsage:  true,
 	}
@@ -186,10 +186,13 @@ When enabled, mutation commands preview changes by default. Pass --apply to perf
 	if deps.AuthChecker != nil {
 		root.AddCommand(authcli.New(authcli.Dependencies{Checker: deps.AuthChecker, Statuser: deps.AuthStatuser, Renderer: deps.Renderer, Use: deps.AuthUse, Short: deps.AuthShort, StatusUse: deps.AuthStatusUse, StatusShort: deps.AuthStatusShort}))
 	}
-	if deps.CatalogSearcher != nil {
+	if deps.Searcher != nil {
+		root.AddCommand(newSearch(deps.Searcher, deps.Renderer))
+	}
+	if deps.CatalogRefresher != nil || deps.CatalogStatuser != nil {
 		root.AddCommand(catalogcli.New(catalogcli.Dependencies{
-			Searcher: deps.CatalogSearcher, Refresher: deps.CatalogRefresher, Statuser: deps.CatalogStatuser,
-			Renderer: deps.Renderer, Use: deps.CatalogSearchUse, Short: deps.CatalogSearchShort,
+			Refresher: deps.CatalogRefresher, Statuser: deps.CatalogStatuser,
+			Renderer:   deps.Renderer,
 			RefreshUse: deps.CatalogRefreshUse, RefreshShort: deps.CatalogRefreshShort,
 			StatusUse: deps.CatalogStatusUse, StatusShort: deps.CatalogStatusShort,
 		}))
@@ -209,10 +212,37 @@ When enabled, mutation commands preview changes by default. Pass --apply to perf
 		contentDependencies.PublishShort = deps.WorkbookPublishShort
 		root.AddCommand(contentcli.New(contentDependencies))
 	}
+	rejectGroupingArguments(root)
 	applyMutationExecutionPolicy(root, deps.MutationPolicy, deps.MutationsEnabled)
 	root.CompletionOptions.DisableDefaultCmd = true
 	setFlagErrorHandlers(root)
 	return root
+}
+
+func rejectGroupingArguments(root *cobra.Command) {
+	var walk func(*cobra.Command)
+	walk = func(command *cobra.Command) {
+		if command.Args == nil && command.HasSubCommands() && command.Run == nil && command.RunE == nil {
+			operation := strings.TrimPrefix(command.CommandPath(), root.Name()+" ")
+			if command.Annotations == nil {
+				command.Annotations = map[string]string{}
+			}
+			command.Annotations[groupingAnnotation] = "true"
+			command.Args = func(command *cobra.Command, args []string) error {
+				if err := cobra.NoArgs(command, args); err != nil {
+					return clierr.Usage(operation, err)
+				}
+				return nil
+			}
+			command.RunE = func(command *cobra.Command, _ []string) error {
+				return command.Help()
+			}
+		}
+		for _, child := range command.Commands() {
+			walk(child)
+		}
+	}
+	walk(root)
 }
 
 func applyMutationExecutionPolicy(root *cobra.Command, policy MutationPolicy, enabled bool) {
@@ -249,7 +279,7 @@ func applyMutationExecutionPolicy(root *cobra.Command, policy MutationPolicy, en
 						Operation:        capabilityID,
 						Summary:          "Remote mutation execution is disabled.",
 						Retryable:        errs.Bool(false),
-						CorrectiveAction: "Set TADX_ENABLE_MUTATIONS=1, then retry. Without --apply, the enabled command returns a preview only.",
+						CorrectiveAction: "Set TADX_ENABLE_MUTATIONS=1, then retry.",
 					}
 				}
 				if originalRunE != nil {
@@ -286,7 +316,7 @@ func RegisteredCommands(root *cobra.Command) ([]RegisteredCommand, error) {
 	walk = func(command *cobra.Command) error {
 		id := command.Annotations[CapabilityAnnotation]
 		runnable := command.Run != nil || command.RunE != nil
-		if runnable && id == "" {
+		if runnable && id == "" && command.Annotations[groupingAnnotation] != "true" {
 			return fmt.Errorf("runnable command %q has no capability annotation", command.CommandPath())
 		}
 		if !runnable && id != "" {

@@ -6,13 +6,15 @@ import (
 	"testing"
 
 	definitioncreate "github.com/ahillspace/tadx/actions/pulse/definition/create"
-	definitionget "github.com/ahillspace/tadx/actions/pulse/definition/get"
+	definitiondelete "github.com/ahillspace/tadx/actions/pulse/definition/delete"
+	definitioninspect "github.com/ahillspace/tadx/actions/pulse/definition/inspect"
 	definitionlist "github.com/ahillspace/tadx/actions/pulse/definition/list"
 	definitionpull "github.com/ahillspace/tadx/actions/pulse/definition/pull"
+	metricdelete "github.com/ahillspace/tadx/actions/pulse/metric/delete"
 	metricfollow "github.com/ahillspace/tadx/actions/pulse/metric/follow"
 	metricfollowers "github.com/ahillspace/tadx/actions/pulse/metric/followers"
 	metricfork "github.com/ahillspace/tadx/actions/pulse/metric/fork"
-	metricget "github.com/ahillspace/tadx/actions/pulse/metric/get"
+	metricinspect "github.com/ahillspace/tadx/actions/pulse/metric/inspect"
 	metriclist "github.com/ahillspace/tadx/actions/pulse/metric/list"
 	metricunfollow "github.com/ahillspace/tadx/actions/pulse/metric/unfollow"
 	pulsecli "github.com/ahillspace/tadx/internal/cli/pulse"
@@ -20,13 +22,15 @@ import (
 )
 
 type actions struct {
-	definitionListInput   definitionlist.Input
-	definitionCreateInput definitioncreate.Input
-	definitionCreateApply bool
-	metricForkInput       metricfork.Input
-	metricForkApply       bool
-	metricFollowInput     metricfollow.Input
-	metricFollowApply     bool
+	definitionListInput     definitionlist.Input
+	definitionCreateInput   definitioncreate.Input
+	definitionCreatePreview bool
+	definitionDeleteInput   definitiondelete.Input
+	metricForkInput         metricfork.Input
+	metricForkPreview       bool
+	metricDeleteInput       metricdelete.Input
+	metricFollowInput       metricfollow.Input
+	metricFollowPreview     bool
 }
 
 func (a *actions) ListPulseDefinitions(_ context.Context, input definitionlist.Input) (definitionlist.Output, error) {
@@ -34,41 +38,51 @@ func (a *actions) ListPulseDefinitions(_ context.Context, input definitionlist.I
 	return definitionlist.Output{}, nil
 }
 
-func (*actions) GetPulseDefinition(context.Context, definitionget.Input) (definitionget.Output, error) {
-	return definitionget.Output{}, nil
+func (*actions) InspectPulseDefinition(context.Context, definitioninspect.Input) (definitioninspect.Output, error) {
+	return definitioninspect.Output{}, nil
 }
 
 func (*actions) PullPulseDefinition(context.Context, definitionpull.Input) (definitionpull.Output, error) {
 	return definitionpull.Output{}, nil
 }
 
-func (a *actions) CreatePulseDefinition(_ context.Context, input definitioncreate.Input, apply bool) (definitioncreate.Output, error) {
+func (a *actions) CreatePulseDefinition(_ context.Context, input definitioncreate.Input, preview bool) (definitioncreate.Output, error) {
 	a.definitionCreateInput = input
-	a.definitionCreateApply = apply
+	a.definitionCreatePreview = preview
 	return definitioncreate.Output{}, nil
+}
+
+func (a *actions) DeletePulseDefinition(_ context.Context, input definitiondelete.Input) (definitiondelete.Output, error) {
+	a.definitionDeleteInput = input
+	return definitiondelete.Output{}, nil
 }
 
 func (*actions) ListPulseMetrics(context.Context, metriclist.Input) (metriclist.Output, error) {
 	return metriclist.Output{}, nil
 }
 
-func (*actions) GetPulseMetric(context.Context, metricget.Input) (metricget.Output, error) {
-	return metricget.Output{}, nil
+func (*actions) InspectPulseMetric(context.Context, metricinspect.Input) (metricinspect.Output, error) {
+	return metricinspect.Output{}, nil
 }
 
-func (a *actions) ForkPulseMetric(_ context.Context, input metricfork.Input, apply bool) (metricfork.Output, error) {
+func (a *actions) ForkPulseMetric(_ context.Context, input metricfork.Input, preview bool) (metricfork.Output, error) {
 	a.metricForkInput = input
-	a.metricForkApply = apply
+	a.metricForkPreview = preview
 	return metricfork.Output{}, nil
+}
+
+func (a *actions) DeletePulseMetric(_ context.Context, input metricdelete.Input) (metricdelete.Output, error) {
+	a.metricDeleteInput = input
+	return metricdelete.Output{}, nil
 }
 
 func (*actions) ListPulseMetricFollowers(context.Context, metricfollowers.Input) (metricfollowers.Output, error) {
 	return metricfollowers.Output{}, nil
 }
 
-func (a *actions) FollowPulseMetric(_ context.Context, input metricfollow.Input, apply bool) (metricfollow.Output, error) {
+func (a *actions) FollowPulseMetric(_ context.Context, input metricfollow.Input, preview bool) (metricfollow.Output, error) {
 	a.metricFollowInput = input
-	a.metricFollowApply = apply
+	a.metricFollowPreview = preview
 	return metricfollow.Output{}, nil
 }
 
@@ -82,33 +96,37 @@ func (renderer) Render(any) error { return nil }
 
 func newCommand(a *actions) *cobra.Command {
 	return pulsecli.New(pulsecli.Dependencies{
-		DefinitionLister:  a,
-		DefinitionGetter:  a,
-		DefinitionPuller:  a,
-		DefinitionCreator: a,
-		MetricLister:      a,
-		MetricGetter:      a,
-		MetricForker:      a,
-		MetricFollowers:   a,
-		MetricFollower:    a,
-		MetricUnfollower:  a,
-		Renderer:          renderer{},
+		DefinitionLister:    a,
+		DefinitionInspector: a,
+		DefinitionPuller:    a,
+		DefinitionCreator:   a,
+		DefinitionDeleter:   a,
+		MetricLister:        a,
+		MetricInspector:     a,
+		MetricForker:        a,
+		MetricDeleter:       a,
+		MetricFollowers:     a,
+		MetricFollower:      a,
+		MetricUnfollower:    a,
+		Renderer:            renderer{},
 	})
 }
 
 func TestCommandTreeHasExpectedCapabilities(t *testing.T) {
 	command := newCommand(&actions{})
 	expected := map[string]string{
-		"definition/list":   "pulse.definition.list",
-		"definition/get":    "pulse.definition.get",
-		"definition/pull":   "pulse.definition.pull",
-		"definition/create": "pulse.definition.create",
-		"metric/list":       "pulse.metric.list",
-		"metric/get":        "pulse.metric.get",
-		"metric/fork":       "pulse.metric.fork",
-		"metric/followers":  "pulse.metric.followers",
-		"metric/follow":     "pulse.metric.follow",
-		"metric/unfollow":   "pulse.metric.unfollow",
+		"definition/list":    "pulse.definition.list",
+		"definition/inspect": "pulse.definition.inspect",
+		"definition/pull":    "pulse.definition.pull",
+		"definition/create":  "pulse.definition.create",
+		"definition/delete":  "pulse.definition.delete",
+		"metric/list":        "pulse.metric.list",
+		"metric/inspect":     "pulse.metric.inspect",
+		"metric/fork":        "pulse.metric.fork",
+		"metric/delete":      "pulse.metric.delete",
+		"metric/followers":   "pulse.metric.followers",
+		"metric/follow":      "pulse.metric.follow",
+		"metric/unfollow":    "pulse.metric.unfollow",
 	}
 	for path, capability := range expected {
 		leaf := childAt(t, command, path)
@@ -123,17 +141,37 @@ func TestCommandTreeHasExpectedCapabilities(t *testing.T) {
 
 func TestCatalogFlagAppearsOnlyOnEligibleReads(t *testing.T) {
 	command := newCommand(&actions{})
-	eligible := []string{"definition/list", "definition/get", "metric/list", "metric/get", "metric/followers"}
+	eligible := []string{"definition/list", "definition/inspect", "metric/list", "metric/inspect", "metric/followers"}
 	for _, path := range eligible {
 		if childAt(t, command, path).Flags().Lookup("catalog") == nil {
 			t.Fatalf("%s does not expose --catalog", path)
 		}
 	}
-	other := []string{"definition/pull", "definition/create", "metric/fork", "metric/follow", "metric/unfollow"}
+	other := []string{"definition/pull", "definition/create", "definition/delete", "metric/fork", "metric/delete", "metric/follow", "metric/unfollow"}
 	for _, path := range other {
 		if childAt(t, command, path).Flags().Lookup("catalog") != nil {
 			t.Fatalf("%s unexpectedly exposes --catalog", path)
 		}
+	}
+}
+
+func TestPulseDeletesMapExactTargetAndPreview(t *testing.T) {
+	a := &actions{}
+	command := newCommand(a)
+	command.SetArgs([]string{"definition", "delete", "--environment", "development", "--id", "definition-1", "--preview"})
+	if err := command.Execute(); err != nil {
+		t.Fatal(err)
+	}
+	if a.definitionDeleteInput.Environment != "development" || a.definitionDeleteInput.LUID != "definition-1" || !a.definitionDeleteInput.Preview {
+		t.Fatalf("definition delete input = %#v", a.definitionDeleteInput)
+	}
+
+	command.SetArgs([]string{"metric", "delete", "--environment", "production", "--id", "metric-1"})
+	if err := command.Execute(); err != nil {
+		t.Fatal(err)
+	}
+	if a.metricDeleteInput.Environment != "production" || a.metricDeleteInput.LUID != "metric-1" || a.metricDeleteInput.Preview {
+		t.Fatalf("metric delete input = %#v", a.metricDeleteInput)
 	}
 }
 
@@ -150,7 +188,7 @@ func TestDefinitionListMapsCatalogInput(t *testing.T) {
 	}
 }
 
-func TestDefinitionCreateMapsSmallIntentAndApply(t *testing.T) {
+func TestDefinitionCreateMapsSmallIntentAndPreview(t *testing.T) {
 	a := &actions{}
 	command := newCommand(a)
 	command.SetArgs([]string{
@@ -170,7 +208,7 @@ func TestDefinitionCreateMapsSmallIntentAndApply(t *testing.T) {
 		"--sentiment", "UP",
 		"--temporality", "OVER_TIME",
 		"--running-total",
-		"--apply",
+		"--preview",
 	})
 	if err := command.Execute(); err != nil {
 		t.Fatal(err)
@@ -182,8 +220,8 @@ func TestDefinitionCreateMapsSmallIntentAndApply(t *testing.T) {
 	if got := strings.Join(input.Intent.AllowedDimensions, ","); got != "[Region],[Segment]" {
 		t.Fatalf("allowed dimensions = %q", got)
 	}
-	if !input.Intent.RunningTotal || !a.definitionCreateApply {
-		t.Fatalf("running total = %t, apply = %t", input.Intent.RunningTotal, a.definitionCreateApply)
+	if !input.Intent.RunningTotal || !a.definitionCreatePreview {
+		t.Fatalf("running total = %t, preview = %t", input.Intent.RunningTotal, a.definitionCreatePreview)
 	}
 }
 
@@ -198,7 +236,7 @@ func TestMetricForkGroupsRepeatedFilters(t *testing.T) {
 		"--filter", "[Region]=West",
 		"--filter", "[Region]=East",
 		"--exclude-filter", "[Category]=Furniture",
-		"--apply",
+		"--preview",
 	})
 	if err := command.Execute(); err != nil {
 		t.Fatal(err)
@@ -216,8 +254,8 @@ func TestMetricForkGroupsRepeatedFilters(t *testing.T) {
 			t.Fatalf("filter %d = %#v, want %#v", index, got, want[index])
 		}
 	}
-	if !a.metricForkApply {
-		t.Fatal("fork did not pass --apply")
+	if !a.metricForkPreview {
+		t.Fatal("fork did not pass --preview")
 	}
 }
 

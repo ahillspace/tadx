@@ -35,16 +35,16 @@ func (s *service) ReconcileMetric(context.Context, metricfork.ExpectedMetric) (m
 func TestForkPreservesUnknownFieldsAndPreviewsByDefault(t *testing.T) {
 	s := &service{metric: metricfork.Metric{LUID: "metric-1", DefinitionLUID: "definition-1", SiteLUID: "site-1", Specification: map[string]any{"filters": []any{}, "comparison": map[string]any{"comparison": "PREVIOUS"}, "provider_extension": map[string]any{"keep": true}}}}
 	input := metricfork.Input{Environment: "dev", Site: "sandbox", SiteLUID: "site-1", MetricLUID: "metric-1", Timeframe: "LAST_30_DAYS", Filters: []metricfork.Filter{{Field: "Region", Values: []string{"West"}}}}
-	preview, err := metricfork.New(s, s, s).Execute(context.Background(), input, false)
+	preview, err := metricfork.New(s, s, s).Execute(context.Background(), input, true)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if preview.Applied || s.created != 0 || preview.Plan.Specification["provider_extension"] == nil {
+	if preview.Result != nil || s.created != 0 || preview.Plan.Specification["provider_extension"] == nil {
 		t.Fatalf("preview=%#v created=%d", preview, s.created)
 	}
-	applied, err := metricfork.New(s, s, s).Execute(context.Background(), input, true)
-	if err != nil || !applied.Applied || s.created != 1 || applied.Result == nil || applied.Result.ReconciliationStatus != "visible" {
-		t.Fatalf("applied=%#v created=%d err=%v", applied, s.created, err)
+	result, err := metricfork.New(s, s, s).Execute(context.Background(), input, false)
+	if err != nil || s.created != 1 || result.Result == nil || result.Result.ReconciliationStatus != "visible" {
+		t.Fatalf("result=%#v created=%d err=%v", result, s.created, err)
 	}
 }
 
@@ -59,9 +59,9 @@ func TestForkPreservesIntegerSpecFidelity(t *testing.T) {
 	}
 	s := &service{metric: metricfork.Metric{LUID: "metric-1", DefinitionLUID: "definition-1", SiteLUID: "site-1", Specification: spec}}
 	input := metricfork.Input{Environment: "dev", Site: "sandbox", SiteLUID: "site-1", MetricLUID: "metric-1", Timeframe: "LAST_30_DAYS"}
-	applied, err := metricfork.New(s, s, s).Execute(context.Background(), input, true)
-	if err != nil || !applied.Applied {
-		t.Fatalf("applied=%#v err=%v", applied, err)
+	result, err := metricfork.New(s, s, s).Execute(context.Background(), input, false)
+	if err != nil || result.Result == nil {
+		t.Fatalf("result=%#v err=%v", result, err)
 	}
 	comparison, ok := s.request.Specification["comparison"].(map[string]any)
 	if !ok {
@@ -88,7 +88,7 @@ func TestForkPreservesIntegerSpecFidelity(t *testing.T) {
 func TestForkOutputGolden(t *testing.T) {
 	output := metricfork.Output{
 		Plan: metricfork.Plan{
-			Mode: "preview", Operation: "pulse.metric.fork", Environment: "dev", Site: "sandbox",
+			Mode: "execute", Operation: "pulse.metric.fork", Environment: "dev", Site: "sandbox",
 			SourceMetricLUID: "metric-1", DefinitionLUID: "definition-1", DatasourceLUID: "datasource-1",
 			Timeframe: "LAST_30_DAYS",
 			Filters:   []metricfork.Filter{{Field: "Region", Values: []string{"West"}}},
@@ -97,13 +97,12 @@ func TestForkOutputGolden(t *testing.T) {
 			},
 			Fingerprint: "sha256:0000000000000000000000000000000000000000000000000000000000000000",
 		},
-		Applied: true,
 		Result: &metricfork.Result{
 			Status: "created", MetricLUID: "metric-fork", MetricName: "Revenue West", Created: true,
 			ReconciliationStatus: "visible", ReconciliationAttempts: 1, OwnershipVerified: true, InventoryVisible: true,
 			RequestID: "request-1", ReconciliationRequestID: "request-2",
 		},
-		Help: []string{"tadx pulse metric get --id metric-fork"},
+		Help: []string{"tadx pulse metric inspect --id metric-fork"},
 	}
 	assertGolden(t, "compact.toon", output, false)
 	assertGolden(t, "full.toon", output, true)

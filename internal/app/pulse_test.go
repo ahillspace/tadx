@@ -3,17 +3,22 @@ package app
 import (
 	"context"
 	"encoding/json"
+	"fmt"
+	"io"
 	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"testing"
 	"time"
 
 	definitioncreate "github.com/ahillspace/tadx/actions/pulse/definition/create"
-	definitionget "github.com/ahillspace/tadx/actions/pulse/definition/get"
+	definitiondelete "github.com/ahillspace/tadx/actions/pulse/definition/delete"
+	definitionget "github.com/ahillspace/tadx/actions/pulse/definition/inspect"
 	definitionlist "github.com/ahillspace/tadx/actions/pulse/definition/list"
+	metricdelete "github.com/ahillspace/tadx/actions/pulse/metric/delete"
 	metricfollowers "github.com/ahillspace/tadx/actions/pulse/metric/followers"
-	metricget "github.com/ahillspace/tadx/actions/pulse/metric/get"
+	metricget "github.com/ahillspace/tadx/actions/pulse/metric/inspect"
 	metriclist "github.com/ahillspace/tadx/actions/pulse/metric/list"
 	"github.com/ahillspace/tadx/internal/catalog"
 	resourcedatasource "github.com/ahillspace/tadx/internal/resources/datasource"
@@ -21,6 +26,88 @@ import (
 	"github.com/ahillspace/tadx/internal/tableau/fieldcatalog"
 	tableaupulse "github.com/ahillspace/tadx/internal/tableau/pulse"
 )
+
+func TestPulseDeletesPreviewThenRevalidateExactLiveTarget(t *testing.T) {
+	var definitionGets, definitionDeletes, metricGets, metricDeletes int
+	server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		writer.Header().Set("Content-Type", "application/json")
+		switch {
+		case request.Method == http.MethodPost && request.URL.Path == "/api/3.29/auth/signin":
+			_, _ = io.WriteString(writer, `{"credentials":{"token":"session-token","site":{"id":"site-1"},"user":{"id":"user-1"}}}`)
+		case request.Method == http.MethodGet && request.URL.Path == "/api/-/pulse/definitions/definition-1":
+			definitionGets++
+			_, _ = io.WriteString(writer, `{"metadata":{"id":"definition-1","name":"Revenue"},"specification":{"datasource":{"id":"datasource-1"},"basic_specification":{"measure":{"field":"[Revenue]","aggregation":"AGGREGATION_SUM"},"time_dimension":{"field":"[Order Date]"}}}}`)
+		case request.Method == http.MethodDelete && request.URL.Path == "/api/-/pulse/definitions/definition-1":
+			definitionDeletes++
+			writer.Header().Set("X-Tableau-Request-Id", "definition-delete-request")
+			writer.WriteHeader(http.StatusNoContent)
+		case request.Method == http.MethodGet && request.URL.Path == "/api/-/pulse/metrics/metric-1":
+			metricGets++
+			_, _ = io.WriteString(writer, `{"metadata":{"id":"metric-1","name":"Revenue this month"},"definition_id":"definition-1","is_default":false,"specification":{}}`)
+		case request.Method == http.MethodDelete && request.URL.Path == "/api/-/pulse/metrics/metric-1":
+			metricDeletes++
+			writer.Header().Set("X-Tableau-Request-Id", "metric-delete-request")
+			writer.WriteHeader(http.StatusNoContent)
+		default:
+			t.Fatalf("unexpected request: %s %s", request.Method, request.URL.Path)
+		}
+	}))
+	defer server.Close()
+
+	configPath := filepath.Join(t.TempDir(), "tadx.yaml")
+	configuration := fmt.Sprintf(`version: 1
+default_environment: production
+environments:
+  production:
+    url: %s
+    site_content_url: marketing
+    api_version: "3.29"
+    auth:
+      type: pat
+      pat_name_env: PULSE_DELETE_PAT_NAME
+      pat_secret_env: PULSE_DELETE_PAT_SECRET
+`, server.URL)
+	if err := os.WriteFile(configPath, []byte(configuration), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PULSE_DELETE_PAT_NAME", "pat-name")
+	t.Setenv("PULSE_DELETE_PAT_SECRET", "pat-secret")
+	runtime, err := newRuntime(Options{ConfigPath: configPath, HTTPClient: server.Client()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	commands := newPulseCommands(runtime)
+
+	definitionPreview, err := commands.DeletePulseDefinition(context.Background(), definitiondelete.Input{Environment: "production", LUID: "definition-1", Preview: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if definitionPreview.Plan.Mode != "preview" || definitionPreview.Result != nil || definitionGets != 1 || definitionDeletes != 0 {
+		t.Fatalf("definition preview = %#v, gets = %d, deletes = %d", definitionPreview, definitionGets, definitionDeletes)
+	}
+	definitionResult, err := commands.DeletePulseDefinition(context.Background(), definitiondelete.Input{Environment: "production", LUID: "definition-1"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if definitionResult.Result == nil || definitionResult.Result.DefinitionLUID != "definition-1" || definitionResult.Result.TableauRequestID != "definition-delete-request" || definitionGets != 3 || definitionDeletes != 1 {
+		t.Fatalf("definition result = %#v, gets = %d, deletes = %d", definitionResult, definitionGets, definitionDeletes)
+	}
+
+	metricPreview, err := commands.DeletePulseMetric(context.Background(), metricdelete.Input{Environment: "production", LUID: "metric-1", Preview: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if metricPreview.Plan.Mode != "preview" || metricPreview.Result != nil || metricGets != 1 || metricDeletes != 0 {
+		t.Fatalf("metric preview = %#v, gets = %d, deletes = %d", metricPreview, metricGets, metricDeletes)
+	}
+	metricResult, err := commands.DeletePulseMetric(context.Background(), metricdelete.Input{Environment: "production", LUID: "metric-1"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if metricResult.Result == nil || metricResult.Result.MetricLUID != "metric-1" || metricResult.Result.TableauRequestID != "metric-delete-request" || metricGets != 3 || metricDeletes != 1 {
+		t.Fatalf("metric result = %#v, gets = %d, deletes = %d", metricResult, metricGets, metricDeletes)
+	}
+}
 
 func TestPulseCatalogReadsUseNoAuthenticationOrNetwork(t *testing.T) {
 	root := t.TempDir()
@@ -63,7 +150,7 @@ environments:
 	if err != nil {
 		t.Fatal(err)
 	}
-	gotDefinition, err := commands.GetPulseDefinition(context.Background(), definitionget.Input{Catalog: true, LUID: definition.LUID})
+	gotDefinition, err := commands.InspectPulseDefinition(context.Background(), definitionget.Input{Catalog: true, LUID: definition.LUID})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -71,7 +158,7 @@ environments:
 	if err != nil {
 		t.Fatal(err)
 	}
-	gotMetric, err := commands.GetPulseMetric(context.Background(), metricget.Input{Catalog: true, LUID: metric.LUID})
+	gotMetric, err := commands.InspectPulseMetric(context.Background(), metricget.Input{Catalog: true, LUID: metric.LUID})
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -67,9 +67,9 @@ func newDatasourcePublish(deps datasourceLifecycleDependencies) *cobra.Command {
 	var input datasourcepublish.Input
 	var projectLUID, projectPath string
 	var create, overwrite, appendMode, replace bool
-	var apply bool
+	var preview bool
 	command := &cobra.Command{
-		Use: "publish", Short: "Preview or publish one native datasource artifact.",
+		Use: "publish", Short: "Publish one native datasource artifact.",
 		Annotations: map[string]string{"tadx.capability": "datasource.publish"},
 		Args: func(command *cobra.Command, args []string) error {
 			if err := noContentArgs("datasource.publish")(command, args); err != nil {
@@ -112,7 +112,7 @@ func newDatasourcePublish(deps datasourceLifecycleDependencies) *cobra.Command {
 			return nil
 		},
 		RunE: func(command *cobra.Command, _ []string) error {
-			result, err := deps.publisher.PublishDatasource(command.Context(), input, apply)
+			result, err := deps.publisher.PublishDatasource(command.Context(), input, preview)
 			if err != nil {
 				return err
 			}
@@ -130,16 +130,16 @@ func newDatasourcePublish(deps datasourceLifecycleDependencies) *cobra.Command {
 	command.Flags().BoolVar(&appendMode, "append", false, "append to the exact colliding datasource")
 	command.Flags().BoolVar(&replace, "replace", false, "replace data in the exact colliding datasource")
 	command.Flags().BoolVar(&input.AsJob, "as-job", false, "publish asynchronously and poll to a bounded terminal result")
-	command.Flags().BoolVar(&apply, "apply", false, "apply the previewed remote mutation")
+	command.Flags().BoolVar(&preview, "preview", false, "preview the remote mutation without performing it")
 	return command
 }
 
 func newDatasourceDelete(deps datasourceLifecycleDependencies) *cobra.Command {
 	var input datasourcedelete.Input
 	var luid, name, projectPath string
-	var apply bool
+	var preview bool
 	command := &cobra.Command{
-		Use: "delete", Short: "Preview or delete one exact remote datasource.",
+		Use: "delete", Short: "Delete one exact remote datasource.",
 		Annotations: map[string]string{"tadx.capability": "datasource.delete"},
 		Args: func(command *cobra.Command, args []string) error {
 			if err := selectorArgs("datasource.delete", &luid, &name, &projectPath, input.SetSelector)(command, args); err != nil {
@@ -151,7 +151,7 @@ func newDatasourceDelete(deps datasourceLifecycleDependencies) *cobra.Command {
 			return nil
 		},
 		RunE: func(command *cobra.Command, _ []string) error {
-			result, err := deps.deleter.DeleteDatasource(command.Context(), input, apply)
+			result, err := deps.deleter.DeleteDatasource(command.Context(), input, preview)
 			if err != nil {
 				return err
 			}
@@ -162,6 +162,6 @@ func newDatasourceDelete(deps datasourceLifecycleDependencies) *cobra.Command {
 	command.Flags().StringVar(&luid, "id", "", "authoritative datasource LUID")
 	command.Flags().StringVar(&name, "name", "", "exact datasource name")
 	command.Flags().StringVar(&projectPath, "project", "", "exact slash-delimited project path")
-	command.Flags().BoolVar(&apply, "apply", false, "apply the previewed remote deletion")
+	command.Flags().BoolVar(&preview, "preview", false, "preview the remote deletion without performing it")
 	return command
 }

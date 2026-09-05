@@ -9,7 +9,7 @@ import (
 	groupcreate "github.com/ahillspace/tadx/actions/admin/group/create"
 	groupdelete "github.com/ahillspace/tadx/actions/admin/group/delete"
 	groupupdate "github.com/ahillspace/tadx/actions/admin/group/update"
-	permissionget "github.com/ahillspace/tadx/actions/admin/permission/get"
+	permissionget "github.com/ahillspace/tadx/actions/admin/permission/inspect"
 	usercreate "github.com/ahillspace/tadx/actions/admin/user/create"
 	userdelete "github.com/ahillspace/tadx/actions/admin/user/delete"
 	userlist "github.com/ahillspace/tadx/actions/admin/user/list"
@@ -28,10 +28,10 @@ func TestMutationCompactProjectionsOmitRequestIDs(t *testing.T) {
 		CompactOutput() any
 		FullOutput() any
 	}{
-		groupcreate.Output{Plan: groupcreate.Plan{Mode: "preview", Operation: "admin.group.create", Environment: "prod", Site: "site", Name: "Authors"}, Applied: true, Result: &groupcreate.Result{Status: "created", GroupLUID: "g1", TableauRequestID: "secret-request"}},
-		groupdelete.Output{Plan: groupdelete.Plan{Mode: "preview", Operation: "admin.group.delete", Environment: "prod", Site: "site", Target: groupdelete.Group{LUID: "g1"}, PermissionImpact: "unknown"}, Applied: true, Result: &groupdelete.Result{Status: "deleted", GroupLUID: "g1", TableauRequestID: "secret-request"}},
-		userdelete.Output{Plan: userdelete.Plan{Mode: "preview", Operation: "admin.user.delete", Environment: "prod", Site: "site", Target: userdelete.User{LUID: "u1"}}, Applied: true, Result: &userdelete.Result{Status: "deleted", UserLUID: "u1", TableauRequestID: "secret-request"}},
-		groupupdate.Output{Plan: groupupdate.Plan{Mode: "preview", Operation: "admin.group.update", Environment: "prod", Site: "site", Target: groupupdate.Group{LUID: "g1"}}, Applied: true, Result: &groupupdate.Result{Status: "updated", GroupLUID: "g1", TableauRequestIDs: []string{"secret-request"}}},
+		groupcreate.Output{Plan: groupcreate.Plan{Mode: "execute", Operation: "admin.group.create", Environment: "prod", Site: "site", Name: "Authors"}, Result: &groupcreate.Result{Status: "created", GroupLUID: "g1", TableauRequestID: "secret-request"}},
+		groupdelete.Output{Plan: groupdelete.Plan{Mode: "execute", Operation: "admin.group.delete", Environment: "prod", Site: "site", Target: groupdelete.Group{LUID: "g1"}, PermissionImpact: "unknown"}, Result: &groupdelete.Result{Status: "deleted", GroupLUID: "g1", TableauRequestID: "secret-request"}},
+		userdelete.Output{Plan: userdelete.Plan{Mode: "execute", Operation: "admin.user.delete", Environment: "prod", Site: "site", Target: userdelete.User{LUID: "u1"}}, Result: &userdelete.Result{Status: "deleted", UserLUID: "u1", TableauRequestID: "secret-request"}},
+		groupupdate.Output{Plan: groupupdate.Plan{Mode: "execute", Operation: "admin.group.update", Environment: "prod", Site: "site", Target: groupupdate.Group{LUID: "g1"}}, Result: &groupupdate.Result{Status: "updated", GroupLUID: "g1", TableauRequestIDs: []string{"secret-request"}}},
 	}
 	for i, value := range values {
 		compact, _ := json.Marshal(value.CompactOutput())
@@ -73,7 +73,7 @@ func (*partialGroupUpdateFake) RemoveGroupUser(context.Context, string, string) 
 }
 func TestGroupUpdateReportsExactPartialProgress(t *testing.T) {
 	fake := &partialGroupUpdateFake{}
-	_, err := groupupdate.New(fake, fake, fake).Execute(context.Background(), groupupdate.Input{Environment: "prod", Site: "site", GroupLUID: "g1", MembershipSet: true, DesiredMemberLUIDs: []string{"u1", "u2"}}, true)
+	_, err := groupupdate.New(fake, fake, fake).Execute(context.Background(), groupupdate.Input{Environment: "prod", Site: "site", GroupLUID: "g1", MembershipSet: true, DesiredMemberLUIDs: []string{"u1", "u2"}}, false)
 	var structured *errs.Error
 	if !errors.As(err, &structured) {
 		t.Fatalf("error = %v", err)
@@ -101,17 +101,17 @@ func (f *userCreateFake) CreateUser(_ context.Context, r usercreate.Request) (us
 	f.created++
 	return usercreate.User{LUID: "u1", Name: r.Name, SiteRole: r.SiteRole, RequestID: "request-1"}, nil
 }
-func TestUserCreatePreviewsBeforeApply(t *testing.T) {
+func TestUserCreateSupportsExplicitPreview(t *testing.T) {
 	fake := &userCreateFake{}
 	action := usercreate.New(fake, fake)
 	in := usercreate.Input{Environment: "prod", Site: "site", Name: "alex@example.com", SiteRole: "Viewer", AuthSetting: "SAML"}
-	out, err := action.Execute(context.Background(), in, false)
-	if err != nil || out.Applied || fake.created != 0 {
+	out, err := action.Execute(context.Background(), in, true)
+	if err != nil || out.Result != nil || fake.created != 0 {
 		t.Fatalf("preview = %#v, %v, calls %d", out, err, fake.created)
 	}
-	out, err = action.Execute(context.Background(), in, true)
-	if err != nil || !out.Applied || fake.created != 1 {
-		t.Fatalf("apply = %#v, %v, calls %d", out, err, fake.created)
+	out, err = action.Execute(context.Background(), in, false)
+	if err != nil || out.Result == nil || fake.created != 1 {
+		t.Fatalf("result = %#v, %v, calls %d", out, err, fake.created)
 	}
 }
 
@@ -138,20 +138,20 @@ func (f *groupUpdateFake) RemoveGroupUser(_ context.Context, _, u string) (strin
 func TestGroupUpdatePlansAndOrdersMembershipDiff(t *testing.T) {
 	fake := &groupUpdateFake{group: groupupdate.Group{LUID: "g1", Name: "Authors", Members: []groupupdate.Member{{LUID: "u2"}, {LUID: "u1"}}}}
 	action := groupupdate.New(fake, fake, fake)
-	out, err := action.Execute(context.Background(), groupupdate.Input{Environment: "prod", Site: "site", GroupLUID: "g1", MembershipSet: true, DesiredMemberLUIDs: []string{"u2", "u3"}}, false)
+	out, err := action.Execute(context.Background(), groupupdate.Input{Environment: "prod", Site: "site", GroupLUID: "g1", MembershipSet: true, DesiredMemberLUIDs: []string{"u2", "u3"}}, true)
 	if err != nil || out.Plan.Membership == nil || len(out.Plan.Membership.Add) != 1 || len(out.Plan.Membership.Remove) != 1 || len(fake.calls) != 0 {
 		t.Fatalf("preview = %#v, %v, calls %#v", out, err, fake.calls)
 	}
-	out, err = action.Execute(context.Background(), groupupdate.Input{Environment: "prod", Site: "site", GroupLUID: "g1", MembershipSet: true, DesiredMemberLUIDs: []string{"u2", "u3"}}, true)
-	if err != nil || !out.Applied || len(fake.calls) != 2 || fake.calls[0] != "add:u3" || fake.calls[1] != "remove:u1" {
-		t.Fatalf("apply = %#v, %v, calls %#v", out, err, fake.calls)
+	out, err = action.Execute(context.Background(), groupupdate.Input{Environment: "prod", Site: "site", GroupLUID: "g1", MembershipSet: true, DesiredMemberLUIDs: []string{"u2", "u3"}}, false)
+	if err != nil || out.Result == nil || len(fake.calls) != 2 || fake.calls[0] != "add:u3" || fake.calls[1] != "remove:u1" {
+		t.Fatalf("result = %#v, %v, calls %#v", out, err, fake.calls)
 	}
 }
 
 func TestUserCreatePlanReflectsAppliedFields(t *testing.T) {
 	fake := &userCreateFake{}
 	in := usercreate.Input{Environment: "prod", Site: "site", Name: "alex@example.com", SiteRole: "Viewer", AuthSetting: "SAML", IdentityPoolName: "pool-a", Email: "notify@example.com", Language: "en", Locale: "en_US"}
-	out, err := usercreate.New(fake, fake).Execute(context.Background(), in, false)
+	out, err := usercreate.New(fake, fake).Execute(context.Background(), in, true)
 	if err != nil {
 		t.Fatalf("Execute() error = %v", err)
 	}
@@ -205,27 +205,27 @@ func assertUnknownOutcome(t *testing.T, err error, wantID, wantRequestID, wantRe
 
 func TestAdminMutationsSurfaceUnknownOutcome(t *testing.T) {
 	uf := unknownUserFake{}
-	_, err := usercreate.New(uf, uf).Execute(context.Background(), usercreate.Input{Environment: "prod", Site: "site", Name: "alex", SiteRole: "Viewer", AuthSetting: "SAML"}, true)
+	_, err := usercreate.New(uf, uf).Execute(context.Background(), usercreate.Input{Environment: "prod", Site: "site", Name: "alex", SiteRole: "Viewer", AuthSetting: "SAML"}, false)
 	assertUnknownOutcome(t, err, "admin.user.create.outcome_unknown", "req-c", "")
 
 	full := sp("Alex")
-	_, err = userupdate.New(uf, uf).Execute(context.Background(), userupdate.Input{Environment: "prod", Site: "site", UserLUID: "u1", FullName: full}, true)
+	_, err = userupdate.New(uf, uf).Execute(context.Background(), userupdate.Input{Environment: "prod", Site: "site", UserLUID: "u1", FullName: full}, false)
 	assertUnknownOutcome(t, err, "admin.user.update.outcome_unknown", "req-u", "u1")
 
 	df := unknownUserDeleteFake{}
-	_, err = userdelete.New(df, df).Execute(context.Background(), userdelete.Input{Environment: "prod", Site: "site", UserLUID: "u1"}, true)
+	_, err = userdelete.New(df, df).Execute(context.Background(), userdelete.Input{Environment: "prod", Site: "site", UserLUID: "u1"}, false)
 	assertUnknownOutcome(t, err, "admin.user.delete.outcome_unknown", "req-d", "u1")
 
 	gc := unknownGroupFake{}
-	_, err = groupcreate.New(gc, gc).Execute(context.Background(), groupcreate.Input{Environment: "prod", Site: "site", Name: "Authors"}, true)
+	_, err = groupcreate.New(gc, gc).Execute(context.Background(), groupcreate.Input{Environment: "prod", Site: "site", Name: "Authors"}, false)
 	assertUnknownOutcome(t, err, "admin.group.create.outcome_unknown", "req-gc", "")
 
 	gu := &unknownGroupUpdateFake{}
-	_, err = groupupdate.New(gu, gu, gu).Execute(context.Background(), groupupdate.Input{Environment: "prod", Site: "site", GroupLUID: "g1", Name: sp("New")}, true)
+	_, err = groupupdate.New(gu, gu, gu).Execute(context.Background(), groupupdate.Input{Environment: "prod", Site: "site", GroupLUID: "g1", Name: sp("New")}, false)
 	assertUnknownOutcome(t, err, "admin.group.update.outcome_unknown", "req-gu", "g1")
 
 	gd := unknownGroupDeleteFake{}
-	_, err = groupdelete.New(gd, gd).Execute(context.Background(), groupdelete.Input{Environment: "prod", Site: "site", GroupLUID: "g1"}, true)
+	_, err = groupdelete.New(gd, gd).Execute(context.Background(), groupdelete.Input{Environment: "prod", Site: "site", GroupLUID: "g1"}, false)
 	assertUnknownOutcome(t, err, "admin.group.delete.outcome_unknown", "req-gd", "g1")
 }
 

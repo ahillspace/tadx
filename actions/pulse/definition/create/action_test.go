@@ -24,9 +24,9 @@ func TestOutputGolden(t *testing.T) {
 		DatasourceGoals:       []map[string]any{}, RelatedLinks: []map[string]any{},
 	}
 	output := definitioncreate.Output{
-		Plan:    definitioncreate.Plan{Mode: "preview", Operation: "pulse.definition.create", Name: "Revenue", Datasource: "datasource-1", Measure: definitioncreate.Measure{Field: "Sales", Aggregation: "AGGREGATION_SUM"}, TimeField: "Order Date", Dimensions: []string{"Region"}, Fingerprint: "sha256:value", Request: request},
-		Applied: true, Result: &definitioncreate.CreateResult{Status: "succeeded", DefinitionLUID: "definition-1", DefaultMetricLUID: "metric-1", DefaultMetricStatus: "ready", TableauRequestID: "request-1", PollRequestID: "poll-1"},
-		Help: []string{"tadx pulse metric get --id metric-1"},
+		Plan:   definitioncreate.Plan{Mode: "execute", Operation: "pulse.definition.create", Name: "Revenue", Datasource: "datasource-1", Measure: definitioncreate.Measure{Field: "Sales", Aggregation: "AGGREGATION_SUM"}, TimeField: "Order Date", Dimensions: []string{"Region"}, Fingerprint: "sha256:value", Request: request},
+		Result: &definitioncreate.CreateResult{Status: "succeeded", DefinitionLUID: "definition-1", DefaultMetricLUID: "metric-1", DefaultMetricStatus: "ready", TableauRequestID: "request-1", PollRequestID: "poll-1"},
+		Help:   []string{"tadx pulse metric inspect --id metric-1"},
 	}
 	assertGolden(t, "compact.toon", output, false)
 	assertGolden(t, "full.toon", output, true)
@@ -90,8 +90,8 @@ func TestCreatePlansSmallIntentAndAppliesOnlyWhenRequested(t *testing.T) {
 		TimeDimension: "Order Date", AllowedDimensions: []string{"Region", "Category", "Region"}, MinimumGranularity: "MONTH",
 		NumberFormat: "CURRENCY", CurrencyCode: "USD", Sentiment: "UP", Temporality: "OVER_TIME", RunningTotal: true,
 	}}
-	preview, err := action.Execute(context.Background(), input, false)
-	if err != nil || preview.Applied || c.calls != 0 || v.calls != 1 || f.calls != 1 {
+	preview, err := action.Execute(context.Background(), input, true)
+	if err != nil || preview.Result != nil || c.calls != 0 || v.calls != 1 || f.calls != 1 {
 		t.Fatalf("preview=%#v calls=%d/%d/%d err=%v", preview, v.calls, f.calls, c.calls, err)
 	}
 	if got := preview.Plan.Request.Specification.BasicSpecification.Measure.Aggregation; got != "AGGREGATION_SUM" {
@@ -100,9 +100,9 @@ func TestCreatePlansSmallIntentAndAppliesOnlyWhenRequested(t *testing.T) {
 	if got := preview.Plan.Request.ExtensionOptions.AllowedDimensions; len(got) != 2 || got[0] != "Category" || got[1] != "Region" {
 		t.Fatalf("dimensions=%#v", got)
 	}
-	applied, err := action.Execute(context.Background(), input, true)
-	if err != nil || !applied.Applied || applied.Result == nil || applied.Result.DefaultMetricLUID != "metric-1" || c.calls != 1 || v.calls != 3 || f.calls != 3 {
-		t.Fatalf("applied=%#v calls=%d/%d/%d err=%v", applied, v.calls, f.calls, c.calls, err)
+	result, err := action.Execute(context.Background(), input, false)
+	if err != nil || result.Result == nil || result.Result.DefaultMetricLUID != "metric-1" || c.calls != 1 || v.calls != 3 || f.calls != 3 {
+		t.Fatalf("result=%#v calls=%d/%d/%d err=%v", result, v.calls, f.calls, c.calls, err)
 	}
 	if c.request.Name != "Revenue" || c.request.Specification.Datasource.ID != "datasource-1" {
 		t.Fatalf("request=%#v", c.request)

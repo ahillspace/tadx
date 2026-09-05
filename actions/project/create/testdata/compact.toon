@@ -1,5 +1,5 @@
 plan:
-  mode: preview
+  mode: execute
   operation: project.create
   environment: dev
   site: sandbox
@@ -11,7 +11,6 @@ plan:
     luid: parent-1
     name: Department
     path: Department
-applied: true
 result:
   status: succeeded
   project:
@@ -20,4 +19,4 @@ result:
     path: Department/Operations
     parent_luid: parent-1
 details: "--full"
-help[1]: tadx content project get --project-id project-1
+help[1]: tadx content project inspect --project-id project-1

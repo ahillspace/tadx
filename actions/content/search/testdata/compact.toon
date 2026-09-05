@@ -1,9 +1,0 @@
-page:
-  returned: 1
-  limit: 1
-  next_cursor: eyJ2IjoxLCJmIjoiNTA4ODc2ZjdkZDZhYjA3YjMzZWFhN2Q2YmIxYTU0NmJkYTIxZWM1ZjgzNjc2NmIyMzNjNzNmYTc1OTVkYmYzOSIsImMiOiJuZXh0IiwicyI6IjllOWMwNjllMDVlNzk3NGNlYzdlY2M5MTY5MDQzNTg2NmQ2ZjNmOGM3NGI0ODVhYjIzNjhiZjdjOWFkNTgyMmQifQ
-items[1]{luid,kind,name,project_path}:
-  wb-1,workbook,Finance,Ops
-warnings[1]: results reflect current remote visibility
-details: "--full"
-help[1]: tadx content get --kind <kind> --id <luid>

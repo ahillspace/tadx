@@ -23,13 +23,13 @@ func (s *service) DeleteSubscription(_ context.Context, luid string) error {
 func TestUnfollowResolvesOneExactRelationshipAndRevalidates(t *testing.T) {
 	s := &service{subscriptions: []metricunfollow.Subscription{{LUID: "sub-1", MetricLUID: "metric-1", FollowerType: "GROUP", FollowerLUID: "group-1"}}}
 	input := metricunfollow.Input{MetricLUID: "metric-1", GroupLUID: "group-1"}
-	preview, err := metricunfollow.New(s, s).Execute(context.Background(), input, false)
+	preview, err := metricunfollow.New(s, s).Execute(context.Background(), input, true)
 	if err != nil || preview.Plan.SubscriptionLUID != "sub-1" || len(s.deleted) != 0 {
 		t.Fatalf("preview=%#v err=%v", preview, err)
 	}
-	applied, err := metricunfollow.New(s, s).Execute(context.Background(), input, true)
-	if err != nil || !applied.Applied || len(s.deleted) != 1 || s.deleted[0] != "sub-1" {
-		t.Fatalf("output=%#v deleted=%#v err=%v", applied, s.deleted, err)
+	result, err := metricunfollow.New(s, s).Execute(context.Background(), input, false)
+	if err != nil || result.Result == nil || len(s.deleted) != 1 || s.deleted[0] != "sub-1" {
+		t.Fatalf("output=%#v deleted=%#v err=%v", result, s.deleted, err)
 	}
 }
 
@@ -42,8 +42,8 @@ func TestUnfollowRejectsAmbiguousRelationship(t *testing.T) {
 
 func TestUnfollowAcceptsExactSubscriptionWithoutResolution(t *testing.T) {
 	s := &service{}
-	output, err := metricunfollow.New(s, s).Execute(context.Background(), metricunfollow.Input{SubscriptionLUID: "sub-1"}, true)
-	if err != nil || !output.Applied || len(s.deleted) != 1 || s.deleted[0] != "sub-1" {
+	output, err := metricunfollow.New(s, s).Execute(context.Background(), metricunfollow.Input{SubscriptionLUID: "sub-1"}, false)
+	if err != nil || output.Result == nil || len(s.deleted) != 1 || s.deleted[0] != "sub-1" {
 		t.Fatalf("output=%#v deleted=%#v err=%v", output, s.deleted, err)
 	}
 }

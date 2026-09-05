@@ -22,7 +22,7 @@ func (c *cloner) Clone(_ context.Context, input clone.Input) (clone.Workspace, e
 	if c.failure != nil {
 		return clone.Workspace{}, c.failure
 	}
-	return clone.Workspace{Name: input.Name, ID: "ws_33333333333333333333333333333333", ManifestVersion: 1, Registered: true}, nil
+	return clone.Workspace{Name: input.Name, ID: "ws_33333333333333333333333333333333", Root: "/var/tmp/tadx-tests/workspaces/experiment", ManifestVersion: 1, Registered: true}, nil
 }
 
 func TestExecuteClonesWorkspaceAndProjectsOutput(t *testing.T) {
@@ -43,20 +43,29 @@ func TestExecuteClonesWorkspaceAndProjectsOutput(t *testing.T) {
 	if err := output.RenderWithOptions(&full, result, output.Options{Full: true}); err != nil {
 		t.Fatal(err)
 	}
-	if bytes.Contains(full.Bytes(), []byte("runtime-root")) {
-		t.Fatalf("full output leaks the machine-local root:\n%s", full.String())
+	if !bytes.Contains(full.Bytes(), []byte("/var/tmp/tadx-tests/workspaces/experiment")) {
+		t.Fatalf("full output omits the registered root:\n%s", full.String())
 	}
 	assertGolden(t, full.Bytes(), "testdata/output_full.toon")
 }
 
-func TestExecuteRequiresSourceNameAndPath(t *testing.T) {
+func TestExecuteRequiresSourceAndName(t *testing.T) {
 	for _, input := range []clone.Input{
 		{Name: "experiment", Path: "root"},
 		{Source: "development", Path: "root"},
-		{Source: "development", Name: "experiment"},
 	} {
 		_, err := clone.New(&cloner{}).Execute(context.Background(), input)
 		assertUsage(t, err, "workspace.clone.usage")
+	}
+}
+
+func TestExecuteAcceptsDefaultClonePath(t *testing.T) {
+	dependency := &cloner{}
+	if _, err := clone.New(dependency).Execute(context.Background(), clone.Input{Source: "development", Name: "experiment"}); err != nil {
+		t.Fatal(err)
+	}
+	if dependency.input != (clone.Input{Source: "development", Name: "experiment"}) {
+		t.Fatalf("input = %#v", dependency.input)
 	}
 }
 

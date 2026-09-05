@@ -67,29 +67,29 @@ const (
 // Definition is one public CLI operation or delegated discoverable operation.
 // CommandPath is metadata for composition-root wiring, not a Cobra factory.
 type Definition struct {
-	ID             string                `json:"id"`
-	Surface        string                `json:"surface"`
-	Outcome        string                `json:"outcome"`
-	Type           OperationType         `json:"type"`
-	Disposition    Disposition           `json:"disposition"`
-	Owner          Owner                 `json:"owner"`
-	MCPOverlap     string                `json:"mcp_overlap,omitempty"`
-	Selectors      string                `json:"selectors"`
-	Availability   string                `json:"availability"`
-	LocalWrite     bool                  `json:"local_write"`
-	RemoteMutation bool                  `json:"remote_mutation"`
-	RequiresApply  bool                  `json:"requires_apply"`
-	SafetyGuard    string                `json:"safety_guard"`
-	ArtifactEffect string                `json:"artifact_effect"`
-	Upstream       string                `json:"upstream_operation"`
-	Evidence       string                `json:"evidence"`
-	EvidenceLevel  EvidenceLevel         `json:"evidence_level"`
-	Verification   VerificationReadiness `json:"verification"`
-	Implementation ImplementationState   `json:"implementation"`
-	Validation     string                `json:"validation"`
-	Blocker        BlockerID             `json:"blocker,omitempty"`
-	CommandPath    []string              `json:"command_path,omitempty"`
-	RawCapable     bool                  `json:"raw_capable"`
+	ID              string                `json:"id"`
+	Surface         string                `json:"surface"`
+	Outcome         string                `json:"outcome"`
+	Type            OperationType         `json:"type"`
+	Disposition     Disposition           `json:"disposition"`
+	Owner           Owner                 `json:"owner"`
+	MCPOverlap      string                `json:"mcp_overlap,omitempty"`
+	Selectors       string                `json:"selectors"`
+	Availability    string                `json:"availability"`
+	LocalWrite      bool                  `json:"local_write"`
+	RemoteMutation  bool                  `json:"remote_mutation"`
+	SupportsPreview bool                  `json:"supports_preview"`
+	SafetyGuard     string                `json:"safety_guard"`
+	ArtifactEffect  string                `json:"artifact_effect"`
+	Upstream        string                `json:"upstream_operation"`
+	Evidence        string                `json:"evidence"`
+	EvidenceLevel   EvidenceLevel         `json:"evidence_level"`
+	Verification    VerificationReadiness `json:"verification"`
+	Implementation  ImplementationState   `json:"implementation"`
+	Validation      string                `json:"validation"`
+	Blocker         BlockerID             `json:"blocker,omitempty"`
+	CommandPath     []string              `json:"command_path,omitempty"`
+	RawCapable      bool                  `json:"raw_capable"`
 }
 
 // Binding associates composition-root command wiring with a registry ID.

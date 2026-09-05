@@ -21,7 +21,7 @@ type Action struct {
 }
 
 func New(resolver Resolver, mover Mover) *Action { return &Action{resolver: resolver, mover: mover} }
-func (a *Action) Execute(ctx context.Context, input Input, apply bool) (Output, error) {
+func (a *Action) Execute(ctx context.Context, input Input, preview bool) (Output, error) {
 	if a == nil || a.resolver == nil || a.mover == nil {
 		return Output{}, &errs.Error{ID: "flow.move.unconfigured", Kind: errs.KindRuntime, Operation: "flow.move", Summary: "Flow move is not configured.", Retryable: errs.Bool(false), CorrectiveAction: "Configure flow move before retrying."}
 	}
@@ -39,10 +39,11 @@ func (a *Action) Execute(ctx context.Context, input Input, apply bool) (Output, 
 		return Output{}, &errs.Error{ID: "flow.move.project", Kind: errs.KindOperation, Operation: "flow.move", Environment: input.Environment, Site: input.Site, Summary: "Destination project resolution failed.", Cause: err, Retryable: retryable, CorrectiveAction: correctiveAction, TableauRequestID: errs.TableauRequestID(err)}
 	}
 	plan := Plan{Mode: "preview", Operation: "flow.move", Environment: input.Environment, Site: input.Site, Source: flow, Destination: project, NoOp: flow.ProjectLUID == project.LUID}
-	output := Output{Plan: plan, Help: []string{"Add --apply to move this exact flow."}}
-	if !apply {
+	output := Output{Plan: plan, Help: []string{"Run without --preview to move this exact flow."}}
+	if preview {
 		return output, nil
 	}
+	output.Plan.Mode = "execute"
 	current, err := a.resolver.ResolveFlow(ctx, input.FlowSelector)
 	if err != nil {
 		retryable, correctiveAction := errs.CompleteRetryAdvice(err, "Review the exact flow selector, then retry.")
@@ -54,10 +55,9 @@ func (a *Action) Execute(ctx context.Context, input Input, apply bool) (Output, 
 		return Output{}, &errs.Error{ID: "flow.move.project", Kind: errs.KindOperation, Operation: "flow.move", Environment: input.Environment, Site: input.Site, Summary: "Destination project revalidation failed.", Cause: err, Retryable: retryable, CorrectiveAction: correctiveAction, TableauRequestID: errs.TableauRequestID(err)}
 	}
 	if current != flow || destination != project {
-		return Output{}, &errs.Error{ID: "flow.move.target_changed", Kind: errs.KindOperation, Operation: "flow.move", Environment: input.Environment, Site: input.Site, Summary: "The flow move source or destination changed after preview.", Cause: errors.New("flow move source or destination changed after preview"), Retryable: errs.Bool(false), CorrectiveAction: "Review a new preview before moving."}
+		return Output{}, &errs.Error{ID: "flow.move.target_changed", Kind: errs.KindOperation, Operation: "flow.move", Environment: input.Environment, Site: input.Site, Summary: "The flow move source or destination changed during revalidation.", Cause: errors.New("flow move source or destination changed during revalidation"), Retryable: errs.Bool(false), CorrectiveAction: "Review a new preview before moving."}
 	}
 	if plan.NoOp {
-		output.Applied = true
 		output.Result = &Result{Status: "unchanged", FlowLUID: flow.LUID, ProjectLUID: project.LUID}
 		return output, nil
 	}
@@ -66,9 +66,8 @@ func (a *Action) Execute(ctx context.Context, input Input, apply bool) (Output, 
 		retryable, correctiveAction := errs.CompleteRetryAdvice(err, "Review the upstream error before moving again.")
 		return Output{}, &errs.Error{ID: "flow.move.failed", Kind: errs.KindOperation, Operation: "flow.move", Resource: flow.LUID, Environment: input.Environment, Site: input.Site, Summary: "Flow move failed.", Cause: err, Retryable: retryable, CorrectiveAction: correctiveAction, TableauRequestID: errs.TableauRequestID(err)}
 	}
-	output.Applied = true
 	output.Result = &result
-	output.Help = []string{"tadx content flow get --id " + flow.LUID}
+	output.Help = []string{"tadx content flow inspect --id " + flow.LUID}
 	return output, nil
 }
 

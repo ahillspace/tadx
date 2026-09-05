@@ -1,6 +1,6 @@
 # Project REST contract evidence
 
-This record freezes the upstream project contract used by `project.list`, `project.get`, `project.create`, and `project.update`.
+This record freezes the upstream project contract used by `project.list`, `project.inspect`, `project.create`, and `project.update`.
 The captured official Tableau REST API help is `Tableau API Documentation/tableau_rest_api.md`.
 Its SHA-256 digest is `76d7f050a32ca354660039bdc18143506ce26472ff82f0f12b79fb5aaa584e0f`.
 
@@ -27,7 +27,7 @@ Duplicate LUID rows must agree exactly.
 Missing parents, conflicting rows, and hierarchy cycles are protocol failures.
 
 `project.list` returns one bounded upstream page and does not claim a canonical path for a parent outside that page.
-`project.get` can scan all pages because exact path resolution requires the complete hierarchy.
+`project.inspect` can scan all pages because exact path resolution requires the complete hierarchy.
 
 ## Mutation contract
 
@@ -55,11 +55,11 @@ No generic automatic retry follows an uncertain POST or PUT outcome.
 
 ## Shallow project evidence gate
 
-The captured filter table is insufficient to close B4.
+The captured filter table does not establish a shallow project package contract.
 Flow listing documents an exact `projectId` filter, but workbook and datasource listing document only `projectName`.
 Response project LUIDs can support local direct-membership filtering after bounded page exhaustion.
 The repository has no authorized nested Cloud and representative Server fixture that proves child exclusion, cross-branch duplicate-name behavior, and pagination for all three resource kinds.
-`project.pull` and `project.publish` therefore remain blocked and non-executable.
+Project pull and publish remain deferred and non-executable.
 
 ## Error contract
 

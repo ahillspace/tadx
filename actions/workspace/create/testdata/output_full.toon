@@ -2,6 +2,7 @@ status: created
 workspace:
   name: development
   id: ws_11111111111111111111111111111111
+  root: /var/tmp/tadx-tests/workspaces/development
   manifest_version: 1
   registered: true
   created_entries[3]: tadx.yaml,artifacts,.tadx

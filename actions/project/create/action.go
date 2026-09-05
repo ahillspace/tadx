@@ -21,7 +21,7 @@ type Creator interface {
 	CreateProject(context.Context, CreateRequest) (Result, error)
 }
 
-// Action creates one project after preview and immediate revalidation.
+// Action creates one project after immediate revalidation.
 type Action struct {
 	resolver Resolver
 	creator  Creator
@@ -33,7 +33,7 @@ func New(resolver Resolver, creator Creator) *Action {
 }
 
 // Execute previews or creates one exact project.
-func (a *Action) Execute(ctx context.Context, input Input, apply bool) (Output, error) {
+func (a *Action) Execute(ctx context.Context, input Input, preview bool) (Output, error) {
 	if a == nil || a.resolver == nil || a.creator == nil {
 		return Output{}, &errs.Error{ID: "project.create.unconfigured", Kind: errs.KindRuntime, Operation: "project.create", Summary: "Project create is not configured.", Retryable: errs.Bool(false), CorrectiveAction: "Configure project creation before retrying."}
 	}
@@ -52,10 +52,11 @@ func (a *Action) Execute(ctx context.Context, input Input, apply bool) (Output, 
 		return Output{}, err
 	}
 	plan := Plan{Mode: "preview", Operation: "project.create", Environment: input.Environment, Site: input.Site, Project: ProjectSpec{Name: input.Name, Description: input.Description, ContentPermissions: input.ContentPermissions}, Parent: parent}
-	output := Output{Plan: plan, Help: []string{"Add --apply to create this exact project."}}
-	if !apply {
+	output := Output{Plan: plan, Help: []string{"Run without --preview to create this exact project."}}
+	if preview {
 		return output, nil
 	}
+	output.Plan.Mode = "execute"
 	currentParent, err := a.resolveParent(ctx, input.ParentSelector)
 	if err != nil {
 		return Output{}, resolutionError(input, "Parent project revalidation failed.", err)
@@ -65,7 +66,7 @@ func (a *Action) Execute(ctx context.Context, input Input, apply bool) (Output, 
 		currentParentLUID = currentParent.LUID
 	}
 	if currentParentLUID != parentLUID {
-		return Output{}, &errs.Error{ID: "project.create.parent_changed", Kind: errs.KindOperation, Operation: "project.create", Environment: input.Environment, Site: input.Site, Summary: "The project parent identity changed after preview.", Cause: errors.New("project parent LUID changed after preview"), Retryable: errs.Bool(false), CorrectiveAction: "Review a new preview before creating the project."}
+		return Output{}, &errs.Error{ID: "project.create.parent_changed", Kind: errs.KindOperation, Operation: "project.create", Environment: input.Environment, Site: input.Site, Summary: "The project parent identity changed during revalidation.", Cause: errors.New("project parent LUID changed during revalidation"), Retryable: errs.Bool(false), CorrectiveAction: "Review a new preview before creating the project."}
 	}
 	if err := a.rejectCollision(ctx, input, currentParentLUID); err != nil {
 		return Output{}, err
@@ -76,9 +77,8 @@ func (a *Action) Execute(ctx context.Context, input Input, apply bool) (Output, 
 		return Output{}, &errs.Error{ID: "project.create.failed", Kind: errs.KindOperation, Operation: "project.create", Environment: input.Environment, Site: input.Site, Summary: "Project create failed.", Cause: err, Retryable: retryable, CorrectiveAction: correctiveAction, TableauRequestID: errs.TableauRequestID(err)}
 	}
 	output.Plan.Parent = currentParent
-	output.Applied = true
 	output.Result = &result
-	output.Help = []string{"tadx content project get --project-id " + result.Project.LUID}
+	output.Help = []string{"tadx content project inspect --project-id " + result.Project.LUID}
 	return output, nil
 }
 

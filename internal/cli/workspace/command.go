@@ -100,9 +100,6 @@ func newCreate(deps Dependencies) *cobra.Command {
 			if err := exactArgs("workspace.create", 1)(command, args); err != nil {
 				return err
 			}
-			if input.Path == "" {
-				return clierr.Usage("workspace.create", errors.New("--path is required"))
-			}
 			input.Name = args[0]
 			return nil
 		},
@@ -114,7 +111,7 @@ func newCreate(deps Dependencies) *cobra.Command {
 			return deps.Renderer.Render(result)
 		},
 	}
-	command.Flags().StringVar(&input.Path, "path", "", "machine-local workspace root")
+	command.Flags().StringVar(&input.Path, "path", "", "override the default workspace root")
 	return command
 }
 
@@ -156,8 +153,8 @@ func newClone(deps Dependencies) *cobra.Command {
 			if err := exactArgs("workspace.clone", 1)(command, args); err != nil {
 				return err
 			}
-			if input.Name == "" || input.Path == "" {
-				return clierr.Usage("workspace.clone", errors.New("--name and --path are required"))
+			if input.Name == "" {
+				return clierr.Usage("workspace.clone", errors.New("--name is required"))
 			}
 			input.Source = args[0]
 			return nil
@@ -171,7 +168,7 @@ func newClone(deps Dependencies) *cobra.Command {
 		},
 	}
 	command.Flags().StringVar(&input.Name, "name", "", "new logical workspace name")
-	command.Flags().StringVar(&input.Path, "path", "", "machine-local root for the clone")
+	command.Flags().StringVar(&input.Path, "path", "", "override the default root for the clone")
 	return command
 }
 
@@ -243,9 +240,9 @@ func newMove(deps Dependencies) *cobra.Command {
 func newArtifact(deps Dependencies) *cobra.Command {
 	artifact := &cobra.Command{Use: "artifact", Short: "Manage exact local artifacts"}
 	var input artifactdelete.Input
-	var apply bool
+	var preview bool
 	command := &cobra.Command{
-		Use: use(deps, "workspace.artifact.delete", "delete"), Short: short(deps, "workspace.artifact.delete", "Preview or delete one exact managed artifact."),
+		Use: use(deps, "workspace.artifact.delete", "delete"), Short: short(deps, "workspace.artifact.delete", "Delete one exact managed artifact."),
 		Annotations: map[string]string{"tadx.capability": "workspace.artifact.delete"},
 		Args: func(command *cobra.Command, args []string) error {
 			if err := noArgs("workspace.artifact.delete")(command, args); err != nil {
@@ -257,7 +254,7 @@ func newArtifact(deps Dependencies) *cobra.Command {
 			return validateSelector("workspace.artifact.delete", input.Path, input.Kind, input.LUID)
 		},
 		RunE: func(command *cobra.Command, _ []string) error {
-			result, err := deps.Deleter.Delete(command.Context(), input, apply)
+			result, err := deps.Deleter.Delete(command.Context(), input, preview)
 			if err != nil {
 				return err
 			}
@@ -267,7 +264,7 @@ func newArtifact(deps Dependencies) *cobra.Command {
 	command.Flags().StringVar(&input.Workspace, "workspace", "", "logical workspace name")
 	selectorFlags(command, &input.Path, &input.Kind, &input.LUID)
 	command.Flags().BoolVar(&input.Force, "force", false, "acknowledge deletion of a dirty artifact")
-	command.Flags().BoolVar(&apply, "apply", false, "apply the previewed local deletion")
+	command.Flags().BoolVar(&preview, "preview", false, "preview the local deletion without performing it")
 	artifact.AddCommand(command)
 	return artifact
 }

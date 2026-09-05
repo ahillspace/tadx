@@ -1,0 +1,14 @@
+plan:
+  mode: execute
+  operation: pulse.metric.delete
+  environment: dev
+  site: sandbox
+  target:
+    luid: metric-1
+    name: Revenue
+result:
+  status: deleted
+  metric_luid: metric-1
+warnings[1]: Tableau determines dependency and cascade effects. Dependent resources are not enumerated.
+details: "--full"
+help[1]: tadx pulse definition list --environment dev

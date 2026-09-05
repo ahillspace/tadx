@@ -39,15 +39,13 @@ type Result struct {
 	TableauRequestID string `json:"tableau_request_id,omitempty"`
 }
 type Output struct {
-	Plan    Plan     `json:"plan"`
-	Applied bool     `json:"applied"`
-	Result  *Result  `json:"result,omitempty"`
-	Help    []string `json:"help"`
+	Plan   Plan     `json:"plan"`
+	Result *Result  `json:"result,omitempty"`
+	Help   []string `json:"help"`
 }
 type CompactResult struct {
-	Plan    Plan `json:"plan"`
-	Applied bool `json:"applied"`
-	Result  *struct {
+	Plan   Plan `json:"plan"`
+	Result *struct {
 		Status   string `json:"status"`
 		UserLUID string `json:"user_luid"`
 	} `json:"result,omitempty"`
@@ -56,7 +54,7 @@ type CompactResult struct {
 }
 
 func (o Output) CompactOutput() any {
-	v := CompactResult{Plan: o.Plan, Applied: o.Applied, Details: "--full", Help: o.Help}
+	v := CompactResult{Plan: o.Plan, Details: "--full", Help: o.Help}
 	if o.Result != nil {
 		v.Result = &struct {
 			Status   string `json:"status"`
@@ -79,7 +77,7 @@ type Action struct {
 }
 
 func New(f Finder, c Creator) *Action { return &Action{finder: f, creator: c} }
-func (a *Action) Execute(ctx context.Context, in Input, apply bool) (Output, error) {
+func (a *Action) Execute(ctx context.Context, in Input, preview bool) (Output, error) {
 	if a == nil || a.finder == nil || a.creator == nil {
 		return Output{}, errors.New("admin user create is not configured")
 	}
@@ -98,16 +96,17 @@ func (a *Action) Execute(ctx context.Context, in Input, apply bool) (Output, err
 		return Output{}, errors.New("an exact user name or email collision exists")
 	}
 	plan := Plan{Mode: "preview", Operation: "admin.user.create", Environment: in.Environment, Site: in.Site, Name: in.Name, SiteRole: in.SiteRole, AuthSetting: in.AuthSetting, IdPConfigurationID: in.IdPConfigurationID, IdentityPoolName: in.IdentityPoolName, Email: in.Email, Language: in.Language, Locale: in.Locale}
-	out := Output{Plan: plan, Help: []string{"Add --apply to create this exact user."}}
-	if !apply {
+	out := Output{Plan: plan, Help: []string{"Run without --preview to create this exact user."}}
+	if preview {
 		return out, nil
 	}
+	out.Plan.Mode = "execute"
 	found, err = a.finder.FindUsers(ctx, in.Name)
 	if err != nil {
 		return Output{}, err
 	}
 	if len(found) > 0 {
-		return Output{}, errors.New("the user create target changed after preview")
+		return Output{}, errors.New("the user create target changed during revalidation")
 	}
 	user, err := a.creator.CreateUser(ctx, Request{Name: in.Name, SiteRole: in.SiteRole, AuthSetting: in.AuthSetting, IdentityPoolName: in.IdentityPoolName, IdPConfigurationID: in.IdPConfigurationID, Email: in.Email, Language: in.Language, Locale: in.Locale})
 	if err != nil {
@@ -116,9 +115,8 @@ func (a *Action) Execute(ctx context.Context, in Input, apply bool) (Output, err
 		}
 		return Output{}, err
 	}
-	out.Applied = true
 	out.Result = &Result{Status: "created", User: user, TableauRequestID: user.RequestID}
-	out.Help = []string{"tadx admin user get --id " + user.LUID}
+	out.Help = []string{"tadx admin user inspect --id " + user.LUID}
 	return out, nil
 }
 

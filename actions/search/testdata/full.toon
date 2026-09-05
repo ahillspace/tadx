@@ -1,0 +1,7 @@
+source: live
+page:
+  returned: 1
+  limit: 20
+items[1]{luid,type,name,project_path,owner,modified_at}:
+  wb-1,workbook,Finance,Ops,owner-1,"2026-09-01T10:00:00Z"
+help[1]: tadx capability list --resource <type>

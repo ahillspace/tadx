@@ -43,7 +43,8 @@ It does not provide a first-class mutation for creating or changing the composit
 The REST reference section `Delete Data Source` begins at line 16621 of the captured REST file.
 It defines `DELETE /api/api-version/sites/site-luid/datasources/datasource-luid` and documents an empty HTTP 204 success response.
 The transport accepts only that exact success shape and treats any response-body or status mismatch as an unknown mutation result.
-The action previews by default, re-resolves the exact datasource before apply, and stops if any authoritative target field changes.
+The action deletes by default when mutation execution is enabled and supports `--preview` for a read-only plan.
+Before deletion, it re-resolves the exact datasource and stops if any authoritative target field changes.
 
 ## Unsupported mutation boundaries
 
@@ -51,8 +52,8 @@ The REST reference section `Update Data Source` begins at line 42682.
 That released API updates metadata and connection-related properties, not datasource composition.
 The captured Metadata API is read-only and cannot update field descriptions or composition.
 The captured virtual datasource guidance for Tableau 2026.2 describes re-publishing the latest composed datasource rather than mutating composition through a released relationship API.
-`datasource.composition.update` is therefore deferred indefinitely and has no executable action or transport method.
-`datasource.field-description.update` remains metadata-only until released mutation evidence exists.
+Datasource composition authoring is deferred indefinitely and has no executable action or transport method.
+Datasource field-description updates are deferred.
 
 ## Verification status
 

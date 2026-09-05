@@ -43,8 +43,8 @@ func TestGroupOneProjectAndFlowReadsPullAndLineageThroughCLI(t *testing.T) {
 			want: []string{"status: listed", "environment: production", "site: team-site", "project-ops", "details: \"--full\""},
 		},
 		{
-			name: "project get maps the canonical nested path",
-			args: []string{"content", "project", "get", "--project", "Department/Operations"},
+			name: "project inspect maps the canonical nested path",
+			args: []string{"content", "project", "inspect", "--project", "Department/Operations"},
 			want: []string{"status: found", "luid: project-ops", "path: Department/Operations"},
 		},
 		{
@@ -53,8 +53,8 @@ func TestGroupOneProjectAndFlowReadsPullAndLineageThroughCLI(t *testing.T) {
 			want: []string{"status: listed", "environment: production", "flows[1]{luid,name,project_luid,project_name,file_type,updated_at}:", "flow-1,Daily Prep,project-ops,Operations,tflx"},
 		},
 		{
-			name: "flow get maps authoritative identity and project path",
-			args: []string{"content", "flow", "get", "--id", "flow-1"},
+			name: "flow inspect maps authoritative identity and project path",
+			args: []string{"content", "flow", "inspect", "--id", "flow-1"},
 			want: []string{"status: found", "luid: flow-1", "project_luid: project-ops", "project_path: Department/Operations"},
 		},
 	}
@@ -175,8 +175,9 @@ func TestGroupOneFlowMutationPreviewsDoNotMutateThroughCLI(t *testing.T) {
 		"--workspace", "operations",
 		"--artifact", artifactSelector,
 		"--name", "Daily Copy",
+		"--preview",
 	)
-	for _, want := range []string{"mode: preview", "operation: flow.publish", "artifact_path: " + artifactSelector, "environment: production", "project_luid: project-ops", "applied: false"} {
+	for _, want := range []string{"mode: preview", "operation: flow.publish", "artifact_path: " + artifactSelector, "environment: production", "project_luid: project-ops"} {
 		if !strings.Contains(publishOutput, want) {
 			t.Fatalf("flow publish preview missing %q:\n%s", want, publishOutput)
 		}
@@ -190,8 +191,9 @@ func TestGroupOneFlowMutationPreviewsDoNotMutateThroughCLI(t *testing.T) {
 		"--environment", "production",
 		"--id", "flow-1",
 		"--destination-project-id", "project-destination",
+		"--preview",
 	)
-	for _, want := range []string{"mode: preview", "operation: flow.move", "luid: project-destination", "applied: false"} {
+	for _, want := range []string{"mode: preview", "operation: flow.move", "luid: project-destination"} {
 		if !strings.Contains(moveOutput, want) {
 			t.Fatalf("flow move preview missing %q:\n%s", want, moveOutput)
 		}
@@ -201,8 +203,9 @@ func TestGroupOneFlowMutationPreviewsDoNotMutateThroughCLI(t *testing.T) {
 		"content", "flow", "delete",
 		"--environment", "production",
 		"--id", "flow-1",
+		"--preview",
 	)
-	for _, want := range []string{"mode: preview", "operation: flow.delete", "luid: flow-1", "applied: false"} {
+	for _, want := range []string{"mode: preview", "operation: flow.delete", "luid: flow-1"} {
 		if !strings.Contains(deleteOutput, want) {
 			t.Fatalf("flow delete preview missing %q:\n%s", want, deleteOutput)
 		}
