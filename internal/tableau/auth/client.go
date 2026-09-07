@@ -46,9 +46,13 @@ func (c *Client) SignIn(ctx context.Context, input coreauth.SignInRequest) (core
 	if err != nil {
 		return coreauth.SignInResponse{}, fmt.Errorf("encode PAT sign-in request: %w", err)
 	}
+	operation := input.Operation
+	if operation == "" {
+		operation = "auth.check"
+	}
 	response, err := c.transport.Do(ctx, nil, tableau.Request{
 		Method: http.MethodPost, ServerURL: input.ServerURL,
-		Path: "/api/" + c.transport.APIVersion() + "/auth/signin", Operation: "auth.check",
+		Path: "/api/" + c.transport.APIVersion() + "/auth/signin", Operation: operation,
 		Body: body, ContentType: "application/json", Accept: "application/json", Secrets: []string{input.PATName, input.PATSecret},
 	})
 	if err != nil {
@@ -71,10 +75,10 @@ func (c *Client) SignIn(ctx context.Context, input coreauth.SignInRequest) (core
 		// diagnostic can be derived from that body, so strip any token defensively
 		// before it becomes an error surface.
 		cause := redactSignInToken(response.Body, fmt.Errorf("decode PAT sign-in response: %w", err))
-		return coreauth.SignInResponse{}, tableau.NewProtocolError("auth.check", response, cause, true)
+		return coreauth.SignInResponse{}, tableau.NewProtocolError(operation, response, cause, true)
 	}
 	if envelope.Credentials.Token == "" || envelope.Credentials.Site.ID == "" || envelope.Credentials.User.ID == "" {
-		return coreauth.SignInResponse{}, tableau.NewProtocolError("auth.check", response, errors.New("PAT sign-in response omitted token, site LUID, or user LUID"), true)
+		return coreauth.SignInResponse{}, tableau.NewProtocolError(operation, response, errors.New("PAT sign-in response omitted token, site LUID, or user LUID"), true)
 	}
 	return coreauth.SignInResponse{Token: envelope.Credentials.Token, SiteLUID: envelope.Credentials.Site.ID, UserLUID: envelope.Credentials.User.ID}, nil
 }

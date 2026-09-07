@@ -115,8 +115,15 @@ type Dependencies struct {
 	AuthUse              string
 	AuthShort            string
 	AuthStatuser         AuthStatuser
+	AuthLogin            authcli.Login
+	AuthLogout           authcli.Logout
+	AuthPrompter         authcli.Prompter
 	AuthStatusUse        string
 	AuthStatusShort      string
+	AuthLoginUse         string
+	AuthLoginShort       string
+	AuthLogoutUse        string
+	AuthLogoutShort      string
 	CatalogRefreshUse    string
 	CatalogRefreshShort  string
 	CatalogStatusUse     string
@@ -202,7 +209,12 @@ TADX never configures, selects, proxies, or reports Tableau MCP connections. The
 		root.AddCommand(doctorcli.New(doctorcli.Dependencies{Runner: deps.DoctorRunner, Renderer: deps.Renderer, Use: deps.DoctorUse, Short: deps.DoctorShort}))
 	}
 	if deps.AuthChecker != nil {
-		root.AddCommand(authcli.New(authcli.Dependencies{Checker: deps.AuthChecker, Statuser: deps.AuthStatuser, Renderer: deps.Renderer, Use: deps.AuthUse, Short: deps.AuthShort, StatusUse: deps.AuthStatusUse, StatusShort: deps.AuthStatusShort}))
+		root.AddCommand(authcli.New(authcli.Dependencies{
+			Checker: deps.AuthChecker, Statuser: deps.AuthStatuser, Login: deps.AuthLogin, Logout: deps.AuthLogout,
+			Prompter: deps.AuthPrompter, Renderer: deps.Renderer,
+			Use: deps.AuthUse, Short: deps.AuthShort, StatusUse: deps.AuthStatusUse, StatusShort: deps.AuthStatusShort,
+			LoginUse: deps.AuthLoginUse, LoginShort: deps.AuthLoginShort, LogoutUse: deps.AuthLogoutUse, LogoutShort: deps.AuthLogoutShort,
+		}))
 	}
 	if deps.Searcher != nil {
 		root.AddCommand(newSearch(deps.Searcher, deps.Renderer))

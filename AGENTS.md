@@ -18,7 +18,9 @@ Consequential mutations run by default when enabled and support `--preview` for 
 Mutation discovery is not authorization, and `--force` does not bypass mutation policy.
 Tableau LUIDs are authoritative, ambiguous selectors fail, and resolution is never fuzzy or interactive.
 Tableau authentication uses PATs only.
-PATs and session tokens are never persisted or printed.
+PATs can persist only after explicit user approval in the native OS credential store.
+Configuration stores only an opaque credential reference.
+PATs and session tokens never appear in configuration values, output, logs, artifacts, catalogs, fixtures, or diagnostics.
 Persist and render artifact paths relative to the resolved workspace with forward slashes.
 Never put a developer username, home directory, checkout path, private site name, or unrelated local project name in tracked files or fixtures.
 

@@ -14,8 +14,8 @@ The executable registry now covers the core content, workspace, catalog, adminis
 
 The current build supports:
 
-- Managing named environment profiles that reference PAT environment variables.
-- Checking local authentication configuration and signing in to verify a Tableau site.
+- Managing named environment profiles that reference PAT environment variables or an optional native OS credential.
+- Checking local authentication configuration, storing a validated PAT, removing a stored PAT, and signing in to verify a Tableau site.
 - Discovering capability ownership, availability, selectors, safety rules, and blockers.
 - Querying Tableau live by default, with explicit local catalog reads through `--catalog`.
 - Refreshing and inspecting the status of the local SQLite catalog.
@@ -40,54 +40,75 @@ tadx capability list
 tadx capability get workbook.pull --full
 ```
 
-## Install from source
+## Install TADX
 
-Install Git and Go 1.26 or later before building TADX.
-Clone the repository on Windows, macOS, or Linux:
-
-```shell
-git clone https://github.com/ahillspace/tadx.git
-cd tadx
-```
+Install or upgrade the latest release from a terminal.
+The installers select the correct Windows, macOS, or Linux binary, verify its SHA-256 checksum, and install it without administrator access.
+Anonymous installation requires public access to the repository and its release assets.
+During private development, authenticated maintainers can install from source.
 
 ### Windows
 
-Build the binary from PowerShell:
+Download the PowerShell installer, inspect it, and run it:
 
 ```powershell
-New-Item -ItemType Directory -Force "$env:LOCALAPPDATA\Programs\tadx" | Out-Null
-go build -o "$env:LOCALAPPDATA\Programs\tadx\tadx.exe" ./cmd/tadx
+$installer = Join-Path $env:TEMP 'tadx-install.ps1'
+Invoke-WebRequest 'https://github.com/ahillspace/tadx/releases/latest/download/install.ps1' -OutFile $installer
+Get-Content $installer
+& $installer
+Remove-Item $installer
 ```
 
-Add `%LOCALAPPDATA%\Programs\tadx` to your user `Path` in Windows Environment Variables, then open a new shell.
+### macOS and Linux
 
-### macOS
-
-Build the binary into a user-owned directory:
+Download the shell installer, inspect it, and run it:
 
 ```shell
-mkdir -p "$HOME/.local/bin"
-go build -o "$HOME/.local/bin/tadx" ./cmd/tadx
+installer="$(mktemp)"
+curl -fsSL https://github.com/ahillspace/tadx/releases/latest/download/install.sh -o "$installer"
+cat "$installer"
+sh "$installer"
+rm -f "$installer"
 ```
 
-Add `export PATH="$HOME/.local/bin:$PATH"` to `~/.zshrc`, then open a new shell.
-
-### Linux
-
-Build the binary into a user-owned directory:
-
-```shell
-mkdir -p "$HOME/.local/bin"
-go build -o "$HOME/.local/bin/tadx" ./cmd/tadx
-```
-
-Add `export PATH="$HOME/.local/bin:$PATH"` to your shell profile, then open a new shell.
-
-Verify the installed command:
+Open a new terminal if `tadx` is not immediately available, then verify the installation:
 
 ```text
+tadx version
 tadx --help
 ```
+
+Pass an explicit release with `-Version v1.2.3` on Windows or `--version v1.2.3` on macOS and Linux.
+Running the installer again upgrades or repairs the installed binary.
+
+To remove only the CLI binary and its installer-managed `PATH` entry, run one of these commands:
+
+```powershell
+$installer = Join-Path $env:TEMP 'tadx-install.ps1'
+Invoke-WebRequest 'https://github.com/ahillspace/tadx/releases/latest/download/install.ps1' -OutFile $installer
+& $installer -Action Uninstall
+Remove-Item $installer
+```
+
+```shell
+installer="$(mktemp)"
+curl -fsSL https://github.com/ahillspace/tadx/releases/latest/download/install.sh -o "$installer"
+sh "$installer" uninstall
+rm -f "$installer"
+```
+
+CLI removal preserves TADX configuration, workspaces, catalogs, Guidance, and OS-stored credentials.
+Before removing the CLI, use `tadx auth logout` and `tadx agent uninstall` for any state that you also want removed.
+
+### Install from source
+
+Install Git and Go 1.26 or later, clone the repository, and run:
+
+```shell
+go install github.com/ahillspace/tadx/cmd/tadx@latest
+```
+
+The Go binary directory must be present in `PATH`.
 
 ## Install agent Guidance
 
@@ -113,21 +134,51 @@ This local operation does not require `TADX_ENABLE_MUTATIONS`.
 
 ## Configure a Tableau environment
 
-TADX uses Tableau personal access tokens and never stores their values in its configuration.
-Use your shell, CI secret store, or credential manager to expose `TADX_DEV_PAT_NAME` and `TADX_DEV_PAT_SECRET` to the `tadx` process.
-
-Register an environment profile that references those variable names:
+TADX uses Tableau personal access tokens.
+Register an environment profile with environment-variable names for CI or temporary credential overrides:
 
 ```text
 tadx env add dev --url https://example.tableau.com --site example-site --pat-name-env TADX_DEV_PAT_NAME --pat-secret-env TADX_DEV_PAT_SECRET
 ```
 
-Inspect the resolved nonsecret configuration, then verify the credentials against Tableau:
+Choose one credential source.
+
+For an interactive setup, enter the PAT name and secret at secure terminal prompts:
+
+```text
+tadx auth login --environment dev
+```
+
+TADX validates the PAT against the configured Tableau site before storing it in the native OS credential store.
+The secret does not echo in the terminal.
+TADX stores only an opaque credential reference in its configuration and never falls back to plaintext storage.
+The native store uses Windows Credential Manager, macOS Keychain, or Linux Secret Service.
+If the native store is unavailable or locked, login fails without saving the PAT elsewhere.
+The login command requires an interactive terminal and does not accept credential flags or redirected input.
+
+For CI or a temporary override, set both configured environment variables before running TADX.
+A complete environment-variable pair takes precedence over the stored PAT.
+If either variable is missing or empty, TADX reports an incomplete credential instead of combining credential sources.
+
+Inspect the resolved nonsecret configuration, then verify the active credentials against Tableau:
 
 ```text
 tadx auth status --environment dev
 tadx auth check --environment dev
 ```
+
+The stored PAT remains available until you remove it locally or Tableau rejects it because it was revoked, expired, or disabled.
+To replace the stored PAT, run `tadx auth login --environment dev` again and enter the replacement values.
+To stop using the stored PAT, run:
+
+```text
+tadx auth logout --environment dev
+```
+
+Logout removes only the local TADX credential.
+It does not revoke or delete the PAT in Tableau.
+Remove a temporary environment-variable override from the process to return to the stored PAT.
+PATs and session tokens never appear in configuration values, output, logs, artifacts, catalogs, fixtures, or diagnostics.
 
 ## Create a named workspace
 

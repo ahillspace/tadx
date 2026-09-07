@@ -10,6 +10,8 @@ var implementationManifest = map[string]struct {
 	"agent.install":             {CommandPath: []string{"agent", "install"}},
 	"agent.uninstall":           {CommandPath: []string{"agent", "uninstall"}},
 	"auth.check":                {CommandPath: []string{"auth", "check"}},
+	"auth.login":                {CommandPath: []string{"auth", "login"}},
+	"auth.logout":               {CommandPath: []string{"auth", "logout"}},
 	"auth.status":               {CommandPath: []string{"auth", "status"}},
 	"admin.group.create":        {CommandPath: []string{"admin", "group", "create"}},
 	"admin.group.delete":        {CommandPath: []string{"admin", "group", "delete"}},

@@ -30,9 +30,10 @@ type ConfigurationState struct {
 
 // PATState reports reference and variable presence without names or values.
 type PATState struct {
-	ReferencesConfigured  bool
-	NameVariablePresent   bool
-	SecretVariablePresent bool
+	ReferencesConfigured    bool
+	NameVariablePresent     bool
+	SecretVariablePresent   bool
+	StoredCredentialPresent bool
 }
 
 // ConnectivityState reports the result of a read-only PAT authentication probe.

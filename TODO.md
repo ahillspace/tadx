@@ -5,24 +5,7 @@ Add new items under Backlog; move to Done when shipped.
 
 ## Backlog
 
-### 1. Auth secret management
-
-Problem.
-tadx today resolves PAT secrets only from environment variables referenced by name in the env profile (`--pat-name-env` / `--pat-secret-env`).
-This is a hardened variant of the plain-env-var pattern - great for CI and agents, but rough for a human at a laptop: secrets evaporate per shell and users must hand-roll `~/.zshrc` or a wrapper.
-Most CLIs offer a `login` subcommand (token cached to a dotfile) or an OS keychain / credential helper for interactive use.
-
-Recommended change.
-Add a layered secret source, resolved in precedence:
-1. Explicit env var (CI / agents) - already built, keep as the automation contract.
-2. OS keychain (macOS Keychain, Windows wincred, Linux secret-service / pass) for interactive humans - add this as the default human path, ideally via a `tadx auth login` that stores the PAT in the keychain.
-3. Never a plaintext file as the default.
-
-Recommendation.
-This keeps the existing "never persist plaintext" invariant intact while giving humans the frictionless experience they expect (docker and gh already prove this model).
-It is additive - the env-var-reference path stays; the keychain becomes the default interactive path.
-
-### 2. Decide how to expose the CLI to an LLM (empirical, not theoretical)
+### 1. Decide how to expose the CLI to an LLM (empirical, not theoretical)
 
 Problem.
 Open question: how does an agent best learn to drive tadx - just `--help`, a repo skill, an AGENTS.md, or improved help strings / command renames?
@@ -41,6 +24,12 @@ Status / notes.
 - Not running yet - queued for when we pick this up.
 
 ## Done
+
+### Auth secret management
+
+Interactive `tadx auth login` validates and stores a PAT in the native OS credential store.
+A complete environment-variable pair remains the higher-precedence automation and temporary-override path.
+TADX never falls back to plaintext secret storage.
 
 ### Workspace location handling
 

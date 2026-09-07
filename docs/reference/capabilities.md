@@ -27,6 +27,8 @@ Use `tadx capability get <id>` for the same focused metadata at runtime.
 | `agent.install` | cli | ship | ready | implemented | `tadx agent install` |
 | `agent.uninstall` | cli | ship | ready | implemented | `tadx agent uninstall` |
 | `auth.check` | cli | ship | ready | implemented | `tadx auth check` |
+| `auth.login` | cli | ship | ready | implemented | `tadx auth login` |
+| `auth.logout` | cli | ship | ready | implemented | `tadx auth logout` |
 | `auth.status` | cli | ship | ready | implemented | `tadx auth status` |
 | `capability.get` | cli | ship | ready | implemented | `tadx capability get` |
 | `capability.list` | cli | ship | ready | implemented | `tadx capability list` |
@@ -553,7 +555,7 @@ Remove TADX Guidance packages from one selected agent target.
 
 ### `auth.check`
 
-Resolve PAT references, sign in, and verify the selected Tableau site.
+Resolve a complete PAT pair, sign in, and verify the selected Tableau site.
 
 - Surface: tadx auth check
 - Operation type: inspect
@@ -569,17 +571,69 @@ Resolve PAT references, sign in, and verify the selected Tableau site.
 - Remote mutation: No
 - Supports `--preview`: No
 - Raw capable: No
-- Safety and guard: Never persist or echo PAT/token
+- Safety and guard: Never echo PAT/token; complete environment-variable pair overrides native storage
 - Artifact effect: None
 - Upstream operation: POST /api/{version}/auth/signin; optional signout
-- Evidence: A1 §§5.4, 7.3–7.4; C1 §§2.1, 5.1; local official REST capture
+- Evidence: A1 §§5.4, 7.3-7.4; C1 §§2.1, 5.1; local official REST capture
 - Validation or blocker: Contract-verified; exact source and tests recorded in docs/evidence/phase1-rest-contract.md
 - Blocker ID: None
 - Command binding: `tadx auth check`
 
+### `auth.login`
+
+Interactively validate a PAT and store it in the native OS credential store for one environment.
+
+- Surface: tadx auth login
+- Operation type: change
+- Owner: cli
+- MCP overlap: None
+- Selectors: Required environment alias; interactive terminal
+- Products and availability: Local plus Cloud / Server validation
+- Product disposition: ship
+- Evidence level: architecture-locked
+- Verification readiness: ready
+- Implementation state: implemented
+- Local write: Yes
+- Remote mutation: No
+- Supports `--preview`: No
+- Raw capable: No
+- Safety and guard: No credential flags or non-TTY input; validate before storage; no plaintext fallback; target-bound opaque reference only in config
+- Artifact effect: None
+- Upstream operation: POST /api/{version}/auth/signin; native OS credential store
+- Evidence: Tableau PAT sign-in contract plus platform credential-store behavior
+- Validation or blocker: Architecture-locked and hermetically verified; native-store smoke test is opt-in
+- Blocker ID: None
+- Command binding: `tadx auth login`
+
+### `auth.logout`
+
+Remove TADX's stored PAT for one environment without revoking the PAT in Tableau.
+
+- Surface: tadx auth logout
+- Operation type: change
+- Owner: cli
+- MCP overlap: None
+- Selectors: Required environment alias
+- Products and availability: Local / all
+- Product disposition: ship
+- Evidence level: architecture-locked
+- Verification readiness: ready
+- Implementation state: implemented
+- Local write: Yes
+- Remote mutation: No
+- Supports `--preview`: No
+- Raw capable: No
+- Safety and guard: Exact alias; idempotent local removal; remote PAT remains valid
+- Artifact effect: None
+- Upstream operation: Native OS credential store and local config
+- Evidence: Platform credential-store behavior
+- Validation or blocker: Architecture-locked and hermetically verified; remote PAT revocation remains a Tableau operation
+- Blocker ID: None
+- Command binding: `tadx auth logout`
+
 ### `auth.status`
 
-Report resolved auth configuration and PAT-reference presence without revealing values.
+Report resolved auth configuration and selected credential source without revealing values.
 
 - Surface: tadx auth status
 - Operation type: inspect

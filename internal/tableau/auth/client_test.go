@@ -106,6 +106,22 @@ func TestClientDoesNotLeakSessionTokenFromUndecodableSignInBody(t *testing.T) {
 	}
 }
 
+func TestClientUsesRequestedAuthenticationOperationInDiagnostics(t *testing.T) {
+	server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+		writer.Header().Set("Content-Type", "application/json")
+		_, _ = io.WriteString(writer, `{"credentials":`)
+	}))
+	defer server.Close()
+
+	client := tableauauth.NewClient(tableau.NewTransport(server.Client(), "3.29", nil))
+	_, err := client.SignIn(context.Background(), coreauth.SignInRequest{
+		ServerURL: server.URL, PATName: "pat-name", PATSecret: "pat-secret", Operation: "auth.login",
+	})
+	if err == nil || !strings.Contains(err.Error(), "auth.login") || strings.Contains(err.Error(), "auth.check") {
+		t.Fatalf("SignIn() error = %v", err)
+	}
+}
+
 func TestClientClassifiesServiceUnavailableAsRetryable(t *testing.T) {
 	server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
 		writer.Header().Set("Content-Type", "application/json")

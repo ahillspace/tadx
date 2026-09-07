@@ -7,12 +7,13 @@ type Input struct {
 
 // Target contains non-secret sign-in context.
 type Target struct {
-	Environment       string
-	ServerURL         string
-	SiteContentURL    string
-	APIVersion        string
-	PATNameVariable   string
-	PATSecretVariable string
+	Environment         string
+	ServerURL           string
+	SiteContentURL      string
+	APIVersion          string
+	PATNameVariable     string
+	PATSecretVariable   string
+	CredentialReference string
 }
 
 // Authentication is the non-secret result of PAT sign-in.

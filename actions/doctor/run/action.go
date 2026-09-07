@@ -118,10 +118,16 @@ func (a *Action) checkPAT(ctx context.Context, scope Scope) Check {
 	if !state.ReferencesConfigured {
 		return fail(id, "PAT environment-variable references are missing.", "Configure PAT name and secret environment-variable references.")
 	}
-	if !state.NameVariablePresent || !state.SecretVariablePresent {
-		return fail(id, "One or more referenced PAT variables are absent.", "Set both referenced PAT variables without storing their values in TADX configuration.")
+	if state.NameVariablePresent != state.SecretVariablePresent {
+		return fail(id, "One referenced PAT variable is absent.", "Set both referenced PAT variables or remove both so TADX can use the stored PAT.")
 	}
-	return pass(id, "PAT references and referenced variables are present.")
+	if state.NameVariablePresent && state.SecretVariablePresent {
+		return pass(id, "PAT environment variables are present.")
+	}
+	if state.StoredCredentialPresent {
+		return pass(id, "A PAT is configured in the native OS credential store.")
+	}
+	return fail(id, "No complete PAT source is configured.", "Run tadx auth login --environment <alias>, or set both referenced PAT variables.")
 }
 
 func (a *Action) checkConnectivity(ctx context.Context, scope Scope) Check {

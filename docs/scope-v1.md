@@ -11,7 +11,7 @@ When this page and a source doc disagree, the source docs win and this page is f
 These are the capabilities an agent may build to completion once each row's upstream API contract is captured (see the evidence gate).
 
 - Environment profiles: list, get, add, update, remove, set-default (local config).
-- Authentication: PAT sign-in check (remote) and local auth status. PAT only.
+- Authentication: PAT sign-in check, local auth status, interactive native OS credential storage, and local stored-credential removal. PAT only.
 - Capability discovery: capability list, capability get.
 - Catalog: refresh and status for the normalized local cache.
 - Workspace: create, register, clone, list, status, set default, move, unregister, delete, delete one explicit artifact, and clean disposable state.
@@ -79,7 +79,10 @@ TADX never configures, selects, calls, proxies, or reports the connection state 
 - Automatic lineage capture is bounded and best-effort, records incomplete results, and never hides a successful artifact pull.
 - Persisted artifact paths are relative and slash-delimited.
 - First-party source, documentation, generated files, fixtures, and persisted metadata contain no developer names, private project names, or machine-specific paths.
-- Secrets TADX handles are never persisted in config values, output, logs, artifacts, catalog, fixtures, or diagnostics.
+- PATs can persist only after explicit user approval in the native OS credential store.
+- Configuration stores only an opaque credential reference.
+- Secrets TADX handles never appear in config values, output, logs, artifacts, catalog, fixtures, or diagnostics.
+- TADX never falls back to plaintext credential storage.
 - One Go module, one primary binary, modular monolith.
 - Release platforms: windows/amd64, darwin/amd64, darwin/arm64, linux/amd64.
 - Exit codes: 0 success or no-op, 1 operation or runtime failure, 2 usage error.

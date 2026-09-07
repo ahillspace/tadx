@@ -9,5 +9,7 @@ pat_name_env: PROD_PAT_NAME
 pat_secret_env: PROD_PAT_SECRET
 pat_name_present: true
 pat_secret_present: true
+stored_credential_reference_present: false
+credential_source: environment
 default_workspace: primary
 help[1]: tadx auth check --environment <alias>

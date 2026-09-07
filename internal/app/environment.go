@@ -120,6 +120,11 @@ func (s configProfileStore) Update(_ context.Context, alias string, patch profil
 		if !exists {
 			return config.Config{}, fmt.Errorf("environment %q does not exist", alias)
 		}
+		if environment.Auth.CredentialRef != "" &&
+			((patch.ServerURL.Set && environment.URL != patch.ServerURL.Value) ||
+				(patch.SiteContentURL.Set && environment.SiteContentURL != patch.SiteContentURL.Value)) {
+			return config.Config{}, fmt.Errorf("environment %q has a stored PAT; run tadx auth logout --environment %s before changing its Tableau target", alias, alias)
+		}
 		changed = make([]string, 0, 6)
 		apply := func(field profileupdate.StringField, name string, target *string) {
 			if field.Set && *target != field.Value {
@@ -151,8 +156,12 @@ func (s configProfileStore) Update(_ context.Context, alias string, patch profil
 
 func (s configProfileStore) Remove(_ context.Context, alias string) error {
 	_, err := config.Update(*s.path, false, func(configuration config.Config) (config.Config, error) {
-		if _, exists := configuration.Environments[alias]; !exists {
+		environment, exists := configuration.Environments[alias]
+		if !exists {
 			return config.Config{}, fmt.Errorf("environment %q does not exist", alias)
+		}
+		if environment.Auth.CredentialRef != "" {
+			return config.Config{}, fmt.Errorf("environment %q has a stored PAT; run tadx auth logout --environment %s before removing it", alias, alias)
 		}
 		if configuration.DefaultEnvironment == alias {
 			return config.Config{}, fmt.Errorf("environment %q is the default and cannot be removed", alias)
@@ -205,7 +214,7 @@ func (r authStatusResolver) Resolve(_ context.Context, alias string) (authstatus
 	if err != nil {
 		return authstatus.Target{}, err
 	}
-	return authstatus.Target{Environment: environment.Alias, Default: environment.Alias == configuration.DefaultEnvironment, ServerURL: environment.URL, SiteContentURL: environment.SiteContentURL, APIVersion: environment.APIVersion, AuthType: environment.Auth.Type, PATNameVariable: environment.Auth.PATNameEnv, PATSecretVariable: environment.Auth.PATSecretEnv, DefaultWorkspace: environment.DefaultWorkspace}, nil
+	return authstatus.Target{Environment: environment.Alias, Default: environment.Alias == configuration.DefaultEnvironment, ServerURL: environment.URL, SiteContentURL: environment.SiteContentURL, APIVersion: environment.APIVersion, AuthType: environment.Auth.Type, PATNameVariable: environment.Auth.PATNameEnv, PATSecretVariable: environment.Auth.PATSecretEnv, StoredCredentialReferencePresent: environment.Auth.CredentialRef != "", DefaultWorkspace: environment.DefaultWorkspace}, nil
 }
 
 type processEnvironment struct{}

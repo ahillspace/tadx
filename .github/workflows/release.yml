@@ -1,0 +1,347 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  validate:
+    name: Validate release tag
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - name: Validate semantic version
+        id: version
+        shell: bash
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          python3 - <<'PY'
+          import os
+          import re
+          import sys
+
+          tag = os.environ["RELEASE_TAG"]
+          match = re.fullmatch(
+              r"v(0|[1-9][0-9]*)\."
+              r"(0|[1-9][0-9]*)\."
+              r"(0|[1-9][0-9]*)"
+              r"(?:-([0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*))?"
+              r"(?:\+([0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*))?",
+              tag,
+          )
+          if match is None:
+              print(f"Tag {tag!r} is not v-prefixed SemVer.", file=sys.stderr)
+              sys.exit(1)
+          prerelease = match.group(4)
+          if prerelease is not None:
+              for identifier in prerelease.split("."):
+                  if identifier.isdigit() and len(identifier) > 1 and identifier.startswith("0"):
+                      print(
+                          f"Tag {tag!r} has a numeric prerelease identifier with a leading zero.",
+                          file=sys.stderr,
+                      )
+                      sys.exit(1)
+          with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as output:
+              output.write(f"version={tag[1:]}\n")
+          PY
+
+  quality:
+    name: Release quality (${{ matrix.os }})
+    needs: validate
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          - ubuntu-latest
+          - windows-latest
+    steps:
+      - name: Check out release source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Check formatting
+        shell: pwsh
+        run: |
+          $files = gofmt -l .
+          if ($files) {
+            $files
+            exit 1
+          }
+
+      - name: Run vet
+        run: go vet ./...
+
+      - name: Run tests
+        run: go test ./...
+
+      - name: Run race tests
+        run: go test -race ./...
+
+      - name: Check module metadata
+        shell: pwsh
+        run: |
+          go mod tidy
+          git diff --exit-code -- go.mod go.sum
+
+      - name: Check generated files
+        shell: pwsh
+        run: |
+          go generate ./...
+          go run ./cmd/gencapdocs -out docs/reference/capabilities.md
+          git diff --exit-code
+
+      - name: Run bounded TOON fuzz tests
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          go test ./internal/toon -run='^$' -fuzz=FuzzEncodeDecodeStrings -fuzztime=5s
+          go test ./internal/toon -run='^$' -fuzz=FuzzDecodeNeverPanics -fuzztime=5s
+          go test ./internal/toon -run='^$' -fuzz=FuzzJSONRoundTrip -fuzztime=5s
+
+      - name: Test shell installer
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          bash -n scripts/install.sh scripts/tests/install_sh_test.sh
+          bash scripts/tests/install_sh_test.sh
+
+      - name: Check PowerShell installer syntax
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $errors = $null
+          [System.Management.Automation.Language.Parser]::ParseFile(
+            (Resolve-Path 'scripts/install.ps1'),
+            [ref]$null,
+            [ref]$errors
+          ) | Out-Null
+          if ($errors.Count -gt 0) {
+            $errors | Format-List | Out-String
+            exit 1
+          }
+
+  build:
+    name: Build ${{ matrix.goos }}/${{ matrix.goarch }}
+    needs: validate
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
+      artifact-metadata: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - goos: windows
+            goarch: amd64
+            binary: tadx.exe
+            format: zip
+          - goos: windows
+            goarch: arm64
+            binary: tadx.exe
+            format: zip
+          - goos: darwin
+            goarch: amd64
+            binary: tadx
+            format: tar.gz
+          - goos: darwin
+            goarch: arm64
+            binary: tadx
+            format: tar.gz
+          - goos: linux
+            goarch: amd64
+            binary: tadx
+            format: tar.gz
+          - goos: linux
+            goarch: arm64
+            binary: tadx
+            format: tar.gz
+    steps:
+      - name: Check out release source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Build release binary
+        shell: bash
+        env:
+          CGO_ENABLED: "0"
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          mkdir -p build/package dist
+          go build \
+            -mod=readonly \
+            -trimpath \
+            -buildvcs=false \
+            -ldflags="-s -w -buildid= -X github.com/ahillspace/tadx/internal/version.BuildVersion=${RELEASE_TAG}" \
+            -o "build/package/${{ matrix.binary }}" \
+            ./cmd/tadx
+
+      - name: Stage release files
+        shell: bash
+        run: |
+          install -m 0644 LICENSE build/package/LICENSE
+          install -m 0644 scripts/install.ps1 build/package/install.ps1
+          install -m 0755 scripts/install.sh build/package/install.sh
+          chmod 0755 "build/package/${{ matrix.binary }}"
+
+      - name: Create deterministic archive
+        id: archive
+        shell: bash
+        env:
+          RELEASE_VERSION: ${{ needs.validate.outputs.version }}
+          TARGET_OS: ${{ matrix.goos }}
+          TARGET_ARCH: ${{ matrix.goarch }}
+          ARCHIVE_FORMAT: ${{ matrix.format }}
+        run: |
+          set -euo pipefail
+          source_date_epoch="$(git show -s --format=%ct "${GITHUB_SHA}")"
+          archive="tadx_${RELEASE_VERSION}_${TARGET_OS}_${TARGET_ARCH}.${ARCHIVE_FORMAT}"
+          if [[ "${ARCHIVE_FORMAT}" == "zip" ]]; then
+            SOURCE_DATE_EPOCH="${source_date_epoch}" ARCHIVE="dist/${archive}" python3 - <<'PY'
+          import os
+          import pathlib
+          import time
+          import zipfile
+
+          source = pathlib.Path("build/package")
+          epoch = max(int(os.environ["SOURCE_DATE_EPOCH"]), 315532800)
+          epoch -= epoch % 2
+          timestamp = time.gmtime(epoch)[:6]
+          with zipfile.ZipFile(os.environ["ARCHIVE"], "w", compression=zipfile.ZIP_STORED) as archive:
+              for path in sorted(source.iterdir(), key=lambda item: item.name):
+                  info = zipfile.ZipInfo(path.name, timestamp)
+                  info.create_system = 3
+                  mode = 0o755 if path.name in {"tadx.exe", "install.sh"} else 0o644
+                  info.external_attr = mode << 16
+                  archive.writestr(info, path.read_bytes())
+          PY
+          else
+            tar \
+              --sort=name \
+              --mtime="@${source_date_epoch}" \
+              --owner=0 \
+              --group=0 \
+              --numeric-owner \
+              --format=ustar \
+              -C build/package \
+              -cf - . | gzip -n -9 > "dist/${archive}"
+          fi
+          printf 'archive=%s\n' "${archive}" >> "${GITHUB_OUTPUT}"
+
+      - name: Attest archive provenance
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4
+        with:
+          subject-path: dist/${{ steps.archive.outputs.archive }}
+
+      - name: Upload release archive
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: release-${{ matrix.goos }}-${{ matrix.goarch }}
+          path: dist/${{ steps.archive.outputs.archive }}
+          if-no-files-found: error
+          compression-level: 0
+
+  publish:
+    name: Publish GitHub release
+    needs:
+      - validate
+      - quality
+      - build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
+      artifact-metadata: write
+    steps:
+      - name: Check out release source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      - name: Download release archives
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          pattern: release-*
+          path: dist
+          merge-multiple: true
+
+      - name: Add standalone release files
+        shell: bash
+        run: |
+          install -m 0644 LICENSE dist/LICENSE
+          install -m 0644 scripts/install.ps1 dist/install.ps1
+          install -m 0755 scripts/install.sh dist/install.sh
+
+      - name: Generate checksums
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd dist
+          checksum_file="${RUNNER_TEMP}/checksums.txt"
+          find . -maxdepth 1 -type f ! -name checksums.txt -printf '%f\n' \
+            | LC_ALL=C sort \
+            | while IFS= read -r file; do sha256sum "${file}"; done \
+            > "${checksum_file}"
+          mv "${checksum_file}" checksums.txt
+
+      - name: Attest standalone file provenance
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4
+        with:
+          subject-path: |
+            dist/LICENSE
+            dist/install.ps1
+            dist/install.sh
+            dist/checksums.txt
+
+      - name: Publish release assets
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ github.ref_name }}
+          RELEASE_VERSION: ${{ needs.validate.outputs.version }}
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          assets=(dist/tadx_"${RELEASE_VERSION}"_* dist/checksums.txt dist/LICENSE dist/install.ps1 dist/install.sh)
+          if [[ "${#assets[@]}" -ne 10 ]]; then
+            printf 'Expected 10 release assets, found %d.\n' "${#assets[@]}" >&2
+            exit 1
+          fi
+          if gh release view "${RELEASE_TAG}" >/dev/null 2>&1; then
+            printf 'Release %s already exists and will not be modified.\n' "${RELEASE_TAG}" >&2
+            exit 1
+          fi
+          release_args=(--verify-tag --title "${RELEASE_TAG}" --generate-notes)
+          if [[ "${RELEASE_VERSION}" == *-* ]]; then
+            release_args+=(--prerelease)
+          fi
+          gh release create "${RELEASE_TAG}" "${assets[@]}" "${release_args[@]}"

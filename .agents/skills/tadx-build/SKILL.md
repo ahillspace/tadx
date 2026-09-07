@@ -44,7 +44,10 @@ Treat Tableau LUIDs as authoritative, fail ambiguous selectors, and never fuzzy-
 Authenticate to Tableau with PATs only.
 Consequential mutations execute by default when enabled with `TADX_ENABLE_MUTATIONS=1`; use `--preview` for a read-only plan.
 `--force` does not bypass mutation policy, and mutation discovery never grants authorization.
-Never persist or print PATs, session tokens, or machine-specific paths.
+Persist PATs only after explicit user approval through the native OS credential store.
+Store only opaque credential references in configuration, and never use a plaintext credential fallback.
+Never place PATs or session tokens in configuration values, output, logs, artifacts, catalogs, fixtures, or diagnostics.
+Never persist or print machine-specific paths.
 
 ## Integrate without generated drift
 

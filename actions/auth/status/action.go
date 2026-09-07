@@ -35,8 +35,15 @@ func (a *Action) Execute(ctx context.Context, input Input) (Output, error) {
 	namePresent := nameExists && strings.TrimSpace(name) != ""
 	secretPresent := secretExists && strings.TrimSpace(secret) != ""
 	state := "incomplete"
+	source := "none"
 	if namePresent && secretPresent {
 		state = "ready"
+		source = "environment"
+	} else if namePresent || secretPresent {
+		source = "environment"
+	} else if target.StoredCredentialReferencePresent {
+		state = "ready"
+		source = "os_credential_store"
 	}
-	return Output{Status: state, Environment: target.Environment, Default: target.Default, ServerURL: target.ServerURL, SiteContentURL: target.SiteContentURL, APIVersion: target.APIVersion, AuthType: target.AuthType, PATNameVariable: target.PATNameVariable, PATSecretVariable: target.PATSecretVariable, PATNamePresent: namePresent, PATSecretPresent: secretPresent, DefaultWorkspace: target.DefaultWorkspace, Help: []string{"tadx auth check --environment <alias>"}}, nil
+	return Output{Status: state, Environment: target.Environment, Default: target.Default, ServerURL: target.ServerURL, SiteContentURL: target.SiteContentURL, APIVersion: target.APIVersion, AuthType: target.AuthType, PATNameVariable: target.PATNameVariable, PATSecretVariable: target.PATSecretVariable, PATNamePresent: namePresent, PATSecretPresent: secretPresent, StoredCredentialReferencePresent: target.StoredCredentialReferencePresent, CredentialSource: source, DefaultWorkspace: target.DefaultWorkspace, Help: []string{"tadx auth check --environment <alias>"}}, nil
 }
