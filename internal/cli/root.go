@@ -34,6 +34,7 @@ import (
 const CapabilityAnnotation = "tadx.capability"
 
 const groupingAnnotation = "tadx.grouping"
+const aliasAnnotation = "tadx.alias"
 
 // RegisteredCommand describes a capability discovered from the actual Cobra tree.
 type RegisteredCommand struct {
@@ -332,6 +333,9 @@ func RegisteredCommands(root *cobra.Command) ([]RegisteredCommand, error) {
 	var registrations []RegisteredCommand
 	var walk func(*cobra.Command) error
 	walk = func(command *cobra.Command) error {
+		if command.Annotations[aliasAnnotation] == "true" {
+			return nil
+		}
 		id := command.Annotations[CapabilityAnnotation]
 		runnable := command.Run != nil || command.RunE != nil
 		if runnable && id == "" && command.Annotations[groupingAnnotation] != "true" {

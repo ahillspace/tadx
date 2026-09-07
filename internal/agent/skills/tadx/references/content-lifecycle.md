@@ -14,6 +14,22 @@ Its `--limit` controls rendered rows only, and its cursor continues through the 
 Adding an exact filter keeps the list bounded against Tableau and writes only a partial cache observation.
 Use filtered list for exact candidate discovery, not as proof that the complete remote scope was inventoried.
 
+## Run bounded content batches
+
+Repeat `--id` on pull or `--artifact` on publish to process up to 100 resources of one type.
+TADX validates the complete selection before starting, preserves selection order, and processes each item sequentially.
+Shared environment, workspace, project, preview, overwrite, and publish-mode flags apply to every item.
+Batch publish rejects `--name` because one explicit name cannot safely apply to multiple artifacts.
+Independent failures do not stop later items, but the command returns a nonzero aggregate result when any item fails.
+Cancellation skips remaining items without starting them.
+TADX does not infer dependency order or retry failures.
+For migrations, publish datasource dependencies before the workbooks that reference them.
+
+```text
+tadx content workbook pull --environment <alias> --workspace <workspace> --id <workbook-luid-1> --id <workbook-luid-2>
+tadx content workbook publish --environment <alias> --workspace <workspace> --project-id <project-luid> --artifact "artifacts/workbook/<directory-1>" --artifact "artifacts/workbook/<directory-2>"
+```
+
 ## Inspect and pull
 
 Resolve the remote LUID and source environment, then inspect current state before acquiring or changing content.
@@ -45,7 +61,7 @@ The `--as-job` option polls supported publishes to a bounded result; do not inte
 
 Content `delete` removes remote Tableau content.
 `workspace artifact delete` removes a local managed artifact.
-`workspace move` transfers a local artifact between workspaces and preserves Tableau identity.
+`workspace artifact move` transfers a local artifact between workspaces and preserves Tableau identity.
 Content `move` changes the remote project without downloading or republishing the item.
 Inspect the exact target and applicable help before destructive changes.
 

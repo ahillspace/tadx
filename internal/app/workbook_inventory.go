@@ -50,14 +50,14 @@ func (c *remoteContentCommands) ListWorkbooks(ctx context.Context, input workboo
 		if err != nil {
 			return workbooklist.Output{}, inventoryRefreshError("workbook.list", input.Environment, input.Site, err)
 		}
-		if inventory.publishErr != nil {
+		if inventory.catalogErr != nil {
 			reader := inventoryMemoryReader{entries: inventory.entries, requestID: finalRequestID(inventory.requestIDs)}
 			output, err := workbooklist.New(reader).Execute(ctx, input)
 			if err != nil {
 				return output, err
 			}
-			output.Source = liveInventoryWarningSource(observedAt)
-			output.Help = append(output.Help, inventoryRefreshWarningHelp)
+			output.Source = inventory.warningSource(observedAt)
+			output.Help = append(output.Help, inventory.warningHelp())
 			return output, nil
 		}
 		reader := &catalogWorkbookListReader{store: c.catalogStore(), environment: input.Environment, site: input.Site}

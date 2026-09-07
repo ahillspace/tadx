@@ -92,7 +92,7 @@ func TestWorkspaceCommandsMapExactInputs(t *testing.T) {
 		{"set-default", "development"},
 		{"unregister", "old"},
 		{"delete", "throwaway", "--force", "--preview"},
-		{"move", "--source", "development", "--destination", "archive", "--kind", "workbook", "--id", "wb-1"},
+		{"artifact", "move", "--source", "development", "--destination", "archive", "--kind", "workbook", "--id", "wb-1"},
 		{"artifact", "delete", "--workspace", "archive", "--artifact", "artifacts/workbook/Finance", "--force", "--preview"},
 		{"clean", "--workspace", "archive", "--class", "temporary"},
 	}
@@ -211,5 +211,26 @@ func TestWorkspaceArtifactDeleteIsVisibleWithoutRemoteMutationDiscovery(t *testi
 	}
 	if artifactCommand.Hidden {
 		t.Fatal("local artifact delete was hidden by remote mutation discovery")
+	}
+}
+
+func TestWorkspaceArtifactMoveIsCanonicalAndLegacyAliasIsHidden(t *testing.T) {
+	command := workspacecli.New(workspacecli.Dependencies{Mover: &actions{}, Deleter: &actions{}, Renderer: &renderer{}})
+	artifactMove, _, err := command.Find([]string{"artifact", "move"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if artifactMove.Hidden {
+		t.Fatal("canonical artifact move command is hidden")
+	}
+	if got := artifactMove.Annotations["tadx.capability"]; got != "workspace.move" {
+		t.Fatalf("capability annotation = %q", got)
+	}
+	legacyMove, _, err := command.Find([]string{"move"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !legacyMove.Hidden {
+		t.Fatal("legacy workspace move alias is visible")
 	}
 }

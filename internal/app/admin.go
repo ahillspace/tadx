@@ -97,14 +97,14 @@ func (c *remoteAdminCommands) ListAdminUsers(ctx context.Context, input userlist
 		if err != nil {
 			return userlist.Output{}, inventoryRefreshError("admin.user.list", input.Environment, input.Site, err)
 		}
-		if inventory.publishErr != nil {
+		if inventory.catalogErr != nil {
 			reader := inventoryMemoryReader{entries: inventory.entries, requestID: finalRequestID(inventory.requestIDs)}
 			output, err := userlist.New(reader).Execute(ctx, input)
 			if err != nil {
 				return output, adminActionError("admin.user.list", input.Environment, input.Site, err)
 			}
-			output.Source = liveInventoryWarningSource(observedAt)
-			output.Help = append(output.Help, inventoryRefreshWarningHelp)
+			output.Source = inventory.warningSource(observedAt)
+			output.Help = append(output.Help, inventory.warningHelp())
 			return output, nil
 		}
 		reader := &catalogUserListReader{store: c.catalogStore(), environment: input.Environment, site: input.Site}
@@ -241,14 +241,14 @@ func (c *remoteAdminCommands) ListAdminGroups(ctx context.Context, input groupli
 		if err != nil {
 			return grouplist.Output{}, inventoryRefreshError("admin.group.list", input.Environment, input.Site, err)
 		}
-		if inventory.publishErr != nil {
+		if inventory.catalogErr != nil {
 			reader := inventoryMemoryReader{entries: inventory.entries, requestID: finalRequestID(inventory.requestIDs)}
 			output, err := grouplist.New(reader).Execute(ctx, input)
 			if err != nil {
 				return output, adminActionError("admin.group.list", input.Environment, input.Site, err)
 			}
-			output.Source = liveInventoryWarningSource(observedAt)
-			output.Help = append(output.Help, inventoryRefreshWarningHelp)
+			output.Source = inventory.warningSource(observedAt)
+			output.Help = append(output.Help, inventory.warningHelp())
 			return output, nil
 		}
 		reader := &catalogGroupListReader{store: c.catalogStore(), environment: input.Environment, site: input.Site}

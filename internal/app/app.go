@@ -358,7 +358,7 @@ func (w artifactWriter) WriteBundle(ctx context.Context, workbook workbookpull.A
 		Datasources: make([]artifact.DatasourcePull, len(datasources)),
 	}
 	for index, item := range datasources {
-		bundle.Datasources[index] = artifact.DatasourcePull{Workspace: item.Workspace, Filename: item.Filename, Content: item.Content, Overwrite: item.Overwrite, Metadata: artifact.DatasourceMetadata{Kind: "datasource", Name: item.Name, TableauID: item.TableauID, SourceServerOrigin: item.ServerOrigin, SourceSiteLUID: item.SiteLUID, SourceEnvironment: item.Environment, SourceSite: item.Site, SourceProjectName: item.ProjectName, SourceProjectID: item.ProjectID, CompositionStatus: artifact.CompositionStatusUnknown}}
+		bundle.Datasources[index] = artifact.DatasourcePull{Workspace: item.Workspace, Filename: item.Filename, Content: item.Content, Overwrite: item.Overwrite, Metadata: artifact.DatasourceMetadata{Kind: "datasource", Name: item.Name, TableauID: item.TableauID, SourceServerOrigin: item.ServerOrigin, SourceSiteLUID: item.SiteLUID, SourceEnvironment: item.Environment, SourceSite: item.Site, SourceProjectName: item.ProjectName, SourceProjectID: item.ProjectID}}
 	}
 	result, err := w.bundles.Pull(ctx, bundle)
 	if err != nil {

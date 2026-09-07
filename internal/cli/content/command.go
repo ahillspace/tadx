@@ -16,6 +16,8 @@ import (
 	workbookpull "github.com/ahillspace/tadx/actions/workbook/pull"
 	workbookupdate "github.com/ahillspace/tadx/actions/workbook/update"
 	"github.com/ahillspace/tadx/internal/cli/clierr"
+	"github.com/ahillspace/tadx/internal/cli/progress"
+	"github.com/ahillspace/tadx/internal/contentbatch"
 	"github.com/ahillspace/tadx/internal/pathspec"
 	"github.com/spf13/cobra"
 )
@@ -149,10 +151,11 @@ func newPull(deps Dependencies) *cobra.Command {
 	}
 	short := deps.PullShort
 	if short == "" {
-		short = "Pull one workbook artifact."
+		short = "Pull workbook artifacts sequentially."
 	}
 	var input workbookpull.Input
-	var id, name, project string
+	var ids []string
+	var name, project string
 	var includeExtract bool
 	command := &cobra.Command{
 		Use: use, Short: short, Annotations: map[string]string{"tadx.capability": "workbook.pull"},
@@ -160,10 +163,24 @@ func newPull(deps Dependencies) *cobra.Command {
 			if err := cobra.NoArgs(command, args); err != nil {
 				return clierr.Usage("workbook.pull", err)
 			}
-			if id == "" && name == "" {
+			if len(ids) == 0 && name == "" {
 				return clierr.Usage("workbook.pull", errors.New("one of --id or --name is required"))
 			}
-			input.LUID, input.Name, input.ProjectPath = id, name, project
+			if len(ids) > 0 {
+				if err := contentbatch.Validate(ids); err != nil {
+					return clierr.Usage("workbook.pull", err)
+				}
+			}
+			if len(ids) > 1 {
+				if err := batchPullArgs("workbook.pull", &ids, &name, &project, func(id, name, project string) { input.LUID, input.Name, input.ProjectPath = id, name, project })(command, args); err != nil {
+					return err
+				}
+			} else {
+				input.Name, input.ProjectPath = name, project
+				if len(ids) == 1 {
+					input.LUID = ids[0]
+				}
+			}
 			if command.Flags().Changed("include-extract") {
 				value := includeExtract
 				input.IncludeExtract = &value
@@ -171,16 +188,18 @@ func newPull(deps Dependencies) *cobra.Command {
 			return nil
 		},
 		RunE: func(command *cobra.Command, _ []string) error {
-			result, err := deps.Puller.Execute(command.Context(), input)
-			if err != nil {
-				return err
-			}
-			return deps.Renderer.Render(result)
+			return runContentSelection(command.Context(), "workbook.pull", ids, deps.Renderer, func(ctx context.Context, id string) (workbookpull.Output, error) {
+				item := input
+				if id != "" {
+					item.LUID = id
+				}
+				return deps.Puller.Execute(ctx, item)
+			})
 		},
 	}
 	command.Flags().StringVar(&input.Environment, "environment", "", "exact environment alias; defaults to configured read environment")
 	command.Flags().StringVar(&input.Workspace, "workspace", "", "logical workspace name; uses deterministic defaults when omitted")
-	command.Flags().StringVar(&id, "id", "", "authoritative workbook LUID")
+	command.Flags().StringArrayVar(&ids, "id", nil, "authoritative workbook LUID; repeat for up to 100 items, processed sequentially")
 	command.Flags().StringVar(&name, "name", "", "exact workbook name")
 	command.Flags().StringVar(&project, "project", "", "exact slash-delimited project path")
 	command.Flags().BoolVar(&includeExtract, "include-extract", true, "include workbook extracts")
@@ -196,9 +215,10 @@ func newPublish(deps Dependencies) *cobra.Command {
 	}
 	short := deps.PublishShort
 	if short == "" {
-		short = "Publish one workbook artifact."
+		short = "Publish workbook artifacts sequentially."
 	}
 	var input workbookpublish.Input
+	var artifacts []string
 	var projectID, projectPath string
 	var preview bool
 	command := &cobra.Command{
@@ -207,12 +227,13 @@ func newPublish(deps Dependencies) *cobra.Command {
 			if err := cobra.NoArgs(command, args); err != nil {
 				return clierr.Usage("workbook.publish", err)
 			}
-			if input.ArtifactPath == "" {
+			if len(artifacts) == 0 {
 				return clierr.Usage("workbook.publish", errors.New("--artifact is required"))
 			}
-			if err := validateManagedArtifactPath(input.ArtifactPath, "workbook"); err != nil {
+			if err := validateArtifactSelection(artifacts, "workbook", input.Name); err != nil {
 				return clierr.Usage("workbook.publish", err)
 			}
+			input.ArtifactPath = artifacts[0]
 			// With no explicit --environment the publish target defaults to the
 			// artifact's recorded source (environment, site, project, name, and
 			// workbook LUID). An explicit --environment requires an explicit project.
@@ -223,15 +244,16 @@ func newPublish(deps Dependencies) *cobra.Command {
 			return nil
 		},
 		RunE: func(command *cobra.Command, _ []string) error {
-			result, err := deps.Publisher.Execute(command.Context(), input, preview)
-			if err != nil {
-				return err
-			}
-			return deps.Renderer.Render(result)
+			reporter := progress.New(command.ErrOrStderr())
+			return runPublishSelection(command.Context(), "workbook.publish", "workbook", artifacts, preview, deps.Renderer, reporter, func(ctx context.Context, artifact string) (workbookpublish.Output, error) {
+				item := input
+				item.ArtifactPath = artifact
+				return deps.Publisher.Execute(ctx, item, preview)
+			})
 		},
 	}
 	command.Flags().StringVar(&input.Workspace, "workspace", "", "logical workspace name; uses deterministic defaults when omitted")
-	command.Flags().StringVar(&input.ArtifactPath, "artifact", "", managedArtifactFlagHelp("workbook", "Finance--identity"))
+	command.Flags().StringArrayVar(&artifacts, "artifact", nil, managedArtifactFlagHelp("workbook", "Finance--identity")+"; repeat for up to 100 items, processed sequentially")
 	command.Flags().StringVar(&input.Environment, "environment", "", "explicit write environment alias; defaults to the artifact's recorded source environment")
 	command.Flags().StringVar(&input.Name, "name", "", "explicit published workbook name; defaults to artifact name")
 	command.Flags().StringVar(&projectID, "project-id", "", "authoritative destination project LUID")

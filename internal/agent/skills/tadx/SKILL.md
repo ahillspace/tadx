@@ -61,6 +61,10 @@ tadx content workbook update --environment <alias> --id <workbook-luid> --new-na
 tadx content workbook delete --environment <alias> --id <workbook-luid> --preview
 ```
 
+For multiple exact resources of one type, repeat `--id` on pull or `--artifact` on publish up to 100 times.
+Batches run sequentially, apply shared flags to every item, continue independent failures, and return one aggregate result.
+Use one publish command per destination project, and publish datasource dependencies before workbooks.
+
 Keep extracts when required; `--include-pds` acquires direct published datasource dependencies without recursion.
 Publish selects the managed artifact directory, not its payload file.
 Use the returned artifact path and explicit destination environment/project.
@@ -122,12 +126,14 @@ tadx workspace status --workspace <workspace>
 tadx workspace create <workspace>
 tadx workspace register <workspace> --path "<existing root>"
 tadx workspace set-default <workspace>
+tadx workspace artifact move --source <workspace> --destination <workspace> --artifact "artifacts/<kind>/<directory>"
 ```
 
 Run only the needed local command; workspace commands take no `--environment` and make no Tableau changes.
 `--workspace` is a logical registered name; pull/publish never create workspaces implicitly.
 Artifact paths remain workspace-relative with forward slashes.
-Read [workspace details](references/workspace.md) only for defaults, cloning, moving, or cleanup.
+`workspace artifact move` transfers one managed artifact and never relocates a registered workspace root.
+Read [workspace details](references/workspace.md) only for defaults, cloning, artifact movement, root relocation, or cleanup.
 
 Remote mutations require `TADX_ENABLE_MUTATIONS=1` and run by default; `--preview` plans without applying, and there is no `--apply`.
 Use previews when review or uncertainty warrants them; existing authorization does not require repeated approval.

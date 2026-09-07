@@ -16,6 +16,7 @@ import (
 	workbooklist "github.com/ahillspace/tadx/actions/workbook/list"
 	"github.com/ahillspace/tadx/internal/catalog"
 	"github.com/ahillspace/tadx/internal/readsource"
+	tableaucatalog "github.com/ahillspace/tadx/internal/tableau/catalog"
 )
 
 func TestUnfilteredLiveWorkbookListRefreshesSnapshotAndContinuesWithoutTableau(t *testing.T) {
@@ -90,6 +91,93 @@ func TestUnfilteredLiveWorkbookListRefreshesSnapshotAndContinuesWithoutTableau(t
 	}
 	if signins.Load() != 1 || inventoryReads.Load() != 2 {
 		t.Fatalf("failed continuation contacted Tableau: sign-ins = %d, reads = %d", signins.Load(), inventoryReads.Load())
+	}
+}
+
+func TestUnfilteredLiveWorkbookListSkipsWorkbooksWithInvalidProjectsAndPreservesCatalog(t *testing.T) {
+	server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		switch {
+		case request.Method == http.MethodPost && request.URL.Path == "/api/3.29/auth/signin":
+			writer.Header().Set("Content-Type", "application/json")
+			_, _ = io.WriteString(writer, `{"credentials":{"token":"session-token","site":{"id":"site-1"},"user":{"id":"user-1"}}}`)
+		case request.Method == http.MethodGet && request.URL.Path == "/api/3.29/sites/site-1/projects":
+			_, _ = io.WriteString(writer, `<tsResponse><pagination pageNumber="1" pageSize="1000" totalAvailable="1"/><projects><project id="project-ops" name="Ops"/></projects></tsResponse>`)
+		case request.Method == http.MethodGet && request.URL.Path == "/api/3.29/sites/site-1/workbooks" && request.URL.Query().Get("filter") == "":
+			writer.Header().Set("X-Tableau-Request-Id", "workbooks-request")
+			_, _ = io.WriteString(writer, `<tsResponse><pagination pageNumber="1" pageSize="1000" totalAvailable="3"/><workbooks><workbook id="workbook-valid" name="Valid"><project id="project-ops"/></workbook><workbook id="workbook-empty-project" name="Regional Superstore"><project id=""/></workbook><workbook id="workbook-unknown-project" name="Unknown Project"><project id="project-missing"/></workbook></workbooks></tsResponse>`)
+		default:
+			http.Error(writer, fmt.Sprintf("unexpected %s %s?%s", request.Method, request.URL.Path, request.URL.RawQuery), http.StatusNotFound)
+		}
+	}))
+	defer server.Close()
+
+	runtime := inventoryListRuntime(t, server)
+	store := catalog.NewStore(filepath.Dir(runtime.configPath), runtime.now)
+	seed, err := store.ReplaceResourceScope(context.Background(), catalog.ResourceScopeReplacement{
+		Environment: "production", Site: "team-site", Kind: "workbook", Source: "tableau-rest", GeneratedAt: runtime.now().Add(-time.Hour),
+		Entries: []catalog.ResourceEntry{{LUID: "workbook-existing", Name: "Existing", Payload: []byte(`{"luid":"workbook-existing","name":"Existing"}`)}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	output, err := newRemoteContentCommands(runtime).ListWorkbooks(context.Background(), workbooklist.Input{Environment: "production", Limit: 25})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if output.Page.Total != 1 || output.Page.Returned != 1 || output.Workbooks[0].LUID != "workbook-valid" {
+		t.Fatalf("partial live output = %#v", output)
+	}
+	if output.Source == nil || output.Source.Coverage != readsource.CoveragePartial || output.Source.CatalogRefreshed || !strings.Contains(output.Source.CatalogWarning, "skipped 2 malformed workbook records") {
+		t.Fatalf("partial source = %#v", output.Source)
+	}
+	if !containsString(output.Help, output.Source.CatalogWarning) {
+		t.Fatalf("partial inventory warning is missing from help: %#v", output.Help)
+	}
+	if output.Page.NextCursor != "" {
+		t.Fatalf("partial inventory returned a continuation cursor: %q", output.Page.NextCursor)
+	}
+
+	cached, err := store.ReadResources(context.Background(), catalog.ResourceQuery{Environment: "production", Site: "team-site", Kind: "workbook", Limit: 10})
+	if err != nil || len(cached.Entries) != 1 || cached.Entries[0].LUID != "workbook-existing" {
+		t.Fatalf("catalog snapshot changed: %#v, %v", cached, err)
+	}
+	if cached.GenerationID != seed.GenerationID {
+		t.Fatalf("catalog generation changed from %q to %q", seed.GenerationID, cached.GenerationID)
+	}
+}
+
+func TestInventoryResourceEntriesSkipsInvalidProjectReferencesAcrossContentScopes(t *testing.T) {
+	projectDependency := tableaucatalog.InventoryTable{
+		Scope: tableaucatalog.ScopeProjects,
+		Rows:  [][]any{{"project-ops", "Ops", ""}},
+	}
+	tests := []struct {
+		name  string
+		scope tableaucatalog.Scope
+		rows  [][]any
+	}{
+		{name: "datasources", scope: tableaucatalog.ScopeDatasources, rows: [][]any{
+			{"datasource-valid", "Valid", "project-ops", "", "", `{"luid":"datasource-valid","name":"Valid"}`},
+			{"datasource-invalid", "Invalid", "project-missing", "", "", `{"luid":"datasource-invalid","name":"Invalid"}`},
+		}},
+		{name: "flows", scope: tableaucatalog.ScopeFlows, rows: [][]any{
+			{"flow-valid", "Valid", "project-ops", "", "tflx", "", `{"luid":"flow-valid","name":"Valid"}`},
+			{"flow-invalid", "Invalid", "", "", "tflx", "", `{"luid":"flow-invalid","name":"Invalid"}`},
+		}},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			entries, skipped, err := inventoryResourceEntries(tableaucatalog.InventorySnapshot{
+				Scope: test.scope, Rows: test.rows, Dependencies: []tableaucatalog.InventoryTable{projectDependency},
+			}, "production", "team-site", time.Date(2026, 9, 5, 12, 0, 0, 0, time.UTC))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(entries) != 1 || skipped != 1 || !strings.HasSuffix(entries[0].LUID, "-valid") {
+				t.Fatalf("entries = %#v, skipped = %d", entries, skipped)
+			}
+		})
 	}
 }
 

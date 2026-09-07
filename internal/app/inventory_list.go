@@ -25,10 +25,12 @@ const inventoryRefreshHelp = "Complete live inventory refreshed the local catalo
 const inventoryRefreshWarningHelp = "The live result is complete, but the catalog was not updated; retry without a continuation cursor to refresh it."
 
 type collectedResourceInventory struct {
-	entries    []corecatalog.ResourceEntry
-	published  corecatalog.ReplaceResult
-	requestIDs []string
-	publishErr error
+	entries     []corecatalog.ResourceEntry
+	published   corecatalog.ReplaceResult
+	requestIDs  []string
+	catalogErr  error
+	skippedRows int
+	kind        string
 }
 
 func collectResourceInventory(ctx context.Context, executor tableaucatalog.Executor, store *corecatalog.Store, scope tableaucatalog.Scope, environment, site string, observedAt time.Time) (collectedResourceInventory, error) {
@@ -40,7 +42,7 @@ func collectResourceInventory(ctx context.Context, executor tableaucatalog.Execu
 	if err != nil {
 		return collectedResourceInventory{}, err
 	}
-	entries, err := inventoryResourceEntries(snapshot, environment, site, observedAt)
+	entries, skippedRows, err := inventoryResourceEntries(snapshot, environment, site, observedAt)
 	if err != nil {
 		return collectedResourceInventory{}, err
 	}
@@ -55,12 +57,44 @@ func collectResourceInventory(ctx context.Context, executor tableaucatalog.Execu
 		}
 		return entries[i].LUID < entries[j].LUID
 	})
+	inventory := collectedResourceInventory{
+		entries: entries, requestIDs: append([]string(nil), snapshot.TableauRequestIDs...),
+		skippedRows: skippedRows, kind: inventoryKind(scope),
+	}
+	if skippedRows > 0 {
+		inventory.catalogErr = errors.New("incomplete live inventory cannot replace a complete catalog scope")
+		return inventory, nil
+	}
 	result, err := store.ReplaceResourceScope(ctx, corecatalog.ResourceScopeReplacement{
 		Environment: environment, Site: site, Kind: inventoryKind(scope), Source: "tableau-rest", GeneratedAt: observedAt, Entries: entries,
 	})
-	return collectedResourceInventory{
-		entries: entries, published: result, requestIDs: append([]string(nil), snapshot.TableauRequestIDs...), publishErr: err,
-	}, nil
+	inventory.published, inventory.catalogErr = result, err
+	return inventory, nil
+}
+
+func (i collectedResourceInventory) warningSource(observedAt time.Time) *readsource.Metadata {
+	if i.skippedRows == 0 {
+		return liveInventoryWarningSource(observedAt)
+	}
+	value := readsource.Live(observedAt)
+	value.Coverage = readsource.CoveragePartial
+	value.CatalogWarning = i.incompleteWarning()
+	return &value
+}
+
+func (i collectedResourceInventory) warningHelp() string {
+	if i.skippedRows == 0 {
+		return inventoryRefreshWarningHelp
+	}
+	return i.incompleteWarning()
+}
+
+func (i collectedResourceInventory) incompleteWarning() string {
+	record := i.kind + " record"
+	if i.skippedRows != 1 {
+		record += "s"
+	}
+	return fmt.Sprintf("The live inventory skipped %d malformed %s, so coverage is incomplete and the local catalog snapshot was not updated.", i.skippedRows, record)
 }
 
 type inventoryMemoryReader struct {
@@ -115,20 +149,22 @@ func (r inventoryMemoryReader) ListGroups(_ context.Context, input grouplist.Pag
 	return grouplist.Page{Number: 1, Size: input.PageSize, Total: len(r.entries), Groups: items, RequestID: r.requestID, SuppressContinuation: true}, err
 }
 
-func inventoryResourceEntries(snapshot tableaucatalog.InventorySnapshot, environment, site string, observedAt time.Time) ([]corecatalog.ResourceEntry, error) {
+func inventoryResourceEntries(snapshot tableaucatalog.InventorySnapshot, environment, site string, observedAt time.Time) ([]corecatalog.ResourceEntry, int, error) {
 	projects, err := inventoryProjects(snapshot)
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 	entries := make([]corecatalog.ResourceEntry, 0, len(snapshot.Rows))
+	skippedRows := 0
 	for _, row := range snapshot.Rows {
 		entry, err := inventoryResourceEntry(snapshot.Scope, row, projects, environment, site, observedAt)
 		if err != nil {
-			return nil, err
+			skippedRows++
+			continue
 		}
 		entries = append(entries, entry)
 	}
-	return entries, nil
+	return entries, skippedRows, nil
 }
 
 type inventoryProject struct {

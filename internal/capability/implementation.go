@@ -78,7 +78,7 @@ var implementationManifest = map[string]struct {
 	"workspace.list":            {CommandPath: []string{"workspace", "list"}},
 	"workspace.delete":          {CommandPath: []string{"workspace", "delete"}},
 	"workspace.register":        {CommandPath: []string{"workspace", "register"}},
-	"workspace.move":            {CommandPath: []string{"workspace", "move"}},
+	"workspace.move":            {CommandPath: []string{"workspace", "artifact", "move"}},
 	"workspace.set-default":     {CommandPath: []string{"workspace", "set-default"}},
 	"workspace.status":          {CommandPath: []string{"workspace", "status"}},
 	"workspace.unregister":      {CommandPath: []string{"workspace", "unregister"}},

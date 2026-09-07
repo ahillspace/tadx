@@ -118,7 +118,7 @@ func TestRootAddsEnvironmentAndAuthStatusCommands(t *testing.T) {
 			got = append(got, registration.CapabilityID)
 		}
 	}
-	want := []string{"auth.status", "env.profile.add", "env.profile.set-default", "env.profile.get", "env.profile.list", "env.profile.remove", "env.profile.update", "workspace.artifact.delete", "workspace.clean", "workspace.clone", "workspace.create", "workspace.delete", "workspace.list", "workspace.move", "workspace.register", "workspace.set-default", "workspace.status", "workspace.unregister"}
+	want := []string{"auth.status", "env.profile.add", "env.profile.set-default", "env.profile.get", "env.profile.list", "env.profile.remove", "env.profile.update", "workspace.artifact.delete", "workspace.move", "workspace.clean", "workspace.clone", "workspace.create", "workspace.delete", "workspace.list", "workspace.register", "workspace.set-default", "workspace.status", "workspace.unregister"}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("registrations = %v, want %v", got, want)
 	}

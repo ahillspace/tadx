@@ -66,6 +66,30 @@ func TestWorkbookBundlePersistsWorkbookLineageInSameTransaction(t *testing.T) {
 	}
 }
 
+func TestWorkbookBundleClassifiesAcquiredDatasourceForRepublish(t *testing.T) {
+	workspace := createDatasourceWorkspace(t)
+	input := validWorkbookBundle(workspace, "v1")
+	input.Workbook.Metadata.PublishedDatasources = input.Workbook.Metadata.PublishedDatasources[:1]
+	input.Datasources = input.Datasources[:1]
+	input.Datasources[0].Filename = "Sales.tds"
+	input.Datasources[0].Content = []byte(`<datasource><connection class="sqlserver"/></datasource>`)
+
+	result, err := NewWorkbookBundleManager(time.Now).Pull(context.Background(), input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	stored, err := NewDatasourceManager(time.Now).Read(context.Background(), result.Datasources[0].ArtifactPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if stored.CompositionStatus != CompositionStatusOrdinary || len(stored.ParentDataSourceURLs) != 0 {
+		t.Fatalf("acquired datasource composition = %q, parents = %#v", stored.CompositionStatus, stored.ParentDataSourceURLs)
+	}
+	if string(input.Datasources[0].Content) != `<datasource><connection class="sqlserver"/></datasource>` {
+		t.Fatal("dependency classification changed native datasource bytes")
+	}
+}
+
 func TestWorkbookBundleRestoresEveryArtifactWhenLaterInstallFails(t *testing.T) {
 	workspace := createDatasourceWorkspace(t)
 	manager := NewWorkbookBundleManager(time.Now)

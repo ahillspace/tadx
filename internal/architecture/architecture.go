@@ -189,12 +189,17 @@ func localImportAllowed(file, imported string) bool {
 				"internal/workspace",
 			)
 	case layerCLI:
-		return matchesPrefix(imported, "actions", "internal/cli") || matchesExact(imported, "internal/errs", "internal/pathspec")
+		return matchesPrefix(imported, "actions", "internal/cli") || matchesExact(imported, "internal/errs", "internal/pathspec", "internal/contentbatch")
 	case layerResource:
 		return matchesExact(imported, "internal/identity") || matchesPrefix(imported, "internal/tableau")
 	case layerTableau:
 		return matchesExact(imported, "internal/auth", "internal/tableau", "internal/tableau/catalog/tabxml")
 	case layerFoundation:
+		// The batch runner invokes supplied operations and aggregates their
+		// structured outcomes without depending on actions or remote adapters.
+		if hasPathPrefix(file, "internal/contentbatch") {
+			return matchesExact(imported, "internal/errs")
+		}
 		if hasPathPrefix(file, "internal/output") {
 			return matchesExact(imported, "internal/errs", "internal/toon")
 		}
@@ -352,6 +357,7 @@ func disallowedLocalImportReason(file, imported string) string {
 
 func isFoundationPackage(file string) bool {
 	return hasPathPrefix(file, "internal/artifact") ||
+		hasPathPrefix(file, "internal/contentbatch") ||
 		hasPathPrefix(file, "internal/architecture") ||
 		hasPathPrefix(file, "internal/auth") ||
 		hasPathPrefix(file, "internal/config") ||

@@ -230,7 +230,7 @@ func (m *WorkbookBundleManager) prepareDatasource(ctx context.Context, workspace
 	metadata.PulledAt = m.now().UTC().Format(time.RFC3339Nano)
 	metadata.CanonicalPayload = filename
 	metadata.LocalBaselineFingerprint = baseline
-	metadata.CompositionStatus = CompositionStatusUnknown
+	metadata.CompositionStatus, metadata.ParentDataSourceURLs = classifyDatasourcePackage(filename, input.Content)
 	metadata.sourceSitePresent = true
 	if err := validateDatasourceMetadata(metadata); err != nil {
 		return preparedDirectory{}, DatasourcePullResult{}, err
@@ -254,7 +254,8 @@ func (m *WorkbookBundleManager) prepareDatasource(ctx context.Context, workspace
 	}
 	return preparedDirectory{target: target, staging: staging, backupPrefix: datasourceBackupPrefix}, DatasourcePullResult{
 		ArtifactPath: target, CanonicalPath: filepath.Join(target, filename), WorkspaceRelativePath: filepath.ToSlash(relative),
-		BaselineFingerprint: baseline, Warnings: warnings,
+		BaselineFingerprint: baseline, Warnings: warnings, CompositionStatus: metadata.CompositionStatus,
+		ParentDataSourceURLs: append([]string(nil), metadata.ParentDataSourceURLs...),
 	}, nil
 }
 

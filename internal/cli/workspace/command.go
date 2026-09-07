@@ -76,7 +76,7 @@ type Dependencies struct {
 
 func New(deps Dependencies) *cobra.Command {
 	command := &cobra.Command{Use: "workspace", Short: "Manage named local workspaces"}
-	command.AddCommand(newCreate(deps), newRegister(deps), newClone(deps), newList(deps), newStatus(deps), newSetDefault(deps), newUnregister(deps), newDeleteWorkspace(deps), newMove(deps), newArtifact(deps), newClean(deps))
+	command.AddCommand(newCreate(deps), newRegister(deps), newClone(deps), newList(deps), newStatus(deps), newSetDefault(deps), newUnregister(deps), newDeleteWorkspace(deps), newMove(deps, true), newArtifact(deps), newClean(deps))
 	return command
 }
 
@@ -280,11 +280,11 @@ func newStatus(deps Dependencies) *cobra.Command {
 	return command
 }
 
-func newMove(deps Dependencies) *cobra.Command {
+func newMove(deps Dependencies, hidden bool) *cobra.Command {
 	var input workspacemove.Input
 	command := &cobra.Command{
 		Use: use(deps, "workspace.move", "move"), Short: short(deps, "workspace.move", "Move one exact managed artifact."),
-		Annotations: map[string]string{"tadx.capability": "workspace.move"},
+		Hidden: hidden,
 		Args: func(command *cobra.Command, args []string) error {
 			if err := noArgs("workspace.move")(command, args); err != nil {
 				return err
@@ -301,6 +301,11 @@ func newMove(deps Dependencies) *cobra.Command {
 			}
 			return deps.Renderer.Render(result)
 		},
+	}
+	if !hidden {
+		command.Annotations = map[string]string{"tadx.capability": "workspace.move"}
+	} else {
+		command.Annotations = map[string]string{"tadx.alias": "true"}
 	}
 	command.Flags().StringVar(&input.SourceWorkspace, "source", "", "logical source workspace name")
 	command.Flags().StringVar(&input.DestinationWorkspace, "destination", "", "logical destination workspace name")
@@ -336,7 +341,7 @@ func newArtifact(deps Dependencies) *cobra.Command {
 	selectorFlags(command, &input.Path, &input.Kind, &input.LUID)
 	command.Flags().BoolVar(&input.Force, "force", false, "acknowledge deletion of a dirty artifact")
 	command.Flags().BoolVar(&preview, "preview", false, "preview the local deletion without performing it")
-	artifact.AddCommand(command)
+	artifact.AddCommand(newMove(deps, false), command)
 	return artifact
 }
 

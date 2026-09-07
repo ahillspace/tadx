@@ -101,7 +101,7 @@ Use `tadx capability get <id>` for the same focused metadata at runtime.
 | `workspace.create` | cli | ship | ready | implemented | `tadx workspace create` |
 | `workspace.delete` | cli | ship | ready | implemented | `tadx workspace delete` |
 | `workspace.list` | cli | ship | ready | implemented | `tadx workspace list` |
-| `workspace.move` | cli | ship | ready | implemented | `tadx workspace move` |
+| `workspace.move` | cli | ship | ready | implemented | `tadx workspace artifact move` |
 | `workspace.register` | cli | ship | ready | implemented | `tadx workspace register` |
 | `workspace.set-default` | cli | ship | ready | implemented | `tadx workspace set-default` |
 | `workspace.status` | cli | ship | ready | implemented | `tadx workspace status` |
@@ -943,13 +943,13 @@ Move one exact published datasource to one exact project on the same site, or pr
 
 ### `datasource.publish`
 
-Publish one local datasource, including explicit immediate-parent references for composed artifacts, or preview the operation.
+Publish one local datasource, or up to 100 repeated managed datasource artifacts sequentially, including explicit immediate-parent references for composed artifacts, or preview the operations.
 
 - Surface: tadx content datasource publish
 - Operation type: deliver
 - Owner: cli
 - MCP overlap: None
-- Selectors: Logical workspace plus exact workspace-relative managed datasource directory; target defaults to artifact source, explicit environment/site/project overrides; optional exact existing datasource; immediate parents for composed artifacts
+- Selectors: Logical workspace plus one or more exact workspace-relative managed datasource directories; target defaults to artifact source, explicit environment/site/project overrides; optional exact existing datasource; immediate parents for composed artifacts
 - Products and availability: Cloud / Server; composed path API 3.29 / Tableau 2026.2 per C1
 - Product disposition: ship
 - Evidence level: contract-verified
@@ -959,7 +959,7 @@ Publish one local datasource, including explicit immediate-parent references for
 - Remote mutation: Yes
 - Supports `--preview`: Yes
 - Raw capable: No
-- Safety and guard: Overwrite/append/replace never inferred; preview shows resolved environment/name/LUID; stop on terminal failure
+- Safety and guard: Batch selectors prevalidated; sequential processing continues independent failures and returns aggregate failure; overwrite/append/replace never inferred; preview shows resolved environment/name/LUID
 - Artifact effect: Read / publish
 - Upstream operation: POST /api/{version}/sites/{site-id}/datasources; upload sessions; parentDataSourceUrls for composed path
 - Evidence: docs/evidence/datasource-lifecycle-rest-contract.md
@@ -969,13 +969,13 @@ Publish one local datasource, including explicit immediate-parent references for
 
 ### `datasource.pull`
 
-Download one datasource while preserving its native package and composition provenance, and capture bounded lineage.
+Download one datasource, or up to 100 repeated authoritative datasource LUIDs sequentially, while preserving native packages, composition provenance, and bounded lineage.
 
 - Surface: tadx content datasource pull
 - Operation type: deliver
 - Owner: cli
 - MCP overlap: None
-- Selectors: Datasource LUID/exact path; logical workspace
+- Selectors: Datasource LUID/exact path; repeatable datasource LUID for batches; logical workspace
 - Products and availability: Cloud / Server; composed round-trip requires Tableau 2026.2 behavior per C1
 - Product disposition: ship
 - Evidence level: contract-verified
@@ -985,7 +985,7 @@ Download one datasource while preserving its native package and composition prov
 - Remote mutation: No
 - Supports `--preview`: No
 - Raw capable: No
-- Safety and guard: Dirty re-pull requires --overwrite; incomplete lineage warns; no package-semantic loss
+- Safety and guard: Batch selectors prevalidated; sequential processing continues independent failures and returns aggregate failure; dirty re-pull requires --overwrite; incomplete lineage warns; no package-semantic loss
 - Artifact effect: Create / update package and lineage sidecar
 - Upstream operation: GET /api/{version}/sites/{site-id}/datasources/{datasource-id}/content plus focused Metadata GraphQL reads
 - Evidence: docs/evidence/datasource-lifecycle-rest-contract.md; docs/evidence/lineage-metadata-contract.md
@@ -1359,13 +1359,13 @@ Move one exact flow to one exact project on the same site, or preview the operat
 
 ### `flow.publish`
 
-Publish one local TFL/TFLX to its source target or an explicit target, or preview the operation.
+Publish one local TFL/TFLX, or up to 100 repeated managed flow artifacts sequentially, to one source or explicit target, or preview the operations.
 
 - Surface: tadx content flow publish
 - Operation type: deliver
 - Owner: cli
 - MCP overlap: None
-- Selectors: Logical workspace plus exact workspace-relative managed flow directory; target defaults to artifact source, explicit environment/site/project overrides; optional exact existing flow
+- Selectors: Logical workspace plus one or more exact workspace-relative managed flow directories; target defaults to artifact source, explicit environment/site/project overrides; optional exact existing flow
 - Products and availability: Cloud / Server with flow support
 - Product disposition: ship
 - Evidence level: contract-verified
@@ -1375,7 +1375,7 @@ Publish one local TFL/TFLX to its source target or an explicit target, or previe
 - Remote mutation: Yes
 - Supports `--preview`: Yes
 - Raw capable: No
-- Safety and guard: Preview shows resolved environment/name/LUID; overwrite explicit
+- Safety and guard: Batch selectors prevalidated; sequential processing continues independent failures and returns aggregate failure; preview shows resolved environment/name/LUID; overwrite explicit
 - Artifact effect: Read / publish
 - Upstream operation: POST /api/{version}/sites/{site-id}/flows; upload sessions for large files
 - Evidence: Official REST capture and hermetic contract tests in docs/evidence/flow-rest-contract.md
@@ -1385,13 +1385,13 @@ Publish one local TFL/TFLX to its source target or an explicit target, or previe
 
 ### `flow.pull`
 
-Download one flow unchanged, capture bounded lineage, and create a provenance-bearing local artifact.
+Download one flow, or up to 100 repeated authoritative flow LUIDs sequentially, unchanged with bounded lineage and provenance.
 
 - Surface: tadx content flow pull
 - Operation type: deliver
 - Owner: cli
 - MCP overlap: get-flow is metadata-only overlap
-- Selectors: Flow LUID or exact name/project path; logical workspace
+- Selectors: Flow LUID or exact name/project path; repeatable flow LUID for batches; logical workspace
 - Products and availability: Cloud / Server with flow support
 - Product disposition: ship
 - Evidence level: contract-verified
@@ -1401,7 +1401,7 @@ Download one flow unchanged, capture bounded lineage, and create a provenance-be
 - Remote mutation: No
 - Supports `--preview`: No
 - Raw capable: No
-- Safety and guard: Dirty re-pull requires --overwrite; incomplete lineage warns
+- Safety and guard: Batch selectors prevalidated; sequential processing continues independent failures and returns aggregate failure; dirty re-pull requires --overwrite; incomplete lineage warns
 - Artifact effect: Create / update package and lineage sidecar
 - Upstream operation: Flow content GET plus focused Metadata GraphQL reads
 - Evidence: Official REST and Metadata captures plus hermetic contract tests in docs/evidence/flow-rest-contract.md and docs/evidence/lineage-metadata-contract.md
@@ -2269,13 +2269,13 @@ Move one exact workbook to one exact project on the same site, or preview the op
 
 ### `workbook.publish`
 
-Publish one local workbook to an explicit target, or preview the operation.
+Publish one local workbook, or up to 100 repeated managed workbook artifacts sequentially, to one explicit target or preview the operations.
 
 - Surface: tadx content workbook publish
 - Operation type: deliver
 - Owner: cli
 - MCP overlap: None
-- Selectors: Logical workspace plus exact workspace-relative managed workbook directory; target defaults to artifact source, explicit environment/site/project overrides; optional exact existing workbook
+- Selectors: Logical workspace plus one or more exact workspace-relative managed workbook directories; target defaults to artifact source, explicit environment/site/project overrides; optional exact existing workbook
 - Products and availability: Cloud / Server; TWB validation API only on API 3.29 / Tableau 2026.2+ per C1
 - Product disposition: ship
 - Evidence level: contract-verified
@@ -2285,7 +2285,7 @@ Publish one local workbook to an explicit target, or preview the operation.
 - Remote mutation: Yes
 - Supports `--preview`: Yes
 - Raw capable: No
-- Safety and guard: Preview shows resolved environment/name/LUID; collision/overwrite explicit; no fuzzy target
+- Safety and guard: Batch selectors prevalidated; sequential processing continues independent failures and returns aggregate failure; preview shows resolved environment/name/LUID; collision/overwrite explicit; no fuzzy target
 - Artifact effect: Read / publish
 - Upstream operation: POST /api/{version}/sites/{site-id}/workbooks; upload sessions; optional internal validateWorkbook for TWB
 - Evidence: A1 §§5.11, 6.5–6.8, 8.6; C1 §§2.3, 5.4; S1 workbook-check correction; local official REST capture
@@ -2295,13 +2295,13 @@ Publish one local workbook to an explicit target, or preview the operation.
 
 ### `workbook.pull`
 
-Download one workbook, capture bounded lineage, and optionally acquire its direct published datasource dependencies.
+Download one workbook, or up to 100 repeated authoritative workbook LUIDs sequentially, while capturing bounded lineage and optional direct published datasource dependencies.
 
 - Surface: tadx content workbook pull
 - Operation type: deliver
 - Owner: cli
 - MCP overlap: download-workbook
-- Selectors: Workbook LUID/exact path; logical workspace; optional --include-pds
+- Selectors: Workbook LUID/exact path; repeatable workbook LUID for batches; logical workspace; optional --include-pds
 - Products and availability: Cloud / Server
 - Product disposition: ship
 - Evidence level: contract-verified
@@ -2311,7 +2311,7 @@ Download one workbook, capture bounded lineage, and optionally acquire its direc
 - Remote mutation: No
 - Supports `--preview`: No
 - Raw capable: No
-- Safety and guard: Dirty workbook re-pull requires --overwrite; dirty dependencies stop acquisition; incomplete lineage warns; bundle persistence is recoverable
+- Safety and guard: Batch selectors prevalidated; sequential processing continues independent failures and returns aggregate failure; dirty workbook re-pull requires --overwrite; dirty dependencies stop acquisition; incomplete lineage warns; bundle persistence is recoverable
 - Artifact effect: Create / update workbook, lineage sidecar, and optional datasource siblings
 - Upstream operation: Workbook content GET; Metadata GraphQL POST; datasource exact/content GET
 - Evidence: A1 §§6.3–6.4, 8.2, 8.6; C1 §§2.3, 5.4, 5.13; official REST and Metadata captures; Tableau Cloud happy-path capture
@@ -2505,7 +2505,7 @@ List registered named workspaces.
 
 Move one local artifact without changing Tableau identity.
 
-- Surface: tadx workspace move
+- Surface: tadx workspace artifact move
 - Operation type: change
 - Owner: cli
 - MCP overlap: None
@@ -2525,7 +2525,7 @@ Move one local artifact without changing Tableau identity.
 - Evidence: A1 §§7.5, 8.1 and V1 exclusions; C1 §2.1
 - Validation or blocker: Architecture-locked local contract
 - Blocker ID: None
-- Command binding: `tadx workspace move`
+- Command binding: `tadx workspace artifact move`
 
 ### `workspace.register`
 

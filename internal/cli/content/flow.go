@@ -11,6 +11,7 @@ import (
 	flowpublish "github.com/ahillspace/tadx/actions/flow/publish"
 	flowpull "github.com/ahillspace/tadx/actions/flow/pull"
 	"github.com/ahillspace/tadx/internal/cli/clierr"
+	"github.com/ahillspace/tadx/internal/cli/progress"
 	"github.com/spf13/cobra"
 )
 
@@ -79,15 +80,21 @@ func newFlowInspect(deps Dependencies) *cobra.Command {
 
 func newFlowPull(deps Dependencies) *cobra.Command {
 	var input flowpull.Input
-	var luid, name, projectPath string
-	command := &cobra.Command{Use: "pull", Short: "Pull one unchanged native flow artifact.", Annotations: map[string]string{"tadx.capability": "flow.pull"}, Args: selectorArgs("flow.pull", &luid, &name, &projectPath, input.SetSelector), RunE: func(command *cobra.Command, _ []string) error {
-		result, err := deps.FlowPuller.PullFlow(command.Context(), input)
-		if err != nil {
-			return err
-		}
-		return deps.Renderer.Render(result)
+	var ids []string
+	var name, projectPath string
+	command := &cobra.Command{Use: "pull", Short: "Pull unchanged native flow artifacts sequentially.", Annotations: map[string]string{"tadx.capability": "flow.pull"}, Args: batchPullArgs("flow.pull", &ids, &name, &projectPath, input.SetSelector), RunE: func(command *cobra.Command, _ []string) error {
+		return runContentSelection(command.Context(), "flow.pull", ids, deps.Renderer, func(ctx context.Context, id string) (flowpull.Output, error) {
+			item := input
+			if id != "" {
+				item.SetSelector(id, "", "")
+			}
+			return deps.FlowPuller.PullFlow(ctx, item)
+		})
 	}}
-	readTargetFlags(command, &input.Environment, &luid, &name, &projectPath)
+	command.Flags().StringVar(&input.Environment, "environment", "", "exact environment alias; defaults to the configured read environment")
+	command.Flags().StringArrayVar(&ids, "id", nil, "authoritative flow LUID; repeat for up to 100 items, processed sequentially")
+	command.Flags().StringVar(&name, "name", "", "exact flow name")
+	command.Flags().StringVar(&projectPath, "project", "", "exact slash-delimited project path")
 	command.Flags().StringVar(&input.Workspace, "workspace", "", "logical workspace name; uses deterministic defaults when omitted")
 	command.Flags().BoolVar(&input.Overwrite, "overwrite", false, "replace a dirty local flow artifact")
 	return command
@@ -95,15 +102,17 @@ func newFlowPull(deps Dependencies) *cobra.Command {
 
 func newFlowPublish(deps Dependencies) *cobra.Command {
 	var input flowpublish.Input
+	var artifacts []string
 	var projectLUID, projectPath string
 	var preview bool
-	command := &cobra.Command{Use: "publish", Short: "Publish one native flow artifact.", Annotations: map[string]string{"tadx.capability": "flow.publish"}, Args: func(command *cobra.Command, args []string) error {
+	command := &cobra.Command{Use: "publish", Short: "Publish native flow artifacts sequentially.", Annotations: map[string]string{"tadx.capability": "flow.publish"}, Args: func(command *cobra.Command, args []string) error {
 		if err := noContentArgs("flow.publish")(command, args); err != nil {
 			return err
 		}
-		if err := validateManagedArtifactPath(input.ArtifactPath, "flow"); err != nil {
+		if err := validateArtifactSelection(artifacts, "flow", input.Name); err != nil {
 			return clierr.Usage("flow.publish", err)
 		}
+		input.ArtifactPath = artifacts[0]
 		if input.Environment != "" && (projectLUID == "") == (projectPath == "") {
 			return clierr.Usage("flow.publish", errors.New("an explicit --environment requires exactly one of --project-id or --project"))
 		}
@@ -113,14 +122,15 @@ func newFlowPublish(deps Dependencies) *cobra.Command {
 		input.SetProjectSelector(projectLUID, projectPath)
 		return nil
 	}, RunE: func(command *cobra.Command, _ []string) error {
-		result, err := deps.FlowPublisher.PublishFlow(command.Context(), input, preview)
-		if err != nil {
-			return err
-		}
-		return deps.Renderer.Render(result)
+		reporter := progress.New(command.ErrOrStderr())
+		return runPublishSelection(command.Context(), "flow.publish", "flow", artifacts, preview, deps.Renderer, reporter, func(ctx context.Context, artifact string) (flowpublish.Output, error) {
+			item := input
+			item.ArtifactPath = artifact
+			return deps.FlowPublisher.PublishFlow(ctx, item, preview)
+		})
 	}}
 	command.Flags().StringVar(&input.Workspace, "workspace", "", "logical workspace name; uses deterministic defaults when omitted")
-	command.Flags().StringVar(&input.ArtifactPath, "artifact", "", managedArtifactFlagHelp("flow", "DailyPrep--identity"))
+	command.Flags().StringArrayVar(&artifacts, "artifact", nil, managedArtifactFlagHelp("flow", "DailyPrep--identity")+"; repeat for up to 100 items, processed sequentially")
 	command.Flags().StringVar(&input.Environment, "environment", "", "explicit write environment alias; defaults to artifact source")
 	command.Flags().StringVar(&input.Name, "name", "", "published flow name; defaults to artifact name")
 	command.Flags().StringVar(&projectLUID, "project-id", "", "authoritative destination project LUID")

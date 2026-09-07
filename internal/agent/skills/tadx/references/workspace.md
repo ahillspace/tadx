@@ -27,7 +27,7 @@ Absolute paths, parent traversal, and backslash-delimited artifact selectors are
 Preserve provenance and sidecars when editing native payloads; workspace status reports dirty and missing artifacts.
 
 Use `workspace clone` to copy a managed workspace under a new identity.
-Use `workspace move` with explicit source and destination names to transfer one artifact without changing its Tableau identity.
+Use `workspace artifact move` with explicit source and destination names to transfer one artifact without changing its Tableau identity.
 Destination collisions fail; choose another destination rather than overwriting unrelated artifacts.
 
 `workspace clean --class <class>` removes the selected disposable state, preserving canonical artifacts.

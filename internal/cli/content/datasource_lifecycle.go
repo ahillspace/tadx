@@ -8,6 +8,7 @@ import (
 	datasourcepublish "github.com/ahillspace/tadx/actions/datasource/publish"
 	datasourcepull "github.com/ahillspace/tadx/actions/datasource/pull"
 	"github.com/ahillspace/tadx/internal/cli/clierr"
+	"github.com/ahillspace/tadx/internal/cli/progress"
 	"github.com/spf13/cobra"
 )
 
@@ -41,22 +42,25 @@ func addDatasourceLifecycle(command *cobra.Command, deps datasourceLifecycleDepe
 
 func newDatasourcePull(deps datasourceLifecycleDependencies) *cobra.Command {
 	var input datasourcepull.Input
-	var luid, name, projectPath string
+	var ids []string
+	var name, projectPath string
 	command := &cobra.Command{
-		Use: "pull", Short: "Pull one unchanged native datasource artifact.",
+		Use: "pull", Short: "Pull unchanged native datasource artifacts sequentially.",
 		Annotations: map[string]string{"tadx.capability": "datasource.pull"},
-		Args:        selectorArgs("datasource.pull", &luid, &name, &projectPath, input.SetSelector),
+		Args:        batchPullArgs("datasource.pull", &ids, &name, &projectPath, input.SetSelector),
 		RunE: func(command *cobra.Command, _ []string) error {
-			result, err := deps.puller.PullDatasource(command.Context(), input)
-			if err != nil {
-				return err
-			}
-			return deps.renderer.Render(result)
+			return runContentSelection(command.Context(), "datasource.pull", ids, deps.renderer, func(ctx context.Context, id string) (datasourcepull.Output, error) {
+				item := input
+				if id != "" {
+					item.SetSelector(id, "", "")
+				}
+				return deps.puller.PullDatasource(ctx, item)
+			})
 		},
 	}
 	command.Flags().StringVar(&input.Environment, "environment", "", "exact environment alias; defaults to the configured read environment")
 	command.Flags().StringVar(&input.Workspace, "workspace", "", "logical workspace name; uses deterministic defaults when omitted")
-	command.Flags().StringVar(&luid, "id", "", "authoritative datasource LUID")
+	command.Flags().StringArrayVar(&ids, "id", nil, "authoritative datasource LUID; repeat for up to 100 items, processed sequentially")
 	command.Flags().StringVar(&name, "name", "", "exact datasource name")
 	command.Flags().StringVar(&projectPath, "project", "", "exact slash-delimited project path")
 	command.Flags().BoolVar(&input.Overwrite, "overwrite", false, "replace a dirty local datasource artifact")
@@ -65,19 +69,21 @@ func newDatasourcePull(deps datasourceLifecycleDependencies) *cobra.Command {
 
 func newDatasourcePublish(deps datasourceLifecycleDependencies) *cobra.Command {
 	var input datasourcepublish.Input
+	var artifacts []string
 	var projectLUID, projectPath string
 	var create, overwrite, appendMode, replace bool
 	var preview bool
 	command := &cobra.Command{
-		Use: "publish", Short: "Publish one native datasource artifact.",
+		Use: "publish", Short: "Publish native datasource artifacts sequentially.",
 		Annotations: map[string]string{"tadx.capability": "datasource.publish"},
 		Args: func(command *cobra.Command, args []string) error {
 			if err := noContentArgs("datasource.publish")(command, args); err != nil {
 				return err
 			}
-			if err := validateManagedArtifactPath(input.ArtifactPath, "datasource"); err != nil {
+			if err := validateArtifactSelection(artifacts, "datasource", input.Name); err != nil {
 				return clierr.Usage("datasource.publish", err)
 			}
+			input.ArtifactPath = artifacts[0]
 			if input.Environment == "" {
 				if projectLUID != "" || projectPath != "" {
 					return clierr.Usage("datasource.publish", errors.New("--project-id and --project require an explicit --environment"))
@@ -112,14 +118,15 @@ func newDatasourcePublish(deps datasourceLifecycleDependencies) *cobra.Command {
 			return nil
 		},
 		RunE: func(command *cobra.Command, _ []string) error {
-			result, err := deps.publisher.PublishDatasource(command.Context(), input, preview)
-			if err != nil {
-				return err
-			}
-			return deps.renderer.Render(result)
+			reporter := progress.New(command.ErrOrStderr())
+			return runPublishSelection(command.Context(), "datasource.publish", "datasource", artifacts, preview, deps.renderer, reporter, func(ctx context.Context, artifact string) (datasourcepublish.Output, error) {
+				item := input
+				item.ArtifactPath = artifact
+				return deps.publisher.PublishDatasource(ctx, item, preview)
+			})
 		},
 	}
-	command.Flags().StringVar(&input.ArtifactPath, "artifact", "", managedArtifactFlagHelp("datasource", "Sales--identity"))
+	command.Flags().StringArrayVar(&artifacts, "artifact", nil, managedArtifactFlagHelp("datasource", "Sales--identity")+"; repeat for up to 100 items, processed sequentially")
 	command.Flags().StringVar(&input.Workspace, "workspace", "", "logical workspace name; uses deterministic defaults when omitted")
 	command.Flags().StringVar(&input.Environment, "environment", "", "explicit write environment alias; defaults to the artifact source")
 	command.Flags().StringVar(&input.Name, "name", "", "published datasource name; defaults to the artifact name")
