@@ -99,8 +99,34 @@ if [ "$action" = 'uninstall' ]; then
     exit 0
 fi
 
-command -v curl >/dev/null 2>&1 || fail 'curl is required.'
 command -v tar >/dev/null 2>&1 || fail 'tar is required.'
+
+use_github_cli=0
+if command -v gh >/dev/null 2>&1 && gh auth status --hostname github.com >/dev/null 2>&1; then
+    use_github_cli=1
+fi
+
+receive_release_asset() {
+    release_tag=$1
+    release_asset=$2
+    release_destination=$3
+    release_https_base=$4
+    rm -f "$release_destination"
+
+    if [ "$use_github_cli" -eq 1 ]; then
+        if [ -n "$release_tag" ]; then
+            if gh release download "$release_tag" --repo "$repository" --pattern "$release_asset" --output "$release_destination" >/dev/null 2>&1; then
+                [ -f "$release_destination" ] && return 0
+            fi
+        elif gh release download --repo "$repository" --pattern "$release_asset" --output "$release_destination" >/dev/null 2>&1; then
+            [ -f "$release_destination" ] && return 0
+        fi
+        rm -f "$release_destination"
+    fi
+
+    command -v curl >/dev/null 2>&1 || return 1
+    curl -fL --proto '=https' --tlsv1.2 -o "$release_destination" "${release_https_base}/${release_asset}"
+}
 
 case "$(uname -s)" in
     Darwin) operating_system='darwin' ;;
@@ -124,7 +150,8 @@ manifest_path="${temporary_directory}/checksums.txt"
 
 if [ "$version" = 'latest' ]; then
     release_base="https://github.com/${repository}/releases/latest/download"
-    curl -fL --proto '=https' --tlsv1.2 -o "$manifest_path" "${release_base}/checksums.txt"
+    release_tag=''
+    receive_release_asset "$release_tag" 'checksums.txt' "$manifest_path" "$release_base" || fail 'The latest stable TADX release could not be downloaded.'
     suffix="_${operating_system}_${architecture}.tar.gz"
     asset_name=$(awk -v suffix="$suffix" '
         length($1) == 64 && substr($2, length($2) - length(suffix) + 1) == suffix { print $2 }
@@ -143,7 +170,8 @@ else
     downloaded=0
     for tag in "$version" "v${resolved_version}" "$resolved_version"; do
         release_base="https://github.com/${repository}/releases/download/${tag}"
-        if curl -fL --proto '=https' --tlsv1.2 -o "$manifest_path" "${release_base}/checksums.txt" 2>/dev/null; then
+        if receive_release_asset "$tag" 'checksums.txt' "$manifest_path" "$release_base" 2>/dev/null; then
+            release_tag=$tag
             downloaded=1
             break
         fi
@@ -159,7 +187,7 @@ hash_count=$(printf '%s\n' "$expected_hash" | awk 'NF { count++ } END { print co
 [ "$hash_count" -eq 1 ] || fail "The checksum manifest must contain exactly one entry for $asset_name."
 
 archive_path="${temporary_directory}/${asset_name}"
-curl -fL --proto '=https' --tlsv1.2 -o "$archive_path" "${release_base}/${asset_name}"
+receive_release_asset "$release_tag" "$asset_name" "$archive_path" "$release_base" || fail "The release asset $asset_name could not be downloaded."
 
 if command -v sha256sum >/dev/null 2>&1; then
     actual_hash=$(sha256sum "$archive_path" | awk '{ print tolower($1) }')

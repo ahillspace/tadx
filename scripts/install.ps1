@@ -54,6 +54,59 @@ function Invoke-Download {
     Invoke-WebRequest -UseBasicParsing -Uri $Uri -OutFile $Destination
 }
 
+function Test-AuthenticatedGitHubCLI {
+    $command = Get-Command 'gh' -ErrorAction SilentlyContinue
+    if ($null -eq $command) {
+        return $false
+    }
+
+    try {
+        & $command.Source auth status --hostname github.com *> $null
+        return $LASTEXITCODE -eq 0
+    }
+    catch {
+        return $false
+    }
+}
+
+function Receive-ReleaseAsset {
+    param(
+        [Parameter(Mandatory = $true)][string]$AssetName,
+        [Parameter(Mandatory = $true)][string]$Destination,
+        [Parameter(Mandatory = $true)][string]$HttpsBase,
+        [string]$Tag = '',
+        [bool]$UseGitHubCLI = $false
+    )
+
+    Remove-Item -LiteralPath $Destination -Force -ErrorAction SilentlyContinue
+    if ($UseGitHubCLI) {
+        $arguments = @('release', 'download')
+        if (-not [string]::IsNullOrWhiteSpace($Tag)) {
+            $arguments += $Tag
+        }
+        $arguments += @('--repo', $Repository, '--pattern', $AssetName, '--output', $Destination)
+        try {
+            & gh @arguments *> $null
+            if ($LASTEXITCODE -eq 0 -and (Test-Path -LiteralPath $Destination)) {
+                return $true
+            }
+        }
+        catch {
+            # Continue to the unauthenticated HTTPS fallback.
+        }
+        Remove-Item -LiteralPath $Destination -Force -ErrorAction SilentlyContinue
+    }
+
+    try {
+        Invoke-Download -Uri "$HttpsBase/$AssetName" -Destination $Destination
+        return $true
+    }
+    catch {
+        Remove-Item -LiteralPath $Destination -Force -ErrorAction SilentlyContinue
+        return $false
+    }
+}
+
 function Get-ChecksumEntries {
     param([Parameter(Mandatory = $true)][string]$ManifestPath)
 
@@ -213,10 +266,14 @@ New-Item -ItemType Directory -Path $temporaryDirectory | Out-Null
 try {
     $manifestPath = Join-Path $temporaryDirectory 'checksums.txt'
     $releaseBase = ''
+    $releaseTag = ''
+    $useGitHubCLI = Test-AuthenticatedGitHubCLI
 
     if ($Version -ieq 'latest') {
         $releaseBase = "https://github.com/$Repository/releases/latest/download"
-        Invoke-Download -Uri "$releaseBase/checksums.txt" -Destination $manifestPath
+        if (-not (Receive-ReleaseAsset -AssetName 'checksums.txt' -Destination $manifestPath -HttpsBase $releaseBase -UseGitHubCLI $useGitHubCLI)) {
+            throw 'The latest stable TADX release could not be downloaded.'
+        }
         $entries = @(Get-ChecksumEntries -ManifestPath $manifestPath)
         $assetPattern = '^tadx_([^_]+)_windows_' + [regex]::Escape($architecture) + '\.zip$'
         $candidateEntries = @($entries | Where-Object { $_.File -match $assetPattern })
@@ -241,14 +298,11 @@ try {
         $tagCandidates = @($Version, "v$resolvedVersion", $resolvedVersion) | Select-Object -Unique
         $downloaded = $false
         foreach ($tag in $tagCandidates) {
-            try {
-                $releaseBase = "https://github.com/$Repository/releases/download/$tag"
-                Invoke-Download -Uri "$releaseBase/checksums.txt" -Destination $manifestPath
+            $releaseBase = "https://github.com/$Repository/releases/download/$tag"
+            if (Receive-ReleaseAsset -AssetName 'checksums.txt' -Destination $manifestPath -HttpsBase $releaseBase -Tag $tag -UseGitHubCLI $useGitHubCLI) {
+                $releaseTag = $tag
                 $downloaded = $true
                 break
-            }
-            catch {
-                Remove-Item -LiteralPath $manifestPath -Force -ErrorAction SilentlyContinue
             }
         }
         if (-not $downloaded) {
@@ -258,7 +312,9 @@ try {
     }
 
     $archivePath = Join-Path $temporaryDirectory $assetName
-    Invoke-Download -Uri "$releaseBase/$assetName" -Destination $archivePath
+    if (-not (Receive-ReleaseAsset -AssetName $assetName -Destination $archivePath -HttpsBase $releaseBase -Tag $releaseTag -UseGitHubCLI $useGitHubCLI)) {
+        throw "The release asset $assetName could not be downloaded."
+    }
     Assert-ArchiveChecksum -ArchivePath $archivePath -AssetName $assetName -Entries $entries
 
     $extractDirectory = Join-Path $temporaryDirectory 'extract'

@@ -41,8 +41,31 @@ printf '%s\n' \
     '  esac' \
     '  shift' \
     'done' \
+    'printf "%s\n" "$url" >> "${TADX_TEST_CURL_LOG}"' \
     'cp "${TADX_TEST_RELEASES}/$(basename "$url")" "$destination"' > "${fake_bin}/curl"
 chmod 0755 "${fake_bin}/curl"
+
+# The single-quoted lines are the literal source of the fake gh command.
+# shellcheck disable=SC2016
+printf '%s\n' \
+    '#!/bin/sh' \
+    'set -eu' \
+    'printf "%s\n" "$*" >> "${TADX_TEST_GH_LOG}"' \
+    'if [ "${1:-}" = auth ]; then' \
+    '  [ "${TADX_TEST_GH_AUTH:-success}" = success ]' \
+    '  exit' \
+    'fi' \
+    'pattern=' \
+    'destination=' \
+    'while [ "$#" -gt 0 ]; do' \
+    '  case "$1" in' \
+    '    --pattern) shift; pattern=$1 ;;' \
+    '    --output) shift; destination=$1 ;;' \
+    '  esac' \
+    '  shift' \
+    'done' \
+    'cp "${TADX_TEST_RELEASES}/${pattern}" "$destination"' > "${fake_bin}/gh"
+chmod 0755 "${fake_bin}/gh"
 
 # The single-quoted lines are the literal source of the fake uname command.
 # shellcheck disable=SC2016
@@ -58,16 +81,23 @@ chmod 0755 "${fake_bin}/uname"
 export HOME="$home_directory"
 export SHELL='/bin/sh'
 export TADX_TEST_RELEASES="$release_directory"
+export TADX_TEST_GH_LOG="${test_root}/gh.log"
+export TADX_TEST_CURL_LOG="${test_root}/curl.log"
 PATH="${fake_bin}:${PATH}"
 export PATH
 
-sh "${repository_root}/scripts/install.sh" install --version 1.2.3 --install-dir "$install_directory" >/dev/null
+sh "${repository_root}/scripts/install.sh" install --version latest --install-dir "$install_directory" >/dev/null
 [ -x "${install_directory}/tadx" ]
 [ "$("${install_directory}/tadx")" = 'tadx test 1.2.3' ]
 [ "$(grep -c '# tadx-installer-path' "${home_directory}/.profile")" -eq 1 ]
+grep -Fq 'auth status --hostname github.com' "$TADX_TEST_GH_LOG"
+grep -Fq 'release download' "$TADX_TEST_GH_LOG"
+[ ! -e "$TADX_TEST_CURL_LOG" ]
 
+export TADX_TEST_GH_AUTH='fail'
 PATH="${install_directory}:${PATH}" sh "${repository_root}/scripts/install.sh" install --version 1.2.3 --install-dir "$install_directory" >/dev/null
 [ "$(grep -c '# tadx-installer-path' "${home_directory}/.profile")" -eq 1 ]
+[ -s "$TADX_TEST_CURL_LOG" ]
 
 mkdir -p "${home_directory}/.config/tadx" "${home_directory}/.codex/skills/tadx"
 printf '%s\n' preserved > "${home_directory}/.config/tadx/config.yaml"
