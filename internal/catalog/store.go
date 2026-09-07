@@ -28,7 +28,7 @@ const (
 	maxBatchRows         = 10_000
 	maxFieldBytes        = 64 << 10
 	staleAfter           = 12 * time.Hour
-	schemaVersion        = 5
+	schemaVersion        = 6
 	databaseRelativePath = "catalog/catalog.sqlite"
 	// generationTimeLayout is a fixed-width RFC3339 form: unlike time.RFC3339Nano
 	// (which trims trailing fractional-second zeros and so varies in width), every
@@ -89,14 +89,15 @@ type ResourceQuery struct {
 
 // ResourceResult contains a local page and its snapshot coverage provenance.
 type ResourceResult struct {
-	Entries        []ResourceEntry
-	Total          int
-	Coverage       string
-	GenerationID   string
-	GeneratedAt    time.Time
-	NewestObserved time.Time
-	Stale          bool
-	NextCursor     string
+	Entries          []ResourceEntry
+	Total            int
+	Coverage         string
+	GenerationID     string
+	GeneratedAt      time.Time
+	NewestObserved   time.Time
+	Stale            bool
+	NextCursor       string
+	InventoryWarning string
 }
 
 // ResourceScopeReplacement is one complete authoritative inventory for a

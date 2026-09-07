@@ -38,7 +38,7 @@ func (a *Action) Execute(ctx context.Context, input Input, preview bool) (Output
 	input.Environment = strings.TrimSpace(input.Environment)
 	input.Site = strings.TrimSpace(input.Site)
 	input.ProjectLUID = strings.TrimSpace(input.ProjectLUID)
-	if input.Environment == "" || input.Site == "" {
+	if input.Environment == "" || (input.Site == "" && !input.TargetResolved) {
 		return Output{}, usage("environment", "project delete requires an explicit resolved environment and site")
 	}
 	if input.ProjectLUID == "" {

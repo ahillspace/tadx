@@ -3,6 +3,8 @@ package delete
 import "github.com/ahillspace/tadx/internal/identity"
 
 type Input struct {
+	// TargetResolved confirms authenticated target selection, including the Default site.
+	TargetResolved    bool
 	Environment, Site string
 	Selector          identity.Selector
 }

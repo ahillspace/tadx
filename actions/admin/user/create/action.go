@@ -8,7 +8,10 @@ import (
 	"github.com/ahillspace/tadx/internal/errs"
 )
 
-type Input struct{ Environment, Site, Name, SiteRole, AuthSetting, IdentityPoolName, IdPConfigurationID, Email, Language, Locale string }
+type Input struct {
+	TargetResolved                                                                                                bool
+	Environment, Site, Name, SiteRole, AuthSetting, IdentityPoolName, IdPConfigurationID, Email, Language, Locale string
+}
 type User struct {
 	LUID               string `json:"luid"`
 	Name               string `json:"name"`
@@ -81,7 +84,7 @@ func (a *Action) Execute(ctx context.Context, in Input, preview bool) (Output, e
 	if a == nil || a.finder == nil || a.creator == nil {
 		return Output{}, errors.New("admin user create is not configured")
 	}
-	if in.Environment == "" || in.Site == "" || in.Name == "" || in.SiteRole == "" {
+	if in.Environment == "" || (in.Site == "" && !in.TargetResolved) || in.Name == "" || in.SiteRole == "" {
 		return Output{}, usage("selector", "admin user create requires explicit environment, site, name, and site role")
 	}
 	if (in.AuthSetting == "") == (in.IdPConfigurationID == "") {

@@ -104,7 +104,7 @@ func (a *Action) rejectCollision(ctx context.Context, input Input, source Workbo
 }
 
 func validate(input Input) error {
-	if strings.TrimSpace(input.Environment) == "" || strings.TrimSpace(input.Site) == "" {
+	if strings.TrimSpace(input.Environment) == "" || (strings.TrimSpace(input.Site) == "" && !input.TargetResolved) {
 		return usage("environment", "workbook move requires an explicit resolved environment and site")
 	}
 	if input.WorkbookSelector.LUID == "" && (strings.TrimSpace(input.WorkbookSelector.Name) == "" || strings.TrimSpace(input.WorkbookSelector.ProjectPath) == "") {

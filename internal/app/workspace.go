@@ -255,7 +255,7 @@ func (a workspaceRootDeleteStore) Resolve(ctx context.Context, name string) (wor
 	if err != nil {
 		return workspacedelete.Workspace{}, err
 	}
-	unmanaged, err := workspaceHasUnmanagedEntries(ctx, item.Root)
+	unmanaged, err := workspaceHasUnmanagedEntries(ctx, item.Root, page.ManagedPaths)
 	if err != nil {
 		return workspacedelete.Workspace{}, err
 	}
@@ -291,10 +291,18 @@ func sameWorkspaceRoot(left, right string) bool {
 	return leftErr == nil && rightErr == nil && os.SameFile(leftInfo, rightInfo)
 }
 
-func workspaceHasUnmanagedEntries(ctx context.Context, root string) (bool, error) {
+func workspaceHasUnmanagedEntries(ctx context.Context, root string, managedPaths []string) (bool, error) {
 	const maxEntries = 10000
 	entries := 0
 	managedKinds := map[string]bool{"workbook": true, "datasource": true, "flow": true, "pulse-definition": true, "lineage": true}
+	managedFiles := map[string]bool{}
+	managedDirectories := map[string]bool{}
+	for _, relative := range managedPaths {
+		managedFiles[relative] = true
+		for directory := filepath.ToSlash(filepath.Dir(filepath.FromSlash(relative))); directory != "."; directory = filepath.ToSlash(filepath.Dir(filepath.FromSlash(directory))) {
+			managedDirectories[directory] = true
+		}
+	}
 	dirty := false
 	err := filepath.WalkDir(root, func(path string, entry fs.DirEntry, err error) error {
 		if err != nil {
@@ -314,7 +322,8 @@ func workspaceHasUnmanagedEntries(ctx context.Context, root string) (bool, error
 		if err != nil {
 			return err
 		}
-		parts := strings.Split(filepath.ToSlash(relative), "/")
+		relative = filepath.ToSlash(relative)
+		parts := strings.Split(relative, "/")
 		if entry.Type()&os.ModeSymlink != 0 {
 			dirty = true
 			if entry.IsDir() {
@@ -323,8 +332,8 @@ func workspaceHasUnmanagedEntries(ctx context.Context, root string) (bool, error
 			return nil
 		}
 		switch parts[0] {
-		case config.WorkspaceConfigName:
-			if len(parts) != 1 {
+		case config.WorkspaceConfigName, ".tadx.lock":
+			if len(parts) != 1 || !entry.Type().IsRegular() {
 				dirty = true
 			}
 		case ".tadx":
@@ -332,14 +341,26 @@ func workspaceHasUnmanagedEntries(ctx context.Context, root string) (bool, error
 				return nil
 			}
 		case "artifacts":
-			if len(parts) == 1 {
+			if len(parts) == 1 && entry.IsDir() {
 				return nil
 			}
-			if !managedKinds[parts[1]] && !strings.HasPrefix(parts[1], ".tadx-") {
-				dirty = true
-				if entry.IsDir() && len(parts) == 2 {
-					return filepath.SkipDir
+			if len(parts) >= 2 && managedKinds[parts[1]] {
+				if len(parts) == 2 && entry.IsDir() {
+					return nil
 				}
+				if parts[1] == "lineage" && len(parts) == 3 && entry.IsDir() && (parts[2] == "workbook" || parts[2] == "published_datasource" || parts[2] == "flow") {
+					return nil
+				}
+				if managedDirectories[relative] && entry.IsDir() {
+					return nil
+				}
+				if managedFiles[relative] && entry.Type().IsRegular() {
+					return nil
+				}
+			}
+			dirty = true
+			if entry.IsDir() {
+				return filepath.SkipDir
 			}
 		default:
 			dirty = true

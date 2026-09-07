@@ -30,7 +30,7 @@ func (a *Action) Execute(ctx context.Context, input Input, preview bool) (Output
 	if a == nil || a.resolver == nil || a.deleter == nil {
 		return Output{}, &errs.Error{ID: "datasource.delete.unconfigured", Kind: errs.KindRuntime, Operation: "datasource.delete", Summary: "Datasource delete is not configured.", Retryable: errs.Bool(false), CorrectiveAction: "Configure datasource delete before retrying."}
 	}
-	if strings.TrimSpace(input.Environment) == "" || strings.TrimSpace(input.Site) == "" {
+	if strings.TrimSpace(input.Environment) == "" || (strings.TrimSpace(input.Site) == "" && !input.TargetResolved) {
 		return Output{}, usage("environment", "datasource delete requires an explicit resolved environment and site")
 	}
 	item, err := a.resolver.ResolveDatasource(ctx, input.Selector)

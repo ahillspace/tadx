@@ -98,7 +98,7 @@ func (c *remoteAdminCommands) ListAdminUsers(ctx context.Context, input userlist
 			return userlist.Output{}, inventoryRefreshError("admin.user.list", input.Environment, input.Site, err)
 		}
 		if inventory.catalogErr != nil {
-			reader := inventoryMemoryReader{entries: inventory.entries, requestID: finalRequestID(inventory.requestIDs)}
+			reader := inventory.memoryReader()
 			output, err := userlist.New(reader).Execute(ctx, input)
 			if err != nil {
 				return output, adminActionError("admin.user.list", input.Environment, input.Site, err)
@@ -176,6 +176,7 @@ func (c *remoteAdminCommands) CreateAdminUser(ctx context.Context, input usercre
 		return usercreate.Output{}, remoteSetupError("admin.user.create", input.Environment, input.Site, connection.environment, err)
 	}
 	input.Environment, input.Site = connection.environment.Alias, connection.environment.SiteContentURL
+	input.TargetResolved = true
 	adapter := adminUserCreateAdapter{connection.adapter}
 	output, err := usercreate.New(adapter, adapter).Execute(ctx, input, preview)
 	return output, adminActionError("admin.user.create", input.Environment, input.Site, err)
@@ -187,6 +188,7 @@ func (c *remoteAdminCommands) UpdateAdminUser(ctx context.Context, input userupd
 		return userupdate.Output{}, remoteSetupError("admin.user.update", input.Environment, input.Site, connection.environment, err)
 	}
 	input.Environment, input.Site = connection.environment.Alias, connection.environment.SiteContentURL
+	input.TargetResolved = true
 	adapter := adminUserUpdateAdapter{connection.adapter}
 	output, err := userupdate.New(adapter, adapter).Execute(ctx, input, preview)
 	return output, adminActionError("admin.user.update", input.Environment, input.Site, err)
@@ -198,6 +200,7 @@ func (c *remoteAdminCommands) DeleteAdminUser(ctx context.Context, input userdel
 		return userdelete.Output{}, remoteSetupError("admin.user.delete", input.Environment, input.Site, connection.environment, err)
 	}
 	input.Environment, input.Site = connection.environment.Alias, connection.environment.SiteContentURL
+	input.TargetResolved = true
 	adapter := adminUserDeleteAdapter{connection.adapter}
 	output, err := userdelete.New(adapter, adapter).Execute(ctx, input, preview)
 	return output, adminActionError("admin.user.delete", input.Environment, input.Site, err)
@@ -242,7 +245,7 @@ func (c *remoteAdminCommands) ListAdminGroups(ctx context.Context, input groupli
 			return grouplist.Output{}, inventoryRefreshError("admin.group.list", input.Environment, input.Site, err)
 		}
 		if inventory.catalogErr != nil {
-			reader := inventoryMemoryReader{entries: inventory.entries, requestID: finalRequestID(inventory.requestIDs)}
+			reader := inventory.memoryReader()
 			output, err := grouplist.New(reader).Execute(ctx, input)
 			if err != nil {
 				return output, adminActionError("admin.group.list", input.Environment, input.Site, err)
@@ -320,6 +323,7 @@ func (c *remoteAdminCommands) CreateAdminGroup(ctx context.Context, input groupc
 		return groupcreate.Output{}, remoteSetupError("admin.group.create", input.Environment, input.Site, connection.environment, err)
 	}
 	input.Environment, input.Site = connection.environment.Alias, connection.environment.SiteContentURL
+	input.TargetResolved = true
 	adapter := adminGroupCreateAdapter{connection.adapter}
 	output, err := groupcreate.New(adapter, adapter).Execute(ctx, input, preview)
 	return output, adminActionError("admin.group.create", input.Environment, input.Site, err)
@@ -331,6 +335,7 @@ func (c *remoteAdminCommands) UpdateAdminGroup(ctx context.Context, input groupu
 		return groupupdate.Output{}, remoteSetupError("admin.group.update", input.Environment, input.Site, connection.environment, err)
 	}
 	input.Environment, input.Site = connection.environment.Alias, connection.environment.SiteContentURL
+	input.TargetResolved = true
 	adapter := adminGroupUpdateAdapter{connection.adapter}
 	output, err := groupupdate.New(adapter, adapter, adapter).Execute(ctx, input, preview)
 	return output, adminActionError("admin.group.update", input.Environment, input.Site, err)
@@ -342,6 +347,7 @@ func (c *remoteAdminCommands) DeleteAdminGroup(ctx context.Context, input groupd
 		return groupdelete.Output{}, remoteSetupError("admin.group.delete", input.Environment, input.Site, connection.environment, err)
 	}
 	input.Environment, input.Site = connection.environment.Alias, connection.environment.SiteContentURL
+	input.TargetResolved = true
 	adapter := adminGroupDeleteAdapter{connection.adapter}
 	output, err := groupdelete.New(adapter, adapter).Execute(ctx, input, preview)
 	return output, adminActionError("admin.group.delete", input.Environment, input.Site, err)

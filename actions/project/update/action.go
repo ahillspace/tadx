@@ -89,7 +89,7 @@ func changedRequest(project Project, input Input) (UpdateRequest, bool) {
 }
 
 func validateInput(input Input) error {
-	if strings.TrimSpace(input.Environment) == "" || strings.TrimSpace(input.Site) == "" {
+	if strings.TrimSpace(input.Environment) == "" || (strings.TrimSpace(input.Site) == "" && !input.TargetResolved) {
 		return usage("environment", "project update requires an explicit resolved environment and site")
 	}
 	if input.Selector.LUID == "" && strings.TrimSpace(input.Selector.ProjectPath) == "" {

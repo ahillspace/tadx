@@ -115,7 +115,7 @@ func (a *Action) validateMove(ctx context.Context, in Input, source Project, des
 	return nil
 }
 func validate(in Input) error {
-	if strings.TrimSpace(in.Environment) == "" || strings.TrimSpace(in.Site) == "" {
+	if strings.TrimSpace(in.Environment) == "" || (strings.TrimSpace(in.Site) == "" && !in.TargetResolved) {
 		return usage("environment", "project move requires an explicit resolved environment and site")
 	}
 	if in.ProjectSelector.LUID == "" && strings.TrimSpace(in.ProjectSelector.ProjectPath) == "" {

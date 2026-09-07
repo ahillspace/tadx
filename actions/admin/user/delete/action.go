@@ -8,7 +8,10 @@ import (
 	"github.com/ahillspace/tadx/internal/errs"
 )
 
-type Input struct{ Environment, Site, UserLUID string }
+type Input struct {
+	TargetResolved              bool
+	Environment, Site, UserLUID string
+}
 type User struct {
 	LUID     string `json:"luid"`
 	Name     string `json:"name"`
@@ -76,7 +79,7 @@ func (a *Action) Execute(ctx context.Context, in Input, preview bool) (Output, e
 	if a == nil || a.resolver == nil || a.deleter == nil {
 		return Output{}, errors.New("admin user delete is not configured")
 	}
-	if in.Environment == "" || in.Site == "" || in.UserLUID == "" {
+	if in.Environment == "" || (in.Site == "" && !in.TargetResolved) || in.UserLUID == "" {
 		return Output{}, &errs.Error{ID: "admin.user.delete.usage", Kind: errs.KindUsage, Operation: "admin.user.delete", Summary: "admin user delete requires explicit environment, site, and user LUID", Retryable: errs.Bool(false), CorrectiveAction: "Provide an exact environment, site, and user LUID.", Validation: []errs.ValidationDetail{{Field: "selector", Code: "required", Message: "admin user delete requires explicit environment, site, and user LUID"}}}
 	}
 	user, err := a.resolver.ResolveUser(ctx, in.UserLUID)

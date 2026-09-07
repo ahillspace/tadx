@@ -26,7 +26,7 @@ func (a *Action) Execute(ctx context.Context, input Input, preview bool) (Output
 	if a == nil || a.resolver == nil || a.deleter == nil {
 		return Output{}, &errs.Error{ID: "flow.delete.unconfigured", Kind: errs.KindRuntime, Operation: "flow.delete", Summary: "Flow delete is not configured.", Retryable: errs.Bool(false), CorrectiveAction: "Configure flow delete before retrying."}
 	}
-	if input.Environment == "" || input.Site == "" {
+	if input.Environment == "" || (input.Site == "" && !input.TargetResolved) {
 		return Output{}, usage("environment", "flow delete requires an explicit resolved environment and site")
 	}
 	flow, err := a.resolver.ResolveFlow(ctx, input.Selector)

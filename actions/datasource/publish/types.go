@@ -16,6 +16,8 @@ const (
 )
 
 type Input struct {
+	// TargetResolved confirms authenticated target selection, including the Default site.
+	TargetResolved                                   bool
 	Workspace, ArtifactPath, Environment, Site, Name string
 	ProjectSelector                                  identity.Selector
 	SourceDefaulted                                  bool

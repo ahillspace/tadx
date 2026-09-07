@@ -25,14 +25,14 @@ func TestWorkspaceDeletionInspectionTreatsUnmanagedFilesAsDirty(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(root, "tadx.yaml"), []byte("version: 1\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	dirty, err := workspaceHasUnmanagedEntries(context.Background(), root)
+	dirty, err := workspaceHasUnmanagedEntries(context.Background(), root, nil)
 	if err != nil || dirty {
 		t.Fatalf("clean workspace: dirty=%t err=%v", dirty, err)
 	}
 	if err := os.WriteFile(filepath.Join(root, "notes.txt"), []byte("keep"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	dirty, err = workspaceHasUnmanagedEntries(context.Background(), root)
+	dirty, err = workspaceHasUnmanagedEntries(context.Background(), root, nil)
 	if err != nil || !dirty {
 		t.Fatalf("unmanaged file: dirty=%t err=%v", dirty, err)
 	}

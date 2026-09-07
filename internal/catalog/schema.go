@@ -9,7 +9,7 @@ import (
 
 var schemaStatements = []string{
 	`CREATE TABLE catalog_schema (singleton INTEGER PRIMARY KEY CHECK(singleton=1), version INTEGER NOT NULL, signature TEXT NOT NULL) STRICT`,
-	`INSERT INTO catalog_schema(singleton,version,signature) VALUES(1,5,'tadx-catalog-v5')`,
+	`INSERT INTO catalog_schema(singleton,version,signature) VALUES(1,6,'tadx-catalog-v6')`,
 	`CREATE TABLE generations (generation_key INTEGER PRIMARY KEY,id TEXT,fingerprint TEXT,environment TEXT NOT NULL,site TEXT NOT NULL,generated_at TEXT NOT NULL,complete INTEGER NOT NULL CHECK(complete IN (0,1)),source TEXT NOT NULL,record_count INTEGER NOT NULL CHECK(record_count>=0),created_at TEXT NOT NULL,UNIQUE(environment,site,id),UNIQUE(environment,site,fingerprint),CHECK((complete=0 AND id IS NULL AND fingerprint IS NULL) OR (complete=1 AND id IS NOT NULL AND fingerprint IS NOT NULL))) STRICT`,
 	`CREATE TABLE current_generations (environment TEXT NOT NULL,site TEXT NOT NULL,generation_key INTEGER NOT NULL UNIQUE REFERENCES generations(generation_key) ON DELETE RESTRICT,PRIMARY KEY(environment,site)) STRICT`,
 	`CREATE TABLE generation_scopes (generation_key INTEGER NOT NULL REFERENCES generations(generation_key) ON DELETE CASCADE,scope TEXT NOT NULL CHECK(scope IN ('users','groups','projects','workbooks','datasources','flows','views','permissions')),requested INTEGER NOT NULL CHECK(requested IN (0,1)),complete INTEGER NOT NULL CHECK(complete IN (0,1)),PRIMARY KEY(generation_key,scope)) STRICT`,
@@ -34,9 +34,11 @@ var schemaStatements = []string{
 	`CREATE INDEX catalog_records_order_idx ON catalog_records(generation_key,requested,kind,name,project_path,luid)`, `CREATE INDEX catalog_records_lookup_idx ON catalog_records(generation_key,requested,kind,name,project_path)`,
 	`CREATE INDEX resource_entries_order_idx ON resource_entries(environment,site,kind,name,project_path,luid)`,
 	`CREATE INDEX resource_scope_snapshots_generation_idx ON resource_scope_snapshots(environment,site,generation_id)`,
+	partialInventoryDDL,
+	partialInventoryRowsDDL,
 }
 
-var requiredTables = []string{"catalog_schema", "generations", "current_generations", "generation_scopes", "users", "groups", "projects", "workbooks", "datasources", "flows", "views", "permissions", "catalog_records", "resource_entries", "resource_scope_snapshots"}
+var requiredTables = []string{"catalog_schema", "generations", "current_generations", "generation_scopes", "users", "groups", "projects", "workbooks", "datasources", "flows", "views", "permissions", "catalog_records", "resource_entries", "resource_scope_snapshots", "partial_inventories", "partial_inventory_rows"}
 
 func resourceDDL(table, columns, key string) string {
 	return fmt.Sprintf(`CREATE TABLE %s (generation_key INTEGER NOT NULL REFERENCES generations(generation_key) ON DELETE CASCADE,%s,PRIMARY KEY(generation_key,%s)) STRICT`, table, columns, key)
@@ -113,7 +115,7 @@ func validateSchema(ctx context.Context, db *sql.DB) error {
 	if err := db.QueryRowContext(ctx, `SELECT version,signature FROM catalog_schema WHERE singleton=1`).Scan(&version, &signature); err != nil {
 		return fmt.Errorf("catalog schema is missing or unreadable: %w", err)
 	}
-	if version != schemaVersion || signature != "tadx-catalog-v5" {
+	if version != schemaVersion || signature != "tadx-catalog-v6" {
 		return fmt.Errorf("catalog schema version %d is unsupported", version)
 	}
 	for _, table := range requiredTables {
@@ -133,7 +135,7 @@ func migrateSchema(ctx context.Context, db *sql.DB, version int) error {
 	if version == schemaVersion {
 		return nil
 	}
-	if version != 1 && version != 2 && version != 3 && version != 4 {
+	if version < 1 || version > 5 {
 		return nil
 	}
 	conn, err := db.Conn(ctx)
@@ -160,7 +162,7 @@ func migrateSchema(ctx context.Context, db *sql.DB, version int) error {
 		committed = true
 		return nil
 	}
-	if version != 1 && version != 2 && version != 3 && version != 4 {
+	if version < 1 || version > 5 {
 		return nil
 	}
 	if version == 1 {
@@ -225,10 +227,15 @@ func migrateSchema(ctx context.Context, db *sql.DB, version int) error {
 			}
 		}
 	}
-	if _, err := conn.ExecContext(ctx, `UPDATE catalog_schema SET version=5,signature='tadx-catalog-v5' WHERE singleton=1`); err != nil {
+	for _, statement := range []string{partialInventoryDDL, partialInventoryRowsDDL} {
+		if _, err := conn.ExecContext(ctx, statement); err != nil {
+			return fmt.Errorf("migrate partial inventory storage: %w", err)
+		}
+	}
+	if _, err := conn.ExecContext(ctx, `UPDATE catalog_schema SET version=6,signature='tadx-catalog-v6' WHERE singleton=1`); err != nil {
 		return fmt.Errorf("update catalog schema marker: %w", err)
 	}
-	if _, err := conn.ExecContext(ctx, `PRAGMA user_version=5`); err != nil {
+	if _, err := conn.ExecContext(ctx, `PRAGMA user_version=6`); err != nil {
 		return fmt.Errorf("update catalog schema version: %w", err)
 	}
 	if _, err := conn.ExecContext(ctx, `COMMIT`); err != nil {

@@ -177,6 +177,7 @@ func (c *pulseCommands) DeletePulseDefinition(ctx context.Context, input definit
 		return definitiondelete.Output{}, remoteSetupError("pulse.definition.delete", input.Environment, input.Site, connection.environment, err)
 	}
 	input.Environment, input.Site = connection.environment.Alias, connection.environment.SiteContentURL
+	input.TargetResolved = true
 	adapter := pulseDefinitionDeleteAdapter{client: connection.client}
 	return definitiondelete.New(adapter, adapter).Execute(ctx, input)
 }
@@ -306,6 +307,7 @@ func (c *pulseCommands) DeletePulseMetric(ctx context.Context, input metricdelet
 		return metricdelete.Output{}, remoteSetupError("pulse.metric.delete", input.Environment, input.Site, connection.environment, err)
 	}
 	input.Environment, input.Site = connection.environment.Alias, connection.environment.SiteContentURL
+	input.TargetResolved = true
 	adapter := pulseMetricDeleteAdapter{client: connection.client}
 	return metricdelete.New(adapter, adapter).Execute(ctx, input)
 }

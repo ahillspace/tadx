@@ -88,7 +88,7 @@ func (a *Action) Execute(ctx context.Context, input Input, preview bool) (Output
 	return output, nil
 }
 func (a *Action) plan(ctx context.Context, input Input) (Plan, error) {
-	if input.Environment == "" || input.Site == "" {
+	if input.Environment == "" || (input.Site == "" && !input.TargetResolved) {
 		return Plan{}, usage("environment", "flow publish requires an explicit resolved environment and site")
 	}
 	artifact, err := a.artifacts.ReadFlow(ctx, input.ArtifactPath)

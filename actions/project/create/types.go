@@ -4,6 +4,8 @@ import "github.com/ahillspace/tadx/internal/identity"
 
 // Input describes one project creation and its optional exact parent.
 type Input struct {
+	// TargetResolved confirms authenticated target selection, including the Default site.
+	TargetResolved     bool
 	Environment        string
 	Site               string
 	Name               string

@@ -4,9 +4,11 @@ import "github.com/ahillspace/tadx/internal/identity"
 
 // Input selects one exact workbook on one explicit Tableau target.
 type Input struct {
-	Environment string
-	Site        string
-	Selector    identity.Selector
+	// TargetResolved confirms authenticated target selection, including the Default site.
+	TargetResolved bool
+	Environment    string
+	Site           string
+	Selector       identity.Selector
 }
 
 // SetSelector records one exact CLI selector without exposing identity plumbing to Cobra.

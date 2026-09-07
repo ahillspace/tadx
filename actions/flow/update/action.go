@@ -80,7 +80,7 @@ func changedRequest(target Flow, in Input) (Request, []Change) {
 	return r, changes
 }
 func validate(in Input) error {
-	if strings.TrimSpace(in.Environment) == "" || strings.TrimSpace(in.Site) == "" {
+	if strings.TrimSpace(in.Environment) == "" || (strings.TrimSpace(in.Site) == "" && !in.TargetResolved) {
 		return usage("environment", "flow update requires an explicit resolved environment and site")
 	}
 	if in.Selector.LUID == "" && (strings.TrimSpace(in.Selector.Name) == "" || strings.TrimSpace(in.Selector.ProjectPath) == "") {

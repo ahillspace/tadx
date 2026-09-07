@@ -77,6 +77,9 @@ func (s *Store) ReadResources(ctx context.Context, query ResourceQuery) (Resourc
 	if query.Offset < 0 || query.Limit < 1 || query.Limit > maxLimit {
 		return ResourceResult{}, fmt.Errorf("catalog resource limit must be between 1 and %d and offset must be nonnegative", maxLimit)
 	}
+	if strings.HasPrefix(query.Cursor, partialInventoryCursorPrefix) {
+		return s.readPartialInventory(ctx, query)
+	}
 	db, err := s.open(ctx)
 	if err != nil {
 		return ResourceResult{}, err

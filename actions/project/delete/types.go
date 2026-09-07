@@ -6,9 +6,11 @@ const CascadeWarning = "Deleting this project also deletes all Tableau assets in
 
 // Input selects one exact project on one resolved Tableau target.
 type Input struct {
-	Environment string
-	Site        string
-	ProjectLUID string
+	// TargetResolved confirms authenticated target selection, including the Default site.
+	TargetResolved bool
+	Environment    string
+	Site           string
+	ProjectLUID    string
 }
 
 // Project is the authoritative delete target shown during preview.

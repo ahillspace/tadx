@@ -65,6 +65,21 @@ func TestPreviewDoesNotDelete(t *testing.T) {
 		t.Fatalf("preview=%#v", output)
 	}
 }
+
+func TestDeleteDefaultSiteRequiresResolvedTarget(t *testing.T) {
+	for _, resolved := range []bool{false, true} {
+		b := &backend{targets: []action.Metric{target()}}
+		in := input()
+		in.Site, in.TargetResolved, in.Preview = "", resolved, true
+		out, err := action.New(b, b).Execute(context.Background(), in)
+		if (err == nil) != resolved || out.Result != nil {
+			t.Fatalf("resolved=%t output=%#v err=%v", resolved, out, err)
+		}
+		if !resolved && len(b.calls) != 0 {
+			t.Fatalf("unresolved target reached Tableau: %v", b.calls)
+		}
+	}
+}
 func TestDeleteRejectsWrongOrChangedIdentity(t *testing.T) {
 	for _, targets := range [][]action.Metric{
 		{{LUID: "wrong"}},

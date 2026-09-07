@@ -12,6 +12,8 @@ import (
 const maxDesiredMembers = 1000
 
 type Input struct {
+	// TargetResolved confirms authenticated target selection, including the Default site.
+	TargetResolved               bool
 	Environment, Site, GroupLUID string
 	Name, MinimumSiteRole        *string
 	ExternalUserEnabled          *bool
@@ -140,7 +142,7 @@ func (a *Action) Execute(ctx context.Context, in Input, preview bool) (Output, e
 	if a == nil || a.resolver == nil || a.updater == nil || a.members == nil {
 		return Output{}, errors.New("admin group update is not configured")
 	}
-	if in.Environment == "" || in.Site == "" || in.GroupLUID == "" {
+	if in.Environment == "" || (in.Site == "" && !in.TargetResolved) || in.GroupLUID == "" {
 		return Output{}, usage("selector", "admin group update requires explicit environment, site, and group LUID")
 	}
 	if in.Name == nil && in.MinimumSiteRole == nil && in.ExternalUserEnabled == nil && !in.MembershipSet {

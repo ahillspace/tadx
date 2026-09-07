@@ -5,10 +5,12 @@ import "context"
 
 // Input identifies one authoritative target. Preview disables the mutation.
 type Input struct {
-	Environment string
-	Site        string
-	LUID        string
-	Preview     bool
+	// TargetResolved confirms authenticated target selection, including the Default site.
+	TargetResolved bool
+	Environment    string
+	Site           string
+	LUID           string
+	Preview        bool
 }
 
 // Metric contains bounded authoritative target facts.

@@ -54,6 +54,7 @@ func (c *remoteContentCommands) MoveWorkbook(ctx context.Context, input workbook
 		return workbookmove.Output{}, remoteSetupError("workbook.move", input.Environment, input.Site, connection.environment, err)
 	}
 	input.Environment, input.Site = connection.environment.Alias, connection.environment.SiteContentURL
+	input.TargetResolved = true
 	adapter := workbookMutationAdapter{workbooks: connection.workbooks}
 	return workbookmove.New(adapter, adapter).Execute(ctx, input, preview)
 }
@@ -64,6 +65,7 @@ func (c *remoteContentCommands) UpdateWorkbook(ctx context.Context, input workbo
 		return workbookupdate.Output{}, remoteSetupError("workbook.update", input.Environment, input.Site, connection.environment, err)
 	}
 	input.Environment, input.Site = connection.environment.Alias, connection.environment.SiteContentURL
+	input.TargetResolved = true
 	adapter := workbookUpdateAdapter{workbooks: connection.workbooks}
 	return workbookupdate.New(adapter, adapter).Execute(ctx, input, preview)
 }
@@ -74,6 +76,7 @@ func (c *remoteContentCommands) MoveDatasource(ctx context.Context, input dataso
 		return datasourcemove.Output{}, remoteSetupError("datasource.move", input.Environment, input.Site, connection.environment, err)
 	}
 	input.Environment, input.Site = connection.environment.Alias, connection.environment.SiteContentURL
+	input.TargetResolved = true
 	adapter := datasourceMutationAdapter{datasources: connection.datasources, projects: connection.projects, changes: connection.datasourceChanges}
 	return datasourcemove.New(adapter, adapter).Execute(ctx, input, preview)
 }
@@ -84,6 +87,7 @@ func (c *remoteContentCommands) UpdateDatasource(ctx context.Context, input data
 		return datasourceupdate.Output{}, remoteSetupError("datasource.update", input.Environment, input.Site, connection.environment, err)
 	}
 	input.Environment, input.Site = connection.environment.Alias, connection.environment.SiteContentURL
+	input.TargetResolved = true
 	adapter := datasourceUpdateAdapter{datasources: connection.datasources, changes: connection.datasourceChanges}
 	return datasourceupdate.New(adapter, adapter).Execute(ctx, input, preview)
 }
@@ -94,6 +98,7 @@ func (c *remoteContentCommands) UpdateFlow(ctx context.Context, input flowupdate
 		return flowupdate.Output{}, remoteSetupError("flow.update", input.Environment, input.Site, connection.environment, err)
 	}
 	input.Environment, input.Site = connection.environment.Alias, connection.environment.SiteContentURL
+	input.TargetResolved = true
 	adapter := &flowUpdateAdapter{flows: connection.flows, changes: connection.flowChanges}
 	return flowupdate.New(adapter, adapter).Execute(ctx, input, preview)
 }
@@ -104,6 +109,7 @@ func (c *remoteContentCommands) MoveProject(ctx context.Context, input projectmo
 		return projectmove.Output{}, remoteSetupError("project.move", input.Environment, input.Site, connection.environment, err)
 	}
 	input.Environment, input.Site = connection.environment.Alias, connection.environment.SiteContentURL
+	input.TargetResolved = true
 	adapter := projectMoveAdapter{projects: connection.projects, changes: connection.projectChanges, resolved: make(map[string]resourceproject.Project)}
 	out, err := projectmove.New(adapter, adapter).Execute(ctx, input, preview)
 	if err == nil && out.Result != nil && out.Result.Project.Path == "" {

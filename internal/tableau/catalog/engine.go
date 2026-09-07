@@ -93,6 +93,10 @@ func NewEngine(executor Executor, config Config) (*Engine, error) {
 
 // Run collects a complete requested scope closure and streams fixed batches.
 func (e *Engine) Run(ctx context.Context, input RunRequest, writer BatchWriter) (Result, error) {
+	return e.run(ctx, input, writer, false)
+}
+
+func (e *Engine) run(ctx context.Context, input RunRequest, writer BatchWriter, tolerateMalformed bool) (Result, error) {
 	if e == nil || e.executor == nil {
 		return Result{}, errors.New("catalog engine is not configured")
 	}
@@ -113,7 +117,7 @@ func (e *Engine) Run(ctx context.Context, input RunRequest, writer BatchWriter) 
 	pump := newBatchPump(runCtx, cancel, writer, e.config.BatchQueueSize)
 	limiter := newAdaptiveLimiter(e.config.InitialConcurrency, e.config.MaxConcurrency)
 	state := newRunState(collected)
-	runner := runExecutor{engine: e, limiter: limiter, pump: pump, state: state}
+	runner := runExecutor{engine: e, limiter: limiter, pump: pump, state: state, tolerateMalformed: tolerateMalformed}
 
 	var firstTasks []collectTask
 	for _, scope := range collected {
@@ -162,6 +166,7 @@ func (e *Engine) Run(ctx context.Context, input RunRequest, writer BatchWriter) 
 		Requests:          state.requests.Load(),
 		TableauRequestIDs: state.sortedRequestIDs(),
 		FinalConcurrency:  limiter.Limit(),
+		SkippedRows:       state.skipped,
 	}, nil
 }
 
@@ -200,10 +205,11 @@ type taskResult struct {
 }
 
 type runExecutor struct {
-	engine  *Engine
-	limiter *adaptiveLimiter
-	pump    *batchPump
-	state   *runState
+	engine            *Engine
+	limiter           *adaptiveLimiter
+	pump              *batchPump
+	state             *runState
+	tolerateMalformed bool
 }
 
 // runTasks executes a materialized task slice and retains each result. Use it
@@ -323,16 +329,22 @@ func (r *runExecutor) executeTask(ctx context.Context, task collectTask) (tabxml
 		return tabxml.Pagination{}, nil
 	}
 
-	parsed, err := parseList(task.definition, response.Body)
+	parsed, err := parseInventoryList(task.definition, response.Body, r.tolerateMalformed)
 	if err != nil {
 		return tabxml.Pagination{}, newProtocolError(task.request.Operation, response.TableauRequestID, err)
 	}
-	if err := validatePage(task.request, parsed.page, len(parsed.rows), task.baseline); err != nil {
+	if err := validatePage(task.request, parsed.page, len(parsed.rows)+parsed.skipped, task.baseline); err != nil {
 		return tabxml.Pagination{}, newProtocolError(task.request.Operation, response.TableauRequestID, err)
 	}
 	if err := r.state.register(task.request.Scope, parsed.identities, response.TableauRequestID, task.request.Operation); err != nil {
 		return tabxml.Pagination{}, err
 	}
+	r.state.mu.Lock()
+	r.state.skipped[task.request.Scope] += parsed.skipped
+	// Retain malformed-row identities for duplicate detection, but count only
+	// rows emitted to the writer as successfully collected records.
+	r.state.counts[task.request.Scope] += int64(len(parsed.rows) - len(parsed.identities))
+	r.state.mu.Unlock()
 	if err := r.emit(ctx, task.request.Scope, parsed.rows, response.TableauRequestID); err != nil {
 		return tabxml.Pagination{}, err
 	}
@@ -501,10 +513,11 @@ type runState struct {
 	counts     map[Scope]int64
 	requestIDs map[string]struct{}
 	requests   atomic.Int64
+	skipped    map[Scope]int
 }
 
 func newRunState(scopes []Scope) *runState {
-	state := &runState{seen: make(map[Scope]map[string]struct{}), counts: make(map[Scope]int64), requestIDs: make(map[string]struct{})}
+	state := &runState{seen: make(map[Scope]map[string]struct{}), counts: make(map[Scope]int64), requestIDs: make(map[string]struct{}), skipped: make(map[Scope]int)}
 	for _, scope := range scopes {
 		state.counts[scope] = 0
 	}

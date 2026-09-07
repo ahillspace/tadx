@@ -129,6 +129,24 @@ func TestPublishPreviewDoesNotUploadAndIncludesExactParents(t *testing.T) {
 	}
 }
 
+func TestPublishDefaultSiteRequiresResolvedTarget(t *testing.T) {
+	for _, resolved := range []bool{false, true} {
+		artifacts := &publishArtifactReader{artifact: composedArtifact()}
+		resolver := &publishResolver{project: datasourcepublish.Project{LUID: "project-1", Path: "Analytics"}}
+		publisher := &publisher{}
+		out, err := datasourcepublish.New(artifacts, resolver, publisher).Execute(context.Background(), datasourcepublish.Input{
+			ArtifactPath: "artifacts/datasource/Sales", Environment: "dev", TargetResolved: resolved,
+			ProjectSelector: identity.Selector{LUID: "project-1"}, Mode: datasourcepublish.ModeCreate,
+		}, true)
+		if (err == nil) != resolved || publisher.calls != 0 {
+			t.Fatalf("resolved=%t output=%#v err=%v publisher=%#v", resolved, out, err, publisher)
+		}
+		if !resolved && (artifacts.calls != 0 || resolver.resolveCalls != 0) {
+			t.Fatalf("unresolved target reached readers: artifacts=%d projects=%d", artifacts.calls, resolver.resolveCalls)
+		}
+	}
+}
+
 func TestPublishRevalidatesThenForwardsExactParents(t *testing.T) {
 	artifacts := &publishArtifactReader{artifact: composedArtifact()}
 	resolver := &publishResolver{project: datasourcepublish.Project{LUID: "project-1", Path: "Analytics"}}

@@ -136,7 +136,7 @@ func unknownOutcomeError(plan Plan, input Input, result Result, cause error) err
 }
 
 func (a *Action) plan(ctx context.Context, input Input) (Plan, error) {
-	if strings.TrimSpace(input.Environment) == "" || strings.TrimSpace(input.Site) == "" {
+	if strings.TrimSpace(input.Environment) == "" || (strings.TrimSpace(input.Site) == "" && !input.TargetResolved) {
 		return Plan{}, usage("environment", "datasource publish requires an explicit resolved environment and site")
 	}
 	if !validMode(input.Mode) {

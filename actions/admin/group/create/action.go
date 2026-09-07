@@ -8,6 +8,8 @@ import (
 )
 
 type Input struct {
+	// TargetResolved confirms authenticated target selection, including the Default site.
+	TargetResolved                           bool
 	Environment, Site, Name, MinimumSiteRole string
 	ExternalUserEnabled                      *bool
 }
@@ -84,7 +86,7 @@ func (a *Action) Execute(ctx context.Context, in Input, preview bool) (Output, e
 	if a == nil || a.finder == nil || a.creator == nil {
 		return Output{}, errors.New("admin group create is not configured")
 	}
-	if in.Environment == "" || in.Site == "" || in.Name == "" {
+	if in.Environment == "" || (in.Site == "" && !in.TargetResolved) || in.Name == "" {
 		return Output{}, &errs.Error{ID: "admin.group.create.usage", Kind: errs.KindUsage, Operation: "admin.group.create", Summary: "admin group create requires explicit environment, site, and name", Retryable: errs.Bool(false), CorrectiveAction: "Provide an exact environment, site, and group name.", Validation: []errs.ValidationDetail{{Field: "selector", Code: "required", Message: "admin group create requires explicit environment, site, and name"}}}
 	}
 	found, err := a.finder.FindGroups(ctx, in.Name)

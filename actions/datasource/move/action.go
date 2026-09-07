@@ -90,7 +90,7 @@ func (a *Action) collision(ctx context.Context, in Input, source Datasource, des
 	return nil
 }
 func validate(in Input) error {
-	if strings.TrimSpace(in.Environment) == "" || strings.TrimSpace(in.Site) == "" {
+	if strings.TrimSpace(in.Environment) == "" || (strings.TrimSpace(in.Site) == "" && !in.TargetResolved) {
 		return usage("environment", "datasource move requires an explicit resolved environment and site")
 	}
 	if in.DatasourceSelector.LUID == "" && (strings.TrimSpace(in.DatasourceSelector.Name) == "" || strings.TrimSpace(in.DatasourceSelector.ProjectPath) == "") {

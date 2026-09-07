@@ -23,7 +23,7 @@ func (a *Action) Execute(ctx context.Context, input Input) (Output, error) {
 		return Output{}, failure("unconfigured", errs.KindRuntime, input, "Pulse definition delete is not configured.", nil)
 	}
 	input.LUID = strings.TrimSpace(input.LUID)
-	if strings.TrimSpace(input.Environment) == "" || strings.TrimSpace(input.Site) == "" || input.LUID == "" {
+	if strings.TrimSpace(input.Environment) == "" || (strings.TrimSpace(input.Site) == "" && !input.TargetResolved) || input.LUID == "" {
 		return Output{}, failure("usage", errs.KindUsage, input, "Pulse definition delete requires an environment, site, and exact LUID.", nil)
 	}
 	target, err := a.reader.GetDefinition(ctx, input.LUID)

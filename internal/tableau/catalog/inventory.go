@@ -9,7 +9,7 @@ import (
 	"sync"
 )
 
-// InventorySnapshot is one complete, deterministic Tableau resource inventory.
+// InventorySnapshot is one deterministic Tableau resource inventory.
 // Columns and Rows use the package's fixed positional schema so callers can
 // adapt one traversal to resource-specific action types without another REST
 // pagination implementation.
@@ -22,25 +22,33 @@ type InventorySnapshot struct {
 	Requests          int64
 	TableauRequestIDs []string
 	FinalConcurrency  int
+	SkippedRows       int
 }
 
-// InventoryTable contains one complete implicit dependency scope.
+// InventoryTable contains the valid rows from one implicit dependency scope.
 type InventoryTable struct {
 	Scope   Scope
 	Columns []Column
 	Rows    [][]any
 }
 
-// CollectInventory runs the hardened catalog traversal for one resource scope
-// and returns rows only after every requested and implicit dependency page has
-// succeeded. Concurrent page arrival is normalized into authoritative LUID
-// order before the snapshot becomes visible to callers.
-func (e *Engine) CollectInventory(ctx context.Context, scope Scope) (InventorySnapshot, error) {
+// InventoryOptions selects explicit tolerance for malformed inventory records.
+type InventoryOptions struct {
+	// SkipMalformedRecords excludes invalid records but retains strict XML,
+	// pagination, transport, and duplicate-identity validation.
+	SkipMalformedRecords bool
+}
+
+// CollectInventory traverses all requested and dependency pages, then returns
+// valid rows in authoritative LUID order. By default malformed records fail the
+// collection; tolerant callers must account for SkippedRows before publishing.
+func (e *Engine) CollectInventory(ctx context.Context, scope Scope, options ...InventoryOptions) (InventorySnapshot, error) {
 	if !isInventoryScope(scope) {
 		return InventorySnapshot{}, fmt.Errorf("catalog scope %q is not a resource inventory", scope)
 	}
 	writer := &inventoryWriter{rows: make(map[Scope][][]any)}
-	result, err := e.Run(ctx, RunRequest{RequestedScopes: []Scope{scope}}, writer)
+	tolerateMalformed := len(options) > 0 && options[0].SkipMalformedRecords
+	result, err := e.run(ctx, RunRequest{RequestedScopes: []Scope{scope}}, writer, tolerateMalformed)
 	if err != nil {
 		return InventorySnapshot{}, err
 	}
@@ -75,6 +83,7 @@ func (e *Engine) CollectInventory(ctx context.Context, scope Scope) (InventorySn
 		Requests:          result.Requests,
 		TableauRequestIDs: append([]string(nil), result.TableauRequestIDs...),
 		FinalConcurrency:  result.FinalConcurrency,
+		SkippedRows:       result.SkippedRows[scope],
 	}, nil
 }
 

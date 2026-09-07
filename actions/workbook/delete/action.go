@@ -36,7 +36,7 @@ func (a *Action) Execute(ctx context.Context, input Input, preview bool) (Output
 	if a == nil || a.resolver == nil || a.deleter == nil {
 		return Output{}, &errs.Error{ID: "workbook.delete.unconfigured", Kind: errs.KindRuntime, Operation: "workbook.delete", Summary: "Workbook delete is not configured.", Retryable: errs.Bool(false), CorrectiveAction: "Configure workbook delete before retrying."}
 	}
-	if input.Environment == "" || input.Site == "" {
+	if input.Environment == "" || (input.Site == "" && !input.TargetResolved) {
 		return Output{}, usage("environment", "workbook delete requires an explicit resolved environment and site")
 	}
 	input.Selector.LUID = identity.LUID(strings.TrimSpace(string(input.Selector.LUID)))

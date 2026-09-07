@@ -108,7 +108,7 @@ func (a *Action) rejectCollision(ctx context.Context, input Input, parentLUID st
 }
 
 func validateInput(input Input) error {
-	if strings.TrimSpace(input.Environment) == "" || strings.TrimSpace(input.Site) == "" {
+	if strings.TrimSpace(input.Environment) == "" || (strings.TrimSpace(input.Site) == "" && !input.TargetResolved) {
 		return usage("environment", "project create requires an explicit resolved environment and site")
 	}
 	if strings.TrimSpace(input.Name) == "" {

@@ -4,6 +4,8 @@ import "github.com/ahillspace/tadx/internal/identity"
 
 // Input selects one project and explicit bounded metadata changes.
 type Input struct {
+	// TargetResolved confirms authenticated target selection, including the Default site.
+	TargetResolved     bool
 	Environment        string
 	Site               string
 	Selector           identity.Selector

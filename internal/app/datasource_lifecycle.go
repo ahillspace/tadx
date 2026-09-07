@@ -61,6 +61,7 @@ func (c *remoteContentCommands) PublishDatasource(ctx context.Context, input dat
 		return datasourcepublish.Output{}, remoteSetupError("datasource.publish", input.Environment, input.Site, connection.environment, err)
 	}
 	input.Environment, input.Site, input.ArtifactPath = connection.environment.Alias, connection.environment.SiteContentURL, absolutePath
+	input.TargetResolved = true
 	adapter := datasourcePublishAdapter{datasources: connection.datasources, projects: connection.projects, changes: connection.datasourceChanges}
 	return datasourcepublish.New(datasourceArtifactReader{manager: manager, displayPath: managed.Path}, adapter, adapter).Execute(ctx, input, preview)
 }
@@ -71,6 +72,7 @@ func (c *remoteContentCommands) DeleteDatasource(ctx context.Context, input data
 		return datasourcedelete.Output{}, remoteSetupError("datasource.delete", input.Environment, input.Site, connection.environment, err)
 	}
 	input.Environment, input.Site = connection.environment.Alias, connection.environment.SiteContentURL
+	input.TargetResolved = true
 	adapter := datasourceDeleteAdapter{datasources: connection.datasources, changes: connection.datasourceChanges}
 	return datasourcedelete.New(adapter, adapter).Execute(ctx, input, preview)
 }

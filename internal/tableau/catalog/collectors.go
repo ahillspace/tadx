@@ -182,13 +182,25 @@ type parsedPage struct {
 	page       tabxml.Pagination
 	rows       [][]any
 	identities []string
+	skipped    int
 }
 
 func parseList(definition collectorDefinition, body []byte) (parsedPage, error) {
+	return parseInventoryList(definition, body, false)
+}
+
+func parseInventoryList(definition collectorDefinition, body []byte, tolerateMalformed bool) (parsedPage, error) {
 	result := parsedPage{}
 	page, _, err := tabxml.DecodeList(body, definition.container, definition.item, func(element tabxml.Element) error {
 		row, identity, err := definition.row(element)
 		if err != nil {
+			if tolerateMalformed {
+				result.skipped++
+				if id := strings.TrimSpace(element.Attr("id")); id != "" {
+					result.identities = append(result.identities, id)
+				}
+				return nil
+			}
 			return err
 		}
 		result.rows = append(result.rows, row)

@@ -106,4 +106,5 @@ type Result struct {
 	Requests          int64
 	TableauRequestIDs []string
 	FinalConcurrency  int
+	SkippedRows       map[Scope]int
 }

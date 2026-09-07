@@ -130,7 +130,7 @@ func (c *remoteContentCommands) ListProjects(ctx context.Context, input projectl
 			return projectlist.Output{}, inventoryRefreshError("project.list", input.Environment, input.Site, err)
 		}
 		if inventory.catalogErr != nil {
-			reader := inventoryMemoryReader{entries: inventory.entries, requestID: finalRequestID(inventory.requestIDs)}
+			reader := inventory.memoryReader()
 			output, err := projectlist.New(reader).Execute(ctx, input)
 			if err != nil {
 				return output, err
@@ -208,6 +208,7 @@ func (c *remoteContentCommands) CreateProject(ctx context.Context, input project
 		return projectcreate.Output{}, remoteSetupError("project.create", input.Environment, input.Site, connection.environment, err)
 	}
 	input.Environment, input.Site = connection.environment.Alias, connection.environment.SiteContentURL
+	input.TargetResolved = true
 	adapter := projectCreateAdapter{projects: connection.projects, changes: connection.projectChanges, resolved: make(map[string]resourceproject.Project)}
 	out, err := projectcreate.New(adapter, adapter).Execute(ctx, input, preview)
 	if err == nil && out.Result != nil && out.Result.Project.Path == "" {
@@ -222,6 +223,7 @@ func (c *remoteContentCommands) UpdateProject(ctx context.Context, input project
 		return projectupdate.Output{}, remoteSetupError("project.update", input.Environment, input.Site, connection.environment, err)
 	}
 	input.Environment, input.Site = connection.environment.Alias, connection.environment.SiteContentURL
+	input.TargetResolved = true
 	adapter := projectUpdateAdapter{projects: connection.projects, changes: connection.projectChanges, resolved: make(map[string]resourceproject.Project)}
 	out, err := projectupdate.New(adapter, adapter).Execute(ctx, input, preview)
 	if err == nil && out.Result != nil && out.Result.Project.Path == "" {
@@ -236,6 +238,7 @@ func (c *remoteContentCommands) DeleteProject(ctx context.Context, input project
 		return projectdelete.Output{}, remoteSetupError("project.delete", input.Environment, input.Site, connection.environment, err)
 	}
 	input.Environment, input.Site = connection.environment.Alias, connection.environment.SiteContentURL
+	input.TargetResolved = true
 	adapter := projectDeleteAdapter{projects: connection.projects, changes: connection.projectChanges}
 	return projectdelete.New(adapter, adapter).Execute(ctx, input, preview)
 }
@@ -279,7 +282,7 @@ func (c *remoteContentCommands) ListFlows(ctx context.Context, input flowlist.In
 			return flowlist.Output{}, inventoryRefreshError("flow.list", input.Environment, input.Site, err)
 		}
 		if inventory.catalogErr != nil {
-			reader := inventoryMemoryReader{entries: inventory.entries, requestID: finalRequestID(inventory.requestIDs)}
+			reader := inventory.memoryReader()
 			output, err := flowlist.New(reader).Execute(ctx, input)
 			if err != nil {
 				return output, err
@@ -411,6 +414,7 @@ func (c *remoteContentCommands) PublishFlow(ctx context.Context, input flowpubli
 		return flowpublish.Output{}, remoteSetupError("flow.publish", input.Environment, input.Site, connection.environment, err)
 	}
 	input.Environment, input.Site, input.ArtifactPath = connection.environment.Alias, connection.environment.SiteContentURL, absolutePath
+	input.TargetResolved = true
 	adapter := flowPublishAdapter{flows: connection.flows, projects: connection.projects, changes: connection.flowChanges}
 	return flowpublish.New(flowArtifactReader{manager: manager, displayPath: managed.Path}, adapter, adapter).Execute(ctx, input, preview)
 }
@@ -421,6 +425,7 @@ func (c *remoteContentCommands) MoveFlow(ctx context.Context, input flowmove.Inp
 		return flowmove.Output{}, remoteSetupError("flow.move", input.Environment, input.Site, connection.environment, err)
 	}
 	input.Environment, input.Site = connection.environment.Alias, connection.environment.SiteContentURL
+	input.TargetResolved = true
 	adapter := flowMoveAdapter{flows: connection.flows, projects: connection.projects, changes: connection.flowChanges}
 	return flowmove.New(adapter, adapter).Execute(ctx, input, preview)
 }
@@ -431,6 +436,7 @@ func (c *remoteContentCommands) DeleteFlow(ctx context.Context, input flowdelete
 		return flowdelete.Output{}, remoteSetupError("flow.delete", input.Environment, input.Site, connection.environment, err)
 	}
 	input.Environment, input.Site = connection.environment.Alias, connection.environment.SiteContentURL
+	input.TargetResolved = true
 	adapter := flowDeleteAdapter{flows: connection.flows, changes: connection.flowChanges}
 	return flowdelete.New(adapter, adapter).Execute(ctx, input, preview)
 }
@@ -441,6 +447,7 @@ func (c *remoteContentCommands) DeleteWorkbook(ctx context.Context, input workbo
 		return workbookdelete.Output{}, remoteSetupError("workbook.delete", input.Environment, input.Site, connection.environment, err)
 	}
 	input.Environment, input.Site = connection.environment.Alias, connection.environment.SiteContentURL
+	input.TargetResolved = true
 	adapter := workbookDeleteAdapter{workbooks: connection.workbooks}
 	return workbookdelete.New(adapter, adapter).Execute(ctx, input, preview)
 }

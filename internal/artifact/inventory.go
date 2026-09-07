@@ -50,6 +50,7 @@ type Item struct {
 	BaselineFingerprint string
 	CurrentFingerprint  string
 	TreeFingerprint     string
+	managedPaths        []string
 	Warnings            []string
 }
 
@@ -72,6 +73,8 @@ type InventoryPage struct {
 	Missing      int
 	Invalid      int
 	Warnings     []string
+	// ManagedPaths covers the entire scan, like state counts, regardless of page size.
+	ManagedPaths []string
 }
 
 // Inventory enumerates only known managed artifact roots.
@@ -122,6 +125,7 @@ func inventoryWithScanLimit(ctx context.Context, workspace string, options Inven
 	// consistent with Total, rather than only the current page. Warnings below
 	// stay page-local because they annotate the artifacts actually returned.
 	for _, item := range items {
+		page.ManagedPaths = append(page.ManagedPaths, item.managedPaths...)
 		switch item.State {
 		case StateClean:
 			page.Clean++
@@ -310,6 +314,7 @@ func inspectArtifact(ctx context.Context, workspace, kind, directory string) (It
 	}
 	item := Item{Kind: kind}
 	var canonical string
+	var sidecar string
 	switch kind {
 	case "workbook":
 		metadata, err := readMetadata(directory)
@@ -322,6 +327,7 @@ func inspectArtifact(ctx context.Context, workspace, kind, directory string) (It
 		item.LUID, item.Name = metadata.TableauID, metadata.Name
 		item.ServerOrigin, item.SiteLUID = metadata.SourceServerOrigin, metadata.SourceSiteLUID
 		item.BaselineFingerprint = metadata.LocalBaselineFingerprint
+		sidecar = metadata.LineageSidecar
 		canonical, err = inventoryCanonicalPath(directory, metadata.CanonicalPayload, ".twb", ".twbx")
 		if err != nil {
 			return Item{}, err
@@ -337,6 +343,7 @@ func inspectArtifact(ctx context.Context, workspace, kind, directory string) (It
 		item.LUID, item.Name = metadata.TableauID, metadata.Name
 		item.ServerOrigin, item.SiteLUID = metadata.SourceServerOrigin, metadata.SourceSiteLUID
 		item.BaselineFingerprint = metadata.LocalBaselineFingerprint
+		sidecar = metadata.LineageSidecar
 		canonical, err = inventoryCanonicalPath(directory, metadata.CanonicalPayload, ".tds", ".tdsx")
 		if err != nil {
 			return Item{}, err
@@ -349,6 +356,7 @@ func inspectArtifact(ctx context.Context, workspace, kind, directory string) (It
 		item.LUID, item.Name = metadata.TableauID, metadata.Name
 		item.ServerOrigin, item.SiteLUID = metadata.SourceServerOrigin, metadata.SourceSiteLUID
 		item.BaselineFingerprint = metadata.LocalBaselineFingerprint
+		sidecar = metadata.LineageSidecar
 		canonical, err = inventoryCanonicalPath(directory, metadata.CanonicalPayload, ".tfl", ".tflx")
 		if err != nil {
 			return Item{}, err
@@ -401,6 +409,10 @@ func inspectArtifact(ctx context.Context, workspace, kind, directory string) (It
 		return Item{}, errors.New("canonical artifact path escapes the workspace")
 	}
 	item.CanonicalPath = filepath.ToSlash(canonicalRelative)
+	item.managedPaths = []string{item.Path + "/metadata.json", item.Path + "/view.md", item.CanonicalPath}
+	if sidecar != "" {
+		item.managedPaths = append(item.managedPaths, item.Path+"/"+sidecar)
+	}
 	current, err := fingerprintFile(ctx, canonical)
 	if errors.Is(err, os.ErrNotExist) {
 		item.State = StateMissing

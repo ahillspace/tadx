@@ -9,6 +9,8 @@ import (
 )
 
 type Input struct {
+	// TargetResolved confirms authenticated target selection, including the Default site.
+	TargetResolved                                                                                 bool
 	Environment, Site, UserLUID                                                                    string
 	FullName, Email, SiteRole, AuthSetting, IdentityPoolName, IdPConfigurationID, Language, Locale *string
 }
@@ -89,7 +91,7 @@ func (a *Action) Execute(ctx context.Context, in Input, preview bool) (Output, e
 	if a == nil || a.resolver == nil || a.updater == nil {
 		return Output{}, errors.New("admin user update is not configured")
 	}
-	if in.Environment == "" || in.Site == "" || in.UserLUID == "" {
+	if in.Environment == "" || (in.Site == "" && !in.TargetResolved) || in.UserLUID == "" {
 		return Output{}, usage("selector", "admin user update requires explicit environment, site, and user LUID")
 	}
 	if in.AuthSetting != nil && in.IdPConfigurationID != nil {

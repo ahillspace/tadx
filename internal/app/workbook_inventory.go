@@ -51,7 +51,7 @@ func (c *remoteContentCommands) ListWorkbooks(ctx context.Context, input workboo
 			return workbooklist.Output{}, inventoryRefreshError("workbook.list", input.Environment, input.Site, err)
 		}
 		if inventory.catalogErr != nil {
-			reader := inventoryMemoryReader{entries: inventory.entries, requestID: finalRequestID(inventory.requestIDs)}
+			reader := inventory.memoryReader()
 			output, err := workbooklist.New(reader).Execute(ctx, input)
 			if err != nil {
 				return output, err

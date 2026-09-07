@@ -8,7 +8,10 @@ import (
 	"github.com/ahillspace/tadx/internal/errs"
 )
 
-type Input struct{ Environment, Site, GroupLUID string }
+type Input struct {
+	TargetResolved               bool
+	Environment, Site, GroupLUID string
+}
 type Group struct {
 	LUID   string `json:"luid"`
 	Name   string `json:"name"`
@@ -77,7 +80,7 @@ func (a *Action) Execute(ctx context.Context, in Input, preview bool) (Output, e
 	if a == nil || a.resolver == nil || a.deleter == nil {
 		return Output{}, errors.New("admin group delete is not configured")
 	}
-	if in.Environment == "" || in.Site == "" || in.GroupLUID == "" {
+	if in.Environment == "" || (in.Site == "" && !in.TargetResolved) || in.GroupLUID == "" {
 		return Output{}, &errs.Error{ID: "admin.group.delete.usage", Kind: errs.KindUsage, Operation: "admin.group.delete", Summary: "admin group delete requires explicit environment, site, and group LUID", Retryable: errs.Bool(false), CorrectiveAction: "Provide an exact environment, site, and group LUID.", Validation: []errs.ValidationDetail{{Field: "selector", Code: "required", Message: "admin group delete requires explicit environment, site, and group LUID"}}}
 	}
 	g, err := a.resolver.ResolveGroup(ctx, in.GroupLUID)

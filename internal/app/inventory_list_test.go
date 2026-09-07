@@ -131,7 +131,7 @@ func TestUnfilteredLiveWorkbookListSkipsWorkbooksWithInvalidProjectsAndPreserves
 	if output.Source == nil || output.Source.Coverage != readsource.CoveragePartial || output.Source.CatalogRefreshed || !strings.Contains(output.Source.CatalogWarning, "skipped 2 malformed workbook records") {
 		t.Fatalf("partial source = %#v", output.Source)
 	}
-	if !containsString(output.Help, output.Source.CatalogWarning) {
+	if !strings.Contains(strings.Join(output.Help, " "), output.Source.CatalogWarning) {
 		t.Fatalf("partial inventory warning is missing from help: %#v", output.Help)
 	}
 	if output.Page.NextCursor != "" {

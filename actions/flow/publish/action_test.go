@@ -86,6 +86,20 @@ func TestPreviewDoesNotPrepareOrCommitPublish(t *testing.T) {
 	}
 }
 
+func TestPublishDefaultSiteRequiresResolvedTarget(t *testing.T) {
+	for _, resolved := range []bool{false, true} {
+		r := &resolver{project: flowpublish.Project{LUID: "p-1", Path: "Ops"}}
+		p := &publisher{}
+		out, err := flowpublish.New(artifactReader{artifact: flowpublish.Artifact{Path: "artifact", PayloadPath: "Daily.tfl", Filename: "Daily.tfl", Size: 10, Name: "Daily", Fingerprint: "sha256:x"}}, r, p).Execute(context.Background(), flowpublish.Input{Environment: "dev", TargetResolved: resolved, ArtifactPath: "artifact", ProjectSelector: identity.Selector{LUID: "p-1"}}, true)
+		if (err == nil) != resolved || p.calls != 0 {
+			t.Fatalf("resolved=%t output=%#v err=%v publisher=%#v", resolved, out, err, p)
+		}
+		if !resolved && r.resolveCalls != 0 {
+			t.Fatalf("unresolved target reached Tableau: %d reads", r.resolveCalls)
+		}
+	}
+}
+
 func TestPublishRevalidatesThenPreparesAndCommits(t *testing.T) {
 	r := &resolver{project: flowpublish.Project{LUID: "p-1", Path: "Ops"}}
 	p := &publisher{}

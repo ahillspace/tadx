@@ -51,7 +51,7 @@ func (c *remoteContentCommands) ListDatasources(ctx context.Context, input datas
 			return datasourcelist.Output{}, inventoryRefreshError("datasource.list", input.Environment, input.Site, err)
 		}
 		if inventory.catalogErr != nil {
-			reader := inventoryMemoryReader{entries: inventory.entries, requestID: finalRequestID(inventory.requestIDs)}
+			reader := inventory.memoryReader()
 			output, err := datasourcelist.New(reader).Execute(ctx, input)
 			if err != nil {
 				return output, err

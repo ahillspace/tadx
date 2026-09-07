@@ -165,6 +165,8 @@ func TestSQLiteStoreMigratesVersionOneAndBackfillsResourceReads(t *testing.T) {
 	for _, statement := range []string{
 		`DROP INDEX resource_scope_snapshots_generation_idx`,
 		`DROP TABLE resource_scope_snapshots`,
+		`DROP TABLE partial_inventory_rows`,
+		`DROP TABLE partial_inventories`,
 		`DROP INDEX resource_entries_order_idx`,
 		`DROP TABLE resource_entries`,
 		`UPDATE catalog_schema SET version=1,signature='tadx-catalog-v1' WHERE singleton=1`,
@@ -195,6 +197,8 @@ func TestSQLiteStoreMigratesVersionThreeFlowFileType(t *testing.T) {
 	for _, statement := range []string{
 		`DROP INDEX flows_project_idx`,
 		`DROP TABLE flows`,
+		`DROP TABLE partial_inventory_rows`,
+		`DROP TABLE partial_inventories`,
 		`CREATE TABLE flows (generation_key INTEGER NOT NULL REFERENCES generations(generation_key) ON DELETE CASCADE,id TEXT NOT NULL,name TEXT NOT NULL,project_id TEXT NOT NULL,owner_id TEXT NOT NULL,updated_at TEXT NOT NULL,PRIMARY KEY(generation_key,id)) STRICT`,
 		`CREATE INDEX flows_project_idx ON flows(generation_key,project_id)`,
 		`UPDATE catalog_schema SET version=3,signature='tadx-catalog-v3' WHERE singleton=1`,

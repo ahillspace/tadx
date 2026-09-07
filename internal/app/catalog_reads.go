@@ -40,6 +40,7 @@ func catalogReadSource(result catalog.ResourceResult) *readsource.Metadata {
 		observed = result.GeneratedAt
 	}
 	value := readsource.Cached(observed, result.Coverage, result.GenerationID, result.GeneratedAt, result.Stale)
+	value.CatalogWarning = result.InventoryWarning
 	return &value
 }
 
@@ -295,6 +296,7 @@ func (r *catalogProjectGetResolver) ResolveProject(ctx context.Context, selector
 	r.source = catalogRecordSource(result, entry)
 	var item projectinspect.Project
 	if len(entry.Payload) != 0 && json.Unmarshal(entry.Payload, &item) == nil {
+		item.LUID, item.Name, item.Path, item.OwnerLUID = entry.LUID, entry.Name, entry.ProjectPath, entry.Owner
 		return item, nil
 	}
 	return projectinspect.Project{LUID: entry.LUID, Name: entry.Name, Path: entry.ProjectPath, OwnerLUID: entry.Owner}, nil

@@ -25,7 +25,7 @@ func (a *Action) Execute(ctx context.Context, input Input, preview bool) (Output
 	if a == nil || a.resolver == nil || a.mover == nil {
 		return Output{}, &errs.Error{ID: "flow.move.unconfigured", Kind: errs.KindRuntime, Operation: "flow.move", Summary: "Flow move is not configured.", Retryable: errs.Bool(false), CorrectiveAction: "Configure flow move before retrying."}
 	}
-	if input.Environment == "" || input.Site == "" {
+	if input.Environment == "" || (input.Site == "" && !input.TargetResolved) {
 		return Output{}, usage("environment", "flow move requires an explicit resolved environment and site")
 	}
 	flow, err := a.resolver.ResolveFlow(ctx, input.FlowSelector)
