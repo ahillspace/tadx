@@ -17,4 +17,3 @@ result:
   resource_luid: w1
   tableau_request_id: request-1
 help[1]: tadx admin permission inspect --kind workbook --id w1
-

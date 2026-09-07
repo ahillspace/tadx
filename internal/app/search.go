@@ -3,7 +3,6 @@ package app
 import (
 	"context"
 	"crypto/sha256"
-	"database/sql"
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
@@ -207,10 +206,12 @@ func (s globalSearchSource) searchAll(ctx context.Context, input searchaction.In
 			if len(page.NextCursor) > maxCombinedSourceBytes {
 				return searchaction.Result{}, errors.New("native search continuation exceeded the combined cursor bound")
 			}
+			page.Total = 0
 			page.NextCursor = encodeCombinedSearchCursor(combinedSearchCursor{Version: 1, Fingerprint: combinedSearchFingerprint(input), Phase: combinedSearchContent, Source: page.NextCursor})
 			return searchResult(page, nil), nil
 		}
 		if len(page.Items) == input.Limit {
+			page.Total = 0
 			page.NextCursor = encodeCombinedSearchCursor(combinedSearchCursor{Version: 1, Fingerprint: combinedSearchFingerprint(input), Phase: combinedSearchDedicated})
 			return searchResult(page, nil), nil
 		}
@@ -225,6 +226,7 @@ func (s globalSearchSource) searchAll(ctx context.Context, input searchaction.In
 			return searchaction.Result{}, err
 		}
 		page.Items = append(page.Items, dedicatedPage.Items...)
+		page.Total = 0
 		page.Warnings = append(page.Warnings, dedicatedPage.Warnings...)
 		if dedicatedPage.TableauRequestID != "" {
 			page.TableauRequestID = dedicatedPage.TableauRequestID
@@ -244,6 +246,7 @@ func (s globalSearchSource) searchAll(ctx context.Context, input searchaction.In
 	if err != nil {
 		return searchaction.Result{}, err
 	}
+	page.Total = 0
 	if page.NextCursor != "" {
 		if len(page.NextCursor) > maxCombinedSourceBytes {
 			return searchaction.Result{}, errors.New("dedicated search continuation exceeded the combined cursor bound")
@@ -308,37 +311,47 @@ func (s catalogGlobalSearchSource) Search(ctx context.Context, input searchactio
 	if err != nil {
 		return searchaction.Result{}, err
 	}
-	statusBefore, statusBeforeErr := s.store.Status(ctx, catalog.Selection{Environment: input.Environment, Site: input.Site, SiteSelected: true})
-	if statusBeforeErr != nil && !errors.Is(statusBeforeErr, sql.ErrNoRows) {
-		return searchaction.Result{}, statusBeforeErr
-	}
-	adapter := resourcesearch.NewAdapter(&catalogSearchLister{store: s.store, environment: input.Environment, site: input.Site, skipUnavailable: input.Type == ""})
+	lister := &catalogSearchLister{store: s.store, environment: input.Environment, site: input.Site, skipUnavailable: input.Type == "", observations: make(map[string]catalogSearchObservation)}
+	adapter := resourcesearch.NewAdapter(lister)
 	page, err := adapter.Search(ctx, resourcesearch.Input{Types: types, Terms: input.Terms, ProjectPath: input.ProjectPath, Owner: input.Owner, Cursor: input.Cursor, Limit: input.Limit})
 	if err != nil {
 		return searchaction.Result{}, err
 	}
-	statusAfter, statusAfterErr := s.store.Status(ctx, catalog.Selection{Environment: input.Environment, Site: input.Site, SiteSelected: true})
-	if statusAfterErr != nil && !errors.Is(statusAfterErr, sql.ErrNoRows) {
-		return searchaction.Result{}, statusAfterErr
-	}
-	if statusBeforeErr == nil && statusAfterErr == nil {
-		if statusBefore.GenerationID != statusAfter.GenerationID {
+	var generation *searchaction.Generation
+	shared := len(lister.observations) > 0
+	for _, observation := range lister.observations {
+		after, err := s.store.ReadResources(ctx, observation.query)
+		if err != nil || catalogResourceFingerprint(after) != catalogResourceFingerprint(observation.result) {
 			return searchaction.Result{}, invalidCatalogResourceCursor{}
 		}
-		generation := &searchaction.Generation{ID: statusBefore.GenerationID, Environment: statusBefore.Environment, Site: statusBefore.Site, GeneratedAt: statusBefore.GeneratedAt.UTC().Format(time.RFC3339Nano), Stale: statusBefore.Stale}
+		result := observation.result
+		if result.Coverage != "complete" || result.GenerationID == "" {
+			shared = false
+			continue
+		}
+		if generation == nil {
+			generation = &searchaction.Generation{ID: result.GenerationID, Environment: input.Environment, Site: input.Site, GeneratedAt: result.GeneratedAt.UTC().Format(time.RFC3339Nano), Stale: result.Stale}
+		} else if generation.ID != result.GenerationID {
+			shared = false
+		}
+	}
+	if shared {
 		return searchResult(page, generation), nil
 	}
-	if (statusBeforeErr == nil) != (statusAfterErr == nil) {
-		return searchaction.Result{}, invalidCatalogResourceCursor{}
-	}
-	page.Warnings = append(page.Warnings, "Search used read-through catalog records without a complete catalog generation.")
+	page.Warnings = append(page.Warnings, "Search used partial catalog records or independently refreshed resource snapshots; no shared complete generation describes this page.")
 	return searchResult(page, nil), nil
+}
+
+type catalogSearchObservation struct {
+	query  catalog.ResourceQuery
+	result catalog.ResourceResult
 }
 
 type catalogSearchLister struct {
 	store             *catalog.Store
 	environment, site string
 	skipUnavailable   bool
+	observations      map[string]catalogSearchObservation
 }
 
 func (s *catalogSearchLister) List(ctx context.Context, resourceType, cursor string, limit int) (resourcesearch.Page, error) {
@@ -346,7 +359,8 @@ func (s *catalogSearchLister) List(ctx context.Context, resourceType, cursor str
 	if err != nil {
 		return resourcesearch.Page{}, err
 	}
-	result, err := s.store.ReadResources(ctx, catalog.ResourceQuery{Environment: s.environment, Site: s.site, Kind: resourceType, Offset: state.Offset, Limit: limit})
+	query := catalog.ResourceQuery{Environment: s.environment, Site: s.site, Kind: resourceType, Offset: state.Offset, Limit: limit}
+	result, err := s.store.ReadResources(ctx, query)
 	if err != nil {
 		var unavailable interface{ CatalogScopeUnavailable() bool }
 		var uninitialized interface{ CatalogUninitialized() bool }
@@ -360,6 +374,12 @@ func (s *catalogSearchLister) List(ctx context.Context, resourceType, cursor str
 		return resourcesearch.Page{}, err
 	}
 	fingerprint := catalogResourceFingerprint(result)
+	if s.observations != nil {
+		if previous, ok := s.observations[resourceType]; ok && catalogResourceFingerprint(previous.result) != fingerprint {
+			return resourcesearch.Page{}, invalidCatalogResourceCursor{}
+		}
+		s.observations[resourceType] = catalogSearchObservation{query: query, result: result}
+	}
 	if state.Fingerprint != "" && state.Fingerprint != fingerprint {
 		return resourcesearch.Page{}, invalidCatalogResourceCursor{}
 	}
@@ -371,7 +391,7 @@ func (s *catalogSearchLister) List(ctx context.Context, resourceType, cursor str
 	if state.Offset+len(result.Entries) < result.Total {
 		next = encodeCatalogResourceCursor(catalogResourceCursor{Offset: state.Offset + len(result.Entries), Fingerprint: fingerprint})
 	}
-	return resourcesearch.Page{Items: items, NextCursor: next}, nil
+	return resourcesearch.Page{Items: items, NextCursor: next, Total: result.Total}, nil
 }
 
 type catalogSearchScopeUnavailable struct {
@@ -434,7 +454,7 @@ func searchResult(page resourcesearch.Page, generation *searchaction.Generation)
 	for index, item := range page.Items {
 		items[index] = searchaction.Item{LUID: item.LUID, Type: item.Type, Name: item.Name, ProjectPath: item.ProjectPath, Owner: item.Owner, ModifiedAt: item.ModifiedAt}
 	}
-	return searchaction.Result{Items: items, Page: searchaction.Page{NextCursor: page.NextCursor}, Warnings: page.Warnings, Generation: generation, Source: page.Source}
+	return searchaction.Result{Items: items, Page: searchaction.Page{NextCursor: page.NextCursor, Total: page.Total}, Warnings: page.Warnings, Generation: generation, Source: page.Source}
 }
 
 // completeLiveSearchLister routes blank typed searches through the same
@@ -497,6 +517,9 @@ func (a *completeLiveSearchAdapter) Search(ctx context.Context, input resourcese
 			return resourcesearch.Page{}, errors.New("complete live search list service exceeded the requested result bound")
 		}
 		result.Items = append(result.Items, page.Items...)
+		if len(types) == 1 {
+			result.Total = page.Total
+		}
 		result.Warnings = append(result.Warnings, page.Warnings...)
 		if result.Source == "" {
 			result.Source = page.Source
@@ -545,49 +568,49 @@ func (s *completeLiveSearchLister) searchPage(ctx context.Context, resourceType,
 		for i, item := range out.Workbooks {
 			items[i] = resourcesearch.Item{LUID: item.LUID, Type: resourceType, Name: item.Name, ProjectPath: item.ProjectPath, Owner: item.OwnerLUID, ModifiedAt: item.UpdatedAt}
 		}
-		return completeListSearchPage(items, out.Page.NextCursor, out.RequestID, out.Source), err
+		return completeListSearchPage(items, out.Page.Total, out.Page.NextCursor, out.RequestID, out.Source), err
 	case "datasource":
 		out, err := s.content.ListDatasources(ctx, datasourcelist.Input{Environment: s.environment, Cursor: cursor, Limit: limit, ProjectName: searchInput.ProjectPath, OwnerName: searchInput.Owner})
 		items := make([]resourcesearch.Item, len(out.Datasources))
 		for i, item := range out.Datasources {
 			items[i] = resourcesearch.Item{LUID: item.LUID, Type: resourceType, Name: item.Name, ProjectPath: item.ProjectPath, Owner: item.OwnerLUID, ModifiedAt: item.UpdatedAt}
 		}
-		return completeListSearchPage(items, out.Page.NextCursor, out.RequestID, out.Source), err
+		return completeListSearchPage(items, out.Page.Total, out.Page.NextCursor, out.RequestID, out.Source), err
 	case "flow":
 		out, err := s.content.ListFlows(ctx, flowlist.Input{Environment: s.environment, Cursor: cursor, Limit: limit, ProjectName: searchInput.ProjectPath, OwnerName: searchInput.Owner})
 		items := make([]resourcesearch.Item, len(out.Flows))
 		for i, item := range out.Flows {
 			items[i] = resourcesearch.Item{LUID: item.LUID, Type: resourceType, Name: item.Name, ProjectPath: item.ProjectPath, Owner: item.OwnerLUID, ModifiedAt: item.UpdatedAt}
 		}
-		return completeListSearchPage(items, out.Page.NextCursor, out.RequestID, out.Source), err
+		return completeListSearchPage(items, out.Page.Total, out.Page.NextCursor, out.RequestID, out.Source), err
 	case "project":
 		out, err := s.content.ListProjects(ctx, projectlist.Input{Environment: s.environment, Cursor: cursor, Limit: limit, OwnerName: searchInput.Owner})
 		items := make([]resourcesearch.Item, len(out.Projects))
 		for i, item := range out.Projects {
 			items[i] = resourcesearch.Item{LUID: item.LUID, Type: resourceType, Name: item.Name, Owner: item.OwnerLUID, ModifiedAt: item.UpdatedAt}
 		}
-		return completeListSearchPage(items, out.Page.NextCursor, out.RequestID, out.Source), err
+		return completeListSearchPage(items, out.Page.Total, out.Page.NextCursor, out.RequestID, out.Source), err
 	case "user":
 		out, err := s.admin.ListAdminUsers(ctx, userlist.Input{Environment: s.environment, Cursor: cursor, Limit: limit})
 		items := make([]resourcesearch.Item, len(out.Users))
 		for i, item := range out.Users {
 			items[i] = resourcesearch.Item{LUID: item.LUID, Type: resourceType, Name: item.Name}
 		}
-		return completeListSearchPage(items, out.Page.NextCursor, out.RequestID, out.Source), err
+		return completeListSearchPage(items, out.Page.Total, out.Page.NextCursor, out.RequestID, out.Source), err
 	case "group":
 		out, err := s.admin.ListAdminGroups(ctx, adminlist.Input{Environment: s.environment, Cursor: cursor, Limit: limit})
 		items := make([]resourcesearch.Item, len(out.Groups))
 		for i, item := range out.Groups {
 			items[i] = resourcesearch.Item{LUID: item.LUID, Type: resourceType, Name: item.Name}
 		}
-		return completeListSearchPage(items, out.Page.NextCursor, out.RequestID, out.Source), err
+		return completeListSearchPage(items, out.Page.Total, out.Page.NextCursor, out.RequestID, out.Source), err
 	default:
 		return resourcesearch.Page{}, fmt.Errorf("unsupported complete live search type %q", resourceType)
 	}
 }
 
-func completeListSearchPage(items []resourcesearch.Item, nextCursor, requestID string, source *readsource.Metadata) resourcesearch.Page {
-	page := resourcesearch.Page{Items: items, NextCursor: nextCursor, TableauRequestID: requestID}
+func completeListSearchPage(items []resourcesearch.Item, total int, nextCursor, requestID string, source *readsource.Metadata) resourcesearch.Page {
+	page := resourcesearch.Page{Items: items, Total: total, NextCursor: nextCursor, TableauRequestID: requestID}
 	if source != nil {
 		switch source.Mode {
 		case readsource.Tableau:
@@ -646,42 +669,42 @@ func (s *liveSearchLister) List(ctx context.Context, resourceType, cursor string
 		for i, item := range out.Workbooks {
 			items[i] = resourcesearch.Item{LUID: item.LUID, Type: resourceType, Name: item.Name, ProjectPath: item.ProjectPath, Owner: item.OwnerLUID, ModifiedAt: item.UpdatedAt}
 		}
-		return resourcesearch.Page{Items: items, NextCursor: out.Page.NextCursor}, err
+		return resourcesearch.Page{Items: items, NextCursor: out.Page.NextCursor, Total: out.Page.Total}, err
 	case "datasource":
 		out, err := datasourcelist.New(s.datasources).Execute(ctx, datasourcelist.Input{Environment: s.environment, Site: s.site, Cursor: cursor, Limit: limit})
 		items := make([]resourcesearch.Item, len(out.Datasources))
 		for i, item := range out.Datasources {
 			items[i] = resourcesearch.Item{LUID: item.LUID, Type: resourceType, Name: item.Name, Owner: item.OwnerLUID, ModifiedAt: item.UpdatedAt}
 		}
-		return resourcesearch.Page{Items: items, NextCursor: out.Page.NextCursor}, err
+		return resourcesearch.Page{Items: items, NextCursor: out.Page.NextCursor, Total: out.Page.Total}, err
 	case "flow":
 		out, err := flowlist.New(s.flows).Execute(ctx, flowlist.Input{Environment: s.environment, Site: s.site, Cursor: cursor, Limit: limit})
 		items := make([]resourcesearch.Item, len(out.Flows))
 		for i, item := range out.Flows {
 			items[i] = resourcesearch.Item{LUID: item.LUID, Type: resourceType, Name: item.Name, Owner: item.OwnerLUID, ModifiedAt: item.UpdatedAt}
 		}
-		return resourcesearch.Page{Items: items, NextCursor: out.Page.NextCursor}, err
+		return resourcesearch.Page{Items: items, NextCursor: out.Page.NextCursor, Total: out.Page.Total}, err
 	case "project":
 		out, err := projectlist.New(s.projects).Execute(ctx, projectlist.Input{Environment: s.environment, Site: s.site, Cursor: cursor, Limit: limit})
 		items := make([]resourcesearch.Item, len(out.Projects))
 		for i, item := range out.Projects {
 			items[i] = resourcesearch.Item{LUID: item.LUID, Type: resourceType, Name: item.Name, Owner: item.OwnerLUID, ModifiedAt: item.UpdatedAt}
 		}
-		return resourcesearch.Page{Items: items, NextCursor: out.Page.NextCursor}, err
+		return resourcesearch.Page{Items: items, NextCursor: out.Page.NextCursor, Total: out.Page.Total}, err
 	case "user":
 		out, err := userlist.New(s.users).Execute(ctx, userlist.Input{Environment: s.environment, Site: s.site, Cursor: cursor, Limit: limit})
 		items := make([]resourcesearch.Item, len(out.Users))
 		for i, item := range out.Users {
 			items[i] = resourcesearch.Item{LUID: item.LUID, Type: resourceType, Name: item.Name}
 		}
-		return resourcesearch.Page{Items: items, NextCursor: out.Page.NextCursor}, err
+		return resourcesearch.Page{Items: items, NextCursor: out.Page.NextCursor, Total: out.Page.Total}, err
 	case "group":
 		out, err := adminlist.New(s.groups).Execute(ctx, adminlist.Input{Environment: s.environment, Site: s.site, Cursor: cursor, Limit: limit})
 		items := make([]resourcesearch.Item, len(out.Groups))
 		for i, item := range out.Groups {
 			items[i] = resourcesearch.Item{LUID: item.LUID, Type: resourceType, Name: item.Name}
 		}
-		return resourcesearch.Page{Items: items, NextCursor: out.Page.NextCursor}, err
+		return resourcesearch.Page{Items: items, NextCursor: out.Page.NextCursor, Total: out.Page.Total}, err
 	case "definition":
 		out, err := definitionlist.New(&pulseDefinitionListAdapter{client: s.pulse}).Execute(ctx, definitionlist.Input{Environment: s.environment, Site: s.site, Cursor: cursor, Limit: limit})
 		items := make([]resourcesearch.Item, len(out.Definitions))

@@ -34,7 +34,11 @@ type Result struct {
 }
 
 // Installer resolves the user home directory at runtime.
-type Installer struct{ Home func() (string, error) }
+type Installer struct {
+	Home func() (string, error)
+	// removeAll permits deterministic testing of cleanup failures after commit.
+	removeAll func(*os.Root, string) error
+}
 
 type packagePlan struct {
 	skill     Skill
@@ -43,6 +47,8 @@ type packagePlan struct {
 	stage     string
 	backup    string
 	committed bool
+	remove    bool
+	hidden    bool
 }
 
 // Uninstall removes bundled packages from one supported agent target.
@@ -93,10 +99,24 @@ func (in Installer) Uninstall(ctx context.Context, target string, preview, force
 		}
 		plans = append(plans, &packagePlan{skill: Skill{Name: name, Status: status, Path: destination, SHA256: before}, before: before})
 	}
+	if target == "codex" {
+		legacy, err := legacyPlans(ctx, root)
+		if err != nil {
+			return Result{}, err
+		}
+		plans = append(plans, legacy...)
+		for _, plan := range legacy {
+			if plan.skill.Status == "divergent" && !force {
+				result.Warnings = append(result.Warnings, "Legacy "+plan.skill.Name+" differs; --force is required and retains a backup")
+			}
+		}
+	}
 	if preview {
 		result.Status = "preview"
 		for _, plan := range plans {
-			result.Skills = append(result.Skills, plan.skill)
+			if !plan.hidden {
+				result.Skills = append(result.Skills, plan.skill)
+			}
 		}
 		return result, nil
 	}
@@ -111,20 +131,17 @@ func (in Installer) Uninstall(ctx context.Context, target string, preview, force
 	}
 	if !changed {
 		for _, plan := range plans {
-			result.Skills = append(result.Skills, plan.skill)
+			if !plan.hidden {
+				result.Skills = append(result.Skills, plan.skill)
+			}
 		}
 		return result, nil
 	}
-	lock := path.Join(base, ".tadx-install.lock")
-	file, err := root.OpenFile(lock, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o600)
+	unlock, err := lockPackages(root, target, base)
 	if err != nil {
-		return Result{}, errors.New("cannot acquire the skill installation lock; another install or a stale .tadx-install.lock requires attention")
+		return Result{}, err
 	}
-	if err := file.Close(); err != nil {
-		_ = root.Remove(lock)
-		return Result{}, errors.New("cannot close the installation lock")
-	}
-	defer root.Remove(lock)
+	defer unlock()
 	for _, plan := range plans {
 		current, err := fingerprint(root, plan.skill.Path)
 		if err != nil || current != plan.before {
@@ -149,25 +166,24 @@ func (in Installer) Uninstall(ctx context.Context, target string, preview, force
 		if err := ctx.Err(); err != nil {
 			return rollback(err)
 		}
-		if plan.skill.Status == "divergent" {
-			backupBase := path.Join(path.Dir(base), ".tadx-skill-backups")
-			if err := checkParents(root, backupBase); err != nil {
-				return rollback(err)
-			}
-			if err := root.MkdirAll(backupBase, 0o700); err != nil {
-				return rollback(errors.New("cannot create the skill backup directory"))
-			}
-			plan.stage = path.Join(backupBase, plan.skill.Name+"-"+rand.Text())
-		} else {
-			plan.stage = path.Join(base, ".tadx-uninstall-"+plan.skill.Name+"-"+rand.Text())
+		stage, err := removalDestination(root, plan)
+		if err != nil {
+			return rollback(err)
 		}
-		if err := root.Rename(plan.skill.Path, plan.stage); err != nil {
+		if err := root.Rename(plan.skill.Path, stage); err != nil {
 			return rollback(errors.New("cannot stage the installed skill for removal"))
+		}
+		plan.stage = stage
+		current, err := fingerprint(root, stage)
+		if err != nil || current != plan.before {
+			return rollback(errors.New("installed skill changed before removal; previous package restored"))
 		}
 	}
 	for _, plan := range plans {
 		if plan.before == "" {
-			result.Skills = append(result.Skills, plan.skill)
+			if !plan.hidden {
+				result.Skills = append(result.Skills, plan.skill)
+			}
 			continue
 		}
 		if plan.skill.Status == "divergent" {
@@ -176,9 +192,7 @@ func (in Installer) Uninstall(ctx context.Context, target string, preview, force
 			plan.stage = ""
 			result.Warnings = append(result.Warnings, "Divergent "+plan.skill.Name+" package retained as a backup; use --full for its home-relative path")
 		} else {
-			if err := root.RemoveAll(plan.stage); err != nil {
-				return Result{}, errors.New("skill was uninstalled but its staged files could not be removed")
-			}
+			in.cleanupRemoval(root, plan, &result)
 			plan.stage = ""
 			plan.skill.Status = "removed"
 		}
@@ -233,9 +247,16 @@ func (in Installer) Install(ctx context.Context, target string, preview, force b
 		}
 		plans = append(plans, &packagePlan{skill: Skill{Name: name, Status: status, Path: destination, SHA256: digest, Files: len(files)}, files: files, before: before})
 	}
+	if target == "codex" {
+		legacy, err := legacyPlans(ctx, root)
+		if err != nil {
+			return Result{}, err
+		}
+		plans = append(plans, legacy...)
+	}
 	result := Result{Status: "unchanged"}
 	for _, plan := range plans {
-		if plan.skill.Status == "replace" && !force {
+		if (plan.skill.Status == "replace" || plan.skill.Status == "divergent") && !force {
 			if !preview {
 				return Result{}, fmt.Errorf("%s differs from the bundled skill; --force is required to replace it with a recoverable backup", plan.skill.Name)
 			}
@@ -245,17 +266,21 @@ func (in Installer) Install(ctx context.Context, target string, preview, force b
 	if preview {
 		result.Status = "preview"
 		for _, plan := range plans {
-			result.Skills = append(result.Skills, plan.skill)
+			if !plan.hidden {
+				result.Skills = append(result.Skills, plan.skill)
+			}
 		}
 		return result, nil
 	}
 	changed := false
 	for _, plan := range plans {
-		changed = changed || plan.skill.Status != "unchanged"
+		changed = changed || (!plan.remove && plan.skill.Status != "unchanged") || (plan.remove && plan.before != "")
 	}
 	if !changed {
 		for _, plan := range plans {
-			result.Skills = append(result.Skills, plan.skill)
+			if !plan.hidden {
+				result.Skills = append(result.Skills, plan.skill)
+			}
 		}
 		return result, nil
 	}
@@ -265,16 +290,11 @@ func (in Installer) Install(ctx context.Context, target string, preview, force b
 	if err := checkParents(root, base); err != nil {
 		return Result{}, err
 	}
-	lock := path.Join(base, ".tadx-install.lock")
-	file, err := root.OpenFile(lock, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o600)
+	unlock, err := lockPackages(root, target, base)
 	if err != nil {
-		return Result{}, errors.New("cannot acquire the skill installation lock; another install or a stale .tadx-install.lock requires attention")
+		return Result{}, err
 	}
-	if err := file.Close(); err != nil {
-		_ = root.Remove(lock)
-		return Result{}, errors.New("cannot close the installation lock")
-	}
-	defer root.Remove(lock)
+	defer unlock()
 	defer func() {
 		for _, plan := range plans {
 			if plan.stage != "" {
@@ -283,7 +303,7 @@ func (in Installer) Install(ctx context.Context, target string, preview, force b
 		}
 	}()
 	for _, plan := range plans {
-		if plan.skill.Status == "unchanged" {
+		if plan.skill.Status == "unchanged" || plan.remove {
 			continue
 		}
 		if err := ctx.Err(); err != nil {
@@ -334,6 +354,27 @@ func (in Installer) Install(ctx context.Context, target string, preview, force b
 		if plan.skill.Status == "unchanged" {
 			continue
 		}
+		if plan.remove {
+			if plan.before == "" {
+				continue
+			}
+			if err := ctx.Err(); err != nil {
+				return rollback(err)
+			}
+			backup, err := removalDestination(root, plan)
+			if err != nil {
+				return rollback(err)
+			}
+			if err := root.Rename(plan.skill.Path, backup); err != nil {
+				return rollback(errors.New("cannot stage legacy skill removal"))
+			}
+			plan.backup = backup
+			current, err := fingerprint(root, backup)
+			if err != nil || current != plan.before {
+				return rollback(errors.New("legacy skill changed before removal; previous package restored"))
+			}
+			continue
+		}
 		if err := ctx.Err(); err != nil {
 			return rollback(err)
 		}
@@ -368,7 +409,21 @@ func (in Installer) Install(ctx context.Context, target string, preview, force b
 	}
 	result.Status = "installed"
 	for _, plan := range plans {
-		result.Skills = append(result.Skills, plan.skill)
+		if plan.remove && plan.before != "" {
+			if plan.skill.Status == "divergent" {
+				plan.skill.Status = "backed-up"
+				plan.skill.Backup = plan.backup
+				result.Warnings = append(result.Warnings, "Divergent legacy "+plan.skill.Name+" retained as a backup; use --full for its home-relative path")
+			} else {
+				plan.stage = plan.backup
+				in.cleanupRemoval(root, plan, &result)
+				plan.stage = ""
+				plan.skill.Status = "removed"
+			}
+		}
+		if !plan.hidden {
+			result.Skills = append(result.Skills, plan.skill)
+		}
 	}
 	return result, nil
 }

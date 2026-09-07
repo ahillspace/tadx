@@ -180,6 +180,19 @@ func (w *GenerationWriter) replaceResourceEntries(ctx context.Context, generatio
 	if err != nil {
 		return fmt.Errorf("seed catalog resource entries: %w", err)
 	}
+	// Preserve the complete list projection and add canonical identity fields.
+	for _, scope := range []string{"users", "groups", "projects", "workbooks", "datasources", "flows"} {
+		kind := strings.TrimSuffix(scope, "s")
+		_, err := w.tx.ExecContext(ctx, `UPDATE resource_entries SET payload=CAST(json_set(
+			(SELECT list_payload FROM `+scope+` WHERE generation_key=? AND id=resource_entries.luid),
+			'$.luid',luid,'$.name',name,'$.project_path',project_path,'$.owner_luid',owner) AS BLOB)
+			WHERE environment=? AND site=? AND kind=? AND EXISTS
+			(SELECT 1 FROM `+scope+` WHERE generation_key=? AND id=resource_entries.luid)`,
+			w.key, w.metadata.Environment, w.metadata.Site, kind, w.key)
+		if err != nil {
+			return fmt.Errorf("seed catalog %s list payloads: %w", kind, err)
+		}
+	}
 	if _, err := w.tx.ExecContext(ctx, `DELETE FROM resource_scope_snapshots WHERE environment=? AND site=?`, w.metadata.Environment, w.metadata.Site); err != nil {
 		return fmt.Errorf("replace catalog resource scope snapshots: %w", err)
 	}
@@ -345,6 +358,9 @@ func (w *GenerationWriter) projectPaths(ctx context.Context) (map[string]string,
 		var id, name, parent string
 		if err := rows.Scan(&id, &name, &parent); err != nil {
 			return nil, err
+		}
+		if strings.Contains(name, "/") {
+			return nil, fmt.Errorf("Tableau project %q has a name containing %q, which is not addressable by an exact project path", id, "/")
 		}
 		projects[id] = project{name, parent}
 	}

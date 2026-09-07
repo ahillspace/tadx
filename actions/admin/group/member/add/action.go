@@ -85,9 +85,6 @@ func (a *Action) Apply(ctx context.Context, plan Plan) (Result, error) {
 	if a == nil || a.resolver == nil || a.writer == nil || !plan.planned || plan.Operation != "admin.group.member.add" {
 		return Result{}, usage("group member add requires a plan produced by Plan")
 	}
-	if plan.NoOp {
-		return Result{Status: "unchanged", GroupLUID: plan.GroupLUID, UserLUID: plan.UserLUID}, nil
-	}
 	current, err := a.resolver.ResolveGroup(ctx, plan.GroupLUID)
 	if err != nil {
 		return Result{}, operationError("revalidate", Input{Environment: plan.Environment, Site: plan.Site, GroupLUID: plan.GroupLUID, UserLUID: plan.UserLUID}, err)

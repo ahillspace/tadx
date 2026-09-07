@@ -49,6 +49,9 @@ func TestNativeAdapterProjectsContentAndContinuesWithBoundedCursor(t *testing.T)
 	if first.TableauRequestID != "request-1" {
 		t.Fatalf("request ID=%q", first.TableauRequestID)
 	}
+	if first.Total != 2 {
+		t.Fatalf("total=%d", first.Total)
+	}
 	input.Cursor = first.NextCursor
 	second, err := adapter.Search(context.Background(), input)
 	if err != nil || second.NextCursor != "" || len(second.Items) != 1 || second.Items[0].LUID != "ds-1" {

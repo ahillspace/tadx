@@ -192,6 +192,9 @@ func (m *Manager) Unregister(ctx context.Context, name string) (Record, error) {
 		if !ok {
 			return config.Config{}, fmt.Errorf("workspace %q is not registered", name)
 		}
+		if err := validateDefaultReferences(configuration, registeredName); err != nil {
+			return config.Config{}, err
+		}
 		removed = recordFromRegistration(registeredName, registration, configuration.DefaultWorkspace)
 		removeRegistration(&configuration, registeredName)
 		return configuration, nil
@@ -211,61 +214,56 @@ func (m *Manager) Delete(ctx context.Context, expected Record) (Record, error) {
 	if expected.Name == "" || expected.ID == "" || expected.Root == "" {
 		return Record{}, errors.New("workspace deletion requires an exact resolved identity")
 	}
-	configuration, err := config.Load(m.configPath)
-	if err != nil {
-		return Record{}, err
-	}
-	registeredName, registration, ok := exactRegistration(configuration, expected.Name)
-	if !ok || registration.ID != expected.ID {
-		return Record{}, errors.New("workspace registration changed before deletion")
-	}
-	root, err := canonicalRoot(registration.Path)
-	if err != nil || !samePath(root, expected.Root) {
-		return Record{}, errors.New("workspace root changed before deletion")
-	}
-	if err := validateDeletionRoot(root, registeredName, registration.ID); err != nil {
-		return Record{}, err
-	}
-	for otherName, other := range configuration.Workspaces {
-		if strings.EqualFold(otherName, registeredName) {
-			continue
+	var removed Record
+	var tombstone string
+	_, err := config.UpdateWithRollback(m.configPath, false, func(current config.Config) (config.Config, func() error, error) {
+		if err := ctx.Err(); err != nil {
+			return config.Config{}, nil, err
 		}
-		otherRoot, resolveErr := canonicalRoot(other.Path)
-		if resolveErr == nil && containsPath(root, otherRoot) {
-			return Record{}, fmt.Errorf("workspace %q contains registered workspace %q", registeredName, otherName)
+		name, registration, exists := exactRegistration(current, expected.Name)
+		if !exists || registration.ID != expected.ID {
+			return config.Config{}, nil, errors.New("workspace registration changed during deletion")
 		}
-	}
-	tombstone := filepath.Join(filepath.Dir(root), ".tadx-workspace-delete-"+registration.ID)
-	if _, err := os.Lstat(tombstone); !errors.Is(err, os.ErrNotExist) {
-		if err == nil {
-			return Record{}, errors.New("workspace deletion staging path already exists")
+		root, err := canonicalRoot(registration.Path)
+		if err != nil || !samePath(root, expected.Root) {
+			return config.Config{}, nil, errors.New("workspace root changed before deletion")
 		}
-		return Record{}, err
-	}
-	if err := os.Rename(root, tombstone); err != nil {
-		return Record{}, fmt.Errorf("stage workspace deletion: %w", err)
-	}
-	restore := func(cause error) (Record, error) {
-		if restoreErr := os.Rename(tombstone, root); restoreErr != nil {
-			return Record{}, fmt.Errorf("%v; workspace restore failed: %w", cause, restoreErr)
+		if err := validateDeletionRoot(root, name, registration.ID); err != nil {
+			return config.Config{}, nil, err
 		}
-		return Record{}, cause
-	}
-	_, err = config.Update(m.configPath, false, func(current config.Config) (config.Config, error) {
-		currentName, currentRegistration, exists := exactRegistration(current, registeredName)
-		if !exists || currentRegistration.ID != registration.ID || !samePath(currentRegistration.Path, root) {
-			return config.Config{}, errors.New("workspace registration changed during deletion")
+		for otherName, other := range current.Workspaces {
+			if strings.EqualFold(otherName, name) {
+				continue
+			}
+			otherRoot, resolveErr := canonicalRoot(other.Path)
+			if containsPath(root, other.Path) || (resolveErr == nil && containsPath(root, otherRoot)) {
+				return config.Config{}, nil, fmt.Errorf("workspace %q contains registered workspace %q", name, otherName)
+			}
 		}
-		removeRegistration(&current, currentName)
-		return current, nil
+		if err := validateDefaultReferences(current, name); err != nil {
+			return config.Config{}, nil, err
+		}
+		removed = recordFromRegistration(name, registration, current.DefaultWorkspace)
+		tombstone = filepath.Join(filepath.Dir(root), ".tadx-workspace-delete-"+registration.ID)
+		if _, err := os.Lstat(tombstone); !errors.Is(err, os.ErrNotExist) {
+			if err == nil {
+				err = errors.New("workspace deletion staging path already exists")
+			}
+			return config.Config{}, nil, err
+		}
+		if err := os.Rename(root, tombstone); err != nil {
+			return config.Config{}, nil, fmt.Errorf("stage workspace deletion: %w", err)
+		}
+		removeRegistration(&current, name)
+		return current, func() error { return os.Rename(tombstone, root) }, nil
 	})
 	if err != nil {
-		return restore(err)
+		return Record{}, err
 	}
 	if err := os.RemoveAll(tombstone); err != nil {
 		return Record{}, fmt.Errorf("workspace was unregistered but staged files remain at %q: %w", tombstone, err)
 	}
-	return recordFromRegistration(registeredName, registration, configuration.DefaultWorkspace), nil
+	return removed, nil
 }
 
 func exactRegistration(configuration config.Config, selector string) (string, config.WorkspaceRegistration, bool) {
@@ -295,15 +293,23 @@ func recordFromRegistration(name string, registration config.WorkspaceRegistrati
 
 func removeRegistration(configuration *config.Config, name string) {
 	delete(configuration.Workspaces, name)
+}
+
+func validateDefaultReferences(configuration config.Config, name string) error {
 	if strings.EqualFold(configuration.DefaultWorkspace, name) {
-		configuration.DefaultWorkspace = ""
+		return fmt.Errorf("workspace %q is the global default; reassign the default before removal", name)
 	}
+	var references []string
 	for alias, environment := range configuration.Environments {
 		if strings.EqualFold(environment.DefaultWorkspace, name) {
-			environment.DefaultWorkspace = ""
-			configuration.Environments[alias] = environment
+			references = append(references, alias)
 		}
 	}
+	if len(references) > 0 {
+		sort.Strings(references)
+		return fmt.Errorf("workspace %q is the default for environment %q; reassign the default before removal", name, references[0])
+	}
+	return nil
 }
 
 func validateDeletionRoot(root, name, id string) error {
@@ -377,6 +383,12 @@ func (m *Manager) Clone(ctx context.Context, source, newName, newRoot string) (R
 // installs one registration. It runs inside the config.Update lock so the check
 // and the write are one atomic transaction against other tadx processes.
 func applyRegistration(configuration config.Config, name, id, resolvedRoot string) (config.Config, error) {
+	// Registration can wait for a deletion transaction after reading its
+	// manifest. Reject a stale identity if that transaction removed the root.
+	manifest, err := ReadManifest(resolvedRoot)
+	if err != nil || manifest.Workspace.ID != id {
+		return config.Config{}, errors.New("workspace manifest changed before registration")
+	}
 	for existingName, registration := range configuration.Workspaces {
 		if strings.EqualFold(existingName, name) {
 			return config.Config{}, fmt.Errorf("workspace name %q already exists", existingName)

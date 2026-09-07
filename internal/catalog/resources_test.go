@@ -29,11 +29,11 @@ func TestReadThroughResourcesRemainPartialAndPreserveUnrelatedRecords(t *testing
 	if result.Coverage != "partial" || result.Total != 2 || len(result.Entries) != 2 {
 		t.Fatalf("result = %#v", result)
 	}
-	if result.Entries[0].Coverage != "detail" || result.Entries[0].Name != "Finance Updated" {
+	if result.Entries[0].Coverage != "summary" || result.Entries[0].Name != "Finance Updated" {
 		t.Fatalf("updated entry = %#v", result.Entries[0])
 	}
-	if string(result.Entries[0].Payload) != `{"luid":"wb-1","name":"Finance"}` || !result.Entries[0].ObservedAt.Equal(now) {
-		t.Fatalf("detail projection was replaced by summary data: %#v", result.Entries[0])
+	if string(result.Entries[0].Payload) != `{"luid":"wb-1","name":"Finance Updated"}` || !result.Entries[0].ObservedAt.Equal(now.Add(time.Minute)) {
+		t.Fatalf("summary projection and observation disagree: %#v", result.Entries[0])
 	}
 }
 
@@ -76,7 +76,7 @@ func TestResourceReadDistinguishesUninitializedScopeAndMissingRecord(t *testing.
 	}
 }
 
-func TestReplaceResourceScopeAtomicallyPreservesOtherKindsAndDetailCoverage(t *testing.T) {
+func TestReplaceResourceScopeAtomicallyPreservesOtherKindsAndReplacesStaleDetails(t *testing.T) {
 	now := time.Date(2026, 9, 5, 12, 0, 0, 0, time.UTC)
 	store := NewStore(t.TempDir(), func() time.Time { return now })
 	seed := []ResourceEntry{
@@ -112,8 +112,8 @@ func TestReplaceResourceScopeAtomicallyPreservesOtherKindsAndDetailCoverage(t *t
 	if err := json.Unmarshal(workbooks.Entries[0].Payload, &retained); err != nil {
 		t.Fatal(err)
 	}
-	if workbooks.Entries[0].LUID != "wb-keep" || workbooks.Entries[0].Name != "Current name" || workbooks.Entries[0].Owner != "owner-new" || workbooks.Entries[0].Coverage != "detail" || retained["description"] != "retained" || retained["name"] != "Current name" || retained["owner_luid"] != "owner-new" {
-		t.Fatalf("retained detail = %#v", workbooks.Entries[0])
+	if workbooks.Entries[0].LUID != "wb-keep" || workbooks.Entries[0].Name != "Current name" || workbooks.Entries[0].Owner != "owner-new" || workbooks.Entries[0].Coverage != "summary" || retained["description"] != nil || retained["name"] != "Current name" || retained["owner_luid"] != "owner-new" {
+		t.Fatalf("refreshed summary = %#v", workbooks.Entries[0])
 	}
 	datasources, err := store.ReadResources(context.Background(), ResourceQuery{Environment: "production", Site: "marketing", Kind: "datasource", Limit: 10})
 	if err != nil {

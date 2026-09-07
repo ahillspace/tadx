@@ -70,7 +70,7 @@ The next revision removes the obsolete table-name schema-query caveat, uses dire
 Successful deletes need no confirmation list unless the outcome is uncertain or verification is explicitly requested.
 Two fresh Codex agents first look for Guidance under `.codex/skills`, costing a model turn each.
 Codex installation now targets that recognized runtime root.
-The installer preserves existing `.agents/skills` Guidance packages without legacy cleanup.
+The installer migrates recognized legacy `.agents/skills` packages and preserves divergent packages as recoverable backups when forced.
 
 ## Post-change live sample
 

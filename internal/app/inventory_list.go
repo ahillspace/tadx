@@ -163,6 +163,9 @@ func inventoryProjects(snapshot tableaucatalog.InventorySnapshot) (map[string]in
 		if !idOK || !nameOK || !parentOK || strings.TrimSpace(id) == "" || strings.TrimSpace(name) == "" {
 			return nil, errors.New("project inventory returned incomplete authoritative identity")
 		}
+		if strings.Contains(name, "/") {
+			return nil, fmt.Errorf("Tableau project %q has a name containing %q, which is not addressable by an exact project path", id, "/")
+		}
 		projects[id] = inventoryProject{name: name, parent: parent}
 	}
 	state := make(map[string]uint8, len(projects))

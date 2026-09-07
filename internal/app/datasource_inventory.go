@@ -76,9 +76,20 @@ func (c *remoteContentCommands) ListDatasources(ctx context.Context, input datas
 	}
 	observedAt := c.runtime.now().UTC()
 	output.Source = liveSource(c.runtime.now)
+	projectIDs := make([]string, len(output.Datasources))
+	for index, item := range output.Datasources {
+		projectIDs[index] = item.ProjectLUID
+	}
+	paths, pathErr := connection.projects.ResolveProjectPaths(ctx, projectIDs)
+	if pathErr != nil {
+		output.Help = append(output.Help, "Live list succeeded, but canonical project paths could not be confirmed; catalog records were not updated.")
+		return output, nil
+	}
 	entries := make([]catalog.ResourceEntry, 0, len(output.Datasources))
-	for _, item := range output.Datasources {
-		entry, encodeErr := resourceEntry(input.Environment, input.Site, "datasource", item.LUID, item.Name, "", item.OwnerLUID, "summary", observedAt, item)
+	for index := range output.Datasources {
+		item := &output.Datasources[index]
+		item.ProjectPath = paths[item.ProjectLUID]
+		entry, encodeErr := resourceEntry(input.Environment, input.Site, "datasource", item.LUID, item.Name, item.ProjectPath, item.OwnerLUID, "summary", observedAt, item)
 		if encodeErr == nil {
 			entries = append(entries, entry)
 		}

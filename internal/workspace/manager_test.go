@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/ahillspace/tadx/internal/config"
 	"github.com/ahillspace/tadx/internal/workspace"
@@ -76,13 +77,16 @@ func TestSetDefaultRequiresAvailableRegisteredWorkspace(t *testing.T) {
 	}
 }
 
-func TestUnregisterPreservesFilesAndClearsDefaults(t *testing.T) {
+func TestUnregisterPreservesFilesAfterDefaultsAreReassigned(t *testing.T) {
 	directory := t.TempDir()
 	configPath := filepath.Join(directory, "config.yaml")
 	if err := config.Save(configPath, config.Config{Version: config.CurrentVersion}); err != nil {
 		t.Fatal(err)
 	}
-	manager := workspace.NewManager(configPath, strings.NewReader(strings.Repeat("a", 16)))
+	manager := workspace.NewManager(configPath, nil)
+	if _, err := manager.Create(context.Background(), "other", filepath.Join(directory, "other")); err != nil {
+		t.Fatal(err)
+	}
 	record, err := manager.Create(context.Background(), "development", filepath.Join(directory, "development"))
 	if err != nil {
 		t.Fatal(err)
@@ -91,7 +95,7 @@ func TestUnregisterPreservesFilesAndClearsDefaults(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	loaded.Environments = map[string]config.Environment{"dev": {URL: "https://example.test", Auth: config.Auth{Type: config.AuthTypePAT}, DefaultWorkspace: "development"}}
+	loaded.Environments = map[string]config.Environment{"dev": {URL: "https://example.test", Auth: config.Auth{Type: config.AuthTypePAT}, DefaultWorkspace: "other"}}
 	if err := config.Save(configPath, loaded); err != nil {
 		t.Fatal(err)
 	}
@@ -109,8 +113,99 @@ func TestUnregisterPreservesFilesAndClearsDefaults(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(loaded.Workspaces) != 0 || loaded.DefaultWorkspace != "" || loaded.Environments["dev"].DefaultWorkspace != "" {
+	if len(loaded.Workspaces) != 1 || loaded.DefaultWorkspace != "other" || loaded.Environments["dev"].DefaultWorkspace != "other" {
 		t.Fatalf("configuration = %#v", loaded)
+	}
+}
+
+func TestRemovalRejectsDefaultReferences(t *testing.T) {
+	for _, operation := range []string{"unregister", "delete"} {
+		for _, scope := range []string{"global", "environment"} {
+			t.Run(operation+"/"+scope, func(t *testing.T) {
+				directory := t.TempDir()
+				configPath := filepath.Join(directory, "config.yaml")
+				manager := workspace.NewManager(configPath, nil)
+				record, err := manager.Create(context.Background(), "target", filepath.Join(directory, "target"))
+				if err != nil {
+					t.Fatal(err)
+				}
+				if scope == "environment" {
+					_, err = config.Update(configPath, false, func(c config.Config) (config.Config, error) {
+						c.DefaultWorkspace = ""
+						c.Environments = map[string]config.Environment{"dev": {URL: "https://example.test", Auth: config.Auth{Type: config.AuthTypePAT}, DefaultWorkspace: "TARGET"}}
+						return c, nil
+					})
+					if err != nil {
+						t.Fatal(err)
+					}
+				}
+				before, err := os.ReadFile(configPath)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if operation == "delete" {
+					_, err = manager.Delete(context.Background(), record)
+				} else {
+					_, err = manager.Unregister(context.Background(), "TARGET")
+				}
+				if err == nil || !strings.Contains(err.Error(), "default") {
+					t.Fatalf("removal error = %v", err)
+				}
+				after, err := os.ReadFile(configPath)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if string(before) != string(after) {
+					t.Fatal("default guard changed configuration")
+				}
+				if _, err := os.Stat(filepath.Join(record.Root, config.WorkspaceConfigName)); err != nil {
+					t.Fatal(err)
+				}
+			})
+		}
+	}
+}
+
+func TestDeleteRechecksNestedRegistrationUnderConfigurationLock(t *testing.T) {
+	directory := t.TempDir()
+	configPath := filepath.Join(directory, "config.yaml")
+	manager := workspace.NewManager(configPath, nil)
+	if _, err := manager.Create(context.Background(), "other", filepath.Join(directory, "other")); err != nil {
+		t.Fatal(err)
+	}
+	parent, err := manager.Create(context.Background(), "parent", filepath.Join(directory, "parent"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	child, err := workspace.NewManager(filepath.Join(directory, "child-config.yaml"), nil).Create(context.Background(), "child", filepath.Join(parent.Root, "nested"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	started := make(chan struct{})
+	deleted := make(chan error, 1)
+	_, err = config.Update(configPath, false, func(c config.Config) (config.Config, error) {
+		go func() {
+			close(started)
+			_, deleteErr := manager.Delete(context.Background(), parent)
+			deleted <- deleteErr
+		}()
+		<-started
+		// Keep the configuration locked while deletion reaches its final check.
+		// The old implementation stages the root before waiting for this lock.
+		timer := time.NewTimer(200 * time.Millisecond)
+		defer timer.Stop()
+		<-timer.C
+		c.Workspaces[child.Name] = config.WorkspaceRegistration{ID: child.ID, Path: child.Root}
+		return c, nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := <-deleted; err == nil || !strings.Contains(err.Error(), "contains registered workspace") {
+		t.Fatalf("Delete error = %v", err)
+	}
+	if _, err := manager.Resolve(context.Background(), "child", ""); err != nil {
+		t.Fatalf("nested workspace lost: %v", err)
 	}
 }
 

@@ -32,9 +32,7 @@ func (s *Store) UpsertResources(ctx context.Context, entries []ResourceEntry) er
 		VALUES(?,?,?,?,?,?,?,?,?,?)
 		ON CONFLICT(environment,site,kind,luid) DO UPDATE SET
 		name=excluded.name,project_path=excluded.project_path,owner=excluded.owner,
-		payload=CASE WHEN resource_entries.coverage='detail' AND excluded.coverage='summary' THEN resource_entries.payload ELSE excluded.payload END,
-		coverage=CASE WHEN resource_entries.coverage='detail' THEN 'detail' ELSE excluded.coverage END,
-		observed_at=CASE WHEN resource_entries.coverage='detail' AND excluded.coverage='summary' THEN resource_entries.observed_at ELSE excluded.observed_at END`)
+		payload=excluded.payload,coverage=excluded.coverage,observed_at=excluded.observed_at`)
 	if err != nil {
 		return err
 	}
@@ -127,7 +125,8 @@ func (s *Store) ReadResources(ctx context.Context, query ResourceQuery) (Resourc
 
 	where, args := resourceWhere(query)
 	var total int
-	if err := tx.QueryRowContext(ctx, `SELECT count(*) FROM resource_entries `+where, args...).Scan(&total); err != nil {
+	var newestObserved sql.NullString
+	if err := tx.QueryRowContext(ctx, `SELECT count(*),max(observed_at) FROM resource_entries `+where, args...).Scan(&total, &newestObserved); err != nil {
 		return ResourceResult{}, err
 	}
 	if snapshotErr != nil && metaErr != nil && total == 0 {
@@ -142,6 +141,12 @@ func (s *Store) ReadResources(ctx context.Context, query ResourceQuery) (Resourc
 	}
 	defer rows.Close()
 	result := ResourceResult{Total: total, Coverage: "partial"}
+	if newestObserved.Valid {
+		result.NewestObserved, err = time.Parse(generationTimeLayout, newestObserved.String)
+		if err != nil {
+			return ResourceResult{}, err
+		}
+	}
 	if complete {
 		result.Coverage = "complete"
 		result.GenerationID = generationID
@@ -157,9 +162,6 @@ func (s *Store) ReadResources(ctx context.Context, query ResourceQuery) (Resourc
 		entry.ObservedAt, err = time.Parse(generationTimeLayout, observed)
 		if err != nil {
 			return ResourceResult{}, err
-		}
-		if entry.ObservedAt.After(result.NewestObserved) {
-			result.NewestObserved = entry.ObservedAt
 		}
 		result.Entries = append(result.Entries, entry)
 	}

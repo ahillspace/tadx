@@ -3,7 +3,6 @@ package catalog
 import (
 	"context"
 	"crypto/sha256"
-	"database/sql"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -46,21 +45,11 @@ func (s *Store) ReplaceResourceScope(ctx context.Context, replacement ResourceSc
 	if _, err := tx.ExecContext(ctx, `DELETE FROM tadx_resource_scope_stage`); err != nil {
 		return ReplaceResult{}, fmt.Errorf("clear catalog resource scope stage: %w", err)
 	}
-	detailPayloads, err := existingDetailPayloads(ctx, tx, normalized.Environment, normalized.Site, normalized.Kind)
-	if err != nil {
-		return ReplaceResult{}, err
-	}
 	insert, err := tx.PrepareContext(ctx, `INSERT INTO tadx_resource_scope_stage(luid,name,project_path,owner,payload,coverage,observed_at) VALUES(?,?,?,?,?,?,?)`)
 	if err != nil {
 		return ReplaceResult{}, err
 	}
 	for _, entry := range normalized.Entries {
-		if detailPayload, ok := detailPayloads[entry.LUID]; ok && entry.Coverage == "summary" {
-			if merged, ok := mergeJSONObjects(detailPayload, entry.Payload); ok {
-				entry.Payload = merged
-				entry.Coverage = "detail"
-			}
-		}
 		if _, err := insert.ExecContext(ctx, entry.LUID, entry.Name, entry.ProjectPath, entry.Owner, entry.Payload, entry.Coverage, entry.ObservedAt.UTC().Format(generationTimeLayout)); err != nil {
 			insert.Close()
 			return ReplaceResult{}, fmt.Errorf("stage catalog %s %q: %w", normalized.Kind, entry.LUID, err)
@@ -101,36 +90,6 @@ func (s *Store) ReplaceResourceScope(ctx context.Context, replacement ResourceSc
 		return ReplaceResult{}, err
 	}
 	return ReplaceResult{GenerationID: generationID, Path: databaseRelativePath, RecordCount: len(normalized.Entries)}, nil
-}
-
-func existingDetailPayloads(ctx context.Context, tx *sql.Tx, environment, site, kind string) (map[string][]byte, error) {
-	rows, err := tx.QueryContext(ctx, `SELECT luid,payload FROM resource_entries WHERE environment=? AND site=? AND kind=? AND coverage='detail'`, environment, site, kind)
-	if err != nil {
-		return nil, fmt.Errorf("read existing catalog %s details: %w", kind, err)
-	}
-	defer rows.Close()
-	result := make(map[string][]byte)
-	for rows.Next() {
-		var luid string
-		var payload []byte
-		if err := rows.Scan(&luid, &payload); err != nil {
-			return nil, err
-		}
-		result[luid] = append([]byte(nil), payload...)
-	}
-	return result, rows.Err()
-}
-
-func mergeJSONObjects(detail, summary []byte) ([]byte, bool) {
-	var detailObject, summaryObject map[string]json.RawMessage
-	if json.Unmarshal(detail, &detailObject) != nil || json.Unmarshal(summary, &summaryObject) != nil || detailObject == nil || summaryObject == nil {
-		return nil, false
-	}
-	for key, value := range summaryObject {
-		detailObject[key] = value
-	}
-	merged, err := json.Marshal(detailObject)
-	return merged, err == nil
 }
 
 func normalizeResourceScopeReplacement(input ResourceScopeReplacement) (ResourceScopeReplacement, error) {

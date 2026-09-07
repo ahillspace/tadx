@@ -48,7 +48,7 @@ func TestInstalledSkillsIncludeAllBundledReferences(t *testing.T) {
 	}
 }
 
-func TestCodexInstallPreservesLegacySkills(t *testing.T) {
+func TestCodexInstallRequiresForceAndBacksUpDivergentLegacySkills(t *testing.T) {
 	home := t.TempDir()
 	legacyDirectory := filepath.Join(home, ".agents", "skills", "tadx")
 	if err := os.MkdirAll(legacyDirectory, 0o755); err != nil {
@@ -60,12 +60,26 @@ func TestCodexInstallPreservesLegacySkills(t *testing.T) {
 		t.Fatal(err)
 	}
 	installer := agent.Installer{Home: func() (string, error) { return home, nil }}
-	if _, err := installer.Install(context.Background(), "codex", false, false); err != nil {
-		t.Fatal(err)
+	if _, err := installer.Install(context.Background(), "codex", false, false); err == nil {
+		t.Fatal("divergent legacy skill must require force")
 	}
 	actual, err := os.ReadFile(legacyFile)
 	if err != nil || !bytes.Equal(actual, legacyContent) {
 		t.Fatalf("legacy skill changed: %q, %v", actual, err)
+	}
+	result, err := installer.Install(context.Background(), "codex", false, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(result.Skills) != 3 || result.Skills[2].Backup == "" {
+		t.Fatalf("missing legacy backup: %#v", result)
+	}
+	actual, err = os.ReadFile(filepath.Join(home, filepath.FromSlash(result.Skills[2].Backup), "SKILL.md"))
+	if err != nil || !bytes.Equal(actual, legacyContent) {
+		t.Fatalf("legacy backup changed: %q, %v", actual, err)
+	}
+	if _, err := os.Stat(legacyDirectory); !os.IsNotExist(err) {
+		t.Fatalf("legacy skill remains discoverable: %v", err)
 	}
 	for _, name := range []string{"tadx", "tadx-pulse"} {
 		if _, err := os.Stat(filepath.Join(home, ".codex", "skills", name, "SKILL.md")); err != nil {

@@ -17,6 +17,7 @@ const maxPages = 100
 
 type Item struct{ LUID, Type, Name, ProjectPath, Owner, ModifiedAt string }
 type Page struct {
+	Total            int
 	Items            []Item
 	NextCursor       string
 	Warnings         []string
@@ -124,6 +125,9 @@ func (a *Adapter) SearchBounded(ctx context.Context, input Input, budget int) (P
 			return Page{}, cursorError{}
 		}
 		result.Warnings = append(result.Warnings, page.Warnings...)
+		if len(input.Types) == 1 && strings.TrimSpace(input.Terms) == "" && strings.TrimSpace(input.ProjectPath) == "" && strings.TrimSpace(input.Owner) == "" {
+			result.Total = page.Total
+		}
 		for i := state.Offset; i < len(page.Items); i++ {
 			item := page.Items[i]
 			if matches(item, input) {

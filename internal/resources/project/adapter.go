@@ -145,6 +145,9 @@ func (a *Adapter) ResolveProjectPaths(ctx context.Context, luids []string) (map[
 	if a == nil || a.client == nil {
 		return nil, errors.New("project resource adapter is not configured")
 	}
+	if len(luids) == 0 {
+		return map[string]string{}, nil
+	}
 	items, _, err := a.all(ctx)
 	if err != nil {
 		return nil, err

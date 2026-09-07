@@ -208,8 +208,12 @@ func (c *remoteContentCommands) CreateProject(ctx context.Context, input project
 		return projectcreate.Output{}, remoteSetupError("project.create", input.Environment, input.Site, connection.environment, err)
 	}
 	input.Environment, input.Site = connection.environment.Alias, connection.environment.SiteContentURL
-	adapter := projectCreateAdapter{projects: connection.projects, changes: connection.projectChanges}
-	return projectcreate.New(adapter, adapter).Execute(ctx, input, preview)
+	adapter := projectCreateAdapter{projects: connection.projects, changes: connection.projectChanges, resolved: make(map[string]resourceproject.Project)}
+	out, err := projectcreate.New(adapter, adapter).Execute(ctx, input, preview)
+	if err == nil && out.Result != nil && out.Result.Project.Path == "" {
+		out.Help = append(out.Help, projectMutationPathWarning)
+	}
+	return out, err
 }
 
 func (c *remoteContentCommands) UpdateProject(ctx context.Context, input projectupdate.Input, preview bool) (projectupdate.Output, error) {
@@ -218,8 +222,12 @@ func (c *remoteContentCommands) UpdateProject(ctx context.Context, input project
 		return projectupdate.Output{}, remoteSetupError("project.update", input.Environment, input.Site, connection.environment, err)
 	}
 	input.Environment, input.Site = connection.environment.Alias, connection.environment.SiteContentURL
-	adapter := projectUpdateAdapter{projects: connection.projects, changes: connection.projectChanges}
-	return projectupdate.New(adapter, adapter).Execute(ctx, input, preview)
+	adapter := projectUpdateAdapter{projects: connection.projects, changes: connection.projectChanges, resolved: make(map[string]resourceproject.Project)}
+	out, err := projectupdate.New(adapter, adapter).Execute(ctx, input, preview)
+	if err == nil && out.Result != nil && out.Result.Project.Path == "" {
+		out.Help = append(out.Help, projectMutationPathWarning)
+	}
+	return out, err
 }
 
 func (c *remoteContentCommands) DeleteProject(ctx context.Context, input projectdelete.Input, preview bool) (projectdelete.Output, error) {
@@ -297,8 +305,19 @@ func (c *remoteContentCommands) ListFlows(ctx context.Context, input flowlist.In
 	observedAt := c.runtime.now().UTC()
 	output.Source = liveSource(c.runtime.now)
 	entries := make([]catalog.ResourceEntry, 0, len(output.Flows))
-	for _, item := range output.Flows {
-		entry, encodeErr := resourceEntry(input.Environment, input.Site, "flow", item.LUID, item.Name, "", item.OwnerLUID, "summary", observedAt, item)
+	projectIDs := make([]string, len(output.Flows))
+	for index, item := range output.Flows {
+		projectIDs[index] = item.ProjectLUID
+	}
+	paths, pathErr := connection.projects.ResolveProjectPaths(ctx, projectIDs)
+	if pathErr != nil {
+		output.Help = append(output.Help, "Live list succeeded, but canonical project paths could not be confirmed; catalog records were not updated.")
+		return output, nil
+	}
+	for index := range output.Flows {
+		item := &output.Flows[index]
+		item.ProjectPath = paths[item.ProjectLUID]
+		entry, encodeErr := resourceEntry(input.Environment, input.Site, "flow", item.LUID, item.Name, item.ProjectPath, item.OwnerLUID, "summary", observedAt, item)
 		if encodeErr == nil {
 			entries = append(entries, entry)
 		}
@@ -476,10 +495,14 @@ func (r projectGetResolver) ResolveProject(ctx context.Context, selector identit
 type projectCreateAdapter struct {
 	projects *resourceproject.Adapter
 	changes  *resourceproject.MutationAdapter
+	resolved map[string]resourceproject.Project
 }
 
 func (a projectCreateAdapter) ResolveProject(ctx context.Context, selector identity.Selector) (projectcreate.Project, error) {
 	item, err := a.projects.ResolveProject(ctx, selector)
+	if err == nil && a.resolved != nil {
+		a.resolved[item.LUID] = item
+	}
 	return toProjectCreate(item), err
 }
 
@@ -497,8 +520,8 @@ func (a projectCreateAdapter) CreateProject(ctx context.Context, input projectcr
 	if err != nil {
 		return projectcreate.Result{}, err
 	}
-	item, err := a.projects.NormalizeMutationProject(ctx, result.Project)
-	return projectcreate.Result{Status: result.Status, Project: toProjectCreate(item), TableauRequestID: result.TableauRequestID}, err
+	item := normalizeSuccessfulProjectMutation(ctx, a.projects, a.resolved, result.Project)
+	return projectcreate.Result{Status: result.Status, Project: toProjectCreate(item), TableauRequestID: result.TableauRequestID}, nil
 }
 
 func toProjectCreate(item resourceproject.Project) projectcreate.Project {
@@ -508,10 +531,14 @@ func toProjectCreate(item resourceproject.Project) projectcreate.Project {
 type projectUpdateAdapter struct {
 	projects *resourceproject.Adapter
 	changes  *resourceproject.MutationAdapter
+	resolved map[string]resourceproject.Project
 }
 
 func (a projectUpdateAdapter) ResolveProject(ctx context.Context, selector identity.Selector) (projectupdate.Project, error) {
 	item, err := a.projects.ResolveProject(ctx, selector)
+	if err == nil && a.resolved != nil {
+		a.resolved[item.LUID] = item
+	}
 	return toProjectUpdate(item), err
 }
 
@@ -520,8 +547,8 @@ func (a projectUpdateAdapter) UpdateProject(ctx context.Context, input projectup
 	if err != nil {
 		return projectupdate.Result{}, err
 	}
-	item, err := a.projects.NormalizeMutationProject(ctx, result.Project)
-	return projectupdate.Result{Status: result.Status, Project: toProjectUpdate(item), TableauRequestID: result.TableauRequestID}, err
+	item := normalizeSuccessfulProjectMutation(ctx, a.projects, a.resolved, result.Project)
+	return projectupdate.Result{Status: result.Status, Project: toProjectUpdate(item), TableauRequestID: result.TableauRequestID}, nil
 }
 
 func toProjectUpdate(item resourceproject.Project) projectupdate.Project {

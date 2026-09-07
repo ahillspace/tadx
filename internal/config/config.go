@@ -630,6 +630,17 @@ const configLockSuffix = ".lock"
 // file is returned as an error. A mutator that returns ErrNoChange leaves the
 // file untouched and Update returns the loaded configuration unchanged.
 func Update(path string, createIfMissing bool, mutate func(Config) (Config, error)) (Config, error) {
+	return UpdateWithRollback(path, createIfMissing, func(current Config) (Config, func() error, error) {
+		next, err := mutate(current)
+		return next, nil, err
+	})
+}
+
+// UpdateWithRollback serializes a configuration mutation and its filesystem
+// staging. The mutator can return a rollback function, including on error.
+// If the mutation or save fails, rollback runs before releasing the configuration
+// lock. A successful save commits the staging and does not invoke rollback.
+func UpdateWithRollback(path string, createIfMissing bool, mutate func(Config) (Config, func() error, error)) (result Config, resultErr error) {
 	if strings.TrimSpace(path) == "" {
 		return Config{}, errors.New("configuration path is required")
 	}
@@ -641,6 +652,15 @@ func Update(path string, createIfMissing bool, mutate func(Config) (Config, erro
 		return Config{}, fmt.Errorf("acquire configuration lock: %w", err)
 	}
 	defer func() { _ = handle.Release() }()
+	var rollback func() error
+	committed := false
+	defer func() {
+		if !committed && rollback != nil {
+			if err := rollback(); err != nil {
+				resultErr = errors.Join(resultErr, fmt.Errorf("rollback configuration mutation: %w", err))
+			}
+		}
+	}()
 	current, original, migrated, err := load(path)
 	if err != nil {
 		if !(createIfMissing && errors.Is(err, os.ErrNotExist)) {
@@ -648,7 +668,7 @@ func Update(path string, createIfMissing bool, mutate func(Config) (Config, erro
 		}
 		current, original, migrated = Config{Version: CurrentVersion}, nil, false
 	}
-	next, err := mutate(current)
+	next, rollback, err := mutate(current)
 	if err != nil {
 		if errors.Is(err, ErrNoChange) {
 			// The mutator reports no logical change, but an in-memory legacy
@@ -662,6 +682,7 @@ func Update(path string, createIfMissing bool, mutate func(Config) (Config, erro
 					return Config{}, fmt.Errorf("persist migrated workspace configuration: %w", err)
 				}
 			}
+			committed = true
 			return current, nil
 		}
 		return Config{}, err
@@ -674,6 +695,7 @@ func Update(path string, createIfMissing bool, mutate func(Config) (Config, erro
 	if err := Save(path, next); err != nil {
 		return Config{}, err
 	}
+	committed = true
 	return next, nil
 }
 

@@ -43,6 +43,10 @@ func TestUnfilteredLiveWorkbookListRefreshesSnapshotAndContinuesWithoutTableau(t
 
 	runtime := inventoryListRuntime(t, server)
 	commands := newRemoteContentCommands(runtime)
+	seedStore := catalog.NewStore(filepath.Dir(runtime.configPath), runtime.now)
+	if err := seedStore.UpsertResources(context.Background(), []catalog.ResourceEntry{{Environment: "production", Site: "team-site", Kind: "workbook", LUID: "workbook-a", Name: "Old", Coverage: "detail", ObservedAt: runtime.now().Add(-48 * time.Hour), Payload: []byte(`{"luid":"workbook-a","name":"Old","obsolete_detail":"stale"}`)}}); err != nil {
+		t.Fatal(err)
+	}
 	first, err := commands.ListWorkbooks(context.Background(), workbooklist.Input{Environment: "production", Limit: 1})
 	if err != nil {
 		t.Fatal(err)
@@ -58,6 +62,10 @@ func TestUnfilteredLiveWorkbookListRefreshesSnapshotAndContinuesWithoutTableau(t
 	}
 	if first.Source == nil || first.Source.Mode != readsource.Tableau || !first.Source.CatalogRefreshed || first.Source.CatalogGeneration == "" || !containsString(first.Help, inventoryRefreshHelp) {
 		t.Fatalf("source/help = %#v / %#v", first.Source, first.Help)
+	}
+	refreshed, err := seedStore.ReadResources(context.Background(), catalog.ResourceQuery{Environment: "production", Site: "team-site", Kind: "workbook", LUID: "workbook-a", Limit: 1})
+	if err != nil || len(refreshed.Entries) != 1 || refreshed.Entries[0].Coverage != "summary" || strings.Contains(string(refreshed.Entries[0].Payload), "obsolete_detail") {
+		t.Fatalf("refreshed summary retains stale detail: %#v, %v", refreshed, err)
 	}
 
 	second, err := commands.ListWorkbooks(context.Background(), workbooklist.Input{Environment: "production", Limit: 1, Cursor: first.Page.NextCursor})
