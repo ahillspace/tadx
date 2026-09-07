@@ -16,7 +16,11 @@ Reuse the task's known environment, workspace, and LUIDs.
 Use a provided environment alias verbatim without revalidating it through `env get`, `env list`, or a preliminary auth check.
 When no alias is provided or known, use `env list`; diagnose configuration/authentication only after an actual command fails.
 Avoid chaining environment list/get, auth status/check, and doctor for an already working target.
-PATs remain environment-variable references; never print or persist PATs or session tokens.
+Use a complete configured environment-variable pair for CI or a temporary credential override.
+Otherwise, `tadx auth login --environment <alias>` validates and stores a PAT in the native OS credential store through an interactive terminal.
+Never pass PAT values through flags, command arguments, or a noninteractive login.
+TADX never uses plaintext credential storage.
+Never print PATs or session tokens.
 
 Batch independent commands into one shell tool call as separate sequential lines.
 Never run authenticated TADX calls concurrently with the same PAT, including across agents or background jobs.

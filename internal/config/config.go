@@ -56,11 +56,12 @@ type Environment struct {
 	DefaultWorkspace string `yaml:"default_workspace,omitempty" json:"default_workspace,omitempty"`
 }
 
-// Auth contains environment-variable references, never PAT values.
+// Auth contains credential references, never PAT values.
 type Auth struct {
-	Type         string `yaml:"type" json:"type"`
-	PATNameEnv   string `yaml:"pat_name_env,omitempty" json:"pat_name_env,omitempty"`
-	PATSecretEnv string `yaml:"pat_secret_env,omitempty" json:"pat_secret_env,omitempty"`
+	Type          string `yaml:"type" json:"type"`
+	PATNameEnv    string `yaml:"pat_name_env,omitempty" json:"pat_name_env,omitempty"`
+	PATSecretEnv  string `yaml:"pat_secret_env,omitempty" json:"pat_secret_env,omitempty"`
+	CredentialRef string `yaml:"credential_ref,omitempty" json:"credential_ref,omitempty"`
 }
 
 // ValidationError reports deterministic configuration violations.
@@ -68,7 +69,10 @@ type ValidationError struct {
 	Violations []string
 }
 
-var workspaceIDPattern = regexp.MustCompile(`^ws_[0-9a-f]{32}$`)
+var (
+	workspaceIDPattern   = regexp.MustCompile(`^ws_[0-9a-f]{32}$`)
+	credentialRefPattern = regexp.MustCompile(`^cred_[0-9a-f]{32}$`)
+)
 
 func (e *ValidationError) Error() string {
 	return "invalid configuration: " + strings.Join(e.Violations, "; ")
@@ -82,6 +86,7 @@ func (c Config) Validate() error {
 		defaulted bool
 	}
 	variableReferences := make(map[string]variableReference)
+	credentialReferences := make(map[string]string)
 	if c.Version != CurrentVersion {
 		violations = append(violations, fmt.Sprintf("version must be %d", CurrentVersion))
 	}
@@ -153,6 +158,15 @@ func (c Config) Validate() error {
 		}
 		if environment.Auth.Type != AuthTypePAT {
 			violations = append(violations, fmt.Sprintf("environment %q auth type must be %q", alias, AuthTypePAT))
+		}
+		if reference := environment.Auth.CredentialRef; reference != "" {
+			if !credentialRefPattern.MatchString(reference) {
+				violations = append(violations, fmt.Sprintf("environment %q credential reference must match cred_<32 lowercase hex>", alias))
+			} else if previous, exists := credentialReferences[reference]; exists {
+				violations = append(violations, fmt.Sprintf("credential reference %q is shared by environments %q and %q", reference, previous, alias))
+			} else {
+				credentialReferences[reference] = alias
+			}
 		}
 		if environment.DefaultWorkspace != "" {
 			if looksLikePath(environment.DefaultWorkspace) {
@@ -641,6 +655,24 @@ func Update(path string, createIfMissing bool, mutate func(Config) (Config, erro
 // If the mutation or save fails, rollback runs before releasing the configuration
 // lock. A successful save commits the staging and does not invoke rollback.
 func UpdateWithRollback(path string, createIfMissing bool, mutate func(Config) (Config, func() error, error)) (result Config, resultErr error) {
+	return updateTransaction(path, createIfMissing, func(current Config) (Config, func() error, func() error, error) {
+		next, rollback, err := mutate(current)
+		return next, rollback, nil, err
+	})
+}
+
+// UpdateWithPostSave serializes a configuration mutation and an irreversible
+// external commit. The callback runs after the new configuration is durable
+// while the configuration lock remains held. If the callback fails, the prior
+// configuration is restored before the lock is released.
+func UpdateWithPostSave(path string, createIfMissing bool, mutate func(Config) (Config, func() error, error)) (result Config, resultErr error) {
+	return updateTransaction(path, createIfMissing, func(current Config) (Config, func() error, func() error, error) {
+		next, postSave, err := mutate(current)
+		return next, nil, postSave, err
+	})
+}
+
+func updateTransaction(path string, createIfMissing bool, mutate func(Config) (Config, func() error, func() error, error)) (result Config, resultErr error) {
 	if strings.TrimSpace(path) == "" {
 		return Config{}, errors.New("configuration path is required")
 	}
@@ -668,7 +700,7 @@ func UpdateWithRollback(path string, createIfMissing bool, mutate func(Config) (
 		}
 		current, original, migrated = Config{Version: CurrentVersion}, nil, false
 	}
-	next, rollback, err := mutate(current)
+	next, rollback, postSave, err := mutate(cloneConfig(current))
 	if err != nil {
 		if errors.Is(err, ErrNoChange) {
 			// The mutator reports no logical change, but an in-memory legacy
@@ -695,8 +727,34 @@ func UpdateWithRollback(path string, createIfMissing bool, mutate func(Config) (
 	if err := Save(path, next); err != nil {
 		return Config{}, err
 	}
+	if postSave != nil {
+		if err := postSave(); err != nil {
+			restoreErr := Save(path, current)
+			if restoreErr != nil {
+				return Config{}, errors.Join(err, fmt.Errorf("restore configuration after external commit failure: %w", restoreErr))
+			}
+			return current, err
+		}
+	}
 	committed = true
 	return next, nil
+}
+
+func cloneConfig(configuration Config) Config {
+	clone := configuration
+	if configuration.Environments != nil {
+		clone.Environments = make(map[string]Environment, len(configuration.Environments))
+		for alias, environment := range configuration.Environments {
+			clone.Environments[alias] = environment
+		}
+	}
+	if configuration.Workspaces != nil {
+		clone.Workspaces = make(map[string]WorkspaceRegistration, len(configuration.Workspaces))
+		for name, registration := range configuration.Workspaces {
+			clone.Workspaces[name] = registration
+		}
+	}
+	return clone
 }
 
 // DefaultPATVariableNames returns the conventional PAT variable references for an alias.

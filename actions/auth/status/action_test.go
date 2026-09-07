@@ -37,7 +37,7 @@ func (l lookup) LookupEnv(key string) (string, bool) { value, ok := l[key]; retu
 func TestExecuteReportsReadyWithoutReturningPATValues(t *testing.T) {
 	action := authstatus.New(resolver{target: fixture()}, lookup{"PROD_PAT_NAME": "token-name", "PROD_PAT_SECRET": "highly-secret"})
 	got, err := action.Execute(context.Background(), authstatus.Input{Environment: "production"})
-	if err != nil || got.Status != "ready" || !got.PATNamePresent || !got.PATSecretPresent {
+	if err != nil || got.Status != "ready" || got.CredentialSource != "environment" || !got.PATNamePresent || !got.PATSecretPresent {
 		t.Fatalf("output = %#v, error = %v", got, err)
 	}
 	var rendered bytes.Buffer
@@ -46,6 +46,24 @@ func TestExecuteReportsReadyWithoutReturningPATValues(t *testing.T) {
 	}
 	if strings.Contains(rendered.String(), "token-name") || strings.Contains(rendered.String(), "highly-secret") {
 		t.Fatalf("secret leaked: %s", rendered.String())
+	}
+}
+
+func TestExecuteReportsStoredCredentialWithoutReadingItsValues(t *testing.T) {
+	target := fixture()
+	target.StoredCredentialReferencePresent = true
+	got, err := authstatus.New(resolver{target: target}, lookup{}).Execute(context.Background(), authstatus.Input{})
+	if err != nil || got.Status != "ready" || got.CredentialSource != "os_credential_store" || !got.StoredCredentialReferencePresent {
+		t.Fatalf("output = %#v, error = %v", got, err)
+	}
+}
+
+func TestExecuteReportsEnvironmentOverrideOfStoredCredential(t *testing.T) {
+	target := fixture()
+	target.StoredCredentialReferencePresent = true
+	got, err := authstatus.New(resolver{target: target}, lookup{"PROD_PAT_NAME": "name", "PROD_PAT_SECRET": "secret"}).Execute(context.Background(), authstatus.Input{})
+	if err != nil || got.CredentialSource != "environment" || !got.StoredCredentialReferencePresent {
+		t.Fatalf("output = %#v, error = %v", got, err)
 	}
 }
 

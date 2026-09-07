@@ -93,3 +93,41 @@ func TestUpdateWithRollbackDoesNotRestoreAfterCommit(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestUpdateWithPostSaveRestoresConfigurationWhenExternalCommitFails(t *testing.T) {
+	t.Parallel()
+	path := filepath.Join(t.TempDir(), "config.yaml")
+	original := config.Config{Version: config.CurrentVersion, Environments: map[string]config.Environment{
+		"dev": {URL: "https://example.test", Auth: config.Auth{Type: config.AuthTypePAT, CredentialRef: "cred_11111111111111111111111111111111"}},
+	}}
+	if err := config.Save(path, original); err != nil {
+		t.Fatal(err)
+	}
+	commitErr := errors.New("external commit failed")
+	callbackSawDurableChange := false
+
+	_, err := config.UpdateWithPostSave(path, false, func(current config.Config) (config.Config, func() error, error) {
+		next := current
+		environment := next.Environments["dev"]
+		environment.Auth.CredentialRef = ""
+		next.Environments["dev"] = environment
+		return next, func() error {
+			written, loadErr := config.Load(path)
+			if loadErr != nil {
+				return loadErr
+			}
+			callbackSawDurableChange = written.Environments["dev"].Auth.CredentialRef == ""
+			return commitErr
+		}, nil
+	})
+	if !errors.Is(err, commitErr) || !callbackSawDurableChange {
+		t.Fatalf("UpdateWithPostSave() error = %v, callback saw change = %t", err, callbackSawDurableChange)
+	}
+	restored, err := config.Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := restored.Environments["dev"].Auth.CredentialRef; got != "cred_11111111111111111111111111111111" {
+		t.Fatalf("CredentialRef = %q, want original", got)
+	}
+}

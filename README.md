@@ -14,8 +14,8 @@ The executable registry now covers the core content, workspace, catalog, adminis
 
 The current build supports:
 
-- Managing named environment profiles that reference PAT environment variables.
-- Checking local authentication configuration and signing in to verify a Tableau site.
+- Managing named environment profiles that reference PAT environment variables or an optional native OS credential.
+- Checking local authentication configuration, storing a validated PAT, removing a stored PAT, and signing in to verify a Tableau site.
 - Discovering capability ownership, availability, selectors, safety rules, and blockers.
 - Querying Tableau live by default, with explicit local catalog reads through `--catalog`.
 - Refreshing and inspecting the status of the local SQLite catalog.
@@ -113,21 +113,51 @@ This local operation does not require `TADX_ENABLE_MUTATIONS`.
 
 ## Configure a Tableau environment
 
-TADX uses Tableau personal access tokens and never stores their values in its configuration.
-Use your shell, CI secret store, or credential manager to expose `TADX_DEV_PAT_NAME` and `TADX_DEV_PAT_SECRET` to the `tadx` process.
-
-Register an environment profile that references those variable names:
+TADX uses Tableau personal access tokens.
+Register an environment profile with environment-variable names for CI or temporary credential overrides:
 
 ```text
 tadx env add dev --url https://example.tableau.com --site example-site --pat-name-env TADX_DEV_PAT_NAME --pat-secret-env TADX_DEV_PAT_SECRET
 ```
 
-Inspect the resolved nonsecret configuration, then verify the credentials against Tableau:
+Choose one credential source.
+
+For an interactive setup, enter the PAT name and secret at secure terminal prompts:
+
+```text
+tadx auth login --environment dev
+```
+
+TADX validates the PAT against the configured Tableau site before storing it in the native OS credential store.
+The secret does not echo in the terminal.
+TADX stores only an opaque credential reference in its configuration and never falls back to plaintext storage.
+The native store uses Windows Credential Manager, macOS Keychain, or Linux Secret Service.
+If the native store is unavailable or locked, login fails without saving the PAT elsewhere.
+The login command requires an interactive terminal and does not accept credential flags or redirected input.
+
+For CI or a temporary override, set both configured environment variables before running TADX.
+A complete environment-variable pair takes precedence over the stored PAT.
+If either variable is missing or empty, TADX reports an incomplete credential instead of combining credential sources.
+
+Inspect the resolved nonsecret configuration, then verify the active credentials against Tableau:
 
 ```text
 tadx auth status --environment dev
 tadx auth check --environment dev
 ```
+
+The stored PAT remains available until you remove it locally or Tableau rejects it because it was revoked, expired, or disabled.
+To replace the stored PAT, run `tadx auth login --environment dev` again and enter the replacement values.
+To stop using the stored PAT, run:
+
+```text
+tadx auth logout --environment dev
+```
+
+Logout removes only the local TADX credential.
+It does not revoke or delete the PAT in Tableau.
+Remove a temporary environment-variable override from the process to return to the stored PAT.
+PATs and session tokens never appear in configuration values, output, logs, artifacts, catalogs, fixtures, or diagnostics.
 
 ## Create a named workspace
 

@@ -88,6 +88,11 @@ func TestConfigValidateRejectsInvalidModels(t *testing.T) {
 		{name: "empty alias", cfg: config.Config{Version: 1, Environments: map[string]config.Environment{"": {URL: "https://example.com", Auth: config.Auth{Type: config.AuthTypePAT}}}}},
 		{name: "same PAT variable", cfg: config.Config{Version: 1, Environments: map[string]config.Environment{"x": {URL: "https://example.com", Auth: config.Auth{Type: config.AuthTypePAT, PATNameEnv: "PAT", PATSecretEnv: "PAT"}}}}},
 		{name: "case-only same PAT variable", cfg: config.Config{Version: 1, Environments: map[string]config.Environment{"x": {URL: "https://example.com", Auth: config.Auth{Type: config.AuthTypePAT, PATNameEnv: "PAT", PATSecretEnv: "pat"}}}}},
+		{name: "invalid credential reference", cfg: config.Config{Version: 1, Environments: map[string]config.Environment{"x": {URL: "https://example.com", Auth: config.Auth{Type: config.AuthTypePAT, CredentialRef: "pat:example"}}}}},
+		{name: "shared credential reference", cfg: config.Config{Version: 1, Environments: map[string]config.Environment{
+			"one": {URL: "https://one.example.com", Auth: config.Auth{Type: config.AuthTypePAT, CredentialRef: "cred_0123456789abcdef0123456789abcdef"}},
+			"two": {URL: "https://two.example.com", Auth: config.Auth{Type: config.AuthTypePAT, CredentialRef: "cred_0123456789abcdef0123456789abcdef"}},
+		}}},
 	}
 
 	for _, tt := range tests {
@@ -120,6 +125,32 @@ func TestResolveEnvironmentAppliesDefaultPATReferencesWithoutMutatingConfig(t *t
 	}
 	if cfg.Environments["production-us"].Auth.PATNameEnv != "" {
 		t.Fatal("ResolveEnvironment() mutated the source configuration")
+	}
+}
+
+func TestResolveEnvironmentPreservesCredentialReference(t *testing.T) {
+	t.Parallel()
+	const reference = "cred_0123456789abcdef0123456789abcdef"
+	cfg := config.Config{
+		Version:            config.CurrentVersion,
+		DefaultEnvironment: "production-us",
+		Environments: map[string]config.Environment{
+			"production-us": {
+				URL:  "https://example.com",
+				Auth: config.Auth{Type: config.AuthTypePAT, CredentialRef: reference},
+			},
+		},
+	}
+
+	if err := cfg.Validate(); err != nil {
+		t.Fatalf("Validate() error = %v", err)
+	}
+	got, err := cfg.ResolveEnvironment("")
+	if err != nil {
+		t.Fatalf("ResolveEnvironment() error = %v", err)
+	}
+	if got.Auth.CredentialRef != reference {
+		t.Fatalf("CredentialRef = %q, want %q", got.Auth.CredentialRef, reference)
 	}
 }
 

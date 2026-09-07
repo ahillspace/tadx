@@ -14,6 +14,8 @@ import (
 	"time"
 
 	authcheck "github.com/ahillspace/tadx/actions/auth/check"
+	authlogin "github.com/ahillspace/tadx/actions/auth/login"
+	authlogout "github.com/ahillspace/tadx/actions/auth/logout"
 	capabilityget "github.com/ahillspace/tadx/actions/capability/get"
 	capabilitylist "github.com/ahillspace/tadx/actions/capability/list"
 	workbookpublish "github.com/ahillspace/tadx/actions/workbook/publish"
@@ -22,6 +24,7 @@ import (
 	coreauth "github.com/ahillspace/tadx/internal/auth"
 	"github.com/ahillspace/tadx/internal/capability"
 	"github.com/ahillspace/tadx/internal/cli"
+	authcli "github.com/ahillspace/tadx/internal/cli/auth"
 	"github.com/ahillspace/tadx/internal/cli/clierr"
 	"github.com/ahillspace/tadx/internal/config"
 	"github.com/ahillspace/tadx/internal/errs"
@@ -42,6 +45,8 @@ type Options struct {
 	MutationsEnabled bool
 	ConfigPath       string
 	HTTPClient       *http.Client
+	PATStore         coreauth.PATStore
+	AuthPrompter     authcli.Prompter
 	Now              func() time.Time
 	CorrelationID    func() string
 	UserHomeDir      func() (string, error)
@@ -63,6 +68,7 @@ func Run(ctx context.Context, args []string, stdout io.Writer, options Options) 
 	pulseActions := newPulseCommands(runtime)
 	doctorCommands := newDoctorCommands(runtime)
 	catalogGroup2 := newCatalogGroup2Commands(runtime)
+	credentialStore := authCredentialStore{runtime: runtime}
 	root := cli.NewRoot(cli.Dependencies{
 		Lister:              capabilitylist.New(source),
 		Getter:              capabilityget.New(source),
@@ -93,6 +99,11 @@ func Run(ctx context.Context, args []string, stdout io.Writer, options Options) 
 		DoctorShort:         registryShort("doctor.run"),
 		AuthUse:             registryLeafUse("auth.check"), AuthShort: registryShort("auth.check"),
 		AuthStatuser: newAuthStatus(runtime), AuthStatusUse: registryLeafUse("auth.status"), AuthStatusShort: registryShort("auth.status"),
+		AuthLogin:    authlogin.New(authCredentialResolver{runtime: runtime}, loginAuthenticator{runtime: runtime}, credentialStore),
+		AuthLogout:   authlogout.New(authLogoutResolver{runtime: runtime}, credentialStore),
+		AuthPrompter: runtime.authPrompter,
+		AuthLoginUse: registryLeafUse("auth.login"), AuthLoginShort: registryShort("auth.login"),
+		AuthLogoutUse: registryLeafUse("auth.logout"), AuthLogoutShort: registryShort("auth.logout"),
 		CatalogRefreshUse: registryLeafUse("catalog.refresh"), CatalogRefreshShort: registryShort("catalog.refresh"),
 		CatalogStatusUse: registryLeafUse("catalog.status"), CatalogStatusShort: registryShort("catalog.status"),
 		WorkbookPullUse: registryLeafUse("workbook.pull"), WorkbookPullShort: registryShort("workbook.pull"),
@@ -158,6 +169,8 @@ type runtimeDependencies struct {
 	now           func() time.Time
 	correlationID string
 	userHomeDir   func() (string, error)
+	patStore      coreauth.PATStore
+	authPrompter  authcli.Prompter
 }
 
 func newRuntime(options Options) (*runtimeDependencies, error) {
@@ -191,7 +204,15 @@ func newRuntime(options Options) (*runtimeDependencies, error) {
 	if userHomeDir == nil {
 		userHomeDir = os.UserHomeDir
 	}
-	return &runtimeDependencies{configPath: path, httpClient: client, now: now, correlationID: correlation, userHomeDir: userHomeDir}, nil
+	patStore := options.PATStore
+	if patStore == nil {
+		patStore = coreauth.NewOSPATStore()
+	}
+	prompter := options.AuthPrompter
+	if prompter == nil {
+		prompter = newTerminalCredentialPrompter()
+	}
+	return &runtimeDependencies{configPath: path, httpClient: client, now: now, correlationID: correlation, userHomeDir: userHomeDir, patStore: patStore, authPrompter: prompter}, nil
 }
 
 func (r *runtimeDependencies) Resolve(_ context.Context, alias string) (authcheck.Target, error) {
@@ -199,13 +220,13 @@ func (r *runtimeDependencies) Resolve(_ context.Context, alias string) (authchec
 	if err != nil {
 		return authcheck.Target{}, err
 	}
-	return authcheck.Target{Environment: environment.Alias, ServerURL: environment.URL, SiteContentURL: environment.SiteContentURL, APIVersion: environment.APIVersion, PATNameVariable: environment.Auth.PATNameEnv, PATSecretVariable: environment.Auth.PATSecretEnv}, nil
+	return authcheck.Target{Environment: environment.Alias, ServerURL: environment.URL, SiteContentURL: environment.SiteContentURL, APIVersion: environment.APIVersion, PATNameVariable: environment.Auth.PATNameEnv, PATSecretVariable: environment.Auth.PATSecretEnv, CredentialReference: environment.Auth.CredentialRef}, nil
 }
 
 func (r *runtimeDependencies) Authenticate(ctx context.Context, target authcheck.Target) (authcheck.Authentication, error) {
 	transport := tableau.NewTransport(r.httpClient, target.APIVersion, func() string { return r.correlationID })
-	provider := coreauth.NewPATProvider(coreauth.LookupEnvFunc(os.LookupEnv), tableauauth.NewClient(transport))
-	session, err := provider.Authenticate(ctx, coreauth.Target{Environment: target.Environment, ServerURL: target.ServerURL, SiteContentURL: target.SiteContentURL, PATNameVariable: target.PATNameVariable, PATSecretVariable: target.PATSecretVariable})
+	provider := coreauth.NewPATProviderWithStore(coreauth.LookupEnvFunc(os.LookupEnv), tableauauth.NewClient(transport), r.patStore)
+	session, err := provider.Authenticate(ctx, coreauth.Target{Environment: target.Environment, ServerURL: target.ServerURL, SiteContentURL: target.SiteContentURL, PATNameVariable: target.PATNameVariable, PATSecretVariable: target.PATSecretVariable, CredentialReference: target.CredentialReference})
 	if err != nil {
 		return authcheck.Authentication{}, err
 	}
@@ -246,8 +267,8 @@ func (r *runtimeDependencies) tableauConnection(ctx context.Context, alias strin
 		return authenticatedTableau{configuration: configuration, environment: environment}, err
 	}
 	transport := tableau.NewTransport(r.httpClient, environment.APIVersion, func() string { return r.correlationID })
-	provider := coreauth.NewPATProvider(coreauth.LookupEnvFunc(os.LookupEnv), tableauauth.NewClient(transport))
-	session, err := provider.Authenticate(ctx, coreauth.Target{Environment: environment.Alias, ServerURL: environment.URL, SiteContentURL: environment.SiteContentURL, PATNameVariable: environment.Auth.PATNameEnv, PATSecretVariable: environment.Auth.PATSecretEnv})
+	provider := coreauth.NewPATProviderWithStore(coreauth.LookupEnvFunc(os.LookupEnv), tableauauth.NewClient(transport), r.patStore)
+	session, err := provider.Authenticate(ctx, coreauth.Target{Environment: environment.Alias, ServerURL: environment.URL, SiteContentURL: environment.SiteContentURL, PATNameVariable: environment.Auth.PATNameEnv, PATSecretVariable: environment.Auth.PATSecretEnv, CredentialReference: environment.Auth.CredentialRef})
 	return authenticatedTableau{configuration: configuration, environment: environment, transport: transport, session: session}, err
 }
 

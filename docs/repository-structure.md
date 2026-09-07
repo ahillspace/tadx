@@ -101,9 +101,11 @@ The CLI does not resolve Tableau identity, authenticate, call Tableau, or constr
 
 ### Authentication and configuration
 
-Configuration contains environment aliases, Tableau server URLs, site content URLs, workspace defaults, and PAT environment-variable references.
+Configuration contains environment aliases, Tableau server URLs, site content URLs, workspace defaults, PAT environment-variable references, and optional opaque credential references.
 Configuration never contains PAT values or session tokens.
-The authentication provider resolves PAT references and returns a session that authorizes requests without exposing the PAT to consumers.
+The authentication provider resolves a complete environment-variable pair before an optional stored credential.
+The native OS credential store is the only supported persistent secret store, and TADX never falls back to plaintext storage.
+The authentication provider returns a session that authorizes requests without exposing the PAT to consumers.
 
 ### Identity
 

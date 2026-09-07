@@ -59,9 +59,10 @@ func (c *doctorCommands) CheckPATReferences(_ context.Context, scope doctorrun.S
 	name, namePresent := os.LookupEnv(environment.Auth.PATNameEnv)
 	secret, secretPresent := os.LookupEnv(environment.Auth.PATSecretEnv)
 	return doctorrun.PATState{
-		ReferencesConfigured:  environment.Auth.PATNameEnv != "" && environment.Auth.PATSecretEnv != "",
-		NameVariablePresent:   namePresent && name != "",
-		SecretVariablePresent: secretPresent && secret != "",
+		ReferencesConfigured:    environment.Auth.PATNameEnv != "" && environment.Auth.PATSecretEnv != "",
+		NameVariablePresent:     namePresent && name != "",
+		SecretVariablePresent:   secretPresent && secret != "",
+		StoredCredentialPresent: environment.Auth.CredentialRef != "",
 	}, nil
 }
 

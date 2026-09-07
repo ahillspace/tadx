@@ -16,11 +16,13 @@ const TableauAuthHeader = "X-Tableau-Auth"
 
 // Target contains non-secret information needed to authenticate an environment.
 type Target struct {
-	Environment       string
-	ServerURL         string
-	SiteContentURL    string
-	PATNameVariable   string
-	PATSecretVariable string
+	Environment         string
+	ServerURL           string
+	SiteContentURL      string
+	PATNameVariable     string
+	PATSecretVariable   string
+	CredentialReference string
+	Operation           string
 }
 
 // Provider authenticates a target without exposing PAT credentials to consumers.
@@ -62,6 +64,7 @@ type SignInRequest struct {
 	SiteContentURL string
 	PATName        string
 	PATSecret      string
+	Operation      string
 }
 
 func (r SignInRequest) String() string {
@@ -77,7 +80,8 @@ func (r SignInRequest) MarshalJSON() ([]byte, error) {
 	return json.Marshal(struct {
 		ServerURL      string `json:"server_url"`
 		SiteContentURL string `json:"site_content_url"`
-	}{ServerURL: r.ServerURL, SiteContentURL: r.SiteContentURL})
+		Operation      string `json:"operation,omitempty"`
+	}{ServerURL: r.ServerURL, SiteContentURL: r.SiteContentURL, Operation: r.Operation})
 }
 
 // SignInResponse contains a short-lived session token and authoritative identities.
@@ -114,51 +118,39 @@ func (e *MissingVariablesError) Error() string {
 }
 
 type patProvider struct {
-	lookup LookupEnv
-	signer Signer
+	resolver *PATSourceResolver
+	signer   Signer
 }
 
 // NewPATProvider creates a PAT-backed Provider. PAT values remain inside auth.
 func NewPATProvider(lookup LookupEnv, signer Signer) Provider {
-	return &patProvider{lookup: lookup, signer: signer}
+	return &patProvider{resolver: NewPATSourceResolver(lookup, nil), signer: signer}
+}
+
+// NewPATProviderWithStore creates a PAT-backed Provider with optional native credential storage.
+func NewPATProviderWithStore(lookup LookupEnv, signer Signer, store PATStore) Provider {
+	return &patProvider{resolver: NewPATSourceResolver(lookup, store), signer: signer}
 }
 
 func (p *patProvider) Authenticate(ctx context.Context, target Target) (Session, error) {
-	if p.lookup == nil {
-		return nil, errors.New("PAT environment lookup is not configured")
-	}
 	if p.signer == nil {
 		return nil, errors.New("PAT sign-in client is not configured")
 	}
-	if target.PATNameVariable != "" && strings.EqualFold(target.PATNameVariable, target.PATSecretVariable) {
-		return nil, errors.New("PAT name and secret must use different environment variables")
+	if p.resolver == nil {
+		return nil, errors.New("PAT credential resolver is not configured")
 	}
-	values := make(map[string]string, 2)
-	missing := make([]string, 0, 2)
-	for _, variable := range []string{target.PATNameVariable, target.PATSecretVariable} {
-		if variable == "" {
-			missing = append(missing, "<unset reference>")
-			continue
-		}
-		value, ok := p.lookup.LookupEnv(variable)
-		if !ok || value == "" {
-			missing = append(missing, variable)
-			continue
-		}
-		values[variable] = value
+	credentials, err := p.resolver.Resolve(ctx, target)
+	if err != nil {
+		return nil, err
 	}
-	if len(missing) > 0 {
-		sort.Strings(missing)
-		return nil, &MissingVariablesError{Environment: target.Environment, Variables: missing}
-	}
-
-	name := values[target.PATNameVariable]
-	secret := values[target.PATSecretVariable]
+	name := credentials.Name
+	secret := credentials.Secret
 	response, err := p.signer.SignIn(ctx, SignInRequest{
 		ServerURL:      target.ServerURL,
 		SiteContentURL: target.SiteContentURL,
 		PATName:        name,
 		PATSecret:      secret,
+		Operation:      target.Operation,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("sign in: %w", redactError(err, name, secret))

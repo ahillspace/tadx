@@ -134,6 +134,25 @@ func TestDoctorTreatsDisabledLoggingAsPass(t *testing.T) {
 	}
 }
 
+func TestDoctorAcceptsStoredPATWithoutEnvironmentValues(t *testing.T) {
+	action := doctorrun.New(doctorrun.Dependencies{
+		Configuration: &configurationChecker{state: doctorrun.ConfigurationState{Present: true, Valid: true, EnvironmentResolved: true}},
+		PAT:           &patChecker{state: doctorrun.PATState{ReferencesConfigured: true, StoredCredentialPresent: true}},
+		Connectivity:  &connectivityChecker{state: doctorrun.ConnectivityState{Reachable: true, Authenticated: true}},
+		Catalog:       &catalogChecker{state: doctorrun.CatalogState{Present: true, Complete: true}},
+		Workspace:     &workspaceChecker{state: doctorrun.WorkspaceState{Selected: true, Available: true, ManifestValid: true}},
+		Logging:       &loggingChecker{state: doctorrun.LoggingState{Valid: true}},
+	})
+
+	output, err := action.Execute(context.Background(), doctorrun.Input{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if output.Checks[1].Status != doctorrun.StatusPass || output.Checks[1].Summary != "A PAT is configured in the native OS credential store." {
+		t.Fatalf("PAT check = %#v", output.Checks[1])
+	}
+}
+
 func TestDoctorDoesNotInspectOrReportTableauMCP(t *testing.T) {
 	action := doctorrun.New(doctorrun.Dependencies{
 		Configuration: &configurationChecker{state: doctorrun.ConfigurationState{Present: true, Valid: true, EnvironmentResolved: true}},

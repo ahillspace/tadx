@@ -63,7 +63,10 @@ Consequential mutations run by default and support `--preview` for a read-only p
 Remote mutation commands and capabilities remain discoverable when execution is disabled.
 `TADX_ENABLE_MUTATIONS=1` enables mutation commands.
 `--force` does not bypass mutation policy.
-Never persist or print PATs or session tokens.
+Persist PATs only after explicit user approval through the native OS credential store.
+Store only opaque credential references in configuration.
+Never place PATs or session tokens in configuration values, output, logs, artifacts, catalogs, fixtures, or diagnostics.
+Never use a plaintext credential fallback when the native store is unavailable.
 
 ## Integrate the capability
 

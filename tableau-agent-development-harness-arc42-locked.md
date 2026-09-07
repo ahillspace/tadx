@@ -165,7 +165,7 @@ V1 must include enough coherent deterministic primitives that coding agents can 
 - Named Tableau environment profiles.
 - Tableau Cloud and Tableau Server.
 - PAT authentication.
-- Environment-variable / local `.env` secret resolution.
+- Environment-variable or user-approved native OS credential-store resolution.
 - Read-only default environment support.
 - Source-provenance default targets for artifact-backed remote writes.
 - Explicit target selection when source provenance is absent or intentionally overridden.
@@ -616,7 +616,9 @@ PAT-only V1.
 
 Owns:
 
-- PAT name/secret variable resolution,
+- complete PAT source resolution without mixing sources,
+- interactive PAT validation and native OS credential storage,
+- local stored-PAT removal,
 - sign-in,
 - token validation,
 - clear expiry/invalid credential failures,
@@ -1062,13 +1064,20 @@ TADX_PRODUCTION_US_PAT_SECRET
 
 Visible configuration may override the variable names.
 
-PATs are not refreshed. Invalid or expired PATs fail clearly and must be replaced.
+PATs are not refreshed.
+Invalid, expired, revoked, or disabled PATs fail clearly and must be replaced.
+Interactive users replace a stored PAT by rerunning `tadx auth login --environment <alias>`.
 
 ## 7.4 Secrets
 
 `[DECIDED]`
 
-TADX itself never hardcodes or persists secrets in:
+TADX persists a PAT only after explicit interactive user approval and only in the native OS credential store.
+The stored record is bound to the configured Tableau server origin and exact site.
+Visible configuration contains only an opaque credential reference.
+TADX never falls back to plaintext credential storage.
+
+TADX itself never hardcodes or exposes secrets in:
 
 - visible config,
 - workspace metadata,
@@ -1078,7 +1087,9 @@ TADX itself never hardcodes or persists secrets in:
 - logs,
 - diagnostics.
 
-Secrets live in environment variables or a local git-ignored `.env`.
+Secrets live in a complete configured environment-variable pair or the native OS credential store.
+The environment-variable pair takes precedence for CI and temporary overrides.
+A partial pair fails without falling back to the stored PAT.
 
 TADX is not a general secret-policing/DLP product.
 

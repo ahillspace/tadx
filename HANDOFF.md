@@ -86,7 +86,7 @@ Not relevant to the build-now set, but relevant if the shelved gate work is pick
 - Sentence per line in long markdown.
 - Never add agent or Claude authorship as co-author on commits or PRs.
 - Do not touch auto-generated files.
-- The owner handles their own PATs and secrets; never persist or print them.
+- Persist PATs only through explicit interactive login to the native OS credential store; never print them or use plaintext fallback.
 
 ## Housekeeping done at handoff
 
