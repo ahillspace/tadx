@@ -138,6 +138,11 @@ jobs:
             exit 1
           }
 
+      - name: Test PowerShell installer
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: ./scripts/tests/install_ps1_test.ps1
+
   build:
     name: Build ${{ matrix.goos }}/${{ matrix.goarch }}
     needs: validate

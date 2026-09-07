@@ -59,6 +59,12 @@ jobs:
           go run ./cmd/gencapdocs -out docs/reference/capabilities.md
           git diff --exit-code
 
+      - name: Test shell installer
+        shell: bash
+        run: |
+          bash -n scripts/install.sh scripts/tests/install_sh_test.sh
+          bash scripts/tests/install_sh_test.sh
+
   windows-quality:
     name: Windows quality gates
     runs-on: windows-latest
@@ -102,6 +108,24 @@ jobs:
           go generate ./...
           go run ./cmd/gencapdocs -out docs/reference/capabilities.md
           git diff --exit-code
+
+      - name: Check PowerShell installer syntax
+        shell: pwsh
+        run: |
+          $errors = $null
+          [System.Management.Automation.Language.Parser]::ParseFile(
+            (Resolve-Path 'scripts/install.ps1'),
+            [ref]$null,
+            [ref]$errors
+          ) | Out-Null
+          if ($errors.Count -gt 0) {
+            $errors | Format-List | Out-String
+            exit 1
+          }
+
+      - name: Test PowerShell installer
+        shell: pwsh
+        run: ./scripts/tests/install_ps1_test.ps1
 
   cross-compile:
     name: Build ${{ matrix.goos }}/${{ matrix.goarch }}

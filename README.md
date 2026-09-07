@@ -45,7 +45,11 @@ tadx capability get workbook.pull --full
 Install or upgrade the latest release from a terminal.
 The installers select the correct Windows, macOS, or Linux binary, verify its SHA-256 checksum, and install it without administrator access.
 Anonymous installation requires public access to the repository and its release assets.
-During private development, authenticated maintainers can install from source.
+For private access, authenticate GitHub CLI before downloading the installer:
+
+```text
+gh auth login
+```
 
 ### Windows
 
@@ -59,6 +63,12 @@ Get-Content $installer
 Remove-Item $installer
 ```
 
+For a private repository, replace the `Invoke-WebRequest` command with:
+
+```powershell
+gh release download --repo ahillspace/tadx --pattern install.ps1 --output $installer
+```
+
 ### macOS and Linux
 
 Download the shell installer, inspect it, and run it:
@@ -69,6 +79,12 @@ curl -fsSL https://github.com/ahillspace/tadx/releases/latest/download/install.s
 cat "$installer"
 sh "$installer"
 rm -f "$installer"
+```
+
+For a private repository, replace the `curl` command with:
+
+```shell
+gh release download --repo ahillspace/tadx --pattern install.sh --output "$installer"
 ```
 
 Open a new terminal if `tadx` is not immediately available, then verify the installation:
