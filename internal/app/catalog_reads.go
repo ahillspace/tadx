@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"path/filepath"
+	"strings"
 	"time"
 
 	datasourceinspect "github.com/ahillspace/tadx/actions/datasource/inspect"
@@ -65,10 +66,22 @@ func catalogReadError(operation, environment, site string, err error) error {
 	var ambiguous interface{ AmbiguousCatalogSelector() bool }
 	var invalidCursor interface{ InvalidCatalogCursor() bool }
 	var refreshRequired interface{ CatalogProjectRefreshRequired() bool }
+	var schemaRefreshRequired interface{ CatalogSchemaRefreshRequired() bool }
 	if errors.As(err, &refreshRequired) && refreshRequired.CatalogProjectRefreshRequired() {
 		return &errs.Error{ID: "catalog.project_filter_unavailable", Kind: errs.KindOperation, Operation: operation, Environment: environment, Site: site, Summary: "The catalog lacks complete project identity coverage for this filter.", Cause: err, Retryable: errs.Bool(false), CorrectiveAction: "Run tadx catalog refresh --environment " + environment + " --scope projects,datasources, then repeat the same --catalog command."}
 	}
+	correctiveAction := catalogReadRecovery(operation, environment)
 	switch {
+	case errors.As(err, &schemaRefreshRequired) && schemaRefreshRequired.CatalogSchemaRefreshRequired():
+		id, summary = "catalog.schema_refresh_required", "The catalog schema requires an explicit refresh before cached reads can continue."
+		refresh := catalogScopeRefreshCommand(operation, environment)
+		if refresh == "" {
+			refresh = "tadx catalog refresh --environment " + environment
+		}
+		correctiveAction = "Run " + refresh + " to rebuild the catalog. Include any other inventory scopes you still need because rebuilding replaces the old cached data. Then repeat the --catalog command."
+		if operation == "datasource.schema" || strings.HasPrefix(operation, "pulse.") {
+			correctiveAction = "Run " + refresh + " to rebuild the catalog. Include any other inventory scopes you still need because rebuilding replaces the old cached data. Then run this command without --catalog to retrieve and cache its projection before retrying the cached read."
+		}
 	case errors.As(err, &uninitialized) && uninitialized.CatalogUninitialized():
 		id, summary = "catalog.uninitialized", "The catalog is not initialized for this environment and site."
 	case errors.As(err, &unavailable) && unavailable.CatalogScopeUnavailable():
@@ -77,10 +90,36 @@ func catalogReadError(operation, environment, site string, err error) error {
 		id, summary, kind = "catalog.record_not_found", "No catalog record matched the selector.", errs.KindUsage
 	case errors.As(err, &ambiguous) && ambiguous.AmbiguousCatalogSelector():
 		id, summary, kind = "catalog.selector_ambiguous", "The catalog selector matched more than one record.", errs.KindUsage
+		correctiveAction = "Use an exact LUID or a selector that identifies one resource; refreshing the catalog does not resolve an ambiguous name or path."
 	case errors.As(err, &invalidCursor) && invalidCursor.InvalidCatalogCursor():
 		id, summary, kind = "catalog.cursor_invalid", "The catalog continuation cursor no longer identifies the current snapshot.", errs.KindUsage
+		correctiveAction = "Repeat the same --catalog command without the legacy cursor to read the current snapshot."
 	}
-	return &errs.Error{ID: id, Kind: kind, Operation: operation, Environment: environment, Site: site, Summary: summary, Cause: err, Retryable: errs.Bool(false), CorrectiveAction: "Run the command without --catalog to query Tableau and update the catalog."}
+	return &errs.Error{ID: id, Kind: kind, Operation: operation, Environment: environment, Site: site, Summary: summary, Cause: err, Retryable: errs.Bool(false), CorrectiveAction: correctiveAction}
+}
+
+func catalogReadRecovery(operation, environment string) string {
+	live := "Run this command without --catalog for a live answer."
+	if operation == "datasource.schema" {
+		return live + " The live schema read attempts to cache the requested field and table metadata; inventory refresh does not collect datasource schemas."
+	}
+	if strings.HasPrefix(operation, "pulse.") {
+		return live + " The live read attempts to cache the requested Pulse records; inventory refresh does not collect Pulse records."
+	}
+	if refresh := catalogScopeRefreshCommand(operation, environment); refresh != "" {
+		return live + " To refresh the cached inventory, run " + refresh + ". Then repeat the same --catalog command. Include other inventory scopes you still need because refresh replaces the current generation."
+	}
+	return live
+}
+
+func catalogScopeRefreshCommand(operation, environment string) string {
+	resource, _, _ := strings.Cut(strings.TrimPrefix(operation, "admin."), ".")
+	switch resource {
+	case "workbook", "datasource", "flow", "project", "user", "group":
+		return "tadx catalog refresh --environment " + environment + " --scope " + resource + "s"
+	default:
+		return ""
+	}
 }
 
 func unsupportedCatalogFilters(operation, environment, site string) error {

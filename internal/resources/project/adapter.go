@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+	"sync"
 
 	"github.com/ahillspace/tadx/internal/identity"
 	tableauproject "github.com/ahillspace/tadx/internal/tableau/project"
@@ -189,6 +190,69 @@ func (a *Adapter) ResolveProjectPaths(ctx context.Context, luids []string) (map[
 			return nil, pathErr
 		}
 		paths[luid] = path
+	}
+	return paths, nil
+}
+
+// DiscoveryPaths is a lazy immutable hierarchy for one discovery invocation.
+// Create a fresh instance per invocation; mutation resolution never uses it.
+type DiscoveryPaths struct {
+	adapter    *Adapter
+	once       sync.Once
+	paths      map[string]string
+	pathErrors map[string]error
+	err        error
+}
+
+func NewDiscoveryPaths(adapter *Adapter) *DiscoveryPaths { return &DiscoveryPaths{adapter: adapter} }
+
+func (r *DiscoveryPaths) ResolveProjectPaths(ctx context.Context, luids []string) (map[string]string, error) {
+	if r == nil || r.adapter == nil {
+		return nil, errors.New("discovery project resolver is not configured")
+	}
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	if len(luids) == 0 {
+		return map[string]string{}, nil
+	}
+	for _, id := range luids {
+		if strings.TrimSpace(id) == "" {
+			return nil, errors.New("project path resolution requires authoritative LUIDs")
+		}
+	}
+	r.once.Do(func() {
+		items, _, err := r.adapter.all(ctx)
+		if err != nil {
+			r.err = err
+			return
+		}
+		index := newPathIndex(items)
+		r.paths = make(map[string]string, len(items))
+		r.pathErrors = make(map[string]error)
+		for _, item := range items {
+			path, err := index.path(item.LUID, make(map[string]bool))
+			if err != nil {
+				r.pathErrors[item.LUID] = err
+			} else {
+				r.paths[item.LUID] = path
+			}
+		}
+	})
+	if r.err != nil {
+		return nil, r.err
+	}
+	paths := make(map[string]string, len(luids))
+	for _, id := range luids {
+		id = strings.TrimSpace(id)
+		if err := r.pathErrors[id]; err != nil {
+			return nil, err
+		}
+		path, ok := r.paths[id]
+		if !ok {
+			return nil, fmt.Errorf("project %q references a missing parent", id)
+		}
+		paths[id] = path
 	}
 	return paths, nil
 }

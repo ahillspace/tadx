@@ -7,7 +7,6 @@ import (
 	"errors"
 	"fmt"
 	"sort"
-	"strconv"
 	"strings"
 	"time"
 
@@ -34,8 +33,6 @@ type collectedResourceInventory struct {
 	catalogErr  error
 	skippedRows int
 	kind        string
-	snapshotID  string
-	snapshotErr error
 }
 
 func collectResourceInventory(ctx context.Context, executor tableaucatalog.Executor, store *corecatalog.Store, scope tableaucatalog.Scope, environment, site string, observedAt time.Time, options ...inventoryCollectionOptions) (collectedResourceInventory, error) {
@@ -105,9 +102,6 @@ func (i collectedResourceInventory) warningHelp() string {
 	if i.skippedRows == 0 {
 		return inventoryRefreshWarningHelp
 	}
-	if i.snapshotErr != nil {
-		return i.incompleteWarning() + " Temporary snapshot storage failed. Retry the live command or use narrower filters for the available records."
-	}
 	return i.incompleteWarning() + " Retry the live command or use narrower filters for the available records."
 }
 
@@ -123,19 +117,10 @@ type inventoryMemoryReader struct {
 	allowContinuation bool
 	entries           []corecatalog.ResourceEntry
 	requestID         string
-	snapshotID        string
 }
 
 func (i collectedResourceInventory) memoryReader() inventoryMemoryReader {
-	return inventoryMemoryReader{entries: i.entries, requestID: finalRequestID(i.requestIDs), snapshotID: i.snapshotID}
-}
-
-func (r inventoryMemoryReader) nextCursor(size int) string {
-	if r.snapshotID == "" || size >= len(r.entries) {
-		return ""
-	}
-	entry := r.entries[0]
-	return corecatalog.PartialInventoryCursor(r.snapshotID, corecatalog.ResourceQuery{Environment: entry.Environment, Site: entry.Site, Kind: entry.Kind, Limit: size, Offset: size})
+	return inventoryMemoryReader{entries: i.entries, requestID: finalRequestID(i.requestIDs)}
 }
 
 func (r inventoryMemoryReader) page(number, size int) []corecatalog.ResourceEntry {
@@ -156,32 +141,32 @@ func decodeInventoryPage[T any](entries []corecatalog.ResourceEntry) ([]T, error
 
 func (r inventoryMemoryReader) ListWorkbooks(_ context.Context, input workbooklist.PageRequest) (workbooklist.Page, error) {
 	items, err := decodeInventoryPage[workbooklist.Workbook](r.page(input.PageNumber, input.PageSize))
-	return workbooklist.Page{Number: input.PageNumber, Size: input.PageSize, Total: len(r.entries), Workbooks: items, RequestID: r.requestID, SnapshotCursor: r.nextCursor(input.PageSize), SuppressContinuation: r.snapshotID == "" && !r.allowContinuation}, err
+	return workbooklist.Page{Number: input.PageNumber, Size: input.PageSize, Total: len(r.entries), Workbooks: items, RequestID: r.requestID, SuppressContinuation: !r.allowContinuation}, err
 }
 
 func (r inventoryMemoryReader) ListDatasources(_ context.Context, input datasourcelist.PageRequest) (datasourcelist.Page, error) {
 	items, err := decodeInventoryPage[datasourcelist.Datasource](r.page(input.PageNumber, input.PageSize))
-	return datasourcelist.Page{Number: input.PageNumber, Size: input.PageSize, Total: len(r.entries), Datasources: items, RequestID: r.requestID, SnapshotCursor: r.nextCursor(input.PageSize), SuppressContinuation: r.snapshotID == "" && !r.allowContinuation}, err
+	return datasourcelist.Page{Number: input.PageNumber, Size: input.PageSize, Total: len(r.entries), Datasources: items, RequestID: r.requestID, SuppressContinuation: !r.allowContinuation}, err
 }
 
 func (r inventoryMemoryReader) ListFlows(_ context.Context, input flowlist.PageRequest) (flowlist.Page, error) {
 	items, err := decodeInventoryPage[flowlist.Flow](r.page(input.PageNumber, input.PageSize))
-	return flowlist.Page{Number: input.PageNumber, Size: input.PageSize, Total: len(r.entries), Flows: items, RequestID: r.requestID, SnapshotCursor: r.nextCursor(input.PageSize), SuppressContinuation: r.snapshotID == "" && !r.allowContinuation}, err
+	return flowlist.Page{Number: input.PageNumber, Size: input.PageSize, Total: len(r.entries), Flows: items, RequestID: r.requestID, SuppressContinuation: !r.allowContinuation}, err
 }
 
 func (r inventoryMemoryReader) ListProjects(_ context.Context, input projectlist.PageRequest) (projectlist.Page, error) {
 	items, err := decodeInventoryPage[projectlist.Project](r.page(input.PageNumber, input.PageSize))
-	return projectlist.Page{Number: input.PageNumber, Size: input.PageSize, Total: len(r.entries), Projects: items, RequestID: r.requestID, SnapshotCursor: r.nextCursor(input.PageSize), SuppressContinuation: r.snapshotID == "" && !r.allowContinuation}, err
+	return projectlist.Page{Number: input.PageNumber, Size: input.PageSize, Total: len(r.entries), Projects: items, RequestID: r.requestID, SuppressContinuation: !r.allowContinuation}, err
 }
 
 func (r inventoryMemoryReader) ListUsers(_ context.Context, input userlist.PageRequest) (userlist.Page, error) {
 	items, err := decodeInventoryPage[userlist.User](r.page(input.PageNumber, input.PageSize))
-	return userlist.Page{Number: input.PageNumber, Size: input.PageSize, Total: len(r.entries), Users: items, RequestID: r.requestID, SnapshotCursor: r.nextCursor(input.PageSize), SuppressContinuation: r.snapshotID == "" && !r.allowContinuation}, err
+	return userlist.Page{Number: input.PageNumber, Size: input.PageSize, Total: len(r.entries), Users: items, RequestID: r.requestID, SuppressContinuation: !r.allowContinuation}, err
 }
 
 func (r inventoryMemoryReader) ListGroups(_ context.Context, input grouplist.PageRequest) (grouplist.Page, error) {
 	items, err := decodeInventoryPage[grouplist.Group](r.page(input.PageNumber, input.PageSize))
-	return grouplist.Page{Number: input.PageNumber, Size: input.PageSize, Total: len(r.entries), Groups: items, RequestID: r.requestID, SnapshotCursor: r.nextCursor(input.PageSize), SuppressContinuation: r.snapshotID == "" && !r.allowContinuation}, err
+	return grouplist.Page{Number: input.PageNumber, Size: input.PageSize, Total: len(r.entries), Groups: items, RequestID: r.requestID, SuppressContinuation: !r.allowContinuation}, err
 }
 
 func inventoryResourceEntries(snapshot tableaucatalog.InventorySnapshot, environment, site string, observedAt time.Time) ([]corecatalog.ResourceEntry, int, error) {
@@ -485,59 +470,6 @@ func validateInventoryAll(all bool, source *readsource.Metadata) error {
 type inventoryCollectionOptions struct {
 	MaxConcurrency int
 	Filter         string
-}
-
-// Inventory filters mirror the existing resource-owned REST list selectors.
-// They apply only to the requested population, never project dependencies.
-func inventoryFilter(input any) (string, error) {
-	type field struct{ name, operator, value string }
-	fields := []field{}
-	eq := func(name, value string) { fields = append(fields, field{name, "eq", value}) }
-	switch v := input.(type) {
-	case workbooklist.Input:
-		eq("name", v.Name)
-		eq("ownerName", v.OwnerName)
-		eq("projectName", v.ProjectName)
-		eq("tags", v.Tag)
-	case datasourcelist.Input:
-		eq("name", v.Name)
-		eq("ownerName", v.OwnerName)
-		eq("projectName", v.ProjectName)
-		eq("type", v.Type)
-		eq("tags", v.Tag)
-		fields = append(fields, field{"updatedAt", "gte", v.UpdatedAfter}, field{"updatedAt", "lte", v.UpdatedBefore})
-	case flowlist.Input:
-		eq("name", v.Name)
-		eq("ownerName", v.OwnerName)
-		eq("projectId", v.ProjectLUID)
-		eq("projectName", v.ProjectName)
-	case projectlist.Input:
-		eq("name", v.Name)
-		eq("parentProjectId", v.ParentLUID)
-		eq("ownerName", v.OwnerName)
-		if v.TopLevel != nil {
-			eq("topLevelProject", strconv.FormatBool(*v.TopLevel))
-		}
-	case userlist.Input:
-		eq("name", v.Name)
-		eq("siteRole", v.SiteRole)
-	case grouplist.Input:
-		eq("name", v.Name)
-		eq("domainName", v.Domain)
-	default:
-		return "", errors.New("unsupported inventory filter type")
-	}
-	parts := []string{}
-	for _, field := range fields {
-		if field.value == "" {
-			continue
-		}
-		if strings.ContainsAny(field.value, ",&") {
-			return "", errs.New(errs.KindUsage, "inventory filter "+field.name+" cannot contain ampersand or comma")
-		}
-		parts = append(parts, field.name+":"+field.operator+":"+field.value)
-	}
-	return strings.Join(parts, ","), nil
 }
 
 // Legacy process-boundary cursors can still target a previously stored snapshot.

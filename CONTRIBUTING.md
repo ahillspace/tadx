@@ -58,6 +58,8 @@ Limited live lists fetch bounded provider results without collecting a full inve
 Explicit `--all` and scoped catalog refresh share a collector; live output renders from its normalized in-memory result.
 Cache persistence after a live full list is best effort; explicit refresh failure preserves the previous generation and fails.
 Filtered observations cannot establish complete unfiltered coverage.
+Ordinary and full lists share typed filter builders owned by each resource; the composition root maps inputs but does not duplicate filter syntax or validation.
+Reuse prerequisite project hierarchy only within a discovery invocation, never across invocations or for mutation revalidation.
 Keep pagination loops typed and private instead of recursively invoking actions or encoding internal cursors.
 Persist project identity structurally as an indexed LUID, not by extracting it from payload JSON.
 Default catalog refresh excludes permissions; require an explicit scope for per-resource permission collection.

@@ -110,6 +110,10 @@ func (c *remoteContentCommands) ListProjects(ctx context.Context, input projectl
 		}
 		return output, err
 	}
+	filter, err := tableauproject.ListFilter(tableauproject.ListRequest{Name: input.Name, ParentLUID: input.ParentLUID, OwnerName: input.OwnerName, TopLevel: input.TopLevel})
+	if err != nil {
+		return projectlist.Output{}, err
+	}
 	connection, err := c.connect(ctx, input.Environment, false)
 	if err != nil {
 		return projectlist.Output{}, remoteSetupError("project.list", input.Environment, input.Site, connection.environment, err)
@@ -117,10 +121,6 @@ func (c *remoteContentCommands) ListProjects(ctx context.Context, input projectl
 	input.Environment, input.Site = connection.environment.Alias, connection.environment.SiteContentURL
 
 	if input.All {
-		filter, err := inventoryFilter(input)
-		if err != nil {
-			return projectlist.Output{}, err
-		}
 		observedAt := c.runtime.now().UTC()
 		inventory, err := collectResourceInventory(ctx, connection.inventory, c.catalogStore(), tableaucatalog.ScopeProjects, input.Environment, input.Site, observedAt, inventoryCollectionOptions{MaxConcurrency: connection.environment.CatalogMaxConcurrency, Filter: filter})
 		if err != nil {
@@ -247,6 +247,10 @@ func (c *remoteContentCommands) ListFlows(ctx context.Context, input flowlist.In
 		}
 		return output, err
 	}
+	filter, err := tableauflow.ListFilter(tableauflow.ListRequest{Name: input.Name, OwnerName: input.OwnerName, ProjectLUID: input.ProjectLUID, ProjectName: input.ProjectName})
+	if err != nil {
+		return flowlist.Output{}, err
+	}
 	connection, err := c.connect(ctx, input.Environment, false)
 	if err != nil {
 		return flowlist.Output{}, remoteSetupError("flow.list", input.Environment, input.Site, connection.environment, err)
@@ -254,10 +258,6 @@ func (c *remoteContentCommands) ListFlows(ctx context.Context, input flowlist.In
 	input.Environment, input.Site = connection.environment.Alias, connection.environment.SiteContentURL
 
 	if input.All {
-		filter, err := inventoryFilter(input)
-		if err != nil {
-			return flowlist.Output{}, err
-		}
 		observedAt := c.runtime.now().UTC()
 		inventory, err := collectResourceInventory(ctx, connection.inventory, c.catalogStore(), tableaucatalog.ScopeFlows, input.Environment, input.Site, observedAt, inventoryCollectionOptions{MaxConcurrency: connection.environment.CatalogMaxConcurrency, Filter: filter})
 		if err != nil {

@@ -47,3 +47,17 @@ No new live exercises or agent-based code reviews were run for this follow-up.
 
 Final local gates passed: `go test ./...`, `go test -race ./...`, `go vet ./...`, focused paging race tests, formatting, module tidiness, stable regeneration, and both available installer harnesses.
 GitHub CI remains the source of Linux, PowerShell 7, and cross-platform build results for the pushed commit.
+
+## Optional follow-ups after approval
+
+The next bounded follow-up starts at `a24ba3990cd4c5a8797ab208ca5be8af38b0f6b7`.
+Its scope is invocation-local project hierarchy reuse, shared resource-owned filter builders, accurate catalog recovery advice, and removal of unused producer-side snapshot state.
+Regressions target multiple project/datasource pages, fresh hierarchy data on a later invocation, ordinary/full-list filter parity, and executing the suggested scoped refresh before repeating a local-only read.
+A CLI compatibility test preserves previously stored partial-snapshot continuation without Tableau requests.
+This follow-up does not introduce persistent hierarchy caching, change mutation revalidation, or remove supported legacy snapshot readers.
+No new live tests or agent-based reviews are claimed.
+
+Focused workflow tests and affected-package race checks passed.
+The hierarchy fixture covers 205 datasources over three pages and 1,001 projects over two pages: project requests decrease from six to two per discovery invocation, and a subsequent invocation observes renamed/reparented projects.
+Filter parity tests cover all six inventory types, empty filters, invalid delimiters, project booleans, and datasource timestamp bounds before resource requests.
+Recovery tests execute the suggested scoped refresh for all six cached-list types and an old-schema fixture, then repeat the cached read without contacting Tableau.

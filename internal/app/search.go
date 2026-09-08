@@ -460,9 +460,10 @@ func searchResult(page resourcesearch.Page, generation *searchaction.Generation)
 // completeLiveSearchLister routes blank typed searches through the same
 // complete-inventory services as the public list commands.
 type completeLiveSearchLister struct {
-	environment string
-	content     *remoteContentCommands
-	admin       *remoteAdminCommands
+	environment         string
+	content             *remoteContentCommands
+	admin               *remoteAdminCommands
+	datasourceDiscovery datasourceDiscovery
 }
 
 type completeListSearchPager interface {
@@ -572,7 +573,7 @@ func (s *completeLiveSearchLister) searchPage(ctx context.Context, resourceType,
 		}
 		return completeListSearchPage(items, out.Page.Total, out.Page.NextCursor, out.Page.MoreAvailable, out.RequestID, out.Source), err
 	case "datasource":
-		out, err := s.content.ListDatasources(ctx, datasourcelist.Input{Environment: s.environment, Cursor: cursor, Limit: limit, ProjectName: searchInput.ProjectPath, OwnerName: searchInput.Owner})
+		out, err := s.content.listDatasources(ctx, datasourcelist.Input{Environment: s.environment, Cursor: cursor, Limit: limit, ProjectName: searchInput.ProjectPath, OwnerName: searchInput.Owner}, &s.datasourceDiscovery)
 		items := make([]resourcesearch.Item, len(out.Datasources))
 		for i, item := range out.Datasources {
 			items[i] = resourcesearch.Item{LUID: item.LUID, Type: resourceType, Name: item.Name, ProjectPath: item.ProjectPath, Owner: item.OwnerLUID, ModifiedAt: item.UpdatedAt}
@@ -653,7 +654,7 @@ func newLiveSearchLister(connection authenticatedTableau) (*liveSearchLister, er
 		environment:     connection.environment.Alias,
 		site:            connection.environment.SiteContentURL,
 		workbooks:       workbookListReader{adapter: resourceworkbook.NewAdapterWithProjectResolver(tableauworkbook.NewClient(connection.transport, connection.session, connection.environment.URL), projects)},
-		datasources:     datasourceListReader{adapter: resourcedatasource.NewAdapterWithProjectResolver(datasourceClient, projects), projects: projects},
+		datasources:     datasourceListReader{adapter: resourcedatasource.NewAdapterWithProjectResolver(datasourceClient, projects), projects: resourceproject.NewDiscoveryPaths(projects)},
 		flows:           flowListReader{adapter: resourceflow.NewAdapter(flowClient, projects)},
 		projects:        projectListReader{adapter: projects},
 		users:           adminUserListReader{adapter: resourceadmin.NewAdapter(adminClient)},

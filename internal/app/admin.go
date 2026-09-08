@@ -79,6 +79,10 @@ func (c *remoteAdminCommands) ListAdminUsers(ctx context.Context, input userlist
 		}
 		return output, err
 	}
+	filter, err := tableauadmin.UserListFilter(tableauadmin.ListUsersRequest{Name: input.Name, SiteRole: input.SiteRole})
+	if err != nil {
+		return userlist.Output{}, err
+	}
 	connection, err := c.connect(ctx, input.Environment, false)
 	if err != nil {
 		return userlist.Output{}, remoteSetupError("admin.user.list", input.Environment, input.Site, connection.environment, err)
@@ -86,10 +90,6 @@ func (c *remoteAdminCommands) ListAdminUsers(ctx context.Context, input userlist
 	input.Environment, input.Site = connection.environment.Alias, connection.environment.SiteContentURL
 
 	if input.All {
-		filter, err := inventoryFilter(input)
-		if err != nil {
-			return userlist.Output{}, err
-		}
 		observedAt := c.runtime.now().UTC()
 		inventory, err := collectResourceInventory(ctx, connection.inventory, c.catalogStore(), tableaucatalog.ScopeUsers, input.Environment, input.Site, observedAt, inventoryCollectionOptions{MaxConcurrency: connection.environment.CatalogMaxConcurrency, Filter: filter})
 		if err != nil {
@@ -211,6 +211,10 @@ func (c *remoteAdminCommands) ListAdminGroups(ctx context.Context, input groupli
 		}
 		return output, err
 	}
+	filter, err := tableauadmin.GroupListFilter(tableauadmin.ListGroupsRequest{Name: input.Name, Domain: input.Domain})
+	if err != nil {
+		return grouplist.Output{}, err
+	}
 	connection, err := c.connect(ctx, input.Environment, false)
 	if err != nil {
 		return grouplist.Output{}, remoteSetupError("admin.group.list", input.Environment, input.Site, connection.environment, err)
@@ -218,10 +222,6 @@ func (c *remoteAdminCommands) ListAdminGroups(ctx context.Context, input groupli
 	input.Environment, input.Site = connection.environment.Alias, connection.environment.SiteContentURL
 
 	if input.All {
-		filter, err := inventoryFilter(input)
-		if err != nil {
-			return grouplist.Output{}, err
-		}
 		observedAt := c.runtime.now().UTC()
 		inventory, err := collectResourceInventory(ctx, connection.inventory, c.catalogStore(), tableaucatalog.ScopeGroups, input.Environment, input.Site, observedAt, inventoryCollectionOptions{MaxConcurrency: connection.environment.CatalogMaxConcurrency, Filter: filter})
 		if err != nil {

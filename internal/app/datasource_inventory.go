@@ -8,11 +8,20 @@ import (
 	"github.com/ahillspace/tadx/internal/catalog"
 	"github.com/ahillspace/tadx/internal/identity"
 	resourcedatasource "github.com/ahillspace/tadx/internal/resources/datasource"
+	resourceproject "github.com/ahillspace/tadx/internal/resources/project"
 	tableaucatalog "github.com/ahillspace/tadx/internal/tableau/catalog"
 	tableaudatasource "github.com/ahillspace/tadx/internal/tableau/datasource"
 )
 
-func (c *remoteContentCommands) ListDatasources(ctx context.Context, input datasourcelist.Input) (result datasourcelist.Output, resultErr error) {
+type datasourceDiscovery struct {
+	projects *resourceproject.DiscoveryPaths
+}
+
+func (c *remoteContentCommands) ListDatasources(ctx context.Context, input datasourcelist.Input) (datasourcelist.Output, error) {
+	return c.listDatasources(ctx, input, &datasourceDiscovery{})
+}
+
+func (c *remoteContentCommands) listDatasources(ctx context.Context, input datasourcelist.Input, discovery *datasourceDiscovery) (result datasourcelist.Output, resultErr error) {
 	defer func() {
 		if resultErr == nil {
 			resultErr = validateInventoryAll(input.All, result.Source)
@@ -31,6 +40,10 @@ func (c *remoteContentCommands) ListDatasources(ctx context.Context, input datas
 		}
 		return output, err
 	}
+	filter, err := tableaudatasource.ListFilter(tableaudatasource.ListRequest{Name: input.Name, OwnerName: input.OwnerName, ProjectName: input.ProjectName, Type: input.Type, Tag: input.Tag, UpdatedAfter: input.UpdatedAfter, UpdatedBefore: input.UpdatedBefore})
+	if err != nil {
+		return datasourcelist.Output{}, err
+	}
 	connection, err := c.connect(ctx, input.Environment, false)
 	if err != nil {
 		return datasourcelist.Output{}, remoteSetupError("datasource.list", input.Environment, input.Site, connection.environment, err)
@@ -38,10 +51,6 @@ func (c *remoteContentCommands) ListDatasources(ctx context.Context, input datas
 	input.Environment, input.Site = connection.environment.Alias, connection.environment.SiteContentURL
 
 	if input.All {
-		filter, err := inventoryFilter(input)
-		if err != nil {
-			return datasourcelist.Output{}, err
-		}
 		observedAt := c.runtime.now().UTC()
 		inventory, err := collectResourceInventory(ctx, connection.inventory, c.catalogStore(), tableaucatalog.ScopeDatasources, input.Environment, input.Site, observedAt, inventoryCollectionOptions{MaxConcurrency: connection.environment.CatalogMaxConcurrency, Filter: filter})
 		if err != nil {
@@ -64,7 +73,10 @@ func (c *remoteContentCommands) ListDatasources(ctx context.Context, input datas
 		output.RequestID = finalRequestID(inventory.requestIDs)
 		return output, nil
 	}
-	output, err := datasourcelist.New(datasourceListReader{adapter: connection.datasources, projects: connection.projects}).Execute(ctx, input)
+	if discovery.projects == nil {
+		discovery.projects = resourceproject.NewDiscoveryPaths(connection.projects)
+	}
+	output, err := datasourcelist.New(datasourceListReader{adapter: connection.datasources, projects: discovery.projects}).Execute(ctx, input)
 	if err != nil {
 		return output, err
 	}

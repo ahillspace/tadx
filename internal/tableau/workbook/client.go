@@ -327,12 +327,12 @@ func (c *Client) ListWorkbooks(ctx context.Context, input ListRequest) (Workbook
 		return WorkbookPage{}, fmt.Errorf("workbook list page size must be between 1 and %d", maximumPageSize)
 	}
 	query := url.Values{"pageNumber": {strconv.Itoa(input.PageNumber)}, "pageSize": {strconv.Itoa(input.PageSize)}, "sort": {"name:asc,updatedAt:asc"}}
-	filters, err := workbookFilters(input)
+	filter, err := ListFilter(input)
 	if err != nil {
 		return WorkbookPage{}, err
 	}
-	if len(filters) > 0 {
-		query.Set("filter", strings.Join(filters, ","))
+	if filter != "" {
+		query.Set("filter", filter)
 	}
 	response, err := c.doMetadata(ctx, http.MethodGet, c.sitePath("workbooks"), query, "workbook.list")
 	if err != nil {
@@ -1098,7 +1098,9 @@ func normalizeWorkbook(item workbookXML) Workbook {
 	return Workbook{LUID: item.ID, Name: item.Name, ContentURL: item.ContentURL, ProjectLUID: item.Project.ID, ProjectName: item.Project.Name, OwnerLUID: item.Owner.ID, Description: item.Description, CreatedAt: item.CreatedAt, UpdatedAt: item.UpdatedAt, Tags: tags}
 }
 
-func workbookFilters(input ListRequest) ([]string, error) {
+// ListFilter validates and encodes workbook selectors for paged and full lists.
+// Pagination fields do not affect the selected population.
+func ListFilter(input ListRequest) (string, error) {
 	fields := []struct{ name, value string }{
 		{name: "name", value: input.Name},
 		{name: "ownerName", value: input.OwnerName},
@@ -1111,11 +1113,11 @@ func workbookFilters(input ListRequest) ([]string, error) {
 			continue
 		}
 		if strings.ContainsAny(field.value, "&,") {
-			return nil, fmt.Errorf("workbook filter %s cannot contain ampersand or comma", field.name)
+			return "", fmt.Errorf("workbook filter %s cannot contain ampersand or comma", field.name)
 		}
 		filters = append(filters, field.name+":eq:"+field.value)
 	}
-	return filters, nil
+	return strings.Join(filters, ","), nil
 }
 
 func normalizePagination(value *paginationXML, requestedNumber, requestedSize, itemCount int) (Page, error) {

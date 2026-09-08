@@ -31,6 +31,10 @@ func (c *remoteContentCommands) ListWorkbooks(ctx context.Context, input workboo
 		}
 		return output, err
 	}
+	filter, err := tableauworkbook.ListFilter(tableauworkbook.ListRequest{Name: input.Name, OwnerName: input.OwnerName, ProjectName: input.ProjectName, Tag: input.Tag})
+	if err != nil {
+		return workbooklist.Output{}, err
+	}
 	connection, err := c.connect(ctx, input.Environment, false)
 	if err != nil {
 		return workbooklist.Output{}, remoteSetupError("workbook.list", input.Environment, input.Site, connection.environment, err)
@@ -38,10 +42,6 @@ func (c *remoteContentCommands) ListWorkbooks(ctx context.Context, input workboo
 	input.Environment, input.Site = connection.environment.Alias, connection.environment.SiteContentURL
 
 	if input.All {
-		filter, err := inventoryFilter(input)
-		if err != nil {
-			return workbooklist.Output{}, err
-		}
 		observedAt := c.runtime.now().UTC()
 		inventory, err := collectResourceInventory(ctx, connection.inventory, c.catalogStore(), tableaucatalog.ScopeWorkbooks, input.Environment, input.Site, observedAt, inventoryCollectionOptions{MaxConcurrency: connection.environment.CatalogMaxConcurrency, Filter: filter})
 		if err != nil {
