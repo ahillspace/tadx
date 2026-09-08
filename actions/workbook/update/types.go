@@ -1,6 +1,9 @@
 package update
 
-import "github.com/ahillspace/tadx/internal/identity"
+import (
+	"github.com/ahillspace/tadx/internal/identity"
+	"github.com/ahillspace/tadx/internal/value"
+)
 
 type Input struct {
 	// TargetResolved confirms authenticated target selection, including the Default site.
@@ -14,13 +17,7 @@ func (i *Input) SetSelector(luid, name, projectPath string) {
 	i.Selector = identity.Selector{LUID: identity.LUID(luid), Name: name, ProjectPath: projectPath}
 }
 
-type Workbook struct {
-	LUID        string `json:"luid"`
-	Name        string `json:"name"`
-	ProjectLUID string `json:"project_luid"`
-	ProjectPath string `json:"project_path"`
-	OwnerLUID   string `json:"owner_luid"`
-}
+type Workbook = value.OwnedContentIdentity
 type Request struct {
 	LUID            string
 	Name, OwnerLUID *string

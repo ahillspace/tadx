@@ -46,7 +46,7 @@ type Output struct {
 }
 type CompactMetric struct {
 	LUID      string `json:"luid"`
-	Name      string `json:"name,omitempty"`
+	Name      string `json:"name"`
 	IsDefault bool   `json:"is_default"`
 }
 type CompactResult struct {

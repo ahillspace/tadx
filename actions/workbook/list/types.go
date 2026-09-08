@@ -64,9 +64,9 @@ type CompactWorkbook struct {
 	LUID        string `json:"luid"`
 	Name        string `json:"name"`
 	ProjectLUID string `json:"project_luid"`
-	ProjectPath string `json:"project_path,omitempty"`
-	ContentURL  string `json:"content_url,omitempty"`
-	UpdatedAt   string `json:"updated_at,omitempty"`
+	ProjectPath string `json:"project_path"`
+	ContentURL  string `json:"content_url"`
+	UpdatedAt   string `json:"updated_at"`
 }
 
 // CompactResult is the default projection.

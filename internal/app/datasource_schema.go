@@ -12,7 +12,6 @@ import (
 	"github.com/ahillspace/tadx/internal/errs"
 	"github.com/ahillspace/tadx/internal/readsource"
 	resourcedatasource "github.com/ahillspace/tadx/internal/resources/datasource"
-	tableaudatasource "github.com/ahillspace/tadx/internal/tableau/datasource"
 	"github.com/ahillspace/tadx/internal/tableau/fieldcatalog"
 )
 
@@ -26,7 +25,7 @@ func (c *remoteContentCommands) GetDatasourceSchema(ctx context.Context, input d
 	}
 	input.Environment = connection.environment.Alias
 	input.Site = connection.environment.SiteContentURL
-	datasourceClient := tableaudatasource.NewClient(connection.transport, connection.session, connection.environment.URL)
+	datasourceClient := c.runtime.clients(connection).datasources
 	reader := &datasourceSchemaReader{adapter: resourcedatasource.NewSchemaAdapter(datasourceClient, fieldcatalog.NewClient(connection.transport, connection.session, connection.environment.URL)), now: c.runtime.now}
 	output, err := datasourceschema.New(reader, c.runtime.now).Execute(ctx, input)
 	if err != nil {
@@ -50,13 +49,9 @@ func (r *datasourceSchemaReader) ReadDatasourceSchema(ctx context.Context, luid 
 		return datasourceschema.Schema{}, err
 	}
 	tables := make([]datasourceschema.Table, len(result.Tables))
-	for index, table := range result.Tables {
-		tables[index] = datasourceschema.Table{ID: table.ID, Name: table.Name, FieldCount: table.FieldCount}
-	}
+	copy(tables, result.Tables)
 	fields := make([]datasourceschema.Field, len(result.Fields))
-	for index, field := range result.Fields {
-		fields[index] = datasourceschema.Field{ID: field.ID, Name: field.Name, Caption: field.Caption, Label: field.Label, Role: field.Role, DataType: field.DataType, TimeType: field.TimeType, Table: field.Table, LogicalTableID: field.LogicalTableID, DefaultAggregation: field.DefaultAggregation, Formula: field.Formula, RequiresUserAggregation: field.RequiresUserAggregation, Excluded: field.Excluded, ExclusionReason: field.ExclusionReason, Provenance: field.Provenance}
-	}
+	copy(fields, result.Fields)
 	observedAt := ""
 	if r.now != nil {
 		observedAt = r.now().UTC().Format(time.RFC3339Nano)

@@ -32,11 +32,9 @@ import (
 	"github.com/ahillspace/tadx/internal/output"
 	resourcedatasource "github.com/ahillspace/tadx/internal/resources/datasource"
 	resourcelineage "github.com/ahillspace/tadx/internal/resources/lineage"
+	resourceproject "github.com/ahillspace/tadx/internal/resources/project"
 	resourceworkbook "github.com/ahillspace/tadx/internal/resources/workbook"
 	"github.com/ahillspace/tadx/internal/tableau"
-	tableauauth "github.com/ahillspace/tadx/internal/tableau/auth"
-	tableaudatasource "github.com/ahillspace/tadx/internal/tableau/datasource"
-	tableaumetadata "github.com/ahillspace/tadx/internal/tableau/metadata"
 	tableauworkbook "github.com/ahillspace/tadx/internal/tableau/workbook"
 )
 
@@ -61,6 +59,7 @@ func Run(ctx context.Context, args []string, stdout io.Writer, options Options) 
 	if err != nil {
 		return renderError(stdout, err)
 	}
+	defer runtime.Close()
 	environmentCommands := newEnvironmentCommands(runtime)
 	workspaceCommands := newWorkspaceCommands(runtime)
 	remoteContent := newRemoteContentCommands(runtime)
@@ -164,6 +163,7 @@ func renderErrorWithOptions(writer io.Writer, err error, options *cli.RenderOpti
 }
 
 type runtimeDependencies struct {
+	command       commandRuntime
 	configPath    string
 	httpClient    *http.Client
 	now           func() time.Time
@@ -224,9 +224,7 @@ func (r *runtimeDependencies) Resolve(_ context.Context, alias string) (authchec
 }
 
 func (r *runtimeDependencies) Authenticate(ctx context.Context, target authcheck.Target) (authcheck.Authentication, error) {
-	transport := tableau.NewTransport(r.httpClient, target.APIVersion, func() string { return r.correlationID })
-	provider := coreauth.NewPATProviderWithStore(coreauth.LookupEnvFunc(os.LookupEnv), tableauauth.NewClient(transport), r.patStore)
-	session, err := provider.Authenticate(ctx, coreauth.Target{Environment: target.Environment, ServerURL: target.ServerURL, SiteContentURL: target.SiteContentURL, PATNameVariable: target.PATNameVariable, PATSecretVariable: target.PATSecretVariable, CredentialReference: target.CredentialReference})
+	session, err := r.authenticate(ctx, coreauth.Target{Environment: target.Environment, ServerURL: target.ServerURL, SiteContentURL: target.SiteContentURL, PATNameVariable: target.PATNameVariable, PATSecretVariable: target.PATSecretVariable, CredentialReference: target.CredentialReference}, target.APIVersion)
 	if err != nil {
 		return authcheck.Authentication{}, err
 	}
@@ -237,7 +235,7 @@ func (r *runtimeDependencies) environment(alias string, explicit bool) (config.C
 	if explicit && alias == "" {
 		return config.Config{}, config.Environment{}, errors.New("an explicit write environment is required")
 	}
-	configuration, err := config.Load(r.configPath)
+	configuration, err := r.configuration()
 	if err != nil {
 		return config.Config{}, config.Environment{}, err
 	}
@@ -250,8 +248,9 @@ func (r *runtimeDependencies) workbookAdapter(ctx context.Context, alias string,
 	if err != nil {
 		return connection.configuration, connection.environment, nil, "", err
 	}
-	client := tableauworkbook.NewClient(connection.transport, connection.session, connection.environment.URL)
-	return connection.configuration, connection.environment, resourceworkbook.NewAdapter(client), connection.session.SiteLUID(), nil
+	clients := r.clients(connection)
+	projects := resourceproject.NewAdapter(clients.projects)
+	return connection.configuration, connection.environment, resourceworkbook.NewAdapterWithProjectResolver(clients.workbooks, workbookProjectResolver{projects}), connection.session.SiteLUID(), nil
 }
 
 type authenticatedTableau struct {
@@ -266,9 +265,8 @@ func (r *runtimeDependencies) tableauConnection(ctx context.Context, alias strin
 	if err != nil {
 		return authenticatedTableau{configuration: configuration, environment: environment}, err
 	}
-	transport := tableau.NewTransport(r.httpClient, environment.APIVersion, func() string { return r.correlationID })
-	provider := coreauth.NewPATProviderWithStore(coreauth.LookupEnvFunc(os.LookupEnv), tableauauth.NewClient(transport), r.patStore)
-	session, err := provider.Authenticate(ctx, coreauth.Target{Environment: environment.Alias, ServerURL: environment.URL, SiteContentURL: environment.SiteContentURL, PATNameVariable: environment.Auth.PATNameEnv, PATSecretVariable: environment.Auth.PATSecretEnv, CredentialReference: environment.Auth.CredentialRef})
+	transport := r.transport(environment.APIVersion)
+	session, err := r.authenticate(ctx, coreauth.Target{Environment: environment.Alias, ServerURL: environment.URL, SiteContentURL: environment.SiteContentURL, PATNameVariable: environment.Auth.PATNameEnv, PATSecretVariable: environment.Auth.PATSecretEnv, CredentialReference: environment.Auth.CredentialRef}, environment.APIVersion)
 	return authenticatedTableau{configuration: configuration, environment: environment, transport: transport, session: session}, err
 }
 
@@ -281,10 +279,9 @@ func (s *pullService) Execute(ctx context.Context, input workbookpull.Input) (wo
 		environmentAlias, site := resolvedTarget(input.Environment, input.Site, environment)
 		return workbookpull.Output{}, capabilitySetupError("workbook.pull.setup", "workbook.pull", environmentAlias, site, "Workbook pull setup failed.", "Review the environment, site, and PAT configuration.", err)
 	}
-	workbookClient := tableauworkbook.NewClient(connection.transport, connection.session, environment.URL)
-	metadataClient := tableaumetadata.NewClient(connection.transport, connection.session, environment.URL)
-	datasourceClient := tableaudatasource.NewClient(connection.transport, connection.session, environment.URL)
-	workbooks := resourceworkbook.NewAdapter(workbookClient)
+	clients := s.runtime.clients(connection)
+	workbookClient, metadataClient, datasourceClient := clients.workbooks, clients.metadata, clients.datasources
+	workbooks := resourceworkbook.NewAdapterWithProjectResolver(workbookClient, s.runtime.discoveryPaths(connection))
 	references := resourceworkbook.NewReferenceAdapter(metadataClient)
 	lineage := resourcelineage.NewAdapter(metadataClient)
 	datasources := resourcedatasource.NewAdapter(datasourceClient)

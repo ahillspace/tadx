@@ -94,10 +94,10 @@ type CompactDatasource struct {
 	LUID        string `json:"luid"`
 	Name        string `json:"name"`
 	ProjectLUID string `json:"project_luid"`
-	ProjectName string `json:"project_name,omitempty"`
-	Type        string `json:"type,omitempty"`
-	ContentURL  string `json:"content_url,omitempty"`
-	UpdatedAt   string `json:"updated_at,omitempty"`
+	ProjectName string `json:"project_name"`
+	Type        string `json:"type"`
+	ContentURL  string `json:"content_url"`
+	UpdatedAt   string `json:"updated_at"`
 }
 
 // CompactResult is the default bounded projection.

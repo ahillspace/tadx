@@ -181,6 +181,7 @@ func newDefinitionList(deps Dependencies) *cobra.Command {
 	readFlags(command, &input.Environment, &input.Catalog)
 	command.Flags().IntVar(&input.Limit, "limit", 0, "maximum definitions to return; defaults to 25")
 	command.Flags().StringVar(&input.Name, "name", "", "find exact definition names across provider pages")
+	command.Flags().StringVar(&input.DatasourceLUID, "datasource-id", "", "filter exact datasource LUID before the returned limit; scans up to 100 pages")
 	command.Flags().StringVar(&input.Cursor, "cursor", "", "opaque continuation cursor")
 	_ = command.Flags().MarkHidden("cursor")
 	command.Flags().BoolVar(&input.All, "all", false, "return all matching definitions within 100 pages and 10,000 records; cannot combine with --limit")

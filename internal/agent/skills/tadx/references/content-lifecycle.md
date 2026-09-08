@@ -20,7 +20,7 @@ Use `--env` as an alias for any listed `--environment` flag.
 | `tadx content workbook delete` | Delete one remote workbook. | `--environment`; `--id`, or `--name` with `--project`; `--preview` |
 | `tadx content datasource list` | List published datasources, or collect the selected inventory with `--all`. | `--environment`, `--name`, `--owner`, `--project-name`, `--type`, `--tag`, `--updated-after`, `--updated-before`, `--catalog`, `--limit 1..100` or `--all` |
 | `tadx content datasource inspect` | Inspect one exact published datasource. | `--id`, or `--name` with `--project`; `--environment`, `--catalog` |
-| `tadx content datasource schema` | List logical tables and return matching field metadata. | `--id`; `--environment`, `--query`, `--role measure\|dimension\|date\|excluded`, `--table`, `--field-id`, `--catalog`, `--limit 1..100` or `--all` |
+| `tadx content datasource schema` | List logical tables and return matching field metadata. | `--id`; `--environment`, `--query`, `--role measure\|dimension\|date\|excluded`, `--table`, repeated `--field-id`, `--catalog`, `--limit 1..100` or `--all` |
 | `tadx content datasource pull` | Download one or up to 100 native datasource artifacts. | Repeat `--id`, or use `--name` with `--project`; `--environment`, `--workspace`, `--overwrite` |
 | `tadx content datasource publish` | Publish one or up to 100 managed datasource artifacts. | Repeat `--artifact`; `--workspace`, `--environment`, `--project-id` or `--project`, `--name`; exactly one of `--create`, `--overwrite`, `--append`, or `--replace`; `--as-job`, `--preview` |
 | `tadx content datasource move` | Move one datasource to another project on the same site. | `--environment`; `--id`, or `--name` with `--project`; `--destination-project-id` or `--destination-project`; `--preview` |
@@ -50,6 +50,8 @@ Search defaults to 20 returned results and accepts `--limit` up to 2,000.
 When `more_available` is true, increase the limit or narrow the query; TADX handles provider pagination internally.
 Schema defaults to 20 matching fields; use `--all` for complete matching metadata within 10,000 fields, without combining it with `--limit`.
 Narrow large schema discovery by role or table when necessary.
+Repeat `--field-id` to inspect several exact fields in one schema fetch; missing or ambiguous selections fail explicitly.
+Use `--full` for their expanded details, and retain a sufficient limit or `--all` for the selected set.
 
 An ordinary live `list` retrieves a bounded selection without collecting the complete resource scope or accessing SQLite.
 Lists default to 25 rows and accept `--limit 1..100`, or `--all` for all matching records within 10,000.

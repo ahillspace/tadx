@@ -51,7 +51,7 @@ type Output struct {
 type CompactGroup struct {
 	LUID   string `json:"luid"`
 	Name   string `json:"name"`
-	Domain string `json:"domain,omitempty"`
+	Domain string `json:"domain"`
 }
 type CompactResult struct {
 	Status      string               `json:"status"`

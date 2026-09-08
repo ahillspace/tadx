@@ -78,7 +78,7 @@ type Output struct {
 type CompactProject struct {
 	LUID       string `json:"luid"`
 	Name       string `json:"name"`
-	ParentLUID string `json:"parent_luid,omitempty"`
+	ParentLUID string `json:"parent_luid"`
 }
 
 // CompactResult is the default bounded projection.

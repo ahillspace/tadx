@@ -41,7 +41,7 @@ func newDatasourceSchema(getter DatasourceSchemaGetter, renderer Renderer) *cobr
 	command.Flags().StringVar(&input.Query, "query", "", "case-insensitive text contained in a field ID, name, caption, label, or formula; use --table to select a table")
 	command.Flags().StringVar(&input.Role, "role", "", "exact field role: measure, dimension, date, or excluded")
 	command.Flags().StringVar(&input.Table, "table", "", "exact logical table caption")
-	command.Flags().StringVar(&input.FieldID, "field-id", "", "exact raw Tableau field identifier")
+	command.Flags().StringArrayVar(&input.FieldIDs, "field-id", nil, "exact raw Tableau field identifier; repeat to select multiple fields")
 	command.Flags().IntVar(&input.Limit, "limit", 0, "maximum fields to return; defaults to 20")
 	command.Flags().StringVar(&input.Cursor, "cursor", "", "opaque continuation cursor")
 	_ = command.Flags().MarkHidden("cursor")

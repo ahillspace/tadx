@@ -1,6 +1,9 @@
 package pull
 
-import "github.com/ahillspace/tadx/internal/identity"
+import (
+	"github.com/ahillspace/tadx/internal/identity"
+	"github.com/ahillspace/tadx/internal/value"
+)
 
 const (
 	// FullNodeLimit bounds expanded command output.
@@ -46,19 +49,10 @@ type CaptureRequest struct {
 }
 
 // Node preserves distinct Metadata and REST identities.
-type Node struct {
-	MetadataID string `json:"metadata_id"`
-	Kind       string `json:"kind"`
-	RESTLUID   string `json:"rest_luid,omitempty"`
-	Name       string `json:"name,omitempty"`
-}
+type Node = value.LineageNode
 
 // Edge is one factual directed relationship.
-type Edge struct {
-	FromMetadataID string `json:"from_metadata_id"`
-	ToMetadataID   string `json:"to_metadata_id"`
-	Relationship   string `json:"relationship"`
-}
+type Edge = value.LineageEdge
 
 // Graph is one bounded lineage capture.
 type Graph struct {

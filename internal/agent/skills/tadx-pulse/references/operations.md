@@ -3,7 +3,7 @@
 | Action | Purpose | Required and useful flags |
 | --- | --- | --- |
 | `tadx search <term>` | Discover a named metric, definition, user, or group. | `--environment`, `--type metric\|definition\|user\|group\|pulse\|admin`, `--limit` |
-| `tadx pulse definition list` | List definitions or find an exact name. | `--environment`, `--name`, `--limit`, `--all`, `--catalog`, `--full` |
+| `tadx pulse definition list` | List definitions or find an exact name. | `--environment`, `--name`, `--datasource-id`, `--limit`, `--all`, `--catalog`, `--full` |
 | `tadx pulse definition inspect` | Read one definition. | `--id`, `--environment`, `--catalog`, `--full` |
 | `tadx pulse definition pull` | Save a definition artifact in a registered workspace. | `--id`, `--environment`, `--workspace`, `--overwrite` |
 | `tadx pulse metric list` | List variants of one definition. | `--definition-id`, `--environment`, `--limit`, `--all`, `--catalog`, `--full` |
@@ -36,7 +36,8 @@ Definition and metric lists default to 25 returned objects, with `--limit` up to
 Do not combine `--all` with `--limit`.
 `more_available` means the rendered result is bounded; use `--all` when completeness is required.
 Exact definition `--name` searches across provider pages rather than filtering one page.
-There is no datasource filter on definition list; compare returned datasource LUIDs.
+Use `--datasource-id <luid>` to restrict definitions to the selected datasource before the returned-result limit.
+Filtering may still traverse provider pages; it reduces returned context, not necessarily upstream requests.
 Search supports `--limit` up to 2,000; narrow the query if more results remain beyond that bound.
 
 ## Pull and assess edits

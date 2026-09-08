@@ -2,6 +2,7 @@ package project_test
 
 import (
 	"context"
+	"sync"
 	"testing"
 
 	"github.com/ahillspace/tadx/internal/identity"
@@ -12,6 +13,42 @@ import (
 type discoveryProjectsClient struct {
 	calls int
 	root  string
+}
+
+func TestExplicitProjectPhaseSharesIndexAndFreshPhaseObservesDrift(t *testing.T) {
+	client := &discoveryProjectsClient{root: "Original"}
+	adapter := project.NewAdapter(client)
+	phase := adapter.BeginProjectResolution(context.Background())
+	var workers sync.WaitGroup
+	for range 12 {
+		workers.Add(1)
+		go func() {
+			defer workers.Done()
+			item, err := adapter.ResolveProject(phase, identity.Selector{LUID: "child"})
+			if err != nil || item.Path != "Original/Orders" {
+				t.Errorf("project=%v error=%v", item, err)
+			}
+		}()
+	}
+	workers.Wait()
+	client.root = "Changed"
+	paths, err := adapter.ResolveProjectPaths(phase, []string{"root", "child"})
+	if err != nil || paths["root"] != "Original" || client.calls != 1 {
+		t.Fatalf("paths=%v reads=%d error=%v", paths, client.calls, err)
+	}
+	if _, err := adapter.FindProjectCollisions(phase, "Orders", "root"); err != nil {
+		t.Fatal(err)
+	}
+	fresh := adapter.BeginProjectResolution(phase)
+	item, err := adapter.ResolveProject(fresh, identity.Selector{LUID: "child"})
+	if err != nil || item.Path != "Changed/Orders" || client.calls != 2 {
+		t.Fatalf("project=%v reads=%d error=%v", item, client.calls, err)
+	}
+	ctx, cancel := context.WithCancel(fresh)
+	cancel()
+	if _, err := adapter.ResolveProject(ctx, identity.Selector{LUID: "child"}); err == nil {
+		t.Fatal("cached phase ignored cancellation")
+	}
 }
 
 func (c *discoveryProjectsClient) List(_ context.Context, in tableauproject.ListRequest) (tableauproject.Page, error) {

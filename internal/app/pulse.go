@@ -1,6 +1,7 @@
 package app
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -568,8 +569,8 @@ func (a *pulseMetricMutationAdapter) GetOrCreateMetric(ctx context.Context, requ
 }
 
 func (a *pulseMetricMutationAdapter) ReconcileMetric(ctx context.Context, expected metricfork.ExpectedMetric) (metricfork.Reconciliation, error) {
-	result, err := a.client.ReconcileMetric(ctx, tableaupulse.ExpectedMetric{MetricLUID: expected.MetricLUID, DefinitionLUID: expected.DefinitionLUID, DatasourceLUID: expected.DatasourceLUID, SiteLUID: expected.SiteLUID})
-	return metricfork.Reconciliation{Status: result.Status, Attempts: result.Attempts, OwnershipVerified: result.OwnershipVerified, InventoryVisible: result.InventoryVisible, RequestID: result.TableauRequestID}, err
+	result, err := a.client.ReconcileMetric(ctx, tableaupulse.ExpectedMetric{MetricLUID: expected.MetricLUID, DefinitionLUID: expected.DefinitionLUID, DatasourceLUID: expected.DatasourceLUID, SiteLUID: expected.SiteLUID, Specification: cloneJSONMap(expected.Specification)})
+	return metricfork.Reconciliation{Status: result.Status, Attempts: result.Attempts, OwnershipVerified: result.OwnershipVerified, RequestID: result.TableauRequestID, SpecificationVerified: result.SpecificationVerified, SavedSpecification: cloneJSONMap(result.Metric.Specification), MetricRequestID: result.Metric.TableauRequestID, DefinitionRequestID: result.Definition.TableauRequestID, SavedDefinition: metricfork.SavedDefinition{LUID: result.Definition.LUID, Name: result.Definition.Name, DatasourceLUID: result.Definition.DatasourceLUID}}, err
 }
 
 type pulseFollowerAdapter struct {
@@ -875,7 +876,9 @@ func cloneJSONMap(input map[string]any) map[string]any {
 		return nil
 	}
 	var output map[string]any
-	if json.Unmarshal(data, &output) != nil {
+	decoder := json.NewDecoder(bytes.NewReader(data))
+	decoder.UseNumber()
+	if decoder.Decode(&output) != nil {
 		return nil
 	}
 	return output

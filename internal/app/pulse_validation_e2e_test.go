@@ -46,7 +46,7 @@ func TestPulseCreateValidationThroughCLI(t *testing.T) {
 		{name: "running total latest", measure: "Revenue", aggregation: "SUM", dimensions: []string{"Region"}, extra: []string{"--running-total", "--temporality", "LATEST"}, wantError: "running total requires SUM aggregation and OVER_TIME temporality"},
 	} {
 		t.Run(test.name, func(t *testing.T) {
-			var creates int
+			var creates, fieldReads, collisionReads int
 			var created definitioncreate.CreateRequest
 			server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				w.Header().Set("Content-Type", "application/json")
@@ -56,6 +56,7 @@ func TestPulseCreateValidationThroughCLI(t *testing.T) {
 				case r.Method == http.MethodGet && r.URL.Path == "/api/3.29/sites/site-1/datasources/ds-1":
 					_, _ = io.WriteString(w, `<tsResponse><datasource id="ds-1" name="Orders"><project id="project-1" name="Test"/></datasource></tsResponse>`)
 				case r.Method == http.MethodPost && r.URL.Path == "/api/v1/vizql-data-service/read-metadata":
+					fieldReads++
 					_, _ = io.WriteString(w, `{"data":[
 						{"fieldName":"Revenue","dataType":"REAL","fieldRole":"MEASURE"},
 						{"fieldName":"Text Measure","dataType":"STRING","fieldRole":"MEASURE"},
@@ -70,6 +71,7 @@ func TestPulseCreateValidationThroughCLI(t *testing.T) {
 						{"fieldName":"Duplicate ID","dataType":"STRING","fieldRole":"DIMENSION"}
 					]}`)
 				case r.Method == http.MethodGet && r.URL.Path == "/api/-/pulse/definitions":
+					collisionReads++
 					_, _ = io.WriteString(w, `{"definitions":[]}`)
 				case r.Method == http.MethodPost && r.URL.Path == "/api/-/pulse/definitions":
 					creates++
@@ -119,6 +121,9 @@ func TestPulseCreateValidationThroughCLI(t *testing.T) {
 			code = app.Run(context.Background(), args, &stdout, options)
 			if code != 0 || creates != 1 {
 				t.Fatalf("create code=%d creates=%d output=%s", code, creates, stdout.String())
+			}
+			if fieldReads != 2 || collisionReads != 2 {
+				t.Fatalf("preview plus fresh execute must each validate once: fields=%d collisions=%d", fieldReads, collisionReads)
 			}
 			wantDimensions := []string{"Region"}
 			if test.name == "stable dimension order" {

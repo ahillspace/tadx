@@ -100,7 +100,7 @@ For HTTP 409, inspect candidate definitions on the datasource, including differe
 A conflict status alone does not prove duplication.
 
 ```text
-tadx pulse definition list --environment '<alias>' --all --full
+tadx pulse definition list --environment '<alias>' --datasource-id '<datasource-luid>' --all --full
 tadx pulse metric list --environment '<alias>' --definition-id '<returned-definition-luid>' --all --full
 ```
 

@@ -33,6 +33,7 @@ func New(artifacts ArtifactReader, resolver Resolver, publisher Publisher) *Acti
 	return &Action{artifacts: artifacts, resolver: resolver, publisher: publisher}
 }
 func (a *Action) Execute(ctx context.Context, input Input, preview bool) (Output, error) {
+	ctx = a.beginProjectResolution(ctx)
 	if a == nil || a.artifacts == nil || a.resolver == nil || a.publisher == nil {
 		return Output{}, unconfigured()
 	}
@@ -45,6 +46,7 @@ func (a *Action) Execute(ctx context.Context, input Input, preview bool) (Output
 		return output, nil
 	}
 	output.Plan.Mode = "execute"
+	ctx = a.beginProjectResolution(ctx)
 	// Revalidate the exact artifact, destination, and collision BEFORE preparing
 	// the upload. Prepare uploads the native flow (a server-side side effect); a
 	// revalidation failure after Prepare would strand that upload with no cleanup

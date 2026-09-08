@@ -101,7 +101,7 @@ func TestCreatePlansSmallIntentAndAppliesOnlyWhenRequested(t *testing.T) {
 		t.Fatalf("dimensions=%#v", got)
 	}
 	result, err := action.Execute(context.Background(), input, false)
-	if err != nil || result.Result == nil || result.Result.DefaultMetricLUID != "metric-1" || c.calls != 1 || v.calls != 3 || f.calls != 3 {
+	if err != nil || result.Result == nil || result.Result.DefaultMetricLUID != "metric-1" || c.calls != 1 || v.calls != 2 || f.calls != 2 {
 		t.Fatalf("result=%#v calls=%d/%d/%d err=%v", result, v.calls, f.calls, c.calls, err)
 	}
 	if c.request.Name != "Revenue" || c.request.Specification.Datasource.ID != "datasource-1" {
@@ -188,5 +188,26 @@ func TestApplyRejectsModifiedPlan(t *testing.T) {
 	var structured *errs.Error
 	if !errors.As(err, &structured) || structured.Kind != errs.KindUsage || c.calls != 0 {
 		t.Fatalf("error=%#v calls=%d", err, c.calls)
+	}
+}
+
+func TestRetainedApplyStillDetectsFieldAndCollisionDrift(t *testing.T) {
+	for _, collision := range []bool{false, true} {
+		v, f, c := &validator{}, &finder{}, &creator{}
+		action := definitioncreate.New(v, f, c)
+		input := definitioncreate.Input{Intent: definitioncreate.Intent{Name: "Revenue", DatasourceLUID: "datasource-1", MeasureField: "Sales", TimeDimension: "Date", AllowedDimensions: []string{"Region"}}}
+		plan, err := action.Plan(context.Background(), input)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if collision {
+			f.items = []definitioncreate.ExistingDefinition{{LUID: "new-definition", Name: "Revenue", DatasourceLUID: "datasource-1"}}
+		} else {
+			v.err = errors.New("selected field is now excluded")
+		}
+		_, err = action.Apply(context.Background(), input, plan)
+		if err == nil || c.calls != 0 || v.calls != 2 {
+			t.Fatalf("collision=%v err=%v fields=%d creates=%d", collision, err, v.calls, c.calls)
+		}
 	}
 }

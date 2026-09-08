@@ -43,6 +43,9 @@ func (a *Action) Execute(ctx context.Context, input Input) (Output, error) {
 		return Output{}, listError("pulse.definition.list.usage", errs.KindUsage, input, "Pulse definition list limit must be between 1 and 100.", nil)
 	}
 	fingerprint := targetFingerprint(input.Environment, input.Site, input.Name, limit, input.Catalog)
+	if input.DatasourceLUID != "" {
+		fingerprint = targetFingerprint(fingerprint, input.DatasourceLUID, "", limit, input.Catalog)
+	}
 	token, err := decodeCursor(input.Cursor, fingerprint)
 	if err != nil {
 		return Output{}, listError("pulse.definition.list.usage", errs.KindUsage, input, "Pulse definition cursor does not match the selected target, name, and limit.", err)
@@ -54,7 +57,7 @@ func (a *Action) Execute(ctx context.Context, input Input) (Output, error) {
 		limit = 10000
 	}
 	pageSize := min(limit, 100)
-	if input.Name != "" {
+	if input.Name != "" || input.DatasourceLUID != "" {
 		pageSize = 100
 	}
 	items := []Definition{}
@@ -62,6 +65,9 @@ func (a *Action) Execute(ctx context.Context, input Input) (Output, error) {
 	seenIDs := map[string]bool{}
 	var requestID, nextToken string
 	for pageNumber := 0; ; pageNumber++ {
+		if err := ctx.Err(); err != nil {
+			return Output{}, err
+		}
 		if pageNumber >= 100 {
 			return Output{}, listError("pulse.definition.list.incomplete", errs.KindOperation, input, "Pulse listing exceeded its 100-page inventory bound; completeness cannot be established.", nil)
 		}
@@ -82,7 +88,7 @@ func (a *Action) Execute(ctx context.Context, input Input) (Output, error) {
 				return Output{}, listError("pulse.definition.list.invalid_response", errs.KindOperation, input, "Pulse listing returned an incomplete, mismatched, or duplicate identity.", nil)
 			}
 			seenIDs[item.LUID] = true
-			if input.Name == "" || item.Name == input.Name {
+			if (input.Name == "" || item.Name == input.Name) && (input.DatasourceLUID == "" || item.DatasourceLUID == input.DatasourceLUID) {
 				items = append(items, item)
 			}
 		}
@@ -90,7 +96,7 @@ func (a *Action) Execute(ctx context.Context, input Input) (Output, error) {
 		if nextToken != "" && (strings.TrimSpace(nextToken) == "" || seenTokens[nextToken]) {
 			return Output{}, listError("pulse.definition.list.invalid_response", errs.KindOperation, input, "Pulse listing returned an invalid or repeated continuation token.", nil)
 		}
-		if nextToken == "" || (!input.All && input.Name == "") {
+		if nextToken == "" || (!input.All && input.Name == "" && input.DatasourceLUID == "") {
 			break
 		}
 		seenTokens[nextToken] = true

@@ -1,6 +1,9 @@
 package schema
 
-import "github.com/ahillspace/tadx/internal/readsource"
+import (
+	"github.com/ahillspace/tadx/internal/readsource"
+	"github.com/ahillspace/tadx/internal/value"
+)
 
 const (
 	defaultLimit = 20
@@ -17,6 +20,7 @@ type Input struct {
 	Role           string
 	Table          string
 	FieldID        string
+	FieldIDs       []string
 	Limit          int
 	Cursor         string
 	Catalog        bool
@@ -24,30 +28,10 @@ type Input struct {
 }
 
 // Table is one logical datasource table.
-type Table struct {
-	ID         string `json:"id"`
-	Name       string `json:"name"`
-	FieldCount int    `json:"field_count"`
-}
+type Table = value.SchemaTable
 
 // Field is one normalized datasource field.
-type Field struct {
-	ID                      string `json:"id"`
-	Name                    string `json:"name"`
-	Caption                 string `json:"caption"`
-	Label                   string `json:"label"`
-	Role                    string `json:"role"`
-	DataType                string `json:"data_type"`
-	TimeType                string `json:"time_type,omitempty"`
-	Table                   string `json:"table,omitempty"`
-	LogicalTableID          string `json:"logical_table_id,omitempty"`
-	DefaultAggregation      string `json:"default_aggregation,omitempty"`
-	Formula                 string `json:"formula,omitempty"`
-	RequiresUserAggregation bool   `json:"requires_user_aggregation"`
-	Excluded                bool   `json:"excluded"`
-	ExclusionReason         string `json:"exclusion_reason,omitempty"`
-	Provenance              string `json:"provenance,omitempty"`
-}
+type Field = value.SchemaField
 
 // Schema is one complete normalized datasource schema before bounded projection.
 type Schema struct {

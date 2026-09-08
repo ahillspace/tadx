@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	tableaumetadata "github.com/ahillspace/tadx/internal/tableau/metadata"
+	"github.com/ahillspace/tadx/internal/value"
 )
 
 const (
@@ -34,19 +35,10 @@ type Request struct {
 }
 
 // Node preserves distinct Metadata and REST identities.
-type Node struct {
-	MetadataID string
-	Kind       string
-	RESTLUID   string
-	Name       string
-}
+type Node = value.LineageNode
 
 // Edge is one unique factual directed relationship.
-type Edge struct {
-	FromMetadataID string
-	ToMetadataID   string
-	Relationship   string
-}
+type Edge = value.LineageEdge
 
 // Graph is one deterministic bounded lineage result.
 type Graph struct {

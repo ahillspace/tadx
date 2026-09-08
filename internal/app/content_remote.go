@@ -30,11 +30,8 @@ import (
 	resourceproject "github.com/ahillspace/tadx/internal/resources/project"
 	resourceworkbook "github.com/ahillspace/tadx/internal/resources/workbook"
 	tableaucatalog "github.com/ahillspace/tadx/internal/tableau/catalog"
-	tableaudatasource "github.com/ahillspace/tadx/internal/tableau/datasource"
 	tableauflow "github.com/ahillspace/tadx/internal/tableau/flow"
-	tableaumetadata "github.com/ahillspace/tadx/internal/tableau/metadata"
 	tableauproject "github.com/ahillspace/tadx/internal/tableau/project"
-	tableauworkbook "github.com/ahillspace/tadx/internal/tableau/workbook"
 )
 
 type remoteContentCommands struct{ runtime *runtimeDependencies }
@@ -72,20 +69,24 @@ func (c *remoteContentCommands) connect(ctx context.Context, alias string, expli
 	if err != nil {
 		return remoteConnection{environment: connection.environment}, err
 	}
-	projectClient := tableauproject.NewClient(connection.transport, connection.session, connection.environment.URL)
+	clients := c.runtime.clients(connection)
+	projectClient := clients.projects
 	projects := resourceproject.NewAdapter(projectClient)
-	flowClient := tableauflow.NewClient(connection.transport, connection.session, connection.environment.URL)
-	datasourceClient := tableaudatasource.NewClient(connection.transport, connection.session, connection.environment.URL)
+	var paths resourceworkbook.ProjectPathResolver = workbookProjectResolver{projects}
+	if !explicit {
+		paths = c.runtime.discoveryPaths(connection)
+	}
+	flowClient, datasourceClient := clients.flows, clients.datasources
 	return remoteConnection{
 		environment:       connection.environment,
 		siteLUID:          connection.session.SiteLUID(),
 		projects:          projects,
 		projectChanges:    resourceproject.NewMutationAdapter(projectClient),
-		flows:             resourceflow.NewAdapter(flowClient, projects),
+		flows:             resourceflow.NewAdapter(flowClient, paths),
 		flowChanges:       resourceflow.NewMutationAdapter(flowClient),
-		lineage:           resourcelineage.NewAdapter(tableaumetadata.NewClient(connection.transport, connection.session, connection.environment.URL)),
-		workbooks:         resourceworkbook.NewAdapterWithProjectResolver(tableauworkbook.NewClient(connection.transport, connection.session, connection.environment.URL), projects),
-		datasources:       resourcedatasource.NewAdapterWithProjectResolver(datasourceClient, projects),
+		lineage:           resourcelineage.NewAdapter(clients.metadata),
+		workbooks:         resourceworkbook.NewAdapterWithProjectResolver(clients.workbooks, paths),
+		datasources:       resourcedatasource.NewAdapterWithProjectResolver(datasourceClient, paths),
 		datasourceChanges: resourcedatasource.NewMutationAdapter(datasourceClient),
 		inventory:         catalogTableauExecutor{transport: connection.transport, session: connection.session, serverURL: connection.environment.URL, siteLUID: connection.session.SiteLUID()},
 	}, nil
@@ -770,13 +771,9 @@ type lineageReader struct{ adapter *resourcelineage.Adapter }
 func (r lineageReader) CaptureLineage(ctx context.Context, input lineagepull.CaptureRequest) (lineagepull.Graph, error) {
 	graph, err := r.adapter.Capture(ctx, resourcelineage.Request{Kind: input.Kind, RESTLUID: input.RESTLUID, Direction: input.Direction, Depth: input.Depth})
 	nodes := make([]lineagepull.Node, len(graph.Nodes))
-	for index, node := range graph.Nodes {
-		nodes[index] = lineagepull.Node{MetadataID: node.MetadataID, Kind: node.Kind, RESTLUID: node.RESTLUID, Name: node.Name}
-	}
+	copy(nodes, graph.Nodes)
 	edges := make([]lineagepull.Edge, len(graph.Edges))
-	for index, edge := range graph.Edges {
-		edges[index] = lineagepull.Edge{FromMetadataID: edge.FromMetadataID, ToMetadataID: edge.ToMetadataID, Relationship: edge.Relationship}
-	}
+	copy(edges, graph.Edges)
 	return lineagepull.Graph{RootMetadataID: graph.RootMetadataID, Complete: graph.Complete, Nodes: nodes, Edges: edges, Warnings: append([]string(nil), graph.Warnings...), RequestIDs: append([]string(nil), graph.RequestIDs...)}, err
 }
 

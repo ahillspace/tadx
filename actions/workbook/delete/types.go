@@ -1,6 +1,9 @@
 package delete
 
-import "github.com/ahillspace/tadx/internal/identity"
+import (
+	"github.com/ahillspace/tadx/internal/identity"
+	"github.com/ahillspace/tadx/internal/value"
+)
 
 // Input selects one exact workbook on one explicit Tableau target.
 type Input struct {
@@ -17,12 +20,7 @@ func (i *Input) SetSelector(luid, name, projectPath string) {
 }
 
 // Workbook is the authoritative delete target shown during preview.
-type Workbook struct {
-	LUID        string `json:"luid"`
-	Name        string `json:"name"`
-	ProjectLUID string `json:"project_luid"`
-	ProjectPath string `json:"project_path"`
-}
+type Workbook = value.ContentIdentity
 
 // Plan is the immutable preview of one workbook deletion.
 type Plan struct {

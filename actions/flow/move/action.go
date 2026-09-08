@@ -22,6 +22,7 @@ type Action struct {
 
 func New(resolver Resolver, mover Mover) *Action { return &Action{resolver: resolver, mover: mover} }
 func (a *Action) Execute(ctx context.Context, input Input, preview bool) (Output, error) {
+	ctx = a.beginProjectResolution(ctx)
 	if a == nil || a.resolver == nil || a.mover == nil {
 		return Output{}, &errs.Error{ID: "flow.move.unconfigured", Kind: errs.KindRuntime, Operation: "flow.move", Summary: "Flow move is not configured.", Retryable: errs.Bool(false), CorrectiveAction: "Configure flow move before retrying."}
 	}
@@ -44,6 +45,7 @@ func (a *Action) Execute(ctx context.Context, input Input, preview bool) (Output
 		return output, nil
 	}
 	output.Plan.Mode = "execute"
+	ctx = a.beginProjectResolution(ctx)
 	current, err := a.resolver.ResolveFlow(ctx, input.FlowSelector)
 	if err != nil {
 		retryable, correctiveAction := errs.CompleteRetryAdvice(err, "Review the exact flow selector, then retry.")

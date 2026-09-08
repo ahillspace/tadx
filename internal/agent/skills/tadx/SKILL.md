@@ -24,7 +24,7 @@ Use one relevant leaf `--help` only when this Guidance and its references do not
 - Never select the first fuzzy match or resolve ambiguity interactively.
 - TADX authenticates with PATs only.
 - Never expose PATs or session tokens.
-- Never run concurrent authenticated TADX commands with the same PAT because a new Tableau session can invalidate the other session.
+- TADX serializes commands sharing a PAT on this machine; other machines and external tools need separate PATs or coordination because a new session can invalidate an existing one.
 - Remote mutations run by default when `TADX_ENABLE_MUTATIONS=1`; use `--preview` when review is useful.
 - Discovery and previews do not authorize mutation, and `--force` never bypasses mutation policy.
 - Inspect an uncertain remote outcome before retrying a write.

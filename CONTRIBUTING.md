@@ -44,6 +44,9 @@ Keep Cobra limited to argument parsing, action invocation, shared rendering, and
 Put released Tableau HTTP behavior in `internal/tableau/<resource>` through the shared transport.
 Put pagination and LUID-authoritative exact resolution in `internal/resources/<resource>`.
 Bridge concrete adapters to action-owned interfaces only in the composition root.
+Share genuinely identical identity, schema, and lineage value records through dependency-free `internal/value`; keep action semantics, interfaces, and provider payloads separate.
+Reuse configuration, workspace resolution, and authenticated clients within one command, not across commands.
+Reuse a session only for the same server, site, and actual credential identity, and retain the local credential lock until session work finishes.
 
 If the evidence level is docs-only or blocked, build only types, validation, local orchestration, fixtures, tests, and the adapter seam.
 Do not write live API code or make that capability executable until bounded evidence verifies the upstream contract.
@@ -51,6 +54,7 @@ Do not write live API code or make that capability executable until bounded evid
 ## Preserve output and safety contracts
 
 Default output is an explicit bounded compact TOON projection containing the status, authoritative identity, next safe decision fields, warnings, completeness, and help.
+Compact list rows retain a fixed set of scalar columns, including empty values, so changing the limit does not switch between tabular and expanded output.
 Render `more_available` when results are limited; keep opaque provider and catalog cursors internal in both compact and full output.
 Use a larger bounded `--limit`, or explicit `--all` where supported, to request additional results.
 An incomplete or capped traversal must never claim a complete inventory.
@@ -59,7 +63,7 @@ Explicit `--all` and scoped catalog refresh share a collector; live output rende
 Cache persistence after a live full list is best effort; explicit refresh failure preserves the previous generation and fails.
 Filtered observations cannot establish complete unfiltered coverage.
 Ordinary and full lists share typed filter builders owned by each resource; the composition root maps inputs but does not duplicate filter syntax or validation.
-Reuse prerequisite project hierarchy only within a discovery invocation, never across invocations or for mutation revalidation.
+Reuse one project hierarchy within a validation phase; a separate pre-write validation phase requires a fresh index.
 Keep pagination loops typed and private instead of recursively invoking actions or encoding internal cursors.
 Persist project identity structurally as an indexed LUID, not by extracting it from payload JSON.
 Default catalog refresh excludes permissions; require an explicit scope for per-resource permission collection.
@@ -88,8 +92,10 @@ Guidance describes TADX and its limitations without overriding the user's choice
 ## Integrate the capability
 
 The slice owner returns integration requirements instead of editing shared files unless the task assigns integration ownership.
-The coordinator owns the exact capability contract row, `internal/capability/implementation.go`, shared CLI mounting, app composition, generated files, and binding tests.
-Never hand-edit `internal/capability/registry_gen.go` or `docs/reference/capabilities.md`.
+The coordinator owns typed capability facts and implementation bindings in `internal/capability/definitions.go`, shared CLI mounting, app composition, generated files, and binding tests.
+The architectural contract remains narrative documentation, not a compiler input.
+Never hand-edit `docs/reference/capabilities.md` or `docs/reference/capabilities.json`.
+The JSON file supplies capability-map data without generating or replacing the maintainer's HTML visualization.
 
 After updating the authoritative sources, run:
 

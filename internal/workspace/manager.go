@@ -430,6 +430,15 @@ func (m *Manager) Resolve(ctx context.Context, selector, environmentDefault stri
 	if err != nil {
 		return Record{}, err
 	}
+	return m.ResolveWithConfig(ctx, configuration, selector, environmentDefault)
+}
+
+// ResolveWithConfig resolves against an immutable command configuration snapshot.
+// Manifest identity and path validation remain the same as Resolve.
+func (m *Manager) ResolveWithConfig(ctx context.Context, configuration config.Config, selector, environmentDefault string) (Record, error) {
+	if err := ctx.Err(); err != nil {
+		return Record{}, err
+	}
 	if selector == "" {
 		selector = containingWorkspace(configuration)
 		if selector == "" {

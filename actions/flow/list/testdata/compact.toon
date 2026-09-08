@@ -6,7 +6,7 @@ page:
   total: 2
   limit: 1
   more_available: true
-flows[1]{luid,name,project_luid,project_name,file_type}:
-  flow-1,Daily,project-1,Ops,tflx
+flows[1]{luid,name,project_luid,project_name,file_type,updated_at}:
+  flow-1,Daily,project-1,Ops,tflx,""
 details: "--full"
 help[1]: tadx content flow inspect --id <flow-luid>

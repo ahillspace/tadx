@@ -34,6 +34,7 @@ func New(resolver Resolver, creator Creator) *Action {
 
 // Execute previews or creates one exact project.
 func (a *Action) Execute(ctx context.Context, input Input, preview bool) (Output, error) {
+	ctx = a.beginProjectResolution(ctx)
 	if a == nil || a.resolver == nil || a.creator == nil {
 		return Output{}, &errs.Error{ID: "project.create.unconfigured", Kind: errs.KindRuntime, Operation: "project.create", Summary: "Project create is not configured.", Retryable: errs.Bool(false), CorrectiveAction: "Configure project creation before retrying."}
 	}
@@ -57,6 +58,7 @@ func (a *Action) Execute(ctx context.Context, input Input, preview bool) (Output
 		return output, nil
 	}
 	output.Plan.Mode = "execute"
+	ctx = a.beginProjectResolution(ctx)
 	currentParent, err := a.resolveParent(ctx, input.ParentSelector)
 	if err != nil {
 		return Output{}, resolutionError(input, "Parent project revalidation failed.", err)

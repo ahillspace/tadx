@@ -107,7 +107,7 @@ func (w *workspaceRuntime) resolve(ctx context.Context, selector string) (worksp
 }
 
 func (w *workspaceRuntime) resolveForEnvironment(ctx context.Context, selector, environmentAlias string) (workspacecore.Record, error) {
-	configuration, err := config.Load(w.runtime.configPath)
+	configuration, err := w.runtime.configuration()
 	if err != nil {
 		return workspacecore.Record{}, err
 	}
@@ -119,7 +119,7 @@ func (w *workspaceRuntime) resolveForEnvironment(ctx context.Context, selector, 
 		}
 		environmentDefault = environment.DefaultWorkspace
 	}
-	return w.manager().Resolve(ctx, selector, environmentDefault)
+	return w.runtime.resolveWorkspace(ctx, configuration, selector, environmentDefault)
 }
 
 type workspaceCreator struct{ runtime *workspaceRuntime }

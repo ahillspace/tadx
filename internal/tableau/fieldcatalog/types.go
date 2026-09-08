@@ -1,6 +1,8 @@
 // Package fieldcatalog reads and normalizes published datasource schema metadata.
 package fieldcatalog
 
+import sharedvalue "github.com/ahillspace/tadx/internal/value"
+
 // Schema is one complete provider schema snapshot.
 type Schema struct {
 	DatasourceLUID string
@@ -12,30 +14,10 @@ type Schema struct {
 }
 
 // Table is one logical table reported by Tableau.
-type Table struct {
-	ID         string
-	Name       string
-	FieldCount int
-}
+type Table = sharedvalue.SchemaTable
 
 // Field is one normalized Tableau field.
-type Field struct {
-	ID                      string
-	Name                    string
-	Caption                 string
-	Label                   string
-	Role                    string
-	DataType                string
-	TimeType                string
-	Table                   string
-	LogicalTableID          string
-	DefaultAggregation      string
-	Formula                 string
-	RequiresUserAggregation bool
-	Excluded                bool
-	ExclusionReason         string
-	Provenance              string
-}
+type Field = sharedvalue.SchemaField
 
 type rawField struct {
 	Name                    string

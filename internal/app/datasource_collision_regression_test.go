@@ -52,6 +52,7 @@ func TestDatasourcePublishPreviewFindsSpecialCharacterCollisionThroughRemoteComp
 	if err != nil {
 		t.Fatal(err)
 	}
+	runtime.Close()
 	var output bytes.Buffer
 	exitCode := Run(context.Background(), []string{
 		"content", "datasource", "publish", "--workspace", "analytics", "--artifact", pulled.Artifact.Path, "--overwrite",

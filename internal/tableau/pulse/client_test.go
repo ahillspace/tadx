@@ -306,7 +306,7 @@ func TestCreateSubscriptionTreatsProvenDuplicateAsConverged(t *testing.T) {
 	}
 }
 
-func TestReconcileMetricVerifiesExactOwnershipAndInventory(t *testing.T) {
+func TestReconcileMetricVerifiesExactOwnershipAndSpecification(t *testing.T) {
 	requests := 0
 	server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		requests++
@@ -315,16 +315,14 @@ func TestReconcileMetricVerifiesExactOwnershipAndInventory(t *testing.T) {
 			_, _ = io.WriteString(writer, `{"metric":{"id":"metric-1","definition_id":"definition-1","site_id":"site-1","specification":{"filters":[]}}}`)
 		case 2:
 			_, _ = io.WriteString(writer, `{"definition":{"metadata":{"id":"definition-1","name":"Revenue"},"specification":{"datasource":{"id":"datasource-1"},"basic_specification":{"measure":{"field":"Sales"},"time_dimension":{"field":"Date"}}}}}`)
-		case 3:
-			_, _ = io.WriteString(writer, `{"metrics":[{"id":"metric-1","definition_id":"definition-1"}]}`)
 		default:
 			t.Fatalf("unexpected request %d", requests)
 		}
 	}))
 	defer server.Close()
 	client := newPulseClient(t, tableau.NewTransport(server.Client(), "3.29", nil), session{}, server.URL)
-	result, err := client.ReconcileMetric(context.Background(), tableaupulse.ExpectedMetric{MetricLUID: "metric-1", DefinitionLUID: "definition-1", DatasourceLUID: "datasource-1", SiteLUID: "site-1"})
-	if err != nil || result.Status != "visible" || !result.OwnershipVerified || !result.InventoryVisible || result.Attempts != 1 {
+	result, err := client.ReconcileMetric(context.Background(), tableaupulse.ExpectedMetric{MetricLUID: "metric-1", DefinitionLUID: "definition-1", DatasourceLUID: "datasource-1", SiteLUID: "site-1", Specification: map[string]any{"filters": []any{}}})
+	if err != nil || result.Status != "verified" || !result.OwnershipVerified || !result.SpecificationVerified || result.Attempts != 1 || requests != 2 {
 		t.Fatalf("result=%#v err=%v", result, err)
 	}
 }

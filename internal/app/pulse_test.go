@@ -77,6 +77,7 @@ environments:
 	if err != nil {
 		t.Fatal(err)
 	}
+	t.Cleanup(func() { _ = runtime.Close() })
 	commands := newPulseCommands(runtime)
 
 	definitionPreview, err := commands.DeletePulseDefinition(context.Background(), definitiondelete.Input{Environment: "production", LUID: "definition-1", Preview: true})
@@ -145,6 +146,7 @@ environments:
 	if err != nil {
 		t.Fatal(err)
 	}
+	t.Cleanup(func() { _ = runtime.Close() })
 	commands := newPulseCommands(runtime)
 
 	definitions, err := commands.ListPulseDefinitions(context.Background(), definitionlist.Input{Catalog: true, Limit: 10})

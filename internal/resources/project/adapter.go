@@ -59,6 +59,37 @@ type Adapter struct{ client Client }
 // NewAdapter creates a project resource adapter.
 func NewAdapter(client Client) *Adapter { return &Adapter{client: client} }
 
+type resolutionPhaseKey struct{}
+type resolutionPhase struct {
+	adapter   *Adapter
+	once      sync.Once
+	items     []tableauproject.Project
+	requestID string
+	index     *pathIndex
+	err       error
+}
+
+// BeginProjectResolution scopes related lookups to one lazy hierarchy snapshot.
+// Every validation phase, including prewrite revalidation, needs a fresh context.
+func (a *Adapter) BeginProjectResolution(ctx context.Context) context.Context {
+	return context.WithValue(ctx, resolutionPhaseKey{}, &resolutionPhase{adapter: a})
+}
+
+func (a *Adapter) inventory(ctx context.Context) ([]tableauproject.Project, string, *pathIndex, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, "", nil, err
+	}
+	if phase, ok := ctx.Value(resolutionPhaseKey{}).(*resolutionPhase); ok && phase.adapter == a {
+		phase.once.Do(func() {
+			phase.items, phase.requestID, phase.err = a.all(ctx)
+			phase.index = newPathIndex(phase.items)
+		})
+		return phase.items, phase.requestID, phase.index, phase.err
+	}
+	items, requestID, err := a.all(ctx)
+	return items, requestID, newPathIndex(items), err
+}
+
 // ListProjects returns exactly one validated upstream page.
 func (a *Adapter) ListProjects(ctx context.Context, input ListRequest) (Page, error) {
 	if a == nil || a.client == nil {
@@ -104,18 +135,17 @@ func (a *Adapter) resolveProject(ctx context.Context, selector identity.Selector
 	if selector.LUID == "" && strings.TrimSpace(selector.ProjectPath) == "" {
 		return Project{}, errors.New("project LUID or exact project path is required")
 	}
-	items, requestID, err := a.all(ctx)
+	items, requestID, index, err := a.inventory(ctx)
 	if err != nil {
 		return Project{}, err
 	}
-	index := newPathIndex(items)
 	if selector.LUID != "" {
 		item, exists := index.byID[string(selector.LUID)]
 		if !exists {
 			_, err := identity.Resolve(selector, nil)
 			return Project{}, err
 		}
-		path, err := index.path(item.LUID, make(map[string]bool))
+		path, err := index.resolvePath(item.LUID)
 		if err != nil {
 			return Project{}, err
 		}
@@ -126,7 +156,7 @@ func (a *Adapter) resolveProject(ctx context.Context, selector identity.Selector
 	candidates := make([]identity.Candidate, 0, len(items))
 	byLUID := make(map[identity.LUID]Project, len(items))
 	for _, item := range items {
-		path, pathErr := index.path(item.LUID, make(map[string]bool))
+		path, pathErr := index.resolvePath(item.LUID)
 		if pathErr != nil {
 			return Project{}, pathErr
 		}
@@ -171,11 +201,10 @@ func (a *Adapter) ResolveProjectPaths(ctx context.Context, luids []string) (map[
 	if len(luids) == 0 {
 		return map[string]string{}, nil
 	}
-	items, _, err := a.all(ctx)
+	_, _, index, err := a.inventory(ctx)
 	if err != nil {
 		return nil, err
 	}
-	index := newPathIndex(items)
 	paths := make(map[string]string, len(luids))
 	for _, luid := range luids {
 		luid = strings.TrimSpace(luid)
@@ -185,7 +214,7 @@ func (a *Adapter) ResolveProjectPaths(ctx context.Context, luids []string) (map[
 		if _, exists := paths[luid]; exists {
 			continue
 		}
-		path, pathErr := index.path(luid, make(map[string]bool))
+		path, pathErr := index.resolvePath(luid)
 		if pathErr != nil {
 			return nil, pathErr
 		}
@@ -231,7 +260,7 @@ func (r *DiscoveryPaths) ResolveProjectPaths(ctx context.Context, luids []string
 		r.paths = make(map[string]string, len(items))
 		r.pathErrors = make(map[string]error)
 		for _, item := range items {
-			path, err := index.path(item.LUID, make(map[string]bool))
+			path, err := index.resolvePath(item.LUID)
 			if err != nil {
 				r.pathErrors[item.LUID] = err
 			} else {
@@ -262,17 +291,16 @@ func (a *Adapter) FindProjectCollisions(ctx context.Context, name, parentLUID st
 	if strings.TrimSpace(name) == "" {
 		return nil, errors.New("project collision check requires a name")
 	}
-	items, requestID, err := a.all(ctx)
+	items, requestID, index, err := a.inventory(ctx)
 	if err != nil {
 		return nil, err
 	}
-	index := newPathIndex(items)
 	matches := make([]Project, 0, 1)
 	for _, item := range items {
 		if !strings.EqualFold(item.Name, name) || item.ParentLUID != parentLUID {
 			continue
 		}
-		path, pathErr := index.path(item.LUID, make(map[string]bool))
+		path, pathErr := index.resolvePath(item.LUID)
 		if pathErr != nil {
 			return nil, pathErr
 		}
@@ -371,8 +399,15 @@ func recordProject(items map[string]tableauproject.Project, item tableauproject.
 }
 
 type pathIndex struct {
+	mu    sync.Mutex
 	byID  map[string]tableauproject.Project
 	paths map[string]string
+}
+
+func (i *pathIndex) resolvePath(luid string) (string, error) {
+	i.mu.Lock()
+	defer i.mu.Unlock()
+	return i.path(luid, make(map[string]bool))
 }
 
 func newPathIndex(items []tableauproject.Project) *pathIndex {

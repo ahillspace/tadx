@@ -45,7 +45,11 @@ func (a *Action) Execute(ctx context.Context, input Input) (Output, error) {
 	input.Query = strings.TrimSpace(input.Query)
 	input.Role = strings.ToLower(strings.TrimSpace(input.Role))
 	input.Table = strings.TrimSpace(input.Table)
-	input.FieldID = strings.TrimSpace(input.FieldID)
+	var err error
+	input, err = normalizeFieldSelection(input)
+	if err != nil {
+		return Output{}, err
+	}
 	if input.DatasourceLUID == "" {
 		return Output{}, schemaError("datasource.schema.usage", errs.KindUsage, input, "Datasource schema discovery requires --id.", nil, "Provide one authoritative datasource LUID with --id.")
 	}
@@ -80,7 +84,10 @@ func (a *Action) Execute(ctx context.Context, input Input) (Output, error) {
 		return Output{}, schemaError("datasource.schema.identity_mismatch", errs.KindOperation, input, "Datasource schema returned an incomplete or mismatched identity.", nil, "Retry after Tableau returns an authoritative datasource identity.")
 	}
 
-	fields := filterFields(value.Fields, input)
+	fields, err := filterFields(value.Fields, input)
+	if err != nil {
+		return Output{}, err
+	}
 	if input.All && len(fields) > maxAllFields {
 		return Output{}, schemaError("datasource.schema.incomplete", errs.KindOperation, input, "The matching schema exceeds the 10,000-field inventory bound.", nil, "Narrow the schema with --role, --table, or --query before using --all.")
 	}
@@ -113,17 +120,50 @@ func (a *Action) Execute(ctx context.Context, input Input) (Output, error) {
 	}, nil
 }
 
-func filterFields(fields []Field, input Input) []Field {
+func normalizeFieldSelection(input Input) (Input, error) {
+	selected := make(map[string]struct{}, len(input.FieldIDs)+1)
+	ids := input.FieldIDs
+	if input.FieldID != "" {
+		ids = append(append([]string(nil), ids...), input.FieldID)
+	}
+	for _, id := range ids {
+		if strings.TrimSpace(id) == "" {
+			return input, schemaError("datasource.schema.usage", errs.KindUsage, input, "Datasource field identifiers cannot be empty.", nil, "Provide an exact raw Tableau field identifier for each --field-id.")
+		}
+		selected[id] = struct{}{}
+		if len(selected) > maxAllFields {
+			return input, schemaError("datasource.schema.usage", errs.KindUsage, input, "Datasource field selection exceeds the 10,000-field inventory bound.", nil, "Select at most 10,000 distinct field identifiers.")
+		}
+	}
+	input.FieldIDs = make([]string, 0, len(selected))
+	for id := range selected {
+		input.FieldIDs = append(input.FieldIDs, id)
+	}
+	sort.Strings(input.FieldIDs)
+	input.FieldID = ""
+	if len(input.FieldIDs) == 1 {
+		input.FieldID = input.FieldIDs[0]
+	}
+	return input, nil
+}
+
+func filterFields(fields []Field, input Input) ([]Field, error) {
 	query := strings.ToLower(input.Query)
 	table := strings.ToLower(input.Table)
+	selected := make(map[string]int, len(input.FieldIDs))
+	for _, id := range input.FieldIDs {
+		selected[id] = 0
+	}
 	result := make([]Field, 0, len(fields))
 	for _, field := range fields {
 		role := strings.ToLower(strings.TrimSpace(field.Role))
 		if input.Role != "" && role != input.Role {
 			continue
 		}
-		if input.FieldID != "" && field.ID != input.FieldID {
-			continue
+		if len(selected) > 0 {
+			if _, requested := selected[field.ID]; !requested {
+				continue
+			}
 		}
 		if table != "" && strings.ToLower(field.Table) != table {
 			continue
@@ -134,7 +174,18 @@ func filterFields(fields []Field, input Input) []Field {
 				continue
 			}
 		}
+		if len(selected) > 0 {
+			selected[field.ID]++
+		}
 		result = append(result, field)
+	}
+	for _, id := range input.FieldIDs {
+		switch matches := selected[id]; {
+		case matches == 0:
+			return nil, schemaError("datasource.schema.field_not_found", errs.KindUsage, input, fmt.Sprintf("Datasource field identifier %q did not match the selected schema.", id), nil, "Verify the exact --field-id and remove any conflicting --role, --table, or --query filters.")
+		case matches > 1:
+			return nil, schemaError("datasource.schema.field_ambiguous", errs.KindUsage, input, fmt.Sprintf("Datasource field identifier %q matched %d fields.", id, matches), nil, "Inspect the field inventory and use --table to select the intended logical table.")
+		}
 	}
 	sort.Slice(result, func(i, j int) bool {
 		left, right := result[i], result[j]
@@ -146,7 +197,7 @@ func filterFields(fields []Field, input Input) []Field {
 		}
 		return left.ID < right.ID
 	})
-	return result
+	return result, nil
 }
 
 type cursor struct {
@@ -156,6 +207,12 @@ type cursor struct {
 
 func inputFingerprint(input Input) string {
 	value := strings.Join([]string{input.Environment, input.Site, input.DatasourceLUID, input.Query, input.Role, input.Table, input.FieldID, fmt.Sprintf("%t", input.Catalog)}, "\x00")
+	if len(input.FieldIDs) > 1 {
+		// Preserve legacy fingerprints for zero or one selector, while binding
+		// multi-selection cursors to the complete exact, order-independent set.
+		selection, _ := json.Marshal(input.FieldIDs)
+		value += "\x00" + string(selection)
+	}
 	sum := sha256.Sum256([]byte(value))
 	return fmt.Sprintf("%x", sum[:])
 }

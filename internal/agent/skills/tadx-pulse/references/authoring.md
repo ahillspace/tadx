@@ -3,7 +3,7 @@
 | Action | Purpose | Selectors and useful flags |
 | --- | --- | --- |
 | `tadx search <term>` | Discover a published datasource or existing Pulse object. | `--environment`, `--type datasource\|pulse`, `--limit` |
-| `tadx pulse definition list` | Find existing definitions and conventions. | `--environment`, `--name <exact-name>`, `--all`, `--full` |
+| `tadx pulse definition list` | Find existing definitions and conventions. | `--environment`, `--name <exact-name>`, `--datasource-id <luid>`, `--all`, `--full` |
 | `tadx pulse definition inspect` | Compare actual business and display settings. | `--environment`, `--id <definition-luid>`, `--full` |
 | `tadx content datasource inspect` | Verify an exact published source. | `--environment`, `--id <datasource-luid>`, `--full` |
 | `tadx content datasource schema` | Discover measures, dates, dimensions, and formulas. | `--environment`, `--id <datasource-luid>`, `--query`, `--role`, `--table`, `--field-id`, `--limit`, `--all`, `--full` |
@@ -31,7 +31,7 @@ Reuse a compatible definition, or fork an inspected metric when only period or p
 Compatible extra slicers are useful; missing required capabilities can prevent reuse.
 
 ```text
-tadx pulse definition list --environment '<alias>' --all --full
+tadx pulse definition list --environment '<alias>' --datasource-id '<datasource-luid>' --all --full
 tadx pulse definition inspect --environment '<alias>' --id '<definition-luid>' --full
 ```
 
@@ -60,13 +60,14 @@ Use `more_available` to detect bounded output and `--all` for complete discovery
 If the bound is exceeded, partition discovery by supported role or table filters and keep coverage explicit.
 `--catalog` uses only previously captured schema and never establishes current completeness.
 
-Read selected measure and date IDs individually with full details before finalizing them:
+Read selected measure, date, and derived dimension IDs together with full details before finalizing them:
 
 ```text
-tadx content datasource schema --environment '<alias>' --id '<datasource-luid>' --field-id '<exact-field-id>' --full
+tadx content datasource schema --environment '<alias>' --id '<datasource-luid>' --field-id '<exact-measure-id>' --field-id '<exact-date-id>' --field-id '<exact-derived-dimension-id>' --full
 ```
 
 Remove prior role, query, and table filters for that exact-field read.
+Repeat `--field-id` for each needed field; one invocation fetches the schema once and rejects missing or ambiguous selections.
 Copy the returned `id`, not a caption, label, or transformed qualified name.
 Duplicate captions can belong to different tables; an ID that still matches multiple fields remains ambiguous.
 Use full metadata for derived dimensions when their meaning requires it.

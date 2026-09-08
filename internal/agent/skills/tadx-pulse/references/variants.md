@@ -85,9 +85,10 @@ tadx pulse metric fork --environment '<alias>' --id '<source-metric-luid>' --per
 Inspect the full preview's final population, including inherited filters, replacements, null policy, period, and definition linkage.
 The compact list of requested changes is not the complete resulting population.
 For authorized execution, reuse the reviewed flags and remove only `--preview`.
-Inspect the returned metric with `--full` and compare the complete saved filters and period to the intended result.
+Use the fork's verified saved read-back in `--full` output to compare the complete filters and period to the intended result.
+Inspect the exact metric separately only when verification is unresolved, evidence is missing, or you need a later observation.
 `created: false` with a returned metric identity means successful reuse.
-Keep ownership, inventory visibility, and reconciliation status when supplied; visibility can lag a verified object.
+Keep definition linkage and reconciliation evidence; inventory visibility can lag an exact verified object and is not required for fork completion.
 A failed follow-up inspection does not prove the fork failed.
 Retain its ID, reconcile read-only, and report unresolved verification before another write.
 

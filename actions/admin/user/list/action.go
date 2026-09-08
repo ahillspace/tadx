@@ -53,7 +53,7 @@ type Output struct {
 type CompactUser struct {
 	LUID     string `json:"luid"`
 	Name     string `json:"name"`
-	SiteRole string `json:"site_role,omitempty"`
+	SiteRole string `json:"site_role"`
 }
 type CompactResult struct {
 	Status      string               `json:"status"`

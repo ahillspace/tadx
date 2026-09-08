@@ -20,6 +20,8 @@ result:
   status: created
   metric_luid: metric-fork
   created: true
-  reconciliation_status: visible
+  reconciliation_status: verified
+  ownership_verified: true
+  specification_verified: true
 details: "--full"
-help[1]: tadx pulse metric inspect --id metric-fork
+help[1]: Saved metric configuration and definition linkage verified; current values and generated insights are not read by TADX.

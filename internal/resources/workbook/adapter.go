@@ -360,6 +360,11 @@ func recordWorkbookIdentity(byLUID map[string]tableauworkbook.Workbook, item tab
 
 // ResolveProject resolves a LUID or exact slash-delimited project path.
 func (a *Adapter) ResolveProject(ctx context.Context, selector identity.Selector) (Project, error) {
+	if resolver, ok := a.projects.(interface {
+		ResolveProject(context.Context, identity.Selector) (Project, error)
+	}); ok {
+		return resolver.ResolveProject(ctx, selector)
+	}
 	items, err := a.allProjects(ctx)
 	if err != nil {
 		return Project{}, err
@@ -393,6 +398,18 @@ func (a *Adapter) ResolveProject(ctx context.Context, selector identity.Selector
 		return Project{}, err
 	}
 	return projects[resolved.LUID], nil
+}
+
+// BeginProjectResolution forwards an explicit validation phase when configured.
+func (a *Adapter) BeginProjectResolution(ctx context.Context) context.Context {
+	if a != nil {
+		if resolver, ok := a.projects.(interface {
+			BeginProjectResolution(context.Context) context.Context
+		}); ok {
+			return resolver.BeginProjectResolution(ctx)
+		}
+	}
+	return ctx
 }
 
 type projectPathIndex struct {

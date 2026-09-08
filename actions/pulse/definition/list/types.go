@@ -4,13 +4,14 @@ import "github.com/ahillspace/tadx/internal/readsource"
 
 // Input selects one bounded Pulse definition page.
 type Input struct {
-	Environment string
-	Site        string
-	Name        string
-	Cursor      string
-	Limit       int
-	Catalog     bool
-	All         bool
+	Environment    string
+	Site           string
+	Name           string
+	DatasourceLUID string
+	Cursor         string
+	Limit          int
+	Catalog        bool
+	All            bool
 }
 
 // PageRequest is the action-owned upstream continuation request.

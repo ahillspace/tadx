@@ -54,6 +54,7 @@ environments:
 	if err != nil {
 		t.Fatal(err)
 	}
+	t.Cleanup(func() { _ = runtime.Close() })
 	input := workbookget.Input{Catalog: true}
 	input.SetSelector("wb-1", "", "")
 	output, err := newRemoteContentCommands(runtime).InspectWorkbook(context.Background(), input)

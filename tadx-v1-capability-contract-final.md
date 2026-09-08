@@ -1,5 +1,9 @@
 # TADX V1 Capability Contract
 
+This document preserves architectural rationale and historical capability snapshots; its tables are not executable registry inputs.
+Current capability facts, evidence enums, and implementation bindings are maintained in `internal/capability/definitions.go`.
+The current generated reference is `docs/reference/capabilities.md`, with visualization data in `docs/reference/capabilities.json`.
+
 **Document status:** Consolidated contract - architecture locked; Pulse lifecycle live-verified
 **Prepared:** 2026-08-29  
 **Product / binary:** `tadx`  

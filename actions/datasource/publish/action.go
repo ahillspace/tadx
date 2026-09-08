@@ -33,6 +33,7 @@ func New(artifacts ArtifactReader, resolver Resolver, publisher Publisher) *Acti
 }
 
 func (a *Action) Execute(ctx context.Context, input Input, preview bool) (Output, error) {
+	ctx = a.beginProjectResolution(ctx)
 	if a == nil || a.artifacts == nil || a.resolver == nil || a.publisher == nil {
 		return Output{}, runtimeError("datasource.publish.unconfigured", "Datasource publish is not configured.", nil)
 	}
@@ -45,6 +46,7 @@ func (a *Action) Execute(ctx context.Context, input Input, preview bool) (Output
 		return out, nil
 	}
 	out.Plan.Mode = "execute"
+	ctx = a.beginProjectResolution(ctx)
 	artifact, err := a.artifacts.ReadDatasource(ctx, input.ArtifactPath)
 	if err != nil {
 		return Output{}, operationError("datasource.publish.reread", "Datasource artifact revalidation failed.", input, err)

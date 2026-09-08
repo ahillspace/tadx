@@ -5,6 +5,9 @@ description: Author and manage Tableau Pulse definitions with TADX, including bu
 
 # Author and manage Tableau Pulse metrics
 
+Before starting a TADX Pulse task, read the installed `tadx` root skill at `../tadx/SKILL.md`, beside this skill's directory.
+It covers general discovery, datasource schema, catalogs, workspaces, and administration; consult its relevant references before assuming a capability is missing from TADX.
+
 A definition owns the shared measure, aggregation, date, allowed dimensions, and display settings.
 A metric is a period and population variant of that definition; Tableau creates a default metric with each new definition.
 Followers subscribe to metrics, and insights are computed analytical results.
@@ -39,7 +42,7 @@ Identifier-like appearance and high cardinality alone are not exclusions.
 Use `DAY` nearly always; do not query datasource values merely to discover minimum granularity.
 
 TADX constructs requests from verified CLI flags.
-Review `--preview --full` before every authorized create or fork, then inspect the saved result.
+Review `--preview --full` before every authorized create or fork, then verify the saved configuration from returned read-back or an exact inspection when needed.
 A preview proves local validation, not Tableau acceptance or numeric correctness.
 Mutations, including their previews, require `TADX_ENABLE_MUTATIONS=1`; that setting does not grant user authorization.
 Use the installed TADX root Guidance for authentication, workspace selection, and general lifecycle boundaries.

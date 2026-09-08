@@ -65,9 +65,9 @@ type CompactFlow struct {
 	LUID        string `json:"luid"`
 	Name        string `json:"name"`
 	ProjectLUID string `json:"project_luid"`
-	ProjectName string `json:"project_name,omitempty"`
-	FileType    string `json:"file_type,omitempty"`
-	UpdatedAt   string `json:"updated_at,omitempty"`
+	ProjectName string `json:"project_name"`
+	FileType    string `json:"file_type"`
+	UpdatedAt   string `json:"updated_at"`
 }
 
 // CompactResult is the default projection.

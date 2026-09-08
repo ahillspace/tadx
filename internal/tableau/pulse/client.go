@@ -2,6 +2,7 @@
 package pulse
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -418,7 +419,12 @@ func decodeMetric(raw json.RawMessage, requestID string) (Metric, error) {
 		Specification       map[string]any `json:"specification"`
 		MetricSpecification map[string]any `json:"metric_specification"`
 	}
-	if err := json.Unmarshal(raw, &value); err != nil {
+	if !json.Valid(raw) {
+		return Metric{}, errors.New("decode Pulse metric: invalid JSON")
+	}
+	decoder := json.NewDecoder(bytes.NewReader(raw))
+	decoder.UseNumber()
+	if err := decoder.Decode(&value); err != nil {
 		return Metric{}, fmt.Errorf("decode Pulse metric: %w", err)
 	}
 	luid := first(value.Metadata.ID, value.ID)

@@ -28,8 +28,8 @@ func (s *service) GetOrCreateMetric(_ context.Context, request metricfork.Create
 	s.request = request
 	return metricfork.CreateResult{MetricLUID: "metric-fork", Created: true}, nil
 }
-func (s *service) ReconcileMetric(context.Context, metricfork.ExpectedMetric) (metricfork.Reconciliation, error) {
-	return metricfork.Reconciliation{Status: "visible", Attempts: 1, OwnershipVerified: true, InventoryVisible: true}, nil
+func (s *service) ReconcileMetric(_ context.Context, expected metricfork.ExpectedMetric) (metricfork.Reconciliation, error) {
+	return metricfork.Reconciliation{Status: "verified", Attempts: 1, OwnershipVerified: true, SpecificationVerified: true, SavedSpecification: expected.Specification, SavedDefinition: metricfork.SavedDefinition{LUID: expected.DefinitionLUID, DatasourceLUID: expected.DatasourceLUID}}, nil
 }
 
 func TestForkPreservesUnknownFieldsAndPreviewsByDefault(t *testing.T) {
@@ -43,7 +43,7 @@ func TestForkPreservesUnknownFieldsAndPreviewsByDefault(t *testing.T) {
 		t.Fatalf("preview=%#v created=%d", preview, s.created)
 	}
 	result, err := metricfork.New(s, s, s).Execute(context.Background(), input, false)
-	if err != nil || s.created != 1 || result.Result == nil || result.Result.ReconciliationStatus != "visible" {
+	if err != nil || s.created != 1 || result.Result == nil || result.Result.ReconciliationStatus != "verified" {
 		t.Fatalf("result=%#v created=%d err=%v", result, s.created, err)
 	}
 }
@@ -99,10 +99,12 @@ func TestForkOutputGolden(t *testing.T) {
 		},
 		Result: &metricfork.Result{
 			Status: "created", MetricLUID: "metric-fork", MetricName: "Revenue West", Created: true,
-			ReconciliationStatus: "visible", ReconciliationAttempts: 1, OwnershipVerified: true, InventoryVisible: true,
-			RequestID: "request-1", ReconciliationRequestID: "request-2",
+			ReconciliationStatus: "verified", ReconciliationAttempts: 1, OwnershipVerified: true, SpecificationVerified: true,
+			SavedSpecification: map[string]any{"measurement_period": map[string]any{"granularity": "GRANULARITY_BY_DAY", "range": "RANGE_BY_CONFIG"}},
+			SavedDefinition:    metricfork.SavedDefinition{LUID: "definition-1", Name: "Revenue", DatasourceLUID: "datasource-1"},
+			RequestID:          "request-1", ReconciliationRequestID: "request-2",
 		},
-		Help: []string{"tadx pulse metric inspect --id metric-fork"},
+		Help: []string{"Saved metric configuration and definition linkage verified; current values and generated insights are not read by TADX."},
 	}
 	assertGolden(t, "compact.toon", output, false)
 	assertGolden(t, "full.toon", output, true)

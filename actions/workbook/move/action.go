@@ -27,6 +27,7 @@ type Action struct {
 func New(resolver Resolver, mover Mover) *Action { return &Action{resolver: resolver, mover: mover} }
 
 func (a *Action) Execute(ctx context.Context, input Input, preview bool) (Output, error) {
+	ctx = a.beginProjectResolution(ctx)
 	if a == nil || a.resolver == nil || a.mover == nil {
 		return Output{}, runtimeError()
 	}
@@ -45,6 +46,7 @@ func (a *Action) Execute(ctx context.Context, input Input, preview bool) (Output
 		return out, nil
 	}
 	out.Plan.Mode = "execute"
+	ctx = a.beginProjectResolution(ctx)
 	current, currentDestination, err := a.resolveByLUID(ctx, input, source.LUID, destination.LUID)
 	if err != nil {
 		return Output{}, err

@@ -22,6 +22,7 @@ type Action struct {
 
 func New(r Resolver, m Mover) *Action { return &Action{r, m} }
 func (a *Action) Execute(ctx context.Context, in Input, preview bool) (Output, error) {
+	ctx = a.beginProjectResolution(ctx)
 	if a == nil || a.resolver == nil || a.mover == nil {
 		return Output{}, &errs.Error{ID: "project.move.unconfigured", Kind: errs.KindRuntime, Operation: "project.move", Summary: "Project move is not configured.", Retryable: errs.Bool(false), CorrectiveAction: "Configure project move before retrying."}
 	}
@@ -44,6 +45,7 @@ func (a *Action) Execute(ctx context.Context, in Input, preview bool) (Output, e
 		return out, nil
 	}
 	out.Plan.Mode = "execute"
+	ctx = a.beginProjectResolution(ctx)
 	current, err := a.resolver.ResolveProject(ctx, identity.Selector{LUID: identity.LUID(source.LUID)})
 	if err != nil {
 		return Output{}, operationError("project.move.resolve", in, source.LUID, "Project revalidation failed.", "Review a new preview before moving.", err)

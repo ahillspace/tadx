@@ -21,10 +21,18 @@ result:
   metric_luid: metric-fork
   metric_name: Revenue West
   created: true
-  reconciliation_status: visible
+  reconciliation_status: verified
   reconciliation_attempts: 1
   ownership_verified: true
-  inventory_visible: true
+  specification_verified: true
+  saved_specification:
+    measurement_period:
+      granularity: GRANULARITY_BY_DAY
+      range: RANGE_BY_CONFIG
+  saved_definition:
+    luid: definition-1
+    name: Revenue
+    datasource_luid: datasource-1
   tableau_request_id: request-1
   reconciliation_request_id: request-2
-help[1]: tadx pulse metric inspect --id metric-fork
+help[1]: Saved metric configuration and definition linkage verified; current values and generated insights are not read by TADX.

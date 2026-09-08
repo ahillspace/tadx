@@ -44,6 +44,7 @@ func New(artifacts ArtifactReader, resolver Resolver, publisher Publisher) *Acti
 
 // Plan performs authoritative reads and returns a preview without mutation.
 func (a *Action) Plan(ctx context.Context, input Input) (Plan, error) {
+	ctx = a.beginProjectResolution(ctx)
 	if a == nil || a.artifacts == nil || a.resolver == nil || a.publisher == nil {
 		return Plan{}, unconfigured()
 	}
@@ -138,6 +139,7 @@ func (a *Action) Plan(ctx context.Context, input Input) (Plan, error) {
 
 // Apply performs only the exact mutation request captured by Plan.
 func (a *Action) Apply(ctx context.Context, plan Plan) (Result, error) {
+	ctx = a.beginProjectResolution(ctx)
 	if a == nil || a.resolver == nil || a.publisher == nil {
 		return Result{}, unconfigured()
 	}
@@ -157,6 +159,7 @@ func (a *Action) Apply(ctx context.Context, plan Plan) (Result, error) {
 	if prepared == nil {
 		return Result{}, &errs.Error{ID: "workbook.publish.prepare", Kind: errs.KindRuntime, Operation: "workbook.publish", Resource: plan.Target.ExistingLUID, Environment: plan.Target.Environment, Site: plan.Target.Site, Summary: "Workbook publish preparation returned no commit operation.", Retryable: errs.Bool(false), CorrectiveAction: "Review the publish configuration before retrying."}
 	}
+	ctx = a.beginProjectResolution(ctx)
 	if plan.request.Overwrite {
 		if err := a.verifyOverwriteTarget(ctx, plan); err != nil {
 			return Result{}, err

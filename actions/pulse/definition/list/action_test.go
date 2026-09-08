@@ -155,3 +155,38 @@ func TestListAllRejectsExplicitLimitOrCursor(t *testing.T) {
 		}
 	}
 }
+
+func TestDatasourceFilterRetainsExactMatchAndCompletenessGuards(t *testing.T) {
+	for name, pages := range map[string][]definitionlist.Page{
+		"repeated token":   {{NextPageToken: "same"}, {NextPageToken: "same"}},
+		"missing identity": {{Definitions: []definitionlist.Definition{{LUID: "one", Name: "Revenue"}}}},
+	} {
+		t.Run(name, func(t *testing.T) {
+			r := &reader{pages: pages}
+			if _, err := definitionlist.New(r).Execute(context.Background(), definitionlist.Input{DatasourceLUID: "target", Limit: 1}); err == nil {
+				t.Fatal("incomplete filtered scan accepted")
+			}
+		})
+	}
+	pages := make([]definitionlist.Page, 100)
+	for i := range pages {
+		pages[i] = definitionlist.Page{Definitions: []definitionlist.Definition{{LUID: fmt.Sprint(i), Name: "Revenue", DatasourceLUID: "unrelated"}}, NextPageToken: fmt.Sprintf("next-%d", i)}
+	}
+	r := &reader{pages: pages}
+	_, err := definitionlist.New(r).Execute(context.Background(), definitionlist.Input{DatasourceLUID: "target", Limit: 1})
+	var structured *errs.Error
+	if !errors.As(err, &structured) || structured.ID != "pulse.definition.list.incomplete" || r.calls != 100 {
+		t.Fatalf("err=%v calls=%d", err, r.calls)
+	}
+	r = &reader{pages: []definitionlist.Page{{Definitions: []definitionlist.Definition{{LUID: "one", Name: "Revenue", DatasourceLUID: "TARGET"}}}, {}}}
+	out, err := definitionlist.New(r).Execute(context.Background(), definitionlist.Input{DatasourceLUID: "target", All: true})
+	if err != nil || len(out.Definitions) != 0 || out.Page.MoreAvailable {
+		t.Fatalf("exact case-sensitive filter: out=%#v err=%v", out, err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	r = &reader{}
+	if _, err := definitionlist.New(r).Execute(ctx, definitionlist.Input{DatasourceLUID: "target"}); !errors.Is(err, context.Canceled) || r.calls != 0 {
+		t.Fatalf("err=%v calls=%d", err, r.calls)
+	}
+}

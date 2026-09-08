@@ -104,7 +104,16 @@ func (a *Action) Apply(ctx context.Context, input Input, plan Plan) (CreateResul
 	if err := a.checkCollision(ctx, input, plan.Request); err != nil {
 		return CreateResult{}, err
 	}
-	result, err := a.creator.CreateDefinition(ctx, plan.Request)
+	return a.createValidated(ctx, input, plan.Request)
+}
+
+// createValidated is private to fresh Plan/Execute and revalidated Apply flows.
+// It never accepts a caller-supplied retained plan without Apply's drift checks.
+func (a *Action) createValidated(ctx context.Context, input Input, request CreateRequest) (CreateResult, error) {
+	if err := ctx.Err(); err != nil {
+		return CreateResult{}, err
+	}
+	result, err := a.creator.CreateDefinition(ctx, request)
 	if err != nil {
 		if result.DefinitionLUID != "" {
 			return CreateResult{}, &errs.Error{ID: "pulse.definition.create.outcome_unknown", Kind: errs.KindOperation, Operation: "pulse.definition.create", Resource: result.DefinitionLUID, Environment: input.Environment, Site: input.Site, Summary: "The Pulse definition was created, but its default metric could not be resolved.", Cause: err, Retryable: errs.Bool(false), CorrectiveAction: "Inspect the created definition by its exact LUID before attempting another create.", TableauRequestID: result.TableauRequestID}
@@ -145,7 +154,9 @@ func (a *Action) Execute(ctx context.Context, input Input, preview bool) (Output
 		return output, nil
 	}
 	output.Plan.Mode = "execute"
-	result, err := a.Apply(ctx, input, plan)
+	// No asynchronous work or external caller intervenes after this fresh Plan.
+	// Retained plans must still use public Apply and its current-state validation.
+	result, err := a.createValidated(ctx, input, plan.Request)
 	if err != nil {
 		return Output{}, err
 	}

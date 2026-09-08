@@ -1043,7 +1043,7 @@ Inspect one datasource's logical tables and search a bounded field projection.
 - Surface: tadx content datasource schema
 - Operation type: inspect
 - Owner: cli
-- Selectors: Authoritative datasource LUID; optional field text, role, table, and raw field ID filters; bounded --limit or explicit --all
+- Selectors: Authoritative datasource LUID; optional field text, role, table, and repeated exact --field-id filters; bounded --limit or explicit --all
 - Products and availability: Cloud / Server with VDS or Metadata API access
 - Product disposition: ship
 - Evidence level: contract-verified
@@ -1693,7 +1693,7 @@ List Pulse metric definitions with internal bounded pagination.
 - Surface: tadx pulse definition list
 - Operation type: find
 - Owner: cli
-- Selectors: Environment; optional exact name; --limit or --all
+- Selectors: Environment; optional exact name and --datasource-id; --limit or --all
 - Products and availability: Tableau Cloud / Pulse only
 - Product disposition: ship
 - Evidence level: live-verified
@@ -1703,7 +1703,7 @@ List Pulse metric definitions with internal bounded pagination.
 - Remote mutation: No
 - Supports `--preview`: No
 - Raw capable: No
-- Safety and guard: Internal continuation; truthful more_available; exact name is matched across pages; --catalog never contacts Tableau or falls back
+- Safety and guard: Internal bounded continuation; truthful more_available; exact name and datasource filters apply before the returned limit; --catalog never contacts Tableau or falls back
 - Artifact effect: None
 - Upstream operation: GET /api/-/pulse/definitions
 - Evidence: docs/evidence/pulse-live-contract.md; hermetic TADX client and action tests
@@ -1853,7 +1853,7 @@ Derive one metric by changing bounded timeframe or dimension filters, or preview
 - Remote mutation: Yes
 - Supports `--preview`: Yes
 - Raw capable: No
-- Safety and guard: Preserve source specification; require a meaningful change; use get-or-create; reconcile metric, definition, datasource, and site ownership
+- Safety and guard: Preserve source specification; require a meaningful change; use get-or-create; verify exact metric, definition, datasource, site ownership, and requested specification without waiting for list visibility
 - Artifact effect: None
 - Upstream operation: POST /api/-/pulse/metrics:getOrCreate plus bounded exact-read reconciliation
 - Evidence: docs/evidence/pulse-live-contract.md; hermetic TADX action and client tests
