@@ -177,7 +177,7 @@ func classifyGraphQLFields(nodes []graphQLNode) []rawField {
 		switch {
 		case strings.Contains(fqn, "__tableau_internal_object_id__") || strings.EqualFold(node.DataType, "TABLE") || strings.Contains(fqn, "[__"):
 			entry.exclusion = "internal"
-		case tableCalcPattern.MatchString(formula):
+		case tableCalcPattern.MatchString(prepared):
 			entry.exclusion = "table_calc"
 		case hasBlendedReference(prepared):
 			entry.exclusion = "blend_ref"

@@ -15,7 +15,8 @@ Keep private environments, credentials, raw transcripts, and machine paths out o
 One coordinator owns this backlog and shared integration files.
 Agents share the existing feature branch and own disjoint implementation paths.
 Reproduce confirmed defects through the closest end-user entry point before changing behavior.
-Run focused regressions as each fix lands, then the standard integration checks and affected workflow exercises.
+Run focused regressions as each fix lands, then automated integration checks and CI.
+Do not launch additional agent reviews or workflow exercises without the owner's request.
 The owner handles the comprehensive branch review.
 
 | ID | Work | Status / owner | Completion evidence |
@@ -42,7 +43,7 @@ The owner handles the comprehensive branch review.
 | GUIDE-01 | Integrate reviewed Pulse authoring references after CLI repairs. | Implemented; package and recipe tests pass | CLI examples, verified commands, no raw REST JSON or temporary bug workarounds. |
 | GUIDE-02 | Improve metric and follower identity discovery routing. | Implemented; recipe tests pass | Exact executable discovery paths reuse existing commands. |
 | GUIDE-03 | Preserve the user's root-skill search explanation in the bundled installer package. | Implemented; install tests pass | Installed Guidance matches bundle for Codex, Claude, and Cursor. |
-| GUIDE-04 | Clarify datasource inspect/schema versus Tableau MCP routing. | Implemented; recipe tests pass | Structural discovery stays in TADX; analytics routes explicitly. |
+| GUIDE-04 | Explain TADX scope without overriding other tools. | Implemented; package tests pass | No blanket TADX preference, MCP tool recipes, or independent MCP workflow prerequisites. |
 | EVAL-02 | Rerun affected stable exercises using the rebuilt CLI and installed Guidance. | Six targeted runs assessed; cleanup verified | Five sessions completed; Pulse created/forked a metric and verified followers but exceeded its time budget. Independent reads verified all 11 run-created remote resources absent; local artifact residue was cleaned. |
 | EVAL-03 | Complete suite coverage and strengthen evidence capture. | Implemented; targeted batch recorded | Three missing exercises added separately, preserving the original 42; raw evidence retained, guard help false positives corrected, and final-state checks separated from agent claims. |
 
@@ -58,8 +59,19 @@ The owner handles the comprehensive branch review.
 - Require the Pulse create/fork preview and saved-state verification described by the approved authoring workflow.
 - Fix CLI defects before removing their workaround text from installed Guidance.
 - Each reference starts with available actions, purpose, and relevant flags.
-  Keep the root intent-to-reference table explicit about when Tableau MCP applies.
+  Keep the root intent-to-reference table focused on TADX tasks and briefly state unsupported outcomes.
+  Do not maintain MCP capability mappings, name external tools, or prescribe their use.
+  Installing TADX Guidance must not redirect a user who chooses another tool.
 - Preserve the existing mutation environment gate; it is not an independent security boundary.
+
+### Second-pass remediation
+
+The second-pass remediation keeps live reads as the default and catalog reads explicit.
+Ordinary lists are bounded and independent of catalog storage; full lists share the refresh collector and persist best effort.
+Explicit refresh excludes permissions by default and is the only path that rebuilds an older catalog schema.
+Per-environment concurrency is configurable with a default ceiling of 32 per process, shared cooldown, and bounded read retries.
+The follow-up also covers cached project ambiguity, partial admin inventory rejection, grouped search completeness, calculation comment handling, and PowerShell profile encoding.
+See [the verification record](docs/evidence/guidance-remediation-verification.md) for automated coverage and live-test limits.
 
 ### Deferred ideas
 

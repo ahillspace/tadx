@@ -17,13 +17,14 @@ const maxPages = 100
 
 type Item struct{ LUID, Type, Name, ProjectPath, Owner, ModifiedAt string }
 type Page struct {
-	Total            int
-	Items            []Item
-	NextCursor       string
-	Warnings         []string
-	TableauRequestID string
-	Source           string
-	MoreAvailable    bool
+	UnresolvedMoreAvailable bool
+	Total                   int
+	Items                   []Item
+	NextCursor              string
+	Warnings                []string
+	TableauRequestID        string
+	Source                  string
+	MoreAvailable           bool
 }
 type Input struct {
 	Types                             []string

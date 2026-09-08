@@ -29,7 +29,10 @@ func (a *Action) Execute(ctx context.Context, input Input) (Output, error) {
 	if input.PATNameEnv != "" && strings.EqualFold(input.PATNameEnv, input.PATSecretEnv) {
 		return Output{}, usageError("PAT name and secret must use different environment variables")
 	}
-	profile, err := a.adder.Add(ctx, Profile{Alias: input.Alias, ServerURL: input.ServerURL, SiteContentURL: input.SiteContentURL, APIVersion: input.APIVersion, AuthType: "pat", PATNameEnv: input.PATNameEnv, PATSecretEnv: input.PATSecretEnv, DefaultWorkspace: input.DefaultWorkspace})
+	if input.CatalogMaxConcurrency < 0 || input.CatalogMaxConcurrency > 256 {
+		return Output{}, usageError("catalog maximum concurrency must be between 1 and 256, or omitted for the default")
+	}
+	profile, err := a.adder.Add(ctx, Profile{Alias: input.Alias, ServerURL: input.ServerURL, SiteContentURL: input.SiteContentURL, APIVersion: input.APIVersion, AuthType: "pat", PATNameEnv: input.PATNameEnv, PATSecretEnv: input.PATSecretEnv, DefaultWorkspace: input.DefaultWorkspace, CatalogMaxConcurrency: input.CatalogMaxConcurrency})
 	if err != nil {
 		retryable, advice := errs.CompleteRetryAdvice(err, "Review the new environment profile and alias, then retry.")
 		return Output{}, &errs.Error{ID: "env.profile.add.write", Kind: errs.KindOperation, Operation: "env.profile.add", Environment: input.Alias, Summary: "Environment profile could not be added.", Cause: err, Retryable: retryable, CorrectiveAction: advice}

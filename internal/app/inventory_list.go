@@ -2,10 +2,12 @@ package app
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -25,6 +27,7 @@ const inventoryRefreshHelp = "Complete live inventory refreshed the local catalo
 const inventoryRefreshWarningHelp = "The live result is complete, but the catalog was not updated; retry the live command to refresh it."
 
 type collectedResourceInventory struct {
+	filtered    bool
 	entries     []corecatalog.ResourceEntry
 	published   corecatalog.ReplaceResult
 	requestIDs  []string
@@ -35,12 +38,18 @@ type collectedResourceInventory struct {
 	snapshotErr error
 }
 
-func collectResourceInventory(ctx context.Context, executor tableaucatalog.Executor, store *corecatalog.Store, scope tableaucatalog.Scope, environment, site string, observedAt time.Time) (collectedResourceInventory, error) {
-	engine, err := tableaucatalog.NewEngine(executor, tableaucatalog.Config{})
+func collectResourceInventory(ctx context.Context, executor tableaucatalog.Executor, store *corecatalog.Store, scope tableaucatalog.Scope, environment, site string, observedAt time.Time, options ...inventoryCollectionOptions) (collectedResourceInventory, error) {
+	config := tableaucatalog.Config{}
+	option := inventoryCollectionOptions{}
+	if len(options) > 0 {
+		option = options[0]
+	}
+	config.MaxConcurrency = option.MaxConcurrency
+	engine, err := tableaucatalog.NewEngine(executor, config)
 	if err != nil {
 		return collectedResourceInventory{}, err
 	}
-	snapshot, err := engine.CollectInventory(ctx, scope, tableaucatalog.InventoryOptions{SkipMalformedRecords: true})
+	snapshot, err := engine.CollectInventory(ctx, scope, tableaucatalog.InventoryOptions{SkipMalformedRecords: true, Filter: option.Filter, MaxRows: 10000})
 	if err != nil {
 		return collectedResourceInventory{}, err
 	}
@@ -60,14 +69,19 @@ func collectResourceInventory(ctx context.Context, executor tableaucatalog.Execu
 		return entries[i].LUID < entries[j].LUID
 	})
 	inventory := collectedResourceInventory{
-		entries: entries, requestIDs: append([]string(nil), snapshot.TableauRequestIDs...),
+		filtered: option.Filter != "",
+		entries:  entries, requestIDs: append([]string(nil), snapshot.TableauRequestIDs...),
 		skippedRows: skippedRows, kind: inventoryKind(scope),
 	}
 	if skippedRows > 0 {
 		inventory.catalogErr = errors.New("incomplete live inventory cannot replace a complete catalog scope")
-		inventory.snapshotID, inventory.snapshotErr = store.SavePartialInventory(ctx, corecatalog.ResourceScopeReplacement{
-			Environment: environment, Site: site, Kind: inventory.kind, GeneratedAt: observedAt, Entries: entries,
-		}, inventory.incompleteWarning())
+		return inventory, nil
+	}
+	if len(entries) > 10000 {
+		return collectedResourceInventory{}, errors.New("--all exceeds the 10000-record bound; use narrower filters")
+	}
+	if option.Filter != "" {
+		inventory.catalogErr = store.UpsertResources(ctx, entries)
 		return inventory, nil
 	}
 	result, err := store.ReplaceResourceScope(ctx, corecatalog.ResourceScopeReplacement{
@@ -200,7 +214,8 @@ func inventoryProjects(snapshot tableaucatalog.InventorySnapshot, tolerant ...bo
 	var rows [][]any
 	if snapshot.Scope == tableaucatalog.ScopeProjects {
 		rows = snapshot.Rows
-	} else {
+	}
+	{
 		for _, dependency := range snapshot.Dependencies {
 			if dependency.Scope == tableaucatalog.ScopeProjects {
 				rows = dependency.Rows
@@ -329,6 +344,7 @@ func inventoryResourceEntry(scope tableaucatalog.Scope, row []any, projects map[
 			return corecatalog.ResourceEntry{}, fmt.Errorf("workbook %q references unknown project %q", id, projectID)
 		}
 		entry.ProjectPath, entry.Owner = project.path, ownerID
+		entry.ProjectLUID = projectID
 		payload, err = payloadMap(6)
 		if err != nil {
 			return corecatalog.ResourceEntry{}, err
@@ -345,6 +361,7 @@ func inventoryResourceEntry(scope tableaucatalog.Scope, row []any, projects map[
 			return corecatalog.ResourceEntry{}, fmt.Errorf("datasource %q references unknown project %q", id, projectID)
 		}
 		entry.ProjectPath, entry.Owner = project.path, ownerID
+		entry.ProjectLUID = projectID
 		payload, err = payloadMap(5)
 		if err != nil {
 			return corecatalog.ResourceEntry{}, err
@@ -361,6 +378,7 @@ func inventoryResourceEntry(scope tableaucatalog.Scope, row []any, projects map[
 			return corecatalog.ResourceEntry{}, fmt.Errorf("flow %q references unknown project %q", id, projectID)
 		}
 		entry.ProjectPath, entry.Owner = project.path, ownerID
+		entry.ProjectLUID = projectID
 		payload, err = payloadMap(6)
 		if err != nil {
 			return corecatalog.ResourceEntry{}, err
@@ -462,4 +480,81 @@ func validateInventoryAll(all bool, source *readsource.Metadata) error {
 		return errs.New(errs.KindRuntime, "--all requires complete inventory coverage; refresh the catalog or retry the live list")
 	}
 	return nil
+}
+
+type inventoryCollectionOptions struct {
+	MaxConcurrency int
+	Filter         string
+}
+
+// Inventory filters mirror the existing resource-owned REST list selectors.
+// They apply only to the requested population, never project dependencies.
+func inventoryFilter(input any) (string, error) {
+	type field struct{ name, operator, value string }
+	fields := []field{}
+	eq := func(name, value string) { fields = append(fields, field{name, "eq", value}) }
+	switch v := input.(type) {
+	case workbooklist.Input:
+		eq("name", v.Name)
+		eq("ownerName", v.OwnerName)
+		eq("projectName", v.ProjectName)
+		eq("tags", v.Tag)
+	case datasourcelist.Input:
+		eq("name", v.Name)
+		eq("ownerName", v.OwnerName)
+		eq("projectName", v.ProjectName)
+		eq("type", v.Type)
+		eq("tags", v.Tag)
+		fields = append(fields, field{"updatedAt", "gte", v.UpdatedAfter}, field{"updatedAt", "lte", v.UpdatedBefore})
+	case flowlist.Input:
+		eq("name", v.Name)
+		eq("ownerName", v.OwnerName)
+		eq("projectId", v.ProjectLUID)
+		eq("projectName", v.ProjectName)
+	case projectlist.Input:
+		eq("name", v.Name)
+		eq("parentProjectId", v.ParentLUID)
+		eq("ownerName", v.OwnerName)
+		if v.TopLevel != nil {
+			eq("topLevelProject", strconv.FormatBool(*v.TopLevel))
+		}
+	case userlist.Input:
+		eq("name", v.Name)
+		eq("siteRole", v.SiteRole)
+	case grouplist.Input:
+		eq("name", v.Name)
+		eq("domainName", v.Domain)
+	default:
+		return "", errors.New("unsupported inventory filter type")
+	}
+	parts := []string{}
+	for _, field := range fields {
+		if field.value == "" {
+			continue
+		}
+		if strings.ContainsAny(field.value, ",&") {
+			return "", errs.New(errs.KindUsage, "inventory filter "+field.name+" cannot contain ampersand or comma")
+		}
+		parts = append(parts, field.name+":"+field.operator+":"+field.value)
+	}
+	return strings.Join(parts, ","), nil
+}
+
+// Legacy process-boundary cursors can still target a previously stored snapshot.
+func legacyInventorySnapshot(value string) bool {
+	data, err := base64.RawURLEncoding.DecodeString(value)
+	if err != nil {
+		return false
+	}
+	var fields map[string]json.RawMessage
+	if json.Unmarshal(data, &fields) != nil {
+		return false
+	}
+	for _, key := range []string{"c", "Snapshot"} {
+		var token string
+		if json.Unmarshal(fields[key], &token) == nil && token != "" {
+			return true
+		}
+	}
+	return false
 }

@@ -157,7 +157,7 @@ func newGroupMemberRemove(deps Dependencies) *cobra.Command {
 
 func newUserList(deps Dependencies) *cobra.Command {
 	var input userlist.Input
-	cmd := &cobra.Command{Use: "list", Short: "List site users and refresh their catalog snapshot.", Annotations: map[string]string{"tadx.capability": "admin.user.list"}, Args: noArgs("admin.user.list"), RunE: func(cmd *cobra.Command, _ []string) error {
+	cmd := &cobra.Command{Use: "list", Short: "List site users with bounded live reads or explicit --all.", Annotations: map[string]string{"tadx.capability": "admin.user.list"}, Args: noArgs("admin.user.list"), RunE: func(cmd *cobra.Command, _ []string) error {
 		out, err := deps.UserLister.ListAdminUsers(cmd.Context(), input)
 		if err != nil {
 			return err
@@ -300,7 +300,7 @@ func newUserDelete(deps Dependencies) *cobra.Command {
 
 func newGroupList(deps Dependencies) *cobra.Command {
 	var in grouplist.Input
-	cmd := &cobra.Command{Use: "list", Short: "List groups and refresh their catalog snapshot.", Annotations: map[string]string{"tadx.capability": "admin.group.list"}, Args: noArgs("admin.group.list"), RunE: func(cmd *cobra.Command, _ []string) error {
+	cmd := &cobra.Command{Use: "list", Short: "List groups with bounded live reads or explicit --all.", Annotations: map[string]string{"tadx.capability": "admin.group.list"}, Args: noArgs("admin.group.list"), RunE: func(cmd *cobra.Command, _ []string) error {
 		out, err := deps.GroupLister.ListAdminGroups(cmd.Context(), in)
 		if err != nil {
 			return err

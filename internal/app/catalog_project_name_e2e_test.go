@@ -51,7 +51,7 @@ func TestCatalogDatasourceProjectNameThroughCLI(t *testing.T) {
 				if err != nil {
 					t.Fatal(err)
 				}
-				entries = append(entries, catalog.ResourceEntry{LUID: item.LUID, Name: item.Name, ProjectPath: item.ProjectPath, Payload: payload})
+				entries = append(entries, catalog.ResourceEntry{LUID: item.LUID, Name: item.Name, ProjectPath: item.ProjectPath, ProjectLUID: item.ProjectLUID, Payload: payload})
 			}
 			if _, err := store.ReplaceResourceScope(context.Background(), catalog.ResourceScopeReplacement{Environment: "test", Kind: "datasource", Source: "test", GeneratedAt: now, Entries: entries}); err != nil {
 				t.Fatal(err)

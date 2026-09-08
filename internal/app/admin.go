@@ -60,21 +60,13 @@ func (c *remoteAdminCommands) connect(ctx context.Context, alias string, explici
 	return adminConnection{environment: connection.environment, adapter: resourceadmin.NewAdapter(client), inventory: catalogTableauExecutor{transport: connection.transport, session: connection.session, serverURL: connection.environment.URL, siteLUID: connection.session.SiteLUID()}}, nil
 }
 
-func (c *remoteAdminCommands) ListAdminUsers(ctx context.Context, input userlist.Input) (userlist.Output, error) {
-	if input.Catalog {
-		environment, site, err := c.resolveCatalogTarget(input.Environment)
-		if err != nil {
-			return userlist.Output{}, err
+func (c *remoteAdminCommands) ListAdminUsers(ctx context.Context, input userlist.Input) (result userlist.Output, resultErr error) {
+	defer func() {
+		if resultErr == nil {
+			resultErr = validateInventoryAll(input.All, result.Source)
 		}
-		input.Environment, input.Site = environment, site
-		reader := &catalogUserListReader{store: c.catalogStore(), environment: environment, site: site}
-		output, err := userlist.New(reader).Execute(ctx, input)
-		if err == nil {
-			output.Source = reader.source
-		}
-		return output, err
-	}
-	if input.Cursor != "" && adminUserListIsUnfiltered(input) {
+	}()
+	if input.Catalog || legacyInventorySnapshot(input.Cursor) {
 		environment, site, err := c.resolveCatalogTarget(input.Environment)
 		if err != nil {
 			return userlist.Output{}, err
@@ -92,47 +84,39 @@ func (c *remoteAdminCommands) ListAdminUsers(ctx context.Context, input userlist
 		return userlist.Output{}, remoteSetupError("admin.user.list", input.Environment, input.Site, connection.environment, err)
 	}
 	input.Environment, input.Site = connection.environment.Alias, connection.environment.SiteContentURL
-	if adminUserListIsUnfiltered(input) {
-		observedAt := c.runtime.now().UTC()
-		inventory, err := collectResourceInventory(ctx, connection.inventory, c.catalogStore(), tableaucatalog.ScopeUsers, input.Environment, input.Site, observedAt)
+
+	if input.All {
+		filter, err := inventoryFilter(input)
 		if err != nil {
-			return userlist.Output{}, inventoryRefreshError("admin.user.list", input.Environment, input.Site, err)
+			return userlist.Output{}, err
 		}
-		if inventory.catalogErr != nil {
-			reader := inventory.memoryReader()
-			reader.allowContinuation = input.All
-			output, err := userlist.New(reader).Execute(ctx, input)
-			if err != nil {
-				return output, adminActionError("admin.user.list", input.Environment, input.Site, err)
-			}
-			output.Source = inventory.warningSource(observedAt)
-			output.Help = append(output.Help, inventory.warningHelp())
-			return output, nil
+		observedAt := c.runtime.now().UTC()
+		inventory, err := collectResourceInventory(ctx, connection.inventory, c.catalogStore(), tableaucatalog.ScopeUsers, input.Environment, input.Site, observedAt, inventoryCollectionOptions{MaxConcurrency: connection.environment.CatalogMaxConcurrency, Filter: filter})
+		if err != nil {
+			return userlist.Output{}, inventoryRefreshError("user.list", input.Environment, input.Site, err)
 		}
-		reader := &catalogUserListReader{store: c.catalogStore(), environment: input.Environment, site: input.Site}
+		reader := inventory.memoryReader()
+		reader.allowContinuation = true
 		output, err := userlist.New(reader).Execute(ctx, input)
 		if err != nil {
-			return output, adminActionError("admin.user.list", input.Environment, input.Site, err)
+			return output, err
 		}
-		output.Source = liveInventorySource(observedAt, inventory.published.GenerationID)
+		if inventory.catalogErr != nil {
+			output.Source = inventory.warningSource(observedAt)
+			output.Help = append(output.Help, inventory.warningHelp())
+		} else if inventory.filtered {
+			output.Source = liveSource(c.runtime.now)
+		} else {
+			output.Source = liveInventorySource(observedAt, inventory.published.GenerationID)
+		}
 		output.RequestID = finalRequestID(inventory.requestIDs)
-		output.Help = append(output.Help, inventoryRefreshHelp)
 		return output, nil
 	}
 	output, err := userlist.New(adminUserListReader{connection.adapter}).Execute(ctx, input)
 	if err != nil {
-		return output, adminActionError("admin.user.list", input.Environment, input.Site, err)
+		return output, err
 	}
-	observedAt := c.runtime.now().UTC()
 	output.Source = liveSource(c.runtime.now)
-	entries := make([]catalog.ResourceEntry, 0, len(output.Users))
-	for _, item := range output.Users {
-		entry, encodeErr := resourceEntry(input.Environment, input.Site, "user", item.LUID, item.Name, "", "", "summary", observedAt, item)
-		if encodeErr == nil {
-			entries = append(entries, entry)
-		}
-	}
-	writeThrough(c.catalogStore(), entries)
 	return output, nil
 }
 
@@ -208,21 +192,13 @@ func (c *remoteAdminCommands) DeleteAdminUser(ctx context.Context, input userdel
 	return output, adminActionError("admin.user.delete", input.Environment, input.Site, err)
 }
 
-func (c *remoteAdminCommands) ListAdminGroups(ctx context.Context, input grouplist.Input) (grouplist.Output, error) {
-	if input.Catalog {
-		environment, site, err := c.resolveCatalogTarget(input.Environment)
-		if err != nil {
-			return grouplist.Output{}, err
+func (c *remoteAdminCommands) ListAdminGroups(ctx context.Context, input grouplist.Input) (result grouplist.Output, resultErr error) {
+	defer func() {
+		if resultErr == nil {
+			resultErr = validateInventoryAll(input.All, result.Source)
 		}
-		input.Environment, input.Site = environment, site
-		reader := &catalogGroupListReader{store: c.catalogStore(), environment: environment, site: site}
-		output, err := grouplist.New(reader).Execute(ctx, input)
-		if err == nil {
-			output.Source = reader.source
-		}
-		return output, err
-	}
-	if input.Cursor != "" && adminGroupListIsUnfiltered(input) {
+	}()
+	if input.Catalog || legacyInventorySnapshot(input.Cursor) {
 		environment, site, err := c.resolveCatalogTarget(input.Environment)
 		if err != nil {
 			return grouplist.Output{}, err
@@ -240,47 +216,39 @@ func (c *remoteAdminCommands) ListAdminGroups(ctx context.Context, input groupli
 		return grouplist.Output{}, remoteSetupError("admin.group.list", input.Environment, input.Site, connection.environment, err)
 	}
 	input.Environment, input.Site = connection.environment.Alias, connection.environment.SiteContentURL
-	if adminGroupListIsUnfiltered(input) {
-		observedAt := c.runtime.now().UTC()
-		inventory, err := collectResourceInventory(ctx, connection.inventory, c.catalogStore(), tableaucatalog.ScopeGroups, input.Environment, input.Site, observedAt)
+
+	if input.All {
+		filter, err := inventoryFilter(input)
 		if err != nil {
-			return grouplist.Output{}, inventoryRefreshError("admin.group.list", input.Environment, input.Site, err)
+			return grouplist.Output{}, err
 		}
-		if inventory.catalogErr != nil {
-			reader := inventory.memoryReader()
-			reader.allowContinuation = input.All
-			output, err := grouplist.New(reader).Execute(ctx, input)
-			if err != nil {
-				return output, adminActionError("admin.group.list", input.Environment, input.Site, err)
-			}
-			output.Source = inventory.warningSource(observedAt)
-			output.Help = append(output.Help, inventory.warningHelp())
-			return output, nil
+		observedAt := c.runtime.now().UTC()
+		inventory, err := collectResourceInventory(ctx, connection.inventory, c.catalogStore(), tableaucatalog.ScopeGroups, input.Environment, input.Site, observedAt, inventoryCollectionOptions{MaxConcurrency: connection.environment.CatalogMaxConcurrency, Filter: filter})
+		if err != nil {
+			return grouplist.Output{}, inventoryRefreshError("group.list", input.Environment, input.Site, err)
 		}
-		reader := &catalogGroupListReader{store: c.catalogStore(), environment: input.Environment, site: input.Site}
+		reader := inventory.memoryReader()
+		reader.allowContinuation = true
 		output, err := grouplist.New(reader).Execute(ctx, input)
 		if err != nil {
-			return output, adminActionError("admin.group.list", input.Environment, input.Site, err)
+			return output, err
 		}
-		output.Source = liveInventorySource(observedAt, inventory.published.GenerationID)
+		if inventory.catalogErr != nil {
+			output.Source = inventory.warningSource(observedAt)
+			output.Help = append(output.Help, inventory.warningHelp())
+		} else if inventory.filtered {
+			output.Source = liveSource(c.runtime.now)
+		} else {
+			output.Source = liveInventorySource(observedAt, inventory.published.GenerationID)
+		}
 		output.RequestID = finalRequestID(inventory.requestIDs)
-		output.Help = append(output.Help, inventoryRefreshHelp)
 		return output, nil
 	}
 	output, err := grouplist.New(adminGroupListReader{connection.adapter}).Execute(ctx, input)
 	if err != nil {
-		return output, adminActionError("admin.group.list", input.Environment, input.Site, err)
+		return output, err
 	}
-	observedAt := c.runtime.now().UTC()
 	output.Source = liveSource(c.runtime.now)
-	entries := make([]catalog.ResourceEntry, 0, len(output.Groups))
-	for _, item := range output.Groups {
-		entry, encodeErr := resourceEntry(input.Environment, input.Site, "group", item.LUID, item.Name, "", "", "summary", observedAt, item)
-		if encodeErr == nil {
-			entries = append(entries, entry)
-		}
-	}
-	writeThrough(c.catalogStore(), entries)
 	return output, nil
 }
 

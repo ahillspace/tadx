@@ -35,7 +35,6 @@ func GenerateMarkdown(definitions []Definition) ([]byte, error) {
 			{"Surface", definition.Surface},
 			{"Operation type", string(definition.Type)},
 			{"Owner", string(definition.Owner)},
-			{"MCP overlap", emptyAsNone(definition.MCPOverlap)},
 			{"Selectors", definition.Selectors},
 			{"Products and availability", definition.Availability},
 			{"Product disposition", string(definition.Disposition)},

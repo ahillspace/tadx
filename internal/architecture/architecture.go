@@ -169,6 +169,7 @@ func localImportAllowed(file, imported string) bool {
 			"internal/errs",
 			"internal/identity",
 			"internal/output",
+			"internal/paging",
 			"internal/pathspec",
 			"internal/readsource",
 		)
@@ -184,6 +185,7 @@ func localImportAllowed(file, imported string) bool {
 				"internal/errs",
 				"internal/identity",
 				"internal/output",
+				"internal/paging",
 				"internal/readsource",
 				"internal/version",
 				"internal/workspace",
@@ -367,6 +369,7 @@ func isFoundationPackage(file string) bool {
 		hasPathPrefix(file, "internal/errs") ||
 		hasPathPrefix(file, "internal/lock") ||
 		hasPathPrefix(file, "internal/output") ||
+		hasPathPrefix(file, "internal/paging") ||
 		hasPathPrefix(file, "internal/pathspec") ||
 		hasPathPrefix(file, "internal/readsource") ||
 		hasPathPrefix(file, "internal/version") ||

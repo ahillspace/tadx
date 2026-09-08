@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"github.com/ahillspace/tadx/internal/output"
+	"github.com/ahillspace/tadx/internal/paging"
 
 	"github.com/ahillspace/tadx/internal/errs"
 	"github.com/ahillspace/tadx/internal/readsource"
@@ -169,42 +170,17 @@ func (a *Action) collectAll(ctx context.Context, input Input) (Output, error) {
 	if input.Limit != 0 || input.Cursor != "" {
 		return Output{}, errs.New(errs.KindUsage, "--all cannot be combined with --limit or --cursor")
 	}
-	input.All = false
-	input.Limit = 100
-	var result Output
-	seen := map[string]bool{}
-	cursors := map[string]bool{}
-	for pageNumber := 0; pageNumber < 100; pageNumber++ {
-		page, err := a.Execute(ctx, input)
-		if err != nil {
-			return Output{}, err
-		}
-		if pageNumber == 0 {
-			result = page
-			result.Groups = nil
-		} else if page.Page.Total != result.Page.Total {
-			return Output{}, errors.New("admin/group inventory changed during pagination; retry")
-		}
-		for _, item := range page.Groups {
-			if item.LUID == "" || seen[item.LUID] {
-				return Output{}, errors.New("admin/group inventory returned missing or repeated identities")
-			}
-			seen[item.LUID] = true
-			result.Groups = append(result.Groups, item)
-		}
-		result.RequestID = page.RequestID
-		if !page.Page.MoreAvailable && page.Page.NextCursor == "" {
-			if len(result.Groups) != result.Page.Total {
-				return Output{}, errors.New("admin/group inventory completeness could not be established")
-			}
-			result.Page = OutputPage{Returned: len(result.Groups), Total: result.Page.Total, Limit: 10000}
-			return result, nil
-		}
-		if len(page.Groups) == 0 || page.Page.NextCursor == "" || cursors[page.Page.NextCursor] {
-			return Output{}, errors.New("admin/group inventory pagination did not advance; completeness could not be established")
-		}
-		cursors[page.Page.NextCursor] = true
-		input.Cursor = page.Page.NextCursor
+	if a == nil || a.reader == nil {
+		return Output{}, errors.New("inventory reader is not configured")
 	}
-	return Output{}, errors.New("admin/group --all exceeds the 10000-record bound; use narrower filters")
+	requestID := ""
+	items, err := paging.Collect(ctx, func(ctx context.Context, state paging.State) (paging.Page[Group], error) {
+		page, err := a.reader.ListGroups(ctx, PageRequest{PageNumber: state.Number, PageSize: state.Size, SnapshotCursor: state.Token, Name: input.Name, Domain: input.Domain})
+		requestID = page.RequestID
+		return paging.Page[Group]{Number: page.Number, Size: page.Size, Total: page.Total, Items: page.Groups, Token: page.SnapshotCursor}, err
+	}, func(item Group) string { return item.LUID })
+	if err != nil {
+		return Output{}, err
+	}
+	return Output{Status: "listed", Environment: input.Environment, Site: input.Site, Groups: items, Page: OutputPage{Returned: len(items), Total: len(items), Limit: 10000}, RequestID: requestID, Help: []string{"tadx admin group inspect --id <group-luid>"}}, nil
 }

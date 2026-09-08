@@ -16,7 +16,7 @@ func TestProjectNameFilterUsesImplicitProjectsAndBindsContinuation(t *testing.T)
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, err = store.ReplaceResourceScope(ctx, ResourceScopeReplacement{Environment: "test", Kind: "datasource", Source: "test", GeneratedAt: now, Entries: []ResourceEntry{{LUID: "a", Name: "A", Payload: []byte(`{"project_luid":"p"}`)}, {LUID: "b", Name: "B", Payload: []byte(`{"project_luid":"p"}`)}}})
+	_, err = store.ReplaceResourceScope(ctx, ResourceScopeReplacement{Environment: "test", Kind: "datasource", Source: "test", GeneratedAt: now, Entries: []ResourceEntry{{LUID: "a", Name: "A", ProjectLUID: "p", Payload: []byte(`{"project_luid":"p"}`)}, {LUID: "b", Name: "B", ProjectLUID: "p", Payload: []byte(`{"project_luid":"p"}`)}}})
 	if err != nil {
 		t.Fatal(err)
 	}

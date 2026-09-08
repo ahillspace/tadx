@@ -42,7 +42,7 @@ func TestSlashProjectInventoryRetainsContentThroughCLI(t *testing.T) {
 			server, requests := slashInventoryServer(t)
 			defer server.Close()
 			options := catalogResilienceOptions(t, server)
-			out := runGroupOneCLI(t, options, "content", kind, "list", "--environment", "production", "--full")
+			out := runGroupOneCLI(t, options, "content", kind, "list", "--environment", "production", "--all", "--full")
 			assertSlashInventory(t, kind, out)
 			before := requests.Load()
 			cached := runGroupOneCLI(t, options, "content", kind, "list", "--environment", "production", "--catalog", "--full")

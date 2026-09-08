@@ -71,7 +71,7 @@ Copy the returned `id`, not a caption, label, or transformed qualified name.
 Duplicate captions can belong to different tables; an ID that still matches multiple fields remains ambiguous.
 Use full metadata for derived dimensions when their meaning requires it.
 Read the semantics reference for calculations, counts, averages, rates, percentages, snapshots, and measures spanning multiple facts.
-Use Tableau MCP only for a material values question that metadata cannot answer.
+Resolve material values questions with authorized data evidence when metadata is insufficient.
 
 ## Select generous, useful slicers
 
@@ -108,6 +108,6 @@ A fixed definition such as sales excluding returns requires actual implementing 
 Month-to-date is a reporting period, not a reason to choose MONTH minimum granularity.
 If the task requires a particular period or population, check the variants contract before creating its base.
 Resolve missing fixed filters, inline calculations, custom calendars, comparisons, or offsets before writing a materially different substitute.
-For a current or demo-ready result, establish data recency from existing evidence or a bounded MCP query when needed.
+For a current or demo-ready result, establish data recency from available evidence or a bounded authorized data query when needed.
 LATEST and a different grain do not make historical data current.
 State when current values or insight readiness remain unverified.

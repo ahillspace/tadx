@@ -198,11 +198,16 @@ func (w *GenerationWriter) replaceResourceEntries(ctx context.Context, generatio
 	if _, err := w.tx.ExecContext(ctx, `DELETE FROM resource_entries WHERE environment=? AND site=?`, w.metadata.Environment, w.metadata.Site); err != nil {
 		return fmt.Errorf("replace catalog resource entries: %w", err)
 	}
-	_, err := w.tx.ExecContext(ctx, `INSERT INTO resource_entries(environment,site,kind,luid,name,project_path,owner,payload,coverage,observed_at)
-		SELECT ?,?,kind,luid,name,project_path,owner,X'','summary',? FROM catalog_records WHERE generation_key=? AND requested=1`,
+	_, err := w.tx.ExecContext(ctx, `INSERT INTO resource_entries(environment,site,kind,luid,name,project_path,project_luid,owner,payload,coverage,observed_at)
+		SELECT ?,?,kind,luid,name,project_path,'',owner,X'','summary',? FROM catalog_records WHERE generation_key=? AND requested=1`,
 		w.metadata.Environment, w.metadata.Site, w.metadata.GeneratedAt.UTC().Format(generationTimeLayout), w.key)
 	if err != nil {
 		return fmt.Errorf("seed catalog resource entries: %w", err)
+	}
+	for _, scope := range []string{"workbooks", "datasources", "flows"} {
+		if _, err := w.tx.ExecContext(ctx, "UPDATE resource_entries SET project_luid=COALESCE((SELECT project_id FROM "+scope+" WHERE generation_key=? AND id=resource_entries.luid),'') WHERE environment=? AND site=? AND kind=?", w.key, w.metadata.Environment, w.metadata.Site, strings.TrimSuffix(scope, "s")); err != nil {
+			return err
+		}
 	}
 	// Preserve the complete list projection and add canonical identity fields.
 	for _, scope := range []string{"users", "groups", "projects", "workbooks", "datasources", "flows"} {

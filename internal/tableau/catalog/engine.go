@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"math/rand/v2"
 	"net/http"
 	"net/url"
 	"sort"
@@ -93,10 +94,18 @@ func NewEngine(executor Executor, config Config) (*Engine, error) {
 
 // Run collects a complete requested scope closure and streams fixed batches.
 func (e *Engine) Run(ctx context.Context, input RunRequest, writer BatchWriter) (Result, error) {
-	return e.run(ctx, input, writer, false)
+	return e.run(ctx, input, writer, runOptions{})
 }
 
-func (e *Engine) run(ctx context.Context, input RunRequest, writer BatchWriter, tolerateMalformed bool) (Result, error) {
+type runOptions struct {
+	tolerateMalformed bool
+	rootScope         Scope
+	filter            string
+	limiter           *adaptiveLimiter
+	maxRows           int
+}
+
+func (e *Engine) run(ctx context.Context, input RunRequest, writer BatchWriter, options runOptions) (Result, error) {
 	if e == nil || e.executor == nil {
 		return Result{}, errors.New("catalog engine is not configured")
 	}
@@ -115,9 +124,19 @@ func (e *Engine) run(ctx context.Context, input RunRequest, writer BatchWriter, 
 	runCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	pump := newBatchPump(runCtx, cancel, writer, e.config.BatchQueueSize)
-	limiter := newAdaptiveLimiter(e.config.InitialConcurrency, e.config.MaxConcurrency)
+	limiter := options.limiter
+	if limiter == nil {
+		limiter = newAdaptiveLimiter(e.config.InitialConcurrency, e.config.MaxConcurrency)
+	}
 	state := newRunState(collected)
-	runner := runExecutor{engine: e, limiter: limiter, pump: pump, state: state, tolerateMalformed: tolerateMalformed}
+	runner := runExecutor{engine: e, limiter: limiter, pump: pump, state: state, tolerateMalformed: options.tolerateMalformed, maxRowsScope: options.rootScope, maxRows: options.maxRows}
+	listRequest := func(definition collectorDefinition, page int) Request {
+		request := e.listRequest(definition, page)
+		if definition.scope == options.rootScope && options.filter != "" {
+			request.Query.Set("filter", options.filter)
+		}
+		return request
+	}
 
 	var firstTasks []collectTask
 	for _, scope := range collected {
@@ -125,7 +144,7 @@ func (e *Engine) run(ctx context.Context, input RunRequest, writer BatchWriter, 
 		if !ok {
 			continue
 		}
-		firstTasks = append(firstTasks, collectTask{definition: definition, request: e.listRequest(definition, 1)})
+		firstTasks = append(firstTasks, collectTask{definition: definition, request: listRequest(definition, 1)})
 	}
 	firstResults, runErr := runner.runTasks(runCtx, firstTasks)
 	if runErr == nil {
@@ -133,7 +152,7 @@ func (e *Engine) run(ctx context.Context, input RunRequest, writer BatchWriter, 
 		for _, result := range firstResults {
 			pageCount := pageCount(result.page.Total, result.page.Size)
 			for pageNumber := 2; pageNumber <= pageCount; pageNumber++ {
-				request := e.listRequest(result.task.definition, pageNumber)
+				request := listRequest(result.task.definition, pageNumber)
 				remaining = append(remaining, collectTask{definition: result.task.definition, request: request, baseline: &result.page})
 			}
 		}
@@ -216,6 +235,8 @@ type runExecutor struct {
 	pump              *batchPump
 	state             *runState
 	tolerateMalformed bool
+	maxRowsScope      Scope
+	maxRows           int
 }
 
 // runTasks executes a materialized task slice and retains each result. Use it
@@ -352,6 +373,9 @@ func (r *runExecutor) executeTask(ctx context.Context, task collectTask) (tabxml
 	if err := validatePage(task.request, parsed.page, len(parsed.rows)+parsed.skipped, task.baseline); err != nil {
 		return tabxml.Pagination{}, newProtocolError(task.request.Operation, response.TableauRequestID, err)
 	}
+	if task.request.Scope == r.maxRowsScope && r.maxRows > 0 && parsed.page.Total > r.maxRows {
+		return tabxml.Pagination{}, fmt.Errorf("catalog %s inventory exceeds the maximum of %d rows; narrow the selection filters", task.request.Scope, r.maxRows)
+	}
 	if err := r.state.register(task.request.Scope, parsed.identities, response.TableauRequestID, task.request.Operation); err != nil {
 		return tabxml.Pagination{}, err
 	}
@@ -394,7 +418,18 @@ func (r *runExecutor) fetch(ctx context.Context, request Request) (Response, err
 			err = &responseStatusError{status: response.StatusCode, requestID: response.TableauRequestID}
 		}
 		throttled := statusCode(err) == http.StatusTooManyRequests || statusCode(err) == http.StatusServiceUnavailable
-		r.limiter.Release(err == nil, throttled)
+		delay := time.Duration(0)
+		sharedDelay := false
+		if err != nil {
+			delay = retryDelay(err, attempt)
+			_, serverDelay := serverRetryDelay(err)
+			sharedDelay = throttled || serverDelay
+		}
+		cooldown := time.Duration(0)
+		if sharedDelay {
+			cooldown = delay
+		}
+		r.limiter.release(err == nil, throttled, cooldown)
 		if err == nil {
 			return response, nil
 		}
@@ -405,13 +440,13 @@ func (r *runExecutor) fetch(ctx context.Context, request Request) (Response, err
 		if !isRetryable(err) || attempt == r.engine.config.MaxRetries {
 			return Response{}, err
 		}
-		delay := retryDelay(err, attempt)
+		if sharedDelay {
+			continue
+		}
 		timer := time.NewTimer(delay)
 		select {
 		case <-ctx.Done():
-			if !timer.Stop() {
-				<-timer.C
-			}
+			timer.Stop()
 			return Response{}, ctx.Err()
 		case <-timer.C:
 		}
@@ -459,7 +494,11 @@ func pageCount(total, size int) int {
 func PlanScopes(input []Scope) (ScopePlan, error) {
 	requestedSet := make(map[Scope]struct{})
 	if len(input) == 0 {
-		input = canonicalScopes
+		for _, scope := range canonicalScopes {
+			if scope != ScopePermissions {
+				input = append(input, scope)
+			}
+		}
 	}
 	for _, scope := range input {
 		if _, ok := fixedColumns[scope]; !ok {
@@ -690,12 +729,22 @@ func isRetryable(err error) bool {
 }
 
 func retryDelay(err error, attempt int) time.Duration {
+	if delay, ok := serverRetryDelay(err); ok {
+		return delay
+	}
+	// Equal jitter retains a meaningful minimum while spreading independent
+	// read retries across a bounded exponential backoff window.
+	shift := min(max(attempt-1, 0), 5)
+	ceiling := min(time.Duration(1<<shift)*time.Second, 30*time.Second)
+	return ceiling/2 + time.Duration(rand.Int64N(int64(ceiling/2)+1))
+}
+
+func serverRetryDelay(err error) (time.Duration, bool) {
 	var carrier interface{ RetryAfter() (time.Duration, bool) }
 	if errors.As(err, &carrier) {
 		if delay, ok := carrier.RetryAfter(); ok && delay >= 0 {
-			return min(delay, 30*time.Second)
+			return delay, true
 		}
 	}
-	shift := min(attempt-1, 6)
-	return min(time.Duration(1<<shift)*50*time.Millisecond, 2*time.Second)
+	return 0, false
 }

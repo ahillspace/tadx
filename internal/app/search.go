@@ -454,7 +454,7 @@ func searchResult(page resourcesearch.Page, generation *searchaction.Generation)
 	for index, item := range page.Items {
 		items[index] = searchaction.Item{LUID: item.LUID, Type: item.Type, Name: item.Name, ProjectPath: item.ProjectPath, Owner: item.Owner, ModifiedAt: item.ModifiedAt}
 	}
-	return searchaction.Result{Items: items, Page: searchaction.Page{NextCursor: page.NextCursor, Total: page.Total, MoreAvailable: page.MoreAvailable}, Warnings: page.Warnings, Generation: generation, Source: page.Source}
+	return searchaction.Result{Items: items, Page: searchaction.Page{NextCursor: page.NextCursor, Total: page.Total, MoreAvailable: page.MoreAvailable, UnresolvedMoreAvailable: page.UnresolvedMoreAvailable}, Warnings: page.Warnings, Generation: generation, Source: page.Source}
 }
 
 // completeLiveSearchLister routes blank typed searches through the same
@@ -516,6 +516,8 @@ func (a *completeLiveSearchAdapter) Search(ctx context.Context, input resourcese
 		if len(page.Items) > remaining {
 			return resourcesearch.Page{}, errors.New("complete live search list service exceeded the requested result bound")
 		}
+		result.UnresolvedMoreAvailable = result.UnresolvedMoreAvailable || page.UnresolvedMoreAvailable || (page.MoreAvailable && page.NextCursor == "")
+		result.MoreAvailable = result.UnresolvedMoreAvailable
 		result.Items = append(result.Items, page.Items...)
 		if len(types) == 1 {
 			result.Total = page.Total
@@ -651,7 +653,7 @@ func newLiveSearchLister(connection authenticatedTableau) (*liveSearchLister, er
 		environment:     connection.environment.Alias,
 		site:            connection.environment.SiteContentURL,
 		workbooks:       workbookListReader{adapter: resourceworkbook.NewAdapterWithProjectResolver(tableauworkbook.NewClient(connection.transport, connection.session, connection.environment.URL), projects)},
-		datasources:     datasourceListReader{adapter: resourcedatasource.NewAdapterWithProjectResolver(datasourceClient, projects)},
+		datasources:     datasourceListReader{adapter: resourcedatasource.NewAdapterWithProjectResolver(datasourceClient, projects), projects: projects},
 		flows:           flowListReader{adapter: resourceflow.NewAdapter(flowClient, projects)},
 		projects:        projectListReader{adapter: projects},
 		users:           adminUserListReader{adapter: resourceadmin.NewAdapter(adminClient)},

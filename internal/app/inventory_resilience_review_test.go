@@ -21,7 +21,7 @@ import (
 	tableaucatalog "github.com/ahillspace/tadx/internal/tableau/catalog"
 )
 
-func TestPartialLiveInventoryContinuesAcrossCommandsWithoutReplacingCatalog(t *testing.T) {
+func TestIncompleteFullInventoryFailsWithoutReplacingCatalog(t *testing.T) {
 	for _, malformed := range []string{`<workbook id="broken" name="Broken" size="large"><project id="child"/></workbook>`, `<workbook id="broken" name="Broken"><project id="missing"/></workbook>`} {
 		t.Run(malformed, func(t *testing.T) {
 			var requests atomic.Int32
@@ -45,27 +45,23 @@ func TestPartialLiveInventoryContinuesAcrossCommandsWithoutReplacingCatalog(t *t
 			if err != nil {
 				t.Fatal(err)
 			}
-			first, err := newRemoteContentCommands(runtime).ListWorkbooks(context.Background(), workbooklist.Input{Environment: "production", Limit: 2})
-			if err != nil {
-				t.Fatal(err)
+			first, err := newRemoteContentCommands(runtime).ListWorkbooks(context.Background(), workbooklist.Input{Environment: "production", All: true})
+			if err == nil {
+				t.Fatal("incomplete --all must fail")
 			}
-			if first.Page.Total != 3 || first.Page.NextCursor == "" || len(first.Workbooks) != 2 {
+			if first.Page.Total != 3 || first.Page.NextCursor != "" || len(first.Workbooks) != 3 {
 				t.Fatalf("first page = %#v", first)
 			}
 			count := requests.Load()
-			second, err := newRemoteContentCommands(runtime).ListWorkbooks(context.Background(), workbooklist.Input{Environment: "production", Cursor: first.Page.NextCursor})
-			if err != nil {
-				t.Fatal(err)
-			}
-			if requests.Load() != count || len(second.Workbooks) != 1 || second.Workbooks[0].LUID != "c" || second.Page.NextCursor != "" {
-				t.Fatalf("continuation = %#v; requests = %d", second, requests.Load())
-			}
-			if second.Source == nil || second.Source.Coverage != readsource.CoveragePartial || !strings.Contains(second.Source.CatalogWarning, "skipped 1") {
-				t.Fatalf("source = %#v", second.Source)
+			if first.Source == nil || first.Source.Coverage != readsource.CoveragePartial || !strings.Contains(first.Source.CatalogWarning, "skipped 1") {
+				t.Fatalf("source = %#v", first.Source)
 			}
 			cached, err := store.ReadResources(context.Background(), catalog.ResourceQuery{Environment: "production", Site: "team-site", Kind: "workbook", Limit: 10})
 			if err != nil || cached.GenerationID != seed.GenerationID || len(cached.Entries) != 1 || cached.Entries[0].LUID != "old" {
 				t.Fatalf("catalog changed: %#v %v", cached, err)
+			}
+			if requests.Load() != count {
+				t.Fatal("catalog read contacted Tableau")
 			}
 		})
 	}
@@ -81,7 +77,7 @@ func TestProjectInspectCatalogRetainsCanonicalPathAfterLiveList(t *testing.T) {
 	}))
 	defer server.Close()
 	commands := newRemoteContentCommands(inventoryListRuntime(t, server))
-	if _, err := commands.ListProjects(context.Background(), projectlist.Input{Environment: "production"}); err != nil {
+	if _, err := commands.ListProjects(context.Background(), projectlist.Input{Environment: "production", All: true}); err != nil {
 		t.Fatal(err)
 	}
 	got, err := commands.InspectProject(context.Background(), projectinspect.Input{Environment: "production", Catalog: true, Selector: identity.Selector{LUID: "child"}})

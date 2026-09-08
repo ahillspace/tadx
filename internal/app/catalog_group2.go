@@ -65,7 +65,7 @@ func (h catalogHydrator) Hydrate(ctx context.Context, input catalogrefresh.Hydra
 		now = time.Now
 	}
 	generatedAt := now().UTC()
-	writer, err := h.store.BeginGeneration(ctx, corecatalog.GenerationMetadata{
+	writer, err := h.store.BeginRefreshGeneration(ctx, corecatalog.GenerationMetadata{
 		Environment: input.Environment, Site: input.Site, GeneratedAt: generatedAt, Source: catalogSourceName,
 		RequestedScopes: append([]string(nil), input.RequestedScopes...), ImplicitScopes: append([]string(nil), input.ImplicitScopes...),
 	})
@@ -245,7 +245,7 @@ func (s *catalogRefreshService) Execute(ctx context.Context, input catalogrefres
 			return catalogTableauExecutor{transport: connection.transport, session: connection.session, serverURL: connection.environment.URL, siteLUID: connection.session.SiteLUID()}, nil
 		},
 		newRunner: func(executor tableaucatalog.Executor) (catalogRunner, error) {
-			return tableaucatalog.NewEngine(executor, tableaucatalog.Config{})
+			return tableaucatalog.NewEngine(executor, tableaucatalog.Config{MaxConcurrency: environment.CatalogMaxConcurrency})
 		},
 	}
 	return catalogrefresh.New(hydrator).Execute(ctx, input)

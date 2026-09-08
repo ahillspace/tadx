@@ -145,7 +145,8 @@ func (a *Action) search(ctx context.Context, input Input) (Result, error) {
 		result.Items = append(result.Items, page.Items...)
 		result.Warnings = append(result.Warnings, page.Warnings...)
 		result.Page.Total = page.Page.Total
-		result.Page.MoreAvailable = page.Page.MoreAvailable || page.Page.NextCursor != "" || len(result.Items) > input.Limit
+		result.Page.UnresolvedMoreAvailable = result.Page.UnresolvedMoreAvailable || page.Page.UnresolvedMoreAvailable || (page.Page.MoreAvailable && page.Page.NextCursor == "")
+		result.Page.MoreAvailable = result.Page.UnresolvedMoreAvailable || page.Page.MoreAvailable || page.Page.NextCursor != "" || len(result.Items) > input.Limit
 		if len(result.Items) >= input.Limit || page.Page.NextCursor == "" {
 			result.Items = result.Items[:min(input.Limit, len(result.Items))]
 			return result, nil

@@ -48,12 +48,13 @@ type WorkspaceRegistration struct {
 
 // Environment describes one named Tableau target without storing credentials.
 type Environment struct {
-	Alias            string `yaml:"-" json:"alias,omitempty"`
-	URL              string `yaml:"url" json:"url"`
-	SiteContentURL   string `yaml:"site_content_url,omitempty" json:"site_content_url,omitempty"`
-	APIVersion       string `yaml:"api_version,omitempty" json:"api_version,omitempty"`
-	Auth             Auth   `yaml:"auth" json:"auth"`
-	DefaultWorkspace string `yaml:"default_workspace,omitempty" json:"default_workspace,omitempty"`
+	Alias                 string `yaml:"-" json:"alias,omitempty"`
+	URL                   string `yaml:"url" json:"url"`
+	SiteContentURL        string `yaml:"site_content_url,omitempty" json:"site_content_url,omitempty"`
+	APIVersion            string `yaml:"api_version,omitempty" json:"api_version,omitempty"`
+	Auth                  Auth   `yaml:"auth" json:"auth"`
+	DefaultWorkspace      string `yaml:"default_workspace,omitempty" json:"default_workspace,omitempty"`
+	CatalogMaxConcurrency int    `yaml:"catalog_max_concurrency,omitempty" json:"catalog_max_concurrency,omitempty"`
 }
 
 // Auth contains credential references, never PAT values.
@@ -155,6 +156,9 @@ func (c Config) Validate() error {
 		}
 		if environment.APIVersion != "" && !isAPIVersion(environment.APIVersion) {
 			violations = append(violations, fmt.Sprintf("environment %q API version must use major.minor numeric format", alias))
+		}
+		if environment.CatalogMaxConcurrency < 0 || environment.CatalogMaxConcurrency > 256 {
+			violations = append(violations, fmt.Sprintf("environment %q catalog maximum concurrency must be between 1 and 256, or omitted for the default", alias))
 		}
 		if environment.Auth.Type != AuthTypePAT {
 			violations = append(violations, fmt.Sprintf("environment %q auth type must be %q", alias, AuthTypePAT))

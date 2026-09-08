@@ -55,6 +55,17 @@ func TestCanonicalExecutableBindingsIncludeImplementedSlices(t *testing.T) {
 	}
 }
 
+func TestCanonicalRegistryDoesNotPublishExternalToolMappings(t *testing.T) {
+	for _, definition := range All() {
+		if definition.MCPOverlap != "" {
+			t.Errorf("%s publishes an external tool mapping", definition.ID)
+		}
+		if definition.Disposition == DispositionDelegated && len(definition.CommandPath) != 0 {
+			t.Errorf("%s exposes an executable TADX command for an external capability", definition.ID)
+		}
+	}
+}
+
 // TestExecutableCapabilitiesAreShipAndProven guards CLI availability against
 // registry disposition rather than only against non-nil dependencies. Every
 // capability wired to a runnable CLI command (Executable) must be dispositioned

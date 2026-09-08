@@ -8,7 +8,7 @@
 
 Read in full when selecting a calculated measure, entity count, average/rate/percentage, snapshot, or multi-fact measure.
 These are creation decisions, not instructions to query through the CLI.
-Use actual connected MCP queries only when metadata cannot resolve a material data question.
+Resolve material data questions with authorized evidence when metadata is insufficient.
 Examples are hypothetical reasoning, never fields or formulas that TADX creates.
 
 ## Counts and source grain

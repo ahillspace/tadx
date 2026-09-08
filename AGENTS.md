@@ -28,3 +28,8 @@ Start builds from updated `main` on one feature branch shared by all assigned ag
 Assign disjoint paths and reserve shared integration files for one coordinator.
 Do not create per-agent worktrees unless the user requests them.
 Do not read `archived/` for current guidance.
+
+The maintainer runs agent-based code reviews in ChatGPT.
+Run automated tests and CI, but do not launch agent-based reviews unless explicitly requested.
+After every GitHub push, provide a concise, paste-ready ChatGPT review prompt with the repository, branch, base and head commit IDs, review scope, and material exclusions or verification limits.
+Do not repeat review methodology in that prompt; the maintainer supplies it separately.

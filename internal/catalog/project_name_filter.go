@@ -13,9 +13,8 @@ func (projectFilterUnavailableError) Error() string {
 }
 func (projectFilterUnavailableError) CatalogProjectRefreshRequired() bool { return true }
 
-// The projection's project_luid is an identity, never a project display path or
-// its last segment. Guard JSON extraction so legacy empty payloads fail closed.
-const cachedProjectIdentity = `CASE WHEN json_valid(CAST(payload AS TEXT)) THEN CASE WHEN json_type(CAST(payload AS TEXT),'$.project_luid')='text' THEN json_extract(CAST(payload AS TEXT),'$.project_luid') END END`
+// Canonical project identity is indexed independently of presentation payloads.
+const cachedProjectIdentity = `project_luid`
 
 func cachedProjectNameFilter(ctx context.Context, tx *sql.Tx, query *ResourceQuery, meta generationMeta) (string, []any, error) {
 	snapshot, err := currentResourceScopeSnapshot(ctx, tx, query.Environment, query.Site, "project")

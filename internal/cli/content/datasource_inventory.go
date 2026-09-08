@@ -30,7 +30,7 @@ func newDatasourceInventory(lister DatasourceLister, inspector DatasourceInspect
 		Use:   "datasource",
 		Short: "Operate published Tableau datasources",
 		Long: "Operate published datasource lifecycle and inspect schema with TADX.\n\n" +
-			"Use Tableau MCP get-datasource-metadata for analytical metadata and query-datasource for datasource data.",
+			"Schema inspection returns field and table metadata; TADX does not query datasource values.",
 	}
 	command.AddCommand(newDatasourceList(deps), newDatasourceInspect(deps))
 	return command
@@ -39,7 +39,7 @@ func newDatasourceInventory(lister DatasourceLister, inspector DatasourceInspect
 func newDatasourceList(deps datasourceInventoryDependencies) *cobra.Command {
 	var input datasourcelist.Input
 	command := &cobra.Command{
-		Use: "list", Short: "List datasources and refresh their catalog snapshot.",
+		Use: "list", Short: "List datasources with bounded live reads or explicit --all.",
 		Annotations: map[string]string{"tadx.capability": "datasource.list"},
 		Args:        noContentArgs("datasource.list"),
 		RunE: func(command *cobra.Command, _ []string) error {

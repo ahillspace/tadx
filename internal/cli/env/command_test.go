@@ -3,6 +3,7 @@ package env_test
 import (
 	"context"
 	"reflect"
+	"strings"
 	"testing"
 
 	profileadd "github.com/ahillspace/tadx/actions/env/profile/add"
@@ -115,5 +116,66 @@ func TestEnvUpdateRejectsSetAndClearForSameField(t *testing.T) {
 	command.SetArgs([]string{"update", "dev", "--site", "test-site", "--clear-site"})
 	if err := command.Execute(); err == nil {
 		t.Fatal("Execute() error = nil")
+	}
+}
+
+func TestEnvCatalogConcurrencyFlags(t *testing.T) {
+	for _, args := range [][]string{
+		{"add", "dev", "--url", "https://tableau.example.com", "--catalog-max-concurrency", "8"},
+		{"update", "dev", "--catalog-max-concurrency", "8"},
+		{"update", "dev", "--clear-catalog-max-concurrency"},
+	} {
+		a := &actions{}
+		command := envcli.New(envcli.Dependencies{Adder: a, Updater: a, Renderer: &renderer{}})
+		command.SetArgs(args)
+		if err := command.Execute(); err != nil {
+			t.Fatalf("Execute(%v): %v", args, err)
+		}
+		if args[0] == "add" {
+			if len(a.add) != 1 || a.add[0].CatalogMaxConcurrency != 8 {
+				t.Fatalf("add=%+v", a.add)
+			}
+		} else {
+			want := 8
+			if args[2] == "--clear-catalog-max-concurrency" {
+				want = 0
+			}
+			if len(a.update) != 1 || !a.update[0].Patch.CatalogMaxConcurrency.Set || a.update[0].Patch.CatalogMaxConcurrency.Value != want {
+				t.Fatalf("update=%+v", a.update)
+			}
+		}
+	}
+}
+
+func TestEnvCatalogConcurrencyBoundsAndHelp(t *testing.T) {
+	for _, verb := range []string{"add", "update"} {
+		for _, value := range []string{"0", "-1", "257"} {
+			a := &actions{}
+			command := envcli.New(envcli.Dependencies{Adder: a, Updater: a, Renderer: &renderer{}})
+			args := []string{verb, "dev", "--catalog-max-concurrency", value}
+			if verb == "add" {
+				args = append(args, "--url", "https://tableau.example.com")
+			}
+			command.SetArgs(args)
+			if err := command.Execute(); err == nil || !strings.Contains(err.Error(), "between 1 and 256") {
+				t.Fatalf("args=%v error=%v", args, err)
+			}
+			if len(a.add)+len(a.update) != 0 {
+				t.Fatal("invalid value reached action")
+			}
+		}
+		command := envcli.New(envcli.Dependencies{})
+		found, _, err := command.Find([]string{verb})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if flag := found.Flags().Lookup("catalog-max-concurrency"); flag == nil || !strings.Contains(flag.Usage, "default 32") {
+			t.Fatalf("flag=%+v", flag)
+		}
+	}
+	command := envcli.New(envcli.Dependencies{})
+	command.SetArgs([]string{"update", "dev", "--catalog-max-concurrency", "8", "--clear-catalog-max-concurrency"})
+	if err := command.Execute(); err == nil || !strings.Contains(err.Error(), "cannot be used together") {
+		t.Fatalf("error=%v", err)
 	}
 }

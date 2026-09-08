@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"path/filepath"
-	"strings"
 	"time"
 
 	datasourceinspect "github.com/ahillspace/tadx/actions/datasource/inspect"
@@ -93,7 +92,16 @@ func resourceEntry(environment, site, kind, luid, name, projectPath, owner, cove
 	if err != nil {
 		return catalog.ResourceEntry{}, err
 	}
-	return catalog.ResourceEntry{Environment: environment, Site: site, Kind: kind, LUID: luid, Name: name, ProjectPath: projectPath, Owner: owner, Payload: encoded, Coverage: coverage, ObservedAt: observedAt}, nil
+	projectLUID := ""
+	switch item := payload.(type) {
+	case workbookinspect.Workbook:
+		projectLUID = item.ProjectLUID
+	case datasourceinspect.Datasource:
+		projectLUID = item.ProjectLUID
+	case flowinspect.Flow:
+		projectLUID = item.ProjectLUID
+	}
+	return catalog.ResourceEntry{ProjectLUID: projectLUID, Environment: environment, Site: site, Kind: kind, LUID: luid, Name: name, ProjectPath: projectPath, Owner: owner, Payload: encoded, Coverage: coverage, ObservedAt: observedAt}, nil
 }
 
 func writeThrough(store *catalog.Store, entries []catalog.ResourceEntry) {
@@ -290,12 +298,7 @@ type catalogProjectGetResolver struct {
 
 func (r *catalogProjectGetResolver) ResolveProject(ctx context.Context, selector identity.Selector) (projectinspect.Project, error) {
 	path := selector.ProjectPath
-	name := ""
-	if path != "" {
-		parts := strings.Split(path, "/")
-		name = parts[len(parts)-1]
-	}
-	result, err := r.store.ReadResources(ctx, catalog.ResourceQuery{Environment: r.environment, Site: r.site, Kind: "project", LUID: string(selector.LUID), Name: name, ProjectPath: path, Limit: 2})
+	result, err := r.store.ReadResources(ctx, catalog.ResourceQuery{Environment: r.environment, Site: r.site, Kind: "project", LUID: string(selector.LUID), ProjectPath: path, Limit: 2, ExactlyOne: true})
 	if err != nil {
 		return projectinspect.Project{}, catalogReadError("project.inspect", r.environment, r.site, err)
 	}

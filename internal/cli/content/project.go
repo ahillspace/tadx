@@ -169,7 +169,7 @@ func newProjectList(deps Dependencies) *cobra.Command {
 	var input projectlist.Input
 	var topLevel bool
 	command := &cobra.Command{
-		Use: "list", Short: "List projects and refresh their catalog snapshot.", Annotations: map[string]string{"tadx.capability": "project.list"}, Args: noContentArgs("project.list"),
+		Use: "list", Short: "List projects with bounded live reads or explicit --all.", Annotations: map[string]string{"tadx.capability": "project.list"}, Args: noContentArgs("project.list"),
 		RunE: func(command *cobra.Command, _ []string) error {
 			if command.Flags().Changed("top-level") {
 				input.TopLevel = &topLevel

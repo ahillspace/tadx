@@ -129,6 +129,10 @@ func TestClientClassifiesVisibleCalculationsThroughHiddenMetadataDependencies(t 
 		wantUser     bool
 	}{
 		{name: "hidden table calculation", formula: "WINDOW_SUM(SUM([Sales]))", dependencyID: "Hidden Source", wantExcluded: true},
+		{name: "table calculation mentioned in line comment", formula: "// Previous version: WINDOW_SUM(SUM([Sales]))\n[Sales] * 2", dependencyID: "Hidden Source"},
+		{name: "table calculation mentioned in block comment", formula: "/* WINDOW_SUM(SUM([Sales])) */ [Sales] * 2", dependencyID: "Hidden Source"},
+		{name: "table calculation mentioned in string", formula: `LEN("WINDOW_SUM(")`, dependencyID: "Hidden Source"},
+		{name: "table calculation mentioned in single quoted string", formula: `LEN('RUNNING_SUM(')`, dependencyID: "Hidden Source"},
 		{name: "hidden aggregate calculation", formula: "SUM([Sales])", dependencyID: "Hidden Source", wantUser: true},
 		{name: "hidden aggregate metadata", aggregation: "AGG", dependencyID: "Hidden Source", wantUser: true},
 		{name: "hidden USER metadata", aggregation: "USER", dependencyID: "Hidden Source", wantUser: true},

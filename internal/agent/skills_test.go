@@ -148,7 +148,7 @@ func TestSkillPackagesHaveValidMetadataAndLocalReferences(t *testing.T) {
 }
 
 // Help parsing validates published recipe command paths and flags without remote
-// requests or mutation. Workflow behavior and latency need separate Luna trials.
+// requests or mutation. These checks do not validate agent workflow behavior.
 func TestSkillRecipesUseInstalledCommandsAndFlags(t *testing.T) {
 	source := os.DirFS("skills")
 	words := regexp.MustCompile(`"[^"]*"|'[^']*'|[^\s]+`)

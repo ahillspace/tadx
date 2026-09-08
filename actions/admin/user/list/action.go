@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"github.com/ahillspace/tadx/internal/output"
+	"github.com/ahillspace/tadx/internal/paging"
 
 	"github.com/ahillspace/tadx/internal/errs"
 	"github.com/ahillspace/tadx/internal/readsource"
@@ -171,42 +172,17 @@ func (a *Action) collectAll(ctx context.Context, input Input) (Output, error) {
 	if input.Limit != 0 || input.Cursor != "" {
 		return Output{}, errs.New(errs.KindUsage, "--all cannot be combined with --limit or --cursor")
 	}
-	input.All = false
-	input.Limit = 100
-	var result Output
-	seen := map[string]bool{}
-	cursors := map[string]bool{}
-	for pageNumber := 0; pageNumber < 100; pageNumber++ {
-		page, err := a.Execute(ctx, input)
-		if err != nil {
-			return Output{}, err
-		}
-		if pageNumber == 0 {
-			result = page
-			result.Users = nil
-		} else if page.Page.Total != result.Page.Total {
-			return Output{}, errors.New("admin/user inventory changed during pagination; retry")
-		}
-		for _, item := range page.Users {
-			if item.LUID == "" || seen[item.LUID] {
-				return Output{}, errors.New("admin/user inventory returned missing or repeated identities")
-			}
-			seen[item.LUID] = true
-			result.Users = append(result.Users, item)
-		}
-		result.RequestID = page.RequestID
-		if !page.Page.MoreAvailable && page.Page.NextCursor == "" {
-			if len(result.Users) != result.Page.Total {
-				return Output{}, errors.New("admin/user inventory completeness could not be established")
-			}
-			result.Page = OutputPage{Returned: len(result.Users), Total: result.Page.Total, Limit: 10000}
-			return result, nil
-		}
-		if len(page.Users) == 0 || page.Page.NextCursor == "" || cursors[page.Page.NextCursor] {
-			return Output{}, errors.New("admin/user inventory pagination did not advance; completeness could not be established")
-		}
-		cursors[page.Page.NextCursor] = true
-		input.Cursor = page.Page.NextCursor
+	if a == nil || a.reader == nil {
+		return Output{}, errors.New("inventory reader is not configured")
 	}
-	return Output{}, errors.New("admin/user --all exceeds the 10000-record bound; use narrower filters")
+	requestID := ""
+	items, err := paging.Collect(ctx, func(ctx context.Context, state paging.State) (paging.Page[User], error) {
+		page, err := a.reader.ListUsers(ctx, PageRequest{PageNumber: state.Number, PageSize: state.Size, SnapshotCursor: state.Token, Name: input.Name, SiteRole: input.SiteRole})
+		requestID = page.RequestID
+		return paging.Page[User]{Number: page.Number, Size: page.Size, Total: page.Total, Items: page.Users, Token: page.SnapshotCursor}, err
+	}, func(item User) string { return item.LUID })
+	if err != nil {
+		return Output{}, err
+	}
+	return Output{Status: "listed", Environment: input.Environment, Site: input.Site, Users: items, Page: OutputPage{Returned: len(items), Total: len(items), Limit: 10000}, RequestID: requestID, Help: []string{"tadx admin user inspect --id <user-luid>"}}, nil
 }

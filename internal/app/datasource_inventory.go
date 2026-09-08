@@ -18,20 +18,7 @@ func (c *remoteContentCommands) ListDatasources(ctx context.Context, input datas
 			resultErr = validateInventoryAll(input.All, result.Source)
 		}
 	}()
-	if input.Catalog {
-		environment, site, err := c.resolveCatalogTarget(input.Environment)
-		if err != nil {
-			return datasourcelist.Output{}, err
-		}
-		input.Environment, input.Site = environment, site
-		reader := &catalogDatasourceListReader{store: c.catalogStore(), environment: environment, site: site}
-		output, err := datasourcelist.New(reader).Execute(ctx, input)
-		if err == nil {
-			output.Source = reader.source
-		}
-		return output, err
-	}
-	if input.Cursor != "" && datasourceListIsUnfiltered(input) {
+	if input.Catalog || legacyInventorySnapshot(input.Cursor) {
 		environment, site, err := c.resolveCatalogTarget(input.Environment)
 		if err != nil {
 			return datasourcelist.Output{}, err
@@ -49,58 +36,39 @@ func (c *remoteContentCommands) ListDatasources(ctx context.Context, input datas
 		return datasourcelist.Output{}, remoteSetupError("datasource.list", input.Environment, input.Site, connection.environment, err)
 	}
 	input.Environment, input.Site = connection.environment.Alias, connection.environment.SiteContentURL
-	if datasourceListIsUnfiltered(input) {
+
+	if input.All {
+		filter, err := inventoryFilter(input)
+		if err != nil {
+			return datasourcelist.Output{}, err
+		}
 		observedAt := c.runtime.now().UTC()
-		inventory, err := collectResourceInventory(ctx, connection.inventory, c.catalogStore(), tableaucatalog.ScopeDatasources, input.Environment, input.Site, observedAt)
+		inventory, err := collectResourceInventory(ctx, connection.inventory, c.catalogStore(), tableaucatalog.ScopeDatasources, input.Environment, input.Site, observedAt, inventoryCollectionOptions{MaxConcurrency: connection.environment.CatalogMaxConcurrency, Filter: filter})
 		if err != nil {
 			return datasourcelist.Output{}, inventoryRefreshError("datasource.list", input.Environment, input.Site, err)
 		}
-		if inventory.catalogErr != nil {
-			reader := inventory.memoryReader()
-			reader.allowContinuation = input.All
-			output, err := datasourcelist.New(reader).Execute(ctx, input)
-			if err != nil {
-				return output, err
-			}
-			output.Source = inventory.warningSource(observedAt)
-			output.Help = append(output.Help, inventory.warningHelp())
-			return output, nil
-		}
-		reader := &catalogDatasourceListReader{store: c.catalogStore(), environment: input.Environment, site: input.Site}
+		reader := inventory.memoryReader()
+		reader.allowContinuation = true
 		output, err := datasourcelist.New(reader).Execute(ctx, input)
 		if err != nil {
 			return output, err
 		}
-		output.Source = liveInventorySource(observedAt, inventory.published.GenerationID)
+		if inventory.catalogErr != nil {
+			output.Source = inventory.warningSource(observedAt)
+			output.Help = append(output.Help, inventory.warningHelp())
+		} else if inventory.filtered {
+			output.Source = liveSource(c.runtime.now)
+		} else {
+			output.Source = liveInventorySource(observedAt, inventory.published.GenerationID)
+		}
 		output.RequestID = finalRequestID(inventory.requestIDs)
-		output.Help = append(output.Help, inventoryRefreshHelp)
 		return output, nil
 	}
-	output, err := datasourcelist.New(datasourceListReader{connection.datasources}).Execute(ctx, input)
+	output, err := datasourcelist.New(datasourceListReader{adapter: connection.datasources, projects: connection.projects}).Execute(ctx, input)
 	if err != nil {
 		return output, err
 	}
-	observedAt := c.runtime.now().UTC()
 	output.Source = liveSource(c.runtime.now)
-	projectIDs := make([]string, len(output.Datasources))
-	for index, item := range output.Datasources {
-		projectIDs[index] = item.ProjectLUID
-	}
-	paths, pathErr := connection.projects.ResolveProjectPaths(ctx, projectIDs)
-	if pathErr != nil {
-		output.Help = append(output.Help, "Live list succeeded, but canonical project paths could not be confirmed; catalog records were not updated.")
-		return output, nil
-	}
-	entries := make([]catalog.ResourceEntry, 0, len(output.Datasources))
-	for index := range output.Datasources {
-		item := &output.Datasources[index]
-		item.ProjectPath = paths[item.ProjectLUID]
-		entry, encodeErr := resourceEntry(input.Environment, input.Site, "datasource", item.LUID, item.Name, item.ProjectPath, item.OwnerLUID, "summary", observedAt, item)
-		if encodeErr == nil {
-			entries = append(entries, entry)
-		}
-	}
-	writeThrough(c.catalogStore(), entries)
 	return output, nil
 }
 
@@ -140,7 +108,12 @@ func (c *remoteContentCommands) InspectDatasource(ctx context.Context, input dat
 	return output, nil
 }
 
-type datasourceListReader struct{ adapter *resourcedatasource.Adapter }
+type datasourceListReader struct {
+	adapter  *resourcedatasource.Adapter
+	projects interface {
+		ResolveProjectPaths(context.Context, []string) (map[string]string, error)
+	}
+}
 
 func (r datasourceListReader) ListDatasources(ctx context.Context, input datasourcelist.PageRequest) (datasourcelist.Page, error) {
 	page, err := r.adapter.ListDatasources(ctx, tableaudatasource.ListRequest{
@@ -148,9 +121,26 @@ func (r datasourceListReader) ListDatasources(ctx context.Context, input datasou
 		ProjectName: input.ProjectName, Type: input.Type, Tag: input.Tag,
 		UpdatedAfter: input.UpdatedAfter, UpdatedBefore: input.UpdatedBefore,
 	})
+	if err != nil {
+		return datasourcelist.Page{}, err
+	}
+	paths := map[string]string{}
+	if r.projects != nil && len(page.Items) > 0 {
+		ids := make([]string, len(page.Items))
+		for i, item := range page.Items {
+			ids[i] = item.ProjectLUID
+		}
+		paths, err = r.projects.ResolveProjectPaths(ctx, ids)
+		if err != nil {
+			return datasourcelist.Page{}, err
+		}
+	}
 	items := make([]datasourcelist.Datasource, len(page.Items))
 	for index, item := range page.Items {
 		items[index] = datasourceListItem(item)
+		if path, ok := paths[item.ProjectLUID]; ok {
+			items[index].ProjectPath = path
+		}
 	}
 	return datasourcelist.Page{Number: page.Number, Size: page.Size, Total: page.Total, Datasources: items, RequestID: page.RequestID}, err
 }

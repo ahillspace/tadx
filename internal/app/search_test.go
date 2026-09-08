@@ -327,60 +327,43 @@ func TestSearchCommandsUseNativeEndpointForContentTerms(t *testing.T) {
 	}
 }
 
-func TestBlankTypedSearchRefreshesCompleteInventoryAndContinuesFromCatalog(t *testing.T) {
-	signins := 0
-	inventoryReads := 0
-	server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+func TestBlankTypedSearchUsesBoundedLivePagesWithoutCatalog(t *testing.T) {
+	reads := 0
+	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
-		case request.Method == http.MethodPost && request.URL.Path == "/api/3.29/auth/signin":
-			signins++
-			writer.Header().Set("Content-Type", "application/json")
-			_, _ = io.WriteString(writer, `{"credentials":{"token":"session-token","site":{"id":"site-1"},"user":{"id":"user-1"}}}`)
-		case request.Method == http.MethodGet && request.URL.Path == "/api/3.29/sites/site-1/projects":
-			inventoryReads++
-			_, _ = io.WriteString(writer, `<tsResponse><pagination pageNumber="1" pageSize="1000" totalAvailable="1"/><projects><project id="project-1" name="Sales"/></projects></tsResponse>`)
-		case request.Method == http.MethodGet && request.URL.Path == "/api/3.29/sites/site-1/workbooks" && request.URL.Query().Get("filter") == "":
-			inventoryReads++
-			_, _ = io.WriteString(writer, `<tsResponse><pagination pageNumber="1" pageSize="1000" totalAvailable="2"/><workbooks><workbook id="workbook-b" name="Beta"><project id="project-1"/></workbook><workbook id="workbook-a" name="Alpha"><project id="project-1"/></workbook></workbooks></tsResponse>`)
+		case strings.HasSuffix(r.URL.Path, "/auth/signin"):
+			_, _ = io.WriteString(w, `{"credentials":{"token":"session-token","site":{"id":"site-1"},"user":{"id":"user-1"}}}`)
+		case strings.HasSuffix(r.URL.Path, "/projects"):
+			_, _ = io.WriteString(w, `<tsResponse><pagination pageNumber="1" pageSize="1000" totalAvailable="1"/><projects><project id="project-1" name="Sales"/></projects></tsResponse>`)
+		case strings.HasSuffix(r.URL.Path, "/workbooks"):
+			reads++
+			number := r.URL.Query().Get("pageNumber")
+			if r.URL.Query().Get("pageSize") != "1" {
+				t.Errorf("unbounded request %s", r.URL.RawQuery)
+			}
+			id, name := "workbook-a", "Alpha"
+			if number == "2" {
+				id, name = "workbook-b", "Beta"
+			}
+			_, _ = fmt.Fprintf(w, `<tsResponse><pagination pageNumber="%s" pageSize="1" totalAvailable="2"/><workbooks><workbook id="%s" name="%s"><project id="project-1"/></workbook></workbooks></tsResponse>`, number, id, name)
 		default:
-			http.Error(writer, fmt.Sprintf("unexpected %s %s?%s", request.Method, request.URL.Path, request.URL.RawQuery), http.StatusNotFound)
+			http.Error(w, "unexpected request", 404)
 		}
 	}))
 	defer server.Close()
-
 	runtime := inventoryListRuntime(t, server)
 	commands := newSearchCommands(runtime)
 	input := searchaction.Input{Environment: "production", Type: "workbook", Limit: 1}
 	first, err := commands.Execute(context.Background(), input)
-	if err != nil {
-		t.Fatal(err)
+	if err != nil || reads != 1 || len(first.Items) != 1 || first.Items[0].LUID != "workbook-a" || !first.Page.MoreAvailable {
+		t.Fatalf("first=%+v reads=%d err=%v", first, reads, err)
 	}
-	if signins != 1 || inventoryReads != 2 || len(first.Items) != 1 || first.Items[0].LUID != "workbook-a" || first.Page.NextCursor == "" {
-		t.Fatalf("first=%+v sign-ins=%d inventory reads=%d", first, signins, inventoryReads)
-	}
-
 	input.Cursor = first.Page.NextCursor
 	second, err := commands.Execute(context.Background(), input)
-	if err != nil {
-		t.Fatal(err)
+	if err != nil || reads != 2 || len(second.Items) != 1 || second.Items[0].LUID != "workbook-b" || second.Page.MoreAvailable {
+		t.Fatalf("second=%+v reads=%d err=%v", second, reads, err)
 	}
-	if signins != 1 || inventoryReads != 2 || len(second.Items) != 1 || second.Items[0].LUID != "workbook-b" || second.Page.NextCursor != "" {
-		t.Fatalf("second=%+v sign-ins=%d inventory reads=%d", second, signins, inventoryReads)
-	}
-
-	store := catalog.NewStore(filepath.Dir(runtime.configPath), runtime.now)
-	_, err = store.ReplaceResourceScope(context.Background(), catalog.ResourceScopeReplacement{
-		Environment: "production", Site: "team-site", Kind: "workbook", Source: "tableau-rest", GeneratedAt: runtime.now().Add(time.Minute),
-		Entries: []catalog.ResourceEntry{{LUID: "workbook-new", Name: "New"}},
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	input.Cursor = first.Page.NextCursor
-	if _, err = commands.Execute(context.Background(), input); err == nil || !strings.Contains(err.Error(), "continuation cursor no longer identifies") {
-		t.Fatalf("replaced snapshot continuation error=%v", err)
-	}
-	if signins != 1 || inventoryReads != 2 {
-		t.Fatalf("failed continuation contacted Tableau: sign-ins=%d inventory reads=%d", signins, inventoryReads)
+	if _, err := os.Stat(filepath.Join(filepath.Dir(runtime.configPath), catalog.DatabasePath())); !os.IsNotExist(err) {
+		t.Fatalf("limited search created catalog: %v", err)
 	}
 }

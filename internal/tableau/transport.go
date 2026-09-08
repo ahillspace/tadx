@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -408,9 +409,11 @@ func parseRetryAfter(header http.Header) (time.Duration, bool) {
 	if value == "" {
 		return 0, false
 	}
-	if seconds, err := strconv.Atoi(value); err == nil {
-		if seconds < 0 {
-			return 0, false
+	if seconds, err := strconv.ParseUint(value, 10, 64); err == nil || errors.Is(err, strconv.ErrRange) {
+		// Saturate unrepresentable server delays instead of overflowing into a
+		// negative duration and allowing immediate retry. The wait is cancelable.
+		if errors.Is(err, strconv.ErrRange) || seconds > uint64(math.MaxInt64/int64(time.Second)) {
+			return time.Duration(math.MaxInt64), true
 		}
 		return time.Duration(seconds) * time.Second, true
 	}

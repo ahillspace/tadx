@@ -1,6 +1,6 @@
 ---
 name: tadx-pulse
-description: Turn business intent into useful Tableau Pulse definitions, select measures and slicers, create and verify metrics, fork period or population variants, and manage followers with TADX. Use Tableau MCP for actual values and generated insights.
+description: Author and manage Tableau Pulse definitions with TADX, including business meaning, measure and slicer selection, creation, saved configuration verification, metric variants, and followers.
 ---
 
 # Author and manage Tableau Pulse metrics
@@ -8,6 +8,8 @@ description: Turn business intent into useful Tableau Pulse definitions, select 
 A definition owns the shared measure, aggregation, date, allowed dimensions, and display settings.
 A metric is a period and population variant of that definition; Tableau creates a default metric with each new definition.
 Followers subscribe to metrics, and insights are computed analytical results.
+This Guidance covers TADX authoring and lifecycle commands, respecting the user's chosen tools for other work.
+TADX configuration reads do not return current metric values or generated insights.
 
 ## Read the relevant reference before acting
 
@@ -18,10 +20,10 @@ Followers subscribe to metrics, and insights are computed analytical results.
 | Choose a calculation, entity count, average, rate, percentage, snapshot, or measure spanning multiple facts | Also read [Semantics](references/semantics.md) before finalizing that choice |
 | Fork a metric or satisfy a particular period or filtered population | [Variants](references/variants.md), before creating a base that depends on that choice |
 | Resolve names, list, inspect, pull, follow, unfollow, delete, or assess an edit | [Operations](references/operations.md) |
-| Query values, validate numbers, retrieve insights, or prepare a brief | [Analytics context](references/analytics-context.md) |
+| Verify saved settings or retain configuration context for numeric validation | [Configuration context](references/analytics-context.md) |
 
 Read only the routes needed for the task.
-Authoring and analytics references include prerequisite discovery commands; these reads do not require loading the operations route too.
+Authoring includes its discovery commands, so those reads do not require loading the operations route too.
 Keep needed guidance and verified choices available across task handoffs.
 
 ## Shared rules

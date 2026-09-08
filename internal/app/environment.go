@@ -89,7 +89,7 @@ func (s configProfileStore) Get(_ context.Context, alias string) (profileget.Pro
 	if err != nil {
 		return profileget.Profile{}, err
 	}
-	return profileget.Profile{Alias: environment.Alias, Default: environment.Alias == configuration.DefaultEnvironment, ServerURL: environment.URL, SiteContentURL: environment.SiteContentURL, APIVersion: environment.APIVersion, AuthType: environment.Auth.Type, PATNameEnv: environment.Auth.PATNameEnv, PATSecretEnv: environment.Auth.PATSecretEnv, DefaultWorkspace: environment.DefaultWorkspace}, nil
+	return profileget.Profile{Alias: environment.Alias, Default: environment.Alias == configuration.DefaultEnvironment, ServerURL: environment.URL, SiteContentURL: environment.SiteContentURL, APIVersion: environment.APIVersion, AuthType: environment.Auth.Type, PATNameEnv: environment.Auth.PATNameEnv, PATSecretEnv: environment.Auth.PATSecretEnv, DefaultWorkspace: environment.DefaultWorkspace, CatalogMaxConcurrency: environment.CatalogMaxConcurrency}, nil
 }
 
 func (s configProfileStore) Add(_ context.Context, input profileadd.Profile) (profileadd.Profile, error) {
@@ -100,7 +100,7 @@ func (s configProfileStore) Add(_ context.Context, input profileadd.Profile) (pr
 		if configuration.Environments == nil {
 			configuration.Environments = make(map[string]config.Environment)
 		}
-		configuration.Environments[input.Alias] = config.Environment{URL: input.ServerURL, SiteContentURL: input.SiteContentURL, APIVersion: input.APIVersion, Auth: config.Auth{Type: config.AuthTypePAT, PATNameEnv: input.PATNameEnv, PATSecretEnv: input.PATSecretEnv}, DefaultWorkspace: input.DefaultWorkspace}
+		configuration.Environments[input.Alias] = config.Environment{URL: input.ServerURL, SiteContentURL: input.SiteContentURL, APIVersion: input.APIVersion, Auth: config.Auth{Type: config.AuthTypePAT, PATNameEnv: input.PATNameEnv, PATSecretEnv: input.PATSecretEnv}, DefaultWorkspace: input.DefaultWorkspace, CatalogMaxConcurrency: input.CatalogMaxConcurrency}
 		return configuration, nil
 	})
 	if err != nil {
@@ -138,6 +138,10 @@ func (s configProfileStore) Update(_ context.Context, alias string, patch profil
 		apply(patch.PATNameEnv, "pat_name_env", &environment.Auth.PATNameEnv)
 		apply(patch.PATSecretEnv, "pat_secret_env", &environment.Auth.PATSecretEnv)
 		apply(patch.DefaultWorkspace, "default_workspace", &environment.DefaultWorkspace)
+		if field := patch.CatalogMaxConcurrency; field.Set && environment.CatalogMaxConcurrency != field.Value {
+			environment.CatalogMaxConcurrency = field.Value
+			changed = append(changed, "catalog_max_concurrency")
+		}
 		if len(changed) == 0 {
 			return config.Config{}, config.ErrNoChange
 		}
@@ -151,7 +155,7 @@ func (s configProfileStore) Update(_ context.Context, alias string, patch profil
 	if err != nil {
 		return profileupdate.UpdateResult{}, err
 	}
-	return profileupdate.UpdateResult{Profile: profileupdate.Profile{Alias: effective.Alias, Default: effective.Alias == updated.DefaultEnvironment, ServerURL: effective.URL, SiteContentURL: effective.SiteContentURL, APIVersion: effective.APIVersion, AuthType: effective.Auth.Type, PATNameEnv: effective.Auth.PATNameEnv, PATSecretEnv: effective.Auth.PATSecretEnv, DefaultWorkspace: effective.DefaultWorkspace}, ChangedFields: changed}, nil
+	return profileupdate.UpdateResult{Profile: profileupdate.Profile{Alias: effective.Alias, Default: effective.Alias == updated.DefaultEnvironment, ServerURL: effective.URL, SiteContentURL: effective.SiteContentURL, APIVersion: effective.APIVersion, AuthType: effective.Auth.Type, PATNameEnv: effective.Auth.PATNameEnv, PATSecretEnv: effective.Auth.PATSecretEnv, DefaultWorkspace: effective.DefaultWorkspace, CatalogMaxConcurrency: effective.CatalogMaxConcurrency}, ChangedFields: changed}, nil
 }
 
 func (s configProfileStore) Remove(_ context.Context, alias string) error {
@@ -201,10 +205,10 @@ func (s configProfileStore) resolve(alias string) (config.Config, config.Environ
 }
 
 func listProfile(configuration config.Config, environment config.Environment) profilelist.Profile {
-	return profilelist.Profile{Alias: environment.Alias, Default: environment.Alias == configuration.DefaultEnvironment, ServerURL: environment.URL, SiteContentURL: environment.SiteContentURL, APIVersion: environment.APIVersion, AuthType: environment.Auth.Type, PATNameEnv: environment.Auth.PATNameEnv, PATSecretEnv: environment.Auth.PATSecretEnv, DefaultWorkspace: environment.DefaultWorkspace}
+	return profilelist.Profile{Alias: environment.Alias, Default: environment.Alias == configuration.DefaultEnvironment, ServerURL: environment.URL, SiteContentURL: environment.SiteContentURL, APIVersion: environment.APIVersion, AuthType: environment.Auth.Type, PATNameEnv: environment.Auth.PATNameEnv, PATSecretEnv: environment.Auth.PATSecretEnv, DefaultWorkspace: environment.DefaultWorkspace, CatalogMaxConcurrency: environment.CatalogMaxConcurrency}
 }
 func addProfile(environment config.Environment) profileadd.Profile {
-	return profileadd.Profile{Alias: environment.Alias, ServerURL: environment.URL, SiteContentURL: environment.SiteContentURL, APIVersion: environment.APIVersion, AuthType: environment.Auth.Type, PATNameEnv: environment.Auth.PATNameEnv, PATSecretEnv: environment.Auth.PATSecretEnv, DefaultWorkspace: environment.DefaultWorkspace}
+	return profileadd.Profile{Alias: environment.Alias, ServerURL: environment.URL, SiteContentURL: environment.SiteContentURL, APIVersion: environment.APIVersion, AuthType: environment.Auth.Type, PATNameEnv: environment.Auth.PATNameEnv, PATSecretEnv: environment.Auth.PATSecretEnv, DefaultWorkspace: environment.DefaultWorkspace, CatalogMaxConcurrency: environment.CatalogMaxConcurrency}
 }
 
 type authStatusResolver struct{ runtime *runtimeDependencies }

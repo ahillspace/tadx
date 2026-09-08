@@ -54,6 +54,14 @@ Default output is an explicit bounded compact TOON projection containing the sta
 Render `more_available` when results are limited; keep opaque provider and catalog cursors internal in both compact and full output.
 Use a larger bounded `--limit`, or explicit `--all` where supported, to request additional results.
 An incomplete or capped traversal must never claim a complete inventory.
+Limited live lists fetch bounded provider results without collecting a full inventory or depending on SQLite.
+Explicit `--all` and scoped catalog refresh share a collector; live output renders from its normalized in-memory result.
+Cache persistence after a live full list is best effort; explicit refresh failure preserves the previous generation and fails.
+Filtered observations cannot establish complete unfiltered coverage.
+Keep pagination loops typed and private instead of recursively invoking actions or encoding internal cursors.
+Persist project identity structurally as an indexed LUID, not by extracting it from payload JSON.
+Default catalog refresh excludes permissions; require an explicit scope for per-resource permission collection.
+Collection concurrency defaults to a per-process ceiling of 32, is configurable per environment, and respects a shared cancelable Retry-After cooldown.
 When additional bounded details exist, compact output includes the exact top-level marker `details: "--full"` immediately before `help[]`.
 `--full` is a bounded superset for the same operation and never changes requests, mutation behavior, pagination, or secret redaction.
 Use separate compact and full golden fixtures for detail-bearing output.
@@ -73,6 +81,7 @@ Persist PATs only after explicit user approval through the native OS credential 
 Store only opaque credential references in configuration.
 Never place PATs or session tokens in configuration values, output, logs, artifacts, catalogs, fixtures, or diagnostics.
 Never use a plaintext credential fallback when the native store is unavailable.
+Guidance describes TADX and its limitations without overriding the user's choice of tools or maintaining external MCP tool recipes.
 
 ## Integrate the capability
 

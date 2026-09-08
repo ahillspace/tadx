@@ -48,7 +48,7 @@ func TestDatasourceListReaderMapsActionRequestAndRichResourcePage(t *testing.T) 
 		Number: 1, Size: 1, Total: 1, TableauRequestID: "request-1",
 		Items: []tableaudatasource.Datasource{{LUID: "ds-1", Name: "Sales", ProjectLUID: "p-1", ProjectName: "Ops", Type: "hyper", Description: "Sales data", Size: &size, Tags: []string{"daily"}}},
 	}}
-	reader := datasourceListReader{resourcedatasource.NewAdapter(client)}
+	reader := datasourceListReader{adapter: resourcedatasource.NewAdapter(client)}
 	request := datasourcelist.PageRequest{PageNumber: 1, PageSize: 1, Name: "Sales", OwnerName: "owner", ProjectName: "Ops", Type: "hyper", Tag: "daily", UpdatedAfter: "2026-01-01", UpdatedBefore: "2026-09-01"}
 	page, err := reader.ListDatasources(context.Background(), request)
 	if err != nil {

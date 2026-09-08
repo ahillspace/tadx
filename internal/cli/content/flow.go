@@ -45,7 +45,7 @@ func newFlow(deps Dependencies) *cobra.Command {
 
 func newFlowList(deps Dependencies) *cobra.Command {
 	var input flowlist.Input
-	command := &cobra.Command{Use: "list", Short: "List flows and refresh their catalog snapshot.", Annotations: map[string]string{"tadx.capability": "flow.list"}, Args: noContentArgs("flow.list"), RunE: func(command *cobra.Command, _ []string) error {
+	command := &cobra.Command{Use: "list", Short: "List flows with bounded live reads or explicit --all.", Annotations: map[string]string{"tadx.capability": "flow.list"}, Args: noContentArgs("flow.list"), RunE: func(command *cobra.Command, _ []string) error {
 		result, err := deps.FlowLister.ListFlows(command.Context(), input)
 		if err != nil {
 			return err

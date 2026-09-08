@@ -86,7 +86,8 @@ type Config struct {
 	MaxResponseBytes   int64
 }
 
-// RunRequest selects public scopes. An empty selection means every scope.
+// RunRequest selects public scopes. An empty selection means inventory scopes;
+// permissions requires an explicit selection.
 type RunRequest struct {
 	RequestedScopes []Scope
 }

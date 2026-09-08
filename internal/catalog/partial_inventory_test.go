@@ -2,6 +2,8 @@ package catalog
 
 import (
 	"context"
+	"database/sql"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -64,7 +66,7 @@ func TestPartialInventoryCursorIsBoundedScopedAndExpires(t *testing.T) {
 	}
 }
 
-func TestVersionFiveMigrationPreservesAuthoritativeInventory(t *testing.T) {
+func TestFailedExplicitRefreshPreservesVersionFiveInventory(t *testing.T) {
 	ctx := context.Background()
 	now := time.Date(2026, 9, 6, 12, 0, 0, 0, time.UTC)
 	store := NewStore(t.TempDir(), func() time.Time { return now })
@@ -84,17 +86,39 @@ func TestVersionFiveMigrationPreservesAuthoritativeInventory(t *testing.T) {
 	if err := db.Close(); err != nil {
 		t.Fatal(err)
 	}
-	got, err := store.ReadResources(ctx, ResourceQuery{Environment: "dev", Site: "site", Kind: "workbook", Limit: 1})
-	if err != nil || got.GenerationID != seed.GenerationID || len(got.Entries) != 1 || got.Entries[0].Name != "Old" {
-		t.Fatalf("migrated catalog: %#v %v", got, err)
+	_, err = store.ReadResources(ctx, ResourceQuery{Environment: "dev", Site: "site", Kind: "workbook", Limit: 1})
+	if err == nil || !strings.Contains(err.Error(), "tadx catalog refresh") {
+		t.Fatalf("read error=%v", err)
 	}
-	db, err = store.open(ctx)
+	writer, err := store.BeginRefreshGeneration(ctx, GenerationMetadata{Environment: "dev", Site: "site", GeneratedAt: now.Add(time.Minute), RequestedScopes: []string{"workbooks"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer writer.Rollback()
+	if _, err := writer.Publish(ctx); err == nil {
+		t.Fatal("incomplete rebuild published")
+	}
+	if err := writer.Rollback(); err != nil {
+		t.Fatal(err)
+	}
+	db, err = sql.Open("sqlite", filepath.Join(store.root, "catalog", "catalog.sqlite"))
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer db.Close()
 	var signature string
-	if err := db.QueryRowContext(ctx, `SELECT signature FROM catalog_schema`).Scan(&signature); err != nil || !strings.HasSuffix(signature, "v6") {
+	if err := db.QueryRowContext(ctx, `SELECT signature FROM catalog_schema`).Scan(&signature); err != nil || signature != "tadx-catalog-v5" {
 		t.Fatalf("signature = %s %v", signature, err)
+	}
+	var version, retained int
+	if err := db.QueryRowContext(ctx, `PRAGMA user_version`).Scan(&version); err != nil || version != 5 {
+		t.Fatalf("version=%d error=%v", version, err)
+	}
+	if err := db.QueryRowContext(ctx, `SELECT count(*) FROM resource_scope_snapshots WHERE generation_id=?`, seed.GenerationID).Scan(&retained); err != nil || retained != 1 {
+		t.Fatalf("retained generation=%d error=%v", retained, err)
+	}
+	var name string
+	if err := db.QueryRowContext(ctx, `SELECT name FROM resource_entries WHERE luid='old'`).Scan(&name); err != nil || name != "Old" {
+		t.Fatalf("old record=%q error=%v", name, err)
 	}
 }

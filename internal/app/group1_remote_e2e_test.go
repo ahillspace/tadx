@@ -39,7 +39,7 @@ func TestGroupOneProjectAndFlowReadsPullAndLineageThroughCLI(t *testing.T) {
 	}{
 		{
 			name: "project list uses the configured default read environment",
-			args: []string{"content", "project", "list", "--limit", "3"},
+			args: []string{"content", "project", "list", "--all"},
 			want: []string{"status: listed", "environment: production", "site: team-site", "project-ops", "details: \"--full\""},
 		},
 		{
@@ -133,7 +133,7 @@ func TestGroupOneLiveReadSucceedsWhenCatalogWriteThroughFails(t *testing.T) {
 		HTTPClient: server.Client(),
 		Now:        func() time.Time { return time.Date(2026, 9, 1, 12, 0, 0, 0, time.UTC) },
 	}
-	output := runGroupOneCLI(t, options, "content", "project", "list", "--limit", "3")
+	output := runGroupOneCLI(t, options, "content", "project", "list", "--all")
 	for _, want := range []string{"status: listed", "environment: production", "project-ops", "mode: tableau", "catalog_warning:", "catalog was not updated"} {
 		if !strings.Contains(output, want) {
 			t.Fatalf("live read did not survive a failed catalog write-through; output missing %q:\n%s", want, output)

@@ -123,8 +123,12 @@ jobs:
             exit 1
           }
 
-      - name: Test PowerShell installer
+      - name: Test PowerShell 7 installer
         shell: pwsh
+        run: ./scripts/tests/install_ps1_test.ps1
+
+      - name: Test Windows PowerShell 5.1 installer
+        shell: powershell
         run: ./scripts/tests/install_ps1_test.ps1
 
   cross-compile:

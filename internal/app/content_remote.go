@@ -97,20 +97,7 @@ func (c *remoteContentCommands) ListProjects(ctx context.Context, input projectl
 			resultErr = validateInventoryAll(input.All, result.Source)
 		}
 	}()
-	if input.Catalog {
-		environment, site, err := c.resolveCatalogTarget(input.Environment)
-		if err != nil {
-			return projectlist.Output{}, err
-		}
-		input.Environment, input.Site = environment, site
-		reader := &catalogProjectListReader{store: c.catalogStore(), environment: environment, site: site}
-		output, err := projectlist.New(reader).Execute(ctx, input)
-		if err == nil {
-			output.Source = reader.source
-		}
-		return output, err
-	}
-	if input.Cursor != "" && projectListIsUnfiltered(input) {
+	if input.Catalog || legacyInventorySnapshot(input.Cursor) {
 		environment, site, err := c.resolveCatalogTarget(input.Environment)
 		if err != nil {
 			return projectlist.Output{}, err
@@ -128,47 +115,39 @@ func (c *remoteContentCommands) ListProjects(ctx context.Context, input projectl
 		return projectlist.Output{}, remoteSetupError("project.list", input.Environment, input.Site, connection.environment, err)
 	}
 	input.Environment, input.Site = connection.environment.Alias, connection.environment.SiteContentURL
-	if projectListIsUnfiltered(input) {
+
+	if input.All {
+		filter, err := inventoryFilter(input)
+		if err != nil {
+			return projectlist.Output{}, err
+		}
 		observedAt := c.runtime.now().UTC()
-		inventory, err := collectResourceInventory(ctx, connection.inventory, c.catalogStore(), tableaucatalog.ScopeProjects, input.Environment, input.Site, observedAt)
+		inventory, err := collectResourceInventory(ctx, connection.inventory, c.catalogStore(), tableaucatalog.ScopeProjects, input.Environment, input.Site, observedAt, inventoryCollectionOptions{MaxConcurrency: connection.environment.CatalogMaxConcurrency, Filter: filter})
 		if err != nil {
 			return projectlist.Output{}, inventoryRefreshError("project.list", input.Environment, input.Site, err)
 		}
-		if inventory.catalogErr != nil {
-			reader := inventory.memoryReader()
-			reader.allowContinuation = input.All
-			output, err := projectlist.New(reader).Execute(ctx, input)
-			if err != nil {
-				return output, err
-			}
-			output.Source = inventory.warningSource(observedAt)
-			output.Help = append(output.Help, inventory.warningHelp())
-			return output, nil
-		}
-		reader := &catalogProjectListReader{store: c.catalogStore(), environment: input.Environment, site: input.Site}
+		reader := inventory.memoryReader()
+		reader.allowContinuation = true
 		output, err := projectlist.New(reader).Execute(ctx, input)
 		if err != nil {
 			return output, err
 		}
-		output.Source = liveInventorySource(observedAt, inventory.published.GenerationID)
+		if inventory.catalogErr != nil {
+			output.Source = inventory.warningSource(observedAt)
+			output.Help = append(output.Help, inventory.warningHelp())
+		} else if inventory.filtered {
+			output.Source = liveSource(c.runtime.now)
+		} else {
+			output.Source = liveInventorySource(observedAt, inventory.published.GenerationID)
+		}
 		output.RequestID = finalRequestID(inventory.requestIDs)
-		output.Help = append(output.Help, inventoryRefreshHelp)
 		return output, nil
 	}
 	output, err := projectlist.New(projectListReader{connection.projects}).Execute(ctx, input)
 	if err != nil {
 		return output, err
 	}
-	observedAt := c.runtime.now().UTC()
 	output.Source = liveSource(c.runtime.now)
-	entries := make([]catalog.ResourceEntry, 0, len(output.Projects))
-	for _, item := range output.Projects {
-		entry, encodeErr := resourceEntry(input.Environment, input.Site, "project", item.LUID, item.Name, "", item.OwnerLUID, "summary", observedAt, item)
-		if encodeErr == nil {
-			entries = append(entries, entry)
-		}
-	}
-	writeThrough(c.catalogStore(), entries)
 	return output, nil
 }
 
@@ -255,20 +234,7 @@ func (c *remoteContentCommands) ListFlows(ctx context.Context, input flowlist.In
 			resultErr = validateInventoryAll(input.All, result.Source)
 		}
 	}()
-	if input.Catalog {
-		environment, site, err := c.resolveCatalogTarget(input.Environment)
-		if err != nil {
-			return flowlist.Output{}, err
-		}
-		input.Environment, input.Site = environment, site
-		reader := &catalogFlowListReader{store: c.catalogStore(), environment: environment, site: site}
-		output, err := flowlist.New(reader).Execute(ctx, input)
-		if err == nil {
-			output.Source = reader.source
-		}
-		return output, err
-	}
-	if input.Cursor != "" && flowListIsUnfiltered(input) {
+	if input.Catalog || legacyInventorySnapshot(input.Cursor) {
 		environment, site, err := c.resolveCatalogTarget(input.Environment)
 		if err != nil {
 			return flowlist.Output{}, err
@@ -286,58 +252,39 @@ func (c *remoteContentCommands) ListFlows(ctx context.Context, input flowlist.In
 		return flowlist.Output{}, remoteSetupError("flow.list", input.Environment, input.Site, connection.environment, err)
 	}
 	input.Environment, input.Site = connection.environment.Alias, connection.environment.SiteContentURL
-	if flowListIsUnfiltered(input) {
+
+	if input.All {
+		filter, err := inventoryFilter(input)
+		if err != nil {
+			return flowlist.Output{}, err
+		}
 		observedAt := c.runtime.now().UTC()
-		inventory, err := collectResourceInventory(ctx, connection.inventory, c.catalogStore(), tableaucatalog.ScopeFlows, input.Environment, input.Site, observedAt)
+		inventory, err := collectResourceInventory(ctx, connection.inventory, c.catalogStore(), tableaucatalog.ScopeFlows, input.Environment, input.Site, observedAt, inventoryCollectionOptions{MaxConcurrency: connection.environment.CatalogMaxConcurrency, Filter: filter})
 		if err != nil {
 			return flowlist.Output{}, inventoryRefreshError("flow.list", input.Environment, input.Site, err)
 		}
-		if inventory.catalogErr != nil {
-			reader := inventory.memoryReader()
-			reader.allowContinuation = input.All
-			output, err := flowlist.New(reader).Execute(ctx, input)
-			if err != nil {
-				return output, err
-			}
-			output.Source = inventory.warningSource(observedAt)
-			output.Help = append(output.Help, inventory.warningHelp())
-			return output, nil
-		}
-		reader := &catalogFlowListReader{store: c.catalogStore(), environment: input.Environment, site: input.Site}
+		reader := inventory.memoryReader()
+		reader.allowContinuation = true
 		output, err := flowlist.New(reader).Execute(ctx, input)
 		if err != nil {
 			return output, err
 		}
-		output.Source = liveInventorySource(observedAt, inventory.published.GenerationID)
+		if inventory.catalogErr != nil {
+			output.Source = inventory.warningSource(observedAt)
+			output.Help = append(output.Help, inventory.warningHelp())
+		} else if inventory.filtered {
+			output.Source = liveSource(c.runtime.now)
+		} else {
+			output.Source = liveInventorySource(observedAt, inventory.published.GenerationID)
+		}
 		output.RequestID = finalRequestID(inventory.requestIDs)
-		output.Help = append(output.Help, inventoryRefreshHelp)
 		return output, nil
 	}
 	output, err := flowlist.New(flowListReader{connection.flows}).Execute(ctx, input)
 	if err != nil {
 		return output, err
 	}
-	observedAt := c.runtime.now().UTC()
 	output.Source = liveSource(c.runtime.now)
-	entries := make([]catalog.ResourceEntry, 0, len(output.Flows))
-	projectIDs := make([]string, len(output.Flows))
-	for index, item := range output.Flows {
-		projectIDs[index] = item.ProjectLUID
-	}
-	paths, pathErr := connection.projects.ResolveProjectPaths(ctx, projectIDs)
-	if pathErr != nil {
-		output.Help = append(output.Help, "Live list succeeded, but canonical project paths could not be confirmed; catalog records were not updated.")
-		return output, nil
-	}
-	for index := range output.Flows {
-		item := &output.Flows[index]
-		item.ProjectPath = paths[item.ProjectLUID]
-		entry, encodeErr := resourceEntry(input.Environment, input.Site, "flow", item.LUID, item.Name, item.ProjectPath, item.OwnerLUID, "summary", observedAt, item)
-		if encodeErr == nil {
-			entries = append(entries, entry)
-		}
-	}
-	writeThrough(c.catalogStore(), entries)
 	return output, nil
 }
 

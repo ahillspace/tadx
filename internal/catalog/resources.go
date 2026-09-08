@@ -28,10 +28,10 @@ func (s *Store) UpsertResources(ctx context.Context, entries []ResourceEntry) er
 		return err
 	}
 	defer tx.Rollback()
-	statement, err := tx.PrepareContext(ctx, `INSERT INTO resource_entries(environment,site,kind,luid,name,project_path,owner,payload,coverage,observed_at)
-		VALUES(?,?,?,?,?,?,?,?,?,?)
+	statement, err := tx.PrepareContext(ctx, `INSERT INTO resource_entries(environment,site,kind,luid,name,project_path,project_luid,owner,payload,coverage,observed_at)
+		VALUES(?,?,?,?,?,?,?,?,?,?,?)
 		ON CONFLICT(environment,site,kind,luid) DO UPDATE SET
-		name=excluded.name,project_path=excluded.project_path,owner=excluded.owner,
+		name=excluded.name,project_path=excluded.project_path,project_luid=excluded.project_luid,owner=excluded.owner,
 		payload=excluded.payload,coverage=excluded.coverage,observed_at=excluded.observed_at`)
 	if err != nil {
 		return err
@@ -53,7 +53,7 @@ func (s *Store) UpsertResources(ctx context.Context, entries []ResourceEntry) er
 		if entry.Payload == nil {
 			entry.Payload = []byte{}
 		}
-		if _, err := statement.ExecContext(ctx, entry.Environment, entry.Site, entry.Kind, entry.LUID, entry.Name, entry.ProjectPath, entry.Owner, entry.Payload, entry.Coverage, entry.ObservedAt.UTC().Format(generationTimeLayout)); err != nil {
+		if _, err := statement.ExecContext(ctx, entry.Environment, entry.Site, entry.Kind, entry.LUID, entry.Name, entry.ProjectPath, entry.ProjectLUID, entry.Owner, entry.Payload, entry.Coverage, entry.ObservedAt.UTC().Format(generationTimeLayout)); err != nil {
 			return fmt.Errorf("upsert catalog resource entry %d: %w", index, err)
 		}
 		touched[[3]string{entry.Environment, entry.Site, entry.Kind}] = struct{}{}
@@ -154,7 +154,7 @@ func (s *Store) ReadResources(ctx context.Context, query ResourceQuery) (Resourc
 	if !complete && total == 0 {
 		return ResourceResult{}, unavailableScopeError{resourceScope(query.Kind)}
 	}
-	rows, err := tx.QueryContext(ctx, `SELECT environment,site,kind,luid,name,project_path,owner,payload,coverage,observed_at FROM resource_entries `+where+` ORDER BY name,project_path,luid LIMIT ? OFFSET ?`, append(args, query.Limit, query.Offset)...)
+	rows, err := tx.QueryContext(ctx, `SELECT environment,site,kind,luid,name,project_path,project_luid,owner,payload,coverage,observed_at FROM resource_entries `+where+` ORDER BY name,project_path,luid LIMIT ? OFFSET ?`, append(args, query.Limit, query.Offset)...)
 	if err != nil {
 		return ResourceResult{}, err
 	}
@@ -175,7 +175,7 @@ func (s *Store) ReadResources(ctx context.Context, query ResourceQuery) (Resourc
 	for rows.Next() {
 		var entry ResourceEntry
 		var observed string
-		if err := rows.Scan(&entry.Environment, &entry.Site, &entry.Kind, &entry.LUID, &entry.Name, &entry.ProjectPath, &entry.Owner, &entry.Payload, &entry.Coverage, &observed); err != nil {
+		if err := rows.Scan(&entry.Environment, &entry.Site, &entry.Kind, &entry.LUID, &entry.Name, &entry.ProjectPath, &entry.ProjectLUID, &entry.Owner, &entry.Payload, &entry.Coverage, &observed); err != nil {
 			return ResourceResult{}, err
 		}
 		entry.ObservedAt, err = time.Parse(generationTimeLayout, observed)
@@ -187,11 +187,11 @@ func (s *Store) ReadResources(ctx context.Context, query ResourceQuery) (Resourc
 	if err := rows.Err(); err != nil {
 		return ResourceResult{}, err
 	}
-	if query.LUID != "" || query.Name != "" {
+	if query.ExactlyOne || query.LUID != "" || query.Name != "" {
 		if len(result.Entries) == 0 {
 			return ResourceResult{}, resourceNotFoundError{}
 		}
-		if len(result.Entries) > 1 {
+		if result.Total > 1 {
 			return ResourceResult{}, ambiguousSelectorError{}
 		}
 	}

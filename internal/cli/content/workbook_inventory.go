@@ -21,7 +21,7 @@ type WorkbookInspector interface {
 func newWorkbookList(lister WorkbookLister, renderer Renderer) *cobra.Command {
 	var input workbooklist.Input
 	command := &cobra.Command{
-		Use: "list", Short: "List workbooks and refresh their catalog snapshot.", Annotations: map[string]string{"tadx.capability": "workbook.list"}, Args: noContentArgs("workbook.list"),
+		Use: "list", Short: "List workbooks with bounded live reads or explicit --all.", Annotations: map[string]string{"tadx.capability": "workbook.list"}, Args: noContentArgs("workbook.list"),
 		RunE: func(command *cobra.Command, _ []string) error {
 			result, err := lister.ListWorkbooks(command.Context(), input)
 			if err != nil {

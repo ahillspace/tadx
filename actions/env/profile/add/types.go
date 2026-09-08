@@ -1,24 +1,26 @@
 package add
 
 type Input struct {
-	Alias            string `json:"alias"`
-	ServerURL        string `json:"server_url"`
-	SiteContentURL   string `json:"site_content_url,omitempty"`
-	APIVersion       string `json:"api_version,omitempty"`
-	PATNameEnv       string `json:"pat_name_env,omitempty"`
-	PATSecretEnv     string `json:"pat_secret_env,omitempty"`
-	DefaultWorkspace string `json:"default_workspace,omitempty"`
+	Alias                 string `json:"alias"`
+	ServerURL             string `json:"server_url"`
+	SiteContentURL        string `json:"site_content_url,omitempty"`
+	APIVersion            string `json:"api_version,omitempty"`
+	PATNameEnv            string `json:"pat_name_env,omitempty"`
+	PATSecretEnv          string `json:"pat_secret_env,omitempty"`
+	DefaultWorkspace      string `json:"default_workspace,omitempty"`
+	CatalogMaxConcurrency int    `json:"catalog_max_concurrency,omitempty"`
 }
 
 type Profile struct {
-	Alias            string `json:"alias"`
-	ServerURL        string `json:"server_url"`
-	SiteContentURL   string `json:"site_content_url,omitempty"`
-	APIVersion       string `json:"api_version,omitempty"`
-	AuthType         string `json:"auth_type"`
-	PATNameEnv       string `json:"pat_name_env"`
-	PATSecretEnv     string `json:"pat_secret_env"`
-	DefaultWorkspace string `json:"default_workspace,omitempty"`
+	Alias                 string `json:"alias"`
+	ServerURL             string `json:"server_url"`
+	SiteContentURL        string `json:"site_content_url,omitempty"`
+	APIVersion            string `json:"api_version,omitempty"`
+	AuthType              string `json:"auth_type"`
+	PATNameEnv            string `json:"pat_name_env"`
+	PATSecretEnv          string `json:"pat_secret_env"`
+	DefaultWorkspace      string `json:"default_workspace,omitempty"`
+	CatalogMaxConcurrency int    `json:"catalog_max_concurrency,omitempty"`
 }
 
 type Output struct {

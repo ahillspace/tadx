@@ -14,7 +14,10 @@ import (
 // adapt one traversal to resource-specific action types without another REST
 // pagination implementation.
 type InventorySnapshot struct {
-	Scope             Scope
+	Scope Scope
+	// Filter identifies the collected population. A filtered snapshot is not
+	// a complete unfiltered scope and must not replace an unfiltered cache.
+	Filter            string
 	Columns           []Column
 	Rows              [][]any
 	Dependencies      []InventoryTable
@@ -34,9 +37,15 @@ type InventoryTable struct {
 
 // InventoryOptions selects explicit tolerance for malformed inventory records.
 type InventoryOptions struct {
+	// Filter is a provider filter constructed by the resource adapter. It only
+	// applies to the selected root scope, never its prerequisite inventory.
+	Filter string
 	// SkipMalformedRecords excludes invalid records but retains strict XML,
 	// pagination, transport, and duplicate-identity validation.
 	SkipMalformedRecords bool
+	// MaxRows caps the selected root population before pagination fan-out.
+	// Zero retains the engine bound; prerequisite inventories are not capped.
+	MaxRows int
 }
 
 // CollectInventory traverses all requested and dependency pages, then returns
@@ -47,8 +56,31 @@ func (e *Engine) CollectInventory(ctx context.Context, scope Scope, options ...I
 		return InventorySnapshot{}, fmt.Errorf("catalog scope %q is not a resource inventory", scope)
 	}
 	writer := &inventoryWriter{rows: make(map[Scope][][]any)}
-	tolerateMalformed := len(options) > 0 && options[0].SkipMalformedRecords
-	result, err := e.run(ctx, RunRequest{RequestedScopes: []Scope{scope}}, writer, tolerateMalformed)
+	var selected InventoryOptions
+	if len(options) > 0 {
+		selected = options[0]
+	}
+	if selected.MaxRows < 0 || selected.MaxRows > maximumRowsPerScope {
+		return InventorySnapshot{}, fmt.Errorf("catalog inventory maximum rows must be between 1 and %d, or zero for the engine bound", maximumRowsPerScope)
+	}
+	var hierarchy *inventoryWriter
+	var hierarchyResult Result
+	var limiter *adaptiveLimiter
+	// A project excluded by the provider filter can still be the parent of a
+	// retained project. Preserve an unfiltered hierarchy for exact path mapping.
+	if scope == ScopeProjects && selected.Filter != "" {
+		if e == nil || e.executor == nil {
+			return InventorySnapshot{}, errors.New("catalog engine is not configured")
+		}
+		limiter = newAdaptiveLimiter(e.config.InitialConcurrency, e.config.MaxConcurrency)
+		hierarchy = &inventoryWriter{rows: make(map[Scope][][]any)}
+		var err error
+		hierarchyResult, err = e.run(ctx, RunRequest{RequestedScopes: []Scope{ScopeProjects}}, hierarchy, runOptions{limiter: limiter})
+		if err != nil {
+			return InventorySnapshot{}, err
+		}
+	}
+	result, err := e.run(ctx, RunRequest{RequestedScopes: []Scope{scope}}, writer, runOptions{tolerateMalformed: selected.SkipMalformedRecords, rootScope: scope, filter: selected.Filter, limiter: limiter, maxRows: selected.MaxRows})
 	if err != nil {
 		return InventorySnapshot{}, err
 	}
@@ -62,6 +94,21 @@ func (e *Engine) CollectInventory(ctx context.Context, scope Scope, options ...I
 		return InventorySnapshot{}, errors.New("catalog inventory row count changed while collecting")
 	}
 	dependencies := make([]InventoryTable, 0, len(result.ImplicitScopes))
+	if hierarchy != nil {
+		hierarchyRows := hierarchy.snapshot(ScopeProjects)
+		sortInventoryRows(hierarchyRows)
+		dependencies = append(dependencies, InventoryTable{Scope: ScopeProjects, Columns: columns, Rows: hierarchyRows})
+		result.Requests += hierarchyResult.Requests
+		ids := make(map[string]struct{})
+		for _, id := range append(result.TableauRequestIDs, hierarchyResult.TableauRequestIDs...) {
+			ids[id] = struct{}{}
+		}
+		result.TableauRequestIDs = make([]string, 0, len(ids))
+		for id := range ids {
+			result.TableauRequestIDs = append(result.TableauRequestIDs, id)
+		}
+		sort.Strings(result.TableauRequestIDs)
+	}
 	for _, dependencyScope := range result.ImplicitScopes {
 		dependencyColumns, ok := ColumnsForScope(dependencyScope)
 		if !ok {
@@ -76,6 +123,7 @@ func (e *Engine) CollectInventory(ctx context.Context, scope Scope, options ...I
 	}
 	return InventorySnapshot{
 		Scope:             scope,
+		Filter:            selected.Filter,
 		Columns:           columns,
 		Rows:              rows,
 		Dependencies:      dependencies,

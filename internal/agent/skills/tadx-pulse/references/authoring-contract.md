@@ -86,7 +86,8 @@ tadx pulse metric inspect --environment '<alias>' --id '<default-metric-luid>' -
 
 Compare saved settings, definition linkage, complete population, and actual period.
 The minimum-granularity flag does not determine the default metric's reporting period.
-Use the variants route for a requested period or population, and the analytics route to verify actual numbers.
+Use the variants route for a requested period or population.
+The configuration-context reference explains what these saved settings establish; actual numbers require separate data evidence.
 Do not follow an unfiltered default when the user requested a filtered variant.
 For batches, verify a representative before scaling and separately verify different semantic families.
 Keep successful work if another candidate fails.

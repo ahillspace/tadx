@@ -118,7 +118,6 @@ Create one site group with explicit supported settings, or preview the operation
 - Surface: tadx admin group create
 - Operation type: change
 - Owner: cli
-- MCP overlap: None
 - Selectors: Explicit site; group name
 - Products and availability: Cloud / Server; directory/import fields vary
 - Product disposition: ship
@@ -144,7 +143,6 @@ Delete one exact group without deleting its users, or preview the operation.
 - Surface: tadx admin group delete
 - Operation type: change
 - Owner: cli
-- MCP overlap: None
 - Selectors: Group LUID
 - Products and availability: Cloud / Server
 - Product disposition: ship
@@ -170,7 +168,6 @@ Inspect one exact group and, when requested, its direct membership.
 - Surface: tadx admin group inspect
 - Operation type: inspect
 - Owner: cli
-- MCP overlap: None
 - Selectors: Group LUID or exact name
 - Products and availability: Cloud / Server
 - Product disposition: ship
@@ -191,13 +188,12 @@ Inspect one exact group and, when requested, its direct membership.
 
 ### `admin.group.list`
 
-Inventory all live groups and render a bounded page, or run an explicitly filtered bounded query.
+List a bounded live selection of groups, or explicitly collect the selected inventory with --all.
 
 - Surface: tadx admin group list
 - Operation type: find
 - Owner: cli
-- MCP overlap: None
-- Selectors: Environment/site; optional group filters; --limit 1..100 (default 25) or --all; internal snapshot continuation; optional --catalog
+- Selectors: Environment/site; optional group filters; --limit 1..100 (default 25) or --all; optional --catalog
 - Products and availability: Cloud / Server
 - Product disposition: ship
 - Evidence level: contract-verified
@@ -207,11 +203,11 @@ Inventory all live groups and render a bounded page, or run an explicitly filter
 - Remote mutation: No
 - Supports `--preview`: No
 - Raw capable: No
-- Safety and guard: An unfiltered live list atomically refreshes the complete group catalog scope before rendering; --limit bounds output only; internal continuation reads that snapshot; filtered lists are bounded live queries with partial cache updates; --catalog is local-only; --all returns the selected inventory within a 10000-record bound and rejects incomplete coverage; --full changes presentation only
-- Artifact effect: Update catalog scope
-- Upstream operation: Catalog traversal over GET /api/{version}/sites/{site-id}/groups; filtered direct REST query; SQLite scope snapshot
-- Evidence: docs/evidence/group2-inventory-rest-contract.md; docs/evidence/admin-rest-contract.md; hermetic inventory, snapshot, and source-selection tests
-- Validation or blocker: Contract-verified complete scoped inventory, bounded rendering, snapshot continuation, filtered partial caching, and explicit local catalog selection
+- Safety and guard: Ordinary live lists use bounded provider reads without SQLite access; --all collects through the shared inventory collector and renders in memory; complete unfiltered collections atomically replace the resource catalog scope on a best-effort basis; filtered collections save selected observations; catalog write failure preserves the live answer with a warning; --catalog is local-only; --all rejects incomplete coverage and results beyond 10000 records; --full changes presentation only
+- Artifact effect: Best-effort catalog update only with live --all
+- Upstream operation: GET /api/{version}/sites/{site-id}/groups; shared inventory collection for --all; SQLite only for explicit catalog reads or best-effort --all persistence
+- Evidence: docs/evidence/group2-inventory-rest-contract.md; docs/evidence/admin-rest-contract.md; hermetic bounded-read, complete-collection, and source-selection tests
+- Validation or blocker: Contract-verified bounded live reads without catalog access, shared complete collection, truthful coverage, best-effort persistence, and explicit local catalog selection
 - Blocker ID: None
 - Command binding: `tadx admin group list`
 
@@ -222,7 +218,6 @@ Add one exact user to one exact group without replacing other members, or previe
 - Surface: tadx admin group member add
 - Operation type: change
 - Owner: cli
-- MCP overlap: None
 - Selectors: Exact group LUID and user LUID; explicit environment/site
 - Products and availability: Cloud / Server
 - Product disposition: ship
@@ -248,7 +243,6 @@ Remove one exact user from one exact group without replacing other members, or p
 - Surface: tadx admin group member remove
 - Operation type: change
 - Owner: cli
-- MCP overlap: None
 - Selectors: Exact group LUID and user LUID; explicit environment/site
 - Products and availability: Cloud / Server
 - Product disposition: ship
@@ -274,7 +268,6 @@ Update group attributes or converge direct membership, or preview the operation.
 - Surface: tadx admin group update
 - Operation type: change
 - Owner: cli
-- MCP overlap: None
 - Selectors: Group LUID; exact user LUIDs
 - Products and availability: Cloud / Server
 - Product disposition: ship
@@ -300,7 +293,6 @@ Add one explicit permission capability and mode for an exact principal, or previ
 - Surface: tadx admin permission create
 - Operation type: change
 - Owner: cli
-- MCP overlap: None
 - Selectors: Resource kind/LUID, principal type/LUID, capability, mode; optional project default kind
 - Products and availability: Cloud / Server
 - Product disposition: ship
@@ -326,7 +318,6 @@ Delete one explicit permission capability and mode for an exact principal, or pr
 - Surface: tadx admin permission delete
 - Operation type: change
 - Owner: cli
-- MCP overlap: None
 - Selectors: Resource kind/LUID, principal type/LUID, capability, mode; optional project default kind
 - Products and availability: Cloud / Server
 - Product disposition: ship
@@ -352,7 +343,6 @@ Inspect explicit/default permission rules for one supported resource.
 - Surface: tadx admin permission inspect
 - Operation type: inspect
 - Owner: cli
-- MCP overlap: None
 - Selectors: Resource kind plus exact LUID; optional principal/capability filters
 - Products and availability: Cloud / Server
 - Product disposition: ship
@@ -378,7 +368,6 @@ Add one user to a site with explicit role/auth settings, or preview the operatio
 - Surface: tadx admin user create
 - Operation type: change
 - Owner: cli
-- MCP overlap: None
 - Selectors: Explicit site; username
 - Products and availability: Cloud / Server; fields vary by product/version
 - Product disposition: ship
@@ -404,7 +393,6 @@ Remove one exact user from a site without hidden ownership reassignment, or prev
 - Surface: tadx admin user delete
 - Operation type: change
 - Owner: cli
-- MCP overlap: None
 - Selectors: User LUID
 - Products and availability: Cloud / Server
 - Product disposition: ship
@@ -430,7 +418,6 @@ Inspect one exact site user.
 - Surface: tadx admin user inspect
 - Operation type: inspect
 - Owner: cli
-- MCP overlap: list-users
 - Selectors: User LUID or exact username/email where supported
 - Products and availability: Cloud / Server
 - Product disposition: ship
@@ -451,13 +438,12 @@ Inspect one exact site user.
 
 ### `admin.user.list`
 
-Inventory all live site users and render a bounded page, or run an explicitly filtered bounded query.
+List a bounded live selection of site users, or explicitly collect the selected inventory with --all.
 
 - Surface: tadx admin user list
 - Operation type: find
 - Owner: cli
-- MCP overlap: list-users
-- Selectors: Environment/site; optional user filters; --limit 1..100 (default 25) or --all; internal snapshot continuation; optional --catalog
+- Selectors: Environment/site; optional user filters; --limit 1..100 (default 25) or --all; optional --catalog
 - Products and availability: Cloud / Server
 - Product disposition: ship
 - Evidence level: contract-verified
@@ -467,11 +453,11 @@ Inventory all live site users and render a bounded page, or run an explicitly fi
 - Remote mutation: No
 - Supports `--preview`: No
 - Raw capable: No
-- Safety and guard: An unfiltered live list atomically refreshes the complete user catalog scope before rendering; --limit bounds output only; internal continuation reads that snapshot; filtered lists are bounded live queries with partial cache updates; --catalog is local-only; secret-free; --all returns the selected inventory within a 10000-record bound and rejects incomplete coverage; --full changes presentation only
-- Artifact effect: Update catalog scope
-- Upstream operation: Catalog traversal over GET /api/{version}/sites/{site-id}/users; filtered direct REST query; SQLite scope snapshot
-- Evidence: docs/evidence/group2-inventory-rest-contract.md; docs/evidence/admin-rest-contract.md; hermetic inventory, snapshot, and source-selection tests
-- Validation or blocker: Contract-verified complete scoped inventory, bounded rendering, snapshot continuation, filtered partial caching, and explicit local catalog selection
+- Safety and guard: Ordinary live lists use bounded provider reads without SQLite access; --all collects through the shared inventory collector and renders in memory; complete unfiltered collections atomically replace the resource catalog scope on a best-effort basis; filtered collections save selected observations; catalog write failure preserves the live answer with a warning; --catalog is local-only; --all rejects incomplete coverage and results beyond 10000 records; --full changes presentation only
+- Artifact effect: Best-effort catalog update only with live --all
+- Upstream operation: GET /api/{version}/sites/{site-id}/users; shared inventory collection for --all; SQLite only for explicit catalog reads or best-effort --all persistence
+- Evidence: docs/evidence/group2-inventory-rest-contract.md; docs/evidence/admin-rest-contract.md; hermetic bounded-read, complete-collection, and source-selection tests
+- Validation or blocker: Contract-verified bounded live reads without catalog access, shared complete collection, truthful coverage, best-effort persistence, and explicit local catalog selection
 - Blocker ID: None
 - Command binding: `tadx admin user list`
 
@@ -482,7 +468,6 @@ Update supported attributes of one exact user, or preview the operation.
 - Surface: tadx admin user update
 - Operation type: change
 - Owner: cli
-- MCP overlap: update-user
 - Selectors: User LUID
 - Products and availability: Cloud / Server; fields vary
 - Product disposition: ship
@@ -508,7 +493,6 @@ Install the bundled TADX Guidance packages into the selected agent's global skil
 - Surface: tadx agent install
 - Operation type: change
 - Owner: cli
-- MCP overlap: None
 - Selectors: Required target: claude, codex, or cursor
 - Products and availability: Local / all
 - Product disposition: ship
@@ -534,7 +518,6 @@ Remove TADX Guidance packages from one selected agent target.
 - Surface: tadx agent uninstall
 - Operation type: change
 - Owner: cli
-- MCP overlap: None
 - Selectors: Required target: claude, codex, or cursor
 - Products and availability: Local / all
 - Product disposition: ship
@@ -560,7 +543,6 @@ Resolve a complete PAT pair, sign in, and verify the selected Tableau site.
 - Surface: tadx auth check
 - Operation type: inspect
 - Owner: cli
-- MCP overlap: None
 - Selectors: Environment alias; site content URL
 - Products and availability: Cloud / Server
 - Product disposition: ship
@@ -586,7 +568,6 @@ Interactively validate a PAT and store it in the native OS credential store for 
 - Surface: tadx auth login
 - Operation type: change
 - Owner: cli
-- MCP overlap: None
 - Selectors: Required environment alias; interactive terminal
 - Products and availability: Local plus Cloud / Server validation
 - Product disposition: ship
@@ -612,7 +593,6 @@ Remove TADX's stored PAT for one environment without revoking the PAT in Tableau
 - Surface: tadx auth logout
 - Operation type: change
 - Owner: cli
-- MCP overlap: None
 - Selectors: Required environment alias
 - Products and availability: Local / all
 - Product disposition: ship
@@ -638,7 +618,6 @@ Report resolved auth configuration and selected credential source without reveal
 - Surface: tadx auth status
 - Operation type: inspect
 - Owner: cli
-- MCP overlap: None
 - Selectors: Optional environment alias
 - Products and availability: Local / all
 - Product disposition: ship
@@ -664,7 +643,6 @@ Return focused execution, ownership, selector, safety, and availability guidance
 - Surface: tadx capability get <id>
 - Operation type: inspect
 - Owner: cli
-- MCP overlap: None
 - Selectors: Stable capability ID
 - Products and availability: Local / all
 - Product disposition: ship
@@ -690,7 +668,6 @@ Return a bounded inventory of discoverable operations, ownership, and execution 
 - Surface: tadx capability list
 - Operation type: find
 - Owner: cli
-- MCP overlap: None
 - Selectors: Domain/resource/owner/product/mutation filters
 - Products and availability: Local / all
 - Product disposition: ship
@@ -711,13 +688,12 @@ Return a bounded inventory of discoverable operations, ownership, and execution 
 
 ### `catalog.refresh`
 
-Hydrate and replace one normalized site inventory generation.
+Collect selected inventory scopes and atomically replace one normalized catalog generation.
 
 - Surface: tadx catalog refresh
 - Operation type: inspect
 - Owner: cli
-- MCP overlap: None
-- Selectors: Environment/site; admitted scopes
+- Selectors: Environment/site; admitted --scope values; default inventory scopes exclude permissions; permissions is explicit
 - Products and availability: Cloud / Server
 - Product disposition: ship
 - Evidence level: contract-verified
@@ -727,11 +703,11 @@ Hydrate and replace one normalized site inventory generation.
 - Remote mutation: No
 - Supports `--preview`: No
 - Raw capable: No
-- Safety and guard: Inventory page failures preserve the prior generation; item-level permission 403s publish useful inventory with explicit incomplete permission coverage
+- Safety and guard: Inventory failures preserve the prior generation; selected permission 403s preserve useful inventory with explicit incomplete permission coverage; environment catalog_max_concurrency defaults to 32 and accepts 1..256; starts at min(4, maximum) and ramps gradually; rate-limited reads share one run cooldown; explicit refresh transactionally rebuilds recognized older catalog schemas
 - Artifact effect: None
-- Upstream operation: Admitted REST list and permissions endpoints
+- Upstream operation: Admitted REST inventory endpoints; bulk workbook permission reads only with explicit permissions scope; transactional SQLite publication
 - Evidence: docs/evidence/group2-inventory-rest-contract.md
-- Validation or blocker: Contract-verified eight-scope concurrent hydration and transactional SQLite publication
+- Validation or blocker: Contract-verified inventory-only defaults, opt-in bulk permissions, adaptive concurrent collection, and atomic catalog publication
 - Blocker ID: None
 - Command binding: `tadx catalog refresh`
 
@@ -742,7 +718,6 @@ Report generation age, completeness, source, and stale state.
 - Surface: tadx catalog status
 - Operation type: inspect
 - Owner: cli
-- MCP overlap: None
 - Selectors: Optional environment/site
 - Products and availability: Local / all
 - Product disposition: ship
@@ -753,7 +728,7 @@ Report generation age, completeness, source, and stale state.
 - Remote mutation: No
 - Supports `--preview`: No
 - Raw capable: No
-- Safety and guard: Uninitialized before first refresh; scope completeness remains explicit; 12-hour stale warning
+- Safety and guard: Uninitialized before first refresh; scope completeness remains explicit; 12-hour stale warning; older catalog schema requires explicit catalog refresh; status never rebuilds the cache
 - Artifact effect: None
 - Upstream operation: Local catalog generation metadata
 - Evidence: A1 §§5.9, 12.8; C1 §2.1
@@ -765,12 +740,11 @@ Report generation age, completeness, source, and stale state.
 
 Retrieve rendered data from one custom view.
 
-- Surface: Tableau MCP get-custom-view-data
+- Surface: Outside TADX CLI
 - Operation type: inspect
 - Owner: tableau-mcp
-- MCP overlap: get-custom-view-data
-- Selectors: Exact custom-view LUID and bounded filters
-- Products and availability: Cloud / Server with Tableau MCP availability
+- Selectors: No TADX selectors
+- Products and availability: Cloud / Server
 - Product disposition: delegated
 - Evidence level: architecture-locked
 - Verification readiness: ready
@@ -779,11 +753,11 @@ Retrieve rendered data from one custom view.
 - Remote mutation: No
 - Supports `--preview`: No
 - Raw capable: No
-- Safety and guard: The host agent selects and connects Tableau MCP; TADX does not inspect that connection
+- Safety and guard: No executable TADX operation; this contract does not prescribe external tooling
 - Artifact effect: None
-- Upstream operation: Tableau MCP get-custom-view-data
-- Evidence: docs/evidence/tableau-mcp-delegation.md
-- Validation or blocker: Delegated; not executed or proxied by TADX
+- Upstream operation: Outside TADX CLI
+- Evidence: Maintainer-defined TADX CLI scope
+- Validation or blocker: Delegated; no TADX command, execution, or proxy
 - Blocker ID: None
 - Command binding: None
 
@@ -791,12 +765,11 @@ Retrieve rendered data from one custom view.
 
 Retrieve a rendered image from one custom view.
 
-- Surface: Tableau MCP get-custom-view-image
+- Surface: Outside TADX CLI
 - Operation type: inspect
 - Owner: tableau-mcp
-- MCP overlap: get-custom-view-image
-- Selectors: Exact custom-view LUID and bounded render options
-- Products and availability: Cloud / Server with Tableau MCP availability
+- Selectors: No TADX selectors
+- Products and availability: Cloud / Server
 - Product disposition: delegated
 - Evidence level: architecture-locked
 - Verification readiness: ready
@@ -805,11 +778,11 @@ Retrieve a rendered image from one custom view.
 - Remote mutation: No
 - Supports `--preview`: No
 - Raw capable: No
-- Safety and guard: The host agent selects and connects Tableau MCP; TADX does not inspect that connection
+- Safety and guard: No executable TADX operation; this contract does not prescribe external tooling
 - Artifact effect: None
-- Upstream operation: Tableau MCP get-custom-view-image
-- Evidence: docs/evidence/tableau-mcp-delegation.md
-- Validation or blocker: Delegated; not executed or proxied by TADX
+- Upstream operation: Outside TADX CLI
+- Evidence: Maintainer-defined TADX CLI scope
+- Validation or blocker: Delegated; no TADX command, execution, or proxy
 - Blocker ID: None
 - Command binding: None
 
@@ -817,12 +790,11 @@ Retrieve a rendered image from one custom view.
 
 List saved custom views for analytical read workflows.
 
-- Surface: Tableau MCP list-custom-views
+- Surface: Outside TADX CLI
 - Operation type: find
 - Owner: tableau-mcp
-- MCP overlap: list-custom-views
-- Selectors: Workbook, owner, and name filters
-- Products and availability: Cloud / Server with Tableau MCP availability
+- Selectors: No TADX selectors
+- Products and availability: Cloud / Server
 - Product disposition: delegated
 - Evidence level: architecture-locked
 - Verification readiness: ready
@@ -831,11 +803,11 @@ List saved custom views for analytical read workflows.
 - Remote mutation: No
 - Supports `--preview`: No
 - Raw capable: No
-- Safety and guard: The host agent selects and connects Tableau MCP; TADX does not inspect that connection
+- Safety and guard: No executable TADX operation; this contract does not prescribe external tooling
 - Artifact effect: None
-- Upstream operation: Tableau MCP list-custom-views
-- Evidence: docs/evidence/tableau-mcp-delegation.md
-- Validation or blocker: Delegated; not executed or proxied by TADX
+- Upstream operation: Outside TADX CLI
+- Evidence: Maintainer-defined TADX CLI scope
+- Validation or blocker: Delegated; no TADX command, execution, or proxy
 - Blocker ID: None
 - Command binding: None
 
@@ -846,7 +818,6 @@ Delete one exact remote datasource, or preview the operation.
 - Surface: tadx content datasource delete
 - Operation type: change
 - Owner: cli
-- MCP overlap: None
 - Selectors: Datasource LUID or exact name/project path; explicit environment/site
 - Products and availability: Cloud / Server
 - Product disposition: ship
@@ -869,11 +840,10 @@ Delete one exact remote datasource, or preview the operation.
 
 Generate or revise field-description text using metadata and optional sampled statistics.
 
-- Surface: Agent reasoning or an explicitly shipped skill; no TADX CLI command
+- Surface: Outside TADX CLI
 - Operation type: change
 - Owner: agent/skill
-- MCP overlap: get-datasource-metadata; query-datasource as needed
-- Selectors: Datasource and selected fields
+- Selectors: No TADX selectors
 - Products and availability: Cloud / Server
 - Product disposition: delegated
 - Evidence level: architecture-locked
@@ -883,11 +853,11 @@ Generate or revise field-description text using metadata and optional sampled st
 - Remote mutation: No
 - Supports `--preview`: No
 - Raw capable: No
-- Safety and guard: Human or agent review before using the text outside TADX
+- Safety and guard: No executable TADX operation; this contract does not prescribe external tooling
 - Artifact effect: Optional update
-- Upstream operation: Procedure composed from MCP reads
-- Evidence: A1 §§3.1, 4.4, 8.4, 11.4; C1 §2.4
-- Validation or blocker: Delegated reasoning; remote field-description updates are deferred
+- Upstream operation: Outside TADX CLI
+- Evidence: Maintainer-defined TADX CLI scope
+- Validation or blocker: Delegated; no TADX command, execution, or proxy
 - Blocker ID: None
 - Command binding: None
 
@@ -898,7 +868,6 @@ Inspect one datasource, with bounded field/model/composition detail when request
 - Surface: tadx content datasource inspect
 - Operation type: inspect
 - Owner: cli
-- MCP overlap: list-datasources; get-datasource-metadata
 - Selectors: Datasource LUID or exact name/project path; bounded detail options
 - Products and availability: Cloud / Server; VDS metadata/model Server 2025.1+ per C1
 - Product disposition: ship
@@ -919,13 +888,12 @@ Inspect one datasource, with bounded field/model/composition detail when request
 
 ### `datasource.list`
 
-Inventory all live published datasources and render a bounded page, or run an explicitly filtered bounded query.
+List a bounded live selection of published datasources, or explicitly collect the selected inventory with --all.
 
 - Surface: tadx content datasource list
 - Operation type: find
 - Owner: cli
-- MCP overlap: list-datasources
-- Selectors: Environment/site; optional project/owner/name/type/tag/time filters; --limit 1..100 (default 25) or --all; internal snapshot continuation; optional --catalog
+- Selectors: Environment/site; optional project/owner/name/type/tag/time filters; --limit 1..100 (default 25) or --all; optional --catalog
 - Products and availability: Cloud / Server
 - Product disposition: ship
 - Evidence level: contract-verified
@@ -935,11 +903,11 @@ Inventory all live published datasources and render a bounded page, or run an ex
 - Remote mutation: No
 - Supports `--preview`: No
 - Raw capable: No
-- Safety and guard: An unfiltered live list atomically refreshes the complete datasource catalog scope before rendering; --limit bounds output only; internal continuation reads that snapshot; filtered lists are bounded live queries with partial cache updates; --catalog is local-only; --all returns the selected inventory within a 10000-record bound and rejects incomplete coverage; --full changes presentation only
-- Artifact effect: Update catalog scope
-- Upstream operation: Catalog traversal over GET /api/{version}/sites/{site-id}/datasources; filtered direct REST query; SQLite scope snapshot
-- Evidence: docs/evidence/group2-inventory-rest-contract.md; hermetic inventory, snapshot, and source-selection tests
-- Validation or blocker: Contract-verified complete scoped inventory, bounded rendering, snapshot continuation, filtered partial caching, and explicit local catalog selection
+- Safety and guard: Ordinary live lists use bounded provider reads without SQLite access; --all collects through the shared inventory collector and renders in memory; complete unfiltered collections atomically replace the resource catalog scope on a best-effort basis; filtered collections save selected observations; catalog write failure preserves the live answer with a warning; --catalog is local-only; --all rejects incomplete coverage and results beyond 10000 records; --full changes presentation only; cached project-name filtering uses indexed canonical project LUIDs and complete project coverage
+- Artifact effect: Best-effort catalog update only with live --all
+- Upstream operation: GET /api/{version}/sites/{site-id}/datasources; shared inventory collection for --all; SQLite only for explicit catalog reads or best-effort --all persistence
+- Evidence: docs/evidence/group2-inventory-rest-contract.md; hermetic bounded-read, complete-collection, and source-selection tests
+- Validation or blocker: Contract-verified bounded live reads without catalog access, shared complete collection, truthful coverage, best-effort persistence, and explicit local catalog selection
 - Blocker ID: None
 - Command binding: `tadx content datasource list`
 
@@ -947,12 +915,11 @@ Inventory all live published datasources and render a bounded page, or run an ex
 
 Retrieve analytical field and datasource metadata for reasoning and query construction.
 
-- Surface: Tableau MCP get-datasource-metadata
+- Surface: Outside TADX CLI
 - Operation type: inspect
 - Owner: tableau-mcp
-- MCP overlap: get-datasource-metadata
-- Selectors: Published datasource LUID
-- Products and availability: Cloud / Server with Tableau MCP availability
+- Selectors: No TADX selectors
+- Products and availability: Cloud / Server
 - Product disposition: delegated
 - Evidence level: architecture-locked
 - Verification readiness: ready
@@ -961,11 +928,11 @@ Retrieve analytical field and datasource metadata for reasoning and query constr
 - Remote mutation: No
 - Supports `--preview`: No
 - Raw capable: No
-- Safety and guard: The host agent selects and connects Tableau MCP; TADX does not inspect that connection
+- Safety and guard: No executable TADX operation; this contract does not prescribe external tooling
 - Artifact effect: None
-- Upstream operation: Tableau MCP get-datasource-metadata
-- Evidence: docs/evidence/tableau-mcp-delegation.md
-- Validation or blocker: Delegated; not executed or proxied by TADX
+- Upstream operation: Outside TADX CLI
+- Evidence: Maintainer-defined TADX CLI scope
+- Validation or blocker: Delegated; no TADX command, execution, or proxy
 - Blocker ID: None
 - Command binding: None
 
@@ -976,7 +943,6 @@ Move one exact published datasource to one exact project on the same site, or pr
 - Surface: tadx content datasource move
 - Operation type: change
 - Owner: cli
-- MCP overlap: None
 - Selectors: Datasource LUID or exact name/project path; exact destination project LUID/path; explicit environment/site
 - Products and availability: Cloud / Server
 - Product disposition: ship
@@ -1002,7 +968,6 @@ Publish one local datasource, or up to 100 repeated managed datasource artifacts
 - Surface: tadx content datasource publish
 - Operation type: deliver
 - Owner: cli
-- MCP overlap: None
 - Selectors: Logical workspace plus one or more exact workspace-relative managed datasource directories; target defaults to artifact source, explicit environment/site/project overrides; optional exact existing datasource; immediate parents for composed artifacts
 - Products and availability: Cloud / Server; composed path API 3.29 / Tableau 2026.2 per C1
 - Product disposition: ship
@@ -1028,7 +993,6 @@ Download one datasource, or up to 100 repeated authoritative datasource LUIDs se
 - Surface: tadx content datasource pull
 - Operation type: deliver
 - Owner: cli
-- MCP overlap: None
 - Selectors: Datasource LUID/exact path; repeatable datasource LUID for batches; logical workspace
 - Products and availability: Cloud / Server; composed round-trip requires Tableau 2026.2 behavior per C1
 - Product disposition: ship
@@ -1051,12 +1015,11 @@ Download one datasource, or up to 100 repeated authoritative datasource LUIDs se
 
 Run analytical queries against datasource data.
 
-- Surface: Tableau MCP query-datasource
+- Surface: Outside TADX CLI
 - Operation type: inspect
 - Owner: tableau-mcp
-- MCP overlap: query-datasource
-- Selectors: Datasource and query identity
-- Products and availability: Cloud / Server with Tableau MCP availability
+- Selectors: No TADX selectors
+- Products and availability: Cloud / Server
 - Product disposition: delegated
 - Evidence level: architecture-locked
 - Verification readiness: ready
@@ -1065,11 +1028,11 @@ Run analytical queries against datasource data.
 - Remote mutation: No
 - Supports `--preview`: No
 - Raw capable: No
-- Safety and guard: The host agent selects and connects Tableau MCP; TADX does not inspect that connection
+- Safety and guard: No executable TADX operation; this contract does not prescribe external tooling
 - Artifact effect: None
-- Upstream operation: Tableau MCP query-datasource
-- Evidence: docs/evidence/tableau-mcp-delegation.md
-- Validation or blocker: Delegated; not executed or proxied by TADX
+- Upstream operation: Outside TADX CLI
+- Evidence: Maintainer-defined TADX CLI scope
+- Validation or blocker: Delegated; no TADX command, execution, or proxy
 - Blocker ID: None
 - Command binding: None
 
@@ -1080,7 +1043,6 @@ Inspect one datasource's logical tables and search a bounded field projection.
 - Surface: tadx content datasource schema
 - Operation type: inspect
 - Owner: cli
-- MCP overlap: get-datasource-metadata
 - Selectors: Authoritative datasource LUID; optional field text, role, table, and raw field ID filters; bounded --limit or explicit --all
 - Products and availability: Cloud / Server with VDS or Metadata API access
 - Product disposition: ship
@@ -1106,7 +1068,6 @@ Rename one exact published datasource or replace its owner, or preview the opera
 - Surface: tadx content datasource update
 - Operation type: change
 - Owner: cli
-- MCP overlap: None
 - Selectors: Datasource LUID or exact name/project path; explicit new name and/or owner LUID; explicit environment/site
 - Products and availability: Cloud / Server
 - Product disposition: ship
@@ -1132,7 +1093,6 @@ Diagnose config, PAT presence and validity, Tableau connectivity, catalog, works
 - Surface: tadx doctor
 - Operation type: inspect
 - Owner: cli
-- MCP overlap: None
 - Selectors: Optional environment/workspace scopes
 - Products and availability: Cloud / Server / Pulse as configured
 - Product disposition: ship
@@ -1143,11 +1103,11 @@ Diagnose config, PAT presence and validity, Tableau connectivity, catalog, works
 - Remote mutation: No
 - Supports `--preview`: No
 - Raw capable: No
-- Safety and guard: Redacted checks; never probes or reports Tableau MCP connectivity; no persistent logging unless TADX_LOG_LEVEL is set
+- Safety and guard: Redacted checks; no external-tool connection checks; no persistent logging unless TADX_LOG_LEVEL is set
 - Artifact effect: None
 - Upstream operation: Local validators plus read-only Tableau auth and connectivity probes
-- Evidence: A1 §§1.5, 5.12, 7.7, 9.1; maintainer MCP ownership decision
-- Validation or blocker: Architecture-locked; the user and host agent own Tableau MCP connection state
+- Evidence: A1 §§5.12, 7.7, 9.1; maintainer-defined CLI diagnostic scope
+- Validation or blocker: Architecture-locked; diagnostics cover TADX configuration, local state, and Tableau connectivity
 - Blocker ID: None
 - Command binding: `tadx doctor`
 
@@ -1158,8 +1118,7 @@ Add one named environment profile containing secret references, not secret value
 - Surface: tadx env add
 - Operation type: change
 - Owner: cli
-- MCP overlap: None
-- Selectors: New environment alias
+- Selectors: New environment alias; optional --catalog-max-concurrency 1..256
 - Products and availability: Local / all
 - Product disposition: ship
 - Evidence level: local-contract
@@ -1169,7 +1128,7 @@ Add one named environment profile containing secret references, not secret value
 - Remote mutation: No
 - Supports `--preview`: No
 - Raw capable: No
-- Safety and guard: Schema validation; collision guard; atomic file replacement
+- Safety and guard: Schema validation; collision guard; atomic file replacement; omitted catalog concurrency uses 32
 - Artifact effect: None
 - Upstream operation: Write local config.yaml
 - Evidence: A1 §§7.2–7.4, ADR-010; C1 §2.1
@@ -1179,12 +1138,11 @@ Add one named environment profile containing secret references, not secret value
 
 ### `env.profile.get`
 
-Inspect one resolved non-secret environment profile.
+Inspect one resolved non-secret environment profile, including its catalog concurrency setting.
 
 - Surface: tadx env get
 - Operation type: inspect
 - Owner: cli
-- MCP overlap: None
 - Selectors: Environment alias
 - Products and availability: Local / all
 - Product disposition: ship
@@ -1210,7 +1168,6 @@ List named non-secret environment profiles.
 - Surface: tadx env list
 - Operation type: find
 - Owner: cli
-- MCP overlap: None
 - Selectors: Optional config path
 - Products and availability: Local / all
 - Product disposition: ship
@@ -1236,7 +1193,6 @@ Remove one named environment profile.
 - Surface: tadx env remove
 - Operation type: change
 - Owner: cli
-- MCP overlap: None
 - Selectors: Environment alias
 - Products and availability: Local / all
 - Product disposition: ship
@@ -1262,7 +1218,6 @@ Set the default read environment.
 - Surface: tadx env default
 - Operation type: change
 - Owner: cli
-- MCP overlap: None
 - Selectors: Environment alias
 - Products and availability: Local / all
 - Product disposition: ship
@@ -1288,8 +1243,7 @@ Update explicit fields of one environment profile.
 - Surface: tadx env update
 - Operation type: change
 - Owner: cli
-- MCP overlap: None
-- Selectors: Environment alias
+- Selectors: Environment alias; optional --catalog-max-concurrency 1..256 or --clear-catalog-max-concurrency
 - Products and availability: Local / all
 - Product disposition: ship
 - Evidence level: local-contract
@@ -1299,7 +1253,7 @@ Update explicit fields of one environment profile.
 - Remote mutation: No
 - Supports `--preview`: No
 - Raw capable: No
-- Safety and guard: Exact alias; secret redaction; atomic file replacement
+- Safety and guard: Exact alias; secret redaction; atomic file replacement; setting and clearing catalog concurrency conflict; clearing restores default 32
 - Artifact effect: None
 - Upstream operation: Write local config.yaml
 - Evidence: A1 §§7.2–7.4; C1 §2.1
@@ -1314,7 +1268,6 @@ Delete one exact remote flow, or preview the operation.
 - Surface: tadx content flow delete
 - Operation type: change
 - Owner: cli
-- MCP overlap: None
 - Selectors: Flow LUID or exact name/project path; explicit environment/site
 - Products and availability: Cloud / Server with flow support
 - Product disposition: ship
@@ -1340,7 +1293,6 @@ Inspect one authoritative flow and its direct lifecycle metadata.
 - Surface: tadx content flow inspect
 - Operation type: inspect
 - Owner: cli
-- MCP overlap: get-flow
 - Selectors: Flow LUID or exact name/project path
 - Products and availability: Cloud / Server with flow support
 - Product disposition: ship
@@ -1361,13 +1313,12 @@ Inspect one authoritative flow and its direct lifecycle metadata.
 
 ### `flow.list`
 
-Inventory all live flows and render a bounded page, or run an explicitly filtered bounded query.
+List a bounded live selection of flows, or explicitly collect the selected inventory with --all.
 
 - Surface: tadx content flow list
 - Operation type: find
 - Owner: cli
-- MCP overlap: list-flows
-- Selectors: Environment/site; optional project/owner/name filters; --limit 1..100 (default 25) or --all; internal snapshot continuation; optional --catalog
+- Selectors: Environment/site; optional project/owner/name filters; --limit 1..100 (default 25) or --all; optional --catalog
 - Products and availability: Cloud / Server with flow support; REST API 3.3+ per C1
 - Product disposition: ship
 - Evidence level: contract-verified
@@ -1377,11 +1328,11 @@ Inventory all live flows and render a bounded page, or run an explicitly filtere
 - Remote mutation: No
 - Supports `--preview`: No
 - Raw capable: No
-- Safety and guard: An unfiltered live list atomically refreshes the complete flow catalog scope before rendering; --limit bounds output only; internal continuation reads that snapshot; filtered lists are bounded live queries with partial cache updates; --catalog is local-only; --all returns the selected inventory within a 10000-record bound and rejects incomplete coverage; --full changes presentation only
-- Artifact effect: Update catalog scope
-- Upstream operation: Catalog traversal over GET /api/{version}/sites/{site-id}/flows; filtered direct REST query; SQLite scope snapshot
-- Evidence: docs/evidence/group2-inventory-rest-contract.md; docs/evidence/flow-rest-contract.md; hermetic inventory, snapshot, and source-selection tests
-- Validation or blocker: Contract-verified complete scoped inventory, bounded rendering, snapshot continuation, filtered partial caching, and explicit local catalog selection; live deployment verification is not claimed
+- Safety and guard: Ordinary live lists use bounded provider reads without SQLite access; --all collects through the shared inventory collector and renders in memory; complete unfiltered collections atomically replace the resource catalog scope on a best-effort basis; filtered collections save selected observations; catalog write failure preserves the live answer with a warning; --catalog is local-only; --all rejects incomplete coverage and results beyond 10000 records; --full changes presentation only
+- Artifact effect: Best-effort catalog update only with live --all
+- Upstream operation: GET /api/{version}/sites/{site-id}/flows; shared inventory collection for --all; SQLite only for explicit catalog reads or best-effort --all persistence
+- Evidence: docs/evidence/group2-inventory-rest-contract.md; docs/evidence/flow-rest-contract.md; hermetic bounded-read, complete-collection, and source-selection tests
+- Validation or blocker: Contract-verified bounded live reads without catalog access, shared complete collection, truthful coverage, best-effort persistence, and explicit local catalog selection
 - Blocker ID: None
 - Command binding: `tadx content flow list`
 
@@ -1392,7 +1343,6 @@ Move one exact flow to one exact project on the same site, or preview the operat
 - Surface: tadx content flow move
 - Operation type: change
 - Owner: cli
-- MCP overlap: None
 - Selectors: Flow LUID or exact name/project path; exact destination project LUID/path; explicit environment/site
 - Products and availability: Cloud / Server with flow support
 - Product disposition: ship
@@ -1418,7 +1368,6 @@ Publish one local TFL/TFLX, or up to 100 repeated managed flow artifacts sequent
 - Surface: tadx content flow publish
 - Operation type: deliver
 - Owner: cli
-- MCP overlap: None
 - Selectors: Logical workspace plus one or more exact workspace-relative managed flow directories; target defaults to artifact source, explicit environment/site/project overrides; optional exact existing flow
 - Products and availability: Cloud / Server with flow support
 - Product disposition: ship
@@ -1444,7 +1393,6 @@ Download one flow, or up to 100 repeated authoritative flow LUIDs sequentially, 
 - Surface: tadx content flow pull
 - Operation type: deliver
 - Owner: cli
-- MCP overlap: get-flow is metadata-only overlap
 - Selectors: Flow LUID or exact name/project path; repeatable flow LUID for batches; logical workspace
 - Products and availability: Cloud / Server with flow support
 - Product disposition: ship
@@ -1470,7 +1418,6 @@ Replace the owner of one exact flow, or preview the operation.
 - Surface: tadx content flow update
 - Operation type: change
 - Owner: cli
-- MCP overlap: None
 - Selectors: Flow LUID or exact name/project path; explicit owner LUID; explicit environment/site
 - Products and availability: Cloud / Server with flow support; owner endpoint requires API 3.27+
 - Product disposition: ship
@@ -1496,7 +1443,6 @@ Capture bounded lineage for one exact workbook, published datasource, or flow wi
 - Surface: tadx content lineage pull
 - Operation type: deliver
 - Owner: cli
-- MCP overlap: Metadata reads overlap with resource metadata tools
 - Selectors: Resource kind plus REST LUID or exact name/project path; logical workspace; bounded direction and depth
 - Products and availability: Cloud / Server with Metadata API
 - Product disposition: ship
@@ -1522,7 +1468,6 @@ Create one project, optionally under an explicit parent, or preview the operatio
 - Surface: tadx content project create
 - Operation type: change
 - Owner: cli
-- MCP overlap: None
 - Selectors: Explicit environment/site; optional parent LUID/path
 - Products and availability: Cloud / Server
 - Product disposition: ship
@@ -1548,7 +1493,6 @@ Delete one exact project, or preview the operation.
 - Surface: tadx content project delete
 - Operation type: change
 - Owner: cli
-- MCP overlap: None
 - Selectors: Authoritative project LUID
 - Products and availability: Cloud / Server
 - Product disposition: ship
@@ -1574,7 +1518,6 @@ Resolve and inspect one exact shallow project context.
 - Surface: tadx content project inspect
 - Operation type: inspect
 - Owner: cli
-- MCP overlap: list-projects
 - Selectors: Project LUID or exact slash-delimited path
 - Products and availability: Cloud / Server
 - Product disposition: ship
@@ -1585,7 +1528,7 @@ Resolve and inspect one exact shallow project context.
 - Remote mutation: No
 - Supports `--preview`: No
 - Raw capable: No
-- Safety and guard: Live Tableau by default; --catalog is local-only; no fallback; ambiguous path fails
+- Safety and guard: Live Tableau by default; --catalog is local-only; no fallback; exact full paths are opaque selectors; zero or multiple candidates fail; LUIDs remain authoritative when display paths collide
 - Artifact effect: None
 - Upstream operation: Exact resolution from authoritative project pages
 - Evidence: Official REST capture in docs/evidence/project-rest-contract.md; hermetic API and catalog source-selection tests
@@ -1595,13 +1538,12 @@ Resolve and inspect one exact shallow project context.
 
 ### `project.list`
 
-Inventory all live projects and render a bounded page with authoritative parent identity, or run an explicitly filtered bounded query.
+List a bounded live selection of projects, or explicitly collect the selected inventory with --all.
 
 - Surface: tadx content project list
 - Operation type: find
 - Owner: cli
-- MCP overlap: list-projects
-- Selectors: Environment/site; optional name/parent/owner/top-level filters; --limit 1..100 (default 25) or --all; internal snapshot continuation; optional --catalog
+- Selectors: Environment/site; optional name/parent/owner/top-level filters; --limit 1..100 (default 25) or --all; optional --catalog
 - Products and availability: Cloud / Server
 - Product disposition: ship
 - Evidence level: contract-verified
@@ -1611,11 +1553,11 @@ Inventory all live projects and render a bounded page with authoritative parent 
 - Remote mutation: No
 - Supports `--preview`: No
 - Raw capable: No
-- Safety and guard: An unfiltered live list atomically refreshes the complete project catalog scope before rendering; --limit bounds output only; internal continuation reads that snapshot; filtered lists are bounded live queries with partial cache updates; --catalog is local-only; --all returns the selected inventory within a 10000-record bound and rejects incomplete coverage; --full changes presentation only
-- Artifact effect: Update catalog scope
-- Upstream operation: Catalog traversal over GET /api/{version}/sites/{site-id}/projects; filtered direct REST query; SQLite scope snapshot
-- Evidence: docs/evidence/group2-inventory-rest-contract.md; docs/evidence/project-rest-contract.md; hermetic inventory, snapshot, and source-selection tests
-- Validation or blocker: Contract-verified complete scoped inventory, bounded rendering, snapshot continuation, filtered partial caching, and explicit local catalog selection; live deployment verification is not claimed
+- Safety and guard: Ordinary live lists use bounded provider reads without SQLite access; --all collects through the shared inventory collector and renders in memory; complete unfiltered collections atomically replace the resource catalog scope on a best-effort basis; filtered collections save selected observations; catalog write failure preserves the live answer with a warning; --catalog is local-only; --all rejects incomplete coverage and results beyond 10000 records; --full changes presentation only
+- Artifact effect: Best-effort catalog update only with live --all
+- Upstream operation: GET /api/{version}/sites/{site-id}/projects; shared inventory collection for --all; SQLite only for explicit catalog reads or best-effort --all persistence
+- Evidence: docs/evidence/group2-inventory-rest-contract.md; docs/evidence/project-rest-contract.md; hermetic bounded-read, complete-collection, and source-selection tests
+- Validation or blocker: Contract-verified bounded live reads without catalog access, shared complete collection, truthful coverage, best-effort persistence, and explicit local catalog selection
 - Blocker ID: None
 - Command binding: `tadx content project list`
 
@@ -1626,7 +1568,6 @@ Reparent one exact project under one exact parent on the same site, or preview t
 - Surface: tadx content project move
 - Operation type: change
 - Owner: cli
-- MCP overlap: None
 - Selectors: Project LUID/exact path; exact destination parent LUID/path; explicit environment/site
 - Products and availability: Cloud / Server
 - Product disposition: ship
@@ -1652,7 +1593,6 @@ Update bounded project metadata without changing its parent, or preview the oper
 - Surface: tadx content project update
 - Operation type: change
 - Owner: cli
-- MCP overlap: None
 - Selectors: Project LUID/exact path
 - Products and availability: Cloud / Server
 - Product disposition: ship
@@ -1678,7 +1618,6 @@ Create one definition plus its Tableau-created default metric from bounded inten
 - Surface: tadx pulse definition create
 - Operation type: change
 - Owner: cli
-- MCP overlap: None
 - Selectors: Explicit site; datasource LUID; exact raw measure/date field IDs; bounded configuration
 - Products and availability: Tableau Cloud / Pulse only
 - Product disposition: ship
@@ -1704,7 +1643,6 @@ Delete one exact definition, or preview the operation.
 - Surface: tadx pulse definition delete
 - Operation type: change
 - Owner: cli
-- MCP overlap: None
 - Selectors: Definition ID
 - Products and availability: Tableau Cloud / Pulse only
 - Product disposition: ship
@@ -1730,7 +1668,6 @@ Inspect one complete Pulse definition and configuration.
 - Surface: tadx pulse definition inspect
 - Operation type: inspect
 - Owner: cli
-- MCP overlap: list-pulse-metric-definitions-from-definition-ids
 - Selectors: Exact definition LUID
 - Products and availability: Tableau Cloud / Pulse only
 - Product disposition: ship
@@ -1756,7 +1693,6 @@ List Pulse metric definitions with internal bounded pagination.
 - Surface: tadx pulse definition list
 - Operation type: find
 - Owner: cli
-- MCP overlap: list-all-pulse-metric-definitions; list-pulse-metric-definitions-from-definition-ids
 - Selectors: Environment; optional exact name; --limit or --all
 - Products and availability: Tableau Cloud / Pulse only
 - Product disposition: ship
@@ -1782,7 +1718,6 @@ Materialize one definition as a JSON-backed artifact with provenance and baselin
 - Surface: tadx pulse definition pull
 - Operation type: deliver
 - Owner: cli
-- MCP overlap: Read overlap only
 - Selectors: Exact definition LUID; logical workspace
 - Products and availability: Tableau Cloud / Pulse only
 - Product disposition: ship
@@ -1805,12 +1740,11 @@ Materialize one definition as a JSON-backed artifact with provenance and baselin
 
 Generate a Pulse insight brief from exact metrics.
 
-- Surface: Tableau MCP generate-pulse-insight-brief
+- Surface: Outside TADX CLI
 - Operation type: inspect
 - Owner: tableau-mcp
-- MCP overlap: generate-pulse-insight-brief
-- Selectors: Exact metric LUIDs and brief context
-- Products and availability: Tableau Cloud / Pulse with Tableau MCP availability
+- Selectors: No TADX selectors
+- Products and availability: Tableau Cloud / Pulse
 - Product disposition: delegated
 - Evidence level: architecture-locked
 - Verification readiness: ready
@@ -1819,11 +1753,11 @@ Generate a Pulse insight brief from exact metrics.
 - Remote mutation: No
 - Supports `--preview`: No
 - Raw capable: No
-- Safety and guard: The host agent selects and connects Tableau MCP; TADX does not inspect that connection
+- Safety and guard: No executable TADX operation; this contract does not prescribe external tooling
 - Artifact effect: None
-- Upstream operation: Tableau MCP generate-pulse-insight-brief
-- Evidence: docs/evidence/tableau-mcp-delegation.md
-- Validation or blocker: Delegated; not executed or proxied by TADX
+- Upstream operation: Outside TADX CLI
+- Evidence: Maintainer-defined TADX CLI scope
+- Validation or blocker: Delegated; no TADX command, execution, or proxy
 - Blocker ID: None
 - Command binding: None
 
@@ -1834,7 +1768,6 @@ Delete one exact metric, or preview the operation.
 - Surface: tadx pulse metric delete
 - Operation type: change
 - Owner: cli
-- MCP overlap: None
 - Selectors: Metric ID
 - Products and availability: Tableau Cloud / Pulse only
 - Product disposition: ship
@@ -1860,7 +1793,6 @@ Converge one exact user or group metric subscription, or preview the operation.
 - Surface: tadx pulse metric follow
 - Operation type: change
 - Owner: cli
-- MCP overlap: list-pulse-metric-subscriptions for resolution
 - Selectors: Exact metric LUID plus exactly one user or group LUID
 - Products and availability: Tableau Cloud / Pulse only
 - Product disposition: ship
@@ -1886,7 +1818,6 @@ List exact user and group subscriptions for one metric.
 - Surface: tadx pulse metric followers
 - Operation type: find
 - Owner: cli
-- MCP overlap: list-pulse-metric-subscriptions
 - Selectors: Exact metric LUID
 - Products and availability: Tableau Cloud / Pulse only
 - Product disposition: ship
@@ -1912,7 +1843,6 @@ Derive one metric by changing bounded timeframe or dimension filters, or preview
 - Surface: tadx pulse metric fork
 - Operation type: change
 - Owner: cli
-- MCP overlap: None
 - Selectors: Exact source metric LUID; timeframe or allowed-dimension filters
 - Products and availability: Tableau Cloud / Pulse only
 - Product disposition: ship
@@ -1935,12 +1865,11 @@ Derive one metric by changing bounded timeframe or dimension filters, or preview
 
 Retrieve current Pulse metric values and generated insights.
 
-- Surface: Tableau MCP generate-pulse-metric-value-insight-bundle
+- Surface: Outside TADX CLI
 - Operation type: inspect
 - Owner: tableau-mcp
-- MCP overlap: generate-pulse-metric-value-insight-bundle
-- Selectors: Exact metric LUIDs
-- Products and availability: Tableau Cloud / Pulse with Tableau MCP availability
+- Selectors: No TADX selectors
+- Products and availability: Tableau Cloud / Pulse
 - Product disposition: delegated
 - Evidence level: architecture-locked
 - Verification readiness: ready
@@ -1949,11 +1878,11 @@ Retrieve current Pulse metric values and generated insights.
 - Remote mutation: No
 - Supports `--preview`: No
 - Raw capable: No
-- Safety and guard: The host agent selects and connects Tableau MCP; TADX does not inspect that connection
+- Safety and guard: No executable TADX operation; this contract does not prescribe external tooling
 - Artifact effect: None
-- Upstream operation: Tableau MCP generate-pulse-metric-value-insight-bundle
-- Evidence: docs/evidence/tableau-mcp-delegation.md
-- Validation or blocker: Delegated; not executed or proxied by TADX
+- Upstream operation: Outside TADX CLI
+- Evidence: Maintainer-defined TADX CLI scope
+- Validation or blocker: Delegated; no TADX command, execution, or proxy
 - Blocker ID: None
 - Command binding: None
 
@@ -1964,7 +1893,6 @@ Inspect one exact Pulse metric specification.
 - Surface: tadx pulse metric inspect
 - Operation type: inspect
 - Owner: cli
-- MCP overlap: list-pulse-metrics-from-metric-ids
 - Selectors: Exact metric LUID
 - Products and availability: Tableau Cloud / Pulse only
 - Product disposition: ship
@@ -1990,7 +1918,6 @@ List metrics in one definition with internal bounded pagination.
 - Surface: tadx pulse metric list
 - Operation type: find
 - Owner: cli
-- MCP overlap: list-pulse-metrics-from-metric-definition-id
 - Selectors: Exact definition LUID; --limit or --all
 - Products and availability: Tableau Cloud / Pulse only
 - Product disposition: ship
@@ -2016,7 +1943,6 @@ Remove one exact metric subscription, or preview the operation.
 - Surface: tadx pulse metric unfollow
 - Operation type: change
 - Owner: cli
-- MCP overlap: list-pulse-metric-subscriptions for resolution
 - Selectors: Exact subscription LUID, or metric plus exact user/group resolving to one subscription
 - Products and availability: Tableau Cloud / Pulse only
 - Product disposition: ship
@@ -2042,7 +1968,6 @@ Search native Tableau content plus administration and Pulse resources through on
 - Surface: tadx search [term]
 - Operation type: find
 - Owner: cli
-- MCP overlap: search-content
 - Selectors: Optional text; broad or concrete --type; environment or --env; bounded --limit; optional --catalog
 - Products and availability: Cloud / Server 2022.3+ for native content search; Pulse types require Tableau Cloud
 - Product disposition: ship
@@ -2053,11 +1978,11 @@ Search native Tableau content plus administration and Pulse resources through on
 - Remote mutation: No
 - Supports `--preview`: No
 - Raw capable: No
-- Safety and guard: Nonempty live content terms use native search; native datasource results are translated to classic REST LUIDs; administration and Pulse retain dedicated adapters; --catalog is local-only; blank text requires a concrete type and uses list semantics; internal pagination satisfies --limit with more_available and no opaque cursor output
+- Safety and guard: Nonempty live content terms use native search; native datasource results are translated to classic REST LUIDs; administration and Pulse retain dedicated adapters; --catalog is local-only; blank text requires a concrete type and uses list semantics; internal pagination satisfies --limit with more_available and no opaque cursor output; ordinary live searches do not read or write SQLite
 - Artifact effect: None
 - Upstream operation: GET /api/-/search for content; Query Datasources by contentUrl for classic datasource LUIDs; dedicated administration and Pulse adapters; local normalized catalog index
 - Evidence: docs/evidence/group2-inventory-rest-contract.md; current official content exploration and datasource filter contracts; hermetic transport, adapter, and app tests
-- Validation or blocker: Contract-verified native content routing, authoritative identity normalization, bounded composite continuation, and explicit local catalog selection
+- Validation or blocker: Contract-verified bounded live discovery without SQLite access, authoritative identity normalization, truthful composite truncation, and explicit local catalog selection
 - Blocker ID: None
 - Command binding: `tadx search`
 
@@ -2068,7 +1993,6 @@ Report the installed TADX version and optionally check the latest published rele
 - Surface: tadx version
 - Operation type: inspect
 - Owner: cli
-- MCP overlap: None
 - Selectors: Optional --check
 - Products and availability: Local / all; release check requires GitHub access
 - Product disposition: ship
@@ -2091,12 +2015,11 @@ Report the installed TADX version and optionally check the latest published rele
 
 Retrieve rendered view data for analysis.
 
-- Surface: Tableau MCP get-view-data
+- Surface: Outside TADX CLI
 - Operation type: inspect
 - Owner: tableau-mcp
-- MCP overlap: get-view-data
-- Selectors: Exact view LUID and bounded filters
-- Products and availability: Cloud / Server with Tableau MCP availability
+- Selectors: No TADX selectors
+- Products and availability: Cloud / Server
 - Product disposition: delegated
 - Evidence level: architecture-locked
 - Verification readiness: ready
@@ -2105,11 +2028,11 @@ Retrieve rendered view data for analysis.
 - Remote mutation: No
 - Supports `--preview`: No
 - Raw capable: No
-- Safety and guard: The host agent selects and connects Tableau MCP; TADX does not inspect that connection
+- Safety and guard: No executable TADX operation; this contract does not prescribe external tooling
 - Artifact effect: None
-- Upstream operation: Tableau MCP get-view-data
-- Evidence: docs/evidence/tableau-mcp-delegation.md
-- Validation or blocker: Delegated; not executed or proxied by TADX
+- Upstream operation: Outside TADX CLI
+- Evidence: Maintainer-defined TADX CLI scope
+- Validation or blocker: Delegated; no TADX command, execution, or proxy
 - Blocker ID: None
 - Command binding: None
 
@@ -2117,12 +2040,11 @@ Retrieve rendered view data for analysis.
 
 Retrieve a rendered view image.
 
-- Surface: Tableau MCP get-view-image
+- Surface: Outside TADX CLI
 - Operation type: inspect
 - Owner: tableau-mcp
-- MCP overlap: get-view-image
-- Selectors: Exact view LUID and bounded render options
-- Products and availability: Cloud / Server with Tableau MCP availability
+- Selectors: No TADX selectors
+- Products and availability: Cloud / Server
 - Product disposition: delegated
 - Evidence level: architecture-locked
 - Verification readiness: ready
@@ -2131,11 +2053,11 @@ Retrieve a rendered view image.
 - Remote mutation: No
 - Supports `--preview`: No
 - Raw capable: No
-- Safety and guard: The host agent selects and connects Tableau MCP; TADX does not inspect that connection
+- Safety and guard: No executable TADX operation; this contract does not prescribe external tooling
 - Artifact effect: None
-- Upstream operation: Tableau MCP get-view-image
-- Evidence: docs/evidence/tableau-mcp-delegation.md
-- Validation or blocker: Delegated; not executed or proxied by TADX
+- Upstream operation: Outside TADX CLI
+- Evidence: Maintainer-defined TADX CLI scope
+- Validation or blocker: Delegated; no TADX command, execution, or proxy
 - Blocker ID: None
 - Command binding: None
 
@@ -2143,12 +2065,11 @@ Retrieve a rendered view image.
 
 Inspect one view before requesting rendered data or an image.
 
-- Surface: Tableau MCP get-view
+- Surface: Outside TADX CLI
 - Operation type: inspect
 - Owner: tableau-mcp
-- MCP overlap: get-view
-- Selectors: Exact view LUID
-- Products and availability: Cloud / Server with Tableau MCP availability
+- Selectors: No TADX selectors
+- Products and availability: Cloud / Server
 - Product disposition: delegated
 - Evidence level: architecture-locked
 - Verification readiness: ready
@@ -2157,11 +2078,11 @@ Inspect one view before requesting rendered data or an image.
 - Remote mutation: No
 - Supports `--preview`: No
 - Raw capable: No
-- Safety and guard: The host agent selects and connects Tableau MCP; TADX does not inspect that connection
+- Safety and guard: No executable TADX operation; this contract does not prescribe external tooling
 - Artifact effect: None
-- Upstream operation: Tableau MCP get-view
-- Evidence: docs/evidence/tableau-mcp-delegation.md
-- Validation or blocker: Delegated; not executed or proxied by TADX
+- Upstream operation: Outside TADX CLI
+- Evidence: Maintainer-defined TADX CLI scope
+- Validation or blocker: Delegated; no TADX command, execution, or proxy
 - Blocker ID: None
 - Command binding: None
 
@@ -2169,12 +2090,11 @@ Inspect one view before requesting rendered data or an image.
 
 List views for analytical read workflows.
 
-- Surface: Tableau MCP list-views
+- Surface: Outside TADX CLI
 - Operation type: find
 - Owner: tableau-mcp
-- MCP overlap: list-views
-- Selectors: Workbook, project, owner, and name filters
-- Products and availability: Cloud / Server with Tableau MCP availability
+- Selectors: No TADX selectors
+- Products and availability: Cloud / Server
 - Product disposition: delegated
 - Evidence level: architecture-locked
 - Verification readiness: ready
@@ -2183,11 +2103,11 @@ List views for analytical read workflows.
 - Remote mutation: No
 - Supports `--preview`: No
 - Raw capable: No
-- Safety and guard: The host agent selects and connects Tableau MCP; TADX does not inspect that connection
+- Safety and guard: No executable TADX operation; this contract does not prescribe external tooling
 - Artifact effect: None
-- Upstream operation: Tableau MCP list-views
-- Evidence: docs/evidence/tableau-mcp-delegation.md
-- Validation or blocker: Delegated; not executed or proxied by TADX
+- Upstream operation: Outside TADX CLI
+- Evidence: Maintainer-defined TADX CLI scope
+- Validation or blocker: Delegated; no TADX command, execution, or proxy
 - Blocker ID: None
 - Command binding: None
 
@@ -2195,12 +2115,11 @@ List views for analytical read workflows.
 
 Create or semantically modify workbook content.
 
-- Surface: Tableau Desktop / Desktop MCP
+- Surface: Outside TADX CLI
 - Operation type: change
 - Owner: tableau/desktop-mcp
-- MCP overlap: Owning authoring surface
-- Selectors: Workbook and authoring context
-- Products and availability: Tableau Desktop interoperability
+- Selectors: No TADX selectors
+- Products and availability: Outside TADX
 - Product disposition: delegated
 - Evidence level: architecture-locked
 - Verification readiness: ready
@@ -2209,11 +2128,11 @@ Create or semantically modify workbook content.
 - Remote mutation: No
 - Supports `--preview`: No
 - Raw capable: No
-- Safety and guard: Owning surface controls safety
+- Safety and guard: No executable TADX operation; this contract does not prescribe external tooling
 - Artifact effect: External artifact may become dirty
-- Upstream operation: Tableau authoring surface
-- Evidence: A1 §§1.6, 3.4, 8.6; C1 §§2.3, 3
-- Validation or blocker: Delegated; TADX never transforms workbook XML
+- Upstream operation: Outside TADX CLI
+- Evidence: Maintainer-defined TADX CLI scope
+- Validation or blocker: Delegated; no TADX command, execution, or proxy
 - Blocker ID: None
 - Command binding: None
 
@@ -2224,7 +2143,6 @@ Delete one exact remote workbook, or preview the operation.
 - Surface: tadx content workbook delete
 - Operation type: change
 - Owner: cli
-- MCP overlap: None
 - Selectors: Workbook LUID or exact name/project path; explicit environment/site
 - Products and availability: Cloud / Server
 - Product disposition: ship
@@ -2250,7 +2168,6 @@ Inspect one authoritative workbook and lifecycle metadata.
 - Surface: tadx content workbook inspect
 - Operation type: inspect
 - Owner: cli
-- MCP overlap: get-workbook
 - Selectors: Workbook LUID or exact name/project path
 - Products and availability: Cloud / Server
 - Product disposition: ship
@@ -2271,13 +2188,12 @@ Inspect one authoritative workbook and lifecycle metadata.
 
 ### `workbook.list`
 
-Inventory all live workbooks and render a bounded page, or run an explicitly filtered bounded query.
+List a bounded live selection of workbooks, or explicitly collect the selected inventory with --all.
 
 - Surface: tadx content workbook list
 - Operation type: find
 - Owner: cli
-- MCP overlap: list-workbooks
-- Selectors: Environment/site; optional project/owner/name/tag filters; --limit 1..100 (default 25) or --all; internal snapshot continuation; optional --catalog
+- Selectors: Environment/site; optional project/owner/name/tag filters; --limit 1..100 (default 25) or --all; optional --catalog
 - Products and availability: Cloud / Server
 - Product disposition: ship
 - Evidence level: contract-verified
@@ -2287,11 +2203,11 @@ Inventory all live workbooks and render a bounded page, or run an explicitly fil
 - Remote mutation: No
 - Supports `--preview`: No
 - Raw capable: No
-- Safety and guard: An unfiltered live list atomically refreshes the complete workbook catalog scope before rendering; --limit bounds output only; internal continuation reads that snapshot; filtered lists are bounded live queries with partial cache updates; --catalog is local-only; --all returns the selected inventory within a 10000-record bound and rejects incomplete coverage; --full changes presentation only
-- Artifact effect: Update catalog scope
-- Upstream operation: Catalog traversal over GET /api/{version}/sites/{site-id}/workbooks; filtered direct REST query; SQLite scope snapshot
-- Evidence: docs/evidence/group2-inventory-rest-contract.md; hermetic inventory, snapshot, and source-selection tests
-- Validation or blocker: Contract-verified complete scoped inventory, bounded rendering, snapshot continuation, filtered partial caching, and explicit local catalog selection
+- Safety and guard: Ordinary live lists use bounded provider reads without SQLite access; --all collects through the shared inventory collector and renders in memory; complete unfiltered collections atomically replace the resource catalog scope on a best-effort basis; filtered collections save selected observations; catalog write failure preserves the live answer with a warning; --catalog is local-only; --all rejects incomplete coverage and results beyond 10000 records; --full changes presentation only
+- Artifact effect: Best-effort catalog update only with live --all
+- Upstream operation: GET /api/{version}/sites/{site-id}/workbooks; shared inventory collection for --all; SQLite only for explicit catalog reads or best-effort --all persistence
+- Evidence: docs/evidence/group2-inventory-rest-contract.md; hermetic bounded-read, complete-collection, and source-selection tests
+- Validation or blocker: Contract-verified bounded live reads without catalog access, shared complete collection, truthful coverage, best-effort persistence, and explicit local catalog selection
 - Blocker ID: None
 - Command binding: `tadx content workbook list`
 
@@ -2302,7 +2218,6 @@ Move one exact workbook to one exact project on the same site, or preview the op
 - Surface: tadx content workbook move
 - Operation type: change
 - Owner: cli
-- MCP overlap: None
 - Selectors: Workbook LUID or exact name/project path; exact destination project LUID/path; explicit environment/site
 - Products and availability: Cloud / Server
 - Product disposition: ship
@@ -2328,7 +2243,6 @@ Publish one local workbook, or up to 100 repeated managed workbook artifacts seq
 - Surface: tadx content workbook publish
 - Operation type: deliver
 - Owner: cli
-- MCP overlap: None
 - Selectors: Logical workspace plus one or more exact workspace-relative managed workbook directories; target defaults to artifact source, explicit environment/site/project overrides; optional exact existing workbook
 - Products and availability: Cloud / Server; TWB validation API only on API 3.29 / Tableau 2026.2+ per C1
 - Product disposition: ship
@@ -2354,7 +2268,6 @@ Download one workbook, or up to 100 repeated authoritative workbook LUIDs sequen
 - Surface: tadx content workbook pull
 - Operation type: deliver
 - Owner: cli
-- MCP overlap: download-workbook
 - Selectors: Workbook LUID/exact path; repeatable workbook LUID for batches; logical workspace; optional --include-pds
 - Products and availability: Cloud / Server
 - Product disposition: ship
@@ -2380,7 +2293,6 @@ Rename one exact workbook or replace its owner, or preview the operation.
 - Surface: tadx content workbook update
 - Operation type: change
 - Owner: cli
-- MCP overlap: None
 - Selectors: Workbook LUID or exact name/project path; explicit new name and/or owner LUID; explicit environment/site
 - Products and availability: Cloud / Server
 - Product disposition: ship
@@ -2406,7 +2318,6 @@ Delete one exact managed local artifact, or preview the operation.
 - Surface: tadx workspace artifact delete
 - Operation type: change
 - Owner: cli
-- MCP overlap: None
 - Selectors: Logical workspace name plus kind and LUID, or exact workspace-relative managed artifact path
 - Products and availability: Local / all
 - Product disposition: ship
@@ -2432,7 +2343,6 @@ Remove explicitly selected disposable local state while preserving canonical art
 - Surface: tadx workspace clean
 - Operation type: change
 - Owner: cli
-- MCP overlap: None
 - Selectors: Workspace and cleanup class
 - Products and availability: Local / all
 - Product disposition: ship
@@ -2458,7 +2368,6 @@ Copy an existing managed workspace under a new identity at &lt;home&gt;/TADX/wor
 - Surface: tadx workspace clone
 - Operation type: change
 - Owner: cli
-- MCP overlap: None
 - Selectors: Source/name; optional path override
 - Products and availability: Local / all
 - Product disposition: ship
@@ -2484,7 +2393,6 @@ Create a named workspace with tadx.yaml, artifacts/, and .tadx/ under &lt;home&g
 - Surface: tadx workspace create
 - Operation type: change
 - Owner: cli
-- MCP overlap: None
 - Selectors: Name; optional path override
 - Products and availability: Local / all
 - Product disposition: ship
@@ -2510,7 +2418,6 @@ Remove one exact registered workspace and its managed root, or preview the opera
 - Surface: tadx workspace delete
 - Operation type: change
 - Owner: cli
-- MCP overlap: None
 - Selectors: Exact logical workspace name
 - Products and availability: Local / all
 - Product disposition: ship
@@ -2536,7 +2443,6 @@ List registered named workspaces.
 - Surface: tadx workspace list
 - Operation type: find
 - Owner: cli
-- MCP overlap: None
 - Selectors: Bounded registered-workspace page
 - Products and availability: Local / all
 - Product disposition: ship
@@ -2562,7 +2468,6 @@ Move one local artifact without changing Tableau identity.
 - Surface: tadx workspace artifact move
 - Operation type: change
 - Owner: cli
-- MCP overlap: None
 - Selectors: Source and destination logical workspace names plus workspace-relative artifact path, or kind and Tableau LUID
 - Products and availability: Local / all
 - Product disposition: ship
@@ -2588,7 +2493,6 @@ Adopt an existing on-disk workspace directory into the local registry using its 
 - Surface: tadx workspace register
 - Operation type: change
 - Owner: cli
-- MCP overlap: None
 - Selectors: Path/name
 - Products and availability: Local / all
 - Product disposition: ship
@@ -2614,7 +2518,6 @@ Set one registered and available workspace as the general default.
 - Surface: tadx workspace set-default
 - Operation type: change
 - Owner: cli
-- MCP overlap: None
 - Selectors: Exact logical workspace name
 - Products and availability: Local / all
 - Product disposition: ship
@@ -2640,7 +2543,6 @@ Report effective workspace, artifact state, provenance, dirty/missing status, an
 - Surface: tadx workspace status
 - Operation type: inspect
 - Owner: cli
-- MCP overlap: None
 - Selectors: --workspace or deterministic resolution chain
 - Products and availability: Local / all
 - Product disposition: ship
@@ -2666,7 +2568,6 @@ Remove one workspace registration while preserving every file in its root.
 - Surface: tadx workspace unregister
 - Operation type: change
 - Owner: cli
-- MCP overlap: None
 - Selectors: Exact logical workspace name
 - Products and availability: Local / all
 - Product disposition: ship

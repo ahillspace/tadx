@@ -158,8 +158,8 @@ Use --env as a short alias for --environment on commands that select an environm
 Remote mutation commands remain visible when execution is disabled. Set TADX_ENABLE_MUTATIONS=1 to enable them.
 When enabled, mutation commands perform changes by default. Pass --preview to inspect the plan without performing the mutation.
 
-TADX owns lifecycle operations. Use Tableau MCP directly for view data or images, datasource queries, and Pulse values or insights.
-TADX never configures, selects, proxies, or reports Tableau MCP connections. The host agent owns that connection.`,
+TADX handles lifecycle operations, not datasource value queries, view rendering, or current Pulse values and insights.
+Other connected tools remain independent; TADX does not configure, select, proxy, or report their connections.`,
 		SilenceErrors: true,
 		SilenceUsage:  true,
 	}

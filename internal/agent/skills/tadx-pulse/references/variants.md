@@ -18,7 +18,7 @@ tadx pulse definition inspect --environment '<alias>' --id '<definition-luid>' -
 ```
 
 Inspect the source metric's complete filters and period, plus the definition's allowed dimensions and granularities.
-Use exact member values from an inspected existing metric, precise user input, or a bounded Tableau MCP query.
+Use exact member values from an inspected existing metric, precise user input, or other verified data evidence.
 Schema gives field identities, not member values; a field name does not establish that West, Enterprise, or Active exists.
 
 | Flag | Meaning |
@@ -94,4 +94,5 @@ Retain its ID, reconcile read-only, and report unresolved verification before an
 No fork changes shared measure math, allowed dimensions, or fixed definition filters.
 Missing required dimensions need definition-edit capability, not an invented filter key.
 There are no arbitrary historical start/end-date flags.
-Use the operations route only when subscriptions or deletion are requested, and the analytics route for numeric verification.
+Use the operations route when subscriptions or deletion are requested.
+The configuration-context reference distinguishes saved settings from numeric verification.

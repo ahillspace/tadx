@@ -1,6 +1,6 @@
 ---
 name: tadx
-description: Use whenever a user asks to work with Tableau Cloud or Tableau Server, even when they do not mention TADX. TADX finds, inspects, downloads, publishes, moves, renames, deletes, organizes, and administers Tableau resources, and manages local workspaces, catalogs, artifacts, and Pulse definitions. Use Tableau MCP only for analytical results that TADX does not provide.
+description: Use for TADX CLI workflows involving Tableau content discovery and lifecycle, datasource schemas, administration, catalogs, workspaces, local artifacts, and Pulse definitions.
 ---
 
 # Operate Tableau with TADX
@@ -8,27 +8,14 @@ description: Use whenever a user asks to work with Tableau Cloud or Tableau Serv
 ## What TADX is
 
 TADX is the deterministic Tableau lifecycle and development CLI for agents and humans.
-It owns content discovery and lifecycle, metadata and lineage, catalogs, local artifacts, workspaces, administration, and Pulse definition lifecycle.
-Use TADX by default for Tableau work.
+It supports content discovery and lifecycle, metadata and lineage, catalogs, local artifacts, workspaces, administration, and Pulse definition lifecycle.
+This Guidance teaches TADX commands; respect the user's chosen tools for other workflows.
+TADX does not query datasource values, render views, or retrieve current Pulse values and insights.
 
 Default output is compact TOON.
 Use `--full` only when expanded bounded details are needed.
 `--env` is an alias for `--environment` on commands that accept an environment.
 Use one relevant leaf `--help` only when this Guidance and its references do not answer the question.
-
-## TADX versus Tableau MCP
-
-Use Tableau MCP only for:
-
-- Datasource value queries and cardinality profiling.
-- Published-view and custom-view data.
-- Published-view and custom-view images.
-- Current Pulse values and generated insights.
-- Interactive visualization rendering without a TADX equivalent.
-
-Do not defer to Tableau MCP for discovery, identity, TADX-supported metadata or schema inspection, lineage, lifecycle, administration, workspaces, or local artifacts.
-Use TADX datasource schema discovery for tables, fields, roles, data types, and aggregations.
-TADX never calls, proxies, configures, or reports the connection state of Tableau MCP.
 
 ## Critical rules
 
@@ -46,22 +33,34 @@ TADX never calls, proxies, configures, or reports the connection state of Tablea
 ## Catalog versus live reads
 
 Live reads are the default.
-Live `tadx search` uses Tableau's native search and inherits the search capabilities and ranking available on that site.
+Live content searches use Tableau's native search and inherit the search capabilities and ranking available on that site.
 `--catalog` searches cached metadata locally using lexical matching only.
 Prefer live search for broad or conceptual discovery, and catalog search for fast, repeated known-term lookup.
 Use the catalog when freshness is acceptable and the task benefits from repeated discovery, broad inventory, cross-resource comparison, or cached datasource schemas.
-Refresh the catalog before broad or repeated work against an unknown or stale environment.
+Refresh the required catalog scopes when their cached coverage or freshness does not meet the task.
 Use live reads for authoritative state before consequential changes, details not indexed in the catalog, targeted inspection after remote changes, and uncached datasource schemas.
 
 `--catalog` is local-only and never falls back to Tableau.
 A catalog miss does not prove remote absence.
 Live schema reads write through to the catalog.
 Targeted live reads do not establish complete inventory coverage.
+Ordinary content and administration lists and live searches use bounded provider reads without accessing SQLite.
+`--all` explicitly collects all selected records within 10,000 and attempts a catalog update.
+An unfiltered complete `--all` replaces that resource scope; filtered `--all` records observations without claiming complete site coverage.
+A failed catalog write does not discard the collected live answer; retain its warning.
 A full refresh replaces the current generation rather than merging earlier scopes.
 Request every required refresh scope together.
+The default refresh collects inventory without permissions.
+Include `permissions` explicitly in `--scope` for a bulk permission inventory.
 Treat the catalog as a cache, not authoritative truth for consequential remote changes.
 An item-level permission denial can produce a usable `partial` catalog with explicit warnings and `complete: false`.
 Inspect `tadx catalog status --full` before treating cached permission coverage as complete.
+Older catalog schemas require an explicit refresh; ordinary reads do not rebuild the cache.
+
+Catalog collection starts with up to four concurrent reads and increases gradually toward the environment's ceiling, default 32.
+Throttled reads share a cooldown within the run.
+Set the ceiling from 1 to 256 with `tadx env update <alias> --catalog-max-concurrency <count>`; `--clear-catalog-max-concurrency` restores 32.
+The same setting is available on `env add` and is stored as `catalog_max_concurrency`.
 
 ## Workspaces
 
@@ -78,10 +77,6 @@ Returned artifact paths remain relative to the workspace so they are portable ac
 | Search, inspect, pull, publish, move, rename, delete, lineage, or datasource schema | [Content lifecycle](references/content-lifecycle.md) |
 | Users, groups, memberships, ownership, permissions, or projects | [Administration](references/administration.md) |
 | Workspace creation, registration, defaults, local artifact movement, root relocation, or cleanup | [Workspaces](references/workspace.md) |
-| Datasource value queries or cardinality profiling | [Tableau MCP routing](references/tableau-mcp.md) |
-| Published-view or custom-view data or images | [Tableau MCP routing](references/tableau-mcp.md) |
-| Current Pulse values or generated insights | [Tableau MCP routing](references/tableau-mcp.md) |
-| Interactive visualization rendering without a TADX equivalent | [Tableau MCP routing](references/tableau-mcp.md) |
 | Pulse definition creation, forking, validation, or management | Separate `tadx-pulse` Guidance |
 
 Read the relevant reference before acting.
