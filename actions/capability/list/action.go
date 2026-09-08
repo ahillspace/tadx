@@ -13,7 +13,7 @@ const (
 	// DefaultLimit bounds discovery output when the caller does not choose a limit.
 	DefaultLimit = 20
 	// MaxLimit is the largest permitted discovery page.
-	MaxLimit = 100
+	MaxLimit = 10000
 )
 
 // Source supplies registry discovery views.
@@ -41,7 +41,7 @@ func (a *Action) Execute(ctx context.Context, input Input) (Output, error) {
 		limit = DefaultLimit
 	}
 	if limit < 1 || limit > MaxLimit {
-		return Output{}, usageError("limit must be between 1 and 100")
+		return Output{}, usageError("limit must be between 1 and 10000")
 	}
 	offset := 0
 	if input.Cursor != "" {
@@ -118,7 +118,7 @@ func help(input Input, limit int, nextCursor string) []string {
 	if input.Mutation != nil {
 		parts = append(parts, "--mutation="+strconv.FormatBool(*input.Mutation))
 	}
-	parts = append(parts, "--limit", strconv.Itoa(limit), "--cursor", nextCursor)
+	parts = append(parts, "--limit", strconv.Itoa(min(limit*2, MaxLimit)))
 	return append(result, strings.Join(parts, " "))
 }
 

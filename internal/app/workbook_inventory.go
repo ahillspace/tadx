@@ -12,7 +12,12 @@ import (
 	tableauworkbook "github.com/ahillspace/tadx/internal/tableau/workbook"
 )
 
-func (c *remoteContentCommands) ListWorkbooks(ctx context.Context, input workbooklist.Input) (workbooklist.Output, error) {
+func (c *remoteContentCommands) ListWorkbooks(ctx context.Context, input workbooklist.Input) (result workbooklist.Output, resultErr error) {
+	defer func() {
+		if resultErr == nil {
+			resultErr = validateInventoryAll(input.All, result.Source)
+		}
+	}()
 	if input.Catalog {
 		environment, site, err := c.resolveCatalogTarget(input.Environment)
 		if err != nil {
@@ -52,6 +57,7 @@ func (c *remoteContentCommands) ListWorkbooks(ctx context.Context, input workboo
 		}
 		if inventory.catalogErr != nil {
 			reader := inventory.memoryReader()
+			reader.allowContinuation = input.All
 			output, err := workbooklist.New(reader).Execute(ctx, input)
 			if err != nil {
 				return output, err

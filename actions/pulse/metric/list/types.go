@@ -9,6 +9,7 @@ type Input struct {
 	Cursor         string
 	Limit          int
 	Catalog        bool
+	All            bool
 }
 type PageRequest struct {
 	PageSize  int
@@ -27,9 +28,10 @@ type Page struct {
 	RequestID     string
 }
 type OutputPage struct {
-	Returned   int    `json:"returned"`
-	Limit      int    `json:"limit"`
-	NextCursor string `json:"next_cursor,omitempty"`
+	Returned      int    `json:"returned"`
+	Limit         int    `json:"limit"`
+	NextCursor    string `json:"-"`
+	MoreAvailable bool   `json:"more_available"`
 }
 type Output struct {
 	Status         string

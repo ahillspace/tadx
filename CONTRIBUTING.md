@@ -50,7 +50,10 @@ Do not write live API code or make that capability executable until bounded evid
 
 ## Preserve output and safety contracts
 
-Default output is an explicit bounded compact TOON projection containing the status, authoritative identity, next safe decision fields, warnings, continuation state, and help.
+Default output is an explicit bounded compact TOON projection containing the status, authoritative identity, next safe decision fields, warnings, completeness, and help.
+Render `more_available` when results are limited; keep opaque provider and catalog cursors internal in both compact and full output.
+Use a larger bounded `--limit`, or explicit `--all` where supported, to request additional results.
+An incomplete or capped traversal must never claim a complete inventory.
 When additional bounded details exist, compact output includes the exact top-level marker `details: "--full"` immediately before `help[]`.
 `--full` is a bounded superset for the same operation and never changes requests, mutation behavior, pagination, or secret redaction.
 Use separate compact and full golden fixtures for detail-bearing output.
@@ -58,10 +61,13 @@ Use separate compact and full golden fixtures for detail-bearing output.
 Persist and render artifact paths relative to the resolved workspace with forward slashes.
 Resolve absolute paths only at runtime and never emit machine-specific paths.
 Treat Tableau LUIDs as authoritative, fail ambiguous selectors, and never fuzzy-match or prompt interactively.
+Project names may contain a literal slash.
+Retain these projects and their descendants; exact LUID operations must remain usable even when a display path is ambiguous.
 Authenticate to Tableau with PATs only.
 Consequential mutations run by default and support `--preview` for a read-only plan.
 Remote mutation commands and capabilities remain discoverable when execution is disabled.
 `TADX_ENABLE_MUTATIONS=1` enables mutation commands.
+`--env` is an alias for `--environment`, including explicit mutation targets.
 `--force` does not bypass mutation policy.
 Persist PATs only after explicit user approval through the native OS credential store.
 Store only opaque credential references in configuration.

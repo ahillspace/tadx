@@ -1,11 +1,12 @@
 status: refreshed
 generation:
+  complete: true
   id: generation-1
   environment: production
   site: marketing
   generated_at: "2026-09-01T12:00:00Z"
   records: 3
 path: catalog/catalog.sqlite
-warnings[1]: one workbook permission request was forbidden
+warnings[1]: Requested scopes replace the previous catalog generation.
 details: "--full"
 help[1]: tadx catalog status --environment production

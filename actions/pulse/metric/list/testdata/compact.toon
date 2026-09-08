@@ -5,7 +5,7 @@ definition_luid: definition-1
 page:
   returned: 2
   limit: 20
-  next_cursor: cursor-2
+  more_available: true
 metrics[2]{luid,name,is_default}:
   metric-1,Revenue,true
   metric-2,Revenue West,false

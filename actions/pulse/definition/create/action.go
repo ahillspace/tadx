@@ -8,7 +8,6 @@ import (
 	"errors"
 	"fmt"
 	"regexp"
-	"sort"
 	"strings"
 	"unicode/utf8"
 
@@ -110,13 +109,29 @@ func (a *Action) Apply(ctx context.Context, input Input, plan Plan) (CreateResul
 		if result.DefinitionLUID != "" {
 			return CreateResult{}, &errs.Error{ID: "pulse.definition.create.outcome_unknown", Kind: errs.KindOperation, Operation: "pulse.definition.create", Resource: result.DefinitionLUID, Environment: input.Environment, Site: input.Site, Summary: "The Pulse definition was created, but its default metric could not be resolved.", Cause: err, Retryable: errs.Bool(false), CorrectiveAction: "Inspect the created definition by its exact LUID before attempting another create.", TableauRequestID: result.TableauRequestID}
 		}
-		retryable, corrective := errs.CompleteRetryAdvice(err, "Review the Tableau response and current definition inventory before creating again.")
-		return CreateResult{}, &errs.Error{ID: "pulse.definition.create.failed", Kind: errs.KindOperation, Operation: "pulse.definition.create", Environment: input.Environment, Site: input.Site, Summary: "Pulse definition creation failed.", Cause: err, Retryable: retryable, CorrectiveAction: corrective, TableauRequestID: errs.TableauRequestID(err)}
+		return CreateResult{}, &errs.Error{ID: "pulse.definition.create.failed", Kind: errs.KindOperation, Operation: "pulse.definition.create", Environment: input.Environment, Site: input.Site, Summary: "Pulse definition creation failed.", Cause: err, Retryable: errs.Bool(false), CorrectiveAction: createFailureAdvice(input, err), TableauRequestID: errs.TableauRequestID(err)}
 	}
 	if result.DefinitionLUID == "" || result.DefaultMetricLUID == "" {
 		return CreateResult{}, createError("pulse.definition.create.invalid_response", errs.KindOperation, input, "Tableau returned an incomplete Pulse definition creation result.", errors.New("definition and default metric LUIDs are required"))
 	}
 	return result, nil
+}
+
+func createFailureAdvice(input Input, cause error) string {
+	lookup := fmt.Sprintf("Run tadx pulse definition list --environment %q --full, then inspect candidate definitions by exact LUID in that environment. Compare datasource, measure, aggregation, date field, filters, and dimensions before another create.", input.Environment)
+	var status interface{ HTTPStatus() int }
+	if errors.As(cause, &status) {
+		switch status.HTTPStatus() {
+		case 400:
+			return "Review the Tableau error details and the same create command with --preview --full. " + lookup
+		case 409:
+			return "Check whether an equivalent definition exists, including definitions with different names; HTTP 409 alone does not establish the conflict cause. " + lookup
+		case 401, 403:
+			_, advice := errs.CompleteRetryAdvice(cause, "Verify authentication and access in the selected environment.")
+			return advice + " " + lookup
+		}
+	}
+	return "Reconcile the remote outcome before attempting another create. " + lookup
 }
 
 // Execute plans every call and creates unless preview is requested.
@@ -202,6 +217,9 @@ func requestFromIntent(intent Intent) (CreateRequest, error) {
 	if err != nil {
 		return CreateRequest{}, err
 	}
+	if len(dimensions) == 0 {
+		return CreateRequest{}, errors.New("at least one adjustable dimension is required; provide --dimension with an eligible exact field ID")
+	}
 	granularities, err := allowedGranularities(intent.MinimumGranularity)
 	if err != nil {
 		return CreateRequest{}, err
@@ -248,18 +266,18 @@ func requestFingerprint(request CreateRequest) (string, error) {
 
 func canonicalIdentifiers(values []string) ([]string, error) {
 	unique := make(map[string]struct{}, len(values))
+	result := make([]string, 0, len(values))
 	for _, value := range values {
 		value = strings.TrimSpace(value)
 		if value == "" {
 			return nil, errors.New("allowed dimensions cannot contain blank field identifiers")
 		}
+		if _, exists := unique[value]; exists {
+			continue
+		}
 		unique[value] = struct{}{}
-	}
-	result := make([]string, 0, len(unique))
-	for value := range unique {
 		result = append(result, value)
 	}
-	sort.Strings(result)
 	return result, nil
 }
 

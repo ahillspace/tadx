@@ -65,6 +65,10 @@ func catalogReadError(operation, environment, site string, err error) error {
 	var missing interface{ CatalogResourceNotFound() bool }
 	var ambiguous interface{ AmbiguousCatalogSelector() bool }
 	var invalidCursor interface{ InvalidCatalogCursor() bool }
+	var refreshRequired interface{ CatalogProjectRefreshRequired() bool }
+	if errors.As(err, &refreshRequired) && refreshRequired.CatalogProjectRefreshRequired() {
+		return &errs.Error{ID: "catalog.project_filter_unavailable", Kind: errs.KindOperation, Operation: operation, Environment: environment, Site: site, Summary: "The catalog lacks complete project identity coverage for this filter.", Cause: err, Retryable: errs.Bool(false), CorrectiveAction: "Run tadx catalog refresh --environment " + environment + " --scope projects,datasources, then repeat the same --catalog command."}
+	}
 	switch {
 	case errors.As(err, &uninitialized) && uninitialized.CatalogUninitialized():
 		id, summary = "catalog.uninitialized", "The catalog is not initialized for this environment and site."
@@ -155,10 +159,10 @@ type catalogDatasourceListReader struct {
 }
 
 func (r *catalogDatasourceListReader) ListDatasources(ctx context.Context, input datasourcelist.PageRequest) (datasourcelist.Page, error) {
-	if input.OwnerName != "" || input.ProjectName != "" || input.Type != "" || input.Tag != "" || input.UpdatedAfter != "" || input.UpdatedBefore != "" {
+	if input.OwnerName != "" || input.Type != "" || input.Tag != "" || input.UpdatedAfter != "" || input.UpdatedBefore != "" {
 		return datasourcelist.Page{}, unsupportedCatalogFilters("datasource.list", r.environment, r.site)
 	}
-	result, err := r.store.ReadResources(ctx, catalog.ResourceQuery{Environment: r.environment, Site: r.site, Kind: "datasource", Name: input.Name, Offset: snapshotOffset(input.PageNumber, input.PageSize, input.SnapshotCursor), Limit: input.PageSize, Cursor: input.SnapshotCursor})
+	result, err := r.store.ReadResources(ctx, catalog.ResourceQuery{Environment: r.environment, Site: r.site, Kind: "datasource", Name: input.Name, ProjectName: input.ProjectName, Offset: snapshotOffset(input.PageNumber, input.PageSize, input.SnapshotCursor), Limit: input.PageSize, Cursor: input.SnapshotCursor})
 	if err != nil {
 		return datasourcelist.Page{}, catalogReadError("datasource.list", r.environment, r.site, err)
 	}
@@ -169,6 +173,9 @@ func (r *catalogDatasourceListReader) ListDatasources(ctx context.Context, input
 			items[index] = datasourcelist.Datasource{LUID: entry.LUID, Name: entry.Name, OwnerLUID: entry.Owner}
 		}
 		items[index].ProjectPath = entry.ProjectPath
+		if input.ProjectName != "" {
+			items[index].ProjectName = input.ProjectName
+		}
 	}
 	return datasourcelist.Page{Number: input.PageNumber, Size: input.PageSize, Total: result.Total, Datasources: items, SnapshotCursor: result.NextCursor}, nil
 }

@@ -64,23 +64,24 @@ type PermissionInspector interface {
 }
 
 type Dependencies struct {
-	PermissionCreator   PermissionCreator
-	PermissionDeleter   PermissionDeleter
-	UserLister          UserLister
-	UserInspector       UserInspector
-	UserCreator         UserCreator
-	UserUpdater         UserUpdater
-	UserDeleter         UserDeleter
-	GroupLister         GroupLister
-	GroupInspector      GroupInspector
-	GroupCreator        GroupCreator
-	GroupUpdater        GroupUpdater
-	GroupDeleter        GroupDeleter
-	GroupMemberAdder    GroupMemberAdder
-	GroupMemberRemover  GroupMemberRemover
-	PermissionInspector PermissionInspector
-	Renderer            Renderer
-	MutationsEnabled    bool
+	PermissionCapabilities func(string) []string
+	PermissionCreator      PermissionCreator
+	PermissionDeleter      PermissionDeleter
+	UserLister             UserLister
+	UserInspector          UserInspector
+	UserCreator            UserCreator
+	UserUpdater            UserUpdater
+	UserDeleter            UserDeleter
+	GroupLister            GroupLister
+	GroupInspector         GroupInspector
+	GroupCreator           GroupCreator
+	GroupUpdater           GroupUpdater
+	GroupDeleter           GroupDeleter
+	GroupMemberAdder       GroupMemberAdder
+	GroupMemberRemover     GroupMemberRemover
+	PermissionInspector    PermissionInspector
+	Renderer               Renderer
+	MutationsEnabled       bool
 }
 
 func New(deps Dependencies) *cobra.Command {
@@ -166,8 +167,11 @@ func newUserList(deps Dependencies) *cobra.Command {
 	cmd.Flags().StringVar(&input.Environment, "environment", "", "exact environment alias; defaults to the configured read environment")
 	cmd.Flags().StringVar(&input.Name, "name", "", "exact username filter")
 	cmd.Flags().StringVar(&input.SiteRole, "site-role", "", "exact site-role filter")
+	cmd.Flags().BoolVar(&input.All, "all", false, "return all matching records, up to 10000; cannot combine with --limit")
 	cmd.Flags().IntVar(&input.Limit, "limit", 0, "maximum users to render")
 	cmd.Flags().StringVar(&input.Cursor, "cursor", "", "opaque continuation cursor")
+	cmd.MarkFlagsMutuallyExclusive("all", "limit")
+	cmd.MarkFlagsMutuallyExclusive("all", "cursor")
 	cmd.Flags().BoolVar(&input.Catalog, "catalog", false, "read indexed local catalog data without contacting Tableau")
 	return cmd
 }
@@ -215,7 +219,7 @@ func newUserCreate(deps Dependencies) *cobra.Command {
 	cmd.Flags().StringVar(&in.Environment, "environment", "", "explicit write environment alias")
 	cmd.Flags().StringVar(&in.Name, "name", "", "exact username or email")
 	cmd.Flags().StringVar(&in.SiteRole, "site-role", "", "explicit site role")
-	cmd.Flags().StringVar(&in.AuthSetting, "auth-setting", "", "explicit authentication setting")
+	cmd.Flags().StringVar(&in.AuthSetting, "auth-setting", "", "authentication setting: ServerDefault, SAML, OpenID, or TableauIDWithMFA (availability depends on the site)")
 	cmd.Flags().StringVar(&in.IdPConfigurationID, "idp-configuration-id", "", "explicit IdP configuration LUID")
 	cmd.Flags().StringVar(&in.IdentityPoolName, "identity-pool", "", "explicit identity-pool name")
 	cmd.Flags().StringVar(&in.Email, "email", "", "notification email address")
@@ -259,7 +263,7 @@ func newUserUpdate(deps Dependencies) *cobra.Command {
 	cmd.Flags().StringVar(&fullName, "full-name", "", "explicit full name")
 	cmd.Flags().StringVar(&email, "email", "", "explicit notification email")
 	cmd.Flags().StringVar(&siteRole, "site-role", "", "explicit site role")
-	cmd.Flags().StringVar(&auth, "auth-setting", "", "explicit authentication setting")
+	cmd.Flags().StringVar(&auth, "auth-setting", "", "authentication setting: ServerDefault, SAML, OpenID, or TableauIDWithMFA (availability depends on the site)")
 	cmd.Flags().StringVar(&identityPool, "identity-pool", "", "explicit identity-pool name")
 	cmd.Flags().StringVar(&idp, "idp-configuration-id", "", "explicit IdP configuration LUID")
 	cmd.Flags().StringVar(&language, "language", "", "explicit language code")
@@ -306,8 +310,11 @@ func newGroupList(deps Dependencies) *cobra.Command {
 	cmd.Flags().StringVar(&in.Environment, "environment", "", "exact environment alias; defaults to the configured read environment")
 	cmd.Flags().StringVar(&in.Name, "name", "", "exact group-name filter")
 	cmd.Flags().StringVar(&in.Domain, "domain", "", "exact directory-domain filter")
+	cmd.Flags().BoolVar(&in.All, "all", false, "return all matching records, up to 10000; cannot combine with --limit")
 	cmd.Flags().IntVar(&in.Limit, "limit", 0, "maximum groups to render")
 	cmd.Flags().StringVar(&in.Cursor, "cursor", "", "opaque continuation cursor")
+	cmd.MarkFlagsMutuallyExclusive("all", "limit")
+	cmd.MarkFlagsMutuallyExclusive("all", "cursor")
 	cmd.Flags().BoolVar(&in.Catalog, "catalog", false, "read indexed local catalog data without contacting Tableau")
 	return cmd
 }

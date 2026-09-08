@@ -85,10 +85,17 @@ func (a *Action) Execute(ctx context.Context, in Input, preview bool) (Output, e
 		return Output{}, errors.New("admin user create is not configured")
 	}
 	if in.Environment == "" || (in.Site == "" && !in.TargetResolved) || in.Name == "" || in.SiteRole == "" {
-		return Output{}, usage("selector", "admin user create requires explicit environment, site, name, and site role")
+		return Output{}, usage("selector", "admin user create requires --environment, --name, and --site-role; the environment selects the site")
 	}
 	if (in.AuthSetting == "") == (in.IdPConfigurationID == "") {
 		return Output{}, usage("auth_setting", "admin user create requires exactly one explicit auth setting or IdP configuration ID")
+	}
+	if in.AuthSetting != "" {
+		switch in.AuthSetting {
+		case "ServerDefault", "SAML", "OpenID", "TableauIDWithMFA":
+		default:
+			return Output{}, usage("auth_setting", "Supported --auth-setting values: ServerDefault, SAML, OpenID, TableauIDWithMFA. Use --idp-configuration-id for an exact authentication configuration.")
+		}
 	}
 	found, err := a.finder.FindUsers(ctx, in.Name)
 	if err != nil {

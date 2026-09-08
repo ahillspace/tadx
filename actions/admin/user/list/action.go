@@ -6,12 +6,14 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"github.com/ahillspace/tadx/internal/output"
 
 	"github.com/ahillspace/tadx/internal/errs"
 	"github.com/ahillspace/tadx/internal/readsource"
 )
 
 type Input struct {
+	All                                       bool
 	Environment, Site, Cursor, Name, SiteRole string
 	Limit                                     int
 	Catalog                                   bool
@@ -38,12 +40,7 @@ type Page struct {
 	SnapshotCursor       string
 	SuppressContinuation bool
 }
-type OutputPage struct {
-	Returned   int    `json:"returned"`
-	Total      int    `json:"total"`
-	Limit      int    `json:"limit"`
-	NextCursor string `json:"next_cursor,omitempty"`
-}
+type OutputPage = output.Page
 type Output struct {
 	Status, Environment, Site string
 	Page                      OutputPage
@@ -96,6 +93,9 @@ type Action struct{ reader Reader }
 
 func New(reader Reader) *Action { return &Action{reader: reader} }
 func (a *Action) Execute(ctx context.Context, input Input) (Output, error) {
+	if input.All {
+		return a.collectAll(ctx, input)
+	}
 	if a == nil || a.reader == nil {
 		return Output{}, errors.New("admin user list reader is not configured")
 	}
@@ -124,7 +124,7 @@ func (a *Action) Execute(ctx context.Context, input Input) (Output, error) {
 			return Output{}, err
 		}
 	}
-	return Output{Status: "listed", Environment: input.Environment, Site: input.Site, Page: OutputPage{Returned: len(page.Users), Total: page.Total, Limit: page.Size, NextCursor: next}, Users: page.Users, RequestID: page.RequestID, Help: []string{"tadx admin user inspect --id <user-luid>"}}, nil
+	return Output{Status: "listed", Environment: input.Environment, Site: input.Site, Page: OutputPage{Returned: len(page.Users), Total: page.Total, Limit: page.Size, NextCursor: next, MoreAvailable: next != "" || (page.SuppressContinuation && len(page.Users) < page.Total)}, Users: page.Users, RequestID: page.RequestID, Help: []string{"tadx admin user inspect --id <user-luid>"}}, nil
 }
 
 type cursorValue struct {
@@ -164,4 +164,49 @@ func selectPage(encoded string, requested int, filter string) (int, int, string,
 func encodeCursor(page, size int, filter, snapshot string) (string, error) {
 	data, err := json.Marshal(cursorValue{Version: 1, Page: page, Size: size, Filter: filter, Snapshot: snapshot})
 	return base64.RawURLEncoding.EncodeToString(data), err
+}
+
+// collectAll follows private bounded pages and fails closed on incomplete inventories.
+func (a *Action) collectAll(ctx context.Context, input Input) (Output, error) {
+	if input.Limit != 0 || input.Cursor != "" {
+		return Output{}, errs.New(errs.KindUsage, "--all cannot be combined with --limit or --cursor")
+	}
+	input.All = false
+	input.Limit = 100
+	var result Output
+	seen := map[string]bool{}
+	cursors := map[string]bool{}
+	for pageNumber := 0; pageNumber < 100; pageNumber++ {
+		page, err := a.Execute(ctx, input)
+		if err != nil {
+			return Output{}, err
+		}
+		if pageNumber == 0 {
+			result = page
+			result.Users = nil
+		} else if page.Page.Total != result.Page.Total {
+			return Output{}, errors.New("admin/user inventory changed during pagination; retry")
+		}
+		for _, item := range page.Users {
+			if item.LUID == "" || seen[item.LUID] {
+				return Output{}, errors.New("admin/user inventory returned missing or repeated identities")
+			}
+			seen[item.LUID] = true
+			result.Users = append(result.Users, item)
+		}
+		result.RequestID = page.RequestID
+		if !page.Page.MoreAvailable && page.Page.NextCursor == "" {
+			if len(result.Users) != result.Page.Total {
+				return Output{}, errors.New("admin/user inventory completeness could not be established")
+			}
+			result.Page = OutputPage{Returned: len(result.Users), Total: result.Page.Total, Limit: 10000}
+			return result, nil
+		}
+		if len(page.Users) == 0 || page.Page.NextCursor == "" || cursors[page.Page.NextCursor] {
+			return Output{}, errors.New("admin/user inventory pagination did not advance; completeness could not be established")
+		}
+		cursors[page.Page.NextCursor] = true
+		input.Cursor = page.Page.NextCursor
+	}
+	return Output{}, errors.New("admin/user --all exceeds the 10000-record bound; use narrower filters")
 }

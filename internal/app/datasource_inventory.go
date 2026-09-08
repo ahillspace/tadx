@@ -12,7 +12,12 @@ import (
 	tableaudatasource "github.com/ahillspace/tadx/internal/tableau/datasource"
 )
 
-func (c *remoteContentCommands) ListDatasources(ctx context.Context, input datasourcelist.Input) (datasourcelist.Output, error) {
+func (c *remoteContentCommands) ListDatasources(ctx context.Context, input datasourcelist.Input) (result datasourcelist.Output, resultErr error) {
+	defer func() {
+		if resultErr == nil {
+			resultErr = validateInventoryAll(input.All, result.Source)
+		}
+	}()
 	if input.Catalog {
 		environment, site, err := c.resolveCatalogTarget(input.Environment)
 		if err != nil {
@@ -52,6 +57,7 @@ func (c *remoteContentCommands) ListDatasources(ctx context.Context, input datas
 		}
 		if inventory.catalogErr != nil {
 			reader := inventory.memoryReader()
+			reader.allowContinuation = input.All
 			output, err := datasourcelist.New(reader).Execute(ctx, input)
 			if err != nil {
 				return output, err

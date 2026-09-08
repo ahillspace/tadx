@@ -37,7 +37,8 @@ func newRemoteAdminCommands(runtime *runtimeDependencies) *remoteAdminCommands {
 // dependencies returns every action executor required by the administration CLI tree.
 func (c *remoteAdminCommands) dependencies() *admincli.Dependencies {
 	return &admincli.Dependencies{
-		UserLister: c, UserInspector: c, UserCreator: c, UserUpdater: c, UserDeleter: c,
+		PermissionCapabilities: tableauadmin.PermissionCapabilities,
+		UserLister:             c, UserInspector: c, UserCreator: c, UserUpdater: c, UserDeleter: c,
 		GroupLister: c, GroupInspector: c, GroupCreator: c, GroupUpdater: c, GroupDeleter: c,
 		GroupMemberAdder: c, GroupMemberRemover: c,
 		PermissionInspector: c, PermissionCreator: c, PermissionDeleter: c,
@@ -99,6 +100,7 @@ func (c *remoteAdminCommands) ListAdminUsers(ctx context.Context, input userlist
 		}
 		if inventory.catalogErr != nil {
 			reader := inventory.memoryReader()
+			reader.allowContinuation = input.All
 			output, err := userlist.New(reader).Execute(ctx, input)
 			if err != nil {
 				return output, adminActionError("admin.user.list", input.Environment, input.Site, err)
@@ -246,6 +248,7 @@ func (c *remoteAdminCommands) ListAdminGroups(ctx context.Context, input groupli
 		}
 		if inventory.catalogErr != nil {
 			reader := inventory.memoryReader()
+			reader.allowContinuation = input.All
 			output, err := grouplist.New(reader).Execute(ctx, input)
 			if err != nil {
 				return output, adminActionError("admin.group.list", input.Environment, input.Site, err)

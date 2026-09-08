@@ -7,7 +7,11 @@ param(
 
     [string]$InstallDir = '',
 
-    [switch]$NoModifyPath
+    [switch]$NoModifyPath,
+
+    [switch]$NoCompletion,
+
+    [string]$CompletionProfile = $PROFILE.CurrentUserAllHosts
 )
 
 Set-StrictMode -Version Latest
@@ -234,6 +238,28 @@ function Install-TadxBinary {
     }
 }
 
+function Set-ManagedCompletion {
+    param([bool]$Enabled)
+    $profilePath = [IO.Path]::GetFullPath($CompletionProfile)
+    $marker = '# tadx-installer-completion'
+    $original = ''
+    if (Test-Path -LiteralPath $profilePath) {
+        $original = [IO.File]::ReadAllText($profilePath)
+    }
+    $updated = [regex]::Replace($original, '(?m)^if \(Test-Path -LiteralPath [^\r\n]* ' + [regex]::Escape($marker) + '\r?$\n?', '')
+    if ($Enabled) {
+        $binary = (Join-Path $InstallDir 'tadx.exe').Replace("'", "''")
+        if ($updated.Length -gt 0 -and -not $updated.EndsWith("`n")) { $updated += "`r`n" }
+        $updated += "if (Test-Path -LiteralPath '$binary') { & '$binary' completion powershell | Out-String | Invoke-Expression } $marker`r`n"
+    }
+    if ($updated -ceq $original) { return }
+    New-Item -ItemType Directory -Force -Path (Split-Path -Parent $profilePath) | Out-Null
+    if ((Test-Path -LiteralPath $profilePath) -and -not (Test-Path -LiteralPath "$profilePath.tadx-backup")) {
+        Copy-Item -LiteralPath $profilePath -Destination "$profilePath.tadx-backup"
+    }
+    [IO.File]::WriteAllText($profilePath, $updated, (New-Object Text.UTF8Encoding($false)))
+}
+
 if ([string]::IsNullOrWhiteSpace($InstallDir)) {
     $InstallDir = Get-DefaultInstallDir
 }
@@ -244,7 +270,8 @@ if ($Action -ieq 'Uninstall') {
     if (Test-Path -LiteralPath $binaryPath) {
         Remove-Item -LiteralPath $binaryPath -Force
     }
-    Remove-UserPath -Directory $InstallDir
+    if (-not $NoModifyPath) { Remove-UserPath -Directory $InstallDir }
+    Set-ManagedCompletion -Enabled $false
     if ((Test-Path -LiteralPath $InstallDir) -and -not (Get-ChildItem -Force -LiteralPath $InstallDir | Select-Object -First 1)) {
         Remove-Item -LiteralPath $InstallDir -Force
     }
@@ -327,6 +354,10 @@ try {
     Install-TadxBinary -Source $binaries[0].FullName -Directory $InstallDir
     if (-not $NoModifyPath) {
         Add-UserPath -Directory $InstallDir
+    }
+    if (-not $NoCompletion) {
+        Set-ManagedCompletion -Enabled $true
+        Write-Host "PowerShell completion is enabled in $CompletionProfile. Open a new PowerShell session to load it."
     }
 
     Write-Host "TADX $resolvedVersion was installed at $(Join-Path $InstallDir 'tadx.exe')."

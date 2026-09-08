@@ -168,13 +168,11 @@ func classifyGraphQLFields(nodes []graphQLNode) []rawField {
 	analysis := make([]*analyzedField, 0, len(nodes))
 	byName := make(map[string][]*analyzedField)
 	for _, node := range nodes {
-		if node.Hidden {
-			continue
-		}
 		name := canonicalFieldID(node)
 		formula := value(node.Formula)
 		prepared := prepareFormula(formula)
-		entry := &analyzedField{node: node, name: name, references: formulaReferences(prepared), directUserAgg: userAggPattern.MatchString(stripCurlyBlocks(prepared))}
+		aggregation := strings.ToUpper(strings.TrimSpace(value(node.Aggregation)))
+		entry := &analyzedField{node: node, name: name, references: formulaReferences(prepared), directUserAgg: aggregation == "AGG" || aggregation == "USER" || userAggPattern.MatchString(stripCurlyBlocks(prepared))}
 		fqn := strings.ToLower(strings.TrimSpace(node.FullyQualifiedName))
 		switch {
 		case strings.Contains(fqn, "__tableau_internal_object_id__") || strings.EqualFold(node.DataType, "TABLE") || strings.Contains(fqn, "[__"):
@@ -187,6 +185,9 @@ func classifyGraphQLFields(nodes []graphQLNode) []rawField {
 		analysis = append(analysis, entry)
 		if strings.TrimSpace(node.Name) != "" {
 			byName[node.Name] = append(byName[node.Name], entry)
+		}
+		if name != "" && name != node.Name {
+			byName[name] = append(byName[name], entry)
 		}
 	}
 	for pass := 0; pass <= len(analysis); pass++ {
@@ -240,6 +241,10 @@ func classifyGraphQLFields(nodes []graphQLNode) []rawField {
 	}
 	fields := make([]rawField, 0, len(analysis))
 	for _, entry := range analysis {
+		// Hidden fields participate in dependency analysis but are not selectable.
+		if entry.node.Hidden {
+			continue
+		}
 		fields = append(fields, rawField{Name: entry.name, Caption: entry.node.Name, DataType: entry.node.DataType, PhysicalType: entry.node.DataType, ColumnClass: map[bool]string{true: "CALCULATION", false: "COLUMN"}[value(entry.node.Formula) != ""], DefaultAggregation: value(entry.node.Aggregation), Formula: value(entry.node.Formula), Role: entry.node.Role, ExclusionHint: entry.exclusion, RequiresUserAggregation: entry.requiresUser, Provenance: "metadata_graphql"})
 	}
 	return fields

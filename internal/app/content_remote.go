@@ -91,7 +91,12 @@ func (c *remoteContentCommands) connect(ctx context.Context, alias string, expli
 	}, nil
 }
 
-func (c *remoteContentCommands) ListProjects(ctx context.Context, input projectlist.Input) (projectlist.Output, error) {
+func (c *remoteContentCommands) ListProjects(ctx context.Context, input projectlist.Input) (result projectlist.Output, resultErr error) {
+	defer func() {
+		if resultErr == nil {
+			resultErr = validateInventoryAll(input.All, result.Source)
+		}
+	}()
 	if input.Catalog {
 		environment, site, err := c.resolveCatalogTarget(input.Environment)
 		if err != nil {
@@ -131,6 +136,7 @@ func (c *remoteContentCommands) ListProjects(ctx context.Context, input projectl
 		}
 		if inventory.catalogErr != nil {
 			reader := inventory.memoryReader()
+			reader.allowContinuation = input.All
 			output, err := projectlist.New(reader).Execute(ctx, input)
 			if err != nil {
 				return output, err
@@ -243,7 +249,12 @@ func (c *remoteContentCommands) DeleteProject(ctx context.Context, input project
 	return projectdelete.New(adapter, adapter).Execute(ctx, input, preview)
 }
 
-func (c *remoteContentCommands) ListFlows(ctx context.Context, input flowlist.Input) (flowlist.Output, error) {
+func (c *remoteContentCommands) ListFlows(ctx context.Context, input flowlist.Input) (result flowlist.Output, resultErr error) {
+	defer func() {
+		if resultErr == nil {
+			resultErr = validateInventoryAll(input.All, result.Source)
+		}
+	}()
 	if input.Catalog {
 		environment, site, err := c.resolveCatalogTarget(input.Environment)
 		if err != nil {
@@ -283,6 +294,7 @@ func (c *remoteContentCommands) ListFlows(ctx context.Context, input flowlist.In
 		}
 		if inventory.catalogErr != nil {
 			reader := inventory.memoryReader()
+			reader.allowContinuation = input.All
 			output, err := flowlist.New(reader).Execute(ctx, input)
 			if err != nil {
 				return output, err

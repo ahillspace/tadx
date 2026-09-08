@@ -322,7 +322,7 @@ func (a *pulseDefinitionListAdapter) ListDefinitions(ctx context.Context, reques
 	if err != nil {
 		return definitionlist.Page{}, err
 	}
-	a.items = append([]tableaupulse.Definition(nil), page.Definitions...)
+	a.items = append(a.items, page.Definitions...)
 	items := make([]definitionlist.Definition, len(page.Definitions))
 	for index, item := range page.Definitions {
 		items[index] = definitionListItem(item)
@@ -430,7 +430,18 @@ func (v *pulseDefinitionFieldValidator) ValidateDefinitionFields(ctx context.Con
 	for _, field := range schema.Fields {
 		fields[field.ID] = append(fields[field.ID], field)
 	}
-	measure, err := exactPulseField(fields, references.MeasureField, "measure")
+	aggregation := strings.ToUpper(strings.TrimSpace(references.Aggregation))
+	if aggregation == "" {
+		aggregation = strings.ToUpper(strings.TrimSpace(v.aggregation))
+	}
+	if aggregation == "" {
+		aggregation = "AGGREGATION_SUM"
+	}
+	measureRoles := []string{"measure"}
+	if aggregation == "AGGREGATION_COUNT" || aggregation == "AGGREGATION_COUNT_DISTINCT" {
+		measureRoles = append(measureRoles, "dimension")
+	}
+	measure, err := exactPulseField(fields, references.MeasureField, measureRoles...)
 	if err != nil {
 		return fmt.Errorf("measure field: %w", err)
 	}
@@ -441,13 +452,6 @@ func (v *pulseDefinitionFieldValidator) ValidateDefinitionFields(ctx context.Con
 		if _, err := exactPulseField(fields, fieldID, "dimension"); err != nil {
 			return fmt.Errorf("allowed dimension %q: %w", fieldID, err)
 		}
-	}
-	aggregation := strings.ToUpper(strings.TrimSpace(references.Aggregation))
-	if aggregation == "" {
-		aggregation = strings.ToUpper(strings.TrimSpace(v.aggregation))
-	}
-	if aggregation == "" {
-		aggregation = "AGGREGATION_SUM"
 	}
 	if measure.RequiresUserAggregation && aggregation != "AGGREGATION_USER" {
 		return fmt.Errorf("field %q is already aggregated; use --aggregation USER", measure.ID)
@@ -461,7 +465,7 @@ func (v *pulseDefinitionFieldValidator) ValidateDefinitionFields(ctx context.Con
 	return nil
 }
 
-func exactPulseField(fields map[string][]fieldcatalog.Field, id, role string) (fieldcatalog.Field, error) {
+func exactPulseField(fields map[string][]fieldcatalog.Field, id string, roles ...string) (fieldcatalog.Field, error) {
 	id = strings.TrimSpace(id)
 	matches := fields[id]
 	if len(matches) != 1 {
@@ -469,15 +473,17 @@ func exactPulseField(fields map[string][]fieldcatalog.Field, id, role string) (f
 	}
 	field := matches[0]
 	if field.Excluded || field.Role == "excluded" {
-		if field.ExclusionReason == "table_calc" && role == "measure" {
+		if field.ExclusionReason == "table_calc" && len(roles) > 0 && roles[0] == "measure" {
 			return fieldcatalog.Field{}, fmt.Errorf("field %q is a table calculation; table calculations cannot be used as Pulse measures", id)
 		}
 		return fieldcatalog.Field{}, fmt.Errorf("field %q is excluded: %s", id, field.ExclusionReason)
 	}
-	if field.Role != role {
-		return fieldcatalog.Field{}, fmt.Errorf("field %q has role %q, expected %q", id, field.Role, role)
+	for _, role := range roles {
+		if field.Role == role {
+			return field, nil
+		}
 	}
-	return field, nil
+	return fieldcatalog.Field{}, fmt.Errorf("field %q has role %q, expected %q", id, field.Role, strings.Join(roles, " or "))
 }
 
 func numericPulseType(value string) bool {
@@ -499,7 +505,7 @@ func (a *pulseMetricListAdapter) ListMetrics(ctx context.Context, definitionLUID
 	if err != nil {
 		return metriclist.Page{}, err
 	}
-	a.items = append([]tableaupulse.Metric(nil), page.Metrics...)
+	a.items = append(a.items, page.Metrics...)
 	items := make([]metriclist.Metric, len(page.Metrics))
 	for index, item := range page.Metrics {
 		items[index] = metricListItem(item)
@@ -553,7 +559,7 @@ func (a *pulseMetricMutationAdapter) GetDefinition(ctx context.Context, luid str
 	if err != nil {
 		return metricfork.Definition{}, err
 	}
-	return metricfork.Definition{LUID: item.LUID, DatasourceLUID: item.DatasourceLUID, AllowedDimensions: append([]string(nil), item.AllowedDimensions...)}, nil
+	return metricfork.Definition{LUID: item.LUID, DatasourceLUID: item.DatasourceLUID, AllowedDimensions: append([]string(nil), item.AllowedDimensions...), AllowedGranularities: append([]string(nil), item.AllowedGranularities...)}, nil
 }
 
 func (a *pulseMetricMutationAdapter) GetOrCreateMetric(ctx context.Context, request metricfork.CreateRequest) (metricfork.CreateResult, error) {

@@ -4,6 +4,7 @@ package list
 import (
 	"context"
 	"errors"
+	"github.com/ahillspace/tadx/internal/output"
 
 	"github.com/ahillspace/tadx/internal/errs"
 )
@@ -29,7 +30,7 @@ type Page struct {
 	Returned   int         `json:"returned"`
 	Total      int         `json:"total"`
 	Limit      int         `json:"limit"`
-	NextCursor string      `json:"next_cursor,omitempty"`
+	NextCursor string      `json:"-"`
 	Items      []Workspace `json:"workspaces"`
 }
 
@@ -58,12 +59,7 @@ type fullOutput struct {
 	Help       []string    `json:"help"`
 }
 
-type pageSummary struct {
-	Returned   int    `json:"returned"`
-	Total      int    `json:"total"`
-	Limit      int    `json:"limit"`
-	NextCursor string `json:"next_cursor,omitempty"`
-}
+type pageSummary = output.Page
 
 // CompactOutput returns workspace names and availability only.
 func (o Output) CompactOutput() any {
@@ -100,8 +96,8 @@ func (a *Action) Execute(ctx context.Context, input Input) (Output, error) {
 	if input.Limit == 0 {
 		input.Limit = 20
 	}
-	if input.Limit < 1 || input.Limit > 200 {
-		return Output{}, usage("limit must be between 1 and 200")
+	if input.Limit < 1 || input.Limit > 10000 {
+		return Output{}, usage("limit must be between 1 and 10000")
 	}
 	page, err := a.lister.List(ctx, input.Limit, input.Cursor)
 	if err != nil {

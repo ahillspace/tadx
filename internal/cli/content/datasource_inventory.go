@@ -58,8 +58,11 @@ func newDatasourceList(deps datasourceInventoryDependencies) *cobra.Command {
 	command.Flags().StringVar(&input.Tag, "tag", "", "exact tag filter")
 	command.Flags().StringVar(&input.UpdatedAfter, "updated-after", "", "include datasources updated at or after this UTC timestamp")
 	command.Flags().StringVar(&input.UpdatedBefore, "updated-before", "", "include datasources updated at or before this UTC timestamp")
+	command.Flags().BoolVar(&input.All, "all", false, "return all matching records, up to 10000; cannot combine with --limit")
 	command.Flags().IntVar(&input.Limit, "limit", 0, "maximum datasources to render")
 	command.Flags().StringVar(&input.Cursor, "cursor", "", "opaque continuation cursor")
+	command.MarkFlagsMutuallyExclusive("all", "limit")
+	command.MarkFlagsMutuallyExclusive("all", "cursor")
 	command.Flags().BoolVar(&input.Catalog, "catalog", false, "read indexed local catalog data without contacting Tableau")
 	return command
 }

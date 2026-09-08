@@ -72,7 +72,7 @@ func TestExecuteAcceptsMaxLimitAndRejectsPastEndCursor(t *testing.T) {
 }
 
 func TestExecuteValidatesBoundsAndWrapsReadFailure(t *testing.T) {
-	for _, input := range []profilelist.Input{{Limit: -1}, {Limit: 101}, {Cursor: "bad"}} {
+	for _, input := range []profilelist.Input{{Limit: -1}, {Limit: 10001}, {Cursor: "bad"}} {
 		_, err := profilelist.New(reader{}).Execute(context.Background(), input)
 		var structured *errs.Error
 		if !errors.As(err, &structured) || structured.Kind != errs.KindUsage {

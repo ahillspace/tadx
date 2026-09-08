@@ -32,6 +32,9 @@ func New(reader Reader) *Action { return &Action{reader: reader} }
 
 // Execute lists one page without hidden continuation reads.
 func (a *Action) Execute(ctx context.Context, input Input) (Output, error) {
+	if input.All {
+		return a.collectAll(ctx, input)
+	}
 	if a == nil || a.reader == nil {
 		return Output{}, &errs.Error{ID: "datasource.list.unconfigured", Kind: errs.KindRuntime, Operation: "datasource.list", Summary: "Datasource list is not configured.", Retryable: errs.Bool(false), CorrectiveAction: "Configure datasource listing before retrying."}
 	}
@@ -65,7 +68,7 @@ func (a *Action) Execute(ctx context.Context, input Input) (Output, error) {
 	}
 	return Output{
 		Status: "listed", Environment: input.Environment, Site: input.Site,
-		Page:        OutputPage{Returned: len(page.Datasources), Total: page.Total, Limit: page.Size, NextCursor: next},
+		Page:        OutputPage{Returned: len(page.Datasources), Total: page.Total, Limit: page.Size, NextCursor: next, MoreAvailable: next != "" || (page.SuppressContinuation && len(page.Datasources) < page.Total)},
 		Datasources: page.Datasources, RequestID: page.RequestID,
 		Help: []string{"tadx content datasource inspect --id <datasource-luid>"},
 	}, nil
@@ -132,4 +135,49 @@ func datasourceFilterFingerprint(input Input) (string, error) {
 	}
 	sum := sha256.Sum256(data)
 	return base64.RawURLEncoding.EncodeToString(sum[:]), nil
+}
+
+// collectAll follows private bounded pages and fails closed on incomplete inventories.
+func (a *Action) collectAll(ctx context.Context, input Input) (Output, error) {
+	if input.Limit != 0 || input.Cursor != "" {
+		return Output{}, errs.New(errs.KindUsage, "--all cannot be combined with --limit or --cursor")
+	}
+	input.All = false
+	input.Limit = 100
+	var result Output
+	seen := map[string]bool{}
+	cursors := map[string]bool{}
+	for pageNumber := 0; pageNumber < 100; pageNumber++ {
+		page, err := a.Execute(ctx, input)
+		if err != nil {
+			return Output{}, err
+		}
+		if pageNumber == 0 {
+			result = page
+			result.Datasources = nil
+		} else if page.Page.Total != result.Page.Total {
+			return Output{}, errors.New("datasource inventory changed during pagination; retry")
+		}
+		for _, item := range page.Datasources {
+			if item.LUID == "" || seen[item.LUID] {
+				return Output{}, errors.New("datasource inventory returned missing or repeated identities")
+			}
+			seen[item.LUID] = true
+			result.Datasources = append(result.Datasources, item)
+		}
+		result.RequestID = page.RequestID
+		if !page.Page.MoreAvailable && page.Page.NextCursor == "" {
+			if len(result.Datasources) != result.Page.Total {
+				return Output{}, errors.New("datasource inventory completeness could not be established")
+			}
+			result.Page = OutputPage{Returned: len(result.Datasources), Total: result.Page.Total, Limit: 10000}
+			return result, nil
+		}
+		if len(page.Datasources) == 0 || page.Page.NextCursor == "" || cursors[page.Page.NextCursor] {
+			return Output{}, errors.New("datasource inventory pagination did not advance; completeness could not be established")
+		}
+		cursors[page.Page.NextCursor] = true
+		input.Cursor = page.Page.NextCursor
+	}
+	return Output{}, errors.New("datasource --all exceeds the 10000-record bound; use narrower filters")
 }

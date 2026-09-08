@@ -1,15 +1,20 @@
 # TADX
 
-TADX is a deterministic Tableau lifecycle CLI for coding agents and humans.
-It reduces token use and ambiguity by combining exact selectors, safe previews, compact TOON output, portable workspaces, and bounded lineage.
+TADX is a CLI authored specifically to work well with agents, but is also useful to operate by hand.
+The main goal is to allow agents to work with both Tableau Cloud and Server with reduced confusion, token usage, and vastly increased speed.
 
-Commands return only the fields needed for the next decision by default.
-When more bounded detail is available, the response advertises `--full` instead of making the caller search for another command.
-Tableau LUIDs remain authoritative, ambiguous selectors fail, and consequential mutations support `--preview` before you run them.
+Initial testing has shown drastic improvement over all other methods of equiping agents with the tools it needs to work with Tableau.
+
+For agentic analytics, TADX defers to the official Tableau MCP and does not attempt to recreate any of the tooling necessary for NLQ.
+
+Feedback and collaboration is openly welcomed and there is specific and deliberate documentation for anyone looking to add actions to TADX using coding agents (see tadx-build skill)
 
 ## Current status
 
+TADX is not supported or associated with Tableau or Salesforce directly.
+
 TADX is usable and actively developed.
+
 The executable registry now covers the core content, workspace, catalog, administration, and initial Pulse workflows planned for V1.
 
 The current build supports:
@@ -39,6 +44,10 @@ Use the registry in your installed build as the source of truth:
 tadx capability list
 tadx capability get workbook.pull --full
 ```
+
+## Future Vision
+
+The current goal is to get TADX running quickly and smoothly against the simple content lifecycle you see with Tableau Cloud and Server. This is to get it ready to augment the new experiences coming in Tableau (Tableau Authoring API, Tableau Knowledge Graph, Tableau MCP, TDS API, Composable Datasources, etc.). Augmenting semantics, modifying published datasources, cleaning and composing data sources, and managing access with agents is all in scope as these new features become available and TADX is meant to act as the platform that allows agents to assist with these activites cleanly, quickly, cheaply, and at scale.
 
 ## Install TADX
 

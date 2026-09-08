@@ -123,15 +123,15 @@ func TestInventoryKeepsHealthyBranchesWhenProjectHierarchyIsMalformed(t *testing
 	entries, skipped, err := inventoryResourceEntries(tableaucatalog.InventorySnapshot{
 		Scope: tableaucatalog.ScopeWorkbooks,
 		Dependencies: []tableaucatalog.InventoryTable{{Scope: tableaucatalog.ScopeProjects, Rows: [][]any{
-			{"healthy", "Ops", ""}, {"slash", "Not/Addressable", ""}, {"orphan", "Orphan", "missing"},
+			{"healthy", "Ops", ""}, {"slash", "Ops/Reports", ""}, {"orphan", "Orphan", "missing"},
 		}}},
 		Rows: [][]any{
 			{"good", "Good", "healthy", "", nil, "", `{}`},
-			{"bad-slash", "Bad Slash", "slash", "", nil, "", `{}`},
+			{"good-slash", "Slash Project", "slash", "", nil, "", `{}`},
 			{"bad-orphan", "Bad Orphan", "orphan", "", nil, "", `{}`},
 		},
 	}, "dev", "site", time.Date(2026, 9, 6, 12, 0, 0, 0, time.UTC))
-	if err != nil || skipped != 2 || len(entries) != 1 || entries[0].LUID != "good" || entries[0].ProjectPath != "Ops" {
+	if err != nil || skipped != 1 || len(entries) != 2 || entries[0].LUID != "good" || entries[0].ProjectPath != "Ops" || entries[1].LUID != "good-slash" || entries[1].ProjectPath != "Ops/Reports" {
 		t.Fatalf("entries = %#v skipped = %d err = %v", entries, skipped, err)
 	}
 }

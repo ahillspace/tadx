@@ -119,7 +119,7 @@ func TestExecuteMutationFilterDoesNotAuthorizeOrHideDiscovery(t *testing.T) {
 }
 
 func TestExecuteRejectsInvalidPagination(t *testing.T) {
-	for _, input := range []capabilitylist.Input{{Limit: -1}, {Limit: 101}, {Cursor: "nope"}} {
+	for _, input := range []capabilitylist.Input{{Limit: -1}, {Limit: 10001}, {Cursor: "nope"}} {
 		if _, err := capabilitylist.New(source{}).Execute(context.Background(), input); err == nil {
 			t.Fatalf("Execute(%#v) error = nil", input)
 		}

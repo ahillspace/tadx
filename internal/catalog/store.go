@@ -60,7 +60,7 @@ type Record struct {
 
 // ResourceEntry is one resource projection available to explicit catalog reads.
 // Payload contains opaque JSON supplied by the composition root. Catalog
-// storage never interprets its contents.
+// storage interprets only canonical identity fields needed for local selectors.
 type ResourceEntry struct {
 	Environment string
 	Site        string
@@ -76,15 +76,17 @@ type ResourceEntry struct {
 
 // ResourceQuery selects one bounded page from the local read-through index.
 type ResourceQuery struct {
-	Environment string
-	Site        string
-	Kind        string
-	LUID        string
-	Name        string
-	ProjectPath string
-	Offset      int
-	Limit       int
-	Cursor      string
+	Environment     string
+	Site            string
+	Kind            string
+	LUID            string
+	Name            string
+	ProjectPath     string
+	ProjectName     string
+	Offset          int
+	Limit           int
+	Cursor          string
+	projectSnapshot string
 }
 
 // ResourceResult contains a local page and its snapshot coverage provenance.
@@ -549,8 +551,20 @@ func (s *Store) Status(ctx context.Context, selection Selection) (StatusResult, 
 	if err := checkIntegrity(ctx, db); err != nil {
 		return StatusResult{}, err
 	}
-	meta, err := currentGeneration(ctx, db, selection.Environment, selection.Site)
+	tx, err := db.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
 	if err != nil {
+		return StatusResult{}, err
+	}
+	defer tx.Rollback()
+	meta, err := currentGeneration(ctx, tx, selection.Environment, selection.Site)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return StatusResult{Environment: selection.Environment, Site: selection.Site, Path: databaseRelativePath}, nil
+		}
+		return StatusResult{}, err
+	}
+	var incomplete int
+	if err := tx.QueryRowContext(ctx, `SELECT count(*) FROM generation_scopes WHERE generation_key=? AND complete=0`, meta.key).Scan(&incomplete); err != nil {
 		return StatusResult{}, err
 	}
 	age := s.now().Sub(meta.generatedAt)
@@ -558,7 +572,10 @@ func (s *Store) Status(ctx context.Context, selection Selection) (StatusResult, 
 		age = 0
 	}
 	stale, warnings := staleness(s.now, meta.generatedAt, meta.id)
-	return StatusResult{meta.id, meta.environment, meta.site, meta.generatedAt, age, true, stale, meta.source, databaseRelativePath, meta.recordCount, warnings}, nil
+	if incomplete > 0 {
+		warnings = append(warnings, "Catalog permission coverage is incomplete because some workbook permission reads were denied (HTTP 403). Missing rules are unknown, not empty permissions.")
+	}
+	return StatusResult{meta.id, meta.environment, meta.site, meta.generatedAt, age, incomplete == 0, stale, meta.source, databaseRelativePath, meta.recordCount, warnings}, nil
 }
 
 type generationMeta struct {

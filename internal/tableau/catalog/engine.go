@@ -149,6 +149,11 @@ func (e *Engine) run(ctx context.Context, input RunRequest, writer BatchWriter, 
 		cancel()
 	}
 	pumpErr := pump.Close()
+	// Canceling queued writes after an upstream failure must not replace the
+	// actual error with the writer's resulting context cancellation.
+	if runErr != nil && (pumpErr == nil || errors.Is(pumpErr, context.Canceled) || errors.Is(pumpErr, context.DeadlineExceeded)) {
+		return Result{}, runErr
+	}
 	if pumpErr != nil {
 		return Result{}, pumpErr
 	}
@@ -167,6 +172,7 @@ func (e *Engine) run(ctx context.Context, input RunRequest, writer BatchWriter, 
 		TableauRequestIDs: state.sortedRequestIDs(),
 		FinalConcurrency:  limiter.Limit(),
 		SkippedRows:       state.skipped,
+		DeniedPermissions: int(state.deniedPermissions.Load()),
 	}, nil
 }
 
@@ -308,6 +314,16 @@ func (r *runExecutor) runTaskStream(ctx context.Context, count int, at func(inde
 func (r *runExecutor) executeTask(ctx context.Context, task collectTask) (tabxml.Pagination, error) {
 	response, err := r.fetch(ctx, task.request)
 	if err != nil {
+		// A resource-specific permission denial does not invalidate inventory.
+		// Keep authentication, transport, and inventory errors fatal.
+		if task.permission && statusCode(err) == http.StatusForbidden {
+			r.state.deniedPermissions.Add(1)
+			var request interface{ RequestID() string }
+			if errors.As(err, &request) {
+				r.state.addRequestID(request.RequestID())
+			}
+			return tabxml.Pagination{}, nil
+		}
 		return tabxml.Pagination{}, fmt.Errorf("collect %s: %w", task.request.Scope, err)
 	}
 	if int64(len(response.Body)) > task.request.MaxResponseBytes {
@@ -508,12 +524,13 @@ func containsScope(scopes []Scope, target Scope) bool {
 }
 
 type runState struct {
-	mu         sync.Mutex
-	seen       map[Scope]map[string]struct{}
-	counts     map[Scope]int64
-	requestIDs map[string]struct{}
-	requests   atomic.Int64
-	skipped    map[Scope]int
+	mu                sync.Mutex
+	seen              map[Scope]map[string]struct{}
+	counts            map[Scope]int64
+	requestIDs        map[string]struct{}
+	requests          atomic.Int64
+	skipped           map[Scope]int
+	deniedPermissions atomic.Int64
 }
 
 func newRunState(scopes []Scope) *runState {

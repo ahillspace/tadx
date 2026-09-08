@@ -59,11 +59,17 @@ func (a *Action) Execute(ctx context.Context, input Input) (Output, error) {
 	if limit < 1 || limit > maxLimit {
 		return Output{}, schemaError("datasource.schema.usage", errs.KindUsage, input, fmt.Sprintf("Datasource schema limit must be between 1 and %d.", maxLimit), nil, fmt.Sprintf("Set --limit between 1 and %d.", maxLimit))
 	}
+	if input.All {
+		if input.Limit != 0 || input.Cursor != "" {
+			return Output{}, schemaError("datasource.schema.usage", errs.KindUsage, input, "--all cannot be combined with --limit or --cursor.", nil, "Use --all for the complete field inventory, or --limit for a bounded view.")
+		}
+		limit = maxAllFields
+	}
 
 	fingerprint := inputFingerprint(input)
 	offset, err := decodeCursor(input.Cursor, fingerprint)
 	if err != nil {
-		return Output{}, schemaError("datasource.schema.cursor", errs.KindUsage, input, "Datasource schema cursor is invalid for this query.", err, "Restart without --cursor, then use the returned continuation cursor unchanged.")
+		return Output{}, schemaError("datasource.schema.cursor", errs.KindUsage, input, "Datasource schema cursor is invalid for this query.", err, "Restart without --cursor; increase --limit or use --all to inspect more fields.")
 	}
 	value, err := a.reader.ReadDatasourceSchema(ctx, input.DatasourceLUID)
 	if err != nil {
@@ -75,6 +81,9 @@ func (a *Action) Execute(ctx context.Context, input Input) (Output, error) {
 	}
 
 	fields := filterFields(value.Fields, input)
+	if input.All && len(fields) > maxAllFields {
+		return Output{}, schemaError("datasource.schema.incomplete", errs.KindOperation, input, "The matching schema exceeds the 10,000-field inventory bound.", nil, "Narrow the schema with --role, --table, or --query before using --all.")
+	}
 	if offset < 0 || offset > len(fields) {
 		return Output{}, schemaError("datasource.schema.cursor", errs.KindUsage, input, "Datasource schema cursor exceeds the current result set.", nil, "Restart without --cursor.")
 	}
@@ -98,10 +107,9 @@ func (a *Action) Execute(ctx context.Context, input Input) (Output, error) {
 	return Output{
 		Status: "listed", Environment: input.Environment, Site: input.Site,
 		DatasourceLUID: value.DatasourceLUID, DatasourceName: value.DatasourceName,
-		Tables: append([]Table(nil), value.Tables...), Page: Page{Returned: end - offset, Total: len(fields), Limit: limit, NextCursor: next},
+		Tables: append([]Table(nil), value.Tables...), Page: Page{Returned: end - offset, Total: len(fields), Limit: limit, NextCursor: next, MoreAvailable: next != ""},
 		Fields: append([]Field(nil), fields[offset:end]...), Warnings: append([]string(nil), value.Warnings...),
 		Source: &source, RequestID: value.RequestID,
-		Help: []string{"tadx pulse definition create -h"},
 	}, nil
 }
 

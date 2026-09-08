@@ -17,34 +17,38 @@ import (
 )
 
 func TestInstalledSkillsIncludeAllBundledReferences(t *testing.T) {
-	home := t.TempDir()
-	installer := agent.Installer{Home: func() (string, error) { return home, nil }}
-	if _, err := installer.Install(context.Background(), "codex", false, false); err != nil {
-		t.Fatal(err)
-	}
-	source := os.DirFS("skills")
-	err := fs.WalkDir(source, ".", func(location string, entry fs.DirEntry, walkErr error) error {
-		if walkErr != nil {
-			return walkErr
-		}
-		if entry.IsDir() {
-			return nil
-		}
-		expected, err := fs.ReadFile(source, location)
-		if err != nil {
-			return err
-		}
-		installed, err := os.ReadFile(filepath.Join(home, ".codex", "skills", filepath.FromSlash(location)))
-		if err != nil {
-			return err
-		}
-		if !bytes.Equal(expected, installed) {
-			t.Errorf("installed package file differs from bundled source: %s", location)
-		}
-		return nil
-	})
-	if err != nil {
-		t.Fatal(err)
+	for _, target := range []string{"codex", "claude", "cursor"} {
+		t.Run(target, func(t *testing.T) {
+			home := t.TempDir()
+			installer := agent.Installer{Home: func() (string, error) { return home, nil }}
+			if _, err := installer.Install(context.Background(), target, false, false); err != nil {
+				t.Fatal(err)
+			}
+			source := os.DirFS("skills")
+			err := fs.WalkDir(source, ".", func(location string, entry fs.DirEntry, walkErr error) error {
+				if walkErr != nil {
+					return walkErr
+				}
+				if entry.IsDir() {
+					return nil
+				}
+				expected, err := fs.ReadFile(source, location)
+				if err != nil {
+					return err
+				}
+				installed, err := os.ReadFile(filepath.Join(home, "."+target, "skills", filepath.FromSlash(location)))
+				if err != nil {
+					return err
+				}
+				if !bytes.Equal(expected, installed) {
+					t.Errorf("installed package file differs from bundled source: %s", location)
+				}
+				return nil
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+		})
 	}
 }
 

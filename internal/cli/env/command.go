@@ -67,7 +67,7 @@ func newList(deps Dependencies) *cobra.Command {
 			return deps.Renderer.Render(result)
 		},
 	}
-	command.Flags().IntVar(&input.Limit, "limit", 0, "maximum profiles to return")
+	command.Flags().IntVar(&input.Limit, "limit", 0, "maximum profiles to return, up to 10000")
 	command.Flags().StringVar(&input.Cursor, "cursor", "", "opaque continuation cursor")
 	return command
 }

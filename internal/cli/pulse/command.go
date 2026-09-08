@@ -171,7 +171,7 @@ func newMetricDelete(deps Dependencies) *cobra.Command {
 
 func newDefinitionList(deps Dependencies) *cobra.Command {
 	var input definitionlist.Input
-	command := actionCommand("list", "List one bounded Pulse definition page.", "pulse.definition.list", func(command *cobra.Command) error {
+	command := actionCommand("list", "List Pulse definitions.", "pulse.definition.list", func(command *cobra.Command) error {
 		result, err := deps.DefinitionLister.ListPulseDefinitions(command.Context(), input)
 		if err != nil {
 			return err
@@ -180,8 +180,10 @@ func newDefinitionList(deps Dependencies) *cobra.Command {
 	})
 	readFlags(command, &input.Environment, &input.Catalog)
 	command.Flags().IntVar(&input.Limit, "limit", 0, "maximum definitions to return; defaults to 25")
-	command.Flags().StringVar(&input.Name, "name", "", "filter this page by exact definition name; follow --cursor even when the page has no matches")
+	command.Flags().StringVar(&input.Name, "name", "", "find exact definition names across provider pages")
 	command.Flags().StringVar(&input.Cursor, "cursor", "", "opaque continuation cursor")
+	_ = command.Flags().MarkHidden("cursor")
+	command.Flags().BoolVar(&input.All, "all", false, "return all matching definitions within 100 pages and 10,000 records; cannot combine with --limit")
 	return command
 }
 
@@ -259,7 +261,7 @@ func newMetricList(deps Dependencies) *cobra.Command {
 	var input metriclist.Input
 	command := &cobra.Command{
 		Use:         "list",
-		Short:       "List one definition's bounded Pulse metric page.",
+		Short:       "List one definition's Pulse metrics.",
 		Annotations: capability("pulse.metric.list"),
 		Args: func(command *cobra.Command, args []string) error {
 			if err := noArgs("pulse.metric.list", command, args); err != nil {
@@ -282,6 +284,8 @@ func newMetricList(deps Dependencies) *cobra.Command {
 	command.Flags().StringVar(&input.DefinitionLUID, "definition-id", "", "authoritative Pulse definition LUID")
 	command.Flags().IntVar(&input.Limit, "limit", 0, "maximum metrics to return; defaults to 25")
 	command.Flags().StringVar(&input.Cursor, "cursor", "", "opaque continuation cursor")
+	_ = command.Flags().MarkHidden("cursor")
+	command.Flags().BoolVar(&input.All, "all", false, "return all metrics within 100 pages and 10,000 records; cannot combine with --limit")
 	return command
 }
 

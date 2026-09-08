@@ -1,83 +1,111 @@
-# Manage shared content lifecycle
+# Manage content lifecycle
 
-Workbooks, published datasources, and flows share exact discovery, inspect, pull, publish, and delete operations.
-Check the resource's operation help for differences; flags and publish modes are not interchangeable.
+## Available actions
 
-## Search and inventory
+All reads are live by default.
+Add `--catalog` only for local catalog reads, and add `--full` only when expanded bounded detail is needed.
+Use `--env` as an alias for any listed `--environment` flag.
 
-Use `tadx search "<term>" --type <type> --environment <alias>` for live name discovery.
-Workbook, datasource, flow, and project terms use Tableau native search.
-Use `--catalog` only when local snapshot freshness is sufficient and no Tableau request should occur.
+| Action | What it does | Selectors and useful optional flags |
+|---|---|---|
+| `tadx search [term]` | Search resources, or run typed inventory when the term is omitted. | `--type workbook\|datasource\|flow\|project\|user\|group\|definition\|metric\|content\|admin\|pulse`, `--environment`, `--catalog`, `--limit 1..2000` |
+| `tadx catalog refresh` | Refresh selected inventory scopes and accessible permission records. | `--environment`, repeated `--scope users\|groups\|projects\|workbooks\|datasources\|flows\|views\|permissions` |
+| `tadx catalog status` | Inspect cache freshness, scope coverage, and partial results. | `--environment`, `--full` |
+| `tadx content workbook list` | List workbooks and update the workbook catalog scope. | `--environment`, `--name`, `--owner`, `--project-name`, `--tag`, `--catalog`, `--limit 1..100` or `--all` |
+| `tadx content workbook inspect` | Inspect one exact workbook. | `--id`, or `--name` with `--project`; `--environment`, `--catalog` |
+| `tadx content workbook pull` | Download one or up to 100 workbooks into a workspace. | Repeat `--id`, or use `--name` with `--project`; `--environment`, `--workspace`, `--include-extract=false`, `--include-pds`, `--overwrite` |
+| `tadx content workbook publish` | Publish one or up to 100 managed workbook artifacts. | Repeat `--artifact`; `--workspace`, `--environment`, `--project-id` or `--project`, `--name`, `--overwrite`, `--as-job`, `--preview` |
+| `tadx content workbook move` | Move one workbook to another project on the same site. | `--environment`; `--id`, or `--name` with `--project`; `--destination-project-id` or `--destination-project`; `--preview` |
+| `tadx content workbook update` | Rename a workbook, change its owner, or both. | `--environment`; `--id`, or `--name` with `--project`; `--new-name`, `--owner-id`, `--preview` |
+| `tadx content workbook delete` | Delete one remote workbook. | `--environment`; `--id`, or `--name` with `--project`; `--preview` |
+| `tadx content datasource list` | List published datasources and update the datasource catalog scope. | `--environment`, `--name`, `--owner`, `--project-name`, `--type`, `--tag`, `--updated-after`, `--updated-before`, `--catalog`, `--limit 1..100` or `--all` |
+| `tadx content datasource inspect` | Inspect one exact published datasource. | `--id`, or `--name` with `--project`; `--environment`, `--catalog` |
+| `tadx content datasource schema` | List logical tables and return matching field metadata. | `--id`; `--environment`, `--query`, `--role measure\|dimension\|date\|excluded`, `--table`, `--field-id`, `--catalog`, `--limit 1..100` or `--all` |
+| `tadx content datasource pull` | Download one or up to 100 native datasource artifacts. | Repeat `--id`, or use `--name` with `--project`; `--environment`, `--workspace`, `--overwrite` |
+| `tadx content datasource publish` | Publish one or up to 100 managed datasource artifacts. | Repeat `--artifact`; `--workspace`, `--environment`, `--project-id` or `--project`, `--name`; exactly one of `--create`, `--overwrite`, `--append`, or `--replace`; `--as-job`, `--preview` |
+| `tadx content datasource move` | Move one datasource to another project on the same site. | `--environment`; `--id`, or `--name` with `--project`; `--destination-project-id` or `--destination-project`; `--preview` |
+| `tadx content datasource update` | Rename a datasource, change its owner, or both. | `--environment`; `--id`, or `--name` with `--project`; `--new-name`, `--owner-id`, `--preview` |
+| `tadx content datasource delete` | Delete one remote datasource. | `--environment`; `--id`, or `--name` with `--project`; `--preview` |
+| `tadx content flow list` | List flows and update the flow catalog scope. | `--environment`, `--name`, `--owner`, `--project-id`, `--project-name`, `--catalog`, `--limit 1..100` or `--all` |
+| `tadx content flow inspect` | Inspect one exact flow. | `--id`, or `--name` with `--project`; `--environment`, `--catalog` |
+| `tadx content flow pull` | Download one or up to 100 native flow artifacts. | Repeat `--id`, or use `--name` with `--project`; `--environment`, `--workspace`, `--overwrite` |
+| `tadx content flow publish` | Publish one or up to 100 managed flow artifacts. | Repeat `--artifact`; `--workspace`, `--environment`, `--project-id` or `--project`, `--name`, `--overwrite`, `--preview` |
+| `tadx content flow move` | Move one flow to another project on the same site. | `--environment`; `--id`, or `--name` with `--project`; `--destination-project-id` or `--destination-project`; `--preview` |
+| `tadx content flow update` | Change one flow owner. | `--environment`; `--id`, or `--name` with `--project`; `--owner-id`, `--preview` |
+| `tadx content flow delete` | Delete one remote flow. | `--environment`; `--id`, or `--name` with `--project`; `--preview` |
+| `tadx content project list` | List projects and update the project catalog scope. | `--environment`, `--name`, `--parent-id`, `--owner`, `--top-level`, `--catalog`, `--limit 1..100` or `--all` |
+| `tadx content project inspect` | Inspect one exact project. | `--project-id` or `--project`; `--environment`, `--catalog` |
+| `tadx content project create` | Create a top-level or nested project. | `--environment`, `--name`; `--description`, `--content-permissions`, `--parent-id` or `--parent`, `--preview` |
+| `tadx content project update` | Change project name, description, or content-permission mode. | `--environment`; `--project-id` or `--project`; `--name`, `--description`, `--content-permissions`, `--preview` |
+| `tadx content project move` | Reparent a project or move it to the top level. | `--environment`; `--project-id` or `--project`; `--parent-id`, `--parent`, or `--top-level`; `--preview` |
+| `tadx content project delete` | Delete one remote project. | `--environment`, `--project-id`, `--preview` |
+| `tadx content lineage pull` | Save bounded lineage without downloading native content. | `--kind workbook\|published_datasource\|flow`; `--id`, or `--name` with `--project`; `--environment`, `--workspace`, `--direction upstream\|downstream\|both`, `--depth 1..3`, `--overwrite` |
 
-An unfiltered resource `list` performs complete live inventory and refreshes that catalog scope before rendering.
-Its `--limit` controls rendered rows only, and its cursor continues through the same catalog snapshot.
-Adding an exact filter keeps the list bounded against Tableau and writes only a partial cache observation.
-Use filtered list for exact candidate discovery, not as proof that the complete remote scope was inventoried.
+## Discovery and read source
 
-## Run bounded content batches
+Use `search` when a term, business concept, or approximate name is known.
+Use a typed search with no term, or a resource `list`, only when inventory is required.
+Use `datasource schema` for table and field discovery rather than Tableau MCP metadata or a downloaded artifact.
+Search defaults to 20 returned results and accepts `--limit` up to 2,000.
+When `more_available` is true, increase the limit or narrow the query; TADX handles provider pagination internally.
+Schema defaults to 20 matching fields; use `--all` for complete matching metadata within 10,000 fields, without combining it with `--limit`.
+Narrow large schema discovery by role or table when necessary.
+
+An unfiltered live `list` inventories the complete resource type, atomically replaces that catalog scope, and renders only the requested `--limit`.
+Lists default to 25 rows and accept `--limit 1..100`, or `--all` for all matching records within 10,000.
+When `more_available` is true, use `--all` or narrow the filters.
+`--all` requires complete coverage and cannot be combined with an explicit `--limit`.
+`--full` changes presentation only.
+A filtered live `list` is a bounded remote query and records only a partial cache observation.
+`--catalog` is local-only and never falls back to Tableau, so a catalog miss does not prove remote absence.
+Live schema reads write the retrieved schema through to the catalog, while `--catalog` reads only previously captured schema.
+Catalog refresh can preserve accessible records after an item-level permission denial and report `status: partial` with `complete: false`.
+Review warnings and skipped coverage through `catalog status --full`; a denied permission read is not an empty permission set.
+Authentication failures still fail the refresh.
+
+## Exact selectors
+
+After discovery, use the returned LUID.
+Name selection requires both exact `--name` and slash-delimited `--project`, and ambiguity fails.
+List `--project-name` filters a leaf project name, not a project path.
+Datasource `list --catalog --project-name` uses exact cached project names and identities; refresh the projects and datasources scopes if required cache coverage is missing.
+Project actions use `--project-id` or an exact slash-delimited `--project` path.
+Literal slashes in project names remain visible alongside their LUIDs.
+If a literal name and nested hierarchy produce the same display path, use the authoritative LUID; path selection reports ambiguity.
+Remote mutations require an explicit `--environment` except publish, which can default to the artifact's recorded source target.
+
+## Batches
 
 Repeat `--id` on pull or `--artifact` on publish to process up to 100 resources of one type.
-TADX validates the complete selection before starting, preserves selection order, and processes each item sequentially.
-Shared environment, workspace, project, preview, overwrite, and publish-mode flags apply to every item.
-Batch publish rejects `--name` because one explicit name cannot safely apply to multiple artifacts.
-Independent failures do not stop later items, but the command returns a nonzero aggregate result when any item fails.
-Cancellation skips remaining items without starting them.
-TADX does not infer dependency order or retry failures.
-For migrations, publish datasource dependencies before the workbooks that reference them.
+TADX validates the full selection first, preserves selection order, processes sequentially, continues after independent failures, and returns a nonzero aggregate result when any item fails.
+Batch publish rejects `--name` because each artifact keeps its own name.
+TADX does not infer dependency order or retry failed items.
+For migrations, publish datasource dependencies before workbooks that reference them.
 
-```text
-tadx content workbook pull --environment <alias> --workspace <workspace> --id <workbook-luid-1> --id <workbook-luid-2>
-tadx content workbook publish --environment <alias> --workspace <workspace> --project-id <project-luid> --artifact "artifacts/workbook/<directory-1>" --artifact "artifacts/workbook/<directory-2>"
-```
+## Managed artifacts
 
-## Inspect and pull
-
-Resolve the remote LUID and source environment, then inspect current state before acquiring or changing content.
-Use a registered workspace and keep the returned managed artifact path for subsequent operations.
-Pull writes local artifacts; `--overwrite` replaces dirty local content only when the task authorizes that replacement.
+Pull writes native content and metadata into a registered workspace.
 Workbook pull includes extracts by default.
-Use `--include-extract=false` when extracts are unnecessary, and `--include-pds` only when direct published datasource dependencies are needed.
-Dependency acquisition creates sibling artifacts without recursion.
+`--include-pds` acquires only direct published datasource dependencies as sibling artifacts without recursion.
+`--overwrite` is required to replace dirty local content.
 
-Datasource and flow pull preserve native artifacts.
-For field metadata, use `content datasource schema --id <luid> --query <term>` with bounded filters instead of downloading content unnecessarily.
-For dependencies without a native download, use `content lineage pull` with a bounded direction and depth.
-Lineage is evidence within returned bounds; missing or inaccessible edges do not prove independence.
+Publish accepts a managed artifact directory such as `artifacts/workbook/<artifact-directory>`, not the payload file or an absolute path.
+Artifact selectors are workspace-relative and use forward slashes.
+An omitted publish environment uses the artifact's recorded source environment, site, project, name, and identity where applicable.
+An explicit publish environment requires an explicit destination project.
+Datasource publish never infers create, overwrite, append, or replace mode.
 
-## Publish and verify
+## Mutations and uncertain outcomes
 
-Inspect workspace status for artifact provenance and dirty or missing state.
-Publish takes a managed artifact directory, such as `artifacts/workbook/<artifact-directory>`, not a payload file or absolute path.
-Set the intended environment and destination project explicitly when promoting content; publish can otherwise use the artifact's recorded source environment.
-Use authoritative destination project IDs when available.
-Choose collision behavior intentionally, and inspect command help for resource-specific overwrite, append, replace, or create modes.
+Add `--preview` to resolve and review a mutation without applying it.
+Run without `--preview` only when the requested mutation is authorized and the mutation gate is enabled.
+Move operations are same-site operations, not cross-site migrations.
+Content `delete` affects Tableau, while `workspace artifact delete` affects only local managed state.
+An asynchronous publish timeout is an unknown outcome, not proof of failure, so inspect authoritative live state before retrying.
 
-When review is needed, add `--preview` to the intended publish command.
-To perform the authorized operation, run it without `--preview` with mutations enabled.
-Inspect the returned authoritative identity and bounded outcome; use a live read to resolve uncertain results before retrying.
-The `--as-job` option polls supported publishes to a bounded result; do not interpret a timeout as proof of failure.
+## Lineage limits
 
-## Distinguish remote and local changes
-
-Content `delete` removes remote Tableau content.
-`workspace artifact delete` removes a local managed artifact.
-`workspace artifact move` transfers a local artifact between workspaces and preserves Tableau identity.
-Content `move` changes the remote project without downloading or republishing the item.
-Inspect the exact target and applicable help before destructive changes.
-
-## Move and update remote content
-
-Use authoritative LUIDs after discovery, and use `--preview` when the requested destination or field change needs review.
-
-```text
-tadx content workbook move --environment <alias> --id <workbook-luid> --destination-project-id <project-luid> --preview
-tadx content datasource move --environment <alias> --id <datasource-luid> --destination-project-id <project-luid> --preview
-tadx content workbook update --environment <alias> --id <workbook-luid> --new-name "<name>" --owner-id <user-luid> --preview
-tadx content datasource update --environment <alias> --id <datasource-luid> --new-name "<name>" --owner-id <user-luid> --preview
-tadx content flow update --environment <alias> --id <flow-luid> --owner-id <user-luid> --preview
-```
-
-For move, use exactly one destination selector: `--destination-project-id` or `--destination-project`.
-Workbook and datasource update accept `--new-name`, `--owner-id`, or both.
-Flow update changes only the owner because Tableau has no supported flow rename operation.
-Every content update or move requires an explicit environment and revalidates the exact remote identity.
+Native pulls capture bounded lineage as metadata when available.
+`lineage pull` creates a metadata-only artifact when the native package is not needed.
+Lineage is evidence only within the requested direction, depth, permissions, and returned bounds.
+Missing or inaccessible edges do not prove that a resource is independent.

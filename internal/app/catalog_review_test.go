@@ -71,9 +71,9 @@ func TestReadThroughCatalogSearchContinuesAcrossObservationTimes(t *testing.T) {
 	}
 }
 
-func TestInventoryRejectsAmbiguousSlashProjectName(t *testing.T) {
-	_, err := inventoryProjects(tableaucatalog.InventorySnapshot{Scope: tableaucatalog.ScopeProjects, Rows: [][]any{{"p", "A/B", ""}}})
-	if err == nil {
-		t.Fatal("ambiguous slash project name accepted")
+func TestInventoryPreservesSlashProjectDisplayName(t *testing.T) {
+	projects, err := inventoryProjects(tableaucatalog.InventorySnapshot{Scope: tableaucatalog.ScopeProjects, Rows: [][]any{{"p", "A/B", ""}}})
+	if err != nil || projects["p"].path != "A/B" {
+		t.Fatalf("slash project = %#v, error = %v", projects, err)
 	}
 }

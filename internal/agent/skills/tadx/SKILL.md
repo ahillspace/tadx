@@ -1,154 +1,89 @@
 ---
 name: tadx
-description: Operate Tableau content, catalogs, workspaces, local artifacts, and administration with TADX Guidance. Use tadx-pulse for Pulse authoring and Tableau MCP for analytical work.
+description: Use whenever a user asks to work with Tableau Cloud or Tableau Server, even when they do not mention TADX. TADX finds, inspects, downloads, publishes, moves, renames, deletes, organizes, and administers Tableau resources, and manages local workspaces, catalogs, artifacts, and Pulse definitions. Use Tableau MCP only for analytical results that TADX does not provide.
 ---
 
 # Operate Tableau with TADX
 
-TADX owns content lifecycle, artifacts, workspaces, administration, and Pulse definitions.
-Tableau MCP owns datasource queries, view data and images, custom-view data and images, and Pulse values and insights.
-TADX never configures, selects, calls, proxies, or reports the connection state of Tableau MCP.
-The host agent and user own the active Tableau MCP connection.
+## What TADX is
 
-## Run with bounded discovery
+TADX is the deterministic Tableau lifecycle and development CLI for agents and humans.
+It owns content discovery and lifecycle, metadata and lineage, catalogs, local artifacts, workspaces, administration, and Pulse definition lifecycle.
+Use TADX by default for Tableau work.
 
-Reuse the task's known environment, workspace, and LUIDs.
-Use a provided environment alias verbatim without revalidating it through `env get`, `env list`, or a preliminary auth check.
-When no alias is provided or known, use `env list`; diagnose configuration/authentication only after an actual command fails.
-Avoid chaining environment list/get, auth status/check, and doctor for an already working target.
-Use a complete configured environment-variable pair for CI or a temporary credential override.
-Otherwise, `tadx auth login --environment <alias>` validates and stores a PAT in the native OS credential store through an interactive terminal.
-Never pass PAT values through flags, command arguments, or a noninteractive login.
-TADX never uses plaintext credential storage.
-Never print PATs or session tokens.
+Default output is compact TOON.
+Use `--full` only when expanded bounded details are needed.
+`--env` is an alias for `--environment` on commands that accept an environment.
+Use one relevant leaf `--help` only when this Guidance and its references do not answer the question.
 
-Batch independent commands into one shell tool call as separate sequential lines.
-Never run authenticated TADX calls concurrently with the same PAT, including across agents or background jobs.
-Wait for each process to finish; gate dependent commands on successful prior results.
-Quote names, field IDs, and paths containing spaces; quote a spaced executable path using the shell's invocation syntax.
+## TADX versus Tableau MCP
 
-Use these recipes directly, replacing bracketed placeholders with known values.
-Use compact TOON and returned `help[]`; request `--full` only for a specific missing detail.
-Avoid root/category help, broad capability dumps, repeated probes, and delegation for bounded CLI reads.
-If installed guidance is insufficient, use at most one relevant leaf `--help` probe per workflow; unresolved gaps require a concrete limitation report.
-For availability uncertainty, one exact `tadx capability get <id>` can replace that help probe.
+Use Tableau MCP only for:
 
-## Choose the owning tool
+- Datasource value queries and cardinality profiling.
+- Published-view and custom-view data.
+- Published-view and custom-view images.
+- Current Pulse values and generated insights.
+- Interactive visualization rendering without a TADX equivalent.
 
-Use TADX for content identity, lifecycle, local artifacts, workspaces, administration, configuration, and Pulse definition or metric lifecycle.
-Use Tableau MCP directly for analytical results:
+Do not defer to Tableau MCP for discovery, identity, TADX-supported metadata or schema inspection, lineage, lifecycle, administration, workspaces, or local artifacts.
+Use TADX datasource schema discovery for tables, fields, roles, data types, and aggregations.
+TADX never calls, proxies, configures, or reports the connection state of Tableau MCP.
 
-- Use `list-views` and `get-view` for view discovery and metadata.
-- Use `get-view-data` or `get-view-image` for published-view results.
-- Use `list-custom-views`, `get-custom-view-data`, or `get-custom-view-image` for saved view states.
-- Use `get-datasource-metadata` before `query-datasource` for business questions against published data.
-- Use the Pulse insight tools described by the `tadx-pulse` Guidance for current values and explanations.
+## Critical rules
 
-Do not use `tadx doctor` or capability discovery to test whether Tableau MCP is connected.
-Read [Tableau MCP routing](references/tableau-mcp.md) only when an analytical request needs a more specific tool choice.
+- Reuse known environment aliases, workspace names, and LUIDs instead of rediscovering them.
+- Use exact LUIDs after discovery.
+- Never select the first fuzzy match or resolve ambiguity interactively.
+- TADX authenticates with PATs only.
+- Never expose PATs or session tokens.
+- Never run concurrent authenticated TADX commands with the same PAT because a new Tableau session can invalidate the other session.
+- Remote mutations run by default when `TADX_ENABLE_MUTATIONS=1`; use `--preview` when review is useful.
+- Discovery and previews do not authorize mutation, and `--force` never bypasses mutation policy.
+- Inspect an uncertain remote outcome before retrying a write.
+- Keep persisted and rendered artifact paths relative to the workspace with forward slashes.
 
-## Content lifecycle
+## Catalog versus live reads
 
-Use native live search when the name is unknown: `tadx search "<term>" --type workbook --environment <alias>`.
-Use an explicitly filtered list for a bounded exact candidate query, and use returned LUIDs for subsequent operations.
-Run an unfiltered resource list only when the task needs complete live inventory; it refreshes that catalog scope before rendering a bounded page.
-Ambiguity fails; never select the first fuzzy match.
-For the Tableau-managed imported project, use `Imported`; TADX normalizes that selector to Tableau's `(imported)` project path.
+Live reads are the default.
+Live `tadx search` uses Tableau's native search and inherits the search capabilities and ranking available on that site.
+`--catalog` searches cached metadata locally using lexical matching only.
+Prefer live search for broad or conceptual discovery, and catalog search for fast, repeated known-term lookup.
+Use the catalog when freshness is acceptable and the task benefits from repeated discovery, broad inventory, cross-resource comparison, or cached datasource schemas.
+Refresh the catalog before broad or repeated work against an unknown or stale environment.
+Use live reads for authoritative state before consequential changes, details not indexed in the catalog, targeted inspection after remote changes, and uncached datasource schemas.
 
-```text
-tadx content workbook list --environment <alias> --name "<name>" --limit 5
-tadx content workbook inspect --environment <alias> --id <workbook-luid>
-tadx content workbook pull --environment <alias> --id <workbook-luid> --workspace <workspace> --include-extract=false
-tadx content workbook publish --environment <destination-alias> --workspace <workspace> --artifact "artifacts/workbook/<directory>" --project-id <project-luid> --preview
-tadx content workbook move --environment <alias> --id <workbook-luid> --destination-project-id <project-luid> --preview
-tadx content workbook update --environment <alias> --id <workbook-luid> --new-name "<name>" --preview
-tadx content workbook delete --environment <alias> --id <workbook-luid> --preview
-```
+`--catalog` is local-only and never falls back to Tableau.
+A catalog miss does not prove remote absence.
+Live schema reads write through to the catalog.
+Targeted live reads do not establish complete inventory coverage.
+A full refresh replaces the current generation rather than merging earlier scopes.
+Request every required refresh scope together.
+Treat the catalog as a cache, not authoritative truth for consequential remote changes.
+An item-level permission denial can produce a usable `partial` catalog with explicit warnings and `complete: false`.
+Inspect `tadx catalog status --full` before treating cached permission coverage as complete.
 
-For multiple exact resources of one type, repeat `--id` on pull or `--artifact` on publish up to 100 times.
-Batches run sequentially, apply shared flags to every item, continue independent failures, and return one aggregate result.
-Use one publish command per destination project, and publish datasource dependencies before workbooks.
+## Workspaces
 
-Keep extracts when required; `--include-pds` acquires direct published datasource dependencies without recursion.
-Publish selects the managed artifact directory, not its payload file.
-Use the returned artifact path and explicit destination environment/project.
-Pull `--overwrite` discards dirty local edits; publish `--overwrite` replaces a remote collision.
-Use either only when that replacement is authorized.
-For datasource publish modes or uncertain jobs, read [content details](references/content-lifecycle.md).
+A TADX workspace is a named, registered local directory for managed Tableau artifacts and metadata.
+Pull commands write there, and publish commands read from there.
+`--workspace` accepts the registered workspace name, not a filesystem path.
+TADX does not silently create workspaces.
+Returned artifact paths remain relative to the workspace so they are portable across machines.
 
-## Catalog, flow, and lineage
+## Read the relevant reference before acting
 
-Live reads are the default; supported `--catalog` reads stay local without refresh or live fallback.
-Live content terms use Tableau native search; administration and Pulse searches use their dedicated APIs.
-An unfiltered workbook, datasource, flow, project, user, or group list collects the complete live scope and atomically replaces only that catalog scope.
-For those complete lists, `--limit` bounds rendered rows only, and continuation reads the same local snapshot without repeating the live traversal.
-Adding an exact resource filter keeps the list bounded against Tableau and records a partial cache update; it does not prove complete scope coverage.
-Reuse a sufficiently fresh catalog for repeated discovery; a miss or partial scope does not prove remote absence.
-Follow cursors only when the task needs more rendered results.
+| Intent | Read first |
+|---|---|
+| Search, inspect, pull, publish, move, rename, delete, lineage, or datasource schema | [Content lifecycle](references/content-lifecycle.md) |
+| Users, groups, memberships, ownership, permissions, or projects | [Administration](references/administration.md) |
+| Workspace creation, registration, defaults, local artifact movement, root relocation, or cleanup | [Workspaces](references/workspace.md) |
+| Datasource value queries or cardinality profiling | [Tableau MCP routing](references/tableau-mcp.md) |
+| Published-view or custom-view data or images | [Tableau MCP routing](references/tableau-mcp.md) |
+| Current Pulse values or generated insights | [Tableau MCP routing](references/tableau-mcp.md) |
+| Interactive visualization rendering without a TADX equivalent | [Tableau MCP routing](references/tableau-mcp.md) |
+| Pulse definition creation, forking, validation, or management | Separate `tadx-pulse` Guidance |
 
-```text
-tadx catalog status --environment <alias>
-tadx catalog refresh --environment <alias> --scope projects --scope workbooks --scope flows
-tadx content flow list --environment <alias> --name "<name>" --limit 5 --catalog
-tadx content flow pull --environment <alias> --id <flow-luid> --workspace <workspace>
-tadx content flow move --environment <alias> --id <flow-luid> --destination-project-id <project-luid> --preview
-tadx content lineage pull --environment <alias> --kind workbook --id <workbook-luid> --workspace <workspace> --direction upstream --depth 1
-```
-
-A full catalog refresh replaces the environment/site's current generation and cached entries; it does not merge earlier scopes.
-Request all required scopes together; dependency collection does not establish complete inventory for unrequested scopes.
-Successful live reads cache targeted observations without proving full site coverage.
-Prefer a targeted live inspect after mutation over a full refresh.
-Lineage is bounded evidence; missing edges do not prove independence.
-
-## Administration and projects
-
-```text
-tadx admin user list --environment <alias> --name "<username>" --limit 5
-tadx admin group list --environment <alias> --name "<group-name>" --limit 5
-tadx admin group inspect --environment <alias> --id <group-luid> --members
-tadx admin group member add --environment <alias> --group-id <group-luid> --user-id <user-luid> --preview
-tadx admin group member remove --environment <alias> --group-id <group-luid> --user-id <user-luid> --preview
-tadx admin permission inspect --environment <alias> --kind workbook --id <workbook-luid> --principal-id <principal-luid> --full
-tadx admin permission create --environment <alias> --kind workbook --id <workbook-luid> --principal-type group --principal-id <group-luid> --capability Read --mode Allow --preview
-tadx admin permission delete --environment <alias> --kind workbook --id <workbook-luid> --principal-type group --principal-id <group-luid> --capability Read --mode Allow --preview
-tadx content project create --environment <alias> --name "<project-name>" --parent-id <parent-project-luid> --preview
-tadx content project update --environment <alias> --project-id <project-luid> --description "<description>" --preview
-tadx content project move --environment <alias> --project-id <project-luid> --parent-id <parent-project-luid> --preview
-tadx content project delete --environment <alias> --project-id <project-luid> --preview
-```
-
-Choose the requested capability and exact `Allow`/`Deny` mode; there is no atomic permission update.
-Omit project create's `--parent-id` for a top-level project.
-Project deletion selects `--project-id`; its preview identifies the project without enumerating descendant deletion effects.
-Read [administration details](references/administration.md) only for permission semantics, membership replacement, or project deletion.
-
-## Local workspaces and safe changes
-
-```text
-tadx workspace status --workspace <workspace>
-tadx workspace create <workspace>
-tadx workspace register <workspace> --path "<existing root>"
-tadx workspace set-default <workspace>
-tadx workspace artifact move --source <workspace> --destination <workspace> --artifact "artifacts/<kind>/<directory>"
-```
-
-Run only the needed local command; workspace commands take no `--environment` and make no Tableau changes.
-`--workspace` is a logical registered name; pull/publish never create workspaces implicitly.
-Artifact paths remain workspace-relative with forward slashes.
-`workspace artifact move` transfers one managed artifact and never relocates a registered workspace root.
-Read [workspace details](references/workspace.md) only for defaults, cloning, artifact movement, root relocation, or cleanup.
-
-Remote mutations require `TADX_ENABLE_MUTATIONS=1` and run by default; `--preview` plans without applying, and there is no `--apply`.
-Use previews when review or uncertainty warrants them; existing authorization does not require repeated approval.
-Discovery/previews do not authorize changes, and `--force` never bypasses policy.
-Inspect uncertain remote outcomes before retrying; report unresolved failures without repeated writes.
-Use the separate `tadx-pulse` Guidance for Pulse work.
-
-## Local Guidance and CLI utilities
-
-Use `tadx agent uninstall --target codex --preview` before removing installed Guidance for Codex.
-Replace `codex` with `claude` or `cursor` for the other supported targets.
-Run without `--preview` to remove matching packages; divergent packages require `--force` and remain in recoverable backups.
-Use `tadx version` offline, or use `tadx version --check` for one bounded GitHub release check.
-Use `tadx completion <shell>` to print completion for `bash`, `zsh`, `fish`, or `powershell`.
+Read the relevant reference before acting.
+Do not act from this root summary alone when a reference owns the task.
+Use leaf command help only as a fallback after reading that reference.

@@ -37,28 +37,60 @@ func (a *Action) Execute(ctx context.Context, input Input) (Output, error) {
 	if err != nil {
 		return Output{}, fail("pulse.metric.list.usage", errs.KindUsage, input, "Pulse metric cursor does not match this definition, limit, and source.", err)
 	}
-	page, err := a.reader.ListMetrics(ctx, input.DefinitionLUID, PageRequest{PageSize: limit, PageToken: token})
-	if err != nil {
-		var structured *errs.Error
-		if input.Catalog && errors.As(err, &structured) {
-			return Output{}, err
+	if input.All {
+		if input.Limit != 0 || input.Cursor != "" {
+			return Output{}, fail("pulse.metric.list.usage", errs.KindUsage, input, "--all cannot be combined with --limit or --cursor.", nil)
 		}
-		retryable, corrective := errs.CompleteRetryAdvice(err, "Review the exact definition LUID, then retry.")
-		return Output{}, &errs.Error{ID: "pulse.metric.list.failed", Kind: errs.KindOperation, Operation: "pulse.metric.list", Resource: input.DefinitionLUID, Environment: input.Environment, Site: input.Site, Summary: "Pulse metric listing failed.", Cause: err, Retryable: retryable, CorrectiveAction: corrective, TableauRequestID: errs.TableauRequestID(err)}
+		limit = 10000
 	}
-	if len(page.Metrics) > limit {
-		return Output{}, fail("pulse.metric.list.invalid_response", errs.KindOperation, input, "Tableau returned more Pulse metrics than requested.", errors.New("provider page exceeded limit"))
-	}
-	for _, item := range page.Metrics {
-		if item.LUID == "" || item.DefinitionLUID != input.DefinitionLUID {
-			return Output{}, fail("pulse.metric.list.invalid_response", errs.KindOperation, input, "Tableau returned an incomplete or mismatched Pulse metric.", errors.New("metric identity or definition ownership mismatch"))
+	pageSize := min(limit, 100)
+
+	items := []Metric{}
+	seenTokens := map[string]bool{token: true}
+	seenIDs := map[string]bool{}
+	var requestID, nextToken string
+	for pageNumber := 0; ; pageNumber++ {
+		if pageNumber >= 100 {
+			return Output{}, fail("pulse.metric.list.incomplete", errs.KindOperation, input, "Pulse listing exceeded its 100-page inventory bound; completeness cannot be established.", nil)
 		}
+		page, err := a.reader.ListMetrics(ctx, input.DefinitionLUID, PageRequest{PageSize: pageSize, PageToken: token})
+		if err != nil {
+			var structured *errs.Error
+			if input.Catalog && errors.As(err, &structured) {
+				return Output{}, err
+			}
+			retryable, corrective := errs.CompleteRetryAdvice(err, "Review the Tableau response, then retry the listing.")
+			return Output{}, &errs.Error{ID: "pulse.metric.list.failed", Kind: errs.KindOperation, Operation: "pulse.metric.list", Environment: input.Environment, Site: input.Site, Summary: "Pulse metric listing failed.", Cause: err, Retryable: retryable, CorrectiveAction: corrective, TableauRequestID: errs.TableauRequestID(err)}
+		}
+		if len(page.Metrics) > pageSize {
+			return Output{}, fail("pulse.metric.list.invalid_response", errs.KindOperation, input, "Pulse listing returned more records than requested.", nil)
+		}
+		for _, item := range page.Metrics {
+			if strings.TrimSpace(item.LUID) == "" || item.DefinitionLUID != input.DefinitionLUID || seenIDs[item.LUID] {
+				return Output{}, fail("pulse.metric.list.invalid_response", errs.KindOperation, input, "Pulse listing returned an incomplete, mismatched, or duplicate identity.", nil)
+			}
+			seenIDs[item.LUID] = true
+			items = append(items, item)
+		}
+		nextToken, requestID = page.NextPageToken, page.RequestID
+		if nextToken != "" && (strings.TrimSpace(nextToken) == "" || seenTokens[nextToken]) {
+			return Output{}, fail("pulse.metric.list.invalid_response", errs.KindOperation, input, "Pulse listing returned an invalid or repeated continuation token.", nil)
+		}
+		if nextToken == "" || (!input.All) {
+			break
+		}
+		seenTokens[nextToken] = true
+		token = nextToken
 	}
-	next, err := encodeCursor(page.NextPageToken, input.Environment, input.Site, input.DefinitionLUID, limit, input.Catalog)
+	more := nextToken != "" || len(items) > limit
+	if len(items) > limit {
+		items = items[:limit]
+	}
+	next, err := encodeCursor(nextToken, input.Environment, input.Site, input.DefinitionLUID, limit, input.Catalog)
 	if err != nil {
 		return Output{}, err
 	}
-	return Output{Status: "listed", Environment: input.Environment, Site: input.Site, DefinitionLUID: input.DefinitionLUID, Page: OutputPage{Returned: len(page.Metrics), Limit: limit, NextCursor: next}, Metrics: page.Metrics, RequestID: page.RequestID, Help: []string{"tadx pulse metric inspect --id <metric-luid>"}}, nil
+	return Output{Status: "listed", Environment: input.Environment, Site: input.Site, DefinitionLUID: input.DefinitionLUID, Page: OutputPage{Returned: len(items), Limit: limit, NextCursor: next, MoreAvailable: more}, Metrics: items, RequestID: requestID, Help: []string{"tadx pulse metric inspect --id <metric-luid>"}}, nil
 }
 
 type cursor struct {

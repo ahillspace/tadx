@@ -21,7 +21,7 @@ import (
 const (
 	manifestVersion  = 1
 	maxManifestBytes = 16 * 1024
-	maxListLimit     = 200
+	maxListLimit     = 10000
 )
 
 // Record is one registered workspace.

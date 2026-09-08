@@ -21,7 +21,7 @@ type service struct {
 
 func (s *service) GetMetric(context.Context, string) (metricfork.Metric, error) { return s.metric, nil }
 func (s *service) GetDefinition(context.Context, string) (metricfork.Definition, error) {
-	return metricfork.Definition{LUID: "definition-1", DatasourceLUID: "datasource-1", AllowedDimensions: []string{"Region"}}, nil
+	return metricfork.Definition{LUID: "definition-1", DatasourceLUID: "datasource-1", AllowedDimensions: []string{"Region"}, AllowedGranularities: []string{"GRANULARITY_BY_DAY", "GRANULARITY_BY_WEEK", "GRANULARITY_BY_MONTH", "GRANULARITY_BY_QUARTER", "GRANULARITY_BY_YEAR"}}, nil
 }
 func (s *service) GetOrCreateMetric(_ context.Context, request metricfork.CreateRequest) (metricfork.CreateResult, error) {
 	s.created++
@@ -124,7 +124,7 @@ func assertGolden(t *testing.T, name string, value any, full bool) {
 }
 
 func TestForkRejectsNoChangeAndDisallowedDimension(t *testing.T) {
-	s := &service{metric: metricfork.Metric{LUID: "metric-1", DefinitionLUID: "definition-1", Specification: map[string]any{"filters": []any{}}}}
+	s := &service{metric: metricfork.Metric{LUID: "metric-1", DefinitionLUID: "definition-1", Specification: map[string]any{"filters": []any{}, "measurement_period": map[string]any{"granularity": "GRANULARITY_BY_DAY", "range": "RANGE_CURRENT_PARTIAL"}}}}
 	for _, input := range []metricfork.Input{{MetricLUID: "metric-1"}, {MetricLUID: "metric-1", Filters: []metricfork.Filter{{Field: "Secret", Values: []string{"x"}}}}} {
 		if _, err := metricfork.New(s, s, s).Execute(context.Background(), input, false); err == nil {
 			t.Fatalf("input accepted: %#v", input)

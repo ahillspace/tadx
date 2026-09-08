@@ -14,6 +14,7 @@ page:
   returned: 2
   total: 2
   limit: 20
+  more_available: false
 fields[2]:
   - id: order_date
     name: order_date
@@ -36,4 +37,3 @@ fields[2]:
     requires_user_aggregation: false
     excluded: false
 tableau_request_id: request-1
-help[1]: tadx pulse definition create -h

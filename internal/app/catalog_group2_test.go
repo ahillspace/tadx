@@ -167,8 +167,8 @@ func TestCatalogHydratorRollsBackPartialCollection(t *testing.T) {
 	if err == nil {
 		t.Fatal("Hydrate() error = nil")
 	}
-	if _, statusErr := store.Status(context.Background(), corecatalog.Selection{Environment: "production", Site: "marketing", SiteSelected: true}); statusErr == nil {
-		t.Fatal("partial generation became current")
+	if status, statusErr := store.Status(context.Background(), corecatalog.Selection{Environment: "production", Site: "marketing", SiteSelected: true}); statusErr != nil || status.GenerationID != "" {
+		t.Fatalf("failed collection status = %#v, error = %v", status, statusErr)
 	}
 }
 

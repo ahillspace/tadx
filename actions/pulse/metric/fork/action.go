@@ -8,9 +8,11 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/ahillspace/tadx/internal/errs"
+	"slices"
 	"sort"
 	"strings"
+
+	"github.com/ahillspace/tadx/internal/errs"
 )
 
 type Reader interface {
@@ -109,6 +111,17 @@ func (a *Action) plan(ctx context.Context, input Input) (Plan, error) {
 			return Plan{}, fail("pulse.metric.fork.usage", errs.KindUsage, input, "Pulse metric fork timeframe is not supported.", nil)
 		}
 		spec["measurement_period"] = period
+	}
+	if len(definition.AllowedGranularities) == 0 {
+		return Plan{}, fail("pulse.metric.fork.invalid_source", errs.KindOperation, input, "The source definition omitted allowed granularities; its supported periods cannot be validated.", nil)
+	}
+	period, ok := spec["measurement_period"].(map[string]any)
+	if !ok || stringValue(period["granularity"]) == "" {
+		return Plan{}, fail("pulse.metric.fork.invalid_source", errs.KindOperation, input, "The source metric omitted its period granularity; provide --period to select a supported period.", nil)
+	}
+	granularity := stringValue(period["granularity"])
+	if !slices.Contains(definition.AllowedGranularities, granularity) {
+		return Plan{}, fail("pulse.metric.fork.usage", errs.KindUsage, input, "The metric period granularity is not allowed by its definition.", fmt.Errorf("granularity %s is not supported; allowed granularities: %s", granularity, strings.Join(definition.AllowedGranularities, ", ")))
 	}
 	allowed := map[string]bool{}
 	for _, field := range definition.AllowedDimensions {

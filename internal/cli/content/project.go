@@ -186,8 +186,11 @@ func newProjectList(deps Dependencies) *cobra.Command {
 	command.Flags().StringVar(&input.ParentLUID, "parent-id", "", "authoritative direct parent project LUID filter")
 	command.Flags().StringVar(&input.OwnerName, "owner", "", "exact owner-name filter")
 	command.Flags().BoolVar(&topLevel, "top-level", false, "filter by top-level project status")
+	command.Flags().BoolVar(&input.All, "all", false, "return all matching records, up to 10000; cannot combine with --limit")
 	command.Flags().IntVar(&input.Limit, "limit", 0, "maximum projects to render")
 	command.Flags().StringVar(&input.Cursor, "cursor", "", "opaque continuation cursor")
+	command.MarkFlagsMutuallyExclusive("all", "limit")
+	command.MarkFlagsMutuallyExclusive("all", "cursor")
 	command.Flags().BoolVar(&input.Catalog, "catalog", false, "read indexed local catalog data without contacting Tableau")
 	return command
 }

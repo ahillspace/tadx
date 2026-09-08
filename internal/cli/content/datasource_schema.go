@@ -44,6 +44,8 @@ func newDatasourceSchema(getter DatasourceSchemaGetter, renderer Renderer) *cobr
 	command.Flags().StringVar(&input.FieldID, "field-id", "", "exact raw Tableau field identifier")
 	command.Flags().IntVar(&input.Limit, "limit", 0, "maximum fields to return; defaults to 20")
 	command.Flags().StringVar(&input.Cursor, "cursor", "", "opaque continuation cursor")
+	_ = command.Flags().MarkHidden("cursor")
+	command.Flags().BoolVar(&input.All, "all", false, "return all matching fields, up to 10,000; cannot combine with --limit")
 	command.Flags().BoolVar(&input.Catalog, "catalog", false, "read only from the local catalog without contacting Tableau")
 	return command
 }

@@ -20,7 +20,7 @@ try {
     $releaseDirectory = Join-Path $testRoot 'releases'
     $payloadDirectory = Join-Path $testRoot 'payload'
     $fakeBin = Join-Path $testRoot 'fake-bin'
-    $installDirectory = Join-Path $testRoot 'install'
+    $installDirectory = Join-Path $testRoot "install space's"
     New-Item -ItemType Directory -Path $releaseDirectory, $payloadDirectory, $fakeBin | Out-Null
 
     $architecture = $env:PROCESSOR_ARCHITEW6432
@@ -72,14 +72,29 @@ copy /Y "%TADX_TEST_RELEASES%\%pattern%" "%destination%" >nul
     $env:TADX_TEST_GH_LOG = Join-Path $testRoot 'gh.log'
     $env:Path = "$fakeBin;$originalPath"
     $installer = Join-Path (Split-Path -Parent $PSScriptRoot) 'install.ps1'
+    $completionProfile = Join-Path $testRoot 'profiles/profile.ps1'
+    New-Item -ItemType Directory -Path (Split-Path -Parent $completionProfile) | Out-Null
+    [IO.File]::WriteAllText($completionProfile, "# user profile`r`n")
 
-    & $installer -Version latest -InstallDir $installDirectory -NoModifyPath
+    & $installer -Version latest -InstallDir $installDirectory -NoModifyPath -CompletionProfile $completionProfile
     Assert-True -Condition (Test-Path -LiteralPath (Join-Path $installDirectory 'tadx.exe')) -Message 'Latest installation did not write tadx.exe.'
+    $firstProfile = [IO.File]::ReadAllText($completionProfile)
+    $parseTokens = $null
+    $parseErrors = $null
+    [Management.Automation.Language.Parser]::ParseInput($firstProfile, [ref]$parseTokens, [ref]$parseErrors) | Out-Null
+    Assert-True -Condition ($parseErrors.Count -eq 0) -Message 'Generated PowerShell profile does not parse.'
+    Assert-True -Condition ($firstProfile.Contains('completion powershell')) -Message 'Completion was not enabled by default.'
+    Assert-True -Condition ([IO.File]::ReadAllText("$completionProfile.tadx-backup") -eq "# user profile`r`n") -Message 'Profile backup is not recoverable.'
 
-    & $installer -Version 1.2.3 -InstallDir $installDirectory -NoModifyPath
+    & $installer -Version 1.2.3 -InstallDir $installDirectory -NoModifyPath -CompletionProfile $completionProfile
+    Assert-True -Condition ([IO.File]::ReadAllText($completionProfile) -eq $firstProfile) -Message 'Repeated completion setup is not idempotent.'
     $log = Get-Content -Raw -LiteralPath $env:TADX_TEST_GH_LOG
     Assert-True -Condition ($log.Contains('auth status --hostname github.com')) -Message 'The installer did not check GitHub CLI authentication.'
     Assert-True -Condition ($log.Contains('release download')) -Message 'The installer did not use GitHub CLI release downloads.'
+    & $installer -Action Uninstall -InstallDir $installDirectory -NoModifyPath -CompletionProfile $completionProfile
+    Assert-True -Condition ([IO.File]::ReadAllText($completionProfile) -eq "# user profile`r`n") -Message 'Uninstall changed unrelated profile content.'
+    & $installer -Version 1.2.3 -InstallDir $installDirectory -NoModifyPath -NoCompletion -CompletionProfile $completionProfile
+    Assert-True -Condition ([IO.File]::ReadAllText($completionProfile) -eq "# user profile`r`n") -Message 'Completion opt-out changed the profile.'
 
     Write-Output 'install.ps1 tests passed'
 }

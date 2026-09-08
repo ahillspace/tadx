@@ -92,10 +92,17 @@ func (a *Action) Execute(ctx context.Context, in Input, preview bool) (Output, e
 		return Output{}, errors.New("admin user update is not configured")
 	}
 	if in.Environment == "" || (in.Site == "" && !in.TargetResolved) || in.UserLUID == "" {
-		return Output{}, usage("selector", "admin user update requires explicit environment, site, and user LUID")
+		return Output{}, usage("selector", "admin user update requires --environment and --id; the environment selects the site")
 	}
 	if in.AuthSetting != nil && in.IdPConfigurationID != nil {
 		return Output{}, usage("auth_setting", "admin user update cannot set auth setting and IdP configuration ID together")
+	}
+	if in.AuthSetting != nil {
+		switch *in.AuthSetting {
+		case "ServerDefault", "SAML", "OpenID", "TableauIDWithMFA":
+		default:
+			return Output{}, usage("auth_setting", "Supported --auth-setting values: ServerDefault, SAML, OpenID, TableauIDWithMFA. Use --idp-configuration-id for an exact authentication configuration.")
+		}
 	}
 	req := Request{in.FullName, in.Email, in.SiteRole, in.AuthSetting, in.IdentityPoolName, in.IdPConfigurationID, in.Language, in.Locale}
 	if reflect.DeepEqual(req, Request{}) {

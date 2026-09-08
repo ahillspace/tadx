@@ -216,6 +216,12 @@ func (e *UpstreamError) CorrectiveAction() string {
 	if e == nil {
 		return ""
 	}
+	if e.StatusCode == http.StatusNotFound {
+		switch e.Code {
+		case "404002", "404003", "404004", "404005", "404006", "404027":
+			return "Verify the exact resource LUID in the selected environment using its list command. If the resource was deleted, this not-found response is expected."
+		}
+	}
 	_, correctiveAction := upstreamAdvice(e.StatusCode)
 	return correctiveAction
 }

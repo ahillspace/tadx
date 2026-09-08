@@ -88,7 +88,7 @@ func (a *NativeAdapter) Search(ctx context.Context, input Input) (Page, error) {
 			return Page{}, err
 		}
 	}
-	result := Page{Items: make([]Item, len(page.Items)), TableauRequestID: page.TableauRequestID, Total: page.Total}
+	result := Page{Items: make([]Item, len(page.Items)), TableauRequestID: page.TableauRequestID, Total: page.Total, MoreAvailable: page.Total > 2000}
 	if page.Total > 2000 {
 		result.Warnings = append(result.Warnings, "Tableau native search exposes only the first 2,000 matching results; narrow the search to inspect remaining matches.")
 	}

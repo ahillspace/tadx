@@ -6,12 +6,14 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"github.com/ahillspace/tadx/internal/output"
 
 	"github.com/ahillspace/tadx/internal/errs"
 	"github.com/ahillspace/tadx/internal/readsource"
 )
 
 type Input struct {
+	All                                     bool
 	Environment, Site, Cursor, Name, Domain string
 	Limit                                   int
 	Catalog                                 bool
@@ -36,12 +38,7 @@ type Page struct {
 	SnapshotCursor       string
 	SuppressContinuation bool
 }
-type OutputPage struct {
-	Returned   int    `json:"returned"`
-	Total      int    `json:"total"`
-	Limit      int    `json:"limit"`
-	NextCursor string `json:"next_cursor,omitempty"`
-}
+type OutputPage = output.Page
 type Output struct {
 	Status, Environment, Site string
 	Page                      OutputPage
@@ -94,6 +91,9 @@ type Action struct{ reader Reader }
 
 func New(r Reader) *Action { return &Action{reader: r} }
 func (a *Action) Execute(ctx context.Context, in Input) (Output, error) {
+	if in.All {
+		return a.collectAll(ctx, in)
+	}
 	if a == nil || a.reader == nil {
 		return Output{}, errors.New("admin group list reader is not configured")
 	}
@@ -122,7 +122,7 @@ func (a *Action) Execute(ctx context.Context, in Input) (Output, error) {
 			return Output{}, err
 		}
 	}
-	return Output{Status: "listed", Environment: in.Environment, Site: in.Site, Page: OutputPage{Returned: len(p.Groups), Total: p.Total, Limit: p.Size, NextCursor: next}, Groups: p.Groups, RequestID: p.RequestID, Help: []string{"tadx admin group inspect --id <group-luid>"}}, nil
+	return Output{Status: "listed", Environment: in.Environment, Site: in.Site, Page: OutputPage{Returned: len(p.Groups), Total: p.Total, Limit: p.Size, NextCursor: next, MoreAvailable: next != "" || (p.SuppressContinuation && len(p.Groups) < p.Total)}, Groups: p.Groups, RequestID: p.RequestID, Help: []string{"tadx admin group inspect --id <group-luid>"}}, nil
 }
 
 type cursorValue struct {
@@ -162,4 +162,49 @@ func selectPage(encoded string, requested int, filter string) (int, int, string,
 func encodeCursor(page, size int, filter, snapshot string) (string, error) {
 	data, err := json.Marshal(cursorValue{Version: 1, Page: page, Size: size, Filter: filter, Snapshot: snapshot})
 	return base64.RawURLEncoding.EncodeToString(data), err
+}
+
+// collectAll follows private bounded pages and fails closed on incomplete inventories.
+func (a *Action) collectAll(ctx context.Context, input Input) (Output, error) {
+	if input.Limit != 0 || input.Cursor != "" {
+		return Output{}, errs.New(errs.KindUsage, "--all cannot be combined with --limit or --cursor")
+	}
+	input.All = false
+	input.Limit = 100
+	var result Output
+	seen := map[string]bool{}
+	cursors := map[string]bool{}
+	for pageNumber := 0; pageNumber < 100; pageNumber++ {
+		page, err := a.Execute(ctx, input)
+		if err != nil {
+			return Output{}, err
+		}
+		if pageNumber == 0 {
+			result = page
+			result.Groups = nil
+		} else if page.Page.Total != result.Page.Total {
+			return Output{}, errors.New("admin/group inventory changed during pagination; retry")
+		}
+		for _, item := range page.Groups {
+			if item.LUID == "" || seen[item.LUID] {
+				return Output{}, errors.New("admin/group inventory returned missing or repeated identities")
+			}
+			seen[item.LUID] = true
+			result.Groups = append(result.Groups, item)
+		}
+		result.RequestID = page.RequestID
+		if !page.Page.MoreAvailable && page.Page.NextCursor == "" {
+			if len(result.Groups) != result.Page.Total {
+				return Output{}, errors.New("admin/group inventory completeness could not be established")
+			}
+			result.Page = OutputPage{Returned: len(result.Groups), Total: result.Page.Total, Limit: 10000}
+			return result, nil
+		}
+		if len(page.Groups) == 0 || page.Page.NextCursor == "" || cursors[page.Page.NextCursor] {
+			return Output{}, errors.New("admin/group inventory pagination did not advance; completeness could not be established")
+		}
+		cursors[page.Page.NextCursor] = true
+		input.Cursor = page.Page.NextCursor
+	}
+	return Output{}, errors.New("admin/group --all exceeds the 10000-record bound; use narrower filters")
 }

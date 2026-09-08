@@ -1,115 +1,48 @@
 ---
 name: tadx-pulse
-description: Author Tableau Pulse definitions from business intent, verify definitions, fork variants, and manage followers with TADX Guidance. Use Tableau MCP for Pulse analytics.
+description: Turn business intent into useful Tableau Pulse definitions, select measures and slicers, create and verify metrics, fork period or population variants, and manage followers with TADX. Use Tableau MCP for actual values and generated insights.
 ---
 
-# Author Tableau Pulse metrics
+# Author and manage Tableau Pulse metrics
 
-Use TADX for definition and metric lifecycle, including follower changes.
-Use Tableau MCP for current-user subscription discovery, current values, and insights.
-TADX never configures, selects, calls, proxies, or reports the connection state of Tableau MCP.
-The host agent and user own the active Tableau MCP connection.
+A definition owns the shared measure, aggregation, date, allowed dimensions, and display settings.
+A metric is a period and population variant of that definition; Tableau creates a default metric with each new definition.
+Followers subscribe to metrics, and insights are computed analytical results.
 
-## Start from known context
+## Read the relevant reference before acting
 
-Reuse the environment, datasource LUID, and prior successful authentication.
-Use a provided environment alias verbatim without revalidation; diagnose configuration/authentication only after an actual command fails.
-Never print or persist PATs or session tokens.
-Batch independent TADX commands into one shell tool call as sequential lines; never run authenticated calls concurrently with the same PAT.
-Gate dependent commands on successful prior results, and quote spaced paths, names, and exact field IDs.
-Use these recipes directly; do not probe help for flags already shown or repeat a prior probe.
-Avoid broad help/capability dumps; allow at most one relevant leaf `--help` probe only for an unresolved installed flag.
+| Task | Read first |
+| --- | --- |
+| Recommend KPIs, select fields or slicers, or design a definition | [Authoring](references/authoring.md) |
+| Create a definition or review its preview | [Authoring](references/authoring.md) and [Creation contract](references/authoring-contract.md) |
+| Choose a calculation, entity count, average, rate, percentage, snapshot, or measure spanning multiple facts | Also read [Semantics](references/semantics.md) before finalizing that choice |
+| Fork a metric or satisfy a particular period or filtered population | [Variants](references/variants.md), before creating a base that depends on that choice |
+| Resolve names, list, inspect, pull, follow, unfollow, delete, or assess an edit | [Operations](references/operations.md) |
+| Query values, validate numbers, retrieve insights, or prepare a brief | [Analytics context](references/analytics-context.md) |
 
-Resolve the requested quantity, population, audience, and event/snapshot date from available context.
-Ask only when unresolved meaning changes the result.
-A recommendation request does not authorize creation or subscriptions.
+Read only the routes needed for the task.
+Authoring and analytics references include prerequisite discovery commands; these reads do not require loading the operations route too.
+Keep needed guidance and verified choices available across task handoffs.
 
-## Route Pulse analytics
+## Shared rules
 
-Use the exact Tableau MCP tool that owns the requested analytical result:
+Use exact identities in the selected environment; datasource, field, definition, metric, user, and group IDs are different identifiers.
+`--env` aliases `--environment` on commands that accept an environment.
+Reuse inspected existing definitions and conventions early, before comprehensive new field discovery.
+Use live reads for authoritative authoring decisions; cached coverage does not establish current completeness.
 
-- Use `list-pulse-metric-subscriptions` to find the current user's subscriptions.
-- Use `generate-pulse-metric-value-insight-bundle` for a metric's current value, comparison, and ranked insights.
-- Use `generate-pulse-insight-brief` for a natural-language answer, summary, or advice across related metrics.
+For new definitions, consider the complete dimension inventory and include generously useful eligible slicers.
+Favor inclusion when relevance is uncertain; exclude clearly unrelated, sensitive, or technical fields.
+Identifier-like appearance and high cardinality alone are not exclusions.
+Use `DAY` nearly always; do not query datasource values merely to discover minimum granularity.
 
-Load complete metric context through Tableau MCP before generating an insight bundle or brief.
-Group brief metrics by datasource, and use separate requests for different datasources.
-Keep follow, unfollow, fork, and delete operations in TADX.
-Do not probe TADX for Tableau MCP connection status.
+TADX constructs requests from verified CLI flags.
+Review `--preview --full` before every authorized create or fork, then inspect the saved result.
+A preview proves local validation, not Tableau acceptance or numeric correctness.
+Mutations, including their previews, require `TADX_ENABLE_MUTATIONS=1`; that setting does not grant user authorization.
+Use the installed TADX root Guidance for authentication, workspace selection, and general lifecycle boundaries.
 
-## Find only the fields needed
-
-Exact datasource names can be duplicated across projects; never select the first name match.
-Use a supplied LUID directly.
-When exact datasource name and project path are supplied, call `inspect` directly; do not list first.
-Only when those selectors are unavailable, use `tadx content datasource list --environment <alias> --name "<datasource-name>" --limit 5`.
-Replace placeholders with verified values; batch the needed schema reads sequentially after resolving the datasource LUID.
-
-```text
-tadx content datasource inspect --environment <alias> --name "<datasource-name>" --project "<exact/project/path>"
-tadx content datasource schema --environment <alias> --id <datasource-luid> --query "<measure-concept>" --role measure --limit 10
-tadx content datasource schema --environment <alias> --id <datasource-luid> --role date --limit 10
-tadx content datasource schema --environment <alias> --id <datasource-luid> --query "<breakdown-concept>" --role dimension --limit 10
-```
-
-Skip dimension discovery when no breakdown is needed.
-Copy returned field `id` values verbatim; captions and display names are not identifiers.
-Read live by default; supported `--catalog` reads are local without fallback, and incomplete coverage does not prove absence.
-Choose only semantically exact captions, then copy their IDs; multiple results alone do not justify wider pagination or a broader query.
-Inspect an uncertain candidate with `--field-id "<exact-field-id>" --full`; follow cursors only when the intended field is still absent.
-Do not download a datasource or collect its complete schema for ordinary field selection.
-Visibility does not establish Pulse eligibility; Tableau validates access, connection, and fields during live operations.
-
-## Create and verify
-
-Check existing definitions for the selected datasource before creating.
-The bounded list has no datasource filter flag: match returned `datasource_luid` and compare measure/date/aggregation fields from `--full`.
-Tableau rejects duplicate semantic definitions even with different names; reuse a matching definition when it satisfies the request.
-For an authorized distinct definition, choose a distinct measure/date combination only when it fits the requested meaning; otherwise report the collision.
-Never retry an identical semantic payload or rename it to evade duplication.
-
-The following template describes an additive amount over time; substitute deliberate semantics rather than copying unsuitable defaults.
-
-```text
-tadx pulse definition list --environment <alias> --limit 25 --full
-tadx pulse definition create --environment <alias> --name "<business-name>" --description "<quantity and time basis>" --datasource-id <datasource-luid> --measure-field "<measure-field-id>" --aggregation SUM --date-field "<date-field-id>" --dimension "<dimension-field-id>" --temporality OVER_TIME --minimum-granularity DAY --number-format CURRENCY --currency <currency-code> --sentiment UP
-tadx pulse definition inspect --environment <alias> --id <definition-luid> --full
-```
-
-Omit `--dimension` when unnecessary; repeat it for additional allowed dimensions.
-It enables segmentation, not a fixed population filter.
-Select `NUMBER`, `CURRENCY`, or `PERCENT` and `UP`, `DOWN`, or `NONE` from business meaning; currency must be explicit when used.
-Use `SUM` for additive measures, `USER` when `requires_user_aggregation` is true, and never average an aggregated ratio.
-Both the measure-role field and a genuine date field are required; strings named Date and table calculations do not qualify.
-`LATEST` represents snapshots only when source grain supports them.
-Running totals require `SUM` and `OVER_TIME`; minimum granularity limits allowed grains rather than choosing a reporting period.
-Read [semantic details](references/semantics.md) only for weighting, counts, exclusions, snapshots, or percentage scale uncertainty.
-
-Authorized mutations run by default with `TADX_ENABLE_MUTATIONS=1`; add `--preview` when reviewing unresolved intent or settings before creation.
-Preview validates live fields/name collisions without creating; omit it to apply, with no separate `--apply`.
-Verify the returned definition and default metric LUIDs; numerical correctness requires a data tool when requested.
-If creation is uncertain, inspect returned IDs/current inventory before retrying.
-If only the default metric is unresolved, list metrics for that definition instead of recreating it.
-Stop repeated writes on the same eligibility failure and report the source/access requirement.
-
-## Variants and followers
-
-Inspect the source metric and shared definition before changing a variant's period or population.
-Use verified allowed dimensions/values; retain existing subscriptions unless their change is authorized.
-
-```text
-tadx pulse metric list --environment <alias> --definition-id <definition-luid> --limit 5
-tadx pulse metric fork --environment <alias> --id <metric-luid> --period MONTH_TO_DATE --filter "<allowed-field-id>=<verified-value>"
-tadx pulse metric follow --environment <alias> --id <metric-luid> --user-id <user-luid>
-tadx pulse metric followers --environment <alias> --id <metric-luid>
-```
-
-Use `--group-id` instead of `--user-id` for an authorized group subscription.
-Forks replace filters on supplied fields and preserve other source settings; an equivalent variant can already exist.
-If a fork returns `created: false` or `existing` with the source LUID, it created no non-default variant; do not inspect or list again.
-Repeated values form one filter; do not mix include/exclude for the same field.
-Use `metric unfollow` for subscription removal and `metric delete` only for non-default variants.
-The default metric cannot be deleted directly; removing it requires `definition delete` with authorization to delete the shared definition.
-Do not replace a request to remove one non-default variant with definition deletion.
-Deletion previews do not enumerate dependencies or cascade effects; Tableau determines those effects.
-Trust a successful delete result; do not issue a confirmation list unless the outcome is uncertain or the user explicitly requests verification.
+Retain exact selected fields, measure meaning, date, units, slicer set and order, metric filters and period, reviewed flags, returned IDs, and verification status.
+Reuse discovery for an unchanged source and refresh affected evidence after source changes or identity errors.
+Reconcile uncertain writes by returned identity and inventory before another create.
+Report configuration verification separately from values and insights.

@@ -41,6 +41,12 @@ func (a *Action) Execute(ctx context.Context, input Input) (Output, error) {
 	if result.Stale {
 		state = "stale"
 	}
+	if !result.Complete {
+		state = "partial"
+	}
+	if result.ID == "" {
+		state = "uninitialized"
+	}
 	generation := Generation{ID: result.ID, Environment: result.Environment, Site: result.Site, GeneratedAt: result.GeneratedAt, Records: result.Records, Complete: result.Complete, Stale: result.Stale, Age: result.Age, Source: result.Source}
 	return Output{Status: state, Generation: generation, Path: result.Path, Warnings: output.BoundWarnings(result.Warnings), Help: []string{"tadx catalog refresh --environment " + result.Environment}}, nil
 }

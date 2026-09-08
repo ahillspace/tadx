@@ -12,13 +12,14 @@ import (
 )
 
 type GenerationWriter struct {
-	store    *Store
-	db       *sql.DB
-	tx       *sql.Tx
-	key      int64
-	metadata GenerationMetadata
-	mu       sync.Mutex
-	closed   bool
+	store              *Store
+	db                 *sql.DB
+	tx                 *sql.Tx
+	key                int64
+	metadata           GenerationMetadata
+	mu                 sync.Mutex
+	closed             bool
+	partialPermissions bool
 }
 
 func (w *GenerationWriter) WriteBatch(ctx context.Context, b Batch) error {
@@ -70,6 +71,9 @@ func (w *GenerationWriter) CompleteScopes(ctx context.Context, scopes []string) 
 		return errors.New("catalog generation writer is closed")
 	}
 	for _, scope := range normalizedScopes(scopes, false) {
+		if scope == "permissions" && w.partialPermissions {
+			return errors.New("catalog permission coverage remains incomplete after denied reads")
+		}
 		result, err := w.tx.ExecContext(ctx, `UPDATE generation_scopes SET complete=1 WHERE generation_key=? AND scope=?`, w.key, scope)
 		if err != nil {
 			return err
@@ -84,6 +88,26 @@ func (w *GenerationWriter) CompleteScopes(ctx context.Context, scopes []string) 
 	}
 	return nil
 }
+
+// MarkPermissionsIncomplete permits publication of useful inventory after
+// resource-specific permission denials. The permission scope stays incomplete.
+func (w *GenerationWriter) MarkPermissionsIncomplete(ctx context.Context) error {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	if w.closed {
+		return errors.New("catalog generation writer is closed")
+	}
+	var complete bool
+	if err := w.tx.QueryRowContext(ctx, `SELECT complete FROM generation_scopes WHERE generation_key=? AND scope='permissions'`, w.key).Scan(&complete); err != nil {
+		return fmt.Errorf("read admitted permission scope: %w", err)
+	}
+	if complete {
+		return errors.New("catalog permission scope is already marked complete")
+	}
+	w.partialPermissions = true
+	return nil
+}
+
 func (w *GenerationWriter) Publish(ctx context.Context) (ReplaceResult, error) {
 	w.mu.Lock()
 	defer w.mu.Unlock()
@@ -91,7 +115,7 @@ func (w *GenerationWriter) Publish(ctx context.Context) (ReplaceResult, error) {
 		return ReplaceResult{}, errors.New("catalog generation writer is closed")
 	}
 	var incomplete int
-	if err := w.tx.QueryRowContext(ctx, `SELECT count(*) FROM generation_scopes WHERE generation_key=? AND complete=0`, w.key).Scan(&incomplete); err != nil {
+	if err := w.tx.QueryRowContext(ctx, `SELECT count(*) FROM generation_scopes WHERE generation_key=? AND complete=0 AND NOT (scope='permissions' AND ?=1)`, w.key, w.partialPermissions).Scan(&incomplete); err != nil {
 		return ReplaceResult{}, err
 	}
 	if incomplete != 0 {
@@ -359,9 +383,8 @@ func (w *GenerationWriter) projectPaths(ctx context.Context) (map[string]string,
 		if err := rows.Scan(&id, &name, &parent); err != nil {
 			return nil, err
 		}
-		if strings.Contains(name, "/") {
-			return nil, fmt.Errorf("Tableau project %q has a name containing %q, which is not addressable by an exact project path", id, "/")
-		}
+		// Preserve display paths, including slash-containing names. Distinct
+		// project LUIDs can share a display path without losing catalog records.
 		projects[id] = project{name, parent}
 	}
 	if err := rows.Err(); err != nil {
@@ -452,9 +475,10 @@ func (w *GenerationWriter) fingerprint(ctx context.Context) (string, error) {
 	metadata := w.metadata
 	metadata.ID = ""
 	payload := struct {
-		Metadata GenerationMetadata
-		Tables   map[string][][]any
-	}{metadata, map[string][][]any{}}
+		Metadata           GenerationMetadata
+		Tables             map[string][][]any
+		PartialPermissions bool `json:",omitempty"`
+	}{metadata, map[string][][]any{}, w.partialPermissions}
 	for scope, columns := range batchColumns {
 		rows, err := w.tx.QueryContext(ctx, fmt.Sprintf(`SELECT %s FROM %s WHERE generation_key=? ORDER BY %s`, strings.Join(columns, ","), scope, strings.Join(columns, ",")), w.key)
 		if err != nil {

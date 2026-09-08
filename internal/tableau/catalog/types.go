@@ -107,4 +107,5 @@ type Result struct {
 	TableauRequestIDs []string
 	FinalConcurrency  int
 	SkippedRows       map[Scope]int
+	DeniedPermissions int
 }

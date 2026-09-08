@@ -3,17 +3,59 @@ package list_test
 import (
 	"bytes"
 	"context"
+	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
 	"time"
 
 	metriclist "github.com/ahillspace/tadx/actions/pulse/metric/list"
+	"github.com/ahillspace/tadx/internal/errs"
 	render "github.com/ahillspace/tadx/internal/output"
 	"github.com/ahillspace/tadx/internal/readsource"
 )
 
 type reader struct{ request metriclist.PageRequest }
+
+type pageReader struct {
+	pages []metriclist.Page
+	calls int
+}
+
+func (r *pageReader) ListMetrics(_ context.Context, _ string, _ metriclist.PageRequest) (metriclist.Page, error) {
+	if r.calls >= len(r.pages) {
+		return metriclist.Page{}, errors.New("unexpected page")
+	}
+	page := r.pages[r.calls]
+	r.calls++
+	return page, nil
+}
+func TestListAllRejectsBrokenPaginationAndScanOverflow(t *testing.T) {
+	for name, pages := range map[string][]metriclist.Page{
+		"repeat":    {{NextPageToken: "same"}, {NextPageToken: "same"}},
+		"cycle":     {{NextPageToken: "a"}, {NextPageToken: "b"}, {NextPageToken: "a"}},
+		"blank":     {{NextPageToken: " "}},
+		"duplicate": {{Metrics: []metriclist.Metric{{LUID: "one", DefinitionLUID: "def"}}, NextPageToken: "next"}, {Metrics: []metriclist.Metric{{LUID: "one", DefinitionLUID: "def"}}}},
+	} {
+		t.Run(name, func(t *testing.T) {
+			r := &pageReader{pages: pages}
+			if _, err := metriclist.New(r).Execute(context.Background(), metriclist.Input{DefinitionLUID: "def", All: true}); err == nil {
+				t.Fatal("broken pagination accepted")
+			}
+		})
+	}
+	pages := make([]metriclist.Page, 100)
+	for index := range pages {
+		pages[index].NextPageToken = fmt.Sprintf("next-%d", index)
+	}
+	r := &pageReader{pages: pages}
+	_, err := metriclist.New(r).Execute(context.Background(), metriclist.Input{DefinitionLUID: "def", All: true})
+	var structured *errs.Error
+	if !errors.As(err, &structured) || structured.ID != "pulse.metric.list.incomplete" || r.calls != 100 {
+		t.Fatalf("err=%v calls=%d", err, r.calls)
+	}
+}
 
 func (r *reader) ListMetrics(_ context.Context, definition string, request metriclist.PageRequest) (metriclist.Page, error) {
 	r.request = request
@@ -35,7 +77,7 @@ func TestListOutputGolden(t *testing.T) {
 	source := readsource.Live(time.Date(2026, 9, 4, 10, 0, 0, 0, time.UTC))
 	output := metriclist.Output{
 		Status: "listed", Environment: "dev", Site: "sandbox", DefinitionLUID: "definition-1",
-		Page: metriclist.OutputPage{Returned: 2, Limit: 20, NextCursor: "cursor-2"},
+		Page: metriclist.OutputPage{Returned: 2, Limit: 20, NextCursor: "cursor-2", MoreAvailable: true},
 		Metrics: []metriclist.Metric{
 			{LUID: "metric-1", Name: "Revenue", DefinitionLUID: "definition-1", IsDefault: true},
 			{LUID: "metric-2", Name: "Revenue West", DefinitionLUID: "definition-1"},

@@ -4,7 +4,7 @@ site: sales
 page:
   returned: 1
   limit: 10
-  next_cursor: next-page
+  more_available: true
 definitions[1]{luid,name,datasource_luid}:
   definition-1,Revenue,datasource-1
 details: "--full"

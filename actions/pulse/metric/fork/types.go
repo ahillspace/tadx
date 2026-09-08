@@ -21,9 +21,10 @@ type Metric struct {
 	Specification  map[string]any
 }
 type Definition struct {
-	LUID              string
-	DatasourceLUID    string
-	AllowedDimensions []string
+	LUID                 string
+	DatasourceLUID       string
+	AllowedDimensions    []string
+	AllowedGranularities []string
 }
 type CreateRequest struct {
 	DefinitionLUID string

@@ -14,10 +14,10 @@ repository_root=$(cd -- "$(dirname "$0")/../.." && pwd)
 release_directory="${test_root}/releases"
 fake_bin="${test_root}/fake-bin"
 home_directory="${test_root}/home"
-install_directory="${home_directory}/bin"
+install_directory="${home_directory}/bin space's"
 mkdir -p "$release_directory" "$fake_bin" "$home_directory"
 
-printf '%s\n' '#!/bin/sh' 'printf "%s\n" "tadx test 1.2.3"' > "${test_root}/tadx"
+printf '%s\n' '#!/bin/sh' 'if [ "${1:-}" = completion ]; then printf "%s\n" "# test completion"; else printf "%s\n" "tadx test 1.2.3"; fi' > "${test_root}/tadx"
 chmod 0755 "${test_root}/tadx"
 tar -czf "${release_directory}/tadx_1.2.3_linux_amd64.tar.gz" -C "$test_root" tadx
 if command -v sha256sum >/dev/null 2>&1; then
@@ -112,5 +112,31 @@ if sh "${repository_root}/scripts/install.sh" install --version '../unsafe' --in
     printf '%s\n' 'Expected an unsafe version to fail.' >&2
     exit 1
 fi
+
+for completion_shell in bash zsh fish; do
+    export SHELL="/bin/$completion_shell"
+    case "$completion_shell" in
+        bash) completion_profile="${home_directory}/.bashrc" ;;
+        zsh) export ZDOTDIR="${home_directory}/custom-zsh"; completion_profile="${ZDOTDIR}/.zshrc" ;;
+        fish) export XDG_CONFIG_HOME="${home_directory}/custom-config"; completion_profile="${XDG_CONFIG_HOME}/fish/config.fish" ;;
+    esac
+    mkdir -p "$(dirname "$completion_profile")"
+    printf '%s\n' '# user configuration' > "$completion_profile"
+    sh "${repository_root}/scripts/install.sh" --install-dir "$install_directory" >/dev/null
+    grep -Fq "completion $completion_shell" "$completion_profile"
+    [ "$(grep -c '# tadx-installer-completion' "$completion_profile")" -eq 1 ]
+    [ "$(cat "${completion_profile}.tadx-backup")" = '# user configuration' ]
+    cp "$completion_profile" "${test_root}/first-profile"
+    sh "${repository_root}/scripts/install.sh" --install-dir "$install_directory" >/dev/null
+    cmp "$completion_profile" "${test_root}/first-profile"
+    if [ "$completion_shell" = bash ]; then
+        bash -n "$completion_profile"
+        bash -c '. "$1"' bash "$completion_profile"
+    fi
+    sh "${repository_root}/scripts/install.sh" uninstall --install-dir "$install_directory" >/dev/null
+    [ "$(cat "$completion_profile")" = '# user configuration' ]
+    sh "${repository_root}/scripts/install.sh" --install-dir "$install_directory" --no-modify-path --no-completion >/dev/null
+    [ "$(cat "$completion_profile")" = '# user configuration' ]
+done
 
 printf '%s\n' 'install.sh tests passed'

@@ -256,7 +256,7 @@ func newList(deps Dependencies) *cobra.Command {
 			return deps.Renderer.Render(result)
 		},
 	}
-	command.Flags().IntVar(&input.Limit, "limit", 0, "maximum workspaces to return")
+	command.Flags().IntVar(&input.Limit, "limit", 0, "maximum workspaces to return, up to 10000")
 	command.Flags().StringVar(&input.Cursor, "cursor", "", "opaque continuation cursor")
 	return command
 }
@@ -275,7 +275,7 @@ func newStatus(deps Dependencies) *cobra.Command {
 		},
 	}
 	command.Flags().StringVar(&input.Workspace, "workspace", "", "logical workspace name; uses deterministic defaults when omitted")
-	command.Flags().IntVar(&input.Limit, "limit", 0, "maximum artifacts to inspect")
+	command.Flags().IntVar(&input.Limit, "limit", 0, "maximum artifacts to inspect, up to 10000")
 	command.Flags().StringVar(&input.Cursor, "cursor", "", "opaque continuation cursor")
 	return command
 }

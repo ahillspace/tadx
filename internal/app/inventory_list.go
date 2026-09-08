@@ -21,8 +21,8 @@ import (
 	tableaucatalog "github.com/ahillspace/tadx/internal/tableau/catalog"
 )
 
-const inventoryRefreshHelp = "Complete live inventory refreshed the local catalog; continuation reads use this snapshot."
-const inventoryRefreshWarningHelp = "The live result is complete, but the catalog was not updated; retry without a continuation cursor to refresh it."
+const inventoryRefreshHelp = "Complete live inventory refreshed the local catalog; use --catalog --all for all matching records, up to 10000."
+const inventoryRefreshWarningHelp = "The live result is complete, but the catalog was not updated; retry the live command to refresh it."
 
 type collectedResourceInventory struct {
 	entries     []corecatalog.ResourceEntry
@@ -92,9 +92,9 @@ func (i collectedResourceInventory) warningHelp() string {
 		return inventoryRefreshWarningHelp
 	}
 	if i.snapshotErr != nil {
-		return i.incompleteWarning() + " Temporary snapshot storage failed; continuation is unavailable."
+		return i.incompleteWarning() + " Temporary snapshot storage failed. Retry the live command or use narrower filters for the available records."
 	}
-	return i.incompleteWarning() + " Temporary continuation expires after 24 hours or earlier if its snapshot is evicted."
+	return i.incompleteWarning() + " Retry the live command or use narrower filters for the available records."
 }
 
 func (i collectedResourceInventory) incompleteWarning() string {
@@ -106,9 +106,10 @@ func (i collectedResourceInventory) incompleteWarning() string {
 }
 
 type inventoryMemoryReader struct {
-	entries    []corecatalog.ResourceEntry
-	requestID  string
-	snapshotID string
+	allowContinuation bool
+	entries           []corecatalog.ResourceEntry
+	requestID         string
+	snapshotID        string
 }
 
 func (i collectedResourceInventory) memoryReader() inventoryMemoryReader {
@@ -123,11 +124,10 @@ func (r inventoryMemoryReader) nextCursor(size int) string {
 	return corecatalog.PartialInventoryCursor(r.snapshotID, corecatalog.ResourceQuery{Environment: entry.Environment, Site: entry.Site, Kind: entry.Kind, Limit: size, Offset: size})
 }
 
-func (r inventoryMemoryReader) page(size int) []corecatalog.ResourceEntry {
-	if size > len(r.entries) {
-		size = len(r.entries)
-	}
-	return r.entries[:size]
+func (r inventoryMemoryReader) page(number, size int) []corecatalog.ResourceEntry {
+	start := min((number-1)*size, len(r.entries))
+	end := min(start+size, len(r.entries))
+	return r.entries[start:end]
 }
 
 func decodeInventoryPage[T any](entries []corecatalog.ResourceEntry) ([]T, error) {
@@ -141,33 +141,33 @@ func decodeInventoryPage[T any](entries []corecatalog.ResourceEntry) ([]T, error
 }
 
 func (r inventoryMemoryReader) ListWorkbooks(_ context.Context, input workbooklist.PageRequest) (workbooklist.Page, error) {
-	items, err := decodeInventoryPage[workbooklist.Workbook](r.page(input.PageSize))
-	return workbooklist.Page{Number: 1, Size: input.PageSize, Total: len(r.entries), Workbooks: items, RequestID: r.requestID, SnapshotCursor: r.nextCursor(input.PageSize), SuppressContinuation: r.snapshotID == ""}, err
+	items, err := decodeInventoryPage[workbooklist.Workbook](r.page(input.PageNumber, input.PageSize))
+	return workbooklist.Page{Number: input.PageNumber, Size: input.PageSize, Total: len(r.entries), Workbooks: items, RequestID: r.requestID, SnapshotCursor: r.nextCursor(input.PageSize), SuppressContinuation: r.snapshotID == "" && !r.allowContinuation}, err
 }
 
 func (r inventoryMemoryReader) ListDatasources(_ context.Context, input datasourcelist.PageRequest) (datasourcelist.Page, error) {
-	items, err := decodeInventoryPage[datasourcelist.Datasource](r.page(input.PageSize))
-	return datasourcelist.Page{Number: 1, Size: input.PageSize, Total: len(r.entries), Datasources: items, RequestID: r.requestID, SnapshotCursor: r.nextCursor(input.PageSize), SuppressContinuation: r.snapshotID == ""}, err
+	items, err := decodeInventoryPage[datasourcelist.Datasource](r.page(input.PageNumber, input.PageSize))
+	return datasourcelist.Page{Number: input.PageNumber, Size: input.PageSize, Total: len(r.entries), Datasources: items, RequestID: r.requestID, SnapshotCursor: r.nextCursor(input.PageSize), SuppressContinuation: r.snapshotID == "" && !r.allowContinuation}, err
 }
 
 func (r inventoryMemoryReader) ListFlows(_ context.Context, input flowlist.PageRequest) (flowlist.Page, error) {
-	items, err := decodeInventoryPage[flowlist.Flow](r.page(input.PageSize))
-	return flowlist.Page{Number: 1, Size: input.PageSize, Total: len(r.entries), Flows: items, RequestID: r.requestID, SnapshotCursor: r.nextCursor(input.PageSize), SuppressContinuation: r.snapshotID == ""}, err
+	items, err := decodeInventoryPage[flowlist.Flow](r.page(input.PageNumber, input.PageSize))
+	return flowlist.Page{Number: input.PageNumber, Size: input.PageSize, Total: len(r.entries), Flows: items, RequestID: r.requestID, SnapshotCursor: r.nextCursor(input.PageSize), SuppressContinuation: r.snapshotID == "" && !r.allowContinuation}, err
 }
 
 func (r inventoryMemoryReader) ListProjects(_ context.Context, input projectlist.PageRequest) (projectlist.Page, error) {
-	items, err := decodeInventoryPage[projectlist.Project](r.page(input.PageSize))
-	return projectlist.Page{Number: 1, Size: input.PageSize, Total: len(r.entries), Projects: items, RequestID: r.requestID, SnapshotCursor: r.nextCursor(input.PageSize), SuppressContinuation: r.snapshotID == ""}, err
+	items, err := decodeInventoryPage[projectlist.Project](r.page(input.PageNumber, input.PageSize))
+	return projectlist.Page{Number: input.PageNumber, Size: input.PageSize, Total: len(r.entries), Projects: items, RequestID: r.requestID, SnapshotCursor: r.nextCursor(input.PageSize), SuppressContinuation: r.snapshotID == "" && !r.allowContinuation}, err
 }
 
 func (r inventoryMemoryReader) ListUsers(_ context.Context, input userlist.PageRequest) (userlist.Page, error) {
-	items, err := decodeInventoryPage[userlist.User](r.page(input.PageSize))
-	return userlist.Page{Number: 1, Size: input.PageSize, Total: len(r.entries), Users: items, RequestID: r.requestID, SnapshotCursor: r.nextCursor(input.PageSize), SuppressContinuation: r.snapshotID == ""}, err
+	items, err := decodeInventoryPage[userlist.User](r.page(input.PageNumber, input.PageSize))
+	return userlist.Page{Number: input.PageNumber, Size: input.PageSize, Total: len(r.entries), Users: items, RequestID: r.requestID, SnapshotCursor: r.nextCursor(input.PageSize), SuppressContinuation: r.snapshotID == "" && !r.allowContinuation}, err
 }
 
 func (r inventoryMemoryReader) ListGroups(_ context.Context, input grouplist.PageRequest) (grouplist.Page, error) {
-	items, err := decodeInventoryPage[grouplist.Group](r.page(input.PageSize))
-	return grouplist.Page{Number: 1, Size: input.PageSize, Total: len(r.entries), Groups: items, RequestID: r.requestID, SnapshotCursor: r.nextCursor(input.PageSize), SuppressContinuation: r.snapshotID == ""}, err
+	items, err := decodeInventoryPage[grouplist.Group](r.page(input.PageNumber, input.PageSize))
+	return grouplist.Page{Number: input.PageNumber, Size: input.PageSize, Total: len(r.entries), Groups: items, RequestID: r.requestID, SnapshotCursor: r.nextCursor(input.PageSize), SuppressContinuation: r.snapshotID == "" && !r.allowContinuation}, err
 }
 
 func inventoryResourceEntries(snapshot tableaucatalog.InventorySnapshot, environment, site string, observedAt time.Time) ([]corecatalog.ResourceEntry, int, error) {
@@ -229,12 +229,8 @@ func inventoryProjects(snapshot tableaucatalog.InventorySnapshot, tolerant ...bo
 			}
 			return nil, errors.New("project inventory returned incomplete authoritative identity")
 		}
-		if strings.Contains(name, "/") {
-			if skipMalformed {
-				continue
-			}
-			return nil, fmt.Errorf("Tableau project %q has a name containing %q, which is not addressable by an exact project path", id, "/")
-		}
+		// A slash in a display name does not invalidate authoritative LUIDs.
+		// Path selection resolves ambiguity separately from inventory collection.
 		projects[id] = inventoryProject{name: name, parent: parent}
 	}
 	state := make(map[string]uint8, len(projects))
@@ -459,4 +455,11 @@ func inventoryRefreshError(operation, environment, site string, err error) error
 		Environment: environment, Site: site, Summary: "Complete live inventory refresh failed.", Cause: err,
 		Retryable: retryable, CorrectiveAction: correctiveAction, TableauRequestID: errs.TableauRequestID(err),
 	}
+}
+
+func validateInventoryAll(all bool, source *readsource.Metadata) error {
+	if all && (source == nil || source.Coverage != readsource.CoverageComplete) {
+		return errs.New(errs.KindRuntime, "--all requires complete inventory coverage; refresh the catalog or retry the live list")
+	}
+	return nil
 }

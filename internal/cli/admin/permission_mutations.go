@@ -2,6 +2,7 @@ package admin
 
 import (
 	"context"
+	"strings"
 
 	permissioncreate "github.com/ahillspace/tadx/actions/admin/permission/create"
 	permissiondelete "github.com/ahillspace/tadx/actions/admin/permission/delete"
@@ -39,6 +40,7 @@ func newPermissionCreate(deps Dependencies) *cobra.Command {
 	cmd.Flags().StringVar(&in.Capability, "capability", "", "exact Tableau capability name")
 	cmd.Flags().StringVar(&in.Mode, "mode", "", "exact permission mode: Allow or Deny")
 	cmd.Flags().BoolVar(&preview, "preview", false, "preview the remote mutation without performing it")
+	addPermissionCapabilityHelp(cmd, deps.PermissionCapabilities)
 	return cmd
 }
 
@@ -66,5 +68,26 @@ func newPermissionDelete(deps Dependencies) *cobra.Command {
 	cmd.Flags().StringVar(&in.Capability, "capability", "", "exact Tableau capability name")
 	cmd.Flags().StringVar(&in.Mode, "mode", "", "exact permission mode: Allow or Deny")
 	cmd.Flags().BoolVar(&preview, "preview", false, "preview the remote mutation without performing it")
+	addPermissionCapabilityHelp(cmd, deps.PermissionCapabilities)
 	return cmd
+}
+
+func addPermissionCapabilityHelp(cmd *cobra.Command, capabilities func(string) []string) {
+	if capabilities == nil {
+		return
+	}
+	lines := []string{cmd.Short, "", "Supported capability names by resource kind:"}
+	for _, kind := range []string{"project", "workbook", "datasource", "flow"} {
+		lines = append(lines, "  "+kind+": "+strings.Join(capabilities(kind), ", "))
+	}
+	lines = append(lines, "", "For project defaults, --default-for selects the content kind's capabilities.")
+	cmd.Long = strings.Join(lines, "\n")
+	_ = cmd.RegisterFlagCompletionFunc("capability", func(cmd *cobra.Command, _ []string, _ string) ([]string, cobra.ShellCompDirective) {
+		kind, _ := cmd.Flags().GetString("kind")
+		defaults, _ := cmd.Flags().GetString("default-for")
+		if kind == "project" && defaults != "" {
+			kind = strings.TrimSuffix(defaults, "s")
+		}
+		return capabilities(kind), cobra.ShellCompDirectiveNoFileComp
+	})
 }

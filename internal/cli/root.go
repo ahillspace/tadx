@@ -28,6 +28,7 @@ import (
 	workspacecli "github.com/ahillspace/tadx/internal/cli/workspace"
 	"github.com/ahillspace/tadx/internal/errs"
 	"github.com/spf13/cobra"
+	"github.com/spf13/pflag"
 )
 
 // CapabilityAnnotation associates an executable command with its registry ID.
@@ -152,6 +153,7 @@ func NewRoot(deps Dependencies) *cobra.Command {
 Run tadx capability list to discover available operations and tadx capability get <id> for bounded details.
 TADX returns compact TOON by default. Use --full to show expanded bounded details for the same operation.
 Read commands query Tableau by default. Pass --catalog on supported reads to use local catalog data without contacting Tableau.
+Use --env as a short alias for --environment on commands that select an environment.
 
 Remote mutation commands remain visible when execution is disabled. Set TADX_ENABLE_MUTATIONS=1 to enable them.
 When enabled, mutation commands perform changes by default. Pass --preview to inspect the plan without performing the mutation.
@@ -161,6 +163,12 @@ TADX never configures, selects, proxies, or reports Tableau MCP connections. The
 		SilenceErrors: true,
 		SilenceUsage:  true,
 	}
+	root.SetGlobalNormalizationFunc(func(_ *pflag.FlagSet, name string) pflag.NormalizedName {
+		if name == "env" {
+			name = "environment"
+		}
+		return pflag.NormalizedName(name)
+	})
 	root.PersistentFlags().BoolVar(&renderOptions.Full, "full", false, "show expanded bounded details")
 	root.PersistentFlags().StringVar(configPath, "config", *configPath, "path to the non-secret TADX configuration file")
 	root.PersistentFlags().Lookup("config").DefValue = ""
@@ -377,8 +385,22 @@ func RegisteredCommands(root *cobra.Command) ([]RegisteredCommand, error) {
 }
 
 func setFlagErrorHandlers(command *cobra.Command) {
+	if cursor := command.Flags().Lookup("cursor"); cursor != nil {
+		cursor.Hidden = true
+	}
 	command.SetFlagErrorFunc(func(command *cobra.Command, cause error) error {
-		return clierr.Usage(command.CommandPath(), cause)
+		advice := "Run " + command.CommandPath() + " --help for supported flags."
+		switch cause.Error() {
+		case "unknown flag: --site":
+			if command.Flags().Lookup("environment") != nil {
+				advice = "Use --environment <alias> (or --env <alias>) to select a configured environment."
+			}
+		case "unknown flag: --terms":
+			if command.Annotations[CapabilityAnnotation] == "search.run" {
+				advice = `Pass the search term as a positional argument: tadx search "<term>" --env <alias>.`
+			}
+		}
+		return &errs.Error{Kind: errs.KindUsage, Operation: command.CommandPath(), Summary: cause.Error(), Cause: cause, CorrectiveAction: advice}
 	})
 	for _, child := range command.Commands() {
 		setFlagErrorHandlers(child)

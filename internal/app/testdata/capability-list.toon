@@ -2,6 +2,7 @@ page:
   returned: 2
   total: 2
   limit: 20
+  more_available: false
 capabilities[2]{id,owner,disposition,state,command,blocked,execution_enabled}:
   capability.get,cli,ship,implemented,capability get,false,true
   capability.list,cli,ship,implemented,capability list,false,true

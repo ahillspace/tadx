@@ -1,5 +1,6 @@
 status: refreshed
 generation:
+  complete: true
   id: generation-1
   environment: production
   site: marketing
@@ -12,7 +13,7 @@ generation:
     projects,1
     workbooks,2
 path: catalog/catalog.sqlite
-warnings[1]: one workbook permission request was forbidden
+warnings[1]: Requested scopes replace the previous catalog generation.
 diagnostics:
   requests: 2
   failed_requests: 0

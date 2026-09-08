@@ -197,7 +197,7 @@ Inventory all live groups and render a bounded page, or run an explicitly filter
 - Operation type: find
 - Owner: cli
 - MCP overlap: None
-- Selectors: Environment/site; optional group filters; rendered-row limit; snapshot cursor; optional --catalog
+- Selectors: Environment/site; optional group filters; --limit 1..100 (default 25) or --all; internal snapshot continuation; optional --catalog
 - Products and availability: Cloud / Server
 - Product disposition: ship
 - Evidence level: contract-verified
@@ -207,7 +207,7 @@ Inventory all live groups and render a bounded page, or run an explicitly filter
 - Remote mutation: No
 - Supports `--preview`: No
 - Raw capable: No
-- Safety and guard: An unfiltered live list atomically refreshes the complete group catalog scope before rendering; --limit bounds output only; continuation reads that snapshot; filtered lists are bounded live queries with partial cache updates; --catalog is local-only
+- Safety and guard: An unfiltered live list atomically refreshes the complete group catalog scope before rendering; --limit bounds output only; internal continuation reads that snapshot; filtered lists are bounded live queries with partial cache updates; --catalog is local-only; --all returns the selected inventory within a 10000-record bound and rejects incomplete coverage; --full changes presentation only
 - Artifact effect: Update catalog scope
 - Upstream operation: Catalog traversal over GET /api/{version}/sites/{site-id}/groups; filtered direct REST query; SQLite scope snapshot
 - Evidence: docs/evidence/group2-inventory-rest-contract.md; docs/evidence/admin-rest-contract.md; hermetic inventory, snapshot, and source-selection tests
@@ -457,7 +457,7 @@ Inventory all live site users and render a bounded page, or run an explicitly fi
 - Operation type: find
 - Owner: cli
 - MCP overlap: list-users
-- Selectors: Environment/site; optional user filters; rendered-row limit; snapshot cursor; optional --catalog
+- Selectors: Environment/site; optional user filters; --limit 1..100 (default 25) or --all; internal snapshot continuation; optional --catalog
 - Products and availability: Cloud / Server
 - Product disposition: ship
 - Evidence level: contract-verified
@@ -467,7 +467,7 @@ Inventory all live site users and render a bounded page, or run an explicitly fi
 - Remote mutation: No
 - Supports `--preview`: No
 - Raw capable: No
-- Safety and guard: An unfiltered live list atomically refreshes the complete user catalog scope before rendering; --limit bounds output only; continuation reads that snapshot; filtered lists are bounded live queries with partial cache updates; --catalog is local-only; secret-free
+- Safety and guard: An unfiltered live list atomically refreshes the complete user catalog scope before rendering; --limit bounds output only; internal continuation reads that snapshot; filtered lists are bounded live queries with partial cache updates; --catalog is local-only; secret-free; --all returns the selected inventory within a 10000-record bound and rejects incomplete coverage; --full changes presentation only
 - Artifact effect: Update catalog scope
 - Upstream operation: Catalog traversal over GET /api/{version}/sites/{site-id}/users; filtered direct REST query; SQLite scope snapshot
 - Evidence: docs/evidence/group2-inventory-rest-contract.md; docs/evidence/admin-rest-contract.md; hermetic inventory, snapshot, and source-selection tests
@@ -727,7 +727,7 @@ Hydrate and replace one normalized site inventory generation.
 - Remote mutation: No
 - Supports `--preview`: No
 - Raw capable: No
-- Safety and guard: Incomplete generations never become current
+- Safety and guard: Inventory page failures preserve the prior generation; item-level permission 403s publish useful inventory with explicit incomplete permission coverage
 - Artifact effect: None
 - Upstream operation: Admitted REST list and permissions endpoints
 - Evidence: docs/evidence/group2-inventory-rest-contract.md
@@ -753,7 +753,7 @@ Report generation age, completeness, source, and stale state.
 - Remote mutation: No
 - Supports `--preview`: No
 - Raw capable: No
-- Safety and guard: 12-hour stale warning; stale is not invalid
+- Safety and guard: Uninitialized before first refresh; scope completeness remains explicit; 12-hour stale warning
 - Artifact effect: None
 - Upstream operation: Local catalog generation metadata
 - Evidence: A1 §§5.9, 12.8; C1 §2.1
@@ -925,7 +925,7 @@ Inventory all live published datasources and render a bounded page, or run an ex
 - Operation type: find
 - Owner: cli
 - MCP overlap: list-datasources
-- Selectors: Environment/site; optional project/owner/name/type/tag/time filters; rendered-row limit; snapshot cursor; optional --catalog
+- Selectors: Environment/site; optional project/owner/name/type/tag/time filters; --limit 1..100 (default 25) or --all; internal snapshot continuation; optional --catalog
 - Products and availability: Cloud / Server
 - Product disposition: ship
 - Evidence level: contract-verified
@@ -935,7 +935,7 @@ Inventory all live published datasources and render a bounded page, or run an ex
 - Remote mutation: No
 - Supports `--preview`: No
 - Raw capable: No
-- Safety and guard: An unfiltered live list atomically refreshes the complete datasource catalog scope before rendering; --limit bounds output only; continuation reads that snapshot; filtered lists are bounded live queries with partial cache updates; --catalog is local-only
+- Safety and guard: An unfiltered live list atomically refreshes the complete datasource catalog scope before rendering; --limit bounds output only; internal continuation reads that snapshot; filtered lists are bounded live queries with partial cache updates; --catalog is local-only; --all returns the selected inventory within a 10000-record bound and rejects incomplete coverage; --full changes presentation only
 - Artifact effect: Update catalog scope
 - Upstream operation: Catalog traversal over GET /api/{version}/sites/{site-id}/datasources; filtered direct REST query; SQLite scope snapshot
 - Evidence: docs/evidence/group2-inventory-rest-contract.md; hermetic inventory, snapshot, and source-selection tests
@@ -1081,7 +1081,7 @@ Inspect one datasource's logical tables and search a bounded field projection.
 - Operation type: inspect
 - Owner: cli
 - MCP overlap: get-datasource-metadata
-- Selectors: Authoritative datasource LUID; optional field text, role, table, and raw field ID filters
+- Selectors: Authoritative datasource LUID; optional field text, role, table, and raw field ID filters; bounded --limit or explicit --all
 - Products and availability: Cloud / Server with VDS or Metadata API access
 - Product disposition: ship
 - Evidence level: contract-verified
@@ -1091,7 +1091,7 @@ Inspect one datasource's logical tables and search a bounded field projection.
 - Remote mutation: No
 - Supports `--preview`: No
 - Raw capable: No
-- Safety and guard: Query Tableau by default; --catalog is local-only with no source fallback; preserve raw field identity separately from display captions
+- Safety and guard: Query Tableau by default; --catalog is local-only with no source fallback; preserve raw field identity separately from display captions; report more_available without opaque cursors
 - Artifact effect: None
 - Upstream operation: VDS read-metadata, VDS describe-datasource, then Metadata API fallback
 - Evidence: Proven existing field-catalog implementation plus hermetic TADX contract tests
@@ -1367,7 +1367,7 @@ Inventory all live flows and render a bounded page, or run an explicitly filtere
 - Operation type: find
 - Owner: cli
 - MCP overlap: list-flows
-- Selectors: Environment/site; optional project/owner/name filters; rendered-row limit; snapshot cursor; optional --catalog
+- Selectors: Environment/site; optional project/owner/name filters; --limit 1..100 (default 25) or --all; internal snapshot continuation; optional --catalog
 - Products and availability: Cloud / Server with flow support; REST API 3.3+ per C1
 - Product disposition: ship
 - Evidence level: contract-verified
@@ -1377,7 +1377,7 @@ Inventory all live flows and render a bounded page, or run an explicitly filtere
 - Remote mutation: No
 - Supports `--preview`: No
 - Raw capable: No
-- Safety and guard: An unfiltered live list atomically refreshes the complete flow catalog scope before rendering; --limit bounds output only; continuation reads that snapshot; filtered lists are bounded live queries with partial cache updates; --catalog is local-only
+- Safety and guard: An unfiltered live list atomically refreshes the complete flow catalog scope before rendering; --limit bounds output only; internal continuation reads that snapshot; filtered lists are bounded live queries with partial cache updates; --catalog is local-only; --all returns the selected inventory within a 10000-record bound and rejects incomplete coverage; --full changes presentation only
 - Artifact effect: Update catalog scope
 - Upstream operation: Catalog traversal over GET /api/{version}/sites/{site-id}/flows; filtered direct REST query; SQLite scope snapshot
 - Evidence: docs/evidence/group2-inventory-rest-contract.md; docs/evidence/flow-rest-contract.md; hermetic inventory, snapshot, and source-selection tests
@@ -1601,7 +1601,7 @@ Inventory all live projects and render a bounded page with authoritative parent 
 - Operation type: find
 - Owner: cli
 - MCP overlap: list-projects
-- Selectors: Environment/site; optional name/parent/owner/top-level filters; rendered-row limit; snapshot cursor; optional --catalog
+- Selectors: Environment/site; optional name/parent/owner/top-level filters; --limit 1..100 (default 25) or --all; internal snapshot continuation; optional --catalog
 - Products and availability: Cloud / Server
 - Product disposition: ship
 - Evidence level: contract-verified
@@ -1611,7 +1611,7 @@ Inventory all live projects and render a bounded page with authoritative parent 
 - Remote mutation: No
 - Supports `--preview`: No
 - Raw capable: No
-- Safety and guard: An unfiltered live list atomically refreshes the complete project catalog scope before rendering; --limit bounds output only; continuation reads that snapshot; filtered lists are bounded live queries with partial cache updates; --catalog is local-only
+- Safety and guard: An unfiltered live list atomically refreshes the complete project catalog scope before rendering; --limit bounds output only; internal continuation reads that snapshot; filtered lists are bounded live queries with partial cache updates; --catalog is local-only; --all returns the selected inventory within a 10000-record bound and rejects incomplete coverage; --full changes presentation only
 - Artifact effect: Update catalog scope
 - Upstream operation: Catalog traversal over GET /api/{version}/sites/{site-id}/projects; filtered direct REST query; SQLite scope snapshot
 - Evidence: docs/evidence/group2-inventory-rest-contract.md; docs/evidence/project-rest-contract.md; hermetic inventory, snapshot, and source-selection tests
@@ -1751,13 +1751,13 @@ Inspect one complete Pulse definition and configuration.
 
 ### `pulse.definition.list`
 
-List Pulse metric definitions with bounded token continuation.
+List Pulse metric definitions with internal bounded pagination.
 
 - Surface: tadx pulse definition list
 - Operation type: find
 - Owner: cli
 - MCP overlap: list-all-pulse-metric-definitions; list-pulse-metric-definitions-from-definition-ids
-- Selectors: Site; optional bounded cursor
+- Selectors: Environment; optional exact name; --limit or --all
 - Products and availability: Tableau Cloud / Pulse only
 - Product disposition: ship
 - Evidence level: live-verified
@@ -1767,7 +1767,7 @@ List Pulse metric definitions with bounded token continuation.
 - Remote mutation: No
 - Supports `--preview`: No
 - Raw capable: No
-- Safety and guard: Bounded page token output; --catalog never contacts Tableau or falls back
+- Safety and guard: Internal continuation; truthful more_available; exact name is matched across pages; --catalog never contacts Tableau or falls back
 - Artifact effect: None
 - Upstream operation: GET /api/-/pulse/definitions
 - Evidence: docs/evidence/pulse-live-contract.md; hermetic TADX client and action tests
@@ -1985,13 +1985,13 @@ Inspect one exact Pulse metric specification.
 
 ### `pulse.metric.list`
 
-List metrics in one definition with bounded continuation.
+List metrics in one definition with internal bounded pagination.
 
 - Surface: tadx pulse metric list
 - Operation type: find
 - Owner: cli
 - MCP overlap: list-pulse-metrics-from-metric-definition-id
-- Selectors: Exact definition LUID; optional bounded cursor
+- Selectors: Exact definition LUID; --limit or --all
 - Products and availability: Tableau Cloud / Pulse only
 - Product disposition: ship
 - Evidence level: live-verified
@@ -2001,7 +2001,7 @@ List metrics in one definition with bounded continuation.
 - Remote mutation: No
 - Supports `--preview`: No
 - Raw capable: No
-- Safety and guard: Definition-scoped identity; --catalog never contacts Tableau or falls back
+- Safety and guard: Definition-scoped identity; internal continuation with truthful more_available; --catalog never contacts Tableau or falls back
 - Artifact effect: None
 - Upstream operation: GET /api/-/pulse/definitions/{definition_id}/metrics
 - Evidence: docs/evidence/pulse-live-contract.md; hermetic TADX client and action tests
@@ -2043,7 +2043,7 @@ Search native Tableau content plus administration and Pulse resources through on
 - Operation type: find
 - Owner: cli
 - MCP overlap: search-content
-- Selectors: Optional text; broad or concrete --type; environment; optional --catalog
+- Selectors: Optional text; broad or concrete --type; environment or --env; bounded --limit; optional --catalog
 - Products and availability: Cloud / Server 2022.3+ for native content search; Pulse types require Tableau Cloud
 - Product disposition: ship
 - Evidence level: contract-verified
@@ -2053,7 +2053,7 @@ Search native Tableau content plus administration and Pulse resources through on
 - Remote mutation: No
 - Supports `--preview`: No
 - Raw capable: No
-- Safety and guard: Nonempty live content terms use native search; native datasource results are translated to classic REST LUIDs; administration and Pulse retain dedicated adapters; --catalog is local-only; blank text requires a concrete type and uses list semantics
+- Safety and guard: Nonempty live content terms use native search; native datasource results are translated to classic REST LUIDs; administration and Pulse retain dedicated adapters; --catalog is local-only; blank text requires a concrete type and uses list semantics; internal pagination satisfies --limit with more_available and no opaque cursor output
 - Artifact effect: None
 - Upstream operation: GET /api/-/search for content; Query Datasources by contentUrl for classic datasource LUIDs; dedicated administration and Pulse adapters; local normalized catalog index
 - Evidence: docs/evidence/group2-inventory-rest-contract.md; current official content exploration and datasource filter contracts; hermetic transport, adapter, and app tests
@@ -2277,7 +2277,7 @@ Inventory all live workbooks and render a bounded page, or run an explicitly fil
 - Operation type: find
 - Owner: cli
 - MCP overlap: list-workbooks
-- Selectors: Environment/site; optional project/owner/name/tag filters; rendered-row limit; snapshot cursor; optional --catalog
+- Selectors: Environment/site; optional project/owner/name/tag filters; --limit 1..100 (default 25) or --all; internal snapshot continuation; optional --catalog
 - Products and availability: Cloud / Server
 - Product disposition: ship
 - Evidence level: contract-verified
@@ -2287,7 +2287,7 @@ Inventory all live workbooks and render a bounded page, or run an explicitly fil
 - Remote mutation: No
 - Supports `--preview`: No
 - Raw capable: No
-- Safety and guard: An unfiltered live list atomically refreshes the complete workbook catalog scope before rendering; --limit bounds output only; continuation reads that snapshot; filtered lists are bounded live queries with partial cache updates; --catalog is local-only
+- Safety and guard: An unfiltered live list atomically refreshes the complete workbook catalog scope before rendering; --limit bounds output only; internal continuation reads that snapshot; filtered lists are bounded live queries with partial cache updates; --catalog is local-only; --all returns the selected inventory within a 10000-record bound and rejects incomplete coverage; --full changes presentation only
 - Artifact effect: Update catalog scope
 - Upstream operation: Catalog traversal over GET /api/{version}/sites/{site-id}/workbooks; filtered direct REST query; SQLite scope snapshot
 - Evidence: docs/evidence/group2-inventory-rest-contract.md; hermetic inventory, snapshot, and source-selection tests

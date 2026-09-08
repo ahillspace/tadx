@@ -40,16 +40,32 @@ func ValidatePermissionMutation(in PermissionMutationRequest) error {
 	if in.DefaultFor != "" {
 		kind = strings.TrimSuffix(in.DefaultFor, "s")
 	}
-	capabilities := map[string][]string{
+	if !slices.Contains(PermissionCapabilities(kind), in.Rule.Capability) {
+		return &permissionCapabilityError{kind: kind, capability: in.Rule.Capability}
+	}
+	return nil
+}
+
+// PermissionCapabilities returns the supported capability names for one resource kind.
+func PermissionCapabilities(kind string) []string {
+	return map[string][]string{
 		"workbook":   {"AddComment", "ChangeHierarchy", "ChangePermissions", "CreateRefreshMetrics", "Delete", "ExportData", "ExportImage", "ExportXml", "ExtractRefresh", "Filter", "Read", "RunExplainData", "ShareView", "ViewComments", "ViewUnderlyingData", "WebAuthoring", "Write"},
 		"datasource": {"PulseMetricDefine", "ChangePermissions", "Connect", "Delete", "ExportXml", "ExtractRefresh", "Read", "Write", "SaveAs"},
 		"flow":       {"ChangeHierarchy", "ChangePermissions", "Delete", "Execute", "ExportXml", "Read", "WebAuthoringForFlows", "Write"},
 		"project":    {"ProjectLeader", "Read", "Write"},
-	}
-	if !slices.Contains(capabilities[kind], in.Rule.Capability) {
-		return fmt.Errorf("unsupported %s permission capability %q", kind, in.Rule.Capability)
-	}
-	return nil
+	}[kind]
+}
+
+type permissionCapabilityError struct{ kind, capability string }
+
+func (e *permissionCapabilityError) Error() string {
+	return fmt.Sprintf("unsupported %s permission capability %q", e.kind, e.capability)
+}
+
+func (e *permissionCapabilityError) Retryable() bool { return false }
+
+func (e *permissionCapabilityError) CorrectiveAction() string {
+	return "Supported " + e.kind + " capabilities: " + strings.Join(PermissionCapabilities(e.kind), ", ") + ". Select an exact --capability and review a new --preview."
 }
 
 func (c *Client) CreatePermission(ctx context.Context, in PermissionMutationRequest) (MutationResult, error) {

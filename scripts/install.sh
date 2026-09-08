@@ -8,9 +8,12 @@ action='install'
 version=${TADX_VERSION:-latest}
 install_dir=${TADX_INSTALL_DIR:-"${HOME}/.local/bin"}
 modify_path=1
+completion=1
+completion_marker='# tadx-installer-completion'
 
 usage() {
-    printf '%s\n' 'Usage: install.sh [install|uninstall] [--version VERSION] [--install-dir DIRECTORY] [--no-modify-path]'
+    printf '%s\n' 'Usage: install.sh [install|uninstall] [--version VERSION] [--install-dir DIRECTORY] [--no-modify-path] [--no-completion]'
+    printf '%s\n' 'Completion is enabled for the current Bash, Zsh, or Fish shell. Open a new shell to load it.'
 }
 
 fail() {
@@ -38,6 +41,10 @@ while [ "$#" -gt 0 ]; do
             modify_path=0
             shift
             ;;
+        --no-completion)
+            completion=0
+            shift
+            ;;
         -h|--help)
             usage
             exit 0
@@ -56,18 +63,65 @@ esac
 
 profile_path() {
     case "${SHELL:-}" in
-        */zsh) printf '%s\n' "${HOME}/.zshrc" ;;
+        */zsh) printf '%s\n' "${ZDOTDIR:-$HOME}/.zshrc" ;;
         */bash) printf '%s\n' "${HOME}/.bashrc" ;;
+        */fish) printf '%s\n' "${XDG_CONFIG_HOME:-$HOME/.config}/fish/config.fish" ;;
         *) printf '%s\n' "${HOME}/.profile" ;;
     esac
+}
+
+prepare_profile() {
+    profile=$(profile_path)
+    mkdir -p "$(dirname "$profile")"
+    if [ -f "$profile" ] && [ ! -e "${profile}.tadx-backup" ]; then
+        cp -p "$profile" "${profile}.tadx-backup"
+    fi
+    if [ ! -e "$profile" ]; then
+        (umask 077; : > "$profile")
+    fi
+    if [ -s "$profile" ] && [ -n "$(tail -c 1 "$profile")" ]; then
+        printf '\n' >> "$profile"
+    fi
+}
+
+remove_managed_completion() {
+    profile=$(profile_path)
+    [ -f "$profile" ] || return 0
+    grep -Fq "$completion_marker" "$profile" || return 0
+    prepare_profile
+    temporary_profile="${profile}.tadx.$$"
+    cp -p "$profile" "$temporary_profile"
+    awk -v marker="$completion_marker" 'substr($0, length($0)-length(marker)+1) != marker' "$profile" > "$temporary_profile"
+    mv -f "$temporary_profile" "$profile"
+}
+
+add_managed_completion() {
+    case "${SHELL:-}" in
+        */bash|*/zsh|*/fish) ;;
+        *) printf '%s\n' 'Completion setup skipped: use tadx completion --help for supported shells.'; return 0 ;;
+    esac
+    prepare_profile
+    remove_managed_completion
+    escaped_binary=$(printf '%s' "${install_dir}/tadx" | sed "s/'/'\\\\''/g")
+    case "$SHELL" in
+        */bash) printf "[ ! -x '%s' ] || source <('%s' completion bash) %s\n" "$escaped_binary" "$escaped_binary" "$completion_marker" >> "$profile" ;;
+        */zsh) printf "if [[ -x '%s' ]]; then autoload -Uz compinit; (( \$+functions[compdef] )) || compinit; source <('%s' completion zsh); fi %s\n" "$escaped_binary" "$escaped_binary" "$completion_marker" >> "$profile" ;;
+        */fish)
+            escaped_binary=$(printf '%s' "${install_dir}/tadx" | sed "s/\\\\/\\\\\\\\/g; s/'/\\\\'/g")
+            printf "if test -x '%s'; '%s' completion fish | source; end %s\n" "$escaped_binary" "$escaped_binary" "$completion_marker" >> "$profile"
+            ;;
+    esac
+    printf 'Completion is enabled in %s. Open a new shell to load it.\n' "$profile"
 }
 
 remove_managed_path() {
     profile=$(profile_path)
     [ -f "$profile" ] || return 0
+    grep -Fq "$path_marker" "$profile" || return 0
+    prepare_profile
     temporary_profile="${profile}.tadx.$$"
     cp -p "$profile" "$temporary_profile"
-    awk -v marker="$path_marker" 'index($0, marker) == 0' "$profile" > "$temporary_profile"
+    awk -v marker="$path_marker" 'substr($0, length($0)-length(marker)+1) != marker' "$profile" > "$temporary_profile"
     mv -f "$temporary_profile" "$profile"
 }
 
@@ -79,19 +133,22 @@ add_managed_path() {
         esac
     fi
 
-    if [ ! -e "$profile" ]; then
-        umask 077
-        : > "$profile"
-    fi
+    prepare_profile
     remove_managed_path
 
     escaped_dir=$(printf '%s' "$install_dir" | sed "s/'/'\\\\''/g")
-    printf "\nexport PATH='%s':\"\$PATH\" %s\n" "$escaped_dir" "$path_marker" >> "$profile"
+    case "${SHELL:-}" in
+        */fish)
+            escaped_dir=$(printf '%s' "$install_dir" | sed "s/\\\\/\\\\\\\\/g; s/'/\\\\'/g")
+            printf "if not contains -- '%s' \$PATH; set -gx PATH '%s' \$PATH; end %s\n" "$escaped_dir" "$escaped_dir" "$path_marker" >> "$profile" ;;
+        *) printf "export PATH='%s':\"\$PATH\" %s\n" "$escaped_dir" "$path_marker" >> "$profile" ;;
+    esac
 }
 
 if [ "$action" = 'uninstall' ]; then
     rm -f "${install_dir}/tadx"
-    remove_managed_path
+    if [ "$modify_path" -eq 1 ]; then remove_managed_path; fi
+    remove_managed_completion
     if [ -d "$install_dir" ] && [ -z "$(ls -A "$install_dir")" ]; then
         rmdir "$install_dir"
     fi
@@ -223,6 +280,9 @@ mv -f "$staged_binary" "${install_dir}/tadx"
 
 if [ "$modify_path" -eq 1 ]; then
     add_managed_path
+fi
+if [ "$completion" -eq 1 ]; then
+    add_managed_completion
 fi
 
 printf 'TADX %s was installed at %s.\n' "$resolved_version" "${install_dir}/tadx"

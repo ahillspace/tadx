@@ -82,6 +82,14 @@ func (h catalogHydrator) Hydrate(ctx context.Context, input catalogrefresh.Hydra
 		return catalogrefresh.HydrationResult{}, errors.New("catalog collector returned a different scope plan")
 	}
 	collected := append(append([]tableaucatalog.Scope(nil), result.RequestedScopes...), result.ImplicitScopes...)
+	var warnings []string
+	if result.DeniedPermissions > 0 {
+		collected = slices.DeleteFunc(collected, func(scope tableaucatalog.Scope) bool { return scope == tableaucatalog.ScopePermissions })
+		if err := writer.MarkPermissionsIncomplete(ctx); err != nil {
+			return catalogrefresh.HydrationResult{}, err
+		}
+		warnings = append(warnings, fmt.Sprintf("Catalog permission coverage is incomplete: %d workbook permission reads were denied (HTTP 403). Missing rules are unknown, not empty permissions; readable inventory was retained.", result.DeniedPermissions))
+	}
 	if err := writer.CompleteScopes(ctx, scopeStrings(collected)); err != nil {
 		return catalogrefresh.HydrationResult{}, err
 	}
@@ -97,11 +105,12 @@ func (h catalogHydrator) Hydrate(ctx context.Context, input catalogrefresh.Hydra
 		return catalogrefresh.HydrationResult{}, errors.New("catalog request count exceeds the receipt bound")
 	}
 	return catalogrefresh.HydrationResult{
-		GenerationID: published.GenerationID, GeneratedAt: generatedAt, Complete: true, Source: catalogSourceName,
+		GenerationID: published.GenerationID, GeneratedAt: generatedAt, Complete: result.DeniedPermissions == 0, Source: catalogSourceName,
 		Path: published.Path, RecordCount: published.RecordCount, HydratedRecordCount: total,
 		RequestedScopes: append([]string(nil), input.RequestedScopes...), ImplicitScopes: append([]string(nil), input.ImplicitScopes...),
-		ScopeCounts: counts,
-		Diagnostics: catalogrefresh.Diagnostics{Requests: int(result.Requests), Duration: time.Since(started).Round(time.Millisecond).String()},
+		ScopeCounts:       counts,
+		DeniedPermissions: result.DeniedPermissions, Warnings: warnings,
+		Diagnostics: catalogrefresh.Diagnostics{Requests: int(result.Requests), FailedRequests: result.DeniedPermissions, Duration: time.Since(started).Round(time.Millisecond).String()},
 	}, nil
 }
 
@@ -180,6 +189,9 @@ func (s catalogStoreStatuser) Status(ctx context.Context, input catalogstatus.In
 	result, err := s.store.Status(ctx, corecatalog.Selection{Environment: input.Environment, Site: input.Site, SiteSelected: input.SiteResolved})
 	if err != nil {
 		return catalogstatus.Result{}, err
+	}
+	if result.GenerationID == "" {
+		return catalogstatus.Result{Environment: result.Environment, Site: result.Site, Path: result.Path}, nil
 	}
 	return catalogstatus.Result{ID: result.GenerationID, Environment: result.Environment, Site: result.Site, GeneratedAt: result.GeneratedAt.UTC().Format(time.RFC3339Nano), Age: result.Age.String(), Complete: result.Complete, Stale: result.Stale, Source: result.Source, Path: result.Path, Records: result.RecordCount, Warnings: append([]string(nil), result.Warnings...)}, nil
 }

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
@@ -17,7 +18,7 @@ import (
 func TestOutputGolden(t *testing.T) {
 	output := definitionlist.Output{
 		Status: "listed", Environment: "dev", Site: "sales",
-		Page:        definitionlist.OutputPage{Returned: 1, Limit: 10, NextCursor: "next-page"},
+		Page:        definitionlist.OutputPage{Returned: 1, Limit: 10, NextCursor: "next-page", MoreAvailable: true},
 		Definitions: []definitionlist.Definition{{LUID: "definition-1", Name: "Revenue", Description: "Recognized revenue", DatasourceLUID: "datasource-1", MeasureField: "Sales", Aggregation: "AGGREGATION_SUM", TimeDimension: "Order Date", AllowedDimensions: []string{"Region"}}},
 		RequestID:   "request-1", Help: []string{"tadx pulse definition inspect --id <definition-luid>"}, Source: &readsource.Metadata{Mode: readsource.Tableau, ObservedAt: "2026-09-04T12:00:00Z", Coverage: readsource.CoverageComplete},
 	}
@@ -45,11 +46,17 @@ type reader struct {
 	input definitionlist.PageRequest
 	calls int
 	err   error
+	pages []definitionlist.Page
 }
 
 func (r *reader) ListDefinitions(_ context.Context, input definitionlist.PageRequest) (definitionlist.Page, error) {
 	r.calls++
 	r.input = input
+	if len(r.pages) > 0 {
+		page := r.pages[0]
+		r.pages = r.pages[1:]
+		return page, r.err
+	}
 	return r.page, r.err
 }
 
@@ -103,33 +110,48 @@ func TestListRejectsInvalidLimitBeforeReader(t *testing.T) {
 	}
 }
 
-func TestListNameFilterIsExactAndPreservesProviderContinuation(t *testing.T) {
-	r := &reader{page: definitionlist.Page{Definitions: []definitionlist.Definition{
-		{LUID: "one", Name: "Sales", DatasourceLUID: "ds"},
-		{LUID: "two", Name: "sales", DatasourceLUID: "ds"},
-		{LUID: "three", Name: "Sales Target", DatasourceLUID: "ds"},
-	}, NextPageToken: "second-page"}}
-	in := definitionlist.Input{Environment: "dev", Site: "site", Name: "Sales", Limit: 3}
-	out, err := definitionlist.New(r).Execute(context.Background(), in)
-	if err != nil || r.calls != 1 || r.input.PageSize != 3 || out.Page.Returned != 1 || len(out.Definitions) != 1 || out.Definitions[0].LUID != "one" || out.Page.NextCursor == "" {
-		t.Fatalf("out=%+v err=%v reader=%+v", out, err, r)
+func TestListNameFilterScansPagesAndBoundsMatchingResults(t *testing.T) {
+	r := &reader{pages: []definitionlist.Page{
+		{Definitions: []definitionlist.Definition{{LUID: "one", Name: "sales", DatasourceLUID: "ds"}}, NextPageToken: "second"},
+		{Definitions: []definitionlist.Definition{{LUID: "two", Name: "Sales", DatasourceLUID: "ds"}, {LUID: "three", Name: "Sales", DatasourceLUID: "ds"}}},
+	}}
+	out, err := definitionlist.New(r).Execute(context.Background(), definitionlist.Input{Name: "Sales", Limit: 1})
+	if err != nil || r.calls != 2 || len(out.Definitions) != 1 || out.Definitions[0].LUID != "two" || !out.Page.MoreAvailable {
+		t.Fatalf("out=%+v err=%v calls=%d", out, err, r.calls)
 	}
-	if len(r.page.Definitions) != 3 || r.page.Definitions[1].LUID != "two" {
-		t.Fatal("filter mutated the provider page")
+}
+
+func TestListAllRejectsBrokenPaginationAndIncompleteScan(t *testing.T) {
+	for name, pages := range map[string][]definitionlist.Page{
+		"repeat":             {{NextPageToken: "same"}, {NextPageToken: "same"}},
+		"cycle":              {{NextPageToken: "a"}, {NextPageToken: "b"}, {NextPageToken: "a"}},
+		"blank":              {{NextPageToken: " "}},
+		"duplicate identity": {{Definitions: []definitionlist.Definition{{LUID: "one", Name: "Sales", DatasourceLUID: "ds"}}, NextPageToken: "next"}, {Definitions: []definitionlist.Definition{{LUID: "one", Name: "Sales", DatasourceLUID: "ds"}}}},
+	} {
+		t.Run(name, func(t *testing.T) {
+			r := &reader{pages: pages}
+			if _, err := definitionlist.New(r).Execute(context.Background(), definitionlist.Input{All: true}); err == nil {
+				t.Fatal("broken pagination accepted")
+			}
+		})
 	}
-	in.Cursor = out.Page.NextCursor
-	continuation := &reader{page: definitionlist.Page{Definitions: []definitionlist.Definition{{LUID: "four", Name: "Other", DatasourceLUID: "ds"}}, NextPageToken: "third-page"}}
-	out, err = definitionlist.New(continuation).Execute(context.Background(), in)
-	if err != nil || continuation.calls != 1 || continuation.input.PageToken != "second-page" || out.Page.Returned != 0 || out.Page.NextCursor == "" {
-		t.Fatalf("empty filtered page must preserve continuation: out=%+v err=%v reader=%+v", out, err, continuation)
+	pages := make([]definitionlist.Page, 100)
+	for index := range pages {
+		pages[index].NextPageToken = fmt.Sprintf("page-%d", index)
 	}
-	for _, name := range []string{"", "sales", "Sales Target"} {
-		in.Name = name
+	r := &reader{pages: pages}
+	_, err := definitionlist.New(r).Execute(context.Background(), definitionlist.Input{All: true})
+	var structured *errs.Error
+	if !errors.As(err, &structured) || structured.ID != "pulse.definition.list.incomplete" || r.calls != 100 {
+		t.Fatalf("err=%v calls=%d", err, r.calls)
+	}
+}
+
+func TestListAllRejectsExplicitLimitOrCursor(t *testing.T) {
+	for _, input := range []definitionlist.Input{{All: true, Limit: 10}, {All: true, Cursor: "opaque"}} {
 		r := &reader{}
-		_, err := definitionlist.New(r).Execute(context.Background(), in)
-		var structured *errs.Error
-		if !errors.As(err, &structured) || structured.Kind != errs.KindUsage || r.calls != 0 {
-			t.Fatalf("changed name %q accepted cursor: err=%v calls=%d", name, err, r.calls)
+		if _, err := definitionlist.New(r).Execute(context.Background(), input); err == nil || r.calls != 0 {
+			t.Fatalf("err=%v calls=%d", err, r.calls)
 		}
 	}
 }

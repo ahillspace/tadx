@@ -30,6 +30,9 @@ func New(reader Reader) *Action { return &Action{reader: reader} }
 
 // Execute reads one bounded page.
 func (a *Action) Execute(ctx context.Context, input Input) (Output, error) {
+	if input.All {
+		return a.collectAll(ctx, input)
+	}
 	if a == nil || a.reader == nil {
 		return Output{}, errors.New("flow list reader is not configured")
 	}
@@ -55,7 +58,7 @@ func (a *Action) Execute(ctx context.Context, input Input) (Output, error) {
 			return Output{}, err
 		}
 	}
-	return Output{Status: "listed", Environment: input.Environment, Site: input.Site, Page: OutputPage{Returned: len(page.Flows), Total: page.Total, Limit: page.Size, NextCursor: next}, Flows: page.Flows, RequestID: page.RequestID, Help: []string{"tadx content flow inspect --id <flow-luid>"}}, nil
+	return Output{Status: "listed", Environment: input.Environment, Site: input.Site, Page: OutputPage{Returned: len(page.Flows), Total: page.Total, Limit: page.Size, NextCursor: next, MoreAvailable: next != "" || (page.SuppressContinuation && len(page.Flows) < page.Total)}, Flows: page.Flows, RequestID: page.RequestID, Help: []string{"tadx content flow inspect --id <flow-luid>"}}, nil
 }
 
 func selectPage(value string, requested int, expectedFilter string) (int, int, string, error) {
@@ -113,4 +116,49 @@ func flowFilterFingerprint(input Input) (string, error) {
 	}
 	sum := sha256.Sum256(data)
 	return base64.RawURLEncoding.EncodeToString(sum[:]), nil
+}
+
+// collectAll follows private bounded pages and fails closed on incomplete inventories.
+func (a *Action) collectAll(ctx context.Context, input Input) (Output, error) {
+	if input.Limit != 0 || input.Cursor != "" {
+		return Output{}, errs.New(errs.KindUsage, "--all cannot be combined with --limit or --cursor")
+	}
+	input.All = false
+	input.Limit = 100
+	var result Output
+	seen := map[string]bool{}
+	cursors := map[string]bool{}
+	for pageNumber := 0; pageNumber < 100; pageNumber++ {
+		page, err := a.Execute(ctx, input)
+		if err != nil {
+			return Output{}, err
+		}
+		if pageNumber == 0 {
+			result = page
+			result.Flows = nil
+		} else if page.Page.Total != result.Page.Total {
+			return Output{}, errors.New("flow inventory changed during pagination; retry")
+		}
+		for _, item := range page.Flows {
+			if item.LUID == "" || seen[item.LUID] {
+				return Output{}, errors.New("flow inventory returned missing or repeated identities")
+			}
+			seen[item.LUID] = true
+			result.Flows = append(result.Flows, item)
+		}
+		result.RequestID = page.RequestID
+		if !page.Page.MoreAvailable && page.Page.NextCursor == "" {
+			if len(result.Flows) != result.Page.Total {
+				return Output{}, errors.New("flow inventory completeness could not be established")
+			}
+			result.Page = OutputPage{Returned: len(result.Flows), Total: result.Page.Total, Limit: 10000}
+			return result, nil
+		}
+		if len(page.Flows) == 0 || page.Page.NextCursor == "" || cursors[page.Page.NextCursor] {
+			return Output{}, errors.New("flow inventory pagination did not advance; completeness could not be established")
+		}
+		cursors[page.Page.NextCursor] = true
+		input.Cursor = page.Page.NextCursor
+	}
+	return Output{}, errors.New("flow --all exceeds the 10000-record bound; use narrower filters")
 }

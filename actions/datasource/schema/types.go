@@ -5,6 +5,7 @@ import "github.com/ahillspace/tadx/internal/readsource"
 const (
 	defaultLimit = 20
 	maxLimit     = 100
+	maxAllFields = 10000
 )
 
 // Input selects one published datasource schema and a bounded field view.
@@ -19,6 +20,7 @@ type Input struct {
 	Limit          int
 	Cursor         string
 	Catalog        bool
+	All            bool
 }
 
 // Table is one logical datasource table.
@@ -60,10 +62,11 @@ type Schema struct {
 
 // Page describes the bounded field projection.
 type Page struct {
-	Returned   int    `json:"returned"`
-	Total      int    `json:"total"`
-	Limit      int    `json:"limit"`
-	NextCursor string `json:"next_cursor,omitempty"`
+	Returned      int    `json:"returned"`
+	Total         int    `json:"total"`
+	Limit         int    `json:"limit"`
+	NextCursor    string `json:"-"`
+	MoreAvailable bool   `json:"more_available"`
 }
 
 // Output retains the complete bounded result before compact or full rendering.
@@ -106,7 +109,7 @@ type CompactResult struct {
 	Fields         []CompactField       `json:"fields"`
 	Warnings       []string             `json:"warnings,omitempty"`
 	Details        string               `json:"details"`
-	Help           []string             `json:"help"`
+	Help           []string             `json:"help,omitempty"`
 }
 
 // FullResult is the expanded bounded output.
@@ -122,7 +125,7 @@ type FullResult struct {
 	Fields         []Field              `json:"fields"`
 	Warnings       []string             `json:"warnings,omitempty"`
 	RequestID      string               `json:"tableau_request_id,omitempty"`
-	Help           []string             `json:"help"`
+	Help           []string             `json:"help,omitempty"`
 }
 
 // CompactOutput returns bounded field-selection details.

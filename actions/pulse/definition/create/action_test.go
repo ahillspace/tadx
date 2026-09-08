@@ -3,7 +3,6 @@ package create_test
 import (
 	"bytes"
 	"context"
-	"encoding/json"
 	"errors"
 	"os"
 	"path/filepath"
@@ -98,7 +97,7 @@ func TestCreatePlansSmallIntentAndAppliesOnlyWhenRequested(t *testing.T) {
 	if got := preview.Plan.Request.Specification.BasicSpecification.Measure.Aggregation; got != "AGGREGATION_SUM" {
 		t.Fatalf("aggregation=%q", got)
 	}
-	if got := preview.Plan.Request.ExtensionOptions.AllowedDimensions; len(got) != 2 || got[0] != "Category" || got[1] != "Region" {
+	if got := preview.Plan.Request.ExtensionOptions.AllowedDimensions; len(got) != 2 || got[0] != "Region" || got[1] != "Category" {
 		t.Fatalf("dimensions=%#v", got)
 	}
 	result, err := action.Execute(context.Background(), input, false)
@@ -110,32 +109,14 @@ func TestCreatePlansSmallIntentAndAppliesOnlyWhenRequested(t *testing.T) {
 	}
 }
 
-func TestCreateSerializesZeroDimensionsAsAnEmptyArray(t *testing.T) {
+func TestCreateRejectsZeroDimensionsBeforeRemoteCalls(t *testing.T) {
 	v, f, c := &validator{}, &finder{}, &creator{}
-	plan, err := definitioncreate.New(v, f, c).Plan(context.Background(), definitioncreate.Input{Environment: "dev", Site: "sales", Intent: definitioncreate.Intent{
+	_, err := definitioncreate.New(v, f, c).Plan(context.Background(), definitioncreate.Input{Environment: "dev", Site: "sales", Intent: definitioncreate.Intent{
 		Name: "Revenue", DatasourceLUID: "datasource-1", MeasureField: "Sales", TimeDimension: "Order Date",
 	}})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if plan.Dimensions == nil || plan.Request.ExtensionOptions.AllowedDimensions == nil {
-		t.Fatalf("plan dimensions=%#v request dimensions=%#v", plan.Dimensions, plan.Request.ExtensionOptions.AllowedDimensions)
-	}
-	compact := definitioncreate.Output{Plan: plan}.CompactOutput().(definitioncreate.CompactResult)
-	if compact.Plan.Dimensions == nil {
-		t.Fatalf("compact dimensions=%#v", compact.Plan.Dimensions)
-	}
-	encoded, err := json.Marshal(plan.Request)
-	if err != nil {
-		t.Fatal(err)
-	}
-	var payload map[string]any
-	if err := json.Unmarshal(encoded, &payload); err != nil {
-		t.Fatal(err)
-	}
-	extension := payload["extension_options"].(map[string]any)
-	if dimensions, ok := extension["allowed_dimensions"].([]any); !ok || len(dimensions) != 0 {
-		t.Fatalf("payload dimensions=%#v", extension["allowed_dimensions"])
+	var structured *errs.Error
+	if !errors.As(err, &structured) || structured.Kind != errs.KindUsage || v.calls != 0 || f.calls != 0 || c.calls != 0 {
+		t.Fatalf("error=%#v calls=%d/%d/%d", err, v.calls, f.calls, c.calls)
 	}
 }
 
@@ -163,11 +144,12 @@ func TestCreatePreservesFieldValidationErrorContract(t *testing.T) {
 		Environment: "dev",
 		Site:        "sales",
 		Intent: definitioncreate.Intent{
-			Name:           "Margin",
-			DatasourceLUID: "datasource-1",
-			MeasureField:   "Calculation_margin",
-			Aggregation:    "SUM",
-			TimeDimension:  "Order Date",
+			Name:              "Margin",
+			DatasourceLUID:    "datasource-1",
+			MeasureField:      "Calculation_margin",
+			Aggregation:       "SUM",
+			TimeDimension:     "Order Date",
+			AllowedDimensions: []string{"Region"},
 		},
 	}, false)
 	var structured *errs.Error
@@ -186,7 +168,7 @@ func TestCreateStopsOnExactNameDatasourceCollision(t *testing.T) {
 	v := &validator{}
 	f := &finder{items: []definitioncreate.ExistingDefinition{{LUID: "definition-old", Name: "Revenue", DatasourceLUID: "datasource-1"}}}
 	c := &creator{}
-	_, err := definitioncreate.New(v, f, c).Execute(context.Background(), definitioncreate.Input{Intent: definitioncreate.Intent{Name: "Revenue", DatasourceLUID: "datasource-1", MeasureField: "Sales", TimeDimension: "Date", Aggregation: "SUM"}}, false)
+	_, err := definitioncreate.New(v, f, c).Execute(context.Background(), definitioncreate.Input{Intent: definitioncreate.Intent{Name: "Revenue", DatasourceLUID: "datasource-1", MeasureField: "Sales", TimeDimension: "Date", Aggregation: "SUM", AllowedDimensions: []string{"Region"}}}, false)
 	var structured *errs.Error
 	if !errors.As(err, &structured) || structured.ID != "pulse.definition.create.conflict" || c.calls != 0 {
 		t.Fatalf("error=%#v calls=%d", err, c.calls)
@@ -196,7 +178,7 @@ func TestCreateStopsOnExactNameDatasourceCollision(t *testing.T) {
 func TestApplyRejectsModifiedPlan(t *testing.T) {
 	v, f, c := &validator{}, &finder{}, &creator{}
 	action := definitioncreate.New(v, f, c)
-	input := definitioncreate.Input{Intent: definitioncreate.Intent{Name: "Revenue", DatasourceLUID: "datasource-1", MeasureField: "Sales", TimeDimension: "Date"}}
+	input := definitioncreate.Input{Intent: definitioncreate.Intent{Name: "Revenue", DatasourceLUID: "datasource-1", MeasureField: "Sales", TimeDimension: "Date", AllowedDimensions: []string{"Region"}}}
 	plan, err := action.Plan(context.Background(), input)
 	if err != nil {
 		t.Fatal(err)

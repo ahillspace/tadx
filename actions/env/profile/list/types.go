@@ -1,5 +1,7 @@
 package list
 
+import "github.com/ahillspace/tadx/internal/output"
+
 type Input struct {
 	Cursor string `json:"cursor,omitempty"`
 	Limit  int    `json:"limit,omitempty"`
@@ -17,12 +19,7 @@ type Profile struct {
 	DefaultWorkspace string `json:"default_workspace,omitempty"`
 }
 
-type Page struct {
-	Returned   int    `json:"returned"`
-	Total      int    `json:"total"`
-	Limit      int    `json:"limit"`
-	NextCursor string `json:"next_cursor,omitempty"`
-}
+type Page = output.Page
 
 type Output struct {
 	Page     Page      `json:"page"`

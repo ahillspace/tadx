@@ -24,8 +24,9 @@ type ListRequest = tableauproject.ListRequest
 
 // Project is one normalized authoritative project.
 type Project struct {
-	LUID                            string
-	Name                            string
+	LUID string
+	Name string
+	// Path preserves names for display; selectors require a unique path match.
 	Path                            string
 	Description                     string
 	ParentLUID                      string
@@ -85,6 +86,12 @@ func (a *Adapter) ResolveProject(ctx context.Context, selector identity.Selector
 	return a.resolveProject(ctx, selector, false)
 }
 
+// ValidateProjectPath requires a unique literal hierarchy path before content selection.
+func (a *Adapter) ValidateProjectPath(ctx context.Context, path string) error {
+	_, err := a.ResolveProject(ctx, identity.Selector{ProjectPath: path})
+	return err
+}
+
 // ResolveProjectSelectorPath accepts the Imported display label only when no real
 // top-level project occupies that label. The returned path retains Tableau's name.
 func (a *Adapter) ResolveProjectSelectorPath(ctx context.Context, path string) (string, error) {
@@ -101,6 +108,20 @@ func (a *Adapter) resolveProject(ctx context.Context, selector identity.Selector
 		return Project{}, err
 	}
 	index := newPathIndex(items)
+	if selector.LUID != "" {
+		item, exists := index.byID[string(selector.LUID)]
+		if !exists {
+			_, err := identity.Resolve(selector, nil)
+			return Project{}, err
+		}
+		path, err := index.path(item.LUID, make(map[string]bool))
+		if err != nil {
+			return Project{}, err
+		}
+		project := normalize(item, path)
+		project.RequestID = requestID
+		return project, nil
+	}
 	candidates := make([]identity.Candidate, 0, len(items))
 	byLUID := make(map[identity.LUID]Project, len(items))
 	for _, item := range items {
@@ -133,13 +154,14 @@ func (a *Adapter) resolveProject(ctx context.Context, selector identity.Selector
 	return byLUID[resolved.LUID], nil
 }
 
-// ResolveProjectPath returns the canonical hierarchy path for one authoritative LUID.
+// ResolveProjectPath returns the hierarchy display path for one authoritative LUID.
+// Literal slash names can produce identical paths for distinct project LUIDs.
 func (a *Adapter) ResolveProjectPath(ctx context.Context, luid string) (string, error) {
 	project, err := a.ResolveProject(ctx, identity.Selector{LUID: identity.LUID(luid)})
 	return project.Path, err
 }
 
-// ResolveProjectPaths returns canonical hierarchy paths for authoritative LUIDs
+// ResolveProjectPaths returns hierarchy display paths for authoritative LUIDs
 // from one project inventory traversal.
 func (a *Adapter) ResolveProjectPaths(ctx context.Context, luids []string) (map[string]string, error) {
 	if a == nil || a.client == nil {
@@ -205,9 +227,6 @@ func (a *Adapter) NormalizeMutationProject(ctx context.Context, item tableauproj
 	item.Name = strings.TrimSpace(item.Name)
 	if item.LUID == "" || item.Name == "" {
 		return Project{}, errors.New("project mutation returned an incomplete authoritative identity")
-	}
-	if strings.Contains(item.Name, "/") {
-		return Project{}, fmt.Errorf("Tableau project %q has a name containing %q, which is not addressable by an exact project path", item.LUID, "/")
 	}
 	path := item.Name
 	if item.ParentLUID != "" {
@@ -279,13 +298,6 @@ func recordProject(items map[string]tableauproject.Project, item tableauproject.
 	item.Name = strings.TrimSpace(item.Name)
 	if item.LUID == "" || item.Name == "" {
 		return errors.New("project list returned an incomplete authoritative identity")
-	}
-	// Project paths are slash-delimited, so a name containing "/" would make the
-	// hierarchy path ambiguous (parent "A" with child "B/C" is indistinguishable
-	// from parent "A/B" with child "C"). Reject it at the authoritative boundary
-	// rather than risk resolving an exact project path to the wrong project.
-	if strings.Contains(item.Name, "/") {
-		return fmt.Errorf("Tableau project %q has a name containing %q, which is not addressable by an exact project path", item.LUID, "/")
 	}
 	if current, exists := items[item.LUID]; exists && current != item {
 		return fmt.Errorf("Tableau project list returned conflicting records for LUID %q", item.LUID)

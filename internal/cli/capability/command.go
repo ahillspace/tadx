@@ -88,7 +88,7 @@ func newList(deps Dependencies) *cobra.Command {
 	command.Flags().StringVar(&product, "product", "", "filter by product availability")
 	command.Flags().BoolVar(&mutation, "mutation", false, "filter by remote mutation status")
 	command.Flags().StringVar(&cursor, "cursor", "", "continue from a prior result cursor")
-	command.Flags().IntVar(&limit, "limit", capabilitylist.DefaultLimit, "maximum capabilities to return")
+	command.Flags().IntVar(&limit, "limit", capabilitylist.DefaultLimit, "maximum capabilities to return, up to 10000")
 	return command
 }
 
