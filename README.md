@@ -38,6 +38,11 @@ The current build supports:
 Remaining work focuses on release hardening and capabilities that still lack a supported or proven upstream contract.
 Datasource composition, datasource field-description updates, project pull and publish, and Pulse updates are deferred.
 
+Pulse creation accepts raw field IDs and unique display names from datasource metadata.
+TADX resolves displayed field names to raw IDs before previewing or publishing, so a field caption such as `Regional Manager` can map to its underlying `People` field automatically.
+Exact raw IDs take precedence, and ambiguous names fail before a remote write.
+This does not translate aliases for categorical member values.
+
 Use the registry in your installed build as the source of truth:
 
 ```text

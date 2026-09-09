@@ -1511,7 +1511,7 @@ var canonicalDefinitions = []Definition{
 		Disposition:     DispositionShip,
 		Owner:           OwnerCLI,
 		MCPOverlap:      "",
-		Selectors:       "Explicit site; datasource LUID; exact raw measure/date field IDs; bounded configuration",
+		Selectors:       "Explicit site; datasource LUID; exact raw field IDs or unique display names resolved to raw IDs; bounded configuration",
 		Availability:    "Tableau Cloud / Pulse only",
 		LocalWrite:      false,
 		RemoteMutation:  true,

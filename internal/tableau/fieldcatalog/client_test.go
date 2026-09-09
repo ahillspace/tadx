@@ -49,7 +49,7 @@ func TestClientUsesVDSReadMetadataAndPreservesRawFieldIdentity(t *testing.T) {
 	}
 	foundAggregate, foundRowLevel, foundDate, foundExcluded := false, false, false, false
 	for _, field := range got.Fields {
-		foundAggregate = foundAggregate || field.ID == "Calculation_123" && field.Caption == "Revenue" && field.DefaultAggregation == "AGG" && field.RequiresUserAggregation
+		foundAggregate = foundAggregate || field.ID == "Calculation_123" && field.Name == "Calculation_123" && field.Caption == "Revenue" && field.Label == "Revenue" && field.DefaultAggregation == "AGG" && field.RequiresUserAggregation
 		foundRowLevel = foundRowLevel || field.ID == "Calculation_456" && field.Caption == "Flat Fee" && field.DefaultAggregation == "SUM" && !field.RequiresUserAggregation
 		foundDate = foundDate || field.ID == "Order Date" && field.Role == "date" && field.TimeType == "DATE"
 		foundExcluded = foundExcluded || field.ID == "Rank" && field.Excluded && field.ExclusionReason == "table_calc"
@@ -72,7 +72,7 @@ func TestClientFallsBackToDescribeDatasource(t *testing.T) {
 		if request.URL.Path != "/api/v1/vizql-data-service/describe-datasource" {
 			t.Fatalf("path = %q", request.URL.Path)
 		}
-		_, _ = writer.Write([]byte(`{"datasourceModel":{"logicalTables":[{"logicalTableId":"orders","caption":"Orders"}]},"fieldGroups":[{"logicalTableId":"orders","fields":[{"name":"Sales","caption":"Sales","dataType":"REAL","role":"MEASURE","defaultAggregation":"SUM"}]}]}`))
+		_, _ = writer.Write([]byte(`{"datasourceModel":{"logicalTables":[{"logicalTableId":"orders","caption":"Orders"}]},"fieldGroups":[{"logicalTableId":"orders","fields":[{"name":"sales_raw (physical)","caption":"Sales (Orders)","dataType":"REAL","role":"MEASURE","defaultAggregation":"SUM"}]}]}`))
 	}))
 	defer server.Close()
 	client := fieldcatalog.NewClient(tableau.NewTransport(server.Client(), "3.29", nil), session{}, server.URL)
@@ -80,7 +80,7 @@ func TestClientFallsBackToDescribeDatasource(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if requests != 2 || len(got.Fields) != 1 || got.Fields[0].ID != "Sales" || got.Fields[0].Table != "Orders" {
+	if requests != 2 || len(got.Fields) != 1 || got.Fields[0].ID != "sales_raw (physical)" || got.Fields[0].Name != "sales_raw (physical)" || got.Fields[0].Caption != "Sales (Orders)" || got.Fields[0].Label != "Sales (Orders)" || got.Fields[0].Table != "Orders" {
 		t.Fatalf("requests=%d schema=%#v", requests, got)
 	}
 }
@@ -112,7 +112,7 @@ func TestClientFallsBackToMetadataGraphQLAndPreservesCalculatedFieldID(t *testin
 	}
 	foundCalc := false
 	for _, field := range got.Fields {
-		foundCalc = foundCalc || field.ID == "Calculation_42" && field.Caption == "Revenue Ratio" && field.RequiresUserAggregation && field.Provenance == "metadata_graphql"
+		foundCalc = foundCalc || field.ID == "Calculation_42" && field.Name == "Calculation_42" && field.Caption == "Revenue Ratio" && field.Label == "Revenue Ratio" && field.RequiresUserAggregation && field.Provenance == "metadata_graphql"
 	}
 	if !foundCalc {
 		t.Fatalf("fields = %#v", got.Fields)

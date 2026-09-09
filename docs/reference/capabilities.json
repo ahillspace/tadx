@@ -1580,7 +1580,7 @@
     "type": "change",
     "disposition": "ship",
     "owner": "cli",
-    "selectors": "Explicit site; datasource LUID; exact raw measure/date field IDs; bounded configuration",
+    "selectors": "Explicit site; datasource LUID; exact raw field IDs or unique display names resolved to raw IDs; bounded configuration",
     "availability": "Tableau Cloud / Pulse only",
     "local_write": false,
     "remote_mutation": true,

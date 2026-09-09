@@ -1618,7 +1618,7 @@ Create one definition plus its Tableau-created default metric from bounded inten
 - Surface: tadx pulse definition create
 - Operation type: change
 - Owner: cli
-- Selectors: Explicit site; datasource LUID; exact raw measure/date field IDs; bounded configuration
+- Selectors: Explicit site; datasource LUID; exact raw field IDs or unique display names resolved to raw IDs; bounded configuration
 - Products and availability: Tableau Cloud / Pulse only
 - Product disposition: ship
 - Evidence level: live-verified

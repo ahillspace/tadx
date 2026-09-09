@@ -27,7 +27,7 @@ Schema gives field identities, not member values; a field name does not establis
 | `--id` | Source metric LUID, not definition LUID. |
 | `--period` | One supported reporting period below; omission retains the source period. |
 | `--days` | Integer 1-3650, required only with CUSTOM_N_DAYS. |
-| `--filter` | Repeat `<exact-dimension-id>=<verified-member>` for included members. |
+| `--filter` | Repeat `<dimension-id-or-unique-display-name>=<verified-member>` for included members. |
 | `--exclude-filter` | Same syntax for excluded members; do not mix include and exclude for one field. |
 | `--preview` | Review the normalized resulting period and population before execution; `--full` adds bounded provider detail. |
 
@@ -35,6 +35,10 @@ Provide at least one period or filter change.
 Repeated members for one field form alternatives; filters on different fields apply together.
 Use separate flags for separate values: a comma-separated string remains one literal member.
 TADX deduplicates and sorts member values within a field.
+Unique field captions and labels resolve to raw IDs before previewing or creating a variant.
+Exact allowed raw IDs take precedence; resolved fields must belong to the definition's allowed dimensions.
+Using both the raw ID and its display name combines values for that field; mixing inclusion and exclusion fails.
+Categorical member values are not translated from aliases.
 Each member is limited to 256 Unicode characters, with up to 10,000 members per field.
 Prefer a meaningful published grouping over an unnecessarily large member list.
 

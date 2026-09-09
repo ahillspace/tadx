@@ -17,6 +17,7 @@ import (
 )
 
 type Reader interface {
+	ResolveFilterFields(context.Context, string, []string) ([]string, error)
 	GetMetric(context.Context, string) (Metric, error)
 	GetDefinition(context.Context, string) (Definition, error)
 }
@@ -137,6 +138,28 @@ func (a *Action) plan(ctx context.Context, input Input) (Plan, error) {
 		allowed[field] = true
 	}
 	filters := canonicalFilters(input.Filters)
+	selectors := make([]string, len(filters))
+	needsResolution := false
+	for i, filter := range filters {
+		selectors[i] = filter.Field
+		needsResolution = needsResolution || !allowed[filter.Field]
+	}
+	if needsResolution {
+		resolved, resolveErr := a.reader.ResolveFilterFields(ctx, definition.DatasourceLUID, selectors)
+		if resolveErr != nil {
+			return Plan{}, fail("pulse.metric.fork.fields", errs.KindOperation, input, "Pulse filter field resolution failed.", resolveErr)
+		}
+		if len(resolved) != len(filters) {
+			return Plan{}, fail("pulse.metric.fork.fields", errs.KindOperation, input, "Pulse filter field resolution returned incomplete identities.", nil)
+		}
+		for i := range filters {
+			filters[i].Field = resolved[i]
+		}
+	}
+	filters, err = mergeResolvedFilters(filters)
+	if err != nil {
+		return Plan{}, fail("pulse.metric.fork.usage", errs.KindUsage, input, "Pulse filters have conflicting operators or invalid combined values.", err)
+	}
 	for _, filter := range filters {
 		if filter.Field == "" || len(filter.Values) == 0 || !allowed[filter.Field] || !validFilterValues(filter.Values) {
 			return Plan{}, fail("pulse.metric.fork.usage", errs.KindUsage, input, "Every dimensional filter must name an allowed field and at least one value.", nil)
@@ -154,6 +177,29 @@ func (a *Action) plan(ctx context.Context, input Input) (Plan, error) {
 	}{definition.LUID, spec, definition.FixedFilters, definition.FixedFiltersKnown})
 	sum := sha256.Sum256(data)
 	return Plan{Mode: "preview", Operation: "pulse.metric.fork", Environment: input.Environment, Site: input.Site, SourceMetricLUID: input.MetricLUID, DefinitionLUID: definition.LUID, DatasourceLUID: definition.DatasourceLUID, Timeframe: input.Timeframe, Filters: filters, Specification: spec, DefinitionFilters: definition.FixedFilters, DefinitionFiltersKnown: definition.FixedFiltersKnown, Fingerprint: "sha256:" + hex.EncodeToString(sum[:])}, nil
+}
+
+func mergeResolvedFilters(filters []Filter) ([]Filter, error) {
+	byField := map[string]int{}
+	merged := []Filter{}
+	for _, filter := range filters {
+		if i, ok := byField[filter.Field]; ok {
+			if merged[i].Exclude != filter.Exclude {
+				return nil, fmt.Errorf("field %q has conflicting include and exclude filters", filter.Field)
+			}
+			merged[i].Values = append(merged[i].Values, filter.Values...)
+		} else {
+			byField[filter.Field] = len(merged)
+			merged = append(merged, filter)
+		}
+	}
+	merged = canonicalFilters(merged)
+	for _, filter := range merged {
+		if !validFilterValues(filter.Values) {
+			return nil, fmt.Errorf("field %q has invalid combined filter values", filter.Field)
+		}
+	}
+	return merged, nil
 }
 func measurementPeriod(key string, days int) (map[string]any, bool) {
 	simple := map[string][2]string{"TODAY": {"GRANULARITY_BY_DAY", "RANGE_CURRENT_PARTIAL"}, "THIS_WEEK": {"GRANULARITY_BY_WEEK", "RANGE_CURRENT_PARTIAL"}, "MONTH_TO_DATE": {"GRANULARITY_BY_MONTH", "RANGE_CURRENT_PARTIAL"}, "QUARTER_TO_DATE": {"GRANULARITY_BY_QUARTER", "RANGE_CURRENT_PARTIAL"}, "YEAR_TO_DATE": {"GRANULARITY_BY_YEAR", "RANGE_CURRENT_PARTIAL"}, "YESTERDAY": {"GRANULARITY_BY_DAY", "RANGE_LAST_COMPLETE"}, "LAST_WEEK": {"GRANULARITY_BY_WEEK", "RANGE_LAST_COMPLETE"}, "LAST_MONTH": {"GRANULARITY_BY_MONTH", "RANGE_LAST_COMPLETE"}, "LAST_QUARTER": {"GRANULARITY_BY_QUARTER", "RANGE_LAST_COMPLETE"}, "LAST_YEAR": {"GRANULARITY_BY_YEAR", "RANGE_LAST_COMPLETE"}}

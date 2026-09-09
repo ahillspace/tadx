@@ -19,6 +19,7 @@ var currencyCodePattern = regexp.MustCompile(`^[A-Z]{3}$`)
 
 // FieldValidator verifies exact field identities against current datasource metadata.
 type FieldValidator interface {
+	ResolveDefinitionFields(context.Context, FieldReferences) (FieldReferences, error)
 	ValidateDefinitionFields(context.Context, FieldReferences) error
 }
 
@@ -63,9 +64,16 @@ func (a *Action) Plan(ctx context.Context, input Input) (Plan, error) {
 		TimeDimension:     request.Specification.BasicSpecification.TimeDimension.Field,
 		AllowedDimensions: append([]string(nil), request.ExtensionOptions.AllowedDimensions...),
 	}
-	if err := a.validator.ValidateDefinitionFields(ctx, references); err != nil {
+	references, err = a.validator.ResolveDefinitionFields(ctx, references)
+	if err != nil {
 		retryable, corrective := errs.CompleteRetryAdvice(err, "Inspect current datasource fields, then review a new definition preview.")
 		return Plan{}, &errs.Error{ID: "pulse.definition.create.fields", Kind: errs.KindOperation, Operation: "pulse.definition.create", Environment: input.Environment, Site: input.Site, Summary: "Pulse definition field validation failed.", Cause: err, Retryable: retryable, CorrectiveAction: corrective, TableauRequestID: errs.TableauRequestID(err)}
+	}
+	request.Specification.BasicSpecification.Measure.Field = references.MeasureField
+	request.Specification.BasicSpecification.TimeDimension.Field = references.TimeDimension
+	request.ExtensionOptions.AllowedDimensions, err = canonicalIdentifiers(references.AllowedDimensions)
+	if err != nil {
+		return Plan{}, createError("pulse.definition.create.fields", errs.KindOperation, input, "Resolved Pulse dimensions are invalid.", err)
 	}
 	if err := a.checkCollision(ctx, input, request); err != nil {
 		return Plan{}, err

@@ -295,7 +295,7 @@ func (c *pulseCommands) ForkPulseMetric(ctx context.Context, input metricfork.In
 		return metricfork.Output{}, remoteSetupError("pulse.metric.fork", input.Environment, input.Site, connection.environment, err)
 	}
 	input.Environment, input.Site, input.SiteLUID = connection.environment.Alias, connection.environment.SiteContentURL, connection.siteLUID
-	adapter := &pulseMetricMutationAdapter{client: connection.client}
+	adapter := &pulseMetricMutationAdapter{client: connection.client, schema: connection.schema}
 	return metricfork.New(adapter, adapter, adapter).Execute(ctx, input, preview)
 }
 
@@ -478,17 +478,44 @@ type pulseDefinitionFieldValidator struct {
 }
 
 func (v *pulseDefinitionFieldValidator) ValidateDefinitionFields(ctx context.Context, references definitioncreate.FieldReferences) error {
+	_, err := v.definitionFields(ctx, references, false)
+	return err
+}
+
+func (v *pulseDefinitionFieldValidator) ResolveDefinitionFields(ctx context.Context, references definitioncreate.FieldReferences) (definitioncreate.FieldReferences, error) {
+	return v.definitionFields(ctx, references, true)
+}
+
+func (v *pulseDefinitionFieldValidator) definitionFields(ctx context.Context, references definitioncreate.FieldReferences, resolve bool) (definitioncreate.FieldReferences, error) {
 	if v == nil || v.schema == nil {
-		return errors.New("Pulse definition field validator is not configured")
+		return references, errors.New("Pulse definition field validator is not configured")
 	}
 	schema, err := v.schema.ReadDatasourceSchema(ctx, references.DatasourceLUID)
 	if err != nil {
-		return err
+		return references, err
 	}
 	fields := make(map[string][]fieldcatalog.Field, len(schema.Fields))
 	for _, field := range schema.Fields {
 		fields[field.ID] = append(fields[field.ID], field)
 	}
+	if resolve {
+		selectors := make([]string, 0, 2+len(references.AllowedDimensions))
+		selectors = append(selectors, references.MeasureField, references.TimeDimension)
+		selectors = append(selectors, references.AllowedDimensions...)
+		resolved, err := fieldcatalog.ResolveFields(schema.Fields, selectors)
+		if err != nil {
+			return references, err
+		}
+		references.MeasureField, references.TimeDimension = resolved[0].ID, resolved[1].ID
+		references.AllowedDimensions = make([]string, len(resolved)-2)
+		for i, field := range resolved[2:] {
+			references.AllowedDimensions[i] = field.ID
+		}
+	}
+	return references, v.validateFields(fields, references)
+}
+
+func (v *pulseDefinitionFieldValidator) validateFields(fields map[string][]fieldcatalog.Field, references definitioncreate.FieldReferences) error {
 	aggregation := strings.ToUpper(strings.TrimSpace(references.Aggregation))
 	if aggregation == "" {
 		aggregation = strings.ToUpper(strings.TrimSpace(v.aggregation))
@@ -586,7 +613,32 @@ func (a *pulseMetricGetAdapter) GetMetric(ctx context.Context, luid string) (met
 	return metricGetItem(item), nil
 }
 
-type pulseMetricMutationAdapter struct{ client *tableaupulse.Client }
+type pulseMetricMutationAdapter struct {
+	client *tableaupulse.Client
+	schema *resourcedatasource.SchemaAdapter
+}
+
+func (a *pulseMetricMutationAdapter) ResolveFilterFields(ctx context.Context, datasource string, selectors []string) ([]string, error) {
+	if a.schema == nil {
+		return nil, errors.New("Pulse filter field resolver is not configured")
+	}
+	schema, err := a.schema.ReadDatasourceSchema(ctx, datasource)
+	if err != nil {
+		return nil, err
+	}
+	fields, err := fieldcatalog.ResolveFields(schema.Fields, selectors)
+	if err != nil {
+		return nil, err
+	}
+	resolved := make([]string, len(fields))
+	for i, field := range fields {
+		if field.Excluded || field.Role != "dimension" {
+			return nil, fmt.Errorf("field %q is not an eligible Pulse dimension", field.ID)
+		}
+		resolved[i] = field.ID
+	}
+	return resolved, nil
+}
 
 func (a *pulseMetricMutationAdapter) GetMetric(ctx context.Context, luid string) (metricfork.Metric, error) {
 	item, err := a.client.GetMetric(ctx, luid)

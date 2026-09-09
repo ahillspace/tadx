@@ -19,10 +19,10 @@ One create invocation creates one definition and resolves its Tableau-created de
 | `--name` | Required business name, up to 255 Unicode characters after trimming. |
 | `--description` | Useful quantity and date basis, up to 1,024 Unicode characters after trimming. |
 | `--datasource-id` | Exact published datasource LUID in the selected environment. |
-| `--measure-field` | Exact eligible schema ID for the requested quantity. |
-| `--date-field` | Exact schema ID with date role. |
+| `--measure-field` | Exact eligible schema ID or unique display name for the requested quantity. |
+| `--date-field` | Exact schema ID or unique display name with date role. |
 | `--aggregation` | SUM, AVERAGE, MIN, MAX, COUNT, COUNT_DISTINCT, or USER. Default SUM; select deliberately. |
-| `--dimension` | Repeat once per eligible dimension ID. At least one is required; supplied order is preserved and duplicates removed. |
+| `--dimension` | Repeat once per eligible dimension ID or unique display name. At least one is required; supplied order is preserved and duplicates removed after resolution. |
 | `--minimum-granularity` | DAY, WEEK, MONTH, QUARTER, or YEAR. Default DAY, appropriate nearly always; permits that grain and coarser grains. |
 | `--temporality` | OVER_TIME or LATEST; default OVER_TIME. |
 | `--running-total` | Boolean switch, default false; requires SUM and OVER_TIME with cumulative additive business meaning. |
@@ -32,7 +32,11 @@ One create invocation creates one definition and resolves its Tableau-created de
 | `--preview` | Read-only plan with validation and live reads; required before execution in this workflow. |
 | `--full` | Expanded bounded provider details and diagnostics; ordinary preview already summarizes consequential settings. |
 
-Use uppercase enums and exact IDs.
+Use uppercase enums and exact field IDs or unique display names.
+TADX resolves field captions and labels from live datasource metadata to raw Tableau IDs before previewing or publishing.
+Exact raw IDs take precedence over display names; ambiguous display names fail before publication.
+The preview shows the resolved raw IDs that Tableau will receive.
+This resolves field names only, not aliases for categorical member values.
 Repeat `--dimension` instead of combining IDs in a comma-separated argument.
 A comma or space within one actual ID stays part of that ID.
 Use the bare `--running-total` switch or `--running-total=false`, not a positional Boolean.

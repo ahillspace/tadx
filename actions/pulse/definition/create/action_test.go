@@ -48,9 +48,33 @@ func assertGolden(t *testing.T, name string, value any, full bool) {
 }
 
 type validator struct {
-	input definitioncreate.FieldReferences
-	calls int
-	err   error
+	resolved *definitioncreate.FieldReferences
+	input    definitioncreate.FieldReferences
+	calls    int
+	err      error
+}
+
+func (v *validator) ResolveDefinitionFields(ctx context.Context, input definitioncreate.FieldReferences) (definitioncreate.FieldReferences, error) {
+	err := v.ValidateDefinitionFields(ctx, input)
+	if v.resolved != nil {
+		return *v.resolved, err
+	}
+	return input, err
+}
+
+func TestCreateCanonicalizesFieldReferencesBeforePreviewAndWrite(t *testing.T) {
+	refs := definitioncreate.FieldReferences{DatasourceLUID: "datasource-1", MeasureField: "[Calculation_1]", Aggregation: "AGGREGATION_SUM", TimeDimension: "[date_raw]", AllowedDimensions: []string{"[region_raw]"}}
+	v, f, c := &validator{resolved: &refs}, &finder{}, &creator{result: definitioncreate.CreateResult{DefinitionLUID: "definition-1", DefaultMetricLUID: "metric-1"}}
+	input := definitioncreate.Input{Intent: definitioncreate.Intent{Name: "Revenue", DatasourceLUID: "datasource-1", MeasureField: "Revenue", TimeDimension: "Order Date", AllowedDimensions: []string{"Region"}}}
+	a := definitioncreate.New(v, f, c)
+	out, err := a.Execute(context.Background(), input, true)
+	if err != nil || out.Plan.Measure.Field != refs.MeasureField || out.Plan.TimeField != refs.TimeDimension || len(out.Plan.Dimensions) != 1 || out.Plan.Dimensions[0] != refs.AllowedDimensions[0] || c.calls != 0 {
+		t.Fatalf("preview=%#v err=%v writes=%d", out, err, c.calls)
+	}
+	_, err = a.Execute(context.Background(), input, false)
+	if err != nil || c.calls != 1 || c.request.Specification.BasicSpecification.Measure.Field != refs.MeasureField || c.request.Specification.BasicSpecification.TimeDimension.Field != refs.TimeDimension || c.request.ExtensionOptions.AllowedDimensions[0] != refs.AllowedDimensions[0] {
+		t.Fatalf("request=%#v err=%v writes=%d", c.request, err, c.calls)
+	}
 }
 
 func (v *validator) ValidateDefinitionFields(_ context.Context, input definitioncreate.FieldReferences) error {

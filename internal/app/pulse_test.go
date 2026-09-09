@@ -249,6 +249,26 @@ func TestPulseDefinitionFieldValidatorUsesExactRawIDsAndAggregationRules(t *test
 	}
 }
 
+func TestPulseFieldResolutionPreservesCanonicalIdentityOnRevalidation(t *testing.T) {
+	schema := fieldcatalog.Schema{DatasourceLUID: "datasource-1", DatasourceName: "Orders", Fields: []fieldcatalog.Field{
+		{ID: "[count_raw]", Caption: "People", Role: "dimension", DataType: "STRING"},
+		{ID: "[date_raw]", Caption: "Order Date", Role: "date", DataType: "DATE"},
+		{ID: "[region_raw]", Caption: "Region", Role: "dimension", DataType: "STRING"},
+	}}
+	v := &pulseDefinitionFieldValidator{schema: resourcedatasource.NewSchemaAdapter(pulseSchemaIdentityStub{}, pulseSchemaStub{schema: schema})}
+	refs, err := v.ResolveDefinitionFields(context.Background(), definitioncreate.FieldReferences{DatasourceLUID: "datasource-1", MeasureField: "People", Aggregation: "AGGREGATION_COUNT_DISTINCT", TimeDimension: "Order Date", AllowedDimensions: []string{"Region"}})
+	if err != nil || refs.MeasureField != "[count_raw]" || refs.TimeDimension != "[date_raw]" || refs.AllowedDimensions[0] != "[region_raw]" {
+		t.Fatalf("refs=%#v err=%v", refs, err)
+	}
+	// A disappeared canonical ID must not be reinterpreted as another field's caption.
+	schema.Fields[0].ID = "[replacement]"
+	schema.Fields[0].Caption = "[count_raw]"
+	v.schema = resourcedatasource.NewSchemaAdapter(pulseSchemaIdentityStub{}, pulseSchemaStub{schema: schema})
+	if err := v.ValidateDefinitionFields(context.Background(), refs); err == nil {
+		t.Fatal("canonical field disappearance silently retargeted to a caption")
+	}
+}
+
 func pulseCatalogEntry(t *testing.T, observedAt time.Time, kind, luid, name, parent, owner string, payload any) catalog.ResourceEntry {
 	t.Helper()
 	encoded, err := json.Marshal(payload)

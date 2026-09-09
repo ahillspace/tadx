@@ -68,7 +68,8 @@ tadx content datasource schema --environment '<alias>' --id '<datasource-luid>' 
 
 Remove prior role, query, and table filters for that exact-field read.
 Repeat `--field-id` for each needed field; one invocation fetches the schema once and rejects missing or ambiguous selections.
-Copy the returned `id`, not a caption, label, or transformed qualified name.
+Use the returned `id` for schema `--field-id` selections.
+Pulse creation also accepts unique captions or labels and resolves them to raw IDs automatically before previewing or publishing.
 Duplicate captions can belong to different tables; an ID that still matches multiple fields remains ambiguous.
 Use full metadata for derived dimensions when their meaning requires it.
 Read the semantics reference for calculations, counts, averages, rates, percentages, snapshots, and measures spanning multiple facts.
