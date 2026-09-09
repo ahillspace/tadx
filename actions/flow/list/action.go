@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/ahillspace/tadx/internal/commandhint"
 	"github.com/ahillspace/tadx/internal/paging"
 
 	"github.com/ahillspace/tadx/internal/errs"
@@ -31,6 +32,9 @@ func New(reader Reader) *Action { return &Action{reader: reader} }
 
 // Execute reads one bounded page.
 func (a *Action) Execute(ctx context.Context, input Input) (Output, error) {
+	if err := ValidateInput(input); err != nil {
+		return Output{}, err
+	}
 	if input.All {
 		return a.collectAll(ctx, input)
 	}
@@ -59,7 +63,7 @@ func (a *Action) Execute(ctx context.Context, input Input) (Output, error) {
 			return Output{}, err
 		}
 	}
-	return Output{Status: "listed", Environment: input.Environment, Site: input.Site, Page: OutputPage{Returned: len(page.Flows), Total: page.Total, Limit: page.Size, NextCursor: next, MoreAvailable: next != "" || (page.SuppressContinuation && len(page.Flows) < page.Total)}, Flows: page.Flows, RequestID: page.RequestID, Help: []string{"tadx content flow inspect --id <flow-luid>"}}, nil
+	return Output{Status: "listed", Environment: input.Environment, Site: input.Site, Page: OutputPage{Returned: len(page.Flows), Total: page.Total, Limit: page.Size, NextCursor: next, MoreAvailable: next != "" || (page.SuppressContinuation && len(page.Flows) < page.Total)}, Flows: page.Flows, RequestID: page.RequestID, Help: listHelp(input.Environment, page.Flows)}, nil
 }
 
 func selectPage(value string, requested int, expectedFilter string) (int, int, string, error) {
@@ -136,5 +140,12 @@ func (a *Action) collectAll(ctx context.Context, input Input) (Output, error) {
 	if err != nil {
 		return Output{}, err
 	}
-	return Output{Status: "listed", Environment: input.Environment, Site: input.Site, Flows: items, Page: OutputPage{Returned: len(items), Total: len(items), Limit: 10000}, RequestID: requestID, Help: []string{"tadx content flow inspect --id <flow-luid>"}}, nil
+	return Output{Status: "listed", Environment: input.Environment, Site: input.Site, Flows: items, Page: OutputPage{Returned: len(items), Total: len(items), Limit: 10000}, RequestID: requestID, Help: listHelp(input.Environment, items)}, nil
+}
+
+func listHelp(environment string, items []Flow) []string {
+	if len(items) == 0 {
+		return nil
+	}
+	return []string{commandhint.Environment(environment, "content", "flow", "inspect", "--id", items[0].LUID)}
 }

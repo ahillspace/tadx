@@ -2,6 +2,7 @@ package get
 
 import (
 	"context"
+	"github.com/ahillspace/tadx/internal/commandhint"
 	"strings"
 
 	"github.com/ahillspace/tadx/internal/errs"
@@ -27,5 +28,5 @@ func (a *Action) Execute(ctx context.Context, input Input) (Output, error) {
 		retryable, advice := errs.CompleteRetryAdvice(err, "Review the exact environment alias, then retry.")
 		return Output{}, &errs.Error{ID: "env.profile.get.read", Kind: errs.KindOperation, Operation: "env.profile.get", Environment: input.Alias, Summary: "Environment profile could not be read.", Cause: err, Retryable: retryable, CorrectiveAction: advice}
 	}
-	return Output{Profile: profile, Help: []string{"tadx auth status --environment <alias>"}}, nil
+	return Output{Profile: profile, Help: []string{commandhint.Environment(profile.Alias, "auth", "status")}}, nil
 }

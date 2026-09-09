@@ -18,6 +18,15 @@ import (
 )
 
 func (c *remoteContentCommands) PullDatasource(ctx context.Context, input datasourcepull.Input) (datasourcepull.Output, error) {
+	if err := datasourcepull.ValidateInput(input); err != nil {
+		return datasourcepull.Output{}, err
+	}
+	workspace, err := (&workspaceRuntime{runtime: c.runtime}).resolveForEnvironment(ctx, input.Workspace, input.Environment)
+	if err != nil {
+		return datasourcepull.Output{}, capabilitySetupError("datasource.pull.workspace", "datasource.pull", input.Environment, input.Site, "Datasource workspace resolution failed.", "Select or configure an exact workspace, then retry.", err)
+	}
+	input.Workspace = workspace.Root
+	input.WorkspaceName = workspace.Name
 	connection, err := c.connect(ctx, input.Environment, false)
 	if err != nil {
 		return datasourcepull.Output{}, remoteSetupError("datasource.pull", input.Environment, input.Site, connection.environment, err)
@@ -28,16 +37,15 @@ func (c *remoteContentCommands) PullDatasource(ctx context.Context, input dataso
 	if err != nil {
 		return datasourcepull.Output{}, remoteSetupError("datasource.pull", input.Environment, input.Site, connection.environment, err)
 	}
-	workspace, err := (&workspaceRuntime{runtime: c.runtime}).resolveForEnvironment(ctx, input.Workspace, input.Environment)
-	if err != nil {
-		return datasourcepull.Output{}, capabilitySetupError("datasource.pull.workspace", "datasource.pull", input.Environment, input.Site, "Datasource workspace resolution failed.", "Select or configure an exact workspace, then retry.", err)
-	}
-	input.Workspace = workspace.Root
+
 	reader := datasourcePullReader{datasources: connection.datasources, lineage: connection.lineage}
 	return datasourcepull.New(reader, datasourceArtifactWriter{artifact.NewDatasourceManager(c.runtime.now)}).Execute(ctx, input)
 }
 
 func (c *remoteContentCommands) PublishDatasource(ctx context.Context, input datasourcepublish.Input, preview bool) (datasourcepublish.Output, error) {
+	if err := datasourcepublish.ValidateInput(input); err != nil {
+		return datasourcepublish.Output{}, err
+	}
 	manager := artifact.NewDatasourceManager(c.runtime.now)
 	workspace, err := (&workspaceRuntime{runtime: c.runtime}).resolveForEnvironment(ctx, input.Workspace, input.Environment)
 	if err != nil {
@@ -48,6 +56,7 @@ func (c *remoteContentCommands) PublishDatasource(ctx context.Context, input dat
 		return datasourcepublish.Output{}, capabilitySetupError("datasource.publish.artifact", "datasource.publish", input.Environment, input.Site, "Datasource artifact resolution failed.", "Select one exact workspace-relative managed datasource artifact, then retry.", err)
 	}
 	absolutePath := filepath.Join(workspace.Root, filepath.FromSlash(managed.Path))
+	input.WorkspaceName = workspace.Name
 	local, err := manager.Read(ctx, absolutePath)
 	if err != nil {
 		return datasourcepublish.Output{}, capabilitySetupError("datasource.publish.artifact", "datasource.publish", input.Environment, input.Site, "Datasource artifact read failed.", "Repair or pull the exact datasource artifact, then retry.", err)
@@ -67,6 +76,9 @@ func (c *remoteContentCommands) PublishDatasource(ctx context.Context, input dat
 }
 
 func (c *remoteContentCommands) DeleteDatasource(ctx context.Context, input datasourcedelete.Input, preview bool) (datasourcedelete.Output, error) {
+	if err := datasourcedelete.ValidateInput(input); err != nil {
+		return datasourcedelete.Output{}, err
+	}
 	connection, err := c.connect(ctx, input.Environment, true)
 	if err != nil {
 		return datasourcedelete.Output{}, remoteSetupError("datasource.delete", input.Environment, input.Site, connection.environment, err)

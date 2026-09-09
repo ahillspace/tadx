@@ -6,4 +6,4 @@ page:
 environments[1]{alias,default}:
   production,true
 details: "--full"
-help[1]: tadx env get <alias>
+help[1]: tadx env get production

@@ -30,6 +30,9 @@ func New(reader Reader, writer Writer) *Action { return &Action{reader: reader, 
 
 // Execute retrieves and atomically materializes one definition.
 func (a *Action) Execute(ctx context.Context, input Input) (Output, error) {
+	if err := ValidateInput(input); err != nil {
+		return Output{}, err
+	}
 	if a == nil || a.reader == nil || a.writer == nil {
 		return Output{}, pullError("pulse.definition.pull.unconfigured", errs.KindRuntime, input, "Pulse definition pull is not configured.", nil)
 	}

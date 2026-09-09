@@ -6,6 +6,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"github.com/ahillspace/tadx/internal/commandhint"
 	"github.com/ahillspace/tadx/internal/output"
 	"github.com/ahillspace/tadx/internal/paging"
 
@@ -92,6 +93,9 @@ type Action struct{ reader Reader }
 
 func New(r Reader) *Action { return &Action{reader: r} }
 func (a *Action) Execute(ctx context.Context, in Input) (Output, error) {
+	if err := ValidateInput(in); err != nil {
+		return Output{}, err
+	}
 	if in.All {
 		return a.collectAll(ctx, in)
 	}
@@ -123,7 +127,7 @@ func (a *Action) Execute(ctx context.Context, in Input) (Output, error) {
 			return Output{}, err
 		}
 	}
-	return Output{Status: "listed", Environment: in.Environment, Site: in.Site, Page: OutputPage{Returned: len(p.Groups), Total: p.Total, Limit: p.Size, NextCursor: next, MoreAvailable: next != "" || (p.SuppressContinuation && len(p.Groups) < p.Total)}, Groups: p.Groups, RequestID: p.RequestID, Help: []string{"tadx admin group inspect --id <group-luid>"}}, nil
+	return Output{Status: "listed", Environment: in.Environment, Site: in.Site, Page: OutputPage{Returned: len(p.Groups), Total: p.Total, Limit: p.Size, NextCursor: next, MoreAvailable: next != "" || (p.SuppressContinuation && len(p.Groups) < p.Total)}, Groups: p.Groups, RequestID: p.RequestID, Help: listHelp(in.Environment, p.Groups)}, nil
 }
 
 type cursorValue struct {
@@ -182,5 +186,12 @@ func (a *Action) collectAll(ctx context.Context, input Input) (Output, error) {
 	if err != nil {
 		return Output{}, err
 	}
-	return Output{Status: "listed", Environment: input.Environment, Site: input.Site, Groups: items, Page: OutputPage{Returned: len(items), Total: len(items), Limit: 10000}, RequestID: requestID, Help: []string{"tadx admin group inspect --id <group-luid>"}}, nil
+	return Output{Status: "listed", Environment: input.Environment, Site: input.Site, Groups: items, Page: OutputPage{Returned: len(items), Total: len(items), Limit: 10000}, RequestID: requestID, Help: listHelp(input.Environment, items)}, nil
+}
+
+func listHelp(environment string, items []Group) []string {
+	if len(items) == 0 {
+		return nil
+	}
+	return []string{commandhint.Environment(environment, "admin", "group", "inspect", "--id", items[0].LUID)}
 }

@@ -4,6 +4,7 @@ package output
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"reflect"
@@ -93,6 +94,21 @@ func RenderWithOptions(writer io.Writer, value any, options Options) error {
 
 // RenderError writes a structured error document through the same renderer.
 func RenderError(writer io.Writer, err error, options Options) error {
+	var carrier interface{ OperationOutput() any }
+	if errors.As(err, &carrier) {
+		value := carrier.OperationOutput()
+		if options.Full {
+			if projector, ok := value.(FullProjector); ok {
+				value = projector.FullOutput()
+			}
+		} else if projector, ok := value.(CompactProjector); ok {
+			value = projector.CompactOutput()
+		}
+		return RenderWithOptions(writer, struct {
+			Output any          `json:"output"`
+			Error  errs.Payload `json:"error"`
+		}{value, errs.Structure(err).Error}, options)
+	}
 	return RenderWithOptions(writer, errs.Structure(err), options)
 }
 

@@ -82,6 +82,19 @@ func (c *pulseCommands) catalogContent() *remoteContentCommands {
 }
 
 func (c *pulseCommands) ListPulseDefinitions(ctx context.Context, input definitionlist.Input) (definitionlist.Output, error) {
+	if err := definitionlist.ValidateInput(input); err != nil {
+		return definitionlist.Output{}, err
+	}
+	if input.Cursor != "" {
+		_, environment, err := c.runtime.environment(input.Environment, false)
+		if err != nil {
+			return definitionlist.Output{}, err
+		}
+		input.Environment, input.Site = environment.Alias, environment.SiteContentURL
+		if err := definitionlist.ValidateContinuation(input); err != nil {
+			return definitionlist.Output{}, err
+		}
+	}
 	if input.Catalog {
 		environment, site, err := c.catalogContent().resolveCatalogTarget(input.Environment)
 		if err != nil {
@@ -111,6 +124,9 @@ func (c *pulseCommands) ListPulseDefinitions(ctx context.Context, input definiti
 }
 
 func (c *pulseCommands) InspectPulseDefinition(ctx context.Context, input definitioninspect.Input) (definitioninspect.Output, error) {
+	if err := definitioninspect.ValidateInput(input); err != nil {
+		return definitioninspect.Output{}, err
+	}
 	if input.Catalog {
 		environment, site, err := c.catalogContent().resolveCatalogTarget(input.Environment)
 		if err != nil {
@@ -142,6 +158,15 @@ func (c *pulseCommands) InspectPulseDefinition(ctx context.Context, input defini
 }
 
 func (c *pulseCommands) PullPulseDefinition(ctx context.Context, input definitionpull.Input) (definitionpull.Output, error) {
+	if err := definitionpull.ValidateInput(input); err != nil {
+		return definitionpull.Output{}, err
+	}
+	workspace, err := (&workspaceRuntime{runtime: c.runtime}).resolveForEnvironment(ctx, input.Workspace, input.Environment)
+	if err != nil {
+		return definitionpull.Output{}, capabilitySetupError("pulse.definition.pull.workspace", "pulse.definition.pull", input.Environment, input.Site, "Pulse definition workspace resolution failed.", "Select or configure an exact workspace, then retry.", err)
+	}
+	input.Workspace = workspace.Root
+	input.WorkspaceName = workspace.Name
 	connection, err := c.connect(ctx, input.Environment, false)
 	if err != nil {
 		return definitionpull.Output{}, remoteSetupError("pulse.definition.pull", input.Environment, input.Site, connection.environment, err)
@@ -152,16 +177,15 @@ func (c *pulseCommands) PullPulseDefinition(ctx context.Context, input definitio
 	if err != nil {
 		return definitionpull.Output{}, remoteSetupError("pulse.definition.pull", input.Environment, input.Site, connection.environment, err)
 	}
-	workspace, err := (&workspaceRuntime{runtime: c.runtime}).resolveForEnvironment(ctx, input.Workspace, input.Environment)
-	if err != nil {
-		return definitionpull.Output{}, capabilitySetupError("pulse.definition.pull.workspace", "pulse.definition.pull", input.Environment, input.Site, "Pulse definition workspace resolution failed.", "Select or configure an exact workspace, then retry.", err)
-	}
-	input.Workspace = workspace.Root
+
 	reader := &pulseDefinitionPullReader{client: connection.client}
 	return definitionpull.New(reader, pulseDefinitionArtifactWriter{manager: artifact.NewPulseDefinitionManager(c.runtime.now)}).Execute(ctx, input)
 }
 
 func (c *pulseCommands) CreatePulseDefinition(ctx context.Context, input definitioncreate.Input, preview bool) (definitioncreate.Output, error) {
+	if err := definitioncreate.ValidateInput(input); err != nil {
+		return definitioncreate.Output{}, err
+	}
 	connection, err := c.connect(ctx, input.Environment, true)
 	if err != nil {
 		return definitioncreate.Output{}, remoteSetupError("pulse.definition.create", input.Environment, input.Site, connection.environment, err)
@@ -173,6 +197,9 @@ func (c *pulseCommands) CreatePulseDefinition(ctx context.Context, input definit
 }
 
 func (c *pulseCommands) DeletePulseDefinition(ctx context.Context, input definitiondelete.Input) (definitiondelete.Output, error) {
+	if err := definitiondelete.ValidateInput(input); err != nil {
+		return definitiondelete.Output{}, err
+	}
 	connection, err := c.connect(ctx, input.Environment, true)
 	if err != nil {
 		return definitiondelete.Output{}, remoteSetupError("pulse.definition.delete", input.Environment, input.Site, connection.environment, err)
@@ -184,6 +211,19 @@ func (c *pulseCommands) DeletePulseDefinition(ctx context.Context, input definit
 }
 
 func (c *pulseCommands) ListPulseMetrics(ctx context.Context, input metriclist.Input) (metriclist.Output, error) {
+	if err := metriclist.ValidateInput(input); err != nil {
+		return metriclist.Output{}, err
+	}
+	if input.Cursor != "" {
+		_, environment, err := c.runtime.environment(input.Environment, false)
+		if err != nil {
+			return metriclist.Output{}, err
+		}
+		input.Environment, input.Site = environment.Alias, environment.SiteContentURL
+		if err := metriclist.ValidateContinuation(input); err != nil {
+			return metriclist.Output{}, err
+		}
+	}
 	if input.Catalog {
 		environment, site, err := c.catalogContent().resolveCatalogTarget(input.Environment)
 		if err != nil {
@@ -213,6 +253,9 @@ func (c *pulseCommands) ListPulseMetrics(ctx context.Context, input metriclist.I
 }
 
 func (c *pulseCommands) InspectPulseMetric(ctx context.Context, input metricinspect.Input) (metricinspect.Output, error) {
+	if err := metricinspect.ValidateInput(input); err != nil {
+		return metricinspect.Output{}, err
+	}
 	if input.Catalog {
 		environment, site, err := c.catalogContent().resolveCatalogTarget(input.Environment)
 		if err != nil {
@@ -244,6 +287,9 @@ func (c *pulseCommands) InspectPulseMetric(ctx context.Context, input metricinsp
 }
 
 func (c *pulseCommands) ForkPulseMetric(ctx context.Context, input metricfork.Input, preview bool) (metricfork.Output, error) {
+	if err := metricfork.ValidateInput(input); err != nil {
+		return metricfork.Output{}, err
+	}
 	connection, err := c.connect(ctx, input.Environment, true)
 	if err != nil {
 		return metricfork.Output{}, remoteSetupError("pulse.metric.fork", input.Environment, input.Site, connection.environment, err)
@@ -254,6 +300,9 @@ func (c *pulseCommands) ForkPulseMetric(ctx context.Context, input metricfork.In
 }
 
 func (c *pulseCommands) ListPulseMetricFollowers(ctx context.Context, input metricfollowers.Input) (metricfollowers.Output, error) {
+	if err := metricfollowers.ValidateInput(input); err != nil {
+		return metricfollowers.Output{}, err
+	}
 	if input.Catalog {
 		environment, site, err := c.catalogContent().resolveCatalogTarget(input.Environment)
 		if err != nil {
@@ -284,6 +333,9 @@ func (c *pulseCommands) ListPulseMetricFollowers(ctx context.Context, input metr
 }
 
 func (c *pulseCommands) FollowPulseMetric(ctx context.Context, input metricfollow.Input, preview bool) (metricfollow.Output, error) {
+	if err := metricfollow.ValidateInput(input); err != nil {
+		return metricfollow.Output{}, err
+	}
 	connection, err := c.connect(ctx, input.Environment, true)
 	if err != nil {
 		return metricfollow.Output{}, remoteSetupError("pulse.metric.follow", input.Environment, input.Site, connection.environment, err)
@@ -293,6 +345,9 @@ func (c *pulseCommands) FollowPulseMetric(ctx context.Context, input metricfollo
 }
 
 func (c *pulseCommands) UnfollowPulseMetric(ctx context.Context, input metricunfollow.Input, preview bool) (metricunfollow.Output, error) {
+	if err := metricunfollow.ValidateInput(input); err != nil {
+		return metricunfollow.Output{}, err
+	}
 	connection, err := c.connect(ctx, input.Environment, true)
 	if err != nil {
 		return metricunfollow.Output{}, remoteSetupError("pulse.metric.unfollow", input.Environment, input.Site, connection.environment, err)
@@ -303,6 +358,9 @@ func (c *pulseCommands) UnfollowPulseMetric(ctx context.Context, input metricunf
 }
 
 func (c *pulseCommands) DeletePulseMetric(ctx context.Context, input metricdelete.Input) (metricdelete.Output, error) {
+	if err := metricdelete.ValidateInput(input); err != nil {
+		return metricdelete.Output{}, err
+	}
 	connection, err := c.connect(ctx, input.Environment, true)
 	if err != nil {
 		return metricdelete.Output{}, remoteSetupError("pulse.metric.delete", input.Environment, input.Site, connection.environment, err)
@@ -560,7 +618,7 @@ func (a *pulseMetricMutationAdapter) GetDefinition(ctx context.Context, luid str
 	if err != nil {
 		return metricfork.Definition{}, err
 	}
-	return metricfork.Definition{LUID: item.LUID, DatasourceLUID: item.DatasourceLUID, AllowedDimensions: append([]string(nil), item.AllowedDimensions...), AllowedGranularities: append([]string(nil), item.AllowedGranularities...)}, nil
+	return metricfork.Definition{LUID: item.LUID, DatasourceLUID: item.DatasourceLUID, AllowedDimensions: append([]string(nil), item.AllowedDimensions...), AllowedGranularities: append([]string(nil), item.AllowedGranularities...), FixedFilters: append([]any(nil), item.FixedFilters...), FixedFiltersKnown: item.FixedFiltersKnown}, nil
 }
 
 func (a *pulseMetricMutationAdapter) GetOrCreateMetric(ctx context.Context, request metricfork.CreateRequest) (metricfork.CreateResult, error) {

@@ -13,6 +13,16 @@ import (
 )
 
 func (c *remoteContentCommands) ListWorkbooks(ctx context.Context, input workbooklist.Input) (result workbooklist.Output, resultErr error) {
+	if input.Cursor != "" {
+		_, environment, err := c.runtime.environment(input.Environment, false)
+		if err != nil {
+			return workbooklist.Output{}, err
+		}
+		input.Environment, input.Site = environment.Alias, environment.SiteContentURL
+	}
+	if err := workbooklist.ValidateInput(input); err != nil {
+		return workbooklist.Output{}, err
+	}
 	defer func() {
 		if resultErr == nil {
 			resultErr = validateInventoryAll(input.All, result.Source)
@@ -77,6 +87,9 @@ func workbookListIsUnfiltered(input workbooklist.Input) bool {
 }
 
 func (c *remoteContentCommands) InspectWorkbook(ctx context.Context, input workbookinspect.Input) (workbookinspect.Output, error) {
+	if err := workbookinspect.ValidateInput(input); err != nil {
+		return workbookinspect.Output{}, err
+	}
 	if input.Catalog {
 		environment, site, err := c.resolveCatalogTarget(input.Environment)
 		if err != nil {

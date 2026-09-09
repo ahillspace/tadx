@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/ahillspace/tadx/internal/commandhint"
 	"strings"
 
 	"github.com/ahillspace/tadx/internal/errs"
@@ -32,6 +33,9 @@ func New(reader Reader) *Action { return &Action{reader: reader} }
 
 // Execute reads a bounded view, scanning internally for all results or exact names.
 func (a *Action) Execute(ctx context.Context, input Input) (Output, error) {
+	if err := ValidateInput(input); err != nil {
+		return Output{}, err
+	}
 	if a == nil || a.reader == nil {
 		return Output{}, listError("pulse.definition.list.unconfigured", errs.KindRuntime, input, "Pulse definition listing is not configured.", nil)
 	}
@@ -110,7 +114,11 @@ func (a *Action) Execute(ctx context.Context, input Input) (Output, error) {
 	if err != nil {
 		return Output{}, err
 	}
-	return Output{Status: "listed", Environment: input.Environment, Site: input.Site, Page: OutputPage{Returned: len(items), Limit: limit, NextCursor: next, MoreAvailable: more}, Definitions: items, RequestID: requestID, Help: []string{"tadx pulse definition inspect --id <definition-luid>"}}, nil
+	help := []string{"No matching definitions were returned."}
+	if len(items) > 0 {
+		help = []string{commandhint.Environment(input.Environment, "pulse", "definition", "inspect", "--id", items[0].LUID)}
+	}
+	return Output{Status: "listed", Environment: input.Environment, Site: input.Site, Page: OutputPage{Returned: len(items), Limit: limit, NextCursor: next, MoreAvailable: more}, Definitions: items, RequestID: requestID, Help: help}, nil
 }
 
 type cursorValue struct {

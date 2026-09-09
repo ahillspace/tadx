@@ -5,4 +5,4 @@ page:
   more_available: false
 workspaces[1]{name,id,root,default,available,manifest_valid}:
   development,ws_1,/var/tmp/tadx-tests/workspaces/development,true,true,true
-help[1]: tadx workspace status --workspace <name>
+help[1]: tadx workspace status --workspace development

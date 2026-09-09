@@ -8,6 +8,8 @@ import (
 
 // Input selects one remote datasource and one logical workspace.
 type Input struct {
+	// WorkspaceName is the resolved logical workspace alias used in follow-up commands.
+	WorkspaceName                                        string
 	Environment, Site, ServerOrigin, SiteLUID, Workspace string
 	Selector                                             identity.Selector
 	Overwrite                                            bool

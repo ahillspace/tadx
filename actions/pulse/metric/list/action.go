@@ -5,6 +5,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"github.com/ahillspace/tadx/internal/commandhint"
 	"strings"
 
 	"github.com/ahillspace/tadx/internal/errs"
@@ -19,6 +20,9 @@ type Action struct{ reader Reader }
 
 func New(reader Reader) *Action { return &Action{reader: reader} }
 func (a *Action) Execute(ctx context.Context, input Input) (Output, error) {
+	if err := ValidateInput(input); err != nil {
+		return Output{}, err
+	}
 	if a == nil || a.reader == nil {
 		return Output{}, fail("pulse.metric.list.unconfigured", errs.KindRuntime, input, "Pulse metric listing is not configured.", nil)
 	}
@@ -90,7 +94,11 @@ func (a *Action) Execute(ctx context.Context, input Input) (Output, error) {
 	if err != nil {
 		return Output{}, err
 	}
-	return Output{Status: "listed", Environment: input.Environment, Site: input.Site, DefinitionLUID: input.DefinitionLUID, Page: OutputPage{Returned: len(items), Limit: limit, NextCursor: next, MoreAvailable: more}, Metrics: items, RequestID: requestID, Help: []string{"tadx pulse metric inspect --id <metric-luid>"}}, nil
+	help := []string{"No matching metrics were returned."}
+	if len(items) > 0 {
+		help = []string{commandhint.Environment(input.Environment, "pulse", "metric", "inspect", "--id", items[0].LUID)}
+	}
+	return Output{Status: "listed", Environment: input.Environment, Site: input.Site, DefinitionLUID: input.DefinitionLUID, Page: OutputPage{Returned: len(items), Limit: limit, NextCursor: next, MoreAvailable: more}, Metrics: items, RequestID: requestID, Help: help}, nil
 }
 
 type cursor struct {

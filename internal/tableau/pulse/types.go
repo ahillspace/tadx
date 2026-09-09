@@ -21,6 +21,8 @@ type Definition struct {
 	Temporality          string
 	AllowedDimensions    []string
 	AllowedGranularities []string
+	FixedFilters         []any
+	FixedFiltersKnown    bool
 	Configuration        json.RawMessage
 	TableauRequestID     string
 }

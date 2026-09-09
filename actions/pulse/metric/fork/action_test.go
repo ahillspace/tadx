@@ -93,8 +93,10 @@ func TestForkOutputGolden(t *testing.T) {
 			Timeframe: "LAST_30_DAYS",
 			Filters:   []metricfork.Filter{{Field: "Region", Values: []string{"West"}}},
 			Specification: map[string]any{
-				"measurement_period": map[string]any{"granularity": "GRANULARITY_BY_DAY", "range": "RANGE_BY_CONFIG"},
+				"measurement_period": map[string]any{"granularity": "GRANULARITY_BY_DAY", "range": "RANGE_BY_CONFIG", "last_x_period": map[string]any{"period": 30, "period_type": "GRANULARITY_BY_DAY", "include_current_period": true}},
+				"filters":            []any{map[string]any{"field": "Region", "operator": "OPERATOR_EQUAL", "categorical_values": []any{map[string]any{"string_value": "West"}}, "include_null": false}},
 			},
+			DefinitionFilters: []any{}, DefinitionFiltersKnown: true,
 			Fingerprint: "sha256:0000000000000000000000000000000000000000000000000000000000000000",
 		},
 		Result: &metricfork.Result{
@@ -106,6 +108,7 @@ func TestForkOutputGolden(t *testing.T) {
 		},
 		Help: []string{"Saved metric configuration and definition linkage verified; current values and generated insights are not read by TADX."},
 	}
+	output.Result.SavedSpecification = output.Plan.Specification
 	assertGolden(t, "compact.toon", output, false)
 	assertGolden(t, "full.toon", output, true)
 }

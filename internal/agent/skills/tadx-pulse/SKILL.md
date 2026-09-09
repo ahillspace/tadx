@@ -42,12 +42,14 @@ Identifier-like appearance and high cardinality alone are not exclusions.
 Use `DAY` nearly always; do not query datasource values merely to discover minimum granularity.
 
 TADX constructs requests from verified CLI flags.
-Review `--preview --full` before every authorized create or fork, then verify the saved configuration from returned read-back or an exact inspection when needed.
+Review `--preview` before every authorized create or fork; its default summary includes the consequential settings.
+Use `--full` for expanded evidence or an explicitly incomplete summary, and do not treat omitted settings as reviewed.
+Verify the saved configuration from returned read-back or an exact inspection when needed.
 A preview proves local validation, not Tableau acceptance or numeric correctness.
 Mutations, including their previews, require `TADX_ENABLE_MUTATIONS=1`; that setting does not grant user authorization.
 Use the installed TADX root Guidance for authentication, workspace selection, and general lifecycle boundaries.
 
 Retain exact selected fields, measure meaning, date, units, slicer set and order, metric filters and period, reviewed flags, returned IDs, and verification status.
 Reuse discovery for an unchanged source and refresh affected evidence after source changes or identity errors.
-Reconcile uncertain writes by returned identity and inventory before another create.
+Retain confirmed creation results even when verification fails, and reconcile by the returned identity before another create.
 Report configuration verification separately from values and insights.

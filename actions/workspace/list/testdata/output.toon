@@ -6,4 +6,4 @@ page:
 workspaces[1]{name,default,available}:
   development,true,true
 details: "--full"
-help[1]: tadx workspace status --workspace <name>
+help[1]: tadx workspace status --workspace development

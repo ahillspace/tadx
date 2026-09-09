@@ -14,16 +14,18 @@ const (
 
 // Input selects one authoritative resource and bounded lineage scope.
 type Input struct {
-	Environment  string
-	Site         string
-	ServerOrigin string
-	SiteLUID     string
-	Workspace    string
-	Kind         string
-	Selector     identity.Selector
-	Direction    string
-	Depth        int
-	Overwrite    bool
+	// WorkspaceName is the resolved logical workspace alias used in follow-up commands.
+	WorkspaceName string
+	Environment   string
+	Site          string
+	ServerOrigin  string
+	SiteLUID      string
+	Workspace     string
+	Kind          string
+	Selector      identity.Selector
+	Direction     string
+	Depth         int
+	Overwrite     bool
 }
 
 // SetSelector records one exact CLI selector without exposing identity plumbing to Cobra.

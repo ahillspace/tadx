@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/ahillspace/tadx/internal/commandhint"
 	"strings"
 
 	"github.com/ahillspace/tadx/internal/errs"
@@ -80,7 +81,7 @@ func (a *Action) Execute(ctx context.Context, input Input, preview bool) (Output
 	}
 	output.Plan.Parent = currentParent
 	output.Result = &result
-	output.Help = []string{"tadx content project inspect --project-id " + result.Project.LUID}
+	output.Help = []string{commandhint.Environment(input.Environment, "content", "project", "inspect", "--project-id", result.Project.LUID)}
 	return output, nil
 }
 
@@ -113,19 +114,7 @@ func validateInput(input Input) error {
 	if strings.TrimSpace(input.Environment) == "" || (strings.TrimSpace(input.Site) == "" && !input.TargetResolved) {
 		return usage("environment", "project create requires an explicit resolved environment and site")
 	}
-	if strings.TrimSpace(input.Name) == "" {
-		return usage("name", "project create requires a name")
-	}
-	if strings.Contains(input.Name, "/") {
-		return usage("name", "project create name cannot contain a slash")
-	}
-	if input.ParentSelector.Name != "" || (input.ParentSelector.LUID != "" && strings.TrimSpace(input.ParentSelector.ProjectPath) != "") {
-		return usage("parent", "use either a parent LUID or an exact parent project path")
-	}
-	if !validContentPermissions(input.ContentPermissions) {
-		return usage("content_permissions", "project create content permissions are invalid")
-	}
-	return nil
+	return ValidateInput(input)
 }
 
 func validContentPermissions(value string) bool {

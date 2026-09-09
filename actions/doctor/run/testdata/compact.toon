@@ -15,4 +15,4 @@ checks[6]{id,status,summary}:
   workspace.status,pass,The selected workspace is available and valid.
   logging.context,pass,Explicit logging context is configured.
 details: "--full"
-help[1]: tadx doctor --full
+help[1]: tadx doctor --full --workspace development --environment dev

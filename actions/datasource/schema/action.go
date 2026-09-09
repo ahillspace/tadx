@@ -39,37 +39,18 @@ func (a *Action) Execute(ctx context.Context, input Input) (Output, error) {
 	if a == nil || a.reader == nil {
 		return Output{}, schemaError("datasource.schema.unconfigured", errs.KindRuntime, input, "Datasource schema discovery is not configured.", nil, "Configure the datasource schema reader before retrying.")
 	}
-	input.Environment = strings.TrimSpace(input.Environment)
-	input.Site = strings.TrimSpace(input.Site)
-	input.DatasourceLUID = strings.TrimSpace(input.DatasourceLUID)
-	input.Query = strings.TrimSpace(input.Query)
-	input.Role = strings.ToLower(strings.TrimSpace(input.Role))
-	input.Table = strings.TrimSpace(input.Table)
 	var err error
-	input, err = normalizeFieldSelection(input)
+	input, err = NormalizeInput(input)
 	if err != nil {
 		return Output{}, err
-	}
-	if input.DatasourceLUID == "" {
-		return Output{}, schemaError("datasource.schema.usage", errs.KindUsage, input, "Datasource schema discovery requires --id.", nil, "Provide one authoritative datasource LUID with --id.")
-	}
-	if input.Role != "" && input.Role != "measure" && input.Role != "dimension" && input.Role != "date" && input.Role != "excluded" {
-		return Output{}, schemaError("datasource.schema.usage", errs.KindUsage, input, "Datasource field role is invalid.", nil, "Use measure, dimension, date, or excluded.")
 	}
 	limit := input.Limit
 	if limit == 0 {
 		limit = defaultLimit
 	}
-	if limit < 1 || limit > maxLimit {
-		return Output{}, schemaError("datasource.schema.usage", errs.KindUsage, input, fmt.Sprintf("Datasource schema limit must be between 1 and %d.", maxLimit), nil, fmt.Sprintf("Set --limit between 1 and %d.", maxLimit))
-	}
 	if input.All {
-		if input.Limit != 0 || input.Cursor != "" {
-			return Output{}, schemaError("datasource.schema.usage", errs.KindUsage, input, "--all cannot be combined with --limit or --cursor.", nil, "Use --all for the complete field inventory, or --limit for a bounded view.")
-		}
 		limit = maxAllFields
 	}
-
 	fingerprint := inputFingerprint(input)
 	offset, err := decodeCursor(input.Cursor, fingerprint)
 	if err != nil {

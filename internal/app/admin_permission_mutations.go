@@ -11,6 +11,9 @@ import (
 )
 
 func (c *remoteAdminCommands) CreateAdminPermission(ctx context.Context, in permissioncreate.Input, preview bool) (permissioncreate.Output, error) {
+	if err := permissioncreate.ValidateInput(in); err != nil {
+		return permissioncreate.Output{}, err
+	}
 	connection, err := c.connect(ctx, in.Environment, true)
 	if err != nil {
 		return permissioncreate.Output{}, remoteSetupError("admin.permission.create", in.Environment, in.Site, connection.environment, err)
@@ -40,6 +43,9 @@ func permissionCreateRequest(in permissioncreate.Input) tableauadmin.PermissionM
 }
 
 func (c *remoteAdminCommands) DeleteAdminPermission(ctx context.Context, in permissiondelete.Input, preview bool) (permissiondelete.Output, error) {
+	if err := permissiondelete.ValidateInput(in); err != nil {
+		return permissiondelete.Output{}, err
+	}
 	connection, err := c.connect(ctx, in.Environment, true)
 	if err != nil {
 		return permissiondelete.Output{}, remoteSetupError("admin.permission.delete", in.Environment, in.Site, connection.environment, err)

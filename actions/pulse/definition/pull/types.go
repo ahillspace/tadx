@@ -2,13 +2,14 @@ package pull
 
 // Input selects one Pulse definition and a managed workspace.
 type Input struct {
-	Environment  string
-	Site         string
-	ServerOrigin string
-	SiteLUID     string
-	Workspace    string
-	LUID         string
-	Overwrite    bool
+	Environment   string
+	Site          string
+	ServerOrigin  string
+	SiteLUID      string
+	Workspace     string
+	WorkspaceName string
+	LUID          string
+	Overwrite     bool
 }
 
 // Definition is the canonical remote definition document.

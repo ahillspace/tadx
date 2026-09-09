@@ -3,6 +3,7 @@ package update
 import (
 	"context"
 	"errors"
+	"github.com/ahillspace/tadx/internal/commandhint"
 	"github.com/ahillspace/tadx/internal/errs"
 	"github.com/ahillspace/tadx/internal/identity"
 	"strings"
@@ -52,7 +53,7 @@ func (a *Action) Execute(ctx context.Context, in Input, preview bool) (Output, e
 	}
 	result, err := a.updater.UpdateFlow(ctx, request)
 	if err != nil {
-		return Output{}, operationError("flow.update.failed", in, current.LUID, "Flow update failed.", "Inspect the flow before updating again.", err)
+		return Output{}, operationError("flow.update.failed", in, current.LUID, "Flow update failed.", "Inspect the exact flow before retrying: "+commandhint.Environment(in.Environment, "content", "flow", "inspect", "--id", current.LUID), err)
 	}
 	if result.FlowLUID == "" {
 		result.FlowLUID = current.LUID
@@ -67,7 +68,7 @@ func (a *Action) Execute(ctx context.Context, in Input, preview bool) (Output, e
 		result.OwnerLUID = *request.OwnerLUID
 	}
 	out.Result = &result
-	out.Help = []string{"tadx content flow inspect --id " + current.LUID}
+	out.Help = []string{commandhint.Environment(in.Environment, "content", "flow", "inspect", "--id", current.LUID)}
 	return out, nil
 }
 func changedRequest(target Flow, in Input) (Request, []Change) {
@@ -83,16 +84,7 @@ func validate(in Input) error {
 	if strings.TrimSpace(in.Environment) == "" || (strings.TrimSpace(in.Site) == "" && !in.TargetResolved) {
 		return usage("environment", "flow update requires an explicit resolved environment and site")
 	}
-	if in.Selector.LUID == "" && (strings.TrimSpace(in.Selector.Name) == "" || strings.TrimSpace(in.Selector.ProjectPath) == "") {
-		return usage("selector", "flow update requires a LUID or exact name and project path")
-	}
-	if in.Selector.LUID != "" && (strings.TrimSpace(in.Selector.Name) != "" || strings.TrimSpace(in.Selector.ProjectPath) != "") {
-		return usage("selector", "a flow LUID cannot be combined with name or project path")
-	}
-	if in.OwnerLUID == nil || strings.TrimSpace(*in.OwnerLUID) == "" {
-		return usage("owner_id", "flow update requires an exact owner LUID")
-	}
-	return nil
+	return ValidateInput(in)
 }
 func usage(field, message string) error {
 	return &errs.Error{ID: "flow.update.usage", Kind: errs.KindUsage, Operation: "flow.update", Summary: message, Retryable: errs.Bool(false), CorrectiveAction: "Correct the flow update input and review a new preview.", Validation: []errs.ValidationDetail{{Field: field, Code: "required", Message: message}}}

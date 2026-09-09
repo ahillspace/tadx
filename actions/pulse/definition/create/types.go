@@ -153,6 +153,8 @@ type Certification struct {
 type Plan struct {
 	Mode        string        `json:"mode"`
 	Operation   string        `json:"operation"`
+	Environment string        `json:"environment"`
+	Site        string        `json:"site"`
 	Name        string        `json:"name"`
 	Datasource  string        `json:"datasource_luid"`
 	Measure     Measure       `json:"measure"`
@@ -182,14 +184,33 @@ type Output struct {
 
 // CompactPlan contains the safety-critical target and references.
 type CompactPlan struct {
-	Mode        string   `json:"mode"`
-	Operation   string   `json:"operation"`
-	Name        string   `json:"name"`
-	Datasource  string   `json:"datasource_luid"`
-	Measure     Measure  `json:"measure"`
-	TimeField   string   `json:"time_dimension"`
-	Dimensions  []string `json:"allowed_dimensions"`
-	Fingerprint string   `json:"request_fingerprint"`
+	Mode                 string   `json:"mode"`
+	Operation            string   `json:"operation"`
+	Environment          string   `json:"environment"`
+	Site                 string   `json:"site"`
+	Name                 string   `json:"name"`
+	Description          string   `json:"description"`
+	Datasource           string   `json:"datasource_luid"`
+	Measure              Measure  `json:"measure"`
+	TimeField            string   `json:"time_dimension"`
+	Dimensions           []string `json:"allowed_dimensions"`
+	DimensionsOmitted    int      `json:"dimensions_omitted,omitempty"`
+	Population           string   `json:"population"`
+	MinimumGranularity   string   `json:"minimum_granularity"`
+	AllowedGranularities []string `json:"allowed_granularities"`
+	NumberFormat         string   `json:"number_format"`
+	Currency             string   `json:"currency"`
+	Sentiment            string   `json:"sentiment"`
+	Temporality          string   `json:"temporality"`
+	RunningTotal         bool     `json:"running_total"`
+	OffsetFromToday      int      `json:"offset_from_today"`
+	UseDynamicOffset     bool     `json:"use_dynamic_offset"`
+	Comparisons          []string `json:"comparisons"`
+	InsightsEnabled      bool     `json:"insights_enabled"`
+	DisabledInsights     []string `json:"disabled_insights"`
+	Certified            bool     `json:"certified"`
+	RequiresFull         bool     `json:"requires_full"`
+	ReviewComplete       bool     `json:"review_complete"`
 }
 
 // CompactCreateResult omits transport diagnostics.
@@ -217,7 +238,7 @@ type FullResult struct {
 
 // CompactOutput returns the safety-critical plan and identities.
 func (o Output) CompactOutput() any {
-	plan := CompactPlan{Mode: o.Plan.Mode, Operation: o.Plan.Operation, Name: o.Plan.Name, Datasource: o.Plan.Datasource, Measure: o.Plan.Measure, TimeField: o.Plan.TimeField, Dimensions: append(make([]string, 0, len(o.Plan.Dimensions)), o.Plan.Dimensions...), Fingerprint: o.Plan.Fingerprint}
+	plan := compactPlan(o.Plan)
 	var result *CompactCreateResult
 	if o.Result != nil {
 		result = &CompactCreateResult{Status: o.Result.Status, DefinitionLUID: o.Result.DefinitionLUID, DefaultMetricLUID: o.Result.DefaultMetricLUID, DefaultMetricStatus: o.Result.DefaultMetricStatus}

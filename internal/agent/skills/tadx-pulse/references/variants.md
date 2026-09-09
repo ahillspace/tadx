@@ -29,7 +29,7 @@ Schema gives field identities, not member values; a field name does not establis
 | `--days` | Integer 1-3650, required only with CUSTOM_N_DAYS. |
 | `--filter` | Repeat `<exact-dimension-id>=<verified-member>` for included members. |
 | `--exclude-filter` | Same syntax for excluded members; do not mix include and exclude for one field. |
-| `--preview --full` | Review the complete resulting period and population before execution. |
+| `--preview` | Review the normalized resulting period and population before execution; `--full` adds bounded provider detail. |
 
 Provide at least one period or filter change.
 Repeated members for one field form alternatives; filters on different fields apply together.
@@ -79,11 +79,13 @@ Existing calendars and offsets can affect the meaning of periods, so inspect the
 ## Preview, execute, and verify
 
 ```text
-tadx pulse metric fork --environment '<alias>' --id '<source-metric-luid>' --period MONTH_TO_DATE --filter '<region-id>=<verified-region-1>' --filter '<region-id>=<verified-region-2>' --preview --full
+tadx pulse metric fork --environment '<alias>' --id '<source-metric-luid>' --period MONTH_TO_DATE --filter '<region-id>=<verified-region-1>' --filter '<region-id>=<verified-region-2>' --preview
 ```
 
-Inspect the full preview's final population, including inherited filters, replacements, null policy, period, and definition linkage.
-The compact list of requested changes is not the complete resulting population.
+Review the default preview's final population, including inherited filters, replacements, null policy, period, and definition linkage.
+Check the resulting population, not just the requested changes.
+An explicitly incomplete summary needs expanded evidence; do not treat omitted or unsupported settings as reviewed.
+Check `review_complete` and `requires_full`; `--full` can expose omitted details but does not establish missing semantics.
 For authorized execution, reuse the reviewed flags and remove only `--preview`.
 Use the fork's verified saved read-back in `--full` output to compare the complete filters and period to the intended result.
 Inspect the exact metric separately only when verification is unresolved, evidence is missing, or you need a later observation.

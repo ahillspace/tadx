@@ -97,7 +97,7 @@ func fileImports(path string) ([]string, error) {
 }
 
 func forbiddenReason(file, imported, modulePath string) string {
-	if hasPathPrefix(file, "internal/value") {
+	if hasPathPrefix(file, "internal/value") || hasPathPrefix(file, "internal/commandhint") {
 		dependency, err := build.Default.Import(imported, "", build.FindOnly)
 		if err != nil || !dependency.Goroot {
 			return "shared value types must depend only on the standard library"
@@ -173,6 +173,7 @@ func localImportAllowed(file, imported string) bool {
 	case layerAction:
 		return matchesExact(imported,
 			"internal/capability",
+			"internal/commandhint",
 			"internal/config",
 			"internal/errs",
 			"internal/identity",
@@ -189,6 +190,7 @@ func localImportAllowed(file, imported string) bool {
 				"internal/artifact",
 				"internal/auth",
 				"internal/capability",
+				"internal/commandhint",
 				"internal/catalog",
 				"internal/config",
 				"internal/errs",
@@ -201,7 +203,7 @@ func localImportAllowed(file, imported string) bool {
 				"internal/workspace",
 			)
 	case layerCLI:
-		return matchesPrefix(imported, "actions", "internal/cli") || matchesExact(imported, "internal/errs", "internal/pathspec", "internal/contentbatch")
+		return matchesPrefix(imported, "actions", "internal/cli") || matchesExact(imported, "internal/errs", "internal/pathspec", "internal/contentbatch", "internal/commandhint")
 	case layerResource:
 		return matchesExact(imported, "internal/identity", "internal/value") || matchesPrefix(imported, "internal/tableau")
 	case layerTableau:
@@ -374,6 +376,7 @@ func disallowedLocalImportReason(file, imported string) string {
 func isFoundationPackage(file string) bool {
 	return hasPathPrefix(file, "internal/artifact") ||
 		hasPathPrefix(file, "internal/contentbatch") ||
+		hasPathPrefix(file, "internal/commandhint") ||
 		hasPathPrefix(file, "internal/architecture") ||
 		hasPathPrefix(file, "internal/auth") ||
 		hasPathPrefix(file, "internal/config") ||

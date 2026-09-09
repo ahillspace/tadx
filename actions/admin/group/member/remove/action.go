@@ -4,6 +4,7 @@ package remove
 import (
 	"context"
 	"errors"
+	"github.com/ahillspace/tadx/internal/commandhint"
 	"strings"
 
 	"github.com/ahillspace/tadx/internal/errs"
@@ -66,8 +67,8 @@ func New(resolver Resolver, writer Writer) *Action {
 }
 
 func (a *Action) Plan(ctx context.Context, in Input) (Plan, error) {
-	if strings.TrimSpace(in.Environment) == "" || strings.TrimSpace(in.GroupLUID) == "" || strings.TrimSpace(in.UserLUID) == "" {
-		return Plan{}, usage("--environment, --group-id, and --user-id are required")
+	if err := ValidateInput(in); err != nil {
+		return Plan{}, err
 	}
 	if a == nil || a.resolver == nil || a.writer == nil {
 		return Plan{}, runtimeError("incremental group membership is not configured")
@@ -127,7 +128,7 @@ func (a *Action) Execute(ctx context.Context, in Input, preview bool) (Output, e
 		return Output{}, err
 	}
 	out.Result = &result
-	out.Help = []string{"tadx admin group inspect --id " + plan.GroupLUID + " --members --environment " + plan.Environment}
+	out.Help = []string{commandhint.Environment(plan.Environment, "admin", "group", "inspect", "--id", plan.GroupLUID, "--members")}
 	return out, nil
 }
 func validateGroup(group Group, expected string) error {

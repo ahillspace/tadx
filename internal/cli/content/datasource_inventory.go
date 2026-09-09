@@ -2,6 +2,7 @@ package content
 
 import (
 	"context"
+	"github.com/ahillspace/tadx/internal/cli/clierr"
 
 	datasourceinspect "github.com/ahillspace/tadx/actions/datasource/inspect"
 	datasourcelist "github.com/ahillspace/tadx/actions/datasource/list"
@@ -45,7 +46,7 @@ func newDatasourceList(deps datasourceInventoryDependencies) *cobra.Command {
 		RunE: func(command *cobra.Command, _ []string) error {
 			result, err := deps.lister.ListDatasources(command.Context(), input)
 			if err != nil {
-				return err
+				return clierr.WithOutput(result, err)
 			}
 			return deps.renderer.Render(result)
 		},
@@ -77,7 +78,7 @@ func newDatasourceInspect(deps datasourceInventoryDependencies) *cobra.Command {
 		RunE: func(command *cobra.Command, _ []string) error {
 			result, err := deps.inspector.InspectDatasource(command.Context(), input)
 			if err != nil {
-				return err
+				return clierr.WithOutput(result, err)
 			}
 			return deps.renderer.Render(result)
 		},

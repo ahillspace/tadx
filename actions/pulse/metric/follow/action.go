@@ -2,6 +2,7 @@ package follow
 
 import (
 	"context"
+	"github.com/ahillspace/tadx/internal/commandhint"
 	"github.com/ahillspace/tadx/internal/errs"
 	"strings"
 )
@@ -13,6 +14,9 @@ type Action struct{ creator Creator }
 
 func New(creator Creator) *Action { return &Action{creator: creator} }
 func (a *Action) Execute(ctx context.Context, input Input, preview bool) (Output, error) {
+	if err := ValidateInput(input); err != nil {
+		return Output{}, err
+	}
 	if a == nil || a.creator == nil {
 		return Output{}, fail("pulse.metric.follow.unconfigured", errs.KindRuntime, input, "Pulse metric follow is not configured.", nil)
 	}
@@ -40,7 +44,7 @@ func (a *Action) Execute(ctx context.Context, input Input, preview bool) (Output
 		return Output{}, fail("pulse.metric.follow.invalid_response", errs.KindOperation, input, "Tableau returned an unknown Pulse follow status.", nil)
 	}
 	output.Result = &result
-	output.Help = []string{"tadx pulse metric followers --id " + input.MetricLUID}
+	output.Help = []string{commandhint.Environment(input.Environment, "pulse", "metric", "followers", "--id", input.MetricLUID)}
 	return output, nil
 }
 func fail(id string, kind errs.Kind, input Input, summary string, cause error) error {

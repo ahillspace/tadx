@@ -397,8 +397,8 @@ func TestActionGoldenOutput(t *testing.T) {
 	}, datasourceResults: map[string]pull.DependencyArtifactResult{
 		"ds-1": {LUID: "ds-1", Name: "Sales", Path: "artifacts/datasource/Sales", CanonicalPath: filepath.FromSlash("C:/workspace/artifacts/datasource/Sales/Sales.tdsx"), BaselineFingerprint: "sha256:def"},
 	}}).Execute(context.Background(), pull.Input{
-		Environment: "production", Site: "marketing", Workspace: filepath.FromSlash("C:/workspace"),
-		Selector: identity.Selector{LUID: "wb-1", Name: "Finance", ProjectPath: "Ops"}, IncludePDS: true,
+		Environment: "production", Site: "marketing", Workspace: filepath.FromSlash("C:/workspace"), WorkspaceName: "logical workspace",
+		Selector: identity.Selector{LUID: "wb-1"}, IncludePDS: true,
 	})
 	if err != nil {
 		t.Fatal(err)

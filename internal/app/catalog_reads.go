@@ -17,6 +17,7 @@ import (
 	workbookinspect "github.com/ahillspace/tadx/actions/workbook/inspect"
 	workbooklist "github.com/ahillspace/tadx/actions/workbook/list"
 	"github.com/ahillspace/tadx/internal/catalog"
+	"github.com/ahillspace/tadx/internal/commandhint"
 	"github.com/ahillspace/tadx/internal/errs"
 	"github.com/ahillspace/tadx/internal/identity"
 	"github.com/ahillspace/tadx/internal/readsource"
@@ -68,7 +69,7 @@ func catalogReadError(operation, environment, site string, err error) error {
 	var refreshRequired interface{ CatalogProjectRefreshRequired() bool }
 	var schemaRefreshRequired interface{ CatalogSchemaRefreshRequired() bool }
 	if errors.As(err, &refreshRequired) && refreshRequired.CatalogProjectRefreshRequired() {
-		return &errs.Error{ID: "catalog.project_filter_unavailable", Kind: errs.KindOperation, Operation: operation, Environment: environment, Site: site, Summary: "The catalog lacks complete project identity coverage for this filter.", Cause: err, Retryable: errs.Bool(false), CorrectiveAction: "Run tadx catalog refresh --environment " + environment + " --scope projects,datasources, then repeat the same --catalog command."}
+		return &errs.Error{ID: "catalog.project_filter_unavailable", Kind: errs.KindOperation, Operation: operation, Environment: environment, Site: site, Summary: "The catalog lacks complete project identity coverage for this filter.", Cause: err, Retryable: errs.Bool(false), CorrectiveAction: "Run " + commandhint.Command("catalog", "refresh", "--environment", environment, "--scope", "projects,datasources") + ", then repeat the same --catalog command."}
 	}
 	correctiveAction := catalogReadRecovery(operation, environment)
 	switch {
@@ -76,7 +77,7 @@ func catalogReadError(operation, environment, site string, err error) error {
 		id, summary = "catalog.schema_refresh_required", "The catalog schema requires an explicit refresh before cached reads can continue."
 		refresh := catalogScopeRefreshCommand(operation, environment)
 		if refresh == "" {
-			refresh = "tadx catalog refresh --environment " + environment
+			refresh = commandhint.Environment(environment, "catalog", "refresh")
 		}
 		correctiveAction = "Run " + refresh + " to rebuild the catalog. Include any other inventory scopes you still need because rebuilding replaces the old cached data. Then repeat the --catalog command."
 		if operation == "datasource.schema" || strings.HasPrefix(operation, "pulse.") {
@@ -116,7 +117,7 @@ func catalogScopeRefreshCommand(operation, environment string) string {
 	resource, _, _ := strings.Cut(strings.TrimPrefix(operation, "admin."), ".")
 	switch resource {
 	case "workbook", "datasource", "flow", "project", "user", "group":
-		return "tadx catalog refresh --environment " + environment + " --scope " + resource + "s"
+		return commandhint.Command("catalog", "refresh", "--environment", environment, "--scope", resource+"s")
 	default:
 		return ""
 	}

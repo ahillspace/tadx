@@ -94,7 +94,7 @@ func TestDatasourceLifecycleReturnsStructuredSetupErrors(t *testing.T) {
 	commands := newRemoteContentCommands(&runtimeDependencies{configPath: filepath.Join(t.TempDir(), "missing.yaml"), httpClient: http.DefaultClient, now: time.Now, correlationID: "datasource-test"})
 	_, err := commands.PullDatasource(context.Background(), datasourcepull.Input{Environment: "production", Workspace: "analytics", Selector: identity.Selector{LUID: "ds-1"}})
 	var structured *errs.Error
-	if err == nil || !errors.As(err, &structured) || structured.ID != "datasource.pull.setup" || structured.Operation != "datasource.pull" || structured.Environment != "production" {
+	if err == nil || !errors.As(err, &structured) || structured.ID != "datasource.pull.workspace" || structured.Operation != "datasource.pull" || structured.Environment != "production" {
 		t.Fatalf("error = %#v", err)
 	}
 }

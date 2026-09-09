@@ -160,7 +160,7 @@ func newDatasourceDelete(deps datasourceLifecycleDependencies) *cobra.Command {
 		RunE: func(command *cobra.Command, _ []string) error {
 			result, err := deps.deleter.DeleteDatasource(command.Context(), input, preview)
 			if err != nil {
-				return err
+				return clierr.WithOutput(result, err)
 			}
 			return deps.renderer.Render(result)
 		},

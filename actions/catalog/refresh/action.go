@@ -4,6 +4,7 @@ package refresh
 import (
 	"context"
 	"errors"
+	"github.com/ahillspace/tadx/internal/commandhint"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -32,6 +33,9 @@ func New(hydrator Hydrator) *Action { return &Action{hydrator: hydrator} }
 
 // Execute validates one bounded hydration request and returns a row-free operational receipt.
 func (a *Action) Execute(ctx context.Context, input Input) (Output, error) {
+	if err := ValidateInput(input); err != nil {
+		return Output{}, err
+	}
 	if a == nil || a.hydrator == nil {
 		return Output{}, failure("catalog.refresh.unconfigured", errs.KindRuntime, input, "Catalog refresh is not configured.", nil)
 	}
@@ -80,7 +84,7 @@ func (a *Action) Execute(ctx context.Context, input Input) (Output, error) {
 		Path:        result.Path,
 		Warnings:    output.BoundWarnings(result.Warnings),
 		Diagnostics: result.Diagnostics,
-		Help:        []string{"tadx catalog status --environment " + input.Environment},
+		Help:        []string{commandhint.Environment(input.Environment, "catalog", "status")},
 	}, nil
 }
 

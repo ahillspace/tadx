@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/ahillspace/tadx/internal/commandhint"
 	"strings"
 
 	"github.com/ahillspace/tadx/internal/errs"
@@ -40,6 +41,9 @@ func Types(selector string) ([]string, error) {
 }
 
 func (a *Action) Execute(ctx context.Context, input Input) (Output, error) {
+	if err := ValidateInput(input); err != nil {
+		return Output{}, err
+	}
 	input.Terms = strings.TrimSpace(input.Terms)
 	types, err := Types(input.Type)
 	if err != nil {
@@ -104,7 +108,22 @@ func (a *Action) Execute(ctx context.Context, input Input) (Output, error) {
 		sourceName = "catalog"
 		warnings = append([]string{"Catalog absence does not establish remote absence; resolve authoritative LUIDs live before mutations."}, warnings...)
 	}
-	return Output{Source: sourceName, Page: page, Items: items, Generation: result.Generation, Warnings: output.BoundWarnings(warnings), Help: []string{"tadx capability list --resource <type>"}}, nil
+	return Output{Source: sourceName, Page: page, Items: items, Generation: result.Generation, Warnings: output.BoundWarnings(warnings), Help: searchHelp(input.Environment, items)}, nil
+}
+
+func searchHelp(environment string, items []Item) []string {
+	for _, item := range items {
+		if item.LUID == "" {
+			continue
+		}
+		switch item.Type {
+		case "workbook", "datasource", "flow":
+			return []string{commandhint.Environment(environment, "content", item.Type, "inspect", "--id", item.LUID)}
+		case "project":
+			return []string{commandhint.Environment(environment, "content", "project", "inspect", "--project-id", item.LUID)}
+		}
+	}
+	return []string{commandhint.Command("capability", "list")}
 }
 
 // search expands a larger result bound using stable 100-record source pages.

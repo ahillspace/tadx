@@ -3,6 +3,7 @@ package create
 import (
 	"context"
 	"errors"
+	"github.com/ahillspace/tadx/internal/commandhint"
 	"sort"
 
 	"github.com/ahillspace/tadx/internal/errs"
@@ -84,18 +85,11 @@ func (a *Action) Execute(ctx context.Context, in Input, preview bool) (Output, e
 	if a == nil || a.finder == nil || a.creator == nil {
 		return Output{}, errors.New("admin user create is not configured")
 	}
-	if in.Environment == "" || (in.Site == "" && !in.TargetResolved) || in.Name == "" || in.SiteRole == "" {
+	if err := ValidateInput(in); err != nil {
+		return Output{}, err
+	}
+	if in.Site == "" && !in.TargetResolved {
 		return Output{}, usage("selector", "admin user create requires --environment, --name, and --site-role; the environment selects the site")
-	}
-	if (in.AuthSetting == "") == (in.IdPConfigurationID == "") {
-		return Output{}, usage("auth_setting", "admin user create requires exactly one explicit auth setting or IdP configuration ID")
-	}
-	if in.AuthSetting != "" {
-		switch in.AuthSetting {
-		case "ServerDefault", "SAML", "OpenID", "TableauIDWithMFA":
-		default:
-			return Output{}, usage("auth_setting", "Supported --auth-setting values: ServerDefault, SAML, OpenID, TableauIDWithMFA. Use --idp-configuration-id for an exact authentication configuration.")
-		}
 	}
 	found, err := a.finder.FindUsers(ctx, in.Name)
 	if err != nil {
@@ -126,7 +120,7 @@ func (a *Action) Execute(ctx context.Context, in Input, preview bool) (Output, e
 		return Output{}, err
 	}
 	out.Result = &Result{Status: "created", User: user, TableauRequestID: user.RequestID}
-	out.Help = []string{"tadx admin user inspect --id " + user.LUID}
+	out.Help = []string{commandhint.Environment(in.Environment, "admin", "user", "inspect", "--id", user.LUID)}
 	return out, nil
 }
 
@@ -134,5 +128,5 @@ func usage(field, message string) error {
 	return &errs.Error{ID: "admin.user.create.usage", Kind: errs.KindUsage, Operation: "admin.user.create", Summary: message, Retryable: errs.Bool(false), CorrectiveAction: "Correct the user create input and review a new preview.", Validation: []errs.ValidationDetail{{Field: field, Code: "invalid", Message: message}}}
 }
 func outcomeUnknown(in Input, luid, requestID string, cause error) error {
-	return &errs.Error{ID: "admin.user.create.outcome_unknown", Kind: errs.KindOperation, Operation: "admin.user.create", Resource: luid, Environment: in.Environment, Site: in.Site, Summary: "The user create outcome could not be determined safely.", Cause: cause, Retryable: errs.Bool(false), CorrectiveAction: "Inspect the target site and Tableau request before attempting another user create.", TableauRequestID: requestID}
+	return &errs.Error{ID: "admin.user.create.outcome_unknown", Kind: errs.KindOperation, Operation: "admin.user.create", Resource: luid, Environment: in.Environment, Site: in.Site, Summary: "The user create outcome could not be determined safely.", Cause: cause, Retryable: errs.Bool(false), CorrectiveAction: "Inspect the exact user and Tableau request before retrying: " + recoveryHint(in, luid), TableauRequestID: requestID}
 }

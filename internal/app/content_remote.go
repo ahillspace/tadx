@@ -93,6 +93,16 @@ func (c *remoteContentCommands) connect(ctx context.Context, alias string, expli
 }
 
 func (c *remoteContentCommands) ListProjects(ctx context.Context, input projectlist.Input) (result projectlist.Output, resultErr error) {
+	if input.Cursor != "" {
+		_, environment, err := c.runtime.environment(input.Environment, false)
+		if err != nil {
+			return projectlist.Output{}, err
+		}
+		input.Environment, input.Site = environment.Alias, environment.SiteContentURL
+	}
+	if err := projectlist.ValidateInput(input); err != nil {
+		return projectlist.Output{}, err
+	}
 	defer func() {
 		if resultErr == nil {
 			resultErr = validateInventoryAll(input.All, result.Source)
@@ -157,6 +167,9 @@ func projectListIsUnfiltered(input projectlist.Input) bool {
 }
 
 func (c *remoteContentCommands) InspectProject(ctx context.Context, input projectinspect.Input) (projectinspect.Output, error) {
+	if err := projectinspect.ValidateInput(input); err != nil {
+		return projectinspect.Output{}, err
+	}
 	if input.Catalog {
 		environment, site, err := c.resolveCatalogTarget(input.Environment)
 		if err != nil {
@@ -189,6 +202,9 @@ func (c *remoteContentCommands) InspectProject(ctx context.Context, input projec
 }
 
 func (c *remoteContentCommands) CreateProject(ctx context.Context, input projectcreate.Input, preview bool) (projectcreate.Output, error) {
+	if err := projectcreate.ValidateInput(input); err != nil {
+		return projectcreate.Output{}, err
+	}
 	connection, err := c.connect(ctx, input.Environment, true)
 	if err != nil {
 		return projectcreate.Output{}, remoteSetupError("project.create", input.Environment, input.Site, connection.environment, err)
@@ -204,6 +220,9 @@ func (c *remoteContentCommands) CreateProject(ctx context.Context, input project
 }
 
 func (c *remoteContentCommands) UpdateProject(ctx context.Context, input projectupdate.Input, preview bool) (projectupdate.Output, error) {
+	if err := projectupdate.ValidateInput(input); err != nil {
+		return projectupdate.Output{}, err
+	}
 	connection, err := c.connect(ctx, input.Environment, true)
 	if err != nil {
 		return projectupdate.Output{}, remoteSetupError("project.update", input.Environment, input.Site, connection.environment, err)
@@ -219,6 +238,9 @@ func (c *remoteContentCommands) UpdateProject(ctx context.Context, input project
 }
 
 func (c *remoteContentCommands) DeleteProject(ctx context.Context, input projectdelete.Input, preview bool) (projectdelete.Output, error) {
+	if err := projectdelete.ValidateInput(input); err != nil {
+		return projectdelete.Output{}, err
+	}
 	connection, err := c.connect(ctx, input.Environment, true)
 	if err != nil {
 		return projectdelete.Output{}, remoteSetupError("project.delete", input.Environment, input.Site, connection.environment, err)
@@ -230,6 +252,16 @@ func (c *remoteContentCommands) DeleteProject(ctx context.Context, input project
 }
 
 func (c *remoteContentCommands) ListFlows(ctx context.Context, input flowlist.Input) (result flowlist.Output, resultErr error) {
+	if input.Cursor != "" {
+		_, environment, err := c.runtime.environment(input.Environment, false)
+		if err != nil {
+			return flowlist.Output{}, err
+		}
+		input.Environment, input.Site = environment.Alias, environment.SiteContentURL
+	}
+	if err := flowlist.ValidateInput(input); err != nil {
+		return flowlist.Output{}, err
+	}
 	defer func() {
 		if resultErr == nil {
 			resultErr = validateInventoryAll(input.All, result.Source)
@@ -294,6 +326,9 @@ func flowListIsUnfiltered(input flowlist.Input) bool {
 }
 
 func (c *remoteContentCommands) InspectFlow(ctx context.Context, input flowinspect.Input) (flowinspect.Output, error) {
+	if err := flowinspect.ValidateInput(input); err != nil {
+		return flowinspect.Output{}, err
+	}
 	if input.Catalog {
 		environment, site, err := c.resolveCatalogTarget(input.Environment)
 		if err != nil {
@@ -326,6 +361,15 @@ func (c *remoteContentCommands) InspectFlow(ctx context.Context, input flowinspe
 }
 
 func (c *remoteContentCommands) PullFlow(ctx context.Context, input flowpull.Input) (flowpull.Output, error) {
+	if err := flowpull.ValidateInput(input); err != nil {
+		return flowpull.Output{}, err
+	}
+	workspace, err := (&workspaceRuntime{runtime: c.runtime}).resolveForEnvironment(ctx, input.Workspace, input.Environment)
+	if err != nil {
+		return flowpull.Output{}, capabilitySetupError("flow.pull.workspace", "flow.pull", input.Environment, input.Site, "Flow workspace resolution failed.", "Select or configure an exact workspace, then retry.", err)
+	}
+	input.Workspace = workspace.Root
+	input.WorkspaceName = workspace.Name
 	connection, err := c.connect(ctx, input.Environment, false)
 	if err != nil {
 		return flowpull.Output{}, remoteSetupError("flow.pull", input.Environment, input.Site, connection.environment, err)
@@ -336,16 +380,15 @@ func (c *remoteContentCommands) PullFlow(ctx context.Context, input flowpull.Inp
 	if err != nil {
 		return flowpull.Output{}, remoteSetupError("flow.pull", input.Environment, input.Site, connection.environment, err)
 	}
-	workspace, err := (&workspaceRuntime{runtime: c.runtime}).resolveForEnvironment(ctx, input.Workspace, input.Environment)
-	if err != nil {
-		return flowpull.Output{}, capabilitySetupError("flow.pull.workspace", "flow.pull", input.Environment, input.Site, "Flow workspace resolution failed.", "Select or configure an exact workspace, then retry.", err)
-	}
-	input.Workspace = workspace.Root
+
 	reader := flowPullReader{flows: connection.flows, lineage: connection.lineage}
 	return flowpull.New(reader, flowArtifactWriter{artifact.NewFlowManager(c.runtime.now)}).Execute(ctx, input)
 }
 
 func (c *remoteContentCommands) PublishFlow(ctx context.Context, input flowpublish.Input, preview bool) (flowpublish.Output, error) {
+	if err := flowpublish.ValidateInput(input); err != nil {
+		return flowpublish.Output{}, err
+	}
 	manager := artifact.NewFlowManager(c.runtime.now)
 	workspace, err := (&workspaceRuntime{runtime: c.runtime}).resolveForEnvironment(ctx, input.Workspace, input.Environment)
 	if err != nil {
@@ -356,6 +399,7 @@ func (c *remoteContentCommands) PublishFlow(ctx context.Context, input flowpubli
 		return flowpublish.Output{}, capabilitySetupError("flow.publish.artifact", "flow.publish", input.Environment, input.Site, "Flow artifact resolution failed.", "Select one exact workspace-relative managed flow artifact, then retry.", err)
 	}
 	absolutePath := filepath.Join(workspace.Root, filepath.FromSlash(managed.Path))
+	input.WorkspaceName = workspace.Name
 	local, err := manager.Read(ctx, absolutePath)
 	if err != nil {
 		return flowpublish.Output{}, capabilitySetupError("flow.publish.artifact", "flow.publish", input.Environment, input.Site, "Flow artifact read failed.", "Repair or pull the exact flow artifact, then retry.", err)
@@ -380,6 +424,9 @@ func (c *remoteContentCommands) PublishFlow(ctx context.Context, input flowpubli
 }
 
 func (c *remoteContentCommands) MoveFlow(ctx context.Context, input flowmove.Input, preview bool) (flowmove.Output, error) {
+	if err := flowmove.ValidateInput(input); err != nil {
+		return flowmove.Output{}, err
+	}
 	connection, err := c.connect(ctx, input.Environment, true)
 	if err != nil {
 		return flowmove.Output{}, remoteSetupError("flow.move", input.Environment, input.Site, connection.environment, err)
@@ -391,6 +438,9 @@ func (c *remoteContentCommands) MoveFlow(ctx context.Context, input flowmove.Inp
 }
 
 func (c *remoteContentCommands) DeleteFlow(ctx context.Context, input flowdelete.Input, preview bool) (flowdelete.Output, error) {
+	if err := flowdelete.ValidateInput(input); err != nil {
+		return flowdelete.Output{}, err
+	}
 	connection, err := c.connect(ctx, input.Environment, true)
 	if err != nil {
 		return flowdelete.Output{}, remoteSetupError("flow.delete", input.Environment, input.Site, connection.environment, err)
@@ -402,6 +452,9 @@ func (c *remoteContentCommands) DeleteFlow(ctx context.Context, input flowdelete
 }
 
 func (c *remoteContentCommands) DeleteWorkbook(ctx context.Context, input workbookdelete.Input, preview bool) (workbookdelete.Output, error) {
+	if err := workbookdelete.ValidateInput(input); err != nil {
+		return workbookdelete.Output{}, err
+	}
 	connection, err := c.connect(ctx, input.Environment, true)
 	if err != nil {
 		return workbookdelete.Output{}, remoteSetupError("workbook.delete", input.Environment, input.Site, connection.environment, err)
@@ -413,6 +466,15 @@ func (c *remoteContentCommands) DeleteWorkbook(ctx context.Context, input workbo
 }
 
 func (c *remoteContentCommands) PullLineage(ctx context.Context, input lineagepull.Input) (lineagepull.Output, error) {
+	if err := lineagepull.ValidateInput(input); err != nil {
+		return lineagepull.Output{}, err
+	}
+	workspace, err := (&workspaceRuntime{runtime: c.runtime}).resolveForEnvironment(ctx, input.Workspace, input.Environment)
+	if err != nil {
+		return lineagepull.Output{}, capabilitySetupError("lineage.pull.workspace", "lineage.pull", input.Environment, input.Site, "Lineage workspace resolution failed.", "Select or configure an exact workspace, then retry.", err)
+	}
+	input.Workspace = workspace.Root
+	input.WorkspaceName = workspace.Name
 	connection, err := c.connect(ctx, input.Environment, false)
 	if err != nil {
 		return lineagepull.Output{}, remoteSetupError("lineage.pull", input.Environment, input.Site, connection.environment, err)
@@ -423,11 +485,7 @@ func (c *remoteContentCommands) PullLineage(ctx context.Context, input lineagepu
 	if err != nil {
 		return lineagepull.Output{}, remoteSetupError("lineage.pull", input.Environment, input.Site, connection.environment, err)
 	}
-	workspace, err := (&workspaceRuntime{runtime: c.runtime}).resolveForEnvironment(ctx, input.Workspace, input.Environment)
-	if err != nil {
-		return lineagepull.Output{}, capabilitySetupError("lineage.pull.workspace", "lineage.pull", input.Environment, input.Site, "Lineage workspace resolution failed.", "Select or configure an exact workspace, then retry.", err)
-	}
-	input.Workspace = workspace.Root
+
 	resolver := lineageResolver{workbooks: connection.workbooks, flows: connection.flows, datasources: connection.datasources, projects: connection.projects}
 	return lineagepull.New(resolver, lineageReader{connection.lineage}, lineageArtifactWriter{artifact.NewLineageManager(c.runtime.now)}).Execute(ctx, input)
 }

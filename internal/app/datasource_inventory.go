@@ -18,10 +18,30 @@ type datasourceDiscovery struct {
 }
 
 func (c *remoteContentCommands) ListDatasources(ctx context.Context, input datasourcelist.Input) (datasourcelist.Output, error) {
+	if input.Cursor != "" {
+		_, environment, err := c.runtime.environment(input.Environment, false)
+		if err != nil {
+			return datasourcelist.Output{}, err
+		}
+		input.Environment, input.Site = environment.Alias, environment.SiteContentURL
+	}
+	if err := datasourcelist.ValidateInput(input); err != nil {
+		return datasourcelist.Output{}, err
+	}
 	return c.listDatasources(ctx, input, &datasourceDiscovery{})
 }
 
 func (c *remoteContentCommands) listDatasources(ctx context.Context, input datasourcelist.Input, discovery *datasourceDiscovery) (result datasourcelist.Output, resultErr error) {
+	if input.Cursor != "" {
+		_, environment, err := c.runtime.environment(input.Environment, false)
+		if err != nil {
+			return datasourcelist.Output{}, err
+		}
+		input.Environment, input.Site = environment.Alias, environment.SiteContentURL
+	}
+	if err := datasourcelist.ValidateInput(input); err != nil {
+		return datasourcelist.Output{}, err
+	}
 	defer func() {
 		if resultErr == nil {
 			resultErr = validateInventoryAll(input.All, result.Source)
@@ -89,6 +109,9 @@ func datasourceListIsUnfiltered(input datasourcelist.Input) bool {
 }
 
 func (c *remoteContentCommands) InspectDatasource(ctx context.Context, input datasourceinspect.Input) (datasourceinspect.Output, error) {
+	if err := datasourceinspect.ValidateInput(input); err != nil {
+		return datasourceinspect.Output{}, err
+	}
 	if input.Catalog {
 		environment, site, err := c.resolveCatalogTarget(input.Environment)
 		if err != nil {

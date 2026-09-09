@@ -3,6 +3,7 @@ package update
 import (
 	"context"
 	"errors"
+	"github.com/ahillspace/tadx/internal/commandhint"
 	"reflect"
 	"sort"
 
@@ -142,11 +143,11 @@ func (a *Action) Execute(ctx context.Context, in Input, preview bool) (Output, e
 	if a == nil || a.resolver == nil || a.updater == nil || a.members == nil {
 		return Output{}, errors.New("admin group update is not configured")
 	}
-	if in.Environment == "" || (in.Site == "" && !in.TargetResolved) || in.GroupLUID == "" {
-		return Output{}, usage("selector", "admin group update requires explicit environment, site, and group LUID")
+	if err := ValidateInput(in); err != nil {
+		return Output{}, err
 	}
-	if in.Name == nil && in.MinimumSiteRole == nil && in.ExternalUserEnabled == nil && !in.MembershipSet {
-		return Output{}, usage("fields", "admin group update requires metadata or an explicit desired membership")
+	if in.Site == "" && !in.TargetResolved {
+		return Output{}, usage("selector", "admin group update requires explicit environment, site, and group LUID")
 	}
 	desired, err := normalizeDesired(in.DesiredMemberLUIDs, in.MembershipSet)
 	if err != nil {
@@ -224,7 +225,7 @@ func (a *Action) Execute(ctx context.Context, in Input, preview bool) (Output, e
 		}
 	}
 	result.Status = "updated"
-	out.Help = []string{"tadx admin group inspect --id " + group.LUID + " --members"}
+	out.Help = []string{commandhint.Environment(in.Environment, "admin", "group", "inspect", "--id", group.LUID, "--members")}
 	return out, nil
 }
 
@@ -232,10 +233,10 @@ func usage(field, message string) error {
 	return &errs.Error{ID: "admin.group.update.usage", Kind: errs.KindUsage, Operation: "admin.group.update", Summary: message, Retryable: errs.Bool(false), CorrectiveAction: "Correct the group update input and review a new preview.", Validation: []errs.ValidationDetail{{Field: field, Code: "invalid", Message: message}}}
 }
 func outcomeUnknown(in Input, luid, requestID string, cause error) error {
-	return &errs.Error{ID: "admin.group.update.outcome_unknown", Kind: errs.KindOperation, Operation: "admin.group.update", Resource: luid, Environment: in.Environment, Site: in.Site, Summary: "The group update outcome could not be determined safely.", Cause: cause, Retryable: errs.Bool(false), CorrectiveAction: "Inspect the target site and Tableau request before attempting another group update.", TableauRequestID: requestID}
+	return &errs.Error{ID: "admin.group.update.outcome_unknown", Kind: errs.KindOperation, Operation: "admin.group.update", Resource: luid, Environment: in.Environment, Site: in.Site, Summary: "The group update outcome could not be determined safely.", Cause: cause, Retryable: errs.Bool(false), CorrectiveAction: "Inspect the exact group and Tableau request before retrying: " + commandhint.Environment(in.Environment, "admin", "group", "inspect", "--id", luid), TableauRequestID: requestID}
 }
 func partialError(input Input, groupLUID string, completed []string, failed string, cause error) error {
-	return &errs.Error{ID: "admin.group.update.partial", Kind: errs.KindOperation, Operation: "admin.group.update", Resource: groupLUID, Environment: input.Environment, Site: input.Site, Summary: "Group update stopped after a partial remote mutation.", Cause: cause, Retryable: errs.Bool(false), CorrectiveAction: "Re-read the exact group membership, then review a new update plan before applying again.", Completed: append([]string(nil), completed...), Failed: failed, TableauRequestID: errs.TableauRequestID(cause)}
+	return &errs.Error{ID: "admin.group.update.partial", Kind: errs.KindOperation, Operation: "admin.group.update", Resource: groupLUID, Environment: input.Environment, Site: input.Site, Summary: "Group update stopped after a partial remote mutation.", Cause: cause, Retryable: errs.Bool(false), CorrectiveAction: "Re-read the exact group membership before reviewing a new update plan: " + commandhint.Environment(input.Environment, "admin", "group", "inspect", "--id", groupLUID, "--members"), Completed: append([]string(nil), completed...), Failed: failed, TableauRequestID: errs.TableauRequestID(cause)}
 }
 func normalizeDesired(values []string, enabled bool) ([]string, error) {
 	if !enabled {

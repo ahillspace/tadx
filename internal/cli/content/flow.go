@@ -48,7 +48,7 @@ func newFlowList(deps Dependencies) *cobra.Command {
 	command := &cobra.Command{Use: "list", Short: "List flows with bounded live reads or explicit --all.", Annotations: map[string]string{"tadx.capability": "flow.list"}, Args: noContentArgs("flow.list"), RunE: func(command *cobra.Command, _ []string) error {
 		result, err := deps.FlowLister.ListFlows(command.Context(), input)
 		if err != nil {
-			return err
+			return clierr.WithOutput(result, err)
 		}
 		return deps.Renderer.Render(result)
 	}}
@@ -72,7 +72,7 @@ func newFlowInspect(deps Dependencies) *cobra.Command {
 	command := &cobra.Command{Use: "inspect", Short: "Inspect one exact flow.", Annotations: map[string]string{"tadx.capability": "flow.inspect"}, Args: selectorArgs("flow.inspect", &luid, &name, &projectPath, input.SetSelector), RunE: func(command *cobra.Command, _ []string) error {
 		result, err := deps.FlowInspector.InspectFlow(command.Context(), input)
 		if err != nil {
-			return err
+			return clierr.WithOutput(result, err)
 		}
 		return deps.Renderer.Render(result)
 	}}
@@ -162,7 +162,7 @@ func newFlowMove(deps Dependencies) *cobra.Command {
 	}, RunE: func(command *cobra.Command, _ []string) error {
 		result, err := deps.FlowMover.MoveFlow(command.Context(), input, preview)
 		if err != nil {
-			return err
+			return clierr.WithOutput(result, err)
 		}
 		return deps.Renderer.Render(result)
 	}}
@@ -188,7 +188,7 @@ func newFlowDelete(deps Dependencies) *cobra.Command {
 	}, RunE: func(command *cobra.Command, _ []string) error {
 		result, err := deps.FlowDeleter.DeleteFlow(command.Context(), input, preview)
 		if err != nil {
-			return err
+			return clierr.WithOutput(result, err)
 		}
 		return deps.Renderer.Render(result)
 	}}

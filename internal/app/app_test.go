@@ -14,6 +14,7 @@ import (
 	"testing"
 
 	"github.com/ahillspace/tadx/internal/app"
+	"github.com/ahillspace/tadx/internal/artifact"
 	"github.com/ahillspace/tadx/internal/config"
 )
 
@@ -198,13 +199,22 @@ func TestRunPreservesCapabilityContextForSetupFailures(t *testing.T) {
 	t.Setenv("PROD_PAT_NAME", "pat-name")
 	t.Setenv("PROD_PAT_SECRET", "pat-secret")
 	options := app.Options{ConfigPath: configPath, HTTPClient: server.Client(), MutationsEnabled: true}
+	workspace := createNamedWorkspace(t, configPath, "authentication")
+	pulled, err := artifact.NewWorkbookManager(nil).Pull(context.Background(), artifact.WorkbookPull{Workspace: workspace, Filename: "Finance.twb", Content: []byte("<workbook/>"), Metadata: artifact.WorkbookMetadata{Kind: "workbook", Name: "Finance", TableauID: "wb-1", SourceServerOrigin: server.URL, SourceSiteLUID: "site-1", SourceEnvironment: "production", SourceSite: "marketing", SourceProjectID: "project-1", SourceProjectName: "Ops"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	artifactSelector, err := filepath.Rel(workspace, pulled.ArtifactPath)
+	if err != nil {
+		t.Fatal(err)
+	}
 	for _, test := range []struct {
 		name      string
 		operation string
 		args      []string
 	}{
-		{name: "pull authentication", operation: "workbook.pull", args: []string{"content", "workbook", "pull", "--environment", "production", "--id", "wb-1"}},
-		{name: "publish authentication", operation: "workbook.publish", args: []string{"content", "workbook", "publish", "--environment", "production", "--artifact", "artifacts/workbook/Finance--identity", "--project-id", "project-1"}},
+		{name: "pull authentication", operation: "workbook.pull", args: []string{"content", "workbook", "pull", "--workspace", "authentication", "--environment", "production", "--id", "wb-1"}},
+		{name: "publish authentication", operation: "workbook.publish", args: []string{"content", "workbook", "publish", "--workspace", "authentication", "--environment", "production", "--artifact", filepath.ToSlash(artifactSelector), "--project-id", "project-1"}},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			var stdout bytes.Buffer

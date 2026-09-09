@@ -375,6 +375,7 @@ func decodeDefinition(raw json.RawMessage, requestID string) (Definition, error)
 				ID string `json:"id"`
 			} `json:"datasource"`
 			Basic struct {
+				Filters json.RawMessage                     `json:"filters"`
 				Measure struct{ Field, Aggregation string } `json:"measure"`
 				Time    struct {
 					Field string `json:"field"`
@@ -395,7 +396,11 @@ func decodeDefinition(raw json.RawMessage, requestID string) (Definition, error)
 		return Definition{}, errors.New("Pulse definition omitted identity")
 	}
 	configuration := append(json.RawMessage(nil), raw...)
-	return Definition{LUID: value.Metadata.ID, Name: value.Metadata.Name, Description: value.Metadata.Description, DatasourceLUID: value.Specification.Datasource.ID, MeasureField: value.Specification.Basic.Measure.Field, Aggregation: value.Specification.Basic.Measure.Aggregation, TimeDimension: value.Specification.Basic.Time.Field, RunningTotal: value.Specification.RunningTotal, Temporality: value.Specification.Temporality, AllowedDimensions: value.Extension.Dimensions, AllowedGranularities: value.Extension.Granularities, Configuration: configuration, TableauRequestID: requestID}, nil
+	var fixedFilters []any
+	decoder := json.NewDecoder(bytes.NewReader(value.Specification.Basic.Filters))
+	decoder.UseNumber()
+	known := decoder.Decode(&fixedFilters) == nil && fixedFilters != nil
+	return Definition{LUID: value.Metadata.ID, Name: value.Metadata.Name, Description: value.Metadata.Description, DatasourceLUID: value.Specification.Datasource.ID, MeasureField: value.Specification.Basic.Measure.Field, Aggregation: value.Specification.Basic.Measure.Aggregation, TimeDimension: value.Specification.Basic.Time.Field, RunningTotal: value.Specification.RunningTotal, Temporality: value.Specification.Temporality, AllowedDimensions: value.Extension.Dimensions, AllowedGranularities: value.Extension.Granularities, FixedFilters: fixedFilters, FixedFiltersKnown: known, Configuration: configuration, TableauRequestID: requestID}, nil
 }
 
 func decodeMetric(raw json.RawMessage, requestID string) (Metric, error) {

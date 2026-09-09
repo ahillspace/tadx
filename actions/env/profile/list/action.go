@@ -2,6 +2,7 @@ package list
 
 import (
 	"context"
+	"github.com/ahillspace/tadx/internal/commandhint"
 	"sort"
 	"strconv"
 
@@ -59,7 +60,10 @@ func (a *Action) Execute(ctx context.Context, input Input) (Output, error) {
 	if end < len(profiles) {
 		nextCursor = strconv.Itoa(end)
 	}
-	help := []string{"tadx env get <alias>"}
+	var help []string
+	if len(pageProfiles) > 0 {
+		help = append(help, commandhint.Command("env", "get", pageProfiles[0].Alias))
+	}
 	if nextCursor != "" {
 		help = append(help, "tadx env list --limit "+strconv.Itoa(min(limit*2, MaxLimit)))
 	}

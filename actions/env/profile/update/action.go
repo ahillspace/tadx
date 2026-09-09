@@ -2,6 +2,7 @@ package update
 
 import (
 	"context"
+	"github.com/ahillspace/tadx/internal/commandhint"
 	"net/url"
 	"sort"
 	"strings"
@@ -46,7 +47,7 @@ func (a *Action) Execute(ctx context.Context, input Input) (Output, error) {
 	if len(changedFields) > 0 {
 		status = "updated"
 	}
-	return Output{Status: status, Profile: result.Profile, ChangedFields: changedFields, Help: []string{"tadx env get <alias>"}}, nil
+	return Output{Status: status, Profile: result.Profile, ChangedFields: changedFields, Help: []string{commandhint.Command("env", "get", result.Profile.Alias)}}, nil
 }
 
 func validServerURL(value string) bool {

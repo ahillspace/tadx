@@ -2,4 +2,4 @@ status: updated
 environment: production
 changed_fields[1]: site_content_url
 details: "--full"
-help[1]: tadx env get <alias>
+help[1]: tadx env get production

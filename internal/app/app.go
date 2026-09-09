@@ -273,6 +273,15 @@ func (r *runtimeDependencies) tableauConnection(ctx context.Context, alias strin
 type pullService struct{ runtime *runtimeDependencies }
 
 func (s *pullService) Execute(ctx context.Context, input workbookpull.Input) (workbookpull.Output, error) {
+	if err := workbookpull.ValidateInput(input); err != nil {
+		return workbookpull.Output{}, err
+	}
+	resolvedWorkspace, err := (&workspaceRuntime{runtime: s.runtime}).resolveForEnvironment(ctx, input.Workspace, input.Environment)
+	if err != nil {
+		return workbookpull.Output{}, capabilitySetupError("workbook.pull.workspace", "workbook.pull", input.Environment, input.Site, "Workbook workspace resolution failed.", "Select or configure an exact workspace, then retry.", err)
+	}
+	input.Workspace = resolvedWorkspace.Root
+	input.WorkspaceName = resolvedWorkspace.Name
 	connection, err := s.runtime.tableauConnection(ctx, input.Environment, false)
 	environment := connection.environment
 	if err != nil {
@@ -291,11 +300,7 @@ func (s *pullService) Execute(ctx context.Context, input workbookpull.Input) (wo
 		return workbookpull.Output{}, capabilitySetupError("workbook.pull.source", "workbook.pull", input.Environment, input.Site, "Workbook source identity resolution failed.", "Review the configured Tableau server URL, then retry.", err)
 	}
 	input.SiteLUID = connection.session.SiteLUID()
-	resolvedWorkspace, err := (&workspaceRuntime{runtime: s.runtime}).resolveForEnvironment(ctx, input.Workspace, environment.Alias)
-	if err != nil {
-		return workbookpull.Output{}, capabilitySetupError("workbook.pull.workspace", "workbook.pull", input.Environment, input.Site, "Workbook workspace resolution failed.", "Select or configure an exact workspace, then retry.", err)
-	}
-	input.Workspace = resolvedWorkspace.Root
+
 	return workbookpull.New(
 		pullReader{workbooks: workbooks, references: references, datasources: datasources, lineage: lineage},
 		artifactWriter{workbooks: artifact.NewWorkbookManager(s.runtime.now), bundles: artifact.NewWorkbookBundleManager(s.runtime.now)},
@@ -412,12 +417,15 @@ func workbookLineageDocument(input workbookpull.LineageCapture) artifact.Lineage
 type publishService struct{ runtime *runtimeDependencies }
 
 func (s *publishService) Execute(ctx context.Context, input workbookpublish.Input, preview bool) (workbookpublish.Output, error) {
+	if err := workbookpublish.ValidateInput(input); err != nil {
+		return workbookpublish.Output{}, err
+	}
 	manager := artifact.NewWorkbookManager(s.runtime.now)
 	var environment config.Environment
 	var adapter *resourceworkbook.Adapter
 	var err error
 	if input.Environment != "" {
-		_, environment, adapter, _, err = s.runtime.workbookAdapter(ctx, input.Environment, true)
+		_, environment, err = s.runtime.environment(input.Environment, true)
 		if err != nil {
 			environmentAlias, site := resolvedTarget(input.Environment, input.Site, environment)
 			return workbookpublish.Output{}, capabilitySetupError("workbook.publish.setup", "workbook.publish", environmentAlias, site, "Workbook publish setup failed.", "Review the explicit environment, site, and PAT configuration.", err)
@@ -433,6 +441,10 @@ func (s *publishService) Execute(ctx context.Context, input workbookpublish.Inpu
 		return workbookpublish.Output{}, capabilitySetupError("workbook.publish.artifact", "workbook.publish", input.Environment, input.Site, "Workbook artifact resolution failed.", "Select one exact workspace-relative managed workbook artifact, then retry.", err)
 	}
 	input.ArtifactPath = filepath.Join(resolvedWorkspace.Root, filepath.FromSlash(managedArtifact.Path))
+	input.WorkspaceName = resolvedWorkspace.Name
+	if _, err := manager.Read(ctx, input.ArtifactPath); err != nil {
+		return workbookpublish.Output{}, capabilitySetupError("workbook.publish.artifact", "workbook.publish", input.Environment, input.Site, "Workbook artifact read failed.", "Repair or pull the exact workbook artifact, then retry.", err)
+	}
 	if input.Environment == "" {
 		// Artifact-home: with no explicit --environment, default the write target
 		// to the artifact's recorded source environment before selecting an adapter.
@@ -442,13 +454,18 @@ func (s *publishService) Execute(ctx context.Context, input workbookpublish.Inpu
 		}
 		input.Environment = metadata.SourceEnvironment
 		input.SourceDefaulted = true
-		_, environment, adapter, _, err = s.runtime.workbookAdapter(ctx, input.Environment, true)
+		_, environment, err = s.runtime.environment(input.Environment, true)
 		if err != nil {
 			environmentAlias, site := resolvedTarget(input.Environment, input.Site, environment)
 			return workbookpublish.Output{}, capabilitySetupError("workbook.publish.setup", "workbook.publish", environmentAlias, site, "The artifact's recorded source environment is not configured.", "Add the recorded source environment to configuration, or publish to an explicit environment.", err)
 		}
 		input.Environment, input.Site, input.TargetResolved = environment.Alias, environment.SiteContentURL, true
 	}
+	_, environment, adapter, _, err = s.runtime.workbookAdapter(ctx, input.Environment, true)
+	if err != nil {
+		return workbookpublish.Output{}, capabilitySetupError("workbook.publish.setup", "workbook.publish", input.Environment, input.Site, "Workbook publish setup failed.", "Review the explicit environment, site, and PAT configuration.", err)
+	}
+	input.Environment, input.Site, input.TargetResolved = environment.Alias, environment.SiteContentURL, true
 	action := workbookpublish.New(artifactReader{manager: manager, displayPath: managedArtifact.Path}, publishAdapter{adapter: adapter}, publishAdapter{adapter: adapter})
 	return action.Execute(ctx, input, preview)
 }

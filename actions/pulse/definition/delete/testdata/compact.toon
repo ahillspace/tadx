@@ -9,6 +9,6 @@ plan:
 result:
   status: deleted
   definition_luid: definition-1
-warnings[1]: Tableau determines dependency and cascade effects. Dependent resources are not enumerated.
+warnings[1]: Deletes this definition and Tableau-managed dependents. Tableau determines the complete cascade; dependent resources are not enumerated.
 details: "--full"
-help[1]: tadx pulse definition list --environment dev
+help: null

@@ -3,6 +3,7 @@ package delete
 import (
 	"context"
 	"errors"
+	"github.com/ahillspace/tadx/internal/commandhint"
 	"strings"
 
 	"github.com/ahillspace/tadx/internal/errs"
@@ -19,6 +20,9 @@ func New(reader Reader, deleter Deleter) *Action { return &Action{reader: reader
 
 // Execute reads and revalidates the exact target before deletion.
 func (a *Action) Execute(ctx context.Context, input Input) (Output, error) {
+	if err := ValidateInput(input); err != nil {
+		return Output{}, err
+	}
 	if a == nil || a.reader == nil || a.deleter == nil {
 		return Output{}, failure("unconfigured", errs.KindRuntime, input, "Pulse metric delete is not configured.", nil)
 	}
@@ -40,11 +44,14 @@ func (a *Action) Execute(ctx context.Context, input Input) (Output, error) {
 	output := Output{
 		Plan:     Plan{Mode: mode, Operation: "pulse.metric.delete", Environment: input.Environment, Site: input.Site, Target: target},
 		Warnings: []string{"Tableau determines dependency and cascade effects. Dependent resources are not enumerated."},
-		Help:     []string{"tadx pulse definition list --environment " + input.Environment},
+		Help:     []string{commandhint.Environment(input.Environment, "pulse", "metric", "list", "--definition-id", target.DefinitionLUID)},
 	}
 	if input.Preview {
 		output.Help = []string{"Remove --preview to delete this exact Pulse metric."}
 		return output, nil
+	}
+	if target.DefinitionLUID == "" {
+		output.Help = nil
 	}
 	current, err := a.reader.GetMetric(ctx, input.LUID)
 	if err != nil {

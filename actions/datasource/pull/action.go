@@ -3,6 +3,7 @@ package pull
 import (
 	"context"
 	"errors"
+	"github.com/ahillspace/tadx/internal/commandhint"
 	"path"
 	"strings"
 
@@ -31,6 +32,9 @@ type Action struct {
 func New(reader Reader, writer Writer) *Action { return &Action{reader: reader, writer: writer} }
 
 func (a *Action) Execute(ctx context.Context, input Input) (Output, error) {
+	if err := ValidateInput(input); err != nil {
+		return Output{}, err
+	}
 	if a == nil || a.reader == nil || a.writer == nil {
 		return Output{}, &errs.Error{ID: "datasource.pull.unconfigured", Kind: errs.KindRuntime, Operation: "datasource.pull", Summary: "Datasource pull is not configured.", Retryable: errs.Bool(false), CorrectiveAction: "Configure datasource pull before retrying."}
 	}
@@ -73,7 +77,7 @@ func (a *Action) Execute(ctx context.Context, input Input) (Output, error) {
 	result.NodeCount, result.EdgeCount = len(lineage.Nodes), len(lineage.Edges)
 	result.CountsKnown = lineage.Complete
 	warnings = append(warnings, result.Warnings...)
-	return Output{Status: "pulled", Datasource: item, Artifact: result, Warnings: warnings, RequestID: download.TableauRequestID, Help: []string{"tadx content datasource publish --artifact " + result.Path}}, nil
+	return Output{Status: "pulled", Datasource: item, Artifact: result, Warnings: warnings, RequestID: download.TableauRequestID, Help: []string{commandhint.Target(input.Environment, input.WorkspaceName, "content", "datasource", "publish", "--artifact", result.Path, "--project-id", item.ProjectLUID, "--overwrite", "--preview")}}, nil
 }
 
 func normalizeArtifactPaths(result *ArtifactResult) error {

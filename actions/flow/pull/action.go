@@ -3,6 +3,7 @@ package pull
 import (
 	"context"
 	"errors"
+	"github.com/ahillspace/tadx/internal/commandhint"
 	"strings"
 
 	"github.com/ahillspace/tadx/internal/errs"
@@ -25,6 +26,9 @@ type Action struct {
 
 func New(reader Reader, writer Writer) *Action { return &Action{reader: reader, writer: writer} }
 func (a *Action) Execute(ctx context.Context, input Input) (Output, error) {
+	if err := ValidateInput(input); err != nil {
+		return Output{}, err
+	}
 	if a == nil || a.reader == nil || a.writer == nil {
 		return Output{}, &errs.Error{ID: "flow.pull.unconfigured", Kind: errs.KindRuntime, Operation: "flow.pull", Summary: "Flow pull is not configured.", Retryable: errs.Bool(false), CorrectiveAction: "Configure flow pull before retrying."}
 	}
@@ -60,7 +64,7 @@ func (a *Action) Execute(ctx context.Context, input Input) (Output, error) {
 	result.EdgeCount = len(lineage.Edges)
 	result.CountsKnown = lineageErr == nil
 	warnings = append(warnings, result.Warnings...)
-	return Output{Status: "pulled", Flow: flow, Artifact: result, Warnings: warnings, RequestID: download.TableauRequestID, Help: []string{"tadx content flow publish --artifact " + result.Path}}, nil
+	return Output{Status: "pulled", Flow: flow, Artifact: result, Warnings: warnings, RequestID: download.TableauRequestID, Help: []string{commandhint.Target(input.Environment, input.WorkspaceName, "content", "flow", "publish", "--artifact", result.Path, "--project-id", flow.ProjectLUID, "--overwrite", "--preview")}}, nil
 }
 func lineageStatus(value Lineage) string {
 	if value.Complete {

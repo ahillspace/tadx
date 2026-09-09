@@ -4,6 +4,7 @@ package register
 import (
 	"context"
 	"errors"
+	"github.com/ahillspace/tadx/internal/commandhint"
 
 	"github.com/ahillspace/tadx/internal/errs"
 )
@@ -75,7 +76,7 @@ func (a *Action) Execute(ctx context.Context, input Input) (Output, error) {
 	if registered.Name == "" || registered.ID == "" || !registered.Registered {
 		return Output{}, runtimeError("workspace registration returned an incomplete identity")
 	}
-	return Output{Status: "registered", Workspace: registered, Help: []string{"tadx workspace status --workspace " + registered.Name}}, nil
+	return Output{Status: "registered", Workspace: registered, Help: []string{commandhint.Command("workspace", "status", "--workspace", registered.Name)}}, nil
 }
 
 func usage(message string) error {

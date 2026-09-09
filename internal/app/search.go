@@ -46,6 +46,20 @@ func newSearchCommands(runtime *runtimeDependencies) *searchCommands {
 }
 
 func (c *searchCommands) Execute(ctx context.Context, input searchaction.Input) (searchaction.Output, error) {
+	if err := searchaction.ValidateInput(input); err != nil {
+		return searchaction.Output{}, err
+	}
+	if input.Cursor != "" {
+		_, environment, err := c.runtime.environment(input.Environment, false)
+		if err != nil {
+			return searchaction.Output{}, err
+		}
+		input.Environment, input.Site = environment.Alias, environment.SiteContentURL
+		input.SiteResolved = true
+		if err := searchaction.ValidateContinuation(input); err != nil {
+			return searchaction.Output{}, err
+		}
+	}
 	if input.Catalog {
 		_, environment, err := c.runtime.environment(input.Environment, false)
 		if err != nil {

@@ -5,4 +5,4 @@ page:
   more_available: true
 capabilities[1]{id,owner,disposition,state,blocked,execution_enabled}:
   content.datasource.list,cli,ship,planned,false,false
-help[2]: tadx capability get <id>,tadx capability list --domain content --limit 2
+help[2]: tadx capability get content.datasource.list,tadx capability list --domain content --limit 2

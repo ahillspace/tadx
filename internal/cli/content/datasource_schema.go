@@ -31,7 +31,7 @@ func newDatasourceSchema(getter DatasourceSchemaGetter, renderer Renderer) *cobr
 		RunE: func(command *cobra.Command, _ []string) error {
 			result, err := getter.GetDatasourceSchema(command.Context(), input)
 			if err != nil {
-				return err
+				return clierr.WithOutput(result, err)
 			}
 			return renderer.Render(result)
 		},

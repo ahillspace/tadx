@@ -19,4 +19,4 @@ artifact:
   lineage_edge_count: 0
 warnings[1]: existing clean artifact replaced
 tableau_request_id: request-1
-help[1]: tadx content workbook publish --artifact <path> --environment <alias>
+help[1]: tadx content workbook publish --artifact artifacts/workbook/Finance --project-id project-1 --overwrite --preview --workspace 'logical workspace' --environment production

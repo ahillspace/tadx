@@ -2,6 +2,7 @@ package setdefault
 
 import (
 	"context"
+	"github.com/ahillspace/tadx/internal/commandhint"
 	"strings"
 
 	"github.com/ahillspace/tadx/internal/errs"
@@ -30,5 +31,5 @@ func (a *Action) Execute(ctx context.Context, input Input) (Output, error) {
 	if changed {
 		status = "updated"
 	}
-	return Output{Status: status, DefaultEnvironment: input.Alias, Help: []string{"tadx auth status --environment <alias>"}}, nil
+	return Output{Status: status, DefaultEnvironment: input.Alias, Help: []string{commandhint.Environment(input.Alias, "auth", "status")}}, nil
 }

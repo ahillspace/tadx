@@ -16,6 +16,21 @@ import (
 )
 
 func (c *remoteContentCommands) GetDatasourceSchema(ctx context.Context, input datasourceschema.Input) (datasourceschema.Output, error) {
+	var validationErr error
+	input, validationErr = datasourceschema.NormalizeInput(input)
+	if validationErr != nil {
+		return datasourceschema.Output{}, validationErr
+	}
+	if input.Cursor != "" {
+		_, environment, err := c.runtime.environment(input.Environment, false)
+		if err != nil {
+			return datasourceschema.Output{}, err
+		}
+		input.Environment, input.Site = environment.Alias, environment.SiteContentURL
+		if err := datasourceschema.ValidateContinuation(input); err != nil {
+			return datasourceschema.Output{}, err
+		}
+	}
 	if input.Catalog {
 		return c.getCatalogDatasourceSchema(ctx, input)
 	}

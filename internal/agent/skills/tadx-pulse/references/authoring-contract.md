@@ -30,7 +30,7 @@ One create invocation creates one definition and resolves its Tableau-created de
 | `--currency` | Three-letter currency code with CURRENCY. Select explicitly because omission defaults to USD. |
 | `--sentiment` | UP, DOWN, or NONE; default NONE. |
 | `--preview` | Read-only plan with validation and live reads; required before execution in this workflow. |
-| `--full` | Expanded TOON details for reviewing the selected configuration. |
+| `--full` | Expanded bounded provider details and diagnostics; ordinary preview already summarizes consequential settings. |
 
 Use uppercase enums and exact IDs.
 Repeat `--dimension` instead of combining IDs in a comma-separated argument.
@@ -61,15 +61,16 @@ Enabled insights do not prove that values or insights are available.
 
 Confirm the authorized source and business scope, any required period or filter feasibility, inspected existing definitions, and exact field evidence.
 Consider the complete dimension inventory and retain the generous relevant set in intentional order.
-Check the full preview's measure, aggregation, date, dimensions, allowed grains, temporality, running total, units, currency, sentiment, and fixed defaults.
+Check the default preview's measure, aggregation, date, dimensions, allowed grains, temporality, running total, units, currency, sentiment, and fixed defaults.
 A truncated or failed preview is not a completed review.
+`review_complete: false` or `requires_full: true` means the summary needs more evidence; expanded output cannot repair missing source information.
 
 This example creates an additive reporting-currency measure.
 Replace every placeholder with a verified value, include the complete useful slicer set, and select display settings that match the measure.
 The five dimensions are illustrative, not a limit.
 
 ```text
-tadx pulse definition create --environment '<alias>' --name '<business-name>' --description '<quantity and business-event date basis>' --datasource-id '<datasource-luid>' --measure-field '<exact-measure-id>' --aggregation SUM --date-field '<exact-date-id>' --dimension '<exact-region-id>' --dimension '<exact-product-category-id>' --dimension '<exact-channel-id>' --dimension '<exact-customer-segment-id>' --dimension '<exact-facility-id>' --minimum-granularity DAY --temporality OVER_TIME --number-format CURRENCY --currency '<reporting-currency-code>' --sentiment UP --preview --full
+tadx pulse definition create --environment '<alias>' --name '<business-name>' --description '<quantity and business-event date basis>' --datasource-id '<datasource-luid>' --measure-field '<exact-measure-id>' --aggregation SUM --date-field '<exact-date-id>' --dimension '<exact-region-id>' --dimension '<exact-product-category-id>' --dimension '<exact-channel-id>' --dimension '<exact-customer-segment-id>' --dimension '<exact-facility-id>' --minimum-granularity DAY --temporality OVER_TIME --number-format CURRENCY --currency '<reporting-currency-code>' --sentiment UP --preview
 ```
 
 ## Execute and inspect saved state
@@ -105,6 +106,7 @@ tadx pulse metric list --environment '<alias>' --definition-id '<returned-defini
 ```
 
 If an ID was returned, including in the error resource, inspect it first.
+Confirmed creation can appear in `output` alongside an error about verification; a nonzero exit does not erase that creation.
 If default metric resolution failed, list that definition's metrics instead of creating again.
 Timeouts and incomplete responses can follow a successful write; reconcile inventory before another attempt.
 Limited visibility does not prove absence.

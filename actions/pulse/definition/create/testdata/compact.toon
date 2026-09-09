@@ -1,18 +1,36 @@
 plan:
   mode: execute
   operation: pulse.definition.create
+  environment: dev
+  site: sales
   name: Revenue
+  description: Recognized revenue
   datasource_luid: datasource-1
   measure:
     field: Sales
-    aggregation: AGGREGATION_SUM
+    aggregation: SUM
   time_dimension: Order Date
   allowed_dimensions[1]: Region
-  request_fingerprint: "sha256:value"
+  population: ALL_ROWS
+  minimum_granularity: MONTH
+  allowed_granularities[1]: MONTH
+  number_format: CURRENCY
+  currency: USD
+  sentiment: UP
+  temporality: OVER_TIME
+  running_total: false
+  offset_from_today: 0
+  use_dynamic_offset: false
+  comparisons[1]: PREVIOUS_PERIOD
+  insights_enabled: true
+  disabled_insights: []
+  certified: false
+  requires_full: false
+  review_complete: true
 result:
   status: succeeded
   definition_luid: definition-1
   default_metric_luid: metric-1
   default_metric_status: ready
 details: "--full"
-help[1]: tadx pulse metric inspect --id metric-1
+help[1]: tadx pulse metric inspect --id metric-1 --environment dev

@@ -1,6 +1,8 @@
 plan:
   mode: execute
   operation: pulse.definition.create
+  environment: dev
+  site: sales
   name: Revenue
   datasource_luid: datasource-1
   measure:
@@ -51,4 +53,4 @@ result:
   default_metric_status: ready
   tableau_request_id: request-1
   poll_request_id: poll-1
-help[1]: tadx pulse metric inspect --id metric-1
+help[1]: tadx pulse metric inspect --id metric-1 --environment dev

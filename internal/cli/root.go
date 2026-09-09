@@ -385,6 +385,21 @@ func RegisteredCommands(root *cobra.Command) ([]RegisteredCommand, error) {
 }
 
 func setFlagErrorHandlers(command *cobra.Command) {
+	originalArgs := command.Args
+	command.Args = func(current *cobra.Command, args []string) error {
+		if originalArgs != nil {
+			if err := originalArgs(current, args); err != nil {
+				return err
+			}
+		}
+		if err := current.ValidateRequiredFlags(); err != nil {
+			return clierr.Usage(current.CommandPath(), err)
+		}
+		if err := current.ValidateFlagGroups(); err != nil {
+			return clierr.Usage(current.CommandPath(), err)
+		}
+		return nil
+	}
 	if cursor := command.Flags().Lookup("cursor"); cursor != nil {
 		cursor.Hidden = true
 	}

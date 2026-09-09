@@ -116,7 +116,7 @@ func newGroupMemberAdd(deps Dependencies) *cobra.Command {
 	}, func(cmd *cobra.Command) error {
 		out, err := deps.GroupMemberAdder.AddAdminGroupMember(cmd.Context(), in, preview)
 		if err != nil {
-			return err
+			return clierr.WithOutput(out, err)
 		}
 		return deps.Renderer.Render(out)
 	})
@@ -144,7 +144,7 @@ func newGroupMemberRemove(deps Dependencies) *cobra.Command {
 	}, func(cmd *cobra.Command) error {
 		out, err := deps.GroupMemberRemover.RemoveAdminGroupMember(cmd.Context(), in, preview)
 		if err != nil {
-			return err
+			return clierr.WithOutput(out, err)
 		}
 		return deps.Renderer.Render(out)
 	})
@@ -160,7 +160,7 @@ func newUserList(deps Dependencies) *cobra.Command {
 	cmd := &cobra.Command{Use: "list", Short: "List site users with bounded live reads or explicit --all.", Annotations: map[string]string{"tadx.capability": "admin.user.list"}, Args: noArgs("admin.user.list"), RunE: func(cmd *cobra.Command, _ []string) error {
 		out, err := deps.UserLister.ListAdminUsers(cmd.Context(), input)
 		if err != nil {
-			return err
+			return clierr.WithOutput(out, err)
 		}
 		return deps.Renderer.Render(out)
 	}}
@@ -190,7 +190,7 @@ func newUserInspect(deps Dependencies) *cobra.Command {
 	}, RunE: func(cmd *cobra.Command, _ []string) error {
 		out, err := deps.UserInspector.InspectAdminUser(cmd.Context(), in)
 		if err != nil {
-			return err
+			return clierr.WithOutput(out, err)
 		}
 		return deps.Renderer.Render(out)
 	}}
@@ -211,7 +211,7 @@ func newUserCreate(deps Dependencies) *cobra.Command {
 	}, func(cmd *cobra.Command) error {
 		out, err := deps.UserCreator.CreateAdminUser(cmd.Context(), in, preview)
 		if err != nil {
-			return err
+			return clierr.WithOutput(out, err)
 		}
 		return deps.Renderer.Render(out)
 	})
@@ -254,7 +254,7 @@ func newUserUpdate(deps Dependencies) *cobra.Command {
 	}, func(cmd *cobra.Command) error {
 		out, err := deps.UserUpdater.UpdateAdminUser(cmd.Context(), in, preview)
 		if err != nil {
-			return err
+			return clierr.WithOutput(out, err)
 		}
 		return deps.Renderer.Render(out)
 	})
@@ -288,7 +288,7 @@ func newUserDelete(deps Dependencies) *cobra.Command {
 	}, func(cmd *cobra.Command) error {
 		out, err := deps.UserDeleter.DeleteAdminUser(cmd.Context(), in, preview)
 		if err != nil {
-			return err
+			return clierr.WithOutput(out, err)
 		}
 		return deps.Renderer.Render(out)
 	})
@@ -303,7 +303,7 @@ func newGroupList(deps Dependencies) *cobra.Command {
 	cmd := &cobra.Command{Use: "list", Short: "List groups with bounded live reads or explicit --all.", Annotations: map[string]string{"tadx.capability": "admin.group.list"}, Args: noArgs("admin.group.list"), RunE: func(cmd *cobra.Command, _ []string) error {
 		out, err := deps.GroupLister.ListAdminGroups(cmd.Context(), in)
 		if err != nil {
-			return err
+			return clierr.WithOutput(out, err)
 		}
 		return deps.Renderer.Render(out)
 	}}
@@ -333,7 +333,7 @@ func newGroupInspect(deps Dependencies) *cobra.Command {
 	}, RunE: func(cmd *cobra.Command, _ []string) error {
 		out, err := deps.GroupInspector.InspectAdminGroup(cmd.Context(), in)
 		if err != nil {
-			return err
+			return clierr.WithOutput(out, err)
 		}
 		return deps.Renderer.Render(out)
 	}}
@@ -362,7 +362,7 @@ func newGroupCreate(deps Dependencies) *cobra.Command {
 	}, func(cmd *cobra.Command) error {
 		out, err := deps.GroupCreator.CreateAdminGroup(cmd.Context(), in, preview)
 		if err != nil {
-			return err
+			return clierr.WithOutput(out, err)
 		}
 		return deps.Renderer.Render(out)
 	})
@@ -404,7 +404,7 @@ func newGroupUpdate(deps Dependencies) *cobra.Command {
 	}, func(cmd *cobra.Command) error {
 		out, err := deps.GroupUpdater.UpdateAdminGroup(cmd.Context(), in, preview)
 		if err != nil {
-			return err
+			return clierr.WithOutput(out, err)
 		}
 		return deps.Renderer.Render(out)
 	})
@@ -435,7 +435,7 @@ func newGroupDelete(deps Dependencies) *cobra.Command {
 	}, func(cmd *cobra.Command) error {
 		out, err := deps.GroupDeleter.DeleteAdminGroup(cmd.Context(), in, preview)
 		if err != nil {
-			return err
+			return clierr.WithOutput(out, err)
 		}
 		return deps.Renderer.Render(out)
 	})
@@ -457,7 +457,7 @@ func newPermissionInspect(deps Dependencies) *cobra.Command {
 	}, RunE: func(cmd *cobra.Command, _ []string) error {
 		out, err := deps.PermissionInspector.InspectAdminPermission(cmd.Context(), in)
 		if err != nil {
-			return err
+			return clierr.WithOutput(out, err)
 		}
 		return deps.Renderer.Render(out)
 	}}

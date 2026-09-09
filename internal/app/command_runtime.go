@@ -148,7 +148,7 @@ func (r *runtimeDependencies) resolveWorkspace(ctx context.Context, configuratio
 	if previous, ok := r.command.workspaces[key]; ok {
 		return previous.record, previous.err
 	}
-	record, err := workspacecore.NewManager(r.configPath, nil).ResolveWithConfig(ctx, configuration, selector, environmentDefault)
+	record, err := workspacecore.NewManager(r.configPath, nil).ResolveReadOnlyWithConfig(ctx, configuration, selector, environmentDefault)
 	r.command.workspaces[key] = workspaceResult{record, err}
 	return record, err
 }

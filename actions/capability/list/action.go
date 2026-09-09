@@ -2,6 +2,7 @@ package list
 
 import (
 	"context"
+	"github.com/ahillspace/tadx/internal/commandhint"
 	"sort"
 	"strconv"
 	"strings"
@@ -84,7 +85,7 @@ func (a *Action) Execute(ctx context.Context, input Input) (Output, error) {
 	return Output{
 		Page:         Pagination{Returned: len(pageItems), Total: len(filtered), Limit: limit, NextCursor: nextCursor},
 		Capabilities: pageItems,
-		Help:         help(input, limit, nextCursor),
+		Help:         help(input, limit, nextCursor, pageItems),
 	}, nil
 }
 
@@ -102,31 +103,27 @@ func equalFilter(filter, value string) bool {
 	return filter == "" || strings.EqualFold(filter, value)
 }
 
-func help(input Input, limit int, nextCursor string) []string {
-	result := []string{"tadx capability get <id>"}
+func help(input Input, limit int, nextCursor string, items []Capability) []string {
+	var result []string
+	if len(items) > 0 {
+		result = []string{commandhint.Command("capability", "get", items[0].ID)}
+	}
 	if nextCursor == "" {
 		return result
 	}
-	parts := []string{"tadx capability list"}
+	parts := []string{"capability", "list"}
 	for _, field := range []struct{ name, value string }{
 		{"domain", input.Domain}, {"resource", input.Resource}, {"owner", input.Owner}, {"product", input.Product},
 	} {
 		if field.value != "" {
-			parts = append(parts, "--"+field.name, commandArgument(field.value))
+			parts = append(parts, "--"+field.name, field.value)
 		}
 	}
 	if input.Mutation != nil {
 		parts = append(parts, "--mutation="+strconv.FormatBool(*input.Mutation))
 	}
 	parts = append(parts, "--limit", strconv.Itoa(min(limit*2, MaxLimit)))
-	return append(result, strings.Join(parts, " "))
-}
-
-func commandArgument(value string) string {
-	if strings.ContainsAny(value, " \t\r\n\"") {
-		return strconv.Quote(value)
-	}
-	return value
+	return append(result, commandhint.Command(parts...))
 }
 
 func usageError(summary string) error {

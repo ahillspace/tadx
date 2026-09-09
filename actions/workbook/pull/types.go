@@ -12,6 +12,8 @@ const (
 
 // Input selects one remote workbook and explicit existing workspace.
 type Input struct {
+	// WorkspaceName is the resolved logical workspace alias used in follow-up commands.
+	WorkspaceName  string
 	Environment    string
 	Site           string
 	ServerOrigin   string

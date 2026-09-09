@@ -2,6 +2,7 @@ package add
 
 import (
 	"context"
+	"github.com/ahillspace/tadx/internal/commandhint"
 	"net/url"
 	"strings"
 
@@ -37,7 +38,7 @@ func (a *Action) Execute(ctx context.Context, input Input) (Output, error) {
 		retryable, advice := errs.CompleteRetryAdvice(err, "Review the new environment profile and alias, then retry.")
 		return Output{}, &errs.Error{ID: "env.profile.add.write", Kind: errs.KindOperation, Operation: "env.profile.add", Environment: input.Alias, Summary: "Environment profile could not be added.", Cause: err, Retryable: retryable, CorrectiveAction: advice}
 	}
-	return Output{Status: "added", Profile: profile, Help: []string{"tadx auth status --environment <alias>"}}, nil
+	return Output{Status: "added", Profile: profile, Help: []string{commandhint.Environment(profile.Alias, "auth", "status")}}, nil
 }
 
 func validateServerURL(value string) error {

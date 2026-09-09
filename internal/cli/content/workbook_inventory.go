@@ -2,6 +2,7 @@ package content
 
 import (
 	"context"
+	"github.com/ahillspace/tadx/internal/cli/clierr"
 
 	workbookinspect "github.com/ahillspace/tadx/actions/workbook/inspect"
 	workbooklist "github.com/ahillspace/tadx/actions/workbook/list"
@@ -25,7 +26,7 @@ func newWorkbookList(lister WorkbookLister, renderer Renderer) *cobra.Command {
 		RunE: func(command *cobra.Command, _ []string) error {
 			result, err := lister.ListWorkbooks(command.Context(), input)
 			if err != nil {
-				return err
+				return clierr.WithOutput(result, err)
 			}
 			return renderer.Render(result)
 		},
@@ -52,7 +53,7 @@ func newWorkbookInspect(inspector WorkbookInspector, renderer Renderer) *cobra.C
 		RunE: func(command *cobra.Command, _ []string) error {
 			result, err := inspector.InspectWorkbook(command.Context(), input)
 			if err != nil {
-				return err
+				return clierr.WithOutput(result, err)
 			}
 			return renderer.Render(result)
 		},

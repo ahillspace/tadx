@@ -68,10 +68,10 @@ For approximate or conceptual names, use `tadx search --type user` or `--type gr
 Usernames, emails, and external group IDs are not subscription LUID selectors.
 
 ```text
-tadx pulse metric follow --environment '<alias>' --id '<metric-luid>' --user-id '<user-luid>' --preview --full
-tadx pulse metric follow --environment '<alias>' --id '<metric-luid>' --group-id '<group-luid>' --preview --full
-tadx pulse metric unfollow --environment '<alias>' --subscription-id '<subscription-luid>' --preview --full
-tadx pulse metric unfollow --environment '<alias>' --id '<metric-luid>' --user-id '<user-luid>' --preview --full
+tadx pulse metric follow --environment '<alias>' --id '<metric-luid>' --user-id '<user-luid>' --preview
+tadx pulse metric follow --environment '<alias>' --id '<metric-luid>' --group-id '<group-luid>' --preview
+tadx pulse metric unfollow --environment '<alias>' --subscription-id '<subscription-luid>' --preview
+tadx pulse metric unfollow --environment '<alias>' --id '<metric-luid>' --user-id '<user-luid>' --preview
 ```
 
 Choose exactly one follower selector; `--group-id` can replace `--user-id` in the metric-based unfollow form.
@@ -83,8 +83,8 @@ Do not switch identities or variants after access errors.
 ## Delete at the requested scope
 
 ```text
-tadx pulse metric delete --environment '<alias>' --id '<non-default-metric-luid>' --preview --full
-tadx pulse definition delete --environment '<alias>' --id '<definition-luid>' --preview --full
+tadx pulse metric delete --environment '<alias>' --id '<non-default-metric-luid>' --preview
+tadx pulse definition delete --environment '<alias>' --id '<definition-luid>' --preview
 ```
 
 Unfollow removes a subscription, whereas metric delete removes a non-default variant.

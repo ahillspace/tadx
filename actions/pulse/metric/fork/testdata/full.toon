@@ -12,9 +12,21 @@ plan:
       values[1]: West
       exclude: false
   specification:
+    filters[1]:
+      - categorical_values[1]{string_value}:
+          West
+        field: Region
+        include_null: false
+        operator: OPERATOR_EQUAL
     measurement_period:
       granularity: GRANULARITY_BY_DAY
+      last_x_period:
+        include_current_period: true
+        period: 30
+        period_type: GRANULARITY_BY_DAY
       range: RANGE_BY_CONFIG
+  definition_filters: []
+  definition_filters_known: true
   request_fingerprint: "sha256:0000000000000000000000000000000000000000000000000000000000000000"
 result:
   status: created
@@ -26,8 +38,18 @@ result:
   ownership_verified: true
   specification_verified: true
   saved_specification:
+    filters[1]:
+      - categorical_values[1]{string_value}:
+          West
+        field: Region
+        include_null: false
+        operator: OPERATOR_EQUAL
     measurement_period:
       granularity: GRANULARITY_BY_DAY
+      last_x_period:
+        include_current_period: true
+        period: 30
+        period_type: GRANULARITY_BY_DAY
       range: RANGE_BY_CONFIG
   saved_definition:
     luid: definition-1

@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/ahillspace/tadx/internal/commandhint"
 	"slices"
 	"sort"
 	"strings"
@@ -35,6 +36,9 @@ func New(reader Reader, creator Creator, reconciler Reconciler) *Action {
 	return &Action{reader: reader, creator: creator, reconciler: reconciler}
 }
 func (a *Action) Execute(ctx context.Context, input Input, preview bool) (Output, error) {
+	if err := ValidateInput(input); err != nil {
+		return Output{}, err
+	}
 	if a == nil || a.reader == nil || a.creator == nil || a.reconciler == nil {
 		return Output{}, fail("pulse.metric.fork.unconfigured", errs.KindRuntime, input, "Pulse metric fork is not configured.", nil)
 	}
@@ -64,7 +68,7 @@ func (a *Action) Execute(ctx context.Context, input Input, preview bool) (Output
 	}
 	created, err := a.creator.GetOrCreateMetric(ctx, CreateRequest{DefinitionLUID: plan.DefinitionLUID, Specification: cloneMap(plan.Specification)})
 	if err != nil {
-		retryable, corrective := errs.CompleteRetryAdvice(err, "Inspect the remote get-or-create outcome before retrying.")
+		retryable, corrective := errs.CompleteRetryAdvice(err, commandhint.Environment(input.Environment, "pulse", "metric", "list", "--definition-id", plan.DefinitionLUID, "--all")+"; reconcile the remote outcome before retrying.")
 		return Output{}, &errs.Error{ID: "pulse.metric.fork.failed", Kind: errs.KindOperation, Operation: "pulse.metric.fork", Resource: input.MetricLUID, Environment: input.Environment, Site: input.Site, Summary: "Pulse metric fork failed.", Cause: err, Retryable: retryable, CorrectiveAction: corrective, TableauRequestID: errs.TableauRequestID(err)}
 	}
 	if created.MetricLUID == "" {
@@ -72,10 +76,10 @@ func (a *Action) Execute(ctx context.Context, input Input, preview bool) (Output
 	}
 	reconciled, err := a.reconciler.ReconcileMetric(ctx, ExpectedMetric{MetricLUID: created.MetricLUID, DefinitionLUID: plan.DefinitionLUID, DatasourceLUID: plan.DatasourceLUID, SiteLUID: input.SiteLUID, Specification: cloneMap(plan.Specification)})
 	if err != nil {
-		return Output{}, &errs.Error{ID: "pulse.metric.fork.reconcile", Kind: errs.KindOperation, Operation: "pulse.metric.fork", Resource: created.MetricLUID, Environment: input.Environment, Site: input.Site, Summary: "Pulse metric reconciliation failed.", Cause: err, Retryable: errs.Bool(false), CorrectiveAction: "Inspect the created metric by exact LUID before retrying.", TableauRequestID: errs.TableauRequestID(err)}
+		return Output{}, &errs.Error{ID: "pulse.metric.fork.reconcile", Kind: errs.KindOperation, Operation: "pulse.metric.fork", Resource: created.MetricLUID, Environment: input.Environment, Site: input.Site, Summary: "Pulse metric reconciliation failed.", Cause: err, Retryable: errs.Bool(false), CorrectiveAction: commandhint.Environment(input.Environment, "pulse", "metric", "inspect", "--id", created.MetricLUID) + "; reconcile before retrying.", TableauRequestID: errs.TableauRequestID(err)}
 	}
 	if reconciled.Status != "verified" || !reconciled.OwnershipVerified || !reconciled.SpecificationVerified {
-		return Output{}, &errs.Error{ID: "pulse.metric.fork.reconcile", Kind: errs.KindOperation, Operation: "pulse.metric.fork", Resource: created.MetricLUID, Environment: input.Environment, Site: input.Site, Summary: "The forked Pulse metric's saved configuration could not be verified.", Cause: fmt.Errorf("reconciliation status %s", reconciled.Status), Retryable: errs.Bool(false), CorrectiveAction: "Inspect the returned metric by exact LUID before retrying; do not repeat the mutation automatically.", TableauRequestID: reconciled.RequestID}
+		return Output{}, &errs.Error{ID: "pulse.metric.fork.reconcile", Kind: errs.KindOperation, Operation: "pulse.metric.fork", Resource: created.MetricLUID, Environment: input.Environment, Site: input.Site, Summary: "The forked Pulse metric's saved configuration could not be verified.", Cause: fmt.Errorf("reconciliation status %s", reconciled.Status), Retryable: errs.Bool(false), CorrectiveAction: commandhint.Environment(input.Environment, "pulse", "metric", "inspect", "--id", created.MetricLUID) + "; do not repeat the mutation automatically.", TableauRequestID: reconciled.RequestID}
 	}
 	status := "existing"
 	if created.Created {
@@ -143,11 +147,13 @@ func (a *Action) plan(ctx context.Context, input Input) (Plan, error) {
 		}
 	}
 	data, _ := json.Marshal(struct {
-		Definition    string         `json:"definition"`
-		Specification map[string]any `json:"specification"`
-	}{definition.LUID, spec})
+		Definition             string         `json:"definition"`
+		Specification          map[string]any `json:"specification"`
+		DefinitionFilters      []any          `json:"definition_filters"`
+		DefinitionFiltersKnown bool           `json:"definition_filters_known"`
+	}{definition.LUID, spec, definition.FixedFilters, definition.FixedFiltersKnown})
 	sum := sha256.Sum256(data)
-	return Plan{Mode: "preview", Operation: "pulse.metric.fork", Environment: input.Environment, Site: input.Site, SourceMetricLUID: input.MetricLUID, DefinitionLUID: definition.LUID, DatasourceLUID: definition.DatasourceLUID, Timeframe: input.Timeframe, Filters: filters, Specification: spec, Fingerprint: "sha256:" + hex.EncodeToString(sum[:])}, nil
+	return Plan{Mode: "preview", Operation: "pulse.metric.fork", Environment: input.Environment, Site: input.Site, SourceMetricLUID: input.MetricLUID, DefinitionLUID: definition.LUID, DatasourceLUID: definition.DatasourceLUID, Timeframe: input.Timeframe, Filters: filters, Specification: spec, DefinitionFilters: definition.FixedFilters, DefinitionFiltersKnown: definition.FixedFiltersKnown, Fingerprint: "sha256:" + hex.EncodeToString(sum[:])}, nil
 }
 func measurementPeriod(key string, days int) (map[string]any, bool) {
 	simple := map[string][2]string{"TODAY": {"GRANULARITY_BY_DAY", "RANGE_CURRENT_PARTIAL"}, "THIS_WEEK": {"GRANULARITY_BY_WEEK", "RANGE_CURRENT_PARTIAL"}, "MONTH_TO_DATE": {"GRANULARITY_BY_MONTH", "RANGE_CURRENT_PARTIAL"}, "QUARTER_TO_DATE": {"GRANULARITY_BY_QUARTER", "RANGE_CURRENT_PARTIAL"}, "YEAR_TO_DATE": {"GRANULARITY_BY_YEAR", "RANGE_CURRENT_PARTIAL"}, "YESTERDAY": {"GRANULARITY_BY_DAY", "RANGE_LAST_COMPLETE"}, "LAST_WEEK": {"GRANULARITY_BY_WEEK", "RANGE_LAST_COMPLETE"}, "LAST_MONTH": {"GRANULARITY_BY_MONTH", "RANGE_LAST_COMPLETE"}, "LAST_QUARTER": {"GRANULARITY_BY_QUARTER", "RANGE_LAST_COMPLETE"}, "LAST_YEAR": {"GRANULARITY_BY_YEAR", "RANGE_LAST_COMPLETE"}}

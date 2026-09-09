@@ -11,4 +11,4 @@ result:
   metric_luid: metric-1
 warnings[1]: Tableau determines dependency and cascade effects. Dependent resources are not enumerated.
 details: "--full"
-help[1]: tadx pulse definition list --environment dev
+help: null

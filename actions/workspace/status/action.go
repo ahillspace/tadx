@@ -4,6 +4,7 @@ package status
 import (
 	"context"
 	"errors"
+	"github.com/ahillspace/tadx/internal/commandhint"
 
 	"github.com/ahillspace/tadx/internal/errs"
 )
@@ -136,7 +137,7 @@ func (a *Action) Execute(ctx context.Context, input Input) (Output, error) {
 	if inventory.Dirty > 0 || inventory.Missing > 0 || inventory.Invalid > 0 || !inventory.ScanComplete {
 		state = "attention"
 	}
-	return Output{Status: state, Workspace: resolved, Inventory: inventory, Warnings: inventory.Warnings, Help: []string{"tadx workspace status --workspace " + resolved.Name + " --full"}}, nil
+	return Output{Status: state, Workspace: resolved, Inventory: inventory, Warnings: inventory.Warnings, Help: []string{commandhint.Command("workspace", "status", "--workspace", resolved.Name, "--full")}}, nil
 }
 
 func boundWarnings(input []string) ([]string, int) {

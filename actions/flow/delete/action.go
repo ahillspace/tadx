@@ -3,6 +3,7 @@ package delete
 import (
 	"context"
 	"errors"
+	"github.com/ahillspace/tadx/internal/commandhint"
 
 	"github.com/ahillspace/tadx/internal/errs"
 	"github.com/ahillspace/tadx/internal/identity"
@@ -23,6 +24,9 @@ func New(resolver Resolver, deleter Deleter) *Action {
 	return &Action{resolver: resolver, deleter: deleter}
 }
 func (a *Action) Execute(ctx context.Context, input Input, preview bool) (Output, error) {
+	if err := ValidateInput(input); err != nil {
+		return Output{}, err
+	}
 	if a == nil || a.resolver == nil || a.deleter == nil {
 		return Output{}, &errs.Error{ID: "flow.delete.unconfigured", Kind: errs.KindRuntime, Operation: "flow.delete", Summary: "Flow delete is not configured.", Retryable: errs.Bool(false), CorrectiveAction: "Configure flow delete before retrying."}
 	}
@@ -54,7 +58,7 @@ func (a *Action) Execute(ctx context.Context, input Input, preview bool) (Output
 		return Output{}, &errs.Error{ID: "flow.delete.failed", Kind: errs.KindOperation, Operation: "flow.delete", Resource: flow.LUID, Environment: input.Environment, Site: input.Site, Summary: "Flow delete failed.", Cause: err, Retryable: retryable, CorrectiveAction: correctiveAction, TableauRequestID: errs.TableauRequestID(err)}
 	}
 	output.Result = &result
-	output.Help = []string{"tadx content flow list"}
+	output.Help = []string{commandhint.Environment(input.Environment, "content", "flow", "list")}
 	return output, nil
 }
 

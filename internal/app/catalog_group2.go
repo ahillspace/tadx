@@ -227,6 +227,9 @@ func (c *catalogGroup2Commands) statuser() *catalogStatusService {
 type catalogRefreshService struct{ commands *catalogGroup2Commands }
 
 func (s *catalogRefreshService) Execute(ctx context.Context, input catalogrefresh.Input) (catalogrefresh.Output, error) {
+	if err := catalogrefresh.ValidateInput(input); err != nil {
+		return catalogrefresh.Output{}, err
+	}
 	environment, err := s.commands.resolve(input.Environment, input.Site, "catalog.refresh")
 	if err != nil {
 		return catalogrefresh.Output{}, err

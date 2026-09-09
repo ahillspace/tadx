@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/ahillspace/tadx/internal/commandhint"
 	"github.com/ahillspace/tadx/internal/paging"
 
 	"github.com/ahillspace/tadx/internal/errs"
@@ -33,6 +34,9 @@ func New(reader Reader) *Action { return &Action{reader: reader} }
 
 // Execute reads one bounded page.
 func (a *Action) Execute(ctx context.Context, input Input) (Output, error) {
+	if err := ValidateInput(input); err != nil {
+		return Output{}, err
+	}
 	if input.All {
 		return a.collectAll(ctx, input)
 	}
@@ -61,7 +65,7 @@ func (a *Action) Execute(ctx context.Context, input Input) (Output, error) {
 			return Output{}, err
 		}
 	}
-	return Output{Status: "listed", Environment: input.Environment, Site: input.Site, Page: OutputPage{Returned: len(page.Workbooks), Total: page.Total, Limit: page.Size, NextCursor: next, MoreAvailable: next != "" || (page.SuppressContinuation && len(page.Workbooks) < page.Total)}, Workbooks: page.Workbooks, RequestID: page.RequestID, Help: []string{"tadx content workbook inspect --id <workbook-luid>"}}, nil
+	return Output{Status: "listed", Environment: input.Environment, Site: input.Site, Page: OutputPage{Returned: len(page.Workbooks), Total: page.Total, Limit: page.Size, NextCursor: next, MoreAvailable: next != "" || (page.SuppressContinuation && len(page.Workbooks) < page.Total)}, Workbooks: page.Workbooks, RequestID: page.RequestID, Help: listHelp(input.Environment, page.Workbooks)}, nil
 }
 
 func selectPage(value string, requested int, expectedFilter string) (int, int, string, error) {
@@ -141,5 +145,12 @@ func (a *Action) collectAll(ctx context.Context, input Input) (Output, error) {
 	if err != nil {
 		return Output{}, err
 	}
-	return Output{Status: "listed", Environment: input.Environment, Site: input.Site, Workbooks: items, Page: OutputPage{Returned: len(items), Total: len(items), Limit: 10000}, RequestID: requestID, Help: []string{"tadx content workbook inspect --id <workbook-luid>"}}, nil
+	return Output{Status: "listed", Environment: input.Environment, Site: input.Site, Workbooks: items, Page: OutputPage{Returned: len(items), Total: len(items), Limit: 10000}, RequestID: requestID, Help: listHelp(input.Environment, items)}, nil
+}
+
+func listHelp(environment string, items []Workbook) []string {
+	if len(items) == 0 {
+		return nil
+	}
+	return []string{commandhint.Environment(environment, "content", "workbook", "inspect", "--id", items[0].LUID)}
 }

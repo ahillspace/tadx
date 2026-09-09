@@ -96,7 +96,7 @@ func Validate(in Input) error {
 	return nil
 }
 func (a *Action) Execute(ctx context.Context, in Input, preview bool) (Output, error) {
-	if err := Validate(in); err != nil {
+	if err := ValidateInput(in); err != nil {
 		return Output{}, err
 	}
 	if a == nil || a.reader == nil || a.writer == nil {
@@ -115,10 +115,7 @@ func (a *Action) Execute(ctx context.Context, in Input, preview bool) (Output, e
 	} else if initial.Mode != in.Mode {
 		return Output{}, failure(in, "mode_mismatch", errs.KindOperation, "The existing capability mode differs from the requested deletion.", "Inspect the exact rule and supply its current Allow or Deny mode.")
 	}
-	out := Output{Plan: Plan{Mode: "preview", Operation: operation, Environment: in.Environment, Site: in.Site, Target: Rule{ResourceKind: in.ResourceKind, ResourceLUID: in.ResourceLUID, DefaultFor: in.DefaultFor, PrincipalType: in.PrincipalType, PrincipalLUID: in.PrincipalLUID, Capability: in.Capability, Mode: in.Mode}, Source: initial.Source, CurrentMode: initial.Mode, Change: change}, Help: []string{"tadx admin permission inspect --kind " + in.ResourceKind + " --id " + in.ResourceLUID}}
-	if in.DefaultFor != "" {
-		out.Help[0] += " --default-for " + in.DefaultFor
-	}
+	out := Output{Plan: Plan{Mode: "preview", Operation: operation, Environment: in.Environment, Site: in.Site, Target: Rule{ResourceKind: in.ResourceKind, ResourceLUID: in.ResourceLUID, DefaultFor: in.DefaultFor, PrincipalType: in.PrincipalType, PrincipalLUID: in.PrincipalLUID, Capability: in.Capability, Mode: in.Mode}, Source: initial.Source, CurrentMode: initial.Mode, Change: change}, Help: []string{permissionHint(in)}}
 	if preview {
 		return out, nil
 	}
@@ -172,5 +169,8 @@ func validateSnapshot(in Input, s Snapshot) error {
 	return nil
 }
 func failure(in Input, id string, kind errs.Kind, summary, advice string) *errs.Error {
+	if kind == errs.KindOperation && in.ResourceLUID != "" {
+		advice += " Run " + permissionHint(in) + "."
+	}
 	return &errs.Error{ID: operation + "." + id, Kind: kind, Operation: operation, Environment: in.Environment, Site: in.Site, Resource: in.ResourceLUID, Summary: summary, Retryable: errs.Bool(false), CorrectiveAction: advice}
 }

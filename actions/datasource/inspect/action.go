@@ -3,7 +3,7 @@ package inspect
 import (
 	"context"
 	"errors"
-	"strings"
+	"github.com/ahillspace/tadx/internal/commandhint"
 
 	"github.com/ahillspace/tadx/internal/errs"
 	"github.com/ahillspace/tadx/internal/identity"
@@ -25,16 +25,10 @@ func (a *Action) Execute(ctx context.Context, input Input) (Output, error) {
 	if a == nil || a.resolver == nil {
 		return Output{}, &errs.Error{ID: "datasource.inspect.unconfigured", Kind: errs.KindRuntime, Operation: "datasource.inspect", Summary: "Datasource inspection is not configured.", Retryable: errs.Bool(false), CorrectiveAction: "Configure the datasource resolver before retrying."}
 	}
-	input.Selector.LUID = identity.LUID(strings.TrimSpace(string(input.Selector.LUID)))
-	input.Selector.Name = strings.TrimSpace(input.Selector.Name)
-	input.Selector.ProjectPath = strings.TrimSpace(input.Selector.ProjectPath)
-	if input.Selector.LUID == "" && (input.Selector.Name == "" || input.Selector.ProjectPath == "") {
-		message := "datasource selection requires a LUID or exact name and project path"
-		return Output{}, &errs.Error{ID: "datasource.inspect.usage", Kind: errs.KindUsage, Operation: "datasource.inspect", Summary: message, Retryable: errs.Bool(false), CorrectiveAction: "Provide a LUID or an exact name and project path.", Validation: []errs.ValidationDetail{{Field: "selector", Code: "required", Message: message}}}
-	}
-	if input.Selector.LUID != "" && (input.Selector.Name != "" || input.Selector.ProjectPath != "") {
-		message := "a LUID is authoritative and cannot be combined with name or project selectors"
-		return Output{}, &errs.Error{ID: "datasource.inspect.usage", Kind: errs.KindUsage, Operation: "datasource.inspect", Summary: "A LUID is authoritative and cannot be combined with name or project selectors.", Retryable: errs.Bool(false), CorrectiveAction: "Provide a LUID or an exact name and project path.", Validation: []errs.ValidationDetail{{Field: "selector", Code: "conflict", Message: message}}}
+	var validationErr error
+	input, validationErr = normalizeInput(input)
+	if validationErr != nil {
+		return Output{}, validationErr
 	}
 	item, err := a.resolver.ResolveDatasource(ctx, input.Selector)
 	if err != nil {
@@ -59,7 +53,7 @@ func (a *Action) Execute(ctx context.Context, input Input) (Output, error) {
 	if item.LUID == "" || item.Name == "" || (input.Selector.LUID != "" && item.LUID != string(input.Selector.LUID)) {
 		return Output{}, &errs.Error{ID: "datasource.inspect.identity_mismatch", Kind: errs.KindOperation, Operation: "datasource.inspect", Environment: input.Environment, Site: input.Site, Summary: "Datasource adapter returned a mismatched authoritative identity.", Retryable: errs.Bool(false), CorrectiveAction: "Provide a LUID or an exact name and project path."}
 	}
-	return Output{Status: "found", Environment: input.Environment, Site: input.Site, Datasource: item, RequestID: item.RequestID, Help: []string{"tadx content datasource list"}}, nil
+	return Output{Status: "found", Environment: input.Environment, Site: input.Site, Datasource: item, RequestID: item.RequestID, Help: []string{commandhint.Environment(input.Environment, "content", "datasource", "schema", "--id", item.LUID)}}, nil
 }
 
 func resolveUsageError(id string, input Input, summary string, cause error) error {

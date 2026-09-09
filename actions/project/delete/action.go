@@ -3,6 +3,7 @@ package delete
 import (
 	"context"
 	"errors"
+	"github.com/ahillspace/tadx/internal/commandhint"
 	"strings"
 
 	"github.com/ahillspace/tadx/internal/errs"
@@ -32,6 +33,9 @@ func New(resolver Resolver, deleter Deleter) *Action {
 
 // Execute previews a deletion or revalidates its exact LUID before applying it.
 func (a *Action) Execute(ctx context.Context, input Input, preview bool) (Output, error) {
+	if err := ValidateInput(input); err != nil {
+		return Output{}, err
+	}
 	if a == nil || a.resolver == nil || a.deleter == nil {
 		return Output{}, runtimeError()
 	}
@@ -63,13 +67,13 @@ func (a *Action) Execute(ctx context.Context, input Input, preview bool) (Output
 	}
 	result, err := a.deleter.DeleteProject(ctx, target.LUID)
 	if err != nil {
-		return Output{}, operationError("project.delete.failed", input, target.LUID, "Project delete failed.", "Inspect the remote project delete outcome before retrying.", err)
+		return Output{}, operationError("project.delete.failed", input, target.LUID, "Project delete failed.", "Inspect the remote project delete outcome before retrying: "+commandhint.Environment(input.Environment, "content", "project", "inspect", "--project-id", target.LUID), err)
 	}
 	if result.ProjectLUID != target.LUID {
 		return Output{}, operationError("project.delete.invalid_response", input, target.LUID, "Project delete returned a different authoritative identity.", "Review the remote project state before retrying.", errors.New("project delete result LUID did not match the requested LUID"))
 	}
 	output.Result = &result
-	output.Help = []string{"tadx content project list --environment " + input.Environment}
+	output.Help = []string{commandhint.Environment(input.Environment, "content", "project", "list")}
 	return output, nil
 }
 

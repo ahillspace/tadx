@@ -3,6 +3,8 @@ package publish
 import "github.com/ahillspace/tadx/internal/identity"
 
 type Input struct {
+	// WorkspaceName is the resolved logical workspace alias used in follow-up commands.
+	WorkspaceName string
 	// TargetResolved confirms authenticated target selection, including the Default site.
 	TargetResolved                                   bool
 	Workspace, ArtifactPath, Environment, Site, Name string

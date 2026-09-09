@@ -24,9 +24,9 @@ func TestOutputGolden(t *testing.T) {
 		DatasourceGoals:       []map[string]any{}, RelatedLinks: []map[string]any{},
 	}
 	output := definitioncreate.Output{
-		Plan:   definitioncreate.Plan{Mode: "execute", Operation: "pulse.definition.create", Name: "Revenue", Datasource: "datasource-1", Measure: definitioncreate.Measure{Field: "Sales", Aggregation: "AGGREGATION_SUM"}, TimeField: "Order Date", Dimensions: []string{"Region"}, Fingerprint: "sha256:value", Request: request},
+		Plan:   definitioncreate.Plan{Mode: "execute", Operation: "pulse.definition.create", Environment: "dev", Site: "sales", Name: "Revenue", Datasource: "datasource-1", Measure: definitioncreate.Measure{Field: "Sales", Aggregation: "AGGREGATION_SUM"}, TimeField: "Order Date", Dimensions: []string{"Region"}, Fingerprint: "sha256:value", Request: request},
 		Result: &definitioncreate.CreateResult{Status: "succeeded", DefinitionLUID: "definition-1", DefaultMetricLUID: "metric-1", DefaultMetricStatus: "ready", TableauRequestID: "request-1", PollRequestID: "poll-1"},
-		Help:   []string{"tadx pulse metric inspect --id metric-1"},
+		Help:   []string{"tadx pulse metric inspect --id metric-1 --environment dev"},
 	}
 	assertGolden(t, "compact.toon", output, false)
 	assertGolden(t, "full.toon", output, true)

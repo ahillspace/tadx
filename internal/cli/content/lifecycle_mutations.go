@@ -30,7 +30,7 @@ func newWorkbookMove(deps Dependencies) *cobra.Command {
 		input.SetProjectSelector(destinationLUID, destinationPath)
 		result, err := deps.WorkbookMover.MoveWorkbook(command.Context(), input, preview)
 		if err != nil {
-			return err
+			return clierr.WithOutput(result, err)
 		}
 		return deps.Renderer.Render(result)
 	})
@@ -62,7 +62,7 @@ func newWorkbookUpdate(deps Dependencies) *cobra.Command {
 		}
 		result, err := deps.WorkbookUpdater.UpdateWorkbook(command.Context(), input, preview)
 		if err != nil {
-			return err
+			return clierr.WithOutput(result, err)
 		}
 		return deps.Renderer.Render(result)
 	})
@@ -89,7 +89,7 @@ func newDatasourceMove(deps Dependencies) *cobra.Command {
 		input.SetProjectSelector(destinationLUID, destinationPath)
 		result, err := deps.DatasourceMover.MoveDatasource(command.Context(), input, preview)
 		if err != nil {
-			return err
+			return clierr.WithOutput(result, err)
 		}
 		return deps.Renderer.Render(result)
 	})
@@ -121,7 +121,7 @@ func newDatasourceUpdate(deps Dependencies) *cobra.Command {
 		}
 		result, err := deps.DatasourceUpdater.UpdateDatasource(command.Context(), input, preview)
 		if err != nil {
-			return err
+			return clierr.WithOutput(result, err)
 		}
 		return deps.Renderer.Render(result)
 	})
@@ -148,7 +148,7 @@ func newFlowUpdate(deps Dependencies) *cobra.Command {
 		input.OwnerLUID = &ownerLUID
 		result, err := deps.FlowUpdater.UpdateFlow(command.Context(), input, preview)
 		if err != nil {
-			return err
+			return clierr.WithOutput(result, err)
 		}
 		return deps.Renderer.Render(result)
 	})
@@ -179,7 +179,7 @@ func newProjectMove(deps Dependencies) *cobra.Command {
 		}
 		result, err := deps.ProjectMover.MoveProject(command.Context(), input, preview)
 		if err != nil {
-			return err
+			return clierr.WithOutput(result, err)
 		}
 		return deps.Renderer.Render(result)
 	})

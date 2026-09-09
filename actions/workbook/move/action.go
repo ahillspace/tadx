@@ -3,6 +3,7 @@ package move
 import (
 	"context"
 	"errors"
+	"github.com/ahillspace/tadx/internal/commandhint"
 	"strings"
 
 	"github.com/ahillspace/tadx/internal/errs"
@@ -63,10 +64,10 @@ func (a *Action) Execute(ctx context.Context, input Input, preview bool) (Output
 	}
 	result, err := a.mover.MoveWorkbook(ctx, source.LUID, destination.LUID)
 	if err != nil {
-		return Output{}, operationError("workbook.move.failed", input, source.LUID, "Workbook move failed.", "Inspect the workbook before moving again.", err)
+		return Output{}, operationError("workbook.move.failed", input, source.LUID, "Workbook move failed.", "Inspect the exact workbook before retrying: "+commandhint.Environment(input.Environment, "content", "workbook", "inspect", "--id", source.LUID), err)
 	}
 	out.Result = &result
-	out.Help = []string{"tadx content workbook inspect --id " + source.LUID}
+	out.Help = []string{commandhint.Environment(input.Environment, "content", "workbook", "inspect", "--id", source.LUID)}
 	return out, nil
 }
 
@@ -109,19 +110,7 @@ func validate(input Input) error {
 	if strings.TrimSpace(input.Environment) == "" || (strings.TrimSpace(input.Site) == "" && !input.TargetResolved) {
 		return usage("environment", "workbook move requires an explicit resolved environment and site")
 	}
-	if input.WorkbookSelector.LUID == "" && (strings.TrimSpace(input.WorkbookSelector.Name) == "" || strings.TrimSpace(input.WorkbookSelector.ProjectPath) == "") {
-		return usage("selector", "workbook move requires a LUID or exact name and project path")
-	}
-	if input.WorkbookSelector.LUID != "" && (strings.TrimSpace(input.WorkbookSelector.Name) != "" || strings.TrimSpace(input.WorkbookSelector.ProjectPath) != "") {
-		return usage("selector", "a workbook LUID cannot be combined with name or project path")
-	}
-	if input.ProjectSelector.LUID == "" && strings.TrimSpace(input.ProjectSelector.ProjectPath) == "" {
-		return usage("project", "workbook move requires a destination project LUID or exact path")
-	}
-	if input.ProjectSelector.LUID != "" && strings.TrimSpace(input.ProjectSelector.ProjectPath) != "" {
-		return usage("project", "a project LUID cannot be combined with a project path")
-	}
-	return nil
+	return ValidateInput(input)
 }
 
 func runtimeError() error {

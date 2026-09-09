@@ -54,6 +54,11 @@ Do not write live API code or make that capability executable until bounded evid
 ## Preserve output and safety contracts
 
 Default output is an explicit bounded compact TOON projection containing the status, authoritative identity, next safe decision fields, warnings, completeness, and help.
+Mutation previews summarize the exact target and every consequential setting, including inherited filters and null handling; provider envelopes and transport diagnostics belong in `--full`.
+Mark bounded or unrepresentable review details explicitly incomplete rather than silently omitting decision evidence.
+Preserve confirmed results alongside follow-up errors through action, CLI, renderer, and batch boundaries; a nonzero exit does not imply the mutation failed, and an unknown outcome never implies success.
+Generated inspection and recovery commands retain the resolved environment, exact identity, and logical workspace where applicable, with shell-safe argument quoting.
+Run action-owned local validation and read-only prerequisite resolution before authentication; keep remote-state validation after authentication and fresh before writes.
 Compact list rows retain a fixed set of scalar columns, including empty values, so changing the limit does not switch between tabular and expanded output.
 Render `more_available` when results are limited; keep opaque provider and catalog cursors internal in both compact and full output.
 Use a larger bounded `--limit`, or explicit `--all` where supported, to request additional results.

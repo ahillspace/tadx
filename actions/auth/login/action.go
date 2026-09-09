@@ -3,6 +3,7 @@ package login
 import (
 	"context"
 	"errors"
+	"github.com/ahillspace/tadx/internal/commandhint"
 	"strings"
 
 	"github.com/ahillspace/tadx/internal/errs"
@@ -82,7 +83,7 @@ func (a *Action) Execute(ctx context.Context, input Input) (Output, error) {
 	return Output{
 		Status: "stored", Environment: target.Environment, CredentialSource: CredentialSourceOS, Validated: true,
 		SiteLUID: identity.SiteLUID, UserLUID: identity.UserLUID, Warnings: warnings,
-		Help: []string{"tadx auth check --environment " + target.Environment},
+		Help: []string{commandhint.Environment(target.Environment, "auth", "check")},
 	}, nil
 }
 

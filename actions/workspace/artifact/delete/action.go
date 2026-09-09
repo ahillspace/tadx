@@ -4,6 +4,7 @@ package delete
 import (
 	"context"
 	"errors"
+	"github.com/ahillspace/tadx/internal/commandhint"
 
 	"github.com/ahillspace/tadx/internal/errs"
 )
@@ -168,7 +169,7 @@ func (a *Action) Execute(ctx context.Context, input Input, preview bool) (Output
 	}
 	output.Result = &result
 	output.Warnings, output.WarningsOmitted = boundDeleteWarnings(result.Warnings)
-	output.Help = []string{"tadx workspace status --workspace " + input.Workspace}
+	output.Help = []string{commandhint.Command("workspace", "status", "--workspace", input.Workspace)}
 	return output, nil
 }
 

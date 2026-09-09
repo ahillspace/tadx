@@ -1,3 +1,3 @@
 status: updated
 default_environment: production
-help[1]: tadx auth status --environment <alias>
+help[1]: tadx auth status --environment production

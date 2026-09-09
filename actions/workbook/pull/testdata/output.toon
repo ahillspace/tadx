@@ -10,4 +10,4 @@ artifact:
   dependencies_acquired: true
 warnings[1]: existing clean artifact replaced
 details: "--full"
-help[1]: tadx content workbook publish --artifact <path> --environment <alias>
+help[1]: tadx content workbook publish --artifact artifacts/workbook/Finance --project-id project-1 --overwrite --preview --workspace 'logical workspace' --environment production

@@ -11,6 +11,7 @@ import (
 	"strings"
 	"unicode/utf8"
 
+	"github.com/ahillspace/tadx/internal/commandhint"
 	"github.com/ahillspace/tadx/internal/errs"
 )
 
@@ -45,6 +46,9 @@ func New(validator FieldValidator, finder CollisionFinder, creator Creator) *Act
 
 // Plan validates the small intent and resolves live field and collision state.
 func (a *Action) Plan(ctx context.Context, input Input) (Plan, error) {
+	if err := ValidateInput(input); err != nil {
+		return Plan{}, err
+	}
 	if a == nil || a.validator == nil || a.finder == nil || a.creator == nil {
 		return Plan{}, createError("pulse.definition.create.unconfigured", errs.KindRuntime, input, "Pulse definition creation is not configured.", nil)
 	}
@@ -71,7 +75,7 @@ func (a *Action) Plan(ctx context.Context, input Input) (Plan, error) {
 		return Plan{}, err
 	}
 	return Plan{
-		Mode: "preview", Operation: "pulse.definition.create", Name: request.Name,
+		Mode: "preview", Operation: "pulse.definition.create", Environment: input.Environment, Site: input.Site, Name: request.Name,
 		Datasource: request.Specification.Datasource.ID, Measure: request.Specification.BasicSpecification.Measure,
 		TimeField:   request.Specification.BasicSpecification.TimeDimension.Field,
 		Dimensions:  append(make([]string, 0, len(request.ExtensionOptions.AllowedDimensions)), request.ExtensionOptions.AllowedDimensions...),
@@ -116,18 +120,25 @@ func (a *Action) createValidated(ctx context.Context, input Input, request Creat
 	result, err := a.creator.CreateDefinition(ctx, request)
 	if err != nil {
 		if result.DefinitionLUID != "" {
-			return CreateResult{}, &errs.Error{ID: "pulse.definition.create.outcome_unknown", Kind: errs.KindOperation, Operation: "pulse.definition.create", Resource: result.DefinitionLUID, Environment: input.Environment, Site: input.Site, Summary: "The Pulse definition was created, but its default metric could not be resolved.", Cause: err, Retryable: errs.Bool(false), CorrectiveAction: "Inspect the created definition by its exact LUID before attempting another create.", TableauRequestID: result.TableauRequestID}
+			result.Status = "created"
+			result.DefaultMetricStatus = "unresolved"
+			return result, &errs.Error{ID: "pulse.definition.create.verification_failed", Kind: errs.KindOperation, Operation: "pulse.definition.create", Resource: result.DefinitionLUID, Environment: input.Environment, Site: input.Site, Summary: "The Pulse definition was created, but its default metric could not be resolved.", Cause: err, Retryable: errs.Bool(false), CorrectiveAction: commandhint.Environment(input.Environment, "pulse", "definition", "inspect", "--id", result.DefinitionLUID) + "; do not repeat the confirmed create.", TableauRequestID: result.TableauRequestID}
 		}
 		return CreateResult{}, &errs.Error{ID: "pulse.definition.create.failed", Kind: errs.KindOperation, Operation: "pulse.definition.create", Environment: input.Environment, Site: input.Site, Summary: "Pulse definition creation failed.", Cause: err, Retryable: errs.Bool(false), CorrectiveAction: createFailureAdvice(input, err), TableauRequestID: errs.TableauRequestID(err)}
 	}
 	if result.DefinitionLUID == "" || result.DefaultMetricLUID == "" {
+		if result.DefinitionLUID != "" {
+			result.Status = "created"
+			result.DefaultMetricStatus = "unresolved"
+			return result, &errs.Error{ID: "pulse.definition.create.verification_failed", Kind: errs.KindOperation, Operation: "pulse.definition.create", Resource: result.DefinitionLUID, Environment: input.Environment, Site: input.Site, Summary: "The Pulse definition was created, but its default metric was not identified.", Retryable: errs.Bool(false), CorrectiveAction: commandhint.Environment(input.Environment, "pulse", "definition", "inspect", "--id", result.DefinitionLUID) + "; do not repeat the confirmed create.", TableauRequestID: result.TableauRequestID}
+		}
 		return CreateResult{}, createError("pulse.definition.create.invalid_response", errs.KindOperation, input, "Tableau returned an incomplete Pulse definition creation result.", errors.New("definition and default metric LUIDs are required"))
 	}
 	return result, nil
 }
 
 func createFailureAdvice(input Input, cause error) string {
-	lookup := fmt.Sprintf("Run tadx pulse definition list --environment %q --full, then inspect candidate definitions by exact LUID in that environment. Compare datasource, measure, aggregation, date field, filters, and dimensions before another create.", input.Environment)
+	lookup := "Run " + commandhint.Environment(input.Environment, "pulse", "definition", "list", "--datasource-id", input.Intent.DatasourceLUID, "--full") + ", then inspect candidate definitions by exact LUID in that environment. Compare datasource, measure, aggregation, date field, filters, and dimensions before another create."
 	var status interface{ HTTPStatus() int }
 	if errors.As(cause, &status) {
 		switch status.HTTPStatus() {
@@ -158,10 +169,15 @@ func (a *Action) Execute(ctx context.Context, input Input, preview bool) (Output
 	// Retained plans must still use public Apply and its current-state validation.
 	result, err := a.createValidated(ctx, input, plan.Request)
 	if err != nil {
+		if result.DefinitionLUID != "" {
+			output.Result = &result
+			output.Help = []string{commandhint.Environment(input.Environment, "pulse", "definition", "inspect", "--id", result.DefinitionLUID)}
+			return output, err
+		}
 		return Output{}, err
 	}
 	output.Result = &result
-	output.Help = []string{"tadx pulse metric inspect --id " + result.DefaultMetricLUID}
+	output.Help = []string{commandhint.Environment(input.Environment, "pulse", "metric", "inspect", "--id", result.DefaultMetricLUID)}
 	return output, nil
 }
 
@@ -173,7 +189,7 @@ func (a *Action) checkCollision(ctx context.Context, input Input, request Create
 	}
 	for _, item := range items {
 		if item.Name == request.Name && item.DatasourceLUID == request.Specification.Datasource.ID {
-			return &errs.Error{ID: "pulse.definition.create.conflict", Kind: errs.KindOperation, Operation: "pulse.definition.create", Resource: item.LUID, Environment: input.Environment, Site: input.Site, Summary: "A Pulse definition with this name already exists for the datasource.", Retryable: errs.Bool(false), CorrectiveAction: "Inspect the exact existing definition or choose a different definition name."}
+			return &errs.Error{ID: "pulse.definition.create.conflict", Kind: errs.KindOperation, Operation: "pulse.definition.create", Resource: item.LUID, Environment: input.Environment, Site: input.Site, Summary: "A Pulse definition with this name already exists for the datasource.", Retryable: errs.Bool(false), CorrectiveAction: commandhint.Environment(input.Environment, "pulse", "definition", "inspect", "--id", item.LUID) + "; inspect the existing definition or choose a different name."}
 		}
 	}
 	return nil

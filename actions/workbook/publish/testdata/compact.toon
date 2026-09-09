@@ -13,7 +13,7 @@ plan:
     existing_workbook_luid: wb-existing
   overwrite: true
   as_job: true
-  warnings_omitted: 1
+  warnings[1]: Detailed portability warning.
 result:
   status: succeeded
   workbook_luid: wb-new

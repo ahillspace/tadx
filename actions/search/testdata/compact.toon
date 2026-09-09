@@ -6,4 +6,4 @@ page:
 items[1]{luid,type,name,project_path}:
   wb-1,workbook,Finance,Ops
 details: "--full"
-help[1]: tadx capability list --resource <type>
+help[1]: tadx content workbook inspect --id wb-1

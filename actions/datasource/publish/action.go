@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/ahillspace/tadx/internal/commandhint"
 	"slices"
 	"strings"
 
@@ -33,6 +34,9 @@ func New(artifacts ArtifactReader, resolver Resolver, publisher Publisher) *Acti
 }
 
 func (a *Action) Execute(ctx context.Context, input Input, preview bool) (Output, error) {
+	if err := ValidateInput(input); err != nil {
+		return Output{}, err
+	}
 	ctx = a.beginProjectResolution(ctx)
 	if a == nil || a.artifacts == nil || a.resolver == nil || a.publisher == nil {
 		return Output{}, runtimeError("datasource.publish.unconfigured", "Datasource publish is not configured.", nil)
@@ -87,6 +91,9 @@ func (a *Action) Execute(ctx context.Context, input Input, preview bool) (Output
 				correctiveAction = "Inspect the Tableau job by its exact job ID before attempting another publish."
 			}
 		}
+		if hint := publishInspectionHint(plan, result); hint != "" {
+			correctiveAction += " Run " + hint + "."
+		}
 		return Output{}, &errs.Error{ID: errorID, Kind: errs.KindOperation, Operation: "datasource.publish", Resource: plan.Target.ExistingLUID, Environment: input.Environment, Site: input.Site, Summary: summary, Cause: err, Retryable: errs.Bool(false), CorrectiveAction: correctiveAction, TableauJobID: result.JobID, TableauRequestID: requestID}
 	}
 	if plan.AsJob {
@@ -112,7 +119,7 @@ func (a *Action) Execute(ctx context.Context, input Input, preview bool) (Output
 		}
 	}
 	out.Result = &result
-	out.Help = []string{"tadx content datasource inspect --id " + result.DatasourceLUID}
+	out.Help = []string{commandhint.Environment(input.Environment, "content", "datasource", "inspect", "--id", result.DatasourceLUID)}
 	return out, nil
 }
 
@@ -120,6 +127,9 @@ func unknownOutcomeError(plan Plan, input Input, result Result, cause error) err
 	correctiveAction := "Inspect the target site and Tableau request before attempting another publish."
 	if result.JobID != "" {
 		correctiveAction = "Inspect the Tableau job and resolve the exact datasource name in the exact project before attempting another publish."
+	}
+	if hint := publishInspectionHint(plan, result); hint != "" {
+		correctiveAction += " Run " + hint + "."
 	}
 	return &errs.Error{
 		ID:               "datasource.publish.outcome_unknown",

@@ -61,6 +61,19 @@ func (c *remoteAdminCommands) connect(ctx context.Context, alias string, explici
 }
 
 func (c *remoteAdminCommands) ListAdminUsers(ctx context.Context, input userlist.Input) (result userlist.Output, resultErr error) {
+	if err := userlist.ValidateInput(input); err != nil {
+		return userlist.Output{}, err
+	}
+	if input.Cursor != "" {
+		_, environment, err := c.runtime.environment(input.Environment, false)
+		if err != nil {
+			return userlist.Output{}, err
+		}
+		input.Environment, input.Site = environment.Alias, environment.SiteContentURL
+		if err := userlist.ValidateContinuation(input); err != nil {
+			return userlist.Output{}, err
+		}
+	}
 	defer func() {
 		if resultErr == nil {
 			resultErr = validateInventoryAll(input.All, result.Source)
@@ -125,6 +138,9 @@ func adminUserListIsUnfiltered(input userlist.Input) bool {
 }
 
 func (c *remoteAdminCommands) InspectAdminUser(ctx context.Context, input userinspect.Input) (userinspect.Output, error) {
+	if err := userinspect.ValidateInput(input); err != nil {
+		return userinspect.Output{}, err
+	}
 	if input.Catalog {
 		environment, site, err := c.resolveCatalogTarget(input.Environment)
 		if err != nil {
@@ -157,6 +173,9 @@ func (c *remoteAdminCommands) InspectAdminUser(ctx context.Context, input userin
 }
 
 func (c *remoteAdminCommands) CreateAdminUser(ctx context.Context, input usercreate.Input, preview bool) (usercreate.Output, error) {
+	if err := usercreate.ValidateInput(input); err != nil {
+		return usercreate.Output{}, err
+	}
 	connection, err := c.connect(ctx, input.Environment, true)
 	if err != nil {
 		return usercreate.Output{}, remoteSetupError("admin.user.create", input.Environment, input.Site, connection.environment, err)
@@ -169,6 +188,9 @@ func (c *remoteAdminCommands) CreateAdminUser(ctx context.Context, input usercre
 }
 
 func (c *remoteAdminCommands) UpdateAdminUser(ctx context.Context, input userupdate.Input, preview bool) (userupdate.Output, error) {
+	if err := userupdate.ValidateInput(input); err != nil {
+		return userupdate.Output{}, err
+	}
 	connection, err := c.connect(ctx, input.Environment, true)
 	if err != nil {
 		return userupdate.Output{}, remoteSetupError("admin.user.update", input.Environment, input.Site, connection.environment, err)
@@ -181,6 +203,9 @@ func (c *remoteAdminCommands) UpdateAdminUser(ctx context.Context, input userupd
 }
 
 func (c *remoteAdminCommands) DeleteAdminUser(ctx context.Context, input userdelete.Input, preview bool) (userdelete.Output, error) {
+	if err := userdelete.ValidateInput(input); err != nil {
+		return userdelete.Output{}, err
+	}
 	connection, err := c.connect(ctx, input.Environment, true)
 	if err != nil {
 		return userdelete.Output{}, remoteSetupError("admin.user.delete", input.Environment, input.Site, connection.environment, err)
@@ -193,6 +218,19 @@ func (c *remoteAdminCommands) DeleteAdminUser(ctx context.Context, input userdel
 }
 
 func (c *remoteAdminCommands) ListAdminGroups(ctx context.Context, input grouplist.Input) (result grouplist.Output, resultErr error) {
+	if err := grouplist.ValidateInput(input); err != nil {
+		return grouplist.Output{}, err
+	}
+	if input.Cursor != "" {
+		_, environment, err := c.runtime.environment(input.Environment, false)
+		if err != nil {
+			return grouplist.Output{}, err
+		}
+		input.Environment, input.Site = environment.Alias, environment.SiteContentURL
+		if err := grouplist.ValidateContinuation(input); err != nil {
+			return grouplist.Output{}, err
+		}
+	}
 	defer func() {
 		if resultErr == nil {
 			resultErr = validateInventoryAll(input.All, result.Source)
@@ -257,6 +295,9 @@ func adminGroupListIsUnfiltered(input grouplist.Input) bool {
 }
 
 func (c *remoteAdminCommands) InspectAdminGroup(ctx context.Context, input groupinspect.Input) (groupinspect.Output, error) {
+	if err := groupinspect.ValidateInput(input); err != nil {
+		return groupinspect.Output{}, err
+	}
 	if input.Catalog {
 		environment, site, err := c.resolveCatalogTarget(input.Environment)
 		if err != nil {
@@ -289,6 +330,9 @@ func (c *remoteAdminCommands) InspectAdminGroup(ctx context.Context, input group
 }
 
 func (c *remoteAdminCommands) CreateAdminGroup(ctx context.Context, input groupcreate.Input, preview bool) (groupcreate.Output, error) {
+	if err := groupcreate.ValidateInput(input); err != nil {
+		return groupcreate.Output{}, err
+	}
 	connection, err := c.connect(ctx, input.Environment, true)
 	if err != nil {
 		return groupcreate.Output{}, remoteSetupError("admin.group.create", input.Environment, input.Site, connection.environment, err)
@@ -301,6 +345,9 @@ func (c *remoteAdminCommands) CreateAdminGroup(ctx context.Context, input groupc
 }
 
 func (c *remoteAdminCommands) UpdateAdminGroup(ctx context.Context, input groupupdate.Input, preview bool) (groupupdate.Output, error) {
+	if err := groupupdate.ValidateInput(input); err != nil {
+		return groupupdate.Output{}, err
+	}
 	connection, err := c.connect(ctx, input.Environment, true)
 	if err != nil {
 		return groupupdate.Output{}, remoteSetupError("admin.group.update", input.Environment, input.Site, connection.environment, err)
@@ -313,6 +360,9 @@ func (c *remoteAdminCommands) UpdateAdminGroup(ctx context.Context, input groupu
 }
 
 func (c *remoteAdminCommands) DeleteAdminGroup(ctx context.Context, input groupdelete.Input, preview bool) (groupdelete.Output, error) {
+	if err := groupdelete.ValidateInput(input); err != nil {
+		return groupdelete.Output{}, err
+	}
 	connection, err := c.connect(ctx, input.Environment, true)
 	if err != nil {
 		return groupdelete.Output{}, remoteSetupError("admin.group.delete", input.Environment, input.Site, connection.environment, err)
@@ -325,6 +375,9 @@ func (c *remoteAdminCommands) DeleteAdminGroup(ctx context.Context, input groupd
 }
 
 func (c *remoteAdminCommands) AddAdminGroupMember(ctx context.Context, input groupmemberadd.Input, preview bool) (groupmemberadd.Output, error) {
+	if err := groupmemberadd.ValidateInput(input); err != nil {
+		return groupmemberadd.Output{}, err
+	}
 	connection, err := c.connect(ctx, input.Environment, true)
 	if err != nil {
 		return groupmemberadd.Output{}, remoteSetupError("admin.group.member.add", input.Environment, input.Site, connection.environment, err)
@@ -336,6 +389,9 @@ func (c *remoteAdminCommands) AddAdminGroupMember(ctx context.Context, input gro
 }
 
 func (c *remoteAdminCommands) RemoveAdminGroupMember(ctx context.Context, input groupmemberremove.Input, preview bool) (groupmemberremove.Output, error) {
+	if err := groupmemberremove.ValidateInput(input); err != nil {
+		return groupmemberremove.Output{}, err
+	}
 	connection, err := c.connect(ctx, input.Environment, true)
 	if err != nil {
 		return groupmemberremove.Output{}, remoteSetupError("admin.group.member.remove", input.Environment, input.Site, connection.environment, err)
@@ -347,6 +403,9 @@ func (c *remoteAdminCommands) RemoveAdminGroupMember(ctx context.Context, input 
 }
 
 func (c *remoteAdminCommands) InspectAdminPermission(ctx context.Context, input permissioninspect.Input) (permissioninspect.Output, error) {
+	if err := permissioninspect.ValidateInput(input); err != nil {
+		return permissioninspect.Output{}, err
+	}
 	connection, err := c.connect(ctx, input.Environment, false)
 	if err != nil {
 		return permissioninspect.Output{}, remoteSetupError("admin.permission.inspect", input.Environment, input.Site, connection.environment, err)

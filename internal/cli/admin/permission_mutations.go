@@ -2,6 +2,7 @@ package admin
 
 import (
 	"context"
+	"github.com/ahillspace/tadx/internal/cli/clierr"
 	"strings"
 
 	permissioncreate "github.com/ahillspace/tadx/actions/admin/permission/create"
@@ -27,7 +28,7 @@ func newPermissionCreate(deps Dependencies) *cobra.Command {
 	}, func(cmd *cobra.Command) error {
 		out, err := deps.PermissionCreator.CreateAdminPermission(cmd.Context(), in, preview)
 		if err != nil {
-			return err
+			return clierr.WithOutput(out, err)
 		}
 		return deps.Renderer.Render(out)
 	})
@@ -55,7 +56,7 @@ func newPermissionDelete(deps Dependencies) *cobra.Command {
 	}, func(cmd *cobra.Command) error {
 		out, err := deps.PermissionDeleter.DeleteAdminPermission(cmd.Context(), in, preview)
 		if err != nil {
-			return err
+			return clierr.WithOutput(out, err)
 		}
 		return deps.Renderer.Render(out)
 	})

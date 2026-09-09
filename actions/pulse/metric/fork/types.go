@@ -25,6 +25,8 @@ type Definition struct {
 	DatasourceLUID       string
 	AllowedDimensions    []string
 	AllowedGranularities []string
+	FixedFilters         []any
+	FixedFiltersKnown    bool
 }
 type CreateRequest struct {
 	DefinitionLUID string
@@ -61,17 +63,19 @@ type SavedDefinition struct {
 	DatasourceLUID string `json:"datasource_luid"`
 }
 type Plan struct {
-	Mode             string         `json:"mode"`
-	Operation        string         `json:"operation"`
-	Environment      string         `json:"environment,omitempty"`
-	Site             string         `json:"site,omitempty"`
-	SourceMetricLUID string         `json:"source_metric_luid"`
-	DefinitionLUID   string         `json:"definition_luid"`
-	DatasourceLUID   string         `json:"datasource_luid"`
-	Timeframe        string         `json:"timeframe,omitempty"`
-	Filters          []Filter       `json:"filters,omitempty"`
-	Specification    map[string]any `json:"specification"`
-	Fingerprint      string         `json:"request_fingerprint"`
+	Mode                   string         `json:"mode"`
+	Operation              string         `json:"operation"`
+	Environment            string         `json:"environment,omitempty"`
+	Site                   string         `json:"site,omitempty"`
+	SourceMetricLUID       string         `json:"source_metric_luid"`
+	DefinitionLUID         string         `json:"definition_luid"`
+	DatasourceLUID         string         `json:"datasource_luid"`
+	Timeframe              string         `json:"timeframe,omitempty"`
+	Filters                []Filter       `json:"filters,omitempty"`
+	Specification          map[string]any `json:"specification"`
+	DefinitionFilters      []any          `json:"definition_filters"`
+	DefinitionFiltersKnown bool           `json:"definition_filters_known"`
+	Fingerprint            string         `json:"request_fingerprint"`
 }
 type Result struct {
 	Status                      string          `json:"status"`
@@ -103,7 +107,7 @@ type CompactResult struct {
 	SpecificationVerified bool   `json:"specification_verified"`
 }
 type CompactOutput struct {
-	Plan    Plan           `json:"plan"`
+	Plan    CompactPlan    `json:"plan"`
 	Result  *CompactResult `json:"result,omitempty"`
 	Details string         `json:"details"`
 	Help    []string       `json:"help"`
@@ -114,6 +118,6 @@ func (o Output) CompactOutput() any {
 	if o.Result != nil {
 		result = &CompactResult{Status: o.Result.Status, MetricLUID: o.Result.MetricLUID, Created: o.Result.Created, ReconciliationStatus: o.Result.ReconciliationStatus, OwnershipVerified: o.Result.OwnershipVerified, SpecificationVerified: o.Result.SpecificationVerified}
 	}
-	return CompactOutput{Plan: o.Plan, Result: result, Details: "--full", Help: o.Help}
+	return CompactOutput{Plan: compactPlan(o.Plan), Result: result, Details: "--full", Help: o.Help}
 }
 func (o Output) FullOutput() any { return o }

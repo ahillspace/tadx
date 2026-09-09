@@ -3,6 +3,7 @@ package inspect
 import (
 	"context"
 	"errors"
+	"github.com/ahillspace/tadx/internal/commandhint"
 	"strings"
 
 	"github.com/ahillspace/tadx/internal/errs"
@@ -21,6 +22,9 @@ func New(reader Reader) *Action { return &Action{reader: reader} }
 
 // Execute inspects and verifies one exact definition identity.
 func (a *Action) Execute(ctx context.Context, input Input) (Output, error) {
+	if err := ValidateInput(input); err != nil {
+		return Output{}, err
+	}
 	if a == nil || a.reader == nil {
 		return Output{}, definitionError("pulse.definition.inspect.unconfigured", errs.KindRuntime, input, "Pulse definition retrieval is not configured.", nil)
 	}
@@ -44,7 +48,7 @@ func (a *Action) Execute(ctx context.Context, input Input) (Output, error) {
 		return Output{}, definitionError("pulse.definition.inspect.invalid_response", errs.KindOperation, input, "Tableau returned an incomplete Pulse definition.", errors.New("definition requires name and datasource LUID"))
 	}
 	requestID := definition.RequestID
-	return Output{Status: "found", Environment: input.Environment, Site: input.Site, Definition: definition, RequestID: requestID, Help: []string{"tadx pulse definition pull --id " + input.LUID}}, nil
+	return Output{Status: "found", Environment: input.Environment, Site: input.Site, Definition: definition, RequestID: requestID, Help: []string{commandhint.Environment(input.Environment, "pulse", "definition", "pull", "--id", input.LUID)}}, nil
 }
 
 func definitionError(id string, kind errs.Kind, input Input, summary string, cause error) error {

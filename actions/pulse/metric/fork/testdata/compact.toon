@@ -6,16 +6,25 @@ plan:
   source_metric_luid: metric-1
   definition_luid: definition-1
   datasource_luid: datasource-1
-  timeframe: LAST_30_DAYS
-  filters[1]:
-    - field: Region
-      values[1]: West
-      exclude: false
-  specification:
-    measurement_period:
-      granularity: GRANULARITY_BY_DAY
-      range: RANGE_BY_CONFIG
-  request_fingerprint: "sha256:0000000000000000000000000000000000000000000000000000000000000000"
+  period:
+    source: CHANGED
+    granularity: DAY
+    range: BY_CONFIG
+    periods: "30"
+    period_unit: DAY
+    current_period: INCLUDED
+  population:
+    scope: FILTERED
+    combination: AND
+    filters[1]:
+      - field: Region
+        source: CHANGED
+        operator: EQUAL
+        values[1]{kind,value}:
+          STRING,West
+        nulls: EXCLUDED
+  requires_full: false
+  review_complete: true
 result:
   status: created
   metric_luid: metric-fork

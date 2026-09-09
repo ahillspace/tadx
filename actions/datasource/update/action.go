@@ -3,6 +3,7 @@ package update
 import (
 	"context"
 	"errors"
+	"github.com/ahillspace/tadx/internal/commandhint"
 	"github.com/ahillspace/tadx/internal/errs"
 	"github.com/ahillspace/tadx/internal/identity"
 	"strings"
@@ -59,10 +60,10 @@ func (a *Action) Execute(ctx context.Context, in Input, preview bool) (Output, e
 	}
 	result, err := a.updater.UpdateDatasource(ctx, request)
 	if err != nil {
-		return Output{}, operationError("datasource.update.failed", in, current.LUID, "Datasource update failed.", "Inspect the datasource before updating again.", err)
+		return Output{}, operationError("datasource.update.failed", in, current.LUID, "Datasource update failed.", "Inspect the exact datasource before retrying: "+commandhint.Environment(in.Environment, "content", "datasource", "inspect", "--id", current.LUID), err)
 	}
 	out.Result = &result
-	out.Help = []string{"tadx content datasource inspect --id " + current.LUID}
+	out.Help = []string{commandhint.Environment(in.Environment, "content", "datasource", "inspect", "--id", current.LUID)}
 	return out, nil
 }
 func changedRequest(target Datasource, in Input) (Request, []Change) {
@@ -97,22 +98,7 @@ func validate(in Input) error {
 	if strings.TrimSpace(in.Environment) == "" || (strings.TrimSpace(in.Site) == "" && !in.TargetResolved) {
 		return usage("environment", "datasource update requires an explicit resolved environment and site")
 	}
-	if in.Selector.LUID == "" && (strings.TrimSpace(in.Selector.Name) == "" || strings.TrimSpace(in.Selector.ProjectPath) == "") {
-		return usage("selector", "datasource update requires a LUID or exact name and project path")
-	}
-	if in.Selector.LUID != "" && (strings.TrimSpace(in.Selector.Name) != "" || strings.TrimSpace(in.Selector.ProjectPath) != "") {
-		return usage("selector", "a datasource LUID cannot be combined with name or project path")
-	}
-	if in.Name == nil && in.OwnerLUID == nil {
-		return usage("changes", "datasource update requires a name or owner LUID")
-	}
-	if in.Name != nil && strings.TrimSpace(*in.Name) == "" {
-		return usage("name", "datasource update name cannot be empty")
-	}
-	if in.OwnerLUID != nil && strings.TrimSpace(*in.OwnerLUID) == "" {
-		return usage("owner_id", "datasource update owner LUID cannot be empty")
-	}
-	return nil
+	return ValidateInput(in)
 }
 func usage(field, message string) error {
 	return &errs.Error{ID: "datasource.update.usage", Kind: errs.KindUsage, Operation: "datasource.update", Summary: message, Retryable: errs.Bool(false), CorrectiveAction: "Correct the datasource update input and review a new preview.", Validation: []errs.ValidationDetail{{Field: field, Code: "required", Message: message}}}

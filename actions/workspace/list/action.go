@@ -4,6 +4,7 @@ package list
 import (
 	"context"
 	"errors"
+	"github.com/ahillspace/tadx/internal/commandhint"
 	"github.com/ahillspace/tadx/internal/output"
 
 	"github.com/ahillspace/tadx/internal/errs"
@@ -106,7 +107,11 @@ func (a *Action) Execute(ctx context.Context, input Input) (Output, error) {
 	if page.Returned != len(page.Items) || page.Returned > input.Limit {
 		return Output{}, runtimeError("workspace listing returned an invalid bounded page")
 	}
-	return Output{Page: page, Help: []string{"tadx workspace status --workspace <name>"}}, nil
+	var help []string
+	if len(page.Items) > 0 {
+		help = []string{commandhint.Command("workspace", "status", "--workspace", page.Items[0].Name)}
+	}
+	return Output{Page: page, Help: help}, nil
 }
 
 func usage(message string) error {

@@ -3,6 +3,7 @@ package delete
 import (
 	"context"
 	"errors"
+	"github.com/ahillspace/tadx/internal/commandhint"
 	"reflect"
 
 	"github.com/ahillspace/tadx/internal/errs"
@@ -79,7 +80,10 @@ func (a *Action) Execute(ctx context.Context, in Input, preview bool) (Output, e
 	if a == nil || a.resolver == nil || a.deleter == nil {
 		return Output{}, errors.New("admin user delete is not configured")
 	}
-	if in.Environment == "" || (in.Site == "" && !in.TargetResolved) || in.UserLUID == "" {
+	if err := ValidateInput(in); err != nil {
+		return Output{}, err
+	}
+	if in.Site == "" && !in.TargetResolved {
 		return Output{}, &errs.Error{ID: "admin.user.delete.usage", Kind: errs.KindUsage, Operation: "admin.user.delete", Summary: "admin user delete requires explicit environment, site, and user LUID", Retryable: errs.Bool(false), CorrectiveAction: "Provide an exact environment, site, and user LUID.", Validation: []errs.ValidationDetail{{Field: "selector", Code: "required", Message: "admin user delete requires explicit environment, site, and user LUID"}}}
 	}
 	user, err := a.resolver.ResolveUser(ctx, in.UserLUID)
@@ -105,11 +109,11 @@ func (a *Action) Execute(ctx context.Context, in Input, preview bool) (Output, e
 			if luid == "" {
 				luid = user.LUID
 			}
-			return Output{}, &errs.Error{ID: "admin.user.delete.outcome_unknown", Kind: errs.KindOperation, Operation: "admin.user.delete", Resource: luid, Environment: in.Environment, Site: in.Site, Summary: "The user delete outcome could not be determined safely.", Cause: err, Retryable: errs.Bool(false), CorrectiveAction: "Inspect the target site and Tableau request before attempting another user delete.", TableauRequestID: result.TableauRequestID}
+			return Output{}, &errs.Error{ID: "admin.user.delete.outcome_unknown", Kind: errs.KindOperation, Operation: "admin.user.delete", Resource: luid, Environment: in.Environment, Site: in.Site, Summary: "The user delete outcome could not be determined safely.", Cause: err, Retryable: errs.Bool(false), CorrectiveAction: "Inspect the exact user and Tableau request before retrying: " + commandhint.Environment(in.Environment, "admin", "user", "inspect", "--id", luid), TableauRequestID: result.TableauRequestID}
 		}
 		return Output{}, err
 	}
 	out.Result = &result
-	out.Help = []string{"tadx admin user list"}
+	out.Help = []string{commandhint.Environment(in.Environment, "admin", "user", "list")}
 	return out, nil
 }

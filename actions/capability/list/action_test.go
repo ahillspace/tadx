@@ -126,7 +126,7 @@ func TestExecuteRejectsInvalidPagination(t *testing.T) {
 	}
 }
 
-func TestOutputGoldenIsBoundedAndUsesPlaceholders(t *testing.T) {
+func TestOutputGoldenIsBoundedAndUsesExactIdentity(t *testing.T) {
 	action := capabilitylist.New(source{items: []capabilitylist.Capability{
 		{ID: "content.workbook.list", Owner: "cli", Disposition: "ship", State: "planned", Domain: "content"},
 		{ID: "content.datasource.list", Owner: "cli", Disposition: "ship", State: "planned", Domain: "content"},
@@ -150,7 +150,7 @@ func TestOutputGoldenIsBoundedAndUsesPlaceholders(t *testing.T) {
 	if rendered.Len() > 700 {
 		t.Fatalf("bounded output grew to %d bytes", rendered.Len())
 	}
-	if !strings.Contains(rendered.String(), "<id>") || strings.Contains(rendered.String(), "capability get content.datasource.list") {
-		t.Fatalf("help must use an explicit placeholder: %s", rendered.String())
+	if strings.Contains(rendered.String(), "<id>") || !strings.Contains(rendered.String(), "capability get content.datasource.list") {
+		t.Fatalf("help must use a returned exact identity: %s", rendered.String())
 	}
 }
