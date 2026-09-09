@@ -44,6 +44,19 @@ func TestSchemaAllInventoryBoundAndConflicts(t *testing.T) {
 	}
 }
 
+func TestSchemaRequestedLimitMatchesAllBound(t *testing.T) {
+	r := &reader{result: datasourceschema.Schema{DatasourceLUID: "ds-1", DatasourceName: "Orders"}}
+	for index := 0; index < 10000; index++ {
+		r.result.Fields = append(r.result.Fields, datasourceschema.Field{ID: fmt.Sprint(index), Caption: fmt.Sprint(index), Role: "dimension"})
+	}
+	for _, limit := range []int{1000, 10000} {
+		out, err := datasourceschema.New(r, time.Now).Execute(context.Background(), datasourceschema.Input{DatasourceLUID: "ds-1", Limit: limit})
+		if err != nil || out.Page.Returned != limit || out.Page.MoreAvailable != (limit < 10000) {
+			t.Fatalf("limit=%d page=%+v err=%v", limit, out.Page, err)
+		}
+	}
+}
+
 func (r *reader) ReadDatasourceSchema(_ context.Context, luid string) (datasourceschema.Schema, error) {
 	r.calls++
 	r.luid = luid
@@ -103,7 +116,7 @@ func TestSchemaRejectsInvalidInputBeforeRead(t *testing.T) {
 	for _, input := range []datasourceschema.Input{
 		{},
 		{DatasourceLUID: "ds-1", Role: "metric"},
-		{DatasourceLUID: "ds-1", Limit: 101},
+		{DatasourceLUID: "ds-1", Limit: 10001},
 	} {
 		if _, err := action.Execute(context.Background(), input); err == nil {
 			t.Fatalf("accepted %#v", input)

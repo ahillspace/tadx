@@ -14,11 +14,20 @@ type Input struct {
 
 // Definition is the canonical remote definition document.
 type Definition struct {
+	LUID            string
+	Name            string
+	DatasourceLUID  string
+	Configuration   []byte
+	RequestID       string
+	Metrics         []Metric
+	MetricsComplete bool
+}
+
+type Metric struct {
 	LUID           string
-	Name           string
-	DatasourceLUID string
-	Configuration  []byte
-	RequestID      string
+	DefinitionLUID string
+	IsDefault      bool
+	Specification  []byte
 }
 
 // Artifact is the action-owned materialization request.
@@ -32,6 +41,7 @@ type Artifact struct {
 	ServerOrigin   string
 	SiteLUID       string
 	Configuration  []byte
+	Metrics        []Metric
 	Overwrite      bool
 }
 
@@ -44,11 +54,12 @@ type ArtifactResult struct {
 
 // Output retains complete details before projection.
 type Output struct {
-	Status     string
-	Definition Definition
-	Artifact   ArtifactResult
-	RequestID  string
-	Help       []string
+	Status      string
+	Definition  Definition
+	Artifact    ArtifactResult
+	RequestID   string
+	MetricCount int
+	Help        []string
 }
 
 // CompactDefinition identifies the pulled definition.
@@ -64,28 +75,30 @@ type CompactArtifact struct {
 
 // CompactResult is the default projection.
 type CompactResult struct {
-	Status     string            `json:"status"`
-	Definition CompactDefinition `json:"definition"`
-	Artifact   CompactArtifact   `json:"artifact"`
-	Details    string            `json:"details"`
-	Help       []string          `json:"help"`
+	Status      string            `json:"status"`
+	Definition  CompactDefinition `json:"definition"`
+	Artifact    CompactArtifact   `json:"artifact"`
+	MetricCount int               `json:"metric_count"`
+	Details     string            `json:"details"`
+	Help        []string          `json:"help"`
 }
 
 // FullResult is the expanded projection.
 type FullResult struct {
-	Status     string            `json:"status"`
-	Definition CompactDefinition `json:"definition"`
-	Artifact   ArtifactResult    `json:"artifact"`
-	RequestID  string            `json:"tableau_request_id,omitempty"`
-	Help       []string          `json:"help"`
+	Status      string            `json:"status"`
+	Definition  CompactDefinition `json:"definition"`
+	Artifact    ArtifactResult    `json:"artifact"`
+	MetricCount int               `json:"metric_count"`
+	RequestID   string            `json:"tableau_request_id,omitempty"`
+	Help        []string          `json:"help"`
 }
 
 // CompactOutput returns the managed path and exact definition identity.
 func (o Output) CompactOutput() any {
-	return CompactResult{Status: o.Status, Definition: CompactDefinition{LUID: o.Definition.LUID, Name: o.Definition.Name}, Artifact: CompactArtifact{Path: o.Artifact.Path}, Details: "--full", Help: o.Help}
+	return CompactResult{Status: o.Status, Definition: CompactDefinition{LUID: o.Definition.LUID, Name: o.Definition.Name}, Artifact: CompactArtifact{Path: o.Artifact.Path}, MetricCount: o.MetricCount, Details: "--full", Help: o.Help}
 }
 
 // FullOutput returns artifact provenance without embedding the full resource document.
 func (o Output) FullOutput() any {
-	return FullResult{Status: o.Status, Definition: CompactDefinition{LUID: o.Definition.LUID, Name: o.Definition.Name}, Artifact: o.Artifact, RequestID: o.RequestID, Help: o.Help}
+	return FullResult{Status: o.Status, Definition: CompactDefinition{LUID: o.Definition.LUID, Name: o.Definition.Name}, Artifact: o.Artifact, MetricCount: o.MetricCount, RequestID: o.RequestID, Help: o.Help}
 }

@@ -14,7 +14,7 @@ import (
 )
 
 const (
-	maxLimit        = 100
+	maxLimit        = 10000
 	cursorVersion   = 1
 	maxCursorLength = 2048
 )
@@ -49,7 +49,7 @@ func (a *Action) Execute(ctx context.Context, input Input) (Output, error) {
 	if err != nil {
 		return Output{}, err
 	}
-	page, err := a.reader.ListFlows(ctx, PageRequest{PageNumber: pageNumber, PageSize: pageSize, Name: input.Name, OwnerName: input.OwnerName, ProjectLUID: input.ProjectLUID, ProjectName: input.ProjectName, SnapshotCursor: snapshotCursor})
+	page, err := a.readWindow(ctx, PageRequest{PageNumber: pageNumber, PageSize: pageSize, Name: input.Name, OwnerName: input.OwnerName, ProjectLUID: input.ProjectLUID, ProjectName: input.ProjectName, SnapshotCursor: snapshotCursor})
 	if err != nil {
 		return Output{}, err
 	}
@@ -148,4 +148,19 @@ func listHelp(environment string, items []Flow) []string {
 		return nil
 	}
 	return []string{commandhint.Environment(environment, "content", "flow", "inspect", "--id", items[0].LUID)}
+}
+
+func (a *Action) readWindow(ctx context.Context, request PageRequest) (Page, error) {
+	if request.PageSize <= 1000 {
+		return a.reader.ListFlows(ctx, request)
+	}
+	requestID := ""
+	page, err := paging.Window(ctx, paging.State{Number: request.PageNumber, Size: request.PageSize, Token: request.SnapshotCursor}, 1000, func(ctx context.Context, state paging.State) (paging.Page[Flow], error) {
+		input := request
+		input.PageNumber, input.PageSize, input.SnapshotCursor = state.Number, state.Size, state.Token
+		page, err := a.reader.ListFlows(ctx, input)
+		requestID = page.RequestID
+		return paging.Page[Flow]{Number: page.Number, Size: page.Size, Total: page.Total, Items: page.Flows, Token: page.SnapshotCursor}, err
+	}, func(item Flow) string { return item.LUID })
+	return Page{Number: page.Number, Size: page.Size, Total: page.Total, Flows: page.Items, SnapshotCursor: "", SuppressContinuation: true, RequestID: requestID}, err
 }

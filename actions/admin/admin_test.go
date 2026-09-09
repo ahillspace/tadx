@@ -284,7 +284,7 @@ func TestAdminUsageValidationIsKindUsage(t *testing.T) {
 			return err
 		},
 		func() error {
-			_, err := userlist.New(userListReader{}).Execute(context.Background(), userlist.Input{Limit: 5000})
+			_, err := userlist.New(userListReader{}).Execute(context.Background(), userlist.Input{Limit: 10001})
 			return err
 		},
 	}

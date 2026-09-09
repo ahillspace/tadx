@@ -182,6 +182,12 @@ func (o Output) CompactOutput() any {
 
 // FullOutput returns provenance, identity mapping, and a bounded graph page.
 func (o Output) FullOutput() any {
+	o.Resource.Kind = publicKind(o.Resource.Kind)
+	nodes := append([]Node(nil), o.Nodes...)
+	for i := range nodes {
+		nodes[i].Kind = publicKind(nodes[i].Kind)
+	}
+	o.Nodes = nodes
 	nodeLimit := len(o.Nodes)
 	if nodeLimit > FullNodeLimit {
 		nodeLimit = FullNodeLimit
@@ -210,6 +216,14 @@ func (o Output) counts() (*int, *int) {
 }
 
 func compactResource(resource Resource) Resource {
+	resource.Kind = publicKind(resource.Kind)
 	resource.MetadataID = ""
 	return resource
+}
+
+func publicKind(kind string) string {
+	if kind == "published_datasource" {
+		return "datasource"
+	}
+	return kind
 }

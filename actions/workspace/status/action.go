@@ -33,9 +33,9 @@ type compactWorkspace struct {
 // Artifact is one full managed artifact state.
 type Artifact struct {
 	Kind                string `json:"kind"`
-	LUID                string `json:"luid,omitempty"`
-	Name                string `json:"name,omitempty"`
-	Path                string `json:"path"`
+	LUID                string `json:"luid"`
+	Name                string `json:"name"`
+	Path                string `json:"path,omitempty"`
 	State               string `json:"state"`
 	CanonicalPath       string `json:"canonical_path,omitempty"`
 	BaselineFingerprint string `json:"baseline_fingerprint,omitempty"`
@@ -90,7 +90,10 @@ type fullOutput struct {
 func (o Output) CompactOutput() any {
 	inventory := o.Inventory
 	inventory.MoreAvailable = inventory.MoreAvailable || inventory.NextCursor != ""
-	inventory.Items = nil
+	inventory.Items = make([]Artifact, len(o.Inventory.Items))
+	for i, item := range o.Inventory.Items {
+		inventory.Items[i] = Artifact{Kind: item.Kind, LUID: item.LUID, Name: item.Name, State: item.State}
+	}
 	warnings, omitted := boundWarnings(o.Warnings)
 	workspace := compactWorkspace{Name: o.Workspace.Name, ID: o.Workspace.ID}
 	return compactOutput{Status: o.Status, Workspace: workspace, Inventory: inventory, Warnings: warnings, WarningsOmitted: omitted, Details: "--full", Help: o.Help}

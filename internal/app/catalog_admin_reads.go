@@ -3,7 +3,6 @@ package app
 import (
 	"context"
 	"encoding/json"
-	"path/filepath"
 
 	groupinspect "github.com/ahillspace/tadx/actions/admin/group/inspect"
 	grouplist "github.com/ahillspace/tadx/actions/admin/group/list"
@@ -14,8 +13,9 @@ import (
 	"github.com/ahillspace/tadx/internal/readsource"
 )
 
-func (c *remoteAdminCommands) catalogStore() *catalog.Store {
-	return catalog.NewStore(filepath.Dir(c.runtime.configPath), c.runtime.now)
+func (c *remoteAdminCommands) catalogStore(alias string) *catalog.Store {
+	_, environment, _ := c.runtime.environment(alias, false)
+	return c.runtime.catalogStore(environment)
 }
 
 func (c *remoteAdminCommands) resolveCatalogTarget(alias string) (string, string, error) {

@@ -53,7 +53,7 @@ func (c *remoteContentCommands) listDatasources(ctx context.Context, input datas
 			return datasourcelist.Output{}, err
 		}
 		input.Environment, input.Site = environment, site
-		reader := &catalogDatasourceListReader{store: c.catalogStore(), environment: environment, site: site}
+		reader := &catalogDatasourceListReader{store: c.catalogStore(input.Environment), environment: environment, site: site}
 		output, err := datasourcelist.New(reader).Execute(ctx, input)
 		if err == nil {
 			output.Source = reader.source
@@ -72,7 +72,7 @@ func (c *remoteContentCommands) listDatasources(ctx context.Context, input datas
 
 	if input.All {
 		observedAt := c.runtime.now().UTC()
-		inventory, err := collectResourceInventory(ctx, connection.inventory, c.catalogStore(), tableaucatalog.ScopeDatasources, input.Environment, input.Site, observedAt, inventoryCollectionOptions{MaxConcurrency: connection.environment.CatalogMaxConcurrency, Filter: filter})
+		inventory, err := collectResourceInventory(ctx, connection.inventory, c.catalogStore(input.Environment), tableaucatalog.ScopeDatasources, input.Environment, input.Site, observedAt, inventoryCollectionOptions{MaxConcurrency: connection.environment.CatalogMaxConcurrency, Filter: filter})
 		if err != nil {
 			return datasourcelist.Output{}, inventoryRefreshError("datasource.list", input.Environment, input.Site, err)
 		}
@@ -118,7 +118,7 @@ func (c *remoteContentCommands) InspectDatasource(ctx context.Context, input dat
 			return datasourceinspect.Output{}, err
 		}
 		input.Environment, input.Site = environment, site
-		resolver := &catalogDatasourceGetResolver{store: c.catalogStore(), environment: environment, site: site}
+		resolver := &catalogDatasourceGetResolver{store: c.catalogStore(input.Environment), environment: environment, site: site}
 		output, err := datasourceinspect.New(resolver).Execute(ctx, input)
 		if err == nil {
 			output.Source = resolver.source
@@ -138,7 +138,7 @@ func (c *remoteContentCommands) InspectDatasource(ctx context.Context, input dat
 	output.Source = liveSource(c.runtime.now)
 	entry, encodeErr := resourceEntry(input.Environment, input.Site, "datasource", output.Datasource.LUID, output.Datasource.Name, output.Datasource.ProjectPath, output.Datasource.OwnerLUID, "detail", observedAt, output.Datasource)
 	if encodeErr == nil {
-		writeThrough(c.catalogStore(), []catalog.ResourceEntry{entry})
+		writeThrough(c.catalogStore(input.Environment), []catalog.ResourceEntry{entry})
 	}
 	return output, nil
 }

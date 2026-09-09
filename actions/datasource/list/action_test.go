@@ -140,7 +140,7 @@ func TestActionRejectsCursorWithAbsurdPageNumber(t *testing.T) {
 
 func TestActionRejectsOutOfRangeLimitAsUsage(t *testing.T) {
 	r := &reader{}
-	_, err := datasourcelist.New(r).Execute(context.Background(), datasourcelist.Input{Environment: "dev", Site: "site", Limit: 500})
+	_, err := datasourcelist.New(r).Execute(context.Background(), datasourcelist.Input{Environment: "dev", Site: "site", Limit: 10001})
 	if err == nil || r.calls != 0 {
 		t.Fatalf("error = %v, calls = %d", err, r.calls)
 	}

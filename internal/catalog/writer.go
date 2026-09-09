@@ -214,7 +214,7 @@ func (w *GenerationWriter) publishReady(ctx context.Context, count int, fingerpr
 	if w.publicationTarget != nil {
 		return w.publicationTarget.publishStaged(ctx, w, count, fingerprint)
 	}
-	return ReplaceResult{id, databaseRelativePath, count}, nil
+	return ReplaceResult{id, w.store.RelativePath(), count}, nil
 }
 
 func (w *GenerationWriter) replaceResourceEntries(ctx context.Context, generationID string) error {

@@ -60,7 +60,7 @@ func TestCommandReadPhaseReusesProjectIndexButWriteChecksAreFresh(t *testing.T) 
 	if first.transport != second.transport || first.session != second.session || runtime.clients(first) != runtime.clients(second) {
 		t.Fatal("command setup was rebuilt")
 	}
-	if _, err := runtime.tableauConnection(ctx, "", true); err == nil {
-		t.Fatal("shared setup bypassed explicit mutation target requirement")
+	if inferred, err := runtime.tableauConnection(ctx, "", true); err != nil || inferred.environment.Alias != "production" {
+		t.Fatal("sole configured target was not inferred", err)
 	}
 }

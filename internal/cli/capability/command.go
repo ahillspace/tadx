@@ -27,14 +27,15 @@ type Renderer interface {
 
 // Dependencies contains this domain's narrow wiring.
 type Dependencies struct {
-	Lister           Lister
-	Getter           Getter
-	Renderer         Renderer
-	MutationsEnabled bool
-	ListUse          string
-	ListShort        string
-	GetUse           string
-	GetShort         string
+	Lister                Lister
+	Getter                Getter
+	Renderer              Renderer
+	MutationsEnabled      bool
+	ResolveMutationPolicy func() (bool, string, error)
+	ListUse               string
+	ListShort             string
+	GetUse                string
+	GetShort              string
 }
 
 // New creates the capability command and registers its implemented operations.
@@ -68,13 +69,21 @@ func newList(deps Dependencies) *cobra.Command {
 			return nil
 		},
 		RunE: func(command *cobra.Command, _ []string) error {
+			enabled := deps.MutationsEnabled
+			if deps.ResolveMutationPolicy != nil {
+				var err error
+				enabled, _, err = deps.ResolveMutationPolicy()
+				if err != nil {
+					return err
+				}
+			}
 			var mutationFilter *bool
 			if command.Flags().Changed("mutation") {
 				mutationFilter = &mutation
 			}
 			output, err := deps.Lister.Execute(command.Context(), capabilitylist.Input{
 				Domain: domain, Resource: resource, Owner: owner, Product: product,
-				Mutation: mutationFilter, Cursor: cursor, Limit: limit, MutationsEnabled: deps.MutationsEnabled,
+				Mutation: mutationFilter, Cursor: cursor, Limit: limit, MutationsEnabled: enabled,
 			})
 			if err != nil {
 				return err
@@ -106,7 +115,15 @@ func newGet(deps Dependencies) *cobra.Command {
 			return nil
 		},
 		RunE: func(command *cobra.Command, args []string) error {
-			output, err := deps.Getter.Execute(command.Context(), capabilityget.Input{ID: args[0], MutationsEnabled: deps.MutationsEnabled})
+			enabled := deps.MutationsEnabled
+			if deps.ResolveMutationPolicy != nil {
+				var err error
+				enabled, _, err = deps.ResolveMutationPolicy()
+				if err != nil {
+					return err
+				}
+			}
+			output, err := deps.Getter.Execute(command.Context(), capabilityget.Input{ID: args[0], MutationsEnabled: enabled})
 			if err != nil {
 				return err
 			}

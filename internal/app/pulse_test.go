@@ -136,9 +136,9 @@ environments:
 	entries := []catalog.ResourceEntry{
 		pulseCatalogEntry(t, now, pulseDefinitionKind, definition.LUID, definition.Name, "", "", definition),
 		pulseCatalogEntry(t, now, pulseMetricKind, metric.LUID, metric.Name, definition.LUID, "", metric),
-		pulseCatalogEntry(t, now, pulseFollowerKind, follower.LUID, follower.FollowerName, metric.LUID, follower.FollowerLUID, follower),
+		pulseCatalogEntry(t, now, pulseFollowerSnapshotKind, metric.LUID, metric.LUID, "", "", pulseFollowerSnapshot{Version: 1, MetricLUID: metric.LUID, Subscriptions: []metricfollowers.Subscription{{LUID: follower.LUID, MetricLUID: metric.LUID, FollowerType: follower.FollowerType, FollowerLUID: follower.FollowerLUID, FollowerName: follower.FollowerName}}}),
 	}
-	if err := catalog.NewStore(root, func() time.Time { return now }).UpsertResources(context.Background(), entries); err != nil {
+	if err := targetCatalogFixture(t, configPath, func() time.Time { return now }).UpsertResources(context.Background(), entries); err != nil {
 		t.Fatal(err)
 	}
 	transport := &failNetworkTransport{}

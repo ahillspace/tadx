@@ -34,8 +34,8 @@ func (a *Action) Execute(ctx context.Context, input Input) (Output, error) {
 	if limit == 0 {
 		limit = defaultLimit
 	}
-	if limit < 1 || limit > 100 {
-		return Output{}, fail("pulse.metric.list.usage", errs.KindUsage, input, "Pulse metric list limit must be between 1 and 100.", nil)
+	if limit < 1 || limit > 10000 {
+		return Output{}, fail("pulse.metric.list.usage", errs.KindUsage, input, "Pulse metric list limit must be between 1 and 10000.", nil)
 	}
 	token, err := decodeCursor(input.Cursor, input.Environment, input.Site, input.DefinitionLUID, limit, input.Catalog)
 	if err != nil {
@@ -56,6 +56,9 @@ func (a *Action) Execute(ctx context.Context, input Input) (Output, error) {
 	for pageNumber := 0; ; pageNumber++ {
 		if pageNumber >= 100 {
 			return Output{}, fail("pulse.metric.list.incomplete", errs.KindOperation, input, "Pulse listing exceeded its 100-page inventory bound; completeness cannot be established.", nil)
+		}
+		if !input.All {
+			pageSize = min(100, limit-len(items))
 		}
 		page, err := a.reader.ListMetrics(ctx, input.DefinitionLUID, PageRequest{PageSize: pageSize, PageToken: token})
 		if err != nil {
@@ -80,7 +83,7 @@ func (a *Action) Execute(ctx context.Context, input Input) (Output, error) {
 		if nextToken != "" && (strings.TrimSpace(nextToken) == "" || seenTokens[nextToken]) {
 			return Output{}, fail("pulse.metric.list.invalid_response", errs.KindOperation, input, "Pulse listing returned an invalid or repeated continuation token.", nil)
 		}
-		if nextToken == "" || (!input.All) {
+		if nextToken == "" || (!input.All && (len(items) >= limit || limit <= 100)) {
 			break
 		}
 		seenTokens[nextToken] = true

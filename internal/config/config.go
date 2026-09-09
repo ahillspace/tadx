@@ -32,6 +32,7 @@ const (
 
 // Config is the user-global, non-secret TADX configuration model.
 type Config struct {
+	MutationsEnabled   *bool                            `yaml:"mutations_enabled,omitempty" json:"mutations_enabled,omitempty"`
 	Version            int                              `yaml:"version" json:"version"`
 	DefaultEnvironment string                           `yaml:"default_environment,omitempty" json:"default_environment,omitempty"`
 	DefaultWorkspace   string                           `yaml:"default_workspace,omitempty" json:"default_workspace,omitempty"`
@@ -306,6 +307,11 @@ func canonicalWorkspaceRoot(value string) (string, error) {
 func (c Config) ResolveEnvironment(alias string) (Environment, error) {
 	if alias == "" {
 		alias = c.DefaultEnvironment
+		if alias == "" && len(c.Environments) == 1 {
+			for name := range c.Environments {
+				alias = name
+			}
+		}
 	}
 	if alias == "" {
 		return Environment{}, errors.New("no environment selected and no default environment is configured")

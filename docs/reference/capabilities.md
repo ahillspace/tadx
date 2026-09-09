@@ -34,18 +34,12 @@ Use `tadx capability get <id>` for the same focused metadata at runtime.
 | `capability.list` | cli | ship | ready | implemented | `tadx capability list` |
 | `catalog.refresh` | cli | ship | ready | implemented | `tadx catalog refresh` |
 | `catalog.status` | cli | ship | ready | implemented | `tadx catalog status` |
-| `custom-view.data` | tableau-mcp | delegated | ready | external/delegated | None |
-| `custom-view.image` | tableau-mcp | delegated | ready | external/delegated | None |
-| `custom-view.list` | tableau-mcp | delegated | ready | external/delegated | None |
 | `datasource.delete` | cli | ship | ready | implemented | `tadx content datasource delete` |
-| `datasource.field-description.generate` | agent/skill | delegated | ready | external/delegated | None |
 | `datasource.inspect` | cli | ship | ready | implemented | `tadx content datasource inspect` |
 | `datasource.list` | cli | ship | ready | implemented | `tadx content datasource list` |
-| `datasource.metadata` | tableau-mcp | delegated | ready | external/delegated | None |
 | `datasource.move` | cli | ship | ready | implemented | `tadx content datasource move` |
 | `datasource.publish` | cli | ship | ready | implemented | `tadx content datasource publish` |
 | `datasource.pull` | cli | ship | ready | implemented | `tadx content datasource pull` |
-| `datasource.query` | tableau-mcp | delegated | ready | external/delegated | None |
 | `datasource.schema` | cli | ship | ready | implemented | `tadx content datasource schema` |
 | `datasource.update` | cli | ship | ready | implemented | `tadx content datasource update` |
 | `doctor.run` | cli | ship | ready | implemented | `tadx doctor` |
@@ -62,7 +56,10 @@ Use `tadx capability get <id>` for the same focused metadata at runtime.
 | `flow.publish` | cli | ship | ready | implemented | `tadx content flow publish` |
 | `flow.pull` | cli | ship | ready | implemented | `tadx content flow pull` |
 | `flow.update` | cli | ship | ready | implemented | `tadx content flow update` |
+| `last` | cli | ship | ready | implemented | `tadx last` |
 | `lineage.pull` | cli | ship | ready | implemented | `tadx content lineage pull` |
+| `mutation.set` | cli | ship | ready | implemented | `tadx mutation set` |
+| `mutation.status` | cli | ship | ready | implemented | `tadx mutation status` |
 | `project.create` | cli | ship | ready | implemented | `tadx content project create` |
 | `project.delete` | cli | ship | ready | implemented | `tadx content project delete` |
 | `project.inspect` | cli | ship | ready | implemented | `tadx content project inspect` |
@@ -73,23 +70,17 @@ Use `tadx capability get <id>` for the same focused metadata at runtime.
 | `pulse.definition.delete` | cli | ship | ready | implemented | `tadx pulse definition delete` |
 | `pulse.definition.inspect` | cli | ship | ready | implemented | `tadx pulse definition inspect` |
 | `pulse.definition.list` | cli | ship | ready | implemented | `tadx pulse definition list` |
+| `pulse.definition.publish` | cli | ship | ready | implemented | `tadx pulse definition publish` |
 | `pulse.definition.pull` | cli | ship | ready | implemented | `tadx pulse definition pull` |
-| `pulse.insight.brief` | tableau-mcp | delegated | ready | external/delegated | None |
 | `pulse.metric.delete` | cli | ship | ready | implemented | `tadx pulse metric delete` |
 | `pulse.metric.follow` | cli | ship | ready | implemented | `tadx pulse metric follow` |
 | `pulse.metric.followers` | cli | ship | ready | implemented | `tadx pulse metric followers` |
 | `pulse.metric.fork` | cli | ship | ready | implemented | `tadx pulse metric fork` |
-| `pulse.metric.insight-bundle` | tableau-mcp | delegated | ready | external/delegated | None |
 | `pulse.metric.inspect` | cli | ship | ready | implemented | `tadx pulse metric inspect` |
 | `pulse.metric.list` | cli | ship | ready | implemented | `tadx pulse metric list` |
 | `pulse.metric.unfollow` | cli | ship | ready | implemented | `tadx pulse metric unfollow` |
 | `search.run` | cli | ship | ready | implemented | `tadx search` |
 | `version.get` | cli | ship | ready | implemented | `tadx version` |
-| `view.data` | tableau-mcp | delegated | ready | external/delegated | None |
-| `view.image` | tableau-mcp | delegated | ready | external/delegated | None |
-| `view.inspect` | tableau-mcp | delegated | ready | external/delegated | None |
-| `view.list` | tableau-mcp | delegated | ready | external/delegated | None |
-| `workbook.author` | tableau/desktop-mcp | delegated | ready | external/delegated | None |
 | `workbook.delete` | cli | ship | ready | implemented | `tadx content workbook delete` |
 | `workbook.inspect` | cli | ship | ready | implemented | `tadx content workbook inspect` |
 | `workbook.list` | cli | ship | ready | implemented | `tadx content workbook list` |
@@ -108,6 +99,24 @@ Use `tadx capability get <id>` for the same focused metadata at runtime.
 | `workspace.set-default` | cli | ship | ready | implemented | `tadx workspace set-default` |
 | `workspace.status` | cli | ship | ready | implemented | `tadx workspace status` |
 | `workspace.unregister` | cli | ship | ready | implemented | `tadx workspace unregister` |
+
+## Out of scope
+
+These capabilities are outside TADX; no command or automatic handoff is provided.
+
+- `custom-view.data`: Retrieve rendered data from one custom view.
+- `custom-view.image`: Retrieve a rendered image from one custom view.
+- `custom-view.list`: List saved custom views for analytical read workflows.
+- `datasource.field-description.generate`: Generate or revise field-description text using metadata and optional sampled statistics.
+- `datasource.metadata`: Retrieve analytical field and datasource metadata for reasoning and query construction.
+- `datasource.query`: Run analytical queries against datasource data.
+- `pulse.insight.brief`: Generate a Pulse insight brief from exact metrics.
+- `pulse.metric.insight-bundle`: Retrieve current Pulse metric values and generated insights.
+- `view.data`: Retrieve rendered view data for analysis.
+- `view.image`: Retrieve a rendered view image.
+- `view.inspect`: Inspect one view before requesting rendered data or an image.
+- `view.list`: List views for analytical read workflows.
+- `workbook.author`: Create or semantically modify workbook content.
 
 ## Capability definitions
 
@@ -193,7 +202,7 @@ List a bounded live selection of groups, or explicitly collect the selected inve
 - Surface: tadx admin group list
 - Operation type: find
 - Owner: cli
-- Selectors: Environment/site; optional group filters; --limit 1..100 (default 25) or --all; optional --catalog
+- Selectors: Environment/site; optional group filters; --limit 1..10000 (default 25) or --all; optional --catalog
 - Products and availability: Cloud / Server
 - Product disposition: ship
 - Evidence level: contract-verified
@@ -218,7 +227,7 @@ Add one exact user to one exact group without replacing other members, or previe
 - Surface: tadx admin group member add
 - Operation type: change
 - Owner: cli
-- Selectors: Exact group LUID and user LUID; explicit environment/site
+- Selectors: Exact group LUID and user LUID; environment/site (inferred only when one is configured)
 - Products and availability: Cloud / Server
 - Product disposition: ship
 - Evidence level: contract-verified
@@ -243,7 +252,7 @@ Remove one exact user from one exact group without replacing other members, or p
 - Surface: tadx admin group member remove
 - Operation type: change
 - Owner: cli
-- Selectors: Exact group LUID and user LUID; explicit environment/site
+- Selectors: Exact group LUID and user LUID; environment/site (inferred only when one is configured)
 - Products and availability: Cloud / Server
 - Product disposition: ship
 - Evidence level: contract-verified
@@ -443,7 +452,7 @@ List a bounded live selection of site users, or explicitly collect the selected 
 - Surface: tadx admin user list
 - Operation type: find
 - Owner: cli
-- Selectors: Environment/site; optional user filters; --limit 1..100 (default 25) or --all; optional --catalog
+- Selectors: Environment/site; optional user filters; --limit 1..10000 (default 25) or --all; optional --catalog
 - Products and availability: Cloud / Server
 - Product disposition: ship
 - Evidence level: contract-verified
@@ -736,81 +745,6 @@ Report generation age, completeness, source, and stale state.
 - Blocker ID: None
 - Command binding: `tadx catalog status`
 
-### `custom-view.data`
-
-Retrieve rendered data from one custom view.
-
-- Surface: Outside TADX CLI
-- Operation type: inspect
-- Owner: tableau-mcp
-- Selectors: No TADX selectors
-- Products and availability: Cloud / Server
-- Product disposition: delegated
-- Evidence level: architecture-locked
-- Verification readiness: ready
-- Implementation state: external/delegated
-- Local write: No
-- Remote mutation: No
-- Supports `--preview`: No
-- Raw capable: No
-- Safety and guard: No executable TADX operation; this contract does not prescribe external tooling
-- Artifact effect: None
-- Upstream operation: Outside TADX CLI
-- Evidence: Maintainer-defined TADX CLI scope
-- Validation or blocker: Delegated; no TADX command, execution, or proxy
-- Blocker ID: None
-- Command binding: None
-
-### `custom-view.image`
-
-Retrieve a rendered image from one custom view.
-
-- Surface: Outside TADX CLI
-- Operation type: inspect
-- Owner: tableau-mcp
-- Selectors: No TADX selectors
-- Products and availability: Cloud / Server
-- Product disposition: delegated
-- Evidence level: architecture-locked
-- Verification readiness: ready
-- Implementation state: external/delegated
-- Local write: No
-- Remote mutation: No
-- Supports `--preview`: No
-- Raw capable: No
-- Safety and guard: No executable TADX operation; this contract does not prescribe external tooling
-- Artifact effect: None
-- Upstream operation: Outside TADX CLI
-- Evidence: Maintainer-defined TADX CLI scope
-- Validation or blocker: Delegated; no TADX command, execution, or proxy
-- Blocker ID: None
-- Command binding: None
-
-### `custom-view.list`
-
-List saved custom views for analytical read workflows.
-
-- Surface: Outside TADX CLI
-- Operation type: find
-- Owner: tableau-mcp
-- Selectors: No TADX selectors
-- Products and availability: Cloud / Server
-- Product disposition: delegated
-- Evidence level: architecture-locked
-- Verification readiness: ready
-- Implementation state: external/delegated
-- Local write: No
-- Remote mutation: No
-- Supports `--preview`: No
-- Raw capable: No
-- Safety and guard: No executable TADX operation; this contract does not prescribe external tooling
-- Artifact effect: None
-- Upstream operation: Outside TADX CLI
-- Evidence: Maintainer-defined TADX CLI scope
-- Validation or blocker: Delegated; no TADX command, execution, or proxy
-- Blocker ID: None
-- Command binding: None
-
 ### `datasource.delete`
 
 Delete one exact remote datasource, or preview the operation.
@@ -818,7 +752,7 @@ Delete one exact remote datasource, or preview the operation.
 - Surface: tadx content datasource delete
 - Operation type: change
 - Owner: cli
-- Selectors: Datasource LUID or exact name/project path; explicit environment/site
+- Selectors: Datasource LUID or exact name/project path; environment/site (inferred only when one is configured)
 - Products and availability: Cloud / Server
 - Product disposition: ship
 - Evidence level: contract-verified
@@ -835,31 +769,6 @@ Delete one exact remote datasource, or preview the operation.
 - Validation or blocker: Contract-verified exact DELETE with authoritative LUID revalidation
 - Blocker ID: None
 - Command binding: `tadx content datasource delete`
-
-### `datasource.field-description.generate`
-
-Generate or revise field-description text using metadata and optional sampled statistics.
-
-- Surface: Outside TADX CLI
-- Operation type: change
-- Owner: agent/skill
-- Selectors: No TADX selectors
-- Products and availability: Cloud / Server
-- Product disposition: delegated
-- Evidence level: architecture-locked
-- Verification readiness: ready
-- Implementation state: external/delegated
-- Local write: No
-- Remote mutation: No
-- Supports `--preview`: No
-- Raw capable: No
-- Safety and guard: No executable TADX operation; this contract does not prescribe external tooling
-- Artifact effect: Optional update
-- Upstream operation: Outside TADX CLI
-- Evidence: Maintainer-defined TADX CLI scope
-- Validation or blocker: Delegated; no TADX command, execution, or proxy
-- Blocker ID: None
-- Command binding: None
 
 ### `datasource.inspect`
 
@@ -893,7 +802,7 @@ List a bounded live selection of published datasources, or explicitly collect th
 - Surface: tadx content datasource list
 - Operation type: find
 - Owner: cli
-- Selectors: Environment/site; optional project/owner/name/type/tag/time filters; --limit 1..100 (default 25) or --all; optional --catalog
+- Selectors: Environment/site; optional project/owner/name/type/tag/time filters; --limit 1..10000 (default 25) or --all; optional --catalog
 - Products and availability: Cloud / Server
 - Product disposition: ship
 - Evidence level: contract-verified
@@ -911,31 +820,6 @@ List a bounded live selection of published datasources, or explicitly collect th
 - Blocker ID: None
 - Command binding: `tadx content datasource list`
 
-### `datasource.metadata`
-
-Retrieve analytical field and datasource metadata for reasoning and query construction.
-
-- Surface: Outside TADX CLI
-- Operation type: inspect
-- Owner: tableau-mcp
-- Selectors: No TADX selectors
-- Products and availability: Cloud / Server
-- Product disposition: delegated
-- Evidence level: architecture-locked
-- Verification readiness: ready
-- Implementation state: external/delegated
-- Local write: No
-- Remote mutation: No
-- Supports `--preview`: No
-- Raw capable: No
-- Safety and guard: No executable TADX operation; this contract does not prescribe external tooling
-- Artifact effect: None
-- Upstream operation: Outside TADX CLI
-- Evidence: Maintainer-defined TADX CLI scope
-- Validation or blocker: Delegated; no TADX command, execution, or proxy
-- Blocker ID: None
-- Command binding: None
-
 ### `datasource.move`
 
 Move one exact published datasource to one exact project on the same site, or preview the operation.
@@ -943,7 +827,7 @@ Move one exact published datasource to one exact project on the same site, or pr
 - Surface: tadx content datasource move
 - Operation type: change
 - Owner: cli
-- Selectors: Datasource LUID or exact name/project path; exact destination project LUID/path; explicit environment/site
+- Selectors: Datasource LUID or exact name/project path; exact destination project LUID/path; environment/site (inferred only when one is configured)
 - Products and availability: Cloud / Server
 - Product disposition: ship
 - Evidence level: contract-verified
@@ -968,7 +852,7 @@ Publish one local datasource, or up to 100 repeated managed datasource artifacts
 - Surface: tadx content datasource publish
 - Operation type: deliver
 - Owner: cli
-- Selectors: Logical workspace plus one or more exact workspace-relative managed datasource directories; target defaults to artifact source, explicit environment/site/project overrides; optional exact existing datasource; immediate parents for composed artifacts
+- Selectors: Native --file, or logical workspace with exact --id/--artifact-name or repeated --artifact managed datasource directory selectors; sole configured or explicit target; never inferred from artifact source; explicit destination project override; optional exact existing datasource; immediate parents for composed artifacts
 - Products and availability: Cloud / Server; composed path API 3.29 / Tableau 2026.2 per C1
 - Product disposition: ship
 - Evidence level: contract-verified
@@ -1011,31 +895,6 @@ Download one datasource, or up to 100 repeated authoritative datasource LUIDs se
 - Blocker ID: None
 - Command binding: `tadx content datasource pull`
 
-### `datasource.query`
-
-Run analytical queries against datasource data.
-
-- Surface: Outside TADX CLI
-- Operation type: inspect
-- Owner: tableau-mcp
-- Selectors: No TADX selectors
-- Products and availability: Cloud / Server
-- Product disposition: delegated
-- Evidence level: architecture-locked
-- Verification readiness: ready
-- Implementation state: external/delegated
-- Local write: No
-- Remote mutation: No
-- Supports `--preview`: No
-- Raw capable: No
-- Safety and guard: No executable TADX operation; this contract does not prescribe external tooling
-- Artifact effect: None
-- Upstream operation: Outside TADX CLI
-- Evidence: Maintainer-defined TADX CLI scope
-- Validation or blocker: Delegated; no TADX command, execution, or proxy
-- Blocker ID: None
-- Command binding: None
-
 ### `datasource.schema`
 
 Inspect one datasource's logical tables and search a bounded field projection.
@@ -1068,7 +927,7 @@ Rename one exact published datasource or replace its owner, or preview the opera
 - Surface: tadx content datasource update
 - Operation type: change
 - Owner: cli
-- Selectors: Datasource LUID or exact name/project path; explicit new name and/or owner LUID; explicit environment/site
+- Selectors: Datasource LUID or exact name/project path; explicit new name and/or owner LUID; environment/site (inferred only when one is configured)
 - Products and availability: Cloud / Server
 - Product disposition: ship
 - Evidence level: contract-verified
@@ -1268,7 +1127,7 @@ Delete one exact remote flow, or preview the operation.
 - Surface: tadx content flow delete
 - Operation type: change
 - Owner: cli
-- Selectors: Flow LUID or exact name/project path; explicit environment/site
+- Selectors: Flow LUID or exact name/project path; environment/site (inferred only when one is configured)
 - Products and availability: Cloud / Server with flow support
 - Product disposition: ship
 - Evidence level: contract-verified
@@ -1318,7 +1177,7 @@ List a bounded live selection of flows, or explicitly collect the selected inven
 - Surface: tadx content flow list
 - Operation type: find
 - Owner: cli
-- Selectors: Environment/site; optional project/owner/name filters; --limit 1..100 (default 25) or --all; optional --catalog
+- Selectors: Environment/site; optional project/owner/name filters; --limit 1..10000 (default 25) or --all; optional --catalog
 - Products and availability: Cloud / Server with flow support; REST API 3.3+ per C1
 - Product disposition: ship
 - Evidence level: contract-verified
@@ -1343,7 +1202,7 @@ Move one exact flow to one exact project on the same site, or preview the operat
 - Surface: tadx content flow move
 - Operation type: change
 - Owner: cli
-- Selectors: Flow LUID or exact name/project path; exact destination project LUID/path; explicit environment/site
+- Selectors: Flow LUID or exact name/project path; exact destination project LUID/path; environment/site (inferred only when one is configured)
 - Products and availability: Cloud / Server with flow support
 - Product disposition: ship
 - Evidence level: contract-verified
@@ -1363,12 +1222,12 @@ Move one exact flow to one exact project on the same site, or preview the operat
 
 ### `flow.publish`
 
-Publish one local TFL/TFLX, or up to 100 repeated managed flow artifacts sequentially, to one source or explicit target, or preview the operations.
+Publish one local TFL/TFLX, or up to 100 repeated managed flow artifacts sequentially, to the sole configured or explicit target, or preview the operations.
 
 - Surface: tadx content flow publish
 - Operation type: deliver
 - Owner: cli
-- Selectors: Logical workspace plus one or more exact workspace-relative managed flow directories; target defaults to artifact source, explicit environment/site/project overrides; optional exact existing flow
+- Selectors: Native --file, or logical workspace with exact --id/--artifact-name or repeated --artifact managed flow directory selectors; sole configured or explicit target; never inferred from artifact source; explicit destination project override; optional exact existing flow
 - Products and availability: Cloud / Server with flow support
 - Product disposition: ship
 - Evidence level: contract-verified
@@ -1418,7 +1277,7 @@ Replace the owner of one exact flow, or preview the operation.
 - Surface: tadx content flow update
 - Operation type: change
 - Owner: cli
-- Selectors: Flow LUID or exact name/project path; explicit owner LUID; explicit environment/site
+- Selectors: Flow LUID or exact name/project path; explicit owner LUID; environment/site (inferred only when one is configured)
 - Products and availability: Cloud / Server with flow support; owner endpoint requires API 3.27+
 - Product disposition: ship
 - Evidence level: contract-verified
@@ -1435,6 +1294,31 @@ Replace the owner of one exact flow, or preview the operation.
 - Validation or blocker: Contract-verified owner replacement with preview, no-op, drift, and uncertain outcome; flow rename is excluded
 - Blocker ID: None
 - Command binding: `tadx content flow update`
+
+### `last`
+
+Display one globally saved full result and timestamp without re-execution.
+
+- Surface: tadx last
+- Operation type: inspect
+- Owner: cli
+- Selectors: None
+- Products and availability: Local
+- Product disposition: ship
+- Evidence level: local-contract
+- Verification readiness: ready
+- Implementation state: implemented
+- Local write: No
+- Remote mutation: No
+- Supports `--preview`: No
+- Raw capable: No
+- Safety and guard: Bounded redacted output only; no authentication or replay; does not replace itself
+- Artifact effect: None
+- Upstream operation: None
+- Evidence: internal/app/last_e2e_test.go
+- Validation or blocker: No-network saved result display
+- Blocker ID: None
+- Command binding: `tadx last`
 
 ### `lineage.pull`
 
@@ -1460,6 +1344,56 @@ Capture bounded lineage for one exact workbook, published datasource, or flow wi
 - Validation or blocker: Contract-verified; live deployment verification is not claimed
 - Blocker ID: None
 - Command binding: `tadx content lineage pull`
+
+### `mutation.set`
+
+Persist user remote mutation policy until explicitly changed.
+
+- Surface: tadx mutation set
+- Operation type: change
+- Owner: cli
+- Selectors: Required --enabled Boolean
+- Products and availability: Local
+- Product disposition: ship
+- Evidence level: local-contract
+- Verification readiness: ready
+- Implementation state: implemented
+- Local write: Yes
+- Remote mutation: No
+- Supports `--preview`: No
+- Raw capable: No
+- Safety and guard: Explicit setting change; agents require permission for persistent scope; environment override wins
+- Artifact effect: Saved user policy only
+- Upstream operation: None
+- Evidence: internal/app/mutation_setting_e2e_test.go
+- Validation or blocker: Atomic user configuration update
+- Blocker ID: None
+- Command binding: `tadx mutation set`
+
+### `mutation.status`
+
+Show effective remote mutation policy and its source.
+
+- Surface: tadx mutation status
+- Operation type: inspect
+- Owner: cli
+- Selectors: None
+- Products and availability: Local
+- Product disposition: ship
+- Evidence level: local-contract
+- Verification readiness: ready
+- Implementation state: implemented
+- Local write: No
+- Remote mutation: No
+- Supports `--preview`: No
+- Raw capable: No
+- Safety and guard: Read-only; process environment overrides saved user policy
+- Artifact effect: None
+- Upstream operation: None
+- Evidence: internal/app/mutation_setting_e2e_test.go
+- Validation or blocker: Local policy precedence
+- Blocker ID: None
+- Command binding: `tadx mutation status`
 
 ### `project.create`
 
@@ -1543,7 +1477,7 @@ List a bounded live selection of projects, or explicitly collect the selected in
 - Surface: tadx content project list
 - Operation type: find
 - Owner: cli
-- Selectors: Environment/site; optional name/parent/owner/top-level filters; --limit 1..100 (default 25) or --all; optional --catalog
+- Selectors: Environment/site; optional name/parent/owner/top-level filters; --limit 1..10000 (default 25) or --all; optional --catalog
 - Products and availability: Cloud / Server
 - Product disposition: ship
 - Evidence level: contract-verified
@@ -1568,7 +1502,7 @@ Reparent one exact project under one exact parent on the same site, or preview t
 - Surface: tadx content project move
 - Operation type: change
 - Owner: cli
-- Selectors: Project LUID/exact path; exact destination parent LUID/path; explicit environment/site
+- Selectors: Project LUID/exact path; exact destination parent LUID/path; environment/site (inferred only when one is configured)
 - Products and availability: Cloud / Server
 - Product disposition: ship
 - Evidence level: contract-verified
@@ -1711,9 +1645,34 @@ List Pulse metric definitions with internal bounded pagination.
 - Blocker ID: None
 - Command binding: `tadx pulse definition list`
 
+### `pulse.definition.publish`
+
+Recreate a portable Pulse definition and metric variants using explicit destination datasource mappings.
+
+- Surface: tadx pulse definition publish
+- Operation type: deliver
+- Owner: cli
+- Selectors: Managed bundle selected by --id, --artifact-name, or --artifact; repeated --datasource-map source=destination; explicit target when multiple environments exist
+- Products and availability: Tableau Cloud / Pulse only
+- Product disposition: ship
+- Evidence level: contract-verified
+- Verification readiness: ready
+- Implementation state: implemented
+- Local write: No
+- Remote mutation: Yes
+- Supports `--preview`: Yes
+- Raw capable: No
+- Safety and guard: New identities only; validate fields and mappings; never overwrite originals; no followers or insights
+- Artifact effect: Source bundle unchanged; reports created identity mapping
+- Upstream operation: POST /api/-/pulse/definitions; POST /api/-/pulse/metrics:getOrCreate
+- Evidence: docs/evidence/pulse-live-contract.md; local bundle CLI HTTP fixtures
+- Validation or blocker: Bounded portable configuration and canonical identity validation
+- Blocker ID: None
+- Command binding: `tadx pulse definition publish`
+
 ### `pulse.definition.pull`
 
-Materialize one definition as a JSON-backed artifact with provenance and baseline.
+Materialize one portable definition with complete metric variants, datasource references, provenance, and baseline.
 
 - Surface: tadx pulse definition pull
 - Operation type: deliver
@@ -1730,36 +1689,11 @@ Materialize one definition as a JSON-backed artifact with provenance and baselin
 - Raw capable: No
 - Safety and guard: Dirty re-pull requires --overwrite; remote read is authoritative
 - Artifact effect: Create / update
-- Upstream operation: Definition GET plus local artifact manager
+- Upstream operation: Definition GET and bounded metric list plus local artifact manager
 - Evidence: docs/evidence/pulse-live-contract.md; hermetic TADX action and artifact tests
-- Validation or blocker: Live-verified exact read and recoverable artifact write on Tableau Cloud
+- Validation or blocker: Live-verified exact read; HTTP fixture verified complete portable bundle and recoverable artifact write
 - Blocker ID: None
 - Command binding: `tadx pulse definition pull`
-
-### `pulse.insight.brief`
-
-Generate a Pulse insight brief from exact metrics.
-
-- Surface: Outside TADX CLI
-- Operation type: inspect
-- Owner: tableau-mcp
-- Selectors: No TADX selectors
-- Products and availability: Tableau Cloud / Pulse
-- Product disposition: delegated
-- Evidence level: architecture-locked
-- Verification readiness: ready
-- Implementation state: external/delegated
-- Local write: No
-- Remote mutation: No
-- Supports `--preview`: No
-- Raw capable: No
-- Safety and guard: No executable TADX operation; this contract does not prescribe external tooling
-- Artifact effect: None
-- Upstream operation: Outside TADX CLI
-- Evidence: Maintainer-defined TADX CLI scope
-- Validation or blocker: Delegated; no TADX command, execution, or proxy
-- Blocker ID: None
-- Command binding: None
 
 ### `pulse.metric.delete`
 
@@ -1860,31 +1794,6 @@ Derive one metric by changing bounded timeframe or dimension filters, or preview
 - Validation or blocker: Live-verified fork creation and ownership reconciliation on Tableau Cloud
 - Blocker ID: None
 - Command binding: `tadx pulse metric fork`
-
-### `pulse.metric.insight-bundle`
-
-Retrieve current Pulse metric values and generated insights.
-
-- Surface: Outside TADX CLI
-- Operation type: inspect
-- Owner: tableau-mcp
-- Selectors: No TADX selectors
-- Products and availability: Tableau Cloud / Pulse
-- Product disposition: delegated
-- Evidence level: architecture-locked
-- Verification readiness: ready
-- Implementation state: external/delegated
-- Local write: No
-- Remote mutation: No
-- Supports `--preview`: No
-- Raw capable: No
-- Safety and guard: No executable TADX operation; this contract does not prescribe external tooling
-- Artifact effect: None
-- Upstream operation: Outside TADX CLI
-- Evidence: Maintainer-defined TADX CLI scope
-- Validation or blocker: Delegated; no TADX command, execution, or proxy
-- Blocker ID: None
-- Command binding: None
 
 ### `pulse.metric.inspect`
 
@@ -2011,131 +1920,6 @@ Report the installed TADX version and optionally check the latest published rele
 - Blocker ID: None
 - Command binding: `tadx version`
 
-### `view.data`
-
-Retrieve rendered view data for analysis.
-
-- Surface: Outside TADX CLI
-- Operation type: inspect
-- Owner: tableau-mcp
-- Selectors: No TADX selectors
-- Products and availability: Cloud / Server
-- Product disposition: delegated
-- Evidence level: architecture-locked
-- Verification readiness: ready
-- Implementation state: external/delegated
-- Local write: No
-- Remote mutation: No
-- Supports `--preview`: No
-- Raw capable: No
-- Safety and guard: No executable TADX operation; this contract does not prescribe external tooling
-- Artifact effect: None
-- Upstream operation: Outside TADX CLI
-- Evidence: Maintainer-defined TADX CLI scope
-- Validation or blocker: Delegated; no TADX command, execution, or proxy
-- Blocker ID: None
-- Command binding: None
-
-### `view.image`
-
-Retrieve a rendered view image.
-
-- Surface: Outside TADX CLI
-- Operation type: inspect
-- Owner: tableau-mcp
-- Selectors: No TADX selectors
-- Products and availability: Cloud / Server
-- Product disposition: delegated
-- Evidence level: architecture-locked
-- Verification readiness: ready
-- Implementation state: external/delegated
-- Local write: No
-- Remote mutation: No
-- Supports `--preview`: No
-- Raw capable: No
-- Safety and guard: No executable TADX operation; this contract does not prescribe external tooling
-- Artifact effect: None
-- Upstream operation: Outside TADX CLI
-- Evidence: Maintainer-defined TADX CLI scope
-- Validation or blocker: Delegated; no TADX command, execution, or proxy
-- Blocker ID: None
-- Command binding: None
-
-### `view.inspect`
-
-Inspect one view before requesting rendered data or an image.
-
-- Surface: Outside TADX CLI
-- Operation type: inspect
-- Owner: tableau-mcp
-- Selectors: No TADX selectors
-- Products and availability: Cloud / Server
-- Product disposition: delegated
-- Evidence level: architecture-locked
-- Verification readiness: ready
-- Implementation state: external/delegated
-- Local write: No
-- Remote mutation: No
-- Supports `--preview`: No
-- Raw capable: No
-- Safety and guard: No executable TADX operation; this contract does not prescribe external tooling
-- Artifact effect: None
-- Upstream operation: Outside TADX CLI
-- Evidence: Maintainer-defined TADX CLI scope
-- Validation or blocker: Delegated; no TADX command, execution, or proxy
-- Blocker ID: None
-- Command binding: None
-
-### `view.list`
-
-List views for analytical read workflows.
-
-- Surface: Outside TADX CLI
-- Operation type: find
-- Owner: tableau-mcp
-- Selectors: No TADX selectors
-- Products and availability: Cloud / Server
-- Product disposition: delegated
-- Evidence level: architecture-locked
-- Verification readiness: ready
-- Implementation state: external/delegated
-- Local write: No
-- Remote mutation: No
-- Supports `--preview`: No
-- Raw capable: No
-- Safety and guard: No executable TADX operation; this contract does not prescribe external tooling
-- Artifact effect: None
-- Upstream operation: Outside TADX CLI
-- Evidence: Maintainer-defined TADX CLI scope
-- Validation or blocker: Delegated; no TADX command, execution, or proxy
-- Blocker ID: None
-- Command binding: None
-
-### `workbook.author`
-
-Create or semantically modify workbook content.
-
-- Surface: Outside TADX CLI
-- Operation type: change
-- Owner: tableau/desktop-mcp
-- Selectors: No TADX selectors
-- Products and availability: Outside TADX
-- Product disposition: delegated
-- Evidence level: architecture-locked
-- Verification readiness: ready
-- Implementation state: external/delegated
-- Local write: No
-- Remote mutation: No
-- Supports `--preview`: No
-- Raw capable: No
-- Safety and guard: No executable TADX operation; this contract does not prescribe external tooling
-- Artifact effect: External artifact may become dirty
-- Upstream operation: Outside TADX CLI
-- Evidence: Maintainer-defined TADX CLI scope
-- Validation or blocker: Delegated; no TADX command, execution, or proxy
-- Blocker ID: None
-- Command binding: None
-
 ### `workbook.delete`
 
 Delete one exact remote workbook, or preview the operation.
@@ -2143,7 +1927,7 @@ Delete one exact remote workbook, or preview the operation.
 - Surface: tadx content workbook delete
 - Operation type: change
 - Owner: cli
-- Selectors: Workbook LUID or exact name/project path; explicit environment/site
+- Selectors: Workbook LUID or exact name/project path; environment/site (inferred only when one is configured)
 - Products and availability: Cloud / Server
 - Product disposition: ship
 - Evidence level: contract-verified
@@ -2193,7 +1977,7 @@ List a bounded live selection of workbooks, or explicitly collect the selected i
 - Surface: tadx content workbook list
 - Operation type: find
 - Owner: cli
-- Selectors: Environment/site; optional project/owner/name/tag filters; --limit 1..100 (default 25) or --all; optional --catalog
+- Selectors: Environment/site; optional project/owner/name/tag filters; --limit 1..10000 (default 25) or --all; optional --catalog
 - Products and availability: Cloud / Server
 - Product disposition: ship
 - Evidence level: contract-verified
@@ -2218,7 +2002,7 @@ Move one exact workbook to one exact project on the same site, or preview the op
 - Surface: tadx content workbook move
 - Operation type: change
 - Owner: cli
-- Selectors: Workbook LUID or exact name/project path; exact destination project LUID/path; explicit environment/site
+- Selectors: Workbook LUID or exact name/project path; exact destination project LUID/path; environment/site (inferred only when one is configured)
 - Products and availability: Cloud / Server
 - Product disposition: ship
 - Evidence level: contract-verified
@@ -2243,7 +2027,7 @@ Publish one local workbook, or up to 100 repeated managed workbook artifacts seq
 - Surface: tadx content workbook publish
 - Operation type: deliver
 - Owner: cli
-- Selectors: Logical workspace plus one or more exact workspace-relative managed workbook directories; target defaults to artifact source, explicit environment/site/project overrides; optional exact existing workbook
+- Selectors: Native --file, or logical workspace with exact --id/--artifact-name or repeated --artifact managed workbook directory selectors; sole configured or explicit target; never inferred from artifact source; explicit destination project override; optional exact existing workbook
 - Products and availability: Cloud / Server; TWB validation API only on API 3.29 / Tableau 2026.2+ per C1
 - Product disposition: ship
 - Evidence level: contract-verified
@@ -2293,7 +2077,7 @@ Rename one exact workbook or replace its owner, or preview the operation.
 - Surface: tadx content workbook update
 - Operation type: change
 - Owner: cli
-- Selectors: Workbook LUID or exact name/project path; explicit new name and/or owner LUID; explicit environment/site
+- Selectors: Workbook LUID or exact name/project path; explicit new name and/or owner LUID; environment/site (inferred only when one is configured)
 - Products and availability: Cloud / Server
 - Product disposition: ship
 - Evidence level: contract-verified

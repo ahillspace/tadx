@@ -6,6 +6,9 @@ const maxFullWarnings = 20
 
 // Input selects one local artifact and explicit remote destination.
 type Input struct {
+	File         string
+	ArtifactID   string
+	ArtifactName string
 	// WorkspaceName is the resolved logical workspace alias used in follow-up commands.
 	WorkspaceName string
 	Workspace     string
@@ -79,6 +82,8 @@ type Target struct {
 
 // Plan is the deterministic preview and the only value Apply accepts.
 type Plan struct {
+	Workspace           string   `json:"workspace"`
+	SourceLUID          string   `json:"source_luid"`
 	Mode                string   `json:"mode"`
 	Operation           string   `json:"operation"`
 	ArtifactPath        string   `json:"artifact_path"`
@@ -135,9 +140,12 @@ type Output struct {
 
 // CompactPlan preserves the exact target and mutation decision without diagnostics.
 type CompactPlan struct {
+	Workspace       string   `json:"workspace"`
+	Kind            string   `json:"kind"`
+	SourceLUID      string   `json:"source_luid"`
 	Mode            string   `json:"mode"`
 	Operation       string   `json:"operation"`
-	ArtifactPath    string   `json:"artifact_path"`
+	ArtifactPath    string   `json:"-"`
 	Filename        string   `json:"filename"`
 	WorkbookName    string   `json:"workbook_name"`
 	Target          Target   `json:"target"`
@@ -167,6 +175,9 @@ type CompactResult struct {
 
 // FullPlan includes bounded publish diagnostics.
 type FullPlan struct {
+	Workspace           string   `json:"workspace"`
+	Kind                string   `json:"kind"`
+	SourceLUID          string   `json:"source_luid"`
 	Mode                string   `json:"mode"`
 	Operation           string   `json:"operation"`
 	ArtifactPath        string   `json:"artifact_path"`
@@ -203,7 +214,7 @@ type FullResult struct {
 // CompactOutput returns the target, safety decision, and resulting identities.
 func (o Output) CompactOutput() any {
 	warnings, omitted := boundWarnings(o.Plan.Warnings)
-	plan := CompactPlan{
+	plan := CompactPlan{Workspace: o.Plan.Workspace, Kind: "workbook", SourceLUID: o.Plan.SourceLUID,
 		Mode: o.Plan.Mode, Operation: o.Plan.Operation, ArtifactPath: o.Plan.ArtifactPath,
 		Filename: o.Plan.Filename, WorkbookName: o.Plan.WorkbookName, Target: o.Plan.Target,
 		Overwrite: o.Plan.Overwrite, AsJob: o.Plan.AsJob, Warnings: warnings, WarningsOmitted: omitted,
@@ -223,7 +234,7 @@ func (o Output) CompactOutput() any {
 func (o Output) FullOutput() any {
 	warnings, warningsOmitted := boundWarnings(o.Plan.Warnings)
 	full := FullResult{
-		Plan: FullPlan{
+		Plan: FullPlan{Workspace: o.Plan.Workspace, Kind: "workbook", SourceLUID: o.Plan.SourceLUID,
 			Mode: o.Plan.Mode, Operation: o.Plan.Operation, ArtifactPath: o.Plan.ArtifactPath,
 			ArtifactFingerprint: o.Plan.ArtifactFingerprint, Filename: o.Plan.Filename,
 			WorkbookName: o.Plan.WorkbookName, Target: o.Plan.Target, Overwrite: o.Plan.Overwrite,

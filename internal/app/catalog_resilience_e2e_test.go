@@ -56,7 +56,7 @@ func TestCatalogPermissionDenialRetainsInventoryThroughCLI(t *testing.T) {
 			if !strings.Contains(inventory, "Allowed") || !strings.Contains(inventory, "Blocked") || !strings.Contains(inventory, "coverage: complete") || requests.Load() != before {
 				t.Fatalf("cached inventory requests=%d/%d:\n%s", before, requests.Load(), inventory)
 			}
-			db, err := sql.Open("sqlite", filepath.Join(filepath.Dir(options.ConfigPath), catalog.DatabasePath()))
+			db, err := sql.Open("sqlite", filepath.Join(filepath.Dir(options.ConfigPath), targetCatalogFixture(t, options.ConfigPath, nil).RelativePath()))
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -83,7 +83,7 @@ func TestCatalogPermissionAuthenticationFailureStillFailsThroughCLI(t *testing.T
 	defer server.Close()
 	options := catalogResilienceOptions(t, server)
 	runGroupOneCLI(t, options, "catalog", "refresh", "--environment", "production", "--scope", "workbooks")
-	store := catalog.NewStore(filepath.Dir(options.ConfigPath), nil)
+	store := targetCatalogFixture(t, options.ConfigPath, nil)
 	selection := catalog.Selection{Environment: "production", SiteSelected: true}
 	before, err := store.Status(context.Background(), selection)
 	if err != nil {

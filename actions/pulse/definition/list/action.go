@@ -15,7 +15,7 @@ import (
 
 const (
 	defaultLimit    = 25
-	maxLimit        = 100
+	maxLimit        = 10000
 	maxCursorLength = 4096
 	cursorVersion   = 1
 )
@@ -44,7 +44,7 @@ func (a *Action) Execute(ctx context.Context, input Input) (Output, error) {
 		limit = defaultLimit
 	}
 	if limit < 1 || limit > maxLimit {
-		return Output{}, listError("pulse.definition.list.usage", errs.KindUsage, input, "Pulse definition list limit must be between 1 and 100.", nil)
+		return Output{}, listError("pulse.definition.list.usage", errs.KindUsage, input, "Pulse definition list limit must be between 1 and 10000.", nil)
 	}
 	fingerprint := targetFingerprint(input.Environment, input.Site, input.Name, limit, input.Catalog)
 	if input.DatasourceLUID != "" {
@@ -75,6 +75,9 @@ func (a *Action) Execute(ctx context.Context, input Input) (Output, error) {
 		if pageNumber >= 100 {
 			return Output{}, listError("pulse.definition.list.incomplete", errs.KindOperation, input, "Pulse listing exceeded its 100-page inventory bound; completeness cannot be established.", nil)
 		}
+		if !input.All && input.Name == "" && input.DatasourceLUID == "" {
+			pageSize = min(100, limit-len(items))
+		}
 		page, err := a.reader.ListDefinitions(ctx, PageRequest{PageSize: pageSize, PageToken: token})
 		if err != nil {
 			var structured *errs.Error
@@ -100,7 +103,7 @@ func (a *Action) Execute(ctx context.Context, input Input) (Output, error) {
 		if nextToken != "" && (strings.TrimSpace(nextToken) == "" || seenTokens[nextToken]) {
 			return Output{}, listError("pulse.definition.list.invalid_response", errs.KindOperation, input, "Pulse listing returned an invalid or repeated continuation token.", nil)
 		}
-		if nextToken == "" || (!input.All && input.Name == "" && input.DatasourceLUID == "") {
+		if nextToken == "" || (!input.All && (len(items) >= limit || (limit <= 100 && input.Name == "" && input.DatasourceLUID == ""))) {
 			break
 		}
 		seenTokens[nextToken] = true

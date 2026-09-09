@@ -15,7 +15,7 @@ import (
 
 const (
 	defaultLimit    = 25
-	maxLimit        = 100
+	maxLimit        = 10000
 	cursorVersion   = 1
 	maxCursorLength = 2048
 )
@@ -51,7 +51,7 @@ func (a *Action) Execute(ctx context.Context, input Input) (Output, error) {
 		return Output{}, err
 	}
 	request := PageRequest{PageNumber: pageNumber, PageSize: pageSize, Name: input.Name, ParentLUID: input.ParentLUID, OwnerName: input.OwnerName, TopLevel: input.TopLevel, SnapshotCursor: snapshotCursor}
-	page, err := a.reader.ListProjects(ctx, request)
+	page, err := a.readWindow(ctx, request)
 	if err != nil {
 		return Output{}, err
 	}
@@ -161,4 +161,19 @@ func listHelp(environment string, items []Project) []string {
 		return nil
 	}
 	return []string{commandhint.Environment(environment, "content", "project", "inspect", "--project-id", items[0].LUID)}
+}
+
+func (a *Action) readWindow(ctx context.Context, request PageRequest) (Page, error) {
+	if request.PageSize <= 1000 {
+		return a.reader.ListProjects(ctx, request)
+	}
+	requestID := ""
+	page, err := paging.Window(ctx, paging.State{Number: request.PageNumber, Size: request.PageSize, Token: request.SnapshotCursor}, 1000, func(ctx context.Context, state paging.State) (paging.Page[Project], error) {
+		input := request
+		input.PageNumber, input.PageSize, input.SnapshotCursor = state.Number, state.Size, state.Token
+		page, err := a.reader.ListProjects(ctx, input)
+		requestID = page.RequestID
+		return paging.Page[Project]{Number: page.Number, Size: page.Size, Total: page.Total, Items: page.Projects, Token: page.SnapshotCursor}, err
+	}, func(item Project) string { return item.LUID })
+	return Page{Number: page.Number, Size: page.Size, Total: page.Total, Projects: page.Items, SnapshotCursor: "", SuppressContinuation: true, RequestID: requestID}, err
 }

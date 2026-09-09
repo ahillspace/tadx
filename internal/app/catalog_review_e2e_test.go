@@ -6,7 +6,6 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
-	"path/filepath"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -17,7 +16,6 @@ import (
 	projectmove "github.com/ahillspace/tadx/actions/project/move"
 	projectupdate "github.com/ahillspace/tadx/actions/project/update"
 	searchaction "github.com/ahillspace/tadx/actions/search"
-	"github.com/ahillspace/tadx/internal/catalog"
 )
 
 func TestFilteredContentListsRetainCatalogProjectPaths(t *testing.T) {
@@ -47,7 +45,7 @@ func TestFilteredContentListsRetainCatalogProjectPaths(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			store := catalog.NewStore(filepath.Dir(runtime.configPath), runtime.now)
+			store := targetCatalogFixture(t, runtime.configPath, runtime.now)
 			out, err := searchaction.New(catalogGlobalSearchSource{store: store}).Execute(context.Background(), searchaction.Input{Type: kind, Environment: "production", Site: "team-site", SiteResolved: true, Catalog: true, ProjectPath: "Department/Ops"})
 			if err != nil || len(out.Items) != 1 || out.Items[0].ProjectPath != "Department/Ops" {
 				t.Fatalf("cached filtered search = %#v, %v", out, err)

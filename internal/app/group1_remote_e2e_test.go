@@ -70,7 +70,7 @@ func TestGroupOneProjectAndFlowReadsPullAndLineageThroughCLI(t *testing.T) {
 	}
 
 	pullOutput := runGroupOneCLI(t, options, "content", "flow", "pull", "--workspace", "operations", "--id", "flow-1")
-	for _, want := range []string{"status: pulled", "luid: flow-1", "details: \"--full\"", "artifacts/flow/"} {
+	for _, want := range []string{"status: pulled", "luid: flow-1", "details: \"--full\"", "workspace: operations", "source_luid: flow-1"} {
 		if !strings.Contains(pullOutput, want) {
 			t.Fatalf("flow pull output missing %q:\n%s", want, pullOutput)
 		}
@@ -178,10 +178,10 @@ func TestGroupOneFlowMutationPreviewsDoNotMutateThroughCLI(t *testing.T) {
 		"content", "flow", "publish",
 		"--workspace", "operations",
 		"--artifact", artifactSelector,
-		"--name", "Daily Copy",
+		"--name", "Daily Copy", "--project-id", "project-ops",
 		"--preview",
 	)
-	for _, want := range []string{"mode: preview", "operation: flow.publish", "artifact_path: " + artifactSelector, "environment: production", "project_luid: project-ops"} {
+	for _, want := range []string{"mode: preview", "operation: flow.publish", "source_luid: flow-1", "environment: production", "project_luid: project-ops"} {
 		if !strings.Contains(publishOutput, want) {
 			t.Fatalf("flow publish preview missing %q:\n%s", want, publishOutput)
 		}

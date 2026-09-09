@@ -15,7 +15,7 @@ import (
 
 const (
 	defaultLimit    = 25
-	maxLimit        = 100
+	maxLimit        = 10000
 	maxCursorPage   = 1_000_000
 	cursorVersion   = 1
 	maxCursorLength = 2048
@@ -51,7 +51,7 @@ func (a *Action) Execute(ctx context.Context, input Input) (Output, error) {
 	if err != nil {
 		return Output{}, err
 	}
-	page, err := a.reader.ListWorkbooks(ctx, PageRequest{PageNumber: pageNumber, PageSize: pageSize, Name: input.Name, OwnerName: input.OwnerName, ProjectName: input.ProjectName, Tag: input.Tag, SnapshotCursor: snapshotCursor})
+	page, err := a.readWindow(ctx, PageRequest{PageNumber: pageNumber, PageSize: pageSize, Name: input.Name, OwnerName: input.OwnerName, ProjectName: input.ProjectName, Tag: input.Tag, SnapshotCursor: snapshotCursor})
 	if err != nil {
 		return Output{}, err
 	}
@@ -153,4 +153,19 @@ func listHelp(environment string, items []Workbook) []string {
 		return nil
 	}
 	return []string{commandhint.Environment(environment, "content", "workbook", "inspect", "--id", items[0].LUID)}
+}
+
+func (a *Action) readWindow(ctx context.Context, request PageRequest) (Page, error) {
+	if request.PageSize <= 1000 {
+		return a.reader.ListWorkbooks(ctx, request)
+	}
+	requestID := ""
+	page, err := paging.Window(ctx, paging.State{Number: request.PageNumber, Size: request.PageSize, Token: request.SnapshotCursor}, 1000, func(ctx context.Context, state paging.State) (paging.Page[Workbook], error) {
+		input := request
+		input.PageNumber, input.PageSize, input.SnapshotCursor = state.Number, state.Size, state.Token
+		page, err := a.reader.ListWorkbooks(ctx, input)
+		requestID = page.RequestID
+		return paging.Page[Workbook]{Number: page.Number, Size: page.Size, Total: page.Total, Items: page.Workbooks, Token: page.SnapshotCursor}, err
+	}, func(item Workbook) string { return item.LUID })
+	return Page{Number: page.Number, Size: page.Size, Total: page.Total, Workbooks: page.Items, SnapshotCursor: "", SuppressContinuation: true, RequestID: requestID}, err
 }

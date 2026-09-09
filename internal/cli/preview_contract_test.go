@@ -44,6 +44,7 @@ import (
 	a_pulse_definition_delete "github.com/ahillspace/tadx/actions/pulse/definition/delete"
 	a_pulse_definition_inspect "github.com/ahillspace/tadx/actions/pulse/definition/inspect"
 	a_pulse_definition_list "github.com/ahillspace/tadx/actions/pulse/definition/list"
+	a_pulse_definition_publish "github.com/ahillspace/tadx/actions/pulse/definition/publish"
 	a_pulse_definition_pull "github.com/ahillspace/tadx/actions/pulse/definition/pull"
 	a_pulse_metric_delete "github.com/ahillspace/tadx/actions/pulse/metric/delete"
 	a_pulse_metric_follow "github.com/ahillspace/tadx/actions/pulse/metric/follow"
@@ -237,6 +238,11 @@ func (s *previewActionSpy) InspectPulseDefinition(_ context.Context, input a_pul
 func (s *previewActionSpy) PullPulseDefinition(_ context.Context, input a_pulse_definition_pull.Input) (a_pulse_definition_pull.Output, error) {
 	panic("unexpected read action")
 }
+
+func (s *previewActionSpy) PublishPulseDefinition(_ context.Context, input a_pulse_definition_publish.Input) (a_pulse_definition_publish.Output, error) {
+	s.record(input.Preview)
+	return a_pulse_definition_publish.Output{}, nil
+}
 func (s *previewActionSpy) CreatePulseDefinition(_ context.Context, input a_pulse_definition_create.Input, preview bool) (a_pulse_definition_create.Output, error) {
 	s.record(preview)
 	return a_pulse_definition_create.Output{}, nil
@@ -337,6 +343,7 @@ func previewDependencies(spy *previewActionSpy) cli.Dependencies {
 			DefinitionLister:    spy,
 			DefinitionInspector: spy,
 			DefinitionPuller:    spy,
+			DefinitionPublisher: spy,
 			DefinitionCreator:   spy,
 			DefinitionDeleter:   spy,
 			MetricLister:        spy,
@@ -377,6 +384,7 @@ func TestEveryRemoteMutationDispatchesPreviewWithoutWrites(t *testing.T) {
 		"project.update":            "--project-id project --name Renamed",
 		"pulse.definition.create":   "--name Revenue --datasource-id source --measure-field Sales --date-field Date --dimension Region",
 		"pulse.definition.delete":   "--id definition",
+		"pulse.definition.publish":  "--workspace local --artifact artifacts/pulse-definition/example --datasource-map source=destination",
 		"pulse.metric.delete":       "--id metric",
 		"pulse.metric.follow":       "--id metric --user-id user",
 		"pulse.metric.fork":         "--id metric --period LAST_30_DAYS",

@@ -37,7 +37,7 @@ func newWorkbookList(lister WorkbookLister, renderer Renderer) *cobra.Command {
 	command.Flags().StringVar(&input.ProjectName, "project-name", "", "exact leaf project name filter; not a project path")
 	command.Flags().StringVar(&input.Tag, "tag", "", "exact workbook-tag filter")
 	command.Flags().BoolVar(&input.All, "all", false, "return all matching records, up to 10000; cannot combine with --limit")
-	command.Flags().IntVar(&input.Limit, "limit", 0, "maximum workbooks to render")
+	command.Flags().IntVar(&input.Limit, "limit", 0, "maximum workbooks to render, from 1 to 10000 (default 25)")
 	command.Flags().StringVar(&input.Cursor, "cursor", "", "opaque continuation cursor")
 	command.MarkFlagsMutuallyExclusive("all", "limit")
 	command.MarkFlagsMutuallyExclusive("all", "cursor")

@@ -4,7 +4,6 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
-	"path/filepath"
 	"strings"
 	"testing"
 
@@ -19,7 +18,7 @@ func TestLegacyPartialSnapshotRemainsReadableThroughCLI(t *testing.T) {
 	}))
 	defer server.Close()
 	runtime := inventoryListRuntime(t, server)
-	store := catalog.NewStore(filepath.Dir(runtime.configPath), runtime.now)
+	store := targetCatalogFixture(t, runtime.configPath, runtime.now)
 	ctx := context.Background()
 	id, err := store.SavePartialInventory(ctx, catalog.ResourceScopeReplacement{
 		Environment: "production", Site: "team-site", Kind: "workbook", GeneratedAt: runtime.now(),

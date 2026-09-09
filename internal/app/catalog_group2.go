@@ -7,7 +7,6 @@ import (
 	"math"
 	"net/http"
 	"net/url"
-	"path/filepath"
 	"slices"
 	"strings"
 	"time"
@@ -202,8 +201,8 @@ func newCatalogGroup2Commands(runtime *runtimeDependencies) *catalogGroup2Comman
 	return &catalogGroup2Commands{runtime: runtime}
 }
 
-func (c *catalogGroup2Commands) store() *corecatalog.Store {
-	return corecatalog.NewStore(filepath.Dir(c.runtime.configPath), c.runtime.now)
+func (c *catalogGroup2Commands) store(environment config.Environment) *corecatalog.Store {
+	return c.runtime.catalogStore(environment)
 }
 
 func (c *catalogGroup2Commands) resolve(inputEnvironment, inputSite, operation string) (config.Environment, error) {
@@ -236,7 +235,7 @@ func (s *catalogRefreshService) Execute(ctx context.Context, input catalogrefres
 	}
 	input.Environment, input.Site, input.SiteResolved = environment.Alias, environment.SiteContentURL, true
 	hydrator := catalogHydrator{
-		store: s.commands.store(), now: s.commands.runtime.now,
+		store: s.commands.store(environment), now: s.commands.runtime.now,
 		executorFor: func(ctx context.Context, alias, site string) (tableaucatalog.Executor, error) {
 			connection, err := s.commands.runtime.tableauConnection(ctx, alias, false)
 			if err != nil {
@@ -262,5 +261,5 @@ func (s *catalogStatusService) Execute(ctx context.Context, input catalogstatus.
 		return catalogstatus.Output{}, err
 	}
 	input.Environment, input.Site, input.SiteResolved = environment.Alias, environment.SiteContentURL, true
-	return catalogstatus.New(catalogStoreStatuser{store: s.commands.store()}).Execute(ctx, input)
+	return catalogstatus.New(catalogStoreStatuser{store: s.commands.store(environment)}).Execute(ctx, input)
 }

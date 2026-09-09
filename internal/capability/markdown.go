@@ -23,12 +23,24 @@ func GenerateMarkdown(definitions []Definition) ([]byte, error) {
 	output.WriteString("| Capability ID | Owner | Disposition | Verification | Implementation | Command |\n")
 	output.WriteString("| --- | --- | --- | --- | --- | --- |\n")
 	for _, definition := range definitions {
+		if definition.Disposition == DispositionDelegated {
+			continue
+		}
 		fmt.Fprintf(&output, "| `%s` | %s | %s | %s | %s | %s |\n",
 			escapeTable(definition.ID), escapeTable(string(definition.Owner)), escapeTable(string(definition.Disposition)),
 			escapeTable(string(definition.Verification)), escapeTable(string(definition.Implementation)), escapeTable(command(definition)))
 	}
+	output.WriteString("\n## Out of scope\n\nThese capabilities are outside TADX; no command or automatic handoff is provided.\n\n")
+	for _, definition := range definitions {
+		if definition.Disposition == DispositionDelegated {
+			fmt.Fprintf(&output, "- `%s`: %s\n", definition.ID, definition.Outcome)
+		}
+	}
 	output.WriteString("\n## Capability definitions\n\n")
 	for _, definition := range definitions {
+		if definition.Disposition == DispositionDelegated {
+			continue
+		}
 		fmt.Fprintf(&output, "### `%s`\n\n", definition.ID)
 		fmt.Fprintf(&output, "%s\n\n", definition.Outcome)
 		fields := [][2]string{

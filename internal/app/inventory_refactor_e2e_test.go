@@ -74,7 +74,7 @@ func TestAdminAllRejectsPartialCatalogThroughCLI(t *testing.T) {
 			}))
 			defer server.Close()
 			options := catalogResilienceOptions(t, server)
-			store := catalog.NewStore(filepath.Dir(options.ConfigPath), nil)
+			store := targetCatalogFixture(t, options.ConfigPath, nil)
 			err := store.UpsertResources(context.Background(), []catalog.ResourceEntry{{Environment: "production", Kind: kind, LUID: "known", Name: "Known", Coverage: "summary", ObservedAt: time.Now(), Payload: []byte(`{"luid":"known","name":"Known"}`)}})
 			if err != nil {
 				t.Fatal(err)
@@ -111,7 +111,7 @@ func TestCachedProjectPathIsOpaqueThroughCLI(t *testing.T) {
 			t.Fatalf("ambiguous or missing path succeeded: %s", out.String())
 		}
 	}
-	store := catalog.NewStore(filepath.Dir(options.ConfigPath), nil)
+	store := targetCatalogFixture(t, options.ConfigPath, nil)
 	_, err := store.ReplaceResourceScope(context.Background(), catalog.ResourceScopeReplacement{Environment: "production", Kind: "project", Source: "test", GeneratedAt: time.Now(), Entries: []catalog.ResourceEntry{{LUID: "literal-only", Name: "Ops/Reports", ProjectPath: "Ops/Reports"}}})
 	if err != nil {
 		t.Fatal(err)
@@ -127,7 +127,7 @@ func TestOldCatalogSchemaRequiresExplicitRefreshThroughCLI(t *testing.T) {
 	defer server.Close()
 	options := catalogResilienceOptions(t, server)
 	runGroupOneCLI(t, options, "catalog", "refresh", "--environment", "production", "--scope", "projects")
-	catalogPath := filepath.Join(filepath.Dir(options.ConfigPath), catalog.DatabasePath())
+	catalogPath := filepath.Join(filepath.Dir(options.ConfigPath), targetCatalogFixture(t, options.ConfigPath, nil).RelativePath())
 	db, err := sql.Open("sqlite", catalogPath)
 	if err != nil {
 		t.Fatal(err)

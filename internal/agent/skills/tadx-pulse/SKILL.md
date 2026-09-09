@@ -22,7 +22,7 @@ TADX configuration reads do not return current metric values or generated insigh
 | Create a definition or review its preview | [Authoring](references/authoring.md) and [Creation contract](references/authoring-contract.md) |
 | Choose a calculation, entity count, average, rate, percentage, snapshot, or measure spanning multiple facts | Also read [Semantics](references/semantics.md) before finalizing that choice |
 | Fork a metric or satisfy a particular period or filtered population | [Variants](references/variants.md), before creating a base that depends on that choice |
-| Resolve names, list, inspect, pull, follow, unfollow, delete, or assess an edit | [Operations](references/operations.md) |
+| Resolve names, list, inspect, pull or publish a portable bundle, follow, unfollow, delete, or assess an edit | [Operations](references/operations.md) |
 | Verify saved settings or retain configuration context for numeric validation | [Configuration context](references/analytics-context.md) |
 
 Read only the routes needed for the task.
@@ -46,9 +46,9 @@ Review `--preview` before every authorized create or fork; its default summary i
 Use `--full` for expanded evidence or an explicitly incomplete summary, and do not treat omitted settings as reviewed.
 Verify the saved configuration from returned read-back or an exact inspection when needed.
 A preview proves local validation, not Tableau acceptance or numeric correctness.
-Execution requires `TADX_ENABLE_MUTATIONS=1`, but supported read-only previews remain available when the gate is off.
+Execution requires enabled mutation policy, but supported read-only previews remain available when the gate is off.
 A preview does not authorize execution.
-Before enabling, disabling, or unsetting this flag by any mechanism, obtain explicit user permission for that setting change and its scope.
+Before changing the environment override or saved mutation setting by any mechanism, obtain explicit user permission for that setting change and its scope.
 A requested Pulse operation does not authorize changing the flag; prior permission applies only to the explicitly approved setting change and scope.
 Follow the TADX root skill's single-question approval guidance, including future-shell scope for persistent changes.
 Use the installed TADX root Guidance for authentication, workspace selection, and general lifecycle boundaries.

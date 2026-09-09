@@ -33,9 +33,10 @@ import (
 )
 
 const (
-	pulseDefinitionKind = "definition"
-	pulseMetricKind     = "metric"
-	pulseFollowerKind   = "pulse_subscription"
+	pulseDefinitionKind       = "definition"
+	pulseMetricKind           = "metric"
+	pulseFollowerKind         = "pulse_subscription"
+	pulseFollowerSnapshotKind = "pulse_follower_snapshot"
 )
 
 // pulseCommands composes Pulse actions without exposing provider contracts to Cobra.
@@ -47,7 +48,7 @@ func newPulseCommands(runtime *runtimeDependencies) *pulseCommands {
 
 func (c *pulseCommands) dependencies() *pulsecli.Dependencies {
 	return &pulsecli.Dependencies{
-		DefinitionLister: c, DefinitionInspector: c, DefinitionPuller: c, DefinitionCreator: c, DefinitionDeleter: c,
+		DefinitionLister: c, DefinitionInspector: c, DefinitionPuller: c, DefinitionCreator: c, DefinitionDeleter: c, DefinitionPublisher: c,
 		MetricLister: c, MetricInspector: c, MetricForker: c, MetricFollowers: c, MetricFollower: c, MetricUnfollower: c, MetricDeleter: c,
 	}
 }
@@ -101,7 +102,7 @@ func (c *pulseCommands) ListPulseDefinitions(ctx context.Context, input definiti
 			return definitionlist.Output{}, capabilitySetupError("pulse.definition.list.catalog.setup", "pulse.definition.list", input.Environment, "", "Catalog Pulse definition setup failed.", "Verify the selected environment and catalog configuration.", err)
 		}
 		input.Environment, input.Site = environment, site
-		reader := &catalogPulseDefinitionListReader{store: c.catalogContent().catalogStore(), environment: environment, site: site}
+		reader := &catalogPulseDefinitionListReader{store: c.catalogContent().catalogStore(environment), environment: environment, site: site}
 		output, err := definitionlist.New(reader).Execute(ctx, input)
 		if err == nil {
 			output.Source = reader.source
@@ -133,7 +134,7 @@ func (c *pulseCommands) InspectPulseDefinition(ctx context.Context, input defini
 			return definitioninspect.Output{}, capabilitySetupError("pulse.definition.inspect.catalog.setup", "pulse.definition.inspect", input.Environment, "", "Catalog Pulse definition setup failed.", "Verify the selected environment and catalog configuration.", err)
 		}
 		input.Environment, input.Site = environment, site
-		reader := &catalogPulseDefinitionGetReader{store: c.catalogContent().catalogStore(), environment: environment, site: site}
+		reader := &catalogPulseDefinitionGetReader{store: c.catalogContent().catalogStore(environment), environment: environment, site: site}
 		output, err := definitioninspect.New(reader).Execute(ctx, input)
 		if err == nil {
 			output.Source = reader.source
@@ -230,7 +231,7 @@ func (c *pulseCommands) ListPulseMetrics(ctx context.Context, input metriclist.I
 			return metriclist.Output{}, capabilitySetupError("pulse.metric.list.catalog.setup", "pulse.metric.list", input.Environment, "", "Catalog Pulse metric setup failed.", "Verify the selected environment and catalog configuration.", err)
 		}
 		input.Environment, input.Site = environment, site
-		reader := &catalogPulseMetricListReader{store: c.catalogContent().catalogStore(), environment: environment, site: site}
+		reader := &catalogPulseMetricListReader{store: c.catalogContent().catalogStore(environment), environment: environment, site: site}
 		output, err := metriclist.New(reader).Execute(ctx, input)
 		if err == nil {
 			output.Source = reader.source
@@ -262,7 +263,7 @@ func (c *pulseCommands) InspectPulseMetric(ctx context.Context, input metricinsp
 			return metricinspect.Output{}, capabilitySetupError("pulse.metric.inspect.catalog.setup", "pulse.metric.inspect", input.Environment, "", "Catalog Pulse metric setup failed.", "Verify the selected environment and catalog configuration.", err)
 		}
 		input.Environment, input.Site = environment, site
-		reader := &catalogPulseMetricGetReader{store: c.catalogContent().catalogStore(), environment: environment, site: site}
+		reader := &catalogPulseMetricGetReader{store: c.catalogContent().catalogStore(environment), environment: environment, site: site}
 		output, err := metricinspect.New(reader).Execute(ctx, input)
 		if err == nil {
 			output.Source = reader.source
@@ -309,7 +310,7 @@ func (c *pulseCommands) ListPulseMetricFollowers(ctx context.Context, input metr
 			return metricfollowers.Output{}, capabilitySetupError("pulse.metric.followers.catalog.setup", "pulse.metric.followers", input.Environment, "", "Catalog Pulse follower setup failed.", "Verify the selected environment and catalog configuration.", err)
 		}
 		input.Environment, input.Site = environment, site
-		reader := &catalogPulseFollowerReader{store: c.catalogContent().catalogStore(), environment: environment, site: site}
+		reader := &catalogPulseFollowerReader{store: c.catalogContent().catalogStore(environment), environment: environment, site: site}
 		output, err := metricfollowers.New(reader).Execute(ctx, input)
 		if err == nil {
 			output.Source = reader.source
@@ -328,7 +329,9 @@ func (c *pulseCommands) ListPulseMetricFollowers(ctx context.Context, input metr
 		return output, err
 	}
 	output.Source = liveSource(c.runtime.now)
-	c.writePulseFollowers(connection.environment, reader.items)
+	if err := c.writePulseFollowers(ctx, connection.environment, input.MetricLUID, reader.items); err != nil {
+		output.Warnings = append(output.Warnings, "The live follower snapshot could not be cached; the previous cached snapshot was preserved.")
+	}
 	return output, nil
 }
 
@@ -410,7 +413,51 @@ func (r *pulseDefinitionPullReader) GetDefinition(ctx context.Context, luid stri
 	if err != nil {
 		return definitionpull.Definition{}, err
 	}
-	return definitionpull.Definition{LUID: item.LUID, Name: item.Name, DatasourceLUID: item.DatasourceLUID, Configuration: append([]byte(nil), item.Configuration...), RequestID: item.TableauRequestID}, nil
+	result := definitionpull.Definition{LUID: item.LUID, Name: item.Name, DatasourceLUID: item.DatasourceLUID, Configuration: append([]byte(nil), item.Configuration...), RequestID: item.TableauRequestID}
+	totalBytes := len(item.Configuration)
+	seenIDs, seenTokens := map[string]bool{}, map[string]bool{"": true}
+	token := ""
+	for pageNumber := 0; pageNumber < 100; pageNumber++ {
+		page, err := r.client.ListMetrics(ctx, luid, tableaupulse.PageRequest{PageSize: 100, PageToken: token})
+		if err != nil {
+			return result, err
+		}
+		if len(page.Metrics) > 100 {
+			return result, errors.New("Pulse metric page exceeded its requested bound")
+		}
+		for _, summary := range page.Metrics {
+			if summary.LUID == "" || seenIDs[summary.LUID] || summary.DefinitionLUID != luid {
+				return result, errors.New("Pulse metric inventory contains a duplicate or mismatched identity")
+			}
+			seenIDs[summary.LUID] = true
+			metric, err := r.client.GetMetric(ctx, summary.LUID)
+			if err != nil {
+				return result, err
+			}
+			if metric.DefinitionLUID != luid {
+				return result, errors.New("Pulse metric changed definition while pulling")
+			}
+			specification, err := json.Marshal(metric.Specification)
+			if err != nil {
+				return result, err
+			}
+			totalBytes += len(specification) + len(metric.LUID) + len(luid) + 128
+			if totalBytes > artifact.MaxPulseBundleBytes {
+				return result, errors.New("Pulse bundle exceeds its 32 MiB bound; no artifact was written")
+			}
+			result.Metrics = append(result.Metrics, definitionpull.Metric{LUID: metric.LUID, DefinitionLUID: luid, IsDefault: summary.IsDefault || metric.IsDefault, Specification: specification})
+		}
+		if page.NextPageToken == "" {
+			result.MetricsComplete = true
+			return result, nil
+		}
+		if seenTokens[page.NextPageToken] || strings.TrimSpace(page.NextPageToken) == "" {
+			return result, errors.New("Pulse metric inventory repeated its continuation token")
+		}
+		seenTokens[page.NextPageToken] = true
+		token = page.NextPageToken
+	}
+	return result, errors.New("Pulse metric inventory exceeded 100 pages; no bundle was written")
 }
 
 type pulseDefinitionArtifactWriter struct {
@@ -418,8 +465,16 @@ type pulseDefinitionArtifactWriter struct {
 }
 
 func (w pulseDefinitionArtifactWriter) WriteDefinition(ctx context.Context, input definitionpull.Artifact) (definitionpull.ArtifactResult, error) {
+	bundle := artifact.PulseBundle{Version: 1, SourceServerOrigin: input.ServerOrigin, SourceSiteLUID: input.SiteLUID, DefinitionLUID: input.DefinitionLUID, DatasourceReferences: []string{input.DatasourceLUID}, Definition: input.Configuration, Metrics: make([]artifact.PulseBundleMetric, 0, len(input.Metrics))}
+	for _, metric := range input.Metrics {
+		bundle.Metrics = append(bundle.Metrics, artifact.PulseBundleMetric{LUID: metric.LUID, DefinitionLUID: metric.DefinitionLUID, IsDefault: metric.IsDefault, Specification: metric.Specification})
+	}
+	data, err := json.MarshalIndent(bundle, "", "  ")
+	if err != nil {
+		return definitionpull.ArtifactResult{}, err
+	}
 	result, err := w.manager.Pull(ctx, artifact.PulseDefinitionPull{
-		Workspace: input.Workspace, Configuration: input.Configuration, Overwrite: input.Overwrite,
+		Workspace: input.Workspace, Configuration: input.Configuration, Bundle: append(data, '\n'), Overwrite: input.Overwrite,
 		Metadata: artifact.PulseDefinitionMetadata{Kind: "pulse-definition", Name: input.Name, TableauID: input.DefinitionLUID, DatasourceLUID: input.DatasourceLUID, SourceServerOrigin: input.ServerOrigin, SourceSiteLUID: input.SiteLUID, SourceEnvironment: input.Environment, SourceSite: input.Site},
 	})
 	if err != nil {
@@ -861,49 +916,34 @@ type catalogPulseFollowerReader struct {
 	environment string
 	site        string
 	source      *readsource.Metadata
+	snapshot    *pulseFollowerSnapshot
 }
 
 func (r *catalogPulseFollowerReader) GetMetric(ctx context.Context, luid string) (metricfollowers.Metric, error) {
-	result, err := r.store.ReadResources(ctx, catalog.ResourceQuery{Environment: r.environment, Site: r.site, Kind: pulseMetricKind, LUID: luid, Limit: 1})
+	result, err := r.store.ReadResources(ctx, catalog.ResourceQuery{Environment: r.environment, Site: r.site, Kind: pulseFollowerSnapshotKind, LUID: luid, Limit: 1})
 	if err != nil {
 		return metricfollowers.Metric{}, catalogReadError("pulse.metric.followers", r.environment, r.site, err)
 	}
 	r.source = catalogRecordSource(result, result.Entries[0])
-	var item tableaupulse.Metric
-	if err := json.Unmarshal(result.Entries[0].Payload, &item); err != nil {
-		return metricfollowers.Metric{}, fmt.Errorf("decode catalog Pulse metric %q: %w", luid, err)
+	var snapshot pulseFollowerSnapshot
+	if err := json.Unmarshal(result.Entries[0].Payload, &snapshot); err != nil {
+		return metricfollowers.Metric{}, fmt.Errorf("decode catalog Pulse follower snapshot: %w", err)
 	}
-	return metricfollowers.Metric{LUID: item.LUID}, nil
+	if snapshot.Version != 1 || snapshot.MetricLUID != luid || snapshot.Subscriptions == nil {
+		return metricfollowers.Metric{}, errors.New("catalog Pulse follower snapshot is incomplete or has an unsupported version; run the exact follower command without --catalog to replace it")
+	}
+	r.snapshot = &snapshot
+	return metricfollowers.Metric{LUID: snapshot.MetricLUID}, nil
 }
 
 func (r *catalogPulseFollowerReader) ListSubscriptions(ctx context.Context, metricLUID string) ([]metricfollowers.Subscription, error) {
-	items := make([]metricfollowers.Subscription, 0)
-	var sourceResult catalog.ResourceResult
-	for offset := 0; ; offset += 100 {
-		result, err := r.store.ReadResources(ctx, catalog.ResourceQuery{Environment: r.environment, Site: r.site, Kind: pulseFollowerKind, ProjectPath: metricLUID, Offset: offset, Limit: 100})
-		if err != nil {
-			return nil, catalogReadError("pulse.metric.followers", r.environment, r.site, err)
-		}
-		if offset == 0 {
-			sourceResult = result
-			if result.Total > 1000 {
-				return nil, errors.New("catalog Pulse follower listing exceeds 1000 subscriptions")
-			}
-		} else if result.NewestObserved.After(sourceResult.NewestObserved) {
-			sourceResult.NewestObserved = result.NewestObserved
-		}
-		for _, entry := range result.Entries {
-			var item tableaupulse.Subscription
-			if err := json.Unmarshal(entry.Payload, &item); err != nil {
-				return nil, fmt.Errorf("decode catalog Pulse subscription %q: %w", entry.LUID, err)
-			}
-			items = append(items, metricfollowers.Subscription{LUID: item.LUID, MetricLUID: item.MetricLUID, FollowerType: item.FollowerType, FollowerLUID: item.FollowerLUID, FollowerName: item.FollowerName})
-		}
-		if len(items) >= result.Total {
-			break
+	if r.snapshot == nil || r.snapshot.MetricLUID != metricLUID {
+		if _, err := r.GetMetric(ctx, metricLUID); err != nil {
+			return nil, err
 		}
 	}
-	r.source = catalogReadSource(sourceResult)
+	items := make([]metricfollowers.Subscription, len(r.snapshot.Subscriptions))
+	copy(items, r.snapshot.Subscriptions)
 	return items, nil
 }
 
@@ -916,7 +956,7 @@ func (c *pulseCommands) writePulseDefinitions(environment config.Environment, it
 			entries = append(entries, entry)
 		}
 	}
-	writeThrough(c.catalogContent().catalogStore(), entries)
+	writeThrough(c.runtime.catalogStore(environment), entries)
 }
 
 func (c *pulseCommands) writePulseMetrics(environment config.Environment, items []tableaupulse.Metric, coverage string) {
@@ -932,23 +972,26 @@ func (c *pulseCommands) writePulseMetrics(environment config.Environment, items 
 			entries = append(entries, entry)
 		}
 	}
-	writeThrough(c.catalogContent().catalogStore(), entries)
+	writeThrough(c.runtime.catalogStore(environment), entries)
 }
 
-func (c *pulseCommands) writePulseFollowers(environment config.Environment, items []tableaupulse.Subscription) {
+type pulseFollowerSnapshot struct {
+	Version       int                            `json:"version"`
+	MetricLUID    string                         `json:"metric_luid"`
+	Subscriptions []metricfollowers.Subscription `json:"subscriptions"`
+}
+
+func (c *pulseCommands) writePulseFollowers(ctx context.Context, environment config.Environment, metricLUID string, items []tableaupulse.Subscription) error {
 	observedAt := c.runtime.now().UTC()
-	entries := make([]catalog.ResourceEntry, 0, len(items))
+	snapshot := pulseFollowerSnapshot{Version: 1, MetricLUID: metricLUID, Subscriptions: make([]metricfollowers.Subscription, 0, len(items))}
 	for _, item := range items {
-		name := strings.TrimSpace(item.FollowerName)
-		if name == "" {
-			name = item.LUID
-		}
-		entry, err := resourceEntry(environment.Alias, environment.SiteContentURL, pulseFollowerKind, item.LUID, name, item.MetricLUID, item.FollowerLUID, "detail", observedAt, item)
-		if err == nil {
-			entries = append(entries, entry)
-		}
+		snapshot.Subscriptions = append(snapshot.Subscriptions, metricfollowers.Subscription{LUID: item.LUID, MetricLUID: item.MetricLUID, FollowerType: item.FollowerType, FollowerLUID: item.FollowerLUID, FollowerName: item.FollowerName})
 	}
-	writeThrough(c.catalogContent().catalogStore(), entries)
+	entry, err := resourceEntry(environment.Alias, environment.SiteContentURL, pulseFollowerSnapshotKind, metricLUID, metricLUID, "", "", "detail", observedAt, snapshot)
+	if err != nil {
+		return err
+	}
+	return c.runtime.catalogStore(environment).UpsertResources(ctx, []catalog.ResourceEntry{entry})
 }
 
 func pulseCatalogOffset(token string) (int, error) {

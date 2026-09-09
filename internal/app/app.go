@@ -18,6 +18,9 @@ import (
 	authlogout "github.com/ahillspace/tadx/actions/auth/logout"
 	capabilityget "github.com/ahillspace/tadx/actions/capability/get"
 	capabilitylist "github.com/ahillspace/tadx/actions/capability/list"
+	lastaction "github.com/ahillspace/tadx/actions/last"
+	mutationset "github.com/ahillspace/tadx/actions/mutation/set"
+	mutationstatus "github.com/ahillspace/tadx/actions/mutation/status"
 	workbookpublish "github.com/ahillspace/tadx/actions/workbook/publish"
 	workbookpull "github.com/ahillspace/tadx/actions/workbook/pull"
 	"github.com/ahillspace/tadx/internal/artifact"
@@ -40,18 +43,19 @@ import (
 
 // Options contains process-level discovery settings.
 type Options struct {
-	MutationsEnabled bool
-	ConfigPath       string
-	HTTPClient       *http.Client
-	PATStore         coreauth.PATStore
-	AuthPrompter     authcli.Prompter
-	Now              func() time.Time
-	CorrelationID    func() string
-	UserHomeDir      func() (string, error)
+	MutationsEnabled    bool
+	MutationEnvironment func() (string, bool)
+	ConfigPath          string
+	HTTPClient          *http.Client
+	PATStore            coreauth.PATStore
+	AuthPrompter        authcli.Prompter
+	Now                 func() time.Time
+	CorrelationID       func() string
+	UserHomeDir         func() (string, error)
 }
 
 // Run wires and runs the CLI, renders structured output, and returns an AXI exit code.
-func Run(ctx context.Context, args []string, stdout io.Writer, options Options) int {
+func Run(ctx context.Context, args []string, stdout io.Writer, options Options) (exitCode int) {
 	definitions := capability.All()
 	source := registrySource{}
 	renderOptions := &cli.RenderOptions{}
@@ -60,6 +64,16 @@ func Run(ctx context.Context, args []string, stdout io.Writer, options Options) 
 		return renderError(stdout, err)
 	}
 	defer runtime.Close()
+	capture := newLastCapture(runtime)
+	defer func() {
+		if err := capture.save(exitCode); err != nil {
+			_, _ = fmt.Fprintln(stdout, "last_result_warning: Previous result could not be saved.")
+		}
+	}()
+	fail := func(err error, opts *cli.RenderOptions) int {
+		capture.value = err
+		return renderErrorWithOptions(stdout, err, opts)
+	}
 	environmentCommands := newEnvironmentCommands(runtime)
 	workspaceCommands := newWorkspaceCommands(runtime)
 	remoteContent := newRemoteContentCommands(runtime)
@@ -69,13 +83,25 @@ func Run(ctx context.Context, args []string, stdout io.Writer, options Options) 
 	catalogGroup2 := newCatalogGroup2Commands(runtime)
 	credentialStore := authCredentialStore{runtime: runtime}
 	root := cli.NewRoot(cli.Dependencies{
-		Lister:              capabilitylist.New(source),
-		Getter:              capabilityget.New(source),
-		Renderer:            writerRenderer{writer: stdout, options: renderOptions},
-		RenderOptions:       renderOptions,
-		ConfigPath:          &runtime.configPath,
-		MutationsEnabled:    options.MutationsEnabled,
-		MutationPolicy:      registryMutationPolicy{},
+		Lister:                capabilitylist.New(source),
+		Getter:                capabilityget.New(source),
+		Renderer:              writerRenderer{writer: stdout, options: renderOptions, capture: capture},
+		RenderOptions:         renderOptions,
+		ConfigPath:            &runtime.configPath,
+		MutationsEnabled:      options.MutationsEnabled,
+		MutationPolicy:        registryMutationPolicy{},
+		ResolveMutationPolicy: runtime.mutationPolicy,
+		MutationStatus:        mutationstatus.New(runtime),
+		MutationSetter:        mutationset.New(runtime),
+		LastReader:            lastaction.New(capture.store),
+		ResolveWriteTarget: func(alias string) (string, error) {
+			_, environment, err := runtime.environment(alias, true)
+			var pathError *os.PathError
+			if errors.As(err, &pathError) {
+				return "", &errs.Error{ID: "target.configuration", Kind: errs.KindOperation, Operation: "target", Summary: "Environment configuration could not be read.", Cause: pathError.Err, Retryable: errs.Bool(false), CorrectiveAction: "Configure a Tableau environment, then retry."}
+			}
+			return environment.Alias, err
+		},
 		ListUse:             registryUse("capability.list"),
 		ListShort:           registryShort("capability.list"),
 		GetUse:              registryUse("capability.get"),
@@ -121,8 +147,13 @@ func Run(ctx context.Context, args []string, stdout io.Writer, options Options) 
 	}
 	root.SetOut(stdout)
 	root.SetArgs(args)
-	if _, _, err := root.Find(args); err != nil {
-		return renderError(stdout, &errs.Error{Kind: errs.KindUsage, Operation: "cli", Summary: err.Error(), Cause: err})
+	selected, _, findErr := root.Find(args)
+	if selected != nil {
+		capture.operation = selected.Annotations[cli.CapabilityAnnotation]
+		capture.enabled = capture.operation != "last"
+	}
+	if findErr != nil {
+		return fail(&errs.Error{Kind: errs.KindUsage, Operation: "cli", Summary: findErr.Error(), Cause: findErr}, renderOptions)
 	}
 	if err := root.ExecuteContext(ctx); err != nil {
 		if clierr.IsRendered(err) {
@@ -132,7 +163,7 @@ func Run(ctx context.Context, args []string, stdout io.Writer, options Options) 
 		if !errors.As(err, &structured) {
 			err = &errs.Error{Kind: errs.KindRuntime, Operation: "cli", Summary: err.Error(), Cause: err}
 		}
-		return renderErrorWithOptions(stdout, err, renderOptions)
+		return fail(err, renderOptions)
 	}
 	return 0
 }
@@ -145,12 +176,19 @@ func renderError(writer io.Writer, err error) int {
 }
 
 type writerRenderer struct {
+	capture *lastCapture
 	writer  io.Writer
 	options *cli.RenderOptions
 }
 
 func (r writerRenderer) Render(value any) error {
+	if r.capture != nil {
+		r.capture.value = value
+	}
 	full := r.options != nil && r.options.Full
+	if saved, ok := value.(interface{ IsSavedResult() bool }); ok && saved.IsSavedResult() {
+		full = true
+	}
 	return output.RenderWithOptions(r.writer, value, output.Options{Full: full})
 }
 
@@ -163,14 +201,15 @@ func renderErrorWithOptions(writer io.Writer, err error, options *cli.RenderOpti
 }
 
 type runtimeDependencies struct {
-	command       commandRuntime
-	configPath    string
-	httpClient    *http.Client
-	now           func() time.Time
-	correlationID string
-	userHomeDir   func() (string, error)
-	patStore      coreauth.PATStore
-	authPrompter  authcli.Prompter
+	mutationOverride func() (string, bool)
+	command          commandRuntime
+	configPath       string
+	httpClient       *http.Client
+	now              func() time.Time
+	correlationID    string
+	userHomeDir      func() (string, error)
+	patStore         coreauth.PATStore
+	authPrompter     authcli.Prompter
 }
 
 func newRuntime(options Options) (*runtimeDependencies, error) {
@@ -212,7 +251,11 @@ func newRuntime(options Options) (*runtimeDependencies, error) {
 	if prompter == nil {
 		prompter = newTerminalCredentialPrompter()
 	}
-	return &runtimeDependencies{configPath: path, httpClient: client, now: now, correlationID: correlation, userHomeDir: userHomeDir, patStore: patStore, authPrompter: prompter}, nil
+	mutationOverride := options.MutationEnvironment
+	if mutationOverride == nil && options.MutationsEnabled {
+		mutationOverride = func() (string, bool) { return "1", true }
+	}
+	return &runtimeDependencies{mutationOverride: mutationOverride, configPath: path, httpClient: client, now: now, correlationID: correlation, userHomeDir: userHomeDir, patStore: patStore, authPrompter: prompter}, nil
 }
 
 func (r *runtimeDependencies) Resolve(_ context.Context, alias string) (authcheck.Target, error) {
@@ -232,14 +275,16 @@ func (r *runtimeDependencies) Authenticate(ctx context.Context, target authcheck
 }
 
 func (r *runtimeDependencies) environment(alias string, explicit bool) (config.Config, config.Environment, error) {
-	if explicit && alias == "" {
-		return config.Config{}, config.Environment{}, errors.New("an explicit write environment is required")
-	}
 	configuration, err := r.configuration()
 	if err != nil {
 		return config.Config{}, config.Environment{}, err
 	}
-	environment, err := configuration.ResolveEnvironment(alias)
+	var environment config.Environment
+	if explicit {
+		environment, err = configuration.ResolveWriteEnvironment(alias)
+	} else {
+		environment, err = configuration.ResolveEnvironment(alias)
+	}
 	return configuration, environment, err
 }
 
@@ -421,52 +466,41 @@ func (s *publishService) Execute(ctx context.Context, input workbookpublish.Inpu
 		return workbookpublish.Output{}, err
 	}
 	manager := artifact.NewWorkbookManager(s.runtime.now)
-	var environment config.Environment
 	var adapter *resourceworkbook.Adapter
-	var err error
-	if input.Environment != "" {
-		_, environment, err = s.runtime.environment(input.Environment, true)
-		if err != nil {
-			environmentAlias, site := resolvedTarget(input.Environment, input.Site, environment)
-			return workbookpublish.Output{}, capabilitySetupError("workbook.publish.setup", "workbook.publish", environmentAlias, site, "Workbook publish setup failed.", "Review the explicit environment, site, and PAT configuration.", err)
-		}
-		input.Environment, input.Site, input.TargetResolved = environment.Alias, environment.SiteContentURL, true
-	}
-	resolvedWorkspace, err := (&workspaceRuntime{runtime: s.runtime}).resolveForEnvironment(ctx, input.Workspace, environment.Alias)
+	_, environment, err := s.runtime.environment(input.Environment, true)
 	if err != nil {
-		return workbookpublish.Output{}, capabilitySetupError("workbook.publish.workspace", "workbook.publish", input.Environment, input.Site, "Workbook workspace resolution failed.", "Select or configure an exact workspace, then retry.", err)
+		return workbookpublish.Output{}, capabilitySetupError("workbook.publish.setup", "workbook.publish", input.Environment, input.Site, "Workbook publish target resolution failed.", "Select the destination with --env.", err)
 	}
-	managedArtifact, err := artifact.Resolve(ctx, resolvedWorkspace.Root, artifact.Selector{Path: input.ArtifactPath, Kind: "workbook"})
-	if err != nil {
-		return workbookpublish.Output{}, capabilitySetupError("workbook.publish.artifact", "workbook.publish", input.Environment, input.Site, "Workbook artifact resolution failed.", "Select one exact workspace-relative managed workbook artifact, then retry.", err)
-	}
-	input.ArtifactPath = filepath.Join(resolvedWorkspace.Root, filepath.FromSlash(managedArtifact.Path))
-	input.WorkspaceName = resolvedWorkspace.Name
-	if _, err := manager.Read(ctx, input.ArtifactPath); err != nil {
-		return workbookpublish.Output{}, capabilitySetupError("workbook.publish.artifact", "workbook.publish", input.Environment, input.Site, "Workbook artifact read failed.", "Repair or pull the exact workbook artifact, then retry.", err)
-	}
-	if input.Environment == "" {
-		// Artifact-home: with no explicit --environment, default the write target
-		// to the artifact's recorded source environment before selecting an adapter.
-		metadata, err := manager.ReadMetadata(ctx, input.ArtifactPath)
-		if err != nil {
-			return workbookpublish.Output{}, capabilitySetupError("workbook.publish.source", "workbook.publish", "", input.Site, "Workbook publish source provenance read failed.", "Repair or pull the exact workbook artifact, then review a new preview.", err)
+	input.Environment, input.Site, input.TargetResolved = environment.Alias, environment.SiteContentURL, true
+	var reader workbookpublish.ArtifactReader
+	if input.File != "" {
+		input.ArtifactPath = input.File
+		reader = nativeWorkbookArtifactReader{}
+		if _, err := reader.ReadWorkbook(ctx, input.File); err != nil {
+			return workbookpublish.Output{}, capabilitySetupError("workbook.publish.file", "workbook.publish", input.Environment, input.Site, "Native workbook file is invalid.", "Select an existing .twb or .twbx file with --file.", err)
 		}
-		input.Environment = metadata.SourceEnvironment
-		input.SourceDefaulted = true
-		_, environment, err = s.runtime.environment(input.Environment, true)
+	} else {
+		resolvedWorkspace, err := (&workspaceRuntime{runtime: s.runtime}).resolveForEnvironment(ctx, input.Workspace, environment.Alias)
 		if err != nil {
-			environmentAlias, site := resolvedTarget(input.Environment, input.Site, environment)
-			return workbookpublish.Output{}, capabilitySetupError("workbook.publish.setup", "workbook.publish", environmentAlias, site, "The artifact's recorded source environment is not configured.", "Add the recorded source environment to configuration, or publish to an explicit environment.", err)
+			return workbookpublish.Output{}, capabilitySetupError("workbook.publish.workspace", "workbook.publish", input.Environment, input.Site, "Workbook workspace resolution failed.", "Select or configure an exact workspace, then retry.", err)
 		}
-		input.Environment, input.Site, input.TargetResolved = environment.Alias, environment.SiteContentURL, true
+		managedArtifact, err := artifact.Resolve(ctx, resolvedWorkspace.Root, artifact.Selector{Path: input.ArtifactPath, Kind: "workbook", LUID: input.ArtifactID, Name: input.ArtifactName})
+		if err != nil {
+			return workbookpublish.Output{}, capabilitySetupError("workbook.publish.artifact", "workbook.publish", input.Environment, input.Site, "Workbook artifact resolution failed.", "Select one exact workspace-relative managed workbook artifact, then retry.", err)
+		}
+		input.ArtifactPath = filepath.Join(resolvedWorkspace.Root, filepath.FromSlash(managedArtifact.Path))
+		input.WorkspaceName = resolvedWorkspace.Name
+		if _, err := manager.Read(ctx, input.ArtifactPath); err != nil {
+			return workbookpublish.Output{}, capabilitySetupError("workbook.publish.artifact", "workbook.publish", input.Environment, input.Site, "Workbook artifact read failed.", "Repair or pull the exact workbook artifact, then retry.", err)
+		}
+		reader = artifactReader{manager: manager, displayPath: managedArtifact.Path}
 	}
 	_, environment, adapter, _, err = s.runtime.workbookAdapter(ctx, input.Environment, true)
 	if err != nil {
 		return workbookpublish.Output{}, capabilitySetupError("workbook.publish.setup", "workbook.publish", input.Environment, input.Site, "Workbook publish setup failed.", "Review the explicit environment, site, and PAT configuration.", err)
 	}
 	input.Environment, input.Site, input.TargetResolved = environment.Alias, environment.SiteContentURL, true
-	action := workbookpublish.New(artifactReader{manager: manager, displayPath: managedArtifact.Path}, publishAdapter{adapter: adapter}, publishAdapter{adapter: adapter})
+	action := workbookpublish.New(reader, publishAdapter{adapter: adapter}, publishAdapter{adapter: adapter})
 	return action.Execute(ctx, input, preview)
 }
 

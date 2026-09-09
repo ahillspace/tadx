@@ -3,6 +3,9 @@ package publish
 import "github.com/ahillspace/tadx/internal/identity"
 
 type Input struct {
+	File         string
+	ArtifactID   string
+	ArtifactName string
 	// WorkspaceName is the resolved logical workspace alias used in follow-up commands.
 	WorkspaceName string
 	// TargetResolved confirms authenticated target selection, including the Default site.
@@ -18,6 +21,7 @@ func (i *Input) SetProjectSelector(luid, projectPath string) {
 }
 
 type Artifact struct {
+	TableauID                                                                                                         string
 	Path, PayloadPath, Filename, Name, Fingerprint, SourceEnvironment, SourceSite, SourceProjectName, SourceProjectID string
 	Size                                                                                                              int64
 }
@@ -31,6 +35,9 @@ type Target struct {
 	ExistingLUID string `json:"existing_flow_luid,omitempty"`
 }
 type Plan struct {
+	Kind                string   `json:"kind"`
+	Workspace           string   `json:"workspace"`
+	SourceLUID          string   `json:"source_luid"`
 	Mode                string   `json:"mode"`
 	Operation           string   `json:"operation"`
 	ArtifactPath        string   `json:"artifact_path"`
@@ -67,7 +74,7 @@ type CompactPublishResult struct {
 	ProjectLUID string `json:"project_luid,omitempty"`
 }
 type CompactResult struct {
-	Plan    Plan                  `json:"plan"`
+	Plan    CompactPlan           `json:"plan"`
 	Result  *CompactPublishResult `json:"result,omitempty"`
 	Details string                `json:"details"`
 	Help    []string              `json:"help"`
@@ -83,8 +90,20 @@ func (o Output) CompactOutput() any {
 	if o.Result != nil {
 		result = &CompactPublishResult{Status: o.Result.Status, FlowLUID: o.Result.FlowLUID, FlowName: o.Result.FlowName, ProjectLUID: o.Result.ProjectLUID}
 	}
-	return CompactResult{Plan: o.Plan, Result: result, Details: "--full", Help: o.Help}
+	return CompactResult{Plan: CompactPlan{Workspace: o.Plan.Workspace, Kind: "flow", SourceLUID: o.Plan.SourceLUID, Mode: o.Plan.Mode, Operation: o.Plan.Operation, FlowName: o.Plan.FlowName, Target: o.Plan.Target, Overwrite: o.Plan.Overwrite}, Result: result, Details: "--full", Help: o.Help}
 }
 func (o Output) FullOutput() any {
+	o.Plan.Kind = "flow"
 	return FullResult{Plan: o.Plan, Result: o.Result, Help: o.Help}
+}
+
+type CompactPlan struct {
+	Workspace  string `json:"workspace"`
+	Kind       string `json:"kind"`
+	SourceLUID string `json:"source_luid"`
+	Mode       string `json:"mode"`
+	Operation  string `json:"operation"`
+	FlowName   string `json:"flow_name"`
+	Target     Target `json:"target"`
+	Overwrite  bool   `json:"overwrite"`
 }

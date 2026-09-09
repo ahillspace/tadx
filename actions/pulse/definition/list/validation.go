@@ -8,8 +8,8 @@ import (
 
 // ValidateInput checks bounded list inputs; resolved cursor ownership is checked later.
 func ValidateInput(input Input) error {
-	if input.Limit < 0 || input.Limit > 100 {
-		return listError("pulse.definition.list.usage", errs.KindUsage, input, "Pulse definition list limit must be between 1 and 100.", nil)
+	if input.Limit < 0 || input.Limit > maxLimit {
+		return listError("pulse.definition.list.usage", errs.KindUsage, input, "Pulse definition list limit must be between 1 and 10000.", nil)
 	}
 	if input.All && (input.Limit != 0 || input.Cursor != "") {
 		return listError("pulse.definition.list.usage", errs.KindUsage, input, "--all cannot be combined with --limit or --cursor.", nil)

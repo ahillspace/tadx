@@ -89,7 +89,7 @@ func (s *Store) ReplaceResourceScope(ctx context.Context, replacement ResourceSc
 	if err := tx.Commit(); err != nil {
 		return ReplaceResult{}, err
 	}
-	return ReplaceResult{GenerationID: generationID, Path: databaseRelativePath, RecordCount: len(normalized.Entries)}, nil
+	return ReplaceResult{GenerationID: generationID, Path: s.RelativePath(), RecordCount: len(normalized.Entries)}, nil
 }
 
 func normalizeResourceScopeReplacement(input ResourceScopeReplacement) (ResourceScopeReplacement, error) {

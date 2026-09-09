@@ -115,7 +115,7 @@ func (a *Action) Execute(ctx context.Context, input Input) (Output, error) {
 	if err != nil {
 		return Output{}, err
 	}
-	page, err := a.reader.ListUsers(ctx, PageRequest{PageNumber: number, PageSize: size, Name: input.Name, SiteRole: input.SiteRole, SnapshotCursor: snapshotCursor})
+	page, err := a.readPage(ctx, PageRequest{PageNumber: number, PageSize: size, Name: input.Name, SiteRole: input.SiteRole, SnapshotCursor: snapshotCursor})
 	if err != nil {
 		return Output{}, err
 	}
@@ -151,8 +151,8 @@ func selectPage(encoded string, requested int, filter string) (int, int, string,
 		if requested == 0 {
 			requested = 25
 		}
-		if requested < 1 || requested > 100 {
-			return 0, 0, "", errs.New(errs.KindUsage, "admin user list limit must be between 1 and 100")
+		if requested < 1 || requested > 10000 {
+			return 0, 0, "", errs.New(errs.KindUsage, "admin user list limit must be between 1 and 10000")
 		}
 		return 1, requested, "", nil
 	}

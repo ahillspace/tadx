@@ -44,7 +44,7 @@ func TestFullLiveWorkbookListRefreshesSnapshotAndCatalogContinuesWithoutTableau(
 
 	runtime := inventoryListRuntime(t, server)
 	commands := newRemoteContentCommands(runtime)
-	seedStore := catalog.NewStore(filepath.Dir(runtime.configPath), runtime.now)
+	seedStore := targetCatalogFixture(t, runtime.configPath, runtime.now)
 	if err := seedStore.UpsertResources(context.Background(), []catalog.ResourceEntry{{Environment: "production", Site: "team-site", Kind: "workbook", LUID: "workbook-a", Name: "Old", Coverage: "detail", ObservedAt: runtime.now().Add(-48 * time.Hour), Payload: []byte(`{"luid":"workbook-a","name":"Old","obsolete_detail":"stale"}`)}}); err != nil {
 		t.Fatal(err)
 	}
@@ -81,7 +81,7 @@ func TestFullLiveWorkbookListRefreshesSnapshotAndCatalogContinuesWithoutTableau(
 		t.Fatalf("continuation = %#v; sign-ins = %d; reads = %d", second, signins.Load(), inventoryReads.Load())
 	}
 
-	store := catalog.NewStore(filepath.Dir(runtime.configPath), runtime.now)
+	store := targetCatalogFixture(t, runtime.configPath, runtime.now)
 	_, err = store.ReplaceResourceScope(context.Background(), catalog.ResourceScopeReplacement{
 		Environment: "production", Site: "team-site", Kind: "workbook", Source: "tableau-rest", GeneratedAt: runtime.now().Add(time.Minute),
 		Entries: []catalog.ResourceEntry{{LUID: "workbook-new", Name: "New"}},
@@ -116,7 +116,7 @@ func TestFullLiveWorkbookListRejectsInvalidProjectCoverageAndPreservesCatalog(t 
 	defer server.Close()
 
 	runtime := inventoryListRuntime(t, server)
-	store := catalog.NewStore(filepath.Dir(runtime.configPath), runtime.now)
+	store := targetCatalogFixture(t, runtime.configPath, runtime.now)
 	seed, err := store.ReplaceResourceScope(context.Background(), catalog.ResourceScopeReplacement{
 		Environment: "production", Site: "team-site", Kind: "workbook", Source: "tableau-rest", GeneratedAt: runtime.now().Add(-time.Hour),
 		Entries: []catalog.ResourceEntry{{LUID: "workbook-existing", Name: "Existing", Payload: []byte(`{"luid":"workbook-existing","name":"Existing"}`)}},

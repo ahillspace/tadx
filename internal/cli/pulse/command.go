@@ -12,6 +12,7 @@ import (
 	definitiondelete "github.com/ahillspace/tadx/actions/pulse/definition/delete"
 	definitioninspect "github.com/ahillspace/tadx/actions/pulse/definition/inspect"
 	definitionlist "github.com/ahillspace/tadx/actions/pulse/definition/list"
+	definitionpublish "github.com/ahillspace/tadx/actions/pulse/definition/publish"
 	definitionpull "github.com/ahillspace/tadx/actions/pulse/definition/pull"
 	metricdelete "github.com/ahillspace/tadx/actions/pulse/metric/delete"
 	metricfollow "github.com/ahillspace/tadx/actions/pulse/metric/follow"
@@ -40,6 +41,10 @@ type DefinitionInspector interface {
 // DefinitionPuller pulls one Pulse definition artifact.
 type DefinitionPuller interface {
 	PullPulseDefinition(context.Context, definitionpull.Input) (definitionpull.Output, error)
+}
+
+type DefinitionPublisher interface {
+	PublishPulseDefinition(context.Context, definitionpublish.Input) (definitionpublish.Output, error)
 }
 
 // DefinitionCreator creates one Pulse definition or returns a preview.
@@ -92,6 +97,7 @@ type Dependencies struct {
 	DefinitionLister    DefinitionLister
 	DefinitionInspector DefinitionInspector
 	DefinitionPuller    DefinitionPuller
+	DefinitionPublisher DefinitionPublisher
 	DefinitionCreator   DefinitionCreator
 	DefinitionDeleter   DefinitionDeleter
 	MetricLister        MetricLister
@@ -118,6 +124,7 @@ func New(deps Dependencies) *cobra.Command {
 		newDefinitionList(deps),
 		newDefinitionInspect(deps),
 		newDefinitionPull(deps),
+		newDefinitionPublish(deps),
 		newDefinitionCreate(deps),
 		newDefinitionDelete(deps),
 	)
@@ -179,7 +186,7 @@ func newDefinitionList(deps Dependencies) *cobra.Command {
 		return deps.Renderer.Render(result)
 	})
 	readFlags(command, &input.Environment, &input.Catalog)
-	command.Flags().IntVar(&input.Limit, "limit", 0, "maximum definitions to return; defaults to 25")
+	command.Flags().IntVar(&input.Limit, "limit", 0, "maximum definitions to return from 1 through 10000; defaults to 25")
 	command.Flags().StringVar(&input.Name, "name", "", "find exact definition names across provider pages")
 	command.Flags().StringVar(&input.DatasourceLUID, "datasource-id", "", "filter exact datasource LUID before the returned limit; scans up to 100 pages")
 	command.Flags().StringVar(&input.Cursor, "cursor", "", "opaque continuation cursor")
@@ -203,7 +210,7 @@ func newDefinitionInspect(deps Dependencies) *cobra.Command {
 
 func newDefinitionPull(deps Dependencies) *cobra.Command {
 	var input definitionpull.Input
-	command := exactIDCommand("pull", "Pull one Pulse definition artifact.", "pulse.definition.pull", &input.LUID, func(command *cobra.Command) error {
+	command := exactIDCommand("pull", "Pull a portable definition bundle with every saved metric variant.", "pulse.definition.pull", &input.LUID, func(command *cobra.Command) error {
 		result, err := deps.DefinitionPuller.PullPulseDefinition(command.Context(), input)
 		if err != nil {
 			return err
@@ -213,6 +220,31 @@ func newDefinitionPull(deps Dependencies) *cobra.Command {
 	command.Flags().StringVar(&input.Environment, "environment", "", "exact environment alias; defaults to the configured read environment")
 	command.Flags().StringVar(&input.Workspace, "workspace", "", "logical workspace name; uses deterministic defaults when omitted")
 	command.Flags().BoolVar(&input.Overwrite, "overwrite", false, "replace a dirty local artifact")
+	return command
+}
+
+func newDefinitionPublish(deps Dependencies) *cobra.Command {
+	var input definitionpublish.Input
+	command := actionCommand("publish", "Recreate a portable Pulse bundle as new definitions and metrics.", "pulse.definition.publish", func(command *cobra.Command) error {
+		if err := definitionpublish.ValidateInput(input); err != nil {
+			return err
+		}
+		if deps.DefinitionPublisher == nil {
+			return errors.New("Pulse bundle publisher is not configured")
+		}
+		result, err := deps.DefinitionPublisher.PublishPulseDefinition(command.Context(), input)
+		if err != nil {
+			return clierr.WithOutput(result, err)
+		}
+		return deps.Renderer.Render(result)
+	})
+	command.Flags().StringVar(&input.Environment, "environment", "", "destination environment alias")
+	command.Flags().StringVar(&input.Workspace, "workspace", "", "logical workspace containing the bundle")
+	command.Flags().StringVar(&input.Artifact, "artifact", "", "workspace-relative managed Pulse bundle directory")
+	command.Flags().StringVar(&input.ArtifactID, "id", "", "exact source definition LUID of the managed bundle; exclusive with --artifact-name and --artifact")
+	command.Flags().StringVar(&input.ArtifactName, "artifact-name", "", "exact managed Pulse bundle name; ambiguity fails; exclusive with --id and --artifact")
+	command.Flags().StringArrayVar(&input.DatasourceMap, "datasource-map", nil, "explicit source=destination datasource LUID mapping; repeat for each source, including same-site publishing")
+	command.Flags().BoolVar(&input.Preview, "preview", false, "validate and preview every recreated object without remote writes")
 	return command
 }
 
@@ -283,7 +315,7 @@ func newMetricList(deps Dependencies) *cobra.Command {
 	}
 	readFlags(command, &input.Environment, &input.Catalog)
 	command.Flags().StringVar(&input.DefinitionLUID, "definition-id", "", "authoritative Pulse definition LUID")
-	command.Flags().IntVar(&input.Limit, "limit", 0, "maximum metrics to return; defaults to 25")
+	command.Flags().IntVar(&input.Limit, "limit", 0, "maximum metrics to return from 1 through 10000; defaults to 25")
 	command.Flags().StringVar(&input.Cursor, "cursor", "", "opaque continuation cursor")
 	_ = command.Flags().MarkHidden("cursor")
 	command.Flags().BoolVar(&input.All, "all", false, "return all metrics within 100 pages and 10,000 records; cannot combine with --limit")

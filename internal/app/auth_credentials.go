@@ -36,7 +36,7 @@ func (r authLogoutResolver) Resolve(_ context.Context, alias string) (authlogout
 	if err != nil {
 		return authlogout.Target{}, err
 	}
-	return authlogout.Target{Environment: environment.Alias}, nil
+	return authlogout.Target{Environment: environment.Alias, EnvironmentCredentialsAvailable: strings.TrimSpace(os.Getenv(environment.Auth.PATNameEnv)) != "" && strings.TrimSpace(os.Getenv(environment.Auth.PATSecretEnv)) != ""}, nil
 }
 
 type loginAuthenticator struct{ runtime *runtimeDependencies }

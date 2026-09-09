@@ -8,6 +8,9 @@ import (
 // NormalizeInput checks local lineage selectors and bounds before setup.
 func NormalizeInput(input Input) (Input, error) {
 	input.Kind = strings.TrimSpace(input.Kind)
+	if input.Kind == "datasource" {
+		input.Kind = "published_datasource"
+	}
 	input.Direction = strings.TrimSpace(input.Direction)
 	if input.Kind != "workbook" && input.Kind != "published_datasource" && input.Kind != "flow" {
 		return Input{}, usageCause("kind", "unsupported lineage root kind", fmt.Errorf("unsupported lineage root kind %q", input.Kind))

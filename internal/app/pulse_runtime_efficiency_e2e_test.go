@@ -49,7 +49,7 @@ func TestPulseDefinitionDatasourceFilterCatalogMultipageThroughCLI(t *testing.T)
 		}
 		entries[i] = catalog.ResourceEntry{Environment: "test", Site: "test", Kind: "definition", LUID: id, Name: id, Payload: payload, ObservedAt: time.Now().UTC(), Coverage: "summary"}
 	}
-	if err := catalog.NewStore(filepath.Dir(options.ConfigPath), nil).UpsertResources(context.Background(), entries); err != nil {
+	if err := targetCatalogFixture(t, options.ConfigPath, nil).UpsertResources(context.Background(), entries); err != nil {
 		t.Fatal(err)
 	}
 	for _, extra := range [][]string{{"--limit", "1"}, {"--all"}} {

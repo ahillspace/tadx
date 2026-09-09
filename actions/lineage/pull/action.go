@@ -84,7 +84,7 @@ func (a *Action) Execute(ctx context.Context, input Input) (Output, error) {
 		Warnings: warnings, WarningsOmitted: warningsOmitted,
 		Provenance: Provenance{Environment: normalized.Environment, Site: normalized.Site, ServerOrigin: normalized.ServerOrigin, SiteLUID: normalized.SiteLUID},
 		RequestIDs: requestIDs, RequestIDsOmitted: requestIDsOmitted,
-		Help: []string{commandhint.Target(normalized.Environment, normalized.WorkspaceName, "content", "lineage", "pull", "--kind", resource.Kind, "--id", resource.LUID, "--direction", normalized.Direction, "--depth", fmt.Sprint(normalized.Depth))},
+		Help: []string{commandhint.Target(normalized.Environment, normalized.WorkspaceName, "content", "lineage", "pull", "--kind", publicKind(resource.Kind), "--id", resource.LUID, "--direction", normalized.Direction, "--depth", fmt.Sprint(normalized.Depth))},
 	}, nil
 }
 

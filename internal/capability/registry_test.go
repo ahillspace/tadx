@@ -9,7 +9,7 @@ import (
 
 func TestCanonicalRegistryIsValidAndComplete(t *testing.T) {
 	definitions := All()
-	if got, want := len(definitions), 99; got != want {
+	if got, want := len(definitions), 103; got != want {
 		t.Fatalf("All() returned %d definitions, want %d", got, want)
 	}
 	if err := Validate(definitions); err != nil {
@@ -31,8 +31,8 @@ func TestCanonicalRegistryIsValidAndComplete(t *testing.T) {
 			blocked++
 		}
 	}
-	if cli != 86 || delegated != 13 || ship != 86 || blocked != 0 {
-		t.Fatalf("registry totals = cli:%d delegated:%d ship-disposition:%d blocked:%d, want 86/13/86/0", cli, delegated, ship, blocked)
+	if cli != 90 || delegated != 13 || ship != 90 || blocked != 0 {
+		t.Fatalf("registry totals = cli:%d delegated:%d ship-disposition:%d blocked:%d, want 90/13/90/0", cli, delegated, ship, blocked)
 	}
 }
 
@@ -42,6 +42,14 @@ func TestCanonicalExecutableBindingsIncludeImplementedSlices(t *testing.T) {
 	for _, definition := range definitions {
 		ids = append(ids, definition.ID)
 	}
+	// Preserve the original slice inventory and independently assert this round's additions.
+	additions := []string{"last", "mutation.set", "mutation.status", "pulse.definition.publish"}
+	for _, id := range additions {
+		if !slices.Contains(ids, id) {
+			t.Fatalf("missing new executable %s", id)
+		}
+	}
+	ids = slices.DeleteFunc(ids, func(id string) bool { return slices.Contains(additions, id) })
 	if want := []string{"admin.group.create", "admin.group.delete", "admin.group.inspect", "admin.group.list", "admin.group.member.add", "admin.group.member.remove", "admin.group.update", "admin.permission.create", "admin.permission.delete", "admin.permission.inspect", "admin.user.create", "admin.user.delete", "admin.user.inspect", "admin.user.list", "admin.user.update", "agent.install", "agent.uninstall", "auth.check", "auth.login", "auth.logout", "auth.status", "capability.get", "capability.list", "catalog.refresh", "catalog.status", "datasource.delete", "datasource.inspect", "datasource.list", "datasource.move", "datasource.publish", "datasource.pull", "datasource.schema", "datasource.update", "doctor.run", "env.profile.add", "env.profile.get", "env.profile.list", "env.profile.remove", "env.profile.set-default", "env.profile.update", "flow.delete", "flow.inspect", "flow.list", "flow.move", "flow.publish", "flow.pull", "flow.update", "lineage.pull", "project.create", "project.delete", "project.inspect", "project.list", "project.move", "project.update", "pulse.definition.create", "pulse.definition.delete", "pulse.definition.inspect", "pulse.definition.list", "pulse.definition.pull", "pulse.metric.delete", "pulse.metric.follow", "pulse.metric.followers", "pulse.metric.fork", "pulse.metric.inspect", "pulse.metric.list", "pulse.metric.unfollow", "search.run", "version.get", "workbook.delete", "workbook.inspect", "workbook.list", "workbook.move", "workbook.publish", "workbook.pull", "workbook.update", "workspace.artifact.delete", "workspace.clean", "workspace.clone", "workspace.create", "workspace.delete", "workspace.list", "workspace.move", "workspace.register", "workspace.set-default", "workspace.status", "workspace.unregister"}; !slices.Equal(ids, want) {
 		t.Fatalf("Executable IDs = %v, want %v", ids, want)
 	}

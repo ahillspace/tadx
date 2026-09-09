@@ -1,7 +1,9 @@
 plan:
+  workspace: ""
+  kind: workbook
+  source_luid: wb-src
   mode: preview
   operation: workbook.publish
-  artifact_path: "C:\\workspace\\Finance"
   filename: Finance.twbx
   workbook_name: Finance
   target:

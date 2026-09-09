@@ -5,30 +5,31 @@
 All actions accept `--full` for expanded bounded output.
 Flags in brackets are optional.
 `--env` aliases `--environment`; the environment selects the site for user mutations.
+A sole configured environment can be omitted; multiple environments require an explicit target for remote writes.
 
 | Action | What it does | Key and optional flags |
 | --- | --- | --- |
-| `tadx admin user list` | List users, or collect the selected inventory with `--all`. | `--environment <alias>` [`--name <exact>`] [`--site-role <role>`] [`--limit 1..100` or `--all`] [`--catalog`] |
+| `tadx admin user list` | List users, or collect the selected inventory with `--all`. | `--environment <alias>` [`--name <exact>`] [`--site-role <role>`] [`--limit 1..10000` or `--all`] [`--catalog`] |
 | `tadx admin user inspect` | Inspect one exact user. | `--id <luid>` or `--name <username-or-email>` [`--environment <alias>`] [`--catalog`] |
 | `tadx admin user create` | Add one user to a site. | `--environment <alias> --name <username> --site-role <role>` and exactly one of `--auth-setting <value>` or `--idp-configuration-id <luid>` [`--identity-pool <name>`] [`--email <address>`] [`--language <code>`] [`--locale <code>`] [`--preview`] |
 | `tadx admin user update` | Update one exact user. | `--environment <alias> --id <luid>` plus one or more of `--full-name`, `--email`, `--site-role`, `--auth-setting`, `--identity-pool`, `--idp-configuration-id`, `--language`, `--locale` [`--preview`] |
 | `tadx admin user delete` | Remove one exact user from a site. | `--environment <alias> --id <luid>` [`--preview`] |
-| `tadx admin group list` | List groups, or collect the selected inventory with `--all`. | `--environment <alias>` [`--name <exact>`] [`--domain <exact>`] [`--limit 1..100` or `--all`] [`--catalog`] |
+| `tadx admin group list` | List groups, or collect the selected inventory with `--all`. | `--environment <alias>` [`--name <exact>`] [`--domain <exact>`] [`--limit 1..10000` or `--all`] [`--catalog`] |
 | `tadx admin group inspect` | Inspect one exact group. | `--id <luid>` or `--name <exact>` [`--environment <alias>`] [`--members`] [`--catalog`] |
 | `tadx admin group create` | Create one group. | `--environment <alias> --name <name>` [`--minimum-site-role <role>`] [`--external-user-enabled`] [`--preview`] |
-| `tadx admin group update` | Update group attributes or replace direct membership. | `--environment <alias> --id <luid>` [`--name <name>`] [`--minimum-site-role <role>`] [`--external-user-enabled`] [`--set-members --member-id <user-luid>` repeated] [`--preview`] |
+| `tadx admin group update` | Update group attributes or replace direct membership. | `--environment <alias> --id <luid>` [`--new-name <name>`] [`--minimum-site-role <role>`] [`--external-user-enabled`] [`--set-members --member-id <user-luid>` repeated] [`--preview`] |
 | `tadx admin group delete` | Delete one group without deleting its users. | `--environment <alias> --id <luid>` [`--preview`] |
 | `tadx admin group member add` | Add one user without replacing other group members. | `--environment <alias> --group-id <luid> --user-id <luid>` [`--preview`] |
 | `tadx admin group member remove` | Remove one user without replacing other group members. | `--environment <alias> --group-id <luid> --user-id <luid>` [`--preview`] |
 | `tadx admin permission inspect` | Inspect explicit or project-default permission rules. | `--kind <workbook\|datasource\|flow\|project> --id <resource-luid>` [`--environment <alias>`] [`--default-for <workbooks\|datasources\|flows>`] [`--principal-type <user\|group>`] [`--principal-id <luid>`] [`--capability <name>`] |
 | `tadx admin permission create` | Add one exact permission rule. | `--environment <alias> --kind <kind> --id <resource-luid> --principal-type <user\|group> --principal-id <luid> --capability <name> --mode <Allow\|Deny>` [`--default-for <kind>`] [`--preview`] |
 | `tadx admin permission delete` | Remove one exact permission rule. | Same selectors as permission create, including exact `--mode` [`--default-for <kind>`] [`--preview`] |
-| `tadx content project list` | List projects, or collect the selected inventory with `--all`. | `--environment <alias>` [`--name <exact>`] [`--owner <exact>`] [`--parent-id <luid>`] [`--top-level`] [`--limit 1..100` or `--all`] [`--catalog`] |
-| `tadx content project inspect` | Inspect one exact project. | `--project-id <luid>` or `--project <exact/path>` [`--environment <alias>`] [`--catalog`] |
+| `tadx content project list` | List projects, or collect the selected inventory with `--all`. | `--environment <alias>` [`--name <exact>`] [`--owner <exact>`] [`--parent-id <luid>`] [`--top-level`] [`--limit 1..10000` or `--all`] [`--catalog`] |
+| `tadx content project inspect` | Inspect one exact project. | `--id <luid>` or `--project <exact/path>` [`--environment <alias>`] [`--catalog`] |
 | `tadx content project create` | Create one project. | `--environment <alias> --name <name>` [`--description <text>`] [`--content-permissions <mode>`] [`--parent-id <luid>` or `--parent <exact/path>`] [`--preview`] |
-| `tadx content project update` | Update one exact project's name, description, or permission mode. | `--environment <alias>` and one source selector, plus at least one of `--name`, `--description`, or `--content-permissions` [`--preview`] |
+| `tadx content project update` | Update one exact project's name, description, or permission mode. | `--environment <alias>` and one source selector, plus at least one of `--new-name`, `--description`, or `--content-permissions` [`--preview`] |
 | `tadx content project move` | Move a project in the hierarchy. | `--environment <alias>` and one source selector, plus exactly one of `--parent-id <luid>`, `--parent <exact/path>`, or `--top-level` [`--preview`] |
-| `tadx content project delete` | Delete one exact project. | `--environment <alias> --project-id <luid>` [`--preview`] |
+| `tadx content project delete` | Delete one exact project. | `--environment <alias> --id <luid>` [`--preview`] |
 
 ## Operating rules
 
@@ -37,7 +38,7 @@ Use `tadx search --type admin <term>` for intent or text discovery, then inspect
 Use lists for bounded filtered lookup or complete inventory, not as a substitute for search.
 
 Ordinary live user, group, and project lists retrieve a bounded selection without collecting the complete scope or accessing SQLite.
-Lists default to 25 rows and accept `--limit 1..100`, or `--all` for all matching records within 10,000.
+Lists default to 25 rows and accept `--limit 1..10000`, or `--all` for all matching records within 10,000.
 When `more_available` is true, use `--all` or narrow the filters.
 `--all` requires complete coverage and cannot be combined with an explicit `--limit`.
 Live `--all` renders the collection and attempts a catalog update; an unfiltered complete collection replaces the resource scope.

@@ -110,7 +110,7 @@ func TestInventoryStateCountsCoverWholeWorkspaceAcrossPages(t *testing.T) {
 }
 
 func TestInventoryRejectsUnboundedLimit(t *testing.T) {
-	if _, err := artifact.Inventory(context.Background(), createWorkspace(t), artifact.InventoryOptions{Limit: 1001}); err == nil {
+	if _, err := artifact.Inventory(context.Background(), createWorkspace(t), artifact.InventoryOptions{Limit: 10001}); err == nil {
 		t.Fatal("Inventory() accepted an unbounded limit")
 	}
 }

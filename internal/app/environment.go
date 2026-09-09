@@ -110,7 +110,9 @@ func (s configProfileStore) Add(_ context.Context, input profileadd.Profile) (pr
 	if err != nil {
 		return profileadd.Profile{}, err
 	}
-	return addProfile(environment), nil
+	profile := addProfile(environment)
+	profile.MultipleEnvironments = len(updated.Environments) == 2
+	return profile, nil
 }
 
 func (s configProfileStore) Update(_ context.Context, alias string, patch profileupdate.Patch) (profileupdate.UpdateResult, error) {

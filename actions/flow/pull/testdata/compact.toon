@@ -6,7 +6,10 @@ flow:
   project_path: Ops
   file_type: tflx
 artifact:
-  path: artifacts/flow/Daily
+  workspace: ""
+  kind: flow
+  name: Daily
+  source_luid: flow-1
 warnings[1]: One bounded warning.
 details: "--full"
 help[1]: tadx content flow publish --artifact artifacts/flow/Daily

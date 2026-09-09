@@ -3,6 +3,7 @@ package cli
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"reflect"
 	"strings"
@@ -23,6 +24,8 @@ import (
 	contentcli "github.com/ahillspace/tadx/internal/cli/content"
 	doctorcli "github.com/ahillspace/tadx/internal/cli/doctor"
 	envcli "github.com/ahillspace/tadx/internal/cli/env"
+	lastcli "github.com/ahillspace/tadx/internal/cli/last"
+	mutationcli "github.com/ahillspace/tadx/internal/cli/mutation"
 	pulsecli "github.com/ahillspace/tadx/internal/cli/pulse"
 	versioncli "github.com/ahillspace/tadx/internal/cli/version"
 	workspacecli "github.com/ahillspace/tadx/internal/cli/workspace"
@@ -86,53 +89,58 @@ type RenderOptions struct {
 
 // Dependencies contains the explicitly wired Phase 0 command dependencies.
 type Dependencies struct {
-	Lister               Lister
-	Getter               Getter
-	Renderer             Renderer
-	RenderOptions        *RenderOptions
-	ConfigPath           *string
-	MutationsEnabled     bool
-	MutationPolicy       MutationPolicy
-	ListUse              string
-	ListShort            string
-	GetUse               string
-	GetShort             string
-	AuthChecker          AuthChecker
-	Searcher             Searcher
-	CatalogRefresher     catalogcli.Refresher
-	CatalogStatuser      catalogcli.Statuser
-	WorkbookPuller       WorkbookPuller
-	WorkbookPublisher    WorkbookPublisher
-	Content              *contentcli.Dependencies
-	EnvironmentProfiles  *envcli.Dependencies
-	Workspaces           *workspacecli.Dependencies
-	Admin                *admincli.Dependencies
-	Agent                *agentcli.Dependencies
-	Pulse                *pulsecli.Dependencies
-	Version              *versioncli.Dependencies
-	DoctorRunner         doctorcli.Runner
-	DoctorUse            string
-	DoctorShort          string
-	AuthUse              string
-	AuthShort            string
-	AuthStatuser         AuthStatuser
-	AuthLogin            authcli.Login
-	AuthLogout           authcli.Logout
-	AuthPrompter         authcli.Prompter
-	AuthStatusUse        string
-	AuthStatusShort      string
-	AuthLoginUse         string
-	AuthLoginShort       string
-	AuthLogoutUse        string
-	AuthLogoutShort      string
-	CatalogRefreshUse    string
-	CatalogRefreshShort  string
-	CatalogStatusUse     string
-	CatalogStatusShort   string
-	WorkbookPullUse      string
-	WorkbookPullShort    string
-	WorkbookPublishUse   string
-	WorkbookPublishShort string
+	Lister                Lister
+	Getter                Getter
+	Renderer              Renderer
+	RenderOptions         *RenderOptions
+	ConfigPath            *string
+	MutationsEnabled      bool
+	MutationPolicy        MutationPolicy
+	ResolveWriteTarget    func(string) (string, error)
+	ResolveMutationPolicy func() (bool, string, error)
+	MutationStatus        mutationcli.Status
+	MutationSetter        mutationcli.Setter
+	LastReader            lastcli.Reader
+	ListUse               string
+	ListShort             string
+	GetUse                string
+	GetShort              string
+	AuthChecker           AuthChecker
+	Searcher              Searcher
+	CatalogRefresher      catalogcli.Refresher
+	CatalogStatuser       catalogcli.Statuser
+	WorkbookPuller        WorkbookPuller
+	WorkbookPublisher     WorkbookPublisher
+	Content               *contentcli.Dependencies
+	EnvironmentProfiles   *envcli.Dependencies
+	Workspaces            *workspacecli.Dependencies
+	Admin                 *admincli.Dependencies
+	Agent                 *agentcli.Dependencies
+	Pulse                 *pulsecli.Dependencies
+	Version               *versioncli.Dependencies
+	DoctorRunner          doctorcli.Runner
+	DoctorUse             string
+	DoctorShort           string
+	AuthUse               string
+	AuthShort             string
+	AuthStatuser          AuthStatuser
+	AuthLogin             authcli.Login
+	AuthLogout            authcli.Logout
+	AuthPrompter          authcli.Prompter
+	AuthStatusUse         string
+	AuthStatusShort       string
+	AuthLoginUse          string
+	AuthLoginShort        string
+	AuthLogoutUse         string
+	AuthLogoutShort       string
+	CatalogRefreshUse     string
+	CatalogRefreshShort   string
+	CatalogStatusUse      string
+	CatalogStatusShort    string
+	WorkbookPullUse       string
+	WorkbookPullShort     string
+	WorkbookPublishUse    string
+	WorkbookPublishShort  string
 }
 
 // NewRoot creates the root command. It contains no domain behavior.
@@ -156,7 +164,8 @@ Read commands query Tableau by default. Pass --catalog on supported reads to use
 Use --env as a short alias for --environment on commands that select an environment.
 
 Remote mutation commands remain visible when execution is disabled. Use --preview for a read-only plan without enabling mutations.
-Obtain permission before setting TADX_ENABLE_MUTATIONS=1 to enable execution.
+Run tadx mutation status to see the effective policy. With permission, tadx mutation set --enabled=true saves it for future sessions.
+TADX_ENABLE_MUTATIONS=0 or TADX_ENABLE_MUTATIONS=1 overrides the saved policy only for that process and its children.
 When enabled, mutation commands perform changes by default. Pass --preview to inspect the plan without performing the mutation.
 
 TADX handles lifecycle operations, not datasource value queries, view rendering, or current Pulse values and insights.
@@ -173,15 +182,22 @@ Other connected tools remain independent; TADX does not configure, select, proxy
 	root.PersistentFlags().BoolVar(&renderOptions.Full, "full", false, "show expanded bounded details")
 	root.PersistentFlags().StringVar(configPath, "config", *configPath, "path to the non-secret TADX configuration file")
 	root.PersistentFlags().Lookup("config").DefValue = ""
+	if deps.LastReader != nil {
+		root.AddCommand(lastcli.New(deps.LastReader, deps.Renderer))
+	}
+	if deps.MutationStatus != nil && deps.MutationSetter != nil {
+		root.AddCommand(mutationcli.New(deps.MutationStatus, deps.MutationSetter, deps.Renderer))
+	}
 	root.AddCommand(capabilitycli.New(capabilitycli.Dependencies{
-		Lister:           deps.Lister,
-		Getter:           deps.Getter,
-		Renderer:         deps.Renderer,
-		MutationsEnabled: deps.MutationsEnabled,
-		ListUse:          deps.ListUse,
-		ListShort:        deps.ListShort,
-		GetUse:           deps.GetUse,
-		GetShort:         deps.GetShort,
+		Lister:                deps.Lister,
+		Getter:                deps.Getter,
+		Renderer:              deps.Renderer,
+		MutationsEnabled:      deps.MutationsEnabled,
+		ResolveMutationPolicy: deps.ResolveMutationPolicy,
+		ListUse:               deps.ListUse,
+		ListShort:             deps.ListShort,
+		GetUse:                deps.GetUse,
+		GetShort:              deps.GetShort,
 	}))
 	if deps.EnvironmentProfiles != nil {
 		environmentProfiles := *deps.EnvironmentProfiles
@@ -253,10 +269,49 @@ Other connected tools remain independent; TADX does not configure, select, proxy
 	}
 	root.AddCommand(NewCompletion(root))
 	rejectGroupingArguments(root)
-	applyMutationExecutionPolicy(root, deps.MutationPolicy, deps.MutationsEnabled)
+	applyMutationExecutionPolicy(root, deps.MutationPolicy, deps.MutationsEnabled, deps.ResolveMutationPolicy)
 	root.CompletionOptions.DisableDefaultCmd = true
 	setFlagErrorHandlers(root)
+	applyWriteTargetResolution(root, deps)
 	return root
+}
+
+// Resolve before command argument and required-flag validation, using application policy.
+func applyWriteTargetResolution(root *cobra.Command, deps Dependencies) {
+	if deps.ResolveWriteTarget == nil || mutationPolicyMissing(deps.MutationPolicy) {
+		return
+	}
+	var walk func(*cobra.Command)
+	walk = func(command *cobra.Command) {
+		id := command.Annotations[CapabilityAnnotation]
+		if id != "" && (deps.MutationPolicy.IsRemoteMutation(id) || id == "auth.login" || id == "auth.logout") && command.Flags().Lookup("environment") != nil {
+			original := command.Args
+			command.Args = func(cmd *cobra.Command, args []string) error {
+				alias, _ := cmd.Flags().GetString("environment")
+				if alias == "" {
+					resolved, err := deps.ResolveWriteTarget(alias)
+					if err != nil {
+						var structured *errs.Error
+						if errors.As(err, &structured) {
+							return err
+						}
+						return &errs.Error{ID: "target.environment_required", Kind: errs.KindUsage, Operation: id, Summary: err.Error(), Retryable: errs.Bool(false)}
+					}
+					if err := cmd.Flags().Set("environment", resolved); err != nil {
+						return err
+					}
+				}
+				if original != nil {
+					return original(cmd, args)
+				}
+				return nil
+			}
+		}
+		for _, child := range command.Commands() {
+			walk(child)
+		}
+	}
+	walk(root)
 }
 
 func rejectGroupingArguments(root *cobra.Command) {
@@ -285,7 +340,7 @@ func rejectGroupingArguments(root *cobra.Command) {
 	walk(root)
 }
 
-func applyMutationExecutionPolicy(root *cobra.Command, policy MutationPolicy, enabled bool) {
+func applyMutationExecutionPolicy(root *cobra.Command, policy MutationPolicy, enabled bool, resolver ...func() (bool, string, error)) {
 	if root == nil {
 		return
 	}
@@ -312,14 +367,22 @@ func applyMutationExecutionPolicy(root *cobra.Command, policy MutationPolicy, en
 			originalRun := command.Run
 			command.Run = nil
 			command.RunE = func(command *cobra.Command, args []string) error {
-				if !enabled && !explicitMutationPreview(command) {
+				effective := enabled
+				if !explicitMutationPreview(command) && len(resolver) > 0 && resolver[0] != nil {
+					var err error
+					effective, _, err = resolver[0]()
+					if err != nil {
+						return err
+					}
+				}
+				if !effective && !explicitMutationPreview(command) {
 					return &errs.Error{
 						ID:               "mutation.disabled",
 						Kind:             errs.KindOperation,
 						Operation:        capabilityID,
 						Summary:          "Remote mutation execution is disabled.",
 						Retryable:        errs.Bool(false),
-						CorrectiveAction: "Use --preview for a read-only plan where supported, or obtain permission before enabling TADX_ENABLE_MUTATIONS=1.",
+						CorrectiveAction: "Use --preview for a read-only plan where supported. Run tadx mutation status to inspect the policy; obtain permission before changing the saved setting or TADX_ENABLE_MUTATIONS override.",
 					}
 				}
 				if originalRunE != nil {

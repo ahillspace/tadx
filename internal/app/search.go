@@ -8,7 +8,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"path/filepath"
 	"sort"
 	"strings"
 	"time"
@@ -70,7 +69,7 @@ func (c *searchCommands) Execute(ctx context.Context, input searchaction.Input) 
 			input.Site = environment.SiteContentURL
 		}
 		input.SiteResolved = true
-		store := catalog.NewStore(filepath.Dir(c.runtime.configPath), c.runtime.now)
+		store := c.runtime.catalogStore(environment)
 		return searchaction.New(catalogGlobalSearchSource{store: store}).Execute(ctx, input)
 	}
 	if strings.TrimSpace(input.Terms) == "" && completeListSearchSelector(input.Type) {

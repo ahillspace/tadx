@@ -21,8 +21,8 @@ func newLineage(deps Dependencies) *cobra.Command {
 		if err := noContentArgs("lineage.pull")(command, args); err != nil {
 			return err
 		}
-		if input.Kind != "workbook" && input.Kind != "published_datasource" && input.Kind != "flow" {
-			return clierr.Usage("lineage.pull", errors.New("--kind must be workbook, published_datasource, or flow"))
+		if input.Kind != "workbook" && input.Kind != "datasource" && input.Kind != "published_datasource" && input.Kind != "flow" {
+			return clierr.Usage("lineage.pull", errors.New("--kind must be workbook, datasource, or flow"))
 		}
 		if luid != "" {
 			if name != "" || projectPath != "" {
@@ -45,7 +45,7 @@ func newLineage(deps Dependencies) *cobra.Command {
 	}}
 	pull.Flags().StringVar(&input.Environment, "environment", "", "exact environment alias; defaults to the configured read environment")
 	pull.Flags().StringVar(&input.Workspace, "workspace", "", "logical workspace name; uses deterministic defaults when omitted")
-	pull.Flags().StringVar(&input.Kind, "kind", "", "lineage root kind")
+	pull.Flags().StringVar(&input.Kind, "kind", "", "lineage root kind: workbook, datasource, or flow")
 	pull.Flags().StringVar(&luid, "id", "", "authoritative REST LUID")
 	pull.Flags().StringVar(&name, "name", "", "exact resource name")
 	pull.Flags().StringVar(&projectPath, "project", "", "exact slash-delimited project path")

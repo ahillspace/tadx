@@ -26,6 +26,7 @@ type Output struct {
 	Site          string               `json:"site,omitempty"`
 	MetricLUID    string               `json:"metric_luid"`
 	Count         int                  `json:"count"`
+	Warnings      []string             `json:"warnings,omitempty"`
 	Subscriptions []Subscription       `json:"subscriptions"`
 	RequestID     string               `json:"tableau_request_id,omitempty"`
 	Help          []string             `json:"help"`
@@ -46,6 +47,7 @@ type CompactResult struct {
 	Site          string                `json:"site,omitempty"`
 	MetricLUID    string                `json:"metric_luid"`
 	Count         int                   `json:"count"`
+	Warnings      []string              `json:"warnings,omitempty"`
 	Subscriptions []CompactSubscription `json:"subscriptions"`
 	Help          []string              `json:"help"`
 	Source        *readsource.Metadata  `json:"source,omitempty"`
@@ -56,6 +58,6 @@ func (o Output) CompactOutput() any {
 	for i, item := range o.Subscriptions {
 		items[i] = CompactSubscription{LUID: item.LUID, MetricLUID: item.MetricLUID, FollowerType: item.FollowerType, FollowerLUID: item.FollowerLUID, FollowerName: item.FollowerName}
 	}
-	return CompactResult{Status: o.Status, Environment: o.Environment, Site: o.Site, MetricLUID: o.MetricLUID, Count: o.Count, Subscriptions: items, Help: o.Help, Source: o.Source}
+	return CompactResult{Status: o.Status, Environment: o.Environment, Site: o.Site, MetricLUID: o.MetricLUID, Count: o.Count, Warnings: o.Warnings, Subscriptions: items, Help: o.Help, Source: o.Source}
 }
 func (o Output) FullOutput() any { return o }

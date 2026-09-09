@@ -114,7 +114,7 @@ func (c *remoteContentCommands) ListProjects(ctx context.Context, input projectl
 			return projectlist.Output{}, err
 		}
 		input.Environment, input.Site = environment, site
-		reader := &catalogProjectListReader{store: c.catalogStore(), environment: environment, site: site}
+		reader := &catalogProjectListReader{store: c.catalogStore(input.Environment), environment: environment, site: site}
 		output, err := projectlist.New(reader).Execute(ctx, input)
 		if err == nil {
 			output.Source = reader.source
@@ -133,7 +133,7 @@ func (c *remoteContentCommands) ListProjects(ctx context.Context, input projectl
 
 	if input.All {
 		observedAt := c.runtime.now().UTC()
-		inventory, err := collectResourceInventory(ctx, connection.inventory, c.catalogStore(), tableaucatalog.ScopeProjects, input.Environment, input.Site, observedAt, inventoryCollectionOptions{MaxConcurrency: connection.environment.CatalogMaxConcurrency, Filter: filter})
+		inventory, err := collectResourceInventory(ctx, connection.inventory, c.catalogStore(input.Environment), tableaucatalog.ScopeProjects, input.Environment, input.Site, observedAt, inventoryCollectionOptions{MaxConcurrency: connection.environment.CatalogMaxConcurrency, Filter: filter})
 		if err != nil {
 			return projectlist.Output{}, inventoryRefreshError("project.list", input.Environment, input.Site, err)
 		}
@@ -176,7 +176,7 @@ func (c *remoteContentCommands) InspectProject(ctx context.Context, input projec
 			return projectinspect.Output{}, err
 		}
 		input.Environment, input.Site = environment, site
-		resolver := &catalogProjectGetResolver{store: c.catalogStore(), environment: environment, site: site}
+		resolver := &catalogProjectGetResolver{store: c.catalogStore(input.Environment), environment: environment, site: site}
 		output, err := projectinspect.New(resolver).Execute(ctx, input)
 		if err == nil {
 			output.Source = resolver.source
@@ -196,7 +196,7 @@ func (c *remoteContentCommands) InspectProject(ctx context.Context, input projec
 	output.Source = liveSource(c.runtime.now)
 	entry, encodeErr := resourceEntry(input.Environment, input.Site, "project", output.Project.LUID, output.Project.Name, output.Project.Path, output.Project.OwnerLUID, "detail", observedAt, output.Project)
 	if encodeErr == nil {
-		writeThrough(c.catalogStore(), []catalog.ResourceEntry{entry})
+		writeThrough(c.catalogStore(input.Environment), []catalog.ResourceEntry{entry})
 	}
 	return output, nil
 }
@@ -273,7 +273,7 @@ func (c *remoteContentCommands) ListFlows(ctx context.Context, input flowlist.In
 			return flowlist.Output{}, err
 		}
 		input.Environment, input.Site = environment, site
-		reader := &catalogFlowListReader{store: c.catalogStore(), environment: environment, site: site}
+		reader := &catalogFlowListReader{store: c.catalogStore(input.Environment), environment: environment, site: site}
 		output, err := flowlist.New(reader).Execute(ctx, input)
 		if err == nil {
 			output.Source = reader.source
@@ -292,7 +292,7 @@ func (c *remoteContentCommands) ListFlows(ctx context.Context, input flowlist.In
 
 	if input.All {
 		observedAt := c.runtime.now().UTC()
-		inventory, err := collectResourceInventory(ctx, connection.inventory, c.catalogStore(), tableaucatalog.ScopeFlows, input.Environment, input.Site, observedAt, inventoryCollectionOptions{MaxConcurrency: connection.environment.CatalogMaxConcurrency, Filter: filter})
+		inventory, err := collectResourceInventory(ctx, connection.inventory, c.catalogStore(input.Environment), tableaucatalog.ScopeFlows, input.Environment, input.Site, observedAt, inventoryCollectionOptions{MaxConcurrency: connection.environment.CatalogMaxConcurrency, Filter: filter})
 		if err != nil {
 			return flowlist.Output{}, inventoryRefreshError("flow.list", input.Environment, input.Site, err)
 		}
@@ -335,7 +335,7 @@ func (c *remoteContentCommands) InspectFlow(ctx context.Context, input flowinspe
 			return flowinspect.Output{}, err
 		}
 		input.Environment, input.Site = environment, site
-		resolver := &catalogFlowGetResolver{store: c.catalogStore(), environment: environment, site: site}
+		resolver := &catalogFlowGetResolver{store: c.catalogStore(input.Environment), environment: environment, site: site}
 		output, err := flowinspect.New(resolver).Execute(ctx, input)
 		if err == nil {
 			output.Source = resolver.source
@@ -355,7 +355,7 @@ func (c *remoteContentCommands) InspectFlow(ctx context.Context, input flowinspe
 	output.Source = liveSource(c.runtime.now)
 	entry, encodeErr := resourceEntry(input.Environment, input.Site, "flow", output.Flow.LUID, output.Flow.Name, output.Flow.ProjectPath, output.Flow.OwnerLUID, "detail", observedAt, output.Flow)
 	if encodeErr == nil {
-		writeThrough(c.catalogStore(), []catalog.ResourceEntry{entry})
+		writeThrough(c.catalogStore(input.Environment), []catalog.ResourceEntry{entry})
 	}
 	return output, nil
 }
@@ -390,37 +390,39 @@ func (c *remoteContentCommands) PublishFlow(ctx context.Context, input flowpubli
 		return flowpublish.Output{}, err
 	}
 	manager := artifact.NewFlowManager(c.runtime.now)
-	workspace, err := (&workspaceRuntime{runtime: c.runtime}).resolveForEnvironment(ctx, input.Workspace, input.Environment)
-	if err != nil {
-		return flowpublish.Output{}, capabilitySetupError("flow.publish.workspace", "flow.publish", input.Environment, input.Site, "Flow workspace resolution failed.", "Select or configure an exact workspace, then retry.", err)
-	}
-	managed, err := artifact.Resolve(ctx, workspace.Root, artifact.Selector{Kind: "flow", Path: input.ArtifactPath})
-	if err != nil {
-		return flowpublish.Output{}, capabilitySetupError("flow.publish.artifact", "flow.publish", input.Environment, input.Site, "Flow artifact resolution failed.", "Select one exact workspace-relative managed flow artifact, then retry.", err)
-	}
-	absolutePath := filepath.Join(workspace.Root, filepath.FromSlash(managed.Path))
-	input.WorkspaceName = workspace.Name
-	local, err := manager.Read(ctx, absolutePath)
-	if err != nil {
-		return flowpublish.Output{}, capabilitySetupError("flow.publish.artifact", "flow.publish", input.Environment, input.Site, "Flow artifact read failed.", "Repair or pull the exact flow artifact, then retry.", err)
-	}
-	if input.Environment == "" {
-		input.Environment = local.Metadata.SourceEnvironment
-		// Only default the destination project to the artifact source when the
-		// user supplied no project selector. An explicit --project/--project-id
-		// must be honored even when --environment is omitted.
-		if input.ProjectSelector.LUID == "" && input.ProjectSelector.ProjectPath == "" {
-			input.SetProjectSelector(local.Metadata.SourceProjectID, "")
+	var reader flowpublish.ArtifactReader
+	if input.File != "" {
+		if _, err := artifact.ReadNative(ctx, input.File, "flow"); err != nil {
+			return flowpublish.Output{}, capabilitySetupError("flow.publish.file", "flow.publish", input.Environment, input.Site, "Native flow validation failed.", "Select a valid native flow file, then retry.", err)
 		}
+		input.ArtifactPath = input.File
+		reader = nativeFlowArtifactReader{}
+	} else {
+		workspace, err := (&workspaceRuntime{runtime: c.runtime}).resolveForEnvironment(ctx, input.Workspace, input.Environment)
+		if err != nil {
+			return flowpublish.Output{}, capabilitySetupError("flow.publish.workspace", "flow.publish", input.Environment, input.Site, "Flow workspace resolution failed.", "Select or configure an exact workspace, then retry.", err)
+		}
+		managed, err := artifact.Resolve(ctx, workspace.Root, artifact.Selector{Kind: "flow", Path: input.ArtifactPath, LUID: input.ArtifactID, Name: input.ArtifactName})
+		if err != nil {
+			return flowpublish.Output{}, capabilitySetupError("flow.publish.artifact", "flow.publish", input.Environment, input.Site, "Flow artifact resolution failed.", "Select one exact workspace-relative managed flow artifact, then retry.", err)
+		}
+		absolutePath := filepath.Join(workspace.Root, filepath.FromSlash(managed.Path))
+		input.WorkspaceName = workspace.Name
+		_, err = manager.Read(ctx, absolutePath)
+		if err != nil {
+			return flowpublish.Output{}, capabilitySetupError("flow.publish.artifact", "flow.publish", input.Environment, input.Site, "Flow artifact read failed.", "Repair or pull the exact flow artifact, then retry.", err)
+		}
+		input.ArtifactPath = absolutePath
+		reader = flowArtifactReader{manager: manager, displayPath: managed.Path}
 	}
 	connection, err := c.connect(ctx, input.Environment, true)
 	if err != nil {
 		return flowpublish.Output{}, remoteSetupError("flow.publish", input.Environment, input.Site, connection.environment, err)
 	}
-	input.Environment, input.Site, input.ArtifactPath = connection.environment.Alias, connection.environment.SiteContentURL, absolutePath
+	input.Environment, input.Site = connection.environment.Alias, connection.environment.SiteContentURL
 	input.TargetResolved = true
 	adapter := flowPublishAdapter{flows: connection.flows, projects: connection.projects, changes: connection.flowChanges}
-	return flowpublish.New(flowArtifactReader{manager: manager, displayPath: managed.Path}, adapter, adapter).Execute(ctx, input, preview)
+	return flowpublish.New(reader, adapter, adapter).Execute(ctx, input, preview)
 }
 
 func (c *remoteContentCommands) MoveFlow(ctx context.Context, input flowmove.Input, preview bool) (flowmove.Output, error) {
@@ -712,7 +714,7 @@ type flowArtifactReader struct {
 
 func (r flowArtifactReader) ReadFlow(ctx context.Context, path string) (flowpublish.Artifact, error) {
 	item, err := r.manager.Read(ctx, path)
-	return flowpublish.Artifact{Path: r.displayPath, PayloadPath: item.PayloadPath, Filename: item.Filename, Name: item.Name, Fingerprint: item.Fingerprint, SourceEnvironment: item.Metadata.SourceEnvironment, SourceSite: item.Metadata.SourceSite, SourceProjectName: item.Metadata.SourceProjectName, SourceProjectID: item.Metadata.SourceProjectID, Size: item.Size}, err
+	return flowpublish.Artifact{TableauID: item.Metadata.TableauID, Path: r.displayPath, PayloadPath: item.PayloadPath, Filename: item.Filename, Name: item.Name, Fingerprint: item.Fingerprint, SourceEnvironment: item.Metadata.SourceEnvironment, SourceSite: item.Metadata.SourceSite, SourceProjectName: item.Metadata.SourceProjectName, SourceProjectID: item.Metadata.SourceProjectID, Size: item.Size}, err
 }
 
 type flowPublishAdapter struct {

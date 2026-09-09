@@ -363,7 +363,7 @@ func TestBlankTypedSearchUsesBoundedLivePagesWithoutCatalog(t *testing.T) {
 	if err != nil || reads != 2 || len(second.Items) != 1 || second.Items[0].LUID != "workbook-b" || second.Page.MoreAvailable {
 		t.Fatalf("second=%+v reads=%d err=%v", second, reads, err)
 	}
-	if _, err := os.Stat(filepath.Join(filepath.Dir(runtime.configPath), catalog.DatabasePath())); !os.IsNotExist(err) {
+	if _, err := os.Stat(filepath.Join(filepath.Dir(runtime.configPath), targetCatalogFixture(t, runtime.configPath, runtime.now).RelativePath())); !os.IsNotExist(err) {
 		t.Fatalf("limited search created catalog: %v", err)
 	}
 }

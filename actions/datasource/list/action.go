@@ -15,7 +15,7 @@ import (
 
 const (
 	defaultLimit    = 25
-	maxLimit        = 100
+	maxLimit        = 10000
 	maxCursorPage   = 1_000_000
 	cursorVersion   = 1
 	maxCursorLength = 2048
@@ -57,7 +57,7 @@ func (a *Action) Execute(ctx context.Context, input Input) (Output, error) {
 		UpdatedAfter: input.UpdatedAfter, UpdatedBefore: input.UpdatedBefore,
 		SnapshotCursor: snapshotCursor,
 	}
-	page, err := a.reader.ListDatasources(ctx, request)
+	page, err := a.readWindow(ctx, request)
 	if err != nil {
 		return Output{}, err
 	}
@@ -167,4 +167,19 @@ func listHelp(environment string, items []Datasource) []string {
 		return nil
 	}
 	return []string{commandhint.Environment(environment, "content", "datasource", "inspect", "--id", items[0].LUID)}
+}
+
+func (a *Action) readWindow(ctx context.Context, request PageRequest) (Page, error) {
+	if request.PageSize <= 1000 {
+		return a.reader.ListDatasources(ctx, request)
+	}
+	requestID := ""
+	page, err := paging.Window(ctx, paging.State{Number: request.PageNumber, Size: request.PageSize, Token: request.SnapshotCursor}, 1000, func(ctx context.Context, state paging.State) (paging.Page[Datasource], error) {
+		input := request
+		input.PageNumber, input.PageSize, input.SnapshotCursor = state.Number, state.Size, state.Token
+		page, err := a.reader.ListDatasources(ctx, input)
+		requestID = page.RequestID
+		return paging.Page[Datasource]{Number: page.Number, Size: page.Size, Total: page.Total, Items: page.Datasources, Token: page.SnapshotCursor}, err
+	}, func(item Datasource) string { return item.LUID })
+	return Page{Number: page.Number, Size: page.Size, Total: page.Total, Datasources: page.Items, SnapshotCursor: "", SuppressContinuation: true, RequestID: requestID}, err
 }

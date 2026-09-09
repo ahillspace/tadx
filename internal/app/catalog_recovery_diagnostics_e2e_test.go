@@ -15,7 +15,6 @@ import (
 	"testing"
 
 	"github.com/ahillspace/tadx/internal/app"
-	"github.com/ahillspace/tadx/internal/catalog"
 	"github.com/ahillspace/tadx/internal/errs"
 	"github.com/ahillspace/tadx/internal/toon"
 )
@@ -65,7 +64,7 @@ func TestOldCatalogReadDiagnosticOffersExecutableScopedRebuildThroughCLI(t *test
 	defer server.Close()
 	options := diagnosticOptions(t, server)
 	runGroupOneCLI(t, options, "catalog", "refresh", "--environment", "test", "--scope", "projects")
-	db, err := sql.Open("sqlite", filepath.Join(filepath.Dir(options.ConfigPath), catalog.DatabasePath()))
+	db, err := sql.Open("sqlite", filepath.Join(filepath.Dir(options.ConfigPath), targetCatalogFixture(t, options.ConfigPath, nil).RelativePath()))
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -77,7 +77,7 @@ func (a *Action) Execute(ctx context.Context, input Input) (Output, error) {
 	result.NodeCount, result.EdgeCount = len(lineage.Nodes), len(lineage.Edges)
 	result.CountsKnown = lineage.Complete
 	warnings = append(warnings, result.Warnings...)
-	return Output{Status: "pulled", Datasource: item, Artifact: result, Warnings: warnings, RequestID: download.TableauRequestID, Help: []string{commandhint.Target(input.Environment, input.WorkspaceName, "content", "datasource", "publish", "--artifact", result.Path, "--project-id", item.ProjectLUID, "--overwrite", "--preview")}}, nil
+	return Output{Workspace: input.WorkspaceName, Status: "pulled", Datasource: item, Artifact: result, Warnings: warnings, RequestID: download.TableauRequestID, Help: []string{commandhint.Target(input.Environment, input.WorkspaceName, "content", "datasource", "publish", "--id", item.LUID, "--project-id", item.ProjectLUID, "--overwrite", "--preview")}}, nil
 }
 
 func normalizeArtifactPaths(result *ArtifactResult) error {

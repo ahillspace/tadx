@@ -24,7 +24,7 @@ import (
 
 const (
 	defaultLimit         = 20
-	maxLimit             = 100
+	maxLimit             = 10_000
 	maxBatchRows         = 10_000
 	maxFieldBytes        = 64 << 10
 	staleAfter           = 12 * time.Hour
@@ -232,9 +232,11 @@ func (duplicateContentError) CatalogDuplicateContent() bool { return true }
 
 // Store owns one config-root SQLite catalog database.
 type Store struct {
-	root   string
-	now    func() time.Time
-	initMu sync.Mutex
+	root         string
+	now          func() time.Time
+	initMu       sync.Mutex
+	relativePath string
+	targetErr    error
 }
 
 // NewStore creates a catalog store.
@@ -246,10 +248,13 @@ func NewStore(root string, now func() time.Time) *Store {
 }
 func DatabasePath() string { return databaseRelativePath }
 func (s *Store) databasePath() string {
-	return filepath.Join(s.root, filepath.FromSlash(databaseRelativePath))
+	return filepath.Join(s.root, filepath.FromSlash(s.RelativePath()))
 }
 
 func (s *Store) open(ctx context.Context, refresh ...bool) (*sql.DB, error) {
+	if s.targetErr != nil {
+		return nil, s.targetErr
+	}
 	s.initMu.Lock()
 	defer s.initMu.Unlock()
 	if err := ctx.Err(); err != nil {
@@ -582,7 +587,7 @@ func (s *Store) Status(ctx context.Context, selection Selection) (StatusResult, 
 	meta, err := currentGeneration(ctx, tx, selection.Environment, selection.Site)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return StatusResult{Environment: selection.Environment, Site: selection.Site, Path: databaseRelativePath}, nil
+			return StatusResult{Environment: selection.Environment, Site: selection.Site, Path: s.RelativePath()}, nil
 		}
 		return StatusResult{}, err
 	}
@@ -598,7 +603,7 @@ func (s *Store) Status(ctx context.Context, selection Selection) (StatusResult, 
 	if incomplete > 0 {
 		warnings = append(warnings, "Catalog permission coverage is incomplete because some workbook permission reads were denied (HTTP 403). Missing rules are unknown, not empty permissions.")
 	}
-	return StatusResult{meta.id, meta.environment, meta.site, meta.generatedAt, age, incomplete == 0, stale, meta.source, databaseRelativePath, meta.recordCount, warnings}, nil
+	return StatusResult{meta.id, meta.environment, meta.site, meta.generatedAt, age, incomplete == 0, stale, meta.source, s.RelativePath(), meta.recordCount, warnings}, nil
 }
 
 type generationMeta struct {

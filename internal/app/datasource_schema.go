@@ -92,7 +92,7 @@ func (c *remoteContentCommands) getCatalogDatasourceSchema(ctx context.Context, 
 		return datasourceschema.Output{}, capabilitySetupError("datasource.schema.catalog.setup", "datasource.schema", input.Environment, "", "Catalog datasource schema setup failed.", "Verify the selected environment and catalog configuration.", err)
 	}
 	input.Environment, input.Site = environment, site
-	result, err := c.catalogStore().ReadResources(ctx, catalog.ResourceQuery{Environment: environment, Site: site, Kind: "datasource_schema", LUID: strings.TrimSpace(input.DatasourceLUID), Limit: 1})
+	result, err := c.catalogStore(input.Environment).ReadResources(ctx, catalog.ResourceQuery{Environment: environment, Site: site, Kind: "datasource_schema", LUID: strings.TrimSpace(input.DatasourceLUID), Limit: 1})
 	if err != nil {
 		return datasourceschema.Output{}, catalogReadError("datasource.schema", environment, site, err)
 	}
@@ -127,7 +127,7 @@ func (c *remoteContentCommands) storeLiveDatasourceSchema(ctx context.Context, e
 		observedAt = c.runtime.now().UTC()
 	}
 	entry := catalog.ResourceEntry{Environment: environment.Alias, Site: environment.SiteContentURL, Kind: "datasource_schema", LUID: schema.DatasourceLUID, Name: schema.DatasourceName, Payload: payload, Coverage: "detail", ObservedAt: observedAt}
-	if err := c.catalogStore().UpsertResources(ctx, []catalog.ResourceEntry{entry}); err != nil {
+	if err := c.runtime.catalogStore(environment).UpsertResources(ctx, []catalog.ResourceEntry{entry}); err != nil {
 		return "Catalog write-through failed; the live datasource schema remains authoritative."
 	}
 	return ""

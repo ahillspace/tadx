@@ -80,20 +80,14 @@ func newDatasourcePublish(deps datasourceLifecycleDependencies) *cobra.Command {
 			if err := noContentArgs("datasource.publish")(command, args); err != nil {
 				return err
 			}
-			if err := validateArtifactSelection(artifacts, "datasource", input.Name); err != nil {
+			var err error
+			artifacts, err = publishSelections(artifacts, "datasource", input.Name, input.File, input.ArtifactID, input.ArtifactName)
+			if err != nil {
 				return clierr.Usage("datasource.publish", err)
 			}
 			input.ArtifactPath = artifacts[0]
-			if input.Environment == "" {
-				if projectLUID != "" || projectPath != "" {
-					return clierr.Usage("datasource.publish", errors.New("--project-id and --project require an explicit --environment"))
-				}
-				input.SourceDefaulted = true
-			} else {
-				if (projectLUID == "") == (projectPath == "") {
-					return clierr.Usage("datasource.publish", errors.New("an explicit --environment requires exactly one of --project-id or --project"))
-				}
-				input.SourceDefaulted = false
+			if (projectLUID == "") == (projectPath == "") {
+				return clierr.Usage("datasource.publish", errors.New("use exactly one of --project-id or --project"))
 			}
 			input.SetProjectSelector(projectLUID, projectPath)
 			modes := 0
@@ -127,8 +121,11 @@ func newDatasourcePublish(deps datasourceLifecycleDependencies) *cobra.Command {
 		},
 	}
 	command.Flags().StringArrayVar(&artifacts, "artifact", nil, managedArtifactFlagHelp("datasource", "Sales--identity")+"; repeat for up to 100 items, processed sequentially")
+	command.Flags().StringVar(&input.File, "file", "", "native .tds or .tdsx file; no managed artifact required")
+	command.Flags().StringVar(&input.ArtifactID, "id", "", "exact source datasource LUID within the resolved workspace")
+	command.Flags().StringVar(&input.ArtifactName, "artifact-name", "", "unique exact managed datasource name within the resolved workspace")
 	command.Flags().StringVar(&input.Workspace, "workspace", "", "logical workspace name; uses deterministic defaults when omitted")
-	command.Flags().StringVar(&input.Environment, "environment", "", "explicit write environment alias; defaults to the artifact source")
+	command.Flags().StringVar(&input.Environment, "environment", "", "write environment alias; may be omitted when exactly one environment is configured")
 	command.Flags().StringVar(&input.Name, "name", "", "published datasource name; defaults to the artifact name")
 	command.Flags().StringVar(&projectLUID, "project-id", "", "authoritative destination project LUID")
 	command.Flags().StringVar(&projectPath, "project", "", "exact slash-delimited destination project path")
@@ -136,7 +133,7 @@ func newDatasourcePublish(deps datasourceLifecycleDependencies) *cobra.Command {
 	command.Flags().BoolVar(&overwrite, "overwrite", false, "overwrite the exact colliding datasource")
 	command.Flags().BoolVar(&appendMode, "append", false, "append to the exact colliding datasource")
 	command.Flags().BoolVar(&replace, "replace", false, "replace data in the exact colliding datasource")
-	command.Flags().BoolVar(&input.AsJob, "as-job", false, "publish asynchronously and poll to a bounded terminal result")
+	command.Flags().BoolVar(&input.AsJob, "as-job", false, "Submit as a server-side job and wait for completion.")
 	command.Flags().BoolVar(&preview, "preview", false, "preview the remote mutation without performing it")
 	return command
 }

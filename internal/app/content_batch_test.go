@@ -18,7 +18,7 @@ func TestContentBatchFailuresRenderOneDocumentAndReturnNonzero(t *testing.T) {
 				if verb == "pull" {
 					args = append(args, "--id", "first", "--id", "second")
 				} else {
-					args = append(args, "--artifact", "artifacts/"+kind+"/first", "--artifact", "artifacts/"+kind+"/second", "--preview")
+					args = append(args, "--environment", "production", "--project-id", "project-1", "--artifact", "artifacts/"+kind+"/first", "--artifact", "artifacts/"+kind+"/second", "--preview")
 					if kind == "datasource" {
 						args = append(args, "--create")
 					}

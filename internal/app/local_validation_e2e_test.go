@@ -44,7 +44,7 @@ func TestSchemaInvalidLocalArgumentsFailBeforeAuthentication(t *testing.T) {
 func TestLocalReadAndMutationErrorsMakeNoAuthenticationRequest(t *testing.T) {
 	cases := [][]string{
 		{"content", "workbook", "list", "--limit", "-1"},
-		{"content", "datasource", "list", "--limit", "101"},
+		{"content", "datasource", "list", "--limit", "10001"},
 		{"content", "flow", "list", "--limit", "-1"},
 		{"content", "flow", "list", "--all", "--limit", "1"},
 		{"content", "project", "list", "--cursor", "invalid"},
@@ -53,7 +53,7 @@ func TestLocalReadAndMutationErrorsMakeNoAuthenticationRequest(t *testing.T) {
 		{"content", "lineage", "pull", "--environment", "production", "--kind", "workbook", "--id", "book", "--depth", "4"},
 		{"search", "--type", "workbook", "--limit", "2001"},
 		{"admin", "user", "list", "--limit", "-1"},
-		{"admin", "group", "list", "--limit", "101"},
+		{"admin", "group", "list", "--limit", "10001"},
 		{"admin", "user", "create", "--environment", "production", "--name", "person", "--site-role", "invalid", "--preview"},
 		{"pulse", "metric", "fork", "--environment", "production", "--id", "metric", "--timeframe", "INVALID", "--preview"},
 	}

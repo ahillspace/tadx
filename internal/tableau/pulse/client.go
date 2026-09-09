@@ -297,6 +297,26 @@ func (c *Client) CreateDefinition(ctx context.Context, input CreateRequest) (Cre
 	if err != nil {
 		return CreateResult{}, err
 	}
+	return c.createDefinitionDocument(ctx, body)
+}
+
+// CreateDefinitionDocument preserves verified writable configuration sections,
+// including nested specification fields not exposed as individual CLI flags.
+func (c *Client) CreateDefinitionDocument(ctx context.Context, body json.RawMessage) (CreateResult, error) {
+	var document map[string]json.RawMessage
+	if json.Unmarshal(body, &document) != nil || document == nil || len(document["name"]) == 0 || len(document["specification"]) == 0 {
+		return CreateResult{}, errors.New("Pulse definition create document requires name and specification")
+	}
+	allowed := map[string]bool{"name": true, "description": true, "specification": true, "extension_options": true, "representation_options": true, "insights_options": true, "comparisons": true, "datasource_goals": true, "related_links": true, "certification": true}
+	for key := range document {
+		if !allowed[key] {
+			return CreateResult{}, fmt.Errorf("unsupported Pulse definition create section %q", key)
+		}
+	}
+	return c.createDefinitionDocument(ctx, body)
+}
+
+func (c *Client) createDefinitionDocument(ctx context.Context, body []byte) (CreateResult, error) {
 	response, err := c.do(ctx, http.MethodPost, pulsePath+"/definitions", nil, body, createDefinitionRequestType, createDefinitionResponseType, "pulse.definition.create")
 	if err != nil {
 		return CreateResult{}, err
@@ -448,6 +468,11 @@ func subscriptionRecords(body []byte) ([]json.RawMessage, error) {
 	if json.Unmarshal(body, &data) != nil {
 		return nil, errors.New("decode Pulse subscriptions response")
 	}
+	for _, key := range []string{"next_page_token", "nextPageToken", "continuation_token"} {
+		if token, ok := data[key]; ok && string(token) != `""` && string(token) != "null" {
+			return nil, errors.New("Pulse subscriptions response is incomplete; continuation is not supported by the verified full-snapshot endpoint")
+		}
+	}
 	raw, ok := data["subscriptions"]
 	_, plural := data["subscriptions"]
 	if !ok {
@@ -455,6 +480,9 @@ func subscriptionRecords(body []byte) ([]json.RawMessage, error) {
 	}
 	if !ok {
 		return nil, errors.New("Pulse subscriptions response omitted records")
+	}
+	if bytes.Equal(bytes.TrimSpace(raw), []byte("null")) {
+		return nil, errors.New("Pulse subscriptions response requires an explicit array")
 	}
 	var records []json.RawMessage
 	if json.Unmarshal(raw, &records) == nil {

@@ -101,8 +101,8 @@ func TestPhaseOneWorkbookPullAndPublishThroughCLIDefaultSite(t *testing.T) {
 	if publishCalls.Load() != 0 || !strings.Contains(previewOutput.String(), "mode: preview") {
 		t.Fatalf("preview mutated Tableau or omitted preview state: calls=%d output=%s", publishCalls.Load(), previewOutput.String())
 	}
-	if strings.Contains(previewOutput.String(), workspace) || !strings.Contains(previewOutput.String(), artifactSelector) {
-		t.Fatalf("preview did not preserve the portable artifact selector: %s", previewOutput.String())
+	if strings.Contains(previewOutput.String(), workspace) || !strings.Contains(previewOutput.String(), "source_luid: wb-1") || strings.Contains(previewOutput.String(), "artifact_path:") {
+		t.Fatalf("preview did not preserve source identity without storage paths: %s", previewOutput.String())
 	}
 
 	var applyOutput strings.Builder
@@ -264,7 +264,7 @@ func TestWorkbookPullAcquiresDirectPublishedDatasourceArtifactsThroughCLI(t *tes
 func TestPhaseOneCatalogSearchHappyPathThroughCLI(t *testing.T) {
 	configPath := writePhaseOneConfigWithSite(t, "https://tableau.example.com", "marketing")
 	now := time.Date(2026, 8, 30, 12, 0, 0, 0, time.UTC)
-	store := corecatalog.NewStore(filepath.Dir(configPath), func() time.Time { return now })
+	store := targetCatalogFixture(t, configPath, func() time.Time { return now })
 	if _, err := store.Replace(context.Background(), corecatalog.Generation{
 		ID: "generation-1", Environment: "production", Site: "marketing", GeneratedAt: now, Complete: true, Source: "test-fixture", Scopes: []string{"workbooks"},
 		Records: []corecatalog.Record{{LUID: "wb-1", Kind: "workbook", Name: "Finance", ProjectPath: "Ops", Owner: "user-1"}},

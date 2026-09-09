@@ -16,7 +16,7 @@ artifact:
   edge_count: 1
 nodes[2]{metadata_id,kind,rest_luid,name}:
   metadata-flow-1,flow,flow-1,Daily
-  metadata-datasource-1,published_datasource,datasource-1,Sales
+  metadata-datasource-1,datasource,datasource-1,Sales
 edges[1]{from_metadata_id,to_metadata_id,relationship}:
   metadata-flow-1,metadata-datasource-1,uses
 warnings[1]: One bounded warning.

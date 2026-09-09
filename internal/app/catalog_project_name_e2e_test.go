@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
-	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -24,7 +23,7 @@ func TestCatalogDatasourceProjectNameThroughCLI(t *testing.T) {
 			defer server.Close()
 			options := diagnosticOptions(t, server)
 			now := time.Now().UTC()
-			store := catalog.NewStore(filepath.Dir(options.ConfigPath), func() time.Time { return now })
+			store := targetCatalogFixture(t, options.ConfigPath, func() time.Time { return now })
 			projects := []catalog.ResourceEntry{{LUID: "literal", Name: "Ops/Reports", ProjectPath: "Ops/Reports"}, {LUID: "parent", Name: "Ops", ProjectPath: "Ops"}, {LUID: "nested", Name: "Reports", ProjectPath: "Ops/Reports"}, {LUID: "another", Name: "Reports", ProjectPath: "Other/Reports"}}
 			if coverage != "missing-projects" {
 				if _, err := store.ReplaceResourceScope(context.Background(), catalog.ResourceScopeReplacement{Environment: "test", Kind: "project", Source: "test", GeneratedAt: now, Entries: projects}); err != nil {

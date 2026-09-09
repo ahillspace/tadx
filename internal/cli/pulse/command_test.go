@@ -9,6 +9,7 @@ import (
 	definitiondelete "github.com/ahillspace/tadx/actions/pulse/definition/delete"
 	definitioninspect "github.com/ahillspace/tadx/actions/pulse/definition/inspect"
 	definitionlist "github.com/ahillspace/tadx/actions/pulse/definition/list"
+	definitionpublish "github.com/ahillspace/tadx/actions/pulse/definition/publish"
 	definitionpull "github.com/ahillspace/tadx/actions/pulse/definition/pull"
 	metricdelete "github.com/ahillspace/tadx/actions/pulse/metric/delete"
 	metricfollow "github.com/ahillspace/tadx/actions/pulse/metric/follow"
@@ -26,6 +27,7 @@ type actions struct {
 	definitionCreateInput   definitioncreate.Input
 	definitionCreatePreview bool
 	definitionDeleteInput   definitiondelete.Input
+	definitionPublishInput  definitionpublish.Input
 	metricForkInput         metricfork.Input
 	metricForkPreview       bool
 	metricDeleteInput       metricdelete.Input
@@ -46,6 +48,11 @@ func (*actions) InspectPulseDefinition(context.Context, definitioninspect.Input)
 
 func (*actions) PullPulseDefinition(context.Context, definitionpull.Input) (definitionpull.Output, error) {
 	return definitionpull.Output{}, nil
+}
+
+func (a *actions) PublishPulseDefinition(_ context.Context, input definitionpublish.Input) (definitionpublish.Output, error) {
+	a.definitionPublishInput = input
+	return definitionpublish.Output{}, nil
 }
 
 func (a *actions) CreatePulseDefinition(_ context.Context, input definitioncreate.Input, preview bool) (definitioncreate.Output, error) {
@@ -103,6 +110,7 @@ func newCommand(a *actions) *cobra.Command {
 		DefinitionLister:    a,
 		DefinitionInspector: a,
 		DefinitionPuller:    a,
+		DefinitionPublisher: a,
 		DefinitionCreator:   a,
 		DefinitionDeleter:   a,
 		MetricLister:        a,
@@ -122,6 +130,7 @@ func TestCommandTreeHasExpectedCapabilities(t *testing.T) {
 		"definition/list":    "pulse.definition.list",
 		"definition/inspect": "pulse.definition.inspect",
 		"definition/pull":    "pulse.definition.pull",
+		"definition/publish": "pulse.definition.publish",
 		"definition/create":  "pulse.definition.create",
 		"definition/delete":  "pulse.definition.delete",
 		"metric/list":        "pulse.metric.list",

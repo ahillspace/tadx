@@ -47,32 +47,40 @@ func (c *remoteContentCommands) PublishDatasource(ctx context.Context, input dat
 		return datasourcepublish.Output{}, err
 	}
 	manager := artifact.NewDatasourceManager(c.runtime.now)
-	workspace, err := (&workspaceRuntime{runtime: c.runtime}).resolveForEnvironment(ctx, input.Workspace, input.Environment)
-	if err != nil {
-		return datasourcepublish.Output{}, capabilitySetupError("datasource.publish.workspace", "datasource.publish", input.Environment, input.Site, "Datasource workspace resolution failed.", "Select or configure the logical workspace containing the exact managed datasource artifact, then retry.", err)
+	var reader datasourcepublish.ArtifactReader
+	if input.File != "" {
+		if _, err := artifact.ReadNative(ctx, input.File, "datasource"); err != nil {
+			return datasourcepublish.Output{}, capabilitySetupError("datasource.publish.file", "datasource.publish", input.Environment, input.Site, "Native datasource validation failed.", "Select a valid native datasource file, then retry.", err)
+		}
+		input.ArtifactPath = input.File
+		reader = nativeDatasourceArtifactReader{}
+	} else {
+		workspace, err := (&workspaceRuntime{runtime: c.runtime}).resolveForEnvironment(ctx, input.Workspace, input.Environment)
+		if err != nil {
+			return datasourcepublish.Output{}, capabilitySetupError("datasource.publish.workspace", "datasource.publish", input.Environment, input.Site, "Datasource workspace resolution failed.", "Select or configure the logical workspace containing the exact managed datasource artifact, then retry.", err)
+		}
+		managed, err := artifact.Resolve(ctx, workspace.Root, artifact.Selector{Kind: "datasource", Path: input.ArtifactPath, LUID: input.ArtifactID, Name: input.ArtifactName})
+		if err != nil {
+			return datasourcepublish.Output{}, capabilitySetupError("datasource.publish.artifact", "datasource.publish", input.Environment, input.Site, "Datasource artifact resolution failed.", "Select one exact workspace-relative managed datasource artifact, then retry.", err)
+		}
+		absolutePath := filepath.Join(workspace.Root, filepath.FromSlash(managed.Path))
+		input.WorkspaceName = workspace.Name
+		_, err = manager.Read(ctx, absolutePath)
+		if err != nil {
+			return datasourcepublish.Output{}, capabilitySetupError("datasource.publish.artifact", "datasource.publish", input.Environment, input.Site, "Datasource artifact read failed.", "Repair or pull the exact datasource artifact, then retry.", err)
+		}
+		input.ArtifactPath = absolutePath
+		reader = datasourceArtifactReader{manager: manager, displayPath: managed.Path}
 	}
-	managed, err := artifact.Resolve(ctx, workspace.Root, artifact.Selector{Kind: "datasource", Path: input.ArtifactPath})
-	if err != nil {
-		return datasourcepublish.Output{}, capabilitySetupError("datasource.publish.artifact", "datasource.publish", input.Environment, input.Site, "Datasource artifact resolution failed.", "Select one exact workspace-relative managed datasource artifact, then retry.", err)
-	}
-	absolutePath := filepath.Join(workspace.Root, filepath.FromSlash(managed.Path))
-	input.WorkspaceName = workspace.Name
-	local, err := manager.Read(ctx, absolutePath)
-	if err != nil {
-		return datasourcepublish.Output{}, capabilitySetupError("datasource.publish.artifact", "datasource.publish", input.Environment, input.Site, "Datasource artifact read failed.", "Repair or pull the exact datasource artifact, then retry.", err)
-	}
-	if input.SourceDefaulted {
-		input.Environment = local.SourceEnvironment
-		input.ProjectSelector = identity.Selector{LUID: identity.LUID(local.SourceProjectID)}
-	}
+	input.SourceDefaulted = false
 	connection, err := c.connect(ctx, input.Environment, true)
 	if err != nil {
 		return datasourcepublish.Output{}, remoteSetupError("datasource.publish", input.Environment, input.Site, connection.environment, err)
 	}
-	input.Environment, input.Site, input.ArtifactPath = connection.environment.Alias, connection.environment.SiteContentURL, absolutePath
+	input.Environment, input.Site = connection.environment.Alias, connection.environment.SiteContentURL
 	input.TargetResolved = true
 	adapter := datasourcePublishAdapter{datasources: connection.datasources, projects: connection.projects, changes: connection.datasourceChanges}
-	return datasourcepublish.New(datasourceArtifactReader{manager: manager, displayPath: managed.Path}, adapter, adapter).Execute(ctx, input, preview)
+	return datasourcepublish.New(reader, adapter, adapter).Execute(ctx, input, preview)
 }
 
 func (c *remoteContentCommands) DeleteDatasource(ctx context.Context, input datasourcedelete.Input, preview bool) (datasourcedelete.Output, error) {

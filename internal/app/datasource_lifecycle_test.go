@@ -73,7 +73,7 @@ func TestDatasourceLifecycleCompositionPreservesCompositionIdentityAndRelativePa
 		t.Fatalf("stored artifact = %#v", stored)
 	}
 
-	preview, err := commands.PublishDatasource(context.Background(), datasourcepublish.Input{Workspace: "analytics", ArtifactPath: pulled.Artifact.Path, SourceDefaulted: true, Mode: datasourcepublish.ModeOverwrite}, true)
+	preview, err := commands.PublishDatasource(context.Background(), datasourcepublish.Input{Workspace: "analytics", ArtifactPath: pulled.Artifact.Path, Environment: "production", ProjectSelector: identity.Selector{LUID: "project-1"}, Mode: datasourcepublish.ModeOverwrite}, true)
 	if err != nil {
 		t.Fatal(err)
 	}

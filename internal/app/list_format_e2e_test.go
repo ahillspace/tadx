@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
-	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -20,7 +19,7 @@ func TestCompactInventoryColumnsRemainStableAcrossLimitsThroughCLI(t *testing.T)
 			server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { t.Errorf("catalog read contacted %s", r.URL) }))
 			defer server.Close()
 			options := catalogResilienceOptions(t, server)
-			store := catalog.NewStore(filepath.Dir(options.ConfigPath), nil)
+			store := targetCatalogFixture(t, options.ConfigPath, nil)
 			entries := []catalog.ResourceEntry{
 				{Environment: "production", Kind: kind, LUID: "a", Name: "Alpha", Coverage: "summary", ObservedAt: time.Now(), Payload: []byte(`{"luid":"a","name":"Alpha","project_luid":"project-1","project_name":"Ops","project_path":"Ops","parent_luid":"parent-1","type":"hyper","file_type":"tflx","content_url":"alpha","updated_at":"2026-09-01T00:00:00Z","site_role":"Viewer","domain":"local"}`)},
 				{Environment: "production", Kind: kind, LUID: "b", Name: "Beta", Coverage: "summary", ObservedAt: time.Now(), Payload: []byte(`{"luid":"b","name":"Beta","project_luid":"project-1"}`)},

@@ -34,12 +34,14 @@ type PulseDefinitionMetadata struct {
 	PulledAt                 string `json:"pulled_at"`
 	CanonicalPayload         string `json:"canonical_payload"`
 	LocalBaselineFingerprint string `json:"local_baseline_fingerprint"`
+	BundleFingerprint        string `json:"bundle_fingerprint,omitempty"`
 }
 
 // PulseDefinitionPull describes one complete definition artifact replacement.
 type PulseDefinitionPull struct {
 	Workspace     string
 	Configuration []byte
+	Bundle        []byte
 	Metadata      PulseDefinitionMetadata
 	Overwrite     bool
 }
@@ -105,6 +107,19 @@ func (m *PulseDefinitionManager) Pull(ctx context.Context, input PulseDefinition
 	if identity.ID != input.Metadata.TableauID || identity.Name != input.Metadata.Name || identity.DatasourceID != input.Metadata.DatasourceLUID {
 		return PulseDefinitionPullResult{}, errors.New("Pulse definition configuration identity does not match artifact metadata")
 	}
+	if len(input.Bundle) > 0 {
+		bundle, err := DecodePulseBundle(input.Bundle)
+		if err != nil {
+			return PulseDefinitionPullResult{}, err
+		}
+		if bundle.DefinitionLUID != identity.ID || bundle.SourceServerOrigin != origin || bundle.SourceSiteLUID != input.Metadata.SourceSiteLUID {
+			return PulseDefinitionPullResult{}, errors.New("Pulse bundle identity does not match definition provenance")
+		}
+		canonical, _, err := canonicalPulseDefinition(bundle.Definition)
+		if err != nil || !bytes.Equal(canonical, configuration) {
+			return PulseDefinitionPullResult{}, errors.New("Pulse bundle definition differs from its canonical resource")
+		}
+	}
 	workspace, err := filepath.Abs(input.Workspace)
 	if err != nil {
 		return PulseDefinitionPullResult{}, err
@@ -141,6 +156,22 @@ func (m *PulseDefinitionManager) Pull(ctx context.Context, input PulseDefinition
 		if current != existing.LocalBaselineFingerprint && !input.Overwrite {
 			return PulseDefinitionPullResult{}, errors.New("Pulse definition artifact is dirty; use --overwrite to replace local edits")
 		}
+		if existing.BundleFingerprint != "" {
+			bundlePath := filepath.Join(target, "bundle.json")
+			bundle, err := readPulseBundleFile(bundlePath)
+			if err != nil {
+				return PulseDefinitionPullResult{}, err
+			}
+			if fingerprint(bundle) != existing.BundleFingerprint && !input.Overwrite {
+				return PulseDefinitionPullResult{}, errors.New("Pulse bundle is dirty; use --overwrite to replace local edits")
+			}
+			if fingerprint(bundle) != existing.BundleFingerprint {
+				warnings = append(warnings, "Local Pulse bundle edits were replaced because --overwrite was set.")
+			}
+			if len(input.Bundle) == 0 {
+				return PulseDefinitionPullResult{}, errors.New("a complete Pulse bundle cannot be replaced with a definition-only snapshot")
+			}
+		}
 		if current != existing.LocalBaselineFingerprint {
 			warnings = append(warnings, "Local Pulse definition edits were replaced because --overwrite was set.")
 		}
@@ -151,6 +182,9 @@ func (m *PulseDefinitionManager) Pull(ctx context.Context, input PulseDefinition
 	metadata.PulledAt = m.now().UTC().Format(time.RFC3339Nano)
 	metadata.CanonicalPayload = pulseDefinitionResource
 	metadata.LocalBaselineFingerprint = baseline
+	if len(input.Bundle) > 0 {
+		metadata.BundleFingerprint = fingerprint(input.Bundle)
+	}
 	if err := validatePulseDefinitionMetadata(metadata); err != nil {
 		return PulseDefinitionPullResult{}, err
 	}
@@ -168,6 +202,9 @@ func (m *PulseDefinitionManager) Pull(ctx context.Context, input PulseDefinition
 		pulseDefinitionResource: configuration,
 		"metadata.json":         metadataBytes,
 		"view.md":               []byte(pulseDefinitionView(metadata)),
+	}
+	if len(input.Bundle) > 0 {
+		files["bundle.json"] = input.Bundle
 	}
 	if err := writeStagedArtifact(staging, files, m.operations); err != nil {
 		return PulseDefinitionPullResult{}, err

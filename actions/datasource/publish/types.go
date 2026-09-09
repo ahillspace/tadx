@@ -16,6 +16,9 @@ const (
 )
 
 type Input struct {
+	File         string
+	ArtifactID   string
+	ArtifactName string
 	// WorkspaceName is the resolved logical workspace alias used in follow-up commands.
 	WorkspaceName string
 	// TargetResolved confirms authenticated target selection, including the Default site.
@@ -49,6 +52,9 @@ type Target struct {
 	ExistingLUID string `json:"existing_datasource_luid,omitempty"`
 }
 type Plan struct {
+	Kind                 string   `json:"kind"`
+	Workspace            string   `json:"workspace"`
+	SourceLUID           string   `json:"source_luid"`
 	Mode                 string   `json:"mode"`
 	PublishMode          Mode     `json:"publish_mode"`
 	Operation            string   `json:"operation"`
@@ -67,10 +73,13 @@ type Plan struct {
 // CompactPlan keeps only the fields needed to understand the publish decision.
 // Diagnostic artifact and composition detail remains available through --full.
 type CompactPlan struct {
+	Workspace      string `json:"workspace"`
+	Kind           string `json:"kind"`
+	SourceLUID     string `json:"source_luid"`
 	Mode           string `json:"mode"`
 	PublishMode    Mode   `json:"publish_mode"`
 	Operation      string `json:"operation"`
-	ArtifactPath   string `json:"artifact_path"`
+	ArtifactPath   string `json:"-"`
 	DatasourceName string `json:"datasource_name"`
 	Target         Target `json:"target"`
 	AsJob          bool   `json:"as_job"`
@@ -120,7 +129,7 @@ type FullResult struct {
 
 func (o Output) CompactOutput() any {
 	compact := CompactResult{
-		Plan: CompactPlan{
+		Plan: CompactPlan{Workspace: o.Plan.Workspace, Kind: "datasource", SourceLUID: o.Plan.SourceLUID,
 			Mode:           o.Plan.Mode,
 			PublishMode:    o.Plan.PublishMode,
 			Operation:      o.Plan.Operation,
@@ -145,6 +154,7 @@ func (o Output) CompactOutput() any {
 }
 
 func (o Output) FullOutput() any {
+	o.Plan.Kind = "datasource"
 	return FullResult{Plan: o.Plan, Result: o.Result, Help: o.Help}
 }
 

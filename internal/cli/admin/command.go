@@ -168,7 +168,7 @@ func newUserList(deps Dependencies) *cobra.Command {
 	cmd.Flags().StringVar(&input.Name, "name", "", "exact username filter")
 	cmd.Flags().StringVar(&input.SiteRole, "site-role", "", "exact site-role filter")
 	cmd.Flags().BoolVar(&input.All, "all", false, "return all matching records, up to 10000; cannot combine with --limit")
-	cmd.Flags().IntVar(&input.Limit, "limit", 0, "maximum users to render")
+	cmd.Flags().IntVar(&input.Limit, "limit", 0, "maximum users to render, up to 10000")
 	cmd.Flags().StringVar(&input.Cursor, "cursor", "", "opaque continuation cursor")
 	cmd.MarkFlagsMutuallyExclusive("all", "limit")
 	cmd.MarkFlagsMutuallyExclusive("all", "cursor")
@@ -311,7 +311,7 @@ func newGroupList(deps Dependencies) *cobra.Command {
 	cmd.Flags().StringVar(&in.Name, "name", "", "exact group-name filter")
 	cmd.Flags().StringVar(&in.Domain, "domain", "", "exact directory-domain filter")
 	cmd.Flags().BoolVar(&in.All, "all", false, "return all matching records, up to 10000; cannot combine with --limit")
-	cmd.Flags().IntVar(&in.Limit, "limit", 0, "maximum groups to render")
+	cmd.Flags().IntVar(&in.Limit, "limit", 0, "maximum groups to render, up to 10000")
 	cmd.Flags().StringVar(&in.Cursor, "cursor", "", "opaque continuation cursor")
 	cmd.MarkFlagsMutuallyExclusive("all", "limit")
 	cmd.MarkFlagsMutuallyExclusive("all", "cursor")
@@ -389,6 +389,7 @@ func newGroupUpdate(deps Dependencies) *cobra.Command {
 			return clierr.Usage("admin.group.update", errors.New("--id is required"))
 		}
 		setString(cmd, "name", name, &in.Name)
+		setString(cmd, "new-name", name, &in.Name)
 		setString(cmd, "minimum-site-role", role, &in.MinimumSiteRole)
 		if cmd.Flags().Changed("external-user-enabled") {
 			in.ExternalUserEnabled = &external
@@ -410,7 +411,10 @@ func newGroupUpdate(deps Dependencies) *cobra.Command {
 	})
 	cmd.Flags().StringVar(&in.Environment, "environment", "", "explicit write environment alias")
 	cmd.Flags().StringVar(&in.GroupLUID, "id", "", "authoritative group LUID")
-	cmd.Flags().StringVar(&name, "name", "", "explicit new group name")
+	cmd.Flags().StringVar(&name, "new-name", "", "explicit new group name")
+	cmd.Flags().StringVar(&name, "name", "", "compatibility alias for --new-name")
+	_ = cmd.Flags().MarkHidden("name")
+	cmd.MarkFlagsMutuallyExclusive("name", "new-name")
 	cmd.Flags().StringVar(&role, "minimum-site-role", "", "explicit minimum site role")
 	cmd.Flags().BoolVar(&external, "external-user-enabled", false, "explicit on-demand external-user setting")
 	cmd.Flags().BoolVar(&setMembers, "set-members", false, "converge direct membership to the repeated --member-id values, including an empty set")

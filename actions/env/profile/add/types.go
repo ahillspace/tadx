@@ -12,6 +12,7 @@ type Input struct {
 }
 
 type Profile struct {
+	MultipleEnvironments  bool   `json:"-"`
 	Alias                 string `json:"alias"`
 	ServerURL             string `json:"server_url"`
 	SiteContentURL        string `json:"site_content_url,omitempty"`
@@ -24,9 +25,10 @@ type Profile struct {
 }
 
 type Output struct {
-	Status  string   `json:"status"`
-	Profile Profile  `json:"environment"`
-	Help    []string `json:"help"`
+	Warnings []string `json:"warnings,omitempty"`
+	Status   string   `json:"status"`
+	Profile  Profile  `json:"environment"`
+	Help     []string `json:"help"`
 }
 
 type CompactProfile struct {
@@ -35,20 +37,22 @@ type CompactProfile struct {
 	SiteContentURL string `json:"site_content_url,omitempty"`
 }
 type CompactResult struct {
-	Status  string         `json:"status"`
-	Profile CompactProfile `json:"environment"`
-	Details string         `json:"details"`
-	Help    []string       `json:"help"`
+	Warnings []string       `json:"warnings,omitempty"`
+	Status   string         `json:"status"`
+	Profile  CompactProfile `json:"environment"`
+	Details  string         `json:"details"`
+	Help     []string       `json:"help"`
 }
 type FullResult struct {
-	Status  string   `json:"status"`
-	Profile Profile  `json:"environment"`
-	Help    []string `json:"help"`
+	Warnings []string `json:"warnings,omitempty"`
+	Status   string   `json:"status"`
+	Profile  Profile  `json:"environment"`
+	Help     []string `json:"help"`
 }
 
 func (o Output) CompactOutput() any {
-	return CompactResult{Status: o.Status, Profile: CompactProfile{Alias: o.Profile.Alias, ServerURL: o.Profile.ServerURL, SiteContentURL: o.Profile.SiteContentURL}, Details: "--full", Help: o.Help}
+	return CompactResult{Warnings: o.Warnings, Status: o.Status, Profile: CompactProfile{Alias: o.Profile.Alias, ServerURL: o.Profile.ServerURL, SiteContentURL: o.Profile.SiteContentURL}, Details: "--full", Help: o.Help}
 }
 func (o Output) FullOutput() any {
-	return FullResult{Status: o.Status, Profile: o.Profile, Help: o.Help}
+	return FullResult{Warnings: o.Warnings, Status: o.Status, Profile: o.Profile, Help: o.Help}
 }

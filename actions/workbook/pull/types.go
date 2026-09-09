@@ -170,6 +170,7 @@ type ArtifactResult struct {
 
 // Output is the stable pull result.
 type Output struct {
+	Workspace string         `json:"workspace"`
 	Status    string         `json:"status"`
 	Workbook  Workbook       `json:"workbook"`
 	Artifact  ArtifactResult `json:"artifact"`
@@ -187,7 +188,11 @@ type CompactWorkbook struct {
 
 // CompactArtifact is the bounded actionable artifact summary.
 type CompactArtifact struct {
-	Path                     string `json:"path"`
+	Workspace                string `json:"workspace"`
+	Kind                     string `json:"kind"`
+	Name                     string `json:"name"`
+	SourceLUID               string `json:"source_luid"`
+	Path                     string `json:"-"`
 	Portability              string `json:"portability"`
 	PublishedDatasourceCount *int   `json:"published_datasource_count,omitempty"`
 	DependenciesAcquired     bool   `json:"dependencies_acquired"`
@@ -206,6 +211,10 @@ type CompactResult struct {
 
 // FullArtifact is the bounded expanded artifact view.
 type FullArtifact struct {
+	Workspace                   string                   `json:"workspace"`
+	Kind                        string                   `json:"kind"`
+	Name                        string                   `json:"name"`
+	SourceLUID                  string                   `json:"source_luid"`
 	Path                        string                   `json:"path"`
 	CanonicalPath               string                   `json:"canonical_path,omitempty"`
 	BaselineFingerprint         string                   `json:"baseline_fingerprint,omitempty"`
@@ -240,7 +249,7 @@ func (o Output) CompactOutput() any {
 		Workbook: CompactWorkbook{
 			LUID: o.Workbook.LUID, Name: o.Workbook.Name, ProjectPath: o.Workbook.ProjectPath,
 		},
-		Artifact: CompactArtifact{
+		Artifact: CompactArtifact{Workspace: o.Workspace, Kind: "workbook", Name: o.Workbook.Name, SourceLUID: o.Workbook.LUID,
 			Path: o.Artifact.Path, Portability: o.Artifact.Portability,
 			PublishedDatasourceCount: publishedDatasourceCount,
 			DependenciesAcquired:     o.Artifact.DependenciesAcquired,
@@ -264,7 +273,7 @@ func (o Output) FullOutput() any {
 	return FullResult{
 		Status:   o.Status,
 		Workbook: o.Workbook,
-		Artifact: FullArtifact{
+		Artifact: FullArtifact{Workspace: o.Workspace, Kind: "workbook", Name: o.Workbook.Name, SourceLUID: o.Workbook.LUID,
 			Path: o.Artifact.Path, CanonicalPath: o.Artifact.CanonicalPath,
 			BaselineFingerprint: o.Artifact.BaselineFingerprint, Portability: o.Artifact.Portability,
 			PublishedDatasourceCount: knownPublishedDatasourceCount(o.Artifact),

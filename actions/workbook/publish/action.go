@@ -132,6 +132,7 @@ func (a *Action) Plan(ctx context.Context, input Input) (Plan, error) {
 	}
 	request := PublishRequest{Name: name, ProjectLUID: project.LUID, Filename: artifact.Filename, ContentPath: artifact.PayloadPath, ContentSize: artifact.Size, ExpectedFingerprint: artifact.Fingerprint, Overwrite: overwrite, AsJob: input.AsJob}
 	return Plan{
+		Workspace: input.WorkspaceName, SourceLUID: artifact.TableauID,
 		Mode: "preview", Operation: "workbook.publish", ArtifactPath: artifact.Path,
 		ArtifactFingerprint: artifact.Fingerprint, Filename: artifact.Filename, WorkbookName: name,
 		Target:    Target{Origin: origin, Environment: input.Environment, Site: input.Site, ProjectLUID: project.LUID, ProjectPath: project.Path, ExistingLUID: existingLUID},

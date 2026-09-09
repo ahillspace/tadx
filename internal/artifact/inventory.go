@@ -22,7 +22,7 @@ const (
 	// StateInvalid means metadata or containment validation failed.
 	StateInvalid = "invalid"
 
-	maxInventoryLimit = 1000
+	maxInventoryLimit = 10000
 	maxInventoryScan  = 10000
 )
 
@@ -30,6 +30,7 @@ var directManagedArtifactKinds = [...]string{"datasource", "flow", "pulse-defini
 
 // Selector identifies one exact managed artifact.
 type Selector struct {
+	Name         string
 	Kind         string
 	LUID         string
 	ServerOrigin string
@@ -163,16 +164,19 @@ func Resolve(ctx context.Context, workspace string, selector Selector) (Item, er
 	if selector.Path != "" {
 		return resolveRelativePath(ctx, root, selector)
 	}
-	if selector.Kind == "" || selector.LUID == "" {
+	if selector.Kind == "" || (selector.LUID == "" && selector.Name == "") {
 		return Item{}, errors.New("artifact selector requires kind and LUID, or an exact managed relative path")
 	}
-	items, _, err := scanManagedArtifacts(ctx, root, maxInventoryScan)
+	items, complete, err := scanManagedArtifacts(ctx, root, maxInventoryScan)
 	if err != nil {
 		return Item{}, err
 	}
 	matches := make([]Item, 0, 1)
+	if !complete {
+		return Item{}, errors.New("artifact selection exceeds the bounded inventory scan; use an exact managed path")
+	}
 	for _, item := range items {
-		if item.State == StateInvalid || item.Kind != selector.Kind || item.LUID != selector.LUID {
+		if item.State == StateInvalid || item.Kind != selector.Kind || (selector.LUID != "" && item.LUID != selector.LUID) || (selector.Name != "" && item.Name != selector.Name) {
 			continue
 		}
 		if selector.ServerOrigin != "" && item.ServerOrigin != selector.ServerOrigin {
@@ -315,6 +319,7 @@ func inspectArtifact(ctx context.Context, workspace, kind, directory string) (It
 	item := Item{Kind: kind}
 	var canonical string
 	var sidecar string
+	var pulseBundleBaseline string
 	switch kind {
 	case "workbook":
 		metadata, err := readMetadata(directory)
@@ -380,6 +385,10 @@ func inspectArtifact(ctx context.Context, workspace, kind, directory string) (It
 		item.LUID, item.Name = metadata.TableauID, metadata.Name
 		item.ServerOrigin, item.SiteLUID = metadata.SourceServerOrigin, metadata.SourceSiteLUID
 		item.BaselineFingerprint = metadata.LocalBaselineFingerprint
+		if metadata.BundleFingerprint != "" {
+			sidecar = "bundle.json"
+			pulseBundleBaseline = metadata.BundleFingerprint
+		}
 		canonical, err = inventoryCanonicalPath(directory, metadata.CanonicalPayload, ".json")
 		if err != nil {
 			return Item{}, err
@@ -429,6 +438,16 @@ func inspectArtifact(ctx context.Context, workspace, kind, directory string) (It
 	item.State = StateClean
 	if current != item.BaselineFingerprint {
 		item.State = StateDirty
+	}
+	if pulseBundleBaseline != "" {
+		bundle, err := readPulseBundleFile(filepath.Join(directory, "bundle.json"))
+		if errors.Is(err, os.ErrNotExist) {
+			item.State = StateMissing
+		} else if err != nil {
+			return Item{}, err
+		} else if fingerprint(bundle) != pulseBundleBaseline {
+			item.State = StateDirty
+		}
 	}
 	item.TreeFingerprint, err = artifactTreeFingerprint(ctx, directory)
 	if err != nil {

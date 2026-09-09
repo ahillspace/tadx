@@ -85,7 +85,7 @@ func (c *remoteAdminCommands) ListAdminUsers(ctx context.Context, input userlist
 			return userlist.Output{}, err
 		}
 		input.Environment, input.Site = environment, site
-		reader := &catalogUserListReader{store: c.catalogStore(), environment: environment, site: site}
+		reader := &catalogUserListReader{store: c.catalogStore(input.Environment), environment: environment, site: site}
 		output, err := userlist.New(reader).Execute(ctx, input)
 		if err == nil {
 			output.Source = reader.source
@@ -104,7 +104,7 @@ func (c *remoteAdminCommands) ListAdminUsers(ctx context.Context, input userlist
 
 	if input.All {
 		observedAt := c.runtime.now().UTC()
-		inventory, err := collectResourceInventory(ctx, connection.inventory, c.catalogStore(), tableaucatalog.ScopeUsers, input.Environment, input.Site, observedAt, inventoryCollectionOptions{MaxConcurrency: connection.environment.CatalogMaxConcurrency, Filter: filter})
+		inventory, err := collectResourceInventory(ctx, connection.inventory, c.catalogStore(input.Environment), tableaucatalog.ScopeUsers, input.Environment, input.Site, observedAt, inventoryCollectionOptions{MaxConcurrency: connection.environment.CatalogMaxConcurrency, Filter: filter})
 		if err != nil {
 			return userlist.Output{}, inventoryRefreshError("user.list", input.Environment, input.Site, err)
 		}
@@ -147,7 +147,7 @@ func (c *remoteAdminCommands) InspectAdminUser(ctx context.Context, input userin
 			return userinspect.Output{}, err
 		}
 		input.Environment, input.Site = environment, site
-		resolver := &catalogUserGetResolver{store: c.catalogStore(), environment: environment, site: site}
+		resolver := &catalogUserGetResolver{store: c.catalogStore(input.Environment), environment: environment, site: site}
 		output, err := userinspect.New(resolver).Execute(ctx, input)
 		if err == nil {
 			output.Source = resolver.source
@@ -167,7 +167,7 @@ func (c *remoteAdminCommands) InspectAdminUser(ctx context.Context, input userin
 	output.Source = liveSource(c.runtime.now)
 	entry, encodeErr := resourceEntry(input.Environment, input.Site, "user", output.User.LUID, output.User.Name, "", "", "detail", observedAt, output.User)
 	if encodeErr == nil {
-		writeThrough(c.catalogStore(), []catalog.ResourceEntry{entry})
+		writeThrough(c.catalogStore(input.Environment), []catalog.ResourceEntry{entry})
 	}
 	return output, nil
 }
@@ -242,7 +242,7 @@ func (c *remoteAdminCommands) ListAdminGroups(ctx context.Context, input groupli
 			return grouplist.Output{}, err
 		}
 		input.Environment, input.Site = environment, site
-		reader := &catalogGroupListReader{store: c.catalogStore(), environment: environment, site: site}
+		reader := &catalogGroupListReader{store: c.catalogStore(input.Environment), environment: environment, site: site}
 		output, err := grouplist.New(reader).Execute(ctx, input)
 		if err == nil {
 			output.Source = reader.source
@@ -261,7 +261,7 @@ func (c *remoteAdminCommands) ListAdminGroups(ctx context.Context, input groupli
 
 	if input.All {
 		observedAt := c.runtime.now().UTC()
-		inventory, err := collectResourceInventory(ctx, connection.inventory, c.catalogStore(), tableaucatalog.ScopeGroups, input.Environment, input.Site, observedAt, inventoryCollectionOptions{MaxConcurrency: connection.environment.CatalogMaxConcurrency, Filter: filter})
+		inventory, err := collectResourceInventory(ctx, connection.inventory, c.catalogStore(input.Environment), tableaucatalog.ScopeGroups, input.Environment, input.Site, observedAt, inventoryCollectionOptions{MaxConcurrency: connection.environment.CatalogMaxConcurrency, Filter: filter})
 		if err != nil {
 			return grouplist.Output{}, inventoryRefreshError("group.list", input.Environment, input.Site, err)
 		}
@@ -304,7 +304,7 @@ func (c *remoteAdminCommands) InspectAdminGroup(ctx context.Context, input group
 			return groupinspect.Output{}, err
 		}
 		input.Environment, input.Site = environment, site
-		resolver := &catalogGroupGetResolver{store: c.catalogStore(), environment: environment, site: site}
+		resolver := &catalogGroupGetResolver{store: c.catalogStore(input.Environment), environment: environment, site: site}
 		output, err := groupinspect.New(resolver).Execute(ctx, input)
 		if err == nil {
 			output.Source = resolver.source
@@ -324,7 +324,7 @@ func (c *remoteAdminCommands) InspectAdminGroup(ctx context.Context, input group
 	output.Source = liveSource(c.runtime.now)
 	entry, encodeErr := resourceEntry(input.Environment, input.Site, "group", output.Group.LUID, output.Group.Name, "", "", "detail", observedAt, output.Group)
 	if encodeErr == nil {
-		writeThrough(c.catalogStore(), []catalog.ResourceEntry{entry})
+		writeThrough(c.catalogStore(input.Environment), []catalog.ResourceEntry{entry})
 	}
 	return output, nil
 }

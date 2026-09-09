@@ -195,6 +195,7 @@ func localImportAllowed(file, imported string) bool {
 				"internal/config",
 				"internal/errs",
 				"internal/identity",
+				"internal/lastcommand",
 				"internal/output",
 				"internal/paging",
 				"internal/readsource",
@@ -209,6 +210,9 @@ func localImportAllowed(file, imported string) bool {
 	case layerTableau:
 		return matchesExact(imported, "internal/auth", "internal/tableau", "internal/tableau/catalog/tabxml", "internal/value")
 	case layerFoundation:
+		if hasPathPrefix(file, "internal/lastcommand") {
+			return matchesExact(imported, "internal/lock", "internal/value")
+		}
 		// Authentication holds the leaf advisory lock for a command's PAT session.
 		if hasPathPrefix(file, "internal/auth") {
 			return matchesExact(imported, "internal/lock")
@@ -374,7 +378,7 @@ func disallowedLocalImportReason(file, imported string) string {
 }
 
 func isFoundationPackage(file string) bool {
-	return hasPathPrefix(file, "internal/artifact") ||
+	return hasPathPrefix(file, "internal/lastcommand") || hasPathPrefix(file, "internal/artifact") ||
 		hasPathPrefix(file, "internal/contentbatch") ||
 		hasPathPrefix(file, "internal/commandhint") ||
 		hasPathPrefix(file, "internal/architecture") ||

@@ -53,8 +53,13 @@ func (a *Action) Execute(ctx context.Context, input Input) (Output, error) {
 	if removed.Removed {
 		status = "removed"
 	}
+	var warnings []string
+	if target.EnvironmentCredentialsAvailable {
+		warnings = []string{"Environment-variable credentials remain configured and will continue to be used. Commands can still authenticate."}
+	}
 	return Output{
-		Status: status, Environment: target.Environment, CredentialSource: CredentialSourceOS, TableauPATRevoked: false,
+		Warnings: warnings,
+		Status:   status, Environment: target.Environment, CredentialSource: CredentialSourceOS, TableauPATRevoked: false,
 		Help: []string{"The Tableau PAT remains valid until you revoke it in Tableau."},
 	}, nil
 }

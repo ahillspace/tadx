@@ -103,7 +103,7 @@ func TestListContinuationBindsTargetAndLimit(t *testing.T) {
 
 func TestListRejectsInvalidLimitBeforeReader(t *testing.T) {
 	r := &reader{}
-	_, err := definitionlist.New(r).Execute(context.Background(), definitionlist.Input{Limit: 101})
+	_, err := definitionlist.New(r).Execute(context.Background(), definitionlist.Input{Limit: 10001})
 	var structured *errs.Error
 	if !errors.As(err, &structured) || structured.Kind != errs.KindUsage || r.calls != 0 {
 		t.Fatalf("error=%#v calls=%d", err, r.calls)

@@ -6,7 +6,6 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
-	"path/filepath"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -40,7 +39,7 @@ func TestIncompleteFullInventoryFailsWithoutReplacingCatalog(t *testing.T) {
 			}))
 			defer server.Close()
 			runtime := inventoryListRuntime(t, server)
-			store := catalog.NewStore(filepath.Dir(runtime.configPath), runtime.now)
+			store := targetCatalogFixture(t, runtime.configPath, runtime.now)
 			seed, err := store.ReplaceResourceScope(context.Background(), catalog.ResourceScopeReplacement{Environment: "production", Site: "team-site", Kind: "workbook", Source: "tableau-rest", GeneratedAt: runtime.now(), Entries: []catalog.ResourceEntry{{LUID: "old", Name: "Old"}}})
 			if err != nil {
 				t.Fatal(err)
@@ -91,7 +90,7 @@ func TestProjectInspectCatalogRetainsCanonicalPathAfterFullRefresh(t *testing.T)
 	server := httptest.NewTLSServer(http.NotFoundHandler())
 	defer server.Close()
 	runtime := inventoryListRuntime(t, server)
-	store := catalog.NewStore(filepath.Dir(runtime.configPath), runtime.now)
+	store := targetCatalogFixture(t, runtime.configPath, runtime.now)
 	writer, err := store.BeginGeneration(ctx, catalog.GenerationMetadata{Environment: "production", Site: "team-site", GeneratedAt: runtime.now(), Source: "tableau-rest", RequestedScopes: []string{"projects"}})
 	if err != nil {
 		t.Fatal(err)

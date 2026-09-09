@@ -113,7 +113,7 @@ func (a *Action) Execute(ctx context.Context, in Input) (Output, error) {
 	if err != nil {
 		return Output{}, err
 	}
-	p, err := a.reader.ListGroups(ctx, PageRequest{PageNumber: n, PageSize: s, Name: in.Name, Domain: in.Domain, SnapshotCursor: snapshotCursor})
+	p, err := a.readPage(ctx, PageRequest{PageNumber: n, PageSize: s, Name: in.Name, Domain: in.Domain, SnapshotCursor: snapshotCursor})
 	if err != nil {
 		return Output{}, err
 	}
@@ -149,8 +149,8 @@ func selectPage(encoded string, requested int, filter string) (int, int, string,
 		if requested == 0 {
 			requested = 25
 		}
-		if requested < 1 || requested > 100 {
-			return 0, 0, "", errs.New(errs.KindUsage, "admin group list limit must be between 1 and 100")
+		if requested < 1 || requested > 10000 {
+			return 0, 0, "", errs.New(errs.KindUsage, "admin group list limit must be between 1 and 10000")
 		}
 		return 1, requested, "", nil
 	}

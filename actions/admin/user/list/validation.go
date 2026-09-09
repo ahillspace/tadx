@@ -14,8 +14,8 @@ func ValidateInput(input Input) error {
 		}
 		return nil
 	}
-	if input.Limit < 0 || input.Limit > 100 {
-		return errs.New(errs.KindUsage, "admin user list limit must be between 1 and 100")
+	if input.Limit < 0 || input.Limit > 10000 {
+		return errs.New(errs.KindUsage, "admin user list limit must be between 1 and 10000")
 	}
 	if input.Cursor != "" {
 		raw, err := base64.RawURLEncoding.DecodeString(input.Cursor)

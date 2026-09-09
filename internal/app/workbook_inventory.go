@@ -34,7 +34,7 @@ func (c *remoteContentCommands) ListWorkbooks(ctx context.Context, input workboo
 			return workbooklist.Output{}, err
 		}
 		input.Environment, input.Site = environment, site
-		reader := &catalogWorkbookListReader{store: c.catalogStore(), environment: environment, site: site}
+		reader := &catalogWorkbookListReader{store: c.catalogStore(input.Environment), environment: environment, site: site}
 		output, err := workbooklist.New(reader).Execute(ctx, input)
 		if err == nil {
 			output.Source = reader.source
@@ -53,7 +53,7 @@ func (c *remoteContentCommands) ListWorkbooks(ctx context.Context, input workboo
 
 	if input.All {
 		observedAt := c.runtime.now().UTC()
-		inventory, err := collectResourceInventory(ctx, connection.inventory, c.catalogStore(), tableaucatalog.ScopeWorkbooks, input.Environment, input.Site, observedAt, inventoryCollectionOptions{MaxConcurrency: connection.environment.CatalogMaxConcurrency, Filter: filter})
+		inventory, err := collectResourceInventory(ctx, connection.inventory, c.catalogStore(input.Environment), tableaucatalog.ScopeWorkbooks, input.Environment, input.Site, observedAt, inventoryCollectionOptions{MaxConcurrency: connection.environment.CatalogMaxConcurrency, Filter: filter})
 		if err != nil {
 			return workbooklist.Output{}, inventoryRefreshError("workbook.list", input.Environment, input.Site, err)
 		}
@@ -96,7 +96,7 @@ func (c *remoteContentCommands) InspectWorkbook(ctx context.Context, input workb
 			return workbookinspect.Output{}, err
 		}
 		input.Environment, input.Site = environment, site
-		resolver := &catalogWorkbookGetResolver{store: c.catalogStore(), environment: environment, site: site}
+		resolver := &catalogWorkbookGetResolver{store: c.catalogStore(input.Environment), environment: environment, site: site}
 		output, err := workbookinspect.New(resolver).Execute(ctx, input)
 		if err == nil {
 			output.Source = resolver.source
@@ -116,7 +116,7 @@ func (c *remoteContentCommands) InspectWorkbook(ctx context.Context, input workb
 	output.Source = liveSource(c.runtime.now)
 	entry, encodeErr := resourceEntry(input.Environment, input.Site, "workbook", output.Workbook.LUID, output.Workbook.Name, output.Workbook.ProjectPath, output.Workbook.OwnerLUID, "detail", observedAt, output.Workbook)
 	if encodeErr == nil {
-		writeThrough(c.catalogStore(), []catalog.ResourceEntry{entry})
+		writeThrough(c.catalogStore(input.Environment), []catalog.ResourceEntry{entry})
 	}
 	return output, nil
 }

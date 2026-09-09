@@ -18,13 +18,19 @@ import (
 	workbooklist "github.com/ahillspace/tadx/actions/workbook/list"
 	"github.com/ahillspace/tadx/internal/catalog"
 	"github.com/ahillspace/tadx/internal/commandhint"
+	"github.com/ahillspace/tadx/internal/config"
 	"github.com/ahillspace/tadx/internal/errs"
 	"github.com/ahillspace/tadx/internal/identity"
 	"github.com/ahillspace/tadx/internal/readsource"
 )
 
-func (c *remoteContentCommands) catalogStore() *catalog.Store {
-	return catalog.NewStore(filepath.Dir(c.runtime.configPath), c.runtime.now)
+func (r *runtimeDependencies) catalogStore(environment config.Environment) *catalog.Store {
+	return catalog.NewTargetStore(filepath.Dir(r.configPath), environment.URL, environment.SiteContentURL, r.now)
+}
+
+func (c *remoteContentCommands) catalogStore(alias string) *catalog.Store {
+	_, environment, _ := c.runtime.environment(alias, false)
+	return c.runtime.catalogStore(environment)
 }
 
 func (c *remoteContentCommands) resolveCatalogTarget(alias string) (string, string, error) {

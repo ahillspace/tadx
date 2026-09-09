@@ -17,7 +17,7 @@ Default output is compact TOON, and `--full` returns expanded bounded details fo
 Consequential mutations run by default when enabled and support `--preview` for a read-only plan.
 Supported read-only `--preview` operations remain available when the mutation gate is off.
 Mutation discovery and previews do not authorize execution, and `--force` does not bypass mutation policy.
-Before changing `TADX_ENABLE_MUTATIONS`, agents must obtain explicit user permission for that setting change and its scope.
+Before changing `TADX_ENABLE_MUTATIONS` or the saved mutation setting through `tadx mutation set`, agents must obtain explicit user permission for that setting change and its scope.
 This applies to enabling, disabling, or unsetting it through any mechanism, including command overrides, process or session environments, wrappers, scripts, shell profiles, and persistent user or machine settings.
 A request to perform a Tableau operation does not authorize changing this flag.
 Reuse prior permission only when it explicitly covers the same setting change and scope; session permission does not authorize persistence.

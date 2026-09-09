@@ -164,7 +164,7 @@ func newProjectMove(deps Dependencies) *cobra.Command {
 	var preview bool
 	command := mutationCommand("project.move", "move", "Move one exact project in the hierarchy.", func(command *cobra.Command) error {
 		if (projectLUID == "") == (projectPath == "") {
-			return clierr.Usage("project.move", errors.New("use exactly one of --project-id or --project"))
+			return clierr.Usage("project.move", errors.New("use exactly one of --id or --project"))
 		}
 		if err := requireWriteEnvironment("project.move", input.Environment); err != nil {
 			return err
@@ -184,7 +184,9 @@ func newProjectMove(deps Dependencies) *cobra.Command {
 		return deps.Renderer.Render(result)
 	})
 	command.Flags().StringVar(&input.Environment, "environment", "", "explicit write environment alias")
-	command.Flags().StringVar(&projectLUID, "project-id", "", "authoritative project LUID")
+	command.Flags().StringVar(&projectLUID, "id", "", "authoritative project LUID")
+	command.Flags().StringVar(&projectLUID, "project-id", "", "legacy alias for --id")
+	command.MarkFlagsMutuallyExclusive("id", "project-id")
 	command.Flags().StringVar(&projectPath, "project", "", "exact slash-delimited project path")
 	command.Flags().StringVar(&parentLUID, "parent-id", "", "authoritative destination parent project LUID")
 	command.Flags().StringVar(&parentPath, "parent", "", "exact destination parent project path")

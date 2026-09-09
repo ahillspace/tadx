@@ -325,7 +325,7 @@ func TestRemoteMutationGatePrecedesRuntimeSetupAcrossDomains(t *testing.T) {
 		t.Run(strings.Join(args[:3], " "), func(t *testing.T) {
 			var stdout bytes.Buffer
 			exitCode := app.Run(context.Background(), args, &stdout, app.Options{ConfigPath: filepath.Join(t.TempDir(), "missing.yaml")})
-			if exitCode != 1 || !strings.Contains(stdout.String(), "id: mutation.disabled") || !strings.Contains(stdout.String(), "TADX_ENABLE_MUTATIONS=1") {
+			if exitCode != 1 || !strings.Contains(stdout.String(), "id: mutation.disabled") || !strings.Contains(stdout.String(), "tadx mutation status") {
 				t.Fatalf("exit code = %d, output = %s", exitCode, stdout.String())
 			}
 		})

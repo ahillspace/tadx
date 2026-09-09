@@ -4,5 +4,6 @@ definition:
   name: Revenue
 artifact:
   path: artifacts/pulse-definition/Revenue--identity
+metric_count: 2
 details: "--full"
 help[1]: Inspect artifacts/pulse-definition/Revenue--identity/resource.json.

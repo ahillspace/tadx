@@ -111,7 +111,7 @@ func TestContentBatchProcessesEverySelectorAndPreservesSharedFlags(t *testing.T)
 					}
 					args = append(args, "--project-id", "project-1", "--preview")
 					if kind == "datasource" {
-						args = append(args, "--create")
+						args = append(args, "--create", "--project-id", "project-1")
 					}
 				}
 				for _, selector := range selectors {
@@ -169,7 +169,7 @@ func TestContentSelectionPreservesSingleOutputAndSuccessfulBatch(t *testing.T) {
 					}
 				}
 				if operation == "datasource.publish" {
-					args = append(args, "--create")
+					args = append(args, "--create", "--project-id", "project-1")
 				}
 				cmd.SetArgs(args)
 				if err := cmd.Execute(); err != nil {
@@ -205,7 +205,7 @@ func TestSinglePublishFailurePreservesErrorAndKeepsRedirectedStderrSilent(t *tes
 			command.SetErr(&stderr)
 			args := []string{"--artifact", "artifacts/" + kind + "/Finance--identity"}
 			if kind == "datasource" {
-				args = append(args, "--create")
+				args = append(args, "--create", "--project-id", "project-1")
 			}
 			command.SetArgs(args)
 

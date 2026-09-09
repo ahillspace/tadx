@@ -42,6 +42,9 @@ Workspace selection follows this order:
 Keep artifact paths workspace-relative and slash-delimited, such as `artifacts/datasource/<artifact-directory>`.
 Absolute paths, parent traversal, and backslash-delimited artifact selectors are invalid.
 An artifact can instead be selected by both `--kind` and authoritative Tableau `--id`.
+Managed content publish accepts `--id` or an exact `--artifact-name` within the resolved workspace; source LUIDs remain provenance and do not select the destination.
+Use `workspace status --full` to obtain exact local file locations; compact output omits internal hashed directories and fingerprints.
+Publish an existing native workbook, datasource, or flow file with `--file <path>` without creating managed bookkeeping yourself.
 Preserve provenance and sidecars when editing native payloads.
 `workspace status` reports clean, dirty, missing, and invalid managed artifacts.
 

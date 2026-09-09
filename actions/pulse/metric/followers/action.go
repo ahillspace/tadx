@@ -43,10 +43,12 @@ func (a *Action) Execute(ctx context.Context, input Input) (Output, error) {
 		return Output{}, fail("pulse.metric.followers.invalid_response", errs.KindOperation, input, "Pulse metric follower listing exceeded its bounded output.", errors.New("more than 1000 subscriptions"))
 	}
 	requestID := metric.RequestID
+	seen := map[string]bool{}
 	for _, item := range items {
-		if item.LUID == "" || item.MetricLUID != input.MetricLUID || item.FollowerLUID == "" || (item.FollowerType != "USER" && item.FollowerType != "GROUP") {
+		if item.LUID == "" || seen[item.LUID] || item.MetricLUID != input.MetricLUID || item.FollowerLUID == "" || (item.FollowerType != "USER" && item.FollowerType != "GROUP") {
 			return Output{}, fail("pulse.metric.followers.invalid_response", errs.KindOperation, input, "Tableau returned an incomplete or mismatched subscription.", errors.New("subscription identity mismatch"))
 		}
+		seen[item.LUID] = true
 		if requestID == "" {
 			requestID = item.RequestID
 		}

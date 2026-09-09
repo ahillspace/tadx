@@ -5,7 +5,8 @@
 | `tadx search <term>` | Discover a named metric, definition, user, or group. | `--environment`, `--type metric\|definition\|user\|group\|pulse\|admin`, `--limit` |
 | `tadx pulse definition list` | List definitions or find an exact name. | `--environment`, `--name`, `--datasource-id`, `--limit`, `--all`, `--catalog`, `--full` |
 | `tadx pulse definition inspect` | Read one definition. | `--id`, `--environment`, `--catalog`, `--full` |
-| `tadx pulse definition pull` | Save a definition artifact in a registered workspace. | `--id`, `--environment`, `--workspace`, `--overwrite` |
+| `tadx pulse definition pull` | Save a portable definition, its metric variants, and datasource references in a workspace. | `--id`, `--environment`, `--workspace`, `--overwrite` |
+| `tadx pulse definition publish` | Recreate a portable definition and variants with new identities. | `--id` or `--artifact-name` or `--artifact`, `--workspace`, `--env`, repeated `--datasource-map source=destination`, `--name`, `--preview`, `--full` |
 | `tadx pulse metric list` | List variants of one definition. | `--definition-id`, `--environment`, `--limit`, `--all`, `--catalog`, `--full` |
 | `tadx pulse metric inspect` | Read one metric's saved settings. | `--id`, `--environment`, `--catalog`, `--full` |
 | `tadx pulse metric followers` | List subscriptions for one metric. | `--id`, `--environment`, `--catalog`, `--full` |
@@ -14,7 +15,7 @@
 | `tadx pulse metric delete` | Delete a non-default variant. | `--environment`, `--id`, `--preview` |
 | `tadx pulse definition delete` | Delete the shared definition and Tableau-managed dependents. | `--environment`, `--id`, `--preview` |
 
-Use exact identities and explicit environments; `--env` aliases `--environment`.
+Use exact identities; one configured environment can be inferred, while multiple environments require --env for remote writes.
 Use live reads before consequential changes.
 `--catalog` is local-only and can be stale or incomplete.
 
@@ -31,7 +32,7 @@ tadx pulse metric list --environment '<alias>' --definition-id '<definition-luid
 tadx pulse metric inspect --environment '<alias>' --id '<metric-luid>' --full
 ```
 
-Definition and metric lists default to 25 returned objects, with `--limit` up to 100.
+Definition and metric lists default to 25 returned objects, with `--limit` up to 10,000.
 `--all` scans up to 100 provider pages and 10,000 records, failing if the complete result exceeds that bound.
 Do not combine `--all` with `--limit`.
 `more_available` means the rendered result is bounded; use `--all` when completeness is required.
@@ -48,10 +49,14 @@ tadx pulse definition pull --environment '<alias>' --id '<definition-luid>' --wo
 
 Pull writes a local artifact and has no preview flag.
 `--overwrite` can replace dirty local work; use it only when that replacement is intended.
-There is no definition update or publish-from-file command.
-Inspect the definition and requested edit, then report an unavailable capability without silently creating a replacement.
-Changing a pulled artifact does not change Tableau.
-A replacement requires explicit authorization and consideration of existing metrics and followers.
+`tadx pulse definition publish --artifact <directory> --workspace <name> --env <destination> --datasource-map <source-luid>=<destination-luid> --preview` reviews a recreation.
+Repeat --datasource-map for every source datasource, including same-site recreation.
+Publish validates destination fields and creates new definition and metric identities, reporting their mapping and leaving originals untouched.
+No followers, principals, values, or insights are transported.
+After reviewing the complete plan, remove --preview only for an authorized recreation.
+Changing local files does not change Tableau; identity-preserving updates remain unsupported.
+For local definition edits, keep `resource.json` and the definition copy in `bundle.json` consistent; publish rejects disagreement before authentication.
+Metric variant edits belong in `bundle.json`.
 
 ## Resolve follower identities and change subscriptions
 

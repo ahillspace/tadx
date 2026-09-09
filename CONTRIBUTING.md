@@ -86,7 +86,9 @@ Authenticate to Tableau with PATs only.
 Consequential mutations run by default and support `--preview` for a read-only plan.
 Remote mutation commands and capabilities remain discoverable when execution is disabled.
 `TADX_ENABLE_MUTATIONS=1` enables remote mutation execution; supported read-only previews remain available when it is off.
-Agents must obtain explicit user permission before changing this flag, including disabling it or setting a command-only override.
+Agents must obtain explicit user permission before changing this flag or saved policy through `tadx mutation set`, including disabling it or setting a command-only override.
+Saved user policy persists until changed; an explicit process environment value overrides it, and neither setting means disabled.
+Infer an omitted environment only when exactly one is configured for remote writes; multiple environments require `--env`, irrespective of artifact provenance.
 Remote-operation authorization does not authorize the setting change; follow the scope and single-question guidance in [AGENTS.md](AGENTS.md).
 `--env` is an alias for `--environment`, including explicit mutation targets.
 `--force` does not bypass mutation policy.
