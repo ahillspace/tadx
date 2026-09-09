@@ -10,6 +10,7 @@ import (
 
 	"github.com/ahillspace/tadx/internal/commandhint"
 	"github.com/ahillspace/tadx/internal/errs"
+	"github.com/ahillspace/tadx/internal/pulsecontract"
 )
 
 type Reader interface {
@@ -21,6 +22,7 @@ type Validator interface {
 type Writer interface {
 	CreateDefinition(context.Context, json.RawMessage) (DefinitionResult, error)
 	CreateMetric(context.Context, string, json.RawMessage) (MetricResult, error)
+	VerifyDefinition(context.Context, string, string, string, json.RawMessage) error
 	VerifyMetric(context.Context, string, string, string, string, json.RawMessage) error
 }
 type Action struct {
@@ -113,6 +115,9 @@ func (a *Action) Execute(ctx context.Context, input Input) (Output, error) {
 	if created.LUID == "" || created.LUID == bundle.DefinitionLUID {
 		return output, failure(input, "identity", errs.KindOperation, "The provider did not return a new authoritative Pulse definition identity.", nil)
 	}
+	if err := a.writer.VerifyDefinition(ctx, created.LUID, destination, input.SiteLUID, document); err != nil {
+		return output, failure(input, "definition_reconciliation", errs.KindOperation, "The created definition could not be verified against its submitted configuration. Confirmed identity is retained; no bundle metrics were requested.", err)
+	}
 	for _, metric := range bundle.Metrics {
 		result, err := a.writer.CreateMetric(ctx, created.LUID, metric.Specification)
 		if result.LUID != "" {
@@ -150,6 +155,9 @@ func PrepareBundle(input Input, bundle Bundle) (Plan, error) {
 	if err != nil {
 		return Plan{}, failure(input, "configuration", errs.KindUsage, "Pulse bundle definition cannot be recreated without losing configuration.", err)
 	}
+	if err := pulsecontract.ValidateDefinition(document); err != nil {
+		return Plan{}, failure(input, "configuration", errs.KindUsage, "Pulse bundle definition configuration is invalid.", err)
+	}
 	if len(bundle.Metrics) == 0 || len(bundle.Metrics) > 10000 {
 		return Plan{}, failure(input, "metrics", errs.KindUsage, "Pulse bundle requires a complete bounded metric inventory.", nil)
 	}
@@ -176,6 +184,9 @@ func PrepareBundle(input Input, bundle Bundle) (Plan, error) {
 		data, err := json.Marshal(specification)
 		if err != nil {
 			return Plan{}, err
+		}
+		if err := pulsecontract.ValidateMetric(data); err != nil {
+			return Plan{}, failure(input, "metric_specification", errs.KindUsage, "Pulse bundle metric specification is invalid.", err)
 		}
 		metrics[i] = Metric{LUID: metric.LUID, IsDefault: metric.IsDefault, Specification: data}
 	}

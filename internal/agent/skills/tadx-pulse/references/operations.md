@@ -6,7 +6,7 @@
 | `tadx pulse definition list` | List definitions or find an exact name. | `--environment`, `--name`, `--datasource-id`, `--limit`, `--all`, `--catalog`, `--full` |
 | `tadx pulse definition inspect` | Read one definition. | `--id`, `--environment`, `--catalog`, `--full` |
 | `tadx pulse definition pull` | Save a portable definition, its metric variants, and datasource references in a workspace. | `--id`, `--environment`, `--workspace`, `--overwrite` |
-| `tadx pulse definition publish` | Recreate a portable definition and variants with new identities. | `--id` or `--artifact-name` or `--artifact`, `--workspace`, `--env`, repeated `--datasource-map source=destination`, `--name`, `--preview`, `--full` |
+| `tadx pulse definition publish` | Recreate a portable definition and variants with new identities. | `--id` or `--artifact-name` or `--artifact`, `--workspace`, `--env`, repeated `--datasource-map source=destination`, `--preview`, `--full` |
 | `tadx pulse metric list` | List variants of one definition. | `--definition-id`, `--environment`, `--limit`, `--all`, `--catalog`, `--full` |
 | `tadx pulse metric inspect` | Read one metric's saved settings. | `--id`, `--environment`, `--catalog`, `--full` |
 | `tadx pulse metric followers` | List subscriptions for one metric. | `--id`, `--environment`, `--catalog`, `--full` |

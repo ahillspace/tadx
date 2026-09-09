@@ -11,10 +11,12 @@ import (
 )
 
 type dependencies struct {
-	bundle                             publish.Bundle
-	validations, writes                int
-	failValidation                     int
-	failCreate, failMetric, failVerify bool
+	bundle                                       publish.Bundle
+	validations, writes                          int
+	failValidation                               int
+	failCreate, failMetric, failVerify           bool
+	definitionVerifications, metricVerifications int
+	failDefinitionVerify                         bool
 }
 
 func (d *dependencies) ReadBundle(context.Context, string) (publish.Bundle, error) {
@@ -44,13 +46,38 @@ func (d *dependencies) CreateMetric(context.Context, string, json.RawMessage) (p
 	return result, nil
 }
 func (d *dependencies) VerifyMetric(context.Context, string, string, string, string, json.RawMessage) error {
+	d.metricVerifications++
 	if d.failVerify {
 		return errors.New("specification mismatch")
 	}
 	return nil
 }
+func (d *dependencies) VerifyDefinition(context.Context, string, string, string, json.RawMessage) error {
+	d.definitionVerifications++
+	if d.failDefinitionVerify {
+		return errors.New("saved definition configuration mismatch")
+	}
+	return nil
+}
+
+func TestPublishVerifiesSharedDefinitionOnceBeforeMetrics(t *testing.T) {
+	d := &dependencies{bundle: bundleFixture()}
+	d.bundle.Metrics = append(d.bundle.Metrics, publish.Metric{LUID: "metric-2", Specification: d.bundle.Metrics[0].Specification})
+	output, err := publish.New(d, d, d).Execute(context.Background(), inputFixture())
+	if err != nil || !output.Complete || d.definitionVerifications != 1 || d.metricVerifications != 2 {
+		t.Fatalf("output=%#v err=%v definition checks=%d metric checks=%d", output, err, d.definitionVerifications, d.metricVerifications)
+	}
+}
+
+func TestPublishDefinitionMismatchRetainsIdentityAndStopsBeforeMetrics(t *testing.T) {
+	d := &dependencies{bundle: bundleFixture(), failDefinitionVerify: true}
+	output, err := publish.New(d, d, d).Execute(context.Background(), inputFixture())
+	if err == nil || output.Complete || output.Status != "partial" || d.writes != 1 || d.metricVerifications != 0 || len(output.Mappings) != 1 || output.Mappings[0].DestinationLUID != "new-definition" {
+		t.Fatalf("output=%#v err=%v writes=%d", output, err, d.writes)
+	}
+}
 func bundleFixture() publish.Bundle {
-	return publish.Bundle{DefinitionLUID: "definition-1", DatasourceLUID: "ds-1", Configuration: json.RawMessage(`{"metadata":{"id":"definition-1","name":"Revenue"},"specification":{"datasource":{"id":"ds-1"},"basic_specification":{"filters":[]}}}`), Metrics: []publish.Metric{{LUID: "metric-1", Specification: json.RawMessage(`{"datasource":{"id":"ds-1"},"measurement_period":{"granularity":"DAY","last_n":9007199254740993},"filters":[]}`)}}}
+	return publish.Bundle{DefinitionLUID: "definition-1", DatasourceLUID: "ds-1", Configuration: json.RawMessage(`{"metadata":{"id":"definition-1","name":"Revenue"},"specification":{"datasource":{"id":"ds-1"},"basic_specification":{"measure":{"field":"Revenue","aggregation":"AGGREGATION_SUM"},"time_dimension":{"field":"Order Date"},"filters":[]}},"extension_options":{"allowed_dimensions":[],"allowed_granularities":["GRANULARITY_BY_DAY"]}}`), Metrics: []publish.Metric{{LUID: "metric-1", Specification: json.RawMessage(`{"datasource":{"id":"ds-1"},"measurement_period":{"granularity":"GRANULARITY_BY_DAY","range":"RANGE_LAST_N","last_n":9007199254740993},"filters":[]}`)}}}
 }
 func inputFixture() publish.Input {
 	return publish.Input{Environment: "target", Site: "target-site", SiteLUID: "target-site-id", Artifact: "artifacts/pulse-definition/example", DatasourceMap: []string{"ds-1=ds-2"}}

@@ -13,6 +13,7 @@ import (
 
 	"github.com/ahillspace/tadx/internal/commandhint"
 	"github.com/ahillspace/tadx/internal/errs"
+	"github.com/ahillspace/tadx/internal/pulsecontract"
 )
 
 var currencyCodePattern = regexp.MustCompile(`^[A-Z]{3}$`)
@@ -234,8 +235,8 @@ func requestFromIntent(intent Intent) (CreateRequest, error) {
 	if !ok {
 		return CreateRequest{}, errors.New("temporality must be OVER_TIME or LATEST")
 	}
-	if intent.RunningTotal && (aggregation != "AGGREGATION_SUM" || temporality != "TEMPORALITY_OVER_TIME") {
-		return CreateRequest{}, errors.New("running total requires SUM aggregation and OVER_TIME temporality")
+	if err := pulsecontract.ValidateRunningTotal(aggregation, temporality, intent.RunningTotal); err != nil {
+		return CreateRequest{}, err
 	}
 	currency := strings.ToUpper(strings.TrimSpace(intent.CurrencyCode))
 	if format == "NUMBER_FORMAT_TYPE_CURRENCY" {

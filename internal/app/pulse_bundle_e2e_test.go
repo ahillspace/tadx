@@ -33,6 +33,7 @@ func testPulseBundleRoundTrip(t *testing.T, destinationSite string) {
 	var created map[string]any
 	saved := map[string]map[string]any{}
 	posts := 0
+	definitionReads := 0
 	requests := 0
 	currentSite := "site-1"
 	invalidFields, incompletePull := false, false
@@ -90,7 +91,15 @@ func testPulseBundleRoundTrip(t *testing.T, destinationSite string) {
 			saved[id] = body.Specification
 			_ = json.NewEncoder(w).Encode(map[string]any{"metric": map[string]any{"id": id}, "is_metric_created": true})
 		case r.URL.Path == "/api/-/pulse/definitions/destination-definition":
-			_ = json.NewEncoder(w).Encode(map[string]any{"metadata": map[string]any{"id": "destination-definition", "name": "Revenue"}, "specification": created["specification"]})
+			definitionReads++
+			readback := make(map[string]any, len(created)+1)
+			for key, value := range created {
+				readback[key] = value
+			}
+			delete(readback, "name")
+			delete(readback, "description")
+			readback["metadata"] = map[string]any{"id": "destination-definition", "name": created["name"], "description": created["description"]}
+			_ = json.NewEncoder(w).Encode(readback)
 		case strings.HasPrefix(r.URL.Path, "/api/-/pulse/metrics/destination-metric-") || r.URL.Path == "/api/-/pulse/metrics/destination-default":
 			id := strings.TrimPrefix(r.URL.Path, "/api/-/pulse/metrics/")
 			_ = json.NewEncoder(w).Encode(map[string]any{"id": id, "definition_id": "destination-definition", "site_id": destinationSite, "specification": saved[id]})
@@ -171,6 +180,9 @@ func testPulseBundleRoundTrip(t *testing.T, destinationSite string) {
 	}
 	if len(saved) != 2 || !reflect.DeepEqual(saved["destination-default"], specs[0]) || !reflect.DeepEqual(saved["destination-metric-1"], specs[1]) {
 		t.Fatalf("specifications changed: %#v", saved)
+	}
+	if definitionReads != 1 {
+		t.Fatalf("definition readbacks=%d, want one shared immutable readback", definitionReads)
 	}
 	var original map[string]any
 	_ = json.Unmarshal([]byte(definition), &original)

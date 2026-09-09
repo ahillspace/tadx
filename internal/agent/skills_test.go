@@ -191,3 +191,32 @@ func TestSkillRecipesUseInstalledCommandsAndFlags(t *testing.T) {
 	}
 	t.Logf("validated %d CLI recipes without executing operations", count)
 }
+
+func TestPulsePublishGuidanceFlagsAreExecutable(t *testing.T) {
+	data, err := os.ReadFile("skills/tadx-pulse/references/operations.md")
+	if err != nil {
+		t.Fatal(err)
+	}
+	flags := regexp.MustCompile(`--[a-z][a-z-]*`)
+	count := 0
+	for _, line := range strings.Split(string(data), "\n") {
+		if !strings.HasPrefix(line, "| `tadx pulse definition publish` |") {
+			continue
+		}
+		for _, flag := range flags.FindAllString(line, -1) {
+			count++
+			value := "example"
+			if flag == "--preview" || flag == "--full" {
+				value = "true"
+			}
+			var output bytes.Buffer
+			args := []string{"pulse", "definition", "publish", flag + "=" + value, "--help"}
+			if code := app.Run(context.Background(), args, &output, app.Options{ConfigPath: filepath.Join(t.TempDir(), "missing.yaml")}); code != 0 {
+				t.Errorf("documented publish flag %s is rejected: %s", flag, output.String())
+			}
+		}
+	}
+	if count == 0 {
+		t.Fatal("no Pulse publish Guidance flags checked")
+	}
+}

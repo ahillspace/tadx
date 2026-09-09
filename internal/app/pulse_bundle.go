@@ -172,7 +172,7 @@ func (a pulseBundleAdapter) VerifyMetric(ctx context.Context, metric, definition
 	if err != nil {
 		return err
 	}
-	result, err := a.connection.client.ReconcileMetric(ctx, tableaupulse.ExpectedMetric{MetricLUID: metric, DefinitionLUID: definition, DatasourceLUID: datasource, SiteLUID: site, Specification: specification})
+	result, err := a.connection.client.ReconcileBundleMetric(ctx, tableaupulse.ExpectedMetric{MetricLUID: metric, DefinitionLUID: definition, DatasourceLUID: datasource, SiteLUID: site, Specification: specification})
 	if err != nil {
 		return err
 	}
@@ -180,4 +180,8 @@ func (a pulseBundleAdapter) VerifyMetric(ctx context.Context, metric, definition
 		return fmt.Errorf("metric readback is not verified: %s", result.Status)
 	}
 	return nil
+}
+
+func (a pulseBundleAdapter) VerifyDefinition(ctx context.Context, definition, datasource, site string, data json.RawMessage) error {
+	return a.connection.client.VerifyBundleDefinition(ctx, definition, datasource, site, data)
 }

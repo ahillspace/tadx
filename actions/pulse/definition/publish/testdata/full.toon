@@ -11,9 +11,17 @@ plan:
   metric_count: 1
   definition_configuration:
     description: ""
+    extension_options:
+      allowed_dimensions: []
+      allowed_granularities[1]: GRANULARITY_BY_DAY
     name: Revenue
     specification:
       basic_specification:
+        measure:
+          field: Revenue
+          aggregation: AGGREGATION_SUM
+        time_dimension:
+          field: Order Date
         filters: []
       datasource:
         id: ds-2
@@ -25,7 +33,8 @@ plan:
           id: ds-2
         filters: []
         measurement_period:
-          granularity: DAY
+          granularity: GRANULARITY_BY_DAY
+          range: RANGE_LAST_N
           last_n: 9007199254740993
   review_complete: true
 mappings: []
