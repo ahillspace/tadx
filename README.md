@@ -158,6 +158,19 @@ Identical packages remain unchanged.
 Replacing a divergent package requires `--force`, which preserves the previous package under the agent directory's `.tadx-skill-backups` directory.
 This local operation does not require `TADX_ENABLE_MUTATIONS`.
 
+## Remote mutation permission
+
+TADX reads `TADX_ENABLE_MUTATIONS` from its process environment; only the value `1` enables remote mutation execution.
+TADX has no persistent mutation-toggle command.
+A shell setting applies to that shell and its child processes; operating-system environment settings or shell startup files can affect future shells.
+Supported read-only `--preview` operations work while the gate is off and do not authorize execution.
+
+Agents must obtain explicit user permission before changing this flag through any mechanism, including enabling, disabling, or unsetting it.
+Permission for a Tableau operation is separate from permission to change the flag.
+An approval covers only its explicitly stated setting change and scope; session approval does not authorize a persistent change.
+For example: "May I enable remote mutations for this session, allowing TADX to create, change, or delete Tableau resources?"
+A request for persistent approval must identify its scope and effect on future shells.
+
 ## Configure a Tableau environment
 
 TADX uses Tableau personal access tokens.
@@ -270,6 +283,11 @@ tadx catalog status --environment dev
 Permissions are excluded from the default refresh because they require additional per-resource requests.
 Include the `permissions` scope explicitly only when needed, requesting all desired scopes together.
 An explicit refresh failure preserves the previous catalog generation and reports an error.
+Refresh collects into private disk-backed staging before opening the active catalog's publication transaction.
+Tableau response times and retries therefore do not hold the shared catalog write lock.
+Staging enforces row and database-page limits; SQLite journal and temporary files add disk overhead.
+Publication replaces only the requested inventory kinds and preserves independent datasource schema, Pulse, and unrequested inventory observations.
+Preserved observations retain their original timestamps and freshness; refreshing inventory does not reverify them.
 After a catalog schema upgrade, run an explicit refresh to rebuild the disposable cache; workspaces, artifacts, and credentials are not removed.
 
 Catalog collection uses concurrent reads for speed, starting at up to four requests and adapting to a default ceiling of 32 per CLI process.

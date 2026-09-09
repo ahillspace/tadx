@@ -155,7 +155,8 @@ TADX returns compact TOON by default. Use --full to show expanded bounded detail
 Read commands query Tableau by default. Pass --catalog on supported reads to use local catalog data without contacting Tableau.
 Use --env as a short alias for --environment on commands that select an environment.
 
-Remote mutation commands remain visible when execution is disabled. Set TADX_ENABLE_MUTATIONS=1 to enable them.
+Remote mutation commands remain visible when execution is disabled. Use --preview for a read-only plan without enabling mutations.
+Obtain permission before setting TADX_ENABLE_MUTATIONS=1 to enable execution.
 When enabled, mutation commands perform changes by default. Pass --preview to inspect the plan without performing the mutation.
 
 TADX handles lifecycle operations, not datasource value queries, view rendering, or current Pulse values and insights.
@@ -311,14 +312,14 @@ func applyMutationExecutionPolicy(root *cobra.Command, policy MutationPolicy, en
 			originalRun := command.Run
 			command.Run = nil
 			command.RunE = func(command *cobra.Command, args []string) error {
-				if !enabled {
+				if !enabled && !explicitMutationPreview(command) {
 					return &errs.Error{
 						ID:               "mutation.disabled",
 						Kind:             errs.KindOperation,
 						Operation:        capabilityID,
 						Summary:          "Remote mutation execution is disabled.",
 						Retryable:        errs.Bool(false),
-						CorrectiveAction: "Set TADX_ENABLE_MUTATIONS=1, then retry.",
+						CorrectiveAction: "Use --preview for a read-only plan where supported, or obtain permission before enabling TADX_ENABLE_MUTATIONS=1.",
 					}
 				}
 				if originalRunE != nil {
@@ -333,6 +334,16 @@ func applyMutationExecutionPolicy(root *cobra.Command, policy MutationPolicy, en
 		}
 	}
 	walk(root)
+}
+
+// Only the executable command's own parsed Boolean preview flag authorizes a plan.
+func explicitMutationPreview(command *cobra.Command) bool {
+	flag := command.LocalNonPersistentFlags().Lookup("preview")
+	if flag == nil || !flag.Changed || flag.Value.Type() != "bool" {
+		return false
+	}
+	preview, err := command.Flags().GetBool("preview")
+	return err == nil && preview
 }
 
 func mutationPolicyMissing(policy MutationPolicy) bool {

@@ -93,7 +93,9 @@ func TestPhaseOneWorkbookPullAndPublishThroughCLIDefaultSite(t *testing.T) {
 
 	var previewOutput strings.Builder
 	previewArgs := []string{"content", "workbook", "publish", "--workspace", "development", "--artifact", artifactSelector, "--environment", "production", "--project-id", "project-1", "--overwrite", "--preview"}
-	if exit := app.Run(context.Background(), previewArgs, &previewOutput, options); exit != 0 {
+	previewOptions := options
+	previewOptions.MutationsEnabled = false
+	if exit := app.Run(context.Background(), previewArgs, &previewOutput, previewOptions); exit != 0 {
 		t.Fatalf("preview exit = %d, output = %s", exit, previewOutput.String())
 	}
 	if publishCalls.Load() != 0 || !strings.Contains(previewOutput.String(), "mode: preview") {

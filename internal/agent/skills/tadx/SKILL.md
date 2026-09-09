@@ -25,10 +25,20 @@ Use one relevant leaf `--help` only when this Guidance and its references do not
 - TADX authenticates with PATs only.
 - Never expose PATs or session tokens.
 - TADX serializes commands sharing a PAT on this machine; other machines and external tools need separate PATs or coordination because a new session can invalidate an existing one.
-- Remote mutations run by default when `TADX_ENABLE_MUTATIONS=1`; use `--preview` when review is useful.
+- Remote mutations run by default when `TADX_ENABLE_MUTATIONS=1`; supported read-only `--preview` operations remain available when the gate is off.
 - Discovery and previews do not authorize mutation, and `--force` never bypasses mutation policy.
 - An error can include confirmed results in `output`; retain those identities and inspect uncertain outcomes before retrying a write.
 - Keep persisted and rendered artifact paths relative to the workspace with forward slashes.
+
+## Permission to change the mutation flag
+
+Before changing `TADX_ENABLE_MUTATIONS`, agents must obtain explicit user permission for that setting change and its scope.
+This applies to enabling, disabling, or unsetting it through any mechanism, including command overrides, process or session environments, wrappers, scripts, shell profiles, and persistent user or machine settings.
+A request to perform a Tableau operation does not authorize changing this flag.
+Reuse prior permission only when it explicitly covers the same setting change and scope; session permission does not authorize persistence.
+Ask one short question, for example: "May I enable remote mutations for this session, allowing TADX to create, change, or delete Tableau resources?"
+For a persistent change, name its scope and explain that it affects future shells.
+An already enabled flag does not authorize a remote operation; keep the requested operation within its separately authorized scope.
 
 ## Catalog versus live reads
 
@@ -53,6 +63,7 @@ Request every required refresh scope together.
 The default refresh collects inventory without permissions.
 Include `permissions` explicitly in `--scope` for a bulk permission inventory.
 Treat the catalog as a cache, not authoritative truth for consequential remote changes.
+Refresh preserves independently cached schema, Pulse, and unrequested inventory observations without changing their timestamps or freshness.
 An item-level permission denial can produce a usable `partial` catalog with explicit warnings and `complete: false`.
 Inspect `tadx catalog status --full` before treating cached permission coverage as complete.
 Older catalog schemas require an explicit refresh; ordinary reads do not rebuild the cache.

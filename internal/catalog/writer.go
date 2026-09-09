@@ -2,10 +2,14 @@ package catalog
 
 import (
 	"context"
+	"crypto/sha256"
 	"database/sql"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
+	"os"
 	"sort"
 	"strings"
 	"sync"
@@ -20,6 +24,9 @@ type GenerationWriter struct {
 	mu                 sync.Mutex
 	closed             bool
 	partialPermissions bool
+	publicationTarget  *Store
+	stagingDirectory   string
+	stagedRows         int
 }
 
 func (w *GenerationWriter) WriteBatch(ctx context.Context, b Batch) error {
@@ -37,6 +44,9 @@ func (w *GenerationWriter) WriteBatch(ctx context.Context, b Batch) error {
 	}
 	if len(b.Rows) > maxBatchRows {
 		return fmt.Errorf("catalog scope %q batch exceeds %d-row limit", b.Scope, maxBatchRows)
+	}
+	if w.publicationTarget != nil && w.stagedRows+len(b.Rows) > maximumResourceScopeRows {
+		return fmt.Errorf("catalog staging exceeds %d-row limit", maximumResourceScopeRows)
 	}
 	var admitted int
 	if err := w.tx.QueryRowContext(ctx, `SELECT count(*) FROM generation_scopes WHERE generation_key=? AND scope=?`, w.key, b.Scope).Scan(&admitted); err != nil {
@@ -61,6 +71,7 @@ func (w *GenerationWriter) WriteBatch(ctx context.Context, b Batch) error {
 		if _, err := prepared.ExecContext(ctx, append([]any{w.key}, row...)...); err != nil {
 			return fmt.Errorf("insert catalog scope %q row %d: %w", b.Scope, index, err)
 		}
+		w.stagedRows++
 	}
 	return nil
 }
@@ -132,6 +143,12 @@ func (w *GenerationWriter) Publish(ctx context.Context) (ReplaceResult, error) {
 	if err != nil {
 		return ReplaceResult{}, err
 	}
+	return w.publishReady(ctx, count, fingerprint)
+}
+
+// publishReady promotes already normalized and fingerprinted local rows.
+// Refresh runs this work in staging before acquiring the active write lock.
+func (w *GenerationWriter) publishReady(ctx context.Context, count int, fingerprint string) (ReplaceResult, error) {
 	id := w.metadata.ID
 	if id == "" {
 		id = "sha256:" + fingerprint
@@ -141,7 +158,7 @@ func (w *GenerationWriter) Publish(ctx context.Context) (ReplaceResult, error) {
 	}
 	var existingKey int64
 	var existingFingerprint string
-	err = w.tx.QueryRowContext(ctx, `SELECT generation_key,fingerprint FROM generations WHERE environment=? AND site=? AND id=?`, w.metadata.Environment, w.metadata.Site, id).Scan(&existingKey, &existingFingerprint)
+	err := w.tx.QueryRowContext(ctx, `SELECT generation_key,fingerprint FROM generations WHERE environment=? AND site=? AND id=?`, w.metadata.Environment, w.metadata.Site, id).Scan(&existingKey, &existingFingerprint)
 	if err == nil {
 		if existingFingerprint != fingerprint {
 			return ReplaceResult{}, fmt.Errorf("catalog generation ID %q already identifies different content", id)
@@ -187,30 +204,47 @@ func (w *GenerationWriter) Publish(ctx context.Context) (ReplaceResult, error) {
 	if err := w.tx.Commit(); err != nil {
 		return ReplaceResult{}, err
 	}
-	w.closed = true
+	if w.publicationTarget != nil {
+		defer os.RemoveAll(w.stagingDirectory)
+	}
 	if err := w.db.Close(); err != nil {
 		return ReplaceResult{}, err
+	}
+	w.closed = true
+	if w.publicationTarget != nil {
+		return w.publicationTarget.publishStaged(ctx, w, count, fingerprint)
 	}
 	return ReplaceResult{id, databaseRelativePath, count}, nil
 }
 
 func (w *GenerationWriter) replaceResourceEntries(ctx context.Context, generationID string) error {
-	if _, err := w.tx.ExecContext(ctx, `DELETE FROM resource_entries WHERE environment=? AND site=?`, w.metadata.Environment, w.metadata.Site); err != nil {
+	requested, err := w.requestedScopes(ctx)
+	if err != nil {
+		return err
+	}
+	selectedKinds := `SELECT CASE scope WHEN 'users' THEN 'user' WHEN 'groups' THEN 'group' WHEN 'projects' THEN 'project' WHEN 'workbooks' THEN 'workbook' WHEN 'datasources' THEN 'datasource' WHEN 'flows' THEN 'flow' WHEN 'views' THEN 'view' END FROM generation_scopes WHERE generation_key=? AND requested=1 AND scope<>'permissions'`
+	if _, err := w.tx.ExecContext(ctx, `DELETE FROM resource_entries WHERE environment=? AND site=? AND kind IN (`+selectedKinds+`)`, w.metadata.Environment, w.metadata.Site, w.key); err != nil {
 		return fmt.Errorf("replace catalog resource entries: %w", err)
 	}
-	_, err := w.tx.ExecContext(ctx, `INSERT INTO resource_entries(environment,site,kind,luid,name,project_path,project_luid,owner,payload,coverage,observed_at)
+	_, err = w.tx.ExecContext(ctx, `INSERT INTO resource_entries(environment,site,kind,luid,name,project_path,project_luid,owner,payload,coverage,observed_at)
 		SELECT ?,?,kind,luid,name,project_path,'',owner,X'','summary',? FROM catalog_records WHERE generation_key=? AND requested=1`,
 		w.metadata.Environment, w.metadata.Site, w.metadata.GeneratedAt.UTC().Format(generationTimeLayout), w.key)
 	if err != nil {
 		return fmt.Errorf("seed catalog resource entries: %w", err)
 	}
 	for _, scope := range []string{"workbooks", "datasources", "flows"} {
+		if !requested[scope] {
+			continue
+		}
 		if _, err := w.tx.ExecContext(ctx, "UPDATE resource_entries SET project_luid=COALESCE((SELECT project_id FROM "+scope+" WHERE generation_key=? AND id=resource_entries.luid),'') WHERE environment=? AND site=? AND kind=?", w.key, w.metadata.Environment, w.metadata.Site, strings.TrimSuffix(scope, "s")); err != nil {
 			return err
 		}
 	}
 	// Preserve the complete list projection and add canonical identity fields.
 	for _, scope := range []string{"users", "groups", "projects", "workbooks", "datasources", "flows"} {
+		if !requested[scope] {
+			continue
+		}
 		kind := strings.TrimSuffix(scope, "s")
 		_, err := w.tx.ExecContext(ctx, `UPDATE resource_entries SET payload=CAST(json_set(
 			(SELECT list_payload FROM `+scope+` WHERE generation_key=? AND id=resource_entries.luid),
@@ -222,7 +256,7 @@ func (w *GenerationWriter) replaceResourceEntries(ctx context.Context, generatio
 			return fmt.Errorf("seed catalog %s list payloads: %w", kind, err)
 		}
 	}
-	if _, err := w.tx.ExecContext(ctx, `DELETE FROM resource_scope_snapshots WHERE environment=? AND site=?`, w.metadata.Environment, w.metadata.Site); err != nil {
+	if _, err := w.tx.ExecContext(ctx, `DELETE FROM resource_scope_snapshots WHERE environment=? AND site=? AND kind IN (`+selectedKinds+`)`, w.metadata.Environment, w.metadata.Site, w.key); err != nil {
 		return fmt.Errorf("replace catalog resource scope snapshots: %w", err)
 	}
 	_, err = w.tx.ExecContext(ctx, `INSERT INTO resource_scope_snapshots(environment,site,kind,generation_id,generated_at,complete,source,record_count)
@@ -240,6 +274,9 @@ func (w *GenerationWriter) replaceResourceEntries(ctx context.Context, generatio
 func (w *GenerationWriter) Rollback() error {
 	w.mu.Lock()
 	defer w.mu.Unlock()
+	if w.stagingDirectory != "" {
+		defer os.RemoveAll(w.stagingDirectory)
+	}
 	if w.closed {
 		return nil
 	}
@@ -471,71 +508,85 @@ func (w *GenerationWriter) totalHydratedRows(ctx context.Context) (int, error) {
 }
 
 func (w *GenerationWriter) fingerprint(ctx context.Context) (string, error) {
-	// The fingerprint is the content identity backing UNIQUE(environment,site,
-	// fingerprint). The caller-assigned generation ID is a mutable label, not
-	// content, so it is excluded here; otherwise identical content published under
-	// two different IDs would produce two different fingerprints and defeat the
-	// constraint. The real refresh path leaves ID empty, so this changes no
-	// generated identifier there.
+	// Stream the same canonical JSON representation as the original map encoding,
+	// retaining content identities without materializing the full inventory.
 	metadata := w.metadata
 	metadata.ID = ""
-	payload := struct {
-		Metadata           GenerationMetadata
-		Tables             map[string][][]any
-		PartialPermissions bool `json:",omitempty"`
-	}{metadata, map[string][][]any{}, w.partialPermissions}
-	for scope, columns := range batchColumns {
-		rows, err := w.tx.QueryContext(ctx, fmt.Sprintf(`SELECT %s FROM %s WHERE generation_key=? ORDER BY %s`, strings.Join(columns, ","), scope, strings.Join(columns, ",")), w.key)
+	encoded, err := json.Marshal(metadata)
+	if err != nil {
+		return "", err
+	}
+	hash := sha256.New()
+	io.WriteString(hash, `{"Metadata":`)
+	hash.Write(encoded)
+	io.WriteString(hash, `,"Tables":{`)
+	tables := make([]string, 0, len(batchColumns)+1)
+	for table := range batchColumns {
+		tables = append(tables, table)
+	}
+	tables = append(tables, "catalog_records")
+	sort.Strings(tables)
+	firstTable := true
+	for _, table := range tables {
+		columns := batchColumns[table]
+		order := strings.Join(columns, ",")
+		if table == "catalog_records" {
+			columns = []string{"luid", "kind", "name", "project_path", "owner", "requested"}
+			order = "kind,name,project_path,luid"
+		}
+		rows, err := w.tx.QueryContext(ctx, fmt.Sprintf("SELECT %s FROM %s WHERE generation_key=? ORDER BY %s", strings.Join(columns, ","), table, order), w.key)
 		if err != nil {
 			return "", err
 		}
+		firstRow := true
 		for rows.Next() {
 			values := make([]any, len(columns))
 			targets := make([]any, len(columns))
-			for i := range values {
-				targets[i] = &values[i]
+			for index := range values {
+				targets[index] = &values[index]
 			}
 			if err := rows.Scan(targets...); err != nil {
 				rows.Close()
 				return "", err
 			}
-			payload.Tables[scope] = append(payload.Tables[scope], values)
+			if firstRow {
+				if !firstTable {
+					io.WriteString(hash, ",")
+				}
+				name, _ := json.Marshal(table)
+				hash.Write(name)
+				io.WriteString(hash, ":[")
+				firstTable = false
+			} else {
+				io.WriteString(hash, ",")
+			}
+			value, err := json.Marshal(values)
+			if err != nil {
+				rows.Close()
+				return "", err
+			}
+			hash.Write(value)
+			firstRow = false
+		}
+		if err := rows.Err(); err != nil {
+			rows.Close()
+			return "", err
 		}
 		if err := rows.Close(); err != nil {
 			return "", err
 		}
-		if err := rows.Err(); err != nil {
-			return "", err
+		if !firstRow {
+			io.WriteString(hash, "]")
 		}
 	}
-	rows, err := w.tx.QueryContext(ctx, `SELECT luid,kind,name,project_path,owner,requested FROM catalog_records WHERE generation_key=? ORDER BY kind,name,project_path,luid`, w.key)
-	if err != nil {
-		return "", err
+	io.WriteString(hash, "}")
+	if w.partialPermissions {
+		io.WriteString(hash, `,"PartialPermissions":true`)
 	}
-	for rows.Next() {
-		values := make([]any, 6)
-		targets := make([]any, 6)
-		for i := range values {
-			targets[i] = &values[i]
-		}
-		if err := rows.Scan(targets...); err != nil {
-			rows.Close()
-			return "", err
-		}
-		payload.Tables["catalog_records"] = append(payload.Tables["catalog_records"], values)
-	}
-	if err := rows.Close(); err != nil {
-		return "", err
-	}
-	if err := rows.Err(); err != nil {
-		return "", err
-	}
-	data, err := json.Marshal(payload)
-	if err != nil {
-		return "", err
-	}
-	return digestID(data), nil
+	io.WriteString(hash, "}")
+	return hex.EncodeToString(hash.Sum(nil)), nil
 }
+
 func validateBatchRow(scope string, index int, row []any) error {
 	required := 2
 	if scope == "permissions" {

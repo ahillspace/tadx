@@ -85,7 +85,9 @@ Retain these projects and their descendants; exact LUID operations must remain u
 Authenticate to Tableau with PATs only.
 Consequential mutations run by default and support `--preview` for a read-only plan.
 Remote mutation commands and capabilities remain discoverable when execution is disabled.
-`TADX_ENABLE_MUTATIONS=1` enables mutation commands.
+`TADX_ENABLE_MUTATIONS=1` enables remote mutation execution; supported read-only previews remain available when it is off.
+Agents must obtain explicit user permission before changing this flag, including disabling it or setting a command-only override.
+Remote-operation authorization does not authorize the setting change; follow the scope and single-question guidance in [AGENTS.md](AGENTS.md).
 `--env` is an alias for `--environment`, including explicit mutation targets.
 `--force` does not bypass mutation policy.
 Persist PATs only after explicit user approval through the native OS credential store.

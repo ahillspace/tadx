@@ -363,7 +363,7 @@ func (s *Store) BeginGeneration(ctx context.Context, metadata GenerationMetadata
 // BeginRefreshGeneration permits replacement of an obsolete disposable catalog
 // schema, transactionally with successful explicit refresh publication only.
 func (s *Store) BeginRefreshGeneration(ctx context.Context, metadata GenerationMetadata) (*GenerationWriter, error) {
-	return s.beginGeneration(ctx, metadata, true)
+	return s.beginStagedRefresh(ctx, metadata)
 }
 
 func (s *Store) beginGeneration(ctx context.Context, metadata GenerationMetadata, refresh bool) (*GenerationWriter, error) {

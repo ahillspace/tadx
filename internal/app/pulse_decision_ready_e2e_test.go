@@ -37,7 +37,7 @@ func TestPulseCreateCompactPreviewShowsConsequentialSettingsThroughCLI(t *testin
 	}))
 	defer server.Close()
 	var out bytes.Buffer
-	code := app.Run(context.Background(), []string{"pulse", "definition", "create", "--environment", "test", "--name", "Revenue", "--datasource-id", "datasource-1", "--measure-field", "Sales", "--date-field", "Date", "--dimension", "Region", "--minimum-granularity", "MONTH", "--number-format", "CURRENCY", "--currency", "EUR", "--sentiment", "DOWN", "--temporality", "OVER_TIME", "--running-total", "--preview"}, &out, pulseEfficiencyOptions(t, server))
+	code := app.Run(context.Background(), []string{"pulse", "definition", "create", "--environment", "test", "--name", "Revenue", "--datasource-id", "datasource-1", "--measure-field", "Sales", "--date-field", "Date", "--dimension", "Region", "--minimum-granularity", "MONTH", "--number-format", "CURRENCY", "--currency", "EUR", "--sentiment", "DOWN", "--temporality", "OVER_TIME", "--running-total", "--preview"}, &out, disabledPreviewOptions(pulseEfficiencyOptions(t, server)))
 	if code != 0 {
 		t.Fatalf("code=%d output=%s", code, out.String())
 	}
@@ -67,7 +67,7 @@ func TestPulseForkCompactPreviewIncludesInheritedPopulationThroughCLI(t *testing
 	}))
 	defer server.Close()
 	var out bytes.Buffer
-	code := app.Run(context.Background(), []string{"pulse", "metric", "fork", "--environment", "test", "--id", "source", "--filter", "Region=West", "--preview"}, &out, pulseEfficiencyOptions(t, server))
+	code := app.Run(context.Background(), []string{"pulse", "metric", "fork", "--environment", "test", "--id", "source", "--filter", "Region=West", "--preview"}, &out, disabledPreviewOptions(pulseEfficiencyOptions(t, server)))
 	if code != 0 {
 		t.Fatalf("code=%d output=%s", code, out.String())
 	}
@@ -159,4 +159,9 @@ func TestPulseFollowupKeepsNondefaultEnvironmentAndQuotesExactIdentityThroughCLI
 	if len(result.Help) != 1 || result.Help[0] != want {
 		t.Fatalf("help=%v want=%q", result.Help, want)
 	}
+}
+
+func disabledPreviewOptions(options app.Options) app.Options {
+	options.MutationsEnabled = false
+	return options
 }

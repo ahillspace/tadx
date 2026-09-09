@@ -13,6 +13,14 @@ type adapter struct {
 	drift   bool
 }
 
+func TestPreviewDoesNotAddMember(t *testing.T) {
+	a := &adapter{members: []add.Member{{LUID: "other"}}}
+	out, err := add.New(a, a).Execute(context.Background(), add.Input{Environment: "dev", GroupLUID: "group-1", UserLUID: "user-1"}, true)
+	if err != nil || out.Plan.Mode != "preview" || out.Plan.NoOp || out.Result != nil || a.writes != 0 {
+		t.Fatalf("preview=%#v err=%v writes=%d", out, err, a.writes)
+	}
+}
+
 func (a *adapter) ResolveGroup(context.Context, string) (add.Group, error) {
 	a.reads++
 	if a.drift && a.reads == 2 {

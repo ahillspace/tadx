@@ -58,9 +58,11 @@ Enforced by: registry validation (every implemented command has exactly one regi
 ## 7. Agent ergonomics and safety
 
 Rule: the interface is safe for an autonomous caller and legible to a human.
-Do: keep mutation commands discoverable; block their execution when mutation policy is disabled; run enabled mutations by default; support --preview; require an explicit write target; redact secrets everywhere; use exit codes 0, 1, and 2; include Tableau request and job IDs in errors where available; emit a required human-readable view for artifacts.
-Do not: add a second confirmation prompt or a production-only prompt; let --force bypass mutation policy; let discovery visibility imply permission; persist secrets TADX handles.
+Do: keep mutation commands discoverable; block remote writes when mutation policy is disabled while allowing supported read-only previews; run enabled mutations by default; support --preview; require an explicit write target; redact secrets everywhere; use exit codes 0, 1, and 2; include Tableau request and job IDs in errors where available; emit a required human-readable view for artifacts.
+Do not: add a second CLI confirmation prompt or a production-only prompt; let --force bypass mutation policy; let discovery visibility imply permission; persist secrets TADX handles.
 Enforced by: mutation and preview tests; mutation-discovery tests; secret-redaction tests; exit-code mapping tests.
+Agents must obtain explicit user permission before changing `TADX_ENABLE_MUTATIONS` by any mechanism or scope; a requested remote operation does not authorize that setting change.
+Follow [AGENTS.md](../AGENTS.md) for the single-question approval and persistence boundaries.
 
 For artifact publish, an explicit write target means the preview contains the fully resolved environment, site, project, and collision decision.
 The caller does not need to repeat `--environment` when trusted artifact provenance supplies the source environment, site, and project defaults.

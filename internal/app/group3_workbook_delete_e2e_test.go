@@ -40,7 +40,7 @@ func TestWorkbookDeletePreviewAndApplyThroughCLI(t *testing.T) {
 	configPath := writePhaseOneConfigWithSite(t, server.URL, "team-site")
 	t.Setenv("PROD_PAT_NAME", "pat-name")
 	t.Setenv("PROD_PAT_SECRET", "pat-secret")
-	options := app.Options{MutationsEnabled: true, ConfigPath: configPath, HTTPClient: server.Client()}
+	options := app.Options{MutationsEnabled: false, ConfigPath: configPath, HTTPClient: server.Client()}
 
 	preview := runWorkbookDeleteCLI(t, options, "content", "workbook", "delete", "--environment", "production", "--id", "wb-1", "--preview")
 	for _, want := range []string{"mode: preview", "operation: workbook.delete", "luid: wb-1", "details: \"--full\""} {
@@ -52,6 +52,7 @@ func TestWorkbookDeletePreviewAndApplyThroughCLI(t *testing.T) {
 		t.Fatalf("preview made %d delete requests", deletes.Load())
 	}
 
+	options.MutationsEnabled = true
 	applied := runWorkbookDeleteCLI(t, options, "content", "workbook", "delete", "--environment", "production", "--id", "wb-1", "--full")
 	for _, want := range []string{"status: succeeded", "workbook_luid: wb-1", "tableau_request_id: delete-request"} {
 		if !strings.Contains(applied, want) {

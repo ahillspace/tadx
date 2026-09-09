@@ -46,7 +46,11 @@ Review `--preview` before every authorized create or fork; its default summary i
 Use `--full` for expanded evidence or an explicitly incomplete summary, and do not treat omitted settings as reviewed.
 Verify the saved configuration from returned read-back or an exact inspection when needed.
 A preview proves local validation, not Tableau acceptance or numeric correctness.
-Mutations, including their previews, require `TADX_ENABLE_MUTATIONS=1`; that setting does not grant user authorization.
+Execution requires `TADX_ENABLE_MUTATIONS=1`, but supported read-only previews remain available when the gate is off.
+A preview does not authorize execution.
+Before enabling, disabling, or unsetting this flag by any mechanism, obtain explicit user permission for that setting change and its scope.
+A requested Pulse operation does not authorize changing the flag; prior permission applies only to the explicitly approved setting change and scope.
+Follow the TADX root skill's single-question approval guidance, including future-shell scope for persistent changes.
 Use the installed TADX root Guidance for authentication, workspace selection, and general lifecycle boundaries.
 
 Retain exact selected fields, measure meaning, date, units, slicer set and order, metric filters and period, reviewed flags, returned IDs, and verification status.

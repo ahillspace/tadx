@@ -105,7 +105,9 @@ Datasource publish never infers create, overwrite, append, or replace mode.
 
 ## Mutations and uncertain outcomes
 
-Add `--preview` to resolve and review a mutation without applying it.
+Add supported `--preview` to resolve and review a mutation without applying it, even when the mutation gate is off.
+A preview does not authorize execution or changing `TADX_ENABLE_MUTATIONS`.
+Before changing the flag by any mechanism, follow the explicit setting-change approval rule in the TADX root skill.
 Run without `--preview` only when the requested mutation is authorized and the mutation gate is enabled.
 Move operations are same-site operations, not cross-site migrations.
 Content `delete` affects Tableau, while `workspace artifact delete` affects only local managed state.

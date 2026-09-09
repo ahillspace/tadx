@@ -314,7 +314,7 @@ func TestCapabilityGetReportsMutationExecutionState(t *testing.T) {
 func TestRemoteMutationGatePrecedesRuntimeSetupAcrossDomains(t *testing.T) {
 	tests := [][]string{
 		{"content", "workbook", "delete", "--environment", "missing", "--id", "workbook-1"},
-		{"content", "workbook", "delete", "--environment", "missing", "--id", "workbook-1", "--preview"},
+		{"content", "workbook", "delete", "--environment", "missing", "--id", "workbook-1", "--preview=false"},
 		{"content", "datasource", "delete", "--environment", "missing", "--id", "datasource-1"},
 		{"content", "flow", "delete", "--environment", "missing", "--id", "flow-1"},
 		{"content", "project", "create", "--environment", "missing", "--name", "New project"},

@@ -57,7 +57,7 @@ Field rules:
 
 - `Local write`, `Remote mutation`, and `Supports --preview` are independent.
 - Remote mutation commands and capability rows are always discoverable.
-- `TADX_ENABLE_MUTATIONS=1` enables commands whose `Remote mutation` is `Yes`.
+- `TADX_ENABLE_MUTATIONS=1` enables remote execution for commands whose `Remote mutation` is `Yes`; supported read-only previews do not require it.
 - Enabled mutation commands run by default and support `--preview` for a read-only plan.
 - `Artifact effect` concerns managed Tableau resource artifacts, not config/catalog housekeeping.
 - Deferred, rejected, and out-of-scope boundaries are not duplicated here; they are listed once in §5.
@@ -211,7 +211,7 @@ Tableau LUIDs are authoritative remote identity. Names, project paths, local pat
 - runs by default when mutation execution is enabled,
 - performs no mutation when the caller supplies `--preview`,
 - remains visible in command help and capability discovery,
-- returns `mutation.disabled` before command execution unless `TADX_ENABLE_MUTATIONS=1`,
+- returns `mutation.disabled` before remote mutation execution unless `TADX_ENABLE_MUTATIONS=1`, while supported read-only previews remain available with the gate off,
 - is not authorized merely because it is discoverable or enabled,
 - cannot use `--force` as a substitute for mutation authorization.
 
@@ -234,7 +234,8 @@ The preview includes the environment/site, resource identity, destination, chang
 When artifact provenance resolves the target, TADX shows the resolved environment, content name, and LUID.
 Before mutation, TADX re-resolves that LUID and fails if it was renamed, moved, or deleted instead of targeting another resource.
 A recorded source environment absent from local configuration is a deterministic error.
-There is no second confirmation prompt and no production-only prompt.
+The CLI adds no second confirmation prompt and no production-only prompt.
+An agent must separately obtain explicit user permission before changing `TADX_ENABLE_MUTATIONS` through any mechanism or scope; authorization for the remote operation is not permission to change this setting.
 
 TADX does not promise generic optimistic concurrency or remote-change detection. Tableau remains authoritative. There are no generic automatic retries; a capability may add only a bounded retry proven safe and deterministic.
 

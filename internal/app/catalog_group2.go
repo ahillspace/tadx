@@ -93,16 +93,16 @@ func (h catalogHydrator) Hydrate(ctx context.Context, input catalogrefresh.Hydra
 	if err := writer.CompleteScopes(ctx, scopeStrings(collected)); err != nil {
 		return catalogrefresh.HydrationResult{}, err
 	}
-	published, err := writer.Publish(ctx)
-	if err != nil {
-		return catalogrefresh.HydrationResult{}, err
-	}
 	counts, total, err := catalogScopeCounts(plan.Collected, result.Counts)
 	if err != nil {
 		return catalogrefresh.HydrationResult{}, err
 	}
 	if result.Requests > math.MaxInt {
 		return catalogrefresh.HydrationResult{}, errors.New("catalog request count exceeds the receipt bound")
+	}
+	published, err := writer.Publish(ctx)
+	if err != nil {
+		return catalogrefresh.HydrationResult{}, err
 	}
 	return catalogrefresh.HydrationResult{
 		GenerationID: published.GenerationID, GeneratedAt: generatedAt, Complete: result.DeniedPermissions == 0, Source: catalogSourceName,

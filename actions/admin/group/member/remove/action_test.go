@@ -13,6 +13,14 @@ type adapter struct {
 	drift   bool
 }
 
+func TestPreviewDoesNotRemoveMember(t *testing.T) {
+	a := &adapter{members: []remove.Member{{LUID: "user-1"}, {LUID: "other"}}}
+	out, err := remove.New(a, a).Execute(context.Background(), remove.Input{Environment: "dev", GroupLUID: "group-1", UserLUID: "user-1"}, true)
+	if err != nil || out.Plan.Mode != "preview" || out.Plan.NoOp || out.Result != nil || a.writes != 0 {
+		t.Fatalf("preview=%#v err=%v writes=%d", out, err, a.writes)
+	}
+}
+
 func (a *adapter) ResolveGroup(context.Context, string) (remove.Group, error) {
 	a.reads++
 	if a.drift && a.reads == 2 {
