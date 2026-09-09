@@ -50,6 +50,21 @@ func TestSingleSourceListSearchPropagatesTotal(t *testing.T) {
 	}
 }
 
+func TestGroupedSearchRetainsUnresolvedTruncationAcrossActionPages(t *testing.T) {
+	for _, unresolved := range []bool{false, true} {
+		pages := []resourcesearch.Page{
+			{Items: []resourcesearch.Item{{LUID: "g", Type: "group", Name: "Group"}}, MoreAvailable: unresolved},
+			{Items: []resourcesearch.Item{{LUID: "u1", Type: "user", Name: "User1"}}, NextCursor: "users-next", MoreAvailable: true},
+			{Items: []resourcesearch.Item{{LUID: "u2", Type: "user", Name: "User2"}}},
+		}
+		adapter := &completeLiveSearchAdapter{lister: &completeListPagerFake{pages: pages}}
+		out, err := searchaction.New(globalSearchSource{lists: adapter}).Execute(context.Background(), searchaction.Input{Environment: "dev", SiteResolved: true, Type: "admin", Limit: 200})
+		if err != nil || out.Page.MoreAvailable != unresolved || len(out.Items) != 3 {
+			t.Fatalf("unresolved=%t out=%+v err=%v", unresolved, out, err)
+		}
+	}
+}
+
 func TestReadThroughCatalogSearchContinuesAcrossObservationTimes(t *testing.T) {
 	now := time.Date(2026, 9, 6, 12, 0, 0, 0, time.UTC)
 	store := catalog.NewStore(t.TempDir(), func() time.Time { return now })
@@ -71,9 +86,9 @@ func TestReadThroughCatalogSearchContinuesAcrossObservationTimes(t *testing.T) {
 	}
 }
 
-func TestInventoryRejectsAmbiguousSlashProjectName(t *testing.T) {
-	_, err := inventoryProjects(tableaucatalog.InventorySnapshot{Scope: tableaucatalog.ScopeProjects, Rows: [][]any{{"p", "A/B", ""}}})
-	if err == nil {
-		t.Fatal("ambiguous slash project name accepted")
+func TestInventoryPreservesSlashProjectDisplayName(t *testing.T) {
+	projects, err := inventoryProjects(tableaucatalog.InventorySnapshot{Scope: tableaucatalog.ScopeProjects, Rows: [][]any{{"p", "A/B", ""}}})
+	if err != nil || projects["p"].path != "A/B" {
+		t.Fatalf("slash project = %#v, error = %v", projects, err)
 	}
 }

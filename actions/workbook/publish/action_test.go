@@ -422,7 +422,7 @@ func TestOutputGoldens(t *testing.T) {
 	if err := output.Render(&compact, value); err != nil {
 		t.Fatal(err)
 	}
-	for _, omitted := range []string{"artifact_fingerprint", "sha256:diagnostic", "substeps", "Detailed portability warning.", "tableau_request_id", "request-1", "Detailed validation warning."} {
+	for _, omitted := range []string{"artifact_fingerprint", "sha256:diagnostic", "substeps", "tableau_request_id", "request-1", "Detailed validation warning."} {
 		if strings.Contains(compact.String(), omitted) {
 			t.Fatalf("compact output exposed %q:\n%s", omitted, compact.String())
 		}
@@ -461,6 +461,10 @@ func TestFullOutputBoundsDetailedWarnings(t *testing.T) {
 	}
 	if len(full.Plan.Warnings) != 20 || full.Plan.WarningsOmitted != 5 {
 		t.Fatalf("plan warnings = %d, omitted = %d", len(full.Plan.Warnings), full.Plan.WarningsOmitted)
+	}
+	compact := value.CompactOutput().(publish.CompactResult)
+	if len(compact.Plan.Warnings) != 20 || compact.Plan.WarningsOmitted != 5 {
+		t.Fatalf("compact warning evidence must be bounded and explicit: %#v", compact.Plan)
 	}
 	if len(full.Result.ValidationWarnings) != 20 || full.Result.ValidationWarningsOmitted != 5 {
 		t.Fatalf("validation warnings = %d, omitted = %d", len(full.Result.ValidationWarnings), full.Result.ValidationWarningsOmitted)

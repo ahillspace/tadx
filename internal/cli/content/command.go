@@ -99,7 +99,7 @@ func New(deps Dependencies) *cobra.Command {
 		Use:   "content",
 		Short: "Operate Tableau content lifecycle",
 		Long: "Operate workbook, datasource, flow, project, and lineage lifecycle with TADX.\n\n" +
-			"For analytical reads, use Tableau MCP tools such as list-views, get-view, get-view-data, get-view-image, get-datasource-metadata, and query-datasource.",
+			"TADX supports content discovery and schema inspection; it does not query datasource values or render views.",
 	}
 	workbook := &cobra.Command{Use: "workbook", Short: "Operate Tableau workbooks"}
 	workbook.AddCommand(newPull(deps), newPublish(deps))
@@ -227,18 +227,16 @@ func newPublish(deps Dependencies) *cobra.Command {
 			if err := cobra.NoArgs(command, args); err != nil {
 				return clierr.Usage("workbook.publish", err)
 			}
-			if len(artifacts) == 0 {
-				return clierr.Usage("workbook.publish", errors.New("--artifact is required"))
-			}
-			if err := validateArtifactSelection(artifacts, "workbook", input.Name); err != nil {
+			var err error
+			artifacts, err = publishSelections(artifacts, "workbook", input.Name, input.File, input.ArtifactID, input.ArtifactName)
+			if err != nil {
 				return clierr.Usage("workbook.publish", err)
 			}
 			input.ArtifactPath = artifacts[0]
-			// With no explicit --environment the publish target defaults to the
-			// artifact's recorded source (environment, site, project, name, and
-			// workbook LUID). An explicit --environment requires an explicit project.
+			// The command root resolves the write environment independently of
+			// artifact provenance. The destination project remains explicit.
 			if input.Environment != "" && projectID == "" && projectPath == "" {
-				return clierr.Usage("workbook.publish", errors.New("one of --project-id or --project is required with an explicit --environment"))
+				return clierr.Usage("workbook.publish", errors.New("choose a destination with --project-id or --project"))
 			}
 			input.ProjectLUID, input.ProjectPath = projectID, projectPath
 			return nil
@@ -254,12 +252,15 @@ func newPublish(deps Dependencies) *cobra.Command {
 	}
 	command.Flags().StringVar(&input.Workspace, "workspace", "", "logical workspace name; uses deterministic defaults when omitted")
 	command.Flags().StringArrayVar(&artifacts, "artifact", nil, managedArtifactFlagHelp("workbook", "Finance--identity")+"; repeat for up to 100 items, processed sequentially")
-	command.Flags().StringVar(&input.Environment, "environment", "", "explicit write environment alias; defaults to the artifact's recorded source environment")
+	command.Flags().StringVar(&input.File, "file", "", "native .twb or .twbx file; no managed artifact required")
+	command.Flags().StringVar(&input.ArtifactID, "id", "", "exact source workbook LUID within the resolved workspace")
+	command.Flags().StringVar(&input.ArtifactName, "artifact-name", "", "unique exact managed workbook name within the resolved workspace")
+	command.Flags().StringVar(&input.Environment, "environment", "", "write environment alias; may be omitted when exactly one environment is configured")
 	command.Flags().StringVar(&input.Name, "name", "", "explicit published workbook name; defaults to artifact name")
 	command.Flags().StringVar(&projectID, "project-id", "", "authoritative destination project LUID")
 	command.Flags().StringVar(&projectPath, "project", "", "exact slash-delimited destination project path")
 	command.Flags().BoolVar(&input.Overwrite, "overwrite", false, "replace the exact colliding workbook")
-	command.Flags().BoolVar(&input.AsJob, "as-job", false, "publish asynchronously and poll to a bounded terminal result")
+	command.Flags().BoolVar(&input.AsJob, "as-job", false, "Submit as a server-side job and wait for completion.")
 	command.Flags().BoolVar(&preview, "preview", false, "preview the remote mutation without performing it")
 	return command
 }

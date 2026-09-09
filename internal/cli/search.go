@@ -40,6 +40,7 @@ func newSearch(searcher Searcher, renderer Renderer) *cobra.Command {
 	command.Flags().StringVar(&input.Type, "type", "", "resource type or family: workbook, datasource, flow, project, user, group, definition, metric, content, admin, or pulse")
 	command.Flags().BoolVar(&input.Catalog, "catalog", false, "use local catalog data without contacting Tableau")
 	command.Flags().StringVar(&input.Cursor, "cursor", "", "continue from a prior result cursor")
-	command.Flags().IntVar(&input.Limit, "limit", 20, "maximum results to render")
+	_ = command.Flags().MarkHidden("cursor")
+	command.Flags().IntVar(&input.Limit, "limit", 20, "maximum results to return, from 1 through 2000; provider continuation is internal")
 	return command
 }

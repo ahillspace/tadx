@@ -2,7 +2,7 @@ page:
   returned: 1
   total: 2
   limit: 1
-  next_cursor: "1"
+  more_available: true
 capabilities[1]{id,owner,disposition,state,blocked,execution_enabled}:
   content.datasource.list,cli,ship,planned,false,false
-help[2]: tadx capability get <id>,tadx capability list --domain content --limit 1 --cursor 1
+help[2]: tadx capability get content.datasource.list,tadx capability list --domain content --limit 2

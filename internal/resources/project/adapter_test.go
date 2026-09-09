@@ -125,16 +125,47 @@ func TestAdapterRejectsConflictingProjectRowsAndCycles(t *testing.T) {
 	}
 }
 
-func TestAdapterRejectsProjectNameContainingPathSeparator(t *testing.T) {
+func TestAdapterPreservesLiteralProjectNamesAndRejectsOnlyAmbiguousPaths(t *testing.T) {
+	items := []tableauproject.Project{
+		{LUID: "literal", Name: "Ops/Reports"},
+		{LUID: "root", Name: "Ops"},
+		{LUID: "nested", Name: "Reports", ParentLUID: "root"},
+		{LUID: "unique", Name: "Sales/Analysis"},
+		{LUID: "percent", Name: "Ops%2FReports"},
+		{LUID: "child", Name: "Daily", ParentLUID: "literal"},
+	}
 	client := &projectClient{pages: map[int]tableauproject.Page{
-		1: {Number: 1, Size: 2, Total: 1, Items: []tableauproject.Project{{LUID: "p", Name: "Ops/Reports"}}},
+		1: {Number: 1, Size: 1000, Total: len(items), Items: items},
 	}}
 	adapter := resourceproject.NewAdapter(client)
-	if _, err := adapter.ResolveProject(context.Background(), identity.Selector{ProjectPath: "Ops/Reports"}); err == nil || !strings.Contains(err.Error(), "not addressable by an exact project path") {
-		t.Fatalf("ResolveProject error = %v", err)
+	for _, tt := range []struct{ luid, path string }{
+		{"literal", "Ops/Reports"}, {"nested", "Ops/Reports"}, {"unique", "Sales/Analysis"}, {"child", "Ops/Reports/Daily"},
+	} {
+		project, err := adapter.ResolveProject(context.Background(), identity.Selector{LUID: identity.LUID(tt.luid)})
+		if err != nil || project.LUID != tt.luid || project.Path != tt.path {
+			t.Errorf("LUID %q: project=%#v err=%v", tt.luid, project, err)
+		}
 	}
-	if _, err := adapter.ListProjects(context.Background(), resourceproject.ListRequest{PageNumber: 1, PageSize: 2}); err == nil || !strings.Contains(err.Error(), "not addressable by an exact project path") {
-		t.Fatalf("ListProjects error = %v", err)
+	if _, err := adapter.ResolveProject(context.Background(), identity.Selector{ProjectPath: "Ops/Reports"}); err == nil || !strings.Contains(err.Error(), "ambiguous; matches LUIDs [literal, nested]") {
+		t.Errorf("colliding path error = %v", err)
+	}
+	for _, tt := range []struct{ path, luid string }{{"Sales/Analysis", "unique"}, {"Ops%2FReports", "percent"}, {"Ops/Reports/Daily", "child"}} {
+		project, err := adapter.ResolveProject(context.Background(), identity.Selector{ProjectPath: tt.path})
+		if err != nil || project.LUID != tt.luid {
+			t.Errorf("literal path %q: project=%#v err=%v", tt.path, project, err)
+		}
+	}
+	page, err := adapter.ListProjects(context.Background(), resourceproject.ListRequest{PageNumber: 1, PageSize: 1000})
+	if err != nil || len(page.Items) != len(items) || page.Items[0].Name != "Ops/Reports" {
+		t.Errorf("list must retain literal names: page=%#v err=%v", page, err)
+	}
+	paths, err := adapter.ResolveProjectPaths(context.Background(), []string{"literal", "nested", "child"})
+	if err != nil || paths["literal"] != "Ops/Reports" || paths["nested"] != "Ops/Reports" || paths["child"] != "Ops/Reports/Daily" {
+		t.Errorf("batch display paths=%#v err=%v", paths, err)
+	}
+	updated, err := adapter.NormalizeMutationProject(context.Background(), tableauproject.Project{LUID: "child", Name: "Daily/Revenue", ParentLUID: "literal"})
+	if err != nil || updated.Path != "Ops/Reports/Daily/Revenue" {
+		t.Errorf("mutation projection=%#v err=%v", updated, err)
 	}
 }
 

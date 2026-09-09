@@ -3,7 +3,6 @@ package create_test
 import (
 	"bytes"
 	"context"
-	"encoding/json"
 	"errors"
 	"os"
 	"path/filepath"
@@ -25,9 +24,9 @@ func TestOutputGolden(t *testing.T) {
 		DatasourceGoals:       []map[string]any{}, RelatedLinks: []map[string]any{},
 	}
 	output := definitioncreate.Output{
-		Plan:   definitioncreate.Plan{Mode: "execute", Operation: "pulse.definition.create", Name: "Revenue", Datasource: "datasource-1", Measure: definitioncreate.Measure{Field: "Sales", Aggregation: "AGGREGATION_SUM"}, TimeField: "Order Date", Dimensions: []string{"Region"}, Fingerprint: "sha256:value", Request: request},
+		Plan:   definitioncreate.Plan{Mode: "execute", Operation: "pulse.definition.create", Environment: "dev", Site: "sales", Name: "Revenue", Datasource: "datasource-1", Measure: definitioncreate.Measure{Field: "Sales", Aggregation: "AGGREGATION_SUM"}, TimeField: "Order Date", Dimensions: []string{"Region"}, Fingerprint: "sha256:value", Request: request},
 		Result: &definitioncreate.CreateResult{Status: "succeeded", DefinitionLUID: "definition-1", DefaultMetricLUID: "metric-1", DefaultMetricStatus: "ready", TableauRequestID: "request-1", PollRequestID: "poll-1"},
-		Help:   []string{"tadx pulse metric inspect --id metric-1"},
+		Help:   []string{"tadx pulse metric inspect --id metric-1 --environment dev"},
 	}
 	assertGolden(t, "compact.toon", output, false)
 	assertGolden(t, "full.toon", output, true)
@@ -49,9 +48,33 @@ func assertGolden(t *testing.T, name string, value any, full bool) {
 }
 
 type validator struct {
-	input definitioncreate.FieldReferences
-	calls int
-	err   error
+	resolved *definitioncreate.FieldReferences
+	input    definitioncreate.FieldReferences
+	calls    int
+	err      error
+}
+
+func (v *validator) ResolveDefinitionFields(ctx context.Context, input definitioncreate.FieldReferences) (definitioncreate.FieldReferences, error) {
+	err := v.ValidateDefinitionFields(ctx, input)
+	if v.resolved != nil {
+		return *v.resolved, err
+	}
+	return input, err
+}
+
+func TestCreateCanonicalizesFieldReferencesBeforePreviewAndWrite(t *testing.T) {
+	refs := definitioncreate.FieldReferences{DatasourceLUID: "datasource-1", MeasureField: "[Calculation_1]", Aggregation: "AGGREGATION_SUM", TimeDimension: "[date_raw]", AllowedDimensions: []string{"[region_raw]"}}
+	v, f, c := &validator{resolved: &refs}, &finder{}, &creator{result: definitioncreate.CreateResult{DefinitionLUID: "definition-1", DefaultMetricLUID: "metric-1"}}
+	input := definitioncreate.Input{Intent: definitioncreate.Intent{Name: "Revenue", DatasourceLUID: "datasource-1", MeasureField: "Revenue", TimeDimension: "Order Date", AllowedDimensions: []string{"Region"}}}
+	a := definitioncreate.New(v, f, c)
+	out, err := a.Execute(context.Background(), input, true)
+	if err != nil || out.Plan.Measure.Field != refs.MeasureField || out.Plan.TimeField != refs.TimeDimension || len(out.Plan.Dimensions) != 1 || out.Plan.Dimensions[0] != refs.AllowedDimensions[0] || c.calls != 0 {
+		t.Fatalf("preview=%#v err=%v writes=%d", out, err, c.calls)
+	}
+	_, err = a.Execute(context.Background(), input, false)
+	if err != nil || c.calls != 1 || c.request.Specification.BasicSpecification.Measure.Field != refs.MeasureField || c.request.Specification.BasicSpecification.TimeDimension.Field != refs.TimeDimension || c.request.ExtensionOptions.AllowedDimensions[0] != refs.AllowedDimensions[0] {
+		t.Fatalf("request=%#v err=%v writes=%d", c.request, err, c.calls)
+	}
 }
 
 func (v *validator) ValidateDefinitionFields(_ context.Context, input definitioncreate.FieldReferences) error {
@@ -98,11 +121,11 @@ func TestCreatePlansSmallIntentAndAppliesOnlyWhenRequested(t *testing.T) {
 	if got := preview.Plan.Request.Specification.BasicSpecification.Measure.Aggregation; got != "AGGREGATION_SUM" {
 		t.Fatalf("aggregation=%q", got)
 	}
-	if got := preview.Plan.Request.ExtensionOptions.AllowedDimensions; len(got) != 2 || got[0] != "Category" || got[1] != "Region" {
+	if got := preview.Plan.Request.ExtensionOptions.AllowedDimensions; len(got) != 2 || got[0] != "Region" || got[1] != "Category" {
 		t.Fatalf("dimensions=%#v", got)
 	}
 	result, err := action.Execute(context.Background(), input, false)
-	if err != nil || result.Result == nil || result.Result.DefaultMetricLUID != "metric-1" || c.calls != 1 || v.calls != 3 || f.calls != 3 {
+	if err != nil || result.Result == nil || result.Result.DefaultMetricLUID != "metric-1" || c.calls != 1 || v.calls != 2 || f.calls != 2 {
 		t.Fatalf("result=%#v calls=%d/%d/%d err=%v", result, v.calls, f.calls, c.calls, err)
 	}
 	if c.request.Name != "Revenue" || c.request.Specification.Datasource.ID != "datasource-1" {
@@ -110,32 +133,14 @@ func TestCreatePlansSmallIntentAndAppliesOnlyWhenRequested(t *testing.T) {
 	}
 }
 
-func TestCreateSerializesZeroDimensionsAsAnEmptyArray(t *testing.T) {
+func TestCreateRejectsZeroDimensionsBeforeRemoteCalls(t *testing.T) {
 	v, f, c := &validator{}, &finder{}, &creator{}
-	plan, err := definitioncreate.New(v, f, c).Plan(context.Background(), definitioncreate.Input{Environment: "dev", Site: "sales", Intent: definitioncreate.Intent{
+	_, err := definitioncreate.New(v, f, c).Plan(context.Background(), definitioncreate.Input{Environment: "dev", Site: "sales", Intent: definitioncreate.Intent{
 		Name: "Revenue", DatasourceLUID: "datasource-1", MeasureField: "Sales", TimeDimension: "Order Date",
 	}})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if plan.Dimensions == nil || plan.Request.ExtensionOptions.AllowedDimensions == nil {
-		t.Fatalf("plan dimensions=%#v request dimensions=%#v", plan.Dimensions, plan.Request.ExtensionOptions.AllowedDimensions)
-	}
-	compact := definitioncreate.Output{Plan: plan}.CompactOutput().(definitioncreate.CompactResult)
-	if compact.Plan.Dimensions == nil {
-		t.Fatalf("compact dimensions=%#v", compact.Plan.Dimensions)
-	}
-	encoded, err := json.Marshal(plan.Request)
-	if err != nil {
-		t.Fatal(err)
-	}
-	var payload map[string]any
-	if err := json.Unmarshal(encoded, &payload); err != nil {
-		t.Fatal(err)
-	}
-	extension := payload["extension_options"].(map[string]any)
-	if dimensions, ok := extension["allowed_dimensions"].([]any); !ok || len(dimensions) != 0 {
-		t.Fatalf("payload dimensions=%#v", extension["allowed_dimensions"])
+	var structured *errs.Error
+	if !errors.As(err, &structured) || structured.Kind != errs.KindUsage || v.calls != 0 || f.calls != 0 || c.calls != 0 {
+		t.Fatalf("error=%#v calls=%d/%d/%d", err, v.calls, f.calls, c.calls)
 	}
 }
 
@@ -163,11 +168,12 @@ func TestCreatePreservesFieldValidationErrorContract(t *testing.T) {
 		Environment: "dev",
 		Site:        "sales",
 		Intent: definitioncreate.Intent{
-			Name:           "Margin",
-			DatasourceLUID: "datasource-1",
-			MeasureField:   "Calculation_margin",
-			Aggregation:    "SUM",
-			TimeDimension:  "Order Date",
+			Name:              "Margin",
+			DatasourceLUID:    "datasource-1",
+			MeasureField:      "Calculation_margin",
+			Aggregation:       "SUM",
+			TimeDimension:     "Order Date",
+			AllowedDimensions: []string{"Region"},
 		},
 	}, false)
 	var structured *errs.Error
@@ -186,7 +192,7 @@ func TestCreateStopsOnExactNameDatasourceCollision(t *testing.T) {
 	v := &validator{}
 	f := &finder{items: []definitioncreate.ExistingDefinition{{LUID: "definition-old", Name: "Revenue", DatasourceLUID: "datasource-1"}}}
 	c := &creator{}
-	_, err := definitioncreate.New(v, f, c).Execute(context.Background(), definitioncreate.Input{Intent: definitioncreate.Intent{Name: "Revenue", DatasourceLUID: "datasource-1", MeasureField: "Sales", TimeDimension: "Date", Aggregation: "SUM"}}, false)
+	_, err := definitioncreate.New(v, f, c).Execute(context.Background(), definitioncreate.Input{Intent: definitioncreate.Intent{Name: "Revenue", DatasourceLUID: "datasource-1", MeasureField: "Sales", TimeDimension: "Date", Aggregation: "SUM", AllowedDimensions: []string{"Region"}}}, false)
 	var structured *errs.Error
 	if !errors.As(err, &structured) || structured.ID != "pulse.definition.create.conflict" || c.calls != 0 {
 		t.Fatalf("error=%#v calls=%d", err, c.calls)
@@ -196,7 +202,7 @@ func TestCreateStopsOnExactNameDatasourceCollision(t *testing.T) {
 func TestApplyRejectsModifiedPlan(t *testing.T) {
 	v, f, c := &validator{}, &finder{}, &creator{}
 	action := definitioncreate.New(v, f, c)
-	input := definitioncreate.Input{Intent: definitioncreate.Intent{Name: "Revenue", DatasourceLUID: "datasource-1", MeasureField: "Sales", TimeDimension: "Date"}}
+	input := definitioncreate.Input{Intent: definitioncreate.Intent{Name: "Revenue", DatasourceLUID: "datasource-1", MeasureField: "Sales", TimeDimension: "Date", AllowedDimensions: []string{"Region"}}}
 	plan, err := action.Plan(context.Background(), input)
 	if err != nil {
 		t.Fatal(err)
@@ -206,5 +212,26 @@ func TestApplyRejectsModifiedPlan(t *testing.T) {
 	var structured *errs.Error
 	if !errors.As(err, &structured) || structured.Kind != errs.KindUsage || c.calls != 0 {
 		t.Fatalf("error=%#v calls=%d", err, c.calls)
+	}
+}
+
+func TestRetainedApplyStillDetectsFieldAndCollisionDrift(t *testing.T) {
+	for _, collision := range []bool{false, true} {
+		v, f, c := &validator{}, &finder{}, &creator{}
+		action := definitioncreate.New(v, f, c)
+		input := definitioncreate.Input{Intent: definitioncreate.Intent{Name: "Revenue", DatasourceLUID: "datasource-1", MeasureField: "Sales", TimeDimension: "Date", AllowedDimensions: []string{"Region"}}}
+		plan, err := action.Plan(context.Background(), input)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if collision {
+			f.items = []definitioncreate.ExistingDefinition{{LUID: "new-definition", Name: "Revenue", DatasourceLUID: "datasource-1"}}
+		} else {
+			v.err = errors.New("selected field is now excluded")
+		}
+		_, err = action.Apply(context.Background(), input, plan)
+		if err == nil || c.calls != 0 || v.calls != 2 {
+			t.Fatalf("collision=%v err=%v fields=%d creates=%d", collision, err, v.calls, c.calls)
+		}
 	}
 }

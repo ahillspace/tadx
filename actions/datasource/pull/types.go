@@ -8,6 +8,8 @@ import (
 
 // Input selects one remote datasource and one logical workspace.
 type Input struct {
+	// WorkspaceName is the resolved logical workspace alias used in follow-up commands.
+	WorkspaceName                                        string
 	Environment, Site, ServerOrigin, SiteLUID, Workspace string
 	Selector                                             identity.Selector
 	Overwrite                                            bool
@@ -77,6 +79,7 @@ type ArtifactResult struct {
 
 // Output retains bounded pull details before projection.
 type Output struct {
+	Workspace  string `json:"workspace"`
 	Status     string
 	Datasource Datasource
 	Artifact   ArtifactResult
@@ -86,7 +89,11 @@ type Output struct {
 }
 
 type CompactArtifact struct {
-	Path              string `json:"path"`
+	Workspace         string `json:"workspace"`
+	Kind              string `json:"kind"`
+	Name              string `json:"name"`
+	SourceLUID        string `json:"source_luid"`
+	Path              string `json:"-"`
 	CompositionStatus string `json:"composition_status"`
 }
 
@@ -101,6 +108,10 @@ type CompactResult struct {
 }
 
 type FullArtifact struct {
+	Workspace            string   `json:"workspace"`
+	Kind                 string   `json:"kind"`
+	Name                 string   `json:"name"`
+	SourceLUID           string   `json:"source_luid"`
 	Path                 string   `json:"path"`
 	CanonicalPath        string   `json:"canonical_path,omitempty"`
 	BaselineFingerprint  string   `json:"baseline_fingerprint,omitempty"`
@@ -124,12 +135,12 @@ type FullResult struct {
 
 func (o Output) CompactOutput() any {
 	warnings, omitted := boundedWarnings(o.Warnings)
-	return CompactResult{Status: o.Status, Datasource: o.Datasource, Artifact: CompactArtifact{Path: o.Artifact.Path, CompositionStatus: o.Artifact.CompositionStatus}, Warnings: warnings, WarningsOmitted: omitted, Details: "--full", Help: o.Help}
+	return CompactResult{Status: o.Status, Datasource: o.Datasource, Artifact: CompactArtifact{Workspace: o.Workspace, Kind: "datasource", Name: o.Datasource.Name, SourceLUID: o.Datasource.LUID, Path: o.Artifact.Path, CompositionStatus: o.Artifact.CompositionStatus}, Warnings: warnings, WarningsOmitted: omitted, Details: "--full", Help: o.Help}
 }
 
 func (o Output) FullOutput() any {
 	warnings, omitted := boundedWarnings(o.Warnings)
-	artifact := FullArtifact{Path: o.Artifact.Path, CanonicalPath: o.Artifact.CanonicalPath, BaselineFingerprint: o.Artifact.BaselineFingerprint, LineagePath: o.Artifact.LineagePath, LineageStatus: o.Artifact.LineageStatus, CompositionStatus: o.Artifact.CompositionStatus, ParentDataSourceURLs: append([]string(nil), o.Artifact.ParentDataSourceURLs...)}
+	artifact := FullArtifact{Workspace: o.Workspace, Kind: "datasource", Name: o.Datasource.Name, SourceLUID: o.Datasource.LUID, Path: o.Artifact.Path, CanonicalPath: o.Artifact.CanonicalPath, BaselineFingerprint: o.Artifact.BaselineFingerprint, LineagePath: o.Artifact.LineagePath, LineageStatus: o.Artifact.LineageStatus, CompositionStatus: o.Artifact.CompositionStatus, ParentDataSourceURLs: append([]string(nil), o.Artifact.ParentDataSourceURLs...)}
 	if o.Artifact.CountsKnown {
 		nodes, edges := o.Artifact.NodeCount, o.Artifact.EdgeCount
 		artifact.NodeCount, artifact.EdgeCount = &nodes, &edges

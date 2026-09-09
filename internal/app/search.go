@@ -8,7 +8,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"path/filepath"
 	"sort"
 	"strings"
 	"time"
@@ -46,6 +45,20 @@ func newSearchCommands(runtime *runtimeDependencies) *searchCommands {
 }
 
 func (c *searchCommands) Execute(ctx context.Context, input searchaction.Input) (searchaction.Output, error) {
+	if err := searchaction.ValidateInput(input); err != nil {
+		return searchaction.Output{}, err
+	}
+	if input.Cursor != "" {
+		_, environment, err := c.runtime.environment(input.Environment, false)
+		if err != nil {
+			return searchaction.Output{}, err
+		}
+		input.Environment, input.Site = environment.Alias, environment.SiteContentURL
+		input.SiteResolved = true
+		if err := searchaction.ValidateContinuation(input); err != nil {
+			return searchaction.Output{}, err
+		}
+	}
 	if input.Catalog {
 		_, environment, err := c.runtime.environment(input.Environment, false)
 		if err != nil {
@@ -56,7 +69,7 @@ func (c *searchCommands) Execute(ctx context.Context, input searchaction.Input) 
 			input.Site = environment.SiteContentURL
 		}
 		input.SiteResolved = true
-		store := catalog.NewStore(filepath.Dir(c.runtime.configPath), c.runtime.now)
+		store := c.runtime.catalogStore(environment)
 		return searchaction.New(catalogGlobalSearchSource{store: store}).Execute(ctx, input)
 	}
 	if strings.TrimSpace(input.Terms) == "" && completeListSearchSelector(input.Type) {
@@ -454,15 +467,16 @@ func searchResult(page resourcesearch.Page, generation *searchaction.Generation)
 	for index, item := range page.Items {
 		items[index] = searchaction.Item{LUID: item.LUID, Type: item.Type, Name: item.Name, ProjectPath: item.ProjectPath, Owner: item.Owner, ModifiedAt: item.ModifiedAt}
 	}
-	return searchaction.Result{Items: items, Page: searchaction.Page{NextCursor: page.NextCursor, Total: page.Total}, Warnings: page.Warnings, Generation: generation, Source: page.Source}
+	return searchaction.Result{Items: items, Page: searchaction.Page{NextCursor: page.NextCursor, Total: page.Total, MoreAvailable: page.MoreAvailable, UnresolvedMoreAvailable: page.UnresolvedMoreAvailable}, Warnings: page.Warnings, Generation: generation, Source: page.Source}
 }
 
 // completeLiveSearchLister routes blank typed searches through the same
 // complete-inventory services as the public list commands.
 type completeLiveSearchLister struct {
-	environment string
-	content     *remoteContentCommands
-	admin       *remoteAdminCommands
+	environment         string
+	content             *remoteContentCommands
+	admin               *remoteAdminCommands
+	datasourceDiscovery datasourceDiscovery
 }
 
 type completeListSearchPager interface {
@@ -516,6 +530,8 @@ func (a *completeLiveSearchAdapter) Search(ctx context.Context, input resourcese
 		if len(page.Items) > remaining {
 			return resourcesearch.Page{}, errors.New("complete live search list service exceeded the requested result bound")
 		}
+		result.UnresolvedMoreAvailable = result.UnresolvedMoreAvailable || page.UnresolvedMoreAvailable || (page.MoreAvailable && page.NextCursor == "")
+		result.MoreAvailable = result.UnresolvedMoreAvailable
 		result.Items = append(result.Items, page.Items...)
 		if len(types) == 1 {
 			result.Total = page.Total
@@ -568,49 +584,49 @@ func (s *completeLiveSearchLister) searchPage(ctx context.Context, resourceType,
 		for i, item := range out.Workbooks {
 			items[i] = resourcesearch.Item{LUID: item.LUID, Type: resourceType, Name: item.Name, ProjectPath: item.ProjectPath, Owner: item.OwnerLUID, ModifiedAt: item.UpdatedAt}
 		}
-		return completeListSearchPage(items, out.Page.Total, out.Page.NextCursor, out.RequestID, out.Source), err
+		return completeListSearchPage(items, out.Page.Total, out.Page.NextCursor, out.Page.MoreAvailable, out.RequestID, out.Source), err
 	case "datasource":
-		out, err := s.content.ListDatasources(ctx, datasourcelist.Input{Environment: s.environment, Cursor: cursor, Limit: limit, ProjectName: searchInput.ProjectPath, OwnerName: searchInput.Owner})
+		out, err := s.content.listDatasources(ctx, datasourcelist.Input{Environment: s.environment, Cursor: cursor, Limit: limit, ProjectName: searchInput.ProjectPath, OwnerName: searchInput.Owner}, &s.datasourceDiscovery)
 		items := make([]resourcesearch.Item, len(out.Datasources))
 		for i, item := range out.Datasources {
 			items[i] = resourcesearch.Item{LUID: item.LUID, Type: resourceType, Name: item.Name, ProjectPath: item.ProjectPath, Owner: item.OwnerLUID, ModifiedAt: item.UpdatedAt}
 		}
-		return completeListSearchPage(items, out.Page.Total, out.Page.NextCursor, out.RequestID, out.Source), err
+		return completeListSearchPage(items, out.Page.Total, out.Page.NextCursor, out.Page.MoreAvailable, out.RequestID, out.Source), err
 	case "flow":
 		out, err := s.content.ListFlows(ctx, flowlist.Input{Environment: s.environment, Cursor: cursor, Limit: limit, ProjectName: searchInput.ProjectPath, OwnerName: searchInput.Owner})
 		items := make([]resourcesearch.Item, len(out.Flows))
 		for i, item := range out.Flows {
 			items[i] = resourcesearch.Item{LUID: item.LUID, Type: resourceType, Name: item.Name, ProjectPath: item.ProjectPath, Owner: item.OwnerLUID, ModifiedAt: item.UpdatedAt}
 		}
-		return completeListSearchPage(items, out.Page.Total, out.Page.NextCursor, out.RequestID, out.Source), err
+		return completeListSearchPage(items, out.Page.Total, out.Page.NextCursor, out.Page.MoreAvailable, out.RequestID, out.Source), err
 	case "project":
 		out, err := s.content.ListProjects(ctx, projectlist.Input{Environment: s.environment, Cursor: cursor, Limit: limit, OwnerName: searchInput.Owner})
 		items := make([]resourcesearch.Item, len(out.Projects))
 		for i, item := range out.Projects {
 			items[i] = resourcesearch.Item{LUID: item.LUID, Type: resourceType, Name: item.Name, Owner: item.OwnerLUID, ModifiedAt: item.UpdatedAt}
 		}
-		return completeListSearchPage(items, out.Page.Total, out.Page.NextCursor, out.RequestID, out.Source), err
+		return completeListSearchPage(items, out.Page.Total, out.Page.NextCursor, out.Page.MoreAvailable, out.RequestID, out.Source), err
 	case "user":
 		out, err := s.admin.ListAdminUsers(ctx, userlist.Input{Environment: s.environment, Cursor: cursor, Limit: limit})
 		items := make([]resourcesearch.Item, len(out.Users))
 		for i, item := range out.Users {
 			items[i] = resourcesearch.Item{LUID: item.LUID, Type: resourceType, Name: item.Name}
 		}
-		return completeListSearchPage(items, out.Page.Total, out.Page.NextCursor, out.RequestID, out.Source), err
+		return completeListSearchPage(items, out.Page.Total, out.Page.NextCursor, out.Page.MoreAvailable, out.RequestID, out.Source), err
 	case "group":
 		out, err := s.admin.ListAdminGroups(ctx, adminlist.Input{Environment: s.environment, Cursor: cursor, Limit: limit})
 		items := make([]resourcesearch.Item, len(out.Groups))
 		for i, item := range out.Groups {
 			items[i] = resourcesearch.Item{LUID: item.LUID, Type: resourceType, Name: item.Name}
 		}
-		return completeListSearchPage(items, out.Page.Total, out.Page.NextCursor, out.RequestID, out.Source), err
+		return completeListSearchPage(items, out.Page.Total, out.Page.NextCursor, out.Page.MoreAvailable, out.RequestID, out.Source), err
 	default:
 		return resourcesearch.Page{}, fmt.Errorf("unsupported complete live search type %q", resourceType)
 	}
 }
 
-func completeListSearchPage(items []resourcesearch.Item, total int, nextCursor, requestID string, source *readsource.Metadata) resourcesearch.Page {
-	page := resourcesearch.Page{Items: items, Total: total, NextCursor: nextCursor, TableauRequestID: requestID}
+func completeListSearchPage(items []resourcesearch.Item, total int, nextCursor string, moreAvailable bool, requestID string, source *readsource.Metadata) resourcesearch.Page {
+	page := resourcesearch.Page{Items: items, Total: total, NextCursor: nextCursor, MoreAvailable: moreAvailable, TableauRequestID: requestID}
 	if source != nil {
 		switch source.Mode {
 		case readsource.Tableau:
@@ -651,7 +667,7 @@ func newLiveSearchLister(connection authenticatedTableau) (*liveSearchLister, er
 		environment:     connection.environment.Alias,
 		site:            connection.environment.SiteContentURL,
 		workbooks:       workbookListReader{adapter: resourceworkbook.NewAdapterWithProjectResolver(tableauworkbook.NewClient(connection.transport, connection.session, connection.environment.URL), projects)},
-		datasources:     datasourceListReader{adapter: resourcedatasource.NewAdapterWithProjectResolver(datasourceClient, projects)},
+		datasources:     datasourceListReader{adapter: resourcedatasource.NewAdapterWithProjectResolver(datasourceClient, projects), projects: resourceproject.NewDiscoveryPaths(projects)},
 		flows:           flowListReader{adapter: resourceflow.NewAdapter(flowClient, projects)},
 		projects:        projectListReader{adapter: projects},
 		users:           adminUserListReader{adapter: resourceadmin.NewAdapter(adminClient)},
@@ -669,42 +685,42 @@ func (s *liveSearchLister) List(ctx context.Context, resourceType, cursor string
 		for i, item := range out.Workbooks {
 			items[i] = resourcesearch.Item{LUID: item.LUID, Type: resourceType, Name: item.Name, ProjectPath: item.ProjectPath, Owner: item.OwnerLUID, ModifiedAt: item.UpdatedAt}
 		}
-		return resourcesearch.Page{Items: items, NextCursor: out.Page.NextCursor, Total: out.Page.Total}, err
+		return resourcesearch.Page{Items: items, NextCursor: out.Page.NextCursor, MoreAvailable: out.Page.MoreAvailable, Total: out.Page.Total}, err
 	case "datasource":
 		out, err := datasourcelist.New(s.datasources).Execute(ctx, datasourcelist.Input{Environment: s.environment, Site: s.site, Cursor: cursor, Limit: limit})
 		items := make([]resourcesearch.Item, len(out.Datasources))
 		for i, item := range out.Datasources {
 			items[i] = resourcesearch.Item{LUID: item.LUID, Type: resourceType, Name: item.Name, Owner: item.OwnerLUID, ModifiedAt: item.UpdatedAt}
 		}
-		return resourcesearch.Page{Items: items, NextCursor: out.Page.NextCursor, Total: out.Page.Total}, err
+		return resourcesearch.Page{Items: items, NextCursor: out.Page.NextCursor, MoreAvailable: out.Page.MoreAvailable, Total: out.Page.Total}, err
 	case "flow":
 		out, err := flowlist.New(s.flows).Execute(ctx, flowlist.Input{Environment: s.environment, Site: s.site, Cursor: cursor, Limit: limit})
 		items := make([]resourcesearch.Item, len(out.Flows))
 		for i, item := range out.Flows {
 			items[i] = resourcesearch.Item{LUID: item.LUID, Type: resourceType, Name: item.Name, Owner: item.OwnerLUID, ModifiedAt: item.UpdatedAt}
 		}
-		return resourcesearch.Page{Items: items, NextCursor: out.Page.NextCursor, Total: out.Page.Total}, err
+		return resourcesearch.Page{Items: items, NextCursor: out.Page.NextCursor, MoreAvailable: out.Page.MoreAvailable, Total: out.Page.Total}, err
 	case "project":
 		out, err := projectlist.New(s.projects).Execute(ctx, projectlist.Input{Environment: s.environment, Site: s.site, Cursor: cursor, Limit: limit})
 		items := make([]resourcesearch.Item, len(out.Projects))
 		for i, item := range out.Projects {
 			items[i] = resourcesearch.Item{LUID: item.LUID, Type: resourceType, Name: item.Name, Owner: item.OwnerLUID, ModifiedAt: item.UpdatedAt}
 		}
-		return resourcesearch.Page{Items: items, NextCursor: out.Page.NextCursor, Total: out.Page.Total}, err
+		return resourcesearch.Page{Items: items, NextCursor: out.Page.NextCursor, MoreAvailable: out.Page.MoreAvailable, Total: out.Page.Total}, err
 	case "user":
 		out, err := userlist.New(s.users).Execute(ctx, userlist.Input{Environment: s.environment, Site: s.site, Cursor: cursor, Limit: limit})
 		items := make([]resourcesearch.Item, len(out.Users))
 		for i, item := range out.Users {
 			items[i] = resourcesearch.Item{LUID: item.LUID, Type: resourceType, Name: item.Name}
 		}
-		return resourcesearch.Page{Items: items, NextCursor: out.Page.NextCursor, Total: out.Page.Total}, err
+		return resourcesearch.Page{Items: items, NextCursor: out.Page.NextCursor, MoreAvailable: out.Page.MoreAvailable, Total: out.Page.Total}, err
 	case "group":
 		out, err := adminlist.New(s.groups).Execute(ctx, adminlist.Input{Environment: s.environment, Site: s.site, Cursor: cursor, Limit: limit})
 		items := make([]resourcesearch.Item, len(out.Groups))
 		for i, item := range out.Groups {
 			items[i] = resourcesearch.Item{LUID: item.LUID, Type: resourceType, Name: item.Name}
 		}
-		return resourcesearch.Page{Items: items, NextCursor: out.Page.NextCursor, Total: out.Page.Total}, err
+		return resourcesearch.Page{Items: items, NextCursor: out.Page.NextCursor, MoreAvailable: out.Page.MoreAvailable, Total: out.Page.Total}, err
 	case "definition":
 		out, err := definitionlist.New(&pulseDefinitionListAdapter{client: s.pulse}).Execute(ctx, definitionlist.Input{Environment: s.environment, Site: s.site, Cursor: cursor, Limit: limit})
 		items := make([]resourcesearch.Item, len(out.Definitions))

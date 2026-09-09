@@ -27,7 +27,11 @@ func NewClient(transport *tableau.Transport, session auth.Session, serverURL str
 }
 
 func (c *Client) ListUsers(ctx context.Context, input ListUsersRequest) (UserPage, error) {
-	query, err := pageQuery(input.PageNumber, input.PageSize, map[string]string{"name": input.Name, "siteRole": input.SiteRole})
+	filter, err := UserListFilter(input)
+	if err != nil {
+		return UserPage{}, err
+	}
+	query, err := pageQuery(input.PageNumber, input.PageSize, filter)
 	if err != nil {
 		return UserPage{}, err
 	}
@@ -118,7 +122,11 @@ func (c *Client) DeleteUser(ctx context.Context, luid string) (MutationResult, e
 }
 
 func (c *Client) ListGroups(ctx context.Context, input ListGroupsRequest) (GroupPage, error) {
-	query, err := pageQuery(input.PageNumber, input.PageSize, map[string]string{"name": input.Name, "domainName": input.Domain})
+	filter, err := GroupListFilter(input)
+	if err != nil {
+		return GroupPage{}, err
+	}
+	query, err := pageQuery(input.PageNumber, input.PageSize, filter)
 	if err != nil {
 		return GroupPage{}, err
 	}
@@ -151,7 +159,7 @@ func (c *Client) ListGroupUsers(ctx context.Context, groupLUID string, input Pag
 	if strings.TrimSpace(groupLUID) == "" {
 		return UserPage{}, errors.New("group LUID is required")
 	}
-	query, err := pageQuery(input.PageNumber, input.PageSize, nil)
+	query, err := pageQuery(input.PageNumber, input.PageSize, "")
 	if err != nil {
 		return UserPage{}, err
 	}
@@ -332,11 +340,28 @@ func exactStatus(operation string, response tableau.Response, expected int) erro
 	return tableau.NewProtocolError(operation, response, fmt.Errorf("%s returned HTTP %d, expected %d", operation, response.StatusCode, expected), false)
 }
 
-func pageQuery(number, size int, filters map[string]string) (url.Values, error) {
+func pageQuery(number, size int, filter string) (url.Values, error) {
 	if number <= 0 || size <= 0 || size > MaxPageSize {
 		return nil, fmt.Errorf("administration page number must be positive and size must be between 1 and %d", MaxPageSize)
 	}
 	query := url.Values{"pageNumber": {strconv.Itoa(number)}, "pageSize": {strconv.Itoa(size)}}
+	if filter != "" {
+		query.Set("filter", filter)
+	}
+	return query, nil
+}
+
+// UserListFilter validates and encodes user selectors for paged and full lists.
+func UserListFilter(input ListUsersRequest) (string, error) {
+	return listFilter(map[string]string{"name": input.Name, "siteRole": input.SiteRole})
+}
+
+// GroupListFilter validates and encodes group selectors for paged and full lists.
+func GroupListFilter(input ListGroupsRequest) (string, error) {
+	return listFilter(map[string]string{"name": input.Name, "domainName": input.Domain})
+}
+
+func listFilter(filters map[string]string) (string, error) {
 	values := make([]string, 0, len(filters))
 	for _, key := range []string{"name", "siteRole", "domainName"} {
 		item := filters[key]
@@ -344,14 +369,11 @@ func pageQuery(number, size int, filters map[string]string) (url.Values, error) 
 			continue
 		}
 		if strings.ContainsAny(item, ",&") {
-			return nil, fmt.Errorf("administration %s filter contains an unsupported comma or ampersand", key)
+			return "", fmt.Errorf("administration %s filter contains an unsupported comma or ampersand", key)
 		}
 		values = append(values, key+":eq:"+item)
 	}
-	if len(values) > 0 {
-		query.Set("filter", strings.Join(values, ","))
-	}
-	return query, nil
+	return strings.Join(values, ","), nil
 }
 
 type page struct{ Number, Size, Total int }

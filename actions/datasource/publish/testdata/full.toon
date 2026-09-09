@@ -1,4 +1,7 @@
 plan:
+  kind: datasource
+  workspace: ""
+  source_luid: ""
   mode: execute
   publish_mode: overwrite
   operation: datasource.publish

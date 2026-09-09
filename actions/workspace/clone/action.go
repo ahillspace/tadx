@@ -4,6 +4,7 @@ package clone
 import (
 	"context"
 	"errors"
+	"github.com/ahillspace/tadx/internal/commandhint"
 
 	"github.com/ahillspace/tadx/internal/errs"
 )
@@ -81,7 +82,7 @@ func (a *Action) Execute(ctx context.Context, input Input) (Output, error) {
 	if len(cloned.CreatedEntries) == 0 {
 		cloned.CreatedEntries = []string{"tadx.yaml", "artifacts", ".tadx"}
 	}
-	return Output{Status: "cloned", Workspace: cloned, Help: []string{"tadx workspace status --workspace " + cloned.Name}}, nil
+	return Output{Status: "cloned", Workspace: cloned, Help: []string{commandhint.Command("workspace", "status", "--workspace", cloned.Name)}}, nil
 }
 
 func usage(message string) error {

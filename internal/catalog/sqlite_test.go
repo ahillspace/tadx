@@ -156,7 +156,7 @@ func TestSQLiteStoreRejectsSchemaVersionAndCorruption(t *testing.T) {
 	}
 }
 
-func TestSQLiteStoreMigratesVersionOneAndBackfillsResourceReads(t *testing.T) {
+func TestSQLiteStoreVersionOneRequiresExplicitRefreshWithoutBackfill(t *testing.T) {
 	root := t.TempDir()
 	now := time.Date(2026, 9, 4, 12, 0, 0, 0, time.UTC)
 	store := catalog.NewStore(root, func() time.Time { return now })
@@ -179,16 +179,29 @@ func TestSQLiteStoreMigratesVersionOneAndBackfillsResourceReads(t *testing.T) {
 	if err := db.Close(); err != nil {
 		t.Fatal(err)
 	}
-	result, err := store.ReadResources(context.Background(), catalog.ResourceQuery{Environment: "production", Site: "marketing", Kind: "workbook", Limit: 25})
-	if err != nil {
-		t.Fatal(err)
+	_, err := store.ReadResources(context.Background(), catalog.ResourceQuery{Environment: "production", Site: "marketing", Kind: "workbook", Limit: 25})
+	if err == nil || !strings.Contains(err.Error(), "tadx catalog refresh") {
+		t.Fatalf("read error=%v", err)
 	}
-	if result.Coverage != "complete" || result.Total != 1 || result.Entries[0].Name != "Finance" {
-		t.Fatalf("migrated resource result = %#v", result)
+	if _, err := store.BeginGeneration(context.Background(), catalog.GenerationMetadata{Environment: "production", Site: "marketing", GeneratedAt: now, RequestedScopes: []string{"workbooks"}}); err == nil || !strings.Contains(err.Error(), "tadx catalog refresh") {
+		t.Fatalf("ordinary write error=%v", err)
+	}
+	db = openRaw(t, filepath.Join(root, "catalog", "catalog.sqlite"))
+	defer db.Close()
+	var version, absent int
+	if err := db.QueryRow(`PRAGMA user_version`).Scan(&version); err != nil || version != 1 {
+		t.Fatalf("version=%d error=%v", version, err)
+	}
+	if err := db.QueryRow(`SELECT count(*) FROM sqlite_master WHERE name='resource_entries'`).Scan(&absent); err != nil || absent != 0 {
+		t.Fatalf("read backfilled resource table: count=%d error=%v", absent, err)
+	}
+	var name string
+	if err := db.QueryRow(`SELECT name FROM catalog_records WHERE kind='workbook'`).Scan(&name); err != nil || name != "Finance" {
+		t.Fatalf("previous record=%q error=%v", name, err)
 	}
 }
 
-func TestSQLiteStoreMigratesVersionThreeFlowFileType(t *testing.T) {
+func TestSQLiteStoreExplicitRefreshRebuildsVersionThree(t *testing.T) {
 	root := t.TempDir()
 	now := time.Date(2026, 9, 4, 12, 0, 0, 0, time.UTC)
 	store := catalog.NewStore(root, func() time.Time { return now })
@@ -212,7 +225,7 @@ func TestSQLiteStoreMigratesVersionThreeFlowFileType(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	writer, err := store.BeginGeneration(context.Background(), catalog.GenerationMetadata{
+	writer, err := store.BeginRefreshGeneration(context.Background(), catalog.GenerationMetadata{
 		Environment: "production", Site: "marketing", GeneratedAt: now.Add(time.Minute), Source: "tableau-rest",
 		RequestedScopes: []string{"flows"},
 	})
@@ -229,6 +242,19 @@ func TestSQLiteStoreMigratesVersionThreeFlowFileType(t *testing.T) {
 	}
 	if _, err := writer.Publish(context.Background()); err != nil {
 		t.Fatal(err)
+	}
+	result, err := store.Search(context.Background(), catalog.Query{Environment: "production", Site: "marketing", SiteSelected: true, Kind: "flow"})
+	if err != nil || len(result.Records) != 1 || result.Records[0].LUID != "f1" || result.Records[0].Name != "Prep" {
+		t.Fatalf("refreshed flow=%+v error=%v", result, err)
+	}
+	db = openRaw(t, filepath.Join(root, "catalog", "catalog.sqlite"))
+	defer db.Close()
+	var version, oldCount int
+	if err := db.QueryRow(`PRAGMA user_version`).Scan(&version); err != nil || version != 7 {
+		t.Fatalf("version=%d error=%v", version, err)
+	}
+	if err := db.QueryRow(`SELECT count(*) FROM catalog_records WHERE name='Finance'`).Scan(&oldCount); err != nil || oldCount != 0 {
+		t.Fatalf("old count=%d error=%v", oldCount, err)
 	}
 }
 

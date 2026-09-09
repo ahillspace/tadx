@@ -58,7 +58,7 @@ func TestCLIProcessExitCodesAndStreams(t *testing.T) {
 	}
 }
 
-func TestCLIProcessRejectsRetiredRoutesAndLegacyProjectSelectors(t *testing.T) {
+func TestCLIProcessRejectsRetiredRoutes(t *testing.T) {
 	binary := buildCLI(t)
 	tests := []struct {
 		name string
@@ -70,8 +70,6 @@ func TestCLIProcessRejectsRetiredRoutesAndLegacyProjectSelectors(t *testing.T) {
 		{name: "retired catalog search", args: []string{"catalog", "search"}},
 		{name: "retired admin user get", args: []string{"admin", "user", "get"}},
 		{name: "retired Pulse metric get", args: []string{"pulse", "metric", "get"}},
-		{name: "legacy project inspect ID", args: []string{"content", "project", "inspect", "--id", "project-1"}},
-		{name: "legacy project update ID", args: []string{"content", "project", "update", "--id", "project-1"}},
 	}
 
 	for _, test := range tests {
@@ -103,6 +101,21 @@ func TestCLIProcessBareGroupsKeepHelpBehavior(t *testing.T) {
 		result := runCLI(t, binary, args, nil)
 		if result.exitCode != 0 || result.stderr != "" || !strings.Contains(result.stdout, "Usage:") {
 			t.Fatalf("args = %v, exit = %d, stdout = %q, stderr = %q", args, result.exitCode, result.stdout, result.stderr)
+		}
+	}
+}
+
+func TestCLIProcessProjectIDSelectorsReachOnlyIsolatedSetup(t *testing.T) {
+	binary := buildCLI(t)
+	for _, flag := range []string{"--id", "--project-id"} {
+		result := runCLI(t, binary, []string{"content", "project", "inspect", flag, "project-1"}, nil)
+		if result.exitCode == 0 || strings.Contains(result.stdout, "unknown flag") || result.stderr != "" {
+			t.Fatalf("flag%s exit%d output%s stderr%s", flag, result.exitCode, result.stdout, result.stderr)
+		}
+		document := decodeDocument(t, result.stdout)
+		failure, ok := document["error"].(map[string]any)
+		if !ok || failure["id"] != "project.inspect.setup" {
+			t.Fatalf("expected isolated setup failure, got %#v", document)
 		}
 	}
 }
@@ -183,7 +196,12 @@ func runCLI(t *testing.T, binary string, args []string, environment map[string]s
 	t.Helper()
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
+	// A recognized route must never fall through to the developer's installed
+	// profile or its native-store credentials. Each process has no configuration.
+	isolation := t.TempDir()
+	args = append(append([]string(nil), args...), "--config", filepath.Join(isolation, "missing.yaml"))
 	command := exec.CommandContext(ctx, binary, args...)
+	command.Dir = isolation
 	command.Env = environmentWithout("TADX_ENABLE_MUTATIONS")
 	for name, value := range environment {
 		command.Env = append(command.Env, name+"="+value)
@@ -212,7 +230,8 @@ func environmentWithout(name string) []string {
 	result := make([]string, 0, len(os.Environ()))
 	for _, entry := range os.Environ() {
 		key, _, _ := strings.Cut(entry, "=")
-		if !strings.EqualFold(key, name) {
+		upper := strings.ToUpper(key)
+		if !strings.EqualFold(key, name) && !strings.HasPrefix(upper, "TADX_") && !strings.Contains(upper, "_PAT") && !strings.HasPrefix(upper, "PAT_") && !strings.Contains(upper, "TABLEAU") {
 			result = append(result, entry)
 		}
 	}

@@ -2,6 +2,7 @@ package content
 
 import (
 	"context"
+	"github.com/ahillspace/tadx/internal/cli/clierr"
 
 	datasourceinspect "github.com/ahillspace/tadx/actions/datasource/inspect"
 	datasourcelist "github.com/ahillspace/tadx/actions/datasource/list"
@@ -30,7 +31,7 @@ func newDatasourceInventory(lister DatasourceLister, inspector DatasourceInspect
 		Use:   "datasource",
 		Short: "Operate published Tableau datasources",
 		Long: "Operate published datasource lifecycle and inspect schema with TADX.\n\n" +
-			"Use Tableau MCP get-datasource-metadata for analytical metadata and query-datasource for datasource data.",
+			"Schema inspection returns field and table metadata; TADX does not query datasource values.",
 	}
 	command.AddCommand(newDatasourceList(deps), newDatasourceInspect(deps))
 	return command
@@ -39,13 +40,13 @@ func newDatasourceInventory(lister DatasourceLister, inspector DatasourceInspect
 func newDatasourceList(deps datasourceInventoryDependencies) *cobra.Command {
 	var input datasourcelist.Input
 	command := &cobra.Command{
-		Use: "list", Short: "List datasources and refresh their catalog snapshot.",
+		Use: "list", Short: "List datasources with bounded live reads or explicit --all.",
 		Annotations: map[string]string{"tadx.capability": "datasource.list"},
 		Args:        noContentArgs("datasource.list"),
 		RunE: func(command *cobra.Command, _ []string) error {
 			result, err := deps.lister.ListDatasources(command.Context(), input)
 			if err != nil {
-				return err
+				return clierr.WithOutput(result, err)
 			}
 			return deps.renderer.Render(result)
 		},
@@ -58,8 +59,11 @@ func newDatasourceList(deps datasourceInventoryDependencies) *cobra.Command {
 	command.Flags().StringVar(&input.Tag, "tag", "", "exact tag filter")
 	command.Flags().StringVar(&input.UpdatedAfter, "updated-after", "", "include datasources updated at or after this UTC timestamp")
 	command.Flags().StringVar(&input.UpdatedBefore, "updated-before", "", "include datasources updated at or before this UTC timestamp")
-	command.Flags().IntVar(&input.Limit, "limit", 0, "maximum datasources to render")
+	command.Flags().BoolVar(&input.All, "all", false, "return all matching records, up to 10000; cannot combine with --limit")
+	command.Flags().IntVar(&input.Limit, "limit", 0, "maximum datasources to render, from 1 to 10000 (default 25)")
 	command.Flags().StringVar(&input.Cursor, "cursor", "", "opaque continuation cursor")
+	command.MarkFlagsMutuallyExclusive("all", "limit")
+	command.MarkFlagsMutuallyExclusive("all", "cursor")
 	command.Flags().BoolVar(&input.Catalog, "catalog", false, "read indexed local catalog data without contacting Tableau")
 	return command
 }
@@ -74,7 +78,7 @@ func newDatasourceInspect(deps datasourceInventoryDependencies) *cobra.Command {
 		RunE: func(command *cobra.Command, _ []string) error {
 			result, err := deps.inspector.InspectDatasource(command.Context(), input)
 			if err != nil {
-				return err
+				return clierr.WithOutput(result, err)
 			}
 			return deps.renderer.Render(result)
 		},

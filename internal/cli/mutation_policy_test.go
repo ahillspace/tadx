@@ -103,9 +103,68 @@ func TestApplyMutationExecutionPolicyGatesFutureRegistryCommand(t *testing.T) {
 
 func TestRootHelpExplainsDiscoveryOutputAndMutationSafety(t *testing.T) {
 	root := NewRoot(Dependencies{})
-	for _, value := range []string{"tadx capability list", "compact TOON", "--full", "TADX_ENABLE_MUTATIONS=1", "perform changes by default", "--preview"} {
+	for _, value := range []string{"tadx capability list", "compact TOON", "--full", "tadx mutation status", "tadx mutation set --enabled=true", "TADX_ENABLE_MUTATIONS=0", "TADX_ENABLE_MUTATIONS=1", "perform changes by default", "--preview"} {
 		if !strings.Contains(root.Long, value) {
 			t.Errorf("root help missing %q:\n%s", value, root.Long)
 		}
+	}
+}
+
+func TestDisabledMutationAllowsOnlyExplicitSupportedBooleanPreview(t *testing.T) {
+	for _, tc := range []struct {
+		name        string
+		args        []string
+		kind        string
+		wantPreview bool
+	}{
+		{name: "bare preview", args: []string{"--preview"}, kind: "bool", wantPreview: true},
+		{name: "explicit true", args: []string{"--preview=true"}, kind: "bool", wantPreview: true},
+		{name: "explicit false", args: []string{"--preview=false"}, kind: "bool"},
+		{name: "force cannot enable execution", args: []string{"--preview=false", "--force"}, kind: "bool"},
+		{name: "default execution", kind: "bool"},
+		{name: "last false wins", args: []string{"--preview", "--preview=false"}, kind: "bool"},
+		{name: "last true wins", args: []string{"--preview=false", "--preview=true"}, kind: "bool", wantPreview: true},
+		{name: "invalid boolean", args: []string{"--preview=invalid"}, kind: "bool"},
+		{name: "unsupported", args: []string{"--preview=true"}},
+		{name: "string flag", args: []string{"--preview=true"}, kind: "string"},
+		{name: "inherited flag", args: []string{"--preview=true"}, kind: "inherited"},
+		{name: "true default without request", kind: "defaulttrue"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			calls, writes := 0, 0
+			root := &cobra.Command{Use: "tadx", SilenceErrors: true, SilenceUsage: true}
+			command := &cobra.Command{Use: "change", Annotations: map[string]string{CapabilityAnnotation: "future.mutation"}}
+			var preview bool
+			command.Flags().Bool("force", false, "force does not authorize mutation")
+			switch tc.kind {
+			case "bool", "defaulttrue":
+				command.Flags().BoolVar(&preview, "preview", tc.kind == "defaulttrue", "preview")
+			case "string":
+				command.Flags().String("preview", "", "unrelated string")
+			case "inherited":
+				root.PersistentFlags().Bool("preview", false, "unrelated inherited flag")
+			}
+			command.RunE = func(*cobra.Command, []string) error {
+				calls++
+				if !preview {
+					writes++
+				}
+				return nil
+			}
+			root.AddCommand(command)
+			applyMutationExecutionPolicy(root, mutationPolicyFunc(func(string) bool { return true }), false)
+			root.SetArgs(append([]string{"change"}, tc.args...))
+			err := root.Execute()
+			if tc.wantPreview {
+				if err != nil || calls != 1 {
+					t.Fatalf("preview error=%v calls=%d", err, calls)
+				}
+			} else if err == nil || calls != 0 {
+				t.Fatalf("non-preview error=%v calls=%d", err, calls)
+			}
+			if writes != 0 {
+				t.Fatalf("disabled command made %d writes", writes)
+			}
+		})
 	}
 }

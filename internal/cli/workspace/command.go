@@ -91,7 +91,7 @@ func newSetDefault(deps Dependencies) *cobra.Command {
 	}, RunE: func(command *cobra.Command, _ []string) error {
 		result, err := deps.DefaultSetter.SetDefault(command.Context(), input)
 		if err != nil {
-			return err
+			return clierr.WithOutput(result, err)
 		}
 		return deps.Renderer.Render(result)
 	}}
@@ -108,7 +108,7 @@ func newUnregister(deps Dependencies) *cobra.Command {
 	}, RunE: func(command *cobra.Command, _ []string) error {
 		result, err := deps.Unregistrar.Unregister(command.Context(), input)
 		if err != nil {
-			return err
+			return clierr.WithOutput(result, err)
 		}
 		return deps.Renderer.Render(result)
 	}}
@@ -126,7 +126,7 @@ func newDeleteWorkspace(deps Dependencies) *cobra.Command {
 	}, RunE: func(command *cobra.Command, _ []string) error {
 		result, err := deps.WorkspaceDeleter.DeleteWorkspace(command.Context(), input, preview)
 		if err != nil {
-			return err
+			return clierr.WithOutput(result, err)
 		}
 		return deps.Renderer.Render(result)
 	}}
@@ -152,7 +152,7 @@ func newClean(deps Dependencies) *cobra.Command {
 		RunE: func(command *cobra.Command, _ []string) error {
 			result, err := deps.Cleaner.Clean(command.Context(), input)
 			if err != nil {
-				return err
+				return clierr.WithOutput(result, err)
 			}
 			return deps.Renderer.Render(result)
 		},
@@ -177,7 +177,7 @@ func newCreate(deps Dependencies) *cobra.Command {
 		RunE: func(command *cobra.Command, _ []string) error {
 			result, err := deps.Creator.Create(command.Context(), input)
 			if err != nil {
-				return err
+				return clierr.WithOutput(result, err)
 			}
 			return deps.Renderer.Render(result)
 		},
@@ -206,7 +206,7 @@ func newRegister(deps Dependencies) *cobra.Command {
 		RunE: func(command *cobra.Command, _ []string) error {
 			result, err := deps.Registrar.Register(command.Context(), input)
 			if err != nil {
-				return err
+				return clierr.WithOutput(result, err)
 			}
 			return deps.Renderer.Render(result)
 		},
@@ -233,7 +233,7 @@ func newClone(deps Dependencies) *cobra.Command {
 		RunE: func(command *cobra.Command, _ []string) error {
 			result, err := deps.Cloner.Clone(command.Context(), input)
 			if err != nil {
-				return err
+				return clierr.WithOutput(result, err)
 			}
 			return deps.Renderer.Render(result)
 		},
@@ -251,12 +251,12 @@ func newList(deps Dependencies) *cobra.Command {
 		RunE: func(command *cobra.Command, _ []string) error {
 			result, err := deps.Lister.List(command.Context(), input)
 			if err != nil {
-				return err
+				return clierr.WithOutput(result, err)
 			}
 			return deps.Renderer.Render(result)
 		},
 	}
-	command.Flags().IntVar(&input.Limit, "limit", 0, "maximum workspaces to return")
+	command.Flags().IntVar(&input.Limit, "limit", 0, "maximum workspaces to return, up to 10000")
 	command.Flags().StringVar(&input.Cursor, "cursor", "", "opaque continuation cursor")
 	return command
 }
@@ -269,13 +269,13 @@ func newStatus(deps Dependencies) *cobra.Command {
 		RunE: func(command *cobra.Command, _ []string) error {
 			result, err := deps.Statuser.Status(command.Context(), input)
 			if err != nil {
-				return err
+				return clierr.WithOutput(result, err)
 			}
 			return deps.Renderer.Render(result)
 		},
 	}
 	command.Flags().StringVar(&input.Workspace, "workspace", "", "logical workspace name; uses deterministic defaults when omitted")
-	command.Flags().IntVar(&input.Limit, "limit", 0, "maximum artifacts to inspect")
+	command.Flags().IntVar(&input.Limit, "limit", 0, "maximum artifacts to inspect, up to 10000")
 	command.Flags().StringVar(&input.Cursor, "cursor", "", "opaque continuation cursor")
 	return command
 }
@@ -297,7 +297,7 @@ func newMove(deps Dependencies, hidden bool) *cobra.Command {
 		RunE: func(command *cobra.Command, _ []string) error {
 			result, err := deps.Mover.Move(command.Context(), input)
 			if err != nil {
-				return err
+				return clierr.WithOutput(result, err)
 			}
 			return deps.Renderer.Render(result)
 		},
@@ -332,7 +332,7 @@ func newArtifact(deps Dependencies) *cobra.Command {
 		RunE: func(command *cobra.Command, _ []string) error {
 			result, err := deps.Deleter.Delete(command.Context(), input, preview)
 			if err != nil {
-				return err
+				return clierr.WithOutput(result, err)
 			}
 			return deps.Renderer.Render(result)
 		},

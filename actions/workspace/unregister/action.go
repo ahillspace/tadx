@@ -4,6 +4,7 @@ package unregister
 import (
 	"context"
 	"errors"
+	"github.com/ahillspace/tadx/internal/commandhint"
 
 	"github.com/ahillspace/tadx/internal/errs"
 )
@@ -52,7 +53,7 @@ func (a *Action) Execute(ctx context.Context, input Input) (Output, error) {
 	if item.Name == "" || item.ID == "" || item.Root == "" {
 		return Output{}, runtimeError("workspace unregister returned an incomplete identity")
 	}
-	return Output{Status: "unregistered", Workspace: item, FilesPreserved: true, Help: []string{"tadx workspace register " + item.Name + " --path <path>"}}, nil
+	return Output{Status: "unregistered", Workspace: item, FilesPreserved: true, Help: []string{commandhint.Command("workspace", "register", item.Name, "--path", "<path>")}}, nil
 }
 func usage(message string) error {
 	return &errs.Error{ID: "workspace.unregister.usage", Kind: errs.KindUsage, Operation: "workspace.unregister", Summary: message, Cause: errors.New(message), Retryable: errs.Bool(false), CorrectiveAction: "Provide one registered workspace name."}

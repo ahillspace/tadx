@@ -1,15 +1,20 @@
 # TADX
 
-TADX is a deterministic Tableau lifecycle CLI for coding agents and humans.
-It reduces token use and ambiguity by combining exact selectors, safe previews, compact TOON output, portable workspaces, and bounded lineage.
+TADX is a CLI authored specifically to work well with agents, but is also useful to operate by hand.
+The main goal is to allow agents to work with both Tableau Cloud and Server with reduced confusion, token usage, and vastly increased speed.
 
-Commands return only the fields needed for the next decision by default.
-When more bounded detail is available, the response advertises `--full` instead of making the caller search for another command.
-Tableau LUIDs remain authoritative, ambiguous selectors fail, and consequential mutations support `--preview` before you run them.
+Initial testing has shown drastic improvement over all other methods of equiping agents with the tools it needs to work with Tableau.
+
+TADX handles Tableau lifecycle work, not natural-language data queries or analytical rendering.
+
+Feedback and collaboration is openly welcomed and there is specific and deliberate documentation for anyone looking to add actions to TADX using coding agents (see tadx-build skill)
 
 ## Current status
 
+TADX is not supported or associated with Tableau or Salesforce directly.
+
 TADX is usable and actively developed.
+
 The executable registry now covers the core content, workspace, catalog, administration, and initial Pulse workflows planned for V1.
 
 The current build supports:
@@ -26,12 +31,17 @@ The current build supports:
 - Listing and inspecting workbooks, plus pulls, publishing, deletions, and optional previews.
 - Listing and inspecting published datasources and bounded field metadata, plus pulls, publishing, deletions, and optional previews.
 - Capturing bounded lineage for workbooks, published datasources, and flows.
-- Listing, inspecting, pulling, creating, and deleting Pulse definitions.
+- Listing, inspecting, pulling, creating, and deleting Pulse definitions, plus publishing portable bundles as new definitions and metric variants.
 - Listing, inspecting, forking, and deleting Pulse metrics, plus managing exact user and group followers.
 - Managing Tableau site users, groups, memberships, and permission inspection.
 
 Remaining work focuses on release hardening and capabilities that still lack a supported or proven upstream contract.
 Datasource composition, datasource field-description updates, project pull and publish, and Pulse updates are deferred.
+
+Pulse creation accepts raw field IDs and unique display names from datasource metadata.
+TADX resolves displayed field names to raw IDs before previewing or publishing, so a field caption such as `Regional Manager` can map to its underlying `People` field automatically.
+Exact raw IDs take precedence, and ambiguous names fail before a remote write.
+This does not translate aliases for categorical member values.
 
 Use the registry in your installed build as the source of truth:
 
@@ -39,6 +49,10 @@ Use the registry in your installed build as the source of truth:
 tadx capability list
 tadx capability get workbook.pull --full
 ```
+
+## Future Vision
+
+The current goal is to get TADX running quickly and smoothly against the simple content lifecycle you see with Tableau Cloud and Server. This is to get it ready to augment the new experiences coming in Tableau (Tableau Authoring API, Tableau Knowledge Graph, Tableau MCP, TDS API, Composable Datasources, etc.). Augmenting semantics, modifying published datasources, cleaning and composing data sources, and managing access with agents is all in scope as these new features become available and TADX is meant to act as the platform that allows agents to assist with these activites cleanly, quickly, cheaply, and at scale.
 
 ## Install TADX
 
@@ -137,16 +151,30 @@ tadx agent install --target cursor
 ```
 
 Each command installs the root TADX Guidance and the complete Pulse authoring Guidance as standard `SKILL.md` packages.
-The root package includes optional references for content lifecycle, workspaces, administration, and Tableau MCP routing.
+The root package includes optional references for content lifecycle, workspaces, catalogs, and administration.
+Guidance applies when using TADX; it does not override your choice of other tools.
 Claude uses `~/.claude/skills`, Codex uses `~/.codex/skills`, and Cursor uses `~/.cursor/skills`.
 Existing packages under `~/.agents/skills` remain untouched.
 No repository checkout or Tableau credentials are required.
 The installer creates no `AGENTS.md`, `CLAUDE.md`, or Cursor rules.
 
 Use `--preview` to inspect changes without writing files and `--full` to see home-relative paths and package fingerprints.
-Identical packages remain unchanged.
-Replacing a divergent package requires `--force`, which preserves the previous package under the agent directory's `.tadx-skill-backups` directory.
+Identical packages remain unchanged; untouched older packages with installation receipts upgrade without --force.
+Replacing a modified or unknown package requires `--force`, which preserves the previous package under the agent directory's `.tadx-skill-backups` directory.
 This local operation does not require `TADX_ENABLE_MUTATIONS`.
+
+## Remote mutation permission
+
+Use `tadx mutation status` to see effective policy and its source.
+Use `tadx mutation set --enabled=true` to persist user policy until changed, or --enabled=false to disable the saved policy.
+An explicitly set TADX_ENABLE_MUTATIONS=0 or 1 overrides saved policy for that process; without either setting, execution is disabled.
+Supported read-only `--preview` operations work while the gate is off and do not authorize execution.
+
+Agents must obtain explicit user permission before changing the environment override or saved mutation setting, including enabling, disabling, or unsetting it.
+Permission for a Tableau operation is separate from permission to change the flag.
+An approval covers only its explicitly stated setting change and scope; session approval does not authorize a persistent change.
+For example: "May I enable remote mutations for this session, allowing TADX to create, change, or delete Tableau resources?"
+A request for persistent approval must identify its scope and effect on future shells.
 
 ## Configure a Tableau environment
 
@@ -156,6 +184,10 @@ Register an environment profile with environment-variable names for CI or tempor
 ```text
 tadx env add dev --url https://example.tableau.com --site example-site --pat-name-env TADX_DEV_PAT_NAME --pat-secret-env TADX_DEV_PAT_SECRET
 ```
+
+With one configured environment, TADX can infer its target.
+After adding a second environment, remote writes require --env; reads can use the configured default.
+Artifact provenance never selects a publish destination.
 
 Choose one credential source.
 
@@ -192,7 +224,7 @@ tadx auth logout --environment dev
 ```
 
 Logout removes only the local TADX credential.
-It does not revoke or delete the PAT in Tableau.
+It does not revoke or delete the PAT in Tableau and reports when environment-variable credentials remain usable.
 Remove a temporary environment-variable override from the process to return to the stored PAT.
 PATs and session tokens never appear in configuration values, output, logs, artifacts, catalogs, fixtures, or diagnostics.
 
@@ -213,6 +245,8 @@ Workspace registration still requires an explicit root path.
 Artifact moves still require explicit source and destination workspace names plus an artifact selector.
 Workspace names are portable across supported operating systems and cannot contain path separators, Windows-invalid characters, reserved device names, or trailing dots or spaces.
 Lifecycle commands use the logical workspace name, while artifact paths remain relative and portable.
+Publish managed content with --id or exact --artifact-name within the workspace, or an existing native file directly with --file.
+Use workspace status --full for file locations; compact output hides directory hashes and fingerprints.
 
 ## Pull a workbook
 
@@ -236,18 +270,23 @@ tadx content workbook list --environment dev --catalog
 ```
 
 TADX reports the selected source, freshness, and coverage in the same output shape.
+--full expands details, while --limit controls record count; inventory lists accept up to 10,000 requested records.
+`tadx last` displays the previous execution's saved full output and timestamp without authentication or re-execution.
+There is one global saved result, not history; errors and confirmed partial results are retained within a bounded redacted snapshot.
 Catalog reads never fall back to Tableau.
 
-An unfiltered workbook, datasource, flow, project, user, or group `list` performs a complete live inventory of that resource scope and atomically refreshes the scope in the catalog.
-`--limit` bounds the rows rendered to the terminal, not the live inventory work.
-Use the returned cursor to read the same catalog snapshot without repeating the remote traversal.
-Adding a resource filter changes the operation to a bounded live query and records only the observed rows as a partial cache update.
+Ordinary live `list` commands fetch a bounded result and do not require the catalog to answer.
+Use `--limit` for a larger bounded result or `--all` for the full supported resource scope.
+`--all` shares the catalog refresh collector and returns the live results directly, with a best-effort catalog update.
+A cache-write failure is a warning, not a failed live list.
+Filtered results never establish complete coverage of an unfiltered scope.
+Output reports `more_available` instead of exposing opaque cursors.
 
 Live searches with content terms use Tableau's native content search.
 Administration and Pulse searches use their dedicated APIs, and a broad search returns native content before their results.
 Use `--catalog` when local freshness is sufficient and no Tableau request should occur.
 
-Refresh the complete local inventory when you need broad offline search:
+Refresh the local inventory when you need broad offline search:
 
 ```text
 tadx catalog refresh --environment dev
@@ -255,14 +294,34 @@ tadx search revenue --environment dev --catalog
 tadx catalog status --environment dev
 ```
 
-## TADX and Tableau MCP
+Permissions are excluded from the default refresh because they require additional per-resource requests.
+Include the `permissions` scope explicitly only when needed, requesting all desired scopes together.
+An explicit refresh failure preserves the previous catalog generation and reports an error.
+Refresh collects into private disk-backed staging before opening the active catalog's publication transaction.
+Tableau response times and retries therefore do not hold the shared catalog write lock.
+Staging enforces row and database-page limits; SQLite journal and temporary files add disk overhead.
+Publication replaces only the requested inventory kinds and preserves independent datasource schema, Pulse, and unrequested inventory observations.
+Preserved observations retain their original timestamps and freshness; refreshing inventory does not reverify them.
+Catalog identity is bound to the actual server endpoint and site, not an editable alias; legacy unbound caches require refresh without guessing their origin.
+After a catalog schema upgrade, run an explicit refresh to rebuild the disposable cache; workspaces, artifacts, and credentials are not removed.
 
-TADX owns Tableau development and lifecycle work, including content artifacts, workspaces, administration, and configuration lifecycle.
-Tableau MCP owns analytical work, including datasource queries, view and custom-view results, and Pulse values and insights.
-Use `get-datasource-metadata` before `query-datasource` for published datasource questions.
-Use Tableau MCP view tools for data or images, and use its Pulse tools for current values, insight bundles, and briefs.
-The user and host agent own Tableau MCP configuration and connection selection.
-TADX does not configure, select, call, proxy, or report the connection state of Tableau MCP.
+Catalog collection uses concurrent reads for speed, starting at up to four requests and adapting to a default ceiling of 32 per CLI process.
+Tableau throttling responses reduce concurrency and pause all workers in that collection for the supplied retry delay.
+This is not a server-wide traffic limit: concurrent CLI processes have separate budgets.
+For a server needing lower traffic, set the environment's ceiling:
+
+```text
+tadx env update dev --catalog-max-concurrency 8
+tadx env update dev --clear-catalog-max-concurrency
+```
+
+The configurable range is 1 to 256; clearing it restores the default of 32.
+
+## Out of scope
+
+TADX covers content artifacts, workspaces, administration, catalogs, and Pulse definition lifecycle.
+It does not query datasource values, render view data or images, produce current Pulse insights, or semantically author workbooks.
+Other connected tools remain independent: TADX does not configure, select, call, proxy, or report their connections.
 
 ## Contribute
 

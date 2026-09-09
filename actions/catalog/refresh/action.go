@@ -4,6 +4,7 @@ package refresh
 import (
 	"context"
 	"errors"
+	"github.com/ahillspace/tadx/internal/commandhint"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -32,6 +33,9 @@ func New(hydrator Hydrator) *Action { return &Action{hydrator: hydrator} }
 
 // Execute validates one bounded hydration request and returns a row-free operational receipt.
 func (a *Action) Execute(ctx context.Context, input Input) (Output, error) {
+	if err := ValidateInput(input); err != nil {
+		return Output{}, err
+	}
 	if a == nil || a.hydrator == nil {
 		return Output{}, failure("catalog.refresh.unconfigured", errs.KindRuntime, input, "Catalog refresh is not configured.", nil)
 	}
@@ -56,6 +60,7 @@ func (a *Action) Execute(ctx context.Context, input Input) (Output, error) {
 		return Output{}, failure("catalog.refresh.incomplete", errs.KindOperation, input, "Catalog inventory is incomplete and was not published.", err)
 	}
 	generation := GenerationOutput{
+		Complete:       result.Complete,
 		ID:             result.GenerationID,
 		Environment:    input.Environment,
 		Site:           input.Site,
@@ -69,13 +74,17 @@ func (a *Action) Execute(ctx context.Context, input Input) (Output, error) {
 	if result.HydratedRecordCount != result.RecordCount {
 		generation.HydratedRecords = result.HydratedRecordCount
 	}
+	state := "refreshed"
+	if !result.Complete {
+		state = "partial"
+	}
 	return Output{
-		Status:      "refreshed",
+		Status:      state,
 		Generation:  generation,
 		Path:        result.Path,
 		Warnings:    output.BoundWarnings(result.Warnings),
 		Diagnostics: result.Diagnostics,
-		Help:        []string{"tadx catalog status --environment " + input.Environment},
+		Help:        []string{commandhint.Environment(input.Environment, "catalog", "status")},
 	}, nil
 }
 
@@ -121,8 +130,12 @@ func scopesInCanonicalOrder(selected map[string]bool) []string {
 }
 
 func validateResult(result HydrationResult, request HydrationRequest) error {
-	if !result.Complete {
+	partialPermissions := result.DeniedPermissions > 0 && slices.Contains(request.RequestedScopes, "permissions") && !result.Complete && len(result.Warnings) > 0
+	if !result.Complete && !partialPermissions {
 		return errors.New("catalog hydration did not complete")
+	}
+	if result.DeniedPermissions < 0 || (result.DeniedPermissions > 0 && !partialPermissions) {
+		return errors.New("catalog hydration returned invalid permission coverage")
 	}
 	if strings.TrimSpace(result.GenerationID) == "" || result.GeneratedAt.IsZero() || strings.TrimSpace(result.Source) == "" {
 		return errors.New("catalog hydration omitted generation provenance")
@@ -135,7 +148,7 @@ func validateResult(result HydrationResult, request HydrationRequest) error {
 	if result.RecordCount < 0 || result.HydratedRecordCount < result.RecordCount || result.Diagnostics.Requests < 0 || result.Diagnostics.FailedRequests < 0 {
 		return errors.New("catalog hydration returned invalid operational counts")
 	}
-	if result.Diagnostics.FailedRequests != 0 {
+	if result.Diagnostics.FailedRequests != result.DeniedPermissions {
 		return errors.New("catalog hydration completed with failed requests")
 	}
 	if !slices.Equal(result.RequestedScopes, request.RequestedScopes) || !slices.Equal(result.ImplicitScopes, request.ImplicitScopes) {

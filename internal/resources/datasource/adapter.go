@@ -161,14 +161,12 @@ func (a *Adapter) ResolveDatasource(ctx context.Context, selector identity.Selec
 	if strings.TrimSpace(selector.Name) == "" || strings.TrimSpace(selector.ProjectPath) == "" {
 		return Datasource{}, errors.New("datasource selection requires a LUID or exact name and project path")
 	}
-	if strings.EqualFold(selector.ProjectPath, "Imported") {
-		if resolver, ok := a.projects.(ProjectSelectorPathResolver); ok {
-			path, err := resolver.ResolveProjectSelectorPath(ctx, selector.ProjectPath)
-			if err != nil {
-				return Datasource{}, err
-			}
-			selector.ProjectPath = path
+	if resolver, ok := a.projects.(ProjectSelectorPathResolver); ok {
+		path, err := resolver.ResolveProjectSelectorPath(ctx, selector.ProjectPath)
+		if err != nil {
+			return Datasource{}, err
 		}
+		selector.ProjectPath = path
 	}
 
 	byLUID := make(map[string]Datasource)

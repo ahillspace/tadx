@@ -20,7 +20,7 @@ try {
     $releaseDirectory = Join-Path $testRoot 'releases'
     $payloadDirectory = Join-Path $testRoot 'payload'
     $fakeBin = Join-Path $testRoot 'fake-bin'
-    $installDirectory = Join-Path $testRoot 'install'
+    $installDirectory = Join-Path $testRoot "install space's"
     New-Item -ItemType Directory -Path $releaseDirectory, $payloadDirectory, $fakeBin | Out-Null
 
     $architecture = $env:PROCESSOR_ARCHITEW6432
@@ -72,14 +72,85 @@ copy /Y "%TADX_TEST_RELEASES%\%pattern%" "%destination%" >nul
     $env:TADX_TEST_GH_LOG = Join-Path $testRoot 'gh.log'
     $env:Path = "$fakeBin;$originalPath"
     $installer = Join-Path (Split-Path -Parent $PSScriptRoot) 'install.ps1'
+    $completionProfile = Join-Path $testRoot 'profiles/profile.ps1'
+    New-Item -ItemType Directory -Path (Split-Path -Parent $completionProfile) | Out-Null
+    [IO.File]::WriteAllText($completionProfile, "# user profile`r`n")
 
-    & $installer -Version latest -InstallDir $installDirectory -NoModifyPath
+    & $installer -Version latest -InstallDir $installDirectory -NoModifyPath -CompletionProfile $completionProfile
     Assert-True -Condition (Test-Path -LiteralPath (Join-Path $installDirectory 'tadx.exe')) -Message 'Latest installation did not write tadx.exe.'
+    $firstProfile = [IO.File]::ReadAllText($completionProfile)
+    $parseTokens = $null
+    $parseErrors = $null
+    [Management.Automation.Language.Parser]::ParseInput($firstProfile, [ref]$parseTokens, [ref]$parseErrors) | Out-Null
+    Assert-True -Condition ($parseErrors.Count -eq 0) -Message 'Generated PowerShell profile does not parse.'
+    Assert-True -Condition ($firstProfile.Contains('completion powershell')) -Message 'Completion was not enabled by default.'
+    Assert-True -Condition ([IO.File]::ReadAllText("$completionProfile.tadx-backup") -eq "# user profile`r`n") -Message 'Profile backup is not recoverable.'
 
-    & $installer -Version 1.2.3 -InstallDir $installDirectory -NoModifyPath
+    & $installer -Version 1.2.3 -InstallDir $installDirectory -NoModifyPath -CompletionProfile $completionProfile
+    Assert-True -Condition ([IO.File]::ReadAllText($completionProfile) -eq $firstProfile) -Message 'Repeated completion setup is not idempotent.'
     $log = Get-Content -Raw -LiteralPath $env:TADX_TEST_GH_LOG
     Assert-True -Condition ($log.Contains('auth status --hostname github.com')) -Message 'The installer did not check GitHub CLI authentication.'
     Assert-True -Condition ($log.Contains('release download')) -Message 'The installer did not use GitHub CLI release downloads.'
+    & $installer -Action Uninstall -InstallDir $installDirectory -NoModifyPath -CompletionProfile $completionProfile
+    Assert-True -Condition ([IO.File]::ReadAllText($completionProfile) -eq "# user profile`r`n") -Message 'Uninstall changed unrelated profile content.'
+    & $installer -Version 1.2.3 -InstallDir $installDirectory -NoModifyPath -NoCompletion -CompletionProfile $completionProfile
+    Assert-True -Condition ([IO.File]::ReadAllText($completionProfile) -eq "# user profile`r`n") -Message 'Completion opt-out changed the profile.'
+
+    # ParseFile uses the actual host's script decoding, unlike ReadAllText.
+    # Keep this fixture source ASCII so Windows PowerShell can load the test.
+    $unicodeDirectory = Join-Path $testRoot ("install space's " + [char]0x4e2d + [char]0x6587)
+    $unicodeText = 'caf' + [char]0xe9
+    $unicodeProfile = "`$tadxFixture = '$unicodeText'`r`n"
+    if ($PSVersionTable.PSVersion.Major -ge 6) {
+        [Text.Encoding]::RegisterProvider([Text.CodePagesEncodingProvider]::Instance)
+    }
+    $encodingCases = @(
+        @{ Name = 'utf8-bom'; Encoding = New-Object Text.UTF8Encoding($true) },
+        @{ Name = 'utf16-le'; Encoding = [Text.Encoding]::Unicode },
+        @{ Name = 'utf16-be'; Encoding = [Text.Encoding]::BigEndianUnicode },
+        @{ Name = 'utf32-le'; Encoding = [Text.Encoding]::UTF32 },
+        @{ Name = 'utf32-be'; Encoding = New-Object Text.UTF32Encoding($true, $true) },
+        @{ Name = 'legacy-ansi'; Encoding = [Text.Encoding]::GetEncoding(0) },
+        @{ Name = 'new'; Encoding = $null }
+    )
+    if ($PSVersionTable.PSVersion.Major -ge 6) {
+        $encodingCases += @{ Name = 'utf8-no-bom'; Encoding = New-Object Text.UTF8Encoding($false) }
+    }
+    foreach ($case in $encodingCases) {
+        $caseProfile = Join-Path $testRoot ('profiles/' + $case.Name + '.ps1')
+        $originalBytes = $null
+        if ($null -ne $case.Encoding) {
+            [IO.File]::WriteAllText($caseProfile, $unicodeProfile, $case.Encoding)
+            $originalBytes = [IO.File]::ReadAllBytes($caseProfile)
+        }
+        & $installer -Version 1.2.3 -InstallDir $unicodeDirectory -NoModifyPath -CompletionProfile $caseProfile
+        $installedBytes = [IO.File]::ReadAllBytes($caseProfile)
+        $profileAST = [Management.Automation.Language.Parser]::ParseFile($caseProfile, [ref]$parseTokens, [ref]$parseErrors)
+        Assert-True -Condition ($parseErrors.Count -eq 0) -Message ($case.Name + ': installed profile does not parse.')
+        $literals = @($profileAST.FindAll({ param($node) $node -is [Management.Automation.Language.StringConstantExpressionAst] }, $true) | ForEach-Object { $_.Value })
+        Assert-True -Condition ($literals -ccontains (Join-Path $unicodeDirectory 'tadx.exe')) -Message ($case.Name + ': Unicode completion path was corrupted by host decoding.')
+        if ($null -ne $originalBytes) {
+            Assert-True -Condition ($literals -ccontains $unicodeText) -Message ($case.Name + ': existing profile text was corrupted.')
+            Assert-True -Condition ([Convert]::ToBase64String([IO.File]::ReadAllBytes("$caseProfile.tadx-backup")) -ceq [Convert]::ToBase64String($originalBytes)) -Message ($case.Name + ': original bytes were not backed up.')
+            $preamble = $case.Encoding.GetPreamble()
+            if ($preamble.Length -gt 0) {
+                Assert-True -Condition ([Convert]::ToBase64String($installedBytes[0..($preamble.Length - 1)]) -ceq [Convert]::ToBase64String($preamble)) -Message ($case.Name + ': existing BOM encoding was not preserved.')
+            }
+        }
+        & $installer -Version 1.2.3 -InstallDir $unicodeDirectory -NoModifyPath -CompletionProfile $caseProfile
+        Assert-True -Condition ([Convert]::ToBase64String([IO.File]::ReadAllBytes($caseProfile)) -ceq [Convert]::ToBase64String($installedBytes)) -Message ($case.Name + ': reinstall changed profile bytes.')
+        $addedText = "# user edit after installing $unicodeText`r`n"
+        $updatedEncoding = New-Object Text.UTF8Encoding($true)
+        if ($null -ne $case.Encoding -and $case.Encoding.GetPreamble().Length -gt 0) { $updatedEncoding = $case.Encoding }
+        [IO.File]::WriteAllText($caseProfile, ([IO.File]::ReadAllText($caseProfile) + $addedText), $updatedEncoding)
+        & $installer -Action Uninstall -InstallDir $unicodeDirectory -NoModifyPath -CompletionProfile $caseProfile
+        $remaining = [IO.File]::ReadAllText($caseProfile)
+        $expected = if ($null -eq $originalBytes) { $addedText } else { $unicodeProfile + $addedText }
+        Assert-True -Condition ($remaining -ceq $expected) -Message ($case.Name + ': uninstall changed existing text.')
+        $uninstalledBytes = [IO.File]::ReadAllBytes($caseProfile)
+        & $installer -Action Uninstall -InstallDir $unicodeDirectory -NoModifyPath -CompletionProfile $caseProfile
+        Assert-True -Condition ([Convert]::ToBase64String([IO.File]::ReadAllBytes($caseProfile)) -ceq [Convert]::ToBase64String($uninstalledBytes)) -Message ($case.Name + ': repeated uninstall changed profile bytes.')
+    }
 
     Write-Output 'install.ps1 tests passed'
 }

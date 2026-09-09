@@ -28,6 +28,10 @@ type ProjectPathResolver interface {
 	ResolveProjectPath(context.Context, string) (string, error)
 }
 
+type projectPathValidator interface {
+	ValidateProjectPath(context.Context, string) error
+}
+
 // Adapter owns flow selection and native download validation.
 type Adapter struct {
 	client   Client
@@ -102,6 +106,11 @@ func (a *Adapter) ResolveFlow(ctx context.Context, selector identity.Selector) (
 	}
 	if strings.TrimSpace(selector.Name) == "" || strings.TrimSpace(selector.ProjectPath) == "" {
 		return Flow{}, errors.New("flow selection requires a LUID or exact name and project path")
+	}
+	if validator, ok := a.projects.(projectPathValidator); ok {
+		if err := validator.ValidateProjectPath(ctx, selector.ProjectPath); err != nil {
+			return Flow{}, err
+		}
 	}
 	byLUID := make(map[string]Flow)
 	seen := make(map[string]tableauflow.Flow)

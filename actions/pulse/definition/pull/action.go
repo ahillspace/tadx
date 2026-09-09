@@ -30,6 +30,9 @@ func New(reader Reader, writer Writer) *Action { return &Action{reader: reader, 
 
 // Execute retrieves and atomically materializes one definition.
 func (a *Action) Execute(ctx context.Context, input Input) (Output, error) {
+	if err := ValidateInput(input); err != nil {
+		return Output{}, err
+	}
 	if a == nil || a.reader == nil || a.writer == nil {
 		return Output{}, pullError("pulse.definition.pull.unconfigured", errs.KindRuntime, input, "Pulse definition pull is not configured.", nil)
 	}
@@ -45,10 +48,13 @@ func (a *Action) Execute(ctx context.Context, input Input) (Output, error) {
 	if definition.LUID != input.LUID || definition.Name == "" || definition.DatasourceLUID == "" || len(definition.Configuration) == 0 {
 		return Output{}, pullError("pulse.definition.pull.invalid_response", errs.KindOperation, input, "Tableau returned an incomplete or mismatched Pulse definition.", errors.New("definition requires matching LUID, name, datasource LUID, and configuration"))
 	}
+	if !definition.MetricsComplete || len(definition.Metrics) == 0 || len(definition.Metrics) > 10000 {
+		return Output{}, pullError("pulse.definition.pull.incomplete", errs.KindOperation, input, "A complete Pulse metric inventory is required for a portable bundle.", nil)
+	}
 	artifact, err := a.writer.WriteDefinition(ctx, Artifact{
 		Workspace: input.Workspace, DefinitionLUID: definition.LUID, Name: definition.Name, DatasourceLUID: definition.DatasourceLUID,
 		Environment: input.Environment, Site: input.Site, ServerOrigin: input.ServerOrigin, SiteLUID: input.SiteLUID,
-		Configuration: append([]byte(nil), definition.Configuration...), Overwrite: input.Overwrite,
+		Configuration: append([]byte(nil), definition.Configuration...), Metrics: definition.Metrics, Overwrite: input.Overwrite,
 	})
 	if err != nil {
 		retryable, corrective := errs.CompleteRetryAdvice(err, "Review the workspace and managed artifact target, then pull again.")
@@ -57,7 +63,7 @@ func (a *Action) Execute(ctx context.Context, input Input) (Output, error) {
 	if err := normalizeArtifactPaths(&artifact); err != nil {
 		return Output{}, pullError("pulse.definition.pull.normalize", errs.KindOperation, input, "Pulse definition artifact path normalization failed.", err)
 	}
-	return Output{Status: "pulled", Definition: definition, Artifact: artifact, RequestID: definition.RequestID, Help: []string{"Inspect " + artifact.CanonicalPath + "."}}, nil
+	return Output{Status: "pulled", Definition: definition, Artifact: artifact, MetricCount: len(definition.Metrics), RequestID: definition.RequestID, Help: []string{"The bundle preserves saved definition and metric specifications. Publish creates new objects and requires explicit datasource mapping."}}, nil
 }
 
 func normalizeArtifactPaths(result *ArtifactResult) error {

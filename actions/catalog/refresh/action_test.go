@@ -172,7 +172,7 @@ func TestActionPreservesHydrationRetryAdviceAndRequestID(t *testing.T) {
 
 func TestActionCompactAndFullOutputContainOnlyBoundedOperationalMetadata(t *testing.T) {
 	result := completeResult()
-	result.Warnings = []string{"one workbook permission request was forbidden"}
+	result.Warnings = []string{"Requested scopes replace the previous catalog generation."}
 	action := refresh.New(&recordingHydrator{result: result})
 	for _, test := range []struct {
 		name, golden string

@@ -15,7 +15,14 @@ Blocked and docs-only capabilities remain non-executable until bounded upstream 
 
 Default output is compact TOON, and `--full` returns expanded bounded details for the same operation.
 Consequential mutations run by default when enabled and support `--preview` for a read-only plan.
-Mutation discovery is not authorization, and `--force` does not bypass mutation policy.
+Supported read-only `--preview` operations remain available when the mutation gate is off.
+Mutation discovery and previews do not authorize execution, and `--force` does not bypass mutation policy.
+Before changing `TADX_ENABLE_MUTATIONS` or the saved mutation setting through `tadx mutation set`, agents must obtain explicit user permission for that setting change and its scope.
+This applies to enabling, disabling, or unsetting it through any mechanism, including command overrides, process or session environments, wrappers, scripts, shell profiles, and persistent user or machine settings.
+A request to perform a Tableau operation does not authorize changing this flag.
+Reuse prior permission only when it explicitly covers the same setting change and scope; session permission does not authorize persistence.
+Ask one short question, for example: "May I enable remote mutations for this session, allowing TADX to create, change, or delete Tableau resources?"
+For a persistent change, name its scope and explain that it affects future shells.
 Tableau LUIDs are authoritative, ambiguous selectors fail, and resolution is never fuzzy or interactive.
 Tableau authentication uses PATs only.
 PATs can persist only after explicit user approval in the native OS credential store.
@@ -28,3 +35,8 @@ Start builds from updated `main` on one feature branch shared by all assigned ag
 Assign disjoint paths and reserve shared integration files for one coordinator.
 Do not create per-agent worktrees unless the user requests them.
 Do not read `archived/` for current guidance.
+
+The maintainer runs agent-based code reviews in ChatGPT.
+Run automated tests and CI, but do not launch agent-based reviews unless explicitly requested.
+After every GitHub push, provide a concise, paste-ready ChatGPT review prompt with the repository, branch, base and head commit IDs, review scope, and material exclusions or verification limits.
+Do not repeat review methodology in that prompt; the maintainer supplies it separately.

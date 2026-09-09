@@ -38,6 +38,8 @@ type Installer struct {
 	Home func() (string, error)
 	// removeAll permits deterministic testing of cleanup failures after commit.
 	removeAll func(*os.Root, string) error
+	// commitReceipt permits deterministic failure injection at the atomic commit.
+	commitReceipt func(*os.Root, string, string) error
 }
 
 type packagePlan struct {
@@ -73,6 +75,10 @@ func (in Installer) Uninstall(ctx context.Context, target string, preview, force
 	if err := checkParents(root, base); err != nil {
 		return Result{}, err
 	}
+	receipt, err := readReceipt(root, base)
+	if err != nil {
+		return Result{}, err
+	}
 	var plans []*packagePlan
 	result := Result{Status: "unchanged"}
 	for _, name := range []string{"tadx", "tadx-pulse"} {
@@ -91,7 +97,7 @@ func (in Installer) Uninstall(ctx context.Context, target string, preview, force
 		status := "remove"
 		if before == "" {
 			status = "absent"
-		} else if before != bundleFingerprint(files) {
+		} else if before != bundleFingerprint(files) && before != receipt.Packages[name] {
 			status = "divergent"
 			if !force {
 				result.Warnings = append(result.Warnings, name+" differs from the bundled skill; --force is required and retains a backup")
@@ -142,6 +148,9 @@ func (in Installer) Uninstall(ctx context.Context, target string, preview, force
 		return Result{}, err
 	}
 	defer unlock()
+	if err := receiptUnchanged(root, base, receipt); err != nil {
+		return Result{}, err
+	}
 	for _, plan := range plans {
 		current, err := fingerprint(root, plan.skill.Path)
 		if err != nil || current != plan.before {
@@ -177,6 +186,11 @@ func (in Installer) Uninstall(ctx context.Context, target string, preview, force
 		current, err := fingerprint(root, stage)
 		if err != nil || current != plan.before {
 			return rollback(errors.New("installed skill changed before removal; previous package restored"))
+		}
+	}
+	if len(receipt.raw) > 0 {
+		if err := in.writeReceipt(root, base, map[string]string{}); err != nil {
+			return rollback(err)
 		}
 	}
 	for _, plan := range plans {
@@ -224,6 +238,10 @@ func (in Installer) Install(ctx context.Context, target string, preview, force b
 	if err := checkParents(root, base); err != nil {
 		return Result{}, err
 	}
+	receipt, err := readReceipt(root, base)
+	if err != nil {
+		return Result{}, err
+	}
 	var plans []*packagePlan
 	for _, name := range []string{"tadx", "tadx-pulse"} {
 		if err := ctx.Err(); err != nil {
@@ -244,6 +262,9 @@ func (in Installer) Install(ctx context.Context, target string, preview, force b
 			status = "unchanged"
 		} else if before != "" {
 			status = "replace"
+			if before == receipt.Packages[name] {
+				status = "upgrade"
+			}
 		}
 		plans = append(plans, &packagePlan{skill: Skill{Name: name, Status: status, Path: destination, SHA256: digest, Files: len(files)}, files: files, before: before})
 	}
@@ -276,14 +297,6 @@ func (in Installer) Install(ctx context.Context, target string, preview, force b
 	for _, plan := range plans {
 		changed = changed || (!plan.remove && plan.skill.Status != "unchanged") || (plan.remove && plan.before != "")
 	}
-	if !changed {
-		for _, plan := range plans {
-			if !plan.hidden {
-				result.Skills = append(result.Skills, plan.skill)
-			}
-		}
-		return result, nil
-	}
 	if err := root.MkdirAll(base, 0o755); err != nil {
 		return Result{}, errors.New("cannot create the target skill directory")
 	}
@@ -295,6 +308,9 @@ func (in Installer) Install(ctx context.Context, target string, preview, force b
 		return Result{}, err
 	}
 	defer unlock()
+	if err := receiptUnchanged(root, base, receipt); err != nil {
+		return Result{}, err
+	}
 	defer func() {
 		for _, plan := range plans {
 			if plan.stage != "" {
@@ -407,7 +423,18 @@ func (in Installer) Install(ctx context.Context, target string, preview, force b
 			result.Warnings = append(result.Warnings, "Previous "+plan.skill.Name+" package retained as a backup; use --full for its home-relative path")
 		}
 	}
-	result.Status = "installed"
+	packages := map[string]string{}
+	for _, plan := range plans {
+		if !plan.remove {
+			packages[plan.skill.Name] = plan.skill.SHA256
+		}
+	}
+	if err := in.writeReceipt(root, base, packages); err != nil {
+		return rollback(err)
+	}
+	if changed {
+		result.Status = "installed"
+	}
 	for _, plan := range plans {
 		if plan.remove && plan.before != "" {
 			if plan.skill.Status == "divergent" {

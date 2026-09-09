@@ -2,6 +2,7 @@ package status
 
 import (
 	"context"
+	"github.com/ahillspace/tadx/internal/commandhint"
 	"strings"
 
 	"github.com/ahillspace/tadx/internal/errs"
@@ -45,5 +46,5 @@ func (a *Action) Execute(ctx context.Context, input Input) (Output, error) {
 		state = "ready"
 		source = "os_credential_store"
 	}
-	return Output{Status: state, Environment: target.Environment, Default: target.Default, ServerURL: target.ServerURL, SiteContentURL: target.SiteContentURL, APIVersion: target.APIVersion, AuthType: target.AuthType, PATNameVariable: target.PATNameVariable, PATSecretVariable: target.PATSecretVariable, PATNamePresent: namePresent, PATSecretPresent: secretPresent, StoredCredentialReferencePresent: target.StoredCredentialReferencePresent, CredentialSource: source, DefaultWorkspace: target.DefaultWorkspace, Help: []string{"tadx auth check --environment <alias>"}}, nil
+	return Output{Status: state, Environment: target.Environment, Default: target.Default, ServerURL: target.ServerURL, SiteContentURL: target.SiteContentURL, APIVersion: target.APIVersion, AuthType: target.AuthType, PATNameVariable: target.PATNameVariable, PATSecretVariable: target.PATSecretVariable, PATNamePresent: namePresent, PATSecretPresent: secretPresent, StoredCredentialReferencePresent: target.StoredCredentialReferencePresent, CredentialSource: source, DefaultWorkspace: target.DefaultWorkspace, Help: []string{commandhint.Environment(target.Environment, "auth", "check")}}, nil
 }

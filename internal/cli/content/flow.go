@@ -45,10 +45,10 @@ func newFlow(deps Dependencies) *cobra.Command {
 
 func newFlowList(deps Dependencies) *cobra.Command {
 	var input flowlist.Input
-	command := &cobra.Command{Use: "list", Short: "List flows and refresh their catalog snapshot.", Annotations: map[string]string{"tadx.capability": "flow.list"}, Args: noContentArgs("flow.list"), RunE: func(command *cobra.Command, _ []string) error {
+	command := &cobra.Command{Use: "list", Short: "List flows with bounded live reads or explicit --all.", Annotations: map[string]string{"tadx.capability": "flow.list"}, Args: noContentArgs("flow.list"), RunE: func(command *cobra.Command, _ []string) error {
 		result, err := deps.FlowLister.ListFlows(command.Context(), input)
 		if err != nil {
-			return err
+			return clierr.WithOutput(result, err)
 		}
 		return deps.Renderer.Render(result)
 	}}
@@ -57,8 +57,11 @@ func newFlowList(deps Dependencies) *cobra.Command {
 	command.Flags().StringVar(&input.OwnerName, "owner", "", "exact owner-name filter")
 	command.Flags().StringVar(&input.ProjectLUID, "project-id", "", "authoritative project LUID filter")
 	command.Flags().StringVar(&input.ProjectName, "project-name", "", "exact leaf project name filter; not a project path")
-	command.Flags().IntVar(&input.Limit, "limit", 0, "maximum flows to render")
+	command.Flags().BoolVar(&input.All, "all", false, "return all matching records, up to 10000; cannot combine with --limit")
+	command.Flags().IntVar(&input.Limit, "limit", 0, "maximum flows to render, from 1 to 10000 (default 25)")
 	command.Flags().StringVar(&input.Cursor, "cursor", "", "opaque continuation cursor")
+	command.MarkFlagsMutuallyExclusive("all", "limit")
+	command.MarkFlagsMutuallyExclusive("all", "cursor")
 	command.Flags().BoolVar(&input.Catalog, "catalog", false, "read indexed local catalog data without contacting Tableau")
 	return command
 }
@@ -69,7 +72,7 @@ func newFlowInspect(deps Dependencies) *cobra.Command {
 	command := &cobra.Command{Use: "inspect", Short: "Inspect one exact flow.", Annotations: map[string]string{"tadx.capability": "flow.inspect"}, Args: selectorArgs("flow.inspect", &luid, &name, &projectPath, input.SetSelector), RunE: func(command *cobra.Command, _ []string) error {
 		result, err := deps.FlowInspector.InspectFlow(command.Context(), input)
 		if err != nil {
-			return err
+			return clierr.WithOutput(result, err)
 		}
 		return deps.Renderer.Render(result)
 	}}
@@ -109,7 +112,9 @@ func newFlowPublish(deps Dependencies) *cobra.Command {
 		if err := noContentArgs("flow.publish")(command, args); err != nil {
 			return err
 		}
-		if err := validateArtifactSelection(artifacts, "flow", input.Name); err != nil {
+		var err error
+		artifacts, err = publishSelections(artifacts, "flow", input.Name, input.File, input.ArtifactID, input.ArtifactName)
+		if err != nil {
 			return clierr.Usage("flow.publish", err)
 		}
 		input.ArtifactPath = artifacts[0]
@@ -131,7 +136,10 @@ func newFlowPublish(deps Dependencies) *cobra.Command {
 	}}
 	command.Flags().StringVar(&input.Workspace, "workspace", "", "logical workspace name; uses deterministic defaults when omitted")
 	command.Flags().StringArrayVar(&artifacts, "artifact", nil, managedArtifactFlagHelp("flow", "DailyPrep--identity")+"; repeat for up to 100 items, processed sequentially")
-	command.Flags().StringVar(&input.Environment, "environment", "", "explicit write environment alias; defaults to artifact source")
+	command.Flags().StringVar(&input.File, "file", "", "native .tfl or .tflx file; no managed artifact required")
+	command.Flags().StringVar(&input.ArtifactID, "id", "", "exact source flow LUID within the resolved workspace")
+	command.Flags().StringVar(&input.ArtifactName, "artifact-name", "", "unique exact managed flow name within the resolved workspace")
+	command.Flags().StringVar(&input.Environment, "environment", "", "write environment alias; may be omitted when exactly one environment is configured")
 	command.Flags().StringVar(&input.Name, "name", "", "published flow name; defaults to artifact name")
 	command.Flags().StringVar(&projectLUID, "project-id", "", "authoritative destination project LUID")
 	command.Flags().StringVar(&projectPath, "project", "", "exact destination project path")
@@ -159,7 +167,7 @@ func newFlowMove(deps Dependencies) *cobra.Command {
 	}, RunE: func(command *cobra.Command, _ []string) error {
 		result, err := deps.FlowMover.MoveFlow(command.Context(), input, preview)
 		if err != nil {
-			return err
+			return clierr.WithOutput(result, err)
 		}
 		return deps.Renderer.Render(result)
 	}}
@@ -185,7 +193,7 @@ func newFlowDelete(deps Dependencies) *cobra.Command {
 	}, RunE: func(command *cobra.Command, _ []string) error {
 		result, err := deps.FlowDeleter.DeleteFlow(command.Context(), input, preview)
 		if err != nil {
-			return err
+			return clierr.WithOutput(result, err)
 		}
 		return deps.Renderer.Render(result)
 	}}

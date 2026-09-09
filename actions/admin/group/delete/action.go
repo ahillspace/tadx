@@ -3,6 +3,7 @@ package delete
 import (
 	"context"
 	"errors"
+	"github.com/ahillspace/tadx/internal/commandhint"
 	"reflect"
 
 	"github.com/ahillspace/tadx/internal/errs"
@@ -80,7 +81,10 @@ func (a *Action) Execute(ctx context.Context, in Input, preview bool) (Output, e
 	if a == nil || a.resolver == nil || a.deleter == nil {
 		return Output{}, errors.New("admin group delete is not configured")
 	}
-	if in.Environment == "" || (in.Site == "" && !in.TargetResolved) || in.GroupLUID == "" {
+	if err := ValidateInput(in); err != nil {
+		return Output{}, err
+	}
+	if in.Site == "" && !in.TargetResolved {
 		return Output{}, &errs.Error{ID: "admin.group.delete.usage", Kind: errs.KindUsage, Operation: "admin.group.delete", Summary: "admin group delete requires explicit environment, site, and group LUID", Retryable: errs.Bool(false), CorrectiveAction: "Provide an exact environment, site, and group LUID.", Validation: []errs.ValidationDetail{{Field: "selector", Code: "required", Message: "admin group delete requires explicit environment, site, and group LUID"}}}
 	}
 	g, err := a.resolver.ResolveGroup(ctx, in.GroupLUID)
@@ -106,11 +110,11 @@ func (a *Action) Execute(ctx context.Context, in Input, preview bool) (Output, e
 			if luid == "" {
 				luid = g.LUID
 			}
-			return Output{}, &errs.Error{ID: "admin.group.delete.outcome_unknown", Kind: errs.KindOperation, Operation: "admin.group.delete", Resource: luid, Environment: in.Environment, Site: in.Site, Summary: "The group delete outcome could not be determined safely.", Cause: err, Retryable: errs.Bool(false), CorrectiveAction: "Inspect the target site and Tableau request before attempting another group delete.", TableauRequestID: result.TableauRequestID}
+			return Output{}, &errs.Error{ID: "admin.group.delete.outcome_unknown", Kind: errs.KindOperation, Operation: "admin.group.delete", Resource: luid, Environment: in.Environment, Site: in.Site, Summary: "The group delete outcome could not be determined safely.", Cause: err, Retryable: errs.Bool(false), CorrectiveAction: "Inspect the exact group and Tableau request before retrying: " + commandhint.Environment(in.Environment, "admin", "group", "inspect", "--id", luid), TableauRequestID: result.TableauRequestID}
 		}
 		return Output{}, err
 	}
 	out.Result = &result
-	out.Help = []string{"tadx admin group list"}
+	out.Help = []string{commandhint.Environment(in.Environment, "admin", "group", "list")}
 	return out, nil
 }

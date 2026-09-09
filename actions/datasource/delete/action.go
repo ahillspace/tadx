@@ -3,6 +3,7 @@ package delete
 import (
 	"context"
 	"errors"
+	"github.com/ahillspace/tadx/internal/commandhint"
 	"strings"
 
 	"github.com/ahillspace/tadx/internal/errs"
@@ -27,6 +28,9 @@ func New(resolver Resolver, deleter Deleter) *Action {
 }
 
 func (a *Action) Execute(ctx context.Context, input Input, preview bool) (Output, error) {
+	if err := ValidateInput(input); err != nil {
+		return Output{}, err
+	}
 	if a == nil || a.resolver == nil || a.deleter == nil {
 		return Output{}, &errs.Error{ID: "datasource.delete.unconfigured", Kind: errs.KindRuntime, Operation: "datasource.delete", Summary: "Datasource delete is not configured.", Retryable: errs.Bool(false), CorrectiveAction: "Configure datasource delete before retrying."}
 	}
@@ -55,7 +59,7 @@ func (a *Action) Execute(ctx context.Context, input Input, preview bool) (Output
 		return Output{}, &errs.Error{ID: "datasource.delete.failed", Kind: errs.KindOperation, Operation: "datasource.delete", Resource: item.LUID, Environment: input.Environment, Site: input.Site, Summary: "Datasource delete failed.", Cause: err, Retryable: retryable, CorrectiveAction: action, TableauRequestID: errs.TableauRequestID(err)}
 	}
 	output.Result = &result
-	output.Help = []string{"tadx content datasource list"}
+	output.Help = []string{commandhint.Environment(input.Environment, "content", "datasource", "list")}
 	return output, nil
 }
 

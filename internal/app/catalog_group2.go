@@ -7,7 +7,6 @@ import (
 	"math"
 	"net/http"
 	"net/url"
-	"path/filepath"
 	"slices"
 	"strings"
 	"time"
@@ -65,7 +64,7 @@ func (h catalogHydrator) Hydrate(ctx context.Context, input catalogrefresh.Hydra
 		now = time.Now
 	}
 	generatedAt := now().UTC()
-	writer, err := h.store.BeginGeneration(ctx, corecatalog.GenerationMetadata{
+	writer, err := h.store.BeginRefreshGeneration(ctx, corecatalog.GenerationMetadata{
 		Environment: input.Environment, Site: input.Site, GeneratedAt: generatedAt, Source: catalogSourceName,
 		RequestedScopes: append([]string(nil), input.RequestedScopes...), ImplicitScopes: append([]string(nil), input.ImplicitScopes...),
 	})
@@ -82,11 +81,15 @@ func (h catalogHydrator) Hydrate(ctx context.Context, input catalogrefresh.Hydra
 		return catalogrefresh.HydrationResult{}, errors.New("catalog collector returned a different scope plan")
 	}
 	collected := append(append([]tableaucatalog.Scope(nil), result.RequestedScopes...), result.ImplicitScopes...)
-	if err := writer.CompleteScopes(ctx, scopeStrings(collected)); err != nil {
-		return catalogrefresh.HydrationResult{}, err
+	var warnings []string
+	if result.DeniedPermissions > 0 {
+		collected = slices.DeleteFunc(collected, func(scope tableaucatalog.Scope) bool { return scope == tableaucatalog.ScopePermissions })
+		if err := writer.MarkPermissionsIncomplete(ctx); err != nil {
+			return catalogrefresh.HydrationResult{}, err
+		}
+		warnings = append(warnings, fmt.Sprintf("Catalog permission coverage is incomplete: %d workbook permission reads were denied (HTTP 403). Missing rules are unknown, not empty permissions; readable inventory was retained.", result.DeniedPermissions))
 	}
-	published, err := writer.Publish(ctx)
-	if err != nil {
+	if err := writer.CompleteScopes(ctx, scopeStrings(collected)); err != nil {
 		return catalogrefresh.HydrationResult{}, err
 	}
 	counts, total, err := catalogScopeCounts(plan.Collected, result.Counts)
@@ -96,12 +99,17 @@ func (h catalogHydrator) Hydrate(ctx context.Context, input catalogrefresh.Hydra
 	if result.Requests > math.MaxInt {
 		return catalogrefresh.HydrationResult{}, errors.New("catalog request count exceeds the receipt bound")
 	}
+	published, err := writer.Publish(ctx)
+	if err != nil {
+		return catalogrefresh.HydrationResult{}, err
+	}
 	return catalogrefresh.HydrationResult{
-		GenerationID: published.GenerationID, GeneratedAt: generatedAt, Complete: true, Source: catalogSourceName,
+		GenerationID: published.GenerationID, GeneratedAt: generatedAt, Complete: result.DeniedPermissions == 0, Source: catalogSourceName,
 		Path: published.Path, RecordCount: published.RecordCount, HydratedRecordCount: total,
 		RequestedScopes: append([]string(nil), input.RequestedScopes...), ImplicitScopes: append([]string(nil), input.ImplicitScopes...),
-		ScopeCounts: counts,
-		Diagnostics: catalogrefresh.Diagnostics{Requests: int(result.Requests), Duration: time.Since(started).Round(time.Millisecond).String()},
+		ScopeCounts:       counts,
+		DeniedPermissions: result.DeniedPermissions, Warnings: warnings,
+		Diagnostics: catalogrefresh.Diagnostics{Requests: int(result.Requests), FailedRequests: result.DeniedPermissions, Duration: time.Since(started).Round(time.Millisecond).String()},
 	}, nil
 }
 
@@ -181,6 +189,9 @@ func (s catalogStoreStatuser) Status(ctx context.Context, input catalogstatus.In
 	if err != nil {
 		return catalogstatus.Result{}, err
 	}
+	if result.GenerationID == "" {
+		return catalogstatus.Result{Environment: result.Environment, Site: result.Site, Path: result.Path}, nil
+	}
 	return catalogstatus.Result{ID: result.GenerationID, Environment: result.Environment, Site: result.Site, GeneratedAt: result.GeneratedAt.UTC().Format(time.RFC3339Nano), Age: result.Age.String(), Complete: result.Complete, Stale: result.Stale, Source: result.Source, Path: result.Path, Records: result.RecordCount, Warnings: append([]string(nil), result.Warnings...)}, nil
 }
 
@@ -190,8 +201,8 @@ func newCatalogGroup2Commands(runtime *runtimeDependencies) *catalogGroup2Comman
 	return &catalogGroup2Commands{runtime: runtime}
 }
 
-func (c *catalogGroup2Commands) store() *corecatalog.Store {
-	return corecatalog.NewStore(filepath.Dir(c.runtime.configPath), c.runtime.now)
+func (c *catalogGroup2Commands) store(environment config.Environment) *corecatalog.Store {
+	return c.runtime.catalogStore(environment)
 }
 
 func (c *catalogGroup2Commands) resolve(inputEnvironment, inputSite, operation string) (config.Environment, error) {
@@ -215,13 +226,16 @@ func (c *catalogGroup2Commands) statuser() *catalogStatusService {
 type catalogRefreshService struct{ commands *catalogGroup2Commands }
 
 func (s *catalogRefreshService) Execute(ctx context.Context, input catalogrefresh.Input) (catalogrefresh.Output, error) {
+	if err := catalogrefresh.ValidateInput(input); err != nil {
+		return catalogrefresh.Output{}, err
+	}
 	environment, err := s.commands.resolve(input.Environment, input.Site, "catalog.refresh")
 	if err != nil {
 		return catalogrefresh.Output{}, err
 	}
 	input.Environment, input.Site, input.SiteResolved = environment.Alias, environment.SiteContentURL, true
 	hydrator := catalogHydrator{
-		store: s.commands.store(), now: s.commands.runtime.now,
+		store: s.commands.store(environment), now: s.commands.runtime.now,
 		executorFor: func(ctx context.Context, alias, site string) (tableaucatalog.Executor, error) {
 			connection, err := s.commands.runtime.tableauConnection(ctx, alias, false)
 			if err != nil {
@@ -233,7 +247,7 @@ func (s *catalogRefreshService) Execute(ctx context.Context, input catalogrefres
 			return catalogTableauExecutor{transport: connection.transport, session: connection.session, serverURL: connection.environment.URL, siteLUID: connection.session.SiteLUID()}, nil
 		},
 		newRunner: func(executor tableaucatalog.Executor) (catalogRunner, error) {
-			return tableaucatalog.NewEngine(executor, tableaucatalog.Config{})
+			return tableaucatalog.NewEngine(executor, tableaucatalog.Config{MaxConcurrency: environment.CatalogMaxConcurrency})
 		},
 	}
 	return catalogrefresh.New(hydrator).Execute(ctx, input)
@@ -247,5 +261,5 @@ func (s *catalogStatusService) Execute(ctx context.Context, input catalogstatus.
 		return catalogstatus.Output{}, err
 	}
 	input.Environment, input.Site, input.SiteResolved = environment.Alias, environment.SiteContentURL, true
-	return catalogstatus.New(catalogStoreStatuser{store: s.commands.store()}).Execute(ctx, input)
+	return catalogstatus.New(catalogStoreStatuser{store: s.commands.store(environment)}).Execute(ctx, input)
 }

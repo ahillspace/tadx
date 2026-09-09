@@ -3,6 +3,7 @@ package move
 import (
 	"context"
 	"errors"
+	"github.com/ahillspace/tadx/internal/commandhint"
 
 	"github.com/ahillspace/tadx/internal/errs"
 	"github.com/ahillspace/tadx/internal/identity"
@@ -22,6 +23,10 @@ type Action struct {
 
 func New(resolver Resolver, mover Mover) *Action { return &Action{resolver: resolver, mover: mover} }
 func (a *Action) Execute(ctx context.Context, input Input, preview bool) (Output, error) {
+	if err := ValidateInput(input); err != nil {
+		return Output{}, err
+	}
+	ctx = a.beginProjectResolution(ctx)
 	if a == nil || a.resolver == nil || a.mover == nil {
 		return Output{}, &errs.Error{ID: "flow.move.unconfigured", Kind: errs.KindRuntime, Operation: "flow.move", Summary: "Flow move is not configured.", Retryable: errs.Bool(false), CorrectiveAction: "Configure flow move before retrying."}
 	}
@@ -44,6 +49,7 @@ func (a *Action) Execute(ctx context.Context, input Input, preview bool) (Output
 		return output, nil
 	}
 	output.Plan.Mode = "execute"
+	ctx = a.beginProjectResolution(ctx)
 	current, err := a.resolver.ResolveFlow(ctx, input.FlowSelector)
 	if err != nil {
 		retryable, correctiveAction := errs.CompleteRetryAdvice(err, "Review the exact flow selector, then retry.")
@@ -67,7 +73,7 @@ func (a *Action) Execute(ctx context.Context, input Input, preview bool) (Output
 		return Output{}, &errs.Error{ID: "flow.move.failed", Kind: errs.KindOperation, Operation: "flow.move", Resource: flow.LUID, Environment: input.Environment, Site: input.Site, Summary: "Flow move failed.", Cause: err, Retryable: retryable, CorrectiveAction: correctiveAction, TableauRequestID: errs.TableauRequestID(err)}
 	}
 	output.Result = &result
-	output.Help = []string{"tadx content flow inspect --id " + flow.LUID}
+	output.Help = []string{commandhint.Environment(input.Environment, "content", "flow", "inspect", "--id", flow.LUID)}
 	return output, nil
 }
 

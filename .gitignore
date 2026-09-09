@@ -11,5 +11,10 @@
 /openspec/
 /archived/
 /tadx.exe
+/tadx
+/opencode.json
+/pulled/
+/ws-*/
+/workspaces/
 /data/
 .DS_Store

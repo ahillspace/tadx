@@ -1,5 +1,7 @@
 package list
 
+import "github.com/ahillspace/tadx/internal/output"
+
 // Input controls capability discovery.
 type Input struct {
 	Domain           string `json:"domain,omitempty"`
@@ -28,12 +30,7 @@ type Capability struct {
 }
 
 // Pagination describes a bounded result page and its continuation.
-type Pagination struct {
-	Returned   int    `json:"returned"`
-	Total      int    `json:"total"`
-	Limit      int    `json:"limit"`
-	NextCursor string `json:"next_cursor,omitempty"`
-}
+type Pagination = output.Page
 
 // Output is the stable capability list result.
 type Output struct {

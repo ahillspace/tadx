@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+	"sync"
 
 	"github.com/ahillspace/tadx/internal/identity"
 	tableauproject "github.com/ahillspace/tadx/internal/tableau/project"
@@ -24,8 +25,9 @@ type ListRequest = tableauproject.ListRequest
 
 // Project is one normalized authoritative project.
 type Project struct {
-	LUID                            string
-	Name                            string
+	LUID string
+	Name string
+	// Path preserves names for display; selectors require a unique path match.
 	Path                            string
 	Description                     string
 	ParentLUID                      string
@@ -57,6 +59,37 @@ type Adapter struct{ client Client }
 // NewAdapter creates a project resource adapter.
 func NewAdapter(client Client) *Adapter { return &Adapter{client: client} }
 
+type resolutionPhaseKey struct{}
+type resolutionPhase struct {
+	adapter   *Adapter
+	once      sync.Once
+	items     []tableauproject.Project
+	requestID string
+	index     *pathIndex
+	err       error
+}
+
+// BeginProjectResolution scopes related lookups to one lazy hierarchy snapshot.
+// Every validation phase, including prewrite revalidation, needs a fresh context.
+func (a *Adapter) BeginProjectResolution(ctx context.Context) context.Context {
+	return context.WithValue(ctx, resolutionPhaseKey{}, &resolutionPhase{adapter: a})
+}
+
+func (a *Adapter) inventory(ctx context.Context) ([]tableauproject.Project, string, *pathIndex, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, "", nil, err
+	}
+	if phase, ok := ctx.Value(resolutionPhaseKey{}).(*resolutionPhase); ok && phase.adapter == a {
+		phase.once.Do(func() {
+			phase.items, phase.requestID, phase.err = a.all(ctx)
+			phase.index = newPathIndex(phase.items)
+		})
+		return phase.items, phase.requestID, phase.index, phase.err
+	}
+	items, requestID, err := a.all(ctx)
+	return items, requestID, newPathIndex(items), err
+}
+
 // ListProjects returns exactly one validated upstream page.
 func (a *Adapter) ListProjects(ctx context.Context, input ListRequest) (Page, error) {
 	if a == nil || a.client == nil {
@@ -85,6 +118,12 @@ func (a *Adapter) ResolveProject(ctx context.Context, selector identity.Selector
 	return a.resolveProject(ctx, selector, false)
 }
 
+// ValidateProjectPath requires a unique literal hierarchy path before content selection.
+func (a *Adapter) ValidateProjectPath(ctx context.Context, path string) error {
+	_, err := a.ResolveProject(ctx, identity.Selector{ProjectPath: path})
+	return err
+}
+
 // ResolveProjectSelectorPath accepts the Imported display label only when no real
 // top-level project occupies that label. The returned path retains Tableau's name.
 func (a *Adapter) ResolveProjectSelectorPath(ctx context.Context, path string) (string, error) {
@@ -96,15 +135,28 @@ func (a *Adapter) resolveProject(ctx context.Context, selector identity.Selector
 	if selector.LUID == "" && strings.TrimSpace(selector.ProjectPath) == "" {
 		return Project{}, errors.New("project LUID or exact project path is required")
 	}
-	items, requestID, err := a.all(ctx)
+	items, requestID, index, err := a.inventory(ctx)
 	if err != nil {
 		return Project{}, err
 	}
-	index := newPathIndex(items)
+	if selector.LUID != "" {
+		item, exists := index.byID[string(selector.LUID)]
+		if !exists {
+			_, err := identity.Resolve(selector, nil)
+			return Project{}, err
+		}
+		path, err := index.resolvePath(item.LUID)
+		if err != nil {
+			return Project{}, err
+		}
+		project := normalize(item, path)
+		project.RequestID = requestID
+		return project, nil
+	}
 	candidates := make([]identity.Candidate, 0, len(items))
 	byLUID := make(map[identity.LUID]Project, len(items))
 	for _, item := range items {
-		path, pathErr := index.path(item.LUID, make(map[string]bool))
+		path, pathErr := index.resolvePath(item.LUID)
 		if pathErr != nil {
 			return Project{}, pathErr
 		}
@@ -133,13 +185,14 @@ func (a *Adapter) resolveProject(ctx context.Context, selector identity.Selector
 	return byLUID[resolved.LUID], nil
 }
 
-// ResolveProjectPath returns the canonical hierarchy path for one authoritative LUID.
+// ResolveProjectPath returns the hierarchy display path for one authoritative LUID.
+// Literal slash names can produce identical paths for distinct project LUIDs.
 func (a *Adapter) ResolveProjectPath(ctx context.Context, luid string) (string, error) {
 	project, err := a.ResolveProject(ctx, identity.Selector{LUID: identity.LUID(luid)})
 	return project.Path, err
 }
 
-// ResolveProjectPaths returns canonical hierarchy paths for authoritative LUIDs
+// ResolveProjectPaths returns hierarchy display paths for authoritative LUIDs
 // from one project inventory traversal.
 func (a *Adapter) ResolveProjectPaths(ctx context.Context, luids []string) (map[string]string, error) {
 	if a == nil || a.client == nil {
@@ -148,11 +201,10 @@ func (a *Adapter) ResolveProjectPaths(ctx context.Context, luids []string) (map[
 	if len(luids) == 0 {
 		return map[string]string{}, nil
 	}
-	items, _, err := a.all(ctx)
+	_, _, index, err := a.inventory(ctx)
 	if err != nil {
 		return nil, err
 	}
-	index := newPathIndex(items)
 	paths := make(map[string]string, len(luids))
 	for _, luid := range luids {
 		luid = strings.TrimSpace(luid)
@@ -162,11 +214,74 @@ func (a *Adapter) ResolveProjectPaths(ctx context.Context, luids []string) (map[
 		if _, exists := paths[luid]; exists {
 			continue
 		}
-		path, pathErr := index.path(luid, make(map[string]bool))
+		path, pathErr := index.resolvePath(luid)
 		if pathErr != nil {
 			return nil, pathErr
 		}
 		paths[luid] = path
+	}
+	return paths, nil
+}
+
+// DiscoveryPaths is a lazy immutable hierarchy for one discovery invocation.
+// Create a fresh instance per invocation; mutation resolution never uses it.
+type DiscoveryPaths struct {
+	adapter    *Adapter
+	once       sync.Once
+	paths      map[string]string
+	pathErrors map[string]error
+	err        error
+}
+
+func NewDiscoveryPaths(adapter *Adapter) *DiscoveryPaths { return &DiscoveryPaths{adapter: adapter} }
+
+func (r *DiscoveryPaths) ResolveProjectPaths(ctx context.Context, luids []string) (map[string]string, error) {
+	if r == nil || r.adapter == nil {
+		return nil, errors.New("discovery project resolver is not configured")
+	}
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	if len(luids) == 0 {
+		return map[string]string{}, nil
+	}
+	for _, id := range luids {
+		if strings.TrimSpace(id) == "" {
+			return nil, errors.New("project path resolution requires authoritative LUIDs")
+		}
+	}
+	r.once.Do(func() {
+		items, _, err := r.adapter.all(ctx)
+		if err != nil {
+			r.err = err
+			return
+		}
+		index := newPathIndex(items)
+		r.paths = make(map[string]string, len(items))
+		r.pathErrors = make(map[string]error)
+		for _, item := range items {
+			path, err := index.resolvePath(item.LUID)
+			if err != nil {
+				r.pathErrors[item.LUID] = err
+			} else {
+				r.paths[item.LUID] = path
+			}
+		}
+	})
+	if r.err != nil {
+		return nil, r.err
+	}
+	paths := make(map[string]string, len(luids))
+	for _, id := range luids {
+		id = strings.TrimSpace(id)
+		if err := r.pathErrors[id]; err != nil {
+			return nil, err
+		}
+		path, ok := r.paths[id]
+		if !ok {
+			return nil, fmt.Errorf("project %q references a missing parent", id)
+		}
+		paths[id] = path
 	}
 	return paths, nil
 }
@@ -176,17 +291,16 @@ func (a *Adapter) FindProjectCollisions(ctx context.Context, name, parentLUID st
 	if strings.TrimSpace(name) == "" {
 		return nil, errors.New("project collision check requires a name")
 	}
-	items, requestID, err := a.all(ctx)
+	items, requestID, index, err := a.inventory(ctx)
 	if err != nil {
 		return nil, err
 	}
-	index := newPathIndex(items)
 	matches := make([]Project, 0, 1)
 	for _, item := range items {
 		if !strings.EqualFold(item.Name, name) || item.ParentLUID != parentLUID {
 			continue
 		}
-		path, pathErr := index.path(item.LUID, make(map[string]bool))
+		path, pathErr := index.resolvePath(item.LUID)
 		if pathErr != nil {
 			return nil, pathErr
 		}
@@ -205,9 +319,6 @@ func (a *Adapter) NormalizeMutationProject(ctx context.Context, item tableauproj
 	item.Name = strings.TrimSpace(item.Name)
 	if item.LUID == "" || item.Name == "" {
 		return Project{}, errors.New("project mutation returned an incomplete authoritative identity")
-	}
-	if strings.Contains(item.Name, "/") {
-		return Project{}, fmt.Errorf("Tableau project %q has a name containing %q, which is not addressable by an exact project path", item.LUID, "/")
 	}
 	path := item.Name
 	if item.ParentLUID != "" {
@@ -280,13 +391,6 @@ func recordProject(items map[string]tableauproject.Project, item tableauproject.
 	if item.LUID == "" || item.Name == "" {
 		return errors.New("project list returned an incomplete authoritative identity")
 	}
-	// Project paths are slash-delimited, so a name containing "/" would make the
-	// hierarchy path ambiguous (parent "A" with child "B/C" is indistinguishable
-	// from parent "A/B" with child "C"). Reject it at the authoritative boundary
-	// rather than risk resolving an exact project path to the wrong project.
-	if strings.Contains(item.Name, "/") {
-		return fmt.Errorf("Tableau project %q has a name containing %q, which is not addressable by an exact project path", item.LUID, "/")
-	}
 	if current, exists := items[item.LUID]; exists && current != item {
 		return fmt.Errorf("Tableau project list returned conflicting records for LUID %q", item.LUID)
 	}
@@ -295,8 +399,15 @@ func recordProject(items map[string]tableauproject.Project, item tableauproject.
 }
 
 type pathIndex struct {
+	mu    sync.Mutex
 	byID  map[string]tableauproject.Project
 	paths map[string]string
+}
+
+func (i *pathIndex) resolvePath(luid string) (string, error) {
+	i.mu.Lock()
+	defer i.mu.Unlock()
+	return i.path(luid, make(map[string]bool))
 }
 
 func newPathIndex(items []tableauproject.Project) *pathIndex {

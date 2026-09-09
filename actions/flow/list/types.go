@@ -1,11 +1,15 @@
 package list
 
-import "github.com/ahillspace/tadx/internal/readsource"
+import (
+	"github.com/ahillspace/tadx/internal/output"
+	"github.com/ahillspace/tadx/internal/readsource"
+)
 
 const fullTagsPerFlowLimit = 50
 
 // Input selects one flow page.
 type Input struct {
+	All                                                                  bool
 	Environment, Site, Cursor, Name, OwnerName, ProjectLUID, ProjectName string
 	Limit                                                                int
 	Catalog                                                              bool
@@ -44,12 +48,7 @@ type Page struct {
 }
 
 // OutputPage is continuation metadata.
-type OutputPage struct {
-	Returned   int    `json:"returned"`
-	Total      int    `json:"total"`
-	Limit      int    `json:"limit"`
-	NextCursor string `json:"next_cursor,omitempty"`
-}
+type OutputPage = output.Page
 
 // Output retains details before projection.
 type Output struct {
@@ -66,9 +65,9 @@ type CompactFlow struct {
 	LUID        string `json:"luid"`
 	Name        string `json:"name"`
 	ProjectLUID string `json:"project_luid"`
-	ProjectName string `json:"project_name,omitempty"`
-	FileType    string `json:"file_type,omitempty"`
-	UpdatedAt   string `json:"updated_at,omitempty"`
+	ProjectName string `json:"project_name"`
+	FileType    string `json:"file_type"`
+	UpdatedAt   string `json:"updated_at"`
 }
 
 // CompactResult is the default projection.

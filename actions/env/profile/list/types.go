@@ -1,28 +1,26 @@
 package list
 
+import "github.com/ahillspace/tadx/internal/output"
+
 type Input struct {
 	Cursor string `json:"cursor,omitempty"`
 	Limit  int    `json:"limit,omitempty"`
 }
 
 type Profile struct {
-	Alias            string `json:"alias"`
-	Default          bool   `json:"default"`
-	ServerURL        string `json:"server_url"`
-	SiteContentURL   string `json:"site_content_url,omitempty"`
-	APIVersion       string `json:"api_version,omitempty"`
-	AuthType         string `json:"auth_type"`
-	PATNameEnv       string `json:"pat_name_env"`
-	PATSecretEnv     string `json:"pat_secret_env"`
-	DefaultWorkspace string `json:"default_workspace,omitempty"`
+	Alias                 string `json:"alias"`
+	Default               bool   `json:"default"`
+	ServerURL             string `json:"server_url"`
+	SiteContentURL        string `json:"site_content_url,omitempty"`
+	APIVersion            string `json:"api_version,omitempty"`
+	AuthType              string `json:"auth_type"`
+	PATNameEnv            string `json:"pat_name_env"`
+	PATSecretEnv          string `json:"pat_secret_env"`
+	DefaultWorkspace      string `json:"default_workspace,omitempty"`
+	CatalogMaxConcurrency int    `json:"catalog_max_concurrency,omitempty"`
 }
 
-type Page struct {
-	Returned   int    `json:"returned"`
-	Total      int    `json:"total"`
-	Limit      int    `json:"limit"`
-	NextCursor string `json:"next_cursor,omitempty"`
-}
+type Page = output.Page
 
 type Output struct {
 	Page     Page      `json:"page"`

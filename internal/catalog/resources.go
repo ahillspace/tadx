@@ -28,10 +28,10 @@ func (s *Store) UpsertResources(ctx context.Context, entries []ResourceEntry) er
 		return err
 	}
 	defer tx.Rollback()
-	statement, err := tx.PrepareContext(ctx, `INSERT INTO resource_entries(environment,site,kind,luid,name,project_path,owner,payload,coverage,observed_at)
-		VALUES(?,?,?,?,?,?,?,?,?,?)
+	statement, err := tx.PrepareContext(ctx, `INSERT INTO resource_entries(environment,site,kind,luid,name,project_path,project_luid,owner,payload,coverage,observed_at)
+		VALUES(?,?,?,?,?,?,?,?,?,?,?)
 		ON CONFLICT(environment,site,kind,luid) DO UPDATE SET
-		name=excluded.name,project_path=excluded.project_path,owner=excluded.owner,
+		name=excluded.name,project_path=excluded.project_path,project_luid=excluded.project_luid,owner=excluded.owner,
 		payload=excluded.payload,coverage=excluded.coverage,observed_at=excluded.observed_at`)
 	if err != nil {
 		return err
@@ -53,7 +53,7 @@ func (s *Store) UpsertResources(ctx context.Context, entries []ResourceEntry) er
 		if entry.Payload == nil {
 			entry.Payload = []byte{}
 		}
-		if _, err := statement.ExecContext(ctx, entry.Environment, entry.Site, entry.Kind, entry.LUID, entry.Name, entry.ProjectPath, entry.Owner, entry.Payload, entry.Coverage, entry.ObservedAt.UTC().Format(generationTimeLayout)); err != nil {
+		if _, err := statement.ExecContext(ctx, entry.Environment, entry.Site, entry.Kind, entry.LUID, entry.Name, entry.ProjectPath, entry.ProjectLUID, entry.Owner, entry.Payload, entry.Coverage, entry.ObservedAt.UTC().Format(generationTimeLayout)); err != nil {
 			return fmt.Errorf("upsert catalog resource entry %d: %w", index, err)
 		}
 		touched[[3]string{entry.Environment, entry.Site, entry.Kind}] = struct{}{}
@@ -99,6 +99,11 @@ func (s *Store) ReadResources(ctx context.Context, query ResourceQuery) (Resourc
 	if metaErr != nil && !errors.Is(metaErr, sql.ErrNoRows) {
 		return ResourceResult{}, metaErr
 	}
+	if query.LUID == "" && query.Name != "" && query.ProjectPath != "" && (query.Kind == "workbook" || query.Kind == "datasource" || query.Kind == "flow") {
+		if err := validateCachedProjectPath(ctx, tx, query, meta); err != nil {
+			return ResourceResult{}, err
+		}
+	}
 	complete := snapshotErr == nil && snapshot.complete
 	generationID := snapshot.id
 	generatedAt := snapshot.generatedAt
@@ -115,6 +120,18 @@ func (s *Store) ReadResources(ctx context.Context, query ResourceQuery) (Resourc
 			return ResourceResult{}, err
 		}
 	}
+	where, args := resourceWhere(query)
+	if query.ProjectName != "" {
+		if !complete {
+			return ResourceResult{}, projectFilterUnavailableError{}
+		}
+		filter, filterArgs, err := cachedProjectNameFilter(ctx, tx, &query, meta)
+		if err != nil {
+			return ResourceResult{}, err
+		}
+		where += " AND " + filter
+		args = append(args, filterArgs...)
+	}
 	if query.Cursor != "" {
 		if query.Offset != 0 || !complete || generationID == "" {
 			return ResourceResult{}, invalidCursorError{}
@@ -126,7 +143,6 @@ func (s *Store) ReadResources(ctx context.Context, query ResourceQuery) (Resourc
 		query.Offset = cursorOffset
 	}
 
-	where, args := resourceWhere(query)
 	var total int
 	var newestObserved sql.NullString
 	if err := tx.QueryRowContext(ctx, `SELECT count(*),max(observed_at) FROM resource_entries `+where, args...).Scan(&total, &newestObserved); err != nil {
@@ -138,7 +154,7 @@ func (s *Store) ReadResources(ctx context.Context, query ResourceQuery) (Resourc
 	if !complete && total == 0 {
 		return ResourceResult{}, unavailableScopeError{resourceScope(query.Kind)}
 	}
-	rows, err := tx.QueryContext(ctx, `SELECT environment,site,kind,luid,name,project_path,owner,payload,coverage,observed_at FROM resource_entries `+where+` ORDER BY name,project_path,luid LIMIT ? OFFSET ?`, append(args, query.Limit, query.Offset)...)
+	rows, err := tx.QueryContext(ctx, `SELECT environment,site,kind,luid,name,project_path,project_luid,owner,payload,coverage,observed_at FROM resource_entries `+where+` ORDER BY name,project_path,luid LIMIT ? OFFSET ?`, append(args, query.Limit, query.Offset)...)
 	if err != nil {
 		return ResourceResult{}, err
 	}
@@ -159,7 +175,7 @@ func (s *Store) ReadResources(ctx context.Context, query ResourceQuery) (Resourc
 	for rows.Next() {
 		var entry ResourceEntry
 		var observed string
-		if err := rows.Scan(&entry.Environment, &entry.Site, &entry.Kind, &entry.LUID, &entry.Name, &entry.ProjectPath, &entry.Owner, &entry.Payload, &entry.Coverage, &observed); err != nil {
+		if err := rows.Scan(&entry.Environment, &entry.Site, &entry.Kind, &entry.LUID, &entry.Name, &entry.ProjectPath, &entry.ProjectLUID, &entry.Owner, &entry.Payload, &entry.Coverage, &observed); err != nil {
 			return ResourceResult{}, err
 		}
 		entry.ObservedAt, err = time.Parse(generationTimeLayout, observed)
@@ -171,11 +187,11 @@ func (s *Store) ReadResources(ctx context.Context, query ResourceQuery) (Resourc
 	if err := rows.Err(); err != nil {
 		return ResourceResult{}, err
 	}
-	if query.LUID != "" || query.Name != "" {
+	if query.ExactlyOne || query.LUID != "" || query.Name != "" {
 		if len(result.Entries) == 0 {
 			return ResourceResult{}, resourceNotFoundError{}
 		}
-		if len(result.Entries) > 1 {
+		if result.Total > 1 {
 			return ResourceResult{}, ambiguousSelectorError{}
 		}
 	}
@@ -189,6 +205,63 @@ func (s *Store) ReadResources(ctx context.Context, query ResourceQuery) (Resourc
 		return ResourceResult{}, err
 	}
 	return result, nil
+}
+
+type ambiguousProjectPathError struct {
+	path string
+	ids  []string
+}
+
+func (e ambiguousProjectPathError) Error() string {
+	return fmt.Sprintf("catalog project path %q is ambiguous; matching project LUIDs: %s; select content by LUID", e.path, strings.Join(e.ids, ", "))
+}
+func (ambiguousProjectPathError) AmbiguousCatalogSelector() bool { return true }
+
+// Validate projects independently of the content name, including implicitly hydrated projects.
+func validateCachedProjectPath(ctx context.Context, tx *sql.Tx, query ResourceQuery, meta generationMeta) error {
+	snapshot, err := currentResourceScopeSnapshot(ctx, tx, query.Environment, query.Site, "project")
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return err
+	}
+	statement := `SELECT luid FROM resource_entries WHERE environment=? AND site=? AND kind='project' AND project_path=? ORDER BY luid`
+	args := []any{query.Environment, query.Site, query.ProjectPath}
+	if err != nil {
+		var complete bool
+		err = tx.QueryRowContext(ctx, `SELECT complete FROM generation_scopes WHERE generation_key=? AND scope='projects'`, meta.key).Scan(&complete)
+		if err != nil && !errors.Is(err, sql.ErrNoRows) {
+			return err
+		}
+		if !complete {
+			return unavailableScopeError{"projects"}
+		}
+		statement = `SELECT luid FROM catalog_records WHERE generation_key=? AND kind='project' AND project_path=? ORDER BY luid`
+		args = []any{meta.key, query.ProjectPath}
+	} else if !snapshot.complete {
+		return unavailableScopeError{"projects"}
+	}
+	rows, err := tx.QueryContext(ctx, statement, args...)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+	var ids []string
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			return err
+		}
+		ids = append(ids, id)
+	}
+	if err := rows.Err(); err != nil {
+		return err
+	}
+	if len(ids) > 1 {
+		return ambiguousProjectPathError{query.ProjectPath, ids}
+	}
+	if len(ids) == 0 {
+		return resourceNotFoundError{}
+	}
+	return nil
 }
 
 type resourceScopeSnapshot struct {
@@ -211,14 +284,16 @@ func currentResourceScopeSnapshot(ctx context.Context, q queryRower, environment
 
 func resourceQueryFingerprint(query ResourceQuery) string {
 	value := struct {
-		Environment string
-		Site        string
-		Kind        string
-		LUID        string
-		Name        string
-		ProjectPath string
-		Limit       int
-	}{query.Environment, query.Site, query.Kind, query.LUID, query.Name, query.ProjectPath, query.Limit}
+		Environment     string
+		Site            string
+		Kind            string
+		LUID            string
+		Name            string
+		ProjectPath     string
+		ProjectName     string
+		ProjectSnapshot string
+		Limit           int
+	}{query.Environment, query.Site, query.Kind, query.LUID, query.Name, query.ProjectPath, query.ProjectName, query.projectSnapshot, query.Limit}
 	data, _ := json.Marshal(value)
 	digest := sha256.Sum256(data)
 	return base64.RawURLEncoding.EncodeToString(digest[:])

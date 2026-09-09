@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"reflect"
 	"strings"
@@ -56,13 +57,63 @@ type source struct {
 	err    error
 }
 
+type pageSource struct {
+	pages []search.Result
+	calls int
+}
+
+func (s *pageSource) Search(_ context.Context, input search.Input) (search.Result, error) {
+	if s.calls >= len(s.pages) {
+		return search.Result{}, errors.New("unexpected page")
+	}
+	if input.Limit > 100 {
+		return search.Result{}, errors.New("provider limit exceeded")
+	}
+	page := s.pages[s.calls]
+	s.calls++
+	return page, nil
+}
+func TestExpandedSearchRejectsCyclesAndScanOverflow(t *testing.T) {
+	for name, pages := range map[string][]search.Result{
+		"repeat":    {{Page: search.Page{NextCursor: "same"}}, {Page: search.Page{NextCursor: "same"}}},
+		"cycle":     {{Page: search.Page{NextCursor: "a"}}, {Page: search.Page{NextCursor: "b"}}, {Page: search.Page{NextCursor: "a"}}},
+		"blank":     {{Page: search.Page{NextCursor: " "}}},
+		"duplicate": {{Items: []search.Item{{LUID: "one", Name: "A", Type: "workbook"}}, Page: search.Page{NextCursor: "next"}}, {Items: []search.Item{{LUID: "one", Name: "A", Type: "workbook"}}}},
+	} {
+		t.Run(name, func(t *testing.T) {
+			s := &pageSource{pages: pages}
+			if _, err := search.New(s).Execute(context.Background(), search.Input{Type: "workbook", Limit: 200}); err == nil {
+				t.Fatal("broken pagination accepted")
+			}
+		})
+	}
+	pages := make([]search.Result, 100)
+	for index := range pages {
+		pages[index].Page.NextCursor = fmt.Sprintf("next-%d", index)
+	}
+	s := &pageSource{pages: pages}
+	if _, err := search.New(s).Execute(context.Background(), search.Input{Type: "workbook", Limit: 200}); err == nil || s.calls != 100 {
+		t.Fatalf("err=%v calls=%d", err, s.calls)
+	}
+}
+
+func TestSearchUnsupportedTypeHasConcreteCorrection(t *testing.T) {
+	for _, kind := range []string{"all", "pulse_definition", "datasources", "view"} {
+		_, err := search.New(&source{}).Execute(context.Background(), search.Input{Type: kind})
+		var structured *errs.Error
+		if !errors.As(err, &structured) || !strings.Contains(structured.CorrectiveAction, "omit --type") || !strings.Contains(structured.CorrectiveAction, "definition, metric") {
+			t.Fatalf("kind=%s err=%v", kind, err)
+		}
+	}
+}
+
 func (s *source) Search(_ context.Context, input search.Input) (search.Result, error) {
 	s.inputs = append(s.inputs, input)
 	return s.result, s.err
 }
 
 func TestSearchValidatesSelectorsBeforeCallingSource(t *testing.T) {
-	for _, input := range []search.Input{{}, {Terms: " "}, {Terms: "sales", Type: "views"}, {Terms: "sales", Limit: 101}, {Terms: "sales", Limit: -1}, {Terms: "sales", Environment: "production"}} {
+	for _, input := range []search.Input{{}, {Terms: " "}, {Terms: "sales", Type: "views"}, {Terms: "sales", Limit: 2001}, {Terms: "sales", Limit: -1}, {Terms: "sales", Environment: "production"}} {
 		s := &source{}
 		_, err := search.New(s).Execute(context.Background(), input)
 		var typed *errs.Error

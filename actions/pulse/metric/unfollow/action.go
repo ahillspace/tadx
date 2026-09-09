@@ -3,6 +3,7 @@ package unfollow
 import (
 	"context"
 	"errors"
+	"github.com/ahillspace/tadx/internal/commandhint"
 	"github.com/ahillspace/tadx/internal/errs"
 	"strings"
 )
@@ -20,6 +21,9 @@ type Action struct {
 
 func New(reader Reader, deleter Deleter) *Action { return &Action{reader: reader, deleter: deleter} }
 func (a *Action) Execute(ctx context.Context, input Input, preview bool) (Output, error) {
+	if err := ValidateInput(input); err != nil {
+		return Output{}, err
+	}
 	if a == nil || a.reader == nil || a.deleter == nil {
 		return Output{}, fail("pulse.metric.unfollow.unconfigured", errs.KindRuntime, input, "Pulse metric unfollow is not configured.", nil)
 	}
@@ -63,7 +67,7 @@ func (a *Action) Execute(ctx context.Context, input Input, preview bool) (Output
 	}
 	output.Result = &Result{Status: "unfollowed", SubscriptionLUID: plan.SubscriptionLUID}
 	if plan.MetricLUID != "" {
-		output.Help = []string{"tadx pulse metric followers --id " + plan.MetricLUID}
+		output.Help = []string{commandhint.Environment(input.Environment, "pulse", "metric", "followers", "--id", plan.MetricLUID)}
 	} else {
 		output.Help = nil
 	}

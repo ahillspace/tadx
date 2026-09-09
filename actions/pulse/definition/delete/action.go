@@ -3,6 +3,7 @@ package delete
 import (
 	"context"
 	"errors"
+	"github.com/ahillspace/tadx/internal/commandhint"
 	"strings"
 
 	"github.com/ahillspace/tadx/internal/errs"
@@ -19,6 +20,9 @@ func New(reader Reader, deleter Deleter) *Action { return &Action{reader: reader
 
 // Execute reads and revalidates the exact target before deletion.
 func (a *Action) Execute(ctx context.Context, input Input) (Output, error) {
+	if err := ValidateInput(input); err != nil {
+		return Output{}, err
+	}
 	if a == nil || a.reader == nil || a.deleter == nil {
 		return Output{}, failure("unconfigured", errs.KindRuntime, input, "Pulse definition delete is not configured.", nil)
 	}
@@ -39,12 +43,15 @@ func (a *Action) Execute(ctx context.Context, input Input) (Output, error) {
 	}
 	output := Output{
 		Plan:     Plan{Mode: mode, Operation: "pulse.definition.delete", Environment: input.Environment, Site: input.Site, Target: target},
-		Warnings: []string{"Tableau determines dependency and cascade effects. Dependent resources are not enumerated."},
-		Help:     []string{"tadx pulse definition list --environment " + input.Environment},
+		Warnings: []string{"Deletes this definition and Tableau-managed dependents. Tableau determines the complete cascade; dependent resources are not enumerated."},
+		Help:     []string{commandhint.Environment(input.Environment, "pulse", "definition", "list", "--datasource-id", target.DatasourceLUID)},
 	}
 	if input.Preview {
 		output.Help = []string{"Remove --preview to delete this exact Pulse definition."}
 		return output, nil
+	}
+	if target.DatasourceLUID == "" {
+		output.Help = nil
 	}
 	current, err := a.reader.GetDefinition(ctx, input.LUID)
 	if err != nil {

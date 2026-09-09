@@ -20,7 +20,7 @@ func runContentSelection[T any](ctx context.Context, operation string, selectors
 		}
 		result, err := execute(ctx, selector)
 		if err != nil {
-			return err
+			return clierr.WithOutput(result, err)
 		}
 		return renderer.Render(result)
 	}

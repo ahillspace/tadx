@@ -8,12 +8,16 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/ahillspace/tadx/internal/errs"
+	"github.com/ahillspace/tadx/internal/commandhint"
+	"slices"
 	"sort"
 	"strings"
+
+	"github.com/ahillspace/tadx/internal/errs"
 )
 
 type Reader interface {
+	ResolveFilterFields(context.Context, string, []string) ([]string, error)
 	GetMetric(context.Context, string) (Metric, error)
 	GetDefinition(context.Context, string) (Definition, error)
 }
@@ -33,6 +37,9 @@ func New(reader Reader, creator Creator, reconciler Reconciler) *Action {
 	return &Action{reader: reader, creator: creator, reconciler: reconciler}
 }
 func (a *Action) Execute(ctx context.Context, input Input, preview bool) (Output, error) {
+	if err := ValidateInput(input); err != nil {
+		return Output{}, err
+	}
 	if a == nil || a.reader == nil || a.creator == nil || a.reconciler == nil {
 		return Output{}, fail("pulse.metric.fork.unconfigured", errs.KindRuntime, input, "Pulse metric fork is not configured.", nil)
 	}
@@ -62,25 +69,30 @@ func (a *Action) Execute(ctx context.Context, input Input, preview bool) (Output
 	}
 	created, err := a.creator.GetOrCreateMetric(ctx, CreateRequest{DefinitionLUID: plan.DefinitionLUID, Specification: cloneMap(plan.Specification)})
 	if err != nil {
-		retryable, corrective := errs.CompleteRetryAdvice(err, "Inspect the remote get-or-create outcome before retrying.")
+		retryable, corrective := errs.CompleteRetryAdvice(err, commandhint.Environment(input.Environment, "pulse", "metric", "list", "--definition-id", plan.DefinitionLUID, "--all")+"; reconcile the remote outcome before retrying.")
 		return Output{}, &errs.Error{ID: "pulse.metric.fork.failed", Kind: errs.KindOperation, Operation: "pulse.metric.fork", Resource: input.MetricLUID, Environment: input.Environment, Site: input.Site, Summary: "Pulse metric fork failed.", Cause: err, Retryable: retryable, CorrectiveAction: corrective, TableauRequestID: errs.TableauRequestID(err)}
 	}
 	if created.MetricLUID == "" {
 		return Output{}, fail("pulse.metric.fork.invalid_response", errs.KindOperation, input, "Tableau returned no metric identity for the fork.", nil)
 	}
-	reconciled, err := a.reconciler.ReconcileMetric(ctx, ExpectedMetric{MetricLUID: created.MetricLUID, DefinitionLUID: plan.DefinitionLUID, DatasourceLUID: plan.DatasourceLUID, SiteLUID: input.SiteLUID})
+	reconciled, err := a.reconciler.ReconcileMetric(ctx, ExpectedMetric{MetricLUID: created.MetricLUID, DefinitionLUID: plan.DefinitionLUID, DatasourceLUID: plan.DatasourceLUID, SiteLUID: input.SiteLUID, Specification: cloneMap(plan.Specification)})
 	if err != nil {
-		return Output{}, &errs.Error{ID: "pulse.metric.fork.reconcile", Kind: errs.KindOperation, Operation: "pulse.metric.fork", Resource: created.MetricLUID, Environment: input.Environment, Site: input.Site, Summary: "Pulse metric reconciliation failed.", Cause: err, Retryable: errs.Bool(false), CorrectiveAction: "Inspect the created metric by exact LUID before retrying.", TableauRequestID: errs.TableauRequestID(err)}
+		return Output{}, &errs.Error{ID: "pulse.metric.fork.reconcile", Kind: errs.KindOperation, Operation: "pulse.metric.fork", Resource: created.MetricLUID, Environment: input.Environment, Site: input.Site, Summary: "Pulse metric reconciliation failed.", Cause: err, Retryable: errs.Bool(false), CorrectiveAction: commandhint.Environment(input.Environment, "pulse", "metric", "inspect", "--id", created.MetricLUID) + "; reconcile before retrying.", TableauRequestID: errs.TableauRequestID(err)}
 	}
-	if reconciled.Status == "ownership_mismatch" || reconciled.Status == "failed" {
-		return Output{}, fail("pulse.metric.fork.reconcile", errs.KindOperation, input, "The forked Pulse metric failed ownership reconciliation.", fmt.Errorf("reconciliation status %s", reconciled.Status))
+	if reconciled.Status != "verified" || !reconciled.OwnershipVerified || !reconciled.SpecificationVerified {
+		return Output{}, &errs.Error{ID: "pulse.metric.fork.reconcile", Kind: errs.KindOperation, Operation: "pulse.metric.fork", Resource: created.MetricLUID, Environment: input.Environment, Site: input.Site, Summary: "The forked Pulse metric's saved configuration could not be verified.", Cause: fmt.Errorf("reconciliation status %s", reconciled.Status), Retryable: errs.Bool(false), CorrectiveAction: commandhint.Environment(input.Environment, "pulse", "metric", "inspect", "--id", created.MetricLUID) + "; do not repeat the mutation automatically.", TableauRequestID: reconciled.RequestID}
 	}
 	status := "existing"
 	if created.Created {
 		status = "created"
 	}
-	output.Result = &Result{Status: status, MetricLUID: created.MetricLUID, MetricName: created.MetricName, Created: created.Created, ReconciliationStatus: reconciled.Status, ReconciliationAttempts: reconciled.Attempts, OwnershipVerified: reconciled.OwnershipVerified, InventoryVisible: reconciled.InventoryVisible, RequestID: created.RequestID, ReconciliationRequestID: reconciled.RequestID}
-	output.Help = []string{"tadx pulse metric inspect --id " + created.MetricLUID}
+	output.Result = &Result{Status: status, MetricLUID: created.MetricLUID, MetricName: created.MetricName, Created: created.Created, ReconciliationStatus: reconciled.Status, ReconciliationAttempts: reconciled.Attempts, OwnershipVerified: reconciled.OwnershipVerified, RequestID: created.RequestID, ReconciliationRequestID: reconciled.RequestID}
+	output.Result.SpecificationVerified = reconciled.SpecificationVerified
+	output.Result.SavedSpecification = cloneMap(reconciled.SavedSpecification)
+	output.Result.SavedDefinition = reconciled.SavedDefinition
+	output.Result.MetricReadbackRequestID = reconciled.MetricRequestID
+	output.Result.DefinitionReadbackRequestID = reconciled.DefinitionRequestID
+	output.Help = []string{"Saved metric configuration and definition linkage verified; current values and generated insights are not read by TADX."}
 	return output, nil
 }
 func (a *Action) plan(ctx context.Context, input Input) (Plan, error) {
@@ -110,11 +122,44 @@ func (a *Action) plan(ctx context.Context, input Input) (Plan, error) {
 		}
 		spec["measurement_period"] = period
 	}
+	if len(definition.AllowedGranularities) == 0 {
+		return Plan{}, fail("pulse.metric.fork.invalid_source", errs.KindOperation, input, "The source definition omitted allowed granularities; its supported periods cannot be validated.", nil)
+	}
+	period, ok := spec["measurement_period"].(map[string]any)
+	if !ok || stringValue(period["granularity"]) == "" {
+		return Plan{}, fail("pulse.metric.fork.invalid_source", errs.KindOperation, input, "The source metric omitted its period granularity; provide --period to select a supported period.", nil)
+	}
+	granularity := stringValue(period["granularity"])
+	if !slices.Contains(definition.AllowedGranularities, granularity) {
+		return Plan{}, fail("pulse.metric.fork.usage", errs.KindUsage, input, "The metric period granularity is not allowed by its definition.", fmt.Errorf("granularity %s is not supported; allowed granularities: %s", granularity, strings.Join(definition.AllowedGranularities, ", ")))
+	}
 	allowed := map[string]bool{}
 	for _, field := range definition.AllowedDimensions {
 		allowed[field] = true
 	}
 	filters := canonicalFilters(input.Filters)
+	selectors := make([]string, len(filters))
+	needsResolution := false
+	for i, filter := range filters {
+		selectors[i] = filter.Field
+		needsResolution = needsResolution || !allowed[filter.Field]
+	}
+	if needsResolution {
+		resolved, resolveErr := a.reader.ResolveFilterFields(ctx, definition.DatasourceLUID, selectors)
+		if resolveErr != nil {
+			return Plan{}, fail("pulse.metric.fork.fields", errs.KindOperation, input, "Pulse filter field resolution failed.", resolveErr)
+		}
+		if len(resolved) != len(filters) {
+			return Plan{}, fail("pulse.metric.fork.fields", errs.KindOperation, input, "Pulse filter field resolution returned incomplete identities.", nil)
+		}
+		for i := range filters {
+			filters[i].Field = resolved[i]
+		}
+	}
+	filters, err = mergeResolvedFilters(filters)
+	if err != nil {
+		return Plan{}, fail("pulse.metric.fork.usage", errs.KindUsage, input, "Pulse filters have conflicting operators or invalid combined values.", err)
+	}
 	for _, filter := range filters {
 		if filter.Field == "" || len(filter.Values) == 0 || !allowed[filter.Field] || !validFilterValues(filter.Values) {
 			return Plan{}, fail("pulse.metric.fork.usage", errs.KindUsage, input, "Every dimensional filter must name an allowed field and at least one value.", nil)
@@ -125,11 +170,36 @@ func (a *Action) plan(ctx context.Context, input Input) (Plan, error) {
 		}
 	}
 	data, _ := json.Marshal(struct {
-		Definition    string         `json:"definition"`
-		Specification map[string]any `json:"specification"`
-	}{definition.LUID, spec})
+		Definition             string         `json:"definition"`
+		Specification          map[string]any `json:"specification"`
+		DefinitionFilters      []any          `json:"definition_filters"`
+		DefinitionFiltersKnown bool           `json:"definition_filters_known"`
+	}{definition.LUID, spec, definition.FixedFilters, definition.FixedFiltersKnown})
 	sum := sha256.Sum256(data)
-	return Plan{Mode: "preview", Operation: "pulse.metric.fork", Environment: input.Environment, Site: input.Site, SourceMetricLUID: input.MetricLUID, DefinitionLUID: definition.LUID, DatasourceLUID: definition.DatasourceLUID, Timeframe: input.Timeframe, Filters: filters, Specification: spec, Fingerprint: "sha256:" + hex.EncodeToString(sum[:])}, nil
+	return Plan{Mode: "preview", Operation: "pulse.metric.fork", Environment: input.Environment, Site: input.Site, SourceMetricLUID: input.MetricLUID, DefinitionLUID: definition.LUID, DatasourceLUID: definition.DatasourceLUID, Timeframe: input.Timeframe, Filters: filters, Specification: spec, DefinitionFilters: definition.FixedFilters, DefinitionFiltersKnown: definition.FixedFiltersKnown, Fingerprint: "sha256:" + hex.EncodeToString(sum[:])}, nil
+}
+
+func mergeResolvedFilters(filters []Filter) ([]Filter, error) {
+	byField := map[string]int{}
+	merged := []Filter{}
+	for _, filter := range filters {
+		if i, ok := byField[filter.Field]; ok {
+			if merged[i].Exclude != filter.Exclude {
+				return nil, fmt.Errorf("field %q has conflicting include and exclude filters", filter.Field)
+			}
+			merged[i].Values = append(merged[i].Values, filter.Values...)
+		} else {
+			byField[filter.Field] = len(merged)
+			merged = append(merged, filter)
+		}
+	}
+	merged = canonicalFilters(merged)
+	for _, filter := range merged {
+		if !validFilterValues(filter.Values) {
+			return nil, fmt.Errorf("field %q has invalid combined filter values", filter.Field)
+		}
+	}
+	return merged, nil
 }
 func measurementPeriod(key string, days int) (map[string]any, bool) {
 	simple := map[string][2]string{"TODAY": {"GRANULARITY_BY_DAY", "RANGE_CURRENT_PARTIAL"}, "THIS_WEEK": {"GRANULARITY_BY_WEEK", "RANGE_CURRENT_PARTIAL"}, "MONTH_TO_DATE": {"GRANULARITY_BY_MONTH", "RANGE_CURRENT_PARTIAL"}, "QUARTER_TO_DATE": {"GRANULARITY_BY_QUARTER", "RANGE_CURRENT_PARTIAL"}, "YEAR_TO_DATE": {"GRANULARITY_BY_YEAR", "RANGE_CURRENT_PARTIAL"}, "YESTERDAY": {"GRANULARITY_BY_DAY", "RANGE_LAST_COMPLETE"}, "LAST_WEEK": {"GRANULARITY_BY_WEEK", "RANGE_LAST_COMPLETE"}, "LAST_MONTH": {"GRANULARITY_BY_MONTH", "RANGE_LAST_COMPLETE"}, "LAST_QUARTER": {"GRANULARITY_BY_QUARTER", "RANGE_LAST_COMPLETE"}, "LAST_YEAR": {"GRANULARITY_BY_YEAR", "RANGE_LAST_COMPLETE"}}

@@ -11,7 +11,6 @@ import (
 	authlogout "github.com/ahillspace/tadx/actions/auth/logout"
 	coreauth "github.com/ahillspace/tadx/internal/auth"
 	"github.com/ahillspace/tadx/internal/config"
-	"github.com/ahillspace/tadx/internal/tableau"
 	tableauauth "github.com/ahillspace/tadx/internal/tableau/auth"
 )
 
@@ -37,32 +36,19 @@ func (r authLogoutResolver) Resolve(_ context.Context, alias string) (authlogout
 	if err != nil {
 		return authlogout.Target{}, err
 	}
-	return authlogout.Target{Environment: environment.Alias}, nil
+	return authlogout.Target{Environment: environment.Alias, EnvironmentCredentialsAvailable: strings.TrimSpace(os.Getenv(environment.Auth.PATNameEnv)) != "" && strings.TrimSpace(os.Getenv(environment.Auth.PATSecretEnv)) != ""}, nil
 }
 
 type loginAuthenticator struct{ runtime *runtimeDependencies }
 
 func (a loginAuthenticator) Authenticate(ctx context.Context, target authlogin.Target, credential authlogin.Credential) (authlogin.Authentication, error) {
-	transport := tableau.NewTransport(a.runtime.httpClient, target.APIVersion, func() string { return a.runtime.correlationID })
-	lookup := coreauth.LookupEnvFunc(func(name string) (string, bool) {
-		switch name {
-		case "TADX_INTERACTIVE_PAT_NAME":
-			return credential.PATName, true
-		case "TADX_INTERACTIVE_PAT_SECRET":
-			return credential.PATSecret, true
-		default:
-			return "", false
-		}
-	})
-	provider := coreauth.NewPATProvider(lookup, tableauauth.NewClient(transport))
-	session, err := provider.Authenticate(ctx, coreauth.Target{
-		Environment:       target.Environment,
-		ServerURL:         target.ServerURL,
-		SiteContentURL:    target.SiteContentURL,
-		PATNameVariable:   "TADX_INTERACTIVE_PAT_NAME",
-		PATSecretVariable: "TADX_INTERACTIVE_PAT_SECRET",
-		Operation:         "auth.login",
-	})
+	transport := a.runtime.transport(target.APIVersion)
+	session, err := a.runtime.commandSessions().AuthenticateCredentials(ctx, coreauth.Target{
+		Environment:    target.Environment,
+		ServerURL:      target.ServerURL,
+		SiteContentURL: target.SiteContentURL,
+		Operation:      "auth.login",
+	}, coreauth.PATCredentials{Name: credential.PATName, Secret: credential.PATSecret}, tableauauth.NewClient(transport))
 	if err != nil {
 		return authlogin.Authentication{}, err
 	}

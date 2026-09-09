@@ -3,6 +3,7 @@ package run
 import (
 	"context"
 	"fmt"
+	"github.com/ahillspace/tadx/internal/commandhint"
 	"strings"
 
 	"github.com/ahillspace/tadx/internal/errs"
@@ -82,7 +83,7 @@ func (a *Action) Execute(ctx context.Context, input Input) (Output, error) {
 		}
 	}
 	summary := fmt.Sprintf("%d checks completed: %d passed, %d warnings, %d failed.", len(checks), counts.Pass, counts.Warn, counts.Fail)
-	return Output{Status: status, Scope: scope, Counts: counts, Summary: summary, Checks: checks, Help: []string{"tadx doctor --full"}}, nil
+	return Output{Status: status, Scope: scope, Counts: counts, Summary: summary, Checks: checks, Help: []string{commandhint.Target(scope.Environment, scope.Workspace, "doctor", "--full")}}, nil
 }
 
 func (a *Action) checkConfiguration(ctx context.Context, scope Scope) Check {
@@ -127,7 +128,7 @@ func (a *Action) checkPAT(ctx context.Context, scope Scope) Check {
 	if state.StoredCredentialPresent {
 		return pass(id, "A PAT is configured in the native OS credential store.")
 	}
-	return fail(id, "No complete PAT source is configured.", "Run tadx auth login --environment <alias>, or set both referenced PAT variables.")
+	return fail(id, "No complete PAT source is configured.", "Run "+commandhint.Environment(scope.Environment, "auth", "login")+", or set both referenced PAT variables.")
 }
 
 func (a *Action) checkConnectivity(ctx context.Context, scope Scope) Check {
@@ -158,13 +159,13 @@ func (a *Action) checkCatalog(ctx context.Context, scope Scope) Check {
 		return fail(id, "Catalog status could not be read.", "Repair or refresh the local catalog.")
 	}
 	if !state.Present {
-		return warn(id, "No catalog generation is available.", "Run tadx catalog refresh for the selected environment.")
+		return warn(id, "No catalog generation is available.", "Run "+commandhint.Environment(scope.Environment, "catalog", "refresh")+".")
 	}
 	if !state.Complete {
-		return warn(id, "The current catalog generation is incomplete.", "Run tadx catalog refresh and review any reported scope failures.")
+		return warn(id, "The current catalog generation is incomplete.", "Run "+commandhint.Environment(scope.Environment, "catalog", "refresh")+" and review any reported scope failures.")
 	}
 	if state.Stale {
-		return warn(id, "The current catalog generation is stale.", "Run tadx catalog refresh before relying on cached discovery.")
+		return warn(id, "The current catalog generation is stale.", "Run "+commandhint.Environment(scope.Environment, "catalog", "refresh")+" before relying on cached discovery.")
 	}
 	return pass(id, "The current catalog generation is complete and fresh.")
 }

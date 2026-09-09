@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/ahillspace/tadx/internal/commandhint"
 
 	"github.com/ahillspace/tadx/internal/errs"
 	"github.com/ahillspace/tadx/internal/identity"
@@ -44,6 +45,10 @@ func New(artifacts ArtifactReader, resolver Resolver, publisher Publisher) *Acti
 
 // Plan performs authoritative reads and returns a preview without mutation.
 func (a *Action) Plan(ctx context.Context, input Input) (Plan, error) {
+	if err := ValidateInput(input); err != nil {
+		return Plan{}, err
+	}
+	ctx = a.beginProjectResolution(ctx)
 	if a == nil || a.artifacts == nil || a.resolver == nil || a.publisher == nil {
 		return Plan{}, unconfigured()
 	}
@@ -127,6 +132,7 @@ func (a *Action) Plan(ctx context.Context, input Input) (Plan, error) {
 	}
 	request := PublishRequest{Name: name, ProjectLUID: project.LUID, Filename: artifact.Filename, ContentPath: artifact.PayloadPath, ContentSize: artifact.Size, ExpectedFingerprint: artifact.Fingerprint, Overwrite: overwrite, AsJob: input.AsJob}
 	return Plan{
+		Workspace: input.WorkspaceName, SourceLUID: artifact.TableauID,
 		Mode: "preview", Operation: "workbook.publish", ArtifactPath: artifact.Path,
 		ArtifactFingerprint: artifact.Fingerprint, Filename: artifact.Filename, WorkbookName: name,
 		Target:    Target{Origin: origin, Environment: input.Environment, Site: input.Site, ProjectLUID: project.LUID, ProjectPath: project.Path, ExistingLUID: existingLUID},
@@ -138,6 +144,7 @@ func (a *Action) Plan(ctx context.Context, input Input) (Plan, error) {
 
 // Apply performs only the exact mutation request captured by Plan.
 func (a *Action) Apply(ctx context.Context, plan Plan) (Result, error) {
+	ctx = a.beginProjectResolution(ctx)
 	if a == nil || a.resolver == nil || a.publisher == nil {
 		return Result{}, unconfigured()
 	}
@@ -157,6 +164,7 @@ func (a *Action) Apply(ctx context.Context, plan Plan) (Result, error) {
 	if prepared == nil {
 		return Result{}, &errs.Error{ID: "workbook.publish.prepare", Kind: errs.KindRuntime, Operation: "workbook.publish", Resource: plan.Target.ExistingLUID, Environment: plan.Target.Environment, Site: plan.Target.Site, Summary: "Workbook publish preparation returned no commit operation.", Retryable: errs.Bool(false), CorrectiveAction: "Review the publish configuration before retrying."}
 	}
+	ctx = a.beginProjectResolution(ctx)
 	if plan.request.Overwrite {
 		if err := a.verifyOverwriteTarget(ctx, plan); err != nil {
 			return Result{}, err
@@ -178,6 +186,9 @@ func (a *Action) Apply(ctx context.Context, plan Plan) (Result, error) {
 			if result.JobID != "" {
 				correctiveAction = "Inspect the Tableau job by its exact job ID before attempting another publish."
 			}
+		}
+		if hint := publishInspectionHint(plan, result); hint != "" {
+			correctiveAction += " Run " + hint + "."
 		}
 		return Result{}, &errs.Error{ID: errorID, Kind: errs.KindOperation, Operation: "workbook.publish", Resource: plan.Target.ExistingLUID, Environment: plan.Target.Environment, Site: plan.Target.Site, Summary: summary, Cause: err, Retryable: errs.Bool(false), CorrectiveAction: correctiveAction, TableauJobID: result.JobID, TableauRequestID: requestID}
 	}
@@ -216,7 +227,7 @@ func (a *Action) Execute(ctx context.Context, input Input, preview bool) (Output
 		return Output{}, err
 	}
 	output.Result = &result
-	output.Help = []string{"tadx search --type workbook --environment <alias> to confirm the published workbook."}
+	output.Help = []string{commandhint.Environment(plan.Target.Environment, "content", "workbook", "inspect", "--id", result.WorkbookLUID)}
 	return output, nil
 }
 

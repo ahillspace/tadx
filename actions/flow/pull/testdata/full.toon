@@ -6,6 +6,10 @@ flow:
   project_path: Ops
   file_type: tflx
 artifact:
+  workspace: ""
+  kind: flow
+  name: Daily
+  source_luid: flow-1
   path: artifacts/flow/Daily
   canonical_path: artifacts/flow/Daily/Daily.tflx
   baseline_fingerprint: "sha256:abc"

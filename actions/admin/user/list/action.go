@@ -6,12 +6,16 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"github.com/ahillspace/tadx/internal/commandhint"
+	"github.com/ahillspace/tadx/internal/output"
+	"github.com/ahillspace/tadx/internal/paging"
 
 	"github.com/ahillspace/tadx/internal/errs"
 	"github.com/ahillspace/tadx/internal/readsource"
 )
 
 type Input struct {
+	All                                       bool
 	Environment, Site, Cursor, Name, SiteRole string
 	Limit                                     int
 	Catalog                                   bool
@@ -38,12 +42,7 @@ type Page struct {
 	SnapshotCursor       string
 	SuppressContinuation bool
 }
-type OutputPage struct {
-	Returned   int    `json:"returned"`
-	Total      int    `json:"total"`
-	Limit      int    `json:"limit"`
-	NextCursor string `json:"next_cursor,omitempty"`
-}
+type OutputPage = output.Page
 type Output struct {
 	Status, Environment, Site string
 	Page                      OutputPage
@@ -55,7 +54,7 @@ type Output struct {
 type CompactUser struct {
 	LUID     string `json:"luid"`
 	Name     string `json:"name"`
-	SiteRole string `json:"site_role,omitempty"`
+	SiteRole string `json:"site_role"`
 }
 type CompactResult struct {
 	Status      string               `json:"status"`
@@ -96,6 +95,12 @@ type Action struct{ reader Reader }
 
 func New(reader Reader) *Action { return &Action{reader: reader} }
 func (a *Action) Execute(ctx context.Context, input Input) (Output, error) {
+	if err := ValidateInput(input); err != nil {
+		return Output{}, err
+	}
+	if input.All {
+		return a.collectAll(ctx, input)
+	}
 	if a == nil || a.reader == nil {
 		return Output{}, errors.New("admin user list reader is not configured")
 	}
@@ -110,7 +115,7 @@ func (a *Action) Execute(ctx context.Context, input Input) (Output, error) {
 	if err != nil {
 		return Output{}, err
 	}
-	page, err := a.reader.ListUsers(ctx, PageRequest{PageNumber: number, PageSize: size, Name: input.Name, SiteRole: input.SiteRole, SnapshotCursor: snapshotCursor})
+	page, err := a.readPage(ctx, PageRequest{PageNumber: number, PageSize: size, Name: input.Name, SiteRole: input.SiteRole, SnapshotCursor: snapshotCursor})
 	if err != nil {
 		return Output{}, err
 	}
@@ -124,7 +129,7 @@ func (a *Action) Execute(ctx context.Context, input Input) (Output, error) {
 			return Output{}, err
 		}
 	}
-	return Output{Status: "listed", Environment: input.Environment, Site: input.Site, Page: OutputPage{Returned: len(page.Users), Total: page.Total, Limit: page.Size, NextCursor: next}, Users: page.Users, RequestID: page.RequestID, Help: []string{"tadx admin user inspect --id <user-luid>"}}, nil
+	return Output{Status: "listed", Environment: input.Environment, Site: input.Site, Page: OutputPage{Returned: len(page.Users), Total: page.Total, Limit: page.Size, NextCursor: next, MoreAvailable: next != "" || (page.SuppressContinuation && len(page.Users) < page.Total)}, Users: page.Users, RequestID: page.RequestID, Help: listHelp(input.Environment, page.Users)}, nil
 }
 
 type cursorValue struct {
@@ -146,8 +151,8 @@ func selectPage(encoded string, requested int, filter string) (int, int, string,
 		if requested == 0 {
 			requested = 25
 		}
-		if requested < 1 || requested > 100 {
-			return 0, 0, "", errs.New(errs.KindUsage, "admin user list limit must be between 1 and 100")
+		if requested < 1 || requested > 10000 {
+			return 0, 0, "", errs.New(errs.KindUsage, "admin user list limit must be between 1 and 10000")
 		}
 		return 1, requested, "", nil
 	}
@@ -164,4 +169,31 @@ func selectPage(encoded string, requested int, filter string) (int, int, string,
 func encodeCursor(page, size int, filter, snapshot string) (string, error) {
 	data, err := json.Marshal(cursorValue{Version: 1, Page: page, Size: size, Filter: filter, Snapshot: snapshot})
 	return base64.RawURLEncoding.EncodeToString(data), err
+}
+
+// collectAll follows private bounded pages and fails closed on incomplete inventories.
+func (a *Action) collectAll(ctx context.Context, input Input) (Output, error) {
+	if input.Limit != 0 || input.Cursor != "" {
+		return Output{}, errs.New(errs.KindUsage, "--all cannot be combined with --limit or --cursor")
+	}
+	if a == nil || a.reader == nil {
+		return Output{}, errors.New("inventory reader is not configured")
+	}
+	requestID := ""
+	items, err := paging.Collect(ctx, func(ctx context.Context, state paging.State) (paging.Page[User], error) {
+		page, err := a.reader.ListUsers(ctx, PageRequest{PageNumber: state.Number, PageSize: state.Size, SnapshotCursor: state.Token, Name: input.Name, SiteRole: input.SiteRole})
+		requestID = page.RequestID
+		return paging.Page[User]{Number: page.Number, Size: page.Size, Total: page.Total, Items: page.Users, Token: page.SnapshotCursor}, err
+	}, func(item User) string { return item.LUID })
+	if err != nil {
+		return Output{}, err
+	}
+	return Output{Status: "listed", Environment: input.Environment, Site: input.Site, Users: items, Page: OutputPage{Returned: len(items), Total: len(items), Limit: 10000}, RequestID: requestID, Help: listHelp(input.Environment, items)}, nil
+}
+
+func listHelp(environment string, items []User) []string {
+	if len(items) == 0 {
+		return nil
+	}
+	return []string{commandhint.Environment(environment, "admin", "user", "inspect", "--id", items[0].LUID)}
 }

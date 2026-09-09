@@ -2,6 +2,7 @@ package update
 
 import (
 	"context"
+	"github.com/ahillspace/tadx/internal/commandhint"
 	"net/url"
 	"sort"
 	"strings"
@@ -27,6 +28,9 @@ func (a *Action) Execute(ctx context.Context, input Input) (Output, error) {
 	if !input.Patch.Any() {
 		return Output{}, usageError("at least one profile field must be supplied")
 	}
+	if value := input.Patch.CatalogMaxConcurrency; value.Set && (value.Value < 0 || value.Value > 256) {
+		return Output{}, usageError("catalog maximum concurrency must be between 1 and 256, or cleared for the default")
+	}
 	if input.Patch.ServerURL.Set && !validServerURL(input.Patch.ServerURL.Value) {
 		return Output{}, usageError("server URL must be an absolute HTTPS URL without credentials, query, or fragment")
 	}
@@ -43,7 +47,7 @@ func (a *Action) Execute(ctx context.Context, input Input) (Output, error) {
 	if len(changedFields) > 0 {
 		status = "updated"
 	}
-	return Output{Status: status, Profile: result.Profile, ChangedFields: changedFields, Help: []string{"tadx env get <alias>"}}, nil
+	return Output{Status: status, Profile: result.Profile, ChangedFields: changedFields, Help: []string{commandhint.Command("env", "get", result.Profile.Alias)}}, nil
 }
 
 func validServerURL(value string) bool {

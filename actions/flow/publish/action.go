@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/ahillspace/tadx/internal/commandhint"
 	"strings"
 
 	"github.com/ahillspace/tadx/internal/errs"
@@ -33,6 +34,10 @@ func New(artifacts ArtifactReader, resolver Resolver, publisher Publisher) *Acti
 	return &Action{artifacts: artifacts, resolver: resolver, publisher: publisher}
 }
 func (a *Action) Execute(ctx context.Context, input Input, preview bool) (Output, error) {
+	if err := ValidateInput(input); err != nil {
+		return Output{}, err
+	}
+	ctx = a.beginProjectResolution(ctx)
 	if a == nil || a.artifacts == nil || a.resolver == nil || a.publisher == nil {
 		return Output{}, unconfigured()
 	}
@@ -45,6 +50,7 @@ func (a *Action) Execute(ctx context.Context, input Input, preview bool) (Output
 		return output, nil
 	}
 	output.Plan.Mode = "execute"
+	ctx = a.beginProjectResolution(ctx)
 	// Revalidate the exact artifact, destination, and collision BEFORE preparing
 	// the upload. Prepare uploads the native flow (a server-side side effect); a
 	// revalidation failure after Prepare would strand that upload with no cleanup
@@ -84,7 +90,7 @@ func (a *Action) Execute(ctx context.Context, input Input, preview bool) (Output
 		return Output{}, &errs.Error{ID: "flow.publish.failed", Kind: errs.KindOperation, Operation: "flow.publish", Environment: input.Environment, Site: input.Site, Summary: "Flow publish failed.", Cause: err, Retryable: retryable, CorrectiveAction: correctiveAction, TableauRequestID: errs.TableauRequestID(err)}
 	}
 	output.Result = &result
-	output.Help = []string{"tadx content flow inspect --id " + result.FlowLUID}
+	output.Help = []string{commandhint.Environment(input.Environment, "content", "flow", "inspect", "--id", result.FlowLUID)}
 	return output, nil
 }
 func (a *Action) plan(ctx context.Context, input Input) (Plan, error) {
@@ -112,7 +118,7 @@ func (a *Action) plan(ctx context.Context, input Input) (Plan, error) {
 	if err != nil {
 		return Plan{}, err
 	}
-	return Plan{Mode: "preview", Operation: "flow.publish", ArtifactPath: artifact.Path, ArtifactFingerprint: artifact.Fingerprint, Filename: artifact.Filename, FlowName: name, Target: Target{Environment: input.Environment, Site: input.Site, ProjectLUID: project.LUID, ProjectPath: project.Path, ExistingLUID: existing}, Overwrite: input.Overwrite, Substeps: []string{"resolve exact destination", "check flow collision", "revalidate destination and collision", "upload native flow", "publish flow"}, request: PublishRequest{Name: name, ProjectLUID: project.LUID, Filename: artifact.Filename, ContentPath: artifact.PayloadPath, ContentSize: artifact.Size, ExpectedFingerprint: artifact.Fingerprint, Overwrite: input.Overwrite}, planned: true}, nil
+	return Plan{Workspace: input.WorkspaceName, SourceLUID: artifact.TableauID, Mode: "preview", Operation: "flow.publish", ArtifactPath: artifact.Path, ArtifactFingerprint: artifact.Fingerprint, Filename: artifact.Filename, FlowName: name, Target: Target{Environment: input.Environment, Site: input.Site, ProjectLUID: project.LUID, ProjectPath: project.Path, ExistingLUID: existing}, Overwrite: input.Overwrite, Substeps: []string{"resolve exact destination", "check flow collision", "revalidate destination and collision", "upload native flow", "publish flow"}, request: PublishRequest{Name: name, ProjectLUID: project.LUID, Filename: artifact.Filename, ContentPath: artifact.PayloadPath, ContentSize: artifact.Size, ExpectedFingerprint: artifact.Fingerprint, Overwrite: input.Overwrite}, planned: true}, nil
 }
 func exactCollision(ctx context.Context, resolver Resolver, name, project, environment, site string, overwrite bool) (string, error) {
 	items, err := resolver.FindFlows(ctx, name, project)

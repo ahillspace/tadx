@@ -3,8 +3,8 @@ package inspect
 import (
 	"context"
 	"errors"
+	"github.com/ahillspace/tadx/internal/commandhint"
 
-	"github.com/ahillspace/tadx/internal/errs"
 	"github.com/ahillspace/tadx/internal/readsource"
 )
 
@@ -83,12 +83,12 @@ func (a *Action) Execute(ctx context.Context, input Input) (Output, error) {
 	if a == nil || a.resolver == nil {
 		return Output{}, errors.New("admin user inspect resolver is not configured")
 	}
-	if input.Selector.LUID == "" && input.Selector.NameOrEmail == "" {
-		return Output{}, &errs.Error{ID: "admin.user.inspect.usage", Kind: errs.KindUsage, Operation: "admin.user.inspect", Summary: "admin user inspect requires a LUID or exact username/email", Retryable: errs.Bool(false), CorrectiveAction: "Provide a user LUID or an exact username or email.", Validation: []errs.ValidationDetail{{Field: "selector", Code: "required", Message: "admin user inspect requires a LUID or exact username/email"}}}
+	if err := ValidateInput(input); err != nil {
+		return Output{}, err
 	}
 	user, err := a.resolver.ResolveUser(ctx, input.Selector)
 	if err != nil {
 		return Output{}, err
 	}
-	return Output{Status: "found", Environment: input.Environment, Site: input.Site, User: user, RequestID: user.RequestID, Help: []string{"tadx admin user update --id " + user.LUID}}, nil
+	return Output{Status: "found", Environment: input.Environment, Site: input.Site, User: user, RequestID: user.RequestID, Help: []string{commandhint.Environment(input.Environment, "admin", "user", "inspect", "--id", user.LUID, "--full")}}, nil
 }

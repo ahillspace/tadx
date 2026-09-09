@@ -12,6 +12,7 @@ import (
 	definitiondelete "github.com/ahillspace/tadx/actions/pulse/definition/delete"
 	definitioninspect "github.com/ahillspace/tadx/actions/pulse/definition/inspect"
 	definitionlist "github.com/ahillspace/tadx/actions/pulse/definition/list"
+	definitionpublish "github.com/ahillspace/tadx/actions/pulse/definition/publish"
 	definitionpull "github.com/ahillspace/tadx/actions/pulse/definition/pull"
 	metricdelete "github.com/ahillspace/tadx/actions/pulse/metric/delete"
 	metricfollow "github.com/ahillspace/tadx/actions/pulse/metric/follow"
@@ -40,6 +41,10 @@ type DefinitionInspector interface {
 // DefinitionPuller pulls one Pulse definition artifact.
 type DefinitionPuller interface {
 	PullPulseDefinition(context.Context, definitionpull.Input) (definitionpull.Output, error)
+}
+
+type DefinitionPublisher interface {
+	PublishPulseDefinition(context.Context, definitionpublish.Input) (definitionpublish.Output, error)
 }
 
 // DefinitionCreator creates one Pulse definition or returns a preview.
@@ -92,6 +97,7 @@ type Dependencies struct {
 	DefinitionLister    DefinitionLister
 	DefinitionInspector DefinitionInspector
 	DefinitionPuller    DefinitionPuller
+	DefinitionPublisher DefinitionPublisher
 	DefinitionCreator   DefinitionCreator
 	DefinitionDeleter   DefinitionDeleter
 	MetricLister        MetricLister
@@ -111,13 +117,14 @@ func New(deps Dependencies) *cobra.Command {
 		Short: "Manage Tableau Pulse definitions and metrics",
 		Long: "Manage Tableau Pulse definitions, metric variants, and followers.\n\n" +
 			"Discover source fields with tadx content datasource schema --id <datasource-luid> --query <term> before creating a definition.\n\n" +
-			"Use Tableau MCP generate-pulse-metric-value-insight-bundle for values and insights, and generate-pulse-insight-brief for briefs. TADX does not inspect the MCP connection.",
+			"TADX reads and changes saved Pulse configuration; it does not retrieve current metric values or generated insights.",
 	}
 	definition := &cobra.Command{Use: "definition", Short: "Manage Pulse metric definitions"}
 	definition.AddCommand(
 		newDefinitionList(deps),
 		newDefinitionInspect(deps),
 		newDefinitionPull(deps),
+		newDefinitionPublish(deps),
 		newDefinitionCreate(deps),
 		newDefinitionDelete(deps),
 	)
@@ -171,7 +178,7 @@ func newMetricDelete(deps Dependencies) *cobra.Command {
 
 func newDefinitionList(deps Dependencies) *cobra.Command {
 	var input definitionlist.Input
-	command := actionCommand("list", "List one bounded Pulse definition page.", "pulse.definition.list", func(command *cobra.Command) error {
+	command := actionCommand("list", "List Pulse definitions.", "pulse.definition.list", func(command *cobra.Command) error {
 		result, err := deps.DefinitionLister.ListPulseDefinitions(command.Context(), input)
 		if err != nil {
 			return err
@@ -179,9 +186,12 @@ func newDefinitionList(deps Dependencies) *cobra.Command {
 		return deps.Renderer.Render(result)
 	})
 	readFlags(command, &input.Environment, &input.Catalog)
-	command.Flags().IntVar(&input.Limit, "limit", 0, "maximum definitions to return; defaults to 25")
-	command.Flags().StringVar(&input.Name, "name", "", "filter this page by exact definition name; follow --cursor even when the page has no matches")
+	command.Flags().IntVar(&input.Limit, "limit", 0, "maximum definitions to return from 1 through 10000; defaults to 25")
+	command.Flags().StringVar(&input.Name, "name", "", "find exact definition names across provider pages")
+	command.Flags().StringVar(&input.DatasourceLUID, "datasource-id", "", "filter exact datasource LUID before the returned limit; scans up to 100 pages")
 	command.Flags().StringVar(&input.Cursor, "cursor", "", "opaque continuation cursor")
+	_ = command.Flags().MarkHidden("cursor")
+	command.Flags().BoolVar(&input.All, "all", false, "return all matching definitions within 100 pages and 10,000 records; cannot combine with --limit")
 	return command
 }
 
@@ -200,7 +210,7 @@ func newDefinitionInspect(deps Dependencies) *cobra.Command {
 
 func newDefinitionPull(deps Dependencies) *cobra.Command {
 	var input definitionpull.Input
-	command := exactIDCommand("pull", "Pull one Pulse definition artifact.", "pulse.definition.pull", &input.LUID, func(command *cobra.Command) error {
+	command := exactIDCommand("pull", "Pull a portable definition bundle with every saved metric variant.", "pulse.definition.pull", &input.LUID, func(command *cobra.Command) error {
 		result, err := deps.DefinitionPuller.PullPulseDefinition(command.Context(), input)
 		if err != nil {
 			return err
@@ -210,6 +220,31 @@ func newDefinitionPull(deps Dependencies) *cobra.Command {
 	command.Flags().StringVar(&input.Environment, "environment", "", "exact environment alias; defaults to the configured read environment")
 	command.Flags().StringVar(&input.Workspace, "workspace", "", "logical workspace name; uses deterministic defaults when omitted")
 	command.Flags().BoolVar(&input.Overwrite, "overwrite", false, "replace a dirty local artifact")
+	return command
+}
+
+func newDefinitionPublish(deps Dependencies) *cobra.Command {
+	var input definitionpublish.Input
+	command := actionCommand("publish", "Recreate a portable Pulse bundle as new definitions and metrics.", "pulse.definition.publish", func(command *cobra.Command) error {
+		if err := definitionpublish.ValidateInput(input); err != nil {
+			return err
+		}
+		if deps.DefinitionPublisher == nil {
+			return errors.New("Pulse bundle publisher is not configured")
+		}
+		result, err := deps.DefinitionPublisher.PublishPulseDefinition(command.Context(), input)
+		if err != nil {
+			return clierr.WithOutput(result, err)
+		}
+		return deps.Renderer.Render(result)
+	})
+	command.Flags().StringVar(&input.Environment, "environment", "", "destination environment alias")
+	command.Flags().StringVar(&input.Workspace, "workspace", "", "logical workspace containing the bundle")
+	command.Flags().StringVar(&input.Artifact, "artifact", "", "workspace-relative managed Pulse bundle directory")
+	command.Flags().StringVar(&input.ArtifactID, "id", "", "exact source definition LUID of the managed bundle; exclusive with --artifact-name and --artifact")
+	command.Flags().StringVar(&input.ArtifactName, "artifact-name", "", "exact managed Pulse bundle name; ambiguity fails; exclusive with --id and --artifact")
+	command.Flags().StringArrayVar(&input.DatasourceMap, "datasource-map", nil, "explicit source=destination datasource LUID mapping; repeat for each source, including same-site publishing")
+	command.Flags().BoolVar(&input.Preview, "preview", false, "validate and preview every recreated object without remote writes")
 	return command
 }
 
@@ -232,7 +267,7 @@ func newDefinitionCreate(deps Dependencies) *cobra.Command {
 		RunE: func(command *cobra.Command, _ []string) error {
 			result, err := deps.DefinitionCreator.CreatePulseDefinition(command.Context(), input, preview)
 			if err != nil {
-				return err
+				return clierr.WithOutput(result, err)
 			}
 			return deps.Renderer.Render(result)
 		},
@@ -241,10 +276,10 @@ func newDefinitionCreate(deps Dependencies) *cobra.Command {
 	command.Flags().StringVar(&input.Intent.Name, "name", "", "definition name")
 	command.Flags().StringVar(&input.Intent.Description, "description", "", "definition description")
 	command.Flags().StringVar(&input.Intent.DatasourceLUID, "datasource-id", "", "authoritative published datasource LUID")
-	command.Flags().StringVar(&input.Intent.MeasureField, "measure-field", "", "exact raw Tableau measure field ID")
+	command.Flags().StringVar(&input.Intent.MeasureField, "measure-field", "", "exact Tableau measure field ID or unique display name; resolved to the raw ID")
 	command.Flags().StringVar(&input.Intent.Aggregation, "aggregation", "", "aggregation: SUM, AVERAGE, MIN, MAX, COUNT, COUNT_DISTINCT, or USER; defaults to SUM")
-	command.Flags().StringVar(&input.Intent.TimeDimension, "date-field", "", "exact raw Tableau date field ID")
-	command.Flags().StringArrayVar(&input.Intent.AllowedDimensions, "dimension", nil, "exact raw Tableau dimension field ID; repeat for each allowed dimension")
+	command.Flags().StringVar(&input.Intent.TimeDimension, "date-field", "", "exact Tableau date field ID or unique display name; resolved to the raw ID")
+	command.Flags().StringArrayVar(&input.Intent.AllowedDimensions, "dimension", nil, "exact Tableau dimension field ID or unique display name; repeat for each allowed dimension")
 	command.Flags().StringVar(&input.Intent.MinimumGranularity, "minimum-granularity", "", "minimum date granularity: DAY, WEEK, MONTH, QUARTER, or YEAR; defaults to DAY")
 	command.Flags().StringVar(&input.Intent.NumberFormat, "number-format", "", "number format: NUMBER, CURRENCY, or PERCENT; defaults to NUMBER")
 	command.Flags().StringVar(&input.Intent.CurrencyCode, "currency", "", "three-letter currency code when --number-format is CURRENCY; defaults to USD")
@@ -259,7 +294,7 @@ func newMetricList(deps Dependencies) *cobra.Command {
 	var input metriclist.Input
 	command := &cobra.Command{
 		Use:         "list",
-		Short:       "List one definition's bounded Pulse metric page.",
+		Short:       "List one definition's Pulse metrics.",
 		Annotations: capability("pulse.metric.list"),
 		Args: func(command *cobra.Command, args []string) error {
 			if err := noArgs("pulse.metric.list", command, args); err != nil {
@@ -280,8 +315,10 @@ func newMetricList(deps Dependencies) *cobra.Command {
 	}
 	readFlags(command, &input.Environment, &input.Catalog)
 	command.Flags().StringVar(&input.DefinitionLUID, "definition-id", "", "authoritative Pulse definition LUID")
-	command.Flags().IntVar(&input.Limit, "limit", 0, "maximum metrics to return; defaults to 25")
+	command.Flags().IntVar(&input.Limit, "limit", 0, "maximum metrics to return from 1 through 10000; defaults to 25")
 	command.Flags().StringVar(&input.Cursor, "cursor", "", "opaque continuation cursor")
+	_ = command.Flags().MarkHidden("cursor")
+	command.Flags().BoolVar(&input.All, "all", false, "return all metrics within 100 pages and 10,000 records; cannot combine with --limit")
 	return command
 }
 
@@ -344,8 +381,8 @@ func newMetricFork(deps Dependencies) *cobra.Command {
 	command.Flags().StringVar(&input.MetricLUID, "id", "", "authoritative source metric LUID")
 	command.Flags().StringVar(&input.Timeframe, "period", "", "timeframe such as LAST_30_DAYS, MONTH_TO_DATE, or CUSTOM_N_DAYS")
 	command.Flags().IntVar(&input.CustomDays, "days", 0, "custom trailing day count from 1 through 3650")
-	command.Flags().StringArrayVar(&includeFilters, "filter", nil, "included dimensional value as <field>=<value>; repeat for more values or fields")
-	command.Flags().StringArrayVar(&excludeFilters, "exclude-filter", nil, "excluded dimensional value as <field>=<value>; repeat for more values or fields")
+	command.Flags().StringArrayVar(&includeFilters, "filter", nil, "included dimensional value as <field ID or unique display name>=<value>; repeat for more values or fields")
+	command.Flags().StringArrayVar(&excludeFilters, "exclude-filter", nil, "excluded dimensional value as <field ID or unique display name>=<value>; repeat for more values or fields")
 	command.Flags().BoolVar(&preview, "preview", false, "preview the remote mutation without performing it")
 	return command
 }

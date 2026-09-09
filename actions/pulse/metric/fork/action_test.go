@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -19,17 +20,100 @@ type service struct {
 	request metricfork.CreateRequest
 }
 
+func (s *service) ResolveFilterFields(_ context.Context, _ string, fields []string) ([]string, error) {
+	out := append([]string(nil), fields...)
+	for i, field := range out {
+		if field == "Region caption" {
+			out[i] = "Region"
+		}
+	}
+	return out, nil
+}
+
+func TestForkResolvesCaptionBeforeReplacingInheritedFilter(t *testing.T) {
+	s := &service{metric: metricfork.Metric{LUID: "metric-1", DefinitionLUID: "definition-1", Specification: map[string]any{"filters": []any{map[string]any{"field": "Region", "categorical_values": []any{map[string]any{"string_value": "East"}}}}}}}
+	in := metricfork.Input{MetricLUID: "metric-1", Timeframe: "LAST_30_DAYS", Filters: []metricfork.Filter{{Field: "Region caption", Values: []string{"West"}}}}
+	out, err := metricfork.New(s, s, s).Execute(context.Background(), in, true)
+	if err != nil || len(out.Plan.Filters) != 1 || out.Plan.Filters[0].Field != "Region" || s.created != 0 {
+		t.Fatalf("preview=%#v err=%v writes=%d", out, err, s.created)
+	}
+	_, err = metricfork.New(s, s, s).Execute(context.Background(), in, false)
+	if err != nil || s.created != 1 {
+		t.Fatalf("err=%v writes=%d", err, s.created)
+	}
+	filters := s.request.Specification["filters"].([]any)
+	if len(filters) != 1 || filters[0].(map[string]any)["field"] != "Region" {
+		t.Fatalf("filters=%#v", filters)
+	}
+}
+
+func TestForkMergesAliasAndRawFiltersAndRejectsConflictingOperators(t *testing.T) {
+	for _, exclude := range []bool{false, true} {
+		s := &service{metric: metricfork.Metric{LUID: "metric-1", DefinitionLUID: "definition-1", Specification: map[string]any{"filters": []any{}}}}
+		in := metricfork.Input{MetricLUID: "metric-1", Timeframe: "LAST_30_DAYS", Filters: []metricfork.Filter{{Field: "Region caption", Values: []string{"West"}}, {Field: "Region", Values: []string{"East", "West"}, Exclude: exclude}}}
+		out, err := metricfork.New(s, s, s).Execute(context.Background(), in, true)
+		if exclude {
+			if err == nil || !strings.Contains(err.Error(), "conflicting") || s.created != 0 {
+				t.Fatalf("expected conflicting alias/raw filters: out=%#v err=%v", out, err)
+			}
+		} else if err != nil || len(out.Plan.Filters) != 1 || len(out.Plan.Filters[0].Values) != 2 || out.Plan.Filters[0].Values[0] != "East" || out.Plan.Filters[0].Values[1] != "West" {
+			t.Fatalf("out=%#v err=%v", out, err)
+		}
+	}
+}
+
+type driftingAliasService struct {
+	service
+	resolutions int
+}
+
+func (s *driftingAliasService) GetDefinition(ctx context.Context, id string) (metricfork.Definition, error) {
+	d, err := s.service.GetDefinition(ctx, id)
+	d.AllowedDimensions = append(d.AllowedDimensions, "OtherRegion")
+	return d, err
+}
+func (s *driftingAliasService) ResolveFilterFields(context.Context, string, []string) ([]string, error) {
+	s.resolutions++
+	if s.resolutions > 1 {
+		return []string{"OtherRegion"}, nil
+	}
+	return []string{"Region"}, nil
+}
+func TestForkRejectsAliasRetargetBeforeWrite(t *testing.T) {
+	s := &driftingAliasService{service: service{metric: metricfork.Metric{LUID: "metric-1", DefinitionLUID: "definition-1", Specification: map[string]any{"filters": []any{}}}}}
+	_, err := metricfork.New(s, s, s).Execute(context.Background(), metricfork.Input{MetricLUID: "metric-1", Timeframe: "LAST_30_DAYS", Filters: []metricfork.Filter{{Field: "Region caption", Values: []string{"West"}}}}, false)
+	if err == nil || !strings.Contains(err.Error(), "changed") || s.created != 0 {
+		t.Fatalf("err=%v writes=%d", err, s.created)
+	}
+}
+
+func TestForkBoundsCombinedAliasAndRawFilterValues(t *testing.T) {
+	s := &service{metric: metricfork.Metric{LUID: "metric-1", DefinitionLUID: "definition-1", Specification: map[string]any{"filters": []any{}}}}
+	left, right := []string{}, []string{}
+	for i := 0; i < 10001; i++ {
+		if i < 5000 {
+			left = append(left, strconv.Itoa(i))
+		} else {
+			right = append(right, strconv.Itoa(i))
+		}
+	}
+	_, err := metricfork.New(s, s, s).Execute(context.Background(), metricfork.Input{MetricLUID: "metric-1", Timeframe: "LAST_30_DAYS", Filters: []metricfork.Filter{{Field: "Region caption", Values: left}, {Field: "Region", Values: right}}}, false)
+	if err == nil || !strings.Contains(err.Error(), "combined values") || s.created != 0 {
+		t.Fatalf("err=%v writes=%d", err, s.created)
+	}
+}
+
 func (s *service) GetMetric(context.Context, string) (metricfork.Metric, error) { return s.metric, nil }
 func (s *service) GetDefinition(context.Context, string) (metricfork.Definition, error) {
-	return metricfork.Definition{LUID: "definition-1", DatasourceLUID: "datasource-1", AllowedDimensions: []string{"Region"}}, nil
+	return metricfork.Definition{LUID: "definition-1", DatasourceLUID: "datasource-1", AllowedDimensions: []string{"Region"}, AllowedGranularities: []string{"GRANULARITY_BY_DAY", "GRANULARITY_BY_WEEK", "GRANULARITY_BY_MONTH", "GRANULARITY_BY_QUARTER", "GRANULARITY_BY_YEAR"}}, nil
 }
 func (s *service) GetOrCreateMetric(_ context.Context, request metricfork.CreateRequest) (metricfork.CreateResult, error) {
 	s.created++
 	s.request = request
 	return metricfork.CreateResult{MetricLUID: "metric-fork", Created: true}, nil
 }
-func (s *service) ReconcileMetric(context.Context, metricfork.ExpectedMetric) (metricfork.Reconciliation, error) {
-	return metricfork.Reconciliation{Status: "visible", Attempts: 1, OwnershipVerified: true, InventoryVisible: true}, nil
+func (s *service) ReconcileMetric(_ context.Context, expected metricfork.ExpectedMetric) (metricfork.Reconciliation, error) {
+	return metricfork.Reconciliation{Status: "verified", Attempts: 1, OwnershipVerified: true, SpecificationVerified: true, SavedSpecification: expected.Specification, SavedDefinition: metricfork.SavedDefinition{LUID: expected.DefinitionLUID, DatasourceLUID: expected.DatasourceLUID}}, nil
 }
 
 func TestForkPreservesUnknownFieldsAndPreviewsByDefault(t *testing.T) {
@@ -43,7 +127,7 @@ func TestForkPreservesUnknownFieldsAndPreviewsByDefault(t *testing.T) {
 		t.Fatalf("preview=%#v created=%d", preview, s.created)
 	}
 	result, err := metricfork.New(s, s, s).Execute(context.Background(), input, false)
-	if err != nil || s.created != 1 || result.Result == nil || result.Result.ReconciliationStatus != "visible" {
+	if err != nil || s.created != 1 || result.Result == nil || result.Result.ReconciliationStatus != "verified" {
 		t.Fatalf("result=%#v created=%d err=%v", result, s.created, err)
 	}
 }
@@ -93,17 +177,22 @@ func TestForkOutputGolden(t *testing.T) {
 			Timeframe: "LAST_30_DAYS",
 			Filters:   []metricfork.Filter{{Field: "Region", Values: []string{"West"}}},
 			Specification: map[string]any{
-				"measurement_period": map[string]any{"granularity": "GRANULARITY_BY_DAY", "range": "RANGE_BY_CONFIG"},
+				"measurement_period": map[string]any{"granularity": "GRANULARITY_BY_DAY", "range": "RANGE_BY_CONFIG", "last_x_period": map[string]any{"period": 30, "period_type": "GRANULARITY_BY_DAY", "include_current_period": true}},
+				"filters":            []any{map[string]any{"field": "Region", "operator": "OPERATOR_EQUAL", "categorical_values": []any{map[string]any{"string_value": "West"}}, "include_null": false}},
 			},
+			DefinitionFilters: []any{}, DefinitionFiltersKnown: true,
 			Fingerprint: "sha256:0000000000000000000000000000000000000000000000000000000000000000",
 		},
 		Result: &metricfork.Result{
 			Status: "created", MetricLUID: "metric-fork", MetricName: "Revenue West", Created: true,
-			ReconciliationStatus: "visible", ReconciliationAttempts: 1, OwnershipVerified: true, InventoryVisible: true,
-			RequestID: "request-1", ReconciliationRequestID: "request-2",
+			ReconciliationStatus: "verified", ReconciliationAttempts: 1, OwnershipVerified: true, SpecificationVerified: true,
+			SavedSpecification: map[string]any{"measurement_period": map[string]any{"granularity": "GRANULARITY_BY_DAY", "range": "RANGE_BY_CONFIG"}},
+			SavedDefinition:    metricfork.SavedDefinition{LUID: "definition-1", Name: "Revenue", DatasourceLUID: "datasource-1"},
+			RequestID:          "request-1", ReconciliationRequestID: "request-2",
 		},
-		Help: []string{"tadx pulse metric inspect --id metric-fork"},
+		Help: []string{"Saved metric configuration and definition linkage verified; current values and generated insights are not read by TADX."},
 	}
+	output.Result.SavedSpecification = output.Plan.Specification
 	assertGolden(t, "compact.toon", output, false)
 	assertGolden(t, "full.toon", output, true)
 }
@@ -124,7 +213,7 @@ func assertGolden(t *testing.T, name string, value any, full bool) {
 }
 
 func TestForkRejectsNoChangeAndDisallowedDimension(t *testing.T) {
-	s := &service{metric: metricfork.Metric{LUID: "metric-1", DefinitionLUID: "definition-1", Specification: map[string]any{"filters": []any{}}}}
+	s := &service{metric: metricfork.Metric{LUID: "metric-1", DefinitionLUID: "definition-1", Specification: map[string]any{"filters": []any{}, "measurement_period": map[string]any{"granularity": "GRANULARITY_BY_DAY", "range": "RANGE_CURRENT_PARTIAL"}}}}
 	for _, input := range []metricfork.Input{{MetricLUID: "metric-1"}, {MetricLUID: "metric-1", Filters: []metricfork.Filter{{Field: "Secret", Values: []string{"x"}}}}} {
 		if _, err := metricfork.New(s, s, s).Execute(context.Background(), input, false); err == nil {
 			t.Fatalf("input accepted: %#v", input)

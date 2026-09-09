@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"reflect"
 	"strings"
 
 	"github.com/ahillspace/tadx/internal/errs"
@@ -94,6 +95,9 @@ func Run[T any](ctx context.Context, operation string, selectors []string, execu
 			if err != nil {
 				payload := errs.Structure(err).Error
 				item.Status, item.Error = "failed", &payload
+				if value := reflect.ValueOf(result); value.IsValid() && !value.IsZero() {
+					item.Result = result
+				}
 				out.Failed++
 			} else {
 				item.Result = result

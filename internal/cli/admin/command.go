@@ -64,23 +64,24 @@ type PermissionInspector interface {
 }
 
 type Dependencies struct {
-	PermissionCreator   PermissionCreator
-	PermissionDeleter   PermissionDeleter
-	UserLister          UserLister
-	UserInspector       UserInspector
-	UserCreator         UserCreator
-	UserUpdater         UserUpdater
-	UserDeleter         UserDeleter
-	GroupLister         GroupLister
-	GroupInspector      GroupInspector
-	GroupCreator        GroupCreator
-	GroupUpdater        GroupUpdater
-	GroupDeleter        GroupDeleter
-	GroupMemberAdder    GroupMemberAdder
-	GroupMemberRemover  GroupMemberRemover
-	PermissionInspector PermissionInspector
-	Renderer            Renderer
-	MutationsEnabled    bool
+	PermissionCapabilities func(string) []string
+	PermissionCreator      PermissionCreator
+	PermissionDeleter      PermissionDeleter
+	UserLister             UserLister
+	UserInspector          UserInspector
+	UserCreator            UserCreator
+	UserUpdater            UserUpdater
+	UserDeleter            UserDeleter
+	GroupLister            GroupLister
+	GroupInspector         GroupInspector
+	GroupCreator           GroupCreator
+	GroupUpdater           GroupUpdater
+	GroupDeleter           GroupDeleter
+	GroupMemberAdder       GroupMemberAdder
+	GroupMemberRemover     GroupMemberRemover
+	PermissionInspector    PermissionInspector
+	Renderer               Renderer
+	MutationsEnabled       bool
 }
 
 func New(deps Dependencies) *cobra.Command {
@@ -115,7 +116,7 @@ func newGroupMemberAdd(deps Dependencies) *cobra.Command {
 	}, func(cmd *cobra.Command) error {
 		out, err := deps.GroupMemberAdder.AddAdminGroupMember(cmd.Context(), in, preview)
 		if err != nil {
-			return err
+			return clierr.WithOutput(out, err)
 		}
 		return deps.Renderer.Render(out)
 	})
@@ -143,7 +144,7 @@ func newGroupMemberRemove(deps Dependencies) *cobra.Command {
 	}, func(cmd *cobra.Command) error {
 		out, err := deps.GroupMemberRemover.RemoveAdminGroupMember(cmd.Context(), in, preview)
 		if err != nil {
-			return err
+			return clierr.WithOutput(out, err)
 		}
 		return deps.Renderer.Render(out)
 	})
@@ -156,18 +157,21 @@ func newGroupMemberRemove(deps Dependencies) *cobra.Command {
 
 func newUserList(deps Dependencies) *cobra.Command {
 	var input userlist.Input
-	cmd := &cobra.Command{Use: "list", Short: "List site users and refresh their catalog snapshot.", Annotations: map[string]string{"tadx.capability": "admin.user.list"}, Args: noArgs("admin.user.list"), RunE: func(cmd *cobra.Command, _ []string) error {
+	cmd := &cobra.Command{Use: "list", Short: "List site users with bounded live reads or explicit --all.", Annotations: map[string]string{"tadx.capability": "admin.user.list"}, Args: noArgs("admin.user.list"), RunE: func(cmd *cobra.Command, _ []string) error {
 		out, err := deps.UserLister.ListAdminUsers(cmd.Context(), input)
 		if err != nil {
-			return err
+			return clierr.WithOutput(out, err)
 		}
 		return deps.Renderer.Render(out)
 	}}
 	cmd.Flags().StringVar(&input.Environment, "environment", "", "exact environment alias; defaults to the configured read environment")
 	cmd.Flags().StringVar(&input.Name, "name", "", "exact username filter")
 	cmd.Flags().StringVar(&input.SiteRole, "site-role", "", "exact site-role filter")
-	cmd.Flags().IntVar(&input.Limit, "limit", 0, "maximum users to render")
+	cmd.Flags().BoolVar(&input.All, "all", false, "return all matching records, up to 10000; cannot combine with --limit")
+	cmd.Flags().IntVar(&input.Limit, "limit", 0, "maximum users to render, up to 10000")
 	cmd.Flags().StringVar(&input.Cursor, "cursor", "", "opaque continuation cursor")
+	cmd.MarkFlagsMutuallyExclusive("all", "limit")
+	cmd.MarkFlagsMutuallyExclusive("all", "cursor")
 	cmd.Flags().BoolVar(&input.Catalog, "catalog", false, "read indexed local catalog data without contacting Tableau")
 	return cmd
 }
@@ -186,7 +190,7 @@ func newUserInspect(deps Dependencies) *cobra.Command {
 	}, RunE: func(cmd *cobra.Command, _ []string) error {
 		out, err := deps.UserInspector.InspectAdminUser(cmd.Context(), in)
 		if err != nil {
-			return err
+			return clierr.WithOutput(out, err)
 		}
 		return deps.Renderer.Render(out)
 	}}
@@ -207,7 +211,7 @@ func newUserCreate(deps Dependencies) *cobra.Command {
 	}, func(cmd *cobra.Command) error {
 		out, err := deps.UserCreator.CreateAdminUser(cmd.Context(), in, preview)
 		if err != nil {
-			return err
+			return clierr.WithOutput(out, err)
 		}
 		return deps.Renderer.Render(out)
 	})
@@ -215,7 +219,7 @@ func newUserCreate(deps Dependencies) *cobra.Command {
 	cmd.Flags().StringVar(&in.Environment, "environment", "", "explicit write environment alias")
 	cmd.Flags().StringVar(&in.Name, "name", "", "exact username or email")
 	cmd.Flags().StringVar(&in.SiteRole, "site-role", "", "explicit site role")
-	cmd.Flags().StringVar(&in.AuthSetting, "auth-setting", "", "explicit authentication setting")
+	cmd.Flags().StringVar(&in.AuthSetting, "auth-setting", "", "authentication setting: ServerDefault, SAML, OpenID, or TableauIDWithMFA (availability depends on the site)")
 	cmd.Flags().StringVar(&in.IdPConfigurationID, "idp-configuration-id", "", "explicit IdP configuration LUID")
 	cmd.Flags().StringVar(&in.IdentityPoolName, "identity-pool", "", "explicit identity-pool name")
 	cmd.Flags().StringVar(&in.Email, "email", "", "notification email address")
@@ -250,7 +254,7 @@ func newUserUpdate(deps Dependencies) *cobra.Command {
 	}, func(cmd *cobra.Command) error {
 		out, err := deps.UserUpdater.UpdateAdminUser(cmd.Context(), in, preview)
 		if err != nil {
-			return err
+			return clierr.WithOutput(out, err)
 		}
 		return deps.Renderer.Render(out)
 	})
@@ -259,7 +263,7 @@ func newUserUpdate(deps Dependencies) *cobra.Command {
 	cmd.Flags().StringVar(&fullName, "full-name", "", "explicit full name")
 	cmd.Flags().StringVar(&email, "email", "", "explicit notification email")
 	cmd.Flags().StringVar(&siteRole, "site-role", "", "explicit site role")
-	cmd.Flags().StringVar(&auth, "auth-setting", "", "explicit authentication setting")
+	cmd.Flags().StringVar(&auth, "auth-setting", "", "authentication setting: ServerDefault, SAML, OpenID, or TableauIDWithMFA (availability depends on the site)")
 	cmd.Flags().StringVar(&identityPool, "identity-pool", "", "explicit identity-pool name")
 	cmd.Flags().StringVar(&idp, "idp-configuration-id", "", "explicit IdP configuration LUID")
 	cmd.Flags().StringVar(&language, "language", "", "explicit language code")
@@ -284,7 +288,7 @@ func newUserDelete(deps Dependencies) *cobra.Command {
 	}, func(cmd *cobra.Command) error {
 		out, err := deps.UserDeleter.DeleteAdminUser(cmd.Context(), in, preview)
 		if err != nil {
-			return err
+			return clierr.WithOutput(out, err)
 		}
 		return deps.Renderer.Render(out)
 	})
@@ -296,18 +300,21 @@ func newUserDelete(deps Dependencies) *cobra.Command {
 
 func newGroupList(deps Dependencies) *cobra.Command {
 	var in grouplist.Input
-	cmd := &cobra.Command{Use: "list", Short: "List groups and refresh their catalog snapshot.", Annotations: map[string]string{"tadx.capability": "admin.group.list"}, Args: noArgs("admin.group.list"), RunE: func(cmd *cobra.Command, _ []string) error {
+	cmd := &cobra.Command{Use: "list", Short: "List groups with bounded live reads or explicit --all.", Annotations: map[string]string{"tadx.capability": "admin.group.list"}, Args: noArgs("admin.group.list"), RunE: func(cmd *cobra.Command, _ []string) error {
 		out, err := deps.GroupLister.ListAdminGroups(cmd.Context(), in)
 		if err != nil {
-			return err
+			return clierr.WithOutput(out, err)
 		}
 		return deps.Renderer.Render(out)
 	}}
 	cmd.Flags().StringVar(&in.Environment, "environment", "", "exact environment alias; defaults to the configured read environment")
 	cmd.Flags().StringVar(&in.Name, "name", "", "exact group-name filter")
 	cmd.Flags().StringVar(&in.Domain, "domain", "", "exact directory-domain filter")
-	cmd.Flags().IntVar(&in.Limit, "limit", 0, "maximum groups to render")
+	cmd.Flags().BoolVar(&in.All, "all", false, "return all matching records, up to 10000; cannot combine with --limit")
+	cmd.Flags().IntVar(&in.Limit, "limit", 0, "maximum groups to render, up to 10000")
 	cmd.Flags().StringVar(&in.Cursor, "cursor", "", "opaque continuation cursor")
+	cmd.MarkFlagsMutuallyExclusive("all", "limit")
+	cmd.MarkFlagsMutuallyExclusive("all", "cursor")
 	cmd.Flags().BoolVar(&in.Catalog, "catalog", false, "read indexed local catalog data without contacting Tableau")
 	return cmd
 }
@@ -326,7 +333,7 @@ func newGroupInspect(deps Dependencies) *cobra.Command {
 	}, RunE: func(cmd *cobra.Command, _ []string) error {
 		out, err := deps.GroupInspector.InspectAdminGroup(cmd.Context(), in)
 		if err != nil {
-			return err
+			return clierr.WithOutput(out, err)
 		}
 		return deps.Renderer.Render(out)
 	}}
@@ -355,7 +362,7 @@ func newGroupCreate(deps Dependencies) *cobra.Command {
 	}, func(cmd *cobra.Command) error {
 		out, err := deps.GroupCreator.CreateAdminGroup(cmd.Context(), in, preview)
 		if err != nil {
-			return err
+			return clierr.WithOutput(out, err)
 		}
 		return deps.Renderer.Render(out)
 	})
@@ -382,6 +389,7 @@ func newGroupUpdate(deps Dependencies) *cobra.Command {
 			return clierr.Usage("admin.group.update", errors.New("--id is required"))
 		}
 		setString(cmd, "name", name, &in.Name)
+		setString(cmd, "new-name", name, &in.Name)
 		setString(cmd, "minimum-site-role", role, &in.MinimumSiteRole)
 		if cmd.Flags().Changed("external-user-enabled") {
 			in.ExternalUserEnabled = &external
@@ -397,13 +405,16 @@ func newGroupUpdate(deps Dependencies) *cobra.Command {
 	}, func(cmd *cobra.Command) error {
 		out, err := deps.GroupUpdater.UpdateAdminGroup(cmd.Context(), in, preview)
 		if err != nil {
-			return err
+			return clierr.WithOutput(out, err)
 		}
 		return deps.Renderer.Render(out)
 	})
 	cmd.Flags().StringVar(&in.Environment, "environment", "", "explicit write environment alias")
 	cmd.Flags().StringVar(&in.GroupLUID, "id", "", "authoritative group LUID")
-	cmd.Flags().StringVar(&name, "name", "", "explicit new group name")
+	cmd.Flags().StringVar(&name, "new-name", "", "explicit new group name")
+	cmd.Flags().StringVar(&name, "name", "", "compatibility alias for --new-name")
+	_ = cmd.Flags().MarkHidden("name")
+	cmd.MarkFlagsMutuallyExclusive("name", "new-name")
 	cmd.Flags().StringVar(&role, "minimum-site-role", "", "explicit minimum site role")
 	cmd.Flags().BoolVar(&external, "external-user-enabled", false, "explicit on-demand external-user setting")
 	cmd.Flags().BoolVar(&setMembers, "set-members", false, "converge direct membership to the repeated --member-id values, including an empty set")
@@ -428,7 +439,7 @@ func newGroupDelete(deps Dependencies) *cobra.Command {
 	}, func(cmd *cobra.Command) error {
 		out, err := deps.GroupDeleter.DeleteAdminGroup(cmd.Context(), in, preview)
 		if err != nil {
-			return err
+			return clierr.WithOutput(out, err)
 		}
 		return deps.Renderer.Render(out)
 	})
@@ -450,7 +461,7 @@ func newPermissionInspect(deps Dependencies) *cobra.Command {
 	}, RunE: func(cmd *cobra.Command, _ []string) error {
 		out, err := deps.PermissionInspector.InspectAdminPermission(cmd.Context(), in)
 		if err != nil {
-			return err
+			return clierr.WithOutput(out, err)
 		}
 		return deps.Renderer.Render(out)
 	}}

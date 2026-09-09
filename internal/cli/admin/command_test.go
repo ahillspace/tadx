@@ -184,6 +184,26 @@ func TestGroupUpdateDistinguishesOmittedAndExplicitEmptyMembership(t *testing.T)
 	}
 }
 
+func TestGroupRenameUsesNewNameAndProtectsAliasConflict(t *testing.T) {
+	for _, flag := range []string{"--new-name", "--name"} {
+		f := &fake{}
+		cmd := cli.New(deps(f, true))
+		cmd.SetArgs([]string{"group", "update", "--environment", "prod", "--id", "group", "--preview", flag, "Renamed"})
+		if err := cmd.Execute(); err != nil {
+			t.Fatal(err)
+		}
+		if f.groupUpdate.Name == nil || *f.groupUpdate.Name != "Renamed" {
+			t.Fatalf("input=%#v", f.groupUpdate)
+		}
+	}
+	f := &fake{}
+	cmd := cli.New(deps(f, true))
+	cmd.SetArgs([]string{"group", "update", "--environment", "prod", "--id", "group", "--preview", "--new-name", "One", "--name", "Two"})
+	if err := cmd.Execute(); err == nil {
+		t.Fatal("conflicting rename aliases accepted")
+	}
+}
+
 func TestExactInspectSelectorsRejectMultipleSelectors(t *testing.T) {
 	f := &fake{}
 	cmd := cli.New(deps(f, true))

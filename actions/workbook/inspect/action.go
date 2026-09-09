@@ -3,7 +3,7 @@ package inspect
 import (
 	"context"
 	"errors"
-	"strings"
+	"github.com/ahillspace/tadx/internal/commandhint"
 
 	"github.com/ahillspace/tadx/internal/errs"
 	"github.com/ahillspace/tadx/internal/identity"
@@ -25,14 +25,10 @@ func (a *Action) Execute(ctx context.Context, input Input) (Output, error) {
 	if a == nil || a.resolver == nil {
 		return Output{}, &errs.Error{ID: "workbook.inspect.unconfigured", Kind: errs.KindRuntime, Operation: "workbook.inspect", Summary: "Workbook inspection is not configured.", Retryable: errs.Bool(false), CorrectiveAction: "Configure workbook resolution before retrying."}
 	}
-	input.Selector.LUID = identity.LUID(strings.TrimSpace(string(input.Selector.LUID)))
-	input.Selector.Name = strings.TrimSpace(input.Selector.Name)
-	input.Selector.ProjectPath = strings.TrimSpace(input.Selector.ProjectPath)
-	if input.Selector.LUID == "" && (input.Selector.Name == "" || input.Selector.ProjectPath == "") {
-		return Output{}, &errs.Error{ID: "workbook.inspect.usage", Kind: errs.KindUsage, Operation: "workbook.inspect", Summary: "Workbook selection requires a LUID or exact name and project path.", Retryable: errs.Bool(false), CorrectiveAction: "Provide a LUID or an exact name and project path.", Validation: []errs.ValidationDetail{{Field: "selector", Code: "required", Message: "workbook selection requires a LUID or exact name and project path"}}}
-	}
-	if input.Selector.LUID != "" && (input.Selector.Name != "" || input.Selector.ProjectPath != "") {
-		return Output{}, &errs.Error{ID: "workbook.inspect.usage", Kind: errs.KindUsage, Operation: "workbook.inspect", Summary: "A LUID is authoritative and cannot be combined with name or project selectors.", Retryable: errs.Bool(false), CorrectiveAction: "Provide a LUID or an exact name and project path.", Validation: []errs.ValidationDetail{{Field: "selector", Code: "conflict", Message: "a LUID is authoritative and cannot be combined with name or project selectors"}}}
+	var validationErr error
+	input, validationErr = normalizeInput(input)
+	if validationErr != nil {
+		return Output{}, validationErr
 	}
 	workbook, err := a.resolver.ResolveWorkbook(ctx, input.Selector)
 	if err != nil {
@@ -57,7 +53,7 @@ func (a *Action) Execute(ctx context.Context, input Input) (Output, error) {
 	if workbook.LUID == "" || workbook.Name == "" || (input.Selector.LUID != "" && workbook.LUID != string(input.Selector.LUID)) {
 		return Output{}, &errs.Error{ID: "workbook.inspect.identity_mismatch", Kind: errs.KindOperation, Operation: "workbook.inspect", Environment: input.Environment, Site: input.Site, Summary: "Workbook adapter returned a mismatched authoritative identity.", Retryable: errs.Bool(false), CorrectiveAction: "Provide a LUID or an exact name and project path."}
 	}
-	return Output{Status: "found", Environment: input.Environment, Site: input.Site, Workbook: workbook, RequestID: workbook.RequestID, Help: []string{"tadx content workbook pull --id " + workbook.LUID}}, nil
+	return Output{Status: "found", Environment: input.Environment, Site: input.Site, Workbook: workbook, RequestID: workbook.RequestID, Help: []string{commandhint.Environment(input.Environment, "content", "workbook", "pull", "--id", workbook.LUID)}}, nil
 }
 
 func resolveUsageError(id string, input Input, summary string, cause error) error {

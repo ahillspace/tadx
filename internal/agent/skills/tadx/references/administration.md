@@ -1,53 +1,69 @@
-# Administer users, groups, and permissions
+# Administration
 
-Select the exact environment and site before administration.
-Discover candidates with typed search or an explicitly filtered bounded resource list, then inspect the authoritative user or group LUID live.
-An unfiltered user or group list inventories the complete live scope, refreshes that catalog scope, and renders only the requested `--limit` rows.
-Its continuation reads the same local snapshot.
-Resolve supported exact selectors through command help; do not assume display names uniquely identify principals.
-Use the root Guidance's direct recipes; consult the requested leaf help only when its accepted fields remain unclear.
-Apply the root Guidance's mutation gate and preview behavior.
-After changes, inspect the resulting identity and relevant state live.
+## Available actions
 
-Use `admin permission inspect --kind <kind> --id <resource-luid>` to inspect rules on an exact resource.
-Narrow results with supported capability and principal filters.
-To inspect project defaults, use a project target and `--default-for <content-kind>`.
-Project defaults and resource rules answer different questions; do not present either as a computed effective-access decision.
-Use `admin permission create` to add exact rules and `admin permission delete` to remove exact rules when shipped by the installed build.
-There is no atomic permission update; changing a rule requires separately authorized create/delete operations with intermediate state.
-Select one `--principal-type user|group`, `--principal-id <luid>`, exact `--capability`, and case-sensitive `--mode Allow|Deny`.
-These are notation alternatives, not literal pipe-delimited values.
-For project defaults, combine `--kind project --id <project-luid>` with `--default-for workbooks`, `datasources`, or `flows`.
-Do not assume create/delete overwrites all existing rules; verify the same resource with `--principal-id <principal-luid> --full` in one inspection.
-Changing permissions does not itself prove effective access; project locks, defaults, and other rules can affect access.
+All actions accept `--full` for expanded bounded output.
+Flags in brackets are optional.
+`--env` aliases `--environment`; the environment selects the site for user mutations.
+A sole configured environment can be omitted; multiple environments require an explicit target for remote writes.
 
-`admin group update --set-members` replaces direct membership with the repeated `--member-id` values; an empty set removes all direct members.
-Do not use it to add one person without preserving existing authorized membership.
-Use incremental membership commands for one exact relationship:
+| Action | What it does | Key and optional flags |
+| --- | --- | --- |
+| `tadx admin user list` | List users, or collect the selected inventory with `--all`. | `--environment <alias>` [`--name <exact>`] [`--site-role <role>`] [`--limit 1..10000` or `--all`] [`--catalog`] |
+| `tadx admin user inspect` | Inspect one exact user. | `--id <luid>` or `--name <username-or-email>` [`--environment <alias>`] [`--catalog`] |
+| `tadx admin user create` | Add one user to a site. | `--environment <alias> --name <username> --site-role <role>` and exactly one of `--auth-setting <value>` or `--idp-configuration-id <luid>` [`--identity-pool <name>`] [`--email <address>`] [`--language <code>`] [`--locale <code>`] [`--preview`] |
+| `tadx admin user update` | Update one exact user. | `--environment <alias> --id <luid>` plus one or more of `--full-name`, `--email`, `--site-role`, `--auth-setting`, `--identity-pool`, `--idp-configuration-id`, `--language`, `--locale` [`--preview`] |
+| `tadx admin user delete` | Remove one exact user from a site. | `--environment <alias> --id <luid>` [`--preview`] |
+| `tadx admin group list` | List groups, or collect the selected inventory with `--all`. | `--environment <alias>` [`--name <exact>`] [`--domain <exact>`] [`--limit 1..10000` or `--all`] [`--catalog`] |
+| `tadx admin group inspect` | Inspect one exact group. | `--id <luid>` or `--name <exact>` [`--environment <alias>`] [`--members`] [`--catalog`] |
+| `tadx admin group create` | Create one group. | `--environment <alias> --name <name>` [`--minimum-site-role <role>`] [`--external-user-enabled`] [`--preview`] |
+| `tadx admin group update` | Update group attributes or replace direct membership. | `--environment <alias> --id <luid>` [`--new-name <name>`] [`--minimum-site-role <role>`] [`--external-user-enabled`] [`--set-members --member-id <user-luid>` repeated] [`--preview`] |
+| `tadx admin group delete` | Delete one group without deleting its users. | `--environment <alias> --id <luid>` [`--preview`] |
+| `tadx admin group member add` | Add one user without replacing other group members. | `--environment <alias> --group-id <luid> --user-id <luid>` [`--preview`] |
+| `tadx admin group member remove` | Remove one user without replacing other group members. | `--environment <alias> --group-id <luid> --user-id <luid>` [`--preview`] |
+| `tadx admin permission inspect` | Inspect explicit or project-default permission rules. | `--kind <workbook\|datasource\|flow\|project> --id <resource-luid>` [`--environment <alias>`] [`--default-for <workbooks\|datasources\|flows>`] [`--principal-type <user\|group>`] [`--principal-id <luid>`] [`--capability <name>`] |
+| `tadx admin permission create` | Add one exact permission rule. | `--environment <alias> --kind <kind> --id <resource-luid> --principal-type <user\|group> --principal-id <luid> --capability <name> --mode <Allow\|Deny>` [`--default-for <kind>`] [`--preview`] |
+| `tadx admin permission delete` | Remove one exact permission rule. | Same selectors as permission create, including exact `--mode` [`--default-for <kind>`] [`--preview`] |
+| `tadx content project list` | List projects, or collect the selected inventory with `--all`. | `--environment <alias>` [`--name <exact>`] [`--owner <exact>`] [`--parent-id <luid>`] [`--top-level`] [`--limit 1..10000` or `--all`] [`--catalog`] |
+| `tadx content project inspect` | Inspect one exact project. | `--id <luid>` or `--project <exact/path>` [`--environment <alias>`] [`--catalog`] |
+| `tadx content project create` | Create one project. | `--environment <alias> --name <name>` [`--description <text>`] [`--content-permissions <mode>`] [`--parent-id <luid>` or `--parent <exact/path>`] [`--preview`] |
+| `tadx content project update` | Update one exact project's name, description, or permission mode. | `--environment <alias>` and one source selector, plus at least one of `--new-name`, `--description`, or `--content-permissions` [`--preview`] |
+| `tadx content project move` | Move a project in the hierarchy. | `--environment <alias>` and one source selector, plus exactly one of `--parent-id <luid>`, `--parent <exact/path>`, or `--top-level` [`--preview`] |
+| `tadx content project delete` | Delete one exact project. | `--environment <alias> --id <luid>` [`--preview`] |
 
-```text
-tadx admin group member add --environment <alias> --group-id <group-luid> --user-id <user-luid> --preview
-tadx admin group member remove --environment <alias> --group-id <group-luid> --user-id <user-luid> --preview
-```
+## Operating rules
 
-Incremental add and remove are idempotent and preserve unrelated direct members.
-Run the command without `--preview` after the requested relationship is confirmed.
+Resolve exact user, group, project, and content LUIDs before writes.
+Use `tadx search --type admin <term>` for intent or text discovery, then inspect the exact result.
+Use lists for bounded filtered lookup or complete inventory, not as a substitute for search.
 
-Use `content project update --project-id <luid>` for supported field edits.
-Use one project move form for the requested hierarchy change:
+Ordinary live user, group, and project lists retrieve a bounded selection without collecting the complete scope or accessing SQLite.
+Lists default to 25 rows and accept `--limit 1..10000`, or `--all` for all matching records within 10,000.
+When `more_available` is true, use `--all` or narrow the filters.
+`--all` requires complete coverage and cannot be combined with an explicit `--limit`.
+Live `--all` renders the collection and attempts a catalog update; an unfiltered complete collection replaces the resource scope.
+A catalog write failure preserves the live answer with a warning.
+`--full` changes presentation only.
+Filtered `--all` collections record observations without claiming complete site coverage.
+`--catalog` is local-only and never falls back to Tableau.
 
-```text
-tadx content project move --environment <alias> --project-id <project-luid> --parent-id <parent-project-luid> --preview
-tadx content project move --environment <alias> --project-id <project-luid> --top-level --preview
-```
+`admin group update --set-members` replaces all direct membership with the repeated `--member-id` values.
+An empty set removes every direct member.
+Use `group member add` or `group member remove` for a single relationship so unrelated members remain unchanged.
 
-Use exactly one destination: `--parent-id`, `--parent`, or `--top-level`.
-Project move rejects hierarchy cycles and revalidates both project identities before mutation.
-Use `content project delete --project-id <luid>` only for explicitly authorized remote deletion.
-Its preview resolves project identity without enumerating descendant deletion effects.
-Inspect nonempty-project and descendant behavior before applying; never infer that removing a project preserves its contents.
-Unavailable commands remain unavailable; report the exact gap rather than bypassing TADX through an unrelated API.
+Permission actions manage explicit rules, not computed effective access.
+Choose a resource-specific capability from `admin permission create --help` or the supported values in a validation error.
+Project capabilities are `ProjectLeader`, `Read`, and `Write`; do not substitute UI labels such as View or Editor.
+For project defaults, `--default-for` selects the content kind's capability set.
+Project defaults and resource rules answer different questions.
+Project locks, inherited defaults, and conflicting rules can still affect effective access.
+There is no atomic permission update, so changing a rule requires separately authorized create and delete operations.
 
-For repeated offline inventory, refresh users and groups together with explicit scopes.
-Permission inspection is live unless its command help explicitly offers `--catalog`.
-Catalog collection of permissions does not imply every permission operation supports local reads.
+User `--auth-setting` accepts `ServerDefault`, `SAML`, `OpenID`, or `TableauIDWithMFA`.
+Availability depends on the site's configured authentication methods.
+Use exactly one of that flag or an exact `--idp-configuration-id` for creation; a site role is not an authentication setting.
+Preserve provider authentication and synchronization diagnostics instead of guessing another identity configuration.
+
+Project deletion does not promise to preserve descendants or content.
+Inspect a nonempty project before deletion and do not infer Tableau's cascade behavior from the preview.
+Report when a TADX command does not support the requested operation.

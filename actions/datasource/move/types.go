@@ -1,6 +1,9 @@
 package move
 
-import "github.com/ahillspace/tadx/internal/identity"
+import (
+	"github.com/ahillspace/tadx/internal/identity"
+	"github.com/ahillspace/tadx/internal/value"
+)
 
 type Input struct {
 	// TargetResolved confirms authenticated target selection, including the Default site.
@@ -16,18 +19,8 @@ func (i *Input) SetProjectSelector(luid, path string) {
 	i.ProjectSelector = identity.Selector{LUID: identity.LUID(luid), ProjectPath: path}
 }
 
-type Datasource struct {
-	LUID        string `json:"luid"`
-	Name        string `json:"name"`
-	ProjectLUID string `json:"project_luid"`
-	ProjectPath string `json:"project_path"`
-	OwnerLUID   string `json:"owner_luid"`
-}
-type Project struct {
-	LUID string `json:"luid"`
-	Name string `json:"name"`
-	Path string `json:"path"`
-}
+type Datasource = value.OwnedContentIdentity
+type Project = value.ProjectIdentity
 type Plan struct {
 	Mode        string     `json:"mode"`
 	Operation   string     `json:"operation"`

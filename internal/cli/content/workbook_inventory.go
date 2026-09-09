@@ -2,6 +2,7 @@ package content
 
 import (
 	"context"
+	"github.com/ahillspace/tadx/internal/cli/clierr"
 
 	workbookinspect "github.com/ahillspace/tadx/actions/workbook/inspect"
 	workbooklist "github.com/ahillspace/tadx/actions/workbook/list"
@@ -21,11 +22,11 @@ type WorkbookInspector interface {
 func newWorkbookList(lister WorkbookLister, renderer Renderer) *cobra.Command {
 	var input workbooklist.Input
 	command := &cobra.Command{
-		Use: "list", Short: "List workbooks and refresh their catalog snapshot.", Annotations: map[string]string{"tadx.capability": "workbook.list"}, Args: noContentArgs("workbook.list"),
+		Use: "list", Short: "List workbooks with bounded live reads or explicit --all.", Annotations: map[string]string{"tadx.capability": "workbook.list"}, Args: noContentArgs("workbook.list"),
 		RunE: func(command *cobra.Command, _ []string) error {
 			result, err := lister.ListWorkbooks(command.Context(), input)
 			if err != nil {
-				return err
+				return clierr.WithOutput(result, err)
 			}
 			return renderer.Render(result)
 		},
@@ -35,8 +36,11 @@ func newWorkbookList(lister WorkbookLister, renderer Renderer) *cobra.Command {
 	command.Flags().StringVar(&input.OwnerName, "owner", "", "exact owner-name filter")
 	command.Flags().StringVar(&input.ProjectName, "project-name", "", "exact leaf project name filter; not a project path")
 	command.Flags().StringVar(&input.Tag, "tag", "", "exact workbook-tag filter")
-	command.Flags().IntVar(&input.Limit, "limit", 0, "maximum workbooks to render")
+	command.Flags().BoolVar(&input.All, "all", false, "return all matching records, up to 10000; cannot combine with --limit")
+	command.Flags().IntVar(&input.Limit, "limit", 0, "maximum workbooks to render, from 1 to 10000 (default 25)")
 	command.Flags().StringVar(&input.Cursor, "cursor", "", "opaque continuation cursor")
+	command.MarkFlagsMutuallyExclusive("all", "limit")
+	command.MarkFlagsMutuallyExclusive("all", "cursor")
 	command.Flags().BoolVar(&input.Catalog, "catalog", false, "read indexed local catalog data without contacting Tableau")
 	return command
 }
@@ -49,7 +53,7 @@ func newWorkbookInspect(inspector WorkbookInspector, renderer Renderer) *cobra.C
 		RunE: func(command *cobra.Command, _ []string) error {
 			result, err := inspector.InspectWorkbook(command.Context(), input)
 			if err != nil {
-				return err
+				return clierr.WithOutput(result, err)
 			}
 			return renderer.Render(result)
 		},

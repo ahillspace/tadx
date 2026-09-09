@@ -6,7 +6,6 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
-	"path/filepath"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -17,7 +16,6 @@ import (
 	projectmove "github.com/ahillspace/tadx/actions/project/move"
 	projectupdate "github.com/ahillspace/tadx/actions/project/update"
 	searchaction "github.com/ahillspace/tadx/actions/search"
-	"github.com/ahillspace/tadx/internal/catalog"
 )
 
 func TestFilteredContentListsRetainCatalogProjectPaths(t *testing.T) {
@@ -30,7 +28,7 @@ func TestFilteredContentListsRetainCatalogProjectPaths(t *testing.T) {
 				case strings.HasSuffix(r.URL.Path, "/projects"):
 					_, _ = io.WriteString(w, `<tsResponse><pagination pageNumber="1" pageSize="1000" totalAvailable="2"/><projects><project id="root" name="Department"/><project id="child" name="Ops" parentProjectId="root"/></projects></tsResponse>`)
 				case strings.HasSuffix(r.URL.Path, "/"+kind+"s"):
-					_, _ = fmt.Fprintf(w, `<tsResponse><pagination pageNumber="1" pageSize="25" totalAvailable="1"/><%ss><%s id="item-1" name="Sales" type="sqlserver" fileType="tfl"><project id="child" name="Ops"/><owner id="user-1"/></%s></%ss></tsResponse>`, kind, kind, kind, kind)
+					_, _ = fmt.Fprintf(w, `<tsResponse><pagination pageNumber="1" pageSize="1000" totalAvailable="1"/><%ss><%s id="item-1" name="Sales" type="sqlserver" fileType="tfl"><project id="child" name="Ops"/><owner id="user-1"/></%s></%ss></tsResponse>`, kind, kind, kind, kind)
 				default:
 					http.Error(w, "unexpected request", 404)
 				}
@@ -40,14 +38,14 @@ func TestFilteredContentListsRetainCatalogProjectPaths(t *testing.T) {
 			commands := newRemoteContentCommands(runtime)
 			var err error
 			if kind == "datasource" {
-				_, err = commands.ListDatasources(context.Background(), datasourcelist.Input{Environment: "production", Name: "Sales", Limit: 25})
+				_, err = commands.ListDatasources(context.Background(), datasourcelist.Input{Environment: "production", Name: "Sales", All: true})
 			} else {
-				_, err = commands.ListFlows(context.Background(), flowlist.Input{Environment: "production", Name: "Sales", Limit: 25})
+				_, err = commands.ListFlows(context.Background(), flowlist.Input{Environment: "production", Name: "Sales", All: true})
 			}
 			if err != nil {
 				t.Fatal(err)
 			}
-			store := catalog.NewStore(filepath.Dir(runtime.configPath), runtime.now)
+			store := targetCatalogFixture(t, runtime.configPath, runtime.now)
 			out, err := searchaction.New(catalogGlobalSearchSource{store: store}).Execute(context.Background(), searchaction.Input{Type: kind, Environment: "production", Site: "team-site", SiteResolved: true, Catalog: true, ProjectPath: "Department/Ops"})
 			if err != nil || len(out.Items) != 1 || out.Items[0].ProjectPath != "Department/Ops" {
 				t.Fatalf("cached filtered search = %#v, %v", out, err)

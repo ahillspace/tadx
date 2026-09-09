@@ -3,6 +3,7 @@ package update
 import (
 	"context"
 	"errors"
+	"github.com/ahillspace/tadx/internal/commandhint"
 	"strings"
 
 	"github.com/ahillspace/tadx/internal/errs"
@@ -61,16 +62,16 @@ func (a *Action) Execute(ctx context.Context, input Input, preview bool) (Output
 	output.Plan.NoOp = noOp
 	if noOp {
 		output.Result = &Result{Status: "unchanged", Project: current}
-		output.Help = []string{"tadx content project inspect --project-id " + current.LUID}
+		output.Help = []string{commandhint.Environment(input.Environment, "content", "project", "inspect", "--project-id", current.LUID)}
 		return output, nil
 	}
 	result, err := a.updater.UpdateProject(ctx, request)
 	if err != nil {
-		retryable, correctiveAction := errs.CompleteRetryAdvice(err, "Inspect the remote project update outcome before retrying.")
+		retryable, correctiveAction := errs.CompleteRetryAdvice(err, "Inspect the remote project update outcome before retrying: "+commandhint.Environment(input.Environment, "content", "project", "inspect", "--project-id", current.LUID))
 		return Output{}, &errs.Error{ID: "project.update.failed", Kind: errs.KindOperation, Operation: "project.update", Resource: current.LUID, Environment: input.Environment, Site: input.Site, Summary: "Project update failed.", Cause: err, Retryable: retryable, CorrectiveAction: correctiveAction, TableauRequestID: errs.TableauRequestID(err)}
 	}
 	output.Result = &result
-	output.Help = []string{"tadx content project inspect --project-id " + current.LUID}
+	output.Help = []string{commandhint.Environment(input.Environment, "content", "project", "inspect", "--project-id", current.LUID)}
 	return output, nil
 }
 
@@ -92,25 +93,7 @@ func validateInput(input Input) error {
 	if strings.TrimSpace(input.Environment) == "" || (strings.TrimSpace(input.Site) == "" && !input.TargetResolved) {
 		return usage("environment", "project update requires an explicit resolved environment and site")
 	}
-	if input.Selector.LUID == "" && strings.TrimSpace(input.Selector.ProjectPath) == "" {
-		return usage("selector", "project update requires a project LUID or exact project path")
-	}
-	if input.Selector.Name != "" || (input.Selector.LUID != "" && strings.TrimSpace(input.Selector.ProjectPath) != "") {
-		return usage("selector", "use either a project LUID or an exact project path")
-	}
-	if input.Name == nil && input.Description == nil && input.ContentPermissions == nil {
-		return usage("changes", "project update requires at least one explicit metadata change")
-	}
-	if input.Name != nil && strings.TrimSpace(*input.Name) == "" {
-		return usage("name", "project update name cannot be empty")
-	}
-	if input.Name != nil && strings.Contains(*input.Name, "/") {
-		return usage("name", "project update name cannot contain a slash")
-	}
-	if input.ContentPermissions != nil && !validContentPermissions(*input.ContentPermissions) {
-		return usage("content_permissions", "project update content permissions are invalid")
-	}
-	return nil
+	return ValidateInput(input)
 }
 
 func validContentPermissions(value string) bool {

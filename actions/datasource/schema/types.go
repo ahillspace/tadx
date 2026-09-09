@@ -1,10 +1,14 @@
 package schema
 
-import "github.com/ahillspace/tadx/internal/readsource"
+import (
+	"github.com/ahillspace/tadx/internal/readsource"
+	"github.com/ahillspace/tadx/internal/value"
+)
 
 const (
 	defaultLimit = 20
-	maxLimit     = 100
+	maxLimit     = 10000
+	maxAllFields = 10000
 )
 
 // Input selects one published datasource schema and a bounded field view.
@@ -16,36 +20,18 @@ type Input struct {
 	Role           string
 	Table          string
 	FieldID        string
+	FieldIDs       []string
 	Limit          int
 	Cursor         string
 	Catalog        bool
+	All            bool
 }
 
 // Table is one logical datasource table.
-type Table struct {
-	ID         string `json:"id"`
-	Name       string `json:"name"`
-	FieldCount int    `json:"field_count"`
-}
+type Table = value.SchemaTable
 
 // Field is one normalized datasource field.
-type Field struct {
-	ID                      string `json:"id"`
-	Name                    string `json:"name"`
-	Caption                 string `json:"caption"`
-	Label                   string `json:"label"`
-	Role                    string `json:"role"`
-	DataType                string `json:"data_type"`
-	TimeType                string `json:"time_type,omitempty"`
-	Table                   string `json:"table,omitempty"`
-	LogicalTableID          string `json:"logical_table_id,omitempty"`
-	DefaultAggregation      string `json:"default_aggregation,omitempty"`
-	Formula                 string `json:"formula,omitempty"`
-	RequiresUserAggregation bool   `json:"requires_user_aggregation"`
-	Excluded                bool   `json:"excluded"`
-	ExclusionReason         string `json:"exclusion_reason,omitempty"`
-	Provenance              string `json:"provenance,omitempty"`
-}
+type Field = value.SchemaField
 
 // Schema is one complete normalized datasource schema before bounded projection.
 type Schema struct {
@@ -60,10 +46,11 @@ type Schema struct {
 
 // Page describes the bounded field projection.
 type Page struct {
-	Returned   int    `json:"returned"`
-	Total      int    `json:"total"`
-	Limit      int    `json:"limit"`
-	NextCursor string `json:"next_cursor,omitempty"`
+	Returned      int    `json:"returned"`
+	Total         int    `json:"total"`
+	Limit         int    `json:"limit"`
+	NextCursor    string `json:"-"`
+	MoreAvailable bool   `json:"more_available"`
 }
 
 // Output retains the complete bounded result before compact or full rendering.
@@ -106,7 +93,7 @@ type CompactResult struct {
 	Fields         []CompactField       `json:"fields"`
 	Warnings       []string             `json:"warnings,omitempty"`
 	Details        string               `json:"details"`
-	Help           []string             `json:"help"`
+	Help           []string             `json:"help,omitempty"`
 }
 
 // FullResult is the expanded bounded output.
@@ -122,7 +109,7 @@ type FullResult struct {
 	Fields         []Field              `json:"fields"`
 	Warnings       []string             `json:"warnings,omitempty"`
 	RequestID      string               `json:"tableau_request_id,omitempty"`
-	Help           []string             `json:"help"`
+	Help           []string             `json:"help,omitempty"`
 }
 
 // CompactOutput returns bounded field-selection details.

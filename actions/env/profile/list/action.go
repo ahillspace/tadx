@@ -2,6 +2,7 @@ package list
 
 import (
 	"context"
+	"github.com/ahillspace/tadx/internal/commandhint"
 	"sort"
 	"strconv"
 
@@ -10,7 +11,7 @@ import (
 
 const (
 	DefaultLimit = 20
-	MaxLimit     = 100
+	MaxLimit     = 10000
 )
 
 type Reader interface {
@@ -30,7 +31,7 @@ func (a *Action) Execute(ctx context.Context, input Input) (Output, error) {
 		limit = DefaultLimit
 	}
 	if limit < 1 || limit > MaxLimit {
-		return Output{}, usageError("limit must be between 1 and 100")
+		return Output{}, usageError("limit must be between 1 and 10000")
 	}
 	offset := 0
 	if input.Cursor != "" {
@@ -59,9 +60,12 @@ func (a *Action) Execute(ctx context.Context, input Input) (Output, error) {
 	if end < len(profiles) {
 		nextCursor = strconv.Itoa(end)
 	}
-	help := []string{"tadx env get <alias>"}
+	var help []string
+	if len(pageProfiles) > 0 {
+		help = append(help, commandhint.Command("env", "get", pageProfiles[0].Alias))
+	}
 	if nextCursor != "" {
-		help = append(help, "tadx env list --limit "+strconv.Itoa(limit)+" --cursor "+nextCursor)
+		help = append(help, "tadx env list --limit "+strconv.Itoa(min(limit*2, MaxLimit)))
 	}
 	return Output{Page: Page{Returned: len(pageProfiles), Total: len(profiles), Limit: limit, NextCursor: nextCursor}, Profiles: pageProfiles, Help: help}, nil
 }

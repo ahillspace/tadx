@@ -21,7 +21,7 @@ import (
 const (
 	manifestVersion  = 1
 	maxManifestBytes = 16 * 1024
-	maxListLimit     = 200
+	maxListLimit     = 10000
 )
 
 // Record is one registered workspace.
@@ -430,6 +430,24 @@ func (m *Manager) Resolve(ctx context.Context, selector, environmentDefault stri
 	if err != nil {
 		return Record{}, err
 	}
+	return m.ResolveWithConfig(ctx, configuration, selector, environmentDefault)
+}
+
+// ResolveWithConfig resolves against an immutable command configuration snapshot.
+// Manifest identity and path validation remain the same as Resolve.
+func (m *Manager) ResolveWithConfig(ctx context.Context, configuration config.Config, selector, environmentDefault string) (Record, error) {
+	return m.resolveWithConfig(ctx, configuration, selector, environmentDefault, true)
+}
+
+// ResolveReadOnlyWithConfig validates local prerequisites without migrating files.
+func (m *Manager) ResolveReadOnlyWithConfig(ctx context.Context, configuration config.Config, selector, environmentDefault string) (Record, error) {
+	return m.resolveWithConfig(ctx, configuration, selector, environmentDefault, false)
+}
+
+func (m *Manager) resolveWithConfig(ctx context.Context, configuration config.Config, selector, environmentDefault string, migrate bool) (Record, error) {
+	if err := ctx.Err(); err != nil {
+		return Record{}, err
+	}
 	if selector == "" {
 		selector = containingWorkspace(configuration)
 		if selector == "" {
@@ -444,8 +462,10 @@ func (m *Manager) Resolve(ctx context.Context, selector, environmentDefault stri
 	if err != nil {
 		return Record{}, err
 	}
-	if _, err := upgradeLegacyManifest(root, Manifest{Version: manifestVersion, Workspace: ManifestWorkspace{ID: registration.ID, Name: name}}); err != nil {
-		return Record{}, fmt.Errorf("workspace %q manifest migration: %w", name, err)
+	if migrate {
+		if _, err := upgradeLegacyManifest(root, Manifest{Version: manifestVersion, Workspace: ManifestWorkspace{ID: registration.ID, Name: name}}); err != nil {
+			return Record{}, fmt.Errorf("workspace %q manifest migration: %w", name, err)
+		}
 	}
 	manifest, err := ReadManifest(root)
 	if err != nil {

@@ -3,6 +3,7 @@ package update
 import (
 	"context"
 	"errors"
+	"github.com/ahillspace/tadx/internal/commandhint"
 	"strings"
 
 	"github.com/ahillspace/tadx/internal/errs"
@@ -63,10 +64,10 @@ func (a *Action) Execute(ctx context.Context, input Input, preview bool) (Output
 	}
 	result, err := a.updater.UpdateWorkbook(ctx, request)
 	if err != nil {
-		return Output{}, operationError("workbook.update.failed", input, current.LUID, "Workbook update failed.", "Inspect the workbook before updating again.", err)
+		return Output{}, operationError("workbook.update.failed", input, current.LUID, "Workbook update failed.", "Inspect the exact workbook before retrying: "+commandhint.Environment(input.Environment, "content", "workbook", "inspect", "--id", current.LUID), err)
 	}
 	out.Result = &result
-	out.Help = []string{"tadx content workbook inspect --id " + current.LUID}
+	out.Help = []string{commandhint.Environment(input.Environment, "content", "workbook", "inspect", "--id", current.LUID)}
 	return out, nil
 }
 
@@ -104,22 +105,7 @@ func validate(input Input) error {
 	if strings.TrimSpace(input.Environment) == "" || (strings.TrimSpace(input.Site) == "" && !input.TargetResolved) {
 		return usage("environment", "workbook update requires an explicit resolved environment and site")
 	}
-	if input.Selector.LUID == "" && (strings.TrimSpace(input.Selector.Name) == "" || strings.TrimSpace(input.Selector.ProjectPath) == "") {
-		return usage("selector", "workbook update requires a LUID or exact name and project path")
-	}
-	if input.Selector.LUID != "" && (strings.TrimSpace(input.Selector.Name) != "" || strings.TrimSpace(input.Selector.ProjectPath) != "") {
-		return usage("selector", "a workbook LUID cannot be combined with name or project path")
-	}
-	if input.Name == nil && input.OwnerLUID == nil {
-		return usage("changes", "workbook update requires a name or owner LUID")
-	}
-	if input.Name != nil && strings.TrimSpace(*input.Name) == "" {
-		return usage("name", "workbook update name cannot be empty")
-	}
-	if input.OwnerLUID != nil && strings.TrimSpace(*input.OwnerLUID) == "" {
-		return usage("owner_id", "workbook update owner LUID cannot be empty")
-	}
-	return nil
+	return ValidateInput(input)
 }
 
 func usage(field, message string) error {

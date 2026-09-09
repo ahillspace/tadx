@@ -4,6 +4,7 @@ package clean
 import (
 	"context"
 	"errors"
+	"github.com/ahillspace/tadx/internal/commandhint"
 
 	"github.com/ahillspace/tadx/internal/errs"
 )
@@ -75,8 +76,8 @@ func (a *Action) Execute(ctx context.Context, input Input) (Output, error) {
 	}
 	result, err := a.store.Clean(ctx, input)
 	if err != nil {
-		return Output{}, &errs.Error{ID: "workspace.clean.failed", Kind: errs.KindOperation, Operation: "workspace.clean", Resource: input.Workspace, Summary: "Workspace cleanup failed.", Cause: err, Retryable: errs.Bool(false), CorrectiveAction: "Inspect the selected workspace state, then retry the exact cleanup class."}
+		return Output{}, &errs.Error{ID: "workspace.clean.failed", Kind: errs.KindOperation, Operation: "workspace.clean", Resource: input.Workspace, Summary: "Workspace cleanup failed.", Cause: err, Retryable: errs.Bool(false), CorrectiveAction: "Inspect the selected workspace state before retrying: " + commandhint.Command("workspace", "status", "--workspace", input.Workspace)}
 	}
 	result.Status, result.Workspace, result.Class = "cleaned", input.Workspace, input.Class
-	return Output{Result: result, Help: []string{"tadx workspace status --workspace " + input.Workspace}}, nil
+	return Output{Result: result, Help: []string{commandhint.Command("workspace", "status", "--workspace", input.Workspace)}}, nil
 }

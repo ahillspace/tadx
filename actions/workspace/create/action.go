@@ -4,6 +4,7 @@ package create
 import (
 	"context"
 	"errors"
+	"github.com/ahillspace/tadx/internal/commandhint"
 
 	"github.com/ahillspace/tadx/internal/errs"
 )
@@ -79,7 +80,7 @@ func (a *Action) Execute(ctx context.Context, input Input) (Output, error) {
 	if len(created.CreatedEntries) == 0 {
 		created.CreatedEntries = []string{"tadx.yaml", "artifacts", ".tadx"}
 	}
-	return Output{Status: "created", Workspace: created, Help: []string{"tadx workspace status --workspace " + created.Name}}, nil
+	return Output{Status: "created", Workspace: created, Help: []string{commandhint.Command("workspace", "status", "--workspace", created.Name)}}, nil
 }
 
 func usage(message string) error {

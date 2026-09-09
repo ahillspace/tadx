@@ -271,6 +271,19 @@ func listQuery(input ListRequest) (url.Values, error) {
 		"pageNumber": {strconv.Itoa(input.PageNumber)},
 		"pageSize":   {strconv.Itoa(input.PageSize)},
 	}
+	filter, err := ListFilter(input)
+	if err != nil {
+		return nil, err
+	}
+	if filter != "" {
+		query.Set("filter", filter)
+	}
+	return query, nil
+}
+
+// ListFilter validates and encodes project selectors for paged and full lists.
+// Pagination fields do not affect the selected population.
+func ListFilter(input ListRequest) (string, error) {
 	filters := make([]string, 0, 4)
 	for _, filter := range []struct {
 		field string
@@ -284,17 +297,14 @@ func listQuery(input ListRequest) (url.Values, error) {
 			continue
 		}
 		if strings.ContainsAny(filter.value, ",&") {
-			return nil, fmt.Errorf("project %s filter contains an unsupported comma or ampersand", filter.field)
+			return "", fmt.Errorf("project %s filter contains an unsupported comma or ampersand", filter.field)
 		}
 		filters = append(filters, filter.field+":eq:"+filter.value)
 	}
 	if input.TopLevel != nil {
 		filters = append(filters, "topLevelProject:eq:"+strconv.FormatBool(*input.TopLevel))
 	}
-	if len(filters) > 0 {
-		query.Set("filter", strings.Join(filters, ","))
-	}
-	return query, nil
+	return strings.Join(filters, ","), nil
 }
 
 type listEnvelopeXML struct {

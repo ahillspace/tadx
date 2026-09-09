@@ -1,9 +1,9 @@
 plan:
+  workspace: ""
+  kind: flow
+  source_luid: ""
   mode: execute
   operation: flow.publish
-  artifact_path: artifacts/flow/Daily
-  artifact_fingerprint: "sha256:abc"
-  filename: Daily.tflx
   flow_name: Daily
   target:
     environment: dev
@@ -11,7 +11,6 @@ plan:
     project_luid: project-1
     project_path: Ops
   overwrite: false
-  substeps[2]: resolve exact destination,publish flow
 result:
   status: succeeded
   flow_luid: flow-1

@@ -39,7 +39,7 @@ func TestGroupOneProjectAndFlowReadsPullAndLineageThroughCLI(t *testing.T) {
 	}{
 		{
 			name: "project list uses the configured default read environment",
-			args: []string{"content", "project", "list", "--limit", "3"},
+			args: []string{"content", "project", "list", "--all"},
 			want: []string{"status: listed", "environment: production", "site: team-site", "project-ops", "details: \"--full\""},
 		},
 		{
@@ -70,7 +70,7 @@ func TestGroupOneProjectAndFlowReadsPullAndLineageThroughCLI(t *testing.T) {
 	}
 
 	pullOutput := runGroupOneCLI(t, options, "content", "flow", "pull", "--workspace", "operations", "--id", "flow-1")
-	for _, want := range []string{"status: pulled", "luid: flow-1", "details: \"--full\"", "artifacts/flow/"} {
+	for _, want := range []string{"status: pulled", "luid: flow-1", "details: \"--full\"", "workspace: operations", "source_luid: flow-1"} {
 		if !strings.Contains(pullOutput, want) {
 			t.Fatalf("flow pull output missing %q:\n%s", want, pullOutput)
 		}
@@ -133,7 +133,7 @@ func TestGroupOneLiveReadSucceedsWhenCatalogWriteThroughFails(t *testing.T) {
 		HTTPClient: server.Client(),
 		Now:        func() time.Time { return time.Date(2026, 9, 1, 12, 0, 0, 0, time.UTC) },
 	}
-	output := runGroupOneCLI(t, options, "content", "project", "list", "--limit", "3")
+	output := runGroupOneCLI(t, options, "content", "project", "list", "--all")
 	for _, want := range []string{"status: listed", "environment: production", "project-ops", "mode: tableau", "catalog_warning:", "catalog was not updated"} {
 		if !strings.Contains(output, want) {
 			t.Fatalf("live read did not survive a failed catalog write-through; output missing %q:\n%s", want, output)
@@ -161,7 +161,7 @@ func TestGroupOneFlowMutationPreviewsDoNotMutateThroughCLI(t *testing.T) {
 	t.Setenv("PROD_PAT_NAME", "pat-name")
 	t.Setenv("PROD_PAT_SECRET", "pat-secret")
 	options := app.Options{
-		MutationsEnabled: true,
+		MutationsEnabled: false,
 		ConfigPath:       configPath,
 		HTTPClient:       server.Client(),
 		Now:              func() time.Time { return time.Date(2026, 9, 1, 12, 0, 0, 0, time.UTC) },
@@ -178,10 +178,10 @@ func TestGroupOneFlowMutationPreviewsDoNotMutateThroughCLI(t *testing.T) {
 		"content", "flow", "publish",
 		"--workspace", "operations",
 		"--artifact", artifactSelector,
-		"--name", "Daily Copy",
+		"--name", "Daily Copy", "--project-id", "project-ops",
 		"--preview",
 	)
-	for _, want := range []string{"mode: preview", "operation: flow.publish", "artifact_path: " + artifactSelector, "environment: production", "project_luid: project-ops"} {
+	for _, want := range []string{"mode: preview", "operation: flow.publish", "source_luid: flow-1", "environment: production", "project_luid: project-ops"} {
 		if !strings.Contains(publishOutput, want) {
 			t.Fatalf("flow publish preview missing %q:\n%s", want, publishOutput)
 		}

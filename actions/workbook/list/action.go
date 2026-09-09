@@ -7,13 +7,15 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/ahillspace/tadx/internal/commandhint"
+	"github.com/ahillspace/tadx/internal/paging"
 
 	"github.com/ahillspace/tadx/internal/errs"
 )
 
 const (
 	defaultLimit    = 25
-	maxLimit        = 100
+	maxLimit        = 10000
 	maxCursorPage   = 1_000_000
 	cursorVersion   = 1
 	maxCursorLength = 2048
@@ -32,6 +34,12 @@ func New(reader Reader) *Action { return &Action{reader: reader} }
 
 // Execute reads one bounded page.
 func (a *Action) Execute(ctx context.Context, input Input) (Output, error) {
+	if err := ValidateInput(input); err != nil {
+		return Output{}, err
+	}
+	if input.All {
+		return a.collectAll(ctx, input)
+	}
 	if a == nil || a.reader == nil {
 		return Output{}, &errs.Error{ID: "workbook.list.unconfigured", Kind: errs.KindRuntime, Operation: "workbook.list", Summary: "Workbook list is not configured.", Retryable: errs.Bool(false), CorrectiveAction: "Configure workbook listing before retrying."}
 	}
@@ -43,7 +51,7 @@ func (a *Action) Execute(ctx context.Context, input Input) (Output, error) {
 	if err != nil {
 		return Output{}, err
 	}
-	page, err := a.reader.ListWorkbooks(ctx, PageRequest{PageNumber: pageNumber, PageSize: pageSize, Name: input.Name, OwnerName: input.OwnerName, ProjectName: input.ProjectName, Tag: input.Tag, SnapshotCursor: snapshotCursor})
+	page, err := a.readWindow(ctx, PageRequest{PageNumber: pageNumber, PageSize: pageSize, Name: input.Name, OwnerName: input.OwnerName, ProjectName: input.ProjectName, Tag: input.Tag, SnapshotCursor: snapshotCursor})
 	if err != nil {
 		return Output{}, err
 	}
@@ -57,7 +65,7 @@ func (a *Action) Execute(ctx context.Context, input Input) (Output, error) {
 			return Output{}, err
 		}
 	}
-	return Output{Status: "listed", Environment: input.Environment, Site: input.Site, Page: OutputPage{Returned: len(page.Workbooks), Total: page.Total, Limit: page.Size, NextCursor: next}, Workbooks: page.Workbooks, RequestID: page.RequestID, Help: []string{"tadx content workbook inspect --id <workbook-luid>"}}, nil
+	return Output{Status: "listed", Environment: input.Environment, Site: input.Site, Page: OutputPage{Returned: len(page.Workbooks), Total: page.Total, Limit: page.Size, NextCursor: next, MoreAvailable: next != "" || (page.SuppressContinuation && len(page.Workbooks) < page.Total)}, Workbooks: page.Workbooks, RequestID: page.RequestID, Help: listHelp(input.Environment, page.Workbooks)}, nil
 }
 
 func selectPage(value string, requested int, expectedFilter string) (int, int, string, error) {
@@ -118,4 +126,46 @@ func filterFingerprint(input Input) (string, error) {
 	}
 	sum := sha256.Sum256(data)
 	return base64.RawURLEncoding.EncodeToString(sum[:]), nil
+}
+
+// collectAll follows private bounded pages and fails closed on incomplete inventories.
+func (a *Action) collectAll(ctx context.Context, input Input) (Output, error) {
+	if input.Limit != 0 || input.Cursor != "" {
+		return Output{}, errs.New(errs.KindUsage, "--all cannot be combined with --limit or --cursor")
+	}
+	if a == nil || a.reader == nil {
+		return Output{}, errors.New("inventory reader is not configured")
+	}
+	requestID := ""
+	items, err := paging.Collect(ctx, func(ctx context.Context, state paging.State) (paging.Page[Workbook], error) {
+		page, err := a.reader.ListWorkbooks(ctx, PageRequest{PageNumber: state.Number, PageSize: state.Size, SnapshotCursor: state.Token, Name: input.Name, OwnerName: input.OwnerName, ProjectName: input.ProjectName, Tag: input.Tag})
+		requestID = page.RequestID
+		return paging.Page[Workbook]{Number: page.Number, Size: page.Size, Total: page.Total, Items: page.Workbooks, Token: page.SnapshotCursor}, err
+	}, func(item Workbook) string { return item.LUID })
+	if err != nil {
+		return Output{}, err
+	}
+	return Output{Status: "listed", Environment: input.Environment, Site: input.Site, Workbooks: items, Page: OutputPage{Returned: len(items), Total: len(items), Limit: 10000}, RequestID: requestID, Help: listHelp(input.Environment, items)}, nil
+}
+
+func listHelp(environment string, items []Workbook) []string {
+	if len(items) == 0 {
+		return nil
+	}
+	return []string{commandhint.Environment(environment, "content", "workbook", "inspect", "--id", items[0].LUID)}
+}
+
+func (a *Action) readWindow(ctx context.Context, request PageRequest) (Page, error) {
+	if request.PageSize <= 1000 {
+		return a.reader.ListWorkbooks(ctx, request)
+	}
+	requestID := ""
+	page, err := paging.Window(ctx, paging.State{Number: request.PageNumber, Size: request.PageSize, Token: request.SnapshotCursor}, 1000, func(ctx context.Context, state paging.State) (paging.Page[Workbook], error) {
+		input := request
+		input.PageNumber, input.PageSize, input.SnapshotCursor = state.Number, state.Size, state.Token
+		page, err := a.reader.ListWorkbooks(ctx, input)
+		requestID = page.RequestID
+		return paging.Page[Workbook]{Number: page.Number, Size: page.Size, Total: page.Total, Items: page.Workbooks, Token: page.SnapshotCursor}, err
+	}, func(item Workbook) string { return item.LUID })
+	return Page{Number: page.Number, Size: page.Size, Total: page.Total, Workbooks: page.Items, SnapshotCursor: "", SuppressContinuation: true, RequestID: requestID}, err
 }

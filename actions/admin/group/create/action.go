@@ -3,6 +3,7 @@ package create
 import (
 	"context"
 	"errors"
+	"github.com/ahillspace/tadx/internal/commandhint"
 
 	"github.com/ahillspace/tadx/internal/errs"
 )
@@ -86,7 +87,10 @@ func (a *Action) Execute(ctx context.Context, in Input, preview bool) (Output, e
 	if a == nil || a.finder == nil || a.creator == nil {
 		return Output{}, errors.New("admin group create is not configured")
 	}
-	if in.Environment == "" || (in.Site == "" && !in.TargetResolved) || in.Name == "" {
+	if err := ValidateInput(in); err != nil {
+		return Output{}, err
+	}
+	if in.Site == "" && !in.TargetResolved {
 		return Output{}, &errs.Error{ID: "admin.group.create.usage", Kind: errs.KindUsage, Operation: "admin.group.create", Summary: "admin group create requires explicit environment, site, and name", Retryable: errs.Bool(false), CorrectiveAction: "Provide an exact environment, site, and group name.", Validation: []errs.ValidationDetail{{Field: "selector", Code: "required", Message: "admin group create requires explicit environment, site, and name"}}}
 	}
 	found, err := a.finder.FindGroups(ctx, in.Name)
@@ -111,11 +115,11 @@ func (a *Action) Execute(ctx context.Context, in Input, preview bool) (Output, e
 	g, err := a.creator.CreateGroup(ctx, Request{Name: in.Name, MinimumSiteRole: in.MinimumSiteRole, ExternalUserEnabled: in.ExternalUserEnabled})
 	if err != nil {
 		if g.MutationStatus == "unknown" {
-			return Output{}, &errs.Error{ID: "admin.group.create.outcome_unknown", Kind: errs.KindOperation, Operation: "admin.group.create", Resource: g.LUID, Environment: in.Environment, Site: in.Site, Summary: "The group create outcome could not be determined safely.", Cause: err, Retryable: errs.Bool(false), CorrectiveAction: "Inspect the target site and Tableau request before attempting another group create.", TableauRequestID: g.RequestID}
+			return Output{}, &errs.Error{ID: "admin.group.create.outcome_unknown", Kind: errs.KindOperation, Operation: "admin.group.create", Resource: g.LUID, Environment: in.Environment, Site: in.Site, Summary: "The group create outcome could not be determined safely.", Cause: err, Retryable: errs.Bool(false), CorrectiveAction: "Inspect the exact group and Tableau request before retrying: " + recoveryHint(in, g.LUID), TableauRequestID: g.RequestID}
 		}
 		return Output{}, err
 	}
 	out.Result = &Result{Status: "created", GroupLUID: g.LUID, TableauRequestID: g.RequestID}
-	out.Help = []string{"tadx admin group inspect --id " + g.LUID}
+	out.Help = []string{commandhint.Environment(in.Environment, "admin", "group", "inspect", "--id", g.LUID)}
 	return out, nil
 }

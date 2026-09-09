@@ -1,6 +1,6 @@
 package capability
 
-//go:generate go run ./generate -contract ../../tadx-v1-capability-contract-final.md -out registry_gen.go
+//go:generate go run ../../cmd/gencapdocs -out ../../docs/reference/capabilities.md -json-out ../../docs/reference/capabilities.json
 
 import (
 	"cmp"
@@ -13,7 +13,7 @@ import (
 func All() []Definition {
 	definitions := make([]Definition, len(canonicalDefinitions))
 	for index, definition := range canonicalDefinitions {
-		definitions[index] = applyImplementationManifest(clone(definition))
+		definitions[index] = clone(definition)
 	}
 	slices.SortFunc(definitions, func(left, right Definition) int { return cmp.Compare(left.ID, right.ID) })
 	return definitions

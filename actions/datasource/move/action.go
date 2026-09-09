@@ -3,6 +3,7 @@ package move
 import (
 	"context"
 	"errors"
+	"github.com/ahillspace/tadx/internal/commandhint"
 	"github.com/ahillspace/tadx/internal/errs"
 	"github.com/ahillspace/tadx/internal/identity"
 	"strings"
@@ -23,6 +24,7 @@ type Action struct {
 
 func New(r Resolver, m Mover) *Action { return &Action{r, m} }
 func (a *Action) Execute(ctx context.Context, in Input, preview bool) (Output, error) {
+	ctx = a.beginProjectResolution(ctx)
 	if a == nil || a.resolver == nil || a.mover == nil {
 		return Output{}, runtimeError()
 	}
@@ -41,6 +43,7 @@ func (a *Action) Execute(ctx context.Context, in Input, preview bool) (Output, e
 		return out, nil
 	}
 	out.Plan.Mode = "execute"
+	ctx = a.beginProjectResolution(ctx)
 	current, currentDestination, err := a.resolve(ctx, in, identity.Selector{LUID: identity.LUID(source.LUID)}, identity.Selector{LUID: identity.LUID(destination.LUID)})
 	if err != nil {
 		return Output{}, err
@@ -57,10 +60,10 @@ func (a *Action) Execute(ctx context.Context, in Input, preview bool) (Output, e
 	}
 	result, err := a.mover.MoveDatasource(ctx, source.LUID, destination.LUID)
 	if err != nil {
-		return Output{}, operationError("datasource.move.failed", in, source.LUID, "Datasource move failed.", "Inspect the datasource before moving again.", err)
+		return Output{}, operationError("datasource.move.failed", in, source.LUID, "Datasource move failed.", "Inspect the exact datasource before retrying: "+commandhint.Environment(in.Environment, "content", "datasource", "inspect", "--id", source.LUID), err)
 	}
 	out.Result = &result
-	out.Help = []string{"tadx content datasource inspect --id " + source.LUID}
+	out.Help = []string{commandhint.Environment(in.Environment, "content", "datasource", "inspect", "--id", source.LUID)}
 	return out, nil
 }
 func (a *Action) resolve(ctx context.Context, in Input, sourceSelector, projectSelector identity.Selector) (Datasource, Project, error) {
@@ -93,19 +96,7 @@ func validate(in Input) error {
 	if strings.TrimSpace(in.Environment) == "" || (strings.TrimSpace(in.Site) == "" && !in.TargetResolved) {
 		return usage("environment", "datasource move requires an explicit resolved environment and site")
 	}
-	if in.DatasourceSelector.LUID == "" && (strings.TrimSpace(in.DatasourceSelector.Name) == "" || strings.TrimSpace(in.DatasourceSelector.ProjectPath) == "") {
-		return usage("selector", "datasource move requires a LUID or exact name and project path")
-	}
-	if in.DatasourceSelector.LUID != "" && (strings.TrimSpace(in.DatasourceSelector.Name) != "" || strings.TrimSpace(in.DatasourceSelector.ProjectPath) != "") {
-		return usage("selector", "a datasource LUID cannot be combined with name or project path")
-	}
-	if in.ProjectSelector.LUID == "" && strings.TrimSpace(in.ProjectSelector.ProjectPath) == "" {
-		return usage("project", "datasource move requires a destination project LUID or exact path")
-	}
-	if in.ProjectSelector.LUID != "" && strings.TrimSpace(in.ProjectSelector.ProjectPath) != "" {
-		return usage("project", "a project LUID cannot be combined with a project path")
-	}
-	return nil
+	return ValidateInput(in)
 }
 func runtimeError() error {
 	return &errs.Error{ID: "datasource.move.unconfigured", Kind: errs.KindRuntime, Operation: "datasource.move", Summary: "Datasource move is not configured.", Retryable: errs.Bool(false), CorrectiveAction: "Configure datasource move before retrying."}

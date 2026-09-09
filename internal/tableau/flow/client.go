@@ -93,12 +93,12 @@ func (c *RESTClient) List(ctx context.Context, input ListRequest) (Page, error) 
 		"pageNumber": {strconv.Itoa(input.PageNumber)},
 		"pageSize":   {strconv.Itoa(input.PageSize)},
 	}
-	filters, err := flowFilters(input)
+	filter, err := ListFilter(input)
 	if err != nil {
 		return Page{}, err
 	}
-	if len(filters) > 0 {
-		query.Set("filter", strings.Join(filters, ","))
+	if filter != "" {
+		query.Set("filter", filter)
 	}
 	response, err := c.do(ctx, http.MethodGet, c.sitePath("flows"), query, nil, "", "flow.list", metadataResponseLimit)
 	if err != nil {
@@ -433,7 +433,9 @@ func (c *RESTClient) sitePath(parts ...string) string {
 	return "/" + strings.Join(segments, "/")
 }
 
-func flowFilters(input ListRequest) ([]string, error) {
+// ListFilter validates and encodes flow selectors for paged and full lists.
+// Pagination fields do not affect the selected population.
+func ListFilter(input ListRequest) (string, error) {
 	fields := []struct{ name, value string }{
 		{name: "name", value: input.Name},
 		{name: "ownerName", value: input.OwnerName},
@@ -444,12 +446,12 @@ func flowFilters(input ListRequest) ([]string, error) {
 	for _, field := range fields {
 		if field.value != "" {
 			if strings.ContainsAny(field.value, "&,") {
-				return nil, fmt.Errorf("flow filter %s cannot contain ampersand or comma", field.name)
+				return "", fmt.Errorf("flow filter %s cannot contain ampersand or comma", field.name)
 			}
 			filters = append(filters, field.name+":eq:"+field.value)
 		}
 	}
-	return filters, nil
+	return strings.Join(filters, ","), nil
 }
 
 func normalizePage(input paginationXML, expectedNumber, maximumSize, count int) (Page, error) {

@@ -9,7 +9,8 @@ type Input struct {
 
 // Target contains nonsecret credential storage identity.
 type Target struct {
-	Environment string
+	Environment                     string
+	EnvironmentCredentialsAvailable bool
 }
 
 // RemoveResult reports whether a stored credential existed.
@@ -19,6 +20,7 @@ type RemoveResult struct {
 
 // Output reports local credential removal and remote PAT status separately.
 type Output struct {
+	Warnings          []string `json:"warnings,omitempty"`
 	Status            string   `json:"status"`
 	Environment       string   `json:"environment"`
 	CredentialSource  string   `json:"credential_source"`

@@ -16,4 +16,4 @@ result:
   status: created
   resource_luid: w1
   tableau_request_id: request-1
-help[1]: tadx admin permission inspect --kind workbook --id w1
+help[1]: tadx admin permission inspect --kind workbook --id w1 --full --principal-type group --principal-id g1 --capability Read --environment dev

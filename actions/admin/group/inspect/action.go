@@ -3,8 +3,8 @@ package inspect
 import (
 	"context"
 	"errors"
+	"github.com/ahillspace/tadx/internal/commandhint"
 
-	"github.com/ahillspace/tadx/internal/errs"
 	"github.com/ahillspace/tadx/internal/readsource"
 )
 
@@ -91,12 +91,12 @@ func (a *Action) Execute(ctx context.Context, in Input) (Output, error) {
 	if a == nil || a.resolver == nil {
 		return Output{}, errors.New("admin group inspect resolver is not configured")
 	}
-	if in.Selector.LUID == "" && in.Selector.Name == "" {
-		return Output{}, &errs.Error{ID: "admin.group.inspect.usage", Kind: errs.KindUsage, Operation: "admin.group.inspect", Summary: "admin group inspect requires a LUID or exact name", Retryable: errs.Bool(false), CorrectiveAction: "Provide a group LUID or an exact group name.", Validation: []errs.ValidationDetail{{Field: "selector", Code: "required", Message: "admin group inspect requires a LUID or exact name"}}}
+	if err := ValidateInput(in); err != nil {
+		return Output{}, err
 	}
 	g, err := a.resolver.ResolveGroup(ctx, in.Selector, in.IncludeMembers)
 	if err != nil {
 		return Output{}, err
 	}
-	return Output{Status: "found", Environment: in.Environment, Site: in.Site, Group: g, RequestID: g.RequestID, Help: []string{"tadx admin group update --id " + g.LUID}}, nil
+	return Output{Status: "found", Environment: in.Environment, Site: in.Site, Group: g, RequestID: g.RequestID, Help: []string{commandhint.Environment(in.Environment, "admin", "group", "inspect", "--id", g.LUID, "--members", "--full")}}, nil
 }

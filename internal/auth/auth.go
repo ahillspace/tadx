@@ -143,9 +143,16 @@ func (p *patProvider) Authenticate(ctx context.Context, target Target) (Session,
 	if err != nil {
 		return nil, err
 	}
+	return signIn(ctx, target, credentials, p.signer)
+}
+
+func signIn(ctx context.Context, target Target, credentials PATCredentials, signer Signer) (Session, error) {
+	if signer == nil {
+		return nil, errors.New("PAT sign-in client is not configured")
+	}
 	name := credentials.Name
 	secret := credentials.Secret
-	response, err := p.signer.SignIn(ctx, SignInRequest{
+	response, err := signer.SignIn(ctx, SignInRequest{
 		ServerURL:      target.ServerURL,
 		SiteContentURL: target.SiteContentURL,
 		PATName:        name,

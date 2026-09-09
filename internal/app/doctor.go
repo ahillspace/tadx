@@ -79,13 +79,14 @@ func (c *doctorCommands) CheckCatalog(ctx context.Context, scope doctorrun.Scope
 	if err != nil {
 		return doctorrun.CatalogState{}, err
 	}
-	database := filepath.Join(filepath.Dir(c.runtime.configPath), "catalog", "catalog.sqlite")
+	store := c.runtime.catalogStore(environment)
+	database := filepath.Join(filepath.Dir(c.runtime.configPath), filepath.FromSlash(store.RelativePath()))
 	if _, err := os.Stat(database); errors.Is(err, os.ErrNotExist) {
 		return doctorrun.CatalogState{}, nil
 	} else if err != nil {
 		return doctorrun.CatalogState{}, err
 	}
-	status, err := corecatalog.NewStore(filepath.Dir(c.runtime.configPath), c.runtime.now).Status(ctx, corecatalog.Selection{Environment: environment.Alias, Site: environment.SiteContentURL, SiteSelected: true})
+	status, err := store.Status(ctx, corecatalog.Selection{Environment: environment.Alias, Site: environment.SiteContentURL, SiteSelected: true})
 	if err != nil {
 		return doctorrun.CatalogState{Present: true}, err
 	}

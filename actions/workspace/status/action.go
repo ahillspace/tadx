@@ -4,6 +4,7 @@ package status
 import (
 	"context"
 	"errors"
+	"github.com/ahillspace/tadx/internal/commandhint"
 
 	"github.com/ahillspace/tadx/internal/errs"
 )
@@ -32,9 +33,9 @@ type compactWorkspace struct {
 // Artifact is one full managed artifact state.
 type Artifact struct {
 	Kind                string `json:"kind"`
-	LUID                string `json:"luid,omitempty"`
-	Name                string `json:"name,omitempty"`
-	Path                string `json:"path"`
+	LUID                string `json:"luid"`
+	Name                string `json:"name"`
+	Path                string `json:"path,omitempty"`
 	State               string `json:"state"`
 	CanonicalPath       string `json:"canonical_path,omitempty"`
 	BaselineFingerprint string `json:"baseline_fingerprint,omitempty"`
@@ -43,17 +44,18 @@ type Artifact struct {
 
 // Inventory is one bounded artifact page and its workspace-wide state counts.
 type Inventory struct {
-	Returned     int        `json:"returned"`
-	Total        int        `json:"total,omitempty"`
-	Limit        int        `json:"limit"`
-	NextCursor   string     `json:"next_cursor,omitempty"`
-	ScanComplete bool       `json:"scan_complete"`
-	Clean        int        `json:"clean"`
-	Dirty        int        `json:"dirty"`
-	Missing      int        `json:"missing"`
-	Invalid      int        `json:"invalid"`
-	Items        []Artifact `json:"artifacts,omitempty"`
-	Warnings     []string   `json:"-"`
+	Returned      int        `json:"returned"`
+	Total         int        `json:"total,omitempty"`
+	Limit         int        `json:"limit"`
+	NextCursor    string     `json:"-"`
+	MoreAvailable bool       `json:"more_available"`
+	ScanComplete  bool       `json:"scan_complete"`
+	Clean         int        `json:"clean"`
+	Dirty         int        `json:"dirty"`
+	Missing       int        `json:"missing"`
+	Invalid       int        `json:"invalid"`
+	Items         []Artifact `json:"artifacts,omitempty"`
+	Warnings      []string   `json:"-"`
 }
 
 // Output is the stable status result.
@@ -87,7 +89,11 @@ type fullOutput struct {
 // CompactOutput returns counts without artifact details.
 func (o Output) CompactOutput() any {
 	inventory := o.Inventory
-	inventory.Items = nil
+	inventory.MoreAvailable = inventory.MoreAvailable || inventory.NextCursor != ""
+	inventory.Items = make([]Artifact, len(o.Inventory.Items))
+	for i, item := range o.Inventory.Items {
+		inventory.Items[i] = Artifact{Kind: item.Kind, LUID: item.LUID, Name: item.Name, State: item.State}
+	}
 	warnings, omitted := boundWarnings(o.Warnings)
 	workspace := compactWorkspace{Name: o.Workspace.Name, ID: o.Workspace.ID}
 	return compactOutput{Status: o.Status, Workspace: workspace, Inventory: inventory, Warnings: warnings, WarningsOmitted: omitted, Details: "--full", Help: o.Help}
@@ -96,7 +102,9 @@ func (o Output) CompactOutput() any {
 // FullOutput returns the same bounded page with artifact details.
 func (o Output) FullOutput() any {
 	warnings, omitted := boundWarnings(o.Warnings)
-	return fullOutput{Status: o.Status, Workspace: o.Workspace, Inventory: o.Inventory, Warnings: warnings, WarningsOmitted: omitted, Help: o.Help}
+	inventory := o.Inventory
+	inventory.MoreAvailable = inventory.MoreAvailable || inventory.NextCursor != ""
+	return fullOutput{Status: o.Status, Workspace: o.Workspace, Inventory: inventory, Warnings: warnings, WarningsOmitted: omitted, Help: o.Help}
 }
 
 // Reader reports one named workspace's bounded status.
@@ -118,8 +126,8 @@ func (a *Action) Execute(ctx context.Context, input Input) (Output, error) {
 	if input.Limit == 0 {
 		input.Limit = 20
 	}
-	if input.Limit < 1 || input.Limit > 1000 {
-		return Output{}, usage("limit must be between 1 and 1000")
+	if input.Limit < 1 || input.Limit > 10000 {
+		return Output{}, usage("limit must be between 1 and 10000")
 	}
 	resolved, inventory, err := a.reader.Status(ctx, input)
 	if err != nil {
@@ -132,7 +140,7 @@ func (a *Action) Execute(ctx context.Context, input Input) (Output, error) {
 	if inventory.Dirty > 0 || inventory.Missing > 0 || inventory.Invalid > 0 || !inventory.ScanComplete {
 		state = "attention"
 	}
-	return Output{Status: state, Workspace: resolved, Inventory: inventory, Warnings: inventory.Warnings, Help: []string{"tadx workspace status --workspace " + resolved.Name + " --full"}}, nil
+	return Output{Status: state, Workspace: resolved, Inventory: inventory, Warnings: inventory.Warnings, Help: []string{commandhint.Command("workspace", "status", "--workspace", resolved.Name, "--full")}}, nil
 }
 
 func boundWarnings(input []string) ([]string, int) {

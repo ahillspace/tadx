@@ -73,7 +73,7 @@ func TestDatasourceLifecycleCompositionPreservesCompositionIdentityAndRelativePa
 		t.Fatalf("stored artifact = %#v", stored)
 	}
 
-	preview, err := commands.PublishDatasource(context.Background(), datasourcepublish.Input{Workspace: "analytics", ArtifactPath: pulled.Artifact.Path, SourceDefaulted: true, Mode: datasourcepublish.ModeOverwrite}, true)
+	preview, err := commands.PublishDatasource(context.Background(), datasourcepublish.Input{Workspace: "analytics", ArtifactPath: pulled.Artifact.Path, Environment: "production", ProjectSelector: identity.Selector{LUID: "project-1"}, Mode: datasourcepublish.ModeOverwrite}, true)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -94,7 +94,7 @@ func TestDatasourceLifecycleReturnsStructuredSetupErrors(t *testing.T) {
 	commands := newRemoteContentCommands(&runtimeDependencies{configPath: filepath.Join(t.TempDir(), "missing.yaml"), httpClient: http.DefaultClient, now: time.Now, correlationID: "datasource-test"})
 	_, err := commands.PullDatasource(context.Background(), datasourcepull.Input{Environment: "production", Workspace: "analytics", Selector: identity.Selector{LUID: "ds-1"}})
 	var structured *errs.Error
-	if err == nil || !errors.As(err, &structured) || structured.ID != "datasource.pull.setup" || structured.Operation != "datasource.pull" || structured.Environment != "production" {
+	if err == nil || !errors.As(err, &structured) || structured.ID != "datasource.pull.workspace" || structured.Operation != "datasource.pull" || structured.Environment != "production" {
 		t.Fatalf("error = %#v", err)
 	}
 }
@@ -123,5 +123,7 @@ func datasourceLifecycleRuntime(t *testing.T, server *httptest.Server) (*runtime
 	}
 	t.Setenv("PROD_PAT_NAME", "pat-name")
 	t.Setenv("PROD_PAT_SECRET", "pat-secret")
-	return &runtimeDependencies{configPath: configPath, httpClient: server.Client(), now: func() time.Time { return time.Date(2026, 9, 2, 12, 0, 0, 0, time.UTC) }, correlationID: "datasource-test"}, workspace
+	runtime := &runtimeDependencies{configPath: configPath, httpClient: server.Client(), now: func() time.Time { return time.Date(2026, 9, 2, 12, 0, 0, 0, time.UTC) }, correlationID: "datasource-test"}
+	t.Cleanup(func() { _ = runtime.Close() })
+	return runtime, workspace
 }

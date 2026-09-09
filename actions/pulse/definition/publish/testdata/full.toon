@@ -1,0 +1,42 @@
+status: preview
+plan:
+  environment: target
+  site: target-site
+  artifact: artifacts/pulse-definition/example
+  source_definition_luid: definition-1
+  name: Revenue
+  source_datasource_luid: ds-1
+  destination_datasource_luid: ds-2
+  new_objects_only: true
+  metric_count: 1
+  definition_configuration:
+    description: ""
+    extension_options:
+      allowed_dimensions: []
+      allowed_granularities[1]: GRANULARITY_BY_DAY
+    name: Revenue
+    specification:
+      basic_specification:
+        measure:
+          field: Revenue
+          aggregation: AGGREGATION_SUM
+        time_dimension:
+          field: Order Date
+        filters: []
+      datasource:
+        id: ds-2
+  metrics[1]:
+    - source_metric_luid: metric-1
+      is_default: false
+      specification:
+        datasource:
+          id: ds-2
+        filters: []
+        measurement_period:
+          granularity: GRANULARITY_BY_DAY
+          range: RANGE_LAST_N
+          last_n: 9007199254740993
+  review_complete: true
+mappings: []
+complete: true
+help[1]: Publishing creates new objects; existing objects are never overwritten.

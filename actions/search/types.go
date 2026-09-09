@@ -10,10 +10,12 @@ type Input struct {
 
 // Page is the continuation envelope for the selected source.
 type Page struct {
-	Returned   int    `json:"returned"`
-	Total      int    `json:"total,omitempty"`
-	Limit      int    `json:"limit"`
-	NextCursor string `json:"next_cursor,omitempty"`
+	UnresolvedMoreAvailable bool   `json:"-"`
+	Returned                int    `json:"returned"`
+	Total                   int    `json:"total,omitempty"`
+	Limit                   int    `json:"limit"`
+	NextCursor              string `json:"-"`
+	MoreAvailable           bool   `json:"more_available"`
 }
 
 // Item provides authoritative identity for exact follow-up commands.

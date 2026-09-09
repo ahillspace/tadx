@@ -8,93 +8,99 @@ import (
 	"github.com/ahillspace/tadx/internal/catalog"
 	"github.com/ahillspace/tadx/internal/identity"
 	resourcedatasource "github.com/ahillspace/tadx/internal/resources/datasource"
+	resourceproject "github.com/ahillspace/tadx/internal/resources/project"
 	tableaucatalog "github.com/ahillspace/tadx/internal/tableau/catalog"
 	tableaudatasource "github.com/ahillspace/tadx/internal/tableau/datasource"
 )
 
+type datasourceDiscovery struct {
+	projects *resourceproject.DiscoveryPaths
+}
+
 func (c *remoteContentCommands) ListDatasources(ctx context.Context, input datasourcelist.Input) (datasourcelist.Output, error) {
-	if input.Catalog {
+	if input.Cursor != "" {
+		_, environment, err := c.runtime.environment(input.Environment, false)
+		if err != nil {
+			return datasourcelist.Output{}, err
+		}
+		input.Environment, input.Site = environment.Alias, environment.SiteContentURL
+	}
+	if err := datasourcelist.ValidateInput(input); err != nil {
+		return datasourcelist.Output{}, err
+	}
+	return c.listDatasources(ctx, input, &datasourceDiscovery{})
+}
+
+func (c *remoteContentCommands) listDatasources(ctx context.Context, input datasourcelist.Input, discovery *datasourceDiscovery) (result datasourcelist.Output, resultErr error) {
+	if input.Cursor != "" {
+		_, environment, err := c.runtime.environment(input.Environment, false)
+		if err != nil {
+			return datasourcelist.Output{}, err
+		}
+		input.Environment, input.Site = environment.Alias, environment.SiteContentURL
+	}
+	if err := datasourcelist.ValidateInput(input); err != nil {
+		return datasourcelist.Output{}, err
+	}
+	defer func() {
+		if resultErr == nil {
+			resultErr = validateInventoryAll(input.All, result.Source)
+		}
+	}()
+	if input.Catalog || legacyInventorySnapshot(input.Cursor) {
 		environment, site, err := c.resolveCatalogTarget(input.Environment)
 		if err != nil {
 			return datasourcelist.Output{}, err
 		}
 		input.Environment, input.Site = environment, site
-		reader := &catalogDatasourceListReader{store: c.catalogStore(), environment: environment, site: site}
+		reader := &catalogDatasourceListReader{store: c.catalogStore(input.Environment), environment: environment, site: site}
 		output, err := datasourcelist.New(reader).Execute(ctx, input)
 		if err == nil {
 			output.Source = reader.source
 		}
 		return output, err
 	}
-	if input.Cursor != "" && datasourceListIsUnfiltered(input) {
-		environment, site, err := c.resolveCatalogTarget(input.Environment)
-		if err != nil {
-			return datasourcelist.Output{}, err
-		}
-		input.Environment, input.Site = environment, site
-		reader := &catalogDatasourceListReader{store: c.catalogStore(), environment: environment, site: site}
-		output, err := datasourcelist.New(reader).Execute(ctx, input)
-		if err == nil {
-			output.Source = reader.source
-		}
-		return output, err
+	filter, err := tableaudatasource.ListFilter(tableaudatasource.ListRequest{Name: input.Name, OwnerName: input.OwnerName, ProjectName: input.ProjectName, Type: input.Type, Tag: input.Tag, UpdatedAfter: input.UpdatedAfter, UpdatedBefore: input.UpdatedBefore})
+	if err != nil {
+		return datasourcelist.Output{}, err
 	}
 	connection, err := c.connect(ctx, input.Environment, false)
 	if err != nil {
 		return datasourcelist.Output{}, remoteSetupError("datasource.list", input.Environment, input.Site, connection.environment, err)
 	}
 	input.Environment, input.Site = connection.environment.Alias, connection.environment.SiteContentURL
-	if datasourceListIsUnfiltered(input) {
+
+	if input.All {
 		observedAt := c.runtime.now().UTC()
-		inventory, err := collectResourceInventory(ctx, connection.inventory, c.catalogStore(), tableaucatalog.ScopeDatasources, input.Environment, input.Site, observedAt)
+		inventory, err := collectResourceInventory(ctx, connection.inventory, c.catalogStore(input.Environment), tableaucatalog.ScopeDatasources, input.Environment, input.Site, observedAt, inventoryCollectionOptions{MaxConcurrency: connection.environment.CatalogMaxConcurrency, Filter: filter})
 		if err != nil {
 			return datasourcelist.Output{}, inventoryRefreshError("datasource.list", input.Environment, input.Site, err)
 		}
-		if inventory.catalogErr != nil {
-			reader := inventory.memoryReader()
-			output, err := datasourcelist.New(reader).Execute(ctx, input)
-			if err != nil {
-				return output, err
-			}
-			output.Source = inventory.warningSource(observedAt)
-			output.Help = append(output.Help, inventory.warningHelp())
-			return output, nil
-		}
-		reader := &catalogDatasourceListReader{store: c.catalogStore(), environment: input.Environment, site: input.Site}
+		reader := inventory.memoryReader()
+		reader.allowContinuation = true
 		output, err := datasourcelist.New(reader).Execute(ctx, input)
 		if err != nil {
 			return output, err
 		}
-		output.Source = liveInventorySource(observedAt, inventory.published.GenerationID)
+		if inventory.catalogErr != nil {
+			output.Source = inventory.warningSource(observedAt)
+			output.Help = append(output.Help, inventory.warningHelp())
+		} else if inventory.filtered {
+			output.Source = liveSource(c.runtime.now)
+		} else {
+			output.Source = liveInventorySource(observedAt, inventory.published.GenerationID)
+		}
 		output.RequestID = finalRequestID(inventory.requestIDs)
-		output.Help = append(output.Help, inventoryRefreshHelp)
 		return output, nil
 	}
-	output, err := datasourcelist.New(datasourceListReader{connection.datasources}).Execute(ctx, input)
+	if discovery.projects == nil {
+		discovery.projects = resourceproject.NewDiscoveryPaths(connection.projects)
+	}
+	output, err := datasourcelist.New(datasourceListReader{adapter: connection.datasources, projects: discovery.projects}).Execute(ctx, input)
 	if err != nil {
 		return output, err
 	}
-	observedAt := c.runtime.now().UTC()
 	output.Source = liveSource(c.runtime.now)
-	projectIDs := make([]string, len(output.Datasources))
-	for index, item := range output.Datasources {
-		projectIDs[index] = item.ProjectLUID
-	}
-	paths, pathErr := connection.projects.ResolveProjectPaths(ctx, projectIDs)
-	if pathErr != nil {
-		output.Help = append(output.Help, "Live list succeeded, but canonical project paths could not be confirmed; catalog records were not updated.")
-		return output, nil
-	}
-	entries := make([]catalog.ResourceEntry, 0, len(output.Datasources))
-	for index := range output.Datasources {
-		item := &output.Datasources[index]
-		item.ProjectPath = paths[item.ProjectLUID]
-		entry, encodeErr := resourceEntry(input.Environment, input.Site, "datasource", item.LUID, item.Name, item.ProjectPath, item.OwnerLUID, "summary", observedAt, item)
-		if encodeErr == nil {
-			entries = append(entries, entry)
-		}
-	}
-	writeThrough(c.catalogStore(), entries)
 	return output, nil
 }
 
@@ -103,13 +109,16 @@ func datasourceListIsUnfiltered(input datasourcelist.Input) bool {
 }
 
 func (c *remoteContentCommands) InspectDatasource(ctx context.Context, input datasourceinspect.Input) (datasourceinspect.Output, error) {
+	if err := datasourceinspect.ValidateInput(input); err != nil {
+		return datasourceinspect.Output{}, err
+	}
 	if input.Catalog {
 		environment, site, err := c.resolveCatalogTarget(input.Environment)
 		if err != nil {
 			return datasourceinspect.Output{}, err
 		}
 		input.Environment, input.Site = environment, site
-		resolver := &catalogDatasourceGetResolver{store: c.catalogStore(), environment: environment, site: site}
+		resolver := &catalogDatasourceGetResolver{store: c.catalogStore(input.Environment), environment: environment, site: site}
 		output, err := datasourceinspect.New(resolver).Execute(ctx, input)
 		if err == nil {
 			output.Source = resolver.source
@@ -129,12 +138,17 @@ func (c *remoteContentCommands) InspectDatasource(ctx context.Context, input dat
 	output.Source = liveSource(c.runtime.now)
 	entry, encodeErr := resourceEntry(input.Environment, input.Site, "datasource", output.Datasource.LUID, output.Datasource.Name, output.Datasource.ProjectPath, output.Datasource.OwnerLUID, "detail", observedAt, output.Datasource)
 	if encodeErr == nil {
-		writeThrough(c.catalogStore(), []catalog.ResourceEntry{entry})
+		writeThrough(c.catalogStore(input.Environment), []catalog.ResourceEntry{entry})
 	}
 	return output, nil
 }
 
-type datasourceListReader struct{ adapter *resourcedatasource.Adapter }
+type datasourceListReader struct {
+	adapter  *resourcedatasource.Adapter
+	projects interface {
+		ResolveProjectPaths(context.Context, []string) (map[string]string, error)
+	}
+}
 
 func (r datasourceListReader) ListDatasources(ctx context.Context, input datasourcelist.PageRequest) (datasourcelist.Page, error) {
 	page, err := r.adapter.ListDatasources(ctx, tableaudatasource.ListRequest{
@@ -142,9 +156,26 @@ func (r datasourceListReader) ListDatasources(ctx context.Context, input datasou
 		ProjectName: input.ProjectName, Type: input.Type, Tag: input.Tag,
 		UpdatedAfter: input.UpdatedAfter, UpdatedBefore: input.UpdatedBefore,
 	})
+	if err != nil {
+		return datasourcelist.Page{}, err
+	}
+	paths := map[string]string{}
+	if r.projects != nil && len(page.Items) > 0 {
+		ids := make([]string, len(page.Items))
+		for i, item := range page.Items {
+			ids[i] = item.ProjectLUID
+		}
+		paths, err = r.projects.ResolveProjectPaths(ctx, ids)
+		if err != nil {
+			return datasourcelist.Page{}, err
+		}
+	}
 	items := make([]datasourcelist.Datasource, len(page.Items))
 	for index, item := range page.Items {
 		items[index] = datasourceListItem(item)
+		if path, ok := paths[item.ProjectLUID]; ok {
+			items[index].ProjectPath = path
+		}
 	}
 	return datasourcelist.Page{Number: page.Number, Size: page.Size, Total: page.Total, Datasources: items, RequestID: page.RequestID}, err
 }

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/ahillspace/tadx/internal/commandhint"
 	"strings"
 
 	"github.com/ahillspace/tadx/internal/errs"
@@ -34,6 +35,7 @@ func New(resolver Resolver, creator Creator) *Action {
 
 // Execute previews or creates one exact project.
 func (a *Action) Execute(ctx context.Context, input Input, preview bool) (Output, error) {
+	ctx = a.beginProjectResolution(ctx)
 	if a == nil || a.resolver == nil || a.creator == nil {
 		return Output{}, &errs.Error{ID: "project.create.unconfigured", Kind: errs.KindRuntime, Operation: "project.create", Summary: "Project create is not configured.", Retryable: errs.Bool(false), CorrectiveAction: "Configure project creation before retrying."}
 	}
@@ -57,6 +59,7 @@ func (a *Action) Execute(ctx context.Context, input Input, preview bool) (Output
 		return output, nil
 	}
 	output.Plan.Mode = "execute"
+	ctx = a.beginProjectResolution(ctx)
 	currentParent, err := a.resolveParent(ctx, input.ParentSelector)
 	if err != nil {
 		return Output{}, resolutionError(input, "Parent project revalidation failed.", err)
@@ -78,7 +81,7 @@ func (a *Action) Execute(ctx context.Context, input Input, preview bool) (Output
 	}
 	output.Plan.Parent = currentParent
 	output.Result = &result
-	output.Help = []string{"tadx content project inspect --project-id " + result.Project.LUID}
+	output.Help = []string{commandhint.Environment(input.Environment, "content", "project", "inspect", "--project-id", result.Project.LUID)}
 	return output, nil
 }
 
@@ -111,19 +114,7 @@ func validateInput(input Input) error {
 	if strings.TrimSpace(input.Environment) == "" || (strings.TrimSpace(input.Site) == "" && !input.TargetResolved) {
 		return usage("environment", "project create requires an explicit resolved environment and site")
 	}
-	if strings.TrimSpace(input.Name) == "" {
-		return usage("name", "project create requires a name")
-	}
-	if strings.Contains(input.Name, "/") {
-		return usage("name", "project create name cannot contain a slash")
-	}
-	if input.ParentSelector.Name != "" || (input.ParentSelector.LUID != "" && strings.TrimSpace(input.ParentSelector.ProjectPath) != "") {
-		return usage("parent", "use either a parent LUID or an exact parent project path")
-	}
-	if !validContentPermissions(input.ContentPermissions) {
-		return usage("content_permissions", "project create content permissions are invalid")
-	}
-	return nil
+	return ValidateInput(input)
 }
 
 func validContentPermissions(value string) bool {

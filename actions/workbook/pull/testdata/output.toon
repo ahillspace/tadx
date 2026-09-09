@@ -4,10 +4,13 @@ workbook:
   name: Finance
   project_path: Ops
 artifact:
-  path: artifacts/workbook/Finance
+  workspace: logical workspace
+  kind: workbook
+  name: Finance
+  source_luid: wb-1
   portability: source-site-bound
   published_datasource_count: 1
   dependencies_acquired: true
 warnings[1]: existing clean artifact replaced
 details: "--full"
-help[1]: tadx content workbook publish --artifact <path> --environment <alias>
+help[1]: tadx content workbook publish --id wb-1 --project-id project-1 --overwrite --preview --workspace 'logical workspace' --environment production

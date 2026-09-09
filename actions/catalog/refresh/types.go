@@ -45,10 +45,12 @@ type HydrationResult struct {
 	ScopeCounts         []ScopeCount
 	Diagnostics         Diagnostics
 	Warnings            []string
+	DeniedPermissions   int
 }
 
 // GenerationOutput is the bounded refresh generation projection.
 type GenerationOutput struct {
+	Complete        bool         `json:"complete"`
 	ID              string       `json:"id"`
 	Environment     string       `json:"environment"`
 	Site            string       `json:"site"`
@@ -73,6 +75,7 @@ type Output struct {
 
 // CompactGeneration contains refresh decision fields.
 type CompactGeneration struct {
+	Complete    bool   `json:"complete"`
 	ID          string `json:"id"`
 	Environment string `json:"environment"`
 	Site        string `json:"site"`
@@ -103,7 +106,7 @@ type FullResult struct {
 // CompactOutput returns a row-free operational receipt.
 func (o Output) CompactOutput() any {
 	g := o.Generation
-	return CompactResult{Status: o.Status, Generation: CompactGeneration{ID: g.ID, Environment: g.Environment, Site: g.Site, GeneratedAt: g.GeneratedAt, Records: g.Records}, Path: o.Path, Warnings: o.Warnings, Details: "--full", Help: o.Help}
+	return CompactResult{Status: o.Status, Generation: CompactGeneration{Complete: g.Complete, ID: g.ID, Environment: g.Environment, Site: g.Site, GeneratedAt: g.GeneratedAt, Records: g.Records}, Path: o.Path, Warnings: o.Warnings, Details: "--full", Help: o.Help}
 }
 
 // FullOutput returns bounded generation provenance and diagnostics.

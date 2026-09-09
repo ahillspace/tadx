@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/ahillspace/tadx/internal/commandhint"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -42,6 +43,9 @@ func New(reader Reader, writer ArtifactWriter) *Action {
 
 // Execute resolves, downloads, and materializes one workbook artifact.
 func (a *Action) Execute(ctx context.Context, input Input) (Output, error) {
+	if err := ValidateInput(input); err != nil {
+		return Output{}, err
+	}
 	if a == nil || a.reader == nil || a.writer == nil {
 		return Output{}, &errs.Error{ID: "workbook.pull.unconfigured", Kind: errs.KindRuntime, Operation: "workbook.pull", Summary: "Workbook pull is not configured.", Retryable: errs.Bool(false), CorrectiveAction: "Configure workbook pulling before retrying."}
 	}
@@ -193,7 +197,7 @@ func (a *Action) Execute(ctx context.Context, input Input) (Output, error) {
 		return Output{}, invalidBundleResult(workbook, input, fmt.Errorf("project workbook lineage path: %w", err))
 	}
 	warnings = append(warnings, artifact.Warnings...)
-	return Output{Status: "pulled", Workbook: workbook, Artifact: artifact, Warnings: warnings, RequestID: download.TableauRequestID, Help: []string{"tadx content workbook publish --artifact <path> --environment <alias>"}}, nil
+	return Output{Workspace: input.WorkspaceName, Status: "pulled", Workbook: workbook, Artifact: artifact, Warnings: warnings, RequestID: download.TableauRequestID, Help: []string{commandhint.Target(input.Environment, input.WorkspaceName, "content", "workbook", "publish", "--id", workbook.LUID, "--project-id", workbook.ProjectLUID, "--overwrite", "--preview")}}, nil
 }
 
 func captureAutomaticLineage(ctx context.Context, reader Reader, workbookLUID string) (LineageCapture, bool, string, []string) {

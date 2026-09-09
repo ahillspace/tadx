@@ -21,6 +21,8 @@ type Definition struct {
 	Temporality          string
 	AllowedDimensions    []string
 	AllowedGranularities []string
+	FixedFilters         []any
+	FixedFiltersKnown    bool
 	Configuration        json.RawMessage
 	TableauRequestID     string
 }
@@ -75,15 +77,18 @@ type ExpectedMetric struct {
 	DefinitionLUID string
 	DatasourceLUID string
 	SiteLUID       string
+	Specification  map[string]any
 }
 
-// Reconciliation reports exact ownership and definition-inventory visibility.
+// Reconciliation reports verified saved configuration, not numerical metric values.
 type Reconciliation struct {
-	Status            string
-	Attempts          int
-	OwnershipVerified bool
-	InventoryVisible  bool
-	TableauRequestID  string
+	Status                string
+	Attempts              int
+	OwnershipVerified     bool
+	TableauRequestID      string
+	SpecificationVerified bool
+	Metric                Metric
+	Definition            Definition
 }
 
 // Subscription is one exact metric follower relationship.

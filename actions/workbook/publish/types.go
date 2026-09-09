@@ -6,10 +6,15 @@ const maxFullWarnings = 20
 
 // Input selects one local artifact and explicit remote destination.
 type Input struct {
-	Workspace    string
-	ArtifactPath string
-	Environment  string
-	Site         string
+	File         string
+	ArtifactID   string
+	ArtifactName string
+	// WorkspaceName is the resolved logical workspace alias used in follow-up commands.
+	WorkspaceName string
+	Workspace     string
+	ArtifactPath  string
+	Environment   string
+	Site          string
 	// TargetResolved reports that the composition root already resolved the
 	// exact write environment and site, so the action must not re-require them.
 	TargetResolved bool
@@ -77,6 +82,8 @@ type Target struct {
 
 // Plan is the deterministic preview and the only value Apply accepts.
 type Plan struct {
+	Workspace           string   `json:"workspace"`
+	SourceLUID          string   `json:"source_luid"`
 	Mode                string   `json:"mode"`
 	Operation           string   `json:"operation"`
 	ArtifactPath        string   `json:"artifact_path"`
@@ -133,15 +140,19 @@ type Output struct {
 
 // CompactPlan preserves the exact target and mutation decision without diagnostics.
 type CompactPlan struct {
-	Mode            string `json:"mode"`
-	Operation       string `json:"operation"`
-	ArtifactPath    string `json:"artifact_path"`
-	Filename        string `json:"filename"`
-	WorkbookName    string `json:"workbook_name"`
-	Target          Target `json:"target"`
-	Overwrite       bool   `json:"overwrite"`
-	AsJob           bool   `json:"as_job"`
-	WarningsOmitted int    `json:"warnings_omitted,omitempty"`
+	Workspace       string   `json:"workspace"`
+	Kind            string   `json:"kind"`
+	SourceLUID      string   `json:"source_luid"`
+	Mode            string   `json:"mode"`
+	Operation       string   `json:"operation"`
+	ArtifactPath    string   `json:"-"`
+	Filename        string   `json:"filename"`
+	WorkbookName    string   `json:"workbook_name"`
+	Target          Target   `json:"target"`
+	Overwrite       bool     `json:"overwrite"`
+	AsJob           bool     `json:"as_job"`
+	Warnings        []string `json:"warnings,omitempty"`
+	WarningsOmitted int      `json:"warnings_omitted,omitempty"`
 }
 
 // CompactPublishResult preserves authoritative identities without request diagnostics.
@@ -164,6 +175,9 @@ type CompactResult struct {
 
 // FullPlan includes bounded publish diagnostics.
 type FullPlan struct {
+	Workspace           string   `json:"workspace"`
+	Kind                string   `json:"kind"`
+	SourceLUID          string   `json:"source_luid"`
 	Mode                string   `json:"mode"`
 	Operation           string   `json:"operation"`
 	ArtifactPath        string   `json:"artifact_path"`
@@ -199,10 +213,11 @@ type FullResult struct {
 
 // CompactOutput returns the target, safety decision, and resulting identities.
 func (o Output) CompactOutput() any {
-	plan := CompactPlan{
+	warnings, omitted := boundWarnings(o.Plan.Warnings)
+	plan := CompactPlan{Workspace: o.Plan.Workspace, Kind: "workbook", SourceLUID: o.Plan.SourceLUID,
 		Mode: o.Plan.Mode, Operation: o.Plan.Operation, ArtifactPath: o.Plan.ArtifactPath,
 		Filename: o.Plan.Filename, WorkbookName: o.Plan.WorkbookName, Target: o.Plan.Target,
-		Overwrite: o.Plan.Overwrite, AsJob: o.Plan.AsJob, WarningsOmitted: len(o.Plan.Warnings),
+		Overwrite: o.Plan.Overwrite, AsJob: o.Plan.AsJob, Warnings: warnings, WarningsOmitted: omitted,
 	}
 	var result *CompactPublishResult
 	if o.Result != nil {
@@ -219,7 +234,7 @@ func (o Output) CompactOutput() any {
 func (o Output) FullOutput() any {
 	warnings, warningsOmitted := boundWarnings(o.Plan.Warnings)
 	full := FullResult{
-		Plan: FullPlan{
+		Plan: FullPlan{Workspace: o.Plan.Workspace, Kind: "workbook", SourceLUID: o.Plan.SourceLUID,
 			Mode: o.Plan.Mode, Operation: o.Plan.Operation, ArtifactPath: o.Plan.ArtifactPath,
 			ArtifactFingerprint: o.Plan.ArtifactFingerprint, Filename: o.Plan.Filename,
 			WorkbookName: o.Plan.WorkbookName, Target: o.Plan.Target, Overwrite: o.Plan.Overwrite,

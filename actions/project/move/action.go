@@ -3,6 +3,7 @@ package move
 import (
 	"context"
 	"errors"
+	"github.com/ahillspace/tadx/internal/commandhint"
 	"github.com/ahillspace/tadx/internal/errs"
 	"github.com/ahillspace/tadx/internal/identity"
 	"strings"
@@ -22,6 +23,7 @@ type Action struct {
 
 func New(r Resolver, m Mover) *Action { return &Action{r, m} }
 func (a *Action) Execute(ctx context.Context, in Input, preview bool) (Output, error) {
+	ctx = a.beginProjectResolution(ctx)
 	if a == nil || a.resolver == nil || a.mover == nil {
 		return Output{}, &errs.Error{ID: "project.move.unconfigured", Kind: errs.KindRuntime, Operation: "project.move", Summary: "Project move is not configured.", Retryable: errs.Bool(false), CorrectiveAction: "Configure project move before retrying."}
 	}
@@ -44,6 +46,7 @@ func (a *Action) Execute(ctx context.Context, in Input, preview bool) (Output, e
 		return out, nil
 	}
 	out.Plan.Mode = "execute"
+	ctx = a.beginProjectResolution(ctx)
 	current, err := a.resolver.ResolveProject(ctx, identity.Selector{LUID: identity.LUID(source.LUID)})
 	if err != nil {
 		return Output{}, operationError("project.move.resolve", in, source.LUID, "Project revalidation failed.", "Review a new preview before moving.", err)
@@ -65,10 +68,10 @@ func (a *Action) Execute(ctx context.Context, in Input, preview bool) (Output, e
 	}
 	result, err := a.mover.MoveProject(ctx, current.LUID, parentLUID)
 	if err != nil {
-		return Output{}, operationError("project.move.failed", in, current.LUID, "Project move failed.", "Inspect the project before moving again.", err)
+		return Output{}, operationError("project.move.failed", in, current.LUID, "Project move failed.", "Inspect the exact project before retrying: "+commandhint.Environment(in.Environment, "content", "project", "inspect", "--project-id", current.LUID), err)
 	}
 	out.Result = &result
-	out.Help = []string{"tadx content project inspect --project-id " + current.LUID}
+	out.Help = []string{commandhint.Environment(in.Environment, "content", "project", "inspect", "--project-id", current.LUID)}
 	return out, nil
 }
 func (a *Action) destination(ctx context.Context, in Input, source Project) (*Project, *string, error) {
@@ -118,20 +121,7 @@ func validate(in Input) error {
 	if strings.TrimSpace(in.Environment) == "" || (strings.TrimSpace(in.Site) == "" && !in.TargetResolved) {
 		return usage("environment", "project move requires an explicit resolved environment and site")
 	}
-	if in.ProjectSelector.LUID == "" && strings.TrimSpace(in.ProjectSelector.ProjectPath) == "" {
-		return usage("selector", "project move requires a project LUID or exact path")
-	}
-	if in.ProjectSelector.LUID != "" && strings.TrimSpace(in.ProjectSelector.ProjectPath) != "" {
-		return usage("selector", "a project LUID cannot be combined with a project path")
-	}
-	hasParent := in.ParentSelector.LUID != "" || strings.TrimSpace(in.ParentSelector.ProjectPath) != ""
-	if hasParent == in.TopLevel {
-		return usage("parent", "use exactly one parent project selector or --top-level")
-	}
-	if in.ParentSelector.LUID != "" && strings.TrimSpace(in.ParentSelector.ProjectPath) != "" {
-		return usage("parent", "a parent project LUID cannot be combined with a project path")
-	}
-	return nil
+	return ValidateInput(in)
 }
 func usage(field, message string) error {
 	return &errs.Error{ID: "project.move.usage", Kind: errs.KindUsage, Operation: "project.move", Summary: message, Retryable: errs.Bool(false), CorrectiveAction: "Correct the project move input and review a new preview.", Validation: []errs.ValidationDetail{{Field: field, Code: "invalid", Message: message}}}

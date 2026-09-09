@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/ahillspace/tadx/internal/commandhint"
 	"strings"
 
 	"github.com/ahillspace/tadx/internal/errs"
@@ -14,7 +15,7 @@ import (
 
 const (
 	defaultLimit    = 25
-	maxLimit        = 100
+	maxLimit        = 10000
 	maxCursorLength = 4096
 	cursorVersion   = 1
 )
@@ -30,8 +31,11 @@ type Action struct{ reader Reader }
 // New creates a Pulse definition list action.
 func New(reader Reader) *Action { return &Action{reader: reader} }
 
-// Execute reads one bounded page without hidden continuation reads.
+// Execute reads a bounded view, scanning internally for all results or exact names.
 func (a *Action) Execute(ctx context.Context, input Input) (Output, error) {
+	if err := ValidateInput(input); err != nil {
+		return Output{}, err
+	}
 	if a == nil || a.reader == nil {
 		return Output{}, listError("pulse.definition.list.unconfigured", errs.KindRuntime, input, "Pulse definition listing is not configured.", nil)
 	}
@@ -40,49 +44,84 @@ func (a *Action) Execute(ctx context.Context, input Input) (Output, error) {
 		limit = defaultLimit
 	}
 	if limit < 1 || limit > maxLimit {
-		return Output{}, listError("pulse.definition.list.usage", errs.KindUsage, input, "Pulse definition list limit must be between 1 and 100.", nil)
+		return Output{}, listError("pulse.definition.list.usage", errs.KindUsage, input, "Pulse definition list limit must be between 1 and 10000.", nil)
 	}
 	fingerprint := targetFingerprint(input.Environment, input.Site, input.Name, limit, input.Catalog)
+	if input.DatasourceLUID != "" {
+		fingerprint = targetFingerprint(fingerprint, input.DatasourceLUID, "", limit, input.Catalog)
+	}
 	token, err := decodeCursor(input.Cursor, fingerprint)
 	if err != nil {
 		return Output{}, listError("pulse.definition.list.usage", errs.KindUsage, input, "Pulse definition cursor does not match the selected target, name, and limit.", err)
 	}
-	page, err := a.reader.ListDefinitions(ctx, PageRequest{PageSize: limit, PageToken: token})
-	if err != nil {
-		var structured *errs.Error
-		if input.Catalog && errors.As(err, &structured) {
+	if input.All {
+		if input.Limit != 0 || input.Cursor != "" {
+			return Output{}, listError("pulse.definition.list.usage", errs.KindUsage, input, "--all cannot be combined with --limit or --cursor.", nil)
+		}
+		limit = 10000
+	}
+	pageSize := min(limit, 100)
+	if input.Name != "" || input.DatasourceLUID != "" {
+		pageSize = 100
+	}
+	items := []Definition{}
+	seenTokens := map[string]bool{token: true}
+	seenIDs := map[string]bool{}
+	var requestID, nextToken string
+	for pageNumber := 0; ; pageNumber++ {
+		if err := ctx.Err(); err != nil {
 			return Output{}, err
 		}
-		retryable, corrective := errs.CompleteRetryAdvice(err, "Retry the same Pulse definition page after reviewing the Tableau response.")
-		return Output{}, &errs.Error{ID: "pulse.definition.list.failed", Kind: errs.KindOperation, Operation: "pulse.definition.list", Environment: input.Environment, Site: input.Site, Summary: "Pulse definition listing failed.", Cause: err, Retryable: retryable, CorrectiveAction: corrective, TableauRequestID: errs.TableauRequestID(err)}
-	}
-	if len(page.Definitions) > limit {
-		return Output{}, listError("pulse.definition.list.invalid_response", errs.KindOperation, input, "Pulse definition listing returned more records than requested.", errors.New("provider page exceeded the requested limit"))
-	}
-	for _, item := range page.Definitions {
-		if strings.TrimSpace(item.LUID) == "" || strings.TrimSpace(item.Name) == "" || strings.TrimSpace(item.DatasourceLUID) == "" {
-			return Output{}, listError("pulse.definition.list.invalid_response", errs.KindOperation, input, "Pulse definition listing returned an incomplete identity.", errors.New("definition requires LUID, name, and datasource LUID"))
+		if pageNumber >= 100 {
+			return Output{}, listError("pulse.definition.list.incomplete", errs.KindOperation, input, "Pulse listing exceeded its 100-page inventory bound; completeness cannot be established.", nil)
 		}
-	}
-	next, err := encodeCursor(page.NextPageToken, fingerprint)
-	if err != nil {
-		return Output{}, fmt.Errorf("encode Pulse definition cursor: %w", err)
-	}
-	definitions := page.Definitions
-	if input.Name != "" {
-		definitions = make([]Definition, 0, len(page.Definitions))
+		if !input.All && input.Name == "" && input.DatasourceLUID == "" {
+			pageSize = min(100, limit-len(items))
+		}
+		page, err := a.reader.ListDefinitions(ctx, PageRequest{PageSize: pageSize, PageToken: token})
+		if err != nil {
+			var structured *errs.Error
+			if input.Catalog && errors.As(err, &structured) {
+				return Output{}, err
+			}
+			retryable, corrective := errs.CompleteRetryAdvice(err, "Review the Tableau response, then retry the listing.")
+			return Output{}, &errs.Error{ID: "pulse.definition.list.failed", Kind: errs.KindOperation, Operation: "pulse.definition.list", Environment: input.Environment, Site: input.Site, Summary: "Pulse definition listing failed.", Cause: err, Retryable: retryable, CorrectiveAction: corrective, TableauRequestID: errs.TableauRequestID(err)}
+		}
+		if len(page.Definitions) > pageSize {
+			return Output{}, listError("pulse.definition.list.invalid_response", errs.KindOperation, input, "Pulse listing returned more records than requested.", nil)
+		}
 		for _, item := range page.Definitions {
-			if item.Name == input.Name {
-				definitions = append(definitions, item)
+			if strings.TrimSpace(item.LUID) == "" || strings.TrimSpace(item.Name) == "" || strings.TrimSpace(item.DatasourceLUID) == "" || seenIDs[item.LUID] {
+				return Output{}, listError("pulse.definition.list.invalid_response", errs.KindOperation, input, "Pulse listing returned an incomplete, mismatched, or duplicate identity.", nil)
+			}
+			seenIDs[item.LUID] = true
+			if (input.Name == "" || item.Name == input.Name) && (input.DatasourceLUID == "" || item.DatasourceLUID == input.DatasourceLUID) {
+				items = append(items, item)
 			}
 		}
+		nextToken, requestID = page.NextPageToken, page.RequestID
+		if nextToken != "" && (strings.TrimSpace(nextToken) == "" || seenTokens[nextToken]) {
+			return Output{}, listError("pulse.definition.list.invalid_response", errs.KindOperation, input, "Pulse listing returned an invalid or repeated continuation token.", nil)
+		}
+		if nextToken == "" || (!input.All && (len(items) >= limit || (limit <= 100 && input.Name == "" && input.DatasourceLUID == ""))) {
+			break
+		}
+		seenTokens[nextToken] = true
+		token = nextToken
 	}
-	return Output{
-		Status: "listed", Environment: input.Environment, Site: input.Site,
-		Page:        OutputPage{Returned: len(definitions), Limit: limit, NextCursor: next},
-		Definitions: definitions, RequestID: page.RequestID,
-		Help: []string{"tadx pulse definition inspect --id <definition-luid>"},
-	}, nil
+	more := nextToken != "" || len(items) > limit
+	if len(items) > limit {
+		items = items[:limit]
+	}
+	next, err := encodeCursor(nextToken, fingerprint)
+	if err != nil {
+		return Output{}, err
+	}
+	help := []string{"No matching definitions were returned."}
+	if len(items) > 0 {
+		help = []string{commandhint.Environment(input.Environment, "pulse", "definition", "inspect", "--id", items[0].LUID)}
+	}
+	return Output{Status: "listed", Environment: input.Environment, Site: input.Site, Page: OutputPage{Returned: len(items), Limit: limit, NextCursor: next, MoreAvailable: more}, Definitions: items, RequestID: requestID, Help: help}, nil
 }
 
 type cursorValue struct {

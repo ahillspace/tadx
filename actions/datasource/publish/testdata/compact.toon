@@ -1,8 +1,10 @@
 plan:
+  workspace: ""
+  kind: datasource
+  source_luid: ""
   mode: execute
   publish_mode: overwrite
   operation: datasource.publish
-  artifact_path: artifacts/datasource/Sales
   datasource_name: Sales
   target:
     environment: dev

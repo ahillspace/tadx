@@ -410,6 +410,38 @@ func datasourceListQuery(input ListRequest) (url.Values, error) {
 		"pageSize":   {strconv.Itoa(input.PageSize)},
 		"sort":       {"name:asc,updatedAt:asc"},
 	}
+	filter, err := ListFilter(input)
+	if err != nil {
+		return nil, err
+	}
+	if filter != "" {
+		query.Set("filter", filter)
+	}
+	return query, nil
+}
+
+// ListFilter validates and encodes datasource selectors for paged and full lists.
+// Pagination fields do not affect the selected population.
+func ListFilter(input ListRequest) (string, error) {
+	var after, before time.Time
+	for _, bound := range []struct {
+		name, value string
+		target      *time.Time
+	}{
+		{"updated-after", input.UpdatedAfter, &after}, {"updated-before", input.UpdatedBefore, &before},
+	} {
+		if bound.value == "" {
+			continue
+		}
+		parsed, err := time.Parse(time.RFC3339, bound.value)
+		if err != nil {
+			return "", fmt.Errorf("datasource %s filter must be an RFC3339 timestamp", bound.name)
+		}
+		*bound.target = parsed
+	}
+	if input.UpdatedAfter != "" && input.UpdatedBefore != "" && after.After(before) {
+		return "", errors.New("datasource updated-after filter must not be later than updated-before")
+	}
 	fields := []struct {
 		name     string
 		operator string
@@ -429,19 +461,16 @@ func datasourceListQuery(input ListRequest) (url.Values, error) {
 			continue
 		}
 		if strings.ContainsAny(field.value, ",&") {
-			return nil, fmt.Errorf("datasource filter %s cannot contain ampersand or comma", field.name)
+			return "", fmt.Errorf("datasource filter %s cannot contain ampersand or comma", field.name)
 		}
 		filters = append(filters, field.name+":"+field.operator+":"+field.value)
-	}
-	if len(filters) > 0 {
-		query.Set("filter", strings.Join(filters, ","))
 	}
 	if len(input.ContentURLs) > 0 {
 		values := make([]string, len(input.ContentURLs))
 		for index, value := range input.ContentURLs {
 			value = strings.TrimSpace(value)
 			if value == "" || strings.ContainsAny(value, ",&") {
-				return nil, fmt.Errorf("datasource filter contentUrl value %d cannot be empty or contain ampersand or comma", index)
+				return "", fmt.Errorf("datasource filter contentUrl value %d cannot be empty or contain ampersand or comma", index)
 			}
 			values[index] = value
 		}
@@ -450,9 +479,8 @@ func datasourceListQuery(input ListRequest) (url.Values, error) {
 			operator, value = "in", "["+strings.Join(values, ",")+"]"
 		}
 		filters = append(filters, "contentUrl:"+operator+":"+value)
-		query.Set("filter", strings.Join(filters, ","))
 	}
-	return query, nil
+	return strings.Join(filters, ","), nil
 }
 
 func normalizeDatasource(item datasourceXML) Datasource {

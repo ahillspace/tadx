@@ -4,12 +4,14 @@ import "github.com/ahillspace/tadx/internal/readsource"
 
 // Input selects one bounded Pulse definition page.
 type Input struct {
-	Environment string
-	Site        string
-	Name        string
-	Cursor      string
-	Limit       int
-	Catalog     bool
+	Environment    string
+	Site           string
+	Name           string
+	DatasourceLUID string
+	Cursor         string
+	Limit          int
+	Catalog        bool
+	All            bool
 }
 
 // PageRequest is the action-owned upstream continuation request.
@@ -39,9 +41,10 @@ type Page struct {
 
 // OutputPage contains stable continuation metadata.
 type OutputPage struct {
-	Returned   int    `json:"returned"`
-	Limit      int    `json:"limit"`
-	NextCursor string `json:"next_cursor,omitempty"`
+	Returned      int    `json:"returned"`
+	Limit         int    `json:"limit"`
+	NextCursor    string `json:"-"`
+	MoreAvailable bool   `json:"more_available"`
 }
 
 // Output retains complete details before projection.

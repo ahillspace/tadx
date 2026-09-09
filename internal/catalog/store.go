@@ -24,11 +24,11 @@ import (
 
 const (
 	defaultLimit         = 20
-	maxLimit             = 100
+	maxLimit             = 10_000
 	maxBatchRows         = 10_000
 	maxFieldBytes        = 64 << 10
 	staleAfter           = 12 * time.Hour
-	schemaVersion        = 6
+	schemaVersion        = 7
 	databaseRelativePath = "catalog/catalog.sqlite"
 	// generationTimeLayout is a fixed-width RFC3339 form: unlike time.RFC3339Nano
 	// (which trims trailing fractional-second zeros and so varies in width), every
@@ -60,8 +60,9 @@ type Record struct {
 
 // ResourceEntry is one resource projection available to explicit catalog reads.
 // Payload contains opaque JSON supplied by the composition root. Catalog
-// storage never interprets its contents.
+// storage interprets only canonical identity fields needed for local selectors.
 type ResourceEntry struct {
+	ProjectLUID string
 	Environment string
 	Site        string
 	Kind        string
@@ -76,15 +77,18 @@ type ResourceEntry struct {
 
 // ResourceQuery selects one bounded page from the local read-through index.
 type ResourceQuery struct {
-	Environment string
-	Site        string
-	Kind        string
-	LUID        string
-	Name        string
-	ProjectPath string
-	Offset      int
-	Limit       int
-	Cursor      string
+	ExactlyOne      bool
+	Environment     string
+	Site            string
+	Kind            string
+	LUID            string
+	Name            string
+	ProjectPath     string
+	ProjectName     string
+	Offset          int
+	Limit           int
+	Cursor          string
+	projectSnapshot string
 }
 
 // ResourceResult contains a local page and its snapshot coverage provenance.
@@ -228,9 +232,11 @@ func (duplicateContentError) CatalogDuplicateContent() bool { return true }
 
 // Store owns one config-root SQLite catalog database.
 type Store struct {
-	root   string
-	now    func() time.Time
-	initMu sync.Mutex
+	root         string
+	now          func() time.Time
+	initMu       sync.Mutex
+	relativePath string
+	targetErr    error
 }
 
 // NewStore creates a catalog store.
@@ -242,10 +248,13 @@ func NewStore(root string, now func() time.Time) *Store {
 }
 func DatabasePath() string { return databaseRelativePath }
 func (s *Store) databasePath() string {
-	return filepath.Join(s.root, filepath.FromSlash(databaseRelativePath))
+	return filepath.Join(s.root, filepath.FromSlash(s.RelativePath()))
 }
 
-func (s *Store) open(ctx context.Context) (*sql.DB, error) {
+func (s *Store) open(ctx context.Context, refresh ...bool) (*sql.DB, error) {
+	if s.targetErr != nil {
+		return nil, s.targetErr
+	}
 	s.initMu.Lock()
 	defer s.initMu.Unlock()
 	if err := ctx.Err(); err != nil {
@@ -302,6 +311,10 @@ func (s *Store) open(ctx context.Context) (*sql.DB, error) {
 		}
 	}
 	if err := validateSchema(ctx, db); err != nil {
+		var rebuild schemaRebuildRequired
+		if len(refresh) > 0 && refresh[0] && errors.As(err, &rebuild) {
+			return db, nil
+		}
 		db.Close()
 		return nil, err
 	}
@@ -349,6 +362,16 @@ func removeDatabaseFiles(path string) {
 }
 
 func (s *Store) BeginGeneration(ctx context.Context, metadata GenerationMetadata) (*GenerationWriter, error) {
+	return s.beginGeneration(ctx, metadata, false)
+}
+
+// BeginRefreshGeneration permits replacement of an obsolete disposable catalog
+// schema, transactionally with successful explicit refresh publication only.
+func (s *Store) BeginRefreshGeneration(ctx context.Context, metadata GenerationMetadata) (*GenerationWriter, error) {
+	return s.beginStagedRefresh(ctx, metadata)
+}
+
+func (s *Store) beginGeneration(ctx context.Context, metadata GenerationMetadata, refresh bool) (*GenerationWriter, error) {
 	// Normalize environment and site once at the boundary so the values stored
 	// here match the values Search/Get/Status later compare against exactly.
 	metadata.Environment = strings.TrimSpace(metadata.Environment)
@@ -367,7 +390,7 @@ func (s *Store) BeginGeneration(ctx context.Context, metadata GenerationMetadata
 	if err := validateMetadata(metadata); err != nil {
 		return nil, err
 	}
-	db, err := s.open(ctx)
+	db, err := s.open(ctx, refresh)
 	if err != nil {
 		return nil, err
 	}
@@ -375,6 +398,13 @@ func (s *Store) BeginGeneration(ctx context.Context, metadata GenerationMetadata
 	if err != nil {
 		db.Close()
 		return nil, fmt.Errorf("begin catalog generation: %w", err)
+	}
+	if refresh {
+		if err := rebuildSchemaForRefresh(ctx, tx); err != nil {
+			tx.Rollback()
+			db.Close()
+			return nil, err
+		}
 	}
 	result, err := tx.ExecContext(ctx, `INSERT INTO generations(id,fingerprint,environment,site,generated_at,complete,source,record_count,created_at) VALUES(NULL,NULL,?,?,?,0,?,0,?)`, metadata.Environment, metadata.Site, metadata.GeneratedAt.UTC().Format(generationTimeLayout), metadata.Source, s.now().UTC().Format(generationTimeLayout))
 	if err != nil {
@@ -549,8 +579,20 @@ func (s *Store) Status(ctx context.Context, selection Selection) (StatusResult, 
 	if err := checkIntegrity(ctx, db); err != nil {
 		return StatusResult{}, err
 	}
-	meta, err := currentGeneration(ctx, db, selection.Environment, selection.Site)
+	tx, err := db.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
 	if err != nil {
+		return StatusResult{}, err
+	}
+	defer tx.Rollback()
+	meta, err := currentGeneration(ctx, tx, selection.Environment, selection.Site)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return StatusResult{Environment: selection.Environment, Site: selection.Site, Path: s.RelativePath()}, nil
+		}
+		return StatusResult{}, err
+	}
+	var incomplete int
+	if err := tx.QueryRowContext(ctx, `SELECT count(*) FROM generation_scopes WHERE generation_key=? AND complete=0`, meta.key).Scan(&incomplete); err != nil {
 		return StatusResult{}, err
 	}
 	age := s.now().Sub(meta.generatedAt)
@@ -558,7 +600,10 @@ func (s *Store) Status(ctx context.Context, selection Selection) (StatusResult, 
 		age = 0
 	}
 	stale, warnings := staleness(s.now, meta.generatedAt, meta.id)
-	return StatusResult{meta.id, meta.environment, meta.site, meta.generatedAt, age, true, stale, meta.source, databaseRelativePath, meta.recordCount, warnings}, nil
+	if incomplete > 0 {
+		warnings = append(warnings, "Catalog permission coverage is incomplete because some workbook permission reads were denied (HTTP 403). Missing rules are unknown, not empty permissions.")
+	}
+	return StatusResult{meta.id, meta.environment, meta.site, meta.generatedAt, age, incomplete == 0, stale, meta.source, s.RelativePath(), meta.recordCount, warnings}, nil
 }
 
 type generationMeta struct {

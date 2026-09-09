@@ -4,6 +4,7 @@ package move
 import (
 	"context"
 	"errors"
+	"github.com/ahillspace/tadx/internal/commandhint"
 
 	"github.com/ahillspace/tadx/internal/errs"
 )
@@ -102,7 +103,7 @@ func (a *Action) Execute(ctx context.Context, input Input) (Output, error) {
 		warnings = append(warnings, "The moved artifact contains local changes relative to its pulled baseline.")
 	}
 	warnings, warningsOmitted := boundMoveWarnings(warnings)
-	return Output{Status: "moved", Artifact: moved, SourceWorkspace: input.SourceWorkspace, DestinationWorkspace: input.DestinationWorkspace, Warnings: warnings, WarningsOmitted: warningsOmitted, Help: []string{"tadx workspace status --workspace " + input.DestinationWorkspace}}, nil
+	return Output{Status: "moved", Artifact: moved, SourceWorkspace: input.SourceWorkspace, DestinationWorkspace: input.DestinationWorkspace, Warnings: warnings, WarningsOmitted: warningsOmitted, Help: []string{commandhint.Command("workspace", "status", "--workspace", input.DestinationWorkspace)}}, nil
 }
 
 func boundMoveWarnings(input []string) ([]string, int) {

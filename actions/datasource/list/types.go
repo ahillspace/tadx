@@ -1,11 +1,15 @@
 package list
 
-import "github.com/ahillspace/tadx/internal/readsource"
+import (
+	"github.com/ahillspace/tadx/internal/output"
+	"github.com/ahillspace/tadx/internal/readsource"
+)
 
 const fullTagsPerDatasourceLimit = 50
 
 // Input selects one published datasource page.
 type Input struct {
+	All           bool
 	Environment   string
 	Site          string
 	Cursor        string
@@ -71,12 +75,7 @@ type Page struct {
 }
 
 // OutputPage is bounded continuation metadata.
-type OutputPage struct {
-	Returned   int    `json:"returned"`
-	Total      int    `json:"total"`
-	Limit      int    `json:"limit"`
-	NextCursor string `json:"next_cursor,omitempty"`
-}
+type OutputPage = output.Page
 
 // Output retains the complete current page before projection.
 type Output struct {
@@ -95,10 +94,10 @@ type CompactDatasource struct {
 	LUID        string `json:"luid"`
 	Name        string `json:"name"`
 	ProjectLUID string `json:"project_luid"`
-	ProjectName string `json:"project_name,omitempty"`
-	Type        string `json:"type,omitempty"`
-	ContentURL  string `json:"content_url,omitempty"`
-	UpdatedAt   string `json:"updated_at,omitempty"`
+	ProjectName string `json:"project_name"`
+	Type        string `json:"type"`
+	ContentURL  string `json:"content_url"`
+	UpdatedAt   string `json:"updated_at"`
 }
 
 // CompactResult is the default bounded projection.

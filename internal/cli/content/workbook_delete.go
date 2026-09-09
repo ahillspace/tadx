@@ -34,7 +34,7 @@ func newWorkbookDelete(deleter WorkbookDeleter, renderer Renderer, _ bool) *cobr
 		RunE: func(command *cobra.Command, _ []string) error {
 			result, err := deleter.DeleteWorkbook(command.Context(), input, preview)
 			if err != nil {
-				return err
+				return clierr.WithOutput(result, err)
 			}
 			return renderer.Render(result)
 		},

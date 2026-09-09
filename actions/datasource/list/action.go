@@ -7,13 +7,15 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/ahillspace/tadx/internal/commandhint"
+	"github.com/ahillspace/tadx/internal/paging"
 
 	"github.com/ahillspace/tadx/internal/errs"
 )
 
 const (
 	defaultLimit    = 25
-	maxLimit        = 100
+	maxLimit        = 10000
 	maxCursorPage   = 1_000_000
 	cursorVersion   = 1
 	maxCursorLength = 2048
@@ -32,6 +34,12 @@ func New(reader Reader) *Action { return &Action{reader: reader} }
 
 // Execute lists one page without hidden continuation reads.
 func (a *Action) Execute(ctx context.Context, input Input) (Output, error) {
+	if err := ValidateInput(input); err != nil {
+		return Output{}, err
+	}
+	if input.All {
+		return a.collectAll(ctx, input)
+	}
 	if a == nil || a.reader == nil {
 		return Output{}, &errs.Error{ID: "datasource.list.unconfigured", Kind: errs.KindRuntime, Operation: "datasource.list", Summary: "Datasource list is not configured.", Retryable: errs.Bool(false), CorrectiveAction: "Configure datasource listing before retrying."}
 	}
@@ -49,7 +57,7 @@ func (a *Action) Execute(ctx context.Context, input Input) (Output, error) {
 		UpdatedAfter: input.UpdatedAfter, UpdatedBefore: input.UpdatedBefore,
 		SnapshotCursor: snapshotCursor,
 	}
-	page, err := a.reader.ListDatasources(ctx, request)
+	page, err := a.readWindow(ctx, request)
 	if err != nil {
 		return Output{}, err
 	}
@@ -65,9 +73,9 @@ func (a *Action) Execute(ctx context.Context, input Input) (Output, error) {
 	}
 	return Output{
 		Status: "listed", Environment: input.Environment, Site: input.Site,
-		Page:        OutputPage{Returned: len(page.Datasources), Total: page.Total, Limit: page.Size, NextCursor: next},
+		Page:        OutputPage{Returned: len(page.Datasources), Total: page.Total, Limit: page.Size, NextCursor: next, MoreAvailable: next != "" || (page.SuppressContinuation && len(page.Datasources) < page.Total)},
 		Datasources: page.Datasources, RequestID: page.RequestID,
-		Help: []string{"tadx content datasource inspect --id <datasource-luid>"},
+		Help: listHelp(input.Environment, page.Datasources),
 	}, nil
 }
 
@@ -132,4 +140,46 @@ func datasourceFilterFingerprint(input Input) (string, error) {
 	}
 	sum := sha256.Sum256(data)
 	return base64.RawURLEncoding.EncodeToString(sum[:]), nil
+}
+
+// collectAll follows private bounded pages and fails closed on incomplete inventories.
+func (a *Action) collectAll(ctx context.Context, input Input) (Output, error) {
+	if input.Limit != 0 || input.Cursor != "" {
+		return Output{}, errs.New(errs.KindUsage, "--all cannot be combined with --limit or --cursor")
+	}
+	if a == nil || a.reader == nil {
+		return Output{}, errors.New("inventory reader is not configured")
+	}
+	requestID := ""
+	items, err := paging.Collect(ctx, func(ctx context.Context, state paging.State) (paging.Page[Datasource], error) {
+		page, err := a.reader.ListDatasources(ctx, PageRequest{PageNumber: state.Number, PageSize: state.Size, SnapshotCursor: state.Token, Name: input.Name, OwnerName: input.OwnerName, ProjectName: input.ProjectName, Type: input.Type, Tag: input.Tag, UpdatedAfter: input.UpdatedAfter, UpdatedBefore: input.UpdatedBefore})
+		requestID = page.RequestID
+		return paging.Page[Datasource]{Number: page.Number, Size: page.Size, Total: page.Total, Items: page.Datasources, Token: page.SnapshotCursor}, err
+	}, func(item Datasource) string { return item.LUID })
+	if err != nil {
+		return Output{}, err
+	}
+	return Output{Status: "listed", Environment: input.Environment, Site: input.Site, Datasources: items, Page: OutputPage{Returned: len(items), Total: len(items), Limit: 10000}, RequestID: requestID, Help: listHelp(input.Environment, items)}, nil
+}
+
+func listHelp(environment string, items []Datasource) []string {
+	if len(items) == 0 {
+		return nil
+	}
+	return []string{commandhint.Environment(environment, "content", "datasource", "inspect", "--id", items[0].LUID)}
+}
+
+func (a *Action) readWindow(ctx context.Context, request PageRequest) (Page, error) {
+	if request.PageSize <= 1000 {
+		return a.reader.ListDatasources(ctx, request)
+	}
+	requestID := ""
+	page, err := paging.Window(ctx, paging.State{Number: request.PageNumber, Size: request.PageSize, Token: request.SnapshotCursor}, 1000, func(ctx context.Context, state paging.State) (paging.Page[Datasource], error) {
+		input := request
+		input.PageNumber, input.PageSize, input.SnapshotCursor = state.Number, state.Size, state.Token
+		page, err := a.reader.ListDatasources(ctx, input)
+		requestID = page.RequestID
+		return paging.Page[Datasource]{Number: page.Number, Size: page.Size, Total: page.Total, Items: page.Datasources, Token: page.SnapshotCursor}, err
+	}, func(item Datasource) string { return item.LUID })
+	return Page{Number: page.Number, Size: page.Size, Total: page.Total, Datasources: page.Items, SnapshotCursor: "", SuppressContinuation: true, RequestID: requestID}, err
 }

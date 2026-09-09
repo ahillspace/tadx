@@ -5,6 +5,10 @@ workbook:
   project_luid: project-1
   project_path: Ops
 artifact:
+  workspace: logical workspace
+  kind: workbook
+  name: Finance
+  source_luid: wb-1
   path: artifacts/workbook/Finance
   canonical_path: artifacts/workbook/Finance/Finance.twbx
   baseline_fingerprint: "sha256:abc"
@@ -19,4 +23,4 @@ artifact:
   lineage_edge_count: 0
 warnings[1]: existing clean artifact replaced
 tableau_request_id: request-1
-help[1]: tadx content workbook publish --artifact <path> --environment <alias>
+help[1]: tadx content workbook publish --id wb-1 --project-id project-1 --overwrite --preview --workspace 'logical workspace' --environment production

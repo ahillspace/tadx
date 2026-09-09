@@ -5,10 +5,13 @@ workspace:
 artifacts:
   returned: 1
   limit: 20
+  more_available: false
   scan_complete: true
   clean: 0
   dirty: 1
   missing: 0
   invalid: 0
+  artifacts[1]{kind,luid,name,state}:
+    workbook,wb-1,Finance,dirty
 details: "--full"
 help[1]: tadx workspace status --workspace development --full

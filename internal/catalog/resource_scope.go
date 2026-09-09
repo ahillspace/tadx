@@ -37,7 +37,7 @@ func (s *Store) ReplaceResourceScope(ctx context.Context, replacement ResourceSc
 	}
 	defer tx.Rollback()
 	if _, err := tx.ExecContext(ctx, `CREATE TEMP TABLE IF NOT EXISTS tadx_resource_scope_stage (
-		luid TEXT PRIMARY KEY,name TEXT NOT NULL,project_path TEXT NOT NULL,owner TEXT NOT NULL,
+		luid TEXT PRIMARY KEY,name TEXT NOT NULL,project_path TEXT NOT NULL,project_luid TEXT NOT NULL,owner TEXT NOT NULL,
 		payload BLOB NOT NULL,coverage TEXT NOT NULL CHECK(coverage IN ('summary','detail')),observed_at TEXT NOT NULL
 	) STRICT`); err != nil {
 		return ReplaceResult{}, fmt.Errorf("create catalog resource scope stage: %w", err)
@@ -45,12 +45,12 @@ func (s *Store) ReplaceResourceScope(ctx context.Context, replacement ResourceSc
 	if _, err := tx.ExecContext(ctx, `DELETE FROM tadx_resource_scope_stage`); err != nil {
 		return ReplaceResult{}, fmt.Errorf("clear catalog resource scope stage: %w", err)
 	}
-	insert, err := tx.PrepareContext(ctx, `INSERT INTO tadx_resource_scope_stage(luid,name,project_path,owner,payload,coverage,observed_at) VALUES(?,?,?,?,?,?,?)`)
+	insert, err := tx.PrepareContext(ctx, `INSERT INTO tadx_resource_scope_stage(luid,name,project_path,project_luid,owner,payload,coverage,observed_at) VALUES(?,?,?,?,?,?,?,?)`)
 	if err != nil {
 		return ReplaceResult{}, err
 	}
 	for _, entry := range normalized.Entries {
-		if _, err := insert.ExecContext(ctx, entry.LUID, entry.Name, entry.ProjectPath, entry.Owner, entry.Payload, entry.Coverage, entry.ObservedAt.UTC().Format(generationTimeLayout)); err != nil {
+		if _, err := insert.ExecContext(ctx, entry.LUID, entry.Name, entry.ProjectPath, entry.ProjectLUID, entry.Owner, entry.Payload, entry.Coverage, entry.ObservedAt.UTC().Format(generationTimeLayout)); err != nil {
 			insert.Close()
 			return ReplaceResult{}, fmt.Errorf("stage catalog %s %q: %w", normalized.Kind, entry.LUID, err)
 		}
@@ -63,10 +63,10 @@ func (s *Store) ReplaceResourceScope(ctx context.Context, replacement ResourceSc
 		AND NOT EXISTS (SELECT 1 FROM tadx_resource_scope_stage staged WHERE staged.luid=resource_entries.luid)`, normalized.Environment, normalized.Site, normalized.Kind); err != nil {
 		return ReplaceResult{}, fmt.Errorf("delete stale catalog %s records: %w", normalized.Kind, err)
 	}
-	if _, err := tx.ExecContext(ctx, `INSERT INTO resource_entries(environment,site,kind,luid,name,project_path,owner,payload,coverage,observed_at)
-		SELECT ?,?,?,luid,name,project_path,owner,payload,coverage,observed_at FROM tadx_resource_scope_stage WHERE 1
+	if _, err := tx.ExecContext(ctx, `INSERT INTO resource_entries(environment,site,kind,luid,name,project_path,project_luid,owner,payload,coverage,observed_at)
+		SELECT ?,?,?,luid,name,project_path,project_luid,owner,payload,coverage,observed_at FROM tadx_resource_scope_stage WHERE 1
 		ON CONFLICT(environment,site,kind,luid) DO UPDATE SET
-		name=excluded.name,project_path=excluded.project_path,owner=excluded.owner,
+		name=excluded.name,project_path=excluded.project_path,project_luid=excluded.project_luid,owner=excluded.owner,
 		payload=excluded.payload,coverage=excluded.coverage,observed_at=excluded.observed_at`, normalized.Environment, normalized.Site, normalized.Kind); err != nil {
 		return ReplaceResult{}, fmt.Errorf("publish catalog %s records: %w", normalized.Kind, err)
 	}
@@ -89,7 +89,7 @@ func (s *Store) ReplaceResourceScope(ctx context.Context, replacement ResourceSc
 	if err := tx.Commit(); err != nil {
 		return ReplaceResult{}, err
 	}
-	return ReplaceResult{GenerationID: generationID, Path: databaseRelativePath, RecordCount: len(normalized.Entries)}, nil
+	return ReplaceResult{GenerationID: generationID, Path: s.RelativePath(), RecordCount: len(normalized.Entries)}, nil
 }
 
 func normalizeResourceScopeReplacement(input ResourceScopeReplacement) (ResourceScopeReplacement, error) {

@@ -52,20 +52,21 @@ func TestDatasourcePublishPreviewFindsSpecialCharacterCollisionThroughRemoteComp
 	if err != nil {
 		t.Fatal(err)
 	}
-	var output bytes.Buffer
-	exitCode := Run(context.Background(), []string{
-		"content", "datasource", "publish", "--workspace", "analytics", "--artifact", pulled.Artifact.Path, "--overwrite",
-		"--preview",
-	}, &output, Options{ConfigPath: runtime.configPath, HTTPClient: server.Client(), MutationsEnabled: true, Now: runtime.now})
-	if exitCode != 0 {
-		t.Fatalf("publish preview exit = %d, output = %s", exitCode, output.String())
-	}
-	for _, expected := range []string{datasourceName, "existing_datasource_luid: ds-special", "project_luid: project-1"} {
-		if !strings.Contains(output.String(), expected) {
-			t.Fatalf("publish preview omitted %q: %s", expected, output.String())
+	runtime.Close()
+	for _, selector := range [][]string{{"--artifact", pulled.Artifact.Path}, {"--id", "ds-special"}, {"--artifact-name", datasourceName}} {
+		var output bytes.Buffer
+		args := []string{"content", "datasource", "publish", "--workspace", "analytics", "--overwrite", "--project-id", "project-1", "--preview"}
+		exitCode := Run(context.Background(), append(args, selector...), &output, Options{ConfigPath: runtime.configPath, HTTPClient: server.Client(), MutationsEnabled: true, Now: runtime.now})
+		if exitCode != 0 {
+			t.Fatalf("publish preview exit = %d, output = %s", exitCode, output.String())
+		}
+		for _, expected := range []string{datasourceName, "existing_datasource_luid: ds-special", "project_luid: project-1"} {
+			if !strings.Contains(output.String(), expected) {
+				t.Fatalf("publish preview omitted %q: %s", expected, output.String())
+			}
 		}
 	}
-	if collisionRequests.Load() != 1 {
+	if collisionRequests.Load() != 3 {
 		t.Fatalf("collision requests = %d", collisionRequests.Load())
 	}
 }

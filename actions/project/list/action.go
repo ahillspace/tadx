@@ -7,13 +7,15 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/ahillspace/tadx/internal/commandhint"
+	"github.com/ahillspace/tadx/internal/paging"
 
 	"github.com/ahillspace/tadx/internal/errs"
 )
 
 const (
 	defaultLimit    = 25
-	maxLimit        = 100
+	maxLimit        = 10000
 	cursorVersion   = 1
 	maxCursorLength = 2048
 )
@@ -31,6 +33,12 @@ func New(reader Reader) *Action { return &Action{reader: reader} }
 
 // Execute lists one page without hidden continuation reads.
 func (a *Action) Execute(ctx context.Context, input Input) (Output, error) {
+	if err := ValidateInput(input); err != nil {
+		return Output{}, err
+	}
+	if input.All {
+		return a.collectAll(ctx, input)
+	}
 	if a == nil || a.reader == nil {
 		return Output{}, errors.New("project list reader is not configured")
 	}
@@ -43,7 +51,7 @@ func (a *Action) Execute(ctx context.Context, input Input) (Output, error) {
 		return Output{}, err
 	}
 	request := PageRequest{PageNumber: pageNumber, PageSize: pageSize, Name: input.Name, ParentLUID: input.ParentLUID, OwnerName: input.OwnerName, TopLevel: input.TopLevel, SnapshotCursor: snapshotCursor}
-	page, err := a.reader.ListProjects(ctx, request)
+	page, err := a.readWindow(ctx, request)
 	if err != nil {
 		return Output{}, err
 	}
@@ -59,9 +67,9 @@ func (a *Action) Execute(ctx context.Context, input Input) (Output, error) {
 	}
 	return Output{
 		Status: "listed", Environment: input.Environment, Site: input.Site, Projects: page.Projects,
-		Page:      OutputPage{Returned: len(page.Projects), Total: page.Total, Limit: page.Size, NextCursor: next},
+		Page:      OutputPage{Returned: len(page.Projects), Total: page.Total, Limit: page.Size, NextCursor: next, MoreAvailable: next != "" || (page.SuppressContinuation && len(page.Projects) < page.Total)},
 		RequestID: page.RequestID,
-		Help:      []string{"tadx content project inspect --project-id <project-luid>"},
+		Help:      listHelp(input.Environment, page.Projects),
 	}, nil
 }
 
@@ -126,4 +134,46 @@ func projectFilterFingerprint(input Input) (string, error) {
 	}
 	sum := sha256.Sum256(data)
 	return base64.RawURLEncoding.EncodeToString(sum[:]), nil
+}
+
+// collectAll follows private bounded pages and fails closed on incomplete inventories.
+func (a *Action) collectAll(ctx context.Context, input Input) (Output, error) {
+	if input.Limit != 0 || input.Cursor != "" {
+		return Output{}, errs.New(errs.KindUsage, "--all cannot be combined with --limit or --cursor")
+	}
+	if a == nil || a.reader == nil {
+		return Output{}, errors.New("inventory reader is not configured")
+	}
+	requestID := ""
+	items, err := paging.Collect(ctx, func(ctx context.Context, state paging.State) (paging.Page[Project], error) {
+		page, err := a.reader.ListProjects(ctx, PageRequest{PageNumber: state.Number, PageSize: state.Size, SnapshotCursor: state.Token, Name: input.Name, ParentLUID: input.ParentLUID, OwnerName: input.OwnerName, TopLevel: input.TopLevel})
+		requestID = page.RequestID
+		return paging.Page[Project]{Number: page.Number, Size: page.Size, Total: page.Total, Items: page.Projects, Token: page.SnapshotCursor}, err
+	}, func(item Project) string { return item.LUID })
+	if err != nil {
+		return Output{}, err
+	}
+	return Output{Status: "listed", Environment: input.Environment, Site: input.Site, Projects: items, Page: OutputPage{Returned: len(items), Total: len(items), Limit: 10000}, RequestID: requestID, Help: listHelp(input.Environment, items)}, nil
+}
+
+func listHelp(environment string, items []Project) []string {
+	if len(items) == 0 {
+		return nil
+	}
+	return []string{commandhint.Environment(environment, "content", "project", "inspect", "--project-id", items[0].LUID)}
+}
+
+func (a *Action) readWindow(ctx context.Context, request PageRequest) (Page, error) {
+	if request.PageSize <= 1000 {
+		return a.reader.ListProjects(ctx, request)
+	}
+	requestID := ""
+	page, err := paging.Window(ctx, paging.State{Number: request.PageNumber, Size: request.PageSize, Token: request.SnapshotCursor}, 1000, func(ctx context.Context, state paging.State) (paging.Page[Project], error) {
+		input := request
+		input.PageNumber, input.PageSize, input.SnapshotCursor = state.Number, state.Size, state.Token
+		page, err := a.reader.ListProjects(ctx, input)
+		requestID = page.RequestID
+		return paging.Page[Project]{Number: page.Number, Size: page.Size, Total: page.Total, Items: page.Projects, Token: page.SnapshotCursor}, err
+	}, func(item Project) string { return item.LUID })
+	return Page{Number: page.Number, Size: page.Size, Total: page.Total, Projects: page.Items, SnapshotCursor: "", SuppressContinuation: true, RequestID: requestID}, err
 }

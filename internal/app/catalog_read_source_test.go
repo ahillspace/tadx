@@ -45,7 +45,7 @@ environments:
 	if err != nil {
 		t.Fatal(err)
 	}
-	store := catalog.NewStore(root, func() time.Time { return now })
+	store := targetCatalogFixture(t, configPath, func() time.Time { return now })
 	if err := store.UpsertResources(context.Background(), []catalog.ResourceEntry{{Environment: "production", Site: "marketing", Kind: "workbook", LUID: item.LUID, Name: item.Name, ProjectPath: item.ProjectPath, Payload: payload, Coverage: "detail", ObservedAt: now}}); err != nil {
 		t.Fatal(err)
 	}
@@ -54,6 +54,7 @@ environments:
 	if err != nil {
 		t.Fatal(err)
 	}
+	t.Cleanup(func() { _ = runtime.Close() })
 	input := workbookget.Input{Catalog: true}
 	input.SetSelector("wb-1", "", "")
 	output, err := newRemoteContentCommands(runtime).InspectWorkbook(context.Background(), input)

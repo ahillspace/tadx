@@ -1,4 +1,7 @@
 plan:
+  workspace: ""
+  kind: workbook
+  source_luid: ""
   mode: execute
   operation: workbook.publish
   artifact_path: artifacts/workbook/Finance

@@ -12,4 +12,4 @@ pat_secret_present: true
 stored_credential_reference_present: false
 credential_source: environment
 default_workspace: primary
-help[1]: tadx auth check --environment <alias>
+help[1]: tadx auth check --environment production

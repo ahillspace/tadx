@@ -6,5 +6,6 @@ artifact:
   path: artifacts/pulse-definition/Revenue--identity
   canonical_path: artifacts/pulse-definition/Revenue--identity/resource.json
   baseline_fingerprint: "sha256:value"
+metric_count: 2
 tableau_request_id: request-1
 help[1]: Inspect artifacts/pulse-definition/Revenue--identity/resource.json.

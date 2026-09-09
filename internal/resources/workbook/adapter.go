@@ -61,6 +61,10 @@ type projectPathBatchResolver interface {
 	ResolveProjectPaths(context.Context, []string) (map[string]string, error)
 }
 
+type projectPathValidator interface {
+	ValidateProjectPath(context.Context, string) error
+}
+
 // Workbook is the normalized resource identity.
 type Workbook struct {
 	LUID, Name, ContentURL, ProjectLUID, ProjectPath, OwnerLUID string
@@ -183,12 +187,30 @@ func (a *Adapter) ResolveWorkbook(ctx context.Context, selector identity.Selecto
 	}
 
 	var paths *projectPathIndex
+	if selector.ProjectPath != "" {
+		if validator, ok := a.projects.(projectPathValidator); ok {
+			if err := validator.ValidateProjectPath(ctx, selector.ProjectPath); err != nil {
+				return Workbook{}, err
+			}
+		}
+	}
 	if selector.ProjectPath != "" && a.projects == nil {
 		projects, err := a.allProjects(ctx)
 		if err != nil {
 			return Workbook{}, err
 		}
 		paths = newProjectPathIndex(projects)
+		candidates := make([]identity.Candidate, 0, len(projects))
+		for _, project := range projects {
+			path, err := paths.path(project.LUID, make(map[string]bool))
+			if err != nil {
+				return Workbook{}, err
+			}
+			candidates = append(candidates, identity.Candidate{LUID: identity.LUID(project.LUID), ProjectPath: path})
+		}
+		if _, err := identity.Resolve(identity.Selector{ProjectPath: selector.ProjectPath}, candidates); err != nil {
+			return Workbook{}, err
+		}
 	}
 	seenByLUID := make(map[string]tableauworkbook.Workbook)
 	itemsByLUID := make(map[string]tableauworkbook.Workbook, 2)
@@ -338,6 +360,11 @@ func recordWorkbookIdentity(byLUID map[string]tableauworkbook.Workbook, item tab
 
 // ResolveProject resolves a LUID or exact slash-delimited project path.
 func (a *Adapter) ResolveProject(ctx context.Context, selector identity.Selector) (Project, error) {
+	if resolver, ok := a.projects.(interface {
+		ResolveProject(context.Context, identity.Selector) (Project, error)
+	}); ok {
+		return resolver.ResolveProject(ctx, selector)
+	}
 	items, err := a.allProjects(ctx)
 	if err != nil {
 		return Project{}, err
@@ -371,6 +398,18 @@ func (a *Adapter) ResolveProject(ctx context.Context, selector identity.Selector
 		return Project{}, err
 	}
 	return projects[resolved.LUID], nil
+}
+
+// BeginProjectResolution forwards an explicit validation phase when configured.
+func (a *Adapter) BeginProjectResolution(ctx context.Context) context.Context {
+	if a != nil {
+		if resolver, ok := a.projects.(interface {
+			BeginProjectResolution(context.Context) context.Context
+		}); ok {
+			return resolver.BeginProjectResolution(ctx)
+		}
+	}
+	return ctx
 }
 
 type projectPathIndex struct {

@@ -17,34 +17,38 @@ import (
 )
 
 func TestInstalledSkillsIncludeAllBundledReferences(t *testing.T) {
-	home := t.TempDir()
-	installer := agent.Installer{Home: func() (string, error) { return home, nil }}
-	if _, err := installer.Install(context.Background(), "codex", false, false); err != nil {
-		t.Fatal(err)
-	}
-	source := os.DirFS("skills")
-	err := fs.WalkDir(source, ".", func(location string, entry fs.DirEntry, walkErr error) error {
-		if walkErr != nil {
-			return walkErr
-		}
-		if entry.IsDir() {
-			return nil
-		}
-		expected, err := fs.ReadFile(source, location)
-		if err != nil {
-			return err
-		}
-		installed, err := os.ReadFile(filepath.Join(home, ".codex", "skills", filepath.FromSlash(location)))
-		if err != nil {
-			return err
-		}
-		if !bytes.Equal(expected, installed) {
-			t.Errorf("installed package file differs from bundled source: %s", location)
-		}
-		return nil
-	})
-	if err != nil {
-		t.Fatal(err)
+	for _, target := range []string{"codex", "claude", "cursor"} {
+		t.Run(target, func(t *testing.T) {
+			home := t.TempDir()
+			installer := agent.Installer{Home: func() (string, error) { return home, nil }}
+			if _, err := installer.Install(context.Background(), target, false, false); err != nil {
+				t.Fatal(err)
+			}
+			source := os.DirFS("skills")
+			err := fs.WalkDir(source, ".", func(location string, entry fs.DirEntry, walkErr error) error {
+				if walkErr != nil {
+					return walkErr
+				}
+				if entry.IsDir() {
+					return nil
+				}
+				expected, err := fs.ReadFile(source, location)
+				if err != nil {
+					return err
+				}
+				installed, err := os.ReadFile(filepath.Join(home, "."+target, "skills", filepath.FromSlash(location)))
+				if err != nil {
+					return err
+				}
+				if !bytes.Equal(expected, installed) {
+					t.Errorf("installed package file differs from bundled source: %s", location)
+				}
+				return nil
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+		})
 	}
 }
 
@@ -144,7 +148,7 @@ func TestSkillPackagesHaveValidMetadataAndLocalReferences(t *testing.T) {
 }
 
 // Help parsing validates published recipe command paths and flags without remote
-// requests or mutation. Workflow behavior and latency need separate Luna trials.
+// requests or mutation. These checks do not validate agent workflow behavior.
 func TestSkillRecipesUseInstalledCommandsAndFlags(t *testing.T) {
 	source := os.DirFS("skills")
 	words := regexp.MustCompile(`"[^"]*"|'[^']*'|[^\s]+`)
@@ -186,4 +190,33 @@ func TestSkillRecipesUseInstalledCommandsAndFlags(t *testing.T) {
 		t.Fatal("no CLI recipes validated")
 	}
 	t.Logf("validated %d CLI recipes without executing operations", count)
+}
+
+func TestPulsePublishGuidanceFlagsAreExecutable(t *testing.T) {
+	data, err := os.ReadFile("skills/tadx-pulse/references/operations.md")
+	if err != nil {
+		t.Fatal(err)
+	}
+	flags := regexp.MustCompile(`--[a-z][a-z-]*`)
+	count := 0
+	for _, line := range strings.Split(string(data), "\n") {
+		if !strings.HasPrefix(line, "| `tadx pulse definition publish` |") {
+			continue
+		}
+		for _, flag := range flags.FindAllString(line, -1) {
+			count++
+			value := "example"
+			if flag == "--preview" || flag == "--full" {
+				value = "true"
+			}
+			var output bytes.Buffer
+			args := []string{"pulse", "definition", "publish", flag + "=" + value, "--help"}
+			if code := app.Run(context.Background(), args, &output, app.Options{ConfigPath: filepath.Join(t.TempDir(), "missing.yaml")}); code != 0 {
+				t.Errorf("documented publish flag %s is rejected: %s", flag, output.String())
+			}
+		}
+	}
+	if count == 0 {
+		t.Fatal("no Pulse publish Guidance flags checked")
+	}
 }

@@ -99,7 +99,7 @@ func TestProjectInspectAcceptsCanonicalProjectID(t *testing.T) {
 	}
 }
 
-func TestProjectCommandsRejectLegacyIDFlag(t *testing.T) {
+func TestProjectCommandsAcceptPrimaryIDFlag(t *testing.T) {
 	tests := []struct {
 		name    string
 		command func(*projectMutationCommands) *cobra.Command
@@ -126,11 +126,14 @@ func TestProjectCommandsRejectLegacyIDFlag(t *testing.T) {
 			command := test.command(actions)
 			command.SetArgs(test.args)
 			err := command.ExecuteContext(context.Background())
-			if err == nil || !strings.Contains(err.Error(), "unknown flag: --id") {
-				t.Fatalf("error = %v, want unknown --id flag", err)
+			if err != nil {
+				t.Fatal(err)
 			}
-			if actions.inspectCalls != 0 || actions.updateInput.Selector.LUID != "" {
-				t.Fatalf("action invoked: %#v", actions)
+			if test.name == "inspect" && actions.inspectCalls != 1 {
+				t.Fatalf("inspect calls = %d", actions.inspectCalls)
+			}
+			if test.name == "update" && actions.updateInput.Selector.LUID != "project-1" {
+				t.Fatalf("input = %#v", actions.updateInput)
 			}
 		})
 	}
@@ -145,7 +148,7 @@ func TestProjectHelpShowsCanonicalProjectSelectors(t *testing.T) {
 	if err := command.ExecuteContext(context.Background()); err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(stdout.String(), "--project-id string") || strings.Contains(stdout.String(), "--id string") || stderr.Len() != 0 {
+	if !strings.Contains(stdout.String(), "--project-id string") || !strings.Contains(stdout.String(), "--id string") || stderr.Len() != 0 {
 		t.Fatalf("stdout=%q stderr=%q", stdout.String(), stderr.String())
 	}
 }

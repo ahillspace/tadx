@@ -8,4 +8,4 @@ environment:
   pat_name_env: PROD_PAT_NAME
   pat_secret_env: PROD_PAT_SECRET
   default_workspace: primary
-help[1]: tadx auth status --environment <alias>
+help[1]: tadx auth status --environment production

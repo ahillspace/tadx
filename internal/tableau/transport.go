@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -216,6 +217,12 @@ func (e *UpstreamError) CorrectiveAction() string {
 	if e == nil {
 		return ""
 	}
+	if e.StatusCode == http.StatusNotFound {
+		switch e.Code {
+		case "404002", "404003", "404004", "404005", "404006", "404027":
+			return "Verify the exact resource LUID in the selected environment using its list command. If the resource was deleted, this not-found response is expected."
+		}
+	}
 	_, correctiveAction := upstreamAdvice(e.StatusCode)
 	return correctiveAction
 }
@@ -402,9 +409,11 @@ func parseRetryAfter(header http.Header) (time.Duration, bool) {
 	if value == "" {
 		return 0, false
 	}
-	if seconds, err := strconv.Atoi(value); err == nil {
-		if seconds < 0 {
-			return 0, false
+	if seconds, err := strconv.ParseUint(value, 10, 64); err == nil || errors.Is(err, strconv.ErrRange) {
+		// Saturate unrepresentable server delays instead of overflowing into a
+		// negative duration and allowing immediate retry. The wait is cancelable.
+		if errors.Is(err, strconv.ErrRange) || seconds > uint64(math.MaxInt64/int64(time.Second)) {
+			return time.Duration(math.MaxInt64), true
 		}
 		return time.Duration(seconds) * time.Second, true
 	}

@@ -49,6 +49,9 @@ func normalizeSuccessfulProjectMutation(ctx context.Context, projects *resourcep
 }
 
 func (c *remoteContentCommands) MoveWorkbook(ctx context.Context, input workbookmove.Input, preview bool) (workbookmove.Output, error) {
+	if err := workbookmove.ValidateInput(input); err != nil {
+		return workbookmove.Output{}, err
+	}
 	connection, err := c.connect(ctx, input.Environment, true)
 	if err != nil {
 		return workbookmove.Output{}, remoteSetupError("workbook.move", input.Environment, input.Site, connection.environment, err)
@@ -60,6 +63,9 @@ func (c *remoteContentCommands) MoveWorkbook(ctx context.Context, input workbook
 }
 
 func (c *remoteContentCommands) UpdateWorkbook(ctx context.Context, input workbookupdate.Input, preview bool) (workbookupdate.Output, error) {
+	if err := workbookupdate.ValidateInput(input); err != nil {
+		return workbookupdate.Output{}, err
+	}
 	connection, err := c.connect(ctx, input.Environment, true)
 	if err != nil {
 		return workbookupdate.Output{}, remoteSetupError("workbook.update", input.Environment, input.Site, connection.environment, err)
@@ -71,6 +77,9 @@ func (c *remoteContentCommands) UpdateWorkbook(ctx context.Context, input workbo
 }
 
 func (c *remoteContentCommands) MoveDatasource(ctx context.Context, input datasourcemove.Input, preview bool) (datasourcemove.Output, error) {
+	if err := datasourcemove.ValidateInput(input); err != nil {
+		return datasourcemove.Output{}, err
+	}
 	connection, err := c.connect(ctx, input.Environment, true)
 	if err != nil {
 		return datasourcemove.Output{}, remoteSetupError("datasource.move", input.Environment, input.Site, connection.environment, err)
@@ -82,6 +91,9 @@ func (c *remoteContentCommands) MoveDatasource(ctx context.Context, input dataso
 }
 
 func (c *remoteContentCommands) UpdateDatasource(ctx context.Context, input datasourceupdate.Input, preview bool) (datasourceupdate.Output, error) {
+	if err := datasourceupdate.ValidateInput(input); err != nil {
+		return datasourceupdate.Output{}, err
+	}
 	connection, err := c.connect(ctx, input.Environment, true)
 	if err != nil {
 		return datasourceupdate.Output{}, remoteSetupError("datasource.update", input.Environment, input.Site, connection.environment, err)
@@ -93,6 +105,9 @@ func (c *remoteContentCommands) UpdateDatasource(ctx context.Context, input data
 }
 
 func (c *remoteContentCommands) UpdateFlow(ctx context.Context, input flowupdate.Input, preview bool) (flowupdate.Output, error) {
+	if err := flowupdate.ValidateInput(input); err != nil {
+		return flowupdate.Output{}, err
+	}
 	connection, err := c.connect(ctx, input.Environment, true)
 	if err != nil {
 		return flowupdate.Output{}, remoteSetupError("flow.update", input.Environment, input.Site, connection.environment, err)
@@ -104,6 +119,9 @@ func (c *remoteContentCommands) UpdateFlow(ctx context.Context, input flowupdate
 }
 
 func (c *remoteContentCommands) MoveProject(ctx context.Context, input projectmove.Input, preview bool) (projectmove.Output, error) {
+	if err := projectmove.ValidateInput(input); err != nil {
+		return projectmove.Output{}, err
+	}
 	connection, err := c.connect(ctx, input.Environment, true)
 	if err != nil {
 		return projectmove.Output{}, remoteSetupError("project.move", input.Environment, input.Site, connection.environment, err)

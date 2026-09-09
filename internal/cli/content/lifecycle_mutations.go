@@ -30,7 +30,7 @@ func newWorkbookMove(deps Dependencies) *cobra.Command {
 		input.SetProjectSelector(destinationLUID, destinationPath)
 		result, err := deps.WorkbookMover.MoveWorkbook(command.Context(), input, preview)
 		if err != nil {
-			return err
+			return clierr.WithOutput(result, err)
 		}
 		return deps.Renderer.Render(result)
 	})
@@ -62,7 +62,7 @@ func newWorkbookUpdate(deps Dependencies) *cobra.Command {
 		}
 		result, err := deps.WorkbookUpdater.UpdateWorkbook(command.Context(), input, preview)
 		if err != nil {
-			return err
+			return clierr.WithOutput(result, err)
 		}
 		return deps.Renderer.Render(result)
 	})
@@ -89,7 +89,7 @@ func newDatasourceMove(deps Dependencies) *cobra.Command {
 		input.SetProjectSelector(destinationLUID, destinationPath)
 		result, err := deps.DatasourceMover.MoveDatasource(command.Context(), input, preview)
 		if err != nil {
-			return err
+			return clierr.WithOutput(result, err)
 		}
 		return deps.Renderer.Render(result)
 	})
@@ -121,7 +121,7 @@ func newDatasourceUpdate(deps Dependencies) *cobra.Command {
 		}
 		result, err := deps.DatasourceUpdater.UpdateDatasource(command.Context(), input, preview)
 		if err != nil {
-			return err
+			return clierr.WithOutput(result, err)
 		}
 		return deps.Renderer.Render(result)
 	})
@@ -148,7 +148,7 @@ func newFlowUpdate(deps Dependencies) *cobra.Command {
 		input.OwnerLUID = &ownerLUID
 		result, err := deps.FlowUpdater.UpdateFlow(command.Context(), input, preview)
 		if err != nil {
-			return err
+			return clierr.WithOutput(result, err)
 		}
 		return deps.Renderer.Render(result)
 	})
@@ -164,7 +164,7 @@ func newProjectMove(deps Dependencies) *cobra.Command {
 	var preview bool
 	command := mutationCommand("project.move", "move", "Move one exact project in the hierarchy.", func(command *cobra.Command) error {
 		if (projectLUID == "") == (projectPath == "") {
-			return clierr.Usage("project.move", errors.New("use exactly one of --project-id or --project"))
+			return clierr.Usage("project.move", errors.New("use exactly one of --id or --project"))
 		}
 		if err := requireWriteEnvironment("project.move", input.Environment); err != nil {
 			return err
@@ -179,12 +179,14 @@ func newProjectMove(deps Dependencies) *cobra.Command {
 		}
 		result, err := deps.ProjectMover.MoveProject(command.Context(), input, preview)
 		if err != nil {
-			return err
+			return clierr.WithOutput(result, err)
 		}
 		return deps.Renderer.Render(result)
 	})
 	command.Flags().StringVar(&input.Environment, "environment", "", "explicit write environment alias")
-	command.Flags().StringVar(&projectLUID, "project-id", "", "authoritative project LUID")
+	command.Flags().StringVar(&projectLUID, "id", "", "authoritative project LUID")
+	command.Flags().StringVar(&projectLUID, "project-id", "", "legacy alias for --id")
+	command.MarkFlagsMutuallyExclusive("id", "project-id")
 	command.Flags().StringVar(&projectPath, "project", "", "exact slash-delimited project path")
 	command.Flags().StringVar(&parentLUID, "parent-id", "", "authoritative destination parent project LUID")
 	command.Flags().StringVar(&parentPath, "parent", "", "exact destination parent project path")

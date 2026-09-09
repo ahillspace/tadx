@@ -12,4 +12,4 @@ result:
   http_status: 204
   tableau_request_id: request-1
 warnings[1]: Tableau determines dependency and cascade effects. Dependent resources are not enumerated.
-help[1]: tadx pulse definition list --environment dev
+help: null

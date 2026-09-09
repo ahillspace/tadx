@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/ahillspace/tadx/internal/tableau"
+	"github.com/ahillspace/tadx/internal/value"
 )
 
 const (
@@ -54,19 +55,10 @@ type CaptureRequest struct {
 }
 
 // Node keeps the Metadata ID separate from the optional REST LUID.
-type Node struct {
-	MetadataID string
-	Kind       string
-	RESTLUID   string
-	Name       string
-}
+type Node = value.LineageNode
 
 // Edge is one factual directed relationship.
-type Edge struct {
-	FromMetadataID string
-	ToMetadataID   string
-	Relationship   string
-}
+type Edge = value.LineageEdge
 
 // Capture is one transport-neutral Metadata API result.
 type Capture struct {

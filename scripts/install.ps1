@@ -7,7 +7,11 @@ param(
 
     [string]$InstallDir = '',
 
-    [switch]$NoModifyPath
+    [switch]$NoModifyPath,
+
+    [switch]$NoCompletion,
+
+    [string]$CompletionProfile = $PROFILE.CurrentUserAllHosts
 )
 
 Set-StrictMode -Version Latest
@@ -234,6 +238,73 @@ function Install-TadxBinary {
     }
 }
 
+function Read-CompletionProfile {
+    param([Parameter(Mandatory = $true)][string]$Path)
+
+    # A BOM makes Unicode hooks readable by both Windows PowerShell and pwsh.
+    $utf8 = New-Object Text.UTF8Encoding($true, $true)
+    if (-not (Test-Path -LiteralPath $Path)) {
+        return [pscustomobject]@{ Text = ''; Encoding = $utf8 }
+    }
+    $bytes = [IO.File]::ReadAllBytes($Path)
+    # Test UTF-32 before UTF-16 because their little-endian BOMs overlap.
+    $encodings = @(
+        (New-Object Text.UTF32Encoding($false, $true, $true)),
+        (New-Object Text.UTF32Encoding($true, $true, $true)),
+        $utf8,
+        (New-Object Text.UnicodeEncoding($false, $true, $true)),
+        (New-Object Text.UnicodeEncoding($true, $true, $true))
+    )
+    foreach ($encoding in $encodings) {
+        $preamble = $encoding.GetPreamble()
+        if ($bytes.Length -lt $preamble.Length) { continue }
+        $matches = $true
+        for ($index = 0; $index -lt $preamble.Length; $index++) {
+            if ($bytes[$index] -ne $preamble[$index]) { $matches = $false; break }
+        }
+        if ($matches) {
+            return [pscustomobject]@{
+                Text = $encoding.GetString($bytes, $preamble.Length, $bytes.Length - $preamble.Length)
+                Encoding = $encoding
+            }
+        }
+    }
+
+    # Windows PowerShell reads BOM-less scripts in the system ANSI code page.
+    # pwsh reads UTF-8; legacy ANSI files are still recoverable when UTF-8 fails.
+    if ($PSVersionTable.PSVersion.Major -ge 6) {
+        try {
+            return [pscustomobject]@{ Text = $utf8.GetString($bytes); Encoding = $utf8 }
+        }
+        catch [Text.DecoderFallbackException] {
+            # Decode the original bytes below, without replacement characters.
+        }
+        [Text.Encoding]::RegisterProvider([Text.CodePagesEncodingProvider]::Instance)
+    }
+    $ansi = [Text.Encoding]::GetEncoding(0, [Text.EncoderFallback]::ExceptionFallback, [Text.DecoderFallback]::ExceptionFallback)
+    return [pscustomobject]@{ Text = $ansi.GetString($bytes); Encoding = $utf8 }
+}
+
+function Set-ManagedCompletion {
+    param([bool]$Enabled)
+    $profilePath = [IO.Path]::GetFullPath($CompletionProfile)
+    $marker = '# tadx-installer-completion'
+    $profileContent = Read-CompletionProfile -Path $profilePath
+    $original = $profileContent.Text
+    $updated = [regex]::Replace($original, '(?m)^if \(Test-Path -LiteralPath [^\r\n]* ' + [regex]::Escape($marker) + '\r?$\n?', '')
+    if ($Enabled) {
+        $binary = (Join-Path $InstallDir 'tadx.exe').Replace("'", "''")
+        if ($updated.Length -gt 0 -and -not $updated.EndsWith("`n")) { $updated += "`r`n" }
+        $updated += "if (Test-Path -LiteralPath '$binary') { & '$binary' completion powershell | Out-String | Invoke-Expression } $marker`r`n"
+    }
+    if ($updated -ceq $original) { return }
+    New-Item -ItemType Directory -Force -Path (Split-Path -Parent $profilePath) | Out-Null
+    if ((Test-Path -LiteralPath $profilePath) -and -not (Test-Path -LiteralPath "$profilePath.tadx-backup")) {
+        Copy-Item -LiteralPath $profilePath -Destination "$profilePath.tadx-backup"
+    }
+    [IO.File]::WriteAllText($profilePath, $updated, $profileContent.Encoding)
+}
+
 if ([string]::IsNullOrWhiteSpace($InstallDir)) {
     $InstallDir = Get-DefaultInstallDir
 }
@@ -244,7 +315,8 @@ if ($Action -ieq 'Uninstall') {
     if (Test-Path -LiteralPath $binaryPath) {
         Remove-Item -LiteralPath $binaryPath -Force
     }
-    Remove-UserPath -Directory $InstallDir
+    if (-not $NoModifyPath) { Remove-UserPath -Directory $InstallDir }
+    Set-ManagedCompletion -Enabled $false
     if ((Test-Path -LiteralPath $InstallDir) -and -not (Get-ChildItem -Force -LiteralPath $InstallDir | Select-Object -First 1)) {
         Remove-Item -LiteralPath $InstallDir -Force
     }
@@ -327,6 +399,10 @@ try {
     Install-TadxBinary -Source $binaries[0].FullName -Directory $InstallDir
     if (-not $NoModifyPath) {
         Add-UserPath -Directory $InstallDir
+    }
+    if (-not $NoCompletion) {
+        Set-ManagedCompletion -Enabled $true
+        Write-Host "PowerShell completion is enabled in $CompletionProfile. Open a new PowerShell session to load it."
     }
 
     Write-Host "TADX $resolvedVersion was installed at $(Join-Path $InstallDir 'tadx.exe')."

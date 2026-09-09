@@ -3,6 +3,7 @@ package followers
 import (
 	"context"
 	"errors"
+	"github.com/ahillspace/tadx/internal/commandhint"
 	"github.com/ahillspace/tadx/internal/errs"
 	"strings"
 )
@@ -17,6 +18,9 @@ type Action struct{ reader Reader }
 
 func New(reader Reader) *Action { return &Action{reader: reader} }
 func (a *Action) Execute(ctx context.Context, input Input) (Output, error) {
+	if err := ValidateInput(input); err != nil {
+		return Output{}, err
+	}
 	if a == nil || a.reader == nil {
 		return Output{}, fail("pulse.metric.followers.unconfigured", errs.KindRuntime, input, "Pulse metric follower listing is not configured.", nil)
 	}
@@ -39,15 +43,17 @@ func (a *Action) Execute(ctx context.Context, input Input) (Output, error) {
 		return Output{}, fail("pulse.metric.followers.invalid_response", errs.KindOperation, input, "Pulse metric follower listing exceeded its bounded output.", errors.New("more than 1000 subscriptions"))
 	}
 	requestID := metric.RequestID
+	seen := map[string]bool{}
 	for _, item := range items {
-		if item.LUID == "" || item.MetricLUID != input.MetricLUID || item.FollowerLUID == "" || (item.FollowerType != "USER" && item.FollowerType != "GROUP") {
+		if item.LUID == "" || seen[item.LUID] || item.MetricLUID != input.MetricLUID || item.FollowerLUID == "" || (item.FollowerType != "USER" && item.FollowerType != "GROUP") {
 			return Output{}, fail("pulse.metric.followers.invalid_response", errs.KindOperation, input, "Tableau returned an incomplete or mismatched subscription.", errors.New("subscription identity mismatch"))
 		}
+		seen[item.LUID] = true
 		if requestID == "" {
 			requestID = item.RequestID
 		}
 	}
-	return Output{Status: "listed", Environment: input.Environment, Site: input.Site, MetricLUID: input.MetricLUID, Count: len(items), Subscriptions: items, RequestID: requestID, Help: []string{"tadx pulse metric follow --id " + input.MetricLUID + " --user-id <user-luid>"}}, nil
+	return Output{Status: "listed", Environment: input.Environment, Site: input.Site, MetricLUID: input.MetricLUID, Count: len(items), Subscriptions: items, RequestID: requestID, Help: []string{commandhint.Environment(input.Environment, "pulse", "metric", "inspect", "--id", input.MetricLUID)}}, nil
 }
 
 func readError(input Input, err error) error {

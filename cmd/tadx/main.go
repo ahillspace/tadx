@@ -11,7 +11,7 @@ import (
 func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
 	exitCode := app.Run(ctx, os.Args[1:], os.Stdout, app.Options{
-		MutationsEnabled: os.Getenv("TADX_ENABLE_MUTATIONS") == "1",
+		MutationEnvironment: func() (string, bool) { return os.LookupEnv("TADX_ENABLE_MUTATIONS") },
 	})
 	stop()
 	os.Exit(exitCode)

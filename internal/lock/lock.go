@@ -3,9 +3,11 @@
 package lock
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"os"
+	"time"
 )
 
 // ErrLocked is returned by TryAcquire when another process already holds the lock.
@@ -26,6 +28,26 @@ func Acquire(path string) (*Handle, error) {
 // returns ErrLocked if another process currently holds it.
 func TryAcquire(path string) (*Handle, error) {
 	return acquire(path, false)
+}
+
+// AcquireContext waits for an advisory lock without blocking cancellation.
+func AcquireContext(ctx context.Context, path string) (*Handle, error) {
+	for {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
+		handle, err := TryAcquire(path)
+		if !errors.Is(err, ErrLocked) {
+			return handle, err
+		}
+		timer := time.NewTimer(100 * time.Millisecond)
+		select {
+		case <-ctx.Done():
+			timer.Stop()
+			return nil, ctx.Err()
+		case <-timer.C:
+		}
+	}
 }
 
 func acquire(path string, block bool) (*Handle, error) {

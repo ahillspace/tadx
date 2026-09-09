@@ -53,3 +53,14 @@ TADX must preserve that upstream rejection and its request identifier.
 Every unversioned Pulse request carries `X-Tableau-Site-Id` from the authenticated session.
 TADX rejects Pulse requests before network access when the authenticated session lacks a site LUID.
 PATs, session tokens, private site names, machine paths, and private content identities never appear in this evidence record.
+
+## Local regression coverage after agent workflow testing
+
+The current CLI has HTTP-backed regressions for dimension COUNT/COUNT_DISTINCT eligibility, adjustable-dimension ordering and presence, hidden calculation dependencies, and fork granularity compatibility.
+Create and fork tests verify rejected input causes no mutation request and preserves existing identity and eligibility checks.
+Fork compatibility is checked again against the current definition before the write.
+Opaque 400/409 responses retain provider details and give read/reconciliation guidance without inventing a specific provider diagnosis.
+Uncertain create outcomes are not advertised as safe automatic retries.
+
+These checks extend local behavioral evidence, not the live verification recorded above.
+The source examples remain in `internal/app/pulse_validation_e2e_test.go`, `internal/app/pulse_fork_granularity_e2e_test.go`, `internal/app/pulse_diagnostics_e2e_test.go`, and `internal/tableau/fieldcatalog/client_test.go`.

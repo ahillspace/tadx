@@ -14,6 +14,7 @@ import (
 	"testing"
 
 	"github.com/ahillspace/tadx/internal/app"
+	"github.com/ahillspace/tadx/internal/artifact"
 	"github.com/ahillspace/tadx/internal/config"
 )
 
@@ -198,13 +199,22 @@ func TestRunPreservesCapabilityContextForSetupFailures(t *testing.T) {
 	t.Setenv("PROD_PAT_NAME", "pat-name")
 	t.Setenv("PROD_PAT_SECRET", "pat-secret")
 	options := app.Options{ConfigPath: configPath, HTTPClient: server.Client(), MutationsEnabled: true}
+	workspace := createNamedWorkspace(t, configPath, "authentication")
+	pulled, err := artifact.NewWorkbookManager(nil).Pull(context.Background(), artifact.WorkbookPull{Workspace: workspace, Filename: "Finance.twb", Content: []byte("<workbook/>"), Metadata: artifact.WorkbookMetadata{Kind: "workbook", Name: "Finance", TableauID: "wb-1", SourceServerOrigin: server.URL, SourceSiteLUID: "site-1", SourceEnvironment: "production", SourceSite: "marketing", SourceProjectID: "project-1", SourceProjectName: "Ops"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	artifactSelector, err := filepath.Rel(workspace, pulled.ArtifactPath)
+	if err != nil {
+		t.Fatal(err)
+	}
 	for _, test := range []struct {
 		name      string
 		operation string
 		args      []string
 	}{
-		{name: "pull authentication", operation: "workbook.pull", args: []string{"content", "workbook", "pull", "--environment", "production", "--id", "wb-1"}},
-		{name: "publish authentication", operation: "workbook.publish", args: []string{"content", "workbook", "publish", "--environment", "production", "--artifact", "artifacts/workbook/Finance--identity", "--project-id", "project-1"}},
+		{name: "pull authentication", operation: "workbook.pull", args: []string{"content", "workbook", "pull", "--workspace", "authentication", "--environment", "production", "--id", "wb-1"}},
+		{name: "publish authentication", operation: "workbook.publish", args: []string{"content", "workbook", "publish", "--workspace", "authentication", "--environment", "production", "--artifact", filepath.ToSlash(artifactSelector), "--project-id", "project-1"}},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			var stdout bytes.Buffer
@@ -304,7 +314,7 @@ func TestCapabilityGetReportsMutationExecutionState(t *testing.T) {
 func TestRemoteMutationGatePrecedesRuntimeSetupAcrossDomains(t *testing.T) {
 	tests := [][]string{
 		{"content", "workbook", "delete", "--environment", "missing", "--id", "workbook-1"},
-		{"content", "workbook", "delete", "--environment", "missing", "--id", "workbook-1", "--preview"},
+		{"content", "workbook", "delete", "--environment", "missing", "--id", "workbook-1", "--preview=false"},
 		{"content", "datasource", "delete", "--environment", "missing", "--id", "datasource-1"},
 		{"content", "flow", "delete", "--environment", "missing", "--id", "flow-1"},
 		{"content", "project", "create", "--environment", "missing", "--name", "New project"},
@@ -315,7 +325,7 @@ func TestRemoteMutationGatePrecedesRuntimeSetupAcrossDomains(t *testing.T) {
 		t.Run(strings.Join(args[:3], " "), func(t *testing.T) {
 			var stdout bytes.Buffer
 			exitCode := app.Run(context.Background(), args, &stdout, app.Options{ConfigPath: filepath.Join(t.TempDir(), "missing.yaml")})
-			if exitCode != 1 || !strings.Contains(stdout.String(), "id: mutation.disabled") || !strings.Contains(stdout.String(), "TADX_ENABLE_MUTATIONS=1") {
+			if exitCode != 1 || !strings.Contains(stdout.String(), "id: mutation.disabled") || !strings.Contains(stdout.String(), "tadx mutation status") {
 				t.Fatalf("exit code = %d, output = %s", exitCode, stdout.String())
 			}
 		})

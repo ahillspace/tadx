@@ -2,6 +2,7 @@
 package pulse
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -296,6 +297,26 @@ func (c *Client) CreateDefinition(ctx context.Context, input CreateRequest) (Cre
 	if err != nil {
 		return CreateResult{}, err
 	}
+	return c.createDefinitionDocument(ctx, body)
+}
+
+// CreateDefinitionDocument preserves verified writable configuration sections,
+// including nested specification fields not exposed as individual CLI flags.
+func (c *Client) CreateDefinitionDocument(ctx context.Context, body json.RawMessage) (CreateResult, error) {
+	var document map[string]json.RawMessage
+	if json.Unmarshal(body, &document) != nil || document == nil || len(document["name"]) == 0 || len(document["specification"]) == 0 {
+		return CreateResult{}, errors.New("Pulse definition create document requires name and specification")
+	}
+	allowed := map[string]bool{"name": true, "description": true, "specification": true, "extension_options": true, "representation_options": true, "insights_options": true, "comparisons": true, "datasource_goals": true, "related_links": true, "certification": true}
+	for key := range document {
+		if !allowed[key] {
+			return CreateResult{}, fmt.Errorf("unsupported Pulse definition create section %q", key)
+		}
+	}
+	return c.createDefinitionDocument(ctx, body)
+}
+
+func (c *Client) createDefinitionDocument(ctx context.Context, body []byte) (CreateResult, error) {
 	response, err := c.do(ctx, http.MethodPost, pulsePath+"/definitions", nil, body, createDefinitionRequestType, createDefinitionResponseType, "pulse.definition.create")
 	if err != nil {
 		return CreateResult{}, err
@@ -374,6 +395,7 @@ func decodeDefinition(raw json.RawMessage, requestID string) (Definition, error)
 				ID string `json:"id"`
 			} `json:"datasource"`
 			Basic struct {
+				Filters json.RawMessage                     `json:"filters"`
 				Measure struct{ Field, Aggregation string } `json:"measure"`
 				Time    struct {
 					Field string `json:"field"`
@@ -394,7 +416,11 @@ func decodeDefinition(raw json.RawMessage, requestID string) (Definition, error)
 		return Definition{}, errors.New("Pulse definition omitted identity")
 	}
 	configuration := append(json.RawMessage(nil), raw...)
-	return Definition{LUID: value.Metadata.ID, Name: value.Metadata.Name, Description: value.Metadata.Description, DatasourceLUID: value.Specification.Datasource.ID, MeasureField: value.Specification.Basic.Measure.Field, Aggregation: value.Specification.Basic.Measure.Aggregation, TimeDimension: value.Specification.Basic.Time.Field, RunningTotal: value.Specification.RunningTotal, Temporality: value.Specification.Temporality, AllowedDimensions: value.Extension.Dimensions, AllowedGranularities: value.Extension.Granularities, Configuration: configuration, TableauRequestID: requestID}, nil
+	var fixedFilters []any
+	decoder := json.NewDecoder(bytes.NewReader(value.Specification.Basic.Filters))
+	decoder.UseNumber()
+	known := decoder.Decode(&fixedFilters) == nil && fixedFilters != nil
+	return Definition{LUID: value.Metadata.ID, Name: value.Metadata.Name, Description: value.Metadata.Description, DatasourceLUID: value.Specification.Datasource.ID, MeasureField: value.Specification.Basic.Measure.Field, Aggregation: value.Specification.Basic.Measure.Aggregation, TimeDimension: value.Specification.Basic.Time.Field, RunningTotal: value.Specification.RunningTotal, Temporality: value.Specification.Temporality, AllowedDimensions: value.Extension.Dimensions, AllowedGranularities: value.Extension.Granularities, FixedFilters: fixedFilters, FixedFiltersKnown: known, Configuration: configuration, TableauRequestID: requestID}, nil
 }
 
 func decodeMetric(raw json.RawMessage, requestID string) (Metric, error) {
@@ -418,7 +444,12 @@ func decodeMetric(raw json.RawMessage, requestID string) (Metric, error) {
 		Specification       map[string]any `json:"specification"`
 		MetricSpecification map[string]any `json:"metric_specification"`
 	}
-	if err := json.Unmarshal(raw, &value); err != nil {
+	if !json.Valid(raw) {
+		return Metric{}, errors.New("decode Pulse metric: invalid JSON")
+	}
+	decoder := json.NewDecoder(bytes.NewReader(raw))
+	decoder.UseNumber()
+	if err := decoder.Decode(&value); err != nil {
 		return Metric{}, fmt.Errorf("decode Pulse metric: %w", err)
 	}
 	luid := first(value.Metadata.ID, value.ID)
@@ -437,6 +468,11 @@ func subscriptionRecords(body []byte) ([]json.RawMessage, error) {
 	if json.Unmarshal(body, &data) != nil {
 		return nil, errors.New("decode Pulse subscriptions response")
 	}
+	for _, key := range []string{"next_page_token", "nextPageToken", "continuation_token"} {
+		if token, ok := data[key]; ok && string(token) != `""` && string(token) != "null" {
+			return nil, errors.New("Pulse subscriptions response is incomplete; continuation is not supported by the verified full-snapshot endpoint")
+		}
+	}
 	raw, ok := data["subscriptions"]
 	_, plural := data["subscriptions"]
 	if !ok {
@@ -444,6 +480,9 @@ func subscriptionRecords(body []byte) ([]json.RawMessage, error) {
 	}
 	if !ok {
 		return nil, errors.New("Pulse subscriptions response omitted records")
+	}
+	if bytes.Equal(bytes.TrimSpace(raw), []byte("null")) {
+		return nil, errors.New("Pulse subscriptions response requires an explicit array")
 	}
 	var records []json.RawMessage
 	if json.Unmarshal(raw, &records) == nil {

@@ -44,13 +44,35 @@ Keep Cobra limited to argument parsing, action invocation, shared rendering, and
 Put released Tableau HTTP behavior in `internal/tableau/<resource>` through the shared transport.
 Put pagination and LUID-authoritative exact resolution in `internal/resources/<resource>`.
 Bridge concrete adapters to action-owned interfaces only in the composition root.
+Share genuinely identical identity, schema, and lineage value records through dependency-free `internal/value`; keep action semantics, interfaces, and provider payloads separate.
+Reuse configuration, workspace resolution, and authenticated clients within one command, not across commands.
+Reuse a session only for the same server, site, and actual credential identity, and retain the local credential lock until session work finishes.
 
 If the evidence level is docs-only or blocked, build only types, validation, local orchestration, fixtures, tests, and the adapter seam.
 Do not write live API code or make that capability executable until bounded evidence verifies the upstream contract.
 
 ## Preserve output and safety contracts
 
-Default output is an explicit bounded compact TOON projection containing the status, authoritative identity, next safe decision fields, warnings, continuation state, and help.
+Default output is an explicit bounded compact TOON projection containing the status, authoritative identity, next safe decision fields, warnings, completeness, and help.
+Mutation previews summarize the exact target and every consequential setting, including inherited filters and null handling; provider envelopes and transport diagnostics belong in `--full`.
+Mark bounded or unrepresentable review details explicitly incomplete rather than silently omitting decision evidence.
+Preserve confirmed results alongside follow-up errors through action, CLI, renderer, and batch boundaries; a nonzero exit does not imply the mutation failed, and an unknown outcome never implies success.
+Generated inspection and recovery commands retain the resolved environment, exact identity, and logical workspace where applicable, with shell-safe argument quoting.
+Run action-owned local validation and read-only prerequisite resolution before authentication; keep remote-state validation after authentication and fresh before writes.
+Compact list rows retain a fixed set of scalar columns, including empty values, so changing the limit does not switch between tabular and expanded output.
+Render `more_available` when results are limited; keep opaque provider and catalog cursors internal in both compact and full output.
+Use a larger bounded `--limit`, or explicit `--all` where supported, to request additional results.
+An incomplete or capped traversal must never claim a complete inventory.
+Limited live lists fetch bounded provider results without collecting a full inventory or depending on SQLite.
+Explicit `--all` and scoped catalog refresh share a collector; live output renders from its normalized in-memory result.
+Cache persistence after a live full list is best effort; explicit refresh failure preserves the previous generation and fails.
+Filtered observations cannot establish complete unfiltered coverage.
+Ordinary and full lists share typed filter builders owned by each resource; the composition root maps inputs but does not duplicate filter syntax or validation.
+Reuse one project hierarchy within a validation phase; a separate pre-write validation phase requires a fresh index.
+Keep pagination loops typed and private instead of recursively invoking actions or encoding internal cursors.
+Persist project identity structurally as an indexed LUID, not by extracting it from payload JSON.
+Default catalog refresh excludes permissions; require an explicit scope for per-resource permission collection.
+Collection concurrency defaults to a per-process ceiling of 32, is configurable per environment, and respects a shared cancelable Retry-After cooldown.
 When additional bounded details exist, compact output includes the exact top-level marker `details: "--full"` immediately before `help[]`.
 `--full` is a bounded superset for the same operation and never changes requests, mutation behavior, pagination, or secret redaction.
 Use separate compact and full golden fixtures for detail-bearing output.
@@ -58,21 +80,31 @@ Use separate compact and full golden fixtures for detail-bearing output.
 Persist and render artifact paths relative to the resolved workspace with forward slashes.
 Resolve absolute paths only at runtime and never emit machine-specific paths.
 Treat Tableau LUIDs as authoritative, fail ambiguous selectors, and never fuzzy-match or prompt interactively.
+Project names may contain a literal slash.
+Retain these projects and their descendants; exact LUID operations must remain usable even when a display path is ambiguous.
 Authenticate to Tableau with PATs only.
 Consequential mutations run by default and support `--preview` for a read-only plan.
 Remote mutation commands and capabilities remain discoverable when execution is disabled.
-`TADX_ENABLE_MUTATIONS=1` enables mutation commands.
+`TADX_ENABLE_MUTATIONS=1` enables remote mutation execution; supported read-only previews remain available when it is off.
+Agents must obtain explicit user permission before changing this flag or saved policy through `tadx mutation set`, including disabling it or setting a command-only override.
+Saved user policy persists until changed; an explicit process environment value overrides it, and neither setting means disabled.
+Infer an omitted environment only when exactly one is configured for remote writes; multiple environments require `--env`, irrespective of artifact provenance.
+Remote-operation authorization does not authorize the setting change; follow the scope and single-question guidance in [AGENTS.md](AGENTS.md).
+`--env` is an alias for `--environment`, including explicit mutation targets.
 `--force` does not bypass mutation policy.
 Persist PATs only after explicit user approval through the native OS credential store.
 Store only opaque credential references in configuration.
 Never place PATs or session tokens in configuration values, output, logs, artifacts, catalogs, fixtures, or diagnostics.
 Never use a plaintext credential fallback when the native store is unavailable.
+Guidance describes TADX and its limitations without overriding the user's choice of tools or maintaining external MCP tool recipes.
 
 ## Integrate the capability
 
 The slice owner returns integration requirements instead of editing shared files unless the task assigns integration ownership.
-The coordinator owns the exact capability contract row, `internal/capability/implementation.go`, shared CLI mounting, app composition, generated files, and binding tests.
-Never hand-edit `internal/capability/registry_gen.go` or `docs/reference/capabilities.md`.
+The coordinator owns typed capability facts and implementation bindings in `internal/capability/definitions.go`, shared CLI mounting, app composition, generated files, and binding tests.
+The architectural contract remains narrative documentation, not a compiler input.
+Never hand-edit `docs/reference/capabilities.md` or `docs/reference/capabilities.json`.
+The JSON file supplies capability-map data without generating or replacing the maintainer's HTML visualization.
 
 After updating the authoritative sources, run:
 

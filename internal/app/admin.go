@@ -37,7 +37,8 @@ func newRemoteAdminCommands(runtime *runtimeDependencies) *remoteAdminCommands {
 // dependencies returns every action executor required by the administration CLI tree.
 func (c *remoteAdminCommands) dependencies() *admincli.Dependencies {
 	return &admincli.Dependencies{
-		UserLister: c, UserInspector: c, UserCreator: c, UserUpdater: c, UserDeleter: c,
+		PermissionCapabilities: tableauadmin.PermissionCapabilities,
+		UserLister:             c, UserInspector: c, UserCreator: c, UserUpdater: c, UserDeleter: c,
 		GroupLister: c, GroupInspector: c, GroupCreator: c, GroupUpdater: c, GroupDeleter: c,
 		GroupMemberAdder: c, GroupMemberRemover: c,
 		PermissionInspector: c, PermissionCreator: c, PermissionDeleter: c,
@@ -59,78 +60,76 @@ func (c *remoteAdminCommands) connect(ctx context.Context, alias string, explici
 	return adminConnection{environment: connection.environment, adapter: resourceadmin.NewAdapter(client), inventory: catalogTableauExecutor{transport: connection.transport, session: connection.session, serverURL: connection.environment.URL, siteLUID: connection.session.SiteLUID()}}, nil
 }
 
-func (c *remoteAdminCommands) ListAdminUsers(ctx context.Context, input userlist.Input) (userlist.Output, error) {
-	if input.Catalog {
+func (c *remoteAdminCommands) ListAdminUsers(ctx context.Context, input userlist.Input) (result userlist.Output, resultErr error) {
+	if err := userlist.ValidateInput(input); err != nil {
+		return userlist.Output{}, err
+	}
+	if input.Cursor != "" {
+		_, environment, err := c.runtime.environment(input.Environment, false)
+		if err != nil {
+			return userlist.Output{}, err
+		}
+		input.Environment, input.Site = environment.Alias, environment.SiteContentURL
+		if err := userlist.ValidateContinuation(input); err != nil {
+			return userlist.Output{}, err
+		}
+	}
+	defer func() {
+		if resultErr == nil {
+			resultErr = validateInventoryAll(input.All, result.Source)
+		}
+	}()
+	if input.Catalog || legacyInventorySnapshot(input.Cursor) {
 		environment, site, err := c.resolveCatalogTarget(input.Environment)
 		if err != nil {
 			return userlist.Output{}, err
 		}
 		input.Environment, input.Site = environment, site
-		reader := &catalogUserListReader{store: c.catalogStore(), environment: environment, site: site}
+		reader := &catalogUserListReader{store: c.catalogStore(input.Environment), environment: environment, site: site}
 		output, err := userlist.New(reader).Execute(ctx, input)
 		if err == nil {
 			output.Source = reader.source
 		}
 		return output, err
 	}
-	if input.Cursor != "" && adminUserListIsUnfiltered(input) {
-		environment, site, err := c.resolveCatalogTarget(input.Environment)
-		if err != nil {
-			return userlist.Output{}, err
-		}
-		input.Environment, input.Site = environment, site
-		reader := &catalogUserListReader{store: c.catalogStore(), environment: environment, site: site}
-		output, err := userlist.New(reader).Execute(ctx, input)
-		if err == nil {
-			output.Source = reader.source
-		}
-		return output, err
+	filter, err := tableauadmin.UserListFilter(tableauadmin.ListUsersRequest{Name: input.Name, SiteRole: input.SiteRole})
+	if err != nil {
+		return userlist.Output{}, err
 	}
 	connection, err := c.connect(ctx, input.Environment, false)
 	if err != nil {
 		return userlist.Output{}, remoteSetupError("admin.user.list", input.Environment, input.Site, connection.environment, err)
 	}
 	input.Environment, input.Site = connection.environment.Alias, connection.environment.SiteContentURL
-	if adminUserListIsUnfiltered(input) {
+
+	if input.All {
 		observedAt := c.runtime.now().UTC()
-		inventory, err := collectResourceInventory(ctx, connection.inventory, c.catalogStore(), tableaucatalog.ScopeUsers, input.Environment, input.Site, observedAt)
+		inventory, err := collectResourceInventory(ctx, connection.inventory, c.catalogStore(input.Environment), tableaucatalog.ScopeUsers, input.Environment, input.Site, observedAt, inventoryCollectionOptions{MaxConcurrency: connection.environment.CatalogMaxConcurrency, Filter: filter})
 		if err != nil {
-			return userlist.Output{}, inventoryRefreshError("admin.user.list", input.Environment, input.Site, err)
+			return userlist.Output{}, inventoryRefreshError("user.list", input.Environment, input.Site, err)
 		}
-		if inventory.catalogErr != nil {
-			reader := inventory.memoryReader()
-			output, err := userlist.New(reader).Execute(ctx, input)
-			if err != nil {
-				return output, adminActionError("admin.user.list", input.Environment, input.Site, err)
-			}
-			output.Source = inventory.warningSource(observedAt)
-			output.Help = append(output.Help, inventory.warningHelp())
-			return output, nil
-		}
-		reader := &catalogUserListReader{store: c.catalogStore(), environment: input.Environment, site: input.Site}
+		reader := inventory.memoryReader()
+		reader.allowContinuation = true
 		output, err := userlist.New(reader).Execute(ctx, input)
 		if err != nil {
-			return output, adminActionError("admin.user.list", input.Environment, input.Site, err)
+			return output, err
 		}
-		output.Source = liveInventorySource(observedAt, inventory.published.GenerationID)
+		if inventory.catalogErr != nil {
+			output.Source = inventory.warningSource(observedAt)
+			output.Help = append(output.Help, inventory.warningHelp())
+		} else if inventory.filtered {
+			output.Source = liveSource(c.runtime.now)
+		} else {
+			output.Source = liveInventorySource(observedAt, inventory.published.GenerationID)
+		}
 		output.RequestID = finalRequestID(inventory.requestIDs)
-		output.Help = append(output.Help, inventoryRefreshHelp)
 		return output, nil
 	}
 	output, err := userlist.New(adminUserListReader{connection.adapter}).Execute(ctx, input)
 	if err != nil {
-		return output, adminActionError("admin.user.list", input.Environment, input.Site, err)
+		return output, err
 	}
-	observedAt := c.runtime.now().UTC()
 	output.Source = liveSource(c.runtime.now)
-	entries := make([]catalog.ResourceEntry, 0, len(output.Users))
-	for _, item := range output.Users {
-		entry, encodeErr := resourceEntry(input.Environment, input.Site, "user", item.LUID, item.Name, "", "", "summary", observedAt, item)
-		if encodeErr == nil {
-			entries = append(entries, entry)
-		}
-	}
-	writeThrough(c.catalogStore(), entries)
 	return output, nil
 }
 
@@ -139,13 +138,16 @@ func adminUserListIsUnfiltered(input userlist.Input) bool {
 }
 
 func (c *remoteAdminCommands) InspectAdminUser(ctx context.Context, input userinspect.Input) (userinspect.Output, error) {
+	if err := userinspect.ValidateInput(input); err != nil {
+		return userinspect.Output{}, err
+	}
 	if input.Catalog {
 		environment, site, err := c.resolveCatalogTarget(input.Environment)
 		if err != nil {
 			return userinspect.Output{}, err
 		}
 		input.Environment, input.Site = environment, site
-		resolver := &catalogUserGetResolver{store: c.catalogStore(), environment: environment, site: site}
+		resolver := &catalogUserGetResolver{store: c.catalogStore(input.Environment), environment: environment, site: site}
 		output, err := userinspect.New(resolver).Execute(ctx, input)
 		if err == nil {
 			output.Source = resolver.source
@@ -165,12 +167,15 @@ func (c *remoteAdminCommands) InspectAdminUser(ctx context.Context, input userin
 	output.Source = liveSource(c.runtime.now)
 	entry, encodeErr := resourceEntry(input.Environment, input.Site, "user", output.User.LUID, output.User.Name, "", "", "detail", observedAt, output.User)
 	if encodeErr == nil {
-		writeThrough(c.catalogStore(), []catalog.ResourceEntry{entry})
+		writeThrough(c.catalogStore(input.Environment), []catalog.ResourceEntry{entry})
 	}
 	return output, nil
 }
 
 func (c *remoteAdminCommands) CreateAdminUser(ctx context.Context, input usercreate.Input, preview bool) (usercreate.Output, error) {
+	if err := usercreate.ValidateInput(input); err != nil {
+		return usercreate.Output{}, err
+	}
 	connection, err := c.connect(ctx, input.Environment, true)
 	if err != nil {
 		return usercreate.Output{}, remoteSetupError("admin.user.create", input.Environment, input.Site, connection.environment, err)
@@ -183,6 +188,9 @@ func (c *remoteAdminCommands) CreateAdminUser(ctx context.Context, input usercre
 }
 
 func (c *remoteAdminCommands) UpdateAdminUser(ctx context.Context, input userupdate.Input, preview bool) (userupdate.Output, error) {
+	if err := userupdate.ValidateInput(input); err != nil {
+		return userupdate.Output{}, err
+	}
 	connection, err := c.connect(ctx, input.Environment, true)
 	if err != nil {
 		return userupdate.Output{}, remoteSetupError("admin.user.update", input.Environment, input.Site, connection.environment, err)
@@ -195,6 +203,9 @@ func (c *remoteAdminCommands) UpdateAdminUser(ctx context.Context, input userupd
 }
 
 func (c *remoteAdminCommands) DeleteAdminUser(ctx context.Context, input userdelete.Input, preview bool) (userdelete.Output, error) {
+	if err := userdelete.ValidateInput(input); err != nil {
+		return userdelete.Output{}, err
+	}
 	connection, err := c.connect(ctx, input.Environment, true)
 	if err != nil {
 		return userdelete.Output{}, remoteSetupError("admin.user.delete", input.Environment, input.Site, connection.environment, err)
@@ -206,78 +217,76 @@ func (c *remoteAdminCommands) DeleteAdminUser(ctx context.Context, input userdel
 	return output, adminActionError("admin.user.delete", input.Environment, input.Site, err)
 }
 
-func (c *remoteAdminCommands) ListAdminGroups(ctx context.Context, input grouplist.Input) (grouplist.Output, error) {
-	if input.Catalog {
+func (c *remoteAdminCommands) ListAdminGroups(ctx context.Context, input grouplist.Input) (result grouplist.Output, resultErr error) {
+	if err := grouplist.ValidateInput(input); err != nil {
+		return grouplist.Output{}, err
+	}
+	if input.Cursor != "" {
+		_, environment, err := c.runtime.environment(input.Environment, false)
+		if err != nil {
+			return grouplist.Output{}, err
+		}
+		input.Environment, input.Site = environment.Alias, environment.SiteContentURL
+		if err := grouplist.ValidateContinuation(input); err != nil {
+			return grouplist.Output{}, err
+		}
+	}
+	defer func() {
+		if resultErr == nil {
+			resultErr = validateInventoryAll(input.All, result.Source)
+		}
+	}()
+	if input.Catalog || legacyInventorySnapshot(input.Cursor) {
 		environment, site, err := c.resolveCatalogTarget(input.Environment)
 		if err != nil {
 			return grouplist.Output{}, err
 		}
 		input.Environment, input.Site = environment, site
-		reader := &catalogGroupListReader{store: c.catalogStore(), environment: environment, site: site}
+		reader := &catalogGroupListReader{store: c.catalogStore(input.Environment), environment: environment, site: site}
 		output, err := grouplist.New(reader).Execute(ctx, input)
 		if err == nil {
 			output.Source = reader.source
 		}
 		return output, err
 	}
-	if input.Cursor != "" && adminGroupListIsUnfiltered(input) {
-		environment, site, err := c.resolveCatalogTarget(input.Environment)
-		if err != nil {
-			return grouplist.Output{}, err
-		}
-		input.Environment, input.Site = environment, site
-		reader := &catalogGroupListReader{store: c.catalogStore(), environment: environment, site: site}
-		output, err := grouplist.New(reader).Execute(ctx, input)
-		if err == nil {
-			output.Source = reader.source
-		}
-		return output, err
+	filter, err := tableauadmin.GroupListFilter(tableauadmin.ListGroupsRequest{Name: input.Name, Domain: input.Domain})
+	if err != nil {
+		return grouplist.Output{}, err
 	}
 	connection, err := c.connect(ctx, input.Environment, false)
 	if err != nil {
 		return grouplist.Output{}, remoteSetupError("admin.group.list", input.Environment, input.Site, connection.environment, err)
 	}
 	input.Environment, input.Site = connection.environment.Alias, connection.environment.SiteContentURL
-	if adminGroupListIsUnfiltered(input) {
+
+	if input.All {
 		observedAt := c.runtime.now().UTC()
-		inventory, err := collectResourceInventory(ctx, connection.inventory, c.catalogStore(), tableaucatalog.ScopeGroups, input.Environment, input.Site, observedAt)
+		inventory, err := collectResourceInventory(ctx, connection.inventory, c.catalogStore(input.Environment), tableaucatalog.ScopeGroups, input.Environment, input.Site, observedAt, inventoryCollectionOptions{MaxConcurrency: connection.environment.CatalogMaxConcurrency, Filter: filter})
 		if err != nil {
-			return grouplist.Output{}, inventoryRefreshError("admin.group.list", input.Environment, input.Site, err)
+			return grouplist.Output{}, inventoryRefreshError("group.list", input.Environment, input.Site, err)
 		}
-		if inventory.catalogErr != nil {
-			reader := inventory.memoryReader()
-			output, err := grouplist.New(reader).Execute(ctx, input)
-			if err != nil {
-				return output, adminActionError("admin.group.list", input.Environment, input.Site, err)
-			}
-			output.Source = inventory.warningSource(observedAt)
-			output.Help = append(output.Help, inventory.warningHelp())
-			return output, nil
-		}
-		reader := &catalogGroupListReader{store: c.catalogStore(), environment: input.Environment, site: input.Site}
+		reader := inventory.memoryReader()
+		reader.allowContinuation = true
 		output, err := grouplist.New(reader).Execute(ctx, input)
 		if err != nil {
-			return output, adminActionError("admin.group.list", input.Environment, input.Site, err)
+			return output, err
 		}
-		output.Source = liveInventorySource(observedAt, inventory.published.GenerationID)
+		if inventory.catalogErr != nil {
+			output.Source = inventory.warningSource(observedAt)
+			output.Help = append(output.Help, inventory.warningHelp())
+		} else if inventory.filtered {
+			output.Source = liveSource(c.runtime.now)
+		} else {
+			output.Source = liveInventorySource(observedAt, inventory.published.GenerationID)
+		}
 		output.RequestID = finalRequestID(inventory.requestIDs)
-		output.Help = append(output.Help, inventoryRefreshHelp)
 		return output, nil
 	}
 	output, err := grouplist.New(adminGroupListReader{connection.adapter}).Execute(ctx, input)
 	if err != nil {
-		return output, adminActionError("admin.group.list", input.Environment, input.Site, err)
+		return output, err
 	}
-	observedAt := c.runtime.now().UTC()
 	output.Source = liveSource(c.runtime.now)
-	entries := make([]catalog.ResourceEntry, 0, len(output.Groups))
-	for _, item := range output.Groups {
-		entry, encodeErr := resourceEntry(input.Environment, input.Site, "group", item.LUID, item.Name, "", "", "summary", observedAt, item)
-		if encodeErr == nil {
-			entries = append(entries, entry)
-		}
-	}
-	writeThrough(c.catalogStore(), entries)
 	return output, nil
 }
 
@@ -286,13 +295,16 @@ func adminGroupListIsUnfiltered(input grouplist.Input) bool {
 }
 
 func (c *remoteAdminCommands) InspectAdminGroup(ctx context.Context, input groupinspect.Input) (groupinspect.Output, error) {
+	if err := groupinspect.ValidateInput(input); err != nil {
+		return groupinspect.Output{}, err
+	}
 	if input.Catalog {
 		environment, site, err := c.resolveCatalogTarget(input.Environment)
 		if err != nil {
 			return groupinspect.Output{}, err
 		}
 		input.Environment, input.Site = environment, site
-		resolver := &catalogGroupGetResolver{store: c.catalogStore(), environment: environment, site: site}
+		resolver := &catalogGroupGetResolver{store: c.catalogStore(input.Environment), environment: environment, site: site}
 		output, err := groupinspect.New(resolver).Execute(ctx, input)
 		if err == nil {
 			output.Source = resolver.source
@@ -312,12 +324,15 @@ func (c *remoteAdminCommands) InspectAdminGroup(ctx context.Context, input group
 	output.Source = liveSource(c.runtime.now)
 	entry, encodeErr := resourceEntry(input.Environment, input.Site, "group", output.Group.LUID, output.Group.Name, "", "", "detail", observedAt, output.Group)
 	if encodeErr == nil {
-		writeThrough(c.catalogStore(), []catalog.ResourceEntry{entry})
+		writeThrough(c.catalogStore(input.Environment), []catalog.ResourceEntry{entry})
 	}
 	return output, nil
 }
 
 func (c *remoteAdminCommands) CreateAdminGroup(ctx context.Context, input groupcreate.Input, preview bool) (groupcreate.Output, error) {
+	if err := groupcreate.ValidateInput(input); err != nil {
+		return groupcreate.Output{}, err
+	}
 	connection, err := c.connect(ctx, input.Environment, true)
 	if err != nil {
 		return groupcreate.Output{}, remoteSetupError("admin.group.create", input.Environment, input.Site, connection.environment, err)
@@ -330,6 +345,9 @@ func (c *remoteAdminCommands) CreateAdminGroup(ctx context.Context, input groupc
 }
 
 func (c *remoteAdminCommands) UpdateAdminGroup(ctx context.Context, input groupupdate.Input, preview bool) (groupupdate.Output, error) {
+	if err := groupupdate.ValidateInput(input); err != nil {
+		return groupupdate.Output{}, err
+	}
 	connection, err := c.connect(ctx, input.Environment, true)
 	if err != nil {
 		return groupupdate.Output{}, remoteSetupError("admin.group.update", input.Environment, input.Site, connection.environment, err)
@@ -342,6 +360,9 @@ func (c *remoteAdminCommands) UpdateAdminGroup(ctx context.Context, input groupu
 }
 
 func (c *remoteAdminCommands) DeleteAdminGroup(ctx context.Context, input groupdelete.Input, preview bool) (groupdelete.Output, error) {
+	if err := groupdelete.ValidateInput(input); err != nil {
+		return groupdelete.Output{}, err
+	}
 	connection, err := c.connect(ctx, input.Environment, true)
 	if err != nil {
 		return groupdelete.Output{}, remoteSetupError("admin.group.delete", input.Environment, input.Site, connection.environment, err)
@@ -354,6 +375,9 @@ func (c *remoteAdminCommands) DeleteAdminGroup(ctx context.Context, input groupd
 }
 
 func (c *remoteAdminCommands) AddAdminGroupMember(ctx context.Context, input groupmemberadd.Input, preview bool) (groupmemberadd.Output, error) {
+	if err := groupmemberadd.ValidateInput(input); err != nil {
+		return groupmemberadd.Output{}, err
+	}
 	connection, err := c.connect(ctx, input.Environment, true)
 	if err != nil {
 		return groupmemberadd.Output{}, remoteSetupError("admin.group.member.add", input.Environment, input.Site, connection.environment, err)
@@ -365,6 +389,9 @@ func (c *remoteAdminCommands) AddAdminGroupMember(ctx context.Context, input gro
 }
 
 func (c *remoteAdminCommands) RemoveAdminGroupMember(ctx context.Context, input groupmemberremove.Input, preview bool) (groupmemberremove.Output, error) {
+	if err := groupmemberremove.ValidateInput(input); err != nil {
+		return groupmemberremove.Output{}, err
+	}
 	connection, err := c.connect(ctx, input.Environment, true)
 	if err != nil {
 		return groupmemberremove.Output{}, remoteSetupError("admin.group.member.remove", input.Environment, input.Site, connection.environment, err)
@@ -376,6 +403,9 @@ func (c *remoteAdminCommands) RemoveAdminGroupMember(ctx context.Context, input 
 }
 
 func (c *remoteAdminCommands) InspectAdminPermission(ctx context.Context, input permissioninspect.Input) (permissioninspect.Output, error) {
+	if err := permissioninspect.ValidateInput(input); err != nil {
+		return permissioninspect.Output{}, err
+	}
 	connection, err := c.connect(ctx, input.Environment, false)
 	if err != nil {
 		return permissioninspect.Output{}, remoteSetupError("admin.permission.inspect", input.Environment, input.Site, connection.environment, err)

@@ -77,8 +77,8 @@ func (a *Action) Execute(ctx context.Context, in Input) (Output, error) {
 	if a == nil || a.reader == nil {
 		return Output{}, errors.New("admin permission reader is not configured")
 	}
-	if in.ResourceKind == "" || in.ResourceLUID == "" {
-		return Output{}, errors.New("admin permission inspect requires resource kind and LUID")
+	if err := ValidateInput(in); err != nil {
+		return Output{}, err
 	}
 	p, err := a.reader.GetPermissions(ctx, in)
 	if err != nil {
@@ -112,5 +112,5 @@ func (a *Action) Execute(ctx context.Context, in Input) (Output, error) {
 		}
 		return a.Mode < b.Mode
 	})
-	return Output{Status: "found", Environment: in.Environment, Site: in.Site, Permissions: p, RequestID: p.RequestID, Help: []string{"tadx capability get admin.permission.inspect"}}, nil
+	return Output{Status: "found", Environment: in.Environment, Site: in.Site, Permissions: p, RequestID: p.RequestID, Help: []string{permissionHint(in)}}, nil
 }

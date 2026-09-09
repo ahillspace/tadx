@@ -1,6 +1,9 @@
 package pull
 
-import "github.com/ahillspace/tadx/internal/identity"
+import (
+	"github.com/ahillspace/tadx/internal/identity"
+	"github.com/ahillspace/tadx/internal/value"
+)
 
 const (
 	// FullNodeLimit bounds expanded command output.
@@ -11,16 +14,18 @@ const (
 
 // Input selects one authoritative resource and bounded lineage scope.
 type Input struct {
-	Environment  string
-	Site         string
-	ServerOrigin string
-	SiteLUID     string
-	Workspace    string
-	Kind         string
-	Selector     identity.Selector
-	Direction    string
-	Depth        int
-	Overwrite    bool
+	// WorkspaceName is the resolved logical workspace alias used in follow-up commands.
+	WorkspaceName string
+	Environment   string
+	Site          string
+	ServerOrigin  string
+	SiteLUID      string
+	Workspace     string
+	Kind          string
+	Selector      identity.Selector
+	Direction     string
+	Depth         int
+	Overwrite     bool
 }
 
 // SetSelector records one exact CLI selector without exposing identity plumbing to Cobra.
@@ -46,19 +51,10 @@ type CaptureRequest struct {
 }
 
 // Node preserves distinct Metadata and REST identities.
-type Node struct {
-	MetadataID string `json:"metadata_id"`
-	Kind       string `json:"kind"`
-	RESTLUID   string `json:"rest_luid,omitempty"`
-	Name       string `json:"name,omitempty"`
-}
+type Node = value.LineageNode
 
 // Edge is one factual directed relationship.
-type Edge struct {
-	FromMetadataID string `json:"from_metadata_id"`
-	ToMetadataID   string `json:"to_metadata_id"`
-	Relationship   string `json:"relationship"`
-}
+type Edge = value.LineageEdge
 
 // Graph is one bounded lineage capture.
 type Graph struct {
@@ -186,6 +182,12 @@ func (o Output) CompactOutput() any {
 
 // FullOutput returns provenance, identity mapping, and a bounded graph page.
 func (o Output) FullOutput() any {
+	o.Resource.Kind = publicKind(o.Resource.Kind)
+	nodes := append([]Node(nil), o.Nodes...)
+	for i := range nodes {
+		nodes[i].Kind = publicKind(nodes[i].Kind)
+	}
+	o.Nodes = nodes
 	nodeLimit := len(o.Nodes)
 	if nodeLimit > FullNodeLimit {
 		nodeLimit = FullNodeLimit
@@ -214,6 +216,14 @@ func (o Output) counts() (*int, *int) {
 }
 
 func compactResource(resource Resource) Resource {
+	resource.Kind = publicKind(resource.Kind)
 	resource.MetadataID = ""
 	return resource
+}
+
+func publicKind(kind string) string {
+	if kind == "published_datasource" {
+		return "datasource"
+	}
+	return kind
 }

@@ -4,4 +4,4 @@ environment:
   server_url: "https://example.test"
   site_content_url: marketing
 details: "--full"
-help[1]: tadx auth status --environment <alias>
+help[1]: tadx auth status --environment production

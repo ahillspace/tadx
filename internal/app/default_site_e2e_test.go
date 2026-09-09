@@ -13,12 +13,12 @@ import (
 )
 
 func TestDefaultSiteLifecyclePreviewThroughCLI(t *testing.T) {
-	server, _ := newGroupOneTableauServer(t)
+	server, mutations := newGroupOneTableauServer(t)
 	defer server.Close()
 	configPath := writePhaseOneConfigWithSite(t, server.URL, "")
 	t.Setenv("PROD_PAT_NAME", "pat-name")
 	t.Setenv("PROD_PAT_SECRET", "pat-secret")
-	options := app.Options{ConfigPath: configPath, HTTPClient: server.Client(), MutationsEnabled: true}
+	options := app.Options{ConfigPath: configPath, HTTPClient: server.Client(), MutationsEnabled: false}
 	for _, args := range [][]string{
 		{"content", "project", "create", "--name", "New"},
 		{"content", "project", "update", "--project-id", "project-ops", "--name", "Renamed"},
@@ -29,7 +29,10 @@ func TestDefaultSiteLifecyclePreviewThroughCLI(t *testing.T) {
 		{"content", "flow", "delete", "--id", "flow-1"},
 	} {
 		t.Run(args[1]+"/"+args[2], func(t *testing.T) {
-			runGroupOneCLI(t, options, append(args, "--environment", "production", "--preview")...)
+			runGroupOneCLI(t, options, append(args, "--environment", "production", "--preview=true")...)
+			if mutations.Load() != 0 {
+				t.Fatal("preview performed a consequential mutation")
+			}
 		})
 	}
 }
@@ -65,12 +68,13 @@ func TestDefaultSiteAdminCreateThroughCLI(t *testing.T) {
 	configPath := writePhaseOneConfigWithSite(t, server.URL, "")
 	t.Setenv("PROD_PAT_NAME", "pat-name")
 	t.Setenv("PROD_PAT_SECRET", "pat-secret")
-	options := app.Options{ConfigPath: configPath, HTTPClient: server.Client(), MutationsEnabled: true}
+	options := app.Options{ConfigPath: configPath, HTTPClient: server.Client(), MutationsEnabled: false}
 	args := []string{"admin", "group", "create", "--environment", "production", "--name", "New Group"}
 	runGroupOneCLI(t, options, append(args, "--preview")...)
 	if creates.Load() != 0 {
 		t.Fatal("preview created a group")
 	}
+	options.MutationsEnabled = true
 	output := runGroupOneCLI(t, options, args...)
 	if creates.Load() != 1 || !strings.Contains(output, "group-new") {
 		t.Fatalf("creates=%d output=%s", creates.Load(), output)

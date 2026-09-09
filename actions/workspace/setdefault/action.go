@@ -4,6 +4,7 @@ package setdefault
 import (
 	"context"
 	"errors"
+	"github.com/ahillspace/tadx/internal/commandhint"
 
 	"github.com/ahillspace/tadx/internal/errs"
 )
@@ -53,7 +54,7 @@ func (a *Action) Execute(ctx context.Context, input Input) (Output, error) {
 	if item.Name == "" || item.ID == "" || item.Root == "" {
 		return Output{}, runtimeError("workspace default selection returned an incomplete identity")
 	}
-	return Output{Status: "default-set", Workspace: item, Help: []string{"tadx workspace status --workspace " + item.Name}}, nil
+	return Output{Status: "default-set", Workspace: item, Help: []string{commandhint.Command("workspace", "status", "--workspace", item.Name)}}, nil
 }
 
 func usage(message string) error {

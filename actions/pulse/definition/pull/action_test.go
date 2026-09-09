@@ -16,8 +16,8 @@ import (
 func TestOutputGolden(t *testing.T) {
 	output := definitionpull.Output{
 		Status: "pulled", Definition: definitionpull.Definition{LUID: "definition-1", Name: "Revenue", DatasourceLUID: "datasource-1"},
-		Artifact:  definitionpull.ArtifactResult{Path: "artifacts/pulse-definition/Revenue--identity", CanonicalPath: "artifacts/pulse-definition/Revenue--identity/resource.json", BaselineFingerprint: "sha256:value"},
-		RequestID: "request-1", Help: []string{"Inspect artifacts/pulse-definition/Revenue--identity/resource.json."},
+		Artifact:    definitionpull.ArtifactResult{Path: "artifacts/pulse-definition/Revenue--identity", CanonicalPath: "artifacts/pulse-definition/Revenue--identity/resource.json", BaselineFingerprint: "sha256:value"},
+		MetricCount: 2, RequestID: "request-1", Help: []string{"Inspect artifacts/pulse-definition/Revenue--identity/resource.json."},
 	}
 	assertGolden(t, "compact.toon", output, false)
 	assertGolden(t, "full.toon", output, true)
@@ -59,7 +59,7 @@ func (w *writer) WriteDefinition(_ context.Context, input definitionpull.Artifac
 }
 
 func TestPullWritesCanonicalDefinitionArtifact(t *testing.T) {
-	definition := definitionpull.Definition{LUID: "definition-1", Name: "Revenue", DatasourceLUID: "datasource-1", Configuration: []byte(`{"name":"Revenue"}`), RequestID: "request-1"}
+	definition := definitionpull.Definition{LUID: "definition-1", Name: "Revenue", DatasourceLUID: "datasource-1", Configuration: []byte(`{"name":"Revenue"}`), RequestID: "request-1", MetricsComplete: true, Metrics: []definitionpull.Metric{{LUID: "metric-1"}}}
 	w := &writer{}
 	output, err := definitionpull.New(reader{definition: definition}, w).Execute(context.Background(), definitionpull.Input{
 		Environment: "dev", Site: "sales", ServerOrigin: "https://example.test", SiteLUID: "site-1", Workspace: "workspace", LUID: "definition-1",
@@ -74,7 +74,7 @@ func TestPullWritesCanonicalDefinitionArtifact(t *testing.T) {
 
 func TestPullRejectsAbsoluteWriterPath(t *testing.T) {
 	w := &writer{result: definitionpull.ArtifactResult{Path: `C:\outside`}}
-	definition := definitionpull.Definition{LUID: "definition-1", Name: "Revenue", DatasourceLUID: "datasource-1", Configuration: []byte(`{"metadata":{"id":"definition-1"}}`)}
+	definition := definitionpull.Definition{LUID: "definition-1", Name: "Revenue", DatasourceLUID: "datasource-1", Configuration: []byte(`{"metadata":{"id":"definition-1"}}`), MetricsComplete: true, Metrics: []definitionpull.Metric{{LUID: "metric-1"}}}
 	_, err := definitionpull.New(reader{definition: definition}, w).Execute(context.Background(), definitionpull.Input{Workspace: "workspace", LUID: "definition-1"})
 	var structured *errs.Error
 	if !errors.As(err, &structured) || structured.Kind != errs.KindOperation || structured.ID != "pulse.definition.pull.normalize" {

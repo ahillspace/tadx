@@ -73,13 +73,27 @@ type FullResult struct {
 	Help       []string   `json:"help"`
 }
 
+// UninitializedResult describes a selected catalog without inventing a generation.
+type UninitializedResult struct {
+	Status      string   `json:"status"`
+	Environment string   `json:"environment"`
+	Site        string   `json:"site"`
+	Help        []string `json:"help"`
+}
+
 // CompactOutput returns freshness and completeness fields.
 func (o Output) CompactOutput() any {
 	g := o.Generation
+	if o.Status == "uninitialized" {
+		return UninitializedResult{Status: o.Status, Environment: g.Environment, Site: g.Site, Help: o.Help}
+	}
 	return CompactResult{Status: o.Status, Generation: CompactGeneration{ID: g.ID, Environment: g.Environment, Site: g.Site, GeneratedAt: g.GeneratedAt, Records: g.Records, Complete: g.Complete, Stale: g.Stale}, Warnings: o.Warnings, Details: "--full", Help: o.Help}
 }
 
 // FullOutput returns bounded generation source details.
 func (o Output) FullOutput() any {
+	if o.Status == "uninitialized" {
+		return o.CompactOutput()
+	}
 	return FullResult{Status: o.Status, Generation: o.Generation, Path: o.Path, Warnings: o.Warnings, Help: o.Help}
 }

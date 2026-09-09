@@ -17,12 +17,14 @@ const maxPages = 100
 
 type Item struct{ LUID, Type, Name, ProjectPath, Owner, ModifiedAt string }
 type Page struct {
-	Total            int
-	Items            []Item
-	NextCursor       string
-	Warnings         []string
-	TableauRequestID string
-	Source           string
+	UnresolvedMoreAvailable bool
+	Total                   int
+	Items                   []Item
+	NextCursor              string
+	Warnings                []string
+	TableauRequestID        string
+	Source                  string
+	MoreAvailable           bool
 }
 type Input struct {
 	Types                             []string
@@ -150,7 +152,7 @@ func (a *Adapter) SearchBounded(ctx context.Context, input Input, budget int) (P
 	}
 	if state.TypeIndex < len(input.Types) {
 		result.NextCursor = encode(state)
-		result.Warnings = append(result.Warnings, "Search reached its bounded scan limit; continue with the returned cursor to inspect remaining resources.")
+		result.Warnings = append(result.Warnings, "Search reached its bounded scan limit; narrow the search or increase --limit to inspect more matching resources.")
 	}
 	return result, nil
 }

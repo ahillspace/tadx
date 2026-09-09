@@ -54,15 +54,15 @@ func TestDatasourcePullParsesLogicalWorkspaceAndExactSelector(t *testing.T) {
 	}
 }
 
-func TestDatasourcePublishDefaultsToRecordedSourceWithExplicitMode(t *testing.T) {
+func TestDatasourcePublishKeepsSourceIndependentOfDestination(t *testing.T) {
 	actions := &datasourceLifecycleCommands{}
 	renderer := &datasourceLifecycleRenderer{}
 	command := datasourceLifecycleRoot(actions, renderer, true)
-	command.SetArgs([]string{"publish", "--workspace", "analytics", "--artifact", "artifacts/datasource/Sales", "--overwrite"})
+	command.SetArgs([]string{"publish", "--workspace", "analytics", "--artifact", "artifacts/datasource/Sales", "--project-id", "project-1", "--overwrite"})
 	if err := command.ExecuteContext(context.Background()); err != nil {
 		t.Fatal(err)
 	}
-	if !actions.publishInput.SourceDefaulted || actions.publishInput.Mode != datasourcepublish.ModeOverwrite || actions.publishInput.Workspace != "analytics" || actions.publishInput.ArtifactPath != "artifacts/datasource/Sales" || actions.publishPreview || renderer.calls != 1 {
+	if actions.publishInput.SourceDefaulted || actions.publishInput.Mode != datasourcepublish.ModeOverwrite || actions.publishInput.Workspace != "analytics" || actions.publishInput.ArtifactPath != "artifacts/datasource/Sales" || actions.publishPreview || renderer.calls != 1 {
 		t.Fatalf("input = %#v, preview = %t, renders = %d", actions.publishInput, actions.publishPreview, renderer.calls)
 	}
 }
@@ -87,7 +87,7 @@ func TestDatasourcePublishMapsEveryExplicitModeWithoutInference(t *testing.T) {
 	for _, test := range tests {
 		actions := &datasourceLifecycleCommands{}
 		command := datasourceLifecycleRoot(actions, &datasourceLifecycleRenderer{}, true)
-		command.SetArgs([]string{"publish", "--artifact", "artifacts/datasource/Sales", test.flag})
+		command.SetArgs([]string{"publish", "--artifact", "artifacts/datasource/Sales", "--project-id", "project-1", test.flag})
 		if err := command.ExecuteContext(context.Background()); err != nil {
 			t.Fatalf("%s: %v", test.flag, err)
 		}
@@ -102,7 +102,7 @@ func TestDatasourcePublishRejectsUnsafeTargetAndModeCombinations(t *testing.T) {
 		{"publish", "--artifact", "artifacts/datasource/Sales"},
 		{"publish", "--artifact", "artifacts/datasource/Sales", "--create", "--overwrite"},
 		{"publish", "--artifact", "artifacts/datasource/Sales", "--environment", "prod", "--create"},
-		{"publish", "--artifact", "artifacts/datasource/Sales", "--project", "Analytics", "--create"},
+		{"publish", "--artifact", "artifacts/datasource/Sales", "--project", "Analytics", "--project-id", "project-1", "--create"},
 		{"publish", "--artifact", `C:\workspace\artifacts\datasource\Sales`, "--create"},
 	}
 	for _, args := range tests {

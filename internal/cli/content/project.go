@@ -74,7 +74,7 @@ func newProjectCreate(deps Dependencies) *cobra.Command {
 		RunE: func(command *cobra.Command, _ []string) error {
 			result, err := deps.ProjectCreator.CreateProject(command.Context(), input, preview)
 			if err != nil {
-				return err
+				return clierr.WithOutput(result, err)
 			}
 			return deps.Renderer.Render(result)
 		},
@@ -101,13 +101,13 @@ func newProjectUpdate(deps Dependencies) *cobra.Command {
 				return err
 			}
 			if input.Environment == "" || (projectLUID == "") == (projectPath == "") {
-				return clierr.Usage("project.update", errors.New("--environment and exactly one of --project-id or --project are required"))
+				return clierr.Usage("project.update", errors.New("--environment and exactly one of --id or --project are required"))
 			}
-			if !command.Flags().Changed("name") && !command.Flags().Changed("description") && !command.Flags().Changed("content-permissions") {
+			if !(command.Flags().Changed("name") || command.Flags().Changed("new-name")) && !command.Flags().Changed("description") && !command.Flags().Changed("content-permissions") {
 				return clierr.Usage("project.update", errors.New("at least one metadata change is required"))
 			}
 			input.SetSelector(projectLUID, projectPath)
-			if command.Flags().Changed("name") {
+			if command.Flags().Changed("name") || command.Flags().Changed("new-name") {
 				input.Name = &name
 			}
 			if command.Flags().Changed("description") {
@@ -121,15 +121,19 @@ func newProjectUpdate(deps Dependencies) *cobra.Command {
 		RunE: func(command *cobra.Command, _ []string) error {
 			result, err := deps.ProjectUpdater.UpdateProject(command.Context(), input, preview)
 			if err != nil {
-				return err
+				return clierr.WithOutput(result, err)
 			}
 			return deps.Renderer.Render(result)
 		},
 	}
 	command.Flags().StringVar(&input.Environment, "environment", "", "explicit write environment alias")
-	command.Flags().StringVar(&projectLUID, "project-id", "", "authoritative project LUID")
+	command.Flags().StringVar(&projectLUID, "id", "", "authoritative project LUID")
+	command.Flags().StringVar(&projectLUID, "project-id", "", "legacy alias for --id")
+	command.MarkFlagsMutuallyExclusive("id", "project-id")
 	command.Flags().StringVar(&projectPath, "project", "", "exact slash-delimited project path")
-	command.Flags().StringVar(&name, "name", "", "replacement project name")
+	command.Flags().StringVar(&name, "new-name", "", "replacement project name")
+	command.Flags().StringVar(&name, "name", "", "legacy alias for --new-name")
+	command.MarkFlagsMutuallyExclusive("new-name", "name")
 	command.Flags().StringVar(&description, "description", "", "replacement project description")
 	command.Flags().StringVar(&contentPermissions, "content-permissions", "", "replacement Tableau content permission mode")
 	command.Flags().BoolVar(&preview, "preview", false, "preview the remote mutation without performing it")
@@ -147,20 +151,22 @@ func newProjectDelete(deps Dependencies) *cobra.Command {
 				return err
 			}
 			if input.Environment == "" || input.ProjectLUID == "" {
-				return clierr.Usage("project.delete", errors.New("--environment and --project-id are required"))
+				return clierr.Usage("project.delete", errors.New("--environment and --id are required"))
 			}
 			return nil
 		},
 		RunE: func(command *cobra.Command, _ []string) error {
 			result, err := deps.ProjectDeleter.DeleteProject(command.Context(), input, preview)
 			if err != nil {
-				return err
+				return clierr.WithOutput(result, err)
 			}
 			return deps.Renderer.Render(result)
 		},
 	}
 	command.Flags().StringVar(&input.Environment, "environment", "", "explicit write environment alias")
-	command.Flags().StringVar(&input.ProjectLUID, "project-id", "", "authoritative project LUID")
+	command.Flags().StringVar(&input.ProjectLUID, "id", "", "authoritative project LUID")
+	command.Flags().StringVar(&input.ProjectLUID, "project-id", "", "legacy alias for --id")
+	command.MarkFlagsMutuallyExclusive("id", "project-id")
 	command.Flags().BoolVar(&preview, "preview", false, "preview the remote mutation without performing it")
 	return command
 }
@@ -169,14 +175,14 @@ func newProjectList(deps Dependencies) *cobra.Command {
 	var input projectlist.Input
 	var topLevel bool
 	command := &cobra.Command{
-		Use: "list", Short: "List projects and refresh their catalog snapshot.", Annotations: map[string]string{"tadx.capability": "project.list"}, Args: noContentArgs("project.list"),
+		Use: "list", Short: "List projects with bounded live reads or explicit --all.", Annotations: map[string]string{"tadx.capability": "project.list"}, Args: noContentArgs("project.list"),
 		RunE: func(command *cobra.Command, _ []string) error {
 			if command.Flags().Changed("top-level") {
 				input.TopLevel = &topLevel
 			}
 			result, err := deps.ProjectLister.ListProjects(command.Context(), input)
 			if err != nil {
-				return err
+				return clierr.WithOutput(result, err)
 			}
 			return deps.Renderer.Render(result)
 		},
@@ -186,8 +192,11 @@ func newProjectList(deps Dependencies) *cobra.Command {
 	command.Flags().StringVar(&input.ParentLUID, "parent-id", "", "authoritative direct parent project LUID filter")
 	command.Flags().StringVar(&input.OwnerName, "owner", "", "exact owner-name filter")
 	command.Flags().BoolVar(&topLevel, "top-level", false, "filter by top-level project status")
-	command.Flags().IntVar(&input.Limit, "limit", 0, "maximum projects to render")
+	command.Flags().BoolVar(&input.All, "all", false, "return all matching records, up to 10000; cannot combine with --limit")
+	command.Flags().IntVar(&input.Limit, "limit", 0, "maximum projects to render, from 1 to 10000 (default 25)")
 	command.Flags().StringVar(&input.Cursor, "cursor", "", "opaque continuation cursor")
+	command.MarkFlagsMutuallyExclusive("all", "limit")
+	command.MarkFlagsMutuallyExclusive("all", "cursor")
 	command.Flags().BoolVar(&input.Catalog, "catalog", false, "read indexed local catalog data without contacting Tableau")
 	return command
 }
@@ -202,7 +211,7 @@ func newProjectInspect(deps Dependencies) *cobra.Command {
 				return err
 			}
 			if (projectLUID == "") == (projectPath == "") {
-				return clierr.Usage("project.inspect", errors.New("use exactly one of --project-id or --project"))
+				return clierr.Usage("project.inspect", errors.New("use exactly one of --id or --project"))
 			}
 			input.SetSelector(projectLUID, projectPath)
 			return nil
@@ -210,13 +219,15 @@ func newProjectInspect(deps Dependencies) *cobra.Command {
 		RunE: func(command *cobra.Command, _ []string) error {
 			result, err := deps.ProjectInspector.InspectProject(command.Context(), input)
 			if err != nil {
-				return err
+				return clierr.WithOutput(result, err)
 			}
 			return deps.Renderer.Render(result)
 		},
 	}
 	command.Flags().StringVar(&input.Environment, "environment", "", "exact environment alias; defaults to the configured read environment")
-	command.Flags().StringVar(&projectLUID, "project-id", "", "authoritative project LUID")
+	command.Flags().StringVar(&projectLUID, "id", "", "authoritative project LUID")
+	command.Flags().StringVar(&projectLUID, "project-id", "", "legacy alias for --id")
+	command.MarkFlagsMutuallyExclusive("id", "project-id")
 	command.Flags().StringVar(&projectPath, "project", "", "exact slash-delimited project path")
 	command.Flags().BoolVar(&input.Catalog, "catalog", false, "read indexed local catalog data without contacting Tableau")
 	return command

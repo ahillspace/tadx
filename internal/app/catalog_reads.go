@@ -17,13 +17,20 @@ import (
 	workbookinspect "github.com/ahillspace/tadx/actions/workbook/inspect"
 	workbooklist "github.com/ahillspace/tadx/actions/workbook/list"
 	"github.com/ahillspace/tadx/internal/catalog"
+	"github.com/ahillspace/tadx/internal/commandhint"
+	"github.com/ahillspace/tadx/internal/config"
 	"github.com/ahillspace/tadx/internal/errs"
 	"github.com/ahillspace/tadx/internal/identity"
 	"github.com/ahillspace/tadx/internal/readsource"
 )
 
-func (c *remoteContentCommands) catalogStore() *catalog.Store {
-	return catalog.NewStore(filepath.Dir(c.runtime.configPath), c.runtime.now)
+func (r *runtimeDependencies) catalogStore(environment config.Environment) *catalog.Store {
+	return catalog.NewTargetStore(filepath.Dir(r.configPath), environment.URL, environment.SiteContentURL, r.now)
+}
+
+func (c *remoteContentCommands) catalogStore(alias string) *catalog.Store {
+	_, environment, _ := c.runtime.environment(alias, false)
+	return c.runtime.catalogStore(environment)
 }
 
 func (c *remoteContentCommands) resolveCatalogTarget(alias string) (string, string, error) {
@@ -65,7 +72,23 @@ func catalogReadError(operation, environment, site string, err error) error {
 	var missing interface{ CatalogResourceNotFound() bool }
 	var ambiguous interface{ AmbiguousCatalogSelector() bool }
 	var invalidCursor interface{ InvalidCatalogCursor() bool }
+	var refreshRequired interface{ CatalogProjectRefreshRequired() bool }
+	var schemaRefreshRequired interface{ CatalogSchemaRefreshRequired() bool }
+	if errors.As(err, &refreshRequired) && refreshRequired.CatalogProjectRefreshRequired() {
+		return &errs.Error{ID: "catalog.project_filter_unavailable", Kind: errs.KindOperation, Operation: operation, Environment: environment, Site: site, Summary: "The catalog lacks complete project identity coverage for this filter.", Cause: err, Retryable: errs.Bool(false), CorrectiveAction: "Run " + commandhint.Command("catalog", "refresh", "--environment", environment, "--scope", "projects,datasources") + ", then repeat the same --catalog command."}
+	}
+	correctiveAction := catalogReadRecovery(operation, environment)
 	switch {
+	case errors.As(err, &schemaRefreshRequired) && schemaRefreshRequired.CatalogSchemaRefreshRequired():
+		id, summary = "catalog.schema_refresh_required", "The catalog schema requires an explicit refresh before cached reads can continue."
+		refresh := catalogScopeRefreshCommand(operation, environment)
+		if refresh == "" {
+			refresh = commandhint.Environment(environment, "catalog", "refresh")
+		}
+		correctiveAction = "Run " + refresh + " to rebuild the catalog. Include any other inventory scopes you still need because rebuilding replaces the old cached data. Then repeat the --catalog command."
+		if operation == "datasource.schema" || strings.HasPrefix(operation, "pulse.") {
+			correctiveAction = "Run " + refresh + " to rebuild the catalog. Include any other inventory scopes you still need because rebuilding replaces the old cached data. Then run this command without --catalog to retrieve and cache its projection before retrying the cached read."
+		}
 	case errors.As(err, &uninitialized) && uninitialized.CatalogUninitialized():
 		id, summary = "catalog.uninitialized", "The catalog is not initialized for this environment and site."
 	case errors.As(err, &unavailable) && unavailable.CatalogScopeUnavailable():
@@ -74,10 +97,36 @@ func catalogReadError(operation, environment, site string, err error) error {
 		id, summary, kind = "catalog.record_not_found", "No catalog record matched the selector.", errs.KindUsage
 	case errors.As(err, &ambiguous) && ambiguous.AmbiguousCatalogSelector():
 		id, summary, kind = "catalog.selector_ambiguous", "The catalog selector matched more than one record.", errs.KindUsage
+		correctiveAction = "Use an exact LUID or a selector that identifies one resource; refreshing the catalog does not resolve an ambiguous name or path."
 	case errors.As(err, &invalidCursor) && invalidCursor.InvalidCatalogCursor():
 		id, summary, kind = "catalog.cursor_invalid", "The catalog continuation cursor no longer identifies the current snapshot.", errs.KindUsage
+		correctiveAction = "Repeat the same --catalog command without the legacy cursor to read the current snapshot."
 	}
-	return &errs.Error{ID: id, Kind: kind, Operation: operation, Environment: environment, Site: site, Summary: summary, Cause: err, Retryable: errs.Bool(false), CorrectiveAction: "Run the command without --catalog to query Tableau and update the catalog."}
+	return &errs.Error{ID: id, Kind: kind, Operation: operation, Environment: environment, Site: site, Summary: summary, Cause: err, Retryable: errs.Bool(false), CorrectiveAction: correctiveAction}
+}
+
+func catalogReadRecovery(operation, environment string) string {
+	live := "Run this command without --catalog for a live answer."
+	if operation == "datasource.schema" {
+		return live + " The live schema read attempts to cache the requested field and table metadata; inventory refresh does not collect datasource schemas."
+	}
+	if strings.HasPrefix(operation, "pulse.") {
+		return live + " The live read attempts to cache the requested Pulse records; inventory refresh does not collect Pulse records."
+	}
+	if refresh := catalogScopeRefreshCommand(operation, environment); refresh != "" {
+		return live + " To refresh the cached inventory, run " + refresh + ". Then repeat the same --catalog command. Include other inventory scopes you still need because refresh replaces the current generation."
+	}
+	return live
+}
+
+func catalogScopeRefreshCommand(operation, environment string) string {
+	resource, _, _ := strings.Cut(strings.TrimPrefix(operation, "admin."), ".")
+	switch resource {
+	case "workbook", "datasource", "flow", "project", "user", "group":
+		return commandhint.Command("catalog", "refresh", "--environment", environment, "--scope", resource+"s")
+	default:
+		return ""
+	}
 }
 
 func unsupportedCatalogFilters(operation, environment, site string) error {
@@ -89,7 +138,16 @@ func resourceEntry(environment, site, kind, luid, name, projectPath, owner, cove
 	if err != nil {
 		return catalog.ResourceEntry{}, err
 	}
-	return catalog.ResourceEntry{Environment: environment, Site: site, Kind: kind, LUID: luid, Name: name, ProjectPath: projectPath, Owner: owner, Payload: encoded, Coverage: coverage, ObservedAt: observedAt}, nil
+	projectLUID := ""
+	switch item := payload.(type) {
+	case workbookinspect.Workbook:
+		projectLUID = item.ProjectLUID
+	case datasourceinspect.Datasource:
+		projectLUID = item.ProjectLUID
+	case flowinspect.Flow:
+		projectLUID = item.ProjectLUID
+	}
+	return catalog.ResourceEntry{ProjectLUID: projectLUID, Environment: environment, Site: site, Kind: kind, LUID: luid, Name: name, ProjectPath: projectPath, Owner: owner, Payload: encoded, Coverage: coverage, ObservedAt: observedAt}, nil
 }
 
 func writeThrough(store *catalog.Store, entries []catalog.ResourceEntry) {
@@ -155,10 +213,10 @@ type catalogDatasourceListReader struct {
 }
 
 func (r *catalogDatasourceListReader) ListDatasources(ctx context.Context, input datasourcelist.PageRequest) (datasourcelist.Page, error) {
-	if input.OwnerName != "" || input.ProjectName != "" || input.Type != "" || input.Tag != "" || input.UpdatedAfter != "" || input.UpdatedBefore != "" {
+	if input.OwnerName != "" || input.Type != "" || input.Tag != "" || input.UpdatedAfter != "" || input.UpdatedBefore != "" {
 		return datasourcelist.Page{}, unsupportedCatalogFilters("datasource.list", r.environment, r.site)
 	}
-	result, err := r.store.ReadResources(ctx, catalog.ResourceQuery{Environment: r.environment, Site: r.site, Kind: "datasource", Name: input.Name, Offset: snapshotOffset(input.PageNumber, input.PageSize, input.SnapshotCursor), Limit: input.PageSize, Cursor: input.SnapshotCursor})
+	result, err := r.store.ReadResources(ctx, catalog.ResourceQuery{Environment: r.environment, Site: r.site, Kind: "datasource", Name: input.Name, ProjectName: input.ProjectName, Offset: snapshotOffset(input.PageNumber, input.PageSize, input.SnapshotCursor), Limit: input.PageSize, Cursor: input.SnapshotCursor})
 	if err != nil {
 		return datasourcelist.Page{}, catalogReadError("datasource.list", r.environment, r.site, err)
 	}
@@ -169,6 +227,9 @@ func (r *catalogDatasourceListReader) ListDatasources(ctx context.Context, input
 			items[index] = datasourcelist.Datasource{LUID: entry.LUID, Name: entry.Name, OwnerLUID: entry.Owner}
 		}
 		items[index].ProjectPath = entry.ProjectPath
+		if input.ProjectName != "" {
+			items[index].ProjectName = input.ProjectName
+		}
 	}
 	return datasourcelist.Page{Number: input.PageNumber, Size: input.PageSize, Total: result.Total, Datasources: items, SnapshotCursor: result.NextCursor}, nil
 }
@@ -283,12 +344,7 @@ type catalogProjectGetResolver struct {
 
 func (r *catalogProjectGetResolver) ResolveProject(ctx context.Context, selector identity.Selector) (projectinspect.Project, error) {
 	path := selector.ProjectPath
-	name := ""
-	if path != "" {
-		parts := strings.Split(path, "/")
-		name = parts[len(parts)-1]
-	}
-	result, err := r.store.ReadResources(ctx, catalog.ResourceQuery{Environment: r.environment, Site: r.site, Kind: "project", LUID: string(selector.LUID), Name: name, ProjectPath: path, Limit: 2})
+	result, err := r.store.ReadResources(ctx, catalog.ResourceQuery{Environment: r.environment, Site: r.site, Kind: "project", LUID: string(selector.LUID), ProjectPath: path, Limit: 2, ExactlyOne: true})
 	if err != nil {
 		return projectinspect.Project{}, catalogReadError("project.inspect", r.environment, r.site, err)
 	}

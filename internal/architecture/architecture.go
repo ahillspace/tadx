@@ -4,6 +4,7 @@ package architecture
 import (
 	"bufio"
 	"fmt"
+	"go/build"
 	"go/parser"
 	"go/token"
 	"io/fs"
@@ -96,6 +97,20 @@ func fileImports(path string) ([]string, error) {
 }
 
 func forbiddenReason(file, imported, modulePath string) string {
+	if hasPathPrefix(file, "internal/pulsecontract") {
+		dependency, err := build.Default.Import(imported, "", build.FindOnly)
+		if err != nil || !dependency.Goroot {
+			return "Pulse contracts must depend only on the standard library"
+		}
+		return ""
+	}
+	if hasPathPrefix(file, "internal/value") || hasPathPrefix(file, "internal/commandhint") {
+		dependency, err := build.Default.Import(imported, "", build.FindOnly)
+		if err != nil || !dependency.Goroot {
+			return "shared value types must depend only on the standard library"
+		}
+		return ""
+	}
 	local, isLocal := localImportPath(imported, modulePath)
 	if isLocal {
 		if localImportAllowed(file, local) {
@@ -163,14 +178,22 @@ func localImportPath(imported, modulePath string) (string, bool) {
 func localImportAllowed(file, imported string) bool {
 	switch layerForFile(file) {
 	case layerAction:
+		// Pulse actions share raw-payload invariants through a standard-library
+		// leaf package; this does not authorize dependencies for other actions.
+		if hasPathPrefix(file, "actions/pulse") && imported == "internal/pulsecontract" {
+			return true
+		}
 		return matchesExact(imported,
 			"internal/capability",
+			"internal/commandhint",
 			"internal/config",
 			"internal/errs",
 			"internal/identity",
 			"internal/output",
+			"internal/paging",
 			"internal/pathspec",
 			"internal/readsource",
+			"internal/value",
 		)
 	case layerApp:
 		return matchesPrefix(imported, "actions", "internal/cli", "internal/resources", "internal/tableau") ||
@@ -179,22 +202,33 @@ func localImportAllowed(file, imported string) bool {
 				"internal/artifact",
 				"internal/auth",
 				"internal/capability",
+				"internal/commandhint",
 				"internal/catalog",
 				"internal/config",
 				"internal/errs",
 				"internal/identity",
+				"internal/lastcommand",
 				"internal/output",
+				"internal/paging",
 				"internal/readsource",
+				"internal/value",
 				"internal/version",
 				"internal/workspace",
 			)
 	case layerCLI:
-		return matchesPrefix(imported, "actions", "internal/cli") || matchesExact(imported, "internal/errs", "internal/pathspec", "internal/contentbatch")
+		return matchesPrefix(imported, "actions", "internal/cli") || matchesExact(imported, "internal/errs", "internal/pathspec", "internal/contentbatch", "internal/commandhint")
 	case layerResource:
-		return matchesExact(imported, "internal/identity") || matchesPrefix(imported, "internal/tableau")
+		return matchesExact(imported, "internal/identity", "internal/value") || matchesPrefix(imported, "internal/tableau")
 	case layerTableau:
-		return matchesExact(imported, "internal/auth", "internal/tableau", "internal/tableau/catalog/tabxml")
+		return matchesExact(imported, "internal/auth", "internal/tableau", "internal/tableau/catalog/tabxml", "internal/value")
 	case layerFoundation:
+		if hasPathPrefix(file, "internal/lastcommand") {
+			return matchesExact(imported, "internal/lock", "internal/value")
+		}
+		// Authentication holds the leaf advisory lock for a command's PAT session.
+		if hasPathPrefix(file, "internal/auth") {
+			return matchesExact(imported, "internal/lock")
+		}
 		// The batch runner invokes supplied operations and aggregates their
 		// structured outcomes without depending on actions or remote adapters.
 		if hasPathPrefix(file, "internal/contentbatch") {
@@ -356,8 +390,9 @@ func disallowedLocalImportReason(file, imported string) string {
 }
 
 func isFoundationPackage(file string) bool {
-	return hasPathPrefix(file, "internal/artifact") ||
+	return hasPathPrefix(file, "internal/lastcommand") || hasPathPrefix(file, "internal/artifact") ||
 		hasPathPrefix(file, "internal/contentbatch") ||
+		hasPathPrefix(file, "internal/commandhint") ||
 		hasPathPrefix(file, "internal/architecture") ||
 		hasPathPrefix(file, "internal/auth") ||
 		hasPathPrefix(file, "internal/config") ||
@@ -367,8 +402,11 @@ func isFoundationPackage(file string) bool {
 		hasPathPrefix(file, "internal/errs") ||
 		hasPathPrefix(file, "internal/lock") ||
 		hasPathPrefix(file, "internal/output") ||
+		hasPathPrefix(file, "internal/paging") ||
 		hasPathPrefix(file, "internal/pathspec") ||
+		hasPathPrefix(file, "internal/pulsecontract") ||
 		hasPathPrefix(file, "internal/readsource") ||
+		hasPathPrefix(file, "internal/value") ||
 		hasPathPrefix(file, "internal/version") ||
 		hasPathPrefix(file, "internal/workspace") ||
 		hasPathPrefix(file, "internal/toon")
