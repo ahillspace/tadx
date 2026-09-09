@@ -97,6 +97,13 @@ func fileImports(path string) ([]string, error) {
 }
 
 func forbiddenReason(file, imported, modulePath string) string {
+	if hasPathPrefix(file, "internal/pulsecontract") {
+		dependency, err := build.Default.Import(imported, "", build.FindOnly)
+		if err != nil || !dependency.Goroot {
+			return "Pulse contracts must depend only on the standard library"
+		}
+		return ""
+	}
 	if hasPathPrefix(file, "internal/value") || hasPathPrefix(file, "internal/commandhint") {
 		dependency, err := build.Default.Import(imported, "", build.FindOnly)
 		if err != nil || !dependency.Goroot {
@@ -171,6 +178,11 @@ func localImportPath(imported, modulePath string) (string, bool) {
 func localImportAllowed(file, imported string) bool {
 	switch layerForFile(file) {
 	case layerAction:
+		// Pulse actions share raw-payload invariants through a standard-library
+		// leaf package; this does not authorize dependencies for other actions.
+		if hasPathPrefix(file, "actions/pulse") && imported == "internal/pulsecontract" {
+			return true
+		}
 		return matchesExact(imported,
 			"internal/capability",
 			"internal/commandhint",
@@ -392,6 +404,7 @@ func isFoundationPackage(file string) bool {
 		hasPathPrefix(file, "internal/output") ||
 		hasPathPrefix(file, "internal/paging") ||
 		hasPathPrefix(file, "internal/pathspec") ||
+		hasPathPrefix(file, "internal/pulsecontract") ||
 		hasPathPrefix(file, "internal/readsource") ||
 		hasPathPrefix(file, "internal/value") ||
 		hasPathPrefix(file, "internal/version") ||
