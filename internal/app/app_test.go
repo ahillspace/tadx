@@ -15,6 +15,7 @@ import (
 
 	"github.com/ahillspace/tadx/internal/app"
 	"github.com/ahillspace/tadx/internal/artifact"
+	"github.com/ahillspace/tadx/internal/commandhint"
 	"github.com/ahillspace/tadx/internal/config"
 )
 
@@ -324,8 +325,10 @@ func TestRemoteMutationGatePrecedesRuntimeSetupAcrossDomains(t *testing.T) {
 	for _, args := range tests {
 		t.Run(strings.Join(args[:3], " "), func(t *testing.T) {
 			var stdout bytes.Buffer
-			exitCode := app.Run(context.Background(), args, &stdout, app.Options{ConfigPath: filepath.Join(t.TempDir(), "missing.yaml")})
-			if exitCode != 1 || !strings.Contains(stdout.String(), "id: mutation.disabled") || !strings.Contains(stdout.String(), "tadx mutation status") {
+			options := app.Options{ConfigPath: filepath.Join(t.TempDir(), "missing.yaml")}
+			exitCode := app.Run(context.Background(), args, &stdout, options)
+			failure := decodeDiagnosticFailure(t, stdout.String())
+			if exitCode != 1 || failure.ID != "mutation.disabled" || !strings.Contains(failure.CorrectiveAction, commandhint.Command("--config", options.ConfigPath, "mutation", "status")) {
 				t.Fatalf("exit code = %d, output = %s", exitCode, stdout.String())
 			}
 		})

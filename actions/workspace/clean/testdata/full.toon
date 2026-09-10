@@ -4,4 +4,5 @@ class: temporary
 entries_removed: 3
 bytes_removed: 42
 removed[2]: .tadx/staging,.tadx/tmp
+canonical_artifacts_preserved: true
 help[1]: tadx workspace status --workspace dev

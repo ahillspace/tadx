@@ -27,6 +27,7 @@ import (
 	"github.com/ahillspace/tadx/internal/config"
 	"github.com/ahillspace/tadx/internal/readsource"
 	resourcedatasource "github.com/ahillspace/tadx/internal/resources/datasource"
+	tableauadmin "github.com/ahillspace/tadx/internal/tableau/admin"
 	tableaudatasource "github.com/ahillspace/tadx/internal/tableau/datasource"
 	"github.com/ahillspace/tadx/internal/tableau/fieldcatalog"
 	tableaupulse "github.com/ahillspace/tadx/internal/tableau/pulse"
@@ -57,6 +58,7 @@ type pulseConnection struct {
 	environment config.Environment
 	siteLUID    string
 	client      *tableaupulse.Client
+	adminClient *tableauadmin.Client
 	schema      *resourcedatasource.SchemaAdapter
 }
 
@@ -74,6 +76,7 @@ func (c *pulseCommands) connect(ctx context.Context, alias string, explicit bool
 		environment: connection.environment,
 		siteLUID:    connection.session.SiteLUID(),
 		client:      pulseClient,
+		adminClient: tableauadmin.NewClient(connection.transport, connection.session, connection.environment.URL),
 		schema:      resourcedatasource.NewSchemaAdapter(datasourceClient, fieldcatalog.NewClient(connection.transport, connection.session, connection.environment.URL)),
 	}, nil
 }
@@ -344,7 +347,8 @@ func (c *pulseCommands) FollowPulseMetric(ctx context.Context, input metricfollo
 		return metricfollow.Output{}, remoteSetupError("pulse.metric.follow", input.Environment, input.Site, connection.environment, err)
 	}
 	input.Environment, input.Site = connection.environment.Alias, connection.environment.SiteContentURL
-	return metricfollow.New(&pulseFollowerAdapter{client: connection.client}).Execute(ctx, input, preview)
+	adapter := &pulseFollowerAdapter{client: connection.client, adminClient: connection.adminClient}
+	return metricfollow.New(adapter, adapter).Execute(ctx, input, preview)
 }
 
 func (c *pulseCommands) UnfollowPulseMetric(ctx context.Context, input metricunfollow.Input, preview bool) (metricunfollow.Output, error) {
@@ -739,8 +743,32 @@ func (a *pulseMetricMutationAdapter) ReconcileMetric(ctx context.Context, expect
 }
 
 type pulseFollowerAdapter struct {
-	client *tableaupulse.Client
-	items  []tableaupulse.Subscription
+	client      *tableaupulse.Client
+	adminClient *tableauadmin.Client
+	items       []tableaupulse.Subscription
+}
+
+func (a *pulseFollowerAdapter) ResolveMetric(ctx context.Context, luid string) (metricfollow.Metric, error) {
+	item, err := a.client.GetMetric(ctx, luid)
+	if err != nil {
+		return metricfollow.Metric{}, err
+	}
+	return metricfollow.Metric{LUID: item.LUID}, nil
+}
+
+func (a *pulseFollowerAdapter) ResolveUser(ctx context.Context, luid string) (metricfollow.User, error) {
+	item, err := a.adminClient.GetUser(ctx, luid)
+	if err != nil {
+		return metricfollow.User{}, err
+	}
+	return metricfollow.User{LUID: item.LUID}, nil
+}
+
+func (a *pulseFollowerAdapter) ResolveGroup(ctx context.Context, luid string) (metricfollow.Group, error) {
+	if _, err := a.adminClient.ListGroupUsers(ctx, luid, tableauadmin.PageRequest{PageNumber: 1, PageSize: 1}); err != nil {
+		return metricfollow.Group{}, err
+	}
+	return metricfollow.Group{LUID: luid}, nil
 }
 
 func (a *pulseFollowerAdapter) GetMetric(ctx context.Context, luid string) (metricfollowers.Metric, error) {

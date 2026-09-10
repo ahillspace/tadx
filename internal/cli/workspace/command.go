@@ -182,7 +182,7 @@ func newCreate(deps Dependencies) *cobra.Command {
 			return deps.Renderer.Render(result)
 		},
 	}
-	command.Flags().StringVar(&input.Path, "path", "", "new workspace root that must not already exist")
+	command.Flags().StringVar(&input.Path, "path", "", "new workspace root or existing empty real directory")
 	return command
 }
 

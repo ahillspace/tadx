@@ -10,11 +10,12 @@ import (
 )
 
 type lastCapture struct {
-	store     lastcommand.Store
-	now       func() time.Time
-	operation string
-	value     any
-	enabled   bool
+	store      lastcommand.Store
+	now        func() time.Time
+	operation  string
+	value      any
+	enabled    bool
+	hintConfig func() string
 }
 
 func newLastCapture(r *runtimeDependencies) *lastCapture {
@@ -24,7 +25,11 @@ func (c *lastCapture) save(code int) error {
 	if !c.enabled || c.value == nil {
 		return nil
 	}
-	data, err := output.Snapshot(c.value, lastcommand.MaxBytes/2)
+	configPath := ""
+	if c.hintConfig != nil {
+		configPath = c.hintConfig()
+	}
+	data, err := output.SnapshotWithConfig(c.value, lastcommand.MaxBytes/2, configPath)
 	record := value.SavedExecution{RecordedAt: c.now().UTC(), Operation: c.operation, ExitCode: code, Result: data}
 	if record.Operation == "" {
 		record.Operation = "cli"

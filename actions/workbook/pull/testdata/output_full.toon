@@ -23,4 +23,4 @@ artifact:
   lineage_edge_count: 0
 warnings[1]: existing clean artifact replaced
 tableau_request_id: request-1
-help[1]: tadx content workbook publish --id wb-1 --project-id project-1 --overwrite --preview --workspace 'logical workspace' --environment production
+help[1]: "Preview updating the source: tadx content workbook publish --id wb-1 --project-id project-1 --overwrite --preview --workspace 'logical workspace' --environment production"

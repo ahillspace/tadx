@@ -70,22 +70,21 @@ func (a *Action) Execute(ctx context.Context, input Input, preview bool) (Output
 	created, err := a.creator.GetOrCreateMetric(ctx, CreateRequest{DefinitionLUID: plan.DefinitionLUID, Specification: cloneMap(plan.Specification)})
 	if err != nil {
 		retryable, corrective := errs.CompleteRetryAdvice(err, commandhint.Environment(input.Environment, "pulse", "metric", "list", "--definition-id", plan.DefinitionLUID, "--all")+"; reconcile the remote outcome before retrying.")
-		return Output{}, &errs.Error{ID: "pulse.metric.fork.failed", Kind: errs.KindOperation, Operation: "pulse.metric.fork", Resource: input.MetricLUID, Environment: input.Environment, Site: input.Site, Summary: "Pulse metric fork failed.", Cause: err, Retryable: retryable, CorrectiveAction: corrective, TableauRequestID: errs.TableauRequestID(err)}
+		return output, &errs.Error{ID: "pulse.metric.fork.failed", Kind: errs.KindOperation, Operation: "pulse.metric.fork", Resource: input.MetricLUID, Environment: input.Environment, Site: input.Site, Summary: "Pulse metric fork failed.", Cause: err, Retryable: retryable, CorrectiveAction: corrective, TableauRequestID: errs.TableauRequestID(err), Phase: errs.PhaseSubmission, Outcome: errs.OutcomeUnknown}
 	}
 	if created.MetricLUID == "" {
 		return Output{}, fail("pulse.metric.fork.invalid_response", errs.KindOperation, input, "Tableau returned no metric identity for the fork.", nil)
 	}
 	reconciled, err := a.reconciler.ReconcileMetric(ctx, ExpectedMetric{MetricLUID: created.MetricLUID, DefinitionLUID: plan.DefinitionLUID, DatasourceLUID: plan.DatasourceLUID, SiteLUID: input.SiteLUID, Specification: cloneMap(plan.Specification)})
 	if err != nil {
-		return Output{}, &errs.Error{ID: "pulse.metric.fork.reconcile", Kind: errs.KindOperation, Operation: "pulse.metric.fork", Resource: created.MetricLUID, Environment: input.Environment, Site: input.Site, Summary: "Pulse metric reconciliation failed.", Cause: err, Retryable: errs.Bool(false), CorrectiveAction: commandhint.Environment(input.Environment, "pulse", "metric", "inspect", "--id", created.MetricLUID) + "; reconcile before retrying.", TableauRequestID: errs.TableauRequestID(err)}
+		output.Result = &Result{Status: forkStatus(created.Created), MetricLUID: created.MetricLUID, MetricName: created.MetricName, Created: created.Created, ReconciliationStatus: "unknown", RequestID: created.RequestID}
+		return output, &errs.Error{ID: "pulse.metric.fork.reconcile", Kind: errs.KindOperation, Operation: "pulse.metric.fork", Resource: created.MetricLUID, Environment: input.Environment, Site: input.Site, Summary: "Pulse metric reconciliation failed.", Cause: err, Retryable: errs.Bool(false), CorrectiveAction: commandhint.Environment(input.Environment, "pulse", "metric", "inspect", "--id", created.MetricLUID) + "; reconcile before retrying.", TableauRequestID: errs.TableauRequestID(err), Phase: errs.PhaseVerification, Outcome: errs.OutcomeConfirmed}
 	}
 	if reconciled.Status != "verified" || !reconciled.OwnershipVerified || !reconciled.SpecificationVerified {
-		return Output{}, &errs.Error{ID: "pulse.metric.fork.reconcile", Kind: errs.KindOperation, Operation: "pulse.metric.fork", Resource: created.MetricLUID, Environment: input.Environment, Site: input.Site, Summary: "The forked Pulse metric's saved configuration could not be verified.", Cause: fmt.Errorf("reconciliation status %s", reconciled.Status), Retryable: errs.Bool(false), CorrectiveAction: commandhint.Environment(input.Environment, "pulse", "metric", "inspect", "--id", created.MetricLUID) + "; do not repeat the mutation automatically.", TableauRequestID: reconciled.RequestID}
+		output.Result = &Result{Status: forkStatus(created.Created), MetricLUID: created.MetricLUID, MetricName: created.MetricName, Created: created.Created, ReconciliationStatus: reconciled.Status, RequestID: created.RequestID, ReconciliationRequestID: reconciled.RequestID}
+		return output, &errs.Error{ID: "pulse.metric.fork.reconcile", Kind: errs.KindOperation, Operation: "pulse.metric.fork", Resource: created.MetricLUID, Environment: input.Environment, Site: input.Site, Summary: "The forked Pulse metric's saved configuration could not be verified.", Cause: fmt.Errorf("reconciliation status %s", reconciled.Status), Retryable: errs.Bool(false), CorrectiveAction: commandhint.Environment(input.Environment, "pulse", "metric", "inspect", "--id", created.MetricLUID) + "; do not repeat the mutation automatically.", TableauRequestID: reconciled.RequestID, Phase: errs.PhaseVerification, Outcome: errs.OutcomeConfirmed}
 	}
-	status := "existing"
-	if created.Created {
-		status = "created"
-	}
+	status := forkStatus(created.Created)
 	output.Result = &Result{Status: status, MetricLUID: created.MetricLUID, MetricName: created.MetricName, Created: created.Created, ReconciliationStatus: reconciled.Status, ReconciliationAttempts: reconciled.Attempts, OwnershipVerified: reconciled.OwnershipVerified, RequestID: created.RequestID, ReconciliationRequestID: reconciled.RequestID}
 	output.Result.SpecificationVerified = reconciled.SpecificationVerified
 	output.Result.SavedSpecification = cloneMap(reconciled.SavedSpecification)
@@ -94,6 +93,13 @@ func (a *Action) Execute(ctx context.Context, input Input, preview bool) (Output
 	output.Result.DefinitionReadbackRequestID = reconciled.DefinitionRequestID
 	output.Help = []string{"Saved metric configuration and definition linkage verified; current values and generated insights are not read by TADX."}
 	return output, nil
+}
+
+func forkStatus(created bool) string {
+	if created {
+		return "created"
+	}
+	return "existing"
 }
 func (a *Action) plan(ctx context.Context, input Input) (Plan, error) {
 	metric, err := a.reader.GetMetric(ctx, input.MetricLUID)

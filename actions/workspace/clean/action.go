@@ -22,12 +22,13 @@ type Request = Input
 
 // Result describes bounded cleanup effects.
 type Result struct {
-	Status         string   `json:"status"`
-	Workspace      string   `json:"workspace"`
-	Class          string   `json:"class"`
-	EntriesRemoved int      `json:"entries_removed"`
-	BytesRemoved   int64    `json:"bytes_removed"`
-	Removed        []string `json:"removed,omitempty"`
+	Status                      string   `json:"status"`
+	Workspace                   string   `json:"workspace"`
+	Class                       string   `json:"class"`
+	EntriesRemoved              int      `json:"entries_removed"`
+	BytesRemoved                int64    `json:"bytes_removed"`
+	Removed                     []string `json:"removed,omitempty"`
+	CanonicalArtifactsPreserved bool     `json:"canonical_artifacts_preserved"`
 }
 
 // Output contains the cleanup receipt and next command guidance.
@@ -37,18 +38,19 @@ type Output struct {
 }
 
 type compactOutput struct {
-	Status         string   `json:"status"`
-	Workspace      string   `json:"workspace"`
-	Class          string   `json:"class"`
-	EntriesRemoved int      `json:"entries_removed"`
-	BytesRemoved   int64    `json:"bytes_removed"`
-	Details        string   `json:"details"`
-	Help           []string `json:"help"`
+	Status                      string   `json:"status"`
+	Workspace                   string   `json:"workspace"`
+	Class                       string   `json:"class"`
+	EntriesRemoved              int      `json:"entries_removed"`
+	BytesRemoved                int64    `json:"bytes_removed"`
+	CanonicalArtifactsPreserved bool     `json:"canonical_artifacts_preserved"`
+	Details                     string   `json:"details"`
+	Help                        []string `json:"help"`
 }
 
 // CompactOutput omits individual removed paths.
 func (o Output) CompactOutput() any {
-	return compactOutput{Status: o.Status, Workspace: o.Workspace, Class: o.Class, EntriesRemoved: o.EntriesRemoved, BytesRemoved: o.BytesRemoved, Details: "--full", Help: o.Help}
+	return compactOutput{Status: o.Status, Workspace: o.Workspace, Class: o.Class, EntriesRemoved: o.EntriesRemoved, BytesRemoved: o.BytesRemoved, CanonicalArtifactsPreserved: o.CanonicalArtifactsPreserved, Details: "--full", Help: o.Help}
 }
 
 // FullOutput includes bounded workspace-relative removed paths.
@@ -76,8 +78,10 @@ func (a *Action) Execute(ctx context.Context, input Input) (Output, error) {
 	}
 	result, err := a.store.Clean(ctx, input)
 	if err != nil {
-		return Output{}, &errs.Error{ID: "workspace.clean.failed", Kind: errs.KindOperation, Operation: "workspace.clean", Resource: input.Workspace, Summary: "Workspace cleanup failed.", Cause: err, Retryable: errs.Bool(false), CorrectiveAction: "Inspect the selected workspace state before retrying: " + commandhint.Command("workspace", "status", "--workspace", input.Workspace)}
+		retryable, correctiveAction := errs.CompleteRetryAdvice(err, "Inspect the selected workspace state before retrying: "+commandhint.Command("workspace", "status", "--workspace", input.Workspace))
+		return Output{}, &errs.Error{ID: "workspace.clean.failed", Kind: errs.KindOperation, Operation: "workspace.clean", Resource: input.Workspace, Summary: "Workspace cleanup failed.", Cause: err, Retryable: retryable, CorrectiveAction: correctiveAction}
 	}
 	result.Status, result.Workspace, result.Class = "cleaned", input.Workspace, input.Class
+	result.CanonicalArtifactsPreserved = true
 	return Output{Result: result, Help: []string{commandhint.Command("workspace", "status", "--workspace", input.Workspace)}}, nil
 }

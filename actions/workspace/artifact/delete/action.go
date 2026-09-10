@@ -129,7 +129,8 @@ func (a *Action) Plan(ctx context.Context, input Input) (Plan, error) {
 	}
 	artifact, err := a.store.Resolve(ctx, input)
 	if err != nil {
-		return Plan{}, &errs.Error{ID: "workspace.artifact.delete.resolve", Kind: errs.KindOperation, Operation: "workspace.artifact.delete", Resource: input.LUID, Summary: "Artifact deletion target resolution failed.", Cause: err, Retryable: errs.Bool(false), CorrectiveAction: "Review the exact managed artifact selector, then retry."}
+		retryable, correctiveAction := errs.CompleteRetryAdvice(err, "Review the exact managed artifact selector, then retry.")
+		return Plan{}, &errs.Error{ID: "workspace.artifact.delete.resolve", Kind: errs.KindOperation, Operation: "workspace.artifact.delete", Resource: input.LUID, Summary: "Artifact deletion target resolution failed.", Cause: err, Retryable: retryable, CorrectiveAction: correctiveAction}
 	}
 	if artifact.Kind == "" || artifact.LUID == "" || artifact.Path == "" || artifact.TreeFingerprint == "" || (artifact.State != "missing" && artifact.CurrentFingerprint == "") {
 		return Plan{}, runtimeError("artifact deletion target has incomplete authoritative identity")
@@ -147,7 +148,8 @@ func (a *Action) Apply(ctx context.Context, plan Plan) (Result, error) {
 	}
 	deleted, err := a.store.Delete(ctx, DeleteRequest{Workspace: plan.Workspace, Expected: plan.Artifact})
 	if err != nil {
-		return Result{}, &errs.Error{ID: "workspace.artifact.delete.failed", Kind: errs.KindOperation, Operation: "workspace.artifact.delete", Resource: plan.Artifact.LUID, Summary: "Artifact deletion failed.", Cause: err, Retryable: errs.Bool(false), CorrectiveAction: "Resolve the exact artifact again and review a new deletion preview."}
+		retryable, correctiveAction := errs.CompleteRetryAdvice(err, "Resolve the exact artifact again and review a new deletion preview.")
+		return Result{}, &errs.Error{ID: "workspace.artifact.delete.failed", Kind: errs.KindOperation, Operation: "workspace.artifact.delete", Resource: plan.Artifact.LUID, Summary: "Artifact deletion failed.", Cause: err, Retryable: retryable, CorrectiveAction: correctiveAction}
 	}
 	return Result{Status: "deleted", Kind: deleted.Kind, LUID: deleted.LUID, Name: deleted.Name, Path: deleted.Path, Warnings: append([]string(nil), deleted.Warnings...)}, nil
 }

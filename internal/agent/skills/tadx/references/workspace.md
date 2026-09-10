@@ -23,6 +23,7 @@ Add `--full` when machine-local roots, fingerprints, provenance, or expanded art
 
 A workspace is a named, registered local directory containing managed Tableau artifacts, metadata, and TADX state.
 Creation establishes `tadx.yaml`, `artifacts/`, and `.tadx/`.
+Create accepts a new path or an existing empty real directory; register requires an existing managed workspace, not an ordinary folder.
 Without `--path`, create and clone use `<home>/TADX/workspaces/<name>`.
 Use `--path` only to choose another machine-local root.
 Workspace names are portable, case-insensitively unique, and used by `--workspace`; a filesystem path is not a workspace selector.
@@ -55,7 +56,9 @@ It does not move remote Tableau content.
 ## Removal and cleanup
 
 `unregister` preserves the workspace root and all files.
-It refuses to remove a workspace that remains a general or environment default.
+When other workspaces remain, reassign general and environment defaults before removing their referenced workspace.
+Use `tadx workspace set-default <name>` for the general default; follow the returned environment-specific recovery command for an environment default.
+Explicitly removing the sole registered workspace clears its default references without creating a replacement.
 `workspace delete` removes both the registration and managed root, and rejects broad roots, identity drift, nested registered workspaces, unsafe links, and unapproved dirty or invalid state.
 Use `--force` only when discarding dirty, invalid, or unmanaged local files is authorized.
 

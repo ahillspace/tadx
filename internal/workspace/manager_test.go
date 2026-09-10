@@ -129,6 +129,9 @@ func TestRemovalRejectsDefaultReferences(t *testing.T) {
 				if err != nil {
 					t.Fatal(err)
 				}
+				if _, err := manager.Create(context.Background(), "other", filepath.Join(directory, "other")); err != nil {
+					t.Fatal(err)
+				}
 				if scope == "environment" {
 					_, err = config.Update(configPath, false, func(c config.Config) (config.Config, error) {
 						c.DefaultWorkspace = ""
@@ -333,7 +336,7 @@ func TestManagerCreateInitializesMissingUserConfiguration(t *testing.T) {
 	}
 }
 
-func TestManagerCreateRejectsAnExistingEmptyRootWithNextStep(t *testing.T) {
+func TestManagerCreateInitializesAnExistingEmptyRoot(t *testing.T) {
 	root := t.TempDir()
 	configPath := filepath.Join(root, "config.yaml")
 	if err := config.Save(configPath, config.Config{Version: config.CurrentVersion}); err != nil {
@@ -344,12 +347,12 @@ func TestManagerCreateRejectsAnExistingEmptyRootWithNextStep(t *testing.T) {
 		t.Fatal(err)
 	}
 	_, err := workspace.NewManager(configPath, nil).Create(context.Background(), "development", workspaceRoot)
-	if err == nil || !strings.Contains(err.Error(), "must not already exist") {
+	if err != nil {
 		t.Fatalf("error = %v", err)
 	}
 	entries, readErr := os.ReadDir(workspaceRoot)
-	if readErr != nil || len(entries) != 0 {
-		t.Fatalf("existing root changed: entries=%v error=%v", entries, readErr)
+	if readErr != nil || len(entries) != 3 {
+		t.Fatalf("existing root not initialized: entries=%v error=%v", entries, readErr)
 	}
 }
 

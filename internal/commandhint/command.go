@@ -39,6 +39,12 @@ func Target(environment, workspace string, args ...string) string {
 	return Environment(environment, args...)
 }
 
+// SourceUpdate labels provenance-bound hints so they cannot be mistaken for a
+// migration destination. Preview is non-mutating and does not authorize a write.
+func SourceUpdate(environment, workspace, kind, luid, project string) string {
+	return "Preview updating the source: " + Target(environment, workspace, "content", kind, "publish", "--id", luid, "--project-id", project, "--overwrite", "--preview")
+}
+
 // CommandFor renders a TADX command using one explicit shell convention.
 func CommandFor(shell Shell, args ...string) string {
 	parts := make([]string, 1, len(args)+1)

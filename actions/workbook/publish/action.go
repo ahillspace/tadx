@@ -190,7 +190,7 @@ func (a *Action) Apply(ctx context.Context, plan Plan) (Result, error) {
 		if hint := publishInspectionHint(plan, result); hint != "" {
 			correctiveAction += " Run " + hint + "."
 		}
-		return Result{}, &errs.Error{ID: errorID, Kind: errs.KindOperation, Operation: "workbook.publish", Resource: plan.Target.ExistingLUID, Environment: plan.Target.Environment, Site: plan.Target.Site, Summary: summary, Cause: err, Retryable: errs.Bool(false), CorrectiveAction: correctiveAction, TableauJobID: result.JobID, TableauRequestID: requestID}
+		return result, &errs.Error{ID: errorID, Kind: errs.KindOperation, Operation: "workbook.publish", Resource: plan.Target.ExistingLUID, Environment: plan.Target.Environment, Site: plan.Target.Site, Summary: summary, Cause: err, Retryable: errs.Bool(false), CorrectiveAction: correctiveAction, TableauJobID: result.JobID, TableauRequestID: requestID, Phase: errs.PhaseSubmission, Outcome: errs.OutcomeUnknown}
 	}
 	return result, nil
 }
@@ -224,7 +224,8 @@ func (a *Action) Execute(ctx context.Context, input Input, preview bool) (Output
 	output.Plan.Mode = "execute"
 	result, err := a.Apply(ctx, plan)
 	if err != nil {
-		return Output{}, err
+		output.Result = &result
+		return output, err
 	}
 	output.Result = &result
 	output.Help = []string{commandhint.Environment(plan.Target.Environment, "content", "workbook", "inspect", "--id", result.WorkbookLUID)}

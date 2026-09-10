@@ -4,6 +4,7 @@ package errs
 import (
 	"errors"
 	"fmt"
+	"strings"
 )
 
 // Kind classifies an error without expanding the public exit-code space.
@@ -14,6 +15,33 @@ const (
 	KindOperation Kind = "operation"
 	KindRuntime   Kind = "runtime"
 )
+
+// Phase identifies the last bounded phase reached by an operation.
+type Phase string
+
+const (
+	PhaseValidation   Phase = "validation"
+	PhaseSetup        Phase = "setup"
+	PhaseSubmission   Phase = "submission"
+	PhaseVerification Phase = "verification"
+	PhasePersistence  Phase = "persistence"
+)
+
+// Outcome records what is known about an operation's externally visible effect.
+type Outcome string
+
+const (
+	OutcomeNotAttempted Outcome = "not_attempted"
+	OutcomeConfirmed    Outcome = "confirmed"
+	OutcomeUnknown      Outcome = "unknown"
+)
+
+// Prerequisite identifies a bounded resource required before retrying an operation.
+type Prerequisite struct {
+	Kind     string `json:"kind,omitempty"`
+	Resource string `json:"resource,omitempty"`
+	Summary  string `json:"summary,omitempty"`
+}
 
 // ValidationDetail describes one invalid input field.
 type ValidationDetail struct {
@@ -44,6 +72,9 @@ type Error struct {
 	TableauJobID     string
 	Completed        []string
 	Failed           string
+	Phase            Phase
+	Outcome          Outcome
+	Prerequisite     *Prerequisite
 }
 
 // New creates a structured error with a classification and summary.
@@ -81,6 +112,22 @@ func Bool(value bool) *bool { return &value }
 
 // RetryAdvice returns retryability and corrective action carried by an error chain.
 func RetryAdvice(err error) (*bool, string) {
+	var structured *Error
+	if errors.As(err, &structured) {
+		retryable, corrective := structured.Retryable, structured.CorrectiveAction
+		if structured.Cause != nil {
+			innerRetryable, innerCorrective := RetryAdvice(structured.Cause)
+			if retryable == nil {
+				retryable = innerRetryable
+			}
+			if corrective == "" {
+				corrective = innerCorrective
+			}
+		}
+		if retryable != nil || corrective != "" {
+			return retryable, corrective
+		}
+	}
 	var carrier interface {
 		Retryable() bool
 		CorrectiveAction() string
@@ -89,6 +136,37 @@ func RetryAdvice(err error) (*bool, string) {
 		return nil, ""
 	}
 	return Bool(carrier.Retryable()), carrier.CorrectiveAction()
+}
+
+func prerequisiteFrom(err error) *Prerequisite {
+	var carrier interface {
+		PrerequisiteKind() string
+		PrerequisiteResource() string
+		PrerequisiteSummary() string
+	}
+	if errors.As(err, &carrier) {
+		kind, resource, summary := carrier.PrerequisiteKind(), carrier.PrerequisiteResource(), carrier.PrerequisiteSummary()
+		if kind != "" || resource != "" || summary != "" {
+			return &Prerequisite{Kind: kind, Resource: resource, Summary: summary}
+		}
+	}
+	return nil
+}
+
+func inheritRecovery(payload *Payload, err error) {
+	for current := err; current != nil; current = errors.Unwrap(current) {
+		if structured, ok := current.(*Error); ok {
+			if payload.Phase == "" {
+				payload.Phase = structured.Phase
+			}
+			if payload.Outcome == "" {
+				payload.Outcome = structured.Outcome
+			}
+			if payload.Prerequisite == nil {
+				payload.Prerequisite = structured.Prerequisite
+			}
+		}
+	}
 }
 
 // CompleteRetryAdvice preserves carried advice and supplies deterministic fallback guidance.
@@ -129,6 +207,7 @@ type Payload struct {
 	UpstreamCause    string             `json:"upstream_cause,omitempty"`
 	Retryable        *bool              `json:"retryable,omitempty"`
 	CorrectiveAction string             `json:"corrective_action,omitempty"`
+	Recovery         string             `json:"recovery,omitempty"`
 	Validation       []ValidationDetail `json:"validation,omitempty"`
 	UpstreamStatus   int                `json:"upstream_status,omitempty"`
 	UpstreamCode     string             `json:"upstream_code,omitempty"`
@@ -138,6 +217,9 @@ type Payload struct {
 	TableauJobID     string             `json:"tableau_job_id,omitempty"`
 	Completed        []string           `json:"completed,omitempty"`
 	Failed           string             `json:"failed,omitempty"`
+	Phase            Phase              `json:"phase,omitempty"`
+	Outcome          Outcome            `json:"outcome,omitempty"`
+	Prerequisite     *Prerequisite      `json:"prerequisite,omitempty"`
 }
 
 // Envelope is the top-level structured error document.
@@ -164,6 +246,7 @@ func Structure(err error) Envelope {
 			Summary:          structured.Summary,
 			Retryable:        structured.Retryable,
 			CorrectiveAction: structured.CorrectiveAction,
+			Recovery:         recoveryAdvice(structured.Outcome, structured.Prerequisite),
 			Validation:       structured.Validation,
 			UpstreamStatus:   structured.UpstreamStatus,
 			UpstreamCode:     structured.UpstreamCode,
@@ -173,6 +256,9 @@ func Structure(err error) Envelope {
 			TableauJobID:     structured.TableauJobID,
 			Completed:        append([]string(nil), structured.Completed...),
 			Failed:           structured.Failed,
+			Phase:            structured.Phase,
+			Outcome:          structured.Outcome,
+			Prerequisite:     structured.Prerequisite,
 		}
 		if payload.Summary == "" {
 			payload.Summary = structured.Error()
@@ -202,6 +288,13 @@ func Structure(err error) Envelope {
 			if payload.TableauRequestID == "" {
 				payload.TableauRequestID = TableauRequestID(structured.Cause)
 			}
+			inheritRecovery(&payload, structured.Cause)
+			if payload.Prerequisite == nil {
+				payload.Prerequisite = prerequisiteFrom(structured.Cause)
+			}
+			if payload.Recovery == "" {
+				payload.Recovery = recoveryAdvice(payload.Outcome, payload.Prerequisite)
+			}
 		}
 		return Envelope{Error: payload}
 	}
@@ -210,6 +303,27 @@ func Structure(err error) Envelope {
 		message = err.Error()
 	}
 	return Envelope{Error: Payload{Kind: KindRuntime, Summary: message}}
+}
+
+func recoveryAdvice(outcome Outcome, prerequisite *Prerequisite) string {
+	switch outcome {
+	case OutcomeUnknown:
+		return "Inspect the exact target and request outcome before attempting another mutation."
+	case OutcomeConfirmed:
+		return "Retain the confirmed result and do not repeat the mutation."
+	}
+	if prerequisite != nil {
+		resource := strings.TrimSpace(prerequisite.Resource)
+		kind := strings.TrimSpace(prerequisite.Kind)
+		if kind == "" {
+			kind = "required resource"
+		}
+		if resource == "" {
+			return "Resolve the required " + kind + " before retrying."
+		}
+		return "Resolve the required " + kind + " " + resource + " before retrying."
+	}
+	return ""
 }
 
 func tableauUpstream(err error) (int, string, string, string) {

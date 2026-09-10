@@ -177,7 +177,7 @@ func TestWorkspaceCreateAndClonePreserveExplicitPaths(t *testing.T) {
 	}
 }
 
-func TestWorkspaceCreateHelpDefinesPathAsNewRoot(t *testing.T) {
+func TestWorkspaceCreateHelpDefinesPathAsNewOrEmptyRoot(t *testing.T) {
 	var stdout bytes.Buffer
 	command := workspacecli.New(workspacecli.Dependencies{Creator: &actions{}, Renderer: &renderer{}})
 	command.SetOut(&stdout)
@@ -185,7 +185,7 @@ func TestWorkspaceCreateHelpDefinesPathAsNewRoot(t *testing.T) {
 	if err := command.Execute(); err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(stdout.String(), "new workspace root that must not already exist") {
+	if !strings.Contains(stdout.String(), "new workspace root or existing empty real directory") {
 		t.Fatalf("help = %q", stdout.String())
 	}
 }

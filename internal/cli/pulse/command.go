@@ -150,7 +150,7 @@ func newDefinitionDelete(deps Dependencies) *cobra.Command {
 		}
 		result, err := deps.DefinitionDeleter.DeletePulseDefinition(command.Context(), input)
 		if err != nil {
-			return err
+			return clierr.WithOutput(result, err)
 		}
 		return deps.Renderer.Render(result)
 	})
@@ -167,7 +167,7 @@ func newMetricDelete(deps Dependencies) *cobra.Command {
 		}
 		result, err := deps.MetricDeleter.DeletePulseMetric(command.Context(), input)
 		if err != nil {
-			return err
+			return clierr.WithOutput(result, err)
 		}
 		return deps.Renderer.Render(result)
 	})
@@ -181,7 +181,7 @@ func newDefinitionList(deps Dependencies) *cobra.Command {
 	command := actionCommand("list", "List Pulse definitions.", "pulse.definition.list", func(command *cobra.Command) error {
 		result, err := deps.DefinitionLister.ListPulseDefinitions(command.Context(), input)
 		if err != nil {
-			return err
+			return clierr.WithOutput(result, err)
 		}
 		return deps.Renderer.Render(result)
 	})
@@ -200,7 +200,7 @@ func newDefinitionInspect(deps Dependencies) *cobra.Command {
 	command := exactIDCommand("inspect", "Inspect one exact Pulse definition.", "pulse.definition.inspect", &input.LUID, func(command *cobra.Command) error {
 		result, err := deps.DefinitionInspector.InspectPulseDefinition(command.Context(), input)
 		if err != nil {
-			return err
+			return clierr.WithOutput(result, err)
 		}
 		return deps.Renderer.Render(result)
 	})
@@ -213,7 +213,7 @@ func newDefinitionPull(deps Dependencies) *cobra.Command {
 	command := exactIDCommand("pull", "Pull a portable definition bundle with every saved metric variant.", "pulse.definition.pull", &input.LUID, func(command *cobra.Command) error {
 		result, err := deps.DefinitionPuller.PullPulseDefinition(command.Context(), input)
 		if err != nil {
-			return err
+			return clierr.WithOutput(result, err)
 		}
 		return deps.Renderer.Render(result)
 	})
@@ -308,7 +308,7 @@ func newMetricList(deps Dependencies) *cobra.Command {
 		RunE: func(command *cobra.Command, _ []string) error {
 			result, err := deps.MetricLister.ListPulseMetrics(command.Context(), input)
 			if err != nil {
-				return err
+				return clierr.WithOutput(result, err)
 			}
 			return deps.Renderer.Render(result)
 		},
@@ -327,7 +327,7 @@ func newMetricInspect(deps Dependencies) *cobra.Command {
 	command := exactIDCommand("inspect", "Inspect one exact Pulse metric.", "pulse.metric.inspect", &input.LUID, func(command *cobra.Command) error {
 		result, err := deps.MetricInspector.InspectPulseMetric(command.Context(), input)
 		if err != nil {
-			return err
+			return clierr.WithOutput(result, err)
 		}
 		return deps.Renderer.Render(result)
 	})
@@ -372,7 +372,7 @@ func newMetricFork(deps Dependencies) *cobra.Command {
 		RunE: func(command *cobra.Command, _ []string) error {
 			result, err := deps.MetricForker.ForkPulseMetric(command.Context(), input, preview)
 			if err != nil {
-				return err
+				return clierr.WithOutput(result, err)
 			}
 			return deps.Renderer.Render(result)
 		},
@@ -392,7 +392,7 @@ func newMetricFollowers(deps Dependencies) *cobra.Command {
 	command := exactIDCommand("followers", "List one Pulse metric's followers.", "pulse.metric.followers", &input.MetricLUID, func(command *cobra.Command) error {
 		result, err := deps.MetricFollowers.ListPulseMetricFollowers(command.Context(), input)
 		if err != nil {
-			return err
+			return clierr.WithOutput(result, err)
 		}
 		return deps.Renderer.Render(result)
 	})
@@ -419,7 +419,7 @@ func newMetricFollow(deps Dependencies) *cobra.Command {
 		RunE: func(command *cobra.Command, _ []string) error {
 			result, err := deps.MetricFollower.FollowPulseMetric(command.Context(), input, preview)
 			if err != nil {
-				return err
+				return clierr.WithOutput(result, err)
 			}
 			return deps.Renderer.Render(result)
 		},
@@ -459,7 +459,7 @@ func newMetricUnfollow(deps Dependencies) *cobra.Command {
 		RunE: func(command *cobra.Command, _ []string) error {
 			result, err := deps.MetricUnfollower.UnfollowPulseMetric(command.Context(), input, preview)
 			if err != nil {
-				return err
+				return clierr.WithOutput(result, err)
 			}
 			return deps.Renderer.Render(result)
 		},

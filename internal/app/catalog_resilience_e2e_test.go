@@ -14,6 +14,8 @@ import (
 
 	"github.com/ahillspace/tadx/internal/app"
 	"github.com/ahillspace/tadx/internal/catalog"
+	"github.com/ahillspace/tadx/internal/commandhint"
+	"github.com/ahillspace/tadx/internal/toon"
 )
 
 func TestCatalogStatusUninitializedThroughCLI(t *testing.T) {
@@ -24,7 +26,13 @@ func TestCatalogStatusUninitializedThroughCLI(t *testing.T) {
 			args = append(args, "--full")
 		}
 		out := runGroupOneCLI(t, options, args...)
-		if !strings.Contains(out, "status: uninitialized") || !strings.Contains(out, "tadx catalog refresh --environment production") || strings.Contains(out, "sql:") || strings.Contains(out, "0001-") {
+		decoded, err := toon.Decode([]byte(out))
+		if err != nil {
+			t.Fatal(err)
+		}
+		help := decoded.(map[string]any)["help"].([]any)
+		want := commandhint.BindConfig("tadx catalog refresh --environment production", options.ConfigPath)
+		if !strings.Contains(out, "status: uninitialized") || len(help) != 1 || help[0] != want || strings.Contains(out, "sql:") || strings.Contains(out, "0001-") {
 			t.Fatalf("uninitialized status:\n%s", out)
 		}
 	}

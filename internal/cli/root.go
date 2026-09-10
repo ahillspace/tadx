@@ -29,6 +29,7 @@ import (
 	pulsecli "github.com/ahillspace/tadx/internal/cli/pulse"
 	versioncli "github.com/ahillspace/tadx/internal/cli/version"
 	workspacecli "github.com/ahillspace/tadx/internal/cli/workspace"
+	"github.com/ahillspace/tadx/internal/commandhint"
 	"github.com/ahillspace/tadx/internal/errs"
 	"github.com/spf13/cobra"
 )
@@ -84,6 +85,8 @@ type Renderer interface {
 // RenderOptions contains presentation-only flags shared by every command.
 type RenderOptions struct {
 	Full bool
+	// HintConfig returns explicitly selected non-secret configuration context.
+	HintConfig func() string
 }
 
 // Dependencies contains the explicitly wired Phase 0 command dependencies.
@@ -175,6 +178,16 @@ Other connected tools remain independent; TADX does not configure, select, proxy
 	root.PersistentFlags().BoolVar(&renderOptions.Full, "full", false, "show expanded bounded details")
 	root.PersistentFlags().StringVar(configPath, "config", *configPath, "path to the non-secret TADX configuration file")
 	root.PersistentFlags().Lookup("config").DefValue = ""
+	priorHintConfig := renderOptions.HintConfig
+	renderOptions.HintConfig = func() string {
+		if root.PersistentFlags().Changed("config") {
+			return *configPath
+		}
+		if priorHintConfig != nil {
+			return priorHintConfig()
+		}
+		return ""
+	}
 	if deps.LastReader != nil {
 		root.AddCommand(lastcli.New(deps.LastReader, deps.Renderer))
 	}
@@ -457,14 +470,14 @@ func setFlagErrorHandlers(command *cobra.Command) {
 	command.Args = func(current *cobra.Command, args []string) error {
 		if originalArgs != nil {
 			if err := originalArgs(current, args); err != nil {
-				return err
+				return withUsageRecovery(current, err)
 			}
 		}
 		if err := current.ValidateRequiredFlags(); err != nil {
-			return clierr.Usage(current.CommandPath(), err)
+			return withUsageRecovery(current, clierr.Usage(current.CommandPath(), err))
 		}
 		if err := current.ValidateFlagGroups(); err != nil {
-			return clierr.Usage(current.CommandPath(), err)
+			return withUsageRecovery(current, clierr.Usage(current.CommandPath(), err))
 		}
 		return nil
 	}
@@ -472,20 +485,55 @@ func setFlagErrorHandlers(command *cobra.Command) {
 		cursor.Hidden = true
 	}
 	command.SetFlagErrorFunc(func(command *cobra.Command, cause error) error {
-		advice := "Run " + command.CommandPath() + " --help for supported flags."
-		switch cause.Error() {
-		case "unknown flag: --site":
-			if command.Flags().Lookup("environment") != nil {
-				advice = "Use --environment <alias> (or --env <alias>) to select a configured environment."
-			}
-		case "unknown flag: --terms":
-			if command.Annotations[CapabilityAnnotation] == "search.run" {
-				advice = `Pass the search term as a positional argument: tadx search "<term>" --env <alias>.`
-			}
-		}
-		return &errs.Error{Kind: errs.KindUsage, Operation: command.CommandPath(), Summary: cause.Error(), Cause: cause, CorrectiveAction: advice}
+		return &errs.Error{Kind: errs.KindUsage, Operation: command.CommandPath(), Summary: cause.Error(), Cause: cause, CorrectiveAction: usageRecovery(command), Phase: errs.PhaseValidation, Outcome: errs.OutcomeNotAttempted}
 	})
 	for _, child := range command.Commands() {
 		setFlagErrorHandlers(child)
 	}
+}
+
+// usageRecovery derives bounded recovery from the actual command tree, not
+// error-message matching. Positional syntax and sibling actions remain visible.
+func usageRecovery(command *cobra.Command) string {
+	advice := "Usage: " + strings.TrimPrefix(command.UseLine(), "tadx ") + "."
+	if command.Flags().Lookup("environment") != nil {
+		advice += " Use --environment <alias> (or --env <alias>) to select a configured environment."
+	}
+	if command.Example != "" {
+		advice += " Example: " + strings.TrimSpace(strings.SplitN(command.Example, "\n", 2)[0]) + "."
+		return advice
+	}
+	if command.HasSubCommands() {
+		parent := command
+		if command.Parent() != nil && command.Parent().Parent() != nil {
+			parent = command.Parent()
+		}
+		var available []string
+		for _, child := range parent.Commands() {
+			if !child.Hidden && child.Name() != "help" {
+				available = append(available, strings.TrimPrefix(child.CommandPath(), "tadx "))
+				if len(available) == 16 {
+					break
+				}
+			}
+		}
+		if len(available) > 0 {
+			advice += " Available commands: " + strings.Join(available, ", ") + "."
+		}
+	}
+	parts := strings.Fields(command.CommandPath())
+	return advice + " Run " + commandhint.Command(append(parts[1:], "--help")...) + " for supported flags."
+}
+
+func withUsageRecovery(command *cobra.Command, err error) error {
+	var structured *errs.Error
+	if errors.As(err, &structured) && structured.Kind == errs.KindUsage {
+		copy := *structured
+		if copy.CorrectiveAction == "" {
+			copy.CorrectiveAction = usageRecovery(command)
+		}
+		copy.Phase, copy.Outcome = errs.PhaseValidation, errs.OutcomeNotAttempted
+		return &copy
+	}
+	return err
 }

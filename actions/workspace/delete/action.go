@@ -61,7 +61,8 @@ func (a *Action) Plan(ctx context.Context, input Input) (Plan, error) {
 	}
 	item, err := a.store.Resolve(ctx, input.Name)
 	if err != nil {
-		return Plan{}, &errs.Error{ID: "workspace.delete.resolve", Kind: errs.KindOperation, Operation: "workspace.delete", Resource: input.Name, Summary: "Workspace deletion target resolution failed.", Cause: err, Retryable: errs.Bool(false), CorrectiveAction: "Review the exact registered workspace name, then retry."}
+		retryable, correctiveAction := errs.CompleteRetryAdvice(err, "Review the exact registered workspace name, then retry.")
+		return Plan{}, &errs.Error{ID: "workspace.delete.resolve", Kind: errs.KindOperation, Operation: "workspace.delete", Resource: input.Name, Summary: "Workspace deletion target resolution failed.", Cause: err, Retryable: retryable, CorrectiveAction: correctiveAction}
 	}
 	if item.Name == "" || item.ID == "" || item.Root == "" {
 		return Plan{}, runtimeError("workspace deletion target has an incomplete identity")
@@ -76,7 +77,8 @@ func (a *Action) Apply(ctx context.Context, plan Plan) (Result, error) {
 		return Result{}, &errs.Error{ID: "workspace.delete.dirty", Kind: errs.KindOperation, Operation: "workspace.delete", Resource: plan.Workspace.ID, Summary: "Dirty workspace deletion requires explicit force.", Cause: errors.New("the workspace contains dirty or invalid managed artifacts"), Retryable: errs.Bool(false), CorrectiveAction: "Review local changes, then add --force only when deletion is intended."}
 	}
 	if err := a.store.Delete(ctx, DeleteRequest{Expected: plan.Workspace, Force: plan.Force}); err != nil {
-		return Result{}, &errs.Error{ID: "workspace.delete.failed", Kind: errs.KindOperation, Operation: "workspace.delete", Resource: plan.Workspace.ID, Summary: "Workspace deletion failed.", Cause: err, Retryable: errs.Bool(false), CorrectiveAction: "Resolve the exact workspace again and review a new deletion preview."}
+		retryable, correctiveAction := errs.CompleteRetryAdvice(err, "Resolve the exact workspace again and review a new deletion preview.")
+		return Result{}, &errs.Error{ID: "workspace.delete.failed", Kind: errs.KindOperation, Operation: "workspace.delete", Resource: plan.Workspace.ID, Summary: "Workspace deletion failed.", Cause: err, Retryable: retryable, CorrectiveAction: correctiveAction}
 	}
 	return Result{Status: "deleted", Workspace: plan.Workspace.Name, ID: plan.Workspace.ID}, nil
 }

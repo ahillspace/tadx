@@ -6,6 +6,8 @@ import (
 
 	permissioncreate "github.com/ahillspace/tadx/actions/admin/permission/create"
 	permissiondelete "github.com/ahillspace/tadx/actions/admin/permission/delete"
+	"github.com/ahillspace/tadx/internal/commandhint"
+	"github.com/ahillspace/tadx/internal/errs"
 	resourceadmin "github.com/ahillspace/tadx/internal/resources/admin"
 	tableauadmin "github.com/ahillspace/tadx/internal/tableau/admin"
 )
@@ -21,7 +23,7 @@ func (c *remoteAdminCommands) CreateAdminPermission(ctx context.Context, in perm
 	in.Environment, in.Site = connection.environment.Alias, connection.environment.SiteContentURL
 	adapter := adminPermissionCreateAdapter{connection.adapter}
 	out, err := permissioncreate.New(adapter, adapter).Execute(ctx, in, preview)
-	return out, adminActionError("admin.permission.create", in.Environment, in.Site, err)
+	return out, permissionMutationError("admin.permission.create", in.Environment, in.Site, err)
 }
 
 type adminPermissionCreateAdapter struct{ adapter *resourceadmin.Adapter }
@@ -53,7 +55,39 @@ func (c *remoteAdminCommands) DeleteAdminPermission(ctx context.Context, in perm
 	in.Environment, in.Site = connection.environment.Alias, connection.environment.SiteContentURL
 	adapter := adminPermissionDeleteAdapter{connection.adapter}
 	out, err := permissiondelete.New(adapter, adapter).Execute(ctx, in, preview)
-	return out, adminActionError("admin.permission.delete", in.Environment, in.Site, err)
+	return out, permissionMutationError("admin.permission.delete", in.Environment, in.Site, err)
+}
+
+func permissionMutationError(operation, environment, site string, err error) error {
+	if err == nil {
+		return nil
+	}
+	var resolution *resourceadmin.PrincipalResolutionError
+	if !errors.As(err, &resolution) {
+		return adminActionError(operation, environment, site, err)
+	}
+	retryable, _ := errs.CompleteRetryAdvice(err, "Review the exact principal before retrying.")
+	hint := principalInspectHint(environment, resolution.PrincipalType, resolution.PrincipalLUID)
+	return &errs.Error{
+		ID:               operation + ".principal.resolve",
+		Kind:             errs.KindOperation,
+		Operation:        operation,
+		Resource:         resolution.PrincipalLUID,
+		Environment:      environment,
+		Site:             site,
+		Summary:          "Permission principal resolution failed.",
+		Cause:            err,
+		Retryable:        retryable,
+		CorrectiveAction: "Review the requested principal type and identity. Run " + hint + ", then create a new preview before any write.",
+		TableauRequestID: errs.TableauRequestID(err),
+		Phase:            errs.PhaseVerification,
+		Outcome:          errs.OutcomeNotAttempted,
+		Prerequisite:     &errs.Prerequisite{Kind: resolution.PrincipalType, Resource: resolution.PrincipalLUID, Summary: resolution.PrerequisiteSummary()},
+	}
+}
+
+func principalInspectHint(environment, principalType, principalLUID string) string {
+	return commandhint.Environment(environment, "admin", principalType, "inspect", "--id", principalLUID)
 }
 
 type adminPermissionDeleteAdapter struct{ adapter *resourceadmin.Adapter }

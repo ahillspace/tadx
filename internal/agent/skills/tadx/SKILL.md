@@ -23,7 +23,7 @@ Use one relevant leaf `--help` only when this Guidance and its references do not
 
 ## Critical rules
 
-- Reuse known environment aliases, workspace names, and LUIDs instead of rediscovering them.
+- Reuse known environment aliases, workspace names, LUIDs, and successful readback evidence; retrieve only missing or freshness-sensitive details.
 - Use exact LUIDs after discovery.
 - Never select the first fuzzy match or resolve ambiguity interactively.
 - TADX authenticates with PATs only.
@@ -31,7 +31,9 @@ Use one relevant leaf `--help` only when this Guidance and its references do not
 - TADX serializes commands sharing a PAT on this machine; other machines and external tools need separate PATs or coordination because a new session can invalidate an existing one.
 - Remote mutations run by default when enabled by the effective mutation policy; supported read-only `--preview` operations remain available when the gate is off.
 - Discovery and previews do not authorize mutation, and `--force` never bypasses mutation policy.
-- An error can include confirmed results in `output`; retain those identities and inspect uncertain outcomes before retrying a write.
+- Errors can include confirmed results in `output`, a failure `phase`, an `outcome`, and a missing `prerequisite`.
+- Preserve completed work, resolve the missing prerequisite, and retry only unfinished operations; inspect unknown write outcomes before repeating a mutation.
+- Follow-up commands preserve configuration context, but their presence does not authorize execution or establish that they fit the user's destination.
 - Keep persisted and rendered artifact paths relative to the workspace with forward slashes.
 
 ## Permission to change the mutation flag
@@ -65,6 +67,7 @@ Use live reads for authoritative state before consequential changes, details not
 
 `--catalog` is local-only and never falls back to Tableau.
 A catalog miss does not prove remote absence.
+Use `coverage_reason` when present; partial coverage alone does not establish an access denial or missing remote content.
 Live schema reads write through to the catalog.
 Targeted live reads do not establish complete inventory coverage.
 Ordinary content and administration lists and live searches use bounded provider reads without accessing SQLite.

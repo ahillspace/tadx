@@ -48,7 +48,8 @@ func (a *Action) Execute(ctx context.Context, input Input) (Output, error) {
 	}
 	item, err := a.registry.Unregister(ctx, input.Name)
 	if err != nil {
-		return Output{}, &errs.Error{ID: "workspace.unregister.failed", Kind: errs.KindOperation, Operation: "workspace.unregister", Resource: input.Name, Summary: "Workspace unregister failed.", Cause: err, Retryable: errs.Bool(false), CorrectiveAction: "Review the exact registered workspace name, then retry."}
+		retryable, correctiveAction := errs.CompleteRetryAdvice(err, "Review the exact registered workspace name, then retry.")
+		return Output{}, &errs.Error{ID: "workspace.unregister.failed", Kind: errs.KindOperation, Operation: "workspace.unregister", Resource: input.Name, Summary: "Workspace unregister failed.", Cause: err, Retryable: retryable, CorrectiveAction: correctiveAction}
 	}
 	if item.Name == "" || item.ID == "" || item.Root == "" {
 		return Output{}, runtimeError("workspace unregister returned an incomplete identity")

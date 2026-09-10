@@ -74,7 +74,8 @@ func (a *Action) Execute(ctx context.Context, input Input) (Output, error) {
 	}
 	cloned, err := a.cloner.Clone(ctx, input)
 	if err != nil {
-		return Output{}, &errs.Error{ID: "workspace.clone.failed", Kind: errs.KindOperation, Operation: "workspace.clone", Resource: input.Name, Summary: "Workspace clone failed.", Cause: err, Retryable: errs.Bool(false), CorrectiveAction: "Confirm the source workspace exists and the destination path is empty, then retry."}
+		retryable, correctiveAction := errs.CompleteRetryAdvice(err, "Confirm the source workspace exists and the destination path is empty, then retry.")
+		return Output{}, &errs.Error{ID: "workspace.clone.failed", Kind: errs.KindOperation, Operation: "workspace.clone", Resource: input.Name, Summary: "Workspace clone failed.", Cause: err, Retryable: retryable, CorrectiveAction: correctiveAction}
 	}
 	if cloned.Name == "" || cloned.ID == "" || cloned.Root == "" || !cloned.Registered {
 		return Output{}, runtimeError("workspace clone returned an incomplete identity")

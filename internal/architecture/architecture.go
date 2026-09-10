@@ -235,13 +235,16 @@ func localImportAllowed(file, imported string) bool {
 			return matchesExact(imported, "internal/errs")
 		}
 		if hasPathPrefix(file, "internal/output") {
-			return matchesExact(imported, "internal/errs", "internal/toon")
+			// Output binds command context through the standard-library-only
+			// quoting leaf; it still cannot access CLI dispatch or runtime state.
+			return matchesExact(imported, "internal/errs", "internal/toon", "internal/commandhint")
 		}
 		if hasPathPrefix(file, "internal/readsource") {
 			return false
 		}
 		if hasPathPrefix(file, "internal/workspace") {
-			return matchesExact(imported, "internal/config")
+			// Workspace recovery quotes local selectors with the same leaf helper.
+			return matchesExact(imported, "internal/config", "internal/commandhint")
 		}
 		// The artifact manager owns the workspace mutation critical section and
 		// serializes it against other tadx processes via the leaf lock package. It

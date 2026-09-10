@@ -156,6 +156,7 @@ func TestPulseFollowupKeepsNondefaultEnvironmentAndQuotesExactIdentityThroughCLI
 		t.Fatal(err)
 	}
 	want := commandhint.Environment(alias, "pulse", "metric", "fork", "--id", id, "--period", "LAST_30_DAYS", "--preview")
+	want = commandhint.BindConfig(want, options.ConfigPath)
 	if len(result.Help) != 1 || result.Help[0] != want {
 		t.Fatalf("help=%v want=%q", result.Help, want)
 	}

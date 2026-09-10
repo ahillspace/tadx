@@ -11,8 +11,8 @@ import (
 
 type permissionClient struct {
 	tableau.ClientContract
-	userCalls, groupCalls, permissionCalls, writes int
-	missing                                        bool
+	userCalls, groupCalls, memberCalls, permissionCalls, writes int
+	missing                                                     bool
 }
 
 func (f *permissionClient) GetUser(_ context.Context, id string) (tableau.User, error) {
@@ -25,6 +25,13 @@ func (f *permissionClient) GetUser(_ context.Context, id string) (tableau.User, 
 func (f *permissionClient) ListGroups(_ context.Context, in tableau.ListGroupsRequest) (tableau.GroupPage, error) {
 	f.groupCalls++
 	return tableau.GroupPage{Number: 1, Size: in.PageSize, Total: 1, Items: []tableau.Group{{LUID: "g1", Name: "Test group"}}}, nil
+}
+func (f *permissionClient) ListGroupUsers(_ context.Context, id string, in tableau.PageRequest) (tableau.UserPage, error) {
+	f.memberCalls++
+	if f.missing || id != "g1" {
+		return tableau.UserPage{}, errors.New("group not found")
+	}
+	return tableau.UserPage{Number: 1, Size: in.PageSize, Total: 0}, nil
 }
 func (f *permissionClient) GetPermissions(_ context.Context, in tableau.PermissionRequest) (tableau.PermissionSet, error) {
 	f.permissionCalls++
@@ -48,7 +55,7 @@ func TestPermissionMutationReadValidatesPrincipalBeforeResource(t *testing.T) {
 		}
 		in := tableau.PermissionMutationRequest{PermissionRequest: tableau.PermissionRequest{ResourceKind: "workbook", ResourceLUID: "w1"}, Rule: tableau.PermissionRule{PrincipalType: principal, PrincipalLUID: id, Capability: "Read", Mode: "Allow"}}
 		set, err := adapter.GetPermissionRule(context.Background(), in)
-		if err != nil || set.ResourceLUID != "w1" || f.permissionCalls != 1 || f.userCalls+f.groupCalls != 1 || f.writes != 0 {
+		if err != nil || set.ResourceLUID != "w1" || f.permissionCalls != 1 || f.userCalls+f.memberCalls != 1 || f.groupCalls != 0 || f.writes != 0 {
 			t.Fatalf("set=%+v err=%v fake=%+v", set, err, f)
 		}
 		if _, err := adapter.CreatePermission(context.Background(), in); err != nil {

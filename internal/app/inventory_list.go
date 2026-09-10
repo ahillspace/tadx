@@ -94,6 +94,7 @@ func (i collectedResourceInventory) warningSource(observedAt time.Time) *readsou
 	}
 	value := readsource.Live(observedAt)
 	value.Coverage = readsource.CoveragePartial
+	value.CoverageReason = "malformed_records_skipped"
 	value.CatalogWarning = i.incompleteWarning()
 	return &value
 }

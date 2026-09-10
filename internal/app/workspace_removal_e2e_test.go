@@ -27,14 +27,14 @@ func TestWorkspaceRemovalRequiresDefaultReassignmentThroughCLI(t *testing.T) {
 			if exit, out := run("workspace", "create", "development", "--path", root); exit != 0 {
 				t.Fatalf("create: %s", out)
 			}
-			if exit, out := run("workspace", operation, "development"); exit == 0 || !strings.Contains(out, "default") {
+			if exit, out := run("workspace", "create", "other", "--path", filepath.Join(directory, "other")); exit != 0 {
+				t.Fatalf("create other: %s", out)
+			}
+			if exit, out := run("workspace", operation, "development"); exit == 0 || !strings.Contains(out, "workspace set-default other") {
 				t.Fatalf("removal: exit=%d %s", exit, out)
 			}
 			if _, err := os.Stat(filepath.Join(root, "tadx.yaml")); err != nil {
 				t.Fatal(err)
-			}
-			if exit, out := run("workspace", "create", "other", "--path", filepath.Join(directory, "other")); exit != 0 {
-				t.Fatalf("create other: %s", out)
 			}
 			if exit, out := run("workspace", "set-default", "other"); exit != 0 {
 				t.Fatalf("set default: %s", out)

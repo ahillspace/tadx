@@ -13,4 +13,4 @@ artifact:
   dependencies_acquired: true
 warnings[1]: existing clean artifact replaced
 details: "--full"
-help[1]: tadx content workbook publish --id wb-1 --project-id project-1 --overwrite --preview --workspace 'logical workspace' --environment production
+help[1]: "Preview updating the source: tadx content workbook publish --id wb-1 --project-id project-1 --overwrite --preview --workspace 'logical workspace' --environment production"

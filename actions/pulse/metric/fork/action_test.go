@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -11,6 +12,7 @@ import (
 	"testing"
 
 	metricfork "github.com/ahillspace/tadx/actions/pulse/metric/fork"
+	"github.com/ahillspace/tadx/internal/errs"
 	render "github.com/ahillspace/tadx/internal/output"
 )
 
@@ -18,6 +20,12 @@ type service struct {
 	created int
 	metric  metricfork.Metric
 	request metricfork.CreateRequest
+}
+
+type failingReconciler struct{ *service }
+
+func (f failingReconciler) ReconcileMetric(context.Context, metricfork.ExpectedMetric) (metricfork.Reconciliation, error) {
+	return metricfork.Reconciliation{}, errors.New("readback unavailable")
 }
 
 func (s *service) ResolveFilterFields(_ context.Context, _ string, fields []string) ([]string, error) {
@@ -129,6 +137,35 @@ func TestForkPreservesUnknownFieldsAndPreviewsByDefault(t *testing.T) {
 	result, err := metricfork.New(s, s, s).Execute(context.Background(), input, false)
 	if err != nil || s.created != 1 || result.Result == nil || result.Result.ReconciliationStatus != "verified" {
 		t.Fatalf("result=%#v created=%d err=%v", result, s.created, err)
+	}
+}
+
+func TestForkPreservesCreatedMetricWhenReconciliationFails(t *testing.T) {
+	s := &service{metric: metricfork.Metric{LUID: "metric-1", DefinitionLUID: "definition-1", SiteLUID: "site-1", Specification: map[string]any{"filters": []any{}}}}
+	input := metricfork.Input{Environment: "dev", Site: "sandbox", SiteLUID: "site-1", MetricLUID: "metric-1", Timeframe: "LAST_30_DAYS"}
+	output, err := metricfork.New(s, s, failingReconciler{s}).Execute(context.Background(), input, false)
+	var structured *errs.Error
+	if err == nil || output.Result == nil || output.Result.MetricLUID != "metric-fork" || !errors.As(err, &structured) || structured.Phase != errs.PhaseVerification || structured.Outcome != errs.OutcomeConfirmed {
+		t.Fatalf("output=%#v err=%v", output, err)
+	}
+}
+
+type existingForkService struct{ service }
+
+func (s *existingForkService) GetOrCreateMetric(_ context.Context, request metricfork.CreateRequest) (metricfork.CreateResult, error) {
+	s.created++
+	s.request = request
+	return metricfork.CreateResult{MetricLUID: "metric-existing", Created: false}, nil
+}
+func (*existingForkService) ReconcileMetric(context.Context, metricfork.ExpectedMetric) (metricfork.Reconciliation, error) {
+	return metricfork.Reconciliation{}, errors.New("readback unavailable")
+}
+
+func TestForkPreservesExistingMetricWhenReconciliationFails(t *testing.T) {
+	s := &existingForkService{service: service{metric: metricfork.Metric{LUID: "metric-1", DefinitionLUID: "definition-1", SiteLUID: "site-1", Specification: map[string]any{"filters": []any{}}}}}
+	output, err := metricfork.New(s, s, s).Execute(context.Background(), metricfork.Input{Environment: "dev", Site: "sandbox", SiteLUID: "site-1", MetricLUID: "metric-1", Timeframe: "LAST_30_DAYS"}, false)
+	if err == nil || output.Result == nil || output.Result.MetricLUID != "metric-existing" || output.Result.Status != "existing" || output.Result.Created {
+		t.Fatalf("output=%#v err=%v", output, err)
 	}
 }
 

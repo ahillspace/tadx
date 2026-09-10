@@ -131,7 +131,8 @@ func (a *Action) Execute(ctx context.Context, input Input) (Output, error) {
 	}
 	resolved, inventory, err := a.reader.Status(ctx, input)
 	if err != nil {
-		return Output{}, &errs.Error{ID: "workspace.status.failed", Kind: errs.KindOperation, Operation: "workspace.status", Resource: input.Workspace, Summary: "Workspace status failed.", Cause: err, Retryable: errs.Bool(false), CorrectiveAction: "Repair the exact workspace or artifact metadata, then retry."}
+		retryable, correctiveAction := errs.CompleteRetryAdvice(err, "Repair the exact workspace or artifact metadata, then retry.")
+		return Output{}, &errs.Error{ID: "workspace.status.failed", Kind: errs.KindOperation, Operation: "workspace.status", Resource: input.Workspace, Summary: "Workspace status failed.", Cause: err, Retryable: retryable, CorrectiveAction: correctiveAction}
 	}
 	if inventory.Returned != len(inventory.Items) || inventory.Returned > input.Limit {
 		return Output{}, runtimeError("workspace status returned an invalid bounded page")

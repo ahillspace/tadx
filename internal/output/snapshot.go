@@ -23,6 +23,12 @@ func (b *boundedSnapshot) Write(p []byte) (int, error) {
 // Snapshot expands without invoking the action, redacts credential-bearing keys,
 // and bounds serialization before allocating an additional normalized copy.
 func Snapshot(value any, maxBytes int) (json.RawMessage, error) {
+	return SnapshotWithConfig(value, maxBytes, "")
+}
+
+// SnapshotWithConfig preserves the command context used when a result is saved.
+// Only recovery hints receive the config binding; result fields and raw diagnostics remain unchanged.
+func SnapshotWithConfig(value any, maxBytes int, configPath string) (json.RawMessage, error) {
 	if err, ok := value.(error); ok {
 		var carrier interface{ OperationOutput() any }
 		if errors.As(err, &carrier) {
@@ -40,6 +46,9 @@ func Snapshot(value any, maxBytes int) (json.RawMessage, error) {
 	} else if p, ok := value.(FullProjector); ok {
 		value = p.FullOutput()
 	}
+	if configPath != "" {
+		value = bindHintValue(value, configPath)
+	}
 	b := &boundedSnapshot{max: maxBytes}
 	if err := json.NewEncoder(b).Encode(value); err != nil {
 		return nil, err
@@ -53,6 +62,7 @@ func Snapshot(value any, maxBytes int) (json.RawMessage, error) {
 	redactSnapshot(normalized)
 	return json.Marshal(normalized)
 }
+
 func redactSnapshot(v any) {
 	switch x := v.(type) {
 	case map[string]any:

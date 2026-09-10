@@ -58,13 +58,14 @@ type Options struct {
 func Run(ctx context.Context, args []string, stdout io.Writer, options Options) (exitCode int) {
 	definitions := capability.All()
 	source := registrySource{}
-	renderOptions := &cli.RenderOptions{}
+	renderOptions := &cli.RenderOptions{HintConfig: func() string { return options.ConfigPath }}
 	runtime, err := newRuntime(options)
 	if err != nil {
 		return renderError(stdout, err)
 	}
 	defer runtime.Close()
 	capture := newLastCapture(runtime)
+	capture.hintConfig = func() string { return hintConfigPath(renderOptions) }
 	defer func() {
 		if err := capture.save(exitCode); err != nil {
 			_, _ = fmt.Fprintln(stdout, "last_result_warning: Previous result could not be saved.")
@@ -186,15 +187,31 @@ func (r writerRenderer) Render(value any) error {
 		r.capture.value = value
 	}
 	full := r.options != nil && r.options.Full
+	configPath := hintConfigPath(r.options)
 	if saved, ok := value.(interface{ IsSavedResult() bool }); ok && saved.IsSavedResult() {
 		full = true
+		configPath = ""
 	}
-	return output.RenderWithOptions(r.writer, value, output.Options{Full: full})
+	return output.RenderWithOptions(r.writer, value, output.Options{Full: full, ConfigPath: configPath})
+}
+
+func hintConfigPath(options *cli.RenderOptions) string {
+	if options == nil || options.HintConfig == nil {
+		return ""
+	}
+	path := options.HintConfig()
+	if path == "" {
+		return ""
+	}
+	if absolute, err := filepath.Abs(path); err == nil {
+		return absolute
+	}
+	return path
 }
 
 func renderErrorWithOptions(writer io.Writer, err error, options *cli.RenderOptions) int {
 	full := options != nil && options.Full
-	if renderErr := output.RenderError(writer, err, output.Options{Full: full}); renderErr != nil {
+	if renderErr := output.RenderError(writer, err, output.Options{Full: full, ConfigPath: hintConfigPath(options)}); renderErr != nil {
 		return 1
 	}
 	return errs.ExitCode(err)
@@ -284,6 +301,9 @@ func (r *runtimeDependencies) environment(alias string, explicit bool) (config.C
 		environment, err = configuration.ResolveWriteEnvironment(alias)
 	} else {
 		environment, err = configuration.ResolveEnvironment(alias)
+	}
+	if err != nil {
+		return configuration, environment, &errs.Error{ID: "environment.resolve", Kind: errs.KindUsage, Operation: "environment.resolve", Environment: alias, Summary: "A configured environment alias is required, not a Tableau site name or URL.", Cause: err, Phase: errs.PhaseSetup, Outcome: errs.OutcomeNotAttempted, Prerequisite: &errs.Prerequisite{Kind: "environment", Resource: alias, Summary: "Select a configured environment alias."}}
 	}
 	return configuration, environment, err
 }
@@ -516,7 +536,7 @@ func resolvedTarget(environmentAlias, site string, environment config.Environmen
 
 func capabilitySetupError(id, operation, environment, site, summary, fallbackAction string, err error) error {
 	retryable, correctiveAction := errs.CompleteRetryAdvice(err, fallbackAction)
-	return &errs.Error{ID: id, Kind: errs.KindOperation, Operation: operation, Environment: environment, Site: site, Summary: summary, Cause: err, Retryable: retryable, CorrectiveAction: correctiveAction, TableauRequestID: errs.TableauRequestID(err)}
+	return &errs.Error{ID: id, Kind: errs.KindOperation, Operation: operation, Environment: environment, Site: site, Summary: summary, Cause: err, Retryable: retryable, CorrectiveAction: correctiveAction, TableauRequestID: errs.TableauRequestID(err), Phase: errs.PhaseSetup, Outcome: errs.OutcomeNotAttempted}
 }
 
 type artifactReader struct {

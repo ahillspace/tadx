@@ -71,7 +71,8 @@ func (a *Action) Execute(ctx context.Context, input Input) (Output, error) {
 	}
 	registered, err := a.registrar.Register(ctx, input)
 	if err != nil {
-		return Output{}, &errs.Error{ID: "workspace.register.failed", Kind: errs.KindOperation, Operation: "workspace.register", Resource: input.Name, Summary: "Workspace registration failed.", Cause: err, Retryable: errs.Bool(false), CorrectiveAction: "Point --path at an existing workspace that has a valid tadx.yaml, or create one first with tadx workspace create."}
+		retryable, correctiveAction := errs.CompleteRetryAdvice(err, "Point --path at an existing workspace that has a valid tadx.yaml, or create one first with tadx workspace create.")
+		return Output{}, &errs.Error{ID: "workspace.register.failed", Kind: errs.KindOperation, Operation: "workspace.register", Resource: input.Name, Summary: "Workspace registration failed.", Cause: err, Retryable: retryable, CorrectiveAction: correctiveAction}
 	}
 	if registered.Name == "" || registered.ID == "" || !registered.Registered {
 		return Output{}, runtimeError("workspace registration returned an incomplete identity")

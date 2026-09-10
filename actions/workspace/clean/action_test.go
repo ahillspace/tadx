@@ -51,7 +51,7 @@ func TestCleanPreservesStructuredFailure(t *testing.T) {
 }
 
 func TestOutputGolden(t *testing.T) {
-	output := workspaceclean.Output{Result: workspaceclean.Result{Status: "cleaned", Workspace: "dev", Class: "temporary", EntriesRemoved: 3, BytesRemoved: 42, Removed: []string{".tadx/staging", ".tadx/tmp"}}, Help: []string{"tadx workspace status --workspace dev"}}
+	output := workspaceclean.Output{Result: workspaceclean.Result{Status: "cleaned", Workspace: "dev", Class: "temporary", EntriesRemoved: 3, BytesRemoved: 42, Removed: []string{".tadx/staging", ".tadx/tmp"}, CanonicalArtifactsPreserved: true}, Help: []string{"tadx workspace status --workspace dev"}}
 	for _, test := range []struct {
 		name string
 		full bool

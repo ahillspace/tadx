@@ -88,6 +88,7 @@ Repeat `--id` on pull or `--artifact` on publish to process up to 100 resources 
 TADX validates the full selection first, preserves selection order, processes sequentially, continues after independent failures, and returns a nonzero aggregate result when any item fails.
 Batch publish rejects `--name` because each artifact keeps its own name.
 TADX does not infer dependency order or retry failed items.
+Keep successful item results when a batch fails; resolve remaining prerequisites and retry only failed or skipped selections with known safe outcomes.
 For migrations, publish datasource dependencies before workbooks that reference them.
 
 ## Managed artifacts
@@ -98,6 +99,13 @@ Workbook pull includes extracts by default.
 `--overwrite` is required to replace dirty local content.
 
 Publish selects managed content with `--id`, unique `--artifact-name`, or an advanced `--artifact` directory path.
+Use the source LUID returned by pull with the logical workspace; filesystem scans are unnecessary for managed publication.
+
+```text
+tadx content workbook publish --workspace '<workspace>' --id '<source-workbook-luid>' --env '<destination-alias>' --project-id '<destination-project-luid>' --preview
+```
+
+The pull result's source-update preview points back to the original site and project, not a migration destination.
 Use `--file <native-file>` for an existing workbook, datasource, or flow file without a workspace.
 These selectors are mutually exclusive; ambiguity fails.
 Artifact selectors are workspace-relative and use forward slashes.

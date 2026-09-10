@@ -20,6 +20,7 @@ type Metadata struct {
 	Mode              string `json:"mode"`
 	ObservedAt        string `json:"observed_at,omitempty"`
 	Coverage          string `json:"coverage"`
+	CoverageReason    string `json:"coverage_reason,omitempty"`
 	Stale             bool   `json:"stale"`
 	GenerationID      string `json:"generation_id,omitempty"`
 	GenerationCreated string `json:"generation_generated_at,omitempty"`
@@ -52,13 +53,18 @@ func Live(observedAt time.Time) Metadata {
 
 // Cached returns metadata for a local catalog result.
 func Cached(observedAt time.Time, coverage, generationID string, generatedAt time.Time, stale bool) Metadata {
+	reason := ""
 	if coverage == "" {
 		coverage = CoveragePartial
+	}
+	if coverage == CoveragePartial {
+		reason = "not_fully_observed"
 	}
 	return Metadata{
 		Mode:              Catalog,
 		ObservedAt:        timestamp(observedAt),
 		Coverage:          coverage,
+		CoverageReason:    reason,
 		Stale:             stale,
 		GenerationID:      generationID,
 		GenerationCreated: timestamp(generatedAt),

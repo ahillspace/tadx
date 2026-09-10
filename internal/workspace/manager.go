@@ -14,6 +14,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/ahillspace/tadx/internal/commandhint"
 	"github.com/ahillspace/tadx/internal/config"
 	"gopkg.in/yaml.v3"
 )
@@ -70,7 +71,7 @@ func NewManager(configPath string, random io.Reader) *Manager {
 }
 
 // Create creates and registers one explicit named workspace.
-func (m *Manager) Create(ctx context.Context, name, root string) (Record, error) {
+func (m *Manager) Create(ctx context.Context, name, root string) (record Record, resultErr error) {
 	if err := ctx.Err(); err != nil {
 		return Record{}, err
 	}
@@ -79,6 +80,9 @@ func (m *Manager) Create(ctx context.Context, name, root string) (Record, error)
 	}
 	if err := config.ValidateWorkspaceName(name); err != nil {
 		return Record{}, fmt.Errorf("workspace name: %w", err)
+	}
+	if info, err := os.Lstat(filepath.Clean(root)); err == nil && (!info.IsDir() || info.Mode()&os.ModeSymlink != 0) {
+		return Record{}, recoveryError("workspace root must be a real directory", "Choose a new path or an empty real directory for tadx workspace create.")
 	}
 	resolvedRoot, err := canonicalRoot(root)
 	if err != nil {
@@ -89,21 +93,22 @@ func (m *Manager) Create(ctx context.Context, name, root string) (Record, error)
 		return Record{}, fmt.Errorf("generate workspace identity: %w", err)
 	}
 	manifest := Manifest{Version: manifestVersion, Workspace: ManifestWorkspace{ID: id, Name: name}}
-	created, err := createRoot(resolvedRoot, manifest)
+	cleanup, err := createRoot(resolvedRoot, manifest)
 	if err != nil {
 		return Record{}, err
 	}
-	rollback := created
+	rollback := true
 	defer func() {
-		if rollback {
-			_ = os.RemoveAll(resolvedRoot)
-		}
+		resultErr = errors.Join(resultErr, cleanup(rollback))
 	}()
 	// Register under the interprocess configuration lock so the name/root
 	// collision checks and the write are one atomic transaction; a concurrent
 	// tadx process cannot slip a colliding registration between the check and
 	// the save.
 	updated, err := config.Update(m.configPath, true, func(configuration config.Config) (config.Config, error) {
+		if err := ctx.Err(); err != nil {
+			return config.Config{}, err
+		}
 		return applyRegistration(configuration, name, id, resolvedRoot)
 	})
 	if err != nil {
@@ -130,7 +135,18 @@ func (m *Manager) Register(ctx context.Context, name, root string) (Record, erro
 	}
 	manifest, err := ReadManifest(resolvedRoot)
 	if err != nil {
-		return Record{}, fmt.Errorf("%q is not a workspace (no valid tadx.yaml); create one first with tadx workspace create: %w", root, err)
+		createName := name
+		if createName == "" {
+			createName = "<name>"
+		}
+		if _, statErr := os.Lstat(resolvedRoot); errors.Is(statErr, os.ErrNotExist) {
+			return Record{}, recoveryError("workspace root is missing", "Create it first: "+commandhint.Command("workspace", "create", createName, "--path", root))
+		}
+		empty, readErr := emptyDirectory(resolvedRoot)
+		if readErr == nil && empty {
+			return Record{}, recoveryError("directory is empty and is not a workspace (no valid tadx.yaml)", "Initialize it first: "+commandhint.Command("workspace", "create", createName, "--path", root))
+		}
+		return Record{}, recoveryError("directory is nonempty and is not a workspace (no valid tadx.yaml)", "Restore its original tadx.yaml if this was a workspace. Otherwise keep the existing files and create a workspace in a new or empty directory: "+commandhint.Command("workspace", "create", createName, "--path", "<new-or-empty-directory>"))
 	}
 	if name == "" {
 		name = manifest.Workspace.Name
@@ -224,6 +240,9 @@ func (m *Manager) Delete(ctx context.Context, expected Record) (Record, error) {
 		if !exists || registration.ID != expected.ID {
 			return config.Config{}, nil, errors.New("workspace registration changed during deletion")
 		}
+		if info, err := os.Lstat(registration.Path); err != nil || !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
+			return config.Config{}, nil, errors.New("workspace deletion target must be an available real directory")
+		}
 		root, err := canonicalRoot(registration.Path)
 		if err != nil || !samePath(root, expected.Root) {
 			return config.Config{}, nil, errors.New("workspace root changed before deletion")
@@ -293,11 +312,23 @@ func recordFromRegistration(name string, registration config.WorkspaceRegistrati
 
 func removeRegistration(configuration *config.Config, name string) {
 	delete(configuration.Workspaces, name)
+	if strings.EqualFold(configuration.DefaultWorkspace, name) {
+		configuration.DefaultWorkspace = ""
+	}
+	for alias, environment := range configuration.Environments {
+		if strings.EqualFold(environment.DefaultWorkspace, name) {
+			environment.DefaultWorkspace = ""
+			configuration.Environments[alias] = environment
+		}
+	}
 }
 
 func validateDefaultReferences(configuration config.Config, name string) error {
+	if len(configuration.Workspaces) == 1 {
+		return nil
+	}
 	if strings.EqualFold(configuration.DefaultWorkspace, name) {
-		return fmt.Errorf("workspace %q is the global default; reassign the default before removal", name)
+		return recoveryError(fmt.Sprintf("workspace %q is the global default", name), replacementGuidance(configuration, name, ""), name)
 	}
 	var references []string
 	for alias, environment := range configuration.Environments {
@@ -307,7 +338,7 @@ func validateDefaultReferences(configuration config.Config, name string) error {
 	}
 	if len(references) > 0 {
 		sort.Strings(references)
-		return fmt.Errorf("workspace %q is the default for environment %q; reassign the default before removal", name, references[0])
+		return recoveryError(fmt.Sprintf("workspace %q is the default for environment %q", name, references[0]), replacementGuidance(configuration, name, references[0]), name)
 	}
 	return nil
 }
@@ -456,7 +487,11 @@ func (m *Manager) resolveWithConfig(ctx context.Context, configuration config.Co
 	}
 	name, registration, err := configuration.ResolveWorkspace(selector)
 	if err != nil {
-		return Record{}, err
+		action := "Select an existing workspace with --workspace <name>; inspect names with tadx workspace list."
+		if len(configuration.Workspaces) == 0 {
+			action = "Create a workspace first: tadx workspace create <name>."
+		}
+		return Record{}, recoveryError(err.Error(), action)
 	}
 	root, err := canonicalRoot(registration.Path)
 	if err != nil {
@@ -469,7 +504,7 @@ func (m *Manager) resolveWithConfig(ctx context.Context, configuration config.Co
 	}
 	manifest, err := ReadManifest(root)
 	if err != nil {
-		return Record{}, fmt.Errorf("workspace %q manifest: %w", name, err)
+		return Record{}, recoveryError(fmt.Sprintf("workspace %q is unavailable or has no valid tadx.yaml", name), "Restore the registered workspace root and its original tadx.yaml. If the registration is obsolete, preserve any remaining files and remove the registration with: "+commandhint.Command("workspace", "unregister", name))
 	}
 	if manifest.Workspace.ID != registration.ID || !strings.EqualFold(manifest.Workspace.Name, name) {
 		return Record{}, fmt.Errorf("workspace %q registry and manifest identities do not match", name)
@@ -681,42 +716,8 @@ func (m *Manager) newID() (string, error) {
 	return "ws_" + hex.EncodeToString(value), nil
 }
 
-func createRoot(root string, manifest Manifest) (bool, error) {
-	if _, err := os.Lstat(root); err == nil {
-		return false, fmt.Errorf("workspace root %q must not already exist; use a new path for create or tadx workspace register for an existing workspace", root)
-	} else if !errors.Is(err, os.ErrNotExist) {
-		return false, err
-	}
-	parent := filepath.Dir(root)
-	if err := os.MkdirAll(parent, 0o700); err != nil {
-		return false, err
-	}
-	stage, err := os.MkdirTemp(parent, ".tadx-workspace-stage-")
-	if err != nil {
-		return false, err
-	}
-	defer os.RemoveAll(stage)
-	if err := os.MkdirAll(filepath.Join(stage, "artifacts"), 0o700); err != nil {
-		return false, err
-	}
-	if err := os.MkdirAll(filepath.Join(stage, ".tadx"), 0o700); err != nil {
-		return false, err
-	}
-	data, err := yaml.Marshal(manifest)
-	if err != nil {
-		return false, err
-	}
-	if err := os.WriteFile(filepath.Join(stage, config.WorkspaceConfigName), data, 0o600); err != nil {
-		return false, err
-	}
-	if err := os.Rename(stage, root); err != nil {
-		return false, fmt.Errorf("install workspace root: %w", err)
-	}
-	return true, nil
-}
-
-// cloneRoot builds a fresh workspace root from an existing source. It mirrors
-// createRoot's atomic staged-then-renamed construction, copying only the source
+// cloneRoot builds a fresh workspace root from an existing source using
+// atomic staged-then-renamed construction, copying only the source
 // artifacts tree (rejecting symbolic links) and writing a fresh manifest and an
 // empty local-state directory.
 func cloneRoot(ctx context.Context, sourceRoot, root string, manifest Manifest) error {

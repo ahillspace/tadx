@@ -17,6 +17,9 @@ Blocked and docs-only capabilities remain non-executable until bounded upstream 
 Do not weaken an enforcement gate to make work pass; flag a gate that blocks correct work.
 
 Default output is compact TOON, and `--full` returns expanded bounded details for the same operation.
+Report known failure phases, mutation outcomes, missing prerequisites, and confirmed partial results through the shared error contract.
+Do not infer safe retries from transport retryability, invent missing evidence, or discard confirmed identities after verification fails.
+Keep follow-up commands contextual and coverage limitations explicit; shared rendering handles configuration preservation and bounded recovery output.
 Consequential mutations run by default when enabled and support `--preview` for a read-only plan.
 Supported read-only `--preview` operations remain available when the mutation gate is off.
 Mutation discovery and previews do not authorize execution, and `--force` does not bypass mutation policy.

@@ -8,6 +8,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -175,8 +176,9 @@ func TestCLIProcessMutationCommandsAreVisibleAndGated(t *testing.T) {
 func TestCLIProcessShorthand(t *testing.T) {
 	binary := buildCLI(t)
 	t.Run("canonical output", func(t *testing.T) {
-		canonical := runCLI(t, binary, []string{"capability", "list", "--domain", "capability", "--full"}, nil)
-		short := runCLI(t, binary, []string{"cap", "ls", "--dom", "capability", "-f"}, nil)
+		configPath := filepath.Join(t.TempDir(), "missing.yaml")
+		canonical := runCLI(t, binary, []string{"capability", "list", "--domain", "capability", "--full", "--config", configPath}, nil)
+		short := runCLI(t, binary, []string{"cap", "ls", "--dom", "capability", "-f", "--config", configPath}, nil)
 		if canonical.exitCode != 0 || short.exitCode != 0 || canonical.stdout != short.stdout || short.stderr != "" {
 			t.Fatalf("canonical=%+v shorthand=%+v", canonical, short)
 		}
@@ -226,7 +228,9 @@ func runCLI(t *testing.T, binary string, args []string, environment map[string]s
 	// A recognized route must never fall through to the developer's installed
 	// profile or its native-store credentials. Each process has no configuration.
 	isolation := t.TempDir()
-	args = append(append([]string(nil), args...), "--config", filepath.Join(isolation, "missing.yaml"))
+	if !slices.Contains(args, "--config") {
+		args = append(append([]string(nil), args...), "--config", filepath.Join(isolation, "missing.yaml"))
+	}
 	command := exec.CommandContext(ctx, binary, args...)
 	command.Dir = isolation
 	command.Env = environmentWithout("TADX_ENABLE_MUTATIONS")

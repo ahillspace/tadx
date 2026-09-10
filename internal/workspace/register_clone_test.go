@@ -85,7 +85,7 @@ func TestRegisterRejectsNonWorkspaceDirectory(t *testing.T) {
 	manager := workspace.NewManager(configPath, nil)
 	if _, err := manager.Register(context.Background(), "", plainDir); err == nil {
 		t.Fatal("Register() adopted a directory with no tadx.yaml")
-	} else if !strings.Contains(err.Error(), "workspace create") {
+	} else if advice, ok := err.(interface{ CorrectiveAction() string }); !ok || !strings.Contains(advice.CorrectiveAction(), "workspace create") {
 		t.Fatalf("error does not point at create: %v", err)
 	}
 }

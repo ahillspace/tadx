@@ -173,9 +173,9 @@ func TestPublishUnknownAsyncOutcomePreservesJobAndDisablesRetryAdvice(t *testing
 	artifacts := &publishArtifactReader{artifact: composedArtifact()}
 	resolver := &publishResolver{project: datasourcepublish.Project{LUID: "project-1", Path: "Analytics"}}
 	publisher := &outcomePublisher{result: datasourcepublish.Result{Status: "timed_out", JobID: "job-1", TableauRequestID: "poll-request"}, err: errors.New("poll timeout")}
-	_, err := datasourcepublish.New(artifacts, resolver, publisher).Execute(context.Background(), datasourcepublish.Input{ArtifactPath: "artifacts/datasource/Sales", Environment: "dev", Site: "sandbox", ProjectSelector: identity.Selector{LUID: "project-1"}, Mode: datasourcepublish.ModeCreate, AsJob: true}, false)
+	output, err := datasourcepublish.New(artifacts, resolver, publisher).Execute(context.Background(), datasourcepublish.Input{ArtifactPath: "artifacts/datasource/Sales", Environment: "dev", Site: "sandbox", ProjectSelector: identity.Selector{LUID: "project-1"}, Mode: datasourcepublish.ModeCreate, AsJob: true}, false)
 	var structured *errs.Error
-	if err == nil || !errors.As(err, &structured) || structured.ID != "datasource.publish.outcome_unknown" || structured.TableauJobID != "job-1" || structured.TableauRequestID != "poll-request" || structured.Retryable == nil || *structured.Retryable {
+	if err == nil || output.Result == nil || output.Result.JobID != "job-1" || !errors.As(err, &structured) || structured.ID != "datasource.publish.outcome_unknown" || structured.Phase != errs.PhaseSubmission || structured.Outcome != errs.OutcomeUnknown || structured.TableauJobID != "job-1" || structured.TableauRequestID != "poll-request" || structured.Retryable == nil || *structured.Retryable {
 		t.Fatalf("error = %#v", err)
 	}
 }
@@ -212,9 +212,9 @@ func TestPublishKeepsCompletedJobOutcomeUnknownWhenIdentityCannotBeResolved(t *t
 		t.Run(test.name, func(t *testing.T) {
 			resolver := &publishResolver{project: datasourcepublish.Project{LUID: "project-1", Path: "Analytics"}, completion: test.completion, completionErr: test.err}
 			publisher := &outcomePublisher{result: datasourcepublish.Result{Status: "succeeded", JobID: "job-1", TableauRequestID: "poll-request"}}
-			_, err := datasourcepublish.New(&publishArtifactReader{artifact: composedArtifact()}, resolver, publisher).Execute(context.Background(), datasourcepublish.Input{ArtifactPath: "artifacts/datasource/Sales", Environment: "dev", Site: "sandbox", ProjectSelector: identity.Selector{LUID: "project-1"}, Mode: datasourcepublish.ModeCreate, AsJob: true}, false)
+			output, err := datasourcepublish.New(&publishArtifactReader{artifact: composedArtifact()}, resolver, publisher).Execute(context.Background(), datasourcepublish.Input{ArtifactPath: "artifacts/datasource/Sales", Environment: "dev", Site: "sandbox", ProjectSelector: identity.Selector{LUID: "project-1"}, Mode: datasourcepublish.ModeCreate, AsJob: true}, false)
 			var structured *errs.Error
-			if err == nil || !errors.As(err, &structured) || structured.ID != "datasource.publish.outcome_unknown" || structured.TableauJobID != "job-1" || structured.TableauRequestID != "poll-request" || structured.Retryable == nil || *structured.Retryable || resolver.completionCalls != 1 {
+			if err == nil || output.Result == nil || output.Result.JobID != "job-1" || !errors.As(err, &structured) || structured.ID != "datasource.publish.outcome_unknown" || structured.Phase != errs.PhaseVerification || structured.Outcome != errs.OutcomeUnknown || structured.TableauJobID != "job-1" || structured.TableauRequestID != "poll-request" || structured.Retryable == nil || *structured.Retryable || resolver.completionCalls != 1 {
 				t.Fatalf("error = %#v, completion calls = %d", err, resolver.completionCalls)
 			}
 		})

@@ -9,12 +9,14 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
+	"reflect"
 	"regexp"
 	"strings"
 	"sync/atomic"
 	"testing"
 
 	"github.com/ahillspace/tadx/internal/app"
+	"github.com/ahillspace/tadx/internal/commandhint"
 	"github.com/ahillspace/tadx/internal/errs"
 	"github.com/ahillspace/tadx/internal/toon"
 )
@@ -34,12 +36,7 @@ func TestCatalogReadDiagnosticRepairPopulatesRequiredScopeThroughCLI(t *testing.
 			if failure.ID != "catalog.uninitialized" || requests.Load() != 0 {
 				t.Fatalf("uninitialized read: %#v; requests=%d", failure, requests.Load())
 			}
-			repair := catalogDiagnosticRepair(failure.CorrectiveAction)
-			if len(repair) == 0 && strings.Contains(failure.CorrectiveAction, "without --catalog") {
-				// Follow the old recommendation as an end user would: its live
-				// answer succeeds, but the original local read still fails.
-				repair = args[:len(args)-1]
-			}
+			repair := catalogDiagnosticRepair(options.ConfigPath, failure.CorrectiveAction)
 			if len(repair) == 0 {
 				t.Fatalf("no executable recovery in %#v", failure)
 			}
@@ -52,7 +49,7 @@ func TestCatalogReadDiagnosticRepairPopulatesRequiredScopeThroughCLI(t *testing.
 			if requests.Load() != before || !strings.Contains(result, kind+"-1") {
 				t.Fatalf("repaired local read: requests=%d/%d output=%s", before, requests.Load(), result)
 			}
-			if strings.Join(repair, " ") != "catalog refresh --environment test --scope "+kind+"s" {
+			if !reflect.DeepEqual(repair, []string{"--config", options.ConfigPath, "catalog", "refresh", "--environment", "test", "--scope", kind + "s"}) {
 				t.Fatalf("repair expands beyond the required scope: %v", repair)
 			}
 		})
@@ -81,8 +78,8 @@ func TestOldCatalogReadDiagnosticOffersExecutableScopedRebuildThroughCLI(t *test
 	if failure.ID != "catalog.schema_refresh_required" || requests.Load() != before {
 		t.Fatalf("old-schema diagnostic: %#v; requests=%d/%d", failure, before, requests.Load())
 	}
-	repair := catalogDiagnosticRepair(failure.CorrectiveAction)
-	if strings.Join(repair, " ") != "catalog refresh --environment test --scope projects" {
+	repair := catalogDiagnosticRepair(options.ConfigPath, failure.CorrectiveAction)
+	if !reflect.DeepEqual(repair, []string{"--config", options.ConfigPath, "catalog", "refresh", "--environment", "test", "--scope", "projects"}) {
 		t.Fatalf("schema rebuild is not actionable for this scope: %q", failure.CorrectiveAction)
 	}
 	runGroupOneCLI(t, options, repair...)
@@ -105,7 +102,7 @@ func TestProjectionCacheMissDoesNotSuggestUnrelatedInventoryRefreshThroughCLI(t 
 			options := diagnosticOptions(t, server)
 			args = append(args, "--environment", "test", "--catalog")
 			failure := catalogDiagnosticFailure(t, options, args)
-			if strings.Contains(failure.CorrectiveAction, "tadx catalog refresh") || !strings.Contains(failure.CorrectiveAction, "without --catalog") || requests.Load() != 0 {
+			if strings.Contains(failure.CorrectiveAction, "catalog refresh") || !strings.Contains(failure.CorrectiveAction, "without --catalog") || requests.Load() != 0 {
 				t.Fatalf("projection recovery suggests an unrelated inventory repair: %#v", failure)
 			}
 		})
@@ -118,7 +115,12 @@ func catalogDiagnosticFailure(t *testing.T, options app.Options, args []string) 
 	if exit := app.Run(context.Background(), args, &output, options); exit == 0 {
 		t.Fatalf("expected cached read failure: %s", output.String())
 	}
-	decoded, err := toon.Decode([]byte(output.String()))
+	return decodeDiagnosticFailure(t, output.String())
+}
+
+func decodeDiagnosticFailure(t *testing.T, output string) errs.Payload {
+	t.Helper()
+	decoded, err := toon.Decode([]byte(output))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -133,12 +135,12 @@ func catalogDiagnosticFailure(t *testing.T, options app.Options, args []string) 
 	return envelope.Error
 }
 
-func catalogDiagnosticRepair(advice string) []string {
-	command := regexp.MustCompile(`tadx (catalog refresh --environment [a-zA-Z0-9_-]+ --scope [a-z]+(?:,[a-z]+)*)`).FindStringSubmatch(advice)
+func catalogDiagnosticRepair(configPath, advice string) []string {
+	command := regexp.MustCompile(regexp.QuoteMeta(commandhint.Command("--config", configPath)) + ` (catalog refresh --environment [a-zA-Z0-9_-]+ --scope [a-z]+(?:,[a-z]+)*)`).FindStringSubmatch(advice)
 	if len(command) != 2 {
 		return nil
 	}
-	return strings.Fields(command[1])
+	return append([]string{"--config", configPath}, strings.Fields(command[1])...)
 }
 
 func catalogRecoveryServer(t *testing.T, kind string) (*httptest.Server, *atomic.Int32) {

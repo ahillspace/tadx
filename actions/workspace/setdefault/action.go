@@ -49,7 +49,8 @@ func (a *Action) Execute(ctx context.Context, input Input) (Output, error) {
 	}
 	item, err := a.setter.SetDefault(ctx, input.Name)
 	if err != nil {
-		return Output{}, &errs.Error{ID: "workspace.set-default.failed", Kind: errs.KindOperation, Operation: "workspace.set-default", Resource: input.Name, Summary: "Workspace default selection failed.", Cause: err, Retryable: errs.Bool(false), CorrectiveAction: "Select an available registered workspace, then retry."}
+		retryable, correctiveAction := errs.CompleteRetryAdvice(err, "Select an available registered workspace, then retry.")
+		return Output{}, &errs.Error{ID: "workspace.set-default.failed", Kind: errs.KindOperation, Operation: "workspace.set-default", Resource: input.Name, Summary: "Workspace default selection failed.", Cause: err, Retryable: retryable, CorrectiveAction: correctiveAction}
 	}
 	if item.Name == "" || item.ID == "" || item.Root == "" {
 		return Output{}, runtimeError("workspace default selection returned an incomplete identity")

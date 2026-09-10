@@ -72,7 +72,8 @@ func (a *Action) Execute(ctx context.Context, input Input) (Output, error) {
 	}
 	created, err := a.creator.Create(ctx, input)
 	if err != nil {
-		return Output{}, &errs.Error{ID: "workspace.create.failed", Kind: errs.KindOperation, Operation: "workspace.create", Resource: input.Name, Summary: "Workspace creation failed.", Cause: err, Retryable: errs.Bool(false), CorrectiveAction: "Review the exact workspace name and root, then retry."}
+		retryable, correctiveAction := errs.CompleteRetryAdvice(err, "Review the exact workspace name and root, then retry.")
+		return Output{}, &errs.Error{ID: "workspace.create.failed", Kind: errs.KindOperation, Operation: "workspace.create", Resource: input.Name, Summary: "Workspace creation failed.", Cause: err, Retryable: retryable, CorrectiveAction: correctiveAction}
 	}
 	if created.Name == "" || created.ID == "" || created.Root == "" || !created.Registered {
 		return Output{}, runtimeError("workspace creation returned an incomplete identity")

@@ -56,7 +56,11 @@ func catalogRecordSource(result catalog.ResourceResult, entry catalog.ResourceEn
 	if entry.Coverage == "detail" {
 		result.Coverage = readsource.CoverageComplete
 	}
-	return catalogReadSource(result)
+	source := catalogReadSource(result)
+	if result.Coverage == readsource.CoveragePartial {
+		source.CoverageReason = "summary_only"
+	}
+	return source
 }
 
 func liveSource(now func() time.Time) *readsource.Metadata {

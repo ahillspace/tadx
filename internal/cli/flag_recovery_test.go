@@ -15,8 +15,9 @@ func TestUnknownFlagsProvideActionableRecovery(t *testing.T) {
 		want string
 	}{
 		{[]string{"search", "sales", "--site", "staging"}, "--environment"},
-		{[]string{"search", "--terms", "sales"}, `tadx search "<term>"`},
-		{[]string{"search", "sales", "--tpye", "workbook"}, "tadx search --help"},
+		{[]string{"search", "--terms", "sales"}, "search [term]"},
+		{[]string{"search", "--query", "sales"}, "search [term]"},
+		{[]string{"search", "sales", "--tpye", "workbook"}, "Example: tadx search sales"},
 	} {
 		t.Run(strings.Join(tc.args, " "), func(t *testing.T) {
 			read := &searcher{}
@@ -33,6 +34,9 @@ func TestUnknownFlagsProvideActionableRecovery(t *testing.T) {
 			}
 			if read.input.Terms != "" {
 				t.Fatal("invalid flags invoked search")
+			}
+			if structured.Phase != errs.PhaseValidation || structured.Outcome != errs.OutcomeNotAttempted {
+				t.Fatalf("syntax error lost pre-execution context: %#v", structured)
 			}
 		})
 	}

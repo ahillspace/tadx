@@ -1,5 +1,7 @@
 package follow
 
+import "context"
+
 type Input struct {
 	Environment string
 	Site        string
@@ -16,6 +18,20 @@ type CreateResult struct {
 	Status           string `json:"status"`
 	SubscriptionLUID string `json:"subscription_luid,omitempty"`
 	RequestID        string `json:"tableau_request_id,omitempty"`
+}
+
+// Metric, User, and Group are the minimal authoritative identities required
+// before a Pulse subscription can be previewed or created.
+type Metric struct{ LUID string }
+type User struct{ LUID string }
+type Group struct{ LUID string }
+
+// Resolver performs exact, type-specific live identity checks.
+// Implementations must not substitute or enumerate principals.
+type Resolver interface {
+	ResolveMetric(context.Context, string) (Metric, error)
+	ResolveUser(context.Context, string) (User, error)
+	ResolveGroup(context.Context, string) (Group, error)
 }
 type Plan struct {
 	Mode         string `json:"mode"`

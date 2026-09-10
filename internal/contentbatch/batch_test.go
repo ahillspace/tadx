@@ -33,7 +33,7 @@ func TestRunPreservesOrderedOutcomesAndProjectsNestedResults(t *testing.T) {
 	out, err := contentbatch.Run(context.Background(), "workbook.pull", []string{"first", "broken", "last"}, func(_ context.Context, selector string) (projected, error) {
 		calls = append(calls, selector)
 		if selector == "broken" {
-			return projected{}, &errs.Error{Kind: errs.KindOperation, Summary: "download failed", TableauRequestID: "request-2", Retryable: errs.Bool(false)}
+			return projected{}, &errs.Error{Kind: errs.KindOperation, Summary: "download failed", TableauRequestID: "request-2", Retryable: errs.Bool(false), Phase: errs.PhaseVerification, Outcome: errs.OutcomeUnknown, Prerequisite: &errs.Prerequisite{Kind: "workbook", Resource: "broken", Summary: "Inspect the authoritative workbook before retrying."}}
 		}
 		return projected{selector}, nil
 	})
@@ -43,7 +43,7 @@ func TestRunPreservesOrderedOutcomesAndProjectsNestedResults(t *testing.T) {
 	if !reflect.DeepEqual(calls, []string{"first", "broken", "last"}) {
 		t.Fatal(calls)
 	}
-	if out.Items[1].Error.TableauRequestID != "request-2" || out.Items[1].Result != nil {
+	if out.Items[1].Error.TableauRequestID != "request-2" || out.Items[1].Error.Phase != errs.PhaseVerification || out.Items[1].Error.Outcome != errs.OutcomeUnknown || out.Items[1].Error.Prerequisite == nil || out.Items[1].Result != nil {
 		t.Fatal(out.Items[1])
 	}
 	for _, full := range []bool{false, true} {

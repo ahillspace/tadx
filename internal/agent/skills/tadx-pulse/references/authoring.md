@@ -55,12 +55,12 @@ An empty query result does not prove that the intended quantity is absent.
 
 Consider the complete eligible dimension inventory for each new source, even when no breakdown was requested.
 Reuse it for related definitions on that unchanged source.
-Schema defaults to 20 returned fields; `--limit` supports up to 100, while `--all` returns up to 10,000 matching fields.
+Schema defaults to 20 returned fields; `--limit` and `--all` support up to 10,000 matching fields.
 Use `more_available` to detect bounded output and `--all` for complete discovery; do not combine `--all` with `--limit`.
 If the bound is exceeded, partition discovery by supported role or table filters and keep coverage explicit.
 `--catalog` uses only previously captured schema and never establishes current completeness.
 
-Read selected measure, date, and derived dimension IDs together with full details before finalizing them:
+If the required full details were not already returned, read selected measure, date, and derived dimension IDs together before finalizing them:
 
 ```text
 tadx content datasource schema --environment '<alias>' --id '<datasource-luid>' --field-id '<exact-measure-id>' --field-id '<exact-date-id>' --field-id '<exact-derived-dimension-id>' --full

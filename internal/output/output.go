@@ -12,6 +12,7 @@ import (
 	"strings"
 	"unicode/utf8"
 
+	"github.com/ahillspace/tadx/internal/commandhint"
 	"github.com/ahillspace/tadx/internal/errs"
 	"github.com/ahillspace/tadx/internal/toon"
 )
@@ -31,6 +32,7 @@ type Options struct {
 	MaxStringLength int
 	Secrets         []string
 	TOON            toon.EncodeOptions
+	ConfigPath      string
 }
 
 // CompactProjector provides an explicit token-bounded default view.
@@ -72,6 +74,9 @@ func RenderWithOptions(writer io.Writer, value any, options Options) error {
 	if limit == 0 {
 		limit = DefaultMaxStringLength
 	}
+	if options.ConfigPath != "" {
+		value = bindHintValue(value, options.ConfigPath)
+	}
 	if len(options.Secrets) == 0 && (options.Full || !hasLongString(reflect.ValueOf(value), limit, make(map[visit]bool))) {
 		encoded, err := toon.EncodeWithOptions(value, options.TOON)
 		if err != nil {
@@ -90,6 +95,101 @@ func RenderWithOptions(writer io.Writer, value any, options Options) error {
 		return fmt.Errorf("render TOON: %w", err)
 	}
 	return writeDocument(writer, encoded)
+}
+
+func bindHintValue(value any, configPath string) any {
+	if value == nil || configPath == "" {
+		return value
+	}
+	cloned := bindHintReflect(reflect.ValueOf(value), configPath, make(map[visit]bool), 0)
+	if cloned.IsValid() && cloned.CanInterface() {
+		return cloned.Interface()
+	}
+	return value
+}
+
+const maxHintDepth = 64
+
+func bindHintReflect(value reflect.Value, configPath string, seen map[visit]bool, depth int) reflect.Value {
+	if !value.IsValid() {
+		return value
+	}
+	if depth >= maxHintDepth {
+		return value
+	}
+	switch value.Kind() {
+	case reflect.Interface:
+		if value.IsNil() {
+			return value
+		}
+		cloned := bindHintReflect(value.Elem(), configPath, seen, depth+1)
+		result := reflect.New(value.Type()).Elem()
+		result.Set(cloned)
+		return result
+	case reflect.Pointer:
+		if value.IsNil() {
+			return value
+		}
+		key := visit{typ: value.Type(), ptr: value.Pointer()}
+		if seen[key] {
+			return value
+		}
+		seen[key] = true
+		defer delete(seen, key)
+		result := reflect.New(value.Type().Elem())
+		result.Elem().Set(bindHintReflect(value.Elem(), configPath, seen, depth+1))
+		return result
+	case reflect.Struct:
+		result := reflect.New(value.Type()).Elem()
+		result.Set(value)
+		for index := 0; index < value.NumField(); index++ {
+			field := result.Field(index)
+			if !field.CanSet() || value.Type().Field(index).PkgPath != "" {
+				continue
+			}
+			name := value.Type().Field(index).Name
+			jsonName := strings.Split(value.Type().Field(index).Tag.Get("json"), ",")[0]
+			if name == "CorrectiveAction" || jsonName == "corrective_action" {
+				if field.Kind() == reflect.String {
+					field.SetString(commandhint.BindConfig(field.String(), configPath))
+					continue
+				}
+			}
+			if name == "Help" || jsonName == "help" {
+				if field.Kind() == reflect.Slice && field.Type().Elem().Kind() == reflect.String {
+					bound := reflect.MakeSlice(field.Type(), field.Len(), field.Len())
+					reflect.Copy(bound, field)
+					field.Set(bound)
+					for item := 0; item < field.Len(); item++ {
+						field.Index(item).SetString(commandhint.BindConfig(field.Index(item).String(), configPath))
+					}
+					continue
+				}
+			}
+			field.Set(bindHintReflect(field, configPath, seen, depth+1))
+		}
+		return result
+	case reflect.Slice:
+		if value.IsNil() {
+			return value
+		}
+		if value.Type().Elem().Kind() != reflect.Struct && value.Type().Elem().Kind() != reflect.Interface && value.Type().Elem().Kind() != reflect.Pointer && value.Type().Elem().Kind() != reflect.Slice {
+			return value
+		}
+		key := visit{typ: value.Type(), ptr: value.Pointer()}
+		if seen[key] {
+			return value
+		}
+		seen[key] = true
+		defer delete(seen, key)
+		result := reflect.MakeSlice(value.Type(), value.Len(), value.Len())
+		for index := 0; index < value.Len(); index++ {
+			result.Index(index).Set(bindHintReflect(value.Index(index), configPath, seen, depth+1))
+		}
+		return result
+	default:
+		return value
+	}
 }
 
 // RenderError writes a structured error document through the same renderer.

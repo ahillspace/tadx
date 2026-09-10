@@ -314,11 +314,11 @@ func (c Config) ResolveEnvironment(alias string) (Environment, error) {
 		}
 	}
 	if alias == "" {
-		return Environment{}, errors.New("no environment selected and no default environment is configured")
+		return Environment{}, c.selectionError(alias)
 	}
 	environment, ok := c.Environments[alias]
 	if !ok {
-		return Environment{}, fmt.Errorf("environment %q does not exist", alias)
+		return Environment{}, c.selectionError(alias)
 	}
 	environment.Alias = alias
 	if environment.Auth.Type == "" {

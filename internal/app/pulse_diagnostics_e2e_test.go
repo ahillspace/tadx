@@ -11,6 +11,7 @@ import (
 	"testing"
 
 	"github.com/ahillspace/tadx/internal/app"
+	"github.com/ahillspace/tadx/internal/commandhint"
 )
 
 func TestPulseCreateRejectionDiagnosticsThroughCLI(t *testing.T) {
@@ -52,8 +53,14 @@ func TestPulseCreateRejectionDiagnosticsThroughCLI(t *testing.T) {
 			defer server.Close()
 			args := []string{"pulse", "definition", "create", "--environment", "test", "--name", "Revenue", "--datasource-id", "ds-1", "--measure-field", "Revenue", "--aggregation", "SUM", "--date-field", "Order Date", "--dimension", "Region", "--full"}
 			var out bytes.Buffer
-			code := app.Run(context.Background(), args, &out, diagnosticOptions(t, server))
-			for _, want := range []string{tt.want, "tadx pulse definition list", "retryable: false", "rejected-create", strings.ReplaceAll(tt.detail, "diagnostic-session", "[REDACTED]")} {
+			options := diagnosticOptions(t, server)
+			code := app.Run(context.Background(), args, &out, options)
+			failure := decodeDiagnosticFailure(t, out.String())
+			wantRecovery := commandhint.Command("--config", options.ConfigPath, "pulse", "definition", "list", "--datasource-id", "ds-1", "--full", "--environment", "test")
+			if !strings.Contains(failure.CorrectiveAction, wantRecovery) {
+				t.Errorf("mistargeted recovery: %s; want %s", failure.CorrectiveAction, wantRecovery)
+			}
+			for _, want := range []string{tt.want, "retryable: false", "rejected-create", strings.ReplaceAll(tt.detail, "diagnostic-session", "[REDACTED]")} {
 				if !strings.Contains(out.String(), want) {
 					t.Errorf("missing %q: %s", want, out.String())
 				}

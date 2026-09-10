@@ -197,7 +197,7 @@ func (a *Action) Execute(ctx context.Context, input Input) (Output, error) {
 		return Output{}, invalidBundleResult(workbook, input, fmt.Errorf("project workbook lineage path: %w", err))
 	}
 	warnings = append(warnings, artifact.Warnings...)
-	return Output{Workspace: input.WorkspaceName, Status: "pulled", Workbook: workbook, Artifact: artifact, Warnings: warnings, RequestID: download.TableauRequestID, Help: []string{commandhint.Target(input.Environment, input.WorkspaceName, "content", "workbook", "publish", "--id", workbook.LUID, "--project-id", workbook.ProjectLUID, "--overwrite", "--preview")}}, nil
+	return Output{Workspace: input.WorkspaceName, Status: "pulled", Workbook: workbook, Artifact: artifact, Warnings: warnings, RequestID: download.TableauRequestID, Help: []string{commandhint.SourceUpdate(input.Environment, input.WorkspaceName, "workbook", workbook.LUID, workbook.ProjectLUID)}}, nil
 }
 
 func captureAutomaticLineage(ctx context.Context, reader Reader, workbookLUID string) (LineageCapture, bool, string, []string) {

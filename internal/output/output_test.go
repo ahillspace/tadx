@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"errors"
 	"os"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -151,5 +152,111 @@ func TestRenderStructuredError(t *testing.T) {
 	want := "error:\n  kind: operation\n  operation: catalog.search\n  summary: Search failed\n  upstream_cause: timeout\n  tableau_request_id: req-1\n"
 	if buffer.String() != want {
 		t.Fatalf("render mismatch\nwant:\n%s\ngot:\n%s", want, buffer.String())
+	}
+}
+
+func TestConfigPathBindsOnlyRecoveryHints(t *testing.T) {
+	t.Parallel()
+
+	value := struct {
+		Help             []string `json:"help"`
+		CorrectiveAction string   `json:"corrective_action"`
+		Resource         string   `json:"resource"`
+	}{[]string{"Run tadx catalog status --full."}, "Run tadx auth status, then retry.", "tadx catalog status"}
+	var buffer bytes.Buffer
+	if err := output.RenderWithOptions(&buffer, value, output.Options{ConfigPath: `C:\work\tadx.yaml`}); err != nil {
+		t.Fatal(err)
+	}
+	text := buffer.String()
+	if !strings.Contains(text, "--config") || !strings.Contains(text, "tadx catalog status") {
+		t.Fatalf("bound hints missing: %s", text)
+	}
+	if strings.Contains(text, "resource: tadx --config") {
+		t.Fatalf("resource field was rewritten: %s", text)
+	}
+}
+
+func TestConfigPathLeavesUserMapKeysUntouched(t *testing.T) {
+	var buffer bytes.Buffer
+	value := map[string]any{"help": "tadx catalog status", "resource": "tadx catalog status"}
+	if err := output.RenderWithOptions(&buffer, value, output.Options{ConfigPath: `C:\work\tadx.yaml`}); err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(buffer.String(), "--config") {
+		t.Fatalf("user map was rewritten: %s", buffer.String())
+	}
+}
+
+func TestConfigPathPreservesTypedTOONFieldOrder(t *testing.T) {
+	value := struct {
+		Status           string   `json:"status"`
+		CorrectiveAction string   `json:"corrective_action"`
+		Help             []string `json:"help"`
+	}{"failed", "Run tadx auth status, then retry.", []string{"Run tadx catalog status --full."}}
+	var plain, bound bytes.Buffer
+	if err := output.RenderWithOptions(&plain, value, output.Options{}); err != nil {
+		t.Fatal(err)
+	}
+	if err := output.RenderWithOptions(&bound, value, output.Options{ConfigPath: `C:\work\tadx.yaml`}); err != nil {
+		t.Fatal(err)
+	}
+	keys := func(text string) []string {
+		lines := strings.Split(strings.TrimSpace(text), "\n")
+		result := make([]string, len(lines))
+		for index, line := range lines {
+			result[index] = strings.SplitN(line, ":", 2)[0]
+		}
+		return result
+	}
+	if !reflect.DeepEqual(keys(plain.String()), keys(bound.String())) {
+		t.Fatalf("field order changed\nplain=%q\nbound=%q", plain.String(), bound.String())
+	}
+}
+
+func TestConfigPathCycleFailsThroughSerialization(t *testing.T) {
+	type node struct {
+		Next *node    `json:"next,omitempty"`
+		Help []string `json:"help,omitempty"`
+	}
+	value := &node{Help: []string{"Run tadx catalog status."}}
+	value.Next = value
+	var buffer bytes.Buffer
+	if err := output.RenderWithOptions(&buffer, value, output.Options{ConfigPath: `C:\work\tadx.yaml`}); err == nil {
+		t.Fatal("cyclic value unexpectedly rendered")
+	}
+}
+
+func TestConfigPathDoesNotMutateInputHints(t *testing.T) {
+	value := struct {
+		Help []string `json:"help"`
+	}{[]string{"Run tadx catalog status."}}
+	var buffer bytes.Buffer
+	if err := output.RenderWithOptions(&buffer, &value, output.Options{ConfigPath: `C:\one\tadx.yaml`}); err != nil {
+		t.Fatal(err)
+	}
+	if value.Help[0] != "Run tadx catalog status." {
+		t.Fatalf("input help mutated: %#v", value.Help)
+	}
+	buffer.Reset()
+	if err := output.RenderWithOptions(&buffer, &value, output.Options{ConfigPath: `C:\two\tadx.yaml`}); err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(buffer.String(), "one\\\\tadx") || !strings.Contains(buffer.String(), "two") {
+		t.Fatalf("second config binding incorrect: %s", buffer.String())
+	}
+}
+
+func TestConfigPathBindsSharedPointerEachOccurrence(t *testing.T) {
+	type hint struct {
+		Help []string `json:"help"`
+	}
+	shared := &hint{Help: []string{"Run tadx catalog status."}}
+	value := []*hint{shared, shared}
+	var buffer bytes.Buffer
+	if err := output.RenderWithOptions(&buffer, value, output.Options{ConfigPath: `C:\work\tadx.yaml`}); err != nil {
+		t.Fatal(err)
+	}
+	if strings.Count(buffer.String(), "--config") != 2 {
+		t.Fatalf("shared pointers were not independently bound: %s", buffer.String())
 	}
 }

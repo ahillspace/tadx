@@ -481,12 +481,12 @@ func TestApplyReportsUnknownAsyncOutcomeWithoutSuggestingRetry(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, err = action.Apply(context.Background(), plan)
+	result, err := action.Apply(context.Background(), plan)
 	var structured *errs.Error
 	if !errors.As(err, &structured) {
 		t.Fatalf("error = %T %v", err, err)
 	}
-	if structured.TableauJobID != "job-1" || structured.TableauRequestID != "poll-request" || !strings.Contains(strings.ToLower(structured.Summary), "outcome") || structured.Retryable == nil || *structured.Retryable {
+	if result.JobID != "job-1" || structured.TableauJobID != "job-1" || structured.Phase != errs.PhaseSubmission || structured.Outcome != errs.OutcomeUnknown || structured.TableauRequestID != "poll-request" || !strings.Contains(strings.ToLower(structured.Summary), "outcome") || structured.Retryable == nil || *structured.Retryable {
 		t.Fatalf("structured error = %#v", structured)
 	}
 }
@@ -501,12 +501,12 @@ func TestApplyReportsUnknownOutcomeWithoutClaimingAcceptance(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, err = action.Apply(context.Background(), plan)
+	result, err := action.Apply(context.Background(), plan)
 	var structured *errs.Error
 	if !errors.As(err, &structured) {
 		t.Fatalf("error = %T %v", err, err)
 	}
-	if structured.ID != "workbook.publish.outcome_unknown" || structured.TableauRequestID != "publish-request" || !strings.Contains(structured.CorrectiveAction, "Inspect") {
+	if result.TableauRequestID != "publish-request" || structured.ID != "workbook.publish.outcome_unknown" || structured.Phase != errs.PhaseSubmission || structured.Outcome != errs.OutcomeUnknown || structured.TableauRequestID != "publish-request" || !strings.Contains(structured.CorrectiveAction, "Inspect") {
 		t.Fatalf("structured error = %#v", structured)
 	}
 	if strings.Contains(strings.ToLower(structured.Summary), "accepted") {

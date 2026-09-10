@@ -230,7 +230,7 @@ func TestPulseForkDoesNotReportSuccessForUnverifiedReadbackThroughCLI(t *testing
 			defer server.Close()
 			var output bytes.Buffer
 			code := app.Run(ctx, []string{"pulse", "metric", "fork", "--environment", "test", "--id", "source", "--period", "LAST_30_DAYS", "--filter", "Region=West"}, &output, pulseEfficiencyOptions(t, server))
-			if code == 0 || writes != 1 || !strings.Contains(output.String(), "resource: saved-variant") || !strings.Contains(output.String(), "retryable: false") || strings.Contains(output.String(), "reconciliation_status: verified") {
+			if code == 0 || writes != 1 || !strings.Contains(output.String(), "resource: saved-variant") || !strings.Contains(output.String(), "retryable: false") || !strings.Contains(output.String(), "result:") || !strings.Contains(output.String(), "metric_luid: saved-variant") || strings.Contains(output.String(), "reconciliation_status: verified") {
 				t.Fatalf("code=%d writes=%d output=%s", code, writes, output.String())
 			}
 		})

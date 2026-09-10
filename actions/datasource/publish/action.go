@@ -94,28 +94,33 @@ func (a *Action) Execute(ctx context.Context, input Input, preview bool) (Output
 		if hint := publishInspectionHint(plan, result); hint != "" {
 			correctiveAction += " Run " + hint + "."
 		}
-		return Output{}, &errs.Error{ID: errorID, Kind: errs.KindOperation, Operation: "datasource.publish", Resource: plan.Target.ExistingLUID, Environment: input.Environment, Site: input.Site, Summary: summary, Cause: err, Retryable: errs.Bool(false), CorrectiveAction: correctiveAction, TableauJobID: result.JobID, TableauRequestID: requestID}
+		out.Result = &result
+		return out, &errs.Error{ID: errorID, Kind: errs.KindOperation, Operation: "datasource.publish", Resource: plan.Target.ExistingLUID, Environment: input.Environment, Site: input.Site, Summary: summary, Cause: err, Retryable: errs.Bool(false), CorrectiveAction: correctiveAction, TableauJobID: result.JobID, TableauRequestID: requestID, Phase: errs.PhaseSubmission, Outcome: errs.OutcomeUnknown}
 	}
 	if plan.AsJob {
 		if result.Status != "succeeded" {
 			completedStatus := result.Status
 			result.Status = "unknown"
-			return Output{}, unknownOutcomeError(plan, input, result, fmt.Errorf("completed Tableau datasource publish job returned status %q", completedStatus))
+			out.Result = &result
+			return out, unknownOutcomeError(plan, input, result, fmt.Errorf("completed Tableau datasource publish job returned status %q", completedStatus))
 		}
 		if result.DatasourceLUID == "" {
 			resolved, resolveErr := a.resolver.ResolvePublishedDatasource(ctx, plan.DatasourceName, plan.Target.ProjectLUID)
 			if resolveErr != nil {
 				result.Status = "unknown"
-				return Output{}, unknownOutcomeError(plan, input, result, fmt.Errorf("resolve completed datasource identity: %w", resolveErr))
+				out.Result = &result
+				return out, unknownOutcomeError(plan, input, result, fmt.Errorf("resolve completed datasource identity: %w", resolveErr))
 			}
 			if strings.TrimSpace(resolved.LUID) == "" || resolved.Name != plan.DatasourceName || resolved.ProjectLUID != plan.Target.ProjectLUID {
 				result.Status = "unknown"
-				return Output{}, unknownOutcomeError(plan, input, result, errors.New("completed datasource resolution returned incomplete or conflicting authoritative identity"))
+				out.Result = &result
+				return out, unknownOutcomeError(plan, input, result, errors.New("completed datasource resolution returned incomplete or conflicting authoritative identity"))
 			}
 			result.DatasourceLUID, result.DatasourceName, result.ProjectLUID = resolved.LUID, resolved.Name, resolved.ProjectLUID
 		} else if result.DatasourceName != plan.DatasourceName || result.ProjectLUID != plan.Target.ProjectLUID {
 			result.Status = "unknown"
-			return Output{}, unknownOutcomeError(plan, input, result, errors.New("completed datasource job returned identity conflicting with the exact publish target"))
+			out.Result = &result
+			return out, unknownOutcomeError(plan, input, result, errors.New("completed datasource job returned identity conflicting with the exact publish target"))
 		}
 	}
 	out.Result = &result
@@ -144,6 +149,8 @@ func unknownOutcomeError(plan Plan, input Input, result Result, cause error) err
 		CorrectiveAction: correctiveAction,
 		TableauJobID:     result.JobID,
 		TableauRequestID: result.TableauRequestID,
+		Phase:            errs.PhaseVerification,
+		Outcome:          errs.OutcomeUnknown,
 	}
 }
 
