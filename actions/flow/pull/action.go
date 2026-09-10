@@ -64,7 +64,7 @@ func (a *Action) Execute(ctx context.Context, input Input) (Output, error) {
 	result.EdgeCount = len(lineage.Edges)
 	result.CountsKnown = lineageErr == nil
 	warnings = append(warnings, result.Warnings...)
-	return Output{Workspace: input.WorkspaceName, Status: "pulled", Flow: flow, Artifact: result, Warnings: warnings, RequestID: download.TableauRequestID, Help: []string{commandhint.SourceUpdate(input.Environment, input.WorkspaceName, "flow", flow.LUID, flow.ProjectLUID)}}, nil
+	return Output{Workspace: input.WorkspaceName, Status: "pulled", Flow: flow, Artifact: result, Warnings: warnings, compactWarnings: append([]string{}, result.Warnings...), RequestID: download.TableauRequestID, Help: []string{commandhint.SourceUpdate(input.Environment, input.WorkspaceName, "flow", flow.LUID, flow.ProjectLUID)}}, nil
 }
 func lineageStatus(value Lineage) string {
 	if value.Complete {

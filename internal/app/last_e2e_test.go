@@ -3,6 +3,7 @@ package app_test
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"github.com/ahillspace/tadx/internal/app"
 	"net/http"
@@ -51,5 +52,36 @@ func TestLastDisplaysSavedFullResultWithoutReplacingIt(t *testing.T) {
 	}
 	if network.calls != 0 {
 		t.Fatalf("last contacted Tableau %d times", network.calls)
+	}
+}
+
+func TestLastJSONDoesNotReplayNetworkOrChangeSavedDocument(t *testing.T) {
+	network := &noLastNetwork{}
+	opts := app.Options{ConfigPath: filepath.Join(t.TempDir(), "config.yaml"), HTTPClient: &http.Client{Transport: network}}
+	var firstOutput bytes.Buffer
+	if code := app.Run(context.Background(), []string{"capability", "get", "workbook.publish", "--json"}, &firstOutput, opts); code != 0 {
+		t.Fatalf("seed exit=%d output=%s", code, firstOutput.String())
+	}
+	var firstDocument any
+	if err := json.Unmarshal(firstOutput.Bytes(), &firstDocument); err != nil {
+		t.Fatalf("seed output is not JSON: %v", err)
+	}
+	var lastOutput bytes.Buffer
+	if code := app.Run(context.Background(), []string{"last", "--json"}, &lastOutput, opts); code != 0 {
+		t.Fatalf("last exit=%d output=%s", code, lastOutput.String())
+	}
+	var lastDocument any
+	if err := json.Unmarshal(lastOutput.Bytes(), &lastDocument); err != nil {
+		t.Fatalf("last output is not JSON: %v", err)
+	}
+	if network.calls != 0 || !strings.Contains(lastOutput.String(), "workbook.publish") {
+		t.Fatalf("last replayed network or lost result: calls=%d output=%s", network.calls, lastOutput.String())
+	}
+	if _, ok := lastDocument.(map[string]any); !ok {
+		t.Fatalf("last JSON document is not an object: %#v", lastDocument)
+	}
+	var repeat bytes.Buffer
+	if code := app.Run(context.Background(), []string{"last", "--json", "--full"}, &repeat, opts); code != 0 || repeat.String() != lastOutput.String() {
+		t.Fatalf("full last changed saved document: code=%d output=%s", code, repeat.String())
 	}
 }

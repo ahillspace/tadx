@@ -12,7 +12,7 @@ import (
 type Input struct {
 	// TargetResolved confirms authenticated target selection, including the Default site.
 	TargetResolved                                                                                 bool
-	Environment, Site, UserLUID                                                                    string
+	Environment, Site, UserLUID, Username                                                          string
 	FullName, Email, SiteRole, AuthSetting, IdentityPoolName, IdPConfigurationID, Language, Locale *string
 }
 type User struct {
@@ -47,6 +47,7 @@ type Plan struct {
 type Result struct {
 	Status           string `json:"status"`
 	UserLUID         string `json:"user_luid"`
+	User             User   `json:"user"`
 	TableauRequestID string `json:"tableau_request_id,omitempty"`
 }
 type Output struct {
@@ -59,6 +60,7 @@ type CompactResult struct {
 	Result *struct {
 		Status   string `json:"status"`
 		UserLUID string `json:"user_luid"`
+		User     User   `json:"user"`
 	} `json:"result,omitempty"`
 	Details string   `json:"details"`
 	Help    []string `json:"help"`
@@ -70,7 +72,8 @@ func (o Output) CompactOutput() any {
 		v.Result = &struct {
 			Status   string `json:"status"`
 			UserLUID string `json:"user_luid"`
-		}{o.Result.Status, o.Result.UserLUID}
+			User     User   `json:"user"`
+		}{o.Result.Status, o.Result.UserLUID, o.Result.User}
 	}
 	return v
 }
@@ -118,7 +121,7 @@ func (a *Action) Execute(ctx context.Context, in Input, preview bool) (Output, e
 		return Output{}, errors.New("the user update target changed during revalidation")
 	}
 	if plan.NoOp {
-		out.Result = &Result{Status: "unchanged", UserLUID: user.LUID}
+		out.Result = &Result{Status: "unchanged", UserLUID: user.LUID, User: user}
 		return out, nil
 	}
 	updated, err := a.updater.UpdateUser(ctx, user.LUID, req)
@@ -132,7 +135,7 @@ func (a *Action) Execute(ctx context.Context, in Input, preview bool) (Output, e
 		}
 		return Output{}, err
 	}
-	out.Result = &Result{Status: "updated", UserLUID: updated.LUID, TableauRequestID: updated.RequestID}
+	out.Result = &Result{Status: "updated", UserLUID: updated.LUID, User: updated, TableauRequestID: updated.RequestID}
 	out.Help = []string{commandhint.Environment(in.Environment, "admin", "user", "inspect", "--id", updated.LUID)}
 	return out, nil
 }

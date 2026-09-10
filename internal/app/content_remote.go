@@ -552,7 +552,7 @@ func (a projectCreateAdapter) CreateProject(ctx context.Context, input projectcr
 }
 
 func toProjectCreate(item resourceproject.Project) projectcreate.Project {
-	return projectcreate.Project{LUID: item.LUID, Name: item.Name, Path: item.Path, ParentLUID: item.ParentLUID, Description: item.Description, ContentPermissions: item.ContentPermissions}
+	return projectcreate.Project{LUID: item.LUID, Name: item.Name, Path: item.Path, ParentLUID: item.ParentLUID, Description: item.Description, ContentPermissions: item.ContentPermissions, ControllingPermissionsProjectID: item.ControllingPermissionsProjectID}
 }
 
 type projectUpdateAdapter struct {
@@ -579,7 +579,7 @@ func (a projectUpdateAdapter) UpdateProject(ctx context.Context, input projectup
 }
 
 func toProjectUpdate(item resourceproject.Project) projectupdate.Project {
-	return projectupdate.Project{LUID: item.LUID, Name: item.Name, Path: item.Path, ParentLUID: item.ParentLUID, Description: item.Description, ContentPermissions: item.ContentPermissions}
+	return projectupdate.Project{LUID: item.LUID, Name: item.Name, Path: item.Path, ParentLUID: item.ParentLUID, Description: item.Description, ContentPermissions: item.ContentPermissions, ControllingPermissionsProjectID: item.ControllingPermissionsProjectID}
 }
 
 type projectDeleteAdapter struct {

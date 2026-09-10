@@ -202,6 +202,25 @@ func TestFullIsAUniversalPersistentPresentationFlag(t *testing.T) {
 	}
 }
 
+func TestJSONIsAUniversalPersistentPresentationFlag(t *testing.T) {
+	for _, args := range [][]string{
+		{"--json", "capability", "list"},
+		{"capability", "list", "--json"},
+	} {
+		mode := &cli.RenderOptions{}
+		deps := dependencies(&lister{}, &getter{}, &renderer{})
+		deps.RenderOptions = mode
+		cmd := cli.NewRoot(deps)
+		cmd.SetArgs(args)
+		if err := cmd.Execute(); err != nil {
+			t.Fatalf("Execute(%v) error = %v", args, err)
+		}
+		if !mode.JSON {
+			t.Fatalf("Execute(%v) did not select JSON output", args)
+		}
+	}
+}
+
 func TestConfigIsAUniversalPersistentPathFlag(t *testing.T) {
 	for _, args := range [][]string{
 		{"--config", "portable/config.yaml", "capability", "list"},

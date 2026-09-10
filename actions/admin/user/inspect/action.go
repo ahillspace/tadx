@@ -8,15 +8,15 @@ import (
 	"github.com/ahillspace/tadx/internal/readsource"
 )
 
-type Selector struct{ LUID, NameOrEmail string }
+type Selector struct{ LUID, Username string }
 type Input struct {
 	Environment, Site string
 	Selector          Selector
 	Catalog           bool
 }
 
-func (i *Input) SetSelector(luid, nameOrEmail string) {
-	i.Selector = Selector{LUID: luid, NameOrEmail: nameOrEmail}
+func (i *Input) SetSelector(luid, username string) {
+	i.Selector = Selector{LUID: luid, Username: username}
 }
 
 type User struct {

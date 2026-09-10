@@ -26,7 +26,9 @@ type Adapter struct{ client Client }
 
 func NewAdapter(client Client) *Adapter { return &Adapter{client: client} }
 
-type UserSelector struct{ LUID, NameOrEmail string }
+// UserSelector accepts an authoritative user LUID or an exact Tableau username.
+// Display names and notification email addresses are intentionally not selectors.
+type UserSelector struct{ LUID, Username string }
 type GroupSelector struct{ LUID, Name string }
 type GroupDetail struct {
 	Group   tableau.Group
@@ -64,7 +66,7 @@ func (a *Adapter) ResolveUser(ctx context.Context, selector UserSelector) (table
 		}
 		return user, nil
 	}
-	if strings.TrimSpace(selector.NameOrEmail) == "" {
+	if strings.TrimSpace(selector.Username) == "" {
 		return tableau.User{}, &identity.ResolutionError{Kind: identity.ResolutionInvalidSelector}
 	}
 	items, err := a.allUsers(ctx)
@@ -74,13 +76,13 @@ func (a *Adapter) ResolveUser(ctx context.Context, selector UserSelector) (table
 	candidates := make([]identity.Candidate, 0)
 	byLUID := make(map[identity.LUID]tableau.User)
 	for _, item := range items {
-		if item.Name == selector.NameOrEmail || item.Email == selector.NameOrEmail {
-			candidate := identity.Candidate{LUID: identity.LUID(item.LUID), Name: selector.NameOrEmail}
+		if item.Name == selector.Username {
+			candidate := identity.Candidate{LUID: identity.LUID(item.LUID), Name: selector.Username}
 			candidates = append(candidates, candidate)
 			byLUID[candidate.LUID] = item
 		}
 	}
-	resolved, err := identity.Resolve(identity.Selector{Name: selector.NameOrEmail}, candidates)
+	resolved, err := identity.Resolve(identity.Selector{Name: selector.Username}, candidates)
 	if err != nil {
 		return tableau.User{}, err
 	}

@@ -10,8 +10,8 @@ import (
 )
 
 type Input struct {
-	TargetResolved              bool
-	Environment, Site, UserLUID string
+	TargetResolved                        bool
+	Environment, Site, UserLUID, Username string
 }
 type User struct {
 	LUID     string `json:"luid"`

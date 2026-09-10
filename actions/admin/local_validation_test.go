@@ -74,7 +74,7 @@ func TestAdminLocalValidationRejectsInvalidRequests(t *testing.T) {
 			return groupupdate.ValidateInput(groupupdate.Input{Environment: "selected", GroupLUID: "g1", MembershipSet: true, DesiredMemberLUIDs: []string{"u1", "u1"}})
 		},
 		"user selector conflict": func() error {
-			return userinspect.ValidateInput(userinspect.Input{Selector: userinspect.Selector{LUID: "u1", NameOrEmail: "author"}})
+			return userinspect.ValidateInput(userinspect.Input{Selector: userinspect.Selector{LUID: "u1", Username: "author"}})
 		},
 		"group selector conflict": func() error {
 			return groupinspect.ValidateInput(groupinspect.Input{Selector: groupinspect.Selector{LUID: "g1", Name: "Authors"}})

@@ -59,12 +59,25 @@ type Plan struct {
 	NoOp        bool            `json:"no_op"`
 }
 type Result struct {
-	Status                   string   `json:"status"`
-	GroupLUID                string   `json:"group_luid"`
-	Added                    int      `json:"added"`
-	Removed                  int      `json:"removed"`
-	TableauRequestIDs        []string `json:"tableau_request_ids,omitempty"`
-	TableauRequestIDsOmitted int      `json:"tableau_request_ids_omitted,omitempty"`
+	Status                   string          `json:"status"`
+	GroupLUID                string          `json:"group_luid"`
+	Group                    *ConfirmedGroup `json:"group,omitempty"`
+	AddedUserLUIDs           []string        `json:"added_user_luids,omitempty"`
+	RemovedUserLUIDs         []string        `json:"removed_user_luids,omitempty"`
+	Added                    int             `json:"added"`
+	Removed                  int             `json:"removed"`
+	TableauRequestIDs        []string        `json:"tableau_request_ids,omitempty"`
+	TableauRequestIDsOmitted int             `json:"tableau_request_ids_omitted,omitempty"`
+}
+
+// ConfirmedGroup contains only attributes returned by the metadata mutation.
+// Direct membership inventory is deliberately excluded from the receipt.
+type ConfirmedGroup struct {
+	LUID                string `json:"luid"`
+	Name                string `json:"name,omitempty"`
+	Domain              string `json:"domain,omitempty"`
+	MinimumSiteRole     string `json:"minimum_site_role,omitempty"`
+	ExternalUserEnabled *bool  `json:"external_user_enabled,omitempty"`
 }
 type Output struct {
 	Plan   Plan     `json:"plan"`
@@ -89,10 +102,15 @@ type CompactResult struct {
 	Help    []string               `json:"help"`
 }
 type CompactMutationResult struct {
-	Status    string `json:"status"`
-	GroupLUID string `json:"group_luid"`
-	Added     int    `json:"added"`
-	Removed   int    `json:"removed"`
+	Status                  string          `json:"status"`
+	GroupLUID               string          `json:"group_luid"`
+	Added                   int             `json:"added"`
+	Removed                 int             `json:"removed"`
+	Group                   *ConfirmedGroup `json:"group,omitempty"`
+	AddedUserLUIDs          []string        `json:"added_user_luids,omitempty"`
+	RemovedUserLUIDs        []string        `json:"removed_user_luids,omitempty"`
+	AddedUserLUIDsOmitted   int             `json:"added_user_luids_omitted,omitempty"`
+	RemovedUserLUIDsOmitted int             `json:"removed_user_luids_omitted,omitempty"`
 }
 
 func (o Output) CompactOutput() any {
@@ -103,8 +121,18 @@ func (o Output) CompactOutput() any {
 	var result *CompactMutationResult
 	if o.Result != nil {
 		result = &CompactMutationResult{Status: o.Result.Status, GroupLUID: o.Result.GroupLUID, Added: o.Result.Added, Removed: o.Result.Removed}
+		result.Group = o.Result.Group
+		result.AddedUserLUIDs, result.AddedUserLUIDsOmitted = boundedMemberIDs(o.Result.AddedUserLUIDs)
+		result.RemovedUserLUIDs, result.RemovedUserLUIDsOmitted = boundedMemberIDs(o.Result.RemovedUserLUIDs)
 	}
 	return CompactResult{Plan: CompactPlan{Mode: o.Plan.Mode, Operation: o.Plan.Operation, Environment: o.Plan.Environment, Site: o.Plan.Site, GroupLUID: o.Plan.Target.LUID, ChangeCount: len(o.Plan.Changes), AddCount: add, RemoveCount: remove, NoOp: o.Plan.NoOp}, Result: result, Details: "--full", Help: o.Help}
+}
+func boundedMemberIDs(ids []string) ([]string, int) {
+	const limit = 10
+	if len(ids) > limit {
+		return append([]string(nil), ids[:limit]...), len(ids) - limit
+	}
+	return append([]string(nil), ids...), 0
 }
 func (o Output) FullOutput() any {
 	out := o
@@ -195,6 +223,7 @@ func (a *Action) Execute(ctx context.Context, in Input, preview bool) (Output, e
 		if updated.RequestID != "" {
 			result.TableauRequestIDs = append(result.TableauRequestIDs, updated.RequestID)
 		}
+		result.Group = &ConfirmedGroup{LUID: updated.LUID, Name: updated.Name, Domain: updated.Domain, MinimumSiteRole: updated.MinimumSiteRole, ExternalUserEnabled: updated.ExternalUserEnabled}
 	}
 	completed := make([]string, 0, 1+result.Added+result.Removed)
 	if len(changes) > 0 {
@@ -204,9 +233,11 @@ func (a *Action) Execute(ctx context.Context, in Input, preview bool) (Output, e
 		for _, luid := range membership.Add {
 			id, err := a.members.AddGroupUser(ctx, group.LUID, luid)
 			if err != nil {
-				return Output{}, partialError(in, group.LUID, completed, "member.add:"+luid, err)
+				result.Status = "partial"
+				return out, partialError(in, group.LUID, completed, "member.add:"+luid, err)
 			}
 			result.Added++
+			result.AddedUserLUIDs = append(result.AddedUserLUIDs, luid)
 			completed = append(completed, "member.add:"+luid)
 			if id != "" {
 				result.TableauRequestIDs = append(result.TableauRequestIDs, id)
@@ -215,9 +246,11 @@ func (a *Action) Execute(ctx context.Context, in Input, preview bool) (Output, e
 		for _, luid := range membership.Remove {
 			id, err := a.members.RemoveGroupUser(ctx, group.LUID, luid)
 			if err != nil {
-				return Output{}, partialError(in, group.LUID, completed, "member.remove:"+luid, err)
+				result.Status = "partial"
+				return out, partialError(in, group.LUID, completed, "member.remove:"+luid, err)
 			}
 			result.Removed++
+			result.RemovedUserLUIDs = append(result.RemovedUserLUIDs, luid)
 			completed = append(completed, "member.remove:"+luid)
 			if id != "" {
 				result.TableauRequestIDs = append(result.TableauRequestIDs, id)

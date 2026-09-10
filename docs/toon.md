@@ -28,6 +28,10 @@ Supported `--limit` and `--all` options control record acquisition separately fr
 Raw payload output exists only where the capability supports it.
 Secret redaction applies before output, including raw output.
 The [output tests](../internal/output/output_test.go) cover compact and full projections, golden output, and redaction.
-TOON supports JSON interoperability through the codec; TADX does not expose a separate output-format or conversion command domain.
+`--json` emits the same compact or full result directly as JSON; no conversion utility is required.
+This changes encoding only, retaining identifiers, redaction, errors, warnings, and partial outcomes.
+JSON stdout contains the result document; process diagnostics such as saved-result warnings use stderr.
+Keep checking the process exit code when parsing a partial result.
+Native payloads, completion scripts, and explicit raw output retain their own contracts; raw and JSON output cannot be combined.
 
 The repository [build skill](../.agents/skills/tadx-build/SKILL.md) contains field-selection procedures and required verification for output changes.

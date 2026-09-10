@@ -60,7 +60,7 @@ type catalogUserGetResolver struct {
 }
 
 func (r *catalogUserGetResolver) ResolveUser(ctx context.Context, selector userinspect.Selector) (userinspect.User, error) {
-	result, err := r.store.ReadResources(ctx, catalog.ResourceQuery{Environment: r.environment, Site: r.site, Kind: "user", LUID: selector.LUID, Name: selector.NameOrEmail, Limit: 2})
+	result, err := r.store.ReadResources(ctx, catalog.ResourceQuery{Environment: r.environment, Site: r.site, Kind: "user", LUID: selector.LUID, Name: selector.Username, Limit: 2})
 	if err != nil {
 		return userinspect.User{}, catalogReadError("admin.user.inspect", r.environment, r.site, err)
 	}

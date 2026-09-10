@@ -31,6 +31,7 @@ var flagShorthands = map[string]string{
 }
 
 var flagLongAliases = map[string]string{
+	"batch-file": "btf", "json": "jsn", "username": "unm", "principal-username": "pun",
 	"aggregation": "agg", "api-version": "api", "append": "apd", "artifact": "art",
 	"artifact-name": "arn", "as-job": "job", "auth-setting": "aus", "capability": "cap",
 	"catalog": "cat", "catalog-max-concurrency": "cmc", "check": "chk", "class": "cls",

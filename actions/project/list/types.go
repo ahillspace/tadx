@@ -76,9 +76,11 @@ type Output struct {
 
 // CompactProject identifies one project and its direct parent.
 type CompactProject struct {
-	LUID       string `json:"luid"`
-	Name       string `json:"name"`
-	ParentLUID string `json:"parent_luid"`
+	LUID                            string `json:"luid"`
+	Name                            string `json:"name"`
+	ParentLUID                      string `json:"parent_luid"`
+	ContentPermissions              string `json:"content_permissions,omitempty"`
+	ControllingPermissionsProjectID string `json:"controlling_permissions_project_luid,omitempty"`
 }
 
 // CompactResult is the default bounded projection.
@@ -109,7 +111,7 @@ type FullResult struct {
 func (o Output) CompactOutput() any {
 	projects := make([]CompactProject, len(o.Projects))
 	for index, project := range o.Projects {
-		projects[index] = CompactProject{LUID: project.LUID, Name: project.Name, ParentLUID: project.ParentLUID}
+		projects[index] = CompactProject{LUID: project.LUID, Name: project.Name, ParentLUID: project.ParentLUID, ContentPermissions: project.ContentPermissions, ControllingPermissionsProjectID: project.ControllingPermissionsProjectID}
 	}
 	return CompactResult{Status: o.Status, Environment: o.Environment, Site: o.Site, Page: o.Page, Projects: projects, Details: "--full", Help: o.Help, Source: o.Source}
 }

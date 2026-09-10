@@ -51,10 +51,12 @@ type Output struct {
 
 // CompactProject is the exact identity needed for another action.
 type CompactProject struct {
-	LUID       string `json:"luid"`
-	Name       string `json:"name"`
-	Path       string `json:"path"`
-	ParentLUID string `json:"parent_luid,omitempty"`
+	LUID                            string `json:"luid"`
+	Name                            string `json:"name"`
+	Path                            string `json:"path"`
+	ParentLUID                      string `json:"parent_luid,omitempty"`
+	ContentPermissions              string `json:"content_permissions,omitempty"`
+	ControllingPermissionsProjectID string `json:"controlling_permissions_project_luid,omitempty"`
 }
 
 // CompactResult is the default projection.
@@ -81,7 +83,7 @@ type FullResult struct {
 
 // CompactOutput returns exact identity fields.
 func (o Output) CompactOutput() any {
-	return CompactResult{Status: o.Status, Environment: o.Environment, Site: o.Site, Project: CompactProject{LUID: o.Project.LUID, Name: o.Project.Name, Path: o.Project.Path, ParentLUID: o.Project.ParentLUID}, Details: "--full", Help: o.Help, Source: o.Source}
+	return CompactResult{Status: o.Status, Environment: o.Environment, Site: o.Site, Project: CompactProject{LUID: o.Project.LUID, Name: o.Project.Name, Path: o.Project.Path, ParentLUID: o.Project.ParentLUID, ContentPermissions: o.Project.ContentPermissions, ControllingPermissionsProjectID: o.Project.ControllingPermissionsProjectID}, Details: "--full", Help: o.Help, Source: o.Source}
 }
 
 // FullOutput returns bounded lifecycle details.

@@ -27,6 +27,7 @@ const (
 // Options configures result rendering.
 type Options struct {
 	Full            bool
+	JSON            bool
 	Raw             bool
 	RawCapable      bool
 	MaxStringLength int
@@ -58,6 +59,9 @@ func RenderWithOptions(writer io.Writer, value any, options Options) error {
 	if options.Raw && !options.RawCapable {
 		return errs.New(errs.KindUsage, "raw output is not supported for this capability")
 	}
+	if options.JSON && options.Raw {
+		return errs.New(errs.KindUsage, "--json cannot be combined with raw output")
+	}
 	if options.Raw {
 		return renderRaw(writer, value, options)
 	}
@@ -77,7 +81,7 @@ func RenderWithOptions(writer io.Writer, value any, options Options) error {
 	if options.ConfigPath != "" {
 		value = bindHintValue(value, options.ConfigPath)
 	}
-	if len(options.Secrets) == 0 && (options.Full || !hasLongString(reflect.ValueOf(value), limit, make(map[visit]bool))) {
+	if !options.JSON && len(options.Secrets) == 0 && (options.Full || !hasLongString(reflect.ValueOf(value), limit, make(map[visit]bool))) {
 		encoded, err := toon.EncodeWithOptions(value, options.TOON)
 		if err != nil {
 			return fmt.Errorf("render TOON: %w", err)
@@ -90,8 +94,16 @@ func RenderWithOptions(writer io.Writer, value any, options Options) error {
 	}
 	redactor := newRedactor(options.Secrets)
 	normalized = transform(normalized, redactor, limit, options.Full)
-	encoded, err := toon.EncodeWithOptions(normalized, options.TOON)
+	var encoded []byte
+	if options.JSON {
+		encoded, err = json.Marshal(normalized)
+	} else {
+		encoded, err = toon.EncodeWithOptions(normalized, options.TOON)
+	}
 	if err != nil {
+		if options.JSON {
+			return fmt.Errorf("render JSON: %w", err)
+		}
 		return fmt.Errorf("render TOON: %w", err)
 	}
 	return writeDocument(writer, encoded)

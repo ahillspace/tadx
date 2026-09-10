@@ -18,3 +18,4 @@ Flags:
 Global Flags:
       --config string   path to the non-secret TADX configuration file (alias: --cfg)
   -f, --full            show expanded bounded details (alias: --ful)
+      --json            render machine-readable JSON instead of TOON (alias: --jsn)

@@ -3,6 +3,7 @@ package app_test
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -26,6 +27,64 @@ func TestRunCapabilityListRendersTOON(t *testing.T) {
 		t.Fatalf("exit code = %d, output = %s", exitCode, stdout.String())
 	}
 	assertGolden(t, "testdata/capability-list.toon", stdout.String())
+}
+
+func TestRunCapabilityListRendersJSON(t *testing.T) {
+	var stdout bytes.Buffer
+	exitCode := app.Run(context.Background(), []string{"capability", "list", "--domain", "capability", "--json"}, &stdout, app.Options{})
+	if exitCode != 0 {
+		t.Fatalf("exit code = %d, output = %s", exitCode, stdout.String())
+	}
+	var document any
+	if err := json.Unmarshal(stdout.Bytes(), &document); err != nil {
+		t.Fatalf("output is not JSON: %v\n%s", err, stdout.String())
+	}
+}
+
+func TestRunJSONUsageErrorIsOneDocumentWithoutNotice(t *testing.T) {
+	var stdout bytes.Buffer
+	exitCode := app.Run(context.Background(), []string{"capability", "list", "--not-a-flag", "--json"}, &stdout, app.Options{})
+	if exitCode == 0 {
+		t.Fatalf("expected usage failure, output=%s", stdout.String())
+	}
+	var document map[string]any
+	decoder := json.NewDecoder(bytes.NewReader(stdout.Bytes()))
+	if err := decoder.Decode(&document); err != nil {
+		t.Fatalf("usage output is not JSON: %v\n%s", err, stdout.String())
+	}
+	var extra any
+	if err := decoder.Decode(&extra); err != io.EOF {
+		t.Fatalf("expected one JSON document, extra=%v err=%v", extra, err)
+	}
+	if _, ok := document["error"]; !ok {
+		t.Fatalf("usage document lacks error: %#v", document)
+	}
+}
+
+func TestRunJSONFlagLastValueAndAlias(t *testing.T) {
+	for _, test := range []struct {
+		name string
+		args []string
+		json bool
+	}{
+		{name: "explicit false", args: []string{"capability", "list", "--json=false"}},
+		{name: "alias", args: []string{"capability", "list", "--jsn"}, json: true},
+		{name: "last value", args: []string{"capability", "list", "--json", "--json=false"}},
+		{name: "after inline value", args: []string{"capability", "list", "--config=portable/config.yaml", "--json"}, json: true},
+		{name: "value is not mode", args: []string{"capability", "list", "--domain", "--json=true"}},
+		{name: "numeric true", args: []string{"capability", "list", "--json=1"}, json: true},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			var stdout bytes.Buffer
+			if exit := app.Run(context.Background(), test.args, &stdout, app.Options{}); exit != 0 {
+				t.Fatalf("exit=%d output=%s", exit, stdout.String())
+			}
+			isJSON := strings.HasPrefix(strings.TrimSpace(stdout.String()), "{")
+			if isJSON != test.json {
+				t.Fatalf("JSON=%v output=%s", isJSON, stdout.String())
+			}
+		})
+	}
 }
 
 func TestRunUsesExplicitCLIConfigPath(t *testing.T) {

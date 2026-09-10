@@ -85,12 +85,14 @@ type Renderer interface {
 // RenderOptions contains presentation-only flags shared by every command.
 type RenderOptions struct {
 	Full bool
+	JSON bool
 	// HintConfig returns explicitly selected non-secret configuration context.
 	HintConfig func() string
 }
 
 // Dependencies contains the explicitly wired Phase 0 command dependencies.
 type Dependencies struct {
+	BatchSelectors        map[string]string
 	Lister                Lister
 	Getter                Getter
 	Renderer              Renderer
@@ -147,6 +149,10 @@ type Dependencies struct {
 
 // NewRoot creates the root command. It contains no domain behavior.
 func NewRoot(deps Dependencies) *cobra.Command {
+	return newRoot(deps, true)
+}
+
+func newRoot(deps Dependencies, withBatches bool) *cobra.Command {
 	renderOptions := deps.RenderOptions
 	if renderOptions == nil {
 		renderOptions = &RenderOptions{}
@@ -176,6 +182,7 @@ Other connected tools remain independent; TADX does not configure, select, proxy
 		SilenceUsage:  true,
 	}
 	root.PersistentFlags().BoolVar(&renderOptions.Full, "full", false, "show expanded bounded details")
+	root.PersistentFlags().BoolVar(&renderOptions.JSON, "json", renderOptions.JSON, "render machine-readable JSON instead of TOON")
 	root.PersistentFlags().StringVar(configPath, "config", *configPath, "path to the non-secret TADX configuration file")
 	root.PersistentFlags().Lookup("config").DefValue = ""
 	priorHintConfig := renderOptions.HintConfig
@@ -275,6 +282,9 @@ Other connected tools remain independent; TADX does not configure, select, proxy
 	}
 	root.AddCommand(NewCompletion(root))
 	rejectGroupingArguments(root)
+	if withBatches {
+		enableBatches(root, deps)
+	}
 	applyMutationExecutionPolicy(root, deps.MutationPolicy, deps.MutationsEnabled, deps.ResolveMutationPolicy)
 	root.CompletionOptions.DisableDefaultCmd = true
 	setFlagErrorHandlers(root)

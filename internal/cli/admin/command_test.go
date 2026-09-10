@@ -14,6 +14,8 @@ import (
 	groupmemberadd "github.com/ahillspace/tadx/actions/admin/group/member/add"
 	groupmemberremove "github.com/ahillspace/tadx/actions/admin/group/member/remove"
 	groupupdate "github.com/ahillspace/tadx/actions/admin/group/update"
+	permissioncreate "github.com/ahillspace/tadx/actions/admin/permission/create"
+	permissiondelete "github.com/ahillspace/tadx/actions/admin/permission/delete"
 	permissioninspect "github.com/ahillspace/tadx/actions/admin/permission/inspect"
 	usercreate "github.com/ahillspace/tadx/actions/admin/user/create"
 	userdelete "github.com/ahillspace/tadx/actions/admin/user/delete"
@@ -32,6 +34,7 @@ type fake struct {
 	groupPreview bool
 	memberAdd    groupmemberadd.Input
 	memberRemove groupmemberremove.Input
+	permissions  []permissioncreate.Input
 }
 
 func (f *fake) Render(any) error { f.rendered++; return nil }
@@ -80,9 +83,16 @@ func (f *fake) RemoveAdminGroupMember(_ context.Context, input groupmemberremove
 func (f *fake) InspectAdminPermission(context.Context, permissioninspect.Input) (permissioninspect.Output, error) {
 	return permissioninspect.Output{}, nil
 }
+func (f *fake) CreateAdminPermission(_ context.Context, in permissioncreate.Input, _ bool) (permissioncreate.Output, error) {
+	f.permissions = append(f.permissions, in)
+	return permissioncreate.Output{}, nil
+}
+func (f *fake) DeleteAdminPermission(context.Context, permissiondelete.Input, bool) (permissiondelete.Output, error) {
+	return permissiondelete.Output{}, nil
+}
 
 func deps(f *fake, enabled bool) cli.Dependencies {
-	return cli.Dependencies{UserLister: f, UserInspector: f, UserCreator: f, UserUpdater: f, UserDeleter: f, GroupLister: f, GroupInspector: f, GroupCreator: f, GroupUpdater: f, GroupDeleter: f, GroupMemberAdder: f, GroupMemberRemover: f, PermissionInspector: f, Renderer: f, MutationsEnabled: enabled}
+	return cli.Dependencies{UserLister: f, UserInspector: f, UserCreator: f, UserUpdater: f, UserDeleter: f, GroupLister: f, GroupInspector: f, GroupCreator: f, GroupUpdater: f, GroupDeleter: f, GroupMemberAdder: f, GroupMemberRemover: f, PermissionInspector: f, PermissionCreator: f, PermissionDeleter: f, Renderer: f, MutationsEnabled: enabled}
 }
 
 func TestCommandMountsAllCapabilitiesAndShowsMutations(t *testing.T) {
@@ -211,5 +221,56 @@ func TestExactInspectSelectorsRejectMultipleSelectors(t *testing.T) {
 	err := cmd.Execute()
 	if err == nil {
 		t.Fatal("expected selector error")
+	}
+}
+
+func TestUserMutationAcceptsExactUsernameSelector(t *testing.T) {
+	f := &fake{}
+	cmd := cli.New(deps(f, true))
+	cmd.SetArgs([]string{"user", "update", "--environment", "prod", "--username", "alex@example.com", "--site-role", "Viewer", "--preview"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatal(err)
+	}
+	cmd.SetArgs([]string{"user", "delete", "--environment", "prod", "--username", "alex@example.com", "--preview"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatal(err)
+	}
+	cmd.SetArgs([]string{"user", "delete", "--environment", "prod", "--id", "u1", "--username", "alex@example.com"})
+	if err := cmd.Execute(); err == nil {
+		t.Fatal("accepted both user selectors")
+	}
+}
+
+func TestPermissionCreateRepeatsCapabilitiesSequentially(t *testing.T) {
+	f := &fake{}
+	cmd := cli.New(deps(f, true))
+	cmd.SetArgs([]string{"permission", "create", "--environment", "prod", "--kind", "workbook", "--id", "w1", "--principal-type", "group", "--principal-id", "g1", "--mode", "Allow", "--capability", "Read", "--capability", "Write", "--preview"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatal(err)
+	}
+	if len(f.permissions) != 2 || f.permissions[0].Capability != "Read" || f.permissions[1].Capability != "Write" {
+		t.Fatalf("permissions = %#v", f.permissions)
+	}
+	f = &fake{}
+	cmd = cli.New(deps(f, true))
+	cmd.SetArgs([]string{"permission", "create", "--environment", "prod", "--kind", "workbook", "--id", "w1", "--principal-type", "group", "--principal-id", "g1", "--mode", "Allow", "--capability", "Read", "--capability", "Read"})
+	if err := cmd.Execute(); err == nil || len(f.permissions) != 0 {
+		t.Fatalf("duplicate capability result = %v calls=%d", err, len(f.permissions))
+	}
+}
+
+func TestPermissionCapabilitiesValidateEntireSelectionBeforeWork(t *testing.T) {
+	f := &fake{}
+	d := deps(f, true)
+	d.PermissionCapabilities = func(kind string) []string {
+		if kind == "workbook" {
+			return []string{"Read"}
+		}
+		return nil
+	}
+	cmd := cli.New(d)
+	cmd.SetArgs([]string{"permission", "create", "--environment", "prod", "--kind", "workbook", "--id", "w1", "--principal-type", "group", "--principal-id", "g1", "--mode", "Allow", "--capability", "Read", "--capability", "Write"})
+	if err := cmd.Execute(); err == nil || len(f.permissions) != 0 {
+		t.Fatalf("invalid later capability err=%v calls=%d", err, len(f.permissions))
 	}
 }

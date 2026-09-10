@@ -13,6 +13,8 @@ This Guidance teaches TADX commands; respect the user's chosen tools for other w
 TADX does not query datasource values, render views, or retrieve current Pulse values and insights.
 
 Default output is compact TOON.
+Use `--json` for scripts; `--full` controls detail independently of encoding.
+Reuse returned IDs and confirmed result fields; batch already-decided steps instead of repeating discovery or inspection.
 Use `--full` only when expanded bounded details are needed.
 `tadx last` displays the previous execution's saved full result and timestamp without repeating it; one global result is retained, not history.
 `--env` is an alias for `--environment` on commands that accept an environment.
@@ -107,6 +109,7 @@ Compact output shows identity and local state; use workspace status with `--full
 | Search, inspect, pull, publish, move, rename, delete, lineage, or datasource schema | [Content lifecycle](references/content-lifecycle.md) |
 | Users, groups, memberships, ownership, permissions, or projects | [Administration](references/administration.md) |
 | Workspace creation, registration, defaults, local artifact movement, root relocation, or cleanup | [Workspaces](references/workspace.md) |
+| Repeat an action, supply different settings per item, or capture results in a script | [Batching and scripts](references/batching.md) |
 | Pulse definition creation, forking, validation, or management | Separate `tadx-pulse` Guidance |
 
 Read the relevant reference before acting.

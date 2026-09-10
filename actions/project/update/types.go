@@ -21,12 +21,13 @@ func (i *Input) SetSelector(luid, projectPath string) {
 
 // Project is one authoritative project identity and bounded metadata projection.
 type Project struct {
-	LUID               string `json:"luid"`
-	Name               string `json:"name"`
-	Path               string `json:"path"`
-	ParentLUID         string `json:"parent_luid,omitempty"`
-	Description        string `json:"description,omitempty"`
-	ContentPermissions string `json:"content_permissions,omitempty"`
+	LUID                            string `json:"luid"`
+	Name                            string `json:"name"`
+	Path                            string `json:"path"`
+	ParentLUID                      string `json:"parent_luid,omitempty"`
+	Description                     string `json:"description,omitempty"`
+	ContentPermissions              string `json:"content_permissions,omitempty"`
+	ControllingPermissionsProjectID string `json:"controlling_permissions_project_luid,omitempty"`
 }
 
 // Changes contains only explicit requested metadata fields.
@@ -71,10 +72,12 @@ type Output struct {
 
 // CompactProject is the exact identity needed by a later action.
 type CompactProject struct {
-	LUID       string `json:"luid"`
-	Name       string `json:"name"`
-	Path       string `json:"path"`
-	ParentLUID string `json:"parent_luid,omitempty"`
+	LUID                            string `json:"luid"`
+	Name                            string `json:"name"`
+	Path                            string `json:"path"`
+	ParentLUID                      string `json:"parent_luid,omitempty"`
+	ContentPermissions              string `json:"content_permissions,omitempty"`
+	ControllingPermissionsProjectID string `json:"controlling_permissions_project_luid,omitempty"`
 }
 
 // CompactMutationResult omits successful request diagnostics.
@@ -98,7 +101,7 @@ type FullResult = Output
 func (o Output) CompactOutput() any {
 	var result *CompactMutationResult
 	if o.Result != nil {
-		result = &CompactMutationResult{Status: o.Result.Status, Project: CompactProject{LUID: o.Result.Project.LUID, Name: o.Result.Project.Name, Path: o.Result.Project.Path, ParentLUID: o.Result.Project.ParentLUID}}
+		result = &CompactMutationResult{Status: o.Result.Status, Project: CompactProject{LUID: o.Result.Project.LUID, Name: o.Result.Project.Name, Path: o.Result.Project.Path, ParentLUID: o.Result.Project.ParentLUID, ContentPermissions: o.Result.Project.ContentPermissions, ControllingPermissionsProjectID: o.Result.Project.ControllingPermissionsProjectID}}
 	}
 	return CompactResult{Plan: o.Plan, Result: result, Details: "--full", Help: o.Help}
 }

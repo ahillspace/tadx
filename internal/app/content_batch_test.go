@@ -3,6 +3,8 @@ package app_test
 import (
 	"bytes"
 	"context"
+	"encoding/json"
+	"io"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -34,5 +36,26 @@ func TestContentBatchFailuresRenderOneDocumentAndReturnNonzero(t *testing.T) {
 				}
 			})
 		}
+	}
+}
+
+func TestContentBatchFailuresRenderOneJSONDocument(t *testing.T) {
+	args := []string{"content", "workbook", "pull", "--id", "first", "--id", "second", "--json"}
+	var stdout bytes.Buffer
+	exit := app.Run(context.Background(), args, &stdout, app.Options{ConfigPath: filepath.Join(t.TempDir(), "missing.yaml")})
+	if exit == 0 {
+		t.Fatalf("expected nonzero exit, output=%s", stdout.String())
+	}
+	decoder := json.NewDecoder(bytes.NewReader(stdout.Bytes()))
+	var document map[string]any
+	if err := decoder.Decode(&document); err != nil {
+		t.Fatalf("output is not JSON: %v\n%s", err, stdout.String())
+	}
+	var extra any
+	if err := decoder.Decode(&extra); err != io.EOF {
+		t.Fatalf("expected one JSON document, extra=%v err=%v", extra, err)
+	}
+	if document["operation"] != "workbook.pull" || document["status"] != "failed" {
+		t.Fatalf("unexpected batch document: %#v", document)
 	}
 }

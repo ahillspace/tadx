@@ -21,6 +21,13 @@ func (c *remoteAdminCommands) CreateAdminPermission(ctx context.Context, in perm
 		return permissioncreate.Output{}, remoteSetupError("admin.permission.create", in.Environment, in.Site, connection.environment, err)
 	}
 	in.Environment, in.Site = connection.environment.Alias, connection.environment.SiteContentURL
+	if in.PrincipalUsername != "" {
+		user, resolveErr := connection.adapter.ResolveUser(ctx, resourceadmin.UserSelector{Username: in.PrincipalUsername})
+		if resolveErr != nil {
+			return permissioncreate.Output{}, adminActionError("admin.permission.create", in.Environment, in.Site, resolveErr)
+		}
+		in.PrincipalLUID, in.PrincipalUsername = user.LUID, ""
+	}
 	adapter := adminPermissionCreateAdapter{connection.adapter}
 	out, err := permissioncreate.New(adapter, adapter).Execute(ctx, in, preview)
 	return out, permissionMutationError("admin.permission.create", in.Environment, in.Site, err)
@@ -53,6 +60,13 @@ func (c *remoteAdminCommands) DeleteAdminPermission(ctx context.Context, in perm
 		return permissiondelete.Output{}, remoteSetupError("admin.permission.delete", in.Environment, in.Site, connection.environment, err)
 	}
 	in.Environment, in.Site = connection.environment.Alias, connection.environment.SiteContentURL
+	if in.PrincipalUsername != "" {
+		user, resolveErr := connection.adapter.ResolveUser(ctx, resourceadmin.UserSelector{Username: in.PrincipalUsername})
+		if resolveErr != nil {
+			return permissiondelete.Output{}, adminActionError("admin.permission.delete", in.Environment, in.Site, resolveErr)
+		}
+		in.PrincipalLUID, in.PrincipalUsername = user.LUID, ""
+	}
 	adapter := adminPermissionDeleteAdapter{connection.adapter}
 	out, err := permissiondelete.New(adapter, adapter).Execute(ctx, in, preview)
 	return out, permissionMutationError("admin.permission.delete", in.Environment, in.Site, err)

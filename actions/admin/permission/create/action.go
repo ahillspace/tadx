@@ -11,7 +11,7 @@ import (
 
 const operation = "admin.permission.create"
 
-type Input struct{ Environment, Site, ResourceKind, ResourceLUID, DefaultFor, PrincipalType, PrincipalLUID, Capability, Mode string }
+type Input struct{ Environment, Site, ResourceKind, ResourceLUID, DefaultFor, PrincipalType, PrincipalLUID, PrincipalUsername, Capability, Mode string }
 type Rule struct {
 	ResourceKind  string `json:"resource_kind"`
 	ResourceLUID  string `json:"resource_luid"`
@@ -35,6 +35,7 @@ type Plan struct {
 type Result struct {
 	Status           string `json:"status"`
 	ResourceLUID     string `json:"resource_luid"`
+	Rule             Rule   `json:"rule"`
 	TableauRequestID string `json:"tableau_request_id,omitempty"`
 }
 type Output struct {
@@ -79,12 +80,15 @@ type Action struct {
 func New(r Reader, w Writer) *Action { return &Action{reader: r, writer: w} }
 
 func Validate(in Input) error {
-	for _, v := range []struct{ field, value string }{{"environment", in.Environment}, {"id", in.ResourceLUID}, {"principal-id", in.PrincipalLUID}, {"capability", in.Capability}} {
+	for _, v := range []struct{ field, value string }{{"environment", in.Environment}, {"id", in.ResourceLUID}, {"capability", in.Capability}} {
 		if strings.TrimSpace(v.value) == "" || strings.TrimSpace(v.value) != v.value {
 			err := failure(in, "usage", errs.KindUsage, "Permission mutation requires explicit, nonblank selectors.", "Provide --environment, --kind, --id, --principal-type, --principal-id, --capability, and --mode.")
 			err.Validation = []errs.ValidationDetail{{Field: v.field, Code: "required", Message: "Provide an explicit value without surrounding whitespace."}}
 			return err
 		}
+	}
+	if (strings.TrimSpace(in.PrincipalLUID) == "") == (strings.TrimSpace(in.PrincipalUsername) == "") || (in.PrincipalUsername != "" && in.PrincipalType != "user") {
+		return failure(in, "usage", errs.KindUsage, "Permission mutation requires an exact principal selector.", "Provide --principal-id, or --principal-type user with --principal-username.")
 	}
 	if (in.ResourceKind != "workbook" && in.ResourceKind != "datasource" && in.ResourceKind != "flow" && in.ResourceKind != "project") ||
 		(in.PrincipalType != "user" && in.PrincipalType != "group") || (in.Mode != "Allow" && in.Mode != "Deny") {
@@ -131,7 +135,7 @@ func (a *Action) Execute(ctx context.Context, in Input, preview bool) (Output, e
 		return Output{}, failure(in, "target_changed", errs.KindOperation, "Permission rule changed during revalidation.", "Inspect the exact rule and run a new preview before retrying.")
 	}
 	if change == "none" {
-		out.Result = &Result{Status: "unchanged", ResourceLUID: in.ResourceLUID}
+		out.Result = &Result{Status: "unchanged", ResourceLUID: in.ResourceLUID, Rule: out.Plan.Target}
 		return out, nil
 	}
 	result, err := a.writer.CreatePermission(ctx, in)
@@ -149,6 +153,7 @@ func (a *Action) Execute(ctx context.Context, in Input, preview bool) (Output, e
 		e.TableauRequestID = result.TableauRequestID
 		return Output{}, e
 	}
+	result.Rule = out.Plan.Target
 	out.Result = &result
 	return out, nil
 }

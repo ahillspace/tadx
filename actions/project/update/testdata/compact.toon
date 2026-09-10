@@ -21,5 +21,6 @@ result:
     name: Renamed
     path: Department/Renamed
     parent_luid: parent-1
+    content_permissions: ManagedByOwner
 details: "--full"
 help[1]: tadx content project inspect --project-id project-1

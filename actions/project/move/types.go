@@ -18,10 +18,12 @@ func (i *Input) SetParentSelector(luid, path string) {
 }
 
 type Project struct {
-	LUID       string `json:"luid"`
-	Name       string `json:"name"`
-	Path       string `json:"path"`
-	ParentLUID string `json:"parent_luid,omitempty"`
+	LUID                            string `json:"luid"`
+	Name                            string `json:"name"`
+	Path                            string `json:"path"`
+	ParentLUID                      string `json:"parent_luid,omitempty"`
+	ContentPermissions              string `json:"content_permissions,omitempty"`
+	ControllingPermissionsProjectID string `json:"controlling_permissions_project_luid,omitempty"`
 }
 type Plan struct {
 	Mode        string   `json:"mode"`

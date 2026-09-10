@@ -16,6 +16,27 @@ import (
 
 type reader struct{}
 
+type unavailableLineageReader struct{ reader }
+
+func (unavailableLineageReader) CaptureLineage(context.Context, flowpull.LineageRequest) (flowpull.Lineage, error) {
+	return flowpull.Lineage{}, fmt.Errorf("metadata unavailable")
+}
+
+func TestQuietFlowPullPreservesNativeWarnings(t *testing.T) {
+	w := &writer{result: flowpull.ArtifactResult{Path: "artifacts/flow/Daily", Warnings: []string{"Local flow edits were replaced because --overwrite was set."}}}
+	output, err := flowpull.New(unavailableLineageReader{}, w).Execute(context.Background(), flowpull.Input{Workspace: "workspace", Selector: identity.Selector{LUID: "f-1"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	compact := output.CompactOutput().(flowpull.CompactResult)
+	if len(compact.Warnings) != 1 || compact.Warnings[0] != w.result.Warnings[0] {
+		t.Fatalf("native warning hidden: %#v", compact)
+	}
+	if full := output.FullOutput().(flowpull.FullResult); len(full.Warnings) != 2 || full.Artifact.LineageStatus != "incomplete" {
+		t.Fatalf("full diagnostics lost: %#v", full)
+	}
+}
+
 func (reader) ResolveFlow(context.Context, identity.Selector) (flowpull.Flow, error) {
 	return flowpull.Flow{LUID: "f-1", Name: "Daily", ProjectLUID: "p-1", ProjectPath: "Ops", FileType: "tflx"}, nil
 }

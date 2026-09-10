@@ -20,6 +20,7 @@ capability:
   remote_mutation: true
   execution_enabled: false
   supports_preview: true
+  supports_batch: false
   local_write: false
   raw_capable: false
 help[1]: tadx capability list

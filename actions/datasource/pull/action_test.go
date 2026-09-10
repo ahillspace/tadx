@@ -39,7 +39,8 @@ func (r *pullReader) CaptureLineage(_ context.Context, request datasourcepull.Li
 }
 
 type pullWriter struct {
-	input datasourcepull.Artifact
+	input    datasourcepull.Artifact
+	warnings []string
 }
 
 func (w *pullWriter) WriteDatasource(_ context.Context, input datasourcepull.Artifact) (datasourcepull.ArtifactResult, error) {
@@ -49,6 +50,7 @@ func (w *pullWriter) WriteDatasource(_ context.Context, input datasourcepull.Art
 		LineagePath: "artifacts/datasource/Sales/lineage.json", BaselineFingerprint: "sha256:abc",
 		CompositionStatus: "composed", ParentDataSourceURLs: []string{"parent-sales"}, LineageStatus: "complete",
 		NodeCount: 1, CountsKnown: true,
+		Warnings: w.warnings,
 	}, nil
 }
 
@@ -82,6 +84,24 @@ func TestPullKeepsSuccessfulDownloadWhenLineageIsUnavailable(t *testing.T) {
 	}
 	if w.input.Lineage.Complete || len(output.Warnings) != 1 || !strings.Contains(output.Warnings[0], "Lineage capture was incomplete") {
 		t.Fatalf("output = %#v, lineage = %#v", output, w.input.Lineage)
+	}
+	if compact := output.CompactOutput().(datasourcepull.CompactResult); len(compact.Warnings) != 0 {
+		t.Fatalf("optional lineage was noisy: %#v", compact)
+	}
+}
+
+func TestQuietDatasourcePullPreservesNativeWarnings(t *testing.T) {
+	w := &pullWriter{warnings: []string{"dirty datasource artifact replaced because --overwrite was provided"}}
+	output, err := datasourcepull.New(&pullReader{lineageErr: errors.New("unavailable")}, w).Execute(context.Background(), datasourcepull.Input{Workspace: "workspace", Selector: identity.Selector{LUID: "ds-1"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	compact := output.CompactOutput().(datasourcepull.CompactResult)
+	if len(compact.Warnings) != 1 || compact.Warnings[0] != w.warnings[0] {
+		t.Fatalf("native warning hidden: %#v", compact)
+	}
+	if full := output.FullOutput().(datasourcepull.FullResult); len(full.Warnings) != 2 || full.Artifact.LineageStatus != "incomplete" {
+		t.Fatalf("full diagnostics lost: %#v", full)
 	}
 }
 

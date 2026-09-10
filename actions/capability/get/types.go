@@ -33,6 +33,7 @@ type Capability struct {
 	RemoteMutation        bool     `json:"remote_mutation"`
 	ExecutionEnabled      bool     `json:"execution_enabled"`
 	SupportsPreview       bool     `json:"supports_preview"`
+	SupportsBatch         bool     `json:"supports_batch"`
 	LocalWrite            bool     `json:"local_write"`
 	RawCapable            bool     `json:"raw_capable"`
 }

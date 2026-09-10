@@ -18,5 +18,6 @@ result:
     name: Operations
     path: Department/Operations
     parent_luid: parent-1
+    content_permissions: LockedToProject
 details: "--full"
 help[1]: tadx content project inspect --project-id project-1

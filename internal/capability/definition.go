@@ -79,6 +79,7 @@ type Definition struct {
 	LocalWrite      bool                  `json:"local_write"`
 	RemoteMutation  bool                  `json:"remote_mutation"`
 	SupportsPreview bool                  `json:"supports_preview"`
+	SupportsBatch   bool                  `json:"supports_batch"`
 	SafetyGuard     string                `json:"safety_guard"`
 	ArtifactEffect  string                `json:"artifact_effect"`
 	Upstream        string                `json:"upstream_operation"`

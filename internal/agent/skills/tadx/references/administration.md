@@ -2,7 +2,8 @@
 
 ## Available actions
 
-All actions accept `--full` for expanded bounded output.
+All actions accept `--full` for expanded bounded output and `--json` for scripts.
+For repeated actions or different settings per item, use [batching](batching.md).
 Flags in brackets are optional.
 `--env` aliases `--environment`; the environment selects the site for user mutations.
 A sole configured environment can be omitted; multiple environments require an explicit target for remote writes.
@@ -10,17 +11,17 @@ A sole configured environment can be omitted; multiple environments require an e
 | Action | What it does | Key and optional flags |
 | --- | --- | --- |
 | `tadx admin user list` | List users, or collect the selected inventory with `--all`. | `--environment <alias>` [`--name <exact>`] [`--site-role <role>`] [`--limit 1..10000` or `--all`] [`--catalog`] |
-| `tadx admin user inspect` | Inspect one exact user. | `--id <luid>` or `--name <username-or-email>` [`--environment <alias>`] [`--catalog`] |
+| `tadx admin user inspect` | Inspect one exact user. | `--id <luid>` or `--name <exact-username>` [`--environment <alias>`] [`--catalog`] |
 | `tadx admin user create` | Add one user to a site. | `--environment <alias> --name <username> --site-role <role>` and exactly one of `--auth-setting <value>` or `--idp-configuration-id <luid>` [`--identity-pool <name>`] [`--email <address>`] [`--language <code>`] [`--locale <code>`] [`--preview`] |
-| `tadx admin user update` | Update one exact user. | `--environment <alias> --id <luid>` plus one or more of `--full-name`, `--email`, `--site-role`, `--auth-setting`, `--identity-pool`, `--idp-configuration-id`, `--language`, `--locale` [`--preview`] |
-| `tadx admin user delete` | Remove one exact user from a site. | `--environment <alias> --id <luid>` [`--preview`] |
+| `tadx admin user update` | Update exact users. | `--environment <alias>` and `--id <luid>` or `--username <exact>`; one or more of `--full-name`, `--email`, `--site-role`, `--auth-setting`, `--identity-pool`, `--idp-configuration-id`, `--language`, `--locale` [`--preview`] |
+| `tadx admin user delete` | Remove exact users from a site. | `--environment <alias>` and repeated `--id <luid>` or `--username <exact>` [`--preview`] |
 | `tadx admin group list` | List groups, or collect the selected inventory with `--all`. | `--environment <alias>` [`--name <exact>`] [`--domain <exact>`] [`--limit 1..10000` or `--all`] [`--catalog`] |
 | `tadx admin group inspect` | Inspect one exact group. | `--id <luid>` or `--name <exact>` [`--environment <alias>`] [`--members`] [`--catalog`] |
 | `tadx admin group create` | Create one group. | `--environment <alias> --name <name>` [`--minimum-site-role <role>`] [`--external-user-enabled`] [`--preview`] |
 | `tadx admin group update` | Update group attributes or replace direct membership. | `--environment <alias> --id <luid>` [`--new-name <name>`] [`--minimum-site-role <role>`] [`--external-user-enabled`] [`--set-members --member-id <user-luid>` repeated] [`--preview`] |
 | `tadx admin group delete` | Delete one group without deleting its users. | `--environment <alias> --id <luid>` [`--preview`] |
-| `tadx admin group member add` | Add one user without replacing other group members. | `--environment <alias> --group-id <luid> --user-id <luid>` [`--preview`] |
-| `tadx admin group member remove` | Remove one user without replacing other group members. | `--environment <alias> --group-id <luid> --user-id <luid>` [`--preview`] |
+| `tadx admin group member add` | Add users without replacing other group members. | `--environment <alias> --group-id <luid>` and repeated `--user-id <luid>` or `--username <exact>` [`--preview`] |
+| `tadx admin group member remove` | Remove users without replacing other group members. | `--environment <alias> --group-id <luid>` and repeated `--user-id <luid>` or `--username <exact>` [`--preview`] |
 | `tadx admin permission inspect` | Inspect explicit or project-default permission rules. | `--kind <workbook\|datasource\|flow\|project> --id <resource-luid>` [`--environment <alias>`] [`--default-for <workbooks\|datasources\|flows>`] [`--principal-type <user\|group>`] [`--principal-id <luid>`] [`--capability <name>`] |
 | `tadx admin permission create` | Add one exact permission rule. | `--environment <alias> --kind <kind> --id <resource-luid> --principal-type <user\|group> --principal-id <luid> --capability <name> --mode <Allow\|Deny>` [`--default-for <kind>`] [`--preview`] |
 | `tadx admin permission delete` | Remove one exact permission rule. | Same selectors as permission create, including exact `--mode` [`--default-for <kind>`] [`--preview`] |
@@ -33,7 +34,11 @@ A sole configured environment can be omitted; multiple environments require an e
 
 ## Operating rules
 
-Resolve exact user, group, project, and content LUIDs before writes.
+Reuse known user, group, project, and content LUIDs.
+Usernames resolve exactly within the selected site; full/display names and email metadata are not identity selectors.
+Permission actions accept `--principal-username` instead of `--principal-id` only with `--principal-type user`.
+Repeat `--capability` on permission create/delete to apply several explicit rules with one shared mode.
+Results confirm the individual rule changes, not the user's effective access through all groups and inherited policies.
 Use `tadx search --type admin <term>` for intent or text discovery, then inspect the exact result.
 Use lists for bounded filtered lookup or complete inventory, not as a substitute for search.
 
@@ -55,6 +60,9 @@ Permission actions manage explicit rules, not computed effective access.
 Choose a resource-specific capability from `admin permission create --help` or the supported values in a validation error.
 Project capabilities are `ProjectLeader`, `Read`, and `Write`; do not substitute UI labels such as View or Editor.
 For project defaults, `--default-for` selects the content kind's capability set.
+Project discovery and inspection expose available `content_permissions` and `controlling_permissions_project_luid` metadata, including catalog reads.
+An omitted controller is unknown, not proof of independent permissions.
+Do not automatically replace a content permission change with a project-default change; that expands the affected scope.
 Project defaults and resource rules answer different questions.
 Project locks, inherited defaults, and conflicting rules can still affect effective access.
 There is no atomic permission update, so changing a rule requires separately authorized create and delete operations.

@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -52,6 +53,7 @@ type Options struct {
 	Now                 func() time.Time
 	CorrelationID       func() string
 	UserHomeDir         func() (string, error)
+	Stderr              io.Writer
 }
 
 // Run wires and runs the CLI, renders structured output, and returns an AXI exit code.
@@ -59,16 +61,21 @@ func Run(ctx context.Context, args []string, stdout io.Writer, options Options) 
 	definitions := capability.All()
 	source := registrySource{}
 	renderOptions := &cli.RenderOptions{HintConfig: func() string { return options.ConfigPath }}
+	renderOptions.JSON = hasJSONFlag(args)
 	runtime, err := newRuntime(options)
 	if err != nil {
-		return renderError(stdout, err)
+		return renderError(stdout, err, renderOptions)
 	}
 	defer runtime.Close()
 	capture := newLastCapture(runtime)
 	capture.hintConfig = func() string { return hintConfigPath(renderOptions) }
 	defer func() {
 		if err := capture.save(exitCode); err != nil {
-			_, _ = fmt.Fprintln(stdout, "last_result_warning: Previous result could not be saved.")
+			warningWriter := options.Stderr
+			if warningWriter == nil {
+				warningWriter = os.Stderr
+			}
+			_, _ = fmt.Fprintln(warningWriter, "last_result_warning: Previous result could not be saved.")
 		}
 	}()
 	fail := func(err error, opts *cli.RenderOptions) int {
@@ -88,6 +95,7 @@ func Run(ctx context.Context, args []string, stdout io.Writer, options Options) 
 		Getter:                capabilityget.New(source),
 		Renderer:              writerRenderer{writer: stdout, options: renderOptions, capture: capture},
 		RenderOptions:         renderOptions,
+		BatchSelectors:        capability.BatchSelectors(),
 		ConfigPath:            &runtime.configPath,
 		MutationsEnabled:      options.MutationsEnabled,
 		MutationPolicy:        registryMutationPolicy{},
@@ -137,14 +145,14 @@ func Run(ctx context.Context, args []string, stdout io.Writer, options Options) 
 	})
 	registrations, err := cli.RegisteredCommands(root)
 	if err != nil {
-		return renderError(stdout, &errs.Error{Kind: errs.KindRuntime, Operation: "startup", Summary: "CLI command registration validation failed.", Cause: err})
+		return renderError(stdout, &errs.Error{Kind: errs.KindRuntime, Operation: "startup", Summary: "CLI command registration validation failed.", Cause: err}, renderOptions)
 	}
 	bindings := make([]capability.Binding, len(registrations))
 	for index, registration := range registrations {
 		bindings[index] = capability.Binding{CapabilityID: registration.CapabilityID, CommandPath: registration.CommandPath}
 	}
 	if err := capability.ValidateBindings(definitions, bindings); err != nil {
-		return renderError(stdout, &errs.Error{Kind: errs.KindRuntime, Operation: "startup", Summary: "Capability registry validation failed.", Cause: err})
+		return renderError(stdout, &errs.Error{Kind: errs.KindRuntime, Operation: "startup", Summary: "Capability registry validation failed.", Cause: err}, renderOptions)
 	}
 	root.SetOut(stdout)
 	root.SetArgs(args)
@@ -169,8 +177,8 @@ func Run(ctx context.Context, args []string, stdout io.Writer, options Options) 
 	return 0
 }
 
-func renderError(writer io.Writer, err error) int {
-	if renderErr := output.RenderError(writer, err, output.Options{}); renderErr != nil {
+func renderError(writer io.Writer, err error, renderOptions *cli.RenderOptions) int {
+	if renderErr := output.RenderError(writer, err, output.Options{JSON: renderOptions != nil && renderOptions.JSON}); renderErr != nil {
 		return 1
 	}
 	return errs.ExitCode(err)
@@ -187,12 +195,13 @@ func (r writerRenderer) Render(value any) error {
 		r.capture.value = value
 	}
 	full := r.options != nil && r.options.Full
+	jsonOutput := r.options != nil && r.options.JSON
 	configPath := hintConfigPath(r.options)
 	if saved, ok := value.(interface{ IsSavedResult() bool }); ok && saved.IsSavedResult() {
 		full = true
 		configPath = ""
 	}
-	return output.RenderWithOptions(r.writer, value, output.Options{Full: full, ConfigPath: configPath})
+	return output.RenderWithOptions(r.writer, value, output.Options{Full: full, JSON: jsonOutput, ConfigPath: configPath})
 }
 
 func hintConfigPath(options *cli.RenderOptions) string {
@@ -211,10 +220,56 @@ func hintConfigPath(options *cli.RenderOptions) string {
 
 func renderErrorWithOptions(writer io.Writer, err error, options *cli.RenderOptions) int {
 	full := options != nil && options.Full
-	if renderErr := output.RenderError(writer, err, output.Options{Full: full, ConfigPath: hintConfigPath(options)}); renderErr != nil {
+	if renderErr := output.RenderError(writer, err, output.Options{Full: full, JSON: options != nil && options.JSON, ConfigPath: hintConfigPath(options)}); renderErr != nil {
 		return 1
 	}
 	return errs.ExitCode(err)
+}
+
+func hasJSONFlag(args []string) bool {
+	enabled := false
+	for index, arg := range args {
+		if arg == "--" {
+			break
+		}
+		if arg == "--json" || arg == "--jsn" {
+			if index == 0 || !strings.HasPrefix(args[index-1], "-") || isBooleanFlag(args[index-1]) || !isValueFlag(args[index-1]) {
+				enabled = true
+			}
+			continue
+		}
+		for _, name := range []string{"--json=", "--jsn="} {
+			if strings.HasPrefix(arg, name) && (index == 0 || !strings.HasPrefix(args[index-1], "-") || isBooleanFlag(args[index-1]) || !isValueFlag(args[index-1])) {
+				if value, err := strconv.ParseBool(strings.TrimPrefix(arg, name)); err == nil {
+					enabled = value
+				}
+			}
+		}
+	}
+	return enabled
+}
+
+func isBooleanFlag(arg string) bool {
+	name := strings.SplitN(arg, "=", 2)[0]
+	switch name {
+	case "--full", "--preview", "--all", "--catalog", "--force", "--overwrite", "--raw", "--as-job", "--mutation", "--include-pds", "--include-extract":
+		return true
+	default:
+		return false
+	}
+}
+
+func isValueFlag(arg string) bool {
+	if strings.Contains(arg, "=") {
+		return false
+	}
+	name := strings.SplitN(arg, "=", 2)[0]
+	switch name {
+	case "--config", "--domain", "--environment", "--env", "--id", "--name", "--limit", "--query", "--resource", "--owner", "--project", "--site", "--workspace", "-e", "-i", "-l", "-n", "-q", "-w":
+		return true
+	default:
+		return false
+	}
 }
 
 type runtimeDependencies struct {
@@ -648,6 +703,7 @@ func (registrySource) Get(_ context.Context, id string) (capabilityget.Capabilit
 		Blocker:               string(definition.Blocker),
 		RemoteMutation:        definition.RemoteMutation,
 		SupportsPreview:       definition.SupportsPreview,
+		SupportsBatch:         definition.SupportsBatch,
 		LocalWrite:            definition.LocalWrite,
 		RawCapable:            definition.RawCapable,
 	}, true

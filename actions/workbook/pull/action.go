@@ -74,6 +74,7 @@ func (a *Action) Execute(ctx context.Context, input Input) (Output, error) {
 	lineage, lineageCountsKnown, lineageStatus, lineageWarnings := captureAutomaticLineage(ctx, a.reader, workbook.LUID)
 	references, detectionErr := a.reader.PublishedDatasources(ctx, workbook.LUID)
 	warnings := append([]string(nil), lineageWarnings...)
+	compactWarnings := make([]string, 0)
 	portability := "unknown"
 	if detectionErr != nil {
 		if input.IncludePDS {
@@ -163,6 +164,7 @@ func (a *Action) Execute(ctx context.Context, input Input) (Output, error) {
 			}
 			dependencyByLUID[dependency.LUID] = *dependency
 			warnings = append(warnings, dependency.Warnings...)
+			compactWarnings = append(compactWarnings, dependency.Warnings...)
 		}
 		for index := range provenance {
 			dependency, exists := dependencyByLUID[provenance[index].LUID]
@@ -197,7 +199,8 @@ func (a *Action) Execute(ctx context.Context, input Input) (Output, error) {
 		return Output{}, invalidBundleResult(workbook, input, fmt.Errorf("project workbook lineage path: %w", err))
 	}
 	warnings = append(warnings, artifact.Warnings...)
-	return Output{Workspace: input.WorkspaceName, Status: "pulled", Workbook: workbook, Artifact: artifact, Warnings: warnings, RequestID: download.TableauRequestID, Help: []string{commandhint.SourceUpdate(input.Environment, input.WorkspaceName, "workbook", workbook.LUID, workbook.ProjectLUID)}}, nil
+	compactWarnings = append(compactWarnings, artifact.Warnings...)
+	return Output{Workspace: input.WorkspaceName, Status: "pulled", Workbook: workbook, Artifact: artifact, Warnings: warnings, compactWarnings: compactWarnings, RequestID: download.TableauRequestID, Help: []string{commandhint.SourceUpdate(input.Environment, input.WorkspaceName, "workbook", workbook.LUID, workbook.ProjectLUID)}}, nil
 }
 
 func captureAutomaticLineage(ctx context.Context, reader Reader, workbookLUID string) (LineageCapture, bool, string, []string) {

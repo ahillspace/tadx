@@ -196,6 +196,13 @@ func (c *remoteAdminCommands) UpdateAdminUser(ctx context.Context, input userupd
 		return userupdate.Output{}, remoteSetupError("admin.user.update", input.Environment, input.Site, connection.environment, err)
 	}
 	input.Environment, input.Site = connection.environment.Alias, connection.environment.SiteContentURL
+	if input.Username != "" {
+		user, resolveErr := connection.adapter.ResolveUser(ctx, resourceadmin.UserSelector{Username: input.Username})
+		if resolveErr != nil {
+			return userupdate.Output{}, adminActionError("admin.user.update", input.Environment, input.Site, resolveErr)
+		}
+		input.UserLUID, input.Username = user.LUID, ""
+	}
 	input.TargetResolved = true
 	adapter := adminUserUpdateAdapter{connection.adapter}
 	output, err := userupdate.New(adapter, adapter).Execute(ctx, input, preview)
@@ -211,6 +218,13 @@ func (c *remoteAdminCommands) DeleteAdminUser(ctx context.Context, input userdel
 		return userdelete.Output{}, remoteSetupError("admin.user.delete", input.Environment, input.Site, connection.environment, err)
 	}
 	input.Environment, input.Site = connection.environment.Alias, connection.environment.SiteContentURL
+	if input.Username != "" {
+		user, resolveErr := connection.adapter.ResolveUser(ctx, resourceadmin.UserSelector{Username: input.Username})
+		if resolveErr != nil {
+			return userdelete.Output{}, adminActionError("admin.user.delete", input.Environment, input.Site, resolveErr)
+		}
+		input.UserLUID, input.Username = user.LUID, ""
+	}
 	input.TargetResolved = true
 	adapter := adminUserDeleteAdapter{connection.adapter}
 	output, err := userdelete.New(adapter, adapter).Execute(ctx, input, preview)
@@ -411,6 +425,13 @@ func (c *remoteAdminCommands) InspectAdminPermission(ctx context.Context, input 
 		return permissioninspect.Output{}, remoteSetupError("admin.permission.inspect", input.Environment, input.Site, connection.environment, err)
 	}
 	input.Environment, input.Site = connection.environment.Alias, connection.environment.SiteContentURL
+	if input.PrincipalUsername != "" {
+		user, resolveErr := connection.adapter.ResolveUser(ctx, resourceadmin.UserSelector{Username: input.PrincipalUsername})
+		if resolveErr != nil {
+			return permissioninspect.Output{}, adminActionError("admin.permission.inspect", input.Environment, input.Site, resolveErr)
+		}
+		input.PrincipalLUID, input.PrincipalUsername = user.LUID, ""
+	}
 	output, err := permissioninspect.New(adminPermissionReader{connection.adapter}).Execute(ctx, input)
 	return output, adminActionError("admin.permission.inspect", input.Environment, input.Site, err)
 }
@@ -444,7 +465,7 @@ func toUserList(item tableauadmin.User) userlist.User {
 type adminUserGetResolver struct{ adapter *resourceadmin.Adapter }
 
 func (a adminUserGetResolver) ResolveUser(ctx context.Context, selector userinspect.Selector) (userinspect.User, error) {
-	item, err := a.adapter.ResolveUser(ctx, resourceadmin.UserSelector{LUID: selector.LUID, NameOrEmail: selector.NameOrEmail})
+	item, err := a.adapter.ResolveUser(ctx, resourceadmin.UserSelector{LUID: selector.LUID, Username: selector.Username})
 	return toUserGet(item), err
 }
 func toUserGet(item tableauadmin.User) userinspect.User {
@@ -554,6 +575,11 @@ type adminGroupDeleteAdapter struct{ adapter *resourceadmin.Adapter }
 
 type adminGroupMemberAddAdapter struct{ adapter *resourceadmin.Adapter }
 
+func (a adminGroupMemberAddAdapter) ResolveUsername(ctx context.Context, username string) (groupmemberadd.Member, error) {
+	user, err := a.adapter.ResolveUser(ctx, resourceadmin.UserSelector{Username: username})
+	return groupmemberadd.Member{LUID: user.LUID, Name: user.Name}, err
+}
+
 func (a adminGroupMemberAddAdapter) ResolveGroup(ctx context.Context, luid string) (groupmemberadd.Group, error) {
 	detail, err := a.adapter.ResolveGroup(ctx, resourceadmin.GroupSelector{LUID: luid}, true)
 	members := make([]groupmemberadd.Member, len(detail.Members))
@@ -568,6 +594,11 @@ func (a adminGroupMemberAddAdapter) AddGroupUser(ctx context.Context, group, use
 }
 
 type adminGroupMemberRemoveAdapter struct{ adapter *resourceadmin.Adapter }
+
+func (a adminGroupMemberRemoveAdapter) ResolveUsername(ctx context.Context, username string) (groupmemberremove.Member, error) {
+	user, err := a.adapter.ResolveUser(ctx, resourceadmin.UserSelector{Username: username})
+	return groupmemberremove.Member{LUID: user.LUID, Name: user.Name}, err
+}
 
 func (a adminGroupMemberRemoveAdapter) ResolveGroup(ctx context.Context, luid string) (groupmemberremove.Group, error) {
 	detail, err := a.adapter.ResolveGroup(ctx, resourceadmin.GroupSelector{LUID: luid}, true)

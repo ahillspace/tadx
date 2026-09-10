@@ -8,7 +8,7 @@ import (
 
 const ruleLimit = 200
 
-type Input struct{ Environment, Site, ResourceKind, ResourceLUID, DefaultFor, PrincipalType, PrincipalLUID, Capability string }
+type Input struct{ Environment, Site, ResourceKind, ResourceLUID, DefaultFor, PrincipalType, PrincipalLUID, PrincipalUsername, Capability string }
 type Rule struct {
 	Source        string `json:"source"`
 	PrincipalType string `json:"principal_type"`

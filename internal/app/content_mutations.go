@@ -24,7 +24,7 @@ import (
 const projectMutationPathWarning = "Project mutation succeeded, but its canonical hierarchy path could not be confirmed; inspect the project by LUID."
 
 func normalizeSuccessfulProjectMutation(ctx context.Context, projects *resourceproject.Adapter, resolved map[string]resourceproject.Project, item tableauproject.Project) resourceproject.Project {
-	result := resourceproject.Project{LUID: item.LUID, Name: item.Name, ParentLUID: item.ParentLUID, Description: item.Description, ContentPermissions: item.ContentPermissions}
+	result := resourceproject.Project{LUID: item.LUID, Name: item.Name, ParentLUID: item.ParentLUID, Description: item.Description, ContentPermissions: item.ContentPermissions, ControllingPermissionsProjectID: item.ControllingPermissionsProjectID}
 	if item.Name == "" || strings.Contains(item.Name, "/") {
 		return result
 	}
@@ -295,5 +295,5 @@ func (a projectMoveAdapter) MoveProject(ctx context.Context, luid string, parent
 }
 
 func toProjectMove(item resourceproject.Project) projectmove.Project {
-	return projectmove.Project{LUID: item.LUID, Name: item.Name, Path: item.Path, ParentLUID: item.ParentLUID}
+	return projectmove.Project{LUID: item.LUID, Name: item.Name, Path: item.Path, ParentLUID: item.ParentLUID, ContentPermissions: item.ContentPermissions, ControllingPermissionsProjectID: item.ControllingPermissionsProjectID}
 }

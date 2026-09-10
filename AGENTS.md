@@ -17,6 +17,9 @@ Blocked and docs-only capabilities remain non-executable until bounded upstream 
 Do not weaken an enforcement gate to make work pass; flag a gate that blocks correct work.
 
 Default output is compact TOON, and `--full` returns expanded bounded details for the same operation.
+`--json` changes encoding only; preserve parseable results, redaction, and partial failures.
+Support bounded same-action batches where useful, reusing command-scoped sessions and ordered per-item outcomes rather than inventing workflow orchestration.
+Keep routine pull enrichment diagnostics in metadata and full output; surface unmet explicit requests.
 Report known failure phases, mutation outcomes, missing prerequisites, and confirmed partial results through the shared error contract.
 Do not infer safe retries from transport retryability, invent missing evidence, or discard confirmed identities after verification fails.
 Keep follow-up commands contextual and coverage limitations explicit; shared rendering handles configuration preservation and bounded recovery output.

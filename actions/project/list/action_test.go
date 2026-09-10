@@ -39,6 +39,17 @@ func TestOutputGolden(t *testing.T) {
 	assertGolden(t, "full.toon", output, true)
 }
 
+func TestCompactDiscoveryIncludesPermissionControlMetadata(t *testing.T) {
+	output := projectlist.Output{Projects: []projectlist.Project{{LUID: "child", Name: "Child", ParentLUID: "root", ContentPermissions: "LockedToProject", ControllingPermissionsProjectID: "root"}}}
+	var buffer bytes.Buffer
+	if err := render.RenderWithOptions(&buffer, output, render.Options{}); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(buffer.String(), "content_permissions") || !strings.Contains(buffer.String(), "controlling_permissions_project_luid") {
+		t.Fatalf("compact discovery omitted permissions: %s", buffer.String())
+	}
+}
+
 func assertGolden(t *testing.T, name string, value any, full bool) {
 	t.Helper()
 	var buffer bytes.Buffer

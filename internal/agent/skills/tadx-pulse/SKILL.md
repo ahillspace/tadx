@@ -33,6 +33,7 @@ Keep needed guidance and verified choices available across task handoffs.
 
 Use exact identities in the selected environment; datasource, field, definition, metric, user, and group IDs are different identifiers.
 `--env` aliases `--environment` on commands that accept an environment.
+For repeated lifecycle operations or JSON scripting, read `references/batching.md` in the installed `tadx` root skill.
 Reuse inspected existing definitions and conventions early, before comprehensive new field discovery.
 Use live reads for authoritative authoring decisions; cached coverage does not establish current completeness.
 

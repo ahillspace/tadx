@@ -12,8 +12,10 @@ import (
 // All returns the canonical registry sorted by stable capability ID.
 func All() []Definition {
 	definitions := make([]Definition, len(canonicalDefinitions))
+	batchSelectors := BatchSelectors()
 	for index, definition := range canonicalDefinitions {
 		definitions[index] = clone(definition)
+		_, definitions[index].SupportsBatch = batchSelectors[definition.ID]
 	}
 	slices.SortFunc(definitions, func(left, right Definition) int { return cmp.Compare(left.ID, right.ID) })
 	return definitions

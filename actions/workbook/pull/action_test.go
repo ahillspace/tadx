@@ -210,6 +210,9 @@ func TestActionPreservesDownloadWhenLineageCaptureIsUnavailable(t *testing.T) {
 	if result.Artifact.LineageStatus != "unavailable" || result.Artifact.LineageNodeCount != nil || result.Artifact.LineageEdgeCount != nil {
 		t.Fatalf("artifact lineage result = %#v", result.Artifact)
 	}
+	if compact := result.CompactOutput().(pull.CompactResult); len(compact.Warnings) != 0 {
+		t.Fatalf("optional lineage warning leaked into routine pull: %#v", compact)
+	}
 	joined := strings.Join(result.Warnings, "\n")
 	if !strings.Contains(joined, "Lineage capture was unavailable") || strings.Contains(joined, "credential secret") || strings.Contains(joined, "unbounded") {
 		t.Fatalf("warnings = %#v", result.Warnings)
@@ -283,6 +286,9 @@ func TestActionLeavesPortabilityUnknownWhenOptionalDetectionIsIncomplete(t *test
 	if w.calls != 1 || w.input.Portability != "unknown" {
 		t.Fatalf("writer calls=%d input=%#v", w.calls, w.input)
 	}
+	if compact := result.CompactOutput().(pull.CompactResult); len(compact.Warnings) != 0 || compact.Artifact.Portability != "" {
+		t.Fatalf("optional portability diagnostic leaked into routine pull: %#v", compact)
+	}
 }
 
 func TestActionRequiresCompleteDetectionBeforeIncludePDSAcquisition(t *testing.T) {
@@ -300,6 +306,22 @@ func TestActionRequiresCompleteDetectionBeforeIncludePDSAcquisition(t *testing.T
 	}
 	if w.calls != 0 || len(w.datasourceInputs) != 0 {
 		t.Fatalf("local writes occurred: workbook=%d datasources=%d", w.calls, len(w.datasourceInputs))
+	}
+}
+
+func TestQuietPullPreservesNativeArtifactWarnings(t *testing.T) {
+	r := &reader{workbook: pull.Workbook{LUID: "wb-1", Name: "Finance"}, download: pull.Download{Filename: "Finance.twb", Content: []byte("native")}, lineageErr: errors.New("unavailable"), publishedDatasourcesErr: errors.New("unavailable")}
+	w := &writer{result: pull.ArtifactResult{Path: "artifact", Warnings: []string{"Local edits were replaced because --overwrite was set."}}}
+	output, err := pull.New(r, w).Execute(context.Background(), pull.Input{Workspace: "workspace", Selector: identity.Selector{LUID: "wb-1"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	compact := output.CompactOutput().(pull.CompactResult)
+	if len(compact.Warnings) != 1 || compact.Warnings[0] != w.result.Warnings[0] {
+		t.Fatalf("native warning hidden: %#v", compact)
+	}
+	if full := output.FullOutput().(pull.FullResult); len(full.Warnings) != 3 || full.Artifact.Portability != "unknown" {
+		t.Fatalf("full diagnostics lost: %#v", full)
 	}
 }
 

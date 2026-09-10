@@ -46,6 +46,35 @@ func TestRenderDefaultTOON(t *testing.T) {
 	}
 }
 
+func TestRenderJSONPreservesProjectionAndRedaction(t *testing.T) {
+	t.Parallel()
+
+	value := projectableResult{Status: "ready", Secret: "token"}
+	var compact bytes.Buffer
+	if err := output.RenderWithOptions(&compact, value, output.Options{JSON: true}); err != nil {
+		t.Fatal(err)
+	}
+	if got, want := compact.String(), "{\"details\":\"--full\",\"status\":\"ready\"}\n"; got != want {
+		t.Fatalf("compact JSON output = %q, want %q", got, want)
+	}
+
+	var buffer bytes.Buffer
+	if err := output.RenderWithOptions(&buffer, value, output.Options{JSON: true, Full: true, Secrets: []string{"token"}}); err != nil {
+		t.Fatal(err)
+	}
+	if got, want := buffer.String(), "{\"secret\":\"[REDACTED]\",\"status\":\"ready\"}\n"; got != want {
+		t.Fatalf("JSON output = %q, want %q", got, want)
+	}
+}
+
+func TestRenderJSONRejectsRawOutput(t *testing.T) {
+	var buffer bytes.Buffer
+	err := output.RenderWithOptions(&buffer, "payload", output.Options{JSON: true, Raw: true, RawCapable: true})
+	if err == nil || errs.ExitCode(err) != 2 {
+		t.Fatalf("expected usage error, got %v", err)
+	}
+}
+
 func TestRenderProjectsCompactOutputAndFullPreservesOriginal(t *testing.T) {
 	t.Parallel()
 

@@ -5,6 +5,9 @@
 All reads are live by default.
 Add `--catalog` only for local catalog reads, and add `--full` only when expanded bounded detail is needed.
 Use `--env` as an alias for any listed `--environment` flag.
+Use [batching](batching.md) for repeated identities, per-item settings, and JSON scripting across these actions.
+Routine pull output reports acquisition; incidental lineage and portability diagnostics remain in artifact metadata and `--full`.
+Incomplete explicitly requested dependency acquisition remains visible.
 
 | Action | What it does | Selectors and useful optional flags |
 |---|---|---|

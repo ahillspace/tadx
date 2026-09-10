@@ -74,9 +74,9 @@ func TestAdapterResolvesExactUsersAndRejectsAmbiguity(t *testing.T) {
 	if err != nil || user.LUID != "u1" {
 		t.Fatalf("ResolveUser(LUID) = %#v, %v", user, err)
 	}
-	_, err = adapter.ResolveUser(context.Background(), resource.UserSelector{NameOrEmail: "shared@example.com"})
-	if err == nil || !strings.Contains(err.Error(), "ambiguous") {
-		t.Fatalf("ResolveUser(email) error = %v", err)
+	_, err = adapter.ResolveUser(context.Background(), resource.UserSelector{Username: "shared@example.com"})
+	if err == nil || !strings.Contains(err.Error(), "no resource matches") {
+		t.Fatalf("ResolveUser(non-username) error = %v", err)
 	}
 }
 

@@ -109,8 +109,8 @@ func newGroupMemberAdd(deps Dependencies) *cobra.Command {
 		if err := requireMutation(cmd, "admin.group.member.add", in.Environment); err != nil {
 			return err
 		}
-		if in.GroupLUID == "" || in.UserLUID == "" {
-			return clierr.Usage("admin.group.member.add", errors.New("--group-id and --user-id are required"))
+		if in.GroupLUID == "" || (in.UserLUID == "") == (in.Username == "") {
+			return clierr.Usage("admin.group.member.add", errors.New("--group-id and exactly one of --user-id or --username are required"))
 		}
 		return nil
 	}, func(cmd *cobra.Command) error {
@@ -123,6 +123,7 @@ func newGroupMemberAdd(deps Dependencies) *cobra.Command {
 	cmd.Flags().StringVar(&in.Environment, "environment", "", "explicit write environment alias")
 	cmd.Flags().StringVar(&in.GroupLUID, "group-id", "", "authoritative group LUID")
 	cmd.Flags().StringVar(&in.UserLUID, "user-id", "", "authoritative user LUID")
+	cmd.Flags().StringVar(&in.Username, "username", "", "exact site username, never a display name; mutually exclusive with --user-id")
 	cmd.Flags().BoolVar(&preview, "preview", false, "preview the remote mutation without performing it")
 	return cmd
 }
@@ -137,8 +138,8 @@ func newGroupMemberRemove(deps Dependencies) *cobra.Command {
 		if err := requireMutation(cmd, "admin.group.member.remove", in.Environment); err != nil {
 			return err
 		}
-		if in.GroupLUID == "" || in.UserLUID == "" {
-			return clierr.Usage("admin.group.member.remove", errors.New("--group-id and --user-id are required"))
+		if in.GroupLUID == "" || (in.UserLUID == "") == (in.Username == "") {
+			return clierr.Usage("admin.group.member.remove", errors.New("--group-id and exactly one of --user-id or --username are required"))
 		}
 		return nil
 	}, func(cmd *cobra.Command) error {
@@ -151,6 +152,7 @@ func newGroupMemberRemove(deps Dependencies) *cobra.Command {
 	cmd.Flags().StringVar(&in.Environment, "environment", "", "explicit write environment alias")
 	cmd.Flags().StringVar(&in.GroupLUID, "group-id", "", "authoritative group LUID")
 	cmd.Flags().StringVar(&in.UserLUID, "user-id", "", "authoritative user LUID")
+	cmd.Flags().StringVar(&in.Username, "username", "", "exact site username, never a display name; mutually exclusive with --user-id")
 	cmd.Flags().BoolVar(&preview, "preview", false, "preview the remote mutation without performing it")
 	return cmd
 }
@@ -196,7 +198,7 @@ func newUserInspect(deps Dependencies) *cobra.Command {
 	}}
 	cmd.Flags().StringVar(&in.Environment, "environment", "", "exact environment alias; defaults to the configured read environment")
 	cmd.Flags().StringVar(&id, "id", "", "authoritative user LUID")
-	cmd.Flags().StringVar(&name, "name", "", "exact username or email")
+	cmd.Flags().StringVar(&name, "name", "", "exact Tableau username")
 	cmd.Flags().BoolVar(&in.Catalog, "catalog", false, "read indexed local catalog data without contacting Tableau")
 	return cmd
 }
@@ -239,8 +241,8 @@ func newUserUpdate(deps Dependencies) *cobra.Command {
 		if err := requireMutation(cmd, "admin.user.update", in.Environment); err != nil {
 			return err
 		}
-		if in.UserLUID == "" {
-			return clierr.Usage("admin.user.update", errors.New("--id is required"))
+		if (in.UserLUID == "") == (in.Username == "") {
+			return clierr.Usage("admin.user.update", errors.New("use exactly one of --id or --username"))
 		}
 		setString(cmd, "full-name", fullName, &in.FullName)
 		setString(cmd, "email", email, &in.Email)
@@ -260,6 +262,8 @@ func newUserUpdate(deps Dependencies) *cobra.Command {
 	})
 	cmd.Flags().StringVar(&in.Environment, "environment", "", "explicit write environment alias")
 	cmd.Flags().StringVar(&in.UserLUID, "id", "", "authoritative user LUID")
+	cmd.Flags().StringVar(&in.Username, "username", "", "exact Tableau username")
+	cmd.MarkFlagsMutuallyExclusive("id", "username")
 	cmd.Flags().StringVar(&fullName, "full-name", "", "explicit full name")
 	cmd.Flags().StringVar(&email, "email", "", "explicit notification email")
 	cmd.Flags().StringVar(&siteRole, "site-role", "", "explicit site role")
@@ -281,8 +285,8 @@ func newUserDelete(deps Dependencies) *cobra.Command {
 		if err := requireMutation(cmd, "admin.user.delete", in.Environment); err != nil {
 			return err
 		}
-		if in.UserLUID == "" {
-			return clierr.Usage("admin.user.delete", errors.New("--id is required"))
+		if (in.UserLUID == "") == (in.Username == "") {
+			return clierr.Usage("admin.user.delete", errors.New("use exactly one of --id or --username"))
 		}
 		return nil
 	}, func(cmd *cobra.Command) error {
@@ -294,6 +298,8 @@ func newUserDelete(deps Dependencies) *cobra.Command {
 	})
 	cmd.Flags().StringVar(&in.Environment, "environment", "", "explicit write environment alias")
 	cmd.Flags().StringVar(&in.UserLUID, "id", "", "authoritative user LUID")
+	cmd.Flags().StringVar(&in.Username, "username", "", "exact Tableau username")
+	cmd.MarkFlagsMutuallyExclusive("id", "username")
 	cmd.Flags().BoolVar(&preview, "preview", false, "preview the remote mutation without performing it")
 	return cmd
 }
@@ -457,6 +463,9 @@ func newPermissionInspect(deps Dependencies) *cobra.Command {
 		if in.ResourceKind == "" || in.ResourceLUID == "" {
 			return clierr.Usage("admin.permission.inspect", errors.New("--kind and --id are required"))
 		}
+		if in.PrincipalUsername != "" && (in.PrincipalLUID != "" || in.PrincipalType != "user") {
+			return clierr.Usage("admin.permission.inspect", errors.New("--principal-username requires --principal-type user and is mutually exclusive with --principal-id"))
+		}
 		return nil
 	}, RunE: func(cmd *cobra.Command, _ []string) error {
 		out, err := deps.PermissionInspector.InspectAdminPermission(cmd.Context(), in)
@@ -471,6 +480,7 @@ func newPermissionInspect(deps Dependencies) *cobra.Command {
 	cmd.Flags().StringVar(&in.DefaultFor, "default-for", "", "project default content kind: workbooks, datasources, or flows")
 	cmd.Flags().StringVar(&in.PrincipalType, "principal-type", "", "exact principal type: user or group")
 	cmd.Flags().StringVar(&in.PrincipalLUID, "principal-id", "", "authoritative principal LUID filter")
+	cmd.Flags().StringVar(&in.PrincipalUsername, "principal-username", "", "exact site username filter; mutually exclusive with --principal-id")
 	cmd.Flags().StringVar(&in.Capability, "capability", "", "exact capability-name filter")
 	return cmd
 }

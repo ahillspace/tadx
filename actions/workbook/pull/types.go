@@ -177,6 +177,10 @@ type Output struct {
 	Warnings  []string       `json:"warnings,omitempty"`
 	RequestID string         `json:"tableau_request_id,omitempty"`
 	Help      []string       `json:"help"`
+	// compactWarnings excludes optional enrichment while retaining download,
+	// artifact replacement, recovery, and explicitly acquired dependency warnings.
+	// A nil value preserves direct Output construction for callers and fixtures.
+	compactWarnings []string
 }
 
 // CompactWorkbook is the authoritative identity needed after a pull.
@@ -193,7 +197,7 @@ type CompactArtifact struct {
 	Name                     string `json:"name"`
 	SourceLUID               string `json:"source_luid"`
 	Path                     string `json:"-"`
-	Portability              string `json:"portability"`
+	Portability              string `json:"portability,omitempty"`
 	PublishedDatasourceCount *int   `json:"published_datasource_count,omitempty"`
 	DependenciesAcquired     bool   `json:"dependencies_acquired"`
 }
@@ -243,14 +247,22 @@ type FullResult struct {
 // CompactOutput returns the standard response without provenance diagnostics.
 func (o Output) CompactOutput() any {
 	publishedDatasourceCount := knownPublishedDatasourceCount(o.Artifact)
-	warnings, warningsOmitted := boundedWarnings(o.Warnings)
+	warningSource := o.compactWarnings
+	if warningSource == nil {
+		warningSource = o.Warnings
+	}
+	warnings, warningsOmitted := boundedWarnings(warningSource)
+	portability := o.Artifact.Portability
+	if portability == "unknown" {
+		portability = ""
+	}
 	return CompactResult{
 		Status: o.Status,
 		Workbook: CompactWorkbook{
 			LUID: o.Workbook.LUID, Name: o.Workbook.Name, ProjectPath: o.Workbook.ProjectPath,
 		},
 		Artifact: CompactArtifact{Workspace: o.Workspace, Kind: "workbook", Name: o.Workbook.Name, SourceLUID: o.Workbook.LUID,
-			Path: o.Artifact.Path, Portability: o.Artifact.Portability,
+			Path: o.Artifact.Path, Portability: portability,
 			PublishedDatasourceCount: publishedDatasourceCount,
 			DependenciesAcquired:     o.Artifact.DependenciesAcquired,
 		},

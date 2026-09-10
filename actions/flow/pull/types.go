@@ -70,6 +70,8 @@ type Output struct {
 	Warnings  []string
 	RequestID string
 	Help      []string
+	// compactWarnings retains native artifact warnings separately from optional lineage.
+	compactWarnings []string
 }
 type CompactArtifact struct {
 	Workspace  string `json:"workspace"`
@@ -111,7 +113,11 @@ type FullResult struct {
 }
 
 func (o Output) CompactOutput() any {
-	warnings, omitted := boundedWarnings(o.Warnings)
+	warningSource := o.compactWarnings
+	if warningSource == nil {
+		warningSource = o.Warnings
+	}
+	warnings, omitted := boundedWarnings(warningSource)
 	return CompactResult{Status: o.Status, Flow: o.Flow, Artifact: CompactArtifact{Workspace: o.Workspace, Kind: "flow", Name: o.Flow.Name, SourceLUID: o.Flow.LUID, Path: o.Artifact.Path}, Warnings: warnings, WarningsOmitted: omitted, Details: "--full", Help: o.Help}
 }
 func (o Output) FullOutput() any {

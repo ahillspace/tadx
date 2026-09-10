@@ -15,6 +15,7 @@ type Input struct {
 	Site        string
 	GroupLUID   string
 	UserLUID    string
+	Username    string
 }
 type Member struct {
 	LUID string `json:"luid"`
@@ -33,6 +34,7 @@ type Plan struct {
 	GroupLUID   string `json:"group_luid"`
 	GroupName   string `json:"group_name"`
 	UserLUID    string `json:"user_luid"`
+	Username    string `json:"username,omitempty"`
 	NoOp        bool   `json:"no_op"`
 	planned     bool
 }
@@ -40,6 +42,8 @@ type Result struct {
 	Status           string `json:"status"`
 	GroupLUID        string `json:"group_luid"`
 	UserLUID         string `json:"user_luid"`
+	Membership       string `json:"membership"`
+	Evidence         string `json:"evidence"`
 	TableauRequestID string `json:"tableau_request_id,omitempty"`
 }
 type Output struct {
@@ -53,6 +57,11 @@ func (o Output) FullOutput() any    { return o }
 
 type Resolver interface {
 	ResolveGroup(context.Context, string) (Group, error)
+}
+
+// UsernameResolver resolves only an exact site username to an authoritative user.
+type UsernameResolver interface {
+	ResolveUsername(context.Context, string) (Member, error)
 }
 type Writer interface {
 	AddGroupUser(context.Context, string, string) (Result, error)
@@ -73,6 +82,20 @@ func (a *Action) Plan(ctx context.Context, in Input) (Plan, error) {
 	if a == nil || a.resolver == nil || a.writer == nil {
 		return Plan{}, runtimeError("incremental group membership is not configured")
 	}
+	if in.Username != "" {
+		resolver, ok := a.resolver.(UsernameResolver)
+		if !ok {
+			return Plan{}, runtimeError("exact username resolution is not configured")
+		}
+		user, err := resolver.ResolveUsername(ctx, in.Username)
+		if err != nil {
+			return Plan{}, operationError("user.resolve", in, err)
+		}
+		if strings.TrimSpace(user.LUID) == "" || user.Name != in.Username {
+			return Plan{}, runtimeError("username resolution returned an inconsistent authoritative identity")
+		}
+		in.UserLUID = user.LUID
+	}
 	group, err := a.resolver.ResolveGroup(ctx, in.GroupLUID)
 	if err != nil {
 		return Plan{}, operationError("resolve", in, err)
@@ -80,7 +103,7 @@ func (a *Action) Plan(ctx context.Context, in Input) (Plan, error) {
 	if err := validateGroup(group, in.GroupLUID); err != nil {
 		return Plan{}, runtimeError(err.Error())
 	}
-	return Plan{Mode: "preview", Operation: "admin.group.member.add", Environment: in.Environment, Site: in.Site, GroupLUID: group.LUID, GroupName: group.Name, UserLUID: in.UserLUID, NoOp: contains(group.Members, in.UserLUID), planned: true}, nil
+	return Plan{Mode: "preview", Operation: "admin.group.member.add", Environment: in.Environment, Site: in.Site, GroupLUID: group.LUID, GroupName: group.Name, UserLUID: in.UserLUID, Username: in.Username, NoOp: contains(group.Members, in.UserLUID), planned: true}, nil
 }
 func (a *Action) Apply(ctx context.Context, plan Plan) (Result, error) {
 	if a == nil || a.resolver == nil || a.writer == nil || !plan.planned || plan.Operation != "admin.group.member.add" {
@@ -94,7 +117,7 @@ func (a *Action) Apply(ctx context.Context, plan Plan) (Result, error) {
 		return Result{}, runtimeError(err.Error())
 	}
 	if contains(current.Members, plan.UserLUID) {
-		return Result{Status: "unchanged", GroupLUID: plan.GroupLUID, UserLUID: plan.UserLUID}, nil
+		return Result{Status: "unchanged", GroupLUID: plan.GroupLUID, UserLUID: plan.UserLUID, Membership: "present", Evidence: "prewrite_read"}, nil
 	}
 	result, err := a.writer.AddGroupUser(ctx, plan.GroupLUID, plan.UserLUID)
 	if err != nil {
@@ -111,6 +134,10 @@ func (a *Action) Apply(ctx context.Context, plan Plan) (Result, error) {
 	if result.Status == "" {
 		result.Status = "added"
 	}
+	if result.Status != "added" {
+		return Result{}, runtimeError("group member add returned an unconfirmed outcome")
+	}
+	result.Membership, result.Evidence = "present", "mutation_response"
 	return result, nil
 }
 func (a *Action) Execute(ctx context.Context, in Input, preview bool) (Output, error) {
