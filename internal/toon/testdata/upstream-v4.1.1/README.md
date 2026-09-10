@@ -2,6 +2,7 @@
 
 The `encode/` and `decode/` directories are exact copies of the official language-neutral TOON fixtures.
 The fixture schema, upstream test documentation, and upstream license are also preserved here.
+`UPSTREAM_README.md` is an unmodified copy; its repository-relative links refer to the [upstream repository at the pinned revision](https://github.com/toon-format/spec/tree/62f16b369408180f1faf1cba7da1b46d1f336f12), not the TADX checkout.
 
 Source: `https://github.com/toon-format/spec`
 Tag: `v4.1.1`

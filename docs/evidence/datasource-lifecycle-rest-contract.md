@@ -5,9 +5,17 @@ It does not make blocked capabilities executable and it does not authorize live 
 
 ## Local source snapshots
 
+The official references are [Tableau REST API help](https://help.tableau.com/current/api/rest_api/en-us/REST/) and the [Metadata API guide](https://help.tableau.com/current/api/metadata_api/en-us/).
+The identifiers below preserve historical evidence; see [capture availability](README.md).
+
 - `Tableau API Documentation/tableau_rest_api.md`, Git blob `e127a2b3ed8dad9eddaac8be60e7b0b306a4df30`.
 - `Tableau API Documentation/tableau_virtual_connections.md`, Git blob `655d9fefcaa1b29bb0c5cccf939e78bd522efc7d`.
 - `Tableau API Documentation/metadata_api.md`, Git blob `5b7a6763b00fa42ce7d76b43bc5b2f5450c22db3`.
+
+The older `metadata_api.md` and `tableau_virtual_connections.md` snapshots are absent from the current local capture set.
+The Metadata API guide is a current reference entry point, not a claim that it reproduces the older snapshot.
+No original official source URL for the virtual-connections snapshot is recorded here.
+Its historical claims require renewed source verification before supporting a new capability.
 
 ## Pull contract
 

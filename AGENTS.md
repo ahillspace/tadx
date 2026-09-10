@@ -5,13 +5,16 @@ It owns content lifecycle, artifacts, workspaces, administration, and Pulse defi
 Tableau MCP separately owns data queries, view data and images, and Pulse metric values and insights.
 TADX commands never call or proxy MCP.
 
-Use [CONTRIBUTING.md](CONTRIBUTING.md) as the day-to-day human build guide.
-Use `$tadx-build` only when the user explicitly invokes it for a named build task.
+Use [CONTRIBUTING.md](CONTRIBUTING.md) as the human contribution entry point.
+The repository-local [.agents/skills/tadx-build/SKILL.md](.agents/skills/tadx-build/SKILL.md) contains the maintained engineering standards and focused implementation references.
+Invoke `$tadx-build` only when the user explicitly requests it for a named build task.
+Keep repository-wide agent instructions here and task-specific development instructions in that skill, not in plans or parallel agent files.
 
 Every executable command is one isolated action package.
 Cobra is thin plumbing, actions own narrow interfaces, resource adapters isolate Tableau APIs, and the composition root performs wiring.
 Tests define externally visible behavior before implementation.
 Blocked and docs-only capabilities remain non-executable until bounded upstream evidence closes the gate.
+Do not weaken an enforcement gate to make work pass; flag a gate that blocks correct work.
 
 Default output is compact TOON, and `--full` returns expanded bounded details for the same operation.
 Consequential mutations run by default when enabled and support `--preview` for a read-only plan.
@@ -35,6 +38,7 @@ Start builds from updated `main` on one feature branch shared by all assigned ag
 Assign disjoint paths and reserve shared integration files for one coordinator.
 Do not create per-agent worktrees unless the user requests them.
 Do not read `archived/` for current guidance.
+Local API captures are optional and ignored; [docs/evidence/README.md](docs/evidence/README.md) links the official documentation available to fresh clones.
 
 The maintainer runs agent-based code reviews in ChatGPT.
 Run automated tests and CI, but do not launch agent-based reviews unless explicitly requested.

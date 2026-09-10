@@ -2,6 +2,8 @@
 
 This record freezes the upstream flow lifecycle contract.
 The captured official Tableau REST API help is `Tableau API Documentation/tableau_rest_api.md`.
+The official source is [Tableau REST API help](https://help.tableau.com/current/api/rest_api/en-us/REST/).
+The local capture and its line references are historical provenance; see [capture availability](README.md).
 Its SHA-256 digest is `76d7f050a32ca354660039bdc18143506ce26472ff82f0f12b79fb5aaa584e0f`.
 
 ## Captured sections

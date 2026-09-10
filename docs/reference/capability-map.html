@@ -1,0 +1,4473 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="description" content="Interactive map of the current TADX CLI capability inventory and runtime defaults.">
+<title>TADX Capability Map</title>
+<style>
+:root {
+  color-scheme: light;
+  --page: #f3f5f7;
+  --surface: #ffffff;
+  --surface-2: #f8fafb;
+  --surface-3: #eef2f5;
+  --ink: #17212b;
+  --muted: #5e6b78;
+  --line: #d8e0e6;
+  --line-strong: #b9c5ce;
+  --brand: #0b2538;
+  --brand-2: #123f5a;
+  --focus: #0067a3;
+  --implemented: #087f6b;
+  --implemented-bg: #d9f3ec;
+  --planned: #9a6700;
+  --planned-bg: #fff0c2;
+  --delegated: #6840b7;
+  --delegated-bg: #ede5ff;
+  --blocked: #b42318;
+  --blocked-bg: #fee4e2;
+  --remote: #9b2c78;
+  --remote-bg: #f9e2f1;
+  --local: #315ca8;
+  --local-bg: #e2ebfb;
+  --enabled: #10724f;
+  --enabled-bg: #dcf3e8;
+  --disabled: #6b7280;
+  --disabled-bg: #eceff2;
+  --shadow: 0 12px 34px rgba(18, 37, 52, 0.09);
+  --radius: 16px;
+  --radius-sm: 10px;
+  --mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+  --sans: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+* { box-sizing: border-box; }
+html { scroll-behavior: smooth; }
+body {
+  margin: 0;
+  min-width: 320px;
+  background:
+    radial-gradient(circle at 12% -10%, rgba(30, 103, 139, 0.12), transparent 31rem),
+    var(--page);
+  color: var(--ink);
+  font-family: var(--sans);
+  line-height: 1.45;
+}
+button, input, select { font: inherit; }
+button { color: inherit; }
+[hidden] { display: none !important; }
+
+.skip-link {
+  position: fixed;
+  z-index: 100;
+  left: 1rem;
+  top: 1rem;
+  padding: .7rem 1rem;
+  border-radius: 8px;
+  background: #fff;
+  color: var(--brand);
+  box-shadow: var(--shadow);
+  transform: translateY(-180%);
+}
+.skip-link:focus { transform: translateY(0); }
+
+.hero {
+  position: relative;
+  overflow: hidden;
+  padding: 2rem max(1rem, calc((100vw - 1540px) / 2));
+  background:
+    linear-gradient(118deg, rgba(255,255,255,.045), rgba(255,255,255,0) 42%),
+    var(--brand);
+  color: #f7fbfd;
+}
+.hero::after {
+  content: "";
+  position: absolute;
+  width: 28rem;
+  height: 28rem;
+  right: -8rem;
+  top: -17rem;
+  border: 1px solid rgba(255,255,255,.12);
+  border-radius: 50%;
+  box-shadow: 0 0 0 4rem rgba(255,255,255,.025), 0 0 0 8rem rgba(255,255,255,.018);
+}
+.hero-inner {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 2rem;
+}
+.eyebrow {
+  margin: 0 0 .45rem;
+  color: #91c7de;
+  font: 700 .75rem/1 var(--mono);
+  letter-spacing: .16em;
+  text-transform: uppercase;
+}
+h1 {
+  margin: 0;
+  font-size: clamp(2rem, 5vw, 4.3rem);
+  line-height: .98;
+  letter-spacing: -.045em;
+}
+.hero-copy {
+  max-width: 50rem;
+  margin: .85rem 0 0;
+  color: #c9dbe4;
+  font-size: clamp(.95rem, 1.4vw, 1.08rem);
+}
+.source-meta {
+  display: grid;
+  justify-items: end;
+  gap: .55rem;
+  min-width: 16rem;
+  color: #d4e4eb;
+  font-size: .82rem;
+}
+.source-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: .5rem;
+  padding: .52rem .72rem;
+  border: 1px solid rgba(255,255,255,.17);
+  border-radius: 999px;
+  background: rgba(255,255,255,.075);
+  backdrop-filter: blur(8px);
+}
+.source-chip strong { color: #fff; }
+.source-meta a,
+.footer a {
+  color: inherit;
+  text-underline-offset: .18em;
+}
+.source-meta a:hover { color: #fff; }
+.footer a:hover { color: var(--focus); }
+.live-dot {
+  width: .58rem;
+  height: .58rem;
+  border-radius: 50%;
+  background: #6ee7b7;
+  box-shadow: 0 0 0 4px rgba(110,231,183,.14);
+}
+
+.shell {
+  width: min(1540px, calc(100% - 2rem));
+  margin: 0 auto;
+  padding: 1.3rem 0 3rem;
+}
+
+.stats {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: .8rem;
+  margin-top: -2.3rem;
+  position: relative;
+  z-index: 2;
+}
+.stat-card {
+  appearance: none;
+  width: 100%;
+  min-height: 7.2rem;
+  padding: 1rem 1.05rem;
+  border: 1px solid var(--line);
+  border-top: 4px solid var(--line-strong);
+  border-radius: var(--radius);
+  background: var(--surface);
+  box-shadow: var(--shadow);
+  text-align: left;
+  cursor: pointer;
+  transition: transform .16s ease, border-color .16s ease, box-shadow .16s ease;
+}
+.stat-card:hover { transform: translateY(-2px); border-color: var(--line-strong); }
+.stat-card:focus-visible { outline: 3px solid rgba(0,103,163,.28); outline-offset: 2px; }
+.stat-card[aria-pressed="true"] { box-shadow: 0 0 0 3px rgba(0,103,163,.18), var(--shadow); }
+.stat-card.implemented { border-top-color: var(--implemented); }
+.stat-card.planned { border-top-color: var(--planned); }
+.stat-card.blocked { border-top-color: var(--blocked); }
+.stat-card.delegated { border-top-color: var(--delegated); }
+.stat-number {
+  display: block;
+  font-size: 2.15rem;
+  font-weight: 780;
+  line-height: 1;
+  letter-spacing: -.04em;
+}
+.stat-label {
+  display: block;
+  margin-top: .46rem;
+  font-weight: 750;
+}
+.stat-note {
+  display: block;
+  margin-top: .25rem;
+  color: var(--muted);
+  font-size: .77rem;
+}
+
+.utility-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin: 1rem 0;
+  color: var(--muted);
+  font-size: .84rem;
+}
+.utility-bar strong { color: var(--ink); }
+.execution-summary {
+  display: inline-flex;
+  align-items: center;
+  gap: .45rem;
+  padding: .42rem .68rem;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: rgba(255,255,255,.72);
+}
+.execution-summary .status-light {
+  width: .5rem;
+  height: .5rem;
+  border-radius: 50%;
+  background: var(--enabled);
+}
+
+.workspace {
+  display: grid;
+  grid-template-columns: 255px minmax(430px, 1fr) minmax(340px, 430px);
+  gap: 1rem;
+  align-items: start;
+}
+
+.panel {
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface);
+  box-shadow: 0 5px 18px rgba(18, 37, 52, .055);
+}
+.controls, .details {
+  position: sticky;
+  top: 1rem;
+  max-height: calc(100vh - 2rem);
+  overflow: auto;
+}
+.panel-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: .75rem;
+  padding: 1rem 1rem .8rem;
+  border-bottom: 1px solid var(--line);
+}
+.panel-heading h2, .panel-heading h3 {
+  margin: 0;
+  font-size: .96rem;
+  letter-spacing: -.01em;
+}
+.kbd-hint {
+  color: var(--muted);
+  font: 600 .69rem/1 var(--mono);
+}
+kbd {
+  display: inline-block;
+  min-width: 1.4rem;
+  padding: .18rem .34rem;
+  border: 1px solid var(--line-strong);
+  border-bottom-width: 2px;
+  border-radius: 5px;
+  background: var(--surface-2);
+  color: var(--ink);
+  font: 600 .7rem/1 var(--mono);
+  text-align: center;
+}
+
+.filter-form { padding: .9rem 1rem 1rem; }
+.field { margin-bottom: .78rem; }
+.field label {
+  display: block;
+  margin-bottom: .3rem;
+  color: #344453;
+  font-size: .74rem;
+  font-weight: 760;
+  letter-spacing: .03em;
+  text-transform: uppercase;
+}
+.search-wrap { position: relative; }
+.search-wrap svg {
+  position: absolute;
+  left: .72rem;
+  top: 50%;
+  width: 1rem;
+  height: 1rem;
+  transform: translateY(-50%);
+  color: var(--muted);
+  pointer-events: none;
+}
+input[type="search"], select {
+  width: 100%;
+  min-height: 2.55rem;
+  border: 1px solid var(--line-strong);
+  border-radius: 9px;
+  background: #fff;
+  color: var(--ink);
+  outline: none;
+}
+input[type="search"] { padding: .58rem .7rem .58rem 2.15rem; }
+select { padding: .5rem 2rem .5rem .68rem; }
+input[type="search"]:focus, select:focus {
+  border-color: var(--focus);
+  box-shadow: 0 0 0 3px rgba(0,103,163,.14);
+}
+.filter-actions {
+  display: flex;
+  gap: .55rem;
+  margin-top: .9rem;
+}
+.secondary-button, .tree-button, .copy-button {
+  appearance: none;
+  border: 1px solid var(--line-strong);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--ink);
+  cursor: pointer;
+}
+.secondary-button {
+  width: 100%;
+  padding: .55rem .7rem;
+  font-weight: 700;
+  font-size: .8rem;
+}
+.secondary-button:hover, .tree-button:hover, .copy-button:hover { background: var(--surface-3); }
+.secondary-button:focus-visible, .tree-button:focus-visible, .copy-button:focus-visible {
+  outline: 3px solid rgba(0,103,163,.22);
+  outline-offset: 2px;
+}
+
+.legend {
+  border-top: 1px solid var(--line);
+  padding: .8rem 1rem 1rem;
+}
+.legend summary {
+  cursor: pointer;
+  font-weight: 760;
+  font-size: .82rem;
+}
+.legend-grid {
+  display: grid;
+  gap: .45rem;
+  margin-top: .72rem;
+}
+.legend-row {
+  display: flex;
+  align-items: center;
+  gap: .55rem;
+  color: var(--muted);
+  font-size: .75rem;
+}
+.legend-divider {
+  height: 1px;
+  margin: .35rem 0;
+  background: var(--line);
+}
+
+.tree-panel { min-height: 66vh; overflow: hidden; }
+.tree-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: .75rem;
+  padding: .82rem 1rem;
+  border-bottom: 1px solid var(--line);
+  background: linear-gradient(#fff, #fbfcfd);
+}
+.result-count { color: var(--muted); font-size: .82rem; }
+.result-count strong { color: var(--ink); }
+.tree-actions { display: flex; gap: .45rem; }
+.tree-button {
+  padding: .4rem .58rem;
+  font-size: .74rem;
+  font-weight: 700;
+}
+.tree-scroll {
+  padding: .7rem .7rem 1.2rem;
+  overflow-x: auto;
+}
+.tree-root, .tree-root ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.tree-root ul {
+  position: relative;
+  margin-left: 1.05rem;
+  padding-left: .55rem;
+  border-left: 1px solid var(--line);
+}
+.tree-root li { position: relative; }
+.tree-row {
+  appearance: none;
+  display: grid;
+  grid-template-columns: 1rem 1rem minmax(0, 1fr) auto;
+  align-items: center;
+  gap: .45rem;
+  width: 100%;
+  min-height: 2.35rem;
+  margin: .12rem 0;
+  padding: .36rem .45rem;
+  border: 1px solid transparent;
+  border-radius: 9px;
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+}
+.tree-row:hover { background: var(--surface-2); }
+.tree-row:focus-visible {
+  outline: 3px solid rgba(0,103,163,.22);
+  outline-offset: -1px;
+}
+.tree-row[aria-selected="true"] {
+  border-color: #8cb8cf;
+  background: #edf7fb;
+}
+.tree-row.leaf.state-implemented { box-shadow: inset 3px 0 var(--implemented); }
+.tree-row.leaf.state-planned { box-shadow: inset 3px 0 var(--planned); }
+.tree-row.leaf.state-external-delegated { box-shadow: inset 3px 0 var(--delegated); }
+.tree-row.leaf.is-blocked { border-right: 3px solid var(--blocked); }
+.chevron {
+  width: .85rem;
+  color: #60717f;
+  font-size: .76rem;
+  text-align: center;
+}
+.chevron.placeholder { opacity: .28; }
+.state-dot {
+  width: .65rem;
+  height: .65rem;
+  border: 2px solid transparent;
+  border-radius: 50%;
+  background: var(--line-strong);
+}
+.state-dot.implemented { background: var(--implemented); }
+.state-dot.planned { background: var(--planned); }
+.state-dot.external-delegated { background: var(--delegated); }
+.state-ring {
+  display: grid;
+  place-items: center;
+  width: .72rem;
+  height: .72rem;
+  border-radius: 50%;
+  background: var(--state-gradient, var(--line-strong));
+}
+.state-ring::after {
+  content: "";
+  width: .31rem;
+  height: .31rem;
+  border-radius: 50%;
+  background: #fff;
+}
+.node-main { min-width: 0; }
+.node-line {
+  display: flex;
+  align-items: center;
+  gap: .4rem;
+  min-width: 0;
+}
+.node-label {
+  overflow: hidden;
+  color: var(--ink);
+  font-weight: 690;
+  font-size: .82rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.node-label.root-label {
+  color: var(--brand);
+  font: 780 .9rem/1 var(--mono);
+}
+.node-label.delegated-label { color: #4e278f; }
+.node-id {
+  display: block;
+  overflow: hidden;
+  margin-top: .08rem;
+  color: var(--muted);
+  font: 500 .67rem/1.25 var(--mono);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.node-meta {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: .28rem;
+  padding-left: .4rem;
+}
+.count-pill {
+  min-width: 1.7rem;
+  padding: .16rem .42rem;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--surface-2);
+  color: var(--muted);
+  font: 700 .65rem/1 var(--mono);
+  text-align: center;
+}
+.badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 1.35rem;
+  padding: .2rem .42rem;
+  border: 1px solid transparent;
+  border-radius: 5px;
+  font: 760 .58rem/1 var(--mono);
+  letter-spacing: .035em;
+  white-space: nowrap;
+}
+.badge.remote { border-color: #e4a6ce; background: var(--remote-bg); color: #7c1d5d; }
+.badge.local { border-color: #aec5ec; background: var(--local-bg); color: #244b90; }
+.badge.delegated { border-color: #c8b6ef; background: var(--delegated-bg); color: #56329c; }
+.badge.blocked { border-color: #f0aaa4; background: var(--blocked-bg); color: var(--blocked); }
+.badge.apply { border-color: #e6c483; background: #fff5dc; color: #7a5200; }
+.exec-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: .3rem;
+  padding: .2rem .42rem;
+  border-radius: 999px;
+  font: 750 .58rem/1 var(--mono);
+  white-space: nowrap;
+}
+.exec-pill::before {
+  content: "";
+  width: .38rem;
+  height: .38rem;
+  border-radius: 50%;
+}
+.exec-pill.enabled { background: var(--enabled-bg); color: var(--enabled); }
+.exec-pill.enabled::before { background: var(--enabled); }
+.exec-pill.disabled { background: var(--disabled-bg); color: #5f6871; }
+.exec-pill.disabled::before { background: var(--disabled); }
+
+.empty-state {
+  margin: 1.2rem;
+  padding: 2rem 1rem;
+  border: 1px dashed var(--line-strong);
+  border-radius: 12px;
+  color: var(--muted);
+  text-align: center;
+}
+.empty-state strong { display: block; margin-bottom: .3rem; color: var(--ink); }
+
+.details { min-height: 31rem; }
+.detail-content { padding: 1rem; }
+.detail-kicker {
+  margin: 0 0 .35rem;
+  color: var(--muted);
+  font: 700 .67rem/1 var(--mono);
+  letter-spacing: .1em;
+  text-transform: uppercase;
+}
+.detail-title {
+  margin: 0;
+  font-size: clamp(1.2rem, 2vw, 1.65rem);
+  line-height: 1.1;
+  letter-spacing: -.025em;
+  overflow-wrap: anywhere;
+}
+.breadcrumb {
+  margin-top: .45rem;
+  color: var(--muted);
+  font: 500 .7rem/1.45 var(--mono);
+  overflow-wrap: anywhere;
+}
+.detail-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: .38rem;
+  margin: .8rem 0;
+}
+.command-box {
+  position: relative;
+  margin: .9rem 0 1rem;
+  padding: .78rem 3.2rem .78rem .8rem;
+  border: 1px solid #bfd0da;
+  border-radius: 10px;
+  background: #f4f8fa;
+}
+.command-label {
+  display: block;
+  margin-bottom: .32rem;
+  color: var(--muted);
+  font-size: .67rem;
+  font-weight: 760;
+  text-transform: uppercase;
+}
+.command-box code {
+  display: block;
+  color: #0f3044;
+  font: 650 .76rem/1.5 var(--mono);
+  overflow-wrap: anywhere;
+}
+.copy-button {
+  position: absolute;
+  top: .62rem;
+  right: .62rem;
+  padding: .33rem .48rem;
+  font-size: .68rem;
+  font-weight: 720;
+}
+.outcome {
+  margin: 0 0 1rem;
+  color: #334554;
+  font-size: .9rem;
+}
+.detail-section {
+  margin-top: .85rem;
+  padding-top: .85rem;
+  border-top: 1px solid var(--line);
+}
+.detail-section h3 {
+  margin: 0 0 .6rem;
+  font-size: .78rem;
+  letter-spacing: .03em;
+  text-transform: uppercase;
+}
+.fact-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0,1fr));
+  gap: .55rem;
+}
+.fact {
+  min-width: 0;
+  padding: .58rem .62rem;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: var(--surface-2);
+}
+.fact.full { grid-column: 1 / -1; }
+.fact dt {
+  margin: 0 0 .2rem;
+  color: var(--muted);
+  font-size: .65rem;
+  font-weight: 760;
+  letter-spacing: .025em;
+  text-transform: uppercase;
+}
+.fact dd {
+  margin: 0;
+  color: var(--ink);
+  font-size: .79rem;
+  overflow-wrap: anywhere;
+}
+.fact code { font-family: var(--mono); font-size: .73rem; }
+.value-good { color: var(--enabled); font-weight: 750; }
+.value-muted { color: var(--muted); }
+.value-danger { color: var(--blocked); font-weight: 750; }
+.callout {
+  margin-top: .6rem;
+  padding: .72rem .75rem;
+  border-left: 3px solid var(--focus);
+  border-radius: 4px 9px 9px 4px;
+  background: #edf7fb;
+  color: #264252;
+  font-size: .78rem;
+}
+.callout.blocker {
+  border-left-color: var(--blocked);
+  background: #fff2f1;
+  color: #67251f;
+}
+.source-details {
+  margin-top: .85rem;
+  border-top: 1px solid var(--line);
+  padding-top: .8rem;
+}
+.source-details summary {
+  cursor: pointer;
+  color: #344554;
+  font-size: .78rem;
+  font-weight: 750;
+}
+.source-details .fact-grid { margin-top: .65rem; }
+.group-state-list {
+  display: grid;
+  gap: .45rem;
+  margin-top: .8rem;
+}
+.group-state-row {
+  display: grid;
+  grid-template-columns: 7.5rem 1fr 2rem;
+  align-items: center;
+  gap: .55rem;
+  font-size: .75rem;
+}
+.group-state-row strong { text-align: right; font-family: var(--mono); }
+.group-bar {
+  height: .48rem;
+  overflow: hidden;
+  border-radius: 999px;
+  background: var(--surface-3);
+}
+.group-bar span { display: block; height: 100%; border-radius: inherit; }
+.group-bar .implemented { background: var(--implemented); }
+.group-bar .planned { background: var(--planned); }
+.group-bar .external-delegated { background: var(--delegated); }
+
+.footer {
+  padding: 1.5rem 0 0;
+  color: var(--muted);
+  font-size: .75rem;
+  text-align: center;
+}
+
+@media (max-width: 1180px) {
+  .workspace {
+    grid-template-columns: minmax(0, 1fr) minmax(330px, .72fr);
+    grid-template-areas:
+      "controls controls"
+      "tree details";
+  }
+  .controls { grid-area: controls; position: static; max-height: none; }
+  .tree-panel { grid-area: tree; }
+  .details { grid-area: details; }
+  .filter-form {
+    display: grid;
+    grid-template-columns: minmax(220px, 1.4fr) repeat(4, minmax(145px, 1fr)) auto;
+    align-items: end;
+    gap: .65rem;
+  }
+  .field { margin: 0; }
+  .filter-actions { margin: 0; }
+  .secondary-button { width: auto; min-height: 2.55rem; }
+  .legend { padding-top: .65rem; }
+  .legend-grid { grid-template-columns: repeat(4, minmax(0,1fr)); }
+}
+
+@media (max-width: 820px) {
+  .hero { padding-bottom: 3.6rem; }
+  .hero-inner { display: block; }
+  .source-meta { justify-items: start; margin-top: 1rem; }
+  .stats { grid-template-columns: repeat(2, minmax(0,1fr)); }
+  .workspace {
+    grid-template-columns: 1fr;
+    grid-template-areas: "controls" "tree" "details";
+  }
+  .controls, .details { position: static; max-height: none; }
+  .filter-form { grid-template-columns: repeat(2, minmax(0,1fr)); }
+  .filter-form .field:first-child { grid-column: 1 / -1; }
+  .filter-actions { align-self: end; }
+  .legend-grid { grid-template-columns: repeat(2, minmax(0,1fr)); }
+  .tree-panel { min-height: 28rem; }
+}
+
+@media (max-width: 540px) {
+  .shell { width: min(100% - 1rem, 1540px); }
+  .hero { padding-left: 1rem; padding-right: 1rem; }
+  .stats { gap: .55rem; }
+  .stat-card { min-height: 6.2rem; padding: .8rem; }
+  .stat-number { font-size: 1.75rem; }
+  .utility-bar { align-items: flex-start; flex-direction: column; gap: .5rem; }
+  .filter-form { grid-template-columns: 1fr; }
+  .filter-form .field:first-child { grid-column: auto; }
+  .filter-actions { width: 100%; }
+  .secondary-button { width: 100%; }
+  .legend-grid { grid-template-columns: 1fr; }
+  .tree-toolbar { align-items: flex-start; flex-direction: column; }
+  .tree-scroll { padding-left: .35rem; padding-right: .35rem; }
+  .tree-root ul { margin-left: .72rem; padding-left: .36rem; }
+  .tree-row {
+    grid-template-columns: .82rem .82rem minmax(0,1fr);
+    padding-right: .3rem;
+  }
+  .node-meta {
+    grid-column: 3;
+    justify-content: flex-start;
+    flex-wrap: wrap;
+    padding: .16rem 0 .05rem;
+  }
+  .fact-grid { grid-template-columns: 1fr; }
+  .fact.full { grid-column: auto; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    scroll-behavior: auto !important;
+    transition: none !important;
+  }
+}
+
+
+/* Updated behavior-model components */
+.runtime-model {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: .8rem;
+  margin: 0 0 1rem;
+}
+.default-card {
+  min-width: 0;
+  padding: .95rem 1rem;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: linear-gradient(145deg, #fff, #f8fafb);
+  box-shadow: 0 4px 14px rgba(18, 37, 52, .045);
+}
+.default-card.search-default { border-top: 3px solid #006f8b; }
+.default-card.pull-default { border-top: 3px solid #315ca8; }
+.default-card.mutation-default { border-top: 3px solid #9b2c78; }
+.default-card.action-default { border-top: 3px solid #6840b7; }
+.default-card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: .6rem;
+  margin-bottom: .5rem;
+}
+.default-card h2 {
+  margin: 0;
+  color: var(--ink);
+  font-size: .86rem;
+  letter-spacing: -.01em;
+}
+.default-card p {
+  margin: 0;
+  color: var(--muted);
+  font-size: .76rem;
+}
+.default-card code { font: 650 .72rem/1.35 var(--mono); color: var(--brand-2); }
+.default-count {
+  flex: 0 0 auto;
+  min-width: 1.7rem;
+  padding: .2rem .42rem;
+  border-radius: 999px;
+  background: var(--surface-3);
+  color: var(--ink);
+  font: 760 .66rem/1 var(--mono);
+  text-align: center;
+}
+.behavior-labels { display: flex; flex-wrap: wrap; gap: .3rem; margin-top: .65rem; }
+.badge.live { border-color: #95cbd8; background: #e0f3f7; color: #075b70; }
+.badge.catalog { border-color: #b5c2cb; background: #eef2f5; color: #435563; }
+.badge.pull { border-color: #a9c0ea; background: #e3ebfa; color: #244b90; }
+.badge.preview { border-color: #d9bf76; background: #fff3cd; color: #765300; }
+.badge.gated { border-color: #dca6cb; background: #f8e5f2; color: #7b245f; }
+.badge.ready { border-color: #9bd3c8; background: var(--implemented-bg); color: var(--implemented); }
+.behavior-callout {
+  margin: .85rem 0 1rem;
+  padding: .8rem .82rem;
+  border: 1px solid #c6d9e3;
+  border-left: 4px solid var(--focus);
+  border-radius: 7px 11px 11px 7px;
+  background: #f1f8fb;
+}
+.behavior-callout strong {
+  display: block;
+  margin-bottom: .2rem;
+  color: #17384a;
+  font-size: .72rem;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+}
+.behavior-callout span { color: #294b5d; font-size: .8rem; }
+.source-note {
+  margin-top: .7rem;
+  color: var(--muted);
+  font-size: .69rem;
+}
+.stat-card.is-zero { opacity: .78; }
+
+@media (max-width: 1180px) {
+  .runtime-model { grid-template-columns: repeat(2, minmax(0,1fr)); }
+  .filter-form { grid-template-columns: repeat(auto-fit, minmax(145px, 1fr)); }
+  .filter-form .field:first-child { grid-column: span 2; }
+}
+@media (max-width: 620px) {
+  .runtime-model { grid-template-columns: 1fr; }
+  .filter-form .field:first-child { grid-column: auto; }
+}
+
+</style>
+</head>
+<body>
+<a class="skip-link" href="#capability-tree">Skip to capability tree</a>
+
+<header class="hero">
+  <div class="hero-inner">
+    <div>
+      <p class="eyebrow">Executable registry visualization</p>
+      <h1>TADX Capability Map</h1>
+      <p class="hero-copy">A searchable, collapsible view of the current action registry, including native Tableau search, catalog-backed inventory lists, execution-first pulls, mutation gating, and delegated tooling.</p>
+    </div>
+    <div class="source-meta" aria-label="Source metadata">
+      <span class="source-chip"><span class="live-dot" aria-hidden="true"></span><strong id="sourceTotal"></strong> current capabilities</span>
+      <span><strong id="bindingCount"></strong> implemented CLI capabilities</span>
+      <span>Snapshot baseline mutation policy: <strong>disabled</strong></span>
+    </div>
+  </div>
+</header>
+
+<main class="shell">
+  <section class="stats" aria-label="Capability totals">
+    <button class="stat-card implemented" type="button" data-card-filter="state" data-card-value="implemented" aria-pressed="false">
+      <span class="stat-number" id="implementedCount">0</span>
+      <span class="stat-label">Implemented</span>
+      <span class="stat-note">Executable code is present</span>
+    </button>
+    <button class="stat-card planned" type="button" data-card-filter="state" data-card-value="planned" aria-pressed="false">
+      <span class="stat-number" id="plannedCount">0</span>
+      <span class="stat-label">Planned</span>
+      <span class="stat-note">No current planned-only rows</span>
+    </button>
+    <button class="stat-card blocked" type="button" data-card-filter="blocker" data-card-value="blocked" aria-pressed="false">
+      <span class="stat-number" id="blockedCount">0</span>
+      <span class="stat-label">Blocked</span>
+      <span class="stat-note">All current rows are ready</span>
+    </button>
+    <button class="stat-card delegated" type="button" data-card-filter="state" data-card-value="external/delegated" aria-pressed="false">
+      <span class="stat-number" id="delegatedCount">0</span>
+      <span class="stat-label">Delegated</span>
+      <span class="stat-note">Owned outside the TADX CLI</span>
+    </button>
+  </section>
+
+  <div class="utility-bar">
+    <span><strong>Current registry:</strong> native search is distinct from catalog-backed inventory listing; the embedded rows mirror the generated capability reference.</span>
+    <span class="execution-summary"><span class="status-light" aria-hidden="true"></span><strong id="executionCount">0</strong> CLI capabilities enabled under the disabled-policy snapshot baseline</span>
+  </div>
+
+  <section class="runtime-model" aria-label="Default command behavior">
+    <article class="default-card search-default">
+      <div class="default-card-head"><h2>Search</h2><span class="default-count" id="nativeSearchCount">0</span></div>
+      <p><code>tadx search</code> uses Tableau native content search for nonempty content terms. Admin and Pulse use dedicated live adapters. <code>--catalog</code> is local-only.</p>
+      <div class="behavior-labels"><span class="badge live">NATIVE LIVE</span><span class="badge catalog">--CATALOG OPT-IN</span></div>
+    </article>
+    <article class="default-card action-default">
+      <div class="default-card-head"><h2>Resource lists</h2><span class="default-count" id="inventoryListCount">0</span></div>
+      <p>Unfiltered content/admin lists inventory the full live resource scope, replace that catalog scope, then render from the snapshot. Continuation pages are local.</p>
+      <div class="behavior-labels"><span class="badge delegated">LIVE INVENTORY</span><span class="badge catalog">CATALOG SNAPSHOT</span></div>
+    </article>
+    <article class="default-card pull-default">
+      <div class="default-card-head"><h2>Pull operations</h2><span class="default-count" id="pullDefaultCount">0</span></div>
+      <p>Pull commands retrieve from Tableau and write managed artifacts by default. Pulls do not expose <code>--preview</code>.</p>
+      <div class="behavior-labels"><span class="badge pull">PULL NOW</span><span class="badge local">LOCAL ARTIFACT WRITE</span></div>
+    </article>
+    <article class="default-card mutation-default">
+      <div class="default-card-head"><h2>Remote mutations</h2><span class="default-count" id="remoteMutationCount">0</span></div>
+      <p>The effective policy comes from <code>tadx mutation set</code>, with <code>TADX_ENABLE_MUTATIONS</code> as an environment override. Check it with <code>tadx mutation status</code>. Supported mutations run when enabled; <code>--preview</code> remains read-only where available.</p>
+      <div class="behavior-labels"><span class="badge gated">GATED</span><span class="badge preview">PREVIEW WHERE SUPPORTED</span></div>
+    </article>
+  </section>
+
+  <div class="workspace">
+    <aside class="panel controls" aria-labelledby="filters-heading">
+      <div class="panel-heading">
+        <h2 id="filters-heading">Search and filters</h2>
+        <span class="kbd-hint"><kbd>/</kbd> search</span>
+      </div>
+      <form class="filter-form" id="filterForm" autocomplete="off">
+        <div class="field">
+          <label for="searchInput">Search</label>
+          <div class="search-wrap">
+            <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <circle cx="11" cy="11" r="7"></circle><path d="m20 20-3.5-3.5"></path>
+            </svg>
+            <input id="searchInput" type="search" placeholder="ID, command, selector, safety…">
+          </div>
+        </div>
+        <div class="field">
+          <label for="stateFilter">State</label>
+          <select id="stateFilter">
+            <option value="">All states</option>
+            <option value="implemented">Implemented</option>
+            <option value="planned">Planned</option>
+            <option value="external/delegated">External / delegated</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="ownerFilter">Owner</label>
+          <select id="ownerFilter"><option value="">All owners</option></select>
+        </div>
+        <div class="field">
+          <label for="domainFilter">Domain</label>
+          <select id="domainFilter"><option value="">All domains</option></select>
+        </div>
+        <div class="field">
+          <label for="mutationFilter">Mutation status</label>
+          <select id="mutationFilter">
+            <option value="">All operations</option>
+            <option value="remote">Remote mutation</option>
+            <option value="not-remote">Not a remote mutation</option>
+            <option value="local">Local write</option>
+            <option value="any-write">Any consequential write</option>
+            <option value="read-only">No local or remote write</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="blockerFilter">Blocker status</label>
+          <select id="blockerFilter">
+            <option value="">All blocker states</option>
+            <option value="blocked">Blocked only</option>
+            <option value="unblocked">Unblocked only</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="behaviorFilter">Default behavior</label>
+          <select id="behaviorFilter">
+            <option value="">All behaviors</option>
+            <option value="native-search">Native Tableau search</option>
+            <option value="inventory-list">Catalog-backed inventory list</option>
+            <option value="catalog-opt-in">Catalog opt-in</option>
+            <option value="pull-now">Pull executes by default</option>
+            <option value="preview">Supports --preview</option>
+            <option value="mutation-gated">Mutation gate required</option>
+            <option value="local-write">Local write</option>
+          </select>
+        </div>
+        <div class="filter-actions">
+          <button class="secondary-button" id="clearFilters" type="button">Clear</button>
+        </div>
+      </form>
+
+      <details class="legend" open>
+        <summary>Legend</summary>
+        <div class="legend-grid">
+          <div class="legend-row"><span class="state-dot implemented" aria-hidden="true"></span>Implemented</div>
+          <div class="legend-row"><span class="state-dot planned" aria-hidden="true"></span>Planned</div>
+          <div class="legend-row"><span class="state-dot external-delegated" aria-hidden="true"></span>External / delegated</div>
+          <div class="legend-row"><span class="badge blocked">BLOCKED</span>Verification blocked</div>
+          <div class="legend-divider"></div>
+          <div class="legend-row"><span class="badge remote">REMOTE</span>Remote mutation</div>
+          <div class="legend-row"><span class="badge local">LOCAL</span>Local write</div>
+          <div class="legend-row"><span class="badge delegated">DELEGATED</span>External owner</div>
+          <div class="legend-row"><span class="badge live">LIVE</span>Live Tableau default</div>
+          <div class="legend-row"><span class="badge catalog">CATALOG</span>Local-only catalog option</div>
+          <div class="legend-row"><span class="badge pull">PULL NOW</span>Writes artifact by default</div>
+          <div class="legend-row"><span class="badge preview">PREVIEW</span>No-write plan available</div>
+          <div class="legend-row"><span class="badge gated">GATED</span>Effective mutation policy</div>
+          <div class="legend-row"><span class="exec-pill enabled">ENABLED</span>Execution enabled</div>
+          <div class="legend-row"><span class="exec-pill disabled">DISABLED</span>Execution disabled</div>
+        </div>
+      </details>
+    </aside>
+
+    <section class="panel tree-panel" aria-labelledby="tree-heading">
+      <div class="tree-toolbar">
+        <div>
+          <h2 id="tree-heading" style="margin:0;font-size:.96rem">Capability hierarchy</h2>
+          <div class="result-count" aria-live="polite"><strong id="matchedCount">0</strong> of <span id="totalCount">0</span> capabilities shown</div>
+        </div>
+        <div class="tree-actions">
+          <button class="tree-button" id="expandAll" type="button">Expand all</button>
+          <button class="tree-button" id="collapseAll" type="button">Compact</button>
+        </div>
+      </div>
+      <div class="tree-scroll">
+        <ul class="tree-root" id="capability-tree" role="tree" aria-label="TADX capability hierarchy"></ul>
+        <div class="empty-state" id="emptyState" hidden>
+          <strong>No capabilities match.</strong>
+          Clear or broaden the current filters.
+        </div>
+      </div>
+    </section>
+
+    <aside class="panel details" id="detailsPanel" aria-labelledby="details-heading">
+      <div class="panel-heading">
+        <h2 id="details-heading">Selection details</h2>
+        <span class="kbd-hint"><kbd>↑</kbd><kbd>↓</kbd> navigate</span>
+      </div>
+      <div class="detail-content" id="detailContent"></div>
+    </aside>
+  </div>
+
+  <footer class="footer">
+    Embedded snapshot: <strong id="footerTotal">0</strong> rows from <a href="capabilities.json">generated JSON</a>, aligned to <a href="../../internal/capability/definitions.go">the executable registry</a>.
+    See the <a href="capabilities.md">capability reference</a>, <a href="shorthand.md">command shorthand</a>, and <a href="../architecture/tadx-architecture.excalidraw">editable architecture map</a>.
+    Self-contained HTML with no external libraries or network calls.
+  </footer>
+</main>
+
+<script id="capability-data" type="application/json">
+[
+  {
+    "id": "admin.group.create",
+    "surface": "tadx admin group create",
+    "outcome": "Create one site group with explicit supported settings, or preview the operation.",
+    "type": "change",
+    "disposition": "ship",
+    "owner": "cli",
+    "selectors": "Explicit site; group name",
+    "availability": "Cloud / Server; directory/import fields vary",
+    "local_write": false,
+    "remote_mutation": true,
+    "supports_preview": true,
+    "safety_guard": "Collision and directory-setting failures preserved",
+    "artifact_effect": "None",
+    "upstream_operation": "POST /api/{version}/sites/{site-id}/groups",
+    "evidence": "docs/evidence/admin-rest-contract.md",
+    "evidence_level": "contract-verified",
+    "verification": "ready",
+    "implementation": "implemented",
+    "validation": "Contract-verified explicit create and collision behavior",
+    "command_path": [
+      "admin",
+      "group",
+      "create"
+    ],
+    "raw_capable": false
+  },
+  {
+    "id": "admin.group.delete",
+    "surface": "tadx admin group delete",
+    "outcome": "Delete one exact group without deleting its users, or preview the operation.",
+    "type": "change",
+    "disposition": "ship",
+    "owner": "cli",
+    "selectors": "Group LUID",
+    "availability": "Cloud / Server",
+    "local_write": false,
+    "remote_mutation": true,
+    "supports_preview": true,
+    "safety_guard": "Known direct facts only; no claim of full permission-impact analysis",
+    "artifact_effect": "None",
+    "upstream_operation": "DELETE /api/{version}/sites/{site-id}/groups/{group-id}",
+    "evidence": "docs/evidence/admin-rest-contract.md",
+    "evidence_level": "contract-verified",
+    "verification": "ready",
+    "implementation": "implemented",
+    "validation": "Contract-verified exact group deletion without user deletion",
+    "command_path": [
+      "admin",
+      "group",
+      "delete"
+    ],
+    "raw_capable": false
+  },
+  {
+    "id": "admin.group.inspect",
+    "surface": "tadx admin group inspect",
+    "outcome": "Inspect one exact group and, when requested, its direct membership.",
+    "type": "inspect",
+    "disposition": "ship",
+    "owner": "cli",
+    "selectors": "Group LUID or exact name",
+    "availability": "Cloud / Server",
+    "local_write": false,
+    "remote_mutation": false,
+    "supports_preview": false,
+    "safety_guard": "Live Tableau by default; --catalog is local-only; no fallback; exact group; membership pages normalized",
+    "artifact_effect": "None",
+    "upstream_operation": "GET .../groups; GET .../groups/{group-id}/users",
+    "evidence": "docs/evidence/admin-rest-contract.md; hermetic catalog source-selection tests",
+    "evidence_level": "contract-verified",
+    "verification": "ready",
+    "implementation": "implemented",
+    "validation": "Contract-verified exact group, bounded direct membership, and explicit source selection",
+    "command_path": [
+      "admin",
+      "group",
+      "inspect"
+    ],
+    "raw_capable": false
+  },
+  {
+    "id": "admin.group.list",
+    "surface": "tadx admin group list",
+    "outcome": "List a bounded live selection of groups, or explicitly collect the selected inventory with --all.",
+    "type": "find",
+    "disposition": "ship",
+    "owner": "cli",
+    "selectors": "Environment/site; optional group filters; --limit 1..10000 (default 25) or --all; optional --catalog",
+    "availability": "Cloud / Server",
+    "local_write": true,
+    "remote_mutation": false,
+    "supports_preview": false,
+    "safety_guard": "Ordinary live lists use bounded provider reads without SQLite access; --all collects through the shared inventory collector and renders in memory; complete unfiltered collections atomically replace the resource catalog scope on a best-effort basis; filtered collections save selected observations; catalog write failure preserves the live answer with a warning; --catalog is local-only; --all rejects incomplete coverage and results beyond 10000 records; --full changes presentation only",
+    "artifact_effect": "Best-effort catalog update only with live --all",
+    "upstream_operation": "GET /api/{version}/sites/{site-id}/groups; shared inventory collection for --all; SQLite only for explicit catalog reads or best-effort --all persistence",
+    "evidence": "docs/evidence/group2-inventory-rest-contract.md; docs/evidence/admin-rest-contract.md; hermetic bounded-read, complete-collection, and source-selection tests",
+    "evidence_level": "contract-verified",
+    "verification": "ready",
+    "implementation": "implemented",
+    "validation": "Contract-verified bounded live reads without catalog access, shared complete collection, truthful coverage, best-effort persistence, and explicit local catalog selection",
+    "command_path": [
+      "admin",
+      "group",
+      "list"
+    ],
+    "raw_capable": false
+  },
+  {
+    "id": "admin.group.member.add",
+    "surface": "tadx admin group member add",
+    "outcome": "Add one exact user to one exact group without replacing other members, or preview the operation.",
+    "type": "change",
+    "disposition": "ship",
+    "owner": "cli",
+    "selectors": "Exact group LUID and user LUID; environment/site (inferred only when one is configured)",
+    "availability": "Cloud / Server",
+    "local_write": false,
+    "remote_mutation": true,
+    "supports_preview": true,
+    "safety_guard": "Authoritative membership pre-read; existing membership is an exit-zero no-op; preserve unrelated members",
+    "artifact_effect": "None",
+    "upstream_operation": "GET .../groups/{group-id}/users; POST .../groups/{group-id}/users",
+    "evidence": "docs/evidence/admin-rest-contract.md",
+    "evidence_level": "contract-verified",
+    "verification": "ready",
+    "implementation": "implemented",
+    "validation": "Contract-verified exact incremental add, preview, no-op, revalidation, and uncertain outcome",
+    "command_path": [
+      "admin",
+      "group",
+      "member",
+      "add"
+    ],
+    "raw_capable": false
+  },
+  {
+    "id": "admin.group.member.remove",
+    "surface": "tadx admin group member remove",
+    "outcome": "Remove one exact user from one exact group without replacing other members, or preview the operation.",
+    "type": "change",
+    "disposition": "ship",
+    "owner": "cli",
+    "selectors": "Exact group LUID and user LUID; environment/site (inferred only when one is configured)",
+    "availability": "Cloud / Server",
+    "local_write": false,
+    "remote_mutation": true,
+    "supports_preview": true,
+    "safety_guard": "Authoritative membership pre-read; absent membership is an exit-zero no-op; preserve unrelated members",
+    "artifact_effect": "None",
+    "upstream_operation": "GET .../groups/{group-id}/users; DELETE .../groups/{group-id}/users/{user-id}",
+    "evidence": "docs/evidence/admin-rest-contract.md",
+    "evidence_level": "contract-verified",
+    "verification": "ready",
+    "implementation": "implemented",
+    "validation": "Contract-verified exact incremental removal, preview, no-op, revalidation, and uncertain outcome",
+    "command_path": [
+      "admin",
+      "group",
+      "member",
+      "remove"
+    ],
+    "raw_capable": false
+  },
+  {
+    "id": "admin.group.update",
+    "surface": "tadx admin group update",
+    "outcome": "Update group attributes or converge direct membership, or preview the operation.",
+    "type": "change",
+    "disposition": "ship",
+    "owner": "cli",
+    "selectors": "Group LUID; exact user LUIDs",
+    "availability": "Cloud / Server",
+    "local_write": false,
+    "remote_mutation": true,
+    "supports_preview": true,
+    "safety_guard": "Full membership diff preview; ordered calls; stop on first failure; no rollback/resume",
+    "artifact_effect": "None",
+    "upstream_operation": "PUT .../groups/{group-id}; member pre-read; POST .../groups/{group-id}/users; DELETE .../users/{user-id}",
+    "evidence": "docs/evidence/admin-rest-contract.md",
+    "evidence_level": "contract-verified",
+    "verification": "ready",
+    "implementation": "implemented",
+    "validation": "Contract-verified metadata and deterministic membership convergence",
+    "command_path": [
+      "admin",
+      "group",
+      "update"
+    ],
+    "raw_capable": false
+  },
+  {
+    "id": "admin.permission.create",
+    "surface": "tadx admin permission create",
+    "outcome": "Add one explicit permission capability and mode for an exact principal, or preview the operation.",
+    "type": "change",
+    "disposition": "ship",
+    "owner": "cli",
+    "selectors": "Resource kind/LUID, principal type/LUID, capability, mode; optional project default kind",
+    "availability": "Cloud / Server",
+    "local_write": false,
+    "remote_mutation": true,
+    "supports_preview": true,
+    "safety_guard": "Direct or project-default rules only; inherited and conflicting opposite modes fail; identical rules are no-op",
+    "artifact_effect": "None",
+    "upstream_operation": "Permission PUT endpoints for workbook, datasource, flow, project, and project defaults",
+    "evidence": "docs/evidence/permission-mutations-rest-contract.md",
+    "evidence_level": "contract-verified",
+    "verification": "ready",
+    "implementation": "implemented",
+    "validation": "Contract-verified exact rule creation, no-op, preview, revalidation, and conflict handling",
+    "command_path": [
+      "admin",
+      "permission",
+      "create"
+    ],
+    "raw_capable": false
+  },
+  {
+    "id": "admin.permission.delete",
+    "surface": "tadx admin permission delete",
+    "outcome": "Delete one explicit permission capability and mode for an exact principal, or preview the operation.",
+    "type": "change",
+    "disposition": "ship",
+    "owner": "cli",
+    "selectors": "Resource kind/LUID, principal type/LUID, capability, mode; optional project default kind",
+    "availability": "Cloud / Server",
+    "local_write": false,
+    "remote_mutation": true,
+    "supports_preview": true,
+    "safety_guard": "Direct or project-default rules only; inherited and mismatched modes fail; absent rules are no-op",
+    "artifact_effect": "None",
+    "upstream_operation": "Permission DELETE endpoints for workbook, datasource, flow, project, and project defaults",
+    "evidence": "docs/evidence/permission-mutations-rest-contract.md",
+    "evidence_level": "contract-verified",
+    "verification": "ready",
+    "implementation": "implemented",
+    "validation": "Contract-verified exact rule deletion, no-op, preview, revalidation, and uncertain-outcome handling",
+    "command_path": [
+      "admin",
+      "permission",
+      "delete"
+    ],
+    "raw_capable": false
+  },
+  {
+    "id": "admin.permission.inspect",
+    "surface": "tadx admin permission inspect",
+    "outcome": "Inspect explicit/default permission rules for one supported resource.",
+    "type": "inspect",
+    "disposition": "ship",
+    "owner": "cli",
+    "selectors": "Resource kind plus exact LUID; optional principal/capability filters",
+    "availability": "Cloud / Server",
+    "local_write": false,
+    "remote_mutation": false,
+    "supports_preview": false,
+    "safety_guard": "Distinguish direct/default/inherited/unknown; no effective-permission engine",
+    "artifact_effect": "None",
+    "upstream_operation": "Workbook/datasource/flow/project permission GET endpoints",
+    "evidence": "docs/evidence/admin-rest-contract.md",
+    "evidence_level": "contract-verified",
+    "verification": "ready",
+    "implementation": "implemented",
+    "validation": "Contract-verified normalized permission source facts; no effective-permission claim",
+    "command_path": [
+      "admin",
+      "permission",
+      "inspect"
+    ],
+    "raw_capable": false
+  },
+  {
+    "id": "admin.user.create",
+    "surface": "tadx admin user create",
+    "outcome": "Add one user to a site with explicit role/auth settings, or preview the operation.",
+    "type": "change",
+    "disposition": "ship",
+    "owner": "cli",
+    "selectors": "Explicit site; username",
+    "availability": "Cloud / Server; fields vary by product/version",
+    "local_write": false,
+    "remote_mutation": true,
+    "supports_preview": true,
+    "safety_guard": "No inferred role/auth setting; quota/license failures preserved",
+    "artifact_effect": "None",
+    "upstream_operation": "POST /api/{version}/sites/{site-id}/users",
+    "evidence": "docs/evidence/admin-rest-contract.md",
+    "evidence_level": "contract-verified",
+    "verification": "ready",
+    "implementation": "implemented",
+    "validation": "Contract-verified explicit create and optional preview behavior",
+    "command_path": [
+      "admin",
+      "user",
+      "create"
+    ],
+    "raw_capable": false
+  },
+  {
+    "id": "admin.user.delete",
+    "surface": "tadx admin user delete",
+    "outcome": "Remove one exact user from a site without hidden ownership reassignment, or preview the operation.",
+    "type": "change",
+    "disposition": "ship",
+    "owner": "cli",
+    "selectors": "User LUID",
+    "availability": "Cloud / Server",
+    "local_write": false,
+    "remote_mutation": true,
+    "supports_preview": true,
+    "safety_guard": "Ownership constraints surfaced; never silently transfer content",
+    "artifact_effect": "None",
+    "upstream_operation": "DELETE /api/{version}/sites/{site-id}/users/{user-id}",
+    "evidence": "docs/evidence/admin-rest-contract.md",
+    "evidence_level": "contract-verified",
+    "verification": "ready",
+    "implementation": "implemented",
+    "validation": "Contract-verified exact delete without ownership reassignment",
+    "command_path": [
+      "admin",
+      "user",
+      "delete"
+    ],
+    "raw_capable": false
+  },
+  {
+    "id": "admin.user.inspect",
+    "surface": "tadx admin user inspect",
+    "outcome": "Inspect one exact site user.",
+    "type": "inspect",
+    "disposition": "ship",
+    "owner": "cli",
+    "selectors": "User LUID or exact username/email where supported",
+    "availability": "Cloud / Server",
+    "local_write": false,
+    "remote_mutation": false,
+    "supports_preview": false,
+    "safety_guard": "Live Tableau by default; --catalog is local-only; no fallback; ambiguity fails",
+    "artifact_effect": "None",
+    "upstream_operation": "GET /api/{version}/sites/{site-id}/users/{user-id}",
+    "evidence": "docs/evidence/admin-rest-contract.md; hermetic catalog source-selection tests",
+    "evidence_level": "contract-verified",
+    "verification": "ready",
+    "implementation": "implemented",
+    "validation": "Contract-verified exact user identity resolution and explicit source selection",
+    "command_path": [
+      "admin",
+      "user",
+      "inspect"
+    ],
+    "raw_capable": false
+  },
+  {
+    "id": "admin.user.list",
+    "surface": "tadx admin user list",
+    "outcome": "List a bounded live selection of site users, or explicitly collect the selected inventory with --all.",
+    "type": "find",
+    "disposition": "ship",
+    "owner": "cli",
+    "selectors": "Environment/site; optional user filters; --limit 1..10000 (default 25) or --all; optional --catalog",
+    "availability": "Cloud / Server",
+    "local_write": true,
+    "remote_mutation": false,
+    "supports_preview": false,
+    "safety_guard": "Ordinary live lists use bounded provider reads without SQLite access; --all collects through the shared inventory collector and renders in memory; complete unfiltered collections atomically replace the resource catalog scope on a best-effort basis; filtered collections save selected observations; catalog write failure preserves the live answer with a warning; --catalog is local-only; --all rejects incomplete coverage and results beyond 10000 records; --full changes presentation only",
+    "artifact_effect": "Best-effort catalog update only with live --all",
+    "upstream_operation": "GET /api/{version}/sites/{site-id}/users; shared inventory collection for --all; SQLite only for explicit catalog reads or best-effort --all persistence",
+    "evidence": "docs/evidence/group2-inventory-rest-contract.md; docs/evidence/admin-rest-contract.md; hermetic bounded-read, complete-collection, and source-selection tests",
+    "evidence_level": "contract-verified",
+    "verification": "ready",
+    "implementation": "implemented",
+    "validation": "Contract-verified bounded live reads without catalog access, shared complete collection, truthful coverage, best-effort persistence, and explicit local catalog selection",
+    "command_path": [
+      "admin",
+      "user",
+      "list"
+    ],
+    "raw_capable": false
+  },
+  {
+    "id": "admin.user.update",
+    "surface": "tadx admin user update",
+    "outcome": "Update supported attributes of one exact user, or preview the operation.",
+    "type": "change",
+    "disposition": "ship",
+    "owner": "cli",
+    "selectors": "User LUID",
+    "availability": "Cloud / Server; fields vary",
+    "local_write": false,
+    "remote_mutation": true,
+    "supports_preview": true,
+    "safety_guard": "Equal values no-op when authoritative pre-read exists",
+    "artifact_effect": "None",
+    "upstream_operation": "PUT /api/{version}/sites/{site-id}/users/{user-id}",
+    "evidence": "docs/evidence/admin-rest-contract.md",
+    "evidence_level": "contract-verified",
+    "verification": "ready",
+    "implementation": "implemented",
+    "validation": "Contract-verified bounded user update and no-op behavior",
+    "command_path": [
+      "admin",
+      "user",
+      "update"
+    ],
+    "raw_capable": false
+  },
+  {
+    "id": "agent.install",
+    "surface": "tadx agent install",
+    "outcome": "Install the bundled TADX Guidance packages into the selected agent's global skill directory.",
+    "type": "change",
+    "disposition": "ship",
+    "owner": "cli",
+    "selectors": "Required target: claude, codex, or cursor",
+    "availability": "Local / all",
+    "local_write": true,
+    "remote_mutation": false,
+    "supports_preview": true,
+    "safety_guard": "Bounded home-relative paths; symlink rejection; staged package replacement; divergent packages require --force and retain backups; no instruction or rules files",
+    "artifact_effect": "None",
+    "upstream_operation": "Embedded packages and local filesystem",
+    "evidence": "Standard Agent Skills package format; official agent skill discovery directories",
+    "evidence_level": "local-contract",
+    "verification": "ready",
+    "implementation": "implemented",
+    "validation": "Local contract verified by installer and CLI tests",
+    "command_path": [
+      "agent",
+      "install"
+    ],
+    "raw_capable": false
+  },
+  {
+    "id": "agent.uninstall",
+    "surface": "tadx agent uninstall",
+    "outcome": "Remove TADX Guidance packages from one selected agent target.",
+    "type": "change",
+    "disposition": "ship",
+    "owner": "cli",
+    "selectors": "Required target: claude, codex, or cursor",
+    "availability": "Local / all",
+    "local_write": true,
+    "remote_mutation": false,
+    "supports_preview": true,
+    "safety_guard": "Exact bounded package paths; symlink rejection; divergent installed Guidance requires --force and retains a backup",
+    "artifact_effect": "None",
+    "upstream_operation": "Local agent Guidance directories",
+    "evidence": "Standard Agent Skills package format; installer manifest and local filesystem",
+    "evidence_level": "local-contract",
+    "verification": "ready",
+    "implementation": "implemented",
+    "validation": "Local contract verified by uninstaller and CLI tests",
+    "command_path": [
+      "agent",
+      "uninstall"
+    ],
+    "raw_capable": false
+  },
+  {
+    "id": "auth.check",
+    "surface": "tadx auth check",
+    "outcome": "Resolve a complete PAT pair, sign in, and verify the selected Tableau site.",
+    "type": "inspect",
+    "disposition": "ship",
+    "owner": "cli",
+    "selectors": "Environment alias; site content URL",
+    "availability": "Cloud / Server",
+    "local_write": false,
+    "remote_mutation": false,
+    "supports_preview": false,
+    "safety_guard": "Never echo PAT/token; complete environment-variable pair overrides native storage",
+    "artifact_effect": "None",
+    "upstream_operation": "POST /api/{version}/auth/signin; optional signout",
+    "evidence": "A1 §§5.4, 7.3-7.4; C1 §§2.1, 5.1; local official REST capture",
+    "evidence_level": "contract-verified",
+    "verification": "ready",
+    "implementation": "implemented",
+    "validation": "Contract-verified; exact source and tests recorded in docs/evidence/phase1-rest-contract.md",
+    "command_path": [
+      "auth",
+      "check"
+    ],
+    "raw_capable": false
+  },
+  {
+    "id": "auth.login",
+    "surface": "tadx auth login",
+    "outcome": "Interactively validate a PAT and store it in the native OS credential store for one environment.",
+    "type": "change",
+    "disposition": "ship",
+    "owner": "cli",
+    "selectors": "Required environment alias; interactive terminal",
+    "availability": "Local plus Cloud / Server validation",
+    "local_write": true,
+    "remote_mutation": false,
+    "supports_preview": false,
+    "safety_guard": "No credential flags or non-TTY input; validate before storage; no plaintext fallback; target-bound opaque reference only in config",
+    "artifact_effect": "None",
+    "upstream_operation": "POST /api/{version}/auth/signin; native OS credential store",
+    "evidence": "Tableau PAT sign-in contract plus platform credential-store behavior",
+    "evidence_level": "architecture-locked",
+    "verification": "ready",
+    "implementation": "implemented",
+    "validation": "Architecture-locked and hermetically verified; native-store smoke test is opt-in",
+    "command_path": [
+      "auth",
+      "login"
+    ],
+    "raw_capable": false
+  },
+  {
+    "id": "auth.logout",
+    "surface": "tadx auth logout",
+    "outcome": "Remove TADX's stored PAT for one environment without revoking the PAT in Tableau.",
+    "type": "change",
+    "disposition": "ship",
+    "owner": "cli",
+    "selectors": "Required environment alias",
+    "availability": "Local / all",
+    "local_write": true,
+    "remote_mutation": false,
+    "supports_preview": false,
+    "safety_guard": "Exact alias; idempotent local removal; remote PAT remains valid",
+    "artifact_effect": "None",
+    "upstream_operation": "Native OS credential store and local config",
+    "evidence": "Platform credential-store behavior",
+    "evidence_level": "architecture-locked",
+    "verification": "ready",
+    "implementation": "implemented",
+    "validation": "Architecture-locked and hermetically verified; remote PAT revocation remains a Tableau operation",
+    "command_path": [
+      "auth",
+      "logout"
+    ],
+    "raw_capable": false
+  },
+  {
+    "id": "auth.status",
+    "surface": "tadx auth status",
+    "outcome": "Report resolved auth configuration and selected credential source without revealing values.",
+    "type": "inspect",
+    "disposition": "ship",
+    "owner": "cli",
+    "selectors": "Optional environment alias",
+    "availability": "Local / all",
+    "local_write": false,
+    "remote_mutation": false,
+    "supports_preview": false,
+    "safety_guard": "Does not claim remote validity; secret redaction",
+    "artifact_effect": "None",
+    "upstream_operation": "Local config/environment resolution",
+    "evidence": "A1 §§1.5, 5.4, 9.2; S1 notes missing distinct row",
+    "evidence_level": "architecture-locked",
+    "verification": "ready",
+    "implementation": "implemented",
+    "validation": "Architecture-locked; remote-validity semantics intentionally belong to auth check",
+    "command_path": [
+      "auth",
+      "status"
+    ],
+    "raw_capable": false
+  },
+  {
+    "id": "capability.get",
+    "surface": "tadx capability get \u003cid\u003e",
+    "outcome": "Return focused execution, ownership, selector, safety, and availability guidance for one capability.",
+    "type": "inspect",
+    "disposition": "ship",
+    "owner": "cli",
+    "selectors": "Stable capability ID",
+    "availability": "Local / all",
+    "local_write": false,
+    "remote_mutation": false,
+    "supports_preview": false,
+    "safety_guard": "Exact ID; includes delegated surfaces",
+    "artifact_effect": "None",
+    "upstream_operation": "Executable capability registry",
+    "evidence": "A1 §§3.3, 5.2; C1 §2.1",
+    "evidence_level": "local-contract",
+    "verification": "ready",
+    "implementation": "implemented",
+    "validation": "Architecture-locked local contract",
+    "command_path": [
+      "capability",
+      "get"
+    ],
+    "raw_capable": false
+  },
+  {
+    "id": "capability.list",
+    "surface": "tadx capability list",
+    "outcome": "Return a bounded inventory of discoverable operations, ownership, and execution availability.",
+    "type": "find",
+    "disposition": "ship",
+    "owner": "cli",
+    "selectors": "Domain/resource/owner/product/mutation filters",
+    "availability": "Local / all",
+    "local_write": false,
+    "remote_mutation": false,
+    "supports_preview": false,
+    "safety_guard": "Always discoverable; mutation rows report whether execution is enabled",
+    "artifact_effect": "None",
+    "upstream_operation": "Executable capability registry",
+    "evidence": "A1 §§1.5, 3.3, 5.2, 6.6; C1 §2.1",
+    "evidence_level": "local-contract",
+    "verification": "ready",
+    "implementation": "implemented",
+    "validation": "Architecture-locked local contract",
+    "command_path": [
+      "capability",
+      "list"
+    ],
+    "raw_capable": false
+  },
+  {
+    "id": "catalog.refresh",
+    "surface": "tadx catalog refresh",
+    "outcome": "Collect selected inventory scopes and atomically replace one normalized catalog generation.",
+    "type": "inspect",
+    "disposition": "ship",
+    "owner": "cli",
+    "selectors": "Environment/site; admitted --scope values; default inventory scopes exclude permissions; permissions is explicit",
+    "availability": "Cloud / Server",
+    "local_write": true,
+    "remote_mutation": false,
+    "supports_preview": false,
+    "safety_guard": "Inventory failures preserve the prior generation; selected permission 403s preserve useful inventory with explicit incomplete permission coverage; environment catalog_max_concurrency defaults to 32 and accepts 1..256; starts at min(4, maximum) and ramps gradually; rate-limited reads share one run cooldown; explicit refresh transactionally rebuilds recognized older catalog schemas",
+    "artifact_effect": "None",
+    "upstream_operation": "Admitted REST inventory endpoints; bulk workbook permission reads only with explicit permissions scope; transactional SQLite publication",
+    "evidence": "docs/evidence/group2-inventory-rest-contract.md",
+    "evidence_level": "contract-verified",
+    "verification": "ready",
+    "implementation": "implemented",
+    "validation": "Contract-verified inventory-only defaults, opt-in bulk permissions, adaptive concurrent collection, and atomic catalog publication",
+    "command_path": [
+      "catalog",
+      "refresh"
+    ],
+    "raw_capable": false
+  },
+  {
+    "id": "catalog.status",
+    "surface": "tadx catalog status",
+    "outcome": "Report generation age, completeness, source, and stale state.",
+    "type": "inspect",
+    "disposition": "ship",
+    "owner": "cli",
+    "selectors": "Optional environment/site",
+    "availability": "Local / all",
+    "local_write": false,
+    "remote_mutation": false,
+    "supports_preview": false,
+    "safety_guard": "Uninitialized before first refresh; scope completeness remains explicit; 12-hour stale warning; older catalog schema requires explicit catalog refresh; status never rebuilds the cache",
+    "artifact_effect": "None",
+    "upstream_operation": "Local catalog generation metadata",
+    "evidence": "A1 §§5.9, 12.8; C1 §2.1",
+    "evidence_level": "local-contract",
+    "verification": "ready",
+    "implementation": "implemented",
+    "validation": "Architecture-locked local contract",
+    "command_path": [
+      "catalog",
+      "status"
+    ],
+    "raw_capable": false
+  },
+  {
+    "id": "custom-view.data",
+    "surface": "Outside TADX CLI",
+    "outcome": "Retrieve rendered data from one custom view.",
+    "type": "inspect",
+    "disposition": "delegated",
+    "owner": "tableau-mcp",
+    "selectors": "No TADX selectors",
+    "availability": "Cloud / Server",
+    "local_write": false,
+    "remote_mutation": false,
+    "supports_preview": false,
+    "safety_guard": "No executable TADX operation; this contract does not prescribe external tooling",
+    "artifact_effect": "None",
+    "upstream_operation": "Outside TADX CLI",
+    "evidence": "Maintainer-defined TADX CLI scope",
+    "evidence_level": "architecture-locked",
+    "verification": "ready",
+    "implementation": "external/delegated",
+    "validation": "Delegated; no TADX command, execution, or proxy",
+    "raw_capable": false
+  },
+  {
+    "id": "custom-view.image",
+    "surface": "Outside TADX CLI",
+    "outcome": "Retrieve a rendered image from one custom view.",
+    "type": "inspect",
+    "disposition": "delegated",
+    "owner": "tableau-mcp",
+    "selectors": "No TADX selectors",
+    "availability": "Cloud / Server",
+    "local_write": false,
+    "remote_mutation": false,
+    "supports_preview": false,
+    "safety_guard": "No executable TADX operation; this contract does not prescribe external tooling",
+    "artifact_effect": "None",
+    "upstream_operation": "Outside TADX CLI",
+    "evidence": "Maintainer-defined TADX CLI scope",
+    "evidence_level": "architecture-locked",
+    "verification": "ready",
+    "implementation": "external/delegated",
+    "validation": "Delegated; no TADX command, execution, or proxy",
+    "raw_capable": false
+  },
+  {
+    "id": "custom-view.list",
+    "surface": "Outside TADX CLI",
+    "outcome": "List saved custom views for analytical read workflows.",
+    "type": "find",
+    "disposition": "delegated",
+    "owner": "tableau-mcp",
+    "selectors": "No TADX selectors",
+    "availability": "Cloud / Server",
+    "local_write": false,
+    "remote_mutation": false,
+    "supports_preview": false,
+    "safety_guard": "No executable TADX operation; this contract does not prescribe external tooling",
+    "artifact_effect": "None",
+    "upstream_operation": "Outside TADX CLI",
+    "evidence": "Maintainer-defined TADX CLI scope",
+    "evidence_level": "architecture-locked",
+    "verification": "ready",
+    "implementation": "external/delegated",
+    "validation": "Delegated; no TADX command, execution, or proxy",
+    "raw_capable": false
+  },
+  {
+    "id": "datasource.delete",
+    "surface": "tadx content datasource delete",
+    "outcome": "Delete one exact remote datasource, or preview the operation.",
+    "type": "change",
+    "disposition": "ship",
+    "owner": "cli",
+    "selectors": "Datasource LUID or exact name/project path; environment/site (inferred only when one is configured)",
+    "availability": "Cloud / Server",
+    "local_write": false,
+    "remote_mutation": true,
+    "supports_preview": true,
+    "safety_guard": "Re-resolve authoritative LUID immediately before delete; preserve dependency failures; no cascade claims",
+    "artifact_effect": "Delete",
+    "upstream_operation": "DELETE /api/{version}/sites/{site-id}/datasources/{datasource-id}",
+    "evidence": "docs/evidence/datasource-lifecycle-rest-contract.md",
+    "evidence_level": "contract-verified",
+    "verification": "ready",
+    "implementation": "implemented",
+    "validation": "Contract-verified exact DELETE with authoritative LUID revalidation",
+    "command_path": [
+      "content",
+      "datasource",
+      "delete"
+    ],
+    "raw_capable": false
+  },
+  {
+    "id": "datasource.field-description.generate",
+    "surface": "Outside TADX CLI",
+    "outcome": "Generate or revise field-description text using metadata and optional sampled statistics.",
+    "type": "change",
+    "disposition": "delegated",
+    "owner": "agent/skill",
+    "selectors": "No TADX selectors",
+    "availability": "Cloud / Server",
+    "local_write": false,
+    "remote_mutation": false,
+    "supports_preview": false,
+    "safety_guard": "No executable TADX operation; this contract does not prescribe external tooling",
+    "artifact_effect": "Optional update",
+    "upstream_operation": "Outside TADX CLI",
+    "evidence": "Maintainer-defined TADX CLI scope",
+    "evidence_level": "architecture-locked",
+    "verification": "ready",
+    "implementation": "external/delegated",
+    "validation": "Delegated; no TADX command, execution, or proxy",
+    "raw_capable": false
+  },
+  {
+    "id": "datasource.inspect",
+    "surface": "tadx content datasource inspect",
+    "outcome": "Inspect one datasource, with bounded field/model/composition detail when requested.",
+    "type": "inspect",
+    "disposition": "ship",
+    "owner": "cli",
+    "selectors": "Datasource LUID or exact name/project path; bounded detail options",
+    "availability": "Cloud / Server; VDS metadata/model Server 2025.1+ per C1",
+    "local_write": false,
+    "remote_mutation": false,
+    "supports_preview": false,
+    "safety_guard": "Live Tableau by default; --catalog is local-only; no fallback; record Metadata API permission mode and partial warnings",
+    "artifact_effect": "None",
+    "upstream_operation": "GET .../datasources/{id}; optional Metadata API and VDS detail",
+    "evidence": "docs/evidence/group2-inventory-rest-contract.md; hermetic catalog source-selection tests",
+    "evidence_level": "contract-verified",
+    "verification": "ready",
+    "implementation": "implemented",
+    "validation": "Contract-verified base REST identity, lifecycle read, and explicit source selection; Metadata, VDS, and composition detail remain gated",
+    "command_path": [
+      "content",
+      "datasource",
+      "inspect"
+    ],
+    "raw_capable": false
+  },
+  {
+    "id": "datasource.list",
+    "surface": "tadx content datasource list",
+    "outcome": "List a bounded live selection of published datasources, or explicitly collect the selected inventory with --all.",
+    "type": "find",
+    "disposition": "ship",
+    "owner": "cli",
+    "selectors": "Environment/site; optional project/owner/name/type/tag/time filters; --limit 1..10000 (default 25) or --all; optional --catalog",
+    "availability": "Cloud / Server",
+    "local_write": true,
+    "remote_mutation": false,
+    "supports_preview": false,
+    "safety_guard": "Ordinary live lists use bounded provider reads without SQLite access; --all collects through the shared inventory collector and renders in memory; complete unfiltered collections atomically replace the resource catalog scope on a best-effort basis; filtered collections save selected observations; catalog write failure preserves the live answer with a warning; --catalog is local-only; --all rejects incomplete coverage and results beyond 10000 records; --full changes presentation only; cached project-name filtering uses indexed canonical project LUIDs and complete project coverage",
+    "artifact_effect": "Best-effort catalog update only with live --all",
+    "upstream_operation": "GET /api/{version}/sites/{site-id}/datasources; shared inventory collection for --all; SQLite only for explicit catalog reads or best-effort --all persistence",
+    "evidence": "docs/evidence/group2-inventory-rest-contract.md; hermetic bounded-read, complete-collection, and source-selection tests",
+    "evidence_level": "contract-verified",
+    "verification": "ready",
+    "implementation": "implemented",
+    "validation": "Contract-verified bounded live reads without catalog access, shared complete collection, truthful coverage, best-effort persistence, and explicit local catalog selection",
+    "command_path": [
+      "content",
+      "datasource",
+      "list"
+    ],
+    "raw_capable": false
+  },
+  {
+    "id": "datasource.metadata",
+    "surface": "Outside TADX CLI",
+    "outcome": "Retrieve analytical field and datasource metadata for reasoning and query construction.",
+    "type": "inspect",
+    "disposition": "delegated",
+    "owner": "tableau-mcp",
+    "selectors": "No TADX selectors",
+    "availability": "Cloud / Server",
+    "local_write": false,
+    "remote_mutation": false,
+    "supports_preview": false,
+    "safety_guard": "No executable TADX operation; this contract does not prescribe external tooling",
+    "artifact_effect": "None",
+    "upstream_operation": "Outside TADX CLI",
+    "evidence": "Maintainer-defined TADX CLI scope",
+    "evidence_level": "architecture-locked",
+    "verification": "ready",
+    "implementation": "external/delegated",
+    "validation": "Delegated; no TADX command, execution, or proxy",
+    "raw_capable": false
+  },
+  {
+    "id": "datasource.move",
+    "surface": "tadx content datasource move",
+    "outcome": "Move one exact published datasource to one exact project on the same site, or preview the operation.",
+    "type": "change",
+    "disposition": "ship",
+    "owner": "cli",
+    "selectors": "Datasource LUID or exact name/project path; exact destination project LUID/path; environment/site (inferred only when one is configured)",
+    "availability": "Cloud / Server",
+    "local_write": false,
+    "remote_mutation": true,
+    "supports_preview": true,
+    "safety_guard": "Re-resolve source and destination immediately before mutation; equal destination is an exit-zero no-op; no cross-site move",
+    "artifact_effect": "None",
+    "upstream_operation": "PUT /api/{version}/sites/{site-id}/datasources/{datasource-id} with destination project",
+    "evidence": "docs/evidence/content-update-rest-contract.md",
+    "evidence_level": "contract-verified",
+    "verification": "ready",
+    "implementation": "implemented",
+    "validation": "Contract-verified exact same-site movement, preview, no-op, drift, and uncertain outcome",
+    "command_path": [
+      "content",
+      "datasource",
+      "move"
+    ],
+    "raw_capable": false
+  },
+  {
+    "id": "datasource.publish",
+    "surface": "tadx content datasource publish",
+    "outcome": "Publish one local datasource, or up to 100 repeated managed datasource artifacts sequentially, including explicit immediate-parent references for composed artifacts, or preview the operations.",
+    "type": "deliver",
+    "disposition": "ship",
+    "owner": "cli",
+    "selectors": "Native --file, or logical workspace with exact --id/--artifact-name or repeated --artifact managed datasource directory selectors; sole configured or explicit target; never inferred from artifact source; explicit destination project override; optional exact existing datasource; immediate parents for composed artifacts",
+    "availability": "Cloud / Server; composed path API 3.29 / Tableau 2026.2 per C1",
+    "local_write": false,
+    "remote_mutation": true,
+    "supports_preview": true,
+    "safety_guard": "Batch selectors prevalidated; sequential processing continues independent failures and returns aggregate failure; overwrite/append/replace never inferred; preview shows resolved environment/name/LUID",
+    "artifact_effect": "Read / publish",
+    "upstream_operation": "POST /api/{version}/sites/{site-id}/datasources; upload sessions; parentDataSourceUrls for composed path",
+    "evidence": "docs/evidence/datasource-lifecycle-rest-contract.md",
+    "evidence_level": "contract-verified",
+    "verification": "ready",
+    "implementation": "implemented",
+    "validation": "Contract-verified ordinary and composed package publication; composition authoring remains deferred",
+    "command_path": [
+      "content",
+      "datasource",
+      "publish"
+    ],
+    "raw_capable": false
+  },
+  {
+    "id": "datasource.pull",
+    "surface": "tadx content datasource pull",
+    "outcome": "Download one datasource, or up to 100 repeated authoritative datasource LUIDs sequentially, while preserving native packages, composition provenance, and bounded lineage.",
+    "type": "deliver",
+    "disposition": "ship",
+    "owner": "cli",
+    "selectors": "Datasource LUID/exact path; repeatable datasource LUID for batches; logical workspace",
+    "availability": "Cloud / Server; composed round-trip requires Tableau 2026.2 behavior per C1",
+    "local_write": true,
+    "remote_mutation": false,
+    "supports_preview": false,
+    "safety_guard": "Batch selectors prevalidated; sequential processing continues independent failures and returns aggregate failure; dirty re-pull requires --overwrite; incomplete lineage warns; no package-semantic loss",
+    "artifact_effect": "Create / update package and lineage sidecar",
+    "upstream_operation": "GET /api/{version}/sites/{site-id}/datasources/{datasource-id}/content plus focused Metadata GraphQL reads",
+    "evidence": "docs/evidence/datasource-lifecycle-rest-contract.md; docs/evidence/lineage-metadata-contract.md",
+    "evidence_level": "contract-verified",
+    "verification": "ready",
+    "implementation": "implemented",
+    "validation": "Contract-verified native package preservation and bounded lineage; composition authoring remains blocked",
+    "command_path": [
+      "content",
+      "datasource",
+      "pull"
+    ],
+    "raw_capable": false
+  },
+  {
+    "id": "datasource.query",
+    "surface": "Outside TADX CLI",
+    "outcome": "Run analytical queries against datasource data.",
+    "type": "inspect",
+    "disposition": "delegated",
+    "owner": "tableau-mcp",
+    "selectors": "No TADX selectors",
+    "availability": "Cloud / Server",
+    "local_write": false,
+    "remote_mutation": false,
+    "supports_preview": false,
+    "safety_guard": "No executable TADX operation; this contract does not prescribe external tooling",
+    "artifact_effect": "None",
+    "upstream_operation": "Outside TADX CLI",
+    "evidence": "Maintainer-defined TADX CLI scope",
+    "evidence_level": "architecture-locked",
+    "verification": "ready",
+    "implementation": "external/delegated",
+    "validation": "Delegated; no TADX command, execution, or proxy",
+    "raw_capable": false
+  },
+  {
+    "id": "datasource.schema",
+    "surface": "tadx content datasource schema",
+    "outcome": "Inspect one datasource's logical tables and search a bounded field projection.",
+    "type": "inspect",
+    "disposition": "ship",
+    "owner": "cli",
+    "selectors": "Authoritative datasource LUID; optional field text, role, table, and repeated exact --field-id filters; bounded --limit or explicit --all",
+    "availability": "Cloud / Server with VDS or Metadata API access",
+    "local_write": false,
+    "remote_mutation": false,
+    "supports_preview": false,
+    "safety_guard": "Query Tableau by default; --catalog is local-only with no source fallback; preserve raw field identity separately from display captions; report more_available without opaque cursors",
+    "artifact_effect": "None",
+    "upstream_operation": "VDS read-metadata, VDS describe-datasource, then Metadata API fallback",
+    "evidence": "Proven existing field-catalog implementation plus hermetic TADX contract tests",
+    "evidence_level": "contract-verified",
+    "verification": "ready",
+    "implementation": "implemented",
+    "validation": "Contract-verified VDS-first field discovery with bounded output and Metadata API fallback",
+    "command_path": [
+      "content",
+      "datasource",
+      "schema"
+    ],
+    "raw_capable": false
+  },
+  {
+    "id": "datasource.update",
+    "surface": "tadx content datasource update",
+    "outcome": "Rename one exact published datasource or replace its owner, or preview the operation.",
+    "type": "change",
+    "disposition": "ship",
+    "owner": "cli",
+    "selectors": "Datasource LUID or exact name/project path; explicit new name and/or owner LUID; environment/site (inferred only when one is configured)",
+    "availability": "Cloud / Server",
+    "local_write": false,
+    "remote_mutation": true,
+    "supports_preview": true,
+    "safety_guard": "Re-resolve authoritative identity immediately before mutation; at least one change required; equal values are an exit-zero no-op",
+    "artifact_effect": "None",
+    "upstream_operation": "PUT /api/{version}/sites/{site-id}/datasources/{datasource-id}",
+    "evidence": "docs/evidence/content-update-rest-contract.md",
+    "evidence_level": "contract-verified",
+    "verification": "ready",
+    "implementation": "implemented",
+    "validation": "Contract-verified bounded rename and owner replacement with preview, no-op, drift, and uncertain outcome",
+    "command_path": [
+      "content",
+      "datasource",
+      "update"
+    ],
+    "raw_capable": false
+  },
+  {
+    "id": "doctor.run",
+    "surface": "tadx doctor",
+    "outcome": "Diagnose config, PAT presence and validity, Tableau connectivity, catalog, workspace, and logging context without mutation.",
+    "type": "inspect",
+    "disposition": "ship",
+    "owner": "cli",
+    "selectors": "Optional environment/workspace scopes",
+    "availability": "Cloud / Server / Pulse as configured",
+    "local_write": false,
+    "remote_mutation": false,
+    "supports_preview": false,
+    "safety_guard": "Redacted checks; no external-tool connection checks; no persistent logging unless TADX_LOG_LEVEL is set",
+    "artifact_effect": "None",
+    "upstream_operation": "Local validators plus read-only Tableau auth and connectivity probes",
+    "evidence": "A1 §§5.12, 7.7, 9.1; maintainer-defined CLI diagnostic scope",
+    "evidence_level": "architecture-locked",
+    "verification": "ready",
+    "implementation": "implemented",
+    "validation": "Architecture-locked; diagnostics cover TADX configuration, local state, and Tableau connectivity",
+    "command_path": [
+      "doctor"
+    ],
+    "raw_capable": false
+  },
+  {
+    "id": "env.profile.add",
+    "surface": "tadx env add",
+    "outcome": "Add one named environment profile containing secret references, not secret values.",
+    "type": "change",
+    "disposition": "ship",
+    "owner": "cli",
+    "selectors": "New environment alias; optional --catalog-max-concurrency 1..256",
+    "availability": "Local / all",
+    "local_write": true,
+    "remote_mutation": false,
+    "supports_preview": false,
+    "safety_guard": "Schema validation; collision guard; atomic file replacement; omitted catalog concurrency uses 32",
+    "artifact_effect": "None",
+    "upstream_operation": "Write local config.yaml",
+    "evidence": "A1 §§7.2–7.4, ADR-010; C1 §2.1",
+    "evidence_level": "local-contract",
+    "verification": "ready",
+    "implementation": "implemented",
+    "validation": "Architecture-locked local contract",
+    "command_path": [
+      "env",
+      "add"
+    ],
+    "raw_capable": false
+  },
+  {
+    "id": "env.profile.get",
+    "surface": "tadx env get",
+    "outcome": "Inspect one resolved non-secret environment profile, including its catalog concurrency setting.",
+    "type": "inspect",
+    "disposition": "ship",
+    "owner": "cli",
+    "selectors": "Environment alias",
+    "availability": "Local / all",
+    "local_write": false,
+    "remote_mutation": false,
+    "supports_preview": false,
+    "safety_guard": "Secret redaction; exact alias",
+    "artifact_effect": "None",
+    "upstream_operation": "Read local config.yaml",
+    "evidence": "A1 §§5.3, 7.2–7.4; C1 §2.1",
+    "evidence_level": "local-contract",
+    "verification": "ready",
+    "implementation": "implemented",
+    "validation": "Architecture-locked local contract",
+    "command_path": [
+      "env",
+      "get"
+    ],
+    "raw_capable": false
+  },
+  {
+    "id": "env.profile.list",
+    "surface": "tadx env list",
+    "outcome": "List named non-secret environment profiles.",
+    "type": "find",
+    "disposition": "ship",
+    "owner": "cli",
+    "selectors": "Optional config path",
+    "availability": "Local / all",
+    "local_write": false,
+    "remote_mutation": false,
+    "supports_preview": false,
+    "safety_guard": "Secret redaction",
+    "artifact_effect": "None",
+    "upstream_operation": "config.yaml under os.UserConfigDir()/tadx",
+    "evidence": "A1 §§1.5, 7.2–7.4, 9.2; C1 §2.1",
+    "evidence_level": "local-contract",
+    "verification": "ready",
+    "implementation": "implemented",
+    "validation": "Architecture-locked local contract",
+    "command_path": [
+      "env",
+      "list"
+    ],
+    "raw_capable": false
+  },
+  {
+    "id": "env.profile.remove",
+    "surface": "tadx env remove",
+    "outcome": "Remove one named environment profile.",
+    "type": "change",
+    "disposition": "ship",
+    "owner": "cli",
+    "selectors": "Environment alias",
+    "availability": "Local / all",
+    "local_write": true,
+    "remote_mutation": false,
+    "supports_preview": false,
+    "safety_guard": "Exact alias; default-reference guard",
+    "artifact_effect": "None",
+    "upstream_operation": "Write local config.yaml",
+    "evidence": "A1 §§7.2–7.4; C1 §2.1",
+    "evidence_level": "local-contract",
+    "verification": "ready",
+    "implementation": "implemented",
+    "validation": "Architecture-locked local contract",
+    "command_path": [
+      "env",
+      "remove"
+    ],
+    "raw_capable": false
+  },
+  {
+    "id": "env.profile.set-default",
+    "surface": "tadx env default",
+    "outcome": "Set the default read environment.",
+    "type": "change",
+    "disposition": "ship",
+    "owner": "cli",
+    "selectors": "Environment alias",
+    "availability": "Local / all",
+    "local_write": true,
+    "remote_mutation": false,
+    "supports_preview": false,
+    "safety_guard": "Alias must exist; no secret output",
+    "artifact_effect": "None",
+    "upstream_operation": "Write default_environment in local config.yaml",
+    "evidence": "A1 §§1.5, 7.2–7.3, 9.2; S1 “one capability row per public operation”",
+    "evidence_level": "local-contract",
+    "verification": "ready",
+    "implementation": "implemented",
+    "validation": "Architecture-locked local contract",
+    "command_path": [
+      "env",
+      "default"
+    ],
+    "raw_capable": false
+  },
+  {
+    "id": "env.profile.update",
+    "surface": "tadx env update",
+    "outcome": "Update explicit fields of one environment profile.",
+    "type": "change",
+    "disposition": "ship",
+    "owner": "cli",
+    "selectors": "Environment alias; optional --catalog-max-concurrency 1..256 or --clear-catalog-max-concurrency",
+    "availability": "Local / all",
+    "local_write": true,
+    "remote_mutation": false,
+    "supports_preview": false,
+    "safety_guard": "Exact alias; secret redaction; atomic file replacement; setting and clearing catalog concurrency conflict; clearing restores default 32",
+    "artifact_effect": "None",
+    "upstream_operation": "Write local config.yaml",
+    "evidence": "A1 §§7.2–7.4; C1 §2.1",
+    "evidence_level": "local-contract",
+    "verification": "ready",
+    "implementation": "implemented",
+    "validation": "Architecture-locked local contract",
+    "command_path": [
+      "env",
+      "update"
+    ],
+    "raw_capable": false
+  },
+  {
+    "id": "flow.delete",
+    "surface": "tadx content flow delete",
+    "outcome": "Delete one exact remote flow, or preview the operation.",
+    "type": "change",
+    "disposition": "ship",
+    "owner": "cli",
+    "selectors": "Flow LUID or exact name/project path; environment/site (inferred only when one is configured)",
+    "availability": "Cloud / Server with flow support",
+    "local_write": false,
+    "remote_mutation": true,
+    "supports_preview": true,
+    "safety_guard": "Re-resolve authoritative LUID immediately before delete; preserve dependency failures; no cascade claims",
+    "artifact_effect": "Delete",
+    "upstream_operation": "DELETE /api/{version}/sites/{site-id}/flows/{flow-id}",
+    "evidence": "Official REST capture and hermetic contract tests in docs/evidence/flow-rest-contract.md",
+    "evidence_level": "contract-verified",
+    "verification": "ready",
+    "implementation": "implemented",
+    "validation": "Contract-verified; live deployment verification is not claimed",
+    "command_path": [
+      "content",
+      "flow",
+      "delete"
+    ],
+    "raw_capable": false
+  },
+  {
+    "id": "flow.inspect",
+    "surface": "tadx content flow inspect",
+    "outcome": "Inspect one authoritative flow and its direct lifecycle metadata.",
+    "type": "inspect",
+    "disposition": "ship",
+    "owner": "cli",
+    "selectors": "Flow LUID or exact name/project path",
+    "availability": "Cloud / Server with flow support",
+    "local_write": false,
+    "remote_mutation": false,
+    "supports_preview": false,
+    "safety_guard": "Live Tableau by default; --catalog is local-only; no fallback; exact resolution; ambiguity fails",
+    "artifact_effect": "None",
+    "upstream_operation": "GET /api/{version}/sites/{site-id}/flows/{flow-id}",
+    "evidence": "Official REST capture in docs/evidence/flow-rest-contract.md; hermetic API and catalog source-selection tests",
+    "evidence_level": "contract-verified",
+    "verification": "ready",
+    "implementation": "implemented",
+    "validation": "Contract-verified exact read and explicit source selection; live deployment verification is not claimed",
+    "command_path": [
+      "content",
+      "flow",
+      "inspect"
+    ],
+    "raw_capable": false
+  },
+  {
+    "id": "flow.list",
+    "surface": "tadx content flow list",
+    "outcome": "List a bounded live selection of flows, or explicitly collect the selected inventory with --all.",
+    "type": "find",
+    "disposition": "ship",
+    "owner": "cli",
+    "selectors": "Environment/site; optional project/owner/name filters; --limit 1..10000 (default 25) or --all; optional --catalog",
+    "availability": "Cloud / Server with flow support; REST API 3.3+ per C1",
+    "local_write": true,
+    "remote_mutation": false,
+    "supports_preview": false,
+    "safety_guard": "Ordinary live lists use bounded provider reads without SQLite access; --all collects through the shared inventory collector and renders in memory; complete unfiltered collections atomically replace the resource catalog scope on a best-effort basis; filtered collections save selected observations; catalog write failure preserves the live answer with a warning; --catalog is local-only; --all rejects incomplete coverage and results beyond 10000 records; --full changes presentation only",
+    "artifact_effect": "Best-effort catalog update only with live --all",
+    "upstream_operation": "GET /api/{version}/sites/{site-id}/flows; shared inventory collection for --all; SQLite only for explicit catalog reads or best-effort --all persistence",
+    "evidence": "docs/evidence/group2-inventory-rest-contract.md; docs/evidence/flow-rest-contract.md; hermetic bounded-read, complete-collection, and source-selection tests",
+    "evidence_level": "contract-verified",
+    "verification": "ready",
+    "implementation": "implemented",
+    "validation": "Contract-verified bounded live reads without catalog access, shared complete collection, truthful coverage, best-effort persistence, and explicit local catalog selection",
+    "command_path": [
+      "content",
+      "flow",
+      "list"
+    ],
+    "raw_capable": false
+  },
+  {
+    "id": "flow.move",
+    "surface": "tadx content flow move",
+    "outcome": "Move one exact flow to one exact project on the same site, or preview the operation.",
+    "type": "change",
+    "disposition": "ship",
+    "owner": "cli",
+    "selectors": "Flow LUID or exact name/project path; exact destination project LUID/path; environment/site (inferred only when one is configured)",
+    "availability": "Cloud / Server with flow support",
+    "local_write": false,
+    "remote_mutation": true,
+    "supports_preview": true,
+    "safety_guard": "Source and destination re-resolved; cross-site move rejected; no connection or schedule rewrite",
+    "artifact_effect": "None",
+    "upstream_operation": "PUT /api/{version}/sites/{site-id}/flows/{flow-id} with an exact destination project",
+    "evidence": "Official REST capture and hermetic contract tests in docs/evidence/flow-rest-contract.md",
+    "evidence_level": "contract-verified",
+    "verification": "ready",
+    "implementation": "implemented",
+    "validation": "Contract-verified; live deployment verification is not claimed",
+    "command_path": [
+      "content",
+      "flow",
+      "move"
+    ],
+    "raw_capable": false
+  },
+  {
+    "id": "flow.publish",
+    "surface": "tadx content flow publish",
+    "outcome": "Publish one local TFL/TFLX, or up to 100 repeated managed flow artifacts sequentially, to the sole configured or explicit target, or preview the operations.",
+    "type": "deliver",
+    "disposition": "ship",
+    "owner": "cli",
+    "selectors": "Native --file, or logical workspace with exact --id/--artifact-name or repeated --artifact managed flow directory selectors; sole configured or explicit target; never inferred from artifact source; explicit destination project override; optional exact existing flow",
+    "availability": "Cloud / Server with flow support",
+    "local_write": false,
+    "remote_mutation": true,
+    "supports_preview": true,
+    "safety_guard": "Batch selectors prevalidated; sequential processing continues independent failures and returns aggregate failure; preview shows resolved environment/name/LUID; overwrite explicit",
+    "artifact_effect": "Read / publish",
+    "upstream_operation": "POST /api/{version}/sites/{site-id}/flows; upload sessions for large files",
+    "evidence": "Official REST capture and hermetic contract tests in docs/evidence/flow-rest-contract.md",
+    "evidence_level": "contract-verified",
+    "verification": "ready",
+    "implementation": "implemented",
+    "validation": "Contract-verified; live deployment verification is not claimed",
+    "command_path": [
+      "content",
+      "flow",
+      "publish"
+    ],
+    "raw_capable": false
+  },
+  {
+    "id": "flow.pull",
+    "surface": "tadx content flow pull",
+    "outcome": "Download one flow, or up to 100 repeated authoritative flow LUIDs sequentially, unchanged with bounded lineage and provenance.",
+    "type": "deliver",
+    "disposition": "ship",
+    "owner": "cli",
+    "selectors": "Flow LUID or exact name/project path; repeatable flow LUID for batches; logical workspace",
+    "availability": "Cloud / Server with flow support",
+    "local_write": true,
+    "remote_mutation": false,
+    "supports_preview": false,
+    "safety_guard": "Batch selectors prevalidated; sequential processing continues independent failures and returns aggregate failure; dirty re-pull requires --overwrite; incomplete lineage warns",
+    "artifact_effect": "Create / update package and lineage sidecar",
+    "upstream_operation": "Flow content GET plus focused Metadata GraphQL reads",
+    "evidence": "Official REST and Metadata captures plus hermetic contract tests in docs/evidence/flow-rest-contract.md and docs/evidence/lineage-metadata-contract.md",
+    "evidence_level": "contract-verified",
+    "verification": "ready",
+    "implementation": "implemented",
+    "validation": "Contract-verified; live deployment verification is not claimed; artifact contract architecture-locked",
+    "command_path": [
+      "content",
+      "flow",
+      "pull"
+    ],
+    "raw_capable": false
+  },
+  {
+    "id": "flow.update",
+    "surface": "tadx content flow update",
+    "outcome": "Replace the owner of one exact flow, or preview the operation.",
+    "type": "change",
+    "disposition": "ship",
+    "owner": "cli",
+    "selectors": "Flow LUID or exact name/project path; explicit owner LUID; environment/site (inferred only when one is configured)",
+    "availability": "Cloud / Server with flow support; owner endpoint requires API 3.27+",
+    "local_write": false,
+    "remote_mutation": true,
+    "supports_preview": true,
+    "safety_guard": "Re-resolve authoritative identity immediately before mutation; equal owner is an exit-zero no-op; Tableau does not expose a flow rename field",
+    "artifact_effect": "None",
+    "upstream_operation": "PUT /api/{version}/sites/{site-id}/flows/{flow-id}/owner/{user-id}",
+    "evidence": "docs/evidence/content-update-rest-contract.md",
+    "evidence_level": "contract-verified",
+    "verification": "ready",
+    "implementation": "implemented",
+    "validation": "Contract-verified owner replacement with preview, no-op, drift, and uncertain outcome; flow rename is excluded",
+    "command_path": [
+      "content",
+      "flow",
+      "update"
+    ],
+    "raw_capable": false
+  },
+  {
+    "id": "last",
+    "surface": "tadx last",
+    "outcome": "Display one globally saved full result and timestamp without re-execution.",
+    "type": "inspect",
+    "disposition": "ship",
+    "owner": "cli",
+    "selectors": "None",
+    "availability": "Local",
+    "local_write": false,
+    "remote_mutation": false,
+    "supports_preview": false,
+    "safety_guard": "Bounded redacted output only; no authentication or replay; does not replace itself",
+    "artifact_effect": "None",
+    "upstream_operation": "None",
+    "evidence": "internal/app/last_e2e_test.go",
+    "evidence_level": "local-contract",
+    "verification": "ready",
+    "implementation": "implemented",
+    "validation": "No-network saved result display",
+    "command_path": [
+      "last"
+    ],
+    "raw_capable": false
+  },
+  {
+    "id": "lineage.pull",
+    "surface": "tadx content lineage pull",
+    "outcome": "Capture bounded content, database, and table lineage for one exact workbook, published datasource, or flow without downloading its native package.",
+    "type": "deliver",
+    "disposition": "ship",
+    "owner": "cli",
+    "selectors": "Resource kind plus REST LUID or exact name/project path; logical workspace; bounded direction and depth",
+    "availability": "Cloud / Server with Metadata API",
+    "local_write": true,
+    "remote_mutation": false,
+    "supports_preview": false,
+    "safety_guard": "Content REST and Metadata identities remain distinct; physical assets use Metadata IDs only; incomplete results are explicit; no dependency acquisition",
+    "artifact_effect": "Create metadata-only lineage artifact",
+    "upstream_operation": "Focused Metadata GraphQL reads plus authoritative REST identity resolution",
+    "evidence": "Official Metadata guide and schema captures plus hermetic contract tests in docs/evidence/lineage-metadata-contract.md",
+    "evidence_level": "contract-verified",
+    "verification": "ready",
+    "implementation": "implemented",
+    "validation": "Contract-verified; live deployment verification is not claimed",
+    "command_path": [
+      "content",
+      "lineage",
+      "pull"
+    ],
+    "raw_capable": false
+  },
+  {
+    "id": "mutation.set",
+    "surface": "tadx mutation set",
+    "outcome": "Persist user remote mutation policy until explicitly changed.",
+    "type": "change",
+    "disposition": "ship",
+    "owner": "cli",
+    "selectors": "Required --enabled Boolean",
+    "availability": "Local",
+    "local_write": true,
+    "remote_mutation": false,
+    "supports_preview": false,
+    "safety_guard": "Explicit setting change; agents require permission for persistent scope; environment override wins",
+    "artifact_effect": "Saved user policy only",
+    "upstream_operation": "None",
+    "evidence": "internal/app/mutation_setting_e2e_test.go",
+    "evidence_level": "local-contract",
+    "verification": "ready",
+    "implementation": "implemented",
+    "validation": "Atomic user configuration update",
+    "command_path": [
+      "mutation",
+      "set"
+    ],
+    "raw_capable": false
+  },
+  {
+    "id": "mutation.status",
+    "surface": "tadx mutation status",
+    "outcome": "Show effective remote mutation policy and its source.",
+    "type": "inspect",
+    "disposition": "ship",
+    "owner": "cli",
+    "selectors": "None",
+    "availability": "Local",
+    "local_write": false,
+    "remote_mutation": false,
+    "supports_preview": false,
+    "safety_guard": "Read-only; process environment overrides saved user policy",
+    "artifact_effect": "None",
+    "upstream_operation": "None",
+    "evidence": "internal/app/mutation_setting_e2e_test.go",
+    "evidence_level": "local-contract",
+    "verification": "ready",
+    "implementation": "implemented",
+    "validation": "Local policy precedence",
+    "command_path": [
+      "mutation",
+      "status"
+    ],
+    "raw_capable": false
+  },
+  {
+    "id": "project.create",
+    "surface": "tadx content project create",
+    "outcome": "Create one project, optionally under an explicit parent, or preview the operation.",
+    "type": "change",
+    "disposition": "ship",
+    "owner": "cli",
+    "selectors": "Explicit environment/site; optional parent LUID/path",
+    "availability": "Cloud / Server",
+    "local_write": false,
+    "remote_mutation": true,
+    "supports_preview": true,
+    "safety_guard": "Same-name collision and ambiguous parent fail",
+    "artifact_effect": "None",
+    "upstream_operation": "POST /api/{version}/sites/{site-id}/projects",
+    "evidence": "docs/evidence/project-rest-contract.md",
+    "evidence_level": "contract-verified",
+    "verification": "ready",
+    "implementation": "implemented",
+    "validation": "Contract-verified exact create, parent, collision, and response identity behavior",
+    "command_path": [
+      "content",
+      "project",
+      "create"
+    ],
+    "raw_capable": false
+  },
+  {
+    "id": "project.delete",
+    "surface": "tadx content project delete",
+    "outcome": "Delete one exact project, or preview the operation.",
+    "type": "change",
+    "disposition": "ship",
+    "owner": "cli",
+    "selectors": "Authoritative project LUID",
+    "availability": "Cloud / Server",
+    "local_write": false,
+    "remote_mutation": true,
+    "supports_preview": true,
+    "safety_guard": "Exact LUID revalidated; preview identifies the target; upstream cascade behavior is explicit",
+    "artifact_effect": "None",
+    "upstream_operation": "DELETE /api/{version}/sites/{site-id}/projects/{project-id}",
+    "evidence": "docs/evidence/project-rest-contract.md",
+    "evidence_level": "contract-verified",
+    "verification": "ready",
+    "implementation": "implemented",
+    "validation": "Contract-verified exact deletion, preview, identity revalidation, and uncertain-outcome handling",
+    "command_path": [
+      "content",
+      "project",
+      "delete"
+    ],
+    "raw_capable": false
+  },
+  {
+    "id": "project.inspect",
+    "surface": "tadx content project inspect",
+    "outcome": "Resolve and inspect one exact shallow project context.",
+    "type": "inspect",
+    "disposition": "ship",
+    "owner": "cli",
+    "selectors": "Project LUID or exact slash-delimited path",
+    "availability": "Cloud / Server",
+    "local_write": false,
+    "remote_mutation": false,
+    "supports_preview": false,
+    "safety_guard": "Live Tableau by default; --catalog is local-only; no fallback; exact full paths are opaque selectors; zero or multiple candidates fail; LUIDs remain authoritative when display paths collide",
+    "artifact_effect": "None",
+    "upstream_operation": "Exact resolution from authoritative project pages",
+    "evidence": "Official REST capture in docs/evidence/project-rest-contract.md; hermetic API and catalog source-selection tests",
+    "evidence_level": "contract-verified",
+    "verification": "ready",
+    "implementation": "implemented",
+    "validation": "Contract-verified exact path resolution and explicit source selection; live deployment verification is not claimed",
+    "command_path": [
+      "content",
+      "project",
+      "inspect"
+    ],
+    "raw_capable": false
+  },
+  {
+    "id": "project.list",
+    "surface": "tadx content project list",
+    "outcome": "List a bounded live selection of projects, or explicitly collect the selected inventory with --all.",
+    "type": "find",
+    "disposition": "ship",
+    "owner": "cli",
+    "selectors": "Environment/site; optional name/parent/owner/top-level filters; --limit 1..10000 (default 25) or --all; optional --catalog",
+    "availability": "Cloud / Server",
+    "local_write": true,
+    "remote_mutation": false,
+    "supports_preview": false,
+    "safety_guard": "Ordinary live lists use bounded provider reads without SQLite access; --all collects through the shared inventory collector and renders in memory; complete unfiltered collections atomically replace the resource catalog scope on a best-effort basis; filtered collections save selected observations; catalog write failure preserves the live answer with a warning; --catalog is local-only; --all rejects incomplete coverage and results beyond 10000 records; --full changes presentation only",
+    "artifact_effect": "Best-effort catalog update only with live --all",
+    "upstream_operation": "GET /api/{version}/sites/{site-id}/projects; shared inventory collection for --all; SQLite only for explicit catalog reads or best-effort --all persistence",
+    "evidence": "docs/evidence/group2-inventory-rest-contract.md; docs/evidence/project-rest-contract.md; hermetic bounded-read, complete-collection, and source-selection tests",
+    "evidence_level": "contract-verified",
+    "verification": "ready",
+    "implementation": "implemented",
+    "validation": "Contract-verified bounded live reads without catalog access, shared complete collection, truthful coverage, best-effort persistence, and explicit local catalog selection",
+    "command_path": [
+      "content",
+      "project",
+      "list"
+    ],
+    "raw_capable": false
+  },
+  {
+    "id": "project.move",
+    "surface": "tadx content project move",
+    "outcome": "Reparent one exact project under one exact parent on the same site, or preview the operation.",
+    "type": "change",
+    "disposition": "ship",
+    "owner": "cli",
+    "selectors": "Project LUID/exact path; exact destination parent LUID/path; environment/site (inferred only when one is configured)",
+    "availability": "Cloud / Server",
+    "local_write": false,
+    "remote_mutation": true,
+    "supports_preview": true,
+    "safety_guard": "Re-resolve project and parent immediately before mutation; equal parent is an exit-zero no-op; prevent self-parent and descendant cycles",
+    "artifact_effect": "None",
+    "upstream_operation": "PUT /api/{version}/sites/{site-id}/projects/{project-id} with parent project",
+    "evidence": "docs/evidence/content-update-rest-contract.md",
+    "evidence_level": "contract-verified",
+    "verification": "ready",
+    "implementation": "implemented",
+    "validation": "Contract-verified exact reparenting, preview, no-op, cycle guards, drift, and uncertain outcome",
+    "command_path": [
+      "content",
+      "project",
+      "move"
+    ],
+    "raw_capable": false
+  },
+  {
+    "id": "project.update",
+    "surface": "tadx content project update",
+    "outcome": "Update bounded project metadata without changing its parent, or preview the operation.",
+    "type": "change",
+    "disposition": "ship",
+    "owner": "cli",
+    "selectors": "Project LUID/exact path",
+    "availability": "Cloud / Server",
+    "local_write": false,
+    "remote_mutation": true,
+    "supports_preview": true,
+    "safety_guard": "Equal values are an exit-zero no-op; hierarchy changes use project.move",
+    "artifact_effect": "None",
+    "upstream_operation": "PUT /api/{version}/sites/{site-id}/projects/{project-id}",
+    "evidence": "docs/evidence/project-rest-contract.md",
+    "evidence_level": "contract-verified",
+    "verification": "ready",
+    "implementation": "implemented",
+    "validation": "Contract-verified bounded metadata update and authoritative no-op behavior",
+    "command_path": [
+      "content",
+      "project",
+      "update"
+    ],
+    "raw_capable": false
+  },
+  {
+    "id": "pulse.definition.create",
+    "surface": "tadx pulse definition create",
+    "outcome": "Create one definition plus its Tableau-created default metric from bounded intent, or preview the operation.",
+    "type": "change",
+    "disposition": "ship",
+    "owner": "cli",
+    "selectors": "Explicit site; datasource LUID; exact raw field IDs or unique display names resolved to raw IDs; bounded configuration",
+    "availability": "Tableau Cloud / Pulse only",
+    "local_write": false,
+    "remote_mutation": true,
+    "supports_preview": true,
+    "safety_guard": "Validate fields live; exact name/datasource collision; revalidate before mutation; unknown outcomes preserve created identity",
+    "artifact_effect": "Read / publish",
+    "upstream_operation": "POST /api/-/pulse/definitions; bounded default-metric polling",
+    "evidence": "docs/evidence/pulse-live-contract.md; proven Pulse payload and hermetic TADX action and client tests",
+    "evidence_level": "live-verified",
+    "verification": "ready",
+    "implementation": "implemented",
+    "validation": "Live-verified creation and bounded default-metric resolution for a Pulse-eligible datasource on Tableau Cloud",
+    "command_path": [
+      "pulse",
+      "definition",
+      "create"
+    ],
+    "raw_capable": false
+  },
+  {
+    "id": "pulse.definition.delete",
+    "surface": "tadx pulse definition delete",
+    "outcome": "Delete one exact definition, or preview the operation.",
+    "type": "change",
+    "disposition": "ship",
+    "owner": "cli",
+    "selectors": "Definition ID",
+    "availability": "Tableau Cloud / Pulse only",
+    "local_write": false,
+    "remote_mutation": true,
+    "supports_preview": true,
+    "safety_guard": "Exact GET before deletion; Tableau remains authoritative for dependency and cascade behavior",
+    "artifact_effect": "None",
+    "upstream_operation": "DELETE /api/-/pulse/definitions/{definition_id}",
+    "evidence": "docs/evidence/pulse-live-contract.md; hermetic TADX action and client tests",
+    "evidence_level": "live-verified",
+    "verification": "ready",
+    "implementation": "implemented",
+    "validation": "Live-verified exact deletion with HTTP 204 on Tableau Cloud",
+    "command_path": [
+      "pulse",
+      "definition",
+      "delete"
+    ],
+    "raw_capable": false
+  },
+  {
+    "id": "pulse.definition.inspect",
+    "surface": "tadx pulse definition inspect",
+    "outcome": "Inspect one complete Pulse definition and configuration.",
+    "type": "inspect",
+    "disposition": "ship",
+    "owner": "cli",
+    "selectors": "Exact definition LUID",
+    "availability": "Tableau Cloud / Pulse only",
+    "local_write": false,
+    "remote_mutation": false,
+    "supports_preview": false,
+    "safety_guard": "Exact LUID; --catalog never contacts Tableau or falls back",
+    "artifact_effect": "None",
+    "upstream_operation": "GET /api/-/pulse/definitions/{definition_id}",
+    "evidence": "docs/evidence/pulse-live-contract.md; hermetic TADX client and action tests",
+    "evidence_level": "live-verified",
+    "verification": "ready",
+    "implementation": "implemented",
+    "validation": "Live-verified exact identity and preserved configuration on Tableau Cloud",
+    "command_path": [
+      "pulse",
+      "definition",
+      "inspect"
+    ],
+    "raw_capable": false
+  },
+  {
+    "id": "pulse.definition.list",
+    "surface": "tadx pulse definition list",
+    "outcome": "List Pulse metric definitions with internal bounded pagination.",
+    "type": "find",
+    "disposition": "ship",
+    "owner": "cli",
+    "selectors": "Environment; optional exact name and --datasource-id; --limit or --all",
+    "availability": "Tableau Cloud / Pulse only",
+    "local_write": false,
+    "remote_mutation": false,
+    "supports_preview": false,
+    "safety_guard": "Internal bounded continuation; truthful more_available; exact name and datasource filters apply before the returned limit; --catalog never contacts Tableau or falls back",
+    "artifact_effect": "None",
+    "upstream_operation": "GET /api/-/pulse/definitions",
+    "evidence": "docs/evidence/pulse-live-contract.md; hermetic TADX client and action tests",
+    "evidence_level": "live-verified",
+    "verification": "ready",
+    "implementation": "implemented",
+    "validation": "Live-verified bounded list envelope and continuation on Tableau Cloud",
+    "command_path": [
+      "pulse",
+      "definition",
+      "list"
+    ],
+    "raw_capable": false
+  },
+  {
+    "id": "pulse.definition.publish",
+    "surface": "tadx pulse definition publish",
+    "outcome": "Recreate a portable Pulse definition and metric variants using explicit destination datasource mappings.",
+    "type": "deliver",
+    "disposition": "ship",
+    "owner": "cli",
+    "selectors": "Managed bundle selected by --id, --artifact-name, or --artifact; repeated --datasource-map source=destination; explicit target when multiple environments exist",
+    "availability": "Tableau Cloud / Pulse only",
+    "local_write": false,
+    "remote_mutation": true,
+    "supports_preview": true,
+    "safety_guard": "New identities only; validate fields and mappings; never overwrite originals; no followers or insights",
+    "artifact_effect": "Source bundle unchanged; reports created identity mapping",
+    "upstream_operation": "POST /api/-/pulse/definitions; POST /api/-/pulse/metrics:getOrCreate",
+    "evidence": "docs/evidence/pulse-live-contract.md; local bundle CLI HTTP fixtures",
+    "evidence_level": "contract-verified",
+    "verification": "ready",
+    "implementation": "implemented",
+    "validation": "Bounded portable configuration and canonical identity validation",
+    "command_path": [
+      "pulse",
+      "definition",
+      "publish"
+    ],
+    "raw_capable": false
+  },
+  {
+    "id": "pulse.definition.pull",
+    "surface": "tadx pulse definition pull",
+    "outcome": "Materialize one portable definition with complete metric variants, datasource references, provenance, and baseline.",
+    "type": "deliver",
+    "disposition": "ship",
+    "owner": "cli",
+    "selectors": "Exact definition LUID; logical workspace",
+    "availability": "Tableau Cloud / Pulse only",
+    "local_write": true,
+    "remote_mutation": false,
+    "supports_preview": false,
+    "safety_guard": "Dirty re-pull requires --overwrite; remote read is authoritative",
+    "artifact_effect": "Create / update",
+    "upstream_operation": "Definition GET and bounded metric list plus local artifact manager",
+    "evidence": "docs/evidence/pulse-live-contract.md; hermetic TADX action and artifact tests",
+    "evidence_level": "live-verified",
+    "verification": "ready",
+    "implementation": "implemented",
+    "validation": "Live-verified exact read; HTTP fixture verified complete portable bundle and recoverable artifact write",
+    "command_path": [
+      "pulse",
+      "definition",
+      "pull"
+    ],
+    "raw_capable": false
+  },
+  {
+    "id": "pulse.insight.brief",
+    "surface": "Outside TADX CLI",
+    "outcome": "Generate a Pulse insight brief from exact metrics.",
+    "type": "inspect",
+    "disposition": "delegated",
+    "owner": "tableau-mcp",
+    "selectors": "No TADX selectors",
+    "availability": "Tableau Cloud / Pulse",
+    "local_write": false,
+    "remote_mutation": false,
+    "supports_preview": false,
+    "safety_guard": "No executable TADX operation; this contract does not prescribe external tooling",
+    "artifact_effect": "None",
+    "upstream_operation": "Outside TADX CLI",
+    "evidence": "Maintainer-defined TADX CLI scope",
+    "evidence_level": "architecture-locked",
+    "verification": "ready",
+    "implementation": "external/delegated",
+    "validation": "Delegated; no TADX command, execution, or proxy",
+    "raw_capable": false
+  },
+  {
+    "id": "pulse.metric.delete",
+    "surface": "tadx pulse metric delete",
+    "outcome": "Delete one exact metric, or preview the operation.",
+    "type": "change",
+    "disposition": "ship",
+    "owner": "cli",
+    "selectors": "Metric ID",
+    "availability": "Tableau Cloud / Pulse only",
+    "local_write": false,
+    "remote_mutation": true,
+    "supports_preview": true,
+    "safety_guard": "Exact GET before deletion; Tableau remains authoritative for dependency behavior",
+    "artifact_effect": "None",
+    "upstream_operation": "DELETE /api/-/pulse/metrics/{metric_id}",
+    "evidence": "docs/evidence/pulse-live-contract.md; hermetic TADX action and client tests",
+    "evidence_level": "live-verified",
+    "verification": "ready",
+    "implementation": "implemented",
+    "validation": "Live-verified exact deletion with HTTP 204 on Tableau Cloud",
+    "command_path": [
+      "pulse",
+      "metric",
+      "delete"
+    ],
+    "raw_capable": false
+  },
+  {
+    "id": "pulse.metric.follow",
+    "surface": "tadx pulse metric follow",
+    "outcome": "Converge one exact user or group metric subscription, or preview the operation.",
+    "type": "change",
+    "disposition": "ship",
+    "owner": "cli",
+    "selectors": "Exact metric LUID plus exactly one user or group LUID",
+    "availability": "Tableau Cloud / Pulse only",
+    "local_write": false,
+    "remote_mutation": true,
+    "supports_preview": true,
+    "safety_guard": "No ambiguous subscriber; a proven duplicate response converges to already-following",
+    "artifact_effect": "None",
+    "upstream_operation": "POST /api/-/pulse/subscriptions:batchCreate",
+    "evidence": "docs/evidence/pulse-live-contract.md; hermetic TADX action and client tests",
+    "evidence_level": "live-verified",
+    "verification": "ready",
+    "implementation": "implemented",
+    "validation": "Live-verified user subscription creation on Tableau Cloud",
+    "command_path": [
+      "pulse",
+      "metric",
+      "follow"
+    ],
+    "raw_capable": false
+  },
+  {
+    "id": "pulse.metric.followers",
+    "surface": "tadx pulse metric followers",
+    "outcome": "List exact user and group subscriptions for one metric.",
+    "type": "find",
+    "disposition": "ship",
+    "owner": "cli",
+    "selectors": "Exact metric LUID",
+    "availability": "Tableau Cloud / Pulse only",
+    "local_write": false,
+    "remote_mutation": false,
+    "supports_preview": false,
+    "safety_guard": "Bound normalized output; reject incomplete or mismatched subscription identity; --catalog never contacts Tableau or falls back",
+    "artifact_effect": "None",
+    "upstream_operation": "GET /api/-/pulse/subscriptions?metric_id={metric_id}",
+    "evidence": "docs/evidence/pulse-live-contract.md; hermetic TADX action and client tests",
+    "evidence_level": "live-verified",
+    "verification": "ready",
+    "implementation": "implemented",
+    "validation": "Live-verified exact subscription inventory on Tableau Cloud",
+    "command_path": [
+      "pulse",
+      "metric",
+      "followers"
+    ],
+    "raw_capable": false
+  },
+  {
+    "id": "pulse.metric.fork",
+    "surface": "tadx pulse metric fork",
+    "outcome": "Derive one metric by changing bounded timeframe or dimension filters, or preview the operation.",
+    "type": "change",
+    "disposition": "ship",
+    "owner": "cli",
+    "selectors": "Exact source metric LUID; timeframe or allowed-dimension filters",
+    "availability": "Tableau Cloud / Pulse only",
+    "local_write": false,
+    "remote_mutation": true,
+    "supports_preview": true,
+    "safety_guard": "Preserve source specification; require a meaningful change; use get-or-create; verify exact metric, definition, datasource, site ownership, and requested specification without waiting for list visibility",
+    "artifact_effect": "None",
+    "upstream_operation": "POST /api/-/pulse/metrics:getOrCreate plus bounded exact-read reconciliation",
+    "evidence": "docs/evidence/pulse-live-contract.md; hermetic TADX action and client tests",
+    "evidence_level": "live-verified",
+    "verification": "ready",
+    "implementation": "implemented",
+    "validation": "Live-verified fork creation and ownership reconciliation on Tableau Cloud",
+    "command_path": [
+      "pulse",
+      "metric",
+      "fork"
+    ],
+    "raw_capable": false
+  },
+  {
+    "id": "pulse.metric.insight-bundle",
+    "surface": "Outside TADX CLI",
+    "outcome": "Retrieve current Pulse metric values and generated insights.",
+    "type": "inspect",
+    "disposition": "delegated",
+    "owner": "tableau-mcp",
+    "selectors": "No TADX selectors",
+    "availability": "Tableau Cloud / Pulse",
+    "local_write": false,
+    "remote_mutation": false,
+    "supports_preview": false,
+    "safety_guard": "No executable TADX operation; this contract does not prescribe external tooling",
+    "artifact_effect": "None",
+    "upstream_operation": "Outside TADX CLI",
+    "evidence": "Maintainer-defined TADX CLI scope",
+    "evidence_level": "architecture-locked",
+    "verification": "ready",
+    "implementation": "external/delegated",
+    "validation": "Delegated; no TADX command, execution, or proxy",
+    "raw_capable": false
+  },
+  {
+    "id": "pulse.metric.inspect",
+    "surface": "tadx pulse metric inspect",
+    "outcome": "Inspect one exact Pulse metric specification.",
+    "type": "inspect",
+    "disposition": "ship",
+    "owner": "cli",
+    "selectors": "Exact metric LUID",
+    "availability": "Tableau Cloud / Pulse only",
+    "local_write": false,
+    "remote_mutation": false,
+    "supports_preview": false,
+    "safety_guard": "Exact LUID; preserve unrecognized specification fields; --catalog never contacts Tableau or falls back",
+    "artifact_effect": "None",
+    "upstream_operation": "GET /api/-/pulse/metrics/{metric_id}",
+    "evidence": "docs/evidence/pulse-live-contract.md; hermetic TADX client and action tests",
+    "evidence_level": "live-verified",
+    "verification": "ready",
+    "implementation": "implemented",
+    "validation": "Live-verified exact metric identity and specification preservation on Tableau Cloud",
+    "command_path": [
+      "pulse",
+      "metric",
+      "inspect"
+    ],
+    "raw_capable": false
+  },
+  {
+    "id": "pulse.metric.list",
+    "surface": "tadx pulse metric list",
+    "outcome": "List metrics in one definition with internal bounded pagination.",
+    "type": "find",
+    "disposition": "ship",
+    "owner": "cli",
+    "selectors": "Exact definition LUID; --limit or --all",
+    "availability": "Tableau Cloud / Pulse only",
+    "local_write": false,
+    "remote_mutation": false,
+    "supports_preview": false,
+    "safety_guard": "Definition-scoped identity; internal continuation with truthful more_available; --catalog never contacts Tableau or falls back",
+    "artifact_effect": "None",
+    "upstream_operation": "GET /api/-/pulse/definitions/{definition_id}/metrics",
+    "evidence": "docs/evidence/pulse-live-contract.md; hermetic TADX client and action tests",
+    "evidence_level": "live-verified",
+    "verification": "ready",
+    "implementation": "implemented",
+    "validation": "Live-verified definition-scoped metric inventory on Tableau Cloud",
+    "command_path": [
+      "pulse",
+      "metric",
+      "list"
+    ],
+    "raw_capable": false
+  },
+  {
+    "id": "pulse.metric.unfollow",
+    "surface": "tadx pulse metric unfollow",
+    "outcome": "Remove one exact metric subscription, or preview the operation.",
+    "type": "change",
+    "disposition": "ship",
+    "owner": "cli",
+    "selectors": "Exact subscription LUID, or metric plus exact user/group resolving to one subscription",
+    "availability": "Tableau Cloud / Pulse only",
+    "local_write": false,
+    "remote_mutation": true,
+    "supports_preview": true,
+    "safety_guard": "Ambiguity fails; relationship selectors revalidate to the same subscription before mutation",
+    "artifact_effect": "None",
+    "upstream_operation": "DELETE /api/-/pulse/subscriptions/{subscription_id}",
+    "evidence": "docs/evidence/pulse-live-contract.md; hermetic TADX action and client tests",
+    "evidence_level": "live-verified",
+    "verification": "ready",
+    "implementation": "implemented",
+    "validation": "Live-verified exact subscription deletion with HTTP 204 on Tableau Cloud",
+    "command_path": [
+      "pulse",
+      "metric",
+      "unfollow"
+    ],
+    "raw_capable": false
+  },
+  {
+    "id": "search.run",
+    "surface": "tadx search [term]",
+    "outcome": "Search native Tableau content plus administration and Pulse resources through one bounded interface.",
+    "type": "find",
+    "disposition": "ship",
+    "owner": "cli",
+    "selectors": "Optional text; broad or concrete --type; environment or --env; bounded --limit; optional --catalog",
+    "availability": "Cloud / Server 2022.3+ for native content search; Pulse types require Tableau Cloud",
+    "local_write": false,
+    "remote_mutation": false,
+    "supports_preview": false,
+    "safety_guard": "Nonempty live content terms use native search; native datasource results are translated to classic REST LUIDs; administration and Pulse retain dedicated adapters; --catalog is local-only; blank text requires a concrete type and uses list semantics; internal pagination satisfies --limit with more_available and no opaque cursor output; ordinary live searches do not read or write SQLite",
+    "artifact_effect": "None",
+    "upstream_operation": "GET /api/-/search for content; Query Datasources by contentUrl for classic datasource LUIDs; dedicated administration and Pulse adapters; local normalized catalog index",
+    "evidence": "docs/evidence/group2-inventory-rest-contract.md; current official content exploration and datasource filter contracts; hermetic transport, adapter, and app tests",
+    "evidence_level": "contract-verified",
+    "verification": "ready",
+    "implementation": "implemented",
+    "validation": "Contract-verified bounded live discovery without SQLite access, authoritative identity normalization, truthful composite truncation, and explicit local catalog selection",
+    "command_path": [
+      "search"
+    ],
+    "raw_capable": false
+  },
+  {
+    "id": "version.get",
+    "surface": "tadx version",
+    "outcome": "Report the installed TADX version and optionally check the latest published release.",
+    "type": "inspect",
+    "disposition": "ship",
+    "owner": "cli",
+    "selectors": "Optional --check",
+    "availability": "Local / all; release check requires GitHub access",
+    "local_write": false,
+    "remote_mutation": false,
+    "supports_preview": false,
+    "safety_guard": "Offline by default; optional check performs one bounded request and never changes the binary",
+    "artifact_effect": "None",
+    "upstream_operation": "Build metadata; optional GitHub latest-release endpoint",
+    "evidence": "Go build information and bounded HTTP contract",
+    "evidence_level": "local-contract",
+    "verification": "ready",
+    "implementation": "implemented",
+    "validation": "Local contract verified by version and CLI tests",
+    "command_path": [
+      "version"
+    ],
+    "raw_capable": false
+  },
+  {
+    "id": "view.data",
+    "surface": "Outside TADX CLI",
+    "outcome": "Retrieve rendered view data for analysis.",
+    "type": "inspect",
+    "disposition": "delegated",
+    "owner": "tableau-mcp",
+    "selectors": "No TADX selectors",
+    "availability": "Cloud / Server",
+    "local_write": false,
+    "remote_mutation": false,
+    "supports_preview": false,
+    "safety_guard": "No executable TADX operation; this contract does not prescribe external tooling",
+    "artifact_effect": "None",
+    "upstream_operation": "Outside TADX CLI",
+    "evidence": "Maintainer-defined TADX CLI scope",
+    "evidence_level": "architecture-locked",
+    "verification": "ready",
+    "implementation": "external/delegated",
+    "validation": "Delegated; no TADX command, execution, or proxy",
+    "raw_capable": false
+  },
+  {
+    "id": "view.image",
+    "surface": "Outside TADX CLI",
+    "outcome": "Retrieve a rendered view image.",
+    "type": "inspect",
+    "disposition": "delegated",
+    "owner": "tableau-mcp",
+    "selectors": "No TADX selectors",
+    "availability": "Cloud / Server",
+    "local_write": false,
+    "remote_mutation": false,
+    "supports_preview": false,
+    "safety_guard": "No executable TADX operation; this contract does not prescribe external tooling",
+    "artifact_effect": "None",
+    "upstream_operation": "Outside TADX CLI",
+    "evidence": "Maintainer-defined TADX CLI scope",
+    "evidence_level": "architecture-locked",
+    "verification": "ready",
+    "implementation": "external/delegated",
+    "validation": "Delegated; no TADX command, execution, or proxy",
+    "raw_capable": false
+  },
+  {
+    "id": "view.inspect",
+    "surface": "Outside TADX CLI",
+    "outcome": "Inspect one view before requesting rendered data or an image.",
+    "type": "inspect",
+    "disposition": "delegated",
+    "owner": "tableau-mcp",
+    "selectors": "No TADX selectors",
+    "availability": "Cloud / Server",
+    "local_write": false,
+    "remote_mutation": false,
+    "supports_preview": false,
+    "safety_guard": "No executable TADX operation; this contract does not prescribe external tooling",
+    "artifact_effect": "None",
+    "upstream_operation": "Outside TADX CLI",
+    "evidence": "Maintainer-defined TADX CLI scope",
+    "evidence_level": "architecture-locked",
+    "verification": "ready",
+    "implementation": "external/delegated",
+    "validation": "Delegated; no TADX command, execution, or proxy",
+    "raw_capable": false
+  },
+  {
+    "id": "view.list",
+    "surface": "Outside TADX CLI",
+    "outcome": "List views for analytical read workflows.",
+    "type": "find",
+    "disposition": "delegated",
+    "owner": "tableau-mcp",
+    "selectors": "No TADX selectors",
+    "availability": "Cloud / Server",
+    "local_write": false,
+    "remote_mutation": false,
+    "supports_preview": false,
+    "safety_guard": "No executable TADX operation; this contract does not prescribe external tooling",
+    "artifact_effect": "None",
+    "upstream_operation": "Outside TADX CLI",
+    "evidence": "Maintainer-defined TADX CLI scope",
+    "evidence_level": "architecture-locked",
+    "verification": "ready",
+    "implementation": "external/delegated",
+    "validation": "Delegated; no TADX command, execution, or proxy",
+    "raw_capable": false
+  },
+  {
+    "id": "workbook.author",
+    "surface": "Outside TADX CLI",
+    "outcome": "Create or semantically modify workbook content.",
+    "type": "change",
+    "disposition": "delegated",
+    "owner": "tableau/desktop-mcp",
+    "selectors": "No TADX selectors",
+    "availability": "Outside TADX",
+    "local_write": false,
+    "remote_mutation": false,
+    "supports_preview": false,
+    "safety_guard": "No executable TADX operation; this contract does not prescribe external tooling",
+    "artifact_effect": "External artifact may become dirty",
+    "upstream_operation": "Outside TADX CLI",
+    "evidence": "Maintainer-defined TADX CLI scope",
+    "evidence_level": "architecture-locked",
+    "verification": "ready",
+    "implementation": "external/delegated",
+    "validation": "Delegated; no TADX command, execution, or proxy",
+    "raw_capable": false
+  },
+  {
+    "id": "workbook.delete",
+    "surface": "tadx content workbook delete",
+    "outcome": "Delete one exact remote workbook, or preview the operation.",
+    "type": "change",
+    "disposition": "ship",
+    "owner": "cli",
+    "selectors": "Workbook LUID or exact name/project path; environment/site (inferred only when one is configured)",
+    "availability": "Cloud / Server",
+    "local_write": false,
+    "remote_mutation": true,
+    "supports_preview": true,
+    "safety_guard": "Re-resolve authoritative LUID immediately before delete; no cascade claims; repeated missing target is explicit",
+    "artifact_effect": "Delete",
+    "upstream_operation": "DELETE /api/{version}/sites/{site-id}/workbooks/{workbook-id}",
+    "evidence": "docs/evidence/phase1-rest-contract.md",
+    "evidence_level": "contract-verified",
+    "verification": "ready",
+    "implementation": "implemented",
+    "validation": "Contract-verified exact DELETE with authoritative LUID revalidation",
+    "command_path": [
+      "content",
+      "workbook",
+      "delete"
+    ],
+    "raw_capable": false
+  },
+  {
+    "id": "workbook.inspect",
+    "surface": "tadx content workbook inspect",
+    "outcome": "Inspect one authoritative workbook and lifecycle metadata.",
+    "type": "inspect",
+    "disposition": "ship",
+    "owner": "cli",
+    "selectors": "Workbook LUID or exact name/project path",
+    "availability": "Cloud / Server",
+    "local_write": false,
+    "remote_mutation": false,
+    "supports_preview": false,
+    "safety_guard": "Live Tableau by default; --catalog is local-only; no fallback; exact resolution; ambiguity fails",
+    "artifact_effect": "None",
+    "upstream_operation": "GET /api/{version}/sites/{site-id}/workbooks/{workbook-id}",
+    "evidence": "docs/evidence/group2-inventory-rest-contract.md; hermetic catalog source-selection tests",
+    "evidence_level": "contract-verified",
+    "verification": "ready",
+    "implementation": "implemented",
+    "validation": "Contract-verified exact REST read, canonical project selection, and explicit source selection",
+    "command_path": [
+      "content",
+      "workbook",
+      "inspect"
+    ],
+    "raw_capable": false
+  },
+  {
+    "id": "workbook.list",
+    "surface": "tadx content workbook list",
+    "outcome": "List a bounded live selection of workbooks, or explicitly collect the selected inventory with --all.",
+    "type": "find",
+    "disposition": "ship",
+    "owner": "cli",
+    "selectors": "Environment/site; optional project/owner/name/tag filters; --limit 1..10000 (default 25) or --all; optional --catalog",
+    "availability": "Cloud / Server",
+    "local_write": true,
+    "remote_mutation": false,
+    "supports_preview": false,
+    "safety_guard": "Ordinary live lists use bounded provider reads without SQLite access; --all collects through the shared inventory collector and renders in memory; complete unfiltered collections atomically replace the resource catalog scope on a best-effort basis; filtered collections save selected observations; catalog write failure preserves the live answer with a warning; --catalog is local-only; --all rejects incomplete coverage and results beyond 10000 records; --full changes presentation only",
+    "artifact_effect": "Best-effort catalog update only with live --all",
+    "upstream_operation": "GET /api/{version}/sites/{site-id}/workbooks; shared inventory collection for --all; SQLite only for explicit catalog reads or best-effort --all persistence",
+    "evidence": "docs/evidence/group2-inventory-rest-contract.md; hermetic bounded-read, complete-collection, and source-selection tests",
+    "evidence_level": "contract-verified",
+    "verification": "ready",
+    "implementation": "implemented",
+    "validation": "Contract-verified bounded live reads without catalog access, shared complete collection, truthful coverage, best-effort persistence, and explicit local catalog selection",
+    "command_path": [
+      "content",
+      "workbook",
+      "list"
+    ],
+    "raw_capable": false
+  },
+  {
+    "id": "workbook.move",
+    "surface": "tadx content workbook move",
+    "outcome": "Move one exact workbook to one exact project on the same site, or preview the operation.",
+    "type": "change",
+    "disposition": "ship",
+    "owner": "cli",
+    "selectors": "Workbook LUID or exact name/project path; exact destination project LUID/path; environment/site (inferred only when one is configured)",
+    "availability": "Cloud / Server",
+    "local_write": false,
+    "remote_mutation": true,
+    "supports_preview": true,
+    "safety_guard": "Re-resolve source and destination immediately before mutation; equal destination is an exit-zero no-op; no cross-site move",
+    "artifact_effect": "None",
+    "upstream_operation": "PUT /api/{version}/sites/{site-id}/workbooks/{workbook-id} with destination project",
+    "evidence": "docs/evidence/content-update-rest-contract.md",
+    "evidence_level": "contract-verified",
+    "verification": "ready",
+    "implementation": "implemented",
+    "validation": "Contract-verified exact same-site movement, preview, no-op, drift, and uncertain outcome",
+    "command_path": [
+      "content",
+      "workbook",
+      "move"
+    ],
+    "raw_capable": false
+  },
+  {
+    "id": "workbook.publish",
+    "surface": "tadx content workbook publish",
+    "outcome": "Publish one local workbook, or up to 100 repeated managed workbook artifacts sequentially, to one explicit target or preview the operations.",
+    "type": "deliver",
+    "disposition": "ship",
+    "owner": "cli",
+    "selectors": "Native --file, or logical workspace with exact --id/--artifact-name or repeated --artifact managed workbook directory selectors; sole configured or explicit target; never inferred from artifact source; explicit destination project override; optional exact existing workbook",
+    "availability": "Cloud / Server; TWB validation API only on API 3.29 / Tableau 2026.2+ per C1",
+    "local_write": false,
+    "remote_mutation": true,
+    "supports_preview": true,
+    "safety_guard": "Batch selectors prevalidated; sequential processing continues independent failures and returns aggregate failure; preview shows resolved environment/name/LUID; collision/overwrite explicit; no fuzzy target",
+    "artifact_effect": "Read / publish",
+    "upstream_operation": "POST /api/{version}/sites/{site-id}/workbooks; upload sessions; optional internal validateWorkbook for TWB",
+    "evidence": "A1 §§5.11, 6.5–6.8, 8.6; C1 §§2.3, 5.4; S1 workbook-check correction; local official REST capture",
+    "evidence_level": "contract-verified",
+    "verification": "ready",
+    "implementation": "implemented",
+    "validation": "Contract-verified; exact source and tests recorded in docs/evidence/phase1-rest-contract.md; standalone workbook check not admitted",
+    "command_path": [
+      "content",
+      "workbook",
+      "publish"
+    ],
+    "raw_capable": false
+  },
+  {
+    "id": "workbook.pull",
+    "surface": "tadx content workbook pull",
+    "outcome": "Download one workbook, or up to 100 repeated authoritative workbook LUIDs sequentially, while capturing bounded lineage and optional direct published datasource dependencies.",
+    "type": "deliver",
+    "disposition": "ship",
+    "owner": "cli",
+    "selectors": "Workbook LUID/exact path; repeatable workbook LUID for batches; logical workspace; optional --include-pds",
+    "availability": "Cloud / Server",
+    "local_write": true,
+    "remote_mutation": false,
+    "supports_preview": false,
+    "safety_guard": "Batch selectors prevalidated; sequential processing continues independent failures and returns aggregate failure; dirty workbook re-pull requires --overwrite; dirty dependencies stop acquisition; incomplete lineage warns; bundle persistence is recoverable",
+    "artifact_effect": "Create / update workbook, lineage sidecar, and optional datasource siblings",
+    "upstream_operation": "Workbook content GET; Metadata GraphQL POST; datasource exact/content GET",
+    "evidence": "A1 §§6.3–6.4, 8.2, 8.6; C1 §§2.3, 5.4, 5.13; official REST and Metadata captures; Tableau Cloud happy-path capture",
+    "evidence_level": "contract-verified",
+    "verification": "ready",
+    "implementation": "implemented",
+    "validation": "Contract-verified; published-datasource traversal captured live; lineage schema and hermetic tests recorded in docs/evidence/lineage-metadata-contract.md; remaining exact sources and tests recorded in docs/evidence/phase1-rest-contract.md; artifact contract architecture-locked",
+    "command_path": [
+      "content",
+      "workbook",
+      "pull"
+    ],
+    "raw_capable": false
+  },
+  {
+    "id": "workbook.update",
+    "surface": "tadx content workbook update",
+    "outcome": "Rename one exact workbook or replace its owner, or preview the operation.",
+    "type": "change",
+    "disposition": "ship",
+    "owner": "cli",
+    "selectors": "Workbook LUID or exact name/project path; explicit new name and/or owner LUID; environment/site (inferred only when one is configured)",
+    "availability": "Cloud / Server",
+    "local_write": false,
+    "remote_mutation": true,
+    "supports_preview": true,
+    "safety_guard": "Re-resolve authoritative identity immediately before mutation; at least one change required; equal values are an exit-zero no-op",
+    "artifact_effect": "None",
+    "upstream_operation": "PUT /api/{version}/sites/{site-id}/workbooks/{workbook-id}",
+    "evidence": "docs/evidence/content-update-rest-contract.md",
+    "evidence_level": "contract-verified",
+    "verification": "ready",
+    "implementation": "implemented",
+    "validation": "Contract-verified bounded rename and owner replacement with preview, no-op, drift, and uncertain outcome",
+    "command_path": [
+      "content",
+      "workbook",
+      "update"
+    ],
+    "raw_capable": false
+  },
+  {
+    "id": "workspace.artifact.delete",
+    "surface": "tadx workspace artifact delete",
+    "outcome": "Delete one exact managed local artifact, or preview the operation.",
+    "type": "change",
+    "disposition": "ship",
+    "owner": "cli",
+    "selectors": "Logical workspace name plus kind and LUID, or exact workspace-relative managed artifact path",
+    "availability": "Local / all",
+    "local_write": true,
+    "remote_mutation": false,
+    "supports_preview": true,
+    "safety_guard": "Exact identity; workspace boundary; dirty state explicit; never expands into generic cleanup",
+    "artifact_effect": "Delete",
+    "upstream_operation": "Local filesystem removal plus workspace metadata update",
+    "evidence": "Maintainer decision; A1 §§6.1, 7.5–7.6, 8.1–8.2",
+    "evidence_level": "architecture-locked",
+    "verification": "ready",
+    "implementation": "implemented",
+    "validation": "Architecture-locked local boundary; detailed cleanup policy remains deferred",
+    "command_path": [
+      "workspace",
+      "artifact",
+      "delete"
+    ],
+    "raw_capable": false
+  },
+  {
+    "id": "workspace.clean",
+    "surface": "tadx workspace clean",
+    "outcome": "Remove explicitly selected disposable local state while preserving canonical artifacts by default.",
+    "type": "change",
+    "disposition": "ship",
+    "owner": "cli",
+    "selectors": "Workspace and cleanup class",
+    "availability": "Local / all",
+    "local_write": true,
+    "remote_mutation": false,
+    "supports_preview": false,
+    "safety_guard": "Path-boundary guard; managed payloads preserved by default",
+    "artifact_effect": "None",
+    "upstream_operation": "Local .tadx/ and temporary state",
+    "evidence": "A1 §§5.8, 7.5–7.6, 9.2; C1 §2.1",
+    "evidence_level": "local-contract",
+    "verification": "ready",
+    "implementation": "implemented",
+    "validation": "Architecture-locked local contract",
+    "command_path": [
+      "workspace",
+      "clean"
+    ],
+    "raw_capable": false
+  },
+  {
+    "id": "workspace.clone",
+    "surface": "tadx workspace clone",
+    "outcome": "Copy an existing managed workspace under a new identity at \u0026lt;home\u0026gt;/TADX/workspaces/\u0026lt;name\u0026gt; or an explicit --path.",
+    "type": "change",
+    "disposition": "ship",
+    "owner": "cli",
+    "selectors": "Source/name; optional path override",
+    "availability": "Local / all",
+    "local_write": true,
+    "remote_mutation": false,
+    "supports_preview": false,
+    "safety_guard": "Rejects existing destination and symlinked entries; portable name; new identity; name/ID/path collision checks; registered root appears only under --full",
+    "artifact_effect": "None",
+    "upstream_operation": "Local filesystem",
+    "evidence": "A1 §§6.1, 7.5–7.6, 9.2; C1 §2.1",
+    "evidence_level": "local-contract",
+    "verification": "ready",
+    "implementation": "implemented",
+    "validation": "Architecture-locked local contract",
+    "command_path": [
+      "workspace",
+      "clone"
+    ],
+    "raw_capable": false
+  },
+  {
+    "id": "workspace.create",
+    "surface": "tadx workspace create",
+    "outcome": "Create a named workspace with tadx.yaml, artifacts/, and .tadx/ under \u0026lt;home\u0026gt;/TADX/workspaces/\u0026lt;name\u0026gt; or an explicit --path.",
+    "type": "change",
+    "disposition": "ship",
+    "owner": "cli",
+    "selectors": "Name; optional path override",
+    "availability": "Local / all",
+    "local_write": true,
+    "remote_mutation": false,
+    "supports_preview": false,
+    "safety_guard": "Portable name, identity, root collision, and path-boundary checks; no implicit creation by pull; registered root appears only under --full",
+    "artifact_effect": "None",
+    "upstream_operation": "Local filesystem",
+    "evidence": "A1 §§6.1, 7.5–7.6, 9.2; C1 §2.1",
+    "evidence_level": "local-contract",
+    "verification": "ready",
+    "implementation": "implemented",
+    "validation": "Architecture-locked local contract",
+    "command_path": [
+      "workspace",
+      "create"
+    ],
+    "raw_capable": false
+  },
+  {
+    "id": "workspace.delete",
+    "surface": "tadx workspace delete",
+    "outcome": "Remove one exact registered workspace and its managed root, or preview the operation.",
+    "type": "change",
+    "disposition": "ship",
+    "owner": "cli",
+    "selectors": "Exact logical workspace name",
+    "availability": "Local / all",
+    "local_write": true,
+    "remote_mutation": false,
+    "supports_preview": true,
+    "safety_guard": "Registered root, canonical containment, dirty-state, manifest, symlink, and broad-target guards; default-reference guard",
+    "artifact_effect": "Delete",
+    "upstream_operation": "Local workspace registry and managed root",
+    "evidence": "Workspace architecture and local manager tests",
+    "evidence_level": "local-contract",
+    "verification": "ready",
+    "implementation": "implemented",
+    "validation": "Local contract verified by manager and CLI tests",
+    "command_path": [
+      "workspace",
+      "delete"
+    ],
+    "raw_capable": false
+  },
+  {
+    "id": "workspace.list",
+    "surface": "tadx workspace list",
+    "outcome": "List registered named workspaces.",
+    "type": "find",
+    "disposition": "ship",
+    "owner": "cli",
+    "selectors": "Bounded registered-workspace page",
+    "availability": "Local / all",
+    "local_write": false,
+    "remote_mutation": false,
+    "supports_preview": false,
+    "safety_guard": "No unbounded filesystem scan; machine-local roots appear only under --full",
+    "artifact_effect": "None",
+    "upstream_operation": "Local config/filesystem",
+    "evidence": "A1 §§6.1, 7.2, 9.2; C1 §2.1",
+    "evidence_level": "local-contract",
+    "verification": "ready",
+    "implementation": "implemented",
+    "validation": "Architecture-locked local contract",
+    "command_path": [
+      "workspace",
+      "list"
+    ],
+    "raw_capable": false
+  },
+  {
+    "id": "workspace.move",
+    "surface": "tadx workspace artifact move",
+    "outcome": "Move one local artifact without changing Tableau identity.",
+    "type": "change",
+    "disposition": "ship",
+    "owner": "cli",
+    "selectors": "Source and destination logical workspace names plus workspace-relative artifact path, or kind and Tableau LUID",
+    "availability": "Local / all",
+    "local_write": true,
+    "remote_mutation": false,
+    "supports_preview": false,
+    "safety_guard": "Collision/path-boundary guard; no remote move",
+    "artifact_effect": "Update",
+    "upstream_operation": "Local filesystem move plus metadata validation",
+    "evidence": "A1 §§7.5, 8.1 and V1 exclusions; C1 §2.1",
+    "evidence_level": "local-contract",
+    "verification": "ready",
+    "implementation": "implemented",
+    "validation": "Architecture-locked local contract",
+    "command_path": [
+      "workspace",
+      "artifact",
+      "move"
+    ],
+    "raw_capable": false
+  },
+  {
+    "id": "workspace.register",
+    "surface": "tadx workspace register",
+    "outcome": "Adopt an existing on-disk workspace directory into the local registry using its tadx.yaml identity.",
+    "type": "change",
+    "disposition": "ship",
+    "owner": "cli",
+    "selectors": "Path/name",
+    "availability": "Local / all",
+    "local_write": true,
+    "remote_mutation": false,
+    "supports_preview": false,
+    "safety_guard": "Requires a valid tadx.yaml; name/ID/path collision checks; adopts existing identity, no directory mutation",
+    "artifact_effect": "None",
+    "upstream_operation": "Local filesystem",
+    "evidence": "A1 §§6.1, 7.5–7.6, 9.2; C1 §2.1",
+    "evidence_level": "local-contract",
+    "verification": "ready",
+    "implementation": "implemented",
+    "validation": "Architecture-locked local contract",
+    "command_path": [
+      "workspace",
+      "register"
+    ],
+    "raw_capable": false
+  },
+  {
+    "id": "workspace.set-default",
+    "surface": "tadx workspace set-default",
+    "outcome": "Set one registered and available workspace as the general default.",
+    "type": "change",
+    "disposition": "ship",
+    "owner": "cli",
+    "selectors": "Exact logical workspace name",
+    "availability": "Local / all",
+    "local_write": true,
+    "remote_mutation": false,
+    "supports_preview": false,
+    "safety_guard": "Workspace must exist, remain registered, and have a valid manifest",
+    "artifact_effect": "None",
+    "upstream_operation": "Local workspace registry configuration",
+    "evidence": "Workspace architecture and local manager tests",
+    "evidence_level": "local-contract",
+    "verification": "ready",
+    "implementation": "implemented",
+    "validation": "Local contract verified by manager and CLI tests",
+    "command_path": [
+      "workspace",
+      "set-default"
+    ],
+    "raw_capable": false
+  },
+  {
+    "id": "workspace.status",
+    "surface": "tadx workspace status",
+    "outcome": "Report effective workspace, artifact state, provenance, dirty/missing status, and the registered root under --full.",
+    "type": "inspect",
+    "disposition": "ship",
+    "owner": "cli",
+    "selectors": "--workspace or deterministic resolution chain",
+    "availability": "Local / all",
+    "local_write": false,
+    "remote_mutation": false,
+    "supports_preview": false,
+    "safety_guard": "No locking; concurrent races are caller responsibility; machine-local root appears only under --full",
+    "artifact_effect": "Read",
+    "upstream_operation": "Fingerprint managed local content",
+    "evidence": "A1 §§6.1, 6.3–6.4, 8.2, ADR-032; C1 §2.1",
+    "evidence_level": "architecture-locked",
+    "verification": "ready",
+    "implementation": "implemented",
+    "validation": "Architecture-locked; C1 lock suggestion rejected",
+    "command_path": [
+      "workspace",
+      "status"
+    ],
+    "raw_capable": false
+  },
+  {
+    "id": "workspace.unregister",
+    "surface": "tadx workspace unregister",
+    "outcome": "Remove one workspace registration while preserving every file in its root.",
+    "type": "change",
+    "disposition": "ship",
+    "owner": "cli",
+    "selectors": "Exact logical workspace name",
+    "availability": "Local / all",
+    "local_write": true,
+    "remote_mutation": false,
+    "supports_preview": false,
+    "safety_guard": "Exact registration; default-reference guard; filesystem remains untouched",
+    "artifact_effect": "None",
+    "upstream_operation": "Local workspace registry configuration",
+    "evidence": "Workspace architecture and local manager tests",
+    "evidence_level": "local-contract",
+    "verification": "ready",
+    "implementation": "implemented",
+    "validation": "Local contract verified by manager and CLI tests",
+    "command_path": [
+      "workspace",
+      "unregister"
+    ],
+    "raw_capable": false
+  }
+]
+</script>
+<script>
+(() => {
+  "use strict";
+
+  const rawCapabilities = JSON.parse(document.getElementById("capability-data").textContent);
+  const inventoryListIDs = new Set([
+    "admin.group.list", "admin.user.list", "datasource.list",
+    "flow.list", "project.list", "workbook.list"
+  ]);
+
+  const defaultSource = cap => {
+    if (cap.owner !== "cli") return "Delegated external owner";
+    if (cap.id === "search.run") return "Native Tableau search, dedicated live adapters, or local SQLite with --catalog";
+    if (inventoryListIDs.has(cap.id)) return "Complete live inventory refreshed into a local catalog snapshot";
+    if (cap.catalog_opt_in) return "Live Tableau by default; local SQLite with --catalog";
+    if (cap.availability.startsWith("Local")) return "Local configuration, workspace, artifact, or catalog state";
+    return "Live Tableau through the capability's bounded adapter";
+  };
+
+  const defaultBehavior = cap => {
+    if (cap.owner !== "cli") return "Execution belongs to the named external owner and has no TADX command selectors.";
+    if (cap.remote_mutation) return "Requires the effective remote-mutation policy to be enabled; --preview remains read-only where supported.";
+    if (cap.pull_default) return "Retrieves from Tableau and writes the managed artifact immediately; no --preview surface is registered.";
+    if (cap.inventory_list) return "Inventories the complete live scope, replaces that catalog scope, then renders the bounded result from SQLite.";
+    if (cap.id === "search.run") return "Uses native live search for nonempty content terms; --catalog is local-only and blank text requires a concrete type.";
+    if (cap.local_write) return "Performs the bounded local write after validation.";
+    return "Performs a bounded read-only inspection or discovery operation.";
+  };
+
+  const capabilities = rawCapabilities.map(cap => {
+    const parts = cap.command_path?.length ? cap.command_path : cap.id.split(".");
+    const domain = parts[0];
+    const resource = parts.length > 2 ? parts[1] : "";
+    const treeAction = parts.length > 2 ? parts.slice(2).join(" ") : parts.at(-1);
+    const catalogOptIn = /(?:^|\s)--catalog(?:\s|;|,|$)/i.test(`${cap.selectors} ${cap.safety_guard} ${cap.outcome}`);
+    const normalized = {
+      ...cap,
+      domain,
+      resource,
+      action: parts.at(-1),
+      tree_action: treeAction,
+      command: cap.owner === "cli" ? cap.surface : "",
+      operation_type: cap.type,
+      implementation_state: cap.implementation,
+      verification_readiness: cap.verification,
+      selectors: [cap.selectors],
+      blocker: cap.verification === "blocked" ? (cap.validation || "Verification blocked") : "",
+      mcp_overlap: "",
+      execution_enabled: cap.owner === "cli" && cap.implementation === "implemented" && !cap.remote_mutation,
+      catalog_opt_in: catalogOptIn,
+      inventory_list: inventoryListIDs.has(cap.id),
+      native_search: cap.id === "search.run",
+      pull_default: cap.id.endsWith(".pull"),
+      default_mode: cap.remote_mutation ? "mutation-gated" : cap.local_write ? "local-write" : "read-only"
+    };
+    normalized.default_source = defaultSource(normalized);
+    normalized.default_behavior = defaultBehavior(normalized);
+    return normalized;
+  });
+
+  const countBy = key => capabilities.reduce((result, cap) => {
+    const value = cap[key];
+    result[value] = (result[value] || 0) + 1;
+    return result;
+  }, {});
+  const owners = countBy("owner");
+  const domains = countBy("domain");
+  const blockers = capabilities.filter(cap => cap.blocker).reduce((result, cap) => {
+    result[cap.blocker] = (result[cap.blocker] || 0) + 1;
+    return result;
+  }, {});
+  const counts = {
+    total: capabilities.length,
+    implemented: capabilities.filter(cap => cap.owner === "cli" && cap.implementation_state === "implemented").length,
+    planned: capabilities.filter(cap => cap.implementation_state === "planned").length,
+    blocked: capabilities.filter(cap => cap.verification_readiness === "blocked").length,
+    delegated: capabilities.filter(cap => cap.disposition === "delegated").length,
+    execution_enabled: capabilities.filter(cap => cap.execution_enabled).length,
+    native_search: capabilities.filter(cap => cap.native_search).length,
+    pull_default: capabilities.filter(cap => cap.pull_default).length,
+    remote_mutations: capabilities.filter(cap => cap.remote_mutation).length,
+    inventory_lists: capabilities.filter(cap => cap.inventory_list).length
+  };
+  const inventory = { capabilities, counts, owners, domains, blockers };
+
+  const stateMeta = {
+    "implemented": { label: "Implemented", className: "implemented" },
+    "planned": { label: "Planned", className: "planned" },
+    "external/delegated": { label: "External / delegated", className: "external-delegated" }
+  };
+  const ownerLabels = {
+    "cli": "CLI",
+    "mcp": "Tableau MCP",
+    "tableau/desktop-mcp": "Tableau Desktop / Desktop MCP",
+    "agent/skill": "Agent / skill"
+  };
+
+  const refs = {
+    tree: document.getElementById("capability-tree"),
+    detail: document.getElementById("detailContent"),
+    empty: document.getElementById("emptyState"),
+    matched: document.getElementById("matchedCount"),
+    total: document.getElementById("totalCount"),
+    search: document.getElementById("searchInput"),
+    state: document.getElementById("stateFilter"),
+    owner: document.getElementById("ownerFilter"),
+    domain: document.getElementById("domainFilter"),
+    mutation: document.getElementById("mutationFilter"),
+    blocker: document.getElementById("blockerFilter"),
+    behavior: document.getElementById("behaviorFilter"),
+    clear: document.getElementById("clearFilters"),
+    expand: document.getElementById("expandAll"),
+    collapse: document.getElementById("collapseAll"),
+    detailsPanel: document.getElementById("detailsPanel")
+  };
+
+  const setText = (id, value) => { const element = document.getElementById(id); if (element) element.textContent = value; };
+  setText("sourceTotal", counts.total);
+  setText("bindingCount", counts.implemented);
+  setText("implementedCount", counts.implemented);
+  setText("plannedCount", counts.planned);
+  setText("blockedCount", counts.blocked);
+  setText("delegatedCount", counts.delegated);
+  setText("executionCount", counts.execution_enabled);
+  setText("nativeSearchCount", counts.native_search);
+  setText("pullDefaultCount", counts.pull_default);
+  setText("remoteMutationCount", counts.remote_mutations);
+  setText("inventoryListCount", counts.inventory_lists);
+  setText("footerTotal", counts.total);
+  refs.total.textContent = counts.total;
+  if (counts.planned === 0) document.querySelector(".stat-card.planned")?.classList.add("is-zero");
+  if (counts.blocked === 0) document.querySelector(".stat-card.blocked")?.classList.add("is-zero");
+
+  const appendOptions = (select, values, formatter = value => value) => {
+    values.forEach(value => {
+      const option = document.createElement("option");
+      option.value = value;
+      option.textContent = formatter(value);
+      select.appendChild(option);
+    });
+  };
+  appendOptions(refs.owner, Object.keys(inventory.owners), value => `${ownerLabels[value] || value} (${inventory.owners[value]})`);
+  appendOptions(refs.domain, Object.keys(inventory.domains), value => `${value} (${inventory.domains[value]})`);
+  appendOptions(refs.blocker, Object.keys(inventory.blockers), value => `${value} (${inventory.blockers[value]})`);
+
+  let expanded = new Set(["root"]);
+  let selectedNodeId = "root";
+  let focusedNodeId = "root";
+  let nodeIndex = new Map();
+
+  const normalize = value => String(value ?? "").toLowerCase().replace(/\s+/g, " ").trim();
+  const escapeHTML = value => String(value ?? "")
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#039;");
+  const safeID = value => String(value).replace(/[^a-zA-Z0-9_-]/g, "-");
+  const findRow = nodeID => [...refs.tree.querySelectorAll(".tree-row")].find(row => row.dataset.nodeId === nodeID) || null;
+
+  const isFiltering = () => Boolean(
+    refs.search.value.trim() || refs.state.value || refs.owner.value || refs.domain.value ||
+    refs.mutation.value || refs.blocker.value || refs.behavior.value
+  );
+
+  function searchableText(cap) {
+    return normalize([
+      cap.id, cap.surface, cap.command, cap.outcome, cap.owner, cap.domain, cap.resource,
+      cap.action, cap.selectors.join(" "), cap.safety_guard, cap.blocker, cap.validation,
+      cap.availability, cap.upstream_operation, cap.evidence, cap.mcp_overlap,
+      cap.default_source, cap.default_behavior, cap.default_mode
+    ].join(" "));
+  }
+
+  function matches(cap) {
+    const query = normalize(refs.search.value);
+    if (query && !searchableText(cap).includes(query)) return false;
+    if (refs.state.value && cap.implementation_state !== refs.state.value) return false;
+    if (refs.owner.value && cap.owner !== refs.owner.value) return false;
+    if (refs.domain.value && cap.domain !== refs.domain.value) return false;
+
+    switch (refs.mutation.value) {
+      case "remote": if (!cap.remote_mutation) return false; break;
+      case "not-remote": if (cap.remote_mutation) return false; break;
+      case "local": if (!cap.local_write) return false; break;
+      case "any-write": if (!cap.remote_mutation && !cap.local_write) return false; break;
+      case "read-only": if (cap.remote_mutation || cap.local_write) return false; break;
+    }
+
+    switch (refs.blocker.value) {
+      case "blocked": if (cap.verification_readiness !== "blocked") return false; break;
+      case "unblocked": if (cap.verification_readiness === "blocked") return false; break;
+      default: if (refs.blocker.value && cap.blocker !== refs.blocker.value) return false;
+    }
+
+    switch (refs.behavior.value) {
+      case "native-search": if (!cap.native_search) return false; break;
+      case "inventory-list": if (!cap.inventory_list) return false; break;
+      case "catalog-opt-in": if (!cap.catalog_opt_in) return false; break;
+      case "pull-now": if (!cap.pull_default) return false; break;
+      case "preview": if (!cap.supports_preview) return false; break;
+      case "mutation-gated": if (!cap.remote_mutation) return false; break;
+      case "local-write": if (!cap.local_write) return false; break;
+    }
+    return true;
+  }
+
+  function makeNode(id, label, type, children = [], cap = null, extra = {}) {
+    const node = { id, label, type, children, cap, ...extra };
+    node.capabilities = cap ? [cap] : children.flatMap(child => child.capabilities);
+    return node;
+  }
+
+  function groupBy(items, keyFn) {
+    const map = new Map();
+    items.forEach(item => {
+      const key = keyFn(item);
+      if (!map.has(key)) map.set(key, []);
+      map.get(key).push(item);
+    });
+    return map;
+  }
+
+  function buildLeaves(items) {
+    return items.slice().sort((a, b) => a.id.localeCompare(b.id))
+      .map(cap => makeNode(`cap:${cap.id}`, cap.tree_action, "action", [], cap));
+  }
+
+  function buildDomainNodes(items, prefix, delegated = false) {
+    const domains = groupBy(items, cap => cap.domain);
+    return [...domains.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([domain, domainCaps]) => {
+      const resources = groupBy(domainCaps, cap => cap.resource || "Direct actions");
+      const resourceNodes = [...resources.entries()].sort(([a], [b]) => {
+        if (a === "Direct actions") return -1;
+        if (b === "Direct actions") return 1;
+        return a.localeCompare(b);
+      }).map(([resource, resourceCaps]) => makeNode(
+        `${prefix}:resource:${domain}:${resource}`, resource, "resource", buildLeaves(resourceCaps), null, { delegated }
+      ));
+      return makeNode(`${prefix}:domain:${domain}`, domain, "domain", resourceNodes, null, { delegated });
+    });
+  }
+
+  function buildTree(items) {
+    const cli = items.filter(cap => cap.owner === "cli");
+    const delegated = items.filter(cap => cap.owner !== "cli");
+    const children = buildDomainNodes(cli, "cli");
+    if (delegated.length) {
+      const owners = groupBy(delegated, cap => cap.owner);
+      const ownerNodes = [...owners.entries()]
+        .sort(([a], [b]) => (ownerLabels[a] || a).localeCompare(ownerLabels[b] || b))
+        .map(([owner, ownerCaps]) => makeNode(
+          `delegated:owner:${owner}`, ownerLabels[owner] || owner, "owner",
+          buildDomainNodes(ownerCaps, `delegated:${owner}`, true), null,
+          { owner, delegated: true }
+        ));
+      children.push(makeNode("delegated", "Delegated operations", "delegated-root", ownerNodes, null, { delegated: true }));
+    }
+    return makeNode("root", "tadx", "root", children);
+  }
+
+  function indexNodes(node, parentID = "") {
+    node.parentId = parentID;
+    nodeIndex.set(node.id, node);
+    node.children.forEach(child => indexNodes(child, node.id));
+  }
+
+  function stateCounts(node) {
+    return node.capabilities.reduce((result, cap) => {
+      result[cap.implementation_state] = (result[cap.implementation_state] || 0) + 1;
+      return result;
+    }, {});
+  }
+
+  function stateGradient(node) {
+    const totals = stateCounts(node);
+    const total = node.capabilities.length || 1;
+    const implementedEnd = (totals.implemented || 0) / total * 100;
+    const plannedEnd = implementedEnd + (totals.planned || 0) / total * 100;
+    return `conic-gradient(var(--implemented) 0 ${implementedEnd}%, var(--planned) ${implementedEnd}% ${plannedEnd}%, var(--delegated) ${plannedEnd}% 100%)`;
+  }
+
+  function addBadge(container, label, className, title) {
+    const badge = document.createElement("span");
+    badge.className = `badge ${className}`;
+    badge.textContent = label;
+    if (title) badge.title = title;
+    container.appendChild(badge);
+  }
+
+  function renderNode(node, level) {
+    const li = document.createElement("li");
+    li.setAttribute("role", "none");
+    const hasChildren = node.children.length > 0;
+    const forcedOpen = isFiltering() && hasChildren;
+    const isOpen = forcedOpen || expanded.has(node.id);
+
+    const row = document.createElement("button");
+    row.type = "button";
+    row.className = "tree-row";
+    row.id = `row-${safeID(node.id)}`;
+    row.dataset.nodeId = node.id;
+    row.dataset.parentId = node.parentId || "";
+    row.setAttribute("role", "treeitem");
+    row.setAttribute("aria-level", String(level));
+    row.setAttribute("aria-selected", String(selectedNodeId === node.id));
+    row.tabIndex = focusedNodeId === node.id ? 0 : -1;
+    if (hasChildren) row.setAttribute("aria-expanded", String(isOpen));
+    if (node.cap) {
+      const stateClass = stateMeta[node.cap.implementation_state].className;
+      row.classList.add("leaf", `state-${stateClass}`);
+      if (node.cap.verification_readiness === "blocked") row.classList.add("is-blocked");
+    }
+
+    const chevron = document.createElement("span");
+    chevron.className = `chevron${hasChildren ? "" : " placeholder"}`;
+    chevron.setAttribute("aria-hidden", "true");
+    chevron.textContent = hasChildren ? (isOpen ? "▼" : "▶") : "•";
+    row.appendChild(chevron);
+
+    if (node.cap) {
+      const dot = document.createElement("span");
+      dot.className = `state-dot ${stateMeta[node.cap.implementation_state].className}`;
+      dot.setAttribute("aria-hidden", "true");
+      row.appendChild(dot);
+    } else {
+      const ring = document.createElement("span");
+      ring.className = "state-ring";
+      ring.style.setProperty("--state-gradient", stateGradient(node));
+      ring.setAttribute("aria-hidden", "true");
+      row.appendChild(ring);
+    }
+
+    const main = document.createElement("span");
+    main.className = "node-main";
+    const line = document.createElement("span");
+    line.className = "node-line";
+    const label = document.createElement("span");
+    label.className = "node-label";
+    if (node.type === "root") label.classList.add("root-label");
+    if (node.delegated) label.classList.add("delegated-label");
+    label.textContent = node.label;
+    line.appendChild(label);
+    main.appendChild(line);
+    if (node.cap) {
+      const id = document.createElement("span");
+      id.className = "node-id";
+      id.textContent = node.cap.id;
+      main.appendChild(id);
+    } else if (node.type === "owner") {
+      const id = document.createElement("span");
+      id.className = "node-id";
+      id.textContent = `owner: ${node.owner}`;
+      main.appendChild(id);
+    }
+    row.appendChild(main);
+
+    const meta = document.createElement("span");
+    meta.className = "node-meta";
+    if (node.cap) {
+      const cap = node.cap;
+      if (cap.pull_default) addBadge(meta, "PULL NOW", "pull", "Pull executes and writes by default");
+      else if (cap.native_search) addBadge(meta, "NATIVE SEARCH", "live", "Uses Tableau native search for live content terms");
+      else if (cap.inventory_list) addBadge(meta, "CATALOG LIST", "catalog", "Unfiltered live list refreshes a complete catalog scope and renders the snapshot");
+      else if (cap.catalog_opt_in) addBadge(meta, "CATALOG", "catalog", "Live by default; --catalog is local-only");
+      if (cap.remote_mutation) addBadge(meta, "REMOTE", "remote", "Remote mutation; gated by TADX_ENABLE_MUTATIONS=1");
+      if (cap.local_write) addBadge(meta, "LOCAL", "local", "Local write");
+      if (cap.disposition === "delegated") addBadge(meta, "DELEGATED", "delegated", "External owner");
+      if (cap.verification_readiness === "blocked") addBadge(meta, "BLOCKED", "blocked", `Blocked by ${cap.blocker}`);
+      const execution = document.createElement("span");
+      execution.className = `exec-pill ${cap.execution_enabled ? "enabled" : "disabled"}`;
+      execution.textContent = cap.execution_enabled ? "ENABLED" : "DISABLED";
+      meta.appendChild(execution);
+    } else {
+      if (node.type === "delegated-root") addBadge(meta, "DELEGATED", "delegated", "Operations owned outside the TADX CLI");
+      const count = document.createElement("span");
+      count.className = "count-pill";
+      count.textContent = node.capabilities.length;
+      count.setAttribute("aria-label", `${node.capabilities.length} capabilities`);
+      meta.appendChild(count);
+    }
+    row.appendChild(meta);
+
+    row.setAttribute("aria-label", node.cap
+      ? `${node.cap.id}, ${stateMeta[node.cap.implementation_state].label}, ${node.cap.execution_enabled ? "execution enabled" : "execution disabled"}`
+      : `${node.label}, ${node.capabilities.length} capabilities`);
+
+    row.addEventListener("click", () => {
+      focusedNodeId = node.id;
+      selectedNodeId = node.id;
+      if (hasChildren && !isFiltering()) {
+        if (expanded.has(node.id)) expanded.delete(node.id); else expanded.add(node.id);
+      }
+      render();
+      requestAnimationFrame(() => findRow(node.id)?.focus({ preventScroll: true }));
+      if (node.cap && window.matchMedia("(max-width: 820px)").matches) {
+        setTimeout(() => refs.detailsPanel.scrollIntoView({ behavior: "smooth", block: "start" }), 20);
+      }
+    });
+
+    li.appendChild(row);
+    if (hasChildren) {
+      const group = document.createElement("ul");
+      group.setAttribute("role", "group");
+      group.hidden = !isOpen;
+      node.children.forEach(child => group.appendChild(renderNode(child, level + 1)));
+      li.appendChild(group);
+    }
+    return li;
+  }
+
+  function visibleRows() {
+    return [...refs.tree.querySelectorAll(".tree-row")].filter(row => !row.closest("ul[hidden]"));
+  }
+
+  function focusRow(row) {
+    visibleRows().forEach(item => item.tabIndex = -1);
+    row.tabIndex = 0;
+    focusedNodeId = row.dataset.nodeId;
+    row.focus();
+  }
+
+  refs.tree.addEventListener("keydown", event => {
+    const rows = visibleRows();
+    const current = event.target.closest(".tree-row");
+    if (!current || !rows.length) return;
+    const index = rows.indexOf(current);
+    const node = nodeIndex.get(current.dataset.nodeId);
+    let target = null;
+    switch (event.key) {
+      case "ArrowDown": target = rows[Math.min(index + 1, rows.length - 1)]; break;
+      case "ArrowUp": target = rows[Math.max(index - 1, 0)]; break;
+      case "Home": target = rows[0]; break;
+      case "End": target = rows[rows.length - 1]; break;
+      case "ArrowRight":
+        if (node.children.length && current.getAttribute("aria-expanded") === "false" && !isFiltering()) {
+          expanded.add(node.id); render(); requestAnimationFrame(() => { const restored = findRow(node.id); if (restored) focusRow(restored); });
+        } else if (node.children.length) target = rows[index + 1] || current;
+        break;
+      case "ArrowLeft":
+        if (node.children.length && current.getAttribute("aria-expanded") === "true" && !isFiltering()) {
+          expanded.delete(node.id); render(); requestAnimationFrame(() => { const restored = findRow(node.id); if (restored) focusRow(restored); });
+        } else if (node.parentId) target = findRow(node.parentId);
+        break;
+      case "Enter":
+      case " ": current.click(); event.preventDefault(); return;
+      default: return;
+    }
+    if (target) focusRow(target);
+    event.preventDefault();
+  });
+
+  function badgeHTML(cap) {
+    const badges = [];
+    const state = stateMeta[cap.implementation_state];
+    const stateStyle = state.className === "implemented"
+      ? "background:var(--implemented-bg);color:var(--implemented);border-color:#9bd3c8"
+      : state.className === "planned"
+        ? "background:var(--planned-bg);color:var(--planned);border-color:#e6c878"
+        : "";
+    badges.push(`<span class="badge ${state.className === "external-delegated" ? "delegated" : ""}" style="${stateStyle}">${escapeHTML(state.label.toUpperCase())}</span>`);
+    if (cap.native_search) badges.push('<span class="badge live">NATIVE SEARCH</span><span class="badge catalog">--CATALOG</span>');
+    else if (cap.inventory_list) badges.push('<span class="badge delegated">LIVE INVENTORY</span><span class="badge catalog">CATALOG SNAPSHOT</span>');
+    else if (cap.catalog_opt_in) badges.push('<span class="badge live">LIVE DEFAULT</span><span class="badge catalog">--CATALOG</span>');
+    if (cap.pull_default) badges.push('<span class="badge pull">PULL NOW</span>');
+    if (cap.remote_mutation) badges.push('<span class="badge remote">REMOTE MUTATION</span><span class="badge gated">GATED</span>');
+    if (cap.local_write) badges.push('<span class="badge local">LOCAL WRITE</span>');
+    if (cap.supports_preview) badges.push('<span class="badge preview">SUPPORTS --PREVIEW</span>');
+    if (cap.disposition === "delegated") badges.push('<span class="badge delegated">DELEGATED</span>');
+    if (cap.verification_readiness === "blocked") badges.push('<span class="badge blocked">BLOCKED</span>');
+    badges.push(`<span class="exec-pill ${cap.execution_enabled ? "enabled" : "disabled"}">${cap.execution_enabled ? "EXECUTION ENABLED" : "EXECUTION DISABLED"}</span>`);
+    return badges.join("");
+  }
+
+  function executionReason(cap) {
+    if (cap.implementation_state === "external/delegated") return "Execution belongs to the delegated external owner, not the TADX CLI.";
+    if (cap.verification_readiness === "blocked") return `Not executable because verification is blocked by ${cap.blocker}.`;
+    if (cap.implementation_state !== "implemented") return "No executable command binding is present yet.";
+    if (cap.remote_mutation) return "Implemented and discoverable, but marked disabled under this snapshot's disabled mutation-policy baseline. The effective policy may come from the saved user setting or the environment override; inspect it with tadx mutation status. Agents require explicit permission before changing either scope.";
+    if (cap.pull_default) return "Execution is enabled. Invoking the pull retrieves from Tableau and writes the managed artifact immediately; pulls do not expose --preview.";
+    return "Implemented and execution-enabled under this snapshot's disabled mutation-policy baseline.";
+  }
+
+  function breadcrumbFor(cap) {
+    if (cap.owner !== "cli") return ["tadx", "delegated", cap.owner, cap.domain, cap.resource, cap.action].filter(Boolean).join(" / ");
+    return ["tadx", cap.domain, cap.resource || "direct actions", cap.tree_action].filter(Boolean).join(" / ");
+  }
+
+  function renderCapabilityDetail(cap) {
+    const exactLabel = cap.owner === "cli" ? "Exact command surface" : "Delegated surface";
+    const binding = cap.command || "No TADX command binding";
+    const copyButton = cap.owner === "cli" && cap.surface.startsWith("tadx ")
+      ? '<button class="copy-button" id="copyCommand" type="button">Copy</button>' : "";
+    const previewBasis = `<div class="fact"><dt>Preview behavior source</dt><dd>Executable registry</dd></div>`;
+
+    refs.detail.innerHTML = `
+      <p class="detail-kicker">Capability action</p>
+      <h2 class="detail-title">${escapeHTML(cap.id)}</h2>
+      <div class="breadcrumb">${escapeHTML(breadcrumbFor(cap))}</div>
+      <div class="detail-badges">${badgeHTML(cap)}</div>
+      <p class="outcome">${escapeHTML(cap.outcome)}</p>
+
+      <div class="behavior-callout"><strong>Default invocation</strong><span>${escapeHTML(cap.default_behavior)}</span></div>
+
+      <div class="command-box">
+        <span class="command-label">${escapeHTML(exactLabel)}</span>
+        <code>${escapeHTML(cap.surface)}</code>
+        ${copyButton}
+      </div>
+
+      <section class="detail-section">
+        <h3>Identity and ownership</h3>
+        <dl class="fact-grid">
+          <div class="fact full"><dt>Capability ID</dt><dd><code>${escapeHTML(cap.id)}</code></dd></div>
+          <div class="fact"><dt>Owner</dt><dd>${escapeHTML(cap.owner)}</dd></div>
+          <div class="fact"><dt>Disposition</dt><dd>${escapeHTML(cap.disposition)}</dd></div>
+          <div class="fact"><dt>Command domain</dt><dd><code>${escapeHTML(cap.domain)}</code></dd></div>
+          <div class="fact"><dt>Resource</dt><dd>${cap.resource ? `<code>${escapeHTML(cap.resource)}</code>` : '<span class="value-muted">Direct domain action</span>'}</dd></div>
+          <div class="fact"><dt>Action</dt><dd><code>${escapeHTML(cap.action)}</code></dd></div>
+          <div class="fact"><dt>Operation type</dt><dd>${escapeHTML(cap.operation_type)}</dd></div>
+          <div class="fact full"><dt>Implemented command binding</dt><dd><code>${escapeHTML(binding)}</code></dd></div>
+        </dl>
+      </section>
+
+      <section class="detail-section">
+        <h3>Implementation and execution</h3>
+        <dl class="fact-grid">
+          <div class="fact"><dt>Implementation state</dt><dd>${escapeHTML(stateMeta[cap.implementation_state].label)}</dd></div>
+          <div class="fact"><dt>Execution enabled now</dt><dd class="${cap.execution_enabled ? "value-good" : "value-muted"}">${cap.execution_enabled ? "Yes" : "No"}</dd></div>
+          <div class="fact"><dt>Verification readiness</dt><dd class="${cap.verification_readiness === "blocked" ? "value-danger" : "value-good"}">${escapeHTML(cap.verification_readiness)}</dd></div>
+          <div class="fact"><dt>Blocker</dt><dd class="${cap.blocker ? "value-danger" : "value-muted"}">${escapeHTML(cap.blocker || "None")}</dd></div>
+          <div class="fact"><dt>Remote mutation</dt><dd>${cap.remote_mutation ? "Yes" : "No"}</dd></div>
+          <div class="fact"><dt>Local write</dt><dd>${cap.local_write ? "Yes" : "No"}</dd></div>
+          <div class="fact"><dt>Supports --preview</dt><dd>${cap.supports_preview ? "Yes" : "No"}</dd></div>
+          <div class="fact"><dt>Raw capable</dt><dd>${cap.raw_capable ? "Yes" : "No"}</dd></div>
+          ${previewBasis}
+        </dl>
+        <div class="callout">${escapeHTML(executionReason(cap))}</div>
+        ${cap.blocker ? `<div class="callout blocker"><strong>${escapeHTML(cap.blocker)}:</strong> ${escapeHTML(cap.validation)}</div>` : ""}
+      </section>
+
+      <section class="detail-section">
+        <h3>Read source and safety</h3>
+        <dl class="fact-grid">
+          <div class="fact"><dt>Default source</dt><dd>${escapeHTML(cap.default_source)}</dd></div>
+          <div class="fact"><dt>Catalog opt-in</dt><dd>${cap.catalog_opt_in ? "Yes, with --catalog" : "No"}</dd></div>
+          <div class="fact full"><dt>Selectors</dt><dd>${cap.selectors.map(escapeHTML).join("<br>")}</dd></div>
+          <div class="fact full"><dt>Safety and guard</dt><dd>${escapeHTML(cap.safety_guard)}</dd></div>
+          <div class="fact full"><dt>Availability</dt><dd>${escapeHTML(cap.availability)}</dd></div>
+          <div class="fact full"><dt>Artifact effect</dt><dd>${escapeHTML(cap.artifact_effect)}</dd></div>
+        </dl>
+      </section>
+
+      <details class="source-details">
+        <summary>Source and verification metadata</summary>
+        <dl class="fact-grid">
+          <div class="fact"><dt>Evidence level</dt><dd>${escapeHTML(cap.evidence_level)}</dd></div>
+          <div class="fact"><dt>MCP overlap</dt><dd>${escapeHTML(cap.mcp_overlap || "None")}</dd></div>
+          <div class="fact full"><dt>Upstream operation</dt><dd><code>${escapeHTML(cap.upstream_operation)}</code></dd></div>
+          <div class="fact full"><dt>Evidence</dt><dd>${escapeHTML(cap.evidence)}</dd></div>
+          <div class="fact full"><dt>Validation or blocker</dt><dd>${escapeHTML(cap.validation)}</dd></div>
+        </dl>
+      </details>
+    `;
+
+    const copy = document.getElementById("copyCommand");
+    if (copy) copy.addEventListener("click", async () => {
+      const text = cap.surface;
+      try { await navigator.clipboard.writeText(text); }
+      catch {
+        const area = document.createElement("textarea");
+        area.value = text; area.style.position = "fixed"; area.style.opacity = "0";
+        document.body.appendChild(area); area.select(); document.execCommand("copy"); area.remove();
+      }
+      copy.textContent = "Copied"; setTimeout(() => copy.textContent = "Copy", 1200);
+    });
+  }
+
+  function renderGroupDetail(node) {
+    const totals = stateCounts(node);
+    const max = Math.max(node.capabilities.length, 1);
+    const rows = ["implemented", "planned", "external/delegated"].filter(state => totals[state]).map(state => {
+      const meta = stateMeta[state];
+      const width = totals[state] / max * 100;
+      return `<div class="group-state-row"><span>${escapeHTML(meta.label)}</span><span class="group-bar"><span class="${meta.className}" style="width:${width}%"></span></span><strong>${totals[state]}</strong></div>`;
+    }).join("");
+
+    const blocked = node.capabilities.filter(cap => cap.verification_readiness === "blocked").length;
+    const remote = node.capabilities.filter(cap => cap.remote_mutation).length;
+    const local = node.capabilities.filter(cap => cap.local_write).length;
+    const enabled = node.capabilities.filter(cap => cap.execution_enabled).length;
+    const delegated = node.capabilities.filter(cap => cap.disposition === "delegated").length;
+    const catalog = node.capabilities.filter(cap => cap.catalog_opt_in).length;
+    const inventoryLists = node.capabilities.filter(cap => cap.inventory_list).length;
+    const nativeSearch = node.capabilities.filter(cap => cap.native_search).length;
+    const pulls = node.capabilities.filter(cap => cap.pull_default).length;
+    const preview = node.capabilities.filter(cap => cap.supports_preview).length;
+    const path = [];
+    let cursor = node;
+    while (cursor) { path.unshift(cursor.label); cursor = cursor.parentId ? nodeIndex.get(cursor.parentId) : null; }
+
+    refs.detail.innerHTML = `
+      <p class="detail-kicker">${node.type === "root" ? "Registry root" : "Capability group"}</p>
+      <h2 class="detail-title">${escapeHTML(node.label)}</h2>
+      <div class="breadcrumb">${escapeHTML(path.join(" / "))}</div>
+      <p class="outcome">${node.capabilities.length} matching capabilities are contained in this node. Select an action leaf for its exact command, default source, preview behavior, selectors, safety requirements, and execution state.</p>
+      <section class="detail-section">
+        <h3>Group totals</h3>
+        <dl class="fact-grid">
+          <div class="fact"><dt>Capabilities</dt><dd>${node.capabilities.length}</dd></div>
+          <div class="fact"><dt>Execution enabled now</dt><dd>${enabled}</dd></div>
+          <div class="fact"><dt>Blocked</dt><dd>${blocked}</dd></div>
+          <div class="fact"><dt>Delegated</dt><dd>${delegated}</dd></div>
+          <div class="fact"><dt>Remote mutations</dt><dd>${remote}</dd></div>
+          <div class="fact"><dt>Local writes</dt><dd>${local}</dd></div>
+          <div class="fact"><dt>Native search</dt><dd>${nativeSearch}</dd></div>
+          <div class="fact"><dt>Inventory lists</dt><dd>${inventoryLists}</dd></div>
+          <div class="fact"><dt>Catalog opt-in reads</dt><dd>${catalog}</dd></div>
+          <div class="fact"><dt>Execution-first pulls</dt><dd>${pulls}</dd></div>
+          <div class="fact"><dt>Preview supported</dt><dd>${preview}</dd></div>
+        </dl>
+        <div class="group-state-list">${rows}</div>
+      </section>
+      <div class="callout">Native search, catalog-backed list snapshots, optional catalog reads, pull execution defaults, and mutation gating are independent behaviors.</div>
+    `;
+  }
+
+  function updateDetails() {
+    const node = nodeIndex.get(selectedNodeId) || nodeIndex.get("root");
+    if (!node) return;
+    if (node.cap) renderCapabilityDetail(node.cap); else renderGroupDetail(node);
+  }
+
+  function updateStatButtons() {
+    document.querySelectorAll("[data-card-filter]").forEach(button => {
+      const current = button.dataset.cardFilter === "state" ? refs.state.value : refs.blocker.value;
+      button.setAttribute("aria-pressed", String(current === button.dataset.cardValue));
+    });
+  }
+
+  function render() {
+    const filtered = capabilities.filter(matches);
+    refs.matched.textContent = filtered.length;
+    refs.empty.hidden = filtered.length !== 0;
+    refs.tree.hidden = filtered.length === 0;
+    const tree = buildTree(filtered);
+    nodeIndex = new Map();
+    indexNodes(tree);
+    if (!nodeIndex.has(selectedNodeId)) selectedNodeId = "root";
+    if (!nodeIndex.has(focusedNodeId)) focusedNodeId = "root";
+    refs.tree.replaceChildren(renderNode(tree, 1));
+    updateDetails();
+    updateStatButtons();
+  }
+
+  function allBranchIDs(node, result = []) {
+    if (node.children.length) result.push(node.id);
+    node.children.forEach(child => allBranchIDs(child, result));
+    return result;
+  }
+
+  function clearFilters() {
+    [refs.search, refs.state, refs.owner, refs.domain, refs.mutation, refs.blocker, refs.behavior].forEach(control => control.value = "");
+    expanded = new Set(["root"]); selectedNodeId = "root"; focusedNodeId = "root"; render();
+  }
+
+  [refs.search, refs.state, refs.owner, refs.domain, refs.mutation, refs.blocker, refs.behavior].forEach(control => {
+    control.addEventListener(control === refs.search ? "input" : "change", () => {
+      selectedNodeId = "root"; focusedNodeId = "root"; render();
+    });
+  });
+
+  refs.clear.addEventListener("click", clearFilters);
+  refs.expand.addEventListener("click", () => { expanded = new Set(allBranchIDs(buildTree(capabilities.filter(matches)))); render(); });
+  refs.collapse.addEventListener("click", () => { expanded = new Set(["root"]); render(); });
+
+  document.querySelectorAll("[data-card-filter]").forEach(button => button.addEventListener("click", () => {
+    const control = button.dataset.cardFilter === "state" ? refs.state : refs.blocker;
+    control.value = control.value === button.dataset.cardValue ? "" : button.dataset.cardValue;
+    selectedNodeId = "root"; focusedNodeId = "root"; render();
+  }));
+
+  document.addEventListener("keydown", event => {
+    if (event.key === "/" && document.activeElement !== refs.search && !["INPUT", "SELECT", "TEXTAREA"].includes(document.activeElement.tagName)) {
+      event.preventDefault(); refs.search.focus();
+    }
+    if (event.key === "Escape" && document.activeElement === refs.search && refs.search.value) {
+      refs.search.value = ""; render();
+    }
+  });
+
+  render();
+})();
+</script>
+</body>
+</html>

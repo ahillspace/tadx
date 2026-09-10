@@ -1,138 +1,35 @@
-# Contribute one TADX action
+# Build an action for TADX
 
-This is the day-to-day guide for building one bounded TADX action or resource slice.
-Use `$tadx-build` when you want an agent to apply the repository build workflow to an explicitly named task.
+TADX contributions are small, isolated actions built on shared Tableau adapters and CLI infrastructure.
+The maintained engineering standards now live in the repository-local [tadx-build skill](.agents/skills/tadx-build/SKILL.md), rather than a second copy here.
+It covers package boundaries, adapters, output, identity, authentication, mutation policy, registry integration, and verification.
+It requires no OpenSpec, Superpowers, or agent-review plugin.
 
-## Prepare the build
+## Start with your agent
 
-Update `main`, then create one feature branch for the build.
-All agents share that branch and checkout unless the build owner requests worktrees.
-Assign each agent disjoint paths and reserve shared integration files for one coordinator.
+Open a checkout of this repository in your coding agent and invoke:
 
-Discover the capability before reading implementation files:
-
-```sh
-git switch main
-git pull --ff-only
-git switch -c feat/<capability-id>
-
-go run ./cmd/tadx capability list
-go run ./cmd/tadx capability get <capability-id> --full
+```text
+$tadx-build Build [the action you need]. The user outcome is [outcome].
+Include [scope], exclude [scope], and stop after implementation and automated tests.
 ```
 
-Write a compact task brief containing:
+If your agent does not discover repo-local skills, give it the explicit entry point:
 
-- The capability ID, required behavior, and explicit exclusions.
-- The owned files and forbidden shared files.
-- One closest action or adapter example.
-- The compact fields, full-only fields, bounds, and next-command help.
-- One bounded evidence record for remote behavior.
-- The focused test commands and any separately authorized live check.
-
-Do not read `archived/`, the full arc42, the full V1 capability contract, or all Tableau API documentation end to end.
-For remote behavior, start with one relevant record under [`docs/evidence/`](docs/evidence/).
-Search the local Tableau API capture for one missing detail and use current official Tableau documentation only when the local capture is insufficient.
-
-## Build the action
-
-Write behavior tests first and confirm they fail for the expected reason.
-Create one package under `actions/<domain>/<verb>` with typed input and output, operation logic, tests, and stable TOON fixtures.
-Define narrow dependency interfaces in the action package that consumes them.
-Actions do not import Cobra, `net/http`, another action, or a concrete resource adapter.
-
-Keep Cobra limited to argument parsing, action invocation, shared rendering, and exit mapping.
-Put released Tableau HTTP behavior in `internal/tableau/<resource>` through the shared transport.
-Put pagination and LUID-authoritative exact resolution in `internal/resources/<resource>`.
-Bridge concrete adapters to action-owned interfaces only in the composition root.
-Share genuinely identical identity, schema, and lineage value records through dependency-free `internal/value`; keep action semantics, interfaces, and provider payloads separate.
-Reuse configuration, workspace resolution, and authenticated clients within one command, not across commands.
-Reuse a session only for the same server, site, and actual credential identity, and retain the local credential lock until session work finishes.
-
-If the evidence level is docs-only or blocked, build only types, validation, local orchestration, fixtures, tests, and the adapter seam.
-Do not write live API code or make that capability executable until bounded evidence verifies the upstream contract.
-
-## Preserve output and safety contracts
-
-Default output is an explicit bounded compact TOON projection containing the status, authoritative identity, next safe decision fields, warnings, completeness, and help.
-Mutation previews summarize the exact target and every consequential setting, including inherited filters and null handling; provider envelopes and transport diagnostics belong in `--full`.
-Mark bounded or unrepresentable review details explicitly incomplete rather than silently omitting decision evidence.
-Preserve confirmed results alongside follow-up errors through action, CLI, renderer, and batch boundaries; a nonzero exit does not imply the mutation failed, and an unknown outcome never implies success.
-Generated inspection and recovery commands retain the resolved environment, exact identity, and logical workspace where applicable, with shell-safe argument quoting.
-Run action-owned local validation and read-only prerequisite resolution before authentication; keep remote-state validation after authentication and fresh before writes.
-Compact list rows retain a fixed set of scalar columns, including empty values, so changing the limit does not switch between tabular and expanded output.
-Render `more_available` when results are limited; keep opaque provider and catalog cursors internal in both compact and full output.
-Use a larger bounded `--limit`, or explicit `--all` where supported, to request additional results.
-An incomplete or capped traversal must never claim a complete inventory.
-Limited live lists fetch bounded provider results without collecting a full inventory or depending on SQLite.
-Explicit `--all` and scoped catalog refresh share a collector; live output renders from its normalized in-memory result.
-Cache persistence after a live full list is best effort; explicit refresh failure preserves the previous generation and fails.
-Filtered observations cannot establish complete unfiltered coverage.
-Ordinary and full lists share typed filter builders owned by each resource; the composition root maps inputs but does not duplicate filter syntax or validation.
-Reuse one project hierarchy within a validation phase; a separate pre-write validation phase requires a fresh index.
-Keep pagination loops typed and private instead of recursively invoking actions or encoding internal cursors.
-Persist project identity structurally as an indexed LUID, not by extracting it from payload JSON.
-Default catalog refresh excludes permissions; require an explicit scope for per-resource permission collection.
-Collection concurrency defaults to a per-process ceiling of 32, is configurable per environment, and respects a shared cancelable Retry-After cooldown.
-When additional bounded details exist, compact output includes the exact top-level marker `details: "--full"` immediately before `help[]`.
-`--full` is a bounded superset for the same operation and never changes requests, mutation behavior, pagination, or secret redaction.
-Use separate compact and full golden fixtures for detail-bearing output.
-
-Persist and render artifact paths relative to the resolved workspace with forward slashes.
-Resolve absolute paths only at runtime and never emit machine-specific paths.
-Treat Tableau LUIDs as authoritative, fail ambiguous selectors, and never fuzzy-match or prompt interactively.
-Project names may contain a literal slash.
-Retain these projects and their descendants; exact LUID operations must remain usable even when a display path is ambiguous.
-Authenticate to Tableau with PATs only.
-Consequential mutations run by default and support `--preview` for a read-only plan.
-Remote mutation commands and capabilities remain discoverable when execution is disabled.
-`TADX_ENABLE_MUTATIONS=1` enables remote mutation execution; supported read-only previews remain available when it is off.
-Agents must obtain explicit user permission before changing this flag or saved policy through `tadx mutation set`, including disabling it or setting a command-only override.
-Saved user policy persists until changed; an explicit process environment value overrides it, and neither setting means disabled.
-Infer an omitted environment only when exactly one is configured for remote writes; multiple environments require `--env`, irrespective of artifact provenance.
-Remote-operation authorization does not authorize the setting change; follow the scope and single-question guidance in [AGENTS.md](AGENTS.md).
-`--env` is an alias for `--environment`, including explicit mutation targets.
-`--force` does not bypass mutation policy.
-Persist PATs only after explicit user approval through the native OS credential store.
-Store only opaque credential references in configuration.
-Never place PATs or session tokens in configuration values, output, logs, artifacts, catalogs, fixtures, or diagnostics.
-Never use a plaintext credential fallback when the native store is unavailable.
-Guidance describes TADX and its limitations without overriding the user's choice of tools or maintaining external MCP tool recipes.
-
-## Integrate the capability
-
-The slice owner returns integration requirements instead of editing shared files unless the task assigns integration ownership.
-The coordinator owns typed capability facts and implementation bindings in `internal/capability/definitions.go`, shared CLI mounting, app composition, generated files, and binding tests.
-The architectural contract remains narrative documentation, not a compiler input.
-Never hand-edit `docs/reference/capabilities.md` or `docs/reference/capabilities.json`.
-The JSON file supplies capability-map data without generating or replacing the maintainer's HTML visualization.
-
-After updating the authoritative sources, run:
-
-```sh
-go generate ./...
-go run ./cmd/gencapdocs -out docs/reference/capabilities.md
+```text
+Read .agents/skills/tadx-build/SKILL.md and use it to build [the action you need] in this repository.
 ```
 
-## Verify the slice
+The complete skill directory is tracked in Git, with its references alongside it.
+All implementation paths in the skill are relative to the repository root.
+It is opt-in and does not replace instructions for unrelated tasks.
+`tadx agent install` installs end-user operating Guidance, not this development skill.
 
-Replace angle-bracket placeholders with the assigned packages and omit the adapter line when the task owns no adapter.
+## Human contributors
 
-```sh
-go test ./actions/<domain>/<verb> -count=1
-go test ./internal/tableau/<resource> ./internal/resources/<resource> -count=1
-go test ./internal/architecture -count=1
-
-git diff --check
-go vet ./...
-go test ./...
-```
-
-Run live tests only when the build owner authorizes the exact disposable Tableau target and credentials are available to the process.
-Keep live tests outside the standard suite, never mutate original content, and delete only disposable content created by the test lane.
-Report an uncertain mutation outcome without an unsafe retry.
-
-## Hand off for review
-
-Report the capability ID, changed files, focused checks, integration changes, live-test status, and unresolved evidence or contract conflicts.
-Stop for the build owner's manual testing and review.
-Do not start a comprehensive review, review board, no-mistakes run, push, or pull request unless the build owner requests it.
+Read the [build standard](.agents/skills/tadx-build/SKILL.md) and choose one relevant example from its [implementation map](.agents/skills/tadx-build/references/implementation-map.md).
+Only inventory and cache changes need the [inventory contracts](.agents/skills/tadx-build/references/inventory-and-cache.md).
+Start from updated `main` on a feature branch; shared agents use disjoint files in one checkout.
+Keep tests and bounded evidence with the implementation, and use the skill's verification checklist before handoff.
+Live tests require separately authorized targets and remain outside the standard suite.
+The maintainer handles agent-based review; a build request does not automatically authorize a push, PR, merge, or release.

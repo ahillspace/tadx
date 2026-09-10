@@ -1,7 +1,7 @@
 interface:
   display_name: "TADX build"
-  short_description: "Build one TADX slice with bounded context"
-  default_prompt: "Use $tadx-build to complete this explicitly named TADX slice: "
+  short_description: "Build TADX actions and Tableau adapters"
+  default_prompt: "Use $tadx-build to implement the requested TADX action with its adapter, CLI wiring, and automated tests."
 
 policy:
   allow_implicit_invocation: false

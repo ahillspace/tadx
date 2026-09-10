@@ -2,9 +2,12 @@
 
 This record freezes the bounded factual lineage contract used by `lineage.pull` and automatic workbook, datasource, and flow pull capture.
 The captured official Metadata API guide is `Tableau API Documentation/tableau_metadata_api.md`.
+Its official source is the [Metadata API guide](https://help.tableau.com/current/api/metadata_api/en-us/).
 Its SHA-256 digest is `79e5542a70484f14f5d0a8cf057f16ae7c6b7caf56a582581babb50ece745fc7`.
 The captured schema reference is `Tableau API Documentation/tableau_metadata_api_reference.md`.
+Its official source is the [Metadata API schema reference](https://help.tableau.com/current/api/metadata_api/en-us/reference/).
 Its SHA-256 digest is `820851ed7f7172c484051d60b5deeff9eac775ecc64706f442f35fa90ec37abc`.
+The local captures and their line references are historical provenance; see [capture availability](README.md).
 
 ## Captured sections
 

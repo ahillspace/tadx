@@ -1,7 +1,7 @@
 # Guidance and CLI remediation verification
 
-Review the feature branch against `f091482a11d0fe1bfea41454b36054f30110f2dc`.
-This record describes working-tree checks before the remediation commit, not a released version.
+The original remediation comparison used base commit `f091482a11d0fe1bfea41454b36054f30110f2dc`.
+This historical record describes working-tree checks before the remediation commit, not a released version or a current verification run.
 
 ## Scope
 
@@ -13,7 +13,7 @@ Historical discoverability proposals were archived locally because their instruc
 
 The complete Go test suite, `go vet ./...`, diff checks, and isolated installer tests passed.
 Installed Guidance and references were checked for Codex, Claude, and Cursor.
-Native Zsh/Fish execution was unavailable; do not interpret their installer checks as native execution coverage.
+Native Zsh/Fish execution was unavailable, so their installer checks did not establish native execution coverage.
 
 Six targeted OpenCode exercises used one pinned rebuilt binary and isolated installed Guidance.
 Five primary processes completed; that does not establish five unqualified goal passes.
@@ -26,12 +26,12 @@ Raw transcripts, credentials, runtime configuration, and private-site evidence s
 Unsupported agent claims and original cleanup failures remain findings, even after evaluator cleanup.
 Live permission-denial hydration and nonempty Pulse filter forks were not exercised by this batch.
 Historical inventory-drop totals and duplicate-search reports still need raw upstream evidence.
-See [TODO.md](../../TODO.md) for remaining investigations.
-The maintainer handles the comprehensive branch review; these checks are not a substitute.
+Remaining investigations are tracked in [TODO.md](../../TODO.md).
+These checks did not constitute a comprehensive branch review.
 
 ## Follow-up to the second-pass review
 
-This follow-up starts at `00e5991102d3dc9d26d899513cfc21d333edc141`.
+The second-pass follow-up used base commit `00e5991102d3dc9d26d899513cfc21d333edc141`.
 The earlier live exercises above do not establish live coverage of these subsequent changes.
 
 Behavioral regressions cover cached project path ambiguity, incomplete admin inventories, hidden calculation comments and strings, and grouped search continuation completeness.
@@ -41,17 +41,17 @@ Synthetic traffic tests cover configurable concurrency and shared Retry-After de
 These are deterministic HTTP fixtures and simulated-time tests, not a large Tableau Server load test.
 
 The PowerShell installer regression matrix runs against isolated profiles, including Unicode paths, existing UTF BOM encodings, ANSI profiles, recoverable backups, and reinstall/uninstall.
-Windows PowerShell 5.1 is available locally; PowerShell 7 coverage is assigned to the separate GitHub CI step.
+Windows PowerShell 5.1 was available for local checks; PowerShell 7 coverage belonged to the separate GitHub CI step.
 Bundled Guidance checks verify package structure, references, and CLI recipes; they do not establish blind-agent behavior or absence of interference through a live agent experiment.
 No new live exercises or agent-based code reviews were run for this follow-up.
 
 Final local gates passed: `go test ./...`, `go test -race ./...`, `go vet ./...`, focused paging race tests, formatting, module tidiness, stable regeneration, and both available installer harnesses.
 GitHub CI remains the source of Linux, PowerShell 7, and cross-platform build results for the pushed commit.
 
-## Optional follow-ups after approval
+## Subsequent bounded follow-up
 
-The next bounded follow-up starts at `a24ba3990cd4c5a8797ab208ca5be8af38b0f6b7`.
-Its scope is invocation-local project hierarchy reuse, shared resource-owned filter builders, accurate catalog recovery advice, and removal of unused producer-side snapshot state.
+The subsequent bounded follow-up used base commit `a24ba3990cd4c5a8797ab208ca5be8af38b0f6b7`.
+Its scope covered invocation-local project hierarchy reuse, shared resource-owned filter builders, accurate catalog recovery advice, and removal of unused producer-side snapshot state.
 Regressions target multiple project/datasource pages, fresh hierarchy data on a later invocation, ordinary/full-list filter parity, and executing the suggested scoped refresh before repeating a local-only read.
 A CLI compatibility test preserves previously stored partial-snapshot continuation without Tableau requests.
 This follow-up does not introduce persistent hierarchy caching, change mutation revalidation, or remove supported legacy snapshot readers.

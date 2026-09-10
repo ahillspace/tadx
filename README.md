@@ -7,158 +7,111 @@ Initial testing has shown drastic improvement over all other methods of equiping
 
 TADX handles Tableau lifecycle work, not natural-language data queries or analytical rendering.
 
-Feedback and collaboration is openly welcomed and there is specific and deliberate documentation for anyone looking to add actions to TADX using coding agents (see tadx-build skill)
+Feedback and collaboration is openly welcomed and there is specific and deliberate documentation for anyone looking to add actions to TADX using coding agents (see [tadx-build skill](.agents/skills/tadx-build/SKILL.md))
 
 ## Current status
 
-TADX is not supported or associated with Tableau or Salesforce directly.
+TADX is an independent, pre-1.0 project and is not supported by or associated with Tableau or Salesforce.
+It is usable and actively developed.
 
-TADX is usable and actively developed.
-
-The executable registry now covers the core content, workspace, catalog, administration, and initial Pulse workflows planned for V1.
-
-The current build supports:
-
-- Managing named environment profiles that reference PAT environment variables or an optional native OS credential.
-- Checking local authentication configuration, storing a validated PAT, removing a stored PAT, and signing in to verify a Tableau site.
-- Discovering capability ownership, availability, selectors, safety rules, and blockers.
-- Querying Tableau live by default, with explicit local catalog reads through `--catalog`.
-- Refreshing and inspecting the status of the local SQLite catalog.
-- Searching workbooks, published datasources, flows, and projects through Tableau native search, while administration and Pulse use their dedicated APIs.
-- Creating, registering, cloning, listing, inspecting, and moving named workspaces, plus deleting one local artifact safely.
-- Listing, inspecting, creating, and updating projects.
-- Listing, inspecting, and pulling flows, plus publishing, moves, deletions, and optional previews.
-- Listing and inspecting workbooks, plus pulls, publishing, deletions, and optional previews.
-- Listing and inspecting published datasources and bounded field metadata, plus pulls, publishing, deletions, and optional previews.
-- Capturing bounded lineage for workbooks, published datasources, and flows.
-- Listing, inspecting, pulling, creating, and deleting Pulse definitions, plus publishing portable bundles as new definitions and metric variants.
-- Listing, inspecting, forking, and deleting Pulse metrics, plus managing exact user and group followers.
-- Managing Tableau site users, groups, memberships, and permission inspection.
-
-Remaining work focuses on release hardening and capabilities that still lack a supported or proven upstream contract.
-Datasource composition, datasource field-description updates, project pull and publish, and Pulse updates are deferred.
-
-Pulse creation accepts raw field IDs and unique display names from datasource metadata.
-TADX resolves displayed field names to raw IDs before previewing or publishing, so a field caption such as `Regional Manager` can map to its underlying `People` field automatically.
-Exact raw IDs take precedence, and ambiguous names fail before a remote write.
-This does not translate aliases for categorical member values.
-
-Use the registry in your installed build as the source of truth:
+The current release supports named Tableau environments, PAT authentication, content discovery, local workspaces and catalogs, workbook, datasource, flow, and project lifecycle operations, bounded lineage, Tableau administration, and initial Pulse definition and metric workflows.
+Some capabilities are intentionally deferred where the upstream contract is not yet supported or proven.
+Check the exact capabilities in your installed version with:
 
 ```text
 tadx capability list
-tadx capability get workbook.pull --full
 ```
 
-## CLI shorthand
+## Put it to work
 
-TADX accepts optional shorthand for common resources, actions, and flags while retaining every canonical spelling.
-For example, `ds` abbreviates the content datasource resource, `del` abbreviates delete, `--env` abbreviates `--environment`, `--nm` abbreviates `--name`, and `--pv` abbreviates `--preview`.
-The conventional single-letter forms are `-a` for `--all`, `-e` for `--environment`, `-f` for `--full`, `-i` for `--id`, `-l` for `--limit`, `-n` for `--name`, `-p` for `--preview`, `-q` for `--query`, and `-w` for `--workspace`.
+Give your agent an outcome, not a list of API calls:
 
-```text
-tadx con ds ls --env dev -a
-tadx con ds del --env dev --nm "Revenue" --prj "Analytics" -p -f
-```
+- Find sales workbooks, inspect their dependencies, and download a useful working set.
+- Prepare a project and access for a temporary analyst.
+- Discover suitable datasource fields and create a meaningful Pulse metric.
 
-Use a canonical name when writing durable scripts, structured output handling, registry IDs, or documentation that must remain stable.
-Use `tadx <command> --help` for the aliases accepted by that command.
-`-f` means `--full`, not `--force`; `--force` remains a separate safety flag and no shorthand bypasses mutation policy.
-See [CLI shorthand](docs/reference/shorthand.md) for the quick reference and selector guidance.
+Or use the same CLI directly to inspect, download, organize, and publish Tableau content.
 
-## Future Vision
+## Install the CLI
 
-The current goal is to get TADX running quickly and smoothly against the simple content lifecycle you see with Tableau Cloud and Server. This is to get it ready to augment the new experiences coming in Tableau (Tableau Authoring API, Tableau Knowledge Graph, Tableau MCP, TDS API, Composable Datasources, etc.). Augmenting semantics, modifying published datasources, cleaning and composing data sources, and managing access with agents is all in scope as these new features become available and TADX is meant to act as the platform that allows agents to assist with these activites cleanly, quickly, cheaply, and at scale.
-
-## Install TADX
-
-Install or upgrade the latest release from a terminal.
-The installers select the correct Windows, macOS, or Linux binary, verify its SHA-256 checksum, and install it without administrator access.
-Anonymous installation requires public access to the repository and its release assets.
-For private access, authenticate GitHub CLI before downloading the installer:
+The repository is currently private.
+Install [GitHub CLI](https://cli.github.com/) and authenticate an account with repository access before continuing:
 
 ```text
 gh auth login
+gh auth status
 ```
+
+You do not need to clone the repository.
+The installers select the Windows, macOS, or Linux binary for your machine, verify its SHA-256 checksum, and install without administrator access.
 
 ### Windows
 
-Download the PowerShell installer, inspect it, and run it:
+Download the PowerShell installer into a new temporary directory, inspect it, and run it:
 
 ```powershell
-$installer = Join-Path $env:TEMP 'tadx-install.ps1'
-Invoke-WebRequest 'https://github.com/ahillspace/tadx/releases/latest/download/install.ps1' -OutFile $installer
+$installerDir = Join-Path ([System.IO.Path]::GetTempPath()) ([System.Guid]::NewGuid().ToString('N'))
+New-Item -ItemType Directory -Path $installerDir | Out-Null
+gh release download --repo ahillspace/tadx --pattern install.ps1 --dir $installerDir
+$installer = Join-Path $installerDir 'install.ps1'
 Get-Content $installer
 & $installer
-Remove-Item $installer
-```
-
-For a private repository, replace the `Invoke-WebRequest` command with:
-
-```powershell
-gh release download --repo ahillspace/tadx --pattern install.ps1 --output $installer
+Remove-Item -LiteralPath $installerDir -Recurse
 ```
 
 ### macOS and Linux
 
-Download the shell installer, inspect it, and run it:
+Download the shell installer into a new temporary directory, inspect it, and run it:
 
-```shell
-installer="$(mktemp)"
-curl -fsSL https://github.com/ahillspace/tadx/releases/latest/download/install.sh -o "$installer"
-cat "$installer"
-sh "$installer"
-rm -f "$installer"
+```sh
+installer_dir="$(mktemp -d)"
+gh release download --repo ahillspace/tadx --pattern install.sh --dir "$installer_dir"
+cat "$installer_dir/install.sh"
+sh "$installer_dir/install.sh"
+rm -rf "$installer_dir"
 ```
 
-For a private repository, replace the `curl` command with:
-
-```shell
-gh release download --repo ahillspace/tadx --pattern install.sh --output "$installer"
-```
-
-Open a new terminal if `tadx` is not immediately available, then verify the installation:
+The release assets are built from [`scripts/install.ps1`](scripts/install.ps1) and [`scripts/install.sh`](scripts/install.sh).
+Open a new terminal if `tadx` is not immediately available, then confirm the installed release:
 
 ```text
 tadx version
-tadx --help
 ```
 
-Pass an explicit release with `-Version v1.2.3` on Windows or `--version v1.2.3` on macOS and Linux.
-Running the installer again upgrades or repairs the installed binary.
+The canonical commands below work with the latest release, v0.1.3.
+Running the installer again upgrades or repairs the CLI.
+Installing or upgrading the CLI does not automatically upgrade agent Guidance that you previously installed.
 
-To remove only the CLI binary and its installer-managed `PATH` entry, run one of these commands:
+## Connect to Tableau
 
-```powershell
-$installer = Join-Path $env:TEMP 'tadx-install.ps1'
-Invoke-WebRequest 'https://github.com/ahillspace/tadx/releases/latest/download/install.ps1' -OutFile $installer
-& $installer -Action Uninstall
-Remove-Item $installer
+Create an environment profile for a Tableau Cloud or Tableau Server site:
+
+```text
+tadx env add dev --url https://example.tableau.com --site example-site
 ```
 
-```shell
-installer="$(mktemp)"
-curl -fsSL https://github.com/ahillspace/tadx/releases/latest/download/install.sh -o "$installer"
-sh "$installer" uninstall
-rm -f "$installer"
+Use the server base URL for `--url` and the site's content URL slug for `--site`.
+For Tableau's default site, omit `--site`.
+
+TADX authenticates with Tableau personal access tokens only.
+Create a PAT in Tableau, then run the interactive login:
+
+```text
+tadx auth login --environment dev
 ```
 
-CLI removal preserves TADX configuration, workspaces, catalogs, Guidance, and OS-stored credentials.
-Before removing the CLI, use `tadx auth logout` and `tadx agent uninstall` for any state that you also want removed.
+Enter the PAT name and secret at the secure prompts.
+TADX validates the PAT before saving it, and the secret does not echo.
+The credential is stored only in the native OS credential store: Windows Credential Manager, macOS Keychain, or Linux Secret Service.
+If that store is unavailable or locked, login fails instead of falling back to plaintext.
 
-### Install from source
-
-Install Git and Go 1.26 or later, clone the repository, and run:
-
-```shell
-go install github.com/ahillspace/tadx/cmd/tadx@latest
-```
-
-The Go binary directory must be present in `PATH`.
+For CI or temporary use, environment profiles can instead reference a PAT name variable and a PAT secret variable.
+See `tadx env add --help` for those options.
 
 ## Install agent Guidance
 
-Choose the command for your coding agent:
+The CLI and agent Guidance are separate installations.
+After installing the CLI, choose the one command for your coding agent:
 
 ```text
 tadx agent install --target claude
@@ -166,179 +119,68 @@ tadx agent install --target codex
 tadx agent install --target cursor
 ```
 
-Each command installs the root TADX Guidance and the complete Pulse authoring Guidance as standard `SKILL.md` packages.
-The root package includes optional references for content lifecycle, workspaces, catalogs, and administration.
-Guidance applies when using TADX; it does not override your choice of other tools.
-Claude uses `~/.claude/skills`, Codex uses `~/.codex/skills`, and Cursor uses `~/.cursor/skills`.
-Existing packages under `~/.agents/skills` remain untouched.
-No repository checkout or Tableau credentials are required.
-The installer creates no `AGENTS.md`, `CLAUDE.md`, or Cursor rules.
+Guidance teaches the selected agent how to use TADX safely and installs standard `SKILL.md` packages in that agent's skill directory.
+Run the command again after a CLI upgrade to update installed Guidance.
+Use `--preview` first if you want to inspect the local file changes.
 
-Use `--preview` to inspect changes without writing files and `--full` to see home-relative paths and package fingerprints.
-Identical packages remain unchanged; untouched older packages with installation receipts upgrade without --force.
-Replacing a modified or unknown package requires `--force`, which preserves the previous package under the agent directory's `.tadx-skill-backups` directory.
-This local operation does not require `TADX_ENABLE_MUTATIONS`.
+## Get your first workbook
 
-## Remote mutation permission
-
-Use `tadx mutation status` to see effective policy and its source.
-Use `tadx mutation set --enabled=true` to persist user policy until changed, or --enabled=false to disable the saved policy.
-An explicitly set TADX_ENABLE_MUTATIONS=0 or 1 overrides saved policy for that process; without either setting, execution is disabled.
-Supported read-only `--preview` operations work while the gate is off and do not authorize execution.
-
-Agents must obtain explicit user permission before changing the environment override or saved mutation setting, including enabling, disabling, or unsetting it.
-Permission for a Tableau operation is separate from permission to change the flag.
-An approval covers only its explicitly stated setting change and scope; session approval does not authorize a persistent change.
-For example: "May I enable remote mutations for this session, allowing TADX to create, change, or delete Tableau resources?"
-A request for persistent approval must identify its scope and effect on future shells.
-
-## Configure a Tableau environment
-
-TADX uses Tableau personal access tokens.
-Register an environment profile with environment-variable names for CI or temporary credential overrides:
-
-```text
-tadx env add dev --url https://example.tableau.com --site example-site --pat-name-env TADX_DEV_PAT_NAME --pat-secret-env TADX_DEV_PAT_SECRET
-```
-
-With one configured environment, TADX can infer its target.
-After adding a second environment, remote writes require --env; reads can use the configured default.
-Artifact provenance never selects a publish destination.
-
-Choose one credential source.
-
-For an interactive setup, enter the PAT name and secret at secure terminal prompts:
-
-```text
-tadx auth login --environment dev
-```
-
-TADX validates the PAT against the configured Tableau site before storing it in the native OS credential store.
-The secret does not echo in the terminal.
-TADX stores only an opaque credential reference in its configuration and never falls back to plaintext storage.
-The native store uses Windows Credential Manager, macOS Keychain, or Linux Secret Service.
-If the native store is unavailable or locked, login fails without saving the PAT elsewhere.
-The login command requires an interactive terminal and does not accept credential flags or redirected input.
-
-For CI or a temporary override, set both configured environment variables before running TADX.
-A complete environment-variable pair takes precedence over the stored PAT.
-If either variable is missing or empty, TADX reports an incomplete credential instead of combining credential sources.
-
-Inspect the resolved nonsecret configuration, then verify the active credentials against Tableau:
-
-```text
-tadx auth status --environment dev
-tadx auth check --environment dev
-```
-
-The stored PAT remains available until you remove it locally or Tableau rejects it because it was revoked, expired, or disabled.
-To replace the stored PAT, run `tadx auth login --environment dev` again and enter the replacement values.
-To stop using the stored PAT, run:
-
-```text
-tadx auth logout --environment dev
-```
-
-Logout removes only the local TADX credential.
-It does not revoke or delete the PAT in Tableau and reports when environment-variable credentials remain usable.
-Remove a temporary environment-variable override from the process to return to the stored PAT.
-PATs and session tokens never appear in configuration values, output, logs, artifacts, catalogs, fixtures, or diagnostics.
-
-## Create a named workspace
-
-Create a unique logical workspace at the default human-accessible location:
+Create a named workspace and make it the default for the environment:
 
 ```text
 tadx workspace create development
 tadx env update dev --default-workspace development
+```
+
+Search Tableau for the workbook you want:
+
+```text
+tadx search revenue --environment dev --type workbook
+```
+
+Choose the result you intend to use and copy its authoritative LUID.
+Replace `WORKBOOK_LUID` below with that returned ID, then pull the workbook into the default workspace:
+
+```text
+tadx content workbook pull --environment dev --id WORKBOOK_LUID
+```
+
+Find the downloaded files and inspect their local state:
+
+```text
 tadx workspace status --workspace development --full
 ```
 
-The default root is `<home>/TADX/workspaces/development` on Windows, macOS, and Linux.
-Use `--path <workspace-root>` with `workspace create` or `workspace clone` to override the default.
-The `--full` output for workspace creation, cloning, listing, and status includes the registered machine-local root.
-Workspace registration still requires an explicit root path.
-Artifact moves still require explicit source and destination workspace names plus an artifact selector.
-Workspace names are portable across supported operating systems and cannot contain path separators, Windows-invalid characters, reserved device names, or trailing dots or spaces.
-Lifecycle commands use the logical workspace name, while artifact paths remain relative and portable.
-Publish managed content with --id or exact --artifact-name within the workspace, or an existing native file directly with --file.
-Use workspace status --full for file locations; compact output hides directory hashes and fingerprints.
+TADX writes managed artifacts under the workspace while keeping paths portable across operating systems.
+By default, the workspace is created under `<home>/TADX/workspaces/development`.
+The full status output reports the exact machine-local file locations.
 
-## Pull a workbook
+## Safe defaults
 
-Pull one workbook by its authoritative LUID:
+Read operations query Tableau live unless you explicitly select the local catalog.
+Compact TOON output is the default; `--full` adds bounded detail for the same operation.
+Tableau LUIDs are authoritative, and ambiguous selectors fail instead of guessing.
 
-```text
-tadx content workbook pull --environment dev --workspace development --id <workbook-luid>
-```
+Remote mutations are disabled by default.
+Supported read-only previews remain available while mutations are disabled.
+Enabling remote mutations is an optional, explicit opt-in that is separate from permission to perform a particular Tableau operation.
+Agents must ask before changing the mutation setting or its scope.
+See `tadx mutation status` and `tadx mutation set --help` when you are ready to configure that policy.
 
-Add `--include-pds` to acquire direct published datasource dependencies as sibling artifacts.
-Add `--full` to the same command when you need expanded, bounded details.
+## Learn more
 
-## Choose live or catalog reads
+- [`docs/getting-started.md`](docs/getting-started.md) covers credentials, other artifact types, catalogs, previews, Pulse discovery, and maintenance.
+- [`docs/workspaces.md`](docs/workspaces.md) explains workspace identity, paths, status, cloning, and local artifact operations.
+- [`docs/reference/capabilities.md`](docs/reference/capabilities.md) documents the capability registry generated from the current source tree.
+- [Capability map](docs/reference/capability-map.html) presents the current registry as an interactive visual inventory.
+- [Architecture](docs/architecture/README.md) shows the main parts and links them to their source files.
+- [`CONTRIBUTING.md`](CONTRIBUTING.md) is the day-to-day guide for building one bounded TADX action.
 
-Supported read commands query Tableau by default.
-Pass `--catalog` to read only from the local SQLite catalog without authenticating or contacting Tableau:
+The source tree includes CLI shorthand planned for the next release, but v0.1.3 accepts the canonical commands used in this README.
+See [`docs/reference/shorthand.md`](docs/reference/shorthand.md) only when using a build that includes that feature.
 
-```text
-tadx content workbook list --environment dev
-tadx content workbook list --environment dev --catalog
-```
+## Future Vision
 
-TADX reports the selected source, freshness, and coverage in the same output shape.
---full expands details, while --limit controls record count; inventory lists accept up to 10,000 requested records.
-`tadx last` displays the previous execution's saved full output and timestamp without authentication or re-execution.
-There is one global saved result, not history; errors and confirmed partial results are retained within a bounded redacted snapshot.
-Catalog reads never fall back to Tableau.
-
-Ordinary live `list` commands fetch a bounded result and do not require the catalog to answer.
-Use `--limit` for a larger bounded result or `--all` for the full supported resource scope.
-`--all` shares the catalog refresh collector and returns the live results directly, with a best-effort catalog update.
-A cache-write failure is a warning, not a failed live list.
-Filtered results never establish complete coverage of an unfiltered scope.
-Output reports `more_available` instead of exposing opaque cursors.
-
-Live searches with content terms use Tableau's native content search.
-Administration and Pulse searches use their dedicated APIs, and a broad search returns native content before their results.
-Use `--catalog` when local freshness is sufficient and no Tableau request should occur.
-
-Refresh the local inventory when you need broad offline search:
-
-```text
-tadx catalog refresh --environment dev
-tadx search revenue --environment dev --catalog
-tadx catalog status --environment dev
-```
-
-Permissions are excluded from the default refresh because they require additional per-resource requests.
-Include the `permissions` scope explicitly only when needed, requesting all desired scopes together.
-An explicit refresh failure preserves the previous catalog generation and reports an error.
-Refresh collects into private disk-backed staging before opening the active catalog's publication transaction.
-Tableau response times and retries therefore do not hold the shared catalog write lock.
-Staging enforces row and database-page limits; SQLite journal and temporary files add disk overhead.
-Publication replaces only the requested inventory kinds and preserves independent datasource schema, Pulse, and unrequested inventory observations.
-Preserved observations retain their original timestamps and freshness; refreshing inventory does not reverify them.
-Catalog identity is bound to the actual server endpoint and site, not an editable alias; legacy unbound caches require refresh without guessing their origin.
-After a catalog schema upgrade, run an explicit refresh to rebuild the disposable cache; workspaces, artifacts, and credentials are not removed.
-
-Catalog collection uses concurrent reads for speed, starting at up to four requests and adapting to a default ceiling of 32 per CLI process.
-Tableau throttling responses reduce concurrency and pause all workers in that collection for the supplied retry delay.
-This is not a server-wide traffic limit: concurrent CLI processes have separate budgets.
-For a server needing lower traffic, set the environment's ceiling:
-
-```text
-tadx env update dev --catalog-max-concurrency 8
-tadx env update dev --clear-catalog-max-concurrency
-```
-
-The configurable range is 1 to 256; clearing it restores the default of 32.
-
-## Out of scope
-
-TADX covers content artifacts, workspaces, administration, catalogs, and Pulse definition lifecycle.
-It does not query datasource values, render view data or images, produce current Pulse insights, or semantically author workbooks.
-Other connected tools remain independent: TADX does not configure, select, call, proxy, or report their connections.
-
-## Contribute
-
-Action builders should start with [CONTRIBUTING.md](CONTRIBUTING.md).
+The current goal is to get TADX running quickly and smoothly against the simple content lifecycle you see with Tableau Cloud and Server.
+This is to get it ready to augment the new experiences coming in Tableau (Tableau Authoring API, Tableau Knowledge Graph, Tableau MCP, TDS API, Composable Datasources, etc.).
+Augmenting semantics, modifying published datasources, cleaning and composing data sources, and managing access with agents is all in scope as these new features become available and TADX is meant to act as the platform that allows agents to assist with these activites cleanly, quickly, cheaply, and at scale.

@@ -2,6 +2,8 @@
 
 This record freezes the upstream contract used by the Phase 1 remote capabilities.
 The captured official Tableau REST API help is `Tableau API Documentation/tableau_rest_api.md`.
+The official source is [Tableau REST API help](https://help.tableau.com/current/api/rest_api/en-us/REST/).
+The local captures and their line references are historical provenance; see [capture availability](README.md).
 Its SHA-256 digest is `76d7f050a32ca354660039bdc18143506ce26472ff82f0f12b79fb5aaa584e0f`.
 
 The implementation uses these captured sections:
@@ -74,8 +76,10 @@ TADX does not rewrite the workbook package, rebind dependencies, or claim depend
 ## Workbook published datasource detection
 
 The captured official Tableau Metadata API help is `Tableau API Documentation/tableau_metadata_api.md`.
+Its official source is the [Metadata API guide](https://help.tableau.com/current/api/metadata_api/en-us/).
 Its SHA-256 digest is `79e5542a70484f14f5d0a8cf057f16ae7c6b7caf56a582581babb50ece745fc7`.
 The captured official GraphQL schema reference is `Tableau API Documentation/tableau_metadata_api_reference.md`.
+Its official source is the [Metadata API schema reference](https://help.tableau.com/current/api/metadata_api/en-us/reference/).
 Its SHA-256 digest is `820851ed7f7172c484051d60b5deeff9eac775ecc64706f442f35fa90ec37abc`.
 
 The detection contract uses these captured sections:

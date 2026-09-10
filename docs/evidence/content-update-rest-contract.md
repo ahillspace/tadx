@@ -1,7 +1,9 @@
 # Content update REST contract evidence
 
 This record freezes the captured Tableau REST contracts used by content move, rename, ownership, and project hierarchy actions.
-The authoritative local capture is `Tableau API Documentation/tableau_rest_api.md`.
+The historical local capture is `Tableau API Documentation/tableau_rest_api.md`.
+The official source is [Tableau REST API help](https://help.tableau.com/current/api/rest_api/en-us/REST/).
+The local capture and its line references are historical provenance; see [capture availability](README.md).
 
 The implementation uses these captured sections:
 
