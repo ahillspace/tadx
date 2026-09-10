@@ -58,7 +58,7 @@ The conventional single-letter forms are `-a` for `--all`, `-e` for `--environme
 
 ```text
 tadx con ds ls --env dev -a
-tadx con ds del --env dev --nm "Revenue" --pv -f
+tadx con ds del --env dev --nm "Revenue" --prj "Analytics" -p -f
 ```
 
 Use a canonical name when writing durable scripts, structured output handling, registry IDs, or documentation that must remain stable.

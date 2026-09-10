@@ -117,6 +117,53 @@ func TestShorthandDatasourcePublishPreviewHonorsBooleanAndMutationGate(t *testin
 	}
 }
 
+func TestDocumentedDatasourceShorthandExamplesUseCanonicalPaths(t *testing.T) {
+	var requests, deletes atomic.Int32
+	var documentedListRequest atomic.Bool
+	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests.Add(1)
+		switch {
+		case r.Method == http.MethodPost && strings.HasSuffix(r.URL.Path, "/auth/signin"):
+			_, _ = io.WriteString(w, `{"credentials":{"token":"fixture-session","site":{"id":"site-1"},"user":{"id":"user-1"}}}`)
+		case r.Method == http.MethodGet && strings.HasSuffix(r.URL.Path, "/projects"):
+			_, _ = fmt.Fprintf(w, `<tsResponse><pagination pageNumber="%s" pageSize="%s" totalAvailable="1"/><projects><project id="project-1" name="Analytics" topLevelProject="true"/></projects></tsResponse>`, r.URL.Query().Get("pageNumber"), r.URL.Query().Get("pageSize"))
+		case r.Method == http.MethodGet && strings.HasSuffix(r.URL.Path, "/datasources"):
+			if r.URL.Query().Get("filter") == "projectName:eq:Analytics" && r.URL.Query().Get("pageSize") == "50" {
+				documentedListRequest.Store(true)
+			}
+			_, _ = fmt.Fprintf(w, `<tsResponse><pagination pageNumber="%s" pageSize="%s" totalAvailable="1"/><datasources><datasource id="ds-revenue" name="Revenue"><project id="project-1" name="Analytics"/></datasource></datasources></tsResponse>`, r.URL.Query().Get("pageNumber"), r.URL.Query().Get("pageSize"))
+		case r.Method == http.MethodDelete && strings.HasSuffix(r.URL.Path, "/datasources/ds-revenue"):
+			deletes.Add(1)
+			w.WriteHeader(http.StatusNoContent)
+		default:
+			t.Errorf("unexpected shorthand request: %s %s?%s", r.Method, r.URL.Path, r.URL.RawQuery)
+			http.Error(w, "unexpected request", http.StatusNotFound)
+		}
+	}))
+	defer server.Close()
+
+	options := shorthandOptions(t, server)
+	options.MutationsEnabled = false
+
+	var invalidDelete bytes.Buffer
+	if code := app.Run(context.Background(), []string{"con", "ds", "del", "--env", "test", "--nm", "Revenue", "--pv", "-f"}, &invalidDelete, options); code == 0 || !strings.Contains(invalidDelete.String(), "use --id or both --name and --project") || requests.Load() != 0 {
+		t.Fatalf("incomplete delete code=%d requests=%d output=%s", code, requests.Load(), invalidDelete.String())
+	}
+	var invalidList bytes.Buffer
+	if code := app.Run(context.Background(), []string{"con", "ds", "ls", "--env", "test", "--pid", "project-1", "-l", "50"}, &invalidList, options); code == 0 || !strings.Contains(invalidList.String(), "unknown flag: --pid") || requests.Load() != 0 {
+		t.Fatalf("unsupported list filter code=%d requests=%d output=%s", code, requests.Load(), invalidList.String())
+	}
+
+	var preview bytes.Buffer
+	if code := app.Run(context.Background(), []string{"con", "ds", "del", "--env", "test", "--nm", "Revenue", "--prj", "Analytics", "-p", "-f"}, &preview, options); code != 0 || !strings.Contains(preview.String(), "operation: datasource.delete") || !strings.Contains(preview.String(), "mode: preview") || !strings.Contains(preview.String(), "luid: ds-revenue") || deletes.Load() != 0 {
+		t.Fatalf("corrected delete code=%d deletes=%d output=%s", code, deletes.Load(), preview.String())
+	}
+	var list bytes.Buffer
+	if code := app.Run(context.Background(), []string{"con", "ds", "ls", "--env", "test", "--pnm", "Analytics", "-l", "50"}, &list, options); code != 0 || !strings.Contains(list.String(), "ds-revenue") || !documentedListRequest.Load() || deletes.Load() != 0 {
+		t.Fatalf("corrected list code=%d request=%t deletes=%d output=%s", code, documentedListRequest.Load(), deletes.Load(), list.String())
+	}
+}
+
 func TestShorthandHelpAndCompletionExposeAliasesWithoutChangingCanonicalUse(t *testing.T) {
 	options := app.Options{ConfigPath: filepath.Join(t.TempDir(), "config.yaml")}
 	var help bytes.Buffer
@@ -126,6 +173,15 @@ func TestShorthandHelpAndCompletionExposeAliasesWithoutChangingCanonicalUse(t *t
 	for _, want := range []string{"tadx content workbook inspect", "Aliases:", "ins", "-i, --id", "-e, --environment", "-f, --full"} {
 		if !strings.Contains(help.String(), want) {
 			t.Errorf("alias help missing %q:\n%s", want, help.String())
+		}
+	}
+	var deleteHelp bytes.Buffer
+	if code := app.Run(context.Background(), []string{"con", "ds", "del", "--help"}, &deleteHelp, options); code != 0 {
+		t.Fatalf("delete alias help code=%d output=%s", code, deleteHelp.String())
+	}
+	for _, want := range []string{"exact datasource name; requires --project instead of --id", "exact slash-delimited project path; required with --name"} {
+		if !strings.Contains(deleteHelp.String(), want) {
+			t.Errorf("delete alias help missing %q:\n%s", want, deleteHelp.String())
 		}
 	}
 	var forceHelp bytes.Buffer
@@ -145,6 +201,27 @@ func TestShorthandHelpAndCompletionExposeAliasesWithoutChangingCanonicalUse(t *t
 	for _, want := range []string{"inspect", "alias: ins", ":4"} {
 		if !strings.Contains(completion.String(), want) {
 			t.Errorf("completion missing %q", want)
+		}
+	}
+
+	completion.Reset()
+	if code := app.Run(context.Background(), []string{"__complete", "con", "ds", "del", "-"}, &completion, options); code != 0 {
+		t.Fatalf("flag completion through aliases code=%d output=%s", code, completion.String())
+	}
+	candidates := completionCandidates(completion.String())
+	for _, canonical := range []string{"--environment", "--full", "--id", "--name", "--preview", "--project"} {
+		if !candidates[canonical] {
+			t.Errorf("completion missing canonical flag %q", canonical)
+		}
+	}
+	for _, shorthand := range []string{"-e", "-f", "-i", "-n", "-p"} {
+		if !candidates[shorthand] {
+			t.Errorf("completion missing single-letter shorthand %q", shorthand)
+		}
+	}
+	for _, longAlias := range []string{"--env", "--ful", "--nm", "--pv", "--prj"} {
+		if candidates[longAlias] {
+			t.Errorf("completion unexpectedly advertised normalized long alias %q", longAlias)
 		}
 	}
 }
@@ -171,4 +248,15 @@ func shorthandOptions(t *testing.T, server *httptest.Server) app.Options {
 	t.Setenv("SHORTHAND_PAT_NAME", "fixture-pat")
 	t.Setenv("SHORTHAND_PAT_SECRET", "fixture-secret")
 	return app.Options{ConfigPath: configPath, HTTPClient: server.Client()}
+}
+
+func completionCandidates(output string) map[string]bool {
+	candidates := map[string]bool{}
+	for _, line := range strings.Split(output, "\n") {
+		candidate, _, ok := strings.Cut(strings.TrimSpace(line), "\t")
+		if ok {
+			candidates[candidate] = true
+		}
+	}
+	return candidates
 }

@@ -97,6 +97,27 @@ func TestValidateShorthandTreeChecksPersistentFlagsAndCanonicalCollisions(t *tes
 		}
 	})
 
+	t.Run("reserved long alias cannot be a standalone canonical flag", func(t *testing.T) {
+		root := &cobra.Command{Use: "tadx"}
+		root.Flags().String("env", "", "canonical flag using a reserved alias")
+		err := validateShorthandTree(root)
+		if err == nil || !strings.Contains(err.Error(), "--env for --environment collides") {
+			t.Fatalf("error = %v", err)
+		}
+	})
+
+	t.Run("child canonical flag steals inherited alias", func(t *testing.T) {
+		root := &cobra.Command{Use: "tadx"}
+		root.PersistentFlags().String("environment", "", "environment")
+		child := &cobra.Command{Use: "x"}
+		child.Flags().String("env", "", "different canonical flag")
+		root.AddCommand(child)
+		err := validateShorthandTree(root)
+		if err == nil || !strings.Contains(err.Error(), "tadx x: flag alias --env for --environment collides") {
+			t.Fatalf("error = %v", err)
+		}
+	})
+
 	t.Run("missing command alias", func(t *testing.T) {
 		root := &cobra.Command{Use: "tadx"}
 		root.AddCommand(&cobra.Command{Use: "future-command"})

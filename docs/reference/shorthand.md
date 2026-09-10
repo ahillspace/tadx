@@ -191,14 +191,22 @@ It does not mean `--force`.
 Use the canonical `--force` flag where a command requires an explicit safety confirmation.
 Shorthand does not bypass mutation policy.
 `--preview` remains read-only and does not authorize execution.
+Name-based deletion requires both an exact name and an exact project path; use `--id` instead when the LUID is known.
+The list filter `--project-name` (`--pnm`) matches an exact project leaf name, not a project LUID or hierarchy path.
+
+## Shell completion
+
+Completion accepts command aliases when navigating the command tree.
+Suggestions use canonical command and flag names plus supported single-letter flags.
+Long flag aliases such as `--nm` and `--pv` remain accepted input but are not separate completion candidates.
 
 ## Examples
 
 ```text
-tadx con ds ls --env dev --pid project-1 -l 50
-tadx con ds del --env dev --nm "Revenue" --pv -f
+tadx con ds ls --env dev --pnm "Analytics" -l 50
+tadx con ds del --env dev --nm "Revenue" --prj "Analytics" -p -f
 tadx con wb ls --env dev -a
 ```
 
-These examples use generic environment aliases and placeholder-safe project identifiers.
+These examples use a generic environment alias and an exact project name.
 Run `tadx <command> --help` when a shorthand appears unavailable or could be ambiguous.

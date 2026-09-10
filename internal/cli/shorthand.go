@@ -162,36 +162,20 @@ func validateShorthandTree(root *cobra.Command) error {
 				seenCommands[spelling] = child.Name()
 			}
 		}
-		allFlags := collectFlags(command.Flags())
-		for _, flag := range collectFlags(command.PersistentFlags()) {
-			found := false
-			for _, existing := range allFlags {
-				if existing == flag {
-					found = true
-					break
-				}
-			}
-			if !found {
-				allFlags = append(allFlags, flag)
-			}
-		}
-		names := map[string]*pflag.Flag{}
+		allFlags := collectEffectiveFlags(command)
 		shorts := map[string]string{}
 		for _, flag := range allFlags {
 			if len(flag.Name) > 3 && flagLongAliases[flag.Name] == "" && flagShorthands[flag.Name] == "" {
 				problems = append(problems, fmt.Sprintf("%s: flag --%s has no shorthand", command.CommandPath(), flag.Name))
 			}
-			names[flag.Name] = flag
+			if canonical := canonicalFlagByAlias[flag.Name]; canonical != "" && canonical != flag.Name {
+				problems = append(problems, fmt.Sprintf("%s: flag alias --%s for --%s collides with canonical --%s", command.CommandPath(), flag.Name, canonical, flag.Name))
+			}
 			if flag.Shorthand != "" {
 				if prior := shorts[flag.Shorthand]; prior != "" && prior != flag.Name {
 					problems = append(problems, fmt.Sprintf("%s: flag shorthand -%s selects both --%s and --%s", command.CommandPath(), flag.Shorthand, prior, flag.Name))
 				}
 				shorts[flag.Shorthand] = flag.Name
-			}
-		}
-		for canonical, alias := range flagLongAliases {
-			if names[canonical] != nil && names[alias] != nil && canonical != alias {
-				problems = append(problems, fmt.Sprintf("%s: flag alias --%s for --%s collides with canonical --%s", command.CommandPath(), alias, canonical, alias))
 			}
 		}
 		for _, child := range command.Commands() {
@@ -203,4 +187,20 @@ func validateShorthandTree(root *cobra.Command) error {
 		return fmt.Errorf("invalid shorthand tree: %s", strings.Join(problems, "; "))
 	}
 	return nil
+}
+
+func collectEffectiveFlags(command *cobra.Command) []*pflag.Flag {
+	flags := collectFlags(command.LocalFlags())
+	seen := make(map[*pflag.Flag]struct{}, len(flags))
+	for _, flag := range flags {
+		seen[flag] = struct{}{}
+	}
+	for _, flag := range collectFlags(command.InheritedFlags()) {
+		if _, ok := seen[flag]; ok {
+			continue
+		}
+		flags = append(flags, flag)
+		seen[flag] = struct{}{}
+	}
+	return flags
 }
