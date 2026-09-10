@@ -61,8 +61,8 @@ func newDatasourcePull(deps datasourceLifecycleDependencies) *cobra.Command {
 	command.Flags().StringVar(&input.Environment, "environment", "", "exact environment alias; defaults to the configured read environment")
 	command.Flags().StringVar(&input.Workspace, "workspace", "", "logical workspace name; uses deterministic defaults when omitted")
 	command.Flags().StringArrayVar(&ids, "id", nil, "authoritative datasource LUID; repeat for up to 100 items, processed sequentially")
-	command.Flags().StringVar(&name, "name", "", "exact datasource name")
-	command.Flags().StringVar(&projectPath, "project", "", "exact slash-delimited project path")
+	command.Flags().StringVar(&name, "name", "", "exact datasource name; requires --project instead of --id")
+	command.Flags().StringVar(&projectPath, "project", "", "exact slash-delimited project path; required with --name")
 	command.Flags().BoolVar(&input.Overwrite, "overwrite", false, "replace a dirty local datasource artifact")
 	return command
 }
@@ -164,8 +164,8 @@ func newDatasourceDelete(deps datasourceLifecycleDependencies) *cobra.Command {
 	}
 	command.Flags().StringVar(&input.Environment, "environment", "", "explicit write environment alias")
 	command.Flags().StringVar(&luid, "id", "", "authoritative datasource LUID")
-	command.Flags().StringVar(&name, "name", "", "exact datasource name")
-	command.Flags().StringVar(&projectPath, "project", "", "exact slash-delimited project path")
+	command.Flags().StringVar(&name, "name", "", "exact datasource name; requires --project instead of --id")
+	command.Flags().StringVar(&projectPath, "project", "", "exact slash-delimited project path; required with --name")
 	command.Flags().BoolVar(&preview, "preview", false, "preview the remote deletion without performing it")
 	return command
 }

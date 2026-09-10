@@ -172,6 +172,33 @@ func TestCLIProcessMutationCommandsAreVisibleAndGated(t *testing.T) {
 	}
 }
 
+func TestCLIProcessShorthand(t *testing.T) {
+	binary := buildCLI(t)
+	t.Run("canonical output", func(t *testing.T) {
+		canonical := runCLI(t, binary, []string{"capability", "list", "--domain", "capability", "--full"}, nil)
+		short := runCLI(t, binary, []string{"cap", "ls", "--dom", "capability", "-f"}, nil)
+		if canonical.exitCode != 0 || short.exitCode != 0 || canonical.stdout != short.stdout || short.stderr != "" {
+			t.Fatalf("canonical=%+v shorthand=%+v", canonical, short)
+		}
+	})
+	t.Run("mutation remains gated", func(t *testing.T) {
+		result := runCLI(t, binary, []string{"con", "wb", "del", "--env", "missing", "-i", "workbook-1", "--pv=false", "-f"}, nil)
+		document := decodeDocument(t, result.stdout)
+		failure, ok := document["error"].(map[string]any)
+		if result.exitCode != 1 || !ok || failure["id"] != "mutation.disabled" || failure["operation"] != "workbook.delete" {
+			t.Fatalf("shorthand mutation result=%+v", result)
+		}
+	})
+	t.Run("help advertises flags", func(t *testing.T) {
+		result := runCLI(t, binary, []string{"con", "wb", "pub", "-h"}, nil)
+		for _, want := range []string{"-f, --full", "-p, --preview", "alias: --env"} {
+			if result.exitCode != 0 || !strings.Contains(result.stdout, want) {
+				t.Fatalf("help missing %q: %+v", want, result)
+			}
+		}
+	})
+}
+
 type processResult struct {
 	exitCode int
 	stdout   string
