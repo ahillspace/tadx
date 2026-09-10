@@ -50,6 +50,22 @@ tadx capability list
 tadx capability get workbook.pull --full
 ```
 
+## CLI shorthand
+
+TADX accepts optional shorthand for common resources, actions, and flags while retaining every canonical spelling.
+For example, `ds` abbreviates the content datasource resource, `del` abbreviates delete, `--env` abbreviates `--environment`, `--nm` abbreviates `--name`, and `--pv` abbreviates `--preview`.
+The conventional single-letter forms are `-a` for `--all`, `-e` for `--environment`, `-f` for `--full`, `-i` for `--id`, `-l` for `--limit`, `-n` for `--name`, `-p` for `--preview`, `-q` for `--query`, and `-w` for `--workspace`.
+
+```text
+tadx con ds ls --env dev -a
+tadx con ds del --env dev --nm "Revenue" --pv -f
+```
+
+Use a canonical name when writing durable scripts, structured output handling, registry IDs, or documentation that must remain stable.
+Use `tadx <command> --help` for the aliases accepted by that command.
+`-f` means `--full`, not `--force`; `--force` remains a separate safety flag and no shorthand bypasses mutation policy.
+See [CLI shorthand](docs/reference/shorthand.md) for the quick reference and selector guidance.
+
 ## Future Vision
 
 The current goal is to get TADX running quickly and smoothly against the simple content lifecycle you see with Tableau Cloud and Server. This is to get it ready to augment the new experiences coming in Tableau (Tableau Authoring API, Tableau Knowledge Graph, Tableau MCP, TDS API, Composable Datasources, etc.). Augmenting semantics, modifying published datasources, cleaning and composing data sources, and managing access with agents is all in scope as these new features become available and TADX is meant to act as the platform that allows agents to assist with these activites cleanly, quickly, cheaply, and at scale.

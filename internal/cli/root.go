@@ -31,7 +31,6 @@ import (
 	workspacecli "github.com/ahillspace/tadx/internal/cli/workspace"
 	"github.com/ahillspace/tadx/internal/errs"
 	"github.com/spf13/cobra"
-	"github.com/spf13/pflag"
 )
 
 // CapabilityAnnotation associates an executable command with its registry ID.
@@ -173,12 +172,6 @@ Other connected tools remain independent; TADX does not configure, select, proxy
 		SilenceErrors: true,
 		SilenceUsage:  true,
 	}
-	root.SetGlobalNormalizationFunc(func(_ *pflag.FlagSet, name string) pflag.NormalizedName {
-		if name == "env" {
-			name = "environment"
-		}
-		return pflag.NormalizedName(name)
-	})
 	root.PersistentFlags().BoolVar(&renderOptions.Full, "full", false, "show expanded bounded details")
 	root.PersistentFlags().StringVar(configPath, "config", *configPath, "path to the non-secret TADX configuration file")
 	root.PersistentFlags().Lookup("config").DefValue = ""
@@ -273,6 +266,7 @@ Other connected tools remain independent; TADX does not configure, select, proxy
 	root.CompletionOptions.DisableDefaultCmd = true
 	setFlagErrorHandlers(root)
 	applyWriteTargetResolution(root, deps)
+	applyShorthand(root)
 	return root
 }
 

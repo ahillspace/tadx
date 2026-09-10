@@ -16,6 +16,9 @@ Default output is compact TOON.
 Use `--full` only when expanded bounded details are needed.
 `tadx last` displays the previous execution's saved full result and timestamp without repeating it; one global result is retained, not history.
 `--env` is an alias for `--environment` on commands that accept an environment.
+Common shorthand includes `con ds ls` for `content datasource list`, `del` for delete, `--nm` for `--name`, `--pv` for `--preview`, `-a` for `--all`, `-f` for `--full`, and `-l` for `--limit` when accepted by the leaf command.
+Use `-f` only for `--full`; `--force` remains distinct and never bypasses mutation policy.
+Canonical command names, structured output fields, registry IDs, and LUIDs remain preferred in durable instructions and scripts.
 Use one relevant leaf `--help` only when this Guidance and its references do not answer the question.
 
 ## Critical rules
