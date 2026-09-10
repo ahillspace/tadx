@@ -1412,7 +1412,7 @@
   {
     "id": "lineage.pull",
     "surface": "tadx content lineage pull",
-    "outcome": "Capture bounded lineage for one exact workbook, published datasource, or flow without downloading its native package.",
+    "outcome": "Capture bounded content, database, and table lineage for one exact workbook, published datasource, or flow without downloading its native package.",
     "type": "deliver",
     "disposition": "ship",
     "owner": "cli",
@@ -1421,7 +1421,7 @@
     "local_write": true,
     "remote_mutation": false,
     "supports_preview": false,
-    "safety_guard": "REST and Metadata identities remain distinct; incomplete results are explicit; no dependency acquisition",
+    "safety_guard": "Content REST and Metadata identities remain distinct; physical assets use Metadata IDs only; incomplete results are explicit; no dependency acquisition",
     "artifact_effect": "Create metadata-only lineage artifact",
     "upstream_operation": "Focused Metadata GraphQL reads plus authoritative REST identity resolution",
     "evidence": "Official Metadata guide and schema captures plus hermetic contract tests in docs/evidence/lineage-metadata-contract.md",

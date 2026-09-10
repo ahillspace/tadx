@@ -1335,7 +1335,7 @@ var canonicalDefinitions = []Definition{
 	{
 		ID:              "lineage.pull",
 		Surface:         "tadx content lineage pull",
-		Outcome:         "Capture bounded lineage for one exact workbook, published datasource, or flow without downloading its native package.",
+		Outcome:         "Capture bounded content, database, and table lineage for one exact workbook, published datasource, or flow without downloading its native package.",
 		Type:            OperationDeliver,
 		Disposition:     DispositionShip,
 		Owner:           OwnerCLI,
@@ -1345,7 +1345,7 @@ var canonicalDefinitions = []Definition{
 		LocalWrite:      true,
 		RemoteMutation:  false,
 		SupportsPreview: false,
-		SafetyGuard:     "REST and Metadata identities remain distinct; incomplete results are explicit; no dependency acquisition",
+		SafetyGuard:     "Content REST and Metadata identities remain distinct; physical assets use Metadata IDs only; incomplete results are explicit; no dependency acquisition",
 		ArtifactEffect:  "Create metadata-only lineage artifact",
 		Upstream:        "Focused Metadata GraphQL reads plus authoritative REST identity resolution",
 		Evidence:        "Official Metadata guide and schema captures plus hermetic contract tests in docs/evidence/lineage-metadata-contract.md",

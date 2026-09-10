@@ -43,6 +43,13 @@ func newLineage(deps Dependencies) *cobra.Command {
 		}
 		return deps.Renderer.Render(result)
 	}}
+	pull.Long = `Capture bounded content and physical-data lineage for a workbook, datasource, or flow.
+Includes upstream databases and tables; datasource and flow roots also include their
+downstream databases and tables where Tableau reports them.
+Physical nodes use Metadata API IDs, not REST LUIDs.
+The graph is saved as lineage.json; --full shows bounded nodes and edges.
+Direction, depth, permissions, and graph limits constrain coverage; inspect complete and warnings.
+This does not provide field-level lineage or infer relationships absent from Tableau.`
 	pull.Flags().StringVar(&input.Environment, "environment", "", "exact environment alias; defaults to the configured read environment")
 	pull.Flags().StringVar(&input.Workspace, "workspace", "", "logical workspace name; uses deterministic defaults when omitted")
 	pull.Flags().StringVar(&input.Kind, "kind", "", "lineage root kind: workbook, datasource, or flow")

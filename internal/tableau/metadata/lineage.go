@@ -27,13 +27,15 @@ const (
 	maxLineageWarnings = 20
 )
 
-// ResourceKind is one accepted authoritative REST root kind.
+// ResourceKind is one lineage node kind. Capture roots remain REST-backed content.
 type ResourceKind string
 
 const (
 	KindWorkbook            ResourceKind = "workbook"
 	KindPublishedDatasource ResourceKind = "published_datasource"
 	KindFlow                ResourceKind = "flow"
+	KindDatabase            ResourceKind = "database"
+	KindTable               ResourceKind = "table"
 )
 
 // Direction selects factual directed relationships around the root.
@@ -87,28 +89,43 @@ var lineageRelations = map[ResourceKind]map[Direction][]lineageRelation{
 	KindWorkbook: {
 		DirectionUpstream: {
 			{field: "upstreamDatasourcesConnection", targetKind: KindPublishedDatasource, direction: DirectionUpstream},
+			{field: "upstreamDatabasesConnection", targetKind: KindDatabase, direction: DirectionUpstream},
+			{field: "upstreamTablesConnection", targetKind: KindTable, direction: DirectionUpstream},
 		},
 	},
 	KindPublishedDatasource: {
 		DirectionUpstream: {
 			{field: "upstreamDatasourcesConnection", targetKind: KindPublishedDatasource, direction: DirectionUpstream},
 			{field: "upstreamFlowsConnection", targetKind: KindFlow, direction: DirectionUpstream},
+			{field: "upstreamDatabasesConnection", targetKind: KindDatabase, direction: DirectionUpstream},
+			{field: "upstreamTablesConnection", targetKind: KindTable, direction: DirectionUpstream},
 		},
 		DirectionDownstream: {
 			{field: "downstreamDatasourcesConnection", targetKind: KindPublishedDatasource, direction: DirectionDownstream},
 			{field: "downstreamFlowsConnection", targetKind: KindFlow, direction: DirectionDownstream},
 			{field: "downstreamWorkbooksConnection", targetKind: KindWorkbook, direction: DirectionDownstream},
+			{field: "downstreamDatabasesConnection", targetKind: KindDatabase, direction: DirectionDownstream},
+			{field: "downstreamTablesConnection", targetKind: KindTable, direction: DirectionDownstream},
 		},
 	},
 	KindFlow: {
 		DirectionUpstream: {
 			{field: "upstreamDatasourcesConnection", targetKind: KindPublishedDatasource, direction: DirectionUpstream},
 			{field: "upstreamLinkedFlowsConnection", targetKind: KindFlow, direction: DirectionUpstream, linked: true},
+			{field: "upstreamDatabasesConnection", targetKind: KindDatabase, direction: DirectionUpstream},
+			{field: "upstreamTablesConnection", targetKind: KindTable, direction: DirectionUpstream},
 		},
 		DirectionDownstream: {
 			{field: "downstreamDatasourcesConnection", targetKind: KindPublishedDatasource, direction: DirectionDownstream},
 			{field: "downstreamLinkedFlowsConnection", targetKind: KindFlow, direction: DirectionDownstream, linked: true},
 			{field: "downstreamWorkbooksConnection", targetKind: KindWorkbook, direction: DirectionDownstream},
+			{field: "downstreamDatabasesConnection", targetKind: KindDatabase, direction: DirectionDownstream},
+			{field: "downstreamTablesConnection", targetKind: KindTable, direction: DirectionDownstream},
+		},
+	},
+	KindTable: {
+		DirectionUpstream: {
+			{field: "database", targetKind: KindDatabase, direction: DirectionUpstream},
 		},
 	},
 }
@@ -157,7 +174,15 @@ func (c *Client) CaptureLineage(ctx context.Context, input CaptureRequest) (Capt
 		}
 		expanded[current.node.MetadataID] = struct{}{}
 		for _, relation := range relationsFor(current.node.Kind, request.Direction) {
-			neighbors, responses, relationWarnings, err := c.readLineageRelation(ctx, request, current.node, relation)
+			remainingNodes := MaxLineageNodes - len(nodes)
+			remainingEdges := MaxLineageEdges - len(edges)
+			if remainingEdges <= 0 {
+				capture.Complete = false
+				capture.Warnings = append(capture.Warnings, lineageEdgeBoundWarning)
+				bounded = true
+				break
+			}
+			neighbors, responses, relationWarnings, limitWarning, err := c.readLineageRelation(ctx, request, current.node, relation, remainingNodes, remainingEdges, nodes)
 			for _, queryResponse := range responses {
 				capture.RequestIDs = append(capture.RequestIDs, queryResponse.TableauRequestID)
 			}
@@ -168,6 +193,11 @@ func (c *Client) CaptureLineage(ctx context.Context, input CaptureRequest) (Capt
 			if err != nil {
 				return Capture{}, err
 			}
+			if limitWarning != "" {
+				capture.Complete = false
+				capture.Warnings = append(capture.Warnings, limitWarning)
+				bounded = true
+			}
 			for _, neighbor := range neighbors {
 				if err := addLineageNode(nodes, restIdentities, neighbor); err != nil {
 					return Capture{}, protocolError(lastResponse(responses, response), "%v", err)
@@ -176,7 +206,7 @@ func (c *Client) CaptureLineage(ctx context.Context, input CaptureRequest) (Capt
 					delete(nodes, neighbor.MetadataID)
 					delete(restIdentities, lineageRESTKey(neighbor))
 					capture.Complete = false
-					capture.Warnings = append(capture.Warnings, "Lineage exceeded the 500-node transport limit; the capture is incomplete.")
+					capture.Warnings = append(capture.Warnings, lineageNodeBoundWarning)
 					bounded = true
 					break
 				}
@@ -190,7 +220,7 @@ func (c *Client) CaptureLineage(ctx context.Context, input CaptureRequest) (Capt
 				if len(edges) > MaxLineageEdges {
 					delete(edges, lineageEdgeKey(edge))
 					capture.Complete = false
-					capture.Warnings = append(capture.Warnings, "Lineage exceeded the 1000-edge transport limit; the capture is incomplete.")
+					capture.Warnings = append(capture.Warnings, lineageEdgeBoundWarning)
 					bounded = true
 					break
 				}
@@ -213,6 +243,11 @@ func (c *Client) CaptureLineage(ctx context.Context, input CaptureRequest) (Capt
 	return normalizeCapture(capture), nil
 }
 
+const (
+	lineageNodeBoundWarning = "Lineage reached the 500-node transport limit; the capture is incomplete."
+	lineageEdgeBoundWarning = "Lineage reached the 1000-edge transport limit; the capture is incomplete."
+)
+
 func (c *Client) resolveLineageRoot(ctx context.Context, request CaptureRequest) (Node, tableau.Response, []string, error) {
 	query, err := StaticLineageRootQuery(request.Kind)
 	if err != nil {
@@ -230,85 +265,147 @@ func (c *Client) resolveLineageRoot(ctx context.Context, request CaptureRequest)
 	return root, response, warnings, nil
 }
 
-func (c *Client) readLineageRelation(ctx context.Context, request CaptureRequest, root Node, relation lineageRelation) ([]Node, []tableau.Response, []string, error) {
+func (c *Client) readLineageRelation(ctx context.Context, request CaptureRequest, root Node, relation lineageRelation, maxNewNodes, maxEdges int, knownNodes map[string]Node) ([]Node, []tableau.Response, []string, string, error) {
 	query, err := lineageRelationQuery(ResourceKind(root.Kind), relation)
 	if err != nil {
-		return nil, nil, nil, err
+		return nil, nil, nil, "", err
+	}
+	if ResourceKind(root.Kind) == KindTable {
+		return c.readTableDatabaseRelation(ctx, query, root, relation, maxNewNodes, knownNodes)
 	}
 	var after any
 	total := -1
 	seenCursors := make(map[string]struct{})
 	seenNodes := make(map[string]struct{})
 	result := make([]Node, 0)
+	newNodeCount := 0
 	responses := make([]tableau.Response, 0, 1)
 	warnings := make([]string, 0)
 	for {
-		response, envelope, pageWarnings, queryErr := c.queryLineage(ctx, query, map[string]any{"rootLuid": root.RESTLUID, "after": after, "pageSize": request.PageSize})
+		pageSize := request.PageSize
+		if remaining := maxEdges - len(result); remaining < pageSize {
+			pageSize = remaining
+		}
+		response, envelope, pageWarnings, queryErr := c.queryLineage(ctx, query, map[string]any{"rootLuid": root.RESTLUID, "after": after, "pageSize": pageSize})
 		responses = append(responses, response)
 		warnings = append(warnings, pageWarnings...)
 		if queryErr != nil {
-			return nil, responses, warnings, queryErr
+			return nil, responses, warnings, "", queryErr
 		}
 		connection := envelope.Data.connection(ResourceKind(root.Kind))
 		returnedRoot, rootErr := exactLineageRoot(response, connection, ResourceKind(root.Kind), root.RESTLUID)
 		if rootErr != nil {
-			return nil, responses, warnings, rootErr
+			return nil, responses, warnings, "", rootErr
 		}
 		if returnedRoot != root {
-			return nil, responses, warnings, protocolError(response, "lineage root REST LUID %q changed identity while paging %s", root.RESTLUID, relation.field)
+			return nil, responses, warnings, "", protocolError(response, "lineage root REST LUID %q changed identity while paging %s", root.RESTLUID, relation.field)
 		}
 		relationship := (*connection.Nodes)[0].relation(relation)
 		if relationship == nil || relationship.TotalCount == nil || relationship.PageInfo == nil || relationship.Nodes == nil {
-			return nil, responses, warnings, protocolError(response, "%s omitted totalCount, pageInfo, or nodes", relation.field)
+			return nil, responses, warnings, "", protocolError(response, "%s omitted totalCount, pageInfo, or nodes", relation.field)
 		}
 		if *relationship.TotalCount < 0 {
-			return nil, responses, warnings, protocolError(response, "%s returned a negative totalCount", relation.field)
+			return nil, responses, warnings, "", protocolError(response, "%s returned a negative totalCount", relation.field)
 		}
 		if total < 0 {
 			total = *relationship.TotalCount
 		} else if total != *relationship.TotalCount {
-			return nil, responses, warnings, protocolError(response, "%s changed totalCount from %d to %d while paging", relation.field, total, *relationship.TotalCount)
+			return nil, responses, warnings, "", protocolError(response, "%s changed totalCount from %d to %d while paging", relation.field, total, *relationship.TotalCount)
 		}
 		for _, raw := range *relationship.Nodes {
+			if len(result) == maxEdges {
+				break
+			}
 			neighborRaw := raw
 			if relation.linked {
 				if raw.Asset == nil {
-					return nil, responses, warnings, protocolError(response, "%s returned a linked flow without an asset", relation.field)
+					return nil, responses, warnings, "", protocolError(response, "%s returned a linked flow without an asset", relation.field)
 				}
 				neighborRaw = *raw.Asset
 			}
 			neighbor := Node{MetadataID: strings.TrimSpace(neighborRaw.ID), Kind: string(relation.targetKind), RESTLUID: strings.TrimSpace(neighborRaw.LUID), Name: strings.TrimSpace(neighborRaw.Name)}
-			if neighbor.MetadataID == "" || neighbor.RESTLUID == "" {
-				return nil, responses, warnings, protocolError(response, "%s returned a %s without distinct Metadata and REST identities", relation.field, relation.targetKind)
+			if neighbor.MetadataID == "" {
+				return nil, responses, warnings, "", protocolError(response, "%s returned a %s without a Metadata identity", relation.field, relation.targetKind)
+			}
+			if isRESTBackedLineageKind(relation.targetKind) && neighbor.RESTLUID == "" {
+				return nil, responses, warnings, "", protocolError(response, "%s returned a %s without distinct Metadata and REST identities", relation.field, relation.targetKind)
 			}
 			if _, exists := seenNodes[neighbor.MetadataID]; exists {
-				return nil, responses, warnings, protocolError(response, "%s repeated Metadata ID %q within one connection", relation.field, neighbor.MetadataID)
+				return nil, responses, warnings, "", protocolError(response, "%s repeated Metadata ID %q within one connection", relation.field, neighbor.MetadataID)
+			}
+			if _, exists := knownNodes[neighbor.MetadataID]; !exists {
+				if newNodeCount == maxNewNodes {
+					return result, responses, warnings, lineageNodeBoundWarning, nil
+				}
+				newNodeCount++
 			}
 			seenNodes[neighbor.MetadataID] = struct{}{}
 			result = append(result, neighbor)
 		}
 		if len(result) > total {
-			return nil, responses, warnings, protocolError(response, "%s returned more nodes than totalCount", relation.field)
+			return nil, responses, warnings, "", protocolError(response, "%s returned more nodes than totalCount", relation.field)
 		}
 		if relationship.PageInfo.HasNextPage == nil {
-			return nil, responses, warnings, protocolError(response, "%s omitted pageInfo.hasNextPage", relation.field)
+			return nil, responses, warnings, "", protocolError(response, "%s omitted pageInfo.hasNextPage", relation.field)
+		}
+		if len(result) == maxEdges && (len(result) < total || *relationship.PageInfo.HasNextPage) {
+			return result, responses, warnings, lineageEdgeBoundWarning, nil
 		}
 		if !*relationship.PageInfo.HasNextPage {
 			if len(result) != total && len(warnings) == 0 {
-				return nil, responses, warnings, protocolError(response, "%s ended at %d of %d nodes", relation.field, len(result), total)
+				return nil, responses, warnings, "", protocolError(response, "%s ended at %d of %d nodes", relation.field, len(result), total)
 			}
-			return result, responses, warnings, nil
+			return result, responses, warnings, "", nil
 		}
 		cursor := strings.TrimSpace(relationship.PageInfo.EndCursor)
 		if cursor == "" {
-			return nil, responses, warnings, protocolError(response, "%s has another page without an end cursor", relation.field)
+			return nil, responses, warnings, "", protocolError(response, "%s has another page without an end cursor", relation.field)
 		}
 		if _, exists := seenCursors[cursor]; exists {
-			return nil, responses, warnings, protocolError(response, "%s repeated cursor %q", relation.field, cursor)
+			return nil, responses, warnings, "", protocolError(response, "%s repeated cursor %q", relation.field, cursor)
 		}
 		seenCursors[cursor] = struct{}{}
 		after = cursor
 	}
+}
+
+func (c *Client) readTableDatabaseRelation(ctx context.Context, query string, root Node, relation lineageRelation, maxNewNodes int, knownNodes map[string]Node) ([]Node, []tableau.Response, []string, string, error) {
+	response, envelope, warnings, err := c.queryLineage(ctx, query, map[string]any{"rootMetadataID": root.MetadataID})
+	responses := []tableau.Response{response}
+	if err != nil {
+		return nil, responses, warnings, "", err
+	}
+	connection := envelope.Data.connection(KindTable)
+	returnedRoot, err := exactMetadataLineageRoot(response, connection, KindTable, root.MetadataID)
+	if err != nil {
+		return nil, responses, warnings, "", err
+	}
+	if returnedRoot != root {
+		return nil, responses, warnings, "", protocolError(response, "table lineage root Metadata ID %q changed identity", root.MetadataID)
+	}
+	databaseJSON := (*connection.Nodes)[0].Database
+	if len(databaseJSON) == 0 {
+		return nil, responses, warnings, "", protocolError(response, "database field was omitted for table Metadata ID %q", root.MetadataID)
+	}
+	if string(databaseJSON) == "null" {
+		return nil, responses, warnings, "", nil
+	}
+	var database lineageNode
+	if err := json.Unmarshal(databaseJSON, &database); err != nil {
+		return nil, responses, warnings, "", protocolError(response, "database field for table Metadata ID %q was malformed", root.MetadataID)
+	}
+	neighbor := Node{MetadataID: strings.TrimSpace(database.ID), Kind: string(relation.targetKind), Name: strings.TrimSpace(database.Name)}
+	if neighbor.MetadataID == "" {
+		return nil, responses, warnings, "", protocolError(response, "database returned for table Metadata ID %q omitted its Metadata identity", root.MetadataID)
+	}
+	if _, exists := knownNodes[neighbor.MetadataID]; !exists && maxNewNodes < 1 {
+		return nil, responses, warnings, lineageNodeBoundWarning, nil
+	}
+	return []Node{neighbor}, responses, warnings, "", nil
+}
+
+func isRESTBackedLineageKind(kind ResourceKind) bool {
+	return kind == KindWorkbook || kind == KindPublishedDatasource || kind == KindFlow
 }
 
 func (c *Client) queryLineage(ctx context.Context, query string, variables map[string]any) (tableau.Response, lineageEnvelope, []string, error) {
@@ -392,6 +489,27 @@ func exactLineageRoot(response tableau.Response, connection *lineageConnection, 
 	return root, nil
 }
 
+func exactMetadataLineageRoot(response tableau.Response, connection *lineageConnection, kind ResourceKind, expectedMetadataID string) (Node, error) {
+	if connection == nil || connection.TotalCount == nil || connection.PageInfo == nil || connection.Nodes == nil {
+		return Node{}, protocolError(response, "%s lineage root connection omitted totalCount, pageInfo, or nodes", kind)
+	}
+	if connection.PageInfo.HasNextPage == nil {
+		return Node{}, protocolError(response, "%s lineage root connection omitted pageInfo.hasNextPage", kind)
+	}
+	if *connection.TotalCount != 1 || len(*connection.Nodes) != 1 || *connection.PageInfo.HasNextPage {
+		return Node{}, protocolError(response, "expected exactly one %s lineage root for Metadata ID %q", kind, expectedMetadataID)
+	}
+	raw := (*connection.Nodes)[0]
+	root := Node{MetadataID: strings.TrimSpace(raw.ID), Kind: string(kind), Name: strings.TrimSpace(raw.Name)}
+	if root.MetadataID == "" {
+		return Node{}, protocolError(response, "%s lineage root omitted its Metadata ID", kind)
+	}
+	if root.MetadataID != expectedMetadataID {
+		return Node{}, protocolError(response, "%s lineage root returned Metadata ID %q, expected Metadata ID %q", kind, root.MetadataID, expectedMetadataID)
+	}
+	return root, nil
+}
+
 func relationsFor(kind string, direction Direction) []lineageRelation {
 	byDirection := lineageRelations[ResourceKind(kind)]
 	switch direction {
@@ -412,12 +530,14 @@ func addLineageNode(nodes map[string]Node, restIdentities map[string]string, nod
 		}
 		return nil
 	}
-	key := lineageRESTKey(node)
-	if currentID, exists := restIdentities[key]; exists && currentID != node.MetadataID {
-		return fmt.Errorf("REST identity %q maps to Metadata IDs %q and %q", key, currentID, node.MetadataID)
+	if node.RESTLUID != "" {
+		key := lineageRESTKey(node)
+		if currentID, exists := restIdentities[key]; exists && currentID != node.MetadataID {
+			return fmt.Errorf("REST identity %q maps to Metadata IDs %q and %q", key, currentID, node.MetadataID)
+		}
+		restIdentities[key] = node.MetadataID
 	}
 	nodes[node.MetadataID] = node
-	restIdentities[key] = node.MetadataID
 	return nil
 }
 
@@ -555,11 +675,27 @@ const flowLineageRootQuery = `query LineageFlowRoot($rootLuid: String!, $after: 
 }`
 
 func lineageRelationQuery(kind ResourceKind, relation lineageRelation) (string, error) {
+	if kind == KindTable && relation.field == "database" {
+		return `query LineageTableDatabase($rootMetadataID: ID!) {
+  databaseTablesConnection(first: 2, filter: {id: $rootMetadataID}, permissionMode: OBFUSCATE_RESULTS) {
+    totalCount
+    pageInfo { hasNextPage endCursor }
+    nodes {
+      id
+      name
+      database { id name }
+    }
+  }
+}`, nil
+	}
 	rootField, operation, err := lineageRootField(kind)
 	if err != nil {
 		return "", err
 	}
 	nodes := "nodes { id luid name }"
+	if relation.targetKind == KindDatabase || relation.targetKind == KindTable {
+		nodes = "nodes { id name }"
+	}
 	if relation.linked {
 		nodes = "nodes { asset { id luid name } fromEdges toEdges }"
 	}
@@ -612,6 +748,7 @@ type lineageData struct {
 	WorkbooksConnection            *lineageConnection `json:"workbooksConnection"`
 	PublishedDatasourcesConnection *lineageConnection `json:"publishedDatasourcesConnection"`
 	FlowsConnection                *lineageConnection `json:"flowsConnection"`
+	DatabaseTablesConnection       *lineageConnection `json:"databaseTablesConnection"`
 }
 
 func (d lineageData) connection(kind ResourceKind) *lineageConnection {
@@ -622,6 +759,8 @@ func (d lineageData) connection(kind ResourceKind) *lineageConnection {
 		return d.PublishedDatasourcesConnection
 	case KindFlow:
 		return d.FlowsConnection
+	case KindTable:
+		return d.DatabaseTablesConnection
 	default:
 		return nil
 	}
@@ -638,13 +777,18 @@ type lineageNode struct {
 	LUID                            string             `json:"luid"`
 	Name                            string             `json:"name"`
 	Asset                           *lineageNode       `json:"asset"`
+	Database                        json.RawMessage    `json:"database"`
 	UpstreamDatasourcesConnection   *lineageConnection `json:"upstreamDatasourcesConnection"`
 	UpstreamFlowsConnection         *lineageConnection `json:"upstreamFlowsConnection"`
 	UpstreamLinkedFlowsConnection   *lineageConnection `json:"upstreamLinkedFlowsConnection"`
+	UpstreamDatabasesConnection     *lineageConnection `json:"upstreamDatabasesConnection"`
+	UpstreamTablesConnection        *lineageConnection `json:"upstreamTablesConnection"`
 	DownstreamDatasourcesConnection *lineageConnection `json:"downstreamDatasourcesConnection"`
 	DownstreamFlowsConnection       *lineageConnection `json:"downstreamFlowsConnection"`
 	DownstreamLinkedFlowsConnection *lineageConnection `json:"downstreamLinkedFlowsConnection"`
 	DownstreamWorkbooksConnection   *lineageConnection `json:"downstreamWorkbooksConnection"`
+	DownstreamDatabasesConnection   *lineageConnection `json:"downstreamDatabasesConnection"`
+	DownstreamTablesConnection      *lineageConnection `json:"downstreamTablesConnection"`
 }
 
 func (n lineageNode) relation(relation lineageRelation) *lineageConnection {
@@ -655,6 +799,10 @@ func (n lineageNode) relation(relation lineageRelation) *lineageConnection {
 		return n.UpstreamFlowsConnection
 	case "upstreamLinkedFlowsConnection":
 		return n.UpstreamLinkedFlowsConnection
+	case "upstreamDatabasesConnection":
+		return n.UpstreamDatabasesConnection
+	case "upstreamTablesConnection":
+		return n.UpstreamTablesConnection
 	case "downstreamDatasourcesConnection":
 		return n.DownstreamDatasourcesConnection
 	case "downstreamFlowsConnection":
@@ -663,6 +811,10 @@ func (n lineageNode) relation(relation lineageRelation) *lineageConnection {
 		return n.DownstreamLinkedFlowsConnection
 	case "downstreamWorkbooksConnection":
 		return n.DownstreamWorkbooksConnection
+	case "downstreamDatabasesConnection":
+		return n.DownstreamDatabasesConnection
+	case "downstreamTablesConnection":
+		return n.DownstreamTablesConnection
 	default:
 		return nil
 	}

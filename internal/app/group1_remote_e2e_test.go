@@ -310,6 +310,10 @@ func writeGroupOneLineage(t *testing.T, writer http.ResponseWriter, request *htt
 	}
 	field := ""
 	for _, candidate := range []string{
+		"upstreamDatabasesConnection",
+		"upstreamTablesConnection",
+		"downstreamDatabasesConnection",
+		"downstreamTablesConnection",
 		"upstreamDatasourcesConnection",
 		"upstreamLinkedFlowsConnection",
 		"downstreamDatasourcesConnection",

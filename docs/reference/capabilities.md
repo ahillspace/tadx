@@ -1322,7 +1322,7 @@ Display one globally saved full result and timestamp without re-execution.
 
 ### `lineage.pull`
 
-Capture bounded lineage for one exact workbook, published datasource, or flow without downloading its native package.
+Capture bounded content, database, and table lineage for one exact workbook, published datasource, or flow without downloading its native package.
 
 - Surface: tadx content lineage pull
 - Operation type: deliver
@@ -1337,7 +1337,7 @@ Capture bounded lineage for one exact workbook, published datasource, or flow wi
 - Remote mutation: No
 - Supports `--preview`: No
 - Raw capable: No
-- Safety and guard: REST and Metadata identities remain distinct; incomplete results are explicit; no dependency acquisition
+- Safety and guard: Content REST and Metadata identities remain distinct; physical assets use Metadata IDs only; incomplete results are explicit; no dependency acquisition
 - Artifact effect: Create metadata-only lineage artifact
 - Upstream operation: Focused Metadata GraphQL reads plus authoritative REST identity resolution
 - Evidence: Official Metadata guide and schema captures plus hermetic contract tests in docs/evidence/lineage-metadata-contract.md
