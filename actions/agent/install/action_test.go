@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/ahillspace/tadx/actions/agent/install"
+	"github.com/ahillspace/tadx/internal/agenttarget"
 	"github.com/ahillspace/tadx/internal/output"
 )
 
@@ -26,13 +27,24 @@ func (i *installer) Install(_ context.Context, input install.Input) (install.Res
 
 func TestExecuteValidatesTargetBeforeSideEffects(t *testing.T) {
 	dependency := &installer{}
-	for _, target := range []string{"", "../codex", "Codex", "all"} {
+	for _, target := range []string{"", "../codex", "Codex", "all", "other"} {
 		if _, err := install.New(dependency).Execute(context.Background(), install.Input{Target: target}); err == nil {
 			t.Fatalf("accepted %q", target)
 		}
 	}
 	if dependency.calls != 0 {
 		t.Fatal("invalid target reached installer")
+	}
+}
+
+func TestExecuteAcceptsAllSupportedTargets(t *testing.T) {
+	for _, target := range agenttarget.SupportedTargets() {
+		t.Run(target, func(t *testing.T) {
+			dependency := &installer{}
+			if _, err := install.New(dependency).Execute(context.Background(), install.Input{Target: target}); err != nil {
+				t.Fatal(err)
+			}
+		})
 	}
 }
 

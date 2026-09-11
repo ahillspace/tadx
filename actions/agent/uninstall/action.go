@@ -3,7 +3,9 @@ package uninstall
 
 import (
 	"context"
+	"fmt"
 
+	"github.com/ahillspace/tadx/internal/agenttarget"
 	"github.com/ahillspace/tadx/internal/errs"
 )
 
@@ -58,8 +60,8 @@ type Action struct{ uninstaller Uninstaller }
 
 func New(uninstaller Uninstaller) *Action { return &Action{uninstaller: uninstaller} }
 func (a *Action) Execute(ctx context.Context, in Input) (Output, error) {
-	if in.Target != "claude" && in.Target != "codex" && in.Target != "cursor" {
-		return Output{}, &errs.Error{ID: "agent.uninstall.usage", Kind: errs.KindUsage, Operation: "agent.uninstall", Summary: "--target must be claude, codex, or cursor.", Retryable: errs.Bool(false), CorrectiveAction: "Run tadx agent uninstall --target claude, codex, or cursor."}
+	if !agenttarget.IsSupported(in.Target) {
+		return Output{}, &errs.Error{ID: "agent.uninstall.usage", Kind: errs.KindUsage, Operation: "agent.uninstall", Summary: fmt.Sprintf("--target must be %s.", agenttarget.Summary()), Retryable: errs.Bool(false), CorrectiveAction: "Choose one supported target, for example: tadx agent uninstall --target opencode --preview."}
 	}
 	if a == nil || a.uninstaller == nil {
 		return Output{}, &errs.Error{ID: "agent.uninstall.runtime", Kind: errs.KindRuntime, Operation: "agent.uninstall", Summary: "Agent Guidance uninstall is not configured.", Retryable: errs.Bool(false)}

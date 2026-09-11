@@ -898,7 +898,7 @@ input[type="search"]:focus, select:focus {
     <div>
       <p class="eyebrow">Executable registry visualization</p>
       <h1>TADX Capability Map</h1>
-      <p class="hero-copy">A searchable, collapsible view of the current action registry, including native Tableau search, catalog-backed inventory lists, execution-first pulls, mutation gating, and delegated tooling.</p>
+      <p class="hero-copy">Explore the current action registry: native Tableau search, bounded live resource lists, immediate pulls, mutation gating, and delegated tooling.</p>
     </div>
     <div class="source-meta" aria-label="Source metadata">
       <span class="source-chip"><span class="live-dot" aria-hidden="true"></span><strong id="sourceTotal"></strong> current capabilities</span>
@@ -933,7 +933,7 @@ input[type="search"]:focus, select:focus {
   </section>
 
   <div class="utility-bar">
-    <span><strong>Current registry:</strong> native search is distinct from catalog-backed inventory listing; the embedded rows mirror the generated capability reference.</span>
+    <span><strong>Current registry:</strong> native search and resource lists read live by default; <code>--catalog</code> selects local-only reads.</span>
     <span class="execution-summary"><span class="status-light" aria-hidden="true"></span><strong id="executionCount">0</strong> CLI capabilities enabled under the disabled-policy snapshot baseline</span>
   </div>
 
@@ -945,8 +945,11 @@ input[type="search"]:focus, select:focus {
     </article>
     <article class="default-card action-default">
       <div class="default-card-head"><h2>Resource lists</h2><span class="default-count" id="inventoryListCount">0</span></div>
-      <p>Unfiltered content/admin lists inventory the full live resource scope, replace that catalog scope, then render from the snapshot. Continuation pages are local.</p>
-      <div class="behavior-labels"><span class="badge delegated">LIVE INVENTORY</span><span class="badge catalog">CATALOG SNAPSHOT</span></div>
+      <p>Resource lists use bounded live reads by default.
+      Explicit <code>--all</code> collects the matching inventory and renders it in memory, with best-effort catalog persistence.
+      Filtered collections save observations; only complete unfiltered collections replace the resource scope.
+      <code>--catalog</code> is local-only.</p>
+      <div class="behavior-labels"><span class="badge live">BOUNDED LIVE</span><span class="badge catalog">--ALL OPT-IN</span><span class="badge catalog">--CATALOG OPT-IN</span></div>
     </article>
     <article class="default-card pull-default">
       <div class="default-card-head"><h2>Pull operations</h2><span class="default-count" id="pullDefaultCount">0</span></div>
@@ -1017,7 +1020,7 @@ input[type="search"]:focus, select:focus {
           <select id="behaviorFilter">
             <option value="">All behaviors</option>
             <option value="native-search">Native Tableau search</option>
-            <option value="inventory-list">Catalog-backed inventory list</option>
+            <option value="inventory-list">Bounded live resource list</option>
             <option value="catalog-opt-in">Catalog opt-in</option>
             <option value="pull-now">Pull executes by default</option>
             <option value="preview">Supports --preview</option>
@@ -3788,7 +3791,7 @@ input[type="search"]:focus, select:focus {
   const defaultSource = cap => {
     if (cap.owner !== "cli") return "Delegated external owner";
     if (cap.id === "search.run") return "Native Tableau search, dedicated live adapters, or local SQLite with --catalog";
-    if (inventoryListIDs.has(cap.id)) return "Complete live inventory refreshed into a local catalog snapshot";
+    if (inventoryListIDs.has(cap.id)) return "Bounded live reads by default; local-only SQLite with --catalog or a legacy snapshot cursor.";
     if (cap.catalog_opt_in) return "Live Tableau by default; local SQLite with --catalog";
     if (cap.availability.startsWith("Local")) return "Local configuration, workspace, artifact, or catalog state";
     return "Live Tableau through the capability's bounded adapter";
@@ -3798,7 +3801,7 @@ input[type="search"]:focus, select:focus {
     if (cap.owner !== "cli") return "Execution belongs to the named external owner and has no TADX command selectors.";
     if (cap.remote_mutation) return "Requires the effective remote-mutation policy to be enabled; --preview remains read-only where supported.";
     if (cap.pull_default) return "Retrieves from Tableau and writes the managed artifact immediately; no --preview surface is registered.";
-    if (cap.inventory_list) return "Inventories the complete live scope, replaces that catalog scope, then renders the bounded result from SQLite.";
+    if (cap.inventory_list) return cap.outcome;
     if (cap.id === "search.run") return "Uses native live search for nonempty content terms; --catalog is local-only and blank text requires a concrete type.";
     if (cap.local_write) return "Performs the bounded local write after validation.";
     return "Performs a bounded read-only inspection or discovery operation.";
@@ -4138,7 +4141,7 @@ input[type="search"]:focus, select:focus {
       const cap = node.cap;
       if (cap.pull_default) addBadge(meta, "PULL NOW", "pull", "Pull executes and writes by default");
       else if (cap.native_search) addBadge(meta, "NATIVE SEARCH", "live", "Uses Tableau native search for live content terms");
-      else if (cap.inventory_list) addBadge(meta, "CATALOG LIST", "catalog", "Unfiltered live list refreshes a complete catalog scope and renders the snapshot");
+      else if (cap.inventory_list) addBadge(meta, "LIVE LIST", "live", cap.default_source);
       else if (cap.catalog_opt_in) addBadge(meta, "CATALOG", "catalog", "Live by default; --catalog is local-only");
       if (cap.remote_mutation) addBadge(meta, "REMOTE", "remote", "Remote mutation; gated by TADX_ENABLE_MUTATIONS=1");
       if (cap.local_write) addBadge(meta, "LOCAL", "local", "Local write");
@@ -4237,7 +4240,7 @@ input[type="search"]:focus, select:focus {
         : "";
     badges.push(`<span class="badge ${state.className === "external-delegated" ? "delegated" : ""}" style="${stateStyle}">${escapeHTML(state.label.toUpperCase())}</span>`);
     if (cap.native_search) badges.push('<span class="badge live">NATIVE SEARCH</span><span class="badge catalog">--CATALOG</span>');
-    else if (cap.inventory_list) badges.push('<span class="badge delegated">LIVE INVENTORY</span><span class="badge catalog">CATALOG SNAPSHOT</span>');
+    else if (cap.inventory_list) badges.push('<span class="badge live">BOUNDED LIVE</span><span class="badge catalog">--ALL OPT-IN</span><span class="badge catalog">--CATALOG OPT-IN</span>');
     else if (cap.catalog_opt_in) badges.push('<span class="badge live">LIVE DEFAULT</span><span class="badge catalog">--CATALOG</span>');
     if (cap.pull_default) badges.push('<span class="badge pull">PULL NOW</span>');
     if (cap.remote_mutation) badges.push('<span class="badge remote">REMOTE MUTATION</span><span class="badge gated">GATED</span>');
@@ -4275,7 +4278,7 @@ input[type="search"]:focus, select:focus {
       <h2 class="detail-title">${escapeHTML(cap.id)}</h2>
       <div class="breadcrumb">${escapeHTML(breadcrumbFor(cap))}</div>
       <div class="detail-badges">${badgeHTML(cap)}</div>
-      <p class="outcome">${escapeHTML(cap.outcome)}</p>
+      ${cap.inventory_list ? "" : `<p class="outcome">${escapeHTML(cap.outcome)}</p>`}
 
       <div class="behavior-callout"><strong>Default invocation</strong><span>${escapeHTML(cap.default_behavior)}</span></div>
 
@@ -4398,7 +4401,7 @@ input[type="search"]:focus, select:focus {
         </dl>
         <div class="group-state-list">${rows}</div>
       </section>
-      <div class="callout">Native search, catalog-backed list snapshots, optional catalog reads, pull execution defaults, and mutation gating are independent behaviors.</div>
+      <div class="callout">Native search, bounded live resource lists, explicit --all collection, local-only catalog reads, pull execution defaults, and mutation gating are independent behaviors.</div>
     `;
   }
 

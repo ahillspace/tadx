@@ -104,7 +104,7 @@ func forbiddenReason(file, imported, modulePath string) string {
 		}
 		return ""
 	}
-	if hasPathPrefix(file, "internal/value") || hasPathPrefix(file, "internal/commandhint") {
+	if hasPathPrefix(file, "internal/value") || hasPathPrefix(file, "internal/commandhint") || hasPathPrefix(file, "internal/agenttarget") {
 		dependency, err := build.Default.Import(imported, "", build.FindOnly)
 		if err != nil || !dependency.Goroot {
 			return "shared value types must depend only on the standard library"
@@ -178,6 +178,10 @@ func localImportPath(imported, modulePath string) (string, bool) {
 func localImportAllowed(file, imported string) bool {
 	switch layerForFile(file) {
 	case layerAction:
+		// Skill target metadata is a standard-library leaf, not the installer.
+		if hasPathPrefix(file, "actions/agent") && imported == "internal/agenttarget" {
+			return true
+		}
 		// Pulse actions share raw-payload invariants through a standard-library
 		// leaf package; this does not authorize dependencies for other actions.
 		if hasPathPrefix(file, "actions/pulse") && imported == "internal/pulsecontract" {
@@ -216,12 +220,19 @@ func localImportAllowed(file, imported string) bool {
 				"internal/workspace",
 			)
 	case layerCLI:
+		if hasPathPrefix(file, "internal/cli/agent") && imported == "internal/agenttarget" {
+			return true
+		}
 		return matchesPrefix(imported, "actions", "internal/cli") || matchesExact(imported, "internal/errs", "internal/pathspec", "internal/contentbatch", "internal/commandhint")
 	case layerResource:
 		return matchesExact(imported, "internal/identity", "internal/value") || matchesPrefix(imported, "internal/tableau")
 	case layerTableau:
 		return matchesExact(imported, "internal/auth", "internal/tableau", "internal/tableau/catalog/tabxml", "internal/value")
 	case layerFoundation:
+		// Installer and startup discovery share directory facts, never auth or actions.
+		if hasPathPrefix(file, "internal/agent") || hasPathPrefix(file, "internal/guidancenotice") {
+			return imported == "internal/agenttarget"
+		}
 		if hasPathPrefix(file, "internal/lastcommand") {
 			return matchesExact(imported, "internal/lock", "internal/value")
 		}
@@ -263,7 +274,7 @@ func localImportAllowed(file, imported string) bool {
 		}
 		return false
 	case layerTADXCommand:
-		return matchesExact(imported, "internal/app")
+		return matchesExact(imported, "internal/app", "internal/guidancenotice")
 	case layerDocsGenerator:
 		return matchesExact(imported, "internal/capability")
 	default:
@@ -394,6 +405,8 @@ func disallowedLocalImportReason(file, imported string) string {
 
 func isFoundationPackage(file string) bool {
 	return hasPathPrefix(file, "internal/lastcommand") || hasPathPrefix(file, "internal/artifact") ||
+		hasPathPrefix(file, "internal/agent") ||
+		hasPathPrefix(file, "internal/guidancenotice") ||
 		hasPathPrefix(file, "internal/contentbatch") ||
 		hasPathPrefix(file, "internal/commandhint") ||
 		hasPathPrefix(file, "internal/architecture") ||

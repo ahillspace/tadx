@@ -12,13 +12,18 @@ import (
 	"testing"
 
 	"github.com/ahillspace/tadx/internal/agent"
+	"github.com/ahillspace/tadx/internal/agenttarget"
 	"github.com/ahillspace/tadx/internal/app"
 	"gopkg.in/yaml.v3"
 )
 
 func TestInstalledSkillsIncludeAllBundledReferences(t *testing.T) {
-	for _, target := range []string{"codex", "claude", "cursor"} {
+	for _, target := range agenttarget.SupportedTargets() {
 		t.Run(target, func(t *testing.T) {
+			base, ok := agenttarget.TargetPath(target)
+			if !ok {
+				t.Fatal("supported target has no skill root")
+			}
 			home := t.TempDir()
 			installer := agent.Installer{Home: func() (string, error) { return home, nil }}
 			if _, err := installer.Install(context.Background(), target, false, false); err != nil {
@@ -36,7 +41,7 @@ func TestInstalledSkillsIncludeAllBundledReferences(t *testing.T) {
 				if err != nil {
 					return err
 				}
-				installed, err := os.ReadFile(filepath.Join(home, "."+target, "skills", filepath.FromSlash(location)))
+				installed, err := os.ReadFile(filepath.Join(home, filepath.FromSlash(base), filepath.FromSlash(location)))
 				if err != nil {
 					return err
 				}

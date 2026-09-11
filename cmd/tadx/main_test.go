@@ -234,6 +234,7 @@ func runCLI(t *testing.T, binary string, args []string, environment map[string]s
 	command := exec.CommandContext(ctx, binary, args...)
 	command.Dir = isolation
 	command.Env = environmentWithout("TADX_ENABLE_MUTATIONS")
+	command.Env = append(command.Env, "TADX_GUIDANCE_NOTICE=0")
 	for name, value := range environment {
 		command.Env = append(command.Env, name+"="+value)
 	}

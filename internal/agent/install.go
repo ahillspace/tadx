@@ -15,6 +15,8 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+
+	"github.com/ahillspace/tadx/internal/agenttarget"
 )
 
 //go:embed skills
@@ -56,7 +58,7 @@ type packagePlan struct {
 // Uninstall removes bundled packages from one supported agent target.
 // Divergent packages require force and move to recoverable backups.
 func (in Installer) Uninstall(ctx context.Context, target string, preview, force bool) (Result, error) {
-	base, ok := map[string]string{"claude": ".claude/skills", "codex": ".codex/skills", "cursor": ".cursor/skills"}[target]
+	base, ok := agenttarget.TargetPath(target)
 	if !ok {
 		return Result{}, errors.New("unsupported agent target")
 	}
@@ -219,7 +221,7 @@ func (in Installer) Uninstall(ctx context.Context, target string, preview, force
 // Install stages complete packages before replacing destinations.
 // A force replacement retains the previous directory as a recoverable backup.
 func (in Installer) Install(ctx context.Context, target string, preview, force bool) (Result, error) {
-	base, ok := map[string]string{"claude": ".claude/skills", "codex": ".codex/skills", "cursor": ".cursor/skills"}[target]
+	base, ok := agenttarget.TargetPath(target)
 	if !ok {
 		return Result{}, errors.New("unsupported agent target")
 	}

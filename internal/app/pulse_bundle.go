@@ -59,7 +59,22 @@ func (r pulseBundleReader) ReadBundle(context.Context, string) (definitionpublis
 type pulseBundleAdapter struct{ connection pulseConnection }
 
 func (a pulseBundleAdapter) ValidateDefinition(ctx context.Context, data json.RawMessage, metrics []definitionpublish.Metric) error {
-	var request tableaupulse.CreateRequest
+	// The raw contract validates saved business sections before this boundary.
+	// Decode only destination-validation inputs without narrowing unrelated wire shapes.
+	var request struct {
+		Specification struct {
+			Datasource         tableaupulse.Datasource `json:"datasource"`
+			BasicSpecification struct {
+				Measure       tableaupulse.Measure       `json:"measure"`
+				TimeDimension tableaupulse.TimeDimension `json:"time_dimension"`
+				Filters       json.RawMessage            `json:"filters"`
+			} `json:"basic_specification"`
+		} `json:"specification"`
+		ExtensionOptions struct {
+			AllowedDimensions    []string `json:"allowed_dimensions"`
+			AllowedGranularities []string `json:"allowed_granularities"`
+		} `json:"extension_options"`
+	}
 	if err := json.Unmarshal(data, &request); err != nil {
 		return err
 	}
@@ -75,13 +90,7 @@ func (a pulseBundleAdapter) ValidateDefinition(ctx context.Context, data json.Ra
 	if err := validator.validateFields(fields, definitioncreate.FieldReferences{DatasourceLUID: request.Specification.Datasource.ID, MeasureField: request.Specification.BasicSpecification.Measure.Field, Aggregation: request.Specification.BasicSpecification.Measure.Aggregation, TimeDimension: request.Specification.BasicSpecification.TimeDimension.Field, AllowedDimensions: request.ExtensionOptions.AllowedDimensions}); err != nil {
 		return err
 	}
-	var document map[string]json.RawMessage
-	_ = json.Unmarshal(data, &document)
-	var specification map[string]json.RawMessage
-	_ = json.Unmarshal(document["specification"], &specification)
-	var basic map[string]json.RawMessage
-	_ = json.Unmarshal(specification["basic_specification"], &basic)
-	if err := validatePulseBundleFilters(fields, basic["filters"]); err != nil {
+	if err := validatePulseBundleFilters(fields, request.Specification.BasicSpecification.Filters); err != nil {
 		return fmt.Errorf("fixed filters: %w", err)
 	}
 	for _, metric := range metrics {

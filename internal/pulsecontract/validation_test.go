@@ -86,10 +86,12 @@ func TestValidSavedShapesRemainUnchanged(t *testing.T) {
 	}
 	for _, raw := range []string{
 		metric,
+		`{"measurement_period":{"granularity":"GRANULARITY_BY_DAY","range":"RANGE_UNSPECIFIED"},"filters":[]}`,
 		`{"measurement_period":{"granularity":"GRANULARITY_BY_MONTH","range":"RANGE_CURRENT_PARTIAL"},"filters":[]}`,
 		`{"measurement_period":{"granularity":"GRANULARITY_BY_FISCAL_YEAR","range":"RANGE_LAST_COMPLETE"},"filters":[]}`,
 		`{"measurement_period":{"granularity":"GRANULARITY_BY_DAY","range":"RANGE_LAST_N","last_n":9007199254740993,"offset":3},"filters":[],"extension":{"n":9007199254740993}}`,
 		`{"measurement_period":{"granularity":"GRANULARITY_BY_DAY","range":"RANGE_BY_CONFIG","saved_custom_period":{"start":"2025-01-01"}},"filters":[]}`,
+		`{"measurement_period":{"granularity":"GRANULARITY_BY_DAY","range":"RANGE_BY_CONFIG","offset":3,"last_n":17,"saved_custom_period":{"start":"2025-01-01","n":9007199254740993},"unused_extension":null},"filters":[]}`,
 	} {
 		data := json.RawMessage(raw)
 		before := bytes.Clone(data)
@@ -99,6 +101,29 @@ func TestValidSavedShapesRemainUnchanged(t *testing.T) {
 		if !bytes.Equal(data, before) {
 			t.Fatal("validation changed saved metric")
 		}
+	}
+}
+
+func TestConfiguredMetricPeriodRequiresConfiguration(t *testing.T) {
+	for _, test := range []struct{ name, fields string }{
+		{name: "missing"},
+		{name: "offset_only", fields: `,"offset":0`},
+		{name: "last_n_only", fields: `,"last_n":17`},
+		{name: "combined_metadata", fields: `,"offset":3,"last_n":17`},
+		{name: "null_extension", fields: `,"saved_custom_period":null`},
+		{name: "metadata_and_null_extension", fields: `,"offset":3,"last_n":17,"saved_custom_period":null`},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			data := json.RawMessage(`{"measurement_period":{"granularity":"GRANULARITY_BY_DAY","range":"RANGE_BY_CONFIG"` + test.fields + `},"filters":[]}`)
+			before := bytes.Clone(data)
+			err := pulsecontract.ValidateMetric(data)
+			if err == nil || err.Error() != "metric.measurement_period requires a saved period configuration" {
+				t.Fatalf("error=%v, want missing saved period configuration", err)
+			}
+			if !bytes.Equal(data, before) {
+				t.Fatal("validation changed invalid saved metric")
+			}
+		})
 	}
 }
 

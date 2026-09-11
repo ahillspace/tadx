@@ -123,6 +123,22 @@ Guidance teaches the selected agent how to use TADX safely and installs standard
 Run the command again after a CLI upgrade to update installed Guidance.
 Use `--preview` first if you want to inspect the local file changes.
 
+Current source builds also support OpenCode, Pi, Hermes, GitHub Copilot, Gemini CLI, and Cline:
+
+```text
+tadx agent install --target opencode
+tadx agent install --target pi
+tadx agent install --target hermes
+tadx agent install --target copilot
+tadx agent install --target gemini
+tadx agent install --target cline
+```
+
+Cloning the repository includes both the [TADX skill](internal/agent/skills/tadx/SKILL.md) and the [Pulse authoring skill](internal/agent/skills/tadx-pulse/SKILL.md), with their reference files.
+These are the same packages embedded in the CLI, not separate copies.
+Install them for your agent; cloning alone does not make the embedded source directory discoverable to your agent.
+See [Guidance locations and the startup notice](docs/getting-started.md#agent-guidance) for current source-build behavior.
+
 ## Get your first workbook
 
 Create a named workspace and make it the default for the environment:

@@ -5,6 +5,7 @@ import (
 	"context"
 	install "github.com/ahillspace/tadx/actions/agent/install"
 	uninstall "github.com/ahillspace/tadx/actions/agent/uninstall"
+	"github.com/ahillspace/tadx/internal/agenttarget"
 	"github.com/ahillspace/tadx/internal/cli/clierr"
 	"github.com/spf13/cobra"
 )
@@ -32,7 +33,7 @@ func New(deps Dependencies) *cobra.Command {
 		use = "install"
 	}
 	if short == "" {
-		short = "Install bundled skills for Claude, Codex, or Cursor."
+		short = "Install bundled skills for supported coding agents."
 	}
 	command := &cobra.Command{
 		Use: use, Short: short, Annotations: map[string]string{"tadx.capability": "agent.install"},
@@ -50,7 +51,7 @@ func New(deps Dependencies) *cobra.Command {
 			return deps.Renderer.Render(result)
 		},
 	}
-	command.Flags().StringVar(&input.Target, "target", "", "agent target: claude, codex, or cursor (required)")
+	command.Flags().StringVar(&input.Target, "target", "", "agent target: "+agenttarget.Summary()+" (required)")
 	command.Flags().BoolVar(&input.Preview, "preview", false, "inspect installation without writing files")
 	command.Flags().BoolVar(&input.Force, "force", false, "replace divergent skills and retain recoverable backups")
 	group := &cobra.Command{Use: "agent", Short: "Manage bundled agent Guidance"}
@@ -73,7 +74,7 @@ func newUninstall(deps Dependencies) *cobra.Command {
 		}
 		return deps.Renderer.Render(result)
 	}}
-	command.Flags().StringVar(&input.Target, "target", "", "agent target: claude, codex, or cursor (required)")
+	command.Flags().StringVar(&input.Target, "target", "", "agent target: "+agenttarget.Summary()+" (required)")
 	command.Flags().BoolVar(&input.Preview, "preview", false, "inspect uninstall changes without removing files")
 	command.Flags().BoolVar(&input.Force, "force", false, "remove divergent Guidance and retain recoverable backups")
 	return command

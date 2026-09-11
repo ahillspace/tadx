@@ -12,7 +12,11 @@ import (
 )
 
 func TestAgentInstallThroughCLI(t *testing.T) {
-	for target, directory := range map[string]string{"claude": ".claude", "codex": ".codex", "cursor": ".cursor"} {
+	for target, directory := range map[string]string{
+		"claude": ".claude", "codex": ".codex", "cursor": ".cursor",
+		"opencode": ".config/opencode", "pi": ".pi/agent", "hermes": ".hermes",
+		"copilot": ".copilot", "gemini": ".gemini", "cline": ".cline",
+	} {
 		t.Run(target, func(t *testing.T) {
 			home := t.TempDir()
 			options := app.Options{ConfigPath: filepath.Join(home, "config.yaml"), UserHomeDir: func() (string, error) { return home, nil }}
@@ -55,6 +59,22 @@ func TestAgentInstallThroughCLI(t *testing.T) {
 			}
 			if exit, out := run("--force"); exit != 0 || !strings.Contains(out, "backup") {
 				t.Fatalf("force: %d %s", exit, out)
+			}
+			for _, preview := range []bool{true, false} {
+				args := []string{"agent", "uninstall", "--target", target}
+				if preview {
+					args = append(args, "--preview")
+				}
+				var out bytes.Buffer
+				if exit := app.Run(context.Background(), args, &out, options); exit != 0 {
+					t.Fatalf("uninstall preview=%v: %d %s", preview, exit, out.String())
+				}
+				for _, skill := range []string{"tadx", "tadx-pulse"} {
+					_, err := os.Stat(filepath.Join(home, directory, "skills", skill, "SKILL.md"))
+					if preview && err != nil || !preview && !os.IsNotExist(err) {
+						t.Fatalf("uninstall preview=%v skill %s: %v", preview, skill, err)
+					}
+				}
 			}
 			if err := filepath.WalkDir(home, func(path string, entry os.DirEntry, err error) error {
 				if err != nil {

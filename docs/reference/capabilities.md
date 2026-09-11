@@ -517,7 +517,7 @@ Install the bundled TADX Guidance packages into the selected agent's global skil
 - Surface: tadx agent install
 - Operation type: change
 - Owner: cli
-- Selectors: Required target: claude, codex, or cursor
+- Selectors: Required target: claude, cline, codex, copilot, cursor, gemini, hermes, opencode, or pi
 - Products and availability: Local / all
 - Product disposition: ship
 - Evidence level: local-contract
@@ -543,7 +543,7 @@ Remove TADX Guidance packages from one selected agent target.
 - Surface: tadx agent uninstall
 - Operation type: change
 - Owner: cli
-- Selectors: Required target: claude, codex, or cursor
+- Selectors: Required target: claude, cline, codex, copilot, cursor, gemini, hermes, opencode, or pi
 - Products and availability: Local / all
 - Product disposition: ship
 - Evidence level: local-contract

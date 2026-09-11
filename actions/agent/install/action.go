@@ -3,6 +3,9 @@ package install
 
 import (
 	"context"
+	"fmt"
+
+	"github.com/ahillspace/tadx/internal/agenttarget"
 	"github.com/ahillspace/tadx/internal/errs"
 )
 
@@ -78,8 +81,8 @@ func New(installer Installer) *Action { return &Action{installer: installer} }
 
 // Execute validates and installs, or previews without filesystem writes.
 func (a *Action) Execute(ctx context.Context, input Input) (Output, error) {
-	if input.Target != "claude" && input.Target != "codex" && input.Target != "cursor" {
-		return Output{}, &errs.Error{ID: "agent.install.usage", Kind: errs.KindUsage, Operation: "agent.install", Summary: "--target must be claude, codex, or cursor.", Retryable: errs.Bool(false), CorrectiveAction: "Run tadx agent install --target claude, codex, or cursor."}
+	if !agenttarget.IsSupported(input.Target) {
+		return Output{}, &errs.Error{ID: "agent.install.usage", Kind: errs.KindUsage, Operation: "agent.install", Summary: fmt.Sprintf("--target must be %s.", agenttarget.Summary()), Retryable: errs.Bool(false), CorrectiveAction: "Choose one supported target, for example: tadx agent install --target opencode."}
 	}
 	if a == nil || a.installer == nil {
 		return Output{}, &errs.Error{ID: "agent.install.runtime", Kind: errs.KindRuntime, Operation: "agent.install", Summary: "Agent skill installation is not configured.", Retryable: errs.Bool(false)}

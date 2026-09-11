@@ -7,6 +7,8 @@ import (
 	"errors"
 	"fmt"
 	"sort"
+	"strconv"
+	"strings"
 	"time"
 )
 
@@ -128,8 +130,12 @@ func compareBundleDefinition(saved Definition, submitted json.RawMessage) error 
 		if !exists {
 			return fmt.Errorf("saved definition omitted submitted section %q", section)
 		}
-		normalizeBundleSection(section, wanted)
-		normalizeBundleSection(section, observed)
+		if err := normalizeBundleSection(section, wanted); err != nil {
+			return fmt.Errorf("submitted definition configuration: %w", err)
+		}
+		if err := normalizeBundleSection(section, observed); err != nil {
+			return fmt.Errorf("saved definition configuration: %w", err)
+		}
 		left, leftErr := json.Marshal(wanted)
 		right, rightErr := json.Marshal(observed)
 		if leftErr != nil || rightErr != nil || !bytes.Equal(left, right) {
@@ -141,7 +147,7 @@ func compareBundleDefinition(saved Definition, submitted json.RawMessage) error 
 
 // Defaults are narrowly drawn from the local Pulse definition API capture.
 // Unknown nested business fields remain part of the comparison.
-func normalizeBundleSection(section string, value any) {
+func normalizeBundleSection(section string, value any) error {
 	object, ok := value.(map[string]any)
 	if !ok {
 		if section == "datasource_goals" {
@@ -149,11 +155,12 @@ func normalizeBundleSection(section string, value any) {
 				for _, goal := range goals {
 					if object, ok := goal.(map[string]any); ok {
 						normalizeBundleFilters(object["basic_specification"])
+						normalizeBundleFilters(object["threshold_basic_specification"])
 					}
 				}
 			}
 		}
-		return
+		return nil
 	}
 	setDefault := func(key string, value any) {
 		if _, exists := object[key]; !exists {
@@ -183,10 +190,52 @@ func normalizeBundleSection(section string, value any) {
 				}
 			}
 		}
+	case "comparisons":
+		if comparisons, ok := object["comparisons"].([]any); ok {
+			for i, comparison := range comparisons {
+				if err := normalizeBundleComparison(comparison, fmt.Sprintf("comparisons.comparisons[%d]", i)); err != nil {
+					return err
+				}
+			}
+		}
+		if nested, exists := object["nestedComparison"]; exists {
+			return normalizeBundleComparison(nested, "comparisons.nestedComparison")
+		}
 	case "certification":
 		delete(object, "modified_at")
 		delete(object, "modified_by")
 	}
+	return nil
+}
+
+func normalizeBundleComparison(value any, path string) error {
+	comparison, ok := value.(map[string]any)
+	if !ok {
+		return nil
+	}
+	if index, exists := comparison["index"]; exists {
+		var decimal string
+		switch index := index.(type) {
+		case json.Number:
+			decimal = index.String()
+		case string:
+			decimal = index
+		default:
+			return fmt.Errorf("%s.index must be an exact signed 64-bit integer", path)
+		}
+		decimal = strings.TrimSpace(decimal)
+		parsed, err := strconv.ParseInt(decimal, 10, 64)
+		if err != nil || !json.Valid([]byte(decimal)) {
+			return fmt.Errorf("%s.index must be an exact signed 64-bit integer", path)
+		}
+		// Canonicalize only the decoded comparison copy, retaining integer precision
+		// and the original submitted payload and all unknown business fields.
+		comparison["index"] = strconv.FormatInt(parsed, 10)
+	}
+	if nested, exists := comparison["nestedComparison"]; exists {
+		return normalizeBundleComparison(nested, path+".nestedComparison")
+	}
+	return nil
 }
 
 func normalizeBundleFilters(value any) {

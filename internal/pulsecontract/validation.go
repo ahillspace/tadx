@@ -140,8 +140,17 @@ func measurementPeriod(raw json.RawMessage, path string) error {
 		return fmt.Errorf("%s.last_n is required for RANGE_LAST_N", path)
 	}
 	// RANGE_BY_CONFIG can carry provider configurations beyond last_x_period.
-	// Require a configuration but leave unrecognized configuration shapes intact.
-	if rangeName == "RANGE_BY_CONFIG" && len(period) <= 2 {
+	// Preserve opaque extensions without claiming to validate their semantics.
+	if rangeName == "RANGE_BY_CONFIG" {
+		for name, configuration := range period {
+			switch name {
+			case "granularity", "range", "offset", "last_n":
+				continue
+			}
+			if !bytes.Equal(bytes.TrimSpace(configuration), []byte("null")) {
+				return nil
+			}
+		}
 		return fmt.Errorf("%s requires a saved period configuration", path)
 	}
 	return nil

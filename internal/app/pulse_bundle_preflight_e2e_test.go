@@ -96,6 +96,8 @@ func TestPulseBundleInvalidSavedSemanticsRejectBeforeAuthenticationThroughCLI(t 
 		name       string
 		metric     func(map[string]any)
 		definition func(map[string]any)
+		period     map[string]any
+		diagnostic string
 	}{
 		{name: "later_metric_categorical_values_string", metric: func(spec map[string]any) { spec["filters"].([]any)[0].(map[string]any)["categorical_values"] = "West" }},
 		{name: "later_metric_include_null_string", metric: func(spec map[string]any) { spec["filters"].([]any)[0].(map[string]any)["include_null"] = "true" }},
@@ -103,18 +105,26 @@ func TestPulseBundleInvalidSavedSemanticsRejectBeforeAuthenticationThroughCLI(t 
 			spec["measurement_period"].(map[string]any)["range"] = []any{"RANGE_LAST_N"}
 		}},
 		{name: "later_metric_last_n_string", metric: func(spec map[string]any) { spec["measurement_period"].(map[string]any)["last_n"] = "17" }},
+		{name: "later_metric_config_missing", period: map[string]any{}, diagnostic: "metric.measurement_period requires a saved period configuration"},
+		{name: "later_metric_config_offset_only", period: map[string]any{"offset": 0}, diagnostic: "metric.measurement_period requires a saved period configuration"},
+		{name: "later_metric_config_last_n_only", period: map[string]any{"last_n": 17}, diagnostic: "metric.measurement_period requires a saved period configuration"},
+		{name: "later_metric_config_combined_metadata", period: map[string]any{"offset": 0, "last_n": 17}, diagnostic: "metric.measurement_period requires a saved period configuration"},
+		{name: "later_metric_config_null_extension", period: map[string]any{"saved_custom_period": nil}, diagnostic: "metric.measurement_period requires a saved period configuration"},
 		{name: "definition_invalid_aggregation", definition: func(def map[string]any) {
 			def["specification"].(map[string]any)["basic_specification"].(map[string]any)["measure"].(map[string]any)["aggregation"] = "AGGREGATION_UNSUPPORTED"
 		}},
-		{name: "definition_running_total_latest_point", definition: func(def map[string]any) {
+		{name: "definition_running_total_latest_point", diagnostic: "is_running_total: running total requires SUM aggregation and OVER_TIME temporality", definition: func(def map[string]any) {
 			spec := def["specification"].(map[string]any)
 			spec["is_running_total"] = true
-			spec["temporality"] = "TEMPORALITY_LATEST_POINT"
+			spec["temporality"] = "TEMPORALITY_LATEST_POINT_IN_TIME"
 		}},
 	}
 	for _, test := range cases {
 		t.Run(test.name, func(t *testing.T) {
 			fixture := newPulsePreflightFixture(t)
+			if !fixture.options.MutationsEnabled {
+				t.Fatal("preflight execution fixture must enable mutations")
+			}
 			path := filepath.Join(fixture.directory, "bundle.json")
 			data, err := os.ReadFile(path)
 			if err != nil {
@@ -126,6 +136,13 @@ func TestPulseBundleInvalidSavedSemanticsRejectBeforeAuthenticationThroughCLI(t 
 			}
 			if test.metric != nil {
 				test.metric(bundle["metrics"].([]any)[1].(map[string]any)["specification"].(map[string]any))
+			}
+			if test.period != nil {
+				period := map[string]any{"granularity": "GRANULARITY_BY_DAY", "range": "RANGE_BY_CONFIG"}
+				for key, value := range test.period {
+					period[key] = value
+				}
+				bundle["metrics"].([]any)[1].(map[string]any)["specification"].(map[string]any)["measurement_period"] = period
 			}
 			if test.definition != nil {
 				definition := bundle["definition"].(map[string]any)
@@ -159,6 +176,9 @@ func TestPulseBundleInvalidSavedSemanticsRejectBeforeAuthenticationThroughCLI(t 
 					code := app.Run(context.Background(), args, &out, fixture.options)
 					if code == 0 || fixture.requests.Load() != 0 || fixture.signins.Load() != 0 || fixture.posts.Load() != 0 {
 						t.Fatalf("code=%d requests=%d signins=%d POSTs=%d output=%s", code, fixture.requests.Load(), fixture.signins.Load(), fixture.posts.Load(), out.String())
+					}
+					if test.diagnostic != "" && !strings.Contains(out.String(), test.diagnostic) {
+						t.Fatalf("missing diagnostic %q: %s", test.diagnostic, out.String())
 					}
 				})
 			}

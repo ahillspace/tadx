@@ -131,6 +131,50 @@ tadx pulse definition list --environment dev --datasource-id DATASOURCE_LUID --a
 
 ## Maintain the installation
 
+### Agent Guidance
+
+Current source builds support these global installation locations:
+
+| Target | Default skill directory |
+| --- | --- |
+| `claude` | `~/.claude/skills/` |
+| `codex` | `~/.codex/skills/` |
+| `cursor` | `~/.cursor/skills/` |
+| `opencode` | `~/.config/opencode/skills/` |
+| `pi` | `~/.pi/agent/skills/` |
+| `hermes` | `~/.hermes/skills/` |
+| `copilot` | `~/.copilot/skills/` |
+| `gemini` | `~/.gemini/skills/` |
+| `cline` | `~/.cline/skills/` |
+
+`~` represents your user home directory, including on Windows.
+Each target receives the same `tadx` and `tadx-pulse` packages and their references.
+Both `tadx agent install` and `tadx agent uninstall` accept these targets, with `--preview` available before changing files.
+Installation does not create agent instruction files, alter MCP configuration, or prove that an agent has loaded the skills.
+The installer uses these default directories, not custom agent installation roots.
+
+The added locations follow the official [OpenCode](https://opencode.ai/docs/skills/), [Pi](https://github.com/badlogic/pi-mono/blob/main/packages/coding-agent/docs/skills.md), and [Hermes](https://hermes-agent.nousresearch.com/docs/user-guide/features/skills) discovery conventions.
+The other added targets use the documented personal skill directories for [GitHub Copilot](https://docs.github.com/en/copilot/how-tos/copilot-on-github/customize-copilot/customize-cloud-agent/add-skills), [Gemini CLI](https://geminicli.com/docs/cli/skills/), and [Cline](https://docs.cline.bot/customization/skills).
+These are local installations; installing for Copilot does not configure a hosted Copilot cloud agent.
+
+### Guidance startup notice
+
+When TADX does not detect its root skill in a supported location, it prints a short installation notice to stderr on the first invocation in a shell session.
+Structured command output on stdout remains unchanged.
+Detection checks local files, not whether the agent has actually read them.
+Completion requests do not emit the notice.
+If session identification or the local notice cache is unavailable, the notice is skipped without failing your command.
+
+Set `TADX_GUIDANCE_NOTICE=0` to suppress the notice for human-only or automated use.
+To keep that preference across terminals, save the variable in your shell profile or user environment settings.
+No credentials, mutation policy, or agent configuration are changed by the notice.
+
+Session detection normally uses the parent process identity.
+A host that launches a new shell for every tool call can set `TADX_GUIDANCE_SESSION` to a stable, unique session identifier.
+Reusing that identifier suppresses repeated notices across those shells; TADX does not automatically identify every agent host.
+
+### Upgrade or remove
+
 Run the platform installer again to upgrade or repair the CLI.
 Then reinstall Guidance separately for each agent that should receive the new bundled packages, such as `tadx agent install --target codex`.
 
