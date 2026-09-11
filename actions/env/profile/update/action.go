@@ -28,8 +28,8 @@ func (a *Action) Execute(ctx context.Context, input Input) (Output, error) {
 	if !input.Patch.Any() {
 		return Output{}, usageError("at least one profile field must be supplied")
 	}
-	if value := input.Patch.CatalogMaxConcurrency; value.Set && (value.Value < 0 || value.Value > 256) {
-		return Output{}, usageError("catalog maximum concurrency must be between 1 and 256, or cleared for the default")
+	if value := input.Patch.CacheMaxConcurrency; value.Set && (value.Value < 0 || value.Value > 256) {
+		return Output{}, usageError("cache maximum concurrency must be between 1 and 256, or cleared for the default")
 	}
 	if input.Patch.ServerURL.Set && !validServerURL(input.Patch.ServerURL.Value) {
 		return Output{}, usageError("server URL must be an absolute HTTPS URL without credentials, query, or fragment")

@@ -8,7 +8,7 @@ type Input struct {
 	DefinitionLUID string
 	Cursor         string
 	Limit          int
-	Catalog        bool
+	Cache          bool
 	All            bool
 }
 type PageRequest struct {

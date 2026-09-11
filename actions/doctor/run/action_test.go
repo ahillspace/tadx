@@ -47,13 +47,13 @@ func (c *connectivityChecker) CheckConnectivity(context.Context, doctorrun.Scope
 	return c.state, c.err
 }
 
-type catalogChecker struct {
-	state doctorrun.CatalogState
+type cacheChecker struct {
+	state doctorrun.CacheState
 	err   error
 	calls int
 }
 
-func (c *catalogChecker) CheckCatalog(context.Context, doctorrun.Scope) (doctorrun.CatalogState, error) {
+func (c *cacheChecker) CheckCache(context.Context, doctorrun.Scope) (doctorrun.CacheState, error) {
 	c.calls++
 	return c.state, c.err
 }
@@ -86,17 +86,17 @@ func TestDoctorRunsEveryIndependentCheckAndRedactsDependencyErrors(t *testing.T)
 	configuration := &configurationChecker{state: doctorrun.ConfigurationState{Present: true, Valid: true, EnvironmentResolved: true}}
 	pat := &patChecker{err: errors.New(secret + " at " + privatePath)}
 	connectivity := &connectivityChecker{state: doctorrun.ConnectivityState{Reachable: true, Authenticated: true}}
-	catalog := &catalogChecker{state: doctorrun.CatalogState{Present: true, Complete: true, Stale: true}}
+	cache := &cacheChecker{state: doctorrun.CacheState{Present: true, Complete: true, Stale: true}}
 	workspace := &workspaceChecker{state: doctorrun.WorkspaceState{Selected: true, Available: false}}
 	logging := &loggingChecker{state: doctorrun.LoggingState{Valid: true}}
-	action := doctorrun.New(doctorrun.Dependencies{Configuration: configuration, PAT: pat, Connectivity: connectivity, Catalog: catalog, Workspace: workspace, Logging: logging})
+	action := doctorrun.New(doctorrun.Dependencies{Configuration: configuration, PAT: pat, Connectivity: connectivity, Cache: cache, Workspace: workspace, Logging: logging})
 
 	output, err := action.Execute(context.Background(), doctorrun.Input{Environment: "dev", Workspace: "development"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if configuration.calls != 1 || pat.calls != 1 || connectivity.calls != 1 || catalog.calls != 1 || workspace.calls != 1 || logging.calls != 1 {
-		t.Fatalf("check calls = %d %d %d %d %d %d", configuration.calls, pat.calls, connectivity.calls, catalog.calls, workspace.calls, logging.calls)
+	if configuration.calls != 1 || pat.calls != 1 || connectivity.calls != 1 || cache.calls != 1 || workspace.calls != 1 || logging.calls != 1 {
+		t.Fatalf("check calls = %d %d %d %d %d %d", configuration.calls, pat.calls, connectivity.calls, cache.calls, workspace.calls, logging.calls)
 	}
 	if len(output.Checks) != 6 || output.Checks[0].ID != "config.valid" || output.Checks[5].ID != "logging.context" {
 		t.Fatalf("checks = %#v", output.Checks)
@@ -118,7 +118,7 @@ func TestDoctorTreatsDisabledLoggingAsPass(t *testing.T) {
 		Configuration: &configurationChecker{state: doctorrun.ConfigurationState{Present: true, Valid: true, EnvironmentResolved: true}},
 		PAT:           &patChecker{state: doctorrun.PATState{ReferencesConfigured: true, NameVariablePresent: true, SecretVariablePresent: true}},
 		Connectivity:  &connectivityChecker{state: doctorrun.ConnectivityState{Reachable: true, Authenticated: true}},
-		Catalog:       &catalogChecker{state: doctorrun.CatalogState{Present: true, Complete: true}},
+		Cache:         &cacheChecker{state: doctorrun.CacheState{Present: true, Complete: true}},
 		Workspace:     &workspaceChecker{state: doctorrun.WorkspaceState{Selected: true, Available: true, ManifestValid: true}},
 		Logging:       &loggingChecker{state: doctorrun.LoggingState{Valid: true, Enabled: false}},
 	})
@@ -139,7 +139,7 @@ func TestDoctorAcceptsStoredPATWithoutEnvironmentValues(t *testing.T) {
 		Configuration: &configurationChecker{state: doctorrun.ConfigurationState{Present: true, Valid: true, EnvironmentResolved: true}},
 		PAT:           &patChecker{state: doctorrun.PATState{ReferencesConfigured: true, StoredCredentialPresent: true}},
 		Connectivity:  &connectivityChecker{state: doctorrun.ConnectivityState{Reachable: true, Authenticated: true}},
-		Catalog:       &catalogChecker{state: doctorrun.CatalogState{Present: true, Complete: true}},
+		Cache:         &cacheChecker{state: doctorrun.CacheState{Present: true, Complete: true}},
 		Workspace:     &workspaceChecker{state: doctorrun.WorkspaceState{Selected: true, Available: true, ManifestValid: true}},
 		Logging:       &loggingChecker{state: doctorrun.LoggingState{Valid: true}},
 	})
@@ -158,7 +158,7 @@ func TestDoctorDoesNotInspectOrReportTableauMCP(t *testing.T) {
 		Configuration: &configurationChecker{state: doctorrun.ConfigurationState{Present: true, Valid: true, EnvironmentResolved: true}},
 		PAT:           &patChecker{state: doctorrun.PATState{ReferencesConfigured: true, NameVariablePresent: true, SecretVariablePresent: true}},
 		Connectivity:  &connectivityChecker{state: doctorrun.ConnectivityState{Reachable: true, Authenticated: true}},
-		Catalog:       &catalogChecker{state: doctorrun.CatalogState{Present: true, Complete: true}},
+		Cache:         &cacheChecker{state: doctorrun.CacheState{Present: true, Complete: true}},
 		Workspace:     &workspaceChecker{state: doctorrun.WorkspaceState{Selected: true, Available: true, ManifestValid: true}},
 		Logging:       &loggingChecker{state: doctorrun.LoggingState{Valid: true}},
 	})
@@ -215,7 +215,7 @@ func TestDoctorOutputGolden(t *testing.T) {
 		Configuration: &configurationChecker{state: doctorrun.ConfigurationState{Present: true, Valid: true, EnvironmentResolved: true}},
 		PAT:           &patChecker{state: doctorrun.PATState{ReferencesConfigured: true, NameVariablePresent: true, SecretVariablePresent: true}},
 		Connectivity:  &connectivityChecker{state: doctorrun.ConnectivityState{Reachable: true, Authenticated: true}},
-		Catalog:       &catalogChecker{state: doctorrun.CatalogState{Present: true, Complete: true}},
+		Cache:         &cacheChecker{state: doctorrun.CacheState{Present: true, Complete: true}},
 		Workspace:     &workspaceChecker{state: doctorrun.WorkspaceState{Selected: true, Available: true, ManifestValid: true}},
 		Logging:       &loggingChecker{state: doctorrun.LoggingState{Valid: true, Enabled: true}},
 	})

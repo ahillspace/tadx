@@ -1,0 +1,14 @@
+status: stale
+generation:
+  id: generation-1
+  environment: production
+  site: marketing
+  generated_at: "2026-09-01T00:00:00Z"
+  records: 2
+  complete: true
+  stale: true
+  age: 13h0m0s
+  source: tableau-rest
+path: cache/production.json
+warnings[1]: cache generation is older than 12 hours
+help[1]: tadx cache refresh --environment production

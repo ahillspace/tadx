@@ -15,10 +15,10 @@ import (
 	"time"
 
 	"github.com/ahillspace/tadx/internal/app"
-	"github.com/ahillspace/tadx/internal/catalog"
+	"github.com/ahillspace/tadx/internal/cache"
 )
 
-func TestLimitedLiveInventoryDoesNotCollectOrDependOnCatalogThroughCLI(t *testing.T) {
+func TestLimitedLiveInventoryDoesNotCollectOrDependOnCacheThroughCLI(t *testing.T) {
 	for _, kind := range []string{"workbook", "datasource", "flow", "project", "user", "group"} {
 		t.Run(kind, func(t *testing.T) {
 			reads := 0
@@ -47,7 +47,7 @@ func TestLimitedLiveInventoryDoesNotCollectOrDependOnCatalogThroughCLI(t *testin
 				_, _ = fmt.Fprintf(w, `</%ss></tsResponse>`, resource)
 			}))
 			defer server.Close()
-			options := catalogResilienceOptions(t, server)
+			options := cacheResilienceOptions(t, server)
 			// An unusable SQLite location must not participate in a limited live answer.
 			if err := os.WriteFile(filepath.Join(filepath.Dir(options.ConfigPath), "catalog"), []byte("not a directory"), 0600); err != nil {
 				t.Fatal(err)
@@ -65,23 +65,23 @@ func TestLimitedLiveInventoryDoesNotCollectOrDependOnCatalogThroughCLI(t *testin
 	}
 }
 
-func TestAdminAllRejectsPartialCatalogThroughCLI(t *testing.T) {
+func TestAdminAllRejectsPartialCacheThroughCLI(t *testing.T) {
 	for _, kind := range []string{"user", "group"} {
 		t.Run(kind, func(t *testing.T) {
 			server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				t.Errorf("catalog contacted remote %s", r.URL)
+				t.Errorf("cache contacted remote %s", r.URL)
 				w.WriteHeader(500)
 			}))
 			defer server.Close()
-			options := catalogResilienceOptions(t, server)
-			store := targetCatalogFixture(t, options.ConfigPath, nil)
-			err := store.UpsertResources(context.Background(), []catalog.ResourceEntry{{Environment: "production", Kind: kind, LUID: "known", Name: "Known", Coverage: "summary", ObservedAt: time.Now(), Payload: []byte(`{"luid":"known","name":"Known"}`)}})
+			options := cacheResilienceOptions(t, server)
+			store := targetCacheFixture(t, options.ConfigPath, nil)
+			err := store.UpsertResources(context.Background(), []cache.ResourceEntry{{Environment: "production", Kind: kind, LUID: "known", Name: "Known", Coverage: "summary", ObservedAt: time.Now(), Payload: []byte(`{"luid":"known","name":"Known"}`)}})
 			if err != nil {
 				t.Fatal(err)
 			}
 			for _, all := range []bool{false, true} {
 				var out strings.Builder
-				args := []string{"admin", kind, "list", "--catalog", "--environment", "production"}
+				args := []string{"admin", kind, "list", "--cache", "--environment", "production"}
 				if all {
 					args = append(args, "--all")
 				}
@@ -97,11 +97,11 @@ func TestAdminAllRejectsPartialCatalogThroughCLI(t *testing.T) {
 func TestCachedProjectPathIsOpaqueThroughCLI(t *testing.T) {
 	server, _ := slashInventoryServer(t)
 	defer server.Close()
-	options := catalogResilienceOptions(t, server)
-	runGroupOneCLI(t, options, "catalog", "refresh", "--environment", "production", "--scope", "projects")
+	options := cacheResilienceOptions(t, server)
+	runGroupOneCLI(t, options, "cache", "refresh", "--environment", "production", "--scope", "projects")
 	for _, selector := range [][]string{{"--project", "Ops/Reports"}, {"--project-id", "slash"}, {"--project-id", "nested"}, {"--project", "does/not/exist"}} {
 		var out strings.Builder
-		args := append([]string{"content", "project", "inspect", "--environment", "production", "--catalog"}, selector...)
+		args := append([]string{"content", "project", "inspect", "--environment", "production", "--cache"}, selector...)
 		exit := app.Run(context.Background(), args, &out, options)
 		if selector[0] == "--project-id" {
 			if exit != 0 {
@@ -111,24 +111,24 @@ func TestCachedProjectPathIsOpaqueThroughCLI(t *testing.T) {
 			t.Fatalf("ambiguous or missing path succeeded: %s", out.String())
 		}
 	}
-	store := targetCatalogFixture(t, options.ConfigPath, nil)
-	_, err := store.ReplaceResourceScope(context.Background(), catalog.ResourceScopeReplacement{Environment: "production", Kind: "project", Source: "test", GeneratedAt: time.Now(), Entries: []catalog.ResourceEntry{{LUID: "literal-only", Name: "Ops/Reports", ProjectPath: "Ops/Reports"}}})
+	store := targetCacheFixture(t, options.ConfigPath, nil)
+	_, err := store.ReplaceResourceScope(context.Background(), cache.ResourceScopeReplacement{Environment: "production", Kind: "project", Source: "test", GeneratedAt: time.Now(), Entries: []cache.ResourceEntry{{LUID: "literal-only", Name: "Ops/Reports", ProjectPath: "Ops/Reports"}}})
 	if err != nil {
 		t.Fatal(err)
 	}
-	output := runGroupOneCLI(t, options, "content", "project", "inspect", "--environment", "production", "--catalog", "--project", "Ops/Reports")
+	output := runGroupOneCLI(t, options, "content", "project", "inspect", "--environment", "production", "--cache", "--project", "Ops/Reports")
 	if !strings.Contains(output, "literal-only") {
 		t.Fatalf("literal-only opaque path did not resolve: %s", output)
 	}
 }
 
-func TestOldCatalogSchemaRequiresExplicitRefreshThroughCLI(t *testing.T) {
+func TestOldCacheSchemaRequiresExplicitRefreshThroughCLI(t *testing.T) {
 	server, _ := slashInventoryServer(t)
 	defer server.Close()
-	options := catalogResilienceOptions(t, server)
-	runGroupOneCLI(t, options, "catalog", "refresh", "--environment", "production", "--scope", "projects")
-	catalogPath := filepath.Join(filepath.Dir(options.ConfigPath), targetCatalogFixture(t, options.ConfigPath, nil).RelativePath())
-	db, err := sql.Open("sqlite", catalogPath)
+	options := cacheResilienceOptions(t, server)
+	runGroupOneCLI(t, options, "cache", "refresh", "--environment", "production", "--scope", "projects")
+	cachePath := filepath.Join(filepath.Dir(options.ConfigPath), targetCacheFixture(t, options.ConfigPath, nil).RelativePath())
+	db, err := sql.Open("sqlite", cachePath)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -138,7 +138,7 @@ func TestOldCatalogSchemaRequiresExplicitRefreshThroughCLI(t *testing.T) {
 	}
 	db.Close()
 	var out strings.Builder
-	exit := app.Run(context.Background(), []string{"content", "project", "list", "--catalog", "--environment", "production"}, &out, options)
+	exit := app.Run(context.Background(), []string{"content", "project", "list", "--cache", "--environment", "production"}, &out, options)
 	if exit == 0 || !strings.Contains(out.String(), "refresh") {
 		t.Fatalf("old schema silently read or unclear recovery: exit=%d %s", exit, out.String())
 	}
@@ -146,10 +146,10 @@ func TestOldCatalogSchemaRequiresExplicitRefreshThroughCLI(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	runGroupOneCLI(t, options, "catalog", "refresh", "--environment", "production", "--scope", "projects")
+	runGroupOneCLI(t, options, "cache", "refresh", "--environment", "production", "--scope", "projects")
 	after, err := os.ReadFile(options.ConfigPath)
 	if err != nil || string(before) != string(after) {
 		t.Fatal("refresh changed configuration")
 	}
-	runGroupOneCLI(t, options, "content", "project", "list", "--catalog", "--environment", "production")
+	runGroupOneCLI(t, options, "content", "project", "list", "--cache", "--environment", "production")
 }

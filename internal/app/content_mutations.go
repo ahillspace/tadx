@@ -166,20 +166,20 @@ type workbookUpdateAdapter struct{ workbooks *resourceworkbook.Adapter }
 
 func (a workbookUpdateAdapter) ResolveWorkbook(ctx context.Context, selector identity.Selector) (workbookupdate.Workbook, error) {
 	item, err := a.workbooks.ResolveWorkbook(ctx, selector)
-	return workbookupdate.Workbook{LUID: item.LUID, Name: item.Name, ProjectLUID: item.ProjectLUID, ProjectPath: item.ProjectPath, OwnerLUID: item.OwnerLUID}, err
+	return workbookupdate.Workbook{LUID: item.LUID, Name: item.Name, ProjectLUID: item.ProjectLUID, ProjectPath: item.ProjectPath, OwnerLUID: item.OwnerLUID, Description: item.Description}, err
 }
 
 func (a workbookUpdateAdapter) FindWorkbooks(ctx context.Context, name, projectLUID string) ([]workbookupdate.Workbook, error) {
 	items, err := a.workbooks.FindWorkbooks(ctx, name, projectLUID)
 	result := make([]workbookupdate.Workbook, len(items))
 	for index, item := range items {
-		result[index] = workbookupdate.Workbook{LUID: item.LUID, Name: item.Name, ProjectLUID: item.ProjectLUID, ProjectPath: item.ProjectPath, OwnerLUID: item.OwnerLUID}
+		result[index] = workbookupdate.Workbook{LUID: item.LUID, Name: item.Name, ProjectLUID: item.ProjectLUID, ProjectPath: item.ProjectPath, OwnerLUID: item.OwnerLUID, Description: item.Description}
 	}
 	return result, err
 }
 
 func (a workbookUpdateAdapter) UpdateWorkbook(ctx context.Context, input workbookupdate.Request) (workbookupdate.Result, error) {
-	result, err := a.workbooks.UpdateWorkbook(ctx, tableauworkbook.UpdateRequest{LUID: input.LUID, Name: input.Name, OwnerLUID: input.OwnerLUID})
+	result, err := a.workbooks.UpdateWorkbook(ctx, tableauworkbook.UpdateRequest{LUID: input.LUID, Name: input.Name, OwnerLUID: input.OwnerLUID, Description: input.Description})
 	return workbookupdate.Result{Status: result.Status, WorkbookLUID: result.WorkbookLUID, WorkbookName: result.WorkbookName, ProjectLUID: result.ProjectLUID, OwnerLUID: result.OwnerLUID, TableauRequestID: result.TableauRequestID}, err
 }
 

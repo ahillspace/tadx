@@ -20,7 +20,7 @@ import (
 	projectupdate "github.com/ahillspace/tadx/actions/project/update"
 	workbookdelete "github.com/ahillspace/tadx/actions/workbook/delete"
 	"github.com/ahillspace/tadx/internal/artifact"
-	"github.com/ahillspace/tadx/internal/catalog"
+	"github.com/ahillspace/tadx/internal/cache"
 	contentcli "github.com/ahillspace/tadx/internal/cli/content"
 	"github.com/ahillspace/tadx/internal/config"
 	"github.com/ahillspace/tadx/internal/identity"
@@ -29,8 +29,9 @@ import (
 	resourcelineage "github.com/ahillspace/tadx/internal/resources/lineage"
 	resourceproject "github.com/ahillspace/tadx/internal/resources/project"
 	resourceworkbook "github.com/ahillspace/tadx/internal/resources/workbook"
-	tableaucatalog "github.com/ahillspace/tadx/internal/tableau/catalog"
+	tableaucache "github.com/ahillspace/tadx/internal/tableau/cache"
 	tableauflow "github.com/ahillspace/tadx/internal/tableau/flow"
+	"github.com/ahillspace/tadx/internal/tableau/metadataassets"
 	tableauproject "github.com/ahillspace/tadx/internal/tableau/project"
 )
 
@@ -51,6 +52,7 @@ func (c *remoteContentCommands) dependencies() *contentcli.Dependencies {
 }
 
 type remoteConnection struct {
+	metadataAssets    *metadataassets.Client
 	environment       config.Environment
 	siteLUID          string
 	projects          *resourceproject.Adapter
@@ -61,7 +63,7 @@ type remoteConnection struct {
 	workbooks         *resourceworkbook.Adapter
 	datasources       *resourcedatasource.Adapter
 	datasourceChanges *resourcedatasource.MutationAdapter
-	inventory         tableaucatalog.Executor
+	inventory         tableaucache.Executor
 }
 
 func (c *remoteContentCommands) connect(ctx context.Context, alias string, explicit bool) (remoteConnection, error) {
@@ -78,6 +80,7 @@ func (c *remoteContentCommands) connect(ctx context.Context, alias string, expli
 	}
 	flowClient, datasourceClient := clients.flows, clients.datasources
 	return remoteConnection{
+		metadataAssets:    clients.metadataAssets,
 		environment:       connection.environment,
 		siteLUID:          connection.session.SiteLUID(),
 		projects:          projects,
@@ -88,7 +91,7 @@ func (c *remoteContentCommands) connect(ctx context.Context, alias string, expli
 		workbooks:         resourceworkbook.NewAdapterWithProjectResolver(clients.workbooks, paths),
 		datasources:       resourcedatasource.NewAdapterWithProjectResolver(datasourceClient, paths),
 		datasourceChanges: resourcedatasource.NewMutationAdapter(datasourceClient),
-		inventory:         catalogTableauExecutor{transport: connection.transport, session: connection.session, serverURL: connection.environment.URL, siteLUID: connection.session.SiteLUID()},
+		inventory:         cacheTableauExecutor{transport: connection.transport, session: connection.session, serverURL: connection.environment.URL, siteLUID: connection.session.SiteLUID()},
 	}, nil
 }
 
@@ -108,13 +111,13 @@ func (c *remoteContentCommands) ListProjects(ctx context.Context, input projectl
 			resultErr = validateInventoryAll(input.All, result.Source)
 		}
 	}()
-	if input.Catalog || legacyInventorySnapshot(input.Cursor) {
-		environment, site, err := c.resolveCatalogTarget(input.Environment)
+	if input.Cache || legacyInventorySnapshot(input.Cursor) {
+		environment, site, err := c.resolveCacheTarget(input.Environment)
 		if err != nil {
 			return projectlist.Output{}, err
 		}
 		input.Environment, input.Site = environment, site
-		reader := &catalogProjectListReader{store: c.catalogStore(input.Environment), environment: environment, site: site}
+		reader := &cacheProjectListReader{store: c.cacheStore(input.Environment), environment: environment, site: site}
 		output, err := projectlist.New(reader).Execute(ctx, input)
 		if err == nil {
 			output.Source = reader.source
@@ -133,7 +136,7 @@ func (c *remoteContentCommands) ListProjects(ctx context.Context, input projectl
 
 	if input.All {
 		observedAt := c.runtime.now().UTC()
-		inventory, err := collectResourceInventory(ctx, connection.inventory, c.catalogStore(input.Environment), tableaucatalog.ScopeProjects, input.Environment, input.Site, observedAt, inventoryCollectionOptions{MaxConcurrency: connection.environment.CatalogMaxConcurrency, Filter: filter})
+		inventory, err := collectResourceInventory(ctx, connection.inventory, c.cacheStore(input.Environment), tableaucache.ScopeProjects, input.Environment, input.Site, observedAt, inventoryCollectionOptions{MaxConcurrency: connection.environment.CacheMaxConcurrency, Filter: filter})
 		if err != nil {
 			return projectlist.Output{}, inventoryRefreshError("project.list", input.Environment, input.Site, err)
 		}
@@ -143,7 +146,7 @@ func (c *remoteContentCommands) ListProjects(ctx context.Context, input projectl
 		if err != nil {
 			return output, err
 		}
-		if inventory.catalogErr != nil {
+		if inventory.cacheErr != nil {
 			output.Source = inventory.warningSource(observedAt)
 			output.Help = append(output.Help, inventory.warningHelp())
 		} else if inventory.filtered {
@@ -170,13 +173,13 @@ func (c *remoteContentCommands) InspectProject(ctx context.Context, input projec
 	if err := projectinspect.ValidateInput(input); err != nil {
 		return projectinspect.Output{}, err
 	}
-	if input.Catalog {
-		environment, site, err := c.resolveCatalogTarget(input.Environment)
+	if input.Cache {
+		environment, site, err := c.resolveCacheTarget(input.Environment)
 		if err != nil {
 			return projectinspect.Output{}, err
 		}
 		input.Environment, input.Site = environment, site
-		resolver := &catalogProjectGetResolver{store: c.catalogStore(input.Environment), environment: environment, site: site}
+		resolver := &cacheProjectGetResolver{store: c.cacheStore(input.Environment), environment: environment, site: site}
 		output, err := projectinspect.New(resolver).Execute(ctx, input)
 		if err == nil {
 			output.Source = resolver.source
@@ -196,7 +199,7 @@ func (c *remoteContentCommands) InspectProject(ctx context.Context, input projec
 	output.Source = liveSource(c.runtime.now)
 	entry, encodeErr := resourceEntry(input.Environment, input.Site, "project", output.Project.LUID, output.Project.Name, output.Project.Path, output.Project.OwnerLUID, "detail", observedAt, output.Project)
 	if encodeErr == nil {
-		writeThrough(c.catalogStore(input.Environment), []catalog.ResourceEntry{entry})
+		writeThrough(c.cacheStore(input.Environment), []cache.ResourceEntry{entry})
 	}
 	return output, nil
 }
@@ -267,13 +270,13 @@ func (c *remoteContentCommands) ListFlows(ctx context.Context, input flowlist.In
 			resultErr = validateInventoryAll(input.All, result.Source)
 		}
 	}()
-	if input.Catalog || legacyInventorySnapshot(input.Cursor) {
-		environment, site, err := c.resolveCatalogTarget(input.Environment)
+	if input.Cache || legacyInventorySnapshot(input.Cursor) {
+		environment, site, err := c.resolveCacheTarget(input.Environment)
 		if err != nil {
 			return flowlist.Output{}, err
 		}
 		input.Environment, input.Site = environment, site
-		reader := &catalogFlowListReader{store: c.catalogStore(input.Environment), environment: environment, site: site}
+		reader := &cacheFlowListReader{store: c.cacheStore(input.Environment), environment: environment, site: site}
 		output, err := flowlist.New(reader).Execute(ctx, input)
 		if err == nil {
 			output.Source = reader.source
@@ -292,7 +295,7 @@ func (c *remoteContentCommands) ListFlows(ctx context.Context, input flowlist.In
 
 	if input.All {
 		observedAt := c.runtime.now().UTC()
-		inventory, err := collectResourceInventory(ctx, connection.inventory, c.catalogStore(input.Environment), tableaucatalog.ScopeFlows, input.Environment, input.Site, observedAt, inventoryCollectionOptions{MaxConcurrency: connection.environment.CatalogMaxConcurrency, Filter: filter})
+		inventory, err := collectResourceInventory(ctx, connection.inventory, c.cacheStore(input.Environment), tableaucache.ScopeFlows, input.Environment, input.Site, observedAt, inventoryCollectionOptions{MaxConcurrency: connection.environment.CacheMaxConcurrency, Filter: filter})
 		if err != nil {
 			return flowlist.Output{}, inventoryRefreshError("flow.list", input.Environment, input.Site, err)
 		}
@@ -302,7 +305,7 @@ func (c *remoteContentCommands) ListFlows(ctx context.Context, input flowlist.In
 		if err != nil {
 			return output, err
 		}
-		if inventory.catalogErr != nil {
+		if inventory.cacheErr != nil {
 			output.Source = inventory.warningSource(observedAt)
 			output.Help = append(output.Help, inventory.warningHelp())
 		} else if inventory.filtered {
@@ -329,13 +332,13 @@ func (c *remoteContentCommands) InspectFlow(ctx context.Context, input flowinspe
 	if err := flowinspect.ValidateInput(input); err != nil {
 		return flowinspect.Output{}, err
 	}
-	if input.Catalog {
-		environment, site, err := c.resolveCatalogTarget(input.Environment)
+	if input.Cache {
+		environment, site, err := c.resolveCacheTarget(input.Environment)
 		if err != nil {
 			return flowinspect.Output{}, err
 		}
 		input.Environment, input.Site = environment, site
-		resolver := &catalogFlowGetResolver{store: c.catalogStore(input.Environment), environment: environment, site: site}
+		resolver := &cacheFlowGetResolver{store: c.cacheStore(input.Environment), environment: environment, site: site}
 		output, err := flowinspect.New(resolver).Execute(ctx, input)
 		if err == nil {
 			output.Source = resolver.source
@@ -355,7 +358,7 @@ func (c *remoteContentCommands) InspectFlow(ctx context.Context, input flowinspe
 	output.Source = liveSource(c.runtime.now)
 	entry, encodeErr := resourceEntry(input.Environment, input.Site, "flow", output.Flow.LUID, output.Flow.Name, output.Flow.ProjectPath, output.Flow.OwnerLUID, "detail", observedAt, output.Flow)
 	if encodeErr == nil {
-		writeThrough(c.catalogStore(input.Environment), []catalog.ResourceEntry{entry})
+		writeThrough(c.cacheStore(input.Environment), []cache.ResourceEntry{entry})
 	}
 	return output, nil
 }

@@ -16,37 +16,37 @@ import (
 	flowlist "github.com/ahillspace/tadx/actions/flow/list"
 	projectlist "github.com/ahillspace/tadx/actions/project/list"
 	workbooklist "github.com/ahillspace/tadx/actions/workbook/list"
-	corecatalog "github.com/ahillspace/tadx/internal/catalog"
+	corecache "github.com/ahillspace/tadx/internal/cache"
 	"github.com/ahillspace/tadx/internal/errs"
 	"github.com/ahillspace/tadx/internal/readsource"
-	tableaucatalog "github.com/ahillspace/tadx/internal/tableau/catalog"
+	tableaucache "github.com/ahillspace/tadx/internal/tableau/cache"
 )
 
-const inventoryRefreshHelp = "Complete live inventory refreshed the local catalog; use --catalog --all for all matching records, up to 10000."
-const inventoryRefreshWarningHelp = "The live result is complete, but the catalog was not updated; retry the live command to refresh it."
+const inventoryRefreshHelp = "Complete live inventory refreshed the local cache; use --cache --all for all matching records, up to 10000."
+const inventoryRefreshWarningHelp = "The live result is complete, but the cache was not updated; retry the live command to refresh it."
 
 type collectedResourceInventory struct {
 	filtered    bool
-	entries     []corecatalog.ResourceEntry
-	published   corecatalog.ReplaceResult
+	entries     []corecache.ResourceEntry
+	published   corecache.ReplaceResult
 	requestIDs  []string
-	catalogErr  error
+	cacheErr    error
 	skippedRows int
 	kind        string
 }
 
-func collectResourceInventory(ctx context.Context, executor tableaucatalog.Executor, store *corecatalog.Store, scope tableaucatalog.Scope, environment, site string, observedAt time.Time, options ...inventoryCollectionOptions) (collectedResourceInventory, error) {
-	config := tableaucatalog.Config{}
+func collectResourceInventory(ctx context.Context, executor tableaucache.Executor, store *corecache.Store, scope tableaucache.Scope, environment, site string, observedAt time.Time, options ...inventoryCollectionOptions) (collectedResourceInventory, error) {
+	config := tableaucache.Config{}
 	option := inventoryCollectionOptions{}
 	if len(options) > 0 {
 		option = options[0]
 	}
 	config.MaxConcurrency = option.MaxConcurrency
-	engine, err := tableaucatalog.NewEngine(executor, config)
+	engine, err := tableaucache.NewEngine(executor, config)
 	if err != nil {
 		return collectedResourceInventory{}, err
 	}
-	snapshot, err := engine.CollectInventory(ctx, scope, tableaucatalog.InventoryOptions{SkipMalformedRecords: true, Filter: option.Filter, MaxRows: 10000})
+	snapshot, err := engine.CollectInventory(ctx, scope, tableaucache.InventoryOptions{SkipMalformedRecords: true, Filter: option.Filter, MaxRows: 10000})
 	if err != nil {
 		return collectedResourceInventory{}, err
 	}
@@ -71,20 +71,20 @@ func collectResourceInventory(ctx context.Context, executor tableaucatalog.Execu
 		skippedRows: skippedRows, kind: inventoryKind(scope),
 	}
 	if skippedRows > 0 {
-		inventory.catalogErr = errors.New("incomplete live inventory cannot replace a complete catalog scope")
+		inventory.cacheErr = errors.New("incomplete live inventory cannot replace a complete cache scope")
 		return inventory, nil
 	}
 	if len(entries) > 10000 {
 		return collectedResourceInventory{}, errors.New("--all exceeds the 10000-record bound; use narrower filters")
 	}
 	if option.Filter != "" {
-		inventory.catalogErr = store.UpsertResources(ctx, entries)
+		inventory.cacheErr = store.UpsertResources(ctx, entries)
 		return inventory, nil
 	}
-	result, err := store.ReplaceResourceScope(ctx, corecatalog.ResourceScopeReplacement{
+	result, err := store.ReplaceResourceScope(ctx, corecache.ResourceScopeReplacement{
 		Environment: environment, Site: site, Kind: inventoryKind(scope), Source: "tableau-rest", GeneratedAt: observedAt, Entries: entries,
 	})
-	inventory.published, inventory.catalogErr = result, err
+	inventory.published, inventory.cacheErr = result, err
 	return inventory, nil
 }
 
@@ -95,7 +95,7 @@ func (i collectedResourceInventory) warningSource(observedAt time.Time) *readsou
 	value := readsource.Live(observedAt)
 	value.Coverage = readsource.CoveragePartial
 	value.CoverageReason = "malformed_records_skipped"
-	value.CatalogWarning = i.incompleteWarning()
+	value.CacheWarning = i.incompleteWarning()
 	return &value
 }
 
@@ -111,12 +111,12 @@ func (i collectedResourceInventory) incompleteWarning() string {
 	if i.skippedRows != 1 {
 		record += "s"
 	}
-	return fmt.Sprintf("The live inventory skipped %d malformed %s, so coverage is incomplete and the local catalog snapshot was not updated.", i.skippedRows, record)
+	return fmt.Sprintf("The live inventory skipped %d malformed %s, so coverage is incomplete and the local cache snapshot was not updated.", i.skippedRows, record)
 }
 
 type inventoryMemoryReader struct {
 	allowContinuation bool
-	entries           []corecatalog.ResourceEntry
+	entries           []corecache.ResourceEntry
 	requestID         string
 }
 
@@ -124,13 +124,13 @@ func (i collectedResourceInventory) memoryReader() inventoryMemoryReader {
 	return inventoryMemoryReader{entries: i.entries, requestID: finalRequestID(i.requestIDs)}
 }
 
-func (r inventoryMemoryReader) page(number, size int) []corecatalog.ResourceEntry {
+func (r inventoryMemoryReader) page(number, size int) []corecache.ResourceEntry {
 	start := min((number-1)*size, len(r.entries))
 	end := min(start+size, len(r.entries))
 	return r.entries[start:end]
 }
 
-func decodeInventoryPage[T any](entries []corecatalog.ResourceEntry) ([]T, error) {
+func decodeInventoryPage[T any](entries []corecache.ResourceEntry) ([]T, error) {
 	items := make([]T, len(entries))
 	for index, entry := range entries {
 		if err := json.Unmarshal(entry.Payload, &items[index]); err != nil {
@@ -170,12 +170,12 @@ func (r inventoryMemoryReader) ListGroups(_ context.Context, input grouplist.Pag
 	return grouplist.Page{Number: input.PageNumber, Size: input.PageSize, Total: len(r.entries), Groups: items, RequestID: r.requestID, SuppressContinuation: !r.allowContinuation}, err
 }
 
-func inventoryResourceEntries(snapshot tableaucatalog.InventorySnapshot, environment, site string, observedAt time.Time) ([]corecatalog.ResourceEntry, int, error) {
+func inventoryResourceEntries(snapshot tableaucache.InventorySnapshot, environment, site string, observedAt time.Time) ([]corecache.ResourceEntry, int, error) {
 	projects, err := inventoryProjects(snapshot, true)
 	if err != nil {
 		return nil, 0, err
 	}
-	entries := make([]corecatalog.ResourceEntry, 0, len(snapshot.Rows))
+	entries := make([]corecache.ResourceEntry, 0, len(snapshot.Rows))
 	skippedRows := snapshot.SkippedRows
 	for _, row := range snapshot.Rows {
 		entry, err := inventoryResourceEntry(snapshot.Scope, row, projects, environment, site, observedAt)
@@ -194,23 +194,23 @@ type inventoryProject struct {
 	path   string
 }
 
-func inventoryProjects(snapshot tableaucatalog.InventorySnapshot, tolerant ...bool) (map[string]inventoryProject, error) {
+func inventoryProjects(snapshot tableaucache.InventorySnapshot, tolerant ...bool) (map[string]inventoryProject, error) {
 	skipMalformed := len(tolerant) > 0 && tolerant[0]
-	hasProjects := snapshot.Scope == tableaucatalog.ScopeProjects
+	hasProjects := snapshot.Scope == tableaucache.ScopeProjects
 	var rows [][]any
-	if snapshot.Scope == tableaucatalog.ScopeProjects {
+	if snapshot.Scope == tableaucache.ScopeProjects {
 		rows = snapshot.Rows
 	}
 	{
 		for _, dependency := range snapshot.Dependencies {
-			if dependency.Scope == tableaucatalog.ScopeProjects {
+			if dependency.Scope == tableaucache.ScopeProjects {
 				rows = dependency.Rows
 				hasProjects = true
 				break
 			}
 		}
 	}
-	if !hasProjects && (snapshot.Scope == tableaucatalog.ScopeWorkbooks || snapshot.Scope == tableaucatalog.ScopeDatasources || snapshot.Scope == tableaucatalog.ScopeFlows) {
+	if !hasProjects && (snapshot.Scope == tableaucache.ScopeWorkbooks || snapshot.Scope == tableaucache.ScopeDatasources || snapshot.Scope == tableaucache.ScopeFlows) {
 		return nil, errors.New("complete content inventory omitted project dependencies")
 	}
 	projects := make(map[string]inventoryProject, len(rows))
@@ -272,7 +272,7 @@ func inventoryProjects(snapshot tableaucatalog.InventorySnapshot, tolerant ...bo
 	return projects, nil
 }
 
-func inventoryResourceEntry(scope tableaucatalog.Scope, row []any, projects map[string]inventoryProject, environment, site string, observedAt time.Time) (corecatalog.ResourceEntry, error) {
+func inventoryResourceEntry(scope tableaucache.Scope, row []any, projects map[string]inventoryProject, environment, site string, observedAt time.Time) (corecache.ResourceEntry, error) {
 	text := func(index int) (string, error) {
 		if index >= len(row) {
 			return "", errors.New("inventory row is incomplete")
@@ -310,125 +310,125 @@ func inventoryResourceEntry(scope tableaucatalog.Scope, row []any, projects map[
 	}
 	id, err := text(0)
 	if err != nil {
-		return corecatalog.ResourceEntry{}, err
+		return corecache.ResourceEntry{}, err
 	}
 	name, err := text(1)
 	if err != nil {
-		return corecatalog.ResourceEntry{}, err
+		return corecache.ResourceEntry{}, err
 	}
-	entry := corecatalog.ResourceEntry{Environment: environment, Site: site, Kind: inventoryKind(scope), LUID: id, Name: name, Coverage: "summary", ObservedAt: observedAt}
+	entry := corecache.ResourceEntry{Environment: environment, Site: site, Kind: inventoryKind(scope), LUID: id, Name: name, Coverage: "summary", ObservedAt: observedAt}
 	var payload map[string]any
 	switch scope {
-	case tableaucatalog.ScopeWorkbooks:
+	case tableaucache.ScopeWorkbooks:
 		values, err := texts(2, 3, 5)
 		if err != nil {
-			return corecatalog.ResourceEntry{}, err
+			return corecache.ResourceEntry{}, err
 		}
 		projectID, ownerID, updatedAt := values[0], values[1], values[2]
 		project, ok := projects[projectID]
 		if !ok || project.path == "" {
-			return corecatalog.ResourceEntry{}, fmt.Errorf("workbook %q references unknown project %q", id, projectID)
+			return corecache.ResourceEntry{}, fmt.Errorf("workbook %q references unknown project %q", id, projectID)
 		}
 		entry.ProjectPath, entry.Owner = project.path, ownerID
 		entry.ProjectLUID = projectID
 		payload, err = payloadMap(6)
 		if err != nil {
-			return corecatalog.ResourceEntry{}, err
+			return corecache.ResourceEntry{}, err
 		}
 		payload["luid"], payload["name"], payload["project_luid"], payload["project_path"], payload["owner_luid"], payload["updated_at"] = id, name, projectID, project.path, ownerID, updatedAt
-	case tableaucatalog.ScopeDatasources:
+	case tableaucache.ScopeDatasources:
 		values, err := texts(2, 3, 4)
 		if err != nil {
-			return corecatalog.ResourceEntry{}, err
+			return corecache.ResourceEntry{}, err
 		}
 		projectID, ownerID, updatedAt := values[0], values[1], values[2]
 		project, ok := projects[projectID]
 		if !ok || project.path == "" {
-			return corecatalog.ResourceEntry{}, fmt.Errorf("datasource %q references unknown project %q", id, projectID)
+			return corecache.ResourceEntry{}, fmt.Errorf("datasource %q references unknown project %q", id, projectID)
 		}
 		entry.ProjectPath, entry.Owner = project.path, ownerID
 		entry.ProjectLUID = projectID
 		payload, err = payloadMap(5)
 		if err != nil {
-			return corecatalog.ResourceEntry{}, err
+			return corecache.ResourceEntry{}, err
 		}
 		payload["luid"], payload["name"], payload["project_luid"], payload["project_name"], payload["project_path"], payload["owner_luid"], payload["updated_at"] = id, name, projectID, project.name, project.path, ownerID, updatedAt
-	case tableaucatalog.ScopeFlows:
+	case tableaucache.ScopeFlows:
 		values, err := texts(2, 3, 4, 5)
 		if err != nil {
-			return corecatalog.ResourceEntry{}, err
+			return corecache.ResourceEntry{}, err
 		}
 		projectID, ownerID, fileType, updatedAt := values[0], values[1], values[2], values[3]
 		project, ok := projects[projectID]
 		if !ok || project.path == "" {
-			return corecatalog.ResourceEntry{}, fmt.Errorf("flow %q references unknown project %q", id, projectID)
+			return corecache.ResourceEntry{}, fmt.Errorf("flow %q references unknown project %q", id, projectID)
 		}
 		entry.ProjectPath, entry.Owner = project.path, ownerID
 		entry.ProjectLUID = projectID
 		payload, err = payloadMap(6)
 		if err != nil {
-			return corecatalog.ResourceEntry{}, err
+			return corecache.ResourceEntry{}, err
 		}
 		payload["luid"], payload["name"], payload["project_luid"], payload["project_name"], payload["project_path"], payload["owner_luid"], payload["file_type"], payload["updated_at"] = id, name, projectID, project.name, project.path, ownerID, fileType, updatedAt
-	case tableaucatalog.ScopeProjects:
+	case tableaucache.ScopeProjects:
 		values, err := texts(2, 3, 4)
 		if err != nil {
-			return corecatalog.ResourceEntry{}, err
+			return corecache.ResourceEntry{}, err
 		}
 		parentID, description, ownerID := values[0], values[1], values[2]
 		project := projects[id]
 		if project.path == "" {
-			return corecatalog.ResourceEntry{}, fmt.Errorf("project %q has no canonical hierarchy path", id)
+			return corecache.ResourceEntry{}, fmt.Errorf("project %q has no canonical hierarchy path", id)
 		}
 		topLevel := parentID == ""
 		entry.ProjectPath, entry.Owner = project.path, ownerID
 		payload, err = payloadMap(5)
 		if err != nil {
-			return corecatalog.ResourceEntry{}, err
+			return corecache.ResourceEntry{}, err
 		}
 		payload["luid"], payload["name"], payload["parent_luid"], payload["description"], payload["owner_luid"], payload["top_level"] = id, name, parentID, description, ownerID, topLevel
-	case tableaucatalog.ScopeUsers:
+	case tableaucache.ScopeUsers:
 		values, err := texts(2, 3, 4)
 		if err != nil {
-			return corecatalog.ResourceEntry{}, err
+			return corecache.ResourceEntry{}, err
 		}
 		email, siteRole, lastLogin := values[0], values[1], values[2]
 		payload, err = payloadMap(5)
 		if err != nil {
-			return corecatalog.ResourceEntry{}, err
+			return corecache.ResourceEntry{}, err
 		}
 		payload["luid"], payload["name"], payload["email"], payload["site_role"], payload["last_login"] = id, name, email, siteRole, lastLogin
-	case tableaucatalog.ScopeGroups:
+	case tableaucache.ScopeGroups:
 		values, err := texts(2)
 		if err != nil {
-			return corecatalog.ResourceEntry{}, err
+			return corecache.ResourceEntry{}, err
 		}
 		domain := values[0]
 		payload, err = payloadMap(3)
 		if err != nil {
-			return corecatalog.ResourceEntry{}, err
+			return corecache.ResourceEntry{}, err
 		}
 		payload["luid"], payload["name"], payload["domain"] = id, name, domain
 	default:
-		return corecatalog.ResourceEntry{}, fmt.Errorf("unsupported complete inventory scope %q", scope)
+		return corecache.ResourceEntry{}, fmt.Errorf("unsupported complete inventory scope %q", scope)
 	}
 	entry.Payload, err = json.Marshal(payload)
 	return entry, err
 }
 
-func inventoryKind(scope tableaucatalog.Scope) string {
+func inventoryKind(scope tableaucache.Scope) string {
 	switch scope {
-	case tableaucatalog.ScopeWorkbooks:
+	case tableaucache.ScopeWorkbooks:
 		return "workbook"
-	case tableaucatalog.ScopeDatasources:
+	case tableaucache.ScopeDatasources:
 		return "datasource"
-	case tableaucatalog.ScopeFlows:
+	case tableaucache.ScopeFlows:
 		return "flow"
-	case tableaucatalog.ScopeProjects:
+	case tableaucache.ScopeProjects:
 		return "project"
-	case tableaucatalog.ScopeUsers:
+	case tableaucache.ScopeUsers:
 		return "user"
-	case tableaucatalog.ScopeGroups:
+	case tableaucache.ScopeGroups:
 		return "group"
 	default:
 		return ""
@@ -453,7 +453,7 @@ func finalRequestID(requestIDs []string) string {
 }
 
 func inventoryRefreshError(operation, environment, site string, err error) error {
-	retryable, correctiveAction := errs.CompleteRetryAdvice(err, "Retry the live list; the previous catalog snapshot remains unchanged.")
+	retryable, correctiveAction := errs.CompleteRetryAdvice(err, "Retry the live list; the previous cache snapshot remains unchanged.")
 	return &errs.Error{
 		ID: operation + ".inventory_refresh_failed", Kind: errs.KindOperation, Operation: operation,
 		Environment: environment, Site: site, Summary: "Complete live inventory refresh failed.", Cause: err,
@@ -463,7 +463,7 @@ func inventoryRefreshError(operation, environment, site string, err error) error
 
 func validateInventoryAll(all bool, source *readsource.Metadata) error {
 	if all && (source == nil || source.Coverage != readsource.CoverageComplete) {
-		return errs.New(errs.KindRuntime, "--all requires complete inventory coverage; refresh the catalog or retry the live list")
+		return errs.New(errs.KindRuntime, "--all requires complete inventory coverage; refresh the cache or retry the live list")
 	}
 	return nil
 }

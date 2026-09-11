@@ -207,7 +207,7 @@ func localImportAllowed(file, imported string) bool {
 				"internal/auth",
 				"internal/capability",
 				"internal/commandhint",
-				"internal/catalog",
+				"internal/cache",
 				"internal/config",
 				"internal/errs",
 				"internal/identity",
@@ -227,7 +227,7 @@ func localImportAllowed(file, imported string) bool {
 	case layerResource:
 		return matchesExact(imported, "internal/identity", "internal/value") || matchesPrefix(imported, "internal/tableau")
 	case layerTableau:
-		return matchesExact(imported, "internal/auth", "internal/tableau", "internal/tableau/catalog/tabxml", "internal/value")
+		return matchesExact(imported, "internal/auth", "internal/tableau", "internal/tableau/cache/tabxml", "internal/value")
 	case layerFoundation:
 		// Installer and startup discovery share directory facts, never auth or actions.
 		if hasPathPrefix(file, "internal/agent") || hasPathPrefix(file, "internal/guidancenotice") {
@@ -412,7 +412,7 @@ func isFoundationPackage(file string) bool {
 		hasPathPrefix(file, "internal/architecture") ||
 		hasPathPrefix(file, "internal/auth") ||
 		hasPathPrefix(file, "internal/config") ||
-		hasPathPrefix(file, "internal/catalog") ||
+		hasPathPrefix(file, "internal/cache") ||
 		hasPathPrefix(file, "internal/identity") ||
 		hasPathPrefix(file, "internal/capability") ||
 		hasPathPrefix(file, "internal/errs") ||

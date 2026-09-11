@@ -174,7 +174,7 @@ func newUserList(deps Dependencies) *cobra.Command {
 	cmd.Flags().StringVar(&input.Cursor, "cursor", "", "opaque continuation cursor")
 	cmd.MarkFlagsMutuallyExclusive("all", "limit")
 	cmd.MarkFlagsMutuallyExclusive("all", "cursor")
-	cmd.Flags().BoolVar(&input.Catalog, "catalog", false, "read indexed local catalog data without contacting Tableau")
+	cmd.Flags().BoolVar(&input.Cache, "cache", false, "read indexed local cache data without contacting Tableau")
 	return cmd
 }
 func newUserInspect(deps Dependencies) *cobra.Command {
@@ -199,7 +199,7 @@ func newUserInspect(deps Dependencies) *cobra.Command {
 	cmd.Flags().StringVar(&in.Environment, "environment", "", "exact environment alias; defaults to the configured read environment")
 	cmd.Flags().StringVar(&id, "id", "", "authoritative user LUID")
 	cmd.Flags().StringVar(&name, "name", "", "exact Tableau username")
-	cmd.Flags().BoolVar(&in.Catalog, "catalog", false, "read indexed local catalog data without contacting Tableau")
+	cmd.Flags().BoolVar(&in.Cache, "cache", false, "read indexed local cache data without contacting Tableau")
 	return cmd
 }
 func newUserCreate(deps Dependencies) *cobra.Command {
@@ -321,7 +321,7 @@ func newGroupList(deps Dependencies) *cobra.Command {
 	cmd.Flags().StringVar(&in.Cursor, "cursor", "", "opaque continuation cursor")
 	cmd.MarkFlagsMutuallyExclusive("all", "limit")
 	cmd.MarkFlagsMutuallyExclusive("all", "cursor")
-	cmd.Flags().BoolVar(&in.Catalog, "catalog", false, "read indexed local catalog data without contacting Tableau")
+	cmd.Flags().BoolVar(&in.Cache, "cache", false, "read indexed local cache data without contacting Tableau")
 	return cmd
 }
 func newGroupInspect(deps Dependencies) *cobra.Command {
@@ -347,7 +347,7 @@ func newGroupInspect(deps Dependencies) *cobra.Command {
 	cmd.Flags().StringVar(&id, "id", "", "authoritative group LUID")
 	cmd.Flags().StringVar(&name, "name", "", "exact group name")
 	cmd.Flags().BoolVar(&in.IncludeMembers, "members", false, "include bounded direct membership")
-	cmd.Flags().BoolVar(&in.Catalog, "catalog", false, "read indexed local catalog data without contacting Tableau")
+	cmd.Flags().BoolVar(&in.Cache, "cache", false, "read indexed local cache data without contacting Tableau")
 	return cmd
 }
 func newGroupCreate(deps Dependencies) *cobra.Command {

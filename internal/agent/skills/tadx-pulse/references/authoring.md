@@ -58,7 +58,7 @@ Reuse it for related definitions on that unchanged source.
 Schema defaults to 20 returned fields; `--limit` and `--all` support up to 10,000 matching fields.
 Use `more_available` to detect bounded output and `--all` for complete discovery; do not combine `--all` with `--limit`.
 If the bound is exceeded, partition discovery by supported role or table filters and keep coverage explicit.
-`--catalog` uses only previously captured schema and never establishes current completeness.
+`--cache` uses only previously captured schema and never establishes current completeness.
 
 If the required full details were not already returned, read selected measure, date, and derived dimension IDs together before finalizing them:
 

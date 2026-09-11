@@ -10,6 +10,11 @@ import (
 	a_admin_group_member_add "github.com/ahillspace/tadx/actions/admin/group/member/add"
 	a_admin_group_member_remove "github.com/ahillspace/tadx/actions/admin/group/member/remove"
 	a_admin_group_update "github.com/ahillspace/tadx/actions/admin/group/update"
+	admin_labelcategory_create "github.com/ahillspace/tadx/actions/admin/labelcategory/create"
+	admin_labelcategory_delete "github.com/ahillspace/tadx/actions/admin/labelcategory/delete"
+	admin_labelcategory_update "github.com/ahillspace/tadx/actions/admin/labelcategory/update"
+	admin_labelvalue_delete "github.com/ahillspace/tadx/actions/admin/labelvalue/delete"
+	admin_labelvalue_update "github.com/ahillspace/tadx/actions/admin/labelvalue/update"
 	a_admin_permission_create "github.com/ahillspace/tadx/actions/admin/permission/create"
 	a_admin_permission_delete "github.com/ahillspace/tadx/actions/admin/permission/delete"
 	a_admin_permission_inspect "github.com/ahillspace/tadx/actions/admin/permission/inspect"
@@ -18,6 +23,11 @@ import (
 	a_admin_user_inspect "github.com/ahillspace/tadx/actions/admin/user/inspect"
 	a_admin_user_list "github.com/ahillspace/tadx/actions/admin/user/list"
 	a_admin_user_update "github.com/ahillspace/tadx/actions/admin/user/update"
+	a_catalog_column_update "github.com/ahillspace/tadx/actions/catalog/column/update"
+	a_catalog_database_update "github.com/ahillspace/tadx/actions/catalog/database/update"
+	a_catalog_table_update "github.com/ahillspace/tadx/actions/catalog/table/update"
+	contentlabel_delete "github.com/ahillspace/tadx/actions/contentlabel/delete"
+	contentlabel_update "github.com/ahillspace/tadx/actions/contentlabel/update"
 	a_datasource_delete "github.com/ahillspace/tadx/actions/datasource/delete"
 	a_datasource_inspect "github.com/ahillspace/tadx/actions/datasource/inspect"
 	a_datasource_list "github.com/ahillspace/tadx/actions/datasource/list"
@@ -62,6 +72,7 @@ import (
 	"github.com/ahillspace/tadx/internal/capability"
 	"github.com/ahillspace/tadx/internal/cli"
 	admincli "github.com/ahillspace/tadx/internal/cli/admin"
+	catalogcli "github.com/ahillspace/tadx/internal/cli/catalog"
 	contentcli "github.com/ahillspace/tadx/internal/cli/content"
 	pulsecli "github.com/ahillspace/tadx/internal/cli/pulse"
 	"github.com/ahillspace/tadx/internal/errs"
@@ -69,7 +80,69 @@ import (
 	"testing"
 )
 
+type contentlabel_updateSpy struct{ spy *previewActionSpy }
+
+func (s contentlabel_updateSpy) Execute(_ context.Context, _ contentlabel_update.Input, preview bool) (contentlabel_update.Output, error) {
+	s.spy.record(preview)
+	return contentlabel_update.Output{}, nil
+}
+
+type contentlabel_deleteSpy struct{ spy *previewActionSpy }
+
+func (s contentlabel_deleteSpy) Execute(_ context.Context, _ contentlabel_delete.Input, preview bool) (contentlabel_delete.Output, error) {
+	s.spy.record(preview)
+	return contentlabel_delete.Output{}, nil
+}
+
+type admin_labelvalue_updateSpy struct{ spy *previewActionSpy }
+
+func (s admin_labelvalue_updateSpy) Execute(_ context.Context, _ admin_labelvalue_update.Input, preview bool) (admin_labelvalue_update.Output, error) {
+	s.spy.record(preview)
+	return admin_labelvalue_update.Output{}, nil
+}
+
+type admin_labelvalue_deleteSpy struct{ spy *previewActionSpy }
+
+func (s admin_labelvalue_deleteSpy) Execute(_ context.Context, _ admin_labelvalue_delete.Input, preview bool) (admin_labelvalue_delete.Output, error) {
+	s.spy.record(preview)
+	return admin_labelvalue_delete.Output{}, nil
+}
+
+type admin_labelcategory_createSpy struct{ spy *previewActionSpy }
+
+func (s admin_labelcategory_createSpy) Execute(_ context.Context, _ admin_labelcategory_create.Input, preview bool) (admin_labelcategory_create.Output, error) {
+	s.spy.record(preview)
+	return admin_labelcategory_create.Output{}, nil
+}
+
+type admin_labelcategory_updateSpy struct{ spy *previewActionSpy }
+
+func (s admin_labelcategory_updateSpy) Execute(_ context.Context, _ admin_labelcategory_update.Input, preview bool) (admin_labelcategory_update.Output, error) {
+	s.spy.record(preview)
+	return admin_labelcategory_update.Output{}, nil
+}
+
+type admin_labelcategory_deleteSpy struct{ spy *previewActionSpy }
+
+func (s admin_labelcategory_deleteSpy) Execute(_ context.Context, _ admin_labelcategory_delete.Input, preview bool) (admin_labelcategory_delete.Output, error) {
+	s.spy.record(preview)
+	return admin_labelcategory_delete.Output{}, nil
+}
+
 type previewActionSpy struct{ calls, writes int }
+
+func (s *previewActionSpy) UpdateCatalogDatabase(_ context.Context, _ a_catalog_database_update.Input, preview bool) (a_catalog_database_update.Output, error) {
+	s.record(preview)
+	return a_catalog_database_update.Output{}, nil
+}
+func (s *previewActionSpy) UpdateCatalogTable(_ context.Context, _ a_catalog_table_update.Input, preview bool) (a_catalog_table_update.Output, error) {
+	s.record(preview)
+	return a_catalog_table_update.Output{}, nil
+}
+func (s *previewActionSpy) UpdateCatalogColumn(_ context.Context, _ a_catalog_column_update.Input, preview bool) (a_catalog_column_update.Output, error) {
+	s.record(preview)
+	return a_catalog_column_update.Output{}, nil
+}
 
 func (s *previewActionSpy) record(preview bool) {
 	s.calls++
@@ -293,6 +366,9 @@ func (registryPreviewPolicy) IsRemoteMutation(id string) bool {
 }
 func previewDependencies(spy *previewActionSpy) cli.Dependencies {
 	return cli.Dependencies{MutationPolicy: registryPreviewPolicy{}, Renderer: spy, WorkbookPublisher: spy, WorkbookPuller: &puller{},
+		ContentLabels: &contentcli.LabelDependencies{Renderer: spy, Updater: contentlabel_updateSpy{spy}, Deleter: contentlabel_deleteSpy{spy}},
+		AdminLabels:   &admincli.LabelDependencies{Renderer: spy, ValueUpdater: admin_labelvalue_updateSpy{spy}, ValueDeleter: admin_labelvalue_deleteSpy{spy}, CategoryCreator: admin_labelcategory_createSpy{spy}, CategoryUpdater: admin_labelcategory_updateSpy{spy}, CategoryDeleter: admin_labelcategory_deleteSpy{spy}},
+		Catalog:       &catalogcli.Dependencies{Renderer: spy, DatabaseUpdater: spy, TableUpdater: spy, ColumnUpdater: spy},
 		Content: &contentcli.Dependencies{Renderer: spy,
 			WorkbookLister:      spy,
 			WorkbookInspector:   spy,
@@ -360,6 +436,17 @@ func previewDependencies(spy *previewActionSpy) cli.Dependencies {
 // Actual command bindings must pass preview=true to their action when mutations are off.
 func TestEveryRemoteMutationDispatchesPreviewWithoutWrites(t *testing.T) {
 	flags := map[string]string{
+		"content.label.update":        "--id label --message Meaning",
+		"content.label.delete":        "--id label",
+		"admin.label.value.update":    "--name Warning --description Meaning",
+		"admin.label.value.delete":    "--name Warning",
+		"admin.label.category.create": "--name Custom --description Meaning",
+		"admin.label.category.update": "--name Custom --description Meaning",
+		"admin.label.category.delete": "--name Custom",
+
+		"catalog.database.update":   "--id database --description Meaning",
+		"catalog.table.update":      "--id table --description Meaning",
+		"catalog.column.update":     "--table-id table --id column --description Meaning",
 		"admin.group.create":        "--name New",
 		"admin.group.delete":        "--id group",
 		"admin.group.member.add":    "--group-id group --user-id user",

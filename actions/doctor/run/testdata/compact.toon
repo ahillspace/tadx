@@ -11,7 +11,7 @@ checks[6]{id,status,summary}:
   config.valid,pass,Configuration and environment resolution are valid.
   auth.pat.references,pass,PAT environment variables are present.
   auth.tableau.connectivity,pass,Tableau connectivity and PAT authentication succeeded.
-  catalog.status,pass,The current catalog generation is complete and fresh.
+  cache.status,pass,The current cache generation is complete and fresh.
   workspace.status,pass,The selected workspace is available and valid.
   logging.context,pass,Explicit logging context is configured.
 details: "--full"

@@ -21,7 +21,7 @@ type Input struct {
 	UpdatedAfter  string
 	UpdatedBefore string
 	Limit         int
-	Catalog       bool
+	Cache         bool
 }
 
 // PageRequest is the action-owned bounded read request.

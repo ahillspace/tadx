@@ -31,8 +31,8 @@ func ValidateInput(input Input) error {
 func ValidateContinuation(input Input) error {
 	fingerprint, err := cursorFingerprint(struct {
 		Environment, Site, Name, SiteRole string
-		Catalog                           bool
-	}{input.Environment, input.Site, input.Name, input.SiteRole, input.Catalog})
+		Cache                             bool
+	}{input.Environment, input.Site, input.Name, input.SiteRole, input.Cache})
 	if err != nil {
 		return err
 	}

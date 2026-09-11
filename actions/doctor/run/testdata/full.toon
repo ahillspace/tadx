@@ -11,7 +11,7 @@ checks[6]{id,status,summary,corrective_action}:
   config.valid,pass,Configuration and environment resolution are valid.,No action required.
   auth.pat.references,pass,PAT environment variables are present.,No action required.
   auth.tableau.connectivity,pass,Tableau connectivity and PAT authentication succeeded.,No action required.
-  catalog.status,pass,The current catalog generation is complete and fresh.,No action required.
+  cache.status,pass,The current cache generation is complete and fresh.,No action required.
   workspace.status,pass,The selected workspace is available and valid.,No action required.
   logging.context,pass,Explicit logging context is configured.,No action required.
 help[1]: tadx doctor --full --workspace development --environment dev

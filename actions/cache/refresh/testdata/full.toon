@@ -1,0 +1,21 @@
+status: refreshed
+generation:
+  complete: true
+  id: generation-1
+  environment: production
+  site: marketing
+  generated_at: "2026-09-01T12:00:00Z"
+  records: 3
+  source: tableau-rest
+  scopes[1]: workbooks
+  implicit_scopes[1]: projects
+  scope_counts[2]{scope,records}:
+    projects,1
+    workbooks,2
+path: catalog/catalog.sqlite
+warnings[1]: Requested scopes replace the previous cache generation.
+diagnostics:
+  requests: 2
+  failed_requests: 0
+  duration: 1.211s
+help[1]: tadx cache status --environment production

@@ -14,8 +14,10 @@ Feedback and collaboration is openly welcomed and there is specific and delibera
 TADX is an independent, pre-1.0 project and is not supported by or associated with Tableau or Salesforce.
 It is usable and actively developed.
 
-The current release supports named Tableau environments, PAT authentication, content discovery, local workspaces and catalogs, workbook, datasource, flow, and project lifecycle operations, bounded lineage, Tableau administration, and initial Pulse definition and metric workflows.
+The current release supports named Tableau environments, PAT authentication, content discovery, local workspaces and caches, workbook, datasource, flow, and project lifecycle operations, bounded lineage, Tableau administration, and initial Pulse definition and metric workflows.
 Some capabilities are intentionally deferred where the upstream contract is not yet supported or proven.
+Current source builds also support upstream database, table, and column metadata inspection and enrichment, scoped metadata audits, and supported content labels.
+`catalog` means upstream Tableau metadata; `cache` is TADX's optional local inventory store.
 Check the exact capabilities in your installed version with:
 
 ```text
@@ -29,6 +31,7 @@ Give your agent an outcome, not a list of API calls:
 - Find sales workbooks, inspect their dependencies, and download a useful working set.
 - Prepare a project and access for a temporary analyst.
 - Discover suitable datasource fields and create a meaningful Pulse metric.
+- Find missing descriptions in an upstream table and enrich the metadata without changing the underlying data.
 
 Or use the same CLI directly to inspect, download, organize, and publish Tableau content.
 
@@ -173,7 +176,7 @@ The full status output reports the exact machine-local file locations.
 
 ## Safe defaults
 
-Read operations query Tableau live unless you explicitly select the local catalog.
+Read operations query Tableau live unless you explicitly select the local cache.
 Compact TOON output is the default; `--full` adds bounded detail for the same operation.
 Tableau LUIDs are authoritative, and ambiguous selectors fail instead of guessing.
 
@@ -185,8 +188,9 @@ See `tadx mutation status` and `tadx mutation set --help` when you are ready to 
 
 ## Learn more
 
-- [`docs/getting-started.md`](docs/getting-started.md) covers credentials, other artifact types, catalogs, previews, Pulse discovery, and maintenance.
+- [`docs/getting-started.md`](docs/getting-started.md) covers credentials, other artifact types, caches, previews, Pulse discovery, and maintenance.
 - [`docs/workspaces.md`](docs/workspaces.md) explains workspace identity, paths, status, cloning, and local artifact operations.
+- [Catalog metadata Guidance](internal/agent/skills/tadx/references/catalog.md) covers source-build metadata inspection, descriptions, tags, audits, and labels.
 - [`docs/reference/capabilities.md`](docs/reference/capabilities.md) documents the capability registry generated from the current source tree.
 - [Capability map](docs/reference/capability-map.html) presents the current registry as an interactive visual inventory.
 - [Architecture](docs/architecture/README.md) shows the main parts and links them to their source files.

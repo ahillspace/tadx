@@ -68,7 +68,7 @@ func TestCLIProcessRejectsRetiredRoutes(t *testing.T) {
 		{name: "retired content get", args: []string{"content", "get"}},
 		{name: "retired content search", args: []string{"content", "search"}},
 		{name: "retired workbook get", args: []string{"content", "workbook", "get"}},
-		{name: "retired catalog search", args: []string{"catalog", "search"}},
+		{name: "retired cache search", args: []string{"cache", "search"}},
 		{name: "retired admin user get", args: []string{"admin", "user", "get"}},
 		{name: "retired Pulse metric get", args: []string{"pulse", "metric", "get"}},
 	}
@@ -95,7 +95,7 @@ func TestCLIProcessBareGroupsKeepHelpBehavior(t *testing.T) {
 	binary := buildCLI(t)
 	for _, args := range [][]string{
 		{"content", "workbook"},
-		{"catalog"},
+		{"cache"},
 		{"admin", "user"},
 		{"pulse", "metric"},
 	} {

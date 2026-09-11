@@ -6,7 +6,7 @@ type Input struct {
 	Environment string
 	Site        string
 	MetricLUID  string
-	Catalog     bool
+	Cache       bool
 }
 type Metric struct {
 	LUID      string

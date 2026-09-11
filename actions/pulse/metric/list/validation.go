@@ -34,7 +34,7 @@ func ValidateContinuation(input Input) error {
 	if limit == 0 {
 		limit = defaultLimit
 	}
-	if _, err := decodeCursor(input.Cursor, input.Environment, input.Site, strings.TrimSpace(input.DefinitionLUID), limit, input.Catalog); err != nil {
+	if _, err := decodeCursor(input.Cursor, input.Environment, input.Site, strings.TrimSpace(input.DefinitionLUID), limit, input.Cache); err != nil {
 		return fail("pulse.metric.list.usage", errs.KindUsage, input, "Pulse metric cursor does not match this definition, limit, and source.", err)
 	}
 	return nil

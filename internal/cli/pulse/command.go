@@ -185,7 +185,7 @@ func newDefinitionList(deps Dependencies) *cobra.Command {
 		}
 		return deps.Renderer.Render(result)
 	})
-	readFlags(command, &input.Environment, &input.Catalog)
+	readFlags(command, &input.Environment, &input.Cache)
 	command.Flags().IntVar(&input.Limit, "limit", 0, "maximum definitions to return from 1 through 10000; defaults to 25")
 	command.Flags().StringVar(&input.Name, "name", "", "find exact definition names across provider pages")
 	command.Flags().StringVar(&input.DatasourceLUID, "datasource-id", "", "filter exact datasource LUID before the returned limit; scans up to 100 pages")
@@ -204,7 +204,7 @@ func newDefinitionInspect(deps Dependencies) *cobra.Command {
 		}
 		return deps.Renderer.Render(result)
 	})
-	readFlags(command, &input.Environment, &input.Catalog)
+	readFlags(command, &input.Environment, &input.Cache)
 	return command
 }
 
@@ -313,7 +313,7 @@ func newMetricList(deps Dependencies) *cobra.Command {
 			return deps.Renderer.Render(result)
 		},
 	}
-	readFlags(command, &input.Environment, &input.Catalog)
+	readFlags(command, &input.Environment, &input.Cache)
 	command.Flags().StringVar(&input.DefinitionLUID, "definition-id", "", "authoritative Pulse definition LUID")
 	command.Flags().IntVar(&input.Limit, "limit", 0, "maximum metrics to return from 1 through 10000; defaults to 25")
 	command.Flags().StringVar(&input.Cursor, "cursor", "", "opaque continuation cursor")
@@ -331,7 +331,7 @@ func newMetricInspect(deps Dependencies) *cobra.Command {
 		}
 		return deps.Renderer.Render(result)
 	})
-	readFlags(command, &input.Environment, &input.Catalog)
+	readFlags(command, &input.Environment, &input.Cache)
 	return command
 }
 
@@ -396,7 +396,7 @@ func newMetricFollowers(deps Dependencies) *cobra.Command {
 		}
 		return deps.Renderer.Render(result)
 	})
-	readFlags(command, &input.Environment, &input.Catalog)
+	readFlags(command, &input.Environment, &input.Cache)
 	return command
 }
 
@@ -505,9 +505,9 @@ func exactIDCommand(use, short, operation string, target *string, run func(*cobr
 	return command
 }
 
-func readFlags(command *cobra.Command, environment *string, catalog *bool) {
+func readFlags(command *cobra.Command, environment *string, cache *bool) {
 	command.Flags().StringVar(environment, "environment", "", "exact environment alias; defaults to the configured read environment")
-	command.Flags().BoolVar(catalog, "catalog", false, "read indexed local catalog data without contacting Tableau")
+	command.Flags().BoolVar(cache, "cache", false, "read indexed local cache data without contacting Tableau")
 }
 
 func capability(operation string) map[string]string {

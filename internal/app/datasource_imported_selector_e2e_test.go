@@ -18,6 +18,8 @@ import (
 func TestDatasourceInspectAcceptsImportedDisplayNameThroughCLI(t *testing.T) {
 	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
+		case r.URL.Path == "/api/metadata/graphql":
+			w.WriteHeader(http.StatusForbidden)
 		case r.Method == http.MethodPost && r.URL.Path == "/api/3.29/auth/signin":
 			w.Header().Set("Content-Type", "application/json")
 			io.WriteString(w, `{"credentials":{"token":"test-session","site":{"id":"site-1"},"user":{"id":"user-1"}}}`)

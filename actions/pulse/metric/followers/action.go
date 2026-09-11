@@ -58,7 +58,7 @@ func (a *Action) Execute(ctx context.Context, input Input) (Output, error) {
 
 func readError(input Input, err error) error {
 	var structured *errs.Error
-	if input.Catalog && errors.As(err, &structured) {
+	if input.Cache && errors.As(err, &structured) {
 		return err
 	}
 	retryable, corrective := errs.CompleteRetryAdvice(err, "Review the exact metric LUID and selected site, then retry.")

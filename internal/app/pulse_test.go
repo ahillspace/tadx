@@ -21,7 +21,7 @@ import (
 	metricfollowers "github.com/ahillspace/tadx/actions/pulse/metric/followers"
 	metricget "github.com/ahillspace/tadx/actions/pulse/metric/inspect"
 	metriclist "github.com/ahillspace/tadx/actions/pulse/metric/list"
-	"github.com/ahillspace/tadx/internal/catalog"
+	"github.com/ahillspace/tadx/internal/cache"
 	resourcedatasource "github.com/ahillspace/tadx/internal/resources/datasource"
 	tableaudatasource "github.com/ahillspace/tadx/internal/tableau/datasource"
 	"github.com/ahillspace/tadx/internal/tableau/fieldcatalog"
@@ -111,7 +111,7 @@ environments:
 	}
 }
 
-func TestPulseCatalogReadsUseNoAuthenticationOrNetwork(t *testing.T) {
+func TestPulseCacheReadsUseNoAuthenticationOrNetwork(t *testing.T) {
 	root := t.TempDir()
 	configPath := filepath.Join(root, "tadx.yaml")
 	configuration := `version: 1
@@ -133,12 +133,12 @@ environments:
 	definition := tableaupulse.Definition{LUID: "definition-1", Name: "Revenue", DatasourceLUID: "datasource-1", MeasureField: "[Revenue]", TimeDimension: "[Order Date]", Configuration: json.RawMessage(`{"metadata":{"id":"definition-1","name":"Revenue"},"specification":{"datasource":{"id":"datasource-1"}}}`)}
 	metric := tableaupulse.Metric{LUID: "metric-1", Name: "Revenue this month", DefinitionLUID: definition.LUID, SiteLUID: "site-1", Specification: map[string]any{"measurement_period": map[string]any{"range": "RANGE_CURRENT_PARTIAL"}}}
 	follower := tableaupulse.Subscription{LUID: "subscription-1", MetricLUID: metric.LUID, FollowerType: "USER", FollowerLUID: "user-1", FollowerName: "User One"}
-	entries := []catalog.ResourceEntry{
-		pulseCatalogEntry(t, now, pulseDefinitionKind, definition.LUID, definition.Name, "", "", definition),
-		pulseCatalogEntry(t, now, pulseMetricKind, metric.LUID, metric.Name, definition.LUID, "", metric),
-		pulseCatalogEntry(t, now, pulseFollowerSnapshotKind, metric.LUID, metric.LUID, "", "", pulseFollowerSnapshot{Version: 1, MetricLUID: metric.LUID, Subscriptions: []metricfollowers.Subscription{{LUID: follower.LUID, MetricLUID: metric.LUID, FollowerType: follower.FollowerType, FollowerLUID: follower.FollowerLUID, FollowerName: follower.FollowerName}}}),
+	entries := []cache.ResourceEntry{
+		pulseCacheEntry(t, now, pulseDefinitionKind, definition.LUID, definition.Name, "", "", definition),
+		pulseCacheEntry(t, now, pulseMetricKind, metric.LUID, metric.Name, definition.LUID, "", metric),
+		pulseCacheEntry(t, now, pulseFollowerSnapshotKind, metric.LUID, metric.LUID, "", "", pulseFollowerSnapshot{Version: 1, MetricLUID: metric.LUID, Subscriptions: []metricfollowers.Subscription{{LUID: follower.LUID, MetricLUID: metric.LUID, FollowerType: follower.FollowerType, FollowerLUID: follower.FollowerLUID, FollowerName: follower.FollowerName}}}),
 	}
-	if err := targetCatalogFixture(t, configPath, func() time.Time { return now }).UpsertResources(context.Background(), entries); err != nil {
+	if err := targetCacheFixture(t, configPath, func() time.Time { return now }).UpsertResources(context.Background(), entries); err != nil {
 		t.Fatal(err)
 	}
 	transport := &failNetworkTransport{}
@@ -149,23 +149,23 @@ environments:
 	t.Cleanup(func() { _ = runtime.Close() })
 	commands := newPulseCommands(runtime)
 
-	definitions, err := commands.ListPulseDefinitions(context.Background(), definitionlist.Input{Catalog: true, Limit: 10})
+	definitions, err := commands.ListPulseDefinitions(context.Background(), definitionlist.Input{Cache: true, Limit: 10})
 	if err != nil {
 		t.Fatal(err)
 	}
-	gotDefinition, err := commands.InspectPulseDefinition(context.Background(), definitionget.Input{Catalog: true, LUID: definition.LUID})
+	gotDefinition, err := commands.InspectPulseDefinition(context.Background(), definitionget.Input{Cache: true, LUID: definition.LUID})
 	if err != nil {
 		t.Fatal(err)
 	}
-	metrics, err := commands.ListPulseMetrics(context.Background(), metriclist.Input{Catalog: true, DefinitionLUID: definition.LUID, Limit: 10})
+	metrics, err := commands.ListPulseMetrics(context.Background(), metriclist.Input{Cache: true, DefinitionLUID: definition.LUID, Limit: 10})
 	if err != nil {
 		t.Fatal(err)
 	}
-	gotMetric, err := commands.InspectPulseMetric(context.Background(), metricget.Input{Catalog: true, LUID: metric.LUID})
+	gotMetric, err := commands.InspectPulseMetric(context.Background(), metricget.Input{Cache: true, LUID: metric.LUID})
 	if err != nil {
 		t.Fatal(err)
 	}
-	followers, err := commands.ListPulseMetricFollowers(context.Background(), metricfollowers.Input{Catalog: true, MetricLUID: metric.LUID})
+	followers, err := commands.ListPulseMetricFollowers(context.Background(), metricfollowers.Input{Cache: true, MetricLUID: metric.LUID})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -173,19 +173,19 @@ environments:
 	if transport.calls != 0 {
 		t.Fatalf("network calls = %d", transport.calls)
 	}
-	if len(definitions.Definitions) != 1 || definitions.Source == nil || definitions.Source.Mode != "catalog" {
+	if len(definitions.Definitions) != 1 || definitions.Source == nil || definitions.Source.Mode != "cache" {
 		t.Fatalf("definitions = %#v", definitions)
 	}
-	if gotDefinition.Definition.LUID != definition.LUID || gotDefinition.Source == nil || gotDefinition.Source.Mode != "catalog" || gotDefinition.RequestID != "" {
+	if gotDefinition.Definition.LUID != definition.LUID || gotDefinition.Source == nil || gotDefinition.Source.Mode != "cache" || gotDefinition.RequestID != "" {
 		t.Fatalf("definition = %#v", gotDefinition)
 	}
-	if len(metrics.Metrics) != 1 || metrics.Source == nil || metrics.Source.Mode != "catalog" {
+	if len(metrics.Metrics) != 1 || metrics.Source == nil || metrics.Source.Mode != "cache" {
 		t.Fatalf("metrics = %#v", metrics)
 	}
-	if gotMetric.Metric.LUID != metric.LUID || gotMetric.Source == nil || gotMetric.Source.Mode != "catalog" || gotMetric.RequestID != "" {
+	if gotMetric.Metric.LUID != metric.LUID || gotMetric.Source == nil || gotMetric.Source.Mode != "cache" || gotMetric.RequestID != "" {
 		t.Fatalf("metric = %#v", gotMetric)
 	}
-	if len(followers.Subscriptions) != 1 || followers.Source == nil || followers.Source.Mode != "catalog" || followers.RequestID != "" {
+	if len(followers.Subscriptions) != 1 || followers.Source == nil || followers.Source.Mode != "cache" || followers.RequestID != "" {
 		t.Fatalf("followers = %#v", followers)
 	}
 }
@@ -269,13 +269,13 @@ func TestPulseFieldResolutionPreservesCanonicalIdentityOnRevalidation(t *testing
 	}
 }
 
-func pulseCatalogEntry(t *testing.T, observedAt time.Time, kind, luid, name, parent, owner string, payload any) catalog.ResourceEntry {
+func pulseCacheEntry(t *testing.T, observedAt time.Time, kind, luid, name, parent, owner string, payload any) cache.ResourceEntry {
 	t.Helper()
 	encoded, err := json.Marshal(payload)
 	if err != nil {
 		t.Fatal(err)
 	}
-	return catalog.ResourceEntry{Environment: "production", Site: "marketing", Kind: kind, LUID: luid, Name: name, ProjectPath: parent, Owner: owner, Payload: encoded, Coverage: "detail", ObservedAt: observedAt}
+	return cache.ResourceEntry{Environment: "production", Site: "marketing", Kind: kind, LUID: luid, Name: name, ProjectPath: parent, Owner: owner, Payload: encoded, Coverage: "detail", ObservedAt: observedAt}
 }
 
 type pulseSchemaIdentityStub struct{}

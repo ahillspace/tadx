@@ -107,13 +107,13 @@ func TestGroupOneProjectAndFlowReadsPullAndLineageThroughCLI(t *testing.T) {
 	}
 }
 
-// TestGroupOneLiveReadSucceedsWhenCatalogWriteThroughFails proves that a live
-// read remains authoritative even when the local catalog write-through cannot
-// persist. The catalog directory is poisoned with a regular file so the store
+// TestGroupOneLiveReadSucceedsWhenCacheWriteThroughFails proves that a live
+// read remains authoritative even when the local cache write-through cannot
+// persist. The cache directory is poisoned with a regular file so the store
 // cannot create catalog/catalog.sqlite; the read must still return the live
 // result with a Tableau source stamp and a bounded warning rather than failing
 // on the cache write or issuing an unsafe cursor for an older snapshot.
-func TestGroupOneLiveReadSucceedsWhenCatalogWriteThroughFails(t *testing.T) {
+func TestGroupOneLiveReadSucceedsWhenCacheWriteThroughFails(t *testing.T) {
 	server, mutations := newGroupOneTableauServer(t)
 	defer server.Close()
 
@@ -121,10 +121,10 @@ func TestGroupOneLiveReadSucceedsWhenCatalogWriteThroughFails(t *testing.T) {
 	t.Setenv("PROD_PAT_NAME", "pat-name")
 	t.Setenv("PROD_PAT_SECRET", "pat-secret")
 
-	// Poison the catalog directory: a regular file where the store needs a
+	// Poison the cache directory: a regular file where the store needs a
 	// directory forces complete scope publication to fail.
-	catalogPath := filepath.Join(filepath.Dir(configPath), "catalog")
-	if err := os.WriteFile(catalogPath, []byte("not a directory"), 0o600); err != nil {
+	cachePath := filepath.Join(filepath.Dir(configPath), "catalog")
+	if err := os.WriteFile(cachePath, []byte("not a directory"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 
@@ -134,18 +134,18 @@ func TestGroupOneLiveReadSucceedsWhenCatalogWriteThroughFails(t *testing.T) {
 		Now:        func() time.Time { return time.Date(2026, 9, 1, 12, 0, 0, 0, time.UTC) },
 	}
 	output := runGroupOneCLI(t, options, "content", "project", "list", "--all")
-	for _, want := range []string{"status: listed", "environment: production", "project-ops", "mode: tableau", "catalog_warning:", "catalog was not updated"} {
+	for _, want := range []string{"status: listed", "environment: production", "project-ops", "mode: tableau", "cache_warning:", "cache was not updated"} {
 		if !strings.Contains(output, want) {
-			t.Fatalf("live read did not survive a failed catalog write-through; output missing %q:\n%s", want, output)
+			t.Fatalf("live read did not survive a failed cache write-through; output missing %q:\n%s", want, output)
 		}
 	}
 	if strings.Contains(output, "next_cursor:") || strings.Contains(output, configPath) {
-		t.Fatalf("failed catalog publication exposed an unsafe cursor or local path:\n%s", output)
+		t.Fatalf("failed cache publication exposed an unsafe cursor or local path:\n%s", output)
 	}
-	// The catalog file must remain the untouched poison, proving write-through
+	// The cache file must remain the untouched poison, proving write-through
 	// neither succeeded nor removed it.
-	if data, err := os.ReadFile(catalogPath); err != nil || string(data) != "not a directory" {
-		t.Fatalf("catalog poison file = %q, error = %v", data, err)
+	if data, err := os.ReadFile(cachePath); err != nil || string(data) != "not a directory" {
+		t.Fatalf("cache poison file = %q, error = %v", data, err)
 	}
 	if mutations.Load() != 0 {
 		t.Fatalf("live read made %d remote mutation requests", mutations.Load())

@@ -10,7 +10,7 @@ type Input struct {
 	Environment string
 	Site        string
 	Selector    identity.Selector
-	Catalog     bool
+	Cache       bool
 }
 
 // SetSelector records one exact CLI selector without exposing identity plumbing to Cobra.

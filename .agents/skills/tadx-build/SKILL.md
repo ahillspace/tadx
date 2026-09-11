@@ -81,12 +81,12 @@ Never change a developer's operational mutation setting to make a test pass.
 `--force` does not bypass mutation policy, and mutation discovery never grants authorization.
 Persist PATs only after explicit user approval through the native OS credential store.
 Store only opaque credential references in configuration, and never use a plaintext credential fallback.
-Never place PATs or session tokens in configuration values, output, logs, artifacts, catalogs, fixtures, or diagnostics.
+Never place PATs or session tokens in configuration values, output, logs, artifacts, caches, fixtures, or diagnostics.
 Resolve machine-local roots only at runtime; expose them only where the output contract provides local locations, such as full workspace status.
 Never hardcode developer paths, usernames, private site names, or unrelated local project names in tracked files or fixtures.
 Keep capabilities outside TADX distinct from executable commands; do not teach or proxy external MCP tools.
 
-For inventory, search, catalog, or cache work, read [references/inventory-and-cache.md](references/inventory-and-cache.md).
+For inventory, search, cache, or cache work, read [references/inventory-and-cache.md](references/inventory-and-cache.md).
 Do not load that reference for an unrelated action.
 
 ## Integrate without generated drift

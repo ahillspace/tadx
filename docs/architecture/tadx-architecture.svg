@@ -39,7 +39,7 @@
 <text x="58" y="951" font-family="Arial, sans-serif" font-size="20" fill="#ffffff"><tspan x="58" dy="0">11  Tableau Cloud / Server</tspan></text>
 <text x="58" y="987" font-family="Arial, sans-serif" font-size="17" fill="#ffffff"><tspan x="58" dy="0">Remote reads and enabled mutations</tspan></text>
 <text x="510" y="943" font-family="Arial, sans-serif" font-size="23" fill="#0b2538"><tspan x="510" dy="0">Live by default. Local when requested.</tspan></text>
-<text x="510" y="978" font-family="Arial, sans-serif" font-size="18" fill="#5e6b78"><tspan x="510" dy="0">Supported --catalog reads use SQLite only, without live fallback.</tspan><tspan x="510" dy="22.5">One command owns its runtime; TADX has no resident service.</tspan><tspan x="510" dy="22.5">Tableau MCP remains separate. TADX does not proxy it.</tspan></text>
+<text x="510" y="978" font-family="Arial, sans-serif" font-size="18" fill="#5e6b78"><tspan x="510" dy="0">Supported --cache reads use SQLite only, without live fallback.</tspan><tspan x="510" dy="22.5">One command owns its runtime; TADX has no resident service.</tspan><tspan x="510" dy="22.5">Tableau MCP remains separate. TADX does not proxy it.</tspan></text>
 <polyline points="680,215 680,265" fill="none" stroke="#315ca8" stroke-width="2" marker-end="url(#arrow)"/>
 <polyline points="380,330 510,330" fill="none" stroke="#6840b7" stroke-width="2" stroke-dasharray="7 5" marker-end="url(#wiring)"/>
 <polyline points="980,350 920,350 920,485 850,485" fill="none" stroke="#6840b7" stroke-width="2" stroke-dasharray="7 5" marker-end="url(#wiring)"/>
@@ -98,8 +98,8 @@
 <a href="https://github.com/ahillspace/tadx/blob/main/internal/artifact/workbook.go">
 <text x="1427" y="717" font-family="Arial, sans-serif" font-size="17" fill="#0067a3"><tspan x="1427" dy="0">internal/artifact/workbook.go</tspan></text>
 </a>
-<a href="https://github.com/ahillspace/tadx/blob/main/internal/catalog/store.go">
-<text x="1427" y="741" font-family="Arial, sans-serif" font-size="17" fill="#0067a3"><tspan x="1427" dy="0">internal/catalog/store.go</tspan></text>
+<a href="https://github.com/ahillspace/tadx/blob/main/internal/cache/store.go">
+<text x="1427" y="741" font-family="Arial, sans-serif" font-size="17" fill="#0067a3"><tspan x="1427" dy="0">internal/cache/store.go</tspan></text>
 </a>
 <a href="https://github.com/ahillspace/tadx/blob/main/internal/config/config.go">
 <text x="1427" y="765" font-family="Arial, sans-serif" font-size="17" fill="#0067a3"><tspan x="1427" dy="0">internal/config/config.go</tspan></text>

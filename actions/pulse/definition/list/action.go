@@ -46,9 +46,9 @@ func (a *Action) Execute(ctx context.Context, input Input) (Output, error) {
 	if limit < 1 || limit > maxLimit {
 		return Output{}, listError("pulse.definition.list.usage", errs.KindUsage, input, "Pulse definition list limit must be between 1 and 10000.", nil)
 	}
-	fingerprint := targetFingerprint(input.Environment, input.Site, input.Name, limit, input.Catalog)
+	fingerprint := targetFingerprint(input.Environment, input.Site, input.Name, limit, input.Cache)
 	if input.DatasourceLUID != "" {
-		fingerprint = targetFingerprint(fingerprint, input.DatasourceLUID, "", limit, input.Catalog)
+		fingerprint = targetFingerprint(fingerprint, input.DatasourceLUID, "", limit, input.Cache)
 	}
 	token, err := decodeCursor(input.Cursor, fingerprint)
 	if err != nil {
@@ -81,7 +81,7 @@ func (a *Action) Execute(ctx context.Context, input Input) (Output, error) {
 		page, err := a.reader.ListDefinitions(ctx, PageRequest{PageSize: pageSize, PageToken: token})
 		if err != nil {
 			var structured *errs.Error
-			if input.Catalog && errors.As(err, &structured) {
+			if input.Cache && errors.As(err, &structured) {
 				return Output{}, err
 			}
 			retryable, corrective := errs.CompleteRetryAdvice(err, "Review the Tableau response, then retry the listing.")
@@ -130,8 +130,8 @@ type cursorValue struct {
 	Fingerprint string `json:"f"`
 }
 
-func targetFingerprint(environment, site, name string, limit int, catalog bool) string {
-	sum := sha256.Sum256([]byte(environment + "\x00" + site + "\x00" + name + "\x00" + fmt.Sprint(limit) + "\x00" + fmt.Sprint(catalog)))
+func targetFingerprint(environment, site, name string, limit int, cache bool) string {
+	sum := sha256.Sum256([]byte(environment + "\x00" + site + "\x00" + name + "\x00" + fmt.Sprint(limit) + "\x00" + fmt.Sprint(cache)))
 	return base64.RawURLEncoding.EncodeToString(sum[:])
 }
 

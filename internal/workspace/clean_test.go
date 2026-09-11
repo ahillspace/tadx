@@ -17,7 +17,7 @@ func TestCleanDisposableStatePreservesManagedArtifactsAndManifest(t *testing.T) 
 		"artifacts/workbook/wb/data": "managed",
 		".tadx/tmp/request/body":     "1234",
 		".tadx/staging/pending":      "12",
-		".tadx/cache/catalog":        "cache",
+		".tadx/cache/cache":          "cache",
 		".tadx/logs/debug.log":       "log",
 	} {
 		absolute := filepath.Join(root, filepath.FromSlash(path))
@@ -35,7 +35,7 @@ func TestCleanDisposableStatePreservesManagedArtifactsAndManifest(t *testing.T) 
 	if result.EntriesRemoved != 5 || result.BytesRemoved != 6 || len(result.Removed) != 2 {
 		t.Fatalf("result = %#v", result)
 	}
-	for _, path := range []string{"tadx.yaml", "artifacts/workbook/wb/data", ".tadx/cache/catalog", ".tadx/logs/debug.log"} {
+	for _, path := range []string{"tadx.yaml", "artifacts/workbook/wb/data", ".tadx/cache/cache", ".tadx/logs/debug.log"} {
 		if _, err := os.Stat(filepath.Join(root, filepath.FromSlash(path))); err != nil {
 			t.Fatalf("preserved path %s: %v", path, err)
 		}

@@ -18,7 +18,7 @@ func TestOutputGolden(t *testing.T) {
 	output := definitionget.Output{
 		Status: "found", Environment: "dev", Site: "sales",
 		Definition: definitionget.Definition{LUID: "definition-1", Name: "Revenue", Description: "Recognized revenue", DatasourceLUID: "datasource-1", MeasureField: "Sales", Aggregation: "AGGREGATION_SUM", TimeDimension: "Order Date", Temporality: "TEMPORALITY_OVER_TIME", AllowedDimensions: []string{"Region"}, AllowedGranularities: []string{"GRANULARITY_BY_MONTH"}, Configuration: map[string]any{"version": "1"}},
-		RequestID:  "request-1", Help: []string{"tadx pulse definition pull --id definition-1"}, Source: &readsource.Metadata{Mode: readsource.Catalog, ObservedAt: "2026-09-04T12:00:00Z", Coverage: readsource.CoverageComplete, GenerationID: "generation-1", GenerationCreated: "2026-09-04T11:00:00Z"},
+		RequestID:  "request-1", Help: []string{"tadx pulse definition pull --id definition-1"}, Source: &readsource.Metadata{Mode: readsource.Cache, ObservedAt: "2026-09-04T12:00:00Z", Coverage: readsource.CoverageComplete, GenerationID: "generation-1", GenerationCreated: "2026-09-04T11:00:00Z"},
 	}
 	assertGolden(t, "compact.toon", output, false)
 	assertGolden(t, "full.toon", output, true)

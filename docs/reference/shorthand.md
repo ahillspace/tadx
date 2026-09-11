@@ -15,7 +15,7 @@ The following aliases are supported by the CLI command tree.
 | `artifact` | `art` | Artifact command group. |
 | `auth` | `ath` | Authentication command group. |
 | `capability` | `cap` | Capability command group. |
-| `catalog` | `cat` | Catalog command group. |
+| `cache` | `cch` | Cache command group. |
 | `check` | `chk` | Check action. |
 | `clean` | `cln` | Clean action. |
 | `clone` | `cl` | Clone action. |
@@ -86,12 +86,12 @@ Word-like aliases use two dashes, even when the alias is short.
 | `--as-job` | `--job` | Submit as a server job and wait for completion. |
 | `--auth-setting` | `--aus` | Authentication setting. |
 | `--capability` | `--cap` | Capability name. |
-| `--catalog` | `--cat` | Read the local catalog. |
-| `--catalog-max-concurrency` | `--cmc` | Catalog concurrency ceiling. |
+| `--cache` | `--cch` | Read the local cache. |
+| `--cache-max-concurrency` | `--cmc` | Cache concurrency ceiling. |
 | `--check` | `--chk` | Check selector. |
 | `--class` | `--cls` | Class selector. |
 | `--clear-api-version` | `--cav` | Clear API version. |
-| `--clear-catalog-max-concurrency` | `--ccm` | Clear catalog concurrency. |
+| `--clear-cache-max-concurrency` | `--ccm` | Clear cache concurrency. |
 | `--clear-default-workspace` | `--cdw` | Clear default workspace. |
 | `--clear-pat-name-env` | `--cpn` | Clear PAT name variable. |
 | `--clear-pat-secret-env` | `--cps` | Clear PAT secret variable. |
@@ -168,7 +168,7 @@ Word-like aliases use two dashes, even when the alias is short.
 | `--resource` | `--res` | Resource. |
 | `--role` | `--rol` | Role. |
 | `--running-total` | `--rnt` | Running-total setting. |
-| `--scope` | `--scp` | Catalog scope. |
+| `--scope` | `--scp` | Cache scope. |
 | `--sentiment` | `--snt` | Sentiment. |
 | `--set-members` | `--stm` | Replace direct membership. |
 | `--site` | `--sit` | Site. |

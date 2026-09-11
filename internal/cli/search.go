@@ -13,8 +13,8 @@ func newSearch(searcher Searcher, renderer Renderer) *cobra.Command {
 	command := &cobra.Command{
 		Use:         "search [term]",
 		Short:       "Search Tableau resources.",
-		Long:        "Search terms use Tableau's live relevance search by default. A concrete type without a term performs that type's complete inventory and refreshes its catalog snapshot.",
-		Example:     "  tadx search sales --type content --environment dev\n  tadx search --type workbook --environment dev --limit 20\n  tadx search sales --type workbook --environment dev --catalog",
+		Long:        "Search terms use Tableau's live relevance search by default. A concrete type without a term performs that type's complete inventory and refreshes its cache snapshot.",
+		Example:     "  tadx search sales --type content --environment dev\n  tadx search --type workbook --environment dev --limit 20\n  tadx search sales --type workbook --environment dev --cache",
 		Annotations: map[string]string{CapabilityAnnotation: "search.run"},
 		Args: func(command *cobra.Command, args []string) error {
 			if err := cobra.MaximumNArgs(1)(command, args); err != nil {
@@ -38,7 +38,7 @@ func newSearch(searcher Searcher, renderer Renderer) *cobra.Command {
 	}
 	command.Flags().StringVar(&input.Environment, "environment", "", "exact environment alias")
 	command.Flags().StringVar(&input.Type, "type", "", "resource type or family: workbook, datasource, flow, project, user, group, definition, metric, content, admin, or pulse")
-	command.Flags().BoolVar(&input.Catalog, "catalog", false, "use local catalog data without contacting Tableau")
+	command.Flags().BoolVar(&input.Cache, "cache", false, "use local cache data without contacting Tableau")
 	command.Flags().StringVar(&input.Cursor, "cursor", "", "continue from a prior result cursor")
 	_ = command.Flags().MarkHidden("cursor")
 	command.Flags().IntVar(&input.Limit, "limit", 20, "maximum results to return, from 1 through 2000; provider continuation is internal")

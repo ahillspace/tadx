@@ -21,8 +21,8 @@ type ConnectivityChecker interface {
 	CheckConnectivity(context.Context, Scope) (ConnectivityState, error)
 }
 
-type CatalogChecker interface {
-	CheckCatalog(context.Context, Scope) (CatalogState, error)
+type CacheChecker interface {
+	CheckCache(context.Context, Scope) (CacheState, error)
 }
 
 type WorkspaceChecker interface {
@@ -38,7 +38,7 @@ type Dependencies struct {
 	Configuration ConfigurationChecker
 	PAT           PATChecker
 	Connectivity  ConnectivityChecker
-	Catalog       CatalogChecker
+	Cache         CacheChecker
 	Workspace     WorkspaceChecker
 	Logging       LoggingChecker
 }
@@ -62,7 +62,7 @@ func (a *Action) Execute(ctx context.Context, input Input) (Output, error) {
 		a.checkConfiguration(ctx, scope),
 		a.checkPAT(ctx, scope),
 		a.checkConnectivity(ctx, scope),
-		a.checkCatalog(ctx, scope),
+		a.checkCache(ctx, scope),
 		a.checkWorkspace(ctx, scope),
 		a.checkLogging(ctx, scope),
 	}
@@ -149,25 +149,25 @@ func (a *Action) checkConnectivity(ctx context.Context, scope Scope) Check {
 	return pass(id, "Tableau connectivity and PAT authentication succeeded.")
 }
 
-func (a *Action) checkCatalog(ctx context.Context, scope Scope) Check {
-	const id = "catalog.status"
-	if a.dependencies.Catalog == nil {
-		return fail(id, "Catalog status checking is unavailable.", "Configure the local catalog status checker.")
+func (a *Action) checkCache(ctx context.Context, scope Scope) Check {
+	const id = "cache.status"
+	if a.dependencies.Cache == nil {
+		return fail(id, "Cache status checking is unavailable.", "Configure the local cache status checker.")
 	}
-	state, err := a.dependencies.Catalog.CheckCatalog(ctx, scope)
+	state, err := a.dependencies.Cache.CheckCache(ctx, scope)
 	if err != nil {
-		return fail(id, "Catalog status could not be read.", "Repair or refresh the local catalog.")
+		return fail(id, "Cache status could not be read.", "Repair or refresh the local cache.")
 	}
 	if !state.Present {
-		return warn(id, "No catalog generation is available.", "Run "+commandhint.Environment(scope.Environment, "catalog", "refresh")+".")
+		return warn(id, "No cache generation is available.", "Run "+commandhint.Environment(scope.Environment, "cache", "refresh")+".")
 	}
 	if !state.Complete {
-		return warn(id, "The current catalog generation is incomplete.", "Run "+commandhint.Environment(scope.Environment, "catalog", "refresh")+" and review any reported scope failures.")
+		return warn(id, "The current cache generation is incomplete.", "Run "+commandhint.Environment(scope.Environment, "cache", "refresh")+" and review any reported scope failures.")
 	}
 	if state.Stale {
-		return warn(id, "The current catalog generation is stale.", "Run "+commandhint.Environment(scope.Environment, "catalog", "refresh")+" before relying on cached discovery.")
+		return warn(id, "The current cache generation is stale.", "Run "+commandhint.Environment(scope.Environment, "cache", "refresh")+" before relying on cached discovery.")
 	}
-	return pass(id, "The current catalog generation is complete and fresh.")
+	return pass(id, "The current cache generation is complete and fresh.")
 }
 
 func (a *Action) checkWorkspace(ctx context.Context, scope Scope) Check {

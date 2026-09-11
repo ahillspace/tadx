@@ -41,7 +41,7 @@ func newWorkbookList(lister WorkbookLister, renderer Renderer) *cobra.Command {
 	command.Flags().StringVar(&input.Cursor, "cursor", "", "opaque continuation cursor")
 	command.MarkFlagsMutuallyExclusive("all", "limit")
 	command.MarkFlagsMutuallyExclusive("all", "cursor")
-	command.Flags().BoolVar(&input.Catalog, "catalog", false, "read indexed local catalog data without contacting Tableau")
+	command.Flags().BoolVar(&input.Cache, "cache", false, "read indexed local cache data without contacting Tableau")
 	return command
 }
 
@@ -62,6 +62,6 @@ func newWorkbookInspect(inspector WorkbookInspector, renderer Renderer) *cobra.C
 	command.Flags().StringVar(&luid, "id", "", "authoritative workbook LUID")
 	command.Flags().StringVar(&name, "name", "", "exact workbook name")
 	command.Flags().StringVar(&projectPath, "project", "", "exact slash-delimited project path")
-	command.Flags().BoolVar(&input.Catalog, "catalog", false, "read indexed local catalog data without contacting Tableau")
+	command.Flags().BoolVar(&input.Cache, "cache", false, "read indexed local cache data without contacting Tableau")
 	return command
 }

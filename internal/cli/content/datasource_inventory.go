@@ -64,7 +64,7 @@ func newDatasourceList(deps datasourceInventoryDependencies) *cobra.Command {
 	command.Flags().StringVar(&input.Cursor, "cursor", "", "opaque continuation cursor")
 	command.MarkFlagsMutuallyExclusive("all", "limit")
 	command.MarkFlagsMutuallyExclusive("all", "cursor")
-	command.Flags().BoolVar(&input.Catalog, "catalog", false, "read indexed local catalog data without contacting Tableau")
+	command.Flags().BoolVar(&input.Cache, "cache", false, "read indexed local cache data without contacting Tableau")
 	return command
 }
 
@@ -87,6 +87,6 @@ func newDatasourceInspect(deps datasourceInventoryDependencies) *cobra.Command {
 	command.Flags().StringVar(&luid, "id", "", "authoritative datasource LUID")
 	command.Flags().StringVar(&name, "name", "", "exact datasource name")
 	command.Flags().StringVar(&projectPath, "project", "", "exact slash-delimited project path")
-	command.Flags().BoolVar(&input.Catalog, "catalog", false, "read indexed local catalog data without contacting Tableau")
+	command.Flags().BoolVar(&input.Cache, "cache", false, "read indexed local cache data without contacting Tableau")
 	return command
 }

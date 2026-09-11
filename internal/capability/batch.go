@@ -5,6 +5,17 @@ package capability
 // Configuration, credential, installation and global-state commands are excluded.
 func BatchSelectors() map[string]string {
 	return map[string]string{
+		"content.label.inspect":        "id",
+		"content.label.update":         "id",
+		"content.label.delete":         "id",
+		"admin.label.value.inspect":    "name",
+		"admin.label.value.update":     "name",
+		"admin.label.value.delete":     "name",
+		"admin.label.category.inspect": "name",
+		"admin.label.category.create":  "name",
+		"admin.label.category.update":  "name",
+		"admin.label.category.delete":  "name",
+		"catalog.database.inspect":     "id", "catalog.database.update": "id", "catalog.table.inspect": "id", "catalog.table.update": "id", "catalog.column.inspect": "id", "catalog.column.update": "id", "catalog.audit": "id",
 		"workbook.inspect": "id", "workbook.pull": "id", "workbook.publish": "id", "workbook.move": "id", "workbook.update": "id", "workbook.delete": "id",
 		"datasource.inspect": "id", "datasource.schema": "id", "datasource.pull": "id", "datasource.publish": "id", "datasource.move": "id", "datasource.update": "id", "datasource.delete": "id",
 		"flow.inspect": "id", "flow.pull": "id", "flow.publish": "id", "flow.move": "id", "flow.update": "id", "flow.delete": "id",

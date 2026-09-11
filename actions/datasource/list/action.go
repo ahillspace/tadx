@@ -133,8 +133,8 @@ func datasourceFilterFingerprint(input Input) (string, error) {
 		Tag           string `json:"tag"`
 		UpdatedAfter  string `json:"updated_after"`
 		UpdatedBefore string `json:"updated_before"`
-		Catalog       bool   `json:"catalog"`
-	}{input.Environment, input.Site, input.Name, input.OwnerName, input.ProjectName, input.Type, input.Tag, input.UpdatedAfter, input.UpdatedBefore, input.Catalog})
+		Cache         bool   `json:"cache"`
+	}{input.Environment, input.Site, input.Name, input.OwnerName, input.ProjectName, input.Type, input.Tag, input.UpdatedAfter, input.UpdatedBefore, input.Cache})
 	if err != nil {
 		return "", err
 	}

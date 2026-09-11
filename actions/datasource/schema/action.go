@@ -65,6 +65,9 @@ func (a *Action) Execute(ctx context.Context, input Input) (Output, error) {
 		return Output{}, schemaError("datasource.schema.identity_mismatch", errs.KindOperation, input, "Datasource schema returned an incomplete or mismatched identity.", nil, "Retry after Tableau returns an authoritative datasource identity.")
 	}
 
+	if (input.Descriptions && !value.DescriptionsObserved) || (input.Tags && !value.TagsObserved) {
+		return Output{}, schemaError("datasource.schema.metadata_not_indexed", errs.KindOperation, input, "Requested field metadata has not been observed in this schema.", nil, "Run schema with the requested --descriptions or --tags flags without --cache.")
+	}
 	fields, err := filterFields(value.Fields, input)
 	if err != nil {
 		return Output{}, err
@@ -76,6 +79,7 @@ func (a *Action) Execute(ctx context.Context, input Input) (Output, error) {
 		return Output{}, schemaError("datasource.schema.cursor", errs.KindUsage, input, "Datasource schema cursor exceeds the current result set.", nil, "Restart without --cursor.")
 	}
 	end := min(offset+limit, len(fields))
+	fields = projectMetadata(fields, input)
 	next := ""
 	if end < len(fields) {
 		next = encodeCursor(end, fingerprint)
@@ -85,8 +89,8 @@ func (a *Action) Execute(ctx context.Context, input Input) (Output, error) {
 		observedAt = a.now().UTC().Format(time.RFC3339Nano)
 	}
 	source := readsource.Live(parseObservedAt(observedAt, a.now()))
-	if input.Catalog {
-		// The composition root replaces this with authoritative catalog generation
+	if input.Cache {
+		// The composition root replaces this with authoritative cache generation
 		// metadata. This action has no generation provenance of its own, so the
 		// placeholder must not claim complete, fresh coverage: if it is ever
 		// surfaced unwrapped it stays honest as partial and stale.
@@ -187,7 +191,7 @@ type cursor struct {
 }
 
 func inputFingerprint(input Input) string {
-	value := strings.Join([]string{input.Environment, input.Site, input.DatasourceLUID, input.Query, input.Role, input.Table, input.FieldID, fmt.Sprintf("%t", input.Catalog)}, "\x00")
+	value := strings.Join([]string{input.Environment, input.Site, input.DatasourceLUID, input.Query, input.Role, input.Table, input.FieldID, fmt.Sprintf("%t", input.Cache)}, "\x00")
 	if len(input.FieldIDs) > 1 {
 		// Preserve legacy fingerprints for zero or one selector, while binding
 		// multi-selection cursors to the complete exact, order-independent set.

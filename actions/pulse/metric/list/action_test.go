@@ -111,13 +111,13 @@ func TestListRejectsMissingDefinition(t *testing.T) {
 	}
 }
 
-func TestCursorCannotSwitchBetweenTableauAndCatalog(t *testing.T) {
+func TestCursorCannotSwitchBetweenTableauAndCache(t *testing.T) {
 	r := &reader{}
 	output, err := metriclist.New(r).Execute(context.Background(), metriclist.Input{Environment: "dev", Site: "sandbox", DefinitionLUID: "definition-1", Limit: 10})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := metriclist.New(r).Execute(context.Background(), metriclist.Input{Environment: "dev", Site: "sandbox", DefinitionLUID: "definition-1", Limit: 10, Cursor: output.Page.NextCursor, Catalog: true}); err == nil {
+	if _, err := metriclist.New(r).Execute(context.Background(), metriclist.Input{Environment: "dev", Site: "sandbox", DefinitionLUID: "definition-1", Limit: 10, Cursor: output.Page.NextCursor, Cache: true}); err == nil {
 		t.Fatal("cursor accepted after source switch")
 	}
 	if _, err := metriclist.New(r).Execute(context.Background(), metriclist.Input{Environment: "prod", Site: "sandbox", DefinitionLUID: "definition-1", Limit: 10, Cursor: output.Page.NextCursor}); err == nil {

@@ -31,7 +31,7 @@ func TestSnapshotWithConfigBindsHintsAtCaptureTime(t *testing.T) {
 		Help             []string `json:"help"`
 		CorrectiveAction string   `json:"corrective_action"`
 		Resource         string   `json:"resource"`
-	}{[]string{"Run tadx catalog status --full."}, "Run tadx auth status, then retry.", "tadx catalog status"}
+	}{[]string{"Run tadx cache status --full."}, "Run tadx auth status, then retry.", "tadx cache status"}
 	got, err := SnapshotWithConfig(value, 4096, `C:\work\tadx.yaml`)
 	if err != nil {
 		t.Fatal(err)

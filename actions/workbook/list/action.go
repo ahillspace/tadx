@@ -119,8 +119,8 @@ func filterFingerprint(input Input) (string, error) {
 		OwnerName   string `json:"owner_name"`
 		ProjectName string `json:"project_name"`
 		Tag         string `json:"tag"`
-		Catalog     bool   `json:"catalog"`
-	}{Environment: input.Environment, Site: input.Site, Name: input.Name, OwnerName: input.OwnerName, ProjectName: input.ProjectName, Tag: input.Tag, Catalog: input.Catalog})
+		Cache       bool   `json:"cache"`
+	}{Environment: input.Environment, Site: input.Site, Name: input.Name, OwnerName: input.OwnerName, ProjectName: input.ProjectName, Tag: input.Tag, Cache: input.Cache})
 	if err != nil {
 		return "", err
 	}

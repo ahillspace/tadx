@@ -8,7 +8,7 @@ import (
 	"testing"
 
 	workbooklist "github.com/ahillspace/tadx/actions/workbook/list"
-	"github.com/ahillspace/tadx/internal/catalog"
+	"github.com/ahillspace/tadx/internal/cache"
 )
 
 func TestLegacyPartialSnapshotRemainsReadableThroughCLI(t *testing.T) {
@@ -18,11 +18,11 @@ func TestLegacyPartialSnapshotRemainsReadableThroughCLI(t *testing.T) {
 	}))
 	defer server.Close()
 	runtime := inventoryListRuntime(t, server)
-	store := targetCatalogFixture(t, runtime.configPath, runtime.now)
+	store := targetCacheFixture(t, runtime.configPath, runtime.now)
 	ctx := context.Background()
-	id, err := store.SavePartialInventory(ctx, catalog.ResourceScopeReplacement{
+	id, err := store.SavePartialInventory(ctx, cache.ResourceScopeReplacement{
 		Environment: "production", Site: "team-site", Kind: "workbook", GeneratedAt: runtime.now(),
-		Entries: []catalog.ResourceEntry{
+		Entries: []cache.ResourceEntry{
 			{Environment: "production", Site: "team-site", Kind: "workbook", LUID: "a", Name: "Alpha", Payload: []byte(`{"luid":"a","name":"Alpha"}`)},
 			{Environment: "production", Site: "team-site", Kind: "workbook", LUID: "b", Name: "Beta", Payload: []byte(`{"luid":"b","name":"Beta"}`)},
 		},
@@ -30,7 +30,7 @@ func TestLegacyPartialSnapshotRemainsReadableThroughCLI(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	token := catalog.PartialInventoryCursor(id, catalog.ResourceQuery{Environment: "production", Site: "team-site", Kind: "workbook", Limit: 1, Offset: 1})
+	token := cache.PartialInventoryCursor(id, cache.ResourceQuery{Environment: "production", Site: "team-site", Kind: "workbook", Limit: 1, Offset: 1})
 	// Use the existing action envelope, as an older producer would have done.
 	first, err := workbooklist.New(legacySnapshotPage{token: token}).Execute(ctx, workbooklist.Input{Environment: "production", Site: "team-site", Limit: 1})
 	if err != nil || first.Page.NextCursor == "" {

@@ -13,6 +13,7 @@ import (
 	tableaudatasource "github.com/ahillspace/tadx/internal/tableau/datasource"
 	tableauflow "github.com/ahillspace/tadx/internal/tableau/flow"
 	tableaumetadata "github.com/ahillspace/tadx/internal/tableau/metadata"
+	"github.com/ahillspace/tadx/internal/tableau/metadataassets"
 	tableauproject "github.com/ahillspace/tadx/internal/tableau/project"
 	tableauworkbook "github.com/ahillspace/tadx/internal/tableau/workbook"
 	workspacecore "github.com/ahillspace/tadx/internal/workspace"
@@ -37,11 +38,12 @@ type clientKey struct {
 	transport *tableau.Transport
 }
 type tableauClients struct {
-	workbooks   *tableauworkbook.Client
-	datasources *tableaudatasource.Client
-	projects    *tableauproject.Client
-	flows       *tableauflow.RESTClient
-	metadata    *tableaumetadata.Client
+	metadataAssets *metadataassets.Client
+	workbooks      *tableauworkbook.Client
+	datasources    *tableaudatasource.Client
+	projects       *tableauproject.Client
+	flows          *tableauflow.RESTClient
+	metadata       *tableaumetadata.Client
 }
 type workspaceKey struct{ selector, environmentDefault string }
 type workspaceResult struct {
@@ -125,11 +127,12 @@ func (r *runtimeDependencies) clients(connection authenticatedTableau) tableauCl
 	}
 	transport, session, server := connection.transport, connection.session, connection.environment.URL
 	result := tableauClients{
-		workbooks:   tableauworkbook.NewClient(transport, session, server),
-		datasources: tableaudatasource.NewClient(transport, session, server),
-		projects:    tableauproject.NewClient(transport, session, server),
-		flows:       tableauflow.NewClient(transport, session, server),
-		metadata:    tableaumetadata.NewClient(transport, session, server),
+		metadataAssets: metadataassets.NewClient(transport, session, server),
+		workbooks:      tableauworkbook.NewClient(transport, session, server),
+		datasources:    tableaudatasource.NewClient(transport, session, server),
+		projects:       tableauproject.NewClient(transport, session, server),
+		flows:          tableauflow.NewClient(transport, session, server),
+		metadata:       tableaumetadata.NewClient(transport, session, server),
 	}
 	r.command.clients[key] = result
 	return result

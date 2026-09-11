@@ -51,7 +51,7 @@ No long-job time was excluded.
 | Workflow | Raw seconds | Result |
 | --- | ---: | --- |
 | Content search, inspect, workspace create, and workbook pull | 73.5 | Correct |
-| Catalog refresh, catalog flow discovery, workspace create, and bounded lineage pull | 33.3 | Correct |
+| Cache refresh, cache flow discovery, workspace create, and bounded lineage pull | 33.3 | Correct |
 | Project create/update, group resolution, permission create/verify/delete, and project delete | 68.1 | Correct |
 | Datasource/field discovery, Pulse definition create/verify, non-default metric fork/delete, and definition delete | 106.0 | Correct |
 

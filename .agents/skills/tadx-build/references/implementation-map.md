@@ -32,14 +32,19 @@ Package depth follows the existing domain: `actions/search`, `actions/last`, and
 | Bounded collection and logical result windows | `internal/paging/collect.go`, `internal/paging/window.go` |
 | Exact identity and shared resource records | `internal/identity/identity.go`, `internal/value/` |
 | Safe follow-up commands | `internal/commandhint/command.go` |
-| Live/catalog provenance | `internal/readsource/` |
+| Live/cache provenance | `internal/readsource/` |
+| Upstream Catalog metadata and label contracts | `internal/tableau/metadataassets/`, `internal/resources/catalog/`, `internal/value/metadata.go` |
 
 ## Registration and verification
 
-`internal/capability/definition.go` defines registry types; `definitions.go` is the manually maintained source of capability and implementation facts.
+`internal/capability/definition.go` defines registry types; `definitions.go` and `metadata_definitions.go` contain the manually maintained capability and implementation facts.
 `internal/capability/registry.go` validates the registry and declares generation through `cmd/gencapdocs`.
 Cobra leaves carry `tadx.capability` annotations; `internal/cli/root.go` derives registrations from the actual tree and `internal/app/app.go` validates bindings.
 New command and flag names also need shorthand coverage in `internal/cli/shorthand.go`.
+
+`cache` means local SQLite observations; `catalog` means upstream Tableau metadata.
+Metadata GraphQL is read-only; supported metadata edits use released REST methods, and Metadata IDs are not REST LUIDs.
+Keep provider errors below the action layer; translate acknowledged-write evidence into structured operation outcomes in actions, not by importing action error types into providers.
 
 Use adjacent action/resource/provider/CLI tests for the changed path.
 `internal/cli/preview_contract_test.go` and `mutation_policy_test.go` protect the shared mutation contract.

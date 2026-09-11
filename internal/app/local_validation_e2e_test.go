@@ -25,7 +25,7 @@ func TestSchemaInvalidLocalArgumentsFailBeforeAuthentication(t *testing.T) {
 					http.Error(w, "must not authenticate", http.StatusUnauthorized)
 				}))
 				defer server.Close()
-				options := catalogResilienceOptions(t, server)
+				options := cacheResilienceOptions(t, server)
 				if !credentials {
 					t.Setenv("PROD_PAT_NAME", "")
 					t.Setenv("PROD_PAT_SECRET", "")
@@ -65,7 +65,7 @@ func TestLocalReadAndMutationErrorsMakeNoAuthenticationRequest(t *testing.T) {
 				http.Error(w, "must not authenticate", http.StatusUnauthorized)
 			}))
 			defer server.Close()
-			options := catalogResilienceOptions(t, server)
+			options := cacheResilienceOptions(t, server)
 			options.MutationsEnabled = true
 			var output strings.Builder
 			exit := app.Run(context.Background(), args, &output, options)
@@ -83,7 +83,7 @@ func TestLocalPrerequisiteDoesNotMigrateLegacyWorkspaceManifest(t *testing.T) {
 		http.Error(w, "must not authenticate", http.StatusUnauthorized)
 	}))
 	defer server.Close()
-	options := catalogResilienceOptions(t, server)
+	options := cacheResilienceOptions(t, server)
 	root := createNamedWorkspace(t, options.ConfigPath, "legacy")
 	manifest := filepath.Join(root, "tadx.yaml")
 	legacy := []byte("version: 1\n")
@@ -108,7 +108,7 @@ func TestMissingLocalPrerequisitesFailBeforeAuthenticationWithoutWrites(t *testi
 					http.Error(w, "must not authenticate", http.StatusUnauthorized)
 				}))
 				defer server.Close()
-				options := catalogResilienceOptions(t, server)
+				options := cacheResilienceOptions(t, server)
 				options.MutationsEnabled = true
 				root := createNamedWorkspace(t, options.ConfigPath, "local")
 				before, err := os.ReadFile(filepath.Join(root, "tadx.yaml"))

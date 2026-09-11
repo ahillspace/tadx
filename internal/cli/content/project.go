@@ -197,7 +197,7 @@ func newProjectList(deps Dependencies) *cobra.Command {
 	command.Flags().StringVar(&input.Cursor, "cursor", "", "opaque continuation cursor")
 	command.MarkFlagsMutuallyExclusive("all", "limit")
 	command.MarkFlagsMutuallyExclusive("all", "cursor")
-	command.Flags().BoolVar(&input.Catalog, "catalog", false, "read indexed local catalog data without contacting Tableau")
+	command.Flags().BoolVar(&input.Cache, "cache", false, "read indexed local cache data without contacting Tableau")
 	return command
 }
 
@@ -229,7 +229,7 @@ func newProjectInspect(deps Dependencies) *cobra.Command {
 	command.Flags().StringVar(&projectLUID, "project-id", "", "legacy alias for --id")
 	command.MarkFlagsMutuallyExclusive("id", "project-id")
 	command.Flags().StringVar(&projectPath, "project", "", "exact slash-delimited project path")
-	command.Flags().BoolVar(&input.Catalog, "catalog", false, "read indexed local catalog data without contacting Tableau")
+	command.Flags().BoolVar(&input.Cache, "cache", false, "read indexed local cache data without contacting Tableau")
 	return command
 }
 func noContentArgs(operation string) cobra.PositionalArgs {

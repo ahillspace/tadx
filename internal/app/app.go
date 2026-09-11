@@ -88,9 +88,12 @@ func Run(ctx context.Context, args []string, stdout io.Writer, options Options) 
 	remoteAdmin := newRemoteAdminCommands(runtime)
 	pulseActions := newPulseCommands(runtime)
 	doctorCommands := newDoctorCommands(runtime)
-	catalogGroup2 := newCatalogGroup2Commands(runtime)
+	cacheGroup2 := newCacheGroup2Commands(runtime)
 	credentialStore := authCredentialStore{runtime: runtime}
 	root := cli.NewRoot(cli.Dependencies{
+		Catalog:               (&catalogCommands{runtime: runtime}).dependencies(),
+		ContentLabels:         contentLabelDependencies(runtime),
+		AdminLabels:           adminLabelDependencies(runtime),
 		Lister:                capabilitylist.New(source),
 		Getter:                capabilityget.New(source),
 		Renderer:              writerRenderer{writer: stdout, options: renderOptions, capture: capture},
@@ -117,8 +120,8 @@ func Run(ctx context.Context, args []string, stdout io.Writer, options Options) 
 		GetShort:            registryShort("capability.get"),
 		AuthChecker:         authcheck.New(runtime, runtime),
 		Searcher:            newSearchCommands(runtime),
-		CatalogRefresher:    catalogGroup2.refresher(),
-		CatalogStatuser:     catalogGroup2.statuser(),
+		CacheRefresher:      cacheGroup2.refresher(),
+		CacheStatuser:       cacheGroup2.statuser(),
 		WorkbookPuller:      &pullService{runtime: runtime},
 		WorkbookPublisher:   &publishService{runtime: runtime},
 		Content:             remoteContent.dependencies(),
@@ -138,8 +141,8 @@ func Run(ctx context.Context, args []string, stdout io.Writer, options Options) 
 		AuthPrompter: runtime.authPrompter,
 		AuthLoginUse: registryLeafUse("auth.login"), AuthLoginShort: registryShort("auth.login"),
 		AuthLogoutUse: registryLeafUse("auth.logout"), AuthLogoutShort: registryShort("auth.logout"),
-		CatalogRefreshUse: registryLeafUse("catalog.refresh"), CatalogRefreshShort: registryShort("catalog.refresh"),
-		CatalogStatusUse: registryLeafUse("catalog.status"), CatalogStatusShort: registryShort("catalog.status"),
+		CacheRefreshUse: registryLeafUse("cache.refresh"), CacheRefreshShort: registryShort("cache.refresh"),
+		CacheStatusUse: registryLeafUse("cache.status"), CacheStatusShort: registryShort("cache.status"),
 		WorkbookPullUse: registryLeafUse("workbook.pull"), WorkbookPullShort: registryShort("workbook.pull"),
 		WorkbookPublishUse: registryLeafUse("workbook.publish"), WorkbookPublishShort: registryShort("workbook.publish"),
 	})
@@ -252,7 +255,7 @@ func hasJSONFlag(args []string) bool {
 func isBooleanFlag(arg string) bool {
 	name := strings.SplitN(arg, "=", 2)[0]
 	switch name {
-	case "--full", "--preview", "--all", "--catalog", "--force", "--overwrite", "--raw", "--as-job", "--mutation", "--include-pds", "--include-extract":
+	case "--full", "--preview", "--all", "--cache", "--force", "--overwrite", "--raw", "--as-job", "--mutation", "--include-pds", "--include-extract":
 		return true
 	default:
 		return false

@@ -45,15 +45,15 @@ func TestExecuteAddsPATProfile(t *testing.T) {
 	}
 }
 
-func TestCatalogConcurrencyValidatedAndPassedToStore(t *testing.T) {
+func TestCacheConcurrencyValidatedAndPassedToStore(t *testing.T) {
 	for _, limit := range []int{-1, 0, 1, 256, 257} {
 		store := &adder{}
-		_, err := profileadd.New(store).Execute(context.Background(), profileadd.Input{Alias: "staging", ServerURL: "https://tableau.example.com", CatalogMaxConcurrency: limit})
+		_, err := profileadd.New(store).Execute(context.Background(), profileadd.Input{Alias: "staging", ServerURL: "https://tableau.example.com", CacheMaxConcurrency: limit})
 		if limit < 0 || limit > 256 {
 			if err == nil || store.got.Alias != "" {
 				t.Fatalf("invalid%d error=%v stored=%+v", limit, err, store.got)
 			}
-		} else if err != nil || store.got.CatalogMaxConcurrency != limit {
+		} else if err != nil || store.got.CacheMaxConcurrency != limit {
 			t.Fatalf("limit%d error=%v stored=%+v", limit, err, store.got)
 		}
 	}

@@ -174,11 +174,11 @@ func TestRenderStructuredError(t *testing.T) {
 	t.Parallel()
 
 	var buffer bytes.Buffer
-	err := &errs.Error{Kind: errs.KindOperation, Operation: "catalog.search", Summary: "Search failed", Cause: errors.New("timeout"), TableauRequestID: "req-1"}
+	err := &errs.Error{Kind: errs.KindOperation, Operation: "cache.search", Summary: "Search failed", Cause: errors.New("timeout"), TableauRequestID: "req-1"}
 	if renderErr := output.RenderError(&buffer, err, output.Options{}); renderErr != nil {
 		t.Fatal(renderErr)
 	}
-	want := "error:\n  kind: operation\n  operation: catalog.search\n  summary: Search failed\n  upstream_cause: timeout\n  tableau_request_id: req-1\n"
+	want := "error:\n  kind: operation\n  operation: cache.search\n  summary: Search failed\n  upstream_cause: timeout\n  tableau_request_id: req-1\n"
 	if buffer.String() != want {
 		t.Fatalf("render mismatch\nwant:\n%s\ngot:\n%s", want, buffer.String())
 	}
@@ -191,13 +191,13 @@ func TestConfigPathBindsOnlyRecoveryHints(t *testing.T) {
 		Help             []string `json:"help"`
 		CorrectiveAction string   `json:"corrective_action"`
 		Resource         string   `json:"resource"`
-	}{[]string{"Run tadx catalog status --full."}, "Run tadx auth status, then retry.", "tadx catalog status"}
+	}{[]string{"Run tadx cache status --full."}, "Run tadx auth status, then retry.", "tadx cache status"}
 	var buffer bytes.Buffer
 	if err := output.RenderWithOptions(&buffer, value, output.Options{ConfigPath: `C:\work\tadx.yaml`}); err != nil {
 		t.Fatal(err)
 	}
 	text := buffer.String()
-	if !strings.Contains(text, "--config") || !strings.Contains(text, "tadx catalog status") {
+	if !strings.Contains(text, "--config") || !strings.Contains(text, "tadx cache status") {
 		t.Fatalf("bound hints missing: %s", text)
 	}
 	if strings.Contains(text, "resource: tadx --config") {
@@ -207,7 +207,7 @@ func TestConfigPathBindsOnlyRecoveryHints(t *testing.T) {
 
 func TestConfigPathLeavesUserMapKeysUntouched(t *testing.T) {
 	var buffer bytes.Buffer
-	value := map[string]any{"help": "tadx catalog status", "resource": "tadx catalog status"}
+	value := map[string]any{"help": "tadx cache status", "resource": "tadx cache status"}
 	if err := output.RenderWithOptions(&buffer, value, output.Options{ConfigPath: `C:\work\tadx.yaml`}); err != nil {
 		t.Fatal(err)
 	}
@@ -221,7 +221,7 @@ func TestConfigPathPreservesTypedTOONFieldOrder(t *testing.T) {
 		Status           string   `json:"status"`
 		CorrectiveAction string   `json:"corrective_action"`
 		Help             []string `json:"help"`
-	}{"failed", "Run tadx auth status, then retry.", []string{"Run tadx catalog status --full."}}
+	}{"failed", "Run tadx auth status, then retry.", []string{"Run tadx cache status --full."}}
 	var plain, bound bytes.Buffer
 	if err := output.RenderWithOptions(&plain, value, output.Options{}); err != nil {
 		t.Fatal(err)
@@ -247,7 +247,7 @@ func TestConfigPathCycleFailsThroughSerialization(t *testing.T) {
 		Next *node    `json:"next,omitempty"`
 		Help []string `json:"help,omitempty"`
 	}
-	value := &node{Help: []string{"Run tadx catalog status."}}
+	value := &node{Help: []string{"Run tadx cache status."}}
 	value.Next = value
 	var buffer bytes.Buffer
 	if err := output.RenderWithOptions(&buffer, value, output.Options{ConfigPath: `C:\work\tadx.yaml`}); err == nil {
@@ -258,12 +258,12 @@ func TestConfigPathCycleFailsThroughSerialization(t *testing.T) {
 func TestConfigPathDoesNotMutateInputHints(t *testing.T) {
 	value := struct {
 		Help []string `json:"help"`
-	}{[]string{"Run tadx catalog status."}}
+	}{[]string{"Run tadx cache status."}}
 	var buffer bytes.Buffer
 	if err := output.RenderWithOptions(&buffer, &value, output.Options{ConfigPath: `C:\one\tadx.yaml`}); err != nil {
 		t.Fatal(err)
 	}
-	if value.Help[0] != "Run tadx catalog status." {
+	if value.Help[0] != "Run tadx cache status." {
 		t.Fatalf("input help mutated: %#v", value.Help)
 	}
 	buffer.Reset()
@@ -279,7 +279,7 @@ func TestConfigPathBindsSharedPointerEachOccurrence(t *testing.T) {
 	type hint struct {
 		Help []string `json:"help"`
 	}
-	shared := &hint{Help: []string{"Run tadx catalog status."}}
+	shared := &hint{Help: []string{"Run tadx cache status."}}
 	value := []*hint{shared, shared}
 	var buffer bytes.Buffer
 	if err := output.RenderWithOptions(&buffer, value, output.Options{ConfigPath: `C:\work\tadx.yaml`}); err != nil {

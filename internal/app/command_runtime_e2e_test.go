@@ -29,7 +29,7 @@ func TestWorkbookBatchReusesCommandSignInAndPreservesFailures(t *testing.T) {
 		_, _ = io.WriteString(w, `<tsResponse><error code="404006"><summary>Workbook not found</summary></error></tsResponse>`)
 	}))
 	defer server.Close()
-	options := catalogResilienceOptions(t, server)
+	options := cacheResilienceOptions(t, server)
 	createNamedWorkspace(t, options.ConfigPath, "batch")
 	args := []string{"content", "workbook", "pull", "--environment", "production", "--workspace", "batch"}
 	for i := range 100 {
@@ -91,7 +91,7 @@ func TestWorkbookBatchDownloadsArtifactsWithOneSetupSnapshot(t *testing.T) {
 		}
 	}))
 	defer server.Close()
-	options := catalogResilienceOptions(t, server)
+	options := cacheResilienceOptions(t, server)
 	configPath = options.ConfigPath
 	root := createNamedWorkspace(t, configPath, "batch")
 	var output strings.Builder
@@ -142,7 +142,7 @@ func TestProjectMoveUsesOneHierarchyPerValidationPhase(t *testing.T) {
 				}
 			}))
 			defer server.Close()
-			options := catalogResilienceOptions(t, server)
+			options := cacheResilienceOptions(t, server)
 			options.MutationsEnabled = true
 			var output strings.Builder
 			exit := app.Run(context.Background(), []string{"content", "project", "move", "--environment", "production", "--project-id", "source", "--parent-id", "destination"}, &output, options)
@@ -185,7 +185,7 @@ func TestContentMovesShareSourceAndDestinationHierarchyWithinPhase(t *testing.T)
 					}
 				}))
 				defer server.Close()
-				options := catalogResilienceOptions(t, server)
+				options := cacheResilienceOptions(t, server)
 				options.MutationsEnabled = true
 				args := []string{"content", kind, "move", "--environment", "production", "--id", "item", "--destination-project-id", "destination"}
 				if preview {

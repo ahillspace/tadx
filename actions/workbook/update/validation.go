@@ -13,8 +13,8 @@ func ValidateInput(input Input) error {
 	if input.Selector.LUID != "" && (strings.TrimSpace(input.Selector.Name) != "" || strings.TrimSpace(input.Selector.ProjectPath) != "") {
 		return usage("selector", "a workbook LUID cannot be combined with name or project path")
 	}
-	if input.Name == nil && input.OwnerLUID == nil {
-		return usage("changes", "workbook update requires a name or owner LUID")
+	if input.Name == nil && input.OwnerLUID == nil && input.Description == nil {
+		return usage("changes", "workbook update requires a name, owner LUID, or description")
 	}
 	if input.Name != nil && strings.TrimSpace(*input.Name) == "" {
 		return usage("name", "workbook update name cannot be empty")

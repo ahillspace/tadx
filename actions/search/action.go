@@ -65,14 +65,14 @@ func (a *Action) Execute(ctx context.Context, input Input) (Output, error) {
 	}
 	result, err := a.search(ctx, request)
 	if err != nil {
-		var invalid interface{ InvalidCatalogCursor() bool }
+		var invalid interface{ InvalidCacheCursor() bool }
 		var invalidSearch interface{ InvalidSearchCursor() bool }
-		var unavailable interface{ CatalogScopeUnavailable() bool }
-		if (errors.As(err, &invalid) && invalid.InvalidCatalogCursor()) || (errors.As(err, &invalidSearch) && invalidSearch.InvalidSearchCursor()) {
+		var unavailable interface{ CacheScopeUnavailable() bool }
+		if (errors.As(err, &invalid) && invalid.InvalidCacheCursor()) || (errors.As(err, &invalidSearch) && invalidSearch.InvalidSearchCursor()) {
 			return Output{}, searchError(errs.KindUsage, input, "Search cursor is invalid; start a new search.", err)
 		}
-		if input.Catalog && errors.As(err, &unavailable) && unavailable.CatalogScopeUnavailable() {
-			return Output{}, searchError(errs.KindUsage, input, "The requested type is not available in the selected catalog.", err)
+		if input.Cache && errors.As(err, &unavailable) && unavailable.CacheScopeUnavailable() {
+			return Output{}, searchError(errs.KindUsage, input, "The requested type is not available in the selected cache.", err)
 		}
 		return Output{}, searchError(errs.KindOperation, input, "Search failed.", err)
 	}
@@ -104,9 +104,9 @@ func (a *Action) Execute(ctx context.Context, input Input) (Output, error) {
 		sourceName = "live"
 	}
 	warnings := append([]string{}, result.Warnings...)
-	if input.Catalog {
-		sourceName = "catalog"
-		warnings = append([]string{"Catalog absence does not establish remote absence; resolve authoritative LUIDs live before mutations."}, warnings...)
+	if input.Cache {
+		sourceName = "cache"
+		warnings = append([]string{"Cache absence does not establish remote absence; resolve authoritative LUIDs live before mutations."}, warnings...)
 	}
 	return Output{Source: sourceName, Page: page, Items: items, Generation: result.Generation, Warnings: output.BoundWarnings(warnings), Help: searchHelp(input.Environment, items)}, nil
 }

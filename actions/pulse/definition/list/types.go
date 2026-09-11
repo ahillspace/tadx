@@ -10,7 +10,7 @@ type Input struct {
 	DatasourceLUID string
 	Cursor         string
 	Limit          int
-	Catalog        bool
+	Cache          bool
 	All            bool
 }
 

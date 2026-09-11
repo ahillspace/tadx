@@ -6,7 +6,7 @@ type Input struct {
 	Environment string
 	Site        string
 	LUID        string
-	Catalog     bool
+	Cache       bool
 }
 type Metric struct {
 	LUID           string         `json:"luid"`

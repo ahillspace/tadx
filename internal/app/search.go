@@ -20,7 +20,7 @@ import (
 	definitionlist "github.com/ahillspace/tadx/actions/pulse/definition/list"
 	searchaction "github.com/ahillspace/tadx/actions/search"
 	workbooklist "github.com/ahillspace/tadx/actions/workbook/list"
-	"github.com/ahillspace/tadx/internal/catalog"
+	"github.com/ahillspace/tadx/internal/cache"
 	"github.com/ahillspace/tadx/internal/readsource"
 	resourceadmin "github.com/ahillspace/tadx/internal/resources/admin"
 	resourcedatasource "github.com/ahillspace/tadx/internal/resources/datasource"
@@ -59,18 +59,18 @@ func (c *searchCommands) Execute(ctx context.Context, input searchaction.Input) 
 			return searchaction.Output{}, err
 		}
 	}
-	if input.Catalog {
+	if input.Cache {
 		_, environment, err := c.runtime.environment(input.Environment, false)
 		if err != nil {
-			return searchaction.Output{}, capabilitySetupError("search.catalog.setup", "search", input.Environment, input.Site, "Catalog search setup failed.", "Review the selected environment and catalog configuration.", err)
+			return searchaction.Output{}, capabilitySetupError("search.cache.setup", "search", input.Environment, input.Site, "Cache search setup failed.", "Review the selected environment and cache configuration.", err)
 		}
 		input.Environment = environment.Alias
 		if input.Site == "" {
 			input.Site = environment.SiteContentURL
 		}
 		input.SiteResolved = true
-		store := c.runtime.catalogStore(environment)
-		return searchaction.New(catalogGlobalSearchSource{store: store}).Execute(ctx, input)
+		store := c.runtime.cacheStore(environment)
+		return searchaction.New(cacheGlobalSearchSource{store: store}).Execute(ctx, input)
 	}
 	if strings.TrimSpace(input.Terms) == "" && completeListSearchSelector(input.Type) {
 		_, environment, err := c.runtime.environment(input.Environment, false)
@@ -315,16 +315,16 @@ func combinedSearchChecksum(state combinedSearchCursor) string {
 	return hex.EncodeToString(sum[:])
 }
 
-type catalogGlobalSearchSource struct {
-	store *catalog.Store
+type cacheGlobalSearchSource struct {
+	store *cache.Store
 }
 
-func (s catalogGlobalSearchSource) Search(ctx context.Context, input searchaction.Input) (searchaction.Result, error) {
+func (s cacheGlobalSearchSource) Search(ctx context.Context, input searchaction.Input) (searchaction.Result, error) {
 	types, err := searchaction.Types(input.Type)
 	if err != nil {
 		return searchaction.Result{}, err
 	}
-	lister := &catalogSearchLister{store: s.store, environment: input.Environment, site: input.Site, skipUnavailable: input.Type == "", observations: make(map[string]catalogSearchObservation)}
+	lister := &cacheSearchLister{store: s.store, environment: input.Environment, site: input.Site, skipUnavailable: input.Type == "", observations: make(map[string]cacheSearchObservation)}
 	adapter := resourcesearch.NewAdapter(lister)
 	page, err := adapter.Search(ctx, resourcesearch.Input{Types: types, Terms: input.Terms, ProjectPath: input.ProjectPath, Owner: input.Owner, Cursor: input.Cursor, Limit: input.Limit})
 	if err != nil {
@@ -334,8 +334,8 @@ func (s catalogGlobalSearchSource) Search(ctx context.Context, input searchactio
 	shared := len(lister.observations) > 0
 	for _, observation := range lister.observations {
 		after, err := s.store.ReadResources(ctx, observation.query)
-		if err != nil || catalogResourceFingerprint(after) != catalogResourceFingerprint(observation.result) {
-			return searchaction.Result{}, invalidCatalogResourceCursor{}
+		if err != nil || cacheResourceFingerprint(after) != cacheResourceFingerprint(observation.result) {
+			return searchaction.Result{}, invalidCacheResourceCursor{}
 		}
 		result := observation.result
 		if result.Coverage != "complete" || result.GenerationID == "" {
@@ -351,50 +351,50 @@ func (s catalogGlobalSearchSource) Search(ctx context.Context, input searchactio
 	if shared {
 		return searchResult(page, generation), nil
 	}
-	page.Warnings = append(page.Warnings, "Search used partial catalog records or independently refreshed resource snapshots; no shared complete generation describes this page.")
+	page.Warnings = append(page.Warnings, "Search used partial cache records or independently refreshed resource snapshots; no shared complete generation describes this page.")
 	return searchResult(page, nil), nil
 }
 
-type catalogSearchObservation struct {
-	query  catalog.ResourceQuery
-	result catalog.ResourceResult
+type cacheSearchObservation struct {
+	query  cache.ResourceQuery
+	result cache.ResourceResult
 }
 
-type catalogSearchLister struct {
-	store             *catalog.Store
+type cacheSearchLister struct {
+	store             *cache.Store
 	environment, site string
 	skipUnavailable   bool
-	observations      map[string]catalogSearchObservation
+	observations      map[string]cacheSearchObservation
 }
 
-func (s *catalogSearchLister) List(ctx context.Context, resourceType, cursor string, limit int) (resourcesearch.Page, error) {
-	state, err := decodeCatalogResourceCursor(cursor)
+func (s *cacheSearchLister) List(ctx context.Context, resourceType, cursor string, limit int) (resourcesearch.Page, error) {
+	state, err := decodeCacheResourceCursor(cursor)
 	if err != nil {
 		return resourcesearch.Page{}, err
 	}
-	query := catalog.ResourceQuery{Environment: s.environment, Site: s.site, Kind: resourceType, Offset: state.Offset, Limit: limit}
+	query := cache.ResourceQuery{Environment: s.environment, Site: s.site, Kind: resourceType, Offset: state.Offset, Limit: limit}
 	result, err := s.store.ReadResources(ctx, query)
 	if err != nil {
-		var unavailable interface{ CatalogScopeUnavailable() bool }
-		var uninitialized interface{ CatalogUninitialized() bool }
-		missing := (errors.As(err, &unavailable) && unavailable.CatalogScopeUnavailable()) || (errors.As(err, &uninitialized) && uninitialized.CatalogUninitialized())
+		var unavailable interface{ CacheScopeUnavailable() bool }
+		var uninitialized interface{ CacheUninitialized() bool }
+		missing := (errors.As(err, &unavailable) && unavailable.CacheScopeUnavailable()) || (errors.As(err, &uninitialized) && uninitialized.CacheUninitialized())
 		if missing {
 			if s.skipUnavailable {
-				return resourcesearch.Page{Warnings: []string{"Catalog does not contain " + resourceType + " resources; that type was omitted."}}, nil
+				return resourcesearch.Page{Warnings: []string{"Cache does not contain " + resourceType + " resources; that type was omitted."}}, nil
 			}
-			return resourcesearch.Page{}, catalogSearchScopeUnavailable{resourceType: resourceType, cause: err}
+			return resourcesearch.Page{}, cacheSearchScopeUnavailable{resourceType: resourceType, cause: err}
 		}
 		return resourcesearch.Page{}, err
 	}
-	fingerprint := catalogResourceFingerprint(result)
+	fingerprint := cacheResourceFingerprint(result)
 	if s.observations != nil {
-		if previous, ok := s.observations[resourceType]; ok && catalogResourceFingerprint(previous.result) != fingerprint {
-			return resourcesearch.Page{}, invalidCatalogResourceCursor{}
+		if previous, ok := s.observations[resourceType]; ok && cacheResourceFingerprint(previous.result) != fingerprint {
+			return resourcesearch.Page{}, invalidCacheResourceCursor{}
 		}
-		s.observations[resourceType] = catalogSearchObservation{query: query, result: result}
+		s.observations[resourceType] = cacheSearchObservation{query: query, result: result}
 	}
 	if state.Fingerprint != "" && state.Fingerprint != fingerprint {
-		return resourcesearch.Page{}, invalidCatalogResourceCursor{}
+		return resourcesearch.Page{}, invalidCacheResourceCursor{}
 	}
 	items := make([]resourcesearch.Item, len(result.Entries))
 	for index, item := range result.Entries {
@@ -402,55 +402,55 @@ func (s *catalogSearchLister) List(ctx context.Context, resourceType, cursor str
 	}
 	next := ""
 	if state.Offset+len(result.Entries) < result.Total {
-		next = encodeCatalogResourceCursor(catalogResourceCursor{Offset: state.Offset + len(result.Entries), Fingerprint: fingerprint})
+		next = encodeCacheResourceCursor(cacheResourceCursor{Offset: state.Offset + len(result.Entries), Fingerprint: fingerprint})
 	}
 	return resourcesearch.Page{Items: items, NextCursor: next, Total: result.Total}, nil
 }
 
-type catalogSearchScopeUnavailable struct {
+type cacheSearchScopeUnavailable struct {
 	resourceType string
 	cause        error
 }
 
-func (e catalogSearchScopeUnavailable) Error() string {
-	return fmt.Sprintf("catalog does not contain %s resources", e.resourceType)
+func (e cacheSearchScopeUnavailable) Error() string {
+	return fmt.Sprintf("cache does not contain %s resources", e.resourceType)
 }
-func (e catalogSearchScopeUnavailable) Unwrap() error               { return e.cause }
-func (catalogSearchScopeUnavailable) CatalogScopeUnavailable() bool { return true }
+func (e cacheSearchScopeUnavailable) Unwrap() error             { return e.cause }
+func (cacheSearchScopeUnavailable) CacheScopeUnavailable() bool { return true }
 
-type catalogResourceCursor struct {
+type cacheResourceCursor struct {
 	Offset      int    `json:"o"`
 	Fingerprint string `json:"f"`
 }
 
-type invalidCatalogResourceCursor struct{}
+type invalidCacheResourceCursor struct{}
 
-func (invalidCatalogResourceCursor) Error() string {
-	return "catalog resource cursor is invalid or stale"
+func (invalidCacheResourceCursor) Error() string {
+	return "cache resource cursor is invalid or stale"
 }
-func (invalidCatalogResourceCursor) InvalidSearchCursor() bool { return true }
+func (invalidCacheResourceCursor) InvalidSearchCursor() bool { return true }
 
-func decodeCatalogResourceCursor(value string) (catalogResourceCursor, error) {
+func decodeCacheResourceCursor(value string) (cacheResourceCursor, error) {
 	if value == "" {
-		return catalogResourceCursor{}, nil
+		return cacheResourceCursor{}, nil
 	}
 	if len(value) > 4096 {
-		return catalogResourceCursor{}, invalidCatalogResourceCursor{}
+		return cacheResourceCursor{}, invalidCacheResourceCursor{}
 	}
 	data, err := base64.RawURLEncoding.DecodeString(value)
-	var cursor catalogResourceCursor
+	var cursor cacheResourceCursor
 	if err != nil || json.Unmarshal(data, &cursor) != nil || cursor.Offset < 1 || cursor.Fingerprint == "" {
-		return catalogResourceCursor{}, invalidCatalogResourceCursor{}
+		return cacheResourceCursor{}, invalidCacheResourceCursor{}
 	}
 	return cursor, nil
 }
 
-func encodeCatalogResourceCursor(cursor catalogResourceCursor) string {
+func encodeCacheResourceCursor(cursor cacheResourceCursor) string {
 	data, _ := json.Marshal(cursor)
 	return base64.RawURLEncoding.EncodeToString(data)
 }
 
-func catalogResourceFingerprint(result catalog.ResourceResult) string {
+func cacheResourceFingerprint(result cache.ResourceResult) string {
 	data, _ := json.Marshal(struct {
 		Total          int    `json:"total"`
 		Coverage       string `json:"coverage"`
@@ -631,11 +631,11 @@ func completeListSearchPage(items []resourcesearch.Item, total int, nextCursor s
 		switch source.Mode {
 		case readsource.Tableau:
 			page.Source = "live"
-		case readsource.Catalog:
-			page.Source = "catalog"
+		case readsource.Cache:
+			page.Source = "cache"
 		}
-		if source.CatalogWarning != "" {
-			page.Warnings = []string{source.CatalogWarning}
+		if source.CacheWarning != "" {
+			page.Warnings = []string{source.CacheWarning}
 		}
 	}
 	return page

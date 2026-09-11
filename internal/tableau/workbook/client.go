@@ -130,6 +130,7 @@ type MutationResult struct {
 // UpdateRequest contains only explicit workbook metadata changes.
 type UpdateRequest struct {
 	LUID        string
+	Description *string
 	Name        *string
 	ProjectLUID *string
 	OwnerLUID   *string
@@ -207,7 +208,7 @@ func (c *Client) Update(ctx context.Context, input UpdateRequest) (MutationResul
 	if input.LUID == "" {
 		return MutationResult{}, errors.New("workbook update requires an exact workbook LUID")
 	}
-	if input.Name == nil && input.ProjectLUID == nil && input.OwnerLUID == nil {
+	if input.Name == nil && input.ProjectLUID == nil && input.OwnerLUID == nil && input.Description == nil {
 		return MutationResult{}, errors.New("workbook update requires at least one explicit field")
 	}
 	if input.Name != nil && strings.TrimSpace(*input.Name) == "" {
@@ -227,7 +228,7 @@ func (c *Client) Update(ctx context.Context, input UpdateRequest) (MutationResul
 		value := strings.TrimSpace(*input.OwnerLUID)
 		input.OwnerLUID = &value
 	}
-	body, err := xml.Marshal(workbookUpdateEnvelope{Workbook: workbookUpdateXML{Name: input.Name, Project: optionalLUIDXML(input.ProjectLUID), Owner: optionalLUIDXML(input.OwnerLUID)}})
+	body, err := xml.Marshal(workbookUpdateEnvelope{Workbook: workbookUpdateXML{Name: input.Name, Description: input.Description, Project: optionalLUIDXML(input.ProjectLUID), Owner: optionalLUIDXML(input.OwnerLUID)}})
 	if err != nil {
 		return MutationResult{}, fmt.Errorf("encode workbook update request: %w", err)
 	}
@@ -245,6 +246,16 @@ func (c *Client) Update(ctx context.Context, input UpdateRequest) (MutationResul
 		return result, tableau.NewProtocolError("workbook.update", response, fmt.Errorf("decode workbook update response: %w", err), false)
 	}
 	workbook := normalizeWorkbook(envelope.Workbook)
+	if input.Description != nil {
+		var evidence struct {
+			Workbook struct {
+				Description *string `xml:"description,attr"`
+			} `xml:"workbook"`
+		}
+		if err := xml.Unmarshal(response.Body, &evidence); err != nil || evidence.Workbook.Description == nil || *evidence.Workbook.Description != *input.Description {
+			return MutationResult{Status: "unknown", WorkbookLUID: input.LUID, TableauRequestID: response.TableauRequestID}, tableau.NewProtocolError("workbook.update", response, errors.New("workbook update response did not confirm the requested description"), false)
+		}
+	}
 	if workbook.LUID != input.LUID || workbook.Name == "" || workbook.ProjectLUID == "" || workbook.OwnerLUID == "" {
 		return MutationResult{Status: "unknown", WorkbookLUID: input.LUID, TableauRequestID: response.TableauRequestID}, tableau.NewProtocolError("workbook.update", response, errors.New("workbook update response omitted or changed authoritative identity"), false)
 	}
@@ -1042,9 +1053,10 @@ type workbookUpdateEnvelope struct {
 }
 
 type workbookUpdateXML struct {
-	Name    *string  `xml:"name,attr,omitempty"`
-	Project *luidXML `xml:"project,omitempty"`
-	Owner   *luidXML `xml:"owner,omitempty"`
+	Description *string  `xml:"description,attr,omitempty"`
+	Name        *string  `xml:"name,attr,omitempty"`
+	Project     *luidXML `xml:"project,omitempty"`
+	Owner       *luidXML `xml:"owner,omitempty"`
 }
 
 type luidXML struct {

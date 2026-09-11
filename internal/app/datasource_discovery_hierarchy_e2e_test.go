@@ -60,7 +60,7 @@ func TestDatasourceDiscoveryReusesHierarchyOnlyWithinInvocationThroughCLI(t *tes
 		}
 	}))
 	defer server.Close()
-	options := catalogResilienceOptions(t, server)
+	options := cacheResilienceOptions(t, server)
 	poisoned := filepath.Join(filepath.Dir(options.ConfigPath), "catalog")
 	if err := os.WriteFile(poisoned, []byte("not a directory"), 0600); err != nil {
 		t.Fatal(err)
@@ -89,6 +89,6 @@ func TestDatasourceDiscoveryReusesHierarchyOnlyWithinInvocationThroughCLI(t *tes
 		t.Fatalf("standalone reads=%d/%d output=%s", projectReads, datasourceReads, out)
 	}
 	if data, err := os.ReadFile(poisoned); err != nil || string(data) != "not a directory" {
-		t.Fatal("discovery changed catalog state")
+		t.Fatal("discovery changed cache state")
 	}
 }

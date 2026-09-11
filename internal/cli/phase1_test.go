@@ -72,16 +72,16 @@ func TestTopLevelSearchMapsCanonicalFlags(t *testing.T) {
 	deps := dependencies(&lister{}, &getter{}, &renderer{})
 	deps.Searcher = s
 	root := cli.NewRoot(deps)
-	root.SetArgs([]string{"search", "revenue", "--environment", "production", "--type", "workbook", "--catalog", "--cursor", "next", "--limit", "12"})
+	root.SetArgs([]string{"search", "revenue", "--environment", "production", "--type", "workbook", "--cache", "--cursor", "next", "--limit", "12"})
 	if err := root.Execute(); err != nil {
 		t.Fatal(err)
 	}
-	want := searchaction.Input{Terms: "revenue", Environment: "production", Type: "workbook", Catalog: true, Cursor: "next", Limit: 12}
+	want := searchaction.Input{Terms: "revenue", Environment: "production", Type: "workbook", Cache: true, Cursor: "next", Limit: 12}
 	if !reflect.DeepEqual(s.input, want) {
 		t.Fatalf("search input = %#v, want %#v", s.input, want)
 	}
-	if child, _, err := root.Find([]string{"catalog", "search"}); err == nil && child.Name() == "search" {
-		t.Fatal("obsolete catalog search command is mounted")
+	if child, _, err := root.Find([]string{"cache", "search"}); err == nil && child.Name() == "search" {
+		t.Fatal("obsolete cache search command is mounted")
 	}
 }
 

@@ -71,21 +71,26 @@ tadx workspace status --workspace development --full
 
 See [Workspaces](workspaces.md) for workspace paths, cloning, registration, and local artifact operations.
 
-## Use the local catalog
+## Use the local cache
 
 Refresh the default inventory scopes when you need broad offline discovery:
 
 ```text
-tadx catalog refresh --environment dev
-tadx catalog status --environment dev --full
-tadx search revenue --environment dev --type workbook --catalog
+tadx cache refresh --environment dev
+tadx cache status --environment dev --full
+tadx search revenue --environment dev --type workbook --cache
 ```
 
-`--catalog` is local-only and never falls back to Tableau.
-Review freshness, coverage, warnings, and partial results before treating a catalog result as complete.
+`--cache` is local-only and never falls back to Tableau.
+Review freshness, coverage, warnings, and partial results before treating a cache result as complete.
 Permissions require an explicitly selected refresh scope because they add per-resource requests.
-Catalog collection adapts up to 32 concurrent requests per CLI process by default.
-Use `tadx env update dev --catalog-max-concurrency 8` to set a lower ceiling for a server that needs less traffic.
+Cache collection adapts up to 32 concurrent requests per CLI process by default.
+Use `tadx env update dev --cache-max-concurrency 8` to set a lower ceiling for a server that needs less traffic.
+
+The local inventory commands are named `cache`; the former `catalog` commands and `--catalog` flag are not retained as aliases.
+Existing SQLite files remain under the configuration root's `catalog/` directory, with unchanged database names and table signatures, so the rename does not discard saved observations.
+Those storage names are an internal compatibility detail; use `cache` in commands and `cache_max_concurrency` in environment configuration.
+If an older configuration contains `catalog_max_concurrency`, rename that key to `cache_max_concurrency` without changing its value.
 
 ## Preview remote changes
 
@@ -185,7 +190,7 @@ tadx agent uninstall --target codex --preview
 tadx agent uninstall --target codex
 ```
 
-Removing the CLI does not automatically remove configuration, workspaces, catalogs, Guidance, or OS-stored credentials.
+Removing the CLI does not automatically remove configuration, workspaces, caches, Guidance, or OS-stored credentials.
 Use `tadx auth logout` and `tadx agent uninstall` first for any local state you also want removed.
 Download the platform installer again as shown in the README, then invoke its uninstall action instead of its default installation action:
 

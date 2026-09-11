@@ -16,18 +16,18 @@ import (
 	"time"
 
 	searchaction "github.com/ahillspace/tadx/actions/search"
-	"github.com/ahillspace/tadx/internal/catalog"
+	"github.com/ahillspace/tadx/internal/cache"
 	"github.com/ahillspace/tadx/internal/errs"
 	resourcesearch "github.com/ahillspace/tadx/internal/resources/search"
 )
 
-func TestCatalogGlobalSearchIncludesReadThroughResourcesWithoutGeneration(t *testing.T) {
+func TestCacheGlobalSearchIncludesReadThroughResourcesWithoutGeneration(t *testing.T) {
 	now := time.Date(2026, 9, 4, 12, 0, 0, 0, time.UTC)
-	store := catalog.NewStore(t.TempDir(), func() time.Time { return now })
-	if err := store.UpsertResources(context.Background(), []catalog.ResourceEntry{{Environment: "dev", Site: "site", Kind: "workbook", LUID: "wb-1", Name: "Sales", Coverage: "summary", ObservedAt: now}}); err != nil {
+	store := cache.NewStore(t.TempDir(), func() time.Time { return now })
+	if err := store.UpsertResources(context.Background(), []cache.ResourceEntry{{Environment: "dev", Site: "site", Kind: "workbook", LUID: "wb-1", Name: "Sales", Coverage: "summary", ObservedAt: now}}); err != nil {
 		t.Fatal(err)
 	}
-	out, err := searchaction.New(catalogGlobalSearchSource{store: store}).Execute(context.Background(), searchaction.Input{Terms: "sales", Type: "workbook", Environment: "dev", Site: "site", SiteResolved: true, Catalog: true})
+	out, err := searchaction.New(cacheGlobalSearchSource{store: store}).Execute(context.Background(), searchaction.Input{Terms: "sales", Type: "workbook", Environment: "dev", Site: "site", SiteResolved: true, Cache: true})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -36,9 +36,9 @@ func TestCatalogGlobalSearchIncludesReadThroughResourcesWithoutGeneration(t *tes
 	}
 }
 
-func TestCatalogGlobalSearchRejectsExplicitUnavailableType(t *testing.T) {
-	store := catalog.NewStore(t.TempDir(), time.Now)
-	_, err := searchaction.New(catalogGlobalSearchSource{store: store}).Execute(context.Background(), searchaction.Input{Type: "metric", Environment: "dev", Site: "site", SiteResolved: true, Catalog: true})
+func TestCacheGlobalSearchRejectsExplicitUnavailableType(t *testing.T) {
+	store := cache.NewStore(t.TempDir(), time.Now)
+	_, err := searchaction.New(cacheGlobalSearchSource{store: store}).Execute(context.Background(), searchaction.Input{Type: "metric", Environment: "dev", Site: "site", SiteResolved: true, Cache: true})
 	var structured *errs.Error
 	if !errors.As(err, &structured) || structured.Kind != errs.KindUsage {
 		t.Fatalf("error=%v", err)
@@ -161,7 +161,7 @@ func TestCompleteListSearchFamilyContinuationPreservesChildLimitAndPhase(t *test
 	pager := &completeListPagerFake{pages: []resourcesearch.Page{
 		{Items: []resourcesearch.Item{{LUID: "datasource-1", Type: "datasource", Name: "Datasource"}}, Source: "live"},
 		{Items: []resourcesearch.Item{{LUID: "flow-1", Type: "flow", Name: "Flow A"}}, NextCursor: "flow-next", Source: "live"},
-		{Items: []resourcesearch.Item{{LUID: "flow-2", Type: "flow", Name: "Flow B"}}, Source: "catalog"},
+		{Items: []resourcesearch.Item{{LUID: "flow-2", Type: "flow", Name: "Flow B"}}, Source: "cache"},
 		{Items: []resourcesearch.Item{{LUID: "project-1", Type: "project", Name: "Project"}}, Source: "live"},
 	}}
 	adapter := &completeLiveSearchAdapter{lister: pager}
@@ -327,7 +327,7 @@ func TestSearchCommandsUseNativeEndpointForContentTerms(t *testing.T) {
 	}
 }
 
-func TestBlankTypedSearchUsesBoundedLivePagesWithoutCatalog(t *testing.T) {
+func TestBlankTypedSearchUsesBoundedLivePagesWithoutCache(t *testing.T) {
 	reads := 0
 	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
@@ -363,7 +363,7 @@ func TestBlankTypedSearchUsesBoundedLivePagesWithoutCatalog(t *testing.T) {
 	if err != nil || reads != 2 || len(second.Items) != 1 || second.Items[0].LUID != "workbook-b" || second.Page.MoreAvailable {
 		t.Fatalf("second=%+v reads=%d err=%v", second, reads, err)
 	}
-	if _, err := os.Stat(filepath.Join(filepath.Dir(runtime.configPath), targetCatalogFixture(t, runtime.configPath, runtime.now).RelativePath())); !os.IsNotExist(err) {
-		t.Fatalf("limited search created catalog: %v", err)
+	if _, err := os.Stat(filepath.Join(filepath.Dir(runtime.configPath), targetCacheFixture(t, runtime.configPath, runtime.now).RelativePath())); !os.IsNotExist(err) {
+		t.Fatalf("limited search created cache: %v", err)
 	}
 }

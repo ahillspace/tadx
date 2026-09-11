@@ -35,7 +35,7 @@ func (a *Action) Execute(ctx context.Context, input Input) (Output, error) {
 	definition, err := a.reader.GetDefinition(ctx, input.LUID)
 	if err != nil {
 		var structured *errs.Error
-		if input.Catalog && errors.As(err, &structured) {
+		if input.Cache && errors.As(err, &structured) {
 			return Output{}, err
 		}
 		retryable, corrective := errs.CompleteRetryAdvice(err, "Review the exact definition LUID and selected Tableau site, then retry.")

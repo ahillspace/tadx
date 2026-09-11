@@ -5,11 +5,12 @@ import (
 
 	datasourceinspect "github.com/ahillspace/tadx/actions/datasource/inspect"
 	datasourcelist "github.com/ahillspace/tadx/actions/datasource/list"
-	"github.com/ahillspace/tadx/internal/catalog"
+	"github.com/ahillspace/tadx/internal/cache"
+	"github.com/ahillspace/tadx/internal/commandhint"
 	"github.com/ahillspace/tadx/internal/identity"
 	resourcedatasource "github.com/ahillspace/tadx/internal/resources/datasource"
 	resourceproject "github.com/ahillspace/tadx/internal/resources/project"
-	tableaucatalog "github.com/ahillspace/tadx/internal/tableau/catalog"
+	tableaucache "github.com/ahillspace/tadx/internal/tableau/cache"
 	tableaudatasource "github.com/ahillspace/tadx/internal/tableau/datasource"
 )
 
@@ -47,13 +48,13 @@ func (c *remoteContentCommands) listDatasources(ctx context.Context, input datas
 			resultErr = validateInventoryAll(input.All, result.Source)
 		}
 	}()
-	if input.Catalog || legacyInventorySnapshot(input.Cursor) {
-		environment, site, err := c.resolveCatalogTarget(input.Environment)
+	if input.Cache || legacyInventorySnapshot(input.Cursor) {
+		environment, site, err := c.resolveCacheTarget(input.Environment)
 		if err != nil {
 			return datasourcelist.Output{}, err
 		}
 		input.Environment, input.Site = environment, site
-		reader := &catalogDatasourceListReader{store: c.catalogStore(input.Environment), environment: environment, site: site}
+		reader := &cacheDatasourceListReader{store: c.cacheStore(input.Environment), environment: environment, site: site}
 		output, err := datasourcelist.New(reader).Execute(ctx, input)
 		if err == nil {
 			output.Source = reader.source
@@ -72,7 +73,7 @@ func (c *remoteContentCommands) listDatasources(ctx context.Context, input datas
 
 	if input.All {
 		observedAt := c.runtime.now().UTC()
-		inventory, err := collectResourceInventory(ctx, connection.inventory, c.catalogStore(input.Environment), tableaucatalog.ScopeDatasources, input.Environment, input.Site, observedAt, inventoryCollectionOptions{MaxConcurrency: connection.environment.CatalogMaxConcurrency, Filter: filter})
+		inventory, err := collectResourceInventory(ctx, connection.inventory, c.cacheStore(input.Environment), tableaucache.ScopeDatasources, input.Environment, input.Site, observedAt, inventoryCollectionOptions{MaxConcurrency: connection.environment.CacheMaxConcurrency, Filter: filter})
 		if err != nil {
 			return datasourcelist.Output{}, inventoryRefreshError("datasource.list", input.Environment, input.Site, err)
 		}
@@ -82,7 +83,7 @@ func (c *remoteContentCommands) listDatasources(ctx context.Context, input datas
 		if err != nil {
 			return output, err
 		}
-		if inventory.catalogErr != nil {
+		if inventory.cacheErr != nil {
 			output.Source = inventory.warningSource(observedAt)
 			output.Help = append(output.Help, inventory.warningHelp())
 		} else if inventory.filtered {
@@ -112,13 +113,13 @@ func (c *remoteContentCommands) InspectDatasource(ctx context.Context, input dat
 	if err := datasourceinspect.ValidateInput(input); err != nil {
 		return datasourceinspect.Output{}, err
 	}
-	if input.Catalog {
-		environment, site, err := c.resolveCatalogTarget(input.Environment)
+	if input.Cache {
+		environment, site, err := c.resolveCacheTarget(input.Environment)
 		if err != nil {
 			return datasourceinspect.Output{}, err
 		}
 		input.Environment, input.Site = environment, site
-		resolver := &catalogDatasourceGetResolver{store: c.catalogStore(input.Environment), environment: environment, site: site}
+		resolver := &cacheDatasourceGetResolver{store: c.cacheStore(input.Environment), environment: environment, site: site}
 		output, err := datasourceinspect.New(resolver).Execute(ctx, input)
 		if err == nil {
 			output.Source = resolver.source
@@ -134,11 +135,18 @@ func (c *remoteContentCommands) InspectDatasource(ctx context.Context, input dat
 	if err != nil {
 		return output, err
 	}
+	upstream, upstreamErr := connection.metadataAssets.DatasourceUpstream(ctx, output.Datasource.LUID)
+	if upstreamErr != nil {
+		// A Metadata API permission/license failure does not erase the REST result.
+		output.Datasource.Upstream = &datasourceinspect.Upstream{Status: "unavailable", Help: commandhint.Environment(input.Environment, "catalog", "audit", "--type", "datasource", "--id", output.Datasource.LUID)}
+	} else {
+		output.Datasource.Upstream = &datasourceinspect.Upstream{Status: "observed", Databases: upstream.Databases, Tables: upstream.Tables, Complete: upstream.Complete, ObservedAt: upstream.ObservedAt}
+	}
 	observedAt := c.runtime.now().UTC()
 	output.Source = liveSource(c.runtime.now)
 	entry, encodeErr := resourceEntry(input.Environment, input.Site, "datasource", output.Datasource.LUID, output.Datasource.Name, output.Datasource.ProjectPath, output.Datasource.OwnerLUID, "detail", observedAt, output.Datasource)
 	if encodeErr == nil {
-		writeThrough(c.catalogStore(input.Environment), []catalog.ResourceEntry{entry})
+		writeThrough(c.cacheStore(input.Environment), []cache.ResourceEntry{entry})
 	}
 	return output, nil
 }

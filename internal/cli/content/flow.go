@@ -62,7 +62,7 @@ func newFlowList(deps Dependencies) *cobra.Command {
 	command.Flags().StringVar(&input.Cursor, "cursor", "", "opaque continuation cursor")
 	command.MarkFlagsMutuallyExclusive("all", "limit")
 	command.MarkFlagsMutuallyExclusive("all", "cursor")
-	command.Flags().BoolVar(&input.Catalog, "catalog", false, "read indexed local catalog data without contacting Tableau")
+	command.Flags().BoolVar(&input.Cache, "cache", false, "read indexed local cache data without contacting Tableau")
 	return command
 }
 
@@ -77,7 +77,7 @@ func newFlowInspect(deps Dependencies) *cobra.Command {
 		return deps.Renderer.Render(result)
 	}}
 	readTargetFlags(command, &input.Environment, &luid, &name, &projectPath)
-	command.Flags().BoolVar(&input.Catalog, "catalog", false, "read indexed local catalog data without contacting Tableau")
+	command.Flags().BoolVar(&input.Cache, "cache", false, "read indexed local cache data without contacting Tableau")
 	return command
 }
 

@@ -1,6 +1,6 @@
 ---
 name: tadx
-description: Use for TADX CLI workflows involving Tableau content discovery and lifecycle, datasource schemas, administration, catalogs, workspaces, local artifacts, and Pulse definitions.
+description: Use for TADX CLI workflows involving Tableau content discovery and lifecycle, datasource schemas, upstream catalog metadata, administration, caches, workspaces, local artifacts, and Pulse definitions.
 ---
 
 # Operate Tableau with TADX
@@ -8,7 +8,7 @@ description: Use for TADX CLI workflows involving Tableau content discovery and 
 ## What TADX is
 
 TADX is the deterministic Tableau lifecycle and development CLI for agents and humans.
-It supports content discovery and lifecycle, metadata and lineage, catalogs, local artifacts, workspaces, administration, and Pulse definition lifecycle.
+It supports content discovery and lifecycle, metadata and lineage, caches, local artifacts, workspaces, administration, and Pulse definition lifecycle.
 This Guidance teaches TADX commands; respect the user's chosen tools for other workflows.
 TADX does not query datasource values, render views, or retrieve current Pulse values and insights.
 
@@ -57,39 +57,40 @@ With one configured environment, TADX uses it when a selector is omitted.
 With multiple environments, reads can use the configured default, but remote writes require `--env`.
 Adding a second environment announces this transition; artifact provenance and workspace placement never choose a publish destination.
 
-## Catalog versus live reads
+## Cache versus live reads
 
+`cache` is TADX's local inventory and observation store; `catalog` inspects and enriches upstream Tableau metadata.
 Live reads are the default.
 Live content searches use Tableau's native search and inherit the search capabilities and ranking available on that site.
-`--catalog` searches cached metadata locally using lexical matching only.
-Prefer live search for broad or conceptual discovery, and catalog search for fast, repeated known-term lookup.
-Use the catalog when freshness is acceptable and the task benefits from repeated discovery, broad inventory, cross-resource comparison, or cached datasource schemas.
-Refresh the required catalog scopes when their cached coverage or freshness does not meet the task.
-Use live reads for authoritative state before consequential changes, details not indexed in the catalog, targeted inspection after remote changes, and uncached datasource schemas.
+`--cache` searches cached metadata locally using lexical matching only.
+Prefer live search for broad or conceptual discovery, and cache search for fast, repeated known-term lookup.
+Use the cache when freshness is acceptable and the task benefits from repeated discovery, broad inventory, cross-resource comparison, or cached datasource schemas.
+Refresh the required cache scopes when their cached coverage or freshness does not meet the task.
+Use live reads for authoritative state before consequential changes, details not indexed in the cache, targeted inspection after remote changes, and uncached datasource schemas.
 
-`--catalog` is local-only and never falls back to Tableau.
-A catalog miss does not prove remote absence.
+`--cache` is local-only and never falls back to Tableau.
+A cache miss does not prove remote absence.
 Use `coverage_reason` when present; partial coverage alone does not establish an access denial or missing remote content.
-Live schema reads write through to the catalog.
+Live schema reads write through to the cache.
 Targeted live reads do not establish complete inventory coverage.
 Ordinary content and administration lists and live searches use bounded provider reads without accessing SQLite.
-`--all` explicitly collects all selected records within 10,000 and attempts a catalog update.
+Content and user/group inventory `--all` explicitly collects all selected records within 10,000 and attempts a cache update.
 An unfiltered complete `--all` replaces that resource scope; filtered `--all` records observations without claiming complete site coverage.
-A failed catalog write does not discard the collected live answer; retain its warning.
+A failed cache write does not discard the collected live answer; retain its warning.
 A refresh atomically replaces the requested inventory scopes while preserving independently cached observations and their timestamps.
 The default refresh collects inventory without permissions.
 Include `permissions` explicitly in `--scope` for a bulk permission inventory.
-Treat the catalog as a cache, not authoritative truth for consequential remote changes.
+Treat the cache as a cache, not authoritative truth for consequential remote changes.
 Refresh preserves independently cached schema, Pulse, and unrequested inventory observations without changing their timestamps or freshness.
-An item-level permission denial can produce a usable `partial` catalog with explicit warnings and `complete: false`.
-Inspect `tadx catalog status --full` before treating cached permission coverage as complete.
-Older catalog schemas require an explicit refresh; ordinary reads do not rebuild the cache.
-Catalog identity is bound to the actual server endpoint and site, not its editable environment alias; legacy unbound caches require refresh.
+An item-level permission denial can produce a usable `partial` cache with explicit warnings and `complete: false`.
+Inspect `tadx cache status --full` before treating cached permission coverage as complete.
+Older cache schemas require an explicit refresh; ordinary reads do not rebuild the cache.
+Cache identity is bound to the actual server endpoint and site, not its editable environment alias; legacy unbound caches require refresh.
 
-Catalog collection starts with up to four concurrent reads and increases gradually toward the environment's ceiling, default 32.
+Cache collection starts with up to four concurrent reads and increases gradually toward the environment's ceiling, default 32.
 Throttled reads share a cooldown within the run.
-Set the ceiling from 1 to 256 with `tadx env update <alias> --catalog-max-concurrency <count>`; `--clear-catalog-max-concurrency` restores 32.
-The same setting is available on `env add` and is stored as `catalog_max_concurrency`.
+Set the ceiling from 1 to 256 with `tadx env update <alias> --cache-max-concurrency <count>`; `--clear-cache-max-concurrency` restores 32.
+The same setting is available on `env add` and is stored as `cache_max_concurrency`.
 
 ## Workspaces
 
@@ -107,6 +108,7 @@ Compact output shows identity and local state; use workspace status with `--full
 | Intent | Read first |
 |---|---|
 | Search, inspect, pull, publish, move, rename, delete, lineage, or datasource schema | [Content lifecycle](references/content-lifecycle.md) |
+| Upstream databases, tables, columns, descriptions, tags, metadata audits, or labels | [Catalog metadata](references/catalog.md) |
 | Users, groups, memberships, ownership, permissions, or projects | [Administration](references/administration.md) |
 | Workspace creation, registration, defaults, local artifact movement, root relocation, or cleanup | [Workspaces](references/workspace.md) |
 | Repeat an action, supply different settings per item, or capture results in a script | [Batching and scripts](references/batching.md) |

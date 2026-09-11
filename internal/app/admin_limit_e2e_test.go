@@ -14,7 +14,7 @@ import (
 	"github.com/ahillspace/tadx/internal/app"
 )
 
-func TestAdminRequestedThousandUsesTenBoundedPagesWithoutCatalog(t *testing.T) {
+func TestAdminRequestedThousandUsesTenBoundedPagesWithoutCache(t *testing.T) {
 	for _, kind := range []string{"user", "group"} {
 		t.Run(kind, func(t *testing.T) {
 			reads, signins := 0, 0
@@ -47,7 +47,7 @@ func TestAdminRequestedThousandUsesTenBoundedPagesWithoutCatalog(t *testing.T) {
 				t.Fatalf("exit=%d reads=%d signin=%d output=%s", exit, reads, signins, out.String())
 			}
 			if _, err := os.Stat(filepath.Join(filepath.Dir(options.ConfigPath), "catalog")); !os.IsNotExist(err) {
-				t.Fatalf("limited list touched catalog: %v", err)
+				t.Fatalf("limited list touched cache: %v", err)
 			}
 		})
 	}

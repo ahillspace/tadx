@@ -18,7 +18,7 @@ type Input struct {
 	All                                       bool
 	Environment, Site, Cursor, Name, SiteRole string
 	Limit                                     int
-	Catalog                                   bool
+	Cache                                     bool
 }
 type PageRequest struct {
 	PageNumber, PageSize int
@@ -106,8 +106,8 @@ func (a *Action) Execute(ctx context.Context, input Input) (Output, error) {
 	}
 	fingerprint, err := cursorFingerprint(struct {
 		Environment, Site, Name, SiteRole string
-		Catalog                           bool
-	}{input.Environment, input.Site, input.Name, input.SiteRole, input.Catalog})
+		Cache                             bool
+	}{input.Environment, input.Site, input.Name, input.SiteRole, input.Cache})
 	if err != nil {
 		return Output{}, err
 	}

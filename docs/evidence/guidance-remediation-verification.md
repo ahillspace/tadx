@@ -5,7 +5,7 @@ This historical record describes working-tree checks before the remediation comm
 
 ## Scope
 
-Pulse field eligibility and forks, cursor-free bounded discovery, project identity handling, resilient catalog reads, actionable diagnostics, environment aliases, completion installers, and bundled Guidance.
+Pulse field eligibility and forks, cursor-free bounded discovery, project identity handling, resilient cache reads, actionable diagnostics, environment aliases, completion installers, and bundled Guidance.
 The capability map is maintainer-authored documentation, not generated runtime behavior.
 Historical discoverability proposals were archived locally because their instructions conflict with the current implementation.
 
@@ -35,8 +35,8 @@ The second-pass follow-up used base commit `00e5991102d3dc9d26d899513cfc21d333ed
 The earlier live exercises above do not establish live coverage of these subsequent changes.
 
 Behavioral regressions cover cached project path ambiguity, incomplete admin inventories, hidden calculation comments and strings, and grouped search continuation completeness.
-CLI-level tests exercise bounded live lists without usable catalog storage and environment concurrency configuration round trips.
-Catalog tests cover explicit schema rebuilds, indexed project identity, atomic refresh failure, default permission exclusion, and best-effort persistence after full live reads.
+CLI-level tests exercise bounded live lists without usable cache storage and environment concurrency configuration round trips.
+Cache tests cover explicit schema rebuilds, indexed project identity, atomic refresh failure, default permission exclusion, and best-effort persistence after full live reads.
 Synthetic traffic tests cover configurable concurrency and shared Retry-After delays, including delays longer than 30 seconds, extension by another worker, cancellation, and numeric overflow.
 These are deterministic HTTP fixtures and simulated-time tests, not a large Tableau Server load test.
 
@@ -51,7 +51,7 @@ GitHub CI remains the source of Linux, PowerShell 7, and cross-platform build re
 ## Subsequent bounded follow-up
 
 The subsequent bounded follow-up used base commit `a24ba3990cd4c5a8797ab208ca5be8af38b0f6b7`.
-Its scope covered invocation-local project hierarchy reuse, shared resource-owned filter builders, accurate catalog recovery advice, and removal of unused producer-side snapshot state.
+Its scope covered invocation-local project hierarchy reuse, shared resource-owned filter builders, accurate cache recovery advice, and removal of unused producer-side snapshot state.
 Regressions target multiple project/datasource pages, fresh hierarchy data on a later invocation, ordinary/full-list filter parity, and executing the suggested scoped refresh before repeating a local-only read.
 A CLI compatibility test preserves previously stored partial-snapshot continuation without Tableau requests.
 This follow-up does not introduce persistent hierarchy caching, change mutation revalidation, or remove supported legacy snapshot readers.

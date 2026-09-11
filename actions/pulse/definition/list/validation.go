@@ -30,9 +30,9 @@ func ValidateContinuation(input Input) error {
 	if limit == 0 {
 		limit = defaultLimit
 	}
-	fingerprint := targetFingerprint(input.Environment, input.Site, input.Name, limit, input.Catalog)
+	fingerprint := targetFingerprint(input.Environment, input.Site, input.Name, limit, input.Cache)
 	if input.DatasourceLUID != "" {
-		fingerprint = targetFingerprint(fingerprint, input.DatasourceLUID, "", limit, input.Catalog)
+		fingerprint = targetFingerprint(fingerprint, input.DatasourceLUID, "", limit, input.Cache)
 	}
 	if _, err := decodeCursor(input.Cursor, fingerprint); err != nil {
 		return listError("pulse.definition.list.usage", errs.KindUsage, input, "Pulse definition cursor does not match the selected target, name, and limit.", err)

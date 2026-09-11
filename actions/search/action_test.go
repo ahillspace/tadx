@@ -41,12 +41,12 @@ func TestSearchCompactAndFullOutput(t *testing.T) {
 }
 
 func TestSearchPreservesSourceReportedByComposedListContinuation(t *testing.T) {
-	s := &source{result: search.Result{Source: "catalog", Items: []search.Item{{LUID: "wb-1", Type: "workbook", Name: "Finance"}}}}
+	s := &source{result: search.Result{Source: "cache", Items: []search.Item{{LUID: "wb-1", Type: "workbook", Name: "Finance"}}}}
 	out, err := search.New(s).Execute(context.Background(), search.Input{Type: "workbook"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if out.Source != "catalog" {
+	if out.Source != "cache" {
 		t.Fatalf("source=%q", out.Source)
 	}
 }
@@ -170,7 +170,7 @@ func TestSearchBindsCursorToSourceAndEveryFilter(t *testing.T) {
 		"environment": func(i *search.Input) { i.Environment = "staging" }, "site": func(i *search.Input) { i.Site = "site-2" },
 		"owner":   func(i *search.Input) { i.Owner = "other" },
 		"project": func(i *search.Input) { i.ProjectPath = "Sales" }, "limit": func(i *search.Input) { i.Limit = 2 },
-		"catalog": func(i *search.Input) { i.Catalog = true },
+		"cache": func(i *search.Input) { i.Cache = true },
 	} {
 		t.Run(name, func(t *testing.T) {
 			in := base
@@ -189,13 +189,13 @@ func TestSearchBindsCursorToSourceAndEveryFilter(t *testing.T) {
 	}
 }
 
-func TestCatalogSearchAlwaysQualifiesAbsence(t *testing.T) {
+func TestCacheSearchAlwaysQualifiesAbsence(t *testing.T) {
 	s := &source{result: search.Result{Generation: &search.Generation{ID: "generation-1"}}}
-	out, err := search.New(s).Execute(context.Background(), search.Input{Terms: "absent", Catalog: true})
+	out, err := search.New(s).Execute(context.Background(), search.Input{Terms: "absent", Cache: true})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if out.Source != "catalog" || out.Generation == nil || !strings.Contains(strings.Join(out.Warnings, " "), "absence does not establish remote absence") {
+	if out.Source != "cache" || out.Generation == nil || !strings.Contains(strings.Join(out.Warnings, " "), "absence does not establish remote absence") {
 		t.Fatalf("output=%+v", out)
 	}
 	if !reflect.DeepEqual(out.Items, []search.Item{}) {
@@ -203,13 +203,13 @@ func TestCatalogSearchAlwaysQualifiesAbsence(t *testing.T) {
 	}
 }
 
-type unavailableCatalogScope struct{}
+type unavailableCacheScope struct{}
 
-func (unavailableCatalogScope) Error() string                 { return "scope unavailable" }
-func (unavailableCatalogScope) CatalogScopeUnavailable() bool { return true }
+func (unavailableCacheScope) Error() string               { return "scope unavailable" }
+func (unavailableCacheScope) CacheScopeUnavailable() bool { return true }
 
-func TestCatalogSearchRejectsUnavailableTypeExplicitly(t *testing.T) {
-	_, err := search.New(&source{err: unavailableCatalogScope{}}).Execute(context.Background(), search.Input{Type: "metric", Catalog: true})
+func TestCacheSearchRejectsUnavailableTypeExplicitly(t *testing.T) {
+	_, err := search.New(&source{err: unavailableCacheScope{}}).Execute(context.Background(), search.Input{Type: "metric", Cache: true})
 	var typed *errs.Error
 	if !errors.As(err, &typed) || typed.Kind != errs.KindUsage || !strings.Contains(typed.Summary, "not available") {
 		t.Fatalf("error=%v", err)

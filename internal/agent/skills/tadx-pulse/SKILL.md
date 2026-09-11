@@ -6,7 +6,7 @@ description: Author and manage Tableau Pulse definitions with TADX, including bu
 # Author and manage Tableau Pulse metrics
 
 Before starting a TADX Pulse task, read the installed `tadx` root skill at `../tadx/SKILL.md`, beside this skill's directory.
-It covers general discovery, datasource schema, catalogs, workspaces, and administration; consult its relevant references before assuming a capability is missing from TADX.
+It covers general discovery, datasource schema, caches, workspaces, and administration; consult its relevant references before assuming a capability is missing from TADX.
 
 A definition owns the shared measure, aggregation, date, allowed dimensions, and display settings.
 A metric is a period and population variant of that definition; Tableau creates a default metric with each new definition.

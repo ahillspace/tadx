@@ -104,7 +104,7 @@ func TestSchemaCursorBindsFiltersAndSource(t *testing.T) {
 	if err == nil {
 		t.Fatal("cursor accepted changed filter")
 	}
-	_, err = action.Execute(context.Background(), datasourceschema.Input{Environment: "dev", Site: "site", DatasourceLUID: "ds-1", Role: "measure", Limit: 1, Cursor: first.Page.NextCursor, Catalog: true})
+	_, err = action.Execute(context.Background(), datasourceschema.Input{Environment: "dev", Site: "site", DatasourceLUID: "ds-1", Role: "measure", Limit: 1, Cursor: first.Page.NextCursor, Cache: true})
 	if err == nil {
 		t.Fatal("cursor accepted changed source")
 	}
@@ -127,20 +127,20 @@ func TestSchemaRejectsInvalidInputBeforeRead(t *testing.T) {
 	}
 }
 
-func TestSchemaCatalogSourceIsHonest(t *testing.T) {
+func TestSchemaCacheSourceIsHonest(t *testing.T) {
 	r := &reader{result: datasourceschema.Schema{DatasourceLUID: "ds-1", DatasourceName: "Sales", ObservedAt: "2026-09-04T10:00:00Z", Fields: []datasourceschema.Field{{ID: "a", Caption: "A", Role: "measure"}}}}
 	action := datasourceschema.New(r, func() time.Time { return time.Date(2026, 9, 4, 10, 1, 0, 0, time.UTC) })
-	out, err := action.Execute(context.Background(), datasourceschema.Input{Environment: "dev", Site: "site", DatasourceLUID: "ds-1", Catalog: true})
+	out, err := action.Execute(context.Background(), datasourceschema.Input{Environment: "dev", Site: "site", DatasourceLUID: "ds-1", Cache: true})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if out.Source == nil || out.Source.Mode != readsource.Catalog {
+	if out.Source == nil || out.Source.Mode != readsource.Cache {
 		t.Fatalf("source = %#v", out.Source)
 	}
 	// The action has no generation provenance, so the unwrapped placeholder must
 	// never claim complete, fresh coverage.
 	if out.Source.Coverage != readsource.CoveragePartial || !out.Source.Stale || out.Source.GenerationID != "" {
-		t.Fatalf("dishonest catalog placeholder: %#v", out.Source)
+		t.Fatalf("dishonest cache placeholder: %#v", out.Source)
 	}
 }
 

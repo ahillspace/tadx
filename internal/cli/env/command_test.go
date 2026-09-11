@@ -119,11 +119,11 @@ func TestEnvUpdateRejectsSetAndClearForSameField(t *testing.T) {
 	}
 }
 
-func TestEnvCatalogConcurrencyFlags(t *testing.T) {
+func TestEnvCacheConcurrencyFlags(t *testing.T) {
 	for _, args := range [][]string{
-		{"add", "dev", "--url", "https://tableau.example.com", "--catalog-max-concurrency", "8"},
-		{"update", "dev", "--catalog-max-concurrency", "8"},
-		{"update", "dev", "--clear-catalog-max-concurrency"},
+		{"add", "dev", "--url", "https://tableau.example.com", "--cache-max-concurrency", "8"},
+		{"update", "dev", "--cache-max-concurrency", "8"},
+		{"update", "dev", "--clear-cache-max-concurrency"},
 	} {
 		a := &actions{}
 		command := envcli.New(envcli.Dependencies{Adder: a, Updater: a, Renderer: &renderer{}})
@@ -132,27 +132,27 @@ func TestEnvCatalogConcurrencyFlags(t *testing.T) {
 			t.Fatalf("Execute(%v): %v", args, err)
 		}
 		if args[0] == "add" {
-			if len(a.add) != 1 || a.add[0].CatalogMaxConcurrency != 8 {
+			if len(a.add) != 1 || a.add[0].CacheMaxConcurrency != 8 {
 				t.Fatalf("add=%+v", a.add)
 			}
 		} else {
 			want := 8
-			if args[2] == "--clear-catalog-max-concurrency" {
+			if args[2] == "--clear-cache-max-concurrency" {
 				want = 0
 			}
-			if len(a.update) != 1 || !a.update[0].Patch.CatalogMaxConcurrency.Set || a.update[0].Patch.CatalogMaxConcurrency.Value != want {
+			if len(a.update) != 1 || !a.update[0].Patch.CacheMaxConcurrency.Set || a.update[0].Patch.CacheMaxConcurrency.Value != want {
 				t.Fatalf("update=%+v", a.update)
 			}
 		}
 	}
 }
 
-func TestEnvCatalogConcurrencyBoundsAndHelp(t *testing.T) {
+func TestEnvCacheConcurrencyBoundsAndHelp(t *testing.T) {
 	for _, verb := range []string{"add", "update"} {
 		for _, value := range []string{"0", "-1", "257"} {
 			a := &actions{}
 			command := envcli.New(envcli.Dependencies{Adder: a, Updater: a, Renderer: &renderer{}})
-			args := []string{verb, "dev", "--catalog-max-concurrency", value}
+			args := []string{verb, "dev", "--cache-max-concurrency", value}
 			if verb == "add" {
 				args = append(args, "--url", "https://tableau.example.com")
 			}
@@ -169,12 +169,12 @@ func TestEnvCatalogConcurrencyBoundsAndHelp(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if flag := found.Flags().Lookup("catalog-max-concurrency"); flag == nil || !strings.Contains(flag.Usage, "default 32") {
+		if flag := found.Flags().Lookup("cache-max-concurrency"); flag == nil || !strings.Contains(flag.Usage, "default 32") {
 			t.Fatalf("flag=%+v", flag)
 		}
 	}
 	command := envcli.New(envcli.Dependencies{})
-	command.SetArgs([]string{"update", "dev", "--catalog-max-concurrency", "8", "--clear-catalog-max-concurrency"})
+	command.SetArgs([]string{"update", "dev", "--cache-max-concurrency", "8", "--clear-cache-max-concurrency"})
 	if err := command.Execute(); err == nil || !strings.Contains(err.Error(), "cannot be used together") {
 		t.Fatalf("error=%v", err)
 	}

@@ -98,8 +98,8 @@ func newAdd(deps Dependencies) *cobra.Command {
 			if input.ServerURL == "" {
 				return clierr.Usage("env.profile.add", errors.New("--url is required"))
 			}
-			if command.Flags().Changed("catalog-max-concurrency") && (input.CatalogMaxConcurrency < 1 || input.CatalogMaxConcurrency > 256) {
-				return clierr.Usage("env.profile.add", errors.New("--catalog-max-concurrency must be between 1 and 256"))
+			if command.Flags().Changed("cache-max-concurrency") && (input.CacheMaxConcurrency < 1 || input.CacheMaxConcurrency > 256) {
+				return clierr.Usage("env.profile.add", errors.New("--cache-max-concurrency must be between 1 and 256"))
 			}
 			input.Alias = args[0]
 			return nil
@@ -113,15 +113,15 @@ func newAdd(deps Dependencies) *cobra.Command {
 		},
 	}
 	addProfileFlags(command, &input.ServerURL, &input.SiteContentURL, &input.APIVersion, &input.PATNameEnv, &input.PATSecretEnv, &input.DefaultWorkspace)
-	command.Flags().IntVar(&input.CatalogMaxConcurrency, "catalog-max-concurrency", 0, "maximum concurrent catalog read requests, 1 to 256 (default 32)")
+	command.Flags().IntVar(&input.CacheMaxConcurrency, "cache-max-concurrency", 0, "maximum concurrent cache read requests, 1 to 256 (default 32)")
 	return command
 }
 
 func newUpdate(deps Dependencies) *cobra.Command {
 	var values profileValues
 	var clears profileClears
-	var catalogMaxConcurrency int
-	var clearCatalogMaxConcurrency bool
+	var cacheMaxConcurrency int
+	var clearCacheMaxConcurrency bool
 	command := &cobra.Command{
 		Use: use(deps, "env.profile.update", "update <alias>"), Short: short(deps, "env.profile.update", "Update an environment profile."),
 		Annotations: map[string]string{"tadx.capability": "env.profile.update"},
@@ -129,25 +129,25 @@ func newUpdate(deps Dependencies) *cobra.Command {
 			if err := exactAlias("env.profile.update")(command, args); err != nil {
 				return err
 			}
-			for _, conflict := range []struct{ value, clear string }{{"site", "clear-site"}, {"api-version", "clear-api-version"}, {"pat-name-env", "clear-pat-name-env"}, {"pat-secret-env", "clear-pat-secret-env"}, {"default-workspace", "clear-default-workspace"}, {"catalog-max-concurrency", "clear-catalog-max-concurrency"}} {
+			for _, conflict := range []struct{ value, clear string }{{"site", "clear-site"}, {"api-version", "clear-api-version"}, {"pat-name-env", "clear-pat-name-env"}, {"pat-secret-env", "clear-pat-secret-env"}, {"default-workspace", "clear-default-workspace"}, {"cache-max-concurrency", "clear-cache-max-concurrency"}} {
 				if command.Flags().Changed(conflict.value) && command.Flags().Changed(conflict.clear) {
 					return clierr.Usage("env.profile.update", errors.New("--"+conflict.value+" and --"+conflict.clear+" cannot be used together"))
 				}
 			}
-			if command.Flags().Changed("catalog-max-concurrency") && (catalogMaxConcurrency < 1 || catalogMaxConcurrency > 256) {
-				return clierr.Usage("env.profile.update", errors.New("--catalog-max-concurrency must be between 1 and 256"))
+			if command.Flags().Changed("cache-max-concurrency") && (cacheMaxConcurrency < 1 || cacheMaxConcurrency > 256) {
+				return clierr.Usage("env.profile.update", errors.New("--cache-max-concurrency must be between 1 and 256"))
 			}
 			return nil
 		},
 		RunE: func(command *cobra.Command, args []string) error {
 			patch := profileupdate.Patch{
-				ServerURL:             field(command, "url", values.serverURL, false),
-				SiteContentURL:        field(command, "site", values.site, clears.site),
-				APIVersion:            field(command, "api-version", values.apiVersion, clears.apiVersion),
-				PATNameEnv:            field(command, "pat-name-env", values.patNameEnv, clears.patNameEnv),
-				PATSecretEnv:          field(command, "pat-secret-env", values.patSecretEnv, clears.patSecretEnv),
-				DefaultWorkspace:      field(command, "default-workspace", values.defaultWorkspace, clears.defaultWorkspace),
-				CatalogMaxConcurrency: profileupdate.IntField{Set: command.Flags().Changed("catalog-max-concurrency") || clearCatalogMaxConcurrency, Value: catalogMaxConcurrency},
+				ServerURL:           field(command, "url", values.serverURL, false),
+				SiteContentURL:      field(command, "site", values.site, clears.site),
+				APIVersion:          field(command, "api-version", values.apiVersion, clears.apiVersion),
+				PATNameEnv:          field(command, "pat-name-env", values.patNameEnv, clears.patNameEnv),
+				PATSecretEnv:        field(command, "pat-secret-env", values.patSecretEnv, clears.patSecretEnv),
+				DefaultWorkspace:    field(command, "default-workspace", values.defaultWorkspace, clears.defaultWorkspace),
+				CacheMaxConcurrency: profileupdate.IntField{Set: command.Flags().Changed("cache-max-concurrency") || clearCacheMaxConcurrency, Value: cacheMaxConcurrency},
 			}
 			result, err := deps.Updater.Update(command.Context(), profileupdate.Input{Alias: args[0], Patch: patch})
 			if err != nil {
@@ -162,8 +162,8 @@ func newUpdate(deps Dependencies) *cobra.Command {
 	command.Flags().BoolVar(&clears.patNameEnv, "clear-pat-name-env", false, "restore the conventional PAT name variable")
 	command.Flags().BoolVar(&clears.patSecretEnv, "clear-pat-secret-env", false, "restore the conventional PAT secret variable")
 	command.Flags().BoolVar(&clears.defaultWorkspace, "clear-default-workspace", false, "clear the environment workspace default")
-	command.Flags().IntVar(&catalogMaxConcurrency, "catalog-max-concurrency", 0, "maximum concurrent catalog read requests, 1 to 256 (default 32)")
-	command.Flags().BoolVar(&clearCatalogMaxConcurrency, "clear-catalog-max-concurrency", false, "restore the default maximum of 32 concurrent catalog read requests")
+	command.Flags().IntVar(&cacheMaxConcurrency, "cache-max-concurrency", 0, "maximum concurrent cache read requests, 1 to 256 (default 32)")
+	command.Flags().BoolVar(&clearCacheMaxConcurrency, "clear-cache-max-concurrency", false, "restore the default maximum of 32 concurrent cache read requests")
 	return command
 }
 

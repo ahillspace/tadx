@@ -9,7 +9,7 @@ import (
 
 	doctorrun "github.com/ahillspace/tadx/actions/doctor/run"
 	"github.com/ahillspace/tadx/internal/artifact"
-	corecatalog "github.com/ahillspace/tadx/internal/catalog"
+	corecache "github.com/ahillspace/tadx/internal/cache"
 	"github.com/ahillspace/tadx/internal/config"
 )
 
@@ -24,7 +24,7 @@ func newDoctorCommands(runtime *runtimeDependencies) *doctorCommands {
 		Configuration: commands,
 		PAT:           commands,
 		Connectivity:  commands,
-		Catalog:       commands,
+		Cache:         commands,
 		Workspace:     commands,
 		Logging:       commands,
 	})
@@ -74,23 +74,23 @@ func (c *doctorCommands) CheckConnectivity(ctx context.Context, scope doctorrun.
 	return doctorrun.ConnectivityState{Reachable: true, Authenticated: true}, nil
 }
 
-func (c *doctorCommands) CheckCatalog(ctx context.Context, scope doctorrun.Scope) (doctorrun.CatalogState, error) {
+func (c *doctorCommands) CheckCache(ctx context.Context, scope doctorrun.Scope) (doctorrun.CacheState, error) {
 	_, environment, err := c.runtime.environment(scope.Environment, false)
 	if err != nil {
-		return doctorrun.CatalogState{}, err
+		return doctorrun.CacheState{}, err
 	}
-	store := c.runtime.catalogStore(environment)
+	store := c.runtime.cacheStore(environment)
 	database := filepath.Join(filepath.Dir(c.runtime.configPath), filepath.FromSlash(store.RelativePath()))
 	if _, err := os.Stat(database); errors.Is(err, os.ErrNotExist) {
-		return doctorrun.CatalogState{}, nil
+		return doctorrun.CacheState{}, nil
 	} else if err != nil {
-		return doctorrun.CatalogState{}, err
+		return doctorrun.CacheState{}, err
 	}
-	status, err := store.Status(ctx, corecatalog.Selection{Environment: environment.Alias, Site: environment.SiteContentURL, SiteSelected: true})
+	status, err := store.Status(ctx, corecache.Selection{Environment: environment.Alias, Site: environment.SiteContentURL, SiteSelected: true})
 	if err != nil {
-		return doctorrun.CatalogState{Present: true}, err
+		return doctorrun.CacheState{Present: true}, err
 	}
-	return doctorrun.CatalogState{Present: true, Complete: status.Complete, Stale: status.Stale}, nil
+	return doctorrun.CacheState{Present: true, Complete: status.Complete, Stale: status.Stale}, nil
 }
 
 func (c *doctorCommands) CheckWorkspace(ctx context.Context, scope doctorrun.Scope) (doctorrun.WorkspaceState, error) {

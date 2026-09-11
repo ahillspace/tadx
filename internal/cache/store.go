@@ -1,0 +1,773 @@
+// Package cache stores immutable Tableau cache generations in SQLite.
+package cache
+
+import (
+	"context"
+	"crypto/sha256"
+	"database/sql"
+	"encoding/base64"
+	"encoding/hex"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"net/url"
+	"os"
+	"path/filepath"
+	"sort"
+	"strconv"
+	"strings"
+	"sync"
+	"time"
+
+	_ "modernc.org/sqlite"
+)
+
+const (
+	defaultLimit  = 20
+	maxLimit      = 10_000
+	maxBatchRows  = 10_000
+	maxFieldBytes = 64 << 10
+	staleAfter    = 12 * time.Hour
+	schemaVersion = 7
+	// Keep legacy storage names so the public cache rename requires no data migration.
+	databaseRelativePath = "catalog/catalog.sqlite"
+	// generationTimeLayout is a fixed-width RFC3339 form: unlike time.RFC3339Nano
+	// (which trims trailing fractional-second zeros and so varies in width), every
+	// value is the same length, keeping the lexical DESC index on generated_at
+	// consistent with chronological order.
+	generationTimeLayout = "2006-01-02T15:04:05.000000000Z07:00"
+)
+
+var publicScopes = []string{"users", "groups", "projects", "workbooks", "datasources", "flows", "views", "permissions"}
+
+var batchColumns = map[string][]string{
+	"users":       {"id", "name", "email", "site_role", "last_login", "list_payload"},
+	"groups":      {"id", "name", "domain", "list_payload"},
+	"projects":    {"id", "name", "parent_project_id", "description", "owner_id", "list_payload"},
+	"workbooks":   {"id", "name", "project_id", "owner_id", "size", "updated_at", "list_payload"},
+	"datasources": {"id", "name", "project_id", "owner_id", "updated_at", "list_payload"},
+	"flows":       {"id", "name", "project_id", "owner_id", "file_type", "updated_at", "list_payload"},
+	"views":       {"id", "name", "workbook_id"},
+	"permissions": {"content_type", "content_id", "grantee_type", "grantee_id", "capability", "mode"},
+}
+
+type Record struct {
+	LUID        string `json:"luid"`
+	Kind        string `json:"kind"`
+	Name        string `json:"name"`
+	ProjectPath string `json:"project_path,omitempty"`
+	Owner       string `json:"owner,omitempty"`
+}
+
+// ResourceEntry is one resource projection available to explicit cache reads.
+// Payload contains opaque JSON supplied by the composition root. Cache
+// storage interprets only canonical identity fields needed for local selectors.
+type ResourceEntry struct {
+	ProjectLUID string
+	Environment string
+	Site        string
+	Kind        string
+	LUID        string
+	Name        string
+	ProjectPath string
+	Owner       string
+	Payload     []byte
+	Coverage    string
+	ObservedAt  time.Time
+}
+
+// ResourceQuery selects one bounded page from the local read-through index.
+type ResourceQuery struct {
+	ExactlyOne      bool
+	Environment     string
+	Site            string
+	Kind            string
+	LUID            string
+	Name            string
+	ProjectPath     string
+	ProjectName     string
+	Offset          int
+	Limit           int
+	Cursor          string
+	projectSnapshot string
+}
+
+// ResourceResult contains a local page and its snapshot coverage provenance.
+type ResourceResult struct {
+	Entries          []ResourceEntry
+	Total            int
+	Coverage         string
+	GenerationID     string
+	GeneratedAt      time.Time
+	NewestObserved   time.Time
+	Stale            bool
+	NextCursor       string
+	InventoryWarning string
+}
+
+// ResourceScopeReplacement is one complete authoritative inventory for a
+// single resource kind. Partial live reads belong in UpsertResources instead.
+type ResourceScopeReplacement struct {
+	Environment string
+	Site        string
+	Kind        string
+	Source      string
+	GeneratedAt time.Time
+	Entries     []ResourceEntry
+}
+type Generation struct {
+	ID, Environment, Site    string
+	GeneratedAt              time.Time
+	Complete                 bool
+	Source                   string
+	Scopes, DependencyScopes []string
+	Records                  []Record
+}
+type GenerationMetadata struct {
+	ID, Environment, Site           string
+	GeneratedAt                     time.Time
+	Source                          string
+	RequestedScopes, ImplicitScopes []string
+}
+type Batch struct {
+	Scope   string
+	Columns []string
+	Rows    [][]any
+}
+type Query struct {
+	Text, Kind, Name, ProjectPath, Owner, Environment, Site string
+	SiteSelected                                            bool
+	LUID, Cursor                                            string
+	Limit                                                   int
+}
+type Page struct {
+	Returned, Total, Limit int
+	NextCursor             string
+}
+type SearchResult struct {
+	Page                            Page
+	GenerationID, Environment, Site string
+	GeneratedAt                     time.Time
+	Stale                           bool
+	Source                          string
+	Records                         []Record
+	Warnings                        []string
+}
+type Selection struct {
+	Environment, Site string
+	SiteSelected      bool
+}
+type Lookup struct {
+	Environment, Site             string
+	SiteSelected                  bool
+	LUID, Kind, Name, ProjectPath string
+}
+type GetResult struct {
+	Record                          Record
+	GenerationID, Environment, Site string
+	GeneratedAt                     time.Time
+	Stale                           bool
+	Warnings                        []string
+}
+type StatusResult struct {
+	GenerationID, Environment, Site string
+	GeneratedAt                     time.Time
+	Age                             time.Duration
+	Complete, Stale                 bool
+	Source, Path                    string
+	RecordCount                     int
+	Warnings                        []string
+}
+type ReplaceResult struct {
+	GenerationID, Path string
+	RecordCount        int
+}
+
+type invalidCursorError struct{}
+
+func (invalidCursorError) Error() string            { return "cache search cursor is invalid" }
+func (invalidCursorError) InvalidCacheCursor() bool { return true }
+
+type ambiguousSelectorError struct{}
+
+func (ambiguousSelectorError) Error() string                { return "cache selector is ambiguous" }
+func (ambiguousSelectorError) AmbiguousCacheSelector() bool { return true }
+
+type notFoundError struct{}
+
+func (notFoundError) Error() string             { return "cache record was not found" }
+func (notFoundError) CacheRecordNotFound() bool { return true }
+
+type unavailableScopeError struct{ scope string }
+
+func (e unavailableScopeError) Error() string {
+	return fmt.Sprintf("cache scope %q is not present in the current generation", e.scope)
+}
+func (unavailableScopeError) CacheScopeUnavailable() bool { return true }
+
+type uninitializedError struct{}
+
+func (uninitializedError) Error() string {
+	return "cache is not initialized for the selected environment and site"
+}
+func (uninitializedError) CacheUninitialized() bool { return true }
+
+type resourceNotFoundError struct{}
+
+func (resourceNotFoundError) Error() string               { return "cache resource was not found" }
+func (resourceNotFoundError) CacheResourceNotFound() bool { return true }
+
+type duplicateScopeError struct{ scope string }
+
+func (e duplicateScopeError) Error() string {
+	return fmt.Sprintf("cache scope %q is duplicated", e.scope)
+}
+func (duplicateScopeError) CacheDuplicateScope() bool { return true }
+
+type duplicateContentError struct{ existingID string }
+
+func (e duplicateContentError) Error() string {
+	return fmt.Sprintf("cache content is already published under generation %q", e.existingID)
+}
+func (duplicateContentError) CacheDuplicateContent() bool { return true }
+
+// Store owns one config-root SQLite cache database.
+type Store struct {
+	root         string
+	now          func() time.Time
+	initMu       sync.Mutex
+	relativePath string
+	targetErr    error
+}
+
+// NewStore creates a cache store.
+func NewStore(root string, now func() time.Time) *Store {
+	if now == nil {
+		now = time.Now
+	}
+	return &Store{root: root, now: now}
+}
+func DatabasePath() string { return databaseRelativePath }
+func (s *Store) databasePath() string {
+	return filepath.Join(s.root, filepath.FromSlash(s.RelativePath()))
+}
+
+func (s *Store) open(ctx context.Context, refresh ...bool) (*sql.DB, error) {
+	if s.targetErr != nil {
+		return nil, s.targetErr
+	}
+	s.initMu.Lock()
+	defer s.initMu.Unlock()
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	path := s.databasePath()
+	dir := filepath.Dir(path)
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		return nil, fmt.Errorf("create cache directory: %w", err)
+	}
+	// The cache now stores users, emails, permissions, and inventory; refuse to
+	// follow a symlinked directory so the database cannot be redirected elsewhere.
+	dirInfo, err := os.Lstat(dir)
+	if err != nil {
+		return nil, fmt.Errorf("inspect cache directory: %w", err)
+	}
+	if dirInfo.Mode()&os.ModeSymlink != 0 {
+		return nil, errors.New("cache directory must not be a symlink")
+	}
+	preExisted := true
+	info, err := os.Lstat(path)
+	if errors.Is(err, os.ErrNotExist) {
+		preExisted = false
+	} else if err != nil {
+		return nil, fmt.Errorf("inspect cache database: %w", err)
+	} else if !info.Mode().IsRegular() {
+		return nil, errors.New("cache database must be a regular file")
+	}
+	dsn, err := cacheDSN(path)
+	if err != nil {
+		return nil, err
+	}
+	db, err := sql.Open("sqlite", dsn)
+	if err != nil {
+		return nil, fmt.Errorf("open cache database: %w", err)
+	}
+	db.SetMaxOpenConns(8)
+	db.SetMaxIdleConns(8)
+	if err := ensureSchema(ctx, db); err != nil {
+		db.Close()
+		// A file we created this call could hold a partially-initialized schema;
+		// remove it so the next open re-initializes rather than wedging. Only our
+		// own newly-created file is removed, never a pre-existing database.
+		if !preExisted {
+			removeDatabaseFiles(path)
+		}
+		return nil, err
+	}
+	if !preExisted {
+		if err := restrictDatabasePermissions(path); err != nil {
+			db.Close()
+			removeDatabaseFiles(path)
+			return nil, err
+		}
+	}
+	if err := validateSchema(ctx, db); err != nil {
+		var rebuild schemaRebuildRequired
+		if len(refresh) > 0 && refresh[0] && errors.As(err, &rebuild) {
+			return db, nil
+		}
+		db.Close()
+		return nil, err
+	}
+	return db, nil
+}
+
+// cacheDSN builds a SQLite "file:" URI for path. Building the URI with net/url
+// percent-encodes any '?' or '#' in the path so the SQLite URI parser does not
+// mistake them for the query/fragment delimiters (which would drop the pragmas
+// or fail to open). The pragma set below is authoritative for every pooled
+// connection (foreign keys, busy timeout, and synchronous=FULL durability).
+func cacheDSN(path string) (string, error) {
+	abs, err := filepath.Abs(path)
+	if err != nil {
+		return "", fmt.Errorf("resolve cache database path: %w", err)
+	}
+	uri := filepath.ToSlash(abs)
+	if !strings.HasPrefix(uri, "/") {
+		uri = "/" + uri
+	}
+	dsn := url.URL{
+		Scheme:   "file",
+		Path:     uri,
+		RawQuery: "_pragma=foreign_keys(1)&_pragma=busy_timeout(5000)&_pragma=synchronous(FULL)",
+	}
+	return dsn.String(), nil
+}
+
+// restrictDatabasePermissions narrows the database (and its WAL sidecars) to
+// owner-only 0600. On Windows os.Chmod only honors the read-only bit, so the
+// call is harmless there while enforcing least privilege on POSIX filesystems.
+func restrictDatabasePermissions(path string) error {
+	for _, p := range []string{path, path + "-wal", path + "-shm"} {
+		if err := os.Chmod(p, 0o600); err != nil && !errors.Is(err, os.ErrNotExist) {
+			return fmt.Errorf("restrict cache database permissions: %w", err)
+		}
+	}
+	return nil
+}
+
+func removeDatabaseFiles(path string) {
+	for _, p := range []string{path, path + "-wal", path + "-shm"} {
+		_ = os.Remove(p)
+	}
+}
+
+func (s *Store) BeginGeneration(ctx context.Context, metadata GenerationMetadata) (*GenerationWriter, error) {
+	return s.beginGeneration(ctx, metadata, false)
+}
+
+// BeginRefreshGeneration permits replacement of an obsolete disposable cache
+// schema, transactionally with successful explicit refresh publication only.
+func (s *Store) BeginRefreshGeneration(ctx context.Context, metadata GenerationMetadata) (*GenerationWriter, error) {
+	return s.beginStagedRefresh(ctx, metadata)
+}
+
+func (s *Store) beginGeneration(ctx context.Context, metadata GenerationMetadata, refresh bool) (*GenerationWriter, error) {
+	// Normalize environment and site once at the boundary so the values stored
+	// here match the values Search/Get/Status later compare against exactly.
+	metadata.Environment = strings.TrimSpace(metadata.Environment)
+	metadata.Site = strings.TrimSpace(metadata.Site)
+	// Reject duplicate scopes explicitly rather than letting normalizedScopes
+	// silently deduplicate them: internal callers must see the same contract as
+	// actions/cache/refresh, and silent dedup hides caller bugs.
+	if err := ensureUniqueScopes(metadata.RequestedScopes); err != nil {
+		return nil, err
+	}
+	if err := ensureUniqueScopes(metadata.ImplicitScopes); err != nil {
+		return nil, err
+	}
+	metadata.RequestedScopes = normalizedScopes(metadata.RequestedScopes, true)
+	metadata.ImplicitScopes = normalizedScopes(metadata.ImplicitScopes, false)
+	if err := validateMetadata(metadata); err != nil {
+		return nil, err
+	}
+	db, err := s.open(ctx, refresh)
+	if err != nil {
+		return nil, err
+	}
+	tx, err := db.BeginTx(ctx, nil)
+	if err != nil {
+		db.Close()
+		return nil, fmt.Errorf("begin cache generation: %w", err)
+	}
+	if refresh {
+		if err := rebuildSchemaForRefresh(ctx, tx); err != nil {
+			tx.Rollback()
+			db.Close()
+			return nil, err
+		}
+	}
+	result, err := tx.ExecContext(ctx, `INSERT INTO generations(id,fingerprint,environment,site,generated_at,complete,source,record_count,created_at) VALUES(NULL,NULL,?,?,?,0,?,0,?)`, metadata.Environment, metadata.Site, metadata.GeneratedAt.UTC().Format(generationTimeLayout), metadata.Source, s.now().UTC().Format(generationTimeLayout))
+	if err != nil {
+		tx.Rollback()
+		db.Close()
+		return nil, fmt.Errorf("stage cache generation: %w", err)
+	}
+	key, err := result.LastInsertId()
+	if err != nil {
+		tx.Rollback()
+		db.Close()
+		return nil, err
+	}
+	requested := map[string]bool{}
+	for _, scope := range metadata.RequestedScopes {
+		requested[scope] = true
+	}
+	seen := map[string]bool{}
+	for _, scope := range append(append([]string{}, metadata.RequestedScopes...), metadata.ImplicitScopes...) {
+		if seen[scope] {
+			continue
+		}
+		seen[scope] = true
+		if _, err := tx.ExecContext(ctx, `INSERT INTO generation_scopes(generation_key,scope,requested,complete) VALUES(?,?,?,0)`, key, scope, requested[scope]); err != nil {
+			tx.Rollback()
+			db.Close()
+			return nil, err
+		}
+	}
+	return &GenerationWriter{store: s, db: db, tx: tx, key: key, metadata: metadata}, nil
+}
+
+func (s *Store) Replace(ctx context.Context, generation Generation) (ReplaceResult, error) {
+	if !generation.Complete {
+		return ReplaceResult{}, errors.New("cache replacement generation must be complete")
+	}
+	if generation.Records == nil {
+		return ReplaceResult{}, errors.New("cache replacement records are required")
+	}
+	w, err := s.BeginGeneration(ctx, GenerationMetadata{ID: generation.ID, Environment: generation.Environment, Site: generation.Site, GeneratedAt: generation.GeneratedAt, Source: generation.Source, RequestedScopes: generation.Scopes, ImplicitScopes: generation.DependencyScopes})
+	if err != nil {
+		return ReplaceResult{}, err
+	}
+	defer w.Rollback()
+	if err := w.writeRecords(ctx, generation.Records); err != nil {
+		return ReplaceResult{}, err
+	}
+	if err := w.CompleteScopes(ctx, append(append([]string{}, w.metadata.RequestedScopes...), w.metadata.ImplicitScopes...)); err != nil {
+		return ReplaceResult{}, err
+	}
+	return w.Publish(ctx)
+}
+
+func (s *Store) Search(ctx context.Context, query Query) (SearchResult, error) {
+	// Normalize at the query boundary to match the trimmed values persisted at
+	// write time; otherwise a padded selector silently misses the stored rows.
+	query.Environment = strings.TrimSpace(query.Environment)
+	query.Site = strings.TrimSpace(query.Site)
+	if err := validateSelection(query.Environment, query.SiteSelected); err != nil {
+		return SearchResult{}, err
+	}
+	limit := query.Limit
+	if limit == 0 {
+		limit = defaultLimit
+	}
+	if limit < 1 || limit > maxLimit {
+		return SearchResult{}, fmt.Errorf("cache search limit must be between 1 and %d", maxLimit)
+	}
+	query.Limit = limit
+	db, err := s.open(ctx)
+	if err != nil {
+		return SearchResult{}, err
+	}
+	defer db.Close()
+	tx, err := db.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
+	if err != nil {
+		return SearchResult{}, err
+	}
+	defer tx.Rollback()
+	meta, err := currentGeneration(ctx, tx, query.Environment, query.Site)
+	if err != nil {
+		return SearchResult{}, err
+	}
+	if query.Kind != "" {
+		if scope := kindScope(query.Kind); scope != "" {
+			var requested bool
+			err := tx.QueryRowContext(ctx, `SELECT requested FROM generation_scopes WHERE generation_key=? AND scope=?`, meta.key, scope).Scan(&requested)
+			if errors.Is(err, sql.ErrNoRows) || (err == nil && !requested) {
+				return SearchResult{}, unavailableScopeError{scope}
+			}
+			if err != nil {
+				return SearchResult{}, err
+			}
+		}
+	}
+	where, args := searchWhere(meta.key, query)
+	var total int
+	if err := tx.QueryRowContext(ctx, `SELECT count(*) FROM catalog_records `+where, args...).Scan(&total); err != nil {
+		return SearchResult{}, fmt.Errorf("count cache records: %w", err)
+	}
+	offset := 0
+	if query.Cursor != "" {
+		id, fingerprint, decoded, decodeErr := decodeCursor(query.Cursor)
+		if decodeErr != nil || id != meta.id || fingerprint != queryFingerprint(query) || decoded < 0 || decoded > total {
+			return SearchResult{}, invalidCursorError{}
+		}
+		offset = decoded
+	}
+	rows, err := tx.QueryContext(ctx, `SELECT luid,kind,name,project_path,owner FROM catalog_records `+where+` ORDER BY kind,name,project_path,luid LIMIT ? OFFSET ?`, append(args, limit, offset)...)
+	if err != nil {
+		return SearchResult{}, err
+	}
+	defer rows.Close()
+	records := make([]Record, 0)
+	for rows.Next() {
+		var r Record
+		if err := rows.Scan(&r.LUID, &r.Kind, &r.Name, &r.ProjectPath, &r.Owner); err != nil {
+			return SearchResult{}, err
+		}
+		records = append(records, r)
+	}
+	if err := rows.Err(); err != nil {
+		return SearchResult{}, err
+	}
+	end := offset + len(records)
+	next := ""
+	if end < total {
+		next = encodeCursor(meta.id, queryFingerprint(query), end)
+	}
+	stale, warnings := staleness(s.now, meta.generatedAt, meta.id)
+	if err := tx.Commit(); err != nil {
+		return SearchResult{}, err
+	}
+	return SearchResult{Page: Page{len(records), total, limit, next}, GenerationID: meta.id, Environment: meta.environment, Site: meta.site, GeneratedAt: meta.generatedAt, Stale: stale, Source: meta.source, Records: records, Warnings: warnings}, nil
+}
+
+func (s *Store) Get(ctx context.Context, lookup Lookup) (GetResult, error) {
+	if lookup.LUID == "" && (lookup.Kind == "" || lookup.Name == "") {
+		return GetResult{}, errors.New("cache get requires a LUID or exact kind and name")
+	}
+	q := Query{Environment: lookup.Environment, Site: lookup.Site, SiteSelected: lookup.SiteSelected, Limit: 2}
+	if lookup.LUID != "" {
+		q.LUID = lookup.LUID
+	} else {
+		q.Kind = lookup.Kind
+		q.Name = lookup.Name
+		q.ProjectPath = lookup.ProjectPath
+	}
+	r, err := s.Search(ctx, q)
+	if err != nil {
+		return GetResult{}, err
+	}
+	if r.Page.Total > 1 {
+		return GetResult{}, ambiguousSelectorError{}
+	}
+	if len(r.Records) == 0 {
+		return GetResult{}, notFoundError{}
+	}
+	return GetResult{r.Records[0], r.GenerationID, r.Environment, r.Site, r.GeneratedAt, r.Stale, append([]string(nil), r.Warnings...)}, nil
+}
+func (s *Store) Status(ctx context.Context, selection Selection) (StatusResult, error) {
+	selection.Environment = strings.TrimSpace(selection.Environment)
+	selection.Site = strings.TrimSpace(selection.Site)
+	if err := validateSelection(selection.Environment, selection.SiteSelected); err != nil {
+		return StatusResult{}, err
+	}
+	db, err := s.open(ctx)
+	if err != nil {
+		return StatusResult{}, err
+	}
+	defer db.Close()
+	if err := checkIntegrity(ctx, db); err != nil {
+		return StatusResult{}, err
+	}
+	tx, err := db.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
+	if err != nil {
+		return StatusResult{}, err
+	}
+	defer tx.Rollback()
+	meta, err := currentGeneration(ctx, tx, selection.Environment, selection.Site)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return StatusResult{Environment: selection.Environment, Site: selection.Site, Path: s.RelativePath()}, nil
+		}
+		return StatusResult{}, err
+	}
+	var incomplete int
+	if err := tx.QueryRowContext(ctx, `SELECT count(*) FROM generation_scopes WHERE generation_key=? AND complete=0`, meta.key).Scan(&incomplete); err != nil {
+		return StatusResult{}, err
+	}
+	age := s.now().Sub(meta.generatedAt)
+	if age < 0 {
+		age = 0
+	}
+	stale, warnings := staleness(s.now, meta.generatedAt, meta.id)
+	if incomplete > 0 {
+		warnings = append(warnings, "Cache permission coverage is incomplete because some workbook permission reads were denied (HTTP 403). Missing rules are unknown, not empty permissions.")
+	}
+	return StatusResult{meta.id, meta.environment, meta.site, meta.generatedAt, age, incomplete == 0, stale, meta.source, s.RelativePath(), meta.recordCount, warnings}, nil
+}
+
+type generationMeta struct {
+	key                           int64
+	id, environment, site, source string
+	generatedAt                   time.Time
+	recordCount                   int
+}
+type queryRower interface {
+	QueryRowContext(context.Context, string, ...any) *sql.Row
+}
+
+func currentGeneration(ctx context.Context, q queryRower, environment, site string) (generationMeta, error) {
+	var m generationMeta
+	var generated string
+	err := q.QueryRowContext(ctx, `SELECT g.generation_key,g.id,g.environment,g.site,g.generated_at,g.source,g.record_count FROM current_generations c JOIN generations g ON g.generation_key=c.generation_key WHERE c.environment=? AND c.site=? AND g.complete=1`, environment, site).Scan(&m.key, &m.id, &m.environment, &m.site, &generated, &m.source, &m.recordCount)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return m, sql.ErrNoRows
+		}
+		return m, fmt.Errorf("read current cache generation for environment %q and site %q: %w", environment, site, err)
+	}
+	m.generatedAt, err = time.Parse(generationTimeLayout, generated)
+	return m, err
+}
+func ensureUniqueScopes(scopes []string) error {
+	seen := map[string]bool{}
+	for _, scope := range scopes {
+		trimmed := strings.TrimSpace(scope)
+		if trimmed == "" {
+			continue
+		}
+		if seen[trimmed] {
+			return duplicateScopeError{trimmed}
+		}
+		seen[trimmed] = true
+	}
+	return nil
+}
+func searchWhere(key int64, q Query) (string, []any) {
+	parts := []string{"WHERE generation_key=?", "requested=1"}
+	args := []any{key}
+	filters := [][2]string{{"luid", q.LUID}, {"kind", q.Kind}, {"name", q.Name}, {"project_path", q.ProjectPath}, {"owner", q.Owner}}
+	for _, f := range filters {
+		if f[1] != "" {
+			parts = append(parts, f[0]+"=?")
+			args = append(args, f[1])
+		}
+	}
+	if q.Text != "" {
+		parts = append(parts, `instr(lower(name || ' ' || project_path || ' ' || owner || ' ' || luid),lower(?)) > 0`)
+		args = append(args, q.Text)
+	}
+	return strings.Join(parts, " AND "), args
+}
+func validateSelection(environment string, selected bool) error {
+	if strings.TrimSpace(environment) == "" {
+		return errors.New("cache search requires an environment")
+	}
+	if !selected {
+		return errors.New("cache search requires a resolved source site")
+	}
+	return validateField("environment", environment)
+}
+func normalizedScopes(scopes []string, defaults bool) []string {
+	if len(scopes) == 0 && defaults {
+		return append([]string(nil), publicScopes...)
+	}
+	set := map[string]bool{}
+	for _, scope := range scopes {
+		set[strings.TrimSpace(scope)] = true
+	}
+	result := make([]string, 0, len(set))
+	for scope := range set {
+		if scope != "" {
+			result = append(result, scope)
+		}
+	}
+	sort.Strings(result)
+	return result
+}
+func validateMetadata(m GenerationMetadata) error {
+	if strings.TrimSpace(m.Environment) == "" || m.GeneratedAt.IsZero() {
+		return errors.New("cache generation requires environment and generation time")
+	}
+	for name, value := range map[string]string{"generation ID": m.ID, "environment": m.Environment, "site": m.Site, "source": m.Source} {
+		if err := validateField(name, value); err != nil {
+			return err
+		}
+	}
+	seen := map[string]bool{}
+	for _, scope := range append(append([]string{}, m.RequestedScopes...), m.ImplicitScopes...) {
+		if _, ok := batchColumns[scope]; !ok {
+			return fmt.Errorf("cache scope %q is unsupported", scope)
+		}
+		if seen[scope] {
+			return fmt.Errorf("cache scope %q cannot be both requested and implicit", scope)
+		}
+		seen[scope] = true
+	}
+	return nil
+}
+func validateField(name, value string) error {
+	if len(value) > maxFieldBytes {
+		return fmt.Errorf("%s exceeds %d-byte limit", name, maxFieldBytes)
+	}
+	return nil
+}
+func kindScope(kind string) string {
+	switch kind {
+	case "user":
+		return "users"
+	case "group":
+		return "groups"
+	case "project":
+		return "projects"
+	case "workbook":
+		return "workbooks"
+	case "datasource":
+		return "datasources"
+	case "flow":
+		return "flows"
+	case "view":
+		return "views"
+	}
+	return ""
+}
+func staleness(now func() time.Time, generated time.Time, id string) (bool, []string) {
+	stale := now().Sub(generated) > staleAfter
+	if !stale {
+		return false, nil
+	}
+	return true, []string{fmt.Sprintf("cache generation %q is older than 12 hours", id)}
+}
+func queryFingerprint(q Query) string {
+	value := struct {
+		Text, Kind, Name, ProjectPath, Owner, Environment, Site, LUID string
+		Limit                                                         int
+	}{strings.ToLower(q.Text), q.Kind, q.Name, q.ProjectPath, q.Owner, q.Environment, q.Site, q.LUID, q.Limit}
+	data, _ := json.Marshal(value)
+	digest := sha256.Sum256(data)
+	return base64.RawURLEncoding.EncodeToString(digest[:])
+}
+func encodeCursor(id, query string, offset int) string {
+	return base64.RawURLEncoding.EncodeToString([]byte(id)) + "." + query + "." + strconv.Itoa(offset)
+}
+func decodeCursor(value string) (string, string, int, error) {
+	parts := strings.Split(value, ".")
+	if len(parts) != 3 || parts[0] == "" || parts[1] == "" || parts[2] == "" {
+		return "", "", 0, errors.New("invalid cursor")
+	}
+	generation, err := base64.RawURLEncoding.DecodeString(parts[0])
+	if err != nil {
+		return "", "", 0, err
+	}
+	query, err := base64.RawURLEncoding.DecodeString(parts[1])
+	if err != nil || len(query) != sha256.Size {
+		return "", "", 0, errors.New("invalid cursor")
+	}
+	offset, err := strconv.Atoi(parts[2])
+	return string(generation), parts[1], offset, err
+}
+func digestID(data []byte) string {
+	digest := sha256.Sum256(data)
+	return hex.EncodeToString(digest[:])
+}

@@ -1,13 +1,13 @@
 # Inventory and cache contracts
 
-Read only for list, search, catalog, schema caching, or related discovery changes.
+Read only for list, search, cache, schema caching, or related discovery changes.
 These specialize the build skill's output, identity, and resource-bound contracts.
 
 ## Live reads and pagination
 
-Live reads are the default; explicit `--catalog` is local-only and never falls back to Tableau.
+Live reads are the default; explicit `--cache` is local-only and never falls back to Tableau.
 Ordinary limited lists fetch bounded provider results without collecting a whole inventory or requiring SQLite.
-Explicit `--all` and scoped catalog refresh share the collector; list renders the normalized live result rather than reading it back from SQLite.
+Explicit `--all` and scoped cache refresh share the collector; list renders the normalized live result rather than reading it back from SQLite.
 Share typed filter builders between limited and full reads so filters retain identical meaning.
 Keep provider pagination loops typed and private, not recursive action calls or public cursor tokens.
 Reuse one invocation-scoped project hierarchy rather than fetching projects once per item.
@@ -16,7 +16,7 @@ Store project identity as an indexed LUID, not by extracting it from JSON payloa
 
 ## Cache publication and freshness
 
-Bind catalog identity to normalized server endpoint and site, not just an environment alias.
+Bind cache identity to normalized server endpoint and site, not just an environment alias.
 Unbound legacy data requires explicit refresh; do not guess its source or rebuild it on an ordinary read.
 An unfiltered, complete full collection may replace that resource scope.
 Filtered collections record observations without claiming full inventory coverage.

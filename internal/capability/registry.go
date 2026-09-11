@@ -11,9 +11,10 @@ import (
 
 // All returns the canonical registry sorted by stable capability ID.
 func All() []Definition {
-	definitions := make([]Definition, len(canonicalDefinitions))
+	source := append(slices.Clone(canonicalDefinitions), metadataDefinitions...)
+	definitions := make([]Definition, len(source))
 	batchSelectors := BatchSelectors()
-	for index, definition := range canonicalDefinitions {
+	for index, definition := range source {
 		definitions[index] = clone(definition)
 		_, definitions[index].SupportsBatch = batchSelectors[definition.ID]
 	}

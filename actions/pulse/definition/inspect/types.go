@@ -7,7 +7,7 @@ type Input struct {
 	Environment string
 	Site        string
 	LUID        string
-	Catalog     bool
+	Cache       bool
 }
 
 // Definition is one complete normalized Pulse definition.

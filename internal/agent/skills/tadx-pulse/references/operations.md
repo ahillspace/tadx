@@ -3,13 +3,13 @@
 | Action | Purpose | Required and useful flags |
 | --- | --- | --- |
 | `tadx search <term>` | Discover a named metric, definition, user, or group. | `--environment`, `--type metric\|definition\|user\|group\|pulse\|admin`, `--limit` |
-| `tadx pulse definition list` | List definitions or find an exact name. | `--environment`, `--name`, `--datasource-id`, `--limit`, `--all`, `--catalog`, `--full` |
-| `tadx pulse definition inspect` | Read one definition. | `--id`, `--environment`, `--catalog`, `--full` |
+| `tadx pulse definition list` | List definitions or find an exact name. | `--environment`, `--name`, `--datasource-id`, `--limit`, `--all`, `--cache`, `--full` |
+| `tadx pulse definition inspect` | Read one definition. | `--id`, `--environment`, `--cache`, `--full` |
 | `tadx pulse definition pull` | Save a portable definition, its metric variants, and datasource references in a workspace. | `--id`, `--environment`, `--workspace`, `--overwrite` |
 | `tadx pulse definition publish` | Recreate a portable definition and variants with new identities. | `--id` or `--artifact-name` or `--artifact`, `--workspace`, `--env`, repeated `--datasource-map source=destination`, `--preview`, `--full` |
-| `tadx pulse metric list` | List variants of one definition. | `--definition-id`, `--environment`, `--limit`, `--all`, `--catalog`, `--full` |
-| `tadx pulse metric inspect` | Read one metric's saved settings. | `--id`, `--environment`, `--catalog`, `--full` |
-| `tadx pulse metric followers` | List subscriptions for one metric. | `--id`, `--environment`, `--catalog`, `--full` |
+| `tadx pulse metric list` | List variants of one definition. | `--definition-id`, `--environment`, `--limit`, `--all`, `--cache`, `--full` |
+| `tadx pulse metric inspect` | Read one metric's saved settings. | `--id`, `--environment`, `--cache`, `--full` |
+| `tadx pulse metric followers` | List subscriptions for one metric. | `--id`, `--environment`, `--cache`, `--full` |
 | `tadx pulse metric follow` | Subscribe one exact user or group. | `--environment`, `--id`, exactly one of `--user-id` or `--group-id`, `--preview` |
 | `tadx pulse metric unfollow` | Remove one exact subscription. | `--environment`, `--subscription-id`; or `--id` with one follower selector; `--preview` |
 | `tadx pulse metric delete` | Delete a non-default variant. | `--environment`, `--id`, `--preview` |
@@ -17,7 +17,7 @@
 
 Use exact identities; one configured environment can be inferred, while multiple environments require --env for remote writes.
 Use live reads before consequential changes.
-`--catalog` is local-only and can be stale or incomplete.
+`--cache` is local-only and can be stale or incomplete.
 
 ## Resolve a named metric
 

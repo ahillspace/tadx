@@ -95,7 +95,7 @@ func TestListContinuationBindsTargetAndLimit(t *testing.T) {
 	if !errors.As(err, &structured) || structured.Kind != errs.KindUsage {
 		t.Fatalf("error=%#v", err)
 	}
-	_, err = definitionlist.New(&reader{}).Execute(context.Background(), definitionlist.Input{Environment: "dev", Site: "sales", Limit: 7, Cursor: first.Page.NextCursor, Catalog: true})
+	_, err = definitionlist.New(&reader{}).Execute(context.Background(), definitionlist.Input{Environment: "dev", Site: "sales", Limit: 7, Cursor: first.Page.NextCursor, Cache: true})
 	if !errors.As(err, &structured) || structured.Kind != errs.KindUsage {
 		t.Fatalf("source-mismatched cursor error=%#v", err)
 	}

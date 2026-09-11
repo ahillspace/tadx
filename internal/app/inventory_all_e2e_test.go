@@ -42,7 +42,7 @@ func TestInventoryAllThroughCLI(t *testing.T) {
 				_, _ = fmt.Fprintf(w, `</%ss></tsResponse>`, resource)
 			}))
 			defer server.Close()
-			options := catalogResilienceOptions(t, server)
+			options := cacheResilienceOptions(t, server)
 			root := "content"
 			if kind == "user" || kind == "group" {
 				root = "admin"
@@ -50,7 +50,7 @@ func TestInventoryAllThroughCLI(t *testing.T) {
 			for _, cached := range []bool{false, true} {
 				args := []string{root, kind, "list", "--environment", "production", "--all", "--full"}
 				if cached {
-					args = append(args, "--catalog")
+					args = append(args, "--cache")
 				}
 				var out strings.Builder
 				exit := app.Run(context.Background(), args, &out, options)

@@ -14,7 +14,7 @@ import (
 	"time"
 
 	"github.com/ahillspace/tadx/internal/app"
-	"github.com/ahillspace/tadx/internal/catalog"
+	"github.com/ahillspace/tadx/internal/cache"
 	tableaupulse "github.com/ahillspace/tadx/internal/tableau/pulse"
 )
 
@@ -40,7 +40,7 @@ func TestPulseFollowerSnapshotReplacesAndSurvivesFailedReadThroughCLI(t *testing
 	run := func(cached bool) (int, string) {
 		args := []string{"pulse", "metric", "followers", "--id", "metric-1"}
 		if cached {
-			args = append(args, "--catalog")
+			args = append(args, "--cache")
 		}
 		var output bytes.Buffer
 		code := app.Run(context.Background(), args, &output, options)
@@ -82,12 +82,12 @@ func TestPulseFollowerSnapshotIgnoresLegacyIndividualRowsThroughCLI(t *testing.T
 	defer server.Close()
 	options := pulseEfficiencyOptions(t, server)
 	payload, _ := json.Marshal(tableaupulse.Subscription{LUID: "legacy-subscription", MetricLUID: "metric-1", FollowerType: "USER", FollowerLUID: "legacy-user"})
-	store := targetCatalogFixture(t, options.ConfigPath, nil)
-	if err := store.UpsertResources(context.Background(), []catalog.ResourceEntry{{Environment: "test", Site: "test", Kind: "pulse_subscription", LUID: "legacy-subscription", Name: "legacy", ProjectPath: "metric-1", Payload: payload, ObservedAt: time.Now().UTC(), Coverage: "detail"}}); err != nil {
+	store := targetCacheFixture(t, options.ConfigPath, nil)
+	if err := store.UpsertResources(context.Background(), []cache.ResourceEntry{{Environment: "test", Site: "test", Kind: "pulse_subscription", LUID: "legacy-subscription", Name: "legacy", ProjectPath: "metric-1", Payload: payload, ObservedAt: time.Now().UTC(), Coverage: "detail"}}); err != nil {
 		t.Fatal(err)
 	}
 	var output bytes.Buffer
-	code := app.Run(context.Background(), []string{"pulse", "metric", "followers", "--id", "metric-1", "--catalog"}, &output, options)
+	code := app.Run(context.Background(), []string{"pulse", "metric", "followers", "--id", "metric-1", "--cache"}, &output, options)
 	if code == 0 || requests != 0 || strings.Contains(output.String(), "legacy-user") {
 		t.Fatalf("legacy cache accepted: code=%d requests=%d %s", code, requests, output.String())
 	}
@@ -109,7 +109,7 @@ func TestPulseFollowerSnapshotCacheWriteFailureWarnsThroughCLI(t *testing.T) {
 	}))
 	defer server.Close()
 	options := pulseEfficiencyOptions(t, server)
-	store := targetCatalogFixture(t, options.ConfigPath, nil)
+	store := targetCacheFixture(t, options.ConfigPath, nil)
 	if err := os.MkdirAll(filepath.Join(filepath.Dir(options.ConfigPath), filepath.FromSlash(store.RelativePath())), 0700); err != nil {
 		t.Fatal(err)
 	}

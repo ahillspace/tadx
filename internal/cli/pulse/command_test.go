@@ -164,18 +164,18 @@ func TestDefinitionListAcceptsExactName(t *testing.T) {
 	}
 }
 
-func TestCatalogFlagAppearsOnlyOnEligibleReads(t *testing.T) {
+func TestCacheFlagAppearsOnlyOnEligibleReads(t *testing.T) {
 	command := newCommand(&actions{})
 	eligible := []string{"definition/list", "definition/inspect", "metric/list", "metric/inspect", "metric/followers"}
 	for _, path := range eligible {
-		if childAt(t, command, path).Flags().Lookup("catalog") == nil {
-			t.Fatalf("%s does not expose --catalog", path)
+		if childAt(t, command, path).Flags().Lookup("cache") == nil {
+			t.Fatalf("%s does not expose --cache", path)
 		}
 	}
 	other := []string{"definition/pull", "definition/create", "definition/delete", "metric/fork", "metric/delete", "metric/follow", "metric/unfollow"}
 	for _, path := range other {
-		if childAt(t, command, path).Flags().Lookup("catalog") != nil {
-			t.Fatalf("%s unexpectedly exposes --catalog", path)
+		if childAt(t, command, path).Flags().Lookup("cache") != nil {
+			t.Fatalf("%s unexpectedly exposes --cache", path)
 		}
 	}
 }
@@ -200,14 +200,14 @@ func TestPulseDeletesMapExactTargetAndPreview(t *testing.T) {
 	}
 }
 
-func TestDefinitionListMapsCatalogInput(t *testing.T) {
+func TestDefinitionListMapsCacheInput(t *testing.T) {
 	a := &actions{}
 	command := newCommand(a)
-	command.SetArgs([]string{"definition", "list", "--environment", "development", "--limit", "12", "--cursor", "next", "--catalog"})
+	command.SetArgs([]string{"definition", "list", "--environment", "development", "--limit", "12", "--cursor", "next", "--cache"})
 	if err := command.Execute(); err != nil {
 		t.Fatal(err)
 	}
-	want := definitionlist.Input{Environment: "development", Limit: 12, Cursor: "next", Catalog: true}
+	want := definitionlist.Input{Environment: "development", Limit: 12, Cursor: "next", Cache: true}
 	if a.definitionListInput != want {
 		t.Fatalf("list input = %#v, want %#v", a.definitionListInput, want)
 	}

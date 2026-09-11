@@ -27,15 +27,15 @@ func (u *updater) Update(_ context.Context, alias string, patch profileupdate.Pa
 
 type retryableStoreError struct{}
 
-func TestCatalogConcurrencyValidatedAndPassedToStore(t *testing.T) {
+func TestCacheConcurrencyValidatedAndPassedToStore(t *testing.T) {
 	for _, limit := range []int{-1, 0, 1, 256, 257} {
 		store := &updater{}
-		_, err := profileupdate.New(store).Execute(context.Background(), profileupdate.Input{Alias: "staging", Patch: profileupdate.Patch{CatalogMaxConcurrency: profileupdate.IntField{Set: true, Value: limit}}})
+		_, err := profileupdate.New(store).Execute(context.Background(), profileupdate.Input{Alias: "staging", Patch: profileupdate.Patch{CacheMaxConcurrency: profileupdate.IntField{Set: true, Value: limit}}})
 		if limit < 0 || limit > 256 {
 			if err == nil || store.alias != "" {
 				t.Fatalf("invalid%d error=%v stored=%+v", limit, err, store.patch)
 			}
-		} else if err != nil || !store.patch.CatalogMaxConcurrency.Set || store.patch.CatalogMaxConcurrency.Value != limit {
+		} else if err != nil || !store.patch.CacheMaxConcurrency.Set || store.patch.CacheMaxConcurrency.Value != limit {
 			t.Fatalf("limit%d error=%v stored=%+v", limit, err, store.patch)
 		}
 	}

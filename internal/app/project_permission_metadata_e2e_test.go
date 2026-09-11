@@ -10,7 +10,7 @@ import (
 	"testing"
 )
 
-func TestProjectPermissionMetadataRemainsVisibleLiveAndCatalog(t *testing.T) {
+func TestProjectPermissionMetadataRemainsVisibleLiveAndCache(t *testing.T) {
 	var reads atomic.Int32
 	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if diagnosticSignIn(w, r) {
@@ -28,7 +28,7 @@ func TestProjectPermissionMetadataRemainsVisibleLiveAndCatalog(t *testing.T) {
 	options := diagnosticOptions(t, server)
 	for _, cached := range []bool{false, true} {
 		if cached {
-			runGroupOneCLI(t, options, "catalog", "refresh", "--scope", "projects", "--environment", "test")
+			runGroupOneCLI(t, options, "cache", "refresh", "--scope", "projects", "--environment", "test")
 		}
 		for _, operation := range []string{"list", "inspect"} {
 			args := []string{"content", "project", operation, "--environment", "test"}
@@ -36,7 +36,7 @@ func TestProjectPermissionMetadataRemainsVisibleLiveAndCatalog(t *testing.T) {
 				args = append(args, "--project-id", "child")
 			}
 			if cached {
-				args = append(args, "--catalog")
+				args = append(args, "--cache")
 			}
 			before := reads.Load()
 			output := runGroupOneCLI(t, options, args...)
@@ -44,14 +44,14 @@ func TestProjectPermissionMetadataRemainsVisibleLiveAndCatalog(t *testing.T) {
 				t.Fatalf("permission metadata omitted (%v): %s", args, output)
 			}
 			if cached && reads.Load() != before {
-				t.Fatal("catalog metadata performed remote reads")
+				t.Fatal("cache metadata performed remote reads")
 			}
 			if !cached && reads.Load()-before != 1 {
 				t.Fatalf("project metadata needs one inventory read, got %d", reads.Load()-before)
 			}
 		}
 	}
-	output := runGroupOneCLI(t, options, "content", "project", "inspect", "--project-id", "unknown", "--environment", "test", "--catalog")
+	output := runGroupOneCLI(t, options, "content", "project", "inspect", "--project-id", "unknown", "--environment", "test", "--cache")
 	if strings.Contains(output, "controlling_permissions_project_luid") || strings.Contains(output, "content_permissions") {
 		t.Fatalf("invented inherited controller or mode: %s", output)
 	}

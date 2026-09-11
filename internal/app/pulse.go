@@ -22,7 +22,7 @@ import (
 	metriclist "github.com/ahillspace/tadx/actions/pulse/metric/list"
 	metricunfollow "github.com/ahillspace/tadx/actions/pulse/metric/unfollow"
 	"github.com/ahillspace/tadx/internal/artifact"
-	"github.com/ahillspace/tadx/internal/catalog"
+	"github.com/ahillspace/tadx/internal/cache"
 	pulsecli "github.com/ahillspace/tadx/internal/cli/pulse"
 	"github.com/ahillspace/tadx/internal/config"
 	"github.com/ahillspace/tadx/internal/readsource"
@@ -81,7 +81,7 @@ func (c *pulseCommands) connect(ctx context.Context, alias string, explicit bool
 	}, nil
 }
 
-func (c *pulseCommands) catalogContent() *remoteContentCommands {
+func (c *pulseCommands) cacheContent() *remoteContentCommands {
 	return newRemoteContentCommands(c.runtime)
 }
 
@@ -99,13 +99,13 @@ func (c *pulseCommands) ListPulseDefinitions(ctx context.Context, input definiti
 			return definitionlist.Output{}, err
 		}
 	}
-	if input.Catalog {
-		environment, site, err := c.catalogContent().resolveCatalogTarget(input.Environment)
+	if input.Cache {
+		environment, site, err := c.cacheContent().resolveCacheTarget(input.Environment)
 		if err != nil {
-			return definitionlist.Output{}, capabilitySetupError("pulse.definition.list.catalog.setup", "pulse.definition.list", input.Environment, "", "Catalog Pulse definition setup failed.", "Verify the selected environment and catalog configuration.", err)
+			return definitionlist.Output{}, capabilitySetupError("pulse.definition.list.cache.setup", "pulse.definition.list", input.Environment, "", "Cache Pulse definition setup failed.", "Verify the selected environment and cache configuration.", err)
 		}
 		input.Environment, input.Site = environment, site
-		reader := &catalogPulseDefinitionListReader{store: c.catalogContent().catalogStore(environment), environment: environment, site: site}
+		reader := &cachePulseDefinitionListReader{store: c.cacheContent().cacheStore(environment), environment: environment, site: site}
 		output, err := definitionlist.New(reader).Execute(ctx, input)
 		if err == nil {
 			output.Source = reader.source
@@ -131,13 +131,13 @@ func (c *pulseCommands) InspectPulseDefinition(ctx context.Context, input defini
 	if err := definitioninspect.ValidateInput(input); err != nil {
 		return definitioninspect.Output{}, err
 	}
-	if input.Catalog {
-		environment, site, err := c.catalogContent().resolveCatalogTarget(input.Environment)
+	if input.Cache {
+		environment, site, err := c.cacheContent().resolveCacheTarget(input.Environment)
 		if err != nil {
-			return definitioninspect.Output{}, capabilitySetupError("pulse.definition.inspect.catalog.setup", "pulse.definition.inspect", input.Environment, "", "Catalog Pulse definition setup failed.", "Verify the selected environment and catalog configuration.", err)
+			return definitioninspect.Output{}, capabilitySetupError("pulse.definition.inspect.cache.setup", "pulse.definition.inspect", input.Environment, "", "Cache Pulse definition setup failed.", "Verify the selected environment and cache configuration.", err)
 		}
 		input.Environment, input.Site = environment, site
-		reader := &catalogPulseDefinitionGetReader{store: c.catalogContent().catalogStore(environment), environment: environment, site: site}
+		reader := &cachePulseDefinitionGetReader{store: c.cacheContent().cacheStore(environment), environment: environment, site: site}
 		output, err := definitioninspect.New(reader).Execute(ctx, input)
 		if err == nil {
 			output.Source = reader.source
@@ -228,13 +228,13 @@ func (c *pulseCommands) ListPulseMetrics(ctx context.Context, input metriclist.I
 			return metriclist.Output{}, err
 		}
 	}
-	if input.Catalog {
-		environment, site, err := c.catalogContent().resolveCatalogTarget(input.Environment)
+	if input.Cache {
+		environment, site, err := c.cacheContent().resolveCacheTarget(input.Environment)
 		if err != nil {
-			return metriclist.Output{}, capabilitySetupError("pulse.metric.list.catalog.setup", "pulse.metric.list", input.Environment, "", "Catalog Pulse metric setup failed.", "Verify the selected environment and catalog configuration.", err)
+			return metriclist.Output{}, capabilitySetupError("pulse.metric.list.cache.setup", "pulse.metric.list", input.Environment, "", "Cache Pulse metric setup failed.", "Verify the selected environment and cache configuration.", err)
 		}
 		input.Environment, input.Site = environment, site
-		reader := &catalogPulseMetricListReader{store: c.catalogContent().catalogStore(environment), environment: environment, site: site}
+		reader := &cachePulseMetricListReader{store: c.cacheContent().cacheStore(environment), environment: environment, site: site}
 		output, err := metriclist.New(reader).Execute(ctx, input)
 		if err == nil {
 			output.Source = reader.source
@@ -260,13 +260,13 @@ func (c *pulseCommands) InspectPulseMetric(ctx context.Context, input metricinsp
 	if err := metricinspect.ValidateInput(input); err != nil {
 		return metricinspect.Output{}, err
 	}
-	if input.Catalog {
-		environment, site, err := c.catalogContent().resolveCatalogTarget(input.Environment)
+	if input.Cache {
+		environment, site, err := c.cacheContent().resolveCacheTarget(input.Environment)
 		if err != nil {
-			return metricinspect.Output{}, capabilitySetupError("pulse.metric.inspect.catalog.setup", "pulse.metric.inspect", input.Environment, "", "Catalog Pulse metric setup failed.", "Verify the selected environment and catalog configuration.", err)
+			return metricinspect.Output{}, capabilitySetupError("pulse.metric.inspect.cache.setup", "pulse.metric.inspect", input.Environment, "", "Cache Pulse metric setup failed.", "Verify the selected environment and cache configuration.", err)
 		}
 		input.Environment, input.Site = environment, site
-		reader := &catalogPulseMetricGetReader{store: c.catalogContent().catalogStore(environment), environment: environment, site: site}
+		reader := &cachePulseMetricGetReader{store: c.cacheContent().cacheStore(environment), environment: environment, site: site}
 		output, err := metricinspect.New(reader).Execute(ctx, input)
 		if err == nil {
 			output.Source = reader.source
@@ -307,13 +307,13 @@ func (c *pulseCommands) ListPulseMetricFollowers(ctx context.Context, input metr
 	if err := metricfollowers.ValidateInput(input); err != nil {
 		return metricfollowers.Output{}, err
 	}
-	if input.Catalog {
-		environment, site, err := c.catalogContent().resolveCatalogTarget(input.Environment)
+	if input.Cache {
+		environment, site, err := c.cacheContent().resolveCacheTarget(input.Environment)
 		if err != nil {
-			return metricfollowers.Output{}, capabilitySetupError("pulse.metric.followers.catalog.setup", "pulse.metric.followers", input.Environment, "", "Catalog Pulse follower setup failed.", "Verify the selected environment and catalog configuration.", err)
+			return metricfollowers.Output{}, capabilitySetupError("pulse.metric.followers.cache.setup", "pulse.metric.followers", input.Environment, "", "Cache Pulse follower setup failed.", "Verify the selected environment and cache configuration.", err)
 		}
 		input.Environment, input.Site = environment, site
-		reader := &catalogPulseFollowerReader{store: c.catalogContent().catalogStore(environment), environment: environment, site: site}
+		reader := &cachePulseFollowerReader{store: c.cacheContent().cacheStore(environment), environment: environment, site: site}
 		output, err := metricfollowers.New(reader).Execute(ctx, input)
 		if err == nil {
 			output.Source = reader.source
@@ -841,130 +841,130 @@ func metricGetItem(item tableaupulse.Metric) metricinspect.Metric {
 	return metricinspect.Metric{LUID: item.LUID, Name: item.Name, DefinitionLUID: item.DefinitionLUID, SiteLUID: item.SiteLUID, IsDefault: item.IsDefault, Specification: cloneJSONMap(item.Specification), Configuration: append([]byte(nil), item.Configuration...), RequestID: item.TableauRequestID}
 }
 
-type catalogPulseDefinitionListReader struct {
-	store       *catalog.Store
+type cachePulseDefinitionListReader struct {
+	store       *cache.Store
 	environment string
 	site        string
 	source      *readsource.Metadata
 }
 
-func (r *catalogPulseDefinitionListReader) ListDefinitions(ctx context.Context, request definitionlist.PageRequest) (definitionlist.Page, error) {
-	offset, err := pulseCatalogOffset(request.PageToken)
+func (r *cachePulseDefinitionListReader) ListDefinitions(ctx context.Context, request definitionlist.PageRequest) (definitionlist.Page, error) {
+	offset, err := pulseCacheOffset(request.PageToken)
 	if err != nil {
 		return definitionlist.Page{}, err
 	}
-	result, err := r.store.ReadResources(ctx, catalog.ResourceQuery{Environment: r.environment, Site: r.site, Kind: pulseDefinitionKind, Offset: offset, Limit: request.PageSize})
+	result, err := r.store.ReadResources(ctx, cache.ResourceQuery{Environment: r.environment, Site: r.site, Kind: pulseDefinitionKind, Offset: offset, Limit: request.PageSize})
 	if err != nil {
-		return definitionlist.Page{}, catalogReadError("pulse.definition.list", r.environment, r.site, err)
+		return definitionlist.Page{}, cacheReadError("pulse.definition.list", r.environment, r.site, err)
 	}
-	r.source = catalogReadSource(result)
+	r.source = cacheReadSource(result)
 	items := make([]definitionlist.Definition, len(result.Entries))
 	for index, entry := range result.Entries {
 		var item tableaupulse.Definition
 		if err := json.Unmarshal(entry.Payload, &item); err != nil {
-			return definitionlist.Page{}, fmt.Errorf("decode catalog Pulse definition %q: %w", entry.LUID, err)
+			return definitionlist.Page{}, fmt.Errorf("decode cache Pulse definition %q: %w", entry.LUID, err)
 		}
 		items[index] = definitionListItem(item)
 	}
-	return definitionlist.Page{Definitions: items, NextPageToken: nextPulseCatalogOffset(offset, len(items), result.Total)}, nil
+	return definitionlist.Page{Definitions: items, NextPageToken: nextPulseCacheOffset(offset, len(items), result.Total)}, nil
 }
 
-type catalogPulseDefinitionGetReader struct {
-	store       *catalog.Store
+type cachePulseDefinitionGetReader struct {
+	store       *cache.Store
 	environment string
 	site        string
 	source      *readsource.Metadata
 }
 
-func (r *catalogPulseDefinitionGetReader) GetDefinition(ctx context.Context, luid string) (definitioninspect.Definition, error) {
-	result, err := r.store.ReadResources(ctx, catalog.ResourceQuery{Environment: r.environment, Site: r.site, Kind: pulseDefinitionKind, LUID: luid, Limit: 1})
+func (r *cachePulseDefinitionGetReader) GetDefinition(ctx context.Context, luid string) (definitioninspect.Definition, error) {
+	result, err := r.store.ReadResources(ctx, cache.ResourceQuery{Environment: r.environment, Site: r.site, Kind: pulseDefinitionKind, LUID: luid, Limit: 1})
 	if err != nil {
-		return definitioninspect.Definition{}, catalogReadError("pulse.definition.inspect", r.environment, r.site, err)
+		return definitioninspect.Definition{}, cacheReadError("pulse.definition.inspect", r.environment, r.site, err)
 	}
-	r.source = catalogRecordSource(result, result.Entries[0])
+	r.source = cacheRecordSource(result, result.Entries[0])
 	var item tableaupulse.Definition
 	if err := json.Unmarshal(result.Entries[0].Payload, &item); err != nil {
-		return definitioninspect.Definition{}, fmt.Errorf("decode catalog Pulse definition %q: %w", luid, err)
+		return definitioninspect.Definition{}, fmt.Errorf("decode cache Pulse definition %q: %w", luid, err)
 	}
 	item.TableauRequestID = ""
 	return definitionGetItem(item)
 }
 
-type catalogPulseMetricListReader struct {
-	store       *catalog.Store
+type cachePulseMetricListReader struct {
+	store       *cache.Store
 	environment string
 	site        string
 	source      *readsource.Metadata
 }
 
-func (r *catalogPulseMetricListReader) ListMetrics(ctx context.Context, definitionLUID string, request metriclist.PageRequest) (metriclist.Page, error) {
-	offset, err := pulseCatalogOffset(request.PageToken)
+func (r *cachePulseMetricListReader) ListMetrics(ctx context.Context, definitionLUID string, request metriclist.PageRequest) (metriclist.Page, error) {
+	offset, err := pulseCacheOffset(request.PageToken)
 	if err != nil {
 		return metriclist.Page{}, err
 	}
-	result, err := r.store.ReadResources(ctx, catalog.ResourceQuery{Environment: r.environment, Site: r.site, Kind: pulseMetricKind, ProjectPath: definitionLUID, Offset: offset, Limit: request.PageSize})
+	result, err := r.store.ReadResources(ctx, cache.ResourceQuery{Environment: r.environment, Site: r.site, Kind: pulseMetricKind, ProjectPath: definitionLUID, Offset: offset, Limit: request.PageSize})
 	if err != nil {
-		return metriclist.Page{}, catalogReadError("pulse.metric.list", r.environment, r.site, err)
+		return metriclist.Page{}, cacheReadError("pulse.metric.list", r.environment, r.site, err)
 	}
-	r.source = catalogReadSource(result)
+	r.source = cacheReadSource(result)
 	items := make([]metriclist.Metric, len(result.Entries))
 	for index, entry := range result.Entries {
 		var item tableaupulse.Metric
 		if err := json.Unmarshal(entry.Payload, &item); err != nil {
-			return metriclist.Page{}, fmt.Errorf("decode catalog Pulse metric %q: %w", entry.LUID, err)
+			return metriclist.Page{}, fmt.Errorf("decode cache Pulse metric %q: %w", entry.LUID, err)
 		}
 		items[index] = metricListItem(item)
 	}
-	return metriclist.Page{Metrics: items, NextPageToken: nextPulseCatalogOffset(offset, len(items), result.Total)}, nil
+	return metriclist.Page{Metrics: items, NextPageToken: nextPulseCacheOffset(offset, len(items), result.Total)}, nil
 }
 
-type catalogPulseMetricGetReader struct {
-	store       *catalog.Store
+type cachePulseMetricGetReader struct {
+	store       *cache.Store
 	environment string
 	site        string
 	source      *readsource.Metadata
 }
 
-func (r *catalogPulseMetricGetReader) GetMetric(ctx context.Context, luid string) (metricinspect.Metric, error) {
-	result, err := r.store.ReadResources(ctx, catalog.ResourceQuery{Environment: r.environment, Site: r.site, Kind: pulseMetricKind, LUID: luid, Limit: 1})
+func (r *cachePulseMetricGetReader) GetMetric(ctx context.Context, luid string) (metricinspect.Metric, error) {
+	result, err := r.store.ReadResources(ctx, cache.ResourceQuery{Environment: r.environment, Site: r.site, Kind: pulseMetricKind, LUID: luid, Limit: 1})
 	if err != nil {
-		return metricinspect.Metric{}, catalogReadError("pulse.metric.inspect", r.environment, r.site, err)
+		return metricinspect.Metric{}, cacheReadError("pulse.metric.inspect", r.environment, r.site, err)
 	}
-	r.source = catalogRecordSource(result, result.Entries[0])
+	r.source = cacheRecordSource(result, result.Entries[0])
 	var item tableaupulse.Metric
 	if err := json.Unmarshal(result.Entries[0].Payload, &item); err != nil {
-		return metricinspect.Metric{}, fmt.Errorf("decode catalog Pulse metric %q: %w", luid, err)
+		return metricinspect.Metric{}, fmt.Errorf("decode cache Pulse metric %q: %w", luid, err)
 	}
 	item.TableauRequestID = ""
 	return metricGetItem(item), nil
 }
 
-type catalogPulseFollowerReader struct {
-	store       *catalog.Store
+type cachePulseFollowerReader struct {
+	store       *cache.Store
 	environment string
 	site        string
 	source      *readsource.Metadata
 	snapshot    *pulseFollowerSnapshot
 }
 
-func (r *catalogPulseFollowerReader) GetMetric(ctx context.Context, luid string) (metricfollowers.Metric, error) {
-	result, err := r.store.ReadResources(ctx, catalog.ResourceQuery{Environment: r.environment, Site: r.site, Kind: pulseFollowerSnapshotKind, LUID: luid, Limit: 1})
+func (r *cachePulseFollowerReader) GetMetric(ctx context.Context, luid string) (metricfollowers.Metric, error) {
+	result, err := r.store.ReadResources(ctx, cache.ResourceQuery{Environment: r.environment, Site: r.site, Kind: pulseFollowerSnapshotKind, LUID: luid, Limit: 1})
 	if err != nil {
-		return metricfollowers.Metric{}, catalogReadError("pulse.metric.followers", r.environment, r.site, err)
+		return metricfollowers.Metric{}, cacheReadError("pulse.metric.followers", r.environment, r.site, err)
 	}
-	r.source = catalogRecordSource(result, result.Entries[0])
+	r.source = cacheRecordSource(result, result.Entries[0])
 	var snapshot pulseFollowerSnapshot
 	if err := json.Unmarshal(result.Entries[0].Payload, &snapshot); err != nil {
-		return metricfollowers.Metric{}, fmt.Errorf("decode catalog Pulse follower snapshot: %w", err)
+		return metricfollowers.Metric{}, fmt.Errorf("decode cache Pulse follower snapshot: %w", err)
 	}
 	if snapshot.Version != 1 || snapshot.MetricLUID != luid || snapshot.Subscriptions == nil {
-		return metricfollowers.Metric{}, errors.New("catalog Pulse follower snapshot is incomplete or has an unsupported version; run the exact follower command without --catalog to replace it")
+		return metricfollowers.Metric{}, errors.New("cache Pulse follower snapshot is incomplete or has an unsupported version; run the exact follower command without --cache to replace it")
 	}
 	r.snapshot = &snapshot
 	return metricfollowers.Metric{LUID: snapshot.MetricLUID}, nil
 }
 
-func (r *catalogPulseFollowerReader) ListSubscriptions(ctx context.Context, metricLUID string) ([]metricfollowers.Subscription, error) {
+func (r *cachePulseFollowerReader) ListSubscriptions(ctx context.Context, metricLUID string) ([]metricfollowers.Subscription, error) {
 	if r.snapshot == nil || r.snapshot.MetricLUID != metricLUID {
 		if _, err := r.GetMetric(ctx, metricLUID); err != nil {
 			return nil, err
@@ -977,19 +977,19 @@ func (r *catalogPulseFollowerReader) ListSubscriptions(ctx context.Context, metr
 
 func (c *pulseCommands) writePulseDefinitions(environment config.Environment, items []tableaupulse.Definition, coverage string) {
 	observedAt := c.runtime.now().UTC()
-	entries := make([]catalog.ResourceEntry, 0, len(items))
+	entries := make([]cache.ResourceEntry, 0, len(items))
 	for _, item := range items {
 		entry, err := resourceEntry(environment.Alias, environment.SiteContentURL, pulseDefinitionKind, item.LUID, item.Name, "", "", coverage, observedAt, item)
 		if err == nil {
 			entries = append(entries, entry)
 		}
 	}
-	writeThrough(c.runtime.catalogStore(environment), entries)
+	writeThrough(c.runtime.cacheStore(environment), entries)
 }
 
 func (c *pulseCommands) writePulseMetrics(environment config.Environment, items []tableaupulse.Metric, coverage string) {
 	observedAt := c.runtime.now().UTC()
-	entries := make([]catalog.ResourceEntry, 0, len(items))
+	entries := make([]cache.ResourceEntry, 0, len(items))
 	for _, item := range items {
 		name := strings.TrimSpace(item.Name)
 		if name == "" {
@@ -1000,7 +1000,7 @@ func (c *pulseCommands) writePulseMetrics(environment config.Environment, items 
 			entries = append(entries, entry)
 		}
 	}
-	writeThrough(c.runtime.catalogStore(environment), entries)
+	writeThrough(c.runtime.cacheStore(environment), entries)
 }
 
 type pulseFollowerSnapshot struct {
@@ -1019,21 +1019,21 @@ func (c *pulseCommands) writePulseFollowers(ctx context.Context, environment con
 	if err != nil {
 		return err
 	}
-	return c.runtime.catalogStore(environment).UpsertResources(ctx, []catalog.ResourceEntry{entry})
+	return c.runtime.cacheStore(environment).UpsertResources(ctx, []cache.ResourceEntry{entry})
 }
 
-func pulseCatalogOffset(token string) (int, error) {
+func pulseCacheOffset(token string) (int, error) {
 	if token == "" {
 		return 0, nil
 	}
 	offset, err := strconv.Atoi(token)
 	if err != nil || offset < 0 {
-		return 0, errors.New("invalid catalog continuation token")
+		return 0, errors.New("invalid cache continuation token")
 	}
 	return offset, nil
 }
 
-func nextPulseCatalogOffset(offset, returned, total int) string {
+func nextPulseCacheOffset(offset, returned, total int) string {
 	if returned == 0 || offset+returned >= total {
 		return ""
 	}

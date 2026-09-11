@@ -39,13 +39,13 @@ func TestRepeatedDatasourceFieldSelectionThroughCLI(t *testing.T) {
 		t.Fatal("full output included an unrequested field")
 	}
 	before := calls.total.Load()
-	cached := runSchemaSelection(t, options, append(append([]string(nil), selection...), "--catalog", "--full")...)
-	if calls.total.Load() != before || cached.Page.Returned != 3 || cached.Source == nil || cached.Source.Mode != "catalog" {
-		t.Fatalf("catalog selection: calls=%d/%d output=%#v", before, calls.total.Load(), cached)
+	cached := runSchemaSelection(t, options, append(append([]string(nil), selection...), "--cache", "--full")...)
+	if calls.total.Load() != before || cached.Page.Returned != 3 || cached.Source == nil || cached.Source.Mode != "cache" {
+		t.Fatalf("cache selection: calls=%d/%d output=%#v", before, calls.total.Load(), cached)
 	}
 	for _, test := range []struct{ id, want string }{{"Unknown", "datasource.schema.field_not_found"}, {"Duplicate", "datasource.schema.field_ambiguous"}} {
 		var diagnostic bytes.Buffer
-		exit := app.Run(context.Background(), []string{"content", "datasource", "schema", "--environment", "test", "--id", "ds-1", "--field-id", test.id, "--catalog"}, &diagnostic, options)
+		exit := app.Run(context.Background(), []string{"content", "datasource", "schema", "--environment", "test", "--id", "ds-1", "--field-id", test.id, "--cache"}, &diagnostic, options)
 		if exit != 2 || !strings.Contains(diagnostic.String(), test.want) || calls.total.Load() != before {
 			t.Fatalf("cached selection %q: exit=%d calls=%d/%d output=%s", test.id, exit, before, calls.total.Load(), diagnostic.String())
 		}

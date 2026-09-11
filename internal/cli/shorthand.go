@@ -9,8 +9,9 @@ import (
 )
 
 var commandAliases = map[string]string{
+	"catalog": "cat", "database": "db", "table": "tbl", "column": "col", "audit": "aud", "label": "lbl", "value": "val", "category": "ctg",
 	"admin": "adm", "agent": "agt", "artifact": "art", "auth": "ath",
-	"capability": "cap", "catalog": "cat", "check": "chk", "clean": "cln",
+	"capability": "cap", "cache": "cch", "check": "chk", "clean": "cln",
 	"clone": "cl", "completion": "cmp", "content": "con", "create": "new",
 	"datasource": "ds", "default": "dft", "definition": "def", "delete": "del",
 	"doctor": "doc", "flow": "flw", "follow": "fol", "followers": "fls",
@@ -31,11 +32,13 @@ var flagShorthands = map[string]string{
 }
 
 var flagLongAliases = map[string]string{
+	"value":        "val",
+	"descriptions": "dcs", "tags": "tgs", "metadata-id": "mdi", "table-id": "tbi", "database-id": "dbi", "contact-id": "cti", "add-tag": "atg", "remove-tag": "rtg", "direct-only": "dro", "target-id": "tid", "category": "ctg", "message": "msg", "active": "act", "elevated": "elv",
 	"batch-file": "btf", "json": "jsn", "username": "unm", "principal-username": "pun",
 	"aggregation": "agg", "api-version": "api", "append": "apd", "artifact": "art",
 	"artifact-name": "arn", "as-job": "job", "auth-setting": "aus", "capability": "cap",
-	"catalog": "cat", "catalog-max-concurrency": "cmc", "check": "chk", "class": "cls",
-	"clear-api-version": "cav", "clear-catalog-max-concurrency": "ccm", "clear-default-workspace": "cdw",
+	"cache": "cch", "cache-max-concurrency": "cmc", "check": "chk", "class": "cls",
+	"clear-api-version": "cav", "clear-cache-max-concurrency": "ccm", "clear-default-workspace": "cdw",
 	"clear-pat-name-env": "cpn", "clear-pat-secret-env": "cps", "clear-site": "cst",
 	"config": "cfg", "content-permissions": "cpm", "create": "new", "currency": "cur",
 	"cursor": "csr", "datasource-id": "did", "datasource-map": "dsm", "date-field": "dtf",

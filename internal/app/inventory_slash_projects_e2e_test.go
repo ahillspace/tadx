@@ -18,17 +18,17 @@ func TestCachedContentSelectorsRejectAmbiguousProjectPathsThroughCLI(t *testing.
 		t.Run(kind, func(t *testing.T) {
 			server, requests := slashInventoryServer(t)
 			defer server.Close()
-			options := catalogResilienceOptions(t, server)
+			options := cacheResilienceOptions(t, server)
 			// Projects are implicit in this refresh; their identities must still
 			// constrain content selectors without requiring a separate project list.
-			runGroupOneCLI(t, options, "catalog", "refresh", "--environment", "production", "--scope", kind+"s")
+			runGroupOneCLI(t, options, "cache", "refresh", "--environment", "production", "--scope", kind+"s")
 			before := requests.Load()
 			var out strings.Builder
-			exit := app.Run(context.Background(), []string{"content", kind, "inspect", "--environment", "production", "--catalog", "--name", "Revenue", "--project", "Ops/Reports"}, &out, options)
+			exit := app.Run(context.Background(), []string{"content", kind, "inspect", "--environment", "production", "--cache", "--name", "Revenue", "--project", "Ops/Reports"}, &out, options)
 			if exit == 0 || !strings.Contains(out.String(), "ambiguous") || !strings.Contains(out.String(), "slash") || !strings.Contains(out.String(), "nested") {
 				t.Fatalf("ambiguous cached project path: exit=%d\n%s", exit, out.String())
 			}
-			exact := runGroupOneCLI(t, options, "content", kind, "inspect", "--environment", "production", "--catalog", "--id", kind+"-direct")
+			exact := runGroupOneCLI(t, options, "content", kind, "inspect", "--environment", "production", "--cache", "--id", kind+"-direct")
 			if !strings.Contains(exact, kind+"-direct") || requests.Load() != before {
 				t.Fatalf("exact cached LUID failed or contacted Tableau:\n%s", exact)
 			}
@@ -41,34 +41,34 @@ func TestSlashProjectInventoryRetainsContentThroughCLI(t *testing.T) {
 		t.Run(kind, func(t *testing.T) {
 			server, requests := slashInventoryServer(t)
 			defer server.Close()
-			options := catalogResilienceOptions(t, server)
+			options := cacheResilienceOptions(t, server)
 			out := runGroupOneCLI(t, options, "content", kind, "list", "--environment", "production", "--all", "--full")
 			assertSlashInventory(t, kind, out)
 			before := requests.Load()
-			cached := runGroupOneCLI(t, options, "content", kind, "list", "--environment", "production", "--catalog", "--full")
+			cached := runGroupOneCLI(t, options, "content", kind, "list", "--environment", "production", "--cache", "--full")
 			assertSlashInventory(t, kind, cached)
 			if requests.Load() != before {
-				t.Fatal("catalog read contacted Tableau")
+				t.Fatal("cache read contacted Tableau")
 			}
 		})
 	}
 }
 
-func TestCatalogRefreshRetainsSlashProjectContentThroughCLI(t *testing.T) {
+func TestCacheRefreshRetainsSlashProjectContentThroughCLI(t *testing.T) {
 	server, requests := slashInventoryServer(t)
 	defer server.Close()
-	options := catalogResilienceOptions(t, server)
-	out := runGroupOneCLI(t, options, "catalog", "refresh", "--environment", "production", "--scope", "projects,workbooks,datasources,flows", "--full")
+	options := cacheResilienceOptions(t, server)
+	out := runGroupOneCLI(t, options, "cache", "refresh", "--environment", "production", "--scope", "projects,workbooks,datasources,flows", "--full")
 	if !strings.Contains(out, "status: refreshed") || !strings.Contains(out, "complete: true") {
 		t.Fatalf("refresh:\n%s", out)
 	}
 	before := requests.Load()
 	for _, kind := range []string{"project", "workbook", "datasource", "flow"} {
-		out = runGroupOneCLI(t, options, "content", kind, "list", "--environment", "production", "--catalog", "--full")
+		out = runGroupOneCLI(t, options, "content", kind, "list", "--environment", "production", "--cache", "--full")
 		assertSlashInventory(t, kind, out)
 	}
 	if requests.Load() != before {
-		t.Fatal("catalog reads contacted Tableau")
+		t.Fatal("cache reads contacted Tableau")
 	}
 }
 

@@ -15,7 +15,7 @@ import (
 	"time"
 
 	"github.com/ahillspace/tadx/internal/app"
-	"github.com/ahillspace/tadx/internal/catalog"
+	"github.com/ahillspace/tadx/internal/cache"
 	tableaupulse "github.com/ahillspace/tadx/internal/tableau/pulse"
 )
 
@@ -31,12 +31,12 @@ func pulseEfficiencyOptions(t *testing.T, server *httptest.Server) app.Options {
 	return app.Options{ConfigPath: path, HTTPClient: server.Client(), MutationsEnabled: true}
 }
 
-func TestPulseDefinitionDatasourceFilterCatalogMultipageThroughCLI(t *testing.T) {
+func TestPulseDefinitionDatasourceFilterCacheMultipageThroughCLI(t *testing.T) {
 	requests := 0
 	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { requests++; w.WriteHeader(403) }))
 	defer server.Close()
 	options := pulseEfficiencyOptions(t, server)
-	entries := make([]catalog.ResourceEntry, 205)
+	entries := make([]cache.ResourceEntry, 205)
 	for i := range entries {
 		ds := "other"
 		if i >= 200 {
@@ -47,14 +47,14 @@ func TestPulseDefinitionDatasourceFilterCatalogMultipageThroughCLI(t *testing.T)
 		if err != nil {
 			t.Fatal(err)
 		}
-		entries[i] = catalog.ResourceEntry{Environment: "test", Site: "test", Kind: "definition", LUID: id, Name: id, Payload: payload, ObservedAt: time.Now().UTC(), Coverage: "summary"}
+		entries[i] = cache.ResourceEntry{Environment: "test", Site: "test", Kind: "definition", LUID: id, Name: id, Payload: payload, ObservedAt: time.Now().UTC(), Coverage: "summary"}
 	}
-	if err := targetCatalogFixture(t, options.ConfigPath, nil).UpsertResources(context.Background(), entries); err != nil {
+	if err := targetCacheFixture(t, options.ConfigPath, nil).UpsertResources(context.Background(), entries); err != nil {
 		t.Fatal(err)
 	}
 	for _, extra := range [][]string{{"--limit", "1"}, {"--all"}} {
 		var output bytes.Buffer
-		code := app.Run(context.Background(), append([]string{"pulse", "definition", "list", "--catalog", "--datasource-id", "datasource-1"}, extra...), &output, options)
+		code := app.Run(context.Background(), append([]string{"pulse", "definition", "list", "--cache", "--datasource-id", "datasource-1"}, extra...), &output, options)
 		if code != 0 || requests != 0 || !strings.Contains(output.String(), "definition-200") || strings.Contains(output.String(), "definition-199") {
 			t.Fatalf("code=%d requests=%d output=%s", code, requests, output.String())
 		}

@@ -8,7 +8,7 @@ definition:
 details: "--full"
 help[1]: tadx pulse definition pull --id definition-1
 source:
-  mode: catalog
+  mode: cache
   observed_at: "2026-09-04T12:00:00Z"
   coverage: complete
   stale: false

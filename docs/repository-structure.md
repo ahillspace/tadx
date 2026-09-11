@@ -17,7 +17,7 @@ The [SVG](architecture/tadx-architecture.svg) and [editable Excalidraw source](a
 | `internal/tableau` | Tableau API clients, shared HTTP transport, and inventory collectors |
 | `internal/auth` | PAT resolution, native credential storage, authenticated sessions, and credential-scoped coordination |
 | `internal/workspace`, `internal/artifact` | Named workspace registration, native packages, provenance, and dirty guards |
-| `internal/catalog` | SQLite catalog generations, scoped observations, and local queries |
+| `internal/cache` | SQLite cache generations, scoped observations, and local queries |
 | `internal/config` | Nonsecret configuration, environment aliases, and opaque credential references |
 | `internal/output`, `internal/toon` | Bounded output projections, redaction, and TOON encoding |
 | `internal/capability` | Typed capability facts, validation, and command bindings |
@@ -43,7 +43,7 @@ The allowlist remains authoritative as individual foundation packages evolve.
 Mutation validation uses fresh state at the relevant validation boundaries.
 Tableau LUIDs provide authoritative remote identity; ambiguous name and project selectors fail deterministically.
 Configuration stores credential references, while approved persistent PATs reside only in the native OS credential store.
-Workspaces hold managed content artifacts; the catalog holds cached observations and does not replace a live source implicitly.
+Workspaces hold managed content artifacts; the cache holds cached observations and does not replace a live source implicitly.
 Persisted artifact paths are relative to the workspace and use forward slashes.
 
 ## Capability metadata and documentation

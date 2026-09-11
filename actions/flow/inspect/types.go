@@ -10,7 +10,7 @@ const detailLimit = 50
 type Input struct {
 	Environment, Site string
 	Selector          identity.Selector
-	Catalog           bool
+	Cache             bool
 }
 
 // SetSelector records one exact CLI selector without exposing identity plumbing to Cobra.

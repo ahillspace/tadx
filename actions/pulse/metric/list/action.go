@@ -37,7 +37,7 @@ func (a *Action) Execute(ctx context.Context, input Input) (Output, error) {
 	if limit < 1 || limit > 10000 {
 		return Output{}, fail("pulse.metric.list.usage", errs.KindUsage, input, "Pulse metric list limit must be between 1 and 10000.", nil)
 	}
-	token, err := decodeCursor(input.Cursor, input.Environment, input.Site, input.DefinitionLUID, limit, input.Catalog)
+	token, err := decodeCursor(input.Cursor, input.Environment, input.Site, input.DefinitionLUID, limit, input.Cache)
 	if err != nil {
 		return Output{}, fail("pulse.metric.list.usage", errs.KindUsage, input, "Pulse metric cursor does not match this definition, limit, and source.", err)
 	}
@@ -63,7 +63,7 @@ func (a *Action) Execute(ctx context.Context, input Input) (Output, error) {
 		page, err := a.reader.ListMetrics(ctx, input.DefinitionLUID, PageRequest{PageSize: pageSize, PageToken: token})
 		if err != nil {
 			var structured *errs.Error
-			if input.Catalog && errors.As(err, &structured) {
+			if input.Cache && errors.As(err, &structured) {
 				return Output{}, err
 			}
 			retryable, corrective := errs.CompleteRetryAdvice(err, "Review the Tableau response, then retry the listing.")
@@ -93,7 +93,7 @@ func (a *Action) Execute(ctx context.Context, input Input) (Output, error) {
 	if len(items) > limit {
 		items = items[:limit]
 	}
-	next, err := encodeCursor(nextToken, input.Environment, input.Site, input.DefinitionLUID, limit, input.Catalog)
+	next, err := encodeCursor(nextToken, input.Environment, input.Site, input.DefinitionLUID, limit, input.Cache)
 	if err != nil {
 		return Output{}, err
 	}
@@ -111,17 +111,17 @@ type cursor struct {
 	Environment string `json:"e"`
 	Site        string `json:"s"`
 	Limit       int    `json:"l"`
-	Catalog     bool   `json:"c"`
+	Cache       bool   `json:"c"`
 }
 
-func encodeCursor(token, environment, site, definition string, limit int, catalog bool) (string, error) {
+func encodeCursor(token, environment, site, definition string, limit int, cache bool) (string, error) {
 	if token == "" {
 		return "", nil
 	}
-	data, err := json.Marshal(cursor{Version: 1, Token: token, Definition: definition, Environment: environment, Site: site, Limit: limit, Catalog: catalog})
+	data, err := json.Marshal(cursor{Version: 1, Token: token, Definition: definition, Environment: environment, Site: site, Limit: limit, Cache: cache})
 	return base64.RawURLEncoding.EncodeToString(data), err
 }
-func decodeCursor(value, environment, site, definition string, limit int, catalog bool) (string, error) {
+func decodeCursor(value, environment, site, definition string, limit int, cache bool) (string, error) {
 	if value == "" {
 		return "", nil
 	}
@@ -130,7 +130,7 @@ func decodeCursor(value, environment, site, definition string, limit int, catalo
 	}
 	data, err := base64.RawURLEncoding.DecodeString(value)
 	var c cursor
-	if err != nil || json.Unmarshal(data, &c) != nil || c.Version != 1 || c.Token == "" || c.Definition != definition || c.Environment != environment || c.Site != site || c.Limit != limit || c.Catalog != catalog {
+	if err != nil || json.Unmarshal(data, &c) != nil || c.Version != 1 || c.Token == "" || c.Definition != definition || c.Environment != environment || c.Site != site || c.Limit != limit || c.Cache != cache {
 		return "", errors.New("invalid cursor")
 	}
 	return c.Token, nil

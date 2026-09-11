@@ -849,7 +849,7 @@ input[type="search"]:focus, select:focus {
 }
 .behavior-labels { display: flex; flex-wrap: wrap; gap: .3rem; margin-top: .65rem; }
 .badge.live { border-color: #95cbd8; background: #e0f3f7; color: #075b70; }
-.badge.catalog { border-color: #b5c2cb; background: #eef2f5; color: #435563; }
+.badge.cache { border-color: #b5c2cb; background: #eef2f5; color: #435563; }
 .badge.pull { border-color: #a9c0ea; background: #e3ebfa; color: #244b90; }
 .badge.preview { border-color: #d9bf76; background: #fff3cd; color: #765300; }
 .badge.gated { border-color: #dca6cb; background: #f8e5f2; color: #7b245f; }
@@ -933,23 +933,23 @@ input[type="search"]:focus, select:focus {
   </section>
 
   <div class="utility-bar">
-    <span><strong>Current registry:</strong> native search and resource lists read live by default; <code>--catalog</code> selects local-only reads.</span>
+    <span><strong>Current registry:</strong> native search and resource lists read live by default; <code>--cache</code> selects local-only reads.</span>
     <span class="execution-summary"><span class="status-light" aria-hidden="true"></span><strong id="executionCount">0</strong> CLI capabilities enabled under the disabled-policy snapshot baseline</span>
   </div>
 
   <section class="runtime-model" aria-label="Default command behavior">
     <article class="default-card search-default">
       <div class="default-card-head"><h2>Search</h2><span class="default-count" id="nativeSearchCount">0</span></div>
-      <p><code>tadx search</code> uses Tableau native content search for nonempty content terms. Admin and Pulse use dedicated live adapters. <code>--catalog</code> is local-only.</p>
-      <div class="behavior-labels"><span class="badge live">NATIVE LIVE</span><span class="badge catalog">--CATALOG OPT-IN</span></div>
+      <p><code>tadx search</code> uses Tableau native content search for nonempty content terms. Admin and Pulse use dedicated live adapters. <code>--cache</code> is local-only.</p>
+      <div class="behavior-labels"><span class="badge live">NATIVE LIVE</span><span class="badge cache">--CACHE OPT-IN</span></div>
     </article>
     <article class="default-card action-default">
       <div class="default-card-head"><h2>Resource lists</h2><span class="default-count" id="inventoryListCount">0</span></div>
       <p>Resource lists use bounded live reads by default.
-      Explicit <code>--all</code> collects the matching inventory and renders it in memory, with best-effort catalog persistence.
+      Explicit <code>--all</code> collects the matching inventory and renders it in memory, with best-effort cache persistence.
       Filtered collections save observations; only complete unfiltered collections replace the resource scope.
-      <code>--catalog</code> is local-only.</p>
-      <div class="behavior-labels"><span class="badge live">BOUNDED LIVE</span><span class="badge catalog">--ALL OPT-IN</span><span class="badge catalog">--CATALOG OPT-IN</span></div>
+      <code>--cache</code> is local-only.</p>
+      <div class="behavior-labels"><span class="badge live">BOUNDED LIVE</span><span class="badge cache">--ALL OPT-IN</span><span class="badge cache">--CACHE OPT-IN</span></div>
     </article>
     <article class="default-card pull-default">
       <div class="default-card-head"><h2>Pull operations</h2><span class="default-count" id="pullDefaultCount">0</span></div>
@@ -1021,7 +1021,7 @@ input[type="search"]:focus, select:focus {
             <option value="">All behaviors</option>
             <option value="native-search">Native Tableau search</option>
             <option value="inventory-list">Bounded live resource list</option>
-            <option value="catalog-opt-in">Catalog opt-in</option>
+            <option value="cache-opt-in">Cache opt-in</option>
             <option value="pull-now">Pull executes by default</option>
             <option value="preview">Supports --preview</option>
             <option value="mutation-gated">Mutation gate required</option>
@@ -1045,7 +1045,7 @@ input[type="search"]:focus, select:focus {
           <div class="legend-row"><span class="badge local">LOCAL</span>Local write</div>
           <div class="legend-row"><span class="badge delegated">DELEGATED</span>External owner</div>
           <div class="legend-row"><span class="badge live">LIVE</span>Live Tableau default</div>
-          <div class="legend-row"><span class="badge catalog">CATALOG</span>Local-only catalog option</div>
+          <div class="legend-row"><span class="badge cache">CACHE</span>Local-only cache option</div>
           <div class="legend-row"><span class="badge pull">PULL NOW</span>Writes artifact by default</div>
           <div class="legend-row"><span class="badge preview">PREVIEW</span>No-write plan available</div>
           <div class="legend-row"><span class="badge gated">GATED</span>Effective mutation policy</div>
@@ -1159,10 +1159,10 @@ input[type="search"]:focus, select:focus {
     "local_write": false,
     "remote_mutation": false,
     "supports_preview": false,
-    "safety_guard": "Live Tableau by default; --catalog is local-only; no fallback; exact group; membership pages normalized",
+    "safety_guard": "Live Tableau by default; --cache is local-only; no fallback; exact group; membership pages normalized",
     "artifact_effect": "None",
     "upstream_operation": "GET .../groups; GET .../groups/{group-id}/users",
-    "evidence": "docs/evidence/admin-rest-contract.md; hermetic catalog source-selection tests",
+    "evidence": "docs/evidence/admin-rest-contract.md; hermetic cache source-selection tests",
     "evidence_level": "contract-verified",
     "verification": "ready",
     "implementation": "implemented",
@@ -1181,19 +1181,19 @@ input[type="search"]:focus, select:focus {
     "type": "find",
     "disposition": "ship",
     "owner": "cli",
-    "selectors": "Environment/site; optional group filters; --limit 1..10000 (default 25) or --all; optional --catalog",
+    "selectors": "Environment/site; optional group filters; --limit 1..10000 (default 25) or --all; optional --cache",
     "availability": "Cloud / Server",
     "local_write": true,
     "remote_mutation": false,
     "supports_preview": false,
-    "safety_guard": "Ordinary live lists use bounded provider reads without SQLite access; --all collects through the shared inventory collector and renders in memory; complete unfiltered collections atomically replace the resource catalog scope on a best-effort basis; filtered collections save selected observations; catalog write failure preserves the live answer with a warning; --catalog is local-only; --all rejects incomplete coverage and results beyond 10000 records; --full changes presentation only",
-    "artifact_effect": "Best-effort catalog update only with live --all",
-    "upstream_operation": "GET /api/{version}/sites/{site-id}/groups; shared inventory collection for --all; SQLite only for explicit catalog reads or best-effort --all persistence",
+    "safety_guard": "Ordinary live lists use bounded provider reads without SQLite access; --all collects through the shared inventory collector and renders in memory; complete unfiltered collections atomically replace the resource cache scope on a best-effort basis; filtered collections save selected observations; cache write failure preserves the live answer with a warning; --cache is local-only; --all rejects incomplete coverage and results beyond 10000 records; --full changes presentation only",
+    "artifact_effect": "Best-effort cache update only with live --all",
+    "upstream_operation": "GET /api/{version}/sites/{site-id}/groups; shared inventory collection for --all; SQLite only for explicit cache reads or best-effort --all persistence",
     "evidence": "docs/evidence/group2-inventory-rest-contract.md; docs/evidence/admin-rest-contract.md; hermetic bounded-read, complete-collection, and source-selection tests",
     "evidence_level": "contract-verified",
     "verification": "ready",
     "implementation": "implemented",
-    "validation": "Contract-verified bounded live reads without catalog access, shared complete collection, truthful coverage, best-effort persistence, and explicit local catalog selection",
+    "validation": "Contract-verified bounded live reads without cache access, shared complete collection, truthful coverage, best-effort persistence, and explicit local cache selection",
     "command_path": [
       "admin",
       "group",
@@ -1431,10 +1431,10 @@ input[type="search"]:focus, select:focus {
     "local_write": false,
     "remote_mutation": false,
     "supports_preview": false,
-    "safety_guard": "Live Tableau by default; --catalog is local-only; no fallback; ambiguity fails",
+    "safety_guard": "Live Tableau by default; --cache is local-only; no fallback; ambiguity fails",
     "artifact_effect": "None",
     "upstream_operation": "GET /api/{version}/sites/{site-id}/users/{user-id}",
-    "evidence": "docs/evidence/admin-rest-contract.md; hermetic catalog source-selection tests",
+    "evidence": "docs/evidence/admin-rest-contract.md; hermetic cache source-selection tests",
     "evidence_level": "contract-verified",
     "verification": "ready",
     "implementation": "implemented",
@@ -1453,19 +1453,19 @@ input[type="search"]:focus, select:focus {
     "type": "find",
     "disposition": "ship",
     "owner": "cli",
-    "selectors": "Environment/site; optional user filters; --limit 1..10000 (default 25) or --all; optional --catalog",
+    "selectors": "Environment/site; optional user filters; --limit 1..10000 (default 25) or --all; optional --cache",
     "availability": "Cloud / Server",
     "local_write": true,
     "remote_mutation": false,
     "supports_preview": false,
-    "safety_guard": "Ordinary live lists use bounded provider reads without SQLite access; --all collects through the shared inventory collector and renders in memory; complete unfiltered collections atomically replace the resource catalog scope on a best-effort basis; filtered collections save selected observations; catalog write failure preserves the live answer with a warning; --catalog is local-only; --all rejects incomplete coverage and results beyond 10000 records; --full changes presentation only",
-    "artifact_effect": "Best-effort catalog update only with live --all",
-    "upstream_operation": "GET /api/{version}/sites/{site-id}/users; shared inventory collection for --all; SQLite only for explicit catalog reads or best-effort --all persistence",
+    "safety_guard": "Ordinary live lists use bounded provider reads without SQLite access; --all collects through the shared inventory collector and renders in memory; complete unfiltered collections atomically replace the resource cache scope on a best-effort basis; filtered collections save selected observations; cache write failure preserves the live answer with a warning; --cache is local-only; --all rejects incomplete coverage and results beyond 10000 records; --full changes presentation only",
+    "artifact_effect": "Best-effort cache update only with live --all",
+    "upstream_operation": "GET /api/{version}/sites/{site-id}/users; shared inventory collection for --all; SQLite only for explicit cache reads or best-effort --all persistence",
     "evidence": "docs/evidence/group2-inventory-rest-contract.md; docs/evidence/admin-rest-contract.md; hermetic bounded-read, complete-collection, and source-selection tests",
     "evidence_level": "contract-verified",
     "verification": "ready",
     "implementation": "implemented",
-    "validation": "Contract-verified bounded live reads without catalog access, shared complete collection, truthful coverage, best-effort persistence, and explicit local catalog selection",
+    "validation": "Contract-verified bounded live reads without cache access, shared complete collection, truthful coverage, best-effort persistence, and explicit local cache selection",
     "command_path": [
       "admin",
       "user",
@@ -1709,9 +1709,9 @@ input[type="search"]:focus, select:focus {
     "raw_capable": false
   },
   {
-    "id": "catalog.refresh",
-    "surface": "tadx catalog refresh",
-    "outcome": "Collect selected inventory scopes and atomically replace one normalized catalog generation.",
+    "id": "cache.refresh",
+    "surface": "tadx cache refresh",
+    "outcome": "Collect selected inventory scopes and atomically replace one normalized cache generation.",
     "type": "inspect",
     "disposition": "ship",
     "owner": "cli",
@@ -1720,23 +1720,23 @@ input[type="search"]:focus, select:focus {
     "local_write": true,
     "remote_mutation": false,
     "supports_preview": false,
-    "safety_guard": "Inventory failures preserve the prior generation; selected permission 403s preserve useful inventory with explicit incomplete permission coverage; environment catalog_max_concurrency defaults to 32 and accepts 1..256; starts at min(4, maximum) and ramps gradually; rate-limited reads share one run cooldown; explicit refresh transactionally rebuilds recognized older catalog schemas",
+    "safety_guard": "Inventory failures preserve the prior generation; selected permission 403s preserve useful inventory with explicit incomplete permission coverage; environment cache_max_concurrency defaults to 32 and accepts 1..256; starts at min(4, maximum) and ramps gradually; rate-limited reads share one run cooldown; explicit refresh transactionally rebuilds recognized older cache schemas",
     "artifact_effect": "None",
     "upstream_operation": "Admitted REST inventory endpoints; bulk workbook permission reads only with explicit permissions scope; transactional SQLite publication",
     "evidence": "docs/evidence/group2-inventory-rest-contract.md",
     "evidence_level": "contract-verified",
     "verification": "ready",
     "implementation": "implemented",
-    "validation": "Contract-verified inventory-only defaults, opt-in bulk permissions, adaptive concurrent collection, and atomic catalog publication",
+    "validation": "Contract-verified inventory-only defaults, opt-in bulk permissions, adaptive concurrent collection, and atomic cache publication",
     "command_path": [
-      "catalog",
+      "cache",
       "refresh"
     ],
     "raw_capable": false
   },
   {
-    "id": "catalog.status",
-    "surface": "tadx catalog status",
+    "id": "cache.status",
+    "surface": "tadx cache status",
     "outcome": "Report generation age, completeness, source, and stale state.",
     "type": "inspect",
     "disposition": "ship",
@@ -1746,16 +1746,16 @@ input[type="search"]:focus, select:focus {
     "local_write": false,
     "remote_mutation": false,
     "supports_preview": false,
-    "safety_guard": "Uninitialized before first refresh; scope completeness remains explicit; 12-hour stale warning; older catalog schema requires explicit catalog refresh; status never rebuilds the cache",
+    "safety_guard": "Uninitialized before first refresh; scope completeness remains explicit; 12-hour stale warning; older cache schema requires explicit cache refresh; status never rebuilds the cache",
     "artifact_effect": "None",
-    "upstream_operation": "Local catalog generation metadata",
+    "upstream_operation": "Local cache generation metadata",
     "evidence": "A1 §§5.9, 12.8; C1 §2.1",
     "evidence_level": "local-contract",
     "verification": "ready",
     "implementation": "implemented",
     "validation": "Architecture-locked local contract",
     "command_path": [
-      "catalog",
+      "cache",
       "status"
     ],
     "raw_capable": false
@@ -1887,10 +1887,10 @@ input[type="search"]:focus, select:focus {
     "local_write": false,
     "remote_mutation": false,
     "supports_preview": false,
-    "safety_guard": "Live Tableau by default; --catalog is local-only; no fallback; record Metadata API permission mode and partial warnings",
+    "safety_guard": "Live Tableau by default; --cache is local-only; no fallback; record Metadata API permission mode and partial warnings",
     "artifact_effect": "None",
     "upstream_operation": "GET .../datasources/{id}; optional Metadata API and VDS detail",
-    "evidence": "docs/evidence/group2-inventory-rest-contract.md; hermetic catalog source-selection tests",
+    "evidence": "docs/evidence/group2-inventory-rest-contract.md; hermetic cache source-selection tests",
     "evidence_level": "contract-verified",
     "verification": "ready",
     "implementation": "implemented",
@@ -1909,19 +1909,19 @@ input[type="search"]:focus, select:focus {
     "type": "find",
     "disposition": "ship",
     "owner": "cli",
-    "selectors": "Environment/site; optional project/owner/name/type/tag/time filters; --limit 1..10000 (default 25) or --all; optional --catalog",
+    "selectors": "Environment/site; optional project/owner/name/type/tag/time filters; --limit 1..10000 (default 25) or --all; optional --cache",
     "availability": "Cloud / Server",
     "local_write": true,
     "remote_mutation": false,
     "supports_preview": false,
-    "safety_guard": "Ordinary live lists use bounded provider reads without SQLite access; --all collects through the shared inventory collector and renders in memory; complete unfiltered collections atomically replace the resource catalog scope on a best-effort basis; filtered collections save selected observations; catalog write failure preserves the live answer with a warning; --catalog is local-only; --all rejects incomplete coverage and results beyond 10000 records; --full changes presentation only; cached project-name filtering uses indexed canonical project LUIDs and complete project coverage",
-    "artifact_effect": "Best-effort catalog update only with live --all",
-    "upstream_operation": "GET /api/{version}/sites/{site-id}/datasources; shared inventory collection for --all; SQLite only for explicit catalog reads or best-effort --all persistence",
+    "safety_guard": "Ordinary live lists use bounded provider reads without SQLite access; --all collects through the shared inventory collector and renders in memory; complete unfiltered collections atomically replace the resource cache scope on a best-effort basis; filtered collections save selected observations; cache write failure preserves the live answer with a warning; --cache is local-only; --all rejects incomplete coverage and results beyond 10000 records; --full changes presentation only; cached project-name filtering uses indexed canonical project LUIDs and complete project coverage",
+    "artifact_effect": "Best-effort cache update only with live --all",
+    "upstream_operation": "GET /api/{version}/sites/{site-id}/datasources; shared inventory collection for --all; SQLite only for explicit cache reads or best-effort --all persistence",
     "evidence": "docs/evidence/group2-inventory-rest-contract.md; hermetic bounded-read, complete-collection, and source-selection tests",
     "evidence_level": "contract-verified",
     "verification": "ready",
     "implementation": "implemented",
-    "validation": "Contract-verified bounded live reads without catalog access, shared complete collection, truthful coverage, best-effort persistence, and explicit local catalog selection",
+    "validation": "Contract-verified bounded live reads without cache access, shared complete collection, truthful coverage, best-effort persistence, and explicit local cache selection",
     "command_path": [
       "content",
       "datasource",
@@ -2066,7 +2066,7 @@ input[type="search"]:focus, select:focus {
     "local_write": false,
     "remote_mutation": false,
     "supports_preview": false,
-    "safety_guard": "Query Tableau by default; --catalog is local-only with no source fallback; preserve raw field identity separately from display captions; report more_available without opaque cursors",
+    "safety_guard": "Query Tableau by default; --cache is local-only with no source fallback; preserve raw field identity separately from display captions; report more_available without opaque cursors",
     "artifact_effect": "None",
     "upstream_operation": "VDS read-metadata, VDS describe-datasource, then Metadata API fallback",
     "evidence": "Proven existing field-catalog implementation plus hermetic TADX contract tests",
@@ -2111,7 +2111,7 @@ input[type="search"]:focus, select:focus {
   {
     "id": "doctor.run",
     "surface": "tadx doctor",
-    "outcome": "Diagnose config, PAT presence and validity, Tableau connectivity, catalog, workspace, and logging context without mutation.",
+    "outcome": "Diagnose config, PAT presence and validity, Tableau connectivity, cache, workspace, and logging context without mutation.",
     "type": "inspect",
     "disposition": "ship",
     "owner": "cli",
@@ -2140,12 +2140,12 @@ input[type="search"]:focus, select:focus {
     "type": "change",
     "disposition": "ship",
     "owner": "cli",
-    "selectors": "New environment alias; optional --catalog-max-concurrency 1..256",
+    "selectors": "New environment alias; optional --cache-max-concurrency 1..256",
     "availability": "Local / all",
     "local_write": true,
     "remote_mutation": false,
     "supports_preview": false,
-    "safety_guard": "Schema validation; collision guard; atomic file replacement; omitted catalog concurrency uses 32",
+    "safety_guard": "Schema validation; collision guard; atomic file replacement; omitted cache concurrency uses 32",
     "artifact_effect": "None",
     "upstream_operation": "Write local config.yaml",
     "evidence": "A1 §§7.2–7.4, ADR-010; C1 §2.1",
@@ -2162,7 +2162,7 @@ input[type="search"]:focus, select:focus {
   {
     "id": "env.profile.get",
     "surface": "tadx env get",
-    "outcome": "Inspect one resolved non-secret environment profile, including its catalog concurrency setting.",
+    "outcome": "Inspect one resolved non-secret environment profile, including its cache concurrency setting.",
     "type": "inspect",
     "disposition": "ship",
     "owner": "cli",
@@ -2270,12 +2270,12 @@ input[type="search"]:focus, select:focus {
     "type": "change",
     "disposition": "ship",
     "owner": "cli",
-    "selectors": "Environment alias; optional --catalog-max-concurrency 1..256 or --clear-catalog-max-concurrency",
+    "selectors": "Environment alias; optional --cache-max-concurrency 1..256 or --clear-cache-max-concurrency",
     "availability": "Local / all",
     "local_write": true,
     "remote_mutation": false,
     "supports_preview": false,
-    "safety_guard": "Exact alias; secret redaction; atomic file replacement; setting and clearing catalog concurrency conflict; clearing restores default 32",
+    "safety_guard": "Exact alias; secret redaction; atomic file replacement; setting and clearing cache concurrency conflict; clearing restores default 32",
     "artifact_effect": "None",
     "upstream_operation": "Write local config.yaml",
     "evidence": "A1 §§7.2–7.4; C1 §2.1",
@@ -2328,10 +2328,10 @@ input[type="search"]:focus, select:focus {
     "local_write": false,
     "remote_mutation": false,
     "supports_preview": false,
-    "safety_guard": "Live Tableau by default; --catalog is local-only; no fallback; exact resolution; ambiguity fails",
+    "safety_guard": "Live Tableau by default; --cache is local-only; no fallback; exact resolution; ambiguity fails",
     "artifact_effect": "None",
     "upstream_operation": "GET /api/{version}/sites/{site-id}/flows/{flow-id}",
-    "evidence": "Official REST capture in docs/evidence/flow-rest-contract.md; hermetic API and catalog source-selection tests",
+    "evidence": "Official REST capture in docs/evidence/flow-rest-contract.md; hermetic API and cache source-selection tests",
     "evidence_level": "contract-verified",
     "verification": "ready",
     "implementation": "implemented",
@@ -2350,19 +2350,19 @@ input[type="search"]:focus, select:focus {
     "type": "find",
     "disposition": "ship",
     "owner": "cli",
-    "selectors": "Environment/site; optional project/owner/name filters; --limit 1..10000 (default 25) or --all; optional --catalog",
+    "selectors": "Environment/site; optional project/owner/name filters; --limit 1..10000 (default 25) or --all; optional --cache",
     "availability": "Cloud / Server with flow support; REST API 3.3+ per C1",
     "local_write": true,
     "remote_mutation": false,
     "supports_preview": false,
-    "safety_guard": "Ordinary live lists use bounded provider reads without SQLite access; --all collects through the shared inventory collector and renders in memory; complete unfiltered collections atomically replace the resource catalog scope on a best-effort basis; filtered collections save selected observations; catalog write failure preserves the live answer with a warning; --catalog is local-only; --all rejects incomplete coverage and results beyond 10000 records; --full changes presentation only",
-    "artifact_effect": "Best-effort catalog update only with live --all",
-    "upstream_operation": "GET /api/{version}/sites/{site-id}/flows; shared inventory collection for --all; SQLite only for explicit catalog reads or best-effort --all persistence",
+    "safety_guard": "Ordinary live lists use bounded provider reads without SQLite access; --all collects through the shared inventory collector and renders in memory; complete unfiltered collections atomically replace the resource cache scope on a best-effort basis; filtered collections save selected observations; cache write failure preserves the live answer with a warning; --cache is local-only; --all rejects incomplete coverage and results beyond 10000 records; --full changes presentation only",
+    "artifact_effect": "Best-effort cache update only with live --all",
+    "upstream_operation": "GET /api/{version}/sites/{site-id}/flows; shared inventory collection for --all; SQLite only for explicit cache reads or best-effort --all persistence",
     "evidence": "docs/evidence/group2-inventory-rest-contract.md; docs/evidence/flow-rest-contract.md; hermetic bounded-read, complete-collection, and source-selection tests",
     "evidence_level": "contract-verified",
     "verification": "ready",
     "implementation": "implemented",
-    "validation": "Contract-verified bounded live reads without catalog access, shared complete collection, truthful coverage, best-effort persistence, and explicit local catalog selection",
+    "validation": "Contract-verified bounded live reads without cache access, shared complete collection, truthful coverage, best-effort persistence, and explicit local cache selection",
     "command_path": [
       "content",
       "flow",
@@ -2648,10 +2648,10 @@ input[type="search"]:focus, select:focus {
     "local_write": false,
     "remote_mutation": false,
     "supports_preview": false,
-    "safety_guard": "Live Tableau by default; --catalog is local-only; no fallback; exact full paths are opaque selectors; zero or multiple candidates fail; LUIDs remain authoritative when display paths collide",
+    "safety_guard": "Live Tableau by default; --cache is local-only; no fallback; exact full paths are opaque selectors; zero or multiple candidates fail; LUIDs remain authoritative when display paths collide",
     "artifact_effect": "None",
     "upstream_operation": "Exact resolution from authoritative project pages",
-    "evidence": "Official REST capture in docs/evidence/project-rest-contract.md; hermetic API and catalog source-selection tests",
+    "evidence": "Official REST capture in docs/evidence/project-rest-contract.md; hermetic API and cache source-selection tests",
     "evidence_level": "contract-verified",
     "verification": "ready",
     "implementation": "implemented",
@@ -2670,19 +2670,19 @@ input[type="search"]:focus, select:focus {
     "type": "find",
     "disposition": "ship",
     "owner": "cli",
-    "selectors": "Environment/site; optional name/parent/owner/top-level filters; --limit 1..10000 (default 25) or --all; optional --catalog",
+    "selectors": "Environment/site; optional name/parent/owner/top-level filters; --limit 1..10000 (default 25) or --all; optional --cache",
     "availability": "Cloud / Server",
     "local_write": true,
     "remote_mutation": false,
     "supports_preview": false,
-    "safety_guard": "Ordinary live lists use bounded provider reads without SQLite access; --all collects through the shared inventory collector and renders in memory; complete unfiltered collections atomically replace the resource catalog scope on a best-effort basis; filtered collections save selected observations; catalog write failure preserves the live answer with a warning; --catalog is local-only; --all rejects incomplete coverage and results beyond 10000 records; --full changes presentation only",
-    "artifact_effect": "Best-effort catalog update only with live --all",
-    "upstream_operation": "GET /api/{version}/sites/{site-id}/projects; shared inventory collection for --all; SQLite only for explicit catalog reads or best-effort --all persistence",
+    "safety_guard": "Ordinary live lists use bounded provider reads without SQLite access; --all collects through the shared inventory collector and renders in memory; complete unfiltered collections atomically replace the resource cache scope on a best-effort basis; filtered collections save selected observations; cache write failure preserves the live answer with a warning; --cache is local-only; --all rejects incomplete coverage and results beyond 10000 records; --full changes presentation only",
+    "artifact_effect": "Best-effort cache update only with live --all",
+    "upstream_operation": "GET /api/{version}/sites/{site-id}/projects; shared inventory collection for --all; SQLite only for explicit cache reads or best-effort --all persistence",
     "evidence": "docs/evidence/group2-inventory-rest-contract.md; docs/evidence/project-rest-contract.md; hermetic bounded-read, complete-collection, and source-selection tests",
     "evidence_level": "contract-verified",
     "verification": "ready",
     "implementation": "implemented",
-    "validation": "Contract-verified bounded live reads without catalog access, shared complete collection, truthful coverage, best-effort persistence, and explicit local catalog selection",
+    "validation": "Contract-verified bounded live reads without cache access, shared complete collection, truthful coverage, best-effort persistence, and explicit local cache selection",
     "command_path": [
       "content",
       "project",
@@ -2810,7 +2810,7 @@ input[type="search"]:focus, select:focus {
     "local_write": false,
     "remote_mutation": false,
     "supports_preview": false,
-    "safety_guard": "Exact LUID; --catalog never contacts Tableau or falls back",
+    "safety_guard": "Exact LUID; --cache never contacts Tableau or falls back",
     "artifact_effect": "None",
     "upstream_operation": "GET /api/-/pulse/definitions/{definition_id}",
     "evidence": "docs/evidence/pulse-live-contract.md; hermetic TADX client and action tests",
@@ -2837,7 +2837,7 @@ input[type="search"]:focus, select:focus {
     "local_write": false,
     "remote_mutation": false,
     "supports_preview": false,
-    "safety_guard": "Internal bounded continuation; truthful more_available; exact name and datasource filters apply before the returned limit; --catalog never contacts Tableau or falls back",
+    "safety_guard": "Internal bounded continuation; truthful more_available; exact name and datasource filters apply before the returned limit; --cache never contacts Tableau or falls back",
     "artifact_effect": "None",
     "upstream_operation": "GET /api/-/pulse/definitions",
     "evidence": "docs/evidence/pulse-live-contract.md; hermetic TADX client and action tests",
@@ -2994,7 +2994,7 @@ input[type="search"]:focus, select:focus {
     "local_write": false,
     "remote_mutation": false,
     "supports_preview": false,
-    "safety_guard": "Bound normalized output; reject incomplete or mismatched subscription identity; --catalog never contacts Tableau or falls back",
+    "safety_guard": "Bound normalized output; reject incomplete or mismatched subscription identity; --cache never contacts Tableau or falls back",
     "artifact_effect": "None",
     "upstream_operation": "GET /api/-/pulse/subscriptions?metric_id={metric_id}",
     "evidence": "docs/evidence/pulse-live-contract.md; hermetic TADX action and client tests",
@@ -3070,7 +3070,7 @@ input[type="search"]:focus, select:focus {
     "local_write": false,
     "remote_mutation": false,
     "supports_preview": false,
-    "safety_guard": "Exact LUID; preserve unrecognized specification fields; --catalog never contacts Tableau or falls back",
+    "safety_guard": "Exact LUID; preserve unrecognized specification fields; --cache never contacts Tableau or falls back",
     "artifact_effect": "None",
     "upstream_operation": "GET /api/-/pulse/metrics/{metric_id}",
     "evidence": "docs/evidence/pulse-live-contract.md; hermetic TADX client and action tests",
@@ -3097,7 +3097,7 @@ input[type="search"]:focus, select:focus {
     "local_write": false,
     "remote_mutation": false,
     "supports_preview": false,
-    "safety_guard": "Definition-scoped identity; internal continuation with truthful more_available; --catalog never contacts Tableau or falls back",
+    "safety_guard": "Definition-scoped identity; internal continuation with truthful more_available; --cache never contacts Tableau or falls back",
     "artifact_effect": "None",
     "upstream_operation": "GET /api/-/pulse/definitions/{definition_id}/metrics",
     "evidence": "docs/evidence/pulse-live-contract.md; hermetic TADX client and action tests",
@@ -3146,19 +3146,19 @@ input[type="search"]:focus, select:focus {
     "type": "find",
     "disposition": "ship",
     "owner": "cli",
-    "selectors": "Optional text; broad or concrete --type; environment or --env; bounded --limit; optional --catalog",
+    "selectors": "Optional text; broad or concrete --type; environment or --env; bounded --limit; optional --cache",
     "availability": "Cloud / Server 2022.3+ for native content search; Pulse types require Tableau Cloud",
     "local_write": false,
     "remote_mutation": false,
     "supports_preview": false,
-    "safety_guard": "Nonempty live content terms use native search; native datasource results are translated to classic REST LUIDs; administration and Pulse retain dedicated adapters; --catalog is local-only; blank text requires a concrete type and uses list semantics; internal pagination satisfies --limit with more_available and no opaque cursor output; ordinary live searches do not read or write SQLite",
+    "safety_guard": "Nonempty live content terms use native search; native datasource results are translated to classic REST LUIDs; administration and Pulse retain dedicated adapters; --cache is local-only; blank text requires a concrete type and uses list semantics; internal pagination satisfies --limit with more_available and no opaque cursor output; ordinary live searches do not read or write SQLite",
     "artifact_effect": "None",
-    "upstream_operation": "GET /api/-/search for content; Query Datasources by contentUrl for classic datasource LUIDs; dedicated administration and Pulse adapters; local normalized catalog index",
+    "upstream_operation": "GET /api/-/search for content; Query Datasources by contentUrl for classic datasource LUIDs; dedicated administration and Pulse adapters; local normalized cache index",
     "evidence": "docs/evidence/group2-inventory-rest-contract.md; current official content exploration and datasource filter contracts; hermetic transport, adapter, and app tests",
     "evidence_level": "contract-verified",
     "verification": "ready",
     "implementation": "implemented",
-    "validation": "Contract-verified bounded live discovery without SQLite access, authoritative identity normalization, truthful composite truncation, and explicit local catalog selection",
+    "validation": "Contract-verified bounded live discovery without SQLite access, authoritative identity normalization, truthful composite truncation, and explicit local cache selection",
     "command_path": [
       "search"
     ],
@@ -3338,10 +3338,10 @@ input[type="search"]:focus, select:focus {
     "local_write": false,
     "remote_mutation": false,
     "supports_preview": false,
-    "safety_guard": "Live Tableau by default; --catalog is local-only; no fallback; exact resolution; ambiguity fails",
+    "safety_guard": "Live Tableau by default; --cache is local-only; no fallback; exact resolution; ambiguity fails",
     "artifact_effect": "None",
     "upstream_operation": "GET /api/{version}/sites/{site-id}/workbooks/{workbook-id}",
-    "evidence": "docs/evidence/group2-inventory-rest-contract.md; hermetic catalog source-selection tests",
+    "evidence": "docs/evidence/group2-inventory-rest-contract.md; hermetic cache source-selection tests",
     "evidence_level": "contract-verified",
     "verification": "ready",
     "implementation": "implemented",
@@ -3360,19 +3360,19 @@ input[type="search"]:focus, select:focus {
     "type": "find",
     "disposition": "ship",
     "owner": "cli",
-    "selectors": "Environment/site; optional project/owner/name/tag filters; --limit 1..10000 (default 25) or --all; optional --catalog",
+    "selectors": "Environment/site; optional project/owner/name/tag filters; --limit 1..10000 (default 25) or --all; optional --cache",
     "availability": "Cloud / Server",
     "local_write": true,
     "remote_mutation": false,
     "supports_preview": false,
-    "safety_guard": "Ordinary live lists use bounded provider reads without SQLite access; --all collects through the shared inventory collector and renders in memory; complete unfiltered collections atomically replace the resource catalog scope on a best-effort basis; filtered collections save selected observations; catalog write failure preserves the live answer with a warning; --catalog is local-only; --all rejects incomplete coverage and results beyond 10000 records; --full changes presentation only",
-    "artifact_effect": "Best-effort catalog update only with live --all",
-    "upstream_operation": "GET /api/{version}/sites/{site-id}/workbooks; shared inventory collection for --all; SQLite only for explicit catalog reads or best-effort --all persistence",
+    "safety_guard": "Ordinary live lists use bounded provider reads without SQLite access; --all collects through the shared inventory collector and renders in memory; complete unfiltered collections atomically replace the resource cache scope on a best-effort basis; filtered collections save selected observations; cache write failure preserves the live answer with a warning; --cache is local-only; --all rejects incomplete coverage and results beyond 10000 records; --full changes presentation only",
+    "artifact_effect": "Best-effort cache update only with live --all",
+    "upstream_operation": "GET /api/{version}/sites/{site-id}/workbooks; shared inventory collection for --all; SQLite only for explicit cache reads or best-effort --all persistence",
     "evidence": "docs/evidence/group2-inventory-rest-contract.md; hermetic bounded-read, complete-collection, and source-selection tests",
     "evidence_level": "contract-verified",
     "verification": "ready",
     "implementation": "implemented",
-    "validation": "Contract-verified bounded live reads without catalog access, shared complete collection, truthful coverage, best-effort persistence, and explicit local catalog selection",
+    "validation": "Contract-verified bounded live reads without cache access, shared complete collection, truthful coverage, best-effort persistence, and explicit local cache selection",
     "command_path": [
       "content",
       "workbook",
@@ -3790,10 +3790,10 @@ input[type="search"]:focus, select:focus {
 
   const defaultSource = cap => {
     if (cap.owner !== "cli") return "Delegated external owner";
-    if (cap.id === "search.run") return "Native Tableau search, dedicated live adapters, or local SQLite with --catalog";
-    if (inventoryListIDs.has(cap.id)) return "Bounded live reads by default; local-only SQLite with --catalog or a legacy snapshot cursor.";
-    if (cap.catalog_opt_in) return "Live Tableau by default; local SQLite with --catalog";
-    if (cap.availability.startsWith("Local")) return "Local configuration, workspace, artifact, or catalog state";
+    if (cap.id === "search.run") return "Native Tableau search, dedicated live adapters, or local SQLite with --cache";
+    if (inventoryListIDs.has(cap.id)) return "Bounded live reads by default; local-only SQLite with --cache or a legacy snapshot cursor.";
+    if (cap.cache_opt_in) return "Live Tableau by default; local SQLite with --cache";
+    if (cap.availability.startsWith("Local")) return "Local configuration, workspace, artifact, or cache state";
     return "Live Tableau through the capability's bounded adapter";
   };
 
@@ -3802,7 +3802,7 @@ input[type="search"]:focus, select:focus {
     if (cap.remote_mutation) return "Requires the effective remote-mutation policy to be enabled; --preview remains read-only where supported.";
     if (cap.pull_default) return "Retrieves from Tableau and writes the managed artifact immediately; no --preview surface is registered.";
     if (cap.inventory_list) return cap.outcome;
-    if (cap.id === "search.run") return "Uses native live search for nonempty content terms; --catalog is local-only and blank text requires a concrete type.";
+    if (cap.id === "search.run") return "Uses native live search for nonempty content terms; --cache is local-only and blank text requires a concrete type.";
     if (cap.local_write) return "Performs the bounded local write after validation.";
     return "Performs a bounded read-only inspection or discovery operation.";
   };
@@ -3812,7 +3812,7 @@ input[type="search"]:focus, select:focus {
     const domain = parts[0];
     const resource = parts.length > 2 ? parts[1] : "";
     const treeAction = parts.length > 2 ? parts.slice(2).join(" ") : parts.at(-1);
-    const catalogOptIn = /(?:^|\s)--catalog(?:\s|;|,|$)/i.test(`${cap.selectors} ${cap.safety_guard} ${cap.outcome}`);
+    const cacheOptIn = /(?:^|\s)--cache(?:\s|;|,|$)/i.test(`${cap.selectors} ${cap.safety_guard} ${cap.outcome}`);
     const normalized = {
       ...cap,
       domain,
@@ -3827,7 +3827,7 @@ input[type="search"]:focus, select:focus {
       blocker: cap.verification === "blocked" ? (cap.validation || "Verification blocked") : "",
       mcp_overlap: "",
       execution_enabled: cap.owner === "cli" && cap.implementation === "implemented" && !cap.remote_mutation,
-      catalog_opt_in: catalogOptIn,
+      cache_opt_in: cacheOptIn,
       inventory_list: inventoryListIDs.has(cap.id),
       native_search: cap.id === "search.run",
       pull_default: cap.id.endsWith(".pull"),
@@ -3976,7 +3976,7 @@ input[type="search"]:focus, select:focus {
     switch (refs.behavior.value) {
       case "native-search": if (!cap.native_search) return false; break;
       case "inventory-list": if (!cap.inventory_list) return false; break;
-      case "catalog-opt-in": if (!cap.catalog_opt_in) return false; break;
+      case "cache-opt-in": if (!cap.cache_opt_in) return false; break;
       case "pull-now": if (!cap.pull_default) return false; break;
       case "preview": if (!cap.supports_preview) return false; break;
       case "mutation-gated": if (!cap.remote_mutation) return false; break;
@@ -4142,7 +4142,7 @@ input[type="search"]:focus, select:focus {
       if (cap.pull_default) addBadge(meta, "PULL NOW", "pull", "Pull executes and writes by default");
       else if (cap.native_search) addBadge(meta, "NATIVE SEARCH", "live", "Uses Tableau native search for live content terms");
       else if (cap.inventory_list) addBadge(meta, "LIVE LIST", "live", cap.default_source);
-      else if (cap.catalog_opt_in) addBadge(meta, "CATALOG", "catalog", "Live by default; --catalog is local-only");
+      else if (cap.cache_opt_in) addBadge(meta, "CACHE", "cache", "Live by default; --cache is local-only");
       if (cap.remote_mutation) addBadge(meta, "REMOTE", "remote", "Remote mutation; gated by TADX_ENABLE_MUTATIONS=1");
       if (cap.local_write) addBadge(meta, "LOCAL", "local", "Local write");
       if (cap.disposition === "delegated") addBadge(meta, "DELEGATED", "delegated", "External owner");
@@ -4239,9 +4239,9 @@ input[type="search"]:focus, select:focus {
         ? "background:var(--planned-bg);color:var(--planned);border-color:#e6c878"
         : "";
     badges.push(`<span class="badge ${state.className === "external-delegated" ? "delegated" : ""}" style="${stateStyle}">${escapeHTML(state.label.toUpperCase())}</span>`);
-    if (cap.native_search) badges.push('<span class="badge live">NATIVE SEARCH</span><span class="badge catalog">--CATALOG</span>');
-    else if (cap.inventory_list) badges.push('<span class="badge live">BOUNDED LIVE</span><span class="badge catalog">--ALL OPT-IN</span><span class="badge catalog">--CATALOG OPT-IN</span>');
-    else if (cap.catalog_opt_in) badges.push('<span class="badge live">LIVE DEFAULT</span><span class="badge catalog">--CATALOG</span>');
+    if (cap.native_search) badges.push('<span class="badge live">NATIVE SEARCH</span><span class="badge cache">--CACHE</span>');
+    else if (cap.inventory_list) badges.push('<span class="badge live">BOUNDED LIVE</span><span class="badge cache">--ALL OPT-IN</span><span class="badge cache">--CACHE OPT-IN</span>');
+    else if (cap.cache_opt_in) badges.push('<span class="badge live">LIVE DEFAULT</span><span class="badge cache">--CACHE</span>');
     if (cap.pull_default) badges.push('<span class="badge pull">PULL NOW</span>');
     if (cap.remote_mutation) badges.push('<span class="badge remote">REMOTE MUTATION</span><span class="badge gated">GATED</span>');
     if (cap.local_write) badges.push('<span class="badge local">LOCAL WRITE</span>');
@@ -4323,7 +4323,7 @@ input[type="search"]:focus, select:focus {
         <h3>Read source and safety</h3>
         <dl class="fact-grid">
           <div class="fact"><dt>Default source</dt><dd>${escapeHTML(cap.default_source)}</dd></div>
-          <div class="fact"><dt>Catalog opt-in</dt><dd>${cap.catalog_opt_in ? "Yes, with --catalog" : "No"}</dd></div>
+          <div class="fact"><dt>Cache opt-in</dt><dd>${cap.cache_opt_in ? "Yes, with --cache" : "No"}</dd></div>
           <div class="fact full"><dt>Selectors</dt><dd>${cap.selectors.map(escapeHTML).join("<br>")}</dd></div>
           <div class="fact full"><dt>Safety and guard</dt><dd>${escapeHTML(cap.safety_guard)}</dd></div>
           <div class="fact full"><dt>Availability</dt><dd>${escapeHTML(cap.availability)}</dd></div>
@@ -4370,7 +4370,7 @@ input[type="search"]:focus, select:focus {
     const local = node.capabilities.filter(cap => cap.local_write).length;
     const enabled = node.capabilities.filter(cap => cap.execution_enabled).length;
     const delegated = node.capabilities.filter(cap => cap.disposition === "delegated").length;
-    const catalog = node.capabilities.filter(cap => cap.catalog_opt_in).length;
+    const cache = node.capabilities.filter(cap => cap.cache_opt_in).length;
     const inventoryLists = node.capabilities.filter(cap => cap.inventory_list).length;
     const nativeSearch = node.capabilities.filter(cap => cap.native_search).length;
     const pulls = node.capabilities.filter(cap => cap.pull_default).length;
@@ -4395,13 +4395,13 @@ input[type="search"]:focus, select:focus {
           <div class="fact"><dt>Local writes</dt><dd>${local}</dd></div>
           <div class="fact"><dt>Native search</dt><dd>${nativeSearch}</dd></div>
           <div class="fact"><dt>Inventory lists</dt><dd>${inventoryLists}</dd></div>
-          <div class="fact"><dt>Catalog opt-in reads</dt><dd>${catalog}</dd></div>
+          <div class="fact"><dt>Cache opt-in reads</dt><dd>${cache}</dd></div>
           <div class="fact"><dt>Execution-first pulls</dt><dd>${pulls}</dd></div>
           <div class="fact"><dt>Preview supported</dt><dd>${preview}</dd></div>
         </dl>
         <div class="group-state-list">${rows}</div>
       </section>
-      <div class="callout">Native search, bounded live resource lists, explicit --all collection, local-only catalog reads, pull execution defaults, and mutation gating are independent behaviors.</div>
+      <div class="callout">Native search, bounded live resource lists, explicit --all collection, local-only cache reads, pull execution defaults, and mutation gating are independent behaviors.</div>
     `;
   }
 

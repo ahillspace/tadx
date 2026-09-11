@@ -42,8 +42,8 @@ type ConnectivityState struct {
 	Authenticated bool
 }
 
-// CatalogState reports bounded local catalog health.
-type CatalogState struct {
+// CacheState reports bounded local cache health.
+type CacheState struct {
 	Present  bool
 	Complete bool
 	Stale    bool

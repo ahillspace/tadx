@@ -7,15 +7,15 @@ import (
 	"github.com/spf13/cobra"
 )
 
-func TestCatalogFlagIsLimitedToEligibleAdminReads(t *testing.T) {
+func TestCacheFlagIsLimitedToEligibleAdminReads(t *testing.T) {
 	root := cli.New(deps(&fake{}, true))
 	for _, path := range [][]string{{"user", "list"}, {"user", "inspect"}, {"group", "list"}, {"group", "inspect"}} {
-		if commandAt(root, path...).Flags().Lookup("catalog") == nil {
-			t.Errorf("%v is missing --catalog", path)
+		if commandAt(root, path...).Flags().Lookup("cache") == nil {
+			t.Errorf("%v is missing --cache", path)
 		}
 	}
 	for _, path := range [][]string{{"user", "create"}, {"user", "update"}, {"user", "delete"}, {"group", "create"}, {"group", "update"}, {"group", "delete"}, {"permission", "inspect"}} {
-		if commandAt(root, path...).Flags().Lookup("catalog") != nil {
+		if commandAt(root, path...).Flags().Lookup("cache") != nil {
 			t.Errorf("%v must remain live-only", path)
 		}
 	}

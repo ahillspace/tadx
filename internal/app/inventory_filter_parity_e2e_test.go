@@ -110,7 +110,7 @@ func runFilterCLI(t *testing.T, kind string, flags []string, all bool) ([]string
 		_, _ = fmt.Fprintf(w, `<tsResponse><pagination pageNumber="%s" pageSize="%s" totalAvailable="0"/><%s/></tsResponse>`, r.URL.Query().Get("pageNumber"), r.URL.Query().Get("pageSize"), resource)
 	}))
 	defer server.Close()
-	options := catalogResilienceOptions(t, server)
+	options := cacheResilienceOptions(t, server)
 	root := "content"
 	if kind == "user" || kind == "group" {
 		root = "admin"

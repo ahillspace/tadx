@@ -50,7 +50,7 @@ func (a *Action) Execute(ctx context.Context, input Input, preview bool) (Output
 	if err != nil {
 		return Output{}, operationError("workbook.update.resolve", input, target.LUID, "Workbook revalidation failed.", "Review a new preview before updating.", err)
 	}
-	if current.Name != target.Name || current.ProjectLUID != target.ProjectLUID || current.OwnerLUID != target.OwnerLUID {
+	if current.Name != target.Name || current.ProjectLUID != target.ProjectLUID || current.OwnerLUID != target.OwnerLUID || (input.Description != nil && current.Description != target.Description) {
 		return Output{}, operationError("workbook.update.target_changed", input, target.LUID, "The workbook changed during revalidation.", "Review a new preview before updating.", errors.New("workbook identity changed during revalidation"))
 	}
 	request, changes = changedRequest(current, input)
@@ -63,8 +63,9 @@ func (a *Action) Execute(ctx context.Context, input Input, preview bool) (Output
 		return out, nil
 	}
 	result, err := a.updater.UpdateWorkbook(ctx, request)
+	out.Result = &result
 	if err != nil {
-		return Output{}, operationError("workbook.update.failed", input, current.LUID, "Workbook update failed.", "Inspect the exact workbook before retrying: "+commandhint.Environment(input.Environment, "content", "workbook", "inspect", "--id", current.LUID), err)
+		return out, operationError("workbook.update.failed", input, current.LUID, "Workbook update failed.", "Inspect the exact workbook before retrying: "+commandhint.Environment(input.Environment, "content", "workbook", "inspect", "--id", current.LUID), err)
 	}
 	out.Result = &result
 	out.Help = []string{commandhint.Environment(input.Environment, "content", "workbook", "inspect", "--id", current.LUID)}
@@ -74,6 +75,10 @@ func (a *Action) Execute(ctx context.Context, input Input, preview bool) (Output
 func changedRequest(target Workbook, input Input) (Request, []Change) {
 	r := Request{LUID: target.LUID}
 	changes := []Change{}
+	if input.Description != nil && *input.Description != target.Description {
+		r.Description = input.Description
+		changes = append(changes, Change{Field: "description", Before: target.Description, After: *input.Description})
+	}
 	if input.Name != nil && *input.Name != target.Name {
 		r.Name = input.Name
 		changes = append(changes, Change{Field: "name", Before: target.Name, After: *input.Name})

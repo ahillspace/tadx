@@ -12,7 +12,7 @@ type Selector struct{ LUID, Username string }
 type Input struct {
 	Environment, Site string
 	Selector          Selector
-	Catalog           bool
+	Cache             bool
 }
 
 func (i *Input) SetSelector(luid, username string) {

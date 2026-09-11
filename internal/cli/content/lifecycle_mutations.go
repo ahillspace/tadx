@@ -42,7 +42,7 @@ func newWorkbookMove(deps Dependencies) *cobra.Command {
 
 func newWorkbookUpdate(deps Dependencies) *cobra.Command {
 	var input workbookupdate.Input
-	var luid, name, projectPath, newName, ownerLUID string
+	var luid, name, projectPath, newName, ownerLUID, description string
 	var preview bool
 	command := mutationCommand("workbook.update", "update", "Update one exact workbook.", func(command *cobra.Command) error {
 		if err := selectorArgs("workbook.update", &luid, &name, &projectPath, input.SetSelector)(command, nil); err != nil {
@@ -51,8 +51,11 @@ func newWorkbookUpdate(deps Dependencies) *cobra.Command {
 		if err := requireWriteEnvironment("workbook.update", input.Environment); err != nil {
 			return err
 		}
-		if !command.Flags().Changed("new-name") && !command.Flags().Changed("owner-id") {
-			return clierr.Usage("workbook.update", errors.New("at least one of --new-name or --owner-id is required"))
+		if !command.Flags().Changed("new-name") && !command.Flags().Changed("owner-id") && !command.Flags().Changed("description") {
+			return clierr.Usage("workbook.update", errors.New("at least one of --new-name, --owner-id, or --description is required"))
+		}
+		if command.Flags().Changed("description") {
+			input.Description = &description
 		}
 		if command.Flags().Changed("new-name") {
 			input.Name = &newName
@@ -68,6 +71,7 @@ func newWorkbookUpdate(deps Dependencies) *cobra.Command {
 	})
 	contentTargetFlags(command, &input.Environment, &luid, &name, &projectPath, "workbook")
 	updateFlags(command, &newName, &ownerLUID, true)
+	command.Flags().StringVar(&description, "description", "", "replace the workbook description; an explicit empty value clears it")
 	command.Flags().BoolVar(&preview, "preview", false, "preview the remote mutation without performing it")
 	return command
 }

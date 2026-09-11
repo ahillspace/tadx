@@ -18,6 +18,7 @@ import (
 	admincli "github.com/ahillspace/tadx/internal/cli/admin"
 	agentcli "github.com/ahillspace/tadx/internal/cli/agent"
 	authcli "github.com/ahillspace/tadx/internal/cli/auth"
+	cachecli "github.com/ahillspace/tadx/internal/cli/cache"
 	capabilitycli "github.com/ahillspace/tadx/internal/cli/capability"
 	catalogcli "github.com/ahillspace/tadx/internal/cli/catalog"
 	"github.com/ahillspace/tadx/internal/cli/clierr"
@@ -92,6 +93,9 @@ type RenderOptions struct {
 
 // Dependencies contains the explicitly wired Phase 0 command dependencies.
 type Dependencies struct {
+	Catalog               *catalogcli.Dependencies
+	ContentLabels         *contentcli.LabelDependencies
+	AdminLabels           *admincli.LabelDependencies
 	BatchSelectors        map[string]string
 	Lister                Lister
 	Getter                Getter
@@ -111,8 +115,8 @@ type Dependencies struct {
 	GetShort              string
 	AuthChecker           AuthChecker
 	Searcher              Searcher
-	CatalogRefresher      catalogcli.Refresher
-	CatalogStatuser       catalogcli.Statuser
+	CacheRefresher        cachecli.Refresher
+	CacheStatuser         cachecli.Statuser
 	WorkbookPuller        WorkbookPuller
 	WorkbookPublisher     WorkbookPublisher
 	Content               *contentcli.Dependencies
@@ -137,10 +141,10 @@ type Dependencies struct {
 	AuthLoginShort        string
 	AuthLogoutUse         string
 	AuthLogoutShort       string
-	CatalogRefreshUse     string
-	CatalogRefreshShort   string
-	CatalogStatusUse      string
-	CatalogStatusShort    string
+	CacheRefreshUse       string
+	CacheRefreshShort     string
+	CacheStatusUse        string
+	CacheStatusShort      string
 	WorkbookPullUse       string
 	WorkbookPullShort     string
 	WorkbookPublishUse    string
@@ -168,7 +172,7 @@ func newRoot(deps Dependencies, withBatches bool) *cobra.Command {
 
 Run tadx capability list to discover available operations and tadx capability get <id> for bounded details.
 TADX returns compact TOON by default. Use --full to show expanded bounded details for the same operation.
-Read commands query Tableau by default. Pass --catalog on supported reads to use local catalog data without contacting Tableau.
+Read commands query Tableau by default. Pass --cache on supported reads to use local cache data without contacting Tableau.
 Use --env as a short alias for --environment on commands that select an environment.
 
 Remote mutation commands remain visible when execution is disabled. Use --preview for a read-only plan without enabling mutations.
@@ -226,7 +230,13 @@ Other connected tools remain independent; TADX does not configure, select, proxy
 		admin := *deps.Admin
 		admin.Renderer = deps.Renderer
 		admin.MutationsEnabled = deps.MutationsEnabled
-		root.AddCommand(admincli.New(admin))
+		node := admincli.New(admin)
+		if deps.AdminLabels != nil {
+			labels := *deps.AdminLabels
+			labels.Renderer = deps.Renderer
+			node.AddCommand(admincli.NewLabels(labels))
+		}
+		root.AddCommand(node)
 	}
 	if deps.Agent != nil {
 		agent := *deps.Agent
@@ -257,13 +267,18 @@ Other connected tools remain independent; TADX does not configure, select, proxy
 	if deps.Searcher != nil {
 		root.AddCommand(newSearch(deps.Searcher, deps.Renderer))
 	}
-	if deps.CatalogRefresher != nil || deps.CatalogStatuser != nil {
-		root.AddCommand(catalogcli.New(catalogcli.Dependencies{
-			Refresher: deps.CatalogRefresher, Statuser: deps.CatalogStatuser,
+	if deps.CacheRefresher != nil || deps.CacheStatuser != nil {
+		root.AddCommand(cachecli.New(cachecli.Dependencies{
+			Refresher: deps.CacheRefresher, Statuser: deps.CacheStatuser,
 			Renderer:   deps.Renderer,
-			RefreshUse: deps.CatalogRefreshUse, RefreshShort: deps.CatalogRefreshShort,
-			StatusUse: deps.CatalogStatusUse, StatusShort: deps.CatalogStatusShort,
+			RefreshUse: deps.CacheRefreshUse, RefreshShort: deps.CacheRefreshShort,
+			StatusUse: deps.CacheStatusUse, StatusShort: deps.CacheStatusShort,
 		}))
+	}
+	if deps.Catalog != nil {
+		catalog := *deps.Catalog
+		catalog.Renderer = deps.Renderer
+		root.AddCommand(catalogcli.New(catalog))
 	}
 	if deps.WorkbookPuller != nil && deps.WorkbookPublisher != nil {
 		contentDependencies := contentcli.Dependencies{}
@@ -278,7 +293,13 @@ Other connected tools remain independent; TADX does not configure, select, proxy
 		contentDependencies.PullShort = deps.WorkbookPullShort
 		contentDependencies.PublishUse = deps.WorkbookPublishUse
 		contentDependencies.PublishShort = deps.WorkbookPublishShort
-		root.AddCommand(contentcli.New(contentDependencies))
+		node := contentcli.New(contentDependencies)
+		if deps.ContentLabels != nil {
+			labels := *deps.ContentLabels
+			labels.Renderer = deps.Renderer
+			node.AddCommand(contentcli.NewLabels(labels))
+		}
+		root.AddCommand(node)
 	}
 	root.AddCommand(NewCompletion(root))
 	rejectGroupingArguments(root)

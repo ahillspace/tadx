@@ -16,6 +16,15 @@ Use `tadx capability get <id>` for the same focused metadata at runtime.
 | `admin.group.member.add` | cli | ship | ready | implemented | `tadx admin group member add` |
 | `admin.group.member.remove` | cli | ship | ready | implemented | `tadx admin group member remove` |
 | `admin.group.update` | cli | ship | ready | implemented | `tadx admin group update` |
+| `admin.label.category.create` | cli | ship | ready | implemented | `tadx admin label category create` |
+| `admin.label.category.delete` | cli | ship | ready | implemented | `tadx admin label category delete` |
+| `admin.label.category.inspect` | cli | ship | ready | implemented | `tadx admin label category inspect` |
+| `admin.label.category.list` | cli | ship | ready | implemented | `tadx admin label category list` |
+| `admin.label.category.update` | cli | ship | ready | implemented | `tadx admin label category update` |
+| `admin.label.value.delete` | cli | ship | ready | implemented | `tadx admin label value delete` |
+| `admin.label.value.inspect` | cli | ship | ready | implemented | `tadx admin label value inspect` |
+| `admin.label.value.list` | cli | ship | ready | implemented | `tadx admin label value list` |
+| `admin.label.value.update` | cli | ship | ready | implemented | `tadx admin label value update` |
 | `admin.permission.create` | cli | ship | ready | implemented | `tadx admin permission create` |
 | `admin.permission.delete` | cli | ship | ready | implemented | `tadx admin permission delete` |
 | `admin.permission.inspect` | cli | ship | ready | implemented | `tadx admin permission inspect` |
@@ -30,10 +39,25 @@ Use `tadx capability get <id>` for the same focused metadata at runtime.
 | `auth.login` | cli | ship | ready | implemented | `tadx auth login` |
 | `auth.logout` | cli | ship | ready | implemented | `tadx auth logout` |
 | `auth.status` | cli | ship | ready | implemented | `tadx auth status` |
+| `cache.refresh` | cli | ship | ready | implemented | `tadx cache refresh` |
+| `cache.status` | cli | ship | ready | implemented | `tadx cache status` |
 | `capability.get` | cli | ship | ready | implemented | `tadx capability get` |
 | `capability.list` | cli | ship | ready | implemented | `tadx capability list` |
-| `catalog.refresh` | cli | ship | ready | implemented | `tadx catalog refresh` |
-| `catalog.status` | cli | ship | ready | implemented | `tadx catalog status` |
+| `catalog.audit` | cli | ship | ready | implemented | `tadx catalog audit` |
+| `catalog.column.inspect` | cli | ship | ready | implemented | `tadx catalog column inspect` |
+| `catalog.column.list` | cli | ship | ready | implemented | `tadx catalog column list` |
+| `catalog.column.update` | cli | ship | ready | implemented | `tadx catalog column update` |
+| `catalog.database.inspect` | cli | ship | ready | implemented | `tadx catalog database inspect` |
+| `catalog.database.list` | cli | ship | ready | implemented | `tadx catalog database list` |
+| `catalog.database.update` | cli | ship | ready | implemented | `tadx catalog database update` |
+| `catalog.search` | cli | ship | ready | implemented | `tadx catalog search` |
+| `catalog.table.inspect` | cli | ship | ready | implemented | `tadx catalog table inspect` |
+| `catalog.table.list` | cli | ship | ready | implemented | `tadx catalog table list` |
+| `catalog.table.update` | cli | ship | ready | implemented | `tadx catalog table update` |
+| `content.label.delete` | cli | ship | ready | implemented | `tadx content label delete` |
+| `content.label.inspect` | cli | ship | ready | implemented | `tadx content label inspect` |
+| `content.label.list` | cli | ship | ready | implemented | `tadx content label list` |
+| `content.label.update` | cli | ship | ready | implemented | `tadx content label update` |
 | `datasource.delete` | cli | ship | ready | implemented | `tadx content datasource delete` |
 | `datasource.inspect` | cli | ship | ready | implemented | `tadx content datasource inspect` |
 | `datasource.list` | cli | ship | ready | implemented | `tadx content datasource list` |
@@ -190,10 +214,10 @@ Inspect one exact group and, when requested, its direct membership.
 - Supports `--preview`: No
 - Supports `--batch-file`: Yes
 - Raw capable: No
-- Safety and guard: Live Tableau by default; --catalog is local-only; no fallback; exact group; membership pages normalized
+- Safety and guard: Live Tableau by default; --cache is local-only; no fallback; exact group; membership pages normalized
 - Artifact effect: None
 - Upstream operation: GET .../groups; GET .../groups/{group-id}/users
-- Evidence: docs/evidence/admin-rest-contract.md; hermetic catalog source-selection tests
+- Evidence: docs/evidence/admin-rest-contract.md; hermetic cache source-selection tests
 - Validation or blocker: Contract-verified exact group, bounded direct membership, and explicit source selection
 - Blocker ID: None
 - Command binding: `tadx admin group inspect`
@@ -205,7 +229,7 @@ List a bounded live selection of groups, or explicitly collect the selected inve
 - Surface: tadx admin group list
 - Operation type: find
 - Owner: cli
-- Selectors: Environment/site; optional group filters; --limit 1..10000 (default 25) or --all; optional --catalog
+- Selectors: Environment/site; optional group filters; --limit 1..10000 (default 25) or --all; optional --cache
 - Products and availability: Cloud / Server
 - Product disposition: ship
 - Evidence level: contract-verified
@@ -216,11 +240,11 @@ List a bounded live selection of groups, or explicitly collect the selected inve
 - Supports `--preview`: No
 - Supports `--batch-file`: No
 - Raw capable: No
-- Safety and guard: Ordinary live lists use bounded provider reads without SQLite access; --all collects through the shared inventory collector and renders in memory; complete unfiltered collections atomically replace the resource catalog scope on a best-effort basis; filtered collections save selected observations; catalog write failure preserves the live answer with a warning; --catalog is local-only; --all rejects incomplete coverage and results beyond 10000 records; --full changes presentation only
-- Artifact effect: Best-effort catalog update only with live --all
-- Upstream operation: GET /api/{version}/sites/{site-id}/groups; shared inventory collection for --all; SQLite only for explicit catalog reads or best-effort --all persistence
+- Safety and guard: Ordinary live lists use bounded provider reads without SQLite access; --all collects through the shared inventory collector and renders in memory; complete unfiltered collections atomically replace the resource cache scope on a best-effort basis; filtered collections save selected observations; cache write failure preserves the live answer with a warning; --cache is local-only; --all rejects incomplete coverage and results beyond 10000 records; --full changes presentation only
+- Artifact effect: Best-effort cache update only with live --all
+- Upstream operation: GET /api/{version}/sites/{site-id}/groups; shared inventory collection for --all; SQLite only for explicit cache reads or best-effort --all persistence
 - Evidence: docs/evidence/group2-inventory-rest-contract.md; docs/evidence/admin-rest-contract.md; hermetic bounded-read, complete-collection, and source-selection tests
-- Validation or blocker: Contract-verified bounded live reads without catalog access, shared complete collection, truthful coverage, best-effort persistence, and explicit local catalog selection
+- Validation or blocker: Contract-verified bounded live reads without cache access, shared complete collection, truthful coverage, best-effort persistence, and explicit local cache selection
 - Blocker ID: None
 - Command binding: `tadx admin group list`
 
@@ -301,6 +325,240 @@ Update group attributes or converge direct membership, or preview the operation.
 - Validation or blocker: Contract-verified metadata and deterministic membership convergence
 - Blocker ID: None
 - Command binding: `tadx admin group update`
+
+### `admin.label.category.create`
+
+Create shared label categories by exact name.
+
+- Surface: tadx admin label category create
+- Operation type: change
+- Owner: cli
+- Selectors: Exact --name; no invented LUIDs
+- Products and availability: Tableau labels with supported API version, licensing and permissions
+- Product disposition: ship
+- Evidence level: contract-verified
+- Verification readiness: ready
+- Implementation state: implemented
+- Local write: No
+- Remote mutation: Yes
+- Supports `--preview`: Yes
+- Supports `--batch-file`: Yes
+- Raw capable: No
+- Safety and guard: Exact identities; fresh pre-write validation; read-only preview; confirmed partial outcomes retained
+- Artifact effect: None
+- Upstream operation: Released REST labels, labelValues and labelCategories methods
+- Evidence: docs/evidence/metadata-semantics-contract.md; provider HTTP fixtures and action contracts
+- Validation or blocker: Local HTTP and action contracts; live mutations not verified
+- Blocker ID: None
+- Command binding: `tadx admin label category create`
+
+### `admin.label.category.delete`
+
+Delete shared label categories by exact name.
+
+- Surface: tadx admin label category delete
+- Operation type: change
+- Owner: cli
+- Selectors: Exact --name; no invented LUIDs
+- Products and availability: Tableau labels with supported API version, licensing and permissions
+- Product disposition: ship
+- Evidence level: contract-verified
+- Verification readiness: ready
+- Implementation state: implemented
+- Local write: No
+- Remote mutation: Yes
+- Supports `--preview`: Yes
+- Supports `--batch-file`: Yes
+- Raw capable: No
+- Safety and guard: Exact identities; fresh pre-write validation; read-only preview; confirmed partial outcomes retained
+- Artifact effect: None
+- Upstream operation: Released REST labels, labelValues and labelCategories methods
+- Evidence: docs/evidence/metadata-semantics-contract.md; provider HTTP fixtures and action contracts
+- Validation or blocker: Local HTTP and action contracts; live mutations not verified
+- Blocker ID: None
+- Command binding: `tadx admin label category delete`
+
+### `admin.label.category.inspect`
+
+Inspect shared label categories by exact name.
+
+- Surface: tadx admin label category inspect
+- Operation type: inspect
+- Owner: cli
+- Selectors: Exact --name; no invented LUIDs
+- Products and availability: Tableau labels with supported API version, licensing and permissions
+- Product disposition: ship
+- Evidence level: contract-verified
+- Verification readiness: ready
+- Implementation state: implemented
+- Local write: No
+- Remote mutation: No
+- Supports `--preview`: No
+- Supports `--batch-file`: Yes
+- Raw capable: No
+- Safety and guard: Exact identities; fresh pre-write validation; read-only preview; confirmed partial outcomes retained
+- Artifact effect: None
+- Upstream operation: Released REST labels, labelValues and labelCategories methods
+- Evidence: docs/evidence/metadata-semantics-contract.md; provider HTTP fixtures and action contracts
+- Validation or blocker: Local HTTP and action contracts; live mutations not verified
+- Blocker ID: None
+- Command binding: `tadx admin label category inspect`
+
+### `admin.label.category.list`
+
+List shared label categories by exact name.
+
+- Surface: tadx admin label category list
+- Operation type: find
+- Owner: cli
+- Selectors: Exact --name; no invented LUIDs
+- Products and availability: Tableau labels with supported API version, licensing and permissions
+- Product disposition: ship
+- Evidence level: contract-verified
+- Verification readiness: ready
+- Implementation state: implemented
+- Local write: No
+- Remote mutation: No
+- Supports `--preview`: No
+- Supports `--batch-file`: No
+- Raw capable: No
+- Safety and guard: Exact identities; fresh pre-write validation; read-only preview; confirmed partial outcomes retained
+- Artifact effect: None
+- Upstream operation: Released REST labels, labelValues and labelCategories methods
+- Evidence: docs/evidence/metadata-semantics-contract.md; provider HTTP fixtures and action contracts
+- Validation or blocker: Local HTTP and action contracts; live mutations not verified
+- Blocker ID: None
+- Command binding: `tadx admin label category list`
+
+### `admin.label.category.update`
+
+Update shared label categories by exact name.
+
+- Surface: tadx admin label category update
+- Operation type: change
+- Owner: cli
+- Selectors: Exact --name; no invented LUIDs
+- Products and availability: Tableau labels with supported API version, licensing and permissions
+- Product disposition: ship
+- Evidence level: contract-verified
+- Verification readiness: ready
+- Implementation state: implemented
+- Local write: No
+- Remote mutation: Yes
+- Supports `--preview`: Yes
+- Supports `--batch-file`: Yes
+- Raw capable: No
+- Safety and guard: Exact identities; fresh pre-write validation; read-only preview; confirmed partial outcomes retained
+- Artifact effect: None
+- Upstream operation: Released REST labels, labelValues and labelCategories methods
+- Evidence: docs/evidence/metadata-semantics-contract.md; provider HTTP fixtures and action contracts
+- Validation or blocker: Local HTTP and action contracts; live mutations not verified
+- Blocker ID: None
+- Command binding: `tadx admin label category update`
+
+### `admin.label.value.delete`
+
+Delete shared label values by exact name.
+
+- Surface: tadx admin label value delete
+- Operation type: change
+- Owner: cli
+- Selectors: Exact --name; no invented LUIDs
+- Products and availability: Tableau labels with supported API version, licensing and permissions
+- Product disposition: ship
+- Evidence level: contract-verified
+- Verification readiness: ready
+- Implementation state: implemented
+- Local write: No
+- Remote mutation: Yes
+- Supports `--preview`: Yes
+- Supports `--batch-file`: Yes
+- Raw capable: No
+- Safety and guard: Exact identities; fresh pre-write validation; read-only preview; confirmed partial outcomes retained
+- Artifact effect: None
+- Upstream operation: Released REST labels, labelValues and labelCategories methods
+- Evidence: docs/evidence/metadata-semantics-contract.md; provider HTTP fixtures and action contracts
+- Validation or blocker: Local HTTP and action contracts; live mutations not verified
+- Blocker ID: None
+- Command binding: `tadx admin label value delete`
+
+### `admin.label.value.inspect`
+
+Inspect shared label values by exact name.
+
+- Surface: tadx admin label value inspect
+- Operation type: inspect
+- Owner: cli
+- Selectors: Exact --name; no invented LUIDs
+- Products and availability: Tableau labels with supported API version, licensing and permissions
+- Product disposition: ship
+- Evidence level: contract-verified
+- Verification readiness: ready
+- Implementation state: implemented
+- Local write: No
+- Remote mutation: No
+- Supports `--preview`: No
+- Supports `--batch-file`: Yes
+- Raw capable: No
+- Safety and guard: Exact identities; fresh pre-write validation; read-only preview; confirmed partial outcomes retained
+- Artifact effect: None
+- Upstream operation: Released REST labels, labelValues and labelCategories methods
+- Evidence: docs/evidence/metadata-semantics-contract.md; provider HTTP fixtures and action contracts
+- Validation or blocker: Local HTTP and action contracts; live mutations not verified
+- Blocker ID: None
+- Command binding: `tadx admin label value inspect`
+
+### `admin.label.value.list`
+
+List shared label values by exact name.
+
+- Surface: tadx admin label value list
+- Operation type: find
+- Owner: cli
+- Selectors: Exact --name; no invented LUIDs
+- Products and availability: Tableau labels with supported API version, licensing and permissions
+- Product disposition: ship
+- Evidence level: contract-verified
+- Verification readiness: ready
+- Implementation state: implemented
+- Local write: No
+- Remote mutation: No
+- Supports `--preview`: No
+- Supports `--batch-file`: No
+- Raw capable: No
+- Safety and guard: Exact identities; fresh pre-write validation; read-only preview; confirmed partial outcomes retained
+- Artifact effect: None
+- Upstream operation: Released REST labels, labelValues and labelCategories methods
+- Evidence: docs/evidence/metadata-semantics-contract.md; provider HTTP fixtures and action contracts
+- Validation or blocker: Local HTTP and action contracts; live mutations not verified
+- Blocker ID: None
+- Command binding: `tadx admin label value list`
+
+### `admin.label.value.update`
+
+Update shared label values by exact name. Creates a missing value or updates supported properties of an existing value.
+
+- Surface: tadx admin label value update
+- Operation type: change
+- Owner: cli
+- Selectors: Exact --name; no invented LUIDs
+- Products and availability: Tableau labels with supported API version, licensing and permissions
+- Product disposition: ship
+- Evidence level: contract-verified
+- Verification readiness: ready
+- Implementation state: implemented
+- Local write: No
+- Remote mutation: Yes
+- Supports `--preview`: Yes
+- Supports `--batch-file`: Yes
+- Raw capable: No
+- Safety and guard: Exact identities; fresh pre-write validation; read-only preview; confirmed partial outcomes retained
+- Artifact effect: None
+- Upstream operation: Released REST labels, labelValues and labelCategories methods
+- Evidence: docs/evidence/metadata-semantics-contract.md; provider HTTP fixtures and action contracts
+- Validation or blocker: Local HTTP and action contracts; live mutations not verified
+- Blocker ID: None
+- Command binding: `tadx admin label value update`
 
 ### `admin.permission.create`
 
@@ -450,10 +708,10 @@ Inspect one exact site user.
 - Supports `--preview`: No
 - Supports `--batch-file`: Yes
 - Raw capable: No
-- Safety and guard: Live Tableau by default; --catalog is local-only; no fallback; ambiguity fails
+- Safety and guard: Live Tableau by default; --cache is local-only; no fallback; ambiguity fails
 - Artifact effect: None
 - Upstream operation: GET /api/{version}/sites/{site-id}/users/{user-id}
-- Evidence: docs/evidence/admin-rest-contract.md; hermetic catalog source-selection tests
+- Evidence: docs/evidence/admin-rest-contract.md; hermetic cache source-selection tests
 - Validation or blocker: Contract-verified exact user identity resolution and explicit source selection
 - Blocker ID: None
 - Command binding: `tadx admin user inspect`
@@ -465,7 +723,7 @@ List a bounded live selection of site users, or explicitly collect the selected 
 - Surface: tadx admin user list
 - Operation type: find
 - Owner: cli
-- Selectors: Environment/site; optional user filters; --limit 1..10000 (default 25) or --all; optional --catalog
+- Selectors: Environment/site; optional user filters; --limit 1..10000 (default 25) or --all; optional --cache
 - Products and availability: Cloud / Server
 - Product disposition: ship
 - Evidence level: contract-verified
@@ -476,11 +734,11 @@ List a bounded live selection of site users, or explicitly collect the selected 
 - Supports `--preview`: No
 - Supports `--batch-file`: No
 - Raw capable: No
-- Safety and guard: Ordinary live lists use bounded provider reads without SQLite access; --all collects through the shared inventory collector and renders in memory; complete unfiltered collections atomically replace the resource catalog scope on a best-effort basis; filtered collections save selected observations; catalog write failure preserves the live answer with a warning; --catalog is local-only; --all rejects incomplete coverage and results beyond 10000 records; --full changes presentation only
-- Artifact effect: Best-effort catalog update only with live --all
-- Upstream operation: GET /api/{version}/sites/{site-id}/users; shared inventory collection for --all; SQLite only for explicit catalog reads or best-effort --all persistence
+- Safety and guard: Ordinary live lists use bounded provider reads without SQLite access; --all collects through the shared inventory collector and renders in memory; complete unfiltered collections atomically replace the resource cache scope on a best-effort basis; filtered collections save selected observations; cache write failure preserves the live answer with a warning; --cache is local-only; --all rejects incomplete coverage and results beyond 10000 records; --full changes presentation only
+- Artifact effect: Best-effort cache update only with live --all
+- Upstream operation: GET /api/{version}/sites/{site-id}/users; shared inventory collection for --all; SQLite only for explicit cache reads or best-effort --all persistence
 - Evidence: docs/evidence/group2-inventory-rest-contract.md; docs/evidence/admin-rest-contract.md; hermetic bounded-read, complete-collection, and source-selection tests
-- Validation or blocker: Contract-verified bounded live reads without catalog access, shared complete collection, truthful coverage, best-effort persistence, and explicit local catalog selection
+- Validation or blocker: Contract-verified bounded live reads without cache access, shared complete collection, truthful coverage, best-effort persistence, and explicit local cache selection
 - Blocker ID: None
 - Command binding: `tadx admin user list`
 
@@ -666,6 +924,58 @@ Report resolved auth configuration and selected credential source without reveal
 - Blocker ID: None
 - Command binding: `tadx auth status`
 
+### `cache.refresh`
+
+Collect selected inventory scopes and atomically replace one normalized cache generation.
+
+- Surface: tadx cache refresh
+- Operation type: inspect
+- Owner: cli
+- Selectors: Environment/site; admitted --scope values; default inventory scopes exclude permissions; permissions is explicit
+- Products and availability: Cloud / Server
+- Product disposition: ship
+- Evidence level: contract-verified
+- Verification readiness: ready
+- Implementation state: implemented
+- Local write: Yes
+- Remote mutation: No
+- Supports `--preview`: No
+- Supports `--batch-file`: No
+- Raw capable: No
+- Safety and guard: Inventory failures preserve the prior generation; selected permission 403s preserve useful inventory with explicit incomplete permission coverage; environment cache_max_concurrency defaults to 32 and accepts 1..256; starts at min(4, maximum) and ramps gradually; rate-limited reads share one run cooldown; explicit refresh transactionally rebuilds recognized older cache schemas
+- Artifact effect: None
+- Upstream operation: Admitted REST inventory endpoints; bulk workbook permission reads only with explicit permissions scope; transactional SQLite publication
+- Evidence: docs/evidence/group2-inventory-rest-contract.md
+- Validation or blocker: Contract-verified inventory-only defaults, opt-in bulk permissions, adaptive concurrent collection, and atomic cache publication
+- Blocker ID: None
+- Command binding: `tadx cache refresh`
+
+### `cache.status`
+
+Report generation age, completeness, source, and stale state.
+
+- Surface: tadx cache status
+- Operation type: inspect
+- Owner: cli
+- Selectors: Optional environment/site
+- Products and availability: Local / all
+- Product disposition: ship
+- Evidence level: local-contract
+- Verification readiness: ready
+- Implementation state: implemented
+- Local write: No
+- Remote mutation: No
+- Supports `--preview`: No
+- Supports `--batch-file`: No
+- Raw capable: No
+- Safety and guard: Uninitialized before first refresh; scope completeness remains explicit; 12-hour stale warning; older cache schema requires explicit cache refresh; status never rebuilds the cache
+- Artifact effect: None
+- Upstream operation: Local cache generation metadata
+- Evidence: A1 §§5.9, 12.8; C1 §2.1
+- Validation or blocker: Architecture-locked local contract
+- Blocker ID: None
+- Command binding: `tadx cache status`
+
 ### `capability.get`
 
 Return focused execution, ownership, selector, safety, and availability guidance for one capability.
@@ -718,43 +1028,69 @@ Return a bounded inventory of discoverable operations, ownership, and execution 
 - Blocker ID: None
 - Command binding: `tadx capability list`
 
-### `catalog.refresh`
+### `catalog.audit`
 
-Collect selected inventory scopes and atomically replace one normalized catalog generation.
+Audit descriptions and tags in an explicit database, table, or datasource scope; inherited descriptions count unless --direct-only.
 
-- Surface: tadx catalog refresh
+- Surface: tadx catalog audit
 - Operation type: inspect
 - Owner: cli
-- Selectors: Environment/site; admitted --scope values; default inventory scopes exclude permissions; permissions is explicit
-- Products and availability: Cloud / Server
+- Selectors: Exact REST --id or read-only --metadata-id where supported; bounded scope and limits
+- Products and availability: Tableau Catalog / Metadata API; REST metadata edits require supported version and asset permissions
 - Product disposition: ship
 - Evidence level: contract-verified
 - Verification readiness: ready
 - Implementation state: implemented
-- Local write: Yes
+- Local write: No
 - Remote mutation: No
 - Supports `--preview`: No
-- Supports `--batch-file`: No
+- Supports `--batch-file`: Yes
 - Raw capable: No
-- Safety and guard: Inventory failures preserve the prior generation; selected permission 403s preserve useful inventory with explicit incomplete permission coverage; environment catalog_max_concurrency defaults to 32 and accepts 1..256; starts at min(4, maximum) and ramps gradually; rate-limited reads share one run cooldown; explicit refresh transactionally rebuilds recognized older catalog schemas
+- Safety and guard: Distinct identity namespaces; bounded coverage; local validation; explicit writes preserve unmentioned properties
 - Artifact effect: None
-- Upstream operation: Admitted REST inventory endpoints; bulk workbook permission reads only with explicit permissions scope; transactional SQLite publication
-- Evidence: docs/evidence/group2-inventory-rest-contract.md
-- Validation or blocker: Contract-verified inventory-only defaults, opt-in bulk permissions, adaptive concurrent collection, and atomic catalog publication
+- Upstream operation: Metadata GraphQL reads; released REST metadata methods
+- Evidence: docs/evidence/metadata-semantics-contract.md; HTTP fixtures and action regressions
+- Validation or blocker: Bounded provider fixtures; no live mutation claim
 - Blocker ID: None
-- Command binding: `tadx catalog refresh`
+- Command binding: `tadx catalog audit`
 
-### `catalog.status`
+### `catalog.column.inspect`
 
-Report generation age, completeness, source, and stale state.
+Inspect one exact upstream column, retaining distinct REST and Metadata identities.
 
-- Surface: tadx catalog status
+- Surface: tadx catalog column inspect
 - Operation type: inspect
 - Owner: cli
-- Selectors: Optional environment/site
-- Products and availability: Local / all
+- Selectors: Exact REST --id or read-only --metadata-id where supported; bounded scope and limits
+- Products and availability: Tableau Catalog / Metadata API; REST metadata edits require supported version and asset permissions
 - Product disposition: ship
-- Evidence level: local-contract
+- Evidence level: contract-verified
+- Verification readiness: ready
+- Implementation state: implemented
+- Local write: No
+- Remote mutation: No
+- Supports `--preview`: No
+- Supports `--batch-file`: Yes
+- Raw capable: No
+- Safety and guard: Distinct identity namespaces; bounded coverage; local validation; explicit writes preserve unmentioned properties
+- Artifact effect: None
+- Upstream operation: Metadata GraphQL reads; released REST metadata methods
+- Evidence: docs/evidence/metadata-semantics-contract.md; HTTP fixtures and action regressions
+- Validation or blocker: Bounded provider fixtures; no live mutation claim
+- Blocker ID: None
+- Command binding: `tadx catalog column inspect`
+
+### `catalog.column.list`
+
+List bounded upstream column metadata; --all collects the bounded matching scope.
+
+- Surface: tadx catalog column list
+- Operation type: find
+- Owner: cli
+- Selectors: Exact REST --id or read-only --metadata-id where supported; bounded scope and limits
+- Products and availability: Tableau Catalog / Metadata API; REST metadata edits require supported version and asset permissions
+- Product disposition: ship
+- Evidence level: contract-verified
 - Verification readiness: ready
 - Implementation state: implemented
 - Local write: No
@@ -762,13 +1098,325 @@ Report generation age, completeness, source, and stale state.
 - Supports `--preview`: No
 - Supports `--batch-file`: No
 - Raw capable: No
-- Safety and guard: Uninitialized before first refresh; scope completeness remains explicit; 12-hour stale warning; older catalog schema requires explicit catalog refresh; status never rebuilds the cache
+- Safety and guard: Distinct identity namespaces; bounded coverage; local validation; explicit writes preserve unmentioned properties
 - Artifact effect: None
-- Upstream operation: Local catalog generation metadata
-- Evidence: A1 §§5.9, 12.8; C1 §2.1
-- Validation or blocker: Architecture-locked local contract
+- Upstream operation: Metadata GraphQL reads; released REST metadata methods
+- Evidence: docs/evidence/metadata-semantics-contract.md; HTTP fixtures and action regressions
+- Validation or blocker: Bounded provider fixtures; no live mutation claim
 - Blocker ID: None
-- Command binding: `tadx catalog status`
+- Command binding: `tadx catalog column list`
+
+### `catalog.column.update`
+
+Update explicit upstream column descriptions and add or remove tags without replacing unmentioned properties.
+
+- Surface: tadx catalog column update
+- Operation type: change
+- Owner: cli
+- Selectors: Exact REST --id or read-only --metadata-id where supported; bounded scope and limits
+- Products and availability: Tableau Catalog / Metadata API; REST metadata edits require supported version and asset permissions
+- Product disposition: ship
+- Evidence level: contract-verified
+- Verification readiness: ready
+- Implementation state: implemented
+- Local write: No
+- Remote mutation: Yes
+- Supports `--preview`: Yes
+- Supports `--batch-file`: Yes
+- Raw capable: No
+- Safety and guard: Distinct identity namespaces; bounded coverage; local validation; explicit writes preserve unmentioned properties
+- Artifact effect: None
+- Upstream operation: Metadata GraphQL reads; released REST metadata methods
+- Evidence: docs/evidence/metadata-semantics-contract.md; HTTP fixtures and action regressions
+- Validation or blocker: Bounded provider fixtures; no live mutation claim
+- Blocker ID: None
+- Command binding: `tadx catalog column update`
+
+### `catalog.database.inspect`
+
+Inspect one exact upstream database, retaining distinct REST and Metadata identities.
+
+- Surface: tadx catalog database inspect
+- Operation type: inspect
+- Owner: cli
+- Selectors: Exact REST --id or read-only --metadata-id where supported; bounded scope and limits
+- Products and availability: Tableau Catalog / Metadata API; REST metadata edits require supported version and asset permissions
+- Product disposition: ship
+- Evidence level: contract-verified
+- Verification readiness: ready
+- Implementation state: implemented
+- Local write: No
+- Remote mutation: No
+- Supports `--preview`: No
+- Supports `--batch-file`: Yes
+- Raw capable: No
+- Safety and guard: Distinct identity namespaces; bounded coverage; local validation; explicit writes preserve unmentioned properties
+- Artifact effect: None
+- Upstream operation: Metadata GraphQL reads; released REST metadata methods
+- Evidence: docs/evidence/metadata-semantics-contract.md; HTTP fixtures and action regressions
+- Validation or blocker: Bounded provider fixtures; no live mutation claim
+- Blocker ID: None
+- Command binding: `tadx catalog database inspect`
+
+### `catalog.database.list`
+
+List bounded upstream database metadata; --all collects the bounded matching scope.
+
+- Surface: tadx catalog database list
+- Operation type: find
+- Owner: cli
+- Selectors: Exact REST --id or read-only --metadata-id where supported; bounded scope and limits
+- Products and availability: Tableau Catalog / Metadata API; REST metadata edits require supported version and asset permissions
+- Product disposition: ship
+- Evidence level: contract-verified
+- Verification readiness: ready
+- Implementation state: implemented
+- Local write: No
+- Remote mutation: No
+- Supports `--preview`: No
+- Supports `--batch-file`: No
+- Raw capable: No
+- Safety and guard: Distinct identity namespaces; bounded coverage; local validation; explicit writes preserve unmentioned properties
+- Artifact effect: None
+- Upstream operation: Metadata GraphQL reads; released REST metadata methods
+- Evidence: docs/evidence/metadata-semantics-contract.md; HTTP fixtures and action regressions
+- Validation or blocker: Bounded provider fixtures; no live mutation claim
+- Blocker ID: None
+- Command binding: `tadx catalog database list`
+
+### `catalog.database.update`
+
+Update explicit upstream database descriptions/contact and add or remove tags without replacing unmentioned properties.
+
+- Surface: tadx catalog database update
+- Operation type: change
+- Owner: cli
+- Selectors: Exact REST --id or read-only --metadata-id where supported; bounded scope and limits
+- Products and availability: Tableau Catalog / Metadata API; REST metadata edits require supported version and asset permissions
+- Product disposition: ship
+- Evidence level: contract-verified
+- Verification readiness: ready
+- Implementation state: implemented
+- Local write: No
+- Remote mutation: Yes
+- Supports `--preview`: Yes
+- Supports `--batch-file`: Yes
+- Raw capable: No
+- Safety and guard: Distinct identity namespaces; bounded coverage; local validation; explicit writes preserve unmentioned properties
+- Artifact effect: None
+- Upstream operation: Metadata GraphQL reads; released REST metadata methods
+- Evidence: docs/evidence/metadata-semantics-contract.md; HTTP fixtures and action regressions
+- Validation or blocker: Bounded provider fixtures; no live mutation claim
+- Blocker ID: None
+- Command binding: `tadx catalog database update`
+
+### `catalog.search`
+
+Search upstream databases and tables; column text matching is a bounded table-scoped scan.
+
+- Surface: tadx catalog search
+- Operation type: find
+- Owner: cli
+- Selectors: Exact REST --id or read-only --metadata-id where supported; bounded scope and limits
+- Products and availability: Tableau Catalog / Metadata API; REST metadata edits require supported version and asset permissions
+- Product disposition: ship
+- Evidence level: contract-verified
+- Verification readiness: ready
+- Implementation state: implemented
+- Local write: No
+- Remote mutation: No
+- Supports `--preview`: No
+- Supports `--batch-file`: No
+- Raw capable: No
+- Safety and guard: Distinct identity namespaces; bounded coverage; local validation; explicit writes preserve unmentioned properties
+- Artifact effect: None
+- Upstream operation: Metadata GraphQL reads; released REST metadata methods
+- Evidence: docs/evidence/metadata-semantics-contract.md; HTTP fixtures and action regressions
+- Validation or blocker: Bounded provider fixtures; no live mutation claim
+- Blocker ID: None
+- Command binding: `tadx catalog search`
+
+### `catalog.table.inspect`
+
+Inspect one exact upstream table, retaining distinct REST and Metadata identities.
+
+- Surface: tadx catalog table inspect
+- Operation type: inspect
+- Owner: cli
+- Selectors: Exact REST --id or read-only --metadata-id where supported; bounded scope and limits
+- Products and availability: Tableau Catalog / Metadata API; REST metadata edits require supported version and asset permissions
+- Product disposition: ship
+- Evidence level: contract-verified
+- Verification readiness: ready
+- Implementation state: implemented
+- Local write: No
+- Remote mutation: No
+- Supports `--preview`: No
+- Supports `--batch-file`: Yes
+- Raw capable: No
+- Safety and guard: Distinct identity namespaces; bounded coverage; local validation; explicit writes preserve unmentioned properties
+- Artifact effect: None
+- Upstream operation: Metadata GraphQL reads; released REST metadata methods
+- Evidence: docs/evidence/metadata-semantics-contract.md; HTTP fixtures and action regressions
+- Validation or blocker: Bounded provider fixtures; no live mutation claim
+- Blocker ID: None
+- Command binding: `tadx catalog table inspect`
+
+### `catalog.table.list`
+
+List bounded upstream table metadata; --all collects the bounded matching scope.
+
+- Surface: tadx catalog table list
+- Operation type: find
+- Owner: cli
+- Selectors: Exact REST --id or read-only --metadata-id where supported; bounded scope and limits
+- Products and availability: Tableau Catalog / Metadata API; REST metadata edits require supported version and asset permissions
+- Product disposition: ship
+- Evidence level: contract-verified
+- Verification readiness: ready
+- Implementation state: implemented
+- Local write: No
+- Remote mutation: No
+- Supports `--preview`: No
+- Supports `--batch-file`: No
+- Raw capable: No
+- Safety and guard: Distinct identity namespaces; bounded coverage; local validation; explicit writes preserve unmentioned properties
+- Artifact effect: None
+- Upstream operation: Metadata GraphQL reads; released REST metadata methods
+- Evidence: docs/evidence/metadata-semantics-contract.md; HTTP fixtures and action regressions
+- Validation or blocker: Bounded provider fixtures; no live mutation claim
+- Blocker ID: None
+- Command binding: `tadx catalog table list`
+
+### `catalog.table.update`
+
+Update explicit upstream table descriptions/contact and add or remove tags without replacing unmentioned properties.
+
+- Surface: tadx catalog table update
+- Operation type: change
+- Owner: cli
+- Selectors: Exact REST --id or read-only --metadata-id where supported; bounded scope and limits
+- Products and availability: Tableau Catalog / Metadata API; REST metadata edits require supported version and asset permissions
+- Product disposition: ship
+- Evidence level: contract-verified
+- Verification readiness: ready
+- Implementation state: implemented
+- Local write: No
+- Remote mutation: Yes
+- Supports `--preview`: Yes
+- Supports `--batch-file`: Yes
+- Raw capable: No
+- Safety and guard: Distinct identity namespaces; bounded coverage; local validation; explicit writes preserve unmentioned properties
+- Artifact effect: None
+- Upstream operation: Metadata GraphQL reads; released REST metadata methods
+- Evidence: docs/evidence/metadata-semantics-contract.md; HTTP fixtures and action regressions
+- Validation or blocker: Bounded provider fixtures; no live mutation claim
+- Blocker ID: None
+- Command binding: `tadx catalog table update`
+
+### `content.label.delete`
+
+Delete supported content label attachments on exact database, table, column, datasource, or flow targets.
+
+- Surface: tadx content label delete
+- Operation type: change
+- Owner: cli
+- Selectors: Attachment --id; related asset --type and --target-id
+- Products and availability: Tableau labels with supported API version, licensing and permissions
+- Product disposition: ship
+- Evidence level: contract-verified
+- Verification readiness: ready
+- Implementation state: implemented
+- Local write: No
+- Remote mutation: Yes
+- Supports `--preview`: Yes
+- Supports `--batch-file`: Yes
+- Raw capable: No
+- Safety and guard: Exact identities; fresh pre-write validation; read-only preview; confirmed partial outcomes retained
+- Artifact effect: None
+- Upstream operation: Released REST labels, labelValues and labelCategories methods
+- Evidence: docs/evidence/metadata-semantics-contract.md; provider HTTP fixtures and action contracts
+- Validation or blocker: Local HTTP and action contracts; live mutations not verified
+- Blocker ID: None
+- Command binding: `tadx content label delete`
+
+### `content.label.inspect`
+
+Inspect supported content label attachments on exact database, table, column, datasource, or flow targets.
+
+- Surface: tadx content label inspect
+- Operation type: inspect
+- Owner: cli
+- Selectors: Attachment --id; related asset --type and --target-id
+- Products and availability: Tableau labels with supported API version, licensing and permissions
+- Product disposition: ship
+- Evidence level: contract-verified
+- Verification readiness: ready
+- Implementation state: implemented
+- Local write: No
+- Remote mutation: No
+- Supports `--preview`: No
+- Supports `--batch-file`: Yes
+- Raw capable: No
+- Safety and guard: Exact identities; fresh pre-write validation; read-only preview; confirmed partial outcomes retained
+- Artifact effect: None
+- Upstream operation: Released REST labels, labelValues and labelCategories methods
+- Evidence: docs/evidence/metadata-semantics-contract.md; provider HTTP fixtures and action contracts
+- Validation or blocker: Local HTTP and action contracts; live mutations not verified
+- Blocker ID: None
+- Command binding: `tadx content label inspect`
+
+### `content.label.list`
+
+List supported content label attachments on exact database, table, column, datasource, or flow targets.
+
+- Surface: tadx content label list
+- Operation type: find
+- Owner: cli
+- Selectors: Attachment --id; related asset --type and --target-id
+- Products and availability: Tableau labels with supported API version, licensing and permissions
+- Product disposition: ship
+- Evidence level: contract-verified
+- Verification readiness: ready
+- Implementation state: implemented
+- Local write: No
+- Remote mutation: No
+- Supports `--preview`: No
+- Supports `--batch-file`: No
+- Raw capable: No
+- Safety and guard: Exact identities; fresh pre-write validation; read-only preview; confirmed partial outcomes retained
+- Artifact effect: None
+- Upstream operation: Released REST labels, labelValues and labelCategories methods
+- Evidence: docs/evidence/metadata-semantics-contract.md; provider HTTP fixtures and action contracts
+- Validation or blocker: Local HTTP and action contracts; live mutations not verified
+- Blocker ID: None
+- Command binding: `tadx content label list`
+
+### `content.label.update`
+
+Update supported content label attachments on exact database, table, column, datasource, or flow targets.
+
+- Surface: tadx content label update
+- Operation type: change
+- Owner: cli
+- Selectors: Attachment --id; related asset --type and --target-id
+- Products and availability: Tableau labels with supported API version, licensing and permissions
+- Product disposition: ship
+- Evidence level: contract-verified
+- Verification readiness: ready
+- Implementation state: implemented
+- Local write: No
+- Remote mutation: Yes
+- Supports `--preview`: Yes
+- Supports `--batch-file`: Yes
+- Raw capable: No
+- Safety and guard: Exact identities; fresh pre-write validation; read-only preview; confirmed partial outcomes retained
+- Artifact effect: None
+- Upstream operation: Released REST labels, labelValues and labelCategories methods
+- Evidence: docs/evidence/metadata-semantics-contract.md; provider HTTP fixtures and action contracts
+- Validation or blocker: Local HTTP and action contracts; live mutations not verified
+- Blocker ID: None
+- Command binding: `tadx content label update`
 
 ### `datasource.delete`
 
@@ -798,7 +1446,7 @@ Delete one exact remote datasource, or preview the operation.
 
 ### `datasource.inspect`
 
-Inspect one datasource, with bounded field/model/composition detail when requested.
+Inspect an exact datasource and its upstream databases/files and tables; --full expands fetched descriptions.
 
 - Surface: tadx content datasource inspect
 - Operation type: inspect
@@ -814,11 +1462,11 @@ Inspect one datasource, with bounded field/model/composition detail when request
 - Supports `--preview`: No
 - Supports `--batch-file`: Yes
 - Raw capable: No
-- Safety and guard: Live Tableau by default; --catalog is local-only; no fallback; record Metadata API permission mode and partial warnings
+- Safety and guard: Live Tableau by default; --cache is local-only; no fallback; record Metadata API permission mode and partial warnings
 - Artifact effect: None
-- Upstream operation: GET .../datasources/{id}; optional Metadata API and VDS detail
-- Evidence: docs/evidence/group2-inventory-rest-contract.md; hermetic catalog source-selection tests
-- Validation or blocker: Contract-verified base REST identity, lifecycle read, and explicit source selection; Metadata, VDS, and composition detail remain gated
+- Upstream operation: GET .../datasources/{id}; bounded Metadata API upstream database and table reads
+- Evidence: docs/evidence/group2-inventory-rest-contract.md; hermetic cache source-selection tests
+- Validation or blocker: REST identity, compact/full same-query upstream metadata, explicit unavailable coverage, and local-only cached inspection
 - Blocker ID: None
 - Command binding: `tadx content datasource inspect`
 
@@ -829,7 +1477,7 @@ List a bounded live selection of published datasources, or explicitly collect th
 - Surface: tadx content datasource list
 - Operation type: find
 - Owner: cli
-- Selectors: Environment/site; optional project/owner/name/type/tag/time filters; --limit 1..10000 (default 25) or --all; optional --catalog
+- Selectors: Environment/site; optional project/owner/name/type/tag/time filters; --limit 1..10000 (default 25) or --all; optional --cache
 - Products and availability: Cloud / Server
 - Product disposition: ship
 - Evidence level: contract-verified
@@ -840,11 +1488,11 @@ List a bounded live selection of published datasources, or explicitly collect th
 - Supports `--preview`: No
 - Supports `--batch-file`: No
 - Raw capable: No
-- Safety and guard: Ordinary live lists use bounded provider reads without SQLite access; --all collects through the shared inventory collector and renders in memory; complete unfiltered collections atomically replace the resource catalog scope on a best-effort basis; filtered collections save selected observations; catalog write failure preserves the live answer with a warning; --catalog is local-only; --all rejects incomplete coverage and results beyond 10000 records; --full changes presentation only; cached project-name filtering uses indexed canonical project LUIDs and complete project coverage
-- Artifact effect: Best-effort catalog update only with live --all
-- Upstream operation: GET /api/{version}/sites/{site-id}/datasources; shared inventory collection for --all; SQLite only for explicit catalog reads or best-effort --all persistence
+- Safety and guard: Ordinary live lists use bounded provider reads without SQLite access; --all collects through the shared inventory collector and renders in memory; complete unfiltered collections atomically replace the resource cache scope on a best-effort basis; filtered collections save selected observations; cache write failure preserves the live answer with a warning; --cache is local-only; --all rejects incomplete coverage and results beyond 10000 records; --full changes presentation only; cached project-name filtering uses indexed canonical project LUIDs and complete project coverage
+- Artifact effect: Best-effort cache update only with live --all
+- Upstream operation: GET /api/{version}/sites/{site-id}/datasources; shared inventory collection for --all; SQLite only for explicit cache reads or best-effort --all persistence
 - Evidence: docs/evidence/group2-inventory-rest-contract.md; hermetic bounded-read, complete-collection, and source-selection tests
-- Validation or blocker: Contract-verified bounded live reads without catalog access, shared complete collection, truthful coverage, best-effort persistence, and explicit local catalog selection
+- Validation or blocker: Contract-verified bounded live reads without cache access, shared complete collection, truthful coverage, best-effort persistence, and explicit local cache selection
 - Blocker ID: None
 - Command binding: `tadx content datasource list`
 
@@ -933,7 +1581,7 @@ Inspect one datasource's logical tables and search a bounded field projection.
 - Surface: tadx content datasource schema
 - Operation type: inspect
 - Owner: cli
-- Selectors: Authoritative datasource LUID; optional field text, role, table, and repeated exact --field-id filters; bounded --limit or explicit --all
+- Selectors: Datasource LUID; field text, role, table, repeated --field-id; --limit or --all; optional --descriptions and --tags for source-aware metadata
 - Products and availability: Cloud / Server with VDS or Metadata API access
 - Product disposition: ship
 - Evidence level: contract-verified
@@ -944,11 +1592,11 @@ Inspect one datasource's logical tables and search a bounded field projection.
 - Supports `--preview`: No
 - Supports `--batch-file`: Yes
 - Raw capable: No
-- Safety and guard: Query Tableau by default; --catalog is local-only with no source fallback; preserve raw field identity separately from display captions; report more_available without opaque cursors
+- Safety and guard: Query Tableau by default; --cache is local-only with no source fallback; preserve raw field identity separately from display captions; report more_available without opaque cursors
 - Artifact effect: None
 - Upstream operation: VDS read-metadata, VDS describe-datasource, then Metadata API fallback
 - Evidence: Proven existing field-catalog implementation plus hermetic TADX contract tests
-- Validation or blocker: Contract-verified VDS-first field discovery with bounded output and Metadata API fallback
+- Validation or blocker: VDS-first fields; exact identity enrichment preserving direct/inherited descriptions and upstream column tags; no caption joins; explicit coverage and local-only cached metadata
 - Blocker ID: None
 - Command binding: `tadx content datasource schema`
 
@@ -980,7 +1628,7 @@ Rename one exact published datasource or replace its owner, or preview the opera
 
 ### `doctor.run`
 
-Diagnose config, PAT presence and validity, Tableau connectivity, catalog, workspace, and logging context without mutation.
+Diagnose config, PAT presence and validity, Tableau connectivity, cache, workspace, and logging context without mutation.
 
 - Surface: tadx doctor
 - Operation type: inspect
@@ -1011,7 +1659,7 @@ Add one named environment profile containing secret references, not secret value
 - Surface: tadx env add
 - Operation type: change
 - Owner: cli
-- Selectors: New environment alias; optional --catalog-max-concurrency 1..256
+- Selectors: New environment alias; optional --cache-max-concurrency 1..256
 - Products and availability: Local / all
 - Product disposition: ship
 - Evidence level: local-contract
@@ -1022,7 +1670,7 @@ Add one named environment profile containing secret references, not secret value
 - Supports `--preview`: No
 - Supports `--batch-file`: No
 - Raw capable: No
-- Safety and guard: Schema validation; collision guard; atomic file replacement; omitted catalog concurrency uses 32
+- Safety and guard: Schema validation; collision guard; atomic file replacement; omitted cache concurrency uses 32
 - Artifact effect: None
 - Upstream operation: Write local config.yaml
 - Evidence: A1 §§7.2–7.4, ADR-010; C1 §2.1
@@ -1032,7 +1680,7 @@ Add one named environment profile containing secret references, not secret value
 
 ### `env.profile.get`
 
-Inspect one resolved non-secret environment profile, including its catalog concurrency setting.
+Inspect one resolved non-secret environment profile, including its cache concurrency setting.
 
 - Surface: tadx env get
 - Operation type: inspect
@@ -1141,7 +1789,7 @@ Update explicit fields of one environment profile.
 - Surface: tadx env update
 - Operation type: change
 - Owner: cli
-- Selectors: Environment alias; optional --catalog-max-concurrency 1..256 or --clear-catalog-max-concurrency
+- Selectors: Environment alias; optional --cache-max-concurrency 1..256 or --clear-cache-max-concurrency
 - Products and availability: Local / all
 - Product disposition: ship
 - Evidence level: local-contract
@@ -1152,7 +1800,7 @@ Update explicit fields of one environment profile.
 - Supports `--preview`: No
 - Supports `--batch-file`: No
 - Raw capable: No
-- Safety and guard: Exact alias; secret redaction; atomic file replacement; setting and clearing catalog concurrency conflict; clearing restores default 32
+- Safety and guard: Exact alias; secret redaction; atomic file replacement; setting and clearing cache concurrency conflict; clearing restores default 32
 - Artifact effect: None
 - Upstream operation: Write local config.yaml
 - Evidence: A1 §§7.2–7.4; C1 §2.1
@@ -1204,10 +1852,10 @@ Inspect one authoritative flow and its direct lifecycle metadata.
 - Supports `--preview`: No
 - Supports `--batch-file`: Yes
 - Raw capable: No
-- Safety and guard: Live Tableau by default; --catalog is local-only; no fallback; exact resolution; ambiguity fails
+- Safety and guard: Live Tableau by default; --cache is local-only; no fallback; exact resolution; ambiguity fails
 - Artifact effect: None
 - Upstream operation: GET /api/{version}/sites/{site-id}/flows/{flow-id}
-- Evidence: Official REST capture in docs/evidence/flow-rest-contract.md; hermetic API and catalog source-selection tests
+- Evidence: Official REST capture in docs/evidence/flow-rest-contract.md; hermetic API and cache source-selection tests
 - Validation or blocker: Contract-verified exact read and explicit source selection; live deployment verification is not claimed
 - Blocker ID: None
 - Command binding: `tadx content flow inspect`
@@ -1219,7 +1867,7 @@ List a bounded live selection of flows, or explicitly collect the selected inven
 - Surface: tadx content flow list
 - Operation type: find
 - Owner: cli
-- Selectors: Environment/site; optional project/owner/name filters; --limit 1..10000 (default 25) or --all; optional --catalog
+- Selectors: Environment/site; optional project/owner/name filters; --limit 1..10000 (default 25) or --all; optional --cache
 - Products and availability: Cloud / Server with flow support; REST API 3.3+ per C1
 - Product disposition: ship
 - Evidence level: contract-verified
@@ -1230,11 +1878,11 @@ List a bounded live selection of flows, or explicitly collect the selected inven
 - Supports `--preview`: No
 - Supports `--batch-file`: No
 - Raw capable: No
-- Safety and guard: Ordinary live lists use bounded provider reads without SQLite access; --all collects through the shared inventory collector and renders in memory; complete unfiltered collections atomically replace the resource catalog scope on a best-effort basis; filtered collections save selected observations; catalog write failure preserves the live answer with a warning; --catalog is local-only; --all rejects incomplete coverage and results beyond 10000 records; --full changes presentation only
-- Artifact effect: Best-effort catalog update only with live --all
-- Upstream operation: GET /api/{version}/sites/{site-id}/flows; shared inventory collection for --all; SQLite only for explicit catalog reads or best-effort --all persistence
+- Safety and guard: Ordinary live lists use bounded provider reads without SQLite access; --all collects through the shared inventory collector and renders in memory; complete unfiltered collections atomically replace the resource cache scope on a best-effort basis; filtered collections save selected observations; cache write failure preserves the live answer with a warning; --cache is local-only; --all rejects incomplete coverage and results beyond 10000 records; --full changes presentation only
+- Artifact effect: Best-effort cache update only with live --all
+- Upstream operation: GET /api/{version}/sites/{site-id}/flows; shared inventory collection for --all; SQLite only for explicit cache reads or best-effort --all persistence
 - Evidence: docs/evidence/group2-inventory-rest-contract.md; docs/evidence/flow-rest-contract.md; hermetic bounded-read, complete-collection, and source-selection tests
-- Validation or blocker: Contract-verified bounded live reads without catalog access, shared complete collection, truthful coverage, best-effort persistence, and explicit local catalog selection
+- Validation or blocker: Contract-verified bounded live reads without cache access, shared complete collection, truthful coverage, best-effort persistence, and explicit local cache selection
 - Blocker ID: None
 - Command binding: `tadx content flow list`
 
@@ -1516,10 +2164,10 @@ Resolve and inspect one exact shallow project context.
 - Supports `--preview`: No
 - Supports `--batch-file`: Yes
 - Raw capable: No
-- Safety and guard: Live Tableau by default; --catalog is local-only; no fallback; exact full paths are opaque selectors; zero or multiple candidates fail; LUIDs remain authoritative when display paths collide
+- Safety and guard: Live Tableau by default; --cache is local-only; no fallback; exact full paths are opaque selectors; zero or multiple candidates fail; LUIDs remain authoritative when display paths collide
 - Artifact effect: None
 - Upstream operation: Exact resolution from authoritative project pages
-- Evidence: Official REST capture in docs/evidence/project-rest-contract.md; hermetic API and catalog source-selection tests
+- Evidence: Official REST capture in docs/evidence/project-rest-contract.md; hermetic API and cache source-selection tests
 - Validation or blocker: Contract-verified exact path resolution and explicit source selection; live deployment verification is not claimed
 - Blocker ID: None
 - Command binding: `tadx content project inspect`
@@ -1531,7 +2179,7 @@ List a bounded live selection of projects, or explicitly collect the selected in
 - Surface: tadx content project list
 - Operation type: find
 - Owner: cli
-- Selectors: Environment/site; optional name/parent/owner/top-level filters; --limit 1..10000 (default 25) or --all; optional --catalog
+- Selectors: Environment/site; optional name/parent/owner/top-level filters; --limit 1..10000 (default 25) or --all; optional --cache
 - Products and availability: Cloud / Server
 - Product disposition: ship
 - Evidence level: contract-verified
@@ -1542,11 +2190,11 @@ List a bounded live selection of projects, or explicitly collect the selected in
 - Supports `--preview`: No
 - Supports `--batch-file`: No
 - Raw capable: No
-- Safety and guard: Ordinary live lists use bounded provider reads without SQLite access; --all collects through the shared inventory collector and renders in memory; complete unfiltered collections atomically replace the resource catalog scope on a best-effort basis; filtered collections save selected observations; catalog write failure preserves the live answer with a warning; --catalog is local-only; --all rejects incomplete coverage and results beyond 10000 records; --full changes presentation only
-- Artifact effect: Best-effort catalog update only with live --all
-- Upstream operation: GET /api/{version}/sites/{site-id}/projects; shared inventory collection for --all; SQLite only for explicit catalog reads or best-effort --all persistence
+- Safety and guard: Ordinary live lists use bounded provider reads without SQLite access; --all collects through the shared inventory collector and renders in memory; complete unfiltered collections atomically replace the resource cache scope on a best-effort basis; filtered collections save selected observations; cache write failure preserves the live answer with a warning; --cache is local-only; --all rejects incomplete coverage and results beyond 10000 records; --full changes presentation only
+- Artifact effect: Best-effort cache update only with live --all
+- Upstream operation: GET /api/{version}/sites/{site-id}/projects; shared inventory collection for --all; SQLite only for explicit cache reads or best-effort --all persistence
 - Evidence: docs/evidence/group2-inventory-rest-contract.md; docs/evidence/project-rest-contract.md; hermetic bounded-read, complete-collection, and source-selection tests
-- Validation or blocker: Contract-verified bounded live reads without catalog access, shared complete collection, truthful coverage, best-effort persistence, and explicit local catalog selection
+- Validation or blocker: Contract-verified bounded live reads without cache access, shared complete collection, truthful coverage, best-effort persistence, and explicit local cache selection
 - Blocker ID: None
 - Command binding: `tadx content project list`
 
@@ -1672,7 +2320,7 @@ Inspect one complete Pulse definition and configuration.
 - Supports `--preview`: No
 - Supports `--batch-file`: Yes
 - Raw capable: No
-- Safety and guard: Exact LUID; --catalog never contacts Tableau or falls back
+- Safety and guard: Exact LUID; --cache never contacts Tableau or falls back
 - Artifact effect: None
 - Upstream operation: GET /api/-/pulse/definitions/{definition_id}
 - Evidence: docs/evidence/pulse-live-contract.md; hermetic TADX client and action tests
@@ -1698,7 +2346,7 @@ List Pulse metric definitions with internal bounded pagination.
 - Supports `--preview`: No
 - Supports `--batch-file`: No
 - Raw capable: No
-- Safety and guard: Internal bounded continuation; truthful more_available; exact name and datasource filters apply before the returned limit; --catalog never contacts Tableau or falls back
+- Safety and guard: Internal bounded continuation; truthful more_available; exact name and datasource filters apply before the returned limit; --cache never contacts Tableau or falls back
 - Artifact effect: None
 - Upstream operation: GET /api/-/pulse/definitions
 - Evidence: docs/evidence/pulse-live-contract.md; hermetic TADX client and action tests
@@ -1828,7 +2476,7 @@ List exact user and group subscriptions for one metric.
 - Supports `--preview`: No
 - Supports `--batch-file`: Yes
 - Raw capable: No
-- Safety and guard: Bound normalized output; reject incomplete or mismatched subscription identity; --catalog never contacts Tableau or falls back
+- Safety and guard: Bound normalized output; reject incomplete or mismatched subscription identity; --cache never contacts Tableau or falls back
 - Artifact effect: None
 - Upstream operation: GET /api/-/pulse/subscriptions?metric_id={metric_id}
 - Evidence: docs/evidence/pulse-live-contract.md; hermetic TADX action and client tests
@@ -1880,7 +2528,7 @@ Inspect one exact Pulse metric specification.
 - Supports `--preview`: No
 - Supports `--batch-file`: Yes
 - Raw capable: No
-- Safety and guard: Exact LUID; preserve unrecognized specification fields; --catalog never contacts Tableau or falls back
+- Safety and guard: Exact LUID; preserve unrecognized specification fields; --cache never contacts Tableau or falls back
 - Artifact effect: None
 - Upstream operation: GET /api/-/pulse/metrics/{metric_id}
 - Evidence: docs/evidence/pulse-live-contract.md; hermetic TADX client and action tests
@@ -1906,7 +2554,7 @@ List metrics in one definition with internal bounded pagination.
 - Supports `--preview`: No
 - Supports `--batch-file`: No
 - Raw capable: No
-- Safety and guard: Definition-scoped identity; internal continuation with truthful more_available; --catalog never contacts Tableau or falls back
+- Safety and guard: Definition-scoped identity; internal continuation with truthful more_available; --cache never contacts Tableau or falls back
 - Artifact effect: None
 - Upstream operation: GET /api/-/pulse/definitions/{definition_id}/metrics
 - Evidence: docs/evidence/pulse-live-contract.md; hermetic TADX client and action tests
@@ -1947,7 +2595,7 @@ Search native Tableau content plus administration and Pulse resources through on
 - Surface: tadx search [term]
 - Operation type: find
 - Owner: cli
-- Selectors: Optional text; broad or concrete --type; environment or --env; bounded --limit; optional --catalog
+- Selectors: Optional text; broad or concrete --type; environment or --env; bounded --limit; optional --cache
 - Products and availability: Cloud / Server 2022.3+ for native content search; Pulse types require Tableau Cloud
 - Product disposition: ship
 - Evidence level: contract-verified
@@ -1958,11 +2606,11 @@ Search native Tableau content plus administration and Pulse resources through on
 - Supports `--preview`: No
 - Supports `--batch-file`: No
 - Raw capable: No
-- Safety and guard: Nonempty live content terms use native search; native datasource results are translated to classic REST LUIDs; administration and Pulse retain dedicated adapters; --catalog is local-only; blank text requires a concrete type and uses list semantics; internal pagination satisfies --limit with more_available and no opaque cursor output; ordinary live searches do not read or write SQLite
+- Safety and guard: Nonempty live content terms use native search; native datasource results are translated to classic REST LUIDs; administration and Pulse retain dedicated adapters; --cache is local-only; blank text requires a concrete type and uses list semantics; internal pagination satisfies --limit with more_available and no opaque cursor output; ordinary live searches do not read or write SQLite
 - Artifact effect: None
-- Upstream operation: GET /api/-/search for content; Query Datasources by contentUrl for classic datasource LUIDs; dedicated administration and Pulse adapters; local normalized catalog index
+- Upstream operation: GET /api/-/search for content; Query Datasources by contentUrl for classic datasource LUIDs; dedicated administration and Pulse adapters; local normalized cache index
 - Evidence: docs/evidence/group2-inventory-rest-contract.md; current official content exploration and datasource filter contracts; hermetic transport, adapter, and app tests
-- Validation or blocker: Contract-verified bounded live discovery without SQLite access, authoritative identity normalization, truthful composite truncation, and explicit local catalog selection
+- Validation or blocker: Contract-verified bounded live discovery without SQLite access, authoritative identity normalization, truthful composite truncation, and explicit local cache selection
 - Blocker ID: None
 - Command binding: `tadx search`
 
@@ -2036,10 +2684,10 @@ Inspect one authoritative workbook and lifecycle metadata.
 - Supports `--preview`: No
 - Supports `--batch-file`: Yes
 - Raw capable: No
-- Safety and guard: Live Tableau by default; --catalog is local-only; no fallback; exact resolution; ambiguity fails
+- Safety and guard: Live Tableau by default; --cache is local-only; no fallback; exact resolution; ambiguity fails
 - Artifact effect: None
 - Upstream operation: GET /api/{version}/sites/{site-id}/workbooks/{workbook-id}
-- Evidence: docs/evidence/group2-inventory-rest-contract.md; hermetic catalog source-selection tests
+- Evidence: docs/evidence/group2-inventory-rest-contract.md; hermetic cache source-selection tests
 - Validation or blocker: Contract-verified exact REST read, canonical project selection, and explicit source selection
 - Blocker ID: None
 - Command binding: `tadx content workbook inspect`
@@ -2051,7 +2699,7 @@ List a bounded live selection of workbooks, or explicitly collect the selected i
 - Surface: tadx content workbook list
 - Operation type: find
 - Owner: cli
-- Selectors: Environment/site; optional project/owner/name/tag filters; --limit 1..10000 (default 25) or --all; optional --catalog
+- Selectors: Environment/site; optional project/owner/name/tag filters; --limit 1..10000 (default 25) or --all; optional --cache
 - Products and availability: Cloud / Server
 - Product disposition: ship
 - Evidence level: contract-verified
@@ -2062,11 +2710,11 @@ List a bounded live selection of workbooks, or explicitly collect the selected i
 - Supports `--preview`: No
 - Supports `--batch-file`: No
 - Raw capable: No
-- Safety and guard: Ordinary live lists use bounded provider reads without SQLite access; --all collects through the shared inventory collector and renders in memory; complete unfiltered collections atomically replace the resource catalog scope on a best-effort basis; filtered collections save selected observations; catalog write failure preserves the live answer with a warning; --catalog is local-only; --all rejects incomplete coverage and results beyond 10000 records; --full changes presentation only
-- Artifact effect: Best-effort catalog update only with live --all
-- Upstream operation: GET /api/{version}/sites/{site-id}/workbooks; shared inventory collection for --all; SQLite only for explicit catalog reads or best-effort --all persistence
+- Safety and guard: Ordinary live lists use bounded provider reads without SQLite access; --all collects through the shared inventory collector and renders in memory; complete unfiltered collections atomically replace the resource cache scope on a best-effort basis; filtered collections save selected observations; cache write failure preserves the live answer with a warning; --cache is local-only; --all rejects incomplete coverage and results beyond 10000 records; --full changes presentation only
+- Artifact effect: Best-effort cache update only with live --all
+- Upstream operation: GET /api/{version}/sites/{site-id}/workbooks; shared inventory collection for --all; SQLite only for explicit cache reads or best-effort --all persistence
 - Evidence: docs/evidence/group2-inventory-rest-contract.md; hermetic bounded-read, complete-collection, and source-selection tests
-- Validation or blocker: Contract-verified bounded live reads without catalog access, shared complete collection, truthful coverage, best-effort persistence, and explicit local catalog selection
+- Validation or blocker: Contract-verified bounded live reads without cache access, shared complete collection, truthful coverage, best-effort persistence, and explicit local cache selection
 - Blocker ID: None
 - Command binding: `tadx content workbook list`
 
@@ -2150,12 +2798,12 @@ Download one workbook, or up to 100 repeated authoritative workbook LUIDs sequen
 
 ### `workbook.update`
 
-Rename one exact workbook or replace its owner, or preview the operation.
+Update an exact workbook name, owner, or description, or preview the changes.
 
 - Surface: tadx content workbook update
 - Operation type: change
 - Owner: cli
-- Selectors: Workbook LUID or exact name/project path; explicit new name and/or owner LUID; environment/site (inferred only when one is configured)
+- Selectors: Workbook LUID or exact name/project path; explicit --new-name, --owner-id, or --description; environment/site (inferred only when one is configured)
 - Products and availability: Cloud / Server
 - Product disposition: ship
 - Evidence level: contract-verified
@@ -2170,7 +2818,7 @@ Rename one exact workbook or replace its owner, or preview the operation.
 - Artifact effect: None
 - Upstream operation: PUT /api/{version}/sites/{site-id}/workbooks/{workbook-id}
 - Evidence: docs/evidence/content-update-rest-contract.md
-- Validation or blocker: Contract-verified bounded rename and owner replacement with preview, no-op, drift, and uncertain outcome
+- Validation or blocker: Explicit property update with preview, no-op, description drift and readback checks, preserving partial outcomes
 - Blocker ID: None
 - Command binding: `tadx content workbook update`
 

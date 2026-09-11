@@ -1,10 +1,10 @@
-// Package search owns bounded live and catalog search orchestration.
+// Package search owns bounded live and cache search orchestration.
 package search
 
 // Input selects one source and a bounded search page.
 type Input struct {
 	Terms, Type, Environment, Site, ProjectPath, Owner, Cursor string
-	SiteResolved, Catalog                                      bool
+	SiteResolved, Cache                                        bool
 	Limit                                                      int
 }
 
@@ -28,7 +28,7 @@ type Item struct {
 	ModifiedAt  string `json:"modified_at,omitempty"`
 }
 
-// Generation identifies the local catalog snapshot when selected.
+// Generation identifies the local cache snapshot when selected.
 type Generation struct {
 	ID          string `json:"id"`
 	Environment string `json:"environment"`

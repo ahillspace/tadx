@@ -16,7 +16,7 @@ type Input struct {
 	ParentLUID  string
 	OwnerName   string
 	TopLevel    *bool
-	Catalog     bool
+	Cache       bool
 }
 
 // PageRequest is the action-owned read request.

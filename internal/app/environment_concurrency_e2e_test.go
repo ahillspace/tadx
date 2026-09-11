@@ -24,19 +24,19 @@ func TestEnvironmentConcurrencyRoundTripThroughCLI(t *testing.T) {
 	check := func(want int) {
 		t.Helper()
 		cfg, err := config.Load(path)
-		if err != nil || cfg.Environments["test"].CatalogMaxConcurrency != want {
+		if err != nil || cfg.Environments["test"].CacheMaxConcurrency != want {
 			t.Fatalf("config=%+v err=%v want concurrency=%d", cfg.Environments, err, want)
 		}
 	}
-	run(true, "env", "add", "test", "--url", "https://tableau.example.test", "--site", "test-site", "--catalog-max-concurrency", "8")
+	run(true, "env", "add", "test", "--url", "https://tableau.example.test", "--site", "test-site", "--cache-max-concurrency", "8")
 	check(8)
-	if got := run(true, "env", "get", "test", "--full"); !strings.Contains(got, "catalog_max_concurrency: 8") {
+	if got := run(true, "env", "get", "test", "--full"); !strings.Contains(got, "cache_max_concurrency: 8") {
 		t.Fatalf("missing configured concurrency: %s", got)
 	}
-	run(true, "env", "update", "test", "--catalog-max-concurrency", "3")
+	run(true, "env", "update", "test", "--cache-max-concurrency", "3")
 	check(3)
-	run(false, "env", "update", "test", "--catalog-max-concurrency", "257")
+	run(false, "env", "update", "test", "--cache-max-concurrency", "257")
 	check(3)
-	run(true, "env", "update", "test", "--clear-catalog-max-concurrency")
+	run(true, "env", "update", "test", "--clear-cache-max-concurrency")
 	check(0)
 }

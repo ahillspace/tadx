@@ -127,8 +127,8 @@ func projectFilterFingerprint(input Input) (string, error) {
 		ParentLUID  string `json:"parent_luid"`
 		OwnerName   string `json:"owner_name"`
 		TopLevel    *bool  `json:"top_level"`
-		Catalog     bool   `json:"catalog"`
-	}{Environment: input.Environment, Site: input.Site, Name: input.Name, ParentLUID: input.ParentLUID, OwnerName: input.OwnerName, TopLevel: input.TopLevel, Catalog: input.Catalog})
+		Cache       bool   `json:"cache"`
+	}{Environment: input.Environment, Site: input.Site, Name: input.Name, ParentLUID: input.ParentLUID, OwnerName: input.OwnerName, TopLevel: input.TopLevel, Cache: input.Cache})
 	if err != nil {
 		return "", err
 	}

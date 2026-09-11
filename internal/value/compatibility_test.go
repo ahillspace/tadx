@@ -23,7 +23,7 @@ import (
 func TestIdenticalValuesShareOneType(t *testing.T) {
 	for name, values := range map[string][]any{
 		"content identity":       {workbookdelete.Workbook{}, datasourcedelete.Datasource{}, flowdelete.Flow{}, flowmove.Flow{}},
-		"owned content identity": {workbookmove.Workbook{}, workbookupdate.Workbook{}, datasourcemove.Datasource{}, datasourceupdate.Datasource{}},
+		"owned content identity": {workbookmove.Workbook{}, datasourcemove.Datasource{}, datasourceupdate.Datasource{}},
 		"project identity":       {workbookmove.Project{}, datasourcemove.Project{}, flowmove.Project{}},
 		"schema field":           {datasourceschema.Field{}, fieldcatalog.Field{}},
 		"schema table":           {datasourceschema.Table{}, fieldcatalog.Table{}},
@@ -41,6 +41,10 @@ func TestIdenticalValuesShareOneType(t *testing.T) {
 	}
 	if reflect.TypeOf(workbookdelete.Workbook{}) == reflect.TypeOf(workbookmove.Workbook{}) {
 		t.Fatal("smaller content identity was widened to an owner-bearing identity")
+	}
+	// Workbook updates now need description evidence; movement identities do not.
+	if _, ok := reflect.TypeOf(workbookupdate.Workbook{}).FieldByName("Description"); !ok {
+		t.Fatal("workbook updates lost description drift evidence")
 	}
 }
 

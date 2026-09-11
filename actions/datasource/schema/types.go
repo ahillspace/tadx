@@ -13,6 +13,8 @@ const (
 
 // Input selects one published datasource schema and a bounded field view.
 type Input struct {
+	Descriptions   bool
+	Tags           bool
 	Environment    string
 	Site           string
 	DatasourceLUID string
@@ -23,7 +25,7 @@ type Input struct {
 	FieldIDs       []string
 	Limit          int
 	Cursor         string
-	Catalog        bool
+	Cache          bool
 	All            bool
 }
 
@@ -35,13 +37,15 @@ type Field = value.SchemaField
 
 // Schema is one complete normalized datasource schema before bounded projection.
 type Schema struct {
-	DatasourceLUID string
-	DatasourceName string
-	Tables         []Table
-	Fields         []Field
-	Warnings       []string
-	ObservedAt     string
-	RequestID      string
+	DescriptionsObserved bool
+	TagsObserved         bool
+	DatasourceLUID       string
+	DatasourceName       string
+	Tables               []Table
+	Fields               []Field
+	Warnings             []string
+	ObservedAt           string
+	RequestID            string
 }
 
 // Page describes the bounded field projection.
@@ -71,13 +75,15 @@ type Output struct {
 
 // CompactField contains everything needed to select a field for authoring.
 type CompactField struct {
-	ID                      string `json:"id"`
-	Caption                 string `json:"caption"`
-	Table                   string `json:"table,omitempty"`
-	Role                    string `json:"role"`
-	DataType                string `json:"data_type"`
-	DefaultAggregation      string `json:"default_aggregation,omitempty"`
-	RequiresUserAggregation bool   `json:"requires_user_aggregation"`
+	Metadata                *value.FieldDescription `json:"metadata,omitempty"`
+	MetadataMatch           string                  `json:"metadata_match,omitempty"`
+	ID                      string                  `json:"id"`
+	Caption                 string                  `json:"caption"`
+	Table                   string                  `json:"table,omitempty"`
+	Role                    string                  `json:"role"`
+	DataType                string                  `json:"data_type"`
+	DefaultAggregation      string                  `json:"default_aggregation,omitempty"`
+	RequiresUserAggregation bool                    `json:"requires_user_aggregation"`
 }
 
 // CompactResult is the default bounded output.
@@ -116,7 +122,7 @@ type FullResult struct {
 func (o Output) CompactOutput() any {
 	fields := make([]CompactField, len(o.Fields))
 	for index, field := range o.Fields {
-		fields[index] = CompactField{ID: field.ID, Caption: field.Caption, Table: field.Table, Role: field.Role, DataType: field.DataType, DefaultAggregation: field.DefaultAggregation, RequiresUserAggregation: field.RequiresUserAggregation}
+		fields[index] = CompactField{ID: field.ID, Caption: field.Caption, Table: field.Table, Role: field.Role, DataType: field.DataType, DefaultAggregation: field.DefaultAggregation, RequiresUserAggregation: field.RequiresUserAggregation, Metadata: field.Metadata, MetadataMatch: field.MetadataMatch}
 	}
 	return CompactResult{Status: o.Status, Environment: o.Environment, Site: o.Site, DatasourceLUID: o.DatasourceLUID, DatasourceName: o.DatasourceName, Source: o.Source, Tables: append([]Table(nil), o.Tables...), Page: o.Page, Fields: fields, Warnings: append([]string(nil), o.Warnings...), Details: "--full", Help: append([]string(nil), o.Help...)}
 }

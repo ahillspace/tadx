@@ -5,10 +5,10 @@ import (
 
 	workbookinspect "github.com/ahillspace/tadx/actions/workbook/inspect"
 	workbooklist "github.com/ahillspace/tadx/actions/workbook/list"
-	"github.com/ahillspace/tadx/internal/catalog"
+	"github.com/ahillspace/tadx/internal/cache"
 	"github.com/ahillspace/tadx/internal/identity"
 	resourceworkbook "github.com/ahillspace/tadx/internal/resources/workbook"
-	tableaucatalog "github.com/ahillspace/tadx/internal/tableau/catalog"
+	tableaucache "github.com/ahillspace/tadx/internal/tableau/cache"
 	tableauworkbook "github.com/ahillspace/tadx/internal/tableau/workbook"
 )
 
@@ -28,13 +28,13 @@ func (c *remoteContentCommands) ListWorkbooks(ctx context.Context, input workboo
 			resultErr = validateInventoryAll(input.All, result.Source)
 		}
 	}()
-	if input.Catalog || legacyInventorySnapshot(input.Cursor) {
-		environment, site, err := c.resolveCatalogTarget(input.Environment)
+	if input.Cache || legacyInventorySnapshot(input.Cursor) {
+		environment, site, err := c.resolveCacheTarget(input.Environment)
 		if err != nil {
 			return workbooklist.Output{}, err
 		}
 		input.Environment, input.Site = environment, site
-		reader := &catalogWorkbookListReader{store: c.catalogStore(input.Environment), environment: environment, site: site}
+		reader := &cacheWorkbookListReader{store: c.cacheStore(input.Environment), environment: environment, site: site}
 		output, err := workbooklist.New(reader).Execute(ctx, input)
 		if err == nil {
 			output.Source = reader.source
@@ -53,7 +53,7 @@ func (c *remoteContentCommands) ListWorkbooks(ctx context.Context, input workboo
 
 	if input.All {
 		observedAt := c.runtime.now().UTC()
-		inventory, err := collectResourceInventory(ctx, connection.inventory, c.catalogStore(input.Environment), tableaucatalog.ScopeWorkbooks, input.Environment, input.Site, observedAt, inventoryCollectionOptions{MaxConcurrency: connection.environment.CatalogMaxConcurrency, Filter: filter})
+		inventory, err := collectResourceInventory(ctx, connection.inventory, c.cacheStore(input.Environment), tableaucache.ScopeWorkbooks, input.Environment, input.Site, observedAt, inventoryCollectionOptions{MaxConcurrency: connection.environment.CacheMaxConcurrency, Filter: filter})
 		if err != nil {
 			return workbooklist.Output{}, inventoryRefreshError("workbook.list", input.Environment, input.Site, err)
 		}
@@ -63,7 +63,7 @@ func (c *remoteContentCommands) ListWorkbooks(ctx context.Context, input workboo
 		if err != nil {
 			return output, err
 		}
-		if inventory.catalogErr != nil {
+		if inventory.cacheErr != nil {
 			output.Source = inventory.warningSource(observedAt)
 			output.Help = append(output.Help, inventory.warningHelp())
 		} else if inventory.filtered {
@@ -90,13 +90,13 @@ func (c *remoteContentCommands) InspectWorkbook(ctx context.Context, input workb
 	if err := workbookinspect.ValidateInput(input); err != nil {
 		return workbookinspect.Output{}, err
 	}
-	if input.Catalog {
-		environment, site, err := c.resolveCatalogTarget(input.Environment)
+	if input.Cache {
+		environment, site, err := c.resolveCacheTarget(input.Environment)
 		if err != nil {
 			return workbookinspect.Output{}, err
 		}
 		input.Environment, input.Site = environment, site
-		resolver := &catalogWorkbookGetResolver{store: c.catalogStore(input.Environment), environment: environment, site: site}
+		resolver := &cacheWorkbookGetResolver{store: c.cacheStore(input.Environment), environment: environment, site: site}
 		output, err := workbookinspect.New(resolver).Execute(ctx, input)
 		if err == nil {
 			output.Source = resolver.source
@@ -116,7 +116,7 @@ func (c *remoteContentCommands) InspectWorkbook(ctx context.Context, input workb
 	output.Source = liveSource(c.runtime.now)
 	entry, encodeErr := resourceEntry(input.Environment, input.Site, "workbook", output.Workbook.LUID, output.Workbook.Name, output.Workbook.ProjectPath, output.Workbook.OwnerLUID, "detail", observedAt, output.Workbook)
 	if encodeErr == nil {
-		writeThrough(c.catalogStore(input.Environment), []catalog.ResourceEntry{entry})
+		writeThrough(c.cacheStore(input.Environment), []cache.ResourceEntry{entry})
 	}
 	return output, nil
 }

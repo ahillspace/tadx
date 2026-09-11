@@ -24,7 +24,7 @@ The [remediation verification record](docs/evidence/guidance-remediation-verific
 ## Evaluation questions
 
 - Distinguish agent-requested cleanup from evaluator-only cleanup obligations while retaining original failed outcomes after later cleanup succeeds.
-- Assess whether recommendations distinguish schema evidence from actual date coverage or values and describe catalog coverage using the requested scopes.
+- Assess whether recommendations distinguish schema evidence from actual date coverage or values and describe cache coverage using the requested scopes.
 - Resolve the temporary-user role prerequisite where an access or following exercise conflicts with harness restrictions on licensed roles.
   A role assignment alone does not establish a purchase or billing event.
 

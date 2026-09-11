@@ -12,7 +12,7 @@ type Input struct {
 	All                                                                  bool
 	Environment, Site, Cursor, Name, OwnerName, ProjectLUID, ProjectName string
 	Limit                                                                int
-	Catalog                                                              bool
+	Cache                                                                bool
 }
 
 // PageRequest is the action-owned request.

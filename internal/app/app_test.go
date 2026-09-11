@@ -236,9 +236,9 @@ func TestNamedWorkspaceCreateRejectsEscapingDefaultName(t *testing.T) {
 }
 
 func TestRunPreservesCapabilityContextForSetupFailures(t *testing.T) {
-	t.Run("catalog configuration", func(t *testing.T) {
+	t.Run("cache configuration", func(t *testing.T) {
 		var stdout bytes.Buffer
-		exit := app.Run(context.Background(), []string{"search", "--catalog", "--type", "workbook", "--environment", "production"}, &stdout, app.Options{ConfigPath: filepath.Join(t.TempDir(), "missing.yaml")})
+		exit := app.Run(context.Background(), []string{"search", "--cache", "--type", "workbook", "--environment", "production"}, &stdout, app.Options{ConfigPath: filepath.Join(t.TempDir(), "missing.yaml")})
 		if exit == 0 || !strings.Contains(stdout.String(), "operation: search") || !strings.Contains(stdout.String(), "environment: production") {
 			t.Fatalf("exit = %d, output = %s", exit, stdout.String())
 		}

@@ -15,7 +15,7 @@ type Input struct {
 	Environment, Site string
 	Selector          Selector
 	IncludeMembers    bool
-	Catalog           bool
+	Cache             bool
 }
 
 func (i *Input) SetSelector(luid, name string) { i.Selector = Selector{LUID: luid, Name: name} }
