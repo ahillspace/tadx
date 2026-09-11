@@ -2,12 +2,14 @@ package update
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"github.com/ahillspace/tadx/internal/commandhint"
 	"github.com/ahillspace/tadx/internal/errs"
 	"github.com/ahillspace/tadx/internal/value"
 	"slices"
 	"strings"
+	"unicode/utf8"
 )
 
 type Input struct {
@@ -82,9 +84,14 @@ func ValidateInput(in Input) error {
 	if len(in.AddTags)+len(in.RemoveTags) > 100 {
 		return usage("at most 100 tag changes are allowed per item")
 	}
-	for _, tag := range append(append([]string{}, in.AddTags...), in.RemoveTags...) {
-		if strings.TrimSpace(tag) == "" || len(tag) > 256 {
-			return usage("tags must be nonempty and at most 256 bytes")
+	for _, tag := range in.AddTags {
+		if strings.TrimSpace(tag) == "" || utf8.RuneCountInString(tag) > 128 {
+			return usage("added tags must contain 1 to 128 characters")
+		}
+	}
+	for _, tag := range in.RemoveTags {
+		if strings.TrimSpace(tag) == "" || tag != strings.TrimSpace(tag) || strings.ContainsAny(tag, "\x00\r\n") {
+			return usage("removed tags must be exact nonempty selectors without surrounding whitespace or control characters")
 		}
 	}
 	for _, tag := range in.AddTags {
@@ -159,7 +166,15 @@ func (a *Action) Execute(ctx context.Context, in Input, preview bool) (Output, e
 		}
 	}
 	if len(add) > 0 {
-		_, e := a.writer.AddDatabaseTags(ctx, in.ID, add)
+		acknowledged, e := a.writer.AddDatabaseTags(ctx, in.ID, add)
+		if e == nil {
+			for _, tag := range add {
+				if !slices.Contains(acknowledged, tag) {
+					e = &errs.Error{Kind: errs.KindOperation, Summary: "Tag response did not confirm every requested addition.", Phase: errs.PhaseVerification, Retryable: errs.Bool(false)}
+					break
+				}
+			}
+		}
 		if e != nil {
 			out.Result.Status = "partial"
 			out.Result.Failed = "add_tags"
@@ -219,6 +234,11 @@ func usage(s string) error {
 func failure(in Input, step string, completed []string, outcome errs.Outcome, cause error) error {
 	retry, advice := errs.CompleteRetryAdvice(cause, "Inspect the exact asset before retrying: "+commandhint.Environment(in.Environment, "catalog", "database", "inspect", "--id", in.ID))
 	phase := errs.PhaseSubmission
+	var structured *errs.Error
+	var verification interface{ VerificationFailed() bool }
+	if (errors.As(cause, &structured) && structured.Phase == errs.PhaseVerification) || (errors.As(cause, &verification) && verification.VerificationFailed()) {
+		phase = errs.PhaseVerification
+	}
 	if outcome == errs.OutcomeNotAttempted {
 		phase = errs.PhaseValidation
 	}

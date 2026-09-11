@@ -9,7 +9,7 @@ import (
 	"testing"
 )
 
-func TestCapabilityMapInventoryMetadataMatchesRegistry(t *testing.T) {
+func TestCapabilityMapMetadataMatchesRegistry(t *testing.T) {
 	document, err := os.ReadFile(filepath.Join("..", "..", "docs", "reference", "capability-map.html"))
 	if err != nil {
 		t.Fatal(err)
@@ -34,21 +34,19 @@ func TestCapabilityMapInventoryMetadataMatchesRegistry(t *testing.T) {
 		}
 		byID[definition.ID] = definition
 	}
-	for _, id := range []string{
-		"admin.group.list", "admin.user.list", "datasource.list",
-		"flow.list", "project.list", "workbook.list",
-	} {
+	expectedDefinitions := All()
+	if len(definitions) != len(expectedDefinitions) {
+		t.Errorf("map has %d capabilities; registry has %d; run go generate ./internal/capability", len(definitions), len(expectedDefinitions))
+	}
+	for _, expected := range expectedDefinitions {
+		id := expected.ID
 		t.Run(id, func(t *testing.T) {
-			expected, exists := Lookup(id)
-			if !exists {
-				t.Fatalf("inventory capability %q is missing from the registry", id)
-			}
 			actual, exists := byID[id]
 			if !exists {
-				t.Fatalf("inventory capability %q is missing from the map", id)
+				t.Fatalf("capability %q is missing from the map", id)
 			}
 			if !reflect.DeepEqual(actual, expected) {
-				t.Errorf("embedded inventory metadata differs from the registry:\n got: %+v\nwant: %+v", actual, expected)
+				t.Errorf("embedded capability metadata differs from the registry:\n got: %+v\nwant: %+v", actual, expected)
 			}
 		})
 	}

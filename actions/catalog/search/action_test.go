@@ -21,7 +21,7 @@ func (r *reader) DiscoverColumns(_ context.Context, q value.MetadataQuery) (valu
 	if q.Text != "" {
 		panic("fabricated column text filter")
 	}
-	return value.MetadataPage[value.MetadataColumn]{Items: []value.MetadataColumn{{MetadataIdentity: value.MetadataIdentity{LUID: "column", Name: "Sales Amount", Type: "column"}}}, Complete: true}, nil
+	return value.MetadataPage[value.MetadataColumn]{Items: []value.MetadataColumn{{MetadataIdentity: value.MetadataIdentity{LUID: "column", Name: "Sales Amount", Type: "column"}}}, Total: 1, Complete: true}, nil
 }
 func TestColumnScopeRequired(t *testing.T) {
 	r := &reader{}

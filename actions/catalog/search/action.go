@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"github.com/ahillspace/tadx/internal/errs"
 	"github.com/ahillspace/tadx/internal/output"
+	"github.com/ahillspace/tadx/internal/paging"
 	"github.com/ahillspace/tadx/internal/value"
 	"reflect"
 	"slices"
@@ -93,7 +94,13 @@ func ValidateInput(in Input) error {
 	}
 	return nil
 }
-func (a *Action) Execute(ctx context.Context, in Input) (Output, error) {
+func (a *Action) Execute(ctx context.Context, in Input) (out Output, err error) {
+	defer func() {
+		if err != nil && out.Status != "" {
+			out.Status, out.Complete, out.Page.MoreAvailable = "partial", false, true
+			out.Page.Returned = len(out.Items)
+		}
+	}()
 	if err := ValidateInput(in); err != nil {
 		return Output{}, err
 	}
@@ -111,7 +118,7 @@ func (a *Action) Execute(ctx context.Context, in Input) (Output, error) {
 	if len(types) == 0 {
 		types = []string{"database", "table"}
 	}
-	out := Output{Status: "found", Environment: in.Environment, Site: in.Site, Query: in.Query, Page: output.Page{Limit: limit}, Items: []Item{}, Complete: true, MatchMode: "metadata_text"}
+	out = Output{Status: "found", Environment: in.Environment, Site: in.Site, Query: in.Query, Page: output.Page{Limit: limit}, Items: []Item{}, Complete: true, MatchMode: "metadata_text"}
 	if slices.Contains(types, "column") {
 		out.MatchMode = "metadata_text_and_scoped_column_substring"
 	}
@@ -123,6 +130,7 @@ func (a *Action) Execute(ctx context.Context, in Input) (Output, error) {
 		cursor := ""
 		seen := map[string]bool{}
 		identities := map[string]Item{}
+		var coverage paging.MetadataCoverage
 		scanLimit := 1000
 		if in.All {
 			scanLimit = 10000
@@ -196,6 +204,9 @@ func (a *Action) Execute(ctx context.Context, in Input) (Output, error) {
 				}
 			}
 			out.Page.Returned = len(out.Items)
+			if e := coverage.Page(page.Total, len(identities), page.NextCursor == ""); e != nil {
+				return out, failure(in, e)
+			}
 			if page.NextCursor == "" {
 				out.Complete = out.Complete && page.Complete
 				break

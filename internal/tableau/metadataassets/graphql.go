@@ -20,6 +20,28 @@ type graphPage struct {
 	Total *int        `json:"totalCount"`
 	Info  *graphInfo  `json:"pageInfo"`
 }
+
+// graphCoverage tracks distinct identities across one provider traversal. Keep
+// provider guards local rather than importing action-side pagination machinery.
+type graphCoverage struct {
+	total    int
+	observed bool
+}
+
+func (c *graphCoverage) Page(total, distinct int, terminal bool) error {
+	if total < 0 || distinct > total {
+		return errors.New("Metadata API returned inconsistent cumulative coverage")
+	}
+	if c.observed && c.total != total {
+		return errors.New("Metadata API collection count changed during pagination")
+	}
+	c.total, c.observed = total, true
+	if terminal && distinct != total {
+		return fmt.Errorf("Metadata API terminal coverage incomplete: observed %d of %d identities", distinct, total)
+	}
+	return nil
+}
+
 type graphInfo struct {
 	More   *bool   `json:"hasNextPage"`
 	Cursor *string `json:"endCursor"`
@@ -349,6 +371,7 @@ func (c *Client) DatasourceUpstream(ctx context.Context, luid string) (Datasourc
 		cursor := ""
 		seenCursor := map[string]bool{}
 		seen := map[string]graphNode{}
+		var coverage graphCoverage
 		for page := 0; page < 100; page++ {
 			p, _, r, e := c.datasourcePage(ctx, luid, connection, fields, cursor)
 			out.TableauRequestID = r.TableauRequestID
@@ -374,6 +397,9 @@ func (c *Client) DatasourceUpstream(ctx context.Context, luid string) (Datasourc
 				if len(out.Databases)+len(out.Tables) > maxItems {
 					return out, &ConstraintError{"upstream inventory exceeds 10000 item bound"}
 				}
+			}
+			if e := coverage.Page(*p.Total, len(seen), !*p.Info.More); e != nil {
+				return out, protocol("catalog.metadata.read", r, e)
 			}
 			if !*p.Info.More {
 				break
@@ -403,6 +429,7 @@ func (c *Client) DatasourceFieldDescriptions(ctx context.Context, luid string) (
 	seen := map[string]graphNode{}
 	totalColumns := 0
 	requests := 0
+	var coverage graphCoverage
 	for page := 0; page < 100; page++ {
 		if requests >= 200 {
 			return out, &ConstraintError{"datasource provenance exceeds 200 request bound"}
@@ -446,9 +473,6 @@ func (c *Client) DatasourceFieldDescriptions(ctx context.Context, luid string) (
 				return out, protocol("catalog.metadata.read", r, e)
 			}
 			columns, e := c.fieldColumns(ctx, luid, n.ID, n.Columns, &requests)
-			if e != nil {
-				return out, e
-			}
 			for _, col := range columns {
 				if col.ID == "" || col.Name == "" {
 					return out, protocol("catalog.metadata.read", r, errors.New("upstream column identity incomplete"))
@@ -460,9 +484,15 @@ func (c *Client) DatasourceFieldDescriptions(ctx context.Context, luid string) (
 				return out, &ConstraintError{"field provenance exceeds 10000 column bound"}
 			}
 			out.Fields = append(out.Fields, v)
+			if e != nil {
+				return out, e
+			}
 			if len(out.Fields) > maxItems {
 				return out, &ConstraintError{"datasource fields exceed bound"}
 			}
+		}
+		if e := coverage.Page(*p.Total, len(seen), !*p.Info.More); e != nil {
+			return out, protocol("catalog.metadata.read", r, e)
 		}
 		if !*p.Info.More {
 			out.Complete = true
@@ -483,50 +513,54 @@ func (c *Client) fieldColumns(ctx context.Context, datasource, field string, fir
 	seen := map[string]graphNode{}
 	cursors := map[string]bool{}
 	p := first
+	var coverage graphCoverage
 	for {
 		for _, n := range p.Nodes {
 			if old, ok := seen[n.ID]; ok {
 				if !reflect.DeepEqual(old, n) {
-					return nil, errors.New("conflicting upstream column identity")
+					return out, errors.New("conflicting upstream column identity")
 				}
 				continue
 			}
 			seen[n.ID] = n
 			out = append(out, n)
 			if len(out) > maxItems {
-				return nil, &ConstraintError{"field column count exceeds bound"}
+				return out, &ConstraintError{"field column count exceeds bound"}
 			}
+		}
+		if e := coverage.Page(*p.Total, len(seen), !*p.Info.More); e != nil {
+			return out, e
 		}
 		if !*p.Info.More {
 			return out, nil
 		}
 		cursor := *p.Info.Cursor
 		if cursors[cursor] {
-			return nil, errors.New("field column cursor cycle")
+			return out, errors.New("field column cursor cycle")
 		}
 		cursors[cursor] = true
 		if *requests >= 200 {
-			return nil, &ConstraintError{"datasource provenance exceeds 200 request bound"}
+			return out, &ConstraintError{"datasource provenance exceeds 200 request bound"}
 		}
 		*requests++
 		query := `query FieldColumns($parent:String!,$field:ID!,$after:String){parents:publishedDatasourcesConnection(filter:{luid:$parent},first:2,permissionMode:OBFUSCATE_RESULTS){nodes{luid items:fieldsConnection(filter:{id:$field},first:2,permissionMode:OBFUSCATE_RESULTS){totalCount pageInfo{hasNextPage endCursor} nodes{id upstreamColumnsConnection(first:100,after:$after,orderBy:{field:ID,direction:ASC},permissionMode:OBFUSCATE_RESULTS){totalCount pageInfo{hasNextPage endCursor} nodes{` + columnFields + ` ` + graphTagFields + `}}}}}}}`
 		env, r, e := c.graph(ctx, query, map[string]any{"parent": datasource, "field": field, "after": cursor})
 		if e != nil {
-			return nil, e
+			return out, e
 		}
 		fields, e := selectPage(env, datasource)
 		if e == nil {
 			e = validatePage(fields, 2, "")
 		}
 		if e != nil {
-			return nil, protocol("catalog.metadata.read", r, e)
+			return out, protocol("catalog.metadata.read", r, e)
 		}
 		if len(fields.Nodes) != 1 || fields.Nodes[0].ID != field || *fields.Info.More || *fields.Total != 1 {
-			return nil, protocol("catalog.metadata.read", r, errors.New("field identity changed while paging columns"))
+			return out, protocol("catalog.metadata.read", r, errors.New("field identity changed while paging columns"))
 		}
 		p = fields.Nodes[0].Columns
 		if e = validatePage(p, 100, cursor); e != nil {
-			return nil, protocol("catalog.metadata.read", r, e)
+			return out, protocol("catalog.metadata.read", r, e)
 		}
 	}
 }

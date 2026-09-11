@@ -1,6 +1,6 @@
 package capability
 
-//go:generate go run ../../cmd/gencapdocs -out ../../docs/reference/capabilities.md -json-out ../../docs/reference/capabilities.json
+//go:generate go run ../../cmd/gencapdocs -out ../../docs/reference/capabilities.md -json-out ../../docs/reference/capabilities.json -map-out ../../docs/reference/capability-map.html
 
 import (
 	"cmp"

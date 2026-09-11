@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"github.com/ahillspace/tadx/internal/errs"
 	"github.com/ahillspace/tadx/internal/output"
+	"github.com/ahillspace/tadx/internal/paging"
 	"github.com/ahillspace/tadx/internal/value"
 	"reflect"
 	"strings"
@@ -100,6 +101,7 @@ func (a *Action) Execute(ctx context.Context, in Input) (out Output, err error) 
 	cursor := ""
 	seen := map[string]bool{}
 	identities := map[string]value.MetadataColumn{}
+	var coverage paging.MetadataCoverage
 	for pageNumber := 0; pageNumber < 1000; pageNumber++ {
 		size := limit - len(out.Items)
 		if size > 100 {
@@ -134,6 +136,9 @@ func (a *Action) Execute(ctx context.Context, in Input) (out Output, err error) 
 		}
 		out.Page.Returned = len(out.Items)
 		out.Page.Total = page.Total
+		if e := coverage.Page(page.Total, len(identities), page.NextCursor == ""); e != nil {
+			return out, failure(in, e)
+		}
 		out.Complete = page.Complete && page.NextCursor == ""
 		out.Page.MoreAvailable = page.NextCursor != "" || !page.Complete
 		if page.NextCursor == "" {

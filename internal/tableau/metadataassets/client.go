@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/url"
 	"reflect"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -414,6 +415,14 @@ type tagsEnvelope struct {
 	Tags    []tagXML `xml:"tags>tag"`
 }
 
+// tagVerificationError marks a completed response whose tag state is not verified.
+// The protocol cause retains request context and conservative retry advice.
+type tagVerificationError struct{ cause error }
+
+func (e *tagVerificationError) Error() string            { return e.cause.Error() }
+func (e *tagVerificationError) Unwrap() error            { return e.cause }
+func (e *tagVerificationError) VerificationFailed() bool { return true }
+
 func (c *Client) AddTags(ctx context.Context, t LabelTarget, values []string) ([]string, error) {
 	if err := target(t, false); err != nil {
 		return nil, err
@@ -435,11 +444,16 @@ func (c *Client) AddTags(ctx context.Context, t LabelTarget, values []string) ([
 	}
 	n, e := decode(r, op)
 	if e != nil {
-		return nil, e
+		return nil, &tagVerificationError{e}
 	}
 	out, seen, e := tags(n)
 	if e != nil || !seen {
-		return nil, protocol(op, r, errors.New("tag response omitted verified tags"))
+		return nil, &tagVerificationError{protocol(op, r, errors.New("tag response omitted verified tags"))}
+	}
+	for _, requested := range values {
+		if !slices.Contains(out, requested) {
+			return out, &tagVerificationError{protocol(op, r, errors.New("tag response did not confirm every requested addition"))}
+		}
 	}
 	return out, nil
 }

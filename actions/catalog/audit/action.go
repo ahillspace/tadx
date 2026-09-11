@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"github.com/ahillspace/tadx/internal/errs"
+	"github.com/ahillspace/tadx/internal/paging"
 	"github.com/ahillspace/tadx/internal/value"
 	"reflect"
 	"slices"
@@ -109,7 +110,7 @@ func (a *Action) Execute(ctx context.Context, in Input) (Output, error) {
 		limit = 1000
 	}
 	out := Output{Status: "audited", Environment: in.Environment, Site: in.Site, Type: in.Type, ID: in.ID, Checks: checks, DirectOnly: in.DirectOnly, Complete: true, Findings: []Finding{}}
-	record := func(id value.MetadataIdentity, description *string, tags []string, tagsObserved bool, inherited []value.DescriptionObservation, allowInherited bool, field bool) {
+	record := func(id value.MetadataIdentity, description *string, tags []string, tagsObserved bool, inherited []value.DescriptionObservation, inheritedObserved bool, field bool) {
 		if out.Scanned >= limit {
 			out.Complete = false
 			return
@@ -123,8 +124,14 @@ func (a *Action) Execute(ctx context.Context, in Input) (Output, error) {
 					state = "present"
 				}
 			}
-			if state != "present" && allowInherited && !in.DirectOnly {
+			if state != "present" && field && !in.DirectOnly {
+				if !inheritedObserved {
+					state = "unknown"
+				}
 				for _, v := range inherited {
+					if v.Value == nil {
+						state = "unknown"
+					}
 					if v.Value != nil && strings.TrimSpace(*v.Value) != "" {
 						state = "present"
 						source = "inherited"
@@ -216,7 +223,7 @@ func (a *Action) Execute(ctx context.Context, in Input) (Output, error) {
 	case "datasource":
 		var v value.MetadataDatasourceDescriptions
 		v, err = a.reader.DatasourceFieldDescriptions(ctx, in.ID)
-		if err != nil {
+		if err != nil && v.Identity.MetadataID == "" {
 			break
 		}
 		if v.LUID != in.ID {
@@ -238,7 +245,7 @@ func (a *Action) Execute(ctx context.Context, in Input) (Output, error) {
 					out.Complete = false
 					continue
 				}
-				record(value.MetadataIdentity{MetadataID: field.MetadataID, Name: field.Name, Type: "field"}, field.Description, nil, false, field.Inherited, true, true)
+				record(value.MetadataIdentity{MetadataID: field.MetadataID, Name: field.Name, Type: "field"}, field.Description, nil, false, field.Inherited, field.InheritedObserved, true)
 			}
 		}
 	}
@@ -273,6 +280,7 @@ func walk[T any](ctx context.Context, limit int, q value.MetadataQuery, read fun
 	seen := map[string]bool{}
 	items := map[string]T{}
 	count := 0
+	var coverage paging.MetadataCoverage
 	for n := 0; n < 1000; n++ {
 		q.Limit = min(100, limit-count)
 		page, e := read(ctx, q)
@@ -302,6 +310,9 @@ func walk[T any](ctx context.Context, limit int, q value.MetadataQuery, read fun
 				}
 				return false, e
 			}
+		}
+		if e := coverage.Page(page.Total, len(items), page.NextCursor == ""); e != nil {
+			return false, e
 		}
 		if page.NextCursor == "" {
 			return page.Complete, nil
