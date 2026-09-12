@@ -3,22 +3,24 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#f3f3eb">
 <meta name="description" content="Interactive map of the current TADX CLI capability inventory and runtime defaults.">
 <title>TADX Capability Map</title>
 <style>
 :root {
   color-scheme: light;
-  --page: #f3f5f7;
-  --surface: #ffffff;
-  --surface-2: #f8fafb;
-  --surface-3: #eef2f5;
-  --ink: #17212b;
-  --muted: #5e6b78;
-  --line: #d8e0e6;
-  --line-strong: #b9c5ce;
-  --brand: #0b2538;
-  --brand-2: #123f5a;
-  --focus: #0067a3;
+  --page: #f3f3eb;
+  --surface: #fafbf5;
+  --surface-2: #f3f3eb;
+  --surface-3: #e6ebdd;
+  --ink: #202720;
+  --muted: #646b5f;
+  --line: #d9dcd0;
+  --line-strong: #b8c1ad;
+  --brand: #202720;
+  --brand-2: #496641;
+  --focus: #496641;
+  --accent: #d3ed9e;
   --implemented: #087f6b;
   --implemented-bg: #d9f3ec;
   --planned: #9a6700;
@@ -35,11 +37,11 @@
   --enabled-bg: #dcf3e8;
   --disabled: #6b7280;
   --disabled-bg: #eceff2;
-  --shadow: 0 12px 34px rgba(18, 37, 52, 0.09);
-  --radius: 16px;
-  --radius-sm: 10px;
-  --mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
-  --sans: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --shadow: 0 3px 12px rgba(32, 39, 32, 0.04);
+  --radius: 6px;
+  --radius-sm: 4px;
+  --mono: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  --sans: "Inter Display", "Inter", "Segoe UI", Helvetica, Arial, sans-serif;
 }
 
 * { box-sizing: border-box; }
@@ -47,12 +49,11 @@ html { scroll-behavior: smooth; }
 body {
   margin: 0;
   min-width: 320px;
-  background:
-    radial-gradient(circle at 12% -10%, rgba(30, 103, 139, 0.12), transparent 31rem),
-    var(--page);
+  background: var(--page);
   color: var(--ink);
   font-family: var(--sans);
   line-height: 1.45;
+  -webkit-font-smoothing: antialiased;
 }
 button, input, select { font: inherit; }
 button { color: inherit; }
@@ -76,13 +77,11 @@ button { color: inherit; }
   position: relative;
   overflow: hidden;
   padding: 2rem max(1rem, calc((100vw - 1540px) / 2));
-  background:
-    linear-gradient(118deg, rgba(255,255,255,.045), rgba(255,255,255,0) 42%),
-    var(--brand);
-  color: #f7fbfd;
+  background: var(--page);
+  color: var(--ink);
 }
 .hero::after {
-  content: "";
+  content: none;
   position: absolute;
   width: 28rem;
   height: 28rem;
@@ -102,7 +101,7 @@ button { color: inherit; }
 }
 .eyebrow {
   margin: 0 0 .45rem;
-  color: #91c7de;
+  color: var(--brand-2);
   font: 700 .75rem/1 var(--mono);
   letter-spacing: .16em;
   text-transform: uppercase;
@@ -116,7 +115,7 @@ h1 {
 .hero-copy {
   max-width: 50rem;
   margin: .85rem 0 0;
-  color: #c9dbe4;
+  color: var(--muted);
   font-size: clamp(.95rem, 1.4vw, 1.08rem);
 }
 .source-meta {
@@ -124,7 +123,7 @@ h1 {
   justify-items: end;
   gap: .55rem;
   min-width: 16rem;
-  color: #d4e4eb;
+  color: var(--muted);
   font-size: .82rem;
 }
 .source-chip {
@@ -132,18 +131,18 @@ h1 {
   align-items: center;
   gap: .5rem;
   padding: .52rem .72rem;
-  border: 1px solid rgba(255,255,255,.17);
+  border: 1px solid var(--line-strong);
   border-radius: 999px;
-  background: rgba(255,255,255,.075);
+  background: var(--surface-3);
   backdrop-filter: blur(8px);
 }
-.source-chip strong { color: #fff; }
+.source-chip strong { color: var(--ink); }
 .source-meta a,
 .footer a {
   color: inherit;
   text-underline-offset: .18em;
 }
-.source-meta a:hover { color: #fff; }
+.source-meta a:hover { color: var(--brand-2); }
 .footer a:hover { color: var(--focus); }
 .live-dot {
   width: .58rem;
@@ -163,7 +162,7 @@ h1 {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: .8rem;
-  margin-top: -2.3rem;
+  margin-top: 0;
   position: relative;
   z-index: 2;
 }
@@ -810,9 +809,9 @@ input[type="search"]:focus, select:focus {
   min-width: 0;
   padding: .95rem 1rem;
   border: 1px solid var(--line);
-  border-radius: 14px;
-  background: linear-gradient(145deg, #fff, #f8fafb);
-  box-shadow: 0 4px 14px rgba(18, 37, 52, .045);
+  border-radius: var(--radius);
+  background: var(--surface);
+  box-shadow: var(--shadow);
 }
 .default-card.search-default { border-top: 3px solid #006f8b; }
 .default-card.pull-default { border-top: 3px solid #315ca8; }
@@ -857,20 +856,20 @@ input[type="search"]:focus, select:focus {
 .behavior-callout {
   margin: .85rem 0 1rem;
   padding: .8rem .82rem;
-  border: 1px solid #c6d9e3;
+  border: 1px solid var(--line);
   border-left: 4px solid var(--focus);
-  border-radius: 7px 11px 11px 7px;
-  background: #f1f8fb;
+  border-radius: var(--radius);
+  background: var(--surface-3);
 }
 .behavior-callout strong {
   display: block;
   margin-bottom: .2rem;
-  color: #17384a;
+  color: var(--ink);
   font-size: .72rem;
   letter-spacing: .04em;
   text-transform: uppercase;
 }
-.behavior-callout span { color: #294b5d; font-size: .8rem; }
+.behavior-callout span { color: var(--muted); font-size: .875rem; }
 .source-note {
   margin-top: .7rem;
   color: var(--muted);
@@ -888,16 +887,40 @@ input[type="search"]:focus, select:focus {
   .filter-form .field:first-child { grid-column: auto; }
 }
 
+/* Shared homepage identity; status colors retain their distinct meanings. */
+::selection { background: var(--accent); color: var(--ink); }
+:focus-visible { outline: 2px solid var(--focus); outline-offset: 4px; }
+.site-nav { display: flex; align-items: center; justify-content: space-between; gap: 1rem; min-height: 91px; width: min(1540px, calc(100% - 2rem)); margin-inline: auto; border-bottom: 1px solid var(--line); }
+.site-nav a { color: var(--ink); text-decoration: none; }
+.site-nav a:hover { color: var(--brand-2); }
+.site-brand { display: inline-flex; align-items: center; gap: 10px; font-size: 24px; font-weight: 750; letter-spacing: -1px; }
+.site-brand svg { width: 28px; height: 28px; fill: none; stroke: currentColor; stroke-width: 2.2; }
+.site-brand .cursor { stroke: var(--brand-2); }
+.site-links { display: flex; align-items: center; gap: 1.5rem; font-size: .875rem; }
+.site-links [aria-current] { color: var(--brand-2); text-decoration: underline; text-underline-offset: 6px; }
+.hero { padding-block: 2rem 1rem; }
+h1 { font-weight: 540; }
+.stat-card:focus-visible { outline-color: var(--focus); }
+.stat-card[aria-pressed="true"] { box-shadow: 0 0 0 2px var(--focus); }
+.stat-note, .default-card p, .default-card h2 { font-size: .875rem; }
+@media (max-width: 620px) {
+  .site-nav { min-height: 76px; flex-wrap: wrap; padding-block: 1rem; }
+  .site-links { gap: 1rem; }
+}
 </style>
 </head>
 <body>
 <a class="skip-link" href="#capability-tree">Skip to capability tree</a>
+<nav class="site-nav" aria-label="Main navigation">
+  <a class="site-brand" href="https://tadx.net/" aria-label="TADX home"><svg viewBox="0 0 28 28" aria-hidden="true"><path d="M4 7l7 7-7 7"/><path class="cursor" d="M15 21h9"/></svg>TADX</a>
+  <div class="site-links"><a href="https://tadx.net/capabilities.html" aria-current="page">Docs</a><a href="https://github.com/ahillspace/tadx/blob/main/README.md">Get started</a><a href="https://github.com/ahillspace/tadx">GitHub</a></div>
+</nav>
 
 <header class="hero">
   <div class="hero-inner">
     <div>
-      <p class="eyebrow">Executable registry visualization</p>
-      <h1>TADX Capability Map</h1>
+      <p class="eyebrow">Command reference</p>
+      <h1>Explore TADX.</h1>
       <p class="hero-copy">Explore the current action registry: content lifecycle, Tableau Catalog metadata and labels, local cache, administration, Pulse, and external tooling boundaries.</p>
     </div>
     <div class="source-meta" aria-label="Source metadata">
@@ -1093,8 +1116,8 @@ input[type="search"]:focus, select:focus {
   </div>
 
   <footer class="footer">
-    Embedded snapshot: <strong id="footerTotal">0</strong> rows from <a href="capabilities.json">generated JSON</a>, aligned to <a href="../../internal/capability/definitions.go">the executable registry</a>.
-    See the <a href="capabilities.md">capability reference</a>, <a href="shorthand.md">command shorthand</a>, and <a href="../architecture/tadx-architecture.excalidraw">editable architecture map</a>.
+    <strong id="footerTotal">0</strong> capabilities. Download the <a href="capabilities.json">JSON inventory</a> or view <a href="https://github.com/ahillspace/tadx/tree/main/internal/capability">the executable registry</a>.
+    See the <a href="https://github.com/ahillspace/tadx/blob/main/docs/reference/capabilities.md">text reference</a>, <a href="https://github.com/ahillspace/tadx/blob/main/docs/reference/shorthand.md">command shorthand</a>, and <a href="https://github.com/ahillspace/tadx/blob/main/docs/architecture/tadx-architecture.excalidraw">editable architecture map</a>.
     Self-contained HTML with no external libraries or network calls.
   </footer>
 </main>

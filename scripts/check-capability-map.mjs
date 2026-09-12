@@ -1,4 +1,4 @@
-// Optional local browser regression: node scripts/check-capability-map.mjs <chrome-path>
+// Optional local browser regression: node scripts/check-capability-map.mjs <chrome-path> [page-path]
 // No Tableau access, npm dependencies, or changes to the authored page.
 import assert from 'node:assert/strict';
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
@@ -10,7 +10,7 @@ import { spawnSync } from 'node:child_process';
 const browser = process.argv[2];
 if (!browser) throw new Error('Usage: node scripts/check-capability-map.mjs <chrome-path>');
 const root = dirname(dirname(fileURLToPath(import.meta.url)));
-const page = readFileSync(join(root, 'docs/reference/capability-map.html'), 'utf8');
+const page = readFileSync(process.argv[3] || join(root, 'docs/reference/capability-map.html'), 'utf8');
 const folder = mkdtempSync(join(tmpdir(), 'tadx-capability-map-'));
 
 function checkPage() {
@@ -20,6 +20,9 @@ function checkPage() {
   const press = value => card(value).click();
   const clear = () => control('clearFilters').click();
   const definitions = JSON.parse(control('capability-data').textContent);
+  check(document.documentElement.scrollWidth <= innerWidth, 'Command browser overflows horizontally');
+  check(document.querySelector('.site-brand').href === 'https://tadx.net/', 'Home navigation missing');
+  check(getComputedStyle(document.body).backgroundColor === 'rgb(243, 243, 235)', 'Homepage theme missing');
   check(Number(control('sourceTotal').textContent) === definitions.length, 'Registry total failed to render');
   for (const id of ['catalog.database.update', 'catalog.table.update', 'catalog.column.update', 'catalog.audit', 'content.label.update', 'admin.label.category.update']) {
     check(definitions.some(item => item.id === id), `Missing capability ${id}`);
@@ -56,14 +59,16 @@ try {
   const probe = `<script>try { document.body.dataset.mapTest = JSON.stringify((${checkPage.toString()})()); } catch (error) { document.body.dataset.mapTest = JSON.stringify({passed:false,error:String(error)}); }</script>`;
   const path = join(folder, 'map.html');
   writeFileSync(path, page.replace('</body>', `${probe}</body>`));
-  const result = spawnSync(browser, ['--headless=new', '--no-first-run', '--no-default-browser-check', `--user-data-dir=${join(folder, 'profile')}`, '--dump-dom', pathToFileURL(path).href], { encoding: 'utf8', timeout: 30000, maxBuffer: 8 * 1024 * 1024, windowsHide: true });
+  for (const width of [1440, 900, 500]) {
+  const result = spawnSync(browser, ['--headless=new', '--no-first-run', '--no-default-browser-check', `--window-size=${width},1000`, `--user-data-dir=${join(folder, `profile-${width}`)}`, '--dump-dom', pathToFileURL(path).href], { encoding: 'utf8', timeout: 30000, maxBuffer: 8 * 1024 * 1024, windowsHide: true });
   assert.ifError(result.error);
   assert.equal(result.status, 0, result.stderr);
   const encoded = /data-map-test="([^"]+)"/.exec(result.stdout)?.[1];
   assert.ok(encoded, 'Page did not complete browser checks');
   const report = JSON.parse(encoded.replaceAll('&quot;', '"').replaceAll('&amp;', '&'));
   assert.equal(report.passed, true, report.error);
-  console.log(JSON.stringify(report));
+  console.log(JSON.stringify({ ...report, width }));
+  }
 } finally {
   rmSync(folder, { recursive: true, force: true, maxRetries: 4, retryDelay: 200 });
 }
