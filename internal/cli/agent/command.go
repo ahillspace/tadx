@@ -46,14 +46,19 @@ func New(deps Dependencies) *cobra.Command {
 		RunE: func(command *cobra.Command, _ []string) error {
 			result, err := deps.Installer.Execute(command.Context(), input)
 			if err != nil {
+				if len(result.Skills) > 0 {
+					if renderErr := deps.Renderer.Render(result); renderErr != nil {
+						return renderErr
+					}
+				}
 				return err
 			}
 			return deps.Renderer.Render(result)
 		},
 	}
-	command.Flags().StringVar(&input.Target, "target", "", "agent target: "+agenttarget.Summary()+" (required)")
+	command.Flags().StringVar(&input.Target, "target", "auto", "agent target: auto detects configured agents; or "+agenttarget.Summary())
 	command.Flags().BoolVar(&input.Preview, "preview", false, "inspect installation without writing files")
-	command.Flags().BoolVar(&input.Force, "force", false, "replace divergent skills and retain recoverable backups")
+	command.Flags().BoolVar(&input.Force, "force", false, "compatibility flag; TADX-owned skills are always refreshed")
 	group := &cobra.Command{Use: "agent", Short: "Manage bundled agent Guidance"}
 	group.AddCommand(command)
 	group.AddCommand(newUninstall(deps))
@@ -76,6 +81,6 @@ func newUninstall(deps Dependencies) *cobra.Command {
 	}}
 	command.Flags().StringVar(&input.Target, "target", "", "agent target: "+agenttarget.Summary()+" (required)")
 	command.Flags().BoolVar(&input.Preview, "preview", false, "inspect uninstall changes without removing files")
-	command.Flags().BoolVar(&input.Force, "force", false, "remove divergent Guidance and retain recoverable backups")
+	command.Flags().BoolVar(&input.Force, "force", false, "compatibility flag; edited TADX-owned Guidance is backed up on removal")
 	return command
 }

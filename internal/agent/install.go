@@ -24,12 +24,14 @@ var bundles embed.FS
 
 // Skill describes one package without exposing machine-specific paths.
 type Skill struct {
+	Target                             string
 	Name, Status, Path, SHA256, Backup string
 	Files                              int
 }
 
 // Result describes both packages and any recoverable backups.
 type Result struct {
+	Targets  []string
 	Status   string
 	Skills   []Skill
 	Warnings []string
@@ -42,6 +44,8 @@ type Installer struct {
 	removeAll func(*os.Root, string) error
 	// commitReceipt permits deterministic failure injection at the atomic commit.
 	commitReceipt func(*os.Root, string, string) error
+	// rename permits deterministic reproduction of filesystem sharing failures.
+	rename func(*os.Root, string, string) error
 }
 
 type packagePlan struct {
@@ -56,7 +60,7 @@ type packagePlan struct {
 }
 
 // Uninstall removes bundled packages from one supported agent target.
-// Divergent packages require force and move to recoverable backups.
+// Edited TADX-owned packages move to recoverable backups without requiring force.
 func (in Installer) Uninstall(ctx context.Context, target string, preview, force bool) (Result, error) {
 	base, ok := agenttarget.TargetPath(target)
 	if !ok {
@@ -101,9 +105,6 @@ func (in Installer) Uninstall(ctx context.Context, target string, preview, force
 			status = "absent"
 		} else if before != bundleFingerprint(files) && before != receipt.Packages[name] {
 			status = "divergent"
-			if !force {
-				result.Warnings = append(result.Warnings, name+" differs from the bundled skill; --force is required and retains a backup")
-			}
 		}
 		plans = append(plans, &packagePlan{skill: Skill{Name: name, Status: status, Path: destination, SHA256: before}, before: before})
 	}
@@ -113,11 +114,6 @@ func (in Installer) Uninstall(ctx context.Context, target string, preview, force
 			return Result{}, err
 		}
 		plans = append(plans, legacy...)
-		for _, plan := range legacy {
-			if plan.skill.Status == "divergent" && !force {
-				result.Warnings = append(result.Warnings, "Legacy "+plan.skill.Name+" differs; --force is required and retains a backup")
-			}
-		}
 	}
 	if preview {
 		result.Status = "preview"
@@ -127,11 +123,6 @@ func (in Installer) Uninstall(ctx context.Context, target string, preview, force
 			}
 		}
 		return result, nil
-	}
-	for _, plan := range plans {
-		if plan.skill.Status == "divergent" && !force {
-			return Result{}, fmt.Errorf("%s differs from the bundled skill; --force is required to uninstall it with a recoverable backup", plan.skill.Name)
-		}
 	}
 	changed := false
 	for _, plan := range plans {
@@ -150,6 +141,9 @@ func (in Installer) Uninstall(ctx context.Context, target string, preview, force
 		return Result{}, err
 	}
 	defer unlock()
+	if err := legacyOwnershipUnchanged(root, plans); err != nil {
+		return Result{}, err
+	}
 	if err := receiptUnchanged(root, base, receipt); err != nil {
 		return Result{}, err
 	}
@@ -182,7 +176,7 @@ func (in Installer) Uninstall(ctx context.Context, target string, preview, force
 			return rollback(err)
 		}
 		if err := root.Rename(plan.skill.Path, stage); err != nil {
-			return rollback(errors.New("cannot stage the installed skill for removal"))
+			return rollback(packageFilesystemError("stage the installed skill for removal", plan.skill.Name, err))
 		}
 		plan.stage = stage
 		current, err := fingerprint(root, stage)
@@ -219,8 +213,11 @@ func (in Installer) Uninstall(ctx context.Context, target string, preview, force
 }
 
 // Install stages complete packages before replacing destinations.
-// A force replacement retains the previous directory as a recoverable backup.
+// Replacements retain the previous directory as a recoverable backup.
 func (in Installer) Install(ctx context.Context, target string, preview, force bool) (Result, error) {
+	if target == "auto" {
+		return in.installAuto(ctx, preview, force)
+	}
 	base, ok := agenttarget.TargetPath(target)
 	if !ok {
 		return Result{}, errors.New("unsupported agent target")
@@ -278,14 +275,6 @@ func (in Installer) Install(ctx context.Context, target string, preview, force b
 		plans = append(plans, legacy...)
 	}
 	result := Result{Status: "unchanged"}
-	for _, plan := range plans {
-		if (plan.skill.Status == "replace" || plan.skill.Status == "divergent") && !force {
-			if !preview {
-				return Result{}, fmt.Errorf("%s differs from the bundled skill; --force is required to replace it with a recoverable backup", plan.skill.Name)
-			}
-			result.Warnings = append(result.Warnings, plan.skill.Name+" differs; installation requires --force and retains a backup")
-		}
-	}
 	if preview {
 		result.Status = "preview"
 		for _, plan := range plans {
@@ -310,6 +299,9 @@ func (in Installer) Install(ctx context.Context, target string, preview, force b
 		return Result{}, err
 	}
 	defer unlock()
+	if err := legacyOwnershipUnchanged(root, plans); err != nil {
+		return Result{}, err
+	}
 	if err := receiptUnchanged(root, base, receipt); err != nil {
 		return Result{}, err
 	}
@@ -384,7 +376,7 @@ func (in Installer) Install(ctx context.Context, target string, preview, force b
 				return rollback(err)
 			}
 			if err := root.Rename(plan.skill.Path, backup); err != nil {
-				return rollback(errors.New("cannot stage legacy skill removal"))
+				return rollback(packageFilesystemError("stage legacy skill removal", plan.skill.Name, err))
 			}
 			plan.backup = backup
 			current, err := fingerprint(root, backup)
@@ -405,8 +397,8 @@ func (in Installer) Install(ctx context.Context, target string, preview, force b
 				return rollback(errors.New("cannot create the skill backup directory"))
 			}
 			backup := path.Join(backupBase, plan.skill.Name+"-"+rand.Text())
-			if err := root.Rename(plan.skill.Path, backup); err != nil {
-				return rollback(errors.New("cannot preserve the existing skill package"))
+			if err := in.renamePackage(root, plan.skill.Path, backup); err != nil {
+				return rollback(packageFilesystemError("preserve the existing skill package", plan.skill.Name, err))
 			}
 			plan.backup = backup
 			current, err := fingerprint(root, backup)
@@ -414,8 +406,8 @@ func (in Installer) Install(ctx context.Context, target string, preview, force b
 				return rollback(errors.New("installed skill changed before replacement; previous package restored"))
 			}
 		}
-		if err := root.Rename(plan.stage, plan.skill.Path); err != nil {
-			return rollback(errors.New("cannot commit the staged skill package"))
+		if err := in.renamePackage(root, plan.stage, plan.skill.Path); err != nil {
+			return rollback(packageFilesystemError("commit the staged skill package", plan.skill.Name, err))
 		}
 		plan.committed = true
 		plan.skill.Status = "installed"
@@ -455,6 +447,25 @@ func (in Installer) Install(ctx context.Context, target string, preview, force b
 		}
 	}
 	return result, nil
+}
+
+func (in Installer) renamePackage(root *os.Root, from, to string) error {
+	if in.rename != nil {
+		return in.rename(root, from, to)
+	}
+	return root.Rename(from, to)
+}
+
+// Keep the operating-system cause, but not machine-specific absolute paths.
+func packageFilesystemError(operation, name string, err error) error {
+	var link *os.LinkError
+	var file *os.PathError
+	if errors.As(err, &link) {
+		err = link.Err
+	} else if errors.As(err, &file) {
+		err = file.Err
+	}
+	return fmt.Errorf("cannot %s %s: %w; close programs holding the package open and check directory permissions before retrying", operation, name, err)
 }
 
 func checkParents(root *os.Root, base string) error {

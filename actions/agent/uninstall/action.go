@@ -68,7 +68,7 @@ func (a *Action) Execute(ctx context.Context, in Input) (Output, error) {
 	}
 	result, err := a.uninstaller.Uninstall(ctx, in)
 	if err != nil {
-		return Output{}, &errs.Error{ID: "agent.uninstall.failed", Kind: errs.KindOperation, Operation: "agent.uninstall", Summary: "Agent Guidance uninstall failed.", Cause: err, Retryable: errs.Bool(false), CorrectiveAction: "Inspect the target directory. Use --preview first; --force retains divergent packages as backups."}
+		return Output{}, &errs.Error{ID: "agent.uninstall.failed", Kind: errs.KindOperation, Operation: "agent.uninstall", Summary: "Agent Guidance uninstall failed.", Cause: err, Retryable: errs.Bool(false), CorrectiveAction: "Inspect the target directory and permissions. Use --preview first; edited TADX-owned packages are retained as backups."}
 	}
 	return Output{Status: result.Status, Target: in.Target, Skills: result.Skills, Warnings: result.Warnings, Help: []string{"tadx agent install --target " + in.Target + " --preview"}}, nil
 }

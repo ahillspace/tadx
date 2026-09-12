@@ -13,6 +13,7 @@ import (
 	capabilityget "github.com/ahillspace/tadx/actions/capability/get"
 	capabilitylist "github.com/ahillspace/tadx/actions/capability/list"
 	searchaction "github.com/ahillspace/tadx/actions/search"
+	sessionoverview "github.com/ahillspace/tadx/actions/session/overview"
 	workbookpublish "github.com/ahillspace/tadx/actions/workbook/publish"
 	workbookpull "github.com/ahillspace/tadx/actions/workbook/pull"
 	admincli "github.com/ahillspace/tadx/internal/cli/admin"
@@ -28,6 +29,7 @@ import (
 	lastcli "github.com/ahillspace/tadx/internal/cli/last"
 	mutationcli "github.com/ahillspace/tadx/internal/cli/mutation"
 	pulsecli "github.com/ahillspace/tadx/internal/cli/pulse"
+	updatecli "github.com/ahillspace/tadx/internal/cli/update"
 	versioncli "github.com/ahillspace/tadx/internal/cli/version"
 	workspacecli "github.com/ahillspace/tadx/internal/cli/workspace"
 	"github.com/ahillspace/tadx/internal/commandhint"
@@ -71,6 +73,10 @@ type AuthStatuser interface {
 type Searcher interface {
 	Execute(context.Context, searchaction.Input) (searchaction.Output, error)
 }
+
+type SessionOverview interface {
+	Execute(context.Context) (sessionoverview.Output, error)
+}
 type WorkbookPuller interface {
 	Execute(context.Context, workbookpull.Input) (workbookpull.Output, error)
 }
@@ -93,6 +99,8 @@ type RenderOptions struct {
 
 // Dependencies contains the explicitly wired Phase 0 command dependencies.
 type Dependencies struct {
+	SessionOverview       SessionOverview
+	Update                *updatecli.Dependencies
 	Catalog               *catalogcli.Dependencies
 	ContentLabels         *contentcli.LabelDependencies
 	AdminLabels           *admincli.LabelDependencies
@@ -170,6 +178,8 @@ func newRoot(deps Dependencies, withBatches bool) *cobra.Command {
 		Short: "Deterministic Tableau lifecycle and development CLI",
 		Long: `Deterministic Tableau lifecycle and development CLI.
 
+Run tadx without arguments for a local, read-only overview of environments, credential configuration, workspaces, and mutation policy.
+Run tadx update to refresh the CLI and bundled agent Guidance together; --check only checks the release.
 Run tadx capability list to discover available operations and tadx capability get <id> for bounded details.
 TADX returns compact TOON by default. Use --full to show expanded bounded details for the same operation.
 Read commands query Tableau by default. Pass --cache on supported reads to use local cache data without contacting Tableau.
@@ -184,6 +194,22 @@ TADX handles lifecycle operations, not datasource value queries, view rendering,
 Other connected tools remain independent; TADX does not configure, select, proxy, or report their connections.`,
 		SilenceErrors: true,
 		SilenceUsage:  true,
+	}
+	if deps.SessionOverview != nil {
+		root.Annotations = map[string]string{CapabilityAnnotation: "session.overview"}
+		root.Args = cobra.NoArgs
+		root.RunE = func(cmd *cobra.Command, _ []string) error {
+			result, err := deps.SessionOverview.Execute(cmd.Context())
+			if err != nil {
+				return err
+			}
+			return deps.Renderer.Render(result)
+		}
+	}
+	if deps.Update != nil {
+		updateDependencies := *deps.Update
+		updateDependencies.Renderer = deps.Renderer
+		root.AddCommand(updatecli.New(updateDependencies))
 	}
 	root.PersistentFlags().BoolVar(&renderOptions.Full, "full", false, "show expanded bounded details")
 	root.PersistentFlags().BoolVar(&renderOptions.JSON, "json", renderOptions.JSON, "render machine-readable JSON instead of TOON")
@@ -478,7 +504,7 @@ func RegisteredCommands(root *cobra.Command) ([]RegisteredCommand, error) {
 		}
 		if id != "" {
 			path := strings.Fields(command.CommandPath())
-			if len(path) > 0 {
+			if command != root && len(path) > 0 {
 				path = path[1:]
 			}
 			registrations = append(registrations, RegisteredCommand{CapabilityID: id, CommandPath: path})

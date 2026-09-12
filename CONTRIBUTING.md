@@ -25,6 +25,18 @@ All implementation paths in the skill are relative to the repository root.
 It is opt-in and does not replace instructions for unrelated tasks.
 `tadx agent install` installs end-user operating Guidance, not this development skill.
 
+## Run the current source
+
+With the Go version specified in `go.mod` installed, build a local executable:
+
+```text
+go build -trimpath -o ./bin/ ./cmd/tadx
+```
+
+This creates `bin/tadx` on macOS/Linux or `bin/tadx.exe` on Windows.
+Run that executable directly to test unreleased changes; a release installer and `tadx update` use published releases, not this checkout.
+Use the newly built executable's `agent install --target auto` command if you also want its bundled operating Guidance installed.
+
 ## Human contributors
 
 Read the [build standard](.agents/skills/tadx-build/SKILL.md) and choose one relevant example from its [implementation map](.agents/skills/tadx-build/references/implementation-map.md).

@@ -10,9 +10,10 @@ install_dir=${TADX_INSTALL_DIR:-"${HOME}/.local/bin"}
 modify_path=1
 completion=1
 completion_marker='# tadx-installer-completion'
+targets=''
 
 usage() {
-    printf '%s\n' 'Usage: install.sh [install|uninstall] [--version VERSION] [--install-dir DIRECTORY] [--no-modify-path] [--no-completion]'
+    printf '%s\n' 'Usage: install.sh [install|uninstall] [--version VERSION] [--target TARGET] [--install-dir DIRECTORY] [--no-modify-path] [--no-completion]'
     printf '%s\n' 'Completion is enabled for the current Bash, Zsh, or Fish shell. Open a new shell to load it.'
 }
 
@@ -35,6 +36,12 @@ while [ "$#" -gt 0 ]; do
         --install-dir)
             [ "$#" -ge 2 ] || fail '--install-dir requires a value.'
             install_dir=$2
+            shift 2
+            ;;
+        --target)
+            [ "$#" -ge 2 ] || fail '--target requires a value.'
+            case "$2" in ''|*[!a-z0-9-]*) fail 'Invalid agent target.' ;; esac
+            targets="${targets} $2"
             shift 2
             ;;
         --no-modify-path)
@@ -182,7 +189,7 @@ receive_release_asset() {
     fi
 
     command -v curl >/dev/null 2>&1 || return 1
-    curl -fL --proto '=https' --tlsv1.2 -o "$release_destination" "${release_https_base}/${release_asset}"
+    curl -fL --proto '=https' --tlsv1.2 --connect-timeout 15 --max-time 120 --max-filesize 268435456 -o "$release_destination" "${release_https_base}/${release_asset}"
 }
 
 case "$(uname -s)" in
@@ -198,7 +205,9 @@ case "$(uname -m)" in
 esac
 
 temporary_directory=$(mktemp -d "${TMPDIR:-/tmp}/tadx-install.XXXXXXXX")
+owns_install_lock=0
 cleanup() {
+    if [ "$owns_install_lock" -eq 1 ]; then rmdir "${install_dir}/.tadx-install.lock"; fi
     rm -rf "$temporary_directory"
 }
 trap cleanup EXIT HUP INT TERM
@@ -209,6 +218,7 @@ if [ "$version" = 'latest' ]; then
     release_base="https://github.com/${repository}/releases/latest/download"
     release_tag=''
     receive_release_asset "$release_tag" 'checksums.txt' "$manifest_path" "$release_base" || fail 'The latest stable TADX release could not be downloaded.'
+    [ "$(wc -c < "$manifest_path")" -le 1048576 ] || fail 'The release checksum manifest exceeds its byte limit.'
     suffix="_${operating_system}_${architecture}.tar.gz"
     asset_name=$(awk -v suffix="$suffix" '
         length($1) == 64 && substr($2, length($2) - length(suffix) + 1) == suffix { print $2 }
@@ -237,6 +247,7 @@ else
     [ "$downloaded" -eq 1 ] || fail "TADX release $version was not found."
 fi
 
+ [ "$(wc -c < "$manifest_path")" -le 1048576 ] || fail 'The release checksum manifest exceeds its byte limit.'
 expected_hash=$(awk -v file="$asset_name" '
     length($1) == 64 && ($2 == file || $2 == "*" file) { print tolower($1) }
 ' "$manifest_path")
@@ -245,6 +256,7 @@ hash_count=$(printf '%s\n' "$expected_hash" | awk 'NF { count++ } END { print co
 
 archive_path="${temporary_directory}/${asset_name}"
 receive_release_asset "$release_tag" "$asset_name" "$archive_path" "$release_base" || fail "The release asset $asset_name could not be downloaded."
+[ "$(wc -c < "$archive_path")" -le 268435456 ] || fail 'The release archive exceeds its byte limit.'
 
 if command -v sha256sum >/dev/null 2>&1; then
     actual_hash=$(sha256sum "$archive_path" | awk '{ print tolower($1) }')
@@ -273,10 +285,26 @@ binary_count=$(printf '%s\n' "$binary_paths" | awk 'NF { count++ } END { print c
 [ "$binary_count" -eq 1 ] || fail 'The verified release archive must contain exactly one tadx file.'
 
 mkdir -p "$install_dir"
+mkdir "${install_dir}/.tadx-install.lock" 2>/dev/null || fail 'Another installer is using this directory. Wait for it to finish; remove .tadx-install.lock only after confirming no installer is running.'
+owns_install_lock=1
 staged_binary="${install_dir}/.tadx.new.$$"
 cp "$binary_paths" "$staged_binary"
 chmod 0755 "$staged_binary"
+backup_binary="${install_dir}/.tadx.backup.$$"
+if [ -e "${install_dir}/tadx" ]; then
+    cp -p "${install_dir}/tadx" "$backup_binary"
+fi
 mv -f "$staged_binary" "${install_dir}/tadx"
+for target in ${targets:-auto}; do
+if ! "${install_dir}/tadx" agent install --target "$target"; then
+    if [ -f "$backup_binary" ]; then
+        mv -f "$backup_binary" "${install_dir}/tadx"
+    else
+        rm -f "${install_dir}/tadx"
+    fi
+    fail 'Guidance installation failed. The binary was rolled back; any completed Guidance targets were reported above. Retry the installer to complete setup.'
+fi
+done
 
 if [ "$modify_path" -eq 1 ]; then
     add_managed_path

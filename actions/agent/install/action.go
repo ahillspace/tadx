@@ -18,6 +18,7 @@ type Input struct {
 
 // Skill describes one bundled package with a home-relative destination.
 type Skill struct {
+	Target string `json:"target,omitempty"`
 	Name   string `json:"name"`
 	Status string `json:"status"`
 	Path   string `json:"path"`
@@ -28,6 +29,7 @@ type Skill struct {
 
 // Result contains bounded installation details.
 type Result struct {
+	Targets  []string
 	Status   string
 	Skills   []Skill
 	Warnings []string
@@ -35,6 +37,7 @@ type Result struct {
 
 // Output is the installation result or read-only plan.
 type Output struct {
+	Targets  []string `json:"targets,omitempty"`
 	Status   string   `json:"status"`
 	Target   string   `json:"target"`
 	Skills   []Skill  `json:"skills"`
@@ -43,11 +46,13 @@ type Output struct {
 }
 
 type compactSkill struct {
+	Target string `json:"target,omitempty"`
 	Name   string `json:"name"`
 	Status string `json:"status"`
 }
 
 type compactOutput struct {
+	Targets  []string       `json:"targets,omitempty"`
 	Status   string         `json:"status"`
 	Target   string         `json:"target"`
 	Skills   []compactSkill `json:"skills"`
@@ -60,9 +65,9 @@ type compactOutput struct {
 func (o Output) CompactOutput() any {
 	skills := make([]compactSkill, len(o.Skills))
 	for i, skill := range o.Skills {
-		skills[i] = compactSkill{Name: skill.Name, Status: skill.Status}
+		skills[i] = compactSkill{Target: skill.Target, Name: skill.Name, Status: skill.Status}
 	}
-	return compactOutput{Status: o.Status, Target: o.Target, Skills: skills, Warnings: o.Warnings, Details: "--full", Help: o.Help}
+	return compactOutput{Targets: o.Targets, Status: o.Status, Target: o.Target, Skills: skills, Warnings: o.Warnings, Details: "--full", Help: o.Help}
 }
 
 // FullOutput includes home-relative package paths and integrity digests.
@@ -81,15 +86,16 @@ func New(installer Installer) *Action { return &Action{installer: installer} }
 
 // Execute validates and installs, or previews without filesystem writes.
 func (a *Action) Execute(ctx context.Context, input Input) (Output, error) {
-	if !agenttarget.IsSupported(input.Target) {
-		return Output{}, &errs.Error{ID: "agent.install.usage", Kind: errs.KindUsage, Operation: "agent.install", Summary: fmt.Sprintf("--target must be %s.", agenttarget.Summary()), Retryable: errs.Bool(false), CorrectiveAction: "Choose one supported target, for example: tadx agent install --target opencode."}
+	if input.Target != "auto" && !agenttarget.IsSupported(input.Target) {
+		return Output{}, &errs.Error{ID: "agent.install.usage", Kind: errs.KindUsage, Operation: "agent.install", Summary: fmt.Sprintf("--target must be auto or %s.", agenttarget.Summary()), Retryable: errs.Bool(false), CorrectiveAction: "Choose one supported target, for example: tadx agent install --target opencode."}
 	}
 	if a == nil || a.installer == nil {
 		return Output{}, &errs.Error{ID: "agent.install.runtime", Kind: errs.KindRuntime, Operation: "agent.install", Summary: "Agent skill installation is not configured.", Retryable: errs.Bool(false)}
 	}
 	result, err := a.installer.Install(ctx, input)
+	output := Output{Targets: result.Targets, Status: result.Status, Target: input.Target, Skills: result.Skills, Warnings: result.Warnings, Help: []string{"tadx capability list", "tadx capability get agent.install --full"}}
 	if err != nil {
-		return Output{}, &errs.Error{ID: "agent.install.failed", Kind: errs.KindOperation, Operation: "agent.install", Summary: "Agent skill installation failed.", Cause: err, Retryable: errs.Bool(false), CorrectiveAction: "Inspect the target directory. Use --preview to review changes; --force explicitly replaces divergent packages and retains backups."}
+		return output, &errs.Error{ID: "agent.install.failed", Kind: errs.KindOperation, Operation: "agent.install", Summary: "Agent skill installation failed.", Cause: err, Retryable: errs.Bool(false), CorrectiveAction: "Inspect the reported target and operating-system cause. Close programs holding skill files open and check directory permissions; use --preview before retrying."}
 	}
-	return Output{Status: result.Status, Target: input.Target, Skills: result.Skills, Warnings: result.Warnings, Help: []string{"tadx capability list", "tadx capability get agent.install --full"}}, nil
+	return output, nil
 }

@@ -104,6 +104,8 @@ Use `tadx capability get <id>` for the same focused metadata at runtime.
 | `pulse.metric.list` | cli | ship | ready | implemented | `tadx pulse metric list` |
 | `pulse.metric.unfollow` | cli | ship | ready | implemented | `tadx pulse metric unfollow` |
 | `search.run` | cli | ship | ready | implemented | `tadx search` |
+| `session.overview` | cli | ship | ready | implemented | `tadx` |
+| `update` | cli | ship | ready | implemented | `tadx update` |
 | `version.get` | cli | ship | ready | implemented | `tadx version` |
 | `workbook.delete` | cli | ship | ready | implemented | `tadx content workbook delete` |
 | `workbook.inspect` | cli | ship | ready | implemented | `tadx content workbook inspect` |
@@ -775,7 +777,7 @@ Install the bundled TADX Guidance packages into the selected agent's global skil
 - Surface: tadx agent install
 - Operation type: change
 - Owner: cli
-- Selectors: Required target: claude, cline, codex, copilot, cursor, gemini, hermes, opencode, or pi
+- Selectors: Target auto detects agent installations; explicit claude, cline, codex, copilot, cursor, gemini, generic, hermes, opencode, or pi
 - Products and availability: Local / all
 - Product disposition: ship
 - Evidence level: local-contract
@@ -786,7 +788,7 @@ Install the bundled TADX Guidance packages into the selected agent's global skil
 - Supports `--preview`: Yes
 - Supports `--batch-file`: No
 - Raw capable: No
-- Safety and guard: Bounded home-relative paths; symlink rejection; staged package replacement; divergent packages require --force and retain backups; no instruction or rules files
+- Safety and guard: Bounded home-relative paths; symlink rejection; staged replacement of TADX-owned packages including local edits; unrelated skills preserved; no instruction or rules files
 - Artifact effect: None
 - Upstream operation: Embedded packages and local filesystem
 - Evidence: Standard Agent Skills package format; official agent skill discovery directories
@@ -801,7 +803,7 @@ Remove TADX Guidance packages from one selected agent target.
 - Surface: tadx agent uninstall
 - Operation type: change
 - Owner: cli
-- Selectors: Required target: claude, cline, codex, copilot, cursor, gemini, hermes, opencode, or pi
+- Selectors: Explicit claude, cline, codex, copilot, cursor, gemini, generic, hermes, opencode, or pi
 - Products and availability: Local / all
 - Product disposition: ship
 - Evidence level: local-contract
@@ -812,7 +814,7 @@ Remove TADX Guidance packages from one selected agent target.
 - Supports `--preview`: Yes
 - Supports `--batch-file`: No
 - Raw capable: No
-- Safety and guard: Exact bounded package paths; symlink rejection; divergent installed Guidance requires --force and retains a backup
+- Safety and guard: Exact bounded TADX-owned package paths; symlink rejection; unrelated skills preserved
 - Artifact effect: None
 - Upstream operation: Local agent Guidance directories
 - Evidence: Standard Agent Skills package format; installer manifest and local filesystem
@@ -2613,6 +2615,58 @@ Search native Tableau content plus administration and Pulse resources through on
 - Validation or blocker: Contract-verified bounded live discovery without SQLite access, authoritative identity normalization, truthful composite truncation, and explicit local cache selection
 - Blocker ID: None
 - Command binding: `tadx search`
+
+### `session.overview`
+
+Show the local authentication, environment, workspace, and mutation setup before beginning work.
+
+- Surface: tadx
+- Operation type: inspect
+- Owner: cli
+- Selectors: None; --full expands the bounded local overview; --json changes encoding
+- Products and availability: Local / all
+- Product disposition: ship
+- Evidence level: local-contract
+- Verification readiness: ready
+- Implementation state: implemented
+- Local write: No
+- Remote mutation: No
+- Supports `--preview`: No
+- Supports `--batch-file`: No
+- Raw capable: No
+- Safety and guard: No authentication, remote requests, credential-store reads, or filesystem changes; configured credentials are not verified authentication
+- Artifact effect: None
+- Upstream operation: Read-only local configuration, workspace registry, and process policy
+- Evidence: Local overview action and CLI integration tests
+- Validation or blocker: Local fixtures verify bounded output, setup precedence, redaction, and no writes or remote access
+- Blocker ID: None
+- Command binding: `tadx`
+
+### `update`
+
+Update the installed CLI and bundled Guidance to the latest published release.
+
+- Surface: tadx update
+- Operation type: change
+- Owner: cli
+- Selectors: Optional --check for read-only release availability; repeated --target selects agent integrations, default auto
+- Products and availability: Local / all; GitHub release access required
+- Product disposition: ship
+- Evidence level: local-contract
+- Verification readiness: ready
+- Implementation state: implemented
+- Local write: Yes
+- Remote mutation: No
+- Supports `--preview`: No
+- Supports `--batch-file`: No
+- Raw capable: No
+- Safety and guard: Verify platform release checksum; stage binary replacement with rollback; replace only TADX-owned Guidance; --check makes no installation changes
+- Artifact effect: None; workspaces and Tableau configuration remain unchanged
+- Upstream operation: Official GitHub Releases and local installation
+- Evidence: Updater and cross-platform installer fixture tests
+- Validation or blocker: Release-check and installer contracts; no Tableau calls
+- Blocker ID: None
+- Command binding: `tadx update`
 
 ### `version.get`
 

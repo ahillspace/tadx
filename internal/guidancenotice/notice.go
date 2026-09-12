@@ -13,9 +13,9 @@ import (
 	"github.com/ahillspace/tadx/internal/agenttarget"
 )
 
-// Message includes supported targets so onboarding needs no help lookup.
+// Message gives a runnable installation command without a target-discovery turn.
 func Message() string {
-	return "TADX Guidance was not detected. For AI-assisted workflows, install it with `tadx agent install --target <" + strings.Join(agenttarget.SupportedTargets(), "|") + ">`. Set TADX_GUIDANCE_NOTICE=0 to suppress this notice.\n"
+	return "TADX Guidance was not detected. Run `tadx agent install --target auto` to install it for detected agents. Set TADX_GUIDANCE_NOTICE=0 to suppress this notice.\n"
 }
 
 // Target identifies a skill directory relative to either the user home or the
@@ -77,10 +77,20 @@ func disabled(lookup func(string) (string, bool)) bool {
 }
 
 func suppressed(args []string) bool {
-	if len(args) == 0 {
-		return false
+	// The local overview (including global presentation/config flags) must not
+	// create a once-per-session notice marker as a side effect.
+	for index := 0; index < len(args); index++ {
+		argument := args[index]
+		if argument == "--config" || argument == "--cfg" {
+			index++
+			continue
+		}
+		if strings.HasPrefix(argument, "-") {
+			continue
+		}
+		return argument == "completion" || argument == "cmp" || strings.HasPrefix(argument, "__complete")
 	}
-	return args[0] == "completion" || args[0] == "cmp" || strings.HasPrefix(args[0], "__complete")
+	return true
 }
 
 func hasGuidance(options Options) bool {

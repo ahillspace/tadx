@@ -139,9 +139,10 @@ func TestGroupOneLiveReadSucceedsWhenCacheWriteThroughFails(t *testing.T) {
 			t.Fatalf("live read did not survive a failed cache write-through; output missing %q:\n%s", want, output)
 		}
 	}
-	if strings.Contains(output, "next_cursor:") || strings.Contains(output, configPath) {
+	if strings.Contains(output, "next_cursor:") {
 		t.Fatalf("failed cache publication exposed an unsafe cursor or local path:\n%s", output)
 	}
+	assertNoDiagnosticValues(t, output, configPath, configPath, cachePath, "pat-name", "pat-secret")
 	// The cache file must remain the untouched poison, proving write-through
 	// neither succeeded nor removed it.
 	if data, err := os.ReadFile(cachePath); err != nil || string(data) != "not a directory" {

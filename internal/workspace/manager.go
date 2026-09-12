@@ -27,12 +27,13 @@ const (
 
 // Record is one registered workspace.
 type Record struct {
-	Name          string
-	ID            string
-	Root          string
-	Default       bool
-	Available     bool
-	ManifestValid bool
+	Name            string
+	ID              string
+	Root            string
+	Default         bool
+	Available       bool
+	ManifestValid   bool
+	SelectionReason string
 }
 
 // Page is one bounded registered-workspace page.
@@ -479,10 +480,16 @@ func (m *Manager) resolveWithConfig(ctx context.Context, configuration config.Co
 	if err := ctx.Err(); err != nil {
 		return Record{}, err
 	}
+	reason := "explicit"
 	if selector == "" {
 		selector = containingWorkspace(configuration)
+		reason = "containing_directory"
 		if selector == "" {
 			selector = environmentDefault
+			reason = "environment_default"
+		}
+		if selector == "" {
+			reason = "global_default"
 		}
 	}
 	name, registration, err := configuration.ResolveWorkspace(selector)
@@ -504,12 +511,12 @@ func (m *Manager) resolveWithConfig(ctx context.Context, configuration config.Co
 	}
 	manifest, err := ReadManifest(root)
 	if err != nil {
-		return Record{}, recoveryError(fmt.Sprintf("workspace %q is unavailable or has no valid tadx.yaml", name), "Restore the registered workspace root and its original tadx.yaml. If the registration is obsolete, preserve any remaining files and remove the registration with: "+commandhint.Command("workspace", "unregister", name))
+		return Record{Name: name, SelectionReason: reason}, recoveryError(fmt.Sprintf("workspace %q is unavailable or has no valid tadx.yaml", name), "Restore the registered workspace root and its original tadx.yaml. If the registration is obsolete, preserve any remaining files and remove the registration with: "+commandhint.Command("workspace", "unregister", name))
 	}
 	if manifest.Workspace.ID != registration.ID || !strings.EqualFold(manifest.Workspace.Name, name) {
-		return Record{}, fmt.Errorf("workspace %q registry and manifest identities do not match", name)
+		return Record{Name: name, SelectionReason: reason}, fmt.Errorf("workspace %q registry and manifest identities do not match", name)
 	}
-	return Record{Name: name, ID: registration.ID, Root: root, Default: strings.EqualFold(configuration.DefaultWorkspace, name), Available: true, ManifestValid: true}, nil
+	return Record{Name: name, ID: registration.ID, Root: root, Default: strings.EqualFold(configuration.DefaultWorkspace, name), Available: true, ManifestValid: true, SelectionReason: reason}, nil
 }
 
 func containingWorkspace(configuration config.Config) string {

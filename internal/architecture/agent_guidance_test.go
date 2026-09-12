@@ -23,6 +23,16 @@ func TestAgentGuidanceImportBoundaries(t *testing.T) {
 		{"internal/guidancenotice/notice.go", "internal/auth", false},
 		{"internal/guidancenotice/notice.go", "internal/app", false},
 		{"internal/agenttarget/targets.go", "internal/config", false},
+		{"internal/app/update.go", "internal/update", true},
+		{"internal/update/runtime.go", "actions/update", true},
+		{"internal/update/runtime.go", "internal/version", true},
+		{"internal/update/runtime.go", "internal/agenttarget", true},
+		{"internal/update/runtime.go", "scripts", true},
+		{"internal/update/runtime.go", "internal/app", false},
+		{"internal/update/runtime.go", "internal/auth", false},
+		{"internal/update/runtime.go", "actions/workbook/pull", false},
+		{"actions/update/action.go", "internal/update", false},
+		{"internal/cli/update/command.go", "internal/update", false},
 	} {
 		t.Run(test.file+"_"+test.dependency, func(t *testing.T) {
 			root := t.TempDir()

@@ -31,12 +31,9 @@ type agentInstaller struct{ installer agent.Installer }
 
 func (a agentInstaller) Install(ctx context.Context, input install.Input) (install.Result, error) {
 	result, err := a.installer.Install(ctx, input.Target, input.Preview, input.Force)
-	if err != nil {
-		return install.Result{}, err
-	}
 	skills := make([]install.Skill, len(result.Skills))
 	for index, skill := range result.Skills {
-		skills[index] = install.Skill{Name: skill.Name, Status: skill.Status, Path: skill.Path, SHA256: skill.SHA256, Files: skill.Files, Backup: skill.Backup}
+		skills[index] = install.Skill{Target: skill.Target, Name: skill.Name, Status: skill.Status, Path: skill.Path, SHA256: skill.SHA256, Files: skill.Files, Backup: skill.Backup}
 	}
-	return install.Result{Status: result.Status, Skills: skills, Warnings: result.Warnings}, nil
+	return install.Result{Targets: result.Targets, Status: result.Status, Skills: skills, Warnings: result.Warnings}, err
 }

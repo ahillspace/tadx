@@ -6,7 +6,7 @@ import (
 )
 
 func TestSupportedTargetsHaveDocumentedSkillRoots(t *testing.T) {
-	want := []string{"claude", "cline", "codex", "copilot", "cursor", "gemini", "hermes", "opencode", "pi"}
+	want := []string{"claude", "cline", "codex", "copilot", "cursor", "gemini", "generic", "hermes", "opencode", "pi"}
 	if got := SupportedTargets(); !reflect.DeepEqual(got, want) {
 		t.Fatalf("SupportedTargets() = %q, want %q", got, want)
 	}
@@ -17,6 +17,7 @@ func TestSupportedTargetsHaveDocumentedSkillRoots(t *testing.T) {
 		"copilot":  ".copilot/skills",
 		"cursor":   ".cursor/skills",
 		"gemini":   ".gemini/skills",
+		"generic":  ".agents/skills",
 		"hermes":   ".hermes/skills",
 		"opencode": ".config/opencode/skills",
 		"pi":       ".pi/agent/skills",
