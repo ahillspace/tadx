@@ -159,20 +159,14 @@ func TestUninstallRecognizesUntouchedPreviousBundleReceipt(t *testing.T) {
 	}
 }
 
-func TestReceiptDoesNotAuthorizeLocallyEditedPackage(t *testing.T) {
+func TestLocallyEditedOwnedPackageRefreshesWithoutForce(t *testing.T) {
 	home := t.TempDir()
 	seedOldInstalledSkill(t, home, "codex")
 	if err := os.WriteFile(filepath.Join(home, ".codex", "skills", "tadx", "notes.txt"), []byte("local edits"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	installer := Installer{Home: func() (string, error) { return home, nil }}
-	if _, err := installer.Install(context.Background(), "codex", false, false); err == nil {
-		t.Fatal("edited skill was overwritten")
-	}
-	if _, err := installer.Uninstall(context.Background(), "codex", false, false); err == nil {
-		t.Fatal("edited skill was removed")
-	}
-	result, err := installer.Install(context.Background(), "codex", false, true)
+	result, err := installer.Install(context.Background(), "codex", false, false)
 	if err != nil || result.Skills[0].Backup == "" {
 		t.Fatalf("forced replacement omitted backup: %#v %v", result, err)
 	}

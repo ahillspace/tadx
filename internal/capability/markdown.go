@@ -96,6 +96,9 @@ func command(definition Definition) string {
 	if len(definition.CommandPath) == 0 {
 		return "None"
 	}
+	if len(definition.CommandPath) == 1 && definition.CommandPath[0] == "tadx" {
+		return "`tadx`"
+	}
 	return "`tadx " + strings.Join(definition.CommandPath, " ") + "`"
 }
 

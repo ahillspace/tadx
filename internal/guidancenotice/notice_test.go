@@ -132,11 +132,23 @@ func testOptions(t *testing.T, directory string) Options {
 		t.Fatal(err)
 	}
 	return Options{
+		Args:    []string{"search", "sales"},
 		Env:     func(string) (string, bool) { return "", false },
 		Home:    func() (string, error) { return filepath.Join(directory, "home"), nil },
 		WorkDir: func() (string, error) { return filepath.Join(directory, "project"), nil },
 		Cache:   func() (string, error) { return filepath.Join(directory, "cache"), nil },
 		Session: func() string { return "same-session" },
+	}
+}
+
+func TestOverviewNeverWritesNoticeMarker(t *testing.T) {
+	for _, args := range [][]string{nil, {"--full"}, {"--json"}, {"--config", "config.yaml", "--full"}, {"--cfg=config.yaml", "-f"}} {
+		options := testOptions(t, t.TempDir())
+		options.Args = args
+		options.MkdirAll = func(string, os.FileMode) error { t.Fatal("overview attempted a notice write"); return nil }
+		if ShouldPrint(options) {
+			t.Fatalf("overview %v should not emit a notice", args)
+		}
 	}
 }
 

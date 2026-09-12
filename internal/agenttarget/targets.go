@@ -15,6 +15,7 @@ var targets = []target{
 	{name: "copilot", path: ".copilot/skills"},
 	{name: "cursor", path: ".cursor/skills"},
 	{name: "gemini", path: ".gemini/skills"},
+	{name: "generic", path: ".agents/skills"},
 	{name: "hermes", path: ".hermes/skills"},
 	{name: "opencode", path: ".config/opencode/skills"},
 	{name: "pi", path: ".pi/agent/skills"},

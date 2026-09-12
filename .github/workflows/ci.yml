@@ -65,6 +65,9 @@ jobs:
           bash -n scripts/install.sh scripts/tests/install_sh_test.sh
           bash scripts/tests/install_sh_test.sh
 
+      - name: Test static website packaging
+        run: node --test scripts/tests/site_test.mjs
+
   windows-quality:
     name: Windows quality gates
     runs-on: windows-latest

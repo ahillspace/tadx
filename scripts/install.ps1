@@ -7,6 +7,8 @@ param(
 
     [string]$InstallDir = '',
 
+    [string[]]$Target = @('auto'),
+
     [switch]$NoModifyPath,
 
     [switch]$NoCompletion,
@@ -55,7 +57,7 @@ function Invoke-Download {
         [Parameter(Mandatory = $true)][string]$Destination
     )
 
-    Invoke-WebRequest -UseBasicParsing -Uri $Uri -OutFile $Destination
+    Invoke-WebRequest -UseBasicParsing -Uri $Uri -OutFile $Destination -TimeoutSec 120
 }
 
 function Test-AuthenticatedGitHubCLI {
@@ -113,6 +115,10 @@ function Receive-ReleaseAsset {
 
 function Get-ChecksumEntries {
     param([Parameter(Mandatory = $true)][string]$ManifestPath)
+
+    if ((Get-Item -LiteralPath $ManifestPath).Length -gt 1048576) {
+        throw 'The release checksum manifest exceeds its byte limit.'
+    }
 
     $entries = @()
     foreach ($line in Get-Content -LiteralPath $ManifestPath) {
@@ -214,27 +220,35 @@ function Install-TadxBinary {
     $destination = Join-Path $Directory 'tadx.exe'
     $staged = Join-Path $Directory ('.tadx.new.' + [Guid]::NewGuid().ToString('N') + '.exe')
     $backup = Join-Path $Directory ('.tadx.backup.' + [Guid]::NewGuid().ToString('N') + '.exe')
+    $installed = $false
+    $hadExisting = Test-Path -LiteralPath $destination
 
     try {
         Copy-Item -LiteralPath $Source -Destination $staged
-        if (Test-Path -LiteralPath $destination) {
-            [IO.File]::Replace($staged, $destination, $backup, $true)
-            Remove-Item -LiteralPath $backup -Force -ErrorAction SilentlyContinue
-        }
-        else {
-            [IO.File]::Move($staged, $destination)
+        # Renaming, unlike overwriting, also supports the running updater on Windows.
+        if ($hadExisting) { [IO.File]::Move($destination, $backup) }
+        [IO.File]::Move($staged, $destination)
+        $installed = $true
+        foreach ($agentTarget in $Target) {
+            & $destination agent install --target $agentTarget
+            if ($LASTEXITCODE -ne 0) {
+                throw 'Guidance installation failed. The binary will be rolled back; any completed Guidance targets are reported above. Retry the installer to complete setup.'
+            }
         }
     }
     catch {
         Remove-Item -LiteralPath $staged -Force -ErrorAction SilentlyContinue
-        if ((-not (Test-Path -LiteralPath $destination)) -and (Test-Path -LiteralPath $backup)) {
+        if ($installed -and (Test-Path -LiteralPath $destination)) {
+            Remove-Item -LiteralPath $destination -Force
+        }
+        if (Test-Path -LiteralPath $backup) {
             [IO.File]::Move($backup, $destination)
         }
         throw
     }
     finally {
         Remove-Item -LiteralPath $staged -Force -ErrorAction SilentlyContinue
-        Remove-Item -LiteralPath $backup -Force -ErrorAction SilentlyContinue
+        # Retain the previous binary for manual recovery, including while it is running.
     }
 }
 
@@ -309,6 +323,10 @@ if ([string]::IsNullOrWhiteSpace($InstallDir)) {
     $InstallDir = Get-DefaultInstallDir
 }
 $InstallDir = [IO.Path]::GetFullPath($InstallDir)
+$Target = @($Target | ForEach-Object { $_ -split ',' })
+if ($Target.Count -eq 0 -or @($Target | Where-Object { $_ -notmatch '^[a-z][a-z0-9-]*$' }).Count -gt 0) {
+    throw 'Specify one or more valid agent targets.'
+}
 
 if ($Action -ieq 'Uninstall') {
     $binaryPath = Join-Path $InstallDir 'tadx.exe'
@@ -334,6 +352,8 @@ if ([string]::IsNullOrWhiteSpace($Version)) {
 
 $temporaryDirectory = Join-Path ([IO.Path]::GetTempPath()) ('tadx-install-' + [Guid]::NewGuid().ToString('N'))
 New-Item -ItemType Directory -Path $temporaryDirectory | Out-Null
+$installLock = Join-Path $InstallDir '.tadx-install.lock'
+$ownsInstallLock = $false
 
 try {
     $manifestPath = Join-Path $temporaryDirectory 'checksums.txt'
@@ -388,6 +408,9 @@ try {
         throw "The release asset $assetName could not be downloaded."
     }
     Assert-ArchiveChecksum -ArchivePath $archivePath -AssetName $assetName -Entries $entries
+    if ((Get-Item -LiteralPath $archivePath).Length -gt 268435456) {
+        throw 'The release archive exceeds its byte limit.'
+    }
 
     $extractDirectory = Join-Path $temporaryDirectory 'extract'
     Expand-Archive -LiteralPath $archivePath -DestinationPath $extractDirectory
@@ -396,6 +419,9 @@ try {
         throw 'The verified release archive must contain exactly one tadx.exe file.'
     }
 
+    New-Item -ItemType Directory -Force -Path $InstallDir | Out-Null
+    try { New-Item -ItemType Directory -Path $installLock -ErrorAction Stop | Out-Null; $ownsInstallLock = $true }
+    catch { throw 'Another installer is using this directory. Wait for it to finish; remove .tadx-install.lock only after confirming no installer is running.' }
     Install-TadxBinary -Source $binaries[0].FullName -Directory $InstallDir
     if (-not $NoModifyPath) {
         Add-UserPath -Directory $InstallDir
@@ -414,5 +440,6 @@ try {
     }
 }
 finally {
+    if ($ownsInstallLock) { Remove-Item -LiteralPath $installLock -Force -ErrorAction SilentlyContinue }
     Remove-Item -LiteralPath $temporaryDirectory -Recurse -Force -ErrorAction SilentlyContinue
 }

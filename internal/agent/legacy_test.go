@@ -46,19 +46,16 @@ func TestLegacyPreviewAndForcePreserveDivergentPackages(t *testing.T) {
 				t.Fatal(err)
 			}
 			preview, err := runOperation(in, operation, true, false)
-			if err != nil || preview.Status != "preview" || len(preview.Skills) != 4 || len(preview.Warnings) != 1 {
+			if err != nil || preview.Status != "preview" || len(preview.Skills) != 4 || len(preview.Warnings) != 0 {
 				t.Fatalf("preview = %#v, %v", preview, err)
 			}
 			if preview.Skills[2].Status != "remove" || preview.Skills[3].Status != "divergent" {
 				t.Fatalf("legacy preview = %#v", preview.Skills)
 			}
-			if _, err := runOperation(in, operation, false, false); err == nil || !strings.Contains(err.Error(), "--force") {
-				t.Fatalf("divergent legacy package accepted: %v", err)
-			}
 			if _, err := os.Stat(filepath.Join(home, ".codex")); !os.IsNotExist(err) {
 				t.Fatalf("preview or rejected operation wrote canonical directory: %v", err)
 			}
-			result, err := runOperation(in, operation, false, true)
+			result, err := runOperation(in, operation, false, false)
 			if err != nil {
 				t.Fatal(err)
 			}

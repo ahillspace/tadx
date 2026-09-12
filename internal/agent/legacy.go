@@ -14,7 +14,7 @@ const legacyCodexBase = ".agents/skills"
 
 // These exact package fingerprints come from the bundled trees at the named
 // revisions, using both LF and CRLF checkouts. Names or frontmatter alone never
-// establish ownership. Unknown or edited packages require force and a backup.
+// establish whether a recoverable backup is needed for an edited package.
 var legacyFingerprints = map[string][]string{
 	"tadx": {
 		"c3dcc032ad0b9e0522d022380fc9d7438a5861801250f4d8af502e34189a3b41", // 4d57544 LF
@@ -39,6 +39,15 @@ var legacyFingerprints = map[string][]string{
 func legacyPlans(ctx context.Context, root *os.Root) ([]*packagePlan, error) {
 	if err := checkParents(root, legacyCodexBase); err != nil {
 		return nil, err
+	}
+	// A receipt marks the portable target installed by the current installer,
+	// not an obsolete Codex package. Keep that independent installation intact.
+	receipt, err := readReceipt(root, legacyCodexBase)
+	if err != nil {
+		return nil, err
+	}
+	if len(receipt.Packages) != 0 {
+		return nil, nil
 	}
 	var plans []*packagePlan
 	for _, name := range []string{"tadx", "tadx-pulse"} {
@@ -78,6 +87,22 @@ func knownLegacy(name, digest, current string) bool {
 		}
 	}
 	return false
+}
+
+func legacyOwnershipUnchanged(root *os.Root, plans []*packagePlan) error {
+	for _, plan := range plans {
+		if plan.remove {
+			receipt, err := readReceipt(root, legacyCodexBase)
+			if err != nil {
+				return err
+			}
+			if len(receipt.Packages) != 0 {
+				return errors.New("portable Guidance was registered during preparation; retry without removing its independent installation")
+			}
+			break
+		}
+	}
+	return nil
 }
 
 // Lock both discoverable roots, including the old installer's lock location.

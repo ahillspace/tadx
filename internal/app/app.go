@@ -22,6 +22,7 @@ import (
 	lastaction "github.com/ahillspace/tadx/actions/last"
 	mutationset "github.com/ahillspace/tadx/actions/mutation/set"
 	mutationstatus "github.com/ahillspace/tadx/actions/mutation/status"
+	sessionoverview "github.com/ahillspace/tadx/actions/session/overview"
 	workbookpublish "github.com/ahillspace/tadx/actions/workbook/publish"
 	workbookpull "github.com/ahillspace/tadx/actions/workbook/pull"
 	"github.com/ahillspace/tadx/internal/artifact"
@@ -91,6 +92,8 @@ func Run(ctx context.Context, args []string, stdout io.Writer, options Options) 
 	cacheGroup2 := newCacheGroup2Commands(runtime)
 	credentialStore := authCredentialStore{runtime: runtime}
 	root := cli.NewRoot(cli.Dependencies{
+		SessionOverview:       sessionoverview.New(sessionOverviewReader{runtime: runtime}),
+		Update:                newUpdateCommand(runtime),
 		Catalog:               (&catalogCommands{runtime: runtime}).dependencies(),
 		ContentLabels:         contentLabelDependencies(runtime),
 		AdminLabels:           adminLabelDependencies(runtime),
@@ -162,7 +165,7 @@ func Run(ctx context.Context, args []string, stdout io.Writer, options Options) 
 	selected, _, findErr := root.Find(args)
 	if selected != nil {
 		capture.operation = selected.Annotations[cli.CapabilityAnnotation]
-		capture.enabled = capture.operation != "last"
+		capture.enabled = capture.operation != "last" && capture.operation != "session.overview"
 	}
 	if findErr != nil {
 		return fail(&errs.Error{Kind: errs.KindUsage, Operation: "cli", Summary: findErr.Error(), Cause: findErr}, renderOptions)

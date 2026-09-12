@@ -21,17 +21,11 @@ func TestInstallPreflightsBothPackagesAndPreservesBackups(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(divergent, "notes.txt"), []byte("keep notes"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := installer.Install(context.Background(), "codex", false, false); err == nil {
-		t.Fatal("expected collision")
-	}
-	if _, err := os.Stat(filepath.Join(home, ".codex", "skills", "tadx")); !os.IsNotExist(err) {
-		t.Fatalf("partial installation: %v", err)
-	}
 	preview, err := installer.Install(context.Background(), "codex", true, false)
-	if err != nil || len(preview.Warnings) != 1 || preview.Skills[1].Status != "replace" {
+	if err != nil || len(preview.Warnings) != 0 || preview.Skills[1].Status != "replace" {
 		t.Fatalf("preview = %#v, %v", preview, err)
 	}
-	result, err := installer.Install(context.Background(), "codex", false, true)
+	result, err := installer.Install(context.Background(), "codex", false, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -180,10 +174,7 @@ func TestUninstallRemovesMatchingPackagesAndProtectsDivergentPackages(t *testing
 	if err := os.WriteFile(filepath.Join(home, ".codex", "skills", "tadx", "custom.txt"), []byte("keep"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := installer.Uninstall(context.Background(), "codex", false, false); err == nil {
-		t.Fatal("uninstall accepted a divergent package without force")
-	}
-	result, err := installer.Uninstall(context.Background(), "codex", false, true)
+	result, err := installer.Uninstall(context.Background(), "codex", false, false)
 	if err != nil {
 		t.Fatal(err)
 	}

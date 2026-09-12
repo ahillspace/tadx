@@ -34,7 +34,23 @@ try {
         $assetArchitecture = 'amd64'
     }
 
-    Set-Content -LiteralPath (Join-Path $payloadDirectory 'tadx.exe') -Value 'test executable' -NoNewline
+    $fakeSource = @'
+package main
+import ("os"; "strings"; "os/exec")
+func main() {
+ if len(os.Args)>1 && os.Args[1]=="selfupdate" {c:=exec.Command("powershell.exe",os.Args[2:]...);c.Stdout=os.Stdout;c.Stderr=os.Stderr;if e:=c.Run();e!=nil{os.Exit(1)};return}
+ if len(os.Args)>1 && os.Args[1]=="agent" {
+  f,e:=os.OpenFile(os.Getenv("TADX_TEST_GUIDANCE_LOG"),os.O_APPEND|os.O_CREATE|os.O_WRONLY,0600); if e!=nil {panic(e)}
+  _,_=f.WriteString(strings.Join(os.Args[1:]," ")+"\n"); _=f.Close()
+  if os.Getenv("TADX_TEST_GUIDANCE_FAIL")=="1" {os.Exit(7)}
+ }
+}
+'@
+    $fakeSourcePath = Join-Path $testRoot 'fake.go'
+    Set-Content -LiteralPath $fakeSourcePath -Value $fakeSource
+    & go build -o (Join-Path $payloadDirectory 'tadx.exe') $fakeSourcePath
+    Assert-True -Condition ($LASTEXITCODE -eq 0) -Message 'Could not build the isolated installer fixture.'
+    $env:TADX_TEST_GUIDANCE_LOG = Join-Path $testRoot 'guidance.log'
     $assetName = "tadx_1.2.3_windows_${assetArchitecture}.zip"
     $archivePath = Join-Path $releaseDirectory $assetName
     Compress-Archive -LiteralPath (Join-Path $payloadDirectory 'tadx.exe') -DestinationPath $archivePath
@@ -78,6 +94,16 @@ copy /Y "%TADX_TEST_RELEASES%\%pattern%" "%destination%" >nul
 
     & $installer -Version latest -InstallDir $installDirectory -NoModifyPath -CompletionProfile $completionProfile
     Assert-True -Condition (Test-Path -LiteralPath (Join-Path $installDirectory 'tadx.exe')) -Message 'Latest installation did not write tadx.exe.'
+    Assert-True -Condition ([IO.File]::ReadAllText($env:TADX_TEST_GUIDANCE_LOG).Contains('agent install --target auto')) -Message 'Single install did not deploy Guidance.'
+    & (Join-Path $installDirectory 'tadx.exe') selfupdate -NoProfile -NonInteractive -ExecutionPolicy Bypass -File $installer -Version 1.2.3 -InstallDir $installDirectory -NoModifyPath -NoCompletion
+    Assert-True -Condition ($LASTEXITCODE -eq 0) -Message 'Could not update while the old executable remained running.'
+    $originalBinaryHash = (Get-FileHash -LiteralPath (Join-Path $installDirectory 'tadx.exe')).Hash
+    $env:TADX_TEST_GUIDANCE_FAIL = '1'
+    $failed = $false
+    try { & $installer -Version latest -InstallDir $installDirectory -NoModifyPath -NoCompletion } catch { $failed = $true }
+    Remove-Item Env:TADX_TEST_GUIDANCE_FAIL
+    Assert-True -Condition $failed -Message 'Guidance failure was reported as successful installation.'
+    Assert-True -Condition ((Get-FileHash -LiteralPath (Join-Path $installDirectory 'tadx.exe')).Hash -eq $originalBinaryHash) -Message 'Guidance failure did not restore the prior binary.'
     $firstProfile = [IO.File]::ReadAllText($completionProfile)
     $parseTokens = $null
     $parseErrors = $null

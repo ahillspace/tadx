@@ -5,6 +5,10 @@ description: Use for TADX CLI workflows involving Tableau content discovery and 
 
 # Operate Tableau with TADX
 
+Start each TADX session by running `tadx` once.
+It reports local environment, credential configuration, workspace selection, and mutation policy without signing in or changing state.
+Use that context instead of rediscovering setup; credential configuration is not proof of successful authentication.
+
 ## What TADX is
 
 TADX is the deterministic Tableau lifecycle and development CLI for agents and humans.

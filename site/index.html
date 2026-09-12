@@ -1,0 +1,585 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#f3f3eb">
+  <meta name="description" content="Find workbooks, publish changes, and create Pulse metrics. Use your terminal. Or ask your agent.">
+  <title>TADX - Tableau. At your command.</title>
+  <!--
+    Standalone homepage concept. No frameworks, external fonts, or network calls.
+    References: https://opencode.ai/ and https://atuin.sh/
+    Reworks the earlier “TADX CLI: Tableau Automation Reimagined” mockup.
+    Public launch page. Installer scripts and binaries are released separately.
+    The agent conversations below are illustrative, not recorded CLI output.
+    Publish uses the reviewed branch's --id selector. Nothing here executes TADX.
+  -->
+  <style>
+    :root {
+      color-scheme: light;
+      --paper: #f3f3eb;
+      --ink: #202720;
+      --muted: #646b5f;
+      --line: #d9dcd0;
+      --green: #496641;
+      --accent: #d3ed9e;
+      --terminal: #19201c;
+      --terminal-ink: #ecf0e5;
+      --terminal-muted: #a7b1a3;
+      --sans: "Inter Display", "Inter", "Segoe UI", Helvetica, Arial, sans-serif;
+      --mono: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+    }
+    * { box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+    body { margin: 0; background: var(--paper); color: var(--ink); font-family: var(--sans); -webkit-font-smoothing: antialiased; }
+    body.modal-open { overflow: hidden; }
+    button, select, input { font: inherit; }
+    button, a { -webkit-tap-highlight-color: transparent; }
+    button { cursor: pointer; }
+    a { color: inherit; text-decoration: none; }
+    a, button { touch-action: manipulation; }
+    button:disabled { cursor: default; }
+    ::selection { background: var(--accent); color: var(--ink); }
+    :focus-visible { outline: 2px solid var(--green); outline-offset: 5px; }
+    .terminal :focus-visible { outline-color: var(--accent); }
+    .wrap { width: min(1120px, calc(100% - 80px)); margin-inline: auto; }
+    .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0; }
+    .skip-link { position: fixed; top: -80px; left: 20px; z-index: 20; padding: 12px 20px; background: var(--ink); color: var(--paper); }
+    .skip-link:focus { top: 12px; }
+    .icon { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; flex: 0 0 auto; }
+    .masthead { height: 91px; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid var(--line); }
+    .wordmark { display: inline-flex; align-items: center; gap: 10px; font-weight: 750; font-size: 24px; letter-spacing: -1px; }
+    .wordmark-symbol { width: 28px; height: 28px; }
+    .wordmark-symbol path { fill: none; stroke: currentColor; stroke-width: 2.2; stroke-linecap: square; stroke-linejoin: miter; }
+    .wordmark-symbol .cursor { stroke: var(--green); }
+    .nav { display: flex; gap: 30px; align-items: center; font-size: 13px; font-weight: 550; }
+    .nav > a { display: inline-flex; gap: 6px; align-items: center; padding-block: 10px; }
+    .nav > a:hover, .footer-links a:hover { color: var(--green); }
+    .nav .icon { width: 13px; height: 13px; }
+    .nav-install { padding: 9px 14px; border: 1px solid #b8c1ad; border-radius: 4px; background: transparent; color: var(--ink); font-size: 12px; }
+    .nav-install:hover { background: #e6ebdd; border-color: var(--green); }
+    .hero { text-align: center; padding: 67px 0 42px; }
+    .eyebrow { display: inline-flex; align-items: center; gap: 9px; margin: 0 0 22px; font: 11px/1.5 var(--mono); color: var(--muted); letter-spacing: .055em; }
+    .eyebrow .dot { width: 6px; height: 6px; background: var(--green); border-radius: 50%; }
+    h1 { margin: 0; font-size: clamp(64px, 7.4vw, 102px); font-weight: 540; letter-spacing: -.065em; line-height: 1.02; }
+    h1 span { display: block; }
+    h1 .second-line { color: var(--green); }
+    .intro { margin: 26px auto 0; color: #60675c; font-size: 16px; font-weight: 400; line-height: 1.75; }
+    .hero-actions { margin-top: 27px; display: flex; align-items: center; justify-content: center; gap: 25px; }
+    .primary { min-height: 46px; padding: 0 20px; display: inline-flex; justify-content: center; align-items: center; gap: 24px; background: var(--ink); color: var(--paper); border: 1px solid var(--ink); border-radius: 4px; font-size: 13px; font-weight: 550; transition: background .15s, transform .15s; }
+    .primary:hover { background: #354430; transform: translateY(-1px); }
+    .text-link { display: inline-flex; gap: 9px; align-items: center; font-size: 13px; font-weight: 500; padding-block: 10px; }
+    .text-link:hover { color: var(--green); }
+    .text-link .icon { width: 14px; height: 14px; }
+    .demo-section { max-width: 960px; margin: 0 auto; padding-top: 8px; }
+    .demo-tabs { display: flex; flex-wrap: wrap; justify-content: center; gap: 12px 28px; margin: 0 0 19px; }
+    .demo-tab { position: relative; display: inline-flex; gap: 8px; align-items: center; padding: 12px 0; border: 0; background: transparent; color: #626b5b; font-size: 12px; font-weight: 500; }
+    .demo-tab .tab-index { font: 10px/1 var(--mono); opacity: .72; }
+    .demo-tab::after { content: ""; height: 1px; position: absolute; bottom: 3px; left: 0; right: 0; background: transparent; }
+    .demo-tab[aria-selected="true"] { color: var(--ink); }
+    .demo-tab[aria-selected="true"]::after { background: var(--green); }
+    .demo-tab:hover { color: var(--green); }
+    .terminal { position: relative; overflow: hidden; color: var(--terminal-ink); background: var(--terminal); border: 1px solid #354034; border-radius: 8px; box-shadow: 0 3px 6px #20272008, 0 26px 60px -24px #1a30274d; }
+    .terminal-head { padding: 15px 26px; min-height: 54px; display: flex; align-items: center; justify-content: space-between; gap: 16px; border-bottom: 1px solid #ffffff12; font: 11px/1.4 var(--mono); color: var(--terminal-muted); }
+    .terminal-heading { display: inline-flex; align-items: center; gap: 11px; }
+    .terminal-heading > .icon { color: var(--accent); width: 15px; height: 15px; }
+    .head-separator { width: 1px; height: 11px; background: #51604e; margin-inline: 2px; }
+    .example-label { color: #bdc7b6; font-size: 10px; }
+    .replay { display: inline-flex; align-items: center; gap: 6px; padding: 3px 0 3px 8px; font: 10px/1.4 var(--mono); border: 0; background: transparent; color: var(--terminal-muted); }
+    .replay:hover { color: var(--accent); }
+    .replay .icon { width: 12px; height: 12px; }
+    .terminal-body { padding: 29px 40px 21px; min-height: 371px; }
+    .prompt { display: flex; gap: 15px; align-items: flex-start; margin: 0; font-size: 16px; font-weight: 450; line-height: 1.6; }
+    .prompt .prompt-mark { color: var(--accent); font: 19px/1.4 var(--mono); }
+    .prompt-text { margin: 0; }
+    .tool-call { margin: 20px 0 24px 29px; border-left: 1px solid #536647; padding-left: 13px; color: #b5c3a5; font: 11px/1.65 var(--mono); }
+    .tool-call summary { cursor: pointer; display: flex; align-items: center; gap: 8px; list-style: none; width: fit-content; min-height: 24px; }
+    .tool-call summary::-webkit-details-marker { display: none; }
+    .tool-call summary .chevron { width: 12px; height: 12px; transition: transform .15s; }
+    .tool-call[open] summary .chevron { transform: rotate(90deg); }
+    .tool-call .command { margin: 8px 12px 6px 0; color: #ced9c1; white-space: pre-wrap; overflow-wrap: anywhere; font: inherit; line-height: 1.85; }
+    .tool-tick { display: inline-flex; color: var(--accent); }
+    .tool-tick .icon { width: 11px; height: 11px; }
+    .response { margin-left: 29px; }
+    .response-copy { margin: 0 0 15px; color: #e1e7d9; font-size: 14px; font-weight: 420; line-height: 1.65; }
+    .workbooks { width: 100%; border-collapse: collapse; font-size: 12px; text-align: left; }
+    .workbooks th { padding: 0 0 9px; font: 10px/1.5 var(--mono); font-weight: 400; color: #99a58f; }
+    .workbooks td { border-top: 1px solid #ffffff10; padding: 11px 0; color: #d3dccb; font-weight: 430; }
+    .workbooks th:last-child, .workbooks td:last-child { text-align: right; }
+    .workbook-name { display: flex; align-items: center; gap: 10px; }
+    .workbook-name .icon { width: 12px; height: 12px; color: #8b9e7c; }
+    .workbooks td:last-child { color: #aebba3; font: 11px/1.5 var(--mono); }
+    .terminal-foot { min-height: 41px; display: flex; align-items: center; justify-content: space-between; gap: 12px; border-top: 1px solid #ffffff10; padding: 10px 26px; font: 10px/1.6 var(--mono); color: #a0ad95; }
+    .terminal-foot .connection { display: inline-flex; align-items: center; gap: 7px; }
+    .terminal-foot .connection::before { content: ""; background: #a8c580; width: 4px; height: 4px; border-radius: 50%; }
+    .demo-note { display: flex; align-items: center; justify-content: space-between; gap: 20px; color: var(--muted); margin: 19px 1px 0; font: 10px/1.7 var(--mono); }
+    .demo-note .support { color: var(--muted); }
+    .metric-card { padding: 17px 20px; border: 1px solid #ffffff18; border-radius: 3px; display: grid; grid-template-columns: 1fr 1fr; gap: 19px 20px; }
+    .metric-field span { display: block; color: #aab59f; font: 10px/1.4 var(--mono); margin-bottom: 5px; }
+    .metric-field strong { font-size: 13px; font-weight: 450; color: #e4ecd9; }
+    .preview-note { margin: 14px 0 0; color: var(--accent); font: 11px/1.5 var(--mono); display: flex; align-items: center; gap: 8px; }
+    .preview-note .icon { width: 12px; height: 12px; }
+    .change { border-top: 1px solid #ffffff16; padding: 14px 0 0; }
+    .change-title { color: #e5eadc; font-size: 13px; margin: 0 0 12px; }
+    .change-path { display: flex; align-items: center; gap: 15px; color: #adbda0; font: 11px/1.7 var(--mono); }
+    .change-path .icon { width: 15px; height: 15px; color: var(--accent); }
+    .change-path strong { font-weight: 400; color: #e5eadc; }
+    .agent-line { margin: 53px 0 54px; display: flex; justify-content: center; align-items: center; flex-wrap: wrap; gap: 13px 30px; }
+    .agent-line p { color: var(--muted); font-size: 12px; margin: 0; }
+    .agents { display: flex; justify-content: center; gap: 27px; align-items: center; font-size: 13px; font-weight: 550; letter-spacing: -.01em; }
+    .agent-name { display: inline-flex; align-items: center; gap: 7px; }
+    footer { display: flex; align-items: flex-start; justify-content: space-between; gap: 22px; padding: 26px 0 32px; border-top: 1px solid var(--line); }
+    .footer-left { display: flex; gap: 15px; align-items: flex-start; }
+    .footer-left .wordmark { font-size: 16px; letter-spacing: -.6px; padding-top: 1px; }
+    .footer-caption { color: #686f62; margin: 0; font-size: 10px; line-height: 1.8; }
+    .footer-caption span { display: block; color: #6b7361; }
+    .footer-links { display: flex; gap: 24px; padding-top: 3px; font-size: 11px; color: #616b59; }
+    dialog { width: min(660px, calc(100% - 28px)); max-height: calc(100dvh - 40px); padding: 0; border: 1px solid #cbd1c0; border-radius: 8px; background: var(--paper); color: var(--ink); box-shadow: 0 24px 100px #0004; overflow: auto; }
+    dialog::backdrop { background: #111b17a8; backdrop-filter: blur(4px); }
+    .install-head { padding: 27px 30px 0; display: flex; align-items: flex-start; justify-content: space-between; }
+    .install-head h2 { margin: 0; font-size: 29px; font-weight: 550; letter-spacing: -.04em; }
+    .close-dialog { display: inline-grid; place-items: center; padding: 6px; background: transparent; border: 0; color: var(--muted); border-radius: 4px; }
+    .close-dialog:hover { background: #e2e6d9; }
+    .install-content { padding: 0 30px 28px; }
+    .install-content > p { font-size: 13px; line-height: 1.7; color: var(--muted); }
+    .os-tabs { display: flex; gap: 20px; margin: 21px 0 18px; border-bottom: 1px solid var(--line); }
+    .os-tab { border: 0; border-bottom: 2px solid transparent; color: var(--muted); background: transparent; font: 12px/1.5 var(--mono); padding: 10px 0; }
+    .os-tab[aria-selected="true"] { border-color: var(--green); color: var(--ink); }
+    .install-step { margin-top: 20px; }
+    .step-head { display: flex; justify-content: space-between; align-items: center; gap: 15px; margin: 0 0 8px; }
+    .step-head h3 { font-size: 12px; font-weight: 550; margin: 0; }
+    .copy-button { display: inline-flex; gap: 5px; align-items: center; font: 10px/1.5 var(--mono); color: var(--green); border: 0; background: transparent; padding: 6px; }
+    .copy-button .icon { width: 12px; height: 12px; }
+    .install-code { padding: 15px; border: 1px solid var(--line); border-radius: 4px; background: #e9ecdf; margin: 0; color: #36472d; font: 11px/1.8 var(--mono); white-space: pre-wrap; overflow-wrap: anywhere; }
+    .install-bottom { display: flex; flex-wrap: wrap; gap: 15px; align-items: center; justify-content: space-between; padding-top: 23px; }
+    .install-bottom a { font-size: 12px; color: var(--green); text-decoration: underline; text-underline-offset: 3px; }
+    .install-bottom span { font-size: 10px; color: var(--muted); }
+    .private-note { border-top: 1px solid var(--line); margin: 22px 0 0 !important; padding-top: 14px; font-size: 10px !important; }
+    .private-note a { text-decoration: underline; text-underline-offset: 2px; }
+    .reveal-step { animation: arrive .28s ease-out both; }
+    @keyframes arrive { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: none; } }
+    @media (max-width: 760px) {
+      .wrap { width: calc(100% - 40px); }
+      .masthead { height: 75px; }
+      .nav { gap: 20px; }
+      .hero { padding-top: 52px; padding-bottom: 28px; }
+      h1 { font-size: clamp(50px, 10vw, 78px); }
+      .intro { font-size: 14px; line-height: 1.8; }
+      .terminal-body { padding: 26px 23px 20px; min-height: 355px; }
+      .terminal-head, .terminal-foot { padding-inline: 20px; }
+      .prompt { font-size: 14px; gap: 11px; }
+      .tool-call, .response { margin-left: 24px; }
+      .demo-tabs { gap: 23px; margin-bottom: 13px; }
+      .demo-tab { font-size: 11px; }
+      .response-copy { font-size: 13px; }
+      .demo-note { gap: 10px; font-size: 9px; }
+      .agent-line { margin: 37px 0 39px; flex-direction: column; gap: 16px; }
+      .agents { gap: 22px; font-size: 12px; }
+      .footer-left { flex-direction: column; gap: 9px; }
+    }
+    @media (max-width: 440px) {
+      .wrap { width: calc(100% - 32px); }
+      .nav { gap: 15px; font-size: 12px; }
+      .nav-install { display: none; }
+      .wordmark { font-size: 21px; gap: 7px; }
+      .wordmark-symbol { width: 23px; height: 23px; }
+      .hero { padding-top: 41px; }
+      .eyebrow { font-size: 10px; margin-bottom: 22px; }
+      h1 { font-size: clamp(43px, 12.4vw, 55px); letter-spacing: -.065em; }
+      .intro { max-width: 310px; font-size: 13px; margin-top: 22px; }
+      .intro br { display: none; }
+      .hero-actions { gap: 22px; margin-top: 22px; }
+      .primary { min-height: 43px; padding-inline: 17px; gap: 21px; font-size: 12px; }
+      .text-link { font-size: 12px; }
+      .demo-tabs { gap: 20px; }
+      .demo-tab { font-size: 10px; gap: 5px; }
+      .demo-tab .tab-index { display: none; }
+      .terminal-head { padding: 13px 15px; min-height: 47px; font-size: 10px; gap: 8px; }
+      .example-label { font-size: 9px; }
+      .terminal-heading { gap: 7px; }
+      .head-separator { margin: 0; }
+      .terminal-body { padding: 23px 15px 20px; min-height: 346px; }
+      .prompt { font-size: 13px; }
+      .prompt-mark { font-size: 17px !important; }
+      .tool-call { font-size: 10px; margin-block: 17px 19px; }
+      .tool-call, .response { margin-left: 22px; }
+      .response-copy { font-size: 12px; }
+      .workbooks { font-size: 11px; }
+      .workbooks th { font-size: 9px; }
+      .workbooks td { padding-block: 11px; }
+      .workbooks td:last-child { font-size: 9px; }
+      .workbook-name { gap: 7px; }
+      .terminal-foot { padding: 10px 15px; font-size: 9px; }
+      .demo-note { display: block; text-align: center; font-size: 9px; line-height: 1.9; }
+      .demo-note span { display: block; }
+      .agents { gap: 18px; font-size: 11px; }
+      .metric-card { padding: 14px; gap: 16px 12px; }
+      .metric-field strong { font-size: 11px; }
+      .change-path { gap: 9px; font-size: 10px; }
+      .footer-links { gap: 16px; font-size: 10px; }
+      .footer-caption { font-size: 9px; }
+      .footer-caption span { max-width: 230px; }
+      footer { gap: 12px; }
+      .install-head { padding: 23px 20px 0; }
+      .install-content { padding: 0 20px 23px; }
+      .install-code { font-size: 10px; padding: 12px; }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      html { scroll-behavior: auto; }
+      *, *::before, *::after { animation: none !important; transition: none !important; }
+    }
+    @media print {
+      .nav-install, .hero-actions, .replay, dialog { display: none; }
+      .terminal { box-shadow: none; print-color-adjust: exact; }
+      .hero { padding-top: 25px; }
+    }
+  </style>
+</head>
+<body>
+  <svg xmlns="http://www.w3.org/2000/svg" aria-hidden="true" style="position:absolute;width:0;height:0;overflow:hidden">
+    <symbol id="arrow" viewBox="0 0 24 24"><path d="M5 12h14m-5-5 5 5-5 5"/></symbol>
+    <symbol id="external" viewBox="0 0 24 24"><path d="M7 17 17 7M7 7h10v10"/></symbol>
+    <symbol id="term" viewBox="0 0 24 24"><path d="m4 6 6 6-6 6m10 0h6"/></symbol>
+    <symbol id="check" viewBox="0 0 24 24"><path d="m5 12 4 4L19 6"/></symbol>
+    <symbol id="chevron" viewBox="0 0 24 24"><path d="m9 5 7 7-7 7"/></symbol>
+    <symbol id="file" viewBox="0 0 24 24"><path d="M14 3H5v18h14V8zM14 3v5h5M8 17v-4m4 4v-7m4 7v-5"/></symbol>
+    <symbol id="replay" viewBox="0 0 24 24"><path d="M4 10a8 8 0 1 1 1 8M4 4v6h6"/></symbol>
+    <symbol id="close" viewBox="0 0 24 24"><path d="m6 6 12 12M6 18 18 6"/></symbol>
+    <symbol id="copy" viewBox="0 0 24 24"><rect x="8" y="8" width="12" height="13" rx="1"/><path d="M16 8V3H3v13h5"/></symbol>
+  </svg>
+  <a class="skip-link" href="#main">Skip to content</a>
+  <header class="wrap masthead">
+    <a href="#" class="wordmark" aria-label="TADX home">
+      <svg class="wordmark-symbol" viewBox="0 0 28 28" aria-hidden="true"><path d="m4 5 8 9-8 9"/><path class="cursor" d="M16 23h8"/></svg>
+      TADX
+    </a>
+    <nav class="nav" aria-label="Main navigation">
+      <a href="https://github.com/ahillspace/tadx/blob/main/README.md" target="_blank" rel="noopener noreferrer">Docs</a>
+      <a href="https://github.com/ahillspace/tadx" target="_blank" rel="noopener noreferrer">GitHub <svg class="icon" aria-hidden="true"><use href="#external"/></svg></a>
+      <button type="button" class="nav-install" data-install>Get TADX</button>
+    </nav>
+  </header>
+  <main id="main" class="wrap">
+    <section class="hero" aria-labelledby="headline">
+      <p class="eyebrow"><span class="dot" aria-hidden="true"></span> The open-source Tableau CLI</p>
+      <h1 id="headline"><span>Tableau.</span><span class="second-line">At your command.</span></h1>
+      <p class="intro">Find workbooks, publish changes, and create Pulse metrics.<br> Use your terminal. Or ask your agent.</p>
+      <div class="hero-actions">
+        <button type="button" class="primary" data-install>Get TADX <svg class="icon" aria-hidden="true"><use href="#arrow"/></svg></button>
+        <a class="text-link" href="https://github.com/ahillspace/tadx" target="_blank" rel="noopener noreferrer">View on GitHub <svg class="icon" aria-hidden="true"><use href="#external"/></svg></a>
+      </div>
+    </section>
+    <section class="demo-section" aria-label="Example Tableau workflows">
+      <div class="demo-tabs" role="tablist" aria-label="Choose an example">
+        <button type="button" class="demo-tab" id="tab-find" role="tab" aria-selected="true" aria-controls="demo-panel" tabindex="0" data-demo="find"><span class="tab-index" aria-hidden="true">01</span> Find a workbook</button>
+        <button type="button" class="demo-tab" id="tab-metric" role="tab" aria-selected="false" aria-controls="demo-panel" tabindex="-1" data-demo="metric"><span class="tab-index" aria-hidden="true">02</span> Create a metric</button>
+        <button type="button" class="demo-tab" id="tab-publish" role="tab" aria-selected="false" aria-controls="demo-panel" tabindex="-1" data-demo="publish"><span class="tab-index" aria-hidden="true">03</span> Publish a change</button>
+        <button type="button" class="demo-tab" id="tab-metadata" role="tab" aria-selected="false" aria-controls="demo-panel" tabindex="-1" data-demo="metadata"><span class="tab-index" aria-hidden="true">04</span> Explain your data</button>
+      </div>
+      <div class="terminal" id="demo-panel" role="tabpanel" aria-labelledby="tab-find" tabindex="0">
+        <div class="terminal-head">
+          <span class="terminal-heading"><svg class="icon" aria-hidden="true"><use href="#term"/></svg> your agent <span class="head-separator" aria-hidden="true"></span> <span class="example-label">Example session</span></span>
+          <button type="button" class="replay" id="replay-button" aria-label="Replay this example"><svg class="icon" aria-hidden="true"><use href="#replay"/></svg> Replay</button>
+        </div>
+        <div class="terminal-body" id="session-body">
+          <div class="prompt"><span class="prompt-mark" aria-hidden="true">›</span><p class="prompt-text">Find the sales workbooks on my dev site.</p></div>
+          <details class="tool-call">
+            <summary><span class="tool-tick"><svg class="icon" aria-hidden="true"><use href="#check"/></svg></span> tadx search <svg class="icon chevron" aria-hidden="true"><use href="#chevron"/></svg></summary>
+            <pre class="command">tadx search sales --type workbook --env dev</pre>
+          </details>
+          <div class="response">
+            <p class="response-copy">Found three sales workbooks on dev.</p>
+            <table class="workbooks">
+              <caption class="sr-only">Illustrative workbook search results</caption>
+              <thead><tr><th scope="col">Workbook</th><th scope="col">Project</th></tr></thead>
+              <tbody>
+                <tr><td><span class="workbook-name"><svg class="icon" aria-hidden="true"><use href="#file"/></svg>Sales Overview</span></td><td>Executive</td></tr>
+                <tr><td><span class="workbook-name"><svg class="icon" aria-hidden="true"><use href="#file"/></svg>Regional Sales</span></td><td>Sales</td></tr>
+                <tr><td><span class="workbook-name"><svg class="icon" aria-hidden="true"><use href="#file"/></svg>Sales Pipeline</span></td><td>Revenue Ops</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+        <div class="terminal-foot"><span class="connection" id="session-context">dev / Tableau Cloud</span><span id="session-status">Read only</span></div>
+      </div>
+      <div class="demo-note"><span>Example data. No live connection.</span><span class="support">Tableau Cloud &amp; Server · Pulse on Cloud</span></div>
+    </section>
+    <section class="agent-line" aria-label="Use TADX with your existing tools">
+      <p>Bring your own agent.</p>
+      <div class="agents"><span class="agent-name">Claude Code</span><span class="agent-name">Codex</span><span class="agent-name">OpenCode</span><span class="agent-name">Cursor</span></div>
+    </section>
+  </main>
+  <footer class="wrap">
+    <div class="footer-left"><a class="wordmark" href="#" aria-label="TADX home">TADX</a><p class="footer-caption">Made for the Tableau community.<span>Independent. Not affiliated with Tableau or Salesforce.</span></p></div>
+    <div class="footer-links"><a href="https://github.com/ahillspace/tadx/releases" target="_blank" rel="noopener noreferrer">Releases</a><a href="https://github.com/ahillspace/tadx/blob/main/README.md" target="_blank" rel="noopener noreferrer">Docs</a></div>
+  </footer>
+  <dialog id="install-dialog" aria-labelledby="install-title">
+    <div class="install-head"><h2 id="install-title">Get TADX.</h2><button type="button" class="close-dialog" aria-label="Close installation instructions"><svg class="icon" aria-hidden="true"><use href="#close"/></svg></button></div>
+    <div class="install-content">
+      <p>One command installs the CLI and its agent Guidance together. Detected agent platforms receive the TADX and Pulse skills automatically.</p>
+      <div class="os-tabs" role="tablist" aria-label="Operating system">
+        <button type="button" class="os-tab" id="os-unix" role="tab" aria-selected="true" aria-controls="install-panel" tabindex="0" data-os="unix">macOS &amp; Linux</button>
+        <button type="button" class="os-tab" id="os-windows" role="tab" aria-selected="false" aria-controls="install-panel" tabindex="-1" data-os="windows">Windows</button>
+      </div>
+      <div id="install-panel" role="tabpanel" aria-labelledby="os-unix">
+        <section class="install-step"><div class="step-head"><h3>Install TADX + Guidance</h3><button type="button" class="copy-button" data-copy="download-code"><svg class="icon" aria-hidden="true"><use href="#copy"/></svg><span>Copy</span></button></div><pre class="install-code" id="download-code">curl -fsSL https://tadx.net/install.sh | sh</pre></section>
+        <section class="install-step"><div class="step-head"><h3>Already installed? Update both.</h3><button type="button" class="copy-button" data-copy="run-code"><svg class="icon" aria-hidden="true"><use href="#copy"/></svg><span>Copy</span></button></div><pre class="install-code" id="run-code">tadx update</pre></section>
+        <p>Then run <code>tadx</code> to see your environments, authentication setup, workspaces, and mutation policy. No remote calls are made by this overview.</p>
+      </div>
+      <div class="install-bottom"><a href="https://github.com/ahillspace/tadx/blob/main/README.md#install-tadx-and-agent-guidance" target="_blank" rel="noopener noreferrer">Full installation guide ↗</a><span>Windows · macOS · Linux</span></div>
+      <p class="private-note">Public installation is available after the website and a release are published. Until then, use the <a href="https://github.com/ahillspace/tadx/blob/main/README.md#install-while-the-repository-is-private" target="_blank" rel="noopener noreferrer">GitHub-authenticated installation guide</a>. TADX-managed Guidance is refreshed on every install and update; keep your additions in separate skills.</p>
+    </div>
+  </dialog>
+  <div id="announcer" class="sr-only" role="status" aria-live="polite"></div>
+  <noscript><p class="wrap" style="font-size:12px;padding-bottom:20px">Interactive examples require JavaScript. <a href="https://github.com/ahillspace/tadx/blob/main/README.md#install-tadx-and-agent-guidance" style="text-decoration:underline">Read the installation guide.</a></p></noscript>
+  <script>
+    'use strict';
+    // All demo data is local and fictional. The page never runs shell commands.
+    const demos = {
+      find: {
+        prompt: 'Find the sales workbooks on my dev site.',
+        tool: 'tadx search',
+        command: 'tadx search sales --type workbook --env dev',
+        response: 'Found three sales workbooks on dev.',
+        kind: 'workbooks', context: 'dev / Tableau Cloud', status: 'Read only'
+      },
+      metric: {
+        prompt: 'Preview a revenue metric for the Orders datasource on dev.',
+        tool: 'tadx pulse definition create --preview',
+        command: 'tadx pulse definition create --env dev --name "Revenue" --datasource-id "orders-datasource-id" --measure-field "Sales" --aggregation SUM --date-field "Order Date" --dimension "Region" --number-format CURRENCY --currency USD --preview',
+        response: 'Here’s the metric, ready for you to review.',
+        kind: 'metric', context: 'dev / Tableau Cloud', status: 'Preview only'
+      },
+      publish: {
+        prompt: 'Preview publishing my Sales Overview workbook to the Executive project on prod.',
+        tool: 'tadx content workbook publish --preview',
+        command: 'tadx content workbook publish --workspace analytics --id "sales-overview-id" --env prod --project "Executive" --overwrite --preview',
+        response: 'This will replace Sales Overview in the Executive project on prod.',
+        kind: 'publish', context: 'prod / Tableau Cloud', status: 'Preview only'
+      },
+      metadata: {
+        prompt: 'Preview adding a clear definition of net sales to the upstream column on dev.',
+        tool: 'tadx catalog column update --preview',
+        command: 'tadx catalog column update --env dev --table-id "sales-table-id" --id "net-sales-column-id" --description "Sales after discounts and returns, in USD." --preview',
+        response: 'The column description is ready for review. Existing tags will be preserved.',
+        kind: 'metadata', context: 'dev / Tableau Cloud', status: 'Preview only'
+      }
+    };
+    const icon = name => `<svg class="icon" aria-hidden="true"><use href="#${name}"/></svg>`;
+    const body = document.getElementById('session-body');
+    const tabs = Array.from(document.querySelectorAll('[data-demo]'));
+    const panel = document.getElementById('demo-panel');
+    const announcer = document.getElementById('announcer');
+    const replay = document.getElementById('replay-button');
+    const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
+    const table = body.querySelector('.workbooks').cloneNode(true);
+    let currentDemo = 'find';
+    let replayController = null;
+
+    function buildSession(name) {
+      const d = demos[name];
+      const prompt = document.createElement('div');
+      prompt.className = 'prompt';
+      prompt.innerHTML = '<span class="prompt-mark" aria-hidden="true">›</span><p class="prompt-text"></p>';
+      prompt.querySelector('p').textContent = d.prompt;
+      const tool = document.createElement('details');
+      tool.className = 'tool-call';
+      tool.innerHTML = `<summary><span class="tool-tick">${icon('check')}</span><span></span><svg class="icon chevron" aria-hidden="true"><use href="#chevron"/></svg></summary><pre class="command"></pre>`;
+      tool.querySelector('summary > span:nth-child(2)').textContent = d.tool;
+      tool.querySelector('pre').textContent = d.command;
+      const response = document.createElement('div');
+      response.className = 'response';
+      const copy = document.createElement('p');
+      copy.className = 'response-copy';
+      copy.textContent = d.response;
+      response.append(copy);
+      if (d.kind === 'workbooks') {
+        response.append(table.cloneNode(true));
+      } else if (d.kind === 'metric') {
+        const card = document.createElement('div');
+        card.className = 'metric-card';
+        for (const [label, value] of [['Metric', 'Revenue'], ['Measure', 'Sum of Sales'], ['Date field', 'Order Date'], ['Filter by', 'Region']]) {
+          const field = document.createElement('div');
+          field.className = 'metric-field';
+          const caption = document.createElement('span');
+          caption.textContent = label;
+          const content = document.createElement('strong');
+          content.textContent = value;
+          field.append(caption, content);
+          card.append(field);
+        }
+        response.append(card);
+      } else if (d.kind === 'metadata') {
+        const change = document.createElement('div');
+        change.className = 'change';
+        const title = document.createElement('p');
+        title.className = 'change-title';
+        title.textContent = 'Net Sales';
+        const description = document.createElement('p');
+        description.textContent = 'Sales after discounts and returns, in USD.';
+        change.append(title, description);
+        response.append(change);
+      } else {
+        const change = document.createElement('div');
+        change.className = 'change';
+        change.innerHTML = `<p class="change-title">Sales Overview</p><div class="change-path"><span>analytics <strong>/ local</strong></span>${icon('arrow')}<span>prod <strong>/ Executive</strong></span></div>`;
+        response.append(change);
+      }
+      if (d.kind !== 'workbooks') {
+        const note = document.createElement('p');
+        note.className = 'preview-note';
+        note.innerHTML = `${icon('check')} Nothing has been changed.`;
+        response.append(note);
+      }
+      body.replaceChildren(prompt, tool, response);
+      document.getElementById('session-context').textContent = d.context;
+      document.getElementById('session-status').textContent = d.status;
+      return { prompt, tool, response };
+    }
+
+    function cancelReplay() {
+      if (replayController) replayController.abort();
+      replayController = null;
+      replay.disabled = false;
+    }
+    function selectDemo(name, animate = true) {
+      cancelReplay();
+      currentDemo = name;
+      for (const tab of tabs) {
+        const selected = tab.dataset.demo === name;
+        tab.setAttribute('aria-selected', String(selected));
+        tab.tabIndex = selected ? 0 : -1;
+      }
+      panel.setAttribute('aria-labelledby', 'tab-' + name);
+      const session = buildSession(name);
+      if (animate && !reduceMotion.matches) session.response.classList.add('reveal-step');
+      announcer.textContent = demos[name].response;
+    }
+    function arrowTabs(buttons, select) {
+      buttons.forEach((button, index) => button.addEventListener('keydown', event => {
+        let next;
+        if (event.key === 'ArrowRight') next = (index + 1) % buttons.length;
+        else if (event.key === 'ArrowLeft') next = (index - 1 + buttons.length) % buttons.length;
+        else if (event.key === 'Home') next = 0;
+        else if (event.key === 'End') next = buttons.length - 1;
+        else return;
+        event.preventDefault();
+        buttons[next].focus();
+        select(buttons[next]);
+      }));
+    }
+    tabs.forEach(tab => tab.addEventListener('click', () => selectDemo(tab.dataset.demo)));
+    arrowTabs(tabs, tab => selectDemo(tab.dataset.demo));
+    const wait = (ms, signal) => new Promise((resolve, reject) => {
+      if (signal.aborted) { reject(new DOMException('Aborted', 'AbortError')); return; }
+      const timer = setTimeout(() => { signal.removeEventListener('abort', abort); resolve(); }, ms);
+      function abort() { clearTimeout(timer); reject(new DOMException('Aborted', 'AbortError')); }
+      signal.addEventListener('abort', abort, { once: true });
+    });
+    replay.addEventListener('click', async () => {
+      cancelReplay();
+      const session = buildSession(currentDemo);
+      if (reduceMotion.matches) return;
+      const controller = new AbortController();
+      replayController = controller;
+      replay.disabled = true;
+      session.tool.style.visibility = 'hidden';
+      session.response.style.visibility = 'hidden';
+      session.prompt.classList.add('reveal-step');
+      try {
+        await wait(450, controller.signal);
+        session.tool.style.visibility = 'visible';
+        session.tool.classList.add('reveal-step');
+        await wait(700, controller.signal);
+        session.response.style.visibility = 'visible';
+        session.response.classList.add('reveal-step');
+        announcer.textContent = demos[currentDemo].response;
+      } catch (error) {
+        if (error.name !== 'AbortError') console.error(error);
+      } finally {
+        if (replayController === controller) {
+          session.tool.style.visibility = 'visible';
+          session.response.style.visibility = 'visible';
+          replayController = null;
+          replay.disabled = false;
+        }
+      }
+    });
+
+    const dialog = document.getElementById('install-dialog');
+    const osTabs = Array.from(document.querySelectorAll('[data-os]'));
+    const installers = {
+      unix: {
+        download: 'curl -fsSL https://tadx.net/install.sh | sh',
+        run: 'tadx update'
+      },
+      windows: {
+        download: 'irm https://tadx.net/install.ps1 | iex',
+        run: 'tadx update'
+      }
+    };
+    function selectOS(os) {
+      for (const tab of osTabs) {
+        const selected = tab.dataset.os === os;
+        tab.setAttribute('aria-selected', String(selected));
+        tab.tabIndex = selected ? 0 : -1;
+      }
+      document.getElementById('install-panel').setAttribute('aria-labelledby', 'os-' + os);
+      document.getElementById('download-code').textContent = installers[os].download;
+      document.getElementById('run-code').textContent = installers[os].run;
+      document.querySelectorAll('[data-copy] > span').forEach(label => { label.textContent = 'Copy'; });
+    }
+    osTabs.forEach(tab => tab.addEventListener('click', () => selectOS(tab.dataset.os)));
+    arrowTabs(osTabs, tab => selectOS(tab.dataset.os));
+    if (/win/i.test(navigator.userAgentData?.platform || navigator.platform || '')) selectOS('windows');
+    document.querySelectorAll('[data-install]').forEach(button => button.addEventListener('click', () => {
+      if (typeof dialog.showModal !== 'function') {
+        window.location.href = 'https://github.com/ahillspace/tadx/blob/main/README.md#install-tadx-and-agent-guidance';
+        return;
+      }
+      dialog.showModal();
+      document.body.classList.add('modal-open');
+    }));
+    dialog.querySelector('.close-dialog').addEventListener('click', () => dialog.close());
+    dialog.addEventListener('close', () => document.body.classList.remove('modal-open'));
+    dialog.addEventListener('click', event => {
+      const r = dialog.getBoundingClientRect();
+      if (event.target === dialog && (event.clientX < r.left || event.clientX > r.right || event.clientY < r.top || event.clientY > r.bottom)) dialog.close();
+    });
+    document.querySelectorAll('[data-copy]').forEach(button => {
+      let reset;
+      button.addEventListener('click', async () => {
+        clearTimeout(reset);
+        const code = document.getElementById(button.dataset.copy);
+        let copied = false;
+        try {
+          if (navigator.clipboard?.writeText && window.isSecureContext) {
+            await navigator.clipboard.writeText(code.textContent);
+            copied = true;
+          }
+        } catch (_) { /* Local files may need the selection-based clipboard fallback. */ }
+        if (!copied) {
+          const input = document.createElement('textarea');
+          input.value = code.textContent;
+          input.style.cssText = 'position:fixed;top:0;left:0;opacity:0;pointer-events:none;';
+          dialog.append(input);
+          input.select();
+          try { copied = document.execCommand('copy'); } catch (_) { copied = false; }
+          input.remove();
+          button.focus();
+        }
+        button.querySelector('span').textContent = copied ? 'Copied' : 'Select to copy';
+        if (!copied) {
+          const range = document.createRange();
+          range.selectNodeContents(code);
+          const selection = window.getSelection();
+          selection.removeAllRanges();
+          selection.addRange(range);
+        }
+        announcer.textContent = copied ? 'Command copied.' : 'Command selected. Press Control+C or Command+C to copy.';
+        reset = setTimeout(() => { button.querySelector('span').textContent = 'Copy'; }, 2000);
+      });
+    });
+  </script>
+</body>
+</html>

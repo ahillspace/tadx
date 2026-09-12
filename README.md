@@ -35,7 +35,23 @@ Give your agent an outcome, not a list of API calls:
 
 Or use the same CLI directly to inspect, download, organize, and publish Tableau content.
 
-## Install the CLI
+## Install TADX and agent Guidance
+
+The next release installs the CLI and its bundled skills together, detects your agent installations, and refreshes TADX-owned skills on every installation or update.
+The prepared public entry points are:
+
+```powershell
+irm https://tadx.net/install.ps1 | iex
+```
+
+```sh
+curl -fsSL https://tadx.net/install.sh | sh
+```
+
+These URLs require the website and release launch described in [Website publishing](docs/website.md); they are not the private-repository installation path yet.
+Installers never change Tableau credentials or mutation policy.
+
+### Install while the repository is private
 
 The repository is currently private.
 Install [GitHub CLI](https://cli.github.com/) and authenticate an account with repository access before continuing:
@@ -81,11 +97,25 @@ Open a new terminal if `tadx` is not immediately available, then confirm the ins
 tadx version
 ```
 
-The canonical commands below work with the latest release, v0.1.3.
-Running the installer again upgrades or repairs the CLI.
-Installing or upgrading the CLI does not automatically upgrade agent Guidance that you previously installed.
+Release installers install the published release, not unreleased commits on `main`.
+The combined installation, overview, and updater described here require the next release containing these changes.
+For a source build, follow [CONTRIBUTING.md](CONTRIBUTING.md).
+
+Once running that release, check or apply updates with:
+
+```text
+tadx update --check
+tadx update
+```
+
+Updates refresh the CLI and bundled Guidance together, even if the binary version is unchanged.
+Running the installer again also upgrades or repairs the installation.
 
 ## Connect to Tableau
+
+Run `tadx` for a compact overview of environments, credential configuration, workspaces, and mutation policy.
+This overview is local and read-only; it does not authenticate against Tableau.
+Run `tadx --help` for the command index.
 
 Create an environment profile for a Tableau Cloud or Tableau Server site:
 
@@ -111,10 +141,11 @@ If that store is unavailable or locked, login fails instead of falling back to p
 For CI or temporary use, environment profiles can instead reference a PAT name variable and a PAT secret variable.
 See `tadx env add --help` for those options.
 
-## Install agent Guidance
+## Agent Guidance
 
-The CLI and agent Guidance are separate installations.
-After installing the CLI, choose the one command for your coding agent:
+The combined installer detects supported agent directories and installs the same `tadx` and `tadx-pulse` packages for each.
+If none are detected, it installs shared skills under `~/.agents/skills`.
+To add another agent later or explicitly choose a target:
 
 ```text
 tadx agent install --target claude
@@ -123,10 +154,12 @@ tadx agent install --target cursor
 ```
 
 Guidance teaches the selected agent how to use TADX safely and installs standard `SKILL.md` packages in that agent's skill directory.
-Run the command again after a CLI upgrade to update installed Guidance.
+Use `tadx agent install --target auto` to refresh all detected targets manually.
 Use `--preview` first if you want to inspect the local file changes.
+TADX owns these package directories and replaces them during upgrades, including local edits, without requiring `--force`.
+Put personal additions in a separate skill; unrelated skills are preserved.
 
-Current source builds also support OpenCode, Pi, Hermes, GitHub Copilot, Gemini CLI, and Cline:
+Supported targets also include OpenCode, Pi, Hermes, GitHub Copilot, Gemini CLI, Cline, and the shared `generic` location:
 
 ```text
 tadx agent install --target opencode
@@ -196,8 +229,8 @@ See `tadx mutation status` and `tadx mutation set --help` when you are ready to 
 - [Architecture](docs/architecture/README.md) shows the main parts and links them to their source files.
 - [`CONTRIBUTING.md`](CONTRIBUTING.md) is the day-to-day guide for building one bounded TADX action.
 
-The source tree includes CLI shorthand planned for the next release, but v0.1.3 accepts the canonical commands used in this README.
-See [`docs/reference/shorthand.md`](docs/reference/shorthand.md) only when using a build that includes that feature.
+This README describes the current source tree; older published releases may not include every command shown here.
+See [`docs/reference/shorthand.md`](docs/reference/shorthand.md) for supported command and flag aliases.
 
 ## Future Vision
 

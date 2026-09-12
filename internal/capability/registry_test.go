@@ -9,7 +9,7 @@ import (
 
 func TestCanonicalRegistryIsValidAndComplete(t *testing.T) {
 	definitions := All()
-	if got, want := len(definitions), 127; got != want {
+	if got, want := len(definitions), 129; got != want {
 		t.Fatalf("All() returned %d definitions, want %d", got, want)
 	}
 	if err := Validate(definitions); err != nil {
@@ -31,8 +31,8 @@ func TestCanonicalRegistryIsValidAndComplete(t *testing.T) {
 			blocked++
 		}
 	}
-	if cli != 114 || delegated != 13 || ship != 114 || blocked != 0 {
-		t.Fatalf("registry totals = cli:%d delegated:%d ship-disposition:%d blocked:%d, want 114/13/114/0", cli, delegated, ship, blocked)
+	if cli != 116 || delegated != 13 || ship != 116 || blocked != 0 {
+		t.Fatalf("registry totals = cli:%d delegated:%d ship-disposition:%d blocked:%d, want 116/13/116/0", cli, delegated, ship, blocked)
 	}
 }
 
@@ -43,7 +43,7 @@ func TestCanonicalExecutableBindingsIncludeImplementedSlices(t *testing.T) {
 		ids = append(ids, definition.ID)
 	}
 	// Preserve the original slice inventory and independently assert this round's additions.
-	additions := []string{"last", "mutation.set", "mutation.status", "pulse.definition.publish"}
+	additions := []string{"last", "mutation.set", "mutation.status", "pulse.definition.publish", "session.overview", "update"}
 	additions = append(additions, "catalog.database.list", "catalog.database.inspect", "catalog.database.update", "catalog.table.list", "catalog.table.inspect", "catalog.table.update", "catalog.column.list", "catalog.column.inspect", "catalog.column.update", "catalog.search", "catalog.audit", "content.label.list", "content.label.inspect", "content.label.update", "content.label.delete", "admin.label.value.list", "admin.label.value.inspect", "admin.label.value.update", "admin.label.value.delete", "admin.label.category.list", "admin.label.category.inspect", "admin.label.category.create", "admin.label.category.update", "admin.label.category.delete")
 	for _, id := range additions {
 		if !slices.Contains(ids, id) {

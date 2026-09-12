@@ -176,6 +176,11 @@ func localImportPath(imported, modulePath string) (string, bool) {
 }
 
 func localImportAllowed(file, imported string) bool {
+	// The native updater implements only the update action's runtime port.
+	// It may reuse release metadata and embedded installers, never Tableau wiring.
+	if hasPathPrefix(file, "internal/update") {
+		return matchesExact(imported, "actions/update", "internal/version", "internal/agenttarget", "scripts")
+	}
 	switch layerForFile(file) {
 	case layerAction:
 		// Skill target metadata is a standard-library leaf, not the installer.
@@ -217,6 +222,7 @@ func localImportAllowed(file, imported string) bool {
 				"internal/readsource",
 				"internal/value",
 				"internal/version",
+				"internal/update",
 				"internal/workspace",
 			)
 	case layerCLI:

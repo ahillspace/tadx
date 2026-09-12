@@ -51,14 +51,11 @@ func TestAgentInstallThroughCLI(t *testing.T) {
 			if err := os.WriteFile(path, []byte("user edits"), 0o600); err != nil {
 				t.Fatal(err)
 			}
-			if exit, out := run(); exit == 0 {
-				t.Fatalf("divergent install succeeds: %s", out)
+			if exit, out := run(); exit != 0 || !strings.Contains(out, "backup") {
+				t.Fatalf("owned replacement without force: %d %s", exit, out)
 			}
-			if data, _ := os.ReadFile(path); string(data) != "user edits" {
-				t.Fatal("divergent file changed")
-			}
-			if exit, out := run("--force"); exit != 0 || !strings.Contains(out, "backup") {
-				t.Fatalf("force: %d %s", exit, out)
+			if data, _ := os.ReadFile(path); string(data) == "user edits" {
+				t.Fatal("owned package was not refreshed")
 			}
 			for _, preview := range []bool{true, false} {
 				args := []string{"agent", "uninstall", "--target", target}
@@ -92,7 +89,7 @@ func TestAgentInstallThroughCLI(t *testing.T) {
 }
 
 func TestAgentInstallRejectsInvalidArguments(t *testing.T) {
-	for _, args := range [][]string{{"agent", "install"}, {"agent", "install", "--target", "../outside"}, {"agent", "install", "--target", "codex", "extra"}} {
+	for _, args := range [][]string{{"agent", "install", "--target", "../outside"}, {"agent", "install", "--target", "codex", "extra"}} {
 		var out bytes.Buffer
 		if exit := app.Run(context.Background(), args, &out, app.Options{ConfigPath: filepath.Join(t.TempDir(), "missing.yaml")}); exit == 0 {
 			t.Fatalf("accepted %v: %s", args, out.String())

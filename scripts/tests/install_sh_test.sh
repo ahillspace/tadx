@@ -17,7 +17,7 @@ home_directory="${test_root}/home"
 install_directory="${home_directory}/bin space's"
 mkdir -p "$release_directory" "$fake_bin" "$home_directory"
 
-printf '%s\n' '#!/bin/sh' 'if [ "${1:-}" = completion ]; then printf "%s\n" "# test completion"; else printf "%s\n" "tadx test 1.2.3"; fi' > "${test_root}/tadx"
+printf '%s\n' '#!/bin/sh' 'if [ "${1:-}" = agent ]; then printf "%s\n" "$*" >> "$TADX_TEST_GUIDANCE_LOG"; [ "${TADX_TEST_GUIDANCE_FAIL:-0}" = 0 ]; elif [ "${1:-}" = completion ]; then printf "%s\n" "# test completion"; else printf "%s\n" "tadx test 1.2.3"; fi' > "${test_root}/tadx"
 chmod 0755 "${test_root}/tadx"
 tar -czf "${release_directory}/tadx_1.2.3_linux_amd64.tar.gz" -C "$test_root" tadx
 if command -v sha256sum >/dev/null 2>&1; then
@@ -83,11 +83,20 @@ export SHELL='/bin/sh'
 export TADX_TEST_RELEASES="$release_directory"
 export TADX_TEST_GH_LOG="${test_root}/gh.log"
 export TADX_TEST_CURL_LOG="${test_root}/curl.log"
+export TADX_TEST_GUIDANCE_LOG="${test_root}/guidance.log"
 PATH="${fake_bin}:${PATH}"
 export PATH
 
 sh "${repository_root}/scripts/install.sh" install --version latest --install-dir "$install_directory" >/dev/null
 [ -x "${install_directory}/tadx" ]
+grep -Fq 'agent install --target auto' "$TADX_TEST_GUIDANCE_LOG"
+export TADX_TEST_GUIDANCE_FAIL=1
+if sh "${repository_root}/scripts/install.sh" --version 1.2.3 --install-dir "$install_directory" --no-modify-path --no-completion >/dev/null 2>&1; then
+    printf '%s\n' 'Guidance failure incorrectly succeeded.' >&2
+    exit 1
+fi
+unset TADX_TEST_GUIDANCE_FAIL
+[ "$("${install_directory}/tadx")" = 'tadx test 1.2.3' ]
 [ "$("${install_directory}/tadx")" = 'tadx test 1.2.3' ]
 [ "$(grep -c '# tadx-installer-path' "${home_directory}/.profile")" -eq 1 ]
 grep -Fq 'auth status --hostname github.com' "$TADX_TEST_GH_LOG"

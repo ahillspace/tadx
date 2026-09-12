@@ -11,6 +11,7 @@ import (
 	authstatus "github.com/ahillspace/tadx/actions/auth/status"
 	capabilityget "github.com/ahillspace/tadx/actions/capability/get"
 	capabilitylist "github.com/ahillspace/tadx/actions/capability/list"
+	sessionoverview "github.com/ahillspace/tadx/actions/session/overview"
 	"github.com/ahillspace/tadx/internal/cli"
 	envcli "github.com/ahillspace/tadx/internal/cli/env"
 	workspacecli "github.com/ahillspace/tadx/internal/cli/workspace"
@@ -44,6 +45,35 @@ func (r *renderer) Render(value any) error {
 }
 
 type noMutationPolicy struct{}
+
+type overview struct{}
+
+func (overview) Execute(context.Context) (sessionoverview.Output, error) {
+	return sessionoverview.Output{}, nil
+}
+
+func TestRegisteredRootOverviewKeepsRootPath(t *testing.T) {
+	deps := dependencies(&lister{}, &getter{}, &renderer{})
+	deps.SessionOverview = overview{}
+	bindings, err := cli.RegisteredCommands(cli.NewRoot(deps))
+	if err != nil {
+		t.Fatal(err)
+	}
+	found := false
+	for _, binding := range bindings {
+		if binding.CapabilityID == "session.overview" {
+			found = true
+			if !reflect.DeepEqual(binding.CommandPath, []string{"tadx"}) {
+				t.Fatalf("root path = %v", binding.CommandPath)
+			}
+		} else if len(binding.CommandPath) > 0 && binding.CommandPath[0] == "tadx" {
+			t.Fatalf("child path includes root prefix: %v", binding.CommandPath)
+		}
+	}
+	if !found {
+		t.Fatal("root overview is not registered")
+	}
+}
 
 func (noMutationPolicy) IsRemoteMutation(string) bool { return false }
 
