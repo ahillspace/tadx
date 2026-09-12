@@ -4,6 +4,7 @@ package update
 import (
 	"context"
 	action "github.com/ahillspace/tadx/actions/update"
+	agentcli "github.com/ahillspace/tadx/internal/cli/agent"
 	"github.com/ahillspace/tadx/internal/cli/clierr"
 	"github.com/spf13/cobra"
 )
@@ -43,5 +44,6 @@ func New(deps Dependencies) *cobra.Command {
 	}}
 	cmd.Flags().BoolVar(&in.Check, "check", false, "check the latest release without changing the installation")
 	cmd.Flags().StringArrayVar(&in.Targets, "target", nil, "agent target to refresh (repeatable; default: auto-detect)")
+	agentcli.AnnotateTargetHelp(cmd.Flags().Lookup("target"), true)
 	return cmd
 }

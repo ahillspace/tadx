@@ -8,6 +8,7 @@ import (
 	"github.com/ahillspace/tadx/internal/agenttarget"
 	"github.com/ahillspace/tadx/internal/cli/clierr"
 	"github.com/spf13/cobra"
+	"github.com/spf13/pflag"
 )
 
 // Installer runs one installation or preview.
@@ -57,6 +58,7 @@ func New(deps Dependencies) *cobra.Command {
 		},
 	}
 	command.Flags().StringVar(&input.Target, "target", "auto", "agent target: auto detects configured agents; or "+agenttarget.Summary())
+	AnnotateTargetHelp(command.Flags().Lookup("target"), true)
 	command.Flags().BoolVar(&input.Preview, "preview", false, "inspect installation without writing files")
 	command.Flags().BoolVar(&input.Force, "force", false, "compatibility flag; TADX-owned skills are always refreshed")
 	group := &cobra.Command{Use: "agent", Short: "Manage bundled agent Guidance"}
@@ -80,7 +82,20 @@ func newUninstall(deps Dependencies) *cobra.Command {
 		return deps.Renderer.Render(result)
 	}}
 	command.Flags().StringVar(&input.Target, "target", "", "agent target: "+agenttarget.Summary()+" (required)")
+	AnnotateTargetHelp(command.Flags().Lookup("target"), false)
 	command.Flags().BoolVar(&input.Preview, "preview", false, "inspect uninstall changes without removing files")
 	command.Flags().BoolVar(&input.Force, "force", false, "compatibility flag; edited TADX-owned Guidance is backed up on removal")
 	return command
+}
+
+// AnnotateTargetHelp shares the target registry with installation and update help.
+func AnnotateTargetHelp(flag *pflag.Flag, includeAuto bool) {
+	values := agenttarget.SupportedTargets()
+	if includeAuto {
+		values = append([]string{"auto"}, values...)
+	}
+	if flag.Annotations == nil {
+		flag.Annotations = map[string][]string{}
+	}
+	flag.Annotations["tadx.help.choices"] = values
 }

@@ -17,8 +17,18 @@ Common next outcomes include:
 - Inspect projects, users, groups, and permission rules, then preview an exact access or content change.
 - Discover published datasource fields and create or reuse Pulse definitions and metric variants.
 
-Run `tadx capability list` for the exact feature set in your installed release.
-Run `tadx <command> --help` before a consequential operation to confirm its selectors and safety flags.
+Choose a category from `tadx --help`, then read its help once for the commands, flags, and examples in that scope:
+
+```text
+tadx content --help
+tadx admin group --help
+tadx pulse --help
+```
+
+Category help includes every descendant action: group help includes membership actions, and `tadx admin --help` covers all administration actions.
+Use leaf help for an optional focused lookup when you need it.
+Use `tadx capability list` and `tadx capability get` for feature inventory and availability diagnostics; they are not required to discover command syntax.
+Confirm consequential selectors and safety flags from the relevant help, and obtain the required authorization before execution.
 
 ## Verify authentication
 

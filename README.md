@@ -23,7 +23,8 @@ Give your agent an outcome, not a list of API calls:
 
 Or use the same CLI directly to inspect, download, organize, and publish Tableau content.
 TADX supports workbook, datasource, flow, and project lifecycle operations, local workspaces and caches, lineage, administration, upstream catalog metadata, and Pulse definition workflows.
-Run `tadx capability list` to see the operations available in your installation.
+Run `tadx --help` for the command index, then one category help call such as `tadx content --help` to learn its commands, flags, and examples, including nested actions.
+Use `tadx capability list` and `tadx capability get` for feature inventory and availability diagnostics.
 
 ## Install TADX and agent guidance
 
@@ -55,9 +56,11 @@ TADX validates the PAT and uses Windows Credential Manager, macOS Keychain, or L
 If the credential store is unavailable or locked, login fails instead of falling back to plaintext.
 
 For CI or temporary use, environment profiles can instead reference a PAT name variable and a PAT secret variable.
-See `tadx env add --help` for those options.
+See `tadx env --help` for those options.
 
 Run `tadx` for a local overview of your configuration, or `tadx --help` for the command index.
+Category help is complete for its scope: `tadx admin group --help` includes membership actions, while `tadx admin --help` includes all administration actions.
+Leaf help such as `tadx admin group create --help` remains available for a focused lookup.
 
 ## Add skills to your agent
 

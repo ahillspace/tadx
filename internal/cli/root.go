@@ -180,7 +180,8 @@ func newRoot(deps Dependencies, withBatches bool) *cobra.Command {
 
 Run tadx without arguments for a local, read-only overview of environments, credential configuration, workspaces, and mutation policy.
 Run tadx update to refresh the CLI and bundled agent Guidance together; --check only checks the release.
-Run tadx capability list to discover available operations and tadx capability get <id> for bounded details.
+Use category help, such as tadx admin group --help, for all commands, flags, and examples in that category, including nested operations.
+Use tadx capability list and tadx capability get for inventory and availability diagnostics, not command syntax.
 TADX returns compact TOON by default. Use --full to show expanded bounded details for the same operation.
 Read commands query Tableau by default. Pass --cache on supported reads to use local cache data without contacting Tableau.
 Use --env as a short alias for --environment on commands that select an environment.
@@ -213,6 +214,8 @@ Other connected tools remain independent; TADX does not configure, select, proxy
 	}
 	root.PersistentFlags().BoolVar(&renderOptions.Full, "full", false, "show expanded bounded details")
 	root.PersistentFlags().BoolVar(&renderOptions.JSON, "json", renderOptions.JSON, "render machine-readable JSON instead of TOON")
+	// Early error rendering may seed JSON=true, but the public CLI default is false.
+	root.PersistentFlags().Lookup("json").DefValue = "false"
 	root.PersistentFlags().StringVar(configPath, "config", *configPath, "path to the non-secret TADX configuration file")
 	root.PersistentFlags().Lookup("config").DefValue = ""
 	priorHintConfig := renderOptions.HintConfig
@@ -337,6 +340,9 @@ Other connected tools remain independent; TADX does not configure, select, proxy
 	setFlagErrorHandlers(root)
 	applyWriteTargetResolution(root, deps)
 	applyShorthand(root)
+	applyHelpExamples(root)
+	applyHelpValues(root)
+	installCategoryHelp(root)
 	return root
 }
 
@@ -558,7 +564,9 @@ func usageRecovery(command *cobra.Command) string {
 	}
 	if command.Example != "" {
 		advice += " Example: " + strings.TrimSpace(strings.SplitN(command.Example, "\n", 2)[0]) + "."
-		return advice
+		if !command.HasSubCommands() {
+			return advice
+		}
 	}
 	if command.HasSubCommands() {
 		parent := command

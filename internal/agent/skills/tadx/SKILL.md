@@ -25,7 +25,13 @@ Use `--full` only when expanded bounded details are needed.
 Common shorthand includes `con ds ls` for `content datasource list`, `del` for delete, `--nm` for `--name`, `--pv` for `--preview`, `-a` for `--all`, `-f` for `--full`, and `-l` for `--limit` when accepted by the leaf command.
 Use `-f` only for `--full`; `--force` remains distinct and never bypasses mutation policy.
 Canonical command names, structured output fields, registry IDs, and LUIDs remain preferred in durable instructions and scripts.
-Use one relevant leaf `--help` only when this Guidance and its references do not answer the question.
+
+## Command discovery
+
+Use `tadx --help` for the category index, then one relevant category help call for its commands, flags, and examples.
+Category help includes all descendant actions: `tadx admin group --help` includes memberships, while `tadx admin --help`, `tadx content --help`, and `tadx pulse --help` cover their entire categories.
+Reuse that help; per-leaf drilldown is not required, though leaf help remains available for a focused lookup.
+Use `tadx capability list` and `tadx capability get` for feature inventory and availability diagnostics, not as a prerequisite to command syntax discovery.
 
 ## Critical rules
 
@@ -120,4 +126,4 @@ Compact output shows identity and local state; use workspace status with `--full
 
 Read the relevant reference before acting.
 Do not act from this root summary alone when a reference owns the task.
-Use leaf command help only as a fallback after reading that reference.
+References supply task-specific judgment and contracts; category help supplies command syntax, flags, and examples.

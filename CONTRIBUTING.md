@@ -43,5 +43,8 @@ Read the [build standard](.agents/skills/tadx-build/SKILL.md) and choose one rel
 Only inventory and cache changes need the [inventory contracts](.agents/skills/tadx-build/references/inventory-and-cache.md).
 Start from updated `main` on a feature branch; shared agents use disjoint files in one checkout.
 Keep tests and bounded evidence with the implementation, and use the skill's verification checklist before handoff.
+Keep command usage, flags, and examples accurate in help: root help is an index, and category help teaches every descendant action in one call.
+Verify new actions appear in both their immediate category and broader ancestor help; leaf help remains available for focused lookups.
+Capability list/get serve feature inventory and availability diagnostics, without being a prerequisite for learning command syntax.
 Live tests require separately authorized targets and remain outside the standard suite.
 The maintainer handles agent-based review; a build request does not automatically authorize a push, PR, merge, or release.
