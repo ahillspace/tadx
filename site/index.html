@@ -10,7 +10,7 @@
     Standalone homepage concept. No frameworks, external fonts, or network calls.
     References: https://opencode.ai/ and https://atuin.sh/
     Reworks the earlier “TADX CLI: Tableau Automation Reimagined” mockup.
-    Public launch page. Installer scripts and binaries are released separately.
+    Product and installer reference: maintained TADX installation documentation.
     The agent conversations below are illustrative, not recorded CLI output.
     Publish uses the reviewed branch's --id selector. Nothing here executes TADX.
   -->
@@ -72,7 +72,7 @@
     .text-link:hover { color: var(--green); }
     .text-link .icon { width: 14px; height: 14px; }
     .demo-section { max-width: 960px; margin: 0 auto; padding-top: 8px; }
-    .demo-tabs { display: flex; flex-wrap: wrap; justify-content: center; gap: 12px 28px; margin: 0 0 19px; }
+    .demo-tabs { display: flex; justify-content: center; gap: 32px; margin: 0 0 19px; }
     .demo-tab { position: relative; display: inline-flex; gap: 8px; align-items: center; padding: 12px 0; border: 0; background: transparent; color: #626b5b; font-size: 12px; font-weight: 500; }
     .demo-tab .tab-index { font: 10px/1 var(--mono); opacity: .72; }
     .demo-tab::after { content: ""; height: 1px; position: absolute; bottom: 3px; left: 0; right: 0; background: transparent; }
@@ -124,6 +124,25 @@
     .change-path { display: flex; align-items: center; gap: 15px; color: #adbda0; font: 11px/1.7 var(--mono); }
     .change-path .icon { width: 15px; height: 15px; color: var(--accent); }
     .change-path strong { font-weight: 400; color: #e5eadc; }
+    .capabilities { margin-top: 77px; padding: 62px 0 66px; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
+    .capabilities-head { display: flex; align-items: end; justify-content: space-between; gap: 30px; margin-bottom: 31px; }
+    .section-kicker { margin: 0 0 11px; color: var(--green); font: 10px/1.4 var(--mono); letter-spacing: .08em; text-transform: uppercase; }
+    .capabilities h2 { max-width: 640px; margin: 0; font-size: clamp(34px, 4vw, 52px); font-weight: 520; letter-spacing: -.052em; line-height: 1.08; }
+    .capabilities-head > p { max-width: 330px; margin: 0 0 5px; color: var(--muted); font-size: 13px; line-height: 1.7; }
+    .capability-rail { position: relative; overflow: hidden; margin-inline: calc((100vw - min(1120px, calc(100vw - 80px))) / -2); padding: 28px 0 32px; background: linear-gradient(180deg, #f7f7f0 0%, var(--paper) 100%); border-block: 1px solid rgba(73, 102, 65, .08); }
+    .capability-rail::before, .capability-rail::after { content: ""; position: absolute; z-index: 2; top: 0; bottom: 0; width: clamp(32px, 8vw, 120px); pointer-events: none; }
+    .capability-rail::before { left: 0; background: linear-gradient(90deg, var(--paper), transparent); }
+    .capability-rail::after { right: 0; background: linear-gradient(270deg, var(--paper), transparent); }
+    .capability-track { display: flex; width: max-content; animation: capability-scroll 34s linear infinite; }
+    .capability-rail:hover .capability-track, .capability-rail:focus-within .capability-track { animation-play-state: paused; }
+    .capability-set { display: flex; align-items: center; gap: 56px; padding-right: 56px; }
+    .capability { display: inline-flex; align-items: center; gap: 16px; padding: 6px 12px 6px 0; color: #3f4a3c; white-space: nowrap; }
+    .capability-mark { display: inline-grid; place-items: center; width: 32px; height: 32px; flex-shrink: 0; color: var(--ink); }
+    .capability-icon { display: block; width: 32px; height: 32px; }
+    .capability-copy { display: grid; gap: 3px; }
+    .capability strong { color: #1e291e; font-size: 15px; font-weight: 600; letter-spacing: -.02em; }
+    .capability-code { color: var(--muted); font: 10px/1.3 var(--mono); letter-spacing: -.01em; }
+    @keyframes capability-scroll { to { transform: translateX(-50%); } }
     .agent-line { margin: 53px 0 54px; display: flex; justify-content: center; align-items: center; flex-wrap: wrap; gap: 13px 30px; }
     .agent-line p { color: var(--muted); font-size: 12px; margin: 0; }
     .agents { display: flex; justify-content: center; gap: 27px; align-items: center; font-size: 13px; font-weight: 550; letter-spacing: -.01em; }
@@ -174,6 +193,9 @@
       .response-copy { font-size: 13px; }
       .demo-note { gap: 10px; font-size: 9px; }
       .agent-line { margin: 37px 0 39px; flex-direction: column; gap: 16px; }
+      .capabilities { margin-top: 58px; padding-block: 48px 52px; }
+      .capabilities-head { display: block; }
+      .capabilities-head > p { margin-top: 18px; }
       .agents { gap: 22px; font-size: 12px; }
       .footer-left { flex-direction: column; gap: 9px; }
     }
@@ -215,6 +237,12 @@
       .agents { gap: 18px; font-size: 11px; }
       .metric-card { padding: 14px; gap: 16px 12px; }
       .metric-field strong { font-size: 11px; }
+      .capability-rail { margin-inline: -16px; }
+      .capability-set { gap: 36px; padding-right: 36px; }
+      .capability-mark { width: 32px; height: 32px; }
+      .capability-icon { width: 28px; height: 28px; }
+      .capability strong { font-size: 13.5px; }
+      .capability-code { font-size: 9px; }
       .change-path { gap: 9px; font-size: 10px; }
       .footer-links { gap: 16px; font-size: 10px; }
       .footer-caption { font-size: 9px; }
@@ -227,6 +255,7 @@
     @media (prefers-reduced-motion: reduce) {
       html { scroll-behavior: auto; }
       *, *::before, *::after { animation: none !important; transition: none !important; }
+      .capability-rail { overflow-x: auto; }
     }
     @media print {
       .nav-install, .hero-actions, .replay, dialog { display: none; }
@@ -246,6 +275,15 @@
     <symbol id="replay" viewBox="0 0 24 24"><path d="M4 10a8 8 0 1 1 1 8M4 4v6h6"/></symbol>
     <symbol id="close" viewBox="0 0 24 24"><path d="m6 6 12 12M6 18 18 6"/></symbol>
     <symbol id="copy" viewBox="0 0 24 24"><rect x="8" y="8" width="12" height="13" rx="1"/><path d="M16 8V3H3v13h5"/></symbol>
+    <symbol id="discover" viewBox="0 0 32 32"><path d="M7 27H23" stroke="#202720" stroke-width="2" stroke-linecap="round"/><path d="M11 27V23H17V27M14 23V19M18 20H10" fill="none" stroke="#202720" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/><path d="M19 8C22 9.5 23 13 21.5 16.5C20.5 19 18 20.5 15.5 20.5" fill="none" stroke="#7c8478" stroke-width="1.8" stroke-linecap="round"/><circle cx="20" cy="14.5" r="1.2" fill="#202720"/><g transform="rotate(-35 12 11)"><rect x="10" y="3" width="4" height="11" rx="1" fill="none" stroke="#202720" stroke-width="1.8"/><path d="M9 3H15" stroke="#202720" stroke-width="1.8" stroke-linecap="round"/><rect x="10.8" y="14" width="2.4" height="2.5" rx=".5" fill="#202720"/></g></symbol>
+    <symbol id="lifecycle" viewBox="0 0 32 32"><path d="M8 14A9 9 0 0 1 24 11M20 7.5L25 10.5L22 15M24 18A9 9 0 0 1 8 21M12 24.5L7 21.5L10 17" fill="none" stroke="#202720" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"/><rect fill="#7c8478" height="6" rx="1" width="2.5" x="11.5" y="13"/><rect fill="#202720" height="10" rx="1" width="2.5" x="15.5" y="11"/><rect fill="#7c8478" height="5" rx="1" width="2.5" x="19.5" y="14"/></symbol>
+    <symbol id="lineage" viewBox="0 0 32 32"><path d="M9 16C13 16 14 9 18 9H22M9 16H22M9 16C13 16 14 23 18 23H22" fill="none" stroke="#7c8478" stroke-linecap="round" stroke-width="1.8"/><circle cx="8" cy="16" fill="#202720" r="3.5"/><circle cx="23" cy="9" fill="#fff" r="3" stroke="#202720" stroke-width="1.8"/><circle cx="23" cy="16" fill="#202720" r="3"/><circle cx="23" cy="23" fill="#fff" r="3" stroke="#7c8478" stroke-width="1.8"/></symbol>
+    <symbol id="semantics" viewBox="0 0 32 32"><path d="M5.5 14V7C5.5 5.9 6.4 5 7.5 5H14.5C15 5 15.5 5.2 15.9 5.6L26.4 16.1C27.2 16.9 27.2 18.1 26.4 18.9L18.9 26.4C18.1 27.2 16.9 27.2 16.1 26.4L5.6 15.9C5.2 15.5 5.5 15 5.5 14Z" fill="none" stroke="#202720" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/><circle cx="10" cy="9.5" r="1.8" fill="#202720"/></symbol>
+    <symbol id="pulse" viewBox="0 0 32 32"><rect fill="none" height="20" rx="6" stroke="#202720" stroke-width="1.8" width="24" x="4" y="6"/><path d="M6 16.5H10L12.5 10.5L16 22L19 13.5L21.5 17.5H26" fill="none" stroke="#202720" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"/><circle cx="12.5" cy="10.5" fill="#7c8478" r="1.8"/><circle cx="16" cy="22" fill="#202720" r="1.8"/><circle cx="19" cy="13.5" fill="#7c8478" r="1.8"/></symbol>
+    <symbol id="access" viewBox="0 0 32 32"><path d="M16 5L24 8.5V15.5C24 20.8 20.5 25.2 16 27C11.5 25.2 8 20.8 8 15.5V8.5L16 5Z" fill="none" stroke="#202720" stroke-linejoin="round" stroke-width="2"/><circle cx="16" cy="13" fill="#202720" r="2.6"/><path d="M14.6 14.5L14 20.5H18L17.4 14.5" fill="#202720"/></symbol>
+    <symbol id="folder" viewBox="0 0 32 32"><path d="M6 10C6 8.9 6.9 8 8 8H13L15.5 10.5H24C25.1 10.5 26 11.4 26 12.5V22C26 23.1 25.1 24 24 24H8C6.9 24 6 23.1 6 22V10Z" fill="none" stroke="#202720" stroke-linejoin="round" stroke-width="2"/><rect fill="#202720" height="6.5" rx="1.2" width="5.5" x="9.5" y="14"/><rect fill="#7c8478" height="2.8" rx=".8" width="5.5" x="17" y="14"/><rect fill="#7c8478" height="2.5" rx=".8" width="5.5" x="17" y="18"/></symbol>
+    <symbol id="cloud" viewBox="0 0 32 32"><path d="M9.5 20C7 20 5 18 5 15.5C5 13.2 6.7 11.3 9 11.1C9.6 7.7 12.5 5 16 5C19.3 5 22.1 7.4 22.8 10.6C24.7 11.1 26 12.8 26 14.8C26 17.1 24.1 19 21.8 19" fill="none" stroke="#202720" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"/><path d="M12 23H20M18 20.5L21 23L18 25.5M14 25.5L11 23L14 20.5" fill="none" stroke="#202720" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8"/></symbol>
+    <symbol id="guidance" viewBox="0 0 32 32"><rect fill="none" height="15" rx="4.5" stroke="#202720" stroke-width="2" width="18" x="7" y="9"/><circle cx="12.5" cy="15" fill="#202720" r="1.8"/><circle cx="19.5" cy="15" fill="#202720" r="1.8"/><path d="M14.2 19C14.8 19.6 17.2 19.6 17.8 19M16 9V5.5" fill="none" stroke="#202720" stroke-linecap="round" stroke-width="1.6"/><circle cx="16" cy="4.5" fill="#202720" r="1.8"/></symbol>
   </svg>
   <a class="skip-link" href="#main">Skip to content</a>
   <header class="wrap masthead">
@@ -263,7 +301,7 @@
     <section class="hero" aria-labelledby="headline">
       <p class="eyebrow"><span class="dot" aria-hidden="true"></span> The open-source Tableau CLI</p>
       <h1 id="headline"><span>Tableau.</span><span class="second-line">At your command.</span></h1>
-      <p class="intro">Find workbooks, publish changes, and create Pulse metrics.<br> Use your terminal. Or ask your agent.</p>
+      <p class="intro">Discover, govern, and move Tableau content with deterministic commands.<br> Use your terminal. Or ask your agent.</p>
       <div class="hero-actions">
         <button type="button" class="primary" data-install>Get TADX <svg class="icon" aria-hidden="true"><use href="#arrow"/></svg></button>
         <a class="text-link" href="https://github.com/ahillspace/tadx" target="_blank" rel="noopener noreferrer">View on GitHub <svg class="icon" aria-hidden="true"><use href="#external"/></svg></a>
@@ -274,7 +312,6 @@
         <button type="button" class="demo-tab" id="tab-find" role="tab" aria-selected="true" aria-controls="demo-panel" tabindex="0" data-demo="find"><span class="tab-index" aria-hidden="true">01</span> Find a workbook</button>
         <button type="button" class="demo-tab" id="tab-metric" role="tab" aria-selected="false" aria-controls="demo-panel" tabindex="-1" data-demo="metric"><span class="tab-index" aria-hidden="true">02</span> Create a metric</button>
         <button type="button" class="demo-tab" id="tab-publish" role="tab" aria-selected="false" aria-controls="demo-panel" tabindex="-1" data-demo="publish"><span class="tab-index" aria-hidden="true">03</span> Publish a change</button>
-        <button type="button" class="demo-tab" id="tab-metadata" role="tab" aria-selected="false" aria-controls="demo-panel" tabindex="-1" data-demo="metadata"><span class="tab-index" aria-hidden="true">04</span> Explain your data</button>
       </div>
       <div class="terminal" id="demo-panel" role="tabpanel" aria-labelledby="tab-find" tabindex="0">
         <div class="terminal-head">
@@ -304,6 +341,38 @@
       </div>
       <div class="demo-note"><span>Example data. No live connection.</span><span class="support">Tableau Cloud &amp; Server · Pulse on Cloud</span></div>
     </section>
+    <section class="capabilities" aria-labelledby="capabilities-title">
+      <div class="capabilities-head">
+        <div><p class="section-kicker">One CLI · the Tableau lifecycle</p><h2 id="capabilities-title">From finding content to changing it safely.</h2></div>
+        <p>TADX gives people and agents a consistent operational surface across Tableau Cloud and Server.</p>
+      </div>
+      <div class="capability-rail" aria-label="TADX capability categories">
+        <div class="capability-track">
+          <div class="capability-set">
+            <div class="capability"><span class="capability-mark"><svg class="icon capability-icon" aria-hidden="true"><use href="#discover"/></svg></span><span class="capability-copy"><strong>Discover</strong><span class="capability-code">search · list · inspect</span></span></div>
+            <div class="capability"><span class="capability-mark"><svg class="icon capability-icon" aria-hidden="true"><use href="#lifecycle"/></svg></span><span class="capability-copy"><strong>Content lifecycle</strong><span class="capability-code">pull · publish · move</span></span></div>
+            <div class="capability"><span class="capability-mark"><svg class="icon capability-icon" aria-hidden="true"><use href="#lineage"/></svg></span><span class="capability-copy"><strong>Lineage</strong><span class="capability-code">trace dependencies</span></span></div>
+            <div class="capability"><span class="capability-mark"><svg class="icon capability-icon" aria-hidden="true"><use href="#semantics"/></svg></span><span class="capability-copy"><strong>Semantics</strong><span class="capability-code">audit · describe · tag</span></span></div>
+            <div class="capability"><span class="capability-mark"><svg class="icon capability-icon" aria-hidden="true"><use href="#pulse"/></svg></span><span class="capability-copy"><strong>Pulse</strong><span class="capability-code">create · fork · follow</span></span></div>
+            <div class="capability"><span class="capability-mark"><svg class="icon capability-icon" aria-hidden="true"><use href="#access"/></svg></span><span class="capability-copy"><strong>Access</strong><span class="capability-code">users · groups · permissions</span></span></div>
+            <div class="capability"><span class="capability-mark"><svg class="icon capability-icon" aria-hidden="true"><use href="#folder"/></svg></span><span class="capability-copy"><strong>Workspaces</strong><span class="capability-code">status · clone · clean</span></span></div>
+            <div class="capability"><span class="capability-mark"><svg class="icon capability-icon" aria-hidden="true"><use href="#cloud"/></svg></span><span class="capability-copy"><strong>Environments</strong><span class="capability-code">Cloud ↔ Server</span></span></div>
+            <div class="capability"><span class="capability-mark"><svg class="icon capability-icon" aria-hidden="true"><use href="#guidance"/></svg></span><span class="capability-copy"><strong>Agent Guidance</strong><span class="capability-code">install for your agent</span></span></div>
+          </div>
+          <div class="capability-set" aria-hidden="true">
+            <div class="capability"><span class="capability-mark"><svg class="icon capability-icon" aria-hidden="true"><use href="#discover"/></svg></span><span class="capability-copy"><strong>Discover</strong><span class="capability-code">search · list · inspect</span></span></div>
+            <div class="capability"><span class="capability-mark"><svg class="icon capability-icon" aria-hidden="true"><use href="#lifecycle"/></svg></span><span class="capability-copy"><strong>Content lifecycle</strong><span class="capability-code">pull · publish · move</span></span></div>
+            <div class="capability"><span class="capability-mark"><svg class="icon capability-icon" aria-hidden="true"><use href="#lineage"/></svg></span><span class="capability-copy"><strong>Lineage</strong><span class="capability-code">trace dependencies</span></span></div>
+            <div class="capability"><span class="capability-mark"><svg class="icon capability-icon" aria-hidden="true"><use href="#semantics"/></svg></span><span class="capability-copy"><strong>Semantics</strong><span class="capability-code">audit · describe · tag</span></span></div>
+            <div class="capability"><span class="capability-mark"><svg class="icon capability-icon" aria-hidden="true"><use href="#pulse"/></svg></span><span class="capability-copy"><strong>Pulse</strong><span class="capability-code">create · fork · follow</span></span></div>
+            <div class="capability"><span class="capability-mark"><svg class="icon capability-icon" aria-hidden="true"><use href="#access"/></svg></span><span class="capability-copy"><strong>Access</strong><span class="capability-code">users · groups · permissions</span></span></div>
+            <div class="capability"><span class="capability-mark"><svg class="icon capability-icon" aria-hidden="true"><use href="#folder"/></svg></span><span class="capability-copy"><strong>Workspaces</strong><span class="capability-code">status · clone · clean</span></span></div>
+            <div class="capability"><span class="capability-mark"><svg class="icon capability-icon" aria-hidden="true"><use href="#cloud"/></svg></span><span class="capability-copy"><strong>Environments</strong><span class="capability-code">Cloud ↔ Server</span></span></div>
+            <div class="capability"><span class="capability-mark"><svg class="icon capability-icon" aria-hidden="true"><use href="#guidance"/></svg></span><span class="capability-copy"><strong>Agent Guidance</strong><span class="capability-code">install for your agent</span></span></div>
+          </div>
+        </div>
+      </div>
+    </section>
     <section class="agent-line" aria-label="Use TADX with your existing tools">
       <p>Bring your own agent.</p>
       <div class="agents"><span class="agent-name">Claude Code</span><span class="agent-name">Codex</span><span class="agent-name">OpenCode</span><span class="agent-name">Cursor</span></div>
@@ -316,18 +385,17 @@
   <dialog id="install-dialog" aria-labelledby="install-title">
     <div class="install-head"><h2 id="install-title">Get TADX.</h2><button type="button" class="close-dialog" aria-label="Close installation instructions"><svg class="icon" aria-hidden="true"><use href="#close"/></svg></button></div>
     <div class="install-content">
-      <p>One command installs the CLI and its agent Guidance together. Detected agent platforms receive the TADX and Pulse skills automatically.</p>
+      <p>Install the CLI and Agent Guidance together. You can also download and inspect the installer before running it.</p>
       <div class="os-tabs" role="tablist" aria-label="Operating system">
         <button type="button" class="os-tab" id="os-unix" role="tab" aria-selected="true" aria-controls="install-panel" tabindex="0" data-os="unix">macOS &amp; Linux</button>
         <button type="button" class="os-tab" id="os-windows" role="tab" aria-selected="false" aria-controls="install-panel" tabindex="-1" data-os="windows">Windows</button>
       </div>
       <div id="install-panel" role="tabpanel" aria-labelledby="os-unix">
-        <section class="install-step"><div class="step-head"><h3>Install TADX + Guidance</h3><button type="button" class="copy-button" data-copy="download-code"><svg class="icon" aria-hidden="true"><use href="#copy"/></svg><span>Copy</span></button></div><pre class="install-code" id="download-code">curl -fsSL https://tadx.net/install.sh | sh</pre></section>
-        <section class="install-step"><div class="step-head"><h3>Already installed? Update both.</h3><button type="button" class="copy-button" data-copy="run-code"><svg class="icon" aria-hidden="true"><use href="#copy"/></svg><span>Copy</span></button></div><pre class="install-code" id="run-code">tadx update</pre></section>
-        <p>Then run <code>tadx</code> to see your environments, authentication setup, workspaces, and mutation policy. No remote calls are made by this overview.</p>
+        <section class="install-step"><div class="step-head"><h3>Install TADX and Guidance</h3><button type="button" class="copy-button" data-copy="download-code"><svg class="icon" aria-hidden="true"><use href="#copy"/></svg><span>Copy</span></button></div><pre class="install-code" id="download-code">curl -fsSL https://tadx.net/install.sh | sh</pre></section>
+        <section class="install-step"><div class="step-head"><h3>Already installed? Update both</h3><button type="button" class="copy-button" data-copy="run-code"><svg class="icon" aria-hidden="true"><use href="#copy"/></svg><span>Copy</span></button></div><pre class="install-code" id="run-code">tadx update</pre></section>
       </div>
       <div class="install-bottom"><a href="https://github.com/ahillspace/tadx/blob/main/README.md#install-tadx-and-agent-guidance" target="_blank" rel="noopener noreferrer">Full installation guide ↗</a><span>Windows · macOS · Linux</span></div>
-      <p class="private-note">Public installation is available after the website and a release are published. Until then, use the <a href="https://github.com/ahillspace/tadx/blob/main/README.md#install-while-the-repository-is-private" target="_blank" rel="noopener noreferrer">GitHub-authenticated installation guide</a>. TADX-managed Guidance is refreshed on every install and update; keep your additions in separate skills.</p>
+      <p class="private-note">Public installation is available after the website and a release are published. Until then, use the <a href="https://github.com/ahillspace/tadx/blob/main/README.md#install-while-the-repository-is-private" target="_blank" rel="noopener noreferrer">GitHub-authenticated instructions</a>. Updates replace TADX-owned Guidance; keep personal additions in separate skills. Run <code>tadx</code> to see your local setup.</p>
     </div>
   </dialog>
   <div id="announcer" class="sr-only" role="status" aria-live="polite"></div>
@@ -344,9 +412,9 @@
         kind: 'workbooks', context: 'dev / Tableau Cloud', status: 'Read only'
       },
       metric: {
-        prompt: 'Preview a revenue metric for the Orders datasource on dev.',
+        prompt: 'Preview a monthly revenue metric for the Orders datasource on dev.',
         tool: 'tadx pulse definition create --preview',
-        command: 'tadx pulse definition create --env dev --name "Revenue" --datasource-id "orders-datasource-id" --measure-field "Sales" --aggregation SUM --date-field "Order Date" --dimension "Region" --number-format CURRENCY --currency USD --preview',
+        command: 'tadx pulse definition create --env dev --name "Monthly Revenue" --datasource-id "orders-datasource-id" --measure-field "Sales" --aggregation SUM --date-field "Order Date" --dimension "Region" --preview',
         response: 'Here’s the metric, ready for you to review.',
         kind: 'metric', context: 'dev / Tableau Cloud', status: 'Preview only'
       },
@@ -356,13 +424,6 @@
         command: 'tadx content workbook publish --workspace analytics --id "sales-overview-id" --env prod --project "Executive" --overwrite --preview',
         response: 'This will replace Sales Overview in the Executive project on prod.',
         kind: 'publish', context: 'prod / Tableau Cloud', status: 'Preview only'
-      },
-      metadata: {
-        prompt: 'Preview adding a clear definition of net sales to the upstream column on dev.',
-        tool: 'tadx catalog column update --preview',
-        command: 'tadx catalog column update --env dev --table-id "sales-table-id" --id "net-sales-column-id" --description "Sales after discounts and returns, in USD." --preview',
-        response: 'The column description is ready for review. Existing tags will be preserved.',
-        kind: 'metadata', context: 'dev / Tableau Cloud', status: 'Preview only'
       }
     };
     const icon = name => `<svg class="icon" aria-hidden="true"><use href="#${name}"/></svg>`;
@@ -398,7 +459,7 @@
       } else if (d.kind === 'metric') {
         const card = document.createElement('div');
         card.className = 'metric-card';
-        for (const [label, value] of [['Metric', 'Revenue'], ['Measure', 'Sum of Sales'], ['Date field', 'Order Date'], ['Filter by', 'Region']]) {
+        for (const [label, value] of [['Metric', 'Monthly Revenue'], ['Measure', 'Sum of Sales'], ['Time period', 'Month to date'], ['Filter by', 'Region']]) {
           const field = document.createElement('div');
           field.className = 'metric-field';
           const caption = document.createElement('span');
@@ -409,16 +470,6 @@
           card.append(field);
         }
         response.append(card);
-      } else if (d.kind === 'metadata') {
-        const change = document.createElement('div');
-        change.className = 'change';
-        const title = document.createElement('p');
-        title.className = 'change-title';
-        title.textContent = 'Net Sales';
-        const description = document.createElement('p');
-        description.textContent = 'Sales after discounts and returns, in USD.';
-        change.append(title, description);
-        response.append(change);
       } else {
         const change = document.createElement('div');
         change.className = 'change';

@@ -16,15 +16,14 @@ const folder = mkdtempSync(join(tmpdir(), 'tadx-site-browser-'));
 function exercise() {
   const check = (condition, message) => { if (!condition) throw new Error(message); };
   const id = value => document.getElementById(value);
-  for (const demo of ['metric', 'publish', 'metadata', 'find']) {
+  for (const demo of ['metric', 'publish', 'find']) {
     id(`tab-${demo}`).click();
     check(id(`tab-${demo}`).getAttribute('aria-selected') === 'true', `${demo} not selected`);
     check(id('demo-panel').getAttribute('aria-labelledby') === `tab-${demo}`, `${demo} panel inaccessible`);
     check(id('session-body').querySelector('.command').textContent.startsWith('tadx '), `${demo} lacks command`);
   }
-  id('tab-metadata').click();
-  check(id('session-body').textContent.includes('Sales after discounts and returns'), 'Metadata example missing');
-  id('tab-metadata').dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true }));
+  id('tab-publish').click();
+  id('tab-publish').dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true }));
   check(id('tab-find').getAttribute('aria-selected') === 'true', 'Keyboard tab navigation failed');
   check(document.documentElement.scrollWidth <= innerWidth, 'Homepage overflows horizontally');
   document.querySelector('[data-install]').click();
@@ -37,7 +36,7 @@ function exercise() {
   check(id('install-dialog').scrollWidth <= id('install-dialog').clientWidth, 'Install dialog overflows horizontally');
   document.querySelector('.close-dialog').click();
   check(!id('install-dialog').open, 'Installer did not close');
-  return { passed: true, width: innerWidth, demos: 4 };
+  return { passed: true, width: innerWidth, demos: 3 };
 }
 
 try {

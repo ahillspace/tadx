@@ -24,13 +24,14 @@ test('public build contains only reviewed homepage and exact installer sources',
   } finally { await rm(folder, { recursive: true, force: true }); }
 });
 
-test('homepage has both one-line installers, current setup, and a metadata example', async () => {
+test('homepage has both one-line installers, current setup, and the supplied demos', async () => {
   const html = await readFile(join(repo, 'site/index.html'), 'utf8');
-  for (const text of ['Tableau.', 'At your command.', 'irm https://tadx.net/install.ps1 | iex', 'curl -fsSL https://tadx.net/install.sh | sh', 'tadx update', 'tadx catalog column update', '--table-id', 'agent Guidance']) {
+  for (const text of ['Tableau.', 'At your command.', 'irm https://tadx.net/install.ps1 | iex', 'curl -fsSL https://tadx.net/install.sh | sh', 'tadx update', 'tab-find', 'tab-metric', 'tab-publish', 'Agent Guidance']) {
     assert.ok(html.includes(text), `Missing ${text}`);
   }
   assert.doesNotMatch(html, /https?:\/\/[^"'<>\s]+\.(?:js|css)(?:["'<>\s]|$)/i, 'Keep the homepage self-contained');
   assert.doesNotMatch(html, /C:[/\\]Users|releases\/latest\/download\/install|a62e3d7/);
+  assert.doesNotMatch(html, /#install-tadx["']/);
   const ids = [...html.matchAll(/\bid="([^"]+)"/g)].map(match => match[1]);
   assert.equal(ids.length, new Set(ids).size, 'Duplicate DOM identifiers');
   for (const match of html.matchAll(/aria-(?:controls|labelledby)="([^"]+)"/g)) {
