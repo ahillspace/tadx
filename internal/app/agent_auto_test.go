@@ -13,10 +13,14 @@ import (
 
 func TestAgentAutoInstallCLIReportsPortableTargetAndRefreshesEditedPackages(t *testing.T) {
 	home := t.TempDir()
-	opts := app.Options{ConfigPath: filepath.Join(home, "missing.yaml"), UserHomeDir: func() (string, error) { return home, nil }}
+	configPath := filepath.Join(t.TempDir(), "missing.yaml")
+	opts := app.Options{ConfigPath: configPath, UserHomeDir: func() (string, error) { return home, nil }}
 	run := func(args ...string) (int, string) {
 		var out bytes.Buffer
 		code := app.Run(context.Background(), args, &out, opts)
+		if agentOutputContainsPath(out.String(), home) || !agentOutputContainsPath(out.String(), configPath) {
+			t.Fatalf("auto output must exclude runtime home and preserve explicit config: %s", out.String())
+		}
 		return code, out.String()
 	}
 	if code, out := run("agent", "install", "--preview"); code != 0 || !strings.Contains(out, "generic") {
@@ -51,14 +55,18 @@ func TestAgentAutoInstallCLIPreservesCompletedTargetsOnFailure(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(home, ".codex", "skills", ".tadx-install.lock"), []byte("busy"), 0600); err != nil {
 		t.Fatal(err)
 	}
-	opts := app.Options{ConfigPath: filepath.Join(home, "missing.yaml"), UserHomeDir: func() (string, error) { return home, nil }}
+	configPath := filepath.Join(t.TempDir(), "missing.yaml")
+	opts := app.Options{ConfigPath: configPath, UserHomeDir: func() (string, error) { return home, nil }}
 	var out bytes.Buffer
 	code := app.Run(context.Background(), []string{"agent", "install"}, &out, opts)
 	if code == 0 || !strings.Contains(out.String(), "partial") || !strings.Contains(out.String(), "claude") || !strings.Contains(out.String(), "agent.install.failed") {
 		t.Fatalf("lost completion: %d %s", code, out.String())
 	}
-	if strings.Contains(out.String(), home) {
+	if agentOutputContainsPath(out.String(), home) {
 		t.Fatalf("home leaked: %s", out.String())
+	}
+	if !agentOutputContainsPath(out.String(), configPath) {
+		t.Fatalf("partial result lost explicit configuration: %s", out.String())
 	}
 	if _, err := os.Stat(filepath.Join(home, ".claude", "skills", "tadx", "SKILL.md")); err != nil {
 		t.Fatal(err)

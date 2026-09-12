@@ -13,6 +13,8 @@ import (
 	"testing"
 
 	"github.com/ahillspace/tadx/internal/app"
+	"github.com/ahillspace/tadx/internal/commandhint"
+	"github.com/ahillspace/tadx/internal/toon"
 )
 
 func TestDoctorRunsAllChecksWithoutExposingSecretsOrPaths(t *testing.T) {
@@ -42,11 +44,38 @@ func TestDoctorRunsAllChecksWithoutExposingSecretsOrPaths(t *testing.T) {
 	if strings.Contains(strings.ToLower(output), "mcp") {
 		t.Fatalf("doctor reported Tableau MCP state: %s", output)
 	}
-	for _, forbidden := range []string{"private-name", "private-secret", configPath, server.URL} {
-		if strings.Contains(output, forbidden) {
-			t.Fatalf("doctor output exposed forbidden value %q: %s", forbidden, output)
+	assertNoDiagnosticValues(t, output, configPath, "private-name", "private-secret", "session-token", configPath, server.URL)
+}
+
+// Explicit configuration belongs in copyable recovery commands, but not in
+// diagnostic details. Decode first so Windows escaping cannot hide a leak.
+func assertNoDiagnosticValues(t *testing.T, output, configPath string, forbidden ...string) {
+	t.Helper()
+	decoded, err := toon.Decode([]byte(output))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var check func(any)
+	check = func(value any) {
+		switch v := value.(type) {
+		case string:
+			text := strings.ReplaceAll(v, commandhint.Command("--config", configPath)+" ", "tadx ")
+			for _, secret := range forbidden {
+				if strings.Contains(text, secret) {
+					t.Fatalf("diagnostic contains forbidden value %q outside an explicit config hint: %s", secret, v)
+				}
+			}
+		case map[string]any:
+			for _, item := range v {
+				check(item)
+			}
+		case []any:
+			for _, item := range v {
+				check(item)
+			}
 		}
 	}
+	check(decoded)
 }
 
 func TestDoctorFailResultExitsOneWithoutRenderingASecondDocument(t *testing.T) {

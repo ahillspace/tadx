@@ -19,13 +19,17 @@ func TestAgentInstallThroughCLI(t *testing.T) {
 	} {
 		t.Run(target, func(t *testing.T) {
 			home := t.TempDir()
-			options := app.Options{ConfigPath: filepath.Join(home, "config.yaml"), UserHomeDir: func() (string, error) { return home, nil }}
+			configPath := filepath.Join(t.TempDir(), "config.yaml")
+			options := app.Options{ConfigPath: configPath, UserHomeDir: func() (string, error) { return home, nil }}
 			run := func(extra ...string) (int, string) {
 				t.Helper()
 				var out bytes.Buffer
 				exit := app.Run(context.Background(), append([]string{"agent", "install", "--target", target}, extra...), &out, options)
-				if strings.Contains(out.String(), home) {
+				if agentOutputContainsPath(out.String(), home) {
 					t.Fatalf("output leaks runtime home: %s", out.String())
+				}
+				if !agentOutputContainsPath(out.String(), configPath) {
+					t.Fatalf("follow-up lost explicit configuration: %s", out.String())
 				}
 				return exit, out.String()
 			}
@@ -66,6 +70,9 @@ func TestAgentInstallThroughCLI(t *testing.T) {
 				if exit := app.Run(context.Background(), args, &out, options); exit != 0 {
 					t.Fatalf("uninstall preview=%v: %d %s", preview, exit, out.String())
 				}
+				if agentOutputContainsPath(out.String(), home) || !agentOutputContainsPath(out.String(), configPath) {
+					t.Fatalf("uninstall output must exclude runtime home and preserve explicit config: %s", out.String())
+				}
 				for _, skill := range []string{"tadx", "tadx-pulse"} {
 					_, err := os.Stat(filepath.Join(home, directory, "skills", skill, "SKILL.md"))
 					if preview && err != nil || !preview && !os.IsNotExist(err) {
@@ -85,6 +92,29 @@ func TestAgentInstallThroughCLI(t *testing.T) {
 				t.Fatal(err)
 			}
 		})
+	}
+}
+
+// TOON and JSON escape Windows separators. Check the logical path rather than
+// letting escaping hide the same disclosure that Linux reports directly.
+func agentOutputContainsPath(output, location string) bool {
+	normalize := func(value string) string {
+		value = strings.ReplaceAll(value, `\\`, `\`)
+		return strings.ReplaceAll(value, `\`, `/`)
+	}
+	return strings.Contains(normalize(output), normalize(location))
+}
+
+func TestAgentOutputPathCheckRecognizesPlatformAndEscapedSpellings(t *testing.T) {
+	for _, example := range []struct{ output, location string }{
+		{`path: /tmp/agent-home/skills`, `/tmp/agent-home`},
+		{`path: C:\agent-home\skills`, `C:\agent-home`},
+		{`"path":"C:\\agent-home\\skills"`, `C:\agent-home`},
+		{`path: C:/agent-home/skills`, `C:\agent-home`},
+	} {
+		if !agentOutputContainsPath(example.output, example.location) {
+			t.Fatalf("path detector missed %q in %q", example.location, example.output)
+		}
 	}
 }
 
