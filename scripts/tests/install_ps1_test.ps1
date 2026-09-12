@@ -38,7 +38,12 @@ try {
 package main
 import ("os"; "strings"; "os/exec")
 func main() {
- if len(os.Args)>1 && os.Args[1]=="selfupdate" {c:=exec.Command("powershell.exe",os.Args[2:]...);c.Stdout=os.Stdout;c.Stderr=os.Stderr;if e:=c.Run();e!=nil{os.Exit(1)};return}
+ if len(os.Args)>1 && os.Args[1]=="selfupdate" {
+  c:=exec.Command("powershell.exe",os.Args[2:]...)
+  // Match the updater's native boundary: Windows PowerShell rebuilds its module paths.
+  for _,entry:=range os.Environ(){key,_,_:=strings.Cut(entry,"=");if !strings.EqualFold(key,"PSModulePath"){c.Env=append(c.Env,entry)}}
+  c.Stdout=os.Stdout;c.Stderr=os.Stderr;if e:=c.Run();e!=nil{os.Exit(1)};return
+ }
  if len(os.Args)>1 && os.Args[1]=="agent" {
   f,e:=os.OpenFile(os.Getenv("TADX_TEST_GUIDANCE_LOG"),os.O_APPEND|os.O_CREATE|os.O_WRONLY,0600); if e!=nil {panic(e)}
   _,_=f.WriteString(strings.Join(os.Args[1:]," ")+"\n"); _=f.Close()

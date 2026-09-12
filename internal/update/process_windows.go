@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"golang.org/x/sys/windows"
 	"os/exec"
+	"path/filepath"
+	"strings"
 	"syscall"
 	"unsafe"
 )
@@ -17,6 +19,18 @@ type processScope struct {
 }
 
 func newProcessScope(cmd *exec.Cmd) (*processScope, error) {
+	// Native intermediaries inherit PowerShell 7 module paths unchanged.
+	// Let Windows PowerShell reconstruct its own built-in module search path.
+	if strings.EqualFold(filepath.Base(cmd.Path), "powershell.exe") {
+		environment := cmd.Environ()
+		cmd.Env = make([]string, 0, len(environment))
+		for _, entry := range environment {
+			key, _, _ := strings.Cut(entry, "=")
+			if !strings.EqualFold(key, "PSModulePath") {
+				cmd.Env = append(cmd.Env, entry)
+			}
+		}
+	}
 	job, err := windows.CreateJobObject(nil, nil)
 	if err != nil {
 		return nil, err
