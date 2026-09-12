@@ -8,12 +8,12 @@ import { buildSite, publicFiles } from '../build-site.mjs';
 
 const repo = dirname(dirname(dirname(fileURLToPath(import.meta.url))));
 
-test('public build contains only reviewed homepage and exact installer sources', async () => {
+test('public build contains only reviewed pages, capability data, and exact installer sources', async () => {
   const folder = await mkdtemp(join(tmpdir(), 'tadx-site-test-'));
   try {
     const destination = join(folder, 'public');
     await buildSite(repo, destination);
-    assert.deepEqual((await readdir(destination)).sort(), ['.nojekyll', 'index.html', 'install.ps1', 'install.sh']);
+    assert.deepEqual((await readdir(destination)).sort(), ['.nojekyll', 'capabilities.html', 'capabilities.json', 'index.html', 'install.ps1', 'install.sh']);
     for (const [source, target] of publicFiles) {
       assert.deepEqual(await readFile(join(destination, target)), await readFile(join(repo, source)));
     }
@@ -24,8 +24,32 @@ test('public build contains only reviewed homepage and exact installer sources',
   } finally { await rm(folder, { recursive: true, force: true }); }
 });
 
+test('Docs opens the hosted command browser with current registry data and return navigation', async () => {
+  const home = await readFile(join(repo, 'site/index.html'), 'utf8');
+  const map = await readFile(join(repo, 'docs/reference/capability-map.html'), 'utf8');
+  const data = JSON.parse(await readFile(join(repo, 'docs/reference/capabilities.json'), 'utf8'));
+  const links = [...home.matchAll(/<a\b[^>]*href="([^"]+)"[^>]*>Docs<\/a>/g)];
+  assert.equal(links.length, 2);
+  for (const link of links) assert.equal(link[1], 'capabilities.html');
+  assert.match(map, /href="https:\/\/tadx\.net\/"/);
+  assert.match(map, /aria-current="page"/);
+  assert.match(map, /--page: #f3f3eb/);
+  assert.match(map, /--ink: #202720/);
+  const embedded = /<script id="capability-data" type="application\/json">([\s\S]*?)<\/script>/.exec(map);
+  assert.deepEqual(JSON.parse(embedded[1]), data);
+  for (const match of map.matchAll(/href="([^"]+)"/g)) {
+    assert.ok(match[1].startsWith('#') || match[1].startsWith('https://') || match[1] === 'capabilities.json', `Unpublished map link: ${match[1]}`);
+  }
+});
+
 test('homepage has both one-line installers, current setup, and the supplied demos', async () => {
   const html = await readFile(join(repo, 'site/index.html'), 'utf8');
+  const targetSource = await readFile(join(repo, 'internal/agenttarget/targets.go'), 'utf8');
+  const labels = {claude: 'Claude Code', codex: 'Codex', opencode: 'OpenCode', cursor: 'Cursor', pi: 'Pi', hermes: 'Hermes', copilot: 'GitHub Copilot', gemini: 'Gemini CLI', cline: 'Cline'};
+  const advertised = [...html.matchAll(/class="agent-name">([^<]+)<\/span>/g)].map(match => match[1]).sort();
+  const supported = [...targetSource.matchAll(/name: "([^"]+)"/g)].map(match => match[1]).filter(name => name !== 'generic');
+  for (const name of supported) assert.ok(labels[name], `Add homepage label for supported harness: ${name}`);
+  assert.deepEqual(advertised, supported.map(name => labels[name]).sort());
   for (const text of ['Tableau.', 'At your command.', 'irm https://tadx.net/install.ps1 | iex', 'curl -fsSL https://tadx.net/install.sh | sh', 'tadx update', 'tab-find', 'tab-metric', 'tab-publish', 'Agent Guidance']) {
     assert.ok(html.includes(text), `Missing ${text}`);
   }

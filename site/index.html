@@ -145,7 +145,7 @@
     @keyframes capability-scroll { to { transform: translateX(-50%); } }
     .agent-line { margin: 53px 0 54px; display: flex; justify-content: center; align-items: center; flex-wrap: wrap; gap: 13px 30px; }
     .agent-line p { color: var(--muted); font-size: 12px; margin: 0; }
-    .agents { display: flex; justify-content: center; gap: 27px; align-items: center; font-size: 13px; font-weight: 550; letter-spacing: -.01em; }
+    .agents { display: flex; flex-wrap: wrap; justify-content: center; gap: 16px 27px; align-items: center; font-size: 13px; font-weight: 550; letter-spacing: -.01em; }
     .agent-name { display: inline-flex; align-items: center; gap: 7px; }
     footer { display: flex; align-items: flex-start; justify-content: space-between; gap: 22px; padding: 26px 0 32px; border-top: 1px solid var(--line); }
     .footer-left { display: flex; gap: 15px; align-items: flex-start; }
@@ -293,7 +293,7 @@
       TADX
     </a>
     <nav class="nav" aria-label="Main navigation">
-      <a href="https://github.com/ahillspace/tadx/blob/main/README.md" target="_blank" rel="noopener noreferrer">Docs</a>
+      <a href="capabilities.html">Docs</a>
       <a href="https://github.com/ahillspace/tadx" target="_blank" rel="noopener noreferrer">GitHub <svg class="icon" aria-hidden="true"><use href="#external"/></svg></a>
       <button type="button" class="nav-install" data-install>Get TADX</button>
     </nav>
@@ -376,12 +376,12 @@
     </section>
     <section class="agent-line" aria-label="Use TADX with your existing tools">
       <p>Bring your own agent.</p>
-      <div class="agents"><span class="agent-name">Claude Code</span><span class="agent-name">Codex</span><span class="agent-name">OpenCode</span><span class="agent-name">Cursor</span></div>
+      <div class="agents"><span class="agent-name">Claude Code</span><span class="agent-name">Codex</span><span class="agent-name">OpenCode</span><span class="agent-name">Cursor</span><span class="agent-name">Pi</span><span class="agent-name">Hermes</span><span class="agent-name">GitHub Copilot</span><span class="agent-name">Gemini CLI</span><span class="agent-name">Cline</span></div>
     </section>
   </main>
   <footer class="wrap">
     <div class="footer-left"><a class="wordmark" href="#" aria-label="TADX home">TADX</a><p class="footer-caption">Made for the Tableau community.<span>Independent. Not affiliated with Tableau or Salesforce.</span></p></div>
-    <div class="footer-links"><a href="https://github.com/ahillspace/tadx/releases" target="_blank" rel="noopener noreferrer">Releases</a><a href="https://github.com/ahillspace/tadx/blob/main/README.md" target="_blank" rel="noopener noreferrer">Docs</a></div>
+    <div class="footer-links"><a href="https://github.com/ahillspace/tadx/releases" target="_blank" rel="noopener noreferrer">Releases</a><a href="capabilities.html">Docs</a></div>
   </footer>
   <dialog id="install-dialog" aria-labelledby="install-title">
     <div class="install-head"><h2 id="install-title">Get TADX.</h2><button type="button" class="close-dialog" aria-label="Close installation instructions"><svg class="icon" aria-hidden="true"><use href="#close"/></svg></button></div>

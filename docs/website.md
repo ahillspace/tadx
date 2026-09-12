@@ -23,6 +23,10 @@ Edit `site/index.html` for the homepage.
 Run `node --test scripts/tests/site_test.mjs` to validate its packaging and installer commands.
 Run `node scripts/build-site.mjs` to create `_site` from the homepage and the two checked-in installer scripts.
 The output directory must be new or empty; move an earlier local build aside before rebuilding.
+The homepage's Docs links open `capabilities.html` on the same site.
+The build copies the authored `docs/reference/capability-map.html` and its generated `capabilities.json` inventory; no second command-browser source is maintained.
+Keep the map's authored layout and styling separate from its generated `capability-data` script block.
+Use `go generate ./internal/capability` when registry changes require a new snapshot.
 The allowlist excludes configuration, workspace files, repository source, and other local material from the website artifact.
 The Pages workflow builds without publishing by default and permits publication only from `main` in a public repository.
 
