@@ -82,7 +82,7 @@ func New(deps Dependencies) *cobra.Command {
 
 func newSetDefault(deps Dependencies) *cobra.Command {
 	var input workspacesetdefault.Input
-	return &cobra.Command{Use: use(deps, "workspace.set-default", "set-default <name>"), Short: short(deps, "workspace.set-default", "Set the default workspace."), Annotations: map[string]string{"tadx.capability": "workspace.set-default"}, Args: func(command *cobra.Command, args []string) error {
+	command := &cobra.Command{Use: use(deps, "workspace.set-default", "set-default <name>"), Short: short(deps, "workspace.set-default", "Set the default workspace."), Annotations: map[string]string{"tadx.capability": "workspace.set-default"}, Args: func(command *cobra.Command, args []string) error {
 		if err := exactArgs("workspace.set-default", 1)(command, args); err != nil {
 			return err
 		}
@@ -95,11 +95,13 @@ func newSetDefault(deps Dependencies) *cobra.Command {
 		}
 		return deps.Renderer.Render(result)
 	}}
+	command.Flags().BoolVar(&input.Preview, "preview", false, "preview local changes without changing files or configuration")
+	return command
 }
 
 func newUnregister(deps Dependencies) *cobra.Command {
 	var input workspaceunregister.Input
-	return &cobra.Command{Use: use(deps, "workspace.unregister", "unregister <name>"), Short: short(deps, "workspace.unregister", "Unregister a workspace and preserve its files."), Annotations: map[string]string{"tadx.capability": "workspace.unregister"}, Args: func(command *cobra.Command, args []string) error {
+	command := &cobra.Command{Use: use(deps, "workspace.unregister", "unregister <name>"), Short: short(deps, "workspace.unregister", "Unregister a workspace and preserve its files."), Annotations: map[string]string{"tadx.capability": "workspace.unregister"}, Args: func(command *cobra.Command, args []string) error {
 		if err := exactArgs("workspace.unregister", 1)(command, args); err != nil {
 			return err
 		}
@@ -112,6 +114,8 @@ func newUnregister(deps Dependencies) *cobra.Command {
 		}
 		return deps.Renderer.Render(result)
 	}}
+	command.Flags().BoolVar(&input.Preview, "preview", false, "preview local changes without changing files or configuration")
+	return command
 }
 
 func newDeleteWorkspace(deps Dependencies) *cobra.Command {
@@ -159,6 +163,7 @@ func newClean(deps Dependencies) *cobra.Command {
 	}
 	command.Flags().StringVar(&input.Workspace, "workspace", "", "logical workspace name")
 	command.Flags().StringVar(&input.Class, "class", "", "disposable state class: temporary, cache, logs, or all")
+	command.Flags().BoolVar(&input.Preview, "preview", false, "preview local changes without changing files or configuration")
 	return command
 }
 
@@ -183,6 +188,7 @@ func newCreate(deps Dependencies) *cobra.Command {
 		},
 	}
 	command.Flags().StringVar(&input.Path, "path", "", "new workspace root or existing empty real directory")
+	command.Flags().BoolVar(&input.Preview, "preview", false, "preview local changes without changing files or configuration")
 	return command
 }
 
@@ -212,6 +218,7 @@ func newRegister(deps Dependencies) *cobra.Command {
 		},
 	}
 	command.Flags().StringVar(&input.Path, "path", "", "existing machine-local workspace root")
+	command.Flags().BoolVar(&input.Preview, "preview", false, "preview local changes without changing files or configuration")
 	return command
 }
 
@@ -240,6 +247,7 @@ func newClone(deps Dependencies) *cobra.Command {
 	}
 	command.Flags().StringVar(&input.Name, "name", "", "new logical workspace name")
 	command.Flags().StringVar(&input.Path, "path", "", "override the default root for the clone")
+	command.Flags().BoolVar(&input.Preview, "preview", false, "preview local changes without changing files or configuration")
 	return command
 }
 
@@ -310,6 +318,7 @@ func newMove(deps Dependencies, hidden bool) *cobra.Command {
 	command.Flags().StringVar(&input.SourceWorkspace, "source", "", "logical source workspace name")
 	command.Flags().StringVar(&input.DestinationWorkspace, "destination", "", "logical destination workspace name")
 	selectorFlags(command, &input.Path, &input.Kind, &input.LUID)
+	command.Flags().BoolVar(&input.Preview, "preview", false, "preview local changes without changing files or configuration")
 	return command
 }
 

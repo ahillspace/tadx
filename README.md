@@ -23,7 +23,8 @@ Give your agent an outcome, not a list of API calls:
 
 Or use the same CLI directly to inspect, download, organize, and publish Tableau content.
 TADX supports workbook, datasource, flow, and project lifecycle operations, local workspaces and caches, lineage, administration, upstream catalog metadata, and Pulse definition workflows.
-Run `tadx --help` for the command index, then one category help call such as `tadx content --help` to learn its commands, flags, and examples, including nested actions.
+Run `tadx --help` for the complete command roadmap, then one category help call such as `tadx content --help` for every descendant action.
+Each action section includes required inputs, options, accepted values, defaults, and constraints.
 Use `tadx capability list` and `tadx capability get` for feature inventory and availability diagnostics.
 
 ## Install TADX and agent guidance
@@ -58,9 +59,11 @@ If the credential store is unavailable or locked, login fails instead of falling
 For CI or temporary use, environment profiles can instead reference a PAT name variable and a PAT secret variable.
 See `tadx env --help` for those options.
 
-Run `tadx` for a local overview of your configuration, or `tadx --help` for the command index.
+Run `tadx` for a local overview of your configuration, or `tadx --help` for the command roadmap.
 Category help is complete for its scope: `tadx admin group --help` includes membership actions, while `tadx admin --help` includes all administration actions.
-Leaf help such as `tadx admin group create --help` remains available for a focused lookup.
+Leaf help such as `tadx admin group create --help` presents the same facts for one action.
+Aliases appear beside their canonical names, such as `admin (adm)` and `--environment (--env, -e)`.
+Both `-h` and `--help` show help without running the operation or reading credentials.
 
 ## Add skills to your agent
 
@@ -114,6 +117,7 @@ tadx workspace status --workspace development --full
 ```
 
 The full status output shows where the downloaded artifacts are stored.
+Use pull's `--preview` to inspect acquisition scope and local conflicts before writing artifacts.
 
 ## Safe defaults
 
@@ -124,9 +128,13 @@ Tableau LUIDs are authoritative, and ambiguous selectors fail instead of guessin
 
 Remote mutations are disabled by default.
 Supported read-only previews remain available while mutations are disabled.
+Acquisition and local-state commands also expose previews for their planned file or configuration changes.
+Interactive `auth login` and policy-changing `mutation set` remain explicit operations; `update --check` checks releases without installing them.
 Enabling remote mutations is an optional, explicit opt-in that is separate from permission to perform a particular Tableau operation.
 Agents must ask before changing the mutation setting or its scope.
 See `tadx mutation status` and `tadx mutation set --help` when you are ready to configure that policy.
+For repeated work, category help identifies supported selectors and `--batch-file` inputs, including positional `args` arrays.
+Batches vary one selector dimension at a time or use explicit item rows, with at most 100 expanded selections.
 
 ## Learn more
 

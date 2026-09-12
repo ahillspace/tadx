@@ -27,6 +27,15 @@ var cleanClasses = map[string][]string{
 
 // Clean removes only admitted children of the workspace control directory.
 func Clean(ctx context.Context, root, class string) (CleanResult, error) {
+	return clean(ctx, root, class, false)
+}
+
+// PreviewClean measures the exact selected disposable state without removing it.
+func PreviewClean(ctx context.Context, root, class string) (CleanResult, error) {
+	return clean(ctx, root, class, true)
+}
+
+func clean(ctx context.Context, root, class string, preview bool) (CleanResult, error) {
 	children, ok := cleanClasses[class]
 	if !ok {
 		return CleanResult{}, fmt.Errorf("unsupported workspace cleanup class %q", class)
@@ -66,8 +75,10 @@ func Clean(ctx context.Context, root, class string) (CleanResult, error) {
 		if !exists {
 			continue
 		}
-		if err := os.RemoveAll(target); err != nil {
-			return CleanResult{}, fmt.Errorf("remove disposable workspace state %q: %w", child, err)
+		if !preview {
+			if err := os.RemoveAll(target); err != nil {
+				return CleanResult{}, fmt.Errorf("remove disposable workspace state %q: %w", child, err)
+			}
 		}
 		result.EntriesRemoved += entries
 		result.BytesRemoved += bytes

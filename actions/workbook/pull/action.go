@@ -1,5 +1,7 @@
 package pull
 
+import "github.com/ahillspace/tadx/internal/value"
+
 import (
 	"context"
 	"errors"
@@ -61,6 +63,29 @@ func (a *Action) Execute(ctx context.Context, input Input) (Output, error) {
 	if err != nil {
 		retryable, correctiveAction := errs.CompleteRetryAdvice(err, "Review the exact workbook selector and target, then retry.")
 		return Output{}, &errs.Error{ID: "workbook.pull.resolve", Kind: errs.KindOperation, Operation: "workbook.pull", Environment: input.Environment, Site: input.Site, Summary: "Workbook resolution failed.", Cause: err, Retryable: retryable, CorrectiveAction: correctiveAction, TableauRequestID: errs.TableauRequestID(err)}
+	}
+	if input.Preview {
+		var references []PublishedDatasource
+		if input.IncludePDS {
+			references, err = a.reader.PublishedDatasources(ctx, workbook.LUID)
+			if err == nil {
+				references, err = normalizePublishedDatasources(references)
+			}
+			if err != nil {
+				return Output{}, &errs.Error{ID: "workbook.pull.references", Kind: errs.KindOperation, Operation: "workbook.pull", Resource: workbook.LUID, Environment: input.Environment, Site: input.Site, Summary: "Published datasource detection was incomplete.", Cause: err, Retryable: errs.Bool(false), CorrectiveAction: "Wait for complete Tableau metadata visibility, then retry."}
+			}
+		}
+		previewer, ok := a.writer.(interface {
+			PreviewWorkbook(context.Context, Input, Workbook, []PublishedDatasource) (value.AcquisitionPlan, error)
+		})
+		if !ok {
+			return Output{}, &errs.Error{ID: "workbook.pull.preview", Kind: errs.KindRuntime, Operation: "workbook.pull", Summary: "Acquisition preview is not configured.", Retryable: errs.Bool(false), CorrectiveAction: "Configure read-only artifact preflight."}
+		}
+		plan, err := previewer.PreviewWorkbook(ctx, input, workbook, references)
+		if err != nil {
+			return Output{}, err
+		}
+		return Output{Status: "preview", Workspace: input.WorkspaceName, Workbook: workbook, Preview: &plan}, nil
 	}
 	download, err := a.reader.DownloadWorkbook(ctx, workbook.LUID, input.IncludeExtract)
 	if err != nil {

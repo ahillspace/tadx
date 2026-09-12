@@ -95,7 +95,7 @@ func TestBareOverviewFirstRunAndHelpAreReadOnly(t *testing.T) {
 		}
 	}
 	code, text := runOverview(t, root, []string{"--help"}, options)
-	if code != 0 || !strings.Contains(text, "categories and commands:") || strings.Contains(text, "local_overview") {
+	if code != 0 || !strings.Contains(text, "discover and manage Tableau:") || !strings.Contains(text, "setup and diagnostics:") || strings.Contains(text, "local_overview") {
 		t.Fatalf("help changed: code=%d output=%s", code, text)
 	}
 }

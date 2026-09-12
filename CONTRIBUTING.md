@@ -43,8 +43,12 @@ Read the [build standard](.agents/skills/tadx-build/SKILL.md) and choose one rel
 Only inventory and cache changes need the [inventory contracts](.agents/skills/tadx-build/references/inventory-and-cache.md).
 Start from updated `main` on a feature branch; shared agents use disjoint files in one checkout.
 Keep tests and bounded evidence with the implementation, and use the skill's verification checklist before handoff.
-Keep command usage, flags, and examples accurate in help: root help is an index, and category help teaches every descendant action in one call.
-Verify new actions appear in both their immediate category and broader ancestor help; leaf help remains available for focused lookups.
+Keep root help a complete, compact roadmap and category help a complete section for every descendant action.
+Leaf and category help share required inputs, concrete values, defaults, omission behavior, constraints, and applicable batch syntax.
+Keep aliases beside canonical names, and derive command and flag discovery from the Cobra tree.
+Verify required help facts against local action validation, and verify that `-h`, `--help`, and `help <path>` never run actions or read credentials.
+For batch changes, test one varying selector, positional `args` rows where supported, empty overrides, and the 100-selection bound.
+For previews, verify planned scope and that files, configuration, credentials, and remote resources remain unchanged as applicable.
 Capability list/get serve feature inventory and availability diagnostics, without being a prerequisite for learning command syntax.
 Live tests require separately authorized targets and remain outside the standard suite.
 The maintainer handles agent-based review; a build request does not automatically authorize a push, PR, merge, or release.

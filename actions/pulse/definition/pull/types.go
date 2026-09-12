@@ -1,7 +1,10 @@
 package pull
 
+import "github.com/ahillspace/tadx/internal/value"
+
 // Input selects one Pulse definition and a managed workspace.
 type Input struct {
+	Preview       bool
 	Environment   string
 	Site          string
 	ServerOrigin  string
@@ -54,6 +57,7 @@ type ArtifactResult struct {
 
 // Output retains complete details before projection.
 type Output struct {
+	Preview     *value.AcquisitionPlan
 	Status      string
 	Definition  Definition
 	Artifact    ArtifactResult
@@ -95,10 +99,16 @@ type FullResult struct {
 
 // CompactOutput returns the managed path and exact definition identity.
 func (o Output) CompactOutput() any {
+	if o.Preview != nil {
+		return *o.Preview
+	}
 	return CompactResult{Status: o.Status, Definition: CompactDefinition{LUID: o.Definition.LUID, Name: o.Definition.Name}, Artifact: CompactArtifact{Path: o.Artifact.Path}, MetricCount: o.MetricCount, Details: "--full", Help: o.Help}
 }
 
 // FullOutput returns artifact provenance without embedding the full resource document.
 func (o Output) FullOutput() any {
+	if o.Preview != nil {
+		return *o.Preview
+	}
 	return FullResult{Status: o.Status, Definition: CompactDefinition{LUID: o.Definition.LUID, Name: o.Definition.Name}, Artifact: o.Artifact, MetricCount: o.MetricCount, RequestID: o.RequestID, Help: o.Help}
 }

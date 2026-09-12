@@ -220,6 +220,7 @@ func newDefinitionPull(deps Dependencies) *cobra.Command {
 	command.Flags().StringVar(&input.Environment, "environment", "", "exact environment alias; defaults to the configured read environment")
 	command.Flags().StringVar(&input.Workspace, "workspace", "", "logical workspace name; uses deterministic defaults when omitted")
 	command.Flags().BoolVar(&input.Overwrite, "overwrite", false, "replace a dirty local artifact")
+	command.Flags().BoolVar(&input.Preview, "preview", false, "resolve acquisition scope and local conflicts without writing artifacts")
 	return command
 }
 

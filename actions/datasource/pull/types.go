@@ -1,5 +1,7 @@
 package pull
 
+import "github.com/ahillspace/tadx/internal/value"
+
 import (
 	"strings"
 
@@ -8,6 +10,7 @@ import (
 
 // Input selects one remote datasource and one logical workspace.
 type Input struct {
+	Preview bool
 	// WorkspaceName is the resolved logical workspace alias used in follow-up commands.
 	WorkspaceName                                        string
 	Environment, Site, ServerOrigin, SiteLUID, Workspace string
@@ -79,6 +82,7 @@ type ArtifactResult struct {
 
 // Output retains bounded pull details before projection.
 type Output struct {
+	Preview    *value.AcquisitionPlan
 	Workspace  string `json:"workspace"`
 	Status     string
 	Datasource Datasource
@@ -136,6 +140,9 @@ type FullResult struct {
 }
 
 func (o Output) CompactOutput() any {
+	if o.Preview != nil {
+		return *o.Preview
+	}
 	warningSource := o.compactWarnings
 	if warningSource == nil {
 		warningSource = o.Warnings
@@ -145,6 +152,9 @@ func (o Output) CompactOutput() any {
 }
 
 func (o Output) FullOutput() any {
+	if o.Preview != nil {
+		return *o.Preview
+	}
 	warnings, omitted := boundedWarnings(o.Warnings)
 	artifact := FullArtifact{Workspace: o.Workspace, Kind: "datasource", Name: o.Datasource.Name, SourceLUID: o.Datasource.LUID, Path: o.Artifact.Path, CanonicalPath: o.Artifact.CanonicalPath, BaselineFingerprint: o.Artifact.BaselineFingerprint, LineagePath: o.Artifact.LineagePath, LineageStatus: o.Artifact.LineageStatus, CompositionStatus: o.Artifact.CompositionStatus, ParentDataSourceURLs: append([]string(nil), o.Artifact.ParentDataSourceURLs...)}
 	if o.Artifact.CountsKnown {

@@ -170,7 +170,7 @@ func TestShorthandHelpAndCompletionExposeAliasesWithoutChangingCanonicalUse(t *t
 	if code := app.Run(context.Background(), []string{"con", "wb", "ins", "--help"}, &help, options); code != 0 {
 		t.Fatalf("alias help code=%d output=%s", code, help.String())
 	}
-	for _, want := range []string{"tadx content workbook inspect", "Aliases:", "ins", "-i, --id", "-e, --environment", "-f, --full"} {
+	for _, want := range []string{"tadx content workbook inspect", "inspect (ins)", "--id (-i)", "--environment (--env, -e)", "--full (--ful, -f)"} {
 		if !strings.Contains(help.String(), want) {
 			t.Errorf("alias help missing %q:\n%s", want, help.String())
 		}
@@ -188,7 +188,7 @@ func TestShorthandHelpAndCompletionExposeAliasesWithoutChangingCanonicalUse(t *t
 	if code := app.Run(context.Background(), []string{"agt", "ist", "--help"}, &forceHelp, options); code != 0 {
 		t.Fatalf("force alias help code=%d output=%s", code, forceHelp.String())
 	}
-	for _, want := range []string{"-f, --full", "--force", "alias: --frc"} {
+	for _, want := range []string{"--full (--ful, -f)", "--force (--frc)"} {
 		if !strings.Contains(forceHelp.String(), want) {
 			t.Errorf("force help missing independent full/force spelling %q:\n%s", want, forceHelp.String())
 		}

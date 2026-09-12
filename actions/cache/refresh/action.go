@@ -36,7 +36,7 @@ func (a *Action) Execute(ctx context.Context, input Input) (Output, error) {
 	if err := ValidateInput(input); err != nil {
 		return Output{}, err
 	}
-	if a == nil || a.hydrator == nil {
+	if a == nil || (!input.Preview && a.hydrator == nil) {
 		return Output{}, failure("cache.refresh.unconfigured", errs.KindRuntime, input, "Cache refresh is not configured.", nil)
 	}
 	if strings.TrimSpace(input.Environment) == "" || !input.SiteResolved {
@@ -51,6 +51,9 @@ func (a *Action) Execute(ctx context.Context, input Input) (Output, error) {
 		Site:            input.Site,
 		RequestedScopes: requested,
 		ImplicitScopes:  implicit,
+	}
+	if input.Preview {
+		return Output{Status: "preview", Plan: &Plan{Environment: input.Environment, Site: input.Site, RequestedScopes: requested, ImplicitScopes: implicit}, Help: []string{"Run without --preview to hydrate and publish this local inventory generation. Preview validates configuration and scopes; provider access and inventory completeness are checked during refresh."}}, nil
 	}
 	result, err := a.hydrator.Hydrate(ctx, request)
 	if err != nil {

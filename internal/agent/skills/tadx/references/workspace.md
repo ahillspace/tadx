@@ -7,17 +7,17 @@ Add `--full` when machine-local roots, fingerprints, provenance, or expanded art
 
 | Action | What it does | Required and useful optional flags |
 |---|---|---|
-| `tadx workspace create <name>` | Create and register a workspace with a new identity. | `--path` overrides the default root. |
-| `tadx workspace register [name]` | Register an existing workspace without changing its files or identity. | `--path` is required; the name is optional when the manifest supplies it. |
-| `tadx workspace clone <source>` | Copy a registered workspace under a new identity. | `--name` is required; `--path` overrides the default root. |
+| `tadx workspace create <name>` | Create and register a workspace with a new identity. | `--path` overrides the default root; `--preview`. |
+| `tadx workspace register [name]` | Register an existing workspace without changing its files or identity. | `--path` is required; the name is optional when the manifest supplies it; `--preview`. |
+| `tadx workspace clone <source>` | Copy a registered workspace under a new identity. | `--name` is required; `--path` overrides the default root; `--preview`. |
 | `tadx workspace list` | List registered workspaces. | `--limit 1..10000` |
 | `tadx workspace status` | Report resolved workspace identity and managed artifact state. | `--workspace`, `--limit 1..10000` |
-| `tadx workspace set-default <name>` | Set the general default to one available registered workspace. | None. |
-| `tadx workspace unregister <name>` | Remove a registration while preserving every file. | None. |
+| `tadx workspace set-default <name>` | Set the general default to one available registered workspace. | `--preview` |
+| `tadx workspace unregister <name>` | Remove a registration while preserving every file. | `--preview` |
 | `tadx workspace delete <name>` | Remove an exact registration and its managed root. | `--preview`, `--force` |
-| `tadx workspace artifact move` | Move one managed artifact between workspaces without changing Tableau identity. | `--source`, `--destination`; `--artifact`, or both `--kind` and `--id` |
+| `tadx workspace artifact move` | Move one managed artifact between workspaces without changing Tableau identity. | `--source`, `--destination`; `--artifact`, or both `--kind` and `--id`; `--preview` |
 | `tadx workspace artifact delete` | Delete one exact local managed artifact. | `--workspace`; `--artifact`, or both `--kind` and `--id`; `--preview`, `--force` |
-| `tadx workspace clean` | Remove one class of disposable local state while preserving canonical artifacts. | `--workspace`; `--class temporary\|cache\|logs\|all` |
+| `tadx workspace clean` | Remove one class of disposable local state while preserving canonical artifacts. | `--workspace`; `--class temporary\|cache\|logs\|all`; `--preview` |
 
 ## Workspace model
 
@@ -28,6 +28,8 @@ Without `--path`, create and clone use `<home>/TADX/workspaces/<name>`.
 Use `--path` only to choose another machine-local root.
 Workspace names are portable, case-insensitively unique, and used by `--workspace`; a filesystem path is not a workspace selector.
 TADX never creates a workspace implicitly during pull.
+Use `--preview` to inspect supported local changes without changing files, registrations, or defaults.
+Execution rechecks prerequisites; a preview does not reserve the destination or prove write access.
 List and status report `more_available` when output is bounded; increase `--limit` up to 10,000 to inspect more from the beginning.
 
 Workspace selection follows this order:

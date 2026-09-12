@@ -12,9 +12,10 @@ import (
 // Input names an existing source workspace, the new logical name, and an
 // optional machine-local root override for its copy.
 type Input struct {
-	Source string
-	Name   string
-	Path   string
+	Preview bool
+	Source  string
+	Name    string
+	Path    string
 }
 
 // Workspace is the complete cloned workspace result.
@@ -30,6 +31,7 @@ type Workspace struct {
 // Output is the stable clone result.
 type Output struct {
 	Status    string    `json:"status"`
+	Source    string    `json:"source,omitempty"`
 	Workspace Workspace `json:"workspace"`
 	Help      []string  `json:"help"`
 }
@@ -47,11 +49,29 @@ type compactOutput struct {
 
 // CompactOutput returns the token-bounded clone result.
 func (o Output) CompactOutput() any {
+	if o.Status == "preview" {
+		return o.previewOutput()
+	}
 	return compactOutput{Status: o.Status, Workspace: compactWorkspace{Name: o.Workspace.Name}, Details: "--full", Help: o.Help}
 }
 
 // FullOutput returns bounded workspace identity details.
-func (o Output) FullOutput() any { return o }
+func (o Output) FullOutput() any {
+	if o.Status == "preview" {
+		return o.previewOutput()
+	}
+	return o
+}
+
+func (o Output) previewOutput() any {
+	return struct {
+		Status       string `json:"status"`
+		Source       string `json:"source"`
+		Name         string `json:"name"`
+		Root         string `json:"root"`
+		WillRegister bool   `json:"will_register"`
+	}{o.Status, o.Source, o.Workspace.Name, o.Workspace.Root, true}
+}
 
 // Cloner copies one existing workspace to a new root under a new identity.
 type Cloner interface {
@@ -76,6 +96,9 @@ func (a *Action) Execute(ctx context.Context, input Input) (Output, error) {
 	if err != nil {
 		retryable, correctiveAction := errs.CompleteRetryAdvice(err, "Confirm the source workspace exists and the destination path is empty, then retry.")
 		return Output{}, &errs.Error{ID: "workspace.clone.failed", Kind: errs.KindOperation, Operation: "workspace.clone", Resource: input.Name, Summary: "Workspace clone failed.", Cause: err, Retryable: retryable, CorrectiveAction: correctiveAction}
+	}
+	if input.Preview {
+		return Output{Status: "preview", Source: input.Source, Workspace: cloned, Help: []string{"Preview only; no files or configuration changed."}}, nil
 	}
 	if cloned.Name == "" || cloned.ID == "" || cloned.Root == "" || !cloned.Registered {
 		return Output{}, runtimeError("workspace clone returned an incomplete identity")

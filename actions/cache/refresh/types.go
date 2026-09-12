@@ -8,6 +8,7 @@ type Input struct {
 	Site         string
 	SiteResolved bool
 	Scopes       []string
+	Preview      bool
 }
 
 // HydrationRequest is the normalized action-owned request passed to storage-backed hydration.
@@ -65,12 +66,27 @@ type GenerationOutput struct {
 
 // Output is the stable cache.refresh document.
 type Output struct {
+	Plan        *Plan
 	Status      string
 	Generation  GenerationOutput
 	Path        string
 	Warnings    []string
 	Diagnostics Diagnostics
 	Help        []string
+}
+
+// Plan identifies the inventory generation request without hydrating or publishing it.
+type Plan struct {
+	Environment     string   `json:"environment"`
+	Site            string   `json:"site"`
+	RequestedScopes []string `json:"requested_scopes"`
+	ImplicitScopes  []string `json:"implicit_scopes"`
+}
+
+type PreviewResult struct {
+	Status string   `json:"status"`
+	Plan   Plan     `json:"plan"`
+	Help   []string `json:"help"`
 }
 
 // CompactGeneration contains refresh decision fields.
@@ -105,11 +121,17 @@ type FullResult struct {
 
 // CompactOutput returns a row-free operational receipt.
 func (o Output) CompactOutput() any {
+	if o.Plan != nil {
+		return PreviewResult{Status: o.Status, Plan: *o.Plan, Help: o.Help}
+	}
 	g := o.Generation
 	return CompactResult{Status: o.Status, Generation: CompactGeneration{Complete: g.Complete, ID: g.ID, Environment: g.Environment, Site: g.Site, GeneratedAt: g.GeneratedAt, Records: g.Records}, Path: o.Path, Warnings: o.Warnings, Details: "--full", Help: o.Help}
 }
 
 // FullOutput returns bounded generation provenance and diagnostics.
 func (o Output) FullOutput() any {
+	if o.Plan != nil {
+		return PreviewResult{Status: o.Status, Plan: *o.Plan, Help: o.Help}
+	}
 	return FullResult{Status: o.Status, Generation: o.Generation, Path: o.Path, Warnings: o.Warnings, Diagnostics: o.Diagnostics, Help: o.Help}
 }

@@ -64,6 +64,7 @@ func newDatasourcePull(deps datasourceLifecycleDependencies) *cobra.Command {
 	command.Flags().StringVar(&name, "name", "", "exact datasource name; requires --project instead of --id")
 	command.Flags().StringVar(&projectPath, "project", "", "exact slash-delimited project path; required with --name")
 	command.Flags().BoolVar(&input.Overwrite, "overwrite", false, "replace a dirty local datasource artifact")
+	command.Flags().BoolVar(&input.Preview, "preview", false, "resolve acquisition scope and local conflicts without writing artifacts")
 	return command
 }
 

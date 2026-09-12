@@ -16,7 +16,7 @@ Incomplete explicitly requested dependency acquisition remains visible.
 | `tadx cache status` | Inspect cache freshness, scope coverage, and partial results. | `--environment`, `--full` |
 | `tadx content workbook list` | List workbooks, or collect the selected inventory with `--all`. | `--environment`, `--name`, `--owner`, `--project-name`, `--tag`, `--cache`, `--limit 1..10000` or `--all` |
 | `tadx content workbook inspect` | Inspect one exact workbook. | `--id`, or `--name` with `--project`; `--environment`, `--cache` |
-| `tadx content workbook pull` | Download one or up to 100 workbooks into a workspace. | Repeat `--id`, or use `--name` with `--project`; `--environment`, `--workspace`, `--include-extract=false`, `--include-pds`, `--overwrite` |
+| `tadx content workbook pull` | Download one or up to 100 workbooks into a workspace. | Repeat `--id`, or use `--name` with `--project`; `--environment`, `--workspace`, `--include-extract=false`, `--include-pds`, `--overwrite`, `--preview` |
 | `tadx content workbook publish` | Publish a native file or managed workbook artifacts. | `--file`, `--id`, `--artifact-name`, or repeated `--artifact`; `--workspace`, `--environment`, `--project-id` or `--project`, `--name`, `--overwrite`, `--as-job`, `--preview` |
 | `tadx content workbook move` | Move one workbook to another project on the same site. | `--environment`; `--id`, or `--name` with `--project`; `--destination-project-id` or `--destination-project`; `--preview` |
 | `tadx content workbook update` | Change workbook name, owner, or description. | `--environment`; `--id`, or `--name` with `--project`; `--new-name`, `--owner-id`, `--description`, `--preview` |
@@ -24,14 +24,14 @@ Incomplete explicitly requested dependency acquisition remains visible.
 | `tadx content datasource list` | List published datasources, or collect the selected inventory with `--all`. | `--environment`, `--name`, `--owner`, `--project-name`, `--type`, `--tag`, `--updated-after`, `--updated-before`, `--cache`, `--limit 1..10000` or `--all` |
 | `tadx content datasource inspect` | Inspect a published datasource and available upstream database/table identities. | `--id`, or `--name` with `--project`; `--environment`, `--cache`, `--full` |
 | `tadx content datasource schema` | List logical tables and matching fields, with optional semantic enrichment. | `--id`; `--environment`, `--query`, `--role measure\|dimension\|date\|excluded`, `--table`, repeated `--field-id`, `--descriptions`, `--tags`, `--cache`, `--limit 1..10000` or `--all` |
-| `tadx content datasource pull` | Download one or up to 100 native datasource artifacts. | Repeat `--id`, or use `--name` with `--project`; `--environment`, `--workspace`, `--overwrite` |
+| `tadx content datasource pull` | Download one or up to 100 native datasource artifacts. | Repeat `--id`, or use `--name` with `--project`; `--environment`, `--workspace`, `--overwrite`, `--preview` |
 | `tadx content datasource publish` | Publish a native file or managed datasource artifacts. | `--file`, `--id`, `--artifact-name`, or repeated `--artifact`; `--workspace`, `--environment`, `--project-id` or `--project`, `--name`; exactly one of `--create`, `--overwrite`, `--append`, or `--replace`; `--as-job`, `--preview` |
 | `tadx content datasource move` | Move one datasource to another project on the same site. | `--environment`; `--id`, or `--name` with `--project`; `--destination-project-id` or `--destination-project`; `--preview` |
 | `tadx content datasource update` | Rename a datasource, change its owner, or both. | `--environment`; `--id`, or `--name` with `--project`; `--new-name`, `--owner-id`, `--preview` |
 | `tadx content datasource delete` | Delete one remote datasource. | `--environment`; `--id`, or `--name` with `--project`; `--preview` |
 | `tadx content flow list` | List flows, or collect the selected inventory with `--all`. | `--environment`, `--name`, `--owner`, `--project-id`, `--project-name`, `--cache`, `--limit 1..10000` or `--all` |
 | `tadx content flow inspect` | Inspect one exact flow. | `--id`, or `--name` with `--project`; `--environment`, `--cache` |
-| `tadx content flow pull` | Download one or up to 100 native flow artifacts. | Repeat `--id`, or use `--name` with `--project`; `--environment`, `--workspace`, `--overwrite` |
+| `tadx content flow pull` | Download one or up to 100 native flow artifacts. | Repeat `--id`, or use `--name` with `--project`; `--environment`, `--workspace`, `--overwrite`, `--preview` |
 | `tadx content flow publish` | Publish a native file or managed flow artifacts. | `--file`, `--id`, `--artifact-name`, or repeated `--artifact`; `--workspace`, `--environment`, `--project-id` or `--project`, `--name`, `--overwrite`, `--preview` |
 | `tadx content flow move` | Move one flow to another project on the same site. | `--environment`; `--id`, or `--name` with `--project`; `--destination-project-id` or `--destination-project`; `--preview` |
 | `tadx content flow update` | Change one flow owner. | `--environment`; `--id`, or `--name` with `--project`; `--owner-id`, `--preview` |
@@ -42,7 +42,7 @@ Incomplete explicitly requested dependency acquisition remains visible.
 | `tadx content project update` | Change project name, description, or content-permission mode. | `--environment`; `--id` or `--project`; `--new-name`, `--description`, `--content-permissions`, `--preview` |
 | `tadx content project move` | Reparent a project or move it to the top level. | `--environment`; `--id` or `--project`; `--parent-id`, `--parent`, or `--top-level`; `--preview` |
 | `tadx content project delete` | Delete one remote project. | `--environment`, `--id`, `--preview` |
-| `tadx content lineage pull` | Save bounded lineage without downloading native content. | `--kind workbook\|datasource\|flow`; `--id`, or `--name` with `--project`; `--environment`, `--workspace`, `--direction upstream\|downstream\|both`, `--depth 1..3`, `--overwrite` |
+| `tadx content lineage pull` | Save bounded lineage without downloading native content. | `--kind workbook\|datasource\|flow`; `--id`, or `--name` with `--project`; `--environment`, `--workspace`, `--direction upstream\|downstream\|both`, `--depth 1..3`, `--overwrite`, `--preview` |
 
 ## Discovery and read source
 
@@ -92,7 +92,7 @@ A sole configured environment is inferred; with multiple environments, remote wr
 
 ## Batches
 
-Repeat `--id` on pull or `--artifact` on publish to process up to 100 resources of one type.
+Repeat one supported selector on pull or publish to process up to 100 resources of one type; category help lists the available dimensions.
 TADX validates the full selection first, preserves selection order, processes sequentially, continues after independent failures, and returns a nonzero aggregate result when any item fails.
 Batch publish rejects `--name` because each artifact keeps its own name.
 TADX does not infer dependency order or retry failed items.
@@ -102,6 +102,8 @@ For migrations, publish datasource dependencies before workbooks that reference 
 ## Managed artifacts
 
 Pull writes native content and metadata into a registered workspace.
+`pull --preview` resolves the acquisition scope and local conflicts without writing artifacts.
+Native payload validity, download permission, and filesystem write access remain execution checks; lineage preview does not capture the graph.
 Workbook pull includes extracts by default.
 `--include-pds` acquires only direct published datasource dependencies as sibling artifacts without recursion.
 `--overwrite` is required to replace dirty local content.

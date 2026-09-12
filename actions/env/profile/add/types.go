@@ -1,6 +1,7 @@
 package add
 
 type Input struct {
+	Preview             bool   `json:"preview,omitempty"`
 	Alias               string `json:"alias"`
 	ServerURL           string `json:"server_url"`
 	SiteContentURL      string `json:"site_content_url,omitempty"`

@@ -33,14 +33,31 @@ func (a *Action) Execute(ctx context.Context, input Input) (Output, error) {
 	if input.CacheMaxConcurrency < 0 || input.CacheMaxConcurrency > 256 {
 		return Output{}, usageError("cache maximum concurrency must be between 1 and 256, or omitted for the default")
 	}
-	profile, err := a.adder.Add(ctx, Profile{Alias: input.Alias, ServerURL: input.ServerURL, SiteContentURL: input.SiteContentURL, APIVersion: input.APIVersion, AuthType: "pat", PATNameEnv: input.PATNameEnv, PATSecretEnv: input.PATSecretEnv, DefaultWorkspace: input.DefaultWorkspace, CacheMaxConcurrency: input.CacheMaxConcurrency})
+	add := a.adder.Add
+	if input.Preview {
+		previewer, ok := a.adder.(interface {
+			PreviewAdd(context.Context, Profile) (Profile, error)
+		})
+		if !ok {
+			return Output{}, &errs.Error{ID: "env.profile.add.preview", Kind: errs.KindRuntime, Operation: "env.profile.add", Summary: "Profile preview is not configured.", Retryable: errs.Bool(false), CorrectiveAction: "Configure a read-only profile preview store."}
+		}
+		add = previewer.PreviewAdd
+	}
+	profile, err := add(ctx, Profile{Alias: input.Alias, ServerURL: input.ServerURL, SiteContentURL: input.SiteContentURL, APIVersion: input.APIVersion, AuthType: "pat", PATNameEnv: input.PATNameEnv, PATSecretEnv: input.PATSecretEnv, DefaultWorkspace: input.DefaultWorkspace, CacheMaxConcurrency: input.CacheMaxConcurrency})
 	if err != nil {
 		retryable, advice := errs.CompleteRetryAdvice(err, "Review the new environment profile and alias, then retry.")
-		return Output{}, &errs.Error{ID: "env.profile.add.write", Kind: errs.KindOperation, Operation: "env.profile.add", Environment: input.Alias, Summary: "Environment profile could not be added.", Cause: err, Retryable: retryable, CorrectiveAction: advice}
+		id, summary := "env.profile.add.write", "Environment profile could not be added."
+		if input.Preview {
+			id, summary = "env.profile.add.preview", "Environment profile preview failed."
+		}
+		return Output{}, &errs.Error{ID: id, Kind: errs.KindOperation, Operation: "env.profile.add", Environment: input.Alias, Summary: summary, Cause: err, Retryable: retryable, CorrectiveAction: advice}
 	}
 	var warnings []string
 	if profile.MultipleEnvironments {
 		warnings = []string{"Multiple environments are now configured. Remote writes require --env <name>. Reads still use your configured default."}
+	}
+	if input.Preview {
+		return Output{Status: "preview", Profile: profile, Help: []string{"Execution adds this profile after rechecking the configuration. The configuration has not been saved."}}, nil
 	}
 	return Output{Warnings: warnings, Status: "added", Profile: profile, Help: []string{commandhint.Environment(profile.Alias, "auth", "status")}}, nil
 }

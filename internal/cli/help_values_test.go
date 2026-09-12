@@ -6,6 +6,9 @@ import (
 	"strings"
 	"testing"
 
+	groupcreate "github.com/ahillspace/tadx/actions/admin/group/create"
+	groupupdate "github.com/ahillspace/tadx/actions/admin/group/update"
+	categorycreate "github.com/ahillspace/tadx/actions/admin/labelcategory/create"
 	permissioncreate "github.com/ahillspace/tadx/actions/admin/permission/create"
 	usercreate "github.com/ahillspace/tadx/actions/admin/user/create"
 	cacherefresh "github.com/ahillspace/tadx/actions/cache/refresh"
@@ -30,6 +33,151 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 )
+
+func TestRequiredHelpFactsMatchActionValidation(t *testing.T) {
+	root := helpValuesTree()
+	applyHelpValues(root)
+	for _, test := range []struct {
+		path     string
+		flags    []string
+		validate func(string) error
+	}{
+		{"admin group create", []string{"name"}, func(omit string) error {
+			in := groupcreate.Input{Environment: "dev", Name: "analysts"}
+			if omit == "name" {
+				in.Name = ""
+			}
+			return groupcreate.ValidateInput(in)
+		}},
+		{"admin user create", []string{"name", "site-role"}, func(omit string) error {
+			in := usercreate.Input{Environment: "dev", Name: "analyst", SiteRole: "Viewer", AuthSetting: "ServerDefault"}
+			if omit == "name" {
+				in.Name = ""
+			}
+			if omit == "site-role" {
+				in.SiteRole = ""
+			}
+			return usercreate.ValidateInput(in)
+		}},
+		{"admin label category create", []string{"name", "description"}, func(omit string) error {
+			in := categorycreate.Input{Name: "certified", Description: "Reviewed data"}
+			if omit == "name" {
+				in.Name = ""
+			}
+			if omit == "description" {
+				in.Description = ""
+			}
+			return categorycreate.ValidateInput(in)
+		}},
+		{"catalog audit", []string{"type", "id"}, func(omit string) error {
+			in := catalogaudit.Input{Type: "datasource", ID: "datasource-id"}
+			if omit == "type" {
+				in.Type = ""
+			}
+			if omit == "id" {
+				in.ID = ""
+			}
+			return catalogaudit.ValidateInput(in)
+		}},
+		{"pulse definition create", []string{"name", "datasource-id", "measure-field", "date-field", "dimension"}, func(omit string) error {
+			in := definitioncreate.Input{Intent: definitioncreate.Intent{Name: "Revenue", DatasourceLUID: "datasource-id", MeasureField: "Sales", TimeDimension: "Date", AllowedDimensions: []string{"Region"}}}
+			switch omit {
+			case "name":
+				in.Intent.Name = ""
+			case "datasource-id":
+				in.Intent.DatasourceLUID = ""
+			case "measure-field":
+				in.Intent.MeasureField = ""
+			case "date-field":
+				in.Intent.TimeDimension = ""
+			case "dimension":
+				in.Intent.AllowedDimensions = nil
+			}
+			return definitioncreate.ValidateInput(in)
+		}},
+	} {
+		t.Run(test.path, func(t *testing.T) {
+			if err := test.validate(""); err != nil {
+				t.Fatalf("complete documented input rejected: %v", err)
+			}
+			for _, name := range test.flags {
+				if !helpRequired(helpValueFlag(t, root, test.path, name)) {
+					t.Errorf("required input --%s is not documented", name)
+				}
+				if err := test.validate(name); err == nil {
+					t.Errorf("--%s is documented as required but its omission is accepted", name)
+				}
+			}
+		})
+	}
+}
+
+func TestHelpUpdateOmissionAndChangeRequirementsMatchValidation(t *testing.T) {
+	root := helpValuesTree()
+	applyHelpValues(root)
+	command, _, _ := root.Find([]string{"admin", "group", "update"})
+	if err := groupupdate.ValidateInput(groupupdate.Input{Environment: "dev", GroupLUID: "group-id"}); err == nil {
+		t.Fatal("empty update unexpectedly accepted")
+	}
+	if err := groupupdate.ValidateInput(groupupdate.Input{Environment: "dev", GroupLUID: "group-id", MembershipSet: true}); err != nil {
+		t.Fatalf("explicit empty desired membership rejected: %v", err)
+	}
+	flag := command.Flags().Lookup("external-user-enabled")
+	if !reflect.DeepEqual(flag.Annotations["tadx.help.omission"], []string{"unchanged"}) {
+		t.Fatal("optional property omission is not documented")
+	}
+	if !slices.Contains(flag.Annotations["tadx.help.one-required"], "new-name minimum-site-role external-user-enabled set-members") {
+		t.Fatal("update lacks its required change alternatives")
+	}
+	installCategoryHelp(root)
+	got := renderedHelp(t, command)
+	if !strings.Contains(got, "omitted: unchanged") || strings.Contains(got, "default: false") {
+		t.Fatalf("update omission is misrepresented:\n%s", got)
+	}
+}
+
+func TestLocalRequiredHelpFactsMatchCommandValidation(t *testing.T) {
+	for _, test := range []struct {
+		path  string
+		args  []string
+		flags map[string]string
+	}{
+		{"workspace clean", nil, map[string]string{"workspace": "dev", "class": "cache"}},
+		{"workspace register", nil, map[string]string{"path": "local-workspace"}},
+		{"workspace clone", []string{"source"}, map[string]string{"name": "copy"}},
+		{"workspace artifact move", nil, map[string]string{"source": "source", "destination": "destination", "artifact": "artifacts/workbook/example"}},
+		{"workspace artifact delete", nil, map[string]string{"workspace": "dev", "artifact": "artifacts/workbook/example"}},
+		{"env add", []string{"dev"}, map[string]string{"url": "https://tableau.example.com"}},
+	} {
+		t.Run(test.path, func(t *testing.T) {
+			for omit := range test.flags {
+				root := helpValuesTree()
+				applyHelpValues(root)
+				command, _, _ := root.Find(strings.Fields(test.path))
+				flag := command.Flags().Lookup(omit)
+				if !helpRequired(flag) {
+					continue
+				}
+				for name, value := range test.flags {
+					if name != omit {
+						if err := command.Flags().Set(name, value); err != nil {
+							t.Fatal(err)
+						}
+					}
+				}
+				if err := command.Args(command, test.args); err == nil {
+					t.Errorf("required --%s is accepted when omitted", omit)
+				}
+				if err := command.Flags().Set(omit, test.flags[omit]); err != nil {
+					t.Fatal(err)
+				}
+				if err := command.Args(command, test.args); err != nil {
+					t.Errorf("documented complete command rejected: %v", err)
+				}
+			}
+		})
+	}
+}
 
 func helpValuesTree() *cobra.Command {
 	root := &cobra.Command{Use: "tadx"}

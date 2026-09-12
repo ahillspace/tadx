@@ -7,8 +7,9 @@ description: Author and manage Tableau Pulse definitions with TADX, including bu
 
 Before starting a TADX Pulse task, read the installed `tadx` root skill at `../tadx/SKILL.md`, beside this skill's directory.
 It covers general discovery, datasource schema, caches, workspaces, and administration; consult its relevant references before assuming a capability is missing from TADX.
-Use `tadx pulse --help` once for all Pulse commands, flags, and examples, including nested definition and metric actions.
-Leaf help is an optional focused lookup; the references below retain the authoring judgment and verification contracts that command syntax alone does not provide.
+Use `tadx pulse --help` once for complete action sections, including required inputs, accepted values, constraints, and nested definition and metric actions.
+Aliases appear beside canonical names, and leaf help presents the same facts for one action.
+The references below retain authoring judgment and verification contracts that command syntax alone does not provide.
 
 A definition owns the shared measure, aggregation, date, allowed dimensions, and display settings.
 A metric is a period and population variant of that definition; Tableau creates a default metric with each new definition.

@@ -25,8 +25,9 @@ func (p Patch) Any() bool {
 }
 
 type Input struct {
-	Alias string `json:"alias"`
-	Patch Patch  `json:"patch"`
+	Preview bool   `json:"preview,omitempty"`
+	Alias   string `json:"alias"`
+	Patch   Patch  `json:"patch"`
 }
 
 type Profile struct {

@@ -9,7 +9,10 @@ import (
 	"github.com/ahillspace/tadx/internal/errs"
 )
 
-type Input struct{ Name string }
+type Input struct {
+	Name    string
+	Preview bool
+}
 type Workspace struct {
 	Name string `json:"name"`
 	ID   string `json:"id"`
@@ -46,7 +49,17 @@ func (a *Action) Execute(ctx context.Context, input Input) (Output, error) {
 	if a == nil || a.registry == nil {
 		return Output{}, runtimeError("workspace unregister is not configured")
 	}
-	item, err := a.registry.Unregister(ctx, input.Name)
+	operation := a.registry.Unregister
+	if input.Preview {
+		planner, ok := a.registry.(interface {
+			PreviewUnregister(context.Context, string) (Workspace, error)
+		})
+		if !ok {
+			return Output{}, runtimeError("workspace preview is not configured")
+		}
+		operation = planner.PreviewUnregister
+	}
+	item, err := operation(ctx, input.Name)
 	if err != nil {
 		retryable, correctiveAction := errs.CompleteRetryAdvice(err, "Review the exact registered workspace name, then retry.")
 		return Output{}, &errs.Error{ID: "workspace.unregister.failed", Kind: errs.KindOperation, Operation: "workspace.unregister", Resource: input.Name, Summary: "Workspace unregister failed.", Cause: err, Retryable: retryable, CorrectiveAction: correctiveAction}
@@ -54,7 +67,11 @@ func (a *Action) Execute(ctx context.Context, input Input) (Output, error) {
 	if item.Name == "" || item.ID == "" || item.Root == "" {
 		return Output{}, runtimeError("workspace unregister returned an incomplete identity")
 	}
-	return Output{Status: "unregistered", Workspace: item, FilesPreserved: true, Help: []string{commandhint.Command("workspace", "register", item.Name, "--path", "<path>")}}, nil
+	status := "unregistered"
+	if input.Preview {
+		status = "preview"
+	}
+	return Output{Status: status, Workspace: item, FilesPreserved: true, Help: []string{commandhint.Command("workspace", "register", item.Name, "--path", "<path>")}}, nil
 }
 func usage(message string) error {
 	return &errs.Error{ID: "workspace.unregister.usage", Kind: errs.KindUsage, Operation: "workspace.unregister", Summary: message, Cause: errors.New(message), Retryable: errs.Bool(false), CorrectiveAction: "Provide one registered workspace name."}

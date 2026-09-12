@@ -1,5 +1,7 @@
 package pull
 
+import "github.com/ahillspace/tadx/internal/value"
+
 import (
 	"strings"
 
@@ -7,6 +9,7 @@ import (
 )
 
 type Input struct {
+	Preview bool
 	// WorkspaceName is the resolved logical workspace alias used in follow-up commands.
 	WorkspaceName                                        string
 	Environment, Site, ServerOrigin, SiteLUID, Workspace string
@@ -63,6 +66,7 @@ type ArtifactResult struct {
 	Warnings            []string `json:"-"`
 }
 type Output struct {
+	Preview   *value.AcquisitionPlan
 	Workspace string `json:"workspace"`
 	Status    string
 	Flow      Flow
@@ -113,6 +117,9 @@ type FullResult struct {
 }
 
 func (o Output) CompactOutput() any {
+	if o.Preview != nil {
+		return *o.Preview
+	}
 	warningSource := o.compactWarnings
 	if warningSource == nil {
 		warningSource = o.Warnings
@@ -121,6 +128,9 @@ func (o Output) CompactOutput() any {
 	return CompactResult{Status: o.Status, Flow: o.Flow, Artifact: CompactArtifact{Workspace: o.Workspace, Kind: "flow", Name: o.Flow.Name, SourceLUID: o.Flow.LUID, Path: o.Artifact.Path}, Warnings: warnings, WarningsOmitted: omitted, Details: "--full", Help: o.Help}
 }
 func (o Output) FullOutput() any {
+	if o.Preview != nil {
+		return *o.Preview
+	}
 	warnings, omitted := boundedWarnings(o.Warnings)
 	artifact := FullArtifact{Workspace: o.Workspace, Kind: "flow", Name: o.Flow.Name, SourceLUID: o.Flow.LUID,
 		Path: o.Artifact.Path, CanonicalPath: o.Artifact.CanonicalPath,

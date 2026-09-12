@@ -21,16 +21,18 @@ Use `--json` for scripts; `--full` controls detail independently of encoding.
 Reuse returned IDs and confirmed result fields; batch already-decided steps instead of repeating discovery or inspection.
 Use `--full` only when expanded bounded details are needed.
 `tadx last` displays the previous execution's saved full result and timestamp without repeating it; one global result is retained, not history.
-`--env` is an alias for `--environment` on commands that accept an environment.
-Common shorthand includes `con ds ls` for `content datasource list`, `del` for delete, `--nm` for `--name`, `--pv` for `--preview`, `-a` for `--all`, `-f` for `--full`, and `-l` for `--limit` when accepted by the leaf command.
+Help places aliases beside canonical names, such as `content (con)` and `--environment (--env, -e)`.
+Aliases apply only where the canonical command or flag is accepted.
 Use `-f` only for `--full`; `--force` remains distinct and never bypasses mutation policy.
 Canonical command names, structured output fields, registry IDs, and LUIDs remain preferred in durable instructions and scripts.
 
 ## Command discovery
 
-Use `tadx --help` for the category index, then one relevant category help call for its commands, flags, and examples.
+Use `tadx --help` for the complete command roadmap, then one relevant category help call for its complete action sections.
 Category help includes all descendant actions: `tadx admin group --help` includes memberships, while `tadx admin --help`, `tadx content --help`, and `tadx pulse --help` cover their entire categories.
-Reuse that help; per-leaf drilldown is not required, though leaf help remains available for a focused lookup.
+Each action section includes required inputs, options, concrete values, defaults, omission behavior, constraints, and supported batch syntax.
+Leaf help presents the same facts for one action; reuse category help without repeated drilldown.
+Both `-h` and `--help` are help-only paths and never run actions or read credentials.
 Use `tadx capability list` and `tadx capability get` for feature inventory and availability diagnostics, not as a prerequisite to command syntax discovery.
 
 ## Critical rules
@@ -42,6 +44,7 @@ Use `tadx capability list` and `tadx capability get` for feature inventory and a
 - Never expose PATs or session tokens.
 - TADX serializes commands sharing a PAT on this machine; other machines and external tools need separate PATs or coordination because a new session can invalidate an existing one.
 - Remote mutations run by default when enabled by the effective mutation policy; supported read-only `--preview` operations remain available when the gate is off.
+- Pull and local-state previews inspect the planned scope without writing artifacts or configuration; retain their stated verification limits.
 - Discovery and previews do not authorize mutation, and `--force` never bypasses mutation policy.
 - Errors can include confirmed results in `output`, a failure `phase`, an `outcome`, and a missing `prerequisite`.
 - Preserve completed work, resolve the missing prerequisite, and retry only unfinished operations; inspect unknown write outcomes before repeating a mutation.
@@ -59,6 +62,7 @@ For a persistent change, name its scope and explain that it affects future shell
 An already enabled flag does not authorize a remote operation; keep the requested operation within its separately authorized scope.
 `tadx mutation status` reports the effective value and source.
 `tadx mutation set --enabled=true` persists user policy until changed; `--enabled=false` disables the saved policy.
+`mutation set` and interactive `auth login` have no preview mode; release checks use `tadx update --check`.
 An explicitly configured `TADX_ENABLE_MUTATIONS=0` or `1` overrides the saved policy for that process; without either setting, execution is disabled.
 
 ## Environment selection

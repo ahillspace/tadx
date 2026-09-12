@@ -1,5 +1,7 @@
 package pull
 
+import "github.com/ahillspace/tadx/internal/value"
+
 import (
 	"context"
 	"errors"
@@ -44,6 +46,19 @@ func (a *Action) Execute(ctx context.Context, input Input) (Output, error) {
 	item, err := a.reader.ResolveDatasource(ctx, input.Selector)
 	if err != nil {
 		return Output{}, operationError("datasource.pull.resolve", "Datasource resolution failed.", "Review the exact datasource selector, then retry.", input, "", err)
+	}
+	if input.Preview {
+		previewer, ok := a.writer.(interface {
+			PreviewDatasource(context.Context, Input, Datasource) (value.AcquisitionPlan, error)
+		})
+		if !ok {
+			return Output{}, &errs.Error{ID: "datasource.pull.preview", Kind: errs.KindRuntime, Operation: "datasource.pull", Summary: "Acquisition preview is not configured.", Retryable: errs.Bool(false), CorrectiveAction: "Configure read-only artifact preflight."}
+		}
+		plan, err := previewer.PreviewDatasource(ctx, input, item)
+		if err != nil {
+			return Output{}, err
+		}
+		return Output{Status: "preview", Workspace: input.WorkspaceName, Datasource: item, Preview: &plan}, nil
 	}
 	download, err := a.reader.DownloadDatasource(ctx, item.LUID)
 	if err != nil {

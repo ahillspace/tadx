@@ -102,7 +102,7 @@ var categoryHelpExamples = []helpExampleSet{
 	}},
 	{"pulse definition", "Create requires --name, --datasource-id, --measure-field, and --date-field. Repeat --dimension for allowed slicers.\nPublish requires one of --artifact, --id, or --artifact-name, plus explicit --datasource-map source=destination mappings.", []string{
 		"tadx pulse definition inspect --env dev --id <definition-luid>",
-		"tadx pulse definition create --env dev --name <definition-name> --datasource-id <datasource-luid> --measure-field <measure-field> --date-field <date-field> --preview",
+		"tadx pulse definition create --env dev --name <definition-name> --datasource-id <datasource-luid> --measure-field <measure-field> --date-field <date-field> --dimension <dimension-field> --preview",
 		"tadx pulse definition publish --env dev --workspace dev --id <definition-luid> --datasource-map <source-luid>=<destination-luid> --preview",
 	}},
 	{"pulse metric", "Fork requires --id and at least one of --period, --filter, or --exclude-filter. CUSTOM_N_DAYS also requires --days.\nFollow requires --id and exactly one of --user-id or --group-id.", []string{
@@ -134,26 +134,23 @@ func applyHelpExamples(root *cobra.Command) {
 		if command == nil {
 			continue
 		}
-		appendHelpNote(command, entry.note)
+		if helpCategoryNoteIsCommon(entry.path) {
+			appendHelpNote(command, entry.note)
+		}
 		for _, example := range entry.examples {
 			words := strings.Fields(example)
 			path := words[1:]
-			if target, _, err := root.Find(path); err != nil || !target.Runnable() || target == root {
+			target, _, err := root.Find(path)
+			if err != nil || !target.Runnable() || target == root || !usefulHelpExample(example) {
 				continue
 			}
-			if !strings.Contains(command.Example, example) {
-				command.Example = strings.TrimSpace(command.Example + "\n" + example)
+			if !strings.Contains(target.Example, example) {
+				target.Example = strings.TrimSpace(target.Example + "\n" + example)
 			}
 		}
 	}
 	var addSyntax func(*cobra.Command)
 	addSyntax = func(command *cobra.Command) {
-		if command.Flags().Lookup("batch-file") != nil {
-			appendHelpNote(command, `Batch JSON: {"items":[{"id":"<resource-luid>"}]}. Use 1-100 flag objects with canonical flag names, without leading dashes.
-Replace id with this action's item flags. Keep environment, config, preview, json, full, raw, force, version, help, and batch-file on the command.
-Use scalar values, or arrays for repeatable flags. Choose --batch-file or repeated selectors, not both.
-Files are limited to 1 MiB and 100 expanded selections. Duplicate items and duplicate JSON keys are rejected.`)
-		}
 		if command.Name() == "publish" && command.Parent() != nil && command.Parent().Parent() != nil && command.Parent().Parent().Name() == "content" {
 			appendHelpNote(command, "Select one source: --artifact, --file, --id, or --artifact-name. Choose a destination with --project-id or --project.\nRepeat --artifact for a same-action batch. Managed artifact paths are workspace-relative and use forward slashes.")
 			if command.Parent().Name() == "datasource" {
@@ -165,6 +162,34 @@ Files are limited to 1 MiB and 100 expanded selections. Duplicate items and dupl
 		}
 	}
 	addSyntax(root)
+}
+
+func helpCategoryNoteIsCommon(path string) bool {
+	switch path {
+	case "auth", "env", "cache", "catalog", "content", "admin", "admin label", "workspace", "mutation", "capability":
+		return true
+	default:
+		return false
+	}
+}
+
+func usefulHelpExample(example string) bool {
+	for _, syntax := range []string{" schema ", " publish ", " fork ", "permission create", "user create", "--parent-id", "workspace artifact", "--batch-file"} {
+		if strings.Contains(example, syntax) {
+			return true
+		}
+	}
+	seen := map[string]bool{}
+	for _, word := range strings.Fields(example) {
+		if !strings.HasPrefix(word, "--") {
+			continue
+		}
+		if seen[word] {
+			return true
+		}
+		seen[word] = true
+	}
+	return false
 }
 
 func appendHelpNote(command *cobra.Command, note string) {

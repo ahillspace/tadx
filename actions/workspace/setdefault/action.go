@@ -9,7 +9,10 @@ import (
 	"github.com/ahillspace/tadx/internal/errs"
 )
 
-type Input struct{ Name string }
+type Input struct {
+	Name    string
+	Preview bool
+}
 
 type Workspace struct {
 	Name string `json:"name"`
@@ -47,7 +50,17 @@ func (a *Action) Execute(ctx context.Context, input Input) (Output, error) {
 	if a == nil || a.setter == nil {
 		return Output{}, runtimeError("workspace default selection is not configured")
 	}
-	item, err := a.setter.SetDefault(ctx, input.Name)
+	operation := a.setter.SetDefault
+	if input.Preview {
+		planner, ok := a.setter.(interface {
+			PreviewSetDefault(context.Context, string) (Workspace, error)
+		})
+		if !ok {
+			return Output{}, runtimeError("workspace preview is not configured")
+		}
+		operation = planner.PreviewSetDefault
+	}
+	item, err := operation(ctx, input.Name)
 	if err != nil {
 		retryable, correctiveAction := errs.CompleteRetryAdvice(err, "Select an available registered workspace, then retry.")
 		return Output{}, &errs.Error{ID: "workspace.set-default.failed", Kind: errs.KindOperation, Operation: "workspace.set-default", Resource: input.Name, Summary: "Workspace default selection failed.", Cause: err, Retryable: retryable, CorrectiveAction: correctiveAction}
@@ -55,7 +68,11 @@ func (a *Action) Execute(ctx context.Context, input Input) (Output, error) {
 	if item.Name == "" || item.ID == "" || item.Root == "" {
 		return Output{}, runtimeError("workspace default selection returned an incomplete identity")
 	}
-	return Output{Status: "default-set", Workspace: item, Help: []string{commandhint.Command("workspace", "status", "--workspace", item.Name)}}, nil
+	status := "default-set"
+	if input.Preview {
+		status = "preview"
+	}
+	return Output{Status: status, Workspace: item, Help: []string{commandhint.Command("workspace", "status", "--workspace", item.Name)}}, nil
 }
 
 func usage(message string) error {

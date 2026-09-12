@@ -59,6 +59,7 @@ This does not provide field-level lineage or infer relationships absent from Tab
 	pull.Flags().StringVar(&input.Direction, "direction", "both", "lineage direction: upstream, downstream, or both")
 	pull.Flags().IntVar(&input.Depth, "depth", 1, "bounded lineage depth from 1 to 3")
 	pull.Flags().BoolVar(&input.Overwrite, "overwrite", false, "replace a dirty metadata-only lineage artifact")
+	pull.Flags().BoolVar(&input.Preview, "preview", false, "resolve acquisition scope and local conflicts without writing artifacts")
 	command.AddCommand(pull)
 	return command
 }

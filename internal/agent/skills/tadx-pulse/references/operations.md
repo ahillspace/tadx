@@ -5,7 +5,7 @@
 | `tadx search <term>` | Discover a named metric, definition, user, or group. | `--environment`, `--type metric\|definition\|user\|group\|pulse\|admin`, `--limit` |
 | `tadx pulse definition list` | List definitions or find an exact name. | `--environment`, `--name`, `--datasource-id`, `--limit`, `--all`, `--cache`, `--full` |
 | `tadx pulse definition inspect` | Read one definition. | `--id`, `--environment`, `--cache`, `--full` |
-| `tadx pulse definition pull` | Save a portable definition, its metric variants, and datasource references in a workspace. | `--id`, `--environment`, `--workspace`, `--overwrite` |
+| `tadx pulse definition pull` | Save a portable definition, its metric variants, and datasource references in a workspace. | `--id`, `--environment`, `--workspace`, `--overwrite`, `--preview` |
 | `tadx pulse definition publish` | Recreate a portable definition and variants with new identities. | `--id` or `--artifact-name` or `--artifact`, `--workspace`, `--env`, repeated `--datasource-map source=destination`, `--preview`, `--full` |
 | `tadx pulse metric list` | List variants of one definition. | `--definition-id`, `--environment`, `--limit`, `--all`, `--cache`, `--full` |
 | `tadx pulse metric inspect` | Read one metric's saved settings. | `--id`, `--environment`, `--cache`, `--full` |
@@ -47,7 +47,8 @@ Search supports `--limit` up to 2,000; narrow the query if more results remain b
 tadx pulse definition pull --environment '<alias>' --id '<definition-luid>' --workspace '<workspace-name>'
 ```
 
-Pull writes a local artifact and has no preview flag.
+Pull writes a local artifact; `--preview` checks bundle scope and local conflicts without writing it.
+Execution retrieves the specifications again and rechecks conflicts; preview does not prove filesystem write access.
 `--overwrite` can replace dirty local work; use it only when that replacement is intended.
 `tadx pulse definition publish --artifact <directory> --workspace <name> --env <destination> --datasource-map <source-luid>=<destination-luid> --preview` reviews a recreation.
 Repeat --datasource-map for every source datasource, including same-site recreation.

@@ -129,14 +129,22 @@ func (a workspaceCreator) Create(ctx context.Context, input workspacecreate.Inpu
 	if err != nil {
 		return workspacecreate.Workspace{}, err
 	}
-	item, err := a.runtime.manager().Create(ctx, input.Name, root)
+	operation := a.runtime.manager().Create
+	if input.Preview {
+		operation = a.runtime.manager().PreviewCreate
+	}
+	item, err := operation(ctx, input.Name, root)
 	return workspacecreate.Workspace{Name: item.Name, ID: item.ID, Root: item.Root, ManifestVersion: 1, Registered: item.Available && item.ManifestValid, CreatedEntries: []string{"tadx.yaml", "artifacts", ".tadx"}}, err
 }
 
 type workspaceRegistrar struct{ runtime *workspaceRuntime }
 
 func (a workspaceRegistrar) Register(ctx context.Context, input workspaceregister.Input) (workspaceregister.Workspace, error) {
-	item, err := a.runtime.manager().Register(ctx, input.Name, input.Path)
+	operation := a.runtime.manager().Register
+	if input.Preview {
+		operation = a.runtime.manager().PreviewRegister
+	}
+	item, err := operation(ctx, input.Name, input.Path)
 	return workspaceregister.Workspace{Name: item.Name, ID: item.ID, ManifestVersion: 1, Registered: item.Available && item.ManifestValid}, err
 }
 
@@ -147,7 +155,11 @@ func (a workspaceCloner) Clone(ctx context.Context, input workspaceclone.Input) 
 	if err != nil {
 		return workspaceclone.Workspace{}, err
 	}
-	item, err := a.runtime.manager().Clone(ctx, input.Source, input.Name, root)
+	operation := a.runtime.manager().Clone
+	if input.Preview {
+		operation = a.runtime.manager().PreviewClone
+	}
+	item, err := operation(ctx, input.Source, input.Name, root)
 	return workspaceclone.Workspace{Name: item.Name, ID: item.ID, Root: item.Root, ManifestVersion: 1, Registered: item.Available && item.ManifestValid, CreatedEntries: []string{"tadx.yaml", "artifacts", ".tadx"}}, err
 }
 
@@ -222,7 +234,11 @@ func (a workspaceMover) Move(ctx context.Context, input workspacemove.Input) (wo
 	if err != nil {
 		return workspacemove.Artifact{}, err
 	}
-	item, err := artifact.Move(ctx, artifact.MoveRequest{SourceWorkspace: source.Root, DestinationWorkspace: destination.Root, Selector: artifact.Selector{Kind: input.Kind, LUID: input.LUID, Path: input.Path}})
+	operation := artifact.Move
+	if input.Preview {
+		operation = artifact.PreviewMove
+	}
+	item, err := operation(ctx, artifact.MoveRequest{SourceWorkspace: source.Root, DestinationWorkspace: destination.Root, Selector: artifact.Selector{Kind: input.Kind, LUID: input.LUID, Path: input.Path}})
 	return moveArtifact(item), err
 }
 
@@ -378,7 +394,11 @@ func (a workspaceCleanStore) Clean(ctx context.Context, request workspaceclean.R
 	if err != nil {
 		return workspaceclean.Result{}, err
 	}
-	result, err := workspacecore.Clean(ctx, resolved.Root, request.Class)
+	operation := workspacecore.Clean
+	if request.Preview {
+		operation = workspacecore.PreviewClean
+	}
+	result, err := operation(ctx, resolved.Root, request.Class)
 	return workspaceclean.Result{EntriesRemoved: result.EntriesRemoved, BytesRemoved: result.BytesRemoved, Removed: result.Removed}, err
 }
 

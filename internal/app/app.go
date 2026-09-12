@@ -102,6 +102,7 @@ func Run(ctx context.Context, args []string, stdout io.Writer, options Options) 
 		Renderer:              writerRenderer{writer: stdout, options: renderOptions, capture: capture},
 		RenderOptions:         renderOptions,
 		BatchSelectors:        capability.BatchSelectors(),
+		BatchOptions:          capability.BatchOptions(),
 		ConfigPath:            &runtime.configPath,
 		MutationsEnabled:      options.MutationsEnabled,
 		MutationPolicy:        registryMutationPolicy{},

@@ -1,5 +1,7 @@
 package pull
 
+import "github.com/ahillspace/tadx/internal/value"
+
 import (
 	"context"
 	"errors"
@@ -57,6 +59,19 @@ func (a *Action) Execute(ctx context.Context, input Input) (Output, error) {
 	}
 	if err := validateResolvedResource(normalized, resource); err != nil {
 		return Output{}, err
+	}
+	if normalized.Preview {
+		previewer, ok := a.writer.(interface {
+			PreviewLineage(context.Context, Input, Resource) (value.AcquisitionPlan, error)
+		})
+		if !ok {
+			return Output{}, &errs.Error{ID: "lineage.pull.preview", Kind: errs.KindRuntime, Operation: "lineage.pull", Summary: "Acquisition preview is not configured.", Retryable: errs.Bool(false), CorrectiveAction: "Configure read-only artifact preflight."}
+		}
+		plan, err := previewer.PreviewLineage(ctx, normalized, resource)
+		if err != nil {
+			return Output{}, err
+		}
+		return Output{Status: "preview", Resource: resource, Preview: &plan}, nil
 	}
 	request := CaptureRequest{Kind: resource.Kind, RESTLUID: resource.LUID, Direction: normalized.Direction, Depth: normalized.Depth}
 	graph, captureErr := a.reader.CaptureLineage(ctx, request)

@@ -14,6 +14,7 @@ const (
 
 // Input selects one authoritative resource and bounded lineage scope.
 type Input struct {
+	Preview bool
 	// WorkspaceName is the resolved logical workspace alias used in follow-up commands.
 	WorkspaceName string
 	Environment   string
@@ -125,6 +126,7 @@ type FullArtifact struct {
 
 // Output retains complete bounded details before projection.
 type Output struct {
+	Preview           *value.AcquisitionPlan
 	Status            string
 	Resource          Resource
 	Artifact          ArtifactResult
@@ -172,6 +174,9 @@ type FullResult struct {
 
 // CompactOutput returns exact root identity and bounded graph counts.
 func (o Output) CompactOutput() any {
+	if o.Preview != nil {
+		return *o.Preview
+	}
 	nodeCount, edgeCount := o.counts()
 	return CompactResult{
 		Status: o.Status, Resource: compactResource(o.Resource),
@@ -182,6 +187,9 @@ func (o Output) CompactOutput() any {
 
 // FullOutput returns provenance, identity mapping, and a bounded graph page.
 func (o Output) FullOutput() any {
+	if o.Preview != nil {
+		return *o.Preview
+	}
 	o.Resource.Kind = publicKind(o.Resource.Kind)
 	nodes := append([]Node(nil), o.Nodes...)
 	for i := range nodes {

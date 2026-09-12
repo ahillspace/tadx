@@ -57,7 +57,12 @@ func newRefreshCommand(deps Dependencies) *cobra.Command {
 		short = "Refresh one complete local cache generation."
 	}
 	command := &cobra.Command{
-		Use: use, Short: short, Annotations: map[string]string{"tadx.capability": "cache.refresh"}, Args: noArgs("cache.refresh"),
+		Use: use, Short: short, Annotations: map[string]string{"tadx.capability": "cache.refresh"}, Args: func(command *cobra.Command, args []string) error {
+			if err := noArgs("cache.refresh")(command, args); err != nil {
+				return err
+			}
+			return cacherefresh.ValidateInput(input)
+		},
 		RunE: func(command *cobra.Command, _ []string) error {
 			result, err := deps.Refresher.Execute(command.Context(), input)
 			if err != nil {
@@ -69,6 +74,7 @@ func newRefreshCommand(deps Dependencies) *cobra.Command {
 	command.Flags().StringVar(&input.Environment, "environment", "", "exact environment alias")
 	command.Flags().StringVar(&input.Site, "site", "", "exact source site content URL")
 	command.Flags().StringSliceVar(&input.Scopes, "scope", nil, "inventory scope; repeat for users, groups, projects, workbooks, datasources, flows, views, or permissions; omit for all")
+	command.Flags().BoolVar(&input.Preview, "preview", false, "plan the requested cache generation without authentication, hydration, or local cache writes")
 	return command
 }
 

@@ -1,5 +1,7 @@
 package pull
 
+import "github.com/ahillspace/tadx/internal/value"
+
 import (
 	"context"
 	"errors"
@@ -50,6 +52,19 @@ func (a *Action) Execute(ctx context.Context, input Input) (Output, error) {
 	}
 	if !definition.MetricsComplete || len(definition.Metrics) == 0 || len(definition.Metrics) > 10000 {
 		return Output{}, pullError("pulse.definition.pull.incomplete", errs.KindOperation, input, "A complete Pulse metric inventory is required for a portable bundle.", nil)
+	}
+	if input.Preview {
+		previewer, ok := a.writer.(interface {
+			PreviewDefinition(context.Context, Input, Definition) (value.AcquisitionPlan, error)
+		})
+		if !ok {
+			return Output{}, pullError("pulse.definition.pull.preview", errs.KindRuntime, input, "Acquisition preview is not configured.", nil)
+		}
+		plan, err := previewer.PreviewDefinition(ctx, input, definition)
+		if err != nil {
+			return Output{}, err
+		}
+		return Output{Status: "preview", Definition: definition, Preview: &plan}, nil
 	}
 	artifact, err := a.writer.WriteDefinition(ctx, Artifact{
 		Workspace: input.Workspace, DefinitionLUID: definition.LUID, Name: definition.Name, DatasourceLUID: definition.DatasourceLUID,

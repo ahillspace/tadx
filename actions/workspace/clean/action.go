@@ -13,6 +13,7 @@ var admittedClasses = map[string]bool{"temporary": true, "cache": true, "logs": 
 
 // Input selects one workspace and one admitted disposable-state class.
 type Input struct {
+	Preview   bool
 	Workspace string
 	Class     string
 }
@@ -50,11 +51,35 @@ type compactOutput struct {
 
 // CompactOutput omits individual removed paths.
 func (o Output) CompactOutput() any {
+	if o.Status == "preview" {
+		return o.previewOutput(false)
+	}
 	return compactOutput{Status: o.Status, Workspace: o.Workspace, Class: o.Class, EntriesRemoved: o.EntriesRemoved, BytesRemoved: o.BytesRemoved, CanonicalArtifactsPreserved: o.CanonicalArtifactsPreserved, Details: "--full", Help: o.Help}
 }
 
 // FullOutput includes bounded workspace-relative removed paths.
-func (o Output) FullOutput() any { return o }
+func (o Output) FullOutput() any {
+	if o.Status == "preview" {
+		return o.previewOutput(true)
+	}
+	return o
+}
+
+func (o Output) previewOutput(full bool) any {
+	var paths []string
+	if full {
+		paths = o.Removed
+	}
+	return struct {
+		Status    string   `json:"status"`
+		Workspace string   `json:"workspace"`
+		Class     string   `json:"class"`
+		Entries   int      `json:"entries_to_remove"`
+		Bytes     int64    `json:"bytes_to_remove"`
+		Paths     []string `json:"paths_to_remove,omitempty"`
+		Preserved bool     `json:"canonical_artifacts_preserved"`
+	}{o.Status, o.Workspace, o.Class, o.EntriesRemoved, o.BytesRemoved, paths, true}
+}
 
 // Store removes one exact disposable class without touching managed artifacts.
 type Store interface {
@@ -82,6 +107,9 @@ func (a *Action) Execute(ctx context.Context, input Input) (Output, error) {
 		return Output{}, &errs.Error{ID: "workspace.clean.failed", Kind: errs.KindOperation, Operation: "workspace.clean", Resource: input.Workspace, Summary: "Workspace cleanup failed.", Cause: err, Retryable: retryable, CorrectiveAction: correctiveAction}
 	}
 	result.Status, result.Workspace, result.Class = "cleaned", input.Workspace, input.Class
+	if input.Preview {
+		result.Status = "preview"
+	}
 	result.CanonicalArtifactsPreserved = true
 	return Output{Result: result, Help: []string{commandhint.Command("workspace", "status", "--workspace", input.Workspace)}}, nil
 }

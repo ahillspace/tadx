@@ -786,7 +786,7 @@ Install the bundled TADX Guidance packages into the selected agent's global skil
 - Local write: Yes
 - Remote mutation: No
 - Supports `--preview`: Yes
-- Supports `--batch-file`: No
+- Supports `--batch-file`: Yes
 - Raw capable: No
 - Safety and guard: Bounded home-relative paths; symlink rejection; staged replacement of TADX-owned packages including local edits; unrelated skills preserved; no instruction or rules files
 - Artifact effect: None
@@ -812,7 +812,7 @@ Remove TADX Guidance packages from one selected agent target.
 - Local write: Yes
 - Remote mutation: No
 - Supports `--preview`: Yes
-- Supports `--batch-file`: No
+- Supports `--batch-file`: Yes
 - Raw capable: No
 - Safety and guard: Exact bounded TADX-owned package paths; symlink rejection; unrelated skills preserved
 - Artifact effect: None
@@ -838,7 +838,7 @@ Resolve a complete PAT pair, sign in, and verify the selected Tableau site.
 - Local write: No
 - Remote mutation: No
 - Supports `--preview`: No
-- Supports `--batch-file`: No
+- Supports `--batch-file`: Yes
 - Raw capable: No
 - Safety and guard: Never echo PAT/token; complete environment-variable pair overrides native storage
 - Artifact effect: None
@@ -889,8 +889,8 @@ Remove TADX's stored PAT for one environment without revoking the PAT in Tableau
 - Implementation state: implemented
 - Local write: Yes
 - Remote mutation: No
-- Supports `--preview`: No
-- Supports `--batch-file`: No
+- Supports `--preview`: Yes
+- Supports `--batch-file`: Yes
 - Raw capable: No
 - Safety and guard: Exact alias; idempotent local removal; remote PAT remains valid
 - Artifact effect: None
@@ -916,7 +916,7 @@ Report resolved auth configuration and selected credential source without reveal
 - Local write: No
 - Remote mutation: No
 - Supports `--preview`: No
-- Supports `--batch-file`: No
+- Supports `--batch-file`: Yes
 - Raw capable: No
 - Safety and guard: Does not claim remote validity; secret redaction
 - Artifact effect: None
@@ -941,8 +941,8 @@ Collect selected inventory scopes and atomically replace one normalized cache ge
 - Implementation state: implemented
 - Local write: Yes
 - Remote mutation: No
-- Supports `--preview`: No
-- Supports `--batch-file`: No
+- Supports `--preview`: Yes
+- Supports `--batch-file`: Yes
 - Raw capable: No
 - Safety and guard: Inventory failures preserve the prior generation; selected permission 403s preserve useful inventory with explicit incomplete permission coverage; environment cache_max_concurrency defaults to 32 and accepts 1..256; starts at min(4, maximum) and ramps gradually; rate-limited reads share one run cooldown; explicit refresh transactionally rebuilds recognized older cache schemas
 - Artifact effect: None
@@ -968,7 +968,7 @@ Report generation age, completeness, source, and stale state.
 - Local write: No
 - Remote mutation: No
 - Supports `--preview`: No
-- Supports `--batch-file`: No
+- Supports `--batch-file`: Yes
 - Raw capable: No
 - Safety and guard: Uninitialized before first refresh; scope completeness remains explicit; 12-hour stale warning; older cache schema requires explicit cache refresh; status never rebuilds the cache
 - Artifact effect: None
@@ -994,7 +994,7 @@ Return focused execution, ownership, selector, safety, and availability guidance
 - Local write: No
 - Remote mutation: No
 - Supports `--preview`: No
-- Supports `--batch-file`: No
+- Supports `--batch-file`: Yes
 - Raw capable: No
 - Safety and guard: Exact ID; includes delegated surfaces
 - Artifact effect: None
@@ -1098,7 +1098,7 @@ List bounded upstream column metadata; --all collects the bounded matching scope
 - Local write: No
 - Remote mutation: No
 - Supports `--preview`: No
-- Supports `--batch-file`: No
+- Supports `--batch-file`: Yes
 - Raw capable: No
 - Safety and guard: Distinct identity namespaces; bounded coverage; local validation; explicit writes preserve unmentioned properties
 - Artifact effect: None
@@ -1228,7 +1228,7 @@ Search upstream databases and tables; column text matching is a bounded table-sc
 - Local write: No
 - Remote mutation: No
 - Supports `--preview`: No
-- Supports `--batch-file`: No
+- Supports `--batch-file`: Yes
 - Raw capable: No
 - Safety and guard: Distinct identity namespaces; bounded coverage; local validation; explicit writes preserve unmentioned properties
 - Artifact effect: None
@@ -1280,7 +1280,7 @@ List bounded upstream table metadata; --all collects the bounded matching scope.
 - Local write: No
 - Remote mutation: No
 - Supports `--preview`: No
-- Supports `--batch-file`: No
+- Supports `--batch-file`: Yes
 - Raw capable: No
 - Safety and guard: Distinct identity namespaces; bounded coverage; local validation; explicit writes preserve unmentioned properties
 - Artifact effect: None
@@ -1384,7 +1384,7 @@ List supported content label attachments on exact database, table, column, datas
 - Local write: No
 - Remote mutation: No
 - Supports `--preview`: No
-- Supports `--batch-file`: No
+- Supports `--batch-file`: Yes
 - Raw capable: No
 - Safety and guard: Exact identities; fresh pre-write validation; read-only preview; confirmed partial outcomes retained
 - Artifact effect: None
@@ -1565,7 +1565,7 @@ Download one datasource, or up to 100 repeated authoritative datasource LUIDs se
 - Implementation state: implemented
 - Local write: Yes
 - Remote mutation: No
-- Supports `--preview`: No
+- Supports `--preview`: Yes
 - Supports `--batch-file`: Yes
 - Raw capable: No
 - Safety and guard: Batch selectors prevalidated; sequential processing continues independent failures and returns aggregate failure; dirty re-pull requires --overwrite; incomplete lineage warns; no package-semantic loss
@@ -1644,7 +1644,7 @@ Diagnose config, PAT presence and validity, Tableau connectivity, cache, workspa
 - Local write: No
 - Remote mutation: No
 - Supports `--preview`: No
-- Supports `--batch-file`: No
+- Supports `--batch-file`: Yes
 - Raw capable: No
 - Safety and guard: Redacted checks; no external-tool connection checks; no persistent logging unless TADX_LOG_LEVEL is set
 - Artifact effect: None
@@ -1669,8 +1669,8 @@ Add one named environment profile containing secret references, not secret value
 - Implementation state: implemented
 - Local write: Yes
 - Remote mutation: No
-- Supports `--preview`: No
-- Supports `--batch-file`: No
+- Supports `--preview`: Yes
+- Supports `--batch-file`: Yes
 - Raw capable: No
 - Safety and guard: Schema validation; collision guard; atomic file replacement; omitted cache concurrency uses 32
 - Artifact effect: None
@@ -1696,7 +1696,7 @@ Inspect one resolved non-secret environment profile, including its cache concurr
 - Local write: No
 - Remote mutation: No
 - Supports `--preview`: No
-- Supports `--batch-file`: No
+- Supports `--batch-file`: Yes
 - Raw capable: No
 - Safety and guard: Secret redaction; exact alias
 - Artifact effect: None
@@ -1747,8 +1747,8 @@ Remove one named environment profile.
 - Implementation state: implemented
 - Local write: Yes
 - Remote mutation: No
-- Supports `--preview`: No
-- Supports `--batch-file`: No
+- Supports `--preview`: Yes
+- Supports `--batch-file`: Yes
 - Raw capable: No
 - Safety and guard: Exact alias; default-reference guard
 - Artifact effect: None
@@ -1773,7 +1773,7 @@ Set the default read environment.
 - Implementation state: implemented
 - Local write: Yes
 - Remote mutation: No
-- Supports `--preview`: No
+- Supports `--preview`: Yes
 - Supports `--batch-file`: No
 - Raw capable: No
 - Safety and guard: Alias must exist; no secret output
@@ -1799,8 +1799,8 @@ Update explicit fields of one environment profile.
 - Implementation state: implemented
 - Local write: Yes
 - Remote mutation: No
-- Supports `--preview`: No
-- Supports `--batch-file`: No
+- Supports `--preview`: Yes
+- Supports `--batch-file`: Yes
 - Raw capable: No
 - Safety and guard: Exact alias; secret redaction; atomic file replacement; setting and clearing cache concurrency conflict; clearing restores default 32
 - Artifact effect: None
@@ -1955,7 +1955,7 @@ Download one flow, or up to 100 repeated authoritative flow LUIDs sequentially, 
 - Implementation state: implemented
 - Local write: Yes
 - Remote mutation: No
-- Supports `--preview`: No
+- Supports `--preview`: Yes
 - Supports `--batch-file`: Yes
 - Raw capable: No
 - Safety and guard: Batch selectors prevalidated; sequential processing continues independent failures and returns aggregate failure; dirty re-pull requires --overwrite; incomplete lineage warns
@@ -2033,7 +2033,7 @@ Capture bounded content, database, and table lineage for one exact workbook, pub
 - Implementation state: implemented
 - Local write: Yes
 - Remote mutation: No
-- Supports `--preview`: No
+- Supports `--preview`: Yes
 - Supports `--batch-file`: Yes
 - Raw capable: No
 - Safety and guard: Content REST and Metadata identities remain distinct; physical assets use Metadata IDs only; incomplete results are explicit; no dependency acquisition
@@ -2190,7 +2190,7 @@ List a bounded live selection of projects, or explicitly collect the selected in
 - Local write: Yes
 - Remote mutation: No
 - Supports `--preview`: No
-- Supports `--batch-file`: No
+- Supports `--batch-file`: Yes
 - Raw capable: No
 - Safety and guard: Ordinary live lists use bounded provider reads without SQLite access; --all collects through the shared inventory collector and renders in memory; complete unfiltered collections atomically replace the resource cache scope on a best-effort basis; filtered collections save selected observations; cache write failure preserves the live answer with a warning; --cache is local-only; --all rejects incomplete coverage and results beyond 10000 records; --full changes presentation only
 - Artifact effect: Best-effort cache update only with live --all
@@ -2397,7 +2397,7 @@ Materialize one portable definition with complete metric variants, datasource re
 - Implementation state: implemented
 - Local write: Yes
 - Remote mutation: No
-- Supports `--preview`: No
+- Supports `--preview`: Yes
 - Supports `--batch-file`: Yes
 - Raw capable: No
 - Safety and guard: Dirty re-pull requires --overwrite; remote read is authoritative
@@ -2554,7 +2554,7 @@ List metrics in one definition with internal bounded pagination.
 - Local write: No
 - Remote mutation: No
 - Supports `--preview`: No
-- Supports `--batch-file`: No
+- Supports `--batch-file`: Yes
 - Raw capable: No
 - Safety and guard: Definition-scoped identity; internal continuation with truthful more_available; --cache never contacts Tableau or falls back
 - Artifact effect: None
@@ -2606,7 +2606,7 @@ Search native Tableau content plus administration and Pulse resources through on
 - Local write: No
 - Remote mutation: No
 - Supports `--preview`: No
-- Supports `--batch-file`: No
+- Supports `--batch-file`: Yes
 - Raw capable: No
 - Safety and guard: Nonempty live content terms use native search; native datasource results are translated to classic REST LUIDs; administration and Pulse retain dedicated adapters; --cache is local-only; blank text requires a concrete type and uses list semantics; internal pagination satisfies --limit with more_available and no opaque cursor output; ordinary live searches do not read or write SQLite
 - Artifact effect: None
@@ -2839,7 +2839,7 @@ Download one workbook, or up to 100 repeated authoritative workbook LUIDs sequen
 - Implementation state: implemented
 - Local write: Yes
 - Remote mutation: No
-- Supports `--preview`: No
+- Supports `--preview`: Yes
 - Supports `--batch-file`: Yes
 - Raw capable: No
 - Safety and guard: Batch selectors prevalidated; sequential processing continues independent failures and returns aggregate failure; dirty workbook re-pull requires --overwrite; dirty dependencies stop acquisition; incomplete lineage warns; bundle persistence is recoverable
@@ -2892,7 +2892,7 @@ Delete one exact managed local artifact, or preview the operation.
 - Local write: Yes
 - Remote mutation: No
 - Supports `--preview`: Yes
-- Supports `--batch-file`: No
+- Supports `--batch-file`: Yes
 - Raw capable: No
 - Safety and guard: Exact identity; workspace boundary; dirty state explicit; never expands into generic cleanup
 - Artifact effect: Delete
@@ -2917,8 +2917,8 @@ Remove explicitly selected disposable local state while preserving canonical art
 - Implementation state: implemented
 - Local write: Yes
 - Remote mutation: No
-- Supports `--preview`: No
-- Supports `--batch-file`: No
+- Supports `--preview`: Yes
+- Supports `--batch-file`: Yes
 - Raw capable: No
 - Safety and guard: Path-boundary guard; managed payloads preserved by default
 - Artifact effect: None
@@ -2943,8 +2943,8 @@ Copy an existing managed workspace under a new identity at &lt;home&gt;/TADX/wor
 - Implementation state: implemented
 - Local write: Yes
 - Remote mutation: No
-- Supports `--preview`: No
-- Supports `--batch-file`: No
+- Supports `--preview`: Yes
+- Supports `--batch-file`: Yes
 - Raw capable: No
 - Safety and guard: Rejects existing destination and symlinked entries; portable name; new identity; name/ID/path collision checks; registered root appears only under --full
 - Artifact effect: None
@@ -2969,8 +2969,8 @@ Create a named workspace with tadx.yaml, artifacts/, and .tadx/ under &lt;home&g
 - Implementation state: implemented
 - Local write: Yes
 - Remote mutation: No
-- Supports `--preview`: No
-- Supports `--batch-file`: No
+- Supports `--preview`: Yes
+- Supports `--batch-file`: Yes
 - Raw capable: No
 - Safety and guard: Portable name, identity, root collision, and path-boundary checks; no implicit creation by pull; registered root appears only under --full
 - Artifact effect: None
@@ -2996,7 +2996,7 @@ Remove one exact registered workspace and its managed root, or preview the opera
 - Local write: Yes
 - Remote mutation: No
 - Supports `--preview`: Yes
-- Supports `--batch-file`: No
+- Supports `--batch-file`: Yes
 - Raw capable: No
 - Safety and guard: Registered root, canonical containment, dirty-state, manifest, symlink, and broad-target guards; default-reference guard
 - Artifact effect: Delete
@@ -3047,8 +3047,8 @@ Move one local artifact without changing Tableau identity.
 - Implementation state: implemented
 - Local write: Yes
 - Remote mutation: No
-- Supports `--preview`: No
-- Supports `--batch-file`: No
+- Supports `--preview`: Yes
+- Supports `--batch-file`: Yes
 - Raw capable: No
 - Safety and guard: Collision/path-boundary guard; no remote move
 - Artifact effect: Update
@@ -3073,8 +3073,8 @@ Adopt an existing on-disk workspace directory into the local registry using its 
 - Implementation state: implemented
 - Local write: Yes
 - Remote mutation: No
-- Supports `--preview`: No
-- Supports `--batch-file`: No
+- Supports `--preview`: Yes
+- Supports `--batch-file`: Yes
 - Raw capable: No
 - Safety and guard: Requires a valid tadx.yaml; name/ID/path collision checks; adopts existing identity, no directory mutation
 - Artifact effect: None
@@ -3099,7 +3099,7 @@ Set one registered and available workspace as the general default.
 - Implementation state: implemented
 - Local write: Yes
 - Remote mutation: No
-- Supports `--preview`: No
+- Supports `--preview`: Yes
 - Supports `--batch-file`: No
 - Raw capable: No
 - Safety and guard: Workspace must exist, remain registered, and have a valid manifest
@@ -3126,7 +3126,7 @@ Report effective workspace, artifact state, provenance, dirty/missing status, an
 - Local write: No
 - Remote mutation: No
 - Supports `--preview`: No
-- Supports `--batch-file`: No
+- Supports `--batch-file`: Yes
 - Raw capable: No
 - Safety and guard: No locking; concurrent races are caller responsibility; machine-local root appears only under --full
 - Artifact effect: Read
@@ -3151,8 +3151,8 @@ Remove one workspace registration while preserving every file in its root.
 - Implementation state: implemented
 - Local write: Yes
 - Remote mutation: No
-- Supports `--preview`: No
-- Supports `--batch-file`: No
+- Supports `--preview`: Yes
+- Supports `--batch-file`: Yes
 - Raw capable: No
 - Safety and guard: Exact registration; default-reference guard; filesystem remains untouched
 - Artifact effect: None

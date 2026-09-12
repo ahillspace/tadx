@@ -9,6 +9,7 @@ import (
 	"reflect"
 	"testing"
 
+	"github.com/ahillspace/tadx/internal/batchspec"
 	"github.com/ahillspace/tadx/internal/cli/clierr"
 	"github.com/ahillspace/tadx/internal/contentbatch"
 	"github.com/spf13/cobra"
@@ -142,11 +143,12 @@ func TestBatchCountsSharedRepeatedFlagsAfterOverrides(t *testing.T) {
 	if err := cmd.Flags().Set("capability", "Read,Write,Delete"); err != nil {
 		t.Fatal(err)
 	}
-	_, count, err := batchArguments(cmd, nil)
+	options := batchspec.Options{NativeSelections: []string{"capability"}}
+	_, count, err := batchRowArguments(cmd, nil, nil, options)
 	if err != nil || count != 3 {
 		t.Fatalf("shared selections: count=%d error=%v", count, err)
 	}
-	_, count, err = batchArguments(cmd, map[string]json.RawMessage{"capability": json.RawMessage(`["Read"]`)})
+	_, count, err = batchRowArguments(cmd, map[string]json.RawMessage{"capability": json.RawMessage(`["Read"]`)}, nil, options)
 	if err != nil || count != 1 {
 		t.Fatalf("overridden selections: count=%d error=%v", count, err)
 	}

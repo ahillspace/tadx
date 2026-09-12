@@ -13,7 +13,7 @@ func TestCategoryHelpExplainsDescendantCommandsWithoutSetup(t *testing.T) {
 		args []string
 		want []string
 	}{
-		{[]string{"admin", "group", "--help"}, []string{"member add", "member remove", "--group-id", "--username", "--minimum-site-role", "--batch-file", "examples:"}},
+		{[]string{"admin", "group", "--help"}, []string{"member add", "member remove", "--group-id", "--username", "--minimum-site-role", "--batch-file", "batch:"}},
 		{[]string{"admin", "--help"}, []string{"group create", "user create", "permission create", "--site-role", "--principal-type"}},
 		{[]string{"content", "workbook", "--help"}, []string{"publish", "pull", "--include-pds", "--file", "--destination-project-id", "--preview"}},
 		{[]string{"pulse", "--help"}, []string{"definition create", "metric fork", "--aggregation", "COUNT_DISTINCT", "--filter", "repeatable", "CUSTOM_N_DAYS"}},

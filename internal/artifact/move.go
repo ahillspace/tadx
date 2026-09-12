@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
@@ -31,6 +32,65 @@ func defaultMoveOperations() moveOperations {
 // Move preserves one managed artifact's bytes and identity.
 func Move(ctx context.Context, request MoveRequest) (Item, error) {
 	return moveWithOperations(ctx, request, defaultMoveOperations())
+}
+
+// PreviewMove validates source identity and destination containment/collision
+// without locks, staging directories, copies, or renames.
+func PreviewMove(ctx context.Context, request MoveRequest) (Item, error) {
+	sourceRoot, err := validateWorkspaceRoot(request.SourceWorkspace)
+	if err != nil {
+		return Item{}, err
+	}
+	destinationRoot, err := validateWorkspaceRoot(request.DestinationWorkspace)
+	if err != nil {
+		return Item{}, err
+	}
+	if sameFilesystemPath(sourceRoot, destinationRoot) {
+		return Item{}, errors.New("source and destination workspaces must differ")
+	}
+	source, err := Resolve(ctx, sourceRoot, request.Selector)
+	if err != nil {
+		return Item{}, err
+	}
+	if pathspec.Escapes(source.Path) {
+		return Item{}, errors.New("artifact path escapes workspace root")
+	}
+	destination := filepath.Join(destinationRoot, filepath.FromSlash(source.Path))
+	if _, err := os.Lstat(destination); err == nil {
+		return Item{}, errors.New("destination artifact already exists")
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return Item{}, err
+	}
+	for parent := filepath.Dir(destination); parent != destinationRoot; parent = filepath.Dir(parent) {
+		info, err := os.Lstat(parent)
+		if err == nil && (info.Mode()&os.ModeSymlink != 0 || !info.IsDir()) {
+			return Item{}, errors.New("destination artifact parent must be a real directory")
+		}
+		if err != nil && !errors.Is(err, os.ErrNotExist) {
+			return Item{}, err
+		}
+	}
+	entries := 0
+	err = filepath.WalkDir(filepath.Join(sourceRoot, filepath.FromSlash(source.Path)), func(_ string, entry fs.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		entries++
+		if entries > 100000 {
+			return errors.New("artifact move preview exceeds 100000 entries")
+		}
+		if entry.Type()&os.ModeSymlink != 0 || (!entry.IsDir() && !entry.Type().IsRegular()) {
+			return errors.New("artifact entries must be real directories or regular files")
+		}
+		return nil
+	})
+	if err != nil {
+		return Item{}, err
+	}
+	return source, nil
 }
 
 func moveWithOperations(ctx context.Context, request MoveRequest, operations moveOperations) (Item, error) {

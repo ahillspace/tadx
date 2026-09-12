@@ -37,12 +37,29 @@ func (a *Action) Execute(ctx context.Context, input Input) (Output, error) {
 	if input.Patch.PATNameEnv.Set && input.Patch.PATSecretEnv.Set && input.Patch.PATNameEnv.Value != "" && strings.EqualFold(input.Patch.PATNameEnv.Value, input.Patch.PATSecretEnv.Value) {
 		return Output{}, usageError("PAT name and secret must use different environment variables")
 	}
-	result, err := a.updater.Update(ctx, input.Alias, input.Patch)
+	update := a.updater.Update
+	if input.Preview {
+		previewer, ok := a.updater.(interface {
+			PreviewUpdate(context.Context, string, Patch) (UpdateResult, error)
+		})
+		if !ok {
+			return Output{}, &errs.Error{ID: "env.profile.update.preview", Kind: errs.KindRuntime, Operation: "env.profile.update", Summary: "Profile preview is not configured.", Retryable: errs.Bool(false), CorrectiveAction: "Configure a read-only profile preview store."}
+		}
+		update = previewer.PreviewUpdate
+	}
+	result, err := update(ctx, input.Alias, input.Patch)
 	if err != nil {
 		retryable, advice := errs.CompleteRetryAdvice(err, "Review the exact environment alias and requested fields, then retry.")
-		return Output{}, &errs.Error{ID: "env.profile.update.write", Kind: errs.KindOperation, Operation: "env.profile.update", Environment: input.Alias, Summary: "Environment profile could not be updated.", Cause: err, Retryable: retryable, CorrectiveAction: advice}
+		id, summary := "env.profile.update.write", "Environment profile could not be updated."
+		if input.Preview {
+			id, summary = "env.profile.update.preview", "Environment profile preview failed."
+		}
+		return Output{}, &errs.Error{ID: id, Kind: errs.KindOperation, Operation: "env.profile.update", Environment: input.Alias, Summary: summary, Cause: err, Retryable: retryable, CorrectiveAction: advice}
 	}
 	changedFields := normalizeChangedFields(result.ChangedFields)
+	if input.Preview {
+		return Output{Status: "preview", Profile: result.Profile, ChangedFields: changedFields, Help: []string{"Execution applies these changed fields after rechecking the configuration. The configuration has not been saved."}}, nil
+	}
 	status := "unchanged"
 	if len(changedFields) > 0 {
 		status = "updated"

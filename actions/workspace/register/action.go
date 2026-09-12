@@ -12,8 +12,9 @@ import (
 // Input names an existing machine-local workspace root and an optional logical
 // name override for the registry.
 type Input struct {
-	Path string
-	Name string
+	Preview bool
+	Path    string
+	Name    string
 }
 
 // Workspace is the complete adopted workspace result.
@@ -27,6 +28,7 @@ type Workspace struct {
 // Output is the stable register result.
 type Output struct {
 	Status    string    `json:"status"`
+	Path      string    `json:"path,omitempty"`
 	Workspace Workspace `json:"workspace"`
 	Help      []string  `json:"help"`
 }
@@ -44,11 +46,28 @@ type compactOutput struct {
 
 // CompactOutput returns the token-bounded register result.
 func (o Output) CompactOutput() any {
+	if o.Status == "preview" {
+		return o.previewOutput()
+	}
 	return compactOutput{Status: o.Status, Workspace: compactWorkspace{Name: o.Workspace.Name}, Details: "--full", Help: o.Help}
 }
 
 // FullOutput returns bounded workspace identity details.
-func (o Output) FullOutput() any { return o }
+func (o Output) FullOutput() any {
+	if o.Status == "preview" {
+		return o.previewOutput()
+	}
+	return o
+}
+
+func (o Output) previewOutput() any {
+	return struct {
+		Status       string `json:"status"`
+		Name         string `json:"name"`
+		Path         string `json:"path"`
+		WillRegister bool   `json:"will_register"`
+	}{o.Status, o.Workspace.Name, o.Path, true}
+}
 
 // Registrar adopts one existing workspace directory into the registry.
 type Registrar interface {
@@ -73,6 +92,9 @@ func (a *Action) Execute(ctx context.Context, input Input) (Output, error) {
 	if err != nil {
 		retryable, correctiveAction := errs.CompleteRetryAdvice(err, "Point --path at an existing workspace that has a valid tadx.yaml, or create one first with tadx workspace create.")
 		return Output{}, &errs.Error{ID: "workspace.register.failed", Kind: errs.KindOperation, Operation: "workspace.register", Resource: input.Name, Summary: "Workspace registration failed.", Cause: err, Retryable: retryable, CorrectiveAction: correctiveAction}
+	}
+	if input.Preview {
+		return Output{Status: "preview", Path: input.Path, Workspace: registered, Help: []string{"Preview only; no files or configuration changed."}}, nil
 	}
 	if registered.Name == "" || registered.ID == "" || !registered.Registered {
 		return Output{}, runtimeError("workspace registration returned an incomplete identity")

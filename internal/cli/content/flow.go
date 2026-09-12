@@ -100,6 +100,7 @@ func newFlowPull(deps Dependencies) *cobra.Command {
 	command.Flags().StringVar(&projectPath, "project", "", "exact slash-delimited project path")
 	command.Flags().StringVar(&input.Workspace, "workspace", "", "logical workspace name; uses deterministic defaults when omitted")
 	command.Flags().BoolVar(&input.Overwrite, "overwrite", false, "replace a dirty local flow artifact")
+	command.Flags().BoolVar(&input.Preview, "preview", false, "resolve acquisition scope and local conflicts without writing artifacts")
 	return command
 }
 

@@ -1,21 +1,20 @@
-Return a bounded inventory of discoverable operations, ownership, and execution availability.
 
-Usage:
-  tadx capability list [flags]
+list (ls):
+  Return a bounded inventory of discoverable operations, ownership, and execution availability.
+  usage: tadx capability list [flags]
+  options:
+    --config (--cfg) <path>  path to the non-secret TADX configuration file
+    --domain (--dom) <domain>  filter by exact command domain
+    --full (--ful, -f)  show expanded bounded details
+    --json (--jsn)  render machine-readable JSON instead of TOON
+    --limit (--lim, -l) <1..10000> (default: 20)  maximum capabilities to return, up to 10000
+    --mutation (--mut)  filter by remote mutation status
+    --owner (--own) <owner>  filter by exact owner
+    --product (--prd) <product>  filter by product availability
+    --resource (--res) <resource>  filter by exact resource
 
-Aliases:
-  list, ls
+  --help (-h)  Show help only; never run the operation.
+  Boolean flags accept =true or =false; a bare flag means true. Omitted options keep their documented default.
 
-Flags:
-  --domain <string>  filter by exact command domain (alias: --dom)
-  -l, --limit <1..10000> (default: 20)  maximum capabilities to return, up to 10000 (alias: --lim)
-  --mutation[=true|false] (default: false)  filter by remote mutation status (alias: --mut)
-  --owner <string>  filter by exact owner (alias: --own)
-  --product <string>  filter by product availability (alias: --prd)
-  --resource <string>  filter by exact resource (alias: --res)
-
-Global Flags:
-  --config <string>  path to the non-secret TADX configuration file (alias: --cfg)
-  -f, --full[=true|false] (default: false)  show expanded bounded details (alias: --ful)
-  --json[=true|false] (default: false)  render machine-readable JSON instead of TOON (alias: --jsn)
-  -h, --help  Show help for this command.
+notes (capability (cap)):
+  Use capability IDs to inspect ownership, availability, and bounded operation details.

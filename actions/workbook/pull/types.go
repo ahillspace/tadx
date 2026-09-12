@@ -1,5 +1,7 @@
 package pull
 
+import "github.com/ahillspace/tadx/internal/value"
+
 import "github.com/ahillspace/tadx/internal/identity"
 
 const (
@@ -12,6 +14,7 @@ const (
 
 // Input selects one remote workbook and explicit existing workspace.
 type Input struct {
+	Preview bool
 	// WorkspaceName is the resolved logical workspace alias used in follow-up commands.
 	WorkspaceName  string
 	Environment    string
@@ -170,6 +173,7 @@ type ArtifactResult struct {
 
 // Output is the stable pull result.
 type Output struct {
+	Preview   *value.AcquisitionPlan
 	Workspace string         `json:"workspace"`
 	Status    string         `json:"status"`
 	Workbook  Workbook       `json:"workbook"`
@@ -246,6 +250,9 @@ type FullResult struct {
 
 // CompactOutput returns the standard response without provenance diagnostics.
 func (o Output) CompactOutput() any {
+	if o.Preview != nil {
+		return *o.Preview
+	}
 	publishedDatasourceCount := knownPublishedDatasourceCount(o.Artifact)
 	warningSource := o.compactWarnings
 	if warningSource == nil {
@@ -275,6 +282,9 @@ func (o Output) CompactOutput() any {
 
 // FullOutput returns bounded provenance and diagnostics for the same pull.
 func (o Output) FullOutput() any {
+	if o.Preview != nil {
+		return *o.Preview
+	}
 	publishedDatasources := o.Artifact.PublishedDatasources
 	publishedDatasourcesOmitted := 0
 	if len(publishedDatasources) > maxFullPublishedDatasourceDetails {

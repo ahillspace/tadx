@@ -32,11 +32,17 @@ func (r authCredentialResolver) Resolve(_ context.Context, alias string) (authlo
 type authLogoutResolver struct{ runtime *runtimeDependencies }
 
 func (r authLogoutResolver) Resolve(_ context.Context, alias string) (authlogout.Target, error) {
-	_, environment, err := r.runtime.environment(alias, true)
+	// Logout changes configuration between batch rows, so resolve the current
+	// credential reference rather than the invocation's remote-read snapshot.
+	configuration, err := config.Load(r.runtime.configPath)
 	if err != nil {
 		return authlogout.Target{}, err
 	}
-	return authlogout.Target{Environment: environment.Alias, EnvironmentCredentialsAvailable: strings.TrimSpace(os.Getenv(environment.Auth.PATNameEnv)) != "" && strings.TrimSpace(os.Getenv(environment.Auth.PATSecretEnv)) != ""}, nil
+	environment, err := configuration.ResolveWriteEnvironment(alias)
+	if err != nil {
+		return authlogout.Target{}, err
+	}
+	return authlogout.Target{Environment: environment.Alias, StoredCredentialReferencePresent: environment.Auth.CredentialRef != "", EnvironmentCredentialsAvailable: strings.TrimSpace(os.Getenv(environment.Auth.PATNameEnv)) != "" && strings.TrimSpace(os.Getenv(environment.Auth.PATSecretEnv)) != ""}, nil
 }
 
 type loginAuthenticator struct{ runtime *runtimeDependencies }

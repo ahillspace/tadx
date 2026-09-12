@@ -13,6 +13,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/ahillspace/tadx/internal/batchspec"
 	"github.com/ahillspace/tadx/internal/cli/clierr"
 	"github.com/ahillspace/tadx/internal/contentbatch"
 	"github.com/spf13/cobra"
@@ -43,8 +44,18 @@ func enableBatches(root *cobra.Command, deps Dependencies) {
 	}
 	var walk func(*cobra.Command)
 	walk = func(cmd *cobra.Command) {
-		if selector, ok := deps.BatchSelectors[cmd.Annotations[CapabilityAnnotation]]; ok && cmd.RunE != nil {
-			attachBatch(root, cmd, selector, deps.Renderer, factory)
+		id := cmd.Annotations[CapabilityAnnotation]
+		options, ok := deps.BatchOptions[id]
+		if !ok {
+			if selector, legacy := deps.BatchSelectors[id]; legacy {
+				ok = true
+				if selector != "" {
+					options.Selectors = []string{selector}
+				}
+			}
+		}
+		if ok && cmd.RunE != nil {
+			attachBatchWithOptions(root, cmd, options, deps.Renderer, factory)
 		}
 		for _, child := range cmd.Commands() {
 			walk(child)
@@ -70,39 +81,87 @@ func (r *repeatedSelector) Set(value string) error {
 }
 
 func attachBatch(root, command *cobra.Command, selector string, renderer Renderer, factory func(Renderer) *cobra.Command) {
-	var file string
-	var repeated *repeatedSelector
-	if flag := command.Flags().Lookup(selector); selector != "" && flag != nil && flag.Value.Type() == "string" {
-		repeated = &repeatedSelector{Value: flag.Value}
-		flag.Value = repeated
-		flag.Usage += "; repeat for a sequential batch"
+	options := batchspec.Options{}
+	if selector != "" {
+		options.Selectors = []string{selector}
 	}
-	command.Flags().StringVar(&file, "batch-file", "", "JSON items with per-item flags for this action (1-100); shared environment and preview stay outside the file")
+	attachBatchWithOptions(root, command, options, renderer, factory)
+}
+
+type batchRow struct {
+	argv       []string
+	emptyLists []string
+}
+
+func attachBatchWithOptions(root, command *cobra.Command, options batchspec.Options, renderer Renderer, factory func(Renderer) *cobra.Command) {
+	var file string
+	for _, selector := range options.Selectors {
+		if flag := command.Flags().Lookup(selector); flag != nil && flag.Value.Type() == "string" {
+			flag.Value = &repeatedSelector{Value: flag.Value}
+			flag.Usage += "; repeat for a sequential batch"
+		}
+	}
+	if command.Annotations == nil {
+		command.Annotations = map[string]string{}
+	}
+	command.Annotations["tadx.batch.file"] = "true"
+	command.Annotations["tadx.batch.selectors"] = strings.Join(options.Selectors, ",")
+	command.Annotations["tadx.batch.native-selections"] = strings.Join(options.NativeSelections, ",")
+	command.Annotations["tadx.batch.positional"] = strconv.FormatBool(options.Positional)
+	command.Annotations["tadx.batch.environment"] = strconv.FormatBool(options.AllowEnvironment)
+	command.Annotations["tadx.batch.max-items"] = strconv.Itoa(contentbatch.MaxItems)
+	usage := "JSON items with per-item flags for this action (1-100); preview and invocation controls stay outside the file"
+	if options.Positional {
+		usage += "; positional values use args:[...]"
+	}
+	if !options.AllowEnvironment {
+		usage += "; environment is shared"
+	}
+	command.Flags().StringVar(&file, "batch-file", "", usage)
 	originalArgs, originalRun := command.Args, command.RunE
-	var rows [][]string
+	var rows []batchRow
 	command.Args = func(cmd *cobra.Command, args []string) error {
 		rows = nil
 		isFile := cmd.Flags().Changed("batch-file")
-		isRepeated := repeated != nil && len(repeated.values) > 1
-		if !isFile && !isRepeated {
+		selector, values, err := varyingBatchSelector(cmd, options)
+		if err != nil {
+			return clierr.Usage(cmd.Annotations[CapabilityAnnotation], err)
+		}
+		positional := options.Positional && len(args) > 1
+		if positional && selector != "" {
+			return clierr.Usage(cmd.Annotations[CapabilityAnnotation], errors.New("repeat only one selector dimension; use explicit batch-file rows for different pairs"))
+		}
+		// Existing native selector slices keep their single invocation contract.
+		// They still participate in the ambiguous-dimension check above.
+		generic := false
+		if selector != "" {
+			_, generic = cmd.Flags().Lookup(selector).Value.(*repeatedSelector)
+		}
+		if !isFile && !generic && !positional {
 			if originalArgs != nil {
 				return originalArgs(cmd, args)
 			}
 			return nil
 		}
-		if len(args) != 0 {
-			return clierr.Usage(cmd.Annotations[CapabilityAnnotation], errors.New("batch items use named flags, not positional arguments"))
+		if len(args) != 0 && !options.Positional {
+			return clierr.Usage(cmd.Annotations[CapabilityAnnotation], errors.New("this action's batch items do not accept positional arguments"))
 		}
-		if isFile && isRepeated {
+		if isFile && (generic || positional) {
 			return clierr.Usage(cmd.Annotations[CapabilityAnnotation], errors.New("use --batch-file or repeated selectors, not both"))
 		}
 		var items []map[string]json.RawMessage
-		var err error
 		if isFile {
 			items, err = readBatchItems(file)
+		} else if positional {
+			if err = contentbatch.Validate(args); err == nil {
+				for _, value := range args {
+					encoded, _ := json.Marshal([]string{value})
+					items = append(items, map[string]json.RawMessage{"args": encoded})
+				}
+			}
 		} else {
-			if err = contentbatch.Validate(repeated.values); err == nil {
-				for _, id := range repeated.values {
+			if err = contentbatch.Validate(values); err == nil {
+				for _, id := range values {
 					encoded, _ := json.Marshal(id)
 					items = append(items, map[string]json.RawMessage{selector: encoded})
 				}
@@ -115,7 +174,7 @@ func attachBatch(root, command *cobra.Command, selector string, renderer Rendere
 		seen := map[string]bool{}
 		work := 0
 		for index, item := range items {
-			argv, count, err := batchArguments(cmd, item)
+			row, count, err := batchRowArguments(cmd, item, args, options)
 			if err != nil {
 				return clierr.Usage(cmd.Annotations[CapabilityAnnotation], fmt.Errorf("batch item %d: %w", index+1, err))
 			}
@@ -123,12 +182,15 @@ func attachBatch(root, command *cobra.Command, selector string, renderer Rendere
 			if work > contentbatch.MaxItems {
 				return clierr.Usage(cmd.Annotations[CapabilityAnnotation], fmt.Errorf("batch expands beyond %d selections", contentbatch.MaxItems))
 			}
-			key, _ := json.Marshal(argv)
+			key, _ := json.Marshal(struct {
+				Args  []string
+				Empty []string
+			}{row.argv, row.emptyLists})
 			if seen[string(key)] {
 				return clierr.Usage(cmd.Annotations[CapabilityAnnotation], fmt.Errorf("duplicate batch item %d", index+1))
 			}
 			seen[string(key)] = true
-			argv = append(append([]string(nil), path...), argv...)
+			row.argv = append(append([]string(nil), path...), row.argv...)
 			// Parse and validate all flag types, selectors in Args, and required
 			// groups before dispatch. RunE/action validation still owns semantics.
 			check := factory(&batchCollector{})
@@ -136,14 +198,27 @@ func attachBatch(root, command *cobra.Command, selector string, renderer Rendere
 			if err != nil {
 				return err
 			}
+			if err := applyEmptyBatchLists(leaf, row.emptyLists); err != nil {
+				return err
+			}
+			checkArgs := leaf.Args
+			leaf.Args = func(cmd *cobra.Command, args []string) error {
+				if _, _, err := varyingBatchSelector(cmd, options); err != nil {
+					return err
+				}
+				if checkArgs != nil {
+					return checkArgs(cmd, args)
+				}
+				return nil
+			}
 			leaf.RunE = func(*cobra.Command, []string) error { return nil }
 			check.SetOut(io.Discard)
 			check.SetErr(io.Discard)
-			check.SetArgs(argv)
+			check.SetArgs(row.argv)
 			if err := check.ExecuteContext(cmd.Context()); err != nil {
 				return clierr.Usage(cmd.Annotations[CapabilityAnnotation], fmt.Errorf("batch item %d: %w", index+1, err))
 			}
-			rows = append(rows, argv)
+			rows = append(rows, row)
 		}
 		return nil
 	}
@@ -159,10 +234,19 @@ func attachBatch(root, command *cobra.Command, selector string, renderer Rendere
 			i, _ := strconv.Atoi(index)
 			capture := &batchCollector{}
 			child := factory(capture)
+			row := rows[i-1]
+			path := strings.Fields(strings.TrimPrefix(cmd.CommandPath(), root.Name()+" "))
+			leaf, _, err := child.Find(path)
+			if err != nil {
+				return nil, err
+			}
+			if err := applyEmptyBatchLists(leaf, row.emptyLists); err != nil {
+				return nil, err
+			}
 			child.SetOut(io.Discard)
 			child.SetErr(cmd.ErrOrStderr())
-			child.SetArgs(rows[i-1])
-			err := child.ExecuteContext(ctx)
+			child.SetArgs(row.argv)
+			err = child.ExecuteContext(ctx)
 			var partial interface{ OperationOutput() any }
 			if capture.value == nil && errors.As(err, &partial) {
 				capture.value = partial.OperationOutput()
@@ -177,6 +261,52 @@ func attachBatch(root, command *cobra.Command, selector string, renderer Rendere
 		}
 		return nil
 	}
+}
+
+// varyingBatchSelector distinguishes independent target dimensions from native
+// action properties such as repeated capabilities, filters or desired members.
+func varyingBatchSelector(command *cobra.Command, options batchspec.Options) (string, []string, error) {
+	var selected string
+	var values []string
+	for _, name := range options.Selectors {
+		flag := command.Flags().Lookup(name)
+		if flag == nil {
+			continue
+		}
+		var entries []string
+		switch value := flag.Value.(type) {
+		case *repeatedSelector:
+			entries = value.values
+		case pflag.SliceValue:
+			entries = value.GetSlice()
+		}
+		if len(entries) <= 1 {
+			continue
+		}
+		if selected != "" {
+			return "", nil, errors.New("repeat only one selector dimension; use explicit batch-file rows for different pairs")
+		}
+		selected, values = name, entries
+	}
+	return selected, values, nil
+}
+
+func applyEmptyBatchLists(command *cobra.Command, names []string) error {
+	for _, name := range names {
+		flag := command.Flags().Lookup(name)
+		if flag == nil {
+			return fmt.Errorf("unknown list flag %q", name)
+		}
+		value, ok := flag.Value.(pflag.SliceValue)
+		if !ok {
+			return fmt.Errorf("--%s is not a list", name)
+		}
+		if err := value.Replace([]string{}); err != nil {
+			return err
+		}
+		flag.Changed = true
+	}
+	return nil
 }
 
 func readBatchItems(path string) ([]map[string]json.RawMessage, error) {
@@ -272,7 +402,14 @@ func uniqueJSONKeys(data []byte) error {
 }
 
 func batchArguments(command *cobra.Command, item map[string]json.RawMessage) ([]string, int, error) {
+	row, count, err := batchRowArguments(command, item, nil, batchspec.Options{})
+	return row.argv, count, err
+}
+
+func batchRowArguments(command *cobra.Command, item map[string]json.RawMessage, inheritedArgs []string, options batchspec.Options) (batchRow, int, error) {
 	values := map[string][]string{}
+	positionals := append([]string(nil), inheritedArgs...)
+	var row batchRow
 	command.Flags().Visit(func(flag *pflag.Flag) {
 		if flag.Name == "batch-file" {
 			return
@@ -285,27 +422,50 @@ func batchArguments(command *cobra.Command, item map[string]json.RawMessage) ([]
 	})
 	work := 1
 	for name, raw := range item {
+		if name == "args" {
+			if !options.Positional {
+				return row, 0, errors.New("this action does not accept positional batch args")
+			}
+			var value any
+			if err := json.Unmarshal(raw, &value); err != nil {
+				return row, 0, err
+			}
+			entries, ok := value.([]any)
+			if !ok || len(entries) > contentbatch.MaxItems {
+				return row, 0, fmt.Errorf("args requires an array of at most %d strings", contentbatch.MaxItems)
+			}
+			positionals = nil
+			for _, entry := range entries {
+				value, ok := entry.(string)
+				if !ok {
+					return row, 0, errors.New("args requires string values")
+				}
+				positionals = append(positionals, value)
+			}
+			continue
+		}
 		switch name {
-		case "environment", "config", "preview", "json", "full", "batch-file", "help", "version", "raw", "force":
-			return nil, 0, fmt.Errorf("--%s must be selected on the command, not in a batch item", name)
+		case "environment":
+			if !options.AllowEnvironment {
+				return row, 0, errors.New("--environment must be selected on the command, not in a batch item")
+			}
+		case "config", "preview", "json", "full", "batch-file", "help", "version", "raw", "force":
+			return row, 0, fmt.Errorf("--%s must be selected on the command, not in a batch item", name)
 		}
 		flag := command.Flags().Lookup(name)
 		if flag == nil || flag.Name != name {
-			return nil, 0, fmt.Errorf("unknown or noncanonical flag %q", name)
+			return row, 0, fmt.Errorf("unknown or noncanonical flag %q", name)
 		}
 		var value any
 		decoder := json.NewDecoder(bytes.NewReader(raw))
 		decoder.UseNumber()
 		if err := decoder.Decode(&value); err != nil {
-			return nil, 0, err
+			return row, 0, err
 		}
 		var entries []any
 		if list, ok := value.([]any); ok {
 			if _, ok := flag.Value.(pflag.SliceValue); !ok {
-				return nil, 0, fmt.Errorf("--%s is not repeatable", name)
-			}
-			if len(list) == 0 || len(list) > contentbatch.MaxItems {
-				return nil, 0, fmt.Errorf("--%s requires 1-%d values", name, contentbatch.MaxItems)
+				return row, 0, fmt.Errorf("--%s is not a list; use separate batch items for scalar selectors", name)
 			}
 			entries = list
 		} else {
@@ -322,19 +482,42 @@ func batchArguments(command *cobra.Command, item map[string]json.RawMessage) ([]
 			case json.Number:
 				str = string(v)
 			default:
-				return nil, 0, fmt.Errorf("--%s requires scalar values", name)
+				return row, 0, fmt.Errorf("--%s requires scalar values", name)
 			}
 			values[name] = append(values[name], str)
 		}
 	}
 	names := make([]string, 0, len(values))
 	for name, entries := range values {
-		if len(entries) > work {
-			work = len(entries)
+		if len(entries) == 0 {
+			row.emptyLists = append(row.emptyLists, name)
 		}
 		names = append(names, name)
 	}
+	// Count native target/rule actions, not property values within one action.
+	// Row and byte bounds remain global; each action validates its own lists.
+	for _, name := range append(append([]string(nil), options.Selectors...), options.NativeSelections...) {
+		flag := command.Flags().Lookup(name)
+		if flag == nil {
+			continue
+		}
+		if _, ok := flag.Value.(pflag.SliceValue); !ok {
+			continue
+		}
+		entries, provided := values[name]
+		count := len(entries)
+		if !provided {
+			count = len(flag.Value.(pflag.SliceValue).GetSlice())
+		}
+		if count > contentbatch.MaxItems || (count > 0 && work > contentbatch.MaxItems/count) {
+			return row, 0, fmt.Errorf("batch expands beyond %d selections", contentbatch.MaxItems)
+		}
+		if count > 1 {
+			work *= count
+		}
+	}
 	sort.Strings(names)
+	sort.Strings(row.emptyLists)
 	var argv []string
 	for _, name := range names {
 		flag := command.Flags().Lookup(name)
@@ -349,5 +532,10 @@ func batchArguments(command *cobra.Command, item map[string]json.RawMessage) ([]
 			argv = append(argv, "--"+name+"="+value)
 		}
 	}
-	return argv, work, nil
+	if len(positionals) != 0 {
+		argv = append(argv, "--")
+		argv = append(argv, positionals...)
+	}
+	row.argv = argv
+	return row, work, nil
 }

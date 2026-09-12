@@ -1,5 +1,7 @@
 package pull
 
+import "github.com/ahillspace/tadx/internal/value"
+
 import (
 	"context"
 	"errors"
@@ -39,6 +41,19 @@ func (a *Action) Execute(ctx context.Context, input Input) (Output, error) {
 	if err != nil {
 		retryable, correctiveAction := errs.CompleteRetryAdvice(err, "Review the exact flow selector, then retry.")
 		return Output{}, &errs.Error{ID: "flow.pull.resolve", Kind: errs.KindOperation, Operation: "flow.pull", Environment: input.Environment, Site: input.Site, Summary: "Flow resolution failed.", Cause: err, Retryable: retryable, CorrectiveAction: correctiveAction, TableauRequestID: errs.TableauRequestID(err)}
+	}
+	if input.Preview {
+		previewer, ok := a.writer.(interface {
+			PreviewFlow(context.Context, Input, Flow) (value.AcquisitionPlan, error)
+		})
+		if !ok {
+			return Output{}, &errs.Error{ID: "flow.pull.preview", Kind: errs.KindRuntime, Operation: "flow.pull", Summary: "Acquisition preview is not configured.", Retryable: errs.Bool(false), CorrectiveAction: "Configure read-only artifact preflight."}
+		}
+		plan, err := previewer.PreviewFlow(ctx, input, flow)
+		if err != nil {
+			return Output{}, err
+		}
+		return Output{Status: "preview", Workspace: input.WorkspaceName, Flow: flow, Preview: &plan}, nil
 	}
 	download, err := a.reader.DownloadFlow(ctx, flow.LUID)
 	if err != nil {

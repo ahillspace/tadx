@@ -55,10 +55,10 @@ func TestCategoryHelpExplainsAllDescendantActions(t *testing.T) {
 	got := renderedHelp(t, admin)
 	for _, want := range []string{
 		"tadx admin <command> [flags]", "group member list [query]", "group member remove <id>",
-		"flags{group member list}", "flags{group member remove}", "--limit <number>", "default: 25",
-		"--member-id <string>", "repeatable", "--group-id <string>", "required",
+		"group (grp) member (mem) list (ls):", "group (grp) member (mem) remove (rm):", "--limit (--lim, -l) <number>", "default: 25",
+		"--member-id (--mid) <string>", "repeatable", "--group-id <string>", "required",
 		"at least one of: --member-id, --name", "mutually exclusive: --member-id, --name",
-		"alias: --env", "aliases: group=grp, member=mem", "Use an exact identity.",
+		"--environment (--env, -e)", "Use an exact identity.",
 		"tadx admin group member remove user-id --group-id group-id --preview",
 	} {
 		if !strings.Contains(got, want) {
@@ -101,7 +101,7 @@ func TestCategoryHelpOmitsHiddenTreeAndKeepsRootCompact(t *testing.T) {
 		t.Fatalf("hidden metadata leaked:\n%s", category)
 	}
 	got := renderedHelp(t, root)
-	if !strings.Contains(got, "admin") || !strings.Contains(got, "Manage users and groups") || !strings.Contains(got, "tadx admin --help") {
+	if !strings.Contains(got, "admin (adm)") || !strings.Contains(got, "Manage users and groups") || !strings.Contains(got, "tadx admin group --help") {
 		t.Fatalf("root lacks category index:\n%s", got)
 	}
 	if strings.Contains(got, "member-id") || strings.Contains(got, "group member remove") {
@@ -110,7 +110,7 @@ func TestCategoryHelpOmitsHiddenTreeAndKeepsRootCompact(t *testing.T) {
 }
 
 func TestCategoryHelpNeverRunsHooksOrShowsCurrentValues(t *testing.T) {
-	for _, args := range [][]string{{"admin", "--help"}, {"adm", "grp", "mem", "--help"}, {"help", "admin", "group"}, {"admin", "group", "member", "remove", "--help"}} {
+	for _, args := range [][]string{{"admin", "--help"}, {"admin", "-h"}, {"adm", "grp", "mem", "--help"}, {"help", "admin", "group"}, {"help", "adm", "grp"}, {"admin", "group", "member", "remove", "--help"}, {"adm", "grp", "mem", "rm", "-h"}} {
 		t.Run(strings.Join(args, " "), func(t *testing.T) {
 			root, _, remove := helpTestTree()
 			root.PersistentPreRunE = func(*cobra.Command, []string) error { panic("help ran hook") }
@@ -135,6 +135,33 @@ func TestCategoryHelpNeverRunsHooksOrShowsCurrentValues(t *testing.T) {
 	}
 }
 
+func TestActionSectionsContainEveryNonUniversalFlag(t *testing.T) {
+	root, admin, remove := helpTestTree()
+	list, _, _ := root.Find([]string{"admin", "group", "member", "list"})
+	inspect := &cobra.Command{Use: "inspect", Short: "Inspect membership", Run: remove.Run}
+	inspect.Flags().String("name", "", "lookup name")
+	list.Parent().AddCommand(inspect)
+	installCategoryHelp(root)
+	got := renderedHelp(t, admin)
+	start := strings.Index(got, "group (grp) member (mem) remove (rm):")
+	end := strings.Index(got[start:], "\ncommon flags")
+	if start < 0 || end < 0 {
+		t.Fatalf("action section unavailable:\n%s", got)
+	}
+	section := got[start : start+end]
+	for _, flag := range []string{"--environment", "--group-id", "--member-id", "--name", "--preview"} {
+		if !strings.Contains(section, flag) {
+			t.Errorf("action requires reconstruction to find %s:\n%s", flag, section)
+		}
+	}
+	if strings.Contains(got, "shared flags{") || strings.Contains(got, "alias:") || strings.Contains(got, "aliases:") || strings.Contains(got, "Aliases:") {
+		t.Fatalf("old scattered flags or alias labels remain:\n%s", got)
+	}
+	if strings.Count(got, "render JSON") != 1 {
+		t.Fatalf("universal flags are duplicated:\n%s", got)
+	}
+}
+
 func TestLeafHelpRemainsFocusedAndShowsRelationships(t *testing.T) {
 	root, _, remove := helpTestTree()
 	remove.Flags().String("source", "", "source")
@@ -142,7 +169,7 @@ func TestLeafHelpRemainsFocusedAndShowsRelationships(t *testing.T) {
 	remove.MarkFlagsRequiredTogether("source", "target")
 	installCategoryHelp(root)
 	got := renderedHelp(t, remove)
-	for _, want := range []string{"Usage:", "Aliases:", "remove, rm", "Flags:", "required together: --source, --target", "--preview"} {
+	for _, want := range []string{"usage:", "remove (rm)", "options:", "required together: --source, --target", "--preview"} {
 		if !strings.Contains(got, want) {
 			t.Errorf("leaf help missing %q:\n%s", want, got)
 		}
@@ -171,7 +198,7 @@ func TestCategoryHelpUsesStructuredValuesAndDeclaredDefaults(t *testing.T) {
 	}
 	for _, command := range []*cobra.Command{admin, remove} {
 		got := renderedHelp(t, command)
-		for _, want := range []string{"--mode <Allow|Deny> (required; default: \"Allow\")", "--member-id <LUID> (repeatable)", "--scope <string> (repeatable; comma-separated values accepted; default: [users,groups])", "--json[=true|false] (default: false)"} {
+		for _, want := range []string{"--mode (--mod) <Allow|Deny> (required; default: \"Allow\")", "--member-id (--mid) <LUID> (repeatable)", "--scope (--scp) <string> (repeatable; comma-separated values accepted; default: [users,groups])", "--json (--jsn)", "Boolean flags accept =true or =false"} {
 			if !strings.Contains(got, want) {
 				t.Errorf("missing declared help metadata %q:\n%s", want, got)
 			}
@@ -205,15 +232,15 @@ func TestCategoryHelpDeduplicatesScopedNotesAndActionSummaries(t *testing.T) {
 	remove.Long = "Remove a group member.\n\n" + shared + "\n\nOnly removal changes membership."
 	installCategoryHelp(root)
 	got := renderedHelp(t, admin)
-	for _, single := range []string{"List group members", "Remove a group member", "Batch JSON uses one items array.", "Each item contains flags for this action.", "Only removal changes membership."} {
+	for _, single := range []string{"List group members", "Remove a group member", "Only removal changes membership."} {
 		if strings.Count(got, single) != 1 {
 			t.Errorf("expected %q once:\n%s", single, got)
 		}
 	}
-	if !strings.Contains(got, "notes{all actions}:") || !strings.Contains(got, "notes{group member remove}:") {
-		t.Fatalf("notes lack exact action scopes:\n%s", got)
+	if strings.Count(got, "Batch JSON uses one items array.") != 2 || strings.Count(got, "  notes:") != 2 {
+		t.Fatalf("each action must include its applicable notes:\n%s", got)
 	}
-	if strings.Contains(got, "(alias: rm)") || !strings.Contains(got, "remove=rm") {
+	if strings.Contains(got, "(alias: rm)") || !strings.Contains(got, "remove (rm)") {
 		t.Fatalf("action alias was omitted or repeated in its short description:\n%s", got)
 	}
 }
@@ -227,7 +254,7 @@ func TestCategoryHelpDescribesRepeatedSelectorsAndEffectiveDefaults(t *testing.T
 	installCategoryHelp(root)
 	for _, command := range []*cobra.Command{admin, remove} {
 		got := renderedHelp(t, command)
-		if !strings.Contains(got, "--group-id <string> (repeatable; required)") || !strings.Contains(got, "--limit <number> (default: 25)") {
+		if !strings.Contains(got, "--group-id (--gid) <string> (repeatable; required)") || !strings.Contains(got, "--limit (--lim) <number> (default: 25)") {
 			t.Fatalf("repeat/default metadata missing:\n%s", got)
 		}
 	}
@@ -258,7 +285,7 @@ func TestCategoryHelpRemovesAliasMarkersFromLongSummaries(t *testing.T) {
 			}
 			remove.Long = summary
 			got = renderedHelp(t, admin)
-			if strings.Contains(got, "notes{group member remove}:") {
+			if strings.Contains(got, "  notes:") {
 				t.Fatalf("summary-only Long created an empty or alias-only note:\n%s", got)
 			}
 		})

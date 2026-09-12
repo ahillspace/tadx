@@ -44,6 +44,13 @@ func (a *Action) Execute(ctx context.Context, input Input) (Output, error) {
 	if strings.TrimSpace(target.Environment) == "" {
 		return Output{}, &errs.Error{ID: "auth.logout.target", Kind: errs.KindOperation, Operation: "auth.logout", Environment: input.Environment, Summary: "Selected environment is incomplete.", Retryable: errs.Bool(false), CorrectiveAction: "Complete the selected environment profile before retrying."}
 	}
+	if input.Preview {
+		var warnings []string
+		if target.EnvironmentCredentialsAvailable {
+			warnings = []string{"Environment-variable credentials remain configured and will continue to be used. Commands can still authenticate."}
+		}
+		return Output{Status: "preview", Environment: target.Environment, CredentialSource: CredentialSourceOS, Plan: &Plan{StoredCredentialReferencePresent: target.StoredCredentialReferencePresent, EnvironmentCredentialsAvailable: target.EnvironmentCredentialsAvailable}, Warnings: warnings, Help: []string{"Run without --preview to remove the selected environment's stored credential reference and credential. The Tableau PAT will not be revoked."}}, nil
+	}
 	removed, err := a.store.Remove(ctx, target)
 	if err != nil {
 		retryable, advice := errs.CompleteRetryAdvice(err, "Repair the OS credential store, then retry. The Tableau PAT was not revoked.")

@@ -16,6 +16,7 @@ import (
 	sessionoverview "github.com/ahillspace/tadx/actions/session/overview"
 	workbookpublish "github.com/ahillspace/tadx/actions/workbook/publish"
 	workbookpull "github.com/ahillspace/tadx/actions/workbook/pull"
+	"github.com/ahillspace/tadx/internal/batchspec"
 	admincli "github.com/ahillspace/tadx/internal/cli/admin"
 	agentcli "github.com/ahillspace/tadx/internal/cli/agent"
 	authcli "github.com/ahillspace/tadx/internal/cli/auth"
@@ -105,6 +106,7 @@ type Dependencies struct {
 	ContentLabels         *contentcli.LabelDependencies
 	AdminLabels           *admincli.LabelDependencies
 	BatchSelectors        map[string]string
+	BatchOptions          map[string]batchspec.Options
 	Lister                Lister
 	Getter                Getter
 	Renderer              Renderer

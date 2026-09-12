@@ -61,7 +61,34 @@ func (c *environmentCommands) SetDefault(ctx context.Context, input profilesetde
 	return c.setDefault.Execute(ctx, input)
 }
 
-type configProfileStore struct{ path *string }
+type configProfileStore struct {
+	path    *string
+	preview bool
+}
+
+func (s configProfileStore) updateConfig(createIfMissing bool, mutate func(config.Config) (config.Config, error)) (config.Config, error) {
+	if s.preview {
+		return config.PreviewUpdate(*s.path, createIfMissing, mutate)
+	}
+	return config.Update(*s.path, createIfMissing, mutate)
+}
+
+func (s configProfileStore) PreviewAdd(ctx context.Context, input profileadd.Profile) (profileadd.Profile, error) {
+	s.preview = true
+	return s.Add(ctx, input)
+}
+func (s configProfileStore) PreviewUpdate(ctx context.Context, alias string, patch profileupdate.Patch) (profileupdate.UpdateResult, error) {
+	s.preview = true
+	return s.Update(ctx, alias, patch)
+}
+func (s configProfileStore) PreviewRemove(ctx context.Context, alias string) error {
+	s.preview = true
+	return s.Remove(ctx, alias)
+}
+func (s configProfileStore) PreviewSetDefault(ctx context.Context, alias string) (bool, error) {
+	s.preview = true
+	return s.SetDefault(ctx, alias)
+}
 
 func (s configProfileStore) List(_ context.Context) ([]profilelist.Profile, error) {
 	configuration, err := config.Load(*s.path)
@@ -93,7 +120,7 @@ func (s configProfileStore) Get(_ context.Context, alias string) (profileget.Pro
 }
 
 func (s configProfileStore) Add(_ context.Context, input profileadd.Profile) (profileadd.Profile, error) {
-	updated, err := config.Update(*s.path, true, func(configuration config.Config) (config.Config, error) {
+	updated, err := s.updateConfig(true, func(configuration config.Config) (config.Config, error) {
 		if _, exists := configuration.Environments[input.Alias]; exists {
 			return config.Config{}, fmt.Errorf("environment %q already exists", input.Alias)
 		}
@@ -117,7 +144,7 @@ func (s configProfileStore) Add(_ context.Context, input profileadd.Profile) (pr
 
 func (s configProfileStore) Update(_ context.Context, alias string, patch profileupdate.Patch) (profileupdate.UpdateResult, error) {
 	var changed []string
-	updated, err := config.Update(*s.path, false, func(configuration config.Config) (config.Config, error) {
+	updated, err := s.updateConfig(false, func(configuration config.Config) (config.Config, error) {
 		environment, exists := configuration.Environments[alias]
 		if !exists {
 			return config.Config{}, fmt.Errorf("environment %q does not exist", alias)
@@ -161,7 +188,7 @@ func (s configProfileStore) Update(_ context.Context, alias string, patch profil
 }
 
 func (s configProfileStore) Remove(_ context.Context, alias string) error {
-	_, err := config.Update(*s.path, false, func(configuration config.Config) (config.Config, error) {
+	_, err := s.updateConfig(false, func(configuration config.Config) (config.Config, error) {
 		environment, exists := configuration.Environments[alias]
 		if !exists {
 			return config.Config{}, fmt.Errorf("environment %q does not exist", alias)
@@ -180,7 +207,7 @@ func (s configProfileStore) Remove(_ context.Context, alias string) error {
 
 func (s configProfileStore) SetDefault(_ context.Context, alias string) (bool, error) {
 	changed := false
-	_, err := config.Update(*s.path, false, func(configuration config.Config) (config.Config, error) {
+	_, err := s.updateConfig(false, func(configuration config.Config) (config.Config, error) {
 		if _, exists := configuration.Environments[alias]; !exists {
 			return config.Config{}, fmt.Errorf("environment %q does not exist", alias)
 		}

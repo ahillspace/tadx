@@ -20,8 +20,8 @@ A sole configured environment can be omitted; multiple environments require an e
 | `tadx admin group create` | Create one group. | `--environment <alias> --name <name>` [`--minimum-site-role <role>`] [`--external-user-enabled`] [`--preview`] |
 | `tadx admin group update` | Update group attributes or replace direct membership. | `--environment <alias> --id <luid>` [`--new-name <name>`] [`--minimum-site-role <role>`] [`--external-user-enabled`] [`--set-members --member-id <user-luid>` repeated] [`--preview`] |
 | `tadx admin group delete` | Delete one group without deleting its users. | `--environment <alias> --id <luid>` [`--preview`] |
-| `tadx admin group member add` | Add users without replacing other group members. | `--environment <alias> --group-id <luid>` and repeated `--user-id <luid>` or `--username <exact>` [`--preview`] |
-| `tadx admin group member remove` | Remove users without replacing other group members. | `--environment <alias> --group-id <luid>` and repeated `--user-id <luid>` or `--username <exact>` [`--preview`] |
+| `tadx admin group member add` | Add users without replacing other group members. | `--environment <alias> --group-id <luid>` and `--user-id <luid>` or `--username <exact>`; repeat one selector dimension [`--preview`] |
+| `tadx admin group member remove` | Remove users without replacing other group members. | `--environment <alias> --group-id <luid>` and `--user-id <luid>` or `--username <exact>`; repeat one selector dimension [`--preview`] |
 | `tadx admin permission inspect` | Inspect explicit or project-default permission rules. | `--kind <workbook\|datasource\|flow\|project> --id <resource-luid>` [`--environment <alias>`] [`--default-for <workbooks\|datasources\|flows>`] [`--principal-type <user\|group>`] [`--principal-id <luid>`] [`--capability <name>`] |
 | `tadx admin permission create` | Add one exact permission rule. | `--environment <alias> --kind <kind> --id <resource-luid> --principal-type <user\|group> --principal-id <luid> --capability <name> --mode <Allow\|Deny>` [`--default-for <kind>`] [`--preview`] |
 | `tadx admin permission delete` | Remove one exact permission rule. | Same selectors as permission create, including exact `--mode` [`--default-for <kind>`] [`--preview`] |
@@ -61,7 +61,7 @@ An empty set removes every direct member.
 Use `group member add` or `group member remove` for a single relationship so unrelated members remain unchanged.
 
 Permission actions manage explicit rules, not computed effective access.
-Choose a resource-specific capability from `admin permission create --help` or the supported values in a validation error.
+Choose a resource-specific capability from `tadx admin permission --help`; focused create help contains the same accepted values.
 Project capabilities are `ProjectLeader`, `Read`, and `Write`; do not substitute UI labels such as View or Editor.
 For project defaults, `--default-for` selects the content kind's capability set.
 Project discovery and inspection expose available `content_permissions` and `controlling_permissions_project_luid` metadata, including cache reads.

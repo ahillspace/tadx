@@ -13,6 +13,7 @@ const maxMoveWarnings = 20
 
 // Input selects one exact artifact and destination workspace.
 type Input struct {
+	Preview              bool
 	SourceWorkspace      string
 	DestinationWorkspace string
 	Kind                 string
@@ -98,6 +99,9 @@ func (a *Action) Execute(ctx context.Context, input Input) (Output, error) {
 	if err != nil {
 		retryable, correctiveAction := errs.CompleteRetryAdvice(err, "Review both exact workspaces and the artifact identity, then retry.")
 		return Output{}, &errs.Error{ID: "workspace.move.failed", Kind: errs.KindOperation, Operation: "workspace.move", Resource: input.LUID, Summary: "Workspace artifact move failed.", Cause: err, Retryable: retryable, CorrectiveAction: correctiveAction}
+	}
+	if input.Preview {
+		return Output{Status: "preview", Artifact: moved, SourceWorkspace: input.SourceWorkspace, DestinationWorkspace: input.DestinationWorkspace, Help: []string{"Preview only; no artifact moved."}}, nil
 	}
 	warnings := append([]string(nil), moved.Warnings...)
 	if moved.State == "dirty" {

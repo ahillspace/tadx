@@ -11,8 +11,9 @@ import (
 
 // Input names one workspace and an optional machine-local root override.
 type Input struct {
-	Name string
-	Path string
+	Preview bool
+	Name    string
+	Path    string
 }
 
 // Workspace is the complete created workspace result.
@@ -45,11 +46,29 @@ type compactOutput struct {
 
 // CompactOutput returns the token-bounded create result.
 func (o Output) CompactOutput() any {
+	if o.Status == "preview" {
+		return o.previewOutput()
+	}
 	return compactOutput{Status: o.Status, Workspace: compactWorkspace{Name: o.Workspace.Name}, Details: "--full", Help: o.Help}
 }
 
 // FullOutput returns bounded workspace identity details.
-func (o Output) FullOutput() any { return o }
+func (o Output) FullOutput() any {
+	if o.Status == "preview" {
+		return o.previewOutput()
+	}
+	return o
+}
+
+func (o Output) previewOutput() any {
+	return struct {
+		Status       string   `json:"status"`
+		Name         string   `json:"name"`
+		Root         string   `json:"root"`
+		WillRegister bool     `json:"will_register"`
+		Entries      []string `json:"planned_entries"`
+	}{o.Status, o.Workspace.Name, o.Workspace.Root, true, []string{"tadx.yaml", "artifacts", ".tadx"}}
+}
 
 // Creator creates one named workspace.
 type Creator interface {
@@ -74,6 +93,9 @@ func (a *Action) Execute(ctx context.Context, input Input) (Output, error) {
 	if err != nil {
 		retryable, correctiveAction := errs.CompleteRetryAdvice(err, "Review the exact workspace name and root, then retry.")
 		return Output{}, &errs.Error{ID: "workspace.create.failed", Kind: errs.KindOperation, Operation: "workspace.create", Resource: input.Name, Summary: "Workspace creation failed.", Cause: err, Retryable: retryable, CorrectiveAction: correctiveAction}
+	}
+	if input.Preview {
+		return Output{Status: "preview", Workspace: created, Help: []string{"Preview only; no files or configuration changed."}}, nil
 	}
 	if created.Name == "" || created.ID == "" || created.Root == "" || !created.Registered {
 		return Output{}, runtimeError("workspace creation returned an incomplete identity")

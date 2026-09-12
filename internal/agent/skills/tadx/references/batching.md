@@ -6,23 +6,28 @@
 | --- | --- |
 | `--json` | Emit the normal structured result as JSON for shell parsing. |
 | `--full` | Expand bounded detail without changing the operation or output encoding. |
-| Repeated `--id` | Apply a supported action to up to 100 exact identities in order. |
+| Repeated selector | Vary one supported target dimension for up to 100 selections in order. |
 | `--batch-file <file.json>` | Repeat one supported action with different per-item flags. |
+| `args: ["value"]` in a file item | Supply positional inputs where that action supports them. |
 | `--preview` | Preview the whole selection on actions that support preview. |
 
-Batch support covers content and project lifecycle, datasource schema, lineage, admin users/groups/permissions, and Pulse lifecycle actions.
-Group member add/remove repeat `--user-id` instead of the shared `--group-id`.
-Existing repeated pull IDs and publish artifact selectors remain supported.
-Configuration, authentication, installation, global state, and inventory-list commands do not accept batch files.
-Capability details expose `supports_batch`; leaf help lists the repeatable selector and batch-file option.
+Batch support covers content and project lifecycle, datasource schema, lineage, administration, Pulse, workspace/profile actions, guidance installation, and selected scoped lists and utilities.
+Category and leaf help identify each supported selector, positional input, and batch-file option.
+Vary only one selector dimension: for group membership, repeat users for one group or groups for one user.
+Use explicit file rows for different user/group pairs; TADX does not infer their pairing.
+Interactive login, global policy/default changes, and release installation remain single operations.
+Capability details expose `supports_batch` for feature inventory.
 
 ## Supply different settings
 
 The file contains one `items` array of objects whose keys are canonical long flag names without `--`.
 Item values override shared action flags; arrays supply repeatable flags.
+An explicit empty array clears an inherited repeatable value; it does not mean "keep the shared value."
+An `args` array replaces inherited positional arguments on commands that support positional batch rows.
 Use 1-100 items in a regular UTF-8 JSON file no larger than 1 MiB; expanded selections also stay within 100.
 Duplicate object keys and identical item selections are rejected.
-Set environment, config, preview, force, and output mode on the command, never inside an item.
+Set config, preview, force, and output mode on the command, never inside an item.
+Environment also stays on the command, except for utilities whose help explicitly permits per-item environments.
 File items cannot select a different command or refer to earlier results.
 
 For different permission sets on one project, a file can contain:

@@ -229,12 +229,17 @@ func localImportAllowed(file, imported string) bool {
 		if hasPathPrefix(file, "internal/cli/agent") && imported == "internal/agenttarget" {
 			return true
 		}
-		return matchesPrefix(imported, "actions", "internal/cli") || matchesExact(imported, "internal/errs", "internal/pathspec", "internal/contentbatch", "internal/commandhint")
+		return matchesPrefix(imported, "actions", "internal/cli") || matchesExact(imported, "internal/errs", "internal/pathspec", "internal/contentbatch", "internal/commandhint", "internal/batchspec")
 	case layerResource:
 		return matchesExact(imported, "internal/identity", "internal/value") || matchesPrefix(imported, "internal/tableau")
 	case layerTableau:
 		return matchesExact(imported, "internal/auth", "internal/tableau", "internal/tableau/cache/tabxml", "internal/value")
 	case layerFoundation:
+		// Registry and CLI share only the standard-library-only batch metadata
+		// contract; the registry must not depend on the executable batch runner.
+		if hasPathPrefix(file, "internal/capability") {
+			return imported == "internal/batchspec"
+		}
 		// Installer and startup discovery share directory facts, never auth or actions.
 		if hasPathPrefix(file, "internal/agent") || hasPathPrefix(file, "internal/guidancenotice") {
 			return imported == "internal/agenttarget"
@@ -414,6 +419,7 @@ func isFoundationPackage(file string) bool {
 		hasPathPrefix(file, "internal/agent") ||
 		hasPathPrefix(file, "internal/guidancenotice") ||
 		hasPathPrefix(file, "internal/contentbatch") ||
+		hasPathPrefix(file, "internal/batchspec") ||
 		hasPathPrefix(file, "internal/commandhint") ||
 		hasPathPrefix(file, "internal/architecture") ||
 		hasPathPrefix(file, "internal/auth") ||

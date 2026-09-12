@@ -180,6 +180,7 @@ func newLogin(deps Dependencies) *cobra.Command {
 }
 
 func newLogout(deps Dependencies) *cobra.Command {
+	var preview bool
 	use := deps.LogoutUse
 	if use == "" {
 		use = "logout"
@@ -195,13 +196,13 @@ func newLogout(deps Dependencies) *cobra.Command {
 			if err := cobra.NoArgs(command, args); err != nil {
 				return clierr.Usage("auth.logout", err)
 			}
-			return nil
-		},
-		RunE: func(command *cobra.Command, _ []string) error {
 			if strings.TrimSpace(environment) == "" {
 				return clierr.Usage("auth.logout", errors.New("--environment is required"))
 			}
-			result, err := deps.Logout.Execute(command.Context(), authlogout.Input{Environment: environment})
+			return nil
+		},
+		RunE: func(command *cobra.Command, _ []string) error {
+			result, err := deps.Logout.Execute(command.Context(), authlogout.Input{Environment: environment, Preview: preview})
 			if err != nil {
 				return err
 			}
@@ -209,6 +210,7 @@ func newLogout(deps Dependencies) *cobra.Command {
 		},
 	}
 	command.Flags().StringVar(&environment, "environment", "", "exact environment alias")
+	command.Flags().BoolVar(&preview, "preview", false, "show configured local credential removal without reading or deleting the stored PAT")
 	return command
 }
 

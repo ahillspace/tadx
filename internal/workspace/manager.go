@@ -421,11 +421,16 @@ func applyRegistration(configuration config.Config, name, id, resolvedRoot strin
 	if err != nil || manifest.Workspace.ID != id {
 		return config.Config{}, errors.New("workspace manifest changed before registration")
 	}
+	return planRegistration(configuration, name, id, resolvedRoot)
+}
+
+// planRegistration checks registry collisions without requiring a newly created manifest.
+func planRegistration(configuration config.Config, name, id, resolvedRoot string) (config.Config, error) {
 	for existingName, registration := range configuration.Workspaces {
 		if strings.EqualFold(existingName, name) {
 			return config.Config{}, fmt.Errorf("workspace name %q already exists", existingName)
 		}
-		if registration.ID == id {
+		if id != "" && registration.ID == id {
 			return config.Config{}, fmt.Errorf("workspace identity %q is already registered as %q", id, existingName)
 		}
 		existingRoot, rootErr := canonicalRoot(registration.Path)

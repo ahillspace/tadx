@@ -234,6 +234,9 @@ func (s *cacheRefreshService) Execute(ctx context.Context, input cacherefresh.In
 		return cacherefresh.Output{}, err
 	}
 	input.Environment, input.Site, input.SiteResolved = environment.Alias, environment.SiteContentURL, true
+	if input.Preview {
+		return cacherefresh.New(nil).Execute(ctx, input)
+	}
 	hydrator := cacheHydrator{
 		store: s.commands.store(environment), now: s.commands.runtime.now,
 		executorFor: func(ctx context.Context, alias, site string) (tableaucache.Executor, error) {

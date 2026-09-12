@@ -205,6 +205,7 @@ func newPull(deps Dependencies) *cobra.Command {
 	command.Flags().BoolVar(&includeExtract, "include-extract", true, "include workbook extracts")
 	command.Flags().BoolVar(&input.IncludePDS, "include-pds", false, "acquire direct published datasource dependencies as sibling artifacts without recursion")
 	command.Flags().BoolVar(&input.Overwrite, "overwrite", false, "replace a dirty local artifact")
+	command.Flags().BoolVar(&input.Preview, "preview", false, "resolve acquisition scope and local conflicts without writing artifacts")
 	return command
 }
 
