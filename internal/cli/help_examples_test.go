@@ -104,7 +104,7 @@ func TestCategoryHelpExplainsRequiredAlternatives(t *testing.T) {
 		{"admin group", []string{"create --name <group-name>", "exactly one of: --id, --name"}},
 		{"admin group member", []string{"--group-id", "exactly one of: --user-id, --username"}},
 		{"admin permission", []string{"--principal-type", "--principal-username", "--capability", "--mode"}},
-		{"content workbook publish", []string{"publish: exactly one of: --artifact, --file, --id, --artifact-name", "publish: exactly one of: --project-id, --project", `--batch-file <path>: {"items":`, "canonical names", "1-100"}},
+		{"content workbook publish", []string{"Source (publish):", "| --file <file.twb|file.twbx>", "| --id <luid>", "| --artifact-name", "(--project-id (--pid) <luid> | --project <path>)", "Repeat one selector OR use --batch-file", `{"items":[{"id":"<luid>"}]}`, "Rows: flag keys", "1-100"}},
 		{"pulse definition", []string{"--name", "--datasource-id", "--measure-field", "--date-field", "--dimension", "--datasource-map"}},
 		{"pulse metric", []string{"at least one of: --period, --filter, --exclude-filter", "CUSTOM_N_DAYS", "exactly one of: --user-id, --group-id"}},
 		{"workspace artifact", []string{"--artifact", "both --kind and --id"}},

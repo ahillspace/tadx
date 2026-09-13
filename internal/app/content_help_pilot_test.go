@@ -95,7 +95,7 @@ func TestContentHelpPilotResourceReferencesAndVerbMirrors(t *testing.T) {
 	dir, options := contentHelpPilotSetup(t)
 	content := contentHelpPilotTree(t, options)
 	resources := []string{"workbook", "datasource", "flow", "project"}
-	budgets := map[string]int{"workbook": 5800, "datasource": 3000, "flow": 5200, "project": 4700}
+	budgets := map[string]int{"workbook": 3000, "datasource": 3000, "flow": 3000, "project": 3000}
 	for _, name := range resources {
 		t.Run(name, func(t *testing.T) {
 			resource, _, err := content.Find([]string{name})
@@ -103,18 +103,41 @@ func TestContentHelpPilotResourceReferencesAndVerbMirrors(t *testing.T) {
 				t.Fatalf("resource missing: %v", err)
 			}
 			want := contentHelpPilotRun(t, dir, options, "content", name, "--help")
+			for _, section := range []string{"Usage:", "Shared:", "Target (", "Options:", "Commands:", "Rules:", "Batch:", "Examples:"} {
+				if !strings.Contains(want, section) {
+					t.Errorf("%s reference omits formatted section %q", name, section)
+				}
+			}
+			for _, obsolete := range []string{"flags{", "--id (-i)", "--full (--ful", "inspect (ins)", "delete (del)"} {
+				if strings.Contains(want, obsolete) {
+					t.Errorf("%s reference restores rejected help decoration %q", name, obsolete)
+				}
+			}
+			facts := map[string][]string{
+				"workbook": {"pull: --id <luid> | (--name <name> [--project <path>])", "(default: true)", "empty description clears", "--as-job"},
+				"flow":     {"update: target --owner-id <luid>", "--file <file.tfl|file.tflx>", "--project-id (--pid) <luid>"},
+				"project":  {"delete: --id <luid>", "LockedToProjectWithoutNested", "--top-level=true|false", "(omitted: both)", "--name = --new-name (update)"},
+			}
+			for _, fact := range facts[name] {
+				if !strings.Contains(want, fact) {
+					t.Errorf("%s reference lost resource-specific fact %q", name, fact)
+				}
+			}
+			if name == "flow" && strings.Contains(want, "--as-job") {
+				t.Error("flow help advertises unsupported server-job option")
+			}
 			if size := utf8.RuneCountInString(want); size > budgets[name] {
 				t.Errorf("%s reference has %d characters; budget is %d", name, size, budgets[name])
 			}
 			if name == "datasource" {
 				flat := strings.Join(strings.Fields(want), " ")
 				for _, fact := range []string{
-					"local only; default live", "no writes; mutation gate may be off", "details, not rows",
-					"target: --id (-i) <luid> | (--name", "--project (--prj) <path>) (exact)",
-					"(default 25)", "(default 20)", "measure|dimension|date|excluded",
-					"(dirty local files)", "(destination)", "create (collision fails)", "append/replace (data)",
-					"(one required; omitted unchanged)", "(waits)", "field IDs repeat <=10000",
-					"repeat one selector OR --batch-file", "1-100 sequential items", "env/control flags outside rows",
+					"local only; default: live", "no writes; mutation gate may be off", "details, not rows",
+					"Target (remote, exact): --id <luid> | (--name", "--project (--prj) <path>)",
+					"(default limit: 25)", "(default limit: 20)", "measure|dimension|date|excluded",
+					"(dirty local files)", "(destination)", "create = collision fails", "append/replace = data",
+					"(one required; omitted unchanged)", "(waits)", "Field IDs repeat <=10000",
+					"Repeat one selector OR use --batch-file", "1-100 sequential items", "Env/control flags outside rows",
 				} {
 					if !strings.Contains(flat, fact) {
 						t.Errorf("compact reference lost %q", fact)

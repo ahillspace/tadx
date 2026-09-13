@@ -1,0 +1,74 @@
+Usage: tadx content flow <verb> [flags]
+
+Shared:
+  --environment (--env,-e) <name> (reads: default; writes: sole configured env)
+  --config <path>
+  --json
+  --full (details, not rows)
+
+Target (remote, exact):
+  --id <luid>
+  | (--name <name> --project (--prj) <path>)
+
+Options:
+  --cache (local only; default: live)
+  --preview (no writes; mutation gate may be off)
+  --workspace (--ws,-w) <name> (registered; directory > env > global)
+
+Source (publish):
+  --artifact <artifacts/flow/item>
+  | --file <file.tfl|file.tflx>
+  | --id <luid>
+  | --artifact-name (--arn) <name>
+  ID/unique name: workspace item.
+
+Commands:
+  delete: target [--preview]
+
+  inspect: target [--cache]
+
+  list:
+    [--name <name>] [--owner <name>]
+    [--project-id (--pid) <luid>] [--project-name <leaf>] (exact filters)
+    [--limit <1..10000> | --all] (default limit: 25)
+    [--cache]
+
+  move: target
+    (--destination-project-id (--dpi) <luid> | --destination-project (--dpj) <path>)
+    [--preview]
+
+  publish: source
+    (--project-id <luid> | --project <path>) (destination)
+    [--name <name>] (default: source) [--overwrite]
+    [--workspace <name>] [--preview]
+
+  pull: target
+    [--workspace <name>] [--overwrite] (dirty local files) [--preview]
+
+  update: target --owner-id <luid> [--preview]
+
+Rules:
+  Remote writes require enabled mutations.
+
+  publish: creates by default; --overwrite replaces the exact remote collision.
+
+  list --all: incomplete/overflow fails; may save cache.
+
+Batch:
+  Repeat one selector OR use --batch-file (--btf) <path>.
+
+  Repeated selectors:
+    id         delete, move, update
+    id | name  inspect, pull
+    source     publish (repeated artifact excludes name)
+
+  JSON:
+    {"items":[{"id":"<luid>"}]}
+
+  Rows: flag keys; lists use arrays; rows override CLI; required per row.
+  Env/control flags outside rows.
+  Limits: 1-100 sequential items; <=1MiB/100 selections.
+
+Examples:
+  tadx content flow publish --file x.tfl --project Ops --preview
+  tadx content flow pull --id <luid>

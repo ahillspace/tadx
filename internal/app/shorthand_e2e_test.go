@@ -170,7 +170,7 @@ func TestShorthandHelpAndCompletionExposeAliasesWithoutChangingCanonicalUse(t *t
 	if code := app.Run(context.Background(), []string{"con", "wb", "ins", "--help"}, &help, options); code != 0 {
 		t.Fatalf("alias help code=%d output=%s", code, help.String())
 	}
-	for _, want := range []string{"usage: tadx content workbook <verb> [flags]", "inspect (ins)", "--id (-i)", "--environment (--env, -e)", "--full (--ful, -f)"} {
+	for _, want := range []string{"Usage: tadx content workbook <verb> [flags]", "inspect: target", "--id <luid>", "--environment (--env,-e)", "--full (details, not rows)"} {
 		if !strings.Contains(help.String(), want) {
 			t.Errorf("alias help missing %q:\n%s", want, help.String())
 		}
@@ -179,7 +179,7 @@ func TestShorthandHelpAndCompletionExposeAliasesWithoutChangingCanonicalUse(t *t
 	if code := app.Run(context.Background(), []string{"con", "ds", "del", "--help"}, &deleteHelp, options); code != 0 {
 		t.Fatalf("delete alias help code=%d output=%s", code, deleteHelp.String())
 	}
-	for _, want := range []string{"target: --id (-i) <luid> | (", "--name (--nm,-n) <name> --project (--prj) <path>) (exact)"} {
+	for _, want := range []string{"Target (remote, exact):", "--id <luid>", "| (--name <name> --project (--prj) <path>)"} {
 		if !strings.Contains(deleteHelp.String(), want) {
 			t.Errorf("delete alias help missing %q:\n%s", want, deleteHelp.String())
 		}

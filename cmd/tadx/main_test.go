@@ -102,9 +102,9 @@ func TestCLIProcessBareGroupsKeepHelpBehavior(t *testing.T) {
 		result := runCLI(t, binary, args, nil)
 		inventory := "commands["
 		if args[0] == "content" {
-			inventory = "actions:"
+			inventory = "Commands:"
 		}
-		if result.exitCode != 0 || result.stderr != "" || !strings.Contains(result.stdout, "usage: tadx "+strings.Join(args, " ")) || !strings.Contains(result.stdout, inventory) {
+		if result.exitCode != 0 || result.stderr != "" || !strings.Contains(strings.ToLower(result.stdout), "usage: tadx "+strings.Join(args, " ")) || !strings.Contains(result.stdout, inventory) {
 			t.Fatalf("args = %v, exit = %d, stdout = %q, stderr = %q", args, result.exitCode, result.stdout, result.stderr)
 		}
 		explicit := runCLI(t, binary, append(append([]string{}, args...), "--help"), nil)
@@ -201,7 +201,7 @@ func TestCLIProcessShorthand(t *testing.T) {
 	})
 	t.Run("help advertises flags", func(t *testing.T) {
 		result := runCLI(t, binary, []string{"con", "wb", "pub", "-h"}, nil)
-		for _, want := range []string{"--full (--ful, -f)", "--preview (--pv, -p)", "--environment (--env, -e)"} {
+		for _, want := range []string{"--full (details, not rows)", "--preview", "--environment (--env,-e)"} {
 			if result.exitCode != 0 || !strings.Contains(result.stdout, want) {
 				t.Fatalf("help missing %q: %+v", want, result)
 			}

@@ -1,0 +1,75 @@
+Usage: tadx content project <verb> [flags]
+
+Shared:
+  --environment (--env,-e) <name> (reads: default; writes: sole configured env)
+  --config <path>
+  --json
+  --full (details, not rows)
+
+Target (inspect, move, update; exact):
+  --id <luid>
+  | --project (--prj) <path> (slash-delimited)
+
+Options:
+  --cache (local only; default: live)
+  --preview (no writes; mutation gate may be off)
+
+Commands:
+  create: --name <name>
+    [--parent-id <luid> | --parent <path>] (omitted: top level)
+    [--description <text>]
+    [--content-permissions <mode>] (omitted: server default)
+    [--preview]
+
+  delete: --id <luid> [--preview]
+
+  inspect: target [--cache]
+
+  list:
+    [--name <name>] [--owner <name>] (exact filters)
+    [--parent-id <luid>] (direct parent)
+    [--top-level=true|false] (omitted: both)
+    [--limit <1..10000> | --all] (default limit: 25)
+    [--cache]
+
+  move: target
+    (--parent-id <luid> | --parent <path> | --top-level)
+    [--preview]
+
+  update: target
+    [--new-name <name>] [--description <text>] (empty clears description)
+    [--content-permissions <mode>]
+    (one required; omitted unchanged) [--preview]
+
+Rules:
+  Remote writes require enabled mutations.
+
+  Permission modes:
+    ManagedByOwner | LockedToProject | LockedToProjectWithoutNested
+
+  Legacy aliases (cannot combine with canonical):
+    --project-id = --id (delete, inspect, move, update)
+    --name = --new-name (update)
+
+  move: self/descendant parent rejected; same parent is a no-op.
+  list --all: incomplete/overflow fails; may save cache.
+
+Batch:
+  Repeat one selector OR use --batch-file (--btf) <path>.
+
+  Repeated selectors:
+    name          create
+    id            delete, move
+    id | project  inspect, update
+    parent-id     list
+
+  JSON:
+    {"items":[{"id":"<luid>"}]}
+
+  Rows: flag keys; lists use arrays; rows override CLI; required per row.
+  Env/control flags outside rows.
+  Limits: 1-100 sequential items; <=1MiB/100 selections.
+
+Examples:
+  tadx content project create --name Reports --parent Ops --preview
+  tadx content project move --project Ops/Reports --top-level --preview

@@ -42,30 +42,38 @@ Bare `tadx` remains the session overview, not an alias for `tadx -h`.
 
 ## Compact presentation
 
-Follow gh-axi's compact usage, command inventory, action flag groups, notes, and examples rather than concatenating conventional leaf manuals.
+Use a compact operational reference rather than concatenating conventional leaf manuals.
 TADX additionally supplies short resource and verb descriptions where Tableau terminology does not explain the operation.
 Use this order for operational references:
 
 ```text
-usage: tadx <category> <resource> <verb> [flags]
-actions:
-  verb (alias): short explanation
-flags{shared}:
-  compact shared selectors and applicable options
-flags{verb}:
-  compact action-specific options and inline constraints
-notes:
-  essential behavior not conveyed by syntax
-examples:
+Usage: tadx <category> <resource> <verb> [flags]
+Shared:
+  common invocation flags
+Target:
+  exact selectors
+Options:
+  shared option meanings
+Source:
+  local input alternatives, where applicable
+Commands:
+  verb: required inputs [optional flags] (brief explanation)
+Rules:
+  essential constraints not conveyed by syntax
+Batch:
+  eligible repeated selectors, per-item file syntax, and bounds
+Examples:
   a few complete, useful commands
 ```
 
-Use comma-separated option groups rather than a paragraph per flag.
-Put aliases immediately beside their canonical command or flag, such as `datasource (ds)` and `--environment (--env, -e)`.
-Do not append repeated "alias:" explanations.
+Use [the formatted datasource reference](../internal/cli/help_datasource.txt) as the presentation template.
+Preserve readable indentation and line breaks; omit sections that do not apply.
+Use canonical names, showing only selected useful aliases for frequent or long compound flags, such as `--environment (--env,-e)` and `--workspace (--ws,-w)`.
+Do not decorate every command or flag with aliases; supported shortcuts remain executable without appearing in every reference.
+Put any displayed alias immediately beside its canonical name.
 Explain a shared flag once per reference; identify the actions it applies to instead of implying universal support.
 Keep actual choices, required inputs, meaningful defaults, omission behavior, repeatability, and conflicts inline with the relevant syntax.
-Use concrete placeholders such as `<luid>`, `<path>`, and `<open|closed|all>`, not unexplained "target options" placeholders.
+Use concrete placeholders such as `<luid>`, `<path>`, and `<open|closed|all>`; define shared `target` or `source` syntax once before using it.
 Do not imply that different resources accept identical flags or publish modes.
 
 Retain line breaks between meaningful sections, but remove gratuitous blank lines, repeated headings, and boilerplate.
@@ -94,7 +102,8 @@ Skills should complement help with judgment, not duplicate the flag manual.
 ## Implementation and acceptance
 
 Derive executable command and flag inventory from the actual Cobra tree, with explicit navigation and operational-reference boundaries.
-Keep factual syntax synchronized with validation; use shared presentation metadata for concise explanations rather than copying help strings between levels.
+Keep factual syntax synchronized with validation through automated command and flag coverage checks.
+Store each formatted resource reference once and mirror it at its verbs, rather than maintaining copies at each level.
 Help must work without configuration, authentication, credential access, Tableau calls, or side effects.
 
 Implement and measure the content pilot first for user review before applying the pattern to other categories.

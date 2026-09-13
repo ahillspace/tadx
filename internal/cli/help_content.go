@@ -39,9 +39,9 @@ func writeContentNavigation(out io.Writer, category *cobra.Command) {
 		_, actions := helpNodes(resource)
 		var verbs []string
 		for _, action := range actions {
-			verbs = append(verbs, helpDisplayPath(resource, action))
+			verbs = append(verbs, action.Name())
 		}
-		fmt.Fprintf(out, "  %s: %s\n    %s\n", helpCommandName(resource), contentResourceSummary(resource), strings.Join(verbs, ", "))
+		fmt.Fprintf(out, "  %s: %s\n    %s\n", resource.Name(), contentResourceSummary(resource), strings.Join(verbs, ", "))
 	}
 	fmt.Fprintf(out, "\nUse %s <resource> -h for its reference; --help and %s help content <resource> also work.\n", category.CommandPath(), category.Root().Name())
 }
@@ -67,8 +67,7 @@ type contentHelpEntry struct {
 }
 
 func writeContentReference(out io.Writer, resource *cobra.Command) {
-	if resource.Name() == "datasource" {
-		writeDatasourceReference(out, resource)
+	if writeReviewedContentReference(out, resource) {
 		return
 	}
 	_, actions := helpNodes(resource)
