@@ -32,6 +32,9 @@ func installCategoryHelp(root *cobra.Command) {
 	})
 	root.SetHelpFunc(func(command *cobra.Command, _ []string) {
 		out := command.OutOrStdout()
+		if writeContentPilotHelp(out, command) {
+			return
+		}
 		switch {
 		case command == root:
 			writeRootHelp(out, command)
@@ -108,7 +111,7 @@ func writeRootHelp(out io.Writer, root *cobra.Command) {
 	writeRoadmapGroup(out, "other commands", others)
 	writeFlagSection(out, "global flags", helpFlags(root))
 	writeHelpSyntax(out)
-	fmt.Fprintln(out, "\nCategory help includes every descendant action. Inspect reads details; pull writes local files.")
+	fmt.Fprintln(out, "\nUse resource help for action syntax. Inspect reads details; pull writes local files.")
 	if root.Example != "" {
 		writeExamples(out, root.Example)
 	} else {

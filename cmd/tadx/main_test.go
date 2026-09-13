@@ -100,8 +100,16 @@ func TestCLIProcessBareGroupsKeepHelpBehavior(t *testing.T) {
 		{"pulse", "metric"},
 	} {
 		result := runCLI(t, binary, args, nil)
-		if result.exitCode != 0 || result.stderr != "" || !strings.Contains(result.stdout, "usage: tadx "+strings.Join(args, " ")) || !strings.Contains(result.stdout, "commands[") {
+		inventory := "commands["
+		if args[0] == "content" {
+			inventory = "actions:"
+		}
+		if result.exitCode != 0 || result.stderr != "" || !strings.Contains(result.stdout, "usage: tadx "+strings.Join(args, " ")) || !strings.Contains(result.stdout, inventory) {
 			t.Fatalf("args = %v, exit = %d, stdout = %q, stderr = %q", args, result.exitCode, result.stdout, result.stderr)
+		}
+		explicit := runCLI(t, binary, append(append([]string{}, args...), "--help"), nil)
+		if explicit.exitCode != 0 || explicit.stderr != "" || explicit.stdout != result.stdout {
+			t.Fatalf("bare group %v differs from its explicit help", args)
 		}
 	}
 }

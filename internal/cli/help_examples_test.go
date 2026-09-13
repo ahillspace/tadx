@@ -71,8 +71,26 @@ func TestCategoryHelpExamplesResolve(t *testing.T) {
 			}
 		})
 	}
-	if len(seen) < 15 {
-		t.Errorf("validated only %d distinct examples", len(seen))
+	// Compact references may deduplicate or combine examples. Preserve coverage
+	// of the operations that need examples instead of prescribing a total count.
+	for _, path := range []string{
+		"content workbook publish", "content workbook pull",
+		"content datasource publish", "content datasource schema",
+		"content flow publish", "content project create",
+		"admin user create", "admin permission create",
+		"pulse definition publish", "pulse metric fork",
+		"workspace artifact delete",
+	} {
+		covered := false
+		for example := range seen {
+			if strings.HasPrefix(example, "tadx "+path+" ") {
+				covered = true
+				break
+			}
+		}
+		if !covered {
+			t.Errorf("no validated example covers %s", path)
+		}
 	}
 }
 
@@ -86,7 +104,7 @@ func TestCategoryHelpExplainsRequiredAlternatives(t *testing.T) {
 		{"admin group", []string{"create --name <group-name>", "exactly one of: --id, --name"}},
 		{"admin group member", []string{"--group-id", "exactly one of: --user-id, --username"}},
 		{"admin permission", []string{"--principal-type", "--principal-username", "--capability", "--mode"}},
-		{"content workbook publish", []string{"--artifact, --file, --id, or --artifact-name", "--project-id or --project", `JSON: {"items":`, "canonical flag names", "1-100"}},
+		{"content workbook publish", []string{"publish: exactly one of: --artifact, --file, --id, --artifact-name", "publish: exactly one of: --project-id, --project", `--batch-file <path>: {"items":`, "canonical names", "1-100"}},
 		{"pulse definition", []string{"--name", "--datasource-id", "--measure-field", "--date-field", "--dimension", "--datasource-map"}},
 		{"pulse metric", []string{"at least one of: --period, --filter, --exclude-filter", "CUSTOM_N_DAYS", "exactly one of: --user-id, --group-id"}},
 		{"workspace artifact", []string{"--artifact", "both --kind and --id"}},

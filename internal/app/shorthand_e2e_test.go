@@ -170,7 +170,7 @@ func TestShorthandHelpAndCompletionExposeAliasesWithoutChangingCanonicalUse(t *t
 	if code := app.Run(context.Background(), []string{"con", "wb", "ins", "--help"}, &help, options); code != 0 {
 		t.Fatalf("alias help code=%d output=%s", code, help.String())
 	}
-	for _, want := range []string{"tadx content workbook inspect", "inspect (ins)", "--id (-i)", "--environment (--env, -e)", "--full (--ful, -f)"} {
+	for _, want := range []string{"usage: tadx content workbook <verb> [flags]", "inspect (ins)", "--id (-i)", "--environment (--env, -e)", "--full (--ful, -f)"} {
 		if !strings.Contains(help.String(), want) {
 			t.Errorf("alias help missing %q:\n%s", want, help.String())
 		}
@@ -179,7 +179,7 @@ func TestShorthandHelpAndCompletionExposeAliasesWithoutChangingCanonicalUse(t *t
 	if code := app.Run(context.Background(), []string{"con", "ds", "del", "--help"}, &deleteHelp, options); code != 0 {
 		t.Fatalf("delete alias help code=%d output=%s", code, deleteHelp.String())
 	}
-	for _, want := range []string{"exact datasource name; requires --project instead of --id", "exact slash-delimited project path; required with --name"} {
+	for _, want := range []string{"--name (--nm, -n) <name> exact name", "--project (--prj) <path> exact project path", "--name requires --project; an --id selects the resource directly.", "exactly one of: --id, --name"} {
 		if !strings.Contains(deleteHelp.String(), want) {
 			t.Errorf("delete alias help missing %q:\n%s", want, deleteHelp.String())
 		}

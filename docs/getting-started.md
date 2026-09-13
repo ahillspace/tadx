@@ -17,16 +17,17 @@ Common next outcomes include:
 - Inspect projects, users, groups, and permission rules, then preview an exact access or content change.
 - Discover published datasource fields and create or reuse Pulse definitions and metric variants.
 
-Choose a category from `tadx --help`, then read its help once for the commands, flags, and examples in that scope:
+Choose a category from `tadx --help`.
+For content, navigate with `tadx content -h`, or go directly to a resource reference for its verbs, flags, and examples:
 
 ```text
-tadx content --help
+tadx content workbook --help
 tadx admin group --help
 tadx pulse --help
 ```
 
-Category help includes every descendant action: group help includes membership actions, and `tadx admin --help` covers all administration actions.
-Use leaf help for an optional focused lookup when you need it.
+Content resource and verb help are identical: `tadx content workbook pull -h` shows the same reference as `tadx content workbook -h`.
+Other categories currently include descendant actions in their category help; for example, `tadx admin --help` covers administration, including group membership.
 Use `tadx capability list` and `tadx capability get` for feature inventory and availability diagnostics; they are not required to discover command syntax.
 Confirm consequential selectors and safety flags from the relevant help, and obtain the required authorization before execution.
 

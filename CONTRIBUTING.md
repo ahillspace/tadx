@@ -43,9 +43,8 @@ Read the [build standard](.agents/skills/tadx-build/SKILL.md) and choose one rel
 Only inventory and cache changes need the [inventory contracts](.agents/skills/tadx-build/references/inventory-and-cache.md).
 Start from updated `main` on a feature branch; shared agents use disjoint files in one checkout.
 Keep tests and bounded evidence with the implementation, and use the skill's verification checklist before handoff.
-Keep root help a complete, compact roadmap and category help a complete section for every descendant action.
-Leaf and category help share required inputs, concrete values, defaults, omission behavior, constraints, and applicable batch syntax.
-Keep aliases beside canonical names, and derive command and flag discovery from the Cobra tree.
+Follow the [command structure and help standard](docs/command-structure.md): navigation at root/category levels, complete resource references mirrored by their verbs.
+The content pilot implements this pattern for workbook, datasource, flow, and project; other categories await rollout.
 Verify required help facts against local action validation, and verify that `-h`, `--help`, and `help <path>` never run actions or read credentials.
 For batch changes, test one varying selector, positional `args` rows where supported, empty overrides, and the 100-selection bound.
 For previews, verify planned scope and that files, configuration, credentials, and remote resources remain unchanged as applicable.
