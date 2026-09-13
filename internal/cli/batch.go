@@ -108,15 +108,12 @@ func attachBatchWithOptions(root, command *cobra.Command, options batchspec.Opti
 	command.Annotations["tadx.batch.selectors"] = strings.Join(options.Selectors, ",")
 	command.Annotations["tadx.batch.native-selections"] = strings.Join(options.NativeSelections, ",")
 	command.Annotations["tadx.batch.positional"] = strconv.FormatBool(options.Positional)
-	command.Annotations["tadx.batch.environment"] = strconv.FormatBool(options.AllowEnvironment)
 	command.Annotations["tadx.batch.max-items"] = strconv.Itoa(contentbatch.MaxItems)
 	usage := "JSON items with per-item flags for this action (1-100); preview and invocation controls stay outside the file"
 	if options.Positional {
 		usage += "; positional values use args:[...]"
 	}
-	if !options.AllowEnvironment {
-		usage += "; environment is shared"
-	}
+	usage += "; environment is shared"
 	command.Flags().StringVar(&file, "batch-file", "", usage)
 	originalArgs, originalRun := command.Args, command.RunE
 	var rows []batchRow
@@ -445,11 +442,7 @@ func batchRowArguments(command *cobra.Command, item map[string]json.RawMessage, 
 			continue
 		}
 		switch name {
-		case "environment":
-			if !options.AllowEnvironment {
-				return row, 0, errors.New("--environment must be selected on the command, not in a batch item")
-			}
-		case "config", "preview", "json", "full", "batch-file", "help", "version", "raw", "force":
+		case "environment", "config", "preview", "json", "full", "batch-file", "help", "version", "raw", "force":
 			return row, 0, fmt.Errorf("--%s must be selected on the command, not in a batch item", name)
 		}
 		flag := command.Flags().Lookup(name)

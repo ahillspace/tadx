@@ -260,6 +260,29 @@ func TestCategoryHelpDescribesRepeatedSelectorsAndEffectiveDefaults(t *testing.T
 	}
 }
 
+func TestBatchHelpDistinguishesListValuesFromRepeatedScalarSelectors(t *testing.T) {
+	root, admin, remove := helpTestTree()
+	remove.Flags().String("batch-file", "", "per-item inputs")
+	flag := remove.Flags().Lookup("group-id")
+	flag.Value = &repeatedSelector{Value: flag.Value}
+	if remove.Annotations == nil {
+		remove.Annotations = map[string]string{}
+	}
+	remove.Annotations["tadx.batch.file"] = "true"
+	installCategoryHelp(root)
+	for _, command := range []*cobra.Command{admin, remove} {
+		got := renderedHelp(t, command)
+		for _, want := range []string{"--member-id", "--group-id", "Arrays are accepted for list-valued flags.", "Put repeated scalar selectors in separate items.", "Environment stays on the command and is shared by every item."} {
+			if !strings.Contains(got, want) {
+				t.Errorf("help missing %q", want)
+			}
+		}
+		if strings.Contains(got, "arrays for repeatable flags") {
+			t.Error("help conflates scalar repetitions and list properties")
+		}
+	}
+}
+
 func TestCategoryHelpRemovesAliasMarkersFromLongSummaries(t *testing.T) {
 	for _, summary := range []string{
 		"Remove a group member. (alias: rm)",

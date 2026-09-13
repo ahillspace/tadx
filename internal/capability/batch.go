@@ -45,7 +45,7 @@ func BatchOptions() map[string]batchspec.Options {
 		"pulse.metric.inspect": "id", "pulse.metric.fork": "id", "pulse.metric.follow": "id", "pulse.metric.unfollow": "id", "pulse.metric.followers": "id", "pulse.metric.delete": "id",
 		"lineage.pull": "id",
 	}
-	result := make(map[string]batchspec.Options, len(legacy)+29)
+	result := make(map[string]batchspec.Options, len(legacy))
 	for id, selector := range legacy {
 		options := batchspec.Options{}
 		if selector != "" {
@@ -70,7 +70,6 @@ func BatchOptions() map[string]batchspec.Options {
 	}
 	selectors("catalog.table.list", "database-id")
 	selectors("catalog.column.list", "table-id")
-	result["catalog.search"] = batchspec.Options{Selectors: []string{"table-id"}, Positional: true}
 	selectors("pulse.metric.list", "definition-id")
 	for _, kind := range []string{"user", "group"} {
 		selectors("admin."+kind+".create", "name")
@@ -96,20 +95,9 @@ func BatchOptions() map[string]batchspec.Options {
 	selectors("pulse.metric.unfollow", "id", "subscription-id", "user-id", "group-id")
 	selectors("workspace.move", "artifact", "id")
 	selectors("workspace.artifact.delete", "artifact", "id")
-	selectors("workspace.status", "workspace")
 	selectors("workspace.clean", "workspace")
-	selectors("agent.install", "target")
-	selectors("agent.uninstall", "target")
-	for _, id := range []string{
-		"workspace.create", "workspace.register", "workspace.clone", "workspace.delete", "workspace.unregister",
-		"env.profile.add", "env.profile.get", "env.profile.update", "env.profile.remove",
-		"capability.get", "search.run",
-	} {
+	for _, id := range []string{"workspace.delete", "workspace.unregister"} {
 		result[id] = batchspec.Options{Positional: true}
 	}
-	for _, id := range []string{"auth.check", "auth.status", "auth.logout", "cache.refresh", "cache.status", "doctor.run"} {
-		result[id] = batchspec.Options{Selectors: []string{"environment"}, AllowEnvironment: true}
-	}
-	result["doctor.run"] = batchspec.Options{Selectors: []string{"environment", "workspace"}, AllowEnvironment: true}
 	return result
 }

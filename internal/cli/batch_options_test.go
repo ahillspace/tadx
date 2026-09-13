@@ -49,7 +49,7 @@ func runBatchOptions(t *testing.T, options batchspec.Options, args []string) (an
 		}
 		command.RunE = func(_ *cobra.Command, _ []string) error {
 			calls = append(calls, input)
-			if input.ID == "fail" || input.Environment == "fail" {
+			if input.ID == "fail" {
 				return clierr.WithOutput(input, errors.New("item failed after a confirmed result"))
 			}
 			return renderer.Render(input)
@@ -139,19 +139,23 @@ func TestBatchPositionalRowsPreserveLiteralArgumentsAndValidateEveryRow(t *testi
 	}
 }
 
-func TestBatchEnvironmentOverridesRequireExplicitUtilityRegistration(t *testing.T) {
-	file := batchFile(t, `{"items":[{"environment":"alpha"},{"environment":"fail"},{"environment":"beta"}]}`)
-	value, calls, err := runBatchOptions(t, batchspec.Options{Selectors: []string{"environment"}, AllowEnvironment: true}, []string{"--batch-file", file})
+func TestBatchPartialFailurePreservesConfirmedResults(t *testing.T) {
+	file := batchFile(t, `{"items":[{"id":"alpha"},{"id":"fail"},{"id":"beta"}]}`)
+	value, calls, err := runBatchOptions(t, batchspec.Options{Selectors: []string{"id"}}, []string{"--batch-file", file})
 	if err == nil || len(calls) != 3 {
 		t.Fatalf("calls=%v err=%v", calls, err)
 	}
 	batch := value.(contentbatch.Output)
-	if batch.Succeeded != 2 || batch.Failed != 1 || batch.Items[1].Result == nil || calls[0].Environment != "alpha" || calls[2].Environment != "beta" {
+	if batch.Succeeded != 2 || batch.Failed != 1 || batch.Items[1].Result == nil || calls[0].ID != "alpha" || calls[2].ID != "beta" {
 		t.Fatalf("batch=%#v calls=%#v", batch, calls)
 	}
-	_, calls, err = runBatchOptions(t, batchspec.Options{Selectors: []string{"id"}}, []string{"--batch-file", file})
-	if err == nil || len(calls) != 0 {
-		t.Fatalf("remote action accepted environment rows: calls=%v err=%v", calls, err)
+}
+
+func TestBatchEnvironmentOverridesRejectedBeforeDispatch(t *testing.T) {
+	file := batchFile(t, `{"items":[{"id":"alpha"},{"id":"beta","environment":"other"}]}`)
+	_, calls, err := runBatchOptions(t, batchspec.Options{Selectors: []string{"id"}}, []string{"--environment", "shared", "--batch-file", file})
+	if err == nil || len(calls) != 0 || !strings.Contains(err.Error(), "--environment must be selected on the command") {
+		t.Fatalf("calls=%v err=%v", calls, err)
 	}
 }
 
@@ -174,5 +178,25 @@ func TestBatchPropertyValuesDoNotConsumeActionSelectionBudget(t *testing.T) {
 	_, _, err = batchRowArguments(command, map[string]json.RawMessage{"capability": encoded}, nil, batchspec.Options{NativeSelections: []string{"capability"}})
 	if err == nil {
 		t.Fatal("native rule actions escaped the 100-selection bound")
+	}
+}
+
+func TestBatchPermissionArraysRequireNativeListFlags(t *testing.T) {
+	command := &cobra.Command{}
+	command.Flags().String("principal-id", "", "principal")
+	command.Flags().StringSlice("capability", nil, "permission rules")
+	options := batchspec.Options{Selectors: []string{"principal-id"}, NativeSelections: []string{"capability"}}
+	row, count, err := batchRowArguments(command, map[string]json.RawMessage{
+		"principal-id": json.RawMessage(`"user-1"`),
+		"capability":   json.RawMessage(`["Read","Write"]`),
+	}, nil, options)
+	if err != nil || count != 2 || !reflect.DeepEqual(row.argv, []string{"--capability=Read", "--capability=Write", "--principal-id=user-1"}) {
+		t.Fatalf("native list row=%#v count=%d err=%v", row, count, err)
+	}
+	_, _, err = batchRowArguments(command, map[string]json.RawMessage{
+		"principal-id": json.RawMessage(`["user-1","user-2"]`),
+	}, nil, options)
+	if err == nil || !strings.Contains(err.Error(), "--principal-id is not a list; use separate batch items for scalar selectors") {
+		t.Fatalf("scalar array error=%v", err)
 	}
 }

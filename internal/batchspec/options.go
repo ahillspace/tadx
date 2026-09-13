@@ -12,7 +12,4 @@ type Options struct {
 	NativeSelections []string
 	// Positional permits args in file rows and repeated single positional targets.
 	Positional bool
-	// AllowEnvironment permits independently selected environment targets only
-	// for explicitly registered authentication, cache, and diagnostic utilities.
-	AllowEnvironment bool
 }

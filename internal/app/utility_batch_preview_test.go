@@ -16,7 +16,7 @@ import (
 	"github.com/ahillspace/tadx/internal/config"
 )
 
-func TestCacheRefreshBatchPreviewPlansScopesWithoutAuthenticationOrStorage(t *testing.T) {
+func TestCacheRefreshPreviewPlansScopesWithoutAuthenticationOrStorage(t *testing.T) {
 	requests := 0
 	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { requests++; w.WriteHeader(500) }))
 	defer server.Close()
@@ -32,7 +32,7 @@ func TestCacheRefreshBatchPreviewPlansScopesWithoutAuthenticationOrStorage(t *te
 		t.Fatal(err)
 	}
 	var output bytes.Buffer
-	code := Run(context.Background(), []string{"cache", "refresh", "--environment", "alpha", "--environment", "beta", "--scope", "views", "--preview", "--json"}, &output, Options{ConfigPath: path, HTTPClient: server.Client()})
+	code := Run(context.Background(), []string{"cache", "refresh", "--environment", "alpha", "--scope", "views", "--preview", "--json"}, &output, Options{ConfigPath: path, HTTPClient: server.Client()})
 	if code != 0 || requests != 0 || !strings.Contains(output.String(), `"requested_scopes":["views"]`) || !strings.Contains(output.String(), `"implicit_scopes":["projects","workbooks"]`) {
 		t.Fatalf("code=%d requests=%d output=%s", code, requests, &output)
 	}
@@ -80,7 +80,7 @@ func TestAuthLogoutResolverObservesRemovalAfterConfigurationSnapshot(t *testing.
 	}
 }
 
-func TestAuthLogoutBatchPreviewPreservesCredentialsThenExecutionRemovesSelectedReferences(t *testing.T) {
+func TestAuthLogoutPreviewPreservesCredentialsThenExecutionRemovesOnlySelectedReference(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "config.yaml")
 	reference := coreauth.CredentialReference("cred_66666666666666666666666666666666")
 	otherReference := coreauth.CredentialReference("cred_77777777777777777777777777777777")
@@ -92,9 +92,18 @@ func TestAuthLogoutBatchPreviewPreservesCredentialsThenExecutionRemovesSelectedR
 		t.Fatal(err)
 	}
 	options := Options{ConfigPath: path, PATStore: store}
-	args := []string{"auth", "logout", "--environment", "alpha", "--environment", "beta", "--json"}
+	args := []string{"auth", "logout", "--environment", "alpha", "--json"}
 	var output bytes.Buffer
-	code := Run(context.Background(), append(append([]string(nil), args...), "--preview"), &output, options)
+	file := filepath.Join(t.TempDir(), "logout.json")
+	if err := os.WriteFile(file, []byte(`{"items":[{"environment":"alpha"},{"environment":"beta"}]}`), 0600); err != nil {
+		t.Fatal(err)
+	}
+	code := Run(context.Background(), append(append([]string(nil), args...), "--batch-file", file), &output, options)
+	if code == 0 || len(store.deleted) != 0 || !strings.Contains(output.String(), "unknown flag: --batch-file") {
+		t.Fatalf("batch rejection code=%d deleted=%v output=%s", code, store.deleted, &output)
+	}
+	output.Reset()
+	code = Run(context.Background(), append(append([]string(nil), args...), "--preview"), &output, options)
 	if code != 0 || len(store.deleted) != 0 || !bytes.Contains(output.Bytes(), []byte(`"status":"preview"`)) || !bytes.Contains(output.Bytes(), []byte(`"stored_credential_reference_present":true`)) {
 		t.Fatalf("preview code=%d deleted=%v output=%s", code, store.deleted, &output)
 	}
@@ -104,21 +113,17 @@ func TestAuthLogoutBatchPreviewPreservesCredentialsThenExecutionRemovesSelectedR
 	}
 	output.Reset()
 	code = Run(context.Background(), args, &output, options)
-	var batch struct {
-		Items []struct {
-			Result struct {
-				Status string `json:"status"`
-			} `json:"result"`
-		} `json:"items"`
+	var result struct {
+		Status string `json:"status"`
 	}
-	if err := json.Unmarshal(output.Bytes(), &batch); err != nil {
+	if err := json.Unmarshal(output.Bytes(), &result); err != nil {
 		t.Fatal(err)
 	}
-	if code != 0 || len(store.deleted) != 2 || store.deleted[0] != reference || store.deleted[1] != otherReference || len(batch.Items) != 2 || batch.Items[0].Result.Status != "removed" || batch.Items[1].Result.Status != "removed" {
+	if code != 0 || len(store.deleted) != 1 || store.deleted[0] != reference || result.Status != "removed" {
 		t.Fatalf("execute code=%d deleted=%v output=%s", code, store.deleted, &output)
 	}
 	configuration, err = config.Load(path)
-	if err != nil || configuration.Environments["alpha"].Auth.CredentialRef != "" || configuration.Environments["beta"].Auth.CredentialRef != "" {
+	if err != nil || configuration.Environments["alpha"].Auth.CredentialRef != "" || configuration.Environments["beta"].Auth.CredentialRef != string(otherReference) {
 		t.Fatalf("execute config=%#v err=%v", configuration, err)
 	}
 	if strings.Contains(output.String(), "fixture-secret") || strings.Contains(output.String(), string(reference)) {

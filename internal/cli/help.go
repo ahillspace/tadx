@@ -305,9 +305,6 @@ func writeActionHelp(out io.Writer, category, command *cobra.Command, common map
 		if command.Annotations["tadx.batch.positional"] == "true" {
 			fmt.Fprintln(&section, `  Positional targets are repeatable; file rows provide them as "args":["<value>"].`)
 		}
-		if command.Annotations["tadx.batch.environment"] == "true" {
-			fmt.Fprintln(&section, "  Environment can vary per item; each item selects its own environment.")
-		}
 		if example := command.Annotations["tadx.help.batch-example"]; example != "" {
 			fmt.Fprintln(&section, "  JSON: "+example)
 		}
@@ -341,9 +338,9 @@ func writeCategoryBatchHelp(out io.Writer, actions []*cobra.Command) {
 	fmt.Fprintln(out, "\nbatch syntax:")
 	fmt.Fprintln(out, "  Applies to commands with --batch-file. Each item supplies that action's required inputs.")
 	fmt.Fprintln(out, `  JSON: {"items":[{"<flag-name>":"<value>"}]}. Use canonical flag names without leading dashes.`)
-	fmt.Fprintln(out, "  Replace placeholders with this action's item flags. Use scalars, or arrays for repeatable flags.")
+	fmt.Fprintln(out, "  Arrays are accepted for list-valued flags. Put repeated scalar selectors in separate items.")
 	fmt.Fprintln(out, "  Keep config, preview, json, full, raw, force, version, help, and batch-file outside items.")
-	fmt.Fprintln(out, "  Environment stays on the command unless the action explicitly permits per-item environments.")
+	fmt.Fprintln(out, "  Environment stays on the command and is shared by every item.")
 	fmt.Fprintln(out, "  Choose --batch-file or repeated selectors, not both. Files support 1-100 items and at most 1 MiB.")
 	fmt.Fprintln(out, "  Duplicate items and duplicate JSON keys are rejected; at most 100 expanded selections are accepted.")
 }

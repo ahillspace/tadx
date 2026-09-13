@@ -32,8 +32,7 @@ func (r authCredentialResolver) Resolve(_ context.Context, alias string) (authlo
 type authLogoutResolver struct{ runtime *runtimeDependencies }
 
 func (r authLogoutResolver) Resolve(_ context.Context, alias string) (authlogout.Target, error) {
-	// Logout changes configuration between batch rows, so resolve the current
-	// credential reference rather than the invocation's remote-read snapshot.
+	// Resolve the credential reference from the current persisted configuration.
 	configuration, err := config.Load(r.runtime.configPath)
 	if err != nil {
 		return authlogout.Target{}, err
