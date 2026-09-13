@@ -52,13 +52,13 @@ func applyHelpValues(root *cobra.Command) {
 			note("locale", "Tableau locale code supported by the site")
 		case "admin group create", "admin group update":
 			note("minimum-site-role", "accepted roles depend on the Tableau site and version")
-		case "content lineage pull":
+		case "catalog lineage pull":
 			choices("kind", "workbook", "datasource", "published_datasource", "flow")
 			choices("direction", "upstream", "downstream", "both")
 			value("depth", "1..3")
 		case "workspace clean":
 			choices("class", "temporary", "cache", "logs", "all")
-		case "content label list", "content label inspect", "content label update", "content label delete":
+		case "catalog label list", "catalog label inspect", "catalog label update", "catalog label delete":
 			choices("type", "database", "table", "column", "datasource", "flow")
 		case "pulse definition create":
 			choices("aggregation", "SUM", "AVERAGE", "MIN", "MAX", "COUNT", "COUNT_DISTINCT", "USER")
@@ -177,8 +177,8 @@ func applyHelpSemantics(command *cobra.Command, path string) {
 	}
 	if command.Parent() != nil && command.Parent().Parent() == nil {
 		summaries := map[string]string{
-			"search": "Find content, users, groups, and Pulse objects", "content": "Workbooks, datasources, flows, projects, labels, and lineage",
-			"catalog": "Upstream databases, tables, and columns", "admin": "Users, groups, memberships, permissions, and label definitions",
+			"search": "Find content, users, groups, and Pulse objects", "content": "Workbooks, datasources, flows, and projects",
+			"catalog": "Upstream metadata, lineage, and attached labels", "admin": "Users, groups, memberships, permissions, and label definitions",
 			"pulse": "Definitions, metric variants, and followers", "cache": "Refresh and inspect local Tableau inventory",
 			"workspace": "Registered local workspaces and downloaded files", "last": "Previous saved result, without rerunning it",
 			"env": "Tableau site profiles and defaults", "auth": "PAT login, checks, and logout", "mutation": "Mutation execution policy",
@@ -297,14 +297,14 @@ func applyHelpRequirements(command *cobra.Command, path string) {
 	case "content project move":
 		group("exactly-one", "id", "project-id", "project")
 		group("exactly-one", "parent-id", "parent", "top-level")
-	case "content lineage pull":
+	case "catalog lineage pull":
 		required("kind")
 		group("exactly-one", "id", "name")
-	case "content label list":
+	case "catalog label list":
 		required("type", "target-id")
-	case "content label inspect", "content label delete":
+	case "catalog label inspect", "catalog label delete":
 		required("id")
-	case "content label update":
+	case "catalog label update":
 		note("Select --id, or both --type and --target-id with --value. Supply at least one of --value, --message, --active, or --elevated.")
 	case "pulse definition create":
 		required("name", "datasource-id", "measure-field", "date-field", "dimension")
@@ -404,7 +404,7 @@ func appendHelpUsage(flag *pflag.Flag, text string) {
 // Action-level zero-value fallbacks, independent of Cobra's declared zero.
 var helpLimitDefaults = map[string]string{
 	"content workbook list": "25", "content datasource list": "25", "content flow list": "25", "content project list": "25",
-	"content datasource schema": "20", "content label list": "20",
+	"content datasource schema": "20", "catalog label list": "20",
 	"admin user list": "25", "admin group list": "25", "admin label value list": "20", "admin label category list": "20",
 	"catalog database list": "25", "catalog table list": "25", "catalog column list": "25", "catalog search": "25", "catalog audit": "1000",
 	"pulse definition list": "25", "pulse metric list": "25",

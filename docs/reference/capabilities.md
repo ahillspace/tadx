@@ -54,10 +54,10 @@ Use `tadx capability get <id>` for the same focused metadata at runtime.
 | `catalog.table.inspect` | cli | ship | ready | implemented | `tadx catalog table inspect` |
 | `catalog.table.list` | cli | ship | ready | implemented | `tadx catalog table list` |
 | `catalog.table.update` | cli | ship | ready | implemented | `tadx catalog table update` |
-| `content.label.delete` | cli | ship | ready | implemented | `tadx content label delete` |
-| `content.label.inspect` | cli | ship | ready | implemented | `tadx content label inspect` |
-| `content.label.list` | cli | ship | ready | implemented | `tadx content label list` |
-| `content.label.update` | cli | ship | ready | implemented | `tadx content label update` |
+| `content.label.delete` | cli | ship | ready | implemented | `tadx catalog label delete` |
+| `content.label.inspect` | cli | ship | ready | implemented | `tadx catalog label inspect` |
+| `content.label.list` | cli | ship | ready | implemented | `tadx catalog label list` |
+| `content.label.update` | cli | ship | ready | implemented | `tadx catalog label update` |
 | `datasource.delete` | cli | ship | ready | implemented | `tadx content datasource delete` |
 | `datasource.inspect` | cli | ship | ready | implemented | `tadx content datasource inspect` |
 | `datasource.list` | cli | ship | ready | implemented | `tadx content datasource list` |
@@ -81,7 +81,7 @@ Use `tadx capability get <id>` for the same focused metadata at runtime.
 | `flow.pull` | cli | ship | ready | implemented | `tadx content flow pull` |
 | `flow.update` | cli | ship | ready | implemented | `tadx content flow update` |
 | `last` | cli | ship | ready | implemented | `tadx last` |
-| `lineage.pull` | cli | ship | ready | implemented | `tadx content lineage pull` |
+| `lineage.pull` | cli | ship | ready | implemented | `tadx catalog lineage pull` |
 | `mutation.set` | cli | ship | ready | implemented | `tadx mutation set` |
 | `mutation.status` | cli | ship | ready | implemented | `tadx mutation status` |
 | `project.create` | cli | ship | ready | implemented | `tadx content project create` |
@@ -1320,7 +1320,7 @@ Update explicit upstream table descriptions/contact and add or remove tags witho
 
 Delete supported content label attachments on exact database, table, column, datasource, or flow targets.
 
-- Surface: tadx content label delete
+- Surface: tadx catalog label delete
 - Operation type: change
 - Owner: cli
 - Selectors: Attachment --id; related asset --type and --target-id
@@ -1340,13 +1340,13 @@ Delete supported content label attachments on exact database, table, column, dat
 - Evidence: docs/evidence/metadata-semantics-contract.md; provider HTTP fixtures and action contracts
 - Validation or blocker: Local HTTP and action contracts; live mutations not verified
 - Blocker ID: None
-- Command binding: `tadx content label delete`
+- Command binding: `tadx catalog label delete`
 
 ### `content.label.inspect`
 
 Inspect supported content label attachments on exact database, table, column, datasource, or flow targets.
 
-- Surface: tadx content label inspect
+- Surface: tadx catalog label inspect
 - Operation type: inspect
 - Owner: cli
 - Selectors: Attachment --id; related asset --type and --target-id
@@ -1366,13 +1366,13 @@ Inspect supported content label attachments on exact database, table, column, da
 - Evidence: docs/evidence/metadata-semantics-contract.md; provider HTTP fixtures and action contracts
 - Validation or blocker: Local HTTP and action contracts; live mutations not verified
 - Blocker ID: None
-- Command binding: `tadx content label inspect`
+- Command binding: `tadx catalog label inspect`
 
 ### `content.label.list`
 
 List supported content label attachments on exact database, table, column, datasource, or flow targets.
 
-- Surface: tadx content label list
+- Surface: tadx catalog label list
 - Operation type: find
 - Owner: cli
 - Selectors: Attachment --id; related asset --type and --target-id
@@ -1392,13 +1392,13 @@ List supported content label attachments on exact database, table, column, datas
 - Evidence: docs/evidence/metadata-semantics-contract.md; provider HTTP fixtures and action contracts
 - Validation or blocker: Local HTTP and action contracts; live mutations not verified
 - Blocker ID: None
-- Command binding: `tadx content label list`
+- Command binding: `tadx catalog label list`
 
 ### `content.label.update`
 
 Update supported content label attachments on exact database, table, column, datasource, or flow targets.
 
-- Surface: tadx content label update
+- Surface: tadx catalog label update
 - Operation type: change
 - Owner: cli
 - Selectors: Attachment --id; related asset --type and --target-id
@@ -1418,7 +1418,7 @@ Update supported content label attachments on exact database, table, column, dat
 - Evidence: docs/evidence/metadata-semantics-contract.md; provider HTTP fixtures and action contracts
 - Validation or blocker: Local HTTP and action contracts; live mutations not verified
 - Blocker ID: None
-- Command binding: `tadx content label update`
+- Command binding: `tadx catalog label update`
 
 ### `datasource.delete`
 
@@ -2022,7 +2022,7 @@ Display one globally saved full result and timestamp without re-execution.
 
 Capture bounded content, database, and table lineage for one exact workbook, published datasource, or flow without downloading its native package.
 
-- Surface: tadx content lineage pull
+- Surface: tadx catalog lineage pull
 - Operation type: deliver
 - Owner: cli
 - Selectors: Resource kind plus REST LUID or exact name/project path; logical workspace; bounded direction and depth
@@ -2042,7 +2042,7 @@ Capture bounded content, database, and table lineage for one exact workbook, pub
 - Evidence: Official Metadata guide and schema captures plus hermetic contract tests in docs/evidence/lineage-metadata-contract.md
 - Validation or blocker: Contract-verified; live deployment verification is not claimed
 - Blocker ID: None
-- Command binding: `tadx content lineage pull`
+- Command binding: `tadx catalog lineage pull`
 
 ### `mutation.set`
 

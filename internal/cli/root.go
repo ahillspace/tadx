@@ -306,10 +306,22 @@ Other connected tools remain independent; TADX does not configure, select, proxy
 			StatusUse: deps.CacheStatusUse, StatusShort: deps.CacheStatusShort,
 		}))
 	}
-	if deps.Catalog != nil {
-		catalog := *deps.Catalog
-		catalog.Renderer = deps.Renderer
-		root.AddCommand(catalogcli.New(catalog))
+	if deps.Catalog != nil || deps.ContentLabels != nil || (deps.Content != nil && deps.Content.LineagePuller != nil) {
+		node := catalogcli.NewGroup()
+		if deps.Catalog != nil {
+			catalog := *deps.Catalog
+			catalog.Renderer = deps.Renderer
+			node = catalogcli.New(catalog)
+		}
+		if deps.Content != nil && deps.Content.LineagePuller != nil {
+			node.AddCommand(contentcli.NewLineage(deps.Content.LineagePuller, deps.Renderer))
+		}
+		if deps.ContentLabels != nil {
+			labels := *deps.ContentLabels
+			labels.Renderer = deps.Renderer
+			node.AddCommand(contentcli.NewLabels(labels))
+		}
+		root.AddCommand(node)
 	}
 	if deps.WorkbookPuller != nil && deps.WorkbookPublisher != nil {
 		contentDependencies := contentcli.Dependencies{}
@@ -324,13 +336,7 @@ Other connected tools remain independent; TADX does not configure, select, proxy
 		contentDependencies.PullShort = deps.WorkbookPullShort
 		contentDependencies.PublishUse = deps.WorkbookPublishUse
 		contentDependencies.PublishShort = deps.WorkbookPublishShort
-		node := contentcli.New(contentDependencies)
-		if deps.ContentLabels != nil {
-			labels := *deps.ContentLabels
-			labels.Renderer = deps.Renderer
-			node.AddCommand(contentcli.NewLabels(labels))
-		}
-		root.AddCommand(node)
+		root.AddCommand(contentcli.New(contentDependencies))
 	}
 	root.AddCommand(NewCompletion(root))
 	rejectGroupingArguments(root)

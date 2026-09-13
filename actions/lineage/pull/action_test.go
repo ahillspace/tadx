@@ -29,7 +29,7 @@ func TestOutputGolden(t *testing.T) {
 		Nodes:    []lineagepull.Node{{MetadataID: "metadata-flow-1", Kind: "flow", RESTLUID: "flow-1", Name: "Daily"}, {MetadataID: "metadata-datasource-1", Kind: "published_datasource", RESTLUID: "datasource-1", Name: "Sales"}},
 		Edges:    []lineagepull.Edge{{FromMetadataID: "metadata-flow-1", ToMetadataID: "metadata-datasource-1", Relationship: "uses"}},
 		Warnings: []string{"One bounded warning."}, Provenance: lineagepull.Provenance{Environment: "dev", Site: "sandbox", ServerOrigin: "https://tableau.example.com", SiteLUID: "site-1"}, RequestIDs: []string{"request-1"},
-		Help: []string{"tadx content lineage pull --kind flow --id flow-1 --direction both"},
+		Help: []string{"tadx catalog lineage pull --kind flow --id flow-1 --direction both"},
 	}
 	assertGolden(t, "compact.toon", output, false)
 	assertGolden(t, "full.toon", output, true)

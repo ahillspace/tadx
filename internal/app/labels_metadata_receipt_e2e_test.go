@@ -39,7 +39,7 @@ func TestLabelsMetadataAcknowledgedMalformedWriteDoesNotInventAttachmentIdentity
 	}))
 	defer s.Close()
 	var out bytes.Buffer
-	code := app.Run(context.Background(), []string{"content", "label", "update", "--env", "production", "--type", "table", "--target-id", "table-1", "--value", "Warning", "--message", "After", "--json"}, &out, catalogMetadataOptions(t, s, true))
+	code := app.Run(context.Background(), []string{"catalog", "label", "update", "--env", "production", "--type", "table", "--target-id", "table-1", "--value", "Warning", "--message", "After", "--json"}, &out, catalogMetadataOptions(t, s, true))
 	if code == 0 || writes != 1 || !strings.Contains(out.String(), "confirmed") || !strings.Contains(out.String(), "verification_pending") || strings.Contains(out.String(), "unrelated-attachment") {
 		t.Fatalf("code=%d writes=%d %s", code, writes, &out)
 	}

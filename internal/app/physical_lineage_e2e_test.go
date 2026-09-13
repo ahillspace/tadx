@@ -60,7 +60,7 @@ func TestPhysicalFlowLineageThroughCLIAndAutomaticPull(t *testing.T) {
 	t.Setenv("PROD_PAT_NAME", "fixture-name")
 	t.Setenv("PROD_PAT_SECRET", "fixture-secret")
 	options := app.Options{ConfigPath: config, HTTPClient: server.Client()}
-	args := []string{"content", "lineage", "pull", "--workspace", "physical-lineage", "--kind", "flow", "--id", "flow-1", "--direction", "upstream"}
+	args := []string{"catalog", "lineage", "pull", "--workspace", "physical-lineage", "--kind", "flow", "--id", "flow-1", "--direction", "upstream"}
 	compact := runGroupOneCLI(t, options, args...)
 	for _, want := range []string{"complete: true", "node_count: 13", "edge_count: 12"} {
 		if !strings.Contains(compact, want) {

@@ -13,4 +13,4 @@ artifact:
   edge_count: 1
 warnings[1]: One bounded warning.
 details: "--full"
-help[1]: tadx content lineage pull --kind flow --id flow-1 --direction both
+help[1]: tadx catalog lineage pull --kind flow --id flow-1 --direction both

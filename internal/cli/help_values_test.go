@@ -183,10 +183,9 @@ func helpValuesTree() *cobra.Command {
 	root := &cobra.Command{Use: "tadx"}
 	admin := admincli.New(admincli.Dependencies{PermissionCapabilities: tableauadmin.PermissionCapabilities})
 	admin.AddCommand(admincli.NewLabels(admincli.LabelDependencies{}))
-	root.AddCommand(admin, catalogcli.New(catalogcli.Dependencies{}), pulsecli.New(pulsecli.Dependencies{}), envcli.New(envcli.Dependencies{}), workspacecli.New(workspacecli.Dependencies{}), newSearch(nil, nil))
-	content := &cobra.Command{Use: "content"}
-	content.AddCommand(contentcli.NewLabels(contentcli.LabelDependencies{}))
-	root.AddCommand(content)
+	catalog := catalogcli.New(catalogcli.Dependencies{})
+	catalog.AddCommand(contentcli.NewLabels(contentcli.LabelDependencies{}))
+	root.AddCommand(admin, catalog, pulsecli.New(pulsecli.Dependencies{}), envcli.New(envcli.Dependencies{}), workspacecli.New(workspacecli.Dependencies{}), newSearch(nil, nil))
 	return root
 }
 
@@ -316,7 +315,7 @@ func TestHelpValuesAreScopedAndPreserveFlagBehavior(t *testing.T) {
 			t.Errorf("--%s behavior changed: %v -> %v", f.Name, want, got)
 		}
 	}
-	for _, path := range []string{"catalog search", "catalog audit", "content label list"} {
+	for _, path := range []string{"catalog search", "catalog audit", "catalog label list"} {
 		if slices.Contains(helpValueFlag(t, root, path, "type").Annotations["tadx.help.choices"], "workbook") {
 			t.Errorf("search family leaked into %s", path)
 		}
@@ -355,7 +354,7 @@ func TestHelpValuesForIsolatedCommandPaths(t *testing.T) {
 		{"content project create", "content-permissions", 3, func(v string) error {
 			return projectcreate.ValidateInput(projectcreate.Input{Environment: "dev", Name: "Project", ContentPermissions: v})
 		}},
-		{"content lineage pull", "kind", 4, func(v string) error {
+		{"catalog lineage pull", "kind", 4, func(v string) error {
 			in := lineagepull.Input{Kind: v}
 			in.Selector.LUID = "resource-id"
 			return lineagepull.ValidateInput(in)

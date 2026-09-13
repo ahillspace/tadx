@@ -1336,7 +1336,7 @@ var canonicalDefinitions = []Definition{
 	},
 	{
 		ID:              "lineage.pull",
-		Surface:         "tadx content lineage pull",
+		Surface:         "tadx catalog lineage pull",
 		Outcome:         "Capture bounded content, database, and table lineage for one exact workbook, published datasource, or flow without downloading its native package.",
 		Type:            OperationDeliver,
 		Disposition:     DispositionShip,
@@ -1356,7 +1356,7 @@ var canonicalDefinitions = []Definition{
 		Implementation:  ImplementationImplemented,
 		Validation:      "Contract-verified; live deployment verification is not claimed",
 		Blocker:         "",
-		CommandPath:     []string{"content", "lineage", "pull"},
+		CommandPath:     []string{"catalog", "lineage", "pull"},
 		RawCapable:      false,
 	},
 	{

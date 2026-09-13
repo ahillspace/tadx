@@ -71,9 +71,14 @@ type Dependencies struct {
 }
 
 func New(d Dependencies) *cobra.Command {
-	root := &cobra.Command{Use: "catalog", Short: "Inspect and enrich upstream Tableau Catalog metadata."}
+	root := NewGroup()
 	root.AddCommand(newDatabase(d), newTable(d), newColumn(d), newSearch(d), newAudit(d))
 	return root
+}
+
+// NewGroup creates the catalog boundary without registering unconfigured actions.
+func NewGroup() *cobra.Command {
+	return &cobra.Command{Use: "catalog", Short: "Inspect and enrich Tableau metadata, lineage, and labels."}
 }
 func noArgs(op string, validate func() error) func(*cobra.Command, []string) error {
 	return func(c *cobra.Command, args []string) error {

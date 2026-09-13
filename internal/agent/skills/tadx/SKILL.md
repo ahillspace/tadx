@@ -28,10 +28,11 @@ Canonical command names, structured output fields, registry IDs, and LUIDs remai
 
 ## Command discovery
 
-Use `tadx --help` for the complete command roadmap, then one relevant category help call for its complete action sections.
-Category help includes all descendant actions: `tadx admin group --help` includes memberships, while `tadx admin --help`, `tadx content --help`, and `tadx pulse --help` cover their entire categories.
-Each action section includes required inputs, options, concrete values, defaults, omission behavior, constraints, and supported batch syntax.
-Leaf help presents the same facts for one action; reuse category help without repeated drilldown.
+Use `tadx --help` for the command roadmap.
+`tadx content --help` lists workbook, datasource, flow, and project actions; a resource reference such as `tadx content workbook --help` includes all its verbs, required inputs, options, concrete values, defaults, omission behavior, constraints, and supported batch syntax.
+Every content verb shows its owning resource reference; reuse it without repeated drilldown.
+`catalog lineage` captures lineage, and `catalog label` manages labels attached to assets.
+Other categories currently include descendant actions in category help: `tadx admin group --help` includes memberships, while `tadx admin --help` and `tadx pulse --help` cover their entire categories.
 Both `-h` and `--help` are help-only paths and never run actions or read credentials.
 Use `tadx capability list` and `tadx capability get` for feature inventory and availability diagnostics, not as a prerequisite to command syntax discovery.
 

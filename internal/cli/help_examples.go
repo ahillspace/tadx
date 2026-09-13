@@ -24,7 +24,7 @@ var categoryHelpExamples = []helpExampleSet{
 	{"cache", "Reads contact Tableau by default. Pass --cache on supported read commands to use the local inventory.", []string{
 		"tadx cache status --env dev", "tadx cache refresh --env dev --scope workbooks --scope datasources",
 	}},
-	{"catalog", "Catalog inspects upstream asset metadata. REST LUIDs and Metadata API IDs are distinct selectors.", []string{
+	{"catalog", "Catalog inspects upstream asset metadata, captures lineage, and manages attached labels. REST LUIDs and Metadata API IDs are distinct selectors.", []string{
 		"tadx catalog search <query> --env dev --type database --type table", "tadx catalog audit --env dev --type datasource --id <datasource-luid>",
 	}},
 	{"catalog database", "Inspect accepts exactly one of --id or --metadata-id. Updates require the REST LUID in --id.", []string{
@@ -60,12 +60,12 @@ var categoryHelpExamples = []helpExampleSet{
 		"tadx content project list --env dev --top-level", "tadx content project inspect --env dev --project <project-path>",
 		"tadx content project create --env dev --name <project-name> --parent-id <parent-project-luid> --preview",
 	}},
-	{"content lineage", "Pull requires --kind and an exact --id or --name selector. Depth ranges from 1 to 3.", []string{
-		"tadx content lineage pull --env dev --workspace dev --kind workbook --id <workbook-luid> --direction upstream --depth 2",
+	{"catalog lineage", "Pull requires --kind and an exact --id or --name selector. Depth ranges from 1 to 3.", []string{
+		"tadx catalog lineage pull --env dev --workspace dev --kind workbook --id <workbook-luid> --direction upstream --depth 2",
 	}},
-	{"content label", "List requires --type and --target-id. Inspect and delete require the attachment --id.\nUpdate requires --id, or --type and --target-id with --value. Supply at least one label change.", []string{
-		"tadx content label list --env dev --type datasource --target-id <datasource-luid>",
-		"tadx content label update --env dev --id <label-luid> --message <message> --preview",
+	{"catalog label", "List requires --type and --target-id. Inspect and delete require the attachment --id.\nUpdate requires --id, or --type and --target-id with --value. Supply at least one label change.", []string{
+		"tadx catalog label list --env dev --type datasource --target-id <datasource-luid>",
+		"tadx catalog label update --env dev --id <label-luid> --message <message> --preview",
 	}},
 	{"admin", "Use --preview to inspect supported remote changes. Users, groups, and permission principals use exact selectors.", []string{
 		"tadx admin user list --env dev", "tadx admin group list --env dev", "tadx admin permission inspect --env dev --kind workbook --id <workbook-luid>",
@@ -86,7 +86,7 @@ var categoryHelpExamples = []helpExampleSet{
 		"tadx admin permission inspect --env dev --kind workbook --id <workbook-luid>",
 		"tadx admin permission create --env dev --kind workbook --id <workbook-luid> --principal-type group --principal-id <group-luid> --capability Read --mode Allow --preview",
 	}},
-	{"admin label", "Shared label definitions are separate from labels attached to assets under content label.", []string{
+	{"admin label", "Shared label definitions are separate from labels attached to assets under catalog label.", []string{
 		"tadx admin label value list --env dev", "tadx admin label category list --env dev",
 	}},
 	{"admin label value", "Inspect, update, and delete select an exact --name. Creating a value through update also requires --category.", []string{

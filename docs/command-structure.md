@@ -98,7 +98,8 @@ Keep factual syntax synchronized with validation; use shared presentation metada
 Help must work without configuration, authentication, credential access, Tableau calls, or side effects.
 
 Implement and measure the content pilot first for user review before applying the pattern to other categories.
-The pilot changes help for workbook, datasource, flow, and project without relocating other commands or rolling up admin paths.
+The pilot changes help for the four content resources: workbook, datasource, flow, and project.
+Lineage and asset label operations move to `catalog lineage` and `catalog label`; admin paths remain unchanged during the pilot.
 Existing commands outside the pilot must remain discoverable and executable until their placement is settled.
 Then verify:
 
@@ -119,11 +120,14 @@ Do not modify auto-generated documentation by hand.
 
 These placement decisions are separate from the category-neutral help rules above.
 `content` retains workbook, datasource, flow, and project operations.
-Lineage, tagging, and label operations move outside `content` once their destinations are decided.
-Keep `cache` for local cached observations and `catalog` for upstream Tableau metadata.
+`catalog lineage` owns lineage capture, and `catalog label` owns labels attached to assets.
+Shared label value and category definitions remain under `admin`.
+Keep `cache` for local cached observations and `catalog` for upstream Tableau metadata, tagging, lineage, and asset labels.
 
 | Current resource path | New resource path |
 | --- | --- |
+| `content lineage` | `catalog lineage` |
+| `content label` | `catalog label` |
 | `admin group member` | `admin group-member` |
 | `admin label value` | `admin label-value` |
 | `admin label category` | `admin label-category` |

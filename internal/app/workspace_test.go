@@ -48,14 +48,16 @@ func TestWorkspaceArtifactAdaptersPreserveCleanupWarnings(t *testing.T) {
 	}
 }
 
-func TestLineageCapabilityIsClassifiedUnderContent(t *testing.T) {
-	definition, ok := capability.Lookup("lineage.pull")
-	if !ok {
-		t.Fatal("lineage.pull is missing from the registry")
-	}
-	domain, resource := classify(definition)
-	if domain != "content" || resource != "lineage" {
-		t.Fatalf("classify(lineage.pull) = %q, %q", domain, resource)
+func TestMovedMetadataCapabilitiesAreClassifiedUnderCatalog(t *testing.T) {
+	for id, wantResource := range map[string]string{"lineage.pull": "lineage", "content.label.list": "label", "content.label.inspect": "label", "content.label.update": "label", "content.label.delete": "label"} {
+		definition, ok := capability.Lookup(id)
+		if !ok {
+			t.Fatalf("%s is missing from the registry", id)
+		}
+		domain, resource := classify(definition)
+		if domain != "catalog" || resource != wantResource {
+			t.Fatalf("classify(%s) = %q, %q", id, domain, resource)
+		}
 	}
 }
 

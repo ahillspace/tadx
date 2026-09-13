@@ -1260,7 +1260,7 @@
   },
   {
     "id": "content.label.delete",
-    "surface": "tadx content label delete",
+    "surface": "tadx catalog label delete",
     "outcome": "Delete supported content label attachments on exact database, table, column, datasource, or flow targets.",
     "type": "change",
     "disposition": "ship",
@@ -1280,7 +1280,7 @@
     "implementation": "implemented",
     "validation": "Local HTTP and action contracts; live mutations not verified",
     "command_path": [
-      "content",
+      "catalog",
       "label",
       "delete"
     ],
@@ -1288,7 +1288,7 @@
   },
   {
     "id": "content.label.inspect",
-    "surface": "tadx content label inspect",
+    "surface": "tadx catalog label inspect",
     "outcome": "Inspect supported content label attachments on exact database, table, column, datasource, or flow targets.",
     "type": "inspect",
     "disposition": "ship",
@@ -1308,7 +1308,7 @@
     "implementation": "implemented",
     "validation": "Local HTTP and action contracts; live mutations not verified",
     "command_path": [
-      "content",
+      "catalog",
       "label",
       "inspect"
     ],
@@ -1316,7 +1316,7 @@
   },
   {
     "id": "content.label.list",
-    "surface": "tadx content label list",
+    "surface": "tadx catalog label list",
     "outcome": "List supported content label attachments on exact database, table, column, datasource, or flow targets.",
     "type": "find",
     "disposition": "ship",
@@ -1336,7 +1336,7 @@
     "implementation": "implemented",
     "validation": "Local HTTP and action contracts; live mutations not verified",
     "command_path": [
-      "content",
+      "catalog",
       "label",
       "list"
     ],
@@ -1344,7 +1344,7 @@
   },
   {
     "id": "content.label.update",
-    "surface": "tadx content label update",
+    "surface": "tadx catalog label update",
     "outcome": "Update supported content label attachments on exact database, table, column, datasource, or flow targets.",
     "type": "change",
     "disposition": "ship",
@@ -1364,7 +1364,7 @@
     "implementation": "implemented",
     "validation": "Local HTTP and action contracts; live mutations not verified",
     "command_path": [
-      "content",
+      "catalog",
       "label",
       "update"
     ],
@@ -2144,7 +2144,7 @@
   },
   {
     "id": "lineage.pull",
-    "surface": "tadx content lineage pull",
+    "surface": "tadx catalog lineage pull",
     "outcome": "Capture bounded content, database, and table lineage for one exact workbook, published datasource, or flow without downloading its native package.",
     "type": "deliver",
     "disposition": "ship",
@@ -2164,7 +2164,7 @@
     "implementation": "implemented",
     "validation": "Contract-verified; live deployment verification is not claimed",
     "command_path": [
-      "content",
+      "catalog",
       "lineage",
       "pull"
     ],

@@ -13,7 +13,8 @@ type LineagePuller interface {
 	PullLineage(context.Context, lineagepull.Input) (lineagepull.Output, error)
 }
 
-func newLineage(deps Dependencies) *cobra.Command {
+// NewLineage creates the lineage resource for the catalog command tree.
+func NewLineage(puller LineagePuller, renderer Renderer) *cobra.Command {
 	command := &cobra.Command{Use: "lineage", Short: "Capture bounded Tableau lineage"}
 	var input lineagepull.Input
 	var luid, name, projectPath string
@@ -37,11 +38,11 @@ func newLineage(deps Dependencies) *cobra.Command {
 		}
 		return nil
 	}, RunE: func(command *cobra.Command, _ []string) error {
-		result, err := deps.LineagePuller.PullLineage(command.Context(), input)
+		result, err := puller.PullLineage(command.Context(), input)
 		if err != nil {
 			return clierr.WithOutput(result, err)
 		}
-		return deps.Renderer.Render(result)
+		return renderer.Render(result)
 	}}
 	pull.Long = `Capture bounded content and physical-data lineage for a workbook, datasource, or flow.
 Includes upstream databases and tables; datasource and flow roots also include their

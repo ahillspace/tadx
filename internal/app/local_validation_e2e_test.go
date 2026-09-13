@@ -50,7 +50,7 @@ func TestLocalReadAndMutationErrorsMakeNoAuthenticationRequest(t *testing.T) {
 		{"content", "project", "list", "--cursor", "invalid"},
 		{"content", "project", "create", "--environment", "production", "--name", "bad/name", "--preview"},
 		{"content", "datasource", "update", "--environment", "production", "--id", "datasource", "--name", "", "--preview"},
-		{"content", "lineage", "pull", "--environment", "production", "--kind", "workbook", "--id", "book", "--depth", "4"},
+		{"catalog", "lineage", "pull", "--environment", "production", "--kind", "workbook", "--id", "book", "--depth", "4"},
 		{"search", "--type", "workbook", "--limit", "2001"},
 		{"admin", "user", "list", "--limit", "-1"},
 		{"admin", "group", "list", "--limit", "10001"},

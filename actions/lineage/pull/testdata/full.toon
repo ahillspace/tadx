@@ -26,4 +26,4 @@ provenance:
   server_origin: "https://tableau.example.com"
   site_luid: site-1
 request_ids[1]: request-1
-help[1]: tadx content lineage pull --kind flow --id flow-1 --direction both
+help[1]: tadx catalog lineage pull --kind flow --id flow-1 --direction both

@@ -23,8 +23,9 @@ Give your agent an outcome, not a list of API calls:
 
 Or use the same CLI directly to inspect, download, organize, and publish Tableau content.
 TADX supports workbook, datasource, flow, and project lifecycle operations, local workspaces and caches, lineage, administration, upstream catalog metadata, and Pulse definition workflows.
-Run `tadx --help` for the complete command roadmap, then one category help call such as `tadx content --help` for every descendant action.
-Each action section includes required inputs, options, accepted values, defaults, and constraints.
+Run `tadx --help` for the command roadmap and `tadx content --help` for its four resources and available actions.
+Use a resource reference such as `tadx content workbook --help` for all its verbs, required inputs, options, accepted values, defaults, and constraints.
+Every content verb shows its owning resource reference; `catalog lineage` captures lineage and `catalog label` manages asset labels.
 Use `tadx capability list` and `tadx capability get` for feature inventory and availability diagnostics.
 
 ## Install TADX and agent guidance

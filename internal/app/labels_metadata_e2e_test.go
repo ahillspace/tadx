@@ -46,7 +46,7 @@ func TestLabelsMetadataHTTPPreviewUsesReadOnlyPOST(t *testing.T) {
 	}))
 	defer s.Close()
 	var out bytes.Buffer
-	code := app.Run(context.Background(), []string{"content", "label", "update", "--env", "production", "--type", "table", "--target-id", "table-1", "--value", "Warning", "--message", "After", "--preview", "--json"}, &out, catalogMetadataOptions(t, s, false))
+	code := app.Run(context.Background(), []string{"catalog", "label", "update", "--env", "production", "--type", "table", "--target-id", "table-1", "--value", "Warning", "--message", "After", "--preview", "--json"}, &out, catalogMetadataOptions(t, s, false))
 	if code != 0 || reads != 1 || writes != 0 || auth != 1 || !strings.Contains(out.String(), `"mode":"preview"`) {
 		t.Fatalf("code=%d reads=%d writes=%d auth=%d %s", code, reads, writes, auth, &out)
 	}
@@ -96,7 +96,7 @@ func TestLabelsMetadataHTTPUpdatePreservesFieldsAndReceipt(t *testing.T) {
 			}))
 			defer s.Close()
 			var out bytes.Buffer
-			code := app.Run(context.Background(), []string{"content", "label", "update", "--env", "production", "--id", "label-1", "--message", "After", "--json"}, &out, catalogMetadataOptions(t, s, true))
+			code := app.Run(context.Background(), []string{"catalog", "label", "update", "--env", "production", "--id", "label-1", "--message", "After", "--json"}, &out, catalogMetadataOptions(t, s, true))
 			if (code != 0) != failReadback || writes != 1 || !json.Valid(out.Bytes()) || !strings.Contains(out.String(), "label-1") {
 				t.Fatalf("code=%d writes=%d %s", code, writes, &out)
 			}
@@ -186,9 +186,9 @@ func TestLabelsMetadataLocalErrorsBeforeAuthentication(t *testing.T) {
 	defer s.Close()
 	opts := catalogMetadataOptions(t, s, true)
 	for _, args := range [][]string{
-		{"content", "label", "list", "--type", "workbook", "--target-id", "book"},
-		{"content", "label", "delete", "--id", "label", "--type", "workbook", "--target-id", "book"},
-		{"content", "label", "update", "--id", "label"},
+		{"catalog", "label", "list", "--type", "workbook", "--target-id", "book"},
+		{"catalog", "label", "delete", "--id", "label", "--type", "workbook", "--target-id", "book"},
+		{"catalog", "label", "update", "--id", "label"},
 		{"admin", "label", "value", "update", "--name", "Warning", "--elevated-default"},
 		{"admin", "label", "category", "create", "--name", "Custom"},
 	} {

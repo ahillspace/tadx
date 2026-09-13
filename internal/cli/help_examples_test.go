@@ -31,8 +31,8 @@ func TestCategoryHelpExamplesResolve(t *testing.T) {
 		Stderr:      io.Discard,
 	}
 	categories := []string{
-		"auth", "env", "cache", "catalog", "catalog database", "catalog table", "catalog column",
-		"content", "content workbook", "content datasource", "content datasource schema", "content flow", "content project", "content lineage", "content label",
+		"auth", "env", "cache", "catalog", "catalog database", "catalog table", "catalog column", "catalog lineage", "catalog label",
+		"content", "content workbook", "content datasource", "content datasource schema", "content flow", "content project",
 		"admin", "admin user", "admin group", "admin group member", "admin permission", "admin label", "admin label value", "admin label category",
 		"pulse", "pulse definition", "pulse metric", "pulse metric followers", "workspace", "workspace artifact", "agent", "mutation", "capability",
 	}

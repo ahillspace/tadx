@@ -98,7 +98,7 @@ func New(deps Dependencies) *cobra.Command {
 	content := &cobra.Command{
 		Use:   "content",
 		Short: "Operate Tableau content lifecycle",
-		Long: "Operate workbook, datasource, flow, project, and lineage lifecycle with TADX.\n\n" +
+		Long: "Operate workbook, datasource, flow, and project lifecycle with TADX.\n\n" +
 			"TADX supports content discovery and schema inspection; it does not query datasource values or render views.",
 	}
 	workbook := &cobra.Command{Use: "workbook", Short: "Operate Tableau workbooks"}
@@ -137,9 +137,6 @@ func New(deps Dependencies) *cobra.Command {
 	}
 	if deps.FlowLister != nil && deps.FlowInspector != nil && deps.FlowPuller != nil && deps.FlowPublisher != nil && deps.FlowMover != nil && deps.FlowDeleter != nil {
 		content.AddCommand(newFlow(deps))
-	}
-	if deps.LineagePuller != nil {
-		content.AddCommand(newLineage(deps))
 	}
 	return content
 }

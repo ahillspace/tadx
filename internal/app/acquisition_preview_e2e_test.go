@@ -43,6 +43,7 @@ func TestNativeAcquisitionPreviewResolvesWithoutDownloadingOrWriting(t *testing.
 			before := acquisitionSnapshot(t, root)
 			args := []string{"content", kind, "pull", "--id", "item-1", "--workspace", "work", "--environment", "test", "--preview"}
 			if kind == "lineage" {
+				args[0] = "catalog"
 				args = append(args, "--kind", "flow", "--direction", "upstream", "--depth", "3")
 			}
 			out := runGroupOneCLI(t, options, args...)

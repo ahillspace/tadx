@@ -21,10 +21,10 @@ Brackets below mark optional flags.
 | `tadx catalog column update` | Edit a column description or tags. | `--table-id <rest-luid> --id <column-rest-luid>`; [`--description <text>`] [repeated `--add-tag <tag>`] [repeated `--remove-tag <tag>`] [`--preview`] |
 | `tadx catalog search <query>` | Search database/table metadata; optionally scan one table's columns. | [repeated `--type database\|table\|column`] [`--table-id <rest-luid>` required for columns] [`--limit 1..10000` or `--all`] |
 | `tadx catalog audit` | Find description/tag gaps in one database, table, or datasource scope. | `--type database\|table\|datasource --id <rest-luid>` [repeated `--check descriptions\|tags`] [`--direct-only`] [`--limit 1..10000`] |
-| `tadx content label list` | List labels attached to one asset. | `--type <asset-type> --target-id <rest-luid>` [repeated `--category <name>`] [`--limit 1..10000`] |
-| `tadx content label inspect` | Inspect an exact label attachment. | `--id <label-luid>` [`--type <asset-type> --target-id <rest-luid>`] |
-| `tadx content label update` | Apply a label or edit one attachment. | `--id <label-luid>` or `--type <asset-type> --target-id <rest-luid> --value <name>`; [`--value <name>`] [`--message <text>`] [`--active=true\|false`] [`--elevated=true\|false`] [`--preview`] |
-| `tadx content label delete` | Remove an attachment, not the asset or shared vocabulary. | `--id <label-luid>` [`--type <asset-type> --target-id <rest-luid>`] [`--preview`] |
+| `tadx catalog label list` | List labels attached to one asset. | `--type <asset-type> --target-id <rest-luid>` [repeated `--category <name>`] [`--limit 1..10000`] |
+| `tadx catalog label inspect` | Inspect an exact label attachment. | `--id <label-luid>` [`--type <asset-type> --target-id <rest-luid>`] |
+| `tadx catalog label update` | Apply a label or edit one attachment. | `--id <label-luid>` or `--type <asset-type> --target-id <rest-luid> --value <name>`; [`--value <name>`] [`--message <text>`] [`--active=true\|false`] [`--elevated=true\|false`] [`--preview`] |
+| `tadx catalog label delete` | Remove an attachment, not the asset or shared vocabulary. | `--id <label-luid>` [`--type <asset-type> --target-id <rest-luid>`] [`--preview`] |
 | `tadx admin label value list` | List shared label values. | [`--limit 1..10000`] |
 | `tadx admin label value inspect` | Inspect a shared value by exact name. | `--name <name>` |
 | `tadx admin label value update` | Create or update a shared value; category is immutable once created. | `--name <name>` [`--new-name <name>`] [`--category <name>` for creation] [`--description <text>`] [`--preview`] |

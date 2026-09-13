@@ -42,7 +42,7 @@ Incomplete explicitly requested dependency acquisition remains visible.
 | `tadx content project update` | Change project name, description, or content-permission mode. | `--environment`; `--id` or `--project`; `--new-name`, `--description`, `--content-permissions`, `--preview` |
 | `tadx content project move` | Reparent a project or move it to the top level. | `--environment`; `--id` or `--project`; `--parent-id`, `--parent`, or `--top-level`; `--preview` |
 | `tadx content project delete` | Delete one remote project. | `--environment`, `--id`, `--preview` |
-| `tadx content lineage pull` | Save bounded lineage without downloading native content. | `--kind workbook\|datasource\|flow`; `--id`, or `--name` with `--project`; `--environment`, `--workspace`, `--direction upstream\|downstream\|both`, `--depth 1..3`, `--overwrite`, `--preview` |
+| `tadx catalog lineage pull` | Save bounded lineage without downloading native content. | `--kind workbook\|datasource\|flow`; `--id`, or `--name` with `--project`; `--environment`, `--workspace`, `--direction upstream\|downstream\|both`, `--depth 1..3`, `--overwrite`, `--preview` |
 
 ## Discovery and read source
 
@@ -92,7 +92,7 @@ A sole configured environment is inferred; with multiple environments, remote wr
 
 ## Batches
 
-Repeat one supported selector on pull or publish to process up to 100 resources of one type; category help lists the available dimensions.
+Repeat one supported selector on pull or publish to process up to 100 resources of one type; resource help lists the available dimensions.
 TADX validates the full selection first, preserves selection order, processes sequentially, continues after independent failures, and returns a nonzero aggregate result when any item fails.
 Batch publish rejects `--name` because each artifact keeps its own name.
 TADX does not infer dependency order or retry failed items.
@@ -137,6 +137,6 @@ An asynchronous publish timeout is an unknown outcome, not proof of failure, so 
 ## Lineage limits
 
 Native pulls capture bounded lineage as metadata when available.
-`lineage pull` creates a metadata-only artifact when the native package is not needed.
+`tadx catalog lineage pull` creates a metadata-only artifact when the native package is not needed.
 Lineage is evidence only within the requested direction, depth, permissions, and returned bounds.
 Missing or inaccessible edges do not prove that a resource is independent.

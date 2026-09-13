@@ -93,7 +93,7 @@ func TestGroupOneProjectAndFlowReadsPullAndLineageThroughCLI(t *testing.T) {
 		t.Fatalf("native flow payload = %q, error = %v", payload, err)
 	}
 
-	lineageOutput := runGroupOneCLI(t, options, "content", "lineage", "pull", "--workspace", "operations", "--kind", "flow", "--id", "flow-1")
+	lineageOutput := runGroupOneCLI(t, options, "catalog", "lineage", "pull", "--workspace", "operations", "--kind", "flow", "--id", "flow-1")
 	for _, want := range []string{"status: pulled", "kind: flow", "luid: flow-1", "complete: true", "artifacts/lineage/flow/", "details: \"--full\""} {
 		if !strings.Contains(lineageOutput, want) {
 			t.Fatalf("lineage pull output missing %q:\n%s", want, lineageOutput)

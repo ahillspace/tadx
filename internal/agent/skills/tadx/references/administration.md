@@ -35,7 +35,7 @@ A sole configured environment can be omitted; multiple environments require an e
 ## Operating rules
 
 Shared label vocabulary is managed with `admin label value list/inspect/update/delete` and `admin label category list/inspect/create/update/delete`.
-Applying or removing a label belongs to `content label`, not administration.
+Applying or removing an asset label belongs to `catalog label`.
 Read [Catalog metadata](catalog.md) for these action tables, exact-name selectors, and optional flags.
 
 Reuse known user, group, project, and content LUIDs.
