@@ -113,7 +113,7 @@ func TestContentPresentationGroupsAndValuesAreDeterministic(t *testing.T) {
 }
 
 func TestContentPresentationListCacheEffectsAreScoped(t *testing.T) {
-	for _, resourceName := range []string{"workbook", "datasource", "flow", "project"} {
+	for _, resourceName := range []string{"workbook", "flow", "project"} {
 		t.Run(resourceName, func(t *testing.T) {
 			_, resource := contentPresentationTree(resourceName, "list")
 			got := contentPresentationOutput(t, resource)

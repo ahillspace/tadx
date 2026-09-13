@@ -67,6 +67,10 @@ type contentHelpEntry struct {
 }
 
 func writeContentReference(out io.Writer, resource *cobra.Command) {
+	if resource.Name() == "datasource" {
+		writeDatasourceReference(out, resource)
+		return
+	}
 	_, actions := helpNodes(resource)
 	fmt.Fprintf(out, "usage: %s <verb> [flags]\n%s: %s\n\nactions:\n", resource.CommandPath(), helpCommandName(resource), contentResourceSummary(resource))
 	entries := map[string]*contentHelpEntry{}

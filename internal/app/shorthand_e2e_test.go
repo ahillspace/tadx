@@ -179,7 +179,7 @@ func TestShorthandHelpAndCompletionExposeAliasesWithoutChangingCanonicalUse(t *t
 	if code := app.Run(context.Background(), []string{"con", "ds", "del", "--help"}, &deleteHelp, options); code != 0 {
 		t.Fatalf("delete alias help code=%d output=%s", code, deleteHelp.String())
 	}
-	for _, want := range []string{"--name (--nm, -n) <name> exact name", "--project (--prj) <path> exact project path", "--name requires --project; an --id selects the resource directly.", "exactly one of: --id, --name"} {
+	for _, want := range []string{"target: --id (-i) <luid> | (", "--name (--nm,-n) <name> --project (--prj) <path>) (exact)"} {
 		if !strings.Contains(deleteHelp.String(), want) {
 			t.Errorf("delete alias help missing %q:\n%s", want, deleteHelp.String())
 		}

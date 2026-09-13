@@ -95,7 +95,7 @@ func TestContentHelpPilotResourceReferencesAndVerbMirrors(t *testing.T) {
 	dir, options := contentHelpPilotSetup(t)
 	content := contentHelpPilotTree(t, options)
 	resources := []string{"workbook", "datasource", "flow", "project"}
-	budgets := map[string]int{"workbook": 5800, "datasource": 6800, "flow": 5200, "project": 4700}
+	budgets := map[string]int{"workbook": 5800, "datasource": 3000, "flow": 5200, "project": 4700}
 	for _, name := range resources {
 		t.Run(name, func(t *testing.T) {
 			resource, _, err := content.Find([]string{name})
@@ -105,6 +105,21 @@ func TestContentHelpPilotResourceReferencesAndVerbMirrors(t *testing.T) {
 			want := contentHelpPilotRun(t, dir, options, "content", name, "--help")
 			if size := utf8.RuneCountInString(want); size > budgets[name] {
 				t.Errorf("%s reference has %d characters; budget is %d", name, size, budgets[name])
+			}
+			if name == "datasource" {
+				flat := strings.Join(strings.Fields(want), " ")
+				for _, fact := range []string{
+					"local only; default live", "no writes; mutation gate may be off", "details, not rows",
+					"target: --id (-i) <luid> | (--name", "--project (--prj) <path>) (exact)",
+					"(default 25)", "(default 20)", "measure|dimension|date|excluded",
+					"(dirty local files)", "(destination)", "create (collision fails)", "append/replace (data)",
+					"(one required; omitted unchanged)", "(waits)", "field IDs repeat <=10000",
+					"repeat one selector OR --batch-file", "1-100 sequential items", "env/control flags outside rows",
+				} {
+					if !strings.Contains(flat, fact) {
+						t.Errorf("compact reference lost %q", fact)
+					}
+				}
 			}
 			for _, sibling := range resources {
 				if sibling != name && strings.Contains(want, "tadx content "+sibling+" ") {
