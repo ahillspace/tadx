@@ -9,6 +9,7 @@ import (
 )
 
 var commandAliases = map[string]string{
+	"group-member": "gm", "label-value": "lv", "label-category": "lc",
 	"catalog": "cat", "database": "db", "table": "tbl", "column": "col", "audit": "aud", "label": "lbl", "value": "val", "category": "ctg",
 	"admin": "adm", "agent": "agt", "artifact": "art", "auth": "ath",
 	"capability": "cap", "cache": "cch", "check": "chk", "clean": "cln",

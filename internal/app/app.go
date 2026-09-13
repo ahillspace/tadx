@@ -751,8 +751,8 @@ func filterResource(definition capability.Definition) string {
 }
 
 func classify(definition capability.Definition) (string, string) {
-	if len(definition.CommandPath) >= 3 && definition.CommandPath[0] == "catalog" {
-		return "catalog", definition.CommandPath[1]
+	if len(definition.CommandPath) >= 3 && (definition.CommandPath[0] == "catalog" || definition.CommandPath[0] == "admin") {
+		return definition.CommandPath[0], definition.CommandPath[1]
 	}
 	parts := strings.Split(definition.ID, ".")
 	if definition.Owner == capability.OwnerCLI && (parts[0] == "workbook" || parts[0] == "datasource" || parts[0] == "flow" || parts[0] == "project") {

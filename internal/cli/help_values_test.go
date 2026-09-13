@@ -59,7 +59,7 @@ func TestRequiredHelpFactsMatchActionValidation(t *testing.T) {
 			}
 			return usercreate.ValidateInput(in)
 		}},
-		{"admin label category create", []string{"name", "description"}, func(omit string) error {
+		{"admin label-category create", []string{"name", "description"}, func(omit string) error {
 			in := categorycreate.Input{Name: "certified", Description: "Reviewed data"}
 			if omit == "name" {
 				in.Name = ""
@@ -131,7 +131,7 @@ func TestHelpUpdateOmissionAndChangeRequirementsMatchValidation(t *testing.T) {
 	}
 	installCategoryHelp(root)
 	got := renderedHelp(t, command)
-	if !strings.Contains(got, "omitted: unchanged") || strings.Contains(got, "default: false") {
+	if !strings.Contains(got, "omitted settings stay unchanged") || strings.Contains(got, "default: false") {
 		t.Fatalf("update omission is misrepresented:\n%s", got)
 	}
 }
@@ -182,7 +182,7 @@ func TestLocalRequiredHelpFactsMatchCommandValidation(t *testing.T) {
 func helpValuesTree() *cobra.Command {
 	root := &cobra.Command{Use: "tadx"}
 	admin := admincli.New(admincli.Dependencies{PermissionCapabilities: tableauadmin.PermissionCapabilities})
-	admin.AddCommand(admincli.NewLabels(admincli.LabelDependencies{}))
+	admin.AddCommand(admincli.NewLabels(admincli.LabelDependencies{})...)
 	catalog := catalogcli.New(catalogcli.Dependencies{})
 	catalog.AddCommand(contentcli.NewLabels(contentcli.LabelDependencies{}))
 	root.AddCommand(admin, catalog, pulsecli.New(pulsecli.Dependencies{}), envcli.New(envcli.Dependencies{}), workspacecli.New(workspacecli.Dependencies{}), newSearch(nil, nil))

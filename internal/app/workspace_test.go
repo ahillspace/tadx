@@ -61,13 +61,13 @@ func TestMovedMetadataCapabilitiesAreClassifiedUnderCatalog(t *testing.T) {
 	}
 }
 
-func TestNestedCapabilityIDUsesItsFirstResourceSegment(t *testing.T) {
+func TestNestedCapabilityIDUsesItsExecutableResource(t *testing.T) {
 	definition, ok := capability.Lookup("admin.group.member.add")
 	if !ok {
 		t.Fatal("admin.group.member.add is missing from the registry")
 	}
 	domain, resource := classify(definition)
-	if domain != "admin" || resource != "group" {
+	if domain != "admin" || resource != "group-member" {
 		t.Fatalf("classify(admin.group.member.add) = %q, %q", domain, resource)
 	}
 }

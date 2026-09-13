@@ -238,7 +238,7 @@ func applyHelpRequirements(command *cobra.Command, path string) {
 		required("id")
 		group("one-required", "new-name", "minimum-site-role", "external-user-enabled", "set-members")
 		note("--member-id requires --set-members; --set-members without --member-id removes all direct members.")
-	case "admin group member add", "admin group member remove":
+	case "admin group-member add", "admin group-member remove":
 		required("group-id")
 		group("exactly-one", "user-id", "username")
 	case "admin user create":
@@ -256,14 +256,14 @@ func applyHelpRequirements(command *cobra.Command, path string) {
 		required("kind", "id", "principal-type", "capability", "mode")
 		group("exactly-one", "principal-id", "principal-username")
 		note("--principal-username requires --principal-type user; --default-for requires --kind project.")
-	case "admin label value inspect", "admin label value delete", "admin label category inspect", "admin label category delete":
+	case "admin label-value inspect", "admin label-value delete", "admin label-category inspect", "admin label-category delete":
 		required("name")
-	case "admin label category create":
+	case "admin label-category create":
 		required("name", "description")
-	case "admin label category update":
+	case "admin label-category update":
 		required("name")
 		group("one-required", "new-name", "description")
-	case "admin label value update":
+	case "admin label-value update":
 		required("name")
 		group("one-required", "new-name", "category", "description")
 		note("Creating a missing label value requires --category and --description; renaming requires an existing value.")
@@ -405,7 +405,7 @@ func appendHelpUsage(flag *pflag.Flag, text string) {
 var helpLimitDefaults = map[string]string{
 	"content workbook list": "25", "content datasource list": "25", "content flow list": "25", "content project list": "25",
 	"content datasource schema": "20", "catalog label list": "20",
-	"admin user list": "25", "admin group list": "25", "admin label value list": "20", "admin label category list": "20",
+	"admin user list": "25", "admin group list": "25", "admin label-value list": "20", "admin label-category list": "20",
 	"catalog database list": "25", "catalog table list": "25", "catalog column list": "25", "catalog search": "25", "catalog audit": "1000",
 	"pulse definition list": "25", "pulse metric list": "25",
 	"env list": "20", "workspace list": "20", "workspace status": "20", "capability list": "20",

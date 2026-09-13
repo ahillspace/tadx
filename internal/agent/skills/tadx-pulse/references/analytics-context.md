@@ -1,17 +1,7 @@
 # Verify saved Pulse configuration
 
-| Action | Purpose | Selectors and useful flags |
-| --- | --- | --- |
-| `tadx pulse metric inspect` | Read a saved metric's filters and period. | `--environment`, `--id <metric-luid>`, `--full` |
-| `tadx pulse definition inspect` | Read its shared measure, date, and display settings. | `--environment`, `--id <definition-luid>`, `--full` |
-
 Use known identities and verified evidence already available for the task.
-When TADX configuration inspection is needed, inspect the metric and its definition in the same environment:
-
-```text
-tadx pulse metric inspect --environment '<alias>' --id '<metric-luid>' --full
-tadx pulse definition inspect --environment '<alias>' --id '<definition-luid>' --full
-```
+When configuration inspection is needed, inspect the metric and its definition in the same environment.
 
 A definition LUID is not a metric LUID.
 The metric's saved period and full population, including inherited filters, determine the variant being verified.

@@ -1,35 +1,14 @@
 # Fork a metric's period or population
 
-| Action | Purpose | Required and useful flags |
-| --- | --- | --- |
-| `tadx pulse metric inspect` | Read the source or saved variant's complete filters and period. | `--environment`, `--id <metric-luid>`, `--full` |
-| `tadx pulse definition inspect` | Check the shared definition's allowed dimensions and grains. | `--environment`, `--id <definition-luid>`, `--full` |
-| `tadx pulse metric fork` | Create or reuse a variant with selected period or filter changes. | `--environment`, `--id <source-metric-luid>`, `--period`, `--days`, repeated `--filter`, repeated `--exclude-filter`, `--preview`, `--full` |
-
 Read before forking and before creating a base whose requested result depends on a particular period or population.
 A fork keeps the shared measure, aggregation, date, allowed dimensions, units, and sentiment.
 It changes the metric's period or filters within that definition.
 
 ## Inspect the base and verify member values
 
-```text
-tadx pulse metric inspect --environment '<alias>' --id '<source-metric-luid>' --full
-tadx pulse definition inspect --environment '<alias>' --id '<definition-luid>' --full
-```
-
 Inspect the source metric's complete filters and period, plus the definition's allowed dimensions and granularities.
 Use exact member values from an inspected existing metric, precise user input, or other verified data evidence.
 Schema gives field identities, not member values; a field name does not establish that West, Enterprise, or Active exists.
-
-| Flag | Meaning |
-| --- | --- |
-| `--environment` or `--env` | Explicit configured write environment. |
-| `--id` | Source metric LUID, not definition LUID. |
-| `--period` | One supported reporting period below; omission retains the source period. |
-| `--days` | Integer 1-3650, required only with CUSTOM_N_DAYS. |
-| `--filter` | Repeat `<dimension-id-or-unique-display-name>=<verified-member>` for included members. |
-| `--exclude-filter` | Same syntax for excluded members; do not mix include and exclude for one field. |
-| `--preview` | Review the normalized resulting period and population before execution; `--full` adds bounded provider detail. |
 
 Provide at least one period or filter change.
 Repeated members for one field form alternatives; filters on different fields apply together.
@@ -39,7 +18,6 @@ Unique field captions and labels resolve to raw IDs before previewing or creatin
 Exact allowed raw IDs take precedence; resolved fields must belong to the definition's allowed dimensions.
 Using both the raw ID and its display name combines values for that field; mixing inclusion and exclusion fails.
 Categorical member values are not translated from aliases.
-Each member is limited to 256 Unicode characters, with up to 10,000 members per field.
 Prefer a meaningful published grouping over an unnecessarily large member list.
 
 ## Preserve inherited population
@@ -77,14 +55,9 @@ The first `=` separates field ID from member, so a field ID containing `=` has n
 
 The chosen grain must be allowed by the definition; TADX checks compatibility before writing.
 A MONTH-minimum definition cannot support a daily rolling variant.
-Do not invent aliases such as MTD or WEEK_TO_DATE.
 Existing calendars and offsets can affect the meaning of periods, so inspect them when material.
 
 ## Preview, execute, and verify
-
-```text
-tadx pulse metric fork --environment '<alias>' --id '<source-metric-luid>' --period MONTH_TO_DATE --filter '<region-id>=<verified-region-1>' --filter '<region-id>=<verified-region-2>' --preview
-```
 
 Review the default preview's final population, including inherited filters, replacements, null policy, period, and definition linkage.
 Check the resulting population, not just the requested changes.

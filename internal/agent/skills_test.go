@@ -145,11 +145,11 @@ func TestSkillPackagesHaveValidMetadataAndLocalReferences(t *testing.T) {
 	}
 }
 
-// Help parsing validates published recipe command paths and flags without remote
-// requests or mutation. These checks do not validate agent workflow behavior.
-func TestSkillRecipesUseInstalledCommandsAndFlags(t *testing.T) {
+// Guidance routes to executable help instead of maintaining a parallel command
+// manual. These checks do not validate agent workflow behavior.
+func TestSkillHelpEntrypointsUseInstalledCommands(t *testing.T) {
 	source := os.DirFS("skills")
-	words := regexp.MustCompile(`"[^"]*"|'[^']*'|[^\s]+`)
+	commands := regexp.MustCompile("`(tadx[^`\\n]* -h)`")
 	options := app.Options{ConfigPath: filepath.Join(t.TempDir(), "missing.yaml")}
 	count := 0
 	err := fs.WalkDir(source, ".", func(location string, entry fs.DirEntry, walkErr error) error {
@@ -163,20 +163,12 @@ func TestSkillRecipesUseInstalledCommandsAndFlags(t *testing.T) {
 		if err != nil {
 			return err
 		}
-		for _, line := range strings.Split(string(data), "\n") {
-			line = strings.TrimSpace(line)
-			if !strings.HasPrefix(line, "tadx ") {
-				continue
-			}
+		for _, match := range commands.FindAllStringSubmatch(string(data), -1) {
 			count++
-			args := words.FindAllString(line, -1)[1:]
-			for index := range args {
-				args[index] = strings.Trim(args[index], "\"'")
-			}
-			args = append(args, "--help")
+			args := strings.Fields(match[1])[1:]
 			var out bytes.Buffer
 			if exit := app.Run(context.Background(), args, &out, options); exit != 0 {
-				t.Fatalf("%s recipe %q: exit %d\n%s", location, line, exit, out.String())
+				t.Fatalf("%s help entrypoint %q: exit %d\n%s", location, match[1], exit, out.String())
 			}
 		}
 		return nil
@@ -185,36 +177,38 @@ func TestSkillRecipesUseInstalledCommandsAndFlags(t *testing.T) {
 		t.Fatal(err)
 	}
 	if count == 0 {
-		t.Fatal("no CLI recipes validated")
+		t.Fatal("no help entrypoints validated")
 	}
-	t.Logf("validated %d CLI recipes without executing operations", count)
+	t.Logf("validated %d help entrypoints without executing operations", count)
 }
 
-func TestPulsePublishGuidanceFlagsAreExecutable(t *testing.T) {
-	data, err := os.ReadFile("skills/tadx-pulse/references/operations.md")
+func TestGuidanceDoesNotDuplicateCommandManuals(t *testing.T) {
+	data, err := os.ReadFile("skills/tadx/SKILL.md")
 	if err != nil {
 		t.Fatal(err)
 	}
-	flags := regexp.MustCompile(`--[a-z][a-z-]*`)
-	count := 0
-	for _, line := range strings.Split(string(data), "\n") {
-		if !strings.HasPrefix(line, "| `tadx pulse definition publish` |") {
-			continue
-		}
-		for _, flag := range flags.FindAllString(line, -1) {
-			count++
-			value := "example"
-			if flag == "--preview" || flag == "--full" {
-				value = "true"
-			}
-			var output bytes.Buffer
-			args := []string{"pulse", "definition", "publish", flag + "=" + value, "--help"}
-			if code := app.Run(context.Background(), args, &output, app.Options{ConfigPath: filepath.Join(t.TempDir(), "missing.yaml")}); code != 0 {
-				t.Errorf("documented publish flag %s is rejected: %s", flag, output.String())
-			}
-		}
+	if len(data) > 5000 {
+		t.Errorf("root Guidance grew to %d bytes; keep concepts in optional references", len(data))
 	}
-	if count == 0 {
-		t.Fatal("no Pulse publish Guidance flags checked")
+	err = fs.WalkDir(os.DirFS("skills"), ".", func(location string, entry fs.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+		if entry.IsDir() || !strings.HasSuffix(location, ".md") {
+			return nil
+		}
+		body, err := os.ReadFile(filepath.Join("skills", filepath.FromSlash(location)))
+		if err != nil {
+			return err
+		}
+		for _, line := range strings.Split(string(body), "\n") {
+			if strings.HasPrefix(line, "| Action |") || strings.HasPrefix(line, "| Flag |") {
+				t.Errorf("%s duplicates a CLI syntax table; keep syntax in resource help", location)
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
 	}
 }

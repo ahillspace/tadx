@@ -11,6 +11,9 @@ The following aliases are supported by the CLI command tree.
 | Canonical | Alias | Meaning |
 | --- | --- | --- |
 | `admin` | `adm` | Administration command group. |
+| `group-member` | `gm` | Direct group membership resource. |
+| `label-value` | `lv` | Shared label value definitions. |
+| `label-category` | `lc` | Shared label categories. |
 | `agent` | `agt` | Agent command group. |
 | `artifact` | `art` | Artifact command group. |
 | `auth` | `ath` | Authentication command group. |

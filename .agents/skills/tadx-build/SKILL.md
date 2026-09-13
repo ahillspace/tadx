@@ -96,7 +96,9 @@ Do not resurrect Markdown compilation, a separate implementation manifest, or `r
 Preserve canonical capability annotations and actual command-tree binding tests.
 Reuse canonical selectors/flags and add collision-free shorthand in `internal/cli/shorthand.go` for new names longer than three characters, or document a justified exception.
 When changing arguments, test canonical and alias state, repeated values, and explicit Boolean false.
-Update affected installed Guidance and help with executable examples, not workarounds for CLI defects.
+Follow [the command structure standard](../../../docs/command-structure.md) for root/category navigation and complete resource help; verb help mirrors its owning reference.
+Keep syntax, flags, constraints, defaults, and examples in help, not duplicated in installed Guidance.
+The root skill teaches efficient discovery; optional references explain Tableau concepts and task-specific judgment, not command manuals or workarounds for CLI defects.
 Never hand-edit generated files or `CHANGELOG.md`; leave the maintainer's capability-map HTML alone unless assigned.
 
 ```text

@@ -1,13 +1,5 @@
 # Design a useful Pulse definition
 
-| Action | Purpose | Selectors and useful flags |
-| --- | --- | --- |
-| `tadx search <term>` | Discover a published datasource or existing Pulse object. | `--environment`, `--type datasource\|pulse`, `--limit` |
-| `tadx pulse definition list` | Find existing definitions and conventions. | `--environment`, `--name <exact-name>`, `--datasource-id <luid>`, `--all`, `--full` |
-| `tadx pulse definition inspect` | Compare actual business and display settings. | `--environment`, `--id <definition-luid>`, `--full` |
-| `tadx content datasource inspect` | Verify an exact published source. | `--environment`, `--id <datasource-luid>`, `--full` |
-| `tadx content datasource schema` | Discover measures, dates, dimensions, and formulas. | `--environment`, `--id <datasource-luid>`, `--query`, `--role`, `--table`, `--field-id`, `--limit`, `--all`, `--full` |
-
 Use this reference for recommendations and creation design.
 Before creating or previewing, also read the creation contract.
 
@@ -30,45 +22,24 @@ Compare the actual datasource, quantity, aggregation, date, population, temporal
 Reuse a compatible definition, or fork an inspected metric when only period or population differs.
 Compatible extra slicers are useful; missing required capabilities can prevent reuse.
 
-```text
-tadx pulse definition list --environment '<alias>' --datasource-id '<datasource-luid>' --all --full
-tadx pulse definition inspect --environment '<alias>' --id '<definition-luid>' --full
-```
-
 ## Discover fields for a new definition
 
 Use a supplied published datasource LUID, or resolve its exact name and project.
 Do not substitute an embedded workbook datasource for a published source.
 
-```text
-tadx search --environment '<alias>' --type datasource '<source-concept>'
-tadx content datasource inspect --environment '<alias>' --id '<datasource-luid>' --full
-tadx content datasource schema --environment '<alias>' --id '<datasource-luid>' --role measure --query '<measure-concept>' --limit 100
-tadx content datasource schema --environment '<alias>' --id '<datasource-luid>' --role date --all
-tadx content datasource schema --environment '<alias>' --id '<datasource-luid>' --role dimension --all
-```
-
-For a broad metric set, omit the measure query and inspect the relevant measures with `--all`.
+For a broad metric set, inspect the relevant measure inventory rather than filtering to one quantity.
 For entity counts, search the identifier among dimensions as well as measures.
 Schema `--query` is a case-insensitive substring, not semantic search or an OR expression.
 An empty query result does not prove that the intended quantity is absent.
 
 Consider the complete eligible dimension inventory for each new source, even when no breakdown was requested.
 Reuse it for related definitions on that unchanged source.
-Schema defaults to 20 returned fields; `--limit` and `--all` support up to 10,000 matching fields.
-Use `more_available` to detect bounded output and `--all` for complete discovery; do not combine `--all` with `--limit`.
+Use reported coverage to distinguish a bounded sample from complete discovery.
 If the bound is exceeded, partition discovery by supported role or table filters and keep coverage explicit.
 `--cache` uses only previously captured schema and never establishes current completeness.
 
-If the required full details were not already returned, read selected measure, date, and derived dimension IDs together before finalizing them:
-
-```text
-tadx content datasource schema --environment '<alias>' --id '<datasource-luid>' --field-id '<exact-measure-id>' --field-id '<exact-date-id>' --field-id '<exact-derived-dimension-id>' --full
-```
-
-Remove prior role, query, and table filters for that exact-field read.
-Repeat `--field-id` for each needed field; one invocation fetches the schema once and rejects missing or ambiguous selections.
-Use the returned `id` for schema `--field-id` selections.
+If full details were not already returned, inspect the selected measure, date, and derived dimensions together before finalizing them.
+Do not accidentally retain discovery filters that exclude one of these selected fields.
 Pulse creation also accepts unique captions or labels and resolves them to raw IDs automatically before previewing or publishing.
 Duplicate captions can belong to different tables; an ID that still matches multiple fields remains ambiguous.
 Use full metadata for derived dimensions when their meaning requires it.

@@ -25,7 +25,7 @@ Or use the same CLI directly to inspect, download, organize, and publish Tableau
 TADX supports workbook, datasource, flow, and project lifecycle operations, local workspaces and caches, lineage, administration, upstream catalog metadata, and Pulse definition workflows.
 Run `tadx --help` for the command roadmap and `tadx content --help` for its four resources and available actions.
 Use a resource reference such as `tadx content workbook --help` for all its verbs, required inputs, options, accepted values, defaults, and constraints.
-Every content verb shows its owning resource reference; `catalog lineage` captures lineage and `catalog label` manages asset labels.
+Every verb shows its owning operational reference; `catalog lineage` captures lineage and `catalog label` manages asset labels.
 Use `tadx capability list` and `tadx capability get` for feature inventory and availability diagnostics.
 
 ## Install TADX and agent guidance
@@ -61,14 +61,16 @@ For CI or temporary use, environment profiles can instead reference a PAT name v
 See `tadx env --help` for those options.
 
 Run `tadx` for a local overview of your configuration, or `tadx --help` for the command roadmap.
-Category help is complete for its scope: `tadx admin group --help` includes membership actions, while `tadx admin --help` includes all administration actions.
-Leaf help such as `tadx admin group create --help` presents the same facts for one action.
-Aliases appear beside their canonical names, such as `admin (adm)` and `--environment (--env, -e)`.
+Category help is a short roadmap; resource help contains the complete syntax for that resource.
+For example, `tadx admin --help` lists resources, `tadx admin group --help` covers group operations, and `tadx admin group-member --help` covers membership changes.
+Verb help, such as `tadx admin group create --help`, repeats its resource reference; there is no need to request both.
+Direct-action categories such as `auth` and `env` provide their complete reference at that level.
+Selected useful aliases appear beside canonical flags; the [shorthand reference](docs/reference/shorthand.md) lists all shortcuts.
 Both `-h` and `--help` show help without running the operation or reading credentials.
 
 ## Add skills to your agent
 
-Install the bundled [TADX skill](internal/agent/skills/tadx/SKILL.md) and [Pulse authoring skill](internal/agent/skills/tadx-pulse/SKILL.md) so your agent knows the commands and how to use them safely:
+Install the bundled [TADX skill](internal/agent/skills/tadx/SKILL.md) and [Pulse authoring skill](internal/agent/skills/tadx-pulse/SKILL.md) for effective discovery and Tableau-specific judgment:
 
 ```text
 tadx agent install --target auto
@@ -134,7 +136,7 @@ Interactive `auth login` and policy-changing `mutation set` remain explicit oper
 Enabling remote mutations is an optional, explicit opt-in that is separate from permission to perform a particular Tableau operation.
 Agents must ask before changing the mutation setting or its scope.
 See `tadx mutation status` and `tadx mutation set --help` when you are ready to configure that policy.
-For repeated work, category help identifies supported selectors and `--batch-file` inputs, including positional `args` arrays.
+For repeated work, the operational reference identifies supported selectors and `--batch-file` inputs, including positional `args` arrays.
 Batches vary one selector dimension at a time or use explicit item rows, with at most 100 expanded selections.
 
 ## Learn more

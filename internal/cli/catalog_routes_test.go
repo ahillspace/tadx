@@ -79,8 +79,8 @@ func TestCatalogRoutesWithIndependentDependencies(t *testing.T) {
 			if err := root.Execute(); err != nil {
 				t.Fatal(err)
 			}
-			if !strings.Contains(out.String(), "usage: tadx "+test.path) {
-				t.Fatal("catalog help topic did not render operation")
+			if !strings.Contains(out.String(), "Usage: tadx catalog "+test.name+" <verb>") || !strings.Contains(out.String(), command.Name()+":") {
+				t.Fatal("catalog help topic did not render its resource reference and operation")
 			}
 		})
 	}

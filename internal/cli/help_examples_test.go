@@ -33,7 +33,7 @@ func TestCategoryHelpExamplesResolve(t *testing.T) {
 	categories := []string{
 		"auth", "env", "cache", "catalog", "catalog database", "catalog table", "catalog column", "catalog lineage", "catalog label",
 		"content", "content workbook", "content datasource", "content datasource schema", "content flow", "content project",
-		"admin", "admin user", "admin group", "admin group member", "admin permission", "admin label", "admin label value", "admin label category",
+		"admin", "admin user", "admin group", "admin group-member", "admin permission", "admin label-value", "admin label-category",
 		"pulse", "pulse definition", "pulse metric", "pulse metric followers", "workspace", "workspace artifact", "agent", "mutation", "capability",
 	}
 	seen := map[string]bool{}
@@ -101,8 +101,8 @@ func TestCategoryHelpExplainsRequiredAlternatives(t *testing.T) {
 		path string
 		want []string
 	}{
-		{"admin group", []string{"create --name <group-name>", "exactly one of: --id, --name"}},
-		{"admin group member", []string{"--group-id", "exactly one of: --user-id, --username"}},
+		{"admin group", []string{"create:", "--name <group-name>", "exactly one of: --id, --name"}},
+		{"admin group-member", []string{"--group-id", "exactly one of: --user-id, --username"}},
 		{"admin permission", []string{"--principal-type", "--principal-username", "--capability", "--mode"}},
 		{"content workbook publish", []string{"Source (publish):", "| --file <file.twb|file.twbx>", "| --id <luid>", "| --artifact-name", "(--project-id (--pid) <luid> | --project <path>)", "Repeat one selector OR use --batch-file", `{"items":[{"id":"<luid>"}]}`, "Rows: flag keys", "1-100"}},
 		{"pulse definition", []string{"--name", "--datasource-id", "--measure-field", "--date-field", "--dimension", "--datasource-map"}},

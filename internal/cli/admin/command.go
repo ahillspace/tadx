@@ -90,12 +90,11 @@ func New(deps Dependencies) *cobra.Command {
 	user.AddCommand(newUserList(deps), newUserInspect(deps), newUserCreate(deps), newUserUpdate(deps), newUserDelete(deps))
 	group := &cobra.Command{Use: "group", Short: "Administer site groups"}
 	group.AddCommand(newGroupList(deps), newGroupInspect(deps), newGroupCreate(deps), newGroupUpdate(deps), newGroupDelete(deps))
-	member := &cobra.Command{Use: "member", Short: "Change direct group membership"}
+	member := &cobra.Command{Use: "group-member", Short: "Change direct group membership"}
 	member.AddCommand(newGroupMemberAdd(deps), newGroupMemberRemove(deps))
-	group.AddCommand(member)
 	permission := &cobra.Command{Use: "permission", Short: "Manage exact permission rules"}
 	permission.AddCommand(newPermissionInspect(deps), newPermissionCreate(deps), newPermissionDelete(deps))
-	command.AddCommand(user, group, permission)
+	command.AddCommand(user, group, member, permission)
 	return command
 }
 

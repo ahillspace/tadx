@@ -1,8 +1,8 @@
 # Command structure and help standard
 
-Status: approved design; content help pilot implemented for review, remaining categories pending.
+Status: implemented across the CLI.
 This is the single standard for public command structure and help construction.
-Use this standard for new help work; complete the rollout before updating the operating skills to promise it across all categories.
+Use this standard for new help work; operating skills explain discovery and Tableau concepts rather than duplicating syntax.
 
 ## Command structure
 
@@ -106,11 +106,10 @@ Keep factual syntax synchronized with validation through automated command and f
 Store each formatted resource reference once and mirror it at its verbs, rather than maintaining copies at each level.
 Help must work without configuration, authentication, credential access, Tableau calls, or side effects.
 
-Implement and measure the content pilot first for user review before applying the pattern to other categories.
-The pilot changes help for the four content resources: workbook, datasource, flow, and project.
-Lineage and asset label operations move to `catalog lineage` and `catalog label`; admin paths remain unchanged during the pilot.
-Existing commands outside the pilot must remain discoverable and executable until their placement is settled.
-Then verify:
+The approved content reference establishes the presentation pattern for every category.
+Content contains workbook, datasource, flow, and project; lineage and asset labels belong to `catalog`.
+Admin membership and shared label resources use one hyphenated resource word to keep paths within three words after `tadx`.
+Verify:
 
 - Root and category navigation expose every applicable resource and operation without expanding descendant manuals.
 - Resource references contain every supported action and its required syntax, while excluding unrelated sibling resources.

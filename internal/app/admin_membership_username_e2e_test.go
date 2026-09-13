@@ -75,7 +75,7 @@ func TestMembershipExactUsernameResolutionAndReceiptThroughCLI(t *testing.T) {
 				case "other-site":
 					username = "foreign@example.test"
 				}
-				args := []string{"admin", "group", "member", operation, "--group-id", "group-1", "--username", username, "--environment", "test"}
+				args := []string{"admin", "group-member", operation, "--group-id", "group-1", "--username", username, "--environment", "test"}
 				if scenario == "conflicting" {
 					args = append(args, "--user-id", "user-1")
 				}

@@ -113,7 +113,7 @@
   },
   {
     "id": "admin.group.member.add",
-    "surface": "tadx admin group member add",
+    "surface": "tadx admin group-member add",
     "outcome": "Add one exact user to one exact group without replacing other members, or preview the operation.",
     "type": "change",
     "disposition": "ship",
@@ -134,15 +134,14 @@
     "validation": "Contract-verified exact incremental add, preview, no-op, revalidation, and uncertain outcome",
     "command_path": [
       "admin",
-      "group",
-      "member",
+      "group-member",
       "add"
     ],
     "raw_capable": false
   },
   {
     "id": "admin.group.member.remove",
-    "surface": "tadx admin group member remove",
+    "surface": "tadx admin group-member remove",
     "outcome": "Remove one exact user from one exact group without replacing other members, or preview the operation.",
     "type": "change",
     "disposition": "ship",
@@ -163,8 +162,7 @@
     "validation": "Contract-verified exact incremental removal, preview, no-op, revalidation, and uncertain outcome",
     "command_path": [
       "admin",
-      "group",
-      "member",
+      "group-member",
       "remove"
     ],
     "raw_capable": false
@@ -199,7 +197,7 @@
   },
   {
     "id": "admin.label.category.create",
-    "surface": "tadx admin label category create",
+    "surface": "tadx admin label-category create",
     "outcome": "Create shared label categories by exact name.",
     "type": "change",
     "disposition": "ship",
@@ -220,15 +218,14 @@
     "validation": "Local HTTP and action contracts; live mutations not verified",
     "command_path": [
       "admin",
-      "label",
-      "category",
+      "label-category",
       "create"
     ],
     "raw_capable": false
   },
   {
     "id": "admin.label.category.delete",
-    "surface": "tadx admin label category delete",
+    "surface": "tadx admin label-category delete",
     "outcome": "Delete shared label categories by exact name.",
     "type": "change",
     "disposition": "ship",
@@ -249,15 +246,14 @@
     "validation": "Local HTTP and action contracts; live mutations not verified",
     "command_path": [
       "admin",
-      "label",
-      "category",
+      "label-category",
       "delete"
     ],
     "raw_capable": false
   },
   {
     "id": "admin.label.category.inspect",
-    "surface": "tadx admin label category inspect",
+    "surface": "tadx admin label-category inspect",
     "outcome": "Inspect shared label categories by exact name.",
     "type": "inspect",
     "disposition": "ship",
@@ -278,15 +274,14 @@
     "validation": "Local HTTP and action contracts; live mutations not verified",
     "command_path": [
       "admin",
-      "label",
-      "category",
+      "label-category",
       "inspect"
     ],
     "raw_capable": false
   },
   {
     "id": "admin.label.category.list",
-    "surface": "tadx admin label category list",
+    "surface": "tadx admin label-category list",
     "outcome": "List shared label categories by exact name.",
     "type": "find",
     "disposition": "ship",
@@ -307,15 +302,14 @@
     "validation": "Local HTTP and action contracts; live mutations not verified",
     "command_path": [
       "admin",
-      "label",
-      "category",
+      "label-category",
       "list"
     ],
     "raw_capable": false
   },
   {
     "id": "admin.label.category.update",
-    "surface": "tadx admin label category update",
+    "surface": "tadx admin label-category update",
     "outcome": "Update shared label categories by exact name.",
     "type": "change",
     "disposition": "ship",
@@ -336,15 +330,14 @@
     "validation": "Local HTTP and action contracts; live mutations not verified",
     "command_path": [
       "admin",
-      "label",
-      "category",
+      "label-category",
       "update"
     ],
     "raw_capable": false
   },
   {
     "id": "admin.label.value.delete",
-    "surface": "tadx admin label value delete",
+    "surface": "tadx admin label-value delete",
     "outcome": "Delete shared label values by exact name.",
     "type": "change",
     "disposition": "ship",
@@ -365,15 +358,14 @@
     "validation": "Local HTTP and action contracts; live mutations not verified",
     "command_path": [
       "admin",
-      "label",
-      "value",
+      "label-value",
       "delete"
     ],
     "raw_capable": false
   },
   {
     "id": "admin.label.value.inspect",
-    "surface": "tadx admin label value inspect",
+    "surface": "tadx admin label-value inspect",
     "outcome": "Inspect shared label values by exact name.",
     "type": "inspect",
     "disposition": "ship",
@@ -394,15 +386,14 @@
     "validation": "Local HTTP and action contracts; live mutations not verified",
     "command_path": [
       "admin",
-      "label",
-      "value",
+      "label-value",
       "inspect"
     ],
     "raw_capable": false
   },
   {
     "id": "admin.label.value.list",
-    "surface": "tadx admin label value list",
+    "surface": "tadx admin label-value list",
     "outcome": "List shared label values by exact name.",
     "type": "find",
     "disposition": "ship",
@@ -423,15 +414,14 @@
     "validation": "Local HTTP and action contracts; live mutations not verified",
     "command_path": [
       "admin",
-      "label",
-      "value",
+      "label-value",
       "list"
     ],
     "raw_capable": false
   },
   {
     "id": "admin.label.value.update",
-    "surface": "tadx admin label value update",
+    "surface": "tadx admin label-value update",
     "outcome": "Update shared label values by exact name. Creates a missing value or updates supported properties of an existing value.",
     "type": "change",
     "disposition": "ship",
@@ -452,8 +442,7 @@
     "validation": "Local HTTP and action contracts; live mutations not verified",
     "command_path": [
       "admin",
-      "label",
-      "value",
+      "label-value",
       "update"
     ],
     "raw_capable": false

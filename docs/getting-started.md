@@ -18,16 +18,18 @@ Common next outcomes include:
 - Discover published datasource fields and create or reuse Pulse definitions and metric variants.
 
 Choose a category from `tadx --help`.
-For content, navigate with `tadx content -h`, or go directly to a resource reference for its verbs, flags, and examples:
+Navigate with category help, or go directly to a resource reference for its verbs, flags, and examples:
 
 ```text
 tadx content workbook --help
 tadx admin group --help
-tadx pulse --help
+tadx pulse definition --help
 ```
 
-Content resource and verb help are identical: `tadx content workbook pull -h` shows the same reference as `tadx content workbook -h`.
-Other categories currently include descendant actions in their category help; for example, `tadx admin --help` covers administration, including group membership.
+Resource and verb help are identical: `tadx content workbook pull -h` shows the same reference as `tadx content workbook -h`.
+Root and category navigation stay short; `tadx admin group-member -h` documents membership separately from group lifecycle.
+For direct-action categories such as `auth` and `env`, category help is the complete operational reference.
+Skills and their optional references explain Tableau concepts and judgment, while help owns command syntax.
 Use `tadx capability list` and `tadx capability get` for feature inventory and availability diagnostics; they are not required to discover command syntax.
 Confirm consequential selectors and safety flags from the relevant help, and obtain the required authorization before execution.
 

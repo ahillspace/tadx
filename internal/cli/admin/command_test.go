@@ -123,11 +123,11 @@ func TestCommandMountsAllCapabilitiesAndShowsMutations(t *testing.T) {
 func TestGroupMemberCommandsMapExactIdentities(t *testing.T) {
 	f := &fake{}
 	cmd := cli.New(deps(f, true))
-	cmd.SetArgs([]string{"group", "member", "add", "--environment", "dev", "--group-id", "g1", "--user-id", "u1", "--preview"})
+	cmd.SetArgs([]string{"group-member", "add", "--environment", "dev", "--group-id", "g1", "--user-id", "u1", "--preview"})
 	if err := cmd.Execute(); err != nil {
 		t.Fatal(err)
 	}
-	cmd.SetArgs([]string{"group", "member", "remove", "--environment", "dev", "--group-id", "g1", "--user-id", "u2"})
+	cmd.SetArgs([]string{"group-member", "remove", "--environment", "dev", "--group-id", "g1", "--user-id", "u2"})
 	if err := cmd.Execute(); err != nil {
 		t.Fatal(err)
 	}

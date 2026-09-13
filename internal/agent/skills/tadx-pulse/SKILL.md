@@ -6,9 +6,9 @@ description: Author and manage Tableau Pulse definitions with TADX, including bu
 # Author and manage Tableau Pulse metrics
 
 Before starting a TADX Pulse task, read the installed `tadx` root skill at `../tadx/SKILL.md`, beside this skill's directory.
-It covers general discovery, datasource schema, caches, workspaces, and administration; consult its relevant references before assuming a capability is missing from TADX.
-Use `tadx pulse --help` once for complete action sections, including required inputs, accepted values, constraints, and nested definition and metric actions.
-Aliases appear beside canonical names, and leaf help presents the same facts for one action.
+It supplies the shared operating model and routes to concepts only when needed.
+Use `tadx pulse -h` to locate resources, then `tadx pulse definition -h` or `tadx pulse metric -h` for complete syntax; verb help repeats that resource reference.
+Use `tadx content datasource -h` for schema discovery when that reference is not already loaded.
 The references below retain authoring judgment and verification contracts that command syntax alone does not provide.
 
 A definition owns the shared measure, aggregation, date, allowed dimensions, and display settings.
@@ -29,13 +29,12 @@ TADX configuration reads do not return current metric values or generated insigh
 | Verify saved settings or retain configuration context for numeric validation | [Configuration context](references/analytics-context.md) |
 
 Read only the routes needed for the task.
-Authoring includes its discovery commands, so those reads do not require loading the operations route too.
+Authoring covers source and field selection; it does not require the operations route unless existing-object lifecycle is also part of the task.
 Keep needed guidance and verified choices available across task handoffs.
 
 ## Shared rules
 
 Use exact identities in the selected environment; datasource, field, definition, metric, user, and group IDs are different identifiers.
-`--env` aliases `--environment` on commands that accept an environment.
 For repeated lifecycle operations or JSON scripting, read `references/batching.md` in the installed `tadx` root skill.
 Reuse inspected existing definitions and conventions early, before comprehensive new field discovery.
 Use live reads for authoritative authoring decisions; cached coverage does not establish current completeness.
@@ -50,12 +49,7 @@ Review `--preview` before every authorized create or fork; its default summary i
 Use `--full` for expanded evidence or an explicitly incomplete summary, and do not treat omitted settings as reviewed.
 Verify the saved configuration from returned read-back or an exact inspection when needed.
 A preview proves local validation, not Tableau acceptance or numeric correctness.
-Execution requires enabled mutation policy, but supported read-only previews remain available when the gate is off.
-A preview does not authorize execution.
-Before changing the environment override or saved mutation setting by any mechanism, obtain explicit user permission for that setting change and its scope.
-A requested Pulse operation does not authorize changing the flag; prior permission applies only to the explicitly approved setting change and scope.
-Follow the TADX root skill's single-question approval guidance, including future-shell scope for persistent changes.
-Use the installed TADX root Guidance for authentication, workspace selection, and general lifecycle boundaries.
+The TADX root skill's authentication, mutation-policy permission, and recovery rules apply; a preview does not authorize execution.
 
 Retain exact selected fields, measure meaning, date, units, slicer set and order, metric filters and period, reviewed flags, returned IDs, and verification status.
 Reuse discovery for an unchanged source and refresh affected evidence after source changes or identity errors.

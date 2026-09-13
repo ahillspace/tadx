@@ -100,10 +100,7 @@ func TestCLIProcessBareGroupsKeepHelpBehavior(t *testing.T) {
 		{"pulse", "metric"},
 	} {
 		result := runCLI(t, binary, args, nil)
-		inventory := "commands["
-		if args[0] == "content" {
-			inventory = "Commands:"
-		}
+		inventory := "Commands:"
 		if result.exitCode != 0 || result.stderr != "" || !strings.Contains(strings.ToLower(result.stdout), "usage: tadx "+strings.Join(args, " ")) || !strings.Contains(result.stdout, inventory) {
 			t.Fatalf("args = %v, exit = %d, stdout = %q, stderr = %q", args, result.exitCode, result.stdout, result.stderr)
 		}

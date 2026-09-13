@@ -37,6 +37,13 @@ test('Docs opens the hosted command browser with current registry data and retur
   assert.match(map, /--ink: #202720/);
   const embedded = /<script id="capability-data" type="application\/json">([\s\S]*?)<\/script>/.exec(map);
   assert.deepEqual(JSON.parse(embedded[1]), data);
+  for (const capability of data) {
+    assert.ok((capability.command_path || []).length <= 3, `Too many command levels: ${capability.surface}`);
+  }
+  for (const route of ['tadx catalog label', 'tadx admin label-value', 'tadx admin label-category']) {
+    assert.ok(map.includes(`<code>${route}</code>`), `Missing current route: ${route}`);
+  }
+  assert.ok(!map.includes('<code>tadx content label</code>'));
   for (const match of map.matchAll(/href="([^"]+)"/g)) {
     assert.ok(match[1].startsWith('#') || match[1].startsWith('https://') || match[1] === 'capabilities.json', `Unpublished map link: ${match[1]}`);
   }

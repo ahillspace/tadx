@@ -1,70 +1,33 @@
-# Manage workspaces and local artifacts
+# Workspaces and managed artifacts
 
-## Available actions
+A workspace is a named, registered local directory containing `tadx.yaml`, `artifacts/`, and `.tadx/`.
+Names are case-insensitively unique; a workspace selector is a name, not a filesystem path.
+Default creation uses `<home>/TADX/workspaces/<name>`; a custom root is optional.
+TADX does not silently invent a workspace during a pull.
 
-Workspace commands are local and do not accept `--environment`.
-Add `--full` when machine-local roots, fingerprints, provenance, or expanded artifact state are needed.
+Explicit selection wins, then the registered workspace containing the current directory, then the environment default, then the general default.
+Changing directories can therefore change the resolved workspace; the session overview reports selection.
+Workspace location does not select a remote publish target.
 
-| Action | What it does | Required and useful optional flags |
-|---|---|---|
-| `tadx workspace create <name>` | Create and register a workspace with a new identity. | `--path` overrides the default root; `--preview`. |
-| `tadx workspace register [name]` | Register an existing workspace without changing its files or identity. | `--path` is required; the name is optional when the manifest supplies it; `--preview`. |
-| `tadx workspace clone <source>` | Copy a registered workspace under a new identity. | `--name` is required; `--path` overrides the default root; `--preview`. |
-| `tadx workspace list` | List registered workspaces. | `--limit 1..10000` |
-| `tadx workspace status` | Report resolved workspace identity and managed artifact state. | `--workspace`, `--limit 1..10000` |
-| `tadx workspace set-default <name>` | Set the general default to one available registered workspace. | `--preview` |
-| `tadx workspace unregister <name>` | Remove a registration while preserving every file. | `--preview` |
-| `tadx workspace delete <name>` | Remove an exact registration and its managed root. | `--preview`, `--force` |
-| `tadx workspace artifact move` | Move one managed artifact between workspaces without changing Tableau identity. | `--source`, `--destination`; `--artifact`, or both `--kind` and `--id`; `--preview` |
-| `tadx workspace artifact delete` | Delete one exact local managed artifact. | `--workspace`; `--artifact`, or both `--kind` and `--id`; `--preview`, `--force` |
-| `tadx workspace clean` | Remove one class of disposable local state while preserving canonical artifacts. | `--workspace`; `--class temporary\|cache\|logs\|all`; `--preview` |
+## Files and identity
 
-## Workspace model
+Register adopts an existing managed workspace, not an ordinary folder.
+Clone copies it under a new workspace identity; moving an artifact between workspaces preserves its Tableau identity and dirty state.
+Neither operation moves remote content.
 
-A workspace is a named, registered local directory containing managed Tableau artifacts, metadata, and TADX state.
-Creation establishes `tadx.yaml`, `artifacts/`, and `.tadx/`.
-Create accepts a new path or an existing empty real directory; register requires an existing managed workspace, not an ordinary folder.
-Without `--path`, create and clone use `<home>/TADX/workspaces/<name>`.
-Use `--path` only to choose another machine-local root.
-Workspace names are portable, case-insensitively unique, and used by `--workspace`; a filesystem path is not a workspace selector.
-TADX never creates a workspace implicitly during pull.
-Use `--preview` to inspect supported local changes without changing files, registrations, or defaults.
-Execution rechecks prerequisites; a preview does not reserve the destination or prove write access.
-List and status report `more_available` when output is bounded; increase `--limit` up to 10,000 to inspect more from the beginning.
+Managed artifacts retain native files, provenance, and sidecars.
+Source LUIDs help select local items but do not identify the destination of a publish.
+Keep managed paths workspace-relative with forward slashes; obtain actual local file locations from expanded status rather than reconstructing hashed directory names.
+An existing native file can be published directly without manufacturing managed metadata.
 
-Workspace selection follows this order:
+Clean means payload and baseline agree; dirty means local changes, while missing or invalid state needs attention before replacement.
+Preserve sidecars during native editing and do not overwrite dirty work merely to make a command pass.
 
-1. Explicit logical `--workspace` name.
-2. The registered workspace containing the current directory.
-3. The selected environment's default workspace.
-4. The general configured default workspace.
-5. A structured failure when none resolves.
+## Removal
 
-## Artifact selectors and state
-
-Keep artifact paths workspace-relative and slash-delimited, such as `artifacts/datasource/<artifact-directory>`.
-Absolute paths, parent traversal, and backslash-delimited artifact selectors are invalid.
-An artifact can instead be selected by both `--kind` and authoritative Tableau `--id`.
-Managed content publish accepts `--id` or an exact `--artifact-name` within the resolved workspace; source LUIDs remain provenance and do not select the destination.
-Use `workspace status --full` to obtain exact local file locations; compact output omits internal hashed directories and fingerprints.
-Publish an existing native workbook, datasource, or flow file with `--file <path>` without creating managed bookkeeping yourself.
-Preserve provenance and sidecars when editing native payloads.
-`workspace status` reports clean, dirty, missing, and invalid managed artifacts.
-
-Artifact move requires different source and destination workspaces and fails on destination collision.
-It preserves the artifact's Tableau identity and local dirty state.
-It does not move remote Tableau content.
-
-## Removal and cleanup
-
-`unregister` preserves the workspace root and all files.
-When other workspaces remain, reassign general and environment defaults before removing their referenced workspace.
-Use `tadx workspace set-default <name>` for the general default; follow the returned environment-specific recovery command for an environment default.
-Explicitly removing the sole registered workspace clears its default references without creating a replacement.
-`workspace delete` removes both the registration and managed root, and rejects broad roots, identity drift, nested registered workspaces, unsafe links, and unapproved dirty or invalid state.
-Use `--force` only when discarding dirty, invalid, or unmanaged local files is authorized.
-
-`workspace artifact delete` removes only one exact local artifact.
-A dirty artifact requires `--force` in addition to any mutation policy authorization.
-`workspace clean` removes only the selected disposable state class and preserves canonical managed artifacts.
-None of these local operations deletes Tableau content.
+Unregister removes only registration; workspace deletion removes the managed root as well.
+Reassign defaults before removing a workspace they reference when other workspaces remain.
+Removing the sole workspace can clear those defaults without creating a replacement.
+Cleanup of temporary state preserves canonical artifacts; artifact deletion removes selected local content only.
+Discarding dirty, invalid, or unmanaged files requires deliberate authorization, even when force is available.
+None of these operations deletes Tableau content.

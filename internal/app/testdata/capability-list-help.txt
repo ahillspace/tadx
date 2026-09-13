@@ -1,20 +1,16 @@
+Usage: tadx capability <verb> [flags]
 
-list (ls):
-  Return a bounded inventory of discoverable operations, ownership, and execution availability.
-  usage: tadx capability list [flags]
-  options:
-    --config (--cfg) <path>  path to the non-secret TADX configuration file
-    --domain (--dom) <domain>  filter by exact command domain
-    --full (--ful, -f)  show expanded bounded details
-    --json (--jsn)  render machine-readable JSON instead of TOON
-    --limit (--lim, -l) <1..10000> (default: 20)  maximum capabilities to return, up to 10000
-    --mutation (--mut)  filter by remote mutation status
-    --owner (--own) <owner>  filter by exact owner
-    --product (--prd) <product>  filter by product availability
-    --resource (--res) <resource>  filter by exact resource
+Shared:
+  --config <path>
+  --full (details, not rows)
+  --json
 
-  --help (-h)  Show help only; never run the operation.
-  Boolean flags accept =true or =false; a bare flag means true. Omitted options keep their documented default.
+Commands:
+  get <id>: (Inspect one capability's availability and contract)
 
-notes (capability (cap)):
-  Use capability IDs to inspect ownership, availability, and bounded operation details.
+  list: (List capabilities)
+    [--domain <domain>] [--limit <1..10000> (default: 20)] [--mutation] [--owner <owner>]
+    [--product <product>] [--resource <resource>]
+
+Rules:
+  Booleans: =true|false (bare=true); ... means repeatable.

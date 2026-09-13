@@ -265,7 +265,7 @@ Other connected tools remain independent; TADX does not configure, select, proxy
 		if deps.AdminLabels != nil {
 			labels := *deps.AdminLabels
 			labels.Renderer = deps.Renderer
-			node.AddCommand(admincli.NewLabels(labels))
+			node.AddCommand(admincli.NewLabels(labels)...)
 		}
 		root.AddCommand(node)
 	}

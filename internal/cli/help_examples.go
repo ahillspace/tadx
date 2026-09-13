@@ -78,24 +78,24 @@ var categoryHelpExamples = []helpExampleSet{
 	{"admin group", "Create requires --name. Inspect accepts --id or --name. Update and delete require --id.", []string{
 		"tadx admin group inspect --env dev --name <group-name>", "tadx admin group create --env dev --name <group-name> --preview",
 	}},
-	{"admin group member", "Add and remove require --group-id and exactly one of --user-id or --username.", []string{
-		"tadx admin group member add --env dev --group-id <group-luid> --username <username> --preview",
-		"tadx admin group member remove --env dev --group-id <group-luid> --user-id <user-luid> --preview",
+	{"admin group-member", "Add and remove require --group-id and exactly one of --user-id or --username.", []string{
+		"tadx admin group-member add --env dev --group-id <group-luid> --username <username> --preview",
+		"tadx admin group-member remove --env dev --group-id <group-luid> --user-id <user-luid> --preview",
 	}},
 	{"admin permission", "Inspect requires --kind and --id. Create and delete also require --principal-type, a principal selector, --capability, and --mode.\nUse --principal-id, or --principal-username with --principal-type user. Repeat --capability for multiple rules.", []string{
 		"tadx admin permission inspect --env dev --kind workbook --id <workbook-luid>",
 		"tadx admin permission create --env dev --kind workbook --id <workbook-luid> --principal-type group --principal-id <group-luid> --capability Read --mode Allow --preview",
 	}},
 	{"admin label", "Shared label definitions are separate from labels attached to assets under catalog label.", []string{
-		"tadx admin label value list --env dev", "tadx admin label category list --env dev",
+		"tadx admin label-value list --env dev", "tadx admin label-category list --env dev",
 	}},
-	{"admin label value", "Inspect, update, and delete select an exact --name. Creating a value through update also requires --category.", []string{
-		"tadx admin label value inspect --env dev --name <label-value>",
-		"tadx admin label value update --env dev --name <label-value> --description <description> --preview",
+	{"admin label-value", "Inspect, update, and delete select an exact --name. Creating a value through update also requires --category.", []string{
+		"tadx admin label-value inspect --env dev --name <label-value>",
+		"tadx admin label-value update --env dev --name <label-value> --description <description> --preview",
 	}},
-	{"admin label category", "Create, inspect, update, and delete select an exact --name.", []string{
-		"tadx admin label category list --env dev",
-		"tadx admin label category create --env dev --name <category-name> --description <description> --preview",
+	{"admin label-category", "Create, inspect, update, and delete select an exact --name.", []string{
+		"tadx admin label-category list --env dev",
+		"tadx admin label-category create --env dev --name <category-name> --description <description> --preview",
 	}},
 	{"pulse", "", []string{
 		"tadx pulse definition list --env dev", "tadx pulse metric list --env dev --definition-id <definition-luid>",

@@ -1,11 +1,5 @@
 # Resolve Pulse calculation and population semantics
 
-| Action | Purpose | Selectors and useful flags |
-| --- | --- | --- |
-| `tadx content datasource schema` | Read selected formulas, roles, aggregation, and exclusion evidence. | `--environment`, `--id <datasource-luid>`, `--field-id <exact-field-id>`, `--full` |
-| `tadx pulse definition inspect` | Inspect an existing measure, date, offset, and population convention. | `--environment`, `--id <definition-luid>`, `--full` |
-| `tadx pulse metric inspect` | Confirm the actual variant's filters and period. | `--environment`, `--id <metric-luid>`, `--full` |
-
 Read in full when selecting a calculated measure, entity count, average/rate/percentage, snapshot, or multi-fact measure.
 These are creation decisions, not instructions to query through the CLI.
 Resolve material data questions with authorized evidence when metadata is insufficient.

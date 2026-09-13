@@ -13,18 +13,18 @@ Use `tadx capability get <id>` for the same focused metadata at runtime.
 | `admin.group.delete` | cli | ship | ready | implemented | `tadx admin group delete` |
 | `admin.group.inspect` | cli | ship | ready | implemented | `tadx admin group inspect` |
 | `admin.group.list` | cli | ship | ready | implemented | `tadx admin group list` |
-| `admin.group.member.add` | cli | ship | ready | implemented | `tadx admin group member add` |
-| `admin.group.member.remove` | cli | ship | ready | implemented | `tadx admin group member remove` |
+| `admin.group.member.add` | cli | ship | ready | implemented | `tadx admin group-member add` |
+| `admin.group.member.remove` | cli | ship | ready | implemented | `tadx admin group-member remove` |
 | `admin.group.update` | cli | ship | ready | implemented | `tadx admin group update` |
-| `admin.label.category.create` | cli | ship | ready | implemented | `tadx admin label category create` |
-| `admin.label.category.delete` | cli | ship | ready | implemented | `tadx admin label category delete` |
-| `admin.label.category.inspect` | cli | ship | ready | implemented | `tadx admin label category inspect` |
-| `admin.label.category.list` | cli | ship | ready | implemented | `tadx admin label category list` |
-| `admin.label.category.update` | cli | ship | ready | implemented | `tadx admin label category update` |
-| `admin.label.value.delete` | cli | ship | ready | implemented | `tadx admin label value delete` |
-| `admin.label.value.inspect` | cli | ship | ready | implemented | `tadx admin label value inspect` |
-| `admin.label.value.list` | cli | ship | ready | implemented | `tadx admin label value list` |
-| `admin.label.value.update` | cli | ship | ready | implemented | `tadx admin label value update` |
+| `admin.label.category.create` | cli | ship | ready | implemented | `tadx admin label-category create` |
+| `admin.label.category.delete` | cli | ship | ready | implemented | `tadx admin label-category delete` |
+| `admin.label.category.inspect` | cli | ship | ready | implemented | `tadx admin label-category inspect` |
+| `admin.label.category.list` | cli | ship | ready | implemented | `tadx admin label-category list` |
+| `admin.label.category.update` | cli | ship | ready | implemented | `tadx admin label-category update` |
+| `admin.label.value.delete` | cli | ship | ready | implemented | `tadx admin label-value delete` |
+| `admin.label.value.inspect` | cli | ship | ready | implemented | `tadx admin label-value inspect` |
+| `admin.label.value.list` | cli | ship | ready | implemented | `tadx admin label-value list` |
+| `admin.label.value.update` | cli | ship | ready | implemented | `tadx admin label-value update` |
 | `admin.permission.create` | cli | ship | ready | implemented | `tadx admin permission create` |
 | `admin.permission.delete` | cli | ship | ready | implemented | `tadx admin permission delete` |
 | `admin.permission.inspect` | cli | ship | ready | implemented | `tadx admin permission inspect` |
@@ -254,7 +254,7 @@ List a bounded live selection of groups, or explicitly collect the selected inve
 
 Add one exact user to one exact group without replacing other members, or preview the operation.
 
-- Surface: tadx admin group member add
+- Surface: tadx admin group-member add
 - Operation type: change
 - Owner: cli
 - Selectors: Exact group LUID and user LUID; environment/site (inferred only when one is configured)
@@ -274,13 +274,13 @@ Add one exact user to one exact group without replacing other members, or previe
 - Evidence: docs/evidence/admin-rest-contract.md
 - Validation or blocker: Contract-verified exact incremental add, preview, no-op, revalidation, and uncertain outcome
 - Blocker ID: None
-- Command binding: `tadx admin group member add`
+- Command binding: `tadx admin group-member add`
 
 ### `admin.group.member.remove`
 
 Remove one exact user from one exact group without replacing other members, or preview the operation.
 
-- Surface: tadx admin group member remove
+- Surface: tadx admin group-member remove
 - Operation type: change
 - Owner: cli
 - Selectors: Exact group LUID and user LUID; environment/site (inferred only when one is configured)
@@ -300,7 +300,7 @@ Remove one exact user from one exact group without replacing other members, or p
 - Evidence: docs/evidence/admin-rest-contract.md
 - Validation or blocker: Contract-verified exact incremental removal, preview, no-op, revalidation, and uncertain outcome
 - Blocker ID: None
-- Command binding: `tadx admin group member remove`
+- Command binding: `tadx admin group-member remove`
 
 ### `admin.group.update`
 
@@ -332,7 +332,7 @@ Update group attributes or converge direct membership, or preview the operation.
 
 Create shared label categories by exact name.
 
-- Surface: tadx admin label category create
+- Surface: tadx admin label-category create
 - Operation type: change
 - Owner: cli
 - Selectors: Exact --name; no invented LUIDs
@@ -352,13 +352,13 @@ Create shared label categories by exact name.
 - Evidence: docs/evidence/metadata-semantics-contract.md; provider HTTP fixtures and action contracts
 - Validation or blocker: Local HTTP and action contracts; live mutations not verified
 - Blocker ID: None
-- Command binding: `tadx admin label category create`
+- Command binding: `tadx admin label-category create`
 
 ### `admin.label.category.delete`
 
 Delete shared label categories by exact name.
 
-- Surface: tadx admin label category delete
+- Surface: tadx admin label-category delete
 - Operation type: change
 - Owner: cli
 - Selectors: Exact --name; no invented LUIDs
@@ -378,13 +378,13 @@ Delete shared label categories by exact name.
 - Evidence: docs/evidence/metadata-semantics-contract.md; provider HTTP fixtures and action contracts
 - Validation or blocker: Local HTTP and action contracts; live mutations not verified
 - Blocker ID: None
-- Command binding: `tadx admin label category delete`
+- Command binding: `tadx admin label-category delete`
 
 ### `admin.label.category.inspect`
 
 Inspect shared label categories by exact name.
 
-- Surface: tadx admin label category inspect
+- Surface: tadx admin label-category inspect
 - Operation type: inspect
 - Owner: cli
 - Selectors: Exact --name; no invented LUIDs
@@ -404,13 +404,13 @@ Inspect shared label categories by exact name.
 - Evidence: docs/evidence/metadata-semantics-contract.md; provider HTTP fixtures and action contracts
 - Validation or blocker: Local HTTP and action contracts; live mutations not verified
 - Blocker ID: None
-- Command binding: `tadx admin label category inspect`
+- Command binding: `tadx admin label-category inspect`
 
 ### `admin.label.category.list`
 
 List shared label categories by exact name.
 
-- Surface: tadx admin label category list
+- Surface: tadx admin label-category list
 - Operation type: find
 - Owner: cli
 - Selectors: Exact --name; no invented LUIDs
@@ -430,13 +430,13 @@ List shared label categories by exact name.
 - Evidence: docs/evidence/metadata-semantics-contract.md; provider HTTP fixtures and action contracts
 - Validation or blocker: Local HTTP and action contracts; live mutations not verified
 - Blocker ID: None
-- Command binding: `tadx admin label category list`
+- Command binding: `tadx admin label-category list`
 
 ### `admin.label.category.update`
 
 Update shared label categories by exact name.
 
-- Surface: tadx admin label category update
+- Surface: tadx admin label-category update
 - Operation type: change
 - Owner: cli
 - Selectors: Exact --name; no invented LUIDs
@@ -456,13 +456,13 @@ Update shared label categories by exact name.
 - Evidence: docs/evidence/metadata-semantics-contract.md; provider HTTP fixtures and action contracts
 - Validation or blocker: Local HTTP and action contracts; live mutations not verified
 - Blocker ID: None
-- Command binding: `tadx admin label category update`
+- Command binding: `tadx admin label-category update`
 
 ### `admin.label.value.delete`
 
 Delete shared label values by exact name.
 
-- Surface: tadx admin label value delete
+- Surface: tadx admin label-value delete
 - Operation type: change
 - Owner: cli
 - Selectors: Exact --name; no invented LUIDs
@@ -482,13 +482,13 @@ Delete shared label values by exact name.
 - Evidence: docs/evidence/metadata-semantics-contract.md; provider HTTP fixtures and action contracts
 - Validation or blocker: Local HTTP and action contracts; live mutations not verified
 - Blocker ID: None
-- Command binding: `tadx admin label value delete`
+- Command binding: `tadx admin label-value delete`
 
 ### `admin.label.value.inspect`
 
 Inspect shared label values by exact name.
 
-- Surface: tadx admin label value inspect
+- Surface: tadx admin label-value inspect
 - Operation type: inspect
 - Owner: cli
 - Selectors: Exact --name; no invented LUIDs
@@ -508,13 +508,13 @@ Inspect shared label values by exact name.
 - Evidence: docs/evidence/metadata-semantics-contract.md; provider HTTP fixtures and action contracts
 - Validation or blocker: Local HTTP and action contracts; live mutations not verified
 - Blocker ID: None
-- Command binding: `tadx admin label value inspect`
+- Command binding: `tadx admin label-value inspect`
 
 ### `admin.label.value.list`
 
 List shared label values by exact name.
 
-- Surface: tadx admin label value list
+- Surface: tadx admin label-value list
 - Operation type: find
 - Owner: cli
 - Selectors: Exact --name; no invented LUIDs
@@ -534,13 +534,13 @@ List shared label values by exact name.
 - Evidence: docs/evidence/metadata-semantics-contract.md; provider HTTP fixtures and action contracts
 - Validation or blocker: Local HTTP and action contracts; live mutations not verified
 - Blocker ID: None
-- Command binding: `tadx admin label value list`
+- Command binding: `tadx admin label-value list`
 
 ### `admin.label.value.update`
 
 Update shared label values by exact name. Creates a missing value or updates supported properties of an existing value.
 
-- Surface: tadx admin label value update
+- Surface: tadx admin label-value update
 - Operation type: change
 - Owner: cli
 - Selectors: Exact --name; no invented LUIDs
@@ -560,7 +560,7 @@ Update shared label values by exact name. Creates a missing value or updates sup
 - Evidence: docs/evidence/metadata-semantics-contract.md; provider HTTP fixtures and action contracts
 - Validation or blocker: Local HTTP and action contracts; live mutations not verified
 - Blocker ID: None
-- Command binding: `tadx admin label value update`
+- Command binding: `tadx admin label-value update`
 
 ### `admin.permission.create`
 

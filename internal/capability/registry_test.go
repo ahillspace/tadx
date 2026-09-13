@@ -64,6 +64,24 @@ func TestCanonicalExecutableBindingsIncludeImplementedSlices(t *testing.T) {
 	}
 }
 
+func TestExecutableCommandsUseAtMostThreeWords(t *testing.T) {
+	for _, definition := range Executable() {
+		if len(definition.CommandPath) > 3 {
+			t.Errorf("%s has too many public command levels: %v", definition.ID, definition.CommandPath)
+		}
+	}
+	for id, path := range map[string][]string{
+		"admin.group.member.add":      {"admin", "group-member", "add"},
+		"admin.label.value.inspect":   {"admin", "label-value", "inspect"},
+		"admin.label.category.create": {"admin", "label-category", "create"},
+	} {
+		definition, ok := Lookup(id)
+		if !ok || !slices.Equal(definition.CommandPath, path) {
+			t.Errorf("%s path = %v, want %v", id, definition.CommandPath, path)
+		}
+	}
+}
+
 func TestCanonicalRegistryDoesNotPublishExternalToolMappings(t *testing.T) {
 	for _, definition := range All() {
 		if definition.MCPOverlap != "" {

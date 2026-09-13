@@ -13,14 +13,16 @@ func TestCategoryHelpExplainsDescendantCommandsWithoutSetup(t *testing.T) {
 		args []string
 		want []string
 	}{
-		{[]string{"admin", "group", "--help"}, []string{"member add", "member remove", "--group-id", "--username", "--minimum-site-role", "--batch-file", "batch:"}},
-		{[]string{"admin", "--help"}, []string{"group create", "user create", "permission create", "--site-role", "--principal-type"}},
+		{[]string{"admin", "group", "--help"}, []string{"create:", "--minimum-site-role", "--batch-file", "Batch ("}},
+		{[]string{"admin", "group-member", "--help"}, []string{"add:", "remove:", "--group-id", "--username"}},
+		{[]string{"admin", "--help"}, []string{"group:", "user:", "permission:", "group-member:"}},
 		{[]string{"content", "workbook", "--help"}, []string{"publish", "pull", "--include-pds", "--file", "--destination-project-id", "--preview"}},
-		{[]string{"pulse", "--help"}, []string{"definition create", "metric fork", "--aggregation", "COUNT_DISTINCT", "--filter", "repeatable", "CUSTOM_N_DAYS"}},
-		{[]string{"catalog", "--help"}, []string{"column update", "database inspect", "--table-id", "--metadata-id", "--add-tag"}},
+		{[]string{"pulse", "--help"}, []string{"definition:", "metric:", "fork", "create"}},
+		{[]string{"pulse", "metric", "--help"}, []string{"--filter", "CUSTOM_N_DAYS"}},
+		{[]string{"catalog", "--help"}, []string{"column:", "database:", "inspect", "update"}},
 		{[]string{"workspace", "--help"}, []string{"artifact", "--workspace", "--path"}},
-		{[]string{"help", "admin", "group"}, []string{"member add", "--minimum-site-role"}},
-		{[]string{"adm", "grp", "-h"}, []string{"member add", "--minimum-site-role"}},
+		{[]string{"help", "admin", "group"}, []string{"create:", "--minimum-site-role"}},
+		{[]string{"adm", "grp", "-h"}, []string{"create:", "--minimum-site-role"}},
 	} {
 		t.Run(strings.Join(tc.args, "_"), func(t *testing.T) {
 			root := t.TempDir()

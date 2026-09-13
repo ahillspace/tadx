@@ -44,7 +44,7 @@ Only inventory and cache changes need the [inventory contracts](.agents/skills/t
 Start from updated `main` on a feature branch; shared agents use disjoint files in one checkout.
 Keep tests and bounded evidence with the implementation, and use the skill's verification checklist before handoff.
 Follow the [command structure and help standard](docs/command-structure.md): navigation at root/category levels, complete resource references mirrored by their verbs.
-The content pilot implements this pattern for workbook, datasource, flow, and project; other categories await rollout.
+Apply this pattern throughout the CLI; direct-action categories provide their operational reference without adding an artificial resource level.
 Verify required help facts against local action validation, and verify that `-h`, `--help`, and `help <path>` never run actions or read credentials.
 For batch changes, test one varying selector, positional `args` rows where supported, empty overrides, and the 100-selection bound.
 For previews, verify planned scope and that files, configuration, credentials, and remote resources remain unchanged as applicable.

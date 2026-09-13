@@ -111,7 +111,7 @@ var canonicalDefinitions = []Definition{
 	},
 	{
 		ID:              "admin.group.member.add",
-		Surface:         "tadx admin group member add",
+		Surface:         "tadx admin group-member add",
 		Outcome:         "Add one exact user to one exact group without replacing other members, or preview the operation.",
 		Type:            OperationChange,
 		Disposition:     DispositionShip,
@@ -131,12 +131,12 @@ var canonicalDefinitions = []Definition{
 		Implementation:  ImplementationImplemented,
 		Validation:      "Contract-verified exact incremental add, preview, no-op, revalidation, and uncertain outcome",
 		Blocker:         "",
-		CommandPath:     []string{"admin", "group", "member", "add"},
+		CommandPath:     []string{"admin", "group-member", "add"},
 		RawCapable:      false,
 	},
 	{
 		ID:              "admin.group.member.remove",
-		Surface:         "tadx admin group member remove",
+		Surface:         "tadx admin group-member remove",
 		Outcome:         "Remove one exact user from one exact group without replacing other members, or preview the operation.",
 		Type:            OperationChange,
 		Disposition:     DispositionShip,
@@ -156,7 +156,7 @@ var canonicalDefinitions = []Definition{
 		Implementation:  ImplementationImplemented,
 		Validation:      "Contract-verified exact incremental removal, preview, no-op, revalidation, and uncertain outcome",
 		Blocker:         "",
-		CommandPath:     []string{"admin", "group", "member", "remove"},
+		CommandPath:     []string{"admin", "group-member", "remove"},
 		RawCapable:      false,
 	},
 	{

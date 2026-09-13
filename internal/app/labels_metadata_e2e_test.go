@@ -141,7 +141,7 @@ func TestLabelsMetadataHTTPAdminNativeValueUpsert(t *testing.T) {
 	}))
 	defer s.Close()
 	var out bytes.Buffer
-	code := app.Run(context.Background(), []string{"admin", "label", "value", "update", "--env", "production", "--name", "Warning", "--category", "Custom", "--description", "Meaning", "--json"}, &out, catalogMetadataOptions(t, s, true))
+	code := app.Run(context.Background(), []string{"admin", "label-value", "update", "--env", "production", "--name", "Warning", "--category", "Custom", "--description", "Meaning", "--json"}, &out, catalogMetadataOptions(t, s, true))
 	if code != 0 || writes != 1 {
 		t.Fatalf("code=%d writes=%d %s", code, writes, &out)
 	}

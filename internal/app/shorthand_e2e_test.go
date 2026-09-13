@@ -188,7 +188,7 @@ func TestShorthandHelpAndCompletionExposeAliasesWithoutChangingCanonicalUse(t *t
 	if code := app.Run(context.Background(), []string{"agt", "ist", "--help"}, &forceHelp, options); code != 0 {
 		t.Fatalf("force alias help code=%d output=%s", code, forceHelp.String())
 	}
-	for _, want := range []string{"--full (--ful, -f)", "--force (--frc)"} {
+	for _, want := range []string{"--full (details, not rows)", "[--force]"} {
 		if !strings.Contains(forceHelp.String(), want) {
 			t.Errorf("force help missing independent full/force spelling %q:\n%s", want, forceHelp.String())
 		}

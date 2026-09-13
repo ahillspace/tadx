@@ -56,11 +56,9 @@ type LabelDependencies struct {
 	Renderer          Renderer
 }
 
-func NewLabels(deps LabelDependencies) *cobra.Command {
-	root := &cobra.Command{Use: "label", Short: "Manage shared Tableau label values and categories"}
-	values := &cobra.Command{Use: "value", Short: "Manage exact shared label value definitions"}
-	categories := &cobra.Command{Use: "category", Short: "Manage exact shared label categories"}
-	root.AddCommand(values, categories)
+func NewLabels(deps LabelDependencies) []*cobra.Command {
+	values := &cobra.Command{Use: "label-value", Short: "Manage exact shared label value definitions"}
+	categories := &cobra.Command{Use: "label-category", Short: "Manage exact shared label categories"}
 	values.AddCommand(newLabelValueLister(deps))
 	values.AddCommand(newLabelValueInspector(deps))
 	values.AddCommand(newLabelValueUpdater(deps))
@@ -70,7 +68,7 @@ func NewLabels(deps LabelDependencies) *cobra.Command {
 	categories.AddCommand(newLabelCategoryCreator(deps))
 	categories.AddCommand(newLabelCategoryUpdater(deps))
 	categories.AddCommand(newLabelCategoryDeleter(deps))
-	return root
+	return []*cobra.Command{values, categories}
 }
 func newLabelValueLister(deps LabelDependencies) *cobra.Command {
 	var in valuelist.Input

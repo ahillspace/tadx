@@ -35,14 +35,7 @@ func installCategoryHelp(root *cobra.Command) {
 		if writeContentPilotHelp(out, command) {
 			return
 		}
-		switch {
-		case command == root:
-			writeRootHelp(out, command)
-		case hasVisibleHelpChildren(command):
-			writeCategoryHelp(out, command)
-		default:
-			writeLeafHelp(out, command)
-		}
+		writeStructuredHelp(out, command)
 	})
 }
 
@@ -109,8 +102,15 @@ func writeRootHelp(out io.Writer, root *cobra.Command) {
 		others = append(others, remaining[name])
 	}
 	writeRoadmapGroup(out, "other commands", others)
-	writeFlagSection(out, "global flags", helpFlags(root))
-	writeHelpSyntax(out)
+	fmt.Fprintln(out, "\nGlobal flags:")
+	for _, flag := range helpFlags(root) {
+		if referenceSharedFlag(flag.Name) {
+			fmt.Fprintln(out, "  "+referenceSharedText(flag))
+		} else {
+			fmt.Fprintf(out, "  %s (%s)\n", referenceFlagSyntax(flag), flag.Usage)
+		}
+	}
+	fmt.Fprintln(out, "  --help (-h) help only")
 	fmt.Fprintln(out, "\nUse resource help for action syntax. Inspect reads details; pull writes local files.")
 	if root.Example != "" {
 		writeExamples(out, root.Example)
@@ -143,7 +143,14 @@ func writeRoadmapGroup(out io.Writer, title string, commands []*cobra.Command) {
 		if description == "" {
 			description = helpPlainShort(command)
 		}
-		fmt.Fprintf(out, "  %-20s %s\n", helpCommandName(command), description)
+		fmt.Fprintf(out, "  %s: %s\n", command.Name(), description)
+		var resources []string
+		for _, child := range visibleHelpChildren(command) {
+			resources = append(resources, child.Name())
+		}
+		if len(resources) > 0 {
+			fmt.Fprintf(out, "    %s\n", strings.Join(resources, ", "))
+		}
 	}
 }
 
@@ -166,58 +173,6 @@ func helpDisplayPath(category, command *cobra.Command) string {
 	return strings.Join(names, " ")
 }
 
-func writeCategoryHelp(out io.Writer, category *cobra.Command) {
-	fmt.Fprintf(out, "%s: %s\n", helpCommandName(category), helpPlainShort(category))
-	fmt.Fprintf(out, "\nusage: %s <command> [flags]\n", category.CommandPath())
-	nodes, actions := helpNodes(category)
-	common := commonHelpFlags(actions)
-	fmt.Fprintf(out, "\ncommands[%d]:\n", len(actions))
-	for _, action := range actions {
-		writeActionHelp(out, category, action, common)
-	}
-	var flags []*pflag.Flag
-	for _, flag := range common {
-		flags = append(flags, flag)
-	}
-	writeFlagSection(out, "common flags (all commands)", flags)
-	writeHelpSyntax(out)
-	for _, node := range nodes {
-		if helpAction(node) {
-			continue
-		}
-		if note := helpLongNotes(node); note != "" {
-			fmt.Fprintf(out, "\nnotes (%s):\n", helpDisplayPath(category, node))
-			writeIndented(out, note, "  ")
-		}
-	}
-	writeCategoryBatchHelp(out, actions)
-}
-
-func commonHelpFlags(actions []*cobra.Command) map[string]*pflag.Flag {
-	common := map[string]*pflag.Flag{}
-	if len(actions) < 2 {
-		return common
-	}
-	for _, flag := range helpFlags(actions[0]) {
-		if !helpRequired(flag) {
-			common[flag.Name] = flag
-		}
-	}
-	for _, action := range actions[1:] {
-		flags := map[string]*pflag.Flag{}
-		for _, flag := range helpFlags(action) {
-			flags[flag.Name] = flag
-		}
-		for name, flag := range common {
-			candidate := flags[name]
-			if candidate == nil || helpFlagKey(candidate) != helpFlagKey(flag) {
-				delete(common, name)
-			}
-		}
-	}
-	return common
-}
-
 func helpPlainShort(command *cobra.Command) string {
 	return helpWithoutAliasSuffix(command.Short)
 }
@@ -229,123 +184,6 @@ func helpWithoutAliasSuffix(summary string) string {
 		}
 	}
 	return summary
-}
-
-func helpLongNotes(command *cobra.Command) string {
-	long := strings.TrimSpace(strings.ReplaceAll(command.Long, "\r\n", "\n"))
-	first, rest, multiline := strings.Cut(long, "\n")
-	long = helpWithoutAliasSuffix(first)
-	if multiline {
-		long += "\n" + rest
-	}
-	short := strings.TrimSuffix(helpPlainShort(command), ".")
-	if short != "" && strings.HasPrefix(long, short) {
-		rest := strings.TrimPrefix(long, short)
-		if rest == "" || strings.HasPrefix(rest, ".") || strings.HasPrefix(rest, "\n") {
-			long = strings.TrimSpace(strings.TrimPrefix(rest, "."))
-		}
-	}
-	var paragraphs []string
-	for _, paragraph := range strings.Split(long, "\n\n") {
-		paragraph = strings.TrimSpace(paragraph)
-		if paragraph != "" && !strings.HasPrefix(paragraph, "Batch JSON:") {
-			paragraphs = append(paragraphs, paragraph)
-		}
-	}
-	return strings.Join(paragraphs, "\n\n")
-}
-
-func writeLeafHelp(out io.Writer, command *cobra.Command) {
-	writeActionHelp(out, command.Parent(), command, nil)
-	writeHelpSyntax(out)
-	for parent := command.Parent(); parent != nil && parent.Parent() != nil; parent = parent.Parent() {
-		if note := helpLongNotes(parent); note != "" {
-			fmt.Fprintf(out, "\nnotes (%s):\n", helpCommandName(parent))
-			writeIndented(out, note, "  ")
-		}
-	}
-	writeCategoryBatchHelp(out, []*cobra.Command{command})
-}
-
-func writeActionHelp(out io.Writer, category, command *cobra.Command, common map[string]*pflag.Flag) {
-	fmt.Fprintf(out, "\n%s:\n  %s\n", helpDisplayPath(category, command), helpPlainShort(command))
-	fmt.Fprintf(out, "  usage: %s", command.CommandPath())
-	if suffix := strings.TrimPrefix(command.Use, command.Name()); suffix != "" {
-		fmt.Fprint(out, suffix)
-	}
-	var required, optional []*pflag.Flag
-	for _, flag := range helpFlags(command) {
-		if helpRequired(flag) {
-			required = append(required, flag)
-		} else if common[flag.Name] == nil {
-			optional = append(optional, flag)
-		}
-	}
-	sort.Slice(required, func(i, j int) bool { return required[i].Name < required[j].Name })
-	for _, flag := range required {
-		fmt.Fprintf(out, " %s", helpFlagSyntax(flag, false))
-	}
-	if !command.DisableFlagsInUseLine {
-		fmt.Fprint(out, " [flags]")
-	}
-	fmt.Fprintln(out)
-	if len(required) > 0 && command.Flags().Lookup("batch-file") != nil {
-		fmt.Fprintln(out, "  Required inputs apply to each item when using --batch-file.")
-	}
-	var section strings.Builder
-	writeFlagSection(&section, "required", required)
-	writeFlagSection(&section, "options", optional)
-	writeRelationships(&section, "constraints", command)
-	if command.Annotations["tadx.batch.file"] == "true" {
-		fmt.Fprintln(&section, "\nbatch:")
-		if selectors := command.Annotations["tadx.batch.selectors"]; selectors != "" {
-			names := strings.Split(selectors, ",")
-			for index := range names {
-				names[index] = "--" + names[index]
-			}
-			fmt.Fprintf(&section, "  Repeat one selector dimension: %s. Use explicit file rows for different selector pairs.\n", strings.Join(names, ", "))
-		}
-		if command.Annotations["tadx.batch.positional"] == "true" {
-			fmt.Fprintln(&section, `  Positional targets are repeatable; file rows provide them as "args":["<value>"].`)
-		}
-		if example := command.Annotations["tadx.help.batch-example"]; example != "" {
-			fmt.Fprintln(&section, "  JSON: "+example)
-		}
-	}
-	if note := helpLongNotes(command); note != "" {
-		fmt.Fprintln(&section, "\nnotes:")
-		writeIndented(&section, note, "  ")
-	}
-	writeExamples(&section, command.Example)
-	if section.Len() > 0 {
-		writeIndented(out, section.String(), "  ")
-	}
-}
-
-func writeHelpSyntax(out io.Writer) {
-	fmt.Fprintln(out, "\n  --help (-h)  Show help only; never run the operation.")
-	fmt.Fprintln(out, "  Boolean flags accept =true or =false; a bare flag means true. Omitted options keep their documented default.")
-}
-
-func writeCategoryBatchHelp(out io.Writer, actions []*cobra.Command) {
-	found := false
-	for _, action := range actions {
-		if action.Flags().Lookup("batch-file") != nil {
-			found = true
-			break
-		}
-	}
-	if !found {
-		return
-	}
-	fmt.Fprintln(out, "\nbatch syntax:")
-	fmt.Fprintln(out, "  Applies to commands with --batch-file. Each item supplies that action's required inputs.")
-	fmt.Fprintln(out, `  JSON: {"items":[{"<flag-name>":"<value>"}]}. Use canonical flag names without leading dashes.`)
-	fmt.Fprintln(out, "  Arrays are accepted for list-valued flags. Put repeated scalar selectors in separate items.")
-	fmt.Fprintln(out, "  Keep config, preview, json, full, raw, force, version, help, and batch-file outside items.")
-	fmt.Fprintln(out, "  Environment stays on the command and is shared by every item.")
-	fmt.Fprintln(out, "  Choose --batch-file or repeated selectors, not both. Files support 1-100 items and at most 1 MiB.")
-	fmt.Fprintln(out, "  Duplicate items and duplicate JSON keys are rejected; at most 100 expanded selections are accepted.")
 }
 
 func writeExamples(out io.Writer, examples string) {
@@ -365,27 +203,6 @@ func helpFlags(command *cobra.Command) []*pflag.Flag {
 		}
 	}
 	return visible
-}
-
-func visibleHelpFlags(set *pflag.FlagSet) []*pflag.Flag {
-	var flags []*pflag.Flag
-	set.VisitAll(func(flag *pflag.Flag) {
-		if !flag.Hidden && flag.Name != "help" {
-			flags = append(flags, flag)
-		}
-	})
-	return flags
-}
-
-func writeFlagSection(out io.Writer, title string, flags []*pflag.Flag) {
-	if len(flags) == 0 {
-		return
-	}
-	sort.Slice(flags, func(i, j int) bool { return flags[i].Name < flags[j].Name })
-	fmt.Fprintf(out, "\n%s:\n", title)
-	for _, flag := range flags {
-		fmt.Fprintf(out, "  %s\n", helpFlagText(flag))
-	}
 }
 
 func helpFlagSyntax(flag *pflag.Flag, aliases bool) string {
@@ -487,14 +304,6 @@ func helpDeclaredDefault(flag *pflag.Flag) string {
 	return declared
 }
 
-func helpFlagKey(flag *pflag.Flag) string {
-	key := helpFlagText(flag)
-	for _, annotation := range sortedHelpKeys(flag.Annotations) {
-		key += "\x00" + annotation + "=" + strings.Join(flag.Annotations[annotation], "\x00")
-	}
-	return key
-}
-
 func writeRelationships(out io.Writer, title string, command *cobra.Command) {
 	var lines []string
 	for _, relationship := range []struct{ annotation, label string }{
@@ -537,23 +346,6 @@ func writeRelationships(out io.Writer, title string, command *cobra.Command) {
 		for _, line := range lines {
 			fmt.Fprintf(out, "  %s\n", line)
 		}
-	}
-}
-
-func writeHelpExamples(out io.Writer, nodes []*cobra.Command) {
-	seen := map[string]bool{}
-	heading := false
-	for _, node := range nodes {
-		example := strings.TrimSpace(node.Example)
-		if example == "" || seen[example] {
-			continue
-		}
-		seen[example] = true
-		if !heading {
-			fmt.Fprintln(out, "\nexamples:")
-			heading = true
-		}
-		writeIndented(out, example, "  ")
 	}
 }
 
