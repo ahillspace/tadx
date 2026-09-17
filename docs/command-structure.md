@@ -26,6 +26,10 @@ Use `-h`, `--help`, and `tadx help <path>` consistently.
 
 Root help must expose resource paths so users can go directly to a resource reference without first requesting category help.
 Category navigation does not promise complete operation syntax; resource help does.
+Show shared verb names first, followed by resource descriptions and their remaining verbs.
+Derive shared sets from the current command tree and name their resource scope unless every listed resource shares them.
+Use a shared group only when it shortens the navigation; retain standalone actions and resources with different verbs.
+Shared verb names do not imply shared flags or behavior.
 Resource help must stand alone without assuming root or category help was already read.
 Do not include sibling-resource operations or options in a resource reference.
 Every verb under the same resource resolves to the same reference, regardless of supplied argument values.

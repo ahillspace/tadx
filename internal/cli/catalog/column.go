@@ -74,7 +74,7 @@ func newColumnUpdate(d Dependencies) *cobra.Command {
 	c.Flags().StringVar(&in.Environment, "environment", "", "explicit destination environment; inferred only when one is configured")
 	c.Flags().StringVar(&in.ID, "id", "", "exact column REST LUID")
 	c.Flags().StringVar(&in.TableID, "table-id", "", "required parent table REST LUID")
-	c.Flags().StringVar(&description, "description", "", "set a nonempty description; omission preserves the current value")
+	c.Flags().StringVar(&description, "description", "", "set a description; an empty value clears it and omission preserves the current value")
 
 	c.Flags().StringArrayVar(&in.AddTags, "add-tag", nil, "add a tag without replacing unrelated tags; repeatable")
 	c.Flags().StringArrayVar(&in.RemoveTags, "remove-tag", nil, "remove this exact tag only; repeatable")

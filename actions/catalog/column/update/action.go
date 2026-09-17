@@ -77,8 +77,8 @@ func ValidateInput(in Input) error {
 	if in.Description == nil && len(in.AddTags) == 0 && len(in.RemoveTags) == 0 {
 		return usage("supply a description, supported contact, or tag change")
 	}
-	if in.Description != nil && (strings.TrimSpace(*in.Description) == "" || len(*in.Description) > 65536) {
-		return usage("description must be nonempty and bounded; clearing is not verified")
+	if in.Description != nil && ((*in.Description != "" && strings.TrimSpace(*in.Description) == "") || len(*in.Description) > 65536) {
+		return usage("description must be empty to clear or nonblank text of at most 65536 bytes")
 	}
 
 	if len(in.AddTags)+len(in.RemoveTags) > 100 {

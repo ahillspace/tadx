@@ -74,9 +74,8 @@ func TestCategoryHelpExamplesResolve(t *testing.T) {
 	// Compact references may deduplicate or combine examples. Preserve coverage
 	// of the operations that need examples instead of prescribing a total count.
 	for _, path := range []string{
-		"content workbook publish", "content workbook pull",
-		"content datasource publish", "content datasource schema",
-		"content flow publish", "content project create",
+		"content workbook publish", "content datasource publish",
+		"content flow publish", "content project move",
 		"admin user create", "admin permission create",
 		"pulse definition publish", "pulse metric fork",
 		"workspace artifact delete",

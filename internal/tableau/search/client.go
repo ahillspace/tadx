@@ -34,17 +34,23 @@ type Request struct {
 
 // Item is the stable subset shared by supported Tableau content results.
 type Item struct {
-	LUID        string
-	Type        string
-	Name        string
-	ContentURL  string
-	ProjectLUID string
-	ProjectName string
-	ProjectPath string
-	OwnerLUID   string
-	OwnerName   string
-	ModifiedAt  string
-	URI         string
+	LUID                  string
+	Type                  string
+	Name                  string
+	ContentURL            string
+	ProjectLUID           string
+	ProjectName           string
+	ProjectPath           string
+	OwnerLUID             string
+	OwnerName             string
+	ModifiedAt            string
+	URI                   string
+	DatasourceLUID        string
+	DatasourceIsPublished *bool
+	ParentLUID            string
+	ParentType            string
+	ParentName            string
+	DatasourceUpdatedAt   string
 }
 
 // Page is one server-ranked native search page.
@@ -247,23 +253,29 @@ type rawItem struct {
 }
 
 type rawContent struct {
-	LUID          string      `json:"luid"`
-	Type          string      `json:"type"`
-	ContentType   string      `json:"contentType"`
-	Name          string      `json:"name"`
-	Title         string      `json:"title"`
-	ProjectLUID   string      `json:"projectLuid"`
-	ProjectName   string      `json:"projectName"`
-	ProjectPath   string      `json:"projectPath"`
-	OwnerLUID     string      `json:"ownerLuid"`
-	OwnerName     string      `json:"ownerName"`
-	ContainerName string      `json:"containerName"`
-	ContainerType string      `json:"containerType"`
-	RepositoryURL string      `json:"repositoryUrl"`
-	ModifiedTime  string      `json:"modifiedTime"`
-	UpdatedAt     string      `json:"updatedAt"`
-	Project       rawIdentity `json:"project"`
-	Owner         rawIdentity `json:"owner"`
+	LUID                  string      `json:"luid"`
+	Type                  string      `json:"type"`
+	ContentType           string      `json:"contentType"`
+	Name                  string      `json:"name"`
+	Title                 string      `json:"title"`
+	ProjectLUID           string      `json:"projectLuid"`
+	ProjectName           string      `json:"projectName"`
+	ProjectPath           string      `json:"projectPath"`
+	OwnerLUID             string      `json:"ownerLuid"`
+	OwnerName             string      `json:"ownerName"`
+	ContainerName         string      `json:"containerName"`
+	ContainerType         string      `json:"containerType"`
+	RepositoryURL         string      `json:"repositoryUrl"`
+	ModifiedTime          string      `json:"modifiedTime"`
+	UpdatedAt             string      `json:"updatedAt"`
+	Project               rawIdentity `json:"project"`
+	Owner                 rawIdentity `json:"owner"`
+	DatasourceLUID        string      `json:"datasourceLuid"`
+	DatasourceIsPublished *bool       `json:"datasourceIsPublished"`
+	ParentLUID            string      `json:"parentLuid"`
+	ParentType            string      `json:"parentType"`
+	ParentName            string      `json:"parentName"`
+	DatasourceUpdatedAt   string      `json:"datasourceUpdatedAt"`
 }
 
 type rawIdentity struct {
@@ -310,6 +322,9 @@ func (item rawItem) normalize() Item {
 		ContentURL:  strings.TrimSpace(content.RepositoryURL),
 		ProjectLUID: strings.TrimSpace(projectLUID), ProjectName: strings.TrimSpace(projectName), ProjectPath: strings.TrimSpace(content.ProjectPath),
 		OwnerLUID: strings.TrimSpace(ownerLUID), OwnerName: strings.TrimSpace(ownerName), ModifiedAt: strings.TrimSpace(modifiedAt), URI: strings.TrimSpace(item.URI),
+		DatasourceLUID: strings.TrimSpace(content.DatasourceLUID), DatasourceIsPublished: content.DatasourceIsPublished,
+		ParentLUID: strings.TrimSpace(content.ParentLUID), ParentType: strings.TrimSpace(content.ParentType),
+		ParentName: strings.TrimSpace(content.ParentName), DatasourceUpdatedAt: strings.TrimSpace(content.DatasourceUpdatedAt),
 	}
 }
 

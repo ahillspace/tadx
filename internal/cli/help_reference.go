@@ -17,6 +17,10 @@ func writeStructuredHelp(out io.Writer, command *cobra.Command) {
 		writeRootHelp(out, root)
 		return
 	}
+	if command.Parent() == root && command.Name() == "help" {
+		fmt.Fprintf(out, "Usage: %s help [command ...]\nOmitted: root help. A command path shows its reference.\n", root.Name())
+		return
+	}
 	owner := command
 	if helpAction(command) && command.Parent() != root && (!isHelpNavigation(command.Parent()) || command.Parent().Name() == "workspace") {
 		owner = command.Parent()
@@ -40,18 +44,7 @@ func isHelpNavigation(command *cobra.Command) bool {
 }
 
 func writeHelpNavigation(out io.Writer, category *cobra.Command) {
-	fmt.Fprintf(out, "Usage: %s <resource> <verb> [flags]\n\nResources:\n", category.CommandPath())
-	for _, child := range visibleHelpChildren(category) {
-		fmt.Fprintf(out, "  %s: %s\n", child.Name(), helpPlainShort(child))
-		var names []string
-		for _, action := range visibleHelpChildren(child) {
-			names = append(names, action.Name())
-		}
-		if len(names) > 0 {
-			fmt.Fprintf(out, "    %s\n", strings.Join(names, ", "))
-		}
-	}
-	fmt.Fprintf(out, "\nUse %s <resource> -h for complete syntax.\n", category.CommandPath())
+	writeCategoryNavigation(out, category, helpPlainShort)
 	if category.Name() == "pulse" {
 		fmt.Fprintln(out, "Saved configuration only; TADX does not retrieve current metric values or generated insights.")
 	}
@@ -75,6 +68,13 @@ func referenceLeaf(command *cobra.Command) bool {
 }
 
 func writeOperationalReference(out io.Writer, owner *cobra.Command) {
+	if owner.Name() == "completion" && owner.Parent() == owner.Root() {
+		fmt.Fprintf(out, "Usage: %s <bash|zsh|fish|powershell>\n", owner.CommandPath())
+		for _, note := range referenceActionNotes(owner) {
+			fmt.Fprintln(out, note)
+		}
+		return
+	}
 	actions := directHelpActions(owner)
 	use := owner.CommandPath()
 	if !referenceLeaf(owner) {
@@ -103,8 +103,24 @@ func writeOperationalReference(out io.Writer, owner *cobra.Command) {
 	}
 	if len(shared) > 0 {
 		fmt.Fprintln(out, "Shared:")
+		var outputFlags []string
+		for _, name := range []string{"config", "json", "full"} {
+			if flag := shared[name]; flag != nil {
+				outputFlags = append(outputFlags, referenceSharedText(flag))
+			}
+		}
+		if len(outputFlags) > 0 {
+			fmt.Fprintln(out, "  "+strings.Join(outputFlags, " "))
+		}
 		for _, name := range sortedHelpKeys(shared) {
-			fmt.Fprintf(out, "  %s\n", referenceSharedText(shared[name]))
+			if name == "config" || name == "json" || name == "full" {
+				continue
+			}
+			text := referenceSharedText(shared[name])
+			if name == "environment" && owner.CommandPath() == owner.Root().Name()+" auth" {
+				text = "--environment (--env,-e) <name> (check/status: read default)"
+			}
+			fmt.Fprintf(out, "  %s\n", text)
 		}
 		fmt.Fprintln(out)
 	}
@@ -114,10 +130,10 @@ func writeOperationalReference(out io.Writer, owner *cobra.Command) {
 		if action.Name() == "completion" {
 			name = strings.ReplaceAll(name, "<shell>", "<bash|zsh|fish|powershell>")
 		}
-		fmt.Fprintf(out, "  %s: (%s)\n", name, referenceActionSummary(action))
+		fmt.Fprintf(out, "  %s: %s\n", name, referenceActionSummary(action))
 		var terms []string
 		for _, flag := range helpFlags(action) {
-			if (shared[flag.Name] != nil && flag.Name != "cache" && flag.Name != "preview" && flag.Name != "workspace") || flag.Name == "batch-file" {
+			if (shared[flag.Name] != nil && flag.Name != "cache" && flag.Name != "preview" && flag.Name != "workspace" && !helpRequired(flag)) || flag.Name == "batch-file" {
 				continue
 			}
 			term := referenceFlagSyntax(flag)
@@ -220,9 +236,21 @@ func writeReferenceTerms(out io.Writer, terms []string) {
 
 func writeReferenceBatch(out io.Writer, actions []*cobra.Command) {
 	var names []string
+	var selectors []string
+	selectorActions := map[string][]string{}
+	var positional []string
 	for _, action := range actions {
 		if action.Annotations["tadx.batch.file"] == "true" {
 			names = append(names, action.Name())
+			if key := action.Annotations["tadx.batch.selectors"]; key != "" {
+				if selectorActions[key] == nil {
+					selectors = append(selectors, key)
+				}
+				selectorActions[key] = append(selectorActions[key], action.Name())
+			}
+			if action.Annotations["tadx.batch.positional"] == "true" {
+				positional = append(positional, action.Name())
+			}
 		}
 	}
 	if len(names) == 0 {
@@ -230,16 +258,11 @@ func writeReferenceBatch(out io.Writer, actions []*cobra.Command) {
 	}
 	fmt.Fprintf(out, "Batch (%s):\n", strings.Join(names, ", "))
 	fmt.Fprintln(out, `  --batch-file <path>: {"items":[{"<flag-name>":"<value>"}]}`)
-	for _, action := range actions {
-		if action.Annotations["tadx.batch.file"] != "true" {
-			continue
-		}
-		if selectors := action.Annotations["tadx.batch.selectors"]; selectors != "" {
-			fmt.Fprintf(out, "  %s: repeat one of --%s instead of a file.\n", action.Name(), strings.ReplaceAll(selectors, ",", " | --"))
-		}
-		if action.Annotations["tadx.batch.positional"] == "true" {
-			fmt.Fprintf(out, "  %s: repeat positional targets; file rows use args:[\"<value>\"].\n", action.Name())
-		}
+	for _, key := range selectors {
+		fmt.Fprintf(out, "  %s: repeat one of --%s.\n", strings.Join(selectorActions[key], ","), strings.ReplaceAll(key, ",", " | --"))
+	}
+	if len(positional) > 0 {
+		fmt.Fprintf(out, "  %s: repeat positional targets; file rows use args:[\"<value>\"].\n", strings.Join(positional, ","))
 	}
 	fmt.Fprintln(out, "  Rows: canonical flag keys; arrays for lists; required per row; override item flags.")
 	fmt.Fprintln(out, "  Env/control flags outside rows. File OR repeated selectors; 1-100 sequential items, <=1MiB/100 selections.")
@@ -295,26 +318,31 @@ func referenceActionNotes(action *cobra.Command) []string {
 		"catalog table update":      {"Empty --description/contact-id clears it. Tags: repeated exact values."},
 		"catalog column update":     {"Changes upstream column metadata, not the published field override. Empty --description clears."},
 		"cache refresh":             {"Default: all inventory except permissions. --scope permissions opts into per-item permission reads.", "Refresh replaces requested inventory; independent schema/Pulse observations keep their timestamps."},
-		"auth login":                {"Requires --environment and an interactive terminal; prompts for PAT name/secret. Environment credentials take precedence."},
-		"auth logout":               {"Removes stored credentials, not the Tableau PAT; configured environment credentials remain usable."},
+		"auth login":                {"Interactive terminal: prompts for PAT name/secret. Configured environment credentials take precedence."},
+		"auth logout":               {"Does not revoke the Tableau PAT; configured environment credentials remain usable."},
 		"mutation set":              {"Changes write permission, not credentials. Obtain explicit approval for the requested scope."},
 		"workspace create":          {"Default root: <home>/TADX/workspaces/<name>; --path overrides it."},
-		"workspace clone":           {"Default root: <home>/TADX/workspaces/<name>; --path overrides it."},
+		"workspace clone":           {"Source: registered workspace name; destination root must not exist.", "Default root: <home>/TADX/workspaces/<name>; --path overrides it."},
 		"workspace delete":          {"Deletes the registered root; --force acknowledges dirty/invalid artifacts. Unregister keeps files."},
 		"workspace register":        {"Uses existing tadx.yaml identity; optional name must agree."},
 		"workspace clean":           {"Only disposable state; canonical artifact files are preserved."},
-		"workspace artifact delete": {"Deletes local files only, never the remote content."},
+		"workspace artifact delete": {"Local files only. --force: delete dirty artifacts."},
+		"workspace artifact move":   {"Source/destination: registered workspaces; destination artifact must not exist."},
 		"agent install":             {"--target auto detects installed harnesses. Installs current TADX-owned skills globally; --force is compatibility-only."},
 		"agent uninstall":           {"Removes TADX-owned skills only; edited packages are backed up. --force is compatibility-only."},
 		"env add":                   {"--site is the URL slug, not display name. PAT flags name shell variables, never contain credentials."},
 		"env update":                {"--clear-* restores defaults or clears the corresponding value. Retargeting does not move content."},
 		"env default":               {"Changes the read default, not write targets; with multiple environments, remote writes need --environment."},
-		"search":                    {"Term omitted: lists matching types. Live uses Tableau search; --cache searches local observations only."},
-		"catalog search":            {"Searches upstream metadata; column search requires --table-id. Types may repeat, without duplicates."},
-		"catalog audit":             {"Checks metadata coverage, not data values. Repeated checks must be distinct."},
+		"search":                    {"Term or --type required; type omitted: all types. No term: bounded inventory; term: live search or --cache."},
+		"catalog search":            {"Unique types; default types: database+table. Column requires --table-id.", "--all: <=10000; results can be incomplete."},
+		"catalog audit":             {"Unique checks; default: descriptions+tags. --direct-only: field-owned descriptions, excluding inherited.", "Metadata coverage, not data values; limit: assessed assets."},
 		"catalog lineage pull":      {"--name requires --project; --id excludes both. --overwrite replaces dirty local metadata.", "Saves lineage.json, not native files. Physical nodes use Metadata API IDs; --full shows bounded nodes/edges."},
 		"catalog label update":      {"Changes an asset attachment, not the shared label definition. Empty message clears it."},
-		"update":                    {"Updates the executable and installed Guidance; --target may repeat (up to 32)."},
+		"update":                    {"--check: no installation changes; target omitted: auto. Repeat --target up to 32."},
+		"capability get":            {"ID: from capability list."},
+		"capability list":           {"Filters: AND, case-insensitive; product: substring, others: exact.", "--mutation=true: remote writes; --mutation=false: others; omitted: both."},
+		"pulse definition list":     {"--all: <=10000; incomplete traversal fails."},
+		"pulse metric list":         {"--all: <=10000; incomplete traversal fails."},
 		"last":                      {"Displays the last saved result; never repeats its command or writes."},
 		"completion":                {"Writes a shell script to stdout (not JSON). Installers normally enable it automatically.", "Session: Bash source <(tadx completion bash); Fish tadx completion fish | source.", "Zsh: autoload -Uz compinit; compinit; source <(tadx completion zsh)", "PowerShell: tadx completion powershell | Out-String | Invoke-Expression", "For persistence, put the corresponding command in your shell profile."},
 	}
@@ -324,6 +352,8 @@ func referenceActionNotes(action *cobra.Command) []string {
 func referenceActionSummary(action *cobra.Command) string {
 	path := strings.TrimPrefix(action.CommandPath(), action.Root().Name()+" ")
 	summaries := map[string]string{
+		"auth check": "Verify live PAT authentication", "auth status": "Report local readiness and credential source",
+		"auth login": "Validate and store a PAT in the OS credential store", "auth logout": "Remove the stored PAT",
 		"workspace create": "Create a registered local workspace", "workspace clone": "Copy a workspace under a new identity",
 		"workspace delete": "Delete a workspace and its files", "workspace unregister": "Forget registration; keep files",
 		"workspace register": "Register an existing workspace", "workspace status": "Inspect local artifacts and dirty state",

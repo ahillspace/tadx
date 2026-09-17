@@ -3,8 +3,8 @@
 ## Sources and evidence level
 
 `internal/tableau/metadataassets` implements documented REST requests and static Metadata GraphQL queries.
-The contracts below have HTTP-fixture verification; selected read paths also have live Cloud verification.
-No live writes were performed for this record.
+The contracts below have HTTP-fixture verification; selected read paths and column-description clearing also have live Cloud verification.
+The bounded column write observation is recorded separately below.
 Links are official documentation, not a claim that every supported Server version or license combination was tested.
 
 | Surface | Official source | Verification |
@@ -32,7 +32,8 @@ Category inspection uses exact matching within the bounded category list because
 Only documented vocabulary request attributes are sent; response-only properties are not inferred to be writable.
 
 Description and contact patches preserve omitted fields.
-Empty description/contact clearing remains blocked until its encoding and behavior have authoritative evidence.
+An explicit empty column description clears that description; omission preserves it.
+Empty database/table descriptions and contact clearing remain blocked until their encoding and behavior have authoritative evidence.
 Removing an external asset is not a substitute for clearing its metadata.
 Virtual-connection writes, monitoring triggers and legacy certification/warning command duplication are outside this implementation.
 
@@ -53,8 +54,29 @@ Two inspected raw field identifiers were returned by GraphQL in single-bracket i
 Private names, site identifiers and credentials are not retained here.
 This observation does not verify description clearing, permission-denied variants, every supported license/version, or any mutation's server-side effects.
 
+## Live column-description observation
+
+On 2026-09-13, an authorized Tableau Cloud test using REST API 3.29 verified a column-description round trip.
+The original description was recorded before any change.
+The test wrote a nonempty description, cleared it with an explicit empty XML attribute, wrote the nonempty description again, and restored the original value.
+An independent GET after each update confirmed the requested description.
+The final response preserved the other observed column fields.
+A follow-up test through the rebuilt CLI, using separate actor and observer credentials, verified preview without mutation, explicit-empty clearing, a repeated-clear no-op, writing the description back, and restoration of the original value.
+Private site identifiers, asset identifiers, credentials, and local paths are not retained here.
+
+The request follows the documented [Update Column method](https://help.tableau.com/current/api/rest_api/en-us/REST/rest_api_ref_metadata.htm):
+
+```xml
+<tsRequest><column description=""/></tsRequest>
+```
+
+This observation establishes explicit-empty clearing for the tested column endpoint.
+It does not establish database/table description clearing, contact clearing, or behavior across every supported Server version and license combination.
+HTTP and CLI integration tests verify explicit-empty encoding, omission preservation, readback failures, preview behavior, and repeated-clear no-ops.
+
 ## Reproduction
 
-Run `go test ./internal/tableau/metadataassets` and `go test -race ./internal/tableau/metadataassets` for isolated fixtures.
+Run `go test ./actions/catalog/column/update`, `go test ./internal/cli/catalog`, and `go test ./internal/tableau/metadataassets` for isolated fixtures.
+Run the same three packages with `-race` for race coverage.
 Relevant tests cover request XML, omitted properties, read-only label POST, exact attachment and vocabulary addressing, GraphQL parent filtering, malformed coverage, Metadata-only identities and independent upstream-column pagination.
 Live tests remain opt-in and outside the standard test suite.

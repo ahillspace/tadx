@@ -13,7 +13,7 @@ func newSearch(searcher Searcher, renderer Renderer) *cobra.Command {
 	command := &cobra.Command{
 		Use:         "search [term]",
 		Short:       "Search Tableau resources.",
-		Long:        "Search terms use Tableau's live relevance search by default. A concrete type without a term performs that type's complete inventory and refreshes its cache snapshot.",
+		Long:        "A term or --type is required. Terms use live search by default; without a term, list a bounded inventory. --cache reads local observations only.",
 		Example:     "  tadx search sales --type content --environment dev\n  tadx search --type workbook --environment dev --limit 20\n  tadx search sales --type workbook --environment dev --cache",
 		Annotations: map[string]string{CapabilityAnnotation: "search.run"},
 		Args: func(command *cobra.Command, args []string) error {

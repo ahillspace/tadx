@@ -11,6 +11,7 @@ Solid arrows summarize runtime flow; dashed arrows show registry and dependency 
 Actions depend on narrow interfaces, not the concrete adapters shown beside them.
 
 The [package reference](../repository-structure.md) describes the current source layout.
+The [search source map](search.md) traces native search, additional REST/Pulse inventories, cache search, and catalog metadata search.
 The [capability map](../reference/capability-map.html) answers a different question: which operations TADX provides.
 The [preserved HTML overview](index.html) also includes a workbook-pull walkthrough.
 Open either HTML file in a browser; GitHub displays its source rather than running the page.

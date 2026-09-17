@@ -123,6 +123,13 @@ func TestContentHelpPilotResourceReferencesAndVerbMirrors(t *testing.T) {
 					t.Errorf("%s reference lost resource-specific fact %q", name, fact)
 				}
 			}
+			if name != "project" {
+				for _, meaning := range []string{"(fetch details)", "(download local files)", "(local to Tableau)"} {
+					if !strings.Contains(want, meaning) {
+						t.Errorf("%s reference omits operation meaning %q", name, meaning)
+					}
+				}
+			}
 			if name == "flow" && strings.Contains(want, "--as-job") {
 				t.Error("flow help advertises unsupported server-job option")
 			}
@@ -132,7 +139,7 @@ func TestContentHelpPilotResourceReferencesAndVerbMirrors(t *testing.T) {
 			if name == "datasource" {
 				flat := strings.Join(strings.Fields(want), " ")
 				for _, fact := range []string{
-					"local only; default: live", "no writes; mutation gate may be off", "details, not rows",
+					"local only; default: live", "no writes; mutation gate can be off", "details, not rows",
 					"Target (remote, exact): --id <luid> | (--name", "--project (--prj) <path>)",
 					"(default limit: 25)", "(default limit: 20)", "measure|dimension|date|excluded",
 					"(dirty local files)", "(destination)", "create = collision fails", "append/replace = data",

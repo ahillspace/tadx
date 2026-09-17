@@ -34,16 +34,7 @@ func writeContentPilotHelp(out io.Writer, command *cobra.Command) bool {
 }
 
 func writeContentNavigation(out io.Writer, category *cobra.Command) {
-	fmt.Fprintf(out, "usage: %s <resource> <verb> [flags]\n\nresources:\n", category.CommandPath())
-	for _, resource := range visibleHelpChildren(category) {
-		_, actions := helpNodes(resource)
-		var verbs []string
-		for _, action := range actions {
-			verbs = append(verbs, action.Name())
-		}
-		fmt.Fprintf(out, "  %s: %s\n    %s\n", resource.Name(), contentResourceSummary(resource), strings.Join(verbs, ", "))
-	}
-	fmt.Fprintf(out, "\nUse %s <resource> -h for its reference; --help and %s help content <resource> also work.\n", category.CommandPath(), category.Root().Name())
+	writeCategoryNavigation(out, category, contentResourceSummary)
 }
 
 func contentResourceSummary(resource *cobra.Command) string {

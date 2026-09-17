@@ -2,7 +2,7 @@
 
 Read with authoring.md before creating or previewing a definition.
 TADX handles request construction and authentication; supply verified CLI arguments.
-One create invocation creates one definition and resolves its Tableau-created default metric.
+Each create item creates one definition and resolves its Tableau-created default metric.
 
 ## Field eligibility
 

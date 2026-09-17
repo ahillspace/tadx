@@ -146,10 +146,13 @@ func TestCompletionHelpTreatsUnregisteredUtilityAsExecutable(t *testing.T) {
 	root.AddCommand(completion)
 	installCategoryHelp(root)
 	got := renderedHelp(t, completion)
-	for _, want := range []string{"Usage: tadx completion <bash|zsh|fish|powershell>", "Writes a shell script to stdout (not JSON)", "--json", "Out-String | Invoke-Expression"} {
+	for _, want := range []string{"Usage: tadx completion <bash|zsh|fish|powershell>", "Writes a shell script to stdout (not JSON)", "Out-String | Invoke-Expression"} {
 		if !strings.Contains(got, want) {
 			t.Errorf("missing %q: %s", want, got)
 		}
+	}
+	if strings.Contains(got, "--json") || strings.Contains(got, "--full") {
+		t.Fatal("completion help advertises ineffective output flags")
 	}
 	root.SetArgs([]string{"completion", "powershell", "-h"})
 	var out bytes.Buffer

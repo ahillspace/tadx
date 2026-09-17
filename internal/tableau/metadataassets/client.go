@@ -307,7 +307,7 @@ func validateUpdate(u Update, kind string) error {
 		return errors.New("metadata update requires a property")
 	}
 	if u.Description != nil {
-		if *u.Description == "" {
+		if *u.Description == "" && kind != "column" {
 			return &ConstraintError{"clearing descriptions is not yet verified"}
 		}
 		if len(*u.Description) > 65536 {
@@ -351,12 +351,12 @@ func (c *Client) update(ctx context.Context, kind, id string, parts []string, u 
 		return n, protocol(op, r, err)
 	}
 	if u.Description != nil && (n.ptr("description") == nil || n.attr("description") != *u.Description) {
-		return n, protocol(op, r, errors.New("metadata update succeeded but description read-back differs"))
+		return n, &propertyVerificationError{cause: protocol(op, r, errors.New("metadata update succeeded but description read-back differs"))}
 	}
 	if u.ContactLUID != nil {
 		v, ok := n.child("contact")
 		if !ok || v.attr("id") != *u.ContactLUID {
-			return n, protocol(op, r, errors.New("metadata update succeeded but contact read-back differs"))
+			return n, &propertyVerificationError{cause: protocol(op, r, errors.New("metadata update succeeded but contact read-back differs"))}
 		}
 	}
 	return n, nil
@@ -414,6 +414,14 @@ type tagsEnvelope struct {
 	XMLName xml.Name `xml:"tsRequest"`
 	Tags    []tagXML `xml:"tags>tag"`
 }
+
+// propertyVerificationError marks a completed property response whose read-back value is not verified.
+// The protocol cause retains request context and conservative retry advice.
+type propertyVerificationError struct{ cause error }
+
+func (e *propertyVerificationError) Error() string            { return e.cause.Error() }
+func (e *propertyVerificationError) Unwrap() error            { return e.cause }
+func (e *propertyVerificationError) VerificationFailed() bool { return true }
 
 // tagVerificationError marks a completed response whose tag state is not verified.
 // The protocol cause retains request context and conservative retry advice.

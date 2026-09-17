@@ -1,16 +1,17 @@
 Usage: tadx capability <verb> [flags]
 
 Shared:
-  --config <path>
-  --full (details, not rows)
-  --json
+  --config <path> --json --full (details, not rows)
 
 Commands:
-  get <id>: (Inspect one capability's availability and contract)
+  get <id>: Inspect one capability's availability and contract
+    ID: from capability list.
 
-  list: (List capabilities)
+  list: List capabilities
     [--domain <domain>] [--limit <1..10000> (default: 20)] [--mutation] [--owner <owner>]
     [--product <product>] [--resource <resource>]
+    Filters: AND, case-insensitive; product: substring, others: exact.
+    --mutation=true: remote writes; --mutation=false: others; omitted: both.
 
 Rules:
   Booleans: =true|false (bare=true); ... means repeatable.

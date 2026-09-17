@@ -58,6 +58,8 @@ func applyHelpValues(root *cobra.Command) {
 			value("depth", "1..3")
 		case "workspace clean":
 			choices("class", "temporary", "cache", "logs", "all")
+		case "workspace artifact delete", "workspace artifact move":
+			choices("kind", "workbook", "datasource", "flow", "pulse-definition", "lineage")
 		case "catalog label list", "catalog label inspect", "catalog label update", "catalog label delete":
 			choices("type", "database", "table", "column", "datasource", "flow")
 		case "pulse definition create":
@@ -224,6 +226,8 @@ func applyHelpRequirements(command *cobra.Command, path string) {
 		}
 	}
 	switch path {
+	case "auth login", "auth logout":
+		required("environment")
 	case "admin group create":
 		required("name")
 		if command.Annotations == nil {
@@ -316,6 +320,9 @@ func applyHelpRequirements(command *cobra.Command, path string) {
 		group("exactly-one", "artifact", "id", "artifact-name")
 	case "pulse metric list":
 		required("definition-id")
+		group("exclusive", "all", "limit")
+	case "pulse definition list":
+		group("exclusive", "all", "limit")
 	case "pulse metric fork":
 		required("id")
 		group("one-required", "period", "filter", "exclude-filter")

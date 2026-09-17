@@ -3,6 +3,7 @@ package metadataassets
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -14,6 +15,11 @@ import (
 )
 
 type testSession struct{}
+
+type verificationFailure interface {
+	error
+	VerificationFailed() bool
+}
 
 func (testSession) Authorize(r *http.Request) { r.Header.Set("X-Tableau-Auth", "fixture-token") }
 func (testSession) SiteLUID() string          { return "site-1" }
@@ -84,7 +90,24 @@ func TestRejectsInvalidBeforeNetwork(t *testing.T) {
 			return e
 		},
 		func() error {
-			_, e := c.UpdateColumn(context.Background(), "table", "column", Update{Description: &empty})
+			_, e := c.UpdateDatabase(context.Background(), "db", Update{Description: &empty})
+			return e
+		},
+		func() error {
+			_, e := c.UpdateTable(context.Background(), "table", Update{Description: &empty})
+			return e
+		},
+		func() error {
+			_, e := c.UpdateColumn(context.Background(), "table", "column", Update{Description: &empty, ContactLUID: &empty})
+			return e
+		},
+		func() error {
+			_, e := c.UpdateColumn(context.Background(), "table", "column", Update{})
+			return e
+		},
+		func() error {
+			oversized := strings.Repeat("x", 65537)
+			_, e := c.UpdateColumn(context.Background(), "table", "column", Update{Description: &oversized})
 			return e
 		},
 		func() error { _, e := c.DiscoverColumns(context.Background(), Query{Text: "sales"}); return e },
@@ -101,6 +124,60 @@ func TestRejectsInvalidBeforeNetwork(t *testing.T) {
 		if err := check(); err == nil {
 			t.Fatalf("check %d accepted", i)
 		}
+	}
+}
+
+func TestColumnDescriptionClearSendsExplicitEmptyProperty(t *testing.T) {
+	calls := 0
+	c := fixtureClient(t, func(w http.ResponseWriter, r *http.Request) {
+		calls++
+		body, err := io.ReadAll(r.Body)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if r.Method != "PUT" || r.URL.Path != "/api/3.29/sites/site-1/tables/table-1/columns/column-1" || string(body) != `<tsRequest><column description=""></column></tsRequest>` {
+			t.Fatalf("unexpected clearing request %s %s %s", r.Method, r.URL, body)
+		}
+		io.WriteString(w, `<tsResponse><column id="column-1" parentTableId="table-1" name="Category" description="" remoteType="string"><tags><tag label="keep"/></tags></column></tsResponse>`)
+	})
+	empty := ""
+	got, err := c.UpdateColumn(context.Background(), "table-1", "column-1", Update{Description: &empty})
+	if err != nil || calls != 1 || got.LUID != "column-1" || got.Table.LUID != "table-1" || got.Description == nil || *got.Description != "" || got.RemoteType != "string" || len(got.Tags) != 1 || got.Tags[0] != "keep" {
+		t.Fatalf("got=%+v err=%v calls=%d", got, err, calls)
+	}
+}
+
+func TestColumnClearRequiresVerifiedReadback(t *testing.T) {
+	for _, description := range []string{`description="Old meaning"`, ""} {
+		t.Run(description, func(t *testing.T) {
+			calls := 0
+			c := fixtureClient(t, func(w http.ResponseWriter, r *http.Request) {
+				calls++
+				w.Header().Set("X-Tableau-Request-Id", "clear-readback-request")
+				io.WriteString(w, `<tsResponse><column id="column-1" parentTableId="table-1" name="Category" `+description+`/></tsResponse>`)
+			})
+			empty := ""
+			got, err := c.UpdateColumn(context.Background(), "table-1", "column-1", Update{Description: &empty})
+			protocol, protocolOK := errors.AsType[*tableau.ProtocolError](err)
+			verification, verificationOK := errors.AsType[verificationFailure](err)
+			if !protocolOK || protocol.RequestID() != "clear-readback-request" || !verificationOK || !verification.VerificationFailed() || got.LUID != "column-1" || calls != 1 {
+				t.Fatalf("unverified clear lost identity or was accepted: got=%+v err=%v calls=%d", got, err, calls)
+			}
+		})
+	}
+}
+
+func TestContactReadbackFailurePreservesVerificationDetails(t *testing.T) {
+	c := fixtureClient(t, func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("X-Tableau-Request-Id", "contact-readback-request")
+		io.WriteString(w, `<tsResponse><database id="db-1" name="Sales"><contact id="user-1"/></database></tsResponse>`)
+	})
+	contact := "user-2"
+	got, err := c.UpdateDatabase(t.Context(), "db-1", Update{ContactLUID: &contact})
+	protocol, protocolOK := errors.AsType[*tableau.ProtocolError](err)
+	verification, verificationOK := errors.AsType[verificationFailure](err)
+	if !protocolOK || protocol.RequestID() != "contact-readback-request" || !verificationOK || !verification.VerificationFailed() || got.LUID != "db-1" {
+		t.Fatalf("unverified contact lost identity or protocol details: got=%+v err=%v", got, err)
 	}
 }
 

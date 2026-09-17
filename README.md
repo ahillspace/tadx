@@ -154,6 +154,18 @@ The current goal is to get TADX running quickly and smoothly against the simple 
 This is to get it ready to augment the new experiences coming in Tableau (Tableau Authoring API, Tableau Knowledge Graph, Tableau MCP, TDS API, Composable Datasources, etc.).
 Augmenting semantics, modifying published datasources, cleaning and composing data sources, and managing access with agents is all in scope as these new features become available and TADX is meant to act as the platform that allows agents to assist with these activities cleanly, quickly, cheaply, and at scale.
 
+### Optional native search categories
+
+Proposed: 2026-09-14; not implemented.
+Extend `tadx search` with opt-in categories so agents can use improvements to Tableau's native relevance search beyond the current content, administration, and Pulse results.
+Candidates include views, databases/files, tables/objects, virtual connections, collections, and Prep data roles; include lenses only where the deployed Tableau API still supports them.
+Syntax such as `--include view,database,table` is illustrative and requires a CLI design decision.
+Preserve current defaults, retain each category's native identity and parent relationship, and never represent a connection, table, or database as a published datasource merely because its name or URL resembles one.
+Preserve Tableau's mixed relevance order across native categories, including semantic or AI ranking when supplied by the service.
+Before implementation, define the category names, combination with `--type`, per-category result fields and follow-up commands, identity namespaces, and pagination after filtering or grouping.
+Also decide explicit cache behavior for categories without local coverage and how this complements `catalog search` rather than silently substituting its different Metadata API matching behavior.
+See the [current search architecture](docs/architecture/search.md) for the source split and the connection-identity defect that motivated this proposal.
+
 ## License
 
 TADX is licensed under [Apache 2.0](LICENSE).

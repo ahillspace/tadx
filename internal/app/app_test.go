@@ -344,7 +344,7 @@ func TestMutationDiscoveryFilterReportsExecutionEnabled(t *testing.T) {
 
 func TestMutationDiscoveryDoesNotRequireExecutionGate(t *testing.T) {
 	var stdout bytes.Buffer
-	exitCode := app.Run(context.Background(), []string{"capability", "list", "--domain", "content", "--resource", "workbook", "--mutation=true"}, &stdout, app.Options{})
+	exitCode := app.Run(t.Context(), []string{"capability", "list", "--domain", "content", "--resource", "workbook", "--mutation=true"}, &stdout, app.Options{ConfigPath: filepath.Join(t.TempDir(), "missing.yaml")})
 	if exitCode != 0 || !strings.Contains(stdout.String(), "workbook.publish") || !strings.Contains(stdout.String(), "false,false") {
 		t.Fatalf("exit code = %d, output = %s", exitCode, stdout.String())
 	}
@@ -364,7 +364,7 @@ func TestCapabilityGetReportsMutationExecutionState(t *testing.T) {
 		want    string
 	}{{false, "execution_enabled: false"}, {true, "execution_enabled: true"}} {
 		var stdout bytes.Buffer
-		exitCode := app.Run(context.Background(), []string{"capability", "get", "workbook.publish"}, &stdout, app.Options{MutationsEnabled: test.enabled})
+		exitCode := app.Run(t.Context(), []string{"capability", "get", "workbook.publish"}, &stdout, app.Options{ConfigPath: filepath.Join(t.TempDir(), "missing.yaml"), MutationsEnabled: test.enabled})
 		if exitCode != 0 || !strings.Contains(stdout.String(), "remote_mutation: true") || !strings.Contains(stdout.String(), test.want) {
 			t.Fatalf("enabled = %t, exit code = %d, output = %s", test.enabled, exitCode, stdout.String())
 		}

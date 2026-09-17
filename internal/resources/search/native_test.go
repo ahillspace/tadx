@@ -66,7 +66,10 @@ func TestNativeAdapterProjectsContentAndContinuesWithBoundedCursor(t *testing.T)
 }
 
 func TestNativeAdapterRejectsChangedOrOversizedCursor(t *testing.T) {
-	client := &nativeClient{pages: map[int]tableausearch.Page{0: {Items: []tableausearch.Item{{LUID: "wb-1", Type: "workbook", Name: "Sales"}}, PageIndex: 0, Limit: 1, Total: 2, HasNext: true}}}
+	client := &nativeClient{pages: map[int]tableausearch.Page{
+		0: {Items: []tableausearch.Item{{LUID: "wb-1", Type: "workbook", Name: "Sales"}}, PageIndex: 0, Limit: 1, Total: 2, HasNext: true},
+		1: {Items: []tableausearch.Item{{LUID: "wb-2", Type: "workbook", Name: "Later"}}, PageIndex: 1, Limit: 1, Total: 2},
+	}}
 	adapter := resourcesearch.NewNativeAdapter(client, nil)
 	input := resourcesearch.Input{Types: []string{"workbook"}, Terms: "sales", Limit: 1}
 	first, err := adapter.Search(context.Background(), input)

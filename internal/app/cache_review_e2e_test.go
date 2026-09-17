@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -60,7 +61,13 @@ func TestNativeSearchReportsTotalAndResultWindowWarning(t *testing.T) {
 		case strings.HasSuffix(r.URL.Path, "/auth/signin"):
 			_, _ = io.WriteString(w, `{"credentials":{"token":"session-token","site":{"id":"site-1"},"user":{"id":"user-1"}}}`)
 		case r.URL.Path == "/api/-/search":
-			_, _ = io.WriteString(w, `{"items":[{"uri":"/workbooks/wb-1","content":{"luid":"wb-1","contentType":"WORKBOOK","name":"Sales"}}],"limit":1,"pageIndex":0,"startIndex":0,"total":2001,"next":"/api/-/search?page=1"}`)
+			page, err := strconv.Atoi(r.URL.Query().Get("page"))
+			if err != nil {
+				t.Error(err)
+				http.Error(w, "invalid page", http.StatusBadRequest)
+				return
+			}
+			_, _ = fmt.Fprintf(w, `{"items":[{"content":{"luid":"wb-%d","contentType":"WORKBOOK","name":"Sales"}}],"limit":1,"pageIndex":%d,"startIndex":%d,"total":2001,"next":"/api/-/search?page=%d"}`, page, page, page, page+1)
 		default:
 			http.Error(w, "unexpected request", 404)
 		}
