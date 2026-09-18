@@ -41,7 +41,12 @@ func TestUnixModeContract(t *testing.T) {
 }
 
 func TestUnixTemporaryPolicyProtection(t *testing.T) {
-	dir := t.TempDir()
+	// macOS temporary paths can traverse /var, which is itself a symlink.
+	// Resolve the fixture root; the loader must still reject linked policy paths.
+	dir, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
 	path := filepath.Join(dir, "managed-policy.json")
 	if err := os.Chmod(dir, 0777); err != nil {
 		t.Fatal(err)
