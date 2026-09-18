@@ -123,8 +123,8 @@ var categoryHelpExamples = []helpExampleSet{
 	{"agent", "Use --target auto to detect configured agents. Preview reports local file changes without writing them.", []string{
 		"tadx agent install --target auto --preview", "tadx agent install --target auto",
 	}},
-	{"mutation", "Mutation set persists policy for future sessions. Agents need explicit permission for the setting change and its persistent scope.\nTADX_ENABLE_MUTATIONS overrides saved policy for the process. Supported read-only previews remain available when mutations are disabled.", []string{
-		"tadx mutation status", "tadx mutation set --enabled=true",
+	{"mutation", "Mutation set persists consent for the selected server and exact site. Agents need explicit permission for that site and persistent setting.\nProcess overrides do not authorize writes. Supported read-only previews remain available when site consent is disabled.", []string{
+		"tadx mutation status --environment dev", "tadx mutation set --environment dev --enabled=true",
 	}},
 	{"capability", "Use capability IDs to inspect ownership, availability, and bounded operation details.", []string{
 		"tadx capability list --domain content", "tadx capability get workbook.pull",

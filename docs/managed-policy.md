@@ -90,8 +90,8 @@ Every candidate must contain exactly these three fields:
 {
   "version": 1,
   "allowed_capabilities": [
-    "content.workbook.inspect",
-    "content.workbook.pull"
+    "workbook.inspect",
+    "workbook.pull"
   ],
   "remote_mutations": false
 }
