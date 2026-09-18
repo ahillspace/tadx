@@ -89,6 +89,10 @@ func (m *Manager) Create(ctx context.Context, name, root string) (record Record,
 	if err != nil {
 		return Record{}, err
 	}
+	storedRoot, err := presentedRoot(root)
+	if err != nil {
+		return Record{}, err
+	}
 	id, err := m.newID()
 	if err != nil {
 		return Record{}, fmt.Errorf("generate workspace identity: %w", err)
@@ -110,13 +114,13 @@ func (m *Manager) Create(ctx context.Context, name, root string) (record Record,
 		if err := ctx.Err(); err != nil {
 			return config.Config{}, err
 		}
-		return applyRegistration(configuration, name, id, resolvedRoot)
+		return applyRegistration(configuration, name, id, storedRoot)
 	})
 	if err != nil {
 		return Record{}, err
 	}
 	rollback = false
-	return Record{Name: name, ID: id, Root: resolvedRoot, Default: strings.EqualFold(updated.DefaultWorkspace, name), Available: true, ManifestValid: true}, nil
+	return Record{Name: name, ID: id, Root: storedRoot, Default: strings.EqualFold(updated.DefaultWorkspace, name), Available: true, ManifestValid: true}, nil
 }
 
 // Register adopts one existing on-disk workspace into the registry using the
@@ -156,13 +160,17 @@ func (m *Manager) Register(ctx context.Context, name, root string) (Record, erro
 		return Record{}, fmt.Errorf("workspace name: %w", err)
 	}
 	id := manifest.Workspace.ID
+	storedRoot, err := presentedRoot(root)
+	if err != nil {
+		return Record{}, err
+	}
 	updated, err := config.Update(m.configPath, true, func(configuration config.Config) (config.Config, error) {
-		return applyRegistration(configuration, name, id, resolvedRoot)
+		return applyRegistration(configuration, name, id, storedRoot)
 	})
 	if err != nil {
 		return Record{}, err
 	}
-	return Record{Name: name, ID: id, Root: resolvedRoot, Default: strings.EqualFold(updated.DefaultWorkspace, name), Available: true, ManifestValid: true}, nil
+	return Record{Name: name, ID: id, Root: storedRoot, Default: strings.EqualFold(updated.DefaultWorkspace, name), Available: true, ManifestValid: true}, nil
 }
 
 // SetDefault selects one available registered workspace as the global default.
@@ -300,11 +308,13 @@ func exactRegistration(configuration config.Config, selector string) (string, co
 
 func recordFromRegistration(name string, registration config.WorkspaceRegistration, defaultName string) Record {
 	record := Record{Name: name, ID: registration.ID, Root: registration.Path, Default: strings.EqualFold(defaultName, name)}
+	if reported, err := presentedRoot(registration.Path); err == nil {
+		record.Root = reported
+	}
 	root, err := canonicalRoot(registration.Path)
 	if err != nil {
 		return record
 	}
-	record.Root = root
 	manifest, err := ReadManifest(root)
 	record.Available = err == nil
 	record.ManifestValid = err == nil && manifest.Workspace.ID == registration.ID && strings.EqualFold(manifest.Workspace.Name, name)
@@ -384,6 +394,10 @@ func (m *Manager) Clone(ctx context.Context, source, newName, newRoot string) (R
 	if err != nil {
 		return Record{}, err
 	}
+	storedRoot, err := presentedRoot(newRoot)
+	if err != nil {
+		return Record{}, err
+	}
 	if samePath(sourceRecord.Root, resolvedRoot) {
 		return Record{}, errors.New("clone source and destination roots must differ")
 	}
@@ -402,13 +416,13 @@ func (m *Manager) Clone(ctx context.Context, source, newName, newRoot string) (R
 		}
 	}()
 	updated, err := config.Update(m.configPath, true, func(configuration config.Config) (config.Config, error) {
-		return applyRegistration(configuration, newName, id, resolvedRoot)
+		return applyRegistration(configuration, newName, id, storedRoot)
 	})
 	if err != nil {
 		return Record{}, err
 	}
 	rollback = false
-	return Record{Name: newName, ID: id, Root: resolvedRoot, Default: strings.EqualFold(updated.DefaultWorkspace, newName), Available: true, ManifestValid: true}, nil
+	return Record{Name: newName, ID: id, Root: storedRoot, Default: strings.EqualFold(updated.DefaultWorkspace, newName), Available: true, ManifestValid: true}, nil
 }
 
 // applyRegistration performs the name, identity, and root collision checks and
@@ -509,6 +523,12 @@ func (m *Manager) resolveWithConfig(ctx context.Context, configuration config.Co
 	if err != nil {
 		return Record{}, err
 	}
+	// Physical access uses the symlink-resolved root; the reported root stays in
+	// the caller-facing presented form so it matches Create/Register/Clone.
+	reported, err := presentedRoot(registration.Path)
+	if err != nil {
+		return Record{}, err
+	}
 	if migrate {
 		if _, err := upgradeLegacyManifest(root, Manifest{Version: manifestVersion, Workspace: ManifestWorkspace{ID: registration.ID, Name: name}}); err != nil {
 			return Record{}, fmt.Errorf("workspace %q manifest migration: %w", name, err)
@@ -521,7 +541,7 @@ func (m *Manager) resolveWithConfig(ctx context.Context, configuration config.Co
 	if manifest.Workspace.ID != registration.ID || !strings.EqualFold(manifest.Workspace.Name, name) {
 		return Record{Name: name, SelectionReason: reason}, fmt.Errorf("workspace %q registry and manifest identities do not match", name)
 	}
-	return Record{Name: name, ID: registration.ID, Root: root, Default: strings.EqualFold(configuration.DefaultWorkspace, name), Available: true, ManifestValid: true, SelectionReason: reason}, nil
+	return Record{Name: name, ID: registration.ID, Root: reported, Default: strings.EqualFold(configuration.DefaultWorkspace, name), Available: true, ManifestValid: true, SelectionReason: reason}, nil
 }
 
 func containingWorkspace(configuration config.Config) string {
@@ -583,9 +603,11 @@ func (m *Manager) List(ctx context.Context, limit, offset int) (Page, error) {
 	items := make([]Record, 0, len(configuration.Workspaces))
 	for name, registration := range configuration.Workspaces {
 		record := Record{Name: name, ID: registration.ID, Root: registration.Path, Default: strings.EqualFold(configuration.DefaultWorkspace, name)}
+		if reported, presentErr := presentedRoot(registration.Path); presentErr == nil {
+			record.Root = reported
+		}
 		root, rootErr := canonicalRoot(registration.Path)
 		if rootErr == nil {
-			record.Root = root
 			_, _ = upgradeLegacyManifest(root, Manifest{Version: manifestVersion, Workspace: ManifestWorkspace{ID: registration.ID, Name: name}})
 			manifest, manifestErr := ReadManifest(root)
 			record.Available = manifestErr == nil
@@ -882,6 +904,24 @@ func canonicalRoot(root string) (string, error) {
 		resolved = filepath.Join(resolved, missing[index])
 	}
 	return resolved, nil
+}
+
+// presentedRoot returns the caller's root as an absolute, lexically clean path
+// WITHOUT resolving symlinks. The registry stores and reports this caller-facing
+// form. Every collision and containment check re-resolves the stored path through
+// canonicalRoot (see planRegistration and containingWorkspace), so storing the
+// unresolved path keeps comparisons correct while keeping surprising
+// symlink-expanded prefixes (for example macOS /private/var) out of output and
+// error messages.
+func presentedRoot(root string) (string, error) {
+	if strings.TrimSpace(root) == "" {
+		return "", errors.New("workspace root is required")
+	}
+	absolute, err := filepath.Abs(root)
+	if err != nil {
+		return "", err
+	}
+	return filepath.Clean(absolute), nil
 }
 
 func samePath(left, right string) bool {

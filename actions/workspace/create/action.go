@@ -36,7 +36,6 @@ type Output struct {
 type compactWorkspace struct {
 	Name string `json:"name"`
 	ID   string `json:"id"`
-	Root string `json:"root"`
 }
 
 type compactOutput struct {
@@ -51,7 +50,7 @@ func (o Output) CompactOutput() any {
 	if o.Status == "preview" {
 		return o.previewOutput()
 	}
-	return compactOutput{Status: o.Status, Workspace: compactWorkspace{Name: o.Workspace.Name, ID: o.Workspace.ID, Root: o.Workspace.Root}, Details: "--full", Help: o.Help}
+	return compactOutput{Status: o.Status, Workspace: compactWorkspace{Name: o.Workspace.Name, ID: o.Workspace.ID}, Details: "--full", Help: o.Help}
 }
 
 // FullOutput returns bounded workspace identity details.
