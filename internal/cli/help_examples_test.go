@@ -103,7 +103,7 @@ func TestCategoryHelpExplainsRequiredAlternatives(t *testing.T) {
 		{"admin group", []string{"create:", "--name <group-name>", "exactly one of: --id, --name"}},
 		{"admin group-member", []string{"--group-id", "exactly one of: --user-id, --username"}},
 		{"admin permission", []string{"--principal-type", "--principal-username", "--capability", "--mode"}},
-		{"content workbook publish", []string{"Usage: tadx content workbook publish", "--file", "--id", "--artifact-name", "--project-id", "--project", "exactly one of: --artifact", "batch{publish}", `{"items":[{"<flag-name>":"<value>"}]}`, "Required inputs apply per row", "1-100"}},
+		{"content workbook publish", []string{"Usage: tadx content workbook publish", "(--artifact <path>... | --file <file.twb|file.twbx> | --id <luid> | --artifact-name <name>)", "(--project-id <luid> | --project <path>)", "Batch:", `{"items":[{"<flag>":"<value>"}]}`, "required per row", "1-100"}},
 		{"pulse definition", []string{"--name", "--datasource-id", "--measure-field", "--date-field", "--dimension", "--datasource-map"}},
 		{"pulse metric", []string{"at least one of: --period, --filter, --exclude-filter", "CUSTOM_N_DAYS", "exactly one of: --user-id, --group-id"}},
 		{"workspace artifact", []string{"--artifact", "both --kind and --id"}},

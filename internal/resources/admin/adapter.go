@@ -22,9 +22,28 @@ type Client interface {
 	tableau.ClientContract
 }
 
-type Adapter struct{ client Client }
+type Adapter struct {
+	client          Client
+	checkCapability func(string) error
+}
 
-func NewAdapter(client Client) *Adapter { return &Adapter{client: client} }
+func NewAdapter(client Client, checks ...func(string) error) *Adapter {
+	a := &Adapter{client: client}
+	if len(checks) > 0 {
+		a.checkCapability = checks[0]
+	}
+	return a
+}
+
+func (a *Adapter) authorize(id string) error {
+	if err := a.configured(); err != nil {
+		return err
+	}
+	if a.checkCapability != nil {
+		return a.checkCapability(id)
+	}
+	return nil
+}
 
 // UserSelector accepts an authoritative user LUID or an exact Tableau username.
 // Display names and notification email addresses are intentionally not selectors.
@@ -36,6 +55,9 @@ type GroupDetail struct {
 }
 
 func (a *Adapter) ListUsers(ctx context.Context, input tableau.ListUsersRequest) (tableau.UserPage, error) {
+	if err := a.authorize("admin.user.list"); err != nil {
+		return tableau.UserPage{}, err
+	}
 	if err := a.configured(); err != nil {
 		return tableau.UserPage{}, err
 	}
@@ -53,6 +75,9 @@ func (a *Adapter) ListUsers(ctx context.Context, input tableau.ListUsersRequest)
 }
 
 func (a *Adapter) ResolveUser(ctx context.Context, selector UserSelector) (tableau.User, error) {
+	if err := a.authorize("admin.user.inspect"); err != nil {
+		return tableau.User{}, err
+	}
 	if err := a.configured(); err != nil {
 		return tableau.User{}, err
 	}
@@ -90,6 +115,9 @@ func (a *Adapter) ResolveUser(ctx context.Context, selector UserSelector) (table
 }
 
 func (a *Adapter) FindUsers(ctx context.Context, exactNameOrEmail string) ([]tableau.User, error) {
+	if err := a.authorize("admin.user.inspect"); err != nil {
+		return nil, err
+	}
 	items, err := a.allUsers(ctx)
 	if err != nil {
 		return nil, err
@@ -105,6 +133,9 @@ func (a *Adapter) FindUsers(ctx context.Context, exactNameOrEmail string) ([]tab
 }
 
 func (a *Adapter) ListGroups(ctx context.Context, input tableau.ListGroupsRequest) (tableau.GroupPage, error) {
+	if err := a.authorize("admin.group.list"); err != nil {
+		return tableau.GroupPage{}, err
+	}
 	if err := a.configured(); err != nil {
 		return tableau.GroupPage{}, err
 	}
@@ -122,6 +153,9 @@ func (a *Adapter) ListGroups(ctx context.Context, input tableau.ListGroupsReques
 }
 
 func (a *Adapter) ResolveGroup(ctx context.Context, selector GroupSelector, includeMembers bool) (GroupDetail, error) {
+	if err := a.authorize("admin.group.inspect"); err != nil {
+		return GroupDetail{}, err
+	}
 	items, err := a.allGroups(ctx)
 	if err != nil {
 		return GroupDetail{}, err
@@ -147,6 +181,9 @@ func (a *Adapter) ResolveGroup(ctx context.Context, selector GroupSelector, incl
 }
 
 func (a *Adapter) FindGroups(ctx context.Context, exactName string) ([]tableau.Group, error) {
+	if err := a.authorize("admin.group.inspect"); err != nil {
+		return nil, err
+	}
 	items, err := a.allGroups(ctx)
 	if err != nil {
 		return nil, err
@@ -162,6 +199,9 @@ func (a *Adapter) FindGroups(ctx context.Context, exactName string) ([]tableau.G
 }
 
 func (a *Adapter) GetPermissions(ctx context.Context, input tableau.PermissionRequest) (tableau.PermissionSet, error) {
+	if err := a.authorize("admin.permission.inspect"); err != nil {
+		return tableau.PermissionSet{}, err
+	}
 	if err := a.configured(); err != nil {
 		return tableau.PermissionSet{}, err
 	}
@@ -169,27 +209,51 @@ func (a *Adapter) GetPermissions(ctx context.Context, input tableau.PermissionRe
 }
 
 func (a *Adapter) CreateUser(ctx context.Context, input tableau.CreateUserRequest) (tableau.User, error) {
+	if err := a.authorize("admin.user.create"); err != nil {
+		return tableau.User{}, err
+	}
 	return a.client.CreateUser(ctx, input)
 }
 func (a *Adapter) UpdateUser(ctx context.Context, luid string, input tableau.UpdateUserRequest) (tableau.User, error) {
+	if err := a.authorize("admin.user.update"); err != nil {
+		return tableau.User{}, err
+	}
 	return a.client.UpdateUser(ctx, luid, input)
 }
 func (a *Adapter) DeleteUser(ctx context.Context, luid string) (tableau.MutationResult, error) {
+	if err := a.authorize("admin.user.delete"); err != nil {
+		return tableau.MutationResult{}, err
+	}
 	return a.client.DeleteUser(ctx, luid)
 }
 func (a *Adapter) CreateGroup(ctx context.Context, input tableau.CreateGroupRequest) (tableau.Group, error) {
+	if err := a.authorize("admin.group.create"); err != nil {
+		return tableau.Group{}, err
+	}
 	return a.client.CreateGroup(ctx, input)
 }
 func (a *Adapter) UpdateGroup(ctx context.Context, luid string, input tableau.UpdateGroupRequest) (tableau.Group, error) {
+	if err := a.authorize("admin.group.update"); err != nil {
+		return tableau.Group{}, err
+	}
 	return a.client.UpdateGroup(ctx, luid, input)
 }
 func (a *Adapter) DeleteGroup(ctx context.Context, luid string) (tableau.MutationResult, error) {
+	if err := a.authorize("admin.group.delete"); err != nil {
+		return tableau.MutationResult{}, err
+	}
 	return a.client.DeleteGroup(ctx, luid)
 }
 func (a *Adapter) AddGroupUser(ctx context.Context, groupLUID, userLUID string) (tableau.MutationResult, error) {
+	if err := a.authorize("admin.group.member.add"); err != nil {
+		return tableau.MutationResult{}, err
+	}
 	return a.client.AddGroupUser(ctx, groupLUID, userLUID)
 }
 func (a *Adapter) RemoveGroupUser(ctx context.Context, groupLUID, userLUID string) (tableau.MutationResult, error) {
+	if err := a.authorize("admin.group.member.remove"); err != nil {
+		return tableau.MutationResult{}, err
+	}
 	return a.client.RemoveGroupUser(ctx, groupLUID, userLUID)
 }
 

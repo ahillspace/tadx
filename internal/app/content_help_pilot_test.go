@@ -95,7 +95,9 @@ func TestContentHelpPilotResourceReferencesAndVerbMirrors(t *testing.T) {
 	dir, options := contentHelpPilotSetup(t)
 	content := contentHelpPilotTree(t, options)
 	resources := []string{"workbook", "datasource", "flow", "project"}
-	budgets := map[string]int{"workbook": 3000, "datasource": 3100, "flow": 3000, "project": 3000}
+	// Complete generated references use the same 4000-character ceiling as every
+	// other resource, including selectors and constraints omitted by the old text pages.
+	budgets := map[string]int{"workbook": 4000, "datasource": 4000, "flow": 4000, "project": 4000}
 	for _, name := range resources {
 		t.Run(name, func(t *testing.T) {
 			resource, _, err := content.Find([]string{name})
@@ -103,7 +105,7 @@ func TestContentHelpPilotResourceReferencesAndVerbMirrors(t *testing.T) {
 				t.Fatalf("resource missing: %v", err)
 			}
 			want := contentHelpPilotRun(t, dir, options, "content", name, "--help")
-			for _, section := range []string{"Usage:", "Shared:", "Target (", "Options:", "Commands:", "Rules:", "Batch:", "Examples:"} {
+			for _, section := range []string{"Usage:", "Shared:", "Commands:", "Rules:", "Batch:", "Examples:"} {
 				if !strings.Contains(want, section) {
 					t.Errorf("%s reference omits formatted section %q", name, section)
 				}
@@ -114,9 +116,9 @@ func TestContentHelpPilotResourceReferencesAndVerbMirrors(t *testing.T) {
 				}
 			}
 			facts := map[string][]string{
-				"workbook": {"pull: --id <luid> | (--name <name> [--project <path>])", "(default: true)", "empty description clears"},
-				"flow":     {"update: target --owner-id <luid>", "--file <file.tfl|file.tflx>", "--project-id (--pid) <luid>"},
-				"project":  {"delete: --id <luid>", "LockedToProjectWithoutNested", "--top-level=true|false", "(omitted: both)", "--name = --new-name (update)"},
+				"workbook": {"--project scopes an exact --name selector when supplied", "(default: true)", "Empty --description clears"},
+				"flow":     {"--owner-id <luid>", "--file <file.tfl|file.tflx>", "--project-id <luid>"},
+				"project":  {"--id <luid>", "LockedToProjectWithoutNested", "--top-level", "--name = --new-name (update)"},
 			}
 			for _, fact := range facts[name] {
 				if !strings.Contains(want, fact) {
@@ -127,7 +129,7 @@ func TestContentHelpPilotResourceReferencesAndVerbMirrors(t *testing.T) {
 				t.Errorf("%s reference advertises removed publication job mode", name)
 			}
 			if name != "project" {
-				for _, meaning := range []string{"(fetch details)", "(download local files)", "(local to Tableau)"} {
+				for _, meaning := range []string{"Read details, not files", "Download local files", "Publish local content to Tableau"} {
 					if !strings.Contains(want, meaning) {
 						t.Errorf("%s reference omits operation meaning %q", name, meaning)
 					}
@@ -140,11 +142,11 @@ func TestContentHelpPilotResourceReferencesAndVerbMirrors(t *testing.T) {
 				flat := strings.Join(strings.Fields(want), " ")
 				for _, fact := range []string{
 					"local only; default: live", "no writes; mutation gate can be off", "details, not rows",
-					"Target (remote, exact): --id <luid> | (--name", "--project (--prj) <path>)",
-					"(default limit: 25)", "(default limit: 20)", "measure|dimension|date|excluded",
-					"(dirty local files)", "(destination)", "create = collision fails", "append/replace = data",
-					"(one required; omitted unchanged)", "Field IDs repeat <=10000",
-					"Repeat one selector OR use --batch-file", "1-100 sequential items", "Env/control flags outside rows",
+					"--id <luid>", "--name <name>", "--project or --project-id",
+					"(default: 25)", "(default: 20)", "measure|dimension|date|excluded",
+					"dirty local files", "Project: destination", "create: collision fails", "append/replace: data",
+					"at least one of: --new-name, --owner-id", "omitted settings stay unchanged", "--field-id: <=10000",
+					"--batch-file", "File OR repeated selectors", "1-100 sequential items", "Env/control flags outside rows",
 				} {
 					if !strings.Contains(flat, fact) {
 						t.Errorf("compact reference lost %q", fact)

@@ -252,15 +252,15 @@ func TestContentPublicationHelpExplainsNoWaitAndFlowSync(t *testing.T) {
 		want     string
 		avoid    string
 	}{
-		{resource: "workbook", want: "--no-wait hands work to local background execution", avoid: "flow publication is synchronous"},
-		{resource: "flow", want: "flow publication may complete synchronously", avoid: "flow publication is synchronous;"},
+		{resource: "workbook", want: "--no-wait: one single/batch status command", avoid: "flow publication is synchronous"},
+		{resource: "flow", want: "Flow publication can complete synchronously", avoid: "flow publication is synchronous;"},
 	} {
 		t.Run(test.resource, func(t *testing.T) {
 			resource := &cobra.Command{Use: test.resource}
 			publish := &cobra.Command{Use: "publish"}
 			resource.AddCommand(publish)
 			var output bytes.Buffer
-			writeContentNotes(&output, resource, []*cobra.Command{publish})
+			writeCompactContentNotes(&output, resource, []*cobra.Command{publish})
 			if !strings.Contains(output.String(), test.want) || strings.Contains(output.String(), test.avoid) {
 				t.Fatalf("publication notes = %s", output.String())
 			}

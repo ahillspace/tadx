@@ -189,7 +189,7 @@ func writeRootHelp(out io.Writer, root *cobra.Command) {
 	}{
 		{"discover and manage Tableau", []string{"search", "content", "catalog", "admin", "pulse"}},
 		{"local state", []string{"cache", "workspace", "last"}},
-		{"setup and diagnostics", []string{"env", "auth", "mutation", "agent", "doctor", "capability", "update", "version", "completion"}},
+		{"setup and diagnostics", []string{"env", "auth", "mutation", "policy", "agent", "doctor", "capability", "update", "version", "completion"}},
 	}
 	remaining := map[string]*cobra.Command{}
 	for _, child := range visibleHelpChildren(root) {

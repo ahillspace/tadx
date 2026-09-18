@@ -23,15 +23,15 @@ Keep routine pull enrichment diagnostics in metadata and full output; surface un
 Report known failure phases, mutation outcomes, missing prerequisites, and confirmed partial results through the shared error contract.
 Do not infer safe retries from transport retryability, invent missing evidence, or discard confirmed identities after verification fails.
 Keep follow-up commands contextual and coverage limitations explicit; shared rendering handles configuration preservation and bounded recovery output.
-Consequential mutations run by default when enabled and support `--preview` for a read-only plan.
-Supported read-only `--preview` operations remain available when the mutation gate is off.
+Consequential mutations run by default when the selected site's saved consent and all other policy checks allow them.
+Supported read-only `--preview` operations remain available when site consent or managed remote mutations are disabled, if their IDs are allowed.
 Mutation discovery and previews do not authorize execution, and `--force` does not bypass mutation policy.
-Before changing `TADX_ENABLE_MUTATIONS` or the saved mutation setting through `tadx mutation set`, agents must obtain explicit user permission for that setting change and its scope.
-This applies to enabling, disabling, or unsetting it through any mechanism, including command overrides, process or session environments, wrappers, scripts, shell profiles, and persistent user or machine settings.
-A request to perform a Tableau operation does not authorize changing this flag.
-Reuse prior permission only when it explicitly covers the same setting change and scope; session permission does not authorize persistence.
-Ask one short question, for example: "May I enable remote mutations for this session, allowing TADX to create, change, or delete Tableau resources?"
-For a persistent change, name its scope and explain that it affects future shells.
+Before changing consent through `tadx mutation set`, agents must obtain explicit user permission for the selected server, exact site, and persisted setting.
+`tadx mutation status` and `tadx mutation set` use only the canonical server and exact site; no global setting or process override authorizes remote writes.
+The legacy `mutations_enabled` field and `TADX_ENABLE_MUTATIONS=0` and `1` values are ignored for authorization, and legacy saved global settings are not inherited.
+A request to perform a Tableau operation does not authorize changing site consent.
+Reuse prior permission only when it explicitly covers the same selected site and persisted setting.
+Ask one short question, for example: "May I enable remote mutations for the selected Tableau server and exact site, and persist that consent?"
 Tableau LUIDs are authoritative, ambiguous selectors fail, and resolution is never fuzzy or interactive.
 Tableau authentication uses PATs only.
 PATs can persist only after explicit user approval in the native OS credential store.

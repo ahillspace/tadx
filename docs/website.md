@@ -28,6 +28,7 @@ For an optional real-browser check of the homepage, run `node scripts/tests/site
 Both browser checks use a supplied headless Chromium executable, create temporary profiles, and do not contact Tableau or modify the authored pages.
 The output directory must be new or empty; move an earlier local build aside before rebuilding.
 The homepage's Docs links open `capabilities.html` on the same site.
+The homepage also links to the managed policy guide in the repository for administrator deployment details.
 The build copies the authored `docs/reference/capability-map.html` and its generated `capabilities.json` inventory; no second command-browser source is maintained.
 Keep the map's authored layout and styling separate from its generated `capability-data` script block.
 Use `go generate ./internal/capability` when registry changes require a new snapshot.

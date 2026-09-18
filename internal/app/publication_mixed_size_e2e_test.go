@@ -119,7 +119,7 @@ func TestDatasourcePublicationMixedSizeBatchUsesExactUploadsAndIndependentOutcom
 	args := []string{"content", "datasource", "publish", "--environment", "production", "--project-id", "project-1", "--create", "--json", "--file", inlinePath, "--file", chunkedPath}
 	var out, progress strings.Builder
 	started := time.Now()
-	exit := Run(context.Background(), args, &out, Options{ConfigPath: runtime.configPath, HTTPClient: server.Client(), MutationsEnabled: true, JobDirectory: runtime.jobDirectory, Stderr: &progress})
+	exit := Run(context.Background(), args, &out, withSiteMutationConsent(t, Options{ConfigPath: runtime.configPath, HTTPClient: server.Client(), JobDirectory: runtime.jobDirectory, Stderr: &progress}, true))
 	elapsed := time.Since(started)
 
 	var result mixedPublicationBatch

@@ -10,4 +10,4 @@ datasource:
   content_url: sales
   updated_at: "2026-09-01T00:00:00Z"
 details: "--full"
-help[1]: tadx content datasource list
+help[1]: tadx content datasource schema --id datasource-1 --environment dev

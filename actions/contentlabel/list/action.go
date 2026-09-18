@@ -15,6 +15,7 @@ import (
 type Input struct {
 	Environment, Site string
 	Limit             int
+	All               bool
 	Type, TargetID    string
 	Categories        []string
 }
@@ -80,6 +81,9 @@ func ValidateInput(in Input) error {
 	if in.Limit < 0 || in.Limit > 10000 {
 		return usage("limit must be between 1 and 10000, or omitted")
 	}
+	if in.All && in.Limit != 0 {
+		return usage("--all cannot be combined with --limit")
+	}
 	if !allowed(in.Type) || strings.TrimSpace(in.TargetID) == "" || strings.TrimSpace(in.TargetID) != in.TargetID {
 		return usage("--type must be database, table, column, datasource, or flow, with an exact --target-id")
 	}
@@ -123,7 +127,9 @@ func (a *Action) Execute(ctx context.Context, in Input) (Output, error) {
 	items = append([]value.ContentLabel{}, items...)
 	sort.Slice(items, func(i, j int) bool { return items[i].LUID < items[j].LUID })
 	limit := in.Limit
-	if limit == 0 {
+	if in.All {
+		limit = 10000
+	} else if limit == 0 {
 		limit = 20
 	}
 	out.MoreAvailable = len(items) > limit

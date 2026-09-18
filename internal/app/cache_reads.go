@@ -297,7 +297,7 @@ type cacheFlowGetResolver struct {
 }
 
 func (r *cacheFlowGetResolver) ResolveFlow(ctx context.Context, selector identity.Selector) (flowinspect.Flow, error) {
-	result, err := r.store.ReadResources(ctx, cache.ResourceQuery{Environment: r.environment, Site: r.site, Kind: "flow", LUID: string(selector.LUID), Name: selector.Name, ProjectPath: selector.ProjectPath, Limit: 2})
+	result, err := r.store.ReadResources(ctx, cache.ResourceQuery{Environment: r.environment, Site: r.site, Kind: "flow", LUID: string(selector.LUID), Name: selector.Name, ProjectPath: selector.ProjectPath, ProjectLUID: string(selector.ProjectLUID), Limit: 2})
 	if err != nil {
 		return flowinspect.Flow{}, cacheReadError("flow.inspect", r.environment, r.site, err)
 	}
@@ -307,7 +307,7 @@ func (r *cacheFlowGetResolver) ResolveFlow(ctx context.Context, selector identit
 	if len(entry.Payload) != 0 && json.Unmarshal(entry.Payload, &item) == nil {
 		return item, nil
 	}
-	return flowinspect.Flow{LUID: entry.LUID, Name: entry.Name, ProjectPath: entry.ProjectPath, OwnerLUID: entry.Owner}, nil
+	return flowinspect.Flow{LUID: entry.LUID, Name: entry.Name, ProjectLUID: entry.ProjectLUID, ProjectPath: entry.ProjectPath, OwnerLUID: entry.Owner}, nil
 }
 
 type cacheProjectListReader struct {

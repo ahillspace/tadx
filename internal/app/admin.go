@@ -57,7 +57,7 @@ func (c *remoteAdminCommands) connect(ctx context.Context, alias string, explici
 		return adminConnection{environment: connection.environment}, err
 	}
 	client := tableauadmin.NewClient(connection.transport, connection.session, connection.environment.URL)
-	return adminConnection{environment: connection.environment, adapter: resourceadmin.NewAdapter(client), inventory: cacheTableauExecutor{transport: connection.transport, session: connection.session, serverURL: connection.environment.URL, siteLUID: connection.session.SiteLUID()}}, nil
+	return adminConnection{environment: connection.environment, adapter: resourceadmin.NewAdapter(client, c.runtime.checkManagedCapability), inventory: cacheTableauExecutor{checkCapability: c.runtime.checkManagedCapability, transport: connection.transport, session: connection.session, serverURL: connection.environment.URL, siteLUID: connection.session.SiteLUID()}}, nil
 }
 
 func (c *remoteAdminCommands) ListAdminUsers(ctx context.Context, input userlist.Input) (result userlist.Output, resultErr error) {
@@ -85,7 +85,7 @@ func (c *remoteAdminCommands) ListAdminUsers(ctx context.Context, input userlist
 			return userlist.Output{}, err
 		}
 		input.Environment, input.Site = environment, site
-		reader := &cacheUserListReader{store: c.cacheStore(input.Environment), environment: environment, site: site}
+		reader := &cacheUserListReader{checkCapability: c.runtime.checkManagedCapability, store: c.cacheStore(input.Environment), environment: environment, site: site}
 		output, err := userlist.New(reader).Execute(ctx, input)
 		if err == nil {
 			output.Source = reader.source
@@ -147,7 +147,7 @@ func (c *remoteAdminCommands) InspectAdminUser(ctx context.Context, input userin
 			return userinspect.Output{}, err
 		}
 		input.Environment, input.Site = environment, site
-		resolver := &cacheUserGetResolver{store: c.cacheStore(input.Environment), environment: environment, site: site}
+		resolver := &cacheUserGetResolver{checkCapability: c.runtime.checkManagedCapability, store: c.cacheStore(input.Environment), environment: environment, site: site}
 		output, err := userinspect.New(resolver).Execute(ctx, input)
 		if err == nil {
 			output.Source = resolver.source
@@ -256,7 +256,7 @@ func (c *remoteAdminCommands) ListAdminGroups(ctx context.Context, input groupli
 			return grouplist.Output{}, err
 		}
 		input.Environment, input.Site = environment, site
-		reader := &cacheGroupListReader{store: c.cacheStore(input.Environment), environment: environment, site: site}
+		reader := &cacheGroupListReader{checkCapability: c.runtime.checkManagedCapability, store: c.cacheStore(input.Environment), environment: environment, site: site}
 		output, err := grouplist.New(reader).Execute(ctx, input)
 		if err == nil {
 			output.Source = reader.source
@@ -318,7 +318,7 @@ func (c *remoteAdminCommands) InspectAdminGroup(ctx context.Context, input group
 			return groupinspect.Output{}, err
 		}
 		input.Environment, input.Site = environment, site
-		resolver := &cacheGroupGetResolver{store: c.cacheStore(input.Environment), environment: environment, site: site}
+		resolver := &cacheGroupGetResolver{checkCapability: c.runtime.checkManagedCapability, store: c.cacheStore(input.Environment), environment: environment, site: site}
 		output, err := groupinspect.New(resolver).Execute(ctx, input)
 		if err == nil {
 			output.Source = resolver.source

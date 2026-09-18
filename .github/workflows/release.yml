@@ -55,6 +55,11 @@ jobs:
               output.write(f"version={tag[1:]}\n")
           PY
 
+  native-policy:
+    name: Release native managed policy gates
+    needs: validate
+    uses: ./.github/workflows/native-policy.yml
+
   quality:
     name: Release quality (${{ matrix.os }})
     needs: validate
@@ -280,6 +285,7 @@ jobs:
     needs:
       - validate
       - quality
+      - native-policy
       - build
     runs-on: ubuntu-latest
     permissions:

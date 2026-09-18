@@ -162,10 +162,10 @@ func TestGroupOneFlowMutationPreviewsDoNotMutateThroughCLI(t *testing.T) {
 	t.Setenv("PROD_PAT_NAME", "pat-name")
 	t.Setenv("PROD_PAT_SECRET", "pat-secret")
 	options := app.Options{
-		MutationsEnabled: false,
-		ConfigPath:       configPath,
-		HTTPClient:       server.Client(),
-		Now:              func() time.Time { return time.Date(2026, 9, 1, 12, 0, 0, 0, time.UTC) },
+
+		ConfigPath: configPath,
+		HTTPClient: server.Client(),
+		Now:        func() time.Time { return time.Date(2026, 9, 1, 12, 0, 0, 0, time.UTC) },
 	}
 
 	runGroupOneCLI(t, options, "content", "flow", "pull", "--workspace", "operations", "--id", "flow-1")

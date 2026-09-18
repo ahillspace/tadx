@@ -78,6 +78,7 @@ type Definition struct {
 	Availability    string                `json:"availability"`
 	LocalWrite      bool                  `json:"local_write"`
 	RemoteMutation  bool                  `json:"remote_mutation"`
+	Administrative  bool                  `json:"administrative"`
 	SupportsPreview bool                  `json:"supports_preview"`
 	SupportsBatch   bool                  `json:"supports_batch"`
 	SafetyGuard     string                `json:"safety_guard"`

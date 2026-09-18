@@ -48,6 +48,17 @@ func (c *searchCommands) Execute(ctx context.Context, input searchaction.Input) 
 	if err := searchaction.ValidateInput(input); err != nil {
 		return searchaction.Output{}, err
 	}
+	types, err := searchaction.Types(input.Type)
+	if err != nil {
+		return searchaction.Output{}, err
+	}
+	for _, kind := range types {
+		if kind == "user" || kind == "group" {
+			if err := c.runtime.checkManagedCapability("admin." + kind + ".list"); err != nil {
+				return searchaction.Output{}, err
+			}
+		}
+	}
 	if input.Cursor != "" {
 		_, environment, err := c.runtime.environment(input.Environment, false)
 		if err != nil {
@@ -91,7 +102,7 @@ func (c *searchCommands) Execute(ctx context.Context, input searchaction.Input) 
 		return searchaction.Output{}, remoteSetupError("search", input.Environment, input.Site, connection.environment, err)
 	}
 	input.Environment, input.Site, input.SiteResolved = connection.environment.Alias, connection.environment.SiteContentURL, true
-	lister, err := newLiveSearchLister(connection)
+	lister, err := newLiveSearchLister(connection, c.runtime.checkManagedCapability)
 	if err != nil {
 		return searchaction.Output{}, remoteSetupError("search", input.Environment, input.Site, connection.environment, err)
 	}
@@ -653,7 +664,7 @@ type liveSearchLister struct {
 	definitionPages   map[string]tableaupulse.DefinitionPage
 }
 
-func newLiveSearchLister(connection authenticatedTableau) (*liveSearchLister, error) {
+func newLiveSearchLister(connection authenticatedTableau, checks ...func(string) error) (*liveSearchLister, error) {
 	projectClient := tableauproject.NewClient(connection.transport, connection.session, connection.environment.URL)
 	projects := resourceproject.NewAdapter(projectClient)
 	datasourceClient := tableaudatasource.NewClient(connection.transport, connection.session, connection.environment.URL)
@@ -670,8 +681,8 @@ func newLiveSearchLister(connection authenticatedTableau) (*liveSearchLister, er
 		datasources:     datasourceListReader{adapter: resourcedatasource.NewAdapterWithProjectResolver(datasourceClient, projects), projects: resourceproject.NewDiscoveryPaths(projects)},
 		flows:           flowListReader{adapter: resourceflow.NewAdapter(flowClient, projects)},
 		projects:        projectListReader{adapter: projects},
-		users:           adminUserListReader{adapter: resourceadmin.NewAdapter(adminClient)},
-		groups:          adminGroupListReader{adapter: resourceadmin.NewAdapter(adminClient)},
+		users:           adminUserListReader{adapter: resourceadmin.NewAdapter(adminClient, checks...)},
+		groups:          adminGroupListReader{adapter: resourceadmin.NewAdapter(adminClient, checks...)},
 		pulse:           pulseClient,
 		definitionPages: make(map[string]tableaupulse.DefinitionPage),
 	}, nil

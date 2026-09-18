@@ -52,7 +52,28 @@ function checkPage() {
   press('implemented');
   check(control('searchInput').value === 'catalog', 'Top card erased independent search');
   check(!control('capability-tree').hidden, 'Implemented catalog results stayed hidden');
-  return { passed: true, capabilities: definitions.length, scenarios: 4 };
+  clear();
+  control('mutationFilter').value = 'administrative';
+  control('mutationFilter').dispatchEvent(new Event('change', { bubbles: true }));
+  const administrative = definitions.filter(item => item.administrative);
+  check(administrative.length > 0, 'Registry lacks administrative classification');
+  check(Number(control('matchedCount').textContent) === administrative.length, 'Administrative filter does not match registry classification');
+  const adminRow = [...document.querySelectorAll('.tree-row')].find(row => row.getAttribute('aria-label')?.startsWith(`${administrative[0].id},`));
+  check(adminRow, 'Administrative capability missing from filtered tree');
+  adminRow.click();
+  check(control('detailContent').textContent.includes('Administrative'), 'Administrative detail field missing');
+  check(control('detailContent').textContent.includes('Not evaluated by this static page'), 'Static page implies machine authority');
+  clear();
+  control('searchInput').value = 'workbook.publish';
+  control('searchInput').dispatchEvent(new Event('input', { bubbles: true }));
+  const publish = [...document.querySelectorAll('.tree-row')].find(row => row.getAttribute('aria-label')?.startsWith('workbook.publish,'));
+  check(publish, 'Publish capability not found');
+  publish.click();
+  check(control('detailContent').textContent.includes('canonical server and exact site'), 'Remote mutation lacks site consent explanation');
+  check(control('detailContent').textContent.includes('managed policy permission'), 'Remote mutation lacks managed ceiling explanation');
+  check(!document.body.innerText.includes('TADX_ENABLE_MUTATIONS'), 'Removed global override still advertised');
+  check(document.documentElement.scrollWidth <= innerWidth, 'Administrative or mutation details overflow horizontally');
+  return { passed: true, capabilities: definitions.length, scenarios: 6 };
 }
 
 try {

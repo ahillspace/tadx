@@ -39,13 +39,12 @@ type Output struct {
 
 func (o Output) CompactOutput() any {
 	return struct {
-		Status      string                  `json:"status"`
-		Environment string                  `json:"environment,omitempty"`
-		Site        string                  `json:"site,omitempty"`
-		Item        *compactItem            `json:"item,omitempty"`
-		Parent      *value.MetadataIdentity `json:"parent,omitempty"`
-		Details     string                  `json:"details"`
-	}{o.Status, o.Environment, o.Site, compact(o.Item), parent(o.Item), "--full"}
+		Status      string       `json:"status"`
+		Environment string       `json:"environment,omitempty"`
+		Site        string       `json:"site,omitempty"`
+		Item        *compactItem `json:"item,omitempty"`
+		Details     string       `json:"details"`
+	}{o.Status, o.Environment, o.Site, compact(o.Item), "--full"}
 }
 func (o Output) FullOutput() any { return o }
 
@@ -65,12 +64,6 @@ func compact(v *value.MetadataTable) *compactItem {
 		return nil
 	}
 	return &compactItem{MetadataIdentity: v.MetadataIdentity, Description: v.Description, ContactLUID: v.ContactLUID, Database: v.Database, FullName: v.FullName, Schema: v.Schema, Tags: v.Tags, TagsObserved: v.TagsObserved}
-}
-func parent(v *value.MetadataTable) *value.MetadataIdentity {
-	if v == nil {
-		return nil
-	}
-	return &v.Database
 }
 func (a *Action) Execute(ctx context.Context, in Input) (Output, error) {
 	if err := ValidateInput(in); err != nil {

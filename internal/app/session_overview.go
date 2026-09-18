@@ -11,6 +11,7 @@ import (
 	sessionoverview "github.com/ahillspace/tadx/actions/session/overview"
 	"github.com/ahillspace/tadx/internal/config"
 	"github.com/ahillspace/tadx/internal/errs"
+	"github.com/ahillspace/tadx/internal/value"
 )
 
 type sessionOverviewReader struct{ runtime *runtimeDependencies }
@@ -24,12 +25,13 @@ func (r sessionOverviewReader) ReadOverview(ctx context.Context) (sessionovervie
 	} else if err != nil {
 		return state, &errs.Error{ID: "session.overview.configuration", Kind: errs.KindOperation, Operation: "session.overview", Summary: "Local configuration could not be read or is invalid.", Cause: err, Phase: errs.PhaseSetup, Outcome: errs.OutcomeNotAttempted, Retryable: errs.Bool(false), CorrectiveAction: "Correct the reported field in the selected CLI settings file. No authentication was attempted."}
 	}
-	state.Mutations, err = r.runtime.ReadMutationSetting(ctx)
-	if err != nil {
-		return state, &errs.Error{ID: "session.overview.mutations", Kind: errs.KindOperation, Operation: "session.overview", Summary: "Local mutation policy could not be resolved.", Retryable: errs.Bool(false), CorrectiveAction: "Check the saved mutation setting and TADX_ENABLE_MUTATIONS; a process override must be 0 or 1. No setting was changed."}
-	}
+	state.Mutations = value.MutationSetting{Scope: "site", Source: "site_selection_required"}
 	selected, selectionErr := cfg.ResolveEnvironment("")
 	if selectionErr == nil {
+		state.Mutations, err = siteMutationSetting(cfg, selected)
+		if err != nil {
+			return state, err
+		}
 		state.ReadEnvironment = selected.Alias
 		state.ReadSelection = "configured_default"
 		if cfg.DefaultEnvironment == "" {
@@ -62,7 +64,12 @@ func (r sessionOverviewReader) ReadOverview(ctx context.Context) (sessionovervie
 				credentials = "configured"
 			}
 		}
-		state.Environments = append(state.Environments, sessionoverview.Environment{Name: name, Site: environment.SiteContentURL, ServerURL: environment.URL, CredentialSource: status.CredentialSource, Credentials: credentials, DefaultWorkspace: environment.DefaultWorkspace})
+		environment.Alias = name
+		mutations, err := siteMutationSetting(cfg, environment)
+		if err != nil {
+			return state, err
+		}
+		state.Environments = append(state.Environments, sessionoverview.Environment{Mutations: mutations, Name: name, Site: environment.SiteContentURL, ServerURL: environment.URL, CredentialSource: status.CredentialSource, Credentials: credentials, DefaultWorkspace: environment.DefaultWorkspace})
 	}
 	for name, workspace := range cfg.Workspaces {
 		state.Workspaces = append(state.Workspaces, sessionoverview.Workspace{Name: name, Path: filepath.ToSlash(workspace.Path), Default: strings.EqualFold(name, cfg.DefaultWorkspace)})

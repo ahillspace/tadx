@@ -36,6 +36,7 @@ import (
 	"github.com/ahillspace/tadx/internal/contentbatch"
 	"github.com/ahillspace/tadx/internal/errs"
 	"github.com/ahillspace/tadx/internal/identity"
+	"github.com/ahillspace/tadx/internal/managedpolicy"
 	"github.com/ahillspace/tadx/internal/output"
 	resourcedatasource "github.com/ahillspace/tadx/internal/resources/datasource"
 	resourcelineage "github.com/ahillspace/tadx/internal/resources/lineage"
@@ -49,17 +50,16 @@ import (
 
 // Options contains process-level discovery settings.
 type Options struct {
-	MutationsEnabled    bool
-	MutationEnvironment func() (string, bool)
-	ConfigPath          string
-	HTTPClient          *http.Client
-	PATStore            coreauth.PATStore
-	AuthPrompter        authcli.Prompter
-	Now                 func() time.Time
-	CorrelationID       func() string
-	UserHomeDir         func() (string, error)
-	Stderr              io.Writer
-	JobDirectory        string
+	managedPolicy managedPolicySource
+	ConfigPath    string
+	HTTPClient    *http.Client
+	PATStore      coreauth.PATStore
+	AuthPrompter  authcli.Prompter
+	Now           func() time.Time
+	CorrelationID func() string
+	UserHomeDir   func() (string, error)
+	Stderr        io.Writer
+	JobDirectory  string
 	// PublicationWorkers enables detached workers for native publish and pull.
 	// The executable enables it; embedders may run actions inline.
 	PublicationWorkers   bool
@@ -78,7 +78,6 @@ func Run(ctx context.Context, args []string, stdout io.Writer, options Options) 
 		return runPublicationWorker(context.Background(), args[1], args[2], options)
 	}
 	definitions := capability.All()
-	source := registrySource{}
 	renderOptions := &cli.RenderOptions{HintConfig: func() string { return options.ConfigPath }}
 	renderOptions.JSON = hasJSONFlag(args)
 	runtime, err := newRuntime(options)
@@ -86,6 +85,7 @@ func Run(ctx context.Context, args []string, stdout io.Writer, options Options) 
 		return renderError(stdout, err, renderOptions)
 	}
 	defer runtime.Close()
+	source := registrySource{runtime: runtime}
 	capture := newLastCapture(runtime)
 	capture.hintConfig = func() string { return hintConfigPath(renderOptions) }
 	defer func() {
@@ -140,12 +140,13 @@ func Run(ctx context.Context, args []string, stdout io.Writer, options Options) 
 		BatchSelectors:        capability.BatchSelectors(),
 		BatchOptions:          capability.BatchOptions(),
 		ConfigPath:            &runtime.configPath,
-		MutationsEnabled:      options.MutationsEnabled,
+		MutationsEnabled:      false,
 		MutationPolicy:        registryMutationPolicy{},
+		Policy:                runtime.policyDependencies(),
 		ResolveMutationPolicy: runtime.mutationPolicy,
 		MutationStatus:        mutationstatus.New(runtime),
 		MutationSetter:        mutationset.New(runtime),
-		LastReader:            lastaction.New(capture.store),
+		LastReader:            lastaction.New(managedLastReader{store: capture.store, runtime: runtime}),
 		Jobs:                  newJobCommands(runtime).dependencies(),
 		ResolveWriteTarget: func(alias string) (string, error) {
 			_, environment, err := runtime.environment(alias, true)
@@ -224,6 +225,7 @@ func Run(ctx context.Context, args []string, stdout io.Writer, options Options) 
 		return fail(&errs.Error{Kind: errs.KindUsage, Operation: "cli", Summary: findErr.Error(), Cause: findErr}, renderOptions)
 	}
 	bindPublicationExecution(root, runtime, capture, args, options)
+	bindManagedPolicy(root, runtime)
 	if err := root.ExecuteContext(ctx); err != nil {
 		if clierr.IsRendered(err) {
 			return errs.ExitCode(err)
@@ -335,7 +337,8 @@ func isValueFlag(arg string) bool {
 }
 
 type runtimeDependencies struct {
-	mutationOverride     func() (string, bool)
+	managedPolicy        managedPolicySource
+	managedChecks        managedCapabilityChecks
 	command              commandRuntime
 	configPath           string
 	httpClient           *http.Client
@@ -389,11 +392,11 @@ func newRuntime(options Options) (*runtimeDependencies, error) {
 	if prompter == nil {
 		prompter = newTerminalCredentialPrompter()
 	}
-	mutationOverride := options.MutationEnvironment
-	if mutationOverride == nil && options.MutationsEnabled {
-		mutationOverride = func() (string, bool) { return "1", true }
+	policy := options.managedPolicy
+	if policy == nil {
+		policy = managedpolicy.Load(capability.All())
 	}
-	return &runtimeDependencies{mutationOverride: mutationOverride, configPath: path, httpClient: client, now: now, correlationID: correlation, userHomeDir: userHomeDir, patStore: patStore, authPrompter: prompter, jobDirectory: options.JobDirectory, progressWriter: options.Stderr, publicationExecution: options.publicationExecution, operationDirectory: options.OperationDirectory}, nil
+	return &runtimeDependencies{managedPolicy: policy, configPath: path, httpClient: client, now: now, correlationID: correlation, userHomeDir: userHomeDir, patStore: patStore, authPrompter: prompter, jobDirectory: options.JobDirectory, progressWriter: options.Stderr, publicationExecution: options.publicationExecution, operationDirectory: options.OperationDirectory}, nil
 }
 
 func (r *runtimeDependencies) Resolve(_ context.Context, alias string) (authcheck.Target, error) {
@@ -411,6 +414,12 @@ func (r *runtimeDependencies) Authenticate(ctx context.Context, target authcheck
 		provenance = "os_credential_store"
 	}
 	if err != nil {
+		_, missing := errors.AsType[*coreauth.MissingVariablesError](err)
+		_, partial := errors.AsType[*coreauth.PartialEnvironmentCredentialsError](err)
+		_, store := errors.AsType[*coreauth.CredentialStoreError](err)
+		if missing || partial || store {
+			err = &errs.Error{ID: "auth.credentials", Kind: errs.KindOperation, Operation: "auth.check", Environment: target.Environment, Site: target.SiteContentURL, Summary: "Authentication credentials are unavailable.", Cause: err, Phase: errs.PhaseSetup, Outcome: errs.OutcomeNotAttempted}
+		}
 		return authcheck.Authentication{CredentialSource: provenance}, err
 	}
 	return authcheck.Authentication{SiteLUID: session.SiteLUID(), UserLUID: session.UserLUID(), CredentialSource: provenance}, nil
@@ -770,10 +779,14 @@ func (a preparedPublishAdapter) Commit(ctx context.Context) (workbookpublish.Res
 	return workbookpublish.Result{Status: result.Status, WorkbookLUID: result.WorkbookLUID, WorkbookName: result.WorkbookName, ProjectLUID: result.ProjectLUID, JobID: result.JobID, TableauRequestID: result.TableauRequestID, ReceiptPath: result.ReceiptPath, ValidationWarnings: warnings}, err
 }
 
-type registrySource struct{}
+type registrySource struct{ runtime *runtimeDependencies }
 
-func (registrySource) List(_ context.Context) ([]capabilitylist.Capability, error) {
-	return capability.AllDiscoveries(), nil
+func (s registrySource) List(_ context.Context) ([]capabilitylist.Capability, error) {
+	items := capability.AllDiscoveries()
+	for index := range items {
+		s.applyManagedDiscovery(&items[index])
+	}
+	return items, nil
 }
 
 type registryMutationPolicy struct{}
@@ -783,8 +796,12 @@ func (registryMutationPolicy) IsRemoteMutation(id string) bool {
 	return ok && definition.RemoteMutation
 }
 
-func (registrySource) Get(_ context.Context, id string) (capabilityget.Capability, bool) {
-	return capability.LookupDiscovery(id)
+func (s registrySource) Get(_ context.Context, id string) (capabilityget.Capability, bool) {
+	item, ok := capability.LookupDiscovery(id)
+	if ok {
+		s.applyManagedDiscovery(&item)
+	}
+	return item, ok
 }
 
 func registryUse(id string) string {

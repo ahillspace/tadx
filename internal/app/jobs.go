@@ -143,7 +143,7 @@ func (c *jobCommands) Cancel(ctx context.Context, input jobcancel.Input) (jobcan
 	client := tableaujob.NewClient(connection.transport, connection.session, connection.environment.URL)
 	status, err := client.Inspect(ctx, input.ID)
 	if err != nil {
-		return jobcancel.Result{}, c.observationError("job.cancel", input.Environment, connection.environment.SiteContentURL, input.ID, "The exact job could not be inspected before cancellation.", err)
+		return jobcancel.Result{}, &errs.Error{ID: "job.cancel.inspect", Kind: errs.KindOperation, Operation: "job.cancel", Resource: input.ID, Environment: connection.environment.Alias, Site: connection.environment.SiteContentURL, TableauJobID: input.ID, Summary: "The exact job could not be inspected before cancellation.", Cause: err, Retryable: errs.Bool(false), CorrectiveAction: "Inspect the exact job before attempting cancellation again.", Phase: errs.PhaseSetup, Outcome: errs.OutcomeNotAttempted}
 	}
 	if !supportedCancellation(status.Type) {
 		return jobcancel.Result{}, &errs.Error{ID: "job.cancel.unsupported", Kind: errs.KindOperation, Operation: "job.cancel", Resource: input.ID, Environment: connection.environment.Alias, Site: connection.environment.SiteContentURL, TableauJobID: input.ID, Summary: "Tableau does not document cancellation for this job type.", Retryable: errs.Bool(false), CorrectiveAction: "Use job inspect or job wait for this job; cancellation is limited to documented refresh and flow-run job types.", Phase: errs.PhaseValidation, Outcome: errs.OutcomeNotAttempted}
@@ -173,10 +173,12 @@ func (c *jobCommands) Cancel(ctx context.Context, input jobcancel.Input) (jobcan
 func (c *jobCommands) connection(ctx context.Context, environment, site, operation, id string) (authenticatedTableau, error) {
 	connection, err := c.runtime.tableauConnection(ctx, environment, false)
 	if err != nil {
-		return connection, err
+		environment, resolvedSite := resolvedTarget(environment, site, connection.environment)
+		retryable, advice := errs.CompleteRetryAdvice(err, "Review the environment, site, and PAT configuration.")
+		return connection, &errs.Error{ID: operation + ".setup", Kind: errs.KindOperation, Operation: operation, Resource: id, Environment: environment, Site: resolvedSite, TableauJobID: id, Summary: "Job connection setup failed.", Cause: err, Retryable: retryable, CorrectiveAction: advice, Phase: errs.PhaseSetup, Outcome: errs.OutcomeNotAttempted}
 	}
 	if site != "" && site != connection.environment.SiteContentURL {
-		return connection, &errs.Error{ID: operation + ".target", Kind: errs.KindUsage, Operation: operation, Resource: id, Environment: connection.environment.Alias, Site: site, Summary: "The requested site does not match the selected environment.", Retryable: errs.Bool(false), CorrectiveAction: "Select the configured environment that owns the exact job site."}
+		return connection, &errs.Error{ID: operation + ".target", Kind: errs.KindUsage, Operation: operation, Resource: id, Environment: connection.environment.Alias, Site: site, TableauJobID: id, Summary: "The requested site does not match the selected environment.", Retryable: errs.Bool(false), CorrectiveAction: "Select the configured environment that owns the exact job site.", Phase: errs.PhaseSetup, Outcome: errs.OutcomeNotAttempted}
 	}
 	return connection, nil
 }

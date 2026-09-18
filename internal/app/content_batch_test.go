@@ -26,7 +26,7 @@ func TestContentBatchFailuresRenderOneDocumentAndReturnNonzero(t *testing.T) {
 					}
 				}
 				var stdout bytes.Buffer
-				exit := app.Run(context.Background(), args, &stdout, app.Options{ConfigPath: filepath.Join(t.TempDir(), "missing.yaml"), MutationsEnabled: true})
+				exit := app.Run(context.Background(), args, &stdout, withSiteMutationConsent(t, app.Options{ConfigPath: filepath.Join(t.TempDir(), "missing.yaml")}, true))
 				text := stdout.String()
 				if exit == 0 || !strings.HasPrefix(text, "operation: "+kind+"."+verb+"\n") || !strings.Contains(text, "failed: 2") || !strings.Contains(text, "first") || !strings.Contains(text, "second") {
 					t.Fatalf("exit=%d, output=%s", exit, text)

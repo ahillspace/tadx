@@ -134,7 +134,7 @@ func (r *runtimeDependencies) clients(connection authenticatedTableau) tableauCl
 	}
 	transport, session, server := connection.transport, connection.session, connection.environment.URL
 	result := tableauClients{
-		metadataAssets: metadataassets.NewClient(transport, session, server),
+		metadataAssets: metadataassets.NewClient(transport, session, server, r.checkManagedCapability),
 		workbooks:      tableauworkbook.NewClient(transport, session, server),
 		datasources:    tableaudatasource.NewClient(transport, session, server),
 		projects:       tableauproject.NewClient(transport, session, server),

@@ -11,8 +11,12 @@ import (
 
 const maxWarnings = 20
 
+// MaxLimit is the largest permitted workspace artifact page.
+const MaxLimit = 10000
+
 // Input selects one named workspace and bounded artifact page.
 type Input struct {
+	All       bool
 	Workspace string
 	Limit     int
 	Cursor    string
@@ -125,10 +129,15 @@ func (a *Action) Execute(ctx context.Context, input Input) (Output, error) {
 	if a == nil || a.reader == nil {
 		return Output{}, runtimeError("workspace status is not configured")
 	}
-	if input.Limit == 0 {
+	if input.All && (input.Limit != 0 || input.Cursor != "") {
+		return Output{}, usage("--all cannot be combined with --limit or --cursor")
+	}
+	if input.All {
+		input.Limit = MaxLimit
+	} else if input.Limit == 0 {
 		input.Limit = 20
 	}
-	if input.Limit < 1 || input.Limit > 10000 {
+	if input.Limit < 1 || input.Limit > MaxLimit {
 		return Output{}, usage("limit must be between 1 and 10000")
 	}
 	resolved, inventory, err := a.reader.Status(ctx, input)
@@ -138,6 +147,14 @@ func (a *Action) Execute(ctx context.Context, input Input) (Output, error) {
 	}
 	if inventory.Returned != len(inventory.Items) || inventory.Returned > input.Limit {
 		return Output{}, runtimeError("workspace status returned an invalid bounded page")
+	}
+	if input.All {
+		if inventory.Total > MaxLimit {
+			return Output{}, usage("--all exceeds the 10000-record bound")
+		}
+		if inventory.Returned != inventory.Total || inventory.NextCursor != "" || !inventory.ScanComplete {
+			return Output{}, runtimeError("workspace status --all returned an incomplete page")
+		}
 	}
 	state := "ready"
 	if inventory.Dirty > 0 || inventory.Missing > 0 || inventory.Invalid > 0 || !inventory.ScanComplete {

@@ -342,12 +342,19 @@ func (c *pulseCommands) FollowPulseMetric(ctx context.Context, input metricfollo
 	if err := metricfollow.ValidateInput(input); err != nil {
 		return metricfollow.Output{}, err
 	}
+	principalCapability := "admin.user.inspect"
+	if input.GroupLUID != "" {
+		principalCapability = "admin.group.inspect"
+	}
+	if err := c.runtime.checkManagedCapability(principalCapability); err != nil {
+		return metricfollow.Output{}, err
+	}
 	connection, err := c.connect(ctx, input.Environment, true)
 	if err != nil {
 		return metricfollow.Output{}, remoteSetupError("pulse.metric.follow", input.Environment, input.Site, connection.environment, err)
 	}
 	input.Environment, input.Site = connection.environment.Alias, connection.environment.SiteContentURL
-	adapter := &pulseFollowerAdapter{client: connection.client, adminClient: connection.adminClient}
+	adapter := &pulseFollowerAdapter{client: connection.client, adminClient: connection.adminClient, checkCapability: c.runtime.checkManagedCapability}
 	return metricfollow.New(adapter, adapter).Execute(ctx, input, preview)
 }
 
@@ -743,9 +750,10 @@ func (a *pulseMetricMutationAdapter) ReconcileMetric(ctx context.Context, expect
 }
 
 type pulseFollowerAdapter struct {
-	client      *tableaupulse.Client
-	adminClient *tableauadmin.Client
-	items       []tableaupulse.Subscription
+	checkCapability func(string) error
+	client          *tableaupulse.Client
+	adminClient     *tableauadmin.Client
+	items           []tableaupulse.Subscription
 }
 
 func (a *pulseFollowerAdapter) ResolveMetric(ctx context.Context, luid string) (metricfollow.Metric, error) {
@@ -757,6 +765,11 @@ func (a *pulseFollowerAdapter) ResolveMetric(ctx context.Context, luid string) (
 }
 
 func (a *pulseFollowerAdapter) ResolveUser(ctx context.Context, luid string) (metricfollow.User, error) {
+	if a.checkCapability != nil {
+		if err := a.checkCapability("admin.user.inspect"); err != nil {
+			return metricfollow.User{}, err
+		}
+	}
 	item, err := a.adminClient.GetUser(ctx, luid)
 	if err != nil {
 		return metricfollow.User{}, err
@@ -765,6 +778,11 @@ func (a *pulseFollowerAdapter) ResolveUser(ctx context.Context, luid string) (me
 }
 
 func (a *pulseFollowerAdapter) ResolveGroup(ctx context.Context, luid string) (metricfollow.Group, error) {
+	if a.checkCapability != nil {
+		if err := a.checkCapability("admin.group.inspect"); err != nil {
+			return metricfollow.Group{}, err
+		}
+	}
 	if _, err := a.adminClient.ListGroupUsers(ctx, luid, tableauadmin.PageRequest{PageNumber: 1, PageSize: 1}); err != nil {
 		return metricfollow.Group{}, err
 	}

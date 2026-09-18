@@ -16,6 +16,41 @@ func (lister) List(context.Context, int, string) (workspacelist.Page, error) {
 	return workspacelist.Page{Returned: 1, Total: 1, Limit: 20, Items: []workspacelist.Workspace{{Name: "development", ID: "ws_1", Root: "/var/tmp/tadx-tests/workspaces/development", Default: true, Available: true, ManifestValid: true}}}, nil
 }
 
+type recordingLister struct {
+	page   workspacelist.Page
+	limit  int
+	cursor string
+}
+
+func (l *recordingLister) List(_ context.Context, limit int, cursor string) (workspacelist.Page, error) {
+	l.limit, l.cursor = limit, cursor
+	return l.page, nil
+}
+
+func TestExecuteAllReturnsCompleteWorkspaceInventory(t *testing.T) {
+	lister := &recordingLister{page: workspacelist.Page{Returned: 2, Total: 2, Items: []workspacelist.Workspace{{Name: "alpha"}, {Name: "beta"}}}}
+	got, err := workspacelist.New(lister).Execute(context.Background(), workspacelist.Input{All: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if lister.limit != workspacelist.MaxLimit || lister.cursor != "" || got.Page.Returned != 2 || got.Page.Total != 2 || got.Page.NextCursor != "" {
+		t.Fatalf("all limit=%d cursor=%q page=%#v", lister.limit, lister.cursor, got.Page)
+	}
+}
+
+func TestExecuteAllRejectsPaginationOverridesAndIncompletePages(t *testing.T) {
+	for _, input := range []workspacelist.Input{{All: true, Limit: 1}, {All: true, Cursor: "0"}} {
+		if _, err := workspacelist.New(&recordingLister{}).Execute(context.Background(), input); err == nil {
+			t.Fatalf("Execute(%#v) error = nil", input)
+		}
+	}
+	for _, page := range []workspacelist.Page{{Returned: 1, Total: workspacelist.MaxLimit + 1, Items: []workspacelist.Workspace{{Name: "alpha"}}}, {Returned: 1, Total: 2, Items: []workspacelist.Workspace{{Name: "alpha"}}}} {
+		if _, err := workspacelist.New(&recordingLister{page: page}).Execute(context.Background(), workspacelist.Input{All: true}); err == nil {
+			t.Fatalf("overflow or incomplete page %#v returned nil error", page)
+		}
+	}
+}
+
 func TestExecuteReturnsBoundedCompactAndFullPage(t *testing.T) {
 	result, err := workspacelist.New(lister{}).Execute(context.Background(), workspacelist.Input{Limit: 20})
 	if err != nil {

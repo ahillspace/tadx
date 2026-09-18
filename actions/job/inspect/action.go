@@ -31,12 +31,11 @@ func (a *Action) Execute(ctx context.Context, input Input) (Output, error) {
 	}
 	result, err := a.source.Inspect(ctx, input)
 	if err != nil {
+		if _, ok := errors.AsType[*errs.Error](err); ok {
+			return Output{}, err
+		}
 		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
 			return Output{}, jobError("job.inspect.cancelled", errs.KindOperation, input, "Job inspection was canceled before an authoritative result was returned.", err)
-		}
-		var structured *errs.Error
-		if errors.As(err, &structured) {
-			return Output{}, err
 		}
 		return Output{}, jobError("job.inspect.failed", errs.KindOperation, input, "Job inspection failed.", err)
 	}

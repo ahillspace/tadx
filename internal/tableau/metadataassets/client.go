@@ -24,13 +24,28 @@ const maxItems = 10000
 const maxPageSize = 100
 
 type Client struct {
-	transport *tableau.Transport
-	session   auth.Session
-	serverURL string
+	checkCapability func(string) error
+	transport       *tableau.Transport
+	session         auth.Session
+	serverURL       string
 }
 
-func NewClient(t *tableau.Transport, s auth.Session, server string) *Client {
-	return &Client{t, s, server}
+func NewClient(t *tableau.Transport, s auth.Session, server string, checks ...func(string) error) *Client {
+	c := &Client{transport: t, session: s, serverURL: server}
+	if len(checks) > 0 {
+		c.checkCapability = checks[0]
+	}
+	return c
+}
+
+func (c *Client) authorize(id string) error {
+	if err := c.configured(); err != nil {
+		return err
+	}
+	if c.checkCapability != nil {
+		return c.checkCapability(id)
+	}
+	return nil
 }
 
 func (c *Client) configured() error {

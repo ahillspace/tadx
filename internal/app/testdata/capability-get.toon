@@ -11,7 +11,7 @@ capability:
   verification_readiness: ready
   implementation_state: implemented
   command: capability list
-  selectors[1]: Domain/resource/owner/product/mutation filters
+  selectors[1]: "Domain/resource/owner/product/mutation filters; --limit with optional --cursor, or --all up to 10000"
   availability: Local / all
   safety_guard: Always discoverable; mutation rows report whether execution is enabled
   artifact_effect: None
@@ -19,6 +19,7 @@ capability:
   evidence: "A1 §§1.5, 3.3, 5.2, 6.6; C1 §2.1"
   validation: Architecture-locked local contract
   remote_mutation: false
+  administrative: false
   execution_enabled: true
   supports_preview: false
   supports_batch: false

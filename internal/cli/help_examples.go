@@ -39,12 +39,12 @@ var categoryHelpExamples = []helpExampleSet{
 	{"content", "Selectors use exact names, project paths, or authoritative LUIDs. Ambiguous names fail.", []string{
 		"tadx content workbook list --env dev", "tadx content datasource schema --env dev --id <datasource-luid> --query <field-term>",
 	}},
-	{"content workbook", "Inspect requires --id, or both --name and --project. Pull accepts --id or --name, with --project to scope names.\nPublish requires an artifact selector and a destination project.", []string{
+	{"content workbook", "Inspect requires --id, or --name with --project or --project-id. Pull accepts --id or --name, with --project to scope names.\nPublish requires an artifact selector and a destination project.", []string{
 		"tadx content workbook list --env dev --limit 10",
 		"tadx content workbook pull --env dev --workspace dev --id <workbook-luid> --id <second-workbook-luid>",
 		"tadx content workbook publish --env dev --workspace dev --id <workbook-luid> --project-id <project-luid> --preview",
 	}},
-	{"content datasource", "Inspect and pull accept --id, or --name with --project. Schema requires --id.\nPublish requires exactly one of --create, --overwrite, --append, or --replace.", []string{
+	{"content datasource", "Inspect requires --id, or --name with --project or --project-id. Pull requires --id, or --name with --project. Schema requires --id.\nPublish requires exactly one of --create, --overwrite, --append, or --replace.", []string{
 		"tadx content datasource list --env dev", "tadx content datasource schema --env dev --id <datasource-luid> --role measure",
 		"tadx content datasource publish --env dev --workspace dev --id <datasource-luid> --project-id <project-luid> --create --preview",
 	}},
@@ -52,13 +52,14 @@ var categoryHelpExamples = []helpExampleSet{
 		"tadx content datasource schema --env dev --id <datasource-luid> --query <field-term>",
 		"tadx content datasource schema --env dev --id <datasource-luid> --field-id <field-id> --field-id <second-field-id> --descriptions",
 	}},
-	{"content flow", "Inspect and pull require --id, or both --name and --project. Publish requires an artifact selector and a destination project.", []string{
+	{"content flow", "Inspect requires --id, or --name with --project or --project-id. Pull requires --id, or --name with --project. Publish requires an artifact selector and a destination project.", []string{
 		"tadx content flow list --env dev", "tadx content flow pull --env dev --workspace dev --id <flow-luid>",
 		"tadx content flow publish --env dev --workspace dev --id <flow-luid> --project-id <project-luid> --preview",
 	}},
 	{"content project", "Create requires --name. Inspect and update accept --id or --project; delete requires --id. Project paths use forward slashes.", []string{
 		"tadx content project list --env dev --top-level", "tadx content project inspect --env dev --project <project-path>",
 		"tadx content project create --env dev --name <project-name> --parent-id <parent-project-luid> --preview",
+		"tadx content project move --project Ops/Reports --top-level --preview",
 	}},
 	{"catalog lineage", "Pull requires --kind and an exact --id or --name selector. Depth ranges from 1 to 3.", []string{
 		"tadx catalog lineage pull --env dev --workspace dev --kind workbook --id <workbook-luid> --direction upstream --depth 2",
@@ -176,7 +177,7 @@ func helpCategoryNoteIsCommon(path string) bool {
 }
 
 func usefulHelpExample(example string) bool {
-	for _, syntax := range []string{" schema ", " publish ", " fork ", "permission create", "user create", "--parent-id", "workspace artifact", "--batch-file"} {
+	for _, syntax := range []string{" schema ", " publish ", " fork ", "permission create", "user create", "project move", "--parent-id", "workspace artifact", "--batch-file"} {
 		if strings.Contains(example, syntax) {
 			return true
 		}

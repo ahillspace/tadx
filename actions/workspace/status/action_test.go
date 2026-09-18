@@ -26,6 +26,40 @@ func (emptyReader) Status(context.Context, status.Input) (status.Workspace, stat
 	return status.Workspace{Name: "empty", ID: "ws-empty", Root: "/var/tmp/tadx-tests/workspaces/empty"}, status.Inventory{Limit: 20, ScanComplete: true, Items: []status.Artifact{}}, nil
 }
 
+type recordingReader struct {
+	inventory status.Inventory
+	input     status.Input
+}
+
+func (r *recordingReader) Status(_ context.Context, input status.Input) (status.Workspace, status.Inventory, error) {
+	r.input = input
+	return status.Workspace{Name: "development", ID: "ws_1", Root: "/var/tmp/tadx-tests/workspaces/development"}, r.inventory, nil
+}
+
+func TestExecuteAllReturnsCompleteArtifactInventory(t *testing.T) {
+	reader := &recordingReader{inventory: status.Inventory{Returned: 2, Total: 2, ScanComplete: true, Items: []status.Artifact{{Name: "alpha"}, {Name: "beta"}}}}
+	got, err := status.New(reader).Execute(context.Background(), status.Input{All: true, Workspace: "development"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if reader.input.Limit != status.MaxLimit || reader.input.Cursor != "" || got.Inventory.Returned != 2 || got.Inventory.Total != 2 || got.Inventory.NextCursor != "" {
+		t.Fatalf("all input=%#v inventory=%#v", reader.input, got.Inventory)
+	}
+}
+
+func TestExecuteAllRejectsPaginationOverridesAndIncompletePages(t *testing.T) {
+	for _, input := range []status.Input{{All: true, Limit: 1}, {All: true, Cursor: "0"}} {
+		if _, err := status.New(&recordingReader{}).Execute(context.Background(), input); err == nil {
+			t.Fatalf("Execute(%#v) error = nil", input)
+		}
+	}
+	for _, inventory := range []status.Inventory{{Returned: 1, Total: status.MaxLimit + 1, ScanComplete: true, Items: []status.Artifact{{Name: "alpha"}}}, {Returned: 1, Total: 2, ScanComplete: true, Items: []status.Artifact{{Name: "alpha"}}}, {Returned: 1, Total: 1, ScanComplete: false, Items: []status.Artifact{{Name: "alpha"}}}} {
+		if _, err := status.New(&recordingReader{inventory: inventory}).Execute(context.Background(), status.Input{All: true}); err == nil {
+			t.Fatalf("overflow or incomplete inventory %#v returned nil error", inventory)
+		}
+	}
+}
+
 func TestCompactOutputRetainsCompleteEmptyInventory(t *testing.T) {
 	out, err := status.New(emptyReader{}).Execute(t.Context(), status.Input{Workspace: "empty"})
 	if err != nil {

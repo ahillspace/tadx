@@ -111,7 +111,7 @@ func TestAdminPermissionMutationsThroughCLI(t *testing.T) {
 				args = append(args, "--full")
 			}
 			var stdout bytes.Buffer
-			code := app.Run(context.Background(), args, &stdout, app.Options{ConfigPath: configPath, HTTPClient: server.Client(), MutationsEnabled: !tt.disabled && !tt.preview})
+			code := app.Run(context.Background(), args, &stdout, withSiteMutationConsent(t, app.Options{ConfigPath: configPath, HTTPClient: server.Client()}, !tt.disabled && !tt.preview))
 			if code != tt.wantCode || reads.Load() != int32(tt.wantReads) || writes.Load() != int32(tt.wantWrites) || !strings.Contains(stdout.String(), tt.wantOutput) {
 				t.Fatalf("code=%d reads=%d writes=%d output=%s", code, reads.Load(), writes.Load(), stdout.String())
 			}

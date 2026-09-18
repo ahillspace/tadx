@@ -76,7 +76,7 @@ func TestNoWaitPublicationReturnsDuringSubmissionAndNeverPolls(t *testing.T) {
 			if err := os.WriteFile(file, []byte(content), 0o600); err != nil {
 				t.Fatal(err)
 			}
-			options := Options{ConfigPath: runtime.configPath, HTTPClient: server.Client(), MutationsEnabled: true, PublicationWorkers: true, OperationDirectory: t.TempDir(), JobDirectory: t.TempDir(), Stderr: io.Discard}
+			options := withSiteMutationConsent(t, Options{ConfigPath: runtime.configPath, HTTPClient: server.Client(), PublicationWorkers: true, OperationDirectory: t.TempDir(), JobDirectory: t.TempDir(), Stderr: io.Discard}, true)
 			done := make(chan int, 1)
 			options.WorkerLauncher = func(_ context.Context, directory, id string) error {
 				if strings.HasSuffix(scenario, "-process") {
@@ -162,7 +162,7 @@ func TestPublicationWorkerProcessHelper(t *testing.T) {
 	roots.AddCert(cert)
 	client := &http.Client{Transport: &http.Transport{TLSClientConfig: &tls.Config{RootCAs: roots, MinVersion: tls.VersionTLS12}}}
 	args := os.Args[len(os.Args)-3:]
-	code := Run(context.Background(), []string{"__publication-worker", args[0], args[1]}, io.Discard, Options{HTTPClient: client, MutationsEnabled: true, JobDirectory: args[2], Stderr: io.Discard})
+	code := Run(context.Background(), []string{"__publication-worker", args[0], args[1]}, io.Discard, Options{HTTPClient: client, JobDirectory: args[2], Stderr: io.Discard})
 	if code != 0 {
 		t.Fatalf("worker exit=%d", code)
 	}

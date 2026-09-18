@@ -143,7 +143,7 @@ func TestProjectMoveUsesOneHierarchyPerValidationPhase(t *testing.T) {
 			}))
 			defer server.Close()
 			options := cacheResilienceOptions(t, server)
-			options.MutationsEnabled = true
+			options = withSiteMutationConsent(t, options, true)
 			var output strings.Builder
 			exit := app.Run(context.Background(), []string{"content", "project", "move", "--environment", "production", "--project-id", "source", "--parent-id", "destination"}, &output, options)
 			if drift {
@@ -186,7 +186,7 @@ func TestContentMovesShareSourceAndDestinationHierarchyWithinPhase(t *testing.T)
 				}))
 				defer server.Close()
 				options := cacheResilienceOptions(t, server)
-				options.MutationsEnabled = true
+				options = withSiteMutationConsent(t, options, true)
 				args := []string{"content", kind, "move", "--environment", "production", "--id", "item", "--destination-project-id", "destination"}
 				if preview {
 					args = append(args, "--preview")

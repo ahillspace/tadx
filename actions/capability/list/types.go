@@ -12,6 +12,7 @@ type Input struct {
 	Owner                     string `json:"owner,omitempty"`
 	Product                   string `json:"product,omitempty"`
 	Mutation                  *bool  `json:"mutation,omitempty"`
+	All                       bool   `json:"all,omitzero"`
 	Cursor                    string `json:"cursor,omitempty"`
 	Limit                     int    `json:"limit,omitempty"`
 	Full                      bool   `json:"-"`

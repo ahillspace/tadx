@@ -52,7 +52,7 @@ func TestAdminUserDeleteRetainsUnlicensedPartialOutcomeThroughCLI(t *testing.T) 
 	t.Setenv("PROD_DELETE_PAT_SECRET", "pat-secret")
 
 	var output bytes.Buffer
-	code := app.Run(context.Background(), []string{"admin", "user", "delete", "--environment", "production", "--id", "user-1", "--json"}, &output, app.Options{ConfigPath: configPath, HTTPClient: server.Client(), MutationsEnabled: true})
+	code := app.Run(context.Background(), []string{"admin", "user", "delete", "--environment", "production", "--id", "user-1", "--json"}, &output, withSiteMutationConsent(t, app.Options{ConfigPath: configPath, HTTPClient: server.Client()}, true))
 	if code == 0 || deletes.Load() != 1 || gets.Load() != 3 || !json.Valid(output.Bytes()) {
 		t.Fatalf("code=%d gets=%d deletes=%d output=%s", code, gets.Load(), deletes.Load(), output.String())
 	}

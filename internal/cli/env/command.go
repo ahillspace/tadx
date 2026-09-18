@@ -67,8 +67,11 @@ func newList(deps Dependencies) *cobra.Command {
 			return deps.Renderer.Render(result)
 		},
 	}
+	command.Flags().BoolVar(&input.All, "all", false, "return all environment profiles, up to 10000; cannot combine with --limit or --cursor")
 	command.Flags().IntVar(&input.Limit, "limit", 0, "maximum profiles to return, up to 10000")
 	command.Flags().StringVar(&input.Cursor, "cursor", "", "opaque continuation cursor")
+	command.MarkFlagsMutuallyExclusive("all", "limit")
+	command.MarkFlagsMutuallyExclusive("all", "cursor")
 	return command
 }
 

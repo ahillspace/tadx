@@ -87,7 +87,35 @@ export TADX_TEST_GUIDANCE_LOG="${test_root}/guidance.log"
 PATH="${fake_bin}:${PATH}"
 export PATH
 
+# This inert fixture stays beside the test binary, outside the system policy path.
+mkdir -p "$install_directory"
+policy_fixture="${install_directory}/managed-policy.json"
+printf '%s\n' '{"version":1,"allowed_capabilities":[],"remote_mutations":false}' > "$policy_fixture"
+chmod 0640 "$policy_fixture"
+cp "$policy_fixture" "${test_root}/policy-original"
+policy_metadata() {
+    if stat -c '%a:%u:%g' "$policy_fixture" >/dev/null 2>&1; then
+        stat -c '%a:%u:%g' "$policy_fixture"
+    else
+        stat -f '%Lp:%u:%g' "$policy_fixture"
+    fi
+    if command -v getfacl >/dev/null 2>&1; then
+        if policy_acl=$(getfacl -cn "$policy_fixture" 2>/dev/null); then
+            printf '%s\n' "$policy_acl"
+        fi
+    elif [ -x /usr/bin/sw_vers ]; then
+        # Native macOS exposes extended ACL entries through ls.
+        /bin/ls -lde "$policy_fixture"
+    fi
+}
+policy_original_metadata=$(policy_metadata)
+assert_policy_preserved() {
+    cmp "$policy_fixture" "${test_root}/policy-original"
+    [ "$(policy_metadata)" = "$policy_original_metadata" ]
+}
+
 sh "${repository_root}/scripts/install.sh" install --version latest --install-dir "$install_directory" >/dev/null
+assert_policy_preserved
 [ -x "${install_directory}/tadx" ]
 grep -Fq 'agent install --target auto' "$TADX_TEST_GUIDANCE_LOG"
 export TADX_TEST_GUIDANCE_FAIL=1
@@ -96,6 +124,7 @@ if sh "${repository_root}/scripts/install.sh" --version 1.2.3 --install-dir "$in
     exit 1
 fi
 unset TADX_TEST_GUIDANCE_FAIL
+assert_policy_preserved
 [ "$("${install_directory}/tadx")" = 'tadx test 1.2.3' ]
 [ "$("${install_directory}/tadx")" = 'tadx test 1.2.3' ]
 [ "$(grep -c '# tadx-installer-path' "${home_directory}/.profile")" -eq 1 ]
@@ -105,6 +134,7 @@ grep -Fq 'release download' "$TADX_TEST_GH_LOG"
 
 export TADX_TEST_GH_AUTH='fail'
 PATH="${install_directory}:${PATH}" sh "${repository_root}/scripts/install.sh" install --version 1.2.3 --install-dir "$install_directory" >/dev/null
+assert_policy_preserved
 [ "$(grep -c '# tadx-installer-path' "${home_directory}/.profile")" -eq 1 ]
 [ -s "$TADX_TEST_CURL_LOG" ]
 
@@ -112,6 +142,7 @@ mkdir -p "${home_directory}/.config/tadx" "${home_directory}/.codex/skills/tadx"
 printf '%s\n' preserved > "${home_directory}/.config/tadx/config.yaml"
 printf '%s\n' preserved > "${home_directory}/.codex/skills/tadx/SKILL.md"
 sh "${repository_root}/scripts/install.sh" uninstall --install-dir "$install_directory" >/dev/null
+assert_policy_preserved
 [ ! -e "${install_directory}/tadx" ]
 [ "$(grep -c '# tadx-installer-path' "${home_directory}/.profile" || true)" -eq 0 ]
 [ -f "${home_directory}/.config/tadx/config.yaml" ]

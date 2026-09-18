@@ -39,7 +39,7 @@ func (s overviewForbiddenStore) LoadPAT(context.Context, coreauth.CredentialRefe
 
 func overviewOptions(t *testing.T, root string) Options {
 	t.Helper()
-	return Options{ConfigPath: filepath.Join(root, "config.yaml"), UserHomeDir: func() (string, error) { return root, nil }, PATStore: overviewForbiddenStore{t: t}, HTTPClient: &http.Client{Transport: overviewForbiddenTransport{t}}, MutationEnvironment: func() (string, bool) { return "", false }, Stderr: &bytes.Buffer{}}
+	return Options{ConfigPath: filepath.Join(root, "config.yaml"), UserHomeDir: func() (string, error) { return root, nil }, PATStore: overviewForbiddenStore{t: t}, HTTPClient: &http.Client{Transport: overviewForbiddenTransport{t}}, Stderr: &bytes.Buffer{}}
 }
 
 func overviewSnapshot(t *testing.T, root string) map[string]string {
@@ -115,7 +115,6 @@ func TestBareOverviewShowsConfiguredNotVerifiedAndEffectiveSources(t *testing.T)
 	if err := config.Save(options.ConfigPath, cfg); err != nil {
 		t.Fatal(err)
 	}
-	options.MutationEnvironment = func() (string, bool) { return "0", true }
 	code, text := runOverview(t, root, []string{"--json", "--full"}, options)
 	if code != 0 {
 		t.Fatalf("code=%d output=%s", code, text)
@@ -124,7 +123,7 @@ func TestBareOverviewShowsConfiguredNotVerifiedAndEffectiveSources(t *testing.T)
 	if err := json.Unmarshal([]byte(text), &result); err != nil {
 		t.Fatal(err)
 	}
-	if result.ReadEnvironment != "dev" || result.WriteTarget != "explicit_environment_required" || result.AuthVerification != "not_checked" || result.Mutations.Enabled || result.Mutations.Source != "process_environment" {
+	if result.ReadEnvironment != "dev" || result.WriteTarget != "explicit_environment_required" || result.AuthVerification != "not_checked" || result.Mutations.Enabled || result.Mutations.Source != "default_disabled" {
 		t.Fatalf("result=%#v", result)
 	}
 	if result.Environments.Items[0].Credentials != "configured" || result.Environments.Items[1].Credentials != "stored_reference_unverified" {

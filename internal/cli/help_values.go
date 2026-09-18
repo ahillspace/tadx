@@ -1,8 +1,10 @@
 package cli
 
 import (
+	"strconv"
 	"strings"
 
+	metricfork "github.com/ahillspace/tadx/actions/pulse/metric/fork"
 	searchaction "github.com/ahillspace/tadx/actions/search"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
@@ -73,7 +75,11 @@ func applyHelpValues(root *cobra.Command) {
 			note("description", "at most 1024 Unicode characters")
 		case "pulse metric fork":
 			choices("period", "TODAY", "THIS_WEEK", "MONTH_TO_DATE", "QUARTER_TO_DATE", "YEAR_TO_DATE", "YESTERDAY", "LAST_WEEK", "LAST_MONTH", "LAST_QUARTER", "LAST_YEAR", "LAST_7_DAYS", "LAST_14_DAYS", "LAST_30_DAYS", "LAST_60_DAYS", "LAST_90_DAYS", "CUSTOM_N_DAYS")
-			value("days", "1..3650")
+			var days []string
+			for _, day := range metricfork.SupportedCustomDays() {
+				days = append(days, strconv.Itoa(day))
+			}
+			choices("days", days...)
 			note("days", "required with --period CUSTOM_N_DAYS; otherwise omit")
 			note("period", "the source definition must allow the selected period's granularity")
 			value("filter", "field=value")
@@ -365,10 +371,12 @@ func applyHelpRequirements(command *cobra.Command, path string) {
 		switch action {
 		case "inspect", "pull", "update", "move", "delete":
 			group("exactly-one", "id", "name")
-			if resource == "workbook" && action == "pull" {
+			if action == "inspect" && command.Flags().Lookup("project-id") != nil {
+				note("--name requires exactly one of --project or --project-id; --id excludes name/project selectors.")
+			} else if resource == "workbook" && action == "pull" {
 				note("--project scopes an exact --name selector when supplied.")
 			} else {
-				note("--name requires --project; an --id selects the resource directly.")
+				note("--name requires --project; --id excludes both.")
 			}
 		case "publish":
 			group("exactly-one", "artifact", "file", "id", "artifact-name")

@@ -7,6 +7,7 @@ import (
 	"errors"
 	"os"
 	"reflect"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -97,6 +98,48 @@ func TestExecuteFiltersAndPaginatesDeterministically(t *testing.T) {
 	}
 	if got.Capabilities[0].ID != "content.workbook.list" || got.Page.NextCursor != "" {
 		t.Fatalf("second page = %#v", got)
+	}
+}
+
+func TestExecuteAllReturnsCompleteMatchingInventory(t *testing.T) {
+	action := capabilitylist.New(source{items: []capabilitylist.Capability{
+		{ID: "content.datasource.list", Domain: "content"},
+		{ID: "content.workbook.list", Domain: "content"},
+		{ID: "pulse.metric.list", Domain: "pulse"},
+	}})
+
+	got, err := action.Execute(context.Background(), capabilitylist.Input{All: true, Domain: "content"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Page.Returned != 2 || got.Page.Total != 2 || got.Page.Limit != capabilitylist.MaxLimit || got.Page.MoreAvailable || got.Page.NextCursor != "" {
+		t.Fatalf("all page = %#v", got.Page)
+	}
+	if got.NextCommand != "" {
+		t.Fatalf("all next command = %q", got.NextCommand)
+	}
+	if ids := []string{got.Capabilities[0].ID, got.Capabilities[1].ID}; !reflect.DeepEqual(ids, []string{"content.datasource.list", "content.workbook.list"}) {
+		t.Fatalf("all IDs = %v", ids)
+	}
+}
+
+func TestExecuteAllRejectsPaginationOverrides(t *testing.T) {
+	for _, input := range []capabilitylist.Input{{All: true, Limit: 1}, {All: true, Cursor: "0"}} {
+		if _, err := capabilitylist.New(source{}).Execute(context.Background(), input); err == nil {
+			t.Fatalf("Execute(%#v) error = nil", input)
+		}
+	}
+}
+
+func TestExecuteAllFailsWhenMatchingInventoryExceedsBound(t *testing.T) {
+	items := make([]capabilitylist.Capability, capabilitylist.MaxLimit+1)
+	for index := range items {
+		items[index].ID = "capability." + strconv.Itoa(index)
+	}
+	_, err := capabilitylist.New(source{items: items}).Execute(context.Background(), capabilitylist.Input{All: true})
+	var structured *errs.Error
+	if !errors.As(err, &structured) || structured.Kind != errs.KindUsage || !strings.Contains(structured.Summary, "10000-record bound") {
+		t.Fatalf("error = %#v, want bounded usage error", err)
 	}
 }
 

@@ -3,54 +3,75 @@ package app
 import (
 	"context"
 	"errors"
-	"fmt"
 	"github.com/ahillspace/tadx/internal/config"
 	"github.com/ahillspace/tadx/internal/errs"
 	"github.com/ahillspace/tadx/internal/value"
 	"os"
 )
 
-func (r *runtimeDependencies) ReadMutationSetting(_ context.Context) (value.MutationSetting, error) {
-	cfg, err := config.Load(r.configPath)
-	if err != nil && !errors.Is(err, os.ErrNotExist) {
-		return value.MutationSetting{}, err
-	}
-	state := value.MutationSetting{Source: "default_disabled", Scope: "user", Saved: cfg.MutationsEnabled}
-	if cfg.MutationsEnabled != nil {
-		state.Enabled = *cfg.MutationsEnabled
-		state.Source = "saved_user_setting"
-		state.SourceSetting = "mutations_enabled"
-	}
-	if r.mutationOverride != nil {
-		raw, present := r.mutationOverride()
-		if present {
-			if raw != "0" && raw != "1" {
-				return value.MutationSetting{}, fmt.Errorf("TADX_ENABLE_MUTATIONS must be 0 or 1 when set")
-			}
-			state.Enabled = raw == "1"
-			state.Source = "process_environment"
-			state.SourceSetting = "TADX_ENABLE_MUTATIONS"
-			state.Scope = "process"
-		}
-	}
-	return state, nil
-}
-func (r *runtimeDependencies) WriteMutationSetting(ctx context.Context, enabled bool) (value.MutationSetting, error) {
-	_, err := config.Update(r.configPath, true, func(cfg config.Config) (config.Config, error) { cfg.MutationsEnabled = &enabled; return cfg, nil })
+func (r *runtimeDependencies) ReadMutationSetting(_ context.Context, alias string) (value.MutationSetting, error) {
+	cfg, environment, err := r.environment(alias, false)
 	if err != nil {
 		return value.MutationSetting{}, err
 	}
-	state, err := r.ReadMutationSetting(ctx)
+	return siteMutationSetting(cfg, environment)
+}
+func siteMutationSetting(cfg config.Config, environment config.Environment) (value.MutationSetting, error) {
+	server, err := config.CanonicalMutationServer(environment.URL)
+	if err != nil {
+		return value.MutationSetting{}, err
+	}
+	saved, err := cfg.MutationSetting(environment)
+	if err != nil {
+		return value.MutationSetting{}, err
+	}
+	state := value.MutationSetting{Source: "default_disabled", Scope: "site", Environment: environment.Alias, ServerURL: server, SiteContentURL: environment.SiteContentURL, Saved: saved}
+	if saved != nil {
+		state.Enabled = *saved
+		state.Source = "saved_site_setting"
+		state.SourceSetting = "site_mutations"
+	}
+	return state, nil
+}
+func (r *runtimeDependencies) WriteMutationSetting(_ context.Context, alias string, enabled bool) (value.MutationSetting, error) {
+	var environment config.Environment
+	cfg, err := config.Update(r.configPath, false, func(cfg config.Config) (config.Config, error) {
+		var resolveErr error
+		environment, resolveErr = cfg.ResolveWriteEnvironment(alias)
+		if resolveErr != nil {
+			return cfg, &errs.Error{ID: "mutation.set.environment", Kind: errs.KindUsage, Operation: "mutation.set", Environment: alias, Summary: "Select one configured environment before changing site consent.", Cause: resolveErr, Phase: errs.PhaseSetup, Outcome: errs.OutcomeNotAttempted, Retryable: errs.Bool(false)}
+		}
+		if err := cfg.SetMutationSetting(environment, enabled); err != nil {
+			return cfg, err
+		}
+		return cfg, nil
+	})
+	if err != nil {
+		return value.MutationSetting{}, err
+	}
+	state, err := siteMutationSetting(cfg, environment)
 	state.Persisted = new(true)
 	if err != nil {
 		state.Saved = new(enabled)
 		state.Source = "unavailable"
-		state.Scope = "user"
-		return state, &errs.Error{ID: "mutation.set.policy_unavailable", Kind: errs.KindOperation, Operation: "mutation.set", Summary: "The user setting was saved, but effective mutation policy could not be resolved.", Cause: err, Phase: errs.PhaseVerification, Outcome: errs.OutcomeConfirmed, Retryable: errs.Bool(false), CorrectiveAction: "Retain the saved setting. Correct the effective override and inspect mutation status; do not repeat the save."}
+		state.Scope = "site"
+		return state, &errs.Error{ID: "mutation.set.policy_unavailable", Kind: errs.KindOperation, Operation: "mutation.set", Summary: "The site setting was saved, but mutation policy could not be resolved.", Cause: err, Phase: errs.PhaseVerification, Outcome: errs.OutcomeConfirmed, Retryable: errs.Bool(false), CorrectiveAction: "Inspect mutation status for the selected environment; do not repeat the save."}
 	}
 	return state, nil
 }
-func (r *runtimeDependencies) mutationPolicy() (bool, string, error) {
-	state, err := r.ReadMutationSetting(context.Background())
+func (r *runtimeDependencies) mutationPolicy(alias string) (bool, string, error) {
+	if alias == "" {
+		cfg, err := config.Load(r.configPath)
+		if errors.Is(err, os.ErrNotExist) {
+			return false, "site_selection_required", nil
+		}
+		if err != nil {
+			return false, "unavailable", err
+		}
+		if _, err := cfg.ResolveEnvironment(""); err != nil {
+			return false, "site_selection_required", nil
+		}
+	}
+	state, err := r.ReadMutationSetting(context.Background(), alias)
 	return state.Enabled, state.Source, err
 }

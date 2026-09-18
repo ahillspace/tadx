@@ -87,6 +87,9 @@ Use `tadx capability get <id>` for the same focused metadata at runtime.
 | `lineage.pull` | cli | ship | ready | implemented | `tadx catalog lineage pull` |
 | `mutation.set` | cli | ship | ready | implemented | `tadx mutation set` |
 | `mutation.status` | cli | ship | ready | implemented | `tadx mutation status` |
+| `policy.samples` | cli | ship | ready | implemented | `tadx policy samples` |
+| `policy.status` | cli | ship | ready | implemented | `tadx policy status` |
+| `policy.validate` | cli | ship | ready | implemented | `tadx policy validate` |
 | `project.create` | cli | ship | ready | implemented | `tadx content project create` |
 | `project.delete` | cli | ship | ready | implemented | `tadx content project delete` |
 | `project.inspect` | cli | ship | ready | implemented | `tadx content project inspect` |
@@ -164,6 +167,7 @@ Create one site group with explicit supported settings, or preview the operation
 - Implementation state: implemented
 - Local write: No
 - Remote mutation: Yes
+- Administrative: Yes
 - Supports `--preview`: Yes
 - Supports `--batch-file`: Yes
 - Raw capable: No
@@ -190,6 +194,7 @@ Delete one exact group without deleting its users, or preview the operation.
 - Implementation state: implemented
 - Local write: No
 - Remote mutation: Yes
+- Administrative: Yes
 - Supports `--preview`: Yes
 - Supports `--batch-file`: Yes
 - Raw capable: No
@@ -216,6 +221,7 @@ Inspect one exact group and, when requested, its direct membership.
 - Implementation state: implemented
 - Local write: No
 - Remote mutation: No
+- Administrative: Yes
 - Supports `--preview`: No
 - Supports `--batch-file`: Yes
 - Raw capable: No
@@ -242,6 +248,7 @@ List a bounded live selection of groups, or explicitly collect the selected inve
 - Implementation state: implemented
 - Local write: Yes
 - Remote mutation: No
+- Administrative: Yes
 - Supports `--preview`: No
 - Supports `--batch-file`: No
 - Raw capable: No
@@ -260,7 +267,7 @@ Add one exact user to one exact group without replacing other members, or previe
 - Surface: tadx admin group-member add
 - Operation type: change
 - Owner: cli
-- Selectors: Exact group LUID and user LUID; environment/site (inferred only when one is configured)
+- Selectors: Exact group LUID and exactly one user LUID or exact --username; environment/site (inferred only when one is configured)
 - Products and availability: Cloud / Server
 - Product disposition: ship
 - Evidence level: contract-verified
@@ -268,6 +275,7 @@ Add one exact user to one exact group without replacing other members, or previe
 - Implementation state: implemented
 - Local write: No
 - Remote mutation: Yes
+- Administrative: Yes
 - Supports `--preview`: Yes
 - Supports `--batch-file`: Yes
 - Raw capable: No
@@ -286,7 +294,7 @@ Remove one exact user from one exact group without replacing other members, or p
 - Surface: tadx admin group-member remove
 - Operation type: change
 - Owner: cli
-- Selectors: Exact group LUID and user LUID; environment/site (inferred only when one is configured)
+- Selectors: Exact group LUID and exactly one user LUID or exact --username; environment/site (inferred only when one is configured)
 - Products and availability: Cloud / Server
 - Product disposition: ship
 - Evidence level: contract-verified
@@ -294,6 +302,7 @@ Remove one exact user from one exact group without replacing other members, or p
 - Implementation state: implemented
 - Local write: No
 - Remote mutation: Yes
+- Administrative: Yes
 - Supports `--preview`: Yes
 - Supports `--batch-file`: Yes
 - Raw capable: No
@@ -320,6 +329,7 @@ Update group attributes or converge direct membership, or preview the operation.
 - Implementation state: implemented
 - Local write: No
 - Remote mutation: Yes
+- Administrative: Yes
 - Supports `--preview`: Yes
 - Supports `--batch-file`: Yes
 - Raw capable: No
@@ -346,6 +356,7 @@ Create shared label categories by exact name.
 - Implementation state: implemented
 - Local write: No
 - Remote mutation: Yes
+- Administrative: Yes
 - Supports `--preview`: Yes
 - Supports `--batch-file`: Yes
 - Raw capable: No
@@ -372,6 +383,7 @@ Delete shared label categories by exact name.
 - Implementation state: implemented
 - Local write: No
 - Remote mutation: Yes
+- Administrative: Yes
 - Supports `--preview`: Yes
 - Supports `--batch-file`: Yes
 - Raw capable: No
@@ -398,6 +410,7 @@ Inspect shared label categories by exact name.
 - Implementation state: implemented
 - Local write: No
 - Remote mutation: No
+- Administrative: Yes
 - Supports `--preview`: No
 - Supports `--batch-file`: Yes
 - Raw capable: No
@@ -411,12 +424,12 @@ Inspect shared label categories by exact name.
 
 ### `admin.label.category.list`
 
-List shared label categories by exact name.
+List shared label categories.
 
 - Surface: tadx admin label-category list
 - Operation type: find
 - Owner: cli
-- Selectors: Exact --name; no invented LUIDs
+- Selectors: Environment; --limit or --all
 - Products and availability: Tableau labels with supported API version, licensing and permissions
 - Product disposition: ship
 - Evidence level: contract-verified
@@ -424,6 +437,7 @@ List shared label categories by exact name.
 - Implementation state: implemented
 - Local write: No
 - Remote mutation: No
+- Administrative: Yes
 - Supports `--preview`: No
 - Supports `--batch-file`: No
 - Raw capable: No
@@ -450,6 +464,7 @@ Update shared label categories by exact name.
 - Implementation state: implemented
 - Local write: No
 - Remote mutation: Yes
+- Administrative: Yes
 - Supports `--preview`: Yes
 - Supports `--batch-file`: Yes
 - Raw capable: No
@@ -476,6 +491,7 @@ Delete shared label values by exact name.
 - Implementation state: implemented
 - Local write: No
 - Remote mutation: Yes
+- Administrative: Yes
 - Supports `--preview`: Yes
 - Supports `--batch-file`: Yes
 - Raw capable: No
@@ -502,6 +518,7 @@ Inspect shared label values by exact name.
 - Implementation state: implemented
 - Local write: No
 - Remote mutation: No
+- Administrative: Yes
 - Supports `--preview`: No
 - Supports `--batch-file`: Yes
 - Raw capable: No
@@ -515,12 +532,12 @@ Inspect shared label values by exact name.
 
 ### `admin.label.value.list`
 
-List shared label values by exact name.
+List shared label values.
 
 - Surface: tadx admin label-value list
 - Operation type: find
 - Owner: cli
-- Selectors: Exact --name; no invented LUIDs
+- Selectors: Environment; --limit or --all
 - Products and availability: Tableau labels with supported API version, licensing and permissions
 - Product disposition: ship
 - Evidence level: contract-verified
@@ -528,6 +545,7 @@ List shared label values by exact name.
 - Implementation state: implemented
 - Local write: No
 - Remote mutation: No
+- Administrative: Yes
 - Supports `--preview`: No
 - Supports `--batch-file`: No
 - Raw capable: No
@@ -554,6 +572,7 @@ Update shared label values by exact name. Creates a missing value or updates sup
 - Implementation state: implemented
 - Local write: No
 - Remote mutation: Yes
+- Administrative: Yes
 - Supports `--preview`: Yes
 - Supports `--batch-file`: Yes
 - Raw capable: No
@@ -572,7 +591,7 @@ Add one explicit permission capability and mode for an exact principal, or previ
 - Surface: tadx admin permission create
 - Operation type: change
 - Owner: cli
-- Selectors: Resource kind/LUID, principal type/LUID, capability, mode; optional project default kind
+- Selectors: Resource kind/LUID, principal type, exactly one principal LUID or exact --principal-username, capability, mode; optional project default kind
 - Products and availability: Cloud / Server
 - Product disposition: ship
 - Evidence level: contract-verified
@@ -580,6 +599,7 @@ Add one explicit permission capability and mode for an exact principal, or previ
 - Implementation state: implemented
 - Local write: No
 - Remote mutation: Yes
+- Administrative: Yes
 - Supports `--preview`: Yes
 - Supports `--batch-file`: Yes
 - Raw capable: No
@@ -598,7 +618,7 @@ Delete one explicit permission capability and mode for an exact principal, or pr
 - Surface: tadx admin permission delete
 - Operation type: change
 - Owner: cli
-- Selectors: Resource kind/LUID, principal type/LUID, capability, mode; optional project default kind
+- Selectors: Resource kind/LUID, principal type, exactly one principal LUID or exact --principal-username, capability, mode; optional project default kind
 - Products and availability: Cloud / Server
 - Product disposition: ship
 - Evidence level: contract-verified
@@ -606,6 +626,7 @@ Delete one explicit permission capability and mode for an exact principal, or pr
 - Implementation state: implemented
 - Local write: No
 - Remote mutation: Yes
+- Administrative: Yes
 - Supports `--preview`: Yes
 - Supports `--batch-file`: Yes
 - Raw capable: No
@@ -632,6 +653,7 @@ Inspect explicit/default permission rules for one supported resource.
 - Implementation state: implemented
 - Local write: No
 - Remote mutation: No
+- Administrative: Yes
 - Supports `--preview`: No
 - Supports `--batch-file`: Yes
 - Raw capable: No
@@ -658,6 +680,7 @@ Add one user to a site with explicit role/auth settings, or preview the operatio
 - Implementation state: implemented
 - Local write: No
 - Remote mutation: Yes
+- Administrative: Yes
 - Supports `--preview`: Yes
 - Supports `--batch-file`: Yes
 - Raw capable: No
@@ -676,7 +699,7 @@ Remove one exact user from a site without hidden ownership reassignment, or prev
 - Surface: tadx admin user delete
 - Operation type: change
 - Owner: cli
-- Selectors: User LUID
+- Selectors: User LUID or exact --username
 - Products and availability: Cloud / Server
 - Product disposition: ship
 - Evidence level: contract-verified
@@ -684,6 +707,7 @@ Remove one exact user from a site without hidden ownership reassignment, or prev
 - Implementation state: implemented
 - Local write: No
 - Remote mutation: Yes
+- Administrative: Yes
 - Supports `--preview`: Yes
 - Supports `--batch-file`: Yes
 - Raw capable: No
@@ -710,6 +734,7 @@ Inspect one exact site user.
 - Implementation state: implemented
 - Local write: No
 - Remote mutation: No
+- Administrative: Yes
 - Supports `--preview`: No
 - Supports `--batch-file`: Yes
 - Raw capable: No
@@ -736,6 +761,7 @@ List a bounded live selection of site users, or explicitly collect the selected 
 - Implementation state: implemented
 - Local write: Yes
 - Remote mutation: No
+- Administrative: Yes
 - Supports `--preview`: No
 - Supports `--batch-file`: No
 - Raw capable: No
@@ -754,7 +780,7 @@ Update supported attributes of one exact user, or preview the operation.
 - Surface: tadx admin user update
 - Operation type: change
 - Owner: cli
-- Selectors: User LUID
+- Selectors: User LUID or exact --username
 - Products and availability: Cloud / Server; fields vary
 - Product disposition: ship
 - Evidence level: contract-verified
@@ -762,6 +788,7 @@ Update supported attributes of one exact user, or preview the operation.
 - Implementation state: implemented
 - Local write: No
 - Remote mutation: Yes
+- Administrative: Yes
 - Supports `--preview`: Yes
 - Supports `--batch-file`: Yes
 - Raw capable: No
@@ -788,6 +815,7 @@ Install the bundled TADX Guidance packages into the selected agent's global skil
 - Implementation state: implemented
 - Local write: Yes
 - Remote mutation: No
+- Administrative: No
 - Supports `--preview`: Yes
 - Supports `--batch-file`: No
 - Raw capable: No
@@ -814,6 +842,7 @@ Remove TADX Guidance packages from one selected agent target.
 - Implementation state: implemented
 - Local write: Yes
 - Remote mutation: No
+- Administrative: No
 - Supports `--preview`: Yes
 - Supports `--batch-file`: No
 - Raw capable: No
@@ -840,6 +869,7 @@ Resolve a complete PAT pair, sign in, and verify the selected Tableau site.
 - Implementation state: implemented
 - Local write: No
 - Remote mutation: No
+- Administrative: No
 - Supports `--preview`: No
 - Supports `--batch-file`: No
 - Raw capable: No
@@ -866,6 +896,7 @@ Interactively validate a PAT and store it in the native OS credential store for 
 - Implementation state: implemented
 - Local write: Yes
 - Remote mutation: No
+- Administrative: No
 - Supports `--preview`: No
 - Supports `--batch-file`: No
 - Raw capable: No
@@ -892,6 +923,7 @@ Remove TADX's stored PAT for one environment without revoking the PAT in Tableau
 - Implementation state: implemented
 - Local write: Yes
 - Remote mutation: No
+- Administrative: No
 - Supports `--preview`: Yes
 - Supports `--batch-file`: No
 - Raw capable: No
@@ -918,6 +950,7 @@ Report resolved auth configuration and selected credential source without reveal
 - Implementation state: implemented
 - Local write: No
 - Remote mutation: No
+- Administrative: No
 - Supports `--preview`: No
 - Supports `--batch-file`: No
 - Raw capable: No
@@ -944,6 +977,7 @@ Collect selected inventory scopes and atomically replace one normalized cache ge
 - Implementation state: implemented
 - Local write: Yes
 - Remote mutation: No
+- Administrative: No
 - Supports `--preview`: Yes
 - Supports `--batch-file`: No
 - Raw capable: No
@@ -970,6 +1004,7 @@ Report generation age, completeness, source, and stale state.
 - Implementation state: implemented
 - Local write: No
 - Remote mutation: No
+- Administrative: No
 - Supports `--preview`: No
 - Supports `--batch-file`: No
 - Raw capable: No
@@ -996,6 +1031,7 @@ Return focused execution, ownership, selector, safety, and availability guidance
 - Implementation state: implemented
 - Local write: No
 - Remote mutation: No
+- Administrative: No
 - Supports `--preview`: No
 - Supports `--batch-file`: No
 - Raw capable: No
@@ -1014,7 +1050,7 @@ Return a bounded inventory of discoverable operations, ownership, and execution 
 - Surface: tadx capability list
 - Operation type: find
 - Owner: cli
-- Selectors: Domain/resource/owner/product/mutation filters
+- Selectors: Domain/resource/owner/product/mutation filters; --limit with optional --cursor, or --all up to 10000
 - Products and availability: Local / all
 - Product disposition: ship
 - Evidence level: local-contract
@@ -1022,6 +1058,7 @@ Return a bounded inventory of discoverable operations, ownership, and execution 
 - Implementation state: implemented
 - Local write: No
 - Remote mutation: No
+- Administrative: No
 - Supports `--preview`: No
 - Supports `--batch-file`: No
 - Raw capable: No
@@ -1040,7 +1077,7 @@ Audit descriptions and tags in an explicit database, table, or datasource scope;
 - Surface: tadx catalog audit
 - Operation type: inspect
 - Owner: cli
-- Selectors: Exact REST --id or read-only --metadata-id where supported; bounded scope and limits
+- Selectors: Environment; required --type and --id; repeatable --check; optional --direct-only and --limit
 - Products and availability: Tableau Catalog / Metadata API; REST metadata edits require supported version and asset permissions
 - Product disposition: ship
 - Evidence level: contract-verified
@@ -1048,10 +1085,11 @@ Audit descriptions and tags in an explicit database, table, or datasource scope;
 - Implementation state: implemented
 - Local write: No
 - Remote mutation: No
+- Administrative: No
 - Supports `--preview`: No
 - Supports `--batch-file`: Yes
 - Raw capable: No
-- Safety and guard: Distinct identity namespaces; bounded coverage; local validation; explicit writes preserve unmentioned properties
+- Safety and guard: Distinct identity namespaces; bounded scope; local validation; explicit writes preserve unmentioned properties
 - Artifact effect: None
 - Upstream operation: Metadata GraphQL reads; released REST metadata methods
 - Evidence: docs/evidence/metadata-semantics-contract.md; HTTP fixtures and action regressions
@@ -1066,7 +1104,7 @@ Inspect one exact upstream column, retaining distinct REST and Metadata identiti
 - Surface: tadx catalog column inspect
 - Operation type: inspect
 - Owner: cli
-- Selectors: Exact REST --id or read-only --metadata-id where supported; bounded scope and limits
+- Selectors: Environment; --metadata-id, or --id with --table-id
 - Products and availability: Tableau Catalog / Metadata API; REST metadata edits require supported version and asset permissions
 - Product disposition: ship
 - Evidence level: contract-verified
@@ -1074,10 +1112,11 @@ Inspect one exact upstream column, retaining distinct REST and Metadata identiti
 - Implementation state: implemented
 - Local write: No
 - Remote mutation: No
+- Administrative: No
 - Supports `--preview`: No
 - Supports `--batch-file`: Yes
 - Raw capable: No
-- Safety and guard: Distinct identity namespaces; bounded coverage; local validation; explicit writes preserve unmentioned properties
+- Safety and guard: Distinct identity namespaces; bounded scope; local validation; explicit writes preserve unmentioned properties
 - Artifact effect: None
 - Upstream operation: Metadata GraphQL reads; released REST metadata methods
 - Evidence: docs/evidence/metadata-semantics-contract.md; HTTP fixtures and action regressions
@@ -1092,7 +1131,7 @@ List bounded upstream column metadata; --all collects the bounded matching scope
 - Surface: tadx catalog column list
 - Operation type: find
 - Owner: cli
-- Selectors: Exact REST --id or read-only --metadata-id where supported; bounded scope and limits
+- Selectors: Environment; required --table-id; optional exact --name; --limit or --all
 - Products and availability: Tableau Catalog / Metadata API; REST metadata edits require supported version and asset permissions
 - Product disposition: ship
 - Evidence level: contract-verified
@@ -1100,10 +1139,11 @@ List bounded upstream column metadata; --all collects the bounded matching scope
 - Implementation state: implemented
 - Local write: No
 - Remote mutation: No
+- Administrative: No
 - Supports `--preview`: No
 - Supports `--batch-file`: Yes
 - Raw capable: No
-- Safety and guard: Distinct identity namespaces; bounded coverage; local validation; explicit writes preserve unmentioned properties
+- Safety and guard: Distinct identity namespaces; bounded scope; local validation; explicit writes preserve unmentioned properties
 - Artifact effect: None
 - Upstream operation: Metadata GraphQL reads; released REST metadata methods
 - Evidence: docs/evidence/metadata-semantics-contract.md; HTTP fixtures and action regressions
@@ -1118,7 +1158,7 @@ Update explicit upstream column descriptions and add or remove tags without repl
 - Surface: tadx catalog column update
 - Operation type: change
 - Owner: cli
-- Selectors: Exact REST --id or read-only --metadata-id where supported; bounded scope and limits
+- Selectors: Environment; required --id and --table-id; optional description and repeated tags; --preview
 - Products and availability: Tableau Catalog / Metadata API; REST metadata edits require supported version and asset permissions
 - Product disposition: ship
 - Evidence level: contract-verified
@@ -1126,10 +1166,11 @@ Update explicit upstream column descriptions and add or remove tags without repl
 - Implementation state: implemented
 - Local write: No
 - Remote mutation: Yes
+- Administrative: No
 - Supports `--preview`: Yes
 - Supports `--batch-file`: Yes
 - Raw capable: No
-- Safety and guard: Distinct identity namespaces; bounded coverage; local validation; explicit writes preserve unmentioned properties
+- Safety and guard: Distinct identity namespaces; bounded scope; local validation; explicit writes preserve unmentioned properties
 - Artifact effect: None
 - Upstream operation: Metadata GraphQL reads; released REST metadata methods
 - Evidence: docs/evidence/metadata-semantics-contract.md; HTTP fixtures and action regressions
@@ -1144,7 +1185,7 @@ Inspect one exact upstream database, retaining distinct REST and Metadata identi
 - Surface: tadx catalog database inspect
 - Operation type: inspect
 - Owner: cli
-- Selectors: Exact REST --id or read-only --metadata-id where supported; bounded scope and limits
+- Selectors: Environment; exactly one of --id or --metadata-id
 - Products and availability: Tableau Catalog / Metadata API; REST metadata edits require supported version and asset permissions
 - Product disposition: ship
 - Evidence level: contract-verified
@@ -1152,10 +1193,11 @@ Inspect one exact upstream database, retaining distinct REST and Metadata identi
 - Implementation state: implemented
 - Local write: No
 - Remote mutation: No
+- Administrative: No
 - Supports `--preview`: No
 - Supports `--batch-file`: Yes
 - Raw capable: No
-- Safety and guard: Distinct identity namespaces; bounded coverage; local validation; explicit writes preserve unmentioned properties
+- Safety and guard: Distinct identity namespaces; bounded scope; local validation; explicit writes preserve unmentioned properties
 - Artifact effect: None
 - Upstream operation: Metadata GraphQL reads; released REST metadata methods
 - Evidence: docs/evidence/metadata-semantics-contract.md; HTTP fixtures and action regressions
@@ -1170,7 +1212,7 @@ List bounded upstream database metadata; --all collects the bounded matching sco
 - Surface: tadx catalog database list
 - Operation type: find
 - Owner: cli
-- Selectors: Exact REST --id or read-only --metadata-id where supported; bounded scope and limits
+- Selectors: Environment; optional exact --name; --limit or --all
 - Products and availability: Tableau Catalog / Metadata API; REST metadata edits require supported version and asset permissions
 - Product disposition: ship
 - Evidence level: contract-verified
@@ -1178,10 +1220,11 @@ List bounded upstream database metadata; --all collects the bounded matching sco
 - Implementation state: implemented
 - Local write: No
 - Remote mutation: No
+- Administrative: No
 - Supports `--preview`: No
 - Supports `--batch-file`: No
 - Raw capable: No
-- Safety and guard: Distinct identity namespaces; bounded coverage; local validation; explicit writes preserve unmentioned properties
+- Safety and guard: Distinct identity namespaces; bounded scope; local validation; explicit writes preserve unmentioned properties
 - Artifact effect: None
 - Upstream operation: Metadata GraphQL reads; released REST metadata methods
 - Evidence: docs/evidence/metadata-semantics-contract.md; HTTP fixtures and action regressions
@@ -1196,7 +1239,7 @@ Update explicit upstream database descriptions/contact and add or remove tags wi
 - Surface: tadx catalog database update
 - Operation type: change
 - Owner: cli
-- Selectors: Exact REST --id or read-only --metadata-id where supported; bounded scope and limits
+- Selectors: Environment; required --id; optional description, contact, and repeated tags; --preview
 - Products and availability: Tableau Catalog / Metadata API; REST metadata edits require supported version and asset permissions
 - Product disposition: ship
 - Evidence level: contract-verified
@@ -1204,10 +1247,11 @@ Update explicit upstream database descriptions/contact and add or remove tags wi
 - Implementation state: implemented
 - Local write: No
 - Remote mutation: Yes
+- Administrative: No
 - Supports `--preview`: Yes
 - Supports `--batch-file`: Yes
 - Raw capable: No
-- Safety and guard: Distinct identity namespaces; bounded coverage; local validation; explicit writes preserve unmentioned properties
+- Safety and guard: Distinct identity namespaces; bounded scope; local validation; explicit writes preserve unmentioned properties
 - Artifact effect: None
 - Upstream operation: Metadata GraphQL reads; released REST metadata methods
 - Evidence: docs/evidence/metadata-semantics-contract.md; HTTP fixtures and action regressions
@@ -1222,7 +1266,7 @@ Search upstream databases and tables; column text matching is a bounded table-sc
 - Surface: tadx catalog search
 - Operation type: find
 - Owner: cli
-- Selectors: Exact REST --id or read-only --metadata-id where supported; bounded scope and limits
+- Selectors: Environment; positional query; repeatable --type; optional --table-id; --limit or --all
 - Products and availability: Tableau Catalog / Metadata API; REST metadata edits require supported version and asset permissions
 - Product disposition: ship
 - Evidence level: contract-verified
@@ -1230,10 +1274,11 @@ Search upstream databases and tables; column text matching is a bounded table-sc
 - Implementation state: implemented
 - Local write: No
 - Remote mutation: No
+- Administrative: No
 - Supports `--preview`: No
 - Supports `--batch-file`: No
 - Raw capable: No
-- Safety and guard: Distinct identity namespaces; bounded coverage; local validation; explicit writes preserve unmentioned properties
+- Safety and guard: Distinct identity namespaces; bounded scope; local validation; explicit writes preserve unmentioned properties
 - Artifact effect: None
 - Upstream operation: Metadata GraphQL reads; released REST metadata methods
 - Evidence: docs/evidence/metadata-semantics-contract.md; HTTP fixtures and action regressions
@@ -1248,7 +1293,7 @@ Inspect one exact upstream table, retaining distinct REST and Metadata identitie
 - Surface: tadx catalog table inspect
 - Operation type: inspect
 - Owner: cli
-- Selectors: Exact REST --id or read-only --metadata-id where supported; bounded scope and limits
+- Selectors: Environment; exactly one of --id or --metadata-id
 - Products and availability: Tableau Catalog / Metadata API; REST metadata edits require supported version and asset permissions
 - Product disposition: ship
 - Evidence level: contract-verified
@@ -1256,10 +1301,11 @@ Inspect one exact upstream table, retaining distinct REST and Metadata identitie
 - Implementation state: implemented
 - Local write: No
 - Remote mutation: No
+- Administrative: No
 - Supports `--preview`: No
 - Supports `--batch-file`: Yes
 - Raw capable: No
-- Safety and guard: Distinct identity namespaces; bounded coverage; local validation; explicit writes preserve unmentioned properties
+- Safety and guard: Distinct identity namespaces; bounded scope; local validation; explicit writes preserve unmentioned properties
 - Artifact effect: None
 - Upstream operation: Metadata GraphQL reads; released REST metadata methods
 - Evidence: docs/evidence/metadata-semantics-contract.md; HTTP fixtures and action regressions
@@ -1274,7 +1320,7 @@ List bounded upstream table metadata; --all collects the bounded matching scope.
 - Surface: tadx catalog table list
 - Operation type: find
 - Owner: cli
-- Selectors: Exact REST --id or read-only --metadata-id where supported; bounded scope and limits
+- Selectors: Environment; optional exact --name and --database-id; --limit or --all
 - Products and availability: Tableau Catalog / Metadata API; REST metadata edits require supported version and asset permissions
 - Product disposition: ship
 - Evidence level: contract-verified
@@ -1282,10 +1328,11 @@ List bounded upstream table metadata; --all collects the bounded matching scope.
 - Implementation state: implemented
 - Local write: No
 - Remote mutation: No
+- Administrative: No
 - Supports `--preview`: No
 - Supports `--batch-file`: Yes
 - Raw capable: No
-- Safety and guard: Distinct identity namespaces; bounded coverage; local validation; explicit writes preserve unmentioned properties
+- Safety and guard: Distinct identity namespaces; bounded scope; local validation; explicit writes preserve unmentioned properties
 - Artifact effect: None
 - Upstream operation: Metadata GraphQL reads; released REST metadata methods
 - Evidence: docs/evidence/metadata-semantics-contract.md; HTTP fixtures and action regressions
@@ -1300,7 +1347,7 @@ Update explicit upstream table descriptions/contact and add or remove tags witho
 - Surface: tadx catalog table update
 - Operation type: change
 - Owner: cli
-- Selectors: Exact REST --id or read-only --metadata-id where supported; bounded scope and limits
+- Selectors: Environment; required --id; optional description, contact, and repeated tags; --preview
 - Products and availability: Tableau Catalog / Metadata API; REST metadata edits require supported version and asset permissions
 - Product disposition: ship
 - Evidence level: contract-verified
@@ -1308,10 +1355,11 @@ Update explicit upstream table descriptions/contact and add or remove tags witho
 - Implementation state: implemented
 - Local write: No
 - Remote mutation: Yes
+- Administrative: No
 - Supports `--preview`: Yes
 - Supports `--batch-file`: Yes
 - Raw capable: No
-- Safety and guard: Distinct identity namespaces; bounded coverage; local validation; explicit writes preserve unmentioned properties
+- Safety and guard: Distinct identity namespaces; bounded scope; local validation; explicit writes preserve unmentioned properties
 - Artifact effect: None
 - Upstream operation: Metadata GraphQL reads; released REST metadata methods
 - Evidence: docs/evidence/metadata-semantics-contract.md; HTTP fixtures and action regressions
@@ -1334,6 +1382,7 @@ Delete supported content label attachments on exact database, table, column, dat
 - Implementation state: implemented
 - Local write: No
 - Remote mutation: Yes
+- Administrative: No
 - Supports `--preview`: Yes
 - Supports `--batch-file`: Yes
 - Raw capable: No
@@ -1360,6 +1409,7 @@ Inspect supported content label attachments on exact database, table, column, da
 - Implementation state: implemented
 - Local write: No
 - Remote mutation: No
+- Administrative: No
 - Supports `--preview`: No
 - Supports `--batch-file`: Yes
 - Raw capable: No
@@ -1378,7 +1428,7 @@ List supported content label attachments on exact database, table, column, datas
 - Surface: tadx catalog label list
 - Operation type: find
 - Owner: cli
-- Selectors: Attachment --id; related asset --type and --target-id
+- Selectors: Environment; exact --type and --target-id; repeatable --category; --limit or --all
 - Products and availability: Tableau labels with supported API version, licensing and permissions
 - Product disposition: ship
 - Evidence level: contract-verified
@@ -1386,6 +1436,7 @@ List supported content label attachments on exact database, table, column, datas
 - Implementation state: implemented
 - Local write: No
 - Remote mutation: No
+- Administrative: No
 - Supports `--preview`: No
 - Supports `--batch-file`: Yes
 - Raw capable: No
@@ -1412,6 +1463,7 @@ Update supported content label attachments on exact database, table, column, dat
 - Implementation state: implemented
 - Local write: No
 - Remote mutation: Yes
+- Administrative: No
 - Supports `--preview`: Yes
 - Supports `--batch-file`: Yes
 - Raw capable: No
@@ -1438,6 +1490,7 @@ Delete one exact remote datasource, or preview the operation.
 - Implementation state: implemented
 - Local write: No
 - Remote mutation: Yes
+- Administrative: No
 - Supports `--preview`: Yes
 - Supports `--batch-file`: Yes
 - Raw capable: No
@@ -1464,6 +1517,7 @@ Inspect an exact datasource and its upstream databases/files and tables; --full 
 - Implementation state: implemented
 - Local write: No
 - Remote mutation: No
+- Administrative: No
 - Supports `--preview`: No
 - Supports `--batch-file`: Yes
 - Raw capable: No
@@ -1490,6 +1544,7 @@ List a bounded live selection of published datasources, or explicitly collect th
 - Implementation state: implemented
 - Local write: Yes
 - Remote mutation: No
+- Administrative: No
 - Supports `--preview`: No
 - Supports `--batch-file`: No
 - Raw capable: No
@@ -1516,6 +1571,7 @@ Move one exact published datasource to one exact project on the same site, or pr
 - Implementation state: implemented
 - Local write: No
 - Remote mutation: Yes
+- Administrative: No
 - Supports `--preview`: Yes
 - Supports `--batch-file`: Yes
 - Raw capable: No
@@ -1542,6 +1598,7 @@ Publish one local datasource, or up to 100 repeated managed datasource artifacts
 - Implementation state: implemented
 - Local write: No
 - Remote mutation: Yes
+- Administrative: No
 - Supports `--preview`: Yes
 - Supports `--batch-file`: Yes
 - Raw capable: No
@@ -1568,6 +1625,7 @@ Download one datasource, or up to 100 repeated authoritative datasource LUIDs se
 - Implementation state: implemented
 - Local write: Yes
 - Remote mutation: No
+- Administrative: No
 - Supports `--preview`: Yes
 - Supports `--batch-file`: Yes
 - Raw capable: No
@@ -1594,6 +1652,7 @@ Inspect one datasource's logical tables and search a bounded field projection.
 - Implementation state: implemented
 - Local write: No
 - Remote mutation: No
+- Administrative: No
 - Supports `--preview`: No
 - Supports `--batch-file`: Yes
 - Raw capable: No
@@ -1620,6 +1679,7 @@ Rename one exact published datasource or replace its owner, or preview the opera
 - Implementation state: implemented
 - Local write: No
 - Remote mutation: Yes
+- Administrative: No
 - Supports `--preview`: Yes
 - Supports `--batch-file`: Yes
 - Raw capable: No
@@ -1646,6 +1706,7 @@ Diagnose config, PAT presence and validity, Tableau connectivity, cache, workspa
 - Implementation state: implemented
 - Local write: No
 - Remote mutation: No
+- Administrative: No
 - Supports `--preview`: No
 - Supports `--batch-file`: No
 - Raw capable: No
@@ -1672,6 +1733,7 @@ Add one named environment profile containing secret references, not secret value
 - Implementation state: implemented
 - Local write: Yes
 - Remote mutation: No
+- Administrative: No
 - Supports `--preview`: Yes
 - Supports `--batch-file`: No
 - Raw capable: No
@@ -1698,6 +1760,7 @@ Inspect one resolved non-secret environment profile, including its cache concurr
 - Implementation state: implemented
 - Local write: No
 - Remote mutation: No
+- Administrative: No
 - Supports `--preview`: No
 - Supports `--batch-file`: No
 - Raw capable: No
@@ -1716,7 +1779,7 @@ List named non-secret environment profiles.
 - Surface: tadx env list
 - Operation type: find
 - Owner: cli
-- Selectors: Optional config path
+- Selectors: Optional config path; --limit for a bounded page or --all up to 10000 profiles
 - Products and availability: Local / all
 - Product disposition: ship
 - Evidence level: local-contract
@@ -1724,6 +1787,7 @@ List named non-secret environment profiles.
 - Implementation state: implemented
 - Local write: No
 - Remote mutation: No
+- Administrative: No
 - Supports `--preview`: No
 - Supports `--batch-file`: No
 - Raw capable: No
@@ -1750,6 +1814,7 @@ Remove one named environment profile.
 - Implementation state: implemented
 - Local write: Yes
 - Remote mutation: No
+- Administrative: No
 - Supports `--preview`: Yes
 - Supports `--batch-file`: No
 - Raw capable: No
@@ -1776,6 +1841,7 @@ Set the default read environment.
 - Implementation state: implemented
 - Local write: Yes
 - Remote mutation: No
+- Administrative: No
 - Supports `--preview`: Yes
 - Supports `--batch-file`: No
 - Raw capable: No
@@ -1802,6 +1868,7 @@ Update explicit fields of one environment profile.
 - Implementation state: implemented
 - Local write: Yes
 - Remote mutation: No
+- Administrative: No
 - Supports `--preview`: Yes
 - Supports `--batch-file`: No
 - Raw capable: No
@@ -1828,6 +1895,7 @@ Delete one exact remote flow, or preview the operation.
 - Implementation state: implemented
 - Local write: No
 - Remote mutation: Yes
+- Administrative: No
 - Supports `--preview`: Yes
 - Supports `--batch-file`: Yes
 - Raw capable: No
@@ -1846,7 +1914,7 @@ Inspect one authoritative flow and its direct lifecycle metadata.
 - Surface: tadx content flow inspect
 - Operation type: inspect
 - Owner: cli
-- Selectors: Flow LUID or exact name/project path
+- Selectors: Flow LUID or exact name with --project or --project-id
 - Products and availability: Cloud / Server with flow support
 - Product disposition: ship
 - Evidence level: contract-verified
@@ -1854,6 +1922,7 @@ Inspect one authoritative flow and its direct lifecycle metadata.
 - Implementation state: implemented
 - Local write: No
 - Remote mutation: No
+- Administrative: No
 - Supports `--preview`: No
 - Supports `--batch-file`: Yes
 - Raw capable: No
@@ -1880,6 +1949,7 @@ List a bounded live selection of flows, or explicitly collect the selected inven
 - Implementation state: implemented
 - Local write: Yes
 - Remote mutation: No
+- Administrative: No
 - Supports `--preview`: No
 - Supports `--batch-file`: No
 - Raw capable: No
@@ -1906,6 +1976,7 @@ Move one exact flow to one exact project on the same site, or preview the operat
 - Implementation state: implemented
 - Local write: No
 - Remote mutation: Yes
+- Administrative: No
 - Supports `--preview`: Yes
 - Supports `--batch-file`: Yes
 - Raw capable: No
@@ -1932,6 +2003,7 @@ Publish one local TFL/TFLX, or up to 100 repeated managed flow artifacts sequent
 - Implementation state: implemented
 - Local write: No
 - Remote mutation: Yes
+- Administrative: No
 - Supports `--preview`: Yes
 - Supports `--batch-file`: Yes
 - Raw capable: No
@@ -1958,6 +2030,7 @@ Download one flow, or up to 100 repeated authoritative flow LUIDs sequentially, 
 - Implementation state: implemented
 - Local write: Yes
 - Remote mutation: No
+- Administrative: No
 - Supports `--preview`: Yes
 - Supports `--batch-file`: Yes
 - Raw capable: No
@@ -1984,6 +2057,7 @@ Replace the owner of one exact flow, or preview the operation.
 - Implementation state: implemented
 - Local write: No
 - Remote mutation: Yes
+- Administrative: No
 - Supports `--preview`: Yes
 - Supports `--batch-file`: Yes
 - Raw capable: No
@@ -2010,6 +2084,7 @@ Request cancellation for documented refresh or flow-run job types and perform bo
 - Implementation state: implemented
 - Local write: No
 - Remote mutation: Yes
+- Administrative: No
 - Supports `--preview`: Yes
 - Supports `--batch-file`: No
 - Raw capable: No
@@ -2036,6 +2111,7 @@ Inspect one exact Tableau job or saved local single/batch operation without chan
 - Implementation state: implemented
 - Local write: No
 - Remote mutation: No
+- Administrative: No
 - Supports `--preview`: No
 - Supports `--batch-file`: Yes
 - Raw capable: No
@@ -2062,6 +2138,7 @@ Recover one accepted job from its durable receipt, or begin exact observation fo
 - Implementation state: implemented
 - Local write: No
 - Remote mutation: No
+- Administrative: No
 - Supports `--preview`: No
 - Supports `--batch-file`: No
 - Raw capable: No
@@ -2088,6 +2165,7 @@ Display one globally saved full result and timestamp without re-execution.
 - Implementation state: implemented
 - Local write: No
 - Remote mutation: No
+- Administrative: No
 - Supports `--preview`: No
 - Supports `--batch-file`: No
 - Raw capable: No
@@ -2114,6 +2192,7 @@ Capture bounded content, database, and table lineage for one exact workbook, pub
 - Implementation state: implemented
 - Local write: Yes
 - Remote mutation: No
+- Administrative: No
 - Supports `--preview`: Yes
 - Supports `--batch-file`: Yes
 - Raw capable: No
@@ -2127,12 +2206,12 @@ Capture bounded content, database, and table lineage for one exact workbook, pub
 
 ### `mutation.set`
 
-Persist user remote mutation policy until explicitly changed.
+Persist mutation consent for one Tableau server and exact site until explicitly changed.
 
 - Surface: tadx mutation set
 - Operation type: change
 - Owner: cli
-- Selectors: Required --enabled Boolean
+- Selectors: Required --enabled Boolean; exact --environment alias when ambiguous
 - Products and availability: Local
 - Product disposition: ship
 - Evidence level: local-contract
@@ -2140,11 +2219,12 @@ Persist user remote mutation policy until explicitly changed.
 - Implementation state: implemented
 - Local write: Yes
 - Remote mutation: No
+- Administrative: No
 - Supports `--preview`: No
 - Supports `--batch-file`: No
 - Raw capable: No
-- Safety and guard: Explicit setting change; agents require permission for persistent scope; environment override wins
-- Artifact effect: Saved user policy only
+- Safety and guard: Explicit selected-site setting change; agents require permission for persistent scope; no global or environment override
+- Artifact effect: Saved site consent only
 - Upstream operation: None
 - Evidence: internal/app/mutation_setting_e2e_test.go
 - Validation or blocker: Atomic user configuration update
@@ -2153,12 +2233,12 @@ Persist user remote mutation policy until explicitly changed.
 
 ### `mutation.status`
 
-Show effective remote mutation policy and its source.
+Show saved mutation consent for the selected Tableau server and exact site.
 
 - Surface: tadx mutation status
 - Operation type: inspect
 - Owner: cli
-- Selectors: None
+- Selectors: Configured --environment alias, or the unambiguous default
 - Products and availability: Local
 - Product disposition: ship
 - Evidence level: local-contract
@@ -2166,16 +2246,98 @@ Show effective remote mutation policy and its source.
 - Implementation state: implemented
 - Local write: No
 - Remote mutation: No
+- Administrative: No
 - Supports `--preview`: No
 - Supports `--batch-file`: No
 - Raw capable: No
-- Safety and guard: Read-only; process environment overrides saved user policy
+- Safety and guard: Read-only site consent; aliases for the same canonical server and site share the setting; managed policy remains a separate ceiling
 - Artifact effect: None
 - Upstream operation: None
 - Evidence: internal/app/mutation_setting_e2e_test.go
-- Validation or blocker: Local policy precedence
+- Validation or blocker: Per-site consent and exact target resolution
 - Blocker ID: None
 - Command binding: `tadx mutation status`
+
+### `policy.samples`
+
+Create three managed policy candidates without installing or activating them.
+
+- Surface: tadx policy samples
+- Operation type: change
+- Owner: cli
+- Selectors: Required --output directory; exclusive new files only
+- Products and availability: Local / all; recovery exemption
+- Product disposition: ship
+- Evidence level: local-contract
+- Verification readiness: ready
+- Implementation state: implemented
+- Local write: Yes
+- Remote mutation: No
+- Administrative: No
+- Supports `--preview`: No
+- Supports `--batch-file`: No
+- Raw capable: No
+- Safety and guard: Never overwrite candidates or modify the active policy; remains available for recovery
+- Artifact effect: Creates candidate JSON files only
+- Upstream operation: None
+- Evidence: internal/app/managed_policy_e2e_test.go
+- Validation or blocker: Exclusive creation and template validation
+- Blocker ID: None
+- Command binding: `tadx policy samples`
+
+### `policy.status`
+
+Inspect the fixed administrator-owned policy and effective restrictions.
+
+- Surface: tadx policy status
+- Operation type: inspect
+- Owner: cli
+- Selectors: None; --full includes allowed IDs and protection checks
+- Products and availability: Local / all; recovery exemption
+- Product disposition: ship
+- Evidence level: local-contract
+- Verification readiness: ready
+- Implementation state: implemented
+- Local write: No
+- Remote mutation: No
+- Administrative: No
+- Supports `--preview`: No
+- Supports `--batch-file`: No
+- Raw capable: No
+- Safety and guard: Read-only fixed system location; remains available for recovery
+- Artifact effect: None
+- Upstream operation: None
+- Evidence: internal/app/managed_policy_e2e_test.go
+- Validation or blocker: Active, unmanaged, and invalid-policy status
+- Blocker ID: None
+- Command binding: `tadx policy status`
+
+### `policy.validate`
+
+Validate candidate JSON schema and exact capability IDs without activation.
+
+- Surface: tadx policy validate
+- Operation type: inspect
+- Owner: cli
+- Selectors: One exact candidate file
+- Products and availability: Local / all; recovery exemption
+- Product disposition: ship
+- Evidence level: local-contract
+- Verification readiness: ready
+- Implementation state: implemented
+- Local write: No
+- Remote mutation: No
+- Administrative: No
+- Supports `--preview`: No
+- Supports `--batch-file`: No
+- Raw capable: No
+- Safety and guard: No policy activation or protection claim; remains available for recovery
+- Artifact effect: None
+- Upstream operation: None
+- Evidence: internal/app/managed_policy_e2e_test.go
+- Validation or blocker: Bounded strict schema and ID validation
+- Blocker ID: None
+- Command binding: `tadx policy validate`
 
 ### `project.create`
 
@@ -2192,6 +2354,7 @@ Create one project, optionally under an explicit parent, or preview the operatio
 - Implementation state: implemented
 - Local write: No
 - Remote mutation: Yes
+- Administrative: No
 - Supports `--preview`: Yes
 - Supports `--batch-file`: Yes
 - Raw capable: No
@@ -2218,6 +2381,7 @@ Delete one exact project, or preview the operation.
 - Implementation state: implemented
 - Local write: No
 - Remote mutation: Yes
+- Administrative: No
 - Supports `--preview`: Yes
 - Supports `--batch-file`: Yes
 - Raw capable: No
@@ -2244,6 +2408,7 @@ Resolve and inspect one exact shallow project context.
 - Implementation state: implemented
 - Local write: No
 - Remote mutation: No
+- Administrative: No
 - Supports `--preview`: No
 - Supports `--batch-file`: Yes
 - Raw capable: No
@@ -2270,6 +2435,7 @@ List a bounded live selection of projects, or explicitly collect the selected in
 - Implementation state: implemented
 - Local write: Yes
 - Remote mutation: No
+- Administrative: No
 - Supports `--preview`: No
 - Supports `--batch-file`: Yes
 - Raw capable: No
@@ -2296,6 +2462,7 @@ Reparent one exact project under one exact parent on the same site, or preview t
 - Implementation state: implemented
 - Local write: No
 - Remote mutation: Yes
+- Administrative: No
 - Supports `--preview`: Yes
 - Supports `--batch-file`: Yes
 - Raw capable: No
@@ -2322,6 +2489,7 @@ Update bounded project metadata without changing its parent, or preview the oper
 - Implementation state: implemented
 - Local write: No
 - Remote mutation: Yes
+- Administrative: No
 - Supports `--preview`: Yes
 - Supports `--batch-file`: Yes
 - Raw capable: No
@@ -2348,6 +2516,7 @@ Create one definition plus its Tableau-created default metric from bounded inten
 - Implementation state: implemented
 - Local write: No
 - Remote mutation: Yes
+- Administrative: No
 - Supports `--preview`: Yes
 - Supports `--batch-file`: Yes
 - Raw capable: No
@@ -2374,6 +2543,7 @@ Delete one exact definition, or preview the operation.
 - Implementation state: implemented
 - Local write: No
 - Remote mutation: Yes
+- Administrative: No
 - Supports `--preview`: Yes
 - Supports `--batch-file`: Yes
 - Raw capable: No
@@ -2400,6 +2570,7 @@ Inspect one complete Pulse definition and configuration.
 - Implementation state: implemented
 - Local write: No
 - Remote mutation: No
+- Administrative: No
 - Supports `--preview`: No
 - Supports `--batch-file`: Yes
 - Raw capable: No
@@ -2426,6 +2597,7 @@ List Pulse metric definitions with internal bounded pagination.
 - Implementation state: implemented
 - Local write: No
 - Remote mutation: No
+- Administrative: No
 - Supports `--preview`: No
 - Supports `--batch-file`: No
 - Raw capable: No
@@ -2452,6 +2624,7 @@ Recreate a portable Pulse definition and metric variants using explicit destinat
 - Implementation state: implemented
 - Local write: No
 - Remote mutation: Yes
+- Administrative: No
 - Supports `--preview`: Yes
 - Supports `--batch-file`: Yes
 - Raw capable: No
@@ -2478,6 +2651,7 @@ Materialize one portable definition with complete metric variants, datasource re
 - Implementation state: implemented
 - Local write: Yes
 - Remote mutation: No
+- Administrative: No
 - Supports `--preview`: Yes
 - Supports `--batch-file`: Yes
 - Raw capable: No
@@ -2504,6 +2678,7 @@ Delete one exact metric, or preview the operation.
 - Implementation state: implemented
 - Local write: No
 - Remote mutation: Yes
+- Administrative: No
 - Supports `--preview`: Yes
 - Supports `--batch-file`: Yes
 - Raw capable: No
@@ -2530,6 +2705,7 @@ Converge one exact user or group metric subscription, or preview the operation.
 - Implementation state: implemented
 - Local write: No
 - Remote mutation: Yes
+- Administrative: No
 - Supports `--preview`: Yes
 - Supports `--batch-file`: Yes
 - Raw capable: No
@@ -2556,6 +2732,7 @@ List exact user and group subscriptions for one metric.
 - Implementation state: implemented
 - Local write: No
 - Remote mutation: No
+- Administrative: No
 - Supports `--preview`: No
 - Supports `--batch-file`: Yes
 - Raw capable: No
@@ -2582,6 +2759,7 @@ Derive one metric by changing bounded timeframe or dimension filters, or preview
 - Implementation state: implemented
 - Local write: No
 - Remote mutation: Yes
+- Administrative: No
 - Supports `--preview`: Yes
 - Supports `--batch-file`: Yes
 - Raw capable: No
@@ -2608,6 +2786,7 @@ Inspect one exact Pulse metric specification.
 - Implementation state: implemented
 - Local write: No
 - Remote mutation: No
+- Administrative: No
 - Supports `--preview`: No
 - Supports `--batch-file`: Yes
 - Raw capable: No
@@ -2634,6 +2813,7 @@ List metrics in one definition with internal bounded pagination.
 - Implementation state: implemented
 - Local write: No
 - Remote mutation: No
+- Administrative: No
 - Supports `--preview`: No
 - Supports `--batch-file`: Yes
 - Raw capable: No
@@ -2660,6 +2840,7 @@ Remove one exact metric subscription, or preview the operation.
 - Implementation state: implemented
 - Local write: No
 - Remote mutation: Yes
+- Administrative: No
 - Supports `--preview`: Yes
 - Supports `--batch-file`: Yes
 - Raw capable: No
@@ -2686,6 +2867,7 @@ Search native Tableau content plus administration and Pulse resources through on
 - Implementation state: implemented
 - Local write: No
 - Remote mutation: No
+- Administrative: No
 - Supports `--preview`: No
 - Supports `--batch-file`: No
 - Raw capable: No
@@ -2712,6 +2894,7 @@ Show the local authentication, environment, workspace, and mutation setup before
 - Implementation state: implemented
 - Local write: No
 - Remote mutation: No
+- Administrative: No
 - Supports `--preview`: No
 - Supports `--batch-file`: No
 - Raw capable: No
@@ -2738,6 +2921,7 @@ Update the installed CLI and bundled Guidance to the latest published release.
 - Implementation state: implemented
 - Local write: Yes
 - Remote mutation: No
+- Administrative: No
 - Supports `--preview`: No
 - Supports `--batch-file`: No
 - Raw capable: No
@@ -2764,6 +2948,7 @@ Report the installed TADX version and optionally check the latest published rele
 - Implementation state: implemented
 - Local write: No
 - Remote mutation: No
+- Administrative: No
 - Supports `--preview`: No
 - Supports `--batch-file`: No
 - Raw capable: No
@@ -2790,6 +2975,7 @@ Delete one exact remote workbook, or preview the operation.
 - Implementation state: implemented
 - Local write: No
 - Remote mutation: Yes
+- Administrative: No
 - Supports `--preview`: Yes
 - Supports `--batch-file`: Yes
 - Raw capable: No
@@ -2816,6 +3002,7 @@ Inspect one authoritative workbook and lifecycle metadata.
 - Implementation state: implemented
 - Local write: No
 - Remote mutation: No
+- Administrative: No
 - Supports `--preview`: No
 - Supports `--batch-file`: Yes
 - Raw capable: No
@@ -2842,6 +3029,7 @@ List a bounded live selection of workbooks, or explicitly collect the selected i
 - Implementation state: implemented
 - Local write: Yes
 - Remote mutation: No
+- Administrative: No
 - Supports `--preview`: No
 - Supports `--batch-file`: No
 - Raw capable: No
@@ -2868,6 +3056,7 @@ Move one exact workbook to one exact project on the same site, or preview the op
 - Implementation state: implemented
 - Local write: No
 - Remote mutation: Yes
+- Administrative: No
 - Supports `--preview`: Yes
 - Supports `--batch-file`: Yes
 - Raw capable: No
@@ -2894,6 +3083,7 @@ Publish one local workbook, or up to 100 repeated managed workbook artifacts seq
 - Implementation state: implemented
 - Local write: No
 - Remote mutation: Yes
+- Administrative: No
 - Supports `--preview`: Yes
 - Supports `--batch-file`: Yes
 - Raw capable: No
@@ -2920,6 +3110,7 @@ Download one workbook, or up to 100 repeated authoritative workbook LUIDs sequen
 - Implementation state: implemented
 - Local write: Yes
 - Remote mutation: No
+- Administrative: No
 - Supports `--preview`: Yes
 - Supports `--batch-file`: Yes
 - Raw capable: No
@@ -2946,6 +3137,7 @@ Update an exact workbook name, owner, or description, or preview the changes.
 - Implementation state: implemented
 - Local write: No
 - Remote mutation: Yes
+- Administrative: No
 - Supports `--preview`: Yes
 - Supports `--batch-file`: Yes
 - Raw capable: No
@@ -2972,6 +3164,7 @@ Delete one exact managed local artifact, or preview the operation.
 - Implementation state: implemented
 - Local write: Yes
 - Remote mutation: No
+- Administrative: No
 - Supports `--preview`: Yes
 - Supports `--batch-file`: Yes
 - Raw capable: No
@@ -2998,6 +3191,7 @@ Remove explicitly selected disposable local state while preserving canonical art
 - Implementation state: implemented
 - Local write: Yes
 - Remote mutation: No
+- Administrative: No
 - Supports `--preview`: Yes
 - Supports `--batch-file`: Yes
 - Raw capable: No
@@ -3024,6 +3218,7 @@ Copy an existing managed workspace under a new identity at &lt;home&gt;/TADX/wor
 - Implementation state: implemented
 - Local write: Yes
 - Remote mutation: No
+- Administrative: No
 - Supports `--preview`: Yes
 - Supports `--batch-file`: No
 - Raw capable: No
@@ -3050,6 +3245,7 @@ Create a named workspace with tadx.yaml, artifacts/, and .tadx/ under &lt;home&g
 - Implementation state: implemented
 - Local write: Yes
 - Remote mutation: No
+- Administrative: No
 - Supports `--preview`: Yes
 - Supports `--batch-file`: No
 - Raw capable: No
@@ -3076,6 +3272,7 @@ Remove one exact registered workspace and its managed root, or preview the opera
 - Implementation state: implemented
 - Local write: Yes
 - Remote mutation: No
+- Administrative: No
 - Supports `--preview`: Yes
 - Supports `--batch-file`: Yes
 - Raw capable: No
@@ -3094,7 +3291,7 @@ List registered named workspaces.
 - Surface: tadx workspace list
 - Operation type: find
 - Owner: cli
-- Selectors: Bounded registered-workspace page
+- Selectors: --limit for a bounded registered-workspace page or --all up to 10000 workspaces
 - Products and availability: Local / all
 - Product disposition: ship
 - Evidence level: local-contract
@@ -3102,6 +3299,7 @@ List registered named workspaces.
 - Implementation state: implemented
 - Local write: No
 - Remote mutation: No
+- Administrative: No
 - Supports `--preview`: No
 - Supports `--batch-file`: No
 - Raw capable: No
@@ -3128,6 +3326,7 @@ Move one local artifact without changing Tableau identity.
 - Implementation state: implemented
 - Local write: Yes
 - Remote mutation: No
+- Administrative: No
 - Supports `--preview`: Yes
 - Supports `--batch-file`: Yes
 - Raw capable: No
@@ -3154,6 +3353,7 @@ Adopt an existing on-disk workspace directory into the local registry using its 
 - Implementation state: implemented
 - Local write: Yes
 - Remote mutation: No
+- Administrative: No
 - Supports `--preview`: Yes
 - Supports `--batch-file`: No
 - Raw capable: No
@@ -3180,6 +3380,7 @@ Set one registered and available workspace as the general default.
 - Implementation state: implemented
 - Local write: Yes
 - Remote mutation: No
+- Administrative: No
 - Supports `--preview`: Yes
 - Supports `--batch-file`: No
 - Raw capable: No
@@ -3198,7 +3399,7 @@ Report effective workspace, artifact state, provenance, dirty/missing status, an
 - Surface: tadx workspace status
 - Operation type: inspect
 - Owner: cli
-- Selectors: --workspace or deterministic resolution chain
+- Selectors: --workspace or deterministic resolution chain; --limit for a bounded page or --all up to 10000 artifacts
 - Products and availability: Local / all
 - Product disposition: ship
 - Evidence level: architecture-locked
@@ -3206,6 +3407,7 @@ Report effective workspace, artifact state, provenance, dirty/missing status, an
 - Implementation state: implemented
 - Local write: No
 - Remote mutation: No
+- Administrative: No
 - Supports `--preview`: No
 - Supports `--batch-file`: No
 - Raw capable: No
@@ -3232,6 +3434,7 @@ Remove one workspace registration while preserving every file in its root.
 - Implementation state: implemented
 - Local write: Yes
 - Remote mutation: No
+- Administrative: No
 - Supports `--preview`: Yes
 - Supports `--batch-file`: Yes
 - Raw capable: No

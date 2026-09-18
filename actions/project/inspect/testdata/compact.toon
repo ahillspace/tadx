@@ -7,4 +7,4 @@ project:
   path: Department/Ops
   parent_luid: project-root
 details: "--full"
-help[1]: tadx content project list
+help[1]: tadx content project inspect --project-id project-1 --full --environment dev

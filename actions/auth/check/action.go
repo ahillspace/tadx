@@ -37,7 +37,7 @@ func (a *Action) Execute(ctx context.Context, input Input) (Output, error) {
 	target, err := a.environments.Resolve(ctx, input.Environment)
 	if err != nil {
 		retryable, correctiveAction := errs.CompleteRetryAdvice(err, "Review the selected environment configuration, then retry.")
-		return Output{}, &errs.Error{ID: "auth.check.resolve", Kind: errs.KindOperation, Operation: "auth.check", Environment: input.Environment, Summary: "Environment resolution failed.", Cause: err, Retryable: retryable, CorrectiveAction: correctiveAction}
+		return Output{}, &errs.Error{ID: "auth.check.resolve", Kind: errs.KindOperation, Operation: "auth.check", Environment: input.Environment, Summary: "Environment resolution failed.", Cause: err, Retryable: retryable, CorrectiveAction: correctiveAction, Phase: errs.PhaseSetup, Outcome: errs.OutcomeNotAttempted}
 	}
 	if target.Environment == "" || target.ServerURL == "" {
 		return Output{}, &errs.Error{ID: "auth.check.validate", Kind: errs.KindOperation, Operation: "auth.check", Environment: input.Environment, Summary: "Selected environment is incomplete.", Cause: errors.New("environment and server URL are required"), Retryable: errs.Bool(false), CorrectiveAction: "Configure the environment name and Tableau server URL before retrying."}
@@ -49,7 +49,11 @@ func (a *Action) Execute(ctx context.Context, input Input) (Output, error) {
 		if result.CredentialSource != "" {
 			out = Output{Status: "authentication_failed", Environment: target.Environment, ServerURL: target.ServerURL, SiteContentURL: target.SiteContentURL, CredentialSource: result.CredentialSource}
 		}
-		return out, &errs.Error{ID: "auth.check.authenticate", Kind: errs.KindOperation, Operation: "auth.check", Environment: target.Environment, Site: target.SiteContentURL, Summary: "Authentication check failed.", Cause: err, Retryable: retryable, CorrectiveAction: correctiveAction, TableauRequestID: errs.TableauRequestID(err)}
+		failure := &errs.Error{ID: "auth.check.authenticate", Kind: errs.KindOperation, Operation: "auth.check", Environment: target.Environment, Site: target.SiteContentURL, Summary: "Authentication check failed.", Cause: err, Retryable: retryable, CorrectiveAction: correctiveAction, TableauRequestID: errs.TableauRequestID(err)}
+		if structured, ok := errors.AsType[*errs.Error](err); ok {
+			failure.Phase, failure.Outcome = structured.Phase, structured.Outcome
+		}
+		return out, failure
 	}
 	return Output{Status: "authenticated", Environment: target.Environment, ServerURL: target.ServerURL, SiteContentURL: target.SiteContentURL, SiteLUID: result.SiteLUID, UserLUID: result.UserLUID, CredentialSource: result.CredentialSource, Help: []string{commandhint.Environment(target.Environment, "search", "--type", "content")}}, nil
 }

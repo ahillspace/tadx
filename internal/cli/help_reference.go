@@ -128,8 +128,25 @@ func writeOperationalReference(out io.Writer, owner, focus *cobra.Command) {
 				continue
 			}
 			text := referenceSharedText(shared[name])
+			if name == "workspace" || name == "cache" || name == "preview" {
+				var scope []string
+				for _, action := range actions {
+					if action.Flags().Lookup(name) != nil {
+						scope = append(scope, action.Name())
+					}
+				}
+				text = strings.Replace(text, "--"+name, "--"+name+" ("+strings.Join(scope, ",")+")", 1)
+			}
 			if name == "environment" && owner.CommandPath() == owner.Root().Name()+" auth" {
 				text = "--environment (--env,-e) <name> (check/status: read default)"
+				if focus != nil {
+					text = "--environment (--env,-e) <name>"
+					if helpRequired(shared[name]) {
+						text += " (required)"
+					} else {
+						text += " (default: configured environment)"
+					}
+				}
 			}
 			fmt.Fprintf(out, "  %s\n", text)
 		}
@@ -143,15 +160,19 @@ func writeOperationalReference(out io.Writer, owner, focus *cobra.Command) {
 		}
 		fmt.Fprintf(out, "  %s: %s\n", name, referenceActionSummary(action))
 		var terms []string
-		for _, flag := range helpFlags(action) {
-			if (shared[flag.Name] != nil && flag.Name != "cache" && flag.Name != "preview" && flag.Name != "workspace" && !helpRequired(flag)) || flag.Name == "batch-file" {
-				continue
+		if isContentReference(owner) {
+			terms = contentReferenceTerms(owner, action)
+		} else {
+			for _, flag := range helpFlags(action) {
+				if (shared[flag.Name] != nil && (focus != nil || (flag.Name != "cache" && flag.Name != "preview" && flag.Name != "workspace" && !helpRequired(flag)))) || flag.Name == "batch-file" {
+					continue
+				}
+				term := referenceFlagSyntax(flag)
+				if !helpRequired(flag) {
+					term = "[" + term + "]"
+				}
+				terms = append(terms, term)
 			}
-			term := referenceFlagSyntax(flag)
-			if !helpRequired(flag) {
-				term = "[" + term + "]"
-			}
-			terms = append(terms, term)
 		}
 		writeReferenceTerms(out, terms)
 		for _, note := range referenceActionNotes(action) {
@@ -161,6 +182,9 @@ func writeOperationalReference(out io.Writer, owner, focus *cobra.Command) {
 	}
 	var rules strings.Builder
 	writeReferenceConstraints(&rules, actions)
+	if isContentReference(owner) {
+		writeCompactContentNotes(&rules, owner, actions)
+	}
 	for _, line := range referenceNotes(owner, actions) {
 		fmt.Fprintln(&rules, "  "+line)
 	}
@@ -169,13 +193,20 @@ func writeOperationalReference(out io.Writer, owner, focus *cobra.Command) {
 		fmt.Fprint(out, rules.String())
 		fmt.Fprintln(out)
 	}
-	writeHelpRelatedNotes(out, owner)
+	if focus != nil && owner.Name() == "workspace" && focus.Name() == "status" {
+		fmt.Fprint(out, "Related:\n  Artifact file operations: tadx workspace artifact -h.\n\n")
+	} else if focus == nil || owner.Name() != "auth" || focus.Name() != "logout" {
+		writeHelpRelatedNotes(out, owner)
+	}
 	writeReferenceBatch(out, actions)
 	var examples []string
 	for _, action := range actions {
 		for _, line := range strings.Split(action.Example, "\n") {
 			if strings.TrimSpace(line) != "" {
 				examples = appendUnique(examples, strings.TrimSpace(line))
+				if isContentReference(owner) {
+					break
+				}
 			}
 		}
 	}
@@ -245,11 +276,11 @@ func referenceSharedText(flag *pflag.Flag) string {
 	case "json":
 		return "--json"
 	case "cache":
-		return "--cache (where listed: local only; default: live)"
+		return "--cache (local only; default: live)"
 	case "preview":
-		return "--preview (where listed: no writes; mutation gate may be off)"
+		return "--preview (no writes; mutation gate can be off)"
 	case "workspace":
-		return "--workspace (--ws,-w) <name> (where listed: registered; directory > env > global)"
+		return "--workspace (--ws,-w) <name> (registered; directory > env > global)"
 	}
 	return referenceFlagSyntax(flag)
 }
@@ -307,21 +338,28 @@ func writeReferenceBatch(out io.Writer, actions []*cobra.Command) {
 	if len(names) == 0 {
 		return
 	}
-	fmt.Fprintf(out, "Batch (%s):\n", strings.Join(names, ", "))
-	fmt.Fprintln(out, `  --batch-file <path>: {"items":[{"<flag-name>":"<value>"}]}`)
+	if len(actions) > 0 && isContentReference(actions[0].Parent()) {
+		fmt.Fprintln(out, "Batch:")
+	} else {
+		fmt.Fprintf(out, "Batch (%s):\n", strings.Join(names, ", "))
+	}
+	fmt.Fprintln(out, `  --batch-file <path>: {"items":[{"<flag>":"<value>"}]}`)
 	for _, key := range selectors {
 		fmt.Fprintf(out, "  %s: repeat one of --%s.\n", strings.Join(selectorActions[key], ","), strings.ReplaceAll(key, ",", " | --"))
 	}
 	if len(positional) > 0 {
 		fmt.Fprintf(out, "  %s: repeat positional targets; file rows use args:[\"<value>\"].\n", strings.Join(positional, ","))
 	}
-	fmt.Fprintln(out, "  Rows: canonical flag keys; arrays for lists; required per row; override item flags.")
+	fmt.Fprintln(out, "  Rows override flags: canonical keys, arrays for lists, required per row.")
 	fmt.Fprintln(out, "  Env/control flags outside rows. File OR repeated selectors; 1-100 sequential items, <=1MiB/100 selections.")
 	fmt.Fprintln(out)
 }
 
 func referenceNotes(owner *cobra.Command, actions []*cobra.Command) []string {
 	var notes []string
+	if owner.Name() == "policy" {
+		notes = append(notes, "Recovery exemption: samples, validate, status, and help remain available when managed policy blocks operations.", "Candidates never activate policy. Only the fixed administrator-protected system file applies; local flags and settings cannot override it.")
+	}
 	for _, action := range actions {
 		for _, flag := range helpFlags(action) {
 			if flag.Name == "preview" && action.Name() != "pull" && (strings.HasPrefix(owner.CommandPath(), owner.Root().Name()+" admin ") || strings.HasPrefix(owner.CommandPath(), owner.Root().Name()+" catalog ") || strings.HasPrefix(owner.CommandPath(), owner.Root().Name()+" pulse ")) {
@@ -354,8 +392,14 @@ func referenceNotes(owner *cobra.Command, actions []*cobra.Command) []string {
 }
 
 func referenceActionNotes(action *cobra.Command) []string {
+	if isContentReference(action.Parent()) {
+		return contentReferenceActionNotes(action)
+	}
 	path := strings.TrimPrefix(action.CommandPath(), action.Root().Name()+" ")
 	notes := map[string][]string{
+		"policy samples":            {"--output creates read-only.json, read-write-no-admin.json, and admin.json without overwriting or installing policy."},
+		"policy validate":           {"Checks candidate schema and exact capability IDs only; does not activate policy or verify filesystem protection."},
+		"policy status":             {"Reports the fixed system path, activation state, protection, and effective ceiling; --full includes allowed IDs and protection checks."},
 		"pulse definition create":   {"Fields: raw ID or unique caption. Find them with tadx content datasource schema.", "Omitted: aggregation SUM, granularity DAY, format NUMBER, sentiment NONE, temporality OVER_TIME."},
 		"pulse definition publish":  {"Source --id/--artifact-name refers to a workspace bundle; creates new objects, not updates. Map every datasource."},
 		"pulse definition pull":     {"--overwrite replaces dirty local files. Bundle includes saved variants, not followers."},
@@ -384,7 +428,7 @@ func referenceActionNotes(action *cobra.Command) []string {
 		"admin group update":        {"--set-members replaces all direct members. Repeat --member-id with exact returned user LUIDs; --member-id requires --set-members, and omitting member IDs clears membership."},
 		"admin group-member add":    {"Use exact returned group and user LUIDs. The mutation result identifies the affected membership; inspect the group later with --members when a full read is needed."},
 		"admin group-member remove": {"Use exact returned group and user LUIDs. The mutation result identifies the affected membership; inspect the group later with --members when a full read is needed."},
-		"job inspect":               {"Use --operation-id for one saved local single or batch operation, or --id for one exact Tableau job. A live worker is read locally. After submission finishes, operation inspection checks each unfinished remote job once without starting a polling loop."},
+		"job inspect":               {"Use --operation-id for one saved local single or batch operation, or --id for one exact Tableau job. Repeat --id for remote jobs; operation IDs already cover their saved batch. A live worker is read locally. After submission finishes, operation inspection checks each unfinished remote job once without starting a polling loop."},
 		"job wait":                  {"With --receipt, recover the saved target and accepted identity. With --id and no receipt, TADX performs one exact read, creates a local observation receipt, and monitors it without resubmitting work. Waiting stops after twenty minutes; accepted work continues and the result includes an exact status command."},
 		"workspace artifact delete": {"Local files only. --force: delete dirty artifacts."},
 		"workspace artifact move":   {"Source/destination: registered workspaces; destination artifact must not exist."},
@@ -406,10 +450,18 @@ func referenceActionNotes(action *cobra.Command) []string {
 		"last":                      {"Displays the last saved result; never repeats its command or writes."},
 		"completion":                {"Writes a shell script to stdout (not JSON). Installers normally enable it automatically.", "Capture and verify: tadx completion bash > tadx-completion.bash; bash -n tadx-completion.bash.", "Session: Bash source <(tadx completion bash); Fish tadx completion fish | source.", "Zsh: autoload -Uz compinit; compinit; source <(tadx completion zsh)", "PowerShell: tadx completion powershell | Out-String | Invoke-Expression. Capture with tadx completion powershell > $env:TEMP\\tadx-completion.ps1; verify with [scriptblock]::Create((Get-Content $env:TEMP\\tadx-completion.ps1 -Raw)).", "For persistence, put the corresponding command in your shell profile."},
 	}
-	return notes[path]
+	switch path {
+	case "capability list", "admin label-value list", "admin label-category list", "catalog label list", "env list", "workspace list", "workspace status":
+		return append(notes[path], "--all: complete collection up to 10000; overflow fails.")
+	default:
+		return notes[path]
+	}
 }
 
 func referenceActionSummary(action *cobra.Command) string {
+	if isContentReference(action.Parent()) {
+		return contentActionSummary(action)
+	}
 	path := strings.TrimPrefix(action.CommandPath(), action.Root().Name()+" ")
 	summaries := map[string]string{
 		"auth check": "Verify live PAT authentication", "auth status": "Report local readiness and credential source",
@@ -438,6 +490,9 @@ func writeReferenceConstraints(out io.Writer, actions []*cobra.Command) {
 			line = strings.TrimSpace(line)
 			if line == "" || line == "constraints:" {
 				continue
+			}
+			if isContentReference(action.Parent()) && strings.HasPrefix(line, "exactly one of: ") {
+				continue // Content syntax renders the same required alternatives inline.
 			}
 			if tail, ok := strings.CutPrefix(line, "mutually exclusive: "); ok && strings.Contains(raw.String(), "exactly one of: "+tail+"\n") {
 				continue

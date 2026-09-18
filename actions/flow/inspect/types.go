@@ -18,6 +18,11 @@ func (i *Input) SetSelector(luid, name, projectPath string) {
 	i.Selector = identity.Selector{LUID: identity.LUID(luid), Name: name, ProjectPath: projectPath}
 }
 
+// SetSelectorWithProjectLUID records an authoritative or exact selector using a project LUID.
+func (i *Input) SetSelectorWithProjectLUID(luid, name, projectPath, projectLUID string) {
+	i.Selector = identity.Selector{LUID: identity.LUID(luid), Name: name, ProjectPath: projectPath, ProjectLUID: identity.LUID(projectLUID)}
+}
+
 type Parameter struct {
 	LUID        string `json:"luid,omitempty"`
 	Name        string `json:"name"`

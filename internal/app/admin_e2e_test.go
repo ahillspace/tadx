@@ -51,7 +51,7 @@ func TestAdminGroupCreatePreviewApplyThroughCLI(t *testing.T) {
 	t.Setenv("PROD_PAT_SECRET", "pat-secret")
 
 	var stdout bytes.Buffer
-	code := app.Run(context.Background(), []string{"admin", "group", "create", "--environment", "production", "--name", "TADX Test Group"}, &stdout, app.Options{ConfigPath: configPath, HTTPClient: server.Client(), MutationsEnabled: true})
+	code := app.Run(context.Background(), []string{"admin", "group", "create", "--environment", "production", "--name", "TADX Test Group"}, &stdout, withSiteMutationConsent(t, app.Options{ConfigPath: configPath, HTTPClient: server.Client()}, true))
 	if code != 0 || listCalls.Load() != 2 || createCalls.Load() != 1 || !strings.Contains(stdout.String(), "group_luid: group-1") || !strings.Contains(stdout.String(), "minimum_site_role: Viewer") || !strings.Contains(stdout.String(), "external_user_enabled: true") {
 		t.Fatalf("code=%d lists=%d creates=%d output=%s", code, listCalls.Load(), createCalls.Load(), stdout.String())
 	}
@@ -92,7 +92,7 @@ func TestAdminUserCreateRetainsProviderReturnedSettingsThroughCLI(t *testing.T) 
 
 	var stdout bytes.Buffer
 	args := []string{"admin", "user", "create", "--environment", "production", "--name", "alex", "--site-role", "Viewer", "--auth-setting", "SAML", "--identity-pool", "pool-a", "--email", "alex@example.com", "--language", "en", "--locale", "en_US", "--full"}
-	code := app.Run(context.Background(), args, &stdout, app.Options{ConfigPath: configPath, HTTPClient: server.Client(), MutationsEnabled: true})
+	code := app.Run(context.Background(), args, &stdout, withSiteMutationConsent(t, app.Options{ConfigPath: configPath, HTTPClient: server.Client()}, true))
 	if code != 0 || listCalls.Load() != 2 || createCalls.Load() != 1 || !strings.Contains(stdout.String(), "luid: user-1") || !strings.Contains(stdout.String(), "identity_pool_name: pool-a") || !strings.Contains(stdout.String(), "email: alex@example.com") || !strings.Contains(stdout.String(), "language: en") || !strings.Contains(stdout.String(), "locale: en_US") {
 		t.Fatalf("code=%d lists=%d creates=%d output=%s", code, listCalls.Load(), createCalls.Load(), stdout.String())
 	}

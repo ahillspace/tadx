@@ -100,7 +100,7 @@ func TestPulseCreateValidationThroughCLI(t *testing.T) {
 				args = append(args, "--dimension", dimension)
 			}
 			args = append(args, test.extra...)
-			options := app.Options{ConfigPath: configPath, HTTPClient: server.Client(), MutationsEnabled: true}
+			options := withSiteMutationConsent(t, app.Options{ConfigPath: configPath, HTTPClient: server.Client()}, true)
 			var stdout bytes.Buffer
 			code := app.Run(context.Background(), append(append([]string(nil), args...), "--preview"), &stdout, options)
 			if test.wantError != "" {

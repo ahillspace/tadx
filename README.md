@@ -143,19 +143,30 @@ Compact TOON output is the default; `--full` adds bounded detail for the same op
 Use `--json` when you need JSON output.
 Tableau LUIDs are authoritative, and ambiguous selectors fail instead of guessing.
 
-Remote mutations are disabled by default.
-Supported read-only previews remain available while mutations are disabled.
+Remote mutations are disabled by default for each server and exact site.
+Supported read-only previews remain available while site consent is disabled.
 Acquisition and local-state commands also expose previews for their planned file or configuration changes.
 Interactive `auth login` and policy-changing `mutation set` remain explicit operations; `update --check` checks releases without installing them.
-Enabling remote mutations is an optional, explicit opt-in that is separate from permission to perform a particular Tableau operation.
-Agents must ask before changing the mutation setting or its scope.
-See `tadx mutation status` and `tadx mutation set --help` when you are ready to configure that policy.
+Use `tadx mutation status --environment dev` to inspect the selected site's saved consent.
+Use `tadx mutation set --environment dev --enabled=true` or `--enabled=false` to change that site's persisted consent.
+Agents must ask before changing site consent and must name the selected server, exact site, and persistent scope.
+The legacy `mutations_enabled` field and `TADX_ENABLE_MUTATIONS=0` or `1` values do not authorize remote writes.
 For repeated work, the operational reference identifies supported selectors and `--batch-file` inputs, including positional `args` arrays.
 Batches vary one selector dimension at a time or use explicit item rows, with at most 100 expanded selections.
+
+## Optional managed policies
+
+Managed policies add an administrator-owned machine-wide capability ceiling.
+Generate candidates with `tadx policy samples --output <directory>`.
+Edit one candidate and validate it with `tadx policy validate <candidate-file>`.
+Have an administrator deploy the selected candidate.
+Check the deployed policy with `tadx policy status`.
+See the [managed policy guide](docs/managed-policy.md) for schemas, fixed paths, protected deployment, status, updates, and recovery.
 
 ## Learn more
 
 - [Getting started](docs/getting-started.md): credentials, content, caches, previews, Pulse, and updates.
+- [Managed policy](docs/managed-policy.md): optional machine-wide capability ceilings, secure deployment, and recovery.
 - [Workspaces](docs/workspaces.md): local artifacts, paths, status, and cloning.
 - [Catalog metadata](internal/agent/skills/tadx/references/catalog.md): inspection, descriptions, tags, audits, and labels.
 - [Capabilities](docs/reference/capabilities.md) and the [interactive capability map](docs/reference/capability-map.html).

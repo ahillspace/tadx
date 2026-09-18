@@ -45,7 +45,7 @@ func TestContentPresentationRequiredOmissionDoesNotMutateFlags(t *testing.T) {
 		annotations[key] = append([]string(nil), values...)
 	}
 	got := contentPresentationOutput(t, resource)
-	if !strings.Contains(got, "(required) replacement owner LUID") || strings.Contains(got, "omitted: unchanged") {
+	if !strings.Contains(got, "--owner-id <luid>") || strings.Contains(got, "[--owner-id") || strings.Contains(got, "omitted: unchanged") {
 		t.Fatalf("required owner reference is contradictory:\n%s", got)
 	}
 	if after := helpFlagText(flag); after != before || !reflect.DeepEqual(flag.Annotations, annotations) {
@@ -63,12 +63,12 @@ func TestContentPresentationDescriptionsAndEnvironmentScope(t *testing.T) {
 	}
 	applyHelpValues(root)
 	got := contentPresentationOutput(t, resource)
-	create := contentPresentationSection(t, got, "flags{create}:")
-	update := contentPresentationSection(t, got, "flags{update}:")
-	if strings.Contains(create, "clears") || !strings.Contains(update, "empty clears") {
+	create := contentPresentationSection(t, got, "  create: Create a remote project")
+	update := contentPresentationSection(t, got, "  update: Change remote metadata")
+	if strings.Contains(create, "clears") || !strings.Contains(update, "Empty --description clears") {
 		t.Fatalf("description semantics escaped their action scope:\n%s", got)
 	}
-	if !strings.Contains(got, "reads use read default; remote writes require exactly one configured environment") {
+	if !strings.Contains(got, "reads: default; writes: sole configured env") {
 		t.Fatal("environment guidance does not distinguish remote writes from pull")
 	}
 }
@@ -86,16 +86,16 @@ func TestContentPresentationGroupsAndValuesAreDeterministic(t *testing.T) {
 	}
 	applyHelpValues(root)
 	baseline := contentPresentationOutput(t, resource)
-	subset := contentPresentationSection(t, baseline, "flags{inspect,pull}:")
-	if !strings.Contains(subset, "--extra-filter") || !strings.Contains(subset, "authoritative LUID") {
+	subset := contentPresentationSection(t, baseline, "  inspect: Read details, not files")
+	if !strings.Contains(subset, "--extra-filter") || !strings.Contains(subset, "--id <luid>") {
 		t.Fatalf("shared subset flags lost their scope:\n%s", baseline)
 	}
-	publish := contentPresentationSection(t, baseline, "flags{publish}:")
-	if strings.Contains(publish, "--extra-filter") || !strings.Contains(publish, "source LUID in workspace") {
+	publish := contentPresentationSection(t, baseline, "  publish: Publish local content to Tableau")
+	if strings.Contains(publish, "--extra-filter") || !strings.Contains(publish, "workspace ID/name/relative artifact") {
 		t.Fatalf("publish flag semantics incorrectly merged:\n%s", baseline)
 	}
-	if strings.Count(baseline, "--json ") != 1 || strings.Count(baseline, "--extra-filter ") != 1 {
-		t.Fatal("identical flag explanations were repeated")
+	if strings.Count(baseline, "--json") != 1 || strings.Count(baseline, "--extra-filter ") != 2 {
+		t.Fatal("global flags repeated or action-local scope was lost")
 	}
 	for _, action := range resource.Commands() {
 		if err := action.Flags().Set("id", "different-supplied-value"); err != nil {
@@ -134,7 +134,7 @@ func TestContentFocusedHelpKeepsSharedConstraintsAndRelatedRoute(t *testing.T) {
 	focused := contentPresentationOutput(t, publish)
 	for _, want := range []string{
 		"Usage: tadx content workbook publish [flags]",
-		"flags{publish}:",
+		"  publish: Publish local content to Tableau",
 		"--json",
 		"at least one of: --id, --project",
 		"tadx admin permission -h",
@@ -153,14 +153,44 @@ func TestContentPresentationListCacheEffectsAreScoped(t *testing.T) {
 		t.Run(resourceName, func(t *testing.T) {
 			_, resource := contentPresentationTree(resourceName, "list")
 			got := contentPresentationOutput(t, resource)
-			for _, want := range []string{"bounded live reads do not touch cache", "Live --all collects <=10000", "unfiltered replaces the resource scope", "filtered saves observations", "Cache failures warn without losing the live result", "--all rejects incomplete coverage/overflow", "--cache remains local-only"} {
+			for _, want := range []string{"Bounded reads never cache", "list --all: <=10000", "unfiltered replaces scope", "filtered merges", "cache failures retain live results", "incomplete/overflow fails"} {
 				if !strings.Contains(got, want) {
 					t.Errorf("missing list behavior %q", want)
 				}
 			}
 			_, withoutList := contentPresentationTree(resourceName, "inspect")
-			if strings.Contains(contentPresentationOutput(t, withoutList), "Live --all") {
+			if strings.Contains(contentPresentationOutput(t, withoutList), "list --all") {
 				t.Fatal("list note rendered without an available list action")
+			}
+		})
+	}
+}
+
+func TestContentHelpUsesRegisteredDefinitionsAtBothLevels(t *testing.T) {
+	for _, name := range []string{"workbook", "datasource", "flow", "project"} {
+		t.Run(name, func(t *testing.T) {
+			actions := []string{"delete", "inspect", "list", "move", "publish", "pull", "update"}
+			if name == "datasource" {
+				actions = append(actions, "schema")
+			}
+			if name == "project" {
+				actions = []string{"create", "delete", "inspect", "list", "move", "update"}
+			}
+			_, resource := contentPresentationTree(name, actions...)
+			action, _, err := resource.Find([]string{"inspect"})
+			if err != nil {
+				t.Fatal(err)
+			}
+			action.Flags().String("fixture-scope", "", "a newly registered scope")
+			action.Flags().String("fixture-id", "", "a newly registered identity")
+			action.MarkFlagsMutuallyExclusive("fixture-scope", "fixture-id")
+			for _, node := range []*cobra.Command{resource, action} {
+				got := contentPresentationOutput(t, node)
+				for _, want := range []string{"--fixture-scope", "--fixture-id", "mutually exclusive:"} {
+					if !strings.Contains(got, want) {
+						t.Errorf("%s output omits newly registered %q:\n%s", node.Name(), want, got)
+					}
+				}
 			}
 		})
 	}

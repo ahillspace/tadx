@@ -27,13 +27,19 @@ func (c *remoteAdminCommands) resolveCacheTarget(alias string) (string, string, 
 }
 
 type cacheUserListReader struct {
-	store       *cache.Store
-	environment string
-	site        string
-	source      *readsource.Metadata
+	checkCapability func(string) error
+	store           *cache.Store
+	environment     string
+	site            string
+	source          *readsource.Metadata
 }
 
 func (r *cacheUserListReader) ListUsers(ctx context.Context, input userlist.PageRequest) (userlist.Page, error) {
+	if r.checkCapability != nil {
+		if err := r.checkCapability("admin.user.list"); err != nil {
+			return userlist.Page{}, err
+		}
+	}
 	if input.SiteRole != "" {
 		return userlist.Page{}, unsupportedCacheFilters("admin.user.list", r.environment, r.site)
 	}
@@ -53,13 +59,19 @@ func (r *cacheUserListReader) ListUsers(ctx context.Context, input userlist.Page
 }
 
 type cacheUserGetResolver struct {
-	store       *cache.Store
-	environment string
-	site        string
-	source      *readsource.Metadata
+	checkCapability func(string) error
+	store           *cache.Store
+	environment     string
+	site            string
+	source          *readsource.Metadata
 }
 
 func (r *cacheUserGetResolver) ResolveUser(ctx context.Context, selector userinspect.Selector) (userinspect.User, error) {
+	if r.checkCapability != nil {
+		if err := r.checkCapability("admin.user.inspect"); err != nil {
+			return userinspect.User{}, err
+		}
+	}
 	result, err := r.store.ReadResources(ctx, cache.ResourceQuery{Environment: r.environment, Site: r.site, Kind: "user", LUID: selector.LUID, Name: selector.Username, Limit: 2})
 	if err != nil {
 		return userinspect.User{}, cacheReadError("admin.user.inspect", r.environment, r.site, err)
@@ -74,13 +86,19 @@ func (r *cacheUserGetResolver) ResolveUser(ctx context.Context, selector userins
 }
 
 type cacheGroupListReader struct {
-	store       *cache.Store
-	environment string
-	site        string
-	source      *readsource.Metadata
+	checkCapability func(string) error
+	store           *cache.Store
+	environment     string
+	site            string
+	source          *readsource.Metadata
 }
 
 func (r *cacheGroupListReader) ListGroups(ctx context.Context, input grouplist.PageRequest) (grouplist.Page, error) {
+	if r.checkCapability != nil {
+		if err := r.checkCapability("admin.group.list"); err != nil {
+			return grouplist.Page{}, err
+		}
+	}
 	if input.Domain != "" {
 		return grouplist.Page{}, unsupportedCacheFilters("admin.group.list", r.environment, r.site)
 	}
@@ -100,13 +118,19 @@ func (r *cacheGroupListReader) ListGroups(ctx context.Context, input grouplist.P
 }
 
 type cacheGroupGetResolver struct {
-	store       *cache.Store
-	environment string
-	site        string
-	source      *readsource.Metadata
+	checkCapability func(string) error
+	store           *cache.Store
+	environment     string
+	site            string
+	source          *readsource.Metadata
 }
 
 func (r *cacheGroupGetResolver) ResolveGroup(ctx context.Context, selector groupinspect.Selector, members bool) (groupinspect.Group, error) {
+	if r.checkCapability != nil {
+		if err := r.checkCapability("admin.group.inspect"); err != nil {
+			return groupinspect.Group{}, err
+		}
+	}
 	result, err := r.store.ReadResources(ctx, cache.ResourceQuery{Environment: r.environment, Site: r.site, Kind: "group", LUID: selector.LUID, Name: selector.Name, Limit: 2})
 	if err != nil {
 		return groupinspect.Group{}, cacheReadError("admin.group.inspect", r.environment, r.site, err)

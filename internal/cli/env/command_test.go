@@ -103,6 +103,29 @@ func TestEnvCommandsMapInputsAndRender(t *testing.T) {
 	}
 }
 
+func TestEnvListAllCarriesCompleteInventoryMode(t *testing.T) {
+	a := &actions{}
+	command := envcli.New(envcli.Dependencies{Lister: a, Renderer: &renderer{}})
+	command.SetArgs([]string{"list", "--all"})
+	if err := command.Execute(); err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(a.list, []profilelist.Input{{All: true}}) {
+		t.Fatalf("list inputs = %#v", a.list)
+	}
+}
+
+func TestEnvListAllRejectsLimitAndCursor(t *testing.T) {
+	for _, args := range [][]string{{"list", "--all", "--limit", "1"}, {"list", "--all", "--cursor", "0"}} {
+		a := &actions{}
+		command := envcli.New(envcli.Dependencies{Lister: a, Renderer: &renderer{}})
+		command.SetArgs(args)
+		if err := command.Execute(); err == nil || len(a.list) != 0 {
+			t.Fatalf("args=%v error=%v calls=%d", args, err, len(a.list))
+		}
+	}
+}
+
 func TestEnvironmentRegistryUsePreservesAliasArgument(t *testing.T) {
 	command := envcli.New(envcli.Dependencies{Uses: map[string]string{"env.profile.add": "add"}})
 	found, _, err := command.Find([]string{"add"})

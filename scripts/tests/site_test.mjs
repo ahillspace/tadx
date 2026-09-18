@@ -37,6 +37,12 @@ test('Docs opens the hosted command browser with current registry data and retur
   assert.match(map, /--ink: #202720/);
   const embedded = /<script id="capability-data" type="application\/json">([\s\S]*?)<\/script>/.exec(map);
   assert.deepEqual(JSON.parse(embedded[1]), data);
+  assert.doesNotMatch(map, /TADX_ENABLE_MUTATIONS|disabled-policy snapshot baseline|Execution enabled now/);
+  assert.match(map, /machine authority not evaluated/);
+  assert.match(map, /canonical server and exact site/);
+  assert.match(map, /managed policy permission/);
+  assert.match(map, /<dt>Administrative<\/dt>/);
+  assert.match(map, /value="administrative"/);
   for (const capability of data) {
     assert.ok((capability.command_path || []).length <= 3, `Too many command levels: ${capability.surface}`);
   }

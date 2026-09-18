@@ -1,6 +1,7 @@
 package fork
 
 import (
+	"slices"
 	"strings"
 
 	"github.com/ahillspace/tadx/internal/errs"
@@ -45,5 +46,8 @@ func ValidateInput(input Input) error {
 // IsSupportedCustomDays reports whether days is one of Tableau Pulse's bounded
 // custom trailing periods.
 func IsSupportedCustomDays(days int) bool {
-	return days == 7 || days == 14 || days == 30 || days == 60 || days == 90
+	return slices.Contains(SupportedCustomDays(), days)
 }
+
+// SupportedCustomDays returns the accepted custom trailing periods.
+func SupportedCustomDays() []int { return []int{7, 14, 30, 60, 90} }

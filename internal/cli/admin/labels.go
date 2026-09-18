@@ -88,7 +88,9 @@ func newLabelValueLister(deps LabelDependencies) *cobra.Command {
 		return deps.Renderer.Render(out)
 	}}
 	cmd.Flags().StringVar(&in.Environment, "environment", "", "Tableau environment alias")
-	cmd.Flags().IntVar(&in.Limit, "limit", 20, "maximum returned records (1-10000)")
+	cmd.Flags().IntVar(&in.Limit, "limit", 0, "maximum returned records (1-10000, default 20)")
+	cmd.Flags().BoolVar(&in.All, "all", false, "return all records within the 10000-record bound")
+	cmd.MarkFlagsMutuallyExclusive("all", "limit")
 	return cmd
 }
 func newLabelValueInspector(deps LabelDependencies) *cobra.Command {
@@ -191,7 +193,9 @@ func newLabelCategoryLister(deps LabelDependencies) *cobra.Command {
 		return deps.Renderer.Render(out)
 	}}
 	cmd.Flags().StringVar(&in.Environment, "environment", "", "Tableau environment alias")
-	cmd.Flags().IntVar(&in.Limit, "limit", 20, "maximum returned records (1-10000)")
+	cmd.Flags().IntVar(&in.Limit, "limit", 0, "maximum returned records (1-10000, default 20)")
+	cmd.Flags().BoolVar(&in.All, "all", false, "return all records within the 10000-record bound")
+	cmd.MarkFlagsMutuallyExclusive("all", "limit")
 	return cmd
 }
 func newLabelCategoryInspector(deps LabelDependencies) *cobra.Command {

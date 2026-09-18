@@ -60,7 +60,9 @@ func newLabelLister(deps LabelDependencies) *cobra.Command {
 	cmd.Flags().StringVar(&in.Type, "type", "", "asset type: database, table, column, datasource, or flow")
 	cmd.Flags().StringVar(&in.TargetID, "target-id", "", "related asset REST LUID, not its Metadata API ID")
 	cmd.Flags().StringArrayVar(&in.Categories, "category", nil, "exact label category; repeat for multiple categories")
-	cmd.Flags().IntVar(&in.Limit, "limit", 20, "maximum returned records (1-10000)")
+	cmd.Flags().IntVar(&in.Limit, "limit", 0, "maximum returned records (1-10000, default 20)")
+	cmd.Flags().BoolVar(&in.All, "all", false, "return all records within the 10000-record bound")
+	cmd.MarkFlagsMutuallyExclusive("all", "limit")
 	return cmd
 }
 func newLabelInspector(deps LabelDependencies) *cobra.Command {

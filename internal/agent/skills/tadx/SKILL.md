@@ -19,9 +19,10 @@ Verb `-h` is a sufficient focused subset of the same resource definitions and ad
 Reuse help already loaded; capability discovery is for availability diagnostics, not another required step.
 
 Search concepts, list inventory, inspect metadata, and pull files.
-Reuse returned identities and verified results rather than rediscovering them.
+Reuse returned identities and verified results.
 Default output is compact TOON; use `--json` for parsing or requested files and capture that native output directly.
-`--full` adds bounded detail, not new evidence or API enrichment.
+`--full` adds bounded detail, not records, evidence, or API enrichment; supported `--all` collects the bounded complete inventory.
+Use project IDs for workbook, datasource, and flow lists or exact-name inspection.
 Use the returned immediate `tadx last --full` command to expand a saved result without rerunning the operation.
 The last-result envelope is one replaceable record; later commands, including recorded usage failures, can replace it.
 If saving failed, `last` may be stale; retain the current response's identities and do not replay a mutation to repair saving.
@@ -38,9 +39,11 @@ Capabilities describe local implementation, not site access or licensing; a Puls
 TADX uses PATs; never expose credentials or session tokens.
 Commands sharing a PAT are coordinated locally, not across machines or external tools.
 Use exact returned LUIDs after discovery; do not guess through ambiguity.
-Remote writes execute when enabled; `--preview` is the no-change path and does not authorize execution.
-Before changing `TADX_ENABLE_MUTATIONS` or the saved mutation setting by any mechanism, obtain explicit permission for that setting change and scope, including disabling or unsetting it.
-A requested Tableau operation is not permission to change policy; session approval is not approval for future shells.
+Remote writes require selected-site consent plus applicable policy checks.
+Ask before changing site consent; name the server, exact site, and persisted scope.
+An operation request is not authorization.
+Legacy global settings and `TADX_ENABLE_MUTATIONS` values do not authorize writes.
+`--preview` is read-only and does not authorize execution.
 `--force` never bypasses policy.
 Retain confirmed identities and partial results; inspect unknown write outcomes before repeating a mutation.
 TADX confirms writes automatically where their response is insufficient; do not add routine verification calls after a confirmed result.
@@ -59,6 +62,7 @@ Syntax belongs in help, not these references.
 | Site roles, membership replacement, project locks, effective permissions | [Administration](references/administration.md) |
 | Local identity, dirty artifacts, registration, moving or deleting files | [Workspaces](references/workspace.md) |
 | Cache freshness, coverage, refresh effects, server load | [Cache](references/cache.md) |
+| Managed policy | [Managed policy](references/managed-policy.md) |
 | Partial batch results and dependent scripted steps | [Batching](references/batching.md) |
 | Meaningful Pulse authoring, variants, and subscriptions | Separate `tadx-pulse` skill |
 

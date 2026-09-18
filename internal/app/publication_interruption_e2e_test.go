@@ -63,7 +63,7 @@ func TestInterruptedPublicationPreservesAcceptedJobThroughCLI(t *testing.T) {
 		t.Fatal(err)
 	}
 	var out, progress strings.Builder
-	exit := Run(ctx, []string{"content", "workbook", "publish", "--file", file, "--environment", "production", "--project-id", "project-1", "--json"}, &out, Options{ConfigPath: runtime.configPath, HTTPClient: server.Client(), MutationsEnabled: true, JobDirectory: jobDirectory, Stderr: &progress})
+	exit := Run(ctx, []string{"content", "workbook", "publish", "--file", file, "--environment", "production", "--project-id", "project-1", "--json"}, &out, withSiteMutationConsent(t, Options{ConfigPath: runtime.configPath, HTTPClient: server.Client(), JobDirectory: jobDirectory, Stderr: &progress}, true))
 	if exit == 0 || writes.Load() != 1 || !strings.Contains(out.String(), `"tableau_job_id":"accepted-job"`) || !strings.Contains(out.String(), `"phase":"verification"`) || strings.Contains(out.String(), "Run without --preview") {
 		t.Fatalf("exit=%d writes=%d output=%s", exit, writes.Load(), out.String())
 	}

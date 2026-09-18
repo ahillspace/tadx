@@ -134,6 +134,33 @@ func TestWorkspaceCommandsMapExactInputs(t *testing.T) {
 	}
 }
 
+func TestWorkspaceListAndStatusAllCarryCompleteInventoryMode(t *testing.T) {
+	a := &actions{}
+	command := workspacecli.New(workspacecli.Dependencies{Lister: a, Statuser: a, Renderer: &renderer{}})
+	command.SetArgs([]string{"list", "--all"})
+	if err := command.Execute(); err != nil {
+		t.Fatal(err)
+	}
+	command.SetArgs([]string{"status", "--all", "--workspace", "development"})
+	if err := command.Execute(); err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(a.list, []workspacelist.Input{{All: true}}) || !reflect.DeepEqual(a.status, []workspacestatus.Input{{All: true, Workspace: "development"}}) {
+		t.Fatalf("list=%#v status=%#v", a.list, a.status)
+	}
+}
+
+func TestWorkspaceAllRejectsLimitAndCursor(t *testing.T) {
+	for _, args := range [][]string{{"list", "--all", "--limit", "1"}, {"list", "--all", "--cursor", "0"}, {"status", "--all", "--limit", "1"}, {"status", "--all", "--cursor", "0"}} {
+		a := &actions{}
+		command := workspacecli.New(workspacecli.Dependencies{Lister: a, Statuser: a, Renderer: &renderer{}})
+		command.SetArgs(args)
+		if err := command.Execute(); err == nil || len(a.list) != 0 || len(a.status) != 0 {
+			t.Fatalf("args=%v error=%v list_calls=%d status_calls=%d", args, err, len(a.list), len(a.status))
+		}
+	}
+}
+
 func TestWorkspaceRegistryUsePreservesPositionalArguments(t *testing.T) {
 	command := workspacecli.New(workspacecli.Dependencies{Uses: map[string]string{
 		"workspace.create":      "create",

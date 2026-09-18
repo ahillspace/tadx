@@ -101,7 +101,7 @@ func TestBatchFileDifferentUserSettingsPreviewAndExecution(t *testing.T) {
 			args := []string{"admin", "user", "update", "--batch-file", path, "--env", "test", "--json"}
 			if preview {
 				args = append(args, "--preview")
-				opts.MutationEnvironment = func() (string, bool) { return "0", true }
+				opts = withSiteMutationConsent(t, opts, false)
 			}
 			var output bytes.Buffer
 			code := app.Run(context.Background(), args, &output, opts)

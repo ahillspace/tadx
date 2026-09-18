@@ -45,6 +45,9 @@ func (e *PrincipalResolutionError) PrerequisiteSummary() string {
 // GetPermissionRule validates exact principal identity and reads live resource rules.
 // The caller selects a capability from this snapshot without calculating effective access.
 func (a *Adapter) GetPermissionRule(ctx context.Context, in tableau.PermissionMutationRequest) (tableau.PermissionSet, error) {
+	if err := a.authorize("admin.permission.inspect"); err != nil {
+		return tableau.PermissionSet{}, err
+	}
 	if err := a.configured(); err != nil {
 		return tableau.PermissionSet{}, err
 	}
@@ -71,6 +74,9 @@ func (a *Adapter) resolvePermissionPrincipal(ctx context.Context, principalType,
 		}
 		return nil
 	}
+	if err := a.authorize("admin.group.inspect"); err != nil {
+		return err
+	}
 	page, err := a.client.ListGroupUsers(ctx, principalLUID, tableau.PageRequest{PageNumber: 1, PageSize: 1})
 	if err != nil {
 		return &PrincipalResolutionError{PrincipalType: principalType, PrincipalLUID: principalLUID, Cause: err}
@@ -82,6 +88,9 @@ func (a *Adapter) resolvePermissionPrincipal(ctx context.Context, principalType,
 }
 
 func (a *Adapter) CreatePermission(ctx context.Context, in tableau.PermissionMutationRequest) (tableau.MutationResult, error) {
+	if err := a.authorize("admin.permission.create"); err != nil {
+		return tableau.MutationResult{}, err
+	}
 	if err := a.configured(); err != nil {
 		return tableau.MutationResult{}, err
 	}
@@ -92,6 +101,9 @@ func (a *Adapter) CreatePermission(ctx context.Context, in tableau.PermissionMut
 	return writer.CreatePermission(ctx, in)
 }
 func (a *Adapter) DeletePermission(ctx context.Context, in tableau.PermissionMutationRequest) (tableau.MutationResult, error) {
+	if err := a.authorize("admin.permission.delete"); err != nil {
+		return tableau.MutationResult{}, err
+	}
 	if err := a.configured(); err != nil {
 		return tableau.MutationResult{}, err
 	}

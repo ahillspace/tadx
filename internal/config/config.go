@@ -11,6 +11,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"sort"
 	"strings"
 
@@ -32,7 +33,9 @@ const (
 
 // Config is the user-global, non-secret TADX configuration model.
 type Config struct {
+	// MutationsEnabled is a legacy field accepted during decoding; it never grants consent.
 	MutationsEnabled   *bool                            `yaml:"mutations_enabled,omitempty" json:"mutations_enabled,omitempty"`
+	SiteMutations      []SiteMutation                   `yaml:"site_mutations,omitempty" json:"site_mutations,omitempty"`
 	Version            int                              `yaml:"version" json:"version"`
 	DefaultEnvironment string                           `yaml:"default_environment,omitempty" json:"default_environment,omitempty"`
 	DefaultWorkspace   string                           `yaml:"default_workspace,omitempty" json:"default_workspace,omitempty"`
@@ -83,6 +86,9 @@ func (e *ValidationError) Error() string {
 // Validate checks the complete configuration model without reading secrets.
 func (c Config) Validate() error {
 	var violations []string
+	if err := validateSiteMutations(c.SiteMutations); err != nil {
+		violations = append(violations, err.Error())
+	}
 	type variableReference struct {
 		alias     string
 		defaulted bool
@@ -761,6 +767,7 @@ func updateTransaction(path string, createIfMissing bool, mutate func(Config) (C
 
 func cloneConfig(configuration Config) Config {
 	clone := configuration
+	clone.SiteMutations = slices.Clone(configuration.SiteMutations)
 	if configuration.Environments != nil {
 		clone.Environments = make(map[string]Environment, len(configuration.Environments))
 		for alias, environment := range configuration.Environments {

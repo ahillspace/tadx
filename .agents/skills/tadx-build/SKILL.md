@@ -74,9 +74,11 @@ Infer a remote-write environment only when exactly one is configured; with multi
 Artifact source metadata never chooses the publish destination.
 Authenticate to Tableau with PATs only.
 Remote mutation commands remain discoverable while execution is disabled.
-Supported `--preview=true` performs no consequential remote writes while the gate is off; explicit `--preview=false` cannot bypass it.
-Enabled mutations execute by default; use shared gate wiring for both saved user policy and the process override.
-Changing either setting requires explicit permission covering that setting change and scope, separate from permission for the operation itself.
+Supported `--preview=true` performs no consequential remote writes while site consent or managed remote mutations are disabled; explicit `--preview=false` cannot bypass either gate.
+Enabled mutations execute by default when the selected site's saved consent and the managed policy allow them.
+Use `tadx mutation status --environment <alias>` and `tadx mutation set --environment <alias> --enabled=<true|false>` for canonical server and exact site consent.
+Changing site consent requires explicit permission covering the selected site and persisted scope, separate from permission for the operation itself.
+Legacy global settings and `TADX_ENABLE_MUTATIONS=0` or `1` do not authorize remote writes.
 Never change a developer's operational mutation setting to make a test pass.
 `--force` does not bypass mutation policy, and mutation discovery never grants authorization.
 Persist PATs only after explicit user approval through the native OS credential store.

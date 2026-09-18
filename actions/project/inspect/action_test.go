@@ -20,13 +20,13 @@ type resolver struct {
 
 func TestOutputGolden(t *testing.T) {
 	workbookCount := 2
-	output := projectget.Output{
-		Status: "found", Environment: "dev", Site: "sandbox",
-		Project: projectget.Project{
-			LUID: "project-1", Name: "Ops", Path: "Department/Ops", ParentLUID: "project-root",
-			Description: "Operations", OwnerLUID: "user-1", WorkbookCount: &workbookCount,
-		},
-		RequestID: "request-1", Help: []string{"tadx content project list"},
+	item := projectget.Project{
+		LUID: "project-1", Name: "Ops", Path: "Department/Ops", ParentLUID: "project-root",
+		Description: "Operations", OwnerLUID: "user-1", WorkbookCount: &workbookCount, RequestID: "request-1",
+	}
+	output, err := projectget.New(&resolver{project: item}).Execute(t.Context(), projectget.Input{Environment: "dev", Site: "sandbox", Selector: identity.Selector{LUID: "project-1"}})
+	if err != nil {
+		t.Fatal(err)
 	}
 	assertGolden(t, "compact.toon", output, false)
 	assertGolden(t, "full.toon", output, true)

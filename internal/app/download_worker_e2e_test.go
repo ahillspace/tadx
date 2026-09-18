@@ -261,9 +261,9 @@ func decodeDownloadReceipt(t *testing.T, output string) downloadReceipt {
 func downloadWorkerOptions(runtime *runtimeDependencies, server *httptest.Server, operationDirectory, jobDirectory string) (Options, chan int) {
 	done := make(chan int, 1)
 	options := Options{
-		ConfigPath:         runtime.configPath,
-		HTTPClient:         server.Client(),
-		MutationsEnabled:   true,
+		ConfigPath: runtime.configPath,
+		HTTPClient: server.Client(),
+
 		PublicationWorkers: true,
 		OperationDirectory: operationDirectory,
 		JobDirectory:       jobDirectory,

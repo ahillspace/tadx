@@ -8,6 +8,10 @@ permissions:
   contents: read
 
 jobs:
+  native-policy:
+    name: Native managed policy gates
+    uses: ./.github/workflows/native-policy.yml
+
   quality:
     name: Quality gates
     runs-on: ubuntu-latest

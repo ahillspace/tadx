@@ -62,7 +62,7 @@ func TestWorkbookDescriptionUpdateThroughCLI(t *testing.T) {
 				args = append(args, "--preview")
 			}
 			var output strings.Builder
-			if code := app.Run(context.Background(), args, &output, app.Options{ConfigPath: config, HTTPClient: server.Client(), MutationsEnabled: !preview}); code != 0 {
+			if code := app.Run(context.Background(), args, &output, withSiteMutationConsent(t, app.Options{ConfigPath: config, HTTPClient: server.Client()}, !preview)); code != 0 {
 				t.Fatalf("exit %d: %s", code, output.String())
 			}
 			if (preview && puts != 0) || (!preview && puts != 1) {

@@ -55,7 +55,9 @@ func (r *runtimeDependencies) publication(ctx context.Context, environment, kind
 		return nil, err
 	}
 	async := false
-	if kind != "flow" {
+	// The role read only selects optional job monitoring. A denied inspection
+	// preserves synchronous publication without making the administrative read.
+	if kind != "flow" && r.checkManagedCapability("admin.user.inspect") == nil {
 		r.command.mu.Lock()
 		known, present := r.command.jobMonitoring[key]
 		r.command.mu.Unlock()

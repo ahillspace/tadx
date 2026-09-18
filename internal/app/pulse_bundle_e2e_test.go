@@ -197,6 +197,7 @@ func testPulseBundleRoundTrip(t *testing.T, destinationSite string, change pulse
 	if err := config.Save(options.ConfigPath, configuration); err != nil {
 		t.Fatal(err)
 	}
+	options = withSiteMutationConsent(t, options, true)
 	currentSite = destinationSite
 	rel, _ := filepath.Rel(workspace, filepath.Dir(paths[0]))
 	baseArgs := []string{"pulse", "definition", "publish", "--artifact", filepath.ToSlash(rel), "--workspace", "portable", "--environment", "destination"}

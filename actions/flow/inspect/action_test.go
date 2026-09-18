@@ -58,3 +58,28 @@ func TestActionGetsExactFlowWithBoundedDetails(t *testing.T) {
 		t.Fatalf("full = %#v", full)
 	}
 }
+
+func TestValidateInputAcceptsProjectLUIDSelector(t *testing.T) {
+	input := flowget.Input{}
+	input.SetSelectorWithProjectLUID("", "Daily", "", "project-1")
+	if err := flowget.ValidateInput(input); err != nil {
+		t.Fatalf("ValidateInput() error = %v", err)
+	}
+}
+
+func TestValidateInputRejectsConflictingProjectSelectors(t *testing.T) {
+	input := flowget.Input{}
+	input.SetSelectorWithProjectLUID("", "Daily", "Department/Ops", "project-1")
+	if err := flowget.ValidateInput(input); err == nil {
+		t.Fatal("ValidateInput() error = nil, want project selector conflict")
+	}
+}
+
+func TestActionRejectsMismatchedProjectLUID(t *testing.T) {
+	flow := flowget.Flow{LUID: "f-1", Name: "Daily", ProjectLUID: "project-other"}
+	input := flowget.Input{}
+	input.SetSelectorWithProjectLUID("", "Daily", "", "project-1")
+	if _, err := flowget.New(resolver{flow: flow}).Execute(t.Context(), input); err == nil {
+		t.Fatal("Execute() error = nil, want identity mismatch")
+	}
+}
