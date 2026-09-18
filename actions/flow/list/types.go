@@ -105,7 +105,8 @@ func (o Output) CompactOutput() any {
 
 // FullOutput returns all bounded current-page fields.
 func (o Output) FullOutput() any {
-	flows := append([]Flow(nil), o.Flows...)
+	flows := make([]Flow, len(o.Flows))
+	copy(flows, o.Flows)
 	for index := range flows {
 		flows[index].Tags = append([]string(nil), flows[index].Tags...)
 		if len(flows[index].Tags) > fullTagsPerFlowLimit {

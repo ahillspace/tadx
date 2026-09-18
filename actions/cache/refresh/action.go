@@ -12,6 +12,7 @@ import (
 
 	"github.com/ahillspace/tadx/internal/errs"
 	"github.com/ahillspace/tadx/internal/output"
+	"github.com/ahillspace/tadx/internal/value"
 )
 
 const (
@@ -76,6 +77,9 @@ func (a *Action) Execute(ctx context.Context, input Input) (Output, error) {
 	}
 	if result.HydratedRecordCount != result.RecordCount {
 		generation.HydratedRecords = result.HydratedRecordCount
+	}
+	for _, count := range result.ScopeCounts {
+		generation.Coverage = append(generation.Coverage, value.CacheCoverage{Scope: count.Scope, Records: count.Records, Requested: slices.Contains(requested, count.Scope), Complete: result.Complete || count.Scope != "permissions"})
 	}
 	state := "refreshed"
 	if !result.Complete {
@@ -187,6 +191,10 @@ func validateRelativePath(value string) error {
 }
 
 func classify(err error, input Input) error {
+	var incompatible interface{ CacheSchemaIncompatible() bool }
+	if errors.As(err, &incompatible) && incompatible.CacheSchemaIncompatible() {
+		return &errs.Error{ID: "cache.refresh.schema_incompatible", Kind: errs.KindOperation, Operation: "cache.refresh", Environment: input.Environment, Site: input.Site, Summary: "The selected cache schema is inconsistent or unsupported; no replacement was published.", Cause: err, Retryable: errs.Bool(false), CorrectiveAction: "Preserve this cache and repair its schema or use a compatible TADX build. Use explicit live reads in the meantime; do not repeat this refresh unchanged.", Phase: errs.PhasePersistence, Outcome: errs.OutcomeNotAttempted}
+	}
 	if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
 		return failure("cache.refresh.cancelled", errs.KindOperation, input, "Cache refresh was canceled before publication.", err)
 	}

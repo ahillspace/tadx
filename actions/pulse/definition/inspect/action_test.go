@@ -63,6 +63,27 @@ func TestInspectRequiresAndVerifiesExactLUID(t *testing.T) {
 	}
 }
 
+func TestInspectCompactOutputIncludesBoundedSavedConfigurationSummary(t *testing.T) {
+	dimensions := make([]string, 55)
+	for index := range dimensions {
+		dimensions[index] = "Dimension_" + string(rune('A'+index%26)) + string(rune('0'+index/26))
+	}
+	granularities := make([]string, 53)
+	for index := range granularities {
+		granularities[index] = "GRANULARITY_" + string(rune('A'+index%26)) + string(rune('0'+index/26))
+	}
+	output := definitionget.Output{Definition: definitionget.Definition{
+		LUID: "definition-1", Name: "Revenue", DatasourceLUID: "datasource-1", MeasureField: "Sales", Aggregation: "AGGREGATION_SUM", TimeDimension: "Order Date", RunningTotal: true, Temporality: "TEMPORALITY_OVER_TIME", AllowedDimensions: dimensions, AllowedGranularities: granularities,
+	}}
+	compact := output.CompactOutput().(definitionget.CompactResult)
+	if compact.Definition.MeasureField != "Sales" || compact.Definition.Aggregation != "AGGREGATION_SUM" || compact.Definition.TimeDimension != "Order Date" || !compact.Definition.RunningTotal || compact.Definition.Temporality != "TEMPORALITY_OVER_TIME" {
+		t.Fatalf("configuration summary=%#v", compact.Definition)
+	}
+	if len(compact.Definition.AllowedDimensions) != 50 || compact.Definition.DimensionsOmitted != 5 || len(compact.Definition.AllowedGranularities) != 50 || compact.Definition.GranularitiesOmitted != 3 {
+		t.Fatalf("bounded configuration summary=%#v", compact.Definition)
+	}
+}
+
 func TestInspectRejectsMissingOrMismatchedLUID(t *testing.T) {
 	for _, test := range []struct {
 		name   string

@@ -34,6 +34,8 @@ type Options struct {
 	Secrets         []string
 	TOON            toon.EncodeOptions
 	ConfigPath      string
+	// SavedResult permits immediate detail expansion only after successful persistence.
+	SavedResult bool
 }
 
 // CompactProjector provides an explicit token-bounded default view.
@@ -81,6 +83,9 @@ func RenderWithOptions(writer io.Writer, value any, options Options) error {
 	if options.ConfigPath != "" {
 		value = bindHintValue(value, options.ConfigPath)
 	}
+	if options.SavedResult && !options.Full {
+		value = savedDetailHint(value, options.JSON, options.ConfigPath)
+	}
 	if !options.JSON && len(options.Secrets) == 0 && (options.Full || !hasLongString(reflect.ValueOf(value), limit, make(map[visit]bool))) {
 		encoded, err := toon.EncodeWithOptions(value, options.TOON)
 		if err != nil {
@@ -113,7 +118,7 @@ func bindHintValue(value any, configPath string) any {
 	if value == nil || configPath == "" {
 		return value
 	}
-	cloned := bindHintReflect(reflect.ValueOf(value), configPath, make(map[visit]bool), 0)
+	cloned := bindHintReflect(reflect.ValueOf(value), configPath, "", make(map[visit]bool), 0)
 	if cloned.IsValid() && cloned.CanInterface() {
 		return cloned.Interface()
 	}
@@ -122,7 +127,7 @@ func bindHintValue(value any, configPath string) any {
 
 const maxHintDepth = 64
 
-func bindHintReflect(value reflect.Value, configPath string, seen map[visit]bool, depth int) reflect.Value {
+func bindHintReflect(value reflect.Value, configPath, detailCommand string, seen map[visit]bool, depth int) reflect.Value {
 	if !value.IsValid() {
 		return value
 	}
@@ -134,7 +139,7 @@ func bindHintReflect(value reflect.Value, configPath string, seen map[visit]bool
 		if value.IsNil() {
 			return value
 		}
-		cloned := bindHintReflect(value.Elem(), configPath, seen, depth+1)
+		cloned := bindHintReflect(value.Elem(), configPath, detailCommand, seen, depth+1)
 		result := reflect.New(value.Type()).Elem()
 		result.Set(cloned)
 		return result
@@ -149,11 +154,20 @@ func bindHintReflect(value reflect.Value, configPath string, seen map[visit]bool
 		seen[key] = true
 		defer delete(seen, key)
 		result := reflect.New(value.Type().Elem())
-		result.Elem().Set(bindHintReflect(value.Elem(), configPath, seen, depth+1))
+		result.Elem().Set(bindHintReflect(value.Elem(), configPath, detailCommand, seen, depth+1))
 		return result
 	case reflect.Struct:
 		result := reflect.New(value.Type()).Elem()
 		result.Set(value)
+		// An aggregate receipt needs one expansion command, not a copy for
+		// every batch item. Error envelopes have no marker and recurse below.
+		if detailCommand != "" {
+			field := result.FieldByName("Details")
+			if field.IsValid() && field.CanSet() && field.Kind() == reflect.String && field.String() == "--full" {
+				field.SetString(detailCommand)
+				return result
+			}
+		}
 		for index := 0; index < value.NumField(); index++ {
 			field := result.Field(index)
 			if !field.CanSet() || value.Type().Field(index).PkgPath != "" {
@@ -161,7 +175,11 @@ func bindHintReflect(value reflect.Value, configPath string, seen map[visit]bool
 			}
 			name := value.Type().Field(index).Name
 			jsonName := strings.Split(value.Type().Field(index).Tag.Get("json"), ",")[0]
-			if name == "CorrectiveAction" || jsonName == "corrective_action" {
+			if detailCommand != "" && (name == "Details" || jsonName == "details") && field.Kind() == reflect.String && field.String() == "--full" {
+				field.SetString(detailCommand)
+				continue
+			}
+			if name == "CorrectiveAction" || jsonName == "corrective_action" || name == "NextCommand" || jsonName == "next_command" {
 				if field.Kind() == reflect.String {
 					field.SetString(commandhint.BindConfig(field.String(), configPath))
 					continue
@@ -178,7 +196,7 @@ func bindHintReflect(value reflect.Value, configPath string, seen map[visit]bool
 					continue
 				}
 			}
-			field.Set(bindHintReflect(field, configPath, seen, depth+1))
+			field.Set(bindHintReflect(field, configPath, detailCommand, seen, depth+1))
 		}
 		return result
 	case reflect.Slice:
@@ -196,7 +214,7 @@ func bindHintReflect(value reflect.Value, configPath string, seen map[visit]bool
 		defer delete(seen, key)
 		result := reflect.MakeSlice(value.Type(), value.Len(), value.Len())
 		for index := 0; index < value.Len(); index++ {
-			result.Index(index).Set(bindHintReflect(value.Index(index), configPath, seen, depth+1))
+			result.Index(index).Set(bindHintReflect(value.Index(index), configPath, detailCommand, seen, depth+1))
 		}
 		return result
 	default:

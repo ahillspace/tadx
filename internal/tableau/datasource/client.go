@@ -58,6 +58,7 @@ type ListRequest struct {
 	PageSize      int
 	Name          string
 	OwnerName     string
+	ProjectLUID   string
 	ProjectName   string
 	Type          string
 	Tag           string
@@ -449,6 +450,7 @@ func ListFilter(input ListRequest) (string, error) {
 	}{
 		{name: "name", operator: "eq", value: input.Name},
 		{name: "ownerName", operator: "eq", value: input.OwnerName},
+		{name: "projectId", operator: "eq", value: input.ProjectLUID},
 		{name: "projectName", operator: "eq", value: input.ProjectName},
 		{name: "type", operator: "eq", value: input.Type},
 		{name: "tags", operator: "eq", value: input.Tag},

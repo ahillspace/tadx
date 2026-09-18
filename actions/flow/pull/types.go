@@ -44,6 +44,7 @@ type Lineage struct {
 	Complete  bool
 	Direction string
 	Depth     int
+	Failure   *value.LineageFailure
 	Nodes     []LineageNode
 	Edges     []LineageEdge
 	Warnings  []string
@@ -66,6 +67,7 @@ type ArtifactResult struct {
 	Warnings            []string `json:"-"`
 }
 type Output struct {
+	Source    *value.SourceContext `json:"source,omitempty"`
 	Preview   *value.AcquisitionPlan
 	Workspace string `json:"workspace"`
 	Status    string
@@ -78,20 +80,22 @@ type Output struct {
 	compactWarnings []string
 }
 type CompactArtifact struct {
-	Workspace  string `json:"workspace"`
-	Kind       string `json:"kind"`
-	Name       string `json:"name"`
-	SourceLUID string `json:"source_luid"`
-	Path       string `json:"-"`
+	Workspace     string `json:"workspace"`
+	Kind          string `json:"kind"`
+	Name          string `json:"name"`
+	SourceLUID    string `json:"source_luid"`
+	Path          string `json:"path"`
+	CanonicalPath string `json:"canonical_path,omitempty"`
 }
 type CompactResult struct {
-	Status          string          `json:"status"`
-	Flow            Flow            `json:"flow"`
-	Artifact        CompactArtifact `json:"artifact"`
-	Warnings        []string        `json:"warnings,omitempty"`
-	WarningsOmitted int             `json:"warnings_omitted,omitempty"`
-	Details         string          `json:"details"`
-	Help            []string        `json:"help"`
+	Source          *value.SourceContext `json:"source,omitempty"`
+	Status          string               `json:"status"`
+	Flow            Flow                 `json:"flow"`
+	Artifact        CompactArtifact      `json:"artifact"`
+	Warnings        []string             `json:"warnings,omitempty"`
+	WarningsOmitted int                  `json:"warnings_omitted,omitempty"`
+	Details         string               `json:"details"`
+	Help            []string             `json:"help"`
 }
 type FullArtifact struct {
 	Workspace           string `json:"workspace"`
@@ -107,13 +111,14 @@ type FullArtifact struct {
 	EdgeCount           *int   `json:"edge_count,omitempty"`
 }
 type FullResult struct {
-	Status          string       `json:"status"`
-	Flow            Flow         `json:"flow"`
-	Artifact        FullArtifact `json:"artifact"`
-	Warnings        []string     `json:"warnings,omitempty"`
-	WarningsOmitted int          `json:"warnings_omitted,omitempty"`
-	RequestID       string       `json:"tableau_request_id,omitempty"`
-	Help            []string     `json:"help"`
+	Source          *value.SourceContext `json:"source,omitempty"`
+	Status          string               `json:"status"`
+	Flow            Flow                 `json:"flow"`
+	Artifact        FullArtifact         `json:"artifact"`
+	Warnings        []string             `json:"warnings,omitempty"`
+	WarningsOmitted int                  `json:"warnings_omitted,omitempty"`
+	RequestID       string               `json:"tableau_request_id,omitempty"`
+	Help            []string             `json:"help"`
 }
 
 func (o Output) CompactOutput() any {
@@ -125,7 +130,7 @@ func (o Output) CompactOutput() any {
 		warningSource = o.Warnings
 	}
 	warnings, omitted := boundedWarnings(warningSource)
-	return CompactResult{Status: o.Status, Flow: o.Flow, Artifact: CompactArtifact{Workspace: o.Workspace, Kind: "flow", Name: o.Flow.Name, SourceLUID: o.Flow.LUID, Path: o.Artifact.Path}, Warnings: warnings, WarningsOmitted: omitted, Details: "--full", Help: o.Help}
+	return CompactResult{Source: o.Source, Status: o.Status, Flow: o.Flow, Artifact: CompactArtifact{Workspace: o.Workspace, Kind: "flow", Name: o.Flow.Name, SourceLUID: o.Flow.LUID, Path: o.Artifact.Path, CanonicalPath: o.Artifact.CanonicalPath}, Warnings: warnings, WarningsOmitted: omitted, Details: "--full", Help: o.Help}
 }
 func (o Output) FullOutput() any {
 	if o.Preview != nil {
@@ -141,7 +146,7 @@ func (o Output) FullOutput() any {
 		nodes, edges := o.Artifact.NodeCount, o.Artifact.EdgeCount
 		artifact.NodeCount, artifact.EdgeCount = &nodes, &edges
 	}
-	return FullResult{Status: o.Status, Flow: o.Flow, Artifact: artifact, Warnings: warnings, WarningsOmitted: omitted, RequestID: o.RequestID, Help: o.Help}
+	return FullResult{Source: o.Source, Status: o.Status, Flow: o.Flow, Artifact: artifact, Warnings: warnings, WarningsOmitted: omitted, RequestID: o.RequestID, Help: o.Help}
 }
 
 const warningLimit = 20

@@ -16,9 +16,15 @@ func (f *fixture) GetDatabase(context.Context, string) (value.MetadataDatabase, 
 	f.reads++
 	return value.MetadataDatabase{MetadataIdentity: value.MetadataIdentity{LUID: "item", Name: "Fixture", Type: "database"}, TagsObserved: true}, nil
 }
-func (f *fixture) UpdateDatabase(context.Context, string, value.MetadataUpdate) (value.MetadataDatabase, error) {
+func (f *fixture) UpdateDatabase(_ context.Context, _ string, patch value.MetadataUpdate) (value.MetadataDatabase, error) {
 	f.writes++
-	return value.MetadataDatabase{MetadataIdentity: value.MetadataIdentity{LUID: "item"}}, nil
+	return value.MetadataDatabase{MetadataIdentity: value.MetadataIdentity{LUID: "item"}, Description: patch.Description, ContactLUID: deref(patch.ContactLUID), TagsObserved: true}, nil
+}
+func deref(v *string) string {
+	if v == nil {
+		return ""
+	}
+	return *v
 }
 func (f *fixture) AddDatabaseTags(context.Context, string, []string) ([]string, error) {
 	f.writes++

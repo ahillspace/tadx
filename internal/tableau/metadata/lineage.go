@@ -73,6 +73,38 @@ type Capture struct {
 	RequestIDs     []string
 }
 
+// RelationError identifies the bounded relationship read that prevented a
+// lineage capture from completing while preserving the provider cause.
+type RelationError struct {
+	RootKind     ResourceKind
+	RootRESTLUID string
+	Relation     string
+	Cause        error
+}
+
+func (e *RelationError) Error() string {
+	return fmt.Sprintf("capture %s lineage relationship %s for REST LUID %q: %v", e.RootKind, e.Relation, e.RootRESTLUID, e.Cause)
+}
+
+func (e *RelationError) Unwrap() error { return e.Cause }
+
+// FailureFor returns bounded provider context without copying provider error
+// text, which may contain response details that are not safe for artifacts.
+func FailureFor(request CaptureRequest, err error) value.LineageFailure {
+	failure := value.LineageFailure{
+		Provider:     "tableau-metadata",
+		RootKind:     string(request.Kind),
+		RootRESTLUID: strings.TrimSpace(request.RESTLUID),
+		RequestID:    tableau.RequestID(err),
+	}
+	if relation, ok := errors.AsType[*RelationError](err); ok {
+		failure.RootKind = string(relation.RootKind)
+		failure.RootRESTLUID = strings.TrimSpace(relation.RootRESTLUID)
+		failure.Relation = strings.TrimSpace(relation.Relation)
+	}
+	return failure
+}
+
 // LineageReader captures bounded factual Metadata API relationships.
 type LineageReader interface {
 	CaptureLineage(context.Context, CaptureRequest) (Capture, error)
@@ -186,12 +218,12 @@ func (c *Client) CaptureLineage(ctx context.Context, input CaptureRequest) (Capt
 			for _, queryResponse := range responses {
 				capture.RequestIDs = append(capture.RequestIDs, queryResponse.TableauRequestID)
 			}
+			if requestID := tableau.RequestID(err); requestID != "" {
+				capture.RequestIDs = append(capture.RequestIDs, requestID)
+			}
 			capture.Warnings = append(capture.Warnings, relationWarnings...)
 			if len(relationWarnings) > 0 {
 				capture.Complete = false
-			}
-			if err != nil {
-				return Capture{}, err
 			}
 			if limitWarning != "" {
 				capture.Complete = false
@@ -200,7 +232,8 @@ func (c *Client) CaptureLineage(ctx context.Context, input CaptureRequest) (Capt
 			}
 			for _, neighbor := range neighbors {
 				if err := addLineageNode(nodes, restIdentities, neighbor); err != nil {
-					return Capture{}, protocolError(lastResponse(responses, response), "%v", err)
+					capture.Complete = false
+					return finalizeCapture(capture, nodes, edges), protocolError(lastResponse(responses, response), "%v", err)
 				}
 				if len(nodes) > MaxLineageNodes {
 					delete(nodes, neighbor.MetadataID)
@@ -228,11 +261,20 @@ func (c *Client) CaptureLineage(ctx context.Context, input CaptureRequest) (Capt
 					frontier = append(frontier, lineageFrontier{node: neighbor, depth: current.depth + 1})
 				}
 			}
+			if err != nil {
+				capture.Complete = false
+				capture.Warnings = append(capture.Warnings, fmt.Sprintf("Lineage relationship %s could not be captured; the graph is incomplete.", relation.field))
+				return finalizeCapture(capture, nodes, edges), &RelationError{RootKind: request.Kind, RootRESTLUID: request.RESTLUID, Relation: relation.field, Cause: err}
+			}
 			if bounded {
 				break
 			}
 		}
 	}
+	return finalizeCapture(capture, nodes, edges), nil
+}
+
+func finalizeCapture(capture Capture, nodes map[string]Node, edges map[string]Edge) Capture {
 	capture.Nodes = capture.Nodes[:0]
 	for _, node := range nodes {
 		capture.Nodes = append(capture.Nodes, node)
@@ -240,7 +282,7 @@ func (c *Client) CaptureLineage(ctx context.Context, input CaptureRequest) (Capt
 	for _, edge := range edges {
 		capture.Edges = append(capture.Edges, edge)
 	}
-	return normalizeCapture(capture), nil
+	return normalizeCapture(capture)
 }
 
 const (
@@ -290,80 +332,84 @@ func (c *Client) readLineageRelation(ctx context.Context, request CaptureRequest
 		responses = append(responses, response)
 		warnings = append(warnings, pageWarnings...)
 		if queryErr != nil {
-			return nil, responses, warnings, "", queryErr
+			return result, responses, warnings, "", queryErr
 		}
 		connection := envelope.Data.connection(ResourceKind(root.Kind))
 		returnedRoot, rootErr := exactLineageRoot(response, connection, ResourceKind(root.Kind), root.RESTLUID)
 		if rootErr != nil {
-			return nil, responses, warnings, "", rootErr
+			return result, responses, warnings, "", rootErr
 		}
 		if returnedRoot != root {
-			return nil, responses, warnings, "", protocolError(response, "lineage root REST LUID %q changed identity while paging %s", root.RESTLUID, relation.field)
+			return result, responses, warnings, "", protocolError(response, "lineage root REST LUID %q changed identity while paging %s", root.RESTLUID, relation.field)
 		}
 		relationship := (*connection.Nodes)[0].relation(relation)
 		if relationship == nil || relationship.TotalCount == nil || relationship.PageInfo == nil || relationship.Nodes == nil {
-			return nil, responses, warnings, "", protocolError(response, "%s omitted totalCount, pageInfo, or nodes", relation.field)
+			return result, responses, warnings, "", protocolError(response, "%s omitted totalCount, pageInfo, or nodes", relation.field)
 		}
 		if *relationship.TotalCount < 0 {
-			return nil, responses, warnings, "", protocolError(response, "%s returned a negative totalCount", relation.field)
+			return result, responses, warnings, "", protocolError(response, "%s returned a negative totalCount", relation.field)
 		}
 		if total < 0 {
 			total = *relationship.TotalCount
 		} else if total != *relationship.TotalCount {
-			return nil, responses, warnings, "", protocolError(response, "%s changed totalCount from %d to %d while paging", relation.field, total, *relationship.TotalCount)
+			return result, responses, warnings, "", protocolError(response, "%s changed totalCount from %d to %d while paging", relation.field, total, *relationship.TotalCount)
 		}
+		pageNodes := make([]Node, 0, len(*relationship.Nodes))
+		pageNewNodeCount := 0
 		for _, raw := range *relationship.Nodes {
-			if len(result) == maxEdges {
+			if len(result)+len(pageNodes) == maxEdges {
 				break
 			}
 			neighborRaw := raw
 			if relation.linked {
 				if raw.Asset == nil {
-					return nil, responses, warnings, "", protocolError(response, "%s returned a linked flow without an asset", relation.field)
+					return result, responses, warnings, "", protocolError(response, "%s returned a linked flow without an asset", relation.field)
 				}
 				neighborRaw = *raw.Asset
 			}
 			neighbor := Node{MetadataID: strings.TrimSpace(neighborRaw.ID), Kind: string(relation.targetKind), RESTLUID: strings.TrimSpace(neighborRaw.LUID), Name: strings.TrimSpace(neighborRaw.Name)}
 			if neighbor.MetadataID == "" {
-				return nil, responses, warnings, "", protocolError(response, "%s returned a %s without a Metadata identity", relation.field, relation.targetKind)
+				return result, responses, warnings, "", protocolError(response, "%s returned a %s without a Metadata identity", relation.field, relation.targetKind)
 			}
 			if isRESTBackedLineageKind(relation.targetKind) && neighbor.RESTLUID == "" {
-				return nil, responses, warnings, "", protocolError(response, "%s returned a %s without distinct Metadata and REST identities", relation.field, relation.targetKind)
+				return result, responses, warnings, "", protocolError(response, "%s returned a %s without distinct Metadata and REST identities", relation.field, relation.targetKind)
 			}
 			if _, exists := seenNodes[neighbor.MetadataID]; exists {
-				return nil, responses, warnings, "", protocolError(response, "%s repeated Metadata ID %q within one connection", relation.field, neighbor.MetadataID)
+				return result, responses, warnings, "", protocolError(response, "%s repeated Metadata ID %q within one connection", relation.field, neighbor.MetadataID)
 			}
 			if _, exists := knownNodes[neighbor.MetadataID]; !exists {
-				if newNodeCount == maxNewNodes {
-					return result, responses, warnings, lineageNodeBoundWarning, nil
+				if newNodeCount+pageNewNodeCount == maxNewNodes {
+					return append(result, pageNodes...), responses, warnings, lineageNodeBoundWarning, nil
 				}
-				newNodeCount++
+				pageNewNodeCount++
 			}
 			seenNodes[neighbor.MetadataID] = struct{}{}
-			result = append(result, neighbor)
+			pageNodes = append(pageNodes, neighbor)
 		}
-		if len(result) > total {
-			return nil, responses, warnings, "", protocolError(response, "%s returned more nodes than totalCount", relation.field)
+		if len(result)+len(pageNodes) > total {
+			return result, responses, warnings, "", protocolError(response, "%s returned more nodes than totalCount", relation.field)
 		}
 		if relationship.PageInfo.HasNextPage == nil {
-			return nil, responses, warnings, "", protocolError(response, "%s omitted pageInfo.hasNextPage", relation.field)
+			return result, responses, warnings, "", protocolError(response, "%s omitted pageInfo.hasNextPage", relation.field)
 		}
-		if len(result) == maxEdges && (len(result) < total || *relationship.PageInfo.HasNextPage) {
-			return result, responses, warnings, lineageEdgeBoundWarning, nil
+		if len(result)+len(pageNodes) == maxEdges && (len(result)+len(pageNodes) < total || *relationship.PageInfo.HasNextPage) {
+			return append(result, pageNodes...), responses, warnings, lineageEdgeBoundWarning, nil
 		}
 		if !*relationship.PageInfo.HasNextPage {
-			if len(result) != total && len(warnings) == 0 {
-				return nil, responses, warnings, "", protocolError(response, "%s ended at %d of %d nodes", relation.field, len(result), total)
+			if len(result)+len(pageNodes) != total && len(warnings) == 0 {
+				return result, responses, warnings, "", protocolError(response, "%s ended at %d of %d nodes", relation.field, len(result)+len(pageNodes), total)
 			}
-			return result, responses, warnings, "", nil
+			return append(result, pageNodes...), responses, warnings, "", nil
 		}
 		cursor := strings.TrimSpace(relationship.PageInfo.EndCursor)
 		if cursor == "" {
-			return nil, responses, warnings, "", protocolError(response, "%s has another page without an end cursor", relation.field)
+			return result, responses, warnings, "", protocolError(response, "%s has another page without an end cursor", relation.field)
 		}
 		if _, exists := seenCursors[cursor]; exists {
-			return nil, responses, warnings, "", protocolError(response, "%s repeated cursor %q", relation.field, cursor)
+			return result, responses, warnings, "", protocolError(response, "%s repeated cursor %q", relation.field, cursor)
 		}
+		result = append(result, pageNodes...)
+		newNodeCount += pageNewNodeCount
 		seenCursors[cursor] = struct{}{}
 		after = cursor
 	}

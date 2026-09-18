@@ -21,17 +21,23 @@ func writeStructuredHelp(out io.Writer, command *cobra.Command) {
 		fmt.Fprintf(out, "Usage: %s help [command ...]\nOmitted: root help. A command path shows its reference.\n", root.Name())
 		return
 	}
-	owner := command
-	if helpAction(command) && command.Parent() != root && (!isHelpNavigation(command.Parent()) || command.Parent().Name() == "workspace") {
-		owner = command.Parent()
-	}
-	if isHelpNavigation(owner) && owner.Name() != "workspace" {
+	owner, focus := helpReferenceOwner(command)
+	if focus == nil && isHelpNavigation(owner) {
 		writeHelpNavigation(out, owner)
 		return
 	}
 	var reference strings.Builder
-	writeOperationalReference(&reference, owner)
+	writeOperationalReference(&reference, owner, focus)
 	fmt.Fprintln(out, strings.TrimRight(reference.String(), "\n"))
+}
+
+func helpReferenceOwner(command *cobra.Command) (owner, focus *cobra.Command) {
+	owner = command
+	root := command.Root()
+	if helpAction(command) && command.Parent() != nil && command.Parent() != root {
+		return command.Parent(), command
+	}
+	return owner, nil
 }
 
 func isHelpNavigation(command *cobra.Command) bool {
@@ -67,7 +73,7 @@ func referenceLeaf(command *cobra.Command) bool {
 	return helpAction(command) || (command.Name() == "completion" && command.Parent() == command.Root() && command.Runnable())
 }
 
-func writeOperationalReference(out io.Writer, owner *cobra.Command) {
+func writeOperationalReference(out io.Writer, owner, focus *cobra.Command) {
 	if owner.Name() == "completion" && owner.Parent() == owner.Root() {
 		fmt.Fprintf(out, "Usage: %s <bash|zsh|fish|powershell>\n", owner.CommandPath())
 		for _, note := range referenceActionNotes(owner) {
@@ -76,8 +82,13 @@ func writeOperationalReference(out io.Writer, owner *cobra.Command) {
 		return
 	}
 	actions := directHelpActions(owner)
+	if focus != nil {
+		actions = []*cobra.Command{focus}
+	}
 	use := owner.CommandPath()
-	if !referenceLeaf(owner) {
+	if focus != nil {
+		use = focus.CommandPath() + strings.TrimPrefix(focus.Use, focus.Name())
+	} else if !referenceLeaf(owner) {
 		use += " <verb>"
 	} else {
 		use += strings.TrimPrefix(owner.Use, owner.Name())
@@ -86,7 +97,7 @@ func writeOperationalReference(out io.Writer, owner *cobra.Command) {
 		use = strings.ReplaceAll(use, "<shell>", "<bash|zsh|fish|powershell>")
 	}
 	fmt.Fprintf(out, "Usage: %s [flags]\n\n", use)
-	if isHelpNavigation(owner) {
+	if focus == nil && isHelpNavigation(owner) {
 		for _, child := range visibleHelpChildren(owner) {
 			if !helpAction(child) {
 				fmt.Fprintf(out, "%s: %s (%s %s -h)\n\n", child.Name(), helpPlainShort(child), owner.CommandPath(), child.Name())
@@ -158,6 +169,7 @@ func writeOperationalReference(out io.Writer, owner *cobra.Command) {
 		fmt.Fprint(out, rules.String())
 		fmt.Fprintln(out)
 	}
+	writeHelpRelatedNotes(out, owner)
 	writeReferenceBatch(out, actions)
 	var examples []string
 	for _, action := range actions {
@@ -172,6 +184,45 @@ func writeOperationalReference(out io.Writer, owner *cobra.Command) {
 		for _, example := range examples {
 			fmt.Fprintln(out, "  "+example)
 		}
+	}
+}
+
+func writeHelpRelatedNotes(out io.Writer, owner *cobra.Command) {
+	notes := helpRelatedNotes(owner)
+	if len(notes) == 0 {
+		return
+	}
+	fmt.Fprintln(out, "Related:")
+	for _, note := range notes {
+		fmt.Fprintf(out, "  %s\n", note)
+	}
+	fmt.Fprintln(out)
+}
+
+func helpRelatedNotes(owner *cobra.Command) []string {
+	path := strings.TrimPrefix(owner.CommandPath(), owner.Root().Name()+" ")
+	switch path {
+	case "content workbook", "content datasource", "content flow", "content project":
+		kind := strings.TrimPrefix(path, "content ")
+		return []string{fmt.Sprintf("Permissions: tadx admin permission -h with --kind %s.", kind)}
+	case "admin group":
+		return []string{"Individual membership changes: tadx admin group-member -h. Use exact returned group IDs."}
+	case "admin label-value", "admin label-category":
+		return []string{"Attach definitions to content with tadx catalog label -h."}
+	case "catalog label":
+		return []string{"Shared definitions: tadx admin label-value -h; categories: tadx admin label-category -h."}
+	case "auth":
+		return []string{"For noninteractive login setup, use env add/update PAT-variable-reference options; flags take variable names, not secrets."}
+	case "admin permission":
+		return []string{"Permission reads and mutations use exact resource and principal IDs; use the owning content or admin help for the corresponding selector."}
+	case "workspace":
+		return []string{"Inspect local artifacts with tadx workspace status -h; artifact file operations use tadx workspace artifact -h."}
+	case "workspace artifact":
+		return []string{"Use tadx workspace status -h for the local artifact inventory."}
+	case "pulse definition", "pulse metric":
+		return []string{"Saved configuration only; TADX does not retrieve current metric values or generated insights."}
+	default:
+		return nil
 	}
 }
 
@@ -310,7 +361,7 @@ func referenceActionNotes(action *cobra.Command) []string {
 		"pulse definition pull":     {"--overwrite replaces dirty local files. Bundle includes saved variants, not followers."},
 		"pulse metric fork":         {"--days only with CUSTOM_N_DAYS (required). Filters: repeat field=value; values are literal.", "Unchanged fields/period inherit the source; selected filter fields replace their prior values."},
 		"admin user create":         {"--name is the unique login, not full name. Site roles/auth methods depend on the site."},
-		"admin user inspect":        {"--name matches the exact unique login, not full name."},
+		"admin user inspect":        {"Use exactly one of --id, --name, or --username. --name and --username both match the exact unique login, not full name; --username is an alias, not a display-name selector."},
 		"catalog database inspect":  {"--id: REST LUID; --metadata-id: Metadata API identity."},
 		"catalog table inspect":     {"--id: REST LUID; --metadata-id: Metadata API identity."},
 		"catalog column inspect":    {"--id: column LUID with --table-id; --metadata-id selects directly."},
@@ -319,6 +370,8 @@ func referenceActionNotes(action *cobra.Command) []string {
 		"catalog column update":     {"Changes upstream column metadata, not the published field override. Empty --description clears."},
 		"cache refresh":             {"Default: all inventory except permissions. --scope permissions opts into per-item permission reads.", "Refresh replaces requested inventory; independent schema/Pulse observations keep their timestamps."},
 		"auth login":                {"Interactive terminal: prompts for PAT name/secret. Configured environment credentials take precedence."},
+		"auth check":                {"Uses the selected environment's configured PAT source for a live check. Set non-secret PAT variable references with env add/update; never put PAT values in config."},
+		"auth status":               {"Local readiness only; it does not contact Tableau. Use auth check after the configured PAT source is ready."},
 		"auth logout":               {"Does not revoke the Tableau PAT; configured environment credentials remain usable."},
 		"mutation set":              {"Changes write permission, not credentials. Obtain explicit approval for the requested scope."},
 		"workspace create":          {"Default root: <home>/TADX/workspaces/<name>; --path overrides it."},
@@ -326,6 +379,12 @@ func referenceActionNotes(action *cobra.Command) []string {
 		"workspace delete":          {"Deletes the registered root; --force acknowledges dirty/invalid artifacts. Unregister keeps files."},
 		"workspace register":        {"Uses existing tadx.yaml identity; optional name must agree."},
 		"workspace clean":           {"Only disposable state; canonical artifact files are preserved."},
+		"admin group inspect":       {"The external-user setting is provider-reported; not reported is distinct from false. Tableau documents it for Embedded Analytics usage-based or capacity-based licensing with Cloud+ or Tableau+; REST may omit the field when the condition is unavailable."},
+		"admin group create":        {"--external-user-enabled requests the documented on-demand external-user setting for Embedded Analytics usage-based or capacity-based licensing with Cloud+ or Tableau+; an omitted provider value is not false."},
+		"admin group update":        {"--set-members replaces all direct members. Repeat --member-id with exact returned user LUIDs; --member-id requires --set-members, and omitting member IDs clears membership."},
+		"admin group-member add":    {"Use exact returned group and user LUIDs. The mutation result identifies the affected membership; inspect the group later with --members when a full read is needed."},
+		"admin group-member remove": {"Use exact returned group and user LUIDs. The mutation result identifies the affected membership; inspect the group later with --members when a full read is needed."},
+		"job wait":                  {"With --receipt, recover the saved target and accepted identity. With --id and no receipt, TADX performs one exact read, creates a local observation receipt, and monitors it without resubmitting work."},
 		"workspace artifact delete": {"Local files only. --force: delete dirty artifacts."},
 		"workspace artifact move":   {"Source/destination: registered workspaces; destination artifact must not exist."},
 		"agent install":             {"--target auto detects installed harnesses. Installs current TADX-owned skills globally; --force is compatibility-only."},
@@ -344,7 +403,7 @@ func referenceActionNotes(action *cobra.Command) []string {
 		"pulse definition list":     {"--all: <=10000; incomplete traversal fails."},
 		"pulse metric list":         {"--all: <=10000; incomplete traversal fails."},
 		"last":                      {"Displays the last saved result; never repeats its command or writes."},
-		"completion":                {"Writes a shell script to stdout (not JSON). Installers normally enable it automatically.", "Session: Bash source <(tadx completion bash); Fish tadx completion fish | source.", "Zsh: autoload -Uz compinit; compinit; source <(tadx completion zsh)", "PowerShell: tadx completion powershell | Out-String | Invoke-Expression", "For persistence, put the corresponding command in your shell profile."},
+		"completion":                {"Writes a shell script to stdout (not JSON). Installers normally enable it automatically.", "Capture and verify: tadx completion bash > tadx-completion.bash; bash -n tadx-completion.bash.", "Session: Bash source <(tadx completion bash); Fish tadx completion fish | source.", "Zsh: autoload -Uz compinit; compinit; source <(tadx completion zsh)", "PowerShell: tadx completion powershell | Out-String | Invoke-Expression. Capture with tadx completion powershell > $env:TEMP\\tadx-completion.ps1; verify with [scriptblock]::Create((Get-Content $env:TEMP\\tadx-completion.ps1 -Raw)).", "For persistence, put the corresponding command in your shell profile."},
 	}
 	return notes[path]
 }

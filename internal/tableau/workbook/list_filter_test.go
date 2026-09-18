@@ -6,8 +6,8 @@ import (
 )
 
 func TestTypedListFilter(t *testing.T) {
-	got, err := adapter.ListFilter(adapter.ListRequest{Name: "Sales", OwnerName: "Owner", ProjectName: "Project", Tag: "Tag"})
-	if err != nil || got != "name:eq:Sales,ownerName:eq:Owner,projectName:eq:Project,tags:eq:Tag" {
+	got, err := adapter.ListFilter(adapter.ListRequest{Name: "Sales", OwnerName: "Owner", ProjectLUID: "project-1", ProjectName: "Project", Tag: "Tag"})
+	if err != nil || got != "name:eq:Sales,ownerName:eq:Owner,projectId:eq:project-1,projectName:eq:Project,tags:eq:Tag" {
 		t.Fatalf("filter=%q error=%v", got, err)
 	}
 	if got, err := adapter.ListFilter(adapter.ListRequest{}); err != nil || got != "" {

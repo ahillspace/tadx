@@ -66,7 +66,7 @@ func TestActionListsOneBoundedDatasourcePage(t *testing.T) {
 		{LUID: "ds-1", Name: "Sales", ProjectLUID: "p-1", ProjectName: "Ops"},
 		{LUID: "ds-2", Name: "Finance", ProjectLUID: "p-2", ProjectName: "Finance"},
 	}}}
-	input := datasourcelist.Input{Environment: "dev", Site: "site", Limit: 2, Name: "Sales", OwnerName: "owner", ProjectName: "Ops", Type: "hyper", Tag: "daily", UpdatedAfter: "2026-01-01T00:00:00Z", UpdatedBefore: "2026-09-01T00:00:00Z"}
+	input := datasourcelist.Input{Environment: "dev", Site: "site", Limit: 2, Name: "Sales", OwnerName: "owner", ProjectLUID: "p-1", ProjectName: "Ops", Type: "hyper", Tag: "daily", UpdatedAfter: "2026-01-01T00:00:00Z", UpdatedBefore: "2026-09-01T00:00:00Z"}
 	output, err := datasourcelist.New(r).Execute(context.Background(), input)
 	if err != nil {
 		t.Fatal(err)
@@ -74,14 +74,14 @@ func TestActionListsOneBoundedDatasourcePage(t *testing.T) {
 	if output.Page.Returned != 2 || output.Page.NextCursor == "" || output.RequestID != "request-1" {
 		t.Fatalf("output = %#v", output)
 	}
-	want := datasourcelist.PageRequest{PageNumber: 1, PageSize: 2, Name: input.Name, OwnerName: input.OwnerName, ProjectName: input.ProjectName, Type: input.Type, Tag: input.Tag, UpdatedAfter: input.UpdatedAfter, UpdatedBefore: input.UpdatedBefore}
+	want := datasourcelist.PageRequest{PageNumber: 1, PageSize: 2, Name: input.Name, OwnerName: input.OwnerName, ProjectLUID: input.ProjectLUID, ProjectName: input.ProjectName, Type: input.Type, Tag: input.Tag, UpdatedAfter: input.UpdatedAfter, UpdatedBefore: input.UpdatedBefore}
 	if r.input != want {
 		t.Fatalf("reader input = %#v", r.input)
 	}
 }
 
 func TestActionCursorIsBoundToEveryDatasourceFilter(t *testing.T) {
-	input := datasourcelist.Input{Environment: "dev", Site: "site-a", Limit: 1, Name: "Private", OwnerName: "owner", ProjectName: "Ops", Type: "hyper", Tag: "daily", UpdatedAfter: "2026-01-01", UpdatedBefore: "2026-09-01"}
+	input := datasourcelist.Input{Environment: "dev", Site: "site-a", Limit: 1, Name: "Private", OwnerName: "owner", ProjectLUID: "p-1", ProjectName: "Ops", Type: "hyper", Tag: "daily", UpdatedAfter: "2026-01-01", UpdatedBefore: "2026-09-01"}
 	first, err := datasourcelist.New(&reader{page: datasourcelist.Page{Number: 1, Size: 1, Total: 2, Datasources: []datasourcelist.Datasource{{LUID: "ds-1"}}}}).Execute(context.Background(), input)
 	if err != nil {
 		t.Fatal(err)
@@ -101,6 +101,7 @@ func TestActionCursorIsBoundToEveryDatasourceFilter(t *testing.T) {
 		{name: "site", mutate: func(v *datasourcelist.Input) { v.Site = "site-b" }},
 		{name: "name", mutate: func(v *datasourcelist.Input) { v.Name = "Other" }},
 		{name: "owner", mutate: func(v *datasourcelist.Input) { v.OwnerName = "Other" }},
+		{name: "project LUID", mutate: func(v *datasourcelist.Input) { v.ProjectLUID = "p-2" }},
 		{name: "project", mutate: func(v *datasourcelist.Input) { v.ProjectName = "Other" }},
 		{name: "type", mutate: func(v *datasourcelist.Input) { v.Type = "sqlserver" }},
 		{name: "tag", mutate: func(v *datasourcelist.Input) { v.Tag = "weekly" }},

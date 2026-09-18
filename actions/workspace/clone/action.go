@@ -4,8 +4,8 @@ package clone
 import (
 	"context"
 	"errors"
-	"github.com/ahillspace/tadx/internal/commandhint"
 
+	"github.com/ahillspace/tadx/internal/commandhint"
 	"github.com/ahillspace/tadx/internal/errs"
 )
 
@@ -38,6 +38,8 @@ type Output struct {
 
 type compactWorkspace struct {
 	Name string `json:"name"`
+	ID   string `json:"id"`
+	Root string `json:"root"`
 }
 
 type compactOutput struct {
@@ -52,7 +54,7 @@ func (o Output) CompactOutput() any {
 	if o.Status == "preview" {
 		return o.previewOutput()
 	}
-	return compactOutput{Status: o.Status, Workspace: compactWorkspace{Name: o.Workspace.Name}, Details: "--full", Help: o.Help}
+	return compactOutput{Status: o.Status, Workspace: compactWorkspace{Name: o.Workspace.Name, ID: o.Workspace.ID, Root: o.Workspace.Root}, Details: "--full", Help: o.Help}
 }
 
 // FullOutput returns bounded workspace identity details.
@@ -94,7 +96,7 @@ func (a *Action) Execute(ctx context.Context, input Input) (Output, error) {
 	}
 	cloned, err := a.cloner.Clone(ctx, input)
 	if err != nil {
-		retryable, correctiveAction := errs.CompleteRetryAdvice(err, "Confirm the source workspace exists and the destination path is empty, then retry.")
+		retryable, correctiveAction := errs.CompleteRetryAdvice(err, "Review the exact workspace collision with tadx workspace list --full; do not overwrite or re-register it automatically. Otherwise confirm the source workspace exists and the destination path is empty, then retry.")
 		return Output{}, &errs.Error{ID: "workspace.clone.failed", Kind: errs.KindOperation, Operation: "workspace.clone", Resource: input.Name, Summary: "Workspace clone failed.", Cause: err, Retryable: retryable, CorrectiveAction: correctiveAction}
 	}
 	if input.Preview {

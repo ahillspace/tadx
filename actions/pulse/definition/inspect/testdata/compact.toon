@@ -5,6 +5,13 @@ definition:
   luid: definition-1
   name: Revenue
   datasource_luid: datasource-1
+  measure_field: Sales
+  aggregation: AGGREGATION_SUM
+  time_dimension: Order Date
+  running_total: false
+  temporality: TEMPORALITY_OVER_TIME
+  allowed_dimensions[1]: Region
+  allowed_granularities[1]: GRANULARITY_BY_MONTH
 details: "--full"
 help[1]: tadx pulse definition pull --id definition-1
 source:

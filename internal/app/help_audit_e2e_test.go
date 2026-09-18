@@ -19,7 +19,8 @@ func TestHelpAuditRequiredFacts(t *testing.T) {
 		{"catalog search", []string{"default types: database+table", "--all: <=10000", "incomplete"}},
 		{"update", []string{"--check: no installation changes", "target omitted: auto"}},
 		{"capability", []string{"Filters: AND", "product: substring", "--mutation=false", "omitted: both"}},
-		{"workspace", []string{"registered workspace", "destination root must not exist"}},
+		{"workspace", []string{"registered workspace", "Use tadx workspace <resource> -h"}},
+		{"workspace clone", []string{"destination root must not exist", "--name", "--path"}},
 		{"workspace artifact", []string{"--force: delete dirty artifacts", "destination artifact must not exist", "workbook|datasource|flow|pulse-definition|lineage"}},
 	} {
 		t.Run(test.path, func(t *testing.T) {

@@ -1,12 +1,9 @@
-Usage: tadx capability <verb> [flags]
+Usage: tadx capability list [flags]
 
 Shared:
   --config <path> --json --full (details, not rows)
 
 Commands:
-  get <id>: Inspect one capability's availability and contract
-    ID: from capability list.
-
   list: List capabilities
     [--domain <domain>] [--limit <1..10000> (default: 20)] [--mutation] [--owner <owner>]
     [--product <product>] [--resource <resource>]

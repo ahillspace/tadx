@@ -110,7 +110,7 @@ func newDatasourcePublish(deps datasourceLifecycleDependencies) *cobra.Command {
 			case replace:
 				input.Mode = datasourcepublish.ModeReplace
 			}
-			return nil
+			return datasourcepublish.ValidateInput(input)
 		},
 		RunE: func(command *cobra.Command, _ []string) error {
 			reporter := progress.New(command.ErrOrStderr())
@@ -134,7 +134,6 @@ func newDatasourcePublish(deps datasourceLifecycleDependencies) *cobra.Command {
 	command.Flags().BoolVar(&overwrite, "overwrite", false, "overwrite the exact colliding datasource")
 	command.Flags().BoolVar(&appendMode, "append", false, "append to the exact colliding datasource")
 	command.Flags().BoolVar(&replace, "replace", false, "replace data in the exact colliding datasource")
-	command.Flags().BoolVar(&input.AsJob, "as-job", false, "Submit as a server-side job and wait for completion.")
 	command.Flags().BoolVar(&preview, "preview", false, "preview the remote mutation without performing it")
 	return command
 }

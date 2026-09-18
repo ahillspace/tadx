@@ -12,6 +12,7 @@ import (
 	lineagepull "github.com/ahillspace/tadx/actions/lineage/pull"
 	"github.com/ahillspace/tadx/internal/identity"
 	render "github.com/ahillspace/tadx/internal/output"
+	"github.com/ahillspace/tadx/internal/value"
 )
 
 type resolver struct{ resource lineagepull.Resource }
@@ -122,6 +123,28 @@ func TestActionPersistsExplicitIncompleteCapture(t *testing.T) {
 	}
 	if w.input.Complete || len(output.Warnings) == 0 || output.CompactOutput().(lineagepull.CompactResult).Artifact.Complete {
 		t.Fatalf("output = %#v, artifact = %#v", output, w.input)
+	}
+}
+
+func TestActionPersistsPartialCaptureAfterProviderFailure(t *testing.T) {
+	w := &writer{}
+	partial := lineagepull.Graph{
+		RootMetadataID: "metadata-wb-1", Complete: false, Failure: &value.LineageFailure{Provider: "tableau-metadata", Relation: "upstreamDatabasesConnection", RootKind: "workbook", RootRESTLUID: "wb-1", RequestID: "request-3"}, Nodes: []lineagepull.Node{
+			{MetadataID: "metadata-wb-1", Kind: "workbook", RESTLUID: "wb-1", Name: "Book"},
+			{MetadataID: "metadata-ds-1", Kind: "published_datasource", RESTLUID: "ds-1", Name: "Sales"},
+		}, Edges: []lineagepull.Edge{{FromMetadataID: "metadata-ds-1", ToMetadataID: "metadata-wb-1", Relationship: "upstream"}},
+		Warnings: []string{"Lineage relationship upstreamDatabasesConnection could not be captured; the graph is incomplete."},
+	}
+	output, err := lineagepull.New(resolver{resource: lineagepull.Resource{Kind: "workbook", LUID: "wb-1", Name: "Book"}}, reader{graph: partial, err: errors.New("provider relation failure")}, w).Execute(context.Background(), lineagepull.Input{Workspace: "workspace", Kind: "workbook", Selector: identity.Selector{LUID: "wb-1"}, Direction: "upstream"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if w.input.Complete || len(w.input.Nodes) != 2 || len(w.input.Edges) != 1 || w.input.CountsKnown || w.input.Failure == nil || w.input.Failure.RequestID != "request-3" {
+		t.Fatalf("written partial artifact = %#v", w.input)
+	}
+	full := output.FullOutput().(lineagepull.FullResult)
+	if len(output.Nodes) != 2 || len(output.Edges) != 1 || output.Complete || len(output.Warnings) == 0 || full.Artifact.Failure == nil || full.Artifact.Failure.Relation != "upstreamDatabasesConnection" {
+		t.Fatalf("output = %#v", output)
 	}
 }
 

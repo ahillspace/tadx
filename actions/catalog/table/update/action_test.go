@@ -16,9 +16,15 @@ func (f *fixture) GetTable(context.Context, string) (value.MetadataTable, error)
 	f.reads++
 	return value.MetadataTable{MetadataIdentity: value.MetadataIdentity{LUID: "item", Name: "Fixture", Type: "table"}, TagsObserved: true}, nil
 }
-func (f *fixture) UpdateTable(context.Context, string, value.MetadataUpdate) (value.MetadataTable, error) {
+func (f *fixture) UpdateTable(_ context.Context, _ string, patch value.MetadataUpdate) (value.MetadataTable, error) {
 	f.writes++
-	return value.MetadataTable{MetadataIdentity: value.MetadataIdentity{LUID: "item"}}, nil
+	return value.MetadataTable{MetadataIdentity: value.MetadataIdentity{LUID: "item"}, Description: patch.Description, ContactLUID: deref(patch.ContactLUID), TagsObserved: true}, nil
+}
+func deref(v *string) string {
+	if v == nil {
+		return ""
+	}
+	return *v
 }
 func (f *fixture) AddTableTags(context.Context, string, []string) ([]string, error) {
 	f.writes++

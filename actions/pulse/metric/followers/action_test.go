@@ -3,6 +3,7 @@ package followers_test
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 
 	"github.com/ahillspace/tadx/actions/pulse/metric/followers"
@@ -45,6 +46,36 @@ func TestFollowersReturnsExactRelationships(t *testing.T) {
 	}
 	if reader.getCalls != 1 || reader.listCalls != 1 {
 		t.Fatalf("get calls = %d, list calls = %d", reader.getCalls, reader.listCalls)
+	}
+}
+
+func TestFollowersNormalizesSuccessfulEmptySubscriptions(t *testing.T) {
+	reader := &reader{metric: followers.Metric{LUID: "metric-1"}}
+	output, err := followers.New(reader).Execute(context.Background(), followers.Input{MetricLUID: "metric-1"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if output.Count != 0 || output.Subscriptions == nil {
+		t.Fatalf("output=%#v", output)
+	}
+	full, ok := output.FullOutput().(followers.Output)
+	if !ok || full.Subscriptions == nil {
+		t.Fatalf("full output=%#v", output.FullOutput())
+	}
+}
+
+func TestFollowersRejectsMalformedMetricSelectorBeforeReading(t *testing.T) {
+	reader := &reader{}
+	_, err := followers.New(reader).Execute(context.Background(), followers.Input{MetricLUID: "metric with spaces"})
+	if err == nil {
+		t.Fatal("expected malformed metric selector error")
+	}
+	if reader.getCalls != 0 || reader.listCalls != 0 {
+		t.Fatalf("reader calls = get:%d list:%d", reader.getCalls, reader.listCalls)
+	}
+	var structured *errs.Error
+	if !errors.As(err, &structured) || structured.ID != "pulse.metric.followers.usage" || !strings.Contains(err.Error(), "metric with spaces") {
+		t.Fatalf("error = %#v", err)
 	}
 }
 

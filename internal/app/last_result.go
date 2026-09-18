@@ -10,12 +10,31 @@ import (
 )
 
 type lastCapture struct {
-	store      lastcommand.Store
-	now        func() time.Time
-	operation  string
-	value      any
-	enabled    bool
-	hintConfig func() string
+	store       lastcommand.Store
+	now         func() time.Time
+	operation   string
+	value       any
+	enabled     bool
+	saved       bool
+	renderError bool
+	hintConfig  func() string
+}
+
+type savedResultWarning struct {
+	Code                 string `json:"code"`
+	Summary              string `json:"summary"`
+	LastPotentiallyStale bool   `json:"last_potentially_stale"`
+	CorrectiveAction     string `json:"corrective_action"`
+}
+
+func lastResultWarning() any {
+	return struct {
+		Warning savedResultWarning `json:"warning"`
+	}{Warning: savedResultWarning{
+		Code: "last_result_save_failed", Summary: "The current result could not be saved; the operation outcome is unchanged.",
+		LastPotentiallyStale: true,
+		CorrectiveAction:     "Retain this output. The previous last result can be stale; do not repeat a mutation to recover its receipt.",
+	}}
 }
 
 func newLastCapture(r *runtimeDependencies) *lastCapture {
@@ -40,5 +59,9 @@ func (c *lastCapture) save(code int) error {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
-	return c.store.Save(ctx, record)
+	if saveErr := c.store.Save(ctx, record); saveErr != nil {
+		return saveErr
+	}
+	c.saved = err == nil
+	return err
 }

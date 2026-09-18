@@ -47,12 +47,7 @@ func New(deps Dependencies) *cobra.Command {
 		RunE: func(command *cobra.Command, _ []string) error {
 			result, err := deps.Installer.Execute(command.Context(), input)
 			if err != nil {
-				if len(result.Skills) > 0 {
-					if renderErr := deps.Renderer.Render(result); renderErr != nil {
-						return renderErr
-					}
-				}
-				return err
+				return clierr.WithOutput(result, err)
 			}
 			return deps.Renderer.Render(result)
 		},

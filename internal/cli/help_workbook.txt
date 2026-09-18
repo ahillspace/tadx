@@ -31,7 +31,7 @@ Commands:
   publish: source (local to Tableau)
     (--project-id (--pid) <luid> | --project <path>) (destination)
     [--name <name>] (default: source) [--overwrite]
-    [--workspace <name>] [--as-job] (waits) [--preview]
+    [--workspace <name>] [--preview]
 
   pull: --id <luid> | (--name <name> [--project <path>]) (download local files)
     [--workspace <name>] [--overwrite] (dirty local files) [--preview]

@@ -29,6 +29,7 @@ type Project struct {
 	Name string
 	// Path preserves names for display; selectors require a unique path match.
 	Path                            string
+	PathUnavailableReason           string
 	Description                     string
 	ParentLUID                      string
 	OwnerLUID                       string
@@ -444,9 +445,13 @@ func (i *pathIndex) path(luid string, visiting map[string]bool) (string, error) 
 }
 
 func normalize(item tableauproject.Project, path string) Project {
+	topLevel := item.TopLevel
+	if topLevel == nil && item.ParentLUID == "" {
+		topLevel = new(true)
+	}
 	return Project{
 		LUID: item.LUID, Name: item.Name, Path: path, Description: item.Description,
-		ParentLUID: item.ParentLUID, OwnerLUID: item.OwnerLUID, TopLevel: item.TopLevel,
+		ParentLUID: item.ParentLUID, OwnerLUID: item.OwnerLUID, TopLevel: topLevel,
 		ContentPermissions: item.ContentPermissions, ControllingPermissionsProjectID: item.ControllingPermissionsProjectID,
 		CreatedAt: item.CreatedAt, UpdatedAt: item.UpdatedAt, ProjectCount: item.ProjectCount,
 		WorkbookCount: item.WorkbookCount, ViewCount: item.ViewCount, DatasourceCount: item.DatasourceCount,

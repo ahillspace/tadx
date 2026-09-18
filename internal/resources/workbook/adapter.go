@@ -214,7 +214,7 @@ func (a *Adapter) ResolveWorkbook(ctx context.Context, selector identity.Selecto
 	}
 	seenByLUID := make(map[string]tableauworkbook.Workbook)
 	itemsByLUID := make(map[string]tableauworkbook.Workbook, 2)
-	err := a.scanWorkbooks(ctx, tableauworkbook.ListRequest{Name: selector.Name}, func(item tableauworkbook.Workbook) error {
+	err := a.scanWorkbooks(ctx, tableauworkbook.ListRequest{Name: selector.Name, ProjectLUID: string(selector.ProjectLUID)}, func(item tableauworkbook.Workbook) error {
 		if selector.Name != "" && item.Name != selector.Name {
 			return nil
 		}
@@ -223,6 +223,9 @@ func (a *Adapter) ResolveWorkbook(ctx context.Context, selector identity.Selecto
 		}
 		if item.ProjectLUID == "" {
 			return fmt.Errorf("matching workbook %q with LUID %q omitted its authoritative project LUID", item.Name, item.LUID)
+		}
+		if selector.ProjectLUID != "" && item.ProjectLUID != string(selector.ProjectLUID) {
+			return nil
 		}
 		if err := recordWorkbookIdentity(seenByLUID, item); err != nil {
 			return err
@@ -292,7 +295,7 @@ func resolveWorkbook(selector identity.Selector, items []tableauworkbook.Workboo
 			}
 			projectPath = resolvedPath
 		}
-		candidate := identity.Candidate{LUID: identity.LUID(item.LUID), Name: item.Name, ProjectPath: projectPath}
+		candidate := identity.Candidate{LUID: identity.LUID(item.LUID), Name: item.Name, ProjectPath: projectPath, ProjectLUID: identity.LUID(item.ProjectLUID)}
 		candidates[index] = candidate
 		if _, exists := byCandidate[candidate]; !exists {
 			byCandidate[candidate] = normalizeWorkbook(item, projectPath)

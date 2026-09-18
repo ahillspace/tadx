@@ -68,10 +68,10 @@ func (a *Action) Execute(ctx context.Context, input Input, preview bool) (Output
 	result, err := a.creator.CreateSubscription(ctx, CreateRequest{MetricLUID: input.MetricLUID, FollowerType: typeName, FollowerLUID: luid})
 	if err != nil {
 		retryable, corrective := errs.CompleteRetryAdvice(err, "Inspect the remote follow outcome before retrying.")
-		return Output{}, &errs.Error{ID: "pulse.metric.follow.failed", Kind: errs.KindOperation, Operation: "pulse.metric.follow", Resource: input.MetricLUID, Environment: input.Environment, Site: input.Site, Summary: "Pulse metric follow failed.", Cause: err, Retryable: retryable, CorrectiveAction: corrective, TableauRequestID: errs.TableauRequestID(err)}
+		return Output{}, &errs.Error{ID: "pulse.metric.follow.failed", Kind: errs.KindOperation, Operation: "pulse.metric.follow", Resource: input.MetricLUID, Environment: input.Environment, Site: input.Site, Summary: "Pulse metric follow failed.", Cause: err, Retryable: retryable, CorrectiveAction: corrective, TableauRequestID: errs.TableauRequestID(err), Phase: errs.PhaseSubmission, Outcome: errs.OutcomeUnknown}
 	}
 	if result.Status != "followed" && result.Status != "already_following" {
-		return Output{}, fail("pulse.metric.follow.invalid_response", errs.KindOperation, input, "Tableau returned an unknown Pulse follow status.", nil)
+		return Output{}, &errs.Error{ID: "pulse.metric.follow.invalid_response", Kind: errs.KindOperation, Operation: "pulse.metric.follow", Resource: input.MetricLUID, Environment: input.Environment, Site: input.Site, Summary: "Tableau returned an unknown Pulse follow status.", Retryable: errs.Bool(false), CorrectiveAction: "Inspect the exact Pulse metric followers before retrying; do not replay an uncertain follow.", Phase: errs.PhaseSubmission, Outcome: errs.OutcomeUnknown}
 	}
 	output.Result = &result
 	output.Help = []string{commandhint.Environment(input.Environment, "pulse", "metric", "followers", "--id", input.MetricLUID)}
@@ -89,5 +89,5 @@ func resolveFailure(target string, input Input, cause error) error {
 	return &errs.Error{ID: "pulse.metric.follow." + target + ".resolve", Kind: errs.KindOperation, Operation: "pulse.metric.follow", Resource: resource, Environment: input.Environment, Site: input.Site, Summary: "Pulse follow identity resolution failed.", Cause: cause, Retryable: retryable, CorrectiveAction: corrective, TableauRequestID: errs.TableauRequestID(cause), Phase: errs.PhaseVerification, Outcome: errs.OutcomeNotAttempted, Prerequisite: &errs.Prerequisite{Kind: target, Resource: resource, Summary: summary}}
 }
 func fail(id string, kind errs.Kind, input Input, summary string, cause error) error {
-	return &errs.Error{ID: id, Kind: kind, Operation: "pulse.metric.follow", Resource: input.MetricLUID, Environment: input.Environment, Site: input.Site, Summary: summary, Cause: cause, Retryable: errs.Bool(false), CorrectiveAction: "Provide one exact metric and one exact user or group LUID, then review a new preview."}
+	return &errs.Error{ID: id, Kind: kind, Operation: "pulse.metric.follow", Resource: input.MetricLUID, Environment: input.Environment, Site: input.Site, Summary: summary, Cause: cause, Retryable: errs.Bool(false), CorrectiveAction: "Provide one exact metric and one exact user or group LUID, then review a new preview.", Phase: errs.PhaseValidation, Outcome: errs.OutcomeNotAttempted}
 }

@@ -33,7 +33,7 @@ type LoggingChecker interface {
 	CheckLogging(context.Context, Scope) (LoggingState, error)
 }
 
-// Dependencies contains independent bounded doctor probes.
+// Dependencies contains bounded doctor probes with explicit prerequisites.
 type Dependencies struct {
 	Configuration ConfigurationChecker
 	PAT           PATChecker
@@ -58,14 +58,23 @@ func (a *Action) Execute(ctx context.Context, input Input) (Output, error) {
 		return Output{}, &errs.Error{ID: "doctor.run.usage", Kind: errs.KindUsage, Operation: "doctor.run", Summary: "Doctor scopes must be logical names, not paths.", Retryable: errs.Bool(false), CorrectiveAction: "Provide an environment alias or workspace name.", Validation: []errs.ValidationDetail{{Field: "scope", Code: "invalid", Message: "scope contains a path separator"}}}
 	}
 	scope := Scope{Environment: input.Environment, Workspace: input.Workspace}
-	checks := []Check{
-		a.checkConfiguration(ctx, scope),
-		a.checkPAT(ctx, scope),
-		a.checkConnectivity(ctx, scope),
-		a.checkCache(ctx, scope),
-		a.checkWorkspace(ctx, scope),
-		a.checkLogging(ctx, scope),
+	configuration := a.checkConfiguration(ctx, scope)
+	checks := []Check{configuration}
+	if configuration.Status != StatusPass {
+		for _, id := range []string{"auth.pat.references", "auth.tableau.connectivity", "cache.status", "workspace.status"} {
+			checks = append(checks, blocked(id, configuration.ID))
+		}
+	} else {
+		pat := a.checkPAT(ctx, scope)
+		checks = append(checks, pat)
+		if pat.Status == StatusFail {
+			checks = append(checks, blocked("auth.tableau.connectivity", pat.ID))
+		} else {
+			checks = append(checks, a.checkConnectivity(ctx, scope))
+		}
+		checks = append(checks, a.checkCache(ctx, scope), a.checkWorkspace(ctx, scope))
 	}
+	checks = append(checks, a.checkLogging(ctx, scope))
 	counts := Counts{}
 	status := StatusPass
 	for _, check := range checks {
@@ -80,9 +89,16 @@ func (a *Action) Execute(ctx context.Context, input Input) (Output, error) {
 		case StatusFail:
 			counts.Fail++
 			status = StatusFail
+		case StatusBlocked:
+			counts.Blocked++
+		case StatusInfo:
+			counts.Info++
 		}
 	}
 	summary := fmt.Sprintf("%d checks completed: %d passed, %d warnings, %d failed.", len(checks), counts.Pass, counts.Warn, counts.Fail)
+	if counts.Blocked != 0 || counts.Info != 0 {
+		summary = fmt.Sprintf("%d checks completed: %d passed, %d informational, %d warnings, %d failed; %d blocked.", len(checks)-counts.Blocked, counts.Pass, counts.Info, counts.Warn, counts.Fail, counts.Blocked)
+	}
 	return Output{Status: status, Scope: scope, Counts: counts, Summary: summary, Checks: checks, Help: []string{commandhint.Target(scope.Environment, scope.Workspace, "doctor", "--full")}}, nil
 }
 
@@ -93,7 +109,9 @@ func (a *Action) checkConfiguration(ctx context.Context, scope Scope) Check {
 	}
 	state, err := a.dependencies.Configuration.CheckConfiguration(ctx, scope)
 	if err != nil {
-		return fail(id, "Configuration could not be validated.", "Review the configuration and selected environment.")
+		check := fail(id, "Configuration could not be validated.", "Review the selected CLI settings file, not the workspace manifest; correct the reported profile or field.")
+		check.Cause, check.ConfigPath = state.Cause, state.ConfigPath
+		return check
 	}
 	if !state.Present {
 		return fail(id, "Configuration is missing.", "Create a TADX configuration with an environment profile.")
@@ -107,12 +125,17 @@ func (a *Action) checkConfiguration(ctx context.Context, scope Scope) Check {
 	return pass(id, "Configuration and environment resolution are valid.")
 }
 
-func (a *Action) checkPAT(ctx context.Context, scope Scope) Check {
+func (a *Action) checkPAT(ctx context.Context, scope Scope) (check Check) {
 	const id = "auth.pat.references"
 	if a.dependencies.PAT == nil {
 		return fail(id, "PAT reference checking is unavailable.", "Configure the PAT reference checker.")
 	}
 	state, err := a.dependencies.PAT.CheckPATReferences(ctx, scope)
+	defer func() {
+		if state.NameVariable != "" || state.SecretVariable != "" || state.Source != "" {
+			check.PAT = &state
+		}
+	}()
 	if err != nil {
 		return fail(id, "PAT references could not be checked.", "Review the selected environment PAT references.")
 	}
@@ -126,7 +149,7 @@ func (a *Action) checkPAT(ctx context.Context, scope Scope) Check {
 		return pass(id, "PAT environment variables are present.")
 	}
 	if state.StoredCredentialPresent {
-		return pass(id, "A PAT is configured in the native OS credential store.")
+		return pass(id, "A stored PAT reference is configured; this local check does not verify its credentials.")
 	}
 	return fail(id, "No complete PAT source is configured.", "Run "+commandhint.Environment(scope.Environment, "auth", "login")+", or set both referenced PAT variables.")
 }
@@ -159,7 +182,7 @@ func (a *Action) checkCache(ctx context.Context, scope Scope) Check {
 		return fail(id, "Cache status could not be read.", "Repair or refresh the local cache.")
 	}
 	if !state.Present {
-		return warn(id, "No cache generation is available.", "Run "+commandhint.Environment(scope.Environment, "cache", "refresh")+".")
+		return Check{ID: id, Status: StatusInfo, Summary: "No optional cache is present; live operations do not require it.", CorrectiveAction: "No action required for live operations. Refresh explicitly only when cached discovery is needed."}
 	}
 	if !state.Complete {
 		return warn(id, "The current cache generation is incomplete.", "Run "+commandhint.Environment(scope.Environment, "cache", "refresh")+" and review any reported scope failures.")
@@ -222,6 +245,10 @@ func warn(id, summary, correctiveAction string) Check {
 
 func fail(id, summary, correctiveAction string) Check {
 	return Check{ID: id, Status: StatusFail, Summary: summary, CorrectiveAction: correctiveAction}
+}
+
+func blocked(id, prerequisite string) Check {
+	return Check{ID: id, Status: StatusBlocked, Summary: "Check did not run because its prerequisite failed.", BlockedBy: prerequisite, CorrectiveAction: "Resolve " + prerequisite + " before running this dependent check."}
 }
 
 func pathLike(value string) bool {

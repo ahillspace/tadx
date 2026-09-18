@@ -258,7 +258,6 @@ func newPublish(deps Dependencies) *cobra.Command {
 	command.Flags().StringVar(&projectID, "project-id", "", "authoritative destination project LUID")
 	command.Flags().StringVar(&projectPath, "project", "", "exact slash-delimited destination project path")
 	command.Flags().BoolVar(&input.Overwrite, "overwrite", false, "replace the exact colliding workbook")
-	command.Flags().BoolVar(&input.AsJob, "as-job", false, "Submit as a server-side job and wait for completion.")
 	command.Flags().BoolVar(&preview, "preview", false, "preview the remote mutation without performing it")
 	return command
 }

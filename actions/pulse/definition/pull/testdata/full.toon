@@ -7,5 +7,12 @@ artifact:
   canonical_path: artifacts/pulse-definition/Revenue--identity/resource.json
   baseline_fingerprint: "sha256:value"
 metric_count: 2
+provenance:
+  environment: dev
+  site: sales
+  server_origin: "https://example.test"
+  site_luid: site-1
+  workspace: workspace
+  datasource_luid: datasource-1
 tableau_request_id: request-1
 help[1]: Inspect artifacts/pulse-definition/Revenue--identity/resource.json.

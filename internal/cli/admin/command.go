@@ -178,15 +178,22 @@ func newUserList(deps Dependencies) *cobra.Command {
 }
 func newUserInspect(deps Dependencies) *cobra.Command {
 	var in userinspect.Input
-	var id, name string
+	var id, name, username string
 	cmd := &cobra.Command{Use: "inspect", Short: "Inspect one exact site user.", Annotations: map[string]string{"tadx.capability": "admin.user.inspect"}, Args: func(cmd *cobra.Command, args []string) error {
 		if err := noArgs("admin.user.inspect")(cmd, args); err != nil {
 			return err
 		}
-		if (id == "") == (name == "") {
-			return clierr.Usage("admin.user.inspect", errors.New("use exactly one of --id or --name"))
+		if name != "" && username != "" {
+			return clierr.Usage("admin.user.inspect", errors.New("--name and --username select the same exact login; provide only one"))
 		}
-		in.SetSelector(id, name)
+		login := name
+		if username != "" {
+			login = username
+		}
+		if (id == "") == (login == "") {
+			return clierr.Usage("admin.user.inspect", errors.New("use exactly one of --id, --name, or --username"))
+		}
+		in.SetSelector(id, login)
 		return nil
 	}, RunE: func(cmd *cobra.Command, _ []string) error {
 		out, err := deps.UserInspector.InspectAdminUser(cmd.Context(), in)
@@ -198,6 +205,8 @@ func newUserInspect(deps Dependencies) *cobra.Command {
 	cmd.Flags().StringVar(&in.Environment, "environment", "", "exact environment alias; defaults to the configured read environment")
 	cmd.Flags().StringVar(&id, "id", "", "authoritative user LUID")
 	cmd.Flags().StringVar(&name, "name", "", "exact Tableau username")
+	cmd.Flags().StringVar(&username, "username", "", "exact Tableau login; equivalent to --name, not a display name")
+	cmd.MarkFlagsMutuallyExclusive("id", "name", "username")
 	cmd.Flags().BoolVar(&in.Cache, "cache", false, "read indexed local cache data without contacting Tableau")
 	return cmd
 }
@@ -345,7 +354,7 @@ func newGroupInspect(deps Dependencies) *cobra.Command {
 	cmd.Flags().StringVar(&in.Environment, "environment", "", "exact environment alias; defaults to the configured read environment")
 	cmd.Flags().StringVar(&id, "id", "", "authoritative group LUID")
 	cmd.Flags().StringVar(&name, "name", "", "exact group name")
-	cmd.Flags().BoolVar(&in.IncludeMembers, "members", false, "include bounded direct membership")
+	cmd.Flags().BoolVar(&in.IncludeMembers, "members", false, "include all observed direct members")
 	cmd.Flags().BoolVar(&in.Cache, "cache", false, "read indexed local cache data without contacting Tableau")
 	return cmd
 }

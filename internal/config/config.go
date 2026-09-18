@@ -345,6 +345,9 @@ func (c Config) ResolveEnvironment(alias string) (Environment, error) {
 // Update and clobber its write.
 func Load(path string) (Config, error) {
 	configuration, _, _, err := load(path)
+	if err != nil {
+		return configuration, &LoadError{Path: path, Cause: err}
+	}
 	return configuration, err
 }
 
@@ -380,6 +383,12 @@ func load(path string) (Config, []byte, bool, error) {
 	decoder.KnownFields(true)
 	var configuration Config
 	if err := decoder.Decode(&configuration); err != nil {
+		var document struct {
+			Workspace *struct{ ID, Name string } `yaml:"workspace"`
+		}
+		if yaml.Unmarshal(data, &document) == nil && document.Workspace != nil {
+			return Config{}, nil, false, fmt.Errorf("workspace manifest supplied as CLI settings; use --config for CLI settings and --workspace for a registered workspace: %w", err)
+		}
 		return Config{}, nil, false, fmt.Errorf("decode configuration: %w", err)
 	}
 	var trailing yaml.Node

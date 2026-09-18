@@ -4,6 +4,8 @@ plan:
   source_luid: ""
   mode: preview
   operation: workbook.publish
+  artifact_path: "C:\\workspace\\Finance"
+  source_kind: managed_artifact
   filename: Finance.twbx
   workbook_name: Finance
   target:
@@ -13,6 +15,5 @@ plan:
     project_luid: project-1
     project_path: Ops
   overwrite: false
-  as_job: false
 details: "--full"
 help[1]: Run without --preview to publish this exact plan.

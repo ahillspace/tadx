@@ -26,6 +26,64 @@ func (p fixedCredentialPrompter) ReadPATSecret(context.Context) (string, error) 
 	return p.secret, nil
 }
 
+type rejectCredentialPrompter struct{ calls int }
+
+func (*rejectCredentialPrompter) IsTerminal() bool { return true }
+func (p *rejectCredentialPrompter) ReadPATName(context.Context) (string, error) {
+	p.calls++
+	return "new-name", nil
+}
+func (p *rejectCredentialPrompter) ReadPATSecret(context.Context) (string, error) {
+	p.calls++
+	return "new-secret", nil
+}
+
+func TestAuthLoginEnvironmentOverrideStopsBeforePrompt(t *testing.T) {
+	t.Setenv("TADX_DEV_PAT_NAME", "existing-name")
+	t.Setenv("TADX_DEV_PAT_SECRET", "existing-secret")
+	prompter := &rejectCredentialPrompter{}
+	var out bytes.Buffer
+	code := Run(t.Context(), []string{"auth", "login", "--environment", "dev", "--json"}, &out, Options{ConfigPath: authConfig(t, ""), AuthPrompter: prompter})
+	if code == 0 || prompter.calls != 0 || !strings.Contains(out.String(), "TADX_DEV_PAT_NAME") || !strings.Contains(out.String(), "override") {
+		t.Fatalf("code=%d prompts=%d output=%s", code, prompter.calls, out.Bytes())
+	}
+	if strings.Contains(out.String(), "existing-secret") || strings.Contains(out.String(), "existing-name") {
+		t.Fatal("credential value exposed")
+	}
+}
+
+func TestAuthCheckFailureRetainsChosenSource(t *testing.T) {
+	t.Setenv("TADX_DEV_PAT_NAME", "fixture-name")
+	t.Setenv("TADX_DEV_PAT_SECRET", "fixture-secret")
+	calls := 0
+	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls++
+		w.Header().Set("Content-Type", "application/xml")
+		w.WriteHeader(http.StatusUnauthorized)
+		_, _ = io.WriteString(w, `<tsResponse><error code="401001"><summary>Sign-in failed</summary><detail>Invalid credentials</detail></error></tsResponse>`)
+	}))
+	defer server.Close()
+	path := authConfig(t, "")
+	cfg, err := config.Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	env := cfg.Environments["dev"]
+	env.URL = server.URL
+	cfg.Environments["dev"] = env
+	if err := config.Save(path, cfg); err != nil {
+		t.Fatal(err)
+	}
+	var out bytes.Buffer
+	code := Run(t.Context(), []string{"auth", "check", "--environment", "dev", "--json"}, &out, Options{ConfigPath: path, HTTPClient: server.Client()})
+	if code == 0 || calls != 1 || !strings.Contains(out.String(), `"credential_source":"environment"`) || !strings.Contains(out.String(), `"status":"authentication_failed"`) {
+		t.Fatalf("code=%d requests=%d output=%s", code, calls, out.Bytes())
+	}
+	if strings.Contains(out.String(), "fixture-secret") || strings.Contains(out.String(), "fixture-name") {
+		t.Fatal("credential value exposed")
+	}
+}
+
 func TestAuthLoginCheckAndLogoutThroughCLI(t *testing.T) {
 	t.Setenv("TADX_DEV_PAT_NAME", "")
 	t.Setenv("TADX_DEV_PAT_SECRET", "")

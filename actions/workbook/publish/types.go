@@ -87,12 +87,13 @@ type Plan struct {
 	Mode                string   `json:"mode"`
 	Operation           string   `json:"operation"`
 	ArtifactPath        string   `json:"artifact_path"`
+	SourceKind          string   `json:"source_kind"`
 	ArtifactFingerprint string   `json:"artifact_fingerprint"`
 	Filename            string   `json:"filename"`
 	WorkbookName        string   `json:"workbook_name"`
 	Target              Target   `json:"target"`
 	Overwrite           bool     `json:"overwrite"`
-	AsJob               bool     `json:"as_job"`
+	AsJob               bool     `json:"-"`
 	Warnings            []string `json:"warnings,omitempty"`
 	Substeps            []string `json:"substeps"`
 	request             PublishRequest
@@ -128,6 +129,8 @@ type Result struct {
 	ProjectLUID        string            `json:"project_luid,omitempty"`
 	JobID              string            `json:"tableau_job_id,omitempty"`
 	TableauRequestID   string            `json:"tableau_request_id,omitempty"`
+	ReceiptPath        string            `json:"receipt_path,omitempty"`
+	Verification       string            `json:"verification,omitempty"`
 	ValidationWarnings []ValidationIssue `json:"validation_warnings,omitempty"`
 }
 
@@ -145,12 +148,13 @@ type CompactPlan struct {
 	SourceLUID      string   `json:"source_luid"`
 	Mode            string   `json:"mode"`
 	Operation       string   `json:"operation"`
-	ArtifactPath    string   `json:"-"`
+	ArtifactPath    string   `json:"artifact_path"`
+	SourceKind      string   `json:"source_kind"`
 	Filename        string   `json:"filename"`
 	WorkbookName    string   `json:"workbook_name"`
 	Target          Target   `json:"target"`
 	Overwrite       bool     `json:"overwrite"`
-	AsJob           bool     `json:"as_job"`
+	AsJob           bool     `json:"-"`
 	Warnings        []string `json:"warnings,omitempty"`
 	WarningsOmitted int      `json:"warnings_omitted,omitempty"`
 }
@@ -162,6 +166,8 @@ type CompactPublishResult struct {
 	WorkbookName    string `json:"workbook_name,omitempty"`
 	ProjectLUID     string `json:"project_luid,omitempty"`
 	JobID           string `json:"tableau_job_id,omitempty"`
+	ReceiptPath     string `json:"receipt_path,omitempty"`
+	Verification    string `json:"verification,omitempty"`
 	WarningsOmitted int    `json:"validation_warnings_omitted,omitempty"`
 }
 
@@ -181,12 +187,13 @@ type FullPlan struct {
 	Mode                string   `json:"mode"`
 	Operation           string   `json:"operation"`
 	ArtifactPath        string   `json:"artifact_path"`
+	SourceKind          string   `json:"source_kind"`
 	ArtifactFingerprint string   `json:"artifact_fingerprint"`
 	Filename            string   `json:"filename"`
 	WorkbookName        string   `json:"workbook_name"`
 	Target              Target   `json:"target"`
 	Overwrite           bool     `json:"overwrite"`
-	AsJob               bool     `json:"as_job"`
+	AsJob               bool     `json:"-"`
 	Warnings            []string `json:"warnings,omitempty"`
 	WarningsOmitted     int      `json:"warnings_omitted,omitempty"`
 	Substeps            []string `json:"substeps"`
@@ -200,6 +207,8 @@ type FullPublishResult struct {
 	ProjectLUID               string            `json:"project_luid,omitempty"`
 	JobID                     string            `json:"tableau_job_id,omitempty"`
 	TableauRequestID          string            `json:"tableau_request_id,omitempty"`
+	ReceiptPath               string            `json:"receipt_path,omitempty"`
+	Verification              string            `json:"verification,omitempty"`
 	ValidationWarnings        []ValidationIssue `json:"validation_warnings,omitempty"`
 	ValidationWarningsOmitted int               `json:"validation_warnings_omitted,omitempty"`
 }
@@ -215,7 +224,7 @@ type FullResult struct {
 func (o Output) CompactOutput() any {
 	warnings, omitted := boundWarnings(o.Plan.Warnings)
 	plan := CompactPlan{Workspace: o.Plan.Workspace, Kind: "workbook", SourceLUID: o.Plan.SourceLUID,
-		Mode: o.Plan.Mode, Operation: o.Plan.Operation, ArtifactPath: o.Plan.ArtifactPath,
+		Mode: o.Plan.Mode, Operation: o.Plan.Operation, ArtifactPath: o.Plan.ArtifactPath, SourceKind: o.Plan.SourceKind,
 		Filename: o.Plan.Filename, WorkbookName: o.Plan.WorkbookName, Target: o.Plan.Target,
 		Overwrite: o.Plan.Overwrite, AsJob: o.Plan.AsJob, Warnings: warnings, WarningsOmitted: omitted,
 	}
@@ -223,7 +232,7 @@ func (o Output) CompactOutput() any {
 	if o.Result != nil {
 		result = &CompactPublishResult{
 			Status: o.Result.Status, WorkbookLUID: o.Result.WorkbookLUID, WorkbookName: o.Result.WorkbookName,
-			ProjectLUID: o.Result.ProjectLUID, JobID: o.Result.JobID,
+			ProjectLUID: o.Result.ProjectLUID, JobID: o.Result.JobID, ReceiptPath: o.Result.ReceiptPath, Verification: o.Result.Verification,
 			WarningsOmitted: len(o.Result.ValidationWarnings),
 		}
 	}
@@ -235,7 +244,7 @@ func (o Output) FullOutput() any {
 	warnings, warningsOmitted := boundWarnings(o.Plan.Warnings)
 	full := FullResult{
 		Plan: FullPlan{Workspace: o.Plan.Workspace, Kind: "workbook", SourceLUID: o.Plan.SourceLUID,
-			Mode: o.Plan.Mode, Operation: o.Plan.Operation, ArtifactPath: o.Plan.ArtifactPath,
+			Mode: o.Plan.Mode, Operation: o.Plan.Operation, ArtifactPath: o.Plan.ArtifactPath, SourceKind: o.Plan.SourceKind,
 			ArtifactFingerprint: o.Plan.ArtifactFingerprint, Filename: o.Plan.Filename,
 			WorkbookName: o.Plan.WorkbookName, Target: o.Plan.Target, Overwrite: o.Plan.Overwrite,
 			AsJob: o.Plan.AsJob, Warnings: warnings, WarningsOmitted: warningsOmitted, Substeps: o.Plan.Substeps,
@@ -246,7 +255,7 @@ func (o Output) FullOutput() any {
 		validationWarnings, validationWarningsOmitted := boundValidationWarnings(o.Result.ValidationWarnings)
 		full.Result = &FullPublishResult{
 			Status: o.Result.Status, WorkbookLUID: o.Result.WorkbookLUID, WorkbookName: o.Result.WorkbookName,
-			ProjectLUID: o.Result.ProjectLUID, JobID: o.Result.JobID, TableauRequestID: o.Result.TableauRequestID,
+			ProjectLUID: o.Result.ProjectLUID, JobID: o.Result.JobID, TableauRequestID: o.Result.TableauRequestID, ReceiptPath: o.Result.ReceiptPath, Verification: o.Result.Verification,
 			ValidationWarnings: validationWarnings, ValidationWarningsOmitted: validationWarningsOmitted,
 		}
 	}

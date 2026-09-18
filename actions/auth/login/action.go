@@ -3,7 +3,6 @@ package login
 import (
 	"context"
 	"errors"
-	"github.com/ahillspace/tadx/internal/commandhint"
 	"strings"
 
 	"github.com/ahillspace/tadx/internal/errs"
@@ -34,6 +33,15 @@ type Action struct {
 // New creates auth.login.
 func New(resolver Resolver, authenticator Authenticator, store Store) *Action {
 	return &Action{resolver: resolver, authenticator: authenticator, store: store}
+}
+
+// Preflight resolves the environment before CLI plumbing requests any PAT input.
+func (a *Action) Preflight(ctx context.Context, environment string) error {
+	if a == nil || a.resolver == nil {
+		return usage("Authentication setup is unavailable.")
+	}
+	_, err := a.resolver.Resolve(ctx, environment)
+	return err
 }
 
 // Execute validates the PAT before allowing storage.
@@ -83,7 +91,7 @@ func (a *Action) Execute(ctx context.Context, input Input) (Output, error) {
 	return Output{
 		Status: "stored", Environment: target.Environment, CredentialSource: CredentialSourceOS, Validated: true,
 		SiteLUID: identity.SiteLUID, UserLUID: identity.UserLUID, Warnings: warnings,
-		Help: []string{commandhint.Environment(target.Environment, "auth", "check")},
+		Help: []string{},
 	}, nil
 }
 

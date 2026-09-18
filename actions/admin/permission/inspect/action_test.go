@@ -44,3 +44,18 @@ func TestExecuteDoesNotMutateReaderRules(t *testing.T) {
 		}
 	}
 }
+
+func TestFullOutputKeepsAllFetchedRules(t *testing.T) {
+	rules := make([]permissionget.Rule, 201)
+	for i := range rules {
+		rules[i] = permissionget.Rule{PrincipalType: "user", PrincipalLUID: "u-" + string(rune(i+1)), Capability: "Read", Mode: "Allow"}
+	}
+	out, err := permissionget.New(reader{set: permissionget.PermissionSet{ResourceKind: "workbook", ResourceLUID: "wb-1", Source: "explicit", Rules: rules}}).Execute(context.Background(), permissionget.Input{ResourceKind: "workbook", ResourceLUID: "wb-1"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	full := out.FullOutput().(permissionget.FullResult)
+	if len(full.Permissions.Rules) != len(rules) || full.Permissions.RulesOmitted != 0 {
+		t.Fatalf("full rules = %d omitted=%d, want %d and 0", len(full.Permissions.Rules), full.Permissions.RulesOmitted, len(rules))
+	}
+}

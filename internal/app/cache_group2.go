@@ -18,6 +18,7 @@ import (
 	"github.com/ahillspace/tadx/internal/config"
 	"github.com/ahillspace/tadx/internal/tableau"
 	tableaucache "github.com/ahillspace/tadx/internal/tableau/cache"
+	"github.com/ahillspace/tadx/internal/value"
 )
 
 const cacheSourceName = "tableau-rest"
@@ -189,10 +190,18 @@ func (s cacheStoreStatuser) Status(ctx context.Context, input cachestatus.Input)
 	if err != nil {
 		return cachestatus.Result{}, err
 	}
-	if result.GenerationID == "" {
-		return cachestatus.Result{Environment: result.Environment, Site: result.Site, Path: result.Path}, nil
+	retained := make([]value.CachedObservation, len(result.Retained))
+	for i, item := range result.Retained {
+		retained[i] = value.CachedObservation{Kind: item.Kind, Records: item.Records, Complete: item.Complete, Stale: item.Stale, Oldest: item.Oldest.UTC().Format(time.RFC3339Nano), Newest: item.Newest.UTC().Format(time.RFC3339Nano)}
 	}
-	return cachestatus.Result{ID: result.GenerationID, Environment: result.Environment, Site: result.Site, GeneratedAt: result.GeneratedAt.UTC().Format(time.RFC3339Nano), Age: result.Age.String(), Complete: result.Complete, Stale: result.Stale, Source: result.Source, Path: result.Path, Records: result.RecordCount, Warnings: append([]string(nil), result.Warnings...)}, nil
+	if result.GenerationID == "" {
+		return cachestatus.Result{Retained: retained, Environment: result.Environment, Site: result.Site, Path: result.Path}, nil
+	}
+	coverage := make([]value.CacheCoverage, len(result.Coverage))
+	for i, scope := range result.Coverage {
+		coverage[i] = value.CacheCoverage{Scope: scope.Scope, Requested: scope.Requested, Complete: scope.Complete, Records: scope.Records}
+	}
+	return cachestatus.Result{Retained: retained, Coverage: coverage, ID: result.GenerationID, Environment: result.Environment, Site: result.Site, GeneratedAt: result.GeneratedAt.UTC().Format(time.RFC3339Nano), Age: result.Age.String(), Complete: result.Complete, Stale: result.Stale, Source: result.Source, Path: result.Path, Records: result.RecordCount, Warnings: append([]string(nil), result.Warnings...)}, nil
 }
 
 type cacheGroup2Commands struct{ runtime *runtimeDependencies }

@@ -12,4 +12,7 @@ func (o Output) CompactOutput() any {
 	}
 	return visibleOutput(o)
 }
-func (o Output) FullOutput() any { return o.CompactOutput() }
+
+// FullOutput retains the complete bounded contract, including delegated
+// capabilities, without applying the compact out-of-scope projection.
+func (o Output) FullOutput() any { return visibleOutput(o) }

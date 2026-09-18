@@ -78,11 +78,15 @@ func cacheReadError(operation, environment, site string, err error) error {
 	var invalidCursor interface{ InvalidCacheCursor() bool }
 	var refreshRequired interface{ CacheProjectRefreshRequired() bool }
 	var schemaRefreshRequired interface{ CacheSchemaRefreshRequired() bool }
+	var incompatible interface{ CacheSchemaIncompatible() bool }
 	if errors.As(err, &refreshRequired) && refreshRequired.CacheProjectRefreshRequired() {
 		return &errs.Error{ID: "cache.project_filter_unavailable", Kind: errs.KindOperation, Operation: operation, Environment: environment, Site: site, Summary: "The cache lacks complete project identity coverage for this filter.", Cause: err, Retryable: errs.Bool(false), CorrectiveAction: "Run " + commandhint.Command("cache", "refresh", "--environment", environment, "--scope", "projects,datasources") + ", then repeat the same --cache command."}
 	}
 	correctiveAction := cacheReadRecovery(operation, environment)
 	switch {
+	case errors.As(err, &incompatible) && incompatible.CacheSchemaIncompatible():
+		id, summary = "cache.schema_incompatible", "The cache schema is inconsistent or unsupported by this build."
+		correctiveAction = "Preserve the cache and repair its schema or use a compatible TADX version. For a live answer, explicitly repeat the command without --cache; an identical refresh is not a repair."
 	case errors.As(err, &schemaRefreshRequired) && schemaRefreshRequired.CacheSchemaRefreshRequired():
 		id, summary = "cache.schema_refresh_required", "The cache schema requires an explicit refresh before cached reads can continue."
 		refresh := cacheScopeRefreshCommand(operation, environment)
@@ -173,7 +177,7 @@ func (r *cacheWorkbookListReader) ListWorkbooks(ctx context.Context, input workb
 	if input.OwnerName != "" || input.ProjectName != "" || input.Tag != "" {
 		return workbooklist.Page{}, unsupportedCacheFilters("workbook.list", r.environment, r.site)
 	}
-	result, err := r.store.ReadResources(ctx, cache.ResourceQuery{Environment: r.environment, Site: r.site, Kind: "workbook", Name: input.Name, Offset: snapshotOffset(input.PageNumber, input.PageSize, input.SnapshotCursor), Limit: input.PageSize, Cursor: input.SnapshotCursor})
+	result, err := r.store.ReadResources(ctx, cache.ResourceQuery{Environment: r.environment, Site: r.site, Kind: "workbook", Name: input.Name, ProjectLUID: input.ProjectLUID, Offset: snapshotOffset(input.PageNumber, input.PageSize, input.SnapshotCursor), Limit: input.PageSize, Cursor: input.SnapshotCursor})
 	if err != nil {
 		return workbooklist.Page{}, cacheReadError("workbook.list", r.environment, r.site, err)
 	}
@@ -196,7 +200,7 @@ type cacheWorkbookGetResolver struct {
 }
 
 func (r *cacheWorkbookGetResolver) ResolveWorkbook(ctx context.Context, selector identity.Selector) (workbookinspect.Workbook, error) {
-	result, err := r.store.ReadResources(ctx, cache.ResourceQuery{Environment: r.environment, Site: r.site, Kind: "workbook", LUID: string(selector.LUID), Name: selector.Name, ProjectPath: selector.ProjectPath, Limit: 2})
+	result, err := r.store.ReadResources(ctx, cache.ResourceQuery{Environment: r.environment, Site: r.site, Kind: "workbook", LUID: string(selector.LUID), Name: selector.Name, ProjectLUID: string(selector.ProjectLUID), ProjectPath: selector.ProjectPath, Limit: 2})
 	if err != nil {
 		return workbookinspect.Workbook{}, cacheReadError("workbook.inspect", r.environment, r.site, err)
 	}
@@ -220,7 +224,7 @@ func (r *cacheDatasourceListReader) ListDatasources(ctx context.Context, input d
 	if input.OwnerName != "" || input.Type != "" || input.Tag != "" || input.UpdatedAfter != "" || input.UpdatedBefore != "" {
 		return datasourcelist.Page{}, unsupportedCacheFilters("datasource.list", r.environment, r.site)
 	}
-	result, err := r.store.ReadResources(ctx, cache.ResourceQuery{Environment: r.environment, Site: r.site, Kind: "datasource", Name: input.Name, ProjectName: input.ProjectName, Offset: snapshotOffset(input.PageNumber, input.PageSize, input.SnapshotCursor), Limit: input.PageSize, Cursor: input.SnapshotCursor})
+	result, err := r.store.ReadResources(ctx, cache.ResourceQuery{Environment: r.environment, Site: r.site, Kind: "datasource", Name: input.Name, ProjectLUID: input.ProjectLUID, ProjectName: input.ProjectName, Offset: snapshotOffset(input.PageNumber, input.PageSize, input.SnapshotCursor), Limit: input.PageSize, Cursor: input.SnapshotCursor})
 	if err != nil {
 		return datasourcelist.Page{}, cacheReadError("datasource.list", r.environment, r.site, err)
 	}
@@ -246,7 +250,7 @@ type cacheDatasourceGetResolver struct {
 }
 
 func (r *cacheDatasourceGetResolver) ResolveDatasource(ctx context.Context, selector identity.Selector) (datasourceinspect.Datasource, error) {
-	result, err := r.store.ReadResources(ctx, cache.ResourceQuery{Environment: r.environment, Site: r.site, Kind: "datasource", LUID: string(selector.LUID), Name: selector.Name, ProjectPath: selector.ProjectPath, Limit: 2})
+	result, err := r.store.ReadResources(ctx, cache.ResourceQuery{Environment: r.environment, Site: r.site, Kind: "datasource", LUID: string(selector.LUID), Name: selector.Name, ProjectLUID: string(selector.ProjectLUID), ProjectPath: selector.ProjectPath, Limit: 2})
 	if err != nil {
 		return datasourceinspect.Datasource{}, cacheReadError("datasource.inspect", r.environment, r.site, err)
 	}

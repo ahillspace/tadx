@@ -10,6 +10,9 @@ Removing a user from a site and deleting a group are different from removing a m
 Membership replacement declares the entire desired direct set; an empty set removes every direct member.
 Use additive/removal membership operations when unrelated members must remain.
 Group synchronization and external directory policies can constrain supported changes.
+For an existing exact login, use `admin user inspect --username <login>` rather than broad user discovery.
+Reuse returned user and group LUIDs for membership operations; supported repeated selectors handle already-decided member sets.
+When verification is needed for several created users, inspect those returned IDs in one supported batch rather than listing every user again.
 
 ## Permissions and project scope
 
@@ -22,6 +25,10 @@ Project metadata exposes available `content_permissions` and `controlling_permis
 An omitted controller is unknown, not proof of independent permissions.
 Project defaults affect a broader scope than a rule on one workbook or datasource; do not substitute them without authorization.
 Changing a rule requires separately authorized create/delete steps, not an atomic permission update.
+Provider-omitted settings are unverified, not false; distinguish requested creation settings from observed saved state.
+On-demand group access is Cloud-only and requires an Embedded Analytics usage-based license or capacity-based licensing with Cloud+ or Tableau+.
+REST 3.29 may omit `externalUserEnabled` when the site is not licensed for it; omission is not an observed false value or a standalone license diagnosis.
+See the [Tableau group contract](https://help.tableau.com/current/api/rest_api/en-us/REST/rest_api_ref_users_and_groups.htm) when the licensing condition matters.
 
 Project deletion does not promise to preserve descendants or content.
 Inspect relevant dependents before deleting a populated project; a preview is not a complete cascade inventory.

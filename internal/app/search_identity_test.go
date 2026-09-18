@@ -26,6 +26,9 @@ func TestSearchIdentityCLIPreservesMixedRankAndPublishedParents(t *testing.T) {
 	}
 	server := newSearchIdentityServer(t, hits)
 	out := runSearchIdentityCLI(t, server, 20)
+	if out.Scope == nil || out.Scope.Environment != "production" {
+		t.Fatalf("resolved live search scope omitted: %+v", out)
+	}
 	searchIdentityWant(t, out.Items, []string{"workbook-first", "datasource-a", "datasource-b", "workbook-last"})
 	if out.Page.Returned != 4 || out.Page.MoreAvailable {
 		t.Fatalf("page = %+v", out.Page)
@@ -98,6 +101,7 @@ func TestSearchIdentityCLIExpandedLimitDeduplicatesAcrossNativePages(t *testing.
 }
 
 type searchIdentityOutput struct {
+	Scope *searchaction.Scope `json:"scope"`
 	Items []searchaction.Item `json:"items"`
 	Page  searchaction.Page   `json:"page"`
 }

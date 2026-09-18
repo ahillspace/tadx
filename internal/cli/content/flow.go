@@ -229,3 +229,26 @@ func selectorArgs(operation string, luid, name, projectPath *string, set func(st
 		return nil
 	}
 }
+
+func selectorArgsWithProjectID(operation string, luid, name, projectPath, projectID *string, set func(string, string, string, string)) cobra.PositionalArgs {
+	return func(command *cobra.Command, args []string) error {
+		if err := noContentArgs(operation)(command, args); err != nil {
+			return err
+		}
+		if *luid != "" {
+			if *name != "" || *projectPath != "" || *projectID != "" {
+				return clierr.Usage(operation, errors.New("use either --id or exact --name with --project or --project-id"))
+			}
+			set(*luid, "", "", "")
+			return nil
+		}
+		if *name == "" || (*projectPath == "" && *projectID == "") {
+			return clierr.Usage(operation, errors.New("use --id or exact --name with --project or --project-id"))
+		}
+		if *projectPath != "" && *projectID != "" {
+			return clierr.Usage(operation, errors.New("use exactly one of --project or --project-id"))
+		}
+		set("", *name, *projectPath, *projectID)
+		return nil
+	}
+}

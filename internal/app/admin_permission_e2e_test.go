@@ -24,12 +24,12 @@ func TestAdminPermissionMutationsThroughCLI(t *testing.T) {
 		wantOutput                                 string
 	}{
 		{name: "create preview", operation: "create", preview: true, wantReads: 1, wantOutput: "mode: preview"},
-		{name: "create", operation: "create", wantReads: 2, wantWrites: 1, wantOutput: "status: created"},
-		{name: "create full", operation: "create", full: true, wantReads: 2, wantWrites: 1, wantOutput: "tableau_request_id: permission-write"},
+		{name: "create", operation: "create", wantReads: 3, wantWrites: 1, wantOutput: "status: created"},
+		{name: "create full", operation: "create", full: true, wantReads: 3, wantWrites: 1, wantOutput: "tableau_request_id: permission-write"},
 		{name: "same mode", operation: "create", initial: "Allow", wantReads: 2, wantOutput: "status: unchanged"},
 		{name: "conflicting mode", operation: "create", initial: "Deny", wantCode: 1, wantReads: 1, wantOutput: "admin.permission.create.rule_conflict"},
 		{name: "delete preview", operation: "delete", initial: "Allow", preview: true, wantReads: 1, wantOutput: "mode: preview"},
-		{name: "delete", operation: "delete", initial: "Allow", wantReads: 2, wantWrites: 1, wantOutput: "status: deleted"},
+		{name: "delete", operation: "delete", initial: "Allow", wantReads: 3, wantWrites: 1, wantOutput: "status: deleted"},
 		{name: "delete absent", operation: "delete", wantReads: 2, wantOutput: "status: unchanged"},
 		{name: "delete different mode", operation: "delete", initial: "Deny", wantCode: 1, wantReads: 1, wantOutput: "admin.permission.delete.mode_mismatch"},
 		{name: "create inherited", operation: "create", source: "inherited", wantCode: 1, wantReads: 1, wantOutput: "admin.permission.create.inherited_or_unknown"},
@@ -55,6 +55,13 @@ func TestAdminPermissionMutationsThroughCLI(t *testing.T) {
 				case r.Method == http.MethodGet && r.URL.Path == "/api/3.29/sites/site-1/workbooks/w1/permissions":
 					n := reads.Add(1)
 					mode := tt.initial
+					if writes.Load() > 0 {
+						if tt.operation == "create" {
+							mode = "Allow"
+						} else {
+							mode = ""
+						}
+					}
 					if tt.drift && n > 1 {
 						mode = "Deny"
 					}

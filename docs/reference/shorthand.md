@@ -86,7 +86,6 @@ Word-like aliases use two dashes, even when the alias is short.
 | `--append` | `--apd` | Append mode. |
 | `--artifact` | `--art` | Workspace-relative artifact. |
 | `--artifact-name` | `--arn` | Artifact name. |
-| `--as-job` | `--job` | Submit as a server job and wait for completion. |
 | `--auth-setting` | `--aus` | Authentication setting. |
 | `--capability` | `--cap` | Capability name. |
 | `--cache` | `--cch` | Read the local cache. |

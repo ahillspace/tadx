@@ -108,7 +108,11 @@ func (a *Action) Execute(ctx context.Context, input Input) (Output, error) {
 		sourceName = "cache"
 		warnings = append([]string{"Cache absence does not establish remote absence; resolve authoritative LUIDs live before mutations."}, warnings...)
 	}
-	return Output{Source: sourceName, Page: page, Items: items, Generation: result.Generation, Warnings: output.BoundWarnings(warnings), Help: searchHelp(input.Environment, items)}, nil
+	var scope *Scope
+	if !input.Cache && input.Environment != "" && input.SiteResolved {
+		scope = &Scope{Environment: input.Environment, Site: input.Site}
+	}
+	return Output{Scope: scope, Source: sourceName, Page: page, Items: items, Generation: result.Generation, Warnings: output.BoundWarnings(warnings), Help: searchHelp(input.Environment, items)}, nil
 }
 
 func searchHelp(environment string, items []Item) []string {

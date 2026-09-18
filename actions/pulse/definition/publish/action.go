@@ -91,7 +91,7 @@ func (a *Action) Execute(ctx context.Context, input Input) (Output, error) {
 	if err := a.validator.ValidateDefinition(ctx, document, bundle.Metrics); err != nil {
 		output.Status = "invalid"
 		output.Complete = false
-		return output, failure(input, "validation", errs.KindOperation, "Destination datasource field validation failed; no objects were created.", err)
+		return output, failureState(input, "validation", errs.KindOperation, "Destination datasource field validation failed; no objects were created.", err, errs.PhaseValidation, errs.OutcomeNotAttempted)
 	}
 	if input.Preview {
 		return output, nil
@@ -99,7 +99,7 @@ func (a *Action) Execute(ctx context.Context, input Input) (Output, error) {
 	if err := a.validator.ValidateDefinition(ctx, document, bundle.Metrics); err != nil {
 		output.Status = "invalid"
 		output.Complete = false
-		return output, failure(input, "revalidation", errs.KindOperation, "Destination datasource field revalidation failed; no objects were created.", err)
+		return output, failureState(input, "revalidation", errs.KindOperation, "Destination datasource field revalidation failed; no objects were created.", err, errs.PhaseValidation, errs.OutcomeNotAttempted)
 	}
 	output.Status = "failed"
 	output.Complete = false
@@ -110,13 +110,17 @@ func (a *Action) Execute(ctx context.Context, input Input) (Output, error) {
 		output.Help = []string{commandhint.Environment(input.Environment, "pulse", "definition", "inspect", "--id", created.LUID)}
 	}
 	if err != nil {
-		return output, failure(input, "create", errs.KindOperation, "Pulse definition creation or default-metric resolution failed. Inspect confirmed identities before retrying; publishing again creates another definition.", err)
+		outcome := errs.OutcomeUnknown
+		if created.LUID != "" {
+			outcome = errs.OutcomeConfirmed
+		}
+		return output, failureState(input, "create", errs.KindOperation, "Pulse definition creation or default-metric resolution failed. Inspect confirmed identities before retrying; publishing again creates another definition.", err, errs.PhaseSubmission, outcome)
 	}
 	if created.LUID == "" || created.LUID == bundle.DefinitionLUID {
-		return output, failure(input, "identity", errs.KindOperation, "The provider did not return a new authoritative Pulse definition identity.", nil)
+		return output, failureState(input, "identity", errs.KindOperation, "The provider did not return a new authoritative Pulse definition identity.", nil, errs.PhaseSubmission, errs.OutcomeUnknown)
 	}
 	if err := a.writer.VerifyDefinition(ctx, created.LUID, destination, input.SiteLUID, document); err != nil {
-		return output, failure(input, "definition_reconciliation", errs.KindOperation, "The created definition could not be verified against its submitted configuration. Confirmed identity is retained; no bundle metrics were requested.", err)
+		return output, failureState(input, "definition_reconciliation", errs.KindOperation, "The created definition could not be verified against its submitted configuration. Confirmed identity is retained; no bundle metrics were requested.", err, errs.PhaseVerification, errs.OutcomeConfirmed)
 	}
 	for _, metric := range bundle.Metrics {
 		result, err := a.writer.CreateMetric(ctx, created.LUID, metric.Specification)
@@ -124,16 +128,20 @@ func (a *Action) Execute(ctx context.Context, input Input) (Output, error) {
 			output.Mappings = append(output.Mappings, Mapping{Kind: "metric", SourceLUID: metric.LUID, DestinationLUID: result.LUID})
 		}
 		if err != nil {
-			return output, failure(input, "metric_create", errs.KindOperation, "Pulse bundle publish stopped after a metric creation failure. Confirmed mappings are retained; do not blindly republish.", err)
+			outcome := errs.OutcomeUnknown
+			if result.LUID != "" {
+				outcome = errs.OutcomeConfirmed
+			}
+			return output, failureState(input, "metric_create", errs.KindOperation, "Pulse bundle publish stopped after a metric creation failure. Confirmed mappings are retained; do not blindly republish.", err, errs.PhaseSubmission, outcome)
 		}
 		if result.LUID == "" || result.LUID == metric.LUID {
-			return output, failure(input, "metric_identity", errs.KindOperation, "The provider did not return a new authoritative Pulse metric identity.", nil)
+			return output, failureState(input, "metric_identity", errs.KindOperation, "The provider did not return a new authoritative Pulse metric identity.", nil, errs.PhaseSubmission, errs.OutcomeUnknown)
 		}
 		if metric.IsDefault && result.LUID != created.DefaultMetricLUID {
-			return output, failure(input, "default_metric", errs.KindOperation, "The source default specification did not match the new definition's default metric. Confirmed mappings are retained; existing objects were not overwritten.", nil)
+			return output, failureState(input, "default_metric", errs.KindOperation, "The source default specification did not match the new definition's default metric. Confirmed mappings are retained; existing objects were not overwritten.", nil, errs.PhaseVerification, errs.OutcomeConfirmed)
 		}
 		if err := a.writer.VerifyMetric(ctx, result.LUID, created.LUID, destination, input.SiteLUID, metric.Specification); err != nil {
-			return output, failure(input, "reconciliation", errs.KindOperation, "A recreated metric could not be verified against its complete saved specification. Confirmed mappings are retained.", err)
+			return output, failureState(input, "reconciliation", errs.KindOperation, "A recreated metric could not be verified against its complete saved specification. Confirmed mappings are retained.", err, errs.PhaseVerification, errs.OutcomeConfirmed)
 		}
 	}
 	output.Status = "published"
@@ -230,5 +238,16 @@ func createDocument(configuration []byte, destination string) (json.RawMessage, 
 }
 
 func failure(input Input, id string, kind errs.Kind, summary string, cause error) error {
-	return &errs.Error{ID: "pulse.definition.publish." + id, Kind: kind, Operation: "pulse.definition.publish", Environment: input.Environment, Site: input.Site, Summary: summary, Cause: cause, TableauRequestID: errs.TableauRequestID(cause), Retryable: errs.Bool(false), CorrectiveAction: "Inspect any confirmed destination identities. Correct the bundle or explicit datasource mapping and preview before publishing; never blindly retry an uncertain create."}
+	phase := errs.PhaseValidation
+	if kind == errs.KindRuntime {
+		phase = errs.PhaseSetup
+	}
+	return &errs.Error{ID: "pulse.definition.publish." + id, Kind: kind, Operation: "pulse.definition.publish", Environment: input.Environment, Site: input.Site, Summary: summary, Cause: cause, TableauRequestID: errs.TableauRequestID(cause), Retryable: errs.Bool(false), CorrectiveAction: "Inspect any confirmed destination identities. Correct the bundle or explicit datasource mapping and preview before publishing; never blindly retry an uncertain create.", Phase: phase, Outcome: errs.OutcomeNotAttempted}
+}
+
+func failureState(input Input, id string, kind errs.Kind, summary string, cause error, phase errs.Phase, outcome errs.Outcome) error {
+	result := failure(input, id, kind, summary, cause).(*errs.Error)
+	result.Phase = phase
+	result.Outcome = outcome
+	return result
 }

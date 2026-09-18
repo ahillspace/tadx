@@ -44,18 +44,18 @@ func (a *Action) Execute(ctx context.Context, input Input) (Output, error) {
 			case identity.ResolutionNotFound:
 				return Output{}, resolveUsageError("datasource.inspect.not_found", input, "No datasource matched the selector.", err)
 			case identity.ResolutionInvalidSelector:
-				return Output{}, resolveUsageError("datasource.inspect.usage", input, "Datasource selection requires a LUID or exact name and project path.", err)
+				return Output{}, resolveUsageError("datasource.inspect.usage", input, "Datasource selection requires a LUID or exact name with --project or --project-id.", err)
 			}
 		}
 		retryable, correctiveAction := errs.CompleteRetryAdvice(err, "Review the exact datasource selector, then retry.")
 		return Output{}, &errs.Error{ID: "datasource.inspect.resolve", Kind: errs.KindOperation, Operation: "datasource.inspect", Environment: input.Environment, Site: input.Site, Summary: "Datasource resolution failed.", Cause: err, Retryable: retryable, CorrectiveAction: correctiveAction, TableauRequestID: errs.TableauRequestID(err)}
 	}
-	if item.LUID == "" || item.Name == "" || (input.Selector.LUID != "" && item.LUID != string(input.Selector.LUID)) {
-		return Output{}, &errs.Error{ID: "datasource.inspect.identity_mismatch", Kind: errs.KindOperation, Operation: "datasource.inspect", Environment: input.Environment, Site: input.Site, Summary: "Datasource adapter returned a mismatched authoritative identity.", Retryable: errs.Bool(false), CorrectiveAction: "Provide a LUID or an exact name and project path."}
+	if item.LUID == "" || item.Name == "" || (input.Selector.LUID != "" && item.LUID != string(input.Selector.LUID)) || (input.Selector.Name != "" && item.Name != input.Selector.Name) || (input.Selector.ProjectLUID != "" && item.ProjectLUID != string(input.Selector.ProjectLUID)) {
+		return Output{}, &errs.Error{ID: "datasource.inspect.identity_mismatch", Kind: errs.KindOperation, Operation: "datasource.inspect", Environment: input.Environment, Site: input.Site, Summary: "Datasource adapter returned a mismatched authoritative identity.", Retryable: errs.Bool(false), CorrectiveAction: "Provide a LUID or an exact name with --project or --project-id."}
 	}
 	return Output{Status: "found", Environment: input.Environment, Site: input.Site, Datasource: item, RequestID: item.RequestID, Help: []string{commandhint.Environment(input.Environment, "content", "datasource", "schema", "--id", item.LUID)}}, nil
 }
 
 func resolveUsageError(id string, input Input, summary string, cause error) error {
-	return &errs.Error{ID: id, Kind: errs.KindUsage, Operation: "datasource.inspect", Environment: input.Environment, Site: input.Site, Summary: summary, Cause: cause, Retryable: errs.Bool(false), CorrectiveAction: "Provide a LUID or an exact name and project path.", TableauRequestID: errs.TableauRequestID(cause)}
+	return &errs.Error{ID: id, Kind: errs.KindUsage, Operation: "datasource.inspect", Environment: input.Environment, Site: input.Site, Summary: summary, Cause: cause, Retryable: errs.Bool(false), CorrectiveAction: "Provide a LUID or an exact name with --project or --project-id.", TableauRequestID: errs.TableauRequestID(cause)}
 }

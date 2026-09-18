@@ -22,6 +22,33 @@ func (unavailableLineageReader) CaptureLineage(context.Context, flowpull.Lineage
 	return flowpull.Lineage{}, fmt.Errorf("metadata unavailable")
 }
 
+type partialLineageReader struct{ reader }
+
+func (partialLineageReader) CaptureLineage(context.Context, flowpull.LineageRequest) (flowpull.Lineage, error) {
+	return flowpull.Lineage{
+		Nodes: []flowpull.LineageNode{
+			{MetadataID: "metadata-flow-1", Kind: "flow", RESTLUID: "f-1"},
+			{MetadataID: "metadata-table-1", Kind: "table", Name: "Sales"},
+		},
+		Edges:    []flowpull.LineageEdge{{FromMetadataID: "metadata-table-1", ToMetadataID: "metadata-flow-1", Relationship: "upstream"}},
+		Warnings: []string{"upstream database access was denied"},
+	}, fmt.Errorf("upstream database access was denied")
+}
+
+func TestPullPreservesPartialLineageWhenCaptureFails(t *testing.T) {
+	w := &writer{}
+	output, err := flowpull.New(partialLineageReader{}, w).Execute(context.Background(), flowpull.Input{Workspace: "workspace", Selector: identity.Selector{LUID: "f-1"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if w.input.Lineage.Complete || len(w.input.Lineage.Nodes) != 2 || len(w.input.Lineage.Edges) != 1 || output.Artifact.CountsKnown {
+		t.Fatalf("output = %#v, lineage = %#v", output, w.input.Lineage)
+	}
+	if !strings.Contains(strings.Join(output.Warnings, "\n"), "upstream database access was denied") {
+		t.Fatalf("warnings = %#v", output.Warnings)
+	}
+}
+
 func TestQuietFlowPullPreservesNativeWarnings(t *testing.T) {
 	w := &writer{result: flowpull.ArtifactResult{Path: "artifacts/flow/Daily", Warnings: []string{"Local flow edits were replaced because --overwrite was set."}}}
 	output, err := flowpull.New(unavailableLineageReader{}, w).Execute(context.Background(), flowpull.Input{Workspace: "workspace", Selector: identity.Selector{LUID: "f-1"}})

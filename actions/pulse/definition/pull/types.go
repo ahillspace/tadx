@@ -55,12 +55,23 @@ type ArtifactResult struct {
 	BaselineFingerprint string `json:"baseline_fingerprint,omitempty"`
 }
 
+// Provenance identifies the source environment without embedding credentials.
+type Provenance struct {
+	Environment    string `json:"environment,omitempty"`
+	Site           string `json:"site,omitempty"`
+	ServerOrigin   string `json:"server_origin,omitempty"`
+	SiteLUID       string `json:"site_luid,omitempty"`
+	Workspace      string `json:"workspace,omitempty"`
+	DatasourceLUID string `json:"datasource_luid,omitempty"`
+}
+
 // Output retains complete details before projection.
 type Output struct {
 	Preview     *value.AcquisitionPlan
 	Status      string
 	Definition  Definition
 	Artifact    ArtifactResult
+	Provenance  Provenance
 	RequestID   string
 	MetricCount int
 	Help        []string
@@ -83,6 +94,7 @@ type CompactResult struct {
 	Definition  CompactDefinition `json:"definition"`
 	Artifact    CompactArtifact   `json:"artifact"`
 	MetricCount int               `json:"metric_count"`
+	Provenance  Provenance        `json:"provenance"`
 	Details     string            `json:"details"`
 	Help        []string          `json:"help"`
 }
@@ -93,6 +105,7 @@ type FullResult struct {
 	Definition  CompactDefinition `json:"definition"`
 	Artifact    ArtifactResult    `json:"artifact"`
 	MetricCount int               `json:"metric_count"`
+	Provenance  Provenance        `json:"provenance"`
 	RequestID   string            `json:"tableau_request_id,omitempty"`
 	Help        []string          `json:"help"`
 }
@@ -102,7 +115,7 @@ func (o Output) CompactOutput() any {
 	if o.Preview != nil {
 		return *o.Preview
 	}
-	return CompactResult{Status: o.Status, Definition: CompactDefinition{LUID: o.Definition.LUID, Name: o.Definition.Name}, Artifact: CompactArtifact{Path: o.Artifact.Path}, MetricCount: o.MetricCount, Details: "--full", Help: o.Help}
+	return CompactResult{Status: o.Status, Definition: CompactDefinition{LUID: o.Definition.LUID, Name: o.Definition.Name}, Artifact: CompactArtifact{Path: o.Artifact.Path}, MetricCount: o.MetricCount, Provenance: o.Provenance, Details: "--full", Help: o.Help}
 }
 
 // FullOutput returns artifact provenance without embedding the full resource document.
@@ -110,5 +123,5 @@ func (o Output) FullOutput() any {
 	if o.Preview != nil {
 		return *o.Preview
 	}
-	return FullResult{Status: o.Status, Definition: CompactDefinition{LUID: o.Definition.LUID, Name: o.Definition.Name}, Artifact: o.Artifact, MetricCount: o.MetricCount, RequestID: o.RequestID, Help: o.Help}
+	return FullResult{Status: o.Status, Definition: CompactDefinition{LUID: o.Definition.LUID, Name: o.Definition.Name}, Artifact: o.Artifact, MetricCount: o.MetricCount, Provenance: o.Provenance, RequestID: o.RequestID, Help: o.Help}
 }

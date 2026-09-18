@@ -3,6 +3,7 @@ package status_test
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"os"
 	"testing"
 
@@ -14,9 +15,38 @@ type reader struct{}
 
 func (reader) Status(context.Context, status.Input) (status.Workspace, status.Inventory, error) {
 	return status.Workspace{Name: "development", ID: "ws_1", Root: "/var/tmp/tadx-tests/workspaces/development"}, status.Inventory{
-		Returned: 1, Limit: 20, ScanComplete: true, Dirty: 1,
+		Returned: 1, Total: 1, Limit: 20, ScanComplete: true, Dirty: 1,
 		Items: []status.Artifact{{Kind: "workbook", LUID: "wb-1", Name: "Finance", Path: "artifacts/workbook/Finance", State: "dirty", CanonicalPath: "artifacts/workbook/Finance/Finance.twbx", BaselineFingerprint: "sha256:old", CurrentFingerprint: "sha256:new"}},
 	}, nil
+}
+
+type emptyReader struct{}
+
+func (emptyReader) Status(context.Context, status.Input) (status.Workspace, status.Inventory, error) {
+	return status.Workspace{Name: "empty", ID: "ws-empty", Root: "/var/tmp/tadx-tests/workspaces/empty"}, status.Inventory{Limit: 20, ScanComplete: true, Items: []status.Artifact{}}, nil
+}
+
+func TestCompactOutputRetainsCompleteEmptyInventory(t *testing.T) {
+	out, err := status.New(emptyReader{}).Execute(t.Context(), status.Input{Workspace: "empty"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	data, err := json.Marshal(out.CompactOutput())
+	if err != nil {
+		t.Fatal(err)
+	}
+	var payload map[string]any
+	if err := json.Unmarshal(data, &payload); err != nil {
+		t.Fatal(err)
+	}
+	inventory := payload["artifacts"].(map[string]any)
+	if inventory["total"] != float64(0) {
+		t.Fatalf("total = %v, want 0", inventory["total"])
+	}
+	items, ok := inventory["artifacts"].([]any)
+	if !ok || len(items) != 0 {
+		t.Fatalf("artifacts = %#v, want empty array", inventory["artifacts"])
+	}
 }
 
 func TestExecuteKeepsDetailsOutOfCompactStatus(t *testing.T) {

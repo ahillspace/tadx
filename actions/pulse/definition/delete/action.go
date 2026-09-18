@@ -70,9 +70,19 @@ func (a *Action) Execute(ctx context.Context, input Input) (Output, error) {
 
 func failure(suffix string, kind errs.Kind, input Input, summary string, cause error) error {
 	retryable, corrective := errs.CompleteRetryAdvice(cause, "Inspect the remote delete outcome before retrying.")
+	phase, outcome := errs.PhaseVerification, errs.OutcomeNotAttempted
+	if suffix == "usage" {
+		phase = errs.PhaseValidation
+	}
+	if suffix == "unconfigured" {
+		phase = errs.PhaseSetup
+	}
+	if suffix == "failed" {
+		phase, outcome = errs.PhaseSubmission, errs.OutcomeUnknown
+	}
 	if kind == errs.KindUsage {
 		retryable = errs.Bool(false)
 		corrective = "Provide an environment, site, and exact Pulse definition LUID."
 	}
-	return &errs.Error{ID: "pulse.definition.delete." + suffix, Kind: kind, Operation: "pulse.definition.delete", Resource: input.LUID, Environment: input.Environment, Site: input.Site, Summary: summary, Cause: cause, Retryable: retryable, CorrectiveAction: corrective, TableauRequestID: errs.TableauRequestID(cause)}
+	return &errs.Error{ID: "pulse.definition.delete." + suffix, Kind: kind, Operation: "pulse.definition.delete", Resource: input.LUID, Environment: input.Environment, Site: input.Site, Summary: summary, Cause: cause, Retryable: retryable, CorrectiveAction: corrective, TableauRequestID: errs.TableauRequestID(cause), Phase: phase, Outcome: outcome}
 }

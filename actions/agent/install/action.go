@@ -49,6 +49,8 @@ type compactSkill struct {
 	Target string `json:"target,omitempty"`
 	Name   string `json:"name"`
 	Status string `json:"status"`
+	Path   string `json:"path"`
+	Backup string `json:"backup,omitempty"`
 }
 
 type compactOutput struct {
@@ -65,7 +67,7 @@ type compactOutput struct {
 func (o Output) CompactOutput() any {
 	skills := make([]compactSkill, len(o.Skills))
 	for i, skill := range o.Skills {
-		skills[i] = compactSkill{Target: skill.Target, Name: skill.Name, Status: skill.Status}
+		skills[i] = compactSkill{Target: skill.Target, Name: skill.Name, Status: skill.Status, Path: skill.Path, Backup: skill.Backup}
 	}
 	return compactOutput{Targets: o.Targets, Status: o.Status, Target: o.Target, Skills: skills, Warnings: o.Warnings, Details: "--full", Help: o.Help}
 }

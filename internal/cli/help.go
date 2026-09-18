@@ -7,6 +7,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/ahillspace/tadx/internal/errs"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 )
@@ -14,22 +15,26 @@ import (
 // installCategoryHelp derives help from the completed command tree. It deliberately
 // avoids action dependencies, flag values, and configuration resolution.
 func installCategoryHelp(root *cobra.Command) {
-	root.SetHelpCommand(&cobra.Command{
-		Use: "help [command]", Short: "Show help for any category or command",
+	helpCommand := &cobra.Command{
+		Use: "help [command ...]", Short: "Show help for any category or command",
 		Annotations:       map[string]string{groupingAnnotation: "true"},
 		PersistentPreRun:  func(*cobra.Command, []string) {},
 		PersistentPostRun: func(*cobra.Command, []string) {},
 		RunE: func(command *cobra.Command, args []string) error {
 			target, remaining, err := root.Find(args)
 			if err != nil {
-				return err
+				return helpPathError(root, target, args, err)
 			}
 			if len(remaining) != 0 {
-				return fmt.Errorf("unknown help topic %q", strings.Join(args, " "))
+				return helpPathError(root, target, args, nil)
 			}
 			return target.Help()
 		},
-	})
+	}
+	// Route validation must see an invalid path even when a trailing flag would
+	// otherwise be rejected by the help command's own flag set first.
+	helpCommand.FParseErrWhitelist.UnknownFlags = true
+	root.SetHelpCommand(helpCommand)
 	root.SetHelpFunc(func(command *cobra.Command, _ []string) {
 		out := command.OutOrStdout()
 		if writeContentPilotHelp(out, command) {
@@ -37,6 +42,109 @@ func installCategoryHelp(root *cobra.Command) {
 		}
 		writeStructuredHelp(out, command)
 	})
+}
+
+func helpPathError(root, target *cobra.Command, args []string, cause error) error {
+	path := helpPathTokens(args)
+	if len(path) == 0 {
+		path = append(path, args...)
+	}
+	nearest := root
+	if target != nil {
+		nearest = target
+	}
+	nearestPath := nearest.CommandPath()
+	if nearestPath == "" {
+		nearestPath = root.Name()
+	}
+	summary := fmt.Sprintf("unknown help path %q", strings.Join(path, " "))
+	if len(path) == 0 {
+		summary = "help accepts a command path"
+	}
+	if cause != nil && len(path) == 0 {
+		summary = cause.Error()
+	}
+	return &errs.Error{
+		Kind:             errs.KindUsage,
+		Operation:        "cli.help",
+		Summary:          summary,
+		Cause:            cause,
+		CorrectiveAction: fmt.Sprintf("Use %s -h for a supported route.", nearestPath),
+		Phase:            errs.PhaseValidation,
+		Outcome:          errs.OutcomeNotAttempted,
+	}
+}
+
+func helpPathTokens(args []string) []string {
+	path := make([]string, 0, len(args))
+	for _, arg := range args {
+		if arg == "--" || strings.HasPrefix(arg, "-") {
+			break
+		}
+		path = append(path, arg)
+	}
+	return path
+}
+
+// ValidateHelpArgs validates a help-bearing invocation before Cobra dispatches
+// a grouping command's built-in help short circuit.
+func ValidateHelpArgs(root *cobra.Command, args []string) error {
+	if root == nil || !hasHelpArgument(args) {
+		return nil
+	}
+	pathArgs := args
+	if len(pathArgs) > 0 && pathArgs[0] == "help" {
+		pathArgs = pathArgs[1:]
+	}
+	path := helpRoutePath(root, pathArgs)
+	target, remaining, err := root.Find(path)
+	if err != nil {
+		return helpPathError(root, target, path, err)
+	}
+	if len(remaining) == 0 {
+		return nil
+	}
+	// Keep the established root-help fallback for the not-registered config
+	// spelling. Configuration remains a global --config flag, not a command.
+	if len(path) == 1 && path[0] == "config" && target == root {
+		return nil
+	}
+	return helpPathError(root, target, path, nil)
+}
+
+func hasHelpArgument(args []string) bool {
+	for _, arg := range args {
+		if arg == "-h" || arg == "--help" || strings.HasPrefix(arg, "--help=") {
+			return true
+		}
+	}
+	return false
+}
+
+func helpRoutePath(root *cobra.Command, args []string) []string {
+	path := make([]string, 0, len(args))
+	for index := 0; index < len(args); index++ {
+		arg := args[index]
+		if arg == "--" {
+			break
+		}
+		if strings.HasPrefix(arg, "-") {
+			if len(path) > 0 {
+				break
+			}
+			name := strings.TrimLeft(arg, "-")
+			if flagName, _, found := strings.Cut(name, "="); found {
+				name = flagName
+			}
+			flag := root.PersistentFlags().Lookup(name)
+			if flag != nil && flag.NoOptDefVal == "" && !strings.Contains(arg, "=") && index+1 < len(args) {
+				index++
+			}
+			continue
+		}
+		path = append(path, arg)
+	}
+	return path
 }
 
 func visibleHelpChildren(command *cobra.Command) []*cobra.Command {
@@ -111,12 +219,12 @@ func writeRootHelp(out io.Writer, root *cobra.Command) {
 		}
 	}
 	fmt.Fprintln(out, "  --help (-h) help only")
-	fmt.Fprintln(out, "\nUse resource help for action syntax. Inspect reads details; pull writes local files.")
+	fmt.Fprintln(out, "\nUse complete resource help for shared details, or direct known verb help for focused action syntax. Inspect reads details; pull writes local files.")
 	if root.Example != "" {
 		writeExamples(out, root.Example)
 	} else {
 		var examples []string
-		for _, path := range []string{"content workbook", "admin group", "pulse"} {
+		for _, path := range []string{"auth check", "content workbook publish", "pulse metric fork"} {
 			if command := helpCommandAt(root, strings.Fields(path)); command != nil {
 				examples = append(examples, command.CommandPath()+" --help")
 			}

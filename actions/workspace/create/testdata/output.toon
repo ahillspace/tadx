@@ -1,5 +1,7 @@
 status: created
 workspace:
   name: development
+  id: ws_11111111111111111111111111111111
+  root: /var/tmp/tadx-tests/workspaces/development
 details: "--full"
 help[1]: tadx workspace status --workspace development

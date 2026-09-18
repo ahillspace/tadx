@@ -26,7 +26,7 @@ func (r *registrar) Register(_ context.Context, input register.Input) (register.
 	if name == "" {
 		name = "adopted"
 	}
-	return register.Workspace{Name: name, ID: "ws_22222222222222222222222222222222", ManifestVersion: 1, Registered: true}, nil
+	return register.Workspace{Name: name, ID: "ws_22222222222222222222222222222222", Root: "existing-root", ManifestVersion: 1, Registered: true}, nil
 }
 
 func TestExecuteAdoptsWorkspaceAndProjectsOutput(t *testing.T) {
@@ -47,8 +47,8 @@ func TestExecuteAdoptsWorkspaceAndProjectsOutput(t *testing.T) {
 	if err := output.RenderWithOptions(&full, result, output.Options{Full: true}); err != nil {
 		t.Fatal(err)
 	}
-	if bytes.Contains(full.Bytes(), []byte("existing-root")) {
-		t.Fatalf("full output leaks the machine-local root:\n%s", full.String())
+	if !bytes.Contains(full.Bytes(), []byte("existing-root")) {
+		t.Fatalf("full output omits the resolved machine-local root:\n%s", full.String())
 	}
 	assertGolden(t, full.Bytes(), "testdata/output_full.toon")
 }

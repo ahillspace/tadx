@@ -3,7 +3,6 @@ package contentbatch
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"reflect"
 	"strings"
@@ -19,15 +18,16 @@ func Validate(selectors []string) error {
 	if len(selectors) == 0 || len(selectors) > MaxItems {
 		return fmt.Errorf("select between 1 and %d items", MaxItems)
 	}
-	seen := make(map[string]bool, len(selectors))
-	for _, selector := range selectors {
-		if strings.TrimSpace(selector) == "" {
-			return errors.New("selectors must not be empty")
+	seen := make(map[string]int, len(selectors))
+	for index, selector := range selectors {
+		normalized := strings.TrimSpace(selector)
+		if normalized == "" {
+			return fmt.Errorf("batch item %d selector must not be empty", index+1)
 		}
-		if seen[selector] {
-			return errors.New("duplicate selectors are not supported")
+		if previous, exists := seen[normalized]; exists {
+			return fmt.Errorf("batch item %d duplicates batch item %d after trimming selector %q; choose unique selectors", index+1, previous, normalized)
 		}
-		seen[selector] = true
+		seen[normalized] = index + 1
 	}
 	return nil
 }
@@ -84,14 +84,20 @@ func Run[T any](ctx context.Context, operation string, selectors []string, execu
 		return Output{}, &errs.Error{Kind: errs.KindUsage, Operation: operation, Summary: err.Error()}
 	}
 	out := Output{Operation: operation, Status: "succeeded", Total: len(selectors), Items: make([]Item, 0, len(selectors)), Help: []string{"Items run sequentially in selection order. Review failed or skipped items before starting another command; successful items are not retried automatically."}}
-	for _, selector := range selectors {
+	completions := make([]*completion, len(selectors))
+	for index, selector := range selectors {
 		item := Item{Selector: selector, Status: "succeeded"}
 		if err := ctx.Err(); err != nil {
 			payload := errs.Structure(&errs.Error{Kind: errs.KindOperation, Operation: operation, Summary: "Item skipped because the batch was canceled."}).Error
 			item.Status, item.Error = "skipped", &payload
 			out.Skipped++
 		} else {
-			result, err := execute(ctx, selector)
+			itemCtx := ctx
+			if len(selectors) > 1 {
+				completions[index] = &completion{}
+				itemCtx = context.WithValue(ctx, completionKey{}, completions[index])
+			}
+			result, err := execute(itemCtx, selector)
 			if err != nil {
 				payload := errs.Structure(err).Error
 				item.Status, item.Error = "failed", &payload
@@ -105,6 +111,21 @@ func Run[T any](ctx context.Context, operation string, selectors []string, execu
 			}
 		}
 		out.Items = append(out.Items, item)
+	}
+	for i, pending := range completions {
+		if pending == nil || pending.finish == nil || out.Items[i].Status != "succeeded" {
+			continue
+		}
+		result, err := pending.finish(ctx)
+		if result != nil {
+			out.Items[i].Result = result
+		}
+		if err != nil {
+			payload := errs.Structure(err).Error
+			out.Items[i].Status, out.Items[i].Error = "failed", &payload
+			out.Succeeded--
+			out.Failed++
+		}
 	}
 	if out.Failed+out.Skipped != 0 {
 		out.Status = "partial_failure"

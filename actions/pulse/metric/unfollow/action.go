@@ -63,7 +63,7 @@ func (a *Action) Execute(ctx context.Context, input Input, preview bool) (Output
 	}
 	if err := a.deleter.DeleteSubscription(ctx, plan.SubscriptionLUID); err != nil {
 		retryable, corrective := errs.CompleteRetryAdvice(err, "Inspect the remote unfollow outcome before retrying.")
-		return Output{}, &errs.Error{ID: "pulse.metric.unfollow.failed", Kind: errs.KindOperation, Operation: "pulse.metric.unfollow", Resource: plan.SubscriptionLUID, Environment: input.Environment, Site: input.Site, Summary: "Pulse metric unfollow failed.", Cause: err, Retryable: retryable, CorrectiveAction: corrective, TableauRequestID: errs.TableauRequestID(err)}
+		return Output{}, &errs.Error{ID: "pulse.metric.unfollow.failed", Kind: errs.KindOperation, Operation: "pulse.metric.unfollow", Resource: plan.SubscriptionLUID, Environment: input.Environment, Site: input.Site, Summary: "Pulse metric unfollow failed.", Cause: err, Retryable: retryable, CorrectiveAction: corrective, TableauRequestID: errs.TableauRequestID(err), Phase: errs.PhaseSubmission, Outcome: errs.OutcomeUnknown}
 	}
 	output.Result = &Result{Status: "unfollowed", SubscriptionLUID: plan.SubscriptionLUID}
 	if plan.MetricLUID != "" {
@@ -98,7 +98,7 @@ func (a *Action) resolve(ctx context.Context, input Input) (Subscription, error)
 }
 func trim(value *string) { *value = strings.TrimSpace(*value) }
 func fail(id string, kind errs.Kind, input Input, summary string, cause error) error {
-	return &errs.Error{ID: id, Kind: kind, Operation: "pulse.metric.unfollow", Resource: first(input.SubscriptionLUID, input.MetricLUID), Environment: input.Environment, Site: input.Site, Summary: summary, Cause: cause, Retryable: errs.Bool(false), CorrectiveAction: "Provide one exact subscription or an exact metric and follower pair, then review a new preview."}
+	return &errs.Error{ID: id, Kind: kind, Operation: "pulse.metric.unfollow", Resource: first(input.SubscriptionLUID, input.MetricLUID), Environment: input.Environment, Site: input.Site, Summary: summary, Cause: cause, Retryable: errs.Bool(false), CorrectiveAction: "Provide one exact subscription or an exact metric and follower pair, then review a new preview.", Phase: errs.PhaseValidation, Outcome: errs.OutcomeNotAttempted}
 }
 func first(values ...string) string {
 	for _, value := range values {

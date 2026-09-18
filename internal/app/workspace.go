@@ -22,8 +22,11 @@ import (
 	workspacestatus "github.com/ahillspace/tadx/actions/workspace/status"
 	workspaceunregister "github.com/ahillspace/tadx/actions/workspace/unregister"
 	"github.com/ahillspace/tadx/internal/artifact"
+	"github.com/ahillspace/tadx/internal/cli/clierr"
 	workspacecli "github.com/ahillspace/tadx/internal/cli/workspace"
+	"github.com/ahillspace/tadx/internal/commandhint"
 	"github.com/ahillspace/tadx/internal/config"
+	"github.com/ahillspace/tadx/internal/errs"
 	workspacecore "github.com/ahillspace/tadx/internal/workspace"
 )
 
@@ -145,7 +148,7 @@ func (a workspaceRegistrar) Register(ctx context.Context, input workspaceregiste
 		operation = a.runtime.manager().PreviewRegister
 	}
 	item, err := operation(ctx, input.Name, input.Path)
-	return workspaceregister.Workspace{Name: item.Name, ID: item.ID, ManifestVersion: 1, Registered: item.Available && item.ManifestValid}, err
+	return workspaceregister.Workspace{Name: item.Name, ID: item.ID, Root: item.Root, ManifestVersion: 1, Registered: item.Available && item.ManifestValid}, err
 }
 
 type workspaceCloner struct{ runtime *workspaceRuntime }
@@ -239,6 +242,9 @@ func (a workspaceMover) Move(ctx context.Context, input workspacemove.Input) (wo
 		operation = artifact.PreviewMove
 	}
 	item, err := operation(ctx, artifact.MoveRequest{SourceWorkspace: source.Root, DestinationWorkspace: destination.Root, Selector: artifact.Selector{Kind: input.Kind, LUID: input.LUID, Path: input.Path}})
+	if err != nil {
+		return moveArtifact(item), mapArtifactResolutionError("workspace.move", input.SourceWorkspace, input.LUID, err)
+	}
 	return moveArtifact(item), err
 }
 
@@ -408,8 +414,53 @@ func (a workspaceDeleteStore) Resolve(ctx context.Context, input artifactdelete.
 		return artifactdelete.Artifact{}, err
 	}
 	item, err := artifact.Resolve(ctx, workspace.Root, artifact.Selector{Kind: input.Kind, LUID: input.LUID, Path: input.Path})
+	if err != nil {
+		return artifactdelete.Artifact{}, mapArtifactResolutionError("workspace.artifact.delete", workspace.Name, input.LUID, err)
+	}
 	return deleteArtifact(item), err
 }
+
+func mapArtifactResolutionError(operation, workspace, resource string, cause error) error {
+	var ambiguous *artifact.AmbiguousSelectorError
+	if !errors.As(cause, &ambiguous) {
+		return cause
+	}
+	ambiguous.FullStatusCommand = commandhint.Command("workspace", "status", "--workspace", workspace, "--full")
+	structured := &errs.Error{
+		ID:               operation + ".ambiguous",
+		Kind:             errs.KindUsage,
+		Operation:        operation,
+		Resource:         resource,
+		Summary:          "The managed artifact selector matched more than one exact artifact.",
+		Cause:            cause,
+		Retryable:        errs.Bool(false),
+		CorrectiveAction: "Review the bounded candidates with " + ambiguous.FullStatusCommand + ", then select one exact workspace-relative artifact path.",
+		Phase:            errs.PhaseValidation,
+		Outcome:          errs.OutcomeNotAttempted,
+	}
+	return clierr.WithOutput(ambiguousArtifactOutput{
+		Status:            "ambiguous",
+		Workspace:         workspace,
+		Kind:              ambiguous.Kind,
+		Name:              ambiguous.Name,
+		LUID:              ambiguous.LUID,
+		Candidates:        append([]artifact.AmbiguousCandidate(nil), ambiguous.Candidates...),
+		Truncated:         ambiguous.Truncated,
+		FullStatusCommand: ambiguous.FullStatusCommand,
+	}, structured)
+}
+
+type ambiguousArtifactOutput struct {
+	Status            string                        `json:"status"`
+	Workspace         string                        `json:"workspace"`
+	Kind              string                        `json:"kind"`
+	Name              string                        `json:"name,omitempty"`
+	LUID              string                        `json:"luid,omitempty"`
+	Candidates        []artifact.AmbiguousCandidate `json:"candidates"`
+	Truncated         int                           `json:"truncated"`
+	FullStatusCommand string                        `json:"full_status_command"`
+}
+
 func (a workspaceDeleteStore) Delete(ctx context.Context, request artifactdelete.DeleteRequest) (artifactdelete.Artifact, error) {
 	workspace, err := a.runtime.resolve(ctx, request.Workspace)
 	if err != nil {
@@ -420,7 +471,11 @@ func (a workspaceDeleteStore) Delete(ctx context.Context, request artifactdelete
 }
 
 func statusArtifact(item artifact.Item) workspacestatus.Artifact {
-	return workspacestatus.Artifact{Kind: item.Kind, LUID: item.LUID, Name: item.Name, Path: item.Path, State: item.State, CanonicalPath: item.CanonicalPath, BaselineFingerprint: item.BaselineFingerprint, CurrentFingerprint: item.CurrentFingerprint}
+	diagnostic := ""
+	if len(item.Warnings) > 0 {
+		diagnostic = item.Warnings[0]
+	}
+	return workspacestatus.Artifact{Kind: item.Kind, LUID: item.LUID, Name: item.Name, Path: item.Path, State: item.State, Reason: item.Reason, Diagnostic: diagnostic, CanonicalPath: item.CanonicalPath, BaselineFingerprint: item.BaselineFingerprint, CurrentFingerprint: item.CurrentFingerprint}
 }
 func moveArtifact(item artifact.Item) workspacemove.Artifact {
 	return workspacemove.Artifact{Kind: item.Kind, LUID: item.LUID, Name: item.Name, Path: item.Path, State: item.State, ServerOrigin: item.ServerOrigin, SiteLUID: item.SiteLUID, BaselineFingerprint: item.BaselineFingerprint, CurrentFingerprint: item.CurrentFingerprint, Warnings: append([]string(nil), item.Warnings...)}

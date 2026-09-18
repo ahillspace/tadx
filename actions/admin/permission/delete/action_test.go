@@ -16,6 +16,7 @@ type fake struct {
 	source, mode  string
 	writeErr      error
 	status        string
+	postMode      *string
 }
 
 func TestProjectDefaultPreviewRetainsContentKind(t *testing.T) {
@@ -31,6 +32,12 @@ func TestProjectDefaultPreviewRetainsContentKind(t *testing.T) {
 func (f *fake) GetPermission(_ context.Context, in action.Input) (action.Snapshot, error) {
 	f.reads++
 	mode := f.mode
+	if f.writes > 0 {
+		mode = ""
+	}
+	if f.writes > 0 && f.postMode != nil {
+		mode = *f.postMode
+	}
 	if f.changed && f.reads > 1 {
 		mode = "Deny"
 	}
@@ -55,7 +62,7 @@ func TestPreviewAndExecution(t *testing.T) {
 				t.Fatalf("preview=%+v fake=%+v", out, f)
 			}
 		} else {
-			if f.reads != 2 || f.writes != 1 || out.Result == nil || out.Result.Status != "deleted" {
+			if f.reads != 3 || f.writes != 1 || out.Result == nil || out.Result.Status != "deleted" || out.Result.Rule != nil {
 				t.Fatalf("execute=%+v fake=%+v", out, f)
 			}
 		}
@@ -103,5 +110,15 @@ func TestUnknownOutcomeRetainsRequestID(t *testing.T) {
 	var structured *errs.Error
 	if !errors.As(err, &structured) || structured.ID != "admin.permission.delete.outcome_unknown" || structured.TableauRequestID != "request-1" || *structured.Retryable {
 		t.Fatalf("err=%+v", err)
+	}
+}
+
+func TestAcknowledgedDeleteReportsVerificationFailureWithObservedRule(t *testing.T) {
+	mode := "Allow"
+	f := &fake{source: "direct", mode: "Allow", status: "deleted", postMode: &mode}
+	out, err := action.New(f, f).Execute(context.Background(), input(), false)
+	var structured *errs.Error
+	if !errors.As(err, &structured) || structured.Phase != errs.PhaseVerification || structured.Outcome != errs.OutcomeConfirmed || structured.TableauRequestID != "request-1" || out.Result == nil || out.Result.Rule == nil || out.Result.Rule.Mode != mode {
+		t.Fatalf("out=%+v err=%v", out, err)
 	}
 }

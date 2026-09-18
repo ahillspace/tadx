@@ -5,6 +5,7 @@ import (
 	"errors"
 	"github.com/ahillspace/tadx/internal/commandhint"
 	"reflect"
+	"strings"
 
 	"github.com/ahillspace/tadx/internal/errs"
 )
@@ -29,6 +30,8 @@ type Plan struct {
 type Result struct {
 	Status           string `json:"status"`
 	UserLUID         string `json:"user_luid"`
+	RemovalStatus    string `json:"removal_status,omitempty"`
+	LicenseStatus    string `json:"license_status,omitempty"`
 	TableauRequestID string `json:"tableau_request_id,omitempty"`
 }
 type Output struct {
@@ -38,8 +41,10 @@ type Output struct {
 	Help    []string `json:"help"`
 }
 type CompactMutationResult struct {
-	Status   string `json:"status"`
-	UserLUID string `json:"user_luid"`
+	Status        string `json:"status"`
+	UserLUID      string `json:"user_luid"`
+	RemovalStatus string `json:"removal_status,omitempty"`
+	LicenseStatus string `json:"license_status,omitempty"`
 }
 type CompactResult struct {
 	Plan    Plan                   `json:"plan"`
@@ -56,7 +61,7 @@ type FullResult struct {
 func (o Output) CompactOutput() any {
 	var result *CompactMutationResult
 	if o.Result != nil {
-		result = &CompactMutationResult{Status: o.Result.Status, UserLUID: o.Result.UserLUID}
+		result = &CompactMutationResult{Status: o.Result.Status, UserLUID: o.Result.UserLUID, RemovalStatus: o.Result.RemovalStatus, LicenseStatus: o.Result.LicenseStatus}
 	}
 	return CompactResult{Plan: o.Plan, Result: result, Details: "--full", Help: o.Help}
 }
@@ -104,16 +109,58 @@ func (a *Action) Execute(ctx context.Context, in Input, preview bool) (Output, e
 	}
 	result, err := a.deleter.DeleteUser(ctx, user.LUID)
 	if err != nil {
-		if result.Status == "unknown" {
-			luid := result.UserLUID
-			if luid == "" {
-				luid = user.LUID
-			}
-			return Output{}, &errs.Error{ID: "admin.user.delete.outcome_unknown", Kind: errs.KindOperation, Operation: "admin.user.delete", Resource: luid, Environment: in.Environment, Site: in.Site, Summary: "The user delete outcome could not be determined safely.", Cause: err, Retryable: errs.Bool(false), CorrectiveAction: "Inspect the exact user and Tableau request before retrying: " + commandhint.Environment(in.Environment, "admin", "user", "inspect", "--id", luid), TableauRequestID: result.TableauRequestID}
-		}
-		return Output{}, err
+		return a.failedOutput(ctx, in, user, out, result, err)
+	}
+	if result.UserLUID == "" {
+		result.UserLUID = user.LUID
 	}
 	out.Result = &result
 	out.Help = []string{commandhint.Environment(in.Environment, "admin", "user", "list")}
 	return out, nil
+}
+
+type upstreamCodeCarrier interface {
+	TableauCode() string
+}
+
+func (a *Action) failedOutput(ctx context.Context, in Input, user User, out Output, result Result, cause error) (Output, error) {
+	luid := result.UserLUID
+	if luid == "" {
+		luid = user.LUID
+	}
+	result.UserLUID = luid
+	out.Result = &result
+	out.Help = []string{commandhint.Environment(in.Environment, "admin", "user", "inspect", "--id", luid, "--full")}
+	if isAssetConflict(cause) {
+		result.Status = "refused"
+		result.RemovalStatus = "refused"
+		result.LicenseStatus = "unknown"
+		observed, readErr := a.resolver.ResolveUser(ctx, luid)
+		if readErr == nil && observed.LUID == luid && strings.EqualFold(observed.SiteRole, "Unlicensed") {
+			result.LicenseStatus = "unlicensed"
+			result.Status = "unlicensed"
+		}
+		out.Result = &result
+		outcome := errs.OutcomeUnknown
+		summary := "Tableau refused user removal, and the resulting site license status could not be confirmed."
+		if result.LicenseStatus == "unlicensed" {
+			outcome = errs.OutcomeConfirmed
+			summary = "Tableau refused user removal after the user became unlicensed."
+		}
+		return out, &errs.Error{ID: "admin.user.delete.partial", Kind: errs.KindOperation, Operation: "admin.user.delete", Resource: luid, Environment: in.Environment, Site: in.Site, Summary: summary, Cause: cause, Retryable: errs.Bool(false), CorrectiveAction: "Inspect the exact user before retrying: " + out.Help[0] + "; reassign owned content before attempting removal again.", TableauRequestID: result.TableauRequestID, Phase: errs.PhaseVerification, Outcome: outcome}
+	}
+	if result.Status == "" {
+		result.Status = "unknown"
+	}
+	out.Result = &result
+	return out, &errs.Error{ID: "admin.user.delete.outcome_unknown", Kind: errs.KindOperation, Operation: "admin.user.delete", Resource: luid, Environment: in.Environment, Site: in.Site, Summary: "The user delete outcome could not be determined safely.", Cause: cause, Retryable: errs.Bool(false), CorrectiveAction: "Inspect the exact user and Tableau request before retrying: " + out.Help[0], TableauRequestID: result.TableauRequestID, Phase: errs.PhaseSubmission, Outcome: errs.OutcomeUnknown}
+}
+
+func isAssetConflict(err error) bool {
+	var carrier upstreamCodeCarrier
+	if errors.As(err, &carrier) && carrier.TableauCode() == "409003" {
+		return true
+	}
+	var structured *errs.Error
+	return errors.As(err, &structured) && structured.UpstreamCode == "409003"
 }

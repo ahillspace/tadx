@@ -52,6 +52,7 @@ type Lineage struct {
 	Complete  bool
 	Direction string
 	Depth     int
+	Failure   *value.LineageFailure
 	Nodes     []LineageNode
 	Edges     []LineageEdge
 	Warnings  []string
@@ -82,6 +83,7 @@ type ArtifactResult struct {
 
 // Output retains bounded pull details before projection.
 type Output struct {
+	Source     *value.SourceContext `json:"source,omitempty"`
 	Preview    *value.AcquisitionPlan
 	Workspace  string `json:"workspace"`
 	Status     string
@@ -99,18 +101,20 @@ type CompactArtifact struct {
 	Kind              string `json:"kind"`
 	Name              string `json:"name"`
 	SourceLUID        string `json:"source_luid"`
-	Path              string `json:"-"`
+	Path              string `json:"path"`
+	CanonicalPath     string `json:"canonical_path,omitempty"`
 	CompositionStatus string `json:"composition_status"`
 }
 
 type CompactResult struct {
-	Status          string          `json:"status"`
-	Datasource      Datasource      `json:"datasource"`
-	Artifact        CompactArtifact `json:"artifact"`
-	Warnings        []string        `json:"warnings,omitempty"`
-	WarningsOmitted int             `json:"warnings_omitted,omitempty"`
-	Details         string          `json:"details"`
-	Help            []string        `json:"help"`
+	Source          *value.SourceContext `json:"source,omitempty"`
+	Status          string               `json:"status"`
+	Datasource      Datasource           `json:"datasource"`
+	Artifact        CompactArtifact      `json:"artifact"`
+	Warnings        []string             `json:"warnings,omitempty"`
+	WarningsOmitted int                  `json:"warnings_omitted,omitempty"`
+	Details         string               `json:"details"`
+	Help            []string             `json:"help"`
 }
 
 type FullArtifact struct {
@@ -130,13 +134,14 @@ type FullArtifact struct {
 }
 
 type FullResult struct {
-	Status          string       `json:"status"`
-	Datasource      Datasource   `json:"datasource"`
-	Artifact        FullArtifact `json:"artifact"`
-	Warnings        []string     `json:"warnings,omitempty"`
-	WarningsOmitted int          `json:"warnings_omitted,omitempty"`
-	RequestID       string       `json:"tableau_request_id,omitempty"`
-	Help            []string     `json:"help"`
+	Source          *value.SourceContext `json:"source,omitempty"`
+	Status          string               `json:"status"`
+	Datasource      Datasource           `json:"datasource"`
+	Artifact        FullArtifact         `json:"artifact"`
+	Warnings        []string             `json:"warnings,omitempty"`
+	WarningsOmitted int                  `json:"warnings_omitted,omitempty"`
+	RequestID       string               `json:"tableau_request_id,omitempty"`
+	Help            []string             `json:"help"`
 }
 
 func (o Output) CompactOutput() any {
@@ -148,7 +153,7 @@ func (o Output) CompactOutput() any {
 		warningSource = o.Warnings
 	}
 	warnings, omitted := boundedWarnings(warningSource)
-	return CompactResult{Status: o.Status, Datasource: o.Datasource, Artifact: CompactArtifact{Workspace: o.Workspace, Kind: "datasource", Name: o.Datasource.Name, SourceLUID: o.Datasource.LUID, Path: o.Artifact.Path, CompositionStatus: o.Artifact.CompositionStatus}, Warnings: warnings, WarningsOmitted: omitted, Details: "--full", Help: o.Help}
+	return CompactResult{Source: o.Source, Status: o.Status, Datasource: o.Datasource, Artifact: CompactArtifact{Workspace: o.Workspace, Kind: "datasource", Name: o.Datasource.Name, SourceLUID: o.Datasource.LUID, Path: o.Artifact.Path, CanonicalPath: o.Artifact.CanonicalPath, CompositionStatus: o.Artifact.CompositionStatus}, Warnings: warnings, WarningsOmitted: omitted, Details: "--full", Help: o.Help}
 }
 
 func (o Output) FullOutput() any {
@@ -161,7 +166,7 @@ func (o Output) FullOutput() any {
 		nodes, edges := o.Artifact.NodeCount, o.Artifact.EdgeCount
 		artifact.NodeCount, artifact.EdgeCount = &nodes, &edges
 	}
-	return FullResult{Status: o.Status, Datasource: o.Datasource, Artifact: artifact, Warnings: warnings, WarningsOmitted: omitted, RequestID: o.RequestID, Help: o.Help}
+	return FullResult{Source: o.Source, Status: o.Status, Datasource: o.Datasource, Artifact: artifact, Warnings: warnings, WarningsOmitted: omitted, RequestID: o.RequestID, Help: o.Help}
 }
 
 const warningLimit = 20

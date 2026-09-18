@@ -33,11 +33,11 @@ func TestWorkbookListReaderMapsActionAndResourceTypes(t *testing.T) {
 		Number: 1, Size: 25, Total: 1, RequestID: "request-1",
 		Items: []resourceworkbook.Workbook{{LUID: "wb-1", Name: "Finance", ProjectLUID: "project-1", ProjectPath: "Department/Ops", ContentURL: "Finance", Description: "Finance reporting", OwnerLUID: "user-1", CreatedAt: "2026-08-01T00:00:00Z", UpdatedAt: "2026-09-01T00:00:00Z", Tags: []string{"finance"}}},
 	}}
-	page, err := (workbookListReader{adapter: adapter}).ListWorkbooks(context.Background(), workbooklist.PageRequest{PageNumber: 1, PageSize: 25, Name: "Finance", OwnerName: "Analyst", ProjectName: "Ops", Tag: "finance"})
+	page, err := (workbookListReader{adapter: adapter}).ListWorkbooks(context.Background(), workbooklist.PageRequest{PageNumber: 1, PageSize: 25, Name: "Finance", OwnerName: "Analyst", ProjectLUID: "project-1", ProjectName: "Ops", Tag: "finance"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if adapter.listRequest.Name != "Finance" || adapter.listRequest.OwnerName != "Analyst" || adapter.listRequest.ProjectName != "Ops" || adapter.listRequest.Tag != "finance" {
+	if adapter.listRequest.Name != "Finance" || adapter.listRequest.OwnerName != "Analyst" || adapter.listRequest.ProjectLUID != "project-1" || adapter.listRequest.ProjectName != "Ops" || adapter.listRequest.Tag != "finance" {
 		t.Fatalf("request = %#v", adapter.listRequest)
 	}
 	if page.RequestID != "request-1" || len(page.Workbooks) != 1 || page.Workbooks[0].ProjectPath != "Department/Ops" || page.Workbooks[0].Description != "Finance reporting" || len(page.Workbooks[0].Tags) != 1 {

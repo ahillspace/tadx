@@ -2,6 +2,7 @@ package lineage_test
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"testing"
 
@@ -11,12 +12,33 @@ import (
 
 type captureClient struct {
 	result tableaumetadata.Capture
+	err    error
 	input  tableaumetadata.CaptureRequest
 }
 
 func (c *captureClient) CaptureLineage(_ context.Context, input tableaumetadata.CaptureRequest) (tableaumetadata.Capture, error) {
 	c.input = input
-	return c.result, nil
+	return c.result, c.err
+}
+
+func TestAdapterRetainsPartialGraphAndProviderCause(t *testing.T) {
+	providerErr := &tableaumetadata.RelationError{RootKind: tableaumetadata.KindFlow, RootRESTLUID: "flow-1", Relation: "upstreamDatabasesConnection", Cause: errors.New("metadata relation permission denied")}
+	client := &captureClient{result: tableaumetadata.Capture{
+		RootRESTLUID: "flow-1", RootMetadataID: "meta-flow", Nodes: []tableaumetadata.Node{
+			{MetadataID: "meta-flow", Kind: "flow", RESTLUID: "flow-1"},
+			{MetadataID: "meta-ds", Kind: "published_datasource", RESTLUID: "ds-1"},
+		}, Edges: []tableaumetadata.Edge{{FromMetadataID: "meta-ds", ToMetadataID: "meta-flow", Relationship: "upstream"}},
+	}, err: providerErr}
+	graph, err := resourcelineage.NewAdapter(client).Capture(context.Background(), resourcelineage.Request{Kind: "flow", RESTLUID: "flow-1", Direction: "upstream", Depth: 1})
+	if !errors.Is(err, providerErr) {
+		t.Fatalf("error = %v, want provider cause", err)
+	}
+	if graph.Complete || len(graph.Nodes) != 2 || len(graph.Edges) != 1 {
+		t.Fatalf("partial graph = %#v", graph)
+	}
+	if graph.Failure == nil || graph.Failure.Provider != "tableau-metadata" || graph.Failure.Relation != "upstreamDatabasesConnection" || graph.Failure.RootKind != "flow" || graph.Failure.RootRESTLUID != "flow-1" {
+		t.Fatalf("failure = %#v", graph.Failure)
+	}
 }
 
 func TestAdapterNormalizesAndSortsLineageDeterministically(t *testing.T) {

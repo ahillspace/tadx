@@ -168,7 +168,7 @@ func attachBatchWithOptions(root, command *cobra.Command, options batchspec.Opti
 			return clierr.Usage(cmd.Annotations[CapabilityAnnotation], err)
 		}
 		path := strings.Fields(strings.TrimPrefix(cmd.CommandPath(), root.Name()+" "))
-		seen := map[string]bool{}
+		seen := map[string]int{}
 		work := 0
 		for index, item := range items {
 			row, count, err := batchRowArguments(cmd, item, args, options)
@@ -179,14 +179,11 @@ func attachBatchWithOptions(root, command *cobra.Command, options batchspec.Opti
 			if work > contentbatch.MaxItems {
 				return clierr.Usage(cmd.Annotations[CapabilityAnnotation], fmt.Errorf("batch expands beyond %d selections", contentbatch.MaxItems))
 			}
-			key, _ := json.Marshal(struct {
-				Args  []string
-				Empty []string
-			}{row.argv, row.emptyLists})
-			if seen[string(key)] {
-				return clierr.Usage(cmd.Annotations[CapabilityAnnotation], fmt.Errorf("duplicate batch item %d", index+1))
+			key, selectors := batchDuplicateKey(row, options)
+			if previous, duplicate := seen[key]; duplicate {
+				return clierr.Usage(cmd.Annotations[CapabilityAnnotation], fmt.Errorf("batch item %d duplicates batch item %d after trimming normalized selectors %q; choose unique selectors", index+1, previous, selectors))
 			}
-			seen[string(key)] = true
+			seen[key] = index + 1
 			row.argv = append(append([]string(nil), path...), row.argv...)
 			// Parse and validate all flag types, selectors in Args, and required
 			// groups before dispatch. RunE/action validation still owns semantics.
@@ -223,9 +220,17 @@ func attachBatchWithOptions(root, command *cobra.Command, options batchspec.Opti
 		if rows == nil {
 			return originalRun(cmd, args)
 		}
+		resultSelectors := make([]string, len(rows))
 		indices := make([]string, len(rows))
 		for i := range rows {
 			indices[i] = strconv.Itoa(i + 1)
+			_, resultSelectors[i] = batchDuplicateKey(rows[i], options)
+			if resultSelectors[i] == "" {
+				// A selector-less row is only possible for an action whose batch
+				// contract is positional or otherwise has no target flag. Keep the
+				// bounded result self-identifying without exposing unrelated args.
+				resultSelectors[i] = indices[i]
+			}
 		}
 		out, err := contentbatch.Run(cmd.Context(), cmd.Annotations[CapabilityAnnotation], indices, func(ctx context.Context, index string) (any, error) {
 			i, _ := strconv.Atoi(index)
@@ -250,6 +255,11 @@ func attachBatchWithOptions(root, command *cobra.Command, options batchspec.Opti
 			}
 			return capture.value, err
 		})
+		for i := range out.Items {
+			if i < len(resultSelectors) {
+				out.Items[i].Selector = resultSelectors[i]
+			}
+		}
 		if renderErr := renderer.Render(out); renderErr != nil {
 			return renderErr
 		}
@@ -258,6 +268,43 @@ func attachBatchWithOptions(root, command *cobra.Command, options batchspec.Opti
 		}
 		return nil
 	}
+}
+
+func batchDuplicateKey(row batchRow, options batchspec.Options) (string, string) {
+	selectorNames := make(map[string]bool, len(options.Selectors))
+	for _, name := range options.Selectors {
+		selectorNames[name] = true
+	}
+	normalized := append([]string(nil), row.argv...)
+	selectors := make([]string, 0, len(options.Selectors))
+	inPositionals := false
+	for index, argument := range normalized {
+		if argument == "--" {
+			inPositionals = true
+			continue
+		}
+		if inPositionals && options.Positional {
+			value := strings.TrimSpace(argument)
+			normalized[index] = value
+			selectors = append(selectors, value)
+			continue
+		}
+		if !strings.HasPrefix(argument, "--") {
+			continue
+		}
+		name, value, found := strings.Cut(strings.TrimPrefix(argument, "--"), "=")
+		if !found || !selectorNames[name] {
+			continue
+		}
+		value = strings.TrimSpace(value)
+		normalized[index] = "--" + name + "=" + value
+		selectors = append(selectors, name+"="+value)
+	}
+	key, _ := json.Marshal(struct {
+		Args  []string
+		Empty []string
+	}{normalized, row.emptyLists})
+	return string(key), strings.Join(selectors, ", ")
 }
 
 // varyingBatchSelector distinguishes independent target dimensions from native

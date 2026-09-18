@@ -407,6 +407,9 @@ func (c *remoteContentCommands) PublishFlow(ctx context.Context, input flowpubli
 		}
 		managed, err := artifact.Resolve(ctx, workspace.Root, artifact.Selector{Kind: "flow", Path: input.ArtifactPath, LUID: input.ArtifactID, Name: input.ArtifactName})
 		if err != nil {
+			if _, ambiguous := errors.AsType[*artifact.AmbiguousSelectorError](err); ambiguous {
+				return flowpublish.Output{}, mapArtifactResolutionError("flow.publish", workspace.Name, input.ArtifactID, err)
+			}
 			return flowpublish.Output{}, capabilitySetupError("flow.publish.artifact", "flow.publish", input.Environment, input.Site, "Flow artifact resolution failed.", "Select one exact workspace-relative managed flow artifact, then retry.", err)
 		}
 		absolutePath := filepath.Join(workspace.Root, filepath.FromSlash(managed.Path))
@@ -424,8 +427,18 @@ func (c *remoteContentCommands) PublishFlow(ctx context.Context, input flowpubli
 	}
 	input.Environment, input.Site = connection.environment.Alias, connection.environment.SiteContentURL
 	input.TargetResolved = true
-	adapter := flowPublishAdapter{flows: connection.flows, projects: connection.projects, changes: connection.flowChanges}
-	return flowpublish.New(reader, adapter, adapter).Execute(ctx, input, preview)
+	var lifecycle *publication
+	adapter := flowPublishAdapter{flows: connection.flows, projects: connection.projects, changes: connection.flowChanges, runtime: c.runtime, environment: input.Environment, sourcePath: input.ArtifactPath, lifecycle: &lifecycle}
+	if managed, ok := reader.(flowArtifactReader); ok {
+		adapter.sourcePath = managed.displayPath
+	}
+	out, err := flowpublish.New(reader, adapter, adapter).Execute(ctx, input, preview)
+	if out.Result != nil && out.Result.Status != "" && lifecycle != nil {
+		var saveErr error
+		out.Result.ReceiptPath, saveErr = lifecycle.record(ctx, "", out.Result.Status, out.Result.FlowLUID, out.Result.TableauRequestID, "")
+		err = errors.Join(err, saveErr)
+	}
+	return out, err
 }
 
 func (c *remoteContentCommands) MoveFlow(ctx context.Context, input flowmove.Input, preview bool) (flowmove.Output, error) {
@@ -659,7 +672,7 @@ func flowPullLineage(graph resourcelineage.Graph) flowpull.Lineage {
 	for index, edge := range graph.Edges {
 		edges[index] = flowpull.LineageEdge{FromMetadataID: edge.FromMetadataID, ToMetadataID: edge.ToMetadataID, Relationship: edge.Relationship}
 	}
-	return flowpull.Lineage{Complete: graph.Complete, Direction: graph.Direction, Depth: graph.Depth, Nodes: nodes, Edges: edges, Warnings: append([]string(nil), graph.Warnings...)}
+	return flowpull.Lineage{Complete: graph.Complete, Direction: graph.Direction, Depth: graph.Depth, Failure: graph.Failure, Nodes: nodes, Edges: edges, Warnings: append([]string(nil), graph.Warnings...)}
 }
 
 type flowArtifactWriter struct{ manager *artifact.FlowManager }
@@ -680,7 +693,7 @@ func (w flowArtifactWriter) WriteFlow(ctx context.Context, input flowpull.Artifa
 	if depth == 0 {
 		depth = 1
 	}
-	result, err := w.manager.Pull(ctx, artifact.FlowPull{Workspace: input.Workspace, Filename: input.Filename, Content: input.Content, Overwrite: input.Overwrite, Metadata: artifact.FlowMetadata{Name: input.Name, TableauID: input.TableauID, SourceServerOrigin: input.ServerOrigin, SourceSiteLUID: input.SiteLUID, SourceEnvironment: input.Environment, SourceSite: input.Site, SourceProjectName: input.ProjectName, SourceProjectID: input.ProjectID, FileType: input.FileType}, Lineage: artifact.LineageDocument{Complete: input.Lineage.Complete, Direction: direction, Depth: depth, Nodes: nodes, Edges: edges, Warnings: append([]string(nil), input.Lineage.Warnings...)}})
+	result, err := w.manager.Pull(ctx, artifact.FlowPull{Workspace: input.Workspace, Filename: input.Filename, Content: input.Content, Overwrite: input.Overwrite, Metadata: artifact.FlowMetadata{Name: input.Name, TableauID: input.TableauID, SourceServerOrigin: input.ServerOrigin, SourceSiteLUID: input.SiteLUID, SourceEnvironment: input.Environment, SourceSite: input.Site, SourceProjectName: input.ProjectName, SourceProjectID: input.ProjectID, FileType: input.FileType}, Lineage: artifact.LineageDocument{Complete: input.Lineage.Complete, Direction: direction, Depth: depth, Failure: artifactLineageFailure(input.Lineage.Failure), Nodes: nodes, Edges: edges, Warnings: append([]string(nil), input.Lineage.Warnings...)}})
 	if err != nil {
 		return flowpull.ArtifactResult{}, err
 	}
@@ -721,9 +734,12 @@ func (r flowArtifactReader) ReadFlow(ctx context.Context, path string) (flowpubl
 }
 
 type flowPublishAdapter struct {
-	flows    *resourceflow.Adapter
-	projects *resourceproject.Adapter
-	changes  *resourceflow.MutationAdapter
+	flows                   *resourceflow.Adapter
+	projects                *resourceproject.Adapter
+	changes                 *resourceflow.MutationAdapter
+	runtime                 *runtimeDependencies
+	environment, sourcePath string
+	lifecycle               **publication
 }
 
 func (a flowPublishAdapter) ResolveProject(ctx context.Context, selector identity.Selector) (flowpublish.Project, error) {
@@ -741,6 +757,15 @@ func (a flowPublishAdapter) FindFlows(ctx context.Context, name, projectLUID str
 }
 
 func (a flowPublishAdapter) Prepare(ctx context.Context, input flowpublish.PublishRequest) (flowpublish.PreparedPublish, error) {
+	if a.runtime != nil {
+		p, err := a.runtime.publication(ctx, a.environment, "flow", a.sourcePath, input.ProjectLUID, input.Name)
+		if err != nil {
+			return nil, err
+		}
+		if a.lifecycle != nil {
+			*a.lifecycle = p
+		}
+	}
 	prepared, err := a.changes.PrepareFlow(ctx, tableauflow.PublishRequest{Name: input.Name, ProjectLUID: input.ProjectLUID, Filename: input.Filename, ContentPath: input.ContentPath, ContentSize: input.ContentSize, ExpectedFingerprint: input.ExpectedFingerprint, Overwrite: input.Overwrite})
 	if err != nil {
 		return nil, err
@@ -837,7 +862,7 @@ func (r lineageReader) CaptureLineage(ctx context.Context, input lineagepull.Cap
 	copy(nodes, graph.Nodes)
 	edges := make([]lineagepull.Edge, len(graph.Edges))
 	copy(edges, graph.Edges)
-	return lineagepull.Graph{RootMetadataID: graph.RootMetadataID, Complete: graph.Complete, Nodes: nodes, Edges: edges, Warnings: append([]string(nil), graph.Warnings...), RequestIDs: append([]string(nil), graph.RequestIDs...)}, err
+	return lineagepull.Graph{RootMetadataID: graph.RootMetadataID, Direction: graph.Direction, Depth: graph.Depth, Complete: graph.Complete, Failure: graph.Failure, Nodes: nodes, Edges: edges, Warnings: append([]string(nil), graph.Warnings...), RequestIDs: append([]string(nil), graph.RequestIDs...)}, err
 }
 
 type lineageArtifactWriter struct{ manager *artifact.LineageManager }
@@ -851,6 +876,6 @@ func (w lineageArtifactWriter) WriteLineage(ctx context.Context, input lineagepu
 	for index, edge := range input.Edges {
 		edges[index] = artifact.LineageEdge{FromMetadataID: edge.FromMetadataID, ToMetadataID: edge.ToMetadataID, Relationship: edge.Relationship}
 	}
-	result, err := w.manager.Pull(ctx, artifact.LineagePull{Workspace: input.Workspace, CountsKnown: input.CountsKnown, Overwrite: input.Overwrite, Metadata: artifact.LineageMetadata{ResourceKind: input.Resource.Kind, Name: input.Resource.Name, TableauID: input.Resource.LUID, MetadataID: input.Resource.MetadataID, ProjectPath: input.Resource.ProjectPath, SourceServerOrigin: input.ServerOrigin, SourceSiteLUID: input.SiteLUID, SourceEnvironment: input.Environment, SourceSite: input.Site}, Lineage: artifact.LineageDocument{Complete: input.Complete, Direction: input.Direction, Depth: input.Depth, Nodes: nodes, Edges: edges, Warnings: append([]string(nil), input.Warnings...)}})
+	result, err := w.manager.Pull(ctx, artifact.LineagePull{Workspace: input.Workspace, CountsKnown: input.CountsKnown, Overwrite: input.Overwrite, Metadata: artifact.LineageMetadata{ResourceKind: input.Resource.Kind, Name: input.Resource.Name, TableauID: input.Resource.LUID, MetadataID: input.Resource.MetadataID, ProjectPath: input.Resource.ProjectPath, SourceServerOrigin: input.ServerOrigin, SourceSiteLUID: input.SiteLUID, SourceEnvironment: input.Environment, SourceSite: input.Site}, Lineage: artifact.LineageDocument{Complete: input.Complete, Direction: input.Direction, Depth: input.Depth, Failure: artifactLineageFailure(input.Failure), Nodes: nodes, Edges: edges, Warnings: append([]string(nil), input.Warnings...)}})
 	return lineagepull.ArtifactResult{Path: result.Path, LineagePath: result.LineagePath, Fingerprint: result.Fingerprint}, err
 }

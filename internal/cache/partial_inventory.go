@@ -78,7 +78,7 @@ func PartialInventoryCursor(id string, query ResourceQuery) string {
 
 func (s *Store) readPartialInventory(ctx context.Context, query ResourceQuery) (ResourceResult, error) {
 	id, fingerprint, offset, err := decodeCursor(strings.TrimPrefix(query.Cursor, partialInventoryCursorPrefix))
-	if err != nil || offset < 0 || query.Offset != 0 || fingerprint != resourceQueryFingerprint(query) || query.LUID != "" || query.Name != "" || query.ProjectPath != "" || query.ProjectName != "" {
+	if err != nil || offset < 0 || query.Offset != 0 || fingerprint != resourceQueryFingerprint(query) || query.LUID != "" || query.Name != "" || query.ProjectPath != "" || query.ProjectLUID != "" || query.ProjectName != "" {
 		return ResourceResult{}, invalidCursorError{}
 	}
 	db, err := s.open(ctx)

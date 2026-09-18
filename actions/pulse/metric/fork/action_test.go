@@ -148,6 +148,27 @@ func TestForkPreservesCreatedMetricWhenReconciliationFails(t *testing.T) {
 	if err == nil || output.Result == nil || output.Result.MetricLUID != "metric-fork" || !errors.As(err, &structured) || structured.Phase != errs.PhaseVerification || structured.Outcome != errs.OutcomeConfirmed {
 		t.Fatalf("output=%#v err=%v", output, err)
 	}
+	if len(output.Help) != 1 || !strings.Contains(output.Help[0], "pulse metric inspect") || !strings.Contains(output.Help[0], "--full") || strings.Contains(output.Help[0], "--preview") {
+		t.Fatalf("stale recovery help=%#v", output.Help)
+	}
+}
+
+type uncertainCreateService struct{ service }
+
+func (s *uncertainCreateService) GetOrCreateMetric(context.Context, metricfork.CreateRequest) (metricfork.CreateResult, error) {
+	return metricfork.CreateResult{MetricLUID: "metric-uncertain", Created: true}, errors.New("provider response was interrupted")
+}
+
+func TestForkRetainsIdentityWhenCreateOutcomeIsUncertain(t *testing.T) {
+	s := &uncertainCreateService{service: service{metric: metricfork.Metric{LUID: "metric-1", DefinitionLUID: "definition-1", SiteLUID: "site-1", Specification: map[string]any{"filters": []any{}}}}}
+	output, err := metricfork.New(s, s, s).Execute(context.Background(), metricfork.Input{Environment: "dev", Site: "sandbox", SiteLUID: "site-1", MetricLUID: "metric-1", Timeframe: "LAST_30_DAYS"}, false)
+	var structured *errs.Error
+	if err == nil || output.Result == nil || output.Result.MetricLUID != "metric-uncertain" || !errors.As(err, &structured) || structured.Outcome != errs.OutcomeUnknown {
+		t.Fatalf("output=%#v err=%v", output, err)
+	}
+	if len(output.Help) != 1 || !strings.Contains(output.Help[0], "metric inspect") || !strings.Contains(output.Help[0], "metric-uncertain") || !strings.Contains(output.Help[0], "--full") {
+		t.Fatalf("recovery help=%#v", output.Help)
+	}
 }
 
 type existingForkService struct{ service }
@@ -206,6 +227,26 @@ func TestForkPreservesIntegerSpecFidelity(t *testing.T) {
 	}
 }
 
+func TestForkAcceptsOnlySupportedCustomDayWindows(t *testing.T) {
+	for _, days := range []int{7, 14, 30, 60, 90} {
+		t.Run(strconv.Itoa(days), func(t *testing.T) {
+			s := &service{metric: metricfork.Metric{LUID: "metric-1", DefinitionLUID: "definition-1", SiteLUID: "site-1", Specification: map[string]any{"filters": []any{}}}}
+			input := metricfork.Input{MetricLUID: "metric-1", Timeframe: "CUSTOM_N_DAYS", CustomDays: days, CustomDaysSet: true}
+			preview, err := metricfork.New(s, s, s).Execute(context.Background(), input, true)
+			if err != nil {
+				t.Fatal(err)
+			}
+			period := preview.Plan.Specification["measurement_period"].(map[string]any)["last_x_period"].(map[string]any)["period"]
+			if period != days || s.created != 0 {
+				t.Fatalf("preview period=%v writes=%d", period, s.created)
+			}
+			if _, err := metricfork.New(s, s, s).Execute(context.Background(), input, false); err != nil || s.created != 1 {
+				t.Fatalf("execute writes=%d err=%v", s.created, err)
+			}
+		})
+	}
+}
+
 func TestForkOutputGolden(t *testing.T) {
 	output := metricfork.Output{
 		Plan: metricfork.Plan{
@@ -252,8 +293,12 @@ func assertGolden(t *testing.T, name string, value any, full bool) {
 func TestForkRejectsNoChangeAndDisallowedDimension(t *testing.T) {
 	s := &service{metric: metricfork.Metric{LUID: "metric-1", DefinitionLUID: "definition-1", Specification: map[string]any{"filters": []any{}, "measurement_period": map[string]any{"granularity": "GRANULARITY_BY_DAY", "range": "RANGE_CURRENT_PARTIAL"}}}}
 	for _, input := range []metricfork.Input{{MetricLUID: "metric-1"}, {MetricLUID: "metric-1", Filters: []metricfork.Filter{{Field: "Secret", Values: []string{"x"}}}}} {
-		if _, err := metricfork.New(s, s, s).Execute(context.Background(), input, false); err == nil {
+		_, err := metricfork.New(s, s, s).Execute(context.Background(), input, false)
+		if err == nil {
 			t.Fatalf("input accepted: %#v", input)
+		}
+		if len(input.Filters) > 0 && (!strings.Contains(err.Error(), `field "Secret"`) || !strings.Contains(err.Error(), "allowed")) {
+			t.Fatalf("disallowed dimension error=%v", err)
 		}
 	}
 }

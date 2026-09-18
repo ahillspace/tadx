@@ -3,16 +3,18 @@ package update
 import (
 	"context"
 	"errors"
+	"github.com/ahillspace/tadx/internal/errs"
 	"github.com/ahillspace/tadx/internal/value"
 	"strings"
 	"testing"
 )
 
 type fixture struct {
-	reads, writes int
-	failTag       bool
-	description   *string
-	lastUpdate    value.MetadataUpdate
+	reads, writes   int
+	failTag         bool
+	description     *string
+	lastUpdate      value.MetadataUpdate
+	omitDescription bool
 }
 
 func (f *fixture) GetColumn(context.Context, string, string) (value.MetadataColumn, error) {
@@ -22,7 +24,11 @@ func (f *fixture) GetColumn(context.Context, string, string) (value.MetadataColu
 func (f *fixture) UpdateColumn(_ context.Context, _, _ string, patch value.MetadataUpdate) (value.MetadataColumn, error) {
 	f.writes++
 	f.lastUpdate = patch
-	return value.MetadataColumn{MetadataIdentity: value.MetadataIdentity{LUID: "item"}}, nil
+	description := patch.Description
+	if f.omitDescription {
+		description = nil
+	}
+	return value.MetadataColumn{MetadataIdentity: value.MetadataIdentity{LUID: "item"}, Table: value.MetadataIdentity{LUID: "table"}, Description: description, TagsObserved: true}, nil
 }
 func (f *fixture) AddColumnTags(context.Context, string, []string) ([]string, error) {
 	f.writes++
@@ -73,7 +79,7 @@ func TestExplicitEmptyDescriptionClearsAndPreviews(t *testing.T) {
 				if f.reads != 1 || f.writes != 0 || out.Result != nil {
 					t.Fatalf("preview wrote or misreported: %+v reads=%d writes=%d", out, f.reads, f.writes)
 				}
-			} else if f.reads != 2 || f.writes != 1 || f.lastUpdate.Description == nil || *f.lastUpdate.Description != "" || f.lastUpdate.ContactLUID != nil || out.Result.Status != "updated" || len(out.Result.Completed) != 1 || out.Result.Completed[0] != "description" {
+			} else if f.reads != 2 || f.writes != 1 || f.lastUpdate.Description == nil || *f.lastUpdate.Description != "" || f.lastUpdate.ContactLUID != nil || out.Result.Status != "updated" || out.Result.Description == nil || *out.Result.Description != "" || len(out.Result.Completed) != 1 || out.Result.Completed[0] != "description" {
 				t.Fatalf("clear execution %+v patch=%+v reads=%d writes=%d", out, f.lastUpdate, f.reads, f.writes)
 			}
 		})
@@ -88,6 +94,16 @@ func TestEmptyDescriptionAlreadyObservedIsNoOp(t *testing.T) {
 	out, err := New(f, f).Execute(context.Background(), in, false)
 	if err != nil || !out.Plan.NoOp || out.Result == nil || out.Result.Status != "unchanged" || f.writes != 0 {
 		t.Fatalf("%+v %v writes=%d", out, err, f.writes)
+	}
+}
+
+func TestMissingReturnedDescriptionIsConfirmedVerificationFailure(t *testing.T) {
+	f := &fixture{omitDescription: true}
+	in := valid()
+	out, err := New(f, f).Execute(context.Background(), in, false)
+	var structured *errs.Error
+	if !errors.As(err, &structured) || structured.Phase != errs.PhaseVerification || structured.Outcome != errs.OutcomeConfirmed || out.Result == nil || out.Result.Identity.LUID != "item" || out.Result.Description != nil {
+		t.Fatalf("missing returned property was treated as success or plan echo: %+v %v", out, err)
 	}
 }
 

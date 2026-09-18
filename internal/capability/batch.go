@@ -73,8 +73,10 @@ func BatchOptions() map[string]batchspec.Options {
 	selectors("pulse.metric.list", "definition-id")
 	for _, kind := range []string{"user", "group"} {
 		selectors("admin."+kind+".create", "name")
-		selectors("admin."+kind+".inspect", "id", "name")
 	}
+	selectors("admin.user.inspect", "id", "name", "username")
+	selectors("admin.group.inspect", "id", "name")
+	selectors("job.inspect", "id")
 	selectors("admin.user.update", "id", "username")
 	selectors("admin.user.delete", "id", "username")
 	for _, operation := range []string{"add", "remove"} {

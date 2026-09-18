@@ -10,9 +10,25 @@ import (
 	"github.com/spf13/pflag"
 )
 
-// The pilot has explicit reference boundaries. Resolve the owner without looking
-// at parsed values, so all help spellings and descendants render the same text.
+// The pilot has explicit reference boundaries. Resolve the owner and optional
+// focused action without looking at parsed values, so all help spellings render
+// from the same definitions.
 func writeContentPilotHelp(out io.Writer, command *cobra.Command) bool {
+	for node := command; node != nil; node = node.Parent() {
+		parent := node.Parent()
+		if parent == nil || parent.Name() != "content" || parent.Parent() == nil {
+			continue
+		}
+		switch node.Name() {
+		case "workbook", "datasource", "flow", "project":
+			if node == command {
+				writeContentReference(out, node)
+			} else {
+				writeContentReference(out, node, command)
+			}
+			return true
+		}
+	}
 	for node := command; node != nil; node = node.Parent() {
 		parent := node.Parent()
 		if parent == nil {
@@ -21,13 +37,6 @@ func writeContentPilotHelp(out io.Writer, command *cobra.Command) bool {
 		if node.Name() == "content" && parent.Parent() == nil && node == command {
 			writeContentNavigation(out, node)
 			return true
-		}
-		if parent.Name() == "content" && parent.Parent() != nil && parent.Parent().Parent() == nil {
-			switch node.Name() {
-			case "workbook", "datasource", "flow", "project":
-				writeContentReference(out, node)
-				return true
-			}
 		}
 	}
 	return false
@@ -57,12 +66,23 @@ type contentHelpEntry struct {
 	actions []string
 }
 
-func writeContentReference(out io.Writer, resource *cobra.Command) {
-	if writeReviewedContentReference(out, resource) {
+func writeContentReference(out io.Writer, resource *cobra.Command, focused ...*cobra.Command) {
+	var focus *cobra.Command
+	if len(focused) > 0 {
+		focus = focused[0]
+	}
+	if focus == nil && writeReviewedContentReference(out, resource) {
+		fmt.Fprintln(out)
+		writeHelpRelatedNotes(out, resource)
 		return
 	}
 	_, actions := helpNodes(resource)
-	fmt.Fprintf(out, "usage: %s <verb> [flags]\n%s: %s\n\nactions:\n", resource.CommandPath(), helpCommandName(resource), contentResourceSummary(resource))
+	if focus != nil {
+		actions = []*cobra.Command{focus}
+		fmt.Fprintf(out, "Usage: %s [flags]\n%s: %s\n\nactions:\n", focus.CommandPath(), helpCommandName(focus), contentActionSummary(focus))
+	} else {
+		fmt.Fprintf(out, "usage: %s <verb> [flags]\n%s: %s\n\nactions:\n", resource.CommandPath(), helpCommandName(resource), contentResourceSummary(resource))
+	}
 	entries := map[string]*contentHelpEntry{}
 	for _, action := range actions {
 		fmt.Fprintf(out, "  %s: %s\n", helpDisplayPath(resource, action), contentActionSummary(action))
@@ -77,7 +97,7 @@ func writeContentReference(out io.Writer, resource *cobra.Command) {
 	groups := map[string][]string{}
 	for _, entry := range entries {
 		scope := strings.Join(entry.actions, ",")
-		if len(entry.actions) == len(actions) {
+		if focus == nil && len(entry.actions) == len(actions) {
 			scope = "shared"
 		}
 		groups[scope] = append(groups[scope], entry.text)
@@ -98,6 +118,9 @@ func writeContentReference(out io.Writer, resource *cobra.Command) {
 	fmt.Fprintln(out, "  --help (-h): help only. Booleans: =true|false; bare=true, omitted=false unless stated.")
 	fmt.Fprintln(out, "  Environment omitted: reads use read default; remote writes require exactly one configured environment.")
 	fmt.Fprintln(out, "  Remote changes require enabled mutations; previews work when disabled and do not authorize enabling them.")
+	for _, note := range helpRelatedNotes(resource) {
+		fmt.Fprintln(out, "  "+note)
+	}
 	writeContentConstraints(out, actions)
 	writeContentNotes(out, resource, actions)
 	writeContentBatches(out, resource, actions)
@@ -173,13 +196,13 @@ func contentFlagText(resource, action *cobra.Command, flag *pflag.Flag) string {
 		"new-name": "replacement name", "owner-id": "replacement owner LUID", "description": "description",
 		"content-permissions": "content permission mode", "parent": "parent path", "parent-id": "parent LUID",
 		"artifact": "managed directory relative to workspace", "artifact-name": "unique exact managed item name",
-		"as-job": "server job; still waits for completion", "include-extract": "include workbook extracts",
-		"include-pds": "pull direct published datasources as siblings; no recursion",
-		"type":        "exact provider datasource type", "updated-after": "inclusive UTC lower bound", "updated-before": "inclusive UTC upper bound",
+		"include-extract": "include workbook extracts",
+		"include-pds":     "pull direct published datasources as siblings; no recursion",
+		"type":            "exact provider datasource type", "updated-after": "inclusive UTC lower bound", "updated-before": "inclusive UTC upper bound",
 		"query": "case-insensitive field ID/name/caption/label/formula text", "role": "exact field role", "table": "exact logical table caption",
 		"field-id": "raw field ID; at most 10000 distinct", "descriptions": "direct/inherited descriptions and sources",
 		"tags":   "upstream column tags and sources; published fields have no tag API",
-		"create": "new datasource; fail on collision", "append": "append to exact collision", "replace": "replace data in exact collision",
+		"create": "new datasource; fail on collision", "append": "append prepared .hyper to exact collision", "replace": "replace exact collision data using prepared .hyper",
 	}
 	if summary, ok := summaries[flag.Name]; ok {
 		copy.Usage = summary
@@ -198,7 +221,7 @@ func contentFlagText(resource, action *cobra.Command, flag *pflag.Flag) string {
 	if action.Name() == "publish" {
 		switch flag.Name {
 		case "file":
-			extensions := map[string]string{"workbook": ".twb|.twbx", "datasource": ".tds|.tdsx", "flow": ".tfl|.tflx"}
+			extensions := map[string]string{"workbook": ".twb|.twbx", "datasource": ".tds|.tdsx|.hyper", "flow": ".tfl|.tflx"}
 			copy.Usage = "native " + extensions[resource.Name()] + " file"
 		case "id":
 			copy.Usage = "source LUID in workspace, not a remote target"
@@ -288,6 +311,11 @@ func writeContentNotes(out io.Writer, resource *cobra.Command, actions []*cobra.
 		fmt.Fprintf(out, "  publish: --artifact is artifacts/%s/<item>; --file selects a native file.\n", resource.Name())
 		if resource.Name() != "datasource" {
 			fmt.Fprintln(out, "  publish: creates by default; exact collisions require --overwrite. Destination project is always explicit.")
+		}
+		if resource.Name() == "flow" {
+			fmt.Fprintln(out, "  publish: flow publication is synchronous; no job-mode or polling choice is exposed.")
+		} else {
+			fmt.Fprintln(out, "  publish: accepted asynchronous jobs are registered, monitored, and confirmed automatically; the durable receipt supports job wait recovery if interrupted.")
 		}
 	}
 	if has("schema") {

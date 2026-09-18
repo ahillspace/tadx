@@ -19,6 +19,11 @@ func (i *Input) SetSelector(luid, name, projectPath string) {
 	i.Selector = identity.Selector{LUID: identity.LUID(luid), Name: name, ProjectPath: projectPath}
 }
 
+// SetSelectorWithProjectLUID records an authoritative or exact selector using a project LUID.
+func (i *Input) SetSelectorWithProjectLUID(luid, name, projectPath, projectLUID string) {
+	i.Selector = identity.Selector{LUID: identity.LUID(luid), Name: name, ProjectPath: projectPath, ProjectLUID: identity.LUID(projectLUID)}
+}
+
 // Workbook is one bounded workbook projection.
 type Workbook struct {
 	LUID        string   `json:"luid"`

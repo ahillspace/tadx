@@ -3,6 +3,7 @@ package delete
 import (
 	"context"
 	"errors"
+	"fmt"
 	"github.com/ahillspace/tadx/internal/commandhint"
 	"strings"
 
@@ -46,6 +47,10 @@ func (a *Action) Execute(ctx context.Context, input Input) (Output, error) {
 		Warnings: []string{"Tableau determines dependency and cascade effects. Dependent resources are not enumerated."},
 		Help:     []string{commandhint.Environment(input.Environment, "pulse", "metric", "list", "--definition-id", target.DefinitionLUID)},
 	}
+	if target.IsDefault != nil && *target.IsDefault {
+		output.Help = []string{"A default Pulse metric cannot be deleted independently; choose a non-default metric variant."}
+		return output, defaultFailure(input, target)
+	}
 	if input.Preview {
 		output.Help = []string{"Remove --preview to delete this exact Pulse metric."}
 		return output, nil
@@ -68,11 +73,39 @@ func (a *Action) Execute(ctx context.Context, input Input) (Output, error) {
 	return output, nil
 }
 
+func defaultFailure(input Input, target Metric) error {
+	return &errs.Error{
+		ID:               "pulse.metric.delete.default",
+		Kind:             errs.KindOperation,
+		Operation:        "pulse.metric.delete",
+		Resource:         target.LUID,
+		Environment:      input.Environment,
+		Site:             input.Site,
+		Summary:          "The default Pulse metric cannot be deleted independently.",
+		Cause:            fmt.Errorf("metric %q is the default variant for definition %q", target.LUID, target.DefinitionLUID),
+		Retryable:        errs.Bool(false),
+		CorrectiveAction: "Select a non-default Pulse metric variant, inspect it, and preview its exact deletion.",
+		Phase:            errs.PhaseValidation,
+		Outcome:          errs.OutcomeNotAttempted,
+		TableauRequestID: "",
+	}
+}
+
 func failure(suffix string, kind errs.Kind, input Input, summary string, cause error) error {
 	retryable, corrective := errs.CompleteRetryAdvice(cause, "Inspect the remote delete outcome before retrying.")
+	phase, outcome := errs.PhaseVerification, errs.OutcomeNotAttempted
+	if suffix == "usage" {
+		phase = errs.PhaseValidation
+	}
+	if suffix == "unconfigured" {
+		phase = errs.PhaseSetup
+	}
+	if suffix == "failed" {
+		phase, outcome = errs.PhaseSubmission, errs.OutcomeUnknown
+	}
 	if kind == errs.KindUsage {
 		retryable = errs.Bool(false)
 		corrective = "Provide an environment, site, and exact Pulse metric LUID."
 	}
-	return &errs.Error{ID: "pulse.metric.delete." + suffix, Kind: kind, Operation: "pulse.metric.delete", Resource: input.LUID, Environment: input.Environment, Site: input.Site, Summary: summary, Cause: cause, Retryable: retryable, CorrectiveAction: corrective, TableauRequestID: errs.TableauRequestID(cause)}
+	return &errs.Error{ID: "pulse.metric.delete." + suffix, Kind: kind, Operation: "pulse.metric.delete", Resource: input.LUID, Environment: input.Environment, Site: input.Site, Summary: summary, Cause: cause, Retryable: retryable, CorrectiveAction: corrective, TableauRequestID: errs.TableauRequestID(cause), Phase: phase, Outcome: outcome}
 }

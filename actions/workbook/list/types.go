@@ -9,17 +9,17 @@ const fullTagsPerWorkbookLimit = 50
 
 // Input selects one workbook page and its exact upstream filters.
 type Input struct {
-	All                                                          bool
-	Environment, Site, Cursor, Name, OwnerName, ProjectName, Tag string
-	Limit                                                        int
-	Cache                                                        bool
+	All                                                                       bool
+	Environment, Site, Cursor, Name, OwnerName, ProjectLUID, ProjectName, Tag string
+	Limit                                                                     int
+	Cache                                                                     bool
 }
 
 // PageRequest is the action-owned request.
 type PageRequest struct {
-	PageNumber, PageSize              int
-	Name, OwnerName, ProjectName, Tag string
-	SnapshotCursor                    string
+	PageNumber, PageSize                           int
+	Name, OwnerName, ProjectLUID, ProjectName, Tag string
+	SnapshotCursor                                 string
 }
 
 // Workbook is one complete bounded lifecycle projection.
@@ -104,7 +104,8 @@ func (o Output) CompactOutput() any {
 
 // FullOutput returns all bounded current-page fields.
 func (o Output) FullOutput() any {
-	items := append([]Workbook(nil), o.Workbooks...)
+	items := make([]Workbook, len(o.Workbooks))
+	copy(items, o.Workbooks)
 	for index := range items {
 		items[index].Tags = append([]string(nil), items[index].Tags...)
 		if len(items[index].Tags) > fullTagsPerWorkbookLimit {

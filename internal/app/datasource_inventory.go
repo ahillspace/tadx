@@ -61,7 +61,7 @@ func (c *remoteContentCommands) listDatasources(ctx context.Context, input datas
 		}
 		return output, err
 	}
-	filter, err := tableaudatasource.ListFilter(tableaudatasource.ListRequest{Name: input.Name, OwnerName: input.OwnerName, ProjectName: input.ProjectName, Type: input.Type, Tag: input.Tag, UpdatedAfter: input.UpdatedAfter, UpdatedBefore: input.UpdatedBefore})
+	filter, err := tableaudatasource.ListFilter(tableaudatasource.ListRequest{Name: input.Name, OwnerName: input.OwnerName, ProjectLUID: input.ProjectLUID, ProjectName: input.ProjectName, Type: input.Type, Tag: input.Tag, UpdatedAfter: input.UpdatedAfter, UpdatedBefore: input.UpdatedBefore})
 	if err != nil {
 		return datasourcelist.Output{}, err
 	}
@@ -106,7 +106,7 @@ func (c *remoteContentCommands) listDatasources(ctx context.Context, input datas
 }
 
 func datasourceListIsUnfiltered(input datasourcelist.Input) bool {
-	return input.Name == "" && input.OwnerName == "" && input.ProjectName == "" && input.Type == "" && input.Tag == "" && input.UpdatedAfter == "" && input.UpdatedBefore == ""
+	return input.Name == "" && input.OwnerName == "" && input.ProjectLUID == "" && input.ProjectName == "" && input.Type == "" && input.Tag == "" && input.UpdatedAfter == "" && input.UpdatedBefore == ""
 }
 
 func (c *remoteContentCommands) InspectDatasource(ctx context.Context, input datasourceinspect.Input) (datasourceinspect.Output, error) {
@@ -161,7 +161,7 @@ type datasourceListReader struct {
 func (r datasourceListReader) ListDatasources(ctx context.Context, input datasourcelist.PageRequest) (datasourcelist.Page, error) {
 	page, err := r.adapter.ListDatasources(ctx, tableaudatasource.ListRequest{
 		PageNumber: input.PageNumber, PageSize: input.PageSize, Name: input.Name, OwnerName: input.OwnerName,
-		ProjectName: input.ProjectName, Type: input.Type, Tag: input.Tag,
+		ProjectLUID: input.ProjectLUID, ProjectName: input.ProjectName, Type: input.Type, Tag: input.Tag,
 		UpdatedAfter: input.UpdatedAfter, UpdatedBefore: input.UpdatedBefore,
 	})
 	if err != nil {

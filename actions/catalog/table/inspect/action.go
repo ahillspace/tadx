@@ -29,25 +29,49 @@ func ValidateInput(in Input) error {
 }
 
 type Output struct {
-	Status      string              `json:"status"`
-	Environment string              `json:"environment,omitempty"`
-	Site        string              `json:"site,omitempty"`
-	Item        value.MetadataTable `json:"item"`
-	ObservedAt  string              `json:"observed_at,omitempty"`
-	RequestID   string              `json:"tableau_request_id,omitempty"`
+	Status      string               `json:"status"`
+	Environment string               `json:"environment,omitempty"`
+	Site        string               `json:"site,omitempty"`
+	Item        *value.MetadataTable `json:"item,omitempty"`
+	ObservedAt  string               `json:"observed_at,omitempty"`
+	RequestID   string               `json:"tableau_request_id,omitempty"`
 }
 
 func (o Output) CompactOutput() any {
 	return struct {
-		Status      string                 `json:"status"`
-		Environment string                 `json:"environment,omitempty"`
-		Site        string                 `json:"site,omitempty"`
-		Item        value.MetadataIdentity `json:"item"`
-		Parent      value.MetadataIdentity `json:"parent"`
-		Details     string                 `json:"details"`
-	}{o.Status, o.Environment, o.Site, o.Item.MetadataIdentity, o.Item.Database, "--full"}
+		Status      string                  `json:"status"`
+		Environment string                  `json:"environment,omitempty"`
+		Site        string                  `json:"site,omitempty"`
+		Item        *compactItem            `json:"item,omitempty"`
+		Parent      *value.MetadataIdentity `json:"parent,omitempty"`
+		Details     string                  `json:"details"`
+	}{o.Status, o.Environment, o.Site, compact(o.Item), parent(o.Item), "--full"}
 }
 func (o Output) FullOutput() any { return o }
+
+type compactItem struct {
+	value.MetadataIdentity
+	Description  *string                `json:"description"`
+	ContactLUID  string                 `json:"contact_luid,omitempty"`
+	Database     value.MetadataIdentity `json:"database"`
+	FullName     string                 `json:"full_name,omitempty"`
+	Schema       string                 `json:"schema,omitempty"`
+	Tags         []string               `json:"tags,omitempty"`
+	TagsObserved bool                   `json:"tags_observed"`
+}
+
+func compact(v *value.MetadataTable) *compactItem {
+	if v == nil {
+		return nil
+	}
+	return &compactItem{MetadataIdentity: v.MetadataIdentity, Description: v.Description, ContactLUID: v.ContactLUID, Database: v.Database, FullName: v.FullName, Schema: v.Schema, Tags: v.Tags, TagsObserved: v.TagsObserved}
+}
+func parent(v *value.MetadataTable) *value.MetadataIdentity {
+	if v == nil {
+		return nil
+	}
+	return &v.Database
+}
 func (a *Action) Execute(ctx context.Context, in Input) (Output, error) {
 	if err := ValidateInput(in); err != nil {
 		return Output{}, err
@@ -58,7 +82,11 @@ func (a *Action) Execute(ctx context.Context, in Input) (Output, error) {
 	}
 	var err error
 	if in.ID != "" {
-		out.Item, err = a.reader.GetTable(ctx, in.ID)
+		item, readErr := a.reader.GetTable(ctx, in.ID)
+		err = readErr
+		if err == nil {
+			out.Item = &item
+		}
 		if err == nil && out.Item.LUID != in.ID {
 			err = fmt.Errorf("returned table LUID does not match requested identity")
 		}
@@ -71,7 +99,7 @@ func (a *Action) Execute(ctx context.Context, in Input) (Output, error) {
 			if len(page.Items) != 1 || !page.Complete || page.NextCursor != "" || page.Items[0].MetadataID != in.MetadataID {
 				err = fmt.Errorf("metadata selector did not resolve exactly one complete identity")
 			} else {
-				out.Item = page.Items[0]
+				out.Item = &page.Items[0]
 			}
 		}
 	}
@@ -85,5 +113,9 @@ func usage(s string) error {
 }
 func failure(in Input, cause error) error {
 	retry, advice := errs.CompleteRetryAdvice(cause, "Check the exact catalog identity and permissions.")
-	return &errs.Error{ID: "catalog.table.inspect.failed", Kind: errs.KindOperation, Operation: "catalog.table.inspect", Environment: in.Environment, Site: in.Site, Resource: in.ID, Summary: "Catalog table inspection failed.", Cause: cause, Retryable: retry, CorrectiveAction: advice, TableauRequestID: errs.TableauRequestID(cause)}
+	selector := in.ID
+	if selector == "" {
+		selector = in.MetadataID
+	}
+	return &errs.Error{ID: "catalog.table.inspect.failed", Kind: errs.KindOperation, Operation: "catalog.table.inspect", Environment: in.Environment, Site: in.Site, Selector: selector, Resource: in.ID, Summary: "Catalog table inspection failed.", Cause: cause, Retryable: retry, CorrectiveAction: advice, TableauRequestID: errs.TableauRequestID(cause)}
 }

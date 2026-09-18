@@ -1,3 +1,6 @@
+source:
+  environment: production
+  site: marketing
 status: pulled
 workbook:
   luid: wb-1

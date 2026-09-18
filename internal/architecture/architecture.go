@@ -214,8 +214,10 @@ func localImportAllowed(file, imported string) bool {
 				"internal/commandhint",
 				"internal/cache",
 				"internal/config",
+				"internal/contentbatch",
 				"internal/errs",
 				"internal/identity",
+				"internal/jobmonitor",
 				"internal/lastcommand",
 				"internal/output",
 				"internal/paging",
@@ -245,6 +247,11 @@ func localImportAllowed(file, imported string) bool {
 			return imported == "internal/agenttarget"
 		}
 		if hasPathPrefix(file, "internal/lastcommand") {
+			return matchesExact(imported, "internal/lock", "internal/value")
+		}
+		// Job coordination persists observations and uses leaf locks; it has no
+		// knowledge of transport, credentials, executable actions, or the CLI.
+		if hasPathPrefix(file, "internal/jobmonitor") {
 			return matchesExact(imported, "internal/lock", "internal/value")
 		}
 		// Authentication holds the leaf advisory lock for a command's PAT session.
@@ -429,6 +436,7 @@ func isFoundationPackage(file string) bool {
 		hasPathPrefix(file, "internal/capability") ||
 		hasPathPrefix(file, "internal/errs") ||
 		hasPathPrefix(file, "internal/lock") ||
+		hasPathPrefix(file, "internal/jobmonitor") ||
 		hasPathPrefix(file, "internal/output") ||
 		hasPathPrefix(file, "internal/paging") ||
 		hasPathPrefix(file, "internal/pathspec") ||

@@ -51,7 +51,7 @@ func (a *Action) Execute(ctx context.Context, input Input) (Output, error) {
 	if err != nil {
 		return Output{}, err
 	}
-	page, err := a.readWindow(ctx, PageRequest{PageNumber: pageNumber, PageSize: pageSize, Name: input.Name, OwnerName: input.OwnerName, ProjectName: input.ProjectName, Tag: input.Tag, SnapshotCursor: snapshotCursor})
+	page, err := a.readWindow(ctx, PageRequest{PageNumber: pageNumber, PageSize: pageSize, Name: input.Name, OwnerName: input.OwnerName, ProjectLUID: input.ProjectLUID, ProjectName: input.ProjectName, Tag: input.Tag, SnapshotCursor: snapshotCursor})
 	if err != nil {
 		return Output{}, err
 	}
@@ -117,10 +117,11 @@ func filterFingerprint(input Input) (string, error) {
 		Site        string `json:"site"`
 		Name        string `json:"name"`
 		OwnerName   string `json:"owner_name"`
+		ProjectLUID string `json:"project_luid"`
 		ProjectName string `json:"project_name"`
 		Tag         string `json:"tag"`
 		Cache       bool   `json:"cache"`
-	}{Environment: input.Environment, Site: input.Site, Name: input.Name, OwnerName: input.OwnerName, ProjectName: input.ProjectName, Tag: input.Tag, Cache: input.Cache})
+	}{Environment: input.Environment, Site: input.Site, Name: input.Name, OwnerName: input.OwnerName, ProjectLUID: input.ProjectLUID, ProjectName: input.ProjectName, Tag: input.Tag, Cache: input.Cache})
 	if err != nil {
 		return "", err
 	}
@@ -138,7 +139,7 @@ func (a *Action) collectAll(ctx context.Context, input Input) (Output, error) {
 	}
 	requestID := ""
 	items, err := paging.Collect(ctx, func(ctx context.Context, state paging.State) (paging.Page[Workbook], error) {
-		page, err := a.reader.ListWorkbooks(ctx, PageRequest{PageNumber: state.Number, PageSize: state.Size, SnapshotCursor: state.Token, Name: input.Name, OwnerName: input.OwnerName, ProjectName: input.ProjectName, Tag: input.Tag})
+		page, err := a.reader.ListWorkbooks(ctx, PageRequest{PageNumber: state.Number, PageSize: state.Size, SnapshotCursor: state.Token, Name: input.Name, OwnerName: input.OwnerName, ProjectLUID: input.ProjectLUID, ProjectName: input.ProjectName, Tag: input.Tag})
 		requestID = page.RequestID
 		return paging.Page[Workbook]{Number: page.Number, Size: page.Size, Total: page.Total, Items: page.Workbooks, Token: page.SnapshotCursor}, err
 	}, func(item Workbook) string { return item.LUID })

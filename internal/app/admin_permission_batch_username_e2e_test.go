@@ -20,6 +20,7 @@ func TestPermissionCreateBatchFileResolvesUsernamesBeforeWrites(t *testing.T) {
 		t.Run(fmt.Sprintf("preview=%t", preview), func(t *testing.T) {
 			var signins, writes int
 			var bodies []string
+			savedRules := make(map[string]struct{ capability, mode string })
 			server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				if r.Method == http.MethodPost && r.URL.Path == "/api/3.29/auth/signin" {
 					signins++
@@ -35,15 +36,30 @@ func TestPermissionCreateBatchFileResolvesUsernamesBeforeWrites(t *testing.T) {
 				case r.Method == http.MethodGet && r.URL.Path == "/api/3.29/sites/site-1/users/u-b":
 					_, _ = io.WriteString(w, `<tsResponse><user id="u-b" name="bob"/></tsResponse>`)
 				case r.Method == http.MethodGet && r.URL.Path == "/api/3.29/sites/site-1/workbooks/w1/permissions":
-					_, _ = io.WriteString(w, `<tsResponse><permissions/></tsResponse>`)
+					var rules strings.Builder
+					for _, user := range []struct {
+						id string
+					}{
+						{id: "u-a"},
+						{id: "u-b"},
+					} {
+						rule, ok := savedRules[user.id]
+						if !ok {
+							continue
+						}
+						fmt.Fprintf(&rules, `<granteeCapabilities><user id="%s"/><capabilities><capability name="%s" mode="%s"/></capabilities></granteeCapabilities>`, user.id, rule.capability, rule.mode)
+					}
+					fmt.Fprintf(w, `<tsResponse><permissions><workbook id="w1"/>%s</permissions></tsResponse>`, rules.String())
 				case r.Method == http.MethodPut && r.URL.Path == "/api/3.29/sites/site-1/workbooks/w1/permissions":
 					body, _ := io.ReadAll(r.Body)
 					bodies = append(bodies, string(body))
 					writes++
 					if strings.Contains(string(body), `id="u-a"`) {
+						savedRules["u-a"] = struct{ capability, mode string }{capability: "Read", mode: "Allow"}
 						_, _ = io.WriteString(w, `<tsResponse><permissions><granteeCapabilities><user id="u-a"/><capabilities><capability name="Read" mode="Allow"/></capabilities></granteeCapabilities></permissions></tsResponse>`)
 						return
 					}
+					savedRules["u-b"] = struct{ capability, mode string }{capability: "Write", mode: "Deny"}
 					_, _ = io.WriteString(w, `<tsResponse><permissions><granteeCapabilities><user id="u-b"/><capabilities><capability name="Write" mode="Deny"/></capabilities></granteeCapabilities></permissions></tsResponse>`)
 				default:
 					t.Fatalf("unexpected %s %s", r.Method, r.URL.Path)
@@ -67,7 +83,7 @@ func TestPermissionCreateBatchFileResolvesUsernamesBeforeWrites(t *testing.T) {
 			var output bytes.Buffer
 			opts := app.Options{ConfigPath: config, HTTPClient: server.Client(), MutationEnvironment: func() (string, bool) { return "1", true }}
 			code := app.Run(context.Background(), args, &output, opts)
-			if code != 0 || signins != 1 || (preview && writes != 0) || (!preview && (writes != 2 || !strings.Contains(bodies[0], `id="u-a"`) || !strings.Contains(bodies[1], `id="u-b"`))) {
+			if code != 0 || signins != 1 || (preview && (writes != 0 || len(savedRules) != 0)) || (!preview && (writes != 2 || len(savedRules) != 2 || !strings.Contains(bodies[0], `id="u-a"`) || !strings.Contains(bodies[1], `id="u-b"`))) {
 				t.Fatalf("code=%d signins=%d writes=%d bodies=%v output=%s", code, signins, writes, bodies, output.String())
 			}
 		})

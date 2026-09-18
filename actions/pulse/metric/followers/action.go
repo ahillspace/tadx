@@ -39,6 +39,9 @@ func (a *Action) Execute(ctx context.Context, input Input) (Output, error) {
 	if err != nil {
 		return Output{}, readError(input, err)
 	}
+	if items == nil {
+		items = []Subscription{}
+	}
 	if len(items) > maxFollowers {
 		return Output{}, fail("pulse.metric.followers.invalid_response", errs.KindOperation, input, "Pulse metric follower listing exceeded its bounded output.", errors.New("more than 1000 subscriptions"))
 	}

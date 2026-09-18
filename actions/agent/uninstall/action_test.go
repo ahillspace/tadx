@@ -1,10 +1,13 @@
 package uninstall_test
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
+	"testing"
+
 	uninstall "github.com/ahillspace/tadx/actions/agent/uninstall"
 	"github.com/ahillspace/tadx/internal/agenttarget"
-	"testing"
 )
 
 type service struct{ called bool }
@@ -22,6 +25,27 @@ func TestExecute(t *testing.T) {
 	if !s.called || out.Status != "uninstalled" {
 		t.Fatalf("out=%#v called=%t", out, s.called)
 	}
+}
+
+func TestCompactProjectionRetainsDestinationAndBackup(t *testing.T) {
+	s := &serviceWithBackup{}
+	out, err := uninstall.New(s).Execute(t.Context(), uninstall.Input{Target: "codex"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	data, err := json.Marshal(out.CompactOutput())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Contains(data, []byte(`"path":".codex/skills/tadx"`)) || !bytes.Contains(data, []byte(`"backup":".agents/.tadx-skill-backups/tadx"`)) {
+		t.Fatalf("compact output omits destination or backup: %s", data)
+	}
+}
+
+type serviceWithBackup struct{}
+
+func (serviceWithBackup) Uninstall(context.Context, uninstall.Input) (uninstall.Result, error) {
+	return uninstall.Result{Status: "uninstalled", Skills: []uninstall.Skill{{Name: "tadx", Status: "backed-up", Path: ".codex/skills/tadx", Backup: ".agents/.tadx-skill-backups/tadx"}}}, nil
 }
 
 func TestExecuteAcceptsAllSupportedTargets(t *testing.T) {

@@ -150,7 +150,7 @@ func TestDocumentedDatasourceShorthandExamplesUseCanonicalPaths(t *testing.T) {
 		t.Fatalf("incomplete delete code=%d requests=%d output=%s", code, requests.Load(), invalidDelete.String())
 	}
 	var invalidList bytes.Buffer
-	if code := app.Run(context.Background(), []string{"con", "ds", "ls", "--env", "test", "--pid", "project-1", "-l", "50"}, &invalidList, options); code == 0 || !strings.Contains(invalidList.String(), "unknown flag: --pid") || requests.Load() != 0 {
+	if code := app.Run(context.Background(), []string{"con", "ds", "ls", "--env", "test", "--unsupported-filter", "project-1", "-l", "50"}, &invalidList, options); code == 0 || !strings.Contains(invalidList.String(), "unknown flag: --unsupported-filter") || requests.Load() != 0 {
 		t.Fatalf("unsupported list filter code=%d requests=%d output=%s", code, requests.Load(), invalidList.String())
 	}
 
@@ -170,7 +170,7 @@ func TestShorthandHelpAndCompletionExposeAliasesWithoutChangingCanonicalUse(t *t
 	if code := app.Run(context.Background(), []string{"con", "wb", "ins", "--help"}, &help, options); code != 0 {
 		t.Fatalf("alias help code=%d output=%s", code, help.String())
 	}
-	for _, want := range []string{"Usage: tadx content workbook <verb> [flags]", "inspect: target", "--id <luid>", "--environment (--env,-e)", "--full (details, not rows)"} {
+	for _, want := range []string{"Usage: tadx content workbook inspect [flags]", "inspect (ins):", "--id (-i) <luid>", "--environment (--env, -e)", "--full (--ful, -f)"} {
 		if !strings.Contains(help.String(), want) {
 			t.Errorf("alias help missing %q:\n%s", want, help.String())
 		}
@@ -179,7 +179,7 @@ func TestShorthandHelpAndCompletionExposeAliasesWithoutChangingCanonicalUse(t *t
 	if code := app.Run(context.Background(), []string{"con", "ds", "del", "--help"}, &deleteHelp, options); code != 0 {
 		t.Fatalf("delete alias help code=%d output=%s", code, deleteHelp.String())
 	}
-	for _, want := range []string{"Target (remote, exact):", "--id <luid>", "| (--name <name> --project (--prj) <path>)"} {
+	for _, want := range []string{"Usage: tadx content datasource delete [flags]", "delete (del):", "--id (-i) <luid>", "--name (--nm, -n)", "--project (--prj) <path>"} {
 		if !strings.Contains(deleteHelp.String(), want) {
 			t.Errorf("delete alias help missing %q:\n%s", want, deleteHelp.String())
 		}
@@ -188,7 +188,7 @@ func TestShorthandHelpAndCompletionExposeAliasesWithoutChangingCanonicalUse(t *t
 	if code := app.Run(context.Background(), []string{"agt", "ist", "--help"}, &forceHelp, options); code != 0 {
 		t.Fatalf("force alias help code=%d output=%s", code, forceHelp.String())
 	}
-	for _, want := range []string{"--full (details, not rows)", "[--force]"} {
+	for _, want := range []string{"Usage: tadx agent install [flags]", "--full", "[--force]"} {
 		if !strings.Contains(forceHelp.String(), want) {
 			t.Errorf("force help missing independent full/force spelling %q:\n%s", want, forceHelp.String())
 		}

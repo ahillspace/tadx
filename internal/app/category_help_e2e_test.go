@@ -20,7 +20,8 @@ func TestCategoryHelpExplainsDescendantCommandsWithoutSetup(t *testing.T) {
 		{[]string{"pulse", "--help"}, []string{"definition:", "metric:", "fork", "create"}},
 		{[]string{"pulse", "metric", "--help"}, []string{"--filter", "CUSTOM_N_DAYS"}},
 		{[]string{"catalog", "--help"}, []string{"column:", "database:", "inspect", "update"}},
-		{[]string{"workspace", "--help"}, []string{"artifact", "--workspace", "--path"}},
+		{[]string{"workspace", "--help"}, []string{"artifact", "--path", "Use tadx workspace <resource> -h"}},
+		{[]string{"workspace", "status", "--help"}, []string{"Usage: tadx workspace status", "--workspace", "--limit"}},
 		{[]string{"help", "admin", "group"}, []string{"create:", "--minimum-site-role"}},
 		{[]string{"adm", "grp", "-h"}, []string{"create:", "--minimum-site-role"}},
 	} {

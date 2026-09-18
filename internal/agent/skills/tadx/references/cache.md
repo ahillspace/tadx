@@ -16,7 +16,10 @@ Explicit permission collection can retain accessible records with partial covera
 Use reported freshness, coverage, and warnings before treating a scope as exhaustive.
 
 Cache identity is bound to the actual server and site, not an editable alias.
-Legacy or incompatible cache data requires explicit refresh; ordinary reads do not guess its origin or rebuild it.
+Coherent supported old schemas require explicit refresh; ordinary reads do not guess their origin or rebuild them.
+Inconsistent schema markers need the reported repair or a compatible build, not repeated identical refresh attempts.
+An absent optional cache is informational when live prerequisites are healthy; no automatic refresh is needed.
+Per-scope requested/completed coverage and counts describe the selected inventory generation, while independently retained observations keep their own coverage and timestamps.
 
 Collection starts with up to four concurrent reads and ramps toward the environment ceiling, default 32.
 Throttled reads share a cooldown within the run.

@@ -37,7 +37,7 @@ func TestDatasourceListForwardsEveryBoundedFilterAndRendersOutput(t *testing.T) 
 	renderer := &datasourceInventoryRenderer{}
 	command := newDatasourceInventory(actions, actions, renderer)
 	command.SetArgs([]string{
-		"list", "--environment", "dev", "--name", "Sales", "--owner", "owner", "--project-name", "Ops",
+		"list", "--environment", "dev", "--name", "Sales", "--owner", "owner", "--project-id", "project-1", "--project-name", "Ops",
 		"--type", "hyper", "--tag", "daily", "--updated-after", "2026-01-01T00:00:00Z",
 		"--updated-before", "2026-09-01T00:00:00Z", "--limit", "10", "--cursor", "opaque",
 		"--cache",
@@ -46,7 +46,7 @@ func TestDatasourceListForwardsEveryBoundedFilterAndRendersOutput(t *testing.T) 
 		t.Fatal(err)
 	}
 	want := datasourcelist.Input{
-		Environment: "dev", Name: "Sales", OwnerName: "owner", ProjectName: "Ops", Type: "hyper", Tag: "daily",
+		Environment: "dev", Name: "Sales", OwnerName: "owner", ProjectLUID: "project-1", ProjectName: "Ops", Type: "hyper", Tag: "daily",
 		UpdatedAfter: "2026-01-01T00:00:00Z", UpdatedBefore: "2026-09-01T00:00:00Z", Limit: 10, Cursor: "opaque", Cache: true,
 	}
 	if !reflect.DeepEqual(actions.listInputs, []datasourcelist.Input{want}) || len(renderer.values) != 1 {
@@ -65,6 +65,7 @@ func TestDatasourceInspectUsesAuthoritativeOrExactSelectorGrammar(t *testing.T) 
 	}{
 		{name: "LUID", args: []string{"inspect", "--environment", "dev", "--id", "ds-1", "--cache"}, want: datasourceinspect.Input{Environment: "dev", Selector: datasourceSelector("ds-1", "", ""), Cache: true}},
 		{name: "exact labels", args: []string{"inspect", "--name", "Sales", "--project", "Department/Ops"}, want: datasourceinspect.Input{Selector: datasourceSelector("", "Sales", "Department/Ops")}},
+		{name: "exact project ID", args: []string{"inspect", "--name", "Sales", "--project-id", "project-1"}, want: datasourceinspect.Input{Selector: datasourceSelectorWithProjectLUID("", "Sales", "", "project-1")}},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -88,6 +89,7 @@ func TestDatasourceInspectRejectsIncompleteOrConflictingSelectors(t *testing.T) 
 		{"inspect", "--name", "Sales"},
 		{"inspect", "--project", "Department/Ops"},
 		{"inspect", "--id", "ds-1", "--name", "Sales", "--project", "Department/Ops"},
+		{"inspect", "--name", "Sales", "--project", "Department/Ops", "--project-id", "project-1"},
 	} {
 		actions := &datasourceInventoryActions{}
 		command := newDatasourceInventory(actions, actions, &datasourceInventoryRenderer{})
@@ -101,5 +103,11 @@ func TestDatasourceInspectRejectsIncompleteOrConflictingSelectors(t *testing.T) 
 func datasourceSelector(luid, name, projectPath string) identity.Selector {
 	var input datasourceinspect.Input
 	input.SetSelector(luid, name, projectPath)
+	return input.Selector
+}
+
+func datasourceSelectorWithProjectLUID(luid, name, projectPath, projectLUID string) identity.Selector {
+	var input datasourceinspect.Input
+	input.SetSelectorWithProjectLUID(luid, name, projectPath, projectLUID)
 	return input.Selector
 }

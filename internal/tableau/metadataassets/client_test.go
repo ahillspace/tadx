@@ -62,6 +62,20 @@ func TestGetLabelsIsReadOnlyPOST(t *testing.T) {
 	}
 }
 
+func TestGetLabelsNormalizesNativeDatasourceType(t *testing.T) {
+	c := fixtureClient(t, func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		if r.Method != "POST" || !strings.Contains(string(body), `contentType="datasource" id="datasource-1"`) {
+			t.Fatalf("unexpected label request %s %s", r.Method, body)
+		}
+		io.WriteString(w, `<tsResponse><labelList><label id="label-1" contentId="datasource-1" contentType="DATASOURCE" value="warning" category="warning" active="true" elevated="false"/></labelList></tsResponse>`)
+	})
+	got, err := c.GetLabels(context.Background(), LabelTarget{Type: "datasource", LUID: "datasource-1"}, nil)
+	if err != nil || len(got) != 1 || got[0].Type != "datasource" {
+		t.Fatalf("native datasource type was not normalized: %#v %v", got, err)
+	}
+}
+
 func TestGraphQLExactFilterAndBoundedPage(t *testing.T) {
 	c := fixtureClient(t, func(w http.ResponseWriter, r *http.Request) {
 		var body struct {

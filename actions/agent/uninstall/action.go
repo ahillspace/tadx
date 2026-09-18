@@ -38,9 +38,11 @@ func (o Output) CompactOutput() any {
 	items := make([]struct {
 		Name   string `json:"name"`
 		Status string `json:"status"`
+		Path   string `json:"path"`
+		Backup string `json:"backup,omitempty"`
 	}, len(o.Skills))
 	for i, v := range o.Skills {
-		items[i].Name, items[i].Status = v.Name, v.Status
+		items[i].Name, items[i].Status, items[i].Path, items[i].Backup = v.Name, v.Status, v.Path, v.Backup
 	}
 	return struct {
 		Status   string   `json:"status"`

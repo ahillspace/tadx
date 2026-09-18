@@ -54,6 +54,7 @@ func newDatasourceList(deps datasourceInventoryDependencies) *cobra.Command {
 	command.Flags().StringVar(&input.Environment, "environment", "", "exact environment alias; defaults to the configured read environment")
 	command.Flags().StringVar(&input.Name, "name", "", "exact datasource-name filter")
 	command.Flags().StringVar(&input.OwnerName, "owner", "", "exact owner-name filter")
+	command.Flags().StringVar(&input.ProjectLUID, "project-id", "", "authoritative project LUID filter")
 	command.Flags().StringVar(&input.ProjectName, "project-name", "", "exact leaf project name filter; not a project path")
 	command.Flags().StringVar(&input.Type, "type", "", "exact datasource-type filter")
 	command.Flags().StringVar(&input.Tag, "tag", "", "exact tag filter")
@@ -70,11 +71,11 @@ func newDatasourceList(deps datasourceInventoryDependencies) *cobra.Command {
 
 func newDatasourceInspect(deps datasourceInventoryDependencies) *cobra.Command {
 	var input datasourceinspect.Input
-	var luid, name, projectPath string
+	var luid, name, projectPath, projectID string
 	command := &cobra.Command{
 		Use: "inspect", Short: "Inspect one exact published datasource.",
 		Annotations: map[string]string{"tadx.capability": "datasource.inspect"},
-		Args:        selectorArgs("datasource.inspect", &luid, &name, &projectPath, input.SetSelector),
+		Args:        selectorArgsWithProjectID("datasource.inspect", &luid, &name, &projectPath, &projectID, input.SetSelectorWithProjectLUID),
 		RunE: func(command *cobra.Command, _ []string) error {
 			result, err := deps.inspector.InspectDatasource(command.Context(), input)
 			if err != nil {
@@ -87,6 +88,7 @@ func newDatasourceInspect(deps datasourceInventoryDependencies) *cobra.Command {
 	command.Flags().StringVar(&luid, "id", "", "authoritative datasource LUID")
 	command.Flags().StringVar(&name, "name", "", "exact datasource name")
 	command.Flags().StringVar(&projectPath, "project", "", "exact slash-delimited project path")
+	command.Flags().StringVar(&projectID, "project-id", "", "authoritative project LUID")
 	command.Flags().BoolVar(&input.Cache, "cache", false, "read indexed local cache data without contacting Tableau")
 	return command
 }

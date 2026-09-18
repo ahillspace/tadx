@@ -105,20 +105,23 @@ func ensureSchema(ctx context.Context, db *sql.DB) error {
 	committed = true
 	return checkIntegrity(ctx, db)
 }
-func validateSchema(ctx context.Context, db *sql.DB) error {
+func validateSchema(ctx context.Context, db queryRower) error {
 	var userVersion int
 	if err := db.QueryRowContext(ctx, `PRAGMA user_version`).Scan(&userVersion); err != nil {
 		return fmt.Errorf("read cache schema version: %w", err)
-	}
-	if userVersion != schemaVersion {
-		return schemaRebuildRequired{userVersion}
 	}
 	var version int
 	var signature string
 	if err := db.QueryRowContext(ctx, `SELECT version,signature FROM catalog_schema WHERE singleton=1`).Scan(&version, &signature); err != nil {
 		return fmt.Errorf("cache schema is missing or unreadable: %w", err)
 	}
-	if version != schemaVersion || signature != "tadx-catalog-v7" {
+	if version != userVersion || signature != fmt.Sprintf("tadx-catalog-v%d", version) {
+		return schemaIncompatible{fmt.Sprintf("cache schema markers are inconsistent (user_version=%d, catalog version=%d); preserve this cache and use live reads while its schema is repaired; repeating refresh cannot repair incompatible markers", userVersion, version)}
+	}
+	if version != schemaVersion {
+		if version < 1 || version > schemaVersion {
+			return schemaIncompatible{fmt.Sprintf("cache schema version %d is unsupported by this build; use a compatible TADX version or live reads, not repeated refresh", version)}
+		}
 		return schemaRebuildRequired{version}
 	}
 	for _, table := range requiredTables {
@@ -167,6 +170,11 @@ func checkIntegrity(ctx context.Context, q queryRower) error {
 
 type schemaRebuildRequired struct{ version int }
 
+type schemaIncompatible struct{ reason string }
+
+func (e schemaIncompatible) Error() string               { return e.reason }
+func (schemaIncompatible) CacheSchemaIncompatible() bool { return true }
+
 func (e schemaRebuildRequired) Error() string {
 	return fmt.Sprintf("cache schema version %d requires rebuilding; run tadx cache refresh --environment <alias>", e.version)
 }
@@ -175,22 +183,16 @@ func (schemaRebuildRequired) CacheSchemaRefreshRequired() bool { return true }
 // Rebuild happens inside the generation transaction. Failed refresh rolls back
 // both the schema replacement and data, retaining the previous generation.
 func rebuildSchemaForRefresh(ctx context.Context, tx *sql.Tx) error {
-	var version int
-	if err := tx.QueryRowContext(ctx, "PRAGMA user_version").Scan(&version); err != nil {
-		return err
-	}
-	if version == schemaVersion {
+	err := validateSchema(ctx, tx)
+	if err == nil {
 		return nil
 	}
-	if version < 1 || version >= schemaVersion {
-		return schemaRebuildRequired{version}
-	}
-	var signature string
-	if err := tx.QueryRowContext(ctx, "SELECT signature FROM catalog_schema WHERE singleton=1").Scan(&signature); err != nil {
+	previous, ok := errors.AsType[schemaRebuildRequired](err)
+	if !ok {
 		return err
 	}
-	if signature != fmt.Sprintf("tadx-catalog-v%d", version) {
-		return errors.New("unrecognized cache database cannot be rebuilt")
+	if previous.version < 1 || previous.version >= schemaVersion {
+		return fmt.Errorf("cache schema version %d is unsupported by this build; use a compatible TADX version or live reads, not repeated refresh", previous.version)
 	}
 	for i := len(requiredTables) - 1; i >= 0; i-- {
 		if _, err := tx.ExecContext(ctx, "DROP TABLE IF EXISTS "+requiredTables[i]); err != nil {
@@ -202,6 +204,6 @@ func rebuildSchemaForRefresh(ctx context.Context, tx *sql.Tx) error {
 			return err
 		}
 	}
-	_, err := tx.ExecContext(ctx, fmt.Sprintf("PRAGMA user_version=%d", schemaVersion))
+	_, err = tx.ExecContext(ctx, fmt.Sprintf("PRAGMA user_version=%d", schemaVersion))
 	return err
 }

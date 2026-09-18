@@ -22,6 +22,10 @@ func TestEveryExecutableMirrorsItsBoundedOperationalReference(t *testing.T) {
 				owner = path[:len(path)-1]
 			}
 			want := contentHelpPilotRun(t, dir, options, append(append([]string(nil), owner...), "-h")...)
+			expected := want
+			if len(owner) != len(path) {
+				expected = contentHelpPilotRun(t, dir, options, append(append([]string(nil), path...), "-h")...)
+			}
 			if len(want) > 4000 {
 				t.Errorf("reference %v grew to %d bytes (budget 4000)", owner, len(want))
 			}
@@ -31,8 +35,8 @@ func TestEveryExecutableMirrorsItsBoundedOperationalReference(t *testing.T) {
 				append([]string{"help"}, path...),
 				append(append([]string(nil), path...), "--full", "--json", "--help"),
 			} {
-				if got := contentHelpPilotRun(t, dir, options, args...); got != want {
-					t.Errorf("%v differs from owning reference %v", args, owner)
+				if got := contentHelpPilotRun(t, dir, options, args...); got != expected {
+					t.Errorf("%v differs from expected reference %v", args, path)
 				}
 			}
 			if strings.Contains(want, "flags{") || strings.Contains(want, "(alias:") {

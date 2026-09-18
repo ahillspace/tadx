@@ -3,7 +3,6 @@ package create
 import (
 	"context"
 	"errors"
-	"github.com/ahillspace/tadx/internal/commandhint"
 
 	"github.com/ahillspace/tadx/internal/errs"
 )
@@ -15,10 +14,12 @@ type Input struct {
 	ExternalUserEnabled                      *bool
 }
 type Group struct {
-	LUID           string `json:"luid"`
-	Name           string `json:"name"`
-	RequestID      string `json:"-"`
-	MutationStatus string `json:"-"`
+	LUID                string `json:"luid"`
+	Name                string `json:"name"`
+	MinimumSiteRole     string `json:"minimum_site_role,omitempty"`
+	ExternalUserEnabled *bool  `json:"external_user_enabled,omitempty"`
+	RequestID           string `json:"-"`
+	MutationStatus      string `json:"-"`
 }
 type Request struct {
 	Name, MinimumSiteRole string
@@ -34,9 +35,12 @@ type Plan struct {
 	ExternalUserEnabled *bool  `json:"external_user_enabled,omitempty"`
 }
 type Result struct {
-	Status           string `json:"status"`
-	GroupLUID        string `json:"group_luid"`
-	TableauRequestID string `json:"tableau_request_id,omitempty"`
+	UnverifiedSettings  []string `json:"unverified_settings,omitempty"`
+	Status              string   `json:"status"`
+	GroupLUID           string   `json:"group_luid"`
+	MinimumSiteRole     string   `json:"minimum_site_role,omitempty"`
+	ExternalUserEnabled *bool    `json:"external_user_enabled,omitempty"`
+	TableauRequestID    string   `json:"tableau_request_id,omitempty"`
 }
 type Output struct {
 	Plan    Plan     `json:"plan"`
@@ -45,8 +49,11 @@ type Output struct {
 	Help    []string `json:"help"`
 }
 type CompactMutationResult struct {
-	Status    string `json:"status"`
-	GroupLUID string `json:"group_luid"`
+	UnverifiedSettings  []string `json:"unverified_settings,omitempty"`
+	Status              string   `json:"status"`
+	GroupLUID           string   `json:"group_luid"`
+	MinimumSiteRole     string   `json:"minimum_site_role,omitempty"`
+	ExternalUserEnabled *bool    `json:"external_user_enabled,omitempty"`
 }
 type CompactResult struct {
 	Plan    Plan                   `json:"plan"`
@@ -63,7 +70,7 @@ type FullResult struct {
 func (o Output) CompactOutput() any {
 	var result *CompactMutationResult
 	if o.Result != nil {
-		result = &CompactMutationResult{Status: o.Result.Status, GroupLUID: o.Result.GroupLUID}
+		result = &CompactMutationResult{UnverifiedSettings: o.Result.UnverifiedSettings, Status: o.Result.Status, GroupLUID: o.Result.GroupLUID, MinimumSiteRole: o.Result.MinimumSiteRole, ExternalUserEnabled: o.Result.ExternalUserEnabled}
 	}
 	return CompactResult{Plan: o.Plan, Result: result, Details: "--full", Help: o.Help}
 }
@@ -105,6 +112,7 @@ func (a *Action) Execute(ctx context.Context, in Input, preview bool) (Output, e
 		return out, nil
 	}
 	out.Plan.Mode = "execute"
+	out.Help = nil
 	found, err = a.finder.FindGroups(ctx, in.Name)
 	if err != nil {
 		return Output{}, err
@@ -115,11 +123,20 @@ func (a *Action) Execute(ctx context.Context, in Input, preview bool) (Output, e
 	g, err := a.creator.CreateGroup(ctx, Request{Name: in.Name, MinimumSiteRole: in.MinimumSiteRole, ExternalUserEnabled: in.ExternalUserEnabled})
 	if err != nil {
 		if g.MutationStatus == "unknown" {
-			return Output{}, &errs.Error{ID: "admin.group.create.outcome_unknown", Kind: errs.KindOperation, Operation: "admin.group.create", Resource: g.LUID, Environment: in.Environment, Site: in.Site, Summary: "The group create outcome could not be determined safely.", Cause: err, Retryable: errs.Bool(false), CorrectiveAction: "Inspect the exact group and Tableau request before retrying: " + recoveryHint(in, g.LUID), TableauRequestID: g.RequestID}
+			out.Help = []string{recoveryHint(in, g.LUID)}
+			if g.LUID != "" {
+				out.Result = &Result{Status: "unknown", GroupLUID: g.LUID, TableauRequestID: g.RequestID}
+			}
+			return out, &errs.Error{ID: "admin.group.create.outcome_unknown", Kind: errs.KindOperation, Operation: "admin.group.create", Resource: g.LUID, Environment: in.Environment, Site: in.Site, Summary: "The group create outcome could not be determined safely.", Cause: err, Retryable: errs.Bool(false), CorrectiveAction: "Inspect the exact group and Tableau request before retrying: " + recoveryHint(in, g.LUID), TableauRequestID: g.RequestID, Phase: errs.PhaseSubmission, Outcome: errs.OutcomeUnknown}
 		}
 		return Output{}, err
 	}
-	out.Result = &Result{Status: "created", GroupLUID: g.LUID, TableauRequestID: g.RequestID}
-	out.Help = []string{commandhint.Environment(in.Environment, "admin", "group", "inspect", "--id", g.LUID)}
+	out.Result = &Result{Status: "created", GroupLUID: g.LUID, MinimumSiteRole: g.MinimumSiteRole, ExternalUserEnabled: g.ExternalUserEnabled, TableauRequestID: g.RequestID}
+	if in.MinimumSiteRole != "" && g.MinimumSiteRole == "" {
+		out.Result.UnverifiedSettings = append(out.Result.UnverifiedSettings, "minimum_site_role")
+	}
+	if in.ExternalUserEnabled != nil && g.ExternalUserEnabled == nil {
+		out.Result.UnverifiedSettings = append(out.Result.UnverifiedSettings, "external_user_enabled")
+	}
 	return out, nil
 }

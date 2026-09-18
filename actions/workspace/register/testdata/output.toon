@@ -1,5 +1,7 @@
 status: registered
 workspace:
   name: adopted
+  id: ws_22222222222222222222222222222222
+  root: existing-root
 details: "--full"
 help[1]: tadx workspace status --workspace adopted

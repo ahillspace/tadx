@@ -26,28 +26,31 @@ type Member struct {
 	SiteRole string `json:"site_role,omitempty"`
 }
 type Group struct {
-	LUID                string   `json:"luid"`
-	Name                string   `json:"name"`
-	Domain              string   `json:"domain,omitempty"`
-	MinimumSiteRole     string   `json:"minimum_site_role,omitempty"`
-	GrantLicenseMode    string   `json:"grant_license_mode,omitempty"`
-	ExternalUserEnabled *bool    `json:"external_user_enabled,omitempty"`
-	Members             []Member `json:"members,omitempty"`
-	MembersOmitted      int      `json:"members_omitted,omitempty"`
-	RequestID           string   `json:"-"`
+	LUID                     string   `json:"luid"`
+	Name                     string   `json:"name"`
+	Domain                   string   `json:"domain,omitempty"`
+	MinimumSiteRole          string   `json:"minimum_site_role,omitempty"`
+	GrantLicenseMode         string   `json:"grant_license_mode,omitempty"`
+	ExternalUserEnabled      *bool    `json:"external_user_enabled,omitempty"`
+	ExternalUserEnabledState string   `json:"external_user_enabled_state,omitempty"`
+	Members                  []Member `json:"members"`
+	MembersOmitted           int      `json:"members_omitted,omitempty"`
+	RequestID                string   `json:"-"`
 }
 type Output struct {
 	Status, Environment, Site string
 	Group                     Group
+	membersRequested          bool
 	RequestID                 string
 	Help                      []string
 	Source                    *readsource.Metadata
 }
 type CompactGroup struct {
-	LUID        string `json:"luid"`
-	Name        string `json:"name"`
-	Domain      string `json:"domain,omitempty"`
-	MemberCount int    `json:"member_count,omitempty"`
+	LUID        string    `json:"luid"`
+	Name        string    `json:"name"`
+	Domain      string    `json:"domain,omitempty"`
+	MemberCount int       `json:"member_count,omitempty"`
+	Members     *[]Member `json:"members,omitempty"`
 }
 type CompactResult struct {
 	Status      string               `json:"status"`
@@ -69,12 +72,23 @@ type FullResult struct {
 }
 
 func (o Output) CompactOutput() any {
-	return CompactResult{Status: o.Status, Environment: o.Environment, Site: o.Site, Group: CompactGroup{LUID: o.Group.LUID, Name: o.Group.Name, Domain: o.Group.Domain, MemberCount: len(o.Group.Members)}, Details: "--full", Help: o.Help, Source: o.Source}
+	group := CompactGroup{LUID: o.Group.LUID, Name: o.Group.Name, Domain: o.Group.Domain, MemberCount: len(o.Group.Members)}
+	if o.membersRequested {
+		members := append([]Member{}, o.Group.Members...)
+		group.Members = &members
+	}
+	return CompactResult{Status: o.Status, Environment: o.Environment, Site: o.Site, Group: group, Details: "--full", Help: o.Help, Source: o.Source}
 }
 func (o Output) FullOutput() any {
 	g := o.Group
 	g.Members = append([]Member(nil), g.Members...)
-	if len(g.Members) > memberLimit {
+	if o.membersRequested {
+		g.Members = append([]Member{}, g.Members...)
+	}
+	if g.ExternalUserEnabled == nil {
+		g.ExternalUserEnabledState = "not_reported"
+	}
+	if !o.membersRequested && len(g.Members) > memberLimit {
 		g.MembersOmitted = len(g.Members) - memberLimit
 		g.Members = g.Members[:memberLimit]
 	}
@@ -98,5 +112,9 @@ func (a *Action) Execute(ctx context.Context, in Input) (Output, error) {
 	if err != nil {
 		return Output{}, err
 	}
-	return Output{Status: "found", Environment: in.Environment, Site: in.Site, Group: g, RequestID: g.RequestID, Help: []string{commandhint.Environment(in.Environment, "admin", "group", "inspect", "--id", g.LUID, "--members", "--full")}}, nil
+	var help []string
+	if !in.IncludeMembers {
+		help = []string{commandhint.Environment(in.Environment, "admin", "group", "inspect", "--id", g.LUID, "--members")}
+	}
+	return Output{Status: "found", Environment: in.Environment, Site: in.Site, Group: g, membersRequested: in.IncludeMembers, RequestID: g.RequestID, Help: help}, nil
 }

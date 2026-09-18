@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -108,6 +109,13 @@ func assertGolden(t *testing.T, name string, value any, full bool) {
 func TestListRejectsMissingDefinition(t *testing.T) {
 	if _, err := metriclist.New(&reader{}).Execute(context.Background(), metriclist.Input{}); err == nil {
 		t.Fatal("missing definition accepted")
+	}
+}
+
+func TestListAllCorrectionExplainsLimitChoice(t *testing.T) {
+	_, err := metriclist.New(&reader{}).Execute(context.Background(), metriclist.Input{DefinitionLUID: "definition-1", All: true, Limit: 10})
+	if err == nil || !strings.Contains(err.Error(), "remove --limit") || !strings.Contains(err.Error(), "remove --all") {
+		t.Fatalf("error=%v", err)
 	}
 }
 

@@ -1,5 +1,8 @@
 status: refreshed
 generation:
+  coverage[2]{scope,requested,complete,records}:
+    projects,false,true,1
+    workbooks,true,true,2
   complete: true
   id: generation-1
   environment: production

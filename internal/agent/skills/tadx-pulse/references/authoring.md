@@ -1,7 +1,7 @@
 # Design a useful Pulse definition
 
-Use this reference for recommendations and creation design.
-Before creating or previewing, also read the creation contract.
+Use this reference for recommendations, creation design, and unresolved source or field meaning.
+For a fully specified configuration, the creation contract can be sufficient; read this reference when design evidence is still needed.
 
 ## Frame the business question and reuse existing work
 
@@ -27,18 +27,21 @@ Compatible extra slicers are useful; missing required capabilities can prevent r
 Use a supplied published datasource LUID, or resolve its exact name and project.
 Do not substitute an embedded workbook datasource for a published source.
 
-For a broad metric set, inspect the relevant measure inventory rather than filtering to one quantity.
+For a broad design or unresolved field meaning, inspect the relevant measure inventory rather than filtering to one quantity.
+When the user supplies exact fields and material semantics, validate those fields directly instead of broadening discovery.
 For entity counts, search the identifier among dimensions as well as measures.
 Schema `--query` is a case-insensitive substring, not semantic search or an OR expression.
 An empty query result does not prove that the intended quantity is absent.
 
-Consider the complete eligible dimension inventory for each new source, even when no breakdown was requested.
-Reuse it for related definitions on that unchanged source.
+For a broad design or unresolved slicing need, consider the complete eligible dimension inventory for the source, even when no breakdown was requested.
+For a fully specified configuration, validate the supplied dimensions directly and do not add a broader inventory or extra slicers.
+Reuse a completed inventory for related definitions on that unchanged source.
 Use reported coverage to distinguish a bounded sample from complete discovery.
 If the bound is exceeded, partition discovery by supported role or table filters and keep coverage explicit.
 `--cache` uses only previously captured schema and never establishes current completeness.
 
-If full details were not already returned, inspect the selected measure, date, and derived dimensions together before finalizing them.
+If field meaning or role remains unresolved, inspect the selected measure, date, and derived dimensions together before finalizing them.
+For supplied exact fields with established material semantics, validate those fields directly without an extra inspection.
 Do not accidentally retain discovery filters that exclude one of these selected fields.
 Pulse creation also accepts unique captions or labels and resolves them to raw IDs automatically before previewing or publishing.
 Duplicate captions can belong to different tables; an ID that still matches multiple fields remains ambiguous.

@@ -70,13 +70,14 @@ type LineageEdge struct {
 
 // LineageCapture is one bounded best-effort workbook graph.
 type LineageCapture struct {
-	RootMetadataID string        `json:"root_metadata_id,omitempty"`
-	Complete       bool          `json:"complete"`
-	Direction      string        `json:"direction"`
-	Depth          int           `json:"depth"`
-	Nodes          []LineageNode `json:"nodes"`
-	Edges          []LineageEdge `json:"edges"`
-	Warnings       []string      `json:"warnings,omitempty"`
+	RootMetadataID string                `json:"root_metadata_id,omitempty"`
+	Complete       bool                  `json:"complete"`
+	Direction      string                `json:"direction"`
+	Depth          int                   `json:"depth"`
+	Failure        *value.LineageFailure `json:"failure,omitempty"`
+	Nodes          []LineageNode         `json:"nodes"`
+	Edges          []LineageEdge         `json:"edges"`
+	Warnings       []string              `json:"warnings,omitempty"`
 }
 
 // PublishedDatasource is one direct dependency discovered through authoritative metadata.
@@ -173,6 +174,7 @@ type ArtifactResult struct {
 
 // Output is the stable pull result.
 type Output struct {
+	Source    *value.SourceContext `json:"source,omitempty"`
 	Preview   *value.AcquisitionPlan
 	Workspace string         `json:"workspace"`
 	Status    string         `json:"status"`
@@ -189,6 +191,7 @@ type Output struct {
 
 // CompactWorkbook is the authoritative identity needed after a pull.
 type CompactWorkbook struct {
+	ProjectLUID string `json:"project_luid,omitempty"`
 	LUID        string `json:"luid"`
 	Name        string `json:"name"`
 	ProjectPath string `json:"project_path,omitempty"`
@@ -200,7 +203,8 @@ type CompactArtifact struct {
 	Kind                     string `json:"kind"`
 	Name                     string `json:"name"`
 	SourceLUID               string `json:"source_luid"`
-	Path                     string `json:"-"`
+	Path                     string `json:"path"`
+	CanonicalPath            string `json:"canonical_path,omitempty"`
 	Portability              string `json:"portability,omitempty"`
 	PublishedDatasourceCount *int   `json:"published_datasource_count,omitempty"`
 	DependenciesAcquired     bool   `json:"dependencies_acquired"`
@@ -208,13 +212,14 @@ type CompactArtifact struct {
 
 // CompactResult is the standard token-bounded workbook.pull response.
 type CompactResult struct {
-	Status          string          `json:"status"`
-	Workbook        CompactWorkbook `json:"workbook"`
-	Artifact        CompactArtifact `json:"artifact"`
-	Warnings        []string        `json:"warnings,omitempty"`
-	WarningsOmitted int             `json:"warnings_omitted,omitempty"`
-	Details         string          `json:"details"`
-	Help            []string        `json:"help"`
+	Source          *value.SourceContext `json:"source,omitempty"`
+	Status          string               `json:"status"`
+	Workbook        CompactWorkbook      `json:"workbook"`
+	Artifact        CompactArtifact      `json:"artifact"`
+	Warnings        []string             `json:"warnings,omitempty"`
+	WarningsOmitted int                  `json:"warnings_omitted,omitempty"`
+	Details         string               `json:"details"`
+	Help            []string             `json:"help"`
 }
 
 // FullArtifact is the bounded expanded artifact view.
@@ -239,13 +244,14 @@ type FullArtifact struct {
 
 // FullResult is the bounded expanded workbook.pull response.
 type FullResult struct {
-	Status          string       `json:"status"`
-	Workbook        Workbook     `json:"workbook"`
-	Artifact        FullArtifact `json:"artifact"`
-	Warnings        []string     `json:"warnings,omitempty"`
-	WarningsOmitted int          `json:"warnings_omitted,omitempty"`
-	RequestID       string       `json:"tableau_request_id,omitempty"`
-	Help            []string     `json:"help"`
+	Source          *value.SourceContext `json:"source,omitempty"`
+	Status          string               `json:"status"`
+	Workbook        Workbook             `json:"workbook"`
+	Artifact        FullArtifact         `json:"artifact"`
+	Warnings        []string             `json:"warnings,omitempty"`
+	WarningsOmitted int                  `json:"warnings_omitted,omitempty"`
+	RequestID       string               `json:"tableau_request_id,omitempty"`
+	Help            []string             `json:"help"`
 }
 
 // CompactOutput returns the standard response without provenance diagnostics.
@@ -264,12 +270,13 @@ func (o Output) CompactOutput() any {
 		portability = ""
 	}
 	return CompactResult{
+		Source: o.Source,
 		Status: o.Status,
 		Workbook: CompactWorkbook{
-			LUID: o.Workbook.LUID, Name: o.Workbook.Name, ProjectPath: o.Workbook.ProjectPath,
+			LUID: o.Workbook.LUID, Name: o.Workbook.Name, ProjectPath: o.Workbook.ProjectPath, ProjectLUID: o.Workbook.ProjectLUID,
 		},
 		Artifact: CompactArtifact{Workspace: o.Workspace, Kind: "workbook", Name: o.Workbook.Name, SourceLUID: o.Workbook.LUID,
-			Path: o.Artifact.Path, Portability: portability,
+			Path: o.Artifact.Path, CanonicalPath: o.Artifact.CanonicalPath, Portability: portability,
 			PublishedDatasourceCount: publishedDatasourceCount,
 			DependenciesAcquired:     o.Artifact.DependenciesAcquired,
 		},
@@ -293,6 +300,7 @@ func (o Output) FullOutput() any {
 	}
 	warnings, warningsOmitted := boundedWarnings(o.Warnings)
 	return FullResult{
+		Source:   o.Source,
 		Status:   o.Status,
 		Workbook: o.Workbook,
 		Artifact: FullArtifact{Workspace: o.Workspace, Kind: "workbook", Name: o.Workbook.Name, SourceLUID: o.Workbook.LUID,

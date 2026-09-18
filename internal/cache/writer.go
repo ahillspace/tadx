@@ -198,6 +198,9 @@ func (w *GenerationWriter) publishReady(ctx context.Context, count int, fingerpr
 	if err := w.replaceResourceEntries(ctx, id); err != nil {
 		return ReplaceResult{}, err
 	}
+	if err := validateSchema(ctx, w.tx); err != nil {
+		return ReplaceResult{}, fmt.Errorf("verify refreshed cache reader compatibility: %w", err)
+	}
 	if err := checkIntegrity(ctx, w.tx); err != nil {
 		return ReplaceResult{}, err
 	}

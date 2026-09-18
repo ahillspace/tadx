@@ -32,13 +32,14 @@ var errAssessmentBound = errors.New("audit assessment bound reached")
 func New(r Reader) *Action { return &Action{reader: r} }
 
 type Finding struct {
-	Type       string `json:"type"`
-	LUID       string `json:"luid"`
-	MetadataID string `json:"metadata_id"`
-	Name       string `json:"name"`
-	Check      string `json:"check"`
-	State      string `json:"state"`
-	Source     string `json:"source"`
+	Type            string `json:"type"`
+	LUID            string `json:"luid"`
+	MetadataID      string `json:"metadata_id"`
+	Name            string `json:"name"`
+	ParentTableLUID string `json:"parent_table_luid,omitempty"`
+	Check           string `json:"check"`
+	State           string `json:"state"`
+	Source          string `json:"source"`
 }
 type Summary struct {
 	Present int `json:"present"`
@@ -110,7 +111,7 @@ func (a *Action) Execute(ctx context.Context, in Input) (Output, error) {
 		limit = 1000
 	}
 	out := Output{Status: "audited", Environment: in.Environment, Site: in.Site, Type: in.Type, ID: in.ID, Checks: checks, DirectOnly: in.DirectOnly, Complete: true, Findings: []Finding{}}
-	record := func(id value.MetadataIdentity, description *string, tags []string, tagsObserved bool, inherited []value.DescriptionObservation, inheritedObserved bool, field bool) {
+	record := func(id value.MetadataIdentity, parentTableLUID string, description *string, tags []string, tagsObserved bool, inherited []value.DescriptionObservation, inheritedObserved bool, field bool) {
 		if out.Scanned >= limit {
 			out.Complete = false
 			return
@@ -139,7 +140,7 @@ func (a *Action) Execute(ctx context.Context, in Input) (Output, error) {
 					}
 				}
 			}
-			out.add(id, "descriptions", state, source)
+			out.add(id, parentTableLUID, "descriptions", state, source)
 		}
 		if slices.Contains(checks, "tags") && !field {
 			state := "unknown"
@@ -149,7 +150,7 @@ func (a *Action) Execute(ctx context.Context, in Input) (Output, error) {
 					state = "present"
 				}
 			}
-			out.add(id, "tags", state, "direct")
+			out.add(id, parentTableLUID, "tags", state, "direct")
 		}
 	}
 	columns := func(tableID string) error {
@@ -167,7 +168,7 @@ func (a *Action) Execute(ctx context.Context, in Input) (Output, error) {
 				return fmt.Errorf("column parent differs from audited table")
 			}
 			v.Type = "column"
-			record(v.MetadataIdentity, v.Description, v.Tags, v.TagsObserved, nil, false, false)
+			record(v.MetadataIdentity, tableID, v.Description, v.Tags, v.TagsObserved, nil, false, false)
 			return nil
 		}, func(observed, request string) { out.ObservedAt = observed; out.RequestID = request })
 		out.Complete = out.Complete && complete
@@ -188,7 +189,7 @@ func (a *Action) Execute(ctx context.Context, in Input) (Output, error) {
 		if v.Type == "" {
 			v.Type = "database"
 		}
-		record(v.MetadataIdentity, v.Description, v.Tags, v.TagsObserved, nil, false, false)
+		record(v.MetadataIdentity, "", v.Description, v.Tags, v.TagsObserved, nil, false, false)
 		var complete bool
 		complete, err = walk(ctx, limit-out.Scanned, value.MetadataQuery{ParentLUID: in.ID}, a.reader.DiscoverTables, func(v value.MetadataTable) string {
 			if v.MetadataID != "" {
@@ -203,7 +204,7 @@ func (a *Action) Execute(ctx context.Context, in Input) (Output, error) {
 				return fmt.Errorf("table parent differs from audited database")
 			}
 			v.Type = "table"
-			record(v.MetadataIdentity, v.Description, v.Tags, v.TagsObserved, nil, false, false)
+			record(v.MetadataIdentity, in.ID, v.Description, v.Tags, v.TagsObserved, nil, false, false)
 			return columns(v.LUID)
 		}, func(observed, request string) { out.ObservedAt = observed; out.RequestID = request })
 		out.Complete = out.Complete && complete
@@ -218,7 +219,7 @@ func (a *Action) Execute(ctx context.Context, in Input) (Output, error) {
 			break
 		}
 		v.Type = "table"
-		record(v.MetadataIdentity, v.Description, v.Tags, v.TagsObserved, nil, false, false)
+		record(v.MetadataIdentity, "", v.Description, v.Tags, v.TagsObserved, nil, false, false)
 		err = columns(v.LUID)
 	case "datasource":
 		var v value.MetadataDatasourceDescriptions
@@ -238,14 +239,14 @@ func (a *Action) Execute(ctx context.Context, in Input) (Output, error) {
 			id.LUID = v.LUID
 		}
 		id.Type = "datasource"
-		record(id, v.Description, v.Tags, v.TagsObserved, nil, false, false)
+		record(id, "", v.Description, v.Tags, v.TagsObserved, nil, false, false)
 		if slices.Contains(checks, "descriptions") {
 			for _, field := range v.Fields {
 				if field.MetadataID == "" {
 					out.Complete = false
 					continue
 				}
-				record(value.MetadataIdentity{MetadataID: field.MetadataID, Name: field.Name, Type: "field"}, field.Description, nil, false, field.Inherited, field.InheritedObserved, true)
+				record(value.MetadataIdentity{MetadataID: field.MetadataID, Name: field.Name, Type: "field"}, "", field.Description, nil, false, field.Inherited, field.InheritedObserved, true)
 			}
 		}
 	}
@@ -262,8 +263,8 @@ func (a *Action) Execute(ctx context.Context, in Input) (Output, error) {
 	}
 	return out, nil
 }
-func (o *Output) add(id value.MetadataIdentity, check, state, source string) {
-	o.Findings = append(o.Findings, Finding{id.Type, id.LUID, id.MetadataID, id.Name, check, state, source})
+func (o *Output) add(id value.MetadataIdentity, parentTableLUID, check, state, source string) {
+	o.Findings = append(o.Findings, Finding{Type: id.Type, LUID: id.LUID, MetadataID: id.MetadataID, Name: id.Name, ParentTableLUID: parentTableLUID, Check: check, State: state, Source: source})
 	switch state {
 	case "present":
 		o.Summary.Present++

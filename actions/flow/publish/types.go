@@ -41,6 +41,7 @@ type Plan struct {
 	Mode                string   `json:"mode"`
 	Operation           string   `json:"operation"`
 	ArtifactPath        string   `json:"artifact_path"`
+	SourceKind          string   `json:"source_kind"`
 	ArtifactFingerprint string   `json:"artifact_fingerprint"`
 	Filename            string   `json:"filename"`
 	FlowName            string   `json:"flow_name"`
@@ -61,6 +62,7 @@ type Result struct {
 	FlowName         string `json:"flow_name,omitempty"`
 	ProjectLUID      string `json:"project_luid,omitempty"`
 	TableauRequestID string `json:"tableau_request_id,omitempty"`
+	ReceiptPath      string `json:"receipt_path,omitempty"`
 }
 type Output struct {
 	Plan   Plan     `json:"plan"`
@@ -72,6 +74,7 @@ type CompactPublishResult struct {
 	FlowLUID    string `json:"flow_luid,omitempty"`
 	FlowName    string `json:"flow_name,omitempty"`
 	ProjectLUID string `json:"project_luid,omitempty"`
+	ReceiptPath string `json:"receipt_path,omitempty"`
 }
 type CompactResult struct {
 	Plan    CompactPlan           `json:"plan"`
@@ -88,9 +91,9 @@ type FullResult struct {
 func (o Output) CompactOutput() any {
 	var result *CompactPublishResult
 	if o.Result != nil {
-		result = &CompactPublishResult{Status: o.Result.Status, FlowLUID: o.Result.FlowLUID, FlowName: o.Result.FlowName, ProjectLUID: o.Result.ProjectLUID}
+		result = &CompactPublishResult{Status: o.Result.Status, FlowLUID: o.Result.FlowLUID, FlowName: o.Result.FlowName, ProjectLUID: o.Result.ProjectLUID, ReceiptPath: o.Result.ReceiptPath}
 	}
-	return CompactResult{Plan: CompactPlan{Workspace: o.Plan.Workspace, Kind: "flow", SourceLUID: o.Plan.SourceLUID, Mode: o.Plan.Mode, Operation: o.Plan.Operation, FlowName: o.Plan.FlowName, Target: o.Plan.Target, Overwrite: o.Plan.Overwrite}, Result: result, Details: "--full", Help: o.Help}
+	return CompactResult{Plan: CompactPlan{Workspace: o.Plan.Workspace, Kind: "flow", SourceLUID: o.Plan.SourceLUID, Mode: o.Plan.Mode, Operation: o.Plan.Operation, FlowName: o.Plan.FlowName, Target: o.Plan.Target, Overwrite: o.Plan.Overwrite, ArtifactPath: o.Plan.ArtifactPath, SourceKind: o.Plan.SourceKind}, Result: result, Details: "--full", Help: o.Help}
 }
 func (o Output) FullOutput() any {
 	o.Plan.Kind = "flow"
@@ -98,12 +101,14 @@ func (o Output) FullOutput() any {
 }
 
 type CompactPlan struct {
-	Workspace  string `json:"workspace"`
-	Kind       string `json:"kind"`
-	SourceLUID string `json:"source_luid"`
-	Mode       string `json:"mode"`
-	Operation  string `json:"operation"`
-	FlowName   string `json:"flow_name"`
-	Target     Target `json:"target"`
-	Overwrite  bool   `json:"overwrite"`
+	ArtifactPath string `json:"artifact_path"`
+	SourceKind   string `json:"source_kind"`
+	Workspace    string `json:"workspace"`
+	Kind         string `json:"kind"`
+	SourceLUID   string `json:"source_luid"`
+	Mode         string `json:"mode"`
+	Operation    string `json:"operation"`
+	FlowName     string `json:"flow_name"`
+	Target       Target `json:"target"`
+	Overwrite    bool   `json:"overwrite"`
 }

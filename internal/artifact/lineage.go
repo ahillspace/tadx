@@ -122,7 +122,7 @@ func (m *LineageManager) Pull(ctx context.Context, input LineagePull) (LineagePu
 	metadata.Direction = input.Lineage.Direction
 	metadata.Depth = input.Lineage.Depth
 	metadata.Complete = input.Lineage.Complete
-	if input.CountsKnown || input.Lineage.Complete || len(input.Lineage.Nodes) > 0 || len(input.Lineage.Edges) > 0 {
+	if input.CountsKnown || input.Lineage.Complete {
 		nodeCount, edgeCount := len(input.Lineage.Nodes), len(input.Lineage.Edges)
 		metadata.NodeCount = &nodeCount
 		metadata.EdgeCount = &edgeCount

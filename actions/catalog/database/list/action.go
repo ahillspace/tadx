@@ -3,6 +3,7 @@ package list
 import (
 	"context"
 	"fmt"
+	"github.com/ahillspace/tadx/internal/commandhint"
 	"github.com/ahillspace/tadx/internal/errs"
 	"github.com/ahillspace/tadx/internal/output"
 	"github.com/ahillspace/tadx/internal/paging"
@@ -42,6 +43,7 @@ type Output struct {
 	Complete    bool                     `json:"complete"`
 	ObservedAt  string                   `json:"observed_at,omitempty"`
 	RequestID   string                   `json:"tableau_request_id,omitempty"`
+	NextCommand string                   `json:"next_command,omitempty"`
 }
 type CompactItem struct {
 	LUID       string `json:"luid"`
@@ -64,7 +66,8 @@ func (o Output) CompactOutput() any {
 		Complete    bool          `json:"complete"`
 		ObservedAt  string        `json:"observed_at,omitempty"`
 		Details     string        `json:"details"`
-	}{o.Status, o.Environment, o.Site, o.Page, rows, o.Complete, o.ObservedAt, "--full"}
+		NextCommand string        `json:"next_command,omitempty"`
+	}{o.Status, o.Environment, o.Site, o.Page, rows, o.Complete, o.ObservedAt, "--full", o.NextCommand}
 }
 func (o Output) FullOutput() any { return o }
 func (a *Action) Execute(ctx context.Context, in Input) (out Output, err error) {
@@ -79,6 +82,11 @@ func (a *Action) Execute(ctx context.Context, in Input) (out Output, err error) 
 	if err := ValidateInput(in); err != nil {
 		return Output{}, err
 	}
+	defer func() {
+		if err == nil && out.Page.MoreAvailable {
+			out.NextCommand = nextCommand(in)
+		}
+	}()
 	out = Output{Status: "listed", Environment: in.Environment, Site: in.Site, Items: []value.MetadataDatabase{}}
 	if a == nil || a.reader == nil {
 		return out, usage("catalog database reader is not configured")
@@ -151,6 +159,14 @@ func (a *Action) Execute(ctx context.Context, in Input) (out Output, err error) 
 	}
 	out.Status = "partial"
 	return out, failure(in, fmt.Errorf("metadata traversal exceeded page bound"))
+}
+
+func nextCommand(in Input) string {
+	args := []string{"catalog", "database", "list", "--all"}
+	if in.Name != "" {
+		args = append(args, "--name", in.Name)
+	}
+	return commandhint.Environment(in.Environment, args...)
 }
 func usage(message string) error {
 	return &errs.Error{ID: "catalog.database.list.usage", Kind: errs.KindUsage, Operation: "catalog.database.list", Summary: message, Retryable: errs.Bool(false), CorrectiveAction: "Correct the list selectors or bounds."}

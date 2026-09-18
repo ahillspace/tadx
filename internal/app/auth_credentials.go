@@ -11,6 +11,7 @@ import (
 	authlogout "github.com/ahillspace/tadx/actions/auth/logout"
 	coreauth "github.com/ahillspace/tadx/internal/auth"
 	"github.com/ahillspace/tadx/internal/config"
+	"github.com/ahillspace/tadx/internal/errs"
 	tableauauth "github.com/ahillspace/tadx/internal/tableau/auth"
 )
 
@@ -20,6 +21,9 @@ func (r authCredentialResolver) Resolve(_ context.Context, alias string) (authlo
 	_, environment, err := r.runtime.environment(alias, true)
 	if err != nil {
 		return authlogin.Target{}, err
+	}
+	if strings.TrimSpace(os.Getenv(environment.Auth.PATNameEnv)) != "" || strings.TrimSpace(os.Getenv(environment.Auth.PATSecretEnv)) != "" {
+		return authlogin.Target{}, &errs.Error{ID: "auth.login.environment_override", Kind: errs.KindOperation, Operation: "auth.login", Environment: environment.Alias, Summary: "Configured PAT environment variables override stored-credential login.", Phase: errs.PhaseSetup, Outcome: errs.OutcomeNotAttempted, Retryable: errs.Bool(false), CorrectiveAction: fmt.Sprintf("Clear %s and %s from the calling process before stored-credential login. No PAT was requested, validated, or saved.", environment.Auth.PATNameEnv, environment.Auth.PATSecretEnv)}
 	}
 	return authlogin.Target{
 		Environment:    environment.Alias,

@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -53,6 +54,22 @@ func commandTarget() auth.Target {
 	return auth.Target{ServerURL: "https://tableau.example.com", SiteContentURL: "site"}
 }
 
+func commandEnvironmentLookup(name string) (string, bool) {
+	if name == "PAT_NAME" {
+		return "test-name", true
+	}
+	if name == "PAT_SECRET" {
+		return "test-secret", true
+	}
+	return "", false
+}
+
+func commandEnvironmentTarget() auth.Target {
+	target := commandTarget()
+	target.PATNameVariable, target.PATSecretVariable = "PAT_NAME", "PAT_SECRET"
+	return target
+}
+
 func TestCommandSessionResolvesCredentialsAndSignsInOnceForConcurrentReaders(t *testing.T) {
 	var lookups atomic.Int32
 	manager := auth.NewCommandSessions(auth.LookupEnvFunc(func(name string) (string, bool) { lookups.Add(1); return "test-" + name, true }), nil, t.TempDir())
@@ -73,6 +90,170 @@ func TestCommandSessionResolvesCredentialsAndSignsInOnceForConcurrentReaders(t *
 	wg.Wait()
 	if signer.calls.Load() != 1 || lookups.Load() != 2 {
 		t.Fatalf("signins=%d credential lookups=%d", signer.calls.Load(), lookups.Load())
+	}
+}
+
+func TestCommandSessionSuspendReusesSessionWhenEpochIsUnchanged(t *testing.T) {
+	manager := auth.NewCommandSessions(auth.LookupEnvFunc(commandEnvironmentLookup), nil, t.TempDir())
+	defer manager.Close()
+	signer := &commandSigner{}
+	target := commandEnvironmentTarget()
+	first, err := manager.AuthenticateCredentials(context.Background(), target, commandCredential(), signer)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := manager.Suspend(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	monitor, err := manager.AuthenticateMonitor(context.Background(), target, signer)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if monitor != first || signer.calls.Load() != 1 {
+		t.Fatalf("monitor session=%v first=%v signins=%d, want cached session and one sign-in", monitor, first, signer.calls.Load())
+	}
+}
+
+func TestCommandSessionMonitorDropsSessionAfterSharedEpochChanges(t *testing.T) {
+	directory := t.TempDir()
+	firstManager := auth.NewCommandSessions(auth.LookupEnvFunc(commandEnvironmentLookup), nil, directory)
+	defer firstManager.Close()
+	secondManager := auth.NewCommandSessions(auth.LookupEnvFunc(commandEnvironmentLookup), nil, directory)
+	defer secondManager.Close()
+	signer := &commandSigner{}
+	target := commandEnvironmentTarget()
+	first, err := firstManager.AuthenticateCredentials(context.Background(), target, commandCredential(), signer)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := firstManager.Suspend(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := secondManager.AuthenticateCredentials(context.Background(), target, commandCredential(), signer); err != nil {
+		t.Fatal(err)
+	}
+	if err := secondManager.Suspend(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	monitor, err := firstManager.AuthenticateMonitor(context.Background(), target, signer)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if monitor == first || signer.calls.Load() != 3 {
+		t.Fatalf("monitor session=%v first=%v signins=%d, want re-sign-in after shared epoch change", monitor, first, signer.calls.Load())
+	}
+}
+
+func TestCommandSessionCoordinationKeyIsTargetBoundAndOpaque(t *testing.T) {
+	manager := auth.NewCommandSessions(auth.LookupEnvFunc(func(name string) (string, bool) {
+		if name == "PAT_NAME" {
+			return "test-name", true
+		}
+		return "test-secret", true
+	}), nil, t.TempDir())
+	defer manager.Close()
+	target := commandTarget()
+	target.PATNameVariable, target.PATSecretVariable = "PAT_NAME", "PAT_SECRET"
+	first, err := manager.CoordinationKey(context.Background(), target)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(first) != 64 || strings.Contains(first, "test-") {
+		t.Fatalf("coordination key=%q is not opaque", first)
+	}
+	target.ServerURL = "https://TABLEAU.EXAMPLE.COM:443/"
+	same, err := manager.CoordinationKey(context.Background(), target)
+	if err != nil || same != first {
+		t.Fatalf("normalized target key=%q first=%q error=%v", same, first, err)
+	}
+	target.SiteContentURL = "other-site"
+	other, err := manager.CoordinationKey(context.Background(), target)
+	if err != nil || other == first {
+		t.Fatalf("site-specific key=%q first=%q error=%v", other, first, err)
+	}
+}
+
+type orderedSigner struct {
+	mu    sync.Mutex
+	sites []string
+}
+
+func (s *orderedSigner) SignIn(_ context.Context, request auth.SignInRequest) (auth.SignInResponse, error) {
+	s.mu.Lock()
+	s.sites = append(s.sites, request.SiteContentURL)
+	s.mu.Unlock()
+	return auth.SignInResponse{Token: "test-session-" + request.SiteContentURL, SiteLUID: request.SiteContentURL, UserLUID: "user"}, nil
+}
+
+func (s *orderedSigner) snapshot() []string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return append([]string(nil), s.sites...)
+}
+
+func TestCommandSessionForegroundAuthenticationPrecedesWaitingMonitor(t *testing.T) {
+	directory := t.TempDir()
+	holder := auth.NewCommandSessions(nil, nil, directory)
+	defer holder.Close()
+	target := commandTarget()
+	target.SiteContentURL = "holder-site"
+	if _, err := holder.AuthenticateCredentials(context.Background(), target, commandCredential(), &commandSigner{}); err != nil {
+		t.Fatal(err)
+	}
+	var lookups atomic.Int32
+	manager := auth.NewCommandSessions(auth.LookupEnvFunc(func(name string) (string, bool) {
+		lookups.Add(1)
+		if name == "PAT_NAME" {
+			return "test-name", true
+		}
+		return "test-secret", true
+	}), nil, directory)
+	defer manager.Close()
+	monitorTarget := commandTarget()
+	monitorTarget.SiteContentURL = "monitor-site"
+	monitorTarget.PATNameVariable, monitorTarget.PATSecretVariable = "PAT_NAME", "PAT_SECRET"
+	signer := &orderedSigner{}
+	monitorDone := make(chan error, 1)
+	go func() {
+		_, err := manager.AuthenticateMonitor(context.Background(), monitorTarget, signer)
+		monitorDone <- err
+	}()
+	deadline := time.Now().Add(time.Second)
+	for lookups.Load() < 2 && time.Now().Before(deadline) {
+		time.Sleep(time.Millisecond)
+	}
+	if lookups.Load() < 2 {
+		t.Fatal("monitor did not resolve its PAT before foreground request")
+	}
+	foregroundDone := make(chan error, 1)
+	go func() {
+		foregroundTarget := commandTarget()
+		foregroundTarget.SiteContentURL = "foreground-site"
+		_, err := manager.AuthenticateCredentials(context.Background(), foregroundTarget, commandCredential(), signer)
+		foregroundDone <- err
+	}()
+	time.Sleep(75 * time.Millisecond)
+	if err := holder.Close(); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case err := <-foregroundDone:
+		if err != nil {
+			t.Fatal(err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("foreground authentication did not complete")
+	}
+	select {
+	case err := <-monitorDone:
+		if err != nil {
+			t.Fatal(err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("monitor authentication did not complete")
+	}
+	if got := signer.snapshot(); len(got) != 2 || got[0] != "foreground-site" || got[1] != "monitor-site" {
+		t.Fatalf("sign-in order=%v, want foreground before monitor", got)
 	}
 }
 
@@ -171,6 +352,17 @@ func TestCommandCredentialLockWaitIsCancelableAndDifferentPATIndependent(t *test
 		t.Fatal(err)
 	}
 	for _, file := range files {
+		if strings.HasPrefix(file.Name(), "epoch-") {
+			if len(file.Name()) != 74 || !strings.HasSuffix(file.Name(), ".txt") {
+				t.Fatalf("invalid epoch name=%q", file.Name())
+			}
+			data, err := os.ReadFile(filepath.Join(directory, file.Name()))
+			_, parseErr := strconv.ParseUint(strings.TrimSpace(string(data)), 10, 64)
+			if err != nil || parseErr != nil {
+				t.Fatalf("invalid epoch contents name=%q value=%q error=%v", file.Name(), data, err)
+			}
+			continue
+		}
 		if len(file.Name()) != 69 || !strings.HasSuffix(file.Name(), ".lock") || strings.Contains(file.Name(), "test-") {
 			t.Fatalf("nonopaque lock name=%q", file.Name())
 		}

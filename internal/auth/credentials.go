@@ -507,9 +507,11 @@ func (r *PATSourceResolver) Resolve(ctx context.Context, target Target) (PATCred
 		if r == nil || r.store == nil {
 			return PATCredentials{}, &CredentialStoreError{Kind: CredentialStoreUnavailable, Operation: "load"}
 		}
-		return r.store.LoadPAT(ctx, CredentialReference(target.CredentialReference), CredentialTarget{
+		credentials, err := r.store.LoadPAT(ctx, CredentialReference(target.CredentialReference), CredentialTarget{
 			ServerURL: target.ServerURL, SiteContentURL: target.SiteContentURL,
 		})
+		credentials.Source = CredentialSourceOSKeyring
+		return credentials, err
 	}
 
 	missing := []string{target.PATNameVariable, target.PATSecretVariable}

@@ -6,6 +6,7 @@ One repeated dimension is not a Cartesian product or positional pairing of sever
 Different user/group pairs or permission settings need explicit item rows.
 
 Items run sequentially and share authentication for the same target and credential.
+Publication batches submit accepted items before waiting, then use pooled monitoring with ordered per-item outcomes.
 Independent failures do not stop later items; cancellation can leave unfinished items.
 The batch is not atomic, and a nonzero exit can contain confirmed successes.
 Preserve those results and retry only unfinished items with known safe outcomes.

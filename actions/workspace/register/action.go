@@ -4,8 +4,8 @@ package register
 import (
 	"context"
 	"errors"
-	"github.com/ahillspace/tadx/internal/commandhint"
 
+	"github.com/ahillspace/tadx/internal/commandhint"
 	"github.com/ahillspace/tadx/internal/errs"
 )
 
@@ -21,6 +21,7 @@ type Input struct {
 type Workspace struct {
 	Name            string `json:"name"`
 	ID              string `json:"id"`
+	Root            string `json:"root"`
 	ManifestVersion int    `json:"manifest_version"`
 	Registered      bool   `json:"registered"`
 }
@@ -35,6 +36,8 @@ type Output struct {
 
 type compactWorkspace struct {
 	Name string `json:"name"`
+	ID   string `json:"id"`
+	Root string `json:"root"`
 }
 
 type compactOutput struct {
@@ -49,7 +52,7 @@ func (o Output) CompactOutput() any {
 	if o.Status == "preview" {
 		return o.previewOutput()
 	}
-	return compactOutput{Status: o.Status, Workspace: compactWorkspace{Name: o.Workspace.Name}, Details: "--full", Help: o.Help}
+	return compactOutput{Status: o.Status, Workspace: compactWorkspace{Name: o.Workspace.Name, ID: o.Workspace.ID, Root: o.Workspace.Root}, Details: "--full", Help: o.Help}
 }
 
 // FullOutput returns bounded workspace identity details.
@@ -90,13 +93,13 @@ func (a *Action) Execute(ctx context.Context, input Input) (Output, error) {
 	}
 	registered, err := a.registrar.Register(ctx, input)
 	if err != nil {
-		retryable, correctiveAction := errs.CompleteRetryAdvice(err, "Point --path at an existing workspace that has a valid tadx.yaml, or create one first with tadx workspace create.")
+		retryable, correctiveAction := errs.CompleteRetryAdvice(err, "Review the exact workspace collision with tadx workspace list --full; do not overwrite or re-register it automatically. Otherwise point --path at an existing workspace that has a valid tadx.yaml, or create one first with tadx workspace create.")
 		return Output{}, &errs.Error{ID: "workspace.register.failed", Kind: errs.KindOperation, Operation: "workspace.register", Resource: input.Name, Summary: "Workspace registration failed.", Cause: err, Retryable: retryable, CorrectiveAction: correctiveAction}
 	}
 	if input.Preview {
 		return Output{Status: "preview", Path: input.Path, Workspace: registered, Help: []string{"Preview only; no files or configuration changed."}}, nil
 	}
-	if registered.Name == "" || registered.ID == "" || !registered.Registered {
+	if registered.Name == "" || registered.ID == "" || registered.Root == "" || !registered.Registered {
 		return Output{}, runtimeError("workspace registration returned an incomplete identity")
 	}
 	return Output{Status: "registered", Workspace: registered, Help: []string{commandhint.Command("workspace", "status", "--workspace", registered.Name)}}, nil

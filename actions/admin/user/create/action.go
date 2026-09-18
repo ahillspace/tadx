@@ -3,7 +3,6 @@ package create
 import (
 	"context"
 	"errors"
-	"github.com/ahillspace/tadx/internal/commandhint"
 	"sort"
 
 	"github.com/ahillspace/tadx/internal/errs"
@@ -19,6 +18,10 @@ type User struct {
 	SiteRole           string `json:"site_role,omitempty"`
 	AuthSetting        string `json:"auth_setting,omitempty"`
 	IdPConfigurationID string `json:"idp_configuration_id,omitempty"`
+	IdentityPoolName   string `json:"identity_pool_name,omitempty"`
+	Email              string `json:"email,omitempty"`
+	Language           string `json:"language,omitempty"`
+	Locale             string `json:"locale,omitempty"`
 	RequestID          string `json:"-"`
 	MutationStatus     string `json:"-"`
 }
@@ -38,32 +41,40 @@ type Plan struct {
 	Locale             string `json:"locale,omitempty"`
 }
 type Result struct {
-	Status           string `json:"status"`
-	User             User   `json:"user"`
-	TableauRequestID string `json:"tableau_request_id,omitempty"`
+	UnverifiedSettings []string `json:"unverified_settings,omitempty"`
+	Status             string   `json:"status"`
+	User               User     `json:"user"`
+	TableauRequestID   string   `json:"tableau_request_id,omitempty"`
 }
 type Output struct {
 	Plan   Plan     `json:"plan"`
 	Result *Result  `json:"result,omitempty"`
 	Help   []string `json:"help"`
 }
+type CompactMutationResult struct {
+	Status             string   `json:"status"`
+	UserLUID           string   `json:"user_luid"`
+	SiteRole           string   `json:"site_role,omitempty"`
+	AuthSetting        string   `json:"auth_setting,omitempty"`
+	IdPConfigurationID string   `json:"idp_configuration_id,omitempty"`
+	IdentityPoolName   string   `json:"identity_pool_name,omitempty"`
+	Email              string   `json:"email,omitempty"`
+	Language           string   `json:"language,omitempty"`
+	Locale             string   `json:"locale,omitempty"`
+	UnverifiedSettings []string `json:"unverified_settings,omitempty"`
+}
 type CompactResult struct {
-	Plan   Plan `json:"plan"`
-	Result *struct {
-		Status   string `json:"status"`
-		UserLUID string `json:"user_luid"`
-	} `json:"result,omitempty"`
-	Details string   `json:"details"`
-	Help    []string `json:"help"`
+	Plan    Plan                   `json:"plan"`
+	Result  *CompactMutationResult `json:"result,omitempty"`
+	Details string                 `json:"details"`
+	Help    []string               `json:"help"`
 }
 
 func (o Output) CompactOutput() any {
 	v := CompactResult{Plan: o.Plan, Details: "--full", Help: o.Help}
 	if o.Result != nil {
-		v.Result = &struct {
-			Status   string `json:"status"`
-			UserLUID string `json:"user_luid"`
-		}{o.Result.Status, o.Result.User.LUID}
+		u := o.Result.User
+		v.Result = &CompactMutationResult{Status: o.Result.Status, UserLUID: u.LUID, SiteRole: u.SiteRole, AuthSetting: u.AuthSetting, IdPConfigurationID: u.IdPConfigurationID, IdentityPoolName: u.IdentityPoolName, Email: u.Email, Language: u.Language, Locale: u.Locale, UnverifiedSettings: o.Result.UnverifiedSettings}
 	}
 	return v
 }
@@ -105,6 +116,7 @@ func (a *Action) Execute(ctx context.Context, in Input, preview bool) (Output, e
 		return out, nil
 	}
 	out.Plan.Mode = "execute"
+	out.Help = nil
 	found, err = a.finder.FindUsers(ctx, in.Name)
 	if err != nil {
 		return Output{}, err
@@ -115,12 +127,24 @@ func (a *Action) Execute(ctx context.Context, in Input, preview bool) (Output, e
 	user, err := a.creator.CreateUser(ctx, Request{Name: in.Name, SiteRole: in.SiteRole, AuthSetting: in.AuthSetting, IdentityPoolName: in.IdentityPoolName, IdPConfigurationID: in.IdPConfigurationID, Email: in.Email, Language: in.Language, Locale: in.Locale})
 	if err != nil {
 		if user.MutationStatus == "unknown" {
-			return Output{}, outcomeUnknown(in, user.LUID, user.RequestID, err)
+			out.Help = []string{recoveryHint(in, user.LUID)}
+			if user.LUID != "" {
+				out.Result = &Result{Status: "unknown", User: user, TableauRequestID: user.RequestID}
+			}
+			return out, outcomeUnknown(in, user.LUID, user.RequestID, err)
 		}
 		return Output{}, err
 	}
 	out.Result = &Result{Status: "created", User: user, TableauRequestID: user.RequestID}
-	out.Help = []string{commandhint.Environment(in.Environment, "admin", "user", "inspect", "--id", user.LUID)}
+	for _, field := range []struct{ name, requested, observed string }{
+		{"site_role", in.SiteRole, user.SiteRole}, {"auth_setting", in.AuthSetting, user.AuthSetting},
+		{"identity_pool_name", in.IdentityPoolName, user.IdentityPoolName}, {"idp_configuration_id", in.IdPConfigurationID, user.IdPConfigurationID},
+		{"email", in.Email, user.Email}, {"language", in.Language, user.Language}, {"locale", in.Locale, user.Locale},
+	} {
+		if field.requested != "" && field.observed == "" {
+			out.Result.UnverifiedSettings = append(out.Result.UnverifiedSettings, field.name)
+		}
+	}
 	return out, nil
 }
 
@@ -128,5 +152,5 @@ func usage(field, message string) error {
 	return &errs.Error{ID: "admin.user.create.usage", Kind: errs.KindUsage, Operation: "admin.user.create", Summary: message, Retryable: errs.Bool(false), CorrectiveAction: "Correct the user create input and review a new preview.", Validation: []errs.ValidationDetail{{Field: field, Code: "invalid", Message: message}}}
 }
 func outcomeUnknown(in Input, luid, requestID string, cause error) error {
-	return &errs.Error{ID: "admin.user.create.outcome_unknown", Kind: errs.KindOperation, Operation: "admin.user.create", Resource: luid, Environment: in.Environment, Site: in.Site, Summary: "The user create outcome could not be determined safely.", Cause: cause, Retryable: errs.Bool(false), CorrectiveAction: "Inspect the exact user and Tableau request before retrying: " + recoveryHint(in, luid), TableauRequestID: requestID}
+	return &errs.Error{ID: "admin.user.create.outcome_unknown", Kind: errs.KindOperation, Operation: "admin.user.create", Resource: luid, Environment: in.Environment, Site: in.Site, Summary: "The user create outcome could not be determined safely.", Cause: cause, Retryable: errs.Bool(false), CorrectiveAction: "Inspect the exact user and Tableau request before retrying: " + recoveryHint(in, luid), TableauRequestID: requestID, Phase: errs.PhaseSubmission, Outcome: errs.OutcomeUnknown}
 }

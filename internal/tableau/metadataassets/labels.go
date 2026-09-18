@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/xml"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -70,7 +71,7 @@ func label(n nodeXML) (value.ContentLabel, error) {
 	if e != nil {
 		return value.ContentLabel{}, errors.New("label response omitted valid elevated state")
 	}
-	v := value.ContentLabel{LUID: n.attr("id"), TargetLUID: n.attr("contentId"), Type: n.attr("contentType"), Value: n.attr("value"), Category: n.attr("category"), Message: n.attr("message"), Active: active, Elevated: elevated, CreatedAt: n.attr("createdAt"), UpdatedAt: n.attr("updatedAt")}
+	v := value.ContentLabel{LUID: n.attr("id"), TargetLUID: n.attr("contentId"), Type: value.CanonicalContentType(n.attr("contentType")), Value: n.attr("value"), Category: n.attr("category"), Message: n.attr("message"), Active: active, Elevated: elevated, CreatedAt: n.attr("createdAt"), UpdatedAt: n.attr("updatedAt")}
 	owner, _ := n.child("owner")
 	v.OwnerLUID = owner.attr("id")
 	if v.LUID == "" || v.TargetLUID == "" || v.Type == "" || v.Value == "" || v.Category == "" {
@@ -78,6 +79,7 @@ func label(n nodeXML) (value.ContentLabel, error) {
 	}
 	return v, nil
 }
+
 func (c *Client) labelRows(r tableau.Response, op string, t *LabelTarget) ([]value.ContentLabel, error) {
 	nodes, e := many(r, op, "labelList", "label")
 	if e != nil {
@@ -90,7 +92,7 @@ func (c *Client) labelRows(r tableau.Response, op string, t *LabelTarget) ([]val
 			return nil, protocol(op, r, e)
 		}
 		if t != nil && (v.TargetLUID != t.LUID || v.Type != t.Type) {
-			return nil, protocol(op, r, errors.New("label belongs to a different target"))
+			return nil, protocol(op, r, fmt.Errorf("label target mismatch: requested type=%q target=%q, returned type=%q target=%q", t.Type, t.LUID, v.Type, v.TargetLUID))
 		}
 		out = append(out, v)
 	}

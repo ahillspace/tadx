@@ -14,6 +14,12 @@ targets=''
 
 usage() {
     printf '%s\n' 'Usage: install.sh [install|uninstall] [--version VERSION] [--target TARGET] [--install-dir DIRECTORY] [--no-modify-path] [--no-completion]'
+    printf '%s\n' '  --version VERSION       install an exact release; default: latest'
+    printf '%s\n' '  --target TARGET         install bundled Guidance for one target; repeat for more than one'
+    printf '%s\n' '  --install-dir DIRECTORY resolved binary directory; default: $TADX_INSTALL_DIR or $HOME/.local/bin'
+    printf '%s\n' '  --no-modify-path        leave shell profiles and PATH unchanged'
+    printf '%s\n' '  --no-completion         leave shell completion profiles unchanged'
+    printf '%s\n' 'For a local install without profile edits: install.sh --no-modify-path --no-completion'
     printf '%s\n' 'Completion is enabled for the current Bash, Zsh, or Fish shell. Open a new shell to load it.'
 }
 
@@ -189,7 +195,18 @@ receive_release_asset() {
     fi
 
     command -v curl >/dev/null 2>&1 || return 1
-    curl -fL --proto '=https' --tlsv1.2 --connect-timeout 15 --max-time 120 --max-filesize 268435456 -o "$release_destination" "${release_https_base}/${release_asset}"
+    http_status=$(curl -sSL --proto '=https' --tlsv1.2 --connect-timeout 15 --max-time 120 --max-filesize 268435456 -o "$release_destination" -w '%{http_code}' "${release_https_base}/${release_asset}" 2>/dev/null) || {
+        rm -f "$release_destination"
+        return 1
+    }
+    if [ -n "$http_status" ]; then
+        case "$http_status" in
+            404) rm -f "$release_destination"; return 2 ;;
+            2??) ;;
+            *) rm -f "$release_destination"; return 1 ;;
+        esac
+    fi
+    [ -f "$release_destination" ] || return 1
 }
 
 case "$(uname -s)" in
@@ -217,7 +234,15 @@ manifest_path="${temporary_directory}/checksums.txt"
 if [ "$version" = 'latest' ]; then
     release_base="https://github.com/${repository}/releases/latest/download"
     release_tag=''
-    receive_release_asset "$release_tag" 'checksums.txt' "$manifest_path" "$release_base" || fail 'The latest stable TADX release could not be downloaded.'
+    if receive_release_asset "$release_tag" 'checksums.txt' "$manifest_path" "$release_base"; then
+        :
+    else
+        download_status=$?
+        case "$download_status" in
+            2) fail 'The latest stable TADX release was not found (asset checksums.txt). It was not verified or installed.' ;;
+            *) fail 'The latest stable TADX release could not be retrieved (asset checksums.txt; bounded transport failure). It was not verified or installed.' ;;
+        esac
+    fi
     [ "$(wc -c < "$manifest_path")" -le 1048576 ] || fail 'The release checksum manifest exceeds its byte limit.'
     suffix="_${operating_system}_${architecture}.tar.gz"
     asset_name=$(awk -v suffix="$suffix" '
@@ -235,16 +260,29 @@ else
     printf '%s\n' "$resolved_version" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+([-+][0-9A-Za-z.-]+)?$' || fail "Invalid TADX version: $version"
     asset_name="tadx_${resolved_version}_${operating_system}_${architecture}.tar.gz"
     downloaded=0
+    transport_failure=0
+    not_found=0
     for tag in "$version" "v${resolved_version}" "$resolved_version"; do
         release_base="https://github.com/${repository}/releases/download/${tag}"
         if receive_release_asset "$tag" 'checksums.txt' "$manifest_path" "$release_base" 2>/dev/null; then
             release_tag=$tag
             downloaded=1
             break
+        else
+            case "$?" in
+                2) not_found=1 ;;
+                *) transport_failure=1 ;;
+            esac
         fi
         rm -f "$manifest_path"
     done
-    [ "$downloaded" -eq 1 ] || fail "TADX release $version was not found."
+    if [ "$downloaded" -ne 1 ]; then
+        if [ "$transport_failure" -eq 1 ]; then
+            fail "TADX release $version could not be retrieved (asset checksums.txt; bounded transport failure). It was not verified or installed."
+        fi
+        [ "$not_found" -eq 1 ] || fail "TADX release $version could not be retrieved (asset checksums.txt). It was not verified or installed."
+        fail "TADX release $version was not found (asset checksums.txt). It was not verified or installed."
+    fi
 fi
 
  [ "$(wc -c < "$manifest_path")" -le 1048576 ] || fail 'The release checksum manifest exceeds its byte limit.'
@@ -255,7 +293,16 @@ hash_count=$(printf '%s\n' "$expected_hash" | awk 'NF { count++ } END { print co
 [ "$hash_count" -eq 1 ] || fail "The checksum manifest must contain exactly one entry for $asset_name."
 
 archive_path="${temporary_directory}/${asset_name}"
-receive_release_asset "$release_tag" "$asset_name" "$archive_path" "$release_base" || fail "The release asset $asset_name could not be downloaded."
+if receive_release_asset "$release_tag" "$asset_name" "$archive_path" "$release_base"; then
+    download_status=0
+else
+    download_status=$?
+fi
+case "$download_status" in
+    0) ;;
+    2) fail "The release asset $asset_name for version ${resolved_version:-$version} was not found. It was not verified or installed." ;;
+    *) fail "The release asset $asset_name for version ${resolved_version:-$version} could not be retrieved (bounded transport failure). It was not verified or installed." ;;
+esac
 [ "$(wc -c < "$archive_path")" -le 268435456 ] || fail 'The release archive exceeds its byte limit.'
 
 if command -v sha256sum >/dev/null 2>&1; then
@@ -284,17 +331,21 @@ binary_paths=$(find "$extract_directory" -type f -name tadx -print)
 binary_count=$(printf '%s\n' "$binary_paths" | awk 'NF { count++ } END { print count+0 }')
 [ "$binary_count" -eq 1 ] || fail 'The verified release archive must contain exactly one tadx file.'
 
-mkdir -p "$install_dir"
+mkdir -p "$install_dir" || fail "Could not create the resolved install directory '$install_dir'. No replacement occurred; choose another --install-dir or check directory permissions."
 mkdir "${install_dir}/.tadx-install.lock" 2>/dev/null || fail 'Another installer is using this directory. Wait for it to finish; remove .tadx-install.lock only after confirming no installer is running.'
 owns_install_lock=1
 staged_binary="${install_dir}/.tadx.new.$$"
-cp "$binary_paths" "$staged_binary"
-chmod 0755 "$staged_binary"
+cp "$binary_paths" "$staged_binary" || { rm -f "$staged_binary"; fail "Could not stage the release binary at '$staged_binary'. No replacement occurred; choose another --install-dir or check directory permissions."; }
+chmod 0755 "$staged_binary" || { rm -f "$staged_binary"; fail "Could not set executable permissions for the staged binary at '$staged_binary'. No replacement occurred; choose another --install-dir or check directory permissions."; }
 backup_binary="${install_dir}/.tadx.backup.$$"
 if [ -e "${install_dir}/tadx" ]; then
-    cp -p "${install_dir}/tadx" "$backup_binary"
+    cp -p "${install_dir}/tadx" "$backup_binary" || { rm -f "$backup_binary" "$staged_binary"; fail "Could not preserve the existing binary at '${install_dir}/tadx'. No replacement occurred; choose another --install-dir or check directory permissions."; }
 fi
-mv -f "$staged_binary" "${install_dir}/tadx"
+mv -f "$staged_binary" "${install_dir}/tadx" || {
+    rm -f "$staged_binary"
+    if [ -f "$backup_binary" ]; then mv -f "$backup_binary" "${install_dir}/tadx" 2>/dev/null || true; fi
+    fail "Could not replace the resolved binary at '${install_dir}/tadx'. The previous binary was restored when possible; choose another --install-dir or check directory permissions."
+}
 for target in ${targets:-auto}; do
 if ! "${install_dir}/tadx" agent install --target "$target"; then
     if [ -f "$backup_binary" ]; then

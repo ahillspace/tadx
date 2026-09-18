@@ -42,7 +42,7 @@ func TestInventoryReportsBoundedInvalidMetadataReason(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(page.Items) != 1 || page.Items[0].State != artifact.StateInvalid || len(page.Warnings) != 1 || !strings.Contains(page.Warnings[0], "metadata failed validation") {
+	if len(page.Items) != 1 || page.Items[0].State != artifact.StateInvalid || page.Items[0].Reason != "metadata_invalid" || page.Items[0].Path == "" || len(page.Warnings) != 1 || !strings.Contains(page.Warnings[0], "metadata failed validation") {
 		t.Fatalf("Inventory() = %#v", page)
 	}
 	if strings.Contains(page.Warnings[0], workspaceRoot) {

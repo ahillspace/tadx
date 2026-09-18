@@ -1,6 +1,7 @@
 package app
 
 import (
+	"cmp"
 	"context"
 	"fmt"
 	"os"
@@ -15,6 +16,7 @@ import (
 	profileupdate "github.com/ahillspace/tadx/actions/env/profile/update"
 	envcli "github.com/ahillspace/tadx/internal/cli/env"
 	"github.com/ahillspace/tadx/internal/config"
+	tableaucache "github.com/ahillspace/tadx/internal/tableau/cache"
 )
 
 type environmentCommands struct {
@@ -116,7 +118,7 @@ func (s configProfileStore) Get(_ context.Context, alias string) (profileget.Pro
 	if err != nil {
 		return profileget.Profile{}, err
 	}
-	return profileget.Profile{Alias: environment.Alias, Default: environment.Alias == configuration.DefaultEnvironment, ServerURL: environment.URL, SiteContentURL: environment.SiteContentURL, APIVersion: environment.APIVersion, AuthType: environment.Auth.Type, PATNameEnv: environment.Auth.PATNameEnv, PATSecretEnv: environment.Auth.PATSecretEnv, DefaultWorkspace: environment.DefaultWorkspace, CacheMaxConcurrency: environment.CacheMaxConcurrency}, nil
+	return profileget.Profile{Alias: environment.Alias, Default: environment.Alias == configuration.DefaultEnvironment, ServerURL: environment.URL, SiteContentURL: environment.SiteContentURL, APIVersion: environment.APIVersion, AuthType: environment.Auth.Type, PATNameEnv: environment.Auth.PATNameEnv, PATSecretEnv: environment.Auth.PATSecretEnv, DefaultWorkspace: cmp.Or(environment.DefaultWorkspace, configuration.DefaultWorkspace), CacheMaxConcurrency: cmp.Or(environment.CacheMaxConcurrency, tableaucache.DefaultMaxConcurrency)}, nil
 }
 
 func (s configProfileStore) Add(_ context.Context, input profileadd.Profile) (profileadd.Profile, error) {

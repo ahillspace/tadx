@@ -22,8 +22,9 @@ const (
 	// StateInvalid means metadata or containment validation failed.
 	StateInvalid = "invalid"
 
-	maxInventoryLimit = 10000
-	maxInventoryScan  = 10000
+	maxInventoryLimit      = 10000
+	maxInventoryScan       = 10000
+	maxAmbiguousCandidates = 20
 )
 
 var directManagedArtifactKinds = [...]string{"datasource", "flow", "pulse-definition", "workbook"}
@@ -46,13 +47,43 @@ type Item struct {
 	Path                string
 	CanonicalPath       string
 	State               string
+	Reason              string
 	ServerOrigin        string
 	SiteLUID            string
+	SourceEnvironment   string
+	SourceSite          string
 	BaselineFingerprint string
 	CurrentFingerprint  string
 	TreeFingerprint     string
 	managedPaths        []string
 	Warnings            []string
+}
+
+// AmbiguousCandidate is one exact managed artifact matched by a non-unique selector.
+type AmbiguousCandidate struct {
+	Kind              string `json:"kind"`
+	LUID              string `json:"luid"`
+	Name              string `json:"name"`
+	Path              string `json:"path"`
+	SourceEnvironment string `json:"source_environment,omitempty"`
+	SourceSite        string `json:"source_site,omitempty"`
+	ServerOrigin      string `json:"source_server_origin,omitempty"`
+	SiteLUID          string `json:"source_site_luid,omitempty"`
+}
+
+// AmbiguousSelectorError preserves bounded candidates without choosing one.
+type AmbiguousSelectorError struct {
+	Kind              string               `json:"kind"`
+	Name              string               `json:"name,omitempty"`
+	LUID              string               `json:"luid,omitempty"`
+	Candidates        []AmbiguousCandidate `json:"candidates"`
+	Truncated         int                  `json:"truncated"`
+	FullStatusCommand string               `json:"full_status_command,omitempty"`
+}
+
+// Error reports exact candidate identity and the bounded expansion route.
+func (e *AmbiguousSelectorError) Error() string {
+	return "managed artifact selector is ambiguous across source identities"
 }
 
 // InventoryOptions bounds one artifact inventory page.
@@ -191,7 +222,24 @@ func Resolve(ctx context.Context, workspace string, selector Selector) (Item, er
 		return Item{}, errors.New("no managed artifact matches the exact selector")
 	}
 	if len(matches) > 1 {
-		return Item{}, errors.New("managed artifact selector is ambiguous across source identities")
+		sort.Slice(matches, func(i, j int) bool {
+			if matches[i].Path != matches[j].Path {
+				return matches[i].Path < matches[j].Path
+			}
+			if matches[i].LUID != matches[j].LUID {
+				return matches[i].LUID < matches[j].LUID
+			}
+			if matches[i].ServerOrigin != matches[j].ServerOrigin {
+				return matches[i].ServerOrigin < matches[j].ServerOrigin
+			}
+			return matches[i].SiteLUID < matches[j].SiteLUID
+		})
+		candidateCount := min(len(matches), maxAmbiguousCandidates)
+		candidates := make([]AmbiguousCandidate, 0, candidateCount)
+		for _, item := range matches[:candidateCount] {
+			candidates = append(candidates, AmbiguousCandidate{Kind: item.Kind, LUID: item.LUID, Name: item.Name, Path: item.Path, SourceEnvironment: item.SourceEnvironment, SourceSite: item.SourceSite, ServerOrigin: item.ServerOrigin, SiteLUID: item.SiteLUID})
+		}
+		return Item{}, &AmbiguousSelectorError{Kind: selector.Kind, Name: selector.Name, LUID: selector.LUID, Candidates: candidates, Truncated: len(matches) - candidateCount, FullStatusCommand: "tadx workspace status --full"}
 	}
 	return matches[0], nil
 }
@@ -219,12 +267,12 @@ func scanManagedArtifacts(ctx context.Context, workspace string, scanLimit int) 
 			}
 			relative := filepath.ToSlash(filepath.Join("artifacts", kind, entry.Name()))
 			if entry.Type()&os.ModeSymlink != 0 || !entry.IsDir() {
-				items = append(items, Item{Kind: kind, Path: relative, State: StateInvalid, Warnings: []string{"Managed artifact entry is not a regular directory."}})
+				items = append(items, Item{Kind: kind, Path: relative, State: StateInvalid, Reason: "entry_invalid", Warnings: []string{"Managed artifact entry is not a regular directory."}})
 				continue
 			}
 			item, itemErr := inspectArtifact(ctx, workspace, kind, filepath.Join(kindRoot, entry.Name()))
 			if itemErr != nil {
-				items = append(items, Item{Kind: kind, Path: relative, State: StateInvalid, Warnings: []string{invalidArtifactWarning(itemErr)}})
+				items = append(items, Item{Kind: kind, Path: relative, State: StateInvalid, Reason: invalidArtifactReason(itemErr), Warnings: []string{invalidArtifactWarning(itemErr)}})
 				continue
 			}
 			items = append(items, item)
@@ -267,12 +315,12 @@ func scanManagedArtifacts(ctx context.Context, workspace string, scanLimit int) 
 			}
 			relative := filepath.ToSlash(filepath.Join("artifacts", "lineage", resourceKind.Name(), entry.Name()))
 			if entry.Type()&os.ModeSymlink != 0 || !entry.IsDir() {
-				items = append(items, Item{Kind: "lineage", Path: relative, State: StateInvalid, Warnings: []string{"Managed artifact entry is not a regular directory."}})
+				items = append(items, Item{Kind: "lineage", Path: relative, State: StateInvalid, Reason: "entry_invalid", Warnings: []string{"Managed artifact entry is not a regular directory."}})
 				continue
 			}
 			item, itemErr := inspectArtifact(ctx, workspace, "lineage", filepath.Join(kindRoot, entry.Name()))
 			if itemErr != nil {
-				items = append(items, Item{Kind: "lineage", Path: relative, State: StateInvalid, Warnings: []string{invalidArtifactWarning(itemErr)}})
+				items = append(items, Item{Kind: "lineage", Path: relative, State: StateInvalid, Reason: invalidArtifactReason(itemErr), Warnings: []string{invalidArtifactWarning(itemErr)}})
 				continue
 			}
 			items = append(items, item)
@@ -331,6 +379,7 @@ func inspectArtifact(ctx context.Context, workspace, kind, directory string) (It
 		}
 		item.LUID, item.Name = metadata.TableauID, metadata.Name
 		item.ServerOrigin, item.SiteLUID = metadata.SourceServerOrigin, metadata.SourceSiteLUID
+		item.SourceEnvironment, item.SourceSite = metadata.SourceEnvironment, metadata.SourceSite
 		item.BaselineFingerprint = metadata.LocalBaselineFingerprint
 		sidecar = metadata.LineageSidecar
 		canonical, err = inventoryCanonicalPath(directory, metadata.CanonicalPayload, ".twb", ".twbx")
@@ -347,6 +396,7 @@ func inspectArtifact(ctx context.Context, workspace, kind, directory string) (It
 		}
 		item.LUID, item.Name = metadata.TableauID, metadata.Name
 		item.ServerOrigin, item.SiteLUID = metadata.SourceServerOrigin, metadata.SourceSiteLUID
+		item.SourceEnvironment, item.SourceSite = metadata.SourceEnvironment, metadata.SourceSite
 		item.BaselineFingerprint = metadata.LocalBaselineFingerprint
 		sidecar = metadata.LineageSidecar
 		canonical, err = inventoryCanonicalPath(directory, metadata.CanonicalPayload, ".tds", ".tdsx")
@@ -360,6 +410,7 @@ func inspectArtifact(ctx context.Context, workspace, kind, directory string) (It
 		}
 		item.LUID, item.Name = metadata.TableauID, metadata.Name
 		item.ServerOrigin, item.SiteLUID = metadata.SourceServerOrigin, metadata.SourceSiteLUID
+		item.SourceEnvironment, item.SourceSite = metadata.SourceEnvironment, metadata.SourceSite
 		item.BaselineFingerprint = metadata.LocalBaselineFingerprint
 		sidecar = metadata.LineageSidecar
 		canonical, err = inventoryCanonicalPath(directory, metadata.CanonicalPayload, ".tfl", ".tflx")
@@ -384,6 +435,7 @@ func inspectArtifact(ctx context.Context, workspace, kind, directory string) (It
 		}
 		item.LUID, item.Name = metadata.TableauID, metadata.Name
 		item.ServerOrigin, item.SiteLUID = metadata.SourceServerOrigin, metadata.SourceSiteLUID
+		item.SourceEnvironment, item.SourceSite = metadata.SourceEnvironment, metadata.SourceSite
 		item.BaselineFingerprint = metadata.LocalBaselineFingerprint
 		if metadata.BundleFingerprint != "" {
 			sidecar = "bundle.json"
@@ -400,6 +452,7 @@ func inspectArtifact(ctx context.Context, workspace, kind, directory string) (It
 		}
 		item.LUID, item.Name = metadata.TableauID, metadata.Name
 		item.ServerOrigin, item.SiteLUID = metadata.SourceServerOrigin, metadata.SourceSiteLUID
+		item.SourceEnvironment, item.SourceSite = metadata.SourceEnvironment, metadata.SourceSite
 		item.BaselineFingerprint = metadata.Fingerprint
 		canonical, err = inventoryCanonicalPath(directory, metadata.LineagePath, ".json")
 		if err != nil {
@@ -478,6 +531,22 @@ func invalidArtifactWarning(err error) string {
 		return "Artifact containment failed validation."
 	default:
 		return "Managed artifact structure failed validation."
+	}
+}
+
+func invalidArtifactReason(err error) string {
+	message := strings.ToLower(err.Error())
+	switch {
+	case strings.Contains(message, "metadata"):
+		return "metadata_invalid"
+	case strings.Contains(message, "canonical") || strings.Contains(message, "payload"):
+		return "canonical_payload_invalid"
+	case strings.Contains(message, "lineage"):
+		return "lineage_invalid"
+	case strings.Contains(message, "symbolic link") || strings.Contains(message, "escapes"):
+		return "containment_invalid"
+	default:
+		return "structure_invalid"
 	}
 }
 

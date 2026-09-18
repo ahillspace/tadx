@@ -3,6 +3,7 @@ package metadata
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -318,6 +319,57 @@ func TestCaptureLineageRetainsPartialRelationshipDataWithoutClaimingCompleteness
 	}
 	if capture.Complete || len(capture.Nodes) != 2 || len(capture.Edges) != 1 || len(capture.Warnings) != 1 {
 		t.Fatalf("capture = %#v", capture)
+	}
+}
+
+func TestCaptureLineageReturnsValidatedPartialGraphWithRelationFailure(t *testing.T) {
+	responses := []string{
+		`{"data":{"workbooksConnection":{"totalCount":1,"pageInfo":{"hasNextPage":false},"nodes":[{"id":"workbook-meta","luid":"workbook-rest","name":"Book"}]}}}`,
+		`{"data":{"workbooksConnection":{"totalCount":1,"pageInfo":{"hasNextPage":false},"nodes":[{"id":"workbook-meta","luid":"workbook-rest","name":"Book","upstreamDatasourcesConnection":{"totalCount":1,"pageInfo":{"hasNextPage":false},"nodes":[{"id":"datasource-meta","luid":"datasource-rest","name":"Sales"}]}}]}}}`,
+		`{"errors":[{"message":"permission denied","extensions":{"code":"ACCESS_DENIED"}}]}`,
+	}
+	server, _ := lineageTestServer(t, responses)
+	defer server.Close()
+
+	client := NewClient(tableau.NewTransport(server.Client(), "3.29", nil), testSession{token: "session-token", siteLUID: "site-1"}, server.URL)
+	capture, err := client.CaptureLineage(context.Background(), CaptureRequest{Kind: KindWorkbook, RESTLUID: "workbook-rest", Direction: DirectionUpstream})
+	if err == nil {
+		t.Fatal("expected relation failure")
+	}
+	var protocol *tableau.ProtocolError
+	if !errors.As(err, &protocol) || tableau.RequestID(err) != "request-3" {
+		t.Fatalf("error = %v, request ID = %q", err, tableau.RequestID(err))
+	}
+	var relation *RelationError
+	if !errors.As(err, &relation) || relation.Relation != "upstreamDatabasesConnection" || relation.RootRESTLUID != "workbook-rest" {
+		t.Fatalf("relation error = %#v", relation)
+	}
+	if capture.Complete || len(capture.Nodes) != 2 || len(capture.Edges) != 1 {
+		t.Fatalf("partial capture = %#v", capture)
+	}
+}
+
+func TestCaptureLineageRetainsOnlyPriorPagesWhenCurrentPageIsMalformed(t *testing.T) {
+	responses := []string{
+		`{"data":{"workbooksConnection":{"totalCount":1,"pageInfo":{"hasNextPage":false},"nodes":[{"id":"workbook-meta","luid":"workbook-rest","name":"Book"}]}}}`,
+		`{"data":{"workbooksConnection":{"totalCount":1,"pageInfo":{"hasNextPage":false},"nodes":[{"id":"workbook-meta","luid":"workbook-rest","name":"Book","upstreamDatasourcesConnection":{"totalCount":2,"pageInfo":{"hasNextPage":true,"endCursor":"page-1"},"nodes":[{"id":"datasource-a","luid":"rest-a","name":"A"}]}}]}}}`,
+		`{"data":{"workbooksConnection":{"totalCount":1,"pageInfo":{"hasNextPage":false},"nodes":[{"id":"workbook-meta","luid":"workbook-rest","name":"Book","upstreamDatasourcesConnection":{"totalCount":2,"pageInfo":{"endCursor":"page-2"},"nodes":[{"id":"datasource-b","luid":"rest-b","name":"B"}]}}]}}}`,
+	}
+	server, _ := lineageTestServer(t, responses)
+	defer server.Close()
+
+	client := NewClient(tableau.NewTransport(server.Client(), "3.29", nil), testSession{token: "session-token", siteLUID: "site-1"}, server.URL)
+	capture, err := client.CaptureLineage(context.Background(), CaptureRequest{Kind: KindWorkbook, RESTLUID: "workbook-rest", Direction: DirectionUpstream})
+	if err == nil || !strings.Contains(err.Error(), "hasNextPage") {
+		t.Fatalf("error = %v", err)
+	}
+	if capture.Complete || len(capture.Nodes) != 2 || len(capture.Edges) != 1 {
+		t.Fatalf("capture = %#v", capture)
+	}
+	for _, node := range capture.Nodes {
+		if node.MetadataID == "datasource-b" {
+			t.Fatalf("malformed current page was retained: %#v", capture.Nodes)
+		}
 	}
 }
 

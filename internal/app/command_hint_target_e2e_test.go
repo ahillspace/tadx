@@ -36,14 +36,11 @@ func TestGeneratedInspectionHintKeepsResolvedEnvironmentThroughCLI(t *testing.T)
 		switch {
 		case r.URL.Path == "/api/3.29/auth/signout":
 			w.WriteHeader(http.StatusNoContent)
-		case r.Method == http.MethodGet && r.URL.Path == "/api/3.29/sites/site-1/users":
-			_, _ = io.WriteString(w, `<tsResponse><pagination pageNumber="1" pageSize="1000" totalAvailable="0"/><users/></tsResponse>`)
-		case r.Method == http.MethodPost && r.URL.Path == "/api/3.29/sites/site-1/users":
-			w.WriteHeader(http.StatusCreated)
-			_, _ = io.WriteString(w, `<tsResponse><user id="created-user" name="author@example.test" siteRole="Creator" authSetting="ServerDefault"/></tsResponse>`)
-		case r.Method == http.MethodGet && r.URL.Path == "/api/3.29/sites/site-1/users/created-user":
+		case r.Method == http.MethodGet && r.URL.Path == "/api/3.29/sites/site-1/groups":
+			_, _ = io.WriteString(w, `<tsResponse><pagination pageNumber="1" pageSize="1000" totalAvailable="1"/><groups><group id="group-1" name="Readers"/></groups></tsResponse>`)
+		case r.Method == http.MethodGet && r.URL.Path == "/api/3.29/sites/site-1/groups/group-1/users":
 			inspected.Add(1)
-			_, _ = io.WriteString(w, `<tsResponse><user id="created-user" name="author@example.test" siteRole="Creator"/></tsResponse>`)
+			_, _ = io.WriteString(w, `<tsResponse><pagination pageNumber="1" pageSize="1000" totalAvailable="0"/><users/></tsResponse>`)
 		default:
 			t.Errorf("unexpected request %s %s", r.Method, r.URL.Path)
 			w.WriteHeader(http.StatusNotFound)
@@ -64,9 +61,11 @@ func TestGeneratedInspectionHintKeepsResolvedEnvironmentThroughCLI(t *testing.T)
 	}
 	options.ConfigPath = configPath
 	var output bytes.Buffer
-	args := []string{"admin", "user", "create", "--environment", selectedEnvironment, "--name", "author@example.test", "--site-role", "Creator", "--auth-setting", "ServerDefault"}
+	// A membership read is an optional new request, unlike redundant inspection
+	// after an already-confirmed mutation.
+	args := []string{"admin", "group", "inspect", "--environment", selectedEnvironment, "--id", "group-1"}
 	if code := app.Run(context.Background(), args, &output, options); code != 0 {
-		t.Fatalf("create exit=%d output=%s", code, output.String())
+		t.Fatalf("inspect exit=%d output=%s", code, output.String())
 	}
 	decoded, err := toon.Decode(output.Bytes())
 	if err != nil {

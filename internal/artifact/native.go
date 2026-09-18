@@ -33,8 +33,9 @@ func ReadNative(ctx context.Context, path, kind string) (Native, error) {
 		return Native{}, err
 	}
 	extension := strings.ToLower(filepath.Ext(path))
+	isHyper := kind == "datasource" && extension == ".hyper"
 	primary := map[string]string{"workbook": ".twb", "datasource": ".tds", "flow": ".tfl"}[kind]
-	if primary == "" || (extension != primary && extension != primary+"x") {
+	if primary == "" || (!isHyper && extension != primary && extension != primary+"x") {
 		return Native{}, fmt.Errorf("unsupported native %s file extension", kind)
 	}
 	file, err := os.Open(path)
@@ -47,79 +48,81 @@ func ReadNative(ctx context.Context, path, kind string) (Native, error) {
 		return Native{}, errors.New("native file must be a nonempty regular file no larger than 1 GiB")
 	}
 	var definition []byte
-	if extension == primary {
-		if info.Size() > maxDatasourceDefinitionBytes {
-			return Native{}, errors.New("native definition exceeds 16 MiB")
-		}
-		definition, err = io.ReadAll(io.LimitReader(file, maxDatasourceDefinitionBytes+1))
-	} else {
-		var archive *zip.Reader
-		archive, err = zip.NewReader(file, info.Size())
-		if err == nil {
-			if len(archive.File) > 10000 {
-				return Native{}, errors.New("native package exceeds 10000 entries")
+	if !isHyper {
+		if extension == primary {
+			if info.Size() > maxDatasourceDefinitionBytes {
+				return Native{}, errors.New("native definition exceeds 16 MiB")
 			}
-			var selected *zip.File
-			for _, entry := range archive.File {
-				if strings.EqualFold(filepath.Ext(entry.Name), primary) || (kind == "flow" && entry.Name == "flow") {
-					if selected != nil {
-						return Native{}, errors.New("native package has ambiguous primary definitions")
-					}
-					selected = entry
-				}
-			}
-			if selected == nil || selected.UncompressedSize64 > maxDatasourceDefinitionBytes {
-				return Native{}, errors.New("native package requires one primary definition no larger than 16 MiB")
-			}
-			var stream io.ReadCloser
-			stream, err = selected.Open()
+			definition, err = io.ReadAll(io.LimitReader(file, maxDatasourceDefinitionBytes+1))
+		} else {
+			var archive *zip.Reader
+			archive, err = zip.NewReader(file, info.Size())
 			if err == nil {
-				definition, err = io.ReadAll(io.LimitReader(stream, maxDatasourceDefinitionBytes+1))
-				closeErr := stream.Close()
-				if err == nil {
-					err = closeErr
+				if len(archive.File) > 10000 {
+					return Native{}, errors.New("native package exceeds 10000 entries")
 				}
-			}
-		}
-	}
-	if err != nil || len(definition) > maxDatasourceDefinitionBytes {
-		return Native{}, errors.New("native definition could not be read within its bound")
-	}
-	if kind == "flow" {
-		var object map[string]json.RawMessage
-		if err := json.Unmarshal(definition, &object); err != nil || object == nil {
-			return Native{}, errors.New("native flow definition must be a JSON object")
-		}
-	} else {
-		decoder := xml.NewDecoder(bytes.NewReader(definition))
-		depth, roots := 0, 0
-		for {
-			token, decodeErr := decoder.Token()
-			if decodeErr == io.EOF {
-				break
-			}
-			if decodeErr != nil {
-				return Native{}, errors.New("native definition contains invalid XML")
-			}
-			switch token := token.(type) {
-			case xml.StartElement:
-				if depth == 0 {
-					roots++
-					if token.Name.Local != kind {
-						return Native{}, fmt.Errorf("native definition requires a %s root", kind)
+				var selected *zip.File
+				for _, entry := range archive.File {
+					if strings.EqualFold(filepath.Ext(entry.Name), primary) || (kind == "flow" && entry.Name == "flow") {
+						if selected != nil {
+							return Native{}, errors.New("native package has ambiguous primary definitions")
+						}
+						selected = entry
 					}
 				}
-				depth++
-			case xml.EndElement:
-				depth--
-			case xml.CharData:
-				if depth == 0 && strings.TrimSpace(string(token)) != "" {
-					return Native{}, errors.New("native definition contains text outside its root")
+				if selected == nil || selected.UncompressedSize64 > maxDatasourceDefinitionBytes {
+					return Native{}, errors.New("native package requires one primary definition no larger than 16 MiB")
+				}
+				var stream io.ReadCloser
+				stream, err = selected.Open()
+				if err == nil {
+					definition, err = io.ReadAll(io.LimitReader(stream, maxDatasourceDefinitionBytes+1))
+					closeErr := stream.Close()
+					if err == nil {
+						err = closeErr
+					}
 				}
 			}
 		}
-		if roots != 1 || depth != 0 {
-			return Native{}, errors.New("native definition requires one complete root")
+		if err != nil || len(definition) > maxDatasourceDefinitionBytes {
+			return Native{}, errors.New("native definition could not be read within its bound")
+		}
+		if kind == "flow" {
+			var object map[string]json.RawMessage
+			if err := json.Unmarshal(definition, &object); err != nil || object == nil {
+				return Native{}, errors.New("native flow definition must be a JSON object")
+			}
+		} else {
+			decoder := xml.NewDecoder(bytes.NewReader(definition))
+			depth, roots := 0, 0
+			for {
+				token, decodeErr := decoder.Token()
+				if decodeErr == io.EOF {
+					break
+				}
+				if decodeErr != nil {
+					return Native{}, errors.New("native definition contains invalid XML")
+				}
+				switch token := token.(type) {
+				case xml.StartElement:
+					if depth == 0 {
+						roots++
+						if token.Name.Local != kind {
+							return Native{}, fmt.Errorf("native definition requires a %s root", kind)
+						}
+					}
+					depth++
+				case xml.EndElement:
+					depth--
+				case xml.CharData:
+					if depth == 0 && strings.TrimSpace(string(token)) != "" {
+						return Native{}, errors.New("native definition contains text outside its root")
+					}
+				}
+			}
+			if roots != 1 || depth != 0 {
+				return Native{}, errors.New("native definition requires one complete root")
+			}
 		}
 	}
 	if _, err = file.Seek(0, io.SeekStart); err != nil {
@@ -152,7 +155,9 @@ func ReadNative(ctx context.Context, path, kind string) (Native, error) {
 	}
 	fingerprint := "sha256:" + hex.EncodeToString(hash.Sum(nil))
 	result := Native{Path: path, Filename: filepath.Base(path), Name: strings.TrimSuffix(filepath.Base(path), filepath.Ext(path)), Size: info.Size(), Fingerprint: fingerprint}
-	if kind == "datasource" {
+	if isHyper {
+		result.CompositionStatus = "ordinary"
+	} else if kind == "datasource" {
 		result.CompositionStatus, result.ParentDataSourceURLs = classifyDatasourcePackage("definition.tds", definition)
 	}
 	return result, nil

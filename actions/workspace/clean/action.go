@@ -44,32 +44,31 @@ type compactOutput struct {
 	Class                       string   `json:"class"`
 	EntriesRemoved              int      `json:"entries_removed"`
 	BytesRemoved                int64    `json:"bytes_removed"`
+	Removed                     []string `json:"removed,omitempty"`
 	CanonicalArtifactsPreserved bool     `json:"canonical_artifacts_preserved"`
 	Details                     string   `json:"details"`
 	Help                        []string `json:"help"`
 }
 
-// CompactOutput omits individual removed paths.
+// CompactOutput retains the bounded paths needed to review cleanup effects.
 func (o Output) CompactOutput() any {
 	if o.Status == "preview" {
-		return o.previewOutput(false)
+		return o.previewOutput()
 	}
-	return compactOutput{Status: o.Status, Workspace: o.Workspace, Class: o.Class, EntriesRemoved: o.EntriesRemoved, BytesRemoved: o.BytesRemoved, CanonicalArtifactsPreserved: o.CanonicalArtifactsPreserved, Details: "--full", Help: o.Help}
+	return compactOutput{Status: o.Status, Workspace: o.Workspace, Class: o.Class, EntriesRemoved: o.EntriesRemoved, BytesRemoved: o.BytesRemoved, Removed: append([]string(nil), o.Removed...), CanonicalArtifactsPreserved: o.CanonicalArtifactsPreserved, Details: "--full", Help: o.Help}
 }
 
 // FullOutput includes bounded workspace-relative removed paths.
 func (o Output) FullOutput() any {
 	if o.Status == "preview" {
-		return o.previewOutput(true)
+		return o.previewOutput()
 	}
 	return o
 }
 
-func (o Output) previewOutput(full bool) any {
+func (o Output) previewOutput() any {
 	var paths []string
-	if full {
-		paths = o.Removed
-	}
+	paths = append(paths, o.Removed...)
 	return struct {
 		Status    string   `json:"status"`
 		Workspace string   `json:"workspace"`

@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -105,6 +106,8 @@ func TestRegisterRejectsNameIdentityAndRootCollisions(t *testing.T) {
 	writeWorkspaceDir(t, nameClashRoot, "ws_22222222222222222222222222222222", "unused")
 	if _, err := manager.Register(context.Background(), "one", nameClashRoot); err == nil {
 		t.Fatal("Register() accepted a duplicate name")
+	} else if !strings.Contains(err.Error(), strconv.Quote(firstRoot)) || !strings.Contains(err.Error(), "ws_11111111111111111111111111111111") {
+		t.Fatalf("name collision omitted the registered identity and root: %v", err)
 	}
 
 	// Same identity as an existing registration, different name and root.
@@ -112,11 +115,15 @@ func TestRegisterRejectsNameIdentityAndRootCollisions(t *testing.T) {
 	writeWorkspaceDir(t, idClashRoot, "ws_11111111111111111111111111111111", "two")
 	if _, err := manager.Register(context.Background(), "two", idClashRoot); err == nil {
 		t.Fatal("Register() accepted a duplicate identity")
+	} else if !strings.Contains(err.Error(), strconv.Quote(firstRoot)) || !strings.Contains(err.Error(), "one") {
+		t.Fatalf("identity collision omitted the registered workspace and root: %v", err)
 	}
 
 	// Re-registering the exact same root under a new name -> root collision.
 	if _, err := manager.Register(context.Background(), "three", firstRoot); err == nil {
 		t.Fatal("Register() accepted a duplicate root")
+	} else if !strings.Contains(err.Error(), strconv.Quote(firstRoot)) || !strings.Contains(err.Error(), "one") || !strings.Contains(err.Error(), "ws_11111111111111111111111111111111") {
+		t.Fatalf("root collision omitted the registered workspace, root, and identity: %v", err)
 	}
 }
 

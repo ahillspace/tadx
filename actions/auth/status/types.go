@@ -17,6 +17,8 @@ type Target struct {
 }
 
 type Output struct {
+	Verification                     string   `json:"verification"`
+	MissingVariables                 []string `json:"missing_variables,omitempty"`
 	Status                           string   `json:"status"`
 	Environment                      string   `json:"environment"`
 	Default                          bool     `json:"default"`
@@ -35,6 +37,8 @@ type Output struct {
 }
 
 type CompactResult struct {
+	Verification                     string   `json:"verification"`
+	MissingVariables                 []string `json:"missing_variables,omitempty"`
 	Status                           string   `json:"status"`
 	Environment                      string   `json:"environment"`
 	ServerURL                        string   `json:"server_url"`
@@ -48,6 +52,8 @@ type CompactResult struct {
 }
 
 type FullResult struct {
+	Verification                     string   `json:"verification"`
+	MissingVariables                 []string `json:"missing_variables,omitempty"`
 	Status                           string   `json:"status"`
 	Environment                      string   `json:"environment"`
 	Default                          bool     `json:"default"`
@@ -66,8 +72,8 @@ type FullResult struct {
 }
 
 func (o Output) CompactOutput() any {
-	return CompactResult{Status: o.Status, Environment: o.Environment, ServerURL: o.ServerURL, SiteContentURL: o.SiteContentURL, PATNamePresent: o.PATNamePresent, PATSecretPresent: o.PATSecretPresent, StoredCredentialReferencePresent: o.StoredCredentialReferencePresent, CredentialSource: o.CredentialSource, Details: "--full", Help: o.Help}
+	return CompactResult{Verification: o.Verification, MissingVariables: o.MissingVariables, Status: o.Status, Environment: o.Environment, ServerURL: o.ServerURL, SiteContentURL: o.SiteContentURL, PATNamePresent: o.PATNamePresent, PATSecretPresent: o.PATSecretPresent, StoredCredentialReferencePresent: o.StoredCredentialReferencePresent, CredentialSource: o.CredentialSource, Details: "--full", Help: o.Help}
 }
 func (o Output) FullOutput() any {
-	return FullResult{Status: o.Status, Environment: o.Environment, Default: o.Default, ServerURL: o.ServerURL, SiteContentURL: o.SiteContentURL, APIVersion: o.APIVersion, AuthType: o.AuthType, PATNameVariable: o.PATNameVariable, PATSecretVariable: o.PATSecretVariable, PATNamePresent: o.PATNamePresent, PATSecretPresent: o.PATSecretPresent, StoredCredentialReferencePresent: o.StoredCredentialReferencePresent, CredentialSource: o.CredentialSource, DefaultWorkspace: o.DefaultWorkspace, Help: o.Help}
+	return FullResult{Verification: o.Verification, MissingVariables: o.MissingVariables, Status: o.Status, Environment: o.Environment, Default: o.Default, ServerURL: o.ServerURL, SiteContentURL: o.SiteContentURL, APIVersion: o.APIVersion, AuthType: o.AuthType, PATNameVariable: o.PATNameVariable, PATSecretVariable: o.PATSecretVariable, PATNamePresent: o.PATNamePresent, PATSecretPresent: o.PATSecretPresent, StoredCredentialReferencePresent: o.StoredCredentialReferencePresent, CredentialSource: o.CredentialSource, DefaultWorkspace: o.DefaultWorkspace, Help: o.Help}
 }

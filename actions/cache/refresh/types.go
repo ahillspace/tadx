@@ -2,6 +2,8 @@ package refresh
 
 import "time"
 
+import "github.com/ahillspace/tadx/internal/value"
+
 // Input selects one resolved site and the cache scopes to hydrate.
 type Input struct {
 	Environment  string
@@ -51,17 +53,18 @@ type HydrationResult struct {
 
 // GenerationOutput is the bounded refresh generation projection.
 type GenerationOutput struct {
-	Complete        bool         `json:"complete"`
-	ID              string       `json:"id"`
-	Environment     string       `json:"environment"`
-	Site            string       `json:"site"`
-	GeneratedAt     string       `json:"generated_at"`
-	Records         int          `json:"records"`
-	HydratedRecords int          `json:"hydrated_records,omitempty"`
-	Source          string       `json:"source,omitempty"`
-	Scopes          []string     `json:"scopes,omitempty"`
-	ImplicitScopes  []string     `json:"implicit_scopes,omitempty"`
-	ScopeCounts     []ScopeCount `json:"scope_counts,omitempty"`
+	Coverage        []value.CacheCoverage `json:"coverage,omitempty"`
+	Complete        bool                  `json:"complete"`
+	ID              string                `json:"id"`
+	Environment     string                `json:"environment"`
+	Site            string                `json:"site"`
+	GeneratedAt     string                `json:"generated_at"`
+	Records         int                   `json:"records"`
+	HydratedRecords int                   `json:"hydrated_records,omitempty"`
+	Source          string                `json:"source,omitempty"`
+	Scopes          []string              `json:"scopes,omitempty"`
+	ImplicitScopes  []string              `json:"implicit_scopes,omitempty"`
+	ScopeCounts     []ScopeCount          `json:"scope_counts,omitempty"`
 }
 
 // Output is the stable cache.refresh document.
@@ -91,12 +94,13 @@ type PreviewResult struct {
 
 // CompactGeneration contains refresh decision fields.
 type CompactGeneration struct {
-	Complete    bool   `json:"complete"`
-	ID          string `json:"id"`
-	Environment string `json:"environment"`
-	Site        string `json:"site"`
-	GeneratedAt string `json:"generated_at"`
-	Records     int    `json:"records"`
+	Coverage    []value.CacheCoverage `json:"coverage,omitempty"`
+	Complete    bool                  `json:"complete"`
+	ID          string                `json:"id"`
+	Environment string                `json:"environment"`
+	Site        string                `json:"site"`
+	GeneratedAt string                `json:"generated_at"`
+	Records     int                   `json:"records"`
 }
 
 // CompactResult is the default bounded refresh projection.
@@ -125,7 +129,7 @@ func (o Output) CompactOutput() any {
 		return PreviewResult{Status: o.Status, Plan: *o.Plan, Help: o.Help}
 	}
 	g := o.Generation
-	return CompactResult{Status: o.Status, Generation: CompactGeneration{Complete: g.Complete, ID: g.ID, Environment: g.Environment, Site: g.Site, GeneratedAt: g.GeneratedAt, Records: g.Records}, Path: o.Path, Warnings: o.Warnings, Details: "--full", Help: o.Help}
+	return CompactResult{Status: o.Status, Generation: CompactGeneration{Coverage: g.Coverage, Complete: g.Complete, ID: g.ID, Environment: g.Environment, Site: g.Site, GeneratedAt: g.GeneratedAt, Records: g.Records}, Path: o.Path, Warnings: o.Warnings, Details: "--full", Help: o.Help}
 }
 
 // FullOutput returns bounded generation provenance and diagnostics.

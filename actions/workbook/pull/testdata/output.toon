@@ -1,5 +1,9 @@
+source:
+  environment: production
+  site: marketing
 status: pulled
 workbook:
+  project_luid: project-1
   luid: wb-1
   name: Finance
   project_path: Ops
@@ -8,6 +12,8 @@ artifact:
   kind: workbook
   name: Finance
   source_luid: wb-1
+  path: artifacts/workbook/Finance
+  canonical_path: artifacts/workbook/Finance/Finance.twbx
   portability: source-site-bound
   published_datasource_count: 1
   dependencies_acquired: true

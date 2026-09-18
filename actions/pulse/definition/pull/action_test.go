@@ -6,6 +6,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	definitionpull "github.com/ahillspace/tadx/actions/pulse/definition/pull"
@@ -17,10 +18,18 @@ func TestOutputGolden(t *testing.T) {
 	output := definitionpull.Output{
 		Status: "pulled", Definition: definitionpull.Definition{LUID: "definition-1", Name: "Revenue", DatasourceLUID: "datasource-1"},
 		Artifact:    definitionpull.ArtifactResult{Path: "artifacts/pulse-definition/Revenue--identity", CanonicalPath: "artifacts/pulse-definition/Revenue--identity/resource.json", BaselineFingerprint: "sha256:value"},
+		Provenance:  definitionpull.Provenance{Environment: "dev", Site: "sales", ServerOrigin: "https://example.test", SiteLUID: "site-1", Workspace: "workspace", DatasourceLUID: "datasource-1"},
 		MetricCount: 2, RequestID: "request-1", Help: []string{"Inspect artifacts/pulse-definition/Revenue--identity/resource.json."},
 	}
 	assertGolden(t, "compact.toon", output, false)
 	assertGolden(t, "full.toon", output, true)
+	var compact bytes.Buffer
+	if err := render.RenderWithOptions(&compact, output, render.Options{}); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(compact.String(), "provenance:") || !strings.Contains(compact.String(), "datasource_luid: datasource-1") {
+		t.Fatalf("compact receipt omitted source provenance: %s", compact.String())
+	}
 }
 
 func assertGolden(t *testing.T, name string, value any, full bool) {
@@ -62,13 +71,20 @@ func TestPullWritesCanonicalDefinitionArtifact(t *testing.T) {
 	definition := definitionpull.Definition{LUID: "definition-1", Name: "Revenue", DatasourceLUID: "datasource-1", Configuration: []byte(`{"name":"Revenue"}`), RequestID: "request-1", MetricsComplete: true, Metrics: []definitionpull.Metric{{LUID: "metric-1"}}}
 	w := &writer{}
 	output, err := definitionpull.New(reader{definition: definition}, w).Execute(context.Background(), definitionpull.Input{
-		Environment: "dev", Site: "sales", ServerOrigin: "https://example.test", SiteLUID: "site-1", Workspace: "workspace", LUID: "definition-1",
+		Environment: "dev", Site: "sales", ServerOrigin: "https://example.test", SiteLUID: "site-1", Workspace: "workspace", WorkspaceName: "workspace", LUID: "definition-1",
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if w.input.DefinitionLUID != "definition-1" || string(w.input.Configuration) != `{"name":"Revenue"}` || output.Artifact.Path != "artifacts/pulse-definition/Revenue--identity" {
 		t.Fatalf("input=%#v output=%#v", w.input, output)
+	}
+	if output.Provenance.Environment != "dev" || output.Provenance.Site != "sales" || output.Provenance.ServerOrigin != "https://example.test" || output.Provenance.SiteLUID != "site-1" || output.Provenance.Workspace != "workspace" || output.Provenance.DatasourceLUID != "datasource-1" {
+		t.Fatalf("provenance=%#v", output.Provenance)
+	}
+	full := output.FullOutput().(definitionpull.FullResult)
+	if full.Provenance != output.Provenance {
+		t.Fatalf("full provenance=%#v output=%#v", full.Provenance, output.Provenance)
 	}
 }
 

@@ -22,7 +22,7 @@ Use `-h`, `--help`, and `tadx help <path>` consistently.
 | `tadx -h` | All top-level categories and utilities, short descriptions, resource names under each category, and all global flags. |
 | `tadx <category> -h` | That category's resources, short descriptions, and available verbs for each; no expanded per-action flag reference. |
 | `tadx <category> <resource> -h` | Complete resource reference: verb meanings, selectors, flags, constraints, relevant notes, and examples. |
-| `tadx <category> <resource> <verb> -h` | The same complete resource reference, not a separate verb-only document. |
+| `tadx <category> <resource> <verb> -h` | Focused action reference from the same definitions, including applicable shared flags, constraints, notes, and examples without sibling operations. |
 
 Root help must expose resource paths so users can go directly to a resource reference without first requesting category help.
 Category navigation does not promise complete operation syntax; resource help does.
@@ -32,14 +32,14 @@ Use a shared group only when it shortens the navigation; retain standalone actio
 Shared verb names do not imply shared flags or behavior.
 Resource help must stand alone without assuming root or category help was already read.
 Do not include sibling-resource operations or options in a resource reference.
-Every verb under the same resource resolves to the same reference, regardless of supplied argument values.
-Do not build progressively larger verb-specific help or require another help call to learn a necessary flag or constraint.
+Every verb under the same resource resolves to its focused subset from the same definitions, regardless of supplied argument values.
+Complete resource help includes every action definition and constraint, so focused action help never hides a necessary flag or requires another help call.
 
 Apply the same rule structurally across the CLI:
 
-- `pulse -h` introduces definitions and metrics; each resource gets its own complete reference, mirrored by its verbs.
-- `auth -h` and `env -h` already sit above executable actions, so they provide complete operational references mirrored by those actions.
-- `workspace -h` covers its direct actions and includes a navigation entry for `artifact`; `workspace artifact -h` covers artifact actions.
+- `pulse -h` introduces definitions and metrics; each resource gets its own complete reference, with focused subsets at known verbs.
+- `auth -h` and `env -h` already sit above executable actions, so they provide complete operational references with focused subsets at known verbs.
+- `workspace -h` covers its direct actions and includes a navigation entry for `artifact`; `workspace artifact -h` covers artifact actions with focused subsets at known verbs.
 - Standalone commands such as `search` show their own complete help.
 
 Bare `tadx` remains the session overview, not an alias for `tadx -h`.
@@ -90,7 +90,7 @@ Do not assume identical help appended twice to an agent conversation receives a 
 Describe user outcomes rather than internal implementation vocabulary.
 For example, describe publish as "Publish local content to Tableau"; distinguish a file path from a previously pulled workspace item alongside its selector, not in every action summary.
 Clearly distinguish inspect from pull, local changes from remote changes, expanded details from additional records, and previews from execution.
-Explain contextual exceptions once where they apply, including environment omission, local-only cache reads, workspace selection, collisions, and server-side jobs that still wait for completion.
+Explain contextual exceptions once where they apply, including environment omission, local-only cache reads, workspace selection, collisions, automatic accepted-job receipt recovery, and synchronous flow publication.
 Mention mutation policy without suggesting that discovering or previewing an operation authorizes enabling mutations.
 
 Document useful same-action batches in one compact section per operational reference.
@@ -107,7 +107,7 @@ Skills should complement help with judgment, not duplicate the flag manual.
 
 Derive executable command and flag inventory from the actual Cobra tree, with explicit navigation and operational-reference boundaries.
 Keep factual syntax synchronized with validation through automated command and flag coverage checks.
-Store each formatted resource reference once and mirror it at its verbs, rather than maintaining copies at each level.
+Keep one maintained definitions source, rendering complete resource references and focused action subsets from it rather than maintaining copies at each level.
 Help must work without configuration, authentication, credential access, Tableau calls, or side effects.
 
 The approved content reference establishes the presentation pattern for every category.
@@ -117,7 +117,7 @@ Verify:
 
 - Root and category navigation expose every applicable resource and operation without expanding descendant manuals.
 - Resource references contain every supported action and its required syntax, while excluding unrelated sibling resources.
-- All verb-help paths mirror their owning operational reference, including aliases and all supported help spellings.
+- All verb-help paths render the focused subset of their owning operational reference, including aliases and all supported help spellings.
 - Required inputs, choices, defaults, constraints, batch support, and shared-flag applicability match executable behavior.
 - Direct-action categories, mixed workspace navigation, standalone utilities, and the admin roll-up follow the same standard.
 - Help calls remain side-effect-free even with invalid configuration or supplied mutation arguments.

@@ -38,14 +38,24 @@ type LineageEdge struct {
 	Relationship   string `json:"relationship"`
 }
 
+// LineageFailure records bounded, sanitized provider failure context.
+type LineageFailure struct {
+	Provider     string `json:"provider"`
+	Relation     string `json:"relation,omitempty"`
+	RootKind     string `json:"root_kind"`
+	RootRESTLUID string `json:"root_rest_luid"`
+	RequestID    string `json:"request_id,omitempty"`
+}
+
 // LineageDocument is one bounded factual graph.
 type LineageDocument struct {
-	Complete  bool          `json:"complete"`
-	Direction string        `json:"direction"`
-	Depth     int           `json:"depth"`
-	Nodes     []LineageNode `json:"nodes"`
-	Edges     []LineageEdge `json:"edges"`
-	Warnings  []string      `json:"warnings,omitempty"`
+	Complete  bool            `json:"complete"`
+	Direction string          `json:"direction"`
+	Depth     int             `json:"depth"`
+	Failure   *LineageFailure `json:"failure,omitempty"`
+	Nodes     []LineageNode   `json:"nodes"`
+	Edges     []LineageEdge   `json:"edges"`
+	Warnings  []string        `json:"warnings,omitempty"`
 }
 
 // FlowMetadata is persisted source provenance for one native flow.

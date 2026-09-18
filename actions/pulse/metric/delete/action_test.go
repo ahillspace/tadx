@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"reflect"
+	"strings"
 	"testing"
 
 	action "github.com/ahillspace/tadx/actions/pulse/metric/delete"
@@ -63,6 +64,25 @@ func TestPreviewDoesNotDelete(t *testing.T) {
 	}
 	if output.Plan.Mode != "preview" || len(output.Warnings) == 0 {
 		t.Fatalf("preview=%#v", output)
+	}
+}
+
+func TestDeleteRefusesKnownDefaultMetricWithoutWriting(t *testing.T) {
+	defaultMetric := true
+	for _, preview := range []bool{true, false} {
+		t.Run(map[bool]string{true: "preview", false: "execute"}[preview], func(t *testing.T) {
+			b := &backend{targets: []action.Metric{{LUID: "metric-1", DefinitionLUID: "definition-1", IsDefault: &defaultMetric}}}
+			in := input()
+			in.Preview = preview
+			output, err := action.New(b, b).Execute(context.Background(), in)
+			var structured *errs.Error
+			if err == nil || !errors.As(err, &structured) || structured.Phase != errs.PhaseValidation || structured.Outcome != errs.OutcomeNotAttempted || !strings.Contains(err.Error(), "default") || output.Plan.Target.DefinitionLUID != "definition-1" {
+				t.Fatalf("output=%#v err=%v", output, err)
+			}
+			if !reflect.DeepEqual(b.calls, []string{"get:metric-1"}) {
+				t.Fatalf("calls=%v", b.calls)
+			}
+		})
 	}
 }
 

@@ -87,7 +87,7 @@ func New(deps Dependencies) *cobra.Command {
 		RunE: func(command *cobra.Command, _ []string) error {
 			result, err := deps.Checker.Execute(command.Context(), authcheck.Input{Environment: environment})
 			if err != nil {
-				return err
+				return clierr.WithOutput(result, err)
 			}
 			return deps.Renderer.Render(result)
 		},
@@ -154,11 +154,18 @@ func newLogin(deps Dependencies) *cobra.Command {
 			if strings.TrimSpace(environment) == "" {
 				return clierr.Usage("auth.login", errors.New("--environment is required"))
 			}
+			if preflight, ok := deps.Login.(interface {
+				Preflight(context.Context, string) error
+			}); ok {
+				if err := preflight.Preflight(command.Context(), environment); err != nil {
+					return err
+				}
+			}
 			if deps.Prompter == nil {
 				return promptError(errors.New("interactive credential input is not configured"))
 			}
 			if !deps.Prompter.IsTerminal() {
-				return clierr.Usage("auth.login", errors.New("auth login requires an interactive terminal; use configured PAT environment variables for automation"))
+				return clierr.Usage("auth.login", errors.New("auth login requires an interactive terminal; use env add/update --pat-name-env and --pat-secret-env for automation (variable names, not secrets)"))
 			}
 			name, err := deps.Prompter.ReadPATName(command.Context())
 			if err != nil {

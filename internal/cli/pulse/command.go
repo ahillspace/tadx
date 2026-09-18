@@ -358,15 +358,19 @@ func newMetricFork(deps Dependencies) *cobra.Command {
 				return clierr.Usage("pulse.metric.fork", err)
 			}
 			input.Filters = filters
+			input.CustomDaysSet = command.Flags().Changed("days")
 			if input.Timeframe == "" && len(input.Filters) == 0 {
 				return usage("pulse.metric.fork", "at least one of --period, --filter, or --exclude-filter is required")
 			}
 			period := strings.ToUpper(strings.TrimSpace(input.Timeframe))
-			if input.CustomDays != 0 && period != "CUSTOM_N_DAYS" {
+			if input.CustomDaysSet && period != "CUSTOM_N_DAYS" {
 				return usage("pulse.metric.fork", "--days requires --period CUSTOM_N_DAYS")
 			}
-			if period == "CUSTOM_N_DAYS" && input.CustomDays == 0 {
+			if period == "CUSTOM_N_DAYS" && !input.CustomDaysSet {
 				return usage("pulse.metric.fork", "--period CUSTOM_N_DAYS requires --days")
+			}
+			if input.CustomDaysSet && !metricfork.IsSupportedCustomDays(input.CustomDays) {
+				return usage("pulse.metric.fork", "--days must be one of 7, 14, 30, 60, or 90")
 			}
 			return nil
 		},
@@ -381,7 +385,7 @@ func newMetricFork(deps Dependencies) *cobra.Command {
 	command.Flags().StringVar(&input.Environment, "environment", "", "explicit write environment alias")
 	command.Flags().StringVar(&input.MetricLUID, "id", "", "authoritative source metric LUID")
 	command.Flags().StringVar(&input.Timeframe, "period", "", "timeframe such as LAST_30_DAYS, MONTH_TO_DATE, or CUSTOM_N_DAYS")
-	command.Flags().IntVar(&input.CustomDays, "days", 0, "custom trailing day count from 1 through 3650")
+	command.Flags().IntVar(&input.CustomDays, "days", 0, "custom trailing day count: 7, 14, 30, 60, or 90")
 	command.Flags().StringArrayVar(&includeFilters, "filter", nil, "included dimensional value as <field ID or unique display name>=<value>; repeat for more values or fields")
 	command.Flags().StringArrayVar(&excludeFilters, "exclude-filter", nil, "excluded dimensional value as <field ID or unique display name>=<value>; repeat for more values or fields")
 	command.Flags().BoolVar(&preview, "preview", false, "preview the remote mutation without performing it")

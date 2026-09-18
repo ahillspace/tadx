@@ -3,6 +3,7 @@ package search
 import (
 	"context"
 	"fmt"
+	"github.com/ahillspace/tadx/internal/commandhint"
 	"github.com/ahillspace/tadx/internal/errs"
 	"github.com/ahillspace/tadx/internal/output"
 	"github.com/ahillspace/tadx/internal/paging"
@@ -31,6 +32,8 @@ type Item struct {
 	value.MetadataIdentity
 	Parent      value.MetadataIdentity `json:"parent"`
 	Description *string                `json:"description,omitempty"`
+	FullName    string                 `json:"full_name,omitempty"`
+	Schema      string                 `json:"schema,omitempty"`
 }
 type Output struct {
 	Status      string      `json:"status"`
@@ -44,6 +47,7 @@ type Output struct {
 	MatchMode   string      `json:"match_mode"`
 	ObservedAt  string      `json:"observed_at,omitempty"`
 	RequestID   string      `json:"tableau_request_id,omitempty"`
+	NextCommand string      `json:"next_command,omitempty"`
 }
 type compactItem struct {
 	LUID             string `json:"luid"`
@@ -52,12 +56,14 @@ type compactItem struct {
 	Name             string `json:"name"`
 	ParentLUID       string `json:"parent_luid"`
 	ParentMetadataID string `json:"parent_metadata_id"`
+	FullName         string `json:"full_name,omitempty"`
+	Schema           string `json:"schema,omitempty"`
 }
 
 func (o Output) CompactOutput() any {
 	rows := make([]compactItem, len(o.Items))
 	for i, v := range o.Items {
-		rows[i] = compactItem{v.LUID, v.MetadataID, v.Type, v.Name, v.Parent.LUID, v.Parent.MetadataID}
+		rows[i] = compactItem{LUID: v.LUID, MetadataID: v.MetadataID, Type: v.Type, Name: v.Name, ParentLUID: v.Parent.LUID, ParentMetadataID: v.Parent.MetadataID, FullName: v.FullName, Schema: v.Schema}
 	}
 	return struct {
 		Status      string        `json:"status"`
@@ -69,7 +75,8 @@ func (o Output) CompactOutput() any {
 		Scanned     int           `json:"scanned"`
 		MatchMode   string        `json:"match_mode"`
 		Details     string        `json:"details"`
-	}{o.Status, o.Environment, o.Site, o.Page, rows, o.Complete, o.Scanned, o.MatchMode, "--full"}
+		NextCommand string        `json:"next_command,omitempty"`
+	}{o.Status, o.Environment, o.Site, o.Page, rows, o.Complete, o.Scanned, o.MatchMode, "--full", o.NextCommand}
 }
 func (o Output) FullOutput() any { return o }
 func ValidateInput(in Input) error {
@@ -155,7 +162,7 @@ func (a *Action) Execute(ctx context.Context, in Input) (out Output, err error) 
 				var p value.MetadataPage[value.MetadataTable]
 				p, err = a.reader.DiscoverTables(ctx, query)
 				page = mapPage(p, func(v value.MetadataTable) Item {
-					return Item{MetadataIdentity: v.MetadataIdentity, Parent: v.Database, Description: v.Description}
+					return Item{MetadataIdentity: v.MetadataIdentity, Parent: v.Database, Description: v.Description, FullName: v.FullName, Schema: v.Schema}
 				})
 			case "column":
 				query.Text = ""
@@ -229,8 +236,19 @@ func (a *Action) Execute(ctx context.Context, in Input) (out Output, err error) 
 	out.Page.MoreAvailable = !out.Complete
 	if !out.Complete {
 		out.Status = "partial"
+		out.NextCommand = nextCommand(in)
 	}
 	return out, nil
+}
+func nextCommand(in Input) string {
+	args := []string{"catalog", "search", in.Query, "--all"}
+	for _, kind := range in.Types {
+		args = append(args, "--type", kind)
+	}
+	if in.TableID != "" {
+		args = append(args, "--table-id", in.TableID)
+	}
+	return commandhint.Environment(in.Environment, args...)
 }
 func mapPage[T any](p value.MetadataPage[T], f func(T) Item) value.MetadataPage[Item] {
 	out := value.MetadataPage[Item]{NextCursor: p.NextCursor, Complete: p.Complete, Total: p.Total, ObservedAt: p.ObservedAt, TableauRequestID: p.TableauRequestID}

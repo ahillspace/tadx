@@ -3,6 +3,7 @@ package cli_test
 import (
 	"bytes"
 	"context"
+	"errors"
 	"reflect"
 	"strings"
 	"testing"
@@ -12,8 +13,10 @@ import (
 	capabilityget "github.com/ahillspace/tadx/actions/capability/get"
 	capabilitylist "github.com/ahillspace/tadx/actions/capability/list"
 	sessionoverview "github.com/ahillspace/tadx/actions/session/overview"
+	versionget "github.com/ahillspace/tadx/actions/version/get"
 	"github.com/ahillspace/tadx/internal/cli"
 	envcli "github.com/ahillspace/tadx/internal/cli/env"
+	versioncli "github.com/ahillspace/tadx/internal/cli/version"
 	workspacecli "github.com/ahillspace/tadx/internal/cli/workspace"
 	"github.com/ahillspace/tadx/internal/errs"
 	"github.com/spf13/cobra"
@@ -50,6 +53,15 @@ type overview struct{}
 
 func (overview) Execute(context.Context) (sessionoverview.Output, error) {
 	return sessionoverview.Output{}, nil
+}
+
+type installedVersionGetter struct{}
+
+func (installedVersionGetter) Execute(_ context.Context, input versionget.Input) (versionget.Output, error) {
+	if input.Check {
+		return versionget.Output{}, errors.New("root --version must not check releases")
+	}
+	return versionget.Output{Status: "installed", Version: "v1.2.3"}, nil
 }
 
 func TestRegisteredRootOverviewKeepsRootPath(t *testing.T) {
@@ -104,6 +116,42 @@ func TestRootExposesOnlyPhaseZeroExecutableCommands(t *testing.T) {
 	want := []string{"capability get", "capability list"}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("commands = %v, want %v", got, want)
+	}
+}
+
+func TestRootVersionAliasUsesInstalledVersionHandler(t *testing.T) {
+	r := &renderer{}
+	deps := dependencies(&lister{}, &getter{}, r)
+	deps.Version = &versioncli.Dependencies{Getter: installedVersionGetter{}, Renderer: r}
+	root := cli.NewRoot(deps)
+	root.SetArgs([]string{"--version"})
+	if err := root.Execute(); err != nil {
+		t.Fatal(err)
+	}
+	if len(r.values) != 1 {
+		t.Fatalf("rendered values = %d, want one installed version", len(r.values))
+	}
+	got, ok := r.values[0].(versionget.Output)
+	if !ok || got.Status != "installed" || got.Version != "v1.2.3" {
+		t.Fatalf("version output = %#v", r.values[0])
+	}
+}
+
+func TestRootVersionRequestDetectionDoesNotInspectFlagValues(t *testing.T) {
+	for _, test := range []struct {
+		args []string
+		want bool
+	}{
+		{[]string{"--version"}, true},
+		{[]string{"-v"}, true},
+		{[]string{"--config", "--version"}, false},
+		{[]string{"--version=false"}, false},
+		{[]string{"--version", "capability"}, false},
+		{[]string{"capability", "--version"}, false},
+	} {
+		if got := cli.RootVersionRequested(test.args); got != test.want {
+			t.Errorf("RootVersionRequested(%v) = %v, want %v", test.args, got, test.want)
+		}
 	}
 }
 

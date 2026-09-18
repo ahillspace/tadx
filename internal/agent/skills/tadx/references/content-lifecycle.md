@@ -24,7 +24,21 @@ Do not remove originals merely because a destination accepted a package.
 Preserve metadata sidecars when editing managed files.
 Dirty re-pull protection prevents accidental loss of local changes; overwrite is a deliberate replacement, not a repair strategy.
 Preview resolves scope and conflicts but does not prove native download validity, filesystem write access, or destination acceptance.
-A server-side asynchronous publish still waits for completion in TADX; a timeout can leave an unknown remote outcome.
+Publication has one automatic lifecycle, with no job-mode or no-wait choice.
+When supported monitoring is available, TADX saves the accepted job identity and receipt before waiting.
+Bulk publications enter pooled monitoring immediately; a single publication joins after its first minute, and an active job may exceed ten minutes.
+Local cancellation or unavailable status does not cancel the remote write or establish failure.
+Use the saved receipt or exact job ID for recovery, never a second publish; exact job queries require administrator access.
+Where supported asynchronous observation is unavailable, TADX uses synchronous publication; flow publication remains synchronous.
+Publication jobs are not documented as cancellable through the job cancellation API.
+An acknowledged destination LUID outranks a delayed name or Metadata lookup.
+Inspect native payloads only when their configuration matters; publication acknowledgement and metadata inspection alone do not prove native configuration correctness.
+
+Datasource append/replace accepts prepared `.hyper` input in V1.
+TADX does not unpack packages or edit extracts to prepare that input, and it never silently substitutes another mode.
+Publish-endpoint append requires a matching source/destination extract schema; its documented multiple-tables restriction is not a general prohibition on publishing multi-table Hyper files.
+Do not substitute the separate live-to-Hyper update API or apply append restrictions to other publish modes without evidence.
+See Tableau's [publishing append contract](https://help.tableau.com/current/api/rest_api/en-us/REST/rest_api_concepts_publish.htm#appending-data-to-an-existing-data-source) when interpreting an upstream incompatibility.
 
 ## Schema and lineage evidence
 
@@ -35,5 +49,8 @@ Literal slashes in project names can resemble nested paths; select a LUID when p
 
 Native pulls retain available bounded lineage in metadata; a lineage-only pull avoids downloading the native package.
 Lineage describes only the observed direction, depth, permission scope, and bounds.
+`complete` means the selected visible bounded capture, not every real-world dependency or a current metadata index.
+Claim a dependency only from a retrieved relationship between the exact identities; otherwise call it unconfirmed.
+Failed relationships retain confirmed partial nodes and edges with their failure evidence.
 Absent edges do not prove independence.
 Routine enrichment diagnostics stay in metadata and expanded output; an explicitly requested dependency acquisition must not be treated as complete when it failed.

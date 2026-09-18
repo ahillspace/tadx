@@ -49,4 +49,9 @@ func TestDatasourceInspectAcceptsImportedDisplayNameThroughCLI(t *testing.T) {
 			t.Fatalf("selector=%q code=%d output=%s", selector, code, stdout.String())
 		}
 	}
+	var stdout bytes.Buffer
+	code := app.Run(context.Background(), []string{"content", "datasource", "inspect", "--environment", "test", "--name", "Superstore Sales Cloud", "--project-id", "imported-project"}, &stdout, app.Options{ConfigPath: configPath, HTTPClient: server.Client()})
+	if code != 0 || !strings.Contains(stdout.String(), "luid: ds-imported") {
+		t.Fatalf("project-id inspect code=%d output=%s", code, stdout.String())
+	}
 }

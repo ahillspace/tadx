@@ -69,22 +69,35 @@ func newList(deps Dependencies) *cobra.Command {
 			return nil
 		},
 		RunE: func(command *cobra.Command, _ []string) error {
+			var mutationFilter *bool
+			if command.Flags().Changed("mutation") {
+				mutationFilter = &mutation
+			}
+			full, jsonOutput := presentation(command)
+			input := capabilitylist.Input{
+				Domain: domain, Resource: resource, Owner: owner, Product: product,
+				Mutation: mutationFilter, Cursor: cursor, Limit: limit,
+				Full: full, JSON: jsonOutput,
+			}
 			enabled := deps.MutationsEnabled
 			if deps.ResolveMutationPolicy != nil {
 				var err error
 				enabled, _, err = deps.ResolveMutationPolicy()
 				if err != nil {
-					return err
+					// Capability metadata is local and remains useful even when
+					// the effective policy cannot be established. Keep the
+					// policy unavailable rather than treating false as disabled.
+					input.MutationsEnabled = false
+					partial, listErr := deps.Lister.Execute(command.Context(), input)
+					if listErr != nil {
+						return err
+					}
+					partial.MutationPolicy = "unavailable"
+					return clierr.WithOutput(partial, err)
 				}
 			}
-			var mutationFilter *bool
-			if command.Flags().Changed("mutation") {
-				mutationFilter = &mutation
-			}
-			output, err := deps.Lister.Execute(command.Context(), capabilitylist.Input{
-				Domain: domain, Resource: resource, Owner: owner, Product: product,
-				Mutation: mutationFilter, Cursor: cursor, Limit: limit, MutationsEnabled: enabled,
-			})
+			input.MutationsEnabled = enabled
+			output, err := deps.Lister.Execute(command.Context(), input)
 			if err != nil {
 				return err
 			}
@@ -99,6 +112,12 @@ func newList(deps Dependencies) *cobra.Command {
 	command.Flags().StringVar(&cursor, "cursor", "", "continue from a prior result cursor")
 	command.Flags().IntVar(&limit, "limit", capabilitylist.DefaultLimit, "maximum capabilities to return, up to 10000")
 	return command
+}
+
+func presentation(command *cobra.Command) (full, jsonOutput bool) {
+	full, _ = command.Flags().GetBool("full")
+	jsonOutput, _ = command.Flags().GetBool("json")
+	return full, jsonOutput
 }
 
 func newGet(deps Dependencies) *cobra.Command {

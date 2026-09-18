@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/ahillspace/tadx/actions/pulse/definition/publish"
+	"github.com/ahillspace/tadx/internal/errs"
 )
 
 type dependencies struct {
@@ -96,13 +97,44 @@ func TestPublishPlansWithoutMutationAndPreservesExactNumbers(t *testing.T) {
 	}
 }
 
+func TestPrepareBundleAcceptsOwnExportAndPreservesMeaningfulSettings(t *testing.T) {
+	bundle := bundleFixture()
+	bundle.Configuration = json.RawMessage(`{"metadata":{"id":"definition-1","name":"Revenue","description":"Portable","business_context":{"owner":"finance"}},"specification":{"datasource":{"id":"ds-1"},"basic_specification":{"measure":{"field":"Revenue","aggregation":"AGGREGATION_SUM"},"time_dimension":{"field":"Order Date"},"filters":[]},"is_running_total":false,"temporality":"TEMPORALITY_OVER_TIME","provider_extension":{"keep":"specification"}},"extension_options":{"allowed_dimensions":["Region"],"allowed_granularities":["GRANULARITY_BY_DAY"],"offset_from_today":2,"use_dynamic_offset":true,"provider_extension":{"keep":"extension"}},"representation_options":{"type":"NUMBER_FORMAT_TYPE_CURRENCY","sentiment_type":"SENTIMENT_TYPE_UP_IS_GOOD","currency_code":"CURRENCY_CODE_USD","provider_extension":{"keep":"representation"}},"insights_options":{"show_insights":true,"settings":[{"type":"INSIGHT_TYPE_TOP_DRIVERS","disabled":false}],"provider_extension":{"keep":"insights"}},"comparisons":{"comparisons":[{"compare_config":{"comparison":"TIME_COMPARISON_PREVIOUS_PERIOD"},"index":0}],"provider_extension":{"keep":"comparisons"}},"datasource_goals":[{"name":"Target","provider_extension":{"keep":"goal"}}],"related_links":[{"link_name":"Runbook","link_url":"https://example.test/runbook","provider_extension":{"keep":"link"}}],"certification":{"is_certified":true,"provider_extension":{"keep":"certification"}}}`)
+	plan, err := publish.PrepareBundle(inputFixture(), bundle)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var document map[string]any
+	if err := json.Unmarshal(plan.DefinitionConfiguration, &document); err != nil {
+		t.Fatal(err)
+	}
+	if document["name"] != "Revenue" || document["description"] != "Portable" {
+		t.Fatalf("identity=%#v", document)
+	}
+	specification := document["specification"].(map[string]any)
+	if specification["provider_extension"].(map[string]any)["keep"] != "specification" || specification["datasource"].(map[string]any)["id"] != "ds-2" {
+		t.Fatalf("specification=%#v", specification)
+	}
+	for section, marker := range map[string]string{"extension_options": "extension", "representation_options": "representation", "insights_options": "insights", "comparisons": "comparisons", "datasource_goals": "goal", "related_links": "link", "certification": "certification"} {
+		value := document[section]
+		encoded, err := json.Marshal(value)
+		if err != nil || !strings.Contains(string(encoded), `"keep":"`+marker+`"`) {
+			t.Fatalf("section %s=%s err=%v", section, encoded, err)
+		}
+	}
+}
+
 func TestPublishRetainsConfirmedIdentitiesOnPartialFailure(t *testing.T) {
 	for _, stage := range []string{"create", "metric", "verify"} {
 		t.Run(stage, func(t *testing.T) {
 			d := &dependencies{bundle: bundleFixture(), failCreate: stage == "create", failMetric: stage == "metric", failVerify: stage == "verify"}
 			output, err := publish.New(d, d, d).Execute(context.Background(), inputFixture())
-			if err == nil || output.Status != "partial" || output.Complete || len(output.Mappings) == 0 || output.Mappings[0].DestinationLUID != "new-definition" {
+			var structured *errs.Error
+			if err == nil || output.Status != "partial" || output.Complete || len(output.Mappings) == 0 || output.Mappings[0].DestinationLUID != "new-definition" || !errors.As(err, &structured) {
 				t.Fatalf("output=%#v err=%v", output, err)
+			}
+			if structured.Outcome != errs.OutcomeConfirmed {
+				t.Fatalf("stage=%s recovery=%#v", stage, structured)
 			}
 		})
 	}
@@ -128,6 +160,11 @@ func TestPublishRejectsBadLocalMappingsAndUnknownSections(t *testing.T) {
 	bundle.Configuration = json.RawMessage(`{"metadata":{"id":"definition-1","name":"Revenue"},"specification":{"datasource":{"id":"ds-1"}},"unsupported_option":{"enabled":true}}`)
 	if _, err := publish.PrepareBundle(inputFixture(), bundle); err == nil || !strings.Contains(err.Error(), "losing configuration") {
 		t.Fatalf("unknown configuration error=%v", err)
+	}
+	_, err := publish.PrepareBundle(inputFixture(), bundle)
+	var structured *errs.Error
+	if !errors.As(err, &structured) || structured.Phase != errs.PhaseValidation || structured.Outcome != errs.OutcomeNotAttempted {
+		t.Fatalf("local rejection recovery=%#v", err)
 	}
 }
 

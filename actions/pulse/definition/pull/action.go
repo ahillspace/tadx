@@ -78,7 +78,7 @@ func (a *Action) Execute(ctx context.Context, input Input) (Output, error) {
 	if err := normalizeArtifactPaths(&artifact); err != nil {
 		return Output{}, pullError("pulse.definition.pull.normalize", errs.KindOperation, input, "Pulse definition artifact path normalization failed.", err)
 	}
-	return Output{Status: "pulled", Definition: definition, Artifact: artifact, MetricCount: len(definition.Metrics), RequestID: definition.RequestID, Help: []string{"The bundle preserves saved definition and metric specifications. Publish creates new objects and requires explicit datasource mapping."}}, nil
+	return Output{Status: "pulled", Definition: definition, Artifact: artifact, Provenance: Provenance{Environment: input.Environment, Site: input.Site, ServerOrigin: input.ServerOrigin, SiteLUID: input.SiteLUID, Workspace: input.WorkspaceName, DatasourceLUID: definition.DatasourceLUID}, MetricCount: len(definition.Metrics), RequestID: definition.RequestID, Help: []string{"The bundle preserves saved definition and metric specifications. Publish creates new objects and requires explicit datasource mapping."}}, nil
 }
 
 func normalizeArtifactPaths(result *ArtifactResult) error {

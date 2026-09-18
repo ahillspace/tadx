@@ -91,6 +91,20 @@ Use `--preview` to inspect the local file changes first.
 Updates replace TADX's skill packages, including local edits, so keep personal additions in a separate skill.
 See [agent guidance](docs/getting-started.md#agent-guidance) for all targets and installation locations.
 
+### Installer switches
+
+The one-line installers accept the same independent controls.
+
+- `--version VERSION` or `-Version VERSION` selects an exact release; the default is `latest`.
+- `--target TARGET` or `-Target TARGET` selects bundled agent Guidance; repeat it on Unix or pass a comma-separated list on Windows.
+- `--install-dir DIRECTORY` or `-InstallDir DIRECTORY` selects the binary directory.
+- The Unix directory precedence is `--install-dir`, `TADX_INSTALL_DIR`, then `$HOME/.local/bin`.
+- The Windows directory precedence is `-InstallDir`, `TADX_INSTALL_DIR`, then `%LOCALAPPDATA%\Programs\tadx\bin`.
+- `--no-modify-path` or `-NoModifyPath` leaves PATH and shell profiles unchanged.
+- `--no-completion` or `-NoCompletion` leaves shell completion profiles unchanged.
+
+For an installation without profile edits, use `install.sh --no-modify-path --no-completion` or `install.ps1 -NoModifyPath -NoCompletion`.
+
 ## Get your first workbook
 
 Create a named workspace and make it the default for the environment:

@@ -219,6 +219,41 @@ func TestActionPreservesDownloadWhenLineageCaptureIsUnavailable(t *testing.T) {
 	}
 }
 
+func TestActionPreservesPartialWorkbookLineageWhenCaptureFails(t *testing.T) {
+	r := &reader{
+		workbook: pull.Workbook{LUID: "wb-1", Name: "Finance"},
+		download: pull.Download{Filename: "Finance.twbx", Content: []byte("native-workbook")},
+		lineage: pull.LineageCapture{
+			RootMetadataID: "meta-wb-1",
+			Nodes: []pull.LineageNode{
+				{MetadataID: "meta-wb-1", Kind: "workbook", RESTLUID: "wb-1", Name: "Finance"},
+				{MetadataID: "meta-ds-1", Kind: "published_datasource", RESTLUID: "ds-1", Name: "Sales"},
+			},
+			Edges:    []pull.LineageEdge{{FromMetadataID: "meta-ds-1", ToMetadataID: "meta-wb-1", Relationship: "upstream"}},
+			Warnings: []string{"upstream database access was denied"},
+		},
+		lineageErr: errors.New("upstream database access was denied"),
+	}
+	w := &writer{result: pull.ArtifactResult{Path: "artifact", BaselineFingerprint: "sha256:workbook", LineagePath: "artifact/lineage.json"}}
+
+	result, err := pull.New(r, w).Execute(context.Background(), pull.Input{
+		Environment: "dev", Site: "test-site", SiteLUID: "site-1", ServerOrigin: "https://tableau.example.com",
+		Workspace: "workspace", Selector: identity.Selector{LUID: "wb-1"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if w.input.LineageCountsKnown || w.input.Lineage.Complete || len(w.input.Lineage.Nodes) != 2 || len(w.input.Lineage.Edges) != 1 {
+		t.Fatalf("workbook lineage artifact input = %#v", w.input)
+	}
+	if result.Artifact.LineageStatus != "incomplete" || result.Artifact.LineageNodeCount != nil || result.Artifact.LineageEdgeCount != nil {
+		t.Fatalf("artifact lineage result = %#v", result.Artifact)
+	}
+	if !strings.Contains(strings.Join(result.Warnings, "\n"), "upstream database access was denied") {
+		t.Fatalf("warnings = %#v", result.Warnings)
+	}
+}
+
 func TestActionAcquiresUniquePublishedDatasourcesWhenRequested(t *testing.T) {
 	r := &reader{
 		workbook: pull.Workbook{LUID: "wb-1", Name: "Finance"},

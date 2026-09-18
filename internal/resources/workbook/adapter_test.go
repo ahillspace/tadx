@@ -193,6 +193,23 @@ func TestAdapterResolvesExactWorkbookAcrossAllPages(t *testing.T) {
 	}
 }
 
+func TestAdapterResolvesExactWorkbookByProjectLUID(t *testing.T) {
+	c := &inventoryClient{page: tableauworkbook.WorkbookPage{
+		Page: tableauworkbook.Page{Number: 1, Size: 2, Total: 2},
+		Items: []tableauworkbook.Workbook{
+			{LUID: "wb-other", Name: "Finance", ProjectLUID: "project-2", ProjectName: "Other"},
+			{LUID: "wb-1", Name: "Finance", ProjectLUID: "project-1", ProjectName: "Ops"},
+		},
+	}}
+	workbook, err := resource.NewAdapterWithProjectResolver(c, projectPaths{"project-1": "Department/Ops", "project-2": "Other"}).ResolveWorkbook(context.Background(), identity.Selector{Name: "Finance", ProjectLUID: "project-1"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if workbook.LUID != "wb-1" || workbook.ProjectPath != "Department/Ops" || c.request.ProjectLUID != "project-1" {
+		t.Fatalf("workbook = %#v, request = %#v", workbook, c.request)
+	}
+}
+
 func TestAdapterHardFailsAmbiguousWorkbookSelector(t *testing.T) {
 	adapter := resource.NewAdapter(client{
 		pages: map[int]tableauworkbook.WorkbookPage{

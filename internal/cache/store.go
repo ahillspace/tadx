@@ -85,6 +85,7 @@ type ResourceQuery struct {
 	LUID            string
 	Name            string
 	ProjectPath     string
+	ProjectLUID     string
 	ProjectName     string
 	Offset          int
 	Limit           int
@@ -170,6 +171,8 @@ type GetResult struct {
 	Warnings                        []string
 }
 type StatusResult struct {
+	Retained                        []RetainedObservation
+	Coverage                        []ScopeCoverage
 	GenerationID, Environment, Site string
 	GeneratedAt                     time.Time
 	Age                             time.Duration
@@ -588,7 +591,8 @@ func (s *Store) Status(ctx context.Context, selection Selection) (StatusResult, 
 	meta, err := currentGeneration(ctx, tx, selection.Environment, selection.Site)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return StatusResult{Environment: selection.Environment, Site: selection.Site, Path: s.RelativePath()}, nil
+			retained, retainedErr := retainedCoverage(ctx, tx, selection.Environment, selection.Site, s.now())
+			return StatusResult{Retained: retained, Environment: selection.Environment, Site: selection.Site, Path: s.RelativePath()}, retainedErr
 		}
 		return StatusResult{}, err
 	}
@@ -604,7 +608,15 @@ func (s *Store) Status(ctx context.Context, selection Selection) (StatusResult, 
 	if incomplete > 0 {
 		warnings = append(warnings, "Cache permission coverage is incomplete because some workbook permission reads were denied (HTTP 403). Missing rules are unknown, not empty permissions.")
 	}
-	return StatusResult{meta.id, meta.environment, meta.site, meta.generatedAt, age, incomplete == 0, stale, meta.source, s.RelativePath(), meta.recordCount, warnings}, nil
+	coverage, err := generationCoverage(ctx, tx, meta.key)
+	if err != nil {
+		return StatusResult{}, err
+	}
+	retained, err := retainedCoverage(ctx, tx, selection.Environment, selection.Site, s.now())
+	if err != nil {
+		return StatusResult{}, err
+	}
+	return StatusResult{retained, coverage, meta.id, meta.environment, meta.site, meta.generatedAt, age, incomplete == 0, stale, meta.source, s.RelativePath(), meta.recordCount, warnings}, nil
 }
 
 type generationMeta struct {

@@ -7,6 +7,7 @@ import (
 
 	coreauth "github.com/ahillspace/tadx/internal/auth"
 	"github.com/ahillspace/tadx/internal/config"
+	"github.com/ahillspace/tadx/internal/errs"
 	resourceproject "github.com/ahillspace/tadx/internal/resources/project"
 	"github.com/ahillspace/tadx/internal/tableau"
 	tableauauth "github.com/ahillspace/tadx/internal/tableau/auth"
@@ -31,6 +32,7 @@ type commandRuntime struct {
 	clients           map[clientKey]tableauClients
 	workspaces        map[workspaceKey]workspaceResult
 	discovery         map[clientKey]*commandDiscoveryPaths
+	jobMonitoring     map[string]bool
 }
 
 type clientKey struct {
@@ -86,7 +88,12 @@ func (r *runtimeDependencies) discoveryPaths(connection authenticatedTableau) *c
 }
 
 func (r *runtimeDependencies) configuration() (config.Config, error) {
-	r.command.configurationOnce.Do(func() { r.command.configuration, r.command.configurationErr = config.Load(r.configPath) })
+	r.command.configurationOnce.Do(func() {
+		r.command.configuration, r.command.configurationErr = config.Load(r.configPath)
+		if r.command.configurationErr != nil {
+			r.command.configurationErr = &errs.Error{ID: "configuration.load", Kind: errs.KindOperation, Operation: "configuration", Summary: "CLI settings could not be loaded.", Cause: r.command.configurationErr, Phase: errs.PhaseSetup, Outcome: errs.OutcomeNotAttempted, Retryable: errs.Bool(false)}
+		}
+	})
 	return r.command.configuration, r.command.configurationErr
 }
 

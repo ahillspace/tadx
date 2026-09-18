@@ -22,10 +22,15 @@ import (
 )
 
 const projectMutationPathWarning = "Project mutation succeeded, but its canonical hierarchy path could not be confirmed; inspect the project by LUID."
+const literalSlashProjectPathUnavailable = "project name contains a literal slash; canonical hierarchy path is unavailable"
 
 func normalizeSuccessfulProjectMutation(ctx context.Context, projects *resourceproject.Adapter, resolved map[string]resourceproject.Project, item tableauproject.Project) resourceproject.Project {
 	result := resourceproject.Project{LUID: item.LUID, Name: item.Name, ParentLUID: item.ParentLUID, Description: item.Description, ContentPermissions: item.ContentPermissions, ControllingPermissionsProjectID: item.ControllingPermissionsProjectID}
-	if item.Name == "" || strings.Contains(item.Name, "/") {
+	if item.Name == "" {
+		return result
+	}
+	if strings.Contains(item.Name, "/") {
+		result.PathUnavailableReason = literalSlashProjectPathUnavailable
 		return result
 	}
 	if item.ParentLUID == "" {
@@ -295,5 +300,5 @@ func (a projectMoveAdapter) MoveProject(ctx context.Context, luid string, parent
 }
 
 func toProjectMove(item resourceproject.Project) projectmove.Project {
-	return projectmove.Project{LUID: item.LUID, Name: item.Name, Path: item.Path, ParentLUID: item.ParentLUID, ContentPermissions: item.ContentPermissions, ControllingPermissionsProjectID: item.ControllingPermissionsProjectID}
+	return projectmove.Project{LUID: item.LUID, Name: item.Name, Path: item.Path, PathUnavailableReason: item.PathUnavailableReason, ParentLUID: item.ParentLUID, ContentPermissions: item.ContentPermissions, ControllingPermissionsProjectID: item.ControllingPermissionsProjectID}
 }

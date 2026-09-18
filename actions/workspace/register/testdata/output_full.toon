@@ -2,6 +2,7 @@ status: registered
 workspace:
   name: adopted
   id: ws_22222222222222222222222222222222
+  root: existing-root
   manifest_version: 1
   registered: true
 help[1]: tadx workspace status --workspace adopted

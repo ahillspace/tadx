@@ -484,7 +484,7 @@ func (a adminUserCreateAdapter) FindUsers(ctx context.Context, name string) ([]u
 }
 func (a adminUserCreateAdapter) CreateUser(ctx context.Context, input usercreate.Request) (usercreate.User, error) {
 	item, err := a.adapter.CreateUser(ctx, tableauadmin.CreateUserRequest{Name: input.Name, SiteRole: input.SiteRole, AuthSetting: input.AuthSetting, IdentityPoolName: input.IdentityPoolName, IdPConfigurationID: input.IdPConfigurationID, Email: input.Email, Language: input.Language, Locale: input.Locale})
-	return usercreate.User{LUID: item.LUID, Name: item.Name, SiteRole: item.SiteRole, AuthSetting: item.AuthSetting, IdPConfigurationID: item.IdPConfigurationID, RequestID: item.RequestID, MutationStatus: item.MutationStatus}, err
+	return usercreate.User{LUID: item.LUID, Name: item.Name, SiteRole: item.SiteRole, AuthSetting: item.AuthSetting, IdPConfigurationID: item.IdPConfigurationID, IdentityPoolName: item.IdentityPoolName, Email: item.Email, Language: item.Language, Locale: item.Locale, RequestID: item.RequestID, MutationStatus: item.MutationStatus}, err
 }
 
 type adminUserUpdateAdapter struct{ adapter *resourceadmin.Adapter }
@@ -544,7 +544,7 @@ func (a adminGroupCreateAdapter) FindGroups(ctx context.Context, name string) ([
 }
 func (a adminGroupCreateAdapter) CreateGroup(ctx context.Context, input groupcreate.Request) (groupcreate.Group, error) {
 	item, err := a.adapter.CreateGroup(ctx, tableauadmin.CreateGroupRequest{Name: input.Name, MinimumSiteRole: input.MinimumSiteRole, ExternalUserEnabled: input.ExternalUserEnabled})
-	return groupcreate.Group{LUID: item.LUID, Name: item.Name, RequestID: item.RequestID, MutationStatus: item.MutationStatus}, err
+	return groupcreate.Group{LUID: item.LUID, Name: item.Name, MinimumSiteRole: item.MinimumSiteRole, ExternalUserEnabled: item.ExternalUserEnabled, RequestID: item.RequestID, MutationStatus: item.MutationStatus}, err
 }
 
 type adminGroupUpdateAdapter struct{ adapter *resourceadmin.Adapter }

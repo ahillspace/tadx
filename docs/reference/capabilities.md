@@ -80,6 +80,9 @@ Use `tadx capability get <id>` for the same focused metadata at runtime.
 | `flow.publish` | cli | ship | ready | implemented | `tadx content flow publish` |
 | `flow.pull` | cli | ship | ready | implemented | `tadx content flow pull` |
 | `flow.update` | cli | ship | ready | implemented | `tadx content flow update` |
+| `job.cancel` | cli | ship | ready | implemented | `tadx job cancel` |
+| `job.inspect` | cli | ship | ready | implemented | `tadx job inspect` |
+| `job.wait` | cli | ship | ready | implemented | `tadx job wait` |
 | `last` | cli | ship | ready | implemented | `tadx last` |
 | `lineage.pull` | cli | ship | ready | implemented | `tadx catalog lineage pull` |
 | `mutation.set` | cli | ship | ready | implemented | `tadx mutation set` |
@@ -699,7 +702,7 @@ Inspect one exact site user.
 - Surface: tadx admin user inspect
 - Operation type: inspect
 - Owner: cli
-- Selectors: User LUID or exact username/email where supported
+- Selectors: User LUID, or exactly one of --name/--username for the exact login (aliases, not a display name)
 - Products and availability: Cloud / Server
 - Product disposition: ship
 - Evidence level: contract-verified
@@ -1542,7 +1545,7 @@ Publish one local datasource, or up to 100 repeated managed datasource artifacts
 - Supports `--preview`: Yes
 - Supports `--batch-file`: Yes
 - Raw capable: No
-- Safety and guard: Batch selectors prevalidated; sequential processing continues independent failures and returns aggregate failure; overwrite/append/replace never inferred; preview shows resolved environment/name/LUID
+- Safety and guard: Exactly one mode is required: --create, --overwrite, --append, or --replace; see tadx content datasource publish --help. Batch selectors prevalidated; sequential processing continues independent failures and returns aggregate failure; mutation execution policy applies; read-only preview remains available when writes are disabled
 - Artifact effect: Read / publish
 - Upstream operation: POST /api/{version}/sites/{site-id}/datasources; upload sessions; parentDataSourceUrls for composed path
 - Evidence: docs/evidence/datasource-lifecycle-rest-contract.md
@@ -1991,6 +1994,84 @@ Replace the owner of one exact flow, or preview the operation.
 - Validation or blocker: Contract-verified owner replacement with preview, no-op, drift, and uncertain outcome; flow rename is excluded
 - Blocker ID: None
 - Command binding: `tadx content flow update`
+
+### `job.cancel`
+
+Request cancellation for documented refresh or flow-run job types and perform bounded exact confirmation.
+
+- Surface: tadx job cancel
+- Operation type: change
+- Owner: cli
+- Selectors: Required exact --id; optional --preview; configured environment
+- Products and availability: Tableau Cloud / Server; only documented cancellable job types and administrator permissions
+- Product disposition: ship
+- Evidence level: contract-verified
+- Verification readiness: ready
+- Implementation state: implemented
+- Local write: No
+- Remote mutation: Yes
+- Supports `--preview`: Yes
+- Supports `--batch-file`: No
+- Raw capable: No
+- Safety and guard: Preview is read-only; cancellation is never claimed for unsupported types such as publication jobs; acknowledgement is distinct from confirmed cancelled state
+- Artifact effect: None
+- Upstream operation: PUT /api/{version}/sites/{site-id}/jobs/{job-id}, followed by bounded GET confirmation
+- Evidence: internal/tableau/job/client_test.go; internal/app/jobs.go
+- Validation or blocker: Supported-type guard, mutation policy, request identity preservation, and exact confirmation
+- Blocker ID: None
+- Command binding: `tadx job cancel`
+
+### `job.inspect`
+
+Inspect one exact Tableau job and return its authoritative state without changing remote work.
+
+- Surface: tadx job inspect
+- Operation type: inspect
+- Owner: cli
+- Selectors: Required exact --id; configured environment
+- Products and availability: Tableau Cloud / Server with Query Job permission
+- Product disposition: ship
+- Evidence level: contract-verified
+- Verification readiness: ready
+- Implementation state: implemented
+- Local write: No
+- Remote mutation: No
+- Supports `--preview`: No
+- Supports `--batch-file`: Yes
+- Raw capable: No
+- Safety and guard: Exact job identity and configured site; one bounded read only; unavailable observations never imply success or failure
+- Artifact effect: None
+- Upstream operation: GET /api/{version}/sites/{site-id}/jobs/{job-id}
+- Evidence: internal/tableau/job/client_test.go; internal/jobmonitor/monitor_test.go
+- Validation or blocker: Exact identity and authoritative state validation
+- Blocker ID: None
+- Command binding: `tadx job inspect`
+
+### `job.wait`
+
+Recover one accepted job from its durable receipt, or begin exact observation for a supplied job ID, and monitor it without resubmitting work.
+
+- Surface: tadx job wait
+- Operation type: inspect
+- Owner: cli
+- Selectors: Exact --id, with optional durable --receipt; saved environment and site are authoritative for receipts
+- Products and availability: Tableau Cloud / Server with Query Job permission; a durable receipt is optional when an exact job ID is supplied
+- Product disposition: ship
+- Evidence level: contract-verified
+- Verification readiness: ready
+- Implementation state: implemented
+- Local write: No
+- Remote mutation: No
+- Supports `--preview`: No
+- Supports `--batch-file`: No
+- Raw capable: No
+- Safety and guard: Read-only recovery or observation; exact target; bounded status requests; interruption and unavailable state remain unknown
+- Artifact effect: Creates or updates only a local job observation/accepted receipt
+- Upstream operation: GET /api/{version}/sites/{site-id}/jobs/{job-id}; optional local durable receipt
+- Evidence: internal/jobmonitor/monitor_test.go; internal/tableau/job/client_test.go
+- Validation or blocker: Receipt target preservation, direct exact-ID observation, no resubmission, and independent authoritative monitoring
+- Blocker ID: None
+- Command binding: `tadx job wait`
 
 ### `last`
 

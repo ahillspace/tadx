@@ -2,9 +2,12 @@ package cli
 
 import (
 	"bytes"
-	"github.com/spf13/cobra"
+	"errors"
 	"strings"
 	"testing"
+
+	"github.com/ahillspace/tadx/internal/errs"
+	"github.com/spf13/cobra"
 )
 
 func helpTestTree() (*cobra.Command, *cobra.Command, *cobra.Command) {
@@ -60,15 +63,62 @@ func TestCategoryHelpNavigatesWithoutExpandingReferences(t *testing.T) {
 		t.Fatal(got)
 	}
 	ref := renderedHelp(t, remove.Parent())
-	if ref != renderedHelp(t, remove) {
-		t.Fatal("verb differs from resource")
+	focused := renderedHelp(t, remove)
+	if ref == focused {
+		t.Fatal("verb repeats the complete resource reference")
 	}
 	for _, want := range []string{"--group-id <string>", "--member-id <string>...", "--limit <number> (default: 25)", "at least one of: --member-id, --name", "mutually exclusive: --member-id, --name"} {
 		if !strings.Contains(ref, want) {
-			t.Errorf("missing %q: %s", want, ref)
+			t.Errorf("complete reference missing %q: %s", want, ref)
 		}
 	}
+	for _, want := range []string{"Usage: tadx admin group remove <id> [flags]", "--group-id <string>", "--member-id <string>...", "at least one of: --member-id, --name", "mutually exclusive: --member-id, --name"} {
+		if !strings.Contains(focused, want) {
+			t.Errorf("focused reference missing %q: %s", want, focused)
+		}
+	}
+	if strings.Contains(focused, "--limit") || strings.Contains(focused, "\n  list:") {
+		t.Fatalf("focused reference contains sibling action details:\n%s", focused)
+	}
 }
+
+func TestHelpPathValidationPrecedesTargetFlagParsing(t *testing.T) {
+	root, _, _ := helpTestTree()
+	installCategoryHelp(root)
+	root.SetArgs([]string{"help", "admin", "group", "missing", "--group-id", "group-id"})
+	var output bytes.Buffer
+	root.SetOut(&output)
+	root.SetErr(&output)
+	err := root.Execute()
+	if err == nil {
+		t.Fatal("invalid help path unexpectedly succeeded")
+	}
+	var structured *errs.Error
+	if !errors.As(err, &structured) {
+		t.Fatalf("error is not structured: %T %v", err, err)
+	}
+	if structured.Kind != errs.KindUsage || !strings.Contains(structured.Summary, "admin group missing") {
+		t.Fatalf("unexpected help path error: %#v", structured)
+	}
+	if !strings.Contains(structured.CorrectiveAction, "tadx admin group -h") {
+		t.Fatalf("missing supported route: %#v", structured)
+	}
+}
+
+func TestValidateHelpArgsRejectsUnknownDirectRouteButKeepsConfigHelpFallback(t *testing.T) {
+	root, _, _ := helpTestTree()
+	installCategoryHelp(root)
+	if err := ValidateHelpArgs(root, []string{"admin", "group", "missing", "--group-id", "group-id", "--help"}); err == nil {
+		t.Fatal("unknown direct help route unexpectedly accepted")
+	}
+	if err := ValidateHelpArgs(root, []string{"config", "--help"}); err != nil {
+		t.Fatalf("config --help should retain root help fallback: %v", err)
+	}
+	if err := ValidateHelpArgs(root, []string{"admin", "group", "remove", "--help"}); err != nil {
+		t.Fatalf("known direct help route rejected: %v", err)
+	}
+}
+
 func TestCategoryHelpNeverRunsHooksOrShowsCurrentValues(t *testing.T) {
 	for _, args := range [][]string{{"admin", "--help"}, {"admin", "-h"}, {"adm", "grp", "--help"}, {"help", "admin", "group"}, {"admin", "group", "remove", "--help"}, {"adm", "grp", "rm", "-h"}} {
 		t.Run(strings.Join(args, " "), func(t *testing.T) {
@@ -163,5 +213,57 @@ func TestCompletionHelpTreatsUnregisteredUtilityAsExecutable(t *testing.T) {
 	}
 	if out.String() != got {
 		t.Fatal("completion argument changed reference")
+	}
+}
+
+func TestSharedReferenceNotesCoverAcceptedSetupMembershipAndCompletionGuidance(t *testing.T) {
+	tests := []struct {
+		path string
+		want []string
+	}{
+		{path: "auth check", want: []string{"env add/update", "never put PAT values in config"}},
+		{path: "admin user inspect", want: []string{"--id", "--name", "--username", "alias"}},
+		{path: "admin group inspect", want: []string{"provider-reported", "Embedded Analytics", "Cloud+"}},
+		{path: "admin group update", want: []string{"--set-members replaces all direct members", "--member-id requires --set-members", "clears membership"}},
+		{path: "completion", want: []string{"stdout", "bash -n", "scriptblock"}},
+	}
+	for _, test := range tests {
+		t.Run(test.path, func(t *testing.T) {
+			root := &cobra.Command{Use: "tadx"}
+			parent := root
+			for _, part := range strings.Fields(test.path) {
+				child := &cobra.Command{Use: part}
+				parent.AddCommand(child)
+				parent = child
+			}
+			text := strings.Join(referenceActionNotes(parent), "\n")
+			for _, want := range test.want {
+				if !strings.Contains(text, want) {
+					t.Errorf("notes missing %q: %s", want, text)
+				}
+			}
+		})
+	}
+}
+
+func TestContentPublicationHelpExplainsAutomaticReceiptsAndFlowSync(t *testing.T) {
+	for _, test := range []struct {
+		resource string
+		want     string
+		avoid    string
+	}{
+		{resource: "workbook", want: "accepted asynchronous jobs are registered, monitored, and confirmed automatically", avoid: "flow publication is synchronous"},
+		{resource: "flow", want: "flow publication is synchronous", avoid: "accepted asynchronous jobs"},
+	} {
+		t.Run(test.resource, func(t *testing.T) {
+			resource := &cobra.Command{Use: test.resource}
+			publish := &cobra.Command{Use: "publish"}
+			resource.AddCommand(publish)
+			var output bytes.Buffer
+			writeContentNotes(&output, resource, []*cobra.Command{publish})
+			if !strings.Contains(output.String(), test.want) || strings.Contains(output.String(), test.avoid) {
+				t.Fatalf("publication notes = %s", output.String())
+			}
+		})
 	}
 }

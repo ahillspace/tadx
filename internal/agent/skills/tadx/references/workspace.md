@@ -17,7 +17,7 @@ Neither operation moves remote content.
 
 Managed artifacts retain native files, provenance, and sidecars.
 Source LUIDs help select local items but do not identify the destination of a publish.
-Keep managed paths workspace-relative with forward slashes; obtain actual local file locations from expanded status rather than reconstructing hashed directory names.
+Keep managed paths workspace-relative with forward slashes; reuse returned paths rather than reconstructing hashed directory names or rereading expanded status.
 An existing native file can be published directly without manufacturing managed metadata.
 
 Clean means payload and baseline agree; dirty means local changes, while missing or invalid state needs attention before replacement.
@@ -31,3 +31,7 @@ Removing the sole workspace can clear those defaults without creating a replacem
 Cleanup of temporary state preserves canonical artifacts; artifact deletion removes selected local content only.
 Discarding dirty, invalid, or unmanaged files requires deliberate authorization, even when force is available.
 None of these operations deletes Tableau content.
+
+Guidance install/uninstall receipts report actual package and preserved-backup paths.
+An install backup is an older local package retained for recovery, not a failed new installation.
+Previews describe planned preservation without promising a not-yet-generated backup name.

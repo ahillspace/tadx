@@ -6,6 +6,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	definitioncreate "github.com/ahillspace/tadx/actions/pulse/definition/create"
@@ -130,6 +131,24 @@ func TestCreatePlansSmallIntentAndAppliesOnlyWhenRequested(t *testing.T) {
 	}
 	if c.request.Name != "Revenue" || c.request.Specification.Datasource.ID != "datasource-1" {
 		t.Fatalf("request=%#v", c.request)
+	}
+}
+
+func TestCreatePreviewWarnsWhenCompactPlanNeedsFullReview(t *testing.T) {
+	dimensions := make([]string, 51)
+	for index := range dimensions {
+		dimensions[index] = "Dimension_" + string(rune('A'+index%26)) + string(rune('0'+index/26))
+	}
+	v, f, c := &validator{}, &finder{}, &creator{}
+	input := definitioncreate.Input{Environment: "dev", Site: "sales", Intent: definitioncreate.Intent{
+		Name: "Revenue", DatasourceLUID: "datasource-1", MeasureField: "Sales", TimeDimension: "Order Date", Aggregation: "SUM", AllowedDimensions: dimensions,
+	}}
+	output, err := definitioncreate.New(v, f, c).Execute(context.Background(), input, true)
+	if err != nil || !output.CompactOutput().(definitioncreate.CompactResult).Plan.RequiresFull {
+		t.Fatalf("output=%#v err=%v", output, err)
+	}
+	if len(output.Help) != 1 || !strings.Contains(output.Help[0], "--full") || strings.Contains(output.Help[0], "without --preview") {
+		t.Fatalf("incomplete review help=%#v", output.Help)
 	}
 }
 

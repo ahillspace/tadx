@@ -40,9 +40,18 @@ type Output struct {
 
 // CompactDefinition identifies the exact Pulse definition.
 type CompactDefinition struct {
-	LUID           string `json:"luid"`
-	Name           string `json:"name"`
-	DatasourceLUID string `json:"datasource_luid"`
+	LUID                 string   `json:"luid"`
+	Name                 string   `json:"name"`
+	DatasourceLUID       string   `json:"datasource_luid"`
+	MeasureField         string   `json:"measure_field"`
+	Aggregation          string   `json:"aggregation"`
+	TimeDimension        string   `json:"time_dimension"`
+	RunningTotal         bool     `json:"running_total"`
+	Temporality          string   `json:"temporality,omitempty"`
+	AllowedDimensions    []string `json:"allowed_dimensions,omitempty"`
+	DimensionsOmitted    int      `json:"dimensions_omitted,omitempty"`
+	AllowedGranularities []string `json:"allowed_granularities,omitempty"`
+	GranularitiesOmitted int      `json:"granularities_omitted,omitempty"`
 }
 
 // CompactResult is the default projection.
@@ -69,7 +78,22 @@ type FullResult struct {
 
 // CompactOutput returns stable identity fields.
 func (o Output) CompactOutput() any {
-	return CompactResult{Status: o.Status, Environment: o.Environment, Site: o.Site, Definition: CompactDefinition{LUID: o.Definition.LUID, Name: o.Definition.Name, DatasourceLUID: o.Definition.DatasourceLUID}, Details: "--full", Help: o.Help, Source: o.Source}
+	return CompactResult{Status: o.Status, Environment: o.Environment, Site: o.Site, Definition: compactDefinition(o.Definition), Details: "--full", Help: o.Help, Source: o.Source}
+}
+
+func compactDefinition(definition Definition) CompactDefinition {
+	const limit = 50
+	dimensions := append([]string(nil), definition.AllowedDimensions...)
+	granularities := append([]string(nil), definition.AllowedGranularities...)
+	result := CompactDefinition{
+		LUID: definition.LUID, Name: definition.Name, DatasourceLUID: definition.DatasourceLUID,
+		MeasureField: definition.MeasureField, Aggregation: definition.Aggregation, TimeDimension: definition.TimeDimension,
+		RunningTotal: definition.RunningTotal, Temporality: definition.Temporality,
+		DimensionsOmitted: max(0, len(dimensions)-limit), GranularitiesOmitted: max(0, len(granularities)-limit),
+	}
+	result.AllowedDimensions = dimensions[:min(limit, len(dimensions))]
+	result.AllowedGranularities = granularities[:min(limit, len(granularities))]
+	return result
 }
 
 // FullOutput returns the normalized released configuration.

@@ -49,9 +49,16 @@ func (a *Action) Execute(ctx context.Context, input Input) (Output, error) {
 		state = "uninitialized"
 	}
 	generation := Generation{ID: result.ID, Environment: result.Environment, Site: result.Site, GeneratedAt: result.GeneratedAt, Records: result.Records, Complete: result.Complete, Stale: result.Stale, Age: result.Age, Source: result.Source}
-	return Output{Status: state, Generation: generation, Path: result.Path, Warnings: output.BoundWarnings(result.Warnings), Help: []string{commandhint.Environment(result.Environment, "cache", "refresh")}}, nil
+	generation.Coverage = result.Coverage
+	return Output{Retained: result.Retained, Status: state, Generation: generation, Path: result.Path, Warnings: output.BoundWarnings(result.Warnings), Help: []string{commandhint.Environment(result.Environment, "cache", "refresh")}}, nil
 }
 
 func statusError(id string, kind errs.Kind, input Input, summary string, cause error) error {
-	return &errs.Error{ID: id, Kind: kind, Operation: "cache.status", Environment: input.Environment, Site: input.Site, Summary: summary, Cause: cause, Retryable: errs.Bool(false), CorrectiveAction: "Refresh or repair the selected cache generation, then retry."}
+	advice := "Refresh or repair the selected cache generation, then retry."
+	var incompatible interface{ CacheSchemaIncompatible() bool }
+	if errors.As(cause, &incompatible) && incompatible.CacheSchemaIncompatible() {
+		id = "cache.status.schema_incompatible"
+		advice = "Preserve the cache and repair its schema or use a compatible TADX build; identical refresh attempts cannot repair inconsistent schema markers."
+	}
+	return &errs.Error{ID: id, Kind: kind, Operation: "cache.status", Environment: input.Environment, Site: input.Site, Summary: summary, Cause: cause, Retryable: errs.Bool(false), CorrectiveAction: advice}
 }

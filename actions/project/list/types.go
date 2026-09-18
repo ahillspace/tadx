@@ -34,8 +34,8 @@ type PageRequest struct {
 type Project struct {
 	LUID                            string `json:"luid"`
 	Name                            string `json:"name"`
-	ParentLUID                      string `json:"parent_luid,omitempty"`
-	Description                     string `json:"description,omitempty"`
+	ParentLUID                      string `json:"parent_luid"`
+	Description                     string `json:"description"`
 	OwnerLUID                       string `json:"owner_luid,omitempty"`
 	TopLevel                        *bool  `json:"top_level,omitempty"`
 	ContentPermissions              string `json:"content_permissions,omitempty"`
@@ -118,5 +118,12 @@ func (o Output) CompactOutput() any {
 
 // FullOutput returns the same page with bounded lifecycle fields.
 func (o Output) FullOutput() any {
-	return FullResult{Status: o.Status, Environment: o.Environment, Site: o.Site, Page: o.Page, Projects: o.Projects, RequestID: o.RequestID, Help: o.Help, Source: o.Source}
+	projects := make([]Project, len(o.Projects))
+	copy(projects, o.Projects)
+	for index := range projects {
+		if projects[index].TopLevel == nil && projects[index].ParentLUID == "" {
+			projects[index].TopLevel = new(true)
+		}
+	}
+	return FullResult{Status: o.Status, Environment: o.Environment, Site: o.Site, Page: o.Page, Projects: projects, RequestID: o.RequestID, Help: o.Help, Source: o.Source}
 }

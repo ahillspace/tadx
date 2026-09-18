@@ -234,8 +234,10 @@ func applyHelpRequirements(command *cobra.Command, path string) {
 			command.Annotations = map[string]string{}
 		}
 		command.Annotations["tadx.help.batch-example"] = `{"items":[{"name":"analysts"},{"name":"publishers"}]}`
-	case "admin group inspect", "admin user inspect":
+	case "admin group inspect":
 		group("exactly-one", "id", "name")
+	case "admin user inspect":
+		group("exactly-one", "id", "name", "username")
 	case "admin group delete":
 		required("id")
 	case "admin group update":

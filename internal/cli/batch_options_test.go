@@ -80,6 +80,14 @@ func TestBatchAlternativeSelectorsPreserveOrderAndPropertyLists(t *testing.T) {
 	}
 }
 
+func TestBatchFileDuplicateDiagnosticNamesRowsAndNormalizedSelectors(t *testing.T) {
+	file := batchFile(t, `{"items":[{"id":" one "},{"id":"one"}]}`)
+	_, calls, err := runBatchOptions(t, batchspec.Options{Selectors: []string{"id"}}, []string{"--batch-file", file})
+	if err == nil || len(calls) != 0 || !strings.Contains(err.Error(), "batch item 2 duplicates batch item 1") || !strings.Contains(err.Error(), `normalized selectors "id=one"`) {
+		t.Fatalf("calls=%v err=%v", calls, err)
+	}
+}
+
 func TestBatchRejectsMultipleVaryingDimensionsBeforeDispatch(t *testing.T) {
 	options := batchspec.Options{Selectors: []string{"id", "name"}}
 	_, calls, err := runBatchOptions(t, options, []string{"--id", "a", "--id", "b", "--name", "x", "--name", "y"})
@@ -148,6 +156,27 @@ func TestBatchPartialFailurePreservesConfirmedResults(t *testing.T) {
 	batch := value.(contentbatch.Output)
 	if batch.Succeeded != 2 || batch.Failed != 1 || batch.Items[1].Result == nil || calls[0].ID != "alpha" || calls[2].ID != "beta" {
 		t.Fatalf("batch=%#v calls=%#v", batch, calls)
+	}
+}
+
+func TestBatchResultRetainsNormalizedSelectorsInsteadOfOrdinals(t *testing.T) {
+	file := batchFile(t, `{"items":[{"id":" one ","member-id":["Allow"]},{"id":"two","member-id":["Deny"]}]}`)
+	value, calls, err := runBatchOptions(t, batchspec.Options{Selectors: []string{"id"}}, []string{"--batch-file", file})
+	if err != nil || len(calls) != 2 {
+		t.Fatalf("calls=%v err=%v", calls, err)
+	}
+	out, ok := value.(contentbatch.Output)
+	if !ok || len(out.Items) != 2 {
+		t.Fatalf("output=%#v", value)
+	}
+	if got := out.Items[0].Selector; got != "id=one" {
+		t.Fatalf("first selector = %q, want normalized selector", got)
+	}
+	if got := out.Items[1].Selector; got != "id=two" {
+		t.Fatalf("second selector = %q, want normalized selector", got)
+	}
+	if strings.Contains(out.Items[0].Selector, "member-id=") || strings.Contains(out.Items[1].Selector, "member-id=") {
+		t.Fatal("batch result selector leaked unrelated row flags")
 	}
 }
 

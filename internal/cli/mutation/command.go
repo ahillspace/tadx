@@ -34,7 +34,7 @@ func New(status Status, set Setter, renderer Renderer) *cobra.Command {
 	}, RunE: func(c *cobra.Command, _ []string) error {
 		out, err := set.Execute(c.Context(), enabled)
 		if err != nil {
-			return err
+			return clierr.WithOutput(out, err)
 		}
 		return renderer.Render(out)
 	}}

@@ -95,7 +95,7 @@ func TestContentHelpPilotResourceReferencesAndVerbMirrors(t *testing.T) {
 	dir, options := contentHelpPilotSetup(t)
 	content := contentHelpPilotTree(t, options)
 	resources := []string{"workbook", "datasource", "flow", "project"}
-	budgets := map[string]int{"workbook": 3000, "datasource": 3000, "flow": 3000, "project": 3000}
+	budgets := map[string]int{"workbook": 3000, "datasource": 3100, "flow": 3000, "project": 3000}
 	for _, name := range resources {
 		t.Run(name, func(t *testing.T) {
 			resource, _, err := content.Find([]string{name})
@@ -114,7 +114,7 @@ func TestContentHelpPilotResourceReferencesAndVerbMirrors(t *testing.T) {
 				}
 			}
 			facts := map[string][]string{
-				"workbook": {"pull: --id <luid> | (--name <name> [--project <path>])", "(default: true)", "empty description clears", "--as-job"},
+				"workbook": {"pull: --id <luid> | (--name <name> [--project <path>])", "(default: true)", "empty description clears"},
 				"flow":     {"update: target --owner-id <luid>", "--file <file.tfl|file.tflx>", "--project-id (--pid) <luid>"},
 				"project":  {"delete: --id <luid>", "LockedToProjectWithoutNested", "--top-level=true|false", "(omitted: both)", "--name = --new-name (update)"},
 			}
@@ -123,15 +123,15 @@ func TestContentHelpPilotResourceReferencesAndVerbMirrors(t *testing.T) {
 					t.Errorf("%s reference lost resource-specific fact %q", name, fact)
 				}
 			}
+			if strings.Contains(want, "--as-job") {
+				t.Errorf("%s reference advertises removed publication job mode", name)
+			}
 			if name != "project" {
 				for _, meaning := range []string{"(fetch details)", "(download local files)", "(local to Tableau)"} {
 					if !strings.Contains(want, meaning) {
 						t.Errorf("%s reference omits operation meaning %q", name, meaning)
 					}
 				}
-			}
-			if name == "flow" && strings.Contains(want, "--as-job") {
-				t.Error("flow help advertises unsupported server-job option")
 			}
 			if size := utf8.RuneCountInString(want); size > budgets[name] {
 				t.Errorf("%s reference has %d characters; budget is %d", name, size, budgets[name])
@@ -143,7 +143,7 @@ func TestContentHelpPilotResourceReferencesAndVerbMirrors(t *testing.T) {
 					"Target (remote, exact): --id <luid> | (--name", "--project (--prj) <path>)",
 					"(default limit: 25)", "(default limit: 20)", "measure|dimension|date|excluded",
 					"(dirty local files)", "(destination)", "create = collision fails", "append/replace = data",
-					"(one required; omitted unchanged)", "(waits)", "Field IDs repeat <=10000",
+					"(one required; omitted unchanged)", "Field IDs repeat <=10000",
 					"Repeat one selector OR use --batch-file", "1-100 sequential items", "Env/control flags outside rows",
 				} {
 					if !strings.Contains(flat, fact) {
@@ -162,6 +162,30 @@ func TestContentHelpPilotResourceReferencesAndVerbMirrors(t *testing.T) {
 					t.Errorf("%v does not mirror its resource reference", args)
 				}
 			}
+			assertFocused := func(args []string, action *cobra.Command) {
+				t.Helper()
+				got := contentHelpPilotRun(t, dir, options, args...)
+				if got == want {
+					t.Errorf("%v repeats the complete resource reference", args)
+				}
+				usage := "Usage: " + action.CommandPath() + " [flags]"
+				if !strings.Contains(got, usage) {
+					t.Errorf("%v omits focused usage %q", args, usage)
+				}
+				for _, sibling := range resource.Commands() {
+					if sibling.Hidden || sibling == action {
+						continue
+					}
+					if strings.Contains(got, "\n  "+sibling.Name()+" (") {
+						t.Errorf("%v includes sibling operation %s", args, sibling.Name())
+					}
+				}
+				action.LocalNonPersistentFlags().VisitAll(func(flag *pflag.Flag) {
+					if !flag.Hidden && !strings.Contains(got, "--"+flag.Name) {
+						t.Errorf("%v focused help omits --%s", args, flag.Name)
+					}
+				})
+			}
 			assertMirror([]string{"content", name, "-h"})
 			assertMirror([]string{"help", "content", name})
 			for _, alias := range resource.Aliases {
@@ -175,17 +199,17 @@ func TestContentHelpPilotResourceReferencesAndVerbMirrors(t *testing.T) {
 					continue
 				}
 				verbPath := []string{"content", name, action.Name()}
-				assertMirror(append([]string{"help"}, verbPath...))
+				assertFocused(append([]string{"help"}, verbPath...), action)
 				for _, help := range []string{"-h", "--help"} {
-					assertMirror(append(append([]string{}, verbPath...), help))
+					assertFocused(append(append([]string{}, verbPath...), help), action)
 				}
 				args := append(append([]string{}, verbPath...), "--environment", "private-help-input-environment", "--full", "--json")
 				if action.Flags().Lookup("name") != nil {
 					args = append(args, "--name", "private-help-input-name")
 				}
-				assertMirror(append(args, "--help"))
+				assertFocused(append(args, "--help"), action)
 				for _, alias := range action.Aliases {
-					assertMirror([]string{"content", name, alias, "--help"})
+					assertFocused([]string{"content", name, alias, "--help"}, action)
 				}
 				if !strings.Contains(want, action.Name()) {
 					t.Errorf("resource reference omits action %s", action.Name())

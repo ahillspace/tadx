@@ -32,6 +32,7 @@ import (
 	authcli "github.com/ahillspace/tadx/internal/cli/auth"
 	"github.com/ahillspace/tadx/internal/cli/clierr"
 	"github.com/ahillspace/tadx/internal/config"
+	"github.com/ahillspace/tadx/internal/contentbatch"
 	"github.com/ahillspace/tadx/internal/errs"
 	"github.com/ahillspace/tadx/internal/identity"
 	"github.com/ahillspace/tadx/internal/output"
@@ -40,7 +41,9 @@ import (
 	resourceproject "github.com/ahillspace/tadx/internal/resources/project"
 	resourceworkbook "github.com/ahillspace/tadx/internal/resources/workbook"
 	"github.com/ahillspace/tadx/internal/tableau"
+	tableauauth "github.com/ahillspace/tadx/internal/tableau/auth"
 	tableauworkbook "github.com/ahillspace/tadx/internal/tableau/workbook"
+	"github.com/ahillspace/tadx/internal/value"
 )
 
 // Options contains process-level discovery settings.
@@ -55,6 +58,7 @@ type Options struct {
 	CorrelationID       func() string
 	UserHomeDir         func() (string, error)
 	Stderr              io.Writer
+	JobDirectory        string
 }
 
 // Run wires and runs the CLI, renders structured output, and returns an AXI exit code.
@@ -76,12 +80,25 @@ func Run(ctx context.Context, args []string, stdout io.Writer, options Options) 
 			if warningWriter == nil {
 				warningWriter = os.Stderr
 			}
-			_, _ = fmt.Fprintln(warningWriter, "last_result_warning: Previous result could not be saved.")
+			_ = output.RenderWithOptions(warningWriter, lastResultWarning(), output.Options{JSON: renderOptions.JSON})
+		}
+		if capture.value != nil {
+			renderer := writerRenderer{writer: stdout, options: renderOptions, saved: capture.saved}
+			var renderErr error
+			if capture.renderError {
+				renderErr = output.RenderError(stdout, capture.value.(error), output.Options{Full: renderOptions.Full, JSON: renderOptions.JSON, ConfigPath: hintConfigPath(renderOptions), SavedResult: capture.saved})
+			} else {
+				renderErr = renderer.Render(capture.value)
+			}
+			if renderErr != nil {
+				exitCode = 1
+			}
 		}
 	}()
 	fail := func(err error, opts *cli.RenderOptions) int {
 		capture.value = err
-		return renderErrorWithOptions(stdout, err, opts)
+		capture.renderError = true
+		return errs.ExitCode(err)
 	}
 	environmentCommands := newEnvironmentCommands(runtime)
 	workspaceCommands := newWorkspaceCommands(runtime)
@@ -110,6 +127,7 @@ func Run(ctx context.Context, args []string, stdout io.Writer, options Options) 
 		MutationStatus:        mutationstatus.New(runtime),
 		MutationSetter:        mutationset.New(runtime),
 		LastReader:            lastaction.New(capture.store),
+		Jobs:                  newJobCommands(runtime).dependencies(),
 		ResolveWriteTarget: func(alias string) (string, error) {
 			_, environment, err := runtime.environment(alias, true)
 			var pathError *os.PathError
@@ -163,10 +181,18 @@ func Run(ctx context.Context, args []string, stdout io.Writer, options Options) 
 	}
 	root.SetOut(stdout)
 	root.SetArgs(args)
+	if err := cli.ValidateHelpArgs(root, args); err != nil {
+		capture.enabled = false
+		return fail(err, renderOptions)
+	}
 	selected, _, findErr := root.Find(args)
 	if selected != nil {
 		capture.operation = selected.Annotations[cli.CapabilityAnnotation]
 		capture.enabled = capture.operation != "last" && capture.operation != "session.overview"
+	}
+	if cli.RootVersionRequested(args) {
+		capture.operation = "version.get"
+		capture.enabled = true
 	}
 	if findErr != nil {
 		return fail(&errs.Error{Kind: errs.KindUsage, Operation: "cli", Summary: findErr.Error(), Cause: findErr}, renderOptions)
@@ -195,11 +221,13 @@ type writerRenderer struct {
 	capture *lastCapture
 	writer  io.Writer
 	options *cli.RenderOptions
+	saved   bool
 }
 
 func (r writerRenderer) Render(value any) error {
 	if r.capture != nil {
 		r.capture.value = value
+		return nil
 	}
 	full := r.options != nil && r.options.Full
 	jsonOutput := r.options != nil && r.options.JSON
@@ -208,7 +236,7 @@ func (r writerRenderer) Render(value any) error {
 		full = true
 		configPath = ""
 	}
-	return output.RenderWithOptions(r.writer, value, output.Options{Full: full, JSON: jsonOutput, ConfigPath: configPath})
+	return output.RenderWithOptions(r.writer, value, output.Options{Full: full, JSON: jsonOutput, ConfigPath: configPath, SavedResult: r.saved})
 }
 
 func hintConfigPath(options *cli.RenderOptions) string {
@@ -259,7 +287,7 @@ func hasJSONFlag(args []string) bool {
 func isBooleanFlag(arg string) bool {
 	name := strings.SplitN(arg, "=", 2)[0]
 	switch name {
-	case "--full", "--preview", "--all", "--cache", "--force", "--overwrite", "--raw", "--as-job", "--mutation", "--include-pds", "--include-extract":
+	case "--full", "--preview", "--all", "--cache", "--force", "--overwrite", "--raw", "--mutation", "--include-pds", "--include-extract":
 		return true
 	default:
 		return false
@@ -289,6 +317,8 @@ type runtimeDependencies struct {
 	userHomeDir      func() (string, error)
 	patStore         coreauth.PATStore
 	authPrompter     authcli.Prompter
+	jobDirectory     string
+	progressWriter   io.Writer
 }
 
 func newRuntime(options Options) (*runtimeDependencies, error) {
@@ -334,7 +364,7 @@ func newRuntime(options Options) (*runtimeDependencies, error) {
 	if mutationOverride == nil && options.MutationsEnabled {
 		mutationOverride = func() (string, bool) { return "1", true }
 	}
-	return &runtimeDependencies{mutationOverride: mutationOverride, configPath: path, httpClient: client, now: now, correlationID: correlation, userHomeDir: userHomeDir, patStore: patStore, authPrompter: prompter}, nil
+	return &runtimeDependencies{mutationOverride: mutationOverride, configPath: path, httpClient: client, now: now, correlationID: correlation, userHomeDir: userHomeDir, patStore: patStore, authPrompter: prompter, jobDirectory: options.JobDirectory, progressWriter: options.Stderr}, nil
 }
 
 func (r *runtimeDependencies) Resolve(_ context.Context, alias string) (authcheck.Target, error) {
@@ -346,11 +376,15 @@ func (r *runtimeDependencies) Resolve(_ context.Context, alias string) (authchec
 }
 
 func (r *runtimeDependencies) Authenticate(ctx context.Context, target authcheck.Target) (authcheck.Authentication, error) {
-	session, err := r.authenticate(ctx, coreauth.Target{Environment: target.Environment, ServerURL: target.ServerURL, SiteContentURL: target.SiteContentURL, PATNameVariable: target.PATNameVariable, PATSecretVariable: target.PATSecretVariable, CredentialReference: target.CredentialReference}, target.APIVersion)
-	if err != nil {
-		return authcheck.Authentication{}, err
+	session, source, err := r.commandSessions().AuthenticateWithSource(ctx, coreauth.Target{Environment: target.Environment, ServerURL: target.ServerURL, SiteContentURL: target.SiteContentURL, PATNameVariable: target.PATNameVariable, PATSecretVariable: target.PATSecretVariable, CredentialReference: target.CredentialReference}, tableauauth.NewClient(r.transport(target.APIVersion)))
+	provenance := string(source)
+	if source == coreauth.CredentialSourceOSKeyring {
+		provenance = "os_credential_store"
 	}
-	return authcheck.Authentication{SiteLUID: session.SiteLUID(), UserLUID: session.UserLUID()}, nil
+	if err != nil {
+		return authcheck.Authentication{CredentialSource: provenance}, err
+	}
+	return authcheck.Authentication{SiteLUID: session.SiteLUID(), UserLUID: session.UserLUID(), CredentialSource: provenance}, nil
 }
 
 func (r *runtimeDependencies) environment(alias string, explicit bool) (config.Config, config.Environment, error) {
@@ -481,7 +515,7 @@ func (r pullReader) CaptureWorkbookLineage(ctx context.Context, input workbookpu
 	for index, edge := range graph.Edges {
 		edges[index] = workbookpull.LineageEdge{FromMetadataID: edge.FromMetadataID, ToMetadataID: edge.ToMetadataID, Relationship: edge.Relationship}
 	}
-	return workbookpull.LineageCapture{RootMetadataID: graph.RootMetadataID, Complete: graph.Complete, Direction: graph.Direction, Depth: graph.Depth, Nodes: nodes, Edges: edges, Warnings: append([]string(nil), graph.Warnings...)}, err
+	return workbookpull.LineageCapture{RootMetadataID: graph.RootMetadataID, Complete: graph.Complete, Direction: graph.Direction, Depth: graph.Depth, Failure: graph.Failure, Nodes: nodes, Edges: edges, Warnings: append([]string(nil), graph.Warnings...)}, err
 }
 
 type artifactWriter struct {
@@ -538,7 +572,14 @@ func workbookLineageDocument(input workbookpull.LineageCapture) artifact.Lineage
 	for index, edge := range input.Edges {
 		edges[index] = artifact.LineageEdge{FromMetadataID: edge.FromMetadataID, ToMetadataID: edge.ToMetadataID, Relationship: edge.Relationship}
 	}
-	return artifact.LineageDocument{Complete: input.Complete, Direction: input.Direction, Depth: input.Depth, Nodes: nodes, Edges: edges, Warnings: append([]string(nil), input.Warnings...)}
+	return artifact.LineageDocument{Complete: input.Complete, Direction: input.Direction, Depth: input.Depth, Failure: artifactLineageFailure(input.Failure), Nodes: nodes, Edges: edges, Warnings: append([]string(nil), input.Warnings...)}
+}
+
+func artifactLineageFailure(failure *value.LineageFailure) *artifact.LineageFailure {
+	if failure == nil {
+		return nil
+	}
+	return &artifact.LineageFailure{Provider: failure.Provider, Relation: failure.Relation, RootKind: failure.RootKind, RootRESTLUID: failure.RootRESTLUID, RequestID: failure.RequestID}
 }
 
 type publishService struct{ runtime *runtimeDependencies }
@@ -568,6 +609,9 @@ func (s *publishService) Execute(ctx context.Context, input workbookpublish.Inpu
 		}
 		managedArtifact, err := artifact.Resolve(ctx, resolvedWorkspace.Root, artifact.Selector{Path: input.ArtifactPath, Kind: "workbook", LUID: input.ArtifactID, Name: input.ArtifactName})
 		if err != nil {
+			if _, ambiguous := errors.AsType[*artifact.AmbiguousSelectorError](err); ambiguous {
+				return workbookpublish.Output{}, mapArtifactResolutionError("workbook.publish", resolvedWorkspace.Name, input.ArtifactID, err)
+			}
 			return workbookpublish.Output{}, capabilitySetupError("workbook.publish.artifact", "workbook.publish", input.Environment, input.Site, "Workbook artifact resolution failed.", "Select one exact workspace-relative managed workbook artifact, then retry.", err)
 		}
 		input.ArtifactPath = filepath.Join(resolvedWorkspace.Root, filepath.FromSlash(managedArtifact.Path))
@@ -582,8 +626,24 @@ func (s *publishService) Execute(ctx context.Context, input workbookpublish.Inpu
 		return workbookpublish.Output{}, capabilitySetupError("workbook.publish.setup", "workbook.publish", input.Environment, input.Site, "Workbook publish setup failed.", "Review the explicit environment, site, and PAT configuration.", err)
 	}
 	input.Environment, input.Site, input.TargetResolved = environment.Alias, environment.SiteContentURL, true
-	action := workbookpublish.New(reader, publishAdapter{adapter: adapter}, publishAdapter{adapter: adapter})
-	return action.Execute(ctx, input, preview)
+	var lifecycle *publication
+	bridge := publishAdapter{adapter: adapter, runtime: s.runtime, environment: environment.Alias, sourcePath: input.ArtifactPath, lifecycle: &lifecycle}
+	if managed, ok := reader.(artifactReader); ok {
+		bridge.sourcePath = managed.displayPath
+	}
+	action := workbookpublish.New(reader, bridge, bridge)
+	out, err := action.Execute(ctx, input, preview)
+	if out.Result != nil && out.Result.Status != "" && lifecycle != nil {
+		var saveErr error
+		out.Result.ReceiptPath, saveErr = lifecycle.record(ctx, out.Result.JobID, out.Result.Status, out.Result.WorkbookLUID, out.Result.TableauRequestID, out.Result.Verification)
+		err = errors.Join(err, saveErr)
+	}
+	if err == nil && out.Result != nil && out.Result.Status == "pending" && lifecycle != nil {
+		contentbatch.DeferCompletion(ctx, func(ctx context.Context) (any, error) {
+			return lifecycle.completeWorkbook(ctx, action, out)
+		})
+	}
+	return out, err
 }
 
 func resolvedTarget(environmentAlias, site string, environment config.Environment) (string, string) {
@@ -614,13 +674,25 @@ func (r artifactReader) ReadWorkbook(ctx context.Context, path string) (workbook
 	return workbookpublish.Artifact{Path: item.Path, PayloadPath: item.PayloadPath, Filename: item.Filename, Size: item.Size, Name: item.Name, TableauID: item.TableauID, Fingerprint: item.Fingerprint, SourceEnvironment: item.SourceEnvironment, SourceSite: item.SourceSite, SourceProjectName: item.SourceProjectName, SourceProjectID: item.SourceProjectID, Portability: item.Portability, PublishedDatasourceCount: item.PublishedDatasourceCount}, err
 }
 
-type publishAdapter struct{ adapter *resourceworkbook.Adapter }
+type publishAdapter struct {
+	adapter                 *resourceworkbook.Adapter
+	runtime                 *runtimeDependencies
+	environment, sourcePath string
+	lifecycle               **publication
+}
 
 func (a publishAdapter) ResolveProject(ctx context.Context, selector identity.Selector) (workbookpublish.Project, error) {
 	item, err := a.adapter.ResolveProject(ctx, selector)
 	return workbookpublish.Project{LUID: item.LUID, Name: item.Name, Path: item.Path}, err
 }
 func (a publishAdapter) FindWorkbooks(ctx context.Context, name, project string) ([]workbookpublish.Workbook, error) {
+	if a.runtime != nil {
+		_, _, fresh, _, err := a.runtime.workbookAdapter(ctx, a.environment, true)
+		if err != nil {
+			return nil, err
+		}
+		a.adapter = fresh
+	}
 	items, err := a.adapter.FindWorkbooks(ctx, name, project)
 	result := make([]workbookpublish.Workbook, len(items))
 	for index, item := range items {
@@ -629,7 +701,19 @@ func (a publishAdapter) FindWorkbooks(ctx context.Context, name, project string)
 	return result, err
 }
 func (a publishAdapter) Prepare(ctx context.Context, input workbookpublish.PublishRequest) (workbookpublish.PreparedPublish, error) {
-	prepared, err := a.adapter.PrepareWorkbook(ctx, tableauworkbook.PublishRequest{Name: input.Name, ProjectLUID: input.ProjectLUID, Filename: input.Filename, ContentPath: input.ContentPath, ContentSize: input.ContentSize, ExpectedFingerprint: input.ExpectedFingerprint, Overwrite: input.Overwrite, AsJob: input.AsJob})
+	request := tableauworkbook.PublishRequest{Name: input.Name, ProjectLUID: input.ProjectLUID, Filename: input.Filename, ContentPath: input.ContentPath, ContentSize: input.ContentSize, ExpectedFingerprint: input.ExpectedFingerprint, Overwrite: input.Overwrite, AsJob: input.AsJob}
+	if a.runtime != nil {
+		p, err := a.runtime.publication(ctx, a.environment, "workbook", a.sourcePath, input.ProjectLUID, input.Name)
+		if err != nil {
+			return nil, err
+		}
+		if a.lifecycle != nil {
+			*a.lifecycle = p
+		}
+		request.AsJob = p.asJob
+		request.Accepted = p.acceptWorkbook
+	}
+	prepared, err := a.adapter.PrepareWorkbook(ctx, request)
 	if err != nil {
 		return nil, err
 	}
@@ -646,29 +730,13 @@ func (a preparedPublishAdapter) Commit(ctx context.Context) (workbookpublish.Res
 	for index, warning := range result.Warnings {
 		warnings[index] = workbookpublish.ValidationIssue{Severity: warning.Severity, Message: warning.Message, Line: warning.Line, Column: warning.Column, ElementName: warning.ElementName}
 	}
-	return workbookpublish.Result{Status: result.Status, WorkbookLUID: result.WorkbookLUID, WorkbookName: result.WorkbookName, ProjectLUID: result.ProjectLUID, JobID: result.JobID, TableauRequestID: result.TableauRequestID, ValidationWarnings: warnings}, err
+	return workbookpublish.Result{Status: result.Status, WorkbookLUID: result.WorkbookLUID, WorkbookName: result.WorkbookName, ProjectLUID: result.ProjectLUID, JobID: result.JobID, TableauRequestID: result.TableauRequestID, ReceiptPath: result.ReceiptPath, ValidationWarnings: warnings}, err
 }
 
 type registrySource struct{}
 
 func (registrySource) List(_ context.Context) ([]capabilitylist.Capability, error) {
-	definitions := capability.All()
-	items := make([]capabilitylist.Capability, 0, len(definitions))
-	for _, definition := range definitions {
-		items = append(items, capabilitylist.Capability{
-			ID:             definition.ID,
-			Owner:          string(definition.Owner),
-			Disposition:    string(definition.Disposition),
-			State:          string(definition.Implementation),
-			Command:        strings.Join(definition.CommandPath, " "),
-			Blocked:        definition.Verification == capability.VerificationBlocked,
-			Domain:         filterDomain(definition),
-			Resource:       filterResource(definition),
-			Product:        definition.Availability,
-			RemoteMutation: definition.RemoteMutation,
-		})
-	}
-	return items, nil
+	return capability.AllDiscoveries(), nil
 }
 
 type registryMutationPolicy struct{}
@@ -679,41 +747,7 @@ func (registryMutationPolicy) IsRemoteMutation(id string) bool {
 }
 
 func (registrySource) Get(_ context.Context, id string) (capabilityget.Capability, bool) {
-	definition, ok := capability.Lookup(id)
-	if !ok {
-		return capabilityget.Capability{}, false
-	}
-	parts := strings.Split(definition.ID, ".")
-	domain, resource := classify(definition)
-	return capabilityget.Capability{
-		ID:                    definition.ID,
-		Domain:                domain,
-		Resource:              resource,
-		Verb:                  parts[len(parts)-1],
-		Owner:                 string(definition.Owner),
-		Surface:               definition.Surface,
-		Outcome:               definition.Outcome,
-		OperationType:         string(definition.Type),
-		Disposition:           string(definition.Disposition),
-		MCPOverlap:            definition.MCPOverlap,
-		EvidenceLevel:         string(definition.EvidenceLevel),
-		VerificationReadiness: string(definition.Verification),
-		ImplementationState:   string(definition.Implementation),
-		Command:               strings.Join(definition.CommandPath, " "),
-		Selectors:             []string{definition.Selectors},
-		Availability:          definition.Availability,
-		SafetyGuard:           definition.SafetyGuard,
-		ArtifactEffect:        definition.ArtifactEffect,
-		UpstreamOperation:     definition.Upstream,
-		Evidence:              definition.Evidence,
-		Validation:            definition.Validation,
-		Blocker:               string(definition.Blocker),
-		RemoteMutation:        definition.RemoteMutation,
-		SupportsPreview:       definition.SupportsPreview,
-		SupportsBatch:         definition.SupportsBatch,
-		LocalWrite:            definition.LocalWrite,
-		RawCapable:            definition.RawCapable,
-	}, true
+	return capability.LookupDiscovery(id)
 }
 
 func registryUse(id string) string {
@@ -738,28 +772,4 @@ func registryLeafUse(id string) string {
 		return ""
 	}
 	return definition.CommandPath[len(definition.CommandPath)-1]
-}
-
-func filterDomain(definition capability.Definition) string {
-	domain, _ := classify(definition)
-	return domain
-}
-
-func filterResource(definition capability.Definition) string {
-	_, resource := classify(definition)
-	return resource
-}
-
-func classify(definition capability.Definition) (string, string) {
-	if len(definition.CommandPath) >= 3 && (definition.CommandPath[0] == "catalog" || definition.CommandPath[0] == "admin") {
-		return definition.CommandPath[0], definition.CommandPath[1]
-	}
-	parts := strings.Split(definition.ID, ".")
-	if definition.Owner == capability.OwnerCLI && (parts[0] == "workbook" || parts[0] == "datasource" || parts[0] == "flow" || parts[0] == "project") {
-		return "content", parts[0]
-	}
-	if len(parts) >= 3 {
-		return parts[0], parts[1]
-	}
-	return parts[0], ""
 }

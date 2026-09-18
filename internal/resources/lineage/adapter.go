@@ -47,6 +47,7 @@ type Graph struct {
 	Direction      string
 	Depth          int
 	Complete       bool
+	Failure        *value.LineageFailure
 	Nodes          []Node
 	Edges          []Edge
 	Warnings       []string
@@ -72,10 +73,19 @@ func (a *Adapter) Capture(ctx context.Context, input Request) (Graph, error) {
 		return Graph{}, err
 	}
 	capture, err := a.client.CaptureLineage(ctx, request)
-	if err != nil {
-		return Graph{}, err
+	graph, normalizeErr := normalize(request, capture)
+	if normalizeErr != nil {
+		if err != nil {
+			return Graph{}, errors.Join(err, normalizeErr)
+		}
+		return Graph{}, normalizeErr
 	}
-	return normalize(request, capture)
+	if err != nil {
+		failure := tableaumetadata.FailureFor(request, err)
+		graph.Failure = &failure
+		return graph, err
+	}
+	return graph, nil
 }
 
 func normalize(request tableaumetadata.CaptureRequest, capture tableaumetadata.Capture) (Graph, error) {

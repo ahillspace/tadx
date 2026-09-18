@@ -70,11 +70,11 @@ func TestDatasourcePublishKeepsSourceIndependentOfDestination(t *testing.T) {
 func TestDatasourcePublishParsesExplicitDestinationModeAndPreview(t *testing.T) {
 	actions := &datasourceLifecycleCommands{}
 	command := datasourceLifecycleRoot(actions, &datasourceLifecycleRenderer{}, true)
-	command.SetArgs([]string{"publish", "--artifact", "artifacts/datasource/Sales", "--environment", "prod", "--project-id", "project-1", "--create", "--as-job", "--preview"})
+	command.SetArgs([]string{"publish", "--artifact", "artifacts/datasource/Sales", "--environment", "prod", "--project-id", "project-1", "--create", "--preview"})
 	if err := command.ExecuteContext(context.Background()); err != nil {
 		t.Fatal(err)
 	}
-	if actions.publishInput.SourceDefaulted || actions.publishInput.Environment != "prod" || actions.publishInput.ProjectSelector.LUID != "project-1" || actions.publishInput.Mode != datasourcepublish.ModeCreate || !actions.publishInput.AsJob || !actions.publishPreview {
+	if actions.publishInput.SourceDefaulted || actions.publishInput.Environment != "prod" || actions.publishInput.ProjectSelector.LUID != "project-1" || actions.publishInput.Mode != datasourcepublish.ModeCreate || !actions.publishPreview {
 		t.Fatalf("input = %#v, preview = %t", actions.publishInput, actions.publishPreview)
 	}
 }

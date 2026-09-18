@@ -19,10 +19,11 @@ import (
 )
 
 const (
-	maximumPageSize        = 1000
-	maximumConcurrency     = 256
-	defaultPageSize        = 1000
-	defaultMaxConcurrency  = 32
+	maximumPageSize    = 1000
+	maximumConcurrency = 256
+	defaultPageSize    = 1000
+	// DefaultMaxConcurrency is the resolved request ceiling when no override is configured.
+	DefaultMaxConcurrency  = 32
 	defaultInitialLimit    = 4
 	defaultMaxRetries      = 4
 	defaultMaxResponseSize = 32 * 1024 * 1024
@@ -48,7 +49,7 @@ func NewEngine(executor Executor, config Config) (*Engine, error) {
 		return nil, fmt.Errorf("cache page size must be between 1 and %d", maximumPageSize)
 	}
 	if config.MaxConcurrency == 0 {
-		config.MaxConcurrency = defaultMaxConcurrency
+		config.MaxConcurrency = DefaultMaxConcurrency
 	}
 	if config.MaxConcurrency < 1 || config.MaxConcurrency > maximumConcurrency {
 		return nil, fmt.Errorf("cache maximum concurrency must be between 1 and %d", maximumConcurrency)

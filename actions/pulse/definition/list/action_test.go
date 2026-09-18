@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	definitionlist "github.com/ahillspace/tadx/actions/pulse/definition/list"
@@ -107,6 +108,13 @@ func TestListRejectsInvalidLimitBeforeReader(t *testing.T) {
 	var structured *errs.Error
 	if !errors.As(err, &structured) || structured.Kind != errs.KindUsage || r.calls != 0 {
 		t.Fatalf("error=%#v calls=%d", err, r.calls)
+	}
+}
+
+func TestListAllCorrectionExplainsLimitChoice(t *testing.T) {
+	_, err := definitionlist.New(&reader{}).Execute(context.Background(), definitionlist.Input{All: true, Limit: 10})
+	if err == nil || !strings.Contains(err.Error(), "remove --limit") || !strings.Contains(err.Error(), "remove --all") {
+		t.Fatalf("error=%v", err)
 	}
 }
 

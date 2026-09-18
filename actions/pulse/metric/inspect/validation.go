@@ -1,14 +1,19 @@
 package inspect
 
 import (
-	"github.com/ahillspace/tadx/internal/errs"
 	"strings"
+
+	"github.com/ahillspace/tadx/internal/errs"
+	"github.com/ahillspace/tadx/internal/pulsecontract"
 )
 
 // ValidateInput checks local selectors without resolving a site or contacting Tableau.
 func ValidateInput(input Input) error {
 	if strings.TrimSpace(input.LUID) == "" {
 		return fail("pulse.metric.inspect.usage", errs.KindUsage, input, "Pulse metric inspect requires an exact LUID.", nil)
+	}
+	if err := pulsecontract.ValidateLUIDShape("metric", input.LUID); err != nil {
+		return fail("pulse.metric.inspect.usage", errs.KindUsage, input, "Pulse metric inspect requires a well-formed exact LUID.", err)
 	}
 	return nil
 }

@@ -43,6 +43,22 @@ func TestResolveUsesLiteralExactNameAndProjectPath(t *testing.T) {
 	assertResolutionKind(t, err, identity.ResolutionNotFound)
 }
 
+func TestResolveUsesLiteralExactNameAndProjectLUID(t *testing.T) {
+	t.Parallel()
+
+	candidates := []identity.Candidate{
+		{LUID: "sales-east", Name: "Sales", ProjectLUID: "project-east"},
+		{LUID: "sales-west", Name: "Sales", ProjectLUID: "project-west"},
+	}
+	got, err := identity.Resolve(identity.Selector{Name: "Sales", ProjectLUID: "project-east"}, candidates)
+	if err != nil {
+		t.Fatalf("Resolve() error = %v", err)
+	}
+	if got.LUID != "sales-east" {
+		t.Fatalf("Resolve() LUID = %q", got.LUID)
+	}
+}
+
 func TestResolveProjectByExactPath(t *testing.T) {
 	t.Parallel()
 

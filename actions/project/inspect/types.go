@@ -23,8 +23,8 @@ type Project struct {
 	LUID                            string `json:"luid"`
 	Name                            string `json:"name"`
 	Path                            string `json:"path"`
-	ParentLUID                      string `json:"parent_luid,omitempty"`
-	Description                     string `json:"description,omitempty"`
+	ParentLUID                      string `json:"parent_luid"`
+	Description                     string `json:"description"`
 	OwnerLUID                       string `json:"owner_luid,omitempty"`
 	TopLevel                        *bool  `json:"top_level,omitempty"`
 	ContentPermissions              string `json:"content_permissions,omitempty"`
@@ -88,5 +88,9 @@ func (o Output) CompactOutput() any {
 
 // FullOutput returns bounded lifecycle details.
 func (o Output) FullOutput() any {
-	return FullResult{Status: o.Status, Environment: o.Environment, Site: o.Site, Project: o.Project, RequestID: o.RequestID, Help: o.Help, Source: o.Source}
+	project := o.Project
+	if project.TopLevel == nil && project.ParentLUID == "" {
+		project.TopLevel = new(true)
+	}
+	return FullResult{Status: o.Status, Environment: o.Environment, Site: o.Site, Project: project, RequestID: o.RequestID, Help: o.Help, Source: o.Source}
 }

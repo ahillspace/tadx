@@ -3,12 +3,16 @@ package inspect_test
 import (
 	"bytes"
 	"context"
+	"errors"
+	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
 	metricget "github.com/ahillspace/tadx/actions/pulse/metric/inspect"
+	"github.com/ahillspace/tadx/internal/errs"
 	render "github.com/ahillspace/tadx/internal/output"
 	"github.com/ahillspace/tadx/internal/readsource"
 )
@@ -16,6 +20,20 @@ import (
 type reader struct{ metric metricget.Metric }
 
 func (r reader) GetMetric(context.Context, string) (metricget.Metric, error) { return r.metric, nil }
+
+type missingMetricReader struct{}
+
+func (missingMetricReader) GetMetric(context.Context, string) (metricget.Metric, error) {
+	return metricget.Metric{}, missingMetricError{}
+}
+
+type missingMetricError struct{}
+
+func (missingMetricError) Error() string          { return "provider says metric is missing" }
+func (missingMetricError) HTTPStatus() int        { return http.StatusNotFound }
+func (missingMetricError) TableauCode() string    { return "not-found" }
+func (missingMetricError) TableauSummary() string { return "missing metric" }
+func (missingMetricError) TableauDetail() string  { return "metric is not visible" }
 
 func TestInspectRequiresAndVerifiesExactMetric(t *testing.T) {
 	metric := metricget.Metric{LUID: "metric-1", Name: "Revenue", DefinitionLUID: "definition-1", Specification: map[string]any{"provider_extension": map[string]any{"keep": true}}}
@@ -25,6 +43,20 @@ func TestInspectRequiresAndVerifiesExactMetric(t *testing.T) {
 	}
 	if _, err := metricget.New(reader{metric}).Execute(context.Background(), metricget.Input{LUID: "other"}); err == nil {
 		t.Fatal("mismatched metric accepted")
+	}
+}
+
+func TestInspectUsesResourceSpecificRecoveryForMissingMetric(t *testing.T) {
+	_, err := metricget.New(missingMetricReader{}).Execute(context.Background(), metricget.Input{Environment: "production", Site: "marketing", LUID: "metric-1"})
+	var structured *errs.Error
+	if err == nil || !errors.As(err, &structured) || structured.ID != "pulse.metric.inspect.not_found" || structured.Resource != "metric-1" || structured.Phase != errs.PhaseVerification || structured.Outcome != errs.OutcomeNotAttempted {
+		t.Fatalf("error=%#v", err)
+	}
+	if !strings.Contains(structured.Summary, "metric-1") || !strings.Contains(structured.CorrectiveAction, "metric-1") || strings.Contains(strings.ToLower(structured.CorrectiveAction), "server configuration") {
+		t.Fatalf("resource recovery=%#v", structured)
+	}
+	if envelope := errs.Structure(err); envelope.Error.UpstreamStatus != http.StatusNotFound {
+		t.Fatalf("upstream status=%#v", envelope)
 	}
 }
 

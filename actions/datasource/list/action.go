@@ -53,7 +53,7 @@ func (a *Action) Execute(ctx context.Context, input Input) (Output, error) {
 	}
 	request := PageRequest{
 		PageNumber: pageNumber, PageSize: pageSize, Name: input.Name, OwnerName: input.OwnerName,
-		ProjectName: input.ProjectName, Type: input.Type, Tag: input.Tag,
+		ProjectLUID: input.ProjectLUID, ProjectName: input.ProjectName, Type: input.Type, Tag: input.Tag,
 		UpdatedAfter: input.UpdatedAfter, UpdatedBefore: input.UpdatedBefore,
 		SnapshotCursor: snapshotCursor,
 	}
@@ -128,13 +128,14 @@ func datasourceFilterFingerprint(input Input) (string, error) {
 		Site          string `json:"site"`
 		Name          string `json:"name"`
 		OwnerName     string `json:"owner_name"`
+		ProjectLUID   string `json:"project_luid"`
 		ProjectName   string `json:"project_name"`
 		Type          string `json:"type"`
 		Tag           string `json:"tag"`
 		UpdatedAfter  string `json:"updated_after"`
 		UpdatedBefore string `json:"updated_before"`
 		Cache         bool   `json:"cache"`
-	}{input.Environment, input.Site, input.Name, input.OwnerName, input.ProjectName, input.Type, input.Tag, input.UpdatedAfter, input.UpdatedBefore, input.Cache})
+	}{input.Environment, input.Site, input.Name, input.OwnerName, input.ProjectLUID, input.ProjectName, input.Type, input.Tag, input.UpdatedAfter, input.UpdatedBefore, input.Cache})
 	if err != nil {
 		return "", err
 	}
@@ -152,7 +153,7 @@ func (a *Action) collectAll(ctx context.Context, input Input) (Output, error) {
 	}
 	requestID := ""
 	items, err := paging.Collect(ctx, func(ctx context.Context, state paging.State) (paging.Page[Datasource], error) {
-		page, err := a.reader.ListDatasources(ctx, PageRequest{PageNumber: state.Number, PageSize: state.Size, SnapshotCursor: state.Token, Name: input.Name, OwnerName: input.OwnerName, ProjectName: input.ProjectName, Type: input.Type, Tag: input.Tag, UpdatedAfter: input.UpdatedAfter, UpdatedBefore: input.UpdatedBefore})
+		page, err := a.reader.ListDatasources(ctx, PageRequest{PageNumber: state.Number, PageSize: state.Size, SnapshotCursor: state.Token, Name: input.Name, OwnerName: input.OwnerName, ProjectLUID: input.ProjectLUID, ProjectName: input.ProjectName, Type: input.Type, Tag: input.Tag, UpdatedAfter: input.UpdatedAfter, UpdatedBefore: input.UpdatedBefore})
 		requestID = page.RequestID
 		return paging.Page[Datasource]{Number: page.Number, Size: page.Size, Total: page.Total, Items: page.Datasources, Token: page.SnapshotCursor}, err
 	}, func(item Datasource) string { return item.LUID })

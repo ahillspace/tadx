@@ -123,7 +123,7 @@ func datasourceLifecycleRuntime(t *testing.T, server *httptest.Server) (*runtime
 	}
 	t.Setenv("PROD_PAT_NAME", "pat-name")
 	t.Setenv("PROD_PAT_SECRET", "pat-secret")
-	runtime := &runtimeDependencies{configPath: configPath, httpClient: server.Client(), now: func() time.Time { return time.Date(2026, 9, 2, 12, 0, 0, 0, time.UTC) }, correlationID: "datasource-test"}
+	runtime := &runtimeDependencies{configPath: configPath, httpClient: server.Client(), jobDirectory: t.TempDir(), now: func() time.Time { return time.Date(2026, 9, 2, 12, 0, 0, 0, time.UTC) }, correlationID: "datasource-test"}
 	t.Cleanup(func() { _ = runtime.Close() })
 	return runtime, workspace
 }

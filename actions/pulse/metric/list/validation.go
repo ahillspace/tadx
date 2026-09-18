@@ -16,7 +16,7 @@ func ValidateInput(input Input) error {
 		return fail("pulse.metric.list.usage", errs.KindUsage, input, "Pulse metric list limit must be between 1 and 10000.", nil)
 	}
 	if input.All && (input.Limit != 0 || input.Cursor != "") {
-		return fail("pulse.metric.list.usage", errs.KindUsage, input, "--all cannot be combined with --limit or --cursor.", nil)
+		return fail("pulse.metric.list.usage", errs.KindUsage, input, "--all cannot be combined with --limit or --cursor; remove --limit and --cursor for all rows, or remove --all for a bounded result.", nil)
 	}
 	if input.Cursor != "" {
 		data, err := base64.RawURLEncoding.DecodeString(input.Cursor)

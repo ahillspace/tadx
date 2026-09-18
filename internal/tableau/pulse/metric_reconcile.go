@@ -5,7 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"sort"
+	"slices"
 	"time"
 )
 
@@ -107,14 +107,9 @@ func sameMetricSpecification(saved, requested map[string]any) bool {
 		}
 		delete(copy, "datasource")
 		if filters, ok := copy["filters"].([]any); ok {
-			for _, filter := range filters {
-				if entry, ok := filter.(map[string]any); ok {
-					if values, ok := entry["categorical_values"].([]any); ok {
-						sortJSONValues(values)
-					}
-				}
+			if err := normalizeFilterArray(filters); err != nil {
+				return nil, err
 			}
-			sortJSONValues(filters)
 		}
 		return json.Marshal(copy)
 	}
@@ -127,11 +122,94 @@ func sameMetricSpecification(saved, requested map[string]any) bool {
 }
 
 func sortJSONValues(values []any) {
-	sort.SliceStable(values, func(i, j int) bool {
-		left, _ := json.Marshal(values[i])
-		right, _ := json.Marshal(values[j])
-		return bytes.Compare(left, right) < 0
+	slices.SortFunc(values, func(left, right any) int {
+		leftJSON, _ := json.Marshal(left)
+		rightJSON, _ := json.Marshal(right)
+		return bytes.Compare(leftJSON, rightJSON)
 	})
+}
+
+func normalizeFilterArray(filters []any) error {
+	for _, filter := range filters {
+		entry, ok := filter.(map[string]any)
+		if !ok {
+			continue
+		}
+		if err := normalizeFilterRepresentations(entry); err != nil {
+			return err
+		}
+	}
+	sortJSONValues(filters)
+	return nil
+}
+
+// normalizeFilterRepresentations makes the provider's typed categorical values
+// and the portable text values comparable without ignoring conflicting fields.
+func normalizeFilterRepresentations(entry map[string]any) error {
+	rawCategorical, hasCategorical := entry["categorical_values"]
+	rawText, hasText := entry["values"]
+	if !hasCategorical && !hasText {
+		return nil
+	}
+
+	var categorical []any
+	if hasCategorical {
+		var err error
+		categorical, err = typedFilterValues(rawCategorical)
+		if err != nil {
+			return err
+		}
+	}
+	if hasText {
+		text, err := textFilterValues(rawText)
+		if err != nil {
+			return err
+		}
+		if hasCategorical {
+			sortJSONValues(categorical)
+			sortJSONValues(text)
+			categoricalJSON, _ := json.Marshal(categorical)
+			textJSON, _ := json.Marshal(text)
+			if !bytes.Equal(categoricalJSON, textJSON) {
+				return errors.New("filter categorical_values and values conflict")
+			}
+		} else {
+			categorical = text
+		}
+	}
+	sortJSONValues(categorical)
+	entry["categorical_values"] = categorical
+	delete(entry, "values")
+	return nil
+}
+
+func typedFilterValues(raw any) ([]any, error) {
+	values, ok := raw.([]any)
+	if !ok {
+		return nil, errors.New("filter categorical_values must be an array")
+	}
+	for _, value := range values {
+		if _, ok := value.(map[string]any); !ok {
+			return nil, errors.New("filter categorical_values must contain typed objects")
+		}
+	}
+	return values, nil
+}
+
+func textFilterValues(raw any) ([]any, error) {
+	values, ok := raw.([]any)
+	if !ok {
+		return nil, errors.New("filter values must be an array")
+	}
+	converted := make([]any, len(values))
+	for i, value := range values {
+		text, ok := value.(string)
+		if !ok {
+			return nil, errors.New("filter values must contain strings")
+		}
+		converted[i] = map[string]any{"string_value": text}
+	}
+	return converted, nil
 }
 
 func statusCode(err error) int {

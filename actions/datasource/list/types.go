@@ -15,6 +15,7 @@ type Input struct {
 	Cursor        string
 	Name          string
 	OwnerName     string
+	ProjectLUID   string
 	ProjectName   string
 	Type          string
 	Tag           string
@@ -30,6 +31,7 @@ type PageRequest struct {
 	PageSize       int
 	Name           string
 	OwnerName      string
+	ProjectLUID    string
 	ProjectName    string
 	Type           string
 	Tag            string
@@ -135,7 +137,8 @@ func (o Output) CompactOutput() any {
 
 // FullOutput returns the same page with bounded lifecycle metadata and tags.
 func (o Output) FullOutput() any {
-	items := append([]Datasource(nil), o.Datasources...)
+	items := make([]Datasource, len(o.Datasources))
+	copy(items, o.Datasources)
 	for index := range items {
 		items[index].Tags = append([]string(nil), items[index].Tags...)
 		if len(items[index].Tags) > fullTagsPerDatasourceLimit {

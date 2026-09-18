@@ -14,3 +14,12 @@ type LineageEdge struct {
 	ToMetadataID   string `json:"to_metadata_id"`
 	Relationship   string `json:"relationship"`
 }
+
+// LineageFailure records bounded, sanitized provider failure context.
+type LineageFailure struct {
+	Provider     string `json:"provider"`
+	Relation     string `json:"relation,omitempty"`
+	RootKind     string `json:"root_kind"`
+	RootRESTLUID string `json:"root_rest_luid"`
+	RequestID    string `json:"request_id,omitempty"`
+}

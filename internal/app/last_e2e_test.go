@@ -7,10 +7,32 @@ import (
 	"errors"
 	"github.com/ahillspace/tadx/internal/app"
 	"net/http"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 )
+
+func TestLastSaveFailureDoesNotFailCompletedReadOrClaimExpansion(t *testing.T) {
+	directory := t.TempDir()
+	if err := os.Mkdir(filepath.Join(directory, "last-result.json"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	var out, warnings bytes.Buffer
+	code := app.Run(t.Context(), []string{"version", "--json"}, &out, app.Options{ConfigPath: filepath.Join(directory, "config.yaml"), Stderr: &warnings})
+	if code != 0 || !json.Valid(out.Bytes()) {
+		t.Fatalf("code=%d output=%s", code, out.Bytes())
+	}
+	var warning struct {
+		Warning struct {
+			Code                 string `json:"code"`
+			LastPotentiallyStale bool   `json:"last_potentially_stale"`
+		} `json:"warning"`
+	}
+	if err := json.Unmarshal(warnings.Bytes(), &warning); err != nil || warning.Warning.Code != "last_result_save_failed" || !warning.Warning.LastPotentiallyStale {
+		t.Fatalf("warning=%s err=%v", warnings.Bytes(), err)
+	}
+}
 
 type noLastNetwork struct{ calls int }
 

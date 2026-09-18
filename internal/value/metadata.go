@@ -1,5 +1,26 @@
 package value
 
+import "strings"
+
+// CanonicalContentType maps documented native label target spellings to the
+// stable command names while leaving unknown values unchanged.
+func CanonicalContentType(s string) string {
+	switch strings.ToLower(s) {
+	case "database":
+		return "database"
+	case "table":
+		return "table"
+	case "column":
+		return "column"
+	case "datasource", "data_source", "data-source":
+		return "datasource"
+	case "flow":
+		return "flow"
+	default:
+		return s
+	}
+}
+
 type MetadataQuery struct {
 	LUID, MetadataID, Name, Text, ParentLUID, Cursor string
 	Limit                                            int

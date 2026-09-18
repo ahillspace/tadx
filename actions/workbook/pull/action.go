@@ -225,14 +225,33 @@ func (a *Action) Execute(ctx context.Context, input Input) (Output, error) {
 	}
 	warnings = append(warnings, artifact.Warnings...)
 	compactWarnings = append(compactWarnings, artifact.Warnings...)
-	return Output{Workspace: input.WorkspaceName, Status: "pulled", Workbook: workbook, Artifact: artifact, Warnings: warnings, compactWarnings: compactWarnings, RequestID: download.TableauRequestID, Help: []string{commandhint.SourceUpdate(input.Environment, input.WorkspaceName, "workbook", workbook.LUID, workbook.ProjectLUID)}}, nil
+	return Output{Source: &value.SourceContext{Environment: input.Environment, Site: input.Site}, Workspace: input.WorkspaceName, Status: "pulled", Workbook: workbook, Artifact: artifact, Warnings: warnings, compactWarnings: compactWarnings, RequestID: download.TableauRequestID, Help: []string{commandhint.SourceUpdate(input.Environment, input.WorkspaceName, "workbook", workbook.LUID, workbook.ProjectLUID)}}, nil
 }
 
 func captureAutomaticLineage(ctx context.Context, reader Reader, workbookLUID string) (LineageCapture, bool, string, []string) {
 	request := LineageRequest{RESTLUID: workbookLUID, Direction: "both", Depth: 1}
 	capture, err := reader.CaptureWorkbookLineage(ctx, request)
 	if err != nil {
-		return unavailableLineage(), false, "unavailable", []string{"Lineage capture was unavailable. The workbook download remains valid; retry after reviewing Metadata API access."}
+		capture.Direction = request.Direction
+		capture.Depth = request.Depth
+		capture.Complete = false
+		capture.RootMetadataID = strings.TrimSpace(capture.RootMetadataID)
+		if capture.Failure == nil {
+			failure := value.LineageFailure{Provider: "tableau-metadata", RootKind: "workbook", RootRESTLUID: workbookLUID, RequestID: errs.TableauRequestID(err)}
+			capture.Failure = &failure
+		}
+		if validationErr := validateLineageCapture(capture, workbookLUID); validationErr != nil {
+			return unavailableLineage(), false, "unavailable", []string{"Lineage capture was unavailable. The workbook download remains valid; retry after reviewing Metadata API access."}
+		}
+		if len(capture.Nodes) == 0 && capture.RootMetadataID == "" {
+			return unavailableLineage(), false, "unavailable", []string{"Lineage capture was unavailable. The workbook download remains valid; retry after reviewing Metadata API access."}
+		}
+		warnings := boundedLineageWarnings(capture.Warnings)
+		if len(warnings) == 0 {
+			warnings = []string{"Lineage capture was incomplete. The workbook download remains valid; confirmed graph evidence was retained, but counts are unavailable."}
+		}
+		capture.Warnings = warnings
+		return capture, false, "incomplete", warnings
 	}
 	capture.Direction = request.Direction
 	capture.Depth = request.Depth

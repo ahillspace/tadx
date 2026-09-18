@@ -43,7 +43,7 @@ func TestWorkbookDeletePreviewAndApplyThroughCLI(t *testing.T) {
 	options := app.Options{MutationsEnabled: false, ConfigPath: configPath, HTTPClient: server.Client()}
 
 	preview := runWorkbookDeleteCLI(t, options, "content", "workbook", "delete", "--environment", "production", "--id", "wb-1", "--preview")
-	for _, want := range []string{"mode: preview", "operation: workbook.delete", "luid: wb-1", "details: \"--full\""} {
+	for _, want := range []string{"mode: preview", "operation: workbook.delete", "luid: wb-1", "details: \"tadx --config ", " last --full\""} {
 		if !strings.Contains(preview, want) {
 			t.Fatalf("preview missing %q:\n%s", want, preview)
 		}

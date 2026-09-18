@@ -1,6 +1,10 @@
 package update
 
-import "strings"
+import (
+	"strings"
+
+	"github.com/ahillspace/tadx/internal/identity"
+)
 
 // ValidateInput checks caller-controlled arguments before local or remote setup.
 func ValidateInput(input Input) error {
@@ -19,8 +23,10 @@ func ValidateInput(input Input) error {
 	if input.Name != nil && strings.TrimSpace(*input.Name) == "" {
 		return usage("name", "workbook update name cannot be empty")
 	}
-	if input.OwnerLUID != nil && strings.TrimSpace(*input.OwnerLUID) == "" {
-		return usage("owner_id", "workbook update owner LUID cannot be empty")
+	if input.OwnerLUID != nil {
+		if err := identity.ValidateLUIDShape("owner", *input.OwnerLUID); err != nil {
+			return usage("owner_id", err.Error())
+		}
 	}
 	return nil
 }

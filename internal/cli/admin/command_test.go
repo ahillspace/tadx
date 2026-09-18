@@ -27,6 +27,7 @@ import (
 )
 
 type fake struct {
+	userInspect  userinspect.Input
 	rendered     int
 	userCreate   usercreate.Input
 	userPreview  bool
@@ -41,8 +42,26 @@ func (f *fake) Render(any) error { f.rendered++; return nil }
 func (f *fake) ListAdminUsers(context.Context, userlist.Input) (userlist.Output, error) {
 	return userlist.Output{}, nil
 }
-func (f *fake) InspectAdminUser(context.Context, userinspect.Input) (userinspect.Output, error) {
+func (f *fake) InspectAdminUser(_ context.Context, input userinspect.Input) (userinspect.Output, error) {
+	f.userInspect = input
 	return userinspect.Output{}, nil
+}
+
+func TestUserInspectUsernameAliasAndConflicts(t *testing.T) {
+	for _, tail := range [][]string{{"--username", "exact-login"}, {"--username", "exact-login", "--name", "exact-login"}, {"--username", "exact-login", "--id", "user-id"}} {
+		f := &fake{}
+		cmd := cli.New(deps(f, false))
+		cmd.SilenceUsage, cmd.SilenceErrors = true, true
+		cmd.SetArgs(append([]string{"user", "inspect"}, tail...))
+		err := cmd.ExecuteContext(t.Context())
+		if len(tail) == 2 {
+			if err != nil || f.userInspect.Selector.Username != "exact-login" || f.rendered != 1 {
+				t.Fatalf("input=%+v err=%v", f.userInspect, err)
+			}
+		} else if err == nil || f.rendered != 0 {
+			t.Fatalf("conflicting selectors executed: %v", tail)
+		}
+	}
 }
 func (f *fake) CreateAdminUser(_ context.Context, in usercreate.Input, preview bool) (usercreate.Output, error) {
 	f.userCreate = in

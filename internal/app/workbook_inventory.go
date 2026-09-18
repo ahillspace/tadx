@@ -41,7 +41,7 @@ func (c *remoteContentCommands) ListWorkbooks(ctx context.Context, input workboo
 		}
 		return output, err
 	}
-	filter, err := tableauworkbook.ListFilter(tableauworkbook.ListRequest{Name: input.Name, OwnerName: input.OwnerName, ProjectName: input.ProjectName, Tag: input.Tag})
+	filter, err := tableauworkbook.ListFilter(tableauworkbook.ListRequest{Name: input.Name, OwnerName: input.OwnerName, ProjectLUID: input.ProjectLUID, ProjectName: input.ProjectName, Tag: input.Tag})
 	if err != nil {
 		return workbooklist.Output{}, err
 	}
@@ -83,7 +83,7 @@ func (c *remoteContentCommands) ListWorkbooks(ctx context.Context, input workboo
 }
 
 func workbookListIsUnfiltered(input workbooklist.Input) bool {
-	return input.Name == "" && input.OwnerName == "" && input.ProjectName == "" && input.Tag == ""
+	return input.Name == "" && input.OwnerName == "" && input.ProjectLUID == "" && input.ProjectName == "" && input.Tag == ""
 }
 
 func (c *remoteContentCommands) InspectWorkbook(ctx context.Context, input workbookinspect.Input) (workbookinspect.Output, error) {
@@ -129,7 +129,7 @@ type workbookInventoryAdapter interface {
 type workbookListReader struct{ adapter workbookInventoryAdapter }
 
 func (r workbookListReader) ListWorkbooks(ctx context.Context, input workbooklist.PageRequest) (workbooklist.Page, error) {
-	page, err := r.adapter.ListWorkbooks(ctx, tableauworkbook.ListRequest{PageNumber: input.PageNumber, PageSize: input.PageSize, Name: input.Name, OwnerName: input.OwnerName, ProjectName: input.ProjectName, Tag: input.Tag})
+	page, err := r.adapter.ListWorkbooks(ctx, tableauworkbook.ListRequest{PageNumber: input.PageNumber, PageSize: input.PageSize, Name: input.Name, OwnerName: input.OwnerName, ProjectLUID: input.ProjectLUID, ProjectName: input.ProjectName, Tag: input.Tag})
 	items := make([]workbooklist.Workbook, len(page.Items))
 	for index, item := range page.Items {
 		items[index] = workbooklist.Workbook{LUID: item.LUID, Name: item.Name, ProjectLUID: item.ProjectLUID, ProjectPath: item.ProjectPath, ContentURL: item.ContentURL, UpdatedAt: item.UpdatedAt, Description: item.Description, OwnerLUID: item.OwnerLUID, CreatedAt: item.CreatedAt, Tags: append([]string(nil), item.Tags...)}

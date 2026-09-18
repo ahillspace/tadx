@@ -290,10 +290,11 @@ func resourceQueryFingerprint(query ResourceQuery) string {
 		LUID            string
 		Name            string
 		ProjectPath     string
+		ProjectLUID     string
 		ProjectName     string
 		ProjectSnapshot string
 		Limit           int
-	}{query.Environment, query.Site, query.Kind, query.LUID, query.Name, query.ProjectPath, query.ProjectName, query.projectSnapshot, query.Limit}
+	}{query.Environment, query.Site, query.Kind, query.LUID, query.Name, query.ProjectPath, query.ProjectLUID, query.ProjectName, query.projectSnapshot, query.Limit}
 	data, _ := json.Marshal(value)
 	digest := sha256.Sum256(data)
 	return base64.RawURLEncoding.EncodeToString(digest[:])
@@ -312,7 +313,7 @@ func resourceWhere(query ResourceQuery) (string, []any) {
 	for _, value := range []struct {
 		column string
 		value  string
-	}{{"luid", query.LUID}, {"name", query.Name}, {"project_path", query.ProjectPath}} {
+	}{{"luid", query.LUID}, {"name", query.Name}, {"project_path", query.ProjectPath}, {"project_luid", query.ProjectLUID}} {
 		if value.value != "" {
 			parts = append(parts, value.column+"=?")
 			args = append(args, value.value)

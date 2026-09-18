@@ -88,6 +88,20 @@ func TestRunValidatesCompleteSelectionBeforeAnyWork(t *testing.T) {
 	}
 }
 
+func TestValidateReportsNormalizedDuplicateRows(t *testing.T) {
+	err := contentbatch.Validate([]string{"wb-1", "  wb-1  "})
+	if err == nil || !strings.Contains(err.Error(), "batch item 2 duplicates batch item 1") || !strings.Contains(err.Error(), `"wb-1"`) {
+		t.Fatalf("error = %v", err)
+	}
+}
+
+func TestValidateReportsEmptyRow(t *testing.T) {
+	err := contentbatch.Validate([]string{"wb-1", "  "})
+	if err == nil || !strings.Contains(err.Error(), "batch item 2 selector must not be empty") {
+		t.Fatalf("error = %v", err)
+	}
+}
+
 func TestRunAllFailuresHaveFailedStatus(t *testing.T) {
 	out, err := contentbatch.Run(context.Background(), "datasource.publish", []string{"first", "second"}, func(context.Context, string) (string, error) { return "", errors.New("failed") })
 	if err == nil || out.Status != "failed" || out.Failed != 2 {

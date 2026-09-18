@@ -10,6 +10,8 @@ artifact:
   kind: flow
   name: Daily
   source_luid: flow-1
+  path: artifacts/flow/Daily
+  canonical_path: artifacts/flow/Daily/Daily.tflx
 warnings[1]: One bounded warning.
 details: "--full"
 help[1]: tadx content flow publish --artifact artifacts/flow/Daily

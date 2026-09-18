@@ -22,9 +22,7 @@ func (r sessionOverviewReader) ReadOverview(ctx context.Context) (sessionovervie
 		state.Configuration = "missing"
 		cfg = config.Config{Version: config.CurrentVersion}
 	} else if err != nil {
-		// Decoder and validation messages can contain arbitrary values from a malformed
-		// file, including accidentally pasted credentials. Do not echo them here.
-		return state, &errs.Error{ID: "session.overview.configuration", Kind: errs.KindOperation, Operation: "session.overview", Summary: "Local configuration could not be read or is invalid.", Retryable: errs.Bool(false), CorrectiveAction: "Check the selected configuration file's YAML, version, environment settings, and workspace registrations. No authentication was attempted."}
+		return state, &errs.Error{ID: "session.overview.configuration", Kind: errs.KindOperation, Operation: "session.overview", Summary: "Local configuration could not be read or is invalid.", Cause: err, Phase: errs.PhaseSetup, Outcome: errs.OutcomeNotAttempted, Retryable: errs.Bool(false), CorrectiveAction: "Correct the reported field in the selected CLI settings file. No authentication was attempted."}
 	}
 	state.Mutations, err = r.runtime.ReadMutationSetting(ctx)
 	if err != nil {

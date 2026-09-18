@@ -10,6 +10,7 @@ import (
 	datasourcepublish "github.com/ahillspace/tadx/actions/datasource/publish"
 	datasourcepull "github.com/ahillspace/tadx/actions/datasource/pull"
 	"github.com/ahillspace/tadx/internal/artifact"
+	"github.com/ahillspace/tadx/internal/contentbatch"
 	"github.com/ahillspace/tadx/internal/identity"
 	resourcedatasource "github.com/ahillspace/tadx/internal/resources/datasource"
 	resourcelineage "github.com/ahillspace/tadx/internal/resources/lineage"
@@ -61,6 +62,9 @@ func (c *remoteContentCommands) PublishDatasource(ctx context.Context, input dat
 		}
 		managed, err := artifact.Resolve(ctx, workspace.Root, artifact.Selector{Kind: "datasource", Path: input.ArtifactPath, LUID: input.ArtifactID, Name: input.ArtifactName})
 		if err != nil {
+			if _, ambiguous := errors.AsType[*artifact.AmbiguousSelectorError](err); ambiguous {
+				return datasourcepublish.Output{}, mapArtifactResolutionError("datasource.publish", workspace.Name, input.ArtifactID, err)
+			}
 			return datasourcepublish.Output{}, capabilitySetupError("datasource.publish.artifact", "datasource.publish", input.Environment, input.Site, "Datasource artifact resolution failed.", "Select one exact workspace-relative managed datasource artifact, then retry.", err)
 		}
 		absolutePath := filepath.Join(workspace.Root, filepath.FromSlash(managed.Path))
@@ -79,8 +83,22 @@ func (c *remoteContentCommands) PublishDatasource(ctx context.Context, input dat
 	}
 	input.Environment, input.Site = connection.environment.Alias, connection.environment.SiteContentURL
 	input.TargetResolved = true
-	adapter := datasourcePublishAdapter{datasources: connection.datasources, projects: connection.projects, changes: connection.datasourceChanges}
-	return datasourcepublish.New(reader, adapter, adapter).Execute(ctx, input, preview)
+	var lifecycle *publication
+	adapter := datasourcePublishAdapter{datasources: connection.datasources, projects: connection.projects, changes: connection.datasourceChanges, runtime: c.runtime, environment: input.Environment, sourcePath: input.ArtifactPath, lifecycle: &lifecycle}
+	if managed, ok := reader.(datasourceArtifactReader); ok {
+		adapter.sourcePath = managed.displayPath
+	}
+	action := datasourcepublish.New(reader, adapter, adapter)
+	out, err := action.Execute(ctx, input, preview)
+	if out.Result != nil && out.Result.Status != "" && lifecycle != nil {
+		var saveErr error
+		out.Result.ReceiptPath, saveErr = lifecycle.record(ctx, out.Result.JobID, out.Result.Status, out.Result.DatasourceLUID, out.Result.TableauRequestID, out.Result.Verification)
+		err = errors.Join(err, saveErr)
+	}
+	if err == nil && out.Result != nil && out.Result.Status == "pending" && lifecycle != nil {
+		contentbatch.DeferCompletion(ctx, func(ctx context.Context) (any, error) { return lifecycle.completeDatasource(ctx, action, out) })
+	}
+	return out, err
 }
 
 func (c *remoteContentCommands) DeleteDatasource(ctx context.Context, input datasourcedelete.Input, preview bool) (datasourcedelete.Output, error) {
@@ -122,7 +140,7 @@ func (r datasourcePullReader) CaptureLineage(ctx context.Context, input datasour
 	for index, edge := range graph.Edges {
 		edges[index] = datasourcepull.LineageEdge{FromMetadataID: edge.FromMetadataID, ToMetadataID: edge.ToMetadataID, Relationship: edge.Relationship}
 	}
-	return datasourcepull.Lineage{Complete: graph.Complete, Direction: graph.Direction, Depth: graph.Depth, Nodes: nodes, Edges: edges, Warnings: append([]string(nil), graph.Warnings...)}, err
+	return datasourcepull.Lineage{Complete: graph.Complete, Direction: graph.Direction, Depth: graph.Depth, Failure: graph.Failure, Nodes: nodes, Edges: edges, Warnings: append([]string(nil), graph.Warnings...)}, err
 }
 
 type datasourceArtifactWriter struct{ manager *artifact.DatasourceManager }
@@ -146,7 +164,7 @@ func (w datasourceArtifactWriter) WriteDatasource(ctx context.Context, input dat
 	result, err := w.manager.Pull(ctx, artifact.DatasourcePull{
 		Workspace: input.Workspace, Filename: input.Filename, Content: input.Content, Overwrite: input.Overwrite,
 		Metadata: artifact.DatasourceMetadata{Name: input.Name, TableauID: input.TableauID, SourceServerOrigin: input.ServerOrigin, SourceSiteLUID: input.SiteLUID, SourceEnvironment: input.Environment, SourceSite: input.Site, SourceProjectName: input.ProjectName, SourceProjectID: input.ProjectID},
-		Lineage:  artifact.LineageDocument{Complete: input.Lineage.Complete, Direction: direction, Depth: depth, Nodes: nodes, Edges: edges, Warnings: append([]string(nil), input.Lineage.Warnings...)},
+		Lineage:  artifact.LineageDocument{Complete: input.Lineage.Complete, Direction: direction, Depth: depth, Failure: artifactLineageFailure(input.Lineage.Failure), Nodes: nodes, Edges: edges, Warnings: append([]string(nil), input.Lineage.Warnings...)},
 	})
 	if err != nil {
 		return datasourcepull.ArtifactResult{}, err
@@ -187,9 +205,12 @@ func (r datasourceArtifactReader) ReadDatasource(ctx context.Context, path strin
 }
 
 type datasourcePublishAdapter struct {
-	datasources *resourcedatasource.Adapter
-	projects    *resourceproject.Adapter
-	changes     *resourcedatasource.MutationAdapter
+	datasources             *resourcedatasource.Adapter
+	projects                *resourceproject.Adapter
+	changes                 *resourcedatasource.MutationAdapter
+	runtime                 *runtimeDependencies
+	environment, sourcePath string
+	lifecycle               **publication
 }
 
 func (a datasourcePublishAdapter) ResolveProject(ctx context.Context, selector identity.Selector) (datasourcepublish.Project, error) {
@@ -207,6 +228,13 @@ func (a datasourcePublishAdapter) FindDatasources(ctx context.Context, name, pro
 }
 
 func (a datasourcePublishAdapter) ResolvePublishedDatasource(ctx context.Context, name, projectLUID string) (datasourcepublish.Datasource, error) {
+	if a.runtime != nil {
+		fresh, err := newRemoteContentCommands(a.runtime).connect(ctx, a.environment, true)
+		if err != nil {
+			return datasourcepublish.Datasource{}, err
+		}
+		a.datasources = fresh.datasources
+	}
 	item, err := a.datasources.ResolvePublishedDatasource(ctx, name, projectLUID)
 	return datasourcepublish.Datasource{LUID: item.LUID, Name: item.Name, ProjectLUID: item.ProjectLUID}, err
 }
@@ -216,7 +244,18 @@ func (a datasourcePublishAdapter) Prepare(ctx context.Context, input datasourcep
 	if err != nil {
 		return nil, err
 	}
-	prepared, err := a.changes.PrepareDatasource(ctx, tableaudatasource.PublishRequest{Name: input.Name, ProjectLUID: input.ProjectLUID, Filename: input.Filename, ContentPath: input.ContentPath, ContentSize: input.ContentSize, ExpectedFingerprint: input.ExpectedFingerprint, Mode: mode, ParentDataSourceURLs: append([]string(nil), input.ParentDataSourceURLs...), AsJob: input.AsJob})
+	request := tableaudatasource.PublishRequest{Name: input.Name, ProjectLUID: input.ProjectLUID, Filename: input.Filename, ContentPath: input.ContentPath, ContentSize: input.ContentSize, ExpectedFingerprint: input.ExpectedFingerprint, Mode: mode, ParentDataSourceURLs: append([]string(nil), input.ParentDataSourceURLs...), AsJob: input.AsJob}
+	if a.runtime != nil {
+		p, err := a.runtime.publication(ctx, a.environment, "datasource", a.sourcePath, input.ProjectLUID, input.Name)
+		if err != nil {
+			return nil, err
+		}
+		if a.lifecycle != nil {
+			*a.lifecycle = p
+		}
+		request.AsJob, request.Accepted = p.asJob, p.acceptDatasource
+	}
+	prepared, err := a.changes.PrepareDatasource(ctx, request)
 	if err != nil {
 		return nil, err
 	}
@@ -244,7 +283,7 @@ type preparedDatasourcePublish struct {
 
 func (p preparedDatasourcePublish) Commit(ctx context.Context) (datasourcepublish.Result, error) {
 	result, err := p.prepared.Commit(ctx)
-	return datasourcepublish.Result{Status: result.Status, DatasourceLUID: result.DatasourceLUID, DatasourceName: result.DatasourceName, ProjectLUID: result.ProjectLUID, JobID: result.JobID, TableauRequestID: result.TableauRequestID}, err
+	return datasourcepublish.Result{Status: result.Status, DatasourceLUID: result.DatasourceLUID, DatasourceName: result.DatasourceName, ProjectLUID: result.ProjectLUID, JobID: result.JobID, TableauRequestID: result.TableauRequestID, ReceiptPath: result.ReceiptPath}, err
 }
 
 type datasourceDeleteAdapter struct {

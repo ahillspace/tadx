@@ -45,7 +45,11 @@ func (a *Action) Execute(ctx context.Context, input Input) (Output, error) {
 	result, err := a.authenticator.Authenticate(ctx, target)
 	if err != nil {
 		retryable, correctiveAction := errs.CompleteRetryAdvice(err, "Verify the environment, site content URL, and PAT variable references.")
-		return Output{}, &errs.Error{ID: "auth.check.authenticate", Kind: errs.KindOperation, Operation: "auth.check", Environment: target.Environment, Site: target.SiteContentURL, Summary: "Authentication check failed.", Cause: err, Retryable: retryable, CorrectiveAction: correctiveAction, TableauRequestID: errs.TableauRequestID(err)}
+		out := Output{}
+		if result.CredentialSource != "" {
+			out = Output{Status: "authentication_failed", Environment: target.Environment, ServerURL: target.ServerURL, SiteContentURL: target.SiteContentURL, CredentialSource: result.CredentialSource}
+		}
+		return out, &errs.Error{ID: "auth.check.authenticate", Kind: errs.KindOperation, Operation: "auth.check", Environment: target.Environment, Site: target.SiteContentURL, Summary: "Authentication check failed.", Cause: err, Retryable: retryable, CorrectiveAction: correctiveAction, TableauRequestID: errs.TableauRequestID(err)}
 	}
-	return Output{Status: "authenticated", Environment: target.Environment, ServerURL: target.ServerURL, SiteContentURL: target.SiteContentURL, SiteLUID: result.SiteLUID, UserLUID: result.UserLUID, Help: []string{commandhint.Environment(target.Environment, "search", "--type", "content")}}, nil
+	return Output{Status: "authenticated", Environment: target.Environment, ServerURL: target.ServerURL, SiteContentURL: target.SiteContentURL, SiteLUID: result.SiteLUID, UserLUID: result.UserLUID, CredentialSource: result.CredentialSource, Help: []string{commandhint.Environment(target.Environment, "search", "--type", "content")}}, nil
 }

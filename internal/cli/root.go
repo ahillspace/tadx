@@ -27,6 +27,7 @@ import (
 	contentcli "github.com/ahillspace/tadx/internal/cli/content"
 	doctorcli "github.com/ahillspace/tadx/internal/cli/doctor"
 	envcli "github.com/ahillspace/tadx/internal/cli/env"
+	jobcli "github.com/ahillspace/tadx/internal/cli/job"
 	lastcli "github.com/ahillspace/tadx/internal/cli/last"
 	mutationcli "github.com/ahillspace/tadx/internal/cli/mutation"
 	pulsecli "github.com/ahillspace/tadx/internal/cli/pulse"
@@ -119,6 +120,7 @@ type Dependencies struct {
 	MutationStatus        mutationcli.Status
 	MutationSetter        mutationcli.Setter
 	LastReader            lastcli.Reader
+	Jobs                  *jobcli.Dependencies
 	ListUse               string
 	ListShort             string
 	GetUse                string
@@ -166,6 +168,30 @@ func NewRoot(deps Dependencies) *cobra.Command {
 	return newRoot(deps, true)
 }
 
+// RootVersionRequested reports whether args select the root-local installed
+// version alias, without treating a value of another flag as the alias.
+func RootVersionRequested(args []string) bool {
+	found := false
+	for index := 0; index < len(args); index++ {
+		arg := args[index]
+		if arg == "--" || !strings.HasPrefix(arg, "-") {
+			return false
+		}
+		if arg == "--version" || arg == "-v" {
+			found = true
+			continue
+		}
+		if strings.HasPrefix(arg, "--version=") || strings.HasPrefix(arg, "-v=") {
+			found = strings.TrimPrefix(strings.TrimPrefix(arg, "--version="), "-v=") == "true"
+			continue
+		}
+		if arg == "--config" && index+1 < len(args) {
+			index++
+		}
+	}
+	return found
+}
+
 func newRoot(deps Dependencies, withBatches bool) *cobra.Command {
 	renderOptions := deps.RenderOptions
 	if renderOptions == nil {
@@ -185,6 +211,7 @@ Run tadx update to refresh the CLI and bundled agent Guidance together; --check 
 Use category help, such as tadx admin group --help, for all commands, flags, and examples in that category, including nested operations.
 Use tadx capability list and tadx capability get for inventory and availability diagnostics, not command syntax.
 TADX returns compact TOON by default. Use --full to show expanded bounded details for the same operation.
+Run tadx --version for installed version information only; it does not check releases, update, authenticate, or contact Tableau.
 Read commands query Tableau by default. Pass --cache on supported reads to use local cache data without contacting Tableau.
 Use --env as a short alias for --environment on commands that select an environment.
 
@@ -198,6 +225,8 @@ Other connected tools remain independent; TADX does not configure, select, proxy
 		SilenceErrors: true,
 		SilenceUsage:  true,
 	}
+	var versionCommand *cobra.Command
+	var showVersion bool
 	if deps.SessionOverview != nil {
 		root.Annotations = map[string]string{CapabilityAnnotation: "session.overview"}
 		root.Args = cobra.NoArgs
@@ -232,6 +261,11 @@ Other connected tools remain independent; TADX does not configure, select, proxy
 	}
 	if deps.LastReader != nil {
 		root.AddCommand(lastcli.New(deps.LastReader, deps.Renderer))
+	}
+	if deps.Jobs != nil {
+		jobs := *deps.Jobs
+		jobs.Renderer = deps.Renderer
+		root.AddCommand(jobcli.New(jobs))
 	}
 	if deps.MutationStatus != nil && deps.MutationSetter != nil {
 		root.AddCommand(mutationcli.New(deps.MutationStatus, deps.MutationSetter, deps.Renderer))
@@ -282,7 +316,8 @@ Other connected tools remain independent; TADX does not configure, select, proxy
 	if deps.Version != nil {
 		version := *deps.Version
 		version.Renderer = deps.Renderer
-		root.AddCommand(versioncli.New(version))
+		versionCommand = versioncli.New(version)
+		root.AddCommand(versionCommand)
 	}
 	if deps.DoctorRunner != nil {
 		root.AddCommand(doctorcli.New(doctorcli.Dependencies{Runner: deps.DoctorRunner, Renderer: deps.Renderer, Use: deps.DoctorUse, Short: deps.DoctorShort}))
@@ -339,6 +374,19 @@ Other connected tools remain independent; TADX does not configure, select, proxy
 		root.AddCommand(contentcli.New(contentDependencies))
 	}
 	root.AddCommand(NewCompletion(root))
+	if versionCommand != nil {
+		root.Flags().BoolVar(&showVersion, "version", false, "show the installed version without release checks")
+		originalRunE := root.RunE
+		root.RunE = func(command *cobra.Command, args []string) error {
+			if showVersion {
+				return versionCommand.RunE(command, nil)
+			}
+			if originalRunE != nil {
+				return originalRunE(command, args)
+			}
+			return command.Help()
+		}
+	}
 	rejectGroupingArguments(root)
 	if withBatches {
 		enableBatches(root, deps)

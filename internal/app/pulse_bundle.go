@@ -25,6 +25,9 @@ func (c *pulseCommands) PublishPulseDefinition(ctx context.Context, input defini
 	}
 	managed, err := artifact.Resolve(ctx, workspace.Root, artifact.Selector{Kind: "pulse-definition", Path: input.Artifact, LUID: input.ArtifactID, Name: input.ArtifactName})
 	if err != nil {
+		if _, ambiguous := errors.AsType[*artifact.AmbiguousSelectorError](err); ambiguous {
+			return definitionpublish.Output{}, mapArtifactResolutionError("pulse.definition.publish", workspace.Name, input.ArtifactID, err)
+		}
 		return definitionpublish.Output{}, capabilitySetupError("pulse.definition.publish.artifact", "pulse.definition.publish", input.Environment, "", "Pulse bundle artifact resolution failed.", "Select an exact workspace-relative Pulse artifact.", err)
 	}
 	bundle, err := artifact.ReadPulseBundle(ctx, filepath.Join(workspace.Root, filepath.FromSlash(managed.Path)))

@@ -26,6 +26,7 @@ Shared vocabulary administration does not itself require Data Management.
 The provider does not silently reinterpret permission or licensing failures as empty results.
 
 Reading an asset's labels uses POST `/labels` with a content list; it is not a mutation.
+Documented native content-type spellings are normalized to stable CLI names before identity checks, while unknown types remain mismatches.
 One label attachment uses its own LUID, distinct from the target asset LUID.
 Shared values/categories use exact names, not invented LUIDs.
 Category inspection uses exact matching within the bounded category list because no single-category GET is documented.
@@ -79,4 +80,5 @@ HTTP and CLI integration tests verify explicit-empty encoding, omission preserva
 Run `go test ./actions/catalog/column/update`, `go test ./internal/cli/catalog`, and `go test ./internal/tableau/metadataassets` for isolated fixtures.
 Run the same three packages with `-race` for race coverage.
 Relevant tests cover request XML, omitted properties, read-only label POST, exact attachment and vocabulary addressing, GraphQL parent filtering, malformed coverage, Metadata-only identities and independent upstream-column pagination.
+The CLI catalog fixture also confirms that compact table receipts retain available schema and qualified-name context without issuing an extra read.
 Live tests remain opt-in and outside the standard test suite.

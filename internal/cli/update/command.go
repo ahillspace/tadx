@@ -38,7 +38,7 @@ func New(deps Dependencies) *cobra.Command {
 	}, RunE: func(cmd *cobra.Command, _ []string) error {
 		out, err := deps.Updater.Execute(cmd.Context(), in)
 		if err != nil {
-			return err
+			return clierr.WithOutput(out, err)
 		}
 		return deps.Renderer.Render(out)
 	}}

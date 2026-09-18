@@ -46,5 +46,19 @@ func (a *Action) Execute(ctx context.Context, input Input) (Output, error) {
 		state = "ready"
 		source = "os_credential_store"
 	}
-	return Output{Status: state, Environment: target.Environment, Default: target.Default, ServerURL: target.ServerURL, SiteContentURL: target.SiteContentURL, APIVersion: target.APIVersion, AuthType: target.AuthType, PATNameVariable: target.PATNameVariable, PATSecretVariable: target.PATSecretVariable, PATNamePresent: namePresent, PATSecretPresent: secretPresent, StoredCredentialReferencePresent: target.StoredCredentialReferencePresent, CredentialSource: source, DefaultWorkspace: target.DefaultWorkspace, Help: []string{commandhint.Environment(target.Environment, "auth", "check")}}, nil
+	var missing []string
+	help := []string{"Optional live verification: " + commandhint.Environment(target.Environment, "auth", "check")}
+	if state == "incomplete" {
+		if !namePresent {
+			missing = append(missing, target.PATNameVariable)
+		}
+		if !secretPresent {
+			missing = append(missing, target.PATSecretVariable)
+		}
+		help = []string{"Set the missing configured PAT variables. Variable-reference flags take names, not secret values."}
+		if !namePresent && !secretPresent {
+			help = append(help, commandhint.Environment(target.Environment, "auth", "login"))
+		}
+	}
+	return Output{Status: state, Verification: "local_readiness_only", MissingVariables: missing, Environment: target.Environment, Default: target.Default, ServerURL: target.ServerURL, SiteContentURL: target.SiteContentURL, APIVersion: target.APIVersion, AuthType: target.AuthType, PATNameVariable: target.PATNameVariable, PATSecretVariable: target.PATSecretVariable, PATNamePresent: namePresent, PATSecretPresent: secretPresent, StoredCredentialReferencePresent: target.StoredCredentialReferencePresent, CredentialSource: source, DefaultWorkspace: target.DefaultWorkspace, Help: help}, nil
 }

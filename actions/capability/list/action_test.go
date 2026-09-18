@@ -3,6 +3,7 @@ package list_test
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"os"
 	"reflect"
@@ -152,5 +153,82 @@ func TestOutputGoldenIsBoundedAndUsesExactIdentity(t *testing.T) {
 	}
 	if strings.Contains(rendered.String(), "<id>") || !strings.Contains(rendered.String(), "capability get content.datasource.list") {
 		t.Fatalf("help must use a returned exact identity: %s", rendered.String())
+	}
+}
+
+func TestFullOutputRetainsGetContractForEveryReturnedRow(t *testing.T) {
+	result, err := capabilitylist.New(source{items: []capabilitylist.Capability{
+		{
+			ID: "content.workbook.publish", Domain: "content", Resource: "workbook", Verb: "publish",
+			Surface: "tadx content workbook publish", Outcome: "Publish a workbook.", OperationType: "deliver",
+			Owner: "cli", Disposition: "ship", EvidenceLevel: "local-contract", VerificationReadiness: "ready",
+			ImplementationState: "implemented", Command: "content workbook publish", Selectors: []string{"Workbook LUID; target"},
+			Availability: "Cloud / Server", SafetyGuard: "Preview first", ArtifactEffect: "Remote workbook",
+			UpstreamOperation: "POST /workbooks", Evidence: "local test", Validation: "identity checked",
+			RemoteMutation: true, SupportsPreview: true,
+		},
+	}}).Execute(context.Background(), capabilitylist.Input{Limit: 1})
+	if err != nil {
+		t.Fatal(err)
+	}
+	full, err := json.Marshal(result.FullOutput())
+	if err != nil {
+		t.Fatal(err)
+	}
+	var document struct {
+		Capabilities []capabilitylist.Capability `json:"capabilities"`
+	}
+	if err := json.Unmarshal(full, &document); err != nil {
+		t.Fatal(err)
+	}
+	if len(document.Capabilities) != 1 || document.Capabilities[0].Selectors[0] != "Workbook LUID; target" || document.Capabilities[0].SafetyGuard != "Preview first" {
+		t.Fatalf("full capabilities = %#v", document.Capabilities)
+	}
+	compact, err := json.Marshal(result.CompactOutput())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(compact), "selectors") || !strings.Contains(string(compact), `"state":"implemented"`) {
+		t.Fatalf("compact projection leaked or omitted fields: %s", compact)
+	}
+}
+
+func TestContinuationPreservesFiltersAndPresentation(t *testing.T) {
+	items := []capabilitylist.Capability{
+		{ID: "content.workbook.first", Domain: "content", Resource: "workbook", Owner: "cli", Availability: "Cloud"},
+		{ID: "content.workbook.second", Domain: "content", Resource: "workbook", Owner: "cli", Availability: "Cloud"},
+	}
+	result, err := capabilitylist.New(source{items: items}).Execute(context.Background(), capabilitylist.Input{
+		Domain: "content", Resource: "workbook", Owner: "cli", Product: "cloud", Limit: 1, Full: true, JSON: true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.NextCommand == "" || !strings.Contains(result.NextCommand, "--cursor 1") || !strings.Contains(result.NextCommand, "--limit 1") || !strings.Contains(result.NextCommand, "--full") || !strings.Contains(result.NextCommand, "--json") {
+		t.Fatalf("next_command = %q", result.NextCommand)
+	}
+	if len(result.Help) != 2 || result.Help[1] != "When more results are needed, use next_command." {
+		t.Fatalf("help = %#v", result.Help)
+	}
+}
+
+func TestCountsKeepCombinedPageAndOutOfScopeRowsDistinct(t *testing.T) {
+	result, err := capabilitylist.New(source{items: []capabilitylist.Capability{
+		{ID: "a.local", Disposition: "ship"},
+		{ID: "b.external", Disposition: "delegated"},
+	}}).Execute(context.Background(), capabilitylist.Input{Limit: 10})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Page.Returned != 2 || result.Page.Total != 2 || result.Counts.Returned != 2 || result.Counts.Matched != 2 || result.Counts.OutOfScope != 1 {
+		t.Fatalf("page/counts = %#v / %#v", result.Page, result.Counts)
+	}
+	compact := result.CompactOutput()
+	encoded, err := json.Marshal(compact)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(encoded), `"out_of_scope"`) || strings.Contains(string(encoded), `"id":"b.external","owner"`) {
+		t.Fatalf("compact projection = %s", encoded)
 	}
 }

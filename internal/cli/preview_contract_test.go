@@ -43,6 +43,7 @@ import (
 	a_flow_publish "github.com/ahillspace/tadx/actions/flow/publish"
 	a_flow_pull "github.com/ahillspace/tadx/actions/flow/pull"
 	a_flow_update "github.com/ahillspace/tadx/actions/flow/update"
+	jobcancel "github.com/ahillspace/tadx/actions/job/cancel"
 	a_lineage_pull "github.com/ahillspace/tadx/actions/lineage/pull"
 	a_project_create "github.com/ahillspace/tadx/actions/project/create"
 	a_project_delete "github.com/ahillspace/tadx/actions/project/delete"
@@ -74,6 +75,7 @@ import (
 	admincli "github.com/ahillspace/tadx/internal/cli/admin"
 	catalogcli "github.com/ahillspace/tadx/internal/cli/catalog"
 	contentcli "github.com/ahillspace/tadx/internal/cli/content"
+	jobcli "github.com/ahillspace/tadx/internal/cli/job"
 	pulsecli "github.com/ahillspace/tadx/internal/cli/pulse"
 	"github.com/ahillspace/tadx/internal/errs"
 	"strings"
@@ -130,6 +132,13 @@ func (s admin_labelcategory_deleteSpy) Execute(_ context.Context, _ admin_labelc
 }
 
 type previewActionSpy struct{ calls, writes int }
+
+type jobCancelPreviewSpy struct{ spy *previewActionSpy }
+
+func (s jobCancelPreviewSpy) Execute(_ context.Context, input jobcancel.Input) (jobcancel.Output, error) {
+	s.spy.record(input.Preview)
+	return jobcancel.Output{}, nil
+}
 
 func (s *previewActionSpy) UpdateCatalogDatabase(_ context.Context, _ a_catalog_database_update.Input, preview bool) (a_catalog_database_update.Output, error) {
 	s.record(preview)
@@ -366,6 +375,7 @@ func (registryPreviewPolicy) IsRemoteMutation(id string) bool {
 }
 func previewDependencies(spy *previewActionSpy) cli.Dependencies {
 	return cli.Dependencies{MutationPolicy: registryPreviewPolicy{}, Renderer: spy, WorkbookPublisher: spy, WorkbookPuller: &puller{},
+		Jobs:          &jobcli.Dependencies{Canceller: jobCancelPreviewSpy{spy: spy}},
 		ContentLabels: &contentcli.LabelDependencies{Renderer: spy, Updater: contentlabel_updateSpy{spy}, Deleter: contentlabel_deleteSpy{spy}},
 		AdminLabels:   &admincli.LabelDependencies{Renderer: spy, ValueUpdater: admin_labelvalue_updateSpy{spy}, ValueDeleter: admin_labelvalue_deleteSpy{spy}, CategoryCreator: admin_labelcategory_createSpy{spy}, CategoryUpdater: admin_labelcategory_updateSpy{spy}, CategoryDeleter: admin_labelcategory_deleteSpy{spy}},
 		Catalog:       &catalogcli.Dependencies{Renderer: spy, DatabaseUpdater: spy, TableUpdater: spy, ColumnUpdater: spy},
@@ -480,6 +490,7 @@ func TestEveryRemoteMutationDispatchesPreviewWithoutWrites(t *testing.T) {
 		"workbook.move":             "--id book --destination-project-id destination",
 		"workbook.publish":          "--workspace local --artifact artifacts/workbook/Book--id --project-id destination",
 		"workbook.update":           "--id book --owner-id owner",
+		"job.cancel":                "--id job",
 	}
 	covered := 0
 	for _, definition := range capability.All() {

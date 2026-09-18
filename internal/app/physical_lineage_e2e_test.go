@@ -121,3 +121,122 @@ func TestPhysicalFlowLineageThroughCLIAndAutomaticPull(t *testing.T) {
 		t.Fatalf("lineage made %d remote mutations", mutations.Load())
 	}
 }
+
+// Exercise the user-visible partial result: a root and one validated relation
+// are retained when a later relationship is denied by the Metadata API.
+func TestPartialFlowLineageThroughCLIAndArtifact(t *testing.T) {
+	base, mutations := newGroupOneTableauServer(t)
+	defer base.Close()
+	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/metadata/graphql" {
+			base.Config.Handler.ServeHTTP(w, r)
+			return
+		}
+		var body struct {
+			Query string `json:"query"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Errorf("decode lineage query: %v", err)
+			http.Error(w, "bad request", http.StatusBadRequest)
+			return
+		}
+		root := map[string]any{"id": "flow-meta", "luid": "flow-1", "name": "Daily Prep"}
+		field := ""
+		for _, candidate := range []string{"upstreamDatasourcesConnection", "upstreamLinkedFlowsConnection", "upstreamDatabasesConnection"} {
+			if strings.Contains(body.Query, candidate) {
+				field = candidate
+				break
+			}
+		}
+		if field == "upstreamDatabasesConnection" {
+			w.Header().Set("Content-Type", "application/json")
+			w.Header().Set("X-Tableau-Request-Id", "partial-lineage-database-request")
+			if err := json.NewEncoder(w).Encode(map[string]any{"errors": []any{map[string]any{
+				"message": "database relationship denied", "extensions": map[string]any{"code": "ACCESS_DENIED"},
+			}}}); err != nil {
+				t.Error(err)
+			}
+			return
+		}
+		if field == "upstreamDatasourcesConnection" {
+			root[field] = map[string]any{
+				"totalCount": 1,
+				"pageInfo":   map[string]any{"hasNextPage": false, "endCursor": nil},
+				"nodes":      []any{map[string]any{"id": "datasource-meta", "luid": "datasource-rest", "name": "Sales"}},
+			}
+		} else if field != "" {
+			root[field] = map[string]any{
+				"totalCount": 0,
+				"pageInfo":   map[string]any{"hasNextPage": false, "endCursor": nil},
+				"nodes":      []any{},
+			}
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.Header().Set("X-Tableau-Request-Id", "partial-lineage-request")
+		if err := json.NewEncoder(w).Encode(map[string]any{"data": map[string]any{"flowsConnection": map[string]any{
+			"totalCount": 1,
+			"nodes":      []any{root},
+			"pageInfo":   map[string]any{"hasNextPage": false, "endCursor": nil},
+		}}}); err != nil {
+			t.Error(err)
+		}
+	}))
+	defer server.Close()
+	config := writePhaseOneConfigWithSite(t, server.URL, "team-site")
+	workspace := createNamedWorkspace(t, config, "partial-lineage")
+	t.Setenv("PROD_PAT_NAME", "fixture-name")
+	t.Setenv("PROD_PAT_SECRET", "fixture-secret")
+	options := app.Options{ConfigPath: config, HTTPClient: server.Client()}
+	args := []string{"catalog", "lineage", "pull", "--workspace", "partial-lineage", "--kind", "flow", "--id", "flow-1", "--direction", "upstream"}
+	compact := runGroupOneCLI(t, options, args...)
+	if !strings.Contains(compact, "complete: false") || !strings.Contains(compact, "lineage_path:") || strings.Contains(compact, "node_count:") || strings.Contains(compact, "edge_count:") {
+		t.Fatalf("partial compact lineage = %s", compact)
+	}
+	full := runGroupOneCLI(t, options, append(args, "--full")...)
+	for _, want := range []string{"complete: false", "datasource-meta", "upstreamDatabasesConnection", "partial-lineage-database-request", "provider: tableau-metadata", "root_rest_luid: flow-1"} {
+		if !strings.Contains(full, want) {
+			t.Fatalf("partial full lineage missing %q:\n%s", want, full)
+		}
+	}
+	if strings.Contains(full, "node_count:") || strings.Contains(full, "edge_count:") {
+		t.Fatalf("partial full lineage claimed unavailable counts:\n%s", full)
+	}
+	graphs := 0
+	err := filepath.WalkDir(filepath.Join(workspace, "artifacts"), func(path string, entry os.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+		if entry.IsDir() || entry.Name() != "lineage.json" {
+			return nil
+		}
+		data, err := os.ReadFile(path)
+		if err != nil {
+			return err
+		}
+		var graph artifact.LineageDocument
+		if err := json.Unmarshal(data, &graph); err != nil {
+			return err
+		}
+		if graph.Complete || len(graph.Nodes) != 2 || len(graph.Edges) != 1 || graph.Failure == nil || graph.Failure.Relation != "upstreamDatabasesConnection" || graph.Failure.RequestID != "partial-lineage-database-request" {
+			t.Fatalf("persisted partial lineage = %#v", graph)
+		}
+		seen := map[string]bool{}
+		for _, node := range graph.Nodes {
+			seen[node.MetadataID] = true
+		}
+		if !seen["flow-meta"] || !seen["datasource-meta"] {
+			t.Fatalf("persisted partial lineage lost validated identities = %#v", graph.Nodes)
+		}
+		graphs++
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if graphs != 1 {
+		t.Fatalf("persisted %d lineage graphs, want one", graphs)
+	}
+	if mutations.Load() != 0 {
+		t.Fatalf("lineage made %d remote mutations", mutations.Load())
+	}
+}

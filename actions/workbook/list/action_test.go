@@ -52,11 +52,11 @@ func TestFullOutputBoundsTagsPerWorkbook(t *testing.T) {
 
 func TestActionForwardsWorkbookFiltersAndRequestID(t *testing.T) {
 	r := &reader{page: workbooklist.Page{Number: 1, Size: 25, Total: 1, Workbooks: []workbooklist.Workbook{{LUID: "wb-1"}}, RequestID: "request-1"}}
-	output, err := workbooklist.New(r).Execute(context.Background(), workbooklist.Input{Environment: "dev", Site: "site-a", Name: "Finance", OwnerName: "Analyst", ProjectName: "Ops", Tag: "quarterly"})
+	output, err := workbooklist.New(r).Execute(context.Background(), workbooklist.Input{Environment: "dev", Site: "site-a", Name: "Finance", OwnerName: "Analyst", ProjectLUID: "project-1", ProjectName: "Ops", Tag: "quarterly"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if r.input.PageNumber != 1 || r.input.PageSize != 25 || r.input.Name != "Finance" || r.input.OwnerName != "Analyst" || r.input.ProjectName != "Ops" || r.input.Tag != "quarterly" {
+	if r.input.PageNumber != 1 || r.input.PageSize != 25 || r.input.Name != "Finance" || r.input.OwnerName != "Analyst" || r.input.ProjectLUID != "project-1" || r.input.ProjectName != "Ops" || r.input.Tag != "quarterly" {
 		t.Fatalf("request = %#v", r.input)
 	}
 	if output.RequestID != "request-1" || output.Page.Returned != 1 || output.Page.Limit != 25 {
@@ -67,7 +67,7 @@ func TestActionForwardsWorkbookFiltersAndRequestID(t *testing.T) {
 func TestActionCursorIsBoundToEveryWorkbookFilterAndTarget(t *testing.T) {
 	firstReader := &reader{page: workbooklist.Page{Number: 1, Size: 2, Total: 3, Workbooks: make([]workbooklist.Workbook, 2)}}
 	first, err := workbooklist.New(firstReader).Execute(context.Background(), workbooklist.Input{
-		Environment: "dev", Site: "site-a", Limit: 2, Name: "Private workbook", OwnerName: "Private owner",
+		Environment: "dev", Site: "site-a", Limit: 2, Name: "Private workbook", OwnerName: "Private owner", ProjectLUID: "project-1",
 		ProjectName: "Private project", Tag: "Private tag",
 	})
 	if err != nil {
@@ -90,12 +90,13 @@ func TestActionCursorIsBoundToEveryWorkbookFilterAndTarget(t *testing.T) {
 		{name: "site", mutate: func(input *workbooklist.Input) { input.Site = "site-b" }},
 		{name: "name", mutate: func(input *workbooklist.Input) { input.Name = "Other" }},
 		{name: "owner", mutate: func(input *workbooklist.Input) { input.OwnerName = "Other" }},
+		{name: "project LUID", mutate: func(input *workbooklist.Input) { input.ProjectLUID = "project-2" }},
 		{name: "project name", mutate: func(input *workbooklist.Input) { input.ProjectName = "Other" }},
 		{name: "tag", mutate: func(input *workbooklist.Input) { input.Tag = "Other" }},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			input := workbooklist.Input{Environment: "dev", Site: "site-a", Cursor: first.Page.NextCursor, Name: "Private workbook", OwnerName: "Private owner", ProjectName: "Private project", Tag: "Private tag"}
+			input := workbooklist.Input{Environment: "dev", Site: "site-a", Cursor: first.Page.NextCursor, Name: "Private workbook", OwnerName: "Private owner", ProjectLUID: "project-1", ProjectName: "Private project", Tag: "Private tag"}
 			test.mutate(&input)
 			continuationReader := &reader{}
 			_, err := workbooklist.New(continuationReader).Execute(context.Background(), input)

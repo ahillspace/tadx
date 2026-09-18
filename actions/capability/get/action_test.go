@@ -3,6 +3,7 @@ package get_test
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"os"
 	"testing"
@@ -103,5 +104,32 @@ func TestOutputGoldenIncludesExecutionGuidance(t *testing.T) {
 	wantText := string(want)
 	if rendered.String() != wantText {
 		t.Fatalf("golden mismatch\nwant:\n%s\ngot:\n%s", want, rendered.String())
+	}
+}
+
+func TestFullOutputRetainsDelegatedContract(t *testing.T) {
+	item := capabilityget.Capability{
+		ID: "pulse.metric.values", Domain: "pulse", Resource: "metric", Verb: "values",
+		Surface: "Tableau MCP", Outcome: "Read metric values.", OperationType: "inspect", Owner: "tableau-mcp",
+		Disposition: "delegated", ImplementationState: "external/delegated", Command: "",
+		Selectors: []string{"Metric LUID"}, Availability: "Tableau Cloud", SafetyGuard: "Use MCP", Evidence: "contract",
+	}
+	result, err := capabilityget.New(source{item: item, ok: true}).Execute(context.Background(), capabilityget.Input{ID: item.ID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	full, err := json.Marshal(result.FullOutput())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Contains(full, []byte(`"disposition":"delegated"`)) || !bytes.Contains(full, []byte(`"selectors":["Metric LUID"]`)) {
+		t.Fatalf("full delegated output = %s", full)
+	}
+	compact, err := json.Marshal(result.CompactOutput())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if bytes.Contains(compact, []byte(`"disposition":"delegated"`)) || !bytes.Contains(compact, []byte(`"disposition":"Out of scope"`)) {
+		t.Fatalf("compact delegated output = %s", compact)
 	}
 }

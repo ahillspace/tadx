@@ -4,6 +4,7 @@ package delete
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 
 	"github.com/ahillspace/tadx/internal/errs"
@@ -35,7 +36,7 @@ type Plan struct {
 type Result struct {
 	Status           string `json:"status"`
 	ResourceLUID     string `json:"resource_luid"`
-	Rule             Rule   `json:"rule"`
+	Rule             *Rule  `json:"rule,omitempty"`
 	TableauRequestID string `json:"tableau_request_id,omitempty"`
 }
 type Output struct {
@@ -135,7 +136,7 @@ func (a *Action) Execute(ctx context.Context, in Input, preview bool) (Output, e
 		return Output{}, failure(in, "target_changed", errs.KindOperation, "Permission rule changed during revalidation.", "Inspect the exact rule and run a new preview before retrying.")
 	}
 	if change == "none" {
-		out.Result = &Result{Status: "unchanged", ResourceLUID: in.ResourceLUID, Rule: out.Plan.Target}
+		out.Result = &Result{Status: "unchanged", ResourceLUID: in.ResourceLUID}
 		return out, nil
 	}
 	result, err := a.writer.DeletePermission(ctx, in)
@@ -153,9 +154,30 @@ func (a *Action) Execute(ctx context.Context, in Input, preview bool) (Output, e
 		e.TableauRequestID = result.TableauRequestID
 		return Output{}, e
 	}
-	result.Rule = out.Plan.Target
 	out.Result = &result
+	observed, err := a.reader.GetPermission(ctx, in)
+	if err != nil {
+		return out, confirmationFailure(in, result, err)
+	}
+	if err := validateSnapshot(in, observed); err != nil {
+		return out, confirmationFailure(in, result, err)
+	}
+	result.Rule = observedRule(in, observed.Mode)
+	if observed.Mode != "" {
+		return out, confirmationFailure(in, result, fmt.Errorf("post-write permission read still returned mode %q", observed.Mode))
+	}
 	return out, nil
+}
+
+func observedRule(in Input, mode string) *Rule {
+	if mode == "" {
+		return nil
+	}
+	return &Rule{ResourceKind: in.ResourceKind, ResourceLUID: in.ResourceLUID, DefaultFor: in.DefaultFor, PrincipalType: in.PrincipalType, PrincipalLUID: in.PrincipalLUID, Capability: in.Capability, Mode: mode}
+}
+
+func confirmationFailure(in Input, result Result, cause error) *errs.Error {
+	return &errs.Error{ID: operation + ".verification_failed", Kind: errs.KindOperation, Operation: operation, Environment: in.Environment, Site: in.Site, Resource: in.ResourceLUID, Summary: "The permission delete was acknowledged, but its exact absence could not be confirmed.", Cause: cause, Retryable: errs.Bool(false), CorrectiveAction: "Inspect the exact permission rule before retrying; do not repeat the acknowledged delete automatically.", TableauRequestID: result.TableauRequestID, Phase: errs.PhaseVerification, Outcome: errs.OutcomeConfirmed}
 }
 func validateSnapshot(in Input, s Snapshot) error {
 	expectedSource := "direct"

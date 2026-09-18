@@ -68,7 +68,7 @@ func (a *Action) Plan(ctx context.Context, input Input) (Plan, error) {
 	references, err = a.validator.ResolveDefinitionFields(ctx, references)
 	if err != nil {
 		retryable, corrective := errs.CompleteRetryAdvice(err, "Inspect current datasource fields, then review a new definition preview.")
-		return Plan{}, &errs.Error{ID: "pulse.definition.create.fields", Kind: errs.KindOperation, Operation: "pulse.definition.create", Environment: input.Environment, Site: input.Site, Summary: "Pulse definition field validation failed.", Cause: err, Retryable: retryable, CorrectiveAction: corrective, TableauRequestID: errs.TableauRequestID(err)}
+		return Plan{}, &errs.Error{ID: "pulse.definition.create.fields", Kind: errs.KindOperation, Operation: "pulse.definition.create", Environment: input.Environment, Site: input.Site, Summary: "Pulse definition field validation failed.", Cause: err, Retryable: retryable, CorrectiveAction: corrective, TableauRequestID: errs.TableauRequestID(err), Phase: errs.PhaseVerification, Outcome: errs.OutcomeNotAttempted}
 	}
 	request.Specification.BasicSpecification.Measure.Field = references.MeasureField
 	request.Specification.BasicSpecification.TimeDimension.Field = references.TimeDimension
@@ -112,7 +112,7 @@ func (a *Action) Apply(ctx context.Context, input Input, plan Plan) (CreateResul
 		AllowedDimensions: append([]string(nil), plan.Request.ExtensionOptions.AllowedDimensions...),
 	}
 	if err := a.validator.ValidateDefinitionFields(ctx, references); err != nil {
-		return CreateResult{}, &errs.Error{ID: "pulse.definition.create.target_changed", Kind: errs.KindOperation, Operation: "pulse.definition.create", Environment: input.Environment, Site: input.Site, Summary: "Pulse definition field state changed during revalidation.", Cause: err, Retryable: errs.Bool(false), CorrectiveAction: "Inspect current datasource fields, then review a new definition preview.", TableauRequestID: errs.TableauRequestID(err)}
+		return CreateResult{}, &errs.Error{ID: "pulse.definition.create.target_changed", Kind: errs.KindOperation, Operation: "pulse.definition.create", Environment: input.Environment, Site: input.Site, Summary: "Pulse definition field state changed during revalidation.", Cause: err, Retryable: errs.Bool(false), CorrectiveAction: "Inspect current datasource fields, then review a new definition preview.", TableauRequestID: errs.TableauRequestID(err), Phase: errs.PhaseVerification, Outcome: errs.OutcomeNotAttempted}
 	}
 	if err := a.checkCollision(ctx, input, plan.Request); err != nil {
 		return CreateResult{}, err
@@ -141,7 +141,7 @@ func (a *Action) createValidated(ctx context.Context, input Input, request Creat
 			result.DefaultMetricStatus = "unresolved"
 			return result, &errs.Error{ID: "pulse.definition.create.verification_failed", Kind: errs.KindOperation, Operation: "pulse.definition.create", Resource: result.DefinitionLUID, Environment: input.Environment, Site: input.Site, Summary: "The Pulse definition was created, but its default metric was not identified.", Retryable: errs.Bool(false), CorrectiveAction: commandhint.Environment(input.Environment, "pulse", "definition", "inspect", "--id", result.DefinitionLUID) + "; do not repeat the confirmed create.", TableauRequestID: result.TableauRequestID, Phase: errs.PhaseVerification, Outcome: errs.OutcomeConfirmed}
 		}
-		return CreateResult{}, createError("pulse.definition.create.invalid_response", errs.KindOperation, input, "Tableau returned an incomplete Pulse definition creation result.", errors.New("definition and default metric LUIDs are required"))
+		return CreateResult{}, &errs.Error{ID: "pulse.definition.create.invalid_response", Kind: errs.KindOperation, Operation: "pulse.definition.create", Environment: input.Environment, Site: input.Site, Summary: "Tableau returned an incomplete Pulse definition creation result.", Cause: errors.New("definition and default metric LUIDs are required"), Retryable: errs.Bool(false), CorrectiveAction: "Reconcile the remote definition outcome before retrying; no complete authoritative identity was returned.", Phase: errs.PhaseSubmission, Outcome: errs.OutcomeUnknown}
 	}
 	return result, nil
 }
@@ -170,6 +170,9 @@ func (a *Action) Execute(ctx context.Context, input Input, preview bool) (Output
 		return Output{}, err
 	}
 	output := Output{Plan: plan, Help: []string{"Run without --preview to create this Pulse definition."}}
+	if compactPlan(plan).RequiresFull {
+		output.Help = []string{"Review the complete definition with --full or the last result with --full before executing this Pulse definition create."}
+	}
 	if preview {
 		return output, nil
 	}
@@ -194,11 +197,11 @@ func (a *Action) checkCollision(ctx context.Context, input Input, request Create
 	items, err := a.finder.FindDefinitions(ctx, request.Name, request.Specification.Datasource.ID)
 	if err != nil {
 		retryable, corrective := errs.CompleteRetryAdvice(err, "Review current Pulse definitions, then request a new preview.")
-		return &errs.Error{ID: "pulse.definition.create.collision", Kind: errs.KindOperation, Operation: "pulse.definition.create", Environment: input.Environment, Site: input.Site, Summary: "Pulse definition collision check failed.", Cause: err, Retryable: retryable, CorrectiveAction: corrective, TableauRequestID: errs.TableauRequestID(err)}
+		return &errs.Error{ID: "pulse.definition.create.collision", Kind: errs.KindOperation, Operation: "pulse.definition.create", Environment: input.Environment, Site: input.Site, Summary: "Pulse definition collision check failed.", Cause: err, Retryable: retryable, CorrectiveAction: corrective, TableauRequestID: errs.TableauRequestID(err), Phase: errs.PhaseVerification, Outcome: errs.OutcomeNotAttempted}
 	}
 	for _, item := range items {
 		if item.Name == request.Name && item.DatasourceLUID == request.Specification.Datasource.ID {
-			return &errs.Error{ID: "pulse.definition.create.conflict", Kind: errs.KindOperation, Operation: "pulse.definition.create", Resource: item.LUID, Environment: input.Environment, Site: input.Site, Summary: "A Pulse definition with this name already exists for the datasource.", Retryable: errs.Bool(false), CorrectiveAction: commandhint.Environment(input.Environment, "pulse", "definition", "inspect", "--id", item.LUID) + "; inspect the existing definition or choose a different name."}
+			return &errs.Error{ID: "pulse.definition.create.conflict", Kind: errs.KindOperation, Operation: "pulse.definition.create", Resource: item.LUID, Environment: input.Environment, Site: input.Site, Summary: "A Pulse definition with this name already exists for the datasource.", Retryable: errs.Bool(false), CorrectiveAction: commandhint.Environment(input.Environment, "pulse", "definition", "inspect", "--id", item.LUID) + "; inspect the existing definition or choose a different name.", Phase: errs.PhaseValidation, Outcome: errs.OutcomeNotAttempted}
 		}
 	}
 	return nil
@@ -349,5 +352,9 @@ func defaultInsightSettings() []InsightSetting {
 }
 
 func createError(id string, kind errs.Kind, input Input, summary string, cause error) error {
-	return &errs.Error{ID: id, Kind: kind, Operation: "pulse.definition.create", Environment: input.Environment, Site: input.Site, Summary: summary, Cause: cause, Retryable: errs.Bool(false), CorrectiveAction: "Correct the Pulse definition intent and review a new preview."}
+	phase := errs.PhaseValidation
+	if kind == errs.KindRuntime {
+		phase = errs.PhaseSetup
+	}
+	return &errs.Error{ID: id, Kind: kind, Operation: "pulse.definition.create", Environment: input.Environment, Site: input.Site, Summary: summary, Cause: cause, Retryable: errs.Bool(false), CorrectiveAction: "Correct the Pulse definition intent and review a new preview.", Phase: phase, Outcome: errs.OutcomeNotAttempted}
 }

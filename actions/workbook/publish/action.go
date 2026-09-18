@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/ahillspace/tadx/internal/commandhint"
 
 	"github.com/ahillspace/tadx/internal/errs"
 	"github.com/ahillspace/tadx/internal/identity"
@@ -131,13 +130,17 @@ func (a *Action) Plan(ctx context.Context, input Input) (Plan, error) {
 		warnings = append(warnings, fmt.Sprintf("This workbook references %d published datasource(s) bound to source site %q; publishing to environment %q site %q will fail until those datasources exist there. Acquire the dependencies with --include-pds and publish them to the target first.", artifact.PublishedDatasourceCount, artifact.SourceSite, input.Environment, input.Site))
 	}
 	request := PublishRequest{Name: name, ProjectLUID: project.LUID, Filename: artifact.Filename, ContentPath: artifact.PayloadPath, ContentSize: artifact.Size, ExpectedFingerprint: artifact.Fingerprint, Overwrite: overwrite, AsJob: input.AsJob}
+	sourceKind := "managed_artifact"
+	if input.File != "" {
+		sourceKind = "native_file"
+	}
 	return Plan{
 		Workspace: input.WorkspaceName, SourceLUID: artifact.TableauID,
-		Mode: "preview", Operation: "workbook.publish", ArtifactPath: artifact.Path,
+		Mode: "preview", Operation: "workbook.publish", ArtifactPath: artifact.Path, SourceKind: sourceKind,
 		ArtifactFingerprint: artifact.Fingerprint, Filename: artifact.Filename, WorkbookName: name,
 		Target:    Target{Origin: origin, Environment: input.Environment, Site: input.Site, ProjectLUID: project.LUID, ProjectPath: project.Path, ExistingLUID: existingLUID},
 		Overwrite: overwrite, AsJob: input.AsJob, Warnings: warnings,
-		Substeps: []string{"resolve exact destination", "check workbook collision", "upload workbook", "publish workbook", "poll asynchronous job when requested"},
+		Substeps: []string{"resolve exact destination", "check workbook collision", "upload workbook", "publish workbook", "automatically monitor accepted jobs and confirm destination"},
 		request:  request, planned: true,
 	}, nil
 }
@@ -172,6 +175,12 @@ func (a *Action) Apply(ctx context.Context, plan Plan) (Result, error) {
 	}
 	result, err := prepared.Commit(ctx)
 	if err != nil {
+		if known, ok := errors.AsType[*errs.Error](err); ok && known.Phase != "" {
+			if result.Status == "succeeded" {
+				result.Verification = "destination_unavailable"
+			}
+			return result, err
+		}
 		requestID := result.TableauRequestID
 		if requestID == "" {
 			requestID = errs.TableauRequestID(err)
@@ -222,13 +231,42 @@ func (a *Action) Execute(ctx context.Context, input Input, preview bool) (Output
 		return output, nil
 	}
 	output.Plan.Mode = "execute"
+	output.Help = nil
 	result, err := a.Apply(ctx, plan)
 	if err != nil {
-		output.Result = &result
+		if result.Status != "" || result.WorkbookLUID != "" || result.JobID != "" || result.TableauRequestID != "" || result.ReceiptPath != "" || len(result.ValidationWarnings) != 0 {
+			output.Result = &result
+		}
 		return output, err
 	}
 	output.Result = &result
-	output.Help = []string{commandhint.Environment(plan.Target.Environment, "content", "workbook", "inspect", "--id", result.WorkbookLUID)}
+	if result.Status == "pending" || result.Status == "running" {
+		return output, nil
+	}
+	return a.Complete(ctx, output)
+}
+
+// Complete confirms an already completed publication without submitting it again.
+func (a *Action) Complete(ctx context.Context, output Output) (Output, error) {
+	output.Help = nil
+	if output.Result == nil || output.Result.Status != "succeeded" {
+		return output, nil
+	}
+	result, plan := output.Result, output.Plan
+	if result.WorkbookLUID == "" {
+		matches, err := a.resolver.FindWorkbooks(ctx, plan.WorkbookName, plan.Target.ProjectLUID)
+		if err == nil && len(matches) == 1 && matches[0].LUID != "" && matches[0].Name == plan.WorkbookName && matches[0].ProjectLUID == plan.Target.ProjectLUID {
+			result.WorkbookLUID, result.WorkbookName, result.ProjectLUID = matches[0].LUID, matches[0].Name, matches[0].ProjectLUID
+		} else {
+			result.Verification = "destination_unavailable"
+			return output, &errs.Error{ID: "workbook.publish.destination_unavailable", Kind: errs.KindOperation, Operation: "workbook.publish", Environment: plan.Target.Environment, Site: plan.Target.Site, Summary: "Workbook publication succeeded, but its destination identity could not be confirmed.", Cause: err, Phase: errs.PhaseVerification, Outcome: errs.OutcomeConfirmed, Retryable: errs.Bool(false), TableauJobID: result.JobID, CorrectiveAction: "Recover the saved job status before any further write. Do not repeat publication."}
+		}
+	}
+	if result.WorkbookName != plan.WorkbookName || result.ProjectLUID != plan.Target.ProjectLUID {
+		result.Verification = "destination_mismatch"
+		return output, &errs.Error{ID: "workbook.publish.destination_mismatch", Kind: errs.KindOperation, Operation: "workbook.publish", Resource: result.WorkbookLUID, Environment: plan.Target.Environment, Site: plan.Target.Site, Summary: "Workbook publication succeeded, but its returned destination differs from the requested target.", Phase: errs.PhaseVerification, Outcome: errs.OutcomeConfirmed, Retryable: errs.Bool(false), TableauJobID: result.JobID, CorrectiveAction: "Inspect the returned exact identity before any further write. Do not repeat publication."}
+	}
+	result.Verification = "confirmed"
 	return output, nil
 }
 

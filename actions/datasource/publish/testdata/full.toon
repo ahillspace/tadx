@@ -6,6 +6,7 @@ plan:
   publish_mode: overwrite
   operation: datasource.publish
   artifact_path: artifacts/datasource/Sales
+  source_kind: ""
   artifact_fingerprint: "sha256:secret-diagnostic"
   filename: Sales.tds
   datasource_name: Sales
@@ -18,7 +19,6 @@ plan:
     project_path: Analytics
     existing_datasource_luid: ds-1
   substeps[2]: resolve exact destination,poll asynchronous job
-  as_job: true
 result:
   status: succeeded
   datasource_luid: ds-1

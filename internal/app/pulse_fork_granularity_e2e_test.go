@@ -29,7 +29,7 @@ func TestPulseForkGranularityThroughCLI(t *testing.T) {
 		{name: "yesterday below monthly minimum", args: []string{"--period", "YESTERDAY"}, wantError: "GRANULARITY_BY_DAY"},
 		{name: "week below monthly minimum", args: []string{"--period", "THIS_WEEK"}, wantError: "GRANULARITY_BY_WEEK"},
 		{name: "rolling days below monthly minimum", args: []string{"--period", "LAST_30_DAYS"}, wantError: "GRANULARITY_BY_DAY"},
-		{name: "custom days below monthly minimum", args: []string{"--period", "CUSTOM_N_DAYS", "--days", "45"}, wantError: "GRANULARITY_BY_DAY"},
+		{name: "custom days below monthly minimum", args: []string{"--period", "CUSTOM_N_DAYS", "--days", "30"}, wantError: "GRANULARITY_BY_DAY"},
 		{name: "allowed month", args: []string{"--period", "MONTH_TO_DATE"}},
 		{name: "allowed year", args: []string{"--period", "LAST_YEAR"}},
 		{name: "allowed rolling days", args: []string{"--period", "LAST_30_DAYS"}, allowed: []string{"GRANULARITY_BY_DAY"}},

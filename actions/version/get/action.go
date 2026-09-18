@@ -52,12 +52,13 @@ func (a *Action) Execute(ctx context.Context, in Input) (Output, error) {
 	if !in.Check {
 		return out, nil
 	}
+	out.Status, out.Help = "check_unavailable", nil
 	if a.checker == nil {
-		return Output{}, &errs.Error{ID: "version.get.check.runtime", Kind: errs.KindRuntime, Operation: "version.get", Summary: "Release checking is not configured.", Retryable: errs.Bool(false)}
+		return out, &errs.Error{ID: "version.get.check.runtime", Kind: errs.KindRuntime, Operation: "version.get", Summary: "Release checking is not configured.", Retryable: errs.Bool(false)}
 	}
 	release, err := a.checker.Latest(ctx)
 	if err != nil {
-		return Output{}, &errs.Error{ID: "version.get.check.failed", Kind: errs.KindOperation, Operation: "version.get", Summary: "Release check failed.", Cause: err, Retryable: errs.Bool(true), CorrectiveAction: "Retry later or run tadx version without --check for offline version information."}
+		return out, &errs.Error{ID: "version.get.check.failed", Kind: errs.KindOperation, Operation: "version.get", Summary: "Release check failed; installed version is retained in the result.", Cause: err, Retryable: errs.Bool(true), CorrectiveAction: "Retry the release check later if current release information is needed."}
 	}
 	out.LatestVersion = release.Version
 	out.ReleaseURL = release.URL

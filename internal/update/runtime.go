@@ -25,6 +25,17 @@ var releaseVersion = regexp.MustCompile(`^v?[0-9]+\.[0-9]+\.[0-9]+(?:[-+][0-9A-Z
 type Runtime struct{}
 
 func (Runtime) Current() string { return version.Current() }
+func (Runtime) InstallationTarget() (string, error) {
+	executable, err := os.Executable()
+	if err != nil {
+		return "", err
+	}
+	resolved, err := filepath.EvalSymlinks(executable)
+	if err != nil {
+		return filepath.ToSlash(executable), err
+	}
+	return filepath.ToSlash(resolved), nil
+}
 func (Runtime) ValidateTargets(targets []string) error {
 	for _, target := range targets {
 		if target != "auto" && !agenttarget.IsSupported(target) {

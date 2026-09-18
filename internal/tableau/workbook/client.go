@@ -68,6 +68,7 @@ type ListRequest struct {
 	PageSize    int
 	Name        string
 	OwnerName   string
+	ProjectLUID string
 	ProjectName string
 	Tag         string
 }
@@ -104,6 +105,7 @@ type PublishRequest struct {
 	Content             []byte
 	Overwrite           bool
 	AsJob               bool
+	Accepted            func(context.Context, string, string) (PublishResult, error)
 }
 
 // PublishResult is the authoritative terminal publish outcome.
@@ -115,6 +117,7 @@ type PublishResult struct {
 	JobID            string
 	TableauRequestID string
 	Warnings         []ValidationIssue
+	ReceiptPath      string
 }
 
 // MutationResult is the authoritative outcome of one workbook mutation.
@@ -176,6 +179,7 @@ type PreparedPublish struct {
 	mu          sync.Mutex
 	committed   bool
 	warnings    []ValidationIssue
+	accepted    func(context.Context, string, string) (PublishResult, error)
 }
 
 // Client is the first released REST client family.
@@ -522,7 +526,7 @@ func (c *Client) Prepare(ctx context.Context, input PublishRequest) (*PreparedPu
 		query.Set("uploadSessionId", uploadSessionID)
 		query.Set("workbookType", extension)
 	}
-	return &PreparedPublish{client: c, query: query, body: body, contentType: contentType, warnings: warnings}, nil
+	return &PreparedPublish{client: c, query: query, body: body, contentType: contentType, warnings: warnings, accepted: input.Accepted}, nil
 }
 
 // Commit issues the final publish request exactly once.
@@ -557,6 +561,11 @@ func (p *PreparedPublish) Commit(ctx context.Context) (PublishResult, error) {
 	if result.JobID == "" {
 		result.Status = "succeeded"
 		return result, nil
+	}
+	if p.accepted != nil {
+		observed, err := p.accepted(ctx, result.JobID, result.TableauRequestID)
+		observed.Warnings = append([]ValidationIssue(nil), p.warnings...)
+		return observed, err
 	}
 	terminal, err := p.client.pollJob(ctx, result.JobID)
 	terminal.Warnings = append([]ValidationIssue(nil), p.warnings...)
@@ -1116,6 +1125,7 @@ func ListFilter(input ListRequest) (string, error) {
 	fields := []struct{ name, value string }{
 		{name: "name", value: input.Name},
 		{name: "ownerName", value: input.OwnerName},
+		{name: "projectId", value: input.ProjectLUID},
 		{name: "projectName", value: input.ProjectName},
 		{name: "tags", value: input.Tag},
 	}

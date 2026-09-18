@@ -137,3 +137,50 @@ func TestExactReconciliationPreservesNumberFidelityAndUnorderedFilterValues(t *t
 		t.Fatalf("result=%#v err=%v", result, err)
 	}
 }
+
+func TestExactReconciliationComparesTypedFilterRepresentationsSemantically(t *testing.T) {
+	tests := []struct {
+		name          string
+		savedFilter   string
+		requestedSpec string
+		wantStatus    string
+	}{
+		{
+			name:          "text values equal categorical values",
+			savedFilter:   `{"field":"Region","operator":"OPERATOR_EQUAL","categorical_values":[{"string_value":"East"},{"string_value":"West"}],"include_null":false}`,
+			requestedSpec: `{"measurement_period":{"granularity":"GRANULARITY_BY_DAY","range":"RANGE_CURRENT_PARTIAL"},"filters":[{"field":"Region","operator":"OPERATOR_EQUAL","values":["West","East"],"include_null":false}]}`,
+			wantStatus:    "verified",
+		},
+		{
+			name:          "conflicting dual representations",
+			savedFilter:   `{"field":"Region","operator":"OPERATOR_EQUAL","categorical_values":[{"string_value":"East"}],"values":["West"],"include_null":false}`,
+			requestedSpec: `{"measurement_period":{"granularity":"GRANULARITY_BY_DAY","range":"RANGE_CURRENT_PARTIAL"},"filters":[{"field":"Region","operator":"OPERATOR_EQUAL","categorical_values":[{"string_value":"East"}],"include_null":false}]}`,
+			wantStatus:    "specification_mismatch",
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				switch r.URL.Path {
+				case "/api/-/pulse/metrics/metric-1":
+					_, _ = fmt.Fprintf(w, `{"id":"metric-1","definition_id":"definition-1","site_id":"site-1","specification":{"datasource":{"id":"datasource-1"},"measurement_period":{"granularity":"GRANULARITY_BY_DAY","range":"RANGE_CURRENT_PARTIAL"},"filters":[%s]}}`, test.savedFilter)
+				case "/api/-/pulse/definitions/definition-1":
+					_, _ = io.WriteString(w, `{"metadata":{"id":"definition-1","name":"Revenue"},"specification":{"datasource":{"id":"datasource-1"}}}`)
+				default:
+					t.Errorf("unexpected endpoint %s", r.URL.Path)
+					w.WriteHeader(http.StatusForbidden)
+				}
+			}))
+			defer server.Close()
+			client := newPulseClient(t, tableau.NewTransport(server.Client(), "3.29", nil), session{}, server.URL)
+			var specification map[string]any
+			if err := json.Unmarshal([]byte(test.requestedSpec), &specification); err != nil {
+				t.Fatal(err)
+			}
+			result, err := client.ReconcileMetric(context.Background(), tableaupulse.ExpectedMetric{MetricLUID: "metric-1", DefinitionLUID: "definition-1", DatasourceLUID: "datasource-1", SiteLUID: "site-1", Specification: specification})
+			if err != nil || result.Status != test.wantStatus {
+				t.Fatalf("result=%#v err=%v", result, err)
+			}
+		})
+	}
+}

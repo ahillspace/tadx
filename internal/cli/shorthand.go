@@ -12,7 +12,7 @@ var commandAliases = map[string]string{
 	"group-member": "gm", "label-value": "lv", "label-category": "lc",
 	"catalog": "cat", "database": "db", "table": "tbl", "column": "col", "audit": "aud", "label": "lbl", "value": "val", "category": "ctg",
 	"admin": "adm", "agent": "agt", "artifact": "art", "auth": "ath",
-	"capability": "cap", "cache": "cch", "check": "chk", "clean": "cln",
+	"capability": "cap", "cache": "cch", "cancel": "cnl", "check": "chk", "clean": "cln",
 	"clone": "cl", "completion": "cmp", "content": "con", "create": "new",
 	"datasource": "ds", "default": "dft", "definition": "def", "delete": "del",
 	"doctor": "doc", "flow": "flw", "follow": "fol", "followers": "fls",
@@ -23,13 +23,14 @@ var commandAliases = map[string]string{
 	"pull": "pl", "pulse": "pls", "refresh": "ref", "register": "reg",
 	"remove": "rm", "schema": "sch", "search": "sea", "set-default": "sdf",
 	"status": "st", "uninstall": "uni", "unfollow": "unf", "unregister": "unr",
-	"update": "upd", "user": "usr", "version": "ver", "workbook": "wb",
+	"update": "upd", "user": "usr", "version": "ver", "wait": "wt", "workbook": "wb",
 	"workspace": "ws",
 }
 
 var flagShorthands = map[string]string{
 	"all": "a", "environment": "e", "full": "f", "id": "i", "limit": "l",
 	"name": "n", "preview": "p", "query": "q", "workspace": "w",
+	"version": "v",
 }
 
 var flagLongAliases = map[string]string{
@@ -37,7 +38,7 @@ var flagLongAliases = map[string]string{
 	"descriptions": "dcs", "tags": "tgs", "metadata-id": "mdi", "table-id": "tbi", "database-id": "dbi", "contact-id": "cti", "add-tag": "atg", "remove-tag": "rtg", "direct-only": "dro", "target-id": "tid", "category": "ctg", "message": "msg", "active": "act", "elevated": "elv",
 	"batch-file": "btf", "json": "jsn", "username": "unm", "principal-username": "pun",
 	"aggregation": "agg", "api-version": "api", "append": "apd", "artifact": "art",
-	"artifact-name": "arn", "as-job": "job", "auth-setting": "aus", "capability": "cap",
+	"artifact-name": "arn", "auth-setting": "aus", "capability": "cap",
 	"cache": "cch", "cache-max-concurrency": "cmc", "check": "chk", "class": "cls",
 	"clear-api-version": "cav", "clear-cache-max-concurrency": "ccm", "clear-default-workspace": "cdw",
 	"clear-pat-name-env": "cpn", "clear-pat-secret-env": "cps", "clear-site": "cst",
@@ -49,7 +50,7 @@ var flagLongAliases = map[string]string{
 	"email": "eml", "enabled": "ena", "environment": "env", "exclude-filter": "exf",
 	"external-user-enabled": "eue", "field-id": "fid", "file": "fil", "filter": "flt",
 	"force": "frc", "full": "ful", "full-name": "fnm", "group-id": "gid",
-	"identity-pool": "idp", "idp-configuration-id": "ici", "include-extract": "iex",
+	"identity-pool": "idp", "idp-configuration-id": "ici", "include-extract": "iex", "interval": "int",
 	"include-pds": "ipd", "kind": "knd", "language": "lng", "limit": "lim",
 	"locale": "loc", "measure-field": "msf", "member-id": "mid", "members": "mem",
 	"minimum-granularity": "mng", "minimum-site-role": "msr", "mode": "mod", "mutation": "mut",
@@ -58,7 +59,7 @@ var flagLongAliases = map[string]string{
 	"path": "pth", "pat-name-env": "pne", "pat-secret-env": "pse", "period": "per",
 	"preview": "pv", "principal-id": "pri", "principal-type": "prt", "product": "prd",
 	"project": "prj", "project-id": "pid", "project-name": "pnm", "query": "qry",
-	"replace": "rpl", "resource": "res", "role": "rol", "running-total": "rnt",
+	"receipt": "rcp", "repeat": "rpt", "replace": "rpl", "resource": "res", "role": "rol", "running-total": "rnt",
 	"scope": "scp", "sentiment": "snt", "set-members": "stm", "site": "sit",
 	"site-role": "srl", "source": "src", "subscription-id": "sid", "table": "tbl",
 	"target": "tgt", "temporality": "tmp", "top-level": "top", "type": "typ",

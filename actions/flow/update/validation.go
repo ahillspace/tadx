@@ -1,6 +1,10 @@
 package update
 
-import "strings"
+import (
+	"strings"
+
+	"github.com/ahillspace/tadx/internal/identity"
+)
 
 // ValidateInput checks caller-controlled arguments before local or remote setup.
 func ValidateInput(in Input) error {
@@ -13,8 +17,11 @@ func ValidateInput(in Input) error {
 	if in.Selector.LUID != "" && (strings.TrimSpace(in.Selector.Name) != "" || strings.TrimSpace(in.Selector.ProjectPath) != "") {
 		return usage("selector", "a flow LUID cannot be combined with name or project path")
 	}
-	if in.OwnerLUID == nil || strings.TrimSpace(*in.OwnerLUID) == "" {
+	if in.OwnerLUID == nil {
 		return usage("owner_id", "flow update requires an exact owner LUID")
+	}
+	if err := identity.ValidateLUIDShape("owner", *in.OwnerLUID); err != nil {
+		return usage("owner_id", err.Error())
 	}
 	return nil
 }

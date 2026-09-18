@@ -95,13 +95,13 @@ func TestDoctorRunsEveryIndependentCheckAndRedactsDependencyErrors(t *testing.T)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if configuration.calls != 1 || pat.calls != 1 || connectivity.calls != 1 || cache.calls != 1 || workspace.calls != 1 || logging.calls != 1 {
+	if configuration.calls != 1 || pat.calls != 1 || connectivity.calls != 0 || cache.calls != 1 || workspace.calls != 1 || logging.calls != 1 {
 		t.Fatalf("check calls = %d %d %d %d %d %d", configuration.calls, pat.calls, connectivity.calls, cache.calls, workspace.calls, logging.calls)
 	}
 	if len(output.Checks) != 6 || output.Checks[0].ID != "config.valid" || output.Checks[5].ID != "logging.context" {
 		t.Fatalf("checks = %#v", output.Checks)
 	}
-	if output.Status != doctorrun.StatusFail || output.Counts.Pass != 3 || output.Counts.Warn != 1 || output.Counts.Fail != 2 {
+	if output.Status != doctorrun.StatusFail || output.Counts.Pass != 2 || output.Counts.Warn != 1 || output.Counts.Fail != 2 || output.Counts.Blocked != 1 {
 		t.Fatalf("output = %#v", output)
 	}
 	data, marshalErr := json.Marshal(output)
@@ -148,7 +148,7 @@ func TestDoctorAcceptsStoredPATWithoutEnvironmentValues(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if output.Checks[1].Status != doctorrun.StatusPass || output.Checks[1].Summary != "A PAT is configured in the native OS credential store." {
+	if output.Checks[1].Status != doctorrun.StatusPass || !strings.Contains(output.Checks[1].Summary, "does not verify its credentials") {
 		t.Fatalf("PAT check = %#v", output.Checks[1])
 	}
 }
@@ -180,7 +180,7 @@ func TestDoctorMissingDependenciesStillReturnEveryCheck(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(output.Checks) != 6 || output.Counts.Fail != 5 || output.Counts.Warn != 1 {
+	if len(output.Checks) != 6 || output.Counts.Fail != 1 || output.Counts.Warn != 1 || output.Counts.Blocked != 4 {
 		t.Fatalf("output = %#v", output)
 	}
 }

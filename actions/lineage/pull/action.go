@@ -77,7 +77,20 @@ func (a *Action) Execute(ctx context.Context, input Input) (Output, error) {
 	graph, captureErr := a.reader.CaptureLineage(ctx, request)
 	countsKnown := captureErr == nil
 	if captureErr != nil {
-		graph = Graph{Complete: false, Warnings: []string{"Lineage capture was incomplete. Review the selected environment and Metadata API permissions."}}
+		graph.Complete = false
+		if graph.Failure == nil {
+			failure := value.LineageFailure{Provider: "tableau-metadata", RootKind: request.Kind, RootRESTLUID: request.RESTLUID, RequestID: errs.TableauRequestID(captureErr)}
+			graph.Failure = &failure
+		}
+		if graph.Direction == "" {
+			graph.Direction = normalized.Direction
+		}
+		if graph.Depth == 0 {
+			graph.Depth = normalized.Depth
+		}
+		if len(graph.Warnings) == 0 {
+			graph.Warnings = []string{"Lineage capture was incomplete. Review the selected environment and Metadata API permissions; confirmed graph evidence was retained."}
+		}
 	}
 	resource.MetadataID = strings.TrimSpace(graph.RootMetadataID)
 	warnings, warningsOmitted := boundedStrings(graph.Warnings, maxWarnings)
@@ -86,6 +99,7 @@ func (a *Action) Execute(ctx context.Context, input Input) (Output, error) {
 		Workspace: normalized.Workspace, Resource: resource, Environment: normalized.Environment, Site: normalized.Site,
 		ServerOrigin: normalized.ServerOrigin, SiteLUID: normalized.SiteLUID, Direction: normalized.Direction, Depth: normalized.Depth,
 		Complete: graph.Complete, CountsKnown: countsKnown, Nodes: graph.Nodes, Edges: graph.Edges,
+		Failure:  graph.Failure,
 		Warnings: warnings, WarningsOmitted: warningsOmitted, RequestIDs: requestIDs, Overwrite: normalized.Overwrite,
 	}
 	result, err := a.writer.WriteLineage(ctx, artifact)
@@ -95,7 +109,7 @@ func (a *Action) Execute(ctx context.Context, input Input) (Output, error) {
 	}
 	return Output{
 		Status: "pulled", Resource: resource, Artifact: result, Direction: normalized.Direction, Depth: normalized.Depth,
-		Complete: graph.Complete, CountsKnown: countsKnown, Nodes: graph.Nodes, Edges: graph.Edges,
+		Complete: graph.Complete, CountsKnown: countsKnown, Nodes: graph.Nodes, Edges: graph.Edges, Failure: graph.Failure,
 		Warnings: warnings, WarningsOmitted: warningsOmitted,
 		Provenance: Provenance{Environment: normalized.Environment, Site: normalized.Site, ServerOrigin: normalized.ServerOrigin, SiteLUID: normalized.SiteLUID},
 		RequestIDs: requestIDs, RequestIDsOmitted: requestIDsOmitted,

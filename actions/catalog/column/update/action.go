@@ -49,10 +49,13 @@ type Plan struct {
 	NoOp        bool                   `json:"no_op"`
 }
 type Result struct {
-	Status    string                 `json:"status"`
-	Identity  value.MetadataIdentity `json:"identity"`
-	Completed []string               `json:"completed"`
-	Failed    string                 `json:"failed,omitempty"`
+	Status       string                 `json:"status"`
+	Identity     value.MetadataIdentity `json:"identity"`
+	Description  *string                `json:"description,omitempty"`
+	Tags         []string               `json:"tags,omitempty"`
+	TagsObserved bool                   `json:"tags_observed"`
+	Completed    []string               `json:"completed"`
+	Failed       string                 `json:"failed,omitempty"`
 }
 type Output struct {
 	Plan   Plan     `json:"plan"`
@@ -135,7 +138,7 @@ func (a *Action) Execute(ctx context.Context, in Input, preview bool) (Output, e
 	out.Plan.Target = current.MetadataIdentity
 	out.Plan.Changes = changes
 	out.Plan.NoOp = len(changes) == 0
-	out.Result = &Result{Status: "updated", Identity: current.MetadataIdentity, Completed: []string{}}
+	out.Result = &Result{Status: "updated", Identity: current.MetadataIdentity, Description: current.Description, Tags: slices.Clone(current.Tags), TagsObserved: current.TagsObserved, Completed: []string{}}
 	out.Help = []string{commandhint.Environment(in.Environment, "catalog", "column", "inspect", "--table-id", in.TableID, "--id", in.ID)}
 	if out.Plan.NoOp {
 		out.Result.Status = "unchanged"
@@ -148,7 +151,10 @@ func (a *Action) Execute(ctx context.Context, in Input, preview bool) (Output, e
 			out.Result.Failed = "properties"
 			outcome := errs.OutcomeUnknown
 			if updated.LUID == in.ID {
-				out.Result.Identity = updated.MetadataIdentity
+				out.Result.Identity = retainedIdentity(current.MetadataIdentity, updated.MetadataIdentity)
+				out.Result.Description = updated.Description
+				out.Result.Tags = slices.Clone(updated.Tags)
+				out.Result.TagsObserved = updated.TagsObserved
 				outcome = errs.OutcomeConfirmed
 			}
 			return out, failure(in, "properties", out.Result.Completed, outcome, e)
@@ -157,6 +163,15 @@ func (a *Action) Execute(ctx context.Context, in Input, preview bool) (Output, e
 			out.Result.Status = "partial"
 			out.Result.Failed = "properties"
 			return out, failure(in, "properties", out.Result.Completed, errs.OutcomeUnknown, fmt.Errorf("updated identity does not match target"))
+		}
+		out.Result.Identity = retainedIdentity(current.MetadataIdentity, updated.MetadataIdentity)
+		out.Result.Description = updated.Description
+		out.Result.Tags = slices.Clone(updated.Tags)
+		out.Result.TagsObserved = updated.TagsObserved
+		if request.Description != nil && (updated.Description == nil || *updated.Description != *request.Description) {
+			out.Result.Status = "partial"
+			out.Result.Failed = "properties"
+			return out, failure(in, "properties", out.Result.Completed, errs.OutcomeConfirmed, propertyVerification("description"))
 		}
 		if request.Description != nil {
 			out.Result.Completed = append(out.Result.Completed, "description")
@@ -181,6 +196,8 @@ func (a *Action) Execute(ctx context.Context, in Input, preview bool) (Output, e
 			return out, failure(in, "add_tags", out.Result.Completed, errs.OutcomeUnknown, e)
 		}
 		out.Result.Completed = append(out.Result.Completed, "add_tags")
+		out.Result.Tags = slices.Clone(acknowledged)
+		out.Result.TagsObserved = true
 	}
 	for _, tag := range remove {
 		if e := a.writer.DeleteColumnTag(ctx, in.ID, tag); e != nil {
@@ -189,6 +206,8 @@ func (a *Action) Execute(ctx context.Context, in Input, preview bool) (Output, e
 			return out, failure(in, "remove_tag", out.Result.Completed, errs.OutcomeUnknown, e)
 		}
 		out.Result.Completed = append(out.Result.Completed, "remove_tag:"+tag)
+		out.Result.Tags = nil
+		out.Result.TagsObserved = false
 	}
 	return out, nil
 }
@@ -228,6 +247,24 @@ func changed(v value.MetadataColumn, in Input) (value.MetadataUpdate, []Change, 
 }
 func usage(s string) error {
 	return &errs.Error{ID: "catalog.column.update.usage", Kind: errs.KindUsage, Operation: "catalog.column.update", Summary: s, Retryable: errs.Bool(false), CorrectiveAction: "Correct the requested metadata update and preview it."}
+}
+func propertyVerification(property string) error {
+	return &errs.Error{Kind: errs.KindOperation, Summary: "Property response did not confirm requested " + property + ".", Retryable: errs.Bool(false), Phase: errs.PhaseVerification}
+}
+func retainedIdentity(previous, observed value.MetadataIdentity) value.MetadataIdentity {
+	if observed.MetadataID == "" {
+		observed.MetadataID = previous.MetadataID
+	}
+	if observed.LUID == "" {
+		observed.LUID = previous.LUID
+	}
+	if observed.Name == "" {
+		observed.Name = previous.Name
+	}
+	if observed.Type == "" {
+		observed.Type = previous.Type
+	}
+	return observed
 }
 func failure(in Input, step string, completed []string, outcome errs.Outcome, cause error) error {
 	retry, advice := errs.CompleteRetryAdvice(cause, "Inspect the exact asset before retrying: "+commandhint.Environment(in.Environment, "catalog", "column", "inspect", "--table-id", in.TableID, "--id", in.ID))

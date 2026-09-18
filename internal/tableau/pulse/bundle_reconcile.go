@@ -154,8 +154,12 @@ func normalizeBundleSection(section string, value any) error {
 			if goals, ok := value.([]any); ok {
 				for _, goal := range goals {
 					if object, ok := goal.(map[string]any); ok {
-						normalizeBundleFilters(object["basic_specification"])
-						normalizeBundleFilters(object["threshold_basic_specification"])
+						if err := normalizeBundleFilters(object["basic_specification"]); err != nil {
+							return err
+						}
+						if err := normalizeBundleFilters(object["threshold_basic_specification"]); err != nil {
+							return err
+						}
 					}
 				}
 			}
@@ -174,7 +178,9 @@ func normalizeBundleSection(section string, value any) error {
 		if object["temporality"] == "TEMPORALITY_UNSPECIFIED" {
 			object["temporality"] = "TEMPORALITY_OVER_TIME"
 		}
-		normalizeBundleFilters(object["basic_specification"])
+		if err := normalizeBundleFilters(object["basic_specification"]); err != nil {
+			return err
+		}
 	case "extension_options":
 		setDefault("offset_from_today", json.Number("0"))
 		setDefault("use_dynamic_offset", false)
@@ -238,17 +244,11 @@ func normalizeBundleComparison(value any, path string) error {
 	return nil
 }
 
-func normalizeBundleFilters(value any) {
+func normalizeBundleFilters(value any) error {
 	if basic, ok := value.(map[string]any); ok {
 		if filters, ok := basic["filters"].([]any); ok {
-			for _, filter := range filters {
-				if entry, ok := filter.(map[string]any); ok {
-					if values, ok := entry["categorical_values"].([]any); ok {
-						sortJSONValues(values)
-					}
-				}
-			}
-			sortJSONValues(filters)
+			return normalizeFilterArray(filters)
 		}
 	}
+	return nil
 }

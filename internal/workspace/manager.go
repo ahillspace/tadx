@@ -428,10 +428,10 @@ func applyRegistration(configuration config.Config, name, id, resolvedRoot strin
 func planRegistration(configuration config.Config, name, id, resolvedRoot string) (config.Config, error) {
 	for existingName, registration := range configuration.Workspaces {
 		if strings.EqualFold(existingName, name) {
-			return config.Config{}, fmt.Errorf("workspace name %q already exists", existingName)
+			return config.Config{}, fmt.Errorf("workspace name %q already exists as %q (root %q, identity %q)", name, existingName, registration.Path, registration.ID)
 		}
 		if id != "" && registration.ID == id {
-			return config.Config{}, fmt.Errorf("workspace identity %q is already registered as %q", id, existingName)
+			return config.Config{}, fmt.Errorf("workspace identity %q is already registered as %q (root %q)", id, existingName, registration.Path)
 		}
 		existingRoot, rootErr := canonicalRoot(registration.Path)
 		if rootErr != nil {
@@ -440,12 +440,12 @@ func planRegistration(configuration config.Config, name, id, resolvedRoot string
 			// offline workspace cannot block registering an unrelated one, while
 			// still rejecting an exact duplicate registration.
 			if samePath(registration.Path, resolvedRoot) {
-				return config.Config{}, fmt.Errorf("workspace root is already registered as %q", existingName)
+				return config.Config{}, fmt.Errorf("workspace root %q is already registered as %q (identity %q)", resolvedRoot, existingName, registration.ID)
 			}
 			continue
 		}
 		if samePath(existingRoot, resolvedRoot) {
-			return config.Config{}, fmt.Errorf("workspace root is already registered as %q", existingName)
+			return config.Config{}, fmt.Errorf("workspace root %q is already registered as %q (identity %q)", resolvedRoot, existingName, registration.ID)
 		}
 	}
 	if configuration.Workspaces == nil {

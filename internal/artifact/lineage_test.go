@@ -244,3 +244,61 @@ func TestLineageManagerOmitsUnknownCountsForIncompleteCapture(t *testing.T) {
 		t.Fatalf("unknown edge_count was persisted: %s", data)
 	}
 }
+
+func TestLineageManagerOmitsCountsForPartialCaptureWithConfirmedMembers(t *testing.T) {
+	workspace := t.TempDir()
+	if err := os.WriteFile(filepath.Join(workspace, "tadx.yaml"), []byte("version: 1\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	result, err := NewLineageManager(time.Now).Pull(context.Background(), LineagePull{
+		Workspace: workspace,
+		Metadata:  LineageMetadata{ResourceKind: "workbook", Name: "Book", TableauID: "wb-1", MetadataID: "meta-wb-1", SourceServerOrigin: "https://tableau.example.com", SourceSiteLUID: "site-1", SourceEnvironment: "dev"},
+		Lineage: LineageDocument{Complete: false, Direction: "upstream", Depth: 1, Nodes: []LineageNode{
+			{MetadataID: "meta-wb-1", Kind: "workbook", RESTLUID: "wb-1"},
+			{MetadataID: "meta-ds-1", Kind: "published_datasource", RESTLUID: "ds-1"},
+		}, Edges: []LineageEdge{{FromMetadataID: "meta-ds-1", ToMetadataID: "meta-wb-1", Relationship: "upstream"}}, Warnings: []string{"provider relation failure"}},
+		CountsKnown: false,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	data, err := os.ReadFile(filepath.Join(workspace, filepath.FromSlash(result.Path), "metadata.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var fields map[string]json.RawMessage
+	if err := json.Unmarshal(data, &fields); err != nil {
+		t.Fatal(err)
+	}
+	if _, exists := fields["node_count"]; exists {
+		t.Fatalf("partial node_count was persisted: %s", data)
+	}
+	if _, exists := fields["edge_count"]; exists {
+		t.Fatalf("partial edge_count was persisted: %s", data)
+	}
+}
+
+func TestLineageManagerPersistsSanitizedFailureContext(t *testing.T) {
+	workspace := newLineageWorkspace(t)
+	result, err := NewLineageManager(time.Now).Pull(context.Background(), LineagePull{
+		Workspace: workspace,
+		Metadata:  LineageMetadata{ResourceKind: "workbook", Name: "Book", TableauID: "wb-1", MetadataID: "meta-wb-1", SourceServerOrigin: "https://tableau.example.com", SourceSiteLUID: "site-1", SourceEnvironment: "dev"},
+		Lineage: LineageDocument{Complete: false, Direction: "upstream", Depth: 1, Failure: &LineageFailure{
+			Provider: "tableau-metadata", Relation: "upstreamDatabasesConnection", RootKind: "workbook", RootRESTLUID: "wb-1", RequestID: "request-3",
+		}, Nodes: []LineageNode{{MetadataID: "meta-wb-1", Kind: "workbook", RESTLUID: "wb-1"}}, Warnings: []string{"relationship unavailable"}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	data, err := os.ReadFile(filepath.Join(workspace, filepath.FromSlash(result.LineagePath)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var document LineageDocument
+	if err := json.Unmarshal(data, &document); err != nil {
+		t.Fatal(err)
+	}
+	if document.Failure == nil || document.Failure.Provider != "tableau-metadata" || document.Failure.Relation != "upstreamDatabasesConnection" || document.Failure.RootRESTLUID != "wb-1" || document.Failure.RequestID != "request-3" {
+		t.Fatalf("failure = %#v", document.Failure)
+	}
+}

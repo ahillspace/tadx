@@ -5,6 +5,7 @@ plan:
   mode: execute
   operation: workbook.publish
   artifact_path: artifacts/workbook/Finance
+  source_kind: ""
   artifact_fingerprint: "sha256:diagnostic"
   filename: Finance.twbx
   workbook_name: Finance
@@ -16,7 +17,6 @@ plan:
     project_path: Ops
     existing_workbook_luid: wb-existing
   overwrite: true
-  as_job: true
   warnings[1]: Detailed portability warning.
   substeps[2]: resolve exact destination,publish workbook
 result:

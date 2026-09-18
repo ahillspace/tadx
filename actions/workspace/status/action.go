@@ -37,6 +37,8 @@ type Artifact struct {
 	Name                string `json:"name"`
 	Path                string `json:"path,omitempty"`
 	State               string `json:"state"`
+	Reason              string `json:"reason,omitempty"`
+	Diagnostic          string `json:"diagnostic,omitempty"`
 	CanonicalPath       string `json:"canonical_path,omitempty"`
 	BaselineFingerprint string `json:"baseline_fingerprint,omitempty"`
 	CurrentFingerprint  string `json:"current_fingerprint,omitempty"`
@@ -45,7 +47,7 @@ type Artifact struct {
 // Inventory is one bounded artifact page and its workspace-wide state counts.
 type Inventory struct {
 	Returned      int        `json:"returned"`
-	Total         int        `json:"total,omitempty"`
+	Total         int        `json:"total"`
 	Limit         int        `json:"limit"`
 	NextCursor    string     `json:"-"`
 	MoreAvailable bool       `json:"more_available"`
@@ -54,7 +56,7 @@ type Inventory struct {
 	Dirty         int        `json:"dirty"`
 	Missing       int        `json:"missing"`
 	Invalid       int        `json:"invalid"`
-	Items         []Artifact `json:"artifacts,omitempty"`
+	Items         []Artifact `json:"artifacts"`
 	Warnings      []string   `json:"-"`
 }
 
@@ -92,7 +94,7 @@ func (o Output) CompactOutput() any {
 	inventory.MoreAvailable = inventory.MoreAvailable || inventory.NextCursor != ""
 	inventory.Items = make([]Artifact, len(o.Inventory.Items))
 	for i, item := range o.Inventory.Items {
-		inventory.Items[i] = Artifact{Kind: item.Kind, LUID: item.LUID, Name: item.Name, State: item.State}
+		inventory.Items[i] = Artifact{Kind: item.Kind, LUID: item.LUID, Name: item.Name, Path: item.Path, State: item.State}
 	}
 	warnings, omitted := boundWarnings(o.Warnings)
 	workspace := compactWorkspace{Name: o.Workspace.Name, ID: o.Workspace.ID}

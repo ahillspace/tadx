@@ -11,11 +11,12 @@ import (
 type LUID string
 
 // Selector identifies a resource by authoritative LUID or exact human labels.
-// When LUID is set, Resolve ignores Name and ProjectPath.
+// When LUID is set, Resolve ignores the descriptive selector fields.
 type Selector struct {
 	LUID        LUID
 	Name        string
 	ProjectPath string
+	ProjectLUID LUID
 }
 
 // Candidate is the common identity projection returned by resource adapters.
@@ -23,6 +24,7 @@ type Candidate struct {
 	LUID        LUID
 	Name        string
 	ProjectPath string
+	ProjectLUID LUID
 }
 
 // ResolutionErrorKind classifies a deterministic selector failure.
@@ -45,7 +47,7 @@ func (e *ResolutionError) Error() string {
 	description := describeSelector(e.Selector)
 	switch e.Kind {
 	case ResolutionInvalidSelector:
-		return "resource selector must include a LUID, name, or project path"
+		return "resource selector must include a LUID, name, project path, or project LUID"
 	case ResolutionNotFound:
 		return "no resource matches " + description
 	case ResolutionAmbiguous:
@@ -61,7 +63,7 @@ func (e *ResolutionError) Error() string {
 
 // Resolve returns exactly one candidate by authoritative LUID or literal labels.
 func Resolve(selector Selector, candidates []Candidate) (Candidate, error) {
-	if selector.LUID == "" && selector.Name == "" && selector.ProjectPath == "" {
+	if selector.LUID == "" && selector.Name == "" && selector.ProjectPath == "" && selector.ProjectLUID == "" {
 		return Candidate{}, &ResolutionError{Kind: ResolutionInvalidSelector, Selector: selector}
 	}
 
@@ -98,7 +100,10 @@ func matches(selector Selector, candidate Candidate) bool {
 	if selector.Name != "" && selector.Name != candidate.Name {
 		return false
 	}
-	return selector.ProjectPath == "" || selector.ProjectPath == candidate.ProjectPath
+	if selector.ProjectPath != "" && selector.ProjectPath != candidate.ProjectPath {
+		return false
+	}
+	return selector.ProjectLUID == "" || selector.ProjectLUID == candidate.ProjectLUID
 }
 
 func candidateLess(a, b Candidate) bool {
@@ -115,8 +120,14 @@ func describeSelector(selector Selector) string {
 	if selector.Name != "" && selector.ProjectPath != "" {
 		return fmt.Sprintf("name %q in project %q", selector.Name, selector.ProjectPath)
 	}
+	if selector.Name != "" && selector.ProjectLUID != "" {
+		return fmt.Sprintf("name %q in project LUID %q", selector.Name, selector.ProjectLUID)
+	}
 	if selector.Name != "" {
 		return fmt.Sprintf("name %q", selector.Name)
+	}
+	if selector.ProjectLUID != "" {
+		return fmt.Sprintf("project LUID %q", selector.ProjectLUID)
 	}
 	return fmt.Sprintf("project path %q", selector.ProjectPath)
 }

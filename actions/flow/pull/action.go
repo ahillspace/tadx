@@ -63,9 +63,22 @@ func (a *Action) Execute(ctx context.Context, input Input) (Output, error) {
 	lineage, lineageErr := a.reader.CaptureLineage(ctx, LineageRequest{Kind: "flow", RESTLUID: flow.LUID, Direction: "both", Depth: 1})
 	warnings := []string{}
 	if lineageErr != nil {
-		lineage = Lineage{Complete: false, Direction: "both", Depth: 1}
-		warnings = append(warnings, "Lineage capture was incomplete. Use lineage.pull or --full for bounded diagnostics.")
+		lineage.Complete = false
+		if lineage.Failure == nil {
+			failure := value.LineageFailure{Provider: "tableau-metadata", RootKind: "flow", RootRESTLUID: flow.LUID, RequestID: errs.TableauRequestID(lineageErr)}
+			lineage.Failure = &failure
+		}
+		if lineage.Direction == "" {
+			lineage.Direction = "both"
+		}
+		if lineage.Depth == 0 {
+			lineage.Depth = 1
+		}
+		if len(lineage.Warnings) == 0 {
+			lineage.Warnings = []string{"Lineage capture was incomplete. Use lineage.pull or --full for bounded diagnostics; confirmed graph evidence was retained, but counts are unavailable."}
+		}
 	}
+	warnings = append(warnings, lineage.Warnings...)
 	result, err := a.writer.WriteFlow(ctx, Artifact{Workspace: input.Workspace, Filename: download.Filename, Content: download.Content, Name: flow.Name, TableauID: flow.LUID, Environment: input.Environment, Site: input.Site, ServerOrigin: input.ServerOrigin, SiteLUID: input.SiteLUID, ProjectName: flow.ProjectPath, ProjectID: flow.ProjectLUID, FileType: flow.FileType, Lineage: lineage, Overwrite: input.Overwrite})
 	if err != nil {
 		retryable, correctiveAction := errs.CompleteRetryAdvice(err, "Review the workspace and artifact target, then pull again.")
@@ -77,9 +90,9 @@ func (a *Action) Execute(ctx context.Context, input Input) (Output, error) {
 	result.LineageStatus = lineageStatus(lineage)
 	result.NodeCount = len(lineage.Nodes)
 	result.EdgeCount = len(lineage.Edges)
-	result.CountsKnown = lineageErr == nil
+	result.CountsKnown = lineageErr == nil && lineage.Complete
 	warnings = append(warnings, result.Warnings...)
-	return Output{Workspace: input.WorkspaceName, Status: "pulled", Flow: flow, Artifact: result, Warnings: warnings, compactWarnings: append([]string{}, result.Warnings...), RequestID: download.TableauRequestID, Help: []string{commandhint.SourceUpdate(input.Environment, input.WorkspaceName, "flow", flow.LUID, flow.ProjectLUID)}}, nil
+	return Output{Source: &value.SourceContext{Environment: input.Environment, Site: input.Site}, Workspace: input.WorkspaceName, Status: "pulled", Flow: flow, Artifact: result, Warnings: warnings, compactWarnings: append([]string{}, result.Warnings...), RequestID: download.TableauRequestID, Help: []string{commandhint.SourceUpdate(input.Environment, input.WorkspaceName, "flow", flow.LUID, flow.ProjectLUID)}}, nil
 }
 func lineageStatus(value Lineage) string {
 	if value.Complete {

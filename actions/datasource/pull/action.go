@@ -67,9 +67,22 @@ func (a *Action) Execute(ctx context.Context, input Input) (Output, error) {
 	lineage, lineageErr := a.reader.CaptureLineage(ctx, LineageRequest{Kind: "published_datasource", RESTLUID: item.LUID, Direction: "both", Depth: 1})
 	warnings := []string{}
 	if lineageErr != nil {
-		lineage = Lineage{Complete: false, Direction: "both", Depth: 1}
-		warnings = append(warnings, "Lineage capture was incomplete. Use lineage.pull or --full for bounded diagnostics.")
+		lineage.Complete = false
+		if lineage.Failure == nil {
+			failure := value.LineageFailure{Provider: "tableau-metadata", RootKind: "published_datasource", RootRESTLUID: item.LUID, RequestID: errs.TableauRequestID(lineageErr)}
+			lineage.Failure = &failure
+		}
+		if lineage.Direction == "" {
+			lineage.Direction = "both"
+		}
+		if lineage.Depth == 0 {
+			lineage.Depth = 1
+		}
+		if len(lineage.Warnings) == 0 {
+			lineage.Warnings = []string{"Lineage capture was incomplete. Use lineage.pull or --full for bounded diagnostics; confirmed graph evidence was retained, but counts are unavailable."}
+		}
 	}
+	warnings = append(warnings, lineage.Warnings...)
 	result, err := a.writer.WriteDatasource(ctx, Artifact{
 		Workspace: input.Workspace, Filename: download.Filename, Content: download.Content,
 		Name: item.Name, TableauID: item.LUID, Environment: input.Environment, Site: input.Site,
@@ -90,9 +103,9 @@ func (a *Action) Execute(ctx context.Context, input Input) (Output, error) {
 		result.LineageStatus = "complete"
 	}
 	result.NodeCount, result.EdgeCount = len(lineage.Nodes), len(lineage.Edges)
-	result.CountsKnown = lineage.Complete
+	result.CountsKnown = lineageErr == nil && lineage.Complete
 	warnings = append(warnings, result.Warnings...)
-	return Output{Workspace: input.WorkspaceName, Status: "pulled", Datasource: item, Artifact: result, Warnings: warnings, compactWarnings: append([]string{}, result.Warnings...), RequestID: download.TableauRequestID, Help: []string{commandhint.SourceUpdate(input.Environment, input.WorkspaceName, "datasource", item.LUID, item.ProjectLUID)}}, nil
+	return Output{Source: &value.SourceContext{Environment: input.Environment, Site: input.Site}, Workspace: input.WorkspaceName, Status: "pulled", Datasource: item, Artifact: result, Warnings: warnings, compactWarnings: append([]string{}, result.Warnings...), RequestID: download.TableauRequestID, Help: []string{commandhint.SourceUpdate(input.Environment, input.WorkspaceName, "datasource", item.LUID, item.ProjectLUID)}}, nil
 }
 
 func normalizeArtifactPaths(result *ArtifactResult) error {

@@ -41,10 +41,14 @@ func (c *doctorCommands) CheckConfiguration(_ context.Context, scope doctorrun.S
 		return doctorrun.ConfigurationState{}, nil
 	}
 	if err != nil {
-		return doctorrun.ConfigurationState{Present: true}, err
+		return doctorrun.ConfigurationState{Present: true, Cause: err.Error(), ConfigPath: c.runtime.configPath}, err
 	}
 	_, err = configuration.ResolveEnvironment(scope.Environment)
-	return doctorrun.ConfigurationState{Present: true, Valid: true, EnvironmentResolved: err == nil}, nil
+	state := doctorrun.ConfigurationState{Present: true, Valid: true, EnvironmentResolved: err == nil}
+	if err != nil {
+		state.Cause, state.ConfigPath = err.Error(), c.runtime.configPath
+	}
+	return state, err
 }
 
 func (c *doctorCommands) CheckPATReferences(_ context.Context, scope doctorrun.Scope) (doctorrun.PATState, error) {
@@ -58,12 +62,25 @@ func (c *doctorCommands) CheckPATReferences(_ context.Context, scope doctorrun.S
 	}
 	name, namePresent := os.LookupEnv(environment.Auth.PATNameEnv)
 	secret, secretPresent := os.LookupEnv(environment.Auth.PATSecretEnv)
-	return doctorrun.PATState{
+	state := doctorrun.PATState{
 		ReferencesConfigured:    environment.Auth.PATNameEnv != "" && environment.Auth.PATSecretEnv != "",
 		NameVariablePresent:     namePresent && name != "",
 		SecretVariablePresent:   secretPresent && secret != "",
 		StoredCredentialPresent: environment.Auth.CredentialRef != "",
-	}, nil
+		NameVariable:            environment.Auth.PATNameEnv,
+		SecretVariable:          environment.Auth.PATSecretEnv,
+	}
+	switch {
+	case state.NameVariablePresent && state.SecretVariablePresent:
+		state.Source = "environment"
+	case state.NameVariablePresent != state.SecretVariablePresent:
+		state.Source = "incomplete_environment"
+	case state.StoredCredentialPresent:
+		state.Source = "credential_store_reference"
+	default:
+		state.Source = "unavailable"
+	}
+	return state, nil
 }
 
 func (c *doctorCommands) CheckConnectivity(ctx context.Context, scope doctorrun.Scope) (doctorrun.ConnectivityState, error) {

@@ -118,6 +118,23 @@ func TestAdapterResolvesDatasourceByExactNameAndCanonicalProjectPath(t *testing.
 	}
 }
 
+func TestAdapterResolvesDatasourceByProjectLUID(t *testing.T) {
+	c := &client{pages: map[int]tableaudatasource.Page{1: {
+		Number: 1, Size: 2, Total: 2,
+		Items: []tableaudatasource.Datasource{
+			{LUID: "ds-other", Name: "Sales", ProjectLUID: "project-2", ProjectName: "Other"},
+			{LUID: "ds-1", Name: "Sales", ProjectLUID: "project-1", ProjectName: "Ops"},
+		},
+	}}}
+	item, err := resourcedatasource.NewAdapterWithProjectResolver(c, projectPaths{"project-1": "Department/Ops", "project-2": "Other"}).ResolveDatasource(context.Background(), identity.Selector{Name: "Sales", ProjectLUID: "project-1"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if item.LUID != "ds-1" || item.ProjectPath != "Department/Ops" || len(c.listInputs) != 1 || c.listInputs[0].ProjectLUID != "project-1" {
+		t.Fatalf("item = %#v, inputs = %#v", item, c.listInputs)
+	}
+}
+
 func TestAdapterRejectsAmbiguousDatasourceSelectorDeterministically(t *testing.T) {
 	c := &client{pages: map[int]tableaudatasource.Page{1: {
 		Number: 1, Size: 2, Total: 2,

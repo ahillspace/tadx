@@ -40,7 +40,7 @@ func TestGroupOneProjectAndFlowReadsPullAndLineageThroughCLI(t *testing.T) {
 		{
 			name: "project list uses the configured default read environment",
 			args: []string{"content", "project", "list", "--all"},
-			want: []string{"status: listed", "environment: production", "site: team-site", "project-ops", "details: \"--full\""},
+			want: []string{"status: listed", "environment: production", "site: team-site", "project-ops", "last --full"},
 		},
 		{
 			name: "project inspect maps the canonical nested path",
@@ -70,7 +70,7 @@ func TestGroupOneProjectAndFlowReadsPullAndLineageThroughCLI(t *testing.T) {
 	}
 
 	pullOutput := runGroupOneCLI(t, options, "content", "flow", "pull", "--workspace", "operations", "--id", "flow-1")
-	for _, want := range []string{"status: pulled", "luid: flow-1", "details: \"--full\"", "workspace: operations", "source_luid: flow-1"} {
+	for _, want := range []string{"status: pulled", "luid: flow-1", "last --full", "workspace: operations", "source_luid: flow-1"} {
 		if !strings.Contains(pullOutput, want) {
 			t.Fatalf("flow pull output missing %q:\n%s", want, pullOutput)
 		}
@@ -94,7 +94,7 @@ func TestGroupOneProjectAndFlowReadsPullAndLineageThroughCLI(t *testing.T) {
 	}
 
 	lineageOutput := runGroupOneCLI(t, options, "catalog", "lineage", "pull", "--workspace", "operations", "--kind", "flow", "--id", "flow-1")
-	for _, want := range []string{"status: pulled", "kind: flow", "luid: flow-1", "complete: true", "artifacts/lineage/flow/", "details: \"--full\""} {
+	for _, want := range []string{"status: pulled", "kind: flow", "luid: flow-1", "complete: true", "artifacts/lineage/flow/", "last --full"} {
 		if !strings.Contains(lineageOutput, want) {
 			t.Fatalf("lineage pull output missing %q:\n%s", want, lineageOutput)
 		}
@@ -222,6 +222,9 @@ func TestGroupOneFlowMutationPreviewsDoNotMutateThroughCLI(t *testing.T) {
 
 func runGroupOneCLI(t *testing.T, options app.Options, args ...string) string {
 	t.Helper()
+	if options.JobDirectory == "" {
+		options.JobDirectory = t.TempDir()
+	}
 	var output strings.Builder
 	if exit := app.Run(context.Background(), args, &output, options); exit != 0 {
 		t.Fatalf("%s exit = %d, output:\n%s", strings.Join(args, " "), exit, output.String())

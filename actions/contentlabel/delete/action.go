@@ -27,12 +27,12 @@ type Action struct {
 func New(r Reader, w Writer) *Action { return &Action{reader: r, writer: w} }
 
 type Output struct {
-	Mode        string             `json:"mode"`
-	Operation   string             `json:"operation"`
-	Environment string             `json:"environment"`
-	Site        string             `json:"site"`
-	Item        value.ContentLabel `json:"item"`
-	Status      string             `json:"status"`
+	Mode        string              `json:"mode"`
+	Operation   string              `json:"operation"`
+	Environment string              `json:"environment"`
+	Site        string              `json:"site"`
+	Item        *value.ContentLabel `json:"item,omitempty"`
+	Status      string              `json:"status"`
 }
 
 func (o Output) CompactOutput() any { return o }
@@ -67,10 +67,11 @@ func (a *Action) Execute(ctx context.Context, in Input, preview bool) (Output, e
 	if e != nil {
 		return out, fail(in, "read", errs.OutcomeNotAttempted, e)
 	}
+	v.Type = value.CanonicalContentType(v.Type)
 	if v.LUID != in.ID || v.TargetLUID == "" || !allowed(v.Type) || (in.Type != "" && (v.Type != in.Type || v.TargetLUID != in.TargetID)) {
-		return out, fail(in, "identity", errs.OutcomeNotAttempted, fmt.Errorf("attachment or asset identity did not match"))
+		return out, fail(in, "identity", errs.OutcomeNotAttempted, fmt.Errorf("label identity mismatch: requested attachment=%q type=%q target=%q, returned attachment=%q type=%q target=%q", in.ID, in.Type, in.TargetID, v.LUID, v.Type, v.TargetLUID))
 	}
-	out.Item = v
+	out.Item = &v
 	definition, e := a.reader.GetLabelValue(ctx, v.Value)
 	if e != nil {
 		return out, fail(in, "value", errs.OutcomeNotAttempted, e)

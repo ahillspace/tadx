@@ -1,3 +1,4 @@
+verification: local_readiness_only
 status: ready
 environment: production
 server_url: "https://example.test"
@@ -7,4 +8,4 @@ pat_secret_present: true
 stored_credential_reference_present: false
 credential_source: environment
 details: "--full"
-help[1]: tadx auth check --environment production
+help[1]: "Optional live verification: tadx auth check --environment production"

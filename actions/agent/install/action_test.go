@@ -3,6 +3,7 @@ package install_test
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"os"
 	"testing"
 
@@ -75,5 +76,20 @@ func TestPreviewProjections(t *testing.T) {
 		if !bytes.Equal(actual.Bytes(), expected) {
 			t.Fatalf("%s mismatch:\n%s", name, actual.String())
 		}
+	}
+}
+
+func TestCompactProjectionRetainsDestinationAndBackup(t *testing.T) {
+	dependency := &installer{}
+	result, err := install.New(dependency).Execute(t.Context(), install.Input{Target: "codex"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	data, err := json.Marshal(result.CompactOutput())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Contains(data, []byte(`"path":".codex/skills/tadx"`)) {
+		t.Fatalf("compact output omits destination: %s", data)
 	}
 }

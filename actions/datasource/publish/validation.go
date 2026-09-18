@@ -1,6 +1,7 @@
 package publish
 
 import (
+	"path/filepath"
 	"strings"
 )
 
@@ -11,6 +12,9 @@ func ValidateInput(input Input) error {
 	}
 	if !validMode(input.Mode) {
 		return usage("mode", "datasource publish requires an explicit create, overwrite, append, or replace mode")
+	}
+	if (input.Mode == ModeAppend || input.Mode == ModeReplace) && input.File != "" && !strings.EqualFold(filepath.Ext(input.File), ".hyper") {
+		return usage("file", "append and replace require a prepared .hyper file; TADX does not unpack or edit datasource packages")
 	}
 	if input.ProjectSelector.LUID != "" && input.ProjectSelector.ProjectPath != "" && !input.SourceDefaulted {
 		return usage("project", "a project LUID cannot be combined with a project path")

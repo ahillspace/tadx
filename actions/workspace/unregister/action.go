@@ -4,8 +4,8 @@ package unregister
 import (
 	"context"
 	"errors"
-	"github.com/ahillspace/tadx/internal/commandhint"
 
+	"github.com/ahillspace/tadx/internal/commandhint"
 	"github.com/ahillspace/tadx/internal/errs"
 )
 
@@ -25,14 +25,20 @@ type Output struct {
 	Help           []string  `json:"help"`
 }
 
+type compactWorkspace struct {
+	Name string `json:"name"`
+	ID   string `json:"id"`
+	Root string `json:"root"`
+}
+
 func (o Output) CompactOutput() any {
 	return struct {
-		Status         string   `json:"status"`
-		Workspace      string   `json:"workspace"`
-		FilesPreserved bool     `json:"files_preserved"`
-		Details        string   `json:"details"`
-		Help           []string `json:"help"`
-	}{o.Status, o.Workspace.Name, o.FilesPreserved, "--full", o.Help}
+		Status         string           `json:"status"`
+		Workspace      compactWorkspace `json:"workspace"`
+		FilesPreserved bool             `json:"files_preserved"`
+		Details        string           `json:"details"`
+		Help           []string         `json:"help"`
+	}{o.Status, compactWorkspace{Name: o.Workspace.Name, ID: o.Workspace.ID, Root: o.Workspace.Root}, o.FilesPreserved, "--full", o.Help}
 }
 func (o Output) FullOutput() any { return o }
 
@@ -71,7 +77,7 @@ func (a *Action) Execute(ctx context.Context, input Input) (Output, error) {
 	if input.Preview {
 		status = "preview"
 	}
-	return Output{Status: status, Workspace: item, FilesPreserved: true, Help: []string{commandhint.Command("workspace", "register", item.Name, "--path", "<path>")}}, nil
+	return Output{Status: status, Workspace: item, FilesPreserved: true, Help: []string{commandhint.Command("workspace", "register", "--path", item.Root)}}, nil
 }
 func usage(message string) error {
 	return &errs.Error{ID: "workspace.unregister.usage", Kind: errs.KindUsage, Operation: "workspace.unregister", Summary: message, Cause: errors.New(message), Retryable: errs.Bool(false), CorrectiveAction: "Provide one registered workspace name."}

@@ -43,12 +43,12 @@ type Plan struct {
 	NoOp        bool                `json:"no_op"`
 }
 type Result struct {
-	Status    string             `json:"status"`
-	Item      value.ContentLabel `json:"item"`
-	Completed []string           `json:"completed,omitempty"`
+	Status    string              `json:"status"`
+	Item      *value.ContentLabel `json:"item,omitempty"`
+	Completed []string            `json:"completed,omitempty"`
 }
 type Output struct {
-	Plan   Plan    `json:"plan"`
+	Plan   *Plan   `json:"plan,omitempty"`
 	Result *Result `json:"result,omitempty"`
 }
 
@@ -86,7 +86,7 @@ func (a *Action) Execute(ctx context.Context, in Input, preview bool) (Output, e
 	if err := ValidateInput(in); err != nil {
 		return Output{}, err
 	}
-	out := Output{Plan: Plan{Mode: "preview", Operation: "content.label.update", Environment: in.Environment, Site: in.Site}}
+	out := Output{}
 	if !in.TargetResolved || strings.TrimSpace(in.Environment) == "" {
 		return out, usage("a resolved Tableau environment is required")
 	}
@@ -107,10 +107,11 @@ func (a *Action) Execute(ctx context.Context, in Input, preview bool) (Output, e
 				return out, fail(in, "value", errs.OutcomeNotAttempted, fmt.Errorf("system-managed label attachments cannot be changed here"))
 			}
 		}
-		out.Plan.Before = before
+		out.Plan = &Plan{Mode: "preview", Operation: "content.label.update", Environment: in.Environment, Site: in.Site, Before: before}
 		out.Plan.Target = value.LabelTarget{Type: before.Type, LUID: before.TargetLUID}
 		out.Plan.Desired = value.LabelUpdate{Value: before.Value, Message: before.Message, Active: before.Active, Elevated: before.Elevated}
 	} else {
+		out.Plan = &Plan{Mode: "preview", Operation: "content.label.update", Environment: in.Environment, Site: in.Site}
 		out.Plan.Target = value.LabelTarget{Type: in.Type, LUID: in.TargetID}
 		out.Plan.Desired.Active = true
 	}
@@ -142,7 +143,8 @@ func (a *Action) Execute(ctx context.Context, in Input, preview bool) (Output, e
 	}
 	out.Plan.Mode = "perform"
 	if out.Plan.NoOp {
-		out.Result = &Result{Status: "unchanged", Item: *before}
+		item := *before
+		out.Result = &Result{Status: "unchanged", Item: &item}
 		return out, nil
 	}
 	if a.writer == nil {
@@ -162,7 +164,11 @@ func (a *Action) Execute(ctx context.Context, in Input, preview bool) (Output, e
 		saved, err = a.writer.UpdateLabel(ctx, before.LUID, out.Plan.Desired)
 	}
 	if err != nil {
-		out.Result = &Result{Status: "unknown", Item: saved}
+		out.Result = &Result{Status: "unknown"}
+		if saved.LUID != "" {
+			saved.Type = value.CanonicalContentType(saved.Type)
+			out.Result.Item = &saved
+		}
 		var acknowledged interface{ WriteAcknowledged() bool }
 		if errors.As(err, &acknowledged) && acknowledged.WriteAcknowledged() {
 			out.Result.Status = "verification_pending"
@@ -171,19 +177,21 @@ func (a *Action) Execute(ctx context.Context, in Input, preview bool) (Output, e
 		}
 		return out, fail(in, "submission", errs.OutcomeUnknown, err)
 	}
-	out.Result = &Result{Status: "verification_pending", Item: saved, Completed: []string{"label_write"}}
+	saved.Type = value.CanonicalContentType(saved.Type)
+	out.Result = &Result{Status: "verification_pending", Item: &saved, Completed: []string{"label_write"}}
 	if saved.LUID == "" || saved.TargetLUID != out.Plan.Target.LUID || saved.Type != out.Plan.Target.Type || (before != nil && saved.LUID != before.LUID) || !matches(saved, out.Plan.Desired) {
-		return out, fail(in, "verification", errs.OutcomeConfirmed, fmt.Errorf("write response does not confirm the selected label and requested values"))
+		return out, fail(in, "verification", errs.OutcomeConfirmed, fmt.Errorf("write response mismatch: requested attachment=%q type=%q target=%q value=%q, returned attachment=%q type=%q target=%q value=%q", in.ID, out.Plan.Target.Type, out.Plan.Target.LUID, out.Plan.Desired.Value, saved.LUID, saved.Type, saved.TargetLUID, saved.Value))
 	}
 	verified, err := a.reader.GetLabel(ctx, saved.LUID)
 	if err != nil {
 		return out, fail(in, "verification", errs.OutcomeConfirmed, err)
 	}
+	verified.Type = value.CanonicalContentType(verified.Type)
 	if verified.LUID != saved.LUID || verified.TargetLUID != saved.TargetLUID || verified.Type != saved.Type || !matches(verified, out.Plan.Desired) {
 		return out, fail(in, "verification", errs.OutcomeConfirmed, fmt.Errorf("label readback differs from the acknowledged write"))
 	}
 	out.Result.Status = "updated"
-	out.Result.Item = verified
+	out.Result.Item = &verified
 	return out, nil
 }
 func (a *Action) baseline(ctx context.Context, in Input) (*value.ContentLabel, error) {
@@ -192,8 +200,9 @@ func (a *Action) baseline(ctx context.Context, in Input) (*value.ContentLabel, e
 		if e != nil {
 			return nil, e
 		}
+		v.Type = value.CanonicalContentType(v.Type)
 		if v.LUID != in.ID || !allowed(v.Type) || v.TargetLUID == "" || (in.Type != "" && (v.Type != in.Type || v.TargetLUID != in.TargetID)) {
-			return nil, fmt.Errorf("attachment ID or related asset differs from request")
+			return nil, fmt.Errorf("label identity mismatch: requested attachment=%q type=%q target=%q, returned attachment=%q type=%q target=%q", in.ID, in.Type, in.TargetID, v.LUID, v.Type, v.TargetLUID)
 		}
 		return &v, nil
 	}
@@ -206,6 +215,7 @@ func (a *Action) baseline(ctx context.Context, in Input) (*value.ContentLabel, e
 	}
 	var found *value.ContentLabel
 	for _, v := range items {
+		v.Type = value.CanonicalContentType(v.Type)
 		if v.TargetLUID != in.TargetID || v.Type != in.Type || v.LUID == "" {
 			return nil, fmt.Errorf("label collection includes an unrelated or incomplete attachment")
 		}

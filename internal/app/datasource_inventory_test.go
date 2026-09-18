@@ -49,12 +49,12 @@ func TestDatasourceListReaderMapsActionRequestAndRichResourcePage(t *testing.T) 
 		Items: []tableaudatasource.Datasource{{LUID: "ds-1", Name: "Sales", ProjectLUID: "p-1", ProjectName: "Ops", Type: "hyper", Description: "Sales data", Size: &size, Tags: []string{"daily"}}},
 	}}
 	reader := datasourceListReader{adapter: resourcedatasource.NewAdapter(client)}
-	request := datasourcelist.PageRequest{PageNumber: 1, PageSize: 1, Name: "Sales", OwnerName: "owner", ProjectName: "Ops", Type: "hyper", Tag: "daily", UpdatedAfter: "2026-01-01", UpdatedBefore: "2026-09-01"}
+	request := datasourcelist.PageRequest{PageNumber: 1, PageSize: 1, Name: "Sales", OwnerName: "owner", ProjectLUID: "p-1", ProjectName: "Ops", Type: "hyper", Tag: "daily", UpdatedAfter: "2026-01-01", UpdatedBefore: "2026-09-01"}
 	page, err := reader.ListDatasources(context.Background(), request)
 	if err != nil {
 		t.Fatal(err)
 	}
-	wantRequest := tableaudatasource.ListRequest{PageNumber: 1, PageSize: 1, Name: "Sales", OwnerName: "owner", ProjectName: "Ops", Type: "hyper", Tag: "daily", UpdatedAfter: "2026-01-01", UpdatedBefore: "2026-09-01"}
+	wantRequest := tableaudatasource.ListRequest{PageNumber: 1, PageSize: 1, Name: "Sales", OwnerName: "owner", ProjectLUID: "p-1", ProjectName: "Ops", Type: "hyper", Tag: "daily", UpdatedAfter: "2026-01-01", UpdatedBefore: "2026-09-01"}
 	if !reflect.DeepEqual(client.listInput, wantRequest) || page.RequestID != "request-1" || len(page.Datasources) != 1 || page.Datasources[0].Description != "Sales data" || page.Datasources[0].Size == nil || *page.Datasources[0].Size != 42 {
 		t.Fatalf("request = %#v, page = %#v", client.listInput, page)
 	}

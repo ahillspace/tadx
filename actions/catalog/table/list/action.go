@@ -3,6 +3,7 @@ package list
 import (
 	"context"
 	"fmt"
+	"github.com/ahillspace/tadx/internal/commandhint"
 	"github.com/ahillspace/tadx/internal/errs"
 	"github.com/ahillspace/tadx/internal/output"
 	"github.com/ahillspace/tadx/internal/paging"
@@ -45,6 +46,7 @@ type Output struct {
 	Complete    bool                  `json:"complete"`
 	ObservedAt  string                `json:"observed_at,omitempty"`
 	RequestID   string                `json:"tableau_request_id,omitempty"`
+	NextCommand string                `json:"next_command,omitempty"`
 }
 type CompactItem struct {
 	LUID             string `json:"luid"`
@@ -53,12 +55,14 @@ type CompactItem struct {
 	Type             string `json:"type"`
 	ParentLUID       string `json:"parent_luid"`
 	ParentMetadataID string `json:"parent_metadata_id"`
+	FullName         string `json:"full_name,omitempty"`
+	Schema           string `json:"schema,omitempty"`
 }
 
 func (o Output) CompactOutput() any {
 	rows := make([]CompactItem, len(o.Items))
 	for i, v := range o.Items {
-		rows[i] = CompactItem{LUID: v.LUID, MetadataID: v.MetadataID, Name: v.Name, Type: v.Type, ParentLUID: v.Database.LUID, ParentMetadataID: v.Database.MetadataID}
+		rows[i] = CompactItem{LUID: v.LUID, MetadataID: v.MetadataID, Name: v.Name, Type: v.Type, ParentLUID: v.Database.LUID, ParentMetadataID: v.Database.MetadataID, FullName: v.FullName, Schema: v.Schema}
 	}
 	return struct {
 		Status      string        `json:"status"`
@@ -69,7 +73,8 @@ func (o Output) CompactOutput() any {
 		Complete    bool          `json:"complete"`
 		ObservedAt  string        `json:"observed_at,omitempty"`
 		Details     string        `json:"details"`
-	}{o.Status, o.Environment, o.Site, o.Page, rows, o.Complete, o.ObservedAt, "--full"}
+		NextCommand string        `json:"next_command,omitempty"`
+	}{o.Status, o.Environment, o.Site, o.Page, rows, o.Complete, o.ObservedAt, "--full", o.NextCommand}
 }
 func (o Output) FullOutput() any { return o }
 func (a *Action) Execute(ctx context.Context, in Input) (out Output, err error) {
@@ -84,6 +89,11 @@ func (a *Action) Execute(ctx context.Context, in Input) (out Output, err error) 
 	if err := ValidateInput(in); err != nil {
 		return Output{}, err
 	}
+	defer func() {
+		if err == nil && out.Page.MoreAvailable {
+			out.NextCommand = nextCommand(in)
+		}
+	}()
 	out = Output{Status: "listed", Environment: in.Environment, Site: in.Site, Items: []value.MetadataTable{}}
 	if a == nil || a.reader == nil {
 		return out, usage("catalog table reader is not configured")
@@ -156,6 +166,17 @@ func (a *Action) Execute(ctx context.Context, in Input) (out Output, err error) 
 	}
 	out.Status = "partial"
 	return out, failure(in, fmt.Errorf("metadata traversal exceeded page bound"))
+}
+
+func nextCommand(in Input) string {
+	args := []string{"catalog", "table", "list", "--all"}
+	if in.Name != "" {
+		args = append(args, "--name", in.Name)
+	}
+	if in.DatabaseID != "" {
+		args = append(args, "--database-id", in.DatabaseID)
+	}
+	return commandhint.Environment(in.Environment, args...)
 }
 func usage(message string) error {
 	return &errs.Error{ID: "catalog.table.list.usage", Kind: errs.KindUsage, Operation: "catalog.table.list", Summary: message, Retryable: errs.Bool(false), CorrectiveAction: "Correct the list selectors or bounds."}

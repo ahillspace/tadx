@@ -34,6 +34,7 @@ func newWorkbookList(lister WorkbookLister, renderer Renderer) *cobra.Command {
 	command.Flags().StringVar(&input.Environment, "environment", "", "exact environment alias; defaults to the configured read environment")
 	command.Flags().StringVar(&input.Name, "name", "", "exact workbook-name filter")
 	command.Flags().StringVar(&input.OwnerName, "owner", "", "exact owner-name filter")
+	command.Flags().StringVar(&input.ProjectLUID, "project-id", "", "authoritative project LUID filter")
 	command.Flags().StringVar(&input.ProjectName, "project-name", "", "exact leaf project name filter; not a project path")
 	command.Flags().StringVar(&input.Tag, "tag", "", "exact workbook-tag filter")
 	command.Flags().BoolVar(&input.All, "all", false, "return all matching records, up to 10000; cannot combine with --limit")
@@ -47,9 +48,9 @@ func newWorkbookList(lister WorkbookLister, renderer Renderer) *cobra.Command {
 
 func newWorkbookInspect(inspector WorkbookInspector, renderer Renderer) *cobra.Command {
 	var input workbookinspect.Input
-	var luid, name, projectPath string
+	var luid, name, projectPath, projectID string
 	command := &cobra.Command{
-		Use: "inspect", Short: "Inspect one exact workbook.", Annotations: map[string]string{"tadx.capability": "workbook.inspect"}, Args: selectorArgs("workbook.inspect", &luid, &name, &projectPath, input.SetSelector),
+		Use: "inspect", Short: "Inspect one exact workbook.", Annotations: map[string]string{"tadx.capability": "workbook.inspect"}, Args: selectorArgsWithProjectID("workbook.inspect", &luid, &name, &projectPath, &projectID, input.SetSelectorWithProjectLUID),
 		RunE: func(command *cobra.Command, _ []string) error {
 			result, err := inspector.InspectWorkbook(command.Context(), input)
 			if err != nil {
@@ -62,6 +63,7 @@ func newWorkbookInspect(inspector WorkbookInspector, renderer Renderer) *cobra.C
 	command.Flags().StringVar(&luid, "id", "", "authoritative workbook LUID")
 	command.Flags().StringVar(&name, "name", "", "exact workbook name")
 	command.Flags().StringVar(&projectPath, "project", "", "exact slash-delimited project path")
+	command.Flags().StringVar(&projectID, "project-id", "", "authoritative project LUID")
 	command.Flags().BoolVar(&input.Cache, "cache", false, "read indexed local cache data without contacting Tableau")
 	return command
 }

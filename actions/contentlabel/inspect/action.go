@@ -20,34 +20,42 @@ type Action struct{ reader Reader }
 func New(r Reader) *Action { return &Action{reader: r} }
 
 type Output struct {
-	Status      string             `json:"status"`
-	Environment string             `json:"environment,omitempty"`
-	Site        string             `json:"site,omitempty"`
-	Item        value.ContentLabel `json:"item"`
+	Status      string              `json:"status"`
+	Environment string              `json:"environment,omitempty"`
+	Site        string              `json:"site,omitempty"`
+	Item        *value.ContentLabel `json:"item,omitempty"`
 }
 
 type CompactLabel struct {
-	ID       string `json:"id"`
-	TargetID string `json:"target_id"`
-	Type     string `json:"type"`
-	Value    string `json:"value"`
-	Category string `json:"category"`
-	Active   bool   `json:"active"`
-	Elevated bool   `json:"elevated"`
+	LUID       string `json:"luid"`
+	TargetLUID string `json:"target_luid"`
+	Type       string `json:"type"`
+	Value      string `json:"value"`
+	Category   string `json:"category"`
+	Message    string `json:"message"`
+	Active     bool   `json:"active"`
+	Elevated   bool   `json:"elevated"`
 }
 
 func compact(v value.ContentLabel) CompactLabel {
-	return CompactLabel{v.LUID, v.TargetLUID, v.Type, v.Value, v.Category, v.Active, v.Elevated}
+	return CompactLabel{v.LUID, v.TargetLUID, v.Type, v.Value, v.Category, v.Message, v.Active, v.Elevated}
 }
 func (o Output) CompactOutput() any {
 	return struct {
-		Status      string       `json:"status"`
-		Environment string       `json:"environment,omitempty"`
-		Site        string       `json:"site,omitempty"`
-		Item        CompactLabel `json:"item"`
-	}{o.Status, o.Environment, o.Site, compact(o.Item)}
+		Status      string        `json:"status"`
+		Environment string        `json:"environment,omitempty"`
+		Site        string        `json:"site,omitempty"`
+		Item        *CompactLabel `json:"item,omitempty"`
+	}{o.Status, o.Environment, o.Site, compactPtr(o.Item)}
 }
 func (o Output) FullOutput() any { return o }
+func compactPtr(v *value.ContentLabel) *CompactLabel {
+	if v == nil {
+		return nil
+	}
+	item := compact(*v)
+	return &item
+}
 func ValidateInput(in Input) error {
 	if strings.TrimSpace(in.ID) == "" || strings.TrimSpace(in.ID) != in.ID {
 		return usage("an exact attachment --id is required")
@@ -75,10 +83,11 @@ func (a *Action) Execute(ctx context.Context, in Input) (Output, error) {
 	if err != nil {
 		return out, failure(in.Environment, in.Site, err)
 	}
+	item.Type = value.CanonicalContentType(item.Type)
 	if item.LUID != in.ID || (in.Type != "" && item.Type != in.Type) || (in.TargetID != "" && item.TargetLUID != in.TargetID) {
-		return out, failure(in.Environment, in.Site, fmt.Errorf("label identity or related asset did not match"))
+		return out, failure(in.Environment, in.Site, fmt.Errorf("label identity mismatch: requested attachment=%q type=%q target=%q, returned attachment=%q type=%q target=%q", in.ID, in.Type, in.TargetID, item.LUID, item.Type, item.TargetLUID))
 	}
-	out.Item = item
+	out.Item = &item
 	return out, nil
 }
 

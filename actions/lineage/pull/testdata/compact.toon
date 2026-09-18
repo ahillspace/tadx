@@ -6,6 +6,7 @@ resource:
   project_path: Ops
 artifact:
   path: artifacts/lineage/flow/Daily
+  lineage_path: artifacts/lineage/flow/Daily/lineage.json
   direction: both
   depth: 1
   complete: true

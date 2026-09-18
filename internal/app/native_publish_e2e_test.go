@@ -23,6 +23,8 @@ func TestNativePublishPreviewThroughCLIWithoutManagedArtifact(t *testing.T) {
 				case strings.HasSuffix(r.URL.Path, "/auth/signin"):
 					w.Header().Set("Content-Type", "application/json")
 					io.WriteString(w, `{"credentials":{"token":"session-token","site":{"id":"site-1"},"user":{"id":"user-1"}}}`)
+				case r.Method == http.MethodGet && strings.HasSuffix(r.URL.Path, "/users/user-1"):
+					io.WriteString(w, `<tsResponse><user id="user-1" name="publisher" siteRole="Creator"/></tsResponse>`)
 				case r.Method == http.MethodGet && strings.HasSuffix(r.URL.Path, "/projects"):
 					fmt.Fprintf(w, `<tsResponse><pagination pageNumber="%s" pageSize="%s" totalAvailable="1"/><projects><project id="project-1" name="Analytics" topLevelProject="true"/></projects></tsResponse>`, r.URL.Query().Get("pageNumber"), r.URL.Query().Get("pageSize"))
 				case r.Method == http.MethodGet && strings.HasSuffix(r.URL.Path, "/"+kind+"s"):
@@ -32,6 +34,9 @@ func TestNativePublishPreviewThroughCLIWithoutManagedArtifact(t *testing.T) {
 					io.WriteString(w, `{"errors":[],"warnings":[]}`)
 				case r.Method == http.MethodPost && strings.HasSuffix(r.URL.Path, "/"+kind+"s"):
 					writes++
+					if r.URL.Query().Get("asJob") == "true" {
+						t.Error("non-administrator publication must retain the synchronous contract")
+					}
 					body, _ := io.ReadAll(r.Body)
 					if !strings.Contains(string(body), expectedBody) {
 						t.Errorf("publish omitted original native bytes")
@@ -67,7 +72,7 @@ func TestNativePublishPreviewThroughCLIWithoutManagedArtifact(t *testing.T) {
 			if exit := Run(context.Background(), args, &out, Options{ConfigPath: runtime.configPath, HTTPClient: server.Client()}); exit != 0 {
 				t.Fatalf("exit=%d %s", exit, out.String())
 			}
-			if writes != 0 || !strings.Contains(out.String(), "Native") || strings.Contains(out.String(), file) || strings.Contains(out.String(), "fingerprint") {
+			if writes != 0 || !strings.Contains(out.String(), "Native") || !strings.Contains(out.String(), filepath.ToSlash(file)) || strings.Contains(out.String(), "fingerprint") {
 				t.Fatalf("writes=%d output=%s", writes, out.String())
 			}
 			inventory, err := artifact.Inventory(context.Background(), workspace, artifact.InventoryOptions{Limit: 20})
@@ -81,7 +86,7 @@ func TestNativePublishPreviewThroughCLIWithoutManagedArtifact(t *testing.T) {
 				}
 			}
 			out.Reset()
-			if exit := Run(context.Background(), applyArgs, &out, Options{ConfigPath: runtime.configPath, HTTPClient: server.Client(), MutationsEnabled: true}); exit != 0 {
+			if exit := Run(context.Background(), applyArgs, &out, Options{ConfigPath: runtime.configPath, HTTPClient: server.Client(), MutationsEnabled: true, JobDirectory: t.TempDir()}); exit != 0 {
 				t.Fatalf("apply exit%d %s", exit, out.String())
 			}
 			if writes != 1 || !strings.Contains(out.String(), "created-1") {

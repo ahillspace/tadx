@@ -51,20 +51,22 @@ The first `=` separates field ID from member, so a field ID containing `=` has n
 | LAST_QUARTER | QUARTER | Last complete quarter |
 | LAST_YEAR | YEAR | Last complete year |
 | LAST_7_DAYS, LAST_14_DAYS, LAST_30_DAYS, LAST_60_DAYS, LAST_90_DAYS | DAY | Rolling window including the current day |
-| CUSTOM_N_DAYS with `--days` | DAY | Specified rolling day count including the current day |
+| CUSTOM_N_DAYS with `--days` set to 7, 14, 30, 60, or 90 | DAY | Specified supported rolling day count including the current day |
 
 The chosen grain must be allowed by the definition; TADX checks compatibility before writing.
 A MONTH-minimum definition cannot support a daily rolling variant.
 Existing calendars and offsets can affect the meaning of periods, so inspect them when material.
+Unsupported custom counts such as 0 or 45 are rejected before any remote write.
 
-## Preview, execute, and verify
+## Validate, execute, and verify
 
-Review the default preview's final population, including inherited filters, replacements, null policy, period, and definition linkage.
+For an unresolved fork design, review the default preview's final population, including inherited filters, replacements, null policy, period, and definition linkage.
+For supplied exact changes with complete source-metric evidence, validate those changes directly and do not add an extra preview just to repeat reviewed settings.
 Check the resulting population, not just the requested changes.
 An explicitly incomplete summary needs expanded evidence; do not treat omitted or unsupported settings as reviewed.
 Check `review_complete` and `requires_full`; `--full` can expose omitted details but does not establish missing semantics.
-For authorized execution, reuse the reviewed flags and remove only `--preview`.
-Use the fork's verified saved read-back in `--full` output to compare the complete filters and period to the intended result.
+For authorized execution, reuse the validated flags; when a preview was used, remove only `--preview`.
+Use the fork's automatic saved read-back in `--full` output to compare the complete filters and period to the intended result.
 Inspect the exact metric separately only when verification is unresolved, evidence is missing, or you need a later observation.
 `created: false` with a returned metric identity means successful reuse.
 Keep definition linkage and reconciliation evidence; inventory visibility can lag an exact verified object and is not required for fork completion.

@@ -5,6 +5,8 @@ plan:
   mode: execute
   publish_mode: overwrite
   operation: datasource.publish
+  artifact_path: artifacts/datasource/Sales
+  source_kind: ""
   datasource_name: Sales
   target:
     environment: dev
@@ -12,7 +14,6 @@ plan:
     project_luid: project-1
     project_path: Analytics
     existing_datasource_luid: ds-1
-  as_job: true
 result:
   status: succeeded
   datasource_luid: ds-1

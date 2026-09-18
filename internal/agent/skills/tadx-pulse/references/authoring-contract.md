@@ -1,6 +1,6 @@
 # Create and verify a Pulse definition
 
-Read with authoring.md before creating or previewing a definition.
+Read authoring.md when creation design or source and field meaning remain unresolved.
 TADX handles request construction and authentication; supply verified CLI arguments.
 Each create item creates one definition and resolves its Tableau-created default metric.
 
@@ -30,20 +30,21 @@ No create flags expose inline calculations, fixed definition filters, custom cal
 A required unsupported option must be resolved before creating a substitute.
 Enabled insights do not prove that values or insights are available.
 
-## Preview the complete selection
+## Validate the selection
 
-Confirm the authorized source and business scope, any required period or filter feasibility, inspected existing definitions, and exact field evidence.
-Consider the complete dimension inventory and retain the generous relevant set in intentional order.
-Check the default preview's measure, aggregation, date, dimensions, allowed grains, temporality, running total, units, currency, sentiment, and fixed defaults.
-A truncated or failed preview is not a completed review.
-`review_complete: false` or `requires_full: true` means the summary needs more evidence; expanded output cannot repair missing source information.
+For an underspecified request, confirm the authorized source and business scope, any required period or filter feasibility, inspected existing definitions, and exact field evidence.
+Consider the complete dimension inventory and retain the generous relevant set in intentional order only when design or unresolved meaning requires it.
+For a fully specified configuration, validate the supplied measure, aggregation, date, dimensions, allowed grains, temporality, running total, units, currency, sentiment, and fixed defaults directly.
+Use the default preview when unresolved material choices need a local review; a truncated or failed preview is not a completed review.
+`review_complete: false` or `requires_full: true` means the returned summary needs more evidence; expanded output cannot repair missing source information.
 
 ## Execute and inspect saved state
 
-For authorized creation, reuse the reviewed argument vector and remove only `--preview`.
+For authorized creation, reuse the validated argument vector; when a preview was used, remove only `--preview`.
 If a substantive choice changes, preview again.
 TADX revalidates on execution; a preview is not a remote-state lock.
-Retain the returned definition and default metric LUIDs and verify both in the same environment, reusing complete read-back evidence when available.
+Retain the returned definition and default metric LUIDs and use the complete automatic read-back in the same environment when available.
+Inspect again only when that read-back omits evidence needed to verify the requested configuration.
 
 Compare saved settings, definition linkage, complete population, and actual period.
 The minimum-granularity flag does not determine the default metric's reporting period.

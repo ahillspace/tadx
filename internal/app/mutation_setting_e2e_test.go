@@ -22,7 +22,7 @@ func TestPersistentMutationSettingThroughCLI(t *testing.T) {
 	if got := invoke("mutation", "status"); !strings.Contains(got, "enabled: false") {
 		t.Fatal(got)
 	}
-	if got := invoke("mutation", "set", "--enabled=true"); !strings.Contains(got, "enabled: true") {
+	if got := invoke("mutation", "set", "--enabled=true"); !strings.Contains(got, "enabled: true") || !strings.Contains(got, "persisted: true") || !strings.Contains(got, "source_setting: mutations_enabled") {
 		t.Fatal(got)
 	}
 	if got := invoke("mutation", "status"); !strings.Contains(got, "saved_user_setting") {

@@ -337,6 +337,29 @@ func TestMetricForkGroupsRepeatedFilters(t *testing.T) {
 	}
 }
 
+func TestMetricForkValidatesSupportedCustomDaysAndPresence(t *testing.T) {
+	tests := []struct {
+		name string
+		args []string
+		want string
+	}{
+		{name: "missing", args: []string{"--period", "CUSTOM_N_DAYS"}, want: "requires --days"},
+		{name: "supplied zero", args: []string{"--period", "CUSTOM_N_DAYS", "--days", "0"}, want: "7, 14, 30, 60, or 90"},
+		{name: "unsupported", args: []string{"--period", "CUSTOM_N_DAYS", "--days", "45"}, want: "7, 14, 30, 60, or 90"},
+		{name: "wrong period", args: []string{"--period", "LAST_30_DAYS", "--days", "7"}, want: "requires --period CUSTOM_N_DAYS"},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			command := newCommand(&actions{})
+			command.SetArgs(append([]string{"metric", "fork", "--environment", "development", "--id", "metric-1"}, test.args...))
+			err := command.Execute()
+			if err == nil || !strings.Contains(err.Error(), test.want) {
+				t.Fatalf("error = %v, want substring %q", err, test.want)
+			}
+		})
+	}
+}
+
 func TestMetricForkRejectsConflictingFilterModes(t *testing.T) {
 	command := newCommand(&actions{})
 	command.SetArgs([]string{

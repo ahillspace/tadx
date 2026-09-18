@@ -34,7 +34,7 @@ Commands:
     (--project-id (--pid) <luid> | --project <path>) (destination)
     (--create | --overwrite | --append | --replace)
     [--name <name>] (default: source)
-    [--workspace <name>] [--as-job] (waits) [--preview]
+    [--workspace <name>] [--preview]
 
   pull: target (download local files)
     [--workspace <name>] [--overwrite] (dirty local files) [--preview]

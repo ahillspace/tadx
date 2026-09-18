@@ -3,9 +3,11 @@ package list
 import (
 	"context"
 	"fmt"
+	"github.com/ahillspace/tadx/internal/commandhint"
 	"github.com/ahillspace/tadx/internal/errs"
 	"github.com/ahillspace/tadx/internal/value"
 	"sort"
+	"strconv"
 )
 
 type Input struct {
@@ -23,9 +25,11 @@ type Output struct {
 	Status        string                `json:"status"`
 	Environment   string                `json:"environment,omitempty"`
 	Site          string                `json:"site,omitempty"`
-	Items         []value.LabelCategory `json:"items"`
+	Items         []value.LabelCategory `json:"items,omitempty"`
 	Returned      int                   `json:"returned"`
 	MoreAvailable bool                  `json:"more_available"`
+	Total         int                   `json:"total"`
+	NextCommand   string                `json:"next_command,omitempty"`
 }
 
 type CompactLabel struct {
@@ -34,18 +38,23 @@ type CompactLabel struct {
 
 func compact(v value.LabelCategory) CompactLabel { return CompactLabel{v.Name} }
 func (o Output) CompactOutput() any {
-	items := make([]CompactLabel, 0, len(o.Items))
-	for _, v := range o.Items {
-		items = append(items, compact(v))
+	var items []CompactLabel
+	if o.Items != nil {
+		items = make([]CompactLabel, 0, len(o.Items))
+		for _, v := range o.Items {
+			items = append(items, compact(v))
+		}
 	}
 	return struct {
 		Status        string         `json:"status"`
 		Environment   string         `json:"environment,omitempty"`
 		Site          string         `json:"site,omitempty"`
-		Items         []CompactLabel `json:"items"`
+		Items         []CompactLabel `json:"items,omitempty"`
 		Returned      int            `json:"returned"`
 		MoreAvailable bool           `json:"more_available"`
-	}{o.Status, o.Environment, o.Site, items, o.Returned, o.MoreAvailable}
+		Total         int            `json:"total"`
+		NextCommand   string         `json:"next_command,omitempty"`
+	}{o.Status, o.Environment, o.Site, items, o.Returned, o.MoreAvailable, o.Total, o.NextCommand}
 }
 func (o Output) FullOutput() any { return o }
 func ValidateInput(in Input) error {
@@ -58,7 +67,7 @@ func (a *Action) Execute(ctx context.Context, in Input) (Output, error) {
 	if err := ValidateInput(in); err != nil {
 		return Output{}, err
 	}
-	out := Output{Status: "listed", Environment: in.Environment, Site: in.Site, Items: []value.LabelCategory{}}
+	out := Output{Status: "listed", Environment: in.Environment, Site: in.Site}
 	if a == nil || a.reader == nil {
 		return out, usage("label category reader is not configured")
 	}
@@ -86,10 +95,14 @@ func (a *Action) Execute(ctx context.Context, in Input) (Output, error) {
 		limit = 20
 	}
 	out.MoreAvailable = len(items) > limit
+	out.Total = len(items)
 	if out.MoreAvailable {
 		items = items[:limit]
 	}
 	out.Items = items
+	if out.MoreAvailable {
+		out.NextCommand = commandhint.Environment(in.Environment, "admin", "label-category", "list", "--limit", strconv.Itoa(out.Total))
+	}
 	out.Returned = len(items)
 	return out, nil
 }

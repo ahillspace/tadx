@@ -6,8 +6,6 @@ import (
 	"sort"
 )
 
-const ruleLimit = 200
-
 type Input struct{ Environment, Site, ResourceKind, ResourceLUID, DefaultFor, PrincipalType, PrincipalLUID, PrincipalUsername, Capability string }
 type Rule struct {
 	Source        string `json:"source"`
@@ -60,10 +58,6 @@ func (o Output) CompactOutput() any {
 func (o Output) FullOutput() any {
 	p := o.Permissions
 	p.Rules = append([]Rule(nil), p.Rules...)
-	if len(p.Rules) > ruleLimit {
-		p.RulesOmitted = len(p.Rules) - ruleLimit
-		p.Rules = p.Rules[:ruleLimit]
-	}
 	return FullResult{Status: o.Status, Environment: o.Environment, Site: o.Site, Permissions: p, RequestID: o.RequestID, Help: o.Help}
 }
 

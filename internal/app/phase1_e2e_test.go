@@ -64,7 +64,7 @@ func TestPhaseOneWorkbookPullAndPublishThroughCLIDefaultSite(t *testing.T) {
 	workspace := createNamedWorkspace(t, configPath, "development")
 	t.Setenv("PROD_PAT_NAME", "pat-name")
 	t.Setenv("PROD_PAT_SECRET", "pat-secret")
-	options := app.Options{ConfigPath: configPath, HTTPClient: server.Client(), MutationsEnabled: true, Now: func() time.Time { return time.Date(2026, 8, 30, 12, 0, 0, 0, time.UTC) }, CorrelationID: func() string { return "e2e-correlation" }}
+	options := app.Options{ConfigPath: configPath, HTTPClient: server.Client(), MutationsEnabled: true, JobDirectory: t.TempDir(), Now: func() time.Time { return time.Date(2026, 8, 30, 12, 0, 0, 0, time.UTC) }, CorrelationID: func() string { return "e2e-correlation" }}
 
 	var pullOutput strings.Builder
 	if exit := app.Run(context.Background(), []string{"content", "workbook", "pull", "--environment", "production", "--workspace", "development", "--id", "wb-1"}, &pullOutput, options); exit != 0 {
@@ -101,8 +101,8 @@ func TestPhaseOneWorkbookPullAndPublishThroughCLIDefaultSite(t *testing.T) {
 	if publishCalls.Load() != 0 || !strings.Contains(previewOutput.String(), "mode: preview") {
 		t.Fatalf("preview mutated Tableau or omitted preview state: calls=%d output=%s", publishCalls.Load(), previewOutput.String())
 	}
-	if strings.Contains(previewOutput.String(), workspace) || !strings.Contains(previewOutput.String(), "source_luid: wb-1") || strings.Contains(previewOutput.String(), "artifact_path:") {
-		t.Fatalf("preview did not preserve source identity without storage paths: %s", previewOutput.String())
+	if strings.Contains(previewOutput.String(), workspace) || !strings.Contains(previewOutput.String(), "source_luid: wb-1") || !strings.Contains(previewOutput.String(), "artifact_path: artifacts/workbook/") {
+		t.Fatalf("preview did not preserve source identity and workspace-relative artifact path: %s", previewOutput.String())
 	}
 
 	var applyOutput strings.Builder
@@ -110,7 +110,7 @@ func TestPhaseOneWorkbookPullAndPublishThroughCLIDefaultSite(t *testing.T) {
 	if exit := app.Run(context.Background(), applyArgs, &applyOutput, options); exit != 0 {
 		t.Fatalf("apply exit = %d, output = %s", exit, applyOutput.String())
 	}
-	if validationCalls.Load() != 1 || publishCalls.Load() != 1 || !strings.Contains(applyOutput.String(), "workbook_luid: wb-2") || !strings.Contains(applyOutput.String(), "validation_warnings_omitted: 1") || !strings.Contains(applyOutput.String(), "details: \"--full\"") || strings.Contains(applyOutput.String(), "Unknown map source is used") {
+	if validationCalls.Load() != 1 || publishCalls.Load() != 1 || !strings.Contains(applyOutput.String(), "workbook_luid: wb-2") || !strings.Contains(applyOutput.String(), "validation_warnings_omitted: 1") || !strings.Contains(applyOutput.String(), "last --full") || strings.Contains(applyOutput.String(), "Unknown map source is used") {
 		t.Fatalf("apply result: validation_calls=%d publish_calls=%d output=%s", validationCalls.Load(), publishCalls.Load(), applyOutput.String())
 	}
 }
@@ -228,7 +228,7 @@ func TestWorkbookPullAcquiresDirectPublishedDatasourceArtifactsThroughCLI(t *tes
 	if metadata.Portability != artifact.PortabilitySourceSiteBound || !metadata.DependenciesAcquired || len(metadata.PublishedDatasources) != 1 || metadata.PublishedDatasources[0].LUID != "ds-1" || metadata.PublishedDatasources[0].LocalArtifactPath == "" || filepath.IsAbs(metadata.PublishedDatasources[0].LocalArtifactPath) {
 		t.Fatalf("workbook dependency provenance = %#v", metadata)
 	}
-	for _, want := range []string{"portability: source-site-bound", "published_datasource_count: 1", "dependencies_acquired: true", "details: \"--full\""} {
+	for _, want := range []string{"portability: source-site-bound", "published_datasource_count: 1", "dependencies_acquired: true", "last --full"} {
 		if !strings.Contains(stdout.String(), want) {
 			t.Fatalf("output missing %q: %s", want, stdout.String())
 		}
@@ -253,7 +253,7 @@ func TestWorkbookPullAcquiresDirectPublishedDatasourceArtifactsThroughCLI(t *tes
 			t.Fatalf("full output missing %q: %s", want, fullOutput.String())
 		}
 	}
-	if strings.Contains(fullOutput.String(), "details: \"--full\"") || strings.Contains(fullOutput.String(), "dependencies[") {
+	if strings.Contains(fullOutput.String(), "last --full") || strings.Contains(fullOutput.String(), "dependencies[") {
 		t.Fatalf("full output retained compact hint or duplicate dependency list: %s", fullOutput.String())
 	}
 	if strings.Contains(fullOutput.String(), filepath.ToSlash(fullWorkspace)) || strings.Contains(fullOutput.String(), fullWorkspace) {

@@ -55,8 +55,9 @@ func (a *Action) Execute(ctx context.Context, input Input, preview bool) (Output
 	if err != nil {
 		return Output{}, err
 	}
-	output := Output{Plan: plan, Help: []string{"Run without --preview to get or create this exact Pulse metric variant."}}
+	output := Output{Plan: plan}
 	if preview {
+		output.Help = []string{"Run without --preview to get or create this exact Pulse metric variant."}
 		return output, nil
 	}
 	output.Plan.Mode = "execute"
@@ -69,19 +70,26 @@ func (a *Action) Execute(ctx context.Context, input Input, preview bool) (Output
 	}
 	created, err := a.creator.GetOrCreateMetric(ctx, CreateRequest{DefinitionLUID: plan.DefinitionLUID, Specification: cloneMap(plan.Specification)})
 	if err != nil {
+		if created.MetricLUID != "" {
+			output.Result = &Result{Status: forkStatus(created.Created), MetricLUID: created.MetricLUID, MetricName: created.MetricName, Created: created.Created, RequestID: created.RequestID}
+		}
+		output.Help = executionRecoveryHelp(input, created.MetricLUID)
 		retryable, corrective := errs.CompleteRetryAdvice(err, commandhint.Environment(input.Environment, "pulse", "metric", "list", "--definition-id", plan.DefinitionLUID, "--all")+"; reconcile the remote outcome before retrying.")
 		return output, &errs.Error{ID: "pulse.metric.fork.failed", Kind: errs.KindOperation, Operation: "pulse.metric.fork", Resource: input.MetricLUID, Environment: input.Environment, Site: input.Site, Summary: "Pulse metric fork failed.", Cause: err, Retryable: retryable, CorrectiveAction: corrective, TableauRequestID: errs.TableauRequestID(err), Phase: errs.PhaseSubmission, Outcome: errs.OutcomeUnknown}
 	}
 	if created.MetricLUID == "" {
-		return Output{}, fail("pulse.metric.fork.invalid_response", errs.KindOperation, input, "Tableau returned no metric identity for the fork.", nil)
+		output.Help = executionRecoveryHelp(input, "")
+		return output, &errs.Error{ID: "pulse.metric.fork.invalid_response", Kind: errs.KindOperation, Operation: "pulse.metric.fork", Resource: input.MetricLUID, Environment: input.Environment, Site: input.Site, Summary: "Tableau returned no metric identity for the fork.", Retryable: errs.Bool(false), CorrectiveAction: "Reconcile the remote fork outcome before retrying; no authoritative metric identity was returned.", Phase: errs.PhaseSubmission, Outcome: errs.OutcomeUnknown}
 	}
 	reconciled, err := a.reconciler.ReconcileMetric(ctx, ExpectedMetric{MetricLUID: created.MetricLUID, DefinitionLUID: plan.DefinitionLUID, DatasourceLUID: plan.DatasourceLUID, SiteLUID: input.SiteLUID, Specification: cloneMap(plan.Specification)})
 	if err != nil {
 		output.Result = &Result{Status: forkStatus(created.Created), MetricLUID: created.MetricLUID, MetricName: created.MetricName, Created: created.Created, ReconciliationStatus: "unknown", RequestID: created.RequestID}
+		output.Help = executionRecoveryHelp(input, created.MetricLUID)
 		return output, &errs.Error{ID: "pulse.metric.fork.reconcile", Kind: errs.KindOperation, Operation: "pulse.metric.fork", Resource: created.MetricLUID, Environment: input.Environment, Site: input.Site, Summary: "Pulse metric reconciliation failed.", Cause: err, Retryable: errs.Bool(false), CorrectiveAction: commandhint.Environment(input.Environment, "pulse", "metric", "inspect", "--id", created.MetricLUID) + "; reconcile before retrying.", TableauRequestID: errs.TableauRequestID(err), Phase: errs.PhaseVerification, Outcome: errs.OutcomeConfirmed}
 	}
 	if reconciled.Status != "verified" || !reconciled.OwnershipVerified || !reconciled.SpecificationVerified {
 		output.Result = &Result{Status: forkStatus(created.Created), MetricLUID: created.MetricLUID, MetricName: created.MetricName, Created: created.Created, ReconciliationStatus: reconciled.Status, RequestID: created.RequestID, ReconciliationRequestID: reconciled.RequestID}
+		output.Help = executionRecoveryHelp(input, created.MetricLUID)
 		return output, &errs.Error{ID: "pulse.metric.fork.reconcile", Kind: errs.KindOperation, Operation: "pulse.metric.fork", Resource: created.MetricLUID, Environment: input.Environment, Site: input.Site, Summary: "The forked Pulse metric's saved configuration could not be verified.", Cause: fmt.Errorf("reconciliation status %s", reconciled.Status), Retryable: errs.Bool(false), CorrectiveAction: commandhint.Environment(input.Environment, "pulse", "metric", "inspect", "--id", created.MetricLUID) + "; do not repeat the mutation automatically.", TableauRequestID: reconciled.RequestID, Phase: errs.PhaseVerification, Outcome: errs.OutcomeConfirmed}
 	}
 	status := forkStatus(created.Created)
@@ -93,6 +101,13 @@ func (a *Action) Execute(ctx context.Context, input Input, preview bool) (Output
 	output.Result.DefinitionReadbackRequestID = reconciled.DefinitionRequestID
 	output.Help = []string{"Saved metric configuration and definition linkage verified; current values and generated insights are not read by TADX."}
 	return output, nil
+}
+
+func executionRecoveryHelp(input Input, metricLUID string) []string {
+	if metricLUID != "" {
+		return []string{commandhint.Environment(input.Environment, "pulse", "metric", "inspect", "--id", metricLUID, "--full")}
+	}
+	return []string{"The Pulse metric fork outcome is unknown; reconcile the remote result before retrying."}
 }
 
 func forkStatus(created bool) string {
@@ -167,8 +182,11 @@ func (a *Action) plan(ctx context.Context, input Input) (Plan, error) {
 		return Plan{}, fail("pulse.metric.fork.usage", errs.KindUsage, input, "Pulse filters have conflicting operators or invalid combined values.", err)
 	}
 	for _, filter := range filters {
-		if filter.Field == "" || len(filter.Values) == 0 || !allowed[filter.Field] || !validFilterValues(filter.Values) {
+		if filter.Field == "" || len(filter.Values) == 0 || !validFilterValues(filter.Values) {
 			return Plan{}, fail("pulse.metric.fork.usage", errs.KindUsage, input, "Every dimensional filter must name an allowed field and at least one value.", nil)
+		}
+		if !allowed[filter.Field] {
+			return Plan{}, fail("pulse.metric.fork.usage", errs.KindUsage, input, "Pulse filter field is not allowed by the source definition.", fmt.Errorf("field %q is not among the allowed dimensions for definition %q (allowed: %s)", filter.Field, definition.LUID, strings.Join(definition.AllowedDimensions, ", ")))
 		}
 		spec, err = mergeFilter(spec, filter)
 		if err != nil {
@@ -216,7 +234,7 @@ func measurementPeriod(key string, days int) (map[string]any, bool) {
 	period, ok := periods[key]
 	if key == "CUSTOM_N_DAYS" {
 		period = days
-		ok = days >= 1 && days <= 3650
+		ok = IsSupportedCustomDays(days)
 	}
 	if !ok {
 		return nil, false
@@ -305,8 +323,8 @@ func cloneMap(value map[string]any) map[string]any {
 func stringValue(value any) string { result, _ := value.(string); return result }
 func readFail(input Input, summary string, cause error) error {
 	retryable, corrective := errs.CompleteRetryAdvice(cause, "Review the exact source metric and selected site, then retry.")
-	return &errs.Error{ID: "pulse.metric.fork.read", Kind: errs.KindOperation, Operation: "pulse.metric.fork", Resource: input.MetricLUID, Environment: input.Environment, Site: input.Site, Summary: summary, Cause: cause, Retryable: retryable, CorrectiveAction: corrective, TableauRequestID: errs.TableauRequestID(cause)}
+	return &errs.Error{ID: "pulse.metric.fork.read", Kind: errs.KindOperation, Operation: "pulse.metric.fork", Resource: input.MetricLUID, Environment: input.Environment, Site: input.Site, Summary: summary, Cause: cause, Retryable: retryable, CorrectiveAction: corrective, TableauRequestID: errs.TableauRequestID(cause), Phase: errs.PhaseVerification, Outcome: errs.OutcomeNotAttempted}
 }
 func fail(id string, kind errs.Kind, input Input, summary string, cause error) error {
-	return &errs.Error{ID: id, Kind: kind, Operation: "pulse.metric.fork", Resource: input.MetricLUID, Environment: input.Environment, Site: input.Site, Summary: summary, Cause: cause, Retryable: errs.Bool(false), CorrectiveAction: "Provide an exact source metric and supported fork changes, then review a new preview."}
+	return &errs.Error{ID: id, Kind: kind, Operation: "pulse.metric.fork", Resource: input.MetricLUID, Environment: input.Environment, Site: input.Site, Summary: summary, Cause: cause, Retryable: errs.Bool(false), CorrectiveAction: "Provide an exact source metric and supported fork changes, then review a new preview.", Phase: errs.PhaseValidation, Outcome: errs.OutcomeNotAttempted}
 }

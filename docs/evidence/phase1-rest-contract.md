@@ -30,8 +30,10 @@ The local contract tests do not claim live Tableau deployment verification.
 The separate live records below cover one successful workbook round trip and one cross-site rejection.
 
 The Query Job endpoint is documented as administrator-only while workbook publish can be available to non-administrator publishers.
-Synchronous publish is the default, and asynchronous polling requires the explicit `--as-job` option.
-When Tableau accepts an asynchronous publish but job polling is forbidden, cancelled, or times out, the mutation outcome is unknown rather than failed.
+Publication selects its lifecycle automatically: verified administrator monitoring uses accepted asynchronous jobs, while unavailable monitoring prerequisites retain synchronous publication.
+There is no user-facing job-mode option.
+When Tableau accepts an asynchronous publish but observation becomes unavailable or is interrupted, the mutation outcome remains unknown rather than failed.
+Active jobs do not fail merely because ten minutes elapsed.
 The error retains the job and request IDs and does not advise an automatic retry.
 The capture disagrees on a 1,000-block versus 10,000-block upload limit.
 TADX applies the conservative 1,000-block limit.

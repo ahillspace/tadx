@@ -5,4 +5,9 @@ page:
   more_available: true
 capabilities[1]{id,owner,disposition,state,blocked,execution_enabled}:
   content.datasource.list,cli,ship,planned,false,false
-help[2]: tadx capability get content.datasource.list,tadx capability list --domain content --limit 2
+counts:
+  returned: 1
+  matched: 2
+  out_of_scope: 0
+next_command: tadx capability list --domain content --cursor 1 --limit 1
+help[2]: tadx capability get content.datasource.list,"When more results are needed, use next_command."

@@ -21,6 +21,7 @@ type Project struct {
 	LUID                            string `json:"luid"`
 	Name                            string `json:"name"`
 	Path                            string `json:"path"`
+	PathUnavailableReason           string `json:"path_unavailable_reason,omitempty"`
 	ParentLUID                      string `json:"parent_luid,omitempty"`
 	ContentPermissions              string `json:"content_permissions,omitempty"`
 	ControllingPermissionsProjectID string `json:"controlling_permissions_project_luid,omitempty"`

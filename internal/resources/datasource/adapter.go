@@ -158,15 +158,17 @@ func (a *Adapter) ResolveDatasource(ctx context.Context, selector identity.Selec
 		}
 		return normalizeDatasource(item, path), nil
 	}
-	if strings.TrimSpace(selector.Name) == "" || strings.TrimSpace(selector.ProjectPath) == "" {
-		return Datasource{}, errors.New("datasource selection requires a LUID or exact name and project path")
+	if strings.TrimSpace(selector.Name) == "" || (strings.TrimSpace(selector.ProjectPath) == "" && strings.TrimSpace(string(selector.ProjectLUID)) == "") {
+		return Datasource{}, errors.New("datasource selection requires a LUID or exact name and project path or project LUID")
 	}
-	if resolver, ok := a.projects.(ProjectSelectorPathResolver); ok {
-		path, err := resolver.ResolveProjectSelectorPath(ctx, selector.ProjectPath)
-		if err != nil {
-			return Datasource{}, err
+	if selector.ProjectLUID == "" && selector.ProjectPath != "" {
+		if resolver, ok := a.projects.(ProjectSelectorPathResolver); ok {
+			path, err := resolver.ResolveProjectSelectorPath(ctx, selector.ProjectPath)
+			if err != nil {
+				return Datasource{}, err
+			}
+			selector.ProjectPath = path
 		}
-		selector.ProjectPath = path
 	}
 
 	byLUID := make(map[string]Datasource)
@@ -174,7 +176,7 @@ func (a *Adapter) ResolveDatasource(ctx context.Context, selector identity.Selec
 	const pageSize = 1000
 	expectedTotal, expectedSize := -1, -1
 	for number := 1; number <= 1000; number++ {
-		page, err := a.client.List(ctx, tableaudatasource.ListRequest{PageNumber: number, PageSize: pageSize, Name: selector.Name})
+		page, err := a.client.List(ctx, tableaudatasource.ListRequest{PageNumber: number, PageSize: pageSize, Name: selector.Name, ProjectLUID: string(selector.ProjectLUID)})
 		if err != nil {
 			return Datasource{}, err
 		}
@@ -195,11 +197,14 @@ func (a *Adapter) ResolveDatasource(ctx context.Context, selector identity.Selec
 			if item.Name != selector.Name {
 				continue
 			}
+			if selector.ProjectLUID != "" && item.ProjectLUID != string(selector.ProjectLUID) {
+				continue
+			}
 			path, err := a.projects.ResolveProjectPath(ctx, item.ProjectLUID)
 			if err != nil {
 				return Datasource{}, err
 			}
-			if path == selector.ProjectPath {
+			if selector.ProjectLUID != "" || path == selector.ProjectPath {
 				normalized := normalizeDatasource(item, path)
 				normalized.RequestID = page.TableauRequestID
 				byLUID[item.LUID] = normalized
@@ -214,7 +219,7 @@ func (a *Adapter) ResolveDatasource(ctx context.Context, selector identity.Selec
 			sort.Slice(items, func(i, j int) bool { return items[i].LUID < items[j].LUID })
 			candidates := make([]identity.Candidate, len(items))
 			for index, item := range items {
-				candidates[index] = identity.Candidate{LUID: identity.LUID(item.LUID), Name: item.Name, ProjectPath: item.ProjectPath}
+				candidates[index] = identity.Candidate{LUID: identity.LUID(item.LUID), Name: item.Name, ProjectPath: item.ProjectPath, ProjectLUID: identity.LUID(item.ProjectLUID)}
 			}
 			resolved, err := identity.Resolve(selector, candidates)
 			if err != nil {

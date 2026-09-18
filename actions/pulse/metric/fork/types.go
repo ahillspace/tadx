@@ -1,13 +1,14 @@
 package fork
 
 type Input struct {
-	Environment string
-	Site        string
-	SiteLUID    string
-	MetricLUID  string
-	Timeframe   string
-	CustomDays  int
-	Filters     []Filter
+	Environment   string
+	Site          string
+	SiteLUID      string
+	MetricLUID    string
+	Timeframe     string
+	CustomDays    int
+	CustomDaysSet bool `json:"-"`
+	Filters       []Filter
 }
 type Filter struct {
 	Field   string   `json:"field"`

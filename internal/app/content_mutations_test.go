@@ -192,3 +192,19 @@ func TestProjectMoveAdapterNormalizesReturnedHierarchyPath(t *testing.T) {
 		t.Fatalf("result=%#v err=%v", result, err)
 	}
 }
+
+func TestProjectMoveAdapterReportsLiteralSlashPathUnavailable(t *testing.T) {
+	parent := "parent-2"
+	client := &contentMutationProjectClient{
+		page:   tableauproject.Page{Number: 1, Size: 1, Total: 1, Items: []tableauproject.Project{{LUID: parent, Name: "Department"}}},
+		result: tableauproject.MutationResult{Status: "succeeded", Project: tableauproject.Project{LUID: "project-1", Name: "Ops/Reports", ParentLUID: parent}, TableauRequestID: "request-project"},
+	}
+	adapter := projectMoveAdapter{projects: resourceproject.NewAdapter(client), changes: resourceproject.NewMutationAdapter(client)}
+	result, err := adapter.MoveProject(context.Background(), "project-1", &parent)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Project.Path != "" || result.Project.PathUnavailableReason != literalSlashProjectPathUnavailable {
+		t.Fatalf("result=%#v", result)
+	}
+}

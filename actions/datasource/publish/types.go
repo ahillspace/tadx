@@ -59,6 +59,7 @@ type Plan struct {
 	PublishMode          Mode     `json:"publish_mode"`
 	Operation            string   `json:"operation"`
 	ArtifactPath         string   `json:"artifact_path"`
+	SourceKind           string   `json:"source_kind"`
 	ArtifactFingerprint  string   `json:"artifact_fingerprint"`
 	Filename             string   `json:"filename"`
 	DatasourceName       string   `json:"datasource_name"`
@@ -66,7 +67,7 @@ type Plan struct {
 	ParentDataSourceURLs []string `json:"parent_datasource_urls,omitempty"`
 	Target               Target   `json:"target"`
 	Substeps             []string `json:"substeps"`
-	AsJob                bool     `json:"as_job"`
+	AsJob                bool     `json:"-"`
 	request              PublishRequest
 }
 
@@ -79,10 +80,11 @@ type CompactPlan struct {
 	Mode           string `json:"mode"`
 	PublishMode    Mode   `json:"publish_mode"`
 	Operation      string `json:"operation"`
-	ArtifactPath   string `json:"-"`
+	ArtifactPath   string `json:"artifact_path"`
+	SourceKind     string `json:"source_kind"`
 	DatasourceName string `json:"datasource_name"`
 	Target         Target `json:"target"`
-	AsJob          bool   `json:"as_job"`
+	AsJob          bool   `json:"-"`
 }
 
 type PublishRequest struct {
@@ -99,6 +101,8 @@ type Result struct {
 	ProjectLUID      string `json:"project_luid,omitempty"`
 	JobID            string `json:"tableau_job_id,omitempty"`
 	TableauRequestID string `json:"tableau_request_id,omitempty"`
+	ReceiptPath      string `json:"receipt_path,omitempty"`
+	Verification     string `json:"verification,omitempty"`
 }
 type Output struct {
 	Plan   Plan     `json:"plan"`
@@ -112,6 +116,8 @@ type CompactPublishResult struct {
 	DatasourceName string `json:"datasource_name,omitempty"`
 	ProjectLUID    string `json:"project_luid,omitempty"`
 	JobID          string `json:"tableau_job_id,omitempty"`
+	ReceiptPath    string `json:"receipt_path,omitempty"`
+	Verification   string `json:"verification,omitempty"`
 }
 
 type CompactResult struct {
@@ -134,6 +140,7 @@ func (o Output) CompactOutput() any {
 			PublishMode:    o.Plan.PublishMode,
 			Operation:      o.Plan.Operation,
 			ArtifactPath:   o.Plan.ArtifactPath,
+			SourceKind:     o.Plan.SourceKind,
 			DatasourceName: o.Plan.DatasourceName,
 			Target:         o.Plan.Target,
 			AsJob:          o.Plan.AsJob,
@@ -148,6 +155,8 @@ func (o Output) CompactOutput() any {
 			DatasourceName: o.Result.DatasourceName,
 			ProjectLUID:    o.Result.ProjectLUID,
 			JobID:          o.Result.JobID,
+			ReceiptPath:    o.Result.ReceiptPath,
+			Verification:   o.Result.Verification,
 		}
 	}
 	return compact

@@ -39,8 +39,9 @@ type PublishRequest struct {
 	Mode                                                          PublishMode
 	ParentDataSourceURLs                                          []string
 	AsJob                                                         bool
+	Accepted                                                      func(context.Context, string, string) (PublishResult, error)
 }
-type PublishResult struct{ Status, DatasourceLUID, DatasourceName, ProjectLUID, JobID, TableauRequestID string }
+type PublishResult struct{ Status, DatasourceLUID, DatasourceName, ProjectLUID, JobID, TableauRequestID, ReceiptPath string }
 type MutationResult struct{ Status, DatasourceLUID, DatasourceName, ProjectLUID, OwnerLUID, TableauRequestID string }
 
 // UpdateRequest contains only explicit datasource metadata changes.
@@ -127,7 +128,7 @@ func (c *Client) Prepare(ctx context.Context, input PublishRequest) (PreparedPub
 	if err := closeSnapshot(); err != nil {
 		return nil, fmt.Errorf("remove datasource publish snapshot: %w", err)
 	}
-	return &preparedDatasourcePublish{client: c, query: query, body: body, contentType: contentType, name: input.Name, project: input.ProjectLUID, asJob: input.AsJob}, nil
+	return &preparedDatasourcePublish{client: c, query: query, body: body, contentType: contentType, name: input.Name, project: input.ProjectLUID, asJob: input.AsJob, accepted: input.Accepted}, nil
 }
 
 // datasourcePublishSnapshot is an immutable, fingerprint-verified copy of the publish payload.
@@ -313,6 +314,7 @@ type preparedDatasourcePublish struct {
 	mu                         sync.Mutex
 	committed                  bool
 	asJob                      bool
+	accepted                   func(context.Context, string, string) (PublishResult, error)
 }
 
 func (p *preparedDatasourcePublish) Commit(ctx context.Context) (PublishResult, error) {
@@ -344,6 +346,9 @@ func (p *preparedDatasourcePublish) Commit(ctx context.Context) (PublishResult, 
 	if p.asJob {
 		if err := validateAcceptedDatasourceJob(envelope.Job); err != nil {
 			return PublishResult{Status: "unknown", JobID: envelope.Job.ID, TableauRequestID: response.TableauRequestID}, tableau.NewProtocolError("datasource.publish", response, err, false)
+		}
+		if p.accepted != nil {
+			return p.accepted(ctx, envelope.Job.ID, response.TableauRequestID)
 		}
 		return p.client.pollDatasourceJob(ctx, envelope.Job.ID, response.TableauRequestID, p.name, p.project)
 	}

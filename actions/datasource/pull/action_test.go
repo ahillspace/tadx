@@ -13,6 +13,7 @@ import (
 
 type pullReader struct {
 	lineageErr     error
+	lineage        datasourcepull.Lineage
 	partialLineage bool
 	calls          []string
 }
@@ -30,7 +31,7 @@ func (r *pullReader) DownloadDatasource(_ context.Context, luid string) (datasou
 func (r *pullReader) CaptureLineage(_ context.Context, request datasourcepull.LineageRequest) (datasourcepull.Lineage, error) {
 	r.calls = append(r.calls, "lineage:"+request.RESTLUID)
 	if r.lineageErr != nil {
-		return datasourcepull.Lineage{}, r.lineageErr
+		return r.lineage, r.lineageErr
 	}
 	if r.partialLineage {
 		return datasourcepull.Lineage{Complete: false, Direction: "both", Depth: 1, Nodes: []datasourcepull.LineageNode{{MetadataID: "metadata-ds-1", Kind: "published_datasource", RESTLUID: "ds-1"}}}, nil
@@ -87,6 +88,31 @@ func TestPullKeepsSuccessfulDownloadWhenLineageIsUnavailable(t *testing.T) {
 	}
 	if compact := output.CompactOutput().(datasourcepull.CompactResult); len(compact.Warnings) != 0 {
 		t.Fatalf("optional lineage was noisy: %#v", compact)
+	}
+}
+
+func TestPullPreservesPartialLineageWhenCaptureFails(t *testing.T) {
+	r := &pullReader{
+		lineage: datasourcepull.Lineage{
+			Nodes: []datasourcepull.LineageNode{
+				{MetadataID: "metadata-ds-1", Kind: "published_datasource", RESTLUID: "ds-1"},
+				{MetadataID: "metadata-table-1", Kind: "table", Name: "Sales"},
+			},
+			Edges:    []datasourcepull.LineageEdge{{FromMetadataID: "metadata-table-1", ToMetadataID: "metadata-ds-1", Relationship: "upstream"}},
+			Warnings: []string{"upstream database access was denied"},
+		},
+		lineageErr: errors.New("upstream database access was denied"),
+	}
+	w := &pullWriter{}
+	output, err := datasourcepull.New(r, w).Execute(context.Background(), datasourcepull.Input{Workspace: "workspace", Selector: identity.Selector{LUID: "ds-1"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if w.input.Lineage.Complete || len(w.input.Lineage.Nodes) != 2 || len(w.input.Lineage.Edges) != 1 || output.Artifact.CountsKnown {
+		t.Fatalf("output = %#v, lineage = %#v", output, w.input.Lineage)
+	}
+	if !strings.Contains(strings.Join(output.Warnings, "\n"), "upstream database access was denied") {
+		t.Fatalf("warnings = %#v", output.Warnings)
 	}
 }
 

@@ -76,6 +76,8 @@ type CompactResult struct {
 	CredentialSource string   `json:"credential_source"`
 	Validated        bool     `json:"validated"`
 	Warnings         []string `json:"warnings,omitempty"`
+	SiteLUID         string   `json:"site_luid,omitempty"`
+	UserLUID         string   `json:"user_luid,omitempty"`
 	Details          string   `json:"details"`
 	Help             []string `json:"help"`
 }
@@ -84,7 +86,7 @@ type CompactResult struct {
 func (o Output) CompactOutput() any {
 	return CompactResult{
 		Status: o.Status, Environment: o.Environment, CredentialSource: o.CredentialSource,
-		Validated: o.Validated, Warnings: o.Warnings, Details: "--full", Help: o.Help,
+		Validated: o.Validated, Warnings: o.Warnings, SiteLUID: o.SiteLUID, UserLUID: o.UserLUID, Details: "--full", Help: o.Help,
 	}
 }
 

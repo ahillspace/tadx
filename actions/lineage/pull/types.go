@@ -60,7 +60,10 @@ type Edge = value.LineageEdge
 // Graph is one bounded lineage capture.
 type Graph struct {
 	RootMetadataID string
+	Direction      string
+	Depth          int
 	Complete       bool
+	Failure        *value.LineageFailure
 	Nodes          []Node
 	Edges          []Edge
 	Warnings       []string
@@ -79,6 +82,7 @@ type Artifact struct {
 	Depth           int
 	Complete        bool
 	CountsKnown     bool
+	Failure         *value.LineageFailure
 	Nodes           []Node
 	Edges           []Edge
 	Warnings        []string
@@ -104,24 +108,26 @@ type Provenance struct {
 
 // ArtifactSummary is the compact metadata-only artifact projection.
 type ArtifactSummary struct {
-	Path      string `json:"path"`
-	Direction string `json:"direction"`
-	Depth     int    `json:"depth"`
-	Complete  bool   `json:"complete"`
-	NodeCount *int   `json:"node_count,omitempty"`
-	EdgeCount *int   `json:"edge_count,omitempty"`
-}
-
-// FullArtifact adds the canonical sidecar path and fingerprint.
-type FullArtifact struct {
 	Path        string `json:"path"`
 	LineagePath string `json:"lineage_path"`
-	Fingerprint string `json:"fingerprint"`
 	Direction   string `json:"direction"`
 	Depth       int    `json:"depth"`
 	Complete    bool   `json:"complete"`
 	NodeCount   *int   `json:"node_count,omitempty"`
 	EdgeCount   *int   `json:"edge_count,omitempty"`
+}
+
+// FullArtifact adds the canonical sidecar path and fingerprint.
+type FullArtifact struct {
+	Path        string                `json:"path"`
+	LineagePath string                `json:"lineage_path"`
+	Fingerprint string                `json:"fingerprint"`
+	Direction   string                `json:"direction"`
+	Depth       int                   `json:"depth"`
+	Complete    bool                  `json:"complete"`
+	NodeCount   *int                  `json:"node_count,omitempty"`
+	EdgeCount   *int                  `json:"edge_count,omitempty"`
+	Failure     *value.LineageFailure `json:"failure,omitempty"`
 }
 
 // Output retains complete bounded details before projection.
@@ -136,6 +142,7 @@ type Output struct {
 	CountsKnown       bool
 	Nodes             []Node
 	Edges             []Edge
+	Failure           *value.LineageFailure
 	Warnings          []string
 	WarningsOmitted   int
 	Provenance        Provenance
@@ -180,7 +187,7 @@ func (o Output) CompactOutput() any {
 	nodeCount, edgeCount := o.counts()
 	return CompactResult{
 		Status: o.Status, Resource: compactResource(o.Resource),
-		Artifact: ArtifactSummary{Path: o.Artifact.Path, Direction: o.Direction, Depth: o.Depth, Complete: o.Complete, NodeCount: nodeCount, EdgeCount: edgeCount},
+		Artifact: ArtifactSummary{Path: o.Artifact.Path, LineagePath: o.Artifact.LineagePath, Direction: o.Direction, Depth: o.Depth, Complete: o.Complete, NodeCount: nodeCount, EdgeCount: edgeCount},
 		Warnings: o.Warnings, WarningsOmitted: o.WarningsOmitted, Details: "--full", Help: o.Help,
 	}
 }
@@ -207,7 +214,7 @@ func (o Output) FullOutput() any {
 	nodeCount, edgeCount := o.counts()
 	return FullResult{
 		Status: o.Status, Resource: o.Resource,
-		Artifact: FullArtifact{Path: o.Artifact.Path, LineagePath: o.Artifact.LineagePath, Fingerprint: o.Artifact.Fingerprint, Direction: o.Direction, Depth: o.Depth, Complete: o.Complete, NodeCount: nodeCount, EdgeCount: edgeCount},
+		Artifact: FullArtifact{Path: o.Artifact.Path, LineagePath: o.Artifact.LineagePath, Fingerprint: o.Artifact.Fingerprint, Direction: o.Direction, Depth: o.Depth, Complete: o.Complete, NodeCount: nodeCount, EdgeCount: edgeCount, Failure: o.Failure},
 		Nodes:    append([]Node(nil), o.Nodes[:nodeLimit]...), Edges: append([]Edge(nil), o.Edges[:edgeLimit]...),
 		OmittedNodeCount: len(o.Nodes) - nodeLimit, OmittedEdgeCount: len(o.Edges) - edgeLimit,
 		Warnings: o.Warnings, WarningsOmitted: o.WarningsOmitted, Provenance: o.Provenance,

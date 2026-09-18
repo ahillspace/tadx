@@ -198,7 +198,7 @@ func TestCLIProcessShorthand(t *testing.T) {
 	})
 	t.Run("help advertises flags", func(t *testing.T) {
 		result := runCLI(t, binary, []string{"con", "wb", "pub", "-h"}, nil)
-		for _, want := range []string{"--full (details, not rows)", "--preview", "--environment (--env,-e)"} {
+		for _, want := range []string{"--full (--ful, -f)", "--preview", "--environment (--env, -e)"} {
 			if result.exitCode != 0 || !strings.Contains(result.stdout, want) {
 				t.Fatalf("help missing %q: %+v", want, result)
 			}

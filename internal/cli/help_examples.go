@@ -70,13 +70,15 @@ var categoryHelpExamples = []helpExampleSet{
 	{"admin", "Use --preview to inspect supported remote changes. Users, groups, and permission principals use exact selectors.", []string{
 		"tadx admin user list --env dev", "tadx admin group list --env dev", "tadx admin permission inspect --env dev --kind workbook --id <workbook-luid>",
 	}},
-	{"admin user", "Create requires --name, --site-role, and exactly one of --auth-setting or --idp-configuration-id.\nInspect accepts --id or --name; update and delete accept --id or --username.", []string{
+	{"admin user", "Create requires --name, --site-role, and exactly one of --auth-setting or --idp-configuration-id.\nInspect accepts exactly one of --id, --name, or --username; --username is an exact-login alias for --name, not a display name. Update and delete accept --id or --username.", []string{
 		"tadx admin user list --env dev --site-role Viewer",
+		"tadx admin user inspect --env dev --username <username>",
 		"tadx admin user create --env dev --name <username> --site-role Viewer --auth-setting ServerDefault --preview",
 		"tadx admin user update --env dev --username <username> --site-role Explorer --preview",
 	}},
 	{"admin group", "Create requires --name. Inspect accepts --id or --name. Update and delete require --id.", []string{
 		"tadx admin group inspect --env dev --name <group-name>", "tadx admin group create --env dev --name <group-name> --preview",
+		"tadx admin group update --env dev --id <group-luid> --set-members --member-id <user-luid> --member-id <second-user-luid> --preview",
 	}},
 	{"admin group-member", "Add and remove require --group-id and exactly one of --user-id or --username.", []string{
 		"tadx admin group-member add --env dev --group-id <group-luid> --username <username> --preview",

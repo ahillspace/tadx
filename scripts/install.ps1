@@ -1,3 +1,12 @@
+<#
+.SYNOPSIS
+Installs or removes the TADX executable and bundled agent Guidance.
+.DESCRIPTION
+InstallDir wins over TADX_INSTALL_DIR and defaults to %LOCALAPPDATA%\Programs\tadx\bin.
+Use NoModifyPath and NoCompletion independently when profile changes are not wanted.
+.EXAMPLE
+./install.ps1 -NoModifyPath -NoCompletion
+#>
 [CmdletBinding()]
 param(
     [ValidateSet('Install', 'Uninstall')]
@@ -25,6 +34,8 @@ $ProgressPreference = 'SilentlyContinue'
     [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12
 
 $Repository = 'ahillspace/tadx'
+$script:LastDownloadFailure = ''
+$script:LastDownloadNotFound = $false
 
 function Get-DefaultInstallDir {
     if (-not [string]::IsNullOrWhiteSpace($env:LOCALAPPDATA)) {
@@ -84,6 +95,8 @@ function Receive-ReleaseAsset {
         [bool]$UseGitHubCLI = $false
     )
 
+    $script:LastDownloadFailure = ''
+    $script:LastDownloadNotFound = $false
     Remove-Item -LiteralPath $Destination -Force -ErrorAction SilentlyContinue
     if ($UseGitHubCLI) {
         $arguments = @('release', 'download')
@@ -108,9 +121,28 @@ function Receive-ReleaseAsset {
         return $true
     }
     catch {
+        $status = $null
+        if ($null -ne $_.Exception.Response -and $null -ne $_.Exception.Response.StatusCode) {
+            $status = [int]$_.Exception.Response.StatusCode
+        }
+        if ($status -eq 404) {
+            $script:LastDownloadNotFound = $true
+        }
+        else {
+            $script:LastDownloadFailure = 'bounded transport failure'
+        }
         Remove-Item -LiteralPath $Destination -Force -ErrorAction SilentlyContinue
         return $false
     }
+}
+
+function New-InstallerWriteFailure {
+    param(
+        [Parameter(Mandatory = $true)][string]$Stage,
+        [Parameter(Mandatory = $true)][string]$Target
+    )
+
+    return "Could not $Stage at '$Target'. No replacement occurred; choose another -InstallDir or check directory permissions."
 }
 
 function Get-ChecksumEntries {
@@ -216,7 +248,8 @@ function Install-TadxBinary {
         [Parameter(Mandatory = $true)][string]$Directory
     )
 
-    New-Item -ItemType Directory -Force -Path $Directory | Out-Null
+    try { New-Item -ItemType Directory -Force -Path $Directory -ErrorAction Stop | Out-Null }
+    catch { throw (New-InstallerWriteFailure -Stage 'create the resolved install directory' -Target $Directory) }
     $destination = Join-Path $Directory 'tadx.exe'
     $staged = Join-Path $Directory ('.tadx.new.' + [Guid]::NewGuid().ToString('N') + '.exe')
     $backup = Join-Path $Directory ('.tadx.backup.' + [Guid]::NewGuid().ToString('N') + '.exe')
@@ -224,10 +257,15 @@ function Install-TadxBinary {
     $hadExisting = Test-Path -LiteralPath $destination
 
     try {
-        Copy-Item -LiteralPath $Source -Destination $staged
+        try { Copy-Item -LiteralPath $Source -Destination $staged -ErrorAction Stop }
+        catch { throw (New-InstallerWriteFailure -Stage 'stage the release binary' -Target $staged) }
         # Renaming, unlike overwriting, also supports the running updater on Windows.
-        if ($hadExisting) { [IO.File]::Move($destination, $backup) }
-        [IO.File]::Move($staged, $destination)
+        if ($hadExisting) {
+            try { [IO.File]::Move($destination, $backup) }
+            catch { throw (New-InstallerWriteFailure -Stage 'preserve the existing binary' -Target $destination) }
+        }
+        try { [IO.File]::Move($staged, $destination) }
+        catch { throw "Could not replace the resolved binary at '$destination'. The previous binary was restored when possible; choose another -InstallDir or check directory permissions." }
         $installed = $true
         foreach ($agentTarget in $Target) {
             & $destination agent install --target $agentTarget
@@ -364,7 +402,10 @@ try {
     if ($Version -ieq 'latest') {
         $releaseBase = "https://github.com/$Repository/releases/latest/download"
         if (-not (Receive-ReleaseAsset -AssetName 'checksums.txt' -Destination $manifestPath -HttpsBase $releaseBase -UseGitHubCLI $useGitHubCLI)) {
-            throw 'The latest stable TADX release could not be downloaded.'
+            if ($script:LastDownloadNotFound) {
+                throw 'The latest stable TADX release was not found (asset checksums.txt). It was not verified or installed.'
+            }
+            throw 'The latest stable TADX release could not be retrieved (asset checksums.txt; bounded transport failure). It was not verified or installed.'
         }
         $entries = @(Get-ChecksumEntries -ManifestPath $manifestPath)
         $assetPattern = '^tadx_([^_]+)_windows_' + [regex]::Escape($architecture) + '\.zip$'
@@ -389,6 +430,8 @@ try {
         $assetName = "tadx_${resolvedVersion}_windows_${architecture}.zip"
         $tagCandidates = @($Version, "v$resolvedVersion", $resolvedVersion) | Select-Object -Unique
         $downloaded = $false
+        $transportFailure = $false
+        $notFound = $false
         foreach ($tag in $tagCandidates) {
             $releaseBase = "https://github.com/$Repository/releases/download/$tag"
             if (Receive-ReleaseAsset -AssetName 'checksums.txt' -Destination $manifestPath -HttpsBase $releaseBase -Tag $tag -UseGitHubCLI $useGitHubCLI) {
@@ -396,16 +439,27 @@ try {
                 $downloaded = $true
                 break
             }
+            if ($script:LastDownloadNotFound) { $notFound = $true } else { $transportFailure = $true }
+            Remove-Item -LiteralPath $manifestPath -Force -ErrorAction SilentlyContinue
         }
         if (-not $downloaded) {
-            throw "TADX release $Version was not found."
+            if ($transportFailure) {
+                throw "TADX release $Version could not be retrieved (asset checksums.txt; bounded transport failure). It was not verified or installed."
+            }
+            if ($notFound) {
+                throw "TADX release $Version was not found (asset checksums.txt). It was not verified or installed."
+            }
+            throw "TADX release $Version could not be retrieved (asset checksums.txt). It was not verified or installed."
         }
         $entries = @(Get-ChecksumEntries -ManifestPath $manifestPath)
     }
 
     $archivePath = Join-Path $temporaryDirectory $assetName
     if (-not (Receive-ReleaseAsset -AssetName $assetName -Destination $archivePath -HttpsBase $releaseBase -Tag $releaseTag -UseGitHubCLI $useGitHubCLI)) {
-        throw "The release asset $assetName could not be downloaded."
+        if ($script:LastDownloadNotFound) {
+            throw "The release asset $assetName for version $resolvedVersion was not found. It was not verified or installed."
+        }
+        throw "The release asset $assetName for version $resolvedVersion could not be retrieved (bounded transport failure). It was not verified or installed."
     }
     Assert-ArchiveChecksum -ArchivePath $archivePath -AssetName $assetName -Entries $entries
     if ((Get-Item -LiteralPath $archivePath).Length -gt 268435456) {
@@ -419,7 +473,8 @@ try {
         throw 'The verified release archive must contain exactly one tadx.exe file.'
     }
 
-    New-Item -ItemType Directory -Force -Path $InstallDir | Out-Null
+    try { New-Item -ItemType Directory -Force -Path $InstallDir -ErrorAction Stop | Out-Null }
+    catch { throw (New-InstallerWriteFailure -Stage 'create the resolved install directory' -Target $InstallDir) }
     try { New-Item -ItemType Directory -Path $installLock -ErrorAction Stop | Out-Null; $ownsInstallLock = $true }
     catch { throw 'Another installer is using this directory. Wait for it to finish; remove .tadx-install.lock only after confirming no installer is running.' }
     Install-TadxBinary -Source $binaries[0].FullName -Directory $InstallDir

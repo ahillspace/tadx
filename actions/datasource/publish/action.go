@@ -4,7 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/ahillspace/tadx/internal/commandhint"
+	"path/filepath"
 	"slices"
 	"strings"
 
@@ -45,11 +45,16 @@ func (a *Action) Execute(ctx context.Context, input Input, preview bool) (Output
 	if err != nil {
 		return Output{}, err
 	}
+	plan.SourceKind = "managed_artifact"
+	if input.File != "" {
+		plan.SourceKind = "native_file"
+	}
 	out := Output{Plan: plan, Help: []string{"Run without --preview to publish this exact plan."}}
 	if preview {
 		return out, nil
 	}
 	out.Plan.Mode = "execute"
+	out.Help = nil
 	ctx = a.beginProjectResolution(ctx)
 	artifact, err := a.artifacts.ReadDatasource(ctx, input.ArtifactPath)
 	if err != nil {
@@ -78,6 +83,15 @@ func (a *Action) Execute(ctx context.Context, input Input, preview bool) (Output
 	}
 	result, err := prepared.Commit(ctx)
 	if err != nil {
+		if known, ok := errors.AsType[*errs.Error](err); ok && known.Phase != "" {
+			if result.Status == "succeeded" {
+				result.Verification = "destination_unavailable"
+			}
+			if result != (Result{}) {
+				out.Result = &result
+			}
+			return out, err
+		}
 		requestID := result.TableauRequestID
 		if requestID == "" {
 			requestID = errs.TableauRequestID(err)
@@ -94,37 +108,50 @@ func (a *Action) Execute(ctx context.Context, input Input, preview bool) (Output
 		if hint := publishInspectionHint(plan, result); hint != "" {
 			correctiveAction += " Run " + hint + "."
 		}
-		out.Result = &result
+		if result != (Result{}) {
+			out.Result = &result
+		}
 		return out, &errs.Error{ID: errorID, Kind: errs.KindOperation, Operation: "datasource.publish", Resource: plan.Target.ExistingLUID, Environment: input.Environment, Site: input.Site, Summary: summary, Cause: err, Retryable: errs.Bool(false), CorrectiveAction: correctiveAction, TableauJobID: result.JobID, TableauRequestID: requestID, Phase: errs.PhaseSubmission, Outcome: errs.OutcomeUnknown}
 	}
-	if plan.AsJob {
-		if result.Status != "succeeded" {
-			completedStatus := result.Status
-			result.Status = "unknown"
-			out.Result = &result
-			return out, unknownOutcomeError(plan, input, result, fmt.Errorf("completed Tableau datasource publish job returned status %q", completedStatus))
-		}
+	out.Result = &result
+	if result.Status == "pending" || result.Status == "running" {
+		return out, nil
+	}
+	return a.Complete(ctx, out)
+}
+
+// Complete confirms a completed publish without ever repeating its write.
+func (a *Action) Complete(ctx context.Context, out Output) (Output, error) {
+	out.Help = nil
+	if out.Result == nil {
+		return out, nil
+	}
+	plan, result := out.Plan, *out.Result
+	input := Input{Environment: plan.Target.Environment, Site: plan.Target.Site}
+	if result.Status == "succeeded" {
 		if result.DatasourceLUID == "" {
 			resolved, resolveErr := a.resolver.ResolvePublishedDatasource(ctx, plan.DatasourceName, plan.Target.ProjectLUID)
 			if resolveErr != nil {
-				result.Status = "unknown"
+				result.Verification = "destination_unavailable"
 				out.Result = &result
 				return out, unknownOutcomeError(plan, input, result, fmt.Errorf("resolve completed datasource identity: %w", resolveErr))
 			}
 			if strings.TrimSpace(resolved.LUID) == "" || resolved.Name != plan.DatasourceName || resolved.ProjectLUID != plan.Target.ProjectLUID {
-				result.Status = "unknown"
+				result.Verification = "destination_unavailable"
 				out.Result = &result
 				return out, unknownOutcomeError(plan, input, result, errors.New("completed datasource resolution returned incomplete or conflicting authoritative identity"))
 			}
 			result.DatasourceLUID, result.DatasourceName, result.ProjectLUID = resolved.LUID, resolved.Name, resolved.ProjectLUID
 		} else if result.DatasourceName != plan.DatasourceName || result.ProjectLUID != plan.Target.ProjectLUID {
-			result.Status = "unknown"
+			result.Verification = "destination_mismatch"
 			out.Result = &result
 			return out, unknownOutcomeError(plan, input, result, errors.New("completed datasource job returned identity conflicting with the exact publish target"))
 		}
 	}
 	out.Result = &result
-	out.Help = []string{commandhint.Environment(input.Environment, "content", "datasource", "inspect", "--id", result.DatasourceLUID)}
+	if result.Status == "succeeded" {
+		out.Result.Verification = "confirmed"
+	}
 	return out, nil
 }
 
@@ -137,7 +164,7 @@ func unknownOutcomeError(plan Plan, input Input, result Result, cause error) err
 		correctiveAction += " Run " + hint + "."
 	}
 	return &errs.Error{
-		ID:               "datasource.publish.outcome_unknown",
+		ID:               "datasource.publish.destination_unavailable",
 		Kind:             errs.KindOperation,
 		Operation:        "datasource.publish",
 		Resource:         plan.Target.ExistingLUID,
@@ -150,7 +177,7 @@ func unknownOutcomeError(plan Plan, input Input, result Result, cause error) err
 		TableauJobID:     result.JobID,
 		TableauRequestID: result.TableauRequestID,
 		Phase:            errs.PhaseVerification,
-		Outcome:          errs.OutcomeUnknown,
+		Outcome:          errs.OutcomeConfirmed,
 	}
 }
 
@@ -164,6 +191,9 @@ func (a *Action) plan(ctx context.Context, input Input) (Plan, error) {
 	artifact, err := a.artifacts.ReadDatasource(ctx, input.ArtifactPath)
 	if err != nil {
 		return Plan{}, operationError("datasource.publish.read", "Datasource artifact read failed.", input, err)
+	}
+	if (input.Mode == ModeAppend || input.Mode == ModeReplace) && !strings.EqualFold(filepath.Ext(artifact.Filename), ".hyper") {
+		return Plan{}, usage("file", "append and replace require a prepared .hyper file; TADX does not unpack or edit datasource packages")
 	}
 	parents := append([]string(nil), artifact.ParentDataSourceURLs...)
 	if artifact.CompositionStatus == "ordinary" && len(parents) != 0 {
@@ -191,7 +221,7 @@ func (a *Action) plan(ctx context.Context, input Input) (Plan, error) {
 		return Plan{}, err
 	}
 	req := PublishRequest{Name: name, ProjectLUID: project.LUID, Filename: artifact.Filename, ContentPath: artifact.PayloadPath, ContentSize: artifact.Size, ExpectedFingerprint: artifact.Fingerprint, Mode: input.Mode, ParentDataSourceURLs: parents, AsJob: input.AsJob}
-	return Plan{Workspace: input.WorkspaceName, SourceLUID: artifact.TableauID, Mode: "preview", PublishMode: input.Mode, Operation: "datasource.publish", ArtifactPath: artifact.Path, ArtifactFingerprint: artifact.Fingerprint, Filename: artifact.Filename, DatasourceName: name, CompositionStatus: artifact.CompositionStatus, ParentDataSourceURLs: parents, Target: Target{Environment: input.Environment, Site: input.Site, ProjectLUID: project.LUID, ProjectPath: project.Path, ExistingLUID: existing}, Substeps: []string{"resolve exact destination", "check datasource collision", "revalidate artifact and destination", "upload native datasource package", "publish datasource", "poll asynchronous job when requested"}, AsJob: input.AsJob, request: req}, nil
+	return Plan{Workspace: input.WorkspaceName, SourceLUID: artifact.TableauID, Mode: "preview", PublishMode: input.Mode, Operation: "datasource.publish", ArtifactPath: artifact.Path, ArtifactFingerprint: artifact.Fingerprint, Filename: artifact.Filename, DatasourceName: name, CompositionStatus: artifact.CompositionStatus, ParentDataSourceURLs: parents, Target: Target{Environment: input.Environment, Site: input.Site, ProjectLUID: project.LUID, ProjectPath: project.Path, ExistingLUID: existing}, Substeps: []string{"resolve exact destination", "check datasource collision", "revalidate artifact and destination", "upload prepared datasource input", "publish datasource", "automatically monitor an accepted job"}, AsJob: input.AsJob, request: req}, nil
 }
 
 func (a *Action) resolveProject(ctx context.Context, input Input, artifact Artifact) (Project, error) {

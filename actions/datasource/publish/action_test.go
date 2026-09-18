@@ -196,7 +196,7 @@ func TestPublishResolvesAuthoritativeIdentityAfterCompletedJobOmitsIt(t *testing
 	}
 }
 
-func TestPublishKeepsCompletedJobOutcomeUnknownWhenIdentityCannotBeResolved(t *testing.T) {
+func TestPublishPreservesConfirmedCompletionWhenIdentityCannotBeResolved(t *testing.T) {
 	tests := []struct {
 		name       string
 		completion datasourcepublish.Datasource
@@ -214,7 +214,7 @@ func TestPublishKeepsCompletedJobOutcomeUnknownWhenIdentityCannotBeResolved(t *t
 			publisher := &outcomePublisher{result: datasourcepublish.Result{Status: "succeeded", JobID: "job-1", TableauRequestID: "poll-request"}}
 			output, err := datasourcepublish.New(&publishArtifactReader{artifact: composedArtifact()}, resolver, publisher).Execute(context.Background(), datasourcepublish.Input{ArtifactPath: "artifacts/datasource/Sales", Environment: "dev", Site: "sandbox", ProjectSelector: identity.Selector{LUID: "project-1"}, Mode: datasourcepublish.ModeCreate, AsJob: true}, false)
 			var structured *errs.Error
-			if err == nil || output.Result == nil || output.Result.JobID != "job-1" || !errors.As(err, &structured) || structured.ID != "datasource.publish.outcome_unknown" || structured.Phase != errs.PhaseVerification || structured.Outcome != errs.OutcomeUnknown || structured.TableauJobID != "job-1" || structured.TableauRequestID != "poll-request" || structured.Retryable == nil || *structured.Retryable || resolver.completionCalls != 1 {
+			if err == nil || output.Result == nil || output.Result.Status != "succeeded" || output.Result.Verification == "" || output.Result.JobID != "job-1" || !errors.As(err, &structured) || structured.ID != "datasource.publish.destination_unavailable" || structured.Phase != errs.PhaseVerification || structured.Outcome != errs.OutcomeConfirmed || structured.TableauJobID != "job-1" || structured.TableauRequestID != "poll-request" || structured.Retryable == nil || *structured.Retryable || resolver.completionCalls != 1 {
 				t.Fatalf("error = %#v, completion calls = %d", err, resolver.completionCalls)
 			}
 		})

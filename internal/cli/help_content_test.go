@@ -101,14 +101,50 @@ func TestContentPresentationGroupsAndValuesAreDeterministic(t *testing.T) {
 		if err := action.Flags().Set("id", "different-supplied-value"); err != nil {
 			t.Fatal(err)
 		}
-		if got := contentPresentationOutput(t, action); got != baseline {
-			t.Fatalf("%s help depends on selected verb or flag values", action.Name())
+		focused := contentPresentationOutput(t, action)
+		if !strings.Contains(focused, "Usage: tadx content workbook "+action.Name()+" [flags]") {
+			t.Fatalf("%s help is not focused:\n%s", action.Name(), focused)
+		}
+		if focused == baseline {
+			t.Fatalf("%s help repeats the complete resource reference", action.Name())
 		}
 	}
 	for range 10 {
 		if got := contentPresentationOutput(t, resource); got != baseline {
 			t.Fatal("help ordering is not deterministic")
 		}
+	}
+}
+
+func TestContentFocusedHelpKeepsSharedConstraintsAndRelatedRoute(t *testing.T) {
+	root, resource := contentPresentationTree("workbook", "publish", "pull")
+	var publish *cobra.Command
+	for _, action := range resource.Commands() {
+		if action.Name() == "publish" {
+			publish = action
+		}
+	}
+	if publish == nil {
+		t.Fatal("publish action missing")
+	}
+	publish.Flags().String("id", "", "content identity")
+	publish.Flags().String("project", "", "destination project")
+	publish.MarkFlagsOneRequired("id", "project")
+	applyHelpValues(root)
+	focused := contentPresentationOutput(t, publish)
+	for _, want := range []string{
+		"Usage: tadx content workbook publish [flags]",
+		"flags{publish}:",
+		"--json",
+		"at least one of: --id, --project",
+		"tadx admin permission -h",
+	} {
+		if !strings.Contains(focused, want) {
+			t.Errorf("focused content help missing %q:\n%s", want, focused)
+		}
+	}
+	if strings.Contains(focused, "\n  pull:") || strings.Contains(focused, "--extra-filter") {
+		t.Fatalf("focused content help contains sibling details:\n%s", focused)
 	}
 }
 

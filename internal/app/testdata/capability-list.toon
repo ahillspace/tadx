@@ -6,4 +6,8 @@ page:
 capabilities[2]{id,owner,disposition,state,command,blocked,execution_enabled}:
   capability.get,cli,ship,implemented,capability get,false,true
   capability.list,cli,ship,implemented,capability list,false,true
+counts:
+  returned: 2
+  matched: 2
+  out_of_scope: 0
 help[1]: tadx capability get capability.get

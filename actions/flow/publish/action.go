@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/ahillspace/tadx/internal/commandhint"
 	"strings"
 
 	"github.com/ahillspace/tadx/internal/errs"
@@ -45,11 +44,16 @@ func (a *Action) Execute(ctx context.Context, input Input, preview bool) (Output
 	if err != nil {
 		return Output{}, err
 	}
+	plan.SourceKind = "managed_artifact"
+	if input.File != "" {
+		plan.SourceKind = "native_file"
+	}
 	output := Output{Plan: plan, Help: []string{"Run without --preview to publish this exact plan."}}
 	if preview {
 		return output, nil
 	}
 	output.Plan.Mode = "execute"
+	output.Help = nil
 	ctx = a.beginProjectResolution(ctx)
 	// Revalidate the exact artifact, destination, and collision BEFORE preparing
 	// the upload. Prepare uploads the native flow (a server-side side effect); a
@@ -86,12 +90,19 @@ func (a *Action) Execute(ctx context.Context, input Input, preview bool) (Output
 	}
 	result, err := prepared.Commit(ctx)
 	if err != nil {
+		if known, ok := errors.AsType[*errs.Error](err); ok && known.Phase != "" {
+			if result != (Result{}) {
+				output.Result = &result
+			}
+			return output, err
+		}
 		retryable, correctiveAction := errs.CompleteRetryAdvice(err, "Review the upstream error before publishing again.")
-		output.Result = &result
+		if result != (Result{}) {
+			output.Result = &result
+		}
 		return output, &errs.Error{ID: "flow.publish.failed", Kind: errs.KindOperation, Operation: "flow.publish", Environment: input.Environment, Site: input.Site, Summary: "Flow publish failed.", Cause: err, Retryable: retryable, CorrectiveAction: correctiveAction, TableauRequestID: errs.TableauRequestID(err), Phase: errs.PhaseSubmission, Outcome: errs.OutcomeUnknown}
 	}
 	output.Result = &result
-	output.Help = []string{commandhint.Environment(input.Environment, "content", "flow", "inspect", "--id", result.FlowLUID)}
 	return output, nil
 }
 func (a *Action) plan(ctx context.Context, input Input) (Plan, error) {
