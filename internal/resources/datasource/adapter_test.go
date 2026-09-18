@@ -22,11 +22,15 @@ type client struct {
 	pages        map[int]tableaudatasource.Page
 	pageSequence []tableaudatasource.Page
 	listInputs   []tableaudatasource.ListRequest
+	listErr      error
 }
 
 func (c *client) List(_ context.Context, input tableaudatasource.ListRequest) (tableaudatasource.Page, error) {
 	c.calls = append(c.calls, "list:"+input.Name)
 	c.listInputs = append(c.listInputs, input)
+	if c.listErr != nil {
+		return tableaudatasource.Page{}, c.listErr
+	}
 	if len(c.pageSequence) > 0 {
 		index := len(c.listInputs) - 1
 		if index >= len(c.pageSequence) {
@@ -92,6 +96,24 @@ func TestAdapterListsOneRichDatasourcePage(t *testing.T) {
 		t.Fatalf("page = %#v", page)
 	}
 	if !reflect.DeepEqual(c.listInputs, []tableaudatasource.ListRequest{request}) {
+		t.Fatalf("inputs = %#v", c.listInputs)
+	}
+}
+
+func TestAdapterListsExactDatasourceProjectAcrossCompletePages(t *testing.T) {
+	c := &client{pageSequence: []tableaudatasource.Page{
+		{Number: 1, Size: 1, Total: 3, Items: []tableaudatasource.Datasource{{LUID: "ds-other", Name: "Published Source", ProjectLUID: "project-other", ProjectName: "Publish Project"}}},
+		{Number: 2, Size: 1, Total: 3, Items: []tableaudatasource.Datasource{{LUID: "ds-target", Name: "Published Source", ProjectLUID: "project-1", ProjectName: "Publish Project"}}},
+		{Number: 3, Size: 1, Total: 3, Items: []tableaudatasource.Datasource{{LUID: "ds-target-name", Name: "Another Source", ProjectLUID: "project-1", ProjectName: "Publish Project"}}},
+	}}
+	page, err := resourcedatasource.NewAdapter(c).ListDatasources(t.Context(), tableaudatasource.ListRequest{PageNumber: 1, PageSize: 1, Name: "Published Source", ProjectLUID: "project-1", ProjectName: "Publish Project"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if page.Number != 1 || page.Size != 1 || page.Total != 1 || len(page.Items) != 1 || page.Items[0].LUID != "ds-target" {
+		t.Fatalf("page = %#v", page)
+	}
+	if len(c.listInputs) != 3 || c.listInputs[0].PageSize != 1000 || c.listInputs[0].ProjectLUID != "project-1" || c.listInputs[0].Name != "Published Source" {
 		t.Fatalf("inputs = %#v", c.listInputs)
 	}
 }
@@ -254,6 +276,23 @@ func TestAdapterBoundsMissingCompletedDatasourceResolution(t *testing.T) {
 	}
 }
 
+func TestAdapterClassifiesCompleteEmptyIndexAsNotVisible(t *testing.T) {
+	c := &client{pageSequence: []tableaudatasource.Page{{Number: 1, Size: 1000, Total: 0}}}
+	adapter := resourcedatasource.NewAdapter(c)
+	adapter.SetCompletionResolvePolicy(time.Millisecond, 10*time.Millisecond)
+	_, err := adapter.ResolvePublishedDatasource(t.Context(), "Sales", "project-1")
+	if !errors.Is(err, resourcedatasource.ErrPublishedDatasourceNotVisible) {
+		t.Fatalf("error = %v, calls = %d", err, len(c.listInputs))
+	}
+	notVisible, ok := errors.AsType[*resourcedatasource.PublishedDatasourceNotVisibleError](err)
+	if !ok || notVisible.Name != "Sales" || notVisible.ProjectLUID != "project-1" || notVisible.Timeout != 10*time.Millisecond {
+		t.Fatalf("typed error = %#v", notVisible)
+	}
+	if !strings.Contains(err.Error(), `datasource "Sales" in project "project-1"`) {
+		t.Fatalf("error omitted exact target: %v", err)
+	}
+}
+
 func TestAdapterRejectsAmbiguousCompletedDatasourceResolution(t *testing.T) {
 	c := &client{pageSequence: []tableaudatasource.Page{{Number: 1, Size: 1000, Total: 2, Items: []tableaudatasource.Datasource{
 		{LUID: "ds-b", Name: "Sales", ProjectLUID: "project-1", ProjectName: "Analytics"},
@@ -262,8 +301,19 @@ func TestAdapterRejectsAmbiguousCompletedDatasourceResolution(t *testing.T) {
 	adapter := resourcedatasource.NewAdapter(c)
 	adapter.SetCompletionResolvePolicy(time.Millisecond, 100*time.Millisecond)
 	_, err := adapter.ResolvePublishedDatasource(context.Background(), "Sales", "project-1")
-	if err == nil || !strings.Contains(err.Error(), "ambiguous: [ds-a, ds-b]") || len(c.listInputs) != 1 {
+	if err == nil || errors.Is(err, resourcedatasource.ErrPublishedDatasourceNotVisible) || !strings.Contains(err.Error(), "ambiguous: [ds-a, ds-b]") || len(c.listInputs) != 1 {
 		t.Fatalf("error = %v, calls = %d", err, len(c.listInputs))
+	}
+}
+
+func TestAdapterPreservesUpstreamResolutionErrors(t *testing.T) {
+	upstreamErr := errors.New("Tableau list unavailable")
+	c := &client{listErr: upstreamErr}
+	adapter := resourcedatasource.NewAdapter(c)
+	adapter.SetCompletionResolvePolicy(time.Millisecond, 10*time.Millisecond)
+	_, err := adapter.ResolvePublishedDatasource(t.Context(), "Sales", "project-1")
+	if !errors.Is(err, upstreamErr) || errors.Is(err, resourcedatasource.ErrPublishedDatasourceNotVisible) {
+		t.Fatalf("error = %v", err)
 	}
 }
 

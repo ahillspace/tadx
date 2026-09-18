@@ -63,24 +63,44 @@ type Result struct {
 	ProjectLUID      string `json:"project_luid,omitempty"`
 	TableauRequestID string `json:"tableau_request_id,omitempty"`
 	ReceiptPath      string `json:"receipt_path,omitempty"`
+	Verification     string `json:"verification,omitempty"`
 }
 type Output struct {
 	Plan   Plan     `json:"plan"`
 	Result *Result  `json:"result,omitempty"`
 	Help   []string `json:"help"`
 }
+
+// OperationStatus reports the accepted publication state for generic batch
+// progress without exposing action-specific result fields.
+func (o Output) OperationStatus() string {
+	if o.Result == nil {
+		return ""
+	}
+	return o.Result.Status
+}
+
 type CompactPublishResult struct {
-	Status      string `json:"status"`
-	FlowLUID    string `json:"flow_luid,omitempty"`
-	FlowName    string `json:"flow_name,omitempty"`
-	ProjectLUID string `json:"project_luid,omitempty"`
-	ReceiptPath string `json:"receipt_path,omitempty"`
+	Status       string `json:"status"`
+	FlowLUID     string `json:"flow_luid,omitempty"`
+	FlowName     string `json:"flow_name,omitempty"`
+	ProjectLUID  string `json:"project_luid,omitempty"`
+	ReceiptPath  string `json:"receipt_path,omitempty"`
+	Verification string `json:"verification,omitempty"`
 }
 type CompactResult struct {
-	Plan    CompactPlan           `json:"plan"`
-	Result  *CompactPublishResult `json:"result,omitempty"`
-	Details string                `json:"details"`
-	Help    []string              `json:"help"`
+	Status       string                `json:"status,omitempty"`
+	Kind         string                `json:"kind,omitempty"`
+	Operation    string                `json:"operation,omitempty"`
+	Environment  string                `json:"environment,omitempty"`
+	Site         string                `json:"site,omitempty"`
+	ProjectPath  string                `json:"project_path,omitempty"`
+	Workspace    string                `json:"workspace,omitempty"`
+	ArtifactPath string                `json:"artifact_path,omitempty"`
+	Plan         *CompactPlan          `json:"plan,omitempty"`
+	Result       *CompactPublishResult `json:"result,omitempty"`
+	Details      string                `json:"details"`
+	Help         []string              `json:"help"`
 }
 type FullResult struct {
 	Plan   Plan     `json:"plan"`
@@ -91,9 +111,22 @@ type FullResult struct {
 func (o Output) CompactOutput() any {
 	var result *CompactPublishResult
 	if o.Result != nil {
-		result = &CompactPublishResult{Status: o.Result.Status, FlowLUID: o.Result.FlowLUID, FlowName: o.Result.FlowName, ProjectLUID: o.Result.ProjectLUID, ReceiptPath: o.Result.ReceiptPath}
+		result = &CompactPublishResult{Status: o.Result.Status, FlowLUID: o.Result.FlowLUID, FlowName: o.Result.FlowName, ProjectLUID: o.Result.ProjectLUID, ReceiptPath: o.Result.ReceiptPath, Verification: o.Result.Verification}
 	}
-	return CompactResult{Plan: CompactPlan{Workspace: o.Plan.Workspace, Kind: "flow", SourceLUID: o.Plan.SourceLUID, Mode: o.Plan.Mode, Operation: o.Plan.Operation, FlowName: o.Plan.FlowName, Target: o.Plan.Target, Overwrite: o.Plan.Overwrite, ArtifactPath: o.Plan.ArtifactPath, SourceKind: o.Plan.SourceKind}, Result: result, Details: "--full", Help: o.Help}
+	plan := &CompactPlan{Workspace: o.Plan.Workspace, Kind: "flow", SourceLUID: o.Plan.SourceLUID, Mode: o.Plan.Mode, Operation: o.Plan.Operation, FlowName: o.Plan.FlowName, Target: o.Plan.Target, Overwrite: o.Plan.Overwrite, ArtifactPath: o.Plan.ArtifactPath, SourceKind: o.Plan.SourceKind}
+	compact := CompactResult{Plan: plan, Result: result, Details: "--full", Help: o.Help}
+	if o.Result != nil && o.Plan.Mode == "execute" {
+		compact.Status = o.Result.Status
+		compact.Kind = "flow"
+		compact.Operation = o.Plan.Operation
+		compact.Environment = o.Plan.Target.Environment
+		compact.Site = o.Plan.Target.Site
+		compact.ProjectPath = o.Plan.Target.ProjectPath
+		compact.Workspace = o.Plan.Workspace
+		compact.ArtifactPath = o.Plan.ArtifactPath
+		compact.Plan = nil
+	}
+	return compact
 }
 func (o Output) FullOutput() any {
 	o.Plan.Kind = "flow"

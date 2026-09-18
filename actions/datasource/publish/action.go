@@ -12,6 +12,10 @@ import (
 	"github.com/ahillspace/tadx/internal/identity"
 )
 
+// ErrPublishedDatasourceNotVisible identifies a successful publish whose exact
+// destination is not yet exposed by Tableau's name index.
+var ErrPublishedDatasourceNotVisible = errors.New("published datasource is not visible in the Tableau name index")
+
 type ArtifactReader interface {
 	ReadDatasource(context.Context, string) (Artifact, error)
 }
@@ -132,6 +136,12 @@ func (a *Action) Complete(ctx context.Context, out Output) (Output, error) {
 		if result.DatasourceLUID == "" {
 			resolved, resolveErr := a.resolver.ResolvePublishedDatasource(ctx, plan.DatasourceName, plan.Target.ProjectLUID)
 			if resolveErr != nil {
+				if errors.Is(resolveErr, ErrPublishedDatasourceNotVisible) {
+					result.Verification = "destination_pending"
+					out.Result = &result
+					out.Help = []string{"Publication succeeded; its destination is not yet visible in the name index. Do not repeat publication.", publishInspectionHint(plan, result)}
+					return out, nil
+				}
 				result.Verification = "destination_unavailable"
 				out.Result = &result
 				return out, unknownOutcomeError(plan, input, result, fmt.Errorf("resolve completed datasource identity: %w", resolveErr))

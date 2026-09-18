@@ -268,7 +268,6 @@ func (c *CommandSessions) authenticate(ctx context.Context, target Target, crede
 		return nil, err
 	}
 	identity := credentialIdentity(server, credentials)
-	coordinationKey := coordinationIdentity(server, target.SiteContentURL, credentials)
 	key := sessionKey{identity, target.SiteContentURL}
 	if previous, ok := c.sessions[key]; ok && previous.session != nil && c.locks[identity] != nil {
 		return previous.session, nil
@@ -299,7 +298,9 @@ func (c *CommandSessions) authenticate(ctx context.Context, target Target, crede
 		}
 		return nil, err
 	}
-	epoch, err := readSignInEpoch(directory, coordinationKey)
+	// Signing in with the same PAT invalidates its sessions across sites.
+	// Epochs share the credential lock's scope, not the site-specific job pool.
+	epoch, err := readSignInEpoch(directory, identity)
 	if err != nil {
 		if newLock {
 			_ = c.locks[identity].Release()
@@ -326,7 +327,7 @@ func (c *CommandSessions) authenticate(ctx context.Context, target Target, crede
 		return nil, errors.New("credential sign-in epoch is exhausted")
 	}
 	epoch++
-	if err := writeSignInEpoch(directory, coordinationKey, epoch); err != nil {
+	if err := writeSignInEpoch(directory, identity, epoch); err != nil {
 		return nil, err
 	}
 	c.sessions[key] = sessionResult{session: session, epoch: epoch}
@@ -374,14 +375,39 @@ func (c *CommandSessions) lockDirectory() (string, error) {
 	return directory, nil
 }
 
-func (c *CommandSessions) acquireCredentialLock(ctx context.Context, identity string, monitor bool) (*lock.Handle, error) {
+func (c *CommandSessions) acquireCredentialLock(ctx context.Context, identity string, monitor bool) (held *lock.Handle, err error) {
 	directory, err := c.lockDirectory()
 	if err != nil {
 		return nil, err
 	}
 	path := filepath.Join(directory, identity+".lock")
+	admissionPath := filepath.Join(directory, identity+".admission.lock")
+	var admission *lock.Handle
 	if monitor {
-		held, err := lock.TryAcquire(path)
+		admission, err = lock.TryAcquire(admissionPath)
+	} else if len(c.locks) == 0 {
+		admission, err = lock.AcquireSharedContext(ctx, admissionPath)
+	} else {
+		admission, err = lock.TryAcquireShared(admissionPath)
+	}
+	if err != nil {
+		if monitor && errors.Is(err, lock.ErrLocked) {
+			return nil, errMonitorCredentialBusy
+		}
+		return nil, err
+	}
+	// Every foreground waiter holds shared admission until it acquires the
+	// credential lease. A monitor needs exclusive admission and never waits
+	// while holding it, so it cannot pass registered foreground work. Kernel
+	// locks also remove registrations when an independent process exits.
+	defer func() {
+		if releaseErr := admission.Release(); releaseErr != nil {
+			err = errors.Join(err, releaseErr, held.Release())
+			held = nil
+		}
+	}()
+	if monitor {
+		held, err = lock.TryAcquire(path)
 		if errors.Is(err, lock.ErrLocked) {
 			return nil, errMonitorCredentialBusy
 		}

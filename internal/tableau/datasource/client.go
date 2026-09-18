@@ -421,9 +421,17 @@ func datasourceListQuery(input ListRequest) (url.Values, error) {
 	return query, nil
 }
 
-// ListFilter validates and encodes datasource selectors for paged and full lists.
+// ListFilter validates and encodes the datasource selectors supported by the
+// Tableau datasources REST endpoint for paged and full lists.
+//
+// Tableau does not support projectId on this endpoint. Callers that receive a
+// project LUID must apply that exact identity check to the returned records
+// while traversing the complete upstream result set.
 // Pagination fields do not affect the selected population.
 func ListFilter(input ListRequest) (string, error) {
+	if strings.ContainsAny(input.ProjectLUID, "&,") {
+		return "", errors.New("datasource project ID filter cannot contain ampersand or comma")
+	}
 	var after, before time.Time
 	for _, bound := range []struct {
 		name, value string
@@ -450,7 +458,6 @@ func ListFilter(input ListRequest) (string, error) {
 	}{
 		{name: "name", operator: "eq", value: input.Name},
 		{name: "ownerName", operator: "eq", value: input.OwnerName},
-		{name: "projectId", operator: "eq", value: input.ProjectLUID},
 		{name: "projectName", operator: "eq", value: input.ProjectName},
 		{name: "type", operator: "eq", value: input.Type},
 		{name: "tags", operator: "eq", value: input.Tag},

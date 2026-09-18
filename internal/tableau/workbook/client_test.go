@@ -196,7 +196,7 @@ func TestClientListsFilteredWorkbookMetadataAndRequestID(t *testing.T) {
 	defer server.Close()
 
 	client := tableauworkbook.NewClient(tableau.NewTransport(server.Client(), "3.29", nil), session{}, server.URL)
-	page, err := client.ListWorkbooks(context.Background(), tableauworkbook.ListRequest{PageNumber: 2, PageSize: 2, Name: "Finance", OwnerName: "Analyst", ProjectName: "Ops", Tag: "quarterly"})
+	page, err := client.ListWorkbooks(context.Background(), tableauworkbook.ListRequest{PageNumber: 2, PageSize: 2, Name: "Finance", OwnerName: "Analyst", ProjectLUID: "project-1", ProjectName: "Ops", Tag: "quarterly"})
 	if err != nil {
 		t.Fatal(err)
 	}

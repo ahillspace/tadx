@@ -110,6 +110,15 @@ type Output struct {
 	Help   []string `json:"help"`
 }
 
+// OperationStatus reports the accepted publication state for generic batch
+// progress without exposing action-specific result fields.
+func (o Output) OperationStatus() string {
+	if o.Result == nil {
+		return ""
+	}
+	return o.Result.Status
+}
+
 type CompactPublishResult struct {
 	Status         string `json:"status"`
 	DatasourceLUID string `json:"datasource_luid,omitempty"`
@@ -121,10 +130,18 @@ type CompactPublishResult struct {
 }
 
 type CompactResult struct {
-	Plan    CompactPlan           `json:"plan"`
-	Result  *CompactPublishResult `json:"result,omitempty"`
-	Details string                `json:"details"`
-	Help    []string              `json:"help"`
+	Status       string                `json:"status,omitempty"`
+	Kind         string                `json:"kind,omitempty"`
+	Operation    string                `json:"operation,omitempty"`
+	Environment  string                `json:"environment,omitempty"`
+	Site         string                `json:"site,omitempty"`
+	ProjectPath  string                `json:"project_path,omitempty"`
+	Workspace    string                `json:"workspace,omitempty"`
+	ArtifactPath string                `json:"artifact_path,omitempty"`
+	Plan         *CompactPlan          `json:"plan,omitempty"`
+	Result       *CompactPublishResult `json:"result,omitempty"`
+	Details      string                `json:"details"`
+	Help         []string              `json:"help"`
 }
 
 type FullResult struct {
@@ -134,20 +151,17 @@ type FullResult struct {
 }
 
 func (o Output) CompactOutput() any {
-	compact := CompactResult{
-		Plan: CompactPlan{Workspace: o.Plan.Workspace, Kind: "datasource", SourceLUID: o.Plan.SourceLUID,
-			Mode:           o.Plan.Mode,
-			PublishMode:    o.Plan.PublishMode,
-			Operation:      o.Plan.Operation,
-			ArtifactPath:   o.Plan.ArtifactPath,
-			SourceKind:     o.Plan.SourceKind,
-			DatasourceName: o.Plan.DatasourceName,
-			Target:         o.Plan.Target,
-			AsJob:          o.Plan.AsJob,
-		},
-		Details: "--full",
-		Help:    o.Help,
+	plan := &CompactPlan{Workspace: o.Plan.Workspace, Kind: "datasource", SourceLUID: o.Plan.SourceLUID,
+		Mode:           o.Plan.Mode,
+		PublishMode:    o.Plan.PublishMode,
+		Operation:      o.Plan.Operation,
+		ArtifactPath:   o.Plan.ArtifactPath,
+		SourceKind:     o.Plan.SourceKind,
+		DatasourceName: o.Plan.DatasourceName,
+		Target:         o.Plan.Target,
+		AsJob:          o.Plan.AsJob,
 	}
+	compact := CompactResult{Plan: plan, Details: "--full", Help: o.Help}
 	if o.Result != nil {
 		compact.Result = &CompactPublishResult{
 			Status:         o.Result.Status,
@@ -157,6 +171,17 @@ func (o Output) CompactOutput() any {
 			JobID:          o.Result.JobID,
 			ReceiptPath:    o.Result.ReceiptPath,
 			Verification:   o.Result.Verification,
+		}
+		if o.Plan.Mode == "execute" {
+			compact.Status = o.Result.Status
+			compact.Kind = "datasource"
+			compact.Operation = o.Plan.Operation
+			compact.Environment = o.Plan.Target.Environment
+			compact.Site = o.Plan.Target.Site
+			compact.ProjectPath = o.Plan.Target.ProjectPath
+			compact.Workspace = o.Plan.Workspace
+			compact.ArtifactPath = o.Plan.ArtifactPath
+			compact.Plan = nil
 		}
 	}
 	return compact

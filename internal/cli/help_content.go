@@ -309,14 +309,19 @@ func writeContentNotes(out io.Writer, resource *cobra.Command, actions []*cobra.
 	}
 	if has("publish") {
 		fmt.Fprintf(out, "  publish: --artifact is artifacts/%s/<item>; --file selects a native file.\n", resource.Name())
+		fmt.Fprintln(out, "  publish: --no-wait hands work to local background execution and returns one check-status command without polling remote jobs.")
+		fmt.Fprintln(out, "  publish: default waits with 2s checks for 30s, 5s checks through 10m, then 15s checks until the shared 20m cutoff; work continues after the cutoff.")
 		if resource.Name() != "datasource" {
 			fmt.Fprintln(out, "  publish: creates by default; exact collisions require --overwrite. Destination project is always explicit.")
 		}
 		if resource.Name() == "flow" {
-			fmt.Fprintln(out, "  publish: flow publication is synchronous; no job-mode or polling choice is exposed.")
+			fmt.Fprintln(out, "  publish: flow publication may complete synchronously; use the returned status when Tableau accepts background work.")
 		} else {
-			fmt.Fprintln(out, "  publish: accepted asynchronous jobs are registered, monitored, and confirmed automatically; the durable receipt supports job wait recovery if interrupted.")
+			fmt.Fprintln(out, "  publish: accepted asynchronous jobs are registered and confirmed by default; durable receipts support status recovery if interrupted.")
 		}
+	}
+	if has("pull") {
+		fmt.Fprintln(out, "  pull: --no-wait returns one check-status command; native downloads have no remote jobs to poll. Default waits use the shared 20m cutoff; work continues after cutoff.")
 	}
 	if has("schema") {
 		fmt.Fprintln(out, "  schema: --all excludes --limit; limit bounds fields, not tables. Descriptions/tags request metadata reads; --cache needs prior observations.")

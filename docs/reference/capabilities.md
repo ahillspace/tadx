@@ -2023,13 +2023,13 @@ Request cancellation for documented refresh or flow-run job types and perform bo
 
 ### `job.inspect`
 
-Inspect one exact Tableau job and return its authoritative state without changing remote work.
+Inspect one exact Tableau job or saved local single/batch operation without changing remote work.
 
 - Surface: tadx job inspect
 - Operation type: inspect
 - Owner: cli
-- Selectors: Required exact --id; configured environment
-- Products and availability: Tableau Cloud / Server with Query Job permission
+- Selectors: Exactly one of --id or --operation-id; saved target for local operations
+- Products and availability: Local worker status; Tableau Cloud / Server with Query Job permission for remote observations
 - Product disposition: ship
 - Evidence level: contract-verified
 - Verification readiness: ready
@@ -2039,10 +2039,10 @@ Inspect one exact Tableau job and return its authoritative state without changin
 - Supports `--preview`: No
 - Supports `--batch-file`: Yes
 - Raw capable: No
-- Safety and guard: Exact job identity and configured site; one bounded read only; unavailable observations never imply success or failure
-- Artifact effect: None
+- Safety and guard: Exact identities and saved targets; at most one bounded check per unfinished remote job; unavailable observations never imply success or failure
+- Artifact effect: Updates saved operation observations only
 - Upstream operation: GET /api/{version}/sites/{site-id}/jobs/{job-id}
-- Evidence: internal/tableau/job/client_test.go; internal/jobmonitor/monitor_test.go
+- Evidence: internal/tableau/job/client_test.go; internal/app/publication_status_test.go
 - Validation or blocker: Exact identity and authoritative state validation
 - Blocker ID: None
 - Command binding: `tadx job inspect`

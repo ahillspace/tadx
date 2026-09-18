@@ -73,6 +73,9 @@ func newInspectCommand(deps Dependencies) *cobra.Command {
 			return nil
 		},
 		RunE: func(command *cobra.Command, _ []string) error {
+			if err := jobinspect.ValidateInput(input); err != nil {
+				return err
+			}
 			result, err := deps.Inspector.Execute(command.Context(), input)
 			if err != nil {
 				return err
@@ -83,7 +86,7 @@ func newInspectCommand(deps Dependencies) *cobra.Command {
 	command.Flags().StringVar(&input.Environment, "environment", "", "exact environment alias")
 	command.Flags().StringVar(&input.Site, "site", "", "exact site content URL; must match the selected environment")
 	command.Flags().StringVarP(&input.ID, "id", "i", "", "exact Tableau job ID")
-	_ = command.MarkFlagRequired("id")
+	command.Flags().StringVar(&input.OperationID, "operation-id", "", "exact detached operation ID")
 	return command
 }
 

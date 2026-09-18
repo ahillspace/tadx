@@ -246,14 +246,14 @@ func TestSharedReferenceNotesCoverAcceptedSetupMembershipAndCompletionGuidance(t
 	}
 }
 
-func TestContentPublicationHelpExplainsAutomaticReceiptsAndFlowSync(t *testing.T) {
+func TestContentPublicationHelpExplainsNoWaitAndFlowSync(t *testing.T) {
 	for _, test := range []struct {
 		resource string
 		want     string
 		avoid    string
 	}{
-		{resource: "workbook", want: "accepted asynchronous jobs are registered, monitored, and confirmed automatically", avoid: "flow publication is synchronous"},
-		{resource: "flow", want: "flow publication is synchronous", avoid: "accepted asynchronous jobs"},
+		{resource: "workbook", want: "--no-wait hands work to local background execution", avoid: "flow publication is synchronous"},
+		{resource: "flow", want: "flow publication may complete synchronously", avoid: "flow publication is synchronous;"},
 	} {
 		t.Run(test.resource, func(t *testing.T) {
 			resource := &cobra.Command{Use: test.resource}

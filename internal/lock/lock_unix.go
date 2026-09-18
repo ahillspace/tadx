@@ -9,8 +9,11 @@ import (
 	"golang.org/x/sys/unix"
 )
 
-func lockFile(file *os.File, block bool) error {
+func lockFile(file *os.File, block, shared bool) error {
 	how := unix.LOCK_EX
+	if shared {
+		how = unix.LOCK_SH
+	}
 	if !block {
 		how |= unix.LOCK_NB
 	}

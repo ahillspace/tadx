@@ -12,10 +12,12 @@ import (
 )
 
 const (
-	fastInterval    = 5 * time.Second
-	poolInterval    = 30 * time.Second
+	foregroundLimit = 20 * time.Minute
 	maxReadFailures = 3
 )
+
+// ErrWaitLimit stops observation without cancelling or failing accepted work.
+var ErrWaitLimit = errors.New("foreground waiting ended after twenty minutes; check the saved job status")
 
 type CheckResult struct {
 	Status value.JobStatus
@@ -29,6 +31,9 @@ type Monitor struct {
 	Observe func(context.Context, []Receipt) []CheckResult
 	Now     func() time.Time
 	Sleep   func(context.Context, time.Duration) error
+	// Deadline is shared by every item in one foreground invocation.
+	Deadline      time.Time
+	StopRequested func() bool
 }
 
 func (m Monitor) now() time.Time {
@@ -51,10 +56,14 @@ func (m Monitor) sleep(ctx context.Context, d time.Duration) error {
 	}
 }
 
-// Wait has no duration deadline for an active remote job. Cancellation and
-// repeated read failures stop local monitoring without claiming remote failure.
+// Wait bounds observation, not remote work. A limit or unavailable observation
+// preserves the accepted identity and does not cancel or resubmit anything.
 func (m Monitor) Wait(ctx context.Context, accepted Receipt) (Receipt, error) {
 	latest := accepted
+	deadline := m.Deadline
+	if deadline.IsZero() {
+		deadline = m.now().Add(foregroundLimit)
+	}
 	for {
 		stored, err := m.Store.Read(accepted)
 		if err != nil {
@@ -64,19 +73,35 @@ func (m Monitor) Wait(ctx context.Context, accepted Receipt) (Receipt, error) {
 		if latest.Observation.Terminal() {
 			return latest, nil
 		}
+		if !m.now().Before(deadline) || (m.StopRequested != nil && m.StopRequested()) {
+			latest.ManualOnly = true
+			saveCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+			_, saveErr := m.Store.Save(saveCtx, latest)
+			cancel()
+			if saveErr != nil {
+				return latest, fmt.Errorf("save stopped observation: %w", saveErr)
+			}
+			return latest, ErrWaitLimit
+		}
 		if err := ctx.Err(); err != nil {
 			return latest, err
 		}
 		if latest.ReadFailures >= maxReadFailures {
 			return latest, errors.New("job status remains unavailable; remote outcome is unknown")
 		}
-		if delay := latest.NextCheck.Sub(m.now()); delay > 0 {
+		if delay := min(latest.NextCheck.Sub(m.now()), deadline.Sub(m.now())); delay > 0 {
 			if err := m.sleep(ctx, delay); err != nil {
 				return latest, err
 			}
 			continue
 		}
-		if err := m.round(ctx, latest); err != nil {
+		readCtx, cancel := context.WithTimeout(ctx, deadline.Sub(m.now()))
+		err = m.round(readCtx, latest)
+		cancel()
+		if err != nil {
+			if !m.now().Before(deadline) {
+				continue
+			}
 			return latest, err
 		}
 	}
@@ -100,9 +125,7 @@ func (m Monitor) round(ctx context.Context, target Receipt) error {
 		return nil
 	}
 	jobs := []Receipt{current}
-	interval := fastInterval
 	if !current.PoolAfter.After(now) {
-		interval = poolInterval
 		paths, err := readIndex(m.Store.indexPath(current.CoordinationKey))
 		if err != nil {
 			return err
@@ -118,7 +141,7 @@ func (m Monitor) round(ctx context.Context, target Receipt) error {
 			if other.CoordinationKey != current.CoordinationKey {
 				return errors.New("shared job receipt has mismatched coordination identity")
 			}
-			if !other.Observation.Terminal() && other.ReadFailures < maxReadFailures && !other.PoolAfter.After(now) && !other.NextCheck.After(now) {
+			if !other.ManualOnly && (other.WaitUntil.IsZero() || other.WaitUntil.After(now)) && !other.Observation.Terminal() && other.ReadFailures < maxReadFailures && !other.PoolAfter.After(now) && !other.NextCheck.After(now) {
 				jobs = append(jobs, other)
 			}
 		}
@@ -147,12 +170,26 @@ func (m Monitor) round(ctx context.Context, target Receipt) error {
 			job.ReadFailures = 0
 			job.LastReadError = ""
 		}
-		job.NextCheck = now.Add(interval)
+		started := job.AcceptedAt
+		if started.IsZero() {
+			started = job.TrackingStartedAt
+		}
+		job.NextCheck = m.now().Add(pollInterval(m.now().Sub(started)))
 		if _, err := m.Store.Save(saveCtx, job); err != nil {
 			return fmt.Errorf("save observed job state: %w", err)
 		}
 	}
 	return nil
+}
+
+func pollInterval(age time.Duration) time.Duration {
+	if age < 30*time.Second {
+		return 2 * time.Second
+	}
+	if age < 10*time.Minute {
+		return 5 * time.Second
+	}
+	return 15 * time.Second
 }
 
 func validStatus(status string) bool {

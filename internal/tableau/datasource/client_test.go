@@ -135,7 +135,7 @@ func TestClientListsRichDatasourceMetadataWithStableFiltersAndRequestID(t *testi
 
 	client := tableaudatasource.NewClient(tableau.NewTransport(server.Client(), "3.29", nil), session{}, server.URL)
 	page, err := client.List(context.Background(), tableaudatasource.ListRequest{
-		PageNumber: 1, PageSize: 1, Name: "Sales", OwnerName: "owner", ProjectName: "Ops", Type: "hyper", Tag: "daily",
+		PageNumber: 1, PageSize: 1, Name: "Sales", OwnerName: "owner", ProjectLUID: "project-1", ProjectName: "Ops", Type: "hyper", Tag: "daily",
 		UpdatedAfter: "2026-01-01T00:00:00Z", UpdatedBefore: "2026-09-01T00:00:00Z",
 	})
 	if err != nil {

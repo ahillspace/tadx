@@ -232,6 +232,9 @@ import (
 	writeGo(t, root, "internal/workspace/manager.go", `package workspace
 import _ "example.test/tadx/internal/config"
 `)
+	writeGo(t, root, "internal/operationrun/store.go", `package operationrun
+import _ "example.test/tadx/internal/lock"
+`)
 	writeGo(t, root, "cmd/tadx/main.go", `package main
 import _ "example.test/tadx/internal/app"
 `)
@@ -244,6 +247,41 @@ import _ "example.test/tadx/internal/capability"
 		t.Fatal(err)
 	}
 	assertViolationStrings(t, violations, nil)
+}
+
+func TestCheckAllowsOperationRunThroughCompositionRoot(t *testing.T) {
+	root := moduleFixture(t)
+	writeGo(t, root, "internal/app/worker.go", `package app
+import _ "example.test/tadx/internal/operationrun"
+`)
+	writeGo(t, root, "internal/operationrun/store.go", `package operationrun
+import _ "example.test/tadx/internal/lock"
+`)
+
+	violations, err := architecture.Check(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertViolationStrings(t, violations, nil)
+}
+
+func TestCheckRejectsOperationRunBoundaryBypass(t *testing.T) {
+	root := moduleFixture(t)
+	writeGo(t, root, "internal/app/worker.go", `package app
+import _ "example.test/tadx/internal/lock"
+`)
+	writeGo(t, root, "internal/operationrun/store.go", `package operationrun
+import _ "example.test/tadx/internal/config"
+`)
+
+	violations, err := architecture.Check(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertViolationStrings(t, violations, []string{
+		"internal/app/worker.go imports example.test/tadx/internal/lock: the composition root must not import unapproved local packages",
+		"internal/operationrun/store.go imports example.test/tadx/internal/config: operation-run infrastructure must import only the lock boundary",
+	})
 }
 
 func TestCheckRejectsImportsFromEveryFoundationPackage(t *testing.T) {

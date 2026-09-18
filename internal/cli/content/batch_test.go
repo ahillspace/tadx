@@ -270,6 +270,22 @@ func TestPublishProgressUsesContentTypeAndArtifactBasename(t *testing.T) {
 	}
 }
 
+func TestPublishActivityLabelDoesNotInventAnEmptyArtifactName(t *testing.T) {
+	for _, preview := range []bool{false, true} {
+		label := publishActivityLabel("workbook", "", preview)
+		if strings.Contains(label, ".") {
+			t.Fatalf("preview=%t label = %q, want no fabricated artifact name", preview, label)
+		}
+		want := "Publishing workbook"
+		if preview {
+			want = "Previewing workbook publication"
+		}
+		if label != want {
+			t.Fatalf("preview=%t label = %q, want %q", preview, label, want)
+		}
+	}
+}
+
 func TestContentBatchRejectsDuplicateAndInvalidSelectorsBeforeAnyAction(t *testing.T) {
 	for _, kind := range []string{"workbook", "datasource", "flow"} {
 		for _, tc := range []struct {

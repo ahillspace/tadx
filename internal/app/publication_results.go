@@ -6,6 +6,7 @@ import (
 
 	datasourcepublish "github.com/ahillspace/tadx/actions/datasource/publish"
 	workbookpublish "github.com/ahillspace/tadx/actions/workbook/publish"
+	"github.com/ahillspace/tadx/internal/cli/progress"
 	"github.com/ahillspace/tadx/internal/identity"
 	"github.com/ahillspace/tadx/internal/jobmonitor"
 	tableaudatasource "github.com/ahillspace/tadx/internal/tableau/datasource"
@@ -31,6 +32,7 @@ func (p *publication) acceptDatasource(ctx context.Context, id, requestID string
 }
 
 func (p *publication) destination(ctx context.Context, r jobmonitor.Receipt) (string, string, string, error) {
+	progress.SetLabel(ctx, "Confirming published content")
 	connection, err := newRemoteContentCommands(p.runtime).connect(ctx, p.base.Environment, true)
 	if err != nil {
 		return r.Observation.ResourceID, "", "", err

@@ -13,7 +13,10 @@ import (
 	"github.com/mattn/go-isatty"
 )
 
-const defaultInterval = 5 * time.Second
+const defaultInterval = time.Second
+
+type operationContextKey struct{}
+type observerContextKey struct{}
 
 // Ticker supplies periodic clock events.
 type Ticker interface {
@@ -71,6 +74,54 @@ type Reporter struct {
 	writeMu    sync.Mutex
 }
 
+// WithOperation associates one command-level operation with a context.
+// Callers can pass the derived context through nested phases without creating
+// another ticker or resetting the elapsed time.
+func WithOperation(ctx context.Context, operation *Operation) context.Context {
+	ctx = nonNilContext(ctx)
+	if operation == nil {
+		return ctx
+	}
+	return context.WithValue(ctx, operationContextKey{}, operation)
+}
+
+// OperationFromContext returns the operation associated with ctx, if any.
+func OperationFromContext(ctx context.Context) *Operation {
+	if ctx == nil {
+		return nil
+	}
+	operation, _ := ctx.Value(operationContextKey{}).(*Operation)
+	return operation
+}
+
+// WithObserver records a callback for local activity labels.
+// The callback is invoked even when terminal progress is disabled, so a
+// background worker can persist the current phase without scraping stderr.
+func WithObserver(ctx context.Context, observer func(string)) context.Context {
+	ctx = nonNilContext(ctx)
+	if observer == nil {
+		return ctx
+	}
+	return context.WithValue(ctx, observerContextKey{}, observer)
+}
+
+// SetLabel updates the active operation label and emits the new phase
+// immediately. It also forwards the normalized label to an optional observer,
+// including when terminal progress is disabled.
+func SetLabel(ctx context.Context, label string) bool {
+	ctx = nonNilContext(ctx)
+	label = normalizeLabel(label)
+	operation := OperationFromContext(ctx)
+	if operation != nil && !operation.inactive {
+		if !operation.SetLabel(label) {
+			return false
+		}
+		notifyObserver(ctx, label)
+		return true
+	}
+	return notifyObserver(ctx, label)
+}
+
 // New creates a long-operation progress reporter.
 // The reporter stays silent unless stderr is an interactive terminal.
 func New(stderr io.Writer, options ...Option) *Reporter {
@@ -98,13 +149,15 @@ func (reporter *Reporter) Start(ctx context.Context, label string) *Operation {
 	if ctx.Err() != nil {
 		return inactiveOperation()
 	}
+	label = normalizeLabel(label)
+	notifyObserver(ctx, label)
 	if reporter.stderr == nil || !reporter.isTerminal(reporter.stderr) {
 		return inactiveOperation()
 	}
 
 	operation := &Operation{
 		reporter: reporter,
-		label:    normalizeLabel(label),
+		label:    label,
 		started:  reporter.clock.Now(),
 		done:     make(chan struct{}),
 		stopped:  make(chan struct{}),
@@ -154,6 +207,40 @@ type Operation struct {
 	maxWidth int
 }
 
+// SetLabel replaces the activity label for the operation and reports it
+// immediately. The reporter write lock makes phase changes safe alongside
+// heartbeat and Stop calls.
+func (operation *Operation) SetLabel(label string) bool {
+	if operation == nil || operation.inactive || operation.reporter == nil {
+		return false
+	}
+	operation.reporter.writeMu.Lock()
+	if operation.finished {
+		operation.reporter.writeMu.Unlock()
+		return false
+	}
+	label = normalizeLabel(label)
+	if operation.label == label {
+		operation.reporter.writeMu.Unlock()
+		return true
+	}
+	operation.label = label
+	operation.reporter.writeMu.Unlock()
+	return operation.report()
+}
+
+func notifyObserver(ctx context.Context, label string) bool {
+	if ctx == nil {
+		return false
+	}
+	observer, _ := ctx.Value(observerContextKey{}).(func(string))
+	if observer == nil {
+		return false
+	}
+	observer(normalizeLabel(label))
+	return true
+}
+
 // Stop clears the activity line and waits for the heartbeat goroutine to exit.
 // Stop is safe to call more than one time.
 func (operation *Operation) Stop() {
@@ -188,17 +275,22 @@ func (operation *Operation) report() bool {
 		elapsed = 0
 	}
 	elapsed = elapsed.Truncate(time.Second)
-	line := fmt.Sprintf("%s... elapsed %s", operation.label, elapsed)
 
 	operation.reporter.writeMu.Lock()
 	defer operation.reporter.writeMu.Unlock()
 	if operation.finished {
 		return true
 	}
-	written, err := fmt.Fprintf(operation.reporter.stderr, "\r%s", line)
-	if width := len(line); width > operation.maxWidth {
+	// Read the label while holding the same lock used by SetLabel. A phase
+	// transition must not race a heartbeat or render a mixed label.
+	line := fmt.Sprintf("%s... elapsed %s", operation.label, elapsed)
+	width := len(line)
+	if width < operation.maxWidth {
+		line += strings.Repeat(" ", operation.maxWidth-width)
+	} else if width > operation.maxWidth {
 		operation.maxWidth = width
 	}
+	written, err := fmt.Fprintf(operation.reporter.stderr, "\r%s", line)
 	return err == nil && written == len(line)+1
 }
 

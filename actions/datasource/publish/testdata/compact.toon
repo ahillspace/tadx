@@ -1,19 +1,10 @@
-plan:
-  workspace: ""
-  kind: datasource
-  source_luid: ""
-  mode: execute
-  publish_mode: overwrite
-  operation: datasource.publish
-  artifact_path: artifacts/datasource/Sales
-  source_kind: ""
-  datasource_name: Sales
-  target:
-    environment: dev
-    site: sandbox
-    project_luid: project-1
-    project_path: Analytics
-    existing_datasource_luid: ds-1
+status: succeeded
+kind: datasource
+operation: datasource.publish
+environment: dev
+site: sandbox
+project_path: Analytics
+artifact_path: artifacts/datasource/Sales
 result:
   status: succeeded
   datasource_luid: ds-1

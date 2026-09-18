@@ -65,6 +65,9 @@ func (c commandsCanceller) Execute(ctx context.Context, input jobcancel.Input) (
 }
 
 func (c *jobCommands) Inspect(ctx context.Context, input jobinspect.Input) (jobinspect.Result, error) {
+	if input.OperationID != "" {
+		return c.runtime.inspectPublicationOperation(ctx, input)
+	}
 	connection, err := c.connection(ctx, input.Environment, input.Site, "job.inspect", input.ID)
 	if err != nil {
 		return jobinspect.Result{}, err
@@ -115,16 +118,18 @@ func (c *jobCommands) Wait(ctx context.Context, input jobwait.Input) (jobwait.Re
 	}
 	// Re-register every recovered active receipt. Acceptance may have been
 	// durably saved even when the original active-index write failed.
+	receipt.ManualOnly = false
+	receipt.WaitUntil = time.Now().Add(publicationWaitLimit)
 	if _, err := store.Register(ctx, receipt); err != nil {
 		return jobwait.Result{Status: receipt.Observation, Environment: receipt.Environment, Site: receipt.Site, ReceiptPath: filepath.ToSlash(path)}, &errs.Error{ID: "job.wait.register", Kind: errs.KindOperation, Operation: "job.wait", Resource: receipt.Observation.ID, Environment: receipt.Environment, Site: receipt.Site, TableauJobID: receipt.Observation.ID, Summary: "The accepted job could not be restored to the local monitoring pool.", Cause: err, Retryable: errs.Bool(false), CorrectiveAction: c.receiptRecoveryHint(receipt, path), Phase: errs.PhasePersistence, Outcome: errs.OutcomeUnknown}
 	}
 	if err := c.runtime.commandSessions().Suspend(ctx); err != nil {
 		return jobwait.Result{Status: receipt.Observation, Environment: receipt.Environment, Site: receipt.Site, ReceiptPath: filepath.ToSlash(path)}, c.receiptRecoveryError(receipt, path, "Credential coordination could not be released before job monitoring.", err, errs.PhaseSetup, errs.OutcomeUnknown)
 	}
-	monitor := jobmonitor.Monitor{Store: store, Observe: c.observer(connection)}
+	monitor := jobmonitor.Monitor{Store: store, Deadline: receipt.WaitUntil, Observe: c.observer(connection)}
 	latest, err := monitor.Wait(ctx, receipt)
 	result := jobwait.Result{Status: latest.Observation, Environment: latest.Environment, Site: latest.Site, ReceiptPath: filepath.ToSlash(path)}
-	if err != nil {
+	if err != nil && !errors.Is(err, jobmonitor.ErrWaitLimit) {
 		return result, c.receiptRecoveryError(receipt, path, "Job monitoring stopped without establishing the remote terminal outcome.", err, errs.PhaseVerification, errs.OutcomeUnknown)
 	}
 	return result, nil

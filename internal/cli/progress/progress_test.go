@@ -32,6 +32,35 @@ func TestRunPreservesResultAndKeepsNonTerminalOutputSilent(t *testing.T) {
 	}
 }
 
+func TestObserverReceivesLabelsWhenTerminalProgressIsDisabled(t *testing.T) {
+	var mu sync.Mutex
+	var labels []string
+	ctx := progress.WithObserver(context.Background(), func(label string) {
+		mu.Lock()
+		defer mu.Unlock()
+		labels = append(labels, label)
+	})
+	reporter := progress.New(io.Discard, progress.WithTerminalDetector(func(io.Writer) bool { return false }))
+	operation := reporter.Start(ctx, "Preparing workbook publication")
+	ctx = progress.WithOperation(ctx, operation)
+	if !progress.SetLabel(ctx, "Selecting workbook source") {
+		t.Fatal("SetLabel did not notify the observer")
+	}
+	operation.Stop()
+
+	mu.Lock()
+	defer mu.Unlock()
+	want := []string{"Preparing workbook publication", "Selecting workbook source"}
+	if len(labels) != len(want) {
+		t.Fatalf("labels = %#v, want %#v", labels, want)
+	}
+	for i := range want {
+		if labels[i] != want[i] {
+			t.Fatalf("labels = %#v, want %#v", labels, want)
+		}
+	}
+}
+
 func TestStartWritesImmediateHonestActivityToInteractiveStderr(t *testing.T) {
 	clock := newFakeClock(time.Date(2026, time.September, 6, 12, 0, 0, 0, time.UTC))
 	stderr := newRecordingWriter()
@@ -82,6 +111,122 @@ func TestStartEmitsPeriodicElapsedHeartbeats(t *testing.T) {
 	}
 	if clock.Interval() != 2*time.Second {
 		t.Fatalf("ticker interval = %s, want 2s", clock.Interval())
+	}
+}
+
+func TestStartUsesOneSecondDefaultHeartbeat(t *testing.T) {
+	clock := newFakeClock(time.Date(2026, time.September, 6, 12, 0, 0, 0, time.UTC))
+	stderr := newRecordingWriter()
+	reporter := progress.New(stderr,
+		progress.WithTerminalDetector(func(io.Writer) bool { return true }),
+		progress.WithClock(clock),
+	)
+	operation := reporter.Start(context.Background(), "Publishing workbook")
+	waitForWrite(t, stderr)
+	defer operation.Stop()
+
+	clock.Advance(time.Second)
+	waitForWrite(t, stderr)
+	if clock.Interval() != time.Second {
+		t.Fatalf("ticker interval = %s, want 1s", clock.Interval())
+	}
+}
+
+func TestSetLabelUpdatesTheSharedOperationFromContext(t *testing.T) {
+	clock := newFakeClock(time.Date(2026, time.September, 6, 12, 0, 0, 0, time.UTC))
+	stderr := newRecordingWriter()
+	reporter := progress.New(stderr,
+		progress.WithTerminalDetector(func(io.Writer) bool { return true }),
+		progress.WithClock(clock),
+	)
+	operation := reporter.Start(context.Background(), "Publishing workbook")
+	waitForWrite(t, stderr)
+	defer operation.Stop()
+
+	ctx := progress.WithOperation(context.Background(), operation)
+	if !progress.SetLabel(ctx, "Waiting for workbook acceptance") {
+		t.Fatal("SetLabel reported that the operation was unavailable")
+	}
+	waitForWrite(t, stderr)
+	if !strings.Contains(stderr.String(), "Waiting for workbook acceptance... elapsed 0s") {
+		t.Fatalf("stderr = %q, want updated phase label", stderr.String())
+	}
+}
+
+func TestSetLabelClearsTrailingCharactersFromThePreviousPhase(t *testing.T) {
+	clock := newFakeClock(time.Date(2026, time.September, 6, 12, 0, 0, 0, time.UTC))
+	stderr := newRecordingWriter()
+	reporter := progress.New(stderr,
+		progress.WithTerminalDetector(func(io.Writer) bool { return true }),
+		progress.WithClock(clock),
+	)
+	operation := reporter.Start(context.Background(), "Waiting for Tableau publication")
+	waitForWrite(t, stderr)
+	defer operation.Stop()
+
+	if !operation.SetLabel("Publishing") {
+		t.Fatal("SetLabel reported that the operation was unavailable")
+	}
+	waitForWrite(t, stderr)
+	previous := "Waiting for Tableau publication... elapsed 0s"
+	current := "Publishing... elapsed 0s"
+	want := "\r" + current + strings.Repeat(" ", len(previous)-len(current))
+	if got := stderr.String(); !strings.Contains(got, want) {
+		t.Fatalf("stderr = %q, want shorter phase padded to clear prior text with %q", got, want)
+	}
+}
+
+func TestHeartbeatAndLabelChangesAreSerialized(t *testing.T) {
+	var stderr bytes.Buffer
+	reporter := progress.New(&stderr,
+		progress.WithTerminalDetector(func(io.Writer) bool { return true }),
+		progress.WithInterval(time.Millisecond),
+	)
+	operation := reporter.Start(context.Background(), "Preparing publication")
+	defer operation.Stop()
+
+	for index := range 200 {
+		label := "Selecting source A"
+		if index%2 == 0 {
+			label = "Selecting source B"
+		}
+		if !operation.SetLabel(label) {
+			t.Fatal("SetLabel reported that the operation was unavailable")
+		}
+		time.Sleep(100 * time.Microsecond)
+	}
+}
+
+func TestSetLabelDoesNotRepaintAnUnchangedLabel(t *testing.T) {
+	clock := newFakeClock(time.Date(2026, time.September, 6, 12, 0, 0, 0, time.UTC))
+	stderr := newRecordingWriter()
+	reporter := progress.New(stderr,
+		progress.WithTerminalDetector(func(io.Writer) bool { return true }),
+		progress.WithClock(clock),
+	)
+	operation := reporter.Start(context.Background(), "Publishing workbook")
+	waitForWrite(t, stderr)
+	defer operation.Stop()
+
+	before := stderr.String()
+	if !progress.SetLabel(progress.WithOperation(context.Background(), operation), "Publishing workbook") {
+		t.Fatal("SetLabel reported that the operation was unavailable")
+	}
+	if got := stderr.String(); got != before {
+		t.Fatalf("unchanged label repainted stderr from %q to %q", before, got)
+	}
+}
+
+func TestSetLabelRejectsAnOperationAfterStop(t *testing.T) {
+	clock := newFakeClock(time.Now())
+	reporter := progress.New(io.Discard,
+		progress.WithTerminalDetector(func(io.Writer) bool { return true }),
+		progress.WithClock(clock),
+	)
+	operation := reporter.Start(context.Background(), "Publishing workbook")
+	operation.Stop()
+	if progress.SetLabel(progress.WithOperation(context.Background(), operation), "done") {
+		t.Fatal("SetLabel succeeded after Stop")
 	}
 }
 

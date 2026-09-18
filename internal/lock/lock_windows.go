@@ -9,8 +9,11 @@ import (
 	"golang.org/x/sys/windows"
 )
 
-func lockFile(file *os.File, block bool) error {
-	flags := uint32(windows.LOCKFILE_EXCLUSIVE_LOCK)
+func lockFile(file *os.File, block, shared bool) error {
+	flags := uint32(0)
+	if !shared {
+		flags |= windows.LOCKFILE_EXCLUSIVE_LOCK
+	}
 	if !block {
 		flags |= windows.LOCKFILE_FAIL_IMMEDIATELY
 	}

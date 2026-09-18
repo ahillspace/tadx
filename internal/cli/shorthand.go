@@ -34,6 +34,7 @@ var flagShorthands = map[string]string{
 }
 
 var flagLongAliases = map[string]string{
+	"no-wait": "nwt", "operation-id": "opi",
 	"value":        "val",
 	"descriptions": "dcs", "tags": "tgs", "metadata-id": "mdi", "table-id": "tbi", "database-id": "dbi", "contact-id": "cti", "add-tag": "atg", "remove-tag": "rtg", "direct-only": "dro", "target-id": "tid", "category": "ctg", "message": "msg", "active": "act", "elevated": "elv",
 	"batch-file": "btf", "json": "jsn", "username": "unm", "principal-username": "pun",

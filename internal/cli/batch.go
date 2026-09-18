@@ -15,6 +15,7 @@ import (
 
 	"github.com/ahillspace/tadx/internal/batchspec"
 	"github.com/ahillspace/tadx/internal/cli/clierr"
+	"github.com/ahillspace/tadx/internal/cli/progress"
 	"github.com/ahillspace/tadx/internal/contentbatch"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
@@ -232,7 +233,20 @@ func attachBatchWithOptions(root, command *cobra.Command, options batchspec.Opti
 				resultSelectors[i] = indices[i]
 			}
 		}
-		out, err := contentbatch.Run(cmd.Context(), cmd.Annotations[CapabilityAnnotation], indices, func(ctx context.Context, index string) (any, error) {
+		batchCtx := cmd.Context()
+		var operation *progress.Operation
+		if isPublishingBatchCapability(cmd.Annotations[CapabilityAnnotation]) {
+			operation = progress.OperationFromContext(batchCtx)
+			if operation == nil {
+				reporter := progress.New(cmd.ErrOrStderr())
+				operation = reporter.Start(batchCtx, publishingBatchLabel(cmd.Annotations[CapabilityAnnotation]))
+				batchCtx = progress.WithOperation(batchCtx, operation)
+				defer operation.Stop()
+			} else {
+				progress.SetLabel(batchCtx, publishingBatchLabel(cmd.Annotations[CapabilityAnnotation]))
+			}
+		}
+		out, err := contentbatch.Run(batchCtx, cmd.Annotations[CapabilityAnnotation], indices, func(ctx context.Context, index string) (any, error) {
 			i, _ := strconv.Atoi(index)
 			capture := &batchCollector{}
 			child := factory(capture)
@@ -268,6 +282,19 @@ func attachBatchWithOptions(root, command *cobra.Command, options batchspec.Opti
 		}
 		return nil
 	}
+}
+
+func isPublishingBatchCapability(capability string) bool {
+	switch capability {
+	case "workbook.publish", "datasource.publish", "flow.publish":
+		return true
+	default:
+		return false
+	}
+}
+
+func publishingBatchLabel(capability string) string {
+	return "Preparing " + strings.TrimSuffix(capability, ".publish") + " publication"
 }
 
 func batchDuplicateKey(row batchRow, options batchspec.Options) (string, string) {
@@ -489,7 +516,7 @@ func batchRowArguments(command *cobra.Command, item map[string]json.RawMessage, 
 			continue
 		}
 		switch name {
-		case "environment", "config", "preview", "json", "full", "batch-file", "help", "version", "raw", "force":
+		case "environment", "config", "preview", "no-wait", "json", "full", "batch-file", "help", "version", "raw", "force":
 			return row, 0, fmt.Errorf("--%s must be selected on the command, not in a batch item", name)
 		}
 		flag := command.Flags().Lookup(name)

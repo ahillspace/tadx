@@ -37,18 +37,45 @@ func runContentSelection[T any](ctx context.Context, operation string, selectors
 // runPublishSelection reports the active artifact while preserving the single
 // and batch result contracts implemented by runContentSelection.
 func runPublishSelection[T any](ctx context.Context, operation, kind string, artifacts []string, preview bool, renderer Renderer, reporter *progress.Reporter, publish func(context.Context, string) (T, error)) error {
+	active := progress.OperationFromContext(ctx)
+	if active == nil {
+		active = reporter.Start(ctx, publishPreparationLabel(kind, preview))
+		ctx = progress.WithOperation(ctx, active)
+		defer active.Stop()
+	}
+	progress.SetLabel(ctx, publishSelectionLabel(kind, preview))
 	return runContentSelection(ctx, operation, artifacts, renderer, func(ctx context.Context, artifact string) (T, error) {
-		return progress.Run(ctx, reporter, publishActivityLabel(kind, artifact, preview), func(ctx context.Context) (T, error) {
-			return publish(ctx, artifact)
-		})
+		progress.SetLabel(ctx, publishActivityLabel(kind, artifact, preview))
+		return publish(ctx, artifact)
 	})
 }
 
-func publishActivityLabel(kind, artifact string, preview bool) string {
+func publishPreparationLabel(kind string, preview bool) string {
 	if preview {
-		return "Previewing " + kind + " publication " + path.Base(artifact)
+		return "Preparing " + kind + " publication preview"
 	}
-	return "Publishing " + kind + " " + path.Base(artifact)
+	return "Preparing " + kind + " publication"
+}
+
+func publishSelectionLabel(kind string, preview bool) string {
+	if preview {
+		return "Selecting " + kind + " publication source"
+	}
+	return "Selecting " + kind + " source"
+}
+
+func publishActivityLabel(kind, artifact string, preview bool) string {
+	name := path.Base(artifact)
+	if artifact == "" || name == "." || name == "/" {
+		if preview {
+			return "Previewing " + kind + " publication"
+		}
+		return "Publishing " + kind
+	}
+	if preview {
+		return "Previewing " + kind + " publication " + name
+	}
+	return "Publishing " + kind + " " + name
 }
 
 func batchPullArgs(operation string, ids *[]string, name, projectPath *string, set func(string, string, string)) cobra.PositionalArgs {

@@ -43,6 +43,8 @@ type Receipt struct {
 	ReadFailures      int             `json:"read_failures,omitempty"`
 	LastReadError     string          `json:"last_read_error,omitempty"`
 	Verification      string          `json:"verification,omitempty"`
+	ManualOnly        bool            `json:"manual_only,omitzero"`
+	WaitUntil         time.Time       `json:"wait_until,omitzero"`
 }
 
 // Store contains no credentials and is shared by cooperating processes.

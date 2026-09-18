@@ -18,6 +18,7 @@ func main() {
 	exitCode := app.Run(ctx, os.Args[1:], os.Stdout, app.Options{
 		MutationEnvironment: func() (string, bool) { return os.LookupEnv("TADX_ENABLE_MUTATIONS") },
 		Stderr:              os.Stderr,
+		PublicationWorkers:  true,
 	})
 	stop()
 	os.Exit(exitCode)

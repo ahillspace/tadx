@@ -141,6 +141,15 @@ type Output struct {
 	Help   []string `json:"help"`
 }
 
+// OperationStatus reports the accepted publication state for generic batch
+// progress without exposing action-specific result fields.
+func (o Output) OperationStatus() string {
+	if o.Result == nil {
+		return ""
+	}
+	return o.Result.Status
+}
+
 // CompactPlan preserves the exact target and mutation decision without diagnostics.
 type CompactPlan struct {
 	Workspace       string   `json:"workspace"`
@@ -173,10 +182,20 @@ type CompactPublishResult struct {
 
 // CompactResult is the bounded default projection.
 type CompactResult struct {
-	Plan    CompactPlan           `json:"plan"`
-	Result  *CompactPublishResult `json:"result,omitempty"`
-	Details string                `json:"details"`
-	Help    []string              `json:"help"`
+	Status          string                `json:"status,omitempty"`
+	Kind            string                `json:"kind,omitempty"`
+	Operation       string                `json:"operation,omitempty"`
+	Environment     string                `json:"environment,omitempty"`
+	Site            string                `json:"site,omitempty"`
+	ProjectPath     string                `json:"project_path,omitempty"`
+	Workspace       string                `json:"workspace,omitempty"`
+	ArtifactPath    string                `json:"artifact_path,omitempty"`
+	Warnings        []string              `json:"warnings,omitempty"`
+	WarningsOmitted int                   `json:"warnings_omitted,omitempty"`
+	Plan            *CompactPlan          `json:"plan,omitempty"`
+	Result          *CompactPublishResult `json:"result,omitempty"`
+	Details         string                `json:"details"`
+	Help            []string              `json:"help"`
 }
 
 // FullPlan includes bounded publish diagnostics.
@@ -223,11 +242,12 @@ type FullResult struct {
 // CompactOutput returns the target, safety decision, and resulting identities.
 func (o Output) CompactOutput() any {
 	warnings, omitted := boundWarnings(o.Plan.Warnings)
-	plan := CompactPlan{Workspace: o.Plan.Workspace, Kind: "workbook", SourceLUID: o.Plan.SourceLUID,
+	planValue := CompactPlan{Workspace: o.Plan.Workspace, Kind: "workbook", SourceLUID: o.Plan.SourceLUID,
 		Mode: o.Plan.Mode, Operation: o.Plan.Operation, ArtifactPath: o.Plan.ArtifactPath, SourceKind: o.Plan.SourceKind,
 		Filename: o.Plan.Filename, WorkbookName: o.Plan.WorkbookName, Target: o.Plan.Target,
 		Overwrite: o.Plan.Overwrite, AsJob: o.Plan.AsJob, Warnings: warnings, WarningsOmitted: omitted,
 	}
+	plan := &planValue
 	var result *CompactPublishResult
 	if o.Result != nil {
 		result = &CompactPublishResult{
@@ -236,7 +256,21 @@ func (o Output) CompactOutput() any {
 			WarningsOmitted: len(o.Result.ValidationWarnings),
 		}
 	}
-	return CompactResult{Plan: plan, Result: result, Details: "--full", Help: o.Help}
+	compact := CompactResult{Plan: plan, Result: result, Details: "--full", Help: o.Help}
+	if o.Result != nil && o.Plan.Mode == "execute" {
+		compact.Status = o.Result.Status
+		compact.Kind = "workbook"
+		compact.Operation = o.Plan.Operation
+		compact.Environment = o.Plan.Target.Environment
+		compact.Site = o.Plan.Target.Site
+		compact.ProjectPath = o.Plan.Target.ProjectPath
+		compact.Workspace = o.Plan.Workspace
+		compact.ArtifactPath = o.Plan.ArtifactPath
+		compact.Warnings = warnings
+		compact.WarningsOmitted = omitted
+		compact.Plan = nil
+	}
+	return compact
 }
 
 // FullOutput returns bounded diagnostics for the same publish operation.

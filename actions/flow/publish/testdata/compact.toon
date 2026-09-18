@@ -1,18 +1,10 @@
-plan:
-  artifact_path: artifacts/flow/Daily
-  source_kind: ""
-  workspace: ""
-  kind: flow
-  source_luid: ""
-  mode: execute
-  operation: flow.publish
-  flow_name: Daily
-  target:
-    environment: dev
-    site: sandbox
-    project_luid: project-1
-    project_path: Ops
-  overwrite: false
+status: succeeded
+kind: flow
+operation: flow.publish
+environment: dev
+site: sandbox
+project_path: Ops
+artifact_path: artifacts/flow/Daily
 result:
   status: succeeded
   flow_luid: flow-1

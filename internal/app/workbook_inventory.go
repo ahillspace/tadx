@@ -51,6 +51,14 @@ func (c *remoteContentCommands) ListWorkbooks(ctx context.Context, input workboo
 	}
 	input.Environment, input.Site = connection.environment.Alias, connection.environment.SiteContentURL
 
+	if input.All && input.ProjectLUID != "" {
+		output, err := workbooklist.New(workbookListReader{adapter: connection.workbooks}).Execute(ctx, input)
+		if err != nil {
+			return output, err
+		}
+		output.Source = liveSource(c.runtime.now)
+		return output, nil
+	}
 	if input.All {
 		observedAt := c.runtime.now().UTC()
 		inventory, err := collectResourceInventory(ctx, connection.inventory, c.cacheStore(input.Environment), tableaucache.ScopeWorkbooks, input.Environment, input.Site, observedAt, inventoryCollectionOptions{MaxConcurrency: connection.environment.CacheMaxConcurrency, Filter: filter})

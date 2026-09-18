@@ -220,6 +220,7 @@ func localImportAllowed(file, imported string) bool {
 				"internal/jobmonitor",
 				"internal/lastcommand",
 				"internal/output",
+				"internal/operationrun",
 				"internal/paging",
 				"internal/readsource",
 				"internal/value",
@@ -253,6 +254,12 @@ func localImportAllowed(file, imported string) bool {
 		// knowledge of transport, credentials, executable actions, or the CLI.
 		if hasPathPrefix(file, "internal/jobmonitor") {
 			return matchesExact(imported, "internal/lock", "internal/value")
+		}
+		// Detached operations persist bounded worker state and use the leaf lock
+		// package for cross-process coordination. The composition root is the
+		// only higher layer allowed to consume this durable boundary.
+		if hasPathPrefix(file, "internal/operationrun") {
+			return matchesExact(imported, "internal/lock")
 		}
 		// Authentication holds the leaf advisory lock for a command's PAT session.
 		if hasPathPrefix(file, "internal/auth") {
@@ -404,6 +411,9 @@ func disallowedLocalImportReason(file, imported string) string {
 			return "Tableau clients must not import unapproved local packages"
 		}
 	case layerFoundation:
+		if hasPathPrefix(file, "internal/operationrun") {
+			return "operation-run infrastructure must import only the lock boundary"
+		}
 		if hasPathPrefix(imported, "actions") ||
 			hasPathPrefix(imported, "internal/app") ||
 			hasPathPrefix(imported, "internal/cli") ||
@@ -437,6 +447,7 @@ func isFoundationPackage(file string) bool {
 		hasPathPrefix(file, "internal/errs") ||
 		hasPathPrefix(file, "internal/lock") ||
 		hasPathPrefix(file, "internal/jobmonitor") ||
+		hasPathPrefix(file, "internal/operationrun") ||
 		hasPathPrefix(file, "internal/output") ||
 		hasPathPrefix(file, "internal/paging") ||
 		hasPathPrefix(file, "internal/pathspec") ||

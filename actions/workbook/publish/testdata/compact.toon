@@ -1,22 +1,11 @@
-plan:
-  workspace: ""
-  kind: workbook
-  source_luid: ""
-  mode: execute
-  operation: workbook.publish
-  artifact_path: artifacts/workbook/Finance
-  source_kind: ""
-  filename: Finance.twbx
-  workbook_name: Finance
-  target:
-    origin: explicit
-    environment: production
-    site: marketing
-    project_luid: project-1
-    project_path: Ops
-    existing_workbook_luid: wb-existing
-  overwrite: true
-  warnings[1]: Detailed portability warning.
+status: succeeded
+kind: workbook
+operation: workbook.publish
+environment: production
+site: marketing
+project_path: Ops
+artifact_path: artifacts/workbook/Finance
+warnings[1]: Detailed portability warning.
 result:
   status: succeeded
   workbook_luid: wb-new

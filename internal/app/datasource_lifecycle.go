@@ -10,6 +10,7 @@ import (
 	datasourcepublish "github.com/ahillspace/tadx/actions/datasource/publish"
 	datasourcepull "github.com/ahillspace/tadx/actions/datasource/pull"
 	"github.com/ahillspace/tadx/internal/artifact"
+	"github.com/ahillspace/tadx/internal/cli/progress"
 	"github.com/ahillspace/tadx/internal/contentbatch"
 	"github.com/ahillspace/tadx/internal/identity"
 	resourcedatasource "github.com/ahillspace/tadx/internal/resources/datasource"
@@ -95,7 +96,7 @@ func (c *remoteContentCommands) PublishDatasource(ctx context.Context, input dat
 		out.Result.ReceiptPath, saveErr = lifecycle.record(ctx, out.Result.JobID, out.Result.Status, out.Result.DatasourceLUID, out.Result.TableauRequestID, out.Result.Verification)
 		err = errors.Join(err, saveErr)
 	}
-	if err == nil && out.Result != nil && out.Result.Status == "pending" && lifecycle != nil {
+	if err == nil && out.Result != nil && out.Result.Status == "pending" && lifecycle != nil && !c.runtime.publicationNoWait() {
 		contentbatch.DeferCompletion(ctx, func(ctx context.Context) (any, error) { return lifecycle.completeDatasource(ctx, action, out) })
 	}
 	return out, err
@@ -126,11 +127,13 @@ func (r datasourcePullReader) ResolveDatasource(ctx context.Context, selector id
 }
 
 func (r datasourcePullReader) DownloadDatasource(ctx context.Context, luid string) (datasourcepull.Download, error) {
+	progress.SetLabel(ctx, "Downloading datasource")
 	item, err := r.datasources.DownloadDatasource(ctx, luid)
 	return datasourcepull.Download{Filename: item.Filename, Content: item.Content, TableauRequestID: item.TableauRequestID}, err
 }
 
 func (r datasourcePullReader) CaptureLineage(ctx context.Context, input datasourcepull.LineageRequest) (datasourcepull.Lineage, error) {
+	progress.SetLabel(ctx, "Reading datasource metadata")
 	graph, err := r.lineage.Capture(ctx, resourcelineage.Request{Kind: input.Kind, RESTLUID: input.RESTLUID, Direction: input.Direction, Depth: input.Depth})
 	nodes := make([]datasourcepull.LineageNode, len(graph.Nodes))
 	for index, node := range graph.Nodes {
@@ -146,6 +149,7 @@ func (r datasourcePullReader) CaptureLineage(ctx context.Context, input datasour
 type datasourceArtifactWriter struct{ manager *artifact.DatasourceManager }
 
 func (w datasourceArtifactWriter) WriteDatasource(ctx context.Context, input datasourcepull.Artifact) (datasourcepull.ArtifactResult, error) {
+	progress.SetLabel(ctx, "Saving datasource files")
 	nodes := make([]artifact.LineageNode, len(input.Lineage.Nodes))
 	for index, node := range input.Lineage.Nodes {
 		nodes[index] = artifact.LineageNode{MetadataID: node.MetadataID, Kind: node.Kind, RESTLUID: node.RESTLUID, Name: node.Name}
@@ -236,6 +240,9 @@ func (a datasourcePublishAdapter) ResolvePublishedDatasource(ctx context.Context
 		a.datasources = fresh.datasources
 	}
 	item, err := a.datasources.ResolvePublishedDatasource(ctx, name, projectLUID)
+	if _, notVisible := errors.AsType[*resourcedatasource.PublishedDatasourceNotVisibleError](err); notVisible {
+		return datasourcepublish.Datasource{}, datasourcepublish.ErrPublishedDatasourceNotVisible
+	}
 	return datasourcepublish.Datasource{LUID: item.LUID, Name: item.Name, ProjectLUID: item.ProjectLUID}, err
 }
 
@@ -282,6 +289,7 @@ type preparedDatasourcePublish struct {
 }
 
 func (p preparedDatasourcePublish) Commit(ctx context.Context) (datasourcepublish.Result, error) {
+	progress.SetLabel(ctx, "Uploading and submitting datasource")
 	result, err := p.prepared.Commit(ctx)
 	return datasourcepublish.Result{Status: result.Status, DatasourceLUID: result.DatasourceLUID, DatasourceName: result.DatasourceName, ProjectLUID: result.ProjectLUID, JobID: result.JobID, TableauRequestID: result.TableauRequestID, ReceiptPath: result.ReceiptPath}, err
 }

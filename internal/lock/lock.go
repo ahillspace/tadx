@@ -21,22 +21,38 @@ type Handle struct {
 // Acquire opens (creating if necessary) the lock file at path and blocks until
 // it can take an exclusive advisory lock.
 func Acquire(path string) (*Handle, error) {
-	return acquire(path, true)
+	return acquire(path, true, false)
 }
 
 // TryAcquire attempts to take the exclusive advisory lock without blocking. It
 // returns ErrLocked if another process currently holds it.
 func TryAcquire(path string) (*Handle, error) {
-	return acquire(path, false)
+	return acquire(path, false, false)
+}
+
+// TryAcquireShared attempts to take a shared advisory lock without blocking.
+// It returns ErrLocked if an exclusive lock is currently held.
+func TryAcquireShared(path string) (*Handle, error) {
+	return acquire(path, false, true)
 }
 
 // AcquireContext waits for an advisory lock without blocking cancellation.
 func AcquireContext(ctx context.Context, path string) (*Handle, error) {
+	return acquireContext(ctx, path, false)
+}
+
+// AcquireSharedContext waits for a shared advisory lock without blocking
+// cancellation.
+func AcquireSharedContext(ctx context.Context, path string) (*Handle, error) {
+	return acquireContext(ctx, path, true)
+}
+
+func acquireContext(ctx context.Context, path string, shared bool) (*Handle, error) {
 	for {
 		if err := ctx.Err(); err != nil {
 			return nil, err
 		}
-		handle, err := TryAcquire(path)
+		handle, err := acquire(path, false, shared)
 		if !errors.Is(err, ErrLocked) {
 			return handle, err
 		}
@@ -50,12 +66,12 @@ func AcquireContext(ctx context.Context, path string) (*Handle, error) {
 	}
 }
 
-func acquire(path string, block bool) (*Handle, error) {
+func acquire(path string, block, shared bool) (*Handle, error) {
 	file, err := os.OpenFile(path, os.O_CREATE|os.O_RDWR, 0o600)
 	if err != nil {
 		return nil, fmt.Errorf("open workspace lock %q: %w", path, err)
 	}
-	if err := lockFile(file, block); err != nil {
+	if err := lockFile(file, block, shared); err != nil {
 		_ = file.Close()
 		if errors.Is(err, ErrLocked) {
 			return nil, err

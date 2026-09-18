@@ -192,6 +192,16 @@ func (s *orderedSigner) snapshot() []string {
 }
 
 func TestCommandSessionForegroundAuthenticationPrecedesWaitingMonitor(t *testing.T) {
+	t.Run("independent_managers", func(t *testing.T) {
+		testForegroundAuthenticationPrecedesWaitingMonitor(t, false)
+	})
+	t.Run("same_manager", func(t *testing.T) {
+		testForegroundAuthenticationPrecedesWaitingMonitor(t, true)
+	})
+}
+
+func testForegroundAuthenticationPrecedesWaitingMonitor(t *testing.T, sameManager bool) {
+	t.Helper()
 	directory := t.TempDir()
 	holder := auth.NewCommandSessions(nil, nil, directory)
 	defer holder.Close()
@@ -209,13 +219,23 @@ func TestCommandSessionForegroundAuthenticationPrecedesWaitingMonitor(t *testing
 		return "test-secret", true
 	}), nil, directory)
 	defer manager.Close()
+	foregroundManager := manager
+	if !sameManager {
+		foregroundManager = auth.NewCommandSessions(nil, nil, directory)
+		defer foregroundManager.Close()
+	}
+	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
+	defer cancel()
 	monitorTarget := commandTarget()
 	monitorTarget.SiteContentURL = "monitor-site"
 	monitorTarget.PATNameVariable, monitorTarget.PATSecretVariable = "PAT_NAME", "PAT_SECRET"
 	signer := &orderedSigner{}
 	monitorDone := make(chan error, 1)
 	go func() {
-		_, err := manager.AuthenticateMonitor(context.Background(), monitorTarget, signer)
+		_, err := manager.AuthenticateMonitor(ctx, monitorTarget, signer)
+		if err == nil {
+			err = manager.Suspend(ctx)
+		}
 		monitorDone <- err
 	}()
 	deadline := time.Now().Add(time.Second)
@@ -229,7 +249,10 @@ func TestCommandSessionForegroundAuthenticationPrecedesWaitingMonitor(t *testing
 	go func() {
 		foregroundTarget := commandTarget()
 		foregroundTarget.SiteContentURL = "foreground-site"
-		_, err := manager.AuthenticateCredentials(context.Background(), foregroundTarget, commandCredential(), signer)
+		_, err := foregroundManager.AuthenticateCredentials(ctx, foregroundTarget, commandCredential(), signer)
+		if err == nil {
+			err = foregroundManager.Suspend(ctx)
+		}
 		foregroundDone <- err
 	}()
 	time.Sleep(75 * time.Millisecond)
@@ -363,7 +386,8 @@ func TestCommandCredentialLockWaitIsCancelableAndDifferentPATIndependent(t *test
 			}
 			continue
 		}
-		if len(file.Name()) != 69 || !strings.HasSuffix(file.Name(), ".lock") || strings.Contains(file.Name(), "test-") {
+		identity := strings.TrimSuffix(strings.TrimSuffix(file.Name(), ".lock"), ".admission")
+		if len(identity) != 64 || !strings.HasSuffix(file.Name(), ".lock") || strings.Contains(file.Name(), "test-") {
 			t.Fatalf("nonopaque lock name=%q", file.Name())
 		}
 		info, err := file.Info()

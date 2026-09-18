@@ -22,6 +22,7 @@ import (
 	"github.com/ahillspace/tadx/internal/artifact"
 	"github.com/ahillspace/tadx/internal/cache"
 	contentcli "github.com/ahillspace/tadx/internal/cli/content"
+	"github.com/ahillspace/tadx/internal/cli/progress"
 	"github.com/ahillspace/tadx/internal/config"
 	"github.com/ahillspace/tadx/internal/identity"
 	resourcedatasource "github.com/ahillspace/tadx/internal/resources/datasource"
@@ -654,11 +655,13 @@ func (r flowPullReader) ResolveFlow(ctx context.Context, selector identity.Selec
 }
 
 func (r flowPullReader) DownloadFlow(ctx context.Context, luid string) (flowpull.Download, error) {
+	progress.SetLabel(ctx, "Downloading flow")
 	item, err := r.flows.DownloadFlow(ctx, luid)
 	return flowpull.Download{Filename: item.Filename, Content: item.Content, TableauRequestID: item.TableauRequestID}, err
 }
 
 func (r flowPullReader) CaptureLineage(ctx context.Context, input flowpull.LineageRequest) (flowpull.Lineage, error) {
+	progress.SetLabel(ctx, "Reading flow metadata")
 	graph, err := r.lineage.Capture(ctx, resourcelineage.Request{Kind: input.Kind, RESTLUID: input.RESTLUID, Direction: input.Direction, Depth: input.Depth})
 	return flowPullLineage(graph), err
 }
@@ -678,6 +681,7 @@ func flowPullLineage(graph resourcelineage.Graph) flowpull.Lineage {
 type flowArtifactWriter struct{ manager *artifact.FlowManager }
 
 func (w flowArtifactWriter) WriteFlow(ctx context.Context, input flowpull.Artifact) (flowpull.ArtifactResult, error) {
+	progress.SetLabel(ctx, "Saving flow files")
 	nodes := make([]artifact.LineageNode, len(input.Lineage.Nodes))
 	for index, node := range input.Lineage.Nodes {
 		nodes[index] = artifact.LineageNode{MetadataID: node.MetadataID, Kind: node.Kind, RESTLUID: node.RESTLUID, Name: node.Name}
@@ -776,6 +780,7 @@ func (a flowPublishAdapter) Prepare(ctx context.Context, input flowpublish.Publi
 type preparedFlowPublish struct{ prepared tableauflow.PreparedPublish }
 
 func (p preparedFlowPublish) Commit(ctx context.Context) (flowpublish.Result, error) {
+	progress.SetLabel(ctx, "Uploading and submitting flow")
 	result, err := p.prepared.Commit(ctx)
 	return flowpublish.Result{Status: result.Status, FlowLUID: result.FlowLUID, FlowName: result.FlowName, ProjectLUID: result.ProjectLUID, TableauRequestID: result.TableauRequestID}, err
 }

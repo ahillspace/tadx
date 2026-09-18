@@ -71,6 +71,17 @@ func (c *remoteContentCommands) listDatasources(ctx context.Context, input datas
 	}
 	input.Environment, input.Site = connection.environment.Alias, connection.environment.SiteContentURL
 
+	if input.All && input.ProjectLUID != "" {
+		if discovery.projects == nil {
+			discovery.projects = resourceproject.NewDiscoveryPaths(connection.projects)
+		}
+		output, err := datasourcelist.New(datasourceListReader{adapter: connection.datasources, projects: discovery.projects}).Execute(ctx, input)
+		if err != nil {
+			return output, err
+		}
+		output.Source = liveSource(c.runtime.now)
+		return output, nil
+	}
 	if input.All {
 		observedAt := c.runtime.now().UTC()
 		inventory, err := collectResourceInventory(ctx, connection.inventory, c.cacheStore(input.Environment), tableaucache.ScopeDatasources, input.Environment, input.Site, observedAt, inventoryCollectionOptions{MaxConcurrency: connection.environment.CacheMaxConcurrency, Filter: filter})

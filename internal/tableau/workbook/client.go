@@ -1119,13 +1119,20 @@ func normalizeWorkbook(item workbookXML) Workbook {
 	return Workbook{LUID: item.ID, Name: item.Name, ContentURL: item.ContentURL, ProjectLUID: item.Project.ID, ProjectName: item.Project.Name, OwnerLUID: item.Owner.ID, Description: item.Description, CreatedAt: item.CreatedAt, UpdatedAt: item.UpdatedAt, Tags: tags}
 }
 
-// ListFilter validates and encodes workbook selectors for paged and full lists.
+// ListFilter validates and encodes the workbook selectors supported by the
+// Tableau workbooks REST endpoint for paged and full lists.
+//
+// Tableau does not support projectId on this endpoint. Callers that receive a
+// project LUID must apply that exact identity check to the returned records
+// while traversing the complete upstream result set.
 // Pagination fields do not affect the selected population.
 func ListFilter(input ListRequest) (string, error) {
+	if strings.ContainsAny(input.ProjectLUID, "&,") {
+		return "", errors.New("workbook project ID filter cannot contain ampersand or comma")
+	}
 	fields := []struct{ name, value string }{
 		{name: "name", value: input.Name},
 		{name: "ownerName", value: input.OwnerName},
-		{name: "projectId", value: input.ProjectLUID},
 		{name: "projectName", value: input.ProjectName},
 		{name: "tags", value: input.Tag},
 	}

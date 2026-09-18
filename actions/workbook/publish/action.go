@@ -257,6 +257,10 @@ func (a *Action) Complete(ctx context.Context, output Output) (Output, error) {
 		matches, err := a.resolver.FindWorkbooks(ctx, plan.WorkbookName, plan.Target.ProjectLUID)
 		if err == nil && len(matches) == 1 && matches[0].LUID != "" && matches[0].Name == plan.WorkbookName && matches[0].ProjectLUID == plan.Target.ProjectLUID {
 			result.WorkbookLUID, result.WorkbookName, result.ProjectLUID = matches[0].LUID, matches[0].Name, matches[0].ProjectLUID
+		} else if err == nil && len(matches) == 0 {
+			result.Verification = "destination_pending"
+			output.Help = []string{"Publication succeeded; its destination is not yet visible in the name index. Do not repeat publication.", publishInspectionHint(plan, *result)}
+			return output, nil
 		} else {
 			result.Verification = "destination_unavailable"
 			return output, &errs.Error{ID: "workbook.publish.destination_unavailable", Kind: errs.KindOperation, Operation: "workbook.publish", Environment: plan.Target.Environment, Site: plan.Target.Site, Summary: "Workbook publication succeeded, but its destination identity could not be confirmed.", Cause: err, Phase: errs.PhaseVerification, Outcome: errs.OutcomeConfirmed, Retryable: errs.Bool(false), TableauJobID: result.JobID, CorrectiveAction: "Recover the saved job status before any further write. Do not repeat publication."}

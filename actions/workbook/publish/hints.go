@@ -10,6 +10,9 @@ func publishInspectionHint(plan Plan, result Result) string {
 	if id != "" {
 		return commandhint.Environment(plan.Target.Environment, "content", "workbook", "inspect", "--id", id)
 	}
+	if result.JobID != "" {
+		return commandhint.Environment(plan.Target.Environment, "job", "inspect", "--id", result.JobID)
+	}
 	if plan.WorkbookName != "" && plan.Target.ProjectPath != "" {
 		return commandhint.Environment(plan.Target.Environment, "content", "workbook", "inspect", "--name", plan.WorkbookName, "--project", plan.Target.ProjectPath)
 	}

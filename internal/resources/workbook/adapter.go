@@ -111,6 +111,13 @@ func (a *Adapter) ListWorkbooks(ctx context.Context, input tableauworkbook.ListR
 	if input.PageSize <= 0 || input.PageSize > adapterPageSize {
 		return Page{}, fmt.Errorf("workbook page size must be between 1 and %d", adapterPageSize)
 	}
+	if input.ProjectLUID != "" {
+		return a.listWorkbooksByProjectLUID(ctx, input)
+	}
+	return a.listWorkbooksPage(ctx, input)
+}
+
+func (a *Adapter) listWorkbooksPage(ctx context.Context, input tableauworkbook.ListRequest) (Page, error) {
 	client, ok := a.client.(InventoryClient)
 	if !ok {
 		return Page{}, errors.New("workbook inventory client is not configured")
@@ -122,48 +129,128 @@ func (a *Adapter) ListWorkbooks(ctx context.Context, input tableauworkbook.ListR
 	if err := validateWorkbookPage(page, input.PageNumber, input.PageSize); err != nil {
 		return Page{}, err
 	}
-	items := make([]Workbook, len(page.Items))
-	seen := make(map[string]tableauworkbook.Workbook, len(page.Items))
-	var legacyPaths *projectPathIndex
-	var resolvedPaths map[string]string
-	if a.projects == nil && len(page.Items) > 0 {
-		projects, err := a.allProjects(ctx)
+	items, err := a.normalizeWorkbookItems(ctx, page.Items)
+	if err != nil {
+		return Page{}, err
+	}
+	return Page{Number: page.Page.Number, Size: page.Page.Size, Total: page.Page.Total, Items: items, RequestID: page.TableauRequestID}, nil
+}
+
+func (a *Adapter) listWorkbooksByProjectLUID(ctx context.Context, input tableauworkbook.ListRequest) (Page, error) {
+	client, ok := a.client.(InventoryClient)
+	if !ok {
+		return Page{}, errors.New("workbook inventory client is not configured")
+	}
+	request := input
+	request.PageSize = adapterPageSize
+	seen := make(map[string]tableauworkbook.Workbook)
+	matches := make([]tableauworkbook.Workbook, 0)
+	expectedTotal, expectedSize := -1, -1
+	requestID := ""
+	for number := 1; number <= 1000; number++ {
+		request.PageNumber = number
+		page, err := client.ListWorkbooks(ctx, request)
 		if err != nil {
 			return Page{}, err
 		}
-		legacyPaths = newProjectPathIndex(projects)
-	} else if resolver, ok := a.projects.(projectPathBatchResolver); ok && len(page.Items) > 0 {
-		projectLUIDs := make([]string, 0, len(page.Items))
+		if err := validateWorkbookPage(page, number, adapterPageSize); err != nil {
+			return Page{}, err
+		}
+		if expectedTotal < 0 {
+			expectedTotal, expectedSize = page.Page.Total, page.Page.Size
+		} else if page.Page.Total != expectedTotal {
+			return Page{}, fmt.Errorf("workbook project filter pagination total changed from %d to %d", expectedTotal, page.Page.Total)
+		} else if page.Page.Size != expectedSize {
+			return Page{}, fmt.Errorf("workbook project filter pagination size changed from %d to %d", expectedSize, page.Page.Size)
+		}
+		requestID = page.TableauRequestID
 		for _, item := range page.Items {
+			if item.LUID == "" {
+				return Page{}, fmt.Errorf("workbook %q omitted its authoritative LUID", item.Name)
+			}
+			if item.ProjectLUID == "" {
+				return Page{}, fmt.Errorf("workbook %q with LUID %q omitted its authoritative project LUID", item.Name, item.LUID)
+			}
+			_, alreadySeen := seen[item.LUID]
+			if err := recordWorkbookIdentity(seen, item); err != nil {
+				return Page{}, err
+			}
+			if !alreadySeen && item.ProjectLUID == input.ProjectLUID &&
+				(input.Name == "" || item.Name == input.Name) &&
+				(input.ProjectName == "" || item.ProjectName == input.ProjectName) {
+				matches = append(matches, item)
+			}
+		}
+		offset := (page.Page.Number-1)*page.Page.Size + len(page.Items)
+		if offset == page.Page.Total {
+			break
+		}
+		if len(page.Items) == 0 {
+			return Page{}, errors.New("workbook project filter pagination ended before the reported total")
+		}
+		if number == 1000 {
+			return Page{}, errors.New("workbook project filter exceeded the bounded page limit")
+		}
+	}
+	if expectedTotal < 0 {
+		return Page{}, errors.New("workbook project filter returned no page")
+	}
+	start := (input.PageNumber - 1) * input.PageSize
+	if start > len(matches) {
+		return Page{}, fmt.Errorf("workbook project filter page %d exceeds the filtered total %d", input.PageNumber, len(matches))
+	}
+	end := min(start+input.PageSize, len(matches))
+	items, err := a.normalizeWorkbookItems(ctx, matches[start:end])
+	if err != nil {
+		return Page{}, err
+	}
+	return Page{Number: input.PageNumber, Size: input.PageSize, Total: len(matches), Items: items, RequestID: requestID}, nil
+}
+
+func (a *Adapter) normalizeWorkbookItems(ctx context.Context, rawItems []tableauworkbook.Workbook) ([]Workbook, error) {
+	items := make([]Workbook, len(rawItems))
+	seen := make(map[string]tableauworkbook.Workbook, len(rawItems))
+	var legacyPaths *projectPathIndex
+	var resolvedPaths map[string]string
+	var err error
+	if a.projects == nil && len(rawItems) > 0 {
+		projects, err := a.allProjects(ctx)
+		if err != nil {
+			return nil, err
+		}
+		legacyPaths = newProjectPathIndex(projects)
+	} else if resolver, ok := a.projects.(projectPathBatchResolver); ok && len(rawItems) > 0 {
+		projectLUIDs := make([]string, 0, len(rawItems))
+		for _, item := range rawItems {
 			projectLUIDs = append(projectLUIDs, item.ProjectLUID)
 		}
 		resolvedPaths, err = resolver.ResolveProjectPaths(ctx, projectLUIDs)
 		if err != nil {
-			return Page{}, err
+			return nil, err
 		}
 	}
-	for index, item := range page.Items {
+	for index, item := range rawItems {
 		if item.LUID == "" {
-			return Page{}, fmt.Errorf("workbook %q omitted its authoritative LUID", item.Name)
+			return nil, fmt.Errorf("workbook %q omitted its authoritative LUID", item.Name)
 		}
 		if item.ProjectLUID == "" {
-			return Page{}, fmt.Errorf("workbook %q with LUID %q omitted its authoritative project LUID", item.Name, item.LUID)
+			return nil, fmt.Errorf("workbook %q with LUID %q omitted its authoritative project LUID", item.Name, item.LUID)
 		}
 		if err := recordWorkbookIdentity(seen, item); err != nil {
-			return Page{}, err
+			return nil, err
 		}
 		path := resolvedPaths[item.ProjectLUID]
 		if resolvedPaths == nil {
 			path, err = a.resolveProjectPath(ctx, item.ProjectLUID, legacyPaths)
 			if err != nil {
-				return Page{}, err
+				return nil, err
 			}
 		} else if path == "" {
-			return Page{}, fmt.Errorf("project hierarchy omitted workbook project LUID %q", item.ProjectLUID)
+			return nil, fmt.Errorf("project hierarchy omitted workbook project LUID %q", item.ProjectLUID)
 		}
 		items[index] = normalizeWorkbook(item, path)
 	}
-	return Page{Number: page.Page.Number, Size: page.Page.Size, Total: page.Page.Total, Items: items, RequestID: page.TableauRequestID}, nil
+	return items, nil
 }
 
 // ResolveWorkbook applies LUID-authoritative exact selection across all pages.

@@ -57,6 +57,32 @@ type Datasource struct {
 	RequestID           string
 }
 
+// ErrPublishedDatasourceNotVisible identifies a completed publish whose exact
+// destination is not yet exposed by Tableau's name index.
+var ErrPublishedDatasourceNotVisible = errors.New("published datasource is not visible in the Tableau name index")
+
+// PublishedDatasourceNotVisibleError preserves the exact target and bounded
+// convergence window for an indexing-only completion result.
+type PublishedDatasourceNotVisibleError struct {
+	Name        string
+	ProjectLUID string
+	Timeout     time.Duration
+}
+
+func (e *PublishedDatasourceNotVisibleError) Error() string {
+	if e == nil {
+		return ErrPublishedDatasourceNotVisible.Error()
+	}
+	if e.Timeout > 0 {
+		return fmt.Sprintf("completed datasource %q in project %q was not visible before the %s resolution deadline", e.Name, e.ProjectLUID, e.Timeout)
+	}
+	return fmt.Sprintf("completed datasource %q in project %q was not visible in the name index", e.Name, e.ProjectLUID)
+}
+
+func (e *PublishedDatasourceNotVisibleError) Unwrap() error {
+	return ErrPublishedDatasourceNotVisible
+}
+
 // Page is one bounded normalized published datasource page.
 type Page struct {
 	Number    int
@@ -88,6 +114,7 @@ type Adapter struct {
 const (
 	defaultCompletionResolveInterval = time.Second
 	defaultCompletionResolveTimeout  = 30 * time.Second
+	datasourceAdapterPageSize        = 1000
 )
 
 // NewAdapter creates a datasource resource adapter.
@@ -118,6 +145,13 @@ func (a *Adapter) ListDatasources(ctx context.Context, input tableaudatasource.L
 	if a == nil || a.client == nil {
 		return Page{}, errors.New("datasource resource adapter is not configured")
 	}
+	if input.ProjectLUID != "" {
+		return a.listDatasourcesByProjectLUID(ctx, input)
+	}
+	return a.listDatasourcesPage(ctx, input)
+}
+
+func (a *Adapter) listDatasourcesPage(ctx context.Context, input tableaudatasource.ListRequest) (Page, error) {
 	upstream, err := a.client.List(ctx, input)
 	if err != nil {
 		return Page{}, err
@@ -134,6 +168,74 @@ func (a *Adapter) ListDatasources(ctx context.Context, input tableaudatasource.L
 		items[index] = normalizeDatasource(item, "")
 	}
 	return Page{Number: upstream.Number, Size: upstream.Size, Total: upstream.Total, Items: items, RequestID: upstream.TableauRequestID}, nil
+}
+
+func (a *Adapter) listDatasourcesByProjectLUID(ctx context.Context, input tableaudatasource.ListRequest) (Page, error) {
+	if input.PageNumber <= 0 {
+		return Page{}, errors.New("datasource page number must be positive")
+	}
+	if input.PageSize <= 0 || input.PageSize > datasourceAdapterPageSize {
+		return Page{}, fmt.Errorf("datasource page size must be between 1 and %d", datasourceAdapterPageSize)
+	}
+	request := input
+	request.PageSize = datasourceAdapterPageSize
+	seen := make(map[string]tableaudatasource.Datasource)
+	matches := make([]Datasource, 0)
+	expectedTotal, expectedSize := -1, -1
+	requestID := ""
+	for number := 1; number <= 1000; number++ {
+		request.PageNumber = number
+		page, err := a.client.List(ctx, request)
+		if err != nil {
+			return Page{}, err
+		}
+		if err := validateDatasourcePage(page, number, datasourceAdapterPageSize); err != nil {
+			return Page{}, err
+		}
+		if expectedTotal < 0 {
+			expectedTotal, expectedSize = page.Total, page.Size
+		} else if page.Total != expectedTotal {
+			return Page{}, fmt.Errorf("datasource project filter pagination total changed from %d to %d", expectedTotal, page.Total)
+		} else if page.Size != expectedSize {
+			return Page{}, fmt.Errorf("datasource project filter pagination size changed from %d to %d", expectedSize, page.Size)
+		}
+		requestID = page.TableauRequestID
+		for _, item := range page.Items {
+			if _, alreadySeen := seen[item.LUID]; alreadySeen {
+				if err := recordDatasource(seen, item); err != nil {
+					return Page{}, err
+				}
+				continue
+			}
+			if err := recordDatasource(seen, item); err != nil {
+				return Page{}, err
+			}
+			if item.ProjectLUID == input.ProjectLUID &&
+				(input.Name == "" || item.Name == input.Name) &&
+				(input.ProjectName == "" || item.ProjectName == input.ProjectName) {
+				matches = append(matches, normalizeDatasource(item, ""))
+			}
+		}
+		offset := (page.Number-1)*page.Size + len(page.Items)
+		if offset == page.Total {
+			break
+		}
+		if len(page.Items) == 0 {
+			return Page{}, errors.New("datasource project filter pagination ended before the reported total")
+		}
+		if number == 1000 {
+			return Page{}, errors.New("datasource project filter exceeded the bounded page limit")
+		}
+	}
+	if expectedTotal < 0 {
+		return Page{}, errors.New("datasource project filter returned no page")
+	}
+	start := (input.PageNumber - 1) * input.PageSize
+	if start > len(matches) {
+		return Page{}, fmt.Errorf("datasource project filter page %d exceeds the filtered total %d", input.PageNumber, len(matches))
+	}
+	end := min(start+input.PageSize, len(matches))
+	return Page{Number: input.PageNumber, Size: input.PageSize, Total: len(matches), Items: matches[start:end], RequestID: requestID}, nil
 }
 
 // ResolveDatasource resolves one authoritative LUID or exact name and canonical project path.
@@ -332,7 +434,7 @@ func (a *Adapter) ResolvePublishedDatasource(ctx context.Context, name, projectL
 			if ctx.Err() != nil {
 				return Datasource{}, ctx.Err()
 			}
-			return Datasource{}, fmt.Errorf("completed datasource %q in project %q was not visible before the %s resolution deadline", name, projectLUID, timeout)
+			return Datasource{}, &PublishedDatasourceNotVisibleError{Name: name, ProjectLUID: projectLUID, Timeout: timeout}
 		case <-timer.C:
 		}
 	}

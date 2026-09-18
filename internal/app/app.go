@@ -31,6 +31,7 @@ import (
 	"github.com/ahillspace/tadx/internal/cli"
 	authcli "github.com/ahillspace/tadx/internal/cli/auth"
 	"github.com/ahillspace/tadx/internal/cli/clierr"
+	"github.com/ahillspace/tadx/internal/cli/progress"
 	"github.com/ahillspace/tadx/internal/config"
 	"github.com/ahillspace/tadx/internal/contentbatch"
 	"github.com/ahillspace/tadx/internal/errs"
@@ -59,10 +60,23 @@ type Options struct {
 	UserHomeDir         func() (string, error)
 	Stderr              io.Writer
 	JobDirectory        string
+	// PublicationWorkers enables detached workers for native publish and pull.
+	// The executable enables it; embedders may run actions inline.
+	PublicationWorkers   bool
+	OperationDirectory   string
+	WorkerLauncher       func(context.Context, string, string) error
+	publicationExecution *publicationExecution
+	publicationResult    func(any, bool, int) error
 }
 
 // Run wires and runs the CLI, renders structured output, and returns an AXI exit code.
 func Run(ctx context.Context, args []string, stdout io.Writer, options Options) (exitCode int) {
+	if len(args) > 0 && args[0] == "__publication-worker" {
+		if len(args) != 3 {
+			return 2
+		}
+		return runPublicationWorker(context.Background(), args[1], args[2], options)
+	}
 	definitions := capability.All()
 	source := registrySource{}
 	renderOptions := &cli.RenderOptions{HintConfig: func() string { return options.ConfigPath }}
@@ -75,6 +89,11 @@ func Run(ctx context.Context, args []string, stdout io.Writer, options Options) 
 	capture := newLastCapture(runtime)
 	capture.hintConfig = func() string { return hintConfigPath(renderOptions) }
 	defer func() {
+		if options.publicationResult != nil && capture.value != nil {
+			if err := options.publicationResult(capture.value, capture.renderError, exitCode); err != nil {
+				exitCode = 1
+			}
+		}
 		if err := capture.save(exitCode); err != nil {
 			warningWriter := options.Stderr
 			if warningWriter == nil {
@@ -188,7 +207,14 @@ func Run(ctx context.Context, args []string, stdout io.Writer, options Options) 
 	selected, _, findErr := root.Find(args)
 	if selected != nil {
 		capture.operation = selected.Annotations[cli.CapabilityAnnotation]
+		if options.publicationExecution != nil && options.publicationExecution.operation != "" && capture.operation != options.publicationExecution.operation {
+			capture.enabled = false
+			return fail(publicationWorkerError("identity", "The saved publication command no longer matches its recorded operation; no action was started.", nil), renderOptions)
+		}
 		capture.enabled = capture.operation != "last" && capture.operation != "session.overview"
+		if options.publicationExecution != nil {
+			capture.enabled = false
+		}
 	}
 	if cli.RootVersionRequested(args) {
 		capture.operation = "version.get"
@@ -197,6 +223,7 @@ func Run(ctx context.Context, args []string, stdout io.Writer, options Options) 
 	if findErr != nil {
 		return fail(&errs.Error{Kind: errs.KindUsage, Operation: "cli", Summary: findErr.Error(), Cause: findErr}, renderOptions)
 	}
+	bindPublicationExecution(root, runtime, capture, args, options)
 	if err := root.ExecuteContext(ctx); err != nil {
 		if clierr.IsRendered(err) {
 			return errs.ExitCode(err)
@@ -308,17 +335,19 @@ func isValueFlag(arg string) bool {
 }
 
 type runtimeDependencies struct {
-	mutationOverride func() (string, bool)
-	command          commandRuntime
-	configPath       string
-	httpClient       *http.Client
-	now              func() time.Time
-	correlationID    string
-	userHomeDir      func() (string, error)
-	patStore         coreauth.PATStore
-	authPrompter     authcli.Prompter
-	jobDirectory     string
-	progressWriter   io.Writer
+	mutationOverride     func() (string, bool)
+	command              commandRuntime
+	configPath           string
+	httpClient           *http.Client
+	now                  func() time.Time
+	correlationID        string
+	userHomeDir          func() (string, error)
+	patStore             coreauth.PATStore
+	authPrompter         authcli.Prompter
+	jobDirectory         string
+	progressWriter       io.Writer
+	publicationExecution *publicationExecution
+	operationDirectory   string
 }
 
 func newRuntime(options Options) (*runtimeDependencies, error) {
@@ -364,7 +393,7 @@ func newRuntime(options Options) (*runtimeDependencies, error) {
 	if mutationOverride == nil && options.MutationsEnabled {
 		mutationOverride = func() (string, bool) { return "1", true }
 	}
-	return &runtimeDependencies{mutationOverride: mutationOverride, configPath: path, httpClient: client, now: now, correlationID: correlation, userHomeDir: userHomeDir, patStore: patStore, authPrompter: prompter, jobDirectory: options.JobDirectory, progressWriter: options.Stderr}, nil
+	return &runtimeDependencies{mutationOverride: mutationOverride, configPath: path, httpClient: client, now: now, correlationID: correlation, userHomeDir: userHomeDir, patStore: patStore, authPrompter: prompter, jobDirectory: options.JobDirectory, progressWriter: options.Stderr, publicationExecution: options.publicationExecution, operationDirectory: options.OperationDirectory}, nil
 }
 
 func (r *runtimeDependencies) Resolve(_ context.Context, alias string) (authcheck.Target, error) {
@@ -476,15 +505,18 @@ type pullReader struct {
 }
 
 func (r pullReader) ResolveWorkbook(ctx context.Context, selector identity.Selector) (workbookpull.Workbook, error) {
+	progress.SetLabel(ctx, "Resolving workbook")
 	item, err := r.workbooks.ResolveWorkbook(ctx, selector)
 	return workbookpull.Workbook{LUID: item.LUID, Name: item.Name, ProjectLUID: item.ProjectLUID, ProjectPath: item.ProjectPath}, err
 }
 func (r pullReader) DownloadWorkbook(ctx context.Context, luid string, include *bool) (workbookpull.Download, error) {
+	progress.SetLabel(ctx, "Downloading workbook")
 	item, err := r.workbooks.DownloadWorkbook(ctx, luid, include)
 	return workbookpull.Download{Filename: item.Filename, Content: item.Content, TableauRequestID: item.TableauRequestID}, err
 }
 
 func (r pullReader) PublishedDatasources(ctx context.Context, luid string) ([]workbookpull.PublishedDatasource, error) {
+	progress.SetLabel(ctx, "Reading workbook dependencies")
 	items, err := r.references.PublishedDatasources(ctx, luid)
 	result := make([]workbookpull.PublishedDatasource, len(items))
 	for index, item := range items {
@@ -494,6 +526,7 @@ func (r pullReader) PublishedDatasources(ctx context.Context, luid string) ([]wo
 }
 
 func (r pullReader) DownloadPublishedDatasource(ctx context.Context, luid string) (workbookpull.DatasourceDownload, error) {
+	progress.SetLabel(ctx, "Downloading workbook datasource dependency")
 	item, err := r.datasources.DownloadDatasource(ctx, luid)
 	if err != nil {
 		return workbookpull.DatasourceDownload{}, err
@@ -506,6 +539,7 @@ func (r pullReader) DownloadPublishedDatasource(ctx context.Context, luid string
 }
 
 func (r pullReader) CaptureWorkbookLineage(ctx context.Context, input workbookpull.LineageRequest) (workbookpull.LineageCapture, error) {
+	progress.SetLabel(ctx, "Reading workbook metadata")
 	graph, err := r.lineage.Capture(ctx, resourcelineage.Request{Kind: "workbook", RESTLUID: input.RESTLUID, Direction: input.Direction, Depth: input.Depth})
 	nodes := make([]workbookpull.LineageNode, len(graph.Nodes))
 	for index, node := range graph.Nodes {
@@ -524,6 +558,7 @@ type artifactWriter struct {
 }
 
 func (w artifactWriter) WriteWorkbook(ctx context.Context, input workbookpull.Artifact) (workbookpull.ArtifactResult, error) {
+	progress.SetLabel(ctx, "Saving workbook files")
 	references := make([]artifact.PublishedDatasourceRef, len(input.PublishedDatasources))
 	for index, item := range input.PublishedDatasources {
 		references[index] = artifact.PublishedDatasourceRef{LUID: item.LUID, Name: item.Name, SourceSite: item.SourceSite, LocalArtifactPath: item.LocalArtifactPath}
@@ -533,6 +568,7 @@ func (w artifactWriter) WriteWorkbook(ctx context.Context, input workbookpull.Ar
 }
 
 func (w artifactWriter) WriteBundle(ctx context.Context, workbook workbookpull.Artifact, datasources []workbookpull.DatasourceArtifact) (workbookpull.ArtifactResult, error) {
+	progress.SetLabel(ctx, "Saving workbook and datasource files")
 	references := make([]artifact.PublishedDatasourceRef, len(workbook.PublishedDatasources))
 	for index, item := range workbook.PublishedDatasources {
 		references[index] = artifact.PublishedDatasourceRef{LUID: item.LUID, Name: item.Name, SourceSite: item.SourceSite}
@@ -638,7 +674,7 @@ func (s *publishService) Execute(ctx context.Context, input workbookpublish.Inpu
 		out.Result.ReceiptPath, saveErr = lifecycle.record(ctx, out.Result.JobID, out.Result.Status, out.Result.WorkbookLUID, out.Result.TableauRequestID, out.Result.Verification)
 		err = errors.Join(err, saveErr)
 	}
-	if err == nil && out.Result != nil && out.Result.Status == "pending" && lifecycle != nil {
+	if err == nil && out.Result != nil && out.Result.Status == "pending" && lifecycle != nil && !s.runtime.publicationNoWait() {
 		contentbatch.DeferCompletion(ctx, func(ctx context.Context) (any, error) {
 			return lifecycle.completeWorkbook(ctx, action, out)
 		})
@@ -725,6 +761,7 @@ type preparedPublishAdapter struct {
 }
 
 func (a preparedPublishAdapter) Commit(ctx context.Context) (workbookpublish.Result, error) {
+	progress.SetLabel(ctx, "Uploading and submitting workbook")
 	result, err := a.prepared.Commit(ctx)
 	warnings := make([]workbookpublish.ValidationIssue, len(result.Warnings))
 	for index, warning := range result.Warnings {

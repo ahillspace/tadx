@@ -48,6 +48,7 @@ type Output struct {
 	Succeeded int      `json:"succeeded"`
 	Failed    int      `json:"failed"`
 	Skipped   int      `json:"skipped"`
+	Pending   int      `json:"pending,omitzero"`
 	Items     []Item   `json:"items"`
 	Details   string   `json:"details,omitempty"`
 	Help      []string `json:"help"`
@@ -83,7 +84,12 @@ func Run[T any](ctx context.Context, operation string, selectors []string, execu
 	if err := Validate(selectors); err != nil {
 		return Output{}, &errs.Error{Kind: errs.KindUsage, Operation: operation, Summary: err.Error()}
 	}
-	out := Output{Operation: operation, Status: "succeeded", Total: len(selectors), Items: make([]Item, 0, len(selectors)), Help: []string{"Items run sequentially in selection order. Review failed or skipped items before starting another command; successful items are not retried automatically."}}
+	out := Output{Operation: operation, Status: "running", Total: len(selectors), Items: make([]Item, len(selectors)), Help: []string{"Items run sequentially in selection order. Review failed or skipped items before starting another command; successful items are not retried automatically."}}
+	for i, selector := range selectors {
+		out.Items[i] = Item{Selector: selector, Status: "queued"}
+	}
+	recount(&out)
+	notify(ctx, out)
 	completions := make([]*completion, len(selectors))
 	for index, selector := range selectors {
 		item := Item{Selector: selector, Status: "succeeded"}
@@ -92,10 +98,12 @@ func Run[T any](ctx context.Context, operation string, selectors []string, execu
 			item.Status, item.Error = "skipped", &payload
 			out.Skipped++
 		} else {
-			itemCtx := ctx
+			out.Items[index].Status = "running"
+			notify(ctx, out)
+			itemCtx := WithObserver(ctx, nil)
 			if len(selectors) > 1 {
 				completions[index] = &completion{}
-				itemCtx = context.WithValue(ctx, completionKey{}, completions[index])
+				itemCtx = context.WithValue(itemCtx, completionKey{}, completions[index])
 			}
 			result, err := execute(itemCtx, selector)
 			if err != nil {
@@ -107,18 +115,22 @@ func Run[T any](ctx context.Context, operation string, selectors []string, execu
 				out.Failed++
 			} else {
 				item.Result = result
+				item.Status = resultStatus(result)
 				out.Succeeded++
 			}
 		}
-		out.Items = append(out.Items, item)
+		out.Items[index] = item
+		recount(&out)
+		notify(ctx, out)
 	}
 	for i, pending := range completions {
-		if pending == nil || pending.finish == nil || out.Items[i].Status != "succeeded" {
+		if pending == nil || pending.finish == nil || out.Items[i].Error != nil || out.Items[i].Status == "skipped" {
 			continue
 		}
 		result, err := pending.finish(ctx)
 		if result != nil {
 			out.Items[i].Result = result
+			out.Items[i].Status = resultStatus(result)
 		}
 		if err != nil {
 			payload := errs.Structure(err).Error
@@ -126,13 +138,52 @@ func Run[T any](ctx context.Context, operation string, selectors []string, execu
 			out.Succeeded--
 			out.Failed++
 		}
+		recount(&out)
+		notify(ctx, out)
 	}
+	recount(&out)
 	if out.Failed+out.Skipped != 0 {
 		out.Status = "partial_failure"
-		if out.Succeeded == 0 {
+		if out.Succeeded == 0 && out.Pending == 0 {
 			out.Status = "failed"
 		}
 		return out, &errs.Error{Kind: errs.KindOperation, Operation: operation, Summary: "One or more batch items failed or were skipped.", Retryable: errs.Bool(false), CorrectiveAction: "Review the per-item outcomes before retrying individual items."}
 	}
 	return out, nil
+}
+
+func resultStatus(result any) string {
+	if state, ok := result.(interface{ OperationStatus() string }); ok {
+		switch status := state.OperationStatus(); status {
+		case "pending", "running", "accepted", "queued", "unknown":
+			return status
+		}
+	}
+	return "succeeded"
+}
+
+func recount(out *Output) {
+	out.Succeeded, out.Failed, out.Skipped, out.Pending = 0, 0, 0, 0
+	for _, item := range out.Items {
+		switch item.Status {
+		case "succeeded":
+			out.Succeeded++
+		case "failed":
+			out.Failed++
+		case "skipped":
+			out.Skipped++
+		default:
+			out.Pending++
+		}
+	}
+	out.Status = "succeeded"
+	if out.Pending > 0 {
+		out.Status = "running"
+	}
+	if out.Failed+out.Skipped > 0 {
+		out.Status = "partial_failure"
+		if out.Succeeded == 0 && out.Pending == 0 {
+			out.Status = "failed"
+		}
+	}
 }

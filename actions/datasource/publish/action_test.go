@@ -196,6 +196,22 @@ func TestPublishResolvesAuthoritativeIdentityAfterCompletedJobOmitsIt(t *testing
 	}
 }
 
+func TestPublishTreatsDatasourceIndexDelayAsConfirmedPending(t *testing.T) {
+	resolver := &publishResolver{
+		project:       datasourcepublish.Project{LUID: "project-1", Path: "Analytics"},
+		collisions:    []datasourcepublish.Datasource{{LUID: "ds-old", Name: "Sales", ProjectLUID: "project-1"}},
+		completionErr: datasourcepublish.ErrPublishedDatasourceNotVisible,
+	}
+	publisher := &outcomePublisher{result: datasourcepublish.Result{Status: "succeeded", JobID: "job-1", TableauRequestID: "poll-request"}}
+	output, err := datasourcepublish.New(&publishArtifactReader{artifact: composedArtifact()}, resolver, publisher).Execute(t.Context(), datasourcepublish.Input{ArtifactPath: "artifacts/datasource/Sales", Environment: "dev", Site: "sandbox", ProjectSelector: identity.Selector{LUID: "project-1"}, Mode: datasourcepublish.ModeOverwrite, AsJob: true}, false)
+	if err != nil || output.Result == nil || output.Result.Status != "succeeded" || output.Result.Verification != "destination_pending" || output.Result.DatasourceLUID != "" || output.Result.JobID != "job-1" {
+		t.Fatalf("output = %#v, err = %v", output, err)
+	}
+	if !strings.Contains(strings.Join(output.Help, " "), "tadx job inspect --id job-1") {
+		t.Fatalf("missing exact recovery hint: %v", output.Help)
+	}
+}
+
 func TestPublishPreservesConfirmedCompletionWhenIdentityCannotBeResolved(t *testing.T) {
 	tests := []struct {
 		name       string

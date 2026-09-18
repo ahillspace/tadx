@@ -101,6 +101,8 @@ func newFlowPull(deps Dependencies) *cobra.Command {
 	command.Flags().StringVar(&input.Workspace, "workspace", "", "logical workspace name; uses deterministic defaults when omitted")
 	command.Flags().BoolVar(&input.Overwrite, "overwrite", false, "replace a dirty local flow artifact")
 	command.Flags().BoolVar(&input.Preview, "preview", false, "resolve acquisition scope and local conflicts without writing artifacts")
+	command.Flags().Bool("no-wait", false, "start the local download in the background and return one check-status command without polling")
+	command.MarkFlagsMutuallyExclusive("preview", "no-wait")
 	return command
 }
 
@@ -146,6 +148,8 @@ func newFlowPublish(deps Dependencies) *cobra.Command {
 	command.Flags().StringVar(&projectPath, "project", "", "exact destination project path")
 	command.Flags().BoolVar(&input.Overwrite, "overwrite", false, "replace the exact colliding flow")
 	command.Flags().BoolVar(&preview, "preview", false, "preview the remote mutation without performing it")
+	command.Flags().Bool("no-wait", false, "start publication in the background and return a check-status command without polling")
+	command.MarkFlagsMutuallyExclusive("preview", "no-wait")
 	return command
 }
 

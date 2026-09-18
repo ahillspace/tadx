@@ -65,6 +65,8 @@ func newDatasourcePull(deps datasourceLifecycleDependencies) *cobra.Command {
 	command.Flags().StringVar(&projectPath, "project", "", "exact slash-delimited project path; required with --name")
 	command.Flags().BoolVar(&input.Overwrite, "overwrite", false, "replace a dirty local datasource artifact")
 	command.Flags().BoolVar(&input.Preview, "preview", false, "resolve acquisition scope and local conflicts without writing artifacts")
+	command.Flags().Bool("no-wait", false, "start the local download in the background and return one check-status command without polling")
+	command.MarkFlagsMutuallyExclusive("preview", "no-wait")
 	return command
 }
 
@@ -135,6 +137,8 @@ func newDatasourcePublish(deps datasourceLifecycleDependencies) *cobra.Command {
 	command.Flags().BoolVar(&appendMode, "append", false, "append to the exact colliding datasource")
 	command.Flags().BoolVar(&replace, "replace", false, "replace data in the exact colliding datasource")
 	command.Flags().BoolVar(&preview, "preview", false, "preview the remote mutation without performing it")
+	command.Flags().Bool("no-wait", false, "start publication in the background and return a check-status command without polling")
+	command.MarkFlagsMutuallyExclusive("preview", "no-wait")
 	return command
 }
 

@@ -10,6 +10,7 @@ import (
 	"time"
 
 	coreauth "github.com/ahillspace/tadx/internal/auth"
+	"github.com/ahillspace/tadx/internal/cli/progress"
 	"github.com/ahillspace/tadx/internal/contentbatch"
 	"github.com/ahillspace/tadx/internal/errs"
 	"github.com/ahillspace/tadx/internal/jobmonitor"
@@ -102,12 +103,19 @@ func (p *publication) record(ctx context.Context, jobID, status, resourceID, req
 		}
 		return path, &errs.Error{ID: p.base.Operation + ".receipt", Kind: errs.KindOperation, Operation: p.base.Operation, Environment: p.base.Environment, Site: p.base.Site, Resource: resourceID, TableauJobID: jobID, Summary: "Publication returned a result, but its recovery receipt could not be saved.", Cause: err, Phase: errs.PhasePersistence, Outcome: outcome, Retryable: errs.Bool(false), CorrectiveAction: "Preserve the returned identities. Do not repeat publication to repair local receipt storage."}
 	}
+	if execution := p.runtime.publicationExecution; execution != nil && execution.accepted != nil {
+		if err := execution.accepted(saveCtx, path); err != nil {
+			return filepath.ToSlash(path), fmt.Errorf("link saved publication receipt: %w", err)
+		}
+	}
 	return filepath.ToSlash(path), nil
 }
 
 func (p *publication) accepted(ctx context.Context, id, requestID, jobType string) (jobmonitor.Receipt, string, error) {
 	r := p.base
 	r.AcceptedAt = time.Now().UTC()
+	r.WaitUntil = p.runtime.publicationWaitDeadline()
+	r.ManualOnly = p.runtime.publicationNoWait()
 	r.PoolAfter = r.AcceptedAt.Add(time.Minute)
 	if contentbatch.Bulk(ctx) {
 		r.PoolAfter = r.AcceptedAt
@@ -117,9 +125,20 @@ func (p *publication) accepted(ctx context.Context, id, requestID, jobType strin
 	// response. This local persistence deadline never resubmits a remote write.
 	saveCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
 	defer cancel()
-	path, err := p.store.Register(saveCtx, r)
+	var path string
+	var err error
+	if r.ManualOnly {
+		path, err = p.store.Save(saveCtx, r)
+	} else {
+		path, err = p.store.Register(saveCtx, r)
+	}
 	if err != nil {
 		return r, path, err
+	}
+	if execution := p.runtime.publicationExecution; execution != nil && execution.accepted != nil {
+		if err := execution.accepted(saveCtx, path); err != nil {
+			return r, path, err
+		}
 	}
 	writer := p.runtime.progressWriter
 	if writer == nil {
@@ -130,7 +149,7 @@ func (p *publication) accepted(ctx context.Context, id, requestID, jobType strin
 		JobID       string `json:"tableau_job_id"`
 		ReceiptPath string `json:"receipt_path"`
 	}{"accepted", id, filepath.ToSlash(path)}, output.Options{})
-	if contentbatch.Bulk(ctx) {
+	if r.ManualOnly || contentbatch.Bulk(ctx) {
 		return r, path, nil
 	}
 	observed, err := p.wait(ctx, r)
@@ -138,6 +157,7 @@ func (p *publication) accepted(ctx context.Context, id, requestID, jobType strin
 }
 
 func (p *publication) wait(ctx context.Context, r jobmonitor.Receipt) (jobmonitor.Receipt, error) {
+	progress.SetLabel(ctx, "Waiting for Tableau publication")
 	if r.AcceptedAt.IsZero() {
 		stored, err := p.store.Read(r)
 		if err != nil {
@@ -148,7 +168,7 @@ func (p *publication) wait(ctx context.Context, r jobmonitor.Receipt) (jobmonito
 	if err := p.runtime.commandSessions().Suspend(ctx); err != nil {
 		return r, err
 	}
-	m := jobmonitor.Monitor{Store: p.store, Observe: func(ctx context.Context, jobs []jobmonitor.Receipt) []jobmonitor.CheckResult {
+	m := jobmonitor.Monitor{Store: p.store, Deadline: p.runtime.publicationWaitDeadline(), StopRequested: p.runtime.publicationNoWait, Observe: func(ctx context.Context, jobs []jobmonitor.Receipt) []jobmonitor.CheckResult {
 		results := make([]jobmonitor.CheckResult, len(jobs))
 		sessions := p.runtime.commandSessions()
 		for i, job := range jobs {
@@ -172,6 +192,9 @@ func (p *publication) wait(ctx context.Context, r jobmonitor.Receipt) (jobmonito
 		return results
 	}}
 	observed, err := m.Wait(ctx, r)
+	if errors.Is(err, jobmonitor.ErrWaitLimit) {
+		return observed, nil
+	}
 	if err == nil && observed.Observation.Status != "succeeded" {
 		err = fmt.Errorf("remote job is %s", observed.Observation.Status)
 	}

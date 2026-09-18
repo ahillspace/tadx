@@ -126,6 +126,37 @@ func TestAdapterListsWorkbookPageWithOneProjectHierarchyResolution(t *testing.T)
 	}
 }
 
+type projectFilterInventoryClient struct {
+	client
+	pages    map[int]tableauworkbook.WorkbookPage
+	requests []tableauworkbook.ListRequest
+}
+
+func (c *projectFilterInventoryClient) ListWorkbooks(_ context.Context, request tableauworkbook.ListRequest) (tableauworkbook.WorkbookPage, error) {
+	c.requests = append(c.requests, request)
+	return c.pages[request.PageNumber], nil
+}
+
+func TestAdapterListsExactWorkbookProjectAcrossCompletePages(t *testing.T) {
+	c := &projectFilterInventoryClient{
+		pages: map[int]tableauworkbook.WorkbookPage{
+			1: {Page: tableauworkbook.Page{Number: 1, Size: 1, Total: 3}, Items: []tableauworkbook.Workbook{{LUID: "wb-other", Name: "Published Copy", ProjectLUID: "project-other", ProjectName: "Publish Project"}}},
+			2: {Page: tableauworkbook.Page{Number: 2, Size: 1, Total: 3}, Items: []tableauworkbook.Workbook{{LUID: "wb-target", Name: "Published Copy", ProjectLUID: "project-1", ProjectName: "Publish Project"}}},
+			3: {Page: tableauworkbook.Page{Number: 3, Size: 1, Total: 3}, Items: []tableauworkbook.Workbook{{LUID: "wb-target-name", Name: "Another Copy", ProjectLUID: "project-1", ProjectName: "Publish Project"}}},
+		},
+	}
+	page, err := resource.NewAdapterWithProjectResolver(c, projectPaths{"project-1": "Publish Project", "project-other": "Other Project"}).ListWorkbooks(t.Context(), tableauworkbook.ListRequest{PageNumber: 1, PageSize: 1, Name: "Published Copy", ProjectLUID: "project-1", ProjectName: "Publish Project"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if page.Number != 1 || page.Size != 1 || page.Total != 1 || len(page.Items) != 1 || page.Items[0].LUID != "wb-target" {
+		t.Fatalf("page = %#v", page)
+	}
+	if len(c.requests) != 3 || c.requests[0].PageSize != 1000 || c.requests[0].ProjectLUID != "project-1" || c.requests[0].Name != "Published Copy" {
+		t.Fatalf("requests = %#v", c.requests)
+	}
+}
+
 func TestAdapterRejectsInvalidWorkbookPageInput(t *testing.T) {
 	c := &inventoryClient{page: tableauworkbook.WorkbookPage{Page: tableauworkbook.Page{Number: 1, Size: 25, Total: 0}}}
 	adapter := resource.NewAdapterWithProjectResolver(c, projectPaths{})

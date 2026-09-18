@@ -24,9 +24,16 @@ Do not remove originals merely because a destination accepted a package.
 Preserve metadata sidecars when editing managed files.
 Dirty re-pull protection prevents accidental loss of local changes; overwrite is a deliberate replacement, not a repair strategy.
 Preview resolves scope and conflicts but does not prove native download validity, filesystem write access, or destination acceptance.
-Publication has one automatic lifecycle, with no job-mode or no-wait choice.
-When supported monitoring is available, TADX saves the accepted job identity and receipt before waiting.
-Bulk publications enter pooled monitoring immediately; a single publication joins after its first minute, and an active job may exceed ten minutes.
+Publication waits by default when the destination accepts asynchronous work.
+The default wait checks at 2 seconds for the first 30 seconds, 5 seconds through 10 minutes, and 15 seconds until the shared 20-minute invocation cutoff.
+At that cutoff TADX returns the known identity and recovery information while the remote work continues.
+When supported monitoring is available, TADX saves each accepted job identity and receipt before waiting.
+`--no-wait` is optional for publishing and returns after safe local handoff with one check-status command; it never polls remote jobs automatically.
+For a batch, that command identifies one aggregate local operation covering queued, accepted, completed, failed, skipped, and unknown items while each accepted job retains its own durable identity.
+Native pulls also support `--no-wait`: the local worker saves native files and metadata, returns one aggregate check-status command, and never polls remote jobs because downloads have no Tableau job identity.
+Default pulls show saved local progress until completion or the shared 20-minute cutoff; downloads continue after the cutoff.
+Background execution frees the terminal, but active uploads and downloads retain the shared PAT lease, so another remote command using that PAT may wait for the transfer to finish.
+Local operation inspection remains available during a transfer, and publication monitoring yields the credential between observations.
 Local cancellation or unavailable status does not cancel the remote write or establish failure.
 Use the saved receipt or exact job ID for recovery, never a second publish; exact job queries require administrator access.
 Where supported asynchronous observation is unavailable, TADX uses synchronous publication; flow publication remains synchronous.

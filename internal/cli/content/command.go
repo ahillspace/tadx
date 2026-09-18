@@ -203,6 +203,8 @@ func newPull(deps Dependencies) *cobra.Command {
 	command.Flags().BoolVar(&input.IncludePDS, "include-pds", false, "acquire direct published datasource dependencies as sibling artifacts without recursion")
 	command.Flags().BoolVar(&input.Overwrite, "overwrite", false, "replace a dirty local artifact")
 	command.Flags().BoolVar(&input.Preview, "preview", false, "resolve acquisition scope and local conflicts without writing artifacts")
+	command.Flags().Bool("no-wait", false, "start the local download in the background and return one check-status command without polling")
+	command.MarkFlagsMutuallyExclusive("preview", "no-wait")
 	return command
 }
 
@@ -259,6 +261,8 @@ func newPublish(deps Dependencies) *cobra.Command {
 	command.Flags().StringVar(&projectPath, "project", "", "exact slash-delimited destination project path")
 	command.Flags().BoolVar(&input.Overwrite, "overwrite", false, "replace the exact colliding workbook")
 	command.Flags().BoolVar(&preview, "preview", false, "preview the remote mutation without performing it")
+	command.Flags().Bool("no-wait", false, "start publication in the background and return a check-status command without polling")
+	command.MarkFlagsMutuallyExclusive("preview", "no-wait")
 	return command
 }
 
