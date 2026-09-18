@@ -43,10 +43,19 @@ func TestWorkbookDeletePreviewAndApplyThroughCLI(t *testing.T) {
 	options := app.Options{MutationsEnabled: false, ConfigPath: configPath, HTTPClient: server.Client()}
 
 	preview := runWorkbookDeleteCLI(t, options, "content", "workbook", "delete", "--environment", "production", "--id", "wb-1", "--preview")
-	for _, want := range []string{"mode: preview", "operation: workbook.delete", "luid: wb-1", "details: tadx --config ", " last --full"} {
+	for _, want := range []string{"mode: preview", "operation: workbook.delete", "luid: wb-1"} {
 		if !strings.Contains(preview, want) {
 			t.Fatalf("preview missing %q:\n%s", want, preview)
 		}
+	}
+	// The expanded details hint binds --config and points at `last --full`. On
+	// Windows the config path contains backslashes, which TOON quotes; on POSIX
+	// it renders unquoted. Accept both so the assertion is platform-agnostic.
+	if !strings.Contains(preview, "details: tadx --config ") && !strings.Contains(preview, `details: "tadx --config `) {
+		t.Fatalf("preview details did not bind --config:\n%s", preview)
+	}
+	if !strings.Contains(preview, "last --full") {
+		t.Fatalf("preview details missing last --full recovery:\n%s", preview)
 	}
 	if deletes.Load() != 0 {
 		t.Fatalf("preview made %d delete requests", deletes.Load())
