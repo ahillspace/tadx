@@ -21,4 +21,6 @@
 /ws-*/
 /workspaces/
 /data/
+/claude-agent-tests/
+/temppats
 .DS_Store
