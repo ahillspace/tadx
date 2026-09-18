@@ -85,7 +85,6 @@ Consistent raw hits repeated across native pages are retained once with a comple
 Validation on the updated date: focused tests passed, a fresh build completed the previously failing mixed search, the federated datasource appeared once, and distinct same-name datasources remained separate.
 The full `go test ./...` suite and `go vet` for the search packages and app passed.
 Cached search retained its independent results.
-The separate [Modern Go audit](../search-go-guidelines-audit.md) records optional recommendations against the pre-repair baseline; those optional changes were not applied.
 
 ## Bounds, cache, and failures
 

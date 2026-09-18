@@ -16,6 +16,8 @@ The [SVG](architecture/tadx-architecture.svg) and [editable Excalidraw source](a
 | `internal/resources` | Resource adapters, exact identity resolution, and normalized provider results |
 | `internal/tableau` | Tableau API clients, shared HTTP transport, and inventory collectors |
 | `internal/auth` | PAT resolution, native credential storage, authenticated sessions, and credential-scoped coordination |
+| `internal/operationrun` | Durable local operation records, detached worker launch, and process-lifetime coordination |
+| `internal/jobmonitor` | Accepted Tableau job receipts, bounded observation, and shared monitoring coordination |
 | `internal/workspace`, `internal/artifact` | Named workspace registration, native packages, provenance, and dirty guards |
 | `internal/cache` | SQLite cache generations, scoped observations, and local queries |
 | `internal/config` | Nonsecret configuration, environment aliases, and opaque credential references |
@@ -45,6 +47,13 @@ Tableau LUIDs provide authoritative remote identity; ambiguous name and project 
 Configuration stores credential references, while approved persistent PATs reside only in the native OS credential store.
 Workspaces hold managed content artifacts; the cache holds cached observations and does not replace a live source implicitly.
 Persisted artifact paths are relative to the workspace and use forward slashes.
+
+Workbook, datasource, and flow publish and pull can hand execution to a detached instance of the same binary.
+This is a per-operation worker, not a resident service.
+The default foreground wait ends at completion or the shared 20-minute invocation limit; `--no-wait` returns after durable handoff with one status command for the single operation or batch.
+Publication receipts retain accepted Tableau job identities, while download workers save native files and metadata without inventing remote job IDs.
+Local operation records live outside the source checkout and are inspected through `tadx job inspect --operation-id`.
+Active transfers can hold the shared PAT lease; returning the terminal does not promise concurrent remote access with that credential.
 
 ## Capability metadata and documentation
 

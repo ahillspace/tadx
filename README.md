@@ -25,7 +25,7 @@ Or use the same CLI directly to inspect, download, organize, and publish Tableau
 TADX supports workbook, datasource, flow, and project lifecycle operations, local workspaces and caches, lineage, administration, upstream catalog metadata, and Pulse definition workflows.
 Run `tadx --help` for the command roadmap and `tadx content --help` for its four resources and available actions.
 Use a resource reference such as `tadx content workbook --help` for all its verbs, required inputs, options, accepted values, defaults, and constraints.
-Every verb shows its owning operational reference; `catalog lineage` captures lineage and `catalog label` manages asset labels.
+Each verb shows focused help for its action; `catalog lineage` captures lineage and `catalog label` manages asset labels.
 Use `tadx capability list` and `tadx capability get` for feature inventory and availability diagnostics.
 
 ## Install TADX and agent guidance
@@ -63,7 +63,7 @@ See `tadx env --help` for those options.
 Run `tadx` for a local overview of your configuration, or `tadx --help` for the command roadmap.
 Category help is a short roadmap; resource help contains the complete syntax for that resource.
 For example, `tadx admin --help` lists resources, `tadx admin group --help` covers group operations, and `tadx admin group-member --help` covers membership changes.
-Verb help, such as `tadx admin group create --help`, repeats its resource reference; there is no need to request both.
+Verb help, such as `tadx admin group create --help`, shows the focused reference for that action; resource help covers all verbs, so there is no need to request both.
 Direct-action categories such as `auth` and `env` provide their complete reference at that level.
 Selected useful aliases appear beside canonical flags; the [shorthand reference](docs/reference/shorthand.md) lists all shortcuts.
 Both `-h` and `--help` show help without running the operation or reading credentials.

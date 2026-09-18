@@ -51,3 +51,11 @@ For previews, verify planned scope and that files, configuration, credentials, a
 Capability list/get serve feature inventory and availability diagnostics, without being a prerequisite for learning command syntax.
 Live tests require separately authorized targets and remain outside the standard suite.
 The maintainer handles agent-based review; a build request does not automatically authorize a push, PR, merge, or release.
+
+## Repository hygiene
+
+Keep reusable tests, fixtures, build tooling, and current public documentation with the source.
+Move one-off plans, review transcripts, local experiments, and obsolete reports into the gitignored `archived/` directory instead of treating them as current guidance.
+Keep archived Go experiments in a separate module so ordinary `go test ./...` and `go vet ./...` do not include them.
+Compiled binaries, test outputs, private configuration, and downloaded Tableau content do not belong in commits.
+Local archives are not distributed or backed up by Git; retain an independent backup when their contents matter.

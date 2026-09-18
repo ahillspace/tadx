@@ -125,10 +125,10 @@ Verify:
 
 Record line and character counts and the tokenizer used for token measurements; label estimates explicitly.
 Choose output budgets from approved complete samples, not arbitrary truncation limits that omit capabilities.
-Once implemented, replace the old descendant-expansion rules in CONTRIBUTING.md with a link here, update the build-skill pointer and affected operating Guidance, and regenerate affected command references through their generators.
+When command structure changes, update CONTRIBUTING.md, the build-skill pointer, and affected operating Guidance, then regenerate affected command references through their generators.
 Do not modify auto-generated documentation by hand.
 
-## Agreed command-tree changes
+## Canonical command-tree paths
 
 These placement decisions are separate from the category-neutral help rules above.
 `content` retains workbook, datasource, flow, and project operations.
@@ -136,13 +136,13 @@ These placement decisions are separate from the category-neutral help rules abov
 Shared label value and category definitions remain under `admin`.
 Keep `cache` for local cached observations and `catalog` for upstream Tableau metadata, tagging, lineage, and asset labels.
 
-| Current resource path | New resource path |
+| Resource | Canonical path |
 | --- | --- |
-| `content lineage` | `catalog lineage` |
-| `content label` | `catalog label` |
-| `admin group member` | `admin group-member` |
-| `admin label value` | `admin label-value` |
-| `admin label category` | `admin label-category` |
+| Lineage capture | `catalog lineage` |
+| Asset labels | `catalog label` |
+| Group membership | `admin group-member` |
+| Shared label values | `admin label-value` |
+| Shared label categories | `admin label-category` |
 
-Retain supported verbs and semantics when changing these paths.
+Retain supported verbs and semantics for these paths.
 Do not add commands, rename unrelated flags, or invent compatibility paths as a side effect of help work.
