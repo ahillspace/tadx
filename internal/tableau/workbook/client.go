@@ -127,6 +127,8 @@ type MutationResult struct {
 	WorkbookName     string
 	ProjectLUID      string
 	OwnerLUID        string
+	Description      *string
+	EvidenceSource   string
 	TableauRequestID string
 }
 
@@ -250,6 +252,7 @@ func (c *Client) Update(ctx context.Context, input UpdateRequest) (MutationResul
 		return result, tableau.NewProtocolError("workbook.update", response, fmt.Errorf("decode workbook update response: %w", err), false)
 	}
 	workbook := normalizeWorkbook(envelope.Workbook)
+	var confirmedDescription *string
 	if input.Description != nil {
 		var evidence struct {
 			Workbook struct {
@@ -259,6 +262,7 @@ func (c *Client) Update(ctx context.Context, input UpdateRequest) (MutationResul
 		if err := xml.Unmarshal(response.Body, &evidence); err != nil || evidence.Workbook.Description == nil || *evidence.Workbook.Description != *input.Description {
 			return MutationResult{Status: "unknown", WorkbookLUID: input.LUID, TableauRequestID: response.TableauRequestID}, tableau.NewProtocolError("workbook.update", response, errors.New("workbook update response did not confirm the requested description"), false)
 		}
+		confirmedDescription = evidence.Workbook.Description
 	}
 	if workbook.LUID != input.LUID || workbook.Name == "" || workbook.ProjectLUID == "" || workbook.OwnerLUID == "" {
 		return MutationResult{Status: "unknown", WorkbookLUID: input.LUID, TableauRequestID: response.TableauRequestID}, tableau.NewProtocolError("workbook.update", response, errors.New("workbook update response omitted or changed authoritative identity"), false)
@@ -266,7 +270,12 @@ func (c *Client) Update(ctx context.Context, input UpdateRequest) (MutationResul
 	if (input.Name != nil && workbook.Name != *input.Name) || (input.ProjectLUID != nil && workbook.ProjectLUID != *input.ProjectLUID) || (input.OwnerLUID != nil && workbook.OwnerLUID != *input.OwnerLUID) {
 		return MutationResult{Status: "unknown", WorkbookLUID: workbook.LUID, WorkbookName: workbook.Name, ProjectLUID: workbook.ProjectLUID, OwnerLUID: workbook.OwnerLUID, TableauRequestID: response.TableauRequestID}, tableau.NewProtocolError("workbook.update", response, errors.New("workbook update response did not preserve the requested changes"), false)
 	}
-	return MutationResult{Status: "succeeded", WorkbookLUID: workbook.LUID, WorkbookName: workbook.Name, ProjectLUID: workbook.ProjectLUID, OwnerLUID: workbook.OwnerLUID, TableauRequestID: response.TableauRequestID}, nil
+	result := MutationResult{Status: "succeeded", WorkbookLUID: workbook.LUID, WorkbookName: workbook.Name, ProjectLUID: workbook.ProjectLUID, OwnerLUID: workbook.OwnerLUID, TableauRequestID: response.TableauRequestID}
+	if confirmedDescription != nil {
+		result.Description = confirmedDescription
+		result.EvidenceSource = "tableau_update_response"
+	}
+	return result, nil
 }
 
 // Delete removes one exact workbook and accepts only Tableau's documented empty HTTP 204 response.
