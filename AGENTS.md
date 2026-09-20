@@ -8,6 +8,7 @@ TADX commands never call or proxy MCP.
 Use [CONTRIBUTING.md](CONTRIBUTING.md) as the human contribution entry point.
 The repository-local [.agents/skills/tadx-build/SKILL.md](.agents/skills/tadx-build/SKILL.md) contains the maintained engineering standards and focused implementation references.
 Invoke `$tadx-build` only when the user explicitly requests it for a named build task.
+Free-form installed-CLI exploration uses the [.agents/skills/tadx-explore/SKILL.md](.agents/skills/tadx-explore/SKILL.md) workflow and ignored `.tadx-explore/` run state.
 Keep repository-wide agent instructions here and task-specific development instructions in that skill, not in plans or parallel agent files.
 
 Every executable command is one isolated action package.
