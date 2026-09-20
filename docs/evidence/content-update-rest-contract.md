@@ -13,7 +13,7 @@ The implementation uses these captured sections:
 - Update Project at lines 45703 through 45767.
 - Update Workbook at lines 48313 through 48442.
 
-Workbook update supports an explicit name, project LUID, or owner LUID.
+Workbook update supports an explicit name, project LUID, owner LUID, or description.
 Datasource update supports an explicit name, project LUID, or owner LUID.
 Project update supports an explicit parent project LUID, including an empty parent value for a top-level project.
 Flow move uses Update Flow with an explicit project LUID.
@@ -29,3 +29,11 @@ Hermetic HTTP tests freeze each supported request body, response identity, and m
 Actions resolve exact identities, produce a read-only preview, and revalidate authoritative LUIDs before the final request.
 Move and rename actions reject exact destination name collisions before mutation.
 Project moves reject self-parent and descendant-parent cycles before mutation.
+
+## Workbook description results
+
+When Tableau confirms a description update, the result includes `result.description` and `result.evidence_source: tableau_update_response` in compact and full output.
+The value comes from Tableau's update response after description and identity validation, not from the requested change plan.
+An observed empty description remains an empty string; missing or contradictory response evidence remains an unknown outcome without a confirmed description.
+This confirmation does not imply a separate post-update read or prove fields outside the update response.
+The existing inspect hint remains available for independent readback.
