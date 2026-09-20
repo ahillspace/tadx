@@ -322,7 +322,7 @@ func parseCacheRecoveryCommand(t *testing.T, command string) []string {
 		executable = "powershell.exe"
 		// Bind only the executable prefix to a native child helper. The complete
 		// rendered argument tail is replayed byte-for-byte by PowerShell.
-		args = []string{"-NoProfile", "-Command", `$global:PSNativeCommandArgumentPassing='Standard'; $tail = $env:TADX_TEST_RECOVERY_COMMAND.Substring(5); $prefix = '& $env:TADX_TEST_ARGV_EXE ''-test.run=^TestCachedSearchRecoveryArgvHelper$'' -- '; Invoke-Expression ($prefix + $tail)`}
+		args = []string{"-NoProfile", "-Command", `$tail = $env:TADX_TEST_RECOVERY_COMMAND.Substring(5); $prefix = '& $env:TADX_TEST_ARGV_EXE ''-test.run=^TestCachedSearchRecoveryArgvHelper$'' -- '; Invoke-Expression ($prefix + $tail)`}
 		process := exec.CommandContext(t.Context(), executable, args...)
 		process.Env = append(os.Environ(), "TADX_TEST_RECOVERY_COMMAND="+command, "TADX_TEST_ARGV_EXE="+argvExecutable, "TADX_TEST_RECOVERY_ARGV_HELPER=1")
 		output, err := process.Output()
