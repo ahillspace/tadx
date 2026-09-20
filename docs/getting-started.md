@@ -103,6 +103,9 @@ tadx search revenue --environment dev --type workbook --cache
 
 `--cache` is local-only and never falls back to Tableau.
 Review freshness, coverage, warnings, and partial results before treating a cache result as complete.
+When a requested type needs unavailable cache scopes, the error reports available and missing types when local evidence permits.
+When a safe narrowed search is available, its recovery command searches a cached type without refreshing or switching to live Tableau.
+Narrowing the type changes coverage and cannot establish complete content inventory.
 Permissions require an explicitly selected refresh scope because they add per-resource requests.
 Cache collection adapts up to 32 concurrent requests per CLI process by default.
 Use `tadx env update dev --cache-max-concurrency 8` to set a lower ceiling for a server that needs less traffic.

@@ -339,6 +339,13 @@ func (s cacheGlobalSearchSource) Search(ctx context.Context, input searchaction.
 	adapter := resourcesearch.NewAdapter(lister)
 	page, err := adapter.Search(ctx, resourcesearch.Input{Types: types, Terms: input.Terms, ProjectPath: input.ProjectPath, Owner: input.Owner, Cursor: input.Cursor, Limit: input.Limit})
 	if err != nil {
+		if unavailable, ok := errors.AsType[cacheSearchScopeUnavailable](err); ok {
+			recovery, observeErr := s.observeCacheRecovery(ctx, input, types)
+			if observeErr == nil {
+				unavailable.recovery = recovery
+				return searchaction.Result{}, unavailable
+			}
+		}
 		return searchaction.Result{}, err
 	}
 	var generation *searchaction.Generation
@@ -364,6 +371,25 @@ func (s cacheGlobalSearchSource) Search(ctx context.Context, input searchaction.
 	}
 	page.Warnings = append(page.Warnings, "Search used partial cache records or independently refreshed resource snapshots; no shared complete generation describes this page.")
 	return searchResult(page, nil), nil
+}
+
+func (s cacheGlobalSearchSource) observeCacheRecovery(ctx context.Context, input searchaction.Input, required []string) (searchaction.CacheRecovery, error) {
+	recovery := searchaction.CacheRecovery{Required: append([]string(nil), required...)}
+	for _, resourceType := range required {
+		result, err := s.store.ReadResources(ctx, cache.ResourceQuery{Environment: input.Environment, Site: input.Site, Kind: resourceType, Limit: 1})
+		if err == nil {
+			recovery.Available = append(recovery.Available, searchaction.CacheTypeObservation{Type: resourceType, Coverage: result.Coverage, Stale: result.Stale, Count: result.Total})
+			continue
+		}
+		var unavailable interface{ CacheScopeUnavailable() bool }
+		var uninitialized interface{ CacheUninitialized() bool }
+		if errors.As(err, &unavailable) && unavailable.CacheScopeUnavailable() || errors.As(err, &uninitialized) && uninitialized.CacheUninitialized() {
+			recovery.Missing = append(recovery.Missing, resourceType)
+			continue
+		}
+		return searchaction.CacheRecovery{}, err
+	}
+	return recovery, nil
 }
 
 type cacheSearchObservation struct {
@@ -421,6 +447,7 @@ func (s *cacheSearchLister) List(ctx context.Context, resourceType, cursor strin
 type cacheSearchScopeUnavailable struct {
 	resourceType string
 	cause        error
+	recovery     searchaction.CacheRecovery
 }
 
 func (e cacheSearchScopeUnavailable) Error() string {
@@ -428,6 +455,9 @@ func (e cacheSearchScopeUnavailable) Error() string {
 }
 func (e cacheSearchScopeUnavailable) Unwrap() error             { return e.cause }
 func (cacheSearchScopeUnavailable) CacheScopeUnavailable() bool { return true }
+func (e cacheSearchScopeUnavailable) CacheSearchRecovery() searchaction.CacheRecovery {
+	return e.recovery
+}
 
 type cacheResourceCursor struct {
 	Offset      int    `json:"o"`
