@@ -11,6 +11,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -20,6 +21,7 @@ import (
 	"github.com/ahillspace/tadx/internal/commandhint"
 	"github.com/ahillspace/tadx/internal/config"
 	"github.com/ahillspace/tadx/internal/errs"
+	"github.com/ahillspace/tadx/internal/toon"
 )
 
 type cacheRecoveryNoNetwork struct {
@@ -201,32 +203,67 @@ func TestCachedSearchRecoveryReportsAllAvailableTypesDeterministically(t *testin
 
 func TestCachedSearchRecoveryProtectsLeadingFlagTerm(t *testing.T) {
 	now := time.Date(2026, 9, 20, 12, 0, 0, 0, time.UTC)
-	configPath, store := cacheRecoveryFixture(t, now)
-	if err := store.UpsertResources(t.Context(), []cache.ResourceEntry{{Environment: "dev", Site: "test-site", Kind: "datasource", LUID: "ds-leading", Name: "-Boeing Reliability", Coverage: "summary", ObservedAt: now}}); err != nil {
-		t.Fatal(err)
-	}
-	var output bytes.Buffer
-	initialArgs := []string{"search", "--type", "content", "--cache", "--environment", "dev", "--json", "--", "-Boeing"}
-	if code := Run(t.Context(), initialArgs, &output, Options{ConfigPath: configPath, HTTPClient: &http.Client{Transport: &cacheRecoveryNoNetwork{}}, Now: func() time.Time { return now }}); code != 2 {
-		t.Fatalf("exit=%d output=%s", code, output.String())
-	}
-	var envelope errs.Envelope
-	if err := json.Unmarshal(output.Bytes(), &envelope); err != nil {
-		t.Fatal(err)
-	}
-	const marker = "Run this cache-only search for available observations: "
-	_, renderedCommand, found := strings.Cut(envelope.Error.CorrectiveAction, marker)
-	if !found {
-		t.Fatalf("missing rendered recovery command: %s", envelope.Error.CorrectiveAction)
-	}
-	wantCommand := commandhint.Command("--config", configPath, "search", "--type", "datasource", "--cache", "--environment", "dev", "--", "-Boeing")
-	if renderedCommand != wantCommand {
-		t.Fatalf("rendered recovery command=%q want=%q", renderedCommand, wantCommand)
-	}
-	parsed := []string{"--config", configPath, "search", "--type", "datasource", "--cache", "--environment", "dev", "--", "-Boeing"}
-	var recovered bytes.Buffer
-	if code := Run(t.Context(), parsed, &recovered, Options{HTTPClient: &http.Client{Transport: &cacheRecoveryNoNetwork{}}, Now: func() time.Time { return now }}); code != 0 || !strings.Contains(recovered.String(), "ds-leading") {
-		t.Fatalf("recovery exit=%d output=%s", code, recovered.String())
+	for _, test := range []struct {
+		term string
+		luid string
+	}{
+		{term: "-Boeing", luid: "ds-leading"},
+		{term: "--config", luid: "ds-config"},
+		{term: "--config=Revenue", luid: "ds-config-revenue"},
+	} {
+		t.Run(test.term, func(t *testing.T) {
+			configPath, store := cacheRecoveryFixture(t, now)
+			if err := store.UpsertResources(t.Context(), []cache.ResourceEntry{{Environment: "dev", Site: "test-site", Kind: "datasource", LUID: test.luid, Name: test.term + " Reliability", Coverage: "summary", ObservedAt: now}}); err != nil {
+				t.Fatal(err)
+			}
+			initialNetwork := &cacheRecoveryNoNetwork{}
+			var output bytes.Buffer
+			initialArgs := []string{"search", "--type", "content", "--cache", "--environment", "dev", "--json", "--", test.term}
+			if code := Run(t.Context(), initialArgs, &output, Options{ConfigPath: configPath, HTTPClient: &http.Client{Transport: initialNetwork}, Now: func() time.Time { return now }}); code != 2 {
+				t.Fatalf("exit=%d output=%s", code, output.String())
+			}
+			if initialNetwork.calls != 0 {
+				t.Fatalf("initial cache-only search made %d network requests", initialNetwork.calls)
+			}
+			var envelope errs.Envelope
+			if err := json.Unmarshal(output.Bytes(), &envelope); err != nil {
+				t.Fatal(err)
+			}
+			const marker = "Run this cache-only search for available observations: "
+			_, renderedCommand, found := strings.Cut(envelope.Error.CorrectiveAction, marker)
+			if !found {
+				t.Fatalf("missing rendered recovery command: %s", envelope.Error.CorrectiveAction)
+			}
+			wantCommand := commandhint.Command("--config", configPath, "search", "--type", "datasource", "--cache", "--environment", "dev", "--", test.term)
+			if renderedCommand != wantCommand {
+				t.Fatalf("rendered recovery command=%q want=%q", renderedCommand, wantCommand)
+			}
+			recoveryArgs := parseCacheRecoveryCommand(t, renderedCommand)
+			recoveryNetwork := &cacheRecoveryNoNetwork{}
+			var recovered bytes.Buffer
+			if code := Run(t.Context(), recoveryArgs, &recovered, Options{HTTPClient: &http.Client{Transport: recoveryNetwork}, Now: func() time.Time { return now }}); code != 0 {
+				t.Fatalf("recovery args=%q exit=%d output=%s", recoveryArgs, code, recovered.String())
+			}
+			if recoveryNetwork.calls != 0 {
+				t.Fatalf("recovery made %d network requests", recoveryNetwork.calls)
+			}
+			decoded, err := toon.Decode(recovered.Bytes())
+			if err != nil {
+				t.Fatalf("decode recovery output: %v\n%s", err, recovered.String())
+			}
+			document, ok := decoded.(map[string]any)
+			if !ok {
+				t.Fatalf("recovery output type=%T want object", decoded)
+			}
+			items, ok := document["items"].([]any)
+			if !ok || len(items) != 1 {
+				t.Fatalf("recovery items=%#v want one exact identity", document["items"])
+			}
+			item, ok := items[0].(map[string]any)
+			if !ok || item["luid"] != test.luid {
+				t.Fatalf("recovery item=%#v want luid %q", items[0], test.luid)
+			}
+		})
 	}
 }
 
@@ -259,13 +296,44 @@ func cacheRecoveryFixture(t *testing.T, now time.Time) (string, *cache.Store) {
 	return configPath, targetCacheFixture(t, configPath, func() time.Time { return now })
 }
 
+func TestCachedSearchRecoveryArgvHelper(t *testing.T) {
+	if os.Getenv("TADX_TEST_RECOVERY_ARGV_HELPER") != "1" {
+		t.Skip("child process helper")
+	}
+	delimiter := slices.Index(os.Args, "--")
+	if delimiter < 0 {
+		t.Fatal("missing test harness argument delimiter")
+	}
+	if err := json.NewEncoder(os.Stdout).Encode(os.Args[delimiter+1:]); err != nil {
+		t.Fatal(err)
+	}
+	os.Exit(0)
+}
+
 func parseCacheRecoveryCommand(t *testing.T, command string) []string {
 	t.Helper()
 	var executable string
 	var args []string
 	if runtime.GOOS == "windows" {
+		argvExecutable, err := os.Executable()
+		if err != nil {
+			t.Fatalf("resolve native argument capture executable: %v", err)
+		}
 		executable = "powershell.exe"
-		args = []string{"-NoProfile", "-Command", `$global:PSNativeCommandArgumentPassing='Standard'; function tadx { [Console]::Out.Write((ConvertTo-Json -Compress -InputObject @($args))) }; Invoke-Expression $env:TADX_TEST_RECOVERY_COMMAND`}
+		// Bind only the executable prefix to a native child helper. The complete
+		// rendered argument tail is replayed byte-for-byte by PowerShell.
+		args = []string{"-NoProfile", "-Command", `$global:PSNativeCommandArgumentPassing='Standard'; $tail = $env:TADX_TEST_RECOVERY_COMMAND.Substring(5); $prefix = '& $env:TADX_TEST_ARGV_EXE ''-test.run=^TestCachedSearchRecoveryArgvHelper$'' -- '; Invoke-Expression ($prefix + $tail)`}
+		process := exec.CommandContext(t.Context(), executable, args...)
+		process.Env = append(os.Environ(), "TADX_TEST_RECOVERY_COMMAND="+command, "TADX_TEST_ARGV_EXE="+argvExecutable, "TADX_TEST_RECOVERY_ARGV_HELPER=1")
+		output, err := process.Output()
+		if err != nil {
+			t.Fatalf("parse rendered recovery command: %v", err)
+		}
+		var parsed []string
+		if err := json.Unmarshal(output, &parsed); err != nil {
+			t.Fatalf("decode rendered recovery arguments: %v output=%s", err, output)
+		}
+		return parsed
 	} else {
 		executable = "sh"
 		args = []string{"-c", `tadx() { printf '%s\034' "$@"; }; eval "$TADX_TEST_RECOVERY_COMMAND"`}
@@ -275,13 +343,6 @@ func parseCacheRecoveryCommand(t *testing.T, command string) []string {
 	output, err := process.Output()
 	if err != nil {
 		t.Fatalf("parse rendered recovery command: %v", err)
-	}
-	if runtime.GOOS == "windows" {
-		var parsed []string
-		if err := json.Unmarshal(output, &parsed); err != nil {
-			t.Fatalf("decode rendered recovery arguments: %v output=%s", err, output)
-		}
-		return parsed
 	}
 	output = bytes.TrimSuffix(output, []byte{0x1c})
 	parts := bytes.Split(output, []byte{0x1c})
