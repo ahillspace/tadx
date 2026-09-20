@@ -48,6 +48,13 @@ type FullProjector interface {
 	FullOutput() any
 }
 
+// DetailCommandProvider supplies a read-only compact expansion command instead
+// of last. Arguments include --full but exclude the program name, configuration,
+// and output encoding, which the renderer preserves from the current command.
+type DetailCommandProvider interface {
+	DetailCommand() []string
+}
+
 // Render writes compact TOON with the default bounds.
 func Render(writer io.Writer, value any) error {
 	return RenderWithOptions(writer, value, Options{})
@@ -67,11 +74,18 @@ func RenderWithOptions(writer io.Writer, value any, options Options) error {
 	if options.Raw {
 		return renderRaw(writer, value, options)
 	}
+	var detailArgs []string
 	if options.Full {
 		if projector, ok := value.(FullProjector); ok {
 			value = projector.FullOutput()
 		}
 	} else {
+		if provider, ok := value.(DetailCommandProvider); ok {
+			detailArgs = provider.DetailCommand()
+		}
+		if len(detailArgs) == 0 && options.SavedResult {
+			detailArgs = []string{"last", "--full"}
+		}
 		if projector, ok := value.(CompactProjector); ok {
 			value = projector.CompactOutput()
 		}
@@ -83,8 +97,8 @@ func RenderWithOptions(writer io.Writer, value any, options Options) error {
 	if options.ConfigPath != "" {
 		value = bindHintValue(value, options.ConfigPath)
 	}
-	if options.SavedResult && !options.Full {
-		value = savedDetailHint(value, options.JSON, options.ConfigPath)
+	if len(detailArgs) > 0 {
+		value = detailHint(value, detailArgs, options.JSON, options.ConfigPath)
 	}
 	if !options.JSON && len(options.Secrets) == 0 && (options.Full || !hasLongString(reflect.ValueOf(value), limit, make(map[visit]bool))) {
 		encoded, err := toon.EncodeWithOptions(value, options.TOON)

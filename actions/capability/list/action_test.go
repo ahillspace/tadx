@@ -12,6 +12,7 @@ import (
 	"testing"
 
 	capabilitylist "github.com/ahillspace/tadx/actions/capability/list"
+	"github.com/ahillspace/tadx/internal/commandhint"
 	"github.com/ahillspace/tadx/internal/errs"
 	"github.com/ahillspace/tadx/internal/output"
 )
@@ -237,20 +238,23 @@ func TestFullOutputRetainsGetContractForEveryReturnedRow(t *testing.T) {
 }
 
 func TestContinuationPreservesFiltersAndPresentation(t *testing.T) {
+	const environment = "qa team's $literal"
 	items := []capabilitylist.Capability{
 		{ID: "content.workbook.first", Domain: "content", Resource: "workbook", Owner: "cli", Availability: "Cloud"},
 		{ID: "content.workbook.second", Domain: "content", Resource: "workbook", Owner: "cli", Availability: "Cloud"},
 	}
-	result, err := capabilitylist.New(source{items: items}).Execute(context.Background(), capabilitylist.Input{
-		Domain: "content", Resource: "workbook", Owner: "cli", Product: "cloud", Limit: 1, Full: true, JSON: true,
+	result, err := capabilitylist.New(source{items: items}).Execute(t.Context(), capabilitylist.Input{
+		Environment: environment,
+		Domain:      "content", Resource: "workbook", Owner: "cli", Product: "cloud", Limit: 1, Full: true, JSON: true,
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if result.NextCommand == "" || !strings.Contains(result.NextCommand, "--cursor 1") || !strings.Contains(result.NextCommand, "--limit 1") || !strings.Contains(result.NextCommand, "--full") || !strings.Contains(result.NextCommand, "--json") {
+	want := commandhint.Environment(environment, "capability", "list", "--domain", "content", "--resource", "workbook", "--owner", "cli", "--product", "cloud", "--cursor", "1", "--limit", "1", "--full", "--json")
+	if result.NextCommand != want {
 		t.Fatalf("next_command = %q", result.NextCommand)
 	}
-	if len(result.Help) != 2 || result.Help[1] != "When more results are needed, use next_command." {
+	if len(result.Help) != 2 || result.Help[0] != commandhint.Environment(environment, "capability", "get", items[0].ID) || result.Help[1] != "When more results are needed, use next_command." {
 		t.Fatalf("help = %#v", result.Help)
 	}
 }

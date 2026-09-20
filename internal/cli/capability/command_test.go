@@ -39,11 +39,11 @@ func TestListCarriesGlobalPresentationIntoContinuation(t *testing.T) {
 	root.AddCommand(cliCapability.New(cliCapability.Dependencies{
 		Lister: a, Renderer: &renderer{}, ListUse: "list", ListShort: "list",
 	}))
-	root.SetArgs([]string{"capability", "list", "--full", "--json"})
+	root.SetArgs([]string{"capability", "list", "--environment", "qa", "--full", "--json"})
 	if err := root.Execute(); err != nil {
 		t.Fatal(err)
 	}
-	if !a.input.Full || !a.input.JSON {
+	if !a.input.Full || !a.input.JSON || a.input.Environment != "qa" {
 		t.Fatalf("presentation input = %#v", a.input)
 	}
 }

@@ -7,6 +7,7 @@ import (
 
 // Input controls capability discovery.
 type Input struct {
+	Environment               string `json:"environment,omitempty"`
 	Domain                    string `json:"domain,omitempty"`
 	Resource                  string `json:"resource,omitempty"`
 	Owner                     string `json:"owner,omitempty"`

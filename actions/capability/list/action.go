@@ -154,7 +154,7 @@ func equalFilter(filter, value string) bool {
 func help(input Input, limit int, nextCursor string, nextOffset int, items []Capability) ([]string, string) {
 	var result []string
 	if len(items) > 0 {
-		result = []string{commandhint.Command("capability", "get", items[0].ID)}
+		result = []string{commandhint.Environment(input.Environment, "capability", "get", items[0].ID)}
 	}
 	if nextCursor == "" {
 		return result, ""
@@ -177,7 +177,7 @@ func help(input Input, limit int, nextCursor string, nextOffset int, items []Cap
 	if input.JSON {
 		parts = append(parts, "--json")
 	}
-	nextCommand := commandhint.Command(parts...)
+	nextCommand := commandhint.Environment(input.Environment, parts...)
 	result = append(result, "When more results are needed, use next_command.")
 	return result, nextCommand
 }

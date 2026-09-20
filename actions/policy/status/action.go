@@ -29,6 +29,10 @@ func (o Output) CompactOutput() any {
 	return o.render(false)
 }
 func (o Output) FullOutput() any { return o.render(true) }
+
+// DetailCommand keeps policy diagnostics available when last is disallowed.
+func (o Output) DetailCommand() []string { return []string{"policy", "status", "--full"} }
+
 func (o Output) render(full bool) any {
 	result := struct {
 		State           string                               `json:"state"`

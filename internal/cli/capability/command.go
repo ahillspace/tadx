@@ -76,15 +76,16 @@ func newList(deps Dependencies) *cobra.Command {
 				mutationFilter = &mutation
 			}
 			full, jsonOutput := presentation(command)
+			alias, _ := command.Flags().GetString("environment")
 			input := capabilitylist.Input{
-				Domain: domain, Resource: resource, Owner: owner, Product: product,
+				Environment: alias,
+				Domain:      domain, Resource: resource, Owner: owner, Product: product,
 				Mutation: mutationFilter, All: all, Cursor: cursor, Limit: limit,
 				Full: full, JSON: jsonOutput,
 			}
 			enabled := deps.MutationsEnabled
 			if deps.ResolveMutationPolicy != nil {
 				var err error
-				alias, _ := command.Flags().GetString("environment")
 				enabled, _, err = deps.ResolveMutationPolicy(alias)
 				if err != nil {
 					// Capability metadata is local and remains useful even when
