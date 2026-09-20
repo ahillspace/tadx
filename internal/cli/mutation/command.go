@@ -20,7 +20,7 @@ func New(status Status, set Setter, renderer Renderer) *cobra.Command {
 	root := &cobra.Command{Use: "mutation", Short: "Inspect or persist remote mutation execution policy."}
 	var environment string
 	root.PersistentFlags().StringVar(&environment, "environment", "", "configured environment selecting the Tableau site")
-	get := &cobra.Command{Use: "status", Short: "Show the selected site's saved mutation policy.", Annotations: map[string]string{"tadx.capability": "mutation.status"}, Args: cobra.NoArgs, RunE: func(c *cobra.Command, _ []string) error {
+	get := &cobra.Command{Use: "status", Short: "Show site mutation settings.", Annotations: map[string]string{"tadx.capability": "mutation.status"}, Args: cobra.NoArgs, RunE: func(c *cobra.Command, _ []string) error {
 		out, err := status.Execute(c.Context(), environment)
 		if err != nil {
 			return err

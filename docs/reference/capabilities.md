@@ -2233,12 +2233,12 @@ Persist mutation consent for one Tableau server and exact site until explicitly 
 
 ### `mutation.status`
 
-Show saved mutation consent for the selected Tableau server and exact site.
+List saved site consent for all configured environments, or one selected environment.
 
 - Surface: tadx mutation status
 - Operation type: inspect
 - Owner: cli
-- Selectors: Configured --environment alias, or the unambiguous default
+- Selectors: All configured environments by default; optional exact --environment alias; --full adds server, site, and source
 - Products and availability: Local
 - Product disposition: ship
 - Evidence level: local-contract
@@ -2250,11 +2250,11 @@ Show saved mutation consent for the selected Tableau server and exact site.
 - Supports `--preview`: No
 - Supports `--batch-file`: No
 - Raw capable: No
-- Safety and guard: Read-only site consent; aliases for the same canonical server and site share the setting; managed policy remains a separate ceiling
+- Safety and guard: Read-only site consent; aliases for the same canonical server and site share the setting; managed remote-mutation restrictions are reported separately
 - Artifact effect: None
 - Upstream operation: None
-- Evidence: internal/app/mutation_setting_e2e_test.go
-- Validation or blocker: Per-site consent and exact target resolution
+- Evidence: internal/app/mutation_status_e2e_test.go; internal/app/mutation_setting_e2e_test.go
+- Validation or blocker: All-environment consent inventory, exact target resolution, compact/full encoding symmetry, and managed restrictions
 - Blocker ID: None
 - Command binding: `tadx mutation status`
 

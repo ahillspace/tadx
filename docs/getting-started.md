@@ -116,12 +116,13 @@ If an older configuration contains `catalog_max_concurrency`, rename that key to
 
 Remote mutations are disabled unless saved consent is enabled for the selected server and exact site.
 Permission to perform a Tableau operation does not itself authorize changing site consent.
-Check the selected site's saved consent with:
+Check saved consent for all configured environments with:
 
 ```text
-tadx mutation status --environment dev
+tadx mutation status
 ```
 
+Pass `--environment <alias>` to restrict the result to one environment, or use `--full` for canonical server and exact site details.
 The setting is keyed by the canonical server URL and exact site content URL.
 Aliases for the same server and site share consent.
 Different servers or sites require separate settings.

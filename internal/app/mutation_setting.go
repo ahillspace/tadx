@@ -3,11 +3,47 @@ package app
 import (
 	"context"
 	"errors"
+	"maps"
+	"os"
+	"slices"
+
 	"github.com/ahillspace/tadx/internal/config"
 	"github.com/ahillspace/tadx/internal/errs"
+	"github.com/ahillspace/tadx/internal/managedpolicy"
 	"github.com/ahillspace/tadx/internal/value"
-	"os"
 )
+
+func (r *runtimeDependencies) ReadMutationStatus(ctx context.Context, alias string) (value.MutationStatus, error) {
+	out := value.MutationStatus{Sites: []value.MutationConsent{}}
+	appendSetting := func(setting value.MutationSetting) {
+		out.Sites = append(out.Sites, value.MutationConsent{Environment: setting.Environment, Enabled: setting.Enabled, ServerURL: setting.ServerURL, SiteContentURL: setting.SiteContentURL, Source: setting.Source})
+	}
+	if alias != "" {
+		setting, err := r.ReadMutationSetting(ctx, alias)
+		if err != nil {
+			return out, err
+		}
+		appendSetting(setting)
+	} else {
+		cfg, err := config.Load(r.configPath)
+		if err != nil && !errors.Is(err, os.ErrNotExist) {
+			return out, err
+		}
+		for _, name := range slices.Sorted(maps.Keys(cfg.Environments)) {
+			environment := cfg.Environments[name]
+			environment.Alias = name
+			setting, err := siteMutationSetting(cfg, environment)
+			if err != nil {
+				return out, err
+			}
+			appendSetting(setting)
+		}
+	}
+	if r.managedPolicy != nil && errors.Is(r.managedPolicy.CheckRemoteMutation(), managedpolicy.ErrRemoteMutationDenied) {
+		out.Restriction = "Administrator-managed policy blocks remote mutations; enabled reports site consent only."
+	}
+	return out, nil
+}
 
 func (r *runtimeDependencies) ReadMutationSetting(_ context.Context, alias string) (value.MutationSetting, error) {
 	cfg, environment, err := r.environment(alias, false)

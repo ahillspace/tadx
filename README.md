@@ -147,7 +147,8 @@ Remote mutations are disabled by default for each server and exact site.
 Supported read-only previews remain available while site consent is disabled.
 Acquisition and local-state commands also expose previews for their planned file or configuration changes.
 Interactive `auth login` and policy-changing `mutation set` remain explicit operations; `update --check` checks releases without installing them.
-Use `tadx mutation status --environment dev` to inspect the selected site's saved consent.
+Use `tadx mutation status` to list saved consent for all configured environments.
+Pass `--environment <alias>` for one environment, or `--full` for canonical server and exact site details.
 Use `tadx mutation set --environment dev --enabled=true` or `--enabled=false` to change that site's persisted consent.
 Agents must ask before changing site consent and must name the selected server, exact site, and persistent scope.
 The legacy `mutations_enabled` field and `TADX_ENABLE_MUTATIONS=0` or `1` values do not authorize remote writes.

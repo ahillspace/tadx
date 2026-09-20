@@ -148,6 +148,9 @@ func writeOperationalReference(out io.Writer, owner, focus *cobra.Command) {
 					}
 				}
 			}
+			if name == "environment" && owner.CommandPath() == owner.Root().Name()+" mutation" && (focus == nil || focus.Name() == "status") {
+				text = "--environment (--env,-e) <name> (status: omitted lists all configured environments)"
+			}
 			fmt.Fprintf(out, "  %s\n", text)
 		}
 		fmt.Fprintln(out)
@@ -417,6 +420,7 @@ func referenceActionNotes(action *cobra.Command) []string {
 		"auth check":                {"Uses the selected environment's configured PAT source for a live check. Set non-secret PAT variable references with env add/update; never put PAT values in config."},
 		"auth status":               {"Local readiness only; it does not contact Tableau. Use auth check after the configured PAT source is ready."},
 		"auth logout":               {"Does not revoke the Tableau PAT; configured environment credentials remain usable."},
+		"mutation status":           {"Default: environment and enabled. --full adds canonical server_url, exact site_content_url, and source.", "Enabled reports site consent only. Managed policy restrictions appear separately; other execution checks still apply."},
 		"mutation set":              {"Changes write permission, not credentials. Obtain explicit approval for the requested scope."},
 		"workspace create":          {"Default root: <home>/TADX/workspaces/<name>; --path overrides it."},
 		"workspace clone":           {"Source: registered workspace name; destination root must not exist.", "Default root: <home>/TADX/workspaces/<name>; --path overrides it."},

@@ -76,7 +76,8 @@ Authenticate to Tableau with PATs only.
 Remote mutation commands remain discoverable while execution is disabled.
 Supported `--preview=true` performs no consequential remote writes while site consent or managed remote mutations are disabled; explicit `--preview=false` cannot bypass either gate.
 Enabled mutations execute by default when the selected site's saved consent and the managed policy allow them.
-Use `tadx mutation status --environment <alias>` and `tadx mutation set --environment <alias> --enabled=<true|false>` for canonical server and exact site consent.
+Use `tadx mutation status` for all configured environments, or add `--environment <alias>` for one alias.
+Use `--full` for canonical server and exact site details, and `tadx mutation set --environment <alias> --enabled=<true|false>` for canonical server and exact site consent.
 Changing site consent requires explicit permission covering the selected site and persisted scope, separate from permission for the operation itself.
 Legacy global settings and `TADX_ENABLE_MUTATIONS=0` or `1` do not authorize remote writes.
 Never change a developer's operational mutation setting to make a test pass.
