@@ -31,10 +31,11 @@ type cacheExecutorFactory func(context.Context, string, string) (tableaucache.Ex
 type cacheRunnerFactory func(tableaucache.Executor) (cacheRunner, error)
 
 type cacheHydrator struct {
-	store       *corecache.Store
-	now         func() time.Time
-	executorFor cacheExecutorFactory
-	newRunner   cacheRunnerFactory
+	checkCapability func(string) error
+	store           *corecache.Store
+	now             func() time.Time
+	executorFor     cacheExecutorFactory
+	newRunner       cacheRunnerFactory
 }
 
 func (h cacheHydrator) Hydrate(ctx context.Context, input cacherefresh.HydrationRequest) (cacherefresh.HydrationResult, error) {
@@ -47,6 +48,9 @@ func (h cacheHydrator) Hydrate(ctx context.Context, input cacherefresh.Hydration
 	}
 	plan, err := tableaucache.PlanScopes(requested)
 	if err != nil {
+		return cacherefresh.HydrationResult{}, err
+	}
+	if err := checkCacheScopeCapabilities(h.checkCapability, plan.Collected); err != nil {
 		return cacherefresh.HydrationResult{}, err
 	}
 	if !slices.Equal(scopeStrings(plan.Requested), input.RequestedScopes) || !slices.Equal(scopeStrings(plan.Implicit), input.ImplicitScopes) {
@@ -162,13 +166,17 @@ func (w cacheBatchWriter) WriteBatch(ctx context.Context, batch tableaucache.Bat
 }
 
 type cacheTableauExecutor struct {
-	transport *tableau.Transport
-	session   coreauth.Session
-	serverURL string
-	siteLUID  string
+	checkCapability func(string) error
+	transport       *tableau.Transport
+	session         coreauth.Session
+	serverURL       string
+	siteLUID        string
 }
 
 func (e cacheTableauExecutor) Do(ctx context.Context, input tableaucache.Request) (tableaucache.Response, error) {
+	if err := checkCacheScopeCapabilities(e.checkCapability, []tableaucache.Scope{input.Scope}); err != nil {
+		return tableaucache.Response{}, err
+	}
 	if e.transport == nil || e.session == nil || strings.TrimSpace(e.serverURL) == "" || strings.TrimSpace(e.siteLUID) == "" {
 		return tableaucache.Response{}, errors.New("authenticated cache transport is not configured")
 	}
@@ -238,6 +246,19 @@ func (s *cacheRefreshService) Execute(ctx context.Context, input cacherefresh.In
 	if err := cacherefresh.ValidateInput(input); err != nil {
 		return cacherefresh.Output{}, err
 	}
+	if !input.Preview {
+		requested, err := cacheScopes(input.Scopes)
+		if err != nil {
+			return cacherefresh.Output{}, err
+		}
+		plan, err := tableaucache.PlanScopes(requested)
+		if err != nil {
+			return cacherefresh.Output{}, err
+		}
+		if err := checkCacheScopeCapabilities(s.commands.runtime.checkManagedCapability, plan.Collected); err != nil {
+			return cacherefresh.Output{}, err
+		}
+	}
 	environment, err := s.commands.resolve(input.Environment, input.Site, "cache.refresh")
 	if err != nil {
 		return cacherefresh.Output{}, err
@@ -247,7 +268,8 @@ func (s *cacheRefreshService) Execute(ctx context.Context, input cacherefresh.In
 		return cacherefresh.New(nil).Execute(ctx, input)
 	}
 	hydrator := cacheHydrator{
-		store: s.commands.store(environment), now: s.commands.runtime.now,
+		checkCapability: s.commands.runtime.checkManagedCapability,
+		store:           s.commands.store(environment), now: s.commands.runtime.now,
 		executorFor: func(ctx context.Context, alias, site string) (tableaucache.Executor, error) {
 			connection, err := s.commands.runtime.tableauConnection(ctx, alias, false)
 			if err != nil {
@@ -256,7 +278,7 @@ func (s *cacheRefreshService) Execute(ctx context.Context, input cacherefresh.In
 			if connection.environment.SiteContentURL != site {
 				return nil, errors.New("cache refresh authenticated to a different site")
 			}
-			return cacheTableauExecutor{transport: connection.transport, session: connection.session, serverURL: connection.environment.URL, siteLUID: connection.session.SiteLUID()}, nil
+			return cacheTableauExecutor{checkCapability: s.commands.runtime.checkManagedCapability, transport: connection.transport, session: connection.session, serverURL: connection.environment.URL, siteLUID: connection.session.SiteLUID()}, nil
 		},
 		newRunner: func(executor tableaucache.Executor) (cacheRunner, error) {
 			return tableaucache.NewEngine(executor, tableaucache.Config{MaxConcurrency: environment.CacheMaxConcurrency})
@@ -266,6 +288,29 @@ func (s *cacheRefreshService) Execute(ctx context.Context, input cacherefresh.In
 }
 
 type cacheStatusService struct{ commands *cacheGroup2Commands }
+
+func checkCacheScopeCapabilities(check func(string) error, scopes []tableaucache.Scope) error {
+	if check == nil {
+		return nil
+	}
+	for _, scope := range scopes {
+		var id string
+		switch scope {
+		case tableaucache.ScopeUsers:
+			id = "admin.user.list"
+		case tableaucache.ScopeGroups:
+			id = "admin.group.list"
+		case tableaucache.ScopePermissions:
+			id = "admin.permission.inspect"
+		}
+		if id != "" {
+			if err := check(id); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
 
 func (s *cacheStatusService) Execute(ctx context.Context, input cachestatus.Input) (cachestatus.Output, error) {
 	environment, err := s.commands.resolve(input.Environment, input.Site, "cache.status")

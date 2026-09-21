@@ -9,6 +9,7 @@ import (
 )
 
 var commandAliases = map[string]string{
+	"policy": "pol", "samples": "smp", "validate": "vld",
 	"group-member": "gm", "label-value": "lv", "label-category": "lc",
 	"catalog": "cat", "database": "db", "table": "tbl", "column": "col", "audit": "aud", "label": "lbl", "value": "val", "category": "ctg",
 	"admin": "adm", "agent": "agt", "artifact": "art", "auth": "ath",
@@ -34,6 +35,7 @@ var flagShorthands = map[string]string{
 }
 
 var flagLongAliases = map[string]string{
+	"output":  "out",
 	"no-wait": "nwt", "operation-id": "opi",
 	"value":        "val",
 	"descriptions": "dcs", "tags": "tgs", "metadata-id": "mdi", "table-id": "tbi", "database-id": "dbi", "contact-id": "cti", "add-tag": "atg", "remove-tag": "rtg", "direct-only": "dro", "target-id": "tid", "category": "ctg", "message": "msg", "active": "act", "elevated": "elv",

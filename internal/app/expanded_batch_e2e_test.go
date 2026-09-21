@@ -73,7 +73,7 @@ func TestPulseMetricListBatchSeparatesDefinitionScopesAndRetainsPartialResults(t
 	}))
 	defer server.Close()
 	options := pulseEfficiencyOptions(t, server)
-	options.MutationsEnabled = false
+	options = withSiteMutationConsent(t, options, false)
 	var output bytes.Buffer
 	code := app.Run(context.Background(), []string{"pulse", "metric", "list", "--definition-id", "alpha", "--definition-id", "denied", "--definition-id", "beta", "--json"}, &output, options)
 	var batch struct {

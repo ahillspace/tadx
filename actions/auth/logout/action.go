@@ -39,7 +39,7 @@ func (a *Action) Execute(ctx context.Context, input Input) (Output, error) {
 	target, err := a.resolver.Resolve(ctx, input.Environment)
 	if err != nil {
 		retryable, advice := errs.CompleteRetryAdvice(err, "Review the exact environment alias, then retry.")
-		return Output{}, &errs.Error{ID: "auth.logout.resolve", Kind: errs.KindOperation, Operation: "auth.logout", Environment: input.Environment, Summary: "Environment resolution failed.", Cause: err, Retryable: retryable, CorrectiveAction: advice}
+		return Output{}, &errs.Error{ID: "auth.logout.resolve", Kind: errs.KindOperation, Operation: "auth.logout", Environment: input.Environment, Summary: "Environment resolution failed.", Cause: err, Retryable: retryable, CorrectiveAction: advice, Phase: errs.PhaseSetup, Outcome: errs.OutcomeNotAttempted}
 	}
 	if strings.TrimSpace(target.Environment) == "" {
 		return Output{}, &errs.Error{ID: "auth.logout.target", Kind: errs.KindOperation, Operation: "auth.logout", Environment: input.Environment, Summary: "Selected environment is incomplete.", Retryable: errs.Bool(false), CorrectiveAction: "Complete the selected environment profile before retrying."}

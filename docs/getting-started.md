@@ -103,6 +103,9 @@ tadx search revenue --environment dev --type workbook --cache
 
 `--cache` is local-only and never falls back to Tableau.
 Review freshness, coverage, warnings, and partial results before treating a cache result as complete.
+When a requested type needs unavailable cache scopes, the error reports available and missing types when local evidence permits.
+When a safe narrowed search is available, its recovery command searches a cached type without refreshing or switching to live Tableau.
+Narrowing the type changes coverage and cannot establish complete content inventory.
 Permissions require an explicitly selected refresh scope because they add per-resource requests.
 Cache collection adapts up to 32 concurrent requests per CLI process by default.
 Use `tadx env update dev --cache-max-concurrency 8` to set a lower ceiling for a server that needs less traffic.
@@ -114,18 +117,43 @@ If an older configuration contains `catalog_max_concurrency`, rename that key to
 
 ## Preview remote changes
 
-Remote mutations are disabled unless an authorized user explicitly opts in to a session or saved policy.
-Permission to perform a Tableau operation does not itself authorize changing that policy.
-Check the effective policy and source with:
+Remote mutations are disabled unless saved consent is enabled for the selected server and exact site.
+Permission to perform a Tableau operation does not itself authorize changing site consent.
+Check saved consent for all configured environments with:
 
 ```text
 tadx mutation status
 ```
 
-If you choose to enable remote writes persistently, run `tadx mutation set --enabled=true`.
-This affects future sessions until changed; `tadx mutation set --enabled=false` disables the saved policy.
-An explicit `TADX_ENABLE_MUTATIONS=0` or `1` in the process overrides the saved setting.
-These settings do not grant Tableau permissions or authorize an agent to perform unrelated work.
+Pass `--environment <alias>` to restrict the result to one environment, or use `--full` for canonical server and exact site details.
+The setting is keyed by the canonical server URL and exact site content URL.
+Aliases for the same server and site share consent.
+Different servers or sites require separate settings.
+
+To enable or disable consent for one selected site, run one of these commands:
+
+```text
+tadx mutation set --environment dev --enabled=true
+tadx mutation set --environment dev --enabled=false
+```
+
+Agents must ask before changing site consent.
+The request must name the selected server, exact site, and persistent scope.
+An operation request does not authorize a consent change.
+The legacy `mutations_enabled` configuration field and `TADX_ENABLE_MUTATIONS=0` or `1` values do not authorize remote writes or inherit into site settings.
+Site consent does not grant Tableau permissions or authorize unrelated work.
+
+An optional administrator-managed policy can add a machine-wide capability ceiling.
+Use the recovery flow to generate candidates, edit one, validate it, deploy it as an administrator, and check status:
+
+```text
+tadx policy samples --output ./tadx-policy-candidates
+tadx policy validate ./tadx-policy-candidates/read-only.json
+tadx policy status --full
+```
+
+Candidate validation does not activate a policy.
+Read [Managed policy](managed-policy.md) for fixed paths, schemas, protected deployment, status states, and recovery.
 
 Supported mutation commands accept `--preview` while execution is disabled.
 A preview resolves the exact target and proposed settings without authorizing or applying the change.

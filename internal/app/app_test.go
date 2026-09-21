@@ -16,7 +16,6 @@ import (
 
 	"github.com/ahillspace/tadx/internal/app"
 	"github.com/ahillspace/tadx/internal/artifact"
-	"github.com/ahillspace/tadx/internal/commandhint"
 	"github.com/ahillspace/tadx/internal/config"
 )
 
@@ -258,7 +257,7 @@ func TestRunPreservesCapabilityContextForSetupFailures(t *testing.T) {
 	}
 	t.Setenv("PROD_PAT_NAME", "pat-name")
 	t.Setenv("PROD_PAT_SECRET", "pat-secret")
-	options := app.Options{ConfigPath: configPath, HTTPClient: server.Client(), MutationsEnabled: true}
+	options := withSiteMutationConsent(t, app.Options{ConfigPath: configPath, HTTPClient: server.Client()}, true)
 	workspace := createNamedWorkspace(t, configPath, "authentication")
 	pulled, err := artifact.NewWorkbookManager(nil).Pull(context.Background(), artifact.WorkbookPull{Workspace: workspace, Filename: "Finance.twb", Content: []byte("<workbook/>"), Metadata: artifact.WorkbookMetadata{Kind: "workbook", Name: "Finance", TableauID: "wb-1", SourceServerOrigin: server.URL, SourceSiteLUID: "site-1", SourceEnvironment: "production", SourceSite: "marketing", SourceProjectID: "project-1", SourceProjectName: "Ops"}})
 	if err != nil {
@@ -336,7 +335,7 @@ func TestRunUnknownFlagReturnsStructuredUsageError(t *testing.T) {
 
 func TestMutationDiscoveryFilterReportsExecutionEnabled(t *testing.T) {
 	var stdout bytes.Buffer
-	exitCode := app.Run(context.Background(), []string{"capability", "list", "--domain", "content", "--resource", "workbook", "--mutation=true"}, &stdout, app.Options{MutationsEnabled: true})
+	exitCode := app.Run(context.Background(), []string{"capability", "list", "--domain", "content", "--resource", "workbook", "--mutation=true"}, &stdout, withSiteMutationConsent(t, app.Options{}, true))
 	if exitCode != 0 || !strings.Contains(stdout.String(), "workbook.publish") || !strings.Contains(stdout.String(), "false,true") {
 		t.Fatalf("exit code = %d, output = %s", exitCode, stdout.String())
 	}
@@ -364,14 +363,14 @@ func TestCapabilityGetReportsMutationExecutionState(t *testing.T) {
 		want    string
 	}{{false, "execution_enabled: false"}, {true, "execution_enabled: true"}} {
 		var stdout bytes.Buffer
-		exitCode := app.Run(t.Context(), []string{"capability", "get", "workbook.publish"}, &stdout, app.Options{ConfigPath: filepath.Join(t.TempDir(), "missing.yaml"), MutationsEnabled: test.enabled})
+		exitCode := app.Run(t.Context(), []string{"capability", "get", "workbook.publish"}, &stdout, withSiteMutationConsent(t, app.Options{ConfigPath: filepath.Join(t.TempDir(), "missing.yaml")}, test.enabled))
 		if exitCode != 0 || !strings.Contains(stdout.String(), "remote_mutation: true") || !strings.Contains(stdout.String(), test.want) {
 			t.Fatalf("enabled = %t, exit code = %d, output = %s", test.enabled, exitCode, stdout.String())
 		}
 	}
 }
 
-func TestRemoteMutationGatePrecedesRuntimeSetupAcrossDomains(t *testing.T) {
+func TestRemoteMutationGateRequiresResolvableSiteAcrossDomains(t *testing.T) {
 	tests := [][]string{
 		{"content", "workbook", "delete", "--environment", "missing", "--id", "workbook-1"},
 		{"content", "workbook", "delete", "--environment", "missing", "--id", "workbook-1", "--preview=false"},
@@ -387,7 +386,7 @@ func TestRemoteMutationGatePrecedesRuntimeSetupAcrossDomains(t *testing.T) {
 			options := app.Options{ConfigPath: filepath.Join(t.TempDir(), "missing.yaml")}
 			exitCode := app.Run(context.Background(), args, &stdout, options)
 			failure := decodeDiagnosticFailure(t, stdout.String())
-			if exitCode != 1 || failure.ID != "mutation.disabled" || !strings.Contains(failure.CorrectiveAction, commandhint.Command("--config", options.ConfigPath, "mutation", "status")) {
+			if exitCode != 1 || failure.ID != "configuration.load" {
 				t.Fatalf("exit code = %d, output = %s", exitCode, stdout.String())
 			}
 		})

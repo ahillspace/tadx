@@ -12,12 +12,14 @@ import (
 )
 
 type flowClient struct {
-	pages    map[int]tableauflow.Page
-	byLUID   map[string]tableauflow.Flow
-	download tableauflow.Download
+	pages      map[int]tableauflow.Page
+	byLUID     map[string]tableauflow.Flow
+	download   tableauflow.Download
+	listInputs []tableauflow.ListRequest
 }
 
-func (c flowClient) List(_ context.Context, input tableauflow.ListRequest) (tableauflow.Page, error) {
+func (c *flowClient) List(_ context.Context, input tableauflow.ListRequest) (tableauflow.Page, error) {
+	c.listInputs = append(c.listInputs, input)
 	return c.pages[input.PageNumber], nil
 }
 func (c flowClient) Get(_ context.Context, luid string) (tableauflow.Flow, error) {
@@ -42,7 +44,7 @@ func (p paths) ResolveProjectPath(_ context.Context, luid string) (string, error
 }
 
 func TestAdapterResolvesExactNestedFlow(t *testing.T) {
-	client := flowClient{pages: map[int]tableauflow.Page{1: {Number: 1, Size: 2, Total: 2, Items: []tableauflow.Flow{
+	client := &flowClient{pages: map[int]tableauflow.Page{1: {Number: 1, Size: 2, Total: 2, Items: []tableauflow.Flow{
 		{LUID: "f-1", Name: "Daily", ProjectLUID: "p-1", ProjectName: "Ops"},
 		{LUID: "f-2", Name: "Daily", ProjectLUID: "p-2", ProjectName: "Ops"},
 	}}}}
@@ -55,8 +57,37 @@ func TestAdapterResolvesExactNestedFlow(t *testing.T) {
 	}
 }
 
+func TestAdapterResolvesExactFlowByProjectLUID(t *testing.T) {
+	client := &flowClient{pages: map[int]tableauflow.Page{1: {Number: 1, Size: 1000, Total: 2, Items: []tableauflow.Flow{
+		{LUID: "f-1", Name: "Daily", ProjectLUID: "p-1"},
+		{LUID: "f-2", Name: "Daily", ProjectLUID: "p-2"},
+	}}}}
+	item, err := resourceflow.NewAdapter(client, paths{"p-1": "Department/Ops", "p-2": "Other/Ops"}).ResolveFlow(context.Background(), identity.Selector{Name: "Daily", ProjectLUID: "p-1"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if item.LUID != "f-1" || item.ProjectLUID != "p-1" || item.ProjectPath != "Department/Ops" {
+		t.Fatalf("flow = %#v", item)
+	}
+	if len(client.listInputs) != 1 || client.listInputs[0].ProjectLUID != "p-1" {
+		t.Fatalf("list requests = %#v", client.listInputs)
+	}
+}
+
+func TestAdapterRejectsAmbiguousFlowNameWithinProjectLUID(t *testing.T) {
+	client := &flowClient{pages: map[int]tableauflow.Page{1: {Number: 1, Size: 1000, Total: 2, Items: []tableauflow.Flow{
+		{LUID: "f-1", Name: "Daily", ProjectLUID: "p-1"},
+		{LUID: "f-2", Name: "Daily", ProjectLUID: "p-1"},
+	}}}}
+	_, err := resourceflow.NewAdapter(client, paths{"p-1": "Department/Ops"}).ResolveFlow(context.Background(), identity.Selector{Name: "Daily", ProjectLUID: "p-1"})
+	var resolution *identity.ResolutionError
+	if !errors.As(err, &resolution) || resolution.Kind != identity.ResolutionAmbiguous {
+		t.Fatalf("error = %v, want ambiguous selector", err)
+	}
+}
+
 func TestAdapterRejectsIncompleteFlowIdentity(t *testing.T) {
-	client := flowClient{byLUID: map[string]tableauflow.Flow{"f-1": {LUID: "f-1", Name: "Daily"}}}
+	client := &flowClient{byLUID: map[string]tableauflow.Flow{"f-1": {LUID: "f-1", Name: "Daily"}}}
 	_, err := resourceflow.NewAdapter(client, paths{}).ResolveFlow(context.Background(), identity.Selector{LUID: "f-1"})
 	if err == nil {
 		t.Fatal("expected incomplete identity error")
@@ -64,7 +95,7 @@ func TestAdapterRejectsIncompleteFlowIdentity(t *testing.T) {
 }
 
 func TestAdapterPreservesNativeFlowBytes(t *testing.T) {
-	client := flowClient{download: tableauflow.Download{Filename: "Daily.tflx", Content: []byte("native\x00flow"), TableauRequestID: "request-1"}}
+	client := &flowClient{download: tableauflow.Download{Filename: "Daily.tflx", Content: []byte("native\x00flow"), TableauRequestID: "request-1"}}
 	download, err := resourceflow.NewAdapter(client, paths{}).DownloadFlow(context.Background(), "f-1")
 	if err != nil {
 		t.Fatal(err)
@@ -75,7 +106,7 @@ func TestAdapterPreservesNativeFlowBytes(t *testing.T) {
 }
 
 func TestAdapterFindsProjectScopedCaseInsensitiveCollision(t *testing.T) {
-	client := flowClient{pages: map[int]tableauflow.Page{1: {Number: 1, Size: 1000, Total: 2, Items: []tableauflow.Flow{
+	client := &flowClient{pages: map[int]tableauflow.Page{1: {Number: 1, Size: 1000, Total: 2, Items: []tableauflow.Flow{
 		{LUID: "f-1", Name: "Daily", ProjectLUID: "p-1"},
 		{LUID: "f-2", Name: "daily", ProjectLUID: "p-2"},
 	}}}}
@@ -89,7 +120,7 @@ func TestAdapterFindsProjectScopedCaseInsensitiveCollision(t *testing.T) {
 }
 
 func TestAdapterRejectsChangingFlowPagination(t *testing.T) {
-	client := flowClient{pages: map[int]tableauflow.Page{
+	client := &flowClient{pages: map[int]tableauflow.Page{
 		1: {Number: 1, Size: 1, Total: 2, Items: []tableauflow.Flow{{LUID: "f-1", Name: "Daily", ProjectLUID: "p-1", ProjectName: "Ops"}}},
 		2: {Number: 2, Size: 1, Total: 3, Items: []tableauflow.Flow{{LUID: "f-2", Name: "Daily", ProjectLUID: "p-2", ProjectName: "Ops"}}},
 	}}

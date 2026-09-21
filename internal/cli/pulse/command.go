@@ -192,6 +192,8 @@ func newDefinitionList(deps Dependencies) *cobra.Command {
 	command.Flags().StringVar(&input.Cursor, "cursor", "", "opaque continuation cursor")
 	_ = command.Flags().MarkHidden("cursor")
 	command.Flags().BoolVar(&input.All, "all", false, "return all matching definitions within 100 pages and 10,000 records; cannot combine with --limit")
+	command.MarkFlagsMutuallyExclusive("all", "limit")
+	command.MarkFlagsMutuallyExclusive("all", "cursor")
 	return command
 }
 
@@ -320,6 +322,8 @@ func newMetricList(deps Dependencies) *cobra.Command {
 	command.Flags().StringVar(&input.Cursor, "cursor", "", "opaque continuation cursor")
 	_ = command.Flags().MarkHidden("cursor")
 	command.Flags().BoolVar(&input.All, "all", false, "return all metrics within 100 pages and 10,000 records; cannot combine with --limit")
+	command.MarkFlagsMutuallyExclusive("all", "limit")
+	command.MarkFlagsMutuallyExclusive("all", "cursor")
 	return command
 }
 

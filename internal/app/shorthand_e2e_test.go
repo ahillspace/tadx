@@ -103,7 +103,7 @@ func TestShorthandDatasourcePublishPreviewHonorsBooleanAndMutationGate(t *testin
 		t.Fatal(err)
 	}
 	options := shorthandOptions(t, server)
-	options.MutationsEnabled = false
+	options = withSiteMutationConsent(t, options, false)
 	base := []string{"con", "ds", "pub", "--fil", file, "--env", "test", "--pid", "project-1", "--new"}
 
 	var preview bytes.Buffer
@@ -143,7 +143,7 @@ func TestDocumentedDatasourceShorthandExamplesUseCanonicalPaths(t *testing.T) {
 	defer server.Close()
 
 	options := shorthandOptions(t, server)
-	options.MutationsEnabled = false
+	options = withSiteMutationConsent(t, options, false)
 
 	var invalidDelete bytes.Buffer
 	if code := app.Run(context.Background(), []string{"con", "ds", "del", "--env", "test", "--nm", "Revenue", "--pv", "-f"}, &invalidDelete, options); code == 0 || !strings.Contains(invalidDelete.String(), "use --id or both --name and --project") || requests.Load() != 0 {
@@ -170,7 +170,7 @@ func TestShorthandHelpAndCompletionExposeAliasesWithoutChangingCanonicalUse(t *t
 	if code := app.Run(context.Background(), []string{"con", "wb", "ins", "--help"}, &help, options); code != 0 {
 		t.Fatalf("alias help code=%d output=%s", code, help.String())
 	}
-	for _, want := range []string{"Usage: tadx content workbook inspect [flags]", "inspect (ins):", "--id (-i) <luid>", "--environment (--env, -e)", "--full (--ful, -f)"} {
+	for _, want := range []string{"Usage: tadx content workbook inspect [flags]", "inspect:", "--id <luid>", "--environment (--env,-e)", "--full"} {
 		if !strings.Contains(help.String(), want) {
 			t.Errorf("alias help missing %q:\n%s", want, help.String())
 		}
@@ -179,7 +179,7 @@ func TestShorthandHelpAndCompletionExposeAliasesWithoutChangingCanonicalUse(t *t
 	if code := app.Run(context.Background(), []string{"con", "ds", "del", "--help"}, &deleteHelp, options); code != 0 {
 		t.Fatalf("delete alias help code=%d output=%s", code, deleteHelp.String())
 	}
-	for _, want := range []string{"Usage: tadx content datasource delete [flags]", "delete (del):", "--id (-i) <luid>", "--name (--nm, -n)", "--project (--prj) <path>"} {
+	for _, want := range []string{"Usage: tadx content datasource delete [flags]", "delete:", "--id <luid>", "--name <name>", "--project <path>"} {
 		if !strings.Contains(deleteHelp.String(), want) {
 			t.Errorf("delete alias help missing %q:\n%s", want, deleteHelp.String())
 		}

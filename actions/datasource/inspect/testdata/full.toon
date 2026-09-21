@@ -19,4 +19,4 @@ datasource:
   tags[1]: daily
   ask_data_enablement: Enabled
 tableau_request_id: request-1
-help[1]: tadx content datasource list
+help[1]: tadx content datasource schema --id datasource-1 --environment dev

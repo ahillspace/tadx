@@ -15,6 +15,16 @@ Permissions are not in the default refresh because their collection adds per-res
 Explicit permission collection can retain accessible records with partial coverage; an inaccessible permission record is not an empty rule set.
 Use reported freshness, coverage, and warnings before treating a scope as exhaustive.
 
+The default cache refresh includes users and groups.
+When a managed policy excludes administrative IDs, use explicit non-administrator scopes:
+
+```text
+tadx cache refresh --scope projects --scope workbooks --scope datasources --scope flows --scope views --environment <alias>
+```
+
+`tadx search --type user` requires `admin.user.list`, even with `--cache`.
+An untyped broad search can include users and groups, so choose a resource type that the policy allows.
+
 Cache identity is bound to the actual server and site, not an editable alias.
 Coherent supported old schemas require explicit refresh; ordinary reads do not guess their origin or rebuild them.
 Inconsistent schema markers need the reported repair or a compatible build, not repeated identical refresh attempts.

@@ -61,7 +61,7 @@ environments:
 	}
 	t.Setenv("PULSE_FOLLOW_PAT_NAME", "pat-name")
 	t.Setenv("PULSE_FOLLOW_PAT_SECRET", "pat-secret")
-	options := Options{ConfigPath: configPath, HTTPClient: server.Client(), MutationsEnabled: true}
+	options := withSiteMutationConsent(t, Options{ConfigPath: configPath, HTTPClient: server.Client()}, true)
 
 	run := func(args ...string) (int, string) {
 		var output bytes.Buffer

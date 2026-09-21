@@ -9,5 +9,6 @@ environment:
   pat_name_env: PROD_PAT_NAME
   pat_secret_env: PROD_PAT_SECRET
   default_workspace: primary
+  cache_max_concurrency: 0
 changed_fields[1]: site_content_url
 help[1]: tadx env get production

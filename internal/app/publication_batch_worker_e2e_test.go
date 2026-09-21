@@ -291,15 +291,15 @@ func TestPublicationWorkerCutoffStopsForegroundWaitWithoutCancellingHeldSubmissi
 
 func publicationWorkerTestOptions(configPath string, server *httptest.Server, t *testing.T) Options {
 	t.Helper()
-	return Options{
-		ConfigPath:         configPath,
-		HTTPClient:         server.Client(),
-		MutationsEnabled:   true,
+	return withSiteMutationConsent(t, Options{
+		ConfigPath: configPath,
+		HTTPClient: server.Client(),
+
 		PublicationWorkers: true,
 		OperationDirectory: t.TempDir(),
 		JobDirectory:       t.TempDir(),
 		Stderr:             io.Discard,
-	}
+	}, true)
 }
 
 func operationJSONFiles(t *testing.T, directory string) []string {

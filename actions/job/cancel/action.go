@@ -31,12 +31,11 @@ func (a *Action) Execute(ctx context.Context, input Input) (Output, error) {
 	}
 	result, err := a.source.Cancel(ctx, input)
 	if err != nil {
+		if _, ok := errors.AsType[*errs.Error](err); ok {
+			return project(result, input), err
+		}
 		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
 			return project(result, input), cancelError("job.cancel.cancelled", errs.KindOperation, input, "Job cancellation did not establish the remote outcome.", err, errs.OutcomeUnknown)
-		}
-		var structured *errs.Error
-		if errors.As(err, &structured) {
-			return project(result, input), err
 		}
 		return project(result, input), cancelError("job.cancel.failed", errs.KindOperation, input, "Job cancellation failed without a confirmed remote outcome.", err, errs.OutcomeUnknown)
 	}

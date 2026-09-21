@@ -8,12 +8,27 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/ahillspace/tadx/internal/commandhint"
 	"strings"
 
+	"github.com/ahillspace/tadx/internal/commandhint"
 	"github.com/ahillspace/tadx/internal/errs"
 	"github.com/ahillspace/tadx/internal/output"
 )
+
+// CacheTypeObservation describes the bounded local evidence available for one
+// type when a wider cached search cannot satisfy its required scope.
+type CacheTypeObservation struct {
+	Type, Coverage string
+	Stale          bool
+	Count          int
+}
+
+// CacheRecovery describes local scope evidence for a rejected cached search.
+type CacheRecovery struct {
+	Required  []string
+	Available []CacheTypeObservation
+	Missing   []string
+}
 
 type Source interface {
 	Search(context.Context, Input) (Result, error)
@@ -72,7 +87,7 @@ func (a *Action) Execute(ctx context.Context, input Input) (Output, error) {
 			return Output{}, searchError(errs.KindUsage, input, "Search cursor is invalid; start a new search.", err)
 		}
 		if input.Cache && errors.As(err, &unavailable) && unavailable.CacheScopeUnavailable() {
-			return Output{}, searchError(errs.KindUsage, input, "The requested type is not available in the selected cache.", err)
+			return Output{}, cacheUnavailableError(input, err)
 		}
 		return Output{}, searchError(errs.KindOperation, input, "Search failed.", err)
 	}
@@ -226,4 +241,80 @@ func decodeCursor(value string, input Input) (string, error) {
 }
 func searchError(kind errs.Kind, input Input, summary string, cause error) error {
 	return &errs.Error{ID: "search." + string(kind), Kind: kind, Operation: "search", Environment: input.Environment, Site: input.Site, Summary: summary, Cause: cause, Retryable: errs.Bool(false), CorrectiveAction: "Review the search source and filters, then retry."}
+}
+
+func cacheUnavailableError(input Input, cause error) error {
+	structured := searchError(errs.KindUsage, input, "The requested type is not available in the selected cache.", cause).(*errs.Error)
+	structured.Selector = input.Type
+	var carrier interface{ CacheSearchRecovery() CacheRecovery }
+	if !errors.As(cause, &carrier) {
+		return structured
+	}
+	recovery := carrier.CacheSearchRecovery()
+	if len(recovery.Required) == 0 {
+		return structured
+	}
+	structured.Resource = strings.Join(recovery.Required, ",")
+	structured.CorrectiveAction = cacheRecoveryAdvice(input, recovery)
+	return structured
+}
+
+func cacheRecoveryAdvice(input Input, recovery CacheRecovery) string {
+	available := make([]string, 0, len(recovery.Available))
+	for _, observation := range recovery.Available {
+		freshness := "current"
+		if observation.Stale {
+			freshness = "stale"
+		}
+		empty := ""
+		if observation.Count == 0 {
+			empty = ", empty"
+		}
+		available = append(available, fmt.Sprintf("%s (%s, %s%s)", observation.Type, observation.Coverage, freshness, empty))
+	}
+	if len(available) == 0 {
+		available = append(available, "none")
+	}
+	parts := []string{
+		"Requested type: " + input.Type + ".",
+		"Required types: " + strings.Join(recovery.Required, ", ") + ".",
+		"Available cached types: " + strings.Join(available, ", ") + ".",
+		"Missing required types: " + strings.Join(recovery.Missing, ", ") + ".",
+	}
+	if input.ProjectPath != "" || input.Owner != "" {
+		parts = append(parts, "No recovery command is shown because the selected filters cannot be represented safely by the search command.")
+	} else if len(recovery.Available) > 0 {
+		observation := recovery.Available[0]
+		for _, candidate := range recovery.Available {
+			if candidate.Count > 0 {
+				observation = candidate
+				break
+			}
+		}
+		args := []string{"search"}
+		leadingFlagTerm := strings.HasPrefix(input.Terms, "-")
+		if input.Terms != "" && !leadingFlagTerm {
+			args = append(args, input.Terms)
+		}
+		args = append(args, "--type", observation.Type, "--cache")
+		if input.Limit > 0 && input.Limit != 20 {
+			args = append(args, "--limit", fmt.Sprint(input.Limit))
+		}
+		command := ""
+		if leadingFlagTerm {
+			if input.Environment != "" {
+				args = append(args, "--environment", input.Environment)
+			}
+			args = append(args, "--", input.Terms)
+			command = commandhint.Command(args...)
+		} else {
+			command = commandhint.Environment(input.Environment, args...)
+		}
+		parts = append(parts, "Narrowing to the available types changes coverage and cannot establish complete "+input.Type+" inventory.")
+		return strings.Join(parts, " ") + " Run this cache-only search for available observations: " + command
+	} else {
+		parts = append(parts, "No cache-only recovery command is available because none of the required types has cached scope.")
+	}
+	parts = append(parts, "Narrowing to the available types changes coverage and cannot establish complete "+input.Type+" inventory.")
+	return strings.Join(parts, " ")
 }

@@ -1,6 +1,6 @@
 # Command structure and help standard
 
-Status: implemented across the CLI.
+Status: maintained current standard for the registered CLI command tree.
 This is the single standard for public command structure and help construction.
 Use this standard for new help work; operating skills explain discovery and Tableau concepts rather than duplicating syntax.
 
@@ -40,13 +40,16 @@ Apply the same rule structurally across the CLI:
 - `pulse -h` introduces definitions and metrics; each resource gets its own complete reference, with focused subsets at known verbs.
 - `auth -h` and `env -h` already sit above executable actions, so they provide complete operational references with focused subsets at known verbs.
 - `workspace -h` covers its direct actions and includes a navigation entry for `artifact`; `workspace artifact -h` covers artifact actions with focused subsets at known verbs.
+- `mutation -h` covers consent status for configured environments and per-site changes; `policy -h` covers candidate samples, validation, and fixed-path status recovery.
 - Standalone commands such as `search` show their own complete help.
 
 Bare `tadx` remains the session overview, not an alias for `tadx -h`.
 
 ## Compact presentation
 
-Use a compact operational reference rather than concatenating conventional leaf manuals.
+Use the shared compact operational renderer rather than concatenating conventional leaf manuals.
+The renderer builds command and flag inventory from registered commands, then adds scoped notes and examples for the current category, resource, or verb.
+Complete resource help and focused verb help use the same registered definitions, with focused output limited to the selected action.
 TADX additionally supplies short resource and verb descriptions where Tableau terminology does not explain the operation.
 Use this order for operational references:
 
@@ -70,7 +73,7 @@ Examples:
   a few complete, useful commands
 ```
 
-Use [the formatted datasource reference](../internal/cli/help_datasource.txt) as the presentation template.
+Use `tadx content datasource -h` to inspect the current compact presentation.
 Preserve readable indentation and line breaks; omit sections that do not apply.
 Use canonical names, showing only selected useful aliases for frequent or long compound flags, such as `--environment (--env,-e)` and `--workspace (--ws,-w)`.
 Do not decorate every command or flag with aliases; supported shortcuts remain executable without appearing in every reference.
@@ -102,6 +105,23 @@ Keep them short and relevant to completing the operation.
 Long qualitative workflows, including Pulse metric design, belong in skills and optional references, not help.
 Users with resource help should not need skills or trial commands to discover required syntax.
 Skills should complement help with judgment, not duplicate the flag manual.
+
+## Learn-once conventions
+
+Use this matrix for conventions shared across resource references, while keeping operation-specific flags and exceptions in their owning help.
+
+| Convention | Public rule |
+| --- | --- |
+| Exact selectors and project scope | Workbook, datasource, and flow inspect accept `--id`, or `--name` with exactly one of `--project` and `--project-id`; their lists accept `--project-id` as an optional filter. |
+| Environment, workspace, and cache | An environment selects the Tableau site and remote target; a workspace selects the local artifact root; `--cache` selects local observations only where supported and never falls back to Tableau. |
+| Repetition and batches | Repeat one target-selector dimension for a same-action batch; use `--batch-file` for per-item selector combinations; batching does not create a workflow or infer dependencies. |
+| Bounds and presentation | Use `--all` for a bounded complete collection where supported, `--limit` or `--cursor` for bounded pages where supported, `--full` for more detail on the same result, and `--json` to change encoding. |
+| Preview, mutation, and waiting | Use `--preview` for a no-change plan; mutation policy still governs execution; use `--no-wait` only on supported publish or pull actions, which return local recovery status instead of silently replaying work. |
+| Site mutation consent | Use `tadx mutation status` for all configured environments, or add `--environment <alias>` for one alias and `--full` for canonical server and exact site details. Use `tadx mutation set --environment <alias> --enabled=<boolean>` only after explicit authorization for that persisted site setting. |
+| Managed policy recovery | Use `tadx policy samples --output <directory>` for exclusive candidate files, `tadx policy validate <file>` for schema and ID checks, and `tadx policy status [--full]` for the fixed protected path. |
+| Outcomes and recovery | Preserve confirmed identities and per-item results; inspect the exact job or operation status after an unknown outcome, and do not blindly repeat a consequential action. |
+| Genuine exceptions | Catalog reads are live-only; Pulse follower reads use a fixed bounded result; `job --operation-id` identifies a local invocation while `job --id` identifies a Tableau job. |
+| Local inventory | Environment and workspace inventories accept `--all` for every row within the 10,000-record bound; defaults remain bounded pages, and `--full` still controls detail only. |
 
 ## Implementation and acceptance
 

@@ -103,7 +103,7 @@ func TestApplyMutationExecutionPolicyGatesFutureRegistryCommand(t *testing.T) {
 
 func TestRootHelpExplainsDiscoveryOutputAndMutationSafety(t *testing.T) {
 	root := NewRoot(Dependencies{})
-	for _, value := range []string{"tadx capability list", "compact TOON", "--full", "tadx mutation status", "tadx mutation set --enabled=true", "TADX_ENABLE_MUTATIONS=0", "TADX_ENABLE_MUTATIONS=1", "perform changes by default", "--preview"} {
+	for _, value := range []string{"tadx capability list", "compact TOON", "--full", "tadx mutation status --environment", "tadx mutation set --environment <alias> --enabled=true", "same site share consent", "perform changes by default", "--preview"} {
 		if !strings.Contains(root.Long, value) {
 			t.Errorf("root help missing %q:\n%s", value, root.Long)
 		}

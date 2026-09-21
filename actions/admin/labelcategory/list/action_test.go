@@ -44,3 +44,20 @@ func TestBoundedOrderedListAndDuplicateRejection(t *testing.T) {
 		t.Fatalf("limit: %+v %v", out, e)
 	}
 }
+
+func TestAllReturnsCompleteInventory(t *testing.T) {
+	items := make([]value.LabelCategory, 25)
+	for i := range items {
+		items[i].Name = string(rune('a' + i))
+	}
+	out, err := New(&readerStub{items: items}).Execute(t.Context(), Input{All: true})
+	if err != nil || len(out.Items) != len(items) || out.Returned != len(items) || out.Total != len(items) || out.MoreAvailable || out.NextCommand != "" {
+		t.Fatalf("all: %+v %v", out, err)
+	}
+}
+
+func TestAllRejectsLimit(t *testing.T) {
+	if _, err := New(&readerStub{}).Execute(t.Context(), Input{All: true, Limit: 1}); err == nil {
+		t.Fatal("--all accepted with --limit")
+	}
+}

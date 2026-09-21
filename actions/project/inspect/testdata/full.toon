@@ -10,4 +10,4 @@ project:
   owner_luid: user-1
   workbook_count: 2
 tableau_request_id: request-1
-help[1]: tadx content project list
+help[1]: tadx content project inspect --project-id project-1 --full --environment dev

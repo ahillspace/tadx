@@ -66,7 +66,7 @@ func TestLocalReadAndMutationErrorsMakeNoAuthenticationRequest(t *testing.T) {
 			}))
 			defer server.Close()
 			options := cacheResilienceOptions(t, server)
-			options.MutationsEnabled = true
+			options = withSiteMutationConsent(t, options, true)
 			var output strings.Builder
 			exit := app.Run(context.Background(), args, &output, options)
 			if exit != 2 || requests.Load() != 0 {
@@ -109,7 +109,7 @@ func TestMissingLocalPrerequisitesFailBeforeAuthenticationWithoutWrites(t *testi
 				}))
 				defer server.Close()
 				options := cacheResilienceOptions(t, server)
-				options.MutationsEnabled = true
+				options = withSiteMutationConsent(t, options, true)
 				root := createNamedWorkspace(t, options.ConfigPath, "local")
 				before, err := os.ReadFile(filepath.Join(root, "tadx.yaml"))
 				if err != nil {

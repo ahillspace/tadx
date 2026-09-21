@@ -6,12 +6,12 @@ import (
 )
 
 type Reader interface {
-	ReadMutationSetting(context.Context) (value.MutationSetting, error)
+	ReadMutationStatus(context.Context, string) (value.MutationStatus, error)
 }
-type Output = value.MutationSetting
+type Output = value.MutationStatus
 type Action struct{ reader Reader }
 
 func New(r Reader) *Action { return &Action{r} }
-func (a *Action) Execute(ctx context.Context) (value.MutationSetting, error) {
-	return a.reader.ReadMutationSetting(ctx)
+func (a *Action) Execute(ctx context.Context, environment string) (Output, error) {
+	return a.reader.ReadMutationStatus(ctx, environment)
 }

@@ -31,7 +31,7 @@ type Dependencies struct {
 	Getter                Getter
 	Renderer              Renderer
 	MutationsEnabled      bool
-	ResolveMutationPolicy func() (bool, string, error)
+	ResolveMutationPolicy func(string) (bool, string, error)
 	ListUse               string
 	ListShort             string
 	GetUse                string
@@ -45,6 +45,7 @@ func New(deps Dependencies) *cobra.Command {
 		Short: "Discover TADX capabilities",
 	}
 	command.AddCommand(newList(deps), newGet(deps))
+	command.PersistentFlags().String("environment", "", "configured environment selecting the site for mutation availability")
 	return command
 }
 
@@ -54,6 +55,7 @@ func newList(deps Dependencies) *cobra.Command {
 	var owner string
 	var product string
 	var mutation bool
+	var all bool
 	var cursor string
 	var limit int
 	command := &cobra.Command{
@@ -74,15 +76,17 @@ func newList(deps Dependencies) *cobra.Command {
 				mutationFilter = &mutation
 			}
 			full, jsonOutput := presentation(command)
+			alias, _ := command.Flags().GetString("environment")
 			input := capabilitylist.Input{
-				Domain: domain, Resource: resource, Owner: owner, Product: product,
-				Mutation: mutationFilter, Cursor: cursor, Limit: limit,
+				Environment: alias,
+				Domain:      domain, Resource: resource, Owner: owner, Product: product,
+				Mutation: mutationFilter, All: all, Cursor: cursor, Limit: limit,
 				Full: full, JSON: jsonOutput,
 			}
 			enabled := deps.MutationsEnabled
 			if deps.ResolveMutationPolicy != nil {
 				var err error
-				enabled, _, err = deps.ResolveMutationPolicy()
+				enabled, _, err = deps.ResolveMutationPolicy(alias)
 				if err != nil {
 					// Capability metadata is local and remains useful even when
 					// the effective policy cannot be established. Keep the
@@ -109,8 +113,11 @@ func newList(deps Dependencies) *cobra.Command {
 	command.Flags().StringVar(&owner, "owner", "", "filter by exact owner")
 	command.Flags().StringVar(&product, "product", "", "filter by product availability")
 	command.Flags().BoolVar(&mutation, "mutation", false, "filter by remote mutation status")
+	command.Flags().BoolVar(&all, "all", false, "return all matching capabilities, up to 10000; cannot combine with --limit or --cursor")
 	command.Flags().StringVar(&cursor, "cursor", "", "continue from a prior result cursor")
-	command.Flags().IntVar(&limit, "limit", capabilitylist.DefaultLimit, "maximum capabilities to return, up to 10000")
+	command.Flags().IntVar(&limit, "limit", 0, "maximum capabilities to return, from 1 to 10000 (default 20)")
+	command.MarkFlagsMutuallyExclusive("all", "limit")
+	command.MarkFlagsMutuallyExclusive("all", "cursor")
 	return command
 }
 
@@ -137,7 +144,8 @@ func newGet(deps Dependencies) *cobra.Command {
 			enabled := deps.MutationsEnabled
 			if deps.ResolveMutationPolicy != nil {
 				var err error
-				enabled, _, err = deps.ResolveMutationPolicy()
+				alias, _ := command.Flags().GetString("environment")
+				enabled, _, err = deps.ResolveMutationPolicy(alias)
 				if err != nil {
 					return err
 				}

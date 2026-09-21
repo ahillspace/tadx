@@ -43,12 +43,14 @@ type Plan struct {
 	NoOp        bool     `json:"no_op"`
 }
 type Result struct {
-	Status           string `json:"status"`
-	WorkbookLUID     string `json:"workbook_luid"`
-	WorkbookName     string `json:"workbook_name"`
-	ProjectLUID      string `json:"project_luid"`
-	OwnerLUID        string `json:"owner_luid"`
-	TableauRequestID string `json:"tableau_request_id,omitempty"`
+	Status           string  `json:"status"`
+	WorkbookLUID     string  `json:"workbook_luid"`
+	WorkbookName     string  `json:"workbook_name"`
+	ProjectLUID      string  `json:"project_luid"`
+	OwnerLUID        string  `json:"owner_luid"`
+	Description      *string `json:"description,omitempty"`
+	EvidenceSource   string  `json:"evidence_source,omitempty"`
+	TableauRequestID string  `json:"tableau_request_id,omitempty"`
 }
 type Output struct {
 	Plan   Plan     `json:"plan"`
@@ -56,11 +58,13 @@ type Output struct {
 	Help   []string `json:"help"`
 }
 type compactResult struct {
-	Status       string `json:"status"`
-	WorkbookLUID string `json:"workbook_luid"`
-	WorkbookName string `json:"workbook_name"`
-	ProjectLUID  string `json:"project_luid"`
-	OwnerLUID    string `json:"owner_luid"`
+	Status         string  `json:"status"`
+	WorkbookLUID   string  `json:"workbook_luid"`
+	WorkbookName   string  `json:"workbook_name"`
+	ProjectLUID    string  `json:"project_luid"`
+	OwnerLUID      string  `json:"owner_luid"`
+	Description    *string `json:"description,omitempty"`
+	EvidenceSource string  `json:"evidence_source,omitempty"`
 }
 type compactOutput struct {
 	Plan    Plan           `json:"plan"`
@@ -72,7 +76,7 @@ type compactOutput struct {
 func (o Output) CompactOutput() any {
 	var result *compactResult
 	if o.Result != nil {
-		result = &compactResult{Status: o.Result.Status, WorkbookLUID: o.Result.WorkbookLUID, WorkbookName: o.Result.WorkbookName, ProjectLUID: o.Result.ProjectLUID, OwnerLUID: o.Result.OwnerLUID}
+		result = &compactResult{Status: o.Result.Status, WorkbookLUID: o.Result.WorkbookLUID, WorkbookName: o.Result.WorkbookName, ProjectLUID: o.Result.ProjectLUID, OwnerLUID: o.Result.OwnerLUID, Description: o.Result.Description, EvidenceSource: o.Result.EvidenceSource}
 	}
 	return compactOutput{Plan: o.Plan, Result: result, Details: "--full", Help: o.Help}
 }

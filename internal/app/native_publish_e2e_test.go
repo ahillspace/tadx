@@ -86,7 +86,7 @@ func TestNativePublishPreviewThroughCLIWithoutManagedArtifact(t *testing.T) {
 				}
 			}
 			out.Reset()
-			if exit := Run(context.Background(), applyArgs, &out, Options{ConfigPath: runtime.configPath, HTTPClient: server.Client(), MutationsEnabled: true, JobDirectory: t.TempDir()}); exit != 0 {
+			if exit := Run(context.Background(), applyArgs, &out, withSiteMutationConsent(t, Options{ConfigPath: runtime.configPath, HTTPClient: server.Client(), JobDirectory: t.TempDir()}, true)); exit != 0 {
 				t.Fatalf("apply exit%d %s", exit, out.String())
 			}
 			if writes != 1 || !strings.Contains(out.String(), "created-1") {

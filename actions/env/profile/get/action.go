@@ -26,7 +26,7 @@ func (a *Action) Execute(ctx context.Context, input Input) (Output, error) {
 	profile, err := a.reader.Get(ctx, input.Alias)
 	if err != nil {
 		retryable, advice := errs.CompleteRetryAdvice(err, "Review the exact environment alias, then retry.")
-		return Output{}, &errs.Error{ID: "env.profile.get.read", Kind: errs.KindOperation, Operation: "env.profile.get", Environment: input.Alias, Summary: "Environment profile could not be read.", Cause: err, Retryable: retryable, CorrectiveAction: advice}
+		return Output{}, &errs.Error{ID: "env.profile.get.read", Kind: errs.KindOperation, Operation: "env.profile.get", Environment: input.Alias, Summary: "Environment profile could not be read.", Cause: err, Retryable: retryable, CorrectiveAction: advice, Phase: errs.PhaseSetup, Outcome: errs.OutcomeNotAttempted}
 	}
 	return Output{Profile: profile, Help: []string{commandhint.Environment(profile.Alias, "auth", "status")}}, nil
 }

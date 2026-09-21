@@ -18,6 +18,7 @@ capability:
   evidence: Official REST documentation
   validation: Captured contract test required
   remote_mutation: true
+  administrative: false
   execution_enabled: false
   supports_preview: true
   supports_batch: false

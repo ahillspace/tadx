@@ -2,13 +2,17 @@ Usage: tadx capability list [flags]
 
 Shared:
   --config <path> --json --full (details, not rows)
+  --environment (--env,-e) <name> (reads: default; writes: sole configured env)
 
 Commands:
   list: List capabilities
-    [--domain <domain>] [--limit <1..10000> (default: 20)] [--mutation] [--owner <owner>]
-    [--product <product>] [--resource <resource>]
+    [--all] [--cursor <cursor>] [--domain <domain>] [--limit <1..10000> (default: 20)] [--mutation]
+    [--owner <owner>] [--product <product>] [--resource <resource>]
     Filters: AND, case-insensitive; product: substring, others: exact.
     --mutation=true: remote writes; --mutation=false: others; omitted: both.
+    --all: complete collection up to 10000; overflow fails.
 
 Rules:
+  list: mutually exclusive: --all, --limit
+  list: mutually exclusive: --all, --cursor
   Booleans: =true|false (bare=true); ... means repeatable.

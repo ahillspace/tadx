@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -13,6 +14,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/ahillspace/tadx/internal/config"
 	"github.com/ahillspace/tadx/internal/toon"
 )
 
@@ -128,37 +130,27 @@ func TestCLIProcessProjectIDSelectorsReachOnlyIsolatedSetup(t *testing.T) {
 
 func TestCLIProcessMutationDiscoveryEnvironment(t *testing.T) {
 	binary := buildCLI(t)
-	args := []string{"capability", "list", "--domain", "content", "--resource", "workbook", "--mutation=true"}
-
-	disabled := runCLI(t, binary, args, nil)
-	if disabled.exitCode != 0 || disabled.stderr != "" {
-		t.Fatalf("disabled gate returned exit %d and stderr %q, want exit 0 and empty stderr\nstdout:\n%s", disabled.exitCode, disabled.stderr, disabled.stdout)
-	}
-	disabledDocument := decodeDocument(t, disabled.stdout)
-	disabledCapabilities, ok := disabledDocument["capabilities"].([]any)
-	if !ok || len(disabledCapabilities) != 4 {
-		t.Fatalf("disabled mutation discovery = %#v", disabledDocument)
-	}
-	for _, raw := range disabledCapabilities {
-		capability, rowOK := raw.(map[string]any)
-		if !rowOK || capability["execution_enabled"] != false {
-			t.Fatalf("disabled capability = %#v", raw)
-		}
-	}
-
-	enabled := runCLI(t, binary, args, map[string]string{"TADX_ENABLE_MUTATIONS": "1"})
-	if enabled.exitCode != 0 || enabled.stderr != "" {
-		t.Fatalf("enabled gate returned exit %d and stderr %q, want exit 0 and empty stderr\nstdout:\n%s", enabled.exitCode, enabled.stderr, enabled.stdout)
-	}
-	enabledDocument := decodeDocument(t, enabled.stdout)
-	capabilities, ok := enabledDocument["capabilities"].([]any)
-	if !ok || len(capabilities) != 4 {
-		t.Fatalf("enabled mutation discovery capabilities = %#v, want four workbook mutations", enabledDocument["capabilities"])
-	}
-	for index, want := range []string{"workbook.delete", "workbook.move", "workbook.publish", "workbook.update"} {
-		capability, rowOK := capabilities[index].(map[string]any)
-		if !rowOK || capability["id"] != want || capability["execution_enabled"] != true {
-			t.Fatalf("enabled capability %d = %#v, want %s enabled", index, capabilities[index], want)
+	for _, consent := range []bool{false, true} {
+		for _, legacy := range []string{"0", "1"} {
+			t.Run(fmt.Sprintf("saved_%t_legacy_%s", consent, legacy), func(t *testing.T) {
+				path := processSiteConfig(t, consent)
+				args := []string{"capability", "list", "--domain", "content", "--resource", "workbook", "--mutation=true", "--environment", "fixture", "--config", path}
+				result := runCLI(t, binary, args, map[string]string{"TADX_ENABLE_MUTATIONS": legacy})
+				if result.exitCode != 0 || result.stderr != "" {
+					t.Fatalf("mutation discovery failed: %+v", result)
+				}
+				document := decodeDocument(t, result.stdout)
+				capabilities, ok := document["capabilities"].([]any)
+				if !ok || len(capabilities) != 4 {
+					t.Fatalf("expected four workbook mutations: %#v", document)
+				}
+				for index, want := range []string{"workbook.delete", "workbook.move", "workbook.publish", "workbook.update"} {
+					capability, ok := capabilities[index].(map[string]any)
+					if !ok || capability["id"] != want || capability["execution_enabled"] != consent {
+						t.Fatalf("legacy %s changed saved %t consent: %#v", legacy, consent, capabilities[index])
+					}
+				}
+			})
 		}
 	}
 }
@@ -170,10 +162,11 @@ func TestCLIProcessMutationCommandsAreVisibleAndGated(t *testing.T) {
 		t.Fatalf("workbook help did not expose mutations: exit = %d, stdout = %s", help.exitCode, help.stdout)
 	}
 
-	result := runCLI(t, binary, []string{"content", "workbook", "delete", "--environment", "missing", "--id", "workbook-1"}, nil)
+	path := processSiteConfig(t, false)
+	result := runCLI(t, binary, []string{"content", "workbook", "delete", "--environment", "fixture", "--id", "workbook-1", "--config", path}, map[string]string{"TADX_ENABLE_MUTATIONS": "1"})
 	document := decodeDocument(t, result.stdout)
 	errorDocument, ok := document["error"].(map[string]any)
-	if result.exitCode != 1 || !ok || errorDocument["id"] != "mutation.disabled" || errorDocument["operation"] != "workbook.delete" {
+	if result.exitCode != 1 || !ok || errorDocument["id"] != "mutation.disabled" || errorDocument["operation"] != "workbook.delete" || errorDocument["environment"] != "fixture" || errorDocument["outcome"] != "not_attempted" || result.stderr != "" {
 		t.Fatalf("mutation gate result = %#v, exit = %d", document, result.exitCode)
 	}
 }
@@ -189,19 +182,24 @@ func TestCLIProcessShorthand(t *testing.T) {
 		}
 	})
 	t.Run("mutation remains gated", func(t *testing.T) {
-		result := runCLI(t, binary, []string{"con", "wb", "del", "--env", "missing", "-i", "workbook-1", "--pv=false", "-f"}, nil)
+		path := processSiteConfig(t, false)
+		result := runCLI(t, binary, []string{"con", "wb", "del", "--env", "fixture", "-i", "workbook-1", "--pv=false", "-f", "--config", path}, map[string]string{"TADX_ENABLE_MUTATIONS": "1"})
 		document := decodeDocument(t, result.stdout)
 		failure, ok := document["error"].(map[string]any)
-		if result.exitCode != 1 || !ok || failure["id"] != "mutation.disabled" || failure["operation"] != "workbook.delete" {
+		if result.exitCode != 1 || !ok || failure["id"] != "mutation.disabled" || failure["operation"] != "workbook.delete" || failure["environment"] != "fixture" || failure["outcome"] != "not_attempted" || result.stderr != "" {
 			t.Fatalf("shorthand mutation result=%+v", result)
 		}
 	})
 	t.Run("help advertises flags", func(t *testing.T) {
 		result := runCLI(t, binary, []string{"con", "wb", "pub", "-h"}, nil)
-		for _, want := range []string{"--full (--ful, -f)", "--preview", "--environment (--env, -e)"} {
+		for _, want := range []string{"--full", "--preview", "--environment (--env,-e)"} {
 			if result.exitCode != 0 || !strings.Contains(result.stdout, want) {
 				t.Fatalf("help missing %q: %+v", want, result)
 			}
+		}
+		canonical := runCLI(t, binary, []string{"content", "workbook", "publish", "--help"}, nil)
+		if canonical.exitCode != 0 || result.stdout != canonical.stdout {
+			t.Fatalf("shorthand help differs from canonical help: short=%+v canonical=%+v", result, canonical)
 		}
 	})
 }
@@ -210,6 +208,20 @@ type processResult struct {
 	exitCode int
 	stdout   string
 	stderr   string
+}
+
+func processSiteConfig(t *testing.T, consent bool) string {
+	t.Helper()
+	environment := config.Environment{URL: "https://tableau.example.invalid", SiteContentURL: "fixture-site", Auth: config.Auth{Type: config.AuthTypePAT}}
+	configuration := config.Config{Version: config.CurrentVersion, DefaultEnvironment: "fixture", Environments: map[string]config.Environment{"fixture": environment}}
+	if err := configuration.SetMutationSetting(environment, consent); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(t.TempDir(), "config.yaml")
+	if err := config.Save(path, configuration); err != nil {
+		t.Fatal(err)
+	}
+	return path
 }
 
 func buildCLI(t *testing.T) string {
@@ -231,7 +243,8 @@ func runCLI(t *testing.T, binary string, args []string, environment map[string]s
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	// A recognized route must never fall through to the developer's installed
-	// profile or its native-store credentials. Each process has no configuration.
+	// profile or its native-store credentials. Each process uses isolated fixture
+	// configuration or an intentionally missing isolated path.
 	isolation := t.TempDir()
 	if !slices.Contains(args, "--config") {
 		args = append(append([]string(nil), args...), "--config", filepath.Join(isolation, "missing.yaml"))

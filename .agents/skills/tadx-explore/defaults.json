@@ -1,0 +1,11 @@
+{
+  "environment": null,
+  "workspace": null,
+  "project_id": null,
+  "max_calls": 100,
+  "max_calls_per_pass": 35,
+  "cleanup_reserve": 20,
+  "max_minutes": 30,
+  "max_passes": 3,
+  "stop_after_no_new_passes": 2
+}

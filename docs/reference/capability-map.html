@@ -926,7 +926,7 @@ h1 { font-weight: 540; }
     <div class="source-meta" aria-label="Source metadata">
       <span class="source-chip"><span class="live-dot" aria-hidden="true"></span><strong id="sourceTotal"></strong> current capabilities</span>
       <span><strong id="bindingCount"></strong> implemented CLI capabilities</span>
-      <span>Snapshot baseline mutation policy: <strong>disabled</strong></span>
+      <span>Static registry inventory: <strong>machine authority not evaluated</strong></span>
     </div>
   </div>
 </header>
@@ -957,7 +957,7 @@ h1 { font-weight: 540; }
 
   <div class="utility-bar">
     <span><strong>Current registry:</strong> native search and resource lists read live by default; <code>--cache</code> selects local-only reads.</span>
-    <span class="execution-summary"><span class="status-light" aria-hidden="true"></span><strong id="executionCount">0</strong> CLI capabilities enabled under the disabled-policy snapshot baseline</span>
+    <span class="execution-summary"><span class="status-light" aria-hidden="true"></span><strong id="executionCount">0</strong> implemented CLI bindings. Check local policy, site consent, and Tableau permissions before execution.</span>
   </div>
 
   <section class="runtime-model" aria-label="Default command behavior">
@@ -976,12 +976,12 @@ h1 { font-weight: 540; }
     </article>
     <article class="default-card pull-default">
       <div class="default-card-head"><h2>Pull operations</h2><span class="default-count" id="pullDefaultCount">0</span></div>
-      <p>Pull commands retrieve from Tableau and write managed artifacts by default. Pulls do not expose <code>--preview</code>.</p>
+      <p>Pull commands retrieve from Tableau and write managed artifacts by default. Use <code>--preview</code> where supported to inspect the planned artifact write.</p>
       <div class="behavior-labels"><span class="badge pull">PULL NOW</span><span class="badge local">LOCAL ARTIFACT WRITE</span></div>
     </article>
     <article class="default-card mutation-default">
       <div class="default-card-head"><h2>Remote mutations</h2><span class="default-count" id="remoteMutationCount">0</span></div>
-      <p>The effective policy comes from <code>tadx mutation set</code>, with <code>TADX_ENABLE_MUTATIONS</code> as an environment override. Check it with <code>tadx mutation status</code>. Supported mutations run when enabled; <code>--preview</code> remains read-only where available.</p>
+      <p>Remote writes require saved consent for the canonical server and exact site, plus permission under the machine's managed policy. Check <code>tadx mutation status --environment &lt;alias&gt;</code> and <code>tadx policy status</code>. Supported <code>--preview</code> operations remain read-only when their capability IDs are allowed.</p>
       <div class="behavior-labels"><span class="badge gated">GATED</span><span class="badge preview">PREVIEW WHERE SUPPORTED</span></div>
     </article>
   </section>
@@ -1036,6 +1036,7 @@ h1 { font-weight: 540; }
             <option value="local">Local write</option>
             <option value="any-write">Any consequential write</option>
             <option value="read-only">No local or remote write</option>
+            <option value="administrative">Administrative capability</option>
           </select>
         </div>
         <div class="field">
@@ -1136,6 +1137,7 @@ h1 { font-weight: 540; }
     "availability": "Cloud / Server; directory/import fields vary",
     "local_write": false,
     "remote_mutation": true,
+    "administrative": true,
     "supports_preview": true,
     "supports_batch": true,
     "safety_guard": "Collision and directory-setting failures preserved",
@@ -1164,6 +1166,7 @@ h1 { font-weight: 540; }
     "availability": "Cloud / Server",
     "local_write": false,
     "remote_mutation": true,
+    "administrative": true,
     "supports_preview": true,
     "supports_batch": true,
     "safety_guard": "Known direct facts only; no claim of full permission-impact analysis",
@@ -1192,6 +1195,7 @@ h1 { font-weight: 540; }
     "availability": "Cloud / Server",
     "local_write": false,
     "remote_mutation": false,
+    "administrative": true,
     "supports_preview": false,
     "supports_batch": true,
     "safety_guard": "Live Tableau by default; --cache is local-only; no fallback; exact group; membership pages normalized",
@@ -1220,6 +1224,7 @@ h1 { font-weight: 540; }
     "availability": "Cloud / Server",
     "local_write": true,
     "remote_mutation": false,
+    "administrative": true,
     "supports_preview": false,
     "supports_batch": false,
     "safety_guard": "Ordinary live lists use bounded provider reads without SQLite access; --all collects through the shared inventory collector and renders in memory; complete unfiltered collections atomically replace the resource cache scope on a best-effort basis; filtered collections save selected observations; cache write failure preserves the live answer with a warning; --cache is local-only; --all rejects incomplete coverage and results beyond 10000 records; --full changes presentation only",
@@ -1244,10 +1249,11 @@ h1 { font-weight: 540; }
     "type": "change",
     "disposition": "ship",
     "owner": "cli",
-    "selectors": "Exact group LUID and user LUID; environment/site (inferred only when one is configured)",
+    "selectors": "Exact group LUID and exactly one user LUID or exact --username; environment/site (inferred only when one is configured)",
     "availability": "Cloud / Server",
     "local_write": false,
     "remote_mutation": true,
+    "administrative": true,
     "supports_preview": true,
     "supports_batch": true,
     "safety_guard": "Authoritative membership pre-read; existing membership is an exit-zero no-op; preserve unrelated members",
@@ -1272,10 +1278,11 @@ h1 { font-weight: 540; }
     "type": "change",
     "disposition": "ship",
     "owner": "cli",
-    "selectors": "Exact group LUID and user LUID; environment/site (inferred only when one is configured)",
+    "selectors": "Exact group LUID and exactly one user LUID or exact --username; environment/site (inferred only when one is configured)",
     "availability": "Cloud / Server",
     "local_write": false,
     "remote_mutation": true,
+    "administrative": true,
     "supports_preview": true,
     "supports_batch": true,
     "safety_guard": "Authoritative membership pre-read; absent membership is an exit-zero no-op; preserve unrelated members",
@@ -1304,6 +1311,7 @@ h1 { font-weight: 540; }
     "availability": "Cloud / Server",
     "local_write": false,
     "remote_mutation": true,
+    "administrative": true,
     "supports_preview": true,
     "supports_batch": true,
     "safety_guard": "Full membership diff preview; ordered calls; stop on first failure; no rollback/resume",
@@ -1332,6 +1340,7 @@ h1 { font-weight: 540; }
     "availability": "Tableau labels with supported API version, licensing and permissions",
     "local_write": false,
     "remote_mutation": true,
+    "administrative": true,
     "supports_preview": true,
     "supports_batch": true,
     "safety_guard": "Exact identities; fresh pre-write validation; read-only preview; confirmed partial outcomes retained",
@@ -1360,6 +1369,7 @@ h1 { font-weight: 540; }
     "availability": "Tableau labels with supported API version, licensing and permissions",
     "local_write": false,
     "remote_mutation": true,
+    "administrative": true,
     "supports_preview": true,
     "supports_batch": true,
     "safety_guard": "Exact identities; fresh pre-write validation; read-only preview; confirmed partial outcomes retained",
@@ -1388,6 +1398,7 @@ h1 { font-weight: 540; }
     "availability": "Tableau labels with supported API version, licensing and permissions",
     "local_write": false,
     "remote_mutation": false,
+    "administrative": true,
     "supports_preview": false,
     "supports_batch": true,
     "safety_guard": "Exact identities; fresh pre-write validation; read-only preview; confirmed partial outcomes retained",
@@ -1408,14 +1419,15 @@ h1 { font-weight: 540; }
   {
     "id": "admin.label.category.list",
     "surface": "tadx admin label-category list",
-    "outcome": "List shared label categories by exact name.",
+    "outcome": "List shared label categories.",
     "type": "find",
     "disposition": "ship",
     "owner": "cli",
-    "selectors": "Exact --name; no invented LUIDs",
+    "selectors": "Environment; --limit or --all",
     "availability": "Tableau labels with supported API version, licensing and permissions",
     "local_write": false,
     "remote_mutation": false,
+    "administrative": true,
     "supports_preview": false,
     "supports_batch": false,
     "safety_guard": "Exact identities; fresh pre-write validation; read-only preview; confirmed partial outcomes retained",
@@ -1444,6 +1456,7 @@ h1 { font-weight: 540; }
     "availability": "Tableau labels with supported API version, licensing and permissions",
     "local_write": false,
     "remote_mutation": true,
+    "administrative": true,
     "supports_preview": true,
     "supports_batch": true,
     "safety_guard": "Exact identities; fresh pre-write validation; read-only preview; confirmed partial outcomes retained",
@@ -1472,6 +1485,7 @@ h1 { font-weight: 540; }
     "availability": "Tableau labels with supported API version, licensing and permissions",
     "local_write": false,
     "remote_mutation": true,
+    "administrative": true,
     "supports_preview": true,
     "supports_batch": true,
     "safety_guard": "Exact identities; fresh pre-write validation; read-only preview; confirmed partial outcomes retained",
@@ -1500,6 +1514,7 @@ h1 { font-weight: 540; }
     "availability": "Tableau labels with supported API version, licensing and permissions",
     "local_write": false,
     "remote_mutation": false,
+    "administrative": true,
     "supports_preview": false,
     "supports_batch": true,
     "safety_guard": "Exact identities; fresh pre-write validation; read-only preview; confirmed partial outcomes retained",
@@ -1520,14 +1535,15 @@ h1 { font-weight: 540; }
   {
     "id": "admin.label.value.list",
     "surface": "tadx admin label-value list",
-    "outcome": "List shared label values by exact name.",
+    "outcome": "List shared label values.",
     "type": "find",
     "disposition": "ship",
     "owner": "cli",
-    "selectors": "Exact --name; no invented LUIDs",
+    "selectors": "Environment; --limit or --all",
     "availability": "Tableau labels with supported API version, licensing and permissions",
     "local_write": false,
     "remote_mutation": false,
+    "administrative": true,
     "supports_preview": false,
     "supports_batch": false,
     "safety_guard": "Exact identities; fresh pre-write validation; read-only preview; confirmed partial outcomes retained",
@@ -1556,6 +1572,7 @@ h1 { font-weight: 540; }
     "availability": "Tableau labels with supported API version, licensing and permissions",
     "local_write": false,
     "remote_mutation": true,
+    "administrative": true,
     "supports_preview": true,
     "supports_batch": true,
     "safety_guard": "Exact identities; fresh pre-write validation; read-only preview; confirmed partial outcomes retained",
@@ -1580,10 +1597,11 @@ h1 { font-weight: 540; }
     "type": "change",
     "disposition": "ship",
     "owner": "cli",
-    "selectors": "Resource kind/LUID, principal type/LUID, capability, mode; optional project default kind",
+    "selectors": "Resource kind/LUID, principal type, exactly one principal LUID or exact --principal-username, capability, mode; optional project default kind",
     "availability": "Cloud / Server",
     "local_write": false,
     "remote_mutation": true,
+    "administrative": true,
     "supports_preview": true,
     "supports_batch": true,
     "safety_guard": "Direct or project-default rules only; inherited and conflicting opposite modes fail; identical rules are no-op",
@@ -1608,10 +1626,11 @@ h1 { font-weight: 540; }
     "type": "change",
     "disposition": "ship",
     "owner": "cli",
-    "selectors": "Resource kind/LUID, principal type/LUID, capability, mode; optional project default kind",
+    "selectors": "Resource kind/LUID, principal type, exactly one principal LUID or exact --principal-username, capability, mode; optional project default kind",
     "availability": "Cloud / Server",
     "local_write": false,
     "remote_mutation": true,
+    "administrative": true,
     "supports_preview": true,
     "supports_batch": true,
     "safety_guard": "Direct or project-default rules only; inherited and mismatched modes fail; absent rules are no-op",
@@ -1640,6 +1659,7 @@ h1 { font-weight: 540; }
     "availability": "Cloud / Server",
     "local_write": false,
     "remote_mutation": false,
+    "administrative": true,
     "supports_preview": false,
     "supports_batch": true,
     "safety_guard": "Distinguish direct/default/inherited/unknown; no effective-permission engine",
@@ -1668,6 +1688,7 @@ h1 { font-weight: 540; }
     "availability": "Cloud / Server; fields vary by product/version",
     "local_write": false,
     "remote_mutation": true,
+    "administrative": true,
     "supports_preview": true,
     "supports_batch": true,
     "safety_guard": "No inferred role/auth setting; quota/license failures preserved",
@@ -1692,10 +1713,11 @@ h1 { font-weight: 540; }
     "type": "change",
     "disposition": "ship",
     "owner": "cli",
-    "selectors": "User LUID",
+    "selectors": "User LUID or exact --username",
     "availability": "Cloud / Server",
     "local_write": false,
     "remote_mutation": true,
+    "administrative": true,
     "supports_preview": true,
     "supports_batch": true,
     "safety_guard": "Ownership constraints surfaced; never silently transfer content",
@@ -1724,6 +1746,7 @@ h1 { font-weight: 540; }
     "availability": "Cloud / Server",
     "local_write": false,
     "remote_mutation": false,
+    "administrative": true,
     "supports_preview": false,
     "supports_batch": true,
     "safety_guard": "Live Tableau by default; --cache is local-only; no fallback; ambiguity fails",
@@ -1752,6 +1775,7 @@ h1 { font-weight: 540; }
     "availability": "Cloud / Server",
     "local_write": true,
     "remote_mutation": false,
+    "administrative": true,
     "supports_preview": false,
     "supports_batch": false,
     "safety_guard": "Ordinary live lists use bounded provider reads without SQLite access; --all collects through the shared inventory collector and renders in memory; complete unfiltered collections atomically replace the resource cache scope on a best-effort basis; filtered collections save selected observations; cache write failure preserves the live answer with a warning; --cache is local-only; --all rejects incomplete coverage and results beyond 10000 records; --full changes presentation only",
@@ -1776,10 +1800,11 @@ h1 { font-weight: 540; }
     "type": "change",
     "disposition": "ship",
     "owner": "cli",
-    "selectors": "User LUID",
+    "selectors": "User LUID or exact --username",
     "availability": "Cloud / Server; fields vary",
     "local_write": false,
     "remote_mutation": true,
+    "administrative": true,
     "supports_preview": true,
     "supports_batch": true,
     "safety_guard": "Equal values no-op when authoritative pre-read exists",
@@ -1808,6 +1833,7 @@ h1 { font-weight: 540; }
     "availability": "Local / all",
     "local_write": true,
     "remote_mutation": false,
+    "administrative": false,
     "supports_preview": true,
     "supports_batch": false,
     "safety_guard": "Bounded home-relative paths; symlink rejection; staged replacement of TADX-owned packages including local edits; unrelated skills preserved; no instruction or rules files",
@@ -1835,6 +1861,7 @@ h1 { font-weight: 540; }
     "availability": "Local / all",
     "local_write": true,
     "remote_mutation": false,
+    "administrative": false,
     "supports_preview": true,
     "supports_batch": false,
     "safety_guard": "Exact bounded TADX-owned package paths; symlink rejection; unrelated skills preserved",
@@ -1862,6 +1889,7 @@ h1 { font-weight: 540; }
     "availability": "Cloud / Server",
     "local_write": false,
     "remote_mutation": false,
+    "administrative": false,
     "supports_preview": false,
     "supports_batch": false,
     "safety_guard": "Never echo PAT/token; complete environment-variable pair overrides native storage",
@@ -1889,6 +1917,7 @@ h1 { font-weight: 540; }
     "availability": "Local plus Cloud / Server validation",
     "local_write": true,
     "remote_mutation": false,
+    "administrative": false,
     "supports_preview": false,
     "supports_batch": false,
     "safety_guard": "No credential flags or non-TTY input; validate before storage; no plaintext fallback; target-bound opaque reference only in config",
@@ -1916,6 +1945,7 @@ h1 { font-weight: 540; }
     "availability": "Local / all",
     "local_write": true,
     "remote_mutation": false,
+    "administrative": false,
     "supports_preview": true,
     "supports_batch": false,
     "safety_guard": "Exact alias; idempotent local removal; remote PAT remains valid",
@@ -1943,6 +1973,7 @@ h1 { font-weight: 540; }
     "availability": "Local / all",
     "local_write": false,
     "remote_mutation": false,
+    "administrative": false,
     "supports_preview": false,
     "supports_batch": false,
     "safety_guard": "Does not claim remote validity; secret redaction",
@@ -1970,6 +2001,7 @@ h1 { font-weight: 540; }
     "availability": "Cloud / Server",
     "local_write": true,
     "remote_mutation": false,
+    "administrative": false,
     "supports_preview": true,
     "supports_batch": false,
     "safety_guard": "Inventory failures preserve the prior generation; selected permission 403s preserve useful inventory with explicit incomplete permission coverage; environment cache_max_concurrency defaults to 32 and accepts 1..256; starts at min(4, maximum) and ramps gradually; rate-limited reads share one run cooldown; explicit refresh transactionally rebuilds recognized older cache schemas",
@@ -1997,6 +2029,7 @@ h1 { font-weight: 540; }
     "availability": "Local / all",
     "local_write": false,
     "remote_mutation": false,
+    "administrative": false,
     "supports_preview": false,
     "supports_batch": false,
     "safety_guard": "Uninitialized before first refresh; scope completeness remains explicit; 12-hour stale warning; older cache schema requires explicit cache refresh; status never rebuilds the cache",
@@ -2024,6 +2057,7 @@ h1 { font-weight: 540; }
     "availability": "Local / all",
     "local_write": false,
     "remote_mutation": false,
+    "administrative": false,
     "supports_preview": false,
     "supports_batch": false,
     "safety_guard": "Exact ID; includes delegated surfaces",
@@ -2047,10 +2081,11 @@ h1 { font-weight: 540; }
     "type": "find",
     "disposition": "ship",
     "owner": "cli",
-    "selectors": "Domain/resource/owner/product/mutation filters",
+    "selectors": "Domain/resource/owner/product/mutation filters; --limit with optional --cursor, or --all up to 10000",
     "availability": "Local / all",
     "local_write": false,
     "remote_mutation": false,
+    "administrative": false,
     "supports_preview": false,
     "supports_batch": false,
     "safety_guard": "Always discoverable; mutation rows report whether execution is enabled",
@@ -2074,13 +2109,14 @@ h1 { font-weight: 540; }
     "type": "inspect",
     "disposition": "ship",
     "owner": "cli",
-    "selectors": "Exact REST --id or read-only --metadata-id where supported; bounded scope and limits",
+    "selectors": "Environment; required --type and --id; repeatable --check; optional --direct-only and --limit",
     "availability": "Tableau Catalog / Metadata API; REST metadata edits require supported version and asset permissions",
     "local_write": false,
     "remote_mutation": false,
+    "administrative": false,
     "supports_preview": false,
     "supports_batch": true,
-    "safety_guard": "Distinct identity namespaces; bounded coverage; local validation; explicit writes preserve unmentioned properties",
+    "safety_guard": "Distinct identity namespaces; bounded scope; local validation; explicit writes preserve unmentioned properties",
     "artifact_effect": "None",
     "upstream_operation": "Metadata GraphQL reads; released REST metadata methods",
     "evidence": "docs/evidence/metadata-semantics-contract.md; HTTP fixtures and action regressions",
@@ -2101,13 +2137,14 @@ h1 { font-weight: 540; }
     "type": "inspect",
     "disposition": "ship",
     "owner": "cli",
-    "selectors": "Exact REST --id or read-only --metadata-id where supported; bounded scope and limits",
+    "selectors": "Environment; --metadata-id, or --id with --table-id",
     "availability": "Tableau Catalog / Metadata API; REST metadata edits require supported version and asset permissions",
     "local_write": false,
     "remote_mutation": false,
+    "administrative": false,
     "supports_preview": false,
     "supports_batch": true,
-    "safety_guard": "Distinct identity namespaces; bounded coverage; local validation; explicit writes preserve unmentioned properties",
+    "safety_guard": "Distinct identity namespaces; bounded scope; local validation; explicit writes preserve unmentioned properties",
     "artifact_effect": "None",
     "upstream_operation": "Metadata GraphQL reads; released REST metadata methods",
     "evidence": "docs/evidence/metadata-semantics-contract.md; HTTP fixtures and action regressions",
@@ -2129,13 +2166,14 @@ h1 { font-weight: 540; }
     "type": "find",
     "disposition": "ship",
     "owner": "cli",
-    "selectors": "Exact REST --id or read-only --metadata-id where supported; bounded scope and limits",
+    "selectors": "Environment; required --table-id; optional exact --name; --limit or --all",
     "availability": "Tableau Catalog / Metadata API; REST metadata edits require supported version and asset permissions",
     "local_write": false,
     "remote_mutation": false,
+    "administrative": false,
     "supports_preview": false,
     "supports_batch": true,
-    "safety_guard": "Distinct identity namespaces; bounded coverage; local validation; explicit writes preserve unmentioned properties",
+    "safety_guard": "Distinct identity namespaces; bounded scope; local validation; explicit writes preserve unmentioned properties",
     "artifact_effect": "None",
     "upstream_operation": "Metadata GraphQL reads; released REST metadata methods",
     "evidence": "docs/evidence/metadata-semantics-contract.md; HTTP fixtures and action regressions",
@@ -2157,13 +2195,14 @@ h1 { font-weight: 540; }
     "type": "change",
     "disposition": "ship",
     "owner": "cli",
-    "selectors": "Exact REST --id or read-only --metadata-id where supported; bounded scope and limits",
+    "selectors": "Environment; required --id and --table-id; optional description and repeated tags; --preview",
     "availability": "Tableau Catalog / Metadata API; REST metadata edits require supported version and asset permissions",
     "local_write": false,
     "remote_mutation": true,
+    "administrative": false,
     "supports_preview": true,
     "supports_batch": true,
-    "safety_guard": "Distinct identity namespaces; bounded coverage; local validation; explicit writes preserve unmentioned properties",
+    "safety_guard": "Distinct identity namespaces; bounded scope; local validation; explicit writes preserve unmentioned properties",
     "artifact_effect": "None",
     "upstream_operation": "Metadata GraphQL reads; released REST metadata methods",
     "evidence": "docs/evidence/metadata-semantics-contract.md; HTTP fixtures and action regressions",
@@ -2185,13 +2224,14 @@ h1 { font-weight: 540; }
     "type": "inspect",
     "disposition": "ship",
     "owner": "cli",
-    "selectors": "Exact REST --id or read-only --metadata-id where supported; bounded scope and limits",
+    "selectors": "Environment; exactly one of --id or --metadata-id",
     "availability": "Tableau Catalog / Metadata API; REST metadata edits require supported version and asset permissions",
     "local_write": false,
     "remote_mutation": false,
+    "administrative": false,
     "supports_preview": false,
     "supports_batch": true,
-    "safety_guard": "Distinct identity namespaces; bounded coverage; local validation; explicit writes preserve unmentioned properties",
+    "safety_guard": "Distinct identity namespaces; bounded scope; local validation; explicit writes preserve unmentioned properties",
     "artifact_effect": "None",
     "upstream_operation": "Metadata GraphQL reads; released REST metadata methods",
     "evidence": "docs/evidence/metadata-semantics-contract.md; HTTP fixtures and action regressions",
@@ -2213,13 +2253,14 @@ h1 { font-weight: 540; }
     "type": "find",
     "disposition": "ship",
     "owner": "cli",
-    "selectors": "Exact REST --id or read-only --metadata-id where supported; bounded scope and limits",
+    "selectors": "Environment; optional exact --name; --limit or --all",
     "availability": "Tableau Catalog / Metadata API; REST metadata edits require supported version and asset permissions",
     "local_write": false,
     "remote_mutation": false,
+    "administrative": false,
     "supports_preview": false,
     "supports_batch": false,
-    "safety_guard": "Distinct identity namespaces; bounded coverage; local validation; explicit writes preserve unmentioned properties",
+    "safety_guard": "Distinct identity namespaces; bounded scope; local validation; explicit writes preserve unmentioned properties",
     "artifact_effect": "None",
     "upstream_operation": "Metadata GraphQL reads; released REST metadata methods",
     "evidence": "docs/evidence/metadata-semantics-contract.md; HTTP fixtures and action regressions",
@@ -2241,13 +2282,14 @@ h1 { font-weight: 540; }
     "type": "change",
     "disposition": "ship",
     "owner": "cli",
-    "selectors": "Exact REST --id or read-only --metadata-id where supported; bounded scope and limits",
+    "selectors": "Environment; required --id; optional description, contact, and repeated tags; --preview",
     "availability": "Tableau Catalog / Metadata API; REST metadata edits require supported version and asset permissions",
     "local_write": false,
     "remote_mutation": true,
+    "administrative": false,
     "supports_preview": true,
     "supports_batch": true,
-    "safety_guard": "Distinct identity namespaces; bounded coverage; local validation; explicit writes preserve unmentioned properties",
+    "safety_guard": "Distinct identity namespaces; bounded scope; local validation; explicit writes preserve unmentioned properties",
     "artifact_effect": "None",
     "upstream_operation": "Metadata GraphQL reads; released REST metadata methods",
     "evidence": "docs/evidence/metadata-semantics-contract.md; HTTP fixtures and action regressions",
@@ -2269,13 +2311,14 @@ h1 { font-weight: 540; }
     "type": "find",
     "disposition": "ship",
     "owner": "cli",
-    "selectors": "Exact REST --id or read-only --metadata-id where supported; bounded scope and limits",
+    "selectors": "Environment; positional query; repeatable --type; optional --table-id; --limit or --all",
     "availability": "Tableau Catalog / Metadata API; REST metadata edits require supported version and asset permissions",
     "local_write": false,
     "remote_mutation": false,
+    "administrative": false,
     "supports_preview": false,
     "supports_batch": false,
-    "safety_guard": "Distinct identity namespaces; bounded coverage; local validation; explicit writes preserve unmentioned properties",
+    "safety_guard": "Distinct identity namespaces; bounded scope; local validation; explicit writes preserve unmentioned properties",
     "artifact_effect": "None",
     "upstream_operation": "Metadata GraphQL reads; released REST metadata methods",
     "evidence": "docs/evidence/metadata-semantics-contract.md; HTTP fixtures and action regressions",
@@ -2296,13 +2339,14 @@ h1 { font-weight: 540; }
     "type": "inspect",
     "disposition": "ship",
     "owner": "cli",
-    "selectors": "Exact REST --id or read-only --metadata-id where supported; bounded scope and limits",
+    "selectors": "Environment; exactly one of --id or --metadata-id",
     "availability": "Tableau Catalog / Metadata API; REST metadata edits require supported version and asset permissions",
     "local_write": false,
     "remote_mutation": false,
+    "administrative": false,
     "supports_preview": false,
     "supports_batch": true,
-    "safety_guard": "Distinct identity namespaces; bounded coverage; local validation; explicit writes preserve unmentioned properties",
+    "safety_guard": "Distinct identity namespaces; bounded scope; local validation; explicit writes preserve unmentioned properties",
     "artifact_effect": "None",
     "upstream_operation": "Metadata GraphQL reads; released REST metadata methods",
     "evidence": "docs/evidence/metadata-semantics-contract.md; HTTP fixtures and action regressions",
@@ -2324,13 +2368,14 @@ h1 { font-weight: 540; }
     "type": "find",
     "disposition": "ship",
     "owner": "cli",
-    "selectors": "Exact REST --id or read-only --metadata-id where supported; bounded scope and limits",
+    "selectors": "Environment; optional exact --name and --database-id; --limit or --all",
     "availability": "Tableau Catalog / Metadata API; REST metadata edits require supported version and asset permissions",
     "local_write": false,
     "remote_mutation": false,
+    "administrative": false,
     "supports_preview": false,
     "supports_batch": true,
-    "safety_guard": "Distinct identity namespaces; bounded coverage; local validation; explicit writes preserve unmentioned properties",
+    "safety_guard": "Distinct identity namespaces; bounded scope; local validation; explicit writes preserve unmentioned properties",
     "artifact_effect": "None",
     "upstream_operation": "Metadata GraphQL reads; released REST metadata methods",
     "evidence": "docs/evidence/metadata-semantics-contract.md; HTTP fixtures and action regressions",
@@ -2352,13 +2397,14 @@ h1 { font-weight: 540; }
     "type": "change",
     "disposition": "ship",
     "owner": "cli",
-    "selectors": "Exact REST --id or read-only --metadata-id where supported; bounded scope and limits",
+    "selectors": "Environment; required --id; optional description, contact, and repeated tags; --preview",
     "availability": "Tableau Catalog / Metadata API; REST metadata edits require supported version and asset permissions",
     "local_write": false,
     "remote_mutation": true,
+    "administrative": false,
     "supports_preview": true,
     "supports_batch": true,
-    "safety_guard": "Distinct identity namespaces; bounded coverage; local validation; explicit writes preserve unmentioned properties",
+    "safety_guard": "Distinct identity namespaces; bounded scope; local validation; explicit writes preserve unmentioned properties",
     "artifact_effect": "None",
     "upstream_operation": "Metadata GraphQL reads; released REST metadata methods",
     "evidence": "docs/evidence/metadata-semantics-contract.md; HTTP fixtures and action regressions",
@@ -2384,6 +2430,7 @@ h1 { font-weight: 540; }
     "availability": "Tableau labels with supported API version, licensing and permissions",
     "local_write": false,
     "remote_mutation": true,
+    "administrative": false,
     "supports_preview": true,
     "supports_batch": true,
     "safety_guard": "Exact identities; fresh pre-write validation; read-only preview; confirmed partial outcomes retained",
@@ -2412,6 +2459,7 @@ h1 { font-weight: 540; }
     "availability": "Tableau labels with supported API version, licensing and permissions",
     "local_write": false,
     "remote_mutation": false,
+    "administrative": false,
     "supports_preview": false,
     "supports_batch": true,
     "safety_guard": "Exact identities; fresh pre-write validation; read-only preview; confirmed partial outcomes retained",
@@ -2436,10 +2484,11 @@ h1 { font-weight: 540; }
     "type": "find",
     "disposition": "ship",
     "owner": "cli",
-    "selectors": "Attachment --id; related asset --type and --target-id",
+    "selectors": "Environment; exact --type and --target-id; repeatable --category; --limit or --all",
     "availability": "Tableau labels with supported API version, licensing and permissions",
     "local_write": false,
     "remote_mutation": false,
+    "administrative": false,
     "supports_preview": false,
     "supports_batch": true,
     "safety_guard": "Exact identities; fresh pre-write validation; read-only preview; confirmed partial outcomes retained",
@@ -2468,6 +2517,7 @@ h1 { font-weight: 540; }
     "availability": "Tableau labels with supported API version, licensing and permissions",
     "local_write": false,
     "remote_mutation": true,
+    "administrative": false,
     "supports_preview": true,
     "supports_batch": true,
     "safety_guard": "Exact identities; fresh pre-write validation; read-only preview; confirmed partial outcomes retained",
@@ -2496,6 +2546,7 @@ h1 { font-weight: 540; }
     "availability": "Cloud / Server",
     "local_write": false,
     "remote_mutation": false,
+    "administrative": false,
     "supports_preview": false,
     "supports_batch": false,
     "safety_guard": "No executable TADX operation; this contract does not prescribe external tooling",
@@ -2519,6 +2570,7 @@ h1 { font-weight: 540; }
     "availability": "Cloud / Server",
     "local_write": false,
     "remote_mutation": false,
+    "administrative": false,
     "supports_preview": false,
     "supports_batch": false,
     "safety_guard": "No executable TADX operation; this contract does not prescribe external tooling",
@@ -2542,6 +2594,7 @@ h1 { font-weight: 540; }
     "availability": "Cloud / Server",
     "local_write": false,
     "remote_mutation": false,
+    "administrative": false,
     "supports_preview": false,
     "supports_batch": false,
     "safety_guard": "No executable TADX operation; this contract does not prescribe external tooling",
@@ -2565,6 +2618,7 @@ h1 { font-weight: 540; }
     "availability": "Cloud / Server",
     "local_write": false,
     "remote_mutation": true,
+    "administrative": false,
     "supports_preview": true,
     "supports_batch": true,
     "safety_guard": "Re-resolve authoritative LUID immediately before delete; preserve dependency failures; no cascade claims",
@@ -2593,6 +2647,7 @@ h1 { font-weight: 540; }
     "availability": "Cloud / Server",
     "local_write": false,
     "remote_mutation": false,
+    "administrative": false,
     "supports_preview": false,
     "supports_batch": false,
     "safety_guard": "No executable TADX operation; this contract does not prescribe external tooling",
@@ -2616,6 +2671,7 @@ h1 { font-weight: 540; }
     "availability": "Cloud / Server; VDS metadata/model Server 2025.1+ per C1",
     "local_write": false,
     "remote_mutation": false,
+    "administrative": false,
     "supports_preview": false,
     "supports_batch": true,
     "safety_guard": "Live Tableau by default; --cache is local-only; no fallback; record Metadata API permission mode and partial warnings",
@@ -2644,6 +2700,7 @@ h1 { font-weight: 540; }
     "availability": "Cloud / Server",
     "local_write": true,
     "remote_mutation": false,
+    "administrative": false,
     "supports_preview": false,
     "supports_batch": false,
     "safety_guard": "Ordinary live lists use bounded provider reads without SQLite access; --all collects through the shared inventory collector and renders in memory; complete unfiltered collections atomically replace the resource cache scope on a best-effort basis; filtered collections save selected observations; cache write failure preserves the live answer with a warning; --cache is local-only; --all rejects incomplete coverage and results beyond 10000 records; --full changes presentation only; cached project-name filtering uses indexed canonical project LUIDs and complete project coverage",
@@ -2672,6 +2729,7 @@ h1 { font-weight: 540; }
     "availability": "Cloud / Server",
     "local_write": false,
     "remote_mutation": false,
+    "administrative": false,
     "supports_preview": false,
     "supports_batch": false,
     "safety_guard": "No executable TADX operation; this contract does not prescribe external tooling",
@@ -2695,6 +2753,7 @@ h1 { font-weight: 540; }
     "availability": "Cloud / Server",
     "local_write": false,
     "remote_mutation": true,
+    "administrative": false,
     "supports_preview": true,
     "supports_batch": true,
     "safety_guard": "Re-resolve source and destination immediately before mutation; equal destination is an exit-zero no-op; no cross-site move",
@@ -2723,6 +2782,7 @@ h1 { font-weight: 540; }
     "availability": "Cloud / Server; composed path API 3.29 / Tableau 2026.2 per C1",
     "local_write": false,
     "remote_mutation": true,
+    "administrative": false,
     "supports_preview": true,
     "supports_batch": true,
     "safety_guard": "Exactly one mode is required: --create, --overwrite, --append, or --replace; see tadx content datasource publish --help. Batch selectors prevalidated; sequential processing continues independent failures and returns aggregate failure; mutation execution policy applies; read-only preview remains available when writes are disabled",
@@ -2751,6 +2811,7 @@ h1 { font-weight: 540; }
     "availability": "Cloud / Server; composed round-trip requires Tableau 2026.2 behavior per C1",
     "local_write": true,
     "remote_mutation": false,
+    "administrative": false,
     "supports_preview": true,
     "supports_batch": true,
     "safety_guard": "Batch selectors prevalidated; sequential processing continues independent failures and returns aggregate failure; dirty re-pull requires --overwrite; incomplete lineage warns; no package-semantic loss",
@@ -2779,6 +2840,7 @@ h1 { font-weight: 540; }
     "availability": "Cloud / Server",
     "local_write": false,
     "remote_mutation": false,
+    "administrative": false,
     "supports_preview": false,
     "supports_batch": false,
     "safety_guard": "No executable TADX operation; this contract does not prescribe external tooling",
@@ -2802,6 +2864,7 @@ h1 { font-weight: 540; }
     "availability": "Cloud / Server with VDS or Metadata API access",
     "local_write": false,
     "remote_mutation": false,
+    "administrative": false,
     "supports_preview": false,
     "supports_batch": true,
     "safety_guard": "Query Tableau by default; --cache is local-only with no source fallback; preserve raw field identity separately from display captions; report more_available without opaque cursors",
@@ -2830,6 +2893,7 @@ h1 { font-weight: 540; }
     "availability": "Cloud / Server",
     "local_write": false,
     "remote_mutation": true,
+    "administrative": false,
     "supports_preview": true,
     "supports_batch": true,
     "safety_guard": "Re-resolve authoritative identity immediately before mutation; at least one change required; equal values are an exit-zero no-op",
@@ -2858,6 +2922,7 @@ h1 { font-weight: 540; }
     "availability": "Cloud / Server / Pulse as configured",
     "local_write": false,
     "remote_mutation": false,
+    "administrative": false,
     "supports_preview": false,
     "supports_batch": false,
     "safety_guard": "Redacted checks; no external-tool connection checks; no persistent logging unless TADX_LOG_LEVEL is set",
@@ -2884,6 +2949,7 @@ h1 { font-weight: 540; }
     "availability": "Local / all",
     "local_write": true,
     "remote_mutation": false,
+    "administrative": false,
     "supports_preview": true,
     "supports_batch": false,
     "safety_guard": "Schema validation; collision guard; atomic file replacement; omitted cache concurrency uses 32",
@@ -2911,6 +2977,7 @@ h1 { font-weight: 540; }
     "availability": "Local / all",
     "local_write": false,
     "remote_mutation": false,
+    "administrative": false,
     "supports_preview": false,
     "supports_batch": false,
     "safety_guard": "Secret redaction; exact alias",
@@ -2934,10 +3001,11 @@ h1 { font-weight: 540; }
     "type": "find",
     "disposition": "ship",
     "owner": "cli",
-    "selectors": "Optional config path",
+    "selectors": "Optional config path; --limit for a bounded page or --all up to 10000 profiles",
     "availability": "Local / all",
     "local_write": false,
     "remote_mutation": false,
+    "administrative": false,
     "supports_preview": false,
     "supports_batch": false,
     "safety_guard": "Secret redaction",
@@ -2965,6 +3033,7 @@ h1 { font-weight: 540; }
     "availability": "Local / all",
     "local_write": true,
     "remote_mutation": false,
+    "administrative": false,
     "supports_preview": true,
     "supports_batch": false,
     "safety_guard": "Exact alias; default-reference guard",
@@ -2992,6 +3061,7 @@ h1 { font-weight: 540; }
     "availability": "Local / all",
     "local_write": true,
     "remote_mutation": false,
+    "administrative": false,
     "supports_preview": true,
     "supports_batch": false,
     "safety_guard": "Alias must exist; no secret output",
@@ -3019,6 +3089,7 @@ h1 { font-weight: 540; }
     "availability": "Local / all",
     "local_write": true,
     "remote_mutation": false,
+    "administrative": false,
     "supports_preview": true,
     "supports_batch": false,
     "safety_guard": "Exact alias; secret redaction; atomic file replacement; setting and clearing cache concurrency conflict; clearing restores default 32",
@@ -3046,6 +3117,7 @@ h1 { font-weight: 540; }
     "availability": "Cloud / Server with flow support",
     "local_write": false,
     "remote_mutation": true,
+    "administrative": false,
     "supports_preview": true,
     "supports_batch": true,
     "safety_guard": "Re-resolve authoritative LUID immediately before delete; preserve dependency failures; no cascade claims",
@@ -3070,10 +3142,11 @@ h1 { font-weight: 540; }
     "type": "inspect",
     "disposition": "ship",
     "owner": "cli",
-    "selectors": "Flow LUID or exact name/project path",
+    "selectors": "Flow LUID or exact name with --project or --project-id",
     "availability": "Cloud / Server with flow support",
     "local_write": false,
     "remote_mutation": false,
+    "administrative": false,
     "supports_preview": false,
     "supports_batch": true,
     "safety_guard": "Live Tableau by default; --cache is local-only; no fallback; exact resolution; ambiguity fails",
@@ -3102,6 +3175,7 @@ h1 { font-weight: 540; }
     "availability": "Cloud / Server with flow support; REST API 3.3+ per C1",
     "local_write": true,
     "remote_mutation": false,
+    "administrative": false,
     "supports_preview": false,
     "supports_batch": false,
     "safety_guard": "Ordinary live lists use bounded provider reads without SQLite access; --all collects through the shared inventory collector and renders in memory; complete unfiltered collections atomically replace the resource cache scope on a best-effort basis; filtered collections save selected observations; cache write failure preserves the live answer with a warning; --cache is local-only; --all rejects incomplete coverage and results beyond 10000 records; --full changes presentation only",
@@ -3130,6 +3204,7 @@ h1 { font-weight: 540; }
     "availability": "Cloud / Server with flow support",
     "local_write": false,
     "remote_mutation": true,
+    "administrative": false,
     "supports_preview": true,
     "supports_batch": true,
     "safety_guard": "Source and destination re-resolved; cross-site move rejected; no connection or schedule rewrite",
@@ -3158,6 +3233,7 @@ h1 { font-weight: 540; }
     "availability": "Cloud / Server with flow support",
     "local_write": false,
     "remote_mutation": true,
+    "administrative": false,
     "supports_preview": true,
     "supports_batch": true,
     "safety_guard": "Batch selectors prevalidated; sequential processing continues independent failures and returns aggregate failure; preview shows resolved environment/name/LUID; overwrite explicit",
@@ -3186,6 +3262,7 @@ h1 { font-weight: 540; }
     "availability": "Cloud / Server with flow support",
     "local_write": true,
     "remote_mutation": false,
+    "administrative": false,
     "supports_preview": true,
     "supports_batch": true,
     "safety_guard": "Batch selectors prevalidated; sequential processing continues independent failures and returns aggregate failure; dirty re-pull requires --overwrite; incomplete lineage warns",
@@ -3214,6 +3291,7 @@ h1 { font-weight: 540; }
     "availability": "Cloud / Server with flow support; owner endpoint requires API 3.27+",
     "local_write": false,
     "remote_mutation": true,
+    "administrative": false,
     "supports_preview": true,
     "supports_batch": true,
     "safety_guard": "Re-resolve authoritative identity immediately before mutation; equal owner is an exit-zero no-op; Tableau does not expose a flow rename field",
@@ -3242,6 +3320,7 @@ h1 { font-weight: 540; }
     "availability": "Tableau Cloud / Server; only documented cancellable job types and administrator permissions",
     "local_write": false,
     "remote_mutation": true,
+    "administrative": false,
     "supports_preview": true,
     "supports_batch": false,
     "safety_guard": "Preview is read-only; cancellation is never claimed for unsupported types such as publication jobs; acknowledgement is distinct from confirmed cancelled state",
@@ -3269,6 +3348,7 @@ h1 { font-weight: 540; }
     "availability": "Local worker status; Tableau Cloud / Server with Query Job permission for remote observations",
     "local_write": false,
     "remote_mutation": false,
+    "administrative": false,
     "supports_preview": false,
     "supports_batch": true,
     "safety_guard": "Exact identities and saved targets; at most one bounded check per unfinished remote job; unavailable observations never imply success or failure",
@@ -3296,6 +3376,7 @@ h1 { font-weight: 540; }
     "availability": "Tableau Cloud / Server with Query Job permission; a durable receipt is optional when an exact job ID is supplied",
     "local_write": false,
     "remote_mutation": false,
+    "administrative": false,
     "supports_preview": false,
     "supports_batch": false,
     "safety_guard": "Read-only recovery or observation; exact target; bounded status requests; interruption and unavailable state remain unknown",
@@ -3323,6 +3404,7 @@ h1 { font-weight: 540; }
     "availability": "Local",
     "local_write": false,
     "remote_mutation": false,
+    "administrative": false,
     "supports_preview": false,
     "supports_batch": false,
     "safety_guard": "Bounded redacted output only; no authentication or replay; does not replace itself",
@@ -3349,6 +3431,7 @@ h1 { font-weight: 540; }
     "availability": "Cloud / Server with Metadata API",
     "local_write": true,
     "remote_mutation": false,
+    "administrative": false,
     "supports_preview": true,
     "supports_batch": true,
     "safety_guard": "Content REST and Metadata identities remain distinct; physical assets use Metadata IDs only; incomplete results are explicit; no dependency acquisition",
@@ -3369,18 +3452,19 @@ h1 { font-weight: 540; }
   {
     "id": "mutation.set",
     "surface": "tadx mutation set",
-    "outcome": "Persist user remote mutation policy until explicitly changed.",
+    "outcome": "Persist mutation consent for one Tableau server and exact site until explicitly changed.",
     "type": "change",
     "disposition": "ship",
     "owner": "cli",
-    "selectors": "Required --enabled Boolean",
+    "selectors": "Required --enabled Boolean; exact --environment alias when ambiguous",
     "availability": "Local",
     "local_write": true,
     "remote_mutation": false,
+    "administrative": false,
     "supports_preview": false,
     "supports_batch": false,
-    "safety_guard": "Explicit setting change; agents require permission for persistent scope; environment override wins",
-    "artifact_effect": "Saved user policy only",
+    "safety_guard": "Explicit selected-site setting change; agents require permission for persistent scope; no global or environment override",
+    "artifact_effect": "Saved site consent only",
     "upstream_operation": "None",
     "evidence": "internal/app/mutation_setting_e2e_test.go",
     "evidence_level": "local-contract",
@@ -3396,27 +3480,112 @@ h1 { font-weight: 540; }
   {
     "id": "mutation.status",
     "surface": "tadx mutation status",
-    "outcome": "Show effective remote mutation policy and its source.",
+    "outcome": "List saved site consent for all configured environments, or one selected environment.",
     "type": "inspect",
     "disposition": "ship",
     "owner": "cli",
-    "selectors": "None",
+    "selectors": "All configured environments by default; optional exact --environment alias; --full adds server, site, and source",
     "availability": "Local",
     "local_write": false,
     "remote_mutation": false,
+    "administrative": false,
     "supports_preview": false,
     "supports_batch": false,
-    "safety_guard": "Read-only; process environment overrides saved user policy",
+    "safety_guard": "Read-only site consent; aliases for the same canonical server and site share the setting; managed remote-mutation restrictions are reported separately",
     "artifact_effect": "None",
     "upstream_operation": "None",
-    "evidence": "internal/app/mutation_setting_e2e_test.go",
+    "evidence": "internal/app/mutation_status_e2e_test.go; internal/app/mutation_setting_e2e_test.go",
     "evidence_level": "local-contract",
     "verification": "ready",
     "implementation": "implemented",
-    "validation": "Local policy precedence",
+    "validation": "All-environment consent inventory, exact target resolution, compact/full encoding symmetry, and managed restrictions",
     "command_path": [
       "mutation",
       "status"
+    ],
+    "raw_capable": false
+  },
+  {
+    "id": "policy.samples",
+    "surface": "tadx policy samples",
+    "outcome": "Create three managed policy candidates without installing or activating them.",
+    "type": "change",
+    "disposition": "ship",
+    "owner": "cli",
+    "selectors": "Required --output directory; exclusive new files only",
+    "availability": "Local / all; recovery exemption",
+    "local_write": true,
+    "remote_mutation": false,
+    "administrative": false,
+    "supports_preview": false,
+    "supports_batch": false,
+    "safety_guard": "Never overwrite candidates or modify the active policy; remains available for recovery",
+    "artifact_effect": "Creates candidate JSON files only",
+    "upstream_operation": "None",
+    "evidence": "internal/app/managed_policy_e2e_test.go",
+    "evidence_level": "local-contract",
+    "verification": "ready",
+    "implementation": "implemented",
+    "validation": "Exclusive creation and template validation",
+    "command_path": [
+      "policy",
+      "samples"
+    ],
+    "raw_capable": false
+  },
+  {
+    "id": "policy.status",
+    "surface": "tadx policy status",
+    "outcome": "Inspect the fixed administrator-owned policy and effective restrictions.",
+    "type": "inspect",
+    "disposition": "ship",
+    "owner": "cli",
+    "selectors": "None; --full includes allowed IDs and protection checks",
+    "availability": "Local / all; recovery exemption",
+    "local_write": false,
+    "remote_mutation": false,
+    "administrative": false,
+    "supports_preview": false,
+    "supports_batch": false,
+    "safety_guard": "Read-only fixed system location; remains available for recovery",
+    "artifact_effect": "None",
+    "upstream_operation": "None",
+    "evidence": "internal/app/managed_policy_e2e_test.go",
+    "evidence_level": "local-contract",
+    "verification": "ready",
+    "implementation": "implemented",
+    "validation": "Active, unmanaged, and invalid-policy status",
+    "command_path": [
+      "policy",
+      "status"
+    ],
+    "raw_capable": false
+  },
+  {
+    "id": "policy.validate",
+    "surface": "tadx policy validate",
+    "outcome": "Validate candidate JSON schema and exact capability IDs without activation.",
+    "type": "inspect",
+    "disposition": "ship",
+    "owner": "cli",
+    "selectors": "One exact candidate file",
+    "availability": "Local / all; recovery exemption",
+    "local_write": false,
+    "remote_mutation": false,
+    "administrative": false,
+    "supports_preview": false,
+    "supports_batch": false,
+    "safety_guard": "No policy activation or protection claim; remains available for recovery",
+    "artifact_effect": "None",
+    "upstream_operation": "None",
+    "evidence": "internal/app/managed_policy_e2e_test.go",
+    "evidence_level": "local-contract",
+    "verification": "ready",
+    "implementation": "implemented",
+    "validation": "Bounded strict schema and ID validation",
+    "command_path": [
+      "policy",
+      "validate"
     ],
     "raw_capable": false
   },
@@ -3431,6 +3600,7 @@ h1 { font-weight: 540; }
     "availability": "Cloud / Server",
     "local_write": false,
     "remote_mutation": true,
+    "administrative": false,
     "supports_preview": true,
     "supports_batch": true,
     "safety_guard": "Same-name collision and ambiguous parent fail",
@@ -3459,6 +3629,7 @@ h1 { font-weight: 540; }
     "availability": "Cloud / Server",
     "local_write": false,
     "remote_mutation": true,
+    "administrative": false,
     "supports_preview": true,
     "supports_batch": true,
     "safety_guard": "Exact LUID revalidated; preview identifies the target; upstream cascade behavior is explicit",
@@ -3487,6 +3658,7 @@ h1 { font-weight: 540; }
     "availability": "Cloud / Server",
     "local_write": false,
     "remote_mutation": false,
+    "administrative": false,
     "supports_preview": false,
     "supports_batch": true,
     "safety_guard": "Live Tableau by default; --cache is local-only; no fallback; exact full paths are opaque selectors; zero or multiple candidates fail; LUIDs remain authoritative when display paths collide",
@@ -3515,6 +3687,7 @@ h1 { font-weight: 540; }
     "availability": "Cloud / Server",
     "local_write": true,
     "remote_mutation": false,
+    "administrative": false,
     "supports_preview": false,
     "supports_batch": true,
     "safety_guard": "Ordinary live lists use bounded provider reads without SQLite access; --all collects through the shared inventory collector and renders in memory; complete unfiltered collections atomically replace the resource cache scope on a best-effort basis; filtered collections save selected observations; cache write failure preserves the live answer with a warning; --cache is local-only; --all rejects incomplete coverage and results beyond 10000 records; --full changes presentation only",
@@ -3543,6 +3716,7 @@ h1 { font-weight: 540; }
     "availability": "Cloud / Server",
     "local_write": false,
     "remote_mutation": true,
+    "administrative": false,
     "supports_preview": true,
     "supports_batch": true,
     "safety_guard": "Re-resolve project and parent immediately before mutation; equal parent is an exit-zero no-op; prevent self-parent and descendant cycles",
@@ -3571,6 +3745,7 @@ h1 { font-weight: 540; }
     "availability": "Cloud / Server",
     "local_write": false,
     "remote_mutation": true,
+    "administrative": false,
     "supports_preview": true,
     "supports_batch": true,
     "safety_guard": "Equal values are an exit-zero no-op; hierarchy changes use project.move",
@@ -3599,6 +3774,7 @@ h1 { font-weight: 540; }
     "availability": "Tableau Cloud / Pulse only",
     "local_write": false,
     "remote_mutation": true,
+    "administrative": false,
     "supports_preview": true,
     "supports_batch": true,
     "safety_guard": "Validate fields live; exact name/datasource collision; revalidate before mutation; unknown outcomes preserve created identity",
@@ -3627,6 +3803,7 @@ h1 { font-weight: 540; }
     "availability": "Tableau Cloud / Pulse only",
     "local_write": false,
     "remote_mutation": true,
+    "administrative": false,
     "supports_preview": true,
     "supports_batch": true,
     "safety_guard": "Exact GET before deletion; Tableau remains authoritative for dependency and cascade behavior",
@@ -3655,6 +3832,7 @@ h1 { font-weight: 540; }
     "availability": "Tableau Cloud / Pulse only",
     "local_write": false,
     "remote_mutation": false,
+    "administrative": false,
     "supports_preview": false,
     "supports_batch": true,
     "safety_guard": "Exact LUID; --cache never contacts Tableau or falls back",
@@ -3683,6 +3861,7 @@ h1 { font-weight: 540; }
     "availability": "Tableau Cloud / Pulse only",
     "local_write": false,
     "remote_mutation": false,
+    "administrative": false,
     "supports_preview": false,
     "supports_batch": false,
     "safety_guard": "Internal bounded continuation; truthful more_available; exact name and datasource filters apply before the returned limit; --cache never contacts Tableau or falls back",
@@ -3711,6 +3890,7 @@ h1 { font-weight: 540; }
     "availability": "Tableau Cloud / Pulse only",
     "local_write": false,
     "remote_mutation": true,
+    "administrative": false,
     "supports_preview": true,
     "supports_batch": true,
     "safety_guard": "New identities only; validate fields and mappings; never overwrite originals; no followers or insights",
@@ -3739,6 +3919,7 @@ h1 { font-weight: 540; }
     "availability": "Tableau Cloud / Pulse only",
     "local_write": true,
     "remote_mutation": false,
+    "administrative": false,
     "supports_preview": true,
     "supports_batch": true,
     "safety_guard": "Dirty re-pull requires --overwrite; remote read is authoritative",
@@ -3767,6 +3948,7 @@ h1 { font-weight: 540; }
     "availability": "Tableau Cloud / Pulse",
     "local_write": false,
     "remote_mutation": false,
+    "administrative": false,
     "supports_preview": false,
     "supports_batch": false,
     "safety_guard": "No executable TADX operation; this contract does not prescribe external tooling",
@@ -3790,6 +3972,7 @@ h1 { font-weight: 540; }
     "availability": "Tableau Cloud / Pulse only",
     "local_write": false,
     "remote_mutation": true,
+    "administrative": false,
     "supports_preview": true,
     "supports_batch": true,
     "safety_guard": "Exact GET before deletion; Tableau remains authoritative for dependency behavior",
@@ -3818,6 +4001,7 @@ h1 { font-weight: 540; }
     "availability": "Tableau Cloud / Pulse only",
     "local_write": false,
     "remote_mutation": true,
+    "administrative": false,
     "supports_preview": true,
     "supports_batch": true,
     "safety_guard": "No ambiguous subscriber; a proven duplicate response converges to already-following",
@@ -3846,6 +4030,7 @@ h1 { font-weight: 540; }
     "availability": "Tableau Cloud / Pulse only",
     "local_write": false,
     "remote_mutation": false,
+    "administrative": false,
     "supports_preview": false,
     "supports_batch": true,
     "safety_guard": "Bound normalized output; reject incomplete or mismatched subscription identity; --cache never contacts Tableau or falls back",
@@ -3874,6 +4059,7 @@ h1 { font-weight: 540; }
     "availability": "Tableau Cloud / Pulse only",
     "local_write": false,
     "remote_mutation": true,
+    "administrative": false,
     "supports_preview": true,
     "supports_batch": true,
     "safety_guard": "Preserve source specification; require a meaningful change; use get-or-create; verify exact metric, definition, datasource, site ownership, and requested specification without waiting for list visibility",
@@ -3902,6 +4088,7 @@ h1 { font-weight: 540; }
     "availability": "Tableau Cloud / Pulse",
     "local_write": false,
     "remote_mutation": false,
+    "administrative": false,
     "supports_preview": false,
     "supports_batch": false,
     "safety_guard": "No executable TADX operation; this contract does not prescribe external tooling",
@@ -3925,6 +4112,7 @@ h1 { font-weight: 540; }
     "availability": "Tableau Cloud / Pulse only",
     "local_write": false,
     "remote_mutation": false,
+    "administrative": false,
     "supports_preview": false,
     "supports_batch": true,
     "safety_guard": "Exact LUID; preserve unrecognized specification fields; --cache never contacts Tableau or falls back",
@@ -3953,6 +4141,7 @@ h1 { font-weight: 540; }
     "availability": "Tableau Cloud / Pulse only",
     "local_write": false,
     "remote_mutation": false,
+    "administrative": false,
     "supports_preview": false,
     "supports_batch": true,
     "safety_guard": "Definition-scoped identity; internal continuation with truthful more_available; --cache never contacts Tableau or falls back",
@@ -3981,6 +4170,7 @@ h1 { font-weight: 540; }
     "availability": "Tableau Cloud / Pulse only",
     "local_write": false,
     "remote_mutation": true,
+    "administrative": false,
     "supports_preview": true,
     "supports_batch": true,
     "safety_guard": "Ambiguity fails; relationship selectors revalidate to the same subscription before mutation",
@@ -4009,6 +4199,7 @@ h1 { font-weight: 540; }
     "availability": "Cloud / Server 2022.3+ for native content search; Pulse types require Tableau Cloud",
     "local_write": false,
     "remote_mutation": false,
+    "administrative": false,
     "supports_preview": false,
     "supports_batch": false,
     "safety_guard": "Nonempty live content terms use native search; native datasource results are translated to classic REST LUIDs; administration and Pulse retain dedicated adapters; --cache is local-only; blank text requires a concrete type and uses list semantics; internal pagination satisfies --limit with more_available and no opaque cursor output; ordinary live searches do not read or write SQLite",
@@ -4035,6 +4226,7 @@ h1 { font-weight: 540; }
     "availability": "Local / all",
     "local_write": false,
     "remote_mutation": false,
+    "administrative": false,
     "supports_preview": false,
     "supports_batch": false,
     "safety_guard": "No authentication, remote requests, credential-store reads, or filesystem changes; configured credentials are not verified authentication",
@@ -4061,6 +4253,7 @@ h1 { font-weight: 540; }
     "availability": "Local / all; GitHub release access required",
     "local_write": true,
     "remote_mutation": false,
+    "administrative": false,
     "supports_preview": false,
     "supports_batch": false,
     "safety_guard": "Verify platform release checksum; stage binary replacement with rollback; replace only TADX-owned Guidance; --check makes no installation changes",
@@ -4087,6 +4280,7 @@ h1 { font-weight: 540; }
     "availability": "Local / all; release check requires GitHub access",
     "local_write": false,
     "remote_mutation": false,
+    "administrative": false,
     "supports_preview": false,
     "supports_batch": false,
     "safety_guard": "Offline by default; optional check performs one bounded request and never changes the binary",
@@ -4113,6 +4307,7 @@ h1 { font-weight: 540; }
     "availability": "Cloud / Server",
     "local_write": false,
     "remote_mutation": false,
+    "administrative": false,
     "supports_preview": false,
     "supports_batch": false,
     "safety_guard": "No executable TADX operation; this contract does not prescribe external tooling",
@@ -4136,6 +4331,7 @@ h1 { font-weight: 540; }
     "availability": "Cloud / Server",
     "local_write": false,
     "remote_mutation": false,
+    "administrative": false,
     "supports_preview": false,
     "supports_batch": false,
     "safety_guard": "No executable TADX operation; this contract does not prescribe external tooling",
@@ -4159,6 +4355,7 @@ h1 { font-weight: 540; }
     "availability": "Cloud / Server",
     "local_write": false,
     "remote_mutation": false,
+    "administrative": false,
     "supports_preview": false,
     "supports_batch": false,
     "safety_guard": "No executable TADX operation; this contract does not prescribe external tooling",
@@ -4182,6 +4379,7 @@ h1 { font-weight: 540; }
     "availability": "Cloud / Server",
     "local_write": false,
     "remote_mutation": false,
+    "administrative": false,
     "supports_preview": false,
     "supports_batch": false,
     "safety_guard": "No executable TADX operation; this contract does not prescribe external tooling",
@@ -4205,6 +4403,7 @@ h1 { font-weight: 540; }
     "availability": "Outside TADX",
     "local_write": false,
     "remote_mutation": false,
+    "administrative": false,
     "supports_preview": false,
     "supports_batch": false,
     "safety_guard": "No executable TADX operation; this contract does not prescribe external tooling",
@@ -4228,6 +4427,7 @@ h1 { font-weight: 540; }
     "availability": "Cloud / Server",
     "local_write": false,
     "remote_mutation": true,
+    "administrative": false,
     "supports_preview": true,
     "supports_batch": true,
     "safety_guard": "Re-resolve authoritative LUID immediately before delete; no cascade claims; repeated missing target is explicit",
@@ -4256,6 +4456,7 @@ h1 { font-weight: 540; }
     "availability": "Cloud / Server",
     "local_write": false,
     "remote_mutation": false,
+    "administrative": false,
     "supports_preview": false,
     "supports_batch": true,
     "safety_guard": "Live Tableau by default; --cache is local-only; no fallback; exact resolution; ambiguity fails",
@@ -4284,6 +4485,7 @@ h1 { font-weight: 540; }
     "availability": "Cloud / Server",
     "local_write": true,
     "remote_mutation": false,
+    "administrative": false,
     "supports_preview": false,
     "supports_batch": false,
     "safety_guard": "Ordinary live lists use bounded provider reads without SQLite access; --all collects through the shared inventory collector and renders in memory; complete unfiltered collections atomically replace the resource cache scope on a best-effort basis; filtered collections save selected observations; cache write failure preserves the live answer with a warning; --cache is local-only; --all rejects incomplete coverage and results beyond 10000 records; --full changes presentation only",
@@ -4312,6 +4514,7 @@ h1 { font-weight: 540; }
     "availability": "Cloud / Server",
     "local_write": false,
     "remote_mutation": true,
+    "administrative": false,
     "supports_preview": true,
     "supports_batch": true,
     "safety_guard": "Re-resolve source and destination immediately before mutation; equal destination is an exit-zero no-op; no cross-site move",
@@ -4340,6 +4543,7 @@ h1 { font-weight: 540; }
     "availability": "Cloud / Server; TWB validation API only on API 3.29 / Tableau 2026.2+ per C1",
     "local_write": false,
     "remote_mutation": true,
+    "administrative": false,
     "supports_preview": true,
     "supports_batch": true,
     "safety_guard": "Batch selectors prevalidated; sequential processing continues independent failures and returns aggregate failure; preview shows resolved environment/name/LUID; collision/overwrite explicit; no fuzzy target",
@@ -4368,6 +4572,7 @@ h1 { font-weight: 540; }
     "availability": "Cloud / Server",
     "local_write": true,
     "remote_mutation": false,
+    "administrative": false,
     "supports_preview": true,
     "supports_batch": true,
     "safety_guard": "Batch selectors prevalidated; sequential processing continues independent failures and returns aggregate failure; dirty workbook re-pull requires --overwrite; dirty dependencies stop acquisition; incomplete lineage warns; bundle persistence is recoverable",
@@ -4396,6 +4601,7 @@ h1 { font-weight: 540; }
     "availability": "Cloud / Server",
     "local_write": false,
     "remote_mutation": true,
+    "administrative": false,
     "supports_preview": true,
     "supports_batch": true,
     "safety_guard": "Re-resolve authoritative identity immediately before mutation; at least one change required; equal values are an exit-zero no-op",
@@ -4424,6 +4630,7 @@ h1 { font-weight: 540; }
     "availability": "Local / all",
     "local_write": true,
     "remote_mutation": false,
+    "administrative": false,
     "supports_preview": true,
     "supports_batch": true,
     "safety_guard": "Exact identity; workspace boundary; dirty state explicit; never expands into generic cleanup",
@@ -4452,6 +4659,7 @@ h1 { font-weight: 540; }
     "availability": "Local / all",
     "local_write": true,
     "remote_mutation": false,
+    "administrative": false,
     "supports_preview": true,
     "supports_batch": true,
     "safety_guard": "Path-boundary guard; managed payloads preserved by default",
@@ -4479,6 +4687,7 @@ h1 { font-weight: 540; }
     "availability": "Local / all",
     "local_write": true,
     "remote_mutation": false,
+    "administrative": false,
     "supports_preview": true,
     "supports_batch": false,
     "safety_guard": "Rejects existing destination and symlinked entries; portable name; new identity; name/ID/path collision checks; registered root appears only under --full",
@@ -4506,6 +4715,7 @@ h1 { font-weight: 540; }
     "availability": "Local / all",
     "local_write": true,
     "remote_mutation": false,
+    "administrative": false,
     "supports_preview": true,
     "supports_batch": false,
     "safety_guard": "Portable name, identity, root collision, and path-boundary checks; no implicit creation by pull; registered root appears only under --full",
@@ -4533,6 +4743,7 @@ h1 { font-weight: 540; }
     "availability": "Local / all",
     "local_write": true,
     "remote_mutation": false,
+    "administrative": false,
     "supports_preview": true,
     "supports_batch": true,
     "safety_guard": "Registered root, canonical containment, dirty-state, manifest, symlink, and broad-target guards; default-reference guard",
@@ -4556,10 +4767,11 @@ h1 { font-weight: 540; }
     "type": "find",
     "disposition": "ship",
     "owner": "cli",
-    "selectors": "Bounded registered-workspace page",
+    "selectors": "--limit for a bounded registered-workspace page or --all up to 10000 workspaces",
     "availability": "Local / all",
     "local_write": false,
     "remote_mutation": false,
+    "administrative": false,
     "supports_preview": false,
     "supports_batch": false,
     "safety_guard": "No unbounded filesystem scan; machine-local roots appear only under --full",
@@ -4587,6 +4799,7 @@ h1 { font-weight: 540; }
     "availability": "Local / all",
     "local_write": true,
     "remote_mutation": false,
+    "administrative": false,
     "supports_preview": true,
     "supports_batch": true,
     "safety_guard": "Collision/path-boundary guard; no remote move",
@@ -4615,6 +4828,7 @@ h1 { font-weight: 540; }
     "availability": "Local / all",
     "local_write": true,
     "remote_mutation": false,
+    "administrative": false,
     "supports_preview": true,
     "supports_batch": false,
     "safety_guard": "Requires a valid tadx.yaml; name/ID/path collision checks; adopts existing identity, no directory mutation",
@@ -4642,6 +4856,7 @@ h1 { font-weight: 540; }
     "availability": "Local / all",
     "local_write": true,
     "remote_mutation": false,
+    "administrative": false,
     "supports_preview": true,
     "supports_batch": false,
     "safety_guard": "Workspace must exist, remain registered, and have a valid manifest",
@@ -4665,10 +4880,11 @@ h1 { font-weight: 540; }
     "type": "inspect",
     "disposition": "ship",
     "owner": "cli",
-    "selectors": "--workspace or deterministic resolution chain",
+    "selectors": "--workspace or deterministic resolution chain; --limit for a bounded page or --all up to 10000 artifacts",
     "availability": "Local / all",
     "local_write": false,
     "remote_mutation": false,
+    "administrative": false,
     "supports_preview": false,
     "supports_batch": false,
     "safety_guard": "No locking; concurrent races are caller responsibility; machine-local root appears only under --full",
@@ -4696,6 +4912,7 @@ h1 { font-weight: 540; }
     "availability": "Local / all",
     "local_write": true,
     "remote_mutation": false,
+    "administrative": false,
     "supports_preview": true,
     "supports_batch": true,
     "safety_guard": "Exact registration; default-reference guard; filesystem remains untouched",
@@ -4735,8 +4952,8 @@ h1 { font-weight: 540; }
 
   const defaultBehavior = cap => {
     if (cap.owner !== "cli") return "Execution belongs to the named external owner and has no TADX command selectors.";
-    if (cap.remote_mutation) return "Requires the effective remote-mutation policy to be enabled; --preview remains read-only where supported.";
-    if (cap.pull_default) return "Retrieves from Tableau and writes the managed artifact immediately; no --preview surface is registered.";
+    if (cap.remote_mutation) return "Requires saved consent for the selected server and exact site, an allowed capability ID, and managed policy permission for remote mutations. Supported --preview remains read-only when the capability ID is allowed.";
+    if (cap.pull_default) return cap.supports_preview ? "Retrieves from Tableau and writes the managed artifact by default; --preview inspects the plan without writing the artifact." : "Retrieves from Tableau and writes the managed artifact immediately; no --preview surface is registered.";
     if (cap.inventory_list) return cap.outcome;
     if (cap.id === "search.run") return "Uses native live search for nonempty content terms; --cache is local-only and blank text requires a concrete type.";
     if (cap.local_write) return "Performs the bounded local write after validation.";
@@ -4762,7 +4979,7 @@ h1 { font-weight: 540; }
       selectors: [cap.selectors],
       blocker: cap.verification === "blocked" ? (cap.validation || "Verification blocked") : "",
       mcp_overlap: "",
-      execution_enabled: cap.owner === "cli" && cap.implementation === "implemented" && !cap.remote_mutation,
+      command_available: cap.owner === "cli" && cap.implementation === "implemented" && cap.verification !== "blocked",
       cache_opt_in: cacheOptIn,
       inventory_list: inventoryListIDs.has(cap.id),
       native_search: cap.id === "search.run",
@@ -4791,7 +5008,7 @@ h1 { font-weight: 540; }
     planned: capabilities.filter(cap => cap.implementation_state === "planned").length,
     blocked: capabilities.filter(cap => cap.verification_readiness === "blocked").length,
     delegated: capabilities.filter(cap => cap.disposition === "delegated").length,
-    execution_enabled: capabilities.filter(cap => cap.execution_enabled).length,
+    command_available: capabilities.filter(cap => cap.command_available).length,
     native_search: capabilities.filter(cap => cap.native_search).length,
     pull_default: capabilities.filter(cap => cap.pull_default).length,
     remote_mutations: capabilities.filter(cap => cap.remote_mutation).length,
@@ -4837,7 +5054,7 @@ h1 { font-weight: 540; }
   setText("plannedCount", counts.planned);
   setText("blockedCount", counts.blocked);
   setText("delegatedCount", counts.delegated);
-  setText("executionCount", counts.execution_enabled);
+  setText("executionCount", counts.command_available);
   setText("nativeSearchCount", counts.native_search);
   setText("pullDefaultCount", counts.pull_default);
   setText("remoteMutationCount", counts.remote_mutations);
@@ -4901,6 +5118,7 @@ h1 { font-weight: 540; }
       case "local": if (!cap.local_write) return false; break;
       case "any-write": if (!cap.remote_mutation && !cap.local_write) return false; break;
       case "read-only": if (cap.remote_mutation || cap.local_write) return false; break;
+      case "administrative": if (!cap.administrative) return false; break;
     }
 
     switch (refs.blocker.value) {
@@ -5079,13 +5297,14 @@ h1 { font-weight: 540; }
       else if (cap.native_search) addBadge(meta, "NATIVE SEARCH", "live", "Uses Tableau native search for live content terms");
       else if (cap.inventory_list) addBadge(meta, "LIVE LIST", "live", cap.default_source);
       else if (cap.cache_opt_in) addBadge(meta, "CACHE", "cache", "Live by default; --cache is local-only");
-      if (cap.remote_mutation) addBadge(meta, "REMOTE", "remote", "Remote mutation; gated by TADX_ENABLE_MUTATIONS=1");
+      if (cap.remote_mutation) addBadge(meta, "REMOTE", "remote", "Requires site consent and managed policy permission");
+      if (cap.administrative) addBadge(meta, "ADMIN", "gated", "Administrative capability, explicitly classified by the registry");
       if (cap.local_write) addBadge(meta, "LOCAL", "local", "Local write");
       if (cap.disposition === "delegated") addBadge(meta, "DELEGATED", "delegated", "External owner");
       if (cap.verification_readiness === "blocked") addBadge(meta, "BLOCKED", "blocked", `Blocked by ${cap.blocker}`);
       const execution = document.createElement("span");
-      execution.className = `exec-pill ${cap.execution_enabled ? "enabled" : "disabled"}`;
-      execution.textContent = cap.execution_enabled ? "ENABLED" : "DISABLED";
+      execution.className = "exec-pill disabled";
+      execution.textContent = cap.command_available ? "CHECK POLICY" : "NO CLI BINDING";
       meta.appendChild(execution);
     } else {
       if (node.type === "delegated-root") addBadge(meta, "DELEGATED", "delegated", "Operations owned outside the TADX CLI");
@@ -5098,7 +5317,7 @@ h1 { font-weight: 540; }
     row.appendChild(meta);
 
     row.setAttribute("aria-label", node.cap
-      ? `${node.cap.id}, ${stateMeta[node.cap.implementation_state].label}, ${node.cap.execution_enabled ? "execution enabled" : "execution disabled"}`
+      ? `${node.cap.id}, ${stateMeta[node.cap.implementation_state].label}, ${node.cap.command_available ? "local policy check required" : "no executable CLI binding"}`
       : `${node.label}, ${node.capabilities.length} capabilities`);
 
     row.addEventListener("click", () => {
@@ -5180,11 +5399,12 @@ h1 { font-weight: 540; }
     else if (cap.cache_opt_in) badges.push('<span class="badge live">LIVE DEFAULT</span><span class="badge cache">--CACHE</span>');
     if (cap.pull_default) badges.push('<span class="badge pull">PULL NOW</span>');
     if (cap.remote_mutation) badges.push('<span class="badge remote">REMOTE MUTATION</span><span class="badge gated">GATED</span>');
+    if (cap.administrative) badges.push('<span class="badge gated">ADMINISTRATIVE</span>');
     if (cap.local_write) badges.push('<span class="badge local">LOCAL WRITE</span>');
     if (cap.supports_preview) badges.push('<span class="badge preview">SUPPORTS --PREVIEW</span>');
     if (cap.disposition === "delegated") badges.push('<span class="badge delegated">DELEGATED</span>');
     if (cap.verification_readiness === "blocked") badges.push('<span class="badge blocked">BLOCKED</span>');
-    badges.push(`<span class="exec-pill ${cap.execution_enabled ? "enabled" : "disabled"}">${cap.execution_enabled ? "EXECUTION ENABLED" : "EXECUTION DISABLED"}</span>`);
+    badges.push(`<span class="exec-pill disabled">${cap.command_available ? "LOCAL POLICY CHECK REQUIRED" : "NO CLI BINDING"}</span>`);
     return badges.join("");
   }
 
@@ -5192,9 +5412,9 @@ h1 { font-weight: 540; }
     if (cap.implementation_state === "external/delegated") return "Execution belongs to the delegated external owner, not the TADX CLI.";
     if (cap.verification_readiness === "blocked") return `Not executable because verification is blocked by ${cap.blocker}.`;
     if (cap.implementation_state !== "implemented") return "No executable command binding is present yet.";
-    if (cap.remote_mutation) return "Implemented and discoverable, but marked disabled under this snapshot's disabled mutation-policy baseline. The effective policy may come from the saved user setting or the environment override; inspect it with tadx mutation status. Agents require explicit permission before changing either scope.";
-    if (cap.pull_default) return "Execution is enabled. Invoking the pull retrieves from Tableau and writes the managed artifact immediately; pulls do not expose --preview.";
-    return "Implemented and execution-enabled under this snapshot's disabled mutation-policy baseline.";
+    if (cap.remote_mutation) return "This static inventory does not grant authority. Remote writes require saved consent for the canonical server and exact site, plus managed policy permission. Inspect tadx mutation status --environment <alias> and tadx policy status. Agents need explicit permission before changing persisted site consent.";
+    if (cap.pull_default) return "This static inventory does not evaluate machine policy. When permitted, pull retrieves from Tableau and writes the managed artifact; inspect the registered preview support for this action.";
+    return "Implemented in the CLI. This static inventory does not evaluate machine policy, selected-site requirements, or Tableau permissions. Inspect local policy and capability availability before execution.";
   }
 
   function breadcrumbFor(cap) {
@@ -5242,10 +5462,11 @@ h1 { font-weight: 540; }
         <h3>Implementation and execution</h3>
         <dl class="fact-grid">
           <div class="fact"><dt>Implementation state</dt><dd>${escapeHTML(stateMeta[cap.implementation_state].label)}</dd></div>
-          <div class="fact"><dt>Execution enabled now</dt><dd class="${cap.execution_enabled ? "value-good" : "value-muted"}">${cap.execution_enabled ? "Yes" : "No"}</dd></div>
+          <div class="fact"><dt>Machine authority</dt><dd class="value-muted">Not evaluated by this static page</dd></div>
           <div class="fact"><dt>Verification readiness</dt><dd class="${cap.verification_readiness === "blocked" ? "value-danger" : "value-good"}">${escapeHTML(cap.verification_readiness)}</dd></div>
           <div class="fact"><dt>Blocker</dt><dd class="${cap.blocker ? "value-danger" : "value-muted"}">${escapeHTML(cap.blocker || "None")}</dd></div>
           <div class="fact"><dt>Remote mutation</dt><dd>${cap.remote_mutation ? "Yes" : "No"}</dd></div>
+          <div class="fact"><dt>Administrative</dt><dd>${cap.administrative ? "Yes" : "No"}</dd></div>
           <div class="fact"><dt>Local write</dt><dd>${cap.local_write ? "Yes" : "No"}</dd></div>
           <div class="fact"><dt>Supports --preview</dt><dd>${cap.supports_preview ? "Yes" : "No"}</dd></div>
           <div class="fact"><dt>Supports batches</dt><dd>${cap.supports_batch ? "Yes" : "No"}</dd></div>
@@ -5305,7 +5526,7 @@ h1 { font-weight: 540; }
     const blocked = node.capabilities.filter(cap => cap.verification_readiness === "blocked").length;
     const remote = node.capabilities.filter(cap => cap.remote_mutation).length;
     const local = node.capabilities.filter(cap => cap.local_write).length;
-    const enabled = node.capabilities.filter(cap => cap.execution_enabled).length;
+    const available = node.capabilities.filter(cap => cap.command_available).length;
     const delegated = node.capabilities.filter(cap => cap.disposition === "delegated").length;
     const cache = node.capabilities.filter(cap => cap.cache_opt_in).length;
     const inventoryLists = node.capabilities.filter(cap => cap.inventory_list).length;
@@ -5325,7 +5546,7 @@ h1 { font-weight: 540; }
         <h3>Group totals</h3>
         <dl class="fact-grid">
           <div class="fact"><dt>Capabilities</dt><dd>${node.capabilities.length}</dd></div>
-          <div class="fact"><dt>Execution enabled now</dt><dd>${enabled}</dd></div>
+          <div class="fact"><dt>Implemented CLI bindings</dt><dd>${available}</dd></div>
           <div class="fact"><dt>Blocked</dt><dd>${blocked}</dd></div>
           <div class="fact"><dt>Delegated</dt><dd>${delegated}</dd></div>
           <div class="fact"><dt>Remote mutations</dt><dd>${remote}</dd></div>

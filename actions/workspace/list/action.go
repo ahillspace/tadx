@@ -12,9 +12,13 @@ import (
 
 // Input selects one bounded workspace registry page.
 type Input struct {
+	All    bool
 	Limit  int
 	Cursor string
 }
+
+// MaxLimit is the largest permitted workspace list page.
+const MaxLimit = 10000
 
 // Workspace is one complete registered workspace record.
 type Workspace struct {
@@ -94,18 +98,31 @@ func (a *Action) Execute(ctx context.Context, input Input) (Output, error) {
 	if a == nil || a.lister == nil {
 		return Output{}, runtimeError("workspace listing is not configured")
 	}
-	if input.Limit == 0 {
+	if input.All && (input.Limit != 0 || input.Cursor != "") {
+		return Output{}, usage("--all cannot be combined with --limit or --cursor")
+	}
+	if input.All {
+		input.Limit = MaxLimit
+	} else if input.Limit == 0 {
 		input.Limit = 20
 	}
-	if input.Limit < 1 || input.Limit > 10000 {
+	if input.Limit < 1 || input.Limit > MaxLimit {
 		return Output{}, usage("limit must be between 1 and 10000")
 	}
 	page, err := a.lister.List(ctx, input.Limit, input.Cursor)
 	if err != nil {
-		return Output{}, &errs.Error{ID: "workspace.list.failed", Kind: errs.KindOperation, Operation: "workspace.list", Summary: "Workspace listing failed.", Cause: err, Retryable: errs.Bool(false), CorrectiveAction: "Repair the workspace registry, then retry."}
+		return Output{}, &errs.Error{ID: "workspace.list.failed", Kind: errs.KindOperation, Operation: "workspace.list", Summary: "Workspace listing failed.", Cause: err, Retryable: errs.Bool(false), CorrectiveAction: "Repair the workspace registry, then retry.", Phase: errs.PhaseSetup, Outcome: errs.OutcomeNotAttempted}
 	}
 	if page.Returned != len(page.Items) || page.Returned > input.Limit {
 		return Output{}, runtimeError("workspace listing returned an invalid bounded page")
+	}
+	if input.All {
+		if page.Total > MaxLimit {
+			return Output{}, usage("--all exceeds the 10000-record bound")
+		}
+		if page.Returned != page.Total || page.NextCursor != "" {
+			return Output{}, runtimeError("workspace listing --all returned an incomplete page")
+		}
 	}
 	var help []string
 	if len(page.Items) > 0 {

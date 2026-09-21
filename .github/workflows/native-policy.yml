@@ -1,0 +1,63 @@
+name: Native managed policy
+
+on:
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  protected-policy:
+    name: Protected policy (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Run native policy package
+        run: go test -count=1 -timeout=5m -v ./internal/managedpolicy
+
+      - name: Verify Unix installer preserves policy fixture metadata
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          bash -n scripts/install.sh scripts/tests/install_sh_test.sh
+          bash scripts/tests/install_sh_test.sh
+
+      - name: Require an elevated Windows runner and exercise protected fixtures
+        if: runner.os == 'Windows'
+        shell: pwsh
+        env:
+          TADX_TEST_REQUIRE_PRIVILEGED_POLICY: '1'
+        run: |
+          $identity = [Security.Principal.WindowsIdentity]::GetCurrent()
+          $principal = New-Object Security.Principal.WindowsPrincipal($identity)
+          if (-not $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
+            throw 'The native policy gate requires an elevated administrator token on this disposable runner.'
+          }
+          go test -count=1 -timeout=5m -v -run '^TestPrivilegedWindowsProtectedPolicyFixture$' ./internal/managedpolicy
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Exercise root-owned Unix fixtures on the disposable runner
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          set -euo pipefail
+          fixture_binary="${RUNNER_TEMP}/tadx-managed-policy.test"
+          go test -c -o "$fixture_binary" ./internal/managedpolicy
+          test "$(sudo -n id -u)" = 0
+          sudo -n env TADX_TEST_REQUIRE_PRIVILEGED_POLICY=1 "$fixture_binary" \
+            -test.count=1 -test.timeout=5m -test.v -test.run='^TestPrivilegedUnixProtectedPolicyFixture$'

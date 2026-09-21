@@ -1,5 +1,8 @@
 status: updated
-environment: production
+environment:
+  alias: production
+  server_url: "https://example.test"
+  site_content_url: marketing
 changed_fields[1]: site_content_url
 details: "--full"
 help[1]: tadx env get production

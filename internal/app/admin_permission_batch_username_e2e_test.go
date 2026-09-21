@@ -81,7 +81,7 @@ func TestPermissionCreateBatchFileResolvesUsernamesBeforeWrites(t *testing.T) {
 				args = append(args, "--preview")
 			}
 			var output bytes.Buffer
-			opts := app.Options{ConfigPath: config, HTTPClient: server.Client(), MutationEnvironment: func() (string, bool) { return "1", true }}
+			opts := withSiteMutationConsent(t, app.Options{ConfigPath: config, HTTPClient: server.Client()}, true)
 			code := app.Run(context.Background(), args, &output, opts)
 			if code != 0 || signins != 1 || (preview && (writes != 0 || len(savedRules) != 0)) || (!preview && (writes != 2 || len(savedRules) != 2 || !strings.Contains(bodies[0], `id="u-a"`) || !strings.Contains(bodies[1], `id="u-b"`))) {
 				t.Fatalf("code=%d signins=%d writes=%d bodies=%v output=%s", code, signins, writes, bodies, output.String())

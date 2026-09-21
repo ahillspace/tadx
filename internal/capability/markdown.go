@@ -55,6 +55,7 @@ func GenerateMarkdown(definitions []Definition) ([]byte, error) {
 			{"Implementation state", string(definition.Implementation)},
 			{"Local write", yesNo(definition.LocalWrite)},
 			{"Remote mutation", yesNo(definition.RemoteMutation)},
+			{"Administrative", yesNo(definition.Administrative)},
 			{"Supports `--preview`", yesNo(definition.SupportsPreview)},
 			{"Supports `--batch-file`", yesNo(definition.SupportsBatch)},
 			{"Raw capable", yesNo(definition.RawCapable)},

@@ -15,9 +15,11 @@ type listAction struct {
 	input capabilitylist.Input
 	out   capabilitylist.Output
 	err   error
+	calls int
 }
 
 func (a *listAction) Execute(_ context.Context, input capabilitylist.Input) (capabilitylist.Output, error) {
+	a.calls++
 	a.input = input
 	return a.out, a.err
 }
@@ -37,12 +39,49 @@ func TestListCarriesGlobalPresentationIntoContinuation(t *testing.T) {
 	root.AddCommand(cliCapability.New(cliCapability.Dependencies{
 		Lister: a, Renderer: &renderer{}, ListUse: "list", ListShort: "list",
 	}))
-	root.SetArgs([]string{"capability", "list", "--full", "--json"})
+	root.SetArgs([]string{"capability", "list", "--environment", "qa", "--full", "--json"})
 	if err := root.Execute(); err != nil {
 		t.Fatal(err)
 	}
-	if !a.input.Full || !a.input.JSON {
+	if !a.input.Full || !a.input.JSON || a.input.Environment != "qa" {
 		t.Fatalf("presentation input = %#v", a.input)
+	}
+}
+
+func TestListAllCarriesCompleteInventoryMode(t *testing.T) {
+	a := &listAction{}
+	root := &cobra.Command{Use: "tadx"}
+	root.AddCommand(cliCapability.New(cliCapability.Dependencies{
+		Lister: a, Renderer: &renderer{}, ListUse: "list", ListShort: "list",
+	}))
+	root.SetArgs([]string{"capability", "list", "--all"})
+	if err := root.Execute(); err != nil {
+		t.Fatal(err)
+	}
+	if !a.input.All || a.input.Limit != 0 || a.input.Cursor != "" {
+		t.Fatalf("all input = %#v", a.input)
+	}
+}
+
+func TestListAllRejectsLimitAndCursor(t *testing.T) {
+	for _, test := range []struct {
+		name string
+		args []string
+	}{
+		{name: "limit", args: []string{"--all", "--limit", "1"}},
+		{name: "cursor", args: []string{"--all", "--cursor", "0"}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			a := &listAction{}
+			root := &cobra.Command{Use: "tadx"}
+			root.AddCommand(cliCapability.New(cliCapability.Dependencies{
+				Lister: a, Renderer: &renderer{}, ListUse: "list", ListShort: "list",
+			}))
+			root.SetArgs(append([]string{"capability", "list"}, test.args...))
+			if err := root.Execute(); err == nil || a.calls != 0 {
+				t.Fatalf("error = %v, calls = %d, want flag conflict before action", err, a.calls)
+			}
+		})
 	}
 }
 
@@ -53,7 +92,7 @@ func TestListReturnsStaticRowsWhenMutationPolicyIsUnavailable(t *testing.T) {
 	root := &cobra.Command{Use: "tadx"}
 	root.AddCommand(cliCapability.New(cliCapability.Dependencies{
 		Lister: a, Renderer: r, ListUse: "list", ListShort: "list",
-		ResolveMutationPolicy: func() (bool, string, error) { return false, "", policyErr },
+		ResolveMutationPolicy: func(string) (bool, string, error) { return false, "", policyErr },
 	}))
 	root.SetArgs([]string{"capability", "list"})
 	err := root.Execute()

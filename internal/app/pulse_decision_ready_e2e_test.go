@@ -7,12 +7,12 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
-	"os"
 	"strings"
 	"testing"
 
 	"github.com/ahillspace/tadx/internal/app"
 	"github.com/ahillspace/tadx/internal/commandhint"
+	"github.com/ahillspace/tadx/internal/config"
 	"github.com/ahillspace/tadx/internal/toon"
 )
 
@@ -37,7 +37,7 @@ func TestPulseCreateCompactPreviewShowsConsequentialSettingsThroughCLI(t *testin
 	}))
 	defer server.Close()
 	var out bytes.Buffer
-	code := app.Run(context.Background(), []string{"pulse", "definition", "create", "--environment", "test", "--name", "Revenue", "--datasource-id", "datasource-1", "--measure-field", "Sales", "--date-field", "Date", "--dimension", "Region", "--minimum-granularity", "MONTH", "--number-format", "CURRENCY", "--currency", "EUR", "--sentiment", "DOWN", "--temporality", "OVER_TIME", "--running-total", "--preview"}, &out, disabledPreviewOptions(pulseEfficiencyOptions(t, server)))
+	code := app.Run(context.Background(), []string{"pulse", "definition", "create", "--environment", "test", "--name", "Revenue", "--datasource-id", "datasource-1", "--measure-field", "Sales", "--date-field", "Date", "--dimension", "Region", "--minimum-granularity", "MONTH", "--number-format", "CURRENCY", "--currency", "EUR", "--sentiment", "DOWN", "--temporality", "OVER_TIME", "--running-total", "--preview"}, &out, disabledPreviewOptions(t, pulseEfficiencyOptions(t, server)))
 	if code != 0 {
 		t.Fatalf("code=%d output=%s", code, out.String())
 	}
@@ -67,7 +67,7 @@ func TestPulseForkCompactPreviewIncludesInheritedPopulationThroughCLI(t *testing
 	}))
 	defer server.Close()
 	var out bytes.Buffer
-	code := app.Run(context.Background(), []string{"pulse", "metric", "fork", "--environment", "test", "--id", "source", "--filter", "Region=West", "--preview"}, &out, disabledPreviewOptions(pulseEfficiencyOptions(t, server)))
+	code := app.Run(context.Background(), []string{"pulse", "metric", "fork", "--environment", "test", "--id", "source", "--filter", "Region=West", "--preview"}, &out, disabledPreviewOptions(t, pulseEfficiencyOptions(t, server)))
 	if code != 0 {
 		t.Fatalf("code=%d output=%s", code, out.String())
 	}
@@ -130,13 +130,10 @@ func TestPulseFollowupKeepsNondefaultEnvironmentAndQuotesExactIdentityThroughCLI
 	}))
 	defer server.Close()
 	options := pulseEfficiencyOptions(t, server)
-	data, err := os.ReadFile(options.ConfigPath)
-	if err != nil {
-		t.Fatal(err)
-	}
-	config := string(data)
-	config += "\n  \"" + alias + "\":\n" + config[strings.Index(config, "    url:"):]
-	if err := os.WriteFile(options.ConfigPath, []byte(config), 0600); err != nil {
+	if _, err := config.Update(options.ConfigPath, false, func(c config.Config) (config.Config, error) {
+		c.Environments[alias] = c.Environments["test"]
+		return c, nil
+	}); err != nil {
 		t.Fatal(err)
 	}
 	var out bytes.Buffer
@@ -162,7 +159,7 @@ func TestPulseFollowupKeepsNondefaultEnvironmentAndQuotesExactIdentityThroughCLI
 	}
 }
 
-func disabledPreviewOptions(options app.Options) app.Options {
-	options.MutationsEnabled = false
+func disabledPreviewOptions(t *testing.T, options app.Options) app.Options {
+	options = withSiteMutationConsent(t, options, false)
 	return options
 }

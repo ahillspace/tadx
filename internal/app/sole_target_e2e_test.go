@@ -88,7 +88,7 @@ func TestSoleEnvironmentProjectCreateWithoutEnvironmentExecutesExactTarget(t *te
 	t.Setenv("SOLE_TARGET_PAT_NAME", "fixture-pat")
 	t.Setenv("SOLE_TARGET_PAT_SECRET", "fixture-secret")
 	var out bytes.Buffer
-	exit := app.Run(context.Background(), []string{"content", "project", "create", "--name", "Sole target project"}, &out, app.Options{ConfigPath: configPath, HTTPClient: server.Client(), MutationsEnabled: true})
+	exit := app.Run(context.Background(), []string{"content", "project", "create", "--name", "Sole target project"}, &out, withSiteMutationConsent(t, app.Options{ConfigPath: configPath, HTTPClient: server.Client()}, true))
 	if exit != 0 || signins.Load() != 1 || reads.Load() != 2 || creates.Load() != 1 || !strings.Contains(out.String(), "created-project") || !strings.Contains(out.String(), "environment: one") || !strings.Contains(out.String(), "site: only-site") {
 		t.Fatalf("exit=%d signins=%d reads=%d creates=%d output=%s", exit, signins.Load(), reads.Load(), creates.Load(), out.String())
 	}
@@ -120,7 +120,7 @@ func TestMultipleEnvironmentsRejectOmittedTargetDespiteDefaultAndArtifactSource(
 	}
 	for _, args := range [][]string{{"content", "project", "create", "--name", "New project"}, {"content", "workbook", "publish", "--workspace", "source-artifacts", "--artifact", filepath.ToSlash(selector), "--overwrite"}} {
 		var out bytes.Buffer
-		exit := app.Run(context.Background(), args, &out, app.Options{ConfigPath: configPath, HTTPClient: server.Client(), MutationsEnabled: true})
+		exit := app.Run(context.Background(), args, &out, withSiteMutationConsent(t, app.Options{ConfigPath: configPath, HTTPClient: server.Client()}, true))
 		if exit != 2 || requests.Load() != 0 || !strings.Contains(out.String(), "Multiple environments") || !strings.Contains(out.String(), "one") || !strings.Contains(out.String(), "two") {
 			t.Fatalf("args=%v exit=%d requests=%d output=%s", args, exit, requests.Load(), out.String())
 		}

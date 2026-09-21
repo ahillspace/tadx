@@ -6,12 +6,12 @@ import (
 )
 
 type Writer interface {
-	WriteMutationSetting(context.Context, bool) (value.MutationSetting, error)
+	WriteMutationSetting(context.Context, string, bool) (value.MutationSetting, error)
 }
 type Output = value.MutationSetting
 type Action struct{ writer Writer }
 
 func New(w Writer) *Action { return &Action{w} }
-func (a *Action) Execute(ctx context.Context, enabled bool) (value.MutationSetting, error) {
-	return a.writer.WriteMutationSetting(ctx, enabled)
+func (a *Action) Execute(ctx context.Context, environment string, enabled bool) (value.MutationSetting, error) {
+	return a.writer.WriteMutationSetting(ctx, environment, enabled)
 }

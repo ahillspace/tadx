@@ -28,7 +28,7 @@ func pulseEfficiencyOptions(t *testing.T, server *httptest.Server) app.Options {
 	}
 	t.Setenv("PULSE_EFFICIENCY_PAT_NAME", "fixture-pat")
 	t.Setenv("PULSE_EFFICIENCY_PAT_SECRET", "fixture-secret")
-	return app.Options{ConfigPath: path, HTTPClient: server.Client(), MutationsEnabled: true}
+	return withSiteMutationConsent(t, app.Options{ConfigPath: path, HTTPClient: server.Client()}, true)
 }
 
 func TestPulseDefinitionDatasourceFilterCacheMultipageThroughCLI(t *testing.T) {

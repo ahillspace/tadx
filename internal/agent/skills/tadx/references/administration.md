@@ -39,3 +39,14 @@ Inspect relevant dependents before deleting a populated project; a preview is no
 `catalog label` applies or removes labels on assets.
 Deleting an attachment is not deleting its shared definition or the underlying asset.
 See [Catalog metadata](catalog.md) for description inheritance and label identity.
+
+## Managed capability ceilings
+
+An administrator-managed policy allowlists canonical capability IDs independently of Tableau site permissions.
+User, group, membership, permission, and shared label definition operations use administrative IDs.
+Project operations, content ownership operations, and job cancellation remain non-administrative IDs.
+
+A non-administrative operation can require an administrative inspection as a preflight.
+Custom policy candidates must allow each required canonical ID, including those indirect reads.
+For example, content label updates and deletes can require `admin.label.value.inspect` even in preview mode.
+Use `tadx policy status --full` when a policy denial identifies a missing preflight capability.

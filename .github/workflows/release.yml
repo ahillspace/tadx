@@ -55,6 +55,11 @@ jobs:
               output.write(f"version={tag[1:]}\n")
           PY
 
+  native-policy:
+    name: Release native managed policy gates
+    needs: validate
+    uses: ./.github/workflows/native-policy.yml
+
   quality:
     name: Release quality (${{ matrix.os }})
     needs: validate
@@ -92,8 +97,13 @@ jobs:
       - name: Run tests
         run: go test ./...
 
-      - name: Run race tests
+      - name: Run race tests (non-Windows)
+        if: runner.os != 'Windows'
         run: go test -race ./...
+
+      - name: Run race tests (Windows)
+        if: runner.os == 'Windows'
+        run: go test -race -timeout=15m ./...
 
       - name: Check module metadata
         shell: pwsh
@@ -280,6 +290,7 @@ jobs:
     needs:
       - validate
       - quality
+      - native-policy
       - build
     runs-on: ubuntu-latest
     permissions:

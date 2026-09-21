@@ -3,11 +3,16 @@
 /_site/
 /coverage.out
 *.test
+__pycache__/
+*.pyc
 /.agents/*
 !/.agents/skills/
 /.agents/skills/*
 !/.agents/skills/tadx-build/
 !/.agents/skills/tadx-build/**
+!/.agents/skills/tadx-explore/
+!/.agents/skills/tadx-explore/**
+/.tadx-explore/
 /agent-review/
 /openspec/
 /archived/

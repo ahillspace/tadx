@@ -52,6 +52,21 @@ Capability list/get serve feature inventory and availability diagnostics, withou
 Live tests require separately authorized targets and remain outside the standard suite.
 The maintainer handles agent-based review; a build request does not automatically authorize a push, PR, merge, or release.
 
+## Explore the installed CLI
+
+Use the repo-local [tadx-explore skill](.agents/skills/tadx-explore/SKILL.md) for bounded, free-form Luna testing of a selected category, resource, or verb.
+Initialize local selectors, then prepare a run:
+
+```text
+node .agents/skills/tadx-explore/scripts/explore.mjs init --environment <alias>
+node .agents/skills/tadx-explore/scripts/explore.mjs prepare --scope "content workbook move"
+```
+
+Pass the returned spawn object unchanged to Luna after confirming authorization covers the selected environment and disposable fixtures.
+Run `node .agents/skills/tadx-explore/scripts/explore.mjs next --run <run-id>` after each worker and continue only when it returns another spawn object.
+Use `node .agents/skills/tadx-explore/scripts/explore.mjs summarize --run <run-id>` for aggregate counts.
+The helper does not launch workers, and the workflow keeps run outputs in ignored `.tadx-explore/`.
+
 ## Repository hygiene
 
 Keep reusable tests, fixtures, build tooling, and current public documentation with the source.

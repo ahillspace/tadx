@@ -8,6 +8,10 @@ permissions:
   contents: read
 
 jobs:
+  native-policy:
+    name: Native managed policy gates
+    uses: ./.github/workflows/native-policy.yml
+
   quality:
     name: Quality gates
     runs-on: ubuntu-latest
@@ -68,6 +72,9 @@ jobs:
       - name: Test static website packaging
         run: node --test scripts/tests/site_test.mjs
 
+      - name: Test exploration launcher offline
+        run: node --test .agents/skills/tadx-explore/scripts/explore.test.mjs
+
   windows-quality:
     name: Windows quality gates
     runs-on: windows-latest
@@ -97,7 +104,7 @@ jobs:
         run: go test ./...
 
       - name: Run race tests
-        run: go test -race ./...
+        run: go test -race -timeout=15m ./...
 
       - name: Check module metadata
         shell: pwsh
@@ -133,6 +140,9 @@ jobs:
       - name: Test Windows PowerShell 5.1 installer
         shell: powershell
         run: ./scripts/tests/install_ps1_test.ps1
+
+      - name: Test exploration launcher offline
+        run: node --test .agents/skills/tadx-explore/scripts/explore.test.mjs
 
   cross-compile:
     name: Build ${{ matrix.goos }}/${{ matrix.goarch }}

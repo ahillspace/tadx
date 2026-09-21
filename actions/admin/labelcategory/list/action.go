@@ -13,6 +13,7 @@ import (
 type Input struct {
 	Environment, Site string
 	Limit             int
+	All               bool
 }
 type Reader interface {
 	ListLabelCategories(context.Context) ([]value.LabelCategory, error)
@@ -61,6 +62,9 @@ func ValidateInput(in Input) error {
 	if in.Limit < 0 || in.Limit > 10000 {
 		return usage("limit must be between 1 and 10000, or omitted")
 	}
+	if in.All && in.Limit != 0 {
+		return usage("--all cannot be combined with --limit")
+	}
 	return nil
 }
 func (a *Action) Execute(ctx context.Context, in Input) (Output, error) {
@@ -91,7 +95,9 @@ func (a *Action) Execute(ctx context.Context, in Input) (Output, error) {
 	items = append([]value.LabelCategory{}, items...)
 	sort.Slice(items, func(i, j int) bool { return items[i].Name < items[j].Name })
 	limit := in.Limit
-	if limit == 0 {
+	if in.All {
+		limit = 10000
+	} else if limit == 0 {
 		limit = 20
 	}
 	out.MoreAvailable = len(items) > limit

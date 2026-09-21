@@ -47,6 +47,23 @@ func TestBoundedOrderedListAndDuplicateRejection(t *testing.T) {
 	}
 }
 
+func TestAllReturnsCompleteInventory(t *testing.T) {
+	items := make([]value.ContentLabel, 25)
+	for i := range items {
+		items[i] = value.ContentLabel{LUID: string(rune('a' + i)), Type: "table", TargetLUID: "table-1"}
+	}
+	out, err := New(&readerStub{items: items}).Execute(t.Context(), Input{Type: "table", TargetID: "table-1", All: true})
+	if err != nil || len(out.Items) != len(items) || out.Returned != len(items) || out.Total != len(items) || out.MoreAvailable || out.NextCommand != "" {
+		t.Fatalf("all: %+v %v", out, err)
+	}
+}
+
+func TestAllRejectsLimit(t *testing.T) {
+	if _, err := New(&readerStub{}).Execute(t.Context(), Input{Type: "table", TargetID: "table-1", All: true, Limit: 1}); err == nil {
+		t.Fatal("--all accepted with --limit")
+	}
+}
+
 type failingReader struct{}
 
 func (failingReader) GetLabels(context.Context, value.LabelTarget, []string) ([]value.ContentLabel, error) {

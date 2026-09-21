@@ -2,20 +2,20 @@ package output
 
 import (
 	"reflect"
+	"slices"
 
 	"github.com/ahillspace/tadx/internal/commandhint"
 )
 
-// savedDetailHint changes the existing compact expansion marker, not action
+// detailHint changes the existing compact expansion marker, not action
 // recovery instructions or resource fields. Saved output remains independent.
-func savedDetailHint(value any, jsonOutput bool, configPath string) any {
+func detailHint(value any, args []string, jsonOutput bool, configPath string) any {
 	current := reflect.ValueOf(value)
 	if !current.IsValid() {
 		return value
 	}
-	args := []string{"last", "--full"}
 	if jsonOutput {
-		args = append(args, "--json")
+		args = append(slices.Clone(args), "--json")
 	}
 	command := commandhint.BindConfig(commandhint.Command(args...), configPath)
 	cloned := bindHintReflect(current, "", command, make(map[visit]bool), 0)

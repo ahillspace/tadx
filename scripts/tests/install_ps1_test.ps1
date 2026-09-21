@@ -97,17 +97,31 @@ copy /Y "%TADX_TEST_RELEASES%\%pattern%" "%destination%" >nul
     New-Item -ItemType Directory -Path (Split-Path -Parent $completionProfile) | Out-Null
     [IO.File]::WriteAllText($completionProfile, "# user profile`r`n")
 
+    # This inert fixture is beside the test binary, never at the system policy path.
+    New-Item -ItemType Directory -Path $installDirectory | Out-Null
+    $policyFixture = Join-Path $installDirectory 'managed-policy.json'
+    [IO.File]::WriteAllText($policyFixture, '{"version":1,"allowed_capabilities":[],"remote_mutations":false}')
+    $policyHash = (Get-FileHash -LiteralPath $policyFixture -Algorithm SHA256).Hash
+    $policySecurity = (Get-Acl -LiteralPath $policyFixture).Sddl
+    function Assert-PolicyPreserved {
+        Assert-True -Condition ((Get-FileHash -LiteralPath $policyFixture -Algorithm SHA256).Hash -ceq $policyHash) -Message 'Installer changed managed policy fixture bytes.'
+        Assert-True -Condition ((Get-Acl -LiteralPath $policyFixture).Sddl -ceq $policySecurity) -Message 'Installer changed managed policy owner or ACL.'
+    }
+
     & $installer -Version latest -InstallDir $installDirectory -NoModifyPath -CompletionProfile $completionProfile
+    Assert-PolicyPreserved
     Assert-True -Condition (Test-Path -LiteralPath (Join-Path $installDirectory 'tadx.exe')) -Message 'Latest installation did not write tadx.exe.'
     Assert-True -Condition ([IO.File]::ReadAllText($env:TADX_TEST_GUIDANCE_LOG).Contains('agent install --target auto')) -Message 'Single install did not deploy Guidance.'
     & (Join-Path $installDirectory 'tadx.exe') selfupdate -NoProfile -NonInteractive -ExecutionPolicy Bypass -File $installer -Version 1.2.3 -InstallDir $installDirectory -NoModifyPath -NoCompletion
     Assert-True -Condition ($LASTEXITCODE -eq 0) -Message 'Could not update while the old executable remained running.'
+    Assert-PolicyPreserved
     $originalBinaryHash = (Get-FileHash -LiteralPath (Join-Path $installDirectory 'tadx.exe')).Hash
     $env:TADX_TEST_GUIDANCE_FAIL = '1'
     $failed = $false
     try { & $installer -Version latest -InstallDir $installDirectory -NoModifyPath -NoCompletion } catch { $failed = $true }
     Remove-Item Env:TADX_TEST_GUIDANCE_FAIL
     Assert-True -Condition $failed -Message 'Guidance failure was reported as successful installation.'
+    Assert-PolicyPreserved
     Assert-True -Condition ((Get-FileHash -LiteralPath (Join-Path $installDirectory 'tadx.exe')).Hash -eq $originalBinaryHash) -Message 'Guidance failure did not restore the prior binary.'
     $firstProfile = [IO.File]::ReadAllText($completionProfile)
     $parseTokens = $null
@@ -123,6 +137,7 @@ copy /Y "%TADX_TEST_RELEASES%\%pattern%" "%destination%" >nul
     Assert-True -Condition ($log.Contains('auth status --hostname github.com')) -Message 'The installer did not check GitHub CLI authentication.'
     Assert-True -Condition ($log.Contains('release download')) -Message 'The installer did not use GitHub CLI release downloads.'
     & $installer -Action Uninstall -InstallDir $installDirectory -NoModifyPath -CompletionProfile $completionProfile
+    Assert-PolicyPreserved
     Assert-True -Condition ([IO.File]::ReadAllText($completionProfile) -eq "# user profile`r`n") -Message 'Uninstall changed unrelated profile content.'
     & $installer -Version 1.2.3 -InstallDir $installDirectory -NoModifyPath -NoCompletion -CompletionProfile $completionProfile
     Assert-True -Condition ([IO.File]::ReadAllText($completionProfile) -eq "# user profile`r`n") -Message 'Completion opt-out changed the profile.'

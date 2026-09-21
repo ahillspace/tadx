@@ -5,7 +5,6 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
-	"os"
 	"path/filepath"
 	"strings"
 	"sync/atomic"
@@ -13,6 +12,7 @@ import (
 	"time"
 
 	"github.com/ahillspace/tadx/internal/app"
+	"github.com/ahillspace/tadx/internal/config"
 	"github.com/ahillspace/tadx/internal/jobmonitor"
 	"github.com/ahillspace/tadx/internal/value"
 )
@@ -76,7 +76,7 @@ func TestJobInspectCancelAndWaitUseExactRemoteJobs(t *testing.T) {
 	t.Setenv("PROD_PAT_NAME", "fixture-name")
 	t.Setenv("PROD_PAT_SECRET", "fixture-secret")
 	configPath := writePhaseOneConfigWithSite(t, server.URL, "team-site")
-	options := app.Options{ConfigPath: configPath, HTTPClient: server.Client(), MutationsEnabled: true}
+	options := withSiteMutationConsent(t, app.Options{ConfigPath: configPath, HTTPClient: server.Client()}, true)
 
 	var inspect strings.Builder
 	if code := app.Run(t.Context(), []string{"job", "inspect", "--environment", "production", "--id", "job-1"}, &inspect, options); code != 0 || !strings.Contains(inspect.String(), "status: running") || !strings.Contains(inspect.String(), "job-1") {
@@ -137,11 +137,12 @@ func TestJobInspectCancelAndWaitUseExactRemoteJobs(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	configuration, err := os.ReadFile(configPath)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(configPath, []byte(strings.Replace(string(configuration), "site_content_url: \"team-site\"", "site_content_url: \"other-site\"", 1)), 0o600); err != nil {
+	if _, err := config.Update(configPath, false, func(configuration config.Config) (config.Config, error) {
+		environment := configuration.Environments["production"]
+		environment.SiteContentURL = "other-site"
+		configuration.Environments["production"] = environment
+		return configuration, nil
+	}); err != nil {
 		t.Fatal(err)
 	}
 	var mismatch strings.Builder

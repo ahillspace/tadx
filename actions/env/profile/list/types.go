@@ -3,6 +3,7 @@ package list
 import "github.com/ahillspace/tadx/internal/output"
 
 type Input struct {
+	All    bool   `json:"all,omitzero"`
 	Cursor string `json:"cursor,omitempty"`
 	Limit  int    `json:"limit,omitempty"`
 }

@@ -45,7 +45,7 @@ func TestAmbiguousArtifactCLIReportsExactCandidates(t *testing.T) {
 	exit := app.Run(context.Background(), []string{
 		"content", "workbook", "publish", "--workspace", "ambiguous", "--environment", "production",
 		"--artifact-name", candidateName, "--project-id", "project-1", "--preview", "--json",
-	}, &output, app.Options{ConfigPath: configPath, MutationsEnabled: true})
+	}, &output, withSiteMutationConsent(t, app.Options{ConfigPath: configPath}, true))
 	if exit == 0 {
 		t.Fatalf("ambiguous selector succeeded: %s", output.String())
 	}

@@ -268,6 +268,9 @@ func validateVocabulary(name, description string) error {
 	return nil
 }
 func (c *Client) ListLabelValues(ctx context.Context) ([]value.LabelValue, error) {
+	if err := c.authorize("admin.label.value.list"); err != nil {
+		return nil, err
+	}
 	op := "admin.label.value.list"
 	r, e := c.rest(ctx, http.MethodGet, []string{"labelValues"}, nil, nil, op)
 	if e != nil {
@@ -292,6 +295,9 @@ func (c *Client) ListLabelValues(ctx context.Context) ([]value.LabelValue, error
 	return out, nil
 }
 func (c *Client) GetLabelValue(ctx context.Context, name string) (value.LabelValue, error) {
+	if err := c.authorize("admin.label.value.inspect"); err != nil {
+		return value.LabelValue{}, err
+	}
 	if e := exact(name); e != nil {
 		return value.LabelValue{}, e
 	}
@@ -314,6 +320,9 @@ func (c *Client) GetLabelValue(ctx context.Context, name string) (value.LabelVal
 	return v, nil
 }
 func (c *Client) SetLabelValue(ctx context.Context, oldName string, v value.LabelValue) (value.LabelValue, error) {
+	if err := c.authorize("admin.label.value.update"); err != nil {
+		return value.LabelValue{}, err
+	}
 	if e := validateVocabulary(v.Name, v.Description); e != nil {
 		return value.LabelValue{}, e
 	}
@@ -350,6 +359,9 @@ func (c *Client) SetLabelValue(ctx context.Context, oldName string, v value.Labe
 	return got, nil
 }
 func (c *Client) DeleteLabelValue(ctx context.Context, name string) error {
+	if err := c.authorize("admin.label.value.delete"); err != nil {
+		return err
+	}
 	if e := exact(name); e != nil {
 		return e
 	}
@@ -357,6 +369,13 @@ func (c *Client) DeleteLabelValue(ctx context.Context, name string) error {
 	return e
 }
 func (c *Client) ListLabelCategories(ctx context.Context) ([]value.LabelCategory, error) {
+	if err := c.authorize("admin.label.category.list"); err != nil {
+		return nil, err
+	}
+	return c.listLabelCategories(ctx)
+}
+
+func (c *Client) listLabelCategories(ctx context.Context) ([]value.LabelCategory, error) {
 	op := "admin.label.category.list"
 	r, e := c.rest(ctx, http.MethodGet, []string{"labelCategories"}, nil, nil, op)
 	if e != nil {
@@ -381,10 +400,13 @@ func (c *Client) ListLabelCategories(ctx context.Context) ([]value.LabelCategory
 	return out, nil
 }
 func (c *Client) GetLabelCategory(ctx context.Context, name string) (value.LabelCategory, error) {
+	if err := c.authorize("admin.label.category.inspect"); err != nil {
+		return value.LabelCategory{}, err
+	}
 	if e := exact(name); e != nil {
 		return value.LabelCategory{}, e
 	}
-	rows, e := c.ListLabelCategories(ctx)
+	rows, e := c.listLabelCategories(ctx)
 	if e != nil {
 		return value.LabelCategory{}, e
 	}
@@ -431,15 +453,24 @@ func (c *Client) categoryWrite(ctx context.Context, old string, v value.LabelCat
 	return got, nil
 }
 func (c *Client) CreateLabelCategory(ctx context.Context, v value.LabelCategory) (value.LabelCategory, error) {
+	if err := c.authorize("admin.label.category.create"); err != nil {
+		return value.LabelCategory{}, err
+	}
 	return c.categoryWrite(ctx, "", v)
 }
 func (c *Client) UpdateLabelCategory(ctx context.Context, old string, v value.LabelCategory) (value.LabelCategory, error) {
+	if err := c.authorize("admin.label.category.update"); err != nil {
+		return value.LabelCategory{}, err
+	}
 	if e := exact(old); e != nil {
 		return value.LabelCategory{}, e
 	}
 	return c.categoryWrite(ctx, old, v)
 }
 func (c *Client) DeleteLabelCategory(ctx context.Context, name string) error {
+	if err := c.authorize("admin.label.category.delete"); err != nil {
+		return err
+	}
 	if e := exact(name); e != nil {
 		return e
 	}

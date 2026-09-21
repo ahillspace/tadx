@@ -46,6 +46,7 @@ func newDatasourceSchema(getter DatasourceSchemaGetter, renderer Renderer) *cobr
 	command.Flags().StringVar(&input.Cursor, "cursor", "", "opaque continuation cursor")
 	_ = command.Flags().MarkHidden("cursor")
 	command.Flags().BoolVar(&input.All, "all", false, "return all matching fields, up to 10,000; cannot combine with --limit")
+	command.MarkFlagsMutuallyExclusive("all", "limit")
 	command.Flags().BoolVar(&input.Cache, "cache", false, "read only from the local cache without contacting Tableau")
 	command.Flags().BoolVar(&input.Descriptions, "descriptions", false, "include direct and inherited descriptions with source identities; an explicit metadata read")
 	command.Flags().BoolVar(&input.Tags, "tags", false, "include upstream column tags with source identities; published fields have no tag API")

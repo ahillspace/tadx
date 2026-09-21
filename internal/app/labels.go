@@ -57,6 +57,9 @@ func (c contentLabelupdateService) Execute(ctx context.Context, input contentLab
 	if err := contentLabelupdate.ValidateInput(input); err != nil {
 		return contentLabelupdate.Output{}, err
 	}
+	if err := c.runtime.checkManagedCapability("admin.label.value.inspect"); err != nil {
+		return contentLabelupdate.Output{}, err
+	}
 	connection, err := c.runtime.tableauConnection(ctx, input.Environment, true)
 	if err != nil {
 		return contentLabelupdate.Output{}, capabilitySetupError("content.label.update.setup", "content.label.update", input.Environment, connection.environment.SiteContentURL, "Label operation setup failed.", "Verify the target environment and Tableau label access.", err)
@@ -71,6 +74,9 @@ type contentLabeldeleteService struct{ runtime *runtimeDependencies }
 
 func (c contentLabeldeleteService) Execute(ctx context.Context, input contentLabeldelete.Input, preview bool) (contentLabeldelete.Output, error) {
 	if err := contentLabeldelete.ValidateInput(input); err != nil {
+		return contentLabeldelete.Output{}, err
+	}
+	if err := c.runtime.checkManagedCapability("admin.label.value.inspect"); err != nil {
 		return contentLabeldelete.Output{}, err
 	}
 	connection, err := c.runtime.tableauConnection(ctx, input.Environment, true)

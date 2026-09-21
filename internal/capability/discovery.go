@@ -32,6 +32,9 @@ type Discovery struct {
 	Validation            string   `json:"validation"`
 	Blocker               string   `json:"blocker,omitempty"`
 	RemoteMutation        bool     `json:"remote_mutation"`
+	Administrative        bool     `json:"administrative"`
+	PolicyDenied          bool     `json:"policy_denied,omitzero"`
+	PolicyReason          string   `json:"policy_reason,omitempty"`
 	ExecutionEnabled      bool     `json:"execution_enabled"`
 	SupportsPreview       bool     `json:"supports_preview"`
 	SupportsBatch         bool     `json:"supports_batch"`
@@ -54,6 +57,7 @@ type Summary struct {
 	Command          string `json:"command,omitempty"`
 	Blocked          bool   `json:"blocked"`
 	ExecutionEnabled bool   `json:"execution_enabled"`
+	PolicyDenied     bool   `json:"policy_denied,omitzero"`
 }
 
 // Summary returns the compact representation without exposing contract-only
@@ -72,6 +76,7 @@ func (d Discovery) Summary() Summary {
 		Command:          d.Command,
 		Blocked:          blocked,
 		ExecutionEnabled: d.ExecutionEnabled,
+		PolicyDenied:     d.PolicyDenied,
 	}
 }
 
@@ -108,6 +113,7 @@ func FromDefinition(definition Definition) Discovery {
 		Validation:            definition.Validation,
 		Blocker:               string(definition.Blocker),
 		RemoteMutation:        definition.RemoteMutation,
+		Administrative:        definition.Administrative,
 		SupportsPreview:       definition.SupportsPreview,
 		SupportsBatch:         definition.SupportsBatch,
 		LocalWrite:            definition.LocalWrite,

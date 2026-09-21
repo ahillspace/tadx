@@ -24,7 +24,7 @@ func diagnosticOptions(t *testing.T, server *httptest.Server) app.Options {
 	}
 	t.Setenv("DIAGNOSTIC_PAT_NAME", "diagnostic-pat")
 	t.Setenv("DIAGNOSTIC_PAT_SECRET", "diagnostic-pat-secret")
-	return app.Options{ConfigPath: config, HTTPClient: server.Client(), MutationsEnabled: true}
+	return withSiteMutationConsent(t, app.Options{ConfigPath: config, HTTPClient: server.Client()}, true)
 }
 
 func diagnosticSignIn(w http.ResponseWriter, r *http.Request) bool {

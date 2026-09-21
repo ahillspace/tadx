@@ -48,6 +48,17 @@ func (c *searchCommands) Execute(ctx context.Context, input searchaction.Input) 
 	if err := searchaction.ValidateInput(input); err != nil {
 		return searchaction.Output{}, err
 	}
+	types, err := searchaction.Types(input.Type)
+	if err != nil {
+		return searchaction.Output{}, err
+	}
+	for _, kind := range types {
+		if kind == "user" || kind == "group" {
+			if err := c.runtime.checkManagedCapability("admin." + kind + ".list"); err != nil {
+				return searchaction.Output{}, err
+			}
+		}
+	}
 	if input.Cursor != "" {
 		_, environment, err := c.runtime.environment(input.Environment, false)
 		if err != nil {
@@ -91,7 +102,7 @@ func (c *searchCommands) Execute(ctx context.Context, input searchaction.Input) 
 		return searchaction.Output{}, remoteSetupError("search", input.Environment, input.Site, connection.environment, err)
 	}
 	input.Environment, input.Site, input.SiteResolved = connection.environment.Alias, connection.environment.SiteContentURL, true
-	lister, err := newLiveSearchLister(connection)
+	lister, err := newLiveSearchLister(connection, c.runtime.checkManagedCapability)
 	if err != nil {
 		return searchaction.Output{}, remoteSetupError("search", input.Environment, input.Site, connection.environment, err)
 	}
@@ -328,6 +339,13 @@ func (s cacheGlobalSearchSource) Search(ctx context.Context, input searchaction.
 	adapter := resourcesearch.NewAdapter(lister)
 	page, err := adapter.Search(ctx, resourcesearch.Input{Types: types, Terms: input.Terms, ProjectPath: input.ProjectPath, Owner: input.Owner, Cursor: input.Cursor, Limit: input.Limit})
 	if err != nil {
+		if unavailable, ok := errors.AsType[cacheSearchScopeUnavailable](err); ok {
+			recovery, observeErr := s.observeCacheRecovery(ctx, input, types)
+			if observeErr == nil {
+				unavailable.recovery = recovery
+				return searchaction.Result{}, unavailable
+			}
+		}
 		return searchaction.Result{}, err
 	}
 	var generation *searchaction.Generation
@@ -353,6 +371,25 @@ func (s cacheGlobalSearchSource) Search(ctx context.Context, input searchaction.
 	}
 	page.Warnings = append(page.Warnings, "Search used partial cache records or independently refreshed resource snapshots; no shared complete generation describes this page.")
 	return searchResult(page, nil), nil
+}
+
+func (s cacheGlobalSearchSource) observeCacheRecovery(ctx context.Context, input searchaction.Input, required []string) (searchaction.CacheRecovery, error) {
+	recovery := searchaction.CacheRecovery{Required: append([]string(nil), required...)}
+	for _, resourceType := range required {
+		result, err := s.store.ReadResources(ctx, cache.ResourceQuery{Environment: input.Environment, Site: input.Site, Kind: resourceType, Limit: 1})
+		if err == nil {
+			recovery.Available = append(recovery.Available, searchaction.CacheTypeObservation{Type: resourceType, Coverage: result.Coverage, Stale: result.Stale, Count: result.Total})
+			continue
+		}
+		var unavailable interface{ CacheScopeUnavailable() bool }
+		var uninitialized interface{ CacheUninitialized() bool }
+		if errors.As(err, &unavailable) && unavailable.CacheScopeUnavailable() || errors.As(err, &uninitialized) && uninitialized.CacheUninitialized() {
+			recovery.Missing = append(recovery.Missing, resourceType)
+			continue
+		}
+		return searchaction.CacheRecovery{}, err
+	}
+	return recovery, nil
 }
 
 type cacheSearchObservation struct {
@@ -410,6 +447,7 @@ func (s *cacheSearchLister) List(ctx context.Context, resourceType, cursor strin
 type cacheSearchScopeUnavailable struct {
 	resourceType string
 	cause        error
+	recovery     searchaction.CacheRecovery
 }
 
 func (e cacheSearchScopeUnavailable) Error() string {
@@ -417,6 +455,9 @@ func (e cacheSearchScopeUnavailable) Error() string {
 }
 func (e cacheSearchScopeUnavailable) Unwrap() error             { return e.cause }
 func (cacheSearchScopeUnavailable) CacheScopeUnavailable() bool { return true }
+func (e cacheSearchScopeUnavailable) CacheSearchRecovery() searchaction.CacheRecovery {
+	return e.recovery
+}
 
 type cacheResourceCursor struct {
 	Offset      int    `json:"o"`
@@ -653,7 +694,7 @@ type liveSearchLister struct {
 	definitionPages   map[string]tableaupulse.DefinitionPage
 }
 
-func newLiveSearchLister(connection authenticatedTableau) (*liveSearchLister, error) {
+func newLiveSearchLister(connection authenticatedTableau, checks ...func(string) error) (*liveSearchLister, error) {
 	projectClient := tableauproject.NewClient(connection.transport, connection.session, connection.environment.URL)
 	projects := resourceproject.NewAdapter(projectClient)
 	datasourceClient := tableaudatasource.NewClient(connection.transport, connection.session, connection.environment.URL)
@@ -670,8 +711,8 @@ func newLiveSearchLister(connection authenticatedTableau) (*liveSearchLister, er
 		datasources:     datasourceListReader{adapter: resourcedatasource.NewAdapterWithProjectResolver(datasourceClient, projects), projects: resourceproject.NewDiscoveryPaths(projects)},
 		flows:           flowListReader{adapter: resourceflow.NewAdapter(flowClient, projects)},
 		projects:        projectListReader{adapter: projects},
-		users:           adminUserListReader{adapter: resourceadmin.NewAdapter(adminClient)},
-		groups:          adminGroupListReader{adapter: resourceadmin.NewAdapter(adminClient)},
+		users:           adminUserListReader{adapter: resourceadmin.NewAdapter(adminClient, checks...)},
+		groups:          adminGroupListReader{adapter: resourceadmin.NewAdapter(adminClient, checks...)},
 		pulse:           pulseClient,
 		definitionPages: make(map[string]tableaupulse.DefinitionPage),
 	}, nil

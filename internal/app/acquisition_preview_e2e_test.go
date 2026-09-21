@@ -12,6 +12,7 @@ import (
 	"testing"
 
 	"github.com/ahillspace/tadx/internal/app"
+	"github.com/ahillspace/tadx/internal/config"
 )
 
 func TestNativeAcquisitionPreviewResolvesWithoutDownloadingOrWriting(t *testing.T) {
@@ -85,11 +86,12 @@ func TestPulseAcquisitionPreviewChecksCompleteBundleWithoutWriting(t *testing.T)
 	}))
 	defer server.Close()
 	options := diagnosticOptions(t, server)
-	configuration, err := os.ReadFile(options.ConfigPath)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(options.ConfigPath, []byte(strings.ReplaceAll(string(configuration), "site_content_url: ''", "site_content_url: 'test'")), 0o600); err != nil {
+	if _, err := config.Update(options.ConfigPath, false, func(c config.Config) (config.Config, error) {
+		e := c.Environments["test"]
+		e.SiteContentURL = "test"
+		c.Environments["test"] = e
+		return c, nil
+	}); err != nil {
 		t.Fatal(err)
 	}
 	root := filepath.Join(t.TempDir(), "workspace")

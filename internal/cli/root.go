@@ -30,6 +30,7 @@ import (
 	jobcli "github.com/ahillspace/tadx/internal/cli/job"
 	lastcli "github.com/ahillspace/tadx/internal/cli/last"
 	mutationcli "github.com/ahillspace/tadx/internal/cli/mutation"
+	policycli "github.com/ahillspace/tadx/internal/cli/policy"
 	pulsecli "github.com/ahillspace/tadx/internal/cli/pulse"
 	updatecli "github.com/ahillspace/tadx/internal/cli/update"
 	versioncli "github.com/ahillspace/tadx/internal/cli/version"
@@ -101,6 +102,7 @@ type RenderOptions struct {
 
 // Dependencies contains the explicitly wired Phase 0 command dependencies.
 type Dependencies struct {
+	Policy                *policycli.Dependencies
 	SessionOverview       SessionOverview
 	Update                *updatecli.Dependencies
 	Catalog               *catalogcli.Dependencies
@@ -116,7 +118,7 @@ type Dependencies struct {
 	MutationsEnabled      bool
 	MutationPolicy        MutationPolicy
 	ResolveWriteTarget    func(string) (string, error)
-	ResolveMutationPolicy func() (bool, string, error)
+	ResolveMutationPolicy func(string) (bool, string, error)
 	MutationStatus        mutationcli.Status
 	MutationSetter        mutationcli.Setter
 	LastReader            lastcli.Reader
@@ -216,8 +218,9 @@ Read commands query Tableau by default. Pass --cache on supported reads to use l
 Use --env as a short alias for --environment on commands that select an environment.
 
 Remote mutation commands remain visible when execution is disabled. Use --preview for a read-only plan without enabling mutations.
-Run tadx mutation status to see the effective policy. With permission, tadx mutation set --enabled=true saves it for future sessions.
-TADX_ENABLE_MUTATIONS=0 or TADX_ENABLE_MUTATIONS=1 overrides the saved policy only for that process and its children.
+Run tadx mutation status --environment <alias> to inspect site consent.
+With permission, tadx mutation set --environment <alias> --enabled=true saves consent for that site in future sessions.
+Each Tableau server and exact site content URL has separate consent. Environment aliases for the same site share consent.
 When enabled, mutation commands perform changes by default. Pass --preview to inspect the plan without performing the mutation.
 
 TADX handles lifecycle operations, not datasource value queries, view rendering, or current Pulse values and insights.
@@ -261,6 +264,11 @@ Other connected tools remain independent; TADX does not configure, select, proxy
 	}
 	if deps.LastReader != nil {
 		root.AddCommand(lastcli.New(deps.LastReader, deps.Renderer))
+	}
+	if deps.Policy != nil {
+		policyDependencies := *deps.Policy
+		policyDependencies.Renderer = deps.Renderer
+		root.AddCommand(policycli.New(policyDependencies))
 	}
 	if deps.Jobs != nil {
 		jobs := *deps.Jobs
@@ -466,7 +474,7 @@ func rejectGroupingArguments(root *cobra.Command) {
 	walk(root)
 }
 
-func applyMutationExecutionPolicy(root *cobra.Command, policy MutationPolicy, enabled bool, resolver ...func() (bool, string, error)) {
+func applyMutationExecutionPolicy(root *cobra.Command, policy MutationPolicy, enabled bool, resolver ...func(string) (bool, string, error)) {
 	if root == nil {
 		return
 	}
@@ -496,19 +504,24 @@ func applyMutationExecutionPolicy(root *cobra.Command, policy MutationPolicy, en
 				effective := enabled
 				if !explicitMutationPreview(command) && len(resolver) > 0 && resolver[0] != nil {
 					var err error
-					effective, _, err = resolver[0]()
+					alias, _ := command.Flags().GetString("environment")
+					effective, _, err = resolver[0](alias)
 					if err != nil {
 						return err
 					}
 				}
 				if !effective && !explicitMutationPreview(command) {
+					alias, _ := command.Flags().GetString("environment")
 					return &errs.Error{
 						ID:               "mutation.disabled",
 						Kind:             errs.KindOperation,
 						Operation:        capabilityID,
+						Environment:      alias,
+						Phase:            errs.PhaseSetup,
+						Outcome:          errs.OutcomeNotAttempted,
 						Summary:          "Remote mutation execution is disabled.",
 						Retryable:        errs.Bool(false),
-						CorrectiveAction: "Use --preview for a read-only plan where supported. Run tadx mutation status to inspect the policy; obtain permission before changing the saved setting or TADX_ENABLE_MUTATIONS override.",
+						CorrectiveAction: "Use --preview for a read-only plan where supported. Run " + commandhint.Environment(alias, "mutation", "status") + " to inspect site consent; obtain permission before changing that site's saved setting.",
 					}
 				}
 				if originalRunE != nil {
@@ -600,7 +613,7 @@ func setFlagErrorHandlers(command *cobra.Command) {
 		}
 		return nil
 	}
-	if cursor := command.Flags().Lookup("cursor"); cursor != nil {
+	if cursor := command.Flags().Lookup("cursor"); cursor != nil && command.CommandPath() != "tadx capability list" {
 		cursor.Hidden = true
 	}
 	command.SetFlagErrorFunc(func(command *cobra.Command, cause error) error {

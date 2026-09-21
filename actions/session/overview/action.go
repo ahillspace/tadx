@@ -30,12 +30,13 @@ type State struct {
 }
 
 type Environment struct {
-	Name             string `json:"name"`
-	Site             string `json:"site"`
-	CredentialSource string `json:"credential_source"`
-	Credentials      string `json:"credentials"`
-	ServerURL        string `json:"server_url"`
-	DefaultWorkspace string `json:"default_workspace,omitempty"`
+	Mutations        value.MutationSetting `json:"mutations"`
+	Name             string                `json:"name"`
+	Site             string                `json:"site"`
+	CredentialSource string                `json:"credential_source"`
+	Credentials      string                `json:"credentials"`
+	ServerURL        string                `json:"server_url"`
+	DefaultWorkspace string                `json:"default_workspace,omitempty"`
 }
 
 type Workspace struct {
@@ -76,6 +77,7 @@ type Result[E, W any] struct {
 }
 
 type CompactEnvironment struct {
+	MutationsEnabled bool   `json:"mutations_enabled"`
 	Name             string `json:"name"`
 	Site             string `json:"site"`
 	CredentialSource string `json:"credential_source"`
@@ -109,7 +111,7 @@ func (a *Action) Execute(ctx context.Context) (Output, error) {
 func (o Output) CompactOutput() any {
 	environments := make([]CompactEnvironment, 0, min(compactLimit, len(o.state.Environments)))
 	for _, e := range o.state.Environments[:min(compactLimit, len(o.state.Environments))] {
-		environments = append(environments, CompactEnvironment{e.Name, e.Site, e.CredentialSource, e.Credentials})
+		environments = append(environments, CompactEnvironment{e.Mutations.Enabled, e.Name, e.Site, e.CredentialSource, e.Credentials})
 	}
 	workspaces := make([]CompactWorkspace, 0, min(compactLimit, len(o.state.Workspaces)))
 	for _, w := range o.state.Workspaces[:min(compactLimit, len(o.state.Workspaces))] {

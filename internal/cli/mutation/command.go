@@ -9,30 +9,32 @@ import (
 )
 
 type Status interface {
-	Execute(context.Context) (mutationstatus.Output, error)
+	Execute(context.Context, string) (mutationstatus.Output, error)
 }
 type Setter interface {
-	Execute(context.Context, bool) (mutationset.Output, error)
+	Execute(context.Context, string, bool) (mutationset.Output, error)
 }
 type Renderer interface{ Render(any) error }
 
 func New(status Status, set Setter, renderer Renderer) *cobra.Command {
 	root := &cobra.Command{Use: "mutation", Short: "Inspect or persist remote mutation execution policy."}
-	get := &cobra.Command{Use: "status", Short: "Show effective mutation policy and whether it comes from this process or saved settings.", Annotations: map[string]string{"tadx.capability": "mutation.status"}, Args: cobra.NoArgs, RunE: func(c *cobra.Command, _ []string) error {
-		out, err := status.Execute(c.Context())
+	var environment string
+	root.PersistentFlags().StringVar(&environment, "environment", "", "configured environment selecting the Tableau site")
+	get := &cobra.Command{Use: "status", Short: "Show site mutation settings.", Annotations: map[string]string{"tadx.capability": "mutation.status"}, Args: cobra.NoArgs, RunE: func(c *cobra.Command, _ []string) error {
+		out, err := status.Execute(c.Context(), environment)
 		if err != nil {
 			return err
 		}
 		return renderer.Render(out)
 	}}
 	var enabled bool
-	put := &cobra.Command{Use: "set", Short: "Persist user mutation policy until changed; process environment overrides the saved value.", Annotations: map[string]string{"tadx.capability": "mutation.set"}, Args: func(c *cobra.Command, args []string) error {
+	put := &cobra.Command{Use: "set", Short: "Persist mutation consent for one Tableau site until changed.", Annotations: map[string]string{"tadx.capability": "mutation.set"}, Args: func(c *cobra.Command, args []string) error {
 		if err := cobra.NoArgs(c, args); err != nil {
 			return clierr.Usage("mutation.set", err)
 		}
 		return nil
 	}, RunE: func(c *cobra.Command, _ []string) error {
-		out, err := set.Execute(c.Context(), enabled)
+		out, err := set.Execute(c.Context(), environment, enabled)
 		if err != nil {
 			return clierr.WithOutput(out, err)
 		}

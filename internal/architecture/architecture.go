@@ -219,6 +219,7 @@ func localImportAllowed(file, imported string) bool {
 				"internal/identity",
 				"internal/jobmonitor",
 				"internal/lastcommand",
+				"internal/managedpolicy",
 				"internal/output",
 				"internal/operationrun",
 				"internal/paging",
@@ -238,6 +239,9 @@ func localImportAllowed(file, imported string) bool {
 	case layerTableau:
 		return matchesExact(imported, "internal/auth", "internal/tableau", "internal/tableau/cache/tabxml", "internal/value")
 	case layerFoundation:
+		if hasPathPrefix(file, "internal/managedpolicy") {
+			return matchesExact(imported, "internal/capability", "internal/value")
+		}
 		// Registry and CLI share only the standard-library-only batch metadata
 		// contract; the registry must not depend on the executable batch runner.
 		if hasPathPrefix(file, "internal/capability") {
@@ -444,6 +448,7 @@ func isFoundationPackage(file string) bool {
 		hasPathPrefix(file, "internal/cache") ||
 		hasPathPrefix(file, "internal/identity") ||
 		hasPathPrefix(file, "internal/capability") ||
+		hasPathPrefix(file, "internal/managedpolicy") ||
 		hasPathPrefix(file, "internal/errs") ||
 		hasPathPrefix(file, "internal/lock") ||
 		hasPathPrefix(file, "internal/jobmonitor") ||

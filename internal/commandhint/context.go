@@ -51,6 +51,12 @@ func hasConfigFlag(args string) bool {
 		if ch == ';' || ch == '\n' || ch == '|' {
 			break
 		}
+		if (i == 0 || args[i-1] == ' ' || args[i-1] == '\t') && strings.HasPrefix(args[i:], "--") {
+			end := i + len("--")
+			if end == len(args) || strings.ContainsRune(" \t", rune(args[end])) {
+				break
+			}
+		}
 		if (i == 0 || args[i-1] == ' ' || args[i-1] == '\t') && strings.HasPrefix(args[i:], "--config") {
 			end := i + len("--config")
 			if end == len(args) || strings.ContainsRune("= \t", rune(args[end])) {

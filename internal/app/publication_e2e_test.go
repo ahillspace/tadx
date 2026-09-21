@@ -107,7 +107,7 @@ func TestAutomaticPublicationBulkPersistsBeforePooledObservation(t *testing.T) {
 				args = append(args, "--create")
 			}
 			var out, progress strings.Builder
-			exit := Run(context.Background(), args, &out, Options{ConfigPath: runtime.configPath, HTTPClient: server.Client(), MutationsEnabled: true, JobDirectory: jobDirectory, Stderr: &progress})
+			exit := Run(context.Background(), args, &out, withSiteMutationConsent(t, Options{ConfigPath: runtime.configPath, HTTPClient: server.Client(), JobDirectory: jobDirectory, Stderr: &progress}, true))
 			if test.unavailable {
 				if exit == 0 || posts != 2 || !strings.Contains(out.String(), `"outcome":"confirmed"`) || strings.Contains(out.String(), "Run without --preview") {
 					t.Fatalf("exit=%d posts=%d out=%s", exit, posts, out.String())

@@ -60,6 +60,6 @@ func (a *Action) Execute(ctx context.Context, input Input) (Output, error) {
 			CorrectiveAction: "Run tadx capability list and use an exact capability ID.",
 		}
 	}
-	item.ExecutionEnabled = item.ImplementationState == "implemented" && (!item.RemoteMutation || input.MutationsEnabled)
+	item.ExecutionEnabled = !item.PolicyDenied && item.ImplementationState == "implemented" && (!item.RemoteMutation || input.MutationsEnabled)
 	return Output{Capability: item, Help: []string{"tadx capability list"}}, nil
 }

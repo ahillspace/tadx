@@ -67,15 +67,15 @@ func TestOutputGolden(t *testing.T) {
 	hasExtracts := true
 	isCertified := true
 	size := int64(42)
-	output := datasourceget.Output{
-		Status: "found", Environment: "dev", Site: "sandbox", RequestID: "request-1",
-		Datasource: datasourceget.Datasource{
-			LUID: "datasource-1", Name: "Sales", ProjectLUID: "project-1", ProjectPath: "Department/Ops",
-			Type: "hyper", ContentURL: "sales", UpdatedAt: "2026-09-01T00:00:00Z", Description: "Sales data",
-			OwnerLUID: "user-1", CreatedAt: "2026-08-01T00:00:00Z", Size: &size, HasExtracts: &hasExtracts,
-			IsCertified: &isCertified, CertificationNote: "Reviewed", Tags: []string{"daily"}, AskDataEnablement: "Enabled",
-		},
-		Help: []string{"tadx content datasource list"},
+	item := datasourceget.Datasource{
+		LUID: "datasource-1", Name: "Sales", ProjectLUID: "project-1", ProjectPath: "Department/Ops",
+		Type: "hyper", ContentURL: "sales", UpdatedAt: "2026-09-01T00:00:00Z", Description: "Sales data",
+		OwnerLUID: "user-1", CreatedAt: "2026-08-01T00:00:00Z", Size: &size, HasExtracts: &hasExtracts,
+		IsCertified: &isCertified, CertificationNote: "Reviewed", Tags: []string{"daily"}, AskDataEnablement: "Enabled", RequestID: "request-1",
+	}
+	output, err := datasourceget.New(&resolver{datasource: item}).Execute(t.Context(), datasourceget.Input{Environment: "dev", Site: "sandbox", Selector: identity.Selector{LUID: "datasource-1"}})
+	if err != nil {
+		t.Fatal(err)
 	}
 	assertGolden(t, "compact.toon", output, false)
 	assertGolden(t, "full.toon", output, true)

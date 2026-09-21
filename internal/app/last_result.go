@@ -10,6 +10,7 @@ import (
 )
 
 type lastCapture struct {
+	runtime     *runtimeDependencies
 	store       lastcommand.Store
 	now         func() time.Time
 	operation   string
@@ -38,7 +39,7 @@ func lastResultWarning() any {
 }
 
 func newLastCapture(r *runtimeDependencies) *lastCapture {
-	return &lastCapture{store: lastcommand.Store{Path: filepath.Join(filepath.Dir(r.configPath), "last-result.json")}, now: r.now, enabled: true}
+	return &lastCapture{runtime: r, store: lastcommand.Store{Path: filepath.Join(filepath.Dir(r.configPath), "last-result.json")}, now: r.now, enabled: true}
 }
 func (c *lastCapture) save(code int) error {
 	if !c.enabled || c.value == nil {
@@ -50,6 +51,9 @@ func (c *lastCapture) save(code int) error {
 	}
 	data, err := output.SnapshotWithConfig(c.value, lastcommand.MaxBytes/2, configPath)
 	record := value.SavedExecution{RecordedAt: c.now().UTC(), Operation: c.operation, ExitCode: code, Result: data}
+	if c.runtime != nil {
+		record.RequiredCapabilities = c.runtime.managedChecks.snapshot()
+	}
 	if record.Operation == "" {
 		record.Operation = "cli"
 	}

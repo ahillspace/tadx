@@ -19,12 +19,7 @@ func catalogMetadataOptions(t *testing.T, s *httptest.Server, mutations bool) ap
 	t.Setenv("PROD_PAT_NAME", "fixture-name")
 	t.Setenv("PROD_PAT_SECRET", "fixture-secret")
 	home := t.TempDir()
-	return app.Options{ConfigPath: writePhaseOneConfig(t, s.URL), HTTPClient: s.Client(), UserHomeDir: func() (string, error) { return home, nil }, MutationsEnabled: mutations, MutationEnvironment: func() (string, bool) {
-		if mutations {
-			return "1", true
-		}
-		return "0", true
-	}}
+	return withSiteMutationConsent(t, app.Options{ConfigPath: writePhaseOneConfig(t, s.URL), HTTPClient: s.Client(), UserHomeDir: func() (string, error) { return home, nil }}, mutations)
 }
 func catalogMetadataSignIn(w http.ResponseWriter, r *http.Request) bool {
 	if r.URL.Path != "/api/3.29/auth/signin" {

@@ -68,15 +68,19 @@ func newFlowList(deps Dependencies) *cobra.Command {
 
 func newFlowInspect(deps Dependencies) *cobra.Command {
 	var input flowinspect.Input
-	var luid, name, projectPath string
-	command := &cobra.Command{Use: "inspect", Short: "Inspect one exact flow.", Annotations: map[string]string{"tadx.capability": "flow.inspect"}, Args: selectorArgs("flow.inspect", &luid, &name, &projectPath, input.SetSelector), RunE: func(command *cobra.Command, _ []string) error {
+	var luid, name, projectPath, projectID string
+	command := &cobra.Command{Use: "inspect", Short: "Inspect one exact flow.", Annotations: map[string]string{"tadx.capability": "flow.inspect"}, Args: selectorArgsWithProjectID("flow.inspect", &luid, &name, &projectPath, &projectID, input.SetSelectorWithProjectLUID), RunE: func(command *cobra.Command, _ []string) error {
 		result, err := deps.FlowInspector.InspectFlow(command.Context(), input)
 		if err != nil {
 			return clierr.WithOutput(result, err)
 		}
 		return deps.Renderer.Render(result)
 	}}
-	readTargetFlags(command, &input.Environment, &luid, &name, &projectPath)
+	command.Flags().StringVar(&input.Environment, "environment", "", "exact environment alias; defaults to the configured read environment")
+	command.Flags().StringVar(&luid, "id", "", "authoritative flow LUID")
+	command.Flags().StringVar(&name, "name", "", "exact flow name")
+	command.Flags().StringVar(&projectPath, "project", "", "exact slash-delimited project path")
+	command.Flags().StringVar(&projectID, "project-id", "", "authoritative project LUID")
 	command.Flags().BoolVar(&input.Cache, "cache", false, "read indexed local cache data without contacting Tableau")
 	return command
 }

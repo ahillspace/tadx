@@ -7,11 +7,13 @@ import (
 
 // Input controls capability discovery.
 type Input struct {
+	Environment               string `json:"environment,omitempty"`
 	Domain                    string `json:"domain,omitempty"`
 	Resource                  string `json:"resource,omitempty"`
 	Owner                     string `json:"owner,omitempty"`
 	Product                   string `json:"product,omitempty"`
 	Mutation                  *bool  `json:"mutation,omitempty"`
+	All                       bool   `json:"all,omitzero"`
 	Cursor                    string `json:"cursor,omitempty"`
 	Limit                     int    `json:"limit,omitempty"`
 	Full                      bool   `json:"-"`

@@ -81,7 +81,7 @@ func TestPulseForkGranularityThroughCLI(t *testing.T) {
 			if test.changed == nil {
 				args = append(args, "--preview")
 			}
-			options := app.Options{ConfigPath: configPath, HTTPClient: server.Client(), MutationsEnabled: true}
+			options := withSiteMutationConsent(t, app.Options{ConfigPath: configPath, HTTPClient: server.Client()}, true)
 			var stdout bytes.Buffer
 			code := app.Run(context.Background(), args, &stdout, options)
 			if test.wantError == "" {

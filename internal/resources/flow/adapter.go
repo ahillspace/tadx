@@ -104,19 +104,22 @@ func (a *Adapter) ResolveFlow(ctx context.Context, selector identity.Selector) (
 		}
 		return normalize(item, path), nil
 	}
-	if strings.TrimSpace(selector.Name) == "" || strings.TrimSpace(selector.ProjectPath) == "" {
-		return Flow{}, errors.New("flow selection requires a LUID or exact name and project path")
+	if strings.TrimSpace(selector.Name) == "" || (strings.TrimSpace(selector.ProjectPath) == "" && strings.TrimSpace(string(selector.ProjectLUID)) == "") {
+		return Flow{}, errors.New("flow selection requires a LUID or exact name and project path or project LUID")
 	}
-	if validator, ok := a.projects.(projectPathValidator); ok {
-		if err := validator.ValidateProjectPath(ctx, selector.ProjectPath); err != nil {
-			return Flow{}, err
+	if selector.ProjectPath != "" {
+		if validator, ok := a.projects.(projectPathValidator); ok {
+			if err := validator.ValidateProjectPath(ctx, selector.ProjectPath); err != nil {
+				return Flow{}, err
+			}
 		}
 	}
 	byLUID := make(map[string]Flow)
 	seen := make(map[string]tableauflow.Flow)
 	expectedTotal, expectedSize := -1, -1
+	complete := false
 	for number := 1; number <= 1000; number++ {
-		page, err := a.client.List(ctx, tableauflow.ListRequest{PageNumber: number, PageSize: resolutionPageSize, Name: selector.Name})
+		page, err := a.client.List(ctx, tableauflow.ListRequest{PageNumber: number, PageSize: resolutionPageSize, Name: selector.Name, ProjectLUID: string(selector.ProjectLUID)})
 		if err != nil {
 			return Flow{}, err
 		}
@@ -134,6 +137,9 @@ func (a *Adapter) ResolveFlow(ctx context.Context, selector identity.Selector) (
 			if item.Name != selector.Name {
 				continue
 			}
+			if selector.ProjectLUID != "" && item.ProjectLUID != string(selector.ProjectLUID) {
+				continue
+			}
 			if err := recordFlow(seen, item); err != nil {
 				return Flow{}, err
 			}
@@ -141,13 +147,23 @@ func (a *Adapter) ResolveFlow(ctx context.Context, selector identity.Selector) (
 			if err != nil {
 				return Flow{}, err
 			}
-			if path == selector.ProjectPath {
-				byLUID[item.LUID] = normalize(item, path)
+			if selector.ProjectLUID != "" || path == selector.ProjectPath {
+				normalized := normalize(item, path)
+				normalized.RequestID = page.TableauRequestID
+				byLUID[item.LUID] = normalized
 			}
 		}
-		if number*page.Size >= page.Total {
+		offset := (page.Number-1)*page.Size + len(page.Items)
+		if offset == page.Total {
+			complete = true
 			break
 		}
+		if len(page.Items) == 0 {
+			return Flow{}, errors.New("flow pagination ended before the reported total")
+		}
+	}
+	if !complete {
+		return Flow{}, errors.New("flow resolution exceeded the 1000-page bound")
 	}
 	items := make([]Flow, 0, len(byLUID))
 	for _, item := range byLUID {
@@ -156,7 +172,7 @@ func (a *Adapter) ResolveFlow(ctx context.Context, selector identity.Selector) (
 	sort.Slice(items, func(i, j int) bool { return items[i].LUID < items[j].LUID })
 	candidates := make([]identity.Candidate, len(items))
 	for index, item := range items {
-		candidates[index] = identity.Candidate{LUID: identity.LUID(item.LUID), Name: item.Name, ProjectPath: item.ProjectPath}
+		candidates[index] = identity.Candidate{LUID: identity.LUID(item.LUID), Name: item.Name, ProjectPath: item.ProjectPath, ProjectLUID: identity.LUID(item.ProjectLUID)}
 	}
 	resolved, err := identity.Resolve(selector, candidates)
 	if err != nil {

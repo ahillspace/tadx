@@ -122,9 +122,6 @@ func TestPulseBundleInvalidSavedSemanticsRejectBeforeAuthenticationThroughCLI(t 
 	for _, test := range cases {
 		t.Run(test.name, func(t *testing.T) {
 			fixture := newPulsePreflightFixture(t)
-			if !fixture.options.MutationsEnabled {
-				t.Fatal("preflight execution fixture must enable mutations")
-			}
 			path := filepath.Join(fixture.directory, "bundle.json")
 			data, err := os.ReadFile(path)
 			if err != nil {
@@ -188,7 +185,7 @@ func TestPulseBundleInvalidSavedSemanticsRejectBeforeAuthenticationThroughCLI(t 
 
 func TestPulseBundleSupportedPeriodAndNullValuesPreviewThroughCLI(t *testing.T) {
 	fixture := newPulsePreflightFixture(t)
-	fixture.options.MutationsEnabled = false
+	fixture.options = withSiteMutationConsent(t, fixture.options, false)
 	var out bytes.Buffer
 	if code := app.Run(context.Background(), append(fixture.args, "--preview"), &out, fixture.options); code != 0 {
 		t.Fatalf("valid preview=%d %s", code, out.String())

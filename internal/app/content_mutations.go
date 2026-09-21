@@ -185,7 +185,7 @@ func (a workbookUpdateAdapter) FindWorkbooks(ctx context.Context, name, projectL
 
 func (a workbookUpdateAdapter) UpdateWorkbook(ctx context.Context, input workbookupdate.Request) (workbookupdate.Result, error) {
 	result, err := a.workbooks.UpdateWorkbook(ctx, tableauworkbook.UpdateRequest{LUID: input.LUID, Name: input.Name, OwnerLUID: input.OwnerLUID, Description: input.Description})
-	return workbookupdate.Result{Status: result.Status, WorkbookLUID: result.WorkbookLUID, WorkbookName: result.WorkbookName, ProjectLUID: result.ProjectLUID, OwnerLUID: result.OwnerLUID, TableauRequestID: result.TableauRequestID}, err
+	return workbookupdate.Result{Status: result.Status, WorkbookLUID: result.WorkbookLUID, WorkbookName: result.WorkbookName, ProjectLUID: result.ProjectLUID, OwnerLUID: result.OwnerLUID, Description: result.Description, EvidenceSource: result.EvidenceSource, TableauRequestID: result.TableauRequestID}, err
 }
 
 type datasourceMutationAdapter struct {

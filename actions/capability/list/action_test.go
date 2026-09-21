@@ -7,10 +7,12 @@ import (
 	"errors"
 	"os"
 	"reflect"
+	"strconv"
 	"strings"
 	"testing"
 
 	capabilitylist "github.com/ahillspace/tadx/actions/capability/list"
+	"github.com/ahillspace/tadx/internal/commandhint"
 	"github.com/ahillspace/tadx/internal/errs"
 	"github.com/ahillspace/tadx/internal/output"
 )
@@ -97,6 +99,48 @@ func TestExecuteFiltersAndPaginatesDeterministically(t *testing.T) {
 	}
 	if got.Capabilities[0].ID != "content.workbook.list" || got.Page.NextCursor != "" {
 		t.Fatalf("second page = %#v", got)
+	}
+}
+
+func TestExecuteAllReturnsCompleteMatchingInventory(t *testing.T) {
+	action := capabilitylist.New(source{items: []capabilitylist.Capability{
+		{ID: "content.datasource.list", Domain: "content"},
+		{ID: "content.workbook.list", Domain: "content"},
+		{ID: "pulse.metric.list", Domain: "pulse"},
+	}})
+
+	got, err := action.Execute(context.Background(), capabilitylist.Input{All: true, Domain: "content"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Page.Returned != 2 || got.Page.Total != 2 || got.Page.Limit != capabilitylist.MaxLimit || got.Page.MoreAvailable || got.Page.NextCursor != "" {
+		t.Fatalf("all page = %#v", got.Page)
+	}
+	if got.NextCommand != "" {
+		t.Fatalf("all next command = %q", got.NextCommand)
+	}
+	if ids := []string{got.Capabilities[0].ID, got.Capabilities[1].ID}; !reflect.DeepEqual(ids, []string{"content.datasource.list", "content.workbook.list"}) {
+		t.Fatalf("all IDs = %v", ids)
+	}
+}
+
+func TestExecuteAllRejectsPaginationOverrides(t *testing.T) {
+	for _, input := range []capabilitylist.Input{{All: true, Limit: 1}, {All: true, Cursor: "0"}} {
+		if _, err := capabilitylist.New(source{}).Execute(context.Background(), input); err == nil {
+			t.Fatalf("Execute(%#v) error = nil", input)
+		}
+	}
+}
+
+func TestExecuteAllFailsWhenMatchingInventoryExceedsBound(t *testing.T) {
+	items := make([]capabilitylist.Capability, capabilitylist.MaxLimit+1)
+	for index := range items {
+		items[index].ID = "capability." + strconv.Itoa(index)
+	}
+	_, err := capabilitylist.New(source{items: items}).Execute(context.Background(), capabilitylist.Input{All: true})
+	var structured *errs.Error
+	if !errors.As(err, &structured) || structured.Kind != errs.KindUsage || !strings.Contains(structured.Summary, "10000-record bound") {
+		t.Fatalf("error = %#v, want bounded usage error", err)
 	}
 }
 
@@ -194,20 +238,23 @@ func TestFullOutputRetainsGetContractForEveryReturnedRow(t *testing.T) {
 }
 
 func TestContinuationPreservesFiltersAndPresentation(t *testing.T) {
+	const environment = "qa team's $literal"
 	items := []capabilitylist.Capability{
 		{ID: "content.workbook.first", Domain: "content", Resource: "workbook", Owner: "cli", Availability: "Cloud"},
 		{ID: "content.workbook.second", Domain: "content", Resource: "workbook", Owner: "cli", Availability: "Cloud"},
 	}
-	result, err := capabilitylist.New(source{items: items}).Execute(context.Background(), capabilitylist.Input{
-		Domain: "content", Resource: "workbook", Owner: "cli", Product: "cloud", Limit: 1, Full: true, JSON: true,
+	result, err := capabilitylist.New(source{items: items}).Execute(t.Context(), capabilitylist.Input{
+		Environment: environment,
+		Domain:      "content", Resource: "workbook", Owner: "cli", Product: "cloud", Limit: 1, Full: true, JSON: true,
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if result.NextCommand == "" || !strings.Contains(result.NextCommand, "--cursor 1") || !strings.Contains(result.NextCommand, "--limit 1") || !strings.Contains(result.NextCommand, "--full") || !strings.Contains(result.NextCommand, "--json") {
+	want := commandhint.Environment(environment, "capability", "list", "--domain", "content", "--resource", "workbook", "--owner", "cli", "--product", "cloud", "--cursor", "1", "--limit", "1", "--full", "--json")
+	if result.NextCommand != want {
 		t.Fatalf("next_command = %q", result.NextCommand)
 	}
-	if len(result.Help) != 2 || result.Help[1] != "When more results are needed, use next_command." {
+	if len(result.Help) != 2 || result.Help[0] != commandhint.Environment(environment, "capability", "get", items[0].ID) || result.Help[1] != "When more results are needed, use next_command." {
 		t.Fatalf("help = %#v", result.Help)
 	}
 }

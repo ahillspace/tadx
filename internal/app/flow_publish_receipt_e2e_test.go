@@ -50,7 +50,7 @@ func TestFlowPublishPreservesConfirmedPersistenceOutcome(t *testing.T) {
 	}
 
 	var output strings.Builder
-	exit := app.Run(context.Background(), []string{"content", "flow", "publish", "--file", flowPath, "--environment", "production", "--project-id", "project-1", "--json"}, &output, app.Options{ConfigPath: configPath, HTTPClient: server.Client(), MutationsEnabled: true, JobDirectory: jobDirectory})
+	exit := app.Run(context.Background(), []string{"content", "flow", "publish", "--file", flowPath, "--environment", "production", "--project-id", "project-1", "--json"}, &output, withSiteMutationConsent(t, app.Options{ConfigPath: configPath, HTTPClient: server.Client(), JobDirectory: jobDirectory}, true))
 	if exit == 0 || publishes.Load() != 1 {
 		t.Fatalf("exit=%d publishes=%d output=%s", exit, publishes.Load(), output.String())
 	}

@@ -41,6 +41,30 @@ func TestExecuteSortsAndPagesProfiles(t *testing.T) {
 	}
 }
 
+func TestExecuteAllReturnsCompleteProfileInventory(t *testing.T) {
+	profiles := []profilelist.Profile{{Alias: "alpha"}, {Alias: "beta"}}
+	got, err := profilelist.New(directReader{profiles: profiles}).Execute(context.Background(), profilelist.Input{All: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Page.Returned != 2 || got.Page.Total != 2 || got.Page.Limit != profilelist.MaxLimit || got.Page.NextCursor != "" || len(got.Profiles) != 2 {
+		t.Fatalf("all page = %#v", got.Page)
+	}
+}
+
+func TestExecuteAllRejectsPaginationOverridesAndOverflow(t *testing.T) {
+	for _, input := range []profilelist.Input{{All: true, Limit: 1}, {All: true, Cursor: "0"}} {
+		if _, err := profilelist.New(directReader{}).Execute(context.Background(), input); err == nil {
+			t.Fatalf("Execute(%#v) error = nil", input)
+		}
+	}
+	profiles := make([]profilelist.Profile, profilelist.MaxLimit+1)
+	_, err := profilelist.New(directReader{profiles: profiles}).Execute(context.Background(), profilelist.Input{All: true})
+	if err == nil {
+		t.Fatal("overflow Execute() error = nil")
+	}
+}
+
 func TestExecuteContinuationTerminalAndEmptyPages(t *testing.T) {
 	action := profilelist.New(reader{profiles: []profilelist.Profile{{Alias: "alpha"}, {Alias: "beta"}}})
 	terminal, err := action.Execute(context.Background(), profilelist.Input{Limit: 1, Cursor: "1"})

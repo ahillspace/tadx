@@ -66,7 +66,7 @@ func TestPulseCaptionForkThroughCLI(t *testing.T) {
 				opts := options
 				if preview {
 					invocation = append(invocation, "--preview")
-					opts = disabledPreviewOptions(opts)
+					opts = disabledPreviewOptions(t, opts)
 				}
 				var out bytes.Buffer
 				code := app.Run(context.Background(), invocation, &out, opts)
@@ -141,7 +141,7 @@ func TestPulseCaptionPublishingThroughCLI(t *testing.T) {
 				opts := options
 				if preview {
 					invocation = append(invocation, "--preview")
-					opts = disabledPreviewOptions(opts)
+					opts = disabledPreviewOptions(t, opts)
 				}
 				var stdout bytes.Buffer
 				code := app.Run(context.Background(), invocation, &stdout, opts)
