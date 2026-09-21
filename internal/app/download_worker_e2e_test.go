@@ -153,7 +153,7 @@ func TestNoWaitPullWorkerProcessPersistsNativeArtifact(t *testing.T) {
 	defer fixture.close()
 	runtime, workspace := datasourceLifecycleRuntime(t, fixture.server)
 	options, workerDone := downloadWorkerOptions(runtime, fixture.server, t.TempDir(), t.TempDir())
-	options.WorkerLauncher = func(_ context.Context, directory, id string) error {
+	options.WorkerLauncher = func(ctx context.Context, directory, id string) error {
 		executable, err := os.Executable()
 		if err != nil {
 			return err
@@ -163,14 +163,16 @@ func TestNoWaitPullWorkerProcessPersistsNativeArtifact(t *testing.T) {
 		if err := child.Start(); err != nil {
 			return err
 		}
+		exited := make(chan int, 1)
 		go func() {
+			code := 0
 			if child.Wait() != nil {
-				workerDone <- 1
-				return
+				code = 1
 			}
-			workerDone <- 0
+			exited <- code
+			workerDone <- code
 		}()
-		return nil
+		return awaitPublicationWorkerTestStart(ctx, directory, id, exited)
 	}
 
 	var output strings.Builder
