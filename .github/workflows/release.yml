@@ -97,8 +97,13 @@ jobs:
       - name: Run tests
         run: go test ./...
 
-      - name: Run race tests
+      - name: Run race tests (non-Windows)
+        if: runner.os != 'Windows'
         run: go test -race ./...
+
+      - name: Run race tests (Windows)
+        if: runner.os == 'Windows'
+        run: go test -race -timeout=15m ./...
 
       - name: Check module metadata
         shell: pwsh
