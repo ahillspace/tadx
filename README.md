@@ -1,196 +1,142 @@
 # TADX
 
-TADX is a CLI authored specifically to work well with agents, but is also useful to operate by hand.
-The main goal is to allow agents to work with both Tableau Cloud and Server with reduced confusion, token usage, and vastly increased speed.
+TADX lets coding agents and humans find, inspect, download, publish, and manage Tableau content from the terminal.
+Give your agent an outcome, such as finding a workbook's dependencies or preparing a project for a new analyst, instead of walking it through Tableau API calls.
+Discoverable commands, compact results, and bundled agent skills reduce API plumbing and repeated setup, while previews and explicit site permissions keep changes under your control.
 
-Initial testing has shown drastic improvement over all other methods of equipping agents with the tools they need to work with Tableau.
-
-TADX handles Tableau lifecycle work, not natural-language data queries or analytical rendering.
-
-Feedback and collaboration are openly welcomed, with dedicated documentation for anyone looking to add actions to TADX using coding agents (see the [tadx-build skill](.agents/skills/tadx-build/SKILL.md)).
+TADX works with Tableau Cloud and Tableau Server.
+It is an independent, pre-1.0 project and is not supported by or associated with Tableau or Salesforce.
 
 ## What you can do
 
-TADX is an independent, pre-1.0 project and is not supported by or associated with Tableau or Salesforce.
-It is usable and actively developed.
+- Find workbooks, datasources, and flows, inspect their dependencies, and pull a useful working set into a local workspace.
+- Publish and organize Tableau content with exact identities, previews, and ordered batch outcomes where supported.
+- Inspect projects, users, groups, group membership, and permissions, then make authorized administrative changes.
+- Explore lineage and upstream catalog metadata, audit metadata quality, and update supported descriptions, contacts, tags, and labels.
+- Discover suitable datasource fields and manage Pulse definitions, metric variants, and followers.
+- Build and refresh local caches for bounded offline discovery and preserve portable workspace state.
 
-Give your agent an outcome, not a list of API calls:
+Availability still depends on the Tableau product, version, licensed features, site configuration, and permissions of the authenticated user.
+Use `tadx capability list` and `tadx capability get` to inspect TADX's supported operations and their availability notes.
 
-- Find sales workbooks, inspect their dependencies, and download a useful working set.
-- Prepare a project and access for a temporary analyst.
-- Discover suitable datasource fields and create a meaningful Pulse metric.
-- Find missing descriptions in an upstream table and enrich the metadata without changing the underlying data.
+## TADX and Tableau MCP
 
-Or use the same CLI directly to inspect, download, organize, and publish Tableau content.
-TADX supports workbook, datasource, flow, and project lifecycle operations, local workspaces and caches, lineage, administration, upstream catalog metadata, and Pulse definition workflows.
-Run `tadx --help` for the command roadmap and `tadx content --help` for its four resources and available actions.
-Use a resource reference such as `tadx content workbook --help` for all its verbs, required inputs, options, accepted values, defaults, and constraints.
-Each verb shows focused help for its action; `catalog lineage` captures lineage and `catalog label` manages asset labels.
-Use `tadx capability list` and `tadx capability get` for feature inventory and availability diagnostics.
+TADX and Tableau MCP solve different parts of an agent's Tableau workflow.
 
-## Install TADX and agent guidance
+TADX owns lifecycle operations, artifacts, workspaces, administration, upstream metadata, configuration, and Pulse definition lifecycle.
+Tableau MCP is the complementary choice for analytical data queries, rendered view data and images, and current Pulse metric values and insights.
+TADX does not configure, call, or proxy Tableau MCP, so the user or host agent remains responsible for that connection.
 
-One-line installation from [tadx.net](https://tadx.net) is **coming soon**.
+## Install
 
-For now, [build TADX from source](CONTRIBUTING.md#run-the-current-source) on Windows, macOS, or Linux.
-Add the resulting `bin` directory to your `PATH` to run the `tadx` commands below, or use the executable's path directly.
+The installers select the correct published binary, verify its checksum, add shell completion and PATH configuration, and install the bundled TADX agent Guidance in detected agent directories.
+If no supported agent directory is detected, Guidance is installed in the shared `~/.agents/skills` directory.
 
-## Connect to Tableau
+Windows PowerShell:
 
-Create an environment profile for a Tableau Cloud or Tableau Server site:
-
-```text
-tadx env add dev --url https://example.tableau.com --site example-site
+```powershell
+irm https://tadx.net/install.ps1 | iex
 ```
 
-Use the server base URL for `--url` and the site's content URL slug for `--site`.
-For Tableau's default site, omit `--site`.
+macOS or Linux:
 
-TADX authenticates with Tableau personal access tokens only.
-Create a PAT in Tableau, then run the interactive login:
-
-```text
-tadx auth login --environment dev
+```sh
+curl -fsSL https://tadx.net/install.sh | sh
 ```
 
-Enter the PAT name and secret at the secure prompts.
-TADX validates the PAT and uses Windows Credential Manager, macOS Keychain, or Linux Secret Service to store it securely.
-If the credential store is unavailable or locked, login fails instead of falling back to plaintext.
+If `tadx.net` is unavailable, use the installer assets published with the latest GitHub release:
 
-For CI or temporary use, environment profiles can instead reference a PAT name variable and a PAT secret variable.
-See `tadx env --help` for those options.
-
-Run `tadx` for a local overview of your configuration, or `tadx --help` for the command roadmap.
-Category help is a short roadmap; resource help contains the complete syntax for that resource.
-For example, `tadx admin --help` lists resources, `tadx admin group --help` covers group operations, and `tadx admin group-member --help` covers membership changes.
-Verb help, such as `tadx admin group create --help`, shows the focused reference for that action; resource help covers all verbs, so there is no need to request both.
-Direct-action categories such as `auth` and `env` provide their complete reference at that level.
-Selected useful aliases appear beside canonical flags; the [shorthand reference](docs/reference/shorthand.md) lists all shortcuts.
-Both `-h` and `--help` show help without running the operation or reading credentials.
-
-## Add skills to your agent
-
-Install the bundled [TADX skill](internal/agent/skills/tadx/SKILL.md) and [Pulse authoring skill](internal/agent/skills/tadx-pulse/SKILL.md) for effective discovery and Tableau-specific judgment:
-
-```text
-tadx agent install --target auto
+```powershell
+irm https://github.com/ahillspace/tadx/releases/latest/download/install.ps1 | iex
 ```
 
-This detects supported agent directories and installs standard `SKILL.md` packages for each.
-If none are detected, it uses the shared `~/.agents/skills` directory.
-You can also choose a target explicitly:
-
-```text
-tadx agent install --target claude
-tadx agent install --target codex
-tadx agent install --target cursor
+```sh
+curl -fsSL https://github.com/ahillspace/tadx/releases/latest/download/install.sh | sh
 ```
 
-OpenCode, Pi, Hermes, GitHub Copilot, Gemini CLI, and Cline are also supported.
-Use `--preview` to inspect the local file changes first.
-Updates replace TADX's skill packages, including local edits, so keep personal additions in a separate skill.
-See [agent guidance](docs/getting-started.md#agent-guidance) for all targets and installation locations.
+Published releases provide Windows, macOS, and Linux binaries for amd64 and arm64.
+See [GitHub releases](https://github.com/ahillspace/tadx/releases/latest) for the current version and downloads.
 
-### Installer switches
+Run `tadx update --check` to check for a newer release without changing the installation.
+Run `tadx update` to update the CLI and refresh its bundled Guidance.
+Updates replace TADX-owned skill packages, so keep personal extensions in a separate skill.
+See [Getting started](docs/getting-started.md#maintain-the-installation) for explicit agent targets, custom installation directories, profile controls, updates, and removal.
 
-The one-line installers accept the same independent controls.
+## First steps
 
-- `--version VERSION` or `-Version VERSION` selects an exact release; the default is `latest`.
-- `--target TARGET` or `-Target TARGET` selects bundled agent Guidance; repeat it on Unix or pass a comma-separated list on Windows.
-- `--install-dir DIRECTORY` or `-InstallDir DIRECTORY` selects the binary directory.
-- The Unix directory precedence is `--install-dir`, `TADX_INSTALL_DIR`, then `$HOME/.local/bin`.
-- The Windows directory precedence is `-InstallDir`, `TADX_INSTALL_DIR`, then `%LOCALAPPDATA%\Programs\tadx\bin`.
-- `--no-modify-path` or `-NoModifyPath` leaves PATH and shell profiles unchanged.
-- `--no-completion` or `-NoCompletion` leaves shell completion profiles unchanged.
-
-For an installation without profile edits, use `install.sh --no-modify-path --no-completion` or `install.ps1 -NoModifyPath -NoCompletion`.
-
-## Get your first workbook
-
-Create a named workspace and make it the default for the environment:
+Start with the local overview and command index:
 
 ```text
-tadx workspace create development
-tadx env update dev --default-workspace development
+tadx
+tadx --help
 ```
 
-Search Tableau for the workbook you want:
+The overview reports local environment, credential, workspace, and mutation-policy readiness without contacting Tableau or reading a stored PAT.
+Create an environment profile for the exact Tableau Cloud or Tableau Server site, then authenticate with a Tableau personal access token.
+Use the built-in references for the accepted URL, site, and credential options:
 
 ```text
-tadx search revenue --environment dev --type workbook
+tadx env add --help
+tadx auth login --help
 ```
 
-Choose the result you intend to use and copy its authoritative LUID.
-Replace `WORKBOOK_LUID` below with that returned ID, then pull the workbook into the default workspace:
+TADX uses PAT authentication only.
+Interactive login validates the PAT before saving it, and persistence requires the native Windows Credential Manager, macOS Keychain, or Linux Secret Service.
+PATs and session tokens are not written to TADX configuration, output, logs, artifacts, or caches.
+Automation can instead reference PAT name and secret environment variables from an environment profile.
+
+Once connected, search for content and inspect a result.
+Replace `ENVIRONMENT_ALIAS` with the profile you created and `WORKBOOK_LUID` with an ID returned by search before running these examples:
 
 ```text
-tadx content workbook pull --environment dev --id WORKBOOK_LUID
+tadx search revenue --environment ENVIRONMENT_ALIAS --type workbook
+tadx content workbook inspect --environment ENVIRONMENT_ALIAS --id WORKBOOK_LUID
 ```
 
-Find the downloaded files and inspect their local state:
+For the inputs and examples for a particular action, go directly to its verb help:
 
 ```text
-tadx workspace status --workspace development --full
+tadx content workbook pull --help
 ```
 
-The full status output shows where the downloaded artifacts are stored.
-Use pull's `--preview` to inspect acquisition scope and local conflicts before writing artifacts.
+Read [Getting started](docs/getting-started.md) for authentication checks, workspaces, caches, previews, Pulse authoring, and maintenance.
 
-## Safe defaults
+## Agent Guidance
 
-Read operations query Tableau live unless you explicitly select the local cache.
-Compact TOON output is the default; `--full` adds bounded detail for the same operation.
-Use `--json` when you need JSON output.
+The installer and `tadx update` automatically deploy the bundled `tadx` and `tadx-pulse` Guidance for detected agents.
+The Guidance teaches agents how to discover commands, respect safety boundaries, and apply Tableau-specific judgment without duplicating the CLI reference.
+It does not create agent instruction files, configure Tableau MCP, grant mutation permission, or prove that an agent host has loaded the skills.
+
+The installer currently recognizes Claude, Codex, Cursor, OpenCode, Pi, Hermes, GitHub Copilot, Gemini CLI, and Cline default skill locations.
+No separate skill-install step is needed for a normal installation.
+See [Agent Guidance](docs/getting-started.md#agent-guidance) to add a newly installed agent, select an explicit target, or inspect installation locations and ownership rules.
+
+## Safety and output
+
+TADX defaults to compact TOON output for agent efficiency.
+Use `--full` for expanded bounded detail and `--json` when a JSON encoding is required.
 Tableau LUIDs are authoritative, and ambiguous selectors fail instead of guessing.
 
-Remote mutations are disabled by default for each server and exact site.
-Supported read-only previews remain available while site consent is disabled.
-Acquisition and local-state commands also expose previews for their planned file or configuration changes.
-Interactive `auth login` and policy-changing `mutation set` remain explicit operations; `update --check` checks releases without installing them.
-Use `tadx mutation status` to list saved consent for all configured environments.
-Pass `--environment <alias>` for one environment, or `--full` for canonical server and exact site details.
-Use `tadx mutation set --environment dev --enabled=true` or `--enabled=false` to change that site's persisted consent.
-Agents must ask before changing site consent and must name the selected server, exact site, and persistent scope.
-The legacy `mutations_enabled` field and `TADX_ENABLE_MUTATIONS=0` or `1` values do not authorize remote writes.
-For repeated work, the operational reference identifies supported selectors and `--batch-file` inputs, including positional `args` arrays.
-Batches vary one selector dimension at a time or use explicit item rows, with at most 100 expanded selections.
+Remote mutations require saved consent for the selected canonical server and exact site, in addition to normal command checks and Tableau permissions.
+An operation request, discovery result, or preview does not authorize changing that consent.
+Agents must ask before changing the persisted site setting.
+Use `tadx mutation status` to inspect saved consent, and read [Preview remote changes](docs/getting-started.md#preview-remote-changes) before enabling or disabling it.
 
-## Optional managed policies
+Supported mutation commands expose `--preview` so you can resolve targets and inspect proposed changes without applying them.
+Acquisition and local-state operations also provide previews where they can write files or configuration.
+Optional [managed policies](docs/managed-policy.md) let administrators enforce an additional machine-wide capability ceiling.
 
-Managed policies add an administrator-owned machine-wide capability ceiling.
-Generate candidates with `tadx policy samples --output <directory>`.
-Edit one candidate and validate it with `tadx policy validate <candidate-file>`.
-Have an administrator deploy the selected candidate.
-Check the deployed policy with `tadx policy status`.
-See the [managed policy guide](docs/managed-policy.md) for schemas, fixed paths, protected deployment, status, updates, and recovery.
+## Documentation
 
-## Learn more
+- [Getting started](docs/getting-started.md) covers setup, credentials, content, caches, previews, Pulse, and updates.
+- [Capability reference](docs/reference/capabilities.md) and the [interactive capability map](docs/reference/capability-map.html) describe the supported action inventory.
+- [Workspaces](docs/workspaces.md) covers local artifacts, paths, status, and cloning.
+- [Managed policies](docs/managed-policy.md) covers optional machine-wide controls, secure deployment, and recovery.
+- [Command shorthand](docs/reference/shorthand.md) lists supported aliases.
+- [Architecture](docs/architecture/README.md) explains the internal boundaries and design.
 
-- [Getting started](docs/getting-started.md): credentials, content, caches, previews, Pulse, and updates.
-- [Managed policy](docs/managed-policy.md): optional machine-wide capability ceilings, secure deployment, and recovery.
-- [Workspaces](docs/workspaces.md): local artifacts, paths, status, and cloning.
-- [Catalog metadata](internal/agent/skills/tadx/references/catalog.md): inspection, descriptions, tags, audits, and labels.
-- [Capabilities](docs/reference/capabilities.md) and the [interactive capability map](docs/reference/capability-map.html).
-- [Command aliases](docs/reference/shorthand.md).
-- [Contributing](CONTRIBUTING.md) and [architecture](docs/architecture/README.md).
-
-## Future Vision
-
-The current goal is to get TADX running quickly and smoothly against the simple content lifecycle you see with Tableau Cloud and Server.
-This is to get it ready to augment the new experiences coming in Tableau (Tableau Authoring API, Tableau Knowledge Graph, Tableau MCP, TDS API, Composable Datasources, etc.).
-Augmenting semantics, modifying published datasources, cleaning and composing data sources, and managing access with agents is all in scope as these new features become available and TADX is meant to act as the platform that allows agents to assist with these activities cleanly, quickly, cheaply, and at scale.
-
-### Optional native search categories
-
-Proposed: 2026-09-14; not implemented.
-Extend `tadx search` with opt-in categories so agents can use improvements to Tableau's native relevance search beyond the current content, administration, and Pulse results.
-Candidates include views, databases/files, tables/objects, virtual connections, collections, and Prep data roles; include lenses only where the deployed Tableau API still supports them.
-Syntax such as `--include view,database,table` is illustrative and requires a CLI design decision.
-Preserve current defaults, retain each category's native identity and parent relationship, and never represent a connection, table, or database as a published datasource merely because its name or URL resembles one.
-Preserve Tableau's mixed relevance order across native categories, including semantic or AI ranking when supplied by the service.
-Before implementation, define the category names, combination with `--type`, per-category result fields and follow-up commands, identity namespaces, and pagination after filtering or grouping.
-Also decide explicit cache behavior for categories without local coverage and how this complements `catalog search` rather than silently substituting its different Metadata API matching behavior.
-See the [current search architecture](docs/architecture/search.md) for the source split and the connection-identity defect that motivated this proposal.
+Contributions and feedback are welcome.
+Start with [CONTRIBUTING.md](CONTRIBUTING.md), which points coding agents and human contributors to the maintained build standards.
 
 ## License
 
