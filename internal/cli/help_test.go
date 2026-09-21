@@ -46,6 +46,19 @@ func renderedHelp(t *testing.T, command *cobra.Command) string {
 	return output.String()
 }
 
+func TestRootHelpDirectsKnownActionsToVerbHelp(t *testing.T) {
+	root, _, _ := helpTestTree()
+	installCategoryHelp(root)
+	got := renderedHelp(t, root)
+	want := "TADX: discover, inspect, download, and manage Tableau assets.\n\nusage:\n" +
+		"  tadx                              Local session overview\n" +
+		"  tadx -h                           Categories, verbs, and direct commands\n" +
+		"  tadx <category> <verb> --help     Inputs and examples for a known verb\n"
+	if !strings.HasPrefix(got, want) {
+		t.Fatalf("unexpected root help opening:\n%s", got)
+	}
+}
+
 func TestCategoryHelpNavigatesWithoutExpandingReferences(t *testing.T) {
 	root, admin, remove := helpTestTree()
 	installCategoryHelp(root)
