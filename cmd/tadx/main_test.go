@@ -210,6 +210,10 @@ type processResult struct {
 	stderr   string
 }
 
+// Real CLI subprocess smoke tests need a hang guard, not a product deadline.
+// Leave headroom for process startup when the Windows race suite is saturated.
+const cliProcessSmokeLimit = 30 * time.Second
+
 func processSiteConfig(t *testing.T, consent bool) string {
 	t.Helper()
 	environment := config.Environment{URL: "https://tableau.example.invalid", SiteContentURL: "fixture-site", Auth: config.Auth{Type: config.AuthTypePAT}}
@@ -240,7 +244,7 @@ func buildCLI(t *testing.T) string {
 
 func runCLI(t *testing.T, binary string, args []string, environment map[string]string) processResult {
 	t.Helper()
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	ctx, cancel := context.WithTimeout(t.Context(), cliProcessSmokeLimit)
 	defer cancel()
 	// A recognized route must never fall through to the developer's installed
 	// profile or its native-store credentials. Each process uses isolated fixture
@@ -263,7 +267,7 @@ func runCLI(t *testing.T, binary string, args []string, environment map[string]s
 	command.Stderr = &stderr
 	err := command.Run()
 	if ctx.Err() != nil {
-		t.Fatalf("tadx process did not exit within 10 seconds: %v", ctx.Err())
+		t.Fatalf("tadx process did not exit within %s: %v", cliProcessSmokeLimit, ctx.Err())
 	}
 	exitCode := 0
 	if err != nil {
