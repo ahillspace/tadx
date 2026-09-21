@@ -101,8 +101,7 @@ func TestNoWaitPublicationReturnsDuringSubmissionAndNeverPolls(t *testing.T) {
 					}()
 					return awaitPublicationWorkerTestStart(ctx, directory, id, exited)
 				}
-				go func() { done <- runPublicationWorker(context.Background(), directory, id, options) }()
-				return nil
+				return launchInProcessPublicationWorkerTest(ctx, directory, id, options, done)
 			}
 			args := []string{"content", kind, "publish", "--file", file, "--environment", "production", "--project-id", "project-1", "--no-wait", "--json"}
 			if kind == "datasource" {
@@ -148,7 +147,71 @@ func TestNoWaitPublicationReturnsDuringSubmissionAndNeverPolls(t *testing.T) {
 	}
 }
 
+func TestPublicationWorkerReportsUnknownWhenStartupIsNotAcknowledged(t *testing.T) {
+	var launches, requests atomic.Int32
+	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		requests.Add(1)
+		http.Error(w, "unexpected request", http.StatusInternalServerError)
+	}))
+	defer server.Close()
+	runtime, _ := datasourceLifecycleRuntime(t, server)
+	file := filepath.Join(t.TempDir(), "NeverStarted.twb")
+	if err := os.WriteFile(file, []byte("<workbook/>"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	options := withSiteMutationConsent(t, Options{
+		ConfigPath:         runtime.configPath,
+		HTTPClient:         server.Client(),
+		PublicationWorkers: true,
+		OperationDirectory: t.TempDir(),
+		JobDirectory:       t.TempDir(),
+		Stderr:             io.Discard,
+	}, true)
+	options.WorkerLauncher = func(context.Context, string, string) error {
+		launches.Add(1)
+		return nil
+	}
+	var output strings.Builder
+	exit := Run(t.Context(), []string{"content", "workbook", "publish", "--file", file, "--environment", "production", "--project-id", "project-1", "--no-wait", "--json"}, &output, options)
+	if exit == 0 {
+		t.Fatalf("unacknowledged worker exit=%d output=%s", exit, output.String())
+	}
+	var result struct {
+		Error struct {
+			ID string `json:"id"`
+		} `json:"error"`
+		Output struct {
+			OperationID string `json:"operation_id"`
+			Status      string `json:"status"`
+			CheckStatus string `json:"check_status"`
+		} `json:"output"`
+	}
+	if err := json.Unmarshal([]byte(output.String()), &result); err != nil {
+		t.Fatalf("startup result is not JSON: %v\n%s", err, output.String())
+	}
+	if result.Error.ID != "operation.worker.start_unknown" || result.Output.OperationID == "" || result.Output.Status != "starting" || !strings.Contains(result.Output.CheckStatus, "job inspect --operation-id "+result.Output.OperationID) {
+		t.Fatalf("unexpected startup result: %+v", result)
+	}
+	if launches.Load() != 1 || requests.Load() != 0 {
+		t.Fatalf("launches=%d remote requests=%d, want one launch and no retry or remote request", launches.Load(), requests.Load())
+	}
+	record, err := (operationrun.Store{Directory: options.OperationDirectory}).Read(result.Output.OperationID)
+	if err != nil || record.ID != result.Output.OperationID || record.Operation != "workbook.publish" || record.Phase != operationrun.PhaseRequested || !record.StartedAt.IsZero() {
+		t.Fatalf("durable startup record=%+v err=%v", record, err)
+	}
+}
+
 const publicationWorkerTestStartLimit = 15 * time.Second
+
+func launchInProcessPublicationWorkerTest(ctx context.Context, directory, id string, options Options, done chan<- int) error {
+	exited := make(chan int, 1)
+	go func() {
+		code := runPublicationWorker(context.Background(), directory, id, options)
+		exited <- code
+		done <- code
+	}()
+	return awaitPublicationWorkerTestStart(ctx, directory, id, exited)
+}
 
 func awaitPublicationWorkerTestStart(ctx context.Context, directory, id string, exited <-chan int) error {
 	ctx, cancel := context.WithTimeout(ctx, publicationWorkerTestStartLimit)
@@ -179,7 +242,7 @@ func awaitPublicationWorkerTestStartState(ctx context.Context, exited <-chan int
 			if err == nil && !record.StartedAt.IsZero() {
 				return nil
 			}
-			return fmt.Errorf("publication worker test process exited before durable startup acknowledgement: exit %d", code)
+			return fmt.Errorf("publication worker test exited before durable startup acknowledgement: exit %d", code)
 		case <-ctx.Done():
 			return ctx.Err()
 		case <-ticker.C:

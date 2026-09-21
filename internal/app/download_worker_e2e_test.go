@@ -271,9 +271,8 @@ func downloadWorkerOptions(runtime *runtimeDependencies, server *httptest.Server
 		JobDirectory:       jobDirectory,
 		Stderr:             io.Discard,
 	}
-	options.WorkerLauncher = func(_ context.Context, directory, id string) error {
-		go func() { done <- runPublicationWorker(context.Background(), directory, id, options) }()
-		return nil
+	options.WorkerLauncher = func(ctx context.Context, directory, id string) error {
+		return launchInProcessPublicationWorkerTest(ctx, directory, id, options, done)
 	}
 	return options, done
 }

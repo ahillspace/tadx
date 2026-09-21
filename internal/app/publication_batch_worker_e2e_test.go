@@ -57,9 +57,8 @@ func TestPublicationWorkerDefaultWaitsForAcceptedJob(t *testing.T) {
 	}
 	options := publicationWorkerTestOptions(runtime.configPath, server, t)
 	done := make(chan int, 1)
-	options.WorkerLauncher = func(_ context.Context, directory, id string) error {
-		go func() { done <- runPublicationWorker(context.Background(), directory, id, options) }()
-		return nil
+	options.WorkerLauncher = func(ctx context.Context, directory, id string) error {
+		return launchInProcessPublicationWorkerTest(ctx, directory, id, options, done)
 	}
 
 	var output strings.Builder
@@ -141,9 +140,8 @@ func TestPublicationWorkerRepeatedIDBatchPersistsMixedFailureAndPendingUnderOneO
 	}
 	options := publicationWorkerTestOptions(runtime.configPath, server, t)
 	done := make(chan int, 1)
-	options.WorkerLauncher = func(_ context.Context, directory, id string) error {
-		go func() { done <- runPublicationWorker(context.Background(), directory, id, options) }()
-		return nil
+	options.WorkerLauncher = func(ctx context.Context, directory, id string) error {
+		return launchInProcessPublicationWorkerTest(ctx, directory, id, options, done)
 	}
 
 	args := []string{"content", "workbook", "publish", "--workspace", "analytics", "--environment", "production", "--project-id", "project-1", "--id", "source-a", "--id", "source-b", "--overwrite", "--no-wait", "--json"}
@@ -228,7 +226,7 @@ func TestPublicationWorkerCutoffStopsForegroundWaitWithoutCancellingHeldSubmissi
 	}
 	options := publicationWorkerTestOptions(runtime.configPath, server, t)
 	done := make(chan int, 1)
-	options.WorkerLauncher = func(_ context.Context, directory, id string) error {
+	options.WorkerLauncher = func(ctx context.Context, directory, id string) error {
 		store := operationrun.Store{Directory: directory}
 		if _, err := store.Update(id, func(record *operationrun.Record) error {
 			record.RequestedAt = time.Now().UTC().Add(-publicationWaitLimit - time.Second)
@@ -236,8 +234,7 @@ func TestPublicationWorkerCutoffStopsForegroundWaitWithoutCancellingHeldSubmissi
 		}); err != nil {
 			return err
 		}
-		go func() { done <- runPublicationWorker(context.Background(), directory, id, options) }()
-		return nil
+		return launchInProcessPublicationWorkerTest(ctx, directory, id, options, done)
 	}
 
 	type runResult struct {
