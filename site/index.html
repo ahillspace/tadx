@@ -560,6 +560,7 @@
 
     const dialog = document.getElementById('install-dialog');
     const osTabs = Array.from(document.querySelectorAll('[data-os]'));
+    let copyGeneration = 0;
     const installers = {
       unix: {
         download: 'curl -fsSL https://tadx.net/install.sh | sh',
@@ -570,7 +571,11 @@
         run: 'tadx update'
       }
     };
+    function resetCopyLabels() {
+      document.querySelectorAll('[data-copy] > span').forEach(label => { label.textContent = 'Copy'; });
+    }
     function selectOS(os) {
+      copyGeneration++;
       for (const tab of osTabs) {
         const selected = tab.dataset.os === os;
         tab.setAttribute('aria-selected', String(selected));
@@ -579,7 +584,7 @@
       document.getElementById('install-panel').setAttribute('aria-labelledby', 'os-' + os);
       document.getElementById('download-code').textContent = installers[os].download;
       document.getElementById('run-code').textContent = installers[os].run;
-      document.querySelectorAll('[data-copy] > span').forEach(label => { label.textContent = 'Copy'; });
+      resetCopyLabels();
     }
     osTabs.forEach(tab => tab.addEventListener('click', () => selectOS(tab.dataset.os)));
     arrowTabs(osTabs, tab => selectOS(tab.dataset.os));
@@ -593,7 +598,11 @@
       document.body.classList.add('modal-open');
     }));
     dialog.querySelector('.close-dialog').addEventListener('click', () => dialog.close());
-    dialog.addEventListener('close', () => document.body.classList.remove('modal-open'));
+    dialog.addEventListener('close', () => {
+      copyGeneration++;
+      resetCopyLabels();
+      document.body.classList.remove('modal-open');
+    });
     dialog.addEventListener('click', event => {
       const r = dialog.getBoundingClientRect();
       if (event.target === dialog && (event.clientX < r.left || event.clientX > r.right || event.clientY < r.top || event.clientY > r.bottom)) dialog.close();
@@ -602,17 +611,25 @@
       let reset;
       button.addEventListener('click', async () => {
         clearTimeout(reset);
+        const generation = ++copyGeneration;
         const code = document.getElementById(button.dataset.copy);
+        const text = code.textContent;
+        resetCopyLabels();
+        button.querySelector('span').textContent = 'Copying';
         let copied = false;
+        let clipboardTimeout;
         try {
           if (navigator.clipboard?.writeText && window.isSecureContext) {
-            await navigator.clipboard.writeText(code.textContent);
-            copied = true;
+            const nativeCopy = navigator.clipboard.writeText(text).then(() => true, () => false);
+            const deadline = new Promise(resolve => { clipboardTimeout = setTimeout(() => resolve(false), 500); });
+            copied = await Promise.race([nativeCopy, deadline]);
           }
         } catch (_) { /* Local files may need the selection-based clipboard fallback. */ }
+        clearTimeout(clipboardTimeout);
+        if (generation !== copyGeneration || !dialog.open) return;
         if (!copied) {
           const input = document.createElement('textarea');
-          input.value = code.textContent;
+          input.value = text;
           input.style.cssText = 'position:fixed;top:0;left:0;opacity:0;pointer-events:none;';
           dialog.append(input);
           input.select();

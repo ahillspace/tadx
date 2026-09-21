@@ -182,7 +182,7 @@ func helpNodes(category *cobra.Command) (nodes, actions []*cobra.Command) {
 
 func writeRootHelp(out io.Writer, root *cobra.Command) {
 	fmt.Fprintln(out, "TADX: discover, inspect, download, and manage Tableau assets.")
-	fmt.Fprintf(out, "\nusage:\n  %s                            Local session overview\n  %s <command> --help           Commands, inputs, and examples\n", root.Name(), root.Name())
+	fmt.Fprintf(out, "\nusage:\n  %s                              Local session overview\n  %s -h                           Categories, verbs, and direct commands\n  %s <category> <verb> --help     Inputs and examples for a known verb\n", root.Name(), root.Name(), root.Name())
 	groups := []struct {
 		title string
 		names []string
