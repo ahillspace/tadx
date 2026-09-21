@@ -2,14 +2,12 @@ package app
 
 import (
 	"context"
-	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -154,25 +152,7 @@ func TestNoWaitPullWorkerProcessPersistsNativeArtifact(t *testing.T) {
 	runtime, workspace := datasourceLifecycleRuntime(t, fixture.server)
 	options, workerDone := downloadWorkerOptions(runtime, fixture.server, t.TempDir(), t.TempDir())
 	options.WorkerLauncher = func(ctx context.Context, directory, id string) error {
-		executable, err := os.Executable()
-		if err != nil {
-			return err
-		}
-		child := exec.Command(executable, "-test.run=^TestPublicationWorkerProcessHelper$", "--", directory, id, options.JobDirectory)
-		child.Env = append(os.Environ(), "TADX_TEST_WORKER_CERT="+base64.StdEncoding.EncodeToString(fixture.server.Certificate().Raw))
-		if err := child.Start(); err != nil {
-			return err
-		}
-		exited := make(chan int, 1)
-		go func() {
-			code := 0
-			if child.Wait() != nil {
-				code = 1
-			}
-			exited <- code
-			workerDone <- code
-		}()
-		return awaitPublicationWorkerTestStart(ctx, directory, id, exited)
+		return launchPublicationWorkerProcessTest(ctx, directory, id, options.JobDirectory, fixture.server.Certificate().Raw, workerDone)
 	}
 
 	var output strings.Builder

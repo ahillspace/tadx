@@ -15,6 +15,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -81,25 +82,7 @@ func TestNoWaitPublicationReturnsDuringSubmissionAndNeverPolls(t *testing.T) {
 			done := make(chan int, 1)
 			options.WorkerLauncher = func(ctx context.Context, directory, id string) error {
 				if strings.HasSuffix(scenario, "-process") {
-					executable, err := os.Executable()
-					if err != nil {
-						return err
-					}
-					child := exec.Command(executable, "-test.run=^TestPublicationWorkerProcessHelper$", "--", directory, id, options.JobDirectory)
-					child.Env = append(os.Environ(), "TADX_TEST_WORKER_CERT="+base64.StdEncoding.EncodeToString(server.Certificate().Raw))
-					if err := child.Start(); err != nil {
-						return err
-					}
-					exited := make(chan int, 1)
-					go func() {
-						code := 0
-						if child.Wait() != nil {
-							code = 1
-						}
-						exited <- code
-						done <- code
-					}()
-					return awaitPublicationWorkerTestStart(ctx, directory, id, exited)
+					return launchPublicationWorkerProcessTest(ctx, directory, id, options.JobDirectory, server.Certificate().Raw, done)
 				}
 				return launchInProcessPublicationWorkerTest(ctx, directory, id, options, done)
 			}
@@ -202,18 +185,83 @@ func TestPublicationWorkerReportsUnknownWhenStartupIsNotAcknowledged(t *testing.
 }
 
 const publicationWorkerTestStartLimit = 15 * time.Second
+const publicationWorkerTestOutputLimit = 64 << 10
 
-func launchInProcessPublicationWorkerTest(ctx context.Context, directory, id string, options Options, done chan<- int) error {
-	exited := make(chan int, 1)
+type publicationWorkerTestExit struct {
+	code    int
+	waitErr error
+	output  string
+}
+
+type boundedPublicationWorkerTestOutput struct {
+	mu        sync.Mutex
+	data      []byte
+	truncated bool
+}
+
+func (w *boundedPublicationWorkerTestOutput) Write(data []byte) (int, error) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	written := len(data)
+	remaining := publicationWorkerTestOutputLimit - len(w.data)
+	if remaining <= 0 {
+		w.truncated = true
+		return written, nil
+	}
+	if len(data) > remaining {
+		data = data[:remaining]
+		w.truncated = true
+	}
+	w.data = append(w.data, data...)
+	return written, nil
+}
+
+func (w *boundedPublicationWorkerTestOutput) String() string {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	output := string(w.data)
+	if w.truncated {
+		output += "\n[child output truncated]"
+	}
+	return output
+}
+
+func launchPublicationWorkerProcessTest(ctx context.Context, directory, id, jobDirectory string, certificate []byte, done chan<- int, environment ...string) error {
+	executable, err := os.Executable()
+	if err != nil {
+		return err
+	}
+	child := exec.Command(executable, "-test.run=^TestPublicationWorkerProcessHelper$", "--", directory, id, jobDirectory)
+	child.Env = append(os.Environ(), "TADX_TEST_WORKER_CERT="+base64.StdEncoding.EncodeToString(certificate))
+	child.Env = append(child.Env, environment...)
+	output := new(boundedPublicationWorkerTestOutput)
+	child.Stdout = output
+	child.Stderr = output
+	if err := child.Start(); err != nil {
+		return err
+	}
+	exited := make(chan publicationWorkerTestExit, 1)
 	go func() {
-		code := runPublicationWorker(context.Background(), directory, id, options)
-		exited <- code
+		waitErr := child.Wait()
+		code := child.ProcessState.ExitCode()
+		result := publicationWorkerTestExit{code: code, waitErr: waitErr, output: output.String()}
+		exited <- result
 		done <- code
 	}()
 	return awaitPublicationWorkerTestStart(ctx, directory, id, exited)
 }
 
-func awaitPublicationWorkerTestStart(ctx context.Context, directory, id string, exited <-chan int) error {
+func launchInProcessPublicationWorkerTest(ctx context.Context, directory, id string, options Options, done chan<- int) error {
+	exited := make(chan publicationWorkerTestExit, 1)
+	go func() {
+		code := runPublicationWorker(context.Background(), directory, id, options)
+		exited <- publicationWorkerTestExit{code: code}
+		done <- code
+	}()
+	return awaitPublicationWorkerTestStart(ctx, directory, id, exited)
+}
+
+func awaitPublicationWorkerTestStart(ctx context.Context, directory, id string, exited <-chan publicationWorkerTestExit) error {
 	ctx, cancel := context.WithTimeout(ctx, publicationWorkerTestStartLimit)
 	defer cancel()
 	store := operationrun.Store{Directory: directory}
@@ -222,7 +270,7 @@ func awaitPublicationWorkerTestStart(ctx context.Context, directory, id string, 
 	})
 }
 
-func awaitPublicationWorkerTestStartState(ctx context.Context, exited <-chan int, read func(context.Context) (operationrun.Record, error)) error {
+func awaitPublicationWorkerTestStartState(ctx context.Context, exited <-chan publicationWorkerTestExit, read func(context.Context) (operationrun.Record, error)) error {
 	ticker := time.NewTicker(10 * time.Millisecond)
 	defer ticker.Stop()
 	for {
@@ -237,12 +285,12 @@ func awaitPublicationWorkerTestStartState(ctx context.Context, exited <-chan int
 			return nil
 		}
 		select {
-		case code := <-exited:
+		case result := <-exited:
 			record, err := read(ctx)
 			if err == nil && !record.StartedAt.IsZero() {
 				return nil
 			}
-			return fmt.Errorf("publication worker test exited before durable startup acknowledgement: exit %d", code)
+			return fmt.Errorf("publication worker test exited before durable startup acknowledgement: exit %d, wait error: %v, child output: %q", result.code, result.waitErr, result.output)
 		case <-ctx.Done():
 			return ctx.Err()
 		case <-ticker.C:
@@ -269,7 +317,7 @@ func TestAwaitPublicationWorkerTestStartState(t *testing.T) {
 		}
 		result := make(chan error, 1)
 		go func() {
-			result <- awaitPublicationWorkerTestStartState(t.Context(), make(chan int), read)
+			result <- awaitPublicationWorkerTestStartState(t.Context(), make(chan publicationWorkerTestExit), read)
 		}()
 		<-firstRead
 		select {
@@ -284,8 +332,8 @@ func TestAwaitPublicationWorkerTestStartState(t *testing.T) {
 	})
 
 	t.Run("reports exit before acknowledgement", func(t *testing.T) {
-		exited := make(chan int, 1)
-		exited <- 7
+		exited := make(chan publicationWorkerTestExit, 1)
+		exited <- publicationWorkerTestExit{code: 7}
 		err := awaitPublicationWorkerTestStartState(t.Context(), exited, func(context.Context) (operationrun.Record, error) {
 			return operationrun.Record{}, nil
 		})
@@ -295,8 +343,8 @@ func TestAwaitPublicationWorkerTestStartState(t *testing.T) {
 	})
 
 	t.Run("accepts acknowledgement concurrent with exit", func(t *testing.T) {
-		exited := make(chan int, 1)
-		exited <- 0
+		exited := make(chan publicationWorkerTestExit, 1)
+		exited <- publicationWorkerTestExit{}
 		var reads atomic.Int32
 		err := awaitPublicationWorkerTestStartState(t.Context(), exited, func(context.Context) (operationrun.Record, error) {
 			if reads.Add(1) == 1 {
@@ -312,7 +360,7 @@ func TestAwaitPublicationWorkerTestStartState(t *testing.T) {
 	t.Run("honors cancellation", func(t *testing.T) {
 		ctx, cancel := context.WithCancel(t.Context())
 		cancel()
-		err := awaitPublicationWorkerTestStartState(ctx, make(chan int), func(context.Context) (operationrun.Record, error) {
+		err := awaitPublicationWorkerTestStartState(ctx, make(chan publicationWorkerTestExit), func(context.Context) (operationrun.Record, error) {
 			return operationrun.Record{}, nil
 		})
 		if !errors.Is(err, context.Canceled) {
@@ -321,7 +369,35 @@ func TestAwaitPublicationWorkerTestStartState(t *testing.T) {
 	})
 }
 
+func TestPublicationWorkerProcessFailurePreservesNativeDiagnostics(t *testing.T) {
+	store := operationrun.Store{Directory: t.TempDir()}
+	record, err := store.Create(operationrun.Request{Operation: "workbook.pull"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	done := make(chan int, 1)
+	err = launchPublicationWorkerProcessTest(
+		t.Context(),
+		store.Directory,
+		record.ID,
+		t.TempDir(),
+		nil,
+		done,
+		"TADX_TEST_WORKER_FAILURE=native worker diagnostic",
+	)
+	if err == nil || !strings.Contains(err.Error(), "exit 23") || !strings.Contains(err.Error(), "exit status 23") || !strings.Contains(err.Error(), "native worker diagnostic") {
+		t.Fatalf("process failure diagnostic = %v", err)
+	}
+	if code := <-done; code != 23 {
+		t.Fatalf("process exit = %d, want 23", code)
+	}
+}
+
 func TestPublicationWorkerProcessHelper(t *testing.T) {
+	if message := os.Getenv("TADX_TEST_WORKER_FAILURE"); message != "" {
+		_, _ = fmt.Fprintln(os.Stderr, message)
+		os.Exit(23)
+	}
 	certificate := os.Getenv("TADX_TEST_WORKER_CERT")
 	if certificate == "" {
 		return
@@ -338,7 +414,7 @@ func TestPublicationWorkerProcessHelper(t *testing.T) {
 	roots.AddCert(cert)
 	client := &http.Client{Transport: &http.Transport{TLSClientConfig: &tls.Config{RootCAs: roots, MinVersion: tls.VersionTLS12}}}
 	args := os.Args[len(os.Args)-3:]
-	code := Run(context.Background(), []string{"__publication-worker", args[0], args[1]}, io.Discard, Options{HTTPClient: client, JobDirectory: args[2], Stderr: io.Discard})
+	code := Run(context.Background(), []string{"__publication-worker", args[0], args[1]}, os.Stderr, Options{HTTPClient: client, JobDirectory: args[2], Stderr: os.Stderr})
 	if code != 0 {
 		t.Fatalf("worker exit=%d", code)
 	}
