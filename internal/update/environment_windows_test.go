@@ -3,7 +3,8 @@
 package update
 
 import (
-	"context"
+	"crypto/sha256"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -25,12 +26,24 @@ func TestWindowsPowerShellRebuildsItsModulePath(t *testing.T) {
 	}
 	t.Setenv("PSModulePath", moduleRoot)
 	t.Setenv("TADX_UPDATER_ENV_TEST", "preserved")
-	output, err := run(context.Background(), 10*time.Second, "powershell.exe", "-NoProfile", "-NonInteractive", "-Command", "$ErrorActionPreference='Stop'; Get-FileHash -LiteralPath ([IO.Path]::Combine($PSHOME,'powershell.exe')); Get-Command Expand-Archive | Select-Object -ExpandProperty Name; [Console]::WriteLine($env:TADX_UPDATER_ENV_TEST)")
+	hashFixture := filepath.Join(t.TempDir(), "hash-fixture")
+	hashContent := []byte("tadx updater environment test")
+	if err := os.WriteFile(hashFixture, hashContent, 0600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("TADX_UPDATER_HASH_TEST", hashFixture)
+	command := "$ErrorActionPreference='Stop'; $hash=(Get-FileHash -Algorithm SHA256 -LiteralPath $env:TADX_UPDATER_HASH_TEST).Hash; $archive=(Get-Command Expand-Archive -ErrorAction Stop).Name; [Console]::WriteLine('{0}|{1}|{2}', $hash, $archive, $env:TADX_UPDATER_ENV_TEST)"
+	// Cold Windows PowerShell module loading competes with the full package suite
+	// on CI. This is a test harness bound; the real installer has five minutes.
+	output, err := run(t.Context(), 30*time.Second, "powershell.exe", "-NoProfile", "-NonInteractive", "-Command", command)
 	if err != nil {
 		t.Fatalf("Windows PowerShell cannot load its built-in installer commands: %v: %s", err, output)
 	}
-	if !strings.Contains(string(output), "preserved") || os.Getenv("PSModulePath") != moduleRoot {
-		t.Fatal("unrelated child environment or parent environment changed")
+	expected := fmt.Sprintf("%X|Expand-Archive|preserved", sha256.Sum256(hashContent))
+	actual := strings.TrimSpace(string(output))
+	parentPreserved := os.Getenv("PSModulePath") == moduleRoot
+	if actual != expected || !parentPreserved {
+		t.Fatalf("built-in command result = %q, want %q; parent module path preserved = %t", actual, expected, parentPreserved)
 	}
 }
 

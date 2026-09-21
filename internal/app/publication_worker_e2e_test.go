@@ -6,6 +6,7 @@ import (
 	"crypto/x509"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -78,7 +79,7 @@ func TestNoWaitPublicationReturnsDuringSubmissionAndNeverPolls(t *testing.T) {
 			}
 			options := withSiteMutationConsent(t, Options{ConfigPath: runtime.configPath, HTTPClient: server.Client(), PublicationWorkers: true, OperationDirectory: t.TempDir(), JobDirectory: t.TempDir(), Stderr: io.Discard}, true)
 			done := make(chan int, 1)
-			options.WorkerLauncher = func(_ context.Context, directory, id string) error {
+			options.WorkerLauncher = func(ctx context.Context, directory, id string) error {
 				if strings.HasSuffix(scenario, "-process") {
 					executable, err := os.Executable()
 					if err != nil {
@@ -89,14 +90,16 @@ func TestNoWaitPublicationReturnsDuringSubmissionAndNeverPolls(t *testing.T) {
 					if err := child.Start(); err != nil {
 						return err
 					}
+					exited := make(chan int, 1)
 					go func() {
+						code := 0
 						if child.Wait() != nil {
-							done <- 1
-						} else {
-							done <- 0
+							code = 1
 						}
+						exited <- code
+						done <- code
 					}()
-					return nil
+					return awaitPublicationWorkerTestStart(ctx, directory, id, exited)
 				}
 				go func() { done <- runPublicationWorker(context.Background(), directory, id, options) }()
 				return nil
@@ -106,8 +109,8 @@ func TestNoWaitPublicationReturnsDuringSubmissionAndNeverPolls(t *testing.T) {
 				args = append(args, "--create")
 			}
 			var output strings.Builder
-			// Hold the write response until the foreground command returns. This
-			// proves detachment without a tight process-startup timing assertion.
+			// The process launcher separates test-binary initialization from the
+			// app handshake. Holding the write proves detachment after that handshake.
 			ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
 			defer cancel()
 			exit := Run(ctx, args, &output, options)
@@ -143,6 +146,116 @@ func TestNoWaitPublicationReturnsDuringSubmissionAndNeverPolls(t *testing.T) {
 			}
 		})
 	}
+}
+
+const publicationWorkerTestStartLimit = 15 * time.Second
+
+func awaitPublicationWorkerTestStart(ctx context.Context, directory, id string, exited <-chan int) error {
+	ctx, cancel := context.WithTimeout(ctx, publicationWorkerTestStartLimit)
+	defer cancel()
+	store := operationrun.Store{Directory: directory}
+	return awaitPublicationWorkerTestStartState(ctx, exited, func(ctx context.Context) (operationrun.Record, error) {
+		return store.ReadContext(ctx, id)
+	})
+}
+
+func awaitPublicationWorkerTestStartState(ctx context.Context, exited <-chan int, read func(context.Context) (operationrun.Record, error)) error {
+	ticker := time.NewTicker(10 * time.Millisecond)
+	defer ticker.Stop()
+	for {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		record, err := read(ctx)
+		if err != nil {
+			return err
+		}
+		if !record.StartedAt.IsZero() {
+			return nil
+		}
+		select {
+		case code := <-exited:
+			record, err := read(ctx)
+			if err == nil && !record.StartedAt.IsZero() {
+				return nil
+			}
+			return fmt.Errorf("publication worker test process exited before durable startup acknowledgement: exit %d", code)
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-ticker.C:
+		}
+	}
+}
+
+func TestAwaitPublicationWorkerTestStartState(t *testing.T) {
+	t.Run("waits for durable acknowledgement", func(t *testing.T) {
+		firstRead := make(chan struct{})
+		releaseStart := make(chan struct{})
+		var reads atomic.Int32
+		read := func(ctx context.Context) (operationrun.Record, error) {
+			if reads.Add(1) == 1 {
+				close(firstRead)
+				return operationrun.Record{}, nil
+			}
+			select {
+			case <-releaseStart:
+				return operationrun.Record{StartedAt: time.Now()}, nil
+			case <-ctx.Done():
+				return operationrun.Record{}, ctx.Err()
+			}
+		}
+		result := make(chan error, 1)
+		go func() {
+			result <- awaitPublicationWorkerTestStartState(t.Context(), make(chan int), read)
+		}()
+		<-firstRead
+		select {
+		case err := <-result:
+			t.Fatalf("wait returned before durable acknowledgement: %v", err)
+		default:
+		}
+		close(releaseStart)
+		if err := <-result; err != nil {
+			t.Fatal(err)
+		}
+	})
+
+	t.Run("reports exit before acknowledgement", func(t *testing.T) {
+		exited := make(chan int, 1)
+		exited <- 7
+		err := awaitPublicationWorkerTestStartState(t.Context(), exited, func(context.Context) (operationrun.Record, error) {
+			return operationrun.Record{}, nil
+		})
+		if err == nil || !strings.Contains(err.Error(), "exit 7") {
+			t.Fatalf("error = %v, want premature exit", err)
+		}
+	})
+
+	t.Run("accepts acknowledgement concurrent with exit", func(t *testing.T) {
+		exited := make(chan int, 1)
+		exited <- 0
+		var reads atomic.Int32
+		err := awaitPublicationWorkerTestStartState(t.Context(), exited, func(context.Context) (operationrun.Record, error) {
+			if reads.Add(1) == 1 {
+				return operationrun.Record{}, nil
+			}
+			return operationrun.Record{StartedAt: time.Now()}, nil
+		})
+		if err != nil {
+			t.Fatalf("concurrent durable acknowledgement rejected: %v", err)
+		}
+	})
+
+	t.Run("honors cancellation", func(t *testing.T) {
+		ctx, cancel := context.WithCancel(t.Context())
+		cancel()
+		err := awaitPublicationWorkerTestStartState(ctx, make(chan int), func(context.Context) (operationrun.Record, error) {
+			return operationrun.Record{}, nil
+		})
+		if !errors.Is(err, context.Canceled) {
+			t.Fatalf("error = %v, want context cancellation", err)
+		}
+	})
 }
 
 func TestPublicationWorkerProcessHelper(t *testing.T) {
