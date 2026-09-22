@@ -127,6 +127,8 @@ Supported mutation commands expose `--preview` so you can resolve targets and in
 Acquisition and local-state operations also provide previews where they can write files or configuration.
 Optional [managed policies](docs/managed-policy.md) let administrators enforce an additional machine-wide capability ceiling.
 
+I highly recommend anyone using this with agents in production to consider using the managed policies to disable commands you do not want the agent using. The CLI ships with the write mutation setting OFF and agents have guidance to never turn it on without specific clearance,but given enough pressure, agents have been known to break rules. Managed policies make that an impossibility as modification of the capabilities json file requires OS level elevation. 
+
 ## Documentation
 
 - [Getting started](docs/getting-started.md) covers setup, credentials, content, caches, previews, Pulse, and updates.
