@@ -11,6 +11,7 @@ It is an independent, pre-1.0 project and is not supported by or associated with
 
 - Find workbooks, datasources, and flows, inspect their dependencies, and pull a useful working set into a local workspace.
 - Publish and organize Tableau content with exact identities, previews, and ordered batch outcomes where supported.
+- Full Pulse lifecycle (create | fork | publish | follow | delete).
 - Inspect projects, users, groups, group membership, and permissions, then make authorized administrative changes.
 - Explore lineage and upstream catalog metadata, audit metadata quality, and update supported descriptions, contacts, tags, and labels.
 - Discover suitable datasource fields and manage Pulse definitions, metric variants, and followers.
