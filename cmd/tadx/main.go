@@ -11,6 +11,9 @@ import (
 )
 
 func main() {
+	if handled, code := app.RunPolicyInstallHelper(os.Args[1:]); handled {
+		os.Exit(code)
+	}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
 	if guidancenotice.ShouldPrint(guidancenotice.Options{Args: os.Args[1:]}) {
 		_, _ = fmt.Fprint(os.Stderr, guidancenotice.Message())

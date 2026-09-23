@@ -11,7 +11,7 @@ import (
 	"golang.org/x/sys/windows"
 )
 
-func SystemPath() (string, error) {
+func defaultSystemPath() (string, error) {
 	// The native 64-bit location is stable across 32-bit and 64-bit clients.
 	base, err := windows.KnownFolderPath(windows.FOLDERID_ProgramFilesX64, 0)
 	if err != nil {
@@ -53,7 +53,11 @@ func secureRead(path string) ([]byte, []ProtectionCheck, error) {
 		if err != nil {
 			return nil, checks, errors.New("invalid policy path")
 		}
-		access := uint32(windows.READ_CONTROL | windows.FILE_READ_ATTRIBUTES)
+		protected := file || index == len(paths)-2
+		access := uint32(windows.FILE_READ_ATTRIBUTES)
+		if protected {
+			access |= windows.READ_CONTROL
+		}
 		share := uint32(windows.FILE_SHARE_READ | windows.FILE_SHARE_WRITE)
 		if file {
 			access |= windows.FILE_READ_DATA
@@ -80,7 +84,7 @@ func secureRead(path string) ([]byte, []ProtectionCheck, error) {
 		} else if !file && info.FileAttributes&windows.FILE_ATTRIBUTE_DIRECTORY == 0 {
 			checkErr = errors.New("policy ancestor must be a directory")
 		}
-		if checkErr == nil {
+		if checkErr == nil && protected {
 			sd, err := windows.GetSecurityInfo(handle, windows.SE_FILE_OBJECT, windows.OWNER_SECURITY_INFORMATION|windows.DACL_SECURITY_INFORMATION)
 			if err != nil {
 				checkErr = errors.New("cannot read owner and DACL")
@@ -88,7 +92,11 @@ func secureRead(path string) ([]byte, []ProtectionCheck, error) {
 				checkErr = checkSecurityDescriptor(sd, file, index == len(paths)-2)
 			}
 		}
-		check := ProtectionCheck{Path: item, Kind: "owner-acl-and-links", Passed: checkErr == nil}
+		kind := "path-integrity"
+		if protected {
+			kind = "owner-acl-and-links"
+		}
+		check := ProtectionCheck{Path: item, Kind: kind, Passed: checkErr == nil}
 		if checkErr != nil {
 			check.Reason = checkErr.Error()
 		}

@@ -11,6 +11,7 @@ import (
 	"slices"
 	"sync"
 
+	policyinstall "github.com/ahillspace/tadx/actions/policy/install"
 	policysamples "github.com/ahillspace/tadx/actions/policy/samples"
 	policystatus "github.com/ahillspace/tadx/actions/policy/status"
 	policyvalidate "github.com/ahillspace/tadx/actions/policy/validate"
@@ -124,7 +125,7 @@ func (s registrySource) applyManagedDiscovery(item *capability.Discovery) {
 }
 
 func policyRecoveryOperation(id string) bool {
-	return id == "policy.samples" || id == "policy.validate" || id == "policy.status"
+	return id == "policy.install" || id == "policy.samples" || id == "policy.validate" || id == "policy.status"
 }
 
 func (r *runtimeDependencies) checkManagedCapability(id string) error {
@@ -187,7 +188,68 @@ func bindManagedPolicy(root *cobra.Command, r *runtimeDependencies) {
 }
 
 func (r *runtimeDependencies) policyDependencies() *policycli.Dependencies {
-	return &policycli.Dependencies{Sampler: policysamples.New(r), Validator: policyvalidate.New(r), Statuser: policystatus.New(r)}
+	return &policycli.Dependencies{Installer: policyinstall.New(r), Sampler: policysamples.New(r), Validator: policyvalidate.New(r), Statuser: policystatus.New(r)}
+}
+
+func (r *runtimeDependencies) InstallManagedPolicy(ctx context.Context, input policyinstall.Input) (policyinstall.Output, error) {
+	result, err := managedpolicy.Install(ctx, managedpolicy.InstallOptions{Directory: input.OutputDirectory, Template: input.Template}, capability.All())
+	output := policyinstall.Output{
+		Path:              filepath.ToSlash(result.Path),
+		Template:          result.Template,
+		ProtectionChanged: result.ProtectionChanged,
+		PolicyWritten:     result.PolicyWritten,
+		LocatorPublished:  result.LocatorPublished,
+		Active:            result.Active,
+		Phase:             result.Phase,
+	}
+	if err != nil {
+		return output, policyInstallError(output, err)
+	}
+	return output, nil
+}
+
+func policyInstallError(output policyinstall.Output, cause error) error {
+	phase := errs.PhaseSetup
+	switch output.Phase {
+	case "validation":
+		phase = errs.PhaseValidation
+	case "write", "locator":
+		phase = errs.PhasePersistence
+	case "verify":
+		phase = errs.PhaseVerification
+	}
+	completed := make([]string, 0, 4)
+	if output.ProtectionChanged {
+		completed = append(completed, "directory_protection")
+	}
+	if output.PolicyWritten {
+		completed = append(completed, "policy_write")
+	}
+	if output.LocatorPublished {
+		completed = append(completed, "locator_publish")
+	}
+	if output.Active {
+		completed = append(completed, "policy_active")
+	}
+	outcome := errs.OutcomeNotAttempted
+	correctiveAction := "Correct the reported setup or validation problem, then rerun the install command. No managed policy change was confirmed."
+	if len(completed) > 0 || output.Phase == "write" || output.Phase == "verify" || output.Phase == "locator" || output.Phase == "unknown" {
+		outcome = errs.OutcomeUnknown
+		correctiveAction = "Inspect the returned path and run tadx policy status. Retain every confirmed change and do not assume the prior policy or locator was restored."
+	}
+	return &errs.Error{
+		ID:               "policy.install.failed",
+		Kind:             errs.KindOperation,
+		Operation:        "policy.install",
+		Resource:         output.Path,
+		Summary:          "Managed policy installation stopped before confirmed completion.",
+		Cause:            cause,
+		Completed:        completed,
+		Phase:            phase,
+		Outcome:          outcome,
+		Retryable:        errs.Bool(false),
+		CorrectiveAction: correctiveAction,
+	}
 }
 
 func (r *runtimeDependencies) ReadPolicy(context.Context) (policystatus.Output, error) {
@@ -230,7 +292,7 @@ func (r *runtimeDependencies) WriteSamples(ctx context.Context, directory string
 	if err := os.MkdirAll(directory, 0700); err != nil {
 		return out, policyToolError("policy.samples", "The output directory could not be created.", err)
 	}
-	names := []string{"read-only", "read-write-no-admin", "admin"}
+	names := []string{"read-only", "read-write-no-admin", "superuser"}
 	// Reject existing targets before writing any candidate, then create exclusively
 	// to preserve the same protection against races.
 	for _, name := range names {

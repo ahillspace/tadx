@@ -3,6 +3,8 @@ package policy
 
 import (
 	"context"
+
+	policyinstall "github.com/ahillspace/tadx/actions/policy/install"
 	policysamples "github.com/ahillspace/tadx/actions/policy/samples"
 	policystatus "github.com/ahillspace/tadx/actions/policy/status"
 	policyvalidate "github.com/ahillspace/tadx/actions/policy/validate"
@@ -13,6 +15,9 @@ import (
 type Sampler interface {
 	Execute(context.Context, policysamples.Input) (policysamples.Output, error)
 }
+type Installer interface {
+	Execute(context.Context, policyinstall.Input) (policyinstall.Output, error)
+}
 type Validator interface {
 	Execute(context.Context, policyvalidate.Input) (policyvalidate.Output, error)
 }
@@ -21,6 +26,7 @@ type Statuser interface {
 }
 type Renderer interface{ Render(any) error }
 type Dependencies struct {
+	Installer Installer
 	Sampler   Sampler
 	Validator Validator
 	Statuser  Statuser
@@ -28,7 +34,17 @@ type Dependencies struct {
 }
 
 func New(deps Dependencies) *cobra.Command {
-	root := &cobra.Command{Use: "policy", Short: "Inspect and prepare administrator-managed policy", Long: "Policy samples, validate, and status remain available for recovery when the active managed policy is invalid or denies other commands. These tools never install policy or change its protection."}
+	root := &cobra.Command{Use: "policy", Short: "Install, inspect, and prepare administrator-managed policy", Long: "Policy install, samples, validate, and status remain available for recovery when the active managed policy is invalid or denies other commands. Installation uses the native administrator boundary and does not change Tableau site consent."}
+	var installDirectory, template string
+	install := &cobra.Command{Use: "install", Short: "Install and activate a protected managed policy", Example: "tadx policy install --template read-only\ntadx policy install --template read-write-no-admin\ntadx policy install --template superuser", Annotations: map[string]string{"tadx.capability": "policy.install"}, Args: cobra.NoArgs, RunE: func(c *cobra.Command, _ []string) error {
+		out, err := deps.Installer.Execute(c.Context(), policyinstall.Input{OutputDirectory: installDirectory, Template: template})
+		if err != nil {
+			return clierr.WithOutput(out, err)
+		}
+		return deps.Renderer.Render(out)
+	}}
+	install.Flags().StringVar(&installDirectory, "output", "", "managed policy directory (default: native Program Files/TADX location)")
+	install.Flags().StringVar(&template, "template", policyinstall.TemplateSuperuser, "policy template: read-only, read-write-no-admin, or superuser")
 	var directory string
 	samples := &cobra.Command{Use: "samples", Short: "Write three policy candidates without installing them", Annotations: map[string]string{"tadx.capability": "policy.samples"}, Args: cobra.NoArgs, RunE: func(c *cobra.Command, _ []string) error {
 		out, err := deps.Sampler.Execute(c.Context(), policysamples.Input{OutputDirectory: directory})
@@ -53,6 +69,6 @@ func New(deps Dependencies) *cobra.Command {
 		}
 		return deps.Renderer.Render(out)
 	}}
-	root.AddCommand(samples, validate, status)
+	root.AddCommand(install, samples, validate, status)
 	return root
 }

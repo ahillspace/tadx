@@ -21,14 +21,17 @@ A `CNAME` file alone does not configure a custom domain for an Actions deploymen
 
 Edit `site/index.html` for the homepage.
 Run `node --test scripts/tests/site_test.mjs` to validate its packaging and installer commands.
-Run `node scripts/build-site.mjs` to create `_site` from the homepage and the two checked-in installer scripts.
+Run `node scripts/build-site.mjs` to create `_site` from `index.html`, `security.html`, `capabilities.html`, `capabilities.json`, `install.sh`, and `install.ps1`.
 The static packaging test is the required automated check and does not need a browser or npm dependencies.
 For an optional real-browser check of the capability map, run `node scripts/check-capability-map.mjs <chromium-browser-path> [page-path]`.
 For an optional real-browser check of the homepage, run `node scripts/tests/site_browser.mjs <chromium-browser-path>`.
-Both browser checks use a supplied headless Chromium executable, create temporary profiles, and do not contact Tableau or modify the authored pages.
+For an optional real-browser check of the security page, run `node scripts/tests/security_browser.mjs <chromium-browser-path> [screenshot-directory]`.
+All three browser checks use a supplied headless Chromium executable; the site and security checks create temporary profiles, and none contacts Tableau or modifies the authored pages.
 The output directory must be new or empty; move an earlier local build aside before rebuilding.
 The homepage's Docs links open `capabilities.html` on the same site.
-The homepage also links to the managed policy guide in the repository for administrator deployment details.
+The homepage links to `security.html`, the packaged concise security overview.
+Its expandable details use native HTML and remain usable without JavaScript.
+The security page links to the repository's detailed security and managed policy guides for more information.
 The build copies the authored `docs/reference/capability-map.html` and its generated `capabilities.json` inventory; no second command-browser source is maintained.
 Keep the map's authored layout and styling separate from its generated `capability-data` script block.
 Use `go generate ./internal/capability` when registry changes require a new snapshot.

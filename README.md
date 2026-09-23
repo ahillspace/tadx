@@ -11,7 +11,6 @@ It is an independent, pre-1.0 project and is not supported by or associated with
 
 - Find workbooks, datasources, and flows, inspect their dependencies, and pull a useful working set into a local workspace.
 - Publish and organize Tableau content with exact identities, previews, and ordered batch outcomes where supported.
-- Full Pulse lifecycle (create | fork | publish | follow | delete).
 - Inspect projects, users, groups, group membership, and permissions, then make authorized administrative changes.
 - Explore lineage and upstream catalog metadata, audit metadata quality, and update supported descriptions, contacts, tags, and labels.
 - Discover suitable datasource fields and manage Pulse definitions, metric variants, and followers.
@@ -118,22 +117,23 @@ TADX defaults to compact TOON output for agent efficiency.
 Use `--full` for expanded bounded detail and `--json` when a JSON encoding is required.
 Tableau LUIDs are authoritative, and ambiguous selectors fail instead of guessing.
 
-Remote mutations require saved consent for the selected canonical server and exact site, in addition to normal command checks and Tableau permissions.
-An operation request, discovery result, or preview does not authorize changing that consent.
-Agents must ask before changing the persisted site setting.
-Use `tadx mutation status` to inspect saved consent, and read [Preview remote changes](docs/getting-started.md#preview-remote-changes) before enabling or disabling it.
+Remote mutations start disabled for each Tableau site.
+Writes require saved consent for the exact server and site, any applicable managed-policy permission, and Tableau authorization.
+Agents must ask before changing the saved site setting; `--preview` and `--force` do not grant permission.
+Use `tadx mutation status` to inspect consent and [preview supported changes](docs/getting-started.md#preview-remote-changes) before applying them.
 
 Supported mutation commands expose `--preview` so you can resolve targets and inspect proposed changes without applying them.
 Acquisition and local-state operations also provide previews where they can write files or configuration.
-Optional [managed policies](docs/managed-policy.md) let administrators enforce an additional machine-wide capability ceiling.
-
-I highly recommend anyone using this with agents in production to consider using the managed policies to disable commands you do not want the agent using. The CLI ships with the write mutation setting OFF and agents have guidance to never turn it on without specific clearance,but given enough pressure, agents have been known to break rules. Managed policies make that an impossibility as modification of the capabilities json file requires OS level elevation. 
+Optional [managed policies](docs/managed-policy.md) let administrators restrict TADX operations through an OS-protected, machine-wide policy.
+They do not sandbox an agent or stop a process that already has administrator/root authority from changing the policy.
+Read the [security guide](docs/security.md) for credential storage, mutation controls, local data, policy installation, and the limits of these protections.
 
 ## Documentation
 
 - [Getting started](docs/getting-started.md) covers setup, credentials, content, caches, previews, Pulse, and updates.
 - [Capability reference](docs/reference/capabilities.md) and the [interactive capability map](docs/reference/capability-map.html) describe the supported action inventory.
 - [Workspaces](docs/workspaces.md) covers local artifacts, paths, status, and cloning.
+- [Security](docs/security.md) explains authentication, credential storage, permission boundaries, and local data handling.
 - [Managed policies](docs/managed-policy.md) covers optional machine-wide controls, secure deployment, and recovery.
 - [Command shorthand](docs/reference/shorthand.md) lists supported aliases.
 - [Architecture](docs/architecture/README.md) explains the internal boundaries and design.

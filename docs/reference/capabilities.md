@@ -87,6 +87,7 @@ Use `tadx capability get <id>` for the same focused metadata at runtime.
 | `lineage.pull` | cli | ship | ready | implemented | `tadx catalog lineage pull` |
 | `mutation.set` | cli | ship | ready | implemented | `tadx mutation set` |
 | `mutation.status` | cli | ship | ready | implemented | `tadx mutation status` |
+| `policy.install` | cli | ship | ready | implemented | `tadx policy install` |
 | `policy.samples` | cli | ship | ready | implemented | `tadx policy samples` |
 | `policy.status` | cli | ship | ready | implemented | `tadx policy status` |
 | `policy.validate` | cli | ship | ready | implemented | `tadx policy validate` |
@@ -2257,6 +2258,33 @@ List saved site consent for all configured environments, or one selected environ
 - Validation or blocker: All-environment consent inventory, exact target resolution, compact/full encoding symmetry, and managed restrictions
 - Blocker ID: None
 - Command binding: `tadx mutation status`
+
+### `policy.install`
+
+Install and activate one protected administrator-managed policy on Windows.
+
+- Surface: tadx policy install
+- Operation type: change
+- Owner: cli
+- Selectors: Optional --output directory; --template read-only, read-write-no-admin, or superuser (default)
+- Products and availability: Windows; administrator elevation; recovery exemption
+- Product disposition: ship
+- Evidence level: local-contract
+- Verification readiness: ready
+- Implementation state: implemented
+- Local write: Yes
+- Remote mutation: No
+- Administrative: No
+- Supports `--preview`: No
+- Supports `--batch-file`: No
+- Raw capable: No
+- Safety and guard: Native elevated helper protects the destination before replacing policy, verifies protection, then publishes the machine locator; partial changes remain explicit; never changes Tableau site consent
+- Artifact effect: Writes managed-policy.json under a protected administrator directory and publishes the native machine locator
+- Upstream operation: Windows UAC, filesystem ACLs, and HKLM native registry view
+- Evidence: internal/managedpolicy/install_test.go; actions/policy/install/action_test.go; internal/cli/policy/command_test.go
+- Validation or blocker: Hermetic phase-order, partial-receipt, action-validation, and CLI forwarding tests
+- Blocker ID: None
+- Command binding: `tadx policy install`
 
 ### `policy.samples`
 

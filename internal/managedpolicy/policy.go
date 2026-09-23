@@ -124,14 +124,19 @@ func Parse(data []byte, definitions []capability.Definition) (Document, error) {
 // Template snapshots current IDs, including preview-capable remote mutations.
 // Future IDs remain denied until an administrator updates the explicit list.
 func Template(name string, definitions []capability.Definition) (Document, error) {
-	if name != "read-only" && name != "read-write-no-admin" && name != "admin" {
+	if name == "admin" {
+		name = "superuser"
+	}
+	if name != "read-only" && name != "read-write-no-admin" && name != "superuser" {
 		return Document{}, errors.New("unknown policy template")
 	}
 	doc := Document{Version: 1, AllowedCapabilities: []string{}, RemoteMutations: name != "read-only"}
 	for _, definition := range definitions {
-		if name == "admin" || !definition.Administrative {
-			doc.AllowedCapabilities = append(doc.AllowedCapabilities, definition.ID)
+		// Templates restrict mutations, not administrative information retrieval.
+		if name == "read-write-no-admin" && definition.Administrative && definition.RemoteMutation {
+			continue
 		}
+		doc.AllowedCapabilities = append(doc.AllowedCapabilities, definition.ID)
 	}
 	data, err := json.Marshal(doc)
 	if err != nil {
@@ -142,11 +147,21 @@ func Template(name string, definitions []capability.Definition) (Document, error
 
 // Load never consults environment variables or user configuration for discovery.
 func Load(definitions []capability.Definition) *Policy {
-	path, err := SystemPath()
+	path, required, err := systemPolicyLocation()
+	return loadResolved(path, required, err, definitions)
+}
+
+func loadResolved(path string, required bool, err error, definitions []capability.Definition) *Policy {
 	if err != nil {
-		return &Policy{status: Status{State: StateBlocked, Reason: "system policy location is unavailable"}}
+		return &Policy{status: Status{State: StateBlocked, Reason: "system policy location is unavailable: " + err.Error()}}
 	}
-	return loadPath(path, definitions)
+	p := loadPath(path, definitions)
+	if required && p.status.State == StateUnmanaged {
+		p.status.State = StateBlocked
+		p.status.RemoteMutations = false
+		p.status.Reason = "the installed policy locator points to a missing policy; run policy install to repair it"
+	}
+	return p
 }
 
 func loadPath(path string, definitions []capability.Definition) *Policy {

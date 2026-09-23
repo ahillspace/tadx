@@ -13,7 +13,7 @@ test('public build contains only reviewed pages, capability data, and exact inst
   try {
     const destination = join(folder, 'public');
     await buildSite(repo, destination);
-    assert.deepEqual((await readdir(destination)).sort(), ['.nojekyll', 'capabilities.html', 'capabilities.json', 'index.html', 'install.ps1', 'install.sh']);
+    assert.deepEqual((await readdir(destination)).sort(), ['.nojekyll', 'capabilities.html', 'capabilities.json', 'index.html', 'install.ps1', 'install.sh', 'security.html']);
     for (const [source, target] of publicFiles) {
       assert.deepEqual(await readFile(join(destination, target)), await readFile(join(repo, source)));
     }
@@ -68,7 +68,8 @@ test('homepage has both one-line installers, current setup, and the supplied dem
   }
   assert.doesNotMatch(html, /https?:\/\/[^"'<>\s]+\.(?:js|css)(?:["'<>\s]|$)/i, 'Keep the homepage self-contained');
   assert.doesNotMatch(html, /C:[/\\]Users|releases\/latest\/download\/install|a62e3d7/);
-  assert.doesNotMatch(html, /#install-tadx["']/);
+  assert.doesNotMatch(html, /#install-tadx|One-line installation is coming soon/);
+  assert.match(html, /README\.md#install["']/);
   const ids = [...html.matchAll(/\bid="([^"]+)"/g)].map(match => match[1]);
   assert.equal(ids.length, new Set(ids).size, 'Duplicate DOM identifiers');
   for (const match of html.matchAll(/aria-(?:controls|labelledby)="([^"]+)"/g)) {
@@ -77,6 +78,36 @@ test('homepage has both one-line installers, current setup, and the supplied dem
   const script = /<script>([\s\S]*?)<\/script>/.exec(html)?.[1];
   assert.ok(script);
   new Function(script);
+});
+
+test('security page is linked, self-contained, and usable without application JavaScript', async () => {
+  const html = await readFile(join(repo, 'site/security.html'), 'utf8');
+  const home = await readFile(join(repo, 'site/index.html'), 'utf8');
+  assert.equal([...home.matchAll(/href="security\.html"/g)].length, 2);
+  assert.match(html, /aria-current="page">Security/);
+  assert.match(html, /--paper: #f3f3eb/);
+  assert.match(html, /--ink: #202720/);
+  assert.doesNotMatch(html, /<script\b|<iframe\b|<form\b|https?:\/\/[^"'<> ]+\.(?:js|css)\b/i);
+  assert.doesNotMatch(html, /C:[/\\]Users|TADX_ENABLE_MUTATIONS|impossib|tamper-proof/i);
+  assert.ok([...html.matchAll(/<details>/g)].length >= 10, 'Missing progressive disclosure');
+  assert.doesNotMatch(html, /<details\b[^>]*\bopen\b/, 'Details should start collapsed');
+  const ids = [...html.matchAll(/\bid="([^"]+)"/g)].map(match => match[1]);
+  assert.equal(ids.length, new Set(ids).size, 'Duplicate security page identifiers');
+  for (const id of ['controls', 'templates', 'credentials', 'policy-installation', 'local-data', 'boundaries']) {
+    assert.ok(ids.includes(id), 'Missing security section ' + id);
+    assert.ok(html.includes('href="#' + id + '"'), 'Missing section navigation ' + id);
+  }
+  for (const match of html.matchAll(/(?:aria-labelledby|aria-controls)="([^"]+)"/g)) {
+    for (const id of match[1].split(' ')) assert.ok(ids.includes(id), 'Missing accessible target ' + id);
+  }
+  for (const match of html.matchAll(/href="#([^"]+)"/g)) assert.ok(ids.includes(match[1]), 'Broken anchor ' + match[1]);
+  for (const match of html.matchAll(/href="https:\/\/github\.com\/ahillspace\/tadx\/blob\/main\/([^"#]+)(?:#[^"]*)?"/g)) {
+    await readFile(join(repo, match[1]));
+  }
+  for (const name of ['read-only', 'read-write-no-admin', 'superuser']) assert.ok(html.includes('<h3>' + name + '</h3>'));
+  for (const text of ['tadx policy install --template read-only', '--output', 'current development source', 'not a sandbox', 'checksum', 'Secret Service']) {
+    assert.ok(html.includes(text), 'Missing security fact ' + text);
+  }
 });
 
 test('Pages is manual and publishes only the allowlisted build', async () => {

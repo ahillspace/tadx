@@ -9,7 +9,7 @@ import (
 )
 
 func testCatalog() []capability.Definition {
-	return []capability.Definition{{ID: "read"}, {ID: "write", RemoteMutation: true}, {ID: "admin", Administrative: true}}
+	return []capability.Definition{{ID: "read"}, {ID: "write", RemoteMutation: true}, {ID: "admin", Administrative: true}, {ID: "admin.write", Administrative: true, RemoteMutation: true}}
 }
 
 func TestParseStrictContract(t *testing.T) {
@@ -37,18 +37,39 @@ func TestParseStrictContract(t *testing.T) {
 }
 
 func TestTemplateBoundaries(t *testing.T) {
-	for _, name := range []string{"read-only", "read-write-no-admin", "admin"} {
+	for _, name := range []string{"read-only", "read-write-no-admin", "superuser", "admin"} {
 		doc, err := Template(name, testCatalog())
 		if err != nil {
 			t.Fatal(err)
 		}
-		want := []string{"read", "write"}
-		if name == "admin" {
+		want := []string{"admin", "admin.write", "read", "write"}
+		if name == "read-write-no-admin" {
 			want = []string{"admin", "read", "write"}
 		}
 		if !reflect.DeepEqual(doc.AllowedCapabilities, want) || doc.RemoteMutations != (name != "read-only") {
 			t.Fatalf("%s: %#v", name, doc)
 		}
+	}
+}
+
+func TestTemplatesPreserveReadsAndGateMutations(t *testing.T) {
+	for _, name := range []string{"read-only", "read-write-no-admin", "superuser", "admin"} {
+		t.Run(name, func(t *testing.T) {
+			doc, err := Template(name, capability.All())
+			if err != nil {
+				t.Fatal(err)
+			}
+			policy := activePolicy("fixture", doc)
+			for _, definition := range capability.All() {
+				denied := name == "read-write-no-admin" && definition.Administrative && definition.RemoteMutation
+				if err := policy.CheckCapability(definition.ID); (err != nil) != denied {
+					t.Errorf("%s: capability error=%v, want denied=%v", definition.ID, err, denied)
+				}
+			}
+			if err := policy.CheckRemoteMutation(); (err != nil) != (name == "read-only") {
+				t.Fatalf("remote mutation gate=%v", err)
+			}
+		})
 	}
 }
 

@@ -361,7 +361,7 @@ func writeReferenceBatch(out io.Writer, actions []*cobra.Command) {
 func referenceNotes(owner *cobra.Command, actions []*cobra.Command) []string {
 	var notes []string
 	if owner.Name() == "policy" {
-		notes = append(notes, "Recovery exemption: samples, validate, status, and help remain available when managed policy blocks operations.", "Candidates never activate policy. Only the fixed administrator-protected system file applies; local flags and settings cannot override it.")
+		notes = append(notes, "Recovery exemption: install, samples, validate, status, and help remain available when managed policy blocks operations.", "Samples and candidate validation never activate policy. Policy install activates the protected system policy; user configuration cannot override it.")
 	}
 	for _, action := range actions {
 		for _, flag := range helpFlags(action) {
@@ -400,7 +400,8 @@ func referenceActionNotes(action *cobra.Command) []string {
 	}
 	path := strings.TrimPrefix(action.CommandPath(), action.Root().Name()+" ")
 	notes := map[string][]string{
-		"policy samples":            {"--output creates read-only.json, read-write-no-admin.json, and admin.json without overwriting or installing policy."},
+		"policy install":            {"Installs one protected policy on Windows and may request administrator elevation. Defaults to the superuser template and native Program Files/TADX directory.", "All templates allow reads, including administrative reads. read-only blocks all Tableau mutations; read-write-no-admin blocks administrative mutations; superuser allows all supported operations.", "Remote mutations still require saved consent for the selected Tableau site. Reinstall a template to update an existing policy snapshot."},
+		"policy samples":            {"--output creates read-only.json, read-write-no-admin.json, and superuser.json without overwriting or installing policy."},
 		"policy validate":           {"Checks candidate schema and exact capability IDs only; does not activate policy or verify filesystem protection."},
 		"policy status":             {"Reports the fixed system path, activation state, protection, and effective ceiling; --full includes allowed IDs and protection checks."},
 		"pulse definition create":   {"Fields: raw ID or unique caption. Find them with tadx content datasource schema.", "Omitted: aggregation SUM, granularity DAY, format NUMBER, sentiment NONE, temporality OVER_TIME."},

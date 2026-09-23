@@ -10,11 +10,13 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync/atomic"
 	"testing"
 
 	userlist "github.com/ahillspace/tadx/actions/admin/user/list"
+	"github.com/ahillspace/tadx/internal/capability"
 	"github.com/ahillspace/tadx/internal/managedpolicy"
 )
 
@@ -30,6 +32,45 @@ func (p indirectTestPolicy) CheckCapability(id string) error {
 	return nil
 }
 func (indirectTestPolicy) CheckRemoteMutation() error { return nil }
+
+func TestManagedTemplatesAllowSearchAndDefaultRefreshPrechecks(t *testing.T) {
+	for _, name := range []string{"read-only", "read-write-no-admin", "superuser"} {
+		for _, args := range [][]string{{"search", "super", "--cache"}, {"search", "super"}, {"cache", "refresh"}} {
+			t.Run(name+"/"+strings.Join(args, "_"), func(t *testing.T) {
+				doc, err := managedpolicy.Template(name, capability.All())
+				if err != nil {
+					t.Fatal(err)
+				}
+				policy := fixtureManagedPolicy{state: managedpolicy.StateActive, allowed: map[string]bool{}, remote: doc.RemoteMutations}
+				for _, id := range doc.AllowedCapabilities {
+					policy.allowed[id] = true
+				}
+				var signins atomic.Int32
+				server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+					if !strings.HasSuffix(r.URL.Path, "/auth/signin") {
+						t.Errorf("unexpected request %s %s", r.Method, r.URL.Path)
+					}
+					signins.Add(1)
+					w.WriteHeader(http.StatusUnauthorized)
+				}))
+				defer server.Close()
+				runtime, _ := datasourceLifecycleRuntime(t, server)
+				options := Options{ConfigPath: runtime.configPath, HTTPClient: server.Client(), UserHomeDir: func() (string, error) { return t.TempDir(), nil }, managedPolicy: policy}
+				var output bytes.Buffer
+				code := Run(t.Context(), append(args, "--env", "production", "--json"), &output, options)
+				if slices.Contains(args, "--cache") {
+					if code != 0 || signins.Load() != 0 || !strings.Contains(output.String(), `"source":"cache"`) {
+						t.Fatalf("exit=%d signins=%d output=%s", code, signins.Load(), &output)
+					}
+					return
+				}
+				if code == 0 || signins.Load() == 0 || strings.Contains(output.String(), "policy.denied") {
+					t.Fatalf("exit=%d signins=%d output=%s", code, signins.Load(), &output)
+				}
+			})
+		}
+	}
+}
 
 func TestManagedDeniedConfirmationPreservesAcknowledgedCategoryCreate(t *testing.T) {
 	var reads, writes atomic.Int32

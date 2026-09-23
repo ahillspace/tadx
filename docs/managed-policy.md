@@ -3,13 +3,14 @@
 TADX can enforce an administrator-owned capability ceiling for every installed TADX process on a machine.
 The ceiling is optional, machine-wide, and separate from Tableau permissions and site mutation consent.
 
-This document describes the installed TADX implementation and its fixed operating-system policy file.
+This document describes the installed TADX implementation and its protected operating-system policy file.
 It does not describe privileged agent containment or controls for other clients on the machine.
 
 ## Understand the policy boundary
 
-TADX loads the policy from one fixed operating-system path at each command and worker boundary.
-TADX does not discover that path from a flag, environment variable, configuration value, or current directory.
+TADX loads the policy from its protected system location at each command and worker boundary.
+On Windows, administrator installation can select a directory through a protected machine-wide locator.
+Ordinary commands cannot override that location with a flag, environment variable, user configuration value, or current directory.
 TADX does not ship an active policy, enroll a machine, or provide a policy removal command.
 
 The policy can narrow TADX operations, but it cannot grant Tableau permissions.
@@ -24,27 +25,20 @@ When a managed policy is active, an unlisted ordinary capability cannot run, eve
 Preview remains read-only when its capability ID is allowed and the policy sets `remote_mutations` to `false`.
 When a managed policy is active, read-only operations can write local downloads, caches, workspaces, or configuration only when their own IDs are allowed.
 
-The non-administrator templates intentionally exclude administrative inventory.
-The default `tadx cache refresh` scope includes users and groups, so it is not a non-administrator cache command.
-Choose explicit non-administrator scopes when using those templates:
-
-```text
-tadx cache refresh --scope projects --scope workbooks --scope datasources --scope flows --scope views --environment dev
-```
-
-`tadx search --type user` requires `admin.user.list` even with `--cache`.
-An untyped broad search can include users and groups, so choose a resource type when the policy excludes administrative IDs.
+All three standard templates include every current read capability, including administrative inventory and local operations.
+The `read-only` template blocks every Tableau mutation through `remote_mutations: false`.
+The `read-write-no-admin` template excludes administrative remote mutations while allowing the other current operations.
+Custom policies can still deny reads by omitting their capability IDs.
 Content label updates and deletes can require `admin.label.value.inspect` as a preflight, including for `--preview`.
 
-An administrator can remove the fixed policy file manually.
-After removal, TADX reports an unmanaged state and applies no machine-wide ceiling.
-No enrollment or active-policy record remains after removal.
+An administrator can remove the policy manually using the platform-specific removal instructions below.
+On Windows, removing only a located policy file fails closed until the administrator repairs the installation or removes its locator.
 
-## Find the fixed policy path
+## Find the policy path
 
 TADX resolves the path at runtime as follows:
 
-| Platform | Fixed path |
+| Platform | Default path |
 | --- | --- |
 | Windows | The native operating-system `Program Files` directory, followed by `TADX\managed-policy.json`. |
 | macOS | `/Library/Application Support/TADX/managed-policy.json`. |
@@ -54,9 +48,18 @@ Windows resolves the native `Program Files` directory through the Windows known-
 The implementation checks the native 64-bit location first, then the platform fallback.
 Do not substitute `%ProgramFiles%`, a user directory, or a process-specific path.
 
-The parent directory and every ancestor are part of the protection boundary.
+Windows also checks the native 64-bit registry key `HKEY_LOCAL_MACHINE\SOFTWARE\TADX\ManagedPolicy`.
+Its protected `Directory` value is a `REG_SZ` containing the selected absolute directory, with no policy JSON or credentials in the registry.
+Only an absent key uses the default path for compatibility with manually installed policies.
+A present but unreadable, insecure, malformed, or incomplete locator is an error.
+A locator pointing to a missing policy is also an error, including when it selects the default directory.
+
+On Windows, ownership and DACL checks cover the policy file and its immediate installation directory.
+Ancestor ownership and DACLs, including the drive root, do not produce failures or warnings.
+Ancestor path integrity is still checked, and ancestors remain open against replacement while the policy is read or installed.
+On Linux and macOS, the parent directory and every ancestor remain part of the ownership and permissions boundary.
 The policy file must be a regular file with exactly one hard link.
-Symbolic links, Windows reparse points, and insecure ancestors cause a policy error.
+Symbolic links, Windows reparse points, and invalid path types cause a policy error.
 
 ## Create a candidate
 
@@ -68,9 +71,9 @@ tadx policy samples --output ./tadx-policy-candidates
 
 The command creates these files:
 
-- `read-only.json` includes all current non-administrative capability IDs and sets `remote_mutations` to `false`.
-- `read-write-no-admin.json` includes all current non-administrative capability IDs and sets `remote_mutations` to `true`.
-- `admin.json` includes every current capability ID, including administrative IDs, and sets `remote_mutations` to `true`.
+- `read-only.json` includes every current capability ID and sets `remote_mutations` to `false`, blocking Tableau mutations while allowing reads, previews, and local operations.
+- `read-write-no-admin.json` includes every current read and local capability plus non-administrative remote mutations, and sets `remote_mutations` to `true`.
+- `superuser.json` includes every current capability ID and sets `remote_mutations` to `true`.
 
 The command creates new files only.
 It never overwrites an existing candidate, installs a policy, activates a policy, or changes file protection.
@@ -80,7 +83,7 @@ No elevation is required to create candidates in a user-owned directory.
 Templates are snapshots of the current capability registry.
 They are not roles, and a new capability remains denied until an administrator updates the allowlist.
 The read-only template includes remote mutation IDs, so allowed previews remain available while remote writes remain denied.
-It permits allowed ordinary local operations such as downloads, cache refreshes, workspace changes, and configuration changes.
+It permits current local operations such as downloads, cache refreshes, workspace changes, and configuration changes.
 
 ## Edit the JSON schema
 
@@ -132,49 +135,55 @@ Treat a valid candidate as input for administrator deployment, not as evidence o
 
 ## Deploy a policy
 
-An administrator deploys the selected candidate to the fixed path.
-Protect the file, its TADX parent directory, and every ancestor before checking status.
+An administrator deploys a policy to the protected system location.
+Protect the file and its TADX directory before checking status; Unix platforms also require protected ancestors.
 Keep the prior policy in a protected backup outside the fixed path until the replacement is confirmed.
 
 ### Deploy on Windows
 
-Run the following outline from an elevated PowerShell session.
-The `ProgramFiles` value comes from the operating system, not an environment variable.
-Run the outline in 64-bit PowerShell when both 32-bit and 64-bit runtimes are installed.
+Run the installer from an ordinary terminal or agent session:
 
-```powershell
-$programFiles = [Environment]::GetFolderPath([Environment+SpecialFolder]::ProgramFiles)
-$policyDir = Join-Path $programFiles 'TADX'
-$policyPath = Join-Path $policyDir 'managed-policy.json'
-$candidate = (Resolve-Path '.\tadx-policy-candidates\read-write-no-admin.json').Path
-
-New-Item -ItemType Directory -Force -Path $policyDir | Out-Null
-# Inspect an existing target first. Do not copy through a link or reparse point.
-Copy-Item -LiteralPath $candidate -Destination $policyPath -Force
-
-icacls.exe $policyDir /setowner '*S-1-5-32-544'
-icacls.exe $policyPath /setowner '*S-1-5-32-544'
-icacls.exe $policyDir /inheritance:r
-icacls.exe $policyDir /grant:r '*S-1-5-18:(OI)(CI)(F)' '*S-1-5-32-544:(OI)(CI)(F)' '*S-1-5-11:(OI)(CI)(RX)'
-icacls.exe $policyPath /inheritance:r
-icacls.exe $policyPath /grant:r '*S-1-5-18:(F)' '*S-1-5-32-544:(F)' '*S-1-5-11:(R)'
-
-icacls.exe $policyDir
-icacls.exe $policyPath
+```text
+tadx policy install
+tadx policy install --template read-only
+tadx policy install --output C:\TADX-Policy --template read-write-no-admin
+tadx policy status --full
 ```
 
-The example grants full control to LocalSystem and built-in Administrators.
-It grants read and traverse access to Authenticated Users.
-Review and remove any additional non-administrator grants that include write, delete, ownership, or DACL rights.
-Review the ACLs on all ancestors, including the native `Program Files` directory.
+The default template is `superuser`, which includes all current capabilities and sets `remote_mutations` to `true`.
+The other templates are `read-only` and `read-write-no-admin`, with the same meanings as the candidate templates above.
+The accepted legacy input `admin` is an alias for `superuser`, not a fourth template.
+No template changes saved site consent, credentials, or Tableau permissions.
+Omitting `--output` always selects the native `Program Files\TADX` directory, even after a custom installation.
+The directory must be local and absolute, and its parent must already exist.
+The installer creates the selected directory if necessary, or accepts an existing dedicated directory containing only `managed-policy.json`.
+It rejects drive roots, user homes, shared system directories, unrelated contents, reparse points, and multiply linked policy files.
+
+An unelevated invocation requests Windows UAC approval for one scoped installer child.
+The calling terminal and agent remain unelevated.
+Cancelling that approval before the child starts leaves the installation unchanged.
+Once the child starts, the caller waits for its receipt instead of terminating an installer that may be committing changes.
+If the caller or child is forcibly terminated, inspect `tadx policy status` and the selected destination before retrying.
+
+The installer protects the file and immediate directory with Administrators ownership, full control for Administrators and SYSTEM, and read/traverse access for ordinary users.
+It does not recursively reset ACLs or modify ancestors.
+Concurrent installers serialize, stage a protected file in the destination directory, atomically replace `managed-policy.json`, verify it, then publish the protected locator.
+Each successful install overwrites the selected policy and changes the active location.
+Files in previous installation directories remain untouched.
+The receipt records the failure phase and confirmed protection, policy-file, and locator changes.
+A locator failure after installing a different destination normally leaves the prior location active and the new protected file inactive.
+Replacing an already selected policy takes effect before locator publication, so a later failure does not imply rollback.
+An incomplete locator created during publication fails closed and can be repaired by rerunning the installer.
+`policy install` remains available when the current policy denies operations or has errors.
+On Linux and macOS, the command reports that installation is unsupported; use the deployment instructions below.
 
 TADX accepts an owner of LocalSystem, built-in Administrators, or TrustedInstaller for each checked object.
-TADX rejects non-administrator effective modification rights on the file or its protected path.
+TADX rejects non-administrator effective modification rights on the file, immediate installation directory, and registry locator.
 TADX also rejects reparse points and files with more than one hard link.
 
 The [Windows known-folder API](https://learn.microsoft.com/en-us/windows/win32/api/shlobj_core/nf-shlobj_core-shgetknownfolderpath) defines the operating-system path lookup.
 The [Windows security descriptor API](https://learn.microsoft.com/en-us/windows/win32/api/aclapi/nf-aclapi-getsecurityinfo) and [file security model](https://learn.microsoft.com/en-us/windows/win32/fileio/file-security-and-access-rights) explain the owner and DACL checks.
-Use the [icacls reference](https://learn.microsoft.com/en-us/windows-server/administration/windows-commands/icacls) for the command syntax.
+The [ShellExecuteW documentation](https://learn.microsoft.com/en-us/windows/win32/api/shellapi/nf-shellapi-shellexecutew) describes the `runas` elevation verb.
 
 ### Deploy on Linux
 
@@ -257,13 +266,13 @@ tadx policy status
 tadx policy status --full
 ```
 
-The compact status reports the fixed path, state, protection result, candidate validity, remote ceiling, and allowed and denied counts.
+The compact status reports the selected system path, state, protection result, candidate validity, remote ceiling, and allowed and denied counts.
 The full status adds the allowlisted IDs and each protection check.
 
 | State | Meaning | TADX operational behavior |
 | --- | --- | --- |
-| `active` | The fixed file is protected and its strict schema is valid. | Enforce the listed IDs and the `remote_mutations` ceiling. |
-| `unmanaged` | The fixed file is absent. | Apply no managed ceiling, then apply normal site consent and Tableau authorization. |
+| `active` | The selected file is protected and its strict schema is valid. | Enforce the listed IDs and the `remote_mutations` ceiling. |
+| `unmanaged` | The default file is absent, with no Windows locator installed. | Apply no managed ceiling, then apply normal site consent and Tableau authorization. |
 | `error` | The file or path is unreadable, insecure, malformed, or unavailable. | Block operational execution and expose recovery tools and help. |
 
 `protected` is `true` only after the secure path and file checks pass.
@@ -279,18 +288,43 @@ Run status again after every repair.
 To update a policy, validate a new candidate, preserve the current policy, deploy the replacement with protected ownership, and run status.
 The policy is read again at each command and worker boundary.
 An update does not require an enrollment step or a TADX restart.
+Templates are snapshots of capability IDs in the CLI that creates them.
+To refresh a standard template after the capability registry changes, explicitly install that template again with the current CLI.
+This does not update the active policy automatically.
 
 Do not edit the active JSON in place while TADX commands are running.
 Use an administrator-controlled temporary file, protect it, and replace the active regular file as one deployment operation.
 Keep a protected backup until `tadx policy status --full` confirms the intended IDs and protection checks.
 
-If deployment fails, restore the prior protected file before retrying an operation.
-An absent file produces `unmanaged`.
+If deployment fails, inspect the receipt and current status before deciding which protected file or locator needs repair.
+An absent default file produces `unmanaged` only when no Windows locator is installed.
 An unreadable, malformed, or insecure replacement produces `error` and blocks operations.
 
-To remove the policy, an administrator deletes the fixed file and optionally removes its empty TADX policy directory.
-The next status reports `unmanaged`.
+On Linux and macOS, an administrator deletes the fixed policy file and optionally removes its empty TADX directory.
+The next status reports `unmanaged` on those platforms.
 Removal does not change saved site consent, Tableau permissions, credentials, or other clients.
+
+On Windows, first run `tadx policy status --full` and identify the exact selected file.
+From a 64-bit elevated PowerShell session, inspect only the dedicated locator key:
+
+```powershell
+Get-ItemProperty -LiteralPath 'Registry::HKEY_LOCAL_MACHINE\SOFTWARE\TADX\ManagedPolicy' -Name Directory
+```
+
+Remove the exact selected `managed-policy.json` file, then remove only the dedicated locator key:
+
+```powershell
+Remove-Item -LiteralPath 'C:\TADX-Policy\managed-policy.json'
+Remove-Item -LiteralPath 'Registry::HKEY_LOCAL_MACHINE\SOFTWARE\TADX\ManagedPolicy'
+```
+
+Replace the example file path with the exact path confirmed by status and the locator; do not delete a directory tree or the parent `SOFTWARE\TADX` key.
+If the default native `Program Files\TADX\managed-policy.json` still exists from an earlier installation, removing the locator reactivates that legacy file.
+Inspect and explicitly remove that exact file too if the intent is to return to `unmanaged`.
+Previous custom directories remain untouched unless the administrator separately chooses to remove their exact policy files and empty directories.
+Run `tadx policy status --full` afterward to confirm the intended state.
+If the locator is already absent, remove only the confirmed default policy file.
+If the locator is invalid, `tadx policy install` can repair it, or an administrator can inspect and remove this dedicated key before checking the default path.
 
 ## Recover from failures
 
@@ -302,22 +336,24 @@ tadx policy --help
 tadx policy samples --output <directory>
 tadx policy validate <candidate-file>
 tadx policy status --full
+tadx policy install
 ```
 
-Recovery commands do not install, activate, or remove the managed policy.
+Only `policy install` installs and activates a template, with administrator authorization on Windows.
 `policy samples` creates candidates only in the requested output directory.
 `policy validate` checks candidate content only.
-`policy status` reads only the fixed system path.
+`policy status` reads the protected selected system location.
 
 If an active policy denies a capability, inspect the canonical ID in the capability output and compare it with `allowed_capabilities`.
 If an operation has an administrative preflight, that preflight can require its own canonical ID.
 A custom policy can therefore allow a write while denying an inspect needed to prepare or verify it.
-The administrator template includes all current IDs and avoids that class of omission.
+The superuser template includes all current IDs and avoids that class of omission.
 Reuse known canonical IDs from capability output or help instead of running broad discovery only to identify a policy prerequisite.
 
 Administrative IDs cover user, group, membership, permission, and shared label definition operations.
 Project operations, content ownership operations, and job cancellation remain non-administrative IDs.
-The `read-only` and `read-write-no-admin` templates exclude administrative IDs.
+All three standard templates include administrative read IDs.
+Only `read-write-no-admin` excludes administrative remote mutation IDs.
 
 ## References
 

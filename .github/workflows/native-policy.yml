@@ -48,7 +48,7 @@ jobs:
           if (-not $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
             throw 'The native policy gate requires an elevated administrator token on this disposable runner.'
           }
-          go test -count=1 -timeout=5m -v -run '^TestPrivilegedWindowsProtectedPolicyFixture$' ./internal/managedpolicy
+          go test -count=1 -timeout=5m -v -run '^TestPrivilegedWindows' ./internal/managedpolicy
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Exercise root-owned Unix fixtures on the disposable runner

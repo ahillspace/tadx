@@ -59,7 +59,7 @@ Active transfers can hold the shared PAT lease; returning the terminal does not 
 
 [Typed definitions](../internal/capability/definitions.go) are the source of capability ownership, selectors, safety, evidence, implementation status, and command bindings.
 The registry exposes those definitions to discovery and CLI binding checks.
-`cmd/gencapdocs` generates [the capability reference](reference/capabilities.md) and its [JSON data](reference/capabilities.json).
+`cmd/gencapdocs` generates [the capability reference](reference/capabilities.md), its [JSON data](reference/capabilities.json), and the data block in the [interactive HTML map](reference/capability-map.html).
 Generated documentation is distinct from the maintained architecture diagram and these explanatory pages.
 
 [CONTRIBUTING.md](../CONTRIBUTING.md) introduces contributions.

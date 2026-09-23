@@ -5,6 +5,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 
 export const publicFiles = Object.freeze([
   ['site/index.html', 'index.html'],
+  ['site/security.html', 'security.html'],
   ['docs/reference/capability-map.html', 'capabilities.html'],
   ['docs/reference/capabilities.json', 'capabilities.json'],
   ['scripts/install.sh', 'install.sh'],

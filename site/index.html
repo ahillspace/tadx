@@ -294,6 +294,7 @@
     </a>
     <nav class="nav" aria-label="Main navigation">
       <a href="capabilities.html">Docs</a>
+      <a href="security.html">Security</a>
       <a href="https://github.com/ahillspace/tadx" target="_blank" rel="noopener noreferrer">GitHub <svg class="icon" aria-hidden="true"><use href="#external"/></svg></a>
       <button type="button" class="nav-install" data-install>Get TADX</button>
     </nav>
@@ -381,7 +382,7 @@
   </main>
   <footer class="wrap">
     <div class="footer-left"><a class="wordmark" href="#" aria-label="TADX home">TADX</a><p class="footer-caption">Made for the Tableau community.<span>Independent. Not affiliated with Tableau or Salesforce.</span></p></div>
-    <div class="footer-links"><a href="https://github.com/ahillspace/tadx/releases" target="_blank" rel="noopener noreferrer">Releases</a><a href="capabilities.html">Docs</a><a href="https://github.com/ahillspace/tadx/blob/main/docs/managed-policy.md" target="_blank" rel="noopener noreferrer">Managed policy</a></div>
+    <div class="footer-links"><a href="https://github.com/ahillspace/tadx/releases" target="_blank" rel="noopener noreferrer">Releases</a><a href="capabilities.html">Docs</a><a href="security.html">Security</a></div>
   </footer>
   <dialog id="install-dialog" aria-labelledby="install-title">
     <div class="install-head"><h2 id="install-title">Get TADX.</h2><button type="button" class="close-dialog" aria-label="Close installation instructions"><svg class="icon" aria-hidden="true"><use href="#close"/></svg></button></div>
@@ -395,12 +396,12 @@
         <section class="install-step"><div class="step-head"><h3>Install TADX and Guidance</h3><button type="button" class="copy-button" data-copy="download-code"><svg class="icon" aria-hidden="true"><use href="#copy"/></svg><span>Copy</span></button></div><pre class="install-code" id="download-code">curl -fsSL https://tadx.net/install.sh | sh</pre></section>
         <section class="install-step"><div class="step-head"><h3>Already installed? Update both</h3><button type="button" class="copy-button" data-copy="run-code"><svg class="icon" aria-hidden="true"><use href="#copy"/></svg><span>Copy</span></button></div><pre class="install-code" id="run-code">tadx update</pre></section>
       </div>
-      <div class="install-bottom"><a href="https://github.com/ahillspace/tadx/blob/main/README.md#install-tadx-and-agent-guidance" target="_blank" rel="noopener noreferrer">Full installation guide ↗</a><span>Windows · macOS · Linux</span></div>
-      <p class="private-note">One-line installation is coming soon. For now, <a href="https://github.com/ahillspace/tadx/blob/main/CONTRIBUTING.md#run-the-current-source" target="_blank" rel="noopener noreferrer">build from source</a>. Updates replace TADX-owned Guidance; keep personal additions in separate skills. Run <code>tadx</code> to see your local setup.</p>
+      <div class="install-bottom"><a href="https://github.com/ahillspace/tadx/blob/main/README.md#install" target="_blank" rel="noopener noreferrer">Full installation guide ↗</a><span>Windows · macOS · Linux</span></div>
+      <p class="private-note">Updates replace TADX-owned Guidance; keep personal additions in separate skills. Installation does not configure Tableau credentials or enable remote mutations. Run <code>tadx</code> to see your local setup.</p>
     </div>
   </dialog>
   <div id="announcer" class="sr-only" role="status" aria-live="polite"></div>
-  <noscript><p class="wrap" style="font-size:12px;padding-bottom:20px">Interactive examples require JavaScript. <a href="https://github.com/ahillspace/tadx/blob/main/README.md#install-tadx-and-agent-guidance" style="text-decoration:underline">Read the installation guide.</a></p></noscript>
+  <noscript><p class="wrap" style="font-size:12px;padding-bottom:20px">Interactive examples require JavaScript. <a href="https://github.com/ahillspace/tadx/blob/main/README.md#install" style="text-decoration:underline">Read the installation guide.</a></p></noscript>
   <script>
     'use strict';
     // All demo data is local and fictional. The page never runs shell commands.
@@ -591,7 +592,7 @@
     if (/win/i.test(navigator.userAgentData?.platform || navigator.platform || '')) selectOS('windows');
     document.querySelectorAll('[data-install]').forEach(button => button.addEventListener('click', () => {
       if (typeof dialog.showModal !== 'function') {
-        window.location.href = 'https://github.com/ahillspace/tadx/blob/main/README.md#install-tadx-and-agent-guidance';
+        window.location.href = 'https://github.com/ahillspace/tadx/blob/main/README.md#install';
         return;
       }
       dialog.showModal();

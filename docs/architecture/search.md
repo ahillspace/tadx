@@ -112,4 +112,4 @@ It uses `POST /api/metadata/graphql` to discover databases/tables and optionally
 It is distinct from both `search --cache` and `/api/-/search`; success in one path does not validate another path's decoder.
 Tableau's [UI search documentation](https://help.tableau.com/current/pro/desktop/en-us/search.htm) distinguishes quick/full search and mixed/single-type views, including Tables and Objects and Databases and Files.
 The observed connection records are not sufficient evidence to assign them to a particular UI tab or claim exact API/UI parity.
-Future optional result categories are recorded in [Future Vision](../../README.md#future-vision).
+Future optional result categories are recorded in the [README](../../README.md).

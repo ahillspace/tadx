@@ -15,7 +15,7 @@ func TestPrivilegedWindowsProtectedPolicyFixture(t *testing.T) {
 		}
 		t.Skip("requires an elevated native runner for an administrator-owned fixture")
 	}
-	// ProgramData grants ordinary-user writes, so it is not a protected ancestor.
+	// Keep this legacy fixture isolated under the native system directory.
 	base, err := windows.KnownFolderPath(windows.FOLDERID_ProgramFiles, 0)
 	if err != nil {
 		t.Fatal(err)

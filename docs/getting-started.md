@@ -144,16 +144,29 @@ The legacy `mutations_enabled` configuration field and `TADX_ENABLE_MUTATIONS=0`
 Site consent does not grant Tableau permissions or authorize unrelated work.
 
 An optional administrator-managed policy can add a machine-wide capability ceiling.
-Use the recovery flow to generate candidates, edit one, validate it, deploy it as an administrator, and check status:
+On Windows, an administrator can install a template and check the protected policy state:
+
+```text
+tadx policy install --template read-only
+tadx policy status --full
+```
+
+Omitting `--template` installs the `superuser` template, which allows remote mutations subject to saved site consent and Tableau permissions.
+Installing or updating a policy does not change site consent.
+Standard templates include current administrative reads, while `read-write-no-admin` excludes administrative remote writes.
+Reinstall a standard template from a current CLI to refresh its capability snapshot.
+
+For a custom policy, generate a candidate, edit it, and validate it before manual administrator deployment:
 
 ```text
 tadx policy samples --output ./tadx-policy-candidates
 tadx policy validate ./tadx-policy-candidates/read-only.json
-tadx policy status --full
 ```
 
+Read [Managed policy](managed-policy.md) for policy locations, schemas, protected deployment, status states, and recovery.
 Candidate validation does not activate a policy.
-Read [Managed policy](managed-policy.md) for fixed paths, schemas, protected deployment, status states, and recovery.
+After an administrator deploys the validated candidate following that guide, use `tadx policy status --full` to inspect the protected policy state.
+On Linux and macOS, `policy install` reports that installation is unsupported, so administrators deploy policies manually.
 
 Supported mutation commands accept `--preview` while execution is disabled.
 A preview resolves the exact target and proposed settings without authorizing or applying the change.

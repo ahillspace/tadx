@@ -11,6 +11,9 @@ The following aliases are supported by the CLI command tree.
 | Canonical | Alias | Meaning |
 | --- | --- | --- |
 | `admin` | `adm` | Administration command group. |
+| `policy` | `pol` | Managed policy command group. |
+| `samples` | `smp` | Create policy candidate samples. |
+| `validate` | `vld` | Validate a policy candidate. |
 | `group-member` | `gm` | Direct group membership resource. |
 | `label-value` | `lv` | Shared label value definitions. |
 | `label-category` | `lc` | Shared label categories. |
@@ -149,6 +152,7 @@ Word-like aliases use two dashes, even when the alias is short.
 | `--name` | `-n`, `--nm` | Exact name. |
 | `--new-name` | `--nnm` | Replacement name. |
 | `--number-format` | `--nfm` | Number format. |
+| `--output` | `--out` | Candidate or install output directory. |
 | `--overwrite` | `--ovr` | Overwrite existing content. |
 | `--owner` | `--own` | Owner. |
 | `--owner-id` | `--oid` | Owner LUID. |
@@ -179,6 +183,7 @@ Word-like aliases use two dashes, even when the alias is short.
 | `--subscription-id` | `--sid` | Subscription LUID. |
 | `--table` | `--tbl` | Table. |
 | `--target` | `--tgt` | Target. |
+| `--template` | `--tpl` | Managed policy template. |
 | `--temporality` | `--tmp` | Temporality. |
 | `--top-level` | `--top` | Top-level project. |
 | `--type` | `--typ` | Resource type. |

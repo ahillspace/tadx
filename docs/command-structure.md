@@ -40,7 +40,7 @@ Apply the same rule structurally across the CLI:
 - `pulse -h` introduces definitions and metrics; each resource gets its own complete reference, with focused subsets at known verbs.
 - `auth -h` and `env -h` already sit above executable actions, so they provide complete operational references with focused subsets at known verbs.
 - `workspace -h` covers its direct actions and includes a navigation entry for `artifact`; `workspace artifact -h` covers artifact actions with focused subsets at known verbs.
-- `mutation -h` covers consent status for configured environments and per-site changes; `policy -h` covers candidate samples, validation, and fixed-path status recovery.
+- `mutation -h` covers consent status for configured environments and per-site changes; `policy -h` covers candidate samples, validation, protected-location status recovery, and administrator installation.
 - Standalone commands such as `search` show their own complete help.
 
 Bare `tadx` remains the session overview, not an alias for `tadx -h`.
@@ -118,7 +118,7 @@ Use this matrix for conventions shared across resource references, while keeping
 | Bounds and presentation | Use `--all` for a bounded complete collection where supported, `--limit` or `--cursor` for bounded pages where supported, `--full` for more detail on the same result, and `--json` to change encoding. |
 | Preview, mutation, and waiting | Use `--preview` for a no-change plan; mutation policy still governs execution; use `--no-wait` only on supported publish or pull actions, which return local recovery status instead of silently replaying work. |
 | Site mutation consent | Use `tadx mutation status` for all configured environments, or add `--environment <alias>` for one alias and `--full` for canonical server and exact site details. Use `tadx mutation set --environment <alias> --enabled=<boolean>` only after explicit authorization for that persisted site setting. |
-| Managed policy recovery | Use `tadx policy samples --output <directory>` for exclusive candidate files, `tadx policy validate <file>` for schema and ID checks, and `tadx policy status [--full]` for the fixed protected path. |
+| Managed policy recovery | On Windows, use `tadx policy install --template <name> [--output <directory>]` to install and activate a template at the protected resolved location; `--output` selects a dedicated destination. Use `tadx policy samples --output <directory>` for candidate files, `tadx policy validate <file>` for schema and ID checks, and `tadx policy status [--full]` to inspect the protected resolved location. |
 | Outcomes and recovery | Preserve confirmed identities and per-item results; inspect the exact job or operation status after an unknown outcome, and do not blindly repeat a consequential action. |
 | Genuine exceptions | Catalog reads are live-only; Pulse follower reads use a fixed bounded result; `job --operation-id` identifies a local invocation while `job --id` identifies a Tableau job. |
 | Local inventory | Environment and workspace inventories accept `--all` for every row within the 10,000-record bound; defaults remain bounded pages, and `--full` still controls detail only. |

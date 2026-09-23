@@ -133,7 +133,7 @@ func TestManagedPolicyRecoveryToolsRemainAvailable(t *testing.T) {
 			t.Fatalf("%v code=%d output=%s", args, code, &out)
 		}
 	}
-	before, err := os.ReadFile(filepath.Join(directory, "admin.json"))
+	before, err := os.ReadFile(filepath.Join(directory, "superuser.json"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -141,11 +141,14 @@ func TestManagedPolicyRecoveryToolsRemainAvailable(t *testing.T) {
 	if code := Run(t.Context(), []string{"policy", "samples", "--output", directory, "--json"}, &out, options); code == 0 {
 		t.Fatal("sample files overwritten")
 	}
-	after, err := os.ReadFile(filepath.Join(directory, "admin.json"))
+	after, err := os.ReadFile(filepath.Join(directory, "superuser.json"))
 	if err != nil || !bytes.Equal(before, after) {
 		t.Fatal("existing candidate changed")
 	}
-	for _, name := range []string{"read-only", "read-write-no-admin", "admin"} {
+	if _, err := os.Stat(filepath.Join(directory, "admin.json")); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("legacy sample must not be advertised: %v", err)
+	}
+	for _, name := range []string{"read-only", "read-write-no-admin", "superuser"} {
 		data, err := os.ReadFile(filepath.Join(directory, name+".json"))
 		if err != nil {
 			t.Fatal(err)
@@ -159,8 +162,8 @@ func TestManagedPolicyRecoveryToolsRemainAvailable(t *testing.T) {
 		}
 		for _, id := range doc.AllowedCapabilities {
 			definition, _ := capability.Lookup(id)
-			if name != "admin" && definition.Administrative {
-				t.Fatalf("nonadmin sample includes %s", id)
+			if name == "read-write-no-admin" && definition.Administrative && definition.RemoteMutation {
+				t.Fatalf("nonadmin sample includes administrative mutation %s", id)
 			}
 		}
 	}
