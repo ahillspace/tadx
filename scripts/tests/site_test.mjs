@@ -13,7 +13,7 @@ test('public build contains only reviewed pages, capability data, and exact inst
   try {
     const destination = join(folder, 'public');
     await buildSite(repo, destination);
-    assert.deepEqual((await readdir(destination)).sort(), ['.nojekyll', 'capabilities.html', 'capabilities.json', 'index.html', 'install.ps1', 'install.sh', 'security.html']);
+    assert.deepEqual((await readdir(destination)).sort(), ['.nojekyll', 'capabilities.html', 'capabilities.json', 'index.html', 'install.ps1', 'install.sh', 'security-controls.svg', 'security.html']);
     for (const [source, target] of publicFiles) {
       assert.deepEqual(await readFile(join(destination, target)), await readFile(join(repo, source)));
     }
@@ -108,6 +108,16 @@ test('security page is linked, self-contained, and usable without application Ja
   for (const text of ['tadx policy install --template read-only', '--output', 'current development source', 'not a sandbox', 'checksum', 'Secret Service']) {
     assert.ok(html.includes(text), 'Missing security fact ' + text);
   }
+  const controls = /<section id="controls"[\s\S]*?<div class="detail-group">/.exec(html)?.[0];
+  assert.ok(controls, 'Missing visible controls introduction');
+  assert.match(controls, /tadx mutation status/);
+  assert.match(controls, /tadx policy status/);
+  assert.match(controls, /no enforced approval prompt/);
+  assert.match(controls, /src="security-controls\.svg"[^>]+alt="[^"]+"/);
+  const diagram = await readFile(join(repo, 'site/security-controls.svg'), 'utf8');
+  assert.ok(/<svg\b/.test(diagram), 'Missing rendered diagram');
+  assert.ok(/<desc[^>]*>[^<]*Managed policy[^<]*site's write switch/.test(diagram), 'Missing accessible explanation of both gates');
+  assert.ok(!/<script\b|<foreignObject\b|(?:href|src)="https?:/i.test(diagram), 'Diagram must be self-contained SVG');
 });
 
 test('Pages is manual and publishes only the allowlisted build', async () => {

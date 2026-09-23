@@ -13,13 +13,20 @@ const screenshots = process.argv[3] ? resolve(process.argv[3]) : null;
 if (screenshots) mkdirSync(screenshots, { recursive: true });
 const repo = dirname(dirname(dirname(fileURLToPath(import.meta.url))));
 const folder = mkdtempSync(join(tmpdir(), 'tadx-security-browser-'));
-const html = readFileSync(join(repo, 'site/security.html'), 'utf8');
+const diagram = readFileSync(join(repo, 'site/security-controls.svg'));
+const html = readFileSync(join(repo, 'site/security.html'), 'utf8').replace('src="security-controls.svg"', 'src="data:image/svg+xml;base64,' + diagram.toString('base64') + '"');
 
 function exercise() {
   const check = (condition, message) => { if (!condition) throw new Error(message); };
   const noOverflow = () => check(document.documentElement.scrollWidth <= innerWidth, 'Security page overflows horizontally');
   check(getComputedStyle(document.body).backgroundColor === 'rgb(243, 243, 235)', 'Homepage theme missing');
   check(document.querySelector('[aria-current="page"]').textContent === 'Security', 'Current page navigation missing');
+  const diagramImage = document.querySelector('.checks-flow img');
+  check(diagramImage.complete && diagramImage.naturalWidth > 0, 'Controls diagram did not load');
+  for (const card of document.querySelectorAll('.control-card')) {
+    check(card.querySelector('pre').getBoundingClientRect().height > 0, 'Status command is hidden');
+    check(!card.closest('details'), 'Status command must be visible without expanding details');
+  }
   const details = [...document.querySelectorAll('details')];
   check(details.length >= 10, 'Missing detail sections');
   noOverflow();
@@ -42,9 +49,9 @@ function exercise() {
     check(document.getElementById(anchor.getAttribute('href').slice(1)), 'In-page link has no target');
   }
   document.activeElement.blur();
-  if (document.body.hasAttribute('data-capture-templates')) {
-    window.scrollTo({ top: document.getElementById('templates').offsetTop - 28, behavior: 'instant' });
-    check(window.scrollY > 0, 'Template screenshot did not scroll');
+  if (document.body.dataset.captureSection) {
+    window.scrollTo({ top: document.getElementById(document.body.dataset.captureSection).offsetTop - 28, behavior: 'instant' });
+    check(window.scrollY > 0, 'Section screenshot did not scroll');
   }
   else window.scrollTo({ top: 0, behavior: 'instant' });
   return { passed: true, width: innerWidth, details: details.length, overflow: false };
@@ -52,10 +59,10 @@ function exercise() {
 
 try {
   const probe = '<script>addEventListener("load", () => { let report; try { report = (' + exercise.toString() + ')(); } catch(error) { report = {passed:false,error:String(error)}; } parent.postMessage({securityTest:report}, "*"); });</script>';
-  for (const [width, hash] of [[1280, ''], [768, ''], [390, ''], [1280, '#templates']]) {
-    const label = String(width) + (hash ? '-templates' : '');
+  for (const [width, section] of [[1280, ''], [768, ''], [390, ''], [1280, 'controls'], [390, 'controls'], [1280, 'checks-title'], [390, 'checks-title']]) {
+    const label = String(width) + (section ? '-' + section : '');
     // A sized frame supplies exact CSS viewports despite Chromium's minimum native window width.
-    const positioned = html.replace('<body>', hash ? '<body data-capture-templates>' : '<body>').replace('</body>', probe + '</body>');
+    const positioned = html.replace('<body>', section ? '<body data-capture-section="' + section + '">' : '<body>').replace('</body>', probe + '</body>');
     const escaped = positioned.replaceAll('&', '&amp;').replaceAll('"', '&quot;').replaceAll('<', '&lt;').replaceAll('>', '&gt;');
     const page = join(folder, 'security-' + label + '.html');
     const wrapper = '<!doctype html><html><head><meta charset="utf-8"><style>body{margin:0;background:#d9dcd0;display:flex;justify-content:center}iframe{border:0;flex:none;width:' + width + 'px;height:1100px}</style></head><body><script>addEventListener("message", event => { if(event.source === document.querySelector("iframe").contentWindow && event.data.securityTest) document.body.dataset.securityTest = JSON.stringify(event.data.securityTest); });</script><iframe title="Security page viewport" srcdoc="' + escaped + '"></iframe></body></html>';

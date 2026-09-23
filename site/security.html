@@ -52,10 +52,20 @@
     h2 { margin: 0; font-size: clamp(28px, 3vw, 38px); line-height: 1.13; font-weight: 540; letter-spacing: -.045em; }
     .lead { color: var(--muted); margin: 15px 0 25px; font-size: 14px; line-height: 1.8; max-width: 700px; }
     .control-grid, .template-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+    .control-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
     .control-card { border: 1px solid var(--line); border-radius: 5px; padding: 20px; background: #f8f8f2; }
     .number { display: inline-grid; place-items: center; width: 25px; height: 25px; margin-bottom: 20px; border: 1px solid #c6cfbb; border-radius: 50%; color: var(--green); font: 10px/1 var(--mono); }
     h3 { margin: 0 0 10px; font-size: 16px; line-height: 1.35; font-weight: 600; letter-spacing: -.02em; }
     .control-card p, .template-card p { margin: 0; font-size: 12px; line-height: 1.8; color: var(--muted); }
+    .control-card p { font-size: 13px; }
+    .control-card p + p { margin-top: 12px; }
+    .control-card .kicker { font-size: 10px; margin-bottom: 12px; }
+    .control-card .status-label { margin-top: 20px; color: var(--ink); font-size: 11px; }
+    .control-card pre { margin: 8px 0; padding: 12px; font-size: 12px; }
+    .control-card .status-note { font-size: 11px; }
+    .checks-flow { margin: 30px 0 0; padding: 22px; border: 1px solid var(--line); border-radius: 5px; background: #f8f8f2; }
+    .checks-flow img { display: block; width: 100%; max-width: 540px; height: auto; margin: 20px auto; }
+    .checks-flow figcaption { font-size: 12px; line-height: 1.8; color: var(--muted); }
     .small-note { margin: 17px 0 0; font-size: 12px; line-height: 1.8; color: var(--muted); }
     .small-note strong { color: var(--ink); font-weight: 600; }
     details { border-bottom: 1px solid var(--line); }
@@ -107,8 +117,6 @@
       .hero { gap: 32px; grid-template-columns: minmax(0, 1fr) 250px; }
       .page-grid { grid-template-columns: 150px minmax(0, 1fr); gap: 28px; }
       .control-grid, .template-grid { grid-template-columns: 1fr; }
-      .control-card { display: grid; grid-template-columns: 25px 1fr; gap: 0 16px; }
-      .control-card .number { grid-row: span 2; margin: 0; }
       .control-card h3 { margin-bottom: 5px; }
       .template-card h3 { min-height: 0; }
       .template-label { margin-bottom: 8px; }
@@ -134,6 +142,7 @@
       .contents .source-link { display: none; }
       .contents .kicker { margin-bottom: 8px; }
       .section { padding: 30px 0 34px; }
+      .checks-flow { padding: 16px 10px; }
       .detail-body { padding-right: 0; }
       .platform-list { grid-template-columns: 1fr; gap: 3px; }
       .platform-list dd { margin-bottom: 12px; }
@@ -157,14 +166,14 @@
   </header>
   <main id="main" class="wrap">
     <div class="hero">
-      <div><p class="eyebrow">Security &amp; control</p><h1>Powerful commands.<span>Deliberate control.</span></h1><p class="intro">Your agent can work with Tableau. You decide where it can make changes. Here is how TADX handles credentials, checks authority, and keeps those boundaries explicit.</p></div>
-      <aside class="hero-note" aria-label="Security at a glance"><p class="kicker">The short version</p><p>New sites start with remote writes disabled. Credentials use your OS store. An optional managed policy adds administrator-controlled restrictions.</p><a href="#boundaries">Understand the limits &darr;</a></aside>
+      <div><p class="eyebrow">Security &amp; control</p><h1>Powerful commands.<span>Deliberate control.</span></h1><p class="intro">TADX has two controls to limit what an agent can do through the CLI: a per-site switch for making changes in Tableau, and optional administrator-managed rules for which commands it may use.</p></div>
+      <aside class="hero-note" aria-label="Security at a glance"><p class="kicker">The short version</p><p>A site switch is easy to change. A managed policy adds administrator-controlled restrictions. Neither overrides the other.</p><a href="#controls">Understand both controls &darr;</a></aside>
     </div>
     <div class="page-grid">
       <nav class="contents" aria-label="On this page">
         <p class="kicker">On this page</p>
         <ol>
-          <li><a href="#controls"><span class="index">01</span>Before a write</a></li>
+          <li><a href="#controls"><span class="index">01</span>The two controls</a></li>
           <li><a href="#templates"><span class="index">02</span>Policy choices</a></li>
           <li><a href="#credentials"><span class="index">03</span>Your credentials</a></li>
           <li><a href="#policy-installation"><span class="index">04</span>Policy installation</a></li>
@@ -175,18 +184,33 @@
       </nav>
       <div class="article">
         <section id="controls" class="section" aria-labelledby="controls-title">
-          <p class="kicker">01 / Independent controls</p><h2 id="controls-title">Every write needs permission.</h2>
-          <p class="lead">Enabling one control does not bypass the others. A request to publish a workbook is not permission for an agent to change your saved security settings.</p>
+          <p class="kicker">01 / Start here</p><h2 id="controls-title">Two controls. Different jobs.</h2>
+          <p class="lead">Publishing a workbook, editing a description, or deleting an asset changes something in Tableau Server or Tableau Cloud. TADX calls these changes <strong>mutations</strong>, or remote writes. Here is how you control them.</p>
           <div class="control-grid">
-            <article class="control-card"><span class="number" aria-hidden="true">1</span><h3>Tableau permissions</h3><p>The authenticated Tableau user must have the necessary rights on the actual target. TADX cannot grant itself access.</p></article>
-            <article class="control-card"><span class="number" aria-hidden="true">2</span><h3>Saved site consent</h3><p>Remote mutations must be enabled for the canonical server and exact Tableau site. New site settings default to disabled.</p></article>
-            <article class="control-card"><span class="number" aria-hidden="true">3</span><h3>Managed policy</h3><p>If configured, the machine-wide policy must allow the operation and remote mutations. Site consent cannot override it.</p></article>
+            <article class="control-card">
+              <p class="kicker">An easy per-site switch</p><h3>Site write access</h3>
+              <p>An on/off setting for whether TADX may change things on a particular Tableau site. New sites start with writes off. This switch does not block reads.</p>
+              <p>You can change it with a CLI command. Agents are instructed to ask your permission first, but <strong>there is no enforced approval prompt</strong>. An agent can run the setting command itself if managed policy allows it.</p>
+              <p class="status-label">Check without changing anything</p><pre><code>tadx mutation status</code></pre>
+              <p class="status-note">Shows saved write access across your configured environments and any managed-policy restriction.</p>
+            </article>
+            <article class="control-card">
+              <p class="kicker">Administrator-controlled rules</p><h3>Managed policies</h3>
+              <p>An optional, machine-wide set of rules for which TADX operations may run. A policy can block remote changes or disable individual capabilities, including reads.</p>
+              <p>Changing a properly protected policy file requires operating-system administrator authority. Unlike agent guidance, its restrictions are enforced by TADX. Keep agents unelevated and review the <a href="#boundaries">security limits</a>.</p>
+              <p class="status-label">Check without changing anything</p><pre><code>tadx policy status</code></pre>
+              <p class="status-note">Shows whether a policy is active and its overall restrictions. Add <code>--full</code> for allowed capabilities and protection checks.</p>
+            </article>
           </div>
-          <p class="small-note"><strong>These are separate checks, not an execution sequence.</strong> Command validation, exact target resolution, and supported API requirements still apply.</p>
+          <div class="callout"><strong>Both must allow the change.</strong> Enabling site writes does not override a policy. A permissive policy does not enable site writes. Tableau permissions still apply.</div>
+          <figure class="checks-flow" aria-labelledby="checks-title">
+            <h3 id="checks-title">Before a change is made</h3>
+            <img src="security-controls.svg" width="540" alt="TADX checks whether managed policy allows the command and remote writes, then whether writes are enabled for the selected site. Either check can block the change. Tableau then checks the user's permissions before applying it.">
+            <figcaption>This is the simplified order for a command that changes Tableau. If no managed policy is installed, that gate adds no restriction. Command validation, target lookup, and any required reads are omitted here.</figcaption>
+          </figure>
           <div class="detail-group">
             <details><summary><span><strong>What do preview and force mean?</strong><span class="detail-hint">Inspect a change without treating the preview as permission.</span></span><span class="toggle" aria-hidden="true">+</span></summary>
-              <div class="detail-body"><p>Supported commands expose <code>--preview</code> to inspect proposed changes without applying them. A preview may still need live reads and the capability IDs required to resolve its targets. Custom policy can deny those reads.</p><p>Neither <code>--preview</code> nor <code>--force</code> enables site consent or bypasses managed policy. A valid preview does not mean the later mutation is authorized.</p><pre><code>tadx mutation status
-tadx policy status</code></pre></div>
+              <div class="detail-body"><p>Supported commands expose <code>--preview</code> to inspect proposed changes without applying them. A preview may still need live reads and the capability IDs required to resolve its targets. Custom policy can deny those reads.</p><p>Neither <code>--preview</code> nor <code>--force</code> enables site consent or bypasses managed policy. A valid preview does not mean the later mutation is authorized.</p></div>
             </details>
             <details><summary><span><strong>What if an agent keeps trying?</strong><span class="detail-hint">CLI enforcement is different from guidance in a prompt.</span></span><span class="toggle" aria-hidden="true">+</span></summary>
               <div class="detail-body"><p>Agent Guidance tells agents to ask before changing saved site consent. Managed policy is an additional check enforced by TADX, not merely an instruction to the model. A blocked mutation does not become permitted because the agent retries or uses cached content.</p><p>An agent can request an administrator-authorized policy change. On an ordinary, unelevated Windows session, the policy installer requests elevation through Windows. Approving that request can change the policy. Keep agents unelevated and review approval prompts.</p></div>
