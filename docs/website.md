@@ -21,7 +21,7 @@ A `CNAME` file alone does not configure a custom domain for an Actions deploymen
 
 Edit `site/index.html` for the homepage.
 Run `node --test scripts/tests/site_test.mjs` to validate its packaging and installer commands.
-Run `node scripts/build-site.mjs` to create `_site` from `index.html`, `security.html`, `security-controls.svg`, `capabilities.html`, `capabilities.json`, `install.sh`, and `install.ps1`.
+Run `node scripts/build-site.mjs` to create `_site` from `index.html`, `security.html`, `capabilities.html`, `capabilities.json`, `install.sh`, and `install.ps1`.
 The static packaging test is the required automated check and does not need a browser or npm dependencies.
 For an optional real-browser check of the capability map, run `node scripts/check-capability-map.mjs <chromium-browser-path> [page-path]`.
 For an optional real-browser check of the homepage, run `node scripts/tests/site_browser.mjs <chromium-browser-path>`.
@@ -31,9 +31,7 @@ The output directory must be new or empty; move an earlier local build aside bef
 The homepage's Docs links open `capabilities.html` on the same site.
 The homepage links to `security.html`, the packaged concise security overview.
 Its expandable details use native HTML and remain usable without JavaScript.
-Its authorization diagram is a checked-in SVG rendered from `site/security-controls.mmd`, so no Mermaid runtime is downloaded by visitors or required by the site build.
-After editing that Mermaid source, regenerate the SVG with `npx --yes --package @mermaid-js/mermaid-cli@11.17.0 mmdc -i site/security-controls.mmd -o site/security-controls.svg -b transparent -I security-controls`.
-To use an existing Chromium browser, supply `-p <puppeteer-config.json>` with its `executablePath`; set `PUPPETEER_SKIP_DOWNLOAD=true` before invoking npx to skip a separate browser download.
+Its authorization checks use a compact HTML table with no diagram assets or rendering dependencies.
 The security page links to the repository's detailed security and managed policy guides for more information.
 The build copies the authored `docs/reference/capability-map.html` and its generated `capabilities.json` inventory; no second command-browser source is maintained.
 Keep the map's authored layout and styling separate from its generated `capability-data` script block.

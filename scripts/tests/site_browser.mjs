@@ -21,6 +21,11 @@ async function exercise() {
     check(id(`tab-${demo}`).getAttribute('aria-selected') === 'true', `${demo} not selected`);
     check(id('demo-panel').getAttribute('aria-labelledby') === `tab-${demo}`, `${demo} panel inaccessible`);
     check(id('session-body').querySelector('.command').textContent.startsWith('tadx '), `${demo} lacks command`);
+    check(!id('session-body').querySelector('.preview-note'), `${demo} shows the repeated no-change note`);
+    if (demo === 'metric' || demo === 'publish') {
+      check(id('session-status').textContent === 'Preview only', `${demo} lost its preview status`);
+      check(id('session-body').querySelector('.command').textContent.includes('--preview'), `${demo} lost its preview command`);
+    }
   }
   id('tab-publish').click();
   id('tab-publish').dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true }));

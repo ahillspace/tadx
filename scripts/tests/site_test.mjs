@@ -13,7 +13,7 @@ test('public build contains only reviewed pages, capability data, and exact inst
   try {
     const destination = join(folder, 'public');
     await buildSite(repo, destination);
-    assert.deepEqual((await readdir(destination)).sort(), ['.nojekyll', 'capabilities.html', 'capabilities.json', 'index.html', 'install.ps1', 'install.sh', 'security-controls.svg', 'security.html']);
+    assert.deepEqual((await readdir(destination)).sort(), ['.nojekyll', 'capabilities.html', 'capabilities.json', 'index.html', 'install.ps1', 'install.sh', 'security.html']);
     for (const [source, target] of publicFiles) {
       assert.deepEqual(await readFile(join(destination, target)), await readFile(join(repo, source)));
     }
@@ -113,11 +113,10 @@ test('security page is linked, self-contained, and usable without application Ja
   assert.match(controls, /tadx mutation status/);
   assert.match(controls, /tadx policy status/);
   assert.match(controls, /no enforced approval prompt/);
-  assert.match(controls, /src="security-controls\.svg"[^>]+alt="[^"]+"/);
-  const diagram = await readFile(join(repo, 'site/security-controls.svg'), 'utf8');
-  assert.ok(/<svg\b/.test(diagram), 'Missing rendered diagram');
-  assert.ok(/<desc[^>]*>[^<]*Managed policy[^<]*site's write switch/.test(diagram), 'Missing accessible explanation of both gates');
-  assert.ok(!/<script\b|<foreignObject\b|(?:href|src)="https?:/i.test(diagram), 'Diagram must be self-contained SVG');
+  assert.match(controls, /<table class="checks-table">/);
+  assert.equal([...controls.matchAll(/scope="row"/g)].length, 3);
+  assert.match(controls, /Any failed check blocks the change/);
+  assert.doesNotMatch(html, /hero-note|security-controls\.svg|Powerful commands|Deliberate control|Two controls\. Different jobs/);
 });
 
 test('Pages is manual and publishes only the allowlisted build', async () => {

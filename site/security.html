@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#f3f3eb">
   <meta name="description" content="How TADX handles credentials, controls Tableau changes, and protects managed policy. Understand the controls and their limits.">
-  <title>TADX - Security and control</title>
+  <title>TADX security</title>
   <style>
     :root { color-scheme: light; --paper: #f3f3eb; --ink: #202720; --muted: #646b5f; --line: #d9dcd0; --green: #496641; --accent: #d3ed9e; --terminal: #19201c; --sans: "Inter Display", "Inter", "Segoe UI", Helvetica, Arial, sans-serif; --mono: "SFMono-Regular", Consolas, "Liberation Mono", monospace; }
     * { box-sizing: border-box; }
@@ -26,17 +26,10 @@
     .nav { display: flex; gap: 30px; align-items: center; font-size: 13px; font-weight: 550; }
     .nav a { padding-block: 12px; text-decoration: none; }
     .nav [aria-current] { color: var(--green); text-decoration: underline; text-underline-offset: 7px; }
-    .hero { display: grid; grid-template-columns: minmax(0, 1fr) 280px; gap: 60px; align-items: end; padding: 64px 0 56px; }
-    .eyebrow, .kicker { margin: 0 0 17px; color: var(--green); font: 11px/1.5 var(--mono); letter-spacing: .06em; text-transform: uppercase; }
-    .eyebrow { display: flex; gap: 9px; align-items: center; }
-    .eyebrow::before { content: ""; width: 6px; height: 6px; background: var(--green); border-radius: 50%; }
-    h1 { margin: 0; font-size: clamp(48px, 5.5vw, 76px); font-weight: 540; letter-spacing: -.06em; line-height: 1.04; }
-    h1 span { display: block; color: var(--green); }
-    .intro { max-width: 620px; margin: 24px 0 0; color: var(--muted); font-size: 16px; line-height: 1.75; }
-    .hero-note { padding: 25px; background: var(--terminal); color: #e8eee0; border-radius: 6px; }
-    .hero-note .kicker { color: var(--accent); margin-bottom: 20px; }
-    .hero-note p { margin: 0; font-size: 15px; line-height: 1.65; }
-    .hero-note a { display: inline-block; margin-top: 19px; color: var(--accent); font-size: 12px; }
+    .page-header { padding: 42px 0 32px; }
+    .kicker { margin: 0 0 17px; color: var(--green); font: 11px/1.5 var(--mono); letter-spacing: .06em; text-transform: uppercase; }
+    h1 { margin: 0; font-size: clamp(32px, 4vw, 44px); font-weight: 600; letter-spacing: -.035em; line-height: 1.2; }
+    .intro { max-width: 780px; margin: 16px 0 0; color: var(--muted); font-size: 15px; line-height: 1.75; }
     .page-grid { display: grid; grid-template-columns: 185px minmax(0, 1fr); gap: 54px; border-top: 1px solid var(--line); }
     .contents { position: sticky; top: 28px; align-self: start; padding-top: 34px; }
     .contents .kicker { color: var(--muted); font-size: 10px; }
@@ -48,24 +41,25 @@
     .article { min-width: 0; }
     .section { padding: 38px 0 42px; border-bottom: 1px solid var(--line); }
     .section:last-child { border-bottom: 0; }
-    .section .kicker { margin-bottom: 11px; font-size: 10px; }
-    h2 { margin: 0; font-size: clamp(28px, 3vw, 38px); line-height: 1.13; font-weight: 540; letter-spacing: -.045em; }
+    h2 { margin: 0; font-size: clamp(24px, 2.6vw, 30px); line-height: 1.3; font-weight: 550; letter-spacing: -.025em; }
     .lead { color: var(--muted); margin: 15px 0 25px; font-size: 14px; line-height: 1.8; max-width: 700px; }
     .control-grid, .template-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
     .control-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
     .control-card { border: 1px solid var(--line); border-radius: 5px; padding: 20px; background: #f8f8f2; }
-    .number { display: inline-grid; place-items: center; width: 25px; height: 25px; margin-bottom: 20px; border: 1px solid #c6cfbb; border-radius: 50%; color: var(--green); font: 10px/1 var(--mono); }
     h3 { margin: 0 0 10px; font-size: 16px; line-height: 1.35; font-weight: 600; letter-spacing: -.02em; }
     .control-card p, .template-card p { margin: 0; font-size: 12px; line-height: 1.8; color: var(--muted); }
     .control-card p { font-size: 13px; }
     .control-card p + p { margin-top: 12px; }
-    .control-card .kicker { font-size: 10px; margin-bottom: 12px; }
     .control-card .status-label { margin-top: 20px; color: var(--ink); font-size: 11px; }
     .control-card pre { margin: 8px 0; padding: 12px; font-size: 12px; }
     .control-card .status-note { font-size: 11px; }
-    .checks-flow { margin: 30px 0 0; padding: 22px; border: 1px solid var(--line); border-radius: 5px; background: #f8f8f2; }
-    .checks-flow img { display: block; width: 100%; max-width: 540px; height: auto; margin: 20px auto; }
-    .checks-flow figcaption { font-size: 12px; line-height: 1.8; color: var(--muted); }
+    .checks { margin-top: 26px; }
+    .checks-table { width: 100%; border-collapse: collapse; font-size: 13px; line-height: 1.65; }
+    .checks-table caption { padding-bottom: 12px; text-align: left; color: var(--ink); font-size: 15px; font-weight: 600; }
+    .checks-table th, .checks-table td { padding: 11px 14px; border-bottom: 1px solid var(--line); text-align: left; vertical-align: top; }
+    .checks-table thead th { background: #e9edde; font-size: 11px; font-weight: 600; }
+    .checks-table tbody th { width: 34%; font-weight: 550; }
+    .checks-table td { color: var(--muted); }
     .small-note { margin: 17px 0 0; font-size: 12px; line-height: 1.8; color: var(--muted); }
     .small-note strong { color: var(--ink); font-weight: 600; }
     details { border-bottom: 1px solid var(--line); }
@@ -87,7 +81,6 @@
     pre code { font-size: inherit; }
     .template-card { padding: 20px; border: 1px solid var(--line); border-top: 3px solid #bbc7ad; border-radius: 4px; display: flex; flex-direction: column; }
     .template-card:first-child { background: #eaf0df; border-color: #c6d3b8; border-top-color: var(--green); }
-    .template-label { margin-bottom: 17px; font: 10px/1.5 var(--mono); color: var(--muted); }
     .template-card h3 { font: 14px/1.55 var(--mono); overflow-wrap: anywhere; min-height: 44px; }
     .template-card .permission { margin-top: auto; padding-top: 20px; }
     .permission span { display: block; color: var(--green); font-size: 11px; }
@@ -114,12 +107,10 @@
     .footer-links { display: flex; flex-wrap: wrap; gap: 24px; font-size: 11px; }
     .footer-links a { text-decoration: none; }
     @media (max-width: 960px) {
-      .hero { gap: 32px; grid-template-columns: minmax(0, 1fr) 250px; }
       .page-grid { grid-template-columns: 150px minmax(0, 1fr); gap: 28px; }
       .control-grid, .template-grid { grid-template-columns: 1fr; }
       .control-card h3 { margin-bottom: 5px; }
       .template-card h3 { min-height: 0; }
-      .template-label { margin-bottom: 8px; }
       .template-card .permission { padding-top: 12px; }
       .credential-flow { grid-template-columns: 1fr; }
       .credential-step { border-right: 0; border-bottom: 1px solid var(--line); }
@@ -129,20 +120,16 @@
       .wrap { width: calc(100% - 40px); }
       .masthead { min-height: 75px; gap: 14px; }
       .nav { gap: 18px; font-size: 12px; }
-      .hero { grid-template-columns: 1fr; gap: 25px; padding: 42px 0 34px; }
-      h1 { font-size: clamp(43px, 10vw, 65px); }
-      .intro { font-size: 14px; margin-top: 20px; }
-      .hero-note { padding: 21px; }
-      .hero-note .kicker { margin-bottom: 10px; }
-      .hero-note p { font-size: 13px; }
-      .hero-note a { margin-top: 12px; }
+      .page-header { padding: 30px 0; }
+      .intro { font-size: 14px; }
       .page-grid { display: block; }
       .contents { position: static; padding: 24px 0; border-bottom: 1px solid var(--line); }
       .contents ol { display: grid; grid-template-columns: 1fr 1fr; gap: 0 14px; }
       .contents .source-link { display: none; }
       .contents .kicker { margin-bottom: 8px; }
       .section { padding: 30px 0 34px; }
-      .checks-flow { padding: 16px 10px; }
+      .checks-table th, .checks-table td { padding: 10px 8px; }
+      .checks-table tbody th { width: 39%; }
       .detail-body { padding-right: 0; }
       .platform-list { grid-template-columns: 1fr; gap: 3px; }
       .platform-list dd { margin-bottom: 12px; }
@@ -165,140 +152,147 @@
     <nav class="nav" aria-label="Main navigation"><a href="capabilities.html">Docs</a><a href="security.html" aria-current="page">Security</a><a href="https://github.com/ahillspace/tadx">GitHub</a></nav>
   </header>
   <main id="main" class="wrap">
-    <div class="hero">
-      <div><p class="eyebrow">Security &amp; control</p><h1>Powerful commands.<span>Deliberate control.</span></h1><p class="intro">TADX has two controls to limit what an agent can do through the CLI: a per-site switch for making changes in Tableau, and optional administrator-managed rules for which commands it may use.</p></div>
-      <aside class="hero-note" aria-label="Security at a glance"><p class="kicker">The short version</p><p>A site switch is easy to change. A managed policy adds administrator-controlled restrictions. Neither overrides the other.</p><a href="#controls">Understand both controls &darr;</a></aside>
-    </div>
+    <header class="page-header">
+      <h1>TADX security</h1>
+      <p class="intro">You can limit an agent's TADX operations with two controls: site write access and managed policies. This page explains those controls, credential storage, and their limitations.</p>
+    </header>
     <div class="page-grid">
       <nav class="contents" aria-label="On this page">
         <p class="kicker">On this page</p>
         <ol>
-          <li><a href="#controls"><span class="index">01</span>The two controls</a></li>
-          <li><a href="#templates"><span class="index">02</span>Policy choices</a></li>
-          <li><a href="#credentials"><span class="index">03</span>Your credentials</a></li>
-          <li><a href="#policy-installation"><span class="index">04</span>Policy installation</a></li>
-          <li><a href="#local-data"><span class="index">05</span>Local data</a></li>
-          <li><a href="#boundaries"><span class="index">06</span>Limits &amp; trust</a></li>
+          <li><a href="#controls"><span class="index">01</span>Access controls</a></li>
+          <li><a href="#templates"><span class="index">02</span>Policy templates</a></li>
+          <li><a href="#credentials"><span class="index">03</span>Credentials</a></li>
+          <li><a href="#policy-installation"><span class="index">04</span>Install a policy</a></li>
+          <li><a href="#local-data"><span class="index">05</span>Data and networks</a></li>
+          <li><a href="#boundaries"><span class="index">06</span>Security limitations</a></li>
         </ol>
         <a class="source-link" href="https://github.com/ahillspace/tadx/blob/main/docs/security.md">Read the detailed<br>security guide &nearr;</a>
       </nav>
       <div class="article">
         <section id="controls" class="section" aria-labelledby="controls-title">
-          <p class="kicker">01 / Start here</p><h2 id="controls-title">Two controls. Different jobs.</h2>
-          <p class="lead">Publishing a workbook, editing a description, or deleting an asset changes something in Tableau Server or Tableau Cloud. TADX calls these changes <strong>mutations</strong>, or remote writes. Here is how you control them.</p>
+          <h2 id="controls-title">Site write access and managed policies</h2>
+          <p class="lead">Publishing a workbook, editing a description, or deleting an asset changes something in Tableau Server or Tableau Cloud. TADX calls these changes <strong>mutations</strong>, or remote writes.</p>
           <div class="control-grid">
             <article class="control-card">
-              <p class="kicker">An easy per-site switch</p><h3>Site write access</h3>
-              <p>An on/off setting for whether TADX may change things on a particular Tableau site. New sites start with writes off. This switch does not block reads.</p>
+              <h3>Site write access</h3>
+              <p>This on/off setting controls whether TADX can change resources on a particular Tableau site. New sites start with writes off. This setting does not block reads.</p>
               <p>You can change it with a CLI command. Agents are instructed to ask your permission first, but <strong>there is no enforced approval prompt</strong>. An agent can run the setting command itself if managed policy allows it.</p>
               <p class="status-label">Check without changing anything</p><pre><code>tadx mutation status</code></pre>
               <p class="status-note">Shows saved write access across your configured environments and any managed-policy restriction.</p>
             </article>
             <article class="control-card">
-              <p class="kicker">Administrator-controlled rules</p><h3>Managed policies</h3>
-              <p>An optional, machine-wide set of rules for which TADX operations may run. A policy can block remote changes or disable individual capabilities, including reads.</p>
+              <h3>Managed policies</h3>
+              <p>These optional, machine-wide rules restrict which TADX operations can run. A policy can block remote changes or disable individual operations, including reads.</p>
               <p>Changing a properly protected policy file requires operating-system administrator authority. Unlike agent guidance, its restrictions are enforced by TADX. Keep agents unelevated and review the <a href="#boundaries">security limits</a>.</p>
               <p class="status-label">Check without changing anything</p><pre><code>tadx policy status</code></pre>
               <p class="status-note">Shows whether a policy is active and its overall restrictions. Add <code>--full</code> for allowed capabilities and protection checks.</p>
             </article>
           </div>
-          <div class="callout"><strong>Both must allow the change.</strong> Enabling site writes does not override a policy. A permissive policy does not enable site writes. Tableau permissions still apply.</div>
-          <figure class="checks-flow" aria-labelledby="checks-title">
-            <h3 id="checks-title">Before a change is made</h3>
-            <img src="security-controls.svg" width="540" alt="TADX checks whether managed policy allows the command and remote writes, then whether writes are enabled for the selected site. Either check can block the change. Tableau then checks the user's permissions before applying it.">
-            <figcaption>This is the simplified order for a command that changes Tableau. If no managed policy is installed, that gate adds no restriction. Command validation, target lookup, and any required reads are omitted here.</figcaption>
-          </figure>
+          <div class="checks">
+            <table class="checks-table">
+              <caption id="checks-title">Checks before a remote change</caption>
+              <thead><tr><th scope="col">Check order</th><th scope="col">Requirement</th></tr></thead>
+              <tbody>
+                <tr><th scope="row">1. Managed policy</th><td>The policy permits the command and remote changes. No installed policy means no additional restriction.</td></tr>
+                <tr><th scope="row">2. Site write access</th><td>Writes are enabled for the selected Tableau server and site.</td></tr>
+                <tr><th scope="row">3. Tableau permissions</th><td>Tableau authorizes the authenticated user to make the requested change.</td></tr>
+              </tbody>
+            </table>
+            <p class="small-note"><strong>Any failed check blocks the change.</strong> Enabling site writes does not override a policy. A permissive policy does not enable site writes.</p>
+            <p class="small-note">This table summarizes authorization checks. Command validation, target lookup, and required reads still apply.</p>
+          </div>
           <div class="detail-group">
-            <details><summary><span><strong>What do preview and force mean?</strong><span class="detail-hint">Inspect a change without treating the preview as permission.</span></span><span class="toggle" aria-hidden="true">+</span></summary>
-              <div class="detail-body"><p>Supported commands expose <code>--preview</code> to inspect proposed changes without applying them. A preview may still need live reads and the capability IDs required to resolve its targets. Custom policy can deny those reads.</p><p>Neither <code>--preview</code> nor <code>--force</code> enables site consent or bypasses managed policy. A valid preview does not mean the later mutation is authorized.</p></div>
+            <details><summary><span><strong>Previews and forced operations</strong><span class="detail-hint">Preview a change without authorizing it.</span></span><span class="toggle" aria-hidden="true">+</span></summary>
+              <div class="detail-body"><p>Supported commands expose <code>--preview</code> to inspect proposed changes without applying them. A preview can still require live reads and permission to resolve its targets. Custom policy can deny those reads.</p><p>Neither <code>--preview</code> nor <code>--force</code> enables site consent or bypasses managed policy. A valid preview does not authorize a later mutation.</p></div>
             </details>
-            <details><summary><span><strong>What if an agent keeps trying?</strong><span class="detail-hint">CLI enforcement is different from guidance in a prompt.</span></span><span class="toggle" aria-hidden="true">+</span></summary>
+            <details><summary><span><strong>Agent authorization</strong><span class="detail-hint">Agent instructions do not replace CLI enforcement.</span></span><span class="toggle" aria-hidden="true">+</span></summary>
               <div class="detail-body"><p>Agent Guidance tells agents to ask before changing saved site consent. Managed policy is an additional check enforced by TADX, not merely an instruction to the model. A blocked mutation does not become permitted because the agent retries or uses cached content.</p><p>An agent can request an administrator-authorized policy change. On an ordinary, unelevated Windows session, the policy installer requests elevation through Windows. Approving that request can change the policy. Keep agents unelevated and review approval prompts.</p></div>
             </details>
           </div>
         </section>
         <section id="templates" class="section" aria-labelledby="templates-title">
-          <p class="kicker">02 / Choose the mutation boundary</p><h2 id="templates-title">All templates allow reads.</h2>
-          <p class="lead">Administrative reads, including users, groups, and permissions, are included. The built-in templates differ in the Tableau changes they allow, not the information they hide.</p>
+          <h2 id="templates-title">Policy templates</h2>
+          <p class="lead">All three templates allow reads, including user, group, and permission information. Each template permits a different set of remote changes.</p>
           <div class="template-grid">
-            <article class="template-card"><div class="template-label">Observe &amp; inspect</div><h3>read-only</h3><p>Read Tableau information and work with local artifacts. Do not change remote Tableau resources.</p><p class="permission"><span>Tableau mutations</span><strong>Blocked</strong></p></article>
-            <article class="template-card"><div class="template-label">Work with content</div><h3>read-write-no-admin</h3><p>Allow non-administrative changes. Block administrative mutations such as changing users, groups, or permissions.</p><p class="permission"><span>Tableau mutations</span><strong>Non-administrative only</strong></p></article>
-            <article class="template-card"><div class="template-label">Full supported access</div><h3>superuser</h3><p>Allow all currently supported operations, including administrative changes. Tableau permissions still apply.</p><p class="permission"><span>Tableau mutations</span><strong>Allowed by policy</strong></p></article>
+            <article class="template-card"><h3>read-only</h3><p>Read Tableau information and work with local artifacts. Do not change remote Tableau resources.</p><p class="permission"><span>Tableau mutations</span><strong>Blocked</strong></p></article>
+            <article class="template-card"><h3>read-write-no-admin</h3><p>Allow non-administrative changes. Block administrative mutations such as changing users, groups, or permissions.</p><p class="permission"><span>Tableau mutations</span><strong>Non-administrative only</strong></p></article>
+            <article class="template-card"><h3>superuser</h3><p>Allow all currently supported operations, including administrative changes. Tableau permissions still apply.</p><p class="permission"><span>Tableau mutations</span><strong>Allowed by policy</strong></p></article>
           </div>
-          <p class="small-note">All remote mutations still need saved site consent. <strong>Read-only is not a read-only disk:</strong> local operations such as refreshing caches and downloading artifacts remain available.</p>
-          <div class="callout"><strong>No template specified? The installer selects <code>superuser</code>.</strong> Choose <code>--template read-only</code> explicitly when you want to block Tableau mutations. Installing TADX itself does not install a managed policy.</div>
+          <p class="small-note">All remote mutations still require saved site consent. The <code>read-only</code> template permits local writes, including cache refreshes and artifact downloads.</p>
+          <div class="callout"><strong>The installer defaults to <code>superuser</code>.</strong> To block Tableau mutations, specify <code>--template read-only</code>. Installing the TADX CLI does not install a managed policy.</div>
           <div class="detail-group">
-            <details><summary><span><strong>Can I restrict individual reads or commands?</strong><span class="detail-hint">Use a custom policy when the built-in choices are too broad.</span></span><span class="toggle" aria-hidden="true">+</span></summary>
-              <div class="detail-body"><p>Yes. A managed policy contains an explicit allowlist of capability IDs and a separate remote-mutation setting. An administrator can remove read capabilities as well as write capabilities. Commands may also require permission for dependent operations.</p><p>Templates are snapshots of the current capability registry. Updating the CLI does not rewrite an installed policy; newly introduced IDs remain denied until an administrator updates the policy. Reinstalling a template replaces that snapshot and any custom edits at the selected destination.</p><p>The older <code>admin</code> template name is accepted as an alias for <code>superuser</code>. It is not a fourth access level.</p><p><a href="https://github.com/ahillspace/tadx/blob/main/docs/managed-policy.md">Read the policy format and customization guide &nearr;</a></p></div>
+            <details><summary><span><strong>Restrict individual operations</strong><span class="detail-hint">Edit a policy to restrict commands, including reads.</span></span><span class="toggle" aria-hidden="true">+</span></summary>
+              <div class="detail-body"><p>A managed policy lists permitted capability IDs, which identify TADX operations, and has a separate remote-mutation setting. An administrator can remove read capabilities as well as write capabilities. Commands can also require permission for dependent operations.</p><p>Templates list the capability IDs available when you create them. Updating the CLI does not rewrite an installed policy. New IDs remain denied until an administrator updates the policy. Reinstalling a template replaces the policy and any custom edits at the selected destination.</p><p>TADX accepts the older <code>admin</code> template name as an alias for <code>superuser</code>. It is not a fourth access level.</p><p><a href="https://github.com/ahillspace/tadx/blob/main/docs/managed-policy.md">Policy format and customization guide &nearr;</a></p></div>
             </details>
           </div>
         </section>
         <section id="credentials" class="section" aria-labelledby="credentials-title">
-          <p class="kicker">03 / Authentication</p><h2 id="credentials-title">A token, not your password.</h2>
+          <h2 id="credentials-title">Credentials</h2>
           <p class="lead">TADX authenticates to Tableau using personal access tokens (PATs). Interactive login validates the PAT before saving it in the native OS credential store.</p>
           <div class="credential-flow" aria-label="Credential handling">
-            <div class="credential-step"><span class="step">01 / STORE</span><strong>Native OS credential store</strong><p>The PAT name and secret are stored with a fingerprint of the Tableau target.</p></div>
-            <div class="credential-step"><span class="step">02 / REFERENCE</span><strong>Opaque configuration reference</strong><p>Your configuration points to the saved record. It does not contain the PAT value.</p></div>
-            <div class="credential-step"><span class="step">03 / USE</span><strong>Command-local session</strong><p>TADX retrieves the PAT when needed and uses the Tableau session token in memory for the command.</p></div>
+            <div class="credential-step"><span class="step">Storage</span><strong>OS credential store</strong><p>TADX stores the PAT name and secret with a fingerprint of the Tableau server and site.</p></div>
+            <div class="credential-step"><span class="step">Configuration</span><strong>Saved credential reference</strong><p>Your configuration points to the saved record. It does not contain the PAT value.</p></div>
+            <div class="credential-step"><span class="step">Authentication</span><strong>In-memory session</strong><p>TADX retrieves the PAT when needed and uses the Tableau session token in memory for the command.</p></div>
           </div>
           <div class="detail-group">
-            <details><summary><span><strong>Where is a saved PAT stored?</strong><span class="detail-hint">Windows Credential Manager, macOS Keychain, or Linux Secret Service.</span></span><span class="toggle" aria-hidden="true">+</span></summary>
+            <details><summary><span><strong>Credential storage by operating system</strong><span class="detail-hint">Windows Credential Manager, macOS Keychain, or Linux Secret Service.</span></span><span class="toggle" aria-hidden="true">+</span></summary>
               <div class="detail-body"><dl class="platform-list"><dt>Windows</dt><dd>A generic credential in Windows Credential Manager.</dd><dt>macOS</dt><dd>A generic-password item in Keychain, accessed through the native <code>security</code> tool.</dd><dt>Linux</dt><dd>Secret Service over D-Bus. A reachable service and an accessible, unlockable collection are required.</dd></dl><p>The stored record is checked against the configured server and exact site before use. Native-store failures are reported; TADX does not fall back to saving the PAT as plaintext in its configuration.</p></div>
             </details>
-            <details><summary><span><strong>When can an agent save or remove credentials?</strong><span class="detail-hint">Persistent login needs your authorization; logout is not PAT revocation.</span></span><span class="toggle" aria-hidden="true">+</span></summary>
+            <details><summary><span><strong>Save or remove credentials</strong><span class="detail-hint">Login saves a PAT; logout removes its local record.</span></span><span class="toggle" aria-hidden="true">+</span></summary>
               <div class="detail-body"><p>An agent must have your explicit approval before persisting a PAT. <code>tadx auth login</code> is the persistence action: it prompts for the PAT, validates it, and saves it. It does not show a separate TADX confirmation dialog after validation.</p><p><code>tadx auth logout</code> removes the local saved credential; it does not revoke the token in Tableau. Revoke a compromised or no-longer-needed PAT in Tableau itself.</p></div>
             </details>
-            <details><summary><span><strong>What about automation, sessions, and logs?</strong><span class="detail-hint">Environment variables are supported without putting secrets in command arguments.</span></span><span class="toggle" aria-hidden="true">+</span></summary>
-              <div class="detail-body"><p>An environment profile can name environment variables for the PAT name and secret. A complete configured pair takes precedence over the stored credential. Protect the process environment and avoid placing secrets directly in shell commands or shared files.</p><p>Tableau session tokens are held in command-local memory. Persistent coordination state uses hashes and epochs, not raw PAT or session-token values. Job receipts may retain the opaque credential-derived coordination hash; it cannot authenticate to Tableau. TADX redacts credential-bearing output and diagnostics.</p><p>These controls do not protect against a compromised host, same-user malware, terminal recording, or another tool exposing a secret. <a href="https://github.com/ahillspace/tadx/blob/main/docs/security.md">See the full storage and session model.</a></p></div>
+            <details><summary><span><strong>Automation and session data</strong><span class="detail-hint">Supply credentials through environment variables, not command arguments.</span></span><span class="toggle" aria-hidden="true">+</span></summary>
+              <div class="detail-body"><p>An environment profile can name environment variables for the PAT name and secret. A complete configured pair takes precedence over the stored credential. Protect the process environment and avoid placing secrets directly in shell commands or shared files.</p><p>TADX holds Tableau session tokens in command-local memory. Persistent coordination records use hashes and version counters, not raw PAT or session-token values. Job receipts can retain a credential-derived coordination hash, but that hash cannot authenticate to Tableau. TADX redacts credential-bearing output and diagnostics.</p><p>These controls do not protect against a compromised host, same-user malware, terminal recording, or another tool exposing a secret. <a href="https://github.com/ahillspace/tadx/blob/main/docs/security.md">Credential storage and session model</a>.</p></div>
             </details>
           </div>
         </section>
         <section id="policy-installation" class="section" aria-labelledby="installation-title">
-          <p class="kicker">04 / Administrator-controlled policy</p><h2 id="installation-title">Install once. Enforce locally.</h2>
-          <p class="lead">Managed policy is optional and machine-wide. On Windows, TADX can create and protect the policy through a scoped administrator helper, without elevating the calling agent or terminal.</p>
-          <div class="version-note"><strong>Version note:</strong> the Windows policy installer and revised template names describe the current development source. Older releases may differ. Check <code>tadx policy install -h</code> and the <a href="https://github.com/ahillspace/tadx/releases">release notes</a> for your installed version.</div>
+          <h2 id="installation-title">Install a managed policy</h2>
+          <p class="lead">On Windows, TADX requests administrator approval for a separate installer process. The calling agent or terminal keeps its existing privileges.</p>
+          <div class="version-note"><strong>Version note:</strong> this page describes the current development source. Older releases might differ. Check <code>tadx policy install -h</code> and the <a href="https://github.com/ahillspace/tadx/releases">release notes</a> for your installed version.</div>
           <pre><code>tadx policy install --template read-only
 tadx policy status --full</code></pre>
           <p class="small-note">Review the Windows approval prompt. Installation replaces the policy at the selected destination; it does not change saved Tableau site consent.</p>
           <div class="detail-group">
-            <details><summary><span><strong>Where does it go? Can I choose another folder?</strong><span class="detail-hint">Native Program Files by default, or a dedicated local directory.</span></span><span class="toggle" aria-hidden="true">+</span></summary>
+            <details><summary><span><strong>Choose a policy directory</strong><span class="detail-hint">Use the default Program Files location or a dedicated local directory.</span></span><span class="toggle" aria-hidden="true">+</span></summary>
               <div class="detail-body"><p>The default is the native Program Files directory followed by <code>TADX\managed-policy.json</code>. Use <code>--output</code> to choose the containing directory, not a JSON filename. The parent must exist and the directory must be dedicated to the policy.</p><pre><code>tadx policy install --template read-only --output "C:\TADX-policy"</code></pre><p>The protected, native 64-bit registry location <code>HKLM\SOFTWARE\TADX\ManagedPolicy</code> records the chosen directory. It stores neither the policy body nor credentials. User configuration cannot override this location.</p></div>
             </details>
-            <details><summary><span><strong>What happens if I reinstall or switch folders?</strong><span class="detail-hint">The selected file is replaced; old locations are left alone.</span></span><span class="toggle" aria-hidden="true">+</span></summary>
+            <details><summary><span><strong>Reinstall or change directories</strong><span class="detail-hint">Installation replaces the selected file and preserves previous locations.</span></span><span class="toggle" aria-hidden="true">+</span></summary>
               <div class="detail-body"><p>Reinstalling writes a new policy from the selected template and replaces any existing <code>managed-policy.json</code> in that directory. Omitting <code>--output</code> always selects the default Program Files location, even after a custom installation. Include your custom folder again when you want to keep it active.</p><p>Switching directories updates the active location without deleting the old policy. Review the destination and template before approving elevation. Omitting <code>--template</code> selects <code>superuser</code>, not the previously installed template.</p></div>
             </details>
-            <details><summary><span><strong>What does Windows protect?</strong><span class="detail-hint">File, containing folder, and registry permissions do the enforcing.</span></span><span class="toggle" aria-hidden="true">+</span></summary>
+            <details><summary><span><strong>Windows file and directory protection</strong><span class="detail-hint">Required permissions and warnings about parent directories.</span></span><span class="toggle" aria-hidden="true">+</span></summary>
               <div class="detail-body"><p>TADX requires protected ownership and permissions on the policy file, its immediate installation directory, and the registry locator. Path integrity, reparse-point, and file-link checks remain mandatory.</p><p>Permissions on folders above the policy, including the drive root, are also checked. Unsafe or unverifiable ancestor protection produces a warning, not a refusal to use the policy. TADX does not automatically change those permissions.</p><p><strong>A protected file does not guarantee a protected path.</strong> Someone allowed to replace a folder above it could substitute another valid administrator-owned policy, including an older, more permissive one, between commands. Status distinguishes <code>protected</code> from <code>path_protected</code>; the loaded policy remains enforced when there is only an ancestor warning.</p><p>Use a fully protected path when you need protection against this substitution. An already elevated process can change protected policy, and Windows elevation settings determine whether approval or credentials are requested.</p></div>
             </details>
-            <details><summary><span><strong>What if approval is cancelled or installation fails?</strong><span class="detail-hint">A failed command does not always mean nothing changed.</span></span><span class="toggle" aria-hidden="true">+</span></summary>
-              <div class="detail-body"><p>Cancelling elevation before the helper starts leaves the policy unchanged. After the helper starts, a failure can occur after the file was written or an existing active policy was replaced. TADX reports confirmed changes and the phase; it does not promise automatic rollback.</p><p>A present but invalid locator, or a missing policy at its selected location, blocks normal operations rather than silently falling back. Policy install, status, samples, validation, and help remain available for recovery.</p><p><a href="https://github.com/ahillspace/tadx/blob/main/docs/managed-policy.md">Use the recovery and removal instructions &nearr;</a></p></div>
+            <details><summary><span><strong>Recover from a failed installation</strong><span class="detail-hint">Inspect confirmed changes before retrying.</span></span><span class="toggle" aria-hidden="true">+</span></summary>
+              <div class="detail-body"><p>Canceling elevation before the installer process starts leaves the policy unchanged. After it starts, installation can fail after writing the file or replacing an active policy. TADX reports confirmed changes and the failure phase; it does not promise automatic rollback.</p><p>An invalid locator or a missing policy at its selected location blocks normal operations. Policy install, status, samples, validation, and help remain available for recovery.</p><p><a href="https://github.com/ahillspace/tadx/blob/main/docs/managed-policy.md">Policy recovery and removal instructions &nearr;</a></p></div>
             </details>
-            <details><summary><span><strong>How does this work on macOS and Linux?</strong><span class="detail-hint">Manual administrator deployment today; not the Windows install flow.</span></span><span class="toggle" aria-hidden="true">+</span></summary>
+            <details><summary><span><strong>Deploy on macOS and Linux</strong><span class="detail-hint">An administrator deploys the policy manually.</span></span><span class="toggle" aria-hidden="true">+</span></summary>
               <div class="detail-body"><p>The policy location is <code>/Library/Application Support/TADX/managed-policy.json</code> on macOS and <code>/etc/tadx/managed-policy.json</code> on Linux. The current <code>policy install</code> command is Windows-only.</p><p>Unix deployment requires root ownership and protected write permissions on the policy and its ancestors, with platform-specific ACL and link checks. These checks intentionally differ from Windows. <a href="https://github.com/ahillspace/tadx/blob/main/docs/managed-policy.md">Follow the platform deployment instructions.</a></p></div>
             </details>
           </div>
         </section>
         <section id="local-data" class="section" aria-labelledby="data-title">
-          <p class="kicker">05 / Data on your machine</p><h2 id="data-title">Local does not mean non-sensitive.</h2>
+          <h2 id="data-title">Local data and network access</h2>
           <p class="lead">Workbooks, inventory, and recovery records can contain business information. Protect the machine, workspace locations, and backups even when remote writes are disabled.</p>
           <div class="detail-group">
-            <details><summary><span><strong>What can TADX leave on disk?</strong><span class="detail-hint">Configuration, content, caches, results, and recovery records.</span></span><span class="toggle" aria-hidden="true">+</span></summary>
-              <div class="detail-body"><ul><li><strong>Configuration:</strong> server/site settings, saved mutation consent, workspace locations, and opaque credential references.</li><li><strong>Workspaces:</strong> downloaded or authored Tableau artifacts and local metadata.</li><li><strong>Inventory caches:</strong> SQLite records with names, IDs, relationships, and other cached metadata.</li><li><strong>Results and recovery:</strong> the bounded last result, job receipts, and operation records that may include target paths and result payloads.</li></ul><p>TADX does not provide a general encryption-at-rest or secure-deletion guarantee for these files. Operating-system access controls, disk protection, backup policy, and retention remain your responsibility. <a href="https://github.com/ahillspace/tadx/blob/main/docs/security.md">See exact locations and retention boundaries.</a></p></div>
+            <details><summary><span><strong>Files stored locally</strong><span class="detail-hint">Configuration, content, caches, results, and recovery records.</span></span><span class="toggle" aria-hidden="true">+</span></summary>
+              <div class="detail-body"><p>TADX can store these files on your machine:</p><ul><li><strong>Configuration:</strong> server and site settings, saved mutation consent, workspace locations, and credential references.</li><li><strong>Workspaces:</strong> downloaded or authored Tableau artifacts and local metadata.</li><li><strong>Inventory caches:</strong> SQLite records with names, IDs, relationships, and other cached metadata.</li><li><strong>Results and recovery:</strong> the last result, job receipts, and operation records, which can include target paths and result payloads.</li></ul><p>TADX does not guarantee encryption at rest or secure deletion for these files. You control operating-system access, disk protection, backups, and retention. <a href="https://github.com/ahillspace/tadx/blob/main/docs/security.md">File locations and retention details</a>.</p></div>
             </details>
-            <details><summary><span><strong>How are network connections protected?</strong><span class="detail-hint">HTTPS for Tableau authentication and authorized requests.</span></span><span class="toggle" aria-hidden="true">+</span></summary>
+            <details><summary><span><strong>Network protection</strong><span class="detail-hint">HTTPS for Tableau authentication and authorized requests.</span></span><span class="toggle" aria-hidden="true">+</span></summary>
               <div class="detail-body"><p>PAT sign-in requires HTTPS, as do requests carrying Tableau session authorization. The default CLI uses Go's standard certificate verification and environment proxy behavior. The shared transport rejects cross-origin redirects and HTTPS downgrades.</p><p>Enterprise proxies, the system's trusted certificate authorities, and the local environment remain part of the trust model. TADX does not make a compromised or incorrectly trusted host secure.</p></div>
             </details>
           </div>
         </section>
         <section id="boundaries" class="section" aria-labelledby="boundaries-title">
-          <p class="kicker">06 / Be clear about the limits</p><h2 id="boundaries-title">Controls, not a sandbox.</h2>
-          <p class="lead">TADX checks its own operations. It cannot constrain every tool an agent can run, protect a compromised operating system, or remove privileges the agent already has.</p>
-          <div class="boundary"><h3>Keep the agent unelevated.</h3><p>Administrator or root authority can change protected policy and its permissions. An agent may request elevation; approving it authorizes the elevated operation. Review what is being requested instead of treating every approval prompt as routine.</p></div>
+          <h2 id="boundaries-title">Security limitations</h2>
+          <p class="lead">TADX is not a sandbox. Its controls apply to TADX operations, not other tools an agent can run. They cannot protect a compromised operating system.</p>
+          <div class="boundary"><h3>Administrator access</h3><p>Keep agents unelevated. A process with administrator or root authority can change protected policy and its permissions. If an agent requests elevation, review the operation before approving it.</p></div>
           <div class="detail-group">
-            <details><summary><span><strong>What do installer checksums prove?</strong><span class="detail-hint">Downloaded bytes match the release manifest, not an independent identity.</span></span><span class="toggle" aria-hidden="true">+</span></summary>
+            <details><summary><span><strong>Checksums and provenance</strong><span class="detail-hint">Installers verify checksums but do not verify signed provenance.</span></span><span class="toggle" aria-hidden="true">+</span></summary>
               <div class="detail-body"><p>The installers download release archives over HTTPS and verify SHA-256 against that release's <code>checksums.txt</code>. This checks consistency with the fetched manifest.</p><p>The public-repository release workflow is also configured to generate signed GitHub build-provenance attestations for archives and standalone release files. The installers do not verify those attestations.</p><p>Checksum matching is not provenance verification. Even verified provenance does not establish that the source code or build workflow is secure. You can inspect the installer scripts and release workflow in the repository before use.</p></div>
             </details>
-            <details><summary><span><strong>Does Agent Guidance grant extra authority?</strong><span class="detail-hint">Skills help an agent operate the CLI; they do not grant permissions.</span></span><span class="toggle" aria-hidden="true">+</span></summary>
+            <details><summary><span><strong>Agent Guidance and other tools</strong><span class="detail-hint">TADX restrictions do not apply to other clients or direct API access.</span></span><span class="toggle" aria-hidden="true">+</span></summary>
               <div class="detail-body"><p>The installer and updater deploy TADX-owned Guidance for supported agent locations. That guidance does not configure Tableau authentication, enable mutation consent, or install a managed policy. It also does not prove that an agent host has loaded or followed the guidance.</p><p>Updates replace TADX-owned Guidance. Keep personal extensions separate. Tableau MCP is a separate connection and tool surface; a TADX policy does not govern MCP or direct Tableau API access through other tools.</p></div>
             </details>
           </div>
@@ -307,6 +301,6 @@ tadx policy status --full</code></pre>
       </div>
     </div>
   </main>
-  <footer class="wrap"><p class="footer-caption">Made for the Tableau community.<br>Independent. Not affiliated with Tableau or Salesforce.</p><nav class="footer-links" aria-label="Footer navigation"><a href="index.html">Home</a><a href="capabilities.html">Docs</a><a href="https://github.com/ahillspace/tadx">GitHub</a></nav></footer>
+  <footer class="wrap"><p class="footer-caption">TADX is independent and is not affiliated with Tableau or Salesforce.</p><nav class="footer-links" aria-label="Footer navigation"><a href="index.html">Home</a><a href="capabilities.html">Docs</a><a href="https://github.com/ahillspace/tadx">GitHub</a></nav></footer>
 </body>
 </html>

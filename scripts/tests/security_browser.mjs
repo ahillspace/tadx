@@ -13,16 +13,16 @@ const screenshots = process.argv[3] ? resolve(process.argv[3]) : null;
 if (screenshots) mkdirSync(screenshots, { recursive: true });
 const repo = dirname(dirname(dirname(fileURLToPath(import.meta.url))));
 const folder = mkdtempSync(join(tmpdir(), 'tadx-security-browser-'));
-const diagram = readFileSync(join(repo, 'site/security-controls.svg'));
-const html = readFileSync(join(repo, 'site/security.html'), 'utf8').replace('src="security-controls.svg"', 'src="data:image/svg+xml;base64,' + diagram.toString('base64') + '"');
+const html = readFileSync(join(repo, 'site/security.html'), 'utf8');
 
 function exercise() {
   const check = (condition, message) => { if (!condition) throw new Error(message); };
   const noOverflow = () => check(document.documentElement.scrollWidth <= innerWidth, 'Security page overflows horizontally');
   check(getComputedStyle(document.body).backgroundColor === 'rgb(243, 243, 235)', 'Homepage theme missing');
   check(document.querySelector('[aria-current="page"]').textContent === 'Security', 'Current page navigation missing');
-  const diagramImage = document.querySelector('.checks-flow img');
-  check(diagramImage.complete && diagramImage.naturalWidth > 0, 'Controls diagram did not load');
+  const checksTable = document.querySelector('.checks-table');
+  check(checksTable.tBodies[0].rows.length === 3, 'Authorization checks are missing');
+  check(checksTable.getBoundingClientRect().height < 350, 'Authorization table is not compact');
   for (const card of document.querySelectorAll('.control-card')) {
     check(card.querySelector('pre').getBoundingClientRect().height > 0, 'Status command is hidden');
     check(!card.closest('details'), 'Status command must be visible without expanding details');
@@ -50,7 +50,8 @@ function exercise() {
   }
   document.activeElement.blur();
   if (document.body.dataset.captureSection) {
-    window.scrollTo({ top: document.getElementById(document.body.dataset.captureSection).offsetTop - 28, behavior: 'instant' });
+    const target = document.getElementById(document.body.dataset.captureSection);
+    window.scrollTo({ top: target.getBoundingClientRect().top + window.scrollY - 28, behavior: 'instant' });
     check(window.scrollY > 0, 'Section screenshot did not scroll');
   }
   else window.scrollTo({ top: 0, behavior: 'instant' });
