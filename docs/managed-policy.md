@@ -2,6 +2,9 @@
 
 TADX can enforce an administrator-owned capability ceiling for every installed TADX process on a machine.
 The ceiling is optional, machine-wide, and separate from Tableau permissions and site mutation consent.
+Policies are designed for you to customize by editing their JSON files.
+The supplied templates are starting points, not fixed access levels.
+You can change the permitted operations and remote-mutation setting to match your requirements.
 
 This document describes the installed TADX implementation and its protected operating-system policy file.
 It does not describe privileged agent containment or controls for other clients on the machine.
@@ -69,6 +72,7 @@ Symbolic links, Windows reparse points, and invalid path types cause a policy er
 
 ## Create a candidate
 
+Start with a template, then edit its JSON before deployment.
 Use the recovery command to create three editable candidates in a user-selected directory:
 
 ```text

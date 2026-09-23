@@ -161,7 +161,7 @@
         <p class="kicker">On this page</p>
         <ol>
           <li><a href="#controls"><span class="index">01</span>Access controls</a></li>
-          <li><a href="#templates"><span class="index">02</span>Policy templates</a></li>
+          <li><a href="#templates"><span class="index">02</span>Customize a policy</a></li>
           <li><a href="#credentials"><span class="index">03</span>Credentials</a></li>
           <li><a href="#policy-installation"><span class="index">04</span>Install a policy</a></li>
           <li><a href="#local-data"><span class="index">05</span>Data and networks</a></li>
@@ -183,7 +183,7 @@
             </article>
             <article class="control-card">
               <h3>Managed policies</h3>
-              <p>These optional, machine-wide rules restrict which TADX operations can run. A policy can block remote changes or disable individual operations, including reads.</p>
+              <p>You customize these optional, machine-wide rules in a JSON file. A policy can block remote changes or disable individual operations, including reads. Templates provide initial settings.</p>
               <p>Changing a properly protected policy file requires operating-system administrator authority. Unlike agent guidance, its restrictions are enforced by TADX. Keep agents unelevated and review the <a href="#boundaries">security limits</a>.</p>
               <p class="status-label">Check without changing anything</p><pre><code>tadx policy status</code></pre>
               <p class="status-note">Shows whether a policy is active and its overall restrictions. Add <code>--full</code> for allowed capabilities and protection checks.</p>
@@ -212,18 +212,22 @@
           </div>
         </section>
         <section id="templates" class="section" aria-labelledby="templates-title">
-          <h2 id="templates-title">Policy templates</h2>
-          <p class="lead">All three templates allow reads, including user, group, and permission information. Each template permits a different set of remote changes.</p>
+          <h2 id="templates-title">Customize a policy</h2>
+          <p class="lead">Policies are designed for you to customize. Start with a template, then edit the policy file to permit the operations you need. Templates are starting points, not fixed access levels.</p>
+          <p class="lead">You can add or remove permitted operations, including reads, and control whether remote changes are allowed. An administrator deploys your edited policy. Site write access and Tableau permissions still apply.</p>
+          <h3>Template defaults</h3>
+          <p class="lead">The unmodified templates below include all reads, including user, group, and permission information. Your customized policy can restrict those reads too.</p>
           <div class="template-grid">
             <article class="template-card"><h3>read-only</h3><p>Read Tableau information and work with local artifacts. Do not change remote Tableau resources.</p><p class="permission"><span>Tableau mutations</span><strong>Blocked</strong></p></article>
             <article class="template-card"><h3>read-write-no-admin</h3><p>Allow non-administrative changes. Block administrative mutations such as changing users, groups, or permissions.</p><p class="permission"><span>Tableau mutations</span><strong>Non-administrative only</strong></p></article>
             <article class="template-card"><h3>superuser</h3><p>Allow all currently supported operations, including administrative changes. Tableau permissions still apply.</p><p class="permission"><span>Tableau mutations</span><strong>Allowed by policy</strong></p></article>
           </div>
           <p class="small-note">All remote mutations still require saved site consent. The <code>read-only</code> template permits local writes, including cache refreshes and artifact downloads.</p>
+          <p class="small-note"><strong>Reinstalling a template overwrites your custom policy at the selected location.</strong> To keep your changes, update the policy file instead.</p>
           <div class="callout"><strong>The installer defaults to <code>superuser</code>.</strong> To block Tableau mutations, specify <code>--template read-only</code>. Installing the TADX CLI does not install a managed policy.</div>
           <div class="detail-group">
-            <details><summary><span><strong>Restrict individual operations</strong><span class="detail-hint">Edit a policy to restrict commands, including reads.</span></span><span class="toggle" aria-hidden="true">+</span></summary>
-              <div class="detail-body"><p>A managed policy lists permitted capability IDs, which identify TADX operations, and has a separate remote-mutation setting. An administrator can remove read capabilities as well as write capabilities. Commands can also require permission for dependent operations.</p><p>Templates list the capability IDs available when you create them. Updating the CLI does not rewrite an installed policy. New IDs remain denied until an administrator updates the policy. Reinstalling a template replaces the policy and any custom edits at the selected destination.</p><p>TADX accepts the older <code>admin</code> template name as an alias for <code>superuser</code>. It is not a fourth access level.</p><p><a href="https://github.com/ahillspace/tadx/blob/main/docs/managed-policy.md">Policy format and customization guide &nearr;</a></p></div>
+            <details><summary><span><strong>Edit and validate a policy</strong><span class="detail-hint">Customize permitted operations before deploying the file.</span></span><span class="toggle" aria-hidden="true">+</span></summary>
+              <div class="detail-body"><p>Edit a copy of <code>managed-policy.json</code>. The <code>allowed_capabilities</code> list contains the IDs of permitted TADX operations. Add or remove IDs to match your requirements. Set <code>remote_mutations</code> to <code>false</code> to block remote changes. Commands can also require permission for dependent operations.</p><p>Before deployment, check the edited file with <code>tadx policy validate &lt;file&gt;</code>. Validation does not activate the file or check its filesystem protection. Deploy the file with administrator authority, preserve its protection, and run <code>tadx policy status --full</code>. Avoid replacing the policy while commands are running. TADX reads it again for each new command.</p><p>Updating the CLI does not rewrite an installed policy. New capability IDs remain denied until an administrator adds them.</p><p>TADX accepts the older <code>admin</code> template name as an alias for <code>superuser</code>. It is not a fourth access level.</p><p><a href="https://github.com/ahillspace/tadx/blob/main/docs/managed-policy.md">Policy format and customization guide &nearr;</a></p></div>
             </details>
           </div>
         </section>
