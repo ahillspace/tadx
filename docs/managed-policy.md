@@ -83,7 +83,9 @@ The command creates these files:
 
 The command creates new files only.
 It never overwrites an existing candidate, installs a policy, activates a policy, or changes file protection.
-The output reports the fixed system path and platform deployment guidance.
+The output reports the selected system path when known and platform deployment guidance.
+An invalid or unreadable locator does not prevent candidate generation.
+When the location is unknown, `system_path` is empty and the instructions direct an administrator to inspect status and repair the locator rather than presenting the default as the active location.
 No elevation is required to create candidates in a user-owned directory.
 
 Templates are snapshots of the current capability registry.
@@ -283,7 +285,9 @@ The full status adds the allowlisted IDs and each protection check.
 
 On Windows, `protected` describes the policy file and its immediate directory; `path_protected` also requires the ancestor protection checks to pass.
 An active policy can report `protected: true`, `path_protected: false`, and ancestor warnings without becoming an error or changing its capability and mutation restrictions.
-Warnings appear in compact and full status and install receipts; ordinary commands also report them on stderr without altering JSON stdout.
+Warnings appear in compact and full status and install receipts, including partial installation receipts after a confirmed destination write; ordinary commands also report them on stderr without altering JSON stdout.
+Installation warnings describe the confirmed destination, which may differ from the currently active policy location.
+This diagnostic readback does not establish activation or replace the original installation error.
 On Unix, ancestor protection remains a requirement, not a warning-only check.
 `candidate_valid` is `true` only for an active policy.
 A protected file with invalid JSON reports `candidate_valid: false`, but its state remains `error`.

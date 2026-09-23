@@ -84,9 +84,12 @@ The default CLI client uses Go's standard certificate verification and environme
 Embedded clients supplied by other programs can have different settings.
 TADX rejects cross-origin redirects and redirects from HTTPS to a less secure scheme.
 
-The platform installers download release assets over HTTPS and compare each asset's SHA-256 checksum with `checksums.txt` from that release.
+The platform installers download release archives over HTTPS and compare each archive's SHA-256 checksum with `checksums.txt` from that release.
 This detects a mismatch between the downloaded asset and fetched manifest.
-The inspected release workflow does not establish a separate artifact signature or an independent checksum trust root, so this check does not authenticate a release independently of GitHub, its release account, or its workflow.
+The [release workflow](../.github/workflows/release.yml) is also configured to generate signed GitHub build-provenance attestations for archives and standalone release files when the repository is public.
+The platform installers do not verify those attestations.
+Checksum matching is not provenance verification, and provenance verification does not establish that the source code or build workflow is secure.
+See [GitHub's artifact-attestation documentation](https://docs.github.com/en/actions/concepts/security/artifact-attestations) for the scope of those claims.
 The updater installs the selected release and refreshes TADX-owned Guidance with recovery behavior described in the [website and installer guide](website.md).
 
 ## Operating guidance

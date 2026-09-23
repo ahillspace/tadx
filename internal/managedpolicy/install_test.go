@@ -5,6 +5,8 @@ import (
 	"errors"
 	"reflect"
 	"testing"
+
+	"github.com/ahillspace/tadx/internal/capability"
 )
 
 type fixtureInstaller struct {
@@ -68,5 +70,29 @@ func TestInstallCancelledBeforeMutation(t *testing.T) {
 	out, err := installWith(ctx, InstallResult{}, nil, f)
 	if !errors.Is(err, context.Canceled) || out.PolicyWritten || len(f.events) != 0 {
 		t.Fatalf("receipt=%+v events=%v error=%v", out, f.events, err)
+	}
+}
+
+func TestInstallationWarningsInspectConfirmedDestinationOnly(t *testing.T) {
+	const destination = "chosen/managed-policy.json"
+	called := 0
+	load := func(path string, _ []capability.Definition) *Policy {
+		called++
+		if path != destination {
+			t.Fatalf("inspected %q instead of destination", path)
+		}
+		return &Policy{status: Status{Warnings: []string{"ancestor permits policy substitution"}}}
+	}
+	for _, result := range []InstallResult{{Path: destination}, {PolicyWritten: true}} {
+		if warnings := installationWarnings(result, testCatalog(), load); len(warnings) != 0 {
+			t.Fatalf("unconfirmed destination warnings=%v", warnings)
+		}
+	}
+	if called != 0 {
+		t.Fatalf("unconfirmed destination inspected %d times", called)
+	}
+	result := InstallResult{Path: destination, PolicyWritten: true, Phase: "locator"}
+	if warnings := installationWarnings(result, testCatalog(), load); len(warnings) != 1 || called != 1 {
+		t.Fatalf("confirmed destination warnings=%v calls=%d", warnings, called)
 	}
 }

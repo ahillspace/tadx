@@ -25,6 +25,42 @@ type fixtureManagedPolicy struct {
 	warnings []string
 }
 
+type invalidLocatorPolicy struct{ fixtureManagedPolicy }
+
+func (invalidLocatorPolicy) Status() managedpolicy.Status {
+	return managedpolicy.Status{State: managedpolicy.StateError, Reason: "invalid protected policy locator"}
+}
+
+func TestManagedPolicySamplesRemainAvailableWithInvalidLocator(t *testing.T) {
+	options := overviewOptions(t, t.TempDir())
+	options.managedPolicy = invalidLocatorPolicy{fixtureManagedPolicy{state: managedpolicy.StateError}}
+	directory := filepath.Join(t.TempDir(), "samples")
+	var stdout bytes.Buffer
+	if code := Run(t.Context(), []string{"policy", "samples", "--output", directory, "--json"}, &stdout, options); code != 0 {
+		t.Fatalf("recovery samples unavailable: code=%d output=%s", code, &stdout)
+	}
+	var result struct {
+		Status       string   `json:"status"`
+		SystemPath   string   `json:"system_path"`
+		Files        []string `json:"files"`
+		Instructions []string `json:"instructions"`
+	}
+	if err := json.Unmarshal(stdout.Bytes(), &result); err != nil {
+		t.Fatal(err)
+	}
+	if result.Status != "created" || result.SystemPath != "" || len(result.Files) != 3 || !strings.Contains(strings.Join(result.Instructions, " "), "locator") {
+		t.Fatalf("recovery output misrepresented unavailable location: %+v", result)
+	}
+	for _, path := range result.Files {
+		if _, err := os.Stat(filepath.FromSlash(path)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if status := options.managedPolicy.Status(); status.State != managedpolicy.StateError || status.Path != "" {
+		t.Fatalf("sample recovery changed invalid locator state: %+v", status)
+	}
+}
+
 func (p fixtureManagedPolicy) Status() managedpolicy.Status {
 	return managedpolicy.Status{State: p.state, Path: "/fixed/system/policy.json", Protected: p.state == managedpolicy.StateActive, RemoteMutations: p.remote, Warnings: p.warnings}
 }

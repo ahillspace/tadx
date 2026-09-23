@@ -50,6 +50,12 @@ func installFixture(t *testing.T, w *windowsInstaller, dir, template string) Ins
 	return out
 }
 
+type failingPublishInstaller struct{ *windowsInstaller }
+
+func (failingPublishInstaller) publish(string) (bool, error) {
+	return false, errors.New("injected locator publication failure")
+}
+
 func TestPrivilegedWindowsInstallLocationsAndOverwrite(t *testing.T) {
 	w := isolatedWindowsInstaller(t)
 	base := t.TempDir()
@@ -84,6 +90,14 @@ func TestPrivilegedWindowsInstallLocationsAndOverwrite(t *testing.T) {
 			t.Fatalf("ancestor ACL warning missing: %+v", check)
 		}
 	}
+	if err := os.WriteFile(first.Path, []byte("{invalid"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	invalid := loadPath(first.Path, testCatalog())
+	status := invalid.Status()
+	if status.State != StateError || !status.Protected || status.PathProtected || status.CandidateValid || len(status.Warnings) == 0 || invalid.CheckCapability("read") != ErrBlocked {
+		t.Fatalf("invalid document under unsafe ancestor: %+v", status)
+	}
 	installFixture(t, w, filepath.Dir(first.Path), "admin")
 	if p := loadPath(first.Path, testCatalog()); !p.Status().RemoteMutations {
 		t.Fatalf("overwrite did not take effect: %+v", p.Status())
@@ -92,7 +106,19 @@ func TestPrivilegedWindowsInstallLocationsAndOverwrite(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	second := installFixture(t, w, filepath.Join(base, "second"), "read-only")
+	secondDirectory := filepath.Join(base, "second")
+	pending, data, err := prepareInstall(InstallOptions{Directory: secondDirectory, Template: "read-only"}, testCatalog())
+	if err != nil {
+		t.Fatal(err)
+	}
+	pending, err = installWith(t.Context(), pending, data, failingPublishInstaller{w})
+	if err == nil || pending.Phase != "locator" || !pending.PolicyWritten || pending.Active || pending.LocatorPublished || len(InstallationWarnings(pending, testCatalog())) == 0 {
+		t.Fatalf("partial destination warning receipt=%+v error=%v", pending, err)
+	}
+	if selected, _, err := readLocation(w.root, w.key); err != nil || !sameInstallPath(selected, first.Path) {
+		t.Fatalf("failed publication changed active locator: %q %v", selected, err)
+	}
+	second := installFixture(t, w, secondDirectory, "read-only")
 	current, required, err := readLocation(w.root, w.key)
 	if err != nil || !required || !sameInstallPath(current, second.Path) {
 		t.Fatalf("locator=%q required=%v err=%v", current, required, err)

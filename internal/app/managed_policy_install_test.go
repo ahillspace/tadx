@@ -2,6 +2,7 @@ package app
 
 import (
 	"errors"
+	"path/filepath"
 	"slices"
 	"testing"
 
@@ -61,5 +62,19 @@ func TestPolicyInstallUnknownOrLocatorFailureDoesNotClaimNoMutation(t *testing.T
 		if !errors.As(err, &structured) || structured.Outcome != errs.OutcomeUnknown {
 			t.Fatalf("phase=%s error=%+v", phase, structured)
 		}
+	}
+}
+
+func TestPolicyInstallPartialReceiptRetainsDestinationWarningAndCause(t *testing.T) {
+	cause := errors.New("locator publication failed")
+	result := managedpolicy.InstallResult{Path: filepath.Join(t.TempDir(), "managed-policy.json"), Template: "read-only", PolicyWritten: true, Phase: "locator"}
+	warning := "The selected policy path may be replaced and a different policy substituted."
+	output, err := installedPolicyOutput(result, cause, []string{warning})
+	if output.Path != filepath.ToSlash(result.Path) || !output.PolicyWritten || output.LocatorPublished || output.Active || output.Phase != "locator" || !slices.Equal(output.Warnings, []string{warning}) {
+		t.Fatalf("partial receipt=%+v", output)
+	}
+	var structured *errs.Error
+	if !errors.Is(err, cause) || !errors.As(err, &structured) || structured.Outcome != errs.OutcomeUnknown || structured.Phase != errs.PhasePersistence {
+		t.Fatalf("original failure lost: %v", err)
 	}
 }

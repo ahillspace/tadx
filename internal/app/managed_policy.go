@@ -9,7 +9,6 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
-	"strings"
 	"sync"
 
 	policyinstall "github.com/ahillspace/tadx/actions/policy/install"
@@ -193,7 +192,12 @@ func (r *runtimeDependencies) policyDependencies() *policycli.Dependencies {
 }
 
 func (r *runtimeDependencies) InstallManagedPolicy(ctx context.Context, input policyinstall.Input) (policyinstall.Output, error) {
-	result, err := managedpolicy.Install(ctx, managedpolicy.InstallOptions{Directory: input.OutputDirectory, Template: input.Template}, capability.All())
+	definitions := capability.All()
+	result, err := managedpolicy.Install(ctx, managedpolicy.InstallOptions{Directory: input.OutputDirectory, Template: input.Template}, definitions)
+	return installedPolicyOutput(result, err, managedpolicy.InstallationWarnings(result, definitions))
+}
+
+func installedPolicyOutput(result managedpolicy.InstallResult, installErr error, warnings []string) (policyinstall.Output, error) {
 	output := policyinstall.Output{
 		Path:              filepath.ToSlash(result.Path),
 		Template:          result.Template,
@@ -202,13 +206,10 @@ func (r *runtimeDependencies) InstallManagedPolicy(ctx context.Context, input po
 		LocatorPublished:  result.LocatorPublished,
 		Active:            result.Active,
 		Phase:             result.Phase,
+		Warnings:          warnings,
 	}
-	if err != nil {
-		return output, policyInstallError(output, err)
-	}
-	state := managedpolicy.Load(capability.All()).Status()
-	if strings.EqualFold(filepath.Clean(state.Path), filepath.Clean(result.Path)) {
-		output.Warnings = state.Warnings
+	if installErr != nil {
+		return output, policyInstallError(output, installErr)
 	}
 	return output, nil
 }
@@ -289,11 +290,18 @@ func (r *runtimeDependencies) ValidateCandidate(ctx context.Context, path string
 }
 
 func (r *runtimeDependencies) WriteSamples(ctx context.Context, directory string) (policysamples.Output, error) {
-	path, err := managedpolicy.SystemPath()
-	if err != nil {
-		return policysamples.Output{}, policyToolError("policy.samples", "The fixed policy location is unavailable.", err)
+	path := ""
+	if r.managedPolicy != nil {
+		path = r.managedPolicy.Status().Path
 	}
-	out := policysamples.Output{Status: "not_created", Files: []string{}, SystemPath: path, Instructions: []string{"Review one candidate, then run tadx policy validate <file>.", "An administrator deploys the selected JSON document at system_path and protects the file and its parent directories against non-administrator changes.", "On Windows, use the native administrator-owned policy location with a protected DACL. On Unix, use root ownership and remove group and other write permissions from the file and its parent directories.", "Run tadx policy status after deployment. These samples do not install or activate policy; local mutation consent remains separate."}}
+	instructions := []string{"Review one candidate, then run tadx policy validate <file>."}
+	if path == "" {
+		instructions = append(instructions, "The managed policy location could not be verified. Run tadx policy status and ask an administrator to inspect and repair the locator before deployment; system_path is unknown.")
+	} else {
+		instructions = append(instructions, "An administrator deploys the selected JSON document at system_path and protects the file and its parent directories against non-administrator changes.")
+	}
+	instructions = append(instructions, "On Windows, use the native administrator-owned policy location with a protected DACL. On Unix, use root ownership and remove group and other write permissions from the file and its parent directories.", "Run tadx policy status after deployment. These samples do not install or activate policy; local mutation consent remains separate.")
+	out := policysamples.Output{Status: "not_created", Files: []string{}, SystemPath: path, Instructions: instructions}
 	if err := os.MkdirAll(directory, 0700); err != nil {
 		return out, policyToolError("policy.samples", "The output directory could not be created.", err)
 	}

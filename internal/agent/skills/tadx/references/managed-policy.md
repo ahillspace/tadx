@@ -17,7 +17,9 @@ Ordinary commands cannot override the active location through flags, environment
 An absent default file is `unmanaged` only when there is no Windows locator.
 An invalid locator or missing located policy fails closed.
 Windows verifies file and immediate-directory ownership/DACLs and path integrity; Unix retains ancestor protection checks.
-Windows ancestor permissions are warning-only: `protected: true` with `path_protected: false` means the policy is active but its path may permit substitution, including an older, more permissive policy.
+Windows ancestor permissions are warning-only.
+When `state: active`, `protected: true` with `path_protected: false` means the loaded policy is enforced but its path may permit substitution, including an older, more permissive policy.
+Check `state` separately: the protection flags do not establish valid JSON or an active policy.
 The warning does not disable the loaded policy's restrictions or authorize changes to machine permissions, the policy, or saved site consent.
 Candidates are snapshots, not roles, and new IDs remain denied until an administrator updates the file.
 

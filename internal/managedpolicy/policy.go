@@ -151,6 +151,19 @@ func Load(definitions []capability.Definition) *Policy {
 	return loadResolved(path, required, err, definitions)
 }
 
+// InstallationWarnings inspect only a confirmed written destination.
+// They do not infer locator publication or change the installation receipt.
+func InstallationWarnings(result InstallResult, definitions []capability.Definition) []string {
+	return installationWarnings(result, definitions, loadPath)
+}
+
+func installationWarnings(result InstallResult, definitions []capability.Definition, load func(string, []capability.Definition) *Policy) []string {
+	if !result.PolicyWritten || result.Path == "" {
+		return nil
+	}
+	return load(result.Path, definitions).Status().Warnings
+}
+
 func loadResolved(path string, required bool, err error, definitions []capability.Definition) *Policy {
 	if err != nil {
 		return &Policy{status: Status{State: StateBlocked, Reason: "system policy location is unavailable: " + err.Error()}}
