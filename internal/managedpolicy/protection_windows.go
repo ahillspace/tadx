@@ -55,15 +55,18 @@ func secureRead(path string) ([]byte, []ProtectionCheck, error) {
 		}
 		protected := file || index == len(paths)-2
 		access := uint32(windows.FILE_READ_ATTRIBUTES)
-		if protected {
-			access |= windows.READ_CONTROL
-		}
+		access |= windows.READ_CONTROL
 		share := uint32(windows.FILE_SHARE_READ | windows.FILE_SHARE_WRITE)
 		if file {
 			access |= windows.FILE_READ_DATA
 			share = windows.FILE_SHARE_READ
 		}
 		handle, err := windows.CreateFile(name, access, share, nil, windows.OPEN_EXISTING, windows.FILE_FLAG_OPEN_REPARSE_POINT|windows.FILE_FLAG_BACKUP_SEMANTICS, 0)
+		aclUnavailable := false
+		if errors.Is(err, windows.ERROR_ACCESS_DENIED) && !protected {
+			handle, err = windows.CreateFile(name, windows.FILE_READ_ATTRIBUTES, share, nil, windows.OPEN_EXISTING, windows.FILE_FLAG_OPEN_REPARSE_POINT|windows.FILE_FLAG_BACKUP_SEMANTICS, 0)
+			aclUnavailable = err == nil
+		}
 		if err != nil {
 			if errors.Is(err, windows.ERROR_FILE_NOT_FOUND) || errors.Is(err, windows.ERROR_PATH_NOT_FOUND) {
 				return nil, checks, os.ErrNotExist
@@ -84,15 +87,19 @@ func secureRead(path string) ([]byte, []ProtectionCheck, error) {
 		} else if !file && info.FileAttributes&windows.FILE_ATTRIBUTE_DIRECTORY == 0 {
 			checkErr = errors.New("policy ancestor must be a directory")
 		}
-		if checkErr == nil && protected {
-			sd, err := windows.GetSecurityInfo(handle, windows.SE_FILE_OBJECT, windows.OWNER_SECURITY_INFORMATION|windows.DACL_SECURITY_INFORMATION)
-			if err != nil {
+		if checkErr == nil {
+			if aclUnavailable {
 				checkErr = errors.New("cannot read owner and DACL")
 			} else {
-				checkErr = checkSecurityDescriptor(sd, file, index == len(paths)-2)
+				sd, err := windows.GetSecurityInfo(handle, windows.SE_FILE_OBJECT, windows.OWNER_SECURITY_INFORMATION|windows.DACL_SECURITY_INFORMATION)
+				if err != nil {
+					checkErr = errors.New("cannot read owner and DACL")
+				} else {
+					checkErr = checkSecurityDescriptor(sd, file, index == len(paths)-2)
+				}
 			}
 		}
-		kind := "path-integrity"
+		kind := "ancestor-owner-acl-and-links"
 		if protected {
 			kind = "owner-acl-and-links"
 		}
@@ -107,7 +114,7 @@ func secureRead(path string) ([]byte, []ProtectionCheck, error) {
 		if !file && info.FileAttributes&windows.FILE_ATTRIBUTE_DIRECTORY == 0 {
 			return nil, checks, errors.New("policy ancestor must be a directory")
 		}
-		if protectionErr == nil {
+		if protected && protectionErr == nil {
 			protectionErr = checkErr
 		}
 		if file {

@@ -3,6 +3,7 @@ package policy_test
 import (
 	"context"
 	"errors"
+	"reflect"
 	"testing"
 
 	policyinstall "github.com/ahillspace/tadx/actions/policy/install"
@@ -46,7 +47,7 @@ func TestInstallCommandDefaultsToSuperuserAndRendersReceipt(t *testing.T) {
 	if install.calls != 1 || install.input.Template != policyinstall.TemplateSuperuser || install.input.OutputDirectory != "" {
 		t.Fatalf("installer calls=%d input=%+v", install.calls, install.input)
 	}
-	if render.calls != 1 || render.value != want {
+	if render.calls != 1 || !reflect.DeepEqual(render.value, want) {
 		t.Fatalf("render calls=%d value=%+v", render.calls, render.value)
 	}
 }
@@ -77,7 +78,7 @@ func TestInstallCommandPreservesPartialOutputOnFailure(t *testing.T) {
 		t.Fatalf("error=%v", err)
 	}
 	retained, ok := err.(interface{ OperationOutput() any })
-	if !ok || retained.OperationOutput() != want {
+	if !ok || !reflect.DeepEqual(retained.OperationOutput(), want) {
 		t.Fatalf("retained output=%#v error=%T %v", retained, err, err)
 	}
 }

@@ -85,6 +85,18 @@ func Run(ctx context.Context, args []string, stdout io.Writer, options Options) 
 		return renderError(stdout, err, renderOptions)
 	}
 	defer runtime.Close()
+	if runtime.managedPolicy != nil {
+		warnings := runtime.managedPolicy.Status().Warnings
+		if len(warnings) > 0 {
+			warningWriter := options.Stderr
+			if warningWriter == nil {
+				warningWriter = os.Stderr
+			}
+			for _, warning := range warnings {
+				_, _ = fmt.Fprintln(warningWriter, warning)
+			}
+		}
+	}
 	source := registrySource{runtime: runtime}
 	capture := newLastCapture(runtime)
 	capture.hintConfig = func() string { return hintConfigPath(renderOptions) }

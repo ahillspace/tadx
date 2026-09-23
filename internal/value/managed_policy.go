@@ -15,6 +15,8 @@ type ManagedPolicyStatus struct {
 	Reason              string                         `json:"reason,omitempty"`
 	CandidateValid      bool                           `json:"candidate_valid"`
 	Protected           bool                           `json:"protected"`
+	PathProtected       bool                           `json:"path_protected"`
+	Warnings            []string                       `json:"warnings,omitempty"`
 	Checks              []ManagedPolicyProtectionCheck `json:"checks"`
 	AllowedCapabilities []string                       `json:"allowed_capabilities"`
 	RemoteMutations     bool                           `json:"remote_mutations"`

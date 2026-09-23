@@ -38,6 +38,8 @@ func (o Output) render(full bool) any {
 		State           string                               `json:"state"`
 		Path            string                               `json:"path"`
 		Protected       bool                                 `json:"protected"`
+		PathProtected   bool                                 `json:"path_protected"`
+		Warnings        []string                             `json:"warnings,omitempty"`
 		CandidateValid  bool                                 `json:"candidate_valid"`
 		RemoteMutations bool                                 `json:"remote_mutations"`
 		Allowed         int                                  `json:"allowed_capabilities"`
@@ -47,7 +49,7 @@ func (o Output) render(full bool) any {
 		Help            []string                             `json:"help"`
 		AllowedIDs      []string                             `json:"allowed_capability_ids,omitempty"`
 		Checks          []value.ManagedPolicyProtectionCheck `json:"protection_checks,omitempty"`
-	}{State: o.Policy.State, Path: o.Policy.Path, Protected: o.Policy.Protected, CandidateValid: o.Policy.CandidateValid, RemoteMutations: o.Policy.RemoteMutations, Allowed: o.Allowed, Denied: o.Denied, Reason: o.Policy.Reason, Details: "--full", Help: o.Help}
+	}{State: o.Policy.State, Path: o.Policy.Path, Protected: o.Policy.Protected, PathProtected: o.Policy.PathProtected, Warnings: o.Policy.Warnings, CandidateValid: o.Policy.CandidateValid, RemoteMutations: o.Policy.RemoteMutations, Allowed: o.Allowed, Denied: o.Denied, Reason: o.Policy.Reason, Details: "--full", Help: o.Help}
 	if full {
 		result.Details = ""
 		result.AllowedIDs = o.Policy.AllowedCapabilities

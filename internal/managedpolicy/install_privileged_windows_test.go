@@ -73,9 +73,15 @@ func TestPrivilegedWindowsInstallLocationsAndOverwrite(t *testing.T) {
 	if policy.Status().State != StateActive || policy.Status().RemoteMutations {
 		t.Fatalf("policy=%+v", policy.Status())
 	}
+	if policy.Status().PathProtected || len(policy.Status().Warnings) == 0 {
+		t.Fatalf("unsafe ancestor was not reported: %+v", policy.Status())
+	}
+	if policy.CheckCapability("read") != nil || policy.CheckRemoteMutation() != ErrRemoteMutationDenied {
+		t.Fatalf("ancestor warning changed effective policy: %+v", policy.Status())
+	}
 	for _, check := range policy.Status().Checks {
-		if sameInstallPath(check.Path, base) && (check.Kind != "path-integrity" || !check.Passed) {
-			t.Fatalf("ancestor ACL enforced: %+v", check)
+		if sameInstallPath(check.Path, base) && (check.Kind != "ancestor-owner-acl-and-links" || check.Passed) {
+			t.Fatalf("ancestor ACL warning missing: %+v", check)
 		}
 	}
 	installFixture(t, w, filepath.Dir(first.Path), "admin")

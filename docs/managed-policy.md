@@ -55,8 +55,14 @@ A present but unreadable, insecure, malformed, or incomplete locator is an error
 A locator pointing to a missing policy is also an error, including when it selects the default directory.
 
 On Windows, ownership and DACL checks cover the policy file and its immediate installation directory.
-Ancestor ownership and DACLs, including the drive root, do not produce failures or warnings.
-Ancestor path integrity is still checked, and ancestors remain open against replacement while the policy is read or installed.
+Ancestor ownership and DACLs, including the drive root, are also inspected, but unsafe or unverifiable ancestor protection produces a warning rather than blocking use.
+Creating unrelated children alone is not treated as permission to replace the policy path.
+Ancestor path integrity remains mandatory, and ancestors remain open against replacement while the policy is read or installed.
+Those handles do not prevent substitution between commands.
+Someone with replacement rights above the installation directory can move the protected directory aside and substitute another valid administrator-owned policy, including an older policy that permits more operations.
+The registry records a location, not the identity of the original directory or a fingerprint of approved policy contents.
+Choosing a warning instead of rejection deliberately accepts this risk; use a fully protected path when this boundary matters.
+TADX does not change ancestor permissions automatically.
 On Linux and macOS, the parent directory and every ancestor remain part of the ownership and permissions boundary.
 The policy file must be a regular file with exactly one hard link.
 Symbolic links, Windows reparse points, and invalid path types cause a policy error.
@@ -266,18 +272,21 @@ tadx policy status
 tadx policy status --full
 ```
 
-The compact status reports the selected system path, state, protection result, candidate validity, remote ceiling, and allowed and denied counts.
+The compact status reports the selected system path, state, protection results, warnings, candidate validity, remote ceiling, and allowed and denied counts.
 The full status adds the allowlisted IDs and each protection check.
 
 | State | Meaning | TADX operational behavior |
 | --- | --- | --- |
 | `active` | The selected file is protected and its strict schema is valid. | Enforce the listed IDs and the `remote_mutations` ceiling. |
 | `unmanaged` | The default file is absent, with no Windows locator installed. | Apply no managed ceiling, then apply normal site consent and Tableau authorization. |
-| `error` | The file or path is unreadable, insecure, malformed, or unavailable. | Block operational execution and expose recovery tools and help. |
+| `error` | A required file, directory, locator, schema, or path-integrity check fails. | Block operational execution and expose recovery tools and help. |
 
-`protected` is `true` only after the secure path and file checks pass.
+On Windows, `protected` describes the policy file and its immediate directory; `path_protected` also requires the ancestor protection checks to pass.
+An active policy can report `protected: true`, `path_protected: false`, and ancestor warnings without becoming an error or changing its capability and mutation restrictions.
+Warnings appear in compact and full status and install receipts; ordinary commands also report them on stderr without altering JSON stdout.
+On Unix, ancestor protection remains a requirement, not a warning-only check.
 `candidate_valid` is `true` only for an active policy.
-A protected file with invalid JSON reports a protected path and `candidate_valid: false`, but its state remains `error`.
+A protected file with invalid JSON reports `candidate_valid: false`, but its state remains `error`.
 
 The `checks` array identifies each inspected path and reports its check kind, pass result, and failure reason.
 Use those reasons to repair ownership, modes, ACLs, links, or file type.

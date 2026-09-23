@@ -19,13 +19,33 @@ import (
 )
 
 type fixtureManagedPolicy struct {
-	state   string
-	allowed map[string]bool
-	remote  bool
+	state    string
+	allowed  map[string]bool
+	remote   bool
+	warnings []string
 }
 
 func (p fixtureManagedPolicy) Status() managedpolicy.Status {
-	return managedpolicy.Status{State: p.state, Path: "/fixed/system/policy.json", Protected: p.state == managedpolicy.StateActive, RemoteMutations: p.remote}
+	return managedpolicy.Status{State: p.state, Path: "/fixed/system/policy.json", Protected: p.state == managedpolicy.StateActive, RemoteMutations: p.remote, Warnings: p.warnings}
+}
+
+func TestManagedPolicyAncestorWarningPreservesJSONAndEnforcement(t *testing.T) {
+	options := overviewOptions(t, t.TempDir())
+	options.ConfigPath = authConfig(t, "")
+	options.managedPolicy = fixtureManagedPolicy{state: managedpolicy.StateActive, allowed: map[string]bool{"env.profile.list": true}, warnings: []string{"Managed policy path warning: policy substitution may be possible."}}
+	var stdout, stderr bytes.Buffer
+	options.Stderr = &stderr
+	if code := Run(t.Context(), []string{"env", "list", "--json"}, &stdout, options); code != 0 {
+		t.Fatalf("allowed command blocked: %d %s", code, &stdout)
+	}
+	if !json.Valid(stdout.Bytes()) || !strings.Contains(stderr.String(), "policy substitution") {
+		t.Fatalf("warning not separated from JSON: stdout=%s stderr=%s", &stdout, &stderr)
+	}
+	stdout.Reset()
+	stderr.Reset()
+	if code := Run(t.Context(), []string{"admin", "user", "list", "--env", "dev", "--json"}, &stdout, options); code == 0 || !strings.Contains(stdout.String(), "policy.denied") || !strings.Contains(stderr.String(), "policy substitution") {
+		t.Fatalf("warning bypassed enforcement: stdout=%s stderr=%s", &stdout, &stderr)
+	}
 }
 func (p fixtureManagedPolicy) CheckCapability(id string) error {
 	if p.state == managedpolicy.StateError {

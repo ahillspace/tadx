@@ -24,13 +24,14 @@ type Input struct {
 }
 
 type Output struct {
-	Path              string `json:"path"`
-	Template          string `json:"template"`
-	ProtectionChanged bool   `json:"protection_changed"`
-	PolicyWritten     bool   `json:"policy_written"`
-	LocatorPublished  bool   `json:"locator_published"`
-	Active            bool   `json:"active"`
-	Phase             string `json:"phase"`
+	Path              string   `json:"path"`
+	Template          string   `json:"template"`
+	ProtectionChanged bool     `json:"protection_changed"`
+	PolicyWritten     bool     `json:"policy_written"`
+	LocatorPublished  bool     `json:"locator_published"`
+	Active            bool     `json:"active"`
+	Phase             string   `json:"phase"`
+	Warnings          []string `json:"warnings,omitempty"`
 }
 
 type Installer interface {

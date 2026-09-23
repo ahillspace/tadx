@@ -3,6 +3,7 @@ package install_test
 import (
 	"context"
 	"errors"
+	"reflect"
 	"testing"
 
 	policyinstall "github.com/ahillspace/tadx/actions/policy/install"
@@ -41,7 +42,7 @@ func TestExecuteDefaultsToSuperuserAndPreservesReceipt(t *testing.T) {
 	if backend.calls != 1 || backend.input.Template != "superuser" || backend.input.OutputDirectory != `C:\Program Files\TADX` {
 		t.Fatalf("installer calls=%d input=%+v", backend.calls, backend.input)
 	}
-	if output != backend.output {
+	if !reflect.DeepEqual(output, backend.output) {
 		t.Fatalf("output=%+v want=%+v", output, backend.output)
 	}
 }
@@ -79,7 +80,7 @@ func TestExecutePreservesPartialReceiptAndError(t *testing.T) {
 	}
 
 	output, err := policyinstall.New(backend).Execute(t.Context(), policyinstall.Input{Template: policyinstall.TemplateReadOnly})
-	if !errors.Is(err, wantErr) || output != backend.output {
+	if !errors.Is(err, wantErr) || !reflect.DeepEqual(output, backend.output) {
 		t.Fatalf("output=%+v error=%v", output, err)
 	}
 }

@@ -12,6 +12,34 @@ func testCatalog() []capability.Definition {
 	return []capability.Definition{{ID: "read"}, {ID: "write", RemoteMutation: true}, {ID: "admin", Administrative: true}, {ID: "admin.write", Administrative: true, RemoteMutation: true}}
 }
 
+func TestAncestorWarningsAndPathProtection(t *testing.T) {
+	secure := []ProtectionCheck{
+		{Path: `C:\`, Kind: "ancestor-owner-acl-and-links", Passed: true},
+		{Path: `C:\policy`, Kind: "owner-acl-and-links", Passed: true},
+		{Path: `C:\policy\managed-policy.json`, Kind: "owner-acl-and-links", Passed: true},
+	}
+	if !allProtectionChecksPassed(secure) || len(ancestorWarnings(secure)) != 0 {
+		t.Fatal("secure path reported a warning")
+	}
+	unsafe := append([]ProtectionCheck(nil), secure...)
+	unsafe[0].Passed = false
+	unsafe[0].Reason = "DACL grants modification rights to a non-administrator principal"
+	if allProtectionChecksPassed(unsafe) || len(ancestorWarnings(unsafe)) != 1 {
+		t.Fatalf("unsafe ancestor not reported: %+v", unsafe)
+	}
+	unknown := append([]ProtectionCheck(nil), secure...)
+	unknown[0].Passed = false
+	unknown[0].Reason = "cannot read owner and DACL"
+	if len(ancestorWarnings(unknown)) != 1 {
+		t.Fatal("uninspectable ancestor not reported")
+	}
+	unsafeLeaf := append([]ProtectionCheck(nil), secure...)
+	unsafeLeaf[2].Passed = false
+	if allProtectionChecksPassed(unsafeLeaf) || len(ancestorWarnings(unsafeLeaf)) != 0 {
+		t.Fatal("leaf failure mislabeled as ancestor warning")
+	}
+}
+
 func TestParseStrictContract(t *testing.T) {
 	valid := `{"version":1,"allowed_capabilities":["read","write"],"remote_mutations":false}`
 	if _, err := Parse([]byte(valid), testCatalog()); err != nil {

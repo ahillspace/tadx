@@ -174,10 +174,13 @@ func loadPath(path string, definitions []capability.Definition) *Policy {
 		return p
 	}
 	if err != nil {
+		p.status.Warnings = ancestorWarnings(checks)
 		p.status.Reason = err.Error()
 		return p
 	}
 	p.status.Protected = true
+	p.status.PathProtected = allProtectionChecksPassed(checks)
+	p.status.Warnings = ancestorWarnings(checks)
 	doc, err := Parse(data, definitions)
 	if err != nil {
 		p.status.Reason = err.Error()
@@ -185,11 +188,34 @@ func loadPath(path string, definitions []capability.Definition) *Policy {
 	}
 	active := activePolicy(path, doc)
 	active.status.Checks = checks
+	active.status.PathProtected = p.status.PathProtected
+	active.status.Warnings = p.status.Warnings
 	return active
 }
 
+func allProtectionChecksPassed(checks []ProtectionCheck) bool {
+	if len(checks) == 0 {
+		return false
+	}
+	for _, check := range checks {
+		if !check.Passed {
+			return false
+		}
+	}
+	return true
+}
+
+func ancestorWarnings(checks []ProtectionCheck) []string {
+	for _, check := range checks {
+		if check.Kind == "ancestor-owner-acl-and-links" && !check.Passed {
+			return []string{fmt.Sprintf("Managed policy path warning: ancestor %q is not verified as protected (%s). The policy path may be replaced and a different policy substituted. Ask an administrator to move the policy to a protected path or review this ancestor's ACL; run tadx policy status --full for all checks.", check.Path, check.Reason)}
+		}
+	}
+	return nil
+}
+
 func activePolicy(path string, doc Document) *Policy {
-	p := &Policy{status: Status{State: StateActive, Path: path, CandidateValid: true, Protected: true, AllowedCapabilities: slices.Clone(doc.AllowedCapabilities), RemoteMutations: doc.RemoteMutations}, allowed: make(map[string]struct{}, len(doc.AllowedCapabilities))}
+	p := &Policy{status: Status{State: StateActive, Path: path, CandidateValid: true, Protected: true, PathProtected: true, AllowedCapabilities: slices.Clone(doc.AllowedCapabilities), RemoteMutations: doc.RemoteMutations}, allowed: make(map[string]struct{}, len(doc.AllowedCapabilities))}
 	for _, id := range doc.AllowedCapabilities {
 		p.allowed[id] = struct{}{}
 	}
@@ -206,6 +232,7 @@ func (p *Policy) Status() Status {
 		s.Reason = "managed policy is not initialized"
 	}
 	s.Checks = slices.Clone(s.Checks)
+	s.Warnings = slices.Clone(s.Warnings)
 	s.AllowedCapabilities = slices.Clone(s.AllowedCapabilities)
 	return s
 }

@@ -125,6 +125,7 @@ Use `tadx mutation status` to inspect consent and [preview supported changes](do
 Supported mutation commands expose `--preview` so you can resolve targets and inspect proposed changes without applying them.
 Acquisition and local-state operations also provide previews where they can write files or configuration.
 Optional [managed policies](docs/managed-policy.md) let administrators restrict TADX operations through an OS-protected, machine-wide policy.
+On Windows, unsafe ancestor permissions produce a warning rather than blocking use; such a path can permit policy substitution despite a protected policy file and containing folder.
 They do not sandbox an agent or stop a process that already has administrator/root authority from changing the policy.
 Read the [security guide](docs/security.md) for credential storage, mutation controls, local data, policy installation, and the limits of these protections.
 

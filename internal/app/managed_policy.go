@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strings"
 	"sync"
 
 	policyinstall "github.com/ahillspace/tadx/actions/policy/install"
@@ -204,6 +205,10 @@ func (r *runtimeDependencies) InstallManagedPolicy(ctx context.Context, input po
 	}
 	if err != nil {
 		return output, policyInstallError(output, err)
+	}
+	state := managedpolicy.Load(capability.All()).Status()
+	if strings.EqualFold(filepath.Clean(state.Path), filepath.Clean(result.Path)) {
+		output.Warnings = state.Warnings
 	}
 	return output, nil
 }

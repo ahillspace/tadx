@@ -95,7 +95,7 @@ func TestWindowsElevationReceiptPreservesActionableCause(t *testing.T) {
 	}
 }
 
-func TestWindowsAncestorChecksArePathIntegrityOnly(t *testing.T) {
+func TestWindowsAncestorChecksInspectACLs(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "managed-policy.json")
 	if err := os.WriteFile(path, []byte("{}"), 0600); err != nil {
@@ -106,8 +106,8 @@ func TestWindowsAncestorChecksArePathIntegrityOnly(t *testing.T) {
 		t.Fatalf("checks=%+v", checks)
 	}
 	for _, check := range checks[:len(checks)-2] {
-		if check.Kind != "path-integrity" || !check.Passed {
-			t.Fatalf("ancestor ACL inspected: %+v", check)
+		if check.Kind != "ancestor-owner-acl-and-links" {
+			t.Fatalf("ancestor ACL not inspected: %+v", check)
 		}
 	}
 }

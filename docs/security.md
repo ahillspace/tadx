@@ -69,6 +69,10 @@ Windows installation requests UAC for a scoped installer child.
 The default destination is the native `Program Files\TADX` directory on each invocation that omits `--output`; an explicit local absolute `--output` directory may be selected when its parent exists.
 Installation replaces the selected policy file and leaves files in previous locations in place.
 Windows checks ownership and modification rights on the policy file, immediate TADX directory, and registry locator; path integrity and reparse checks remain in force.
+Windows also inspects ancestor ownership and permissions, including the drive root, but reports unsafe or unverifiable ancestor protection as a warning rather than blocking the policy.
+An ordinary user with replacement rights above the installation directory may substitute another valid administrator-owned policy, including an older, more permissive one, between commands.
+The policy currently loaded is still enforced; the warning means its location is not a reliable protection against substitution.
+TADX does not automatically change ancestor permissions, and a warning does not authorize an agent to change them.
 Unix policy installation through the CLI is unsupported; administrators deploy manually, with ownership and mode checks covering the path ancestors.
 
 See [Managed policy](managed-policy.md) for schema, installation, status, recovery, and removal procedures.
