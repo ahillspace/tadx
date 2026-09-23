@@ -10,13 +10,15 @@ An `error` policy blocks operational commands and leaves help, samples, validati
 
 The policy location is platform-owned.
 On Windows, `tadx policy install` requests UAC for a scoped installer child and keeps the caller unelevated.
-Its optional `--output` selects a dedicated local absolute directory, recorded in a protected machine-wide registry locator.
-Omitting `--output` always installs at the native `Program Files\TADX` location, and the default template is `superuser`.
+On Linux and macOS, an unprivileged install uses `/usr/bin/sudo` through the controlling terminal; `sudo` handles its own prompt, and TADX does not capture passwords.
+Its optional `--output` selects a dedicated local absolute directory, recorded in a protected machine-wide locator.
+Omitting `--output` selects the platform default path, and the default template is `superuser`.
+The defaults are `Program Files\TADX` on Windows, `/etc/tadx` on Linux, and `/Library/Application Support/TADX` on macOS.
 Installation overwrites the selected policy, preserves old locations, and never changes saved site consent.
 Ordinary commands cannot override the active location through flags, environment variables, or user configuration.
-An absent default file is `unmanaged` only when there is no Windows locator.
+An absent default file is `unmanaged` only when there is no platform locator.
 An invalid locator or missing located policy fails closed.
-Windows verifies file and immediate-directory ownership/DACLs and path integrity; Unix retains ancestor protection checks.
+Windows verifies file and immediate-directory ownership/DACLs and path integrity; Unix requires root ownership and no group or world write access throughout the path.
 Windows ancestor permissions are warning-only.
 When `state: active`, `protected: true` with `path_protected: false` means the loaded policy is enforced but its path may permit substitution, including an older, more permissive policy.
 Check `state` separately: the protection flags do not establish valid JSON or an active policy.

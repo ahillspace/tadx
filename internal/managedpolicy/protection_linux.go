@@ -1,6 +1,6 @@
 package managedpolicy
 
-func SystemPath() (string, error) { return "/etc/tadx/managed-policy.json", nil }
+func defaultUnixPolicyPath() string { return "/etc/tadx/managed-policy.json" }
 
 // Linux POSIX ACL named-user/group effective permissions are bounded by the
 // mask reflected in the file's group mode bits. Rejecting group write therefore

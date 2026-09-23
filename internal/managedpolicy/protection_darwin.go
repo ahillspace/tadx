@@ -8,8 +8,8 @@ import (
 	"golang.org/x/sys/unix"
 )
 
-func SystemPath() (string, error) {
-	return "/Library/Application Support/TADX/managed-policy.json", nil
+func defaultUnixPolicyPath() string {
+	return "/Library/Application Support/TADX/managed-policy.json"
 }
 
 // fgetattrlist binds ACL inspection to the descriptor opened with O_NOFOLLOW.

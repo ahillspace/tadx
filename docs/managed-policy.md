@@ -12,7 +12,7 @@ It does not describe privileged agent containment or controls for other clients 
 ## Understand the policy boundary
 
 TADX loads the policy from its protected system location at each command and worker boundary.
-On Windows, administrator installation can select a directory through a protected machine-wide locator.
+The installer can select a directory through a protected machine-wide locator on each supported platform.
 Ordinary commands cannot override that location with a flag, environment variable, user configuration value, or current directory.
 TADX does not ship an active policy, enroll a machine, or provide a policy removal command.
 
@@ -35,7 +35,7 @@ Custom policies can still deny reads by omitting their capability IDs.
 Content label updates and deletes can require `admin.label.value.inspect` as a preflight, including for `--preview`.
 
 An administrator can remove the policy manually using the platform-specific removal instructions below.
-On Windows, removing only a located policy file fails closed until the administrator repairs the installation or removes its locator.
+Removing only a located policy file fails closed until the administrator repairs the installation or removes its locator.
 
 ## Find the policy path
 
@@ -56,6 +56,9 @@ Its protected `Directory` value is a `REG_SZ` containing the selected absolute d
 Only an absent key uses the default path for compatibility with manually installed policies.
 A present but unreadable, insecure, malformed, or incomplete locator is an error.
 A locator pointing to a missing policy is also an error, including when it selects the default directory.
+Linux checks `/etc/tadx-policy-location.json`, and macOS checks `/private/etc/tadx-policy-location.json` for a protected custom-location record.
+An absent Unix locator selects the platform default path for compatibility with manually installed policies.
+An invalid or insecure Unix locator is an error, and installation can repair invalid locator contents.
 
 On Windows, ownership and DACL checks cover the policy file and its immediate installation directory.
 Ancestor ownership and DACLs, including the drive root, are also inspected, but unsafe or unverifiable ancestor protection produces a warning rather than blocking use.
@@ -66,7 +69,7 @@ Someone with replacement rights above the installation directory can move the pr
 The registry records a location, not the identity of the original directory or a fingerprint of approved policy contents.
 Choosing a warning instead of rejection deliberately accepts this risk; use a fully protected path when this boundary matters.
 TADX does not change ancestor permissions automatically.
-On Linux and macOS, the parent directory and every ancestor remain part of the ownership and permissions boundary.
+On Linux and macOS, the parent directory and every ancestor must remain root-owned and not group- or world-writable.
 The policy file must be a regular file with exactly one hard link.
 Symbolic links, Windows reparse points, and invalid path types cause a policy error.
 
@@ -151,7 +154,7 @@ An administrator deploys a policy to the protected system location.
 Protect the file and its TADX directory before checking status; Unix platforms also require protected ancestors.
 Keep the prior policy in a protected backup outside the fixed path until the replacement is confirmed.
 
-### Deploy on Windows
+### Install on Windows
 
 Run the installer from an ordinary terminal or agent session:
 
@@ -187,8 +190,6 @@ A locator failure after installing a different destination normally leaves the p
 Replacing an already selected policy takes effect before locator publication, so a later failure does not imply rollback.
 An incomplete locator created during publication fails closed and can be repaired by rerunning the installer.
 `policy install` remains available when the current policy denies operations or has errors.
-On Linux and macOS, the command reports that installation is unsupported; use the deployment instructions below.
-
 TADX accepts an owner of LocalSystem, built-in Administrators, or TrustedInstaller for each checked object.
 TADX rejects non-administrator effective modification rights on the file, immediate installation directory, and registry locator.
 TADX also rejects reparse points and files with more than one hard link.
@@ -197,73 +198,72 @@ The [Windows known-folder API](https://learn.microsoft.com/en-us/windows/win32/a
 The [Windows security descriptor API](https://learn.microsoft.com/en-us/windows/win32/api/aclapi/nf-aclapi-getsecurityinfo) and [file security model](https://learn.microsoft.com/en-us/windows/win32/fileio/file-security-and-access-rights) explain the owner and DACL checks.
 The [ShellExecuteW documentation](https://learn.microsoft.com/en-us/windows/win32/api/shellapi/nf-shellapi-shellexecutew) describes the `runas` elevation verb.
 
-### Deploy on Linux
+### Install on Linux
 
-Run the following outline with `sudo`:
-
-```sh
-sudo install -d -o root -g root -m 0755 /etc/tadx
-sudo install -o root -g root -m 0644 \
-  ./tadx-policy-candidates/read-write-no-admin.json \
-  /etc/tadx/managed-policy.json
-sudo chown root:root /etc/tadx /etc/tadx/managed-policy.json
-sudo chmod 0755 /etc/tadx
-sudo chmod 0644 /etc/tadx/managed-policy.json
-```
-
-The file and every ancestor must be owned by `root`.
-The file and every ancestor must deny group and other write permission.
-The file must be a regular file with one hard link.
-Do not deploy through a symbolic link.
-
-If the path uses extended POSIX ACLs, inspect their effective permissions with `getfacl`.
-Remove extended entries that grant write access, or remove the ACL before applying the root-owned modes:
+Run the installer from an ordinary terminal or agent session:
 
 ```sh
-sudo getfacl /etc/tadx /etc/tadx/managed-policy.json
-sudo setfacl -b /etc/tadx /etc/tadx/managed-policy.json
-sudo chmod 0755 /etc/tadx
-sudo chmod 0644 /etc/tadx/managed-policy.json
+tadx policy install
+tadx policy install --template read-only
+tadx policy install --output /etc/tadx-custom --template read-write-no-admin
+tadx policy status --full
 ```
+
+The default policy path is `/etc/tadx/managed-policy.json`.
+The default template is `superuser`, and `--template` accepts `read-only`, `read-write-no-admin`, or `superuser`.
+The legacy template input `admin` remains an alias for `superuser`.
+The installer uses `/usr/bin/sudo` through the controlling terminal when the process is not root.
+`sudo` owns its password prompt; TADX does not capture or log the password.
+The existing sudo authorization can be reused, and root processes do not prompt.
+If TADX reports that no controlling terminal is available, run `sudo tadx policy install` with the same options from a terminal, or run TADX as root.
+The active policy file and every ancestor must be root-owned and not group- or world-writable.
+The selected directory must be dedicated, local, absolute, and protected throughout its path.
+The installer can create the selected leaf directory when its parent already exists.
+It rejects symlinks, hard links, unsafe ACLs, unrelated files, and directories it cannot verify.
+It does not change ancestor permissions or modify unrelated files.
+Omitting `--output` selects the default path and resets the active locator to that path.
+Each successful installation replaces the selected policy and preserves files in earlier locations.
 
 The Linux check uses the group mode bits as the effective POSIX ACL mask.
-Removing group write permission therefore removes effective ACL write access.
+Removing group write permission removes effective ACL write access.
 Review every ancestor with `namei -l /etc/tadx/managed-policy.json`.
 
 The [Linux `open(2)` reference](https://man7.org/linux/man-pages/man2/open.2.html) documents no-follow path handling.
 The [Linux `acl(5)` reference](https://man7.org/linux/man-pages/man5/acl.5.html) documents effective ACL permissions.
 
-### Deploy on macOS
+### Install on macOS
 
-Run the following outline with `sudo`:
+Run the installer from an ordinary terminal or agent session:
 
 ```sh
-sudo install -d -o root -g wheel -m 0755 "/Library/Application Support/TADX"
-sudo install -o root -g wheel -m 0644 \
-  ./tadx-policy-candidates/read-write-no-admin.json \
-  "/Library/Application Support/TADX/managed-policy.json"
-sudo chown root:wheel \
-  "/Library/Application Support/TADX" \
-  "/Library/Application Support/TADX/managed-policy.json"
-sudo chmod 0755 "/Library/Application Support/TADX"
-sudo chmod 0644 "/Library/Application Support/TADX/managed-policy.json"
+tadx policy install
+tadx policy install --template read-only
+tadx policy install --output "/Library/Application Support/TADX-Custom" --template read-write-no-admin
+tadx policy status --full
 ```
 
-The file and every ancestor must be owned by `root`.
-The file and every ancestor must deny group and other write permission.
-The file must be a regular file with one hard link.
-Do not deploy through a symbolic link.
+The default policy path is `/Library/Application Support/TADX/managed-policy.json`.
+The default template is `superuser`, and `--template` accepts `read-only`, `read-write-no-admin`, or `superuser`.
+The legacy template input `admin` remains an alias for `superuser`.
+The installer uses `/usr/bin/sudo` through the controlling terminal when the process is not root.
+`sudo` owns its password prompt; TADX does not capture or log the password.
+The existing sudo authorization can be reused, and root processes do not prompt.
+If TADX reports that no controlling terminal is available, run `sudo tadx policy install` with the same options from a terminal, or run TADX as root.
+The active policy file and every ancestor must be root-owned and not group- or world-writable.
+The selected directory must be dedicated, local, absolute, and protected throughout its path.
+The installer can create the selected leaf directory when its parent already exists.
+It rejects symlinks, hard links, unsafe ACLs, unrelated files, and directories it cannot verify.
+It does not change ancestor permissions or modify unrelated files.
+Omitting `--output` selects the default path and resets the active locator to that path.
+Each successful installation replaces the selected policy and preserves files in earlier locations.
 
-macOS extended ACLs are inspected through the native security attributes.
-Read-only, deny, and inherit-only entries can pass.
-An effective modification grant that TADX cannot prove is root-only fails closed.
-If an administrator intends to remove extended ACLs, run `chmod -N` on the policy directory and file before the final mode check:
+macOS extended ACLs are inspected through native security attributes.
+Read-only, deny, and inherit-only entries can pass when the installer verifies that modification remains root-only.
+The installer rejects an effective modification grant it cannot prove is root-only.
+Inspect ACLs with `ls -ldeO` and remove unsafe entries before installation:
 
 ```sh
 sudo chmod -N "/Library/Application Support/TADX"
-sudo chmod -N "/Library/Application Support/TADX/managed-policy.json"
-sudo chmod 0755 "/Library/Application Support/TADX"
-sudo chmod 0644 "/Library/Application Support/TADX/managed-policy.json"
 ```
 
 Review the path with `ls -ldeO` and check every ancestor before running TADX.
@@ -284,7 +284,7 @@ The full status adds the allowlisted IDs and each protection check.
 | State | Meaning | TADX operational behavior |
 | --- | --- | --- |
 | `active` | The selected file is protected and its strict schema is valid. | Enforce the listed IDs and the `remote_mutations` ceiling. |
-| `unmanaged` | The default file is absent, with no Windows locator installed. | Apply no managed ceiling, then apply normal site consent and Tableau authorization. |
+| `unmanaged` | The default file is absent, with no platform locator installed. | Apply no managed ceiling, then apply normal site consent and Tableau authorization. |
 | `error` | A required file, directory, locator, schema, or path-integrity check fails. | Block operational execution and expose recovery tools and help. |
 
 On Windows, `protected` describes the policy file and its immediate directory; `path_protected` also requires the ancestor protection checks to pass.
@@ -314,11 +314,13 @@ Use an administrator-controlled temporary file, protect it, and replace the acti
 Keep a protected backup until `tadx policy status --full` confirms the intended IDs and protection checks.
 
 If deployment fails, inspect the receipt and current status before deciding which protected file or locator needs repair.
-An absent default file produces `unmanaged` only when no Windows locator is installed.
+An absent default file produces `unmanaged` only when no platform locator is installed.
 An unreadable, malformed, or insecure replacement produces `error` and blocks operations.
 
-On Linux and macOS, an administrator deletes the fixed policy file and optionally removes its empty TADX directory.
-The next status reports `unmanaged` on those platforms.
+On Linux and macOS, an administrator removes the selected policy and its locator, then optionally removes its empty TADX directory.
+The default paths are `/etc/tadx/managed-policy.json` and `/Library/Application Support/TADX/managed-policy.json`.
+The locator paths are `/etc/tadx-policy-location.json` and `/private/etc/tadx-policy-location.json`.
+The next status reports `unmanaged` when no platform locator or default policy remains.
 Removal does not change saved site consent, Tableau permissions, credentials, or other clients.
 
 On Windows, first run `tadx policy status --full` and identify the exact selected file.
@@ -356,7 +358,8 @@ tadx policy status --full
 tadx policy install
 ```
 
-Only `policy install` installs and activates a template, with administrator authorization on Windows.
+Only `policy install` installs and activates a template.
+It requests UAC approval on Windows or uses root privileges through `sudo` on Linux and macOS.
 `policy samples` creates candidates only in the requested output directory.
 `policy validate` checks candidate content only.
 `policy status` reads the protected selected system location.

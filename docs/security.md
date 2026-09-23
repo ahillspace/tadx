@@ -65,15 +65,23 @@ The `read-only` template sets `remote_mutations` to false; `read-write-no-admin`
 The legacy template input `admin` is an alias for `superuser`.
 Templates snapshot the current capability registry, so install the desired template again from a current CLI to refresh its snapshot.
 
-Windows installation requests UAC for a scoped installer child.
-The default destination is the native `Program Files\TADX` directory on each invocation that omits `--output`; an explicit local absolute `--output` directory may be selected when its parent exists.
-Installation replaces the selected policy file and leaves files in previous locations in place.
+On Windows, installation requests UAC for a scoped installer child; the calling terminal and agent remain unelevated.
+On Linux and macOS, installation uses `/usr/bin/sudo` through the controlling terminal when the process is not root.
+`sudo` handles its own password prompt, and TADX does not capture or log the password.
+Cached sudo authorization can be reused, and an already-root process does not prompt.
+If TADX reports that no controlling terminal is available, run `sudo tadx policy install` with the same options from a terminal, or run TADX as root.
+Windows uses the native `Program Files\TADX` directory by default; Linux uses `/etc/tadx`, and macOS uses `/Library/Application Support/TADX`.
+An explicit `--output` selects a dedicated, local, absolute directory whose parent exists.
+The installer can create the selected leaf directory and replaces only its policy file.
+It preserves files in earlier policy locations and rejects a selected directory with unrelated contents.
+Omitting `--output` selects the platform default and resets the active location to that path.
+The default template is `superuser`; standard templates remain customizable by editing candidate JSON and deploying it with protected ownership.
+Unix checks require root ownership and no group or world write access across the entire path.
 Windows checks ownership and modification rights on the policy file, immediate TADX directory, and registry locator; path integrity and reparse checks remain in force.
 Windows also inspects ancestor ownership and permissions, including the drive root, but reports unsafe or unverifiable ancestor protection as a warning rather than blocking the policy.
-An ordinary user with replacement rights above the installation directory may substitute another valid administrator-owned policy, including an older, more permissive one, between commands.
+An ordinary user with replacement rights above the Windows installation directory can substitute another valid administrator-owned policy, including an older, more permissive one, between commands.
 The policy currently loaded is still enforced; the warning means its location is not a reliable protection against substitution.
 TADX does not automatically change ancestor permissions, and a warning does not authorize an agent to change them.
-Unix policy installation through the CLI is unsupported; administrators deploy manually, with ownership and mode checks covering the path ancestors.
 
 See [Managed policy](managed-policy.md) for schema, installation, status, recovery, and removal procedures.
 

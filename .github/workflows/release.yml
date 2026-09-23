@@ -1,6 +1,17 @@
 name: Release
 
 on:
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: Existing release tag to rebuild from main
+        required: true
+        type: string
+      replace_existing:
+        description: Replace the published assets and move the tag to this main commit
+        required: true
+        default: false
+        type: boolean
   push:
     tags:
       - "v*.*.*"
@@ -9,7 +20,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: release-${{ github.ref }}
+  group: release-${{ inputs.release_tag || github.ref_name }}
   cancel-in-progress: false
 
 jobs:
@@ -23,7 +34,7 @@ jobs:
         id: version
         shell: bash
         env:
-          RELEASE_TAG: ${{ github.ref_name }}
+          RELEASE_TAG: ${{ inputs.release_tag || github.ref_name }}
         run: |
           python3 - <<'PY'
           import os
@@ -54,6 +65,19 @@ jobs:
           with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as output:
               output.write(f"version={tag[1:]}\n")
           PY
+
+      - name: Validate explicit refresh authorization
+        if: github.event_name == 'workflow_dispatch'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ inputs.release_tag }}
+          REPLACE_EXISTING: ${{ inputs.replace_existing }}
+        run: |
+          set -euo pipefail
+          test "${GITHUB_REF}" = refs/heads/main
+          test "${REPLACE_EXISTING}" = true
+          gh api "repos/${GITHUB_REPOSITORY}/releases/tags/${RELEASE_TAG}" \
+            --jq 'if .immutable or .draft then error("Refresh requires an existing mutable published release") else .tag_name end'
 
   native-policy:
     name: Release native managed policy gates
@@ -208,7 +232,7 @@ jobs:
           CGO_ENABLED: "0"
           GOOS: ${{ matrix.goos }}
           GOARCH: ${{ matrix.goarch }}
-          RELEASE_TAG: ${{ github.ref_name }}
+          RELEASE_TAG: ${{ inputs.release_tag || github.ref_name }}
         run: |
           mkdir -p build/package dist
           go build \
@@ -344,8 +368,9 @@ jobs:
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
-          RELEASE_TAG: ${{ github.ref_name }}
+          RELEASE_TAG: ${{ inputs.release_tag || github.ref_name }}
           RELEASE_VERSION: ${{ needs.validate.outputs.version }}
+          REPLACE_EXISTING: ${{ github.event_name == 'workflow_dispatch' && inputs.replace_existing }}
         run: |
           set -euo pipefail
           shopt -s nullglob
@@ -355,6 +380,26 @@ jobs:
             exit 1
           fi
           if gh release view "${RELEASE_TAG}" >/dev/null 2>&1; then
+            if [[ "${REPLACE_EXISTING}" == true && "${GITHUB_REF}" == refs/heads/main ]]; then
+              test "$(gh api "repos/${GITHUB_REPOSITORY}/git/ref/heads/main" --jq .object.sha)" = "${GITHUB_SHA}"
+              # Keep the previous assets available for recovery in this run.
+              mkdir -p "${RUNNER_TEMP}/previous-release"
+              gh release download "${RELEASE_TAG}" --dir "${RUNNER_TEMP}/previous-release"
+              gh release view "${RELEASE_TAG}" --json body --jq .body > "${RUNNER_TEMP}/release-notes.md"
+              previous_commit="$(gh api "repos/${GITHUB_REPOSITORY}/commits/${RELEASE_TAG}" --jq .sha)"
+              printf '\n\n## Refreshed build\n\nRebuilt on %s from commit %s, replacing the build from %s.\nThe version remains %s; download checksums have changed.\nRerun the platform installer to replace an earlier copy of this same version.\n' \
+                "$(date -u +%F)" "${GITHUB_SHA}" "${previous_commit}" "${RELEASE_TAG}" >> "${RUNNER_TEMP}/release-notes.md"
+              # Publish the new manifest last. Mixed-generation downloads fail checksum verification.
+              gh release upload "${RELEASE_TAG}" dist/tadx_"${RELEASE_VERSION}"_* dist/LICENSE dist/install.ps1 dist/install.sh --clobber
+              gh release upload "${RELEASE_TAG}" dist/checksums.txt --clobber
+              tag_object="$(gh api --method POST "repos/${GITHUB_REPOSITORY}/git/tags" \
+                -f tag="${RELEASE_TAG}" -f message="Refresh ${RELEASE_TAG} from ${GITHUB_SHA}" \
+                -f object="${GITHUB_SHA}" -f type=commit --jq .sha)"
+              gh api --method PATCH "repos/${GITHUB_REPOSITORY}/git/refs/tags/${RELEASE_TAG}" \
+                -f sha="${tag_object}" -F force=true >/dev/null
+              gh release edit "${RELEASE_TAG}" --notes-file "${RUNNER_TEMP}/release-notes.md"
+              exit 0
+            fi
             printf 'Release %s already exists and will not be modified.\n' "${RELEASE_TAG}" >&2
             exit 1
           fi
@@ -363,3 +408,13 @@ jobs:
             release_args+=(--prerelease)
           fi
           gh release create "${RELEASE_TAG}" "${assets[@]}" "${release_args[@]}"
+
+      - name: Preserve replaced release assets
+        if: always() && github.event_name == 'workflow_dispatch' && inputs.replace_existing
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: previous-release-assets
+          path: ${{ runner.temp }}/previous-release
+          if-no-files-found: ignore
+          retention-days: 30
+          compression-level: 0

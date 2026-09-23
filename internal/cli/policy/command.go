@@ -43,7 +43,7 @@ func New(deps Dependencies) *cobra.Command {
 		}
 		return deps.Renderer.Render(out)
 	}}
-	install.Flags().StringVar(&installDirectory, "output", "", "managed policy directory (default: native Program Files/TADX location)")
+	install.Flags().StringVar(&installDirectory, "output", "", "managed policy directory (default: platform system TADX location)")
 	install.Flags().StringVar(&template, "template", policyinstall.TemplateSuperuser, "policy template: read-only, read-write-no-admin, or superuser")
 	var directory string
 	samples := &cobra.Command{Use: "samples", Short: "Write three policy candidates without installing them", Annotations: map[string]string{"tadx.capability": "policy.samples"}, Args: cobra.NoArgs, RunE: func(c *cobra.Command, _ []string) error {

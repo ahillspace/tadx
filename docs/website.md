@@ -17,6 +17,14 @@ The checked-in website and workflow prepare deployment, but do not enable Pages,
 See GitHub's [custom workflow](https://docs.github.com/en/pages/getting-started-with-github-pages/using-custom-workflows-with-github-pages) and [custom domain](https://docs.github.com/en/pages/configuring-a-custom-domain-for-your-github-pages-site) instructions.
 A `CNAME` file alone does not configure a custom domain for an Actions deployment.
 
+## Refresh an existing release
+
+The release workflow normally refuses to overwrite an existing tag.
+To rebuild an existing release from reviewed `main`, run the manual Release workflow from `main` with its release tag and `replace_existing` enabled.
+The workflow moves the tag to the selected `main` commit, replaces the release assets, and updates the release notes with the previous and new commit IDs.
+It preserves the prior assets as a 30-day Actions artifact and uploads the new checksum manifest last.
+Tell users to rerun the platform installer because version checks cannot distinguish an earlier build with the same version.
+
 ## Website files
 
 Edit `site/index.html` for the homepage.

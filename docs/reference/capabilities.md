@@ -2261,13 +2261,13 @@ List saved site consent for all configured environments, or one selected environ
 
 ### `policy.install`
 
-Install and activate one protected administrator-managed policy on Windows.
+Install and activate one protected administrator-managed policy on Windows, Linux, or macOS.
 
 - Surface: tadx policy install
 - Operation type: change
 - Owner: cli
 - Selectors: Optional --output directory; --template read-only, read-write-no-admin, or superuser (default)
-- Products and availability: Windows; administrator elevation; recovery exemption
+- Products and availability: Windows, Linux, macOS; administrator elevation or root; recovery exemption
 - Product disposition: ship
 - Evidence level: local-contract
 - Verification readiness: ready
@@ -2280,9 +2280,9 @@ Install and activate one protected administrator-managed policy on Windows.
 - Raw capable: No
 - Safety and guard: Native elevated helper protects the destination before replacing policy, verifies protection, then publishes the machine locator; partial changes remain explicit; never changes Tableau site consent
 - Artifact effect: Writes managed-policy.json under a protected administrator directory and publishes the native machine locator
-- Upstream operation: Windows UAC, filesystem ACLs, and HKLM native registry view
-- Evidence: internal/managedpolicy/install_test.go; actions/policy/install/action_test.go; internal/cli/policy/command_test.go
-- Validation or blocker: Hermetic phase-order, partial-receipt, action-validation, and CLI forwarding tests
+- Upstream operation: Windows UAC, filesystem ACLs, and HKLM native registry view; Unix sudo, root ownership, protected modes and ACLs, and fixed system locator
+- Evidence: internal/managedpolicy/install_test.go; internal/managedpolicy/install_privileged_unix_test.go; actions/policy/install/action_test.go; internal/cli/policy/command_test.go
+- Validation or blocker: Phase-order, partial-receipt, native protected-fixture lifecycle, elevation boundary, action-validation, and CLI forwarding tests
 - Blocker ID: None
 - Command binding: `tadx policy install`
 

@@ -72,7 +72,7 @@ func (a *Action) Execute(ctx context.Context, input Input) (Output, error) {
 			Phase:            errs.PhaseSetup,
 			Outcome:          errs.OutcomeNotAttempted,
 			Retryable:        errs.Bool(false),
-			CorrectiveAction: "Use a supported TADX installation on Windows. No policy was installed.",
+			CorrectiveAction: "Use a supported TADX installation on Windows, Linux, or macOS. No policy was installed.",
 		}
 	}
 	return a.installer.InstallManagedPolicy(ctx, input)

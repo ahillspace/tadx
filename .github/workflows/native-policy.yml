@@ -60,4 +60,4 @@ jobs:
           go test -c -o "$fixture_binary" ./internal/managedpolicy
           test "$(sudo -n id -u)" = 0
           sudo -n env TADX_TEST_REQUIRE_PRIVILEGED_POLICY=1 "$fixture_binary" \
-            -test.count=1 -test.timeout=5m -test.v -test.run='^TestPrivilegedUnixProtectedPolicyFixture$'
+            -test.count=1 -test.timeout=5m -test.v -test.run='^TestPrivilegedUnix'
