@@ -250,7 +250,7 @@ func TestPrivilegedUnixNoTerminalOrPrivilege(t *testing.T) {
 }
 
 func TestUnixInstallValidationAndElevationFailure(t *testing.T) {
-	for _, directory := range []string{"relative", "/", "/root/../bad", "/bad/", "/bad\x00", "/root", "/home", "/home/person", "/Users/person", "/Library/Application Support"} {
+	for _, directory := range []string{"relative", "/", "/root/../bad", "/bad/", "/bad\x00", "/root", "/home", filepath.Join("/home", "fixture-user"), filepath.Join("/Users", "fixture-user"), "/Library/Application Support"} {
 		out, _, err := prepareUnixInstall(InstallOptions{Directory: directory}, testCatalog(), defaultUnixPolicyPath())
 		if err == nil || out.Phase != "validation" {
 			t.Fatalf("accepted directory %q", directory)
