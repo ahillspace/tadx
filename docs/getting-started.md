@@ -265,6 +265,19 @@ Use repeated `--target` flags to choose specific agents, for example `tadx updat
 The platform installer also performs a combined CLI-and-Guidance installation.
 Release installation uses published binaries, not the current source branch.
 
+Released builds also check GitHub for a newer published release alongside eligible interactive commands.
+A completed check is cached for 24 hours, and a short notice appears on stderr after a successful command when an update is available.
+The check does not install anything, use Tableau credentials, or send Tableau information.
+It has a short network timeout and does not wait for the network when your command finishes.
+An unfinished check can retry on a later command; check failures do not change command results.
+
+Automatic checks are skipped in CI, when stdout or stderr is not a terminal, and for JSON output, help, completion, previews, updates, cache commands, and the local overview.
+Commands using `--cache` also skip the check.
+Development builds do not show update notices.
+Set `TADX_NO_UPDATE_NOTIFIER=1` to disable automatic checks and notices.
+The explicit `tadx update --check` command remains available regardless of this setting.
+Version comparison detects newer release versions, not replaced assets published under the same version.
+
 Preview Guidance removal before uninstalling it:
 
 ```text

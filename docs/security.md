@@ -100,6 +100,11 @@ Checksum matching is not provenance verification, and provenance verification do
 See [GitHub's artifact-attestation documentation](https://docs.github.com/en/actions/concepts/security/artifact-attestations) for the scope of those claims.
 The updater installs the selected release and refreshes TADX-owned Guidance with recovery behavior described in the [website and installer guide](website.md).
 
+The automatic update notifier reads public release metadata from the GitHub API without GitHub authentication or Tableau credentials.
+It does not send Tableau information, download release binaries, or install updates.
+Its local cache contains update-check metadata, not credentials or Tableau content.
+Set `TADX_NO_UPDATE_NOTIFIER=1` to disable these automatic requests and notices; see [Getting started](getting-started.md#upgrade-or-remove) for eligibility and timing.
+
 ## Operating guidance
 
 Use exact Tableau LUIDs for consequential targets and inspect previews before execution.

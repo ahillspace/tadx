@@ -34,6 +34,21 @@ func Current() string {
 	return "dev"
 }
 
+// Modified reports whether Go marked the executable's source tree dirty.
+// Release binaries without VCS build settings are treated as clean.
+func Modified() bool {
+	info, ok := debug.ReadBuildInfo()
+	if !ok {
+		return false
+	}
+	for _, setting := range info.Settings {
+		if setting.Key == "vcs.modified" {
+			return setting.Value == "true"
+		}
+	}
+	return false
+}
+
 type Release struct {
 	Version     string
 	URL         string

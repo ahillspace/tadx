@@ -251,6 +251,10 @@ func localImportAllowed(file, imported string) bool {
 		if hasPathPrefix(file, "internal/agent") || hasPathPrefix(file, "internal/guidancenotice") {
 			return imported == "internal/agenttarget"
 		}
+		// The passive release notice reads only public version metadata.
+		if hasPathPrefix(file, "internal/releasenotice") {
+			return imported == "internal/version"
+		}
 		if hasPathPrefix(file, "internal/lastcommand") {
 			return matchesExact(imported, "internal/lock", "internal/value")
 		}
@@ -303,7 +307,7 @@ func localImportAllowed(file, imported string) bool {
 		}
 		return false
 	case layerTADXCommand:
-		return matchesExact(imported, "internal/app", "internal/guidancenotice")
+		return matchesExact(imported, "internal/app", "internal/guidancenotice", "internal/releasenotice")
 	case layerDocsGenerator:
 		return matchesExact(imported, "internal/capability")
 	default:
@@ -439,6 +443,7 @@ func isFoundationPackage(file string) bool {
 	return hasPathPrefix(file, "internal/lastcommand") || hasPathPrefix(file, "internal/artifact") ||
 		hasPathPrefix(file, "internal/agent") ||
 		hasPathPrefix(file, "internal/guidancenotice") ||
+		hasPathPrefix(file, "internal/releasenotice") ||
 		hasPathPrefix(file, "internal/contentbatch") ||
 		hasPathPrefix(file, "internal/batchspec") ||
 		hasPathPrefix(file, "internal/commandhint") ||
