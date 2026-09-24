@@ -101,6 +101,13 @@ type Subscription struct {
 	TableauRequestID string
 }
 
+// SubscriptionPage is one bounded user-filtered subscription page.
+type SubscriptionPage struct {
+	Subscriptions    []Subscription
+	NextPageToken    string
+	TableauRequestID string
+}
+
 // CreateSubscriptionRequest identifies one exact desired follower relationship.
 type CreateSubscriptionRequest struct {
 	MetricLUID   string

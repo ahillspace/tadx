@@ -101,7 +101,10 @@ var categoryHelpExamples = []helpExampleSet{
 		"tadx admin label-category create --env dev --name <category-name> --description <description> --preview",
 	}},
 	{"pulse", "", []string{
-		"tadx pulse definition list --env dev", "tadx pulse metric list --env dev --definition-id <definition-luid>",
+		"tadx pulse definition list --env dev", "tadx pulse metric list --env dev --definition-id <definition-luid>", "tadx pulse subscription list --env dev",
+	}},
+	{"pulse subscription", "Lists the current authenticated user's subscriptions. Group-derived coverage depends on the Tableau response.", []string{
+		"tadx pulse subscription list --env dev",
 	}},
 	{"pulse definition", "Create requires --name, --datasource-id, --measure-field, and --date-field. Repeat --dimension for allowed slicers.\nPublish requires one of --artifact, --id, or --artifact-name, plus explicit --datasource-map source=destination mappings.", []string{
 		"tadx pulse definition inspect --env dev --id <definition-luid>",
@@ -169,7 +172,7 @@ func applyHelpExamples(root *cobra.Command) {
 
 func helpCategoryNoteIsCommon(path string) bool {
 	switch path {
-	case "auth", "env", "cache", "catalog", "content", "admin", "admin label", "workspace", "mutation", "capability":
+	case "auth", "env", "cache", "catalog", "content", "admin", "admin label", "workspace", "mutation", "capability", "pulse subscription":
 		return true
 	default:
 		return false
@@ -177,6 +180,9 @@ func helpCategoryNoteIsCommon(path string) bool {
 }
 
 func usefulHelpExample(example string) bool {
+	if strings.Contains(example, "pulse subscription list") {
+		return true
+	}
 	for _, syntax := range []string{" schema ", " publish ", " fork ", "permission create", "user create", "project move", "--parent-id", "workspace artifact", "--batch-file"} {
 		if strings.Contains(example, syntax) {
 			return true

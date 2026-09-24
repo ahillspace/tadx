@@ -23,6 +23,7 @@ type fixtureManagedPolicy struct {
 	allowed  map[string]bool
 	remote   bool
 	warnings []string
+	checks   []managedpolicy.ProtectionCheck
 }
 
 type invalidLocatorPolicy struct{ fixtureManagedPolicy }
@@ -62,25 +63,38 @@ func TestManagedPolicySamplesRemainAvailableWithInvalidLocator(t *testing.T) {
 }
 
 func (p fixtureManagedPolicy) Status() managedpolicy.Status {
-	return managedpolicy.Status{State: p.state, Path: "/fixed/system/policy.json", Protected: p.state == managedpolicy.StateActive, RemoteMutations: p.remote, Warnings: p.warnings}
+	return managedpolicy.Status{State: p.state, Path: "/fixed/system/policy.json", Protected: p.state == managedpolicy.StateActive, RemoteMutations: p.remote, Warnings: p.warnings, Checks: p.checks}
 }
 
-func TestManagedPolicyAncestorWarningPreservesJSONAndEnforcement(t *testing.T) {
+func TestManagedPolicyAncestorWarningOnlyInStatusOutput(t *testing.T) {
 	options := overviewOptions(t, t.TempDir())
 	options.ConfigPath = authConfig(t, "")
-	options.managedPolicy = fixtureManagedPolicy{state: managedpolicy.StateActive, allowed: map[string]bool{"env.profile.list": true}, warnings: []string{"Managed policy path warning: policy substitution may be possible."}}
+	warning := "Managed policy path warning: policy substitution may be possible."
+	options.managedPolicy = fixtureManagedPolicy{state: managedpolicy.StateActive, allowed: map[string]bool{"env.profile.list": true}, warnings: []string{warning}, checks: []managedpolicy.ProtectionCheck{{Path: "/fixed", Kind: "ancestor-owner-acl-and-links", Passed: false, Reason: "writable ancestor"}}}
 	var stdout, stderr bytes.Buffer
 	options.Stderr = &stderr
 	if code := Run(t.Context(), []string{"env", "list", "--json"}, &stdout, options); code != 0 {
 		t.Fatalf("allowed command blocked: %d %s", code, &stdout)
 	}
-	if !json.Valid(stdout.Bytes()) || !strings.Contains(stderr.String(), "policy substitution") {
-		t.Fatalf("warning not separated from JSON: stdout=%s stderr=%s", &stdout, &stderr)
+	if !json.Valid(stdout.Bytes()) || stderr.Len() != 0 {
+		t.Fatalf("allowed command streams: stdout=%s stderr=%s", &stdout, &stderr)
 	}
 	stdout.Reset()
 	stderr.Reset()
-	if code := Run(t.Context(), []string{"admin", "user", "list", "--env", "dev", "--json"}, &stdout, options); code == 0 || !strings.Contains(stdout.String(), "policy.denied") || !strings.Contains(stderr.String(), "policy substitution") {
-		t.Fatalf("warning bypassed enforcement: stdout=%s stderr=%s", &stdout, &stderr)
+	if code := Run(t.Context(), []string{"admin", "user", "list", "--env", "dev", "--json"}, &stdout, options); code == 0 || !strings.Contains(stdout.String(), "policy.denied") || stderr.Len() != 0 {
+		t.Fatalf("denied command streams: stdout=%s stderr=%s", &stdout, &stderr)
+	}
+	stdout.Reset()
+	stderr.Reset()
+	if code := Run(t.Context(), []string{"policy", "status", "--full", "--json"}, &stdout, options); code != 0 || stderr.Len() != 0 {
+		t.Fatalf("policy status streams: code=%d stdout=%s stderr=%s", code, &stdout, &stderr)
+	}
+	var status struct {
+		Warnings []string                        `json:"warnings"`
+		Checks   []managedpolicy.ProtectionCheck `json:"protection_checks"`
+	}
+	if err := json.Unmarshal(stdout.Bytes(), &status); err != nil || len(status.Warnings) != 1 || status.Warnings[0] != warning || len(status.Checks) != 1 || status.Checks[0].Kind != "ancestor-owner-acl-and-links" {
+		t.Fatalf("policy status diagnostics: status=%+v err=%v output=%s", status, err, &stdout)
 	}
 }
 func (p fixtureManagedPolicy) CheckCapability(id string) error {

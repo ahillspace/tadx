@@ -198,6 +198,22 @@ Inspect existing definitions before creating a duplicate:
 tadx pulse definition list --environment dev --datasource-id DATASOURCE_LUID --all --full
 ```
 
+### Find your Pulse subscriptions
+
+List Pulse subscriptions for the user authenticated to the selected Tableau environment:
+
+```text
+tadx pulse subscription list --environment <alias>
+```
+
+The user is the owner of the configured PAT, which can differ from the account signed into Tableau in your browser.
+The command retrieves that user's subscription records and enriches only their metric IDs with available names and saved configuration.
+It does not scan every metric on the site or retrieve metric values and insights.
+The default page contains up to 25 subscriptions; use `--limit`, follow the returned `--cursor` command, or use `--all` for a bounded complete listing.
+Review any reported partial results before treating the output as complete.
+Tableau's user-filtered subscription API does not explicitly document expansion through group membership; the command does not perform that expansion itself.
+A controlled live test returned a group-derived subscription for a user who belonged to that group, but this does not establish complete coverage for every group arrangement.
+
 ## Maintain the installation
 
 ### Agent Guidance
@@ -247,7 +263,7 @@ Session detection normally uses the parent process identity.
 A host that launches a new shell for every tool call can set `TADX_GUIDANCE_SESSION` to a stable, unique session identifier.
 Reusing that identifier suppresses repeated notices across those shells; TADX does not automatically identify every agent host.
 
-### Upgrade or remove
+### Upgrade
 
 Run `tadx update --check` to check the release without installing anything.
 Run `tadx update` to upgrade or repair the CLI and refresh bundled Guidance for detected agents.
@@ -255,21 +271,35 @@ Use repeated `--target` flags to choose specific agents, for example `tadx updat
 The platform installer also performs a combined CLI-and-Guidance installation.
 Release installation uses published binaries, not the current source branch.
 
-Preview Guidance removal before uninstalling it:
+### Uninstall TADX
+
+The platform installer removes the TADX executable and its managed PATH and completion entries.
+It preserves configuration, workspaces, caches, Guidance skills, managed policy, and credentials stored in the operating system.
+Run the installer action from any directory; you do not need a TADX source checkout.
+
+On Windows PowerShell, run:
+
+```powershell
+& ([scriptblock]::Create((Invoke-RestMethod https://tadx.net/install.ps1))) -Action Uninstall
+```
+
+On macOS or Linux, run:
+
+```sh
+curl -fsSL https://tadx.net/install.sh | sh -s -- uninstall
+```
+
+If you installed TADX in a custom directory, pass that same directory with `-InstallDir` on Windows or `--install-dir` on macOS or Linux.
+The installer defaults to `%LOCALAPPDATA%\Programs\tadx\bin` on Windows and `$HOME/.local/bin` on macOS or Linux.
+
+Removing stored credentials or Guidance is optional and must happen before removing the CLI.
+Run only the commands for the items you want removed; replace `ENVIRONMENT_ALIAS` with an environment name and repeat Guidance removal for each installed target:
 
 ```text
+tadx auth logout --environment ENVIRONMENT_ALIAS
 tadx agent uninstall --target codex --preview
 tadx agent uninstall --target codex
 ```
 
-Removing the CLI does not automatically remove configuration, workspaces, caches, Guidance, or OS-stored credentials.
-Use `tadx auth logout` and `tadx agent uninstall` first for any local state you also want removed.
-Download the platform installer again as shown in the README, then invoke its uninstall action instead of its default installation action:
-
-```powershell
-& $installer -Action Uninstall
-```
-
-```sh
-sh "$installer_dir/install.sh" uninstall
-```
+Preview each Guidance removal before running it.
+Do not run the CLI removal until you finish these commands.

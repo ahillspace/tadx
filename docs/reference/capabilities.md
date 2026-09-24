@@ -110,6 +110,7 @@ Use `tadx capability get <id>` for the same focused metadata at runtime.
 | `pulse.metric.inspect` | cli | ship | ready | implemented | `tadx pulse metric inspect` |
 | `pulse.metric.list` | cli | ship | ready | implemented | `tadx pulse metric list` |
 | `pulse.metric.unfollow` | cli | ship | ready | implemented | `tadx pulse metric unfollow` |
+| `pulse.subscription.list` | cli | ship | ready | implemented | `tadx pulse subscription list` |
 | `search.run` | cli | ship | ready | implemented | `tadx search` |
 | `session.overview` | cli | ship | ready | implemented | `tadx` |
 | `update` | cli | ship | ready | implemented | `tadx update` |
@@ -2879,6 +2880,33 @@ Remove one exact metric subscription, or preview the operation.
 - Validation or blocker: Live-verified exact subscription deletion with HTTP 204 on Tableau Cloud
 - Blocker ID: None
 - Command binding: `tadx pulse metric unfollow`
+
+### `pulse.subscription.list`
+
+List the authenticated user's bounded Pulse subscriptions with exact metric configuration.
+
+- Surface: tadx pulse subscription list
+- Operation type: find
+- Owner: cli
+- Selectors: Authenticated user on the selected environment and site; --limit, --cursor, or --all
+- Products and availability: Tableau Cloud / Pulse only
+- Product disposition: ship
+- Evidence level: live-verified
+- Verification readiness: ready
+- Implementation state: implemented
+- Local write: No
+- Remote mutation: No
+- Administrative: No
+- Supports `--preview`: No
+- Supports `--batch-file`: No
+- Raw capable: No
+- Safety and guard: User-scoped token paging; enrich only returned metric IDs; preserve partial identities; group-derived coverage remains unverified
+- Artifact effect: None
+- Upstream operation: GET /api/-/pulse/subscriptions?user_id={user_id}
+- Evidence: Tableau REST API contract, HTTP-backed tests, and bounded live authenticated-user/group subscription discovery; docs/evidence/pulse-live-contract.md
+- Validation or blocker: User-scoped paging and enrichment covered by HTTP-backed tests; group-derived inclusion observed in one controlled Tableau Cloud case
+- Blocker ID: None
+- Command binding: `tadx pulse subscription list`
 
 ### `search.run`
 

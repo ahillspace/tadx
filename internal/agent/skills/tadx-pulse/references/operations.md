@@ -14,6 +14,19 @@ Use `tadx pulse metric list --definition-id <definition-luid> --full` for comple
 Use `--all` for all bounded rows or `--limit` for a bounded page; remove `--limit` from an all-rows request instead of combining the flags.
 Metric and user selectors must be exact nonempty LUID tokens without embedded whitespace; datasource field IDs and captions follow their own schema rules.
 
+## Find the authenticated user's subscriptions
+
+Use `tadx pulse subscription list --environment <alias>` to query subscriptions for the user authenticated by the selected environment's PAT.
+The command resolves that user from the sign-in response and retrieves only the returned metrics and their definitions.
+Do not enumerate site definitions and inspect every metric's followers to answer this question.
+Subscription discovery returns saved configuration, not current metric values or insights.
+
+Keep subscription IDs distinct from metric IDs and preserve separate direct-user and group relationships when Tableau returns them.
+Group membership is not expanded locally, and the user-filtered API documentation does not establish complete group-derived coverage.
+A controlled live test confirmed that Tableau can return a group-derived subscription for a member of that group.
+Do not promise that the result includes every metric followed through a group without supporting evidence.
+Retain confirmed subscription identities when metadata enrichment is incomplete, and report the coverage limitation rather than treating missing details as absent subscriptions.
+
 ## Pull and assess edits
 
 Pull writes a local artifact; `--preview` checks bundle scope and local conflicts without writing it.

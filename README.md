@@ -60,7 +60,8 @@ See [GitHub releases](https://github.com/ahillspace/tadx/releases/latest) for th
 Run `tadx update --check` to check for a newer release without changing the installation.
 Run `tadx update` to update the CLI and refresh its bundled Guidance.
 Updates replace TADX-owned skill packages, so keep personal extensions in a separate skill.
-See [Getting started](docs/getting-started.md#maintain-the-installation) for explicit agent targets, custom installation directories, profile controls, updates, and removal.
+See [uninstall instructions](docs/getting-started.md#uninstall-tadx) to remove the CLI or bundled Guidance.
+See [installation maintenance](docs/getting-started.md#maintain-the-installation) for explicit agent targets, custom installation directories, profile controls, and updates.
 
 ## First steps
 

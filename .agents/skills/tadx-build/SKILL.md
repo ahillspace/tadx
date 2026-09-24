@@ -58,7 +58,7 @@ Default output is an explicit bounded compact TOON projection: status, exact ide
 Use `details: "--full"` immediately before `help[]` when the same command has additional bounded detail.
 `--full` changes presentation only; it never changes authentication, requests, pagination, mutations, or redaction.
 Use separate compact/full golden fixtures and retain fixed scalar list columns, including empty values, at every limit.
-Report `more_available` and incomplete coverage honestly; keep opaque cursors internal in both output modes.
+Report `more_available` and incomplete coverage honestly; keep opaque upstream continuation tokens internal while preserving documented user-facing cursor selectors.
 Previews include the exact target and every consequential setting, including inherited settings and null handling; provider envelopes belong in full output.
 Preserve confirmed partial results and exact created identities through action, batch, error, and renderer boundaries when verification fails.
 An unknown write outcome is not success and must not encourage an unsafe retry.
@@ -102,13 +102,14 @@ When changing arguments, test canonical and alias state, repeated values, and ex
 Follow [the command structure standard](../../../docs/command-structure.md) for root/category navigation and complete resource help; verb help mirrors its owning reference.
 Keep syntax, flags, constraints, defaults, and examples in help, not duplicated in installed Guidance.
 The root skill teaches efficient discovery; optional references explain Tableau concepts and task-specific judgment, not command manuals or workarounds for CLI defects.
-Never hand-edit generated files or `CHANGELOG.md`; leave the maintainer's capability-map HTML alone unless assigned.
+For every new or materially changed command, use [the command integration checklist](references/command-integration.md) to update all affected registrations, help, documentation, Guidance, generated capability outputs, website packaging, policy coverage, and acceptance checks.
+Never hand-edit generated files or `CHANGELOG.md`; regenerate the capability map's data block while preserving its authored layout and styling.
 
 ```text
 go generate ./...
 ```
 
-The generator directive updates both `docs/reference/capabilities.md` and `docs/reference/capabilities.json`.
+The generator directive updates `docs/reference/capabilities.md`, `docs/reference/capabilities.json`, and the data block in `docs/reference/capability-map.html`.
 
 ## Verify and hand off
 

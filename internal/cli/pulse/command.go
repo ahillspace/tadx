@@ -21,6 +21,7 @@ import (
 	metricinspect "github.com/ahillspace/tadx/actions/pulse/metric/inspect"
 	metriclist "github.com/ahillspace/tadx/actions/pulse/metric/list"
 	metricunfollow "github.com/ahillspace/tadx/actions/pulse/metric/unfollow"
+	subscriptionlist "github.com/ahillspace/tadx/actions/pulse/subscription/list"
 	"github.com/ahillspace/tadx/internal/cli/clierr"
 	"github.com/spf13/cobra"
 )
@@ -92,6 +93,11 @@ type MetricUnfollower interface {
 	UnfollowPulseMetric(context.Context, metricunfollow.Input, bool) (metricunfollow.Output, error)
 }
 
+// SubscriptionLister lists the authenticated user's Pulse subscriptions.
+type SubscriptionLister interface {
+	ListPulseSubscriptions(context.Context, subscriptionlist.Input) (subscriptionlist.Output, error)
+}
+
 // Dependencies contains Pulse command wiring.
 type Dependencies struct {
 	DefinitionLister    DefinitionLister
@@ -107,6 +113,7 @@ type Dependencies struct {
 	MetricFollowers     MetricFollowers
 	MetricFollower      MetricFollower
 	MetricUnfollower    MetricUnfollower
+	SubscriptionLister  SubscriptionLister
 	Renderer            Renderer
 }
 
@@ -138,7 +145,31 @@ func New(deps Dependencies) *cobra.Command {
 		newMetricFollow(deps),
 		newMetricUnfollow(deps),
 	)
-	command.AddCommand(definition, metric)
+	subscription := &cobra.Command{Use: "subscription", Short: "Inspect your Pulse subscriptions"}
+	subscription.AddCommand(newSubscriptionList(deps))
+	command.AddCommand(definition, metric, subscription)
+	return command
+}
+
+func newSubscriptionList(deps Dependencies) *cobra.Command {
+	var input subscriptionlist.Input
+	command := actionCommand("list", "List your Pulse subscriptions and saved metric configurations.", "pulse.subscription.list", func(command *cobra.Command) error {
+		if command.Flags().Changed("limit") && (input.Limit < 1 || input.Limit > 10000) {
+			return usage("pulse.subscription.list", "--limit must be between 1 and 10000")
+		}
+		result, err := deps.SubscriptionLister.ListPulseSubscriptions(command.Context(), input)
+		if err != nil {
+			return clierr.WithOutput(result, err)
+		}
+		return deps.Renderer.Render(result)
+	})
+	command.Flags().StringVar(&input.Environment, "environment", "", "exact Tableau environment alias; defaults to the configured read environment")
+	command.Flags().IntVar(&input.Limit, "limit", 0, "maximum subscriptions to return from 1 through 10000; defaults to 25")
+	command.Flags().StringVar(&input.Cursor, "cursor", "", "opaque continuation cursor")
+	_ = command.Flags().MarkHidden("cursor")
+	command.Flags().BoolVar(&input.All, "all", false, "return all subscriptions within 100 pages and 10000 records; cannot combine with --limit")
+	command.MarkFlagsMutuallyExclusive("all", "limit")
+	command.MarkFlagsMutuallyExclusive("all", "cursor")
 	return command
 }
 

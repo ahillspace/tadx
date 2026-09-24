@@ -239,6 +239,115 @@ func (c *Client) ListSubscriptions(ctx context.Context, metricLUID string) ([]Su
 	return items, nil
 }
 
+// ListUserSubscriptions returns one authenticated-user-filtered Pulse page.
+func (c *Client) ListUserSubscriptions(ctx context.Context, userLUID string, input PageRequest) (SubscriptionPage, error) {
+	if strings.TrimSpace(userLUID) == "" {
+		return SubscriptionPage{}, errors.New("Pulse user LUID is required")
+	}
+	query, err := pageQuery(input)
+	if err != nil {
+		return SubscriptionPage{}, err
+	}
+	query.Set("user_id", userLUID)
+	response, err := c.do(ctx, http.MethodGet, pulsePath+"/subscriptions", query, nil, "", "", "pulse.subscription.list")
+	if err != nil {
+		return SubscriptionPage{}, err
+	}
+	var envelope struct {
+		Subscriptions []json.RawMessage `json:"subscriptions"`
+		NextPageToken string            `json:"next_page_token"`
+	}
+	if err := json.Unmarshal(response.Body, &envelope); err != nil || envelope.Subscriptions == nil {
+		return SubscriptionPage{}, protocol("pulse.subscription.list", response, errors.New("Pulse subscription response requires a subscriptions array"), true)
+	}
+	items := make([]Subscription, len(envelope.Subscriptions))
+	for i, raw := range envelope.Subscriptions {
+		var record struct {
+			MetricLUID   string `json:"metric_id"`
+			Subscription struct {
+				MetricLUID string `json:"metric_id"`
+			} `json:"subscription"`
+		}
+		if err := json.Unmarshal(raw, &record); err != nil {
+			return SubscriptionPage{}, protocol("pulse.subscription.list", response, err, true)
+		}
+		metricLUID := first(record.MetricLUID, record.Subscription.MetricLUID)
+		if metricLUID == "" {
+			return SubscriptionPage{}, protocol("pulse.subscription.list", response, errors.New("Pulse subscription omitted metric identity"), true)
+		}
+		item, err := decodeSubscription(raw, metricLUID, response.TableauRequestID)
+		if err != nil || item.LUID == "" {
+			return SubscriptionPage{}, protocol("pulse.subscription.list", response, errors.New("Pulse subscription omitted subscription or follower identity"), true)
+		}
+		items[i] = item
+	}
+	return SubscriptionPage{Subscriptions: items, NextPageToken: envelope.NextPageToken, TableauRequestID: response.TableauRequestID}, nil
+}
+
+// BatchGetMetrics reads only the supplied exact metric IDs.
+func (c *Client) BatchGetMetrics(ctx context.Context, ids []string) ([]Metric, error) {
+	if len(ids) == 0 || len(ids) > 100 {
+		return nil, errors.New("Pulse metric batch requires 1 through 100 IDs")
+	}
+	body, err := json.Marshal(struct {
+		IDs []string `json:"metric_ids"`
+	}{ids})
+	if err != nil {
+		return nil, err
+	}
+	response, err := c.do(ctx, http.MethodPost, pulsePath+"/metrics:batchGet", nil, body, "application/json", "", "pulse.subscription.list")
+	if err != nil {
+		return nil, err
+	}
+	var envelope struct {
+		Metrics []json.RawMessage `json:"metrics"`
+	}
+	if err := json.Unmarshal(response.Body, &envelope); err != nil || envelope.Metrics == nil {
+		return nil, protocol("pulse.subscription.list", response, errors.New("Pulse metric batch requires a metrics array"), true)
+	}
+	items := make([]Metric, len(envelope.Metrics))
+	for i, raw := range envelope.Metrics {
+		item, err := decodeMetric(raw, response.TableauRequestID)
+		if err != nil {
+			return nil, protocol("pulse.subscription.list", response, err, true)
+		}
+		items[i] = item
+	}
+	return items, nil
+}
+
+// BatchGetDefinitions reads only the supplied exact definition IDs.
+func (c *Client) BatchGetDefinitions(ctx context.Context, ids []string) ([]Definition, error) {
+	if len(ids) == 0 || len(ids) > 100 {
+		return nil, errors.New("Pulse definition batch requires 1 through 100 IDs")
+	}
+	body, err := json.Marshal(struct {
+		IDs []string `json:"definition_ids"`
+	}{ids})
+	if err != nil {
+		return nil, err
+	}
+	response, err := c.do(ctx, http.MethodPost, pulsePath+"/definitions:batchGet", url.Values{"view": {"DEFINITION_VIEW_BASIC"}}, body, "application/json", "", "pulse.subscription.list")
+	if err != nil {
+		return nil, err
+	}
+	var envelope struct {
+		Definitions []json.RawMessage `json:"definitions"`
+	}
+	if err := json.Unmarshal(response.Body, &envelope); err != nil || envelope.Definitions == nil {
+		return nil, protocol("pulse.subscription.list", response, errors.New("Pulse definition batch requires a definitions array"), true)
+	}
+	items := make([]Definition, len(envelope.Definitions))
+	for i, raw := range envelope.Definitions {
+		item, err := decodeDefinition(raw, response.TableauRequestID)
+		if err != nil {
+			return nil, protocol("pulse.subscription.list", response, err, true)
+		}
+		items[i] = item
+	}
+	return items, nil
+}
+
 // CreateSubscription converges one exact user or group follow relationship.
 func (c *Client) CreateSubscription(ctx context.Context, input CreateSubscriptionRequest) (CreateSubscriptionResult, error) {
 	type follower struct {

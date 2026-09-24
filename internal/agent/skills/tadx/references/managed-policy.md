@@ -20,6 +20,7 @@ An absent default file is `unmanaged` only when there is no platform locator.
 An invalid locator or missing located policy fails closed.
 Windows verifies file and immediate-directory ownership/DACLs and path integrity; Unix requires root ownership and no group or world write access throughout the path.
 Windows ancestor permissions are warning-only.
+Ancestor warnings appear in policy installation receipts and `tadx policy status`, not on ordinary commands.
 When `state: active`, `protected: true` with `path_protected: false` means the loaded policy is enforced but its path may permit substitution, including an older, more permissive policy.
 Check `state` separately: the protection flags do not establish valid JSON or an active policy.
 The warning does not disable the loaded policy's restrictions or authorize changes to machine permissions, the policy, or saved site consent.

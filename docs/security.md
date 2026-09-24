@@ -79,6 +79,7 @@ The default template is `superuser`; standard templates remain customizable by e
 Unix checks require root ownership and no group or world write access across the entire path.
 Windows checks ownership and modification rights on the policy file, immediate TADX directory, and registry locator; path integrity and reparse checks remain in force.
 Windows also inspects ancestor ownership and permissions, including the drive root, but reports unsafe or unverifiable ancestor protection as a warning rather than blocking the policy.
+These warnings appear in policy installation receipts and `tadx policy status`, not on ordinary commands.
 An ordinary user with replacement rights above the Windows installation directory can substitute another valid administrator-owned policy, including an older, more permissive one, between commands.
 The policy currently loaded is still enforced; the warning means its location is not a reliable protection against substitution.
 TADX does not automatically change ancestor permissions, and a warning does not authorize an agent to change them.

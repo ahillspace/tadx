@@ -289,7 +289,8 @@ The full status adds the allowlisted IDs and each protection check.
 
 On Windows, `protected` describes the policy file and its immediate directory; `path_protected` also requires the ancestor protection checks to pass.
 An active policy can report `protected: true`, `path_protected: false`, and ancestor warnings without becoming an error or changing its capability and mutation restrictions.
-Warnings appear in compact and full status and install receipts, including partial installation receipts after a confirmed destination write; ordinary commands also report them on stderr without altering JSON stdout.
+Ancestor warnings appear in compact and full policy status and install receipts, including partial installation receipts after a confirmed destination write.
+Ordinary commands do not repeat these warnings; policy enforcement and operation errors remain unchanged.
 Installation warnings describe the confirmed destination, which may differ from the currently active policy location.
 This diagnostic readback does not establish activation or replace the original installation error.
 On Unix, ancestor protection remains a requirement, not a warning-only check.

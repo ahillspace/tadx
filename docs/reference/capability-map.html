@@ -4217,6 +4217,35 @@ h1 { font-weight: 540; }
     "raw_capable": false
   },
   {
+    "id": "pulse.subscription.list",
+    "surface": "tadx pulse subscription list",
+    "outcome": "List the authenticated user's bounded Pulse subscriptions with exact metric configuration.",
+    "type": "find",
+    "disposition": "ship",
+    "owner": "cli",
+    "selectors": "Authenticated user on the selected environment and site; --limit, --cursor, or --all",
+    "availability": "Tableau Cloud / Pulse only",
+    "local_write": false,
+    "remote_mutation": false,
+    "administrative": false,
+    "supports_preview": false,
+    "supports_batch": false,
+    "safety_guard": "User-scoped token paging; enrich only returned metric IDs; preserve partial identities; group-derived coverage remains unverified",
+    "artifact_effect": "None",
+    "upstream_operation": "GET /api/-/pulse/subscriptions?user_id={user_id}",
+    "evidence": "Tableau REST API contract, HTTP-backed tests, and bounded live authenticated-user/group subscription discovery; docs/evidence/pulse-live-contract.md",
+    "evidence_level": "live-verified",
+    "verification": "ready",
+    "implementation": "implemented",
+    "validation": "User-scoped paging and enrichment covered by HTTP-backed tests; group-derived inclusion observed in one controlled Tableau Cloud case",
+    "command_path": [
+      "pulse",
+      "subscription",
+      "list"
+    ],
+    "raw_capable": false
+  },
+  {
     "id": "search.run",
     "surface": "tadx search [term]",
     "outcome": "Search native Tableau content plus administration and Pulse resources through one bounded interface.",
