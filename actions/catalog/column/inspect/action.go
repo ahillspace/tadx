@@ -71,7 +71,7 @@ func (a *Action) Execute(ctx context.Context, in Input) (Output, error) {
 	if err := ValidateInput(in); err != nil {
 		return Output{}, err
 	}
-	out := Output{Status: "inspected", Environment: in.Environment, Site: in.Site}
+	out := Output{Status: "failed", Environment: in.Environment, Site: in.Site}
 	if a == nil || a.reader == nil {
 		return out, usage("catalog column inspection is not configured")
 	}
@@ -79,13 +79,12 @@ func (a *Action) Execute(ctx context.Context, in Input) (Output, error) {
 	if in.ID != "" {
 		item, readErr := a.reader.GetColumn(ctx, in.TableID, in.ID)
 		err = readErr
-		if err == nil {
+		if err == nil && item.LUID != in.ID {
+			err = fmt.Errorf("returned column LUID does not match requested identity")
+		} else if item.LUID == in.ID && item.Table.LUID == in.TableID {
 			out.Item = &item
 		}
-		if err == nil && out.Item.LUID != in.ID {
-			err = fmt.Errorf("returned column LUID does not match requested identity")
-		}
-		if err == nil && out.Item.Table.LUID != in.TableID {
+		if err == nil && item.Table.LUID != in.TableID {
 			err = fmt.Errorf("returned column parent does not match requested table")
 		}
 	} else {
@@ -93,17 +92,22 @@ func (a *Action) Execute(ctx context.Context, in Input) (Output, error) {
 		page, err = a.reader.DiscoverColumns(ctx, value.MetadataQuery{MetadataID: in.MetadataID, Limit: 2})
 		out.ObservedAt = page.ObservedAt
 		out.RequestID = page.TableauRequestID
+		if len(page.Items) == 1 && page.Items[0].MetadataID == in.MetadataID {
+			out.Item = &page.Items[0]
+		}
 		if err == nil {
-			if len(page.Items) != 1 || !page.Complete || page.NextCursor != "" || page.Items[0].MetadataID != in.MetadataID {
+			if out.Item == nil || !page.Complete || page.NextCursor != "" {
 				err = fmt.Errorf("metadata selector did not resolve exactly one complete identity")
-			} else {
-				out.Item = &page.Items[0]
 			}
 		}
 	}
 	if err != nil {
+		if out.Item != nil {
+			out.Status = "partial"
+		}
 		return out, failure(in, err)
 	}
+	out.Status = "inspected"
 	return out, nil
 }
 func usage(s string) error {

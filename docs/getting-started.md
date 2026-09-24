@@ -117,6 +117,16 @@ If an older configuration contains `catalog_max_concurrency`, rename that key to
 
 ## Preview remote changes
 
+### Publish workbook dependencies
+
+A workbook can reference independently published datasources, even when its file is a packaged `.twbx`.
+Before publishing, confirm those datasources exist at the destination and the workbook references identify them correctly.
+Publish missing referenced datasources first, then the workbook.
+Workbook publication does not publish dependencies automatically or rebind references to a different site.
+Pulling with `--include-pds` saves direct datasource dependencies as separate artifacts; it does not make the workbook self-contained.
+
+### Check mutation consent
+
 Remote mutations are disabled unless saved consent is enabled for the selected server and exact site.
 Permission to perform a Tableau operation does not itself authorize changing site consent.
 Check saved consent for all configured environments with:

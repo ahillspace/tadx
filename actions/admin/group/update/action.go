@@ -36,8 +36,9 @@ type Group struct {
 	MutationStatus      string   `json:"-"`
 }
 type Request struct {
-	Name, MinimumSiteRole *string
-	ExternalUserEnabled   *bool
+	Name                *string `json:"name,omitempty"`
+	MinimumSiteRole     *string `json:"minimum_site_role,omitempty"`
+	ExternalUserEnabled *bool   `json:"external_user_enabled,omitempty"`
 }
 type Change struct {
 	Field  string `json:"field"`
@@ -54,6 +55,7 @@ type Plan struct {
 	Environment string          `json:"environment"`
 	Site        string          `json:"site"`
 	Target      Group           `json:"target"`
+	Requested   Request         `json:"requested"`
 	Changes     []Change        `json:"changes"`
 	Membership  *MembershipDiff `json:"membership,omitempty"`
 	NoOp        bool            `json:"no_op"`
@@ -85,15 +87,17 @@ type Output struct {
 	Help   []string `json:"help"`
 }
 type CompactPlan struct {
-	Mode        string `json:"mode"`
-	Operation   string `json:"operation"`
-	Environment string `json:"environment"`
-	Site        string `json:"site"`
-	GroupLUID   string `json:"group_luid"`
-	ChangeCount int    `json:"change_count"`
-	AddCount    int    `json:"add_count"`
-	RemoveCount int    `json:"remove_count"`
-	NoOp        bool   `json:"no_op"`
+	Mode        string   `json:"mode"`
+	Operation   string   `json:"operation"`
+	Environment string   `json:"environment"`
+	Site        string   `json:"site"`
+	GroupLUID   string   `json:"group_luid"`
+	Requested   *Request `json:"requested,omitempty"`
+	Changes     []Change `json:"changes,omitempty"`
+	ChangeCount int      `json:"change_count"`
+	AddCount    int      `json:"add_count"`
+	RemoveCount int      `json:"remove_count"`
+	NoOp        bool     `json:"no_op"`
 }
 type CompactResult struct {
 	Plan    CompactPlan            `json:"plan"`
@@ -125,7 +129,12 @@ func (o Output) CompactOutput() any {
 		result.AddedUserLUIDs, result.AddedUserLUIDsOmitted = boundedMemberIDs(o.Result.AddedUserLUIDs)
 		result.RemovedUserLUIDs, result.RemovedUserLUIDsOmitted = boundedMemberIDs(o.Result.RemovedUserLUIDs)
 	}
-	return CompactResult{Plan: CompactPlan{Mode: o.Plan.Mode, Operation: o.Plan.Operation, Environment: o.Plan.Environment, Site: o.Plan.Site, GroupLUID: o.Plan.Target.LUID, ChangeCount: len(o.Plan.Changes), AddCount: add, RemoveCount: remove, NoOp: o.Plan.NoOp}, Result: result, Details: "--full", Help: o.Help}
+	plan := CompactPlan{Mode: o.Plan.Mode, Operation: o.Plan.Operation, Environment: o.Plan.Environment, Site: o.Plan.Site, GroupLUID: o.Plan.Target.LUID, ChangeCount: len(o.Plan.Changes), AddCount: add, RemoveCount: remove, NoOp: o.Plan.NoOp}
+	if o.Plan.Mode == "preview" {
+		plan.Requested = new(o.Plan.Requested)
+		plan.Changes = o.Plan.Changes
+	}
+	return CompactResult{Plan: plan, Result: result, Details: "--full", Help: o.Help}
 }
 func boundedMemberIDs(ids []string) ([]string, int) {
 	const limit = 10
@@ -195,7 +204,7 @@ func (a *Action) Execute(ctx context.Context, in Input, preview bool) (Output, e
 		membership = &diff
 	}
 	noOp := len(changes) == 0 && (membership == nil || (len(membership.Add) == 0 && len(membership.Remove) == 0))
-	out := Output{Plan: Plan{Mode: "preview", Operation: "admin.group.update", Environment: in.Environment, Site: in.Site, Target: group, Changes: changes, Membership: membership, NoOp: noOp}, Help: []string{"Run without --preview to update this exact group and converge direct membership."}}
+	out := Output{Plan: Plan{Mode: "preview", Operation: "admin.group.update", Environment: in.Environment, Site: in.Site, Target: group, Requested: Request{in.Name, in.MinimumSiteRole, in.ExternalUserEnabled}, Changes: changes, Membership: membership, NoOp: noOp}, Help: []string{"Run without --preview to update this exact group and converge direct membership."}}
 	if preview {
 		return out, nil
 	}

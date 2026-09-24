@@ -190,7 +190,7 @@ func newProjectList(deps Dependencies) *cobra.Command {
 	command.Flags().StringVar(&input.Environment, "environment", "", "exact environment alias; defaults to the configured read environment")
 	command.Flags().StringVar(&input.Name, "name", "", "exact project-name filter")
 	command.Flags().StringVar(&input.ParentLUID, "parent-id", "", "authoritative direct parent project LUID filter")
-	command.Flags().StringVar(&input.OwnerName, "owner", "", "exact owner-name filter")
+	command.Flags().StringVar(&input.OwnerName, "owner", "", "exact owner name or listed owner LUID filter")
 	command.Flags().BoolVar(&topLevel, "top-level", false, "filter by top-level project status")
 	command.Flags().BoolVar(&input.All, "all", false, "return all matching records, up to 10000; cannot combine with --limit")
 	command.Flags().IntVar(&input.Limit, "limit", 0, "maximum projects to render, from 1 to 10000 (default 25)")

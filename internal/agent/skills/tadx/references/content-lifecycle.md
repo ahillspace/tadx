@@ -5,6 +5,9 @@
 A workbook can contain embedded datasource definitions or reference independently published datasources (PDS).
 A packaged workbook is not necessarily self-contained: its PDS references can still point to the source site.
 Workbook pull includes extracts by default; acquiring direct PDS dependencies produces separate sibling artifacts, not an embedded or recursively rewritten workbook.
+Before publishing a workbook, confirm that its referenced published datasources exist at the destination and that its references identify them correctly.
+Publish missing referenced datasources first, then the dependent workbook.
+Workbook publish does not publish those dependencies automatically.
 Publishing those datasources elsewhere does not itself rebind the workbook to their new identities.
 Inspect dependency and portability metadata before promising a cross-site working copy; do not treat downloaded files as proof that every connection will work at the destination.
 

@@ -442,7 +442,7 @@ func referenceActionNotes(action *cobra.Command) []string {
 		"env add":                   {"--site is the URL slug, not display name. PAT flags name shell variables, never contain credentials."},
 		"env update":                {"--clear-* restores defaults or clears the corresponding value. Retargeting does not move content."},
 		"env default":               {"Changes the read default, not write targets; with multiple environments, remote writes need --environment."},
-		"search":                    {"Term or --type required; type omitted: all types. No term: bounded inventory; term: live search or --cache."},
+		"search":                    {"Term or --type required; type omitted: all types. No term: bounded inventory; term: live search or --cache.", "--type admin includes users and groups. Use --type user or --type group to select one resource type."},
 		"catalog search":            {"Unique types; default types: database+table. Column requires --table-id.", "--all: <=10000; results can be incomplete."},
 		"catalog audit":             {"Unique checks; default: descriptions+tags. --direct-only: field-owned descriptions, excluding inherited.", "Metadata coverage, not data values; limit: assessed assets."},
 		"catalog lineage pull":      {"--name requires --project; --id excludes both. --overwrite replaces dirty local metadata.", "Saves lineage.json, not native files. Physical nodes use Metadata API IDs; --full shows bounded nodes/edges."},

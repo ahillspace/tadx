@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"runtime"
 	"slices"
 	"strings"
@@ -205,9 +206,39 @@ func TestCLIProcessShorthand(t *testing.T) {
 }
 
 type processResult struct {
-	exitCode int
-	stdout   string
-	stderr   string
+	exitCode       int
+	stdout         string
+	stderr         string
+	policyWarnings []string
+}
+
+// Keep host policy diagnostics visible to tests while separating the one known
+// ancestor warning from stderr assertions about command output.
+var ambientAncestorWarning = regexp.MustCompile(`^Managed policy path warning: ancestor "[^"\r\n]+" is not verified as protected \([^()\r\n]+\)\. The policy path may be replaced and a different policy substituted\. Ask an administrator to move the policy to a protected path or review this ancestor's ACL; run tadx policy status --full for all checks\.$`)
+
+func separateAmbientPolicyWarnings(stderr string) (string, []string) {
+	var other strings.Builder
+	var warnings []string
+	for line := range strings.SplitAfterSeq(stderr, "\n") {
+		if line == "" {
+			continue
+		}
+		text := strings.TrimSuffix(strings.TrimSuffix(line, "\n"), "\r")
+		if ambientAncestorWarning.MatchString(text) {
+			warnings = append(warnings, text)
+			continue
+		}
+		other.WriteString(line)
+	}
+	return other.String(), warnings
+}
+
+func TestSeparateAmbientPolicyWarningsKeepsOtherStderr(t *testing.T) {
+	warning := `Managed policy path warning: ancestor "C:\\" is not verified as protected (DACL grants modification rights to a non-administrator principal). The policy path may be replaced and a different policy substituted. Ask an administrator to move the policy to a protected path or review this ancestor's ACL; run tadx policy status --full for all checks.`
+	other, warnings := separateAmbientPolicyWarnings(warning + "\nordinary diagnostic\n" + warning + " extra\n")
+	if len(warnings) != 1 || warnings[0] != warning || other != "ordinary diagnostic\n"+warning+" extra\n" {
+		t.Fatalf("other=%q warnings=%q", other, warnings)
+	}
 }
 
 // Real CLI subprocess smoke tests need a hang guard, not a product deadline.
@@ -277,7 +308,8 @@ func runCLI(t *testing.T, binary string, args []string, environment map[string]s
 		}
 		exitCode = exitError.ExitCode()
 	}
-	return processResult{exitCode: exitCode, stdout: stdout.String(), stderr: stderr.String()}
+	ordinaryStderr, policyWarnings := separateAmbientPolicyWarnings(stderr.String())
+	return processResult{exitCode: exitCode, stdout: stdout.String(), stderr: ordinaryStderr, policyWarnings: policyWarnings}
 }
 
 func environmentWithout(name string) []string {

@@ -600,6 +600,12 @@ func RegisteredCommands(root *cobra.Command) ([]RegisteredCommand, error) {
 func setFlagErrorHandlers(command *cobra.Command) {
 	originalArgs := command.Args
 	command.Args = func(current *cobra.Command, args []string) error {
+		if limit := current.Flags().Lookup("limit"); limit != nil && limit.Changed && limit.Value.Type() == "int" {
+			value, err := current.Flags().GetInt("limit")
+			if err == nil && value == 0 {
+				return withUsageRecovery(current, clierr.Usage(current.CommandPath(), errors.New("--limit must be greater than zero when supplied")))
+			}
+		}
 		if originalArgs != nil {
 			if err := originalArgs(current, args); err != nil {
 				return withUsageRecovery(current, err)
@@ -622,6 +628,15 @@ func setFlagErrorHandlers(command *cobra.Command) {
 	for _, child := range command.Commands() {
 		setFlagErrorHandlers(child)
 	}
+}
+
+// CommandUsageError gives command discovery failures the same recovery contract
+// as parsed flag and argument errors.
+func CommandUsageError(command *cobra.Command, cause error) error {
+	if command == nil {
+		return clierr.Usage("cli", cause)
+	}
+	return withUsageRecovery(command, clierr.Usage(command.CommandPath(), cause))
 }
 
 // usageRecovery derives bounded recovery from the actual command tree, not

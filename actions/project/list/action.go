@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"github.com/ahillspace/tadx/internal/commandhint"
 	"github.com/ahillspace/tadx/internal/paging"
+	"regexp"
 
 	"github.com/ahillspace/tadx/internal/errs"
 )
@@ -19,6 +20,13 @@ const (
 	cursorVersion   = 1
 	maxCursorLength = 2048
 )
+
+var ownerLUIDPattern = regexp.MustCompile(`(?i)^[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}$`)
+
+const ownerLUIDCursor = "owner_luid"
+
+// MayBeOwnerLUID recognizes the UUID form Tableau returns for owner LUIDs.
+func MayBeOwnerLUID(value string) bool { return ownerLUIDPattern.MatchString(value) }
 
 // Reader is the action-owned project listing seam.
 type Reader interface {
@@ -37,7 +45,11 @@ func (a *Action) Execute(ctx context.Context, input Input) (Output, error) {
 		return Output{}, err
 	}
 	if input.All {
-		return a.collectAll(ctx, input)
+		out, err := a.collectAll(ctx, input)
+		if err == nil && len(out.Projects) == 0 && ownerLUIDPattern.MatchString(input.OwnerName) {
+			return a.listByOwnerLUID(ctx, input)
+		}
+		return out, err
 	}
 	if a == nil || a.reader == nil {
 		return Output{}, errors.New("project list reader is not configured")
@@ -49,6 +61,9 @@ func (a *Action) Execute(ctx context.Context, input Input) (Output, error) {
 	pageNumber, pageSize, snapshotCursor, err := pageSelection(input.Cursor, input.Limit, filterFingerprint)
 	if err != nil {
 		return Output{}, err
+	}
+	if snapshotCursor == ownerLUIDCursor && ownerLUIDPattern.MatchString(input.OwnerName) {
+		return a.listByOwnerLUID(ctx, input)
 	}
 	request := PageRequest{PageNumber: pageNumber, PageSize: pageSize, Name: input.Name, ParentLUID: input.ParentLUID, OwnerName: input.OwnerName, TopLevel: input.TopLevel, SnapshotCursor: snapshotCursor}
 	page, err := a.readWindow(ctx, request)
@@ -65,12 +80,68 @@ func (a *Action) Execute(ctx context.Context, input Input) (Output, error) {
 			return Output{}, err
 		}
 	}
-	return Output{
+	out := Output{
 		Status: "listed", Environment: input.Environment, Site: input.Site, Projects: page.Projects,
 		Page:      OutputPage{Returned: len(page.Projects), Total: page.Total, Limit: page.Size, NextCursor: next, MoreAvailable: next != "" || (page.SuppressContinuation && len(page.Projects) < page.Total)},
 		RequestID: page.RequestID,
 		Help:      listHelp(input.Environment, page.Projects),
-	}, nil
+	}
+	if page.Total == 0 && ownerLUIDPattern.MatchString(input.OwnerName) {
+		return a.listByOwnerLUID(ctx, input)
+	}
+	return out, nil
+}
+
+// Tableau's project list supports ownerName but not owner LUID filtering.
+// When the documented name filter finds no rows, a UUID-shaped selector is
+// resolved against a complete inventory using authoritative owner LUIDs.
+func (a *Action) listByOwnerLUID(ctx context.Context, input Input) (Output, error) {
+	if a == nil || a.reader == nil {
+		return Output{}, errors.New("project list reader is not configured")
+	}
+	if input.Cache {
+		return Output{}, errs.New(errs.KindUsage, "owner LUID filtering requires live project inventory; remove --cache")
+	}
+	filterFingerprint, err := projectFilterFingerprint(input)
+	if err != nil {
+		return Output{}, err
+	}
+	pageNumber, pageSize, _, err := pageSelection(input.Cursor, input.Limit, filterFingerprint)
+	if err != nil && !input.All {
+		return Output{}, err
+	}
+	requestID := ""
+	items, err := paging.Collect(ctx, func(ctx context.Context, state paging.State) (paging.Page[Project], error) {
+		page, readErr := a.reader.ListProjects(ctx, PageRequest{PageNumber: state.Number, PageSize: state.Size, SnapshotCursor: state.Token, Name: input.Name, ParentLUID: input.ParentLUID, TopLevel: input.TopLevel})
+		requestID = page.RequestID
+		return paging.Page[Project]{Number: page.Number, Size: page.Size, Total: page.Total, Items: page.Projects, Token: page.SnapshotCursor}, readErr
+	}, func(item Project) string { return item.LUID })
+	if err != nil {
+		return Output{}, err
+	}
+	owned := make([]Project, 0)
+	for _, item := range items {
+		if item.OwnerLUID == input.OwnerName {
+			owned = append(owned, item)
+		}
+	}
+	if input.All {
+		return Output{Status: "listed", Environment: input.Environment, Site: input.Site, Projects: owned, Page: OutputPage{Returned: len(owned), Total: len(owned), Limit: maxLimit}, RequestID: requestID, Help: listHelp(input.Environment, owned)}, nil
+	}
+	start := len(owned)
+	if pageNumber <= len(owned)/pageSize+1 {
+		start = min((pageNumber-1)*pageSize, len(owned))
+	}
+	end := min(start+pageSize, len(owned))
+	page := owned[start:end]
+	next := ""
+	if end < len(owned) {
+		next, err = encodeCursor(pageNumber+1, pageSize, filterFingerprint, ownerLUIDCursor)
+		if err != nil {
+			return Output{}, err
+		}
+	}
+	return Output{Status: "listed", Environment: input.Environment, Site: input.Site, Projects: page, Page: OutputPage{Returned: len(page), Total: len(owned), Limit: pageSize, NextCursor: next, MoreAvailable: next != ""}, RequestID: requestID, Help: listHelp(input.Environment, page)}, nil
 }
 
 func pageSelection(value string, requested int, expectedFilter string) (int, int, string, error) {

@@ -95,9 +95,13 @@ func (a *Action) Execute(ctx context.Context, input Input) (Output, error) {
 			counts.Info++
 		}
 	}
-	summary := fmt.Sprintf("%d checks completed: %d passed, %d warnings, %d failed.", len(checks), counts.Pass, counts.Warn, counts.Fail)
+	warningLabel := "warnings"
+	if counts.Warn == 1 {
+		warningLabel = "warning"
+	}
+	summary := fmt.Sprintf("%d checks completed: %d passed, %d %s, %d failed.", len(checks), counts.Pass, counts.Warn, warningLabel, counts.Fail)
 	if counts.Blocked != 0 || counts.Info != 0 {
-		summary = fmt.Sprintf("%d checks completed: %d passed, %d informational, %d warnings, %d failed; %d blocked.", len(checks)-counts.Blocked, counts.Pass, counts.Info, counts.Warn, counts.Fail, counts.Blocked)
+		summary = fmt.Sprintf("%d checks completed: %d passed, %d informational, %d %s, %d failed; %d blocked.", len(checks)-counts.Blocked, counts.Pass, counts.Info, counts.Warn, warningLabel, counts.Fail, counts.Blocked)
 	}
 	return Output{Status: status, Scope: scope, Counts: counts, Summary: summary, Checks: checks, Help: []string{commandhint.Target(scope.Environment, scope.Workspace, "doctor", "--full")}}, nil
 }

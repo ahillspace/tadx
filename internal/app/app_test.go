@@ -70,7 +70,7 @@ func TestRunJSONFlagLastValueAndAlias(t *testing.T) {
 		{name: "alias", args: []string{"capability", "list", "--jsn"}, json: true},
 		{name: "last value", args: []string{"capability", "list", "--json", "--json=false"}},
 		{name: "after inline value", args: []string{"capability", "list", "--config=portable/config.yaml", "--json"}, json: true},
-		{name: "value is not mode", args: []string{"capability", "list", "--domain", "--json=true"}},
+		{name: "value is not mode", args: []string{"capability", "list", "--domain=--json=true"}},
 		{name: "numeric true", args: []string{"capability", "list", "--json=1"}, json: true},
 	} {
 		t.Run(test.name, func(t *testing.T) {

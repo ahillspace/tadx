@@ -135,7 +135,7 @@ func (c *remoteContentCommands) ListProjects(ctx context.Context, input projectl
 	}
 	input.Environment, input.Site = connection.environment.Alias, connection.environment.SiteContentURL
 
-	if input.All {
+	if input.All && !projectlist.MayBeOwnerLUID(input.OwnerName) {
 		observedAt := c.runtime.now().UTC()
 		inventory, err := collectResourceInventory(ctx, connection.inventory, c.cacheStore(input.Environment), tableaucache.ScopeProjects, input.Environment, input.Site, observedAt, inventoryCollectionOptions{MaxConcurrency: connection.environment.CacheMaxConcurrency, Filter: filter})
 		if err != nil {

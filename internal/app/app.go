@@ -234,7 +234,13 @@ func Run(ctx context.Context, args []string, stdout io.Writer, options Options) 
 		capture.enabled = true
 	}
 	if findErr != nil {
-		return fail(&errs.Error{Kind: errs.KindUsage, Operation: "cli", Summary: findErr.Error(), Cause: findErr}, renderOptions)
+		if selected == nil {
+			selected = root
+		}
+		return fail(cli.CommandUsageError(selected, findErr), renderOptions)
+	}
+	if err := cli.ValidateArguments(selected, args); err != nil {
+		return fail(err, renderOptions)
 	}
 	bindPublicationExecution(root, runtime, capture, args, options)
 	bindManagedPolicy(root, runtime)
@@ -244,7 +250,11 @@ func Run(ctx context.Context, args []string, stdout io.Writer, options Options) 
 		}
 		var structured *errs.Error
 		if !errors.As(err, &structured) {
-			err = &errs.Error{Kind: errs.KindRuntime, Operation: "cli", Summary: err.Error(), Cause: err}
+			if strings.HasPrefix(err.Error(), "unknown command ") {
+				err = cli.CommandUsageError(selected, err)
+			} else {
+				err = &errs.Error{Kind: errs.KindRuntime, Operation: "cli", Summary: err.Error(), Cause: err}
+			}
 		}
 		return fail(err, renderOptions)
 	}

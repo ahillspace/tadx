@@ -115,8 +115,7 @@ func normalizeResourceScopeReplacement(input ResourceScopeReplacement) (Resource
 	entries := make([]ResourceEntry, len(input.Entries))
 	for index, entry := range input.Entries {
 		entry.LUID = strings.TrimSpace(entry.LUID)
-		entry.Name = strings.TrimSpace(entry.Name)
-		if entry.LUID == "" || entry.Name == "" {
+		if entry.LUID == "" || strings.TrimSpace(entry.Name) == "" {
 			return ResourceScopeReplacement{}, fmt.Errorf("cache resource entry %d requires authoritative LUID and name", index)
 		}
 		if _, duplicate := seen[entry.LUID]; duplicate {
