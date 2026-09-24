@@ -69,7 +69,7 @@ func (a *Action) Execute(ctx context.Context, in Input) (Output, error) {
 	if err := ValidateInput(in); err != nil {
 		return Output{}, err
 	}
-	out := Output{Status: "inspected", Environment: in.Environment, Site: in.Site}
+	out := Output{Status: "failed", Environment: in.Environment, Site: in.Site}
 	if a == nil || a.reader == nil {
 		return out, usage("catalog table inspection is not configured")
 	}
@@ -77,28 +77,32 @@ func (a *Action) Execute(ctx context.Context, in Input) (Output, error) {
 	if in.ID != "" {
 		item, readErr := a.reader.GetTable(ctx, in.ID)
 		err = readErr
-		if err == nil {
-			out.Item = &item
-		}
-		if err == nil && out.Item.LUID != in.ID {
+		if err == nil && item.LUID != in.ID {
 			err = fmt.Errorf("returned table LUID does not match requested identity")
+		} else if item.LUID == in.ID {
+			out.Item = &item
 		}
 	} else {
 		var page value.MetadataPage[value.MetadataTable]
 		page, err = a.reader.DiscoverTables(ctx, value.MetadataQuery{MetadataID: in.MetadataID, Limit: 2})
 		out.ObservedAt = page.ObservedAt
 		out.RequestID = page.TableauRequestID
+		if len(page.Items) == 1 && page.Items[0].MetadataID == in.MetadataID {
+			out.Item = &page.Items[0]
+		}
 		if err == nil {
-			if len(page.Items) != 1 || !page.Complete || page.NextCursor != "" || page.Items[0].MetadataID != in.MetadataID {
+			if out.Item == nil || !page.Complete || page.NextCursor != "" {
 				err = fmt.Errorf("metadata selector did not resolve exactly one complete identity")
-			} else {
-				out.Item = &page.Items[0]
 			}
 		}
 	}
 	if err != nil {
+		if out.Item != nil {
+			out.Status = "partial"
+		}
 		return out, failure(in, err)
 	}
+	out.Status = "inspected"
 	return out, nil
 }
 func usage(s string) error {

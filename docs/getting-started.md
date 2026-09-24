@@ -117,6 +117,16 @@ If an older configuration contains `catalog_max_concurrency`, rename that key to
 
 ## Preview remote changes
 
+### Publish workbook dependencies
+
+A workbook can reference independently published datasources, even when its file is a packaged `.twbx`.
+Before publishing, confirm those datasources exist at the destination and the workbook references identify them correctly.
+Publish missing referenced datasources first, then the workbook.
+Workbook publication does not publish dependencies automatically or rebind references to a different site.
+Pulling with `--include-pds` saves direct datasource dependencies as separate artifacts; it does not make the workbook self-contained.
+
+### Check mutation consent
+
 Remote mutations are disabled unless saved consent is enabled for the selected server and exact site.
 Permission to perform a Tableau operation does not itself authorize changing site consent.
 Check saved consent for all configured environments with:
@@ -270,6 +280,19 @@ Run `tadx update` to upgrade or repair the CLI and refresh bundled Guidance for 
 Use repeated `--target` flags to choose specific agents, for example `tadx update --target codex --target claude`.
 The platform installer also performs a combined CLI-and-Guidance installation.
 Release installation uses published binaries, not the current source branch.
+
+Released builds also check GitHub for a newer published release alongside eligible interactive commands.
+A completed check is cached for 24 hours, and a short notice appears on stderr after a successful command when an update is available.
+The check does not install anything, use Tableau credentials, or send Tableau information.
+It has a short network timeout and does not wait for the network when your command finishes.
+An unfinished check can retry on a later command; check failures do not change command results.
+
+Automatic checks are skipped in CI, when stdout or stderr is not a terminal, and for JSON output, help, completion, previews, updates, cache commands, and the local overview.
+Commands using `--cache` also skip the check.
+Development builds do not show update notices.
+Set `TADX_NO_UPDATE_NOTIFIER=1` to disable automatic checks and notices.
+The explicit `tadx update --check` command remains available regardless of this setting.
+Version comparison detects newer release versions, not replaced assets published under the same version.
 
 ### Uninstall TADX
 
