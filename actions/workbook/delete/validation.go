@@ -10,7 +10,6 @@ func ValidateInput(input Input) error { _, err := normalizeInput(input); return 
 
 func normalizeInput(input Input) (Input, error) {
 	input.Selector.LUID = identity.LUID(strings.TrimSpace(string(input.Selector.LUID)))
-	input.Selector.Name = strings.TrimSpace(input.Selector.Name)
 	input.Selector.ProjectPath = strings.TrimSpace(input.Selector.ProjectPath)
 	if input.Selector.LUID == "" && (input.Selector.Name == "" || input.Selector.ProjectPath == "") {
 		return input, selectorUsage("required", "workbook selection requires a LUID or exact name and project path", "Workbook selection requires a LUID or exact name and project path.")

@@ -5,12 +5,14 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"github.com/ahillspace/tadx/internal/app"
 	"net/http"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
+
+	"github.com/ahillspace/tadx/internal/app"
 )
 
 func TestLastSaveFailureDoesNotFailCompletedReadOrClaimExpansion(t *testing.T) {
@@ -29,7 +31,16 @@ func TestLastSaveFailureDoesNotFailCompletedReadOrClaimExpansion(t *testing.T) {
 			LastPotentiallyStale bool   `json:"last_potentially_stale"`
 		} `json:"warning"`
 	}
-	if err := json.Unmarshal(warnings.Bytes(), &warning); err != nil || warning.Warning.Code != "last_result_save_failed" || !warning.Warning.LastPotentiallyStale {
+	warningDocument := warnings.Bytes()
+	if !bytes.HasPrefix(warningDocument, []byte("{")) {
+		policyLine, remainder, found := bytes.Cut(warningDocument, []byte("\n"))
+		ancestorWarning := regexp.MustCompile(`^Managed policy path warning: ancestor "[^"\r\n]+" is not verified as protected \([^()\r\n]+\)\. The policy path may be replaced and a different policy substituted\. Ask an administrator to move the policy to a protected path or review this ancestor's ACL; run tadx policy status --full for all checks\.$`)
+		if !found || !ancestorWarning.Match(policyLine) {
+			t.Fatalf("unexpected stderr before last-result warning: %q", warningDocument)
+		}
+		warningDocument = remainder
+	}
+	if err := json.Unmarshal(warningDocument, &warning); err != nil || warning.Warning.Code != "last_result_save_failed" || !warning.Warning.LastPotentiallyStale {
 		t.Fatalf("warning=%s err=%v", warnings.Bytes(), err)
 	}
 }

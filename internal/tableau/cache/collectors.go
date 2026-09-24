@@ -240,8 +240,8 @@ func parsePermissions(itemID string, body []byte) ([][]any, []string, error) {
 
 func identity(element tabxml.Element, scope Scope) (string, string, error) {
 	id := strings.TrimSpace(element.Attr("id"))
-	name := strings.TrimSpace(element.Attr("name"))
-	if id == "" || name == "" {
+	name := element.Attr("name")
+	if id == "" || strings.TrimSpace(name) == "" {
 		return "", "", fmt.Errorf("%s response returned an incomplete authoritative identity", scope)
 	}
 	return id, name, nil

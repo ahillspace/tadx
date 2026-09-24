@@ -23,7 +23,7 @@ var commandAliases = map[string]string{
 	"mutation": "mut", "permission": "prm", "project": "prj", "publish": "pub",
 	"pull": "pl", "pulse": "pls", "refresh": "ref", "register": "reg",
 	"remove": "rm", "schema": "sch", "search": "sea", "set-default": "sdf",
-	"status": "st", "uninstall": "uni", "unfollow": "unf", "unregister": "unr",
+	"status": "st", "subscription": "sub", "uninstall": "uni", "unfollow": "unf", "unregister": "unr",
 	"update": "upd", "user": "usr", "version": "ver", "wait": "wt", "workbook": "wb",
 	"workspace": "ws",
 }

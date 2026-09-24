@@ -43,8 +43,7 @@ func (s *Store) UpsertResources(ctx context.Context, entries []ResourceEntry) er
 		entry.Site = strings.TrimSpace(entry.Site)
 		entry.Kind = strings.TrimSpace(entry.Kind)
 		entry.LUID = strings.TrimSpace(entry.LUID)
-		entry.Name = strings.TrimSpace(entry.Name)
-		if entry.Environment == "" || entry.Kind == "" || entry.LUID == "" || entry.Name == "" || entry.ObservedAt.IsZero() {
+		if entry.Environment == "" || entry.Kind == "" || entry.LUID == "" || strings.TrimSpace(entry.Name) == "" || entry.ObservedAt.IsZero() {
 			return fmt.Errorf("cache resource entry %d requires environment, kind, LUID, name, and observation time", index)
 		}
 		if entry.Coverage != "summary" && entry.Coverage != "detail" {
@@ -187,7 +186,7 @@ func (s *Store) ReadResources(ctx context.Context, query ResourceQuery) (Resourc
 	if err := rows.Err(); err != nil {
 		return ResourceResult{}, err
 	}
-	if query.ExactlyOne || query.LUID != "" || query.Name != "" {
+	if query.ExactlyOne || query.LUID != "" {
 		if len(result.Entries) == 0 {
 			return ResourceResult{}, resourceNotFoundError{}
 		}

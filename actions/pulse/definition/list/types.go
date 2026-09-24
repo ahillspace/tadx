@@ -1,6 +1,10 @@
 package list
 
-import "github.com/ahillspace/tadx/internal/readsource"
+import (
+	"slices"
+
+	"github.com/ahillspace/tadx/internal/readsource"
+)
 
 // Input selects one bounded Pulse definition page.
 type Input struct {
@@ -101,7 +105,7 @@ func (o Output) CompactOutput() any {
 
 // FullOutput returns all fields from the same bounded provider page.
 func (o Output) FullOutput() any {
-	items := append([]Definition(nil), o.Definitions...)
+	items := slices.Clone(o.Definitions)
 	for index := range items {
 		items[index].AllowedDimensions = append([]string(nil), items[index].AllowedDimensions...)
 	}

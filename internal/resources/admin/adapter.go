@@ -94,7 +94,11 @@ func (a *Adapter) ResolveUser(ctx context.Context, selector UserSelector) (table
 	if strings.TrimSpace(selector.Username) == "" {
 		return tableau.User{}, &identity.ResolutionError{Kind: identity.ResolutionInvalidSelector}
 	}
-	items, err := a.allUsers(ctx)
+	name := selector.Username
+	if _, filterErr := tableau.UserListFilter(tableau.ListUsersRequest{Name: name}); filterErr != nil {
+		name = ""
+	}
+	items, err := a.userInventory(ctx, name)
 	if err != nil {
 		return tableau.User{}, err
 	}
@@ -258,12 +262,16 @@ func (a *Adapter) RemoveGroupUser(ctx context.Context, groupLUID, userLUID strin
 }
 
 func (a *Adapter) allUsers(ctx context.Context) ([]tableau.User, error) {
+	return a.userInventory(ctx, "")
+}
+
+func (a *Adapter) userInventory(ctx context.Context, name string) ([]tableau.User, error) {
 	if err := a.configured(); err != nil {
 		return nil, err
 	}
 	byID := make(map[string]tableau.User)
 	for number := 1; number <= maxResolutionPages; number++ {
-		page, err := a.client.ListUsers(ctx, tableau.ListUsersRequest{PageNumber: number, PageSize: resolutionPageSize})
+		page, err := a.client.ListUsers(ctx, tableau.ListUsersRequest{PageNumber: number, PageSize: resolutionPageSize, Name: name})
 		if err != nil {
 			return nil, err
 		}

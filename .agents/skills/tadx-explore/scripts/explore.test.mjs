@@ -39,8 +39,8 @@ test('preparation isolates runs and returns only a compact fresh-worker payload'
   assert.notEqual(first.run_id, second.run_id);
   assert.notEqual(first.paths.report, second.paths.report);
   assert.deepEqual(Object.keys(first.spawn).sort(), ['fork_turns', 'message', 'model', 'reasoning_effort', 'task_name']);
-  assert.equal(first.spawn.model, 'gpt-5.6-luna');
-  assert.equal(first.spawn.reasoning_effort, 'max');
+  assert.equal(first.spawn.model, 'gpt-6-luna');
+  assert.equal(first.spawn.reasoning_effort, 'medium');
   assert.equal(first.spawn.fork_turns, 'none');
   assert.ok(first.spawn.message.length < 1000);
   assert.match(first.spawn.message, /references\/worker\.md/);

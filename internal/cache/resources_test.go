@@ -37,6 +37,27 @@ func TestReadThroughResourcesRemainPartialAndPreserveUnrelatedRecords(t *testing
 	}
 }
 
+func TestReadThroughResourceNamesRemainExact(t *testing.T) {
+	now := time.Date(2026, 9, 4, 12, 0, 0, 0, time.UTC)
+	store := NewStore(t.TempDir(), func() time.Time { return now })
+	entries := []ResourceEntry{
+		{Environment: "production", Site: "marketing", Kind: "workbook", LUID: "wb-plain", Name: "Finance", Coverage: "detail", ObservedAt: now},
+		{Environment: "production", Site: "marketing", Kind: "workbook", LUID: "wb-space", Name: "Finance ", Coverage: "detail", ObservedAt: now},
+	}
+	if err := store.UpsertResources(t.Context(), entries); err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range entries {
+		result, err := store.ReadResources(t.Context(), ResourceQuery{Environment: want.Environment, Site: want.Site, Kind: want.Kind, Name: want.Name, Limit: 2})
+		if err != nil {
+			t.Fatalf("read exact name %q: %v", want.Name, err)
+		}
+		if result.Total != 1 || len(result.Entries) != 1 || result.Entries[0].LUID != want.LUID || result.Entries[0].Name != want.Name {
+			t.Fatalf("exact name %q selected %#v", want.Name, result)
+		}
+	}
+}
+
 func TestPublishedGenerationSeedsCompleteResourceCoverage(t *testing.T) {
 	now := time.Date(2026, 9, 4, 12, 0, 0, 0, time.UTC)
 	store := NewStore(t.TempDir(), func() time.Time { return now })

@@ -127,7 +127,11 @@ func (a *Action) Execute(ctx context.Context, in Input, preview bool) (Output, e
 			if g.LUID != "" {
 				out.Result = &Result{Status: "unknown", GroupLUID: g.LUID, TableauRequestID: g.RequestID}
 			}
-			return out, &errs.Error{ID: "admin.group.create.outcome_unknown", Kind: errs.KindOperation, Operation: "admin.group.create", Resource: g.LUID, Environment: in.Environment, Site: in.Site, Summary: "The group create outcome could not be determined safely.", Cause: err, Retryable: errs.Bool(false), CorrectiveAction: "Inspect the exact group and Tableau request before retrying: " + recoveryHint(in, g.LUID), TableauRequestID: g.RequestID, Phase: errs.PhaseSubmission, Outcome: errs.OutcomeUnknown}
+			resource := g.LUID
+			if resource == "" {
+				resource = in.Name
+			}
+			return out, &errs.Error{ID: "admin.group.create.outcome_unknown", Kind: errs.KindOperation, Operation: "admin.group.create", Resource: resource, Environment: in.Environment, Site: in.Site, Summary: "The group create outcome could not be determined safely.", Cause: err, Retryable: errs.Bool(false), CorrectiveAction: "Inspect the exact group and Tableau request before retrying: " + recoveryHint(in, g.LUID), TableauRequestID: g.RequestID, Phase: errs.PhaseSubmission, Outcome: errs.OutcomeUnknown}
 		}
 		return Output{}, err
 	}

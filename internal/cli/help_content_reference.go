@@ -81,7 +81,7 @@ func contentReferenceActionNotes(action *cobra.Command) []string {
 	switch action.Name() {
 	case "list":
 		if action.Flags().Lookup("top-level") != nil {
-			return []string{"--top-level=true: roots; false: nested; omitted: both."}
+			return []string{"--top-level=true: roots; false: nested; omitted: both.", "--owner matches an exact owner name first; a listed owner LUID is accepted when no name matches. LUID fallback requires live inventory, not --cache."}
 		}
 	case "inspect":
 		if resource == "project" {
@@ -97,6 +97,9 @@ func contentReferenceActionNotes(action *cobra.Command) []string {
 		notes := []string{"Source: workspace ID/name/relative artifact, or native file (no workspace). Project: destination; name: source default."}
 		if resource == "datasource" {
 			return append(notes, "create: collision fails; overwrite: replace; append/replace: data in exact match, prepared .hyper only.")
+		}
+		if resource == "workbook" {
+			notes = append(notes, "Publish missing referenced datasources first, then the workbook. Workbook publish does not publish dependencies or rebind their references.")
 		}
 		return append(notes, "Creates by default; --overwrite replaces an exact collision.")
 	case "update":

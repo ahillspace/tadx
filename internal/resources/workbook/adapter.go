@@ -136,6 +136,24 @@ func (a *Adapter) listWorkbooksPage(ctx context.Context, input tableauworkbook.L
 	return Page{Number: page.Page.Number, Size: page.Page.Size, Total: page.Page.Total, Items: items, RequestID: page.TableauRequestID}, nil
 }
 
+// CollectProjectWorkbooks obtains one validated project-filtered inventory for
+// a command's --all result. It retains no state between calls or commands.
+func (a *Adapter) CollectProjectWorkbooks(ctx context.Context, input tableauworkbook.ListRequest) (Page, error) {
+	if a == nil || a.client == nil || input.ProjectLUID == "" {
+		return Page{}, errors.New("project LUID and configured workbook adapter are required")
+	}
+	const maximumRows = 10000
+	input.PageNumber, input.PageSize = 1, maximumRows
+	page, err := a.listWorkbooksByProjectLUID(ctx, input)
+	if err != nil {
+		return Page{}, err
+	}
+	if page.Total > maximumRows {
+		return Page{}, errors.New("--all exceeds the 10000-record bound; use narrower filters")
+	}
+	return page, nil
+}
+
 func (a *Adapter) listWorkbooksByProjectLUID(ctx context.Context, input tableauworkbook.ListRequest) (Page, error) {
 	client, ok := a.client.(InventoryClient)
 	if !ok {

@@ -253,7 +253,7 @@ func helpRelatedNotes(owner *cobra.Command) []string {
 		return []string{"Inspect local artifacts with tadx workspace status -h; artifact file operations use tadx workspace artifact -h."}
 	case "workspace artifact":
 		return []string{"Use tadx workspace status -h for the local artifact inventory."}
-	case "pulse definition", "pulse metric":
+	case "pulse definition", "pulse metric", "pulse subscription":
 		return []string{"Saved configuration only; TADX does not retrieve current metric values or generated insights."}
 	default:
 		return nil
@@ -442,7 +442,7 @@ func referenceActionNotes(action *cobra.Command) []string {
 		"env add":                   {"--site is the URL slug, not display name. PAT flags name shell variables, never contain credentials."},
 		"env update":                {"--clear-* restores defaults or clears the corresponding value. Retargeting does not move content."},
 		"env default":               {"Changes the read default, not write targets; with multiple environments, remote writes need --environment."},
-		"search":                    {"Term or --type required; type omitted: all types. No term: bounded inventory; term: live search or --cache."},
+		"search":                    {"Term or --type required; type omitted: all types. No term: bounded inventory; term: live search or --cache.", "--type admin includes users and groups. Use --type user or --type group to select one resource type."},
 		"catalog search":            {"Unique types; default types: database+table. Column requires --table-id.", "--all: <=10000; results can be incomplete."},
 		"catalog audit":             {"Unique checks; default: descriptions+tags. --direct-only: field-owned descriptions, excluding inherited.", "Metadata coverage, not data values; limit: assessed assets."},
 		"catalog lineage pull":      {"--name requires --project; --id excludes both. --overwrite replaces dirty local metadata.", "Saves lineage.json, not native files. Physical nodes use Metadata API IDs; --full shows bounded nodes/edges."},
@@ -452,6 +452,7 @@ func referenceActionNotes(action *cobra.Command) []string {
 		"capability list":           {"Filters: AND, case-insensitive; product: substring, others: exact.", "--mutation=true: remote writes; --mutation=false: others; omitted: both."},
 		"pulse definition list":     {"--all: <=10000; incomplete traversal fails."},
 		"pulse metric list":         {"--all: <=10000; incomplete traversal fails."},
+		"pulse subscription list":   {"Current authenticated user only. Default: 25 subscriptions. --all: <=10000 across 100 pages; continuation is available with --cursor and the same --limit.", "A user-filtered Tableau response does not establish whether group-derived follows are included. Missing metric or definition details retain subscription IDs with a partial warning."},
 		"last":                      {"Displays the last saved result; never repeats its command or writes."},
 		"completion":                {"Writes a shell script to stdout (not JSON). Installers normally enable it automatically.", "Capture and verify: tadx completion bash > tadx-completion.bash; bash -n tadx-completion.bash.", "Session: Bash source <(tadx completion bash); Fish tadx completion fish | source.", "Zsh: autoload -Uz compinit; compinit; source <(tadx completion zsh)", "PowerShell: tadx completion powershell | Out-String | Invoke-Expression. Capture with tadx completion powershell > $env:TEMP\\tadx-completion.ps1; verify with [scriptblock]::Create((Get-Content $env:TEMP\\tadx-completion.ps1 -Raw)).", "For persistence, put the corresponding command in your shell profile."},
 	}

@@ -79,6 +79,7 @@ The default template is `superuser`; standard templates remain customizable by e
 Unix checks require root ownership and no group or world write access across the entire path.
 Windows checks ownership and modification rights on the policy file, immediate TADX directory, and registry locator; path integrity and reparse checks remain in force.
 Windows also inspects ancestor ownership and permissions, including the drive root, but reports unsafe or unverifiable ancestor protection as a warning rather than blocking the policy.
+These warnings appear in policy installation receipts and `tadx policy status`, not on ordinary commands.
 An ordinary user with replacement rights above the Windows installation directory can substitute another valid administrator-owned policy, including an older, more permissive one, between commands.
 The policy currently loaded is still enforced; the warning means its location is not a reliable protection against substitution.
 TADX does not automatically change ancestor permissions, and a warning does not authorize an agent to change them.
@@ -99,6 +100,11 @@ The platform installers do not verify those attestations.
 Checksum matching is not provenance verification, and provenance verification does not establish that the source code or build workflow is secure.
 See [GitHub's artifact-attestation documentation](https://docs.github.com/en/actions/concepts/security/artifact-attestations) for the scope of those claims.
 The updater installs the selected release and refreshes TADX-owned Guidance with recovery behavior described in the [website and installer guide](website.md).
+
+The automatic update notifier reads public release metadata from the GitHub API without GitHub authentication or Tableau credentials.
+It does not send Tableau information, download release binaries, or install updates.
+Its local cache contains update-check metadata, not credentials or Tableau content.
+Set `TADX_NO_UPDATE_NOTIFIER=1` to disable these automatic requests and notices; see [Getting started](getting-started.md#upgrade-or-remove) for eligibility and timing.
 
 ## Operating guidance
 

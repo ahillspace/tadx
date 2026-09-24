@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"fmt"
 
 	workbookinspect "github.com/ahillspace/tadx/actions/workbook/inspect"
 	workbooklist "github.com/ahillspace/tadx/actions/workbook/list"
@@ -52,7 +53,11 @@ func (c *remoteContentCommands) ListWorkbooks(ctx context.Context, input workboo
 	input.Environment, input.Site = connection.environment.Alias, connection.environment.SiteContentURL
 
 	if input.All && input.ProjectLUID != "" {
-		output, err := workbooklist.New(workbookListReader{adapter: connection.workbooks}).Execute(ctx, input)
+		snapshot, err := connection.workbooks.CollectProjectWorkbooks(ctx, tableauworkbook.ListRequest{Name: input.Name, OwnerName: input.OwnerName, ProjectLUID: input.ProjectLUID, ProjectName: input.ProjectName, Tag: input.Tag})
+		if err != nil {
+			return workbooklist.Output{}, inventoryRefreshError("workbook.list", input.Environment, input.Site, err)
+		}
+		output, err := workbooklist.New(workbookListReader{snapshot: &snapshot}).Execute(ctx, input)
 		if err != nil {
 			return output, err
 		}
@@ -134,10 +139,27 @@ type workbookInventoryAdapter interface {
 	ResolveWorkbook(context.Context, identity.Selector) (resourceworkbook.Workbook, error)
 }
 
-type workbookListReader struct{ adapter workbookInventoryAdapter }
+type workbookListReader struct {
+	adapter  workbookInventoryAdapter
+	snapshot *resourceworkbook.Page
+}
 
 func (r workbookListReader) ListWorkbooks(ctx context.Context, input workbooklist.PageRequest) (workbooklist.Page, error) {
-	page, err := r.adapter.ListWorkbooks(ctx, tableauworkbook.ListRequest{PageNumber: input.PageNumber, PageSize: input.PageSize, Name: input.Name, OwnerName: input.OwnerName, ProjectLUID: input.ProjectLUID, ProjectName: input.ProjectName, Tag: input.Tag})
+	var page resourceworkbook.Page
+	var err error
+	if r.snapshot != nil {
+		if input.PageNumber < 1 || input.PageSize < 1 {
+			return workbooklist.Page{}, fmt.Errorf("invalid workbook snapshot page")
+		}
+		start := (input.PageNumber - 1) * input.PageSize
+		if start > len(r.snapshot.Items) {
+			return workbooklist.Page{}, fmt.Errorf("workbook snapshot page exceeds the collected total")
+		}
+		end := min(start+input.PageSize, len(r.snapshot.Items))
+		page = resourceworkbook.Page{Number: input.PageNumber, Size: input.PageSize, Total: r.snapshot.Total, Items: r.snapshot.Items[start:end], RequestID: r.snapshot.RequestID}
+	} else {
+		page, err = r.adapter.ListWorkbooks(ctx, tableauworkbook.ListRequest{PageNumber: input.PageNumber, PageSize: input.PageSize, Name: input.Name, OwnerName: input.OwnerName, ProjectLUID: input.ProjectLUID, ProjectName: input.ProjectName, Tag: input.Tag})
+	}
 	items := make([]workbooklist.Workbook, len(page.Items))
 	for index, item := range page.Items {
 		items[index] = workbooklist.Workbook{LUID: item.LUID, Name: item.Name, ProjectLUID: item.ProjectLUID, ProjectPath: item.ProjectPath, ContentURL: item.ContentURL, UpdatedAt: item.UpdatedAt, Description: item.Description, OwnerLUID: item.OwnerLUID, CreatedAt: item.CreatedAt, Tags: append([]string(nil), item.Tags...)}

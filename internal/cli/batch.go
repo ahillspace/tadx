@@ -196,6 +196,9 @@ func attachBatchWithOptions(root, command *cobra.Command, options batchspec.Opti
 			if err := applyEmptyBatchLists(leaf, row.emptyLists); err != nil {
 				return err
 			}
+			if err := ValidateArguments(leaf, row.argv); err != nil {
+				return clierr.Usage(cmd.Annotations[CapabilityAnnotation], fmt.Errorf("batch item %d: %w", index+1, err))
+			}
 			checkArgs := leaf.Args
 			leaf.Args = func(cmd *cobra.Command, args []string) error {
 				if _, _, err := varyingBatchSelector(cmd, options); err != nil {

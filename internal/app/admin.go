@@ -336,7 +336,10 @@ func (c *remoteAdminCommands) InspectAdminGroup(ctx context.Context, input group
 	}
 	observedAt := c.runtime.now().UTC()
 	output.Source = liveSource(c.runtime.now)
-	entry, encodeErr := resourceEntry(input.Environment, input.Site, "group", output.Group.LUID, output.Group.Name, "", "", "detail", observedAt, output.Group)
+	entry, encodeErr := resourceEntry(input.Environment, input.Site, "group", output.Group.LUID, output.Group.Name, "", "", "detail", observedAt, struct {
+		groupinspect.Group
+		MembersFetched bool `json:"members_fetched"`
+	}{Group: output.Group, MembersFetched: input.IncludeMembers})
 	if encodeErr == nil {
 		writeThrough(c.cacheStore(input.Environment), []cache.ResourceEntry{entry})
 	}

@@ -64,3 +64,20 @@ Uncertain create outcomes are not advertised as safe automatic retries.
 
 These checks extend local behavioral evidence, not the live verification recorded above.
 The source examples remain in `internal/app/pulse_validation_e2e_test.go`, `internal/app/pulse_fork_granularity_e2e_test.go`, `internal/app/pulse_diagnostics_e2e_test.go`, and `internal/tableau/fieldcatalog/client_test.go`.
+
+## Authenticated-user subscription discovery
+
+The [Tableau Pulse subscription API](https://help.tableau.com/current/api/rest_api/en-us/REST/TAG/index.html#list-subscriptions) supports `GET /api/-/pulse/subscriptions` filtered by `user_id`, with `page_size` and `page_token` for pagination.
+TADX takes that user identity from the authenticated PAT session and never omits it to fall back to site-wide discovery.
+Names and saved configuration come from bounded `metrics:batchGet` and `definitions:batchGet` requests for the returned identities only.
+Definition names are not independent metric-variant names.
+
+The documented user filter does not explicitly establish whether subscriptions inherited through group membership are included.
+TADX reports that coverage as unverified and does not enumerate groups to infer additional subscriptions.
+The new command's HTTP-backed CLI regressions are in `internal/app/pulse_subscription_e2e_test.go`.
+These regressions do not establish live group-membership behavior.
+
+On 2026-09-24, a controlled Tableau Cloud test created a disposable group containing only the authenticated user and followed a disposable metric through that group.
+The authenticated-user subscription command returned the group subscription, and the exact metric's follower listing returned the same subscription as its sole follower.
+This confirms inclusion for the tested user, site, and group relationship, not a universal guarantee about nested groups or complete group-derived coverage.
+The temporary subscription, newly created metric, and group were removed, and the final user-scoped listing retained only the original subscription.

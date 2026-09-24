@@ -94,6 +94,21 @@ type requestError struct {
 	correctiveAction string
 }
 
+// SubmissionAttempted reports that HTTP execution began, so a mutation may
+// have reached Tableau even when its response was not usable.
+func SubmissionAttempted(err error) bool {
+	_, ok := errors.AsType[interface {
+		error
+		submissionAttempted()
+	}](err)
+	return ok
+}
+
+func (*requestError) submissionAttempted()      {}
+func (*responseReadError) submissionAttempted() {}
+func (*ProtocolError) submissionAttempted()     {}
+func (*UpstreamError) submissionAttempted()     {}
+
 func (e *requestError) Error() string {
 	return fmt.Sprintf("Tableau %s request: %v", e.operation, e.cause)
 }

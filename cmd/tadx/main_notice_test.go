@@ -107,5 +107,6 @@ func runNoticeCLI(t *testing.T, binary, directory string, environment, args []st
 	if err := command.Run(); err != nil {
 		t.Fatalf("run CLI: %v\nstdout: %s\nstderr: %s", err, stdout.String(), stderr.String())
 	}
-	return processResult{stdout: stdout.String(), stderr: stderr.String()}
+	ordinaryStderr, policyWarnings := separateAmbientPolicyWarnings(stderr.String())
+	return processResult{stdout: stdout.String(), stderr: ordinaryStderr, policyWarnings: policyWarnings}
 }

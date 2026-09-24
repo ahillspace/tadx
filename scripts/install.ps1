@@ -358,6 +358,9 @@ function Set-ManagedCompletion {
 }
 
 if ([string]::IsNullOrWhiteSpace($InstallDir)) {
+    $InstallDir = $env:TADX_INSTALL_DIR
+}
+if ([string]::IsNullOrWhiteSpace($InstallDir)) {
     $InstallDir = Get-DefaultInstallDir
 }
 $InstallDir = [IO.Path]::GetFullPath($InstallDir)
@@ -372,7 +375,7 @@ if ($Action -ieq 'Uninstall') {
         Remove-Item -LiteralPath $binaryPath -Force
     }
     if (-not $NoModifyPath) { Remove-UserPath -Directory $InstallDir }
-    Set-ManagedCompletion -Enabled $false
+    if (-not $NoCompletion) { Set-ManagedCompletion -Enabled $false }
     if ((Test-Path -LiteralPath $InstallDir) -and -not (Get-ChildItem -Force -LiteralPath $InstallDir | Select-Object -First 1)) {
         Remove-Item -LiteralPath $InstallDir -Force
     }

@@ -200,7 +200,7 @@ type cacheWorkbookGetResolver struct {
 }
 
 func (r *cacheWorkbookGetResolver) ResolveWorkbook(ctx context.Context, selector identity.Selector) (workbookinspect.Workbook, error) {
-	result, err := r.store.ReadResources(ctx, cache.ResourceQuery{Environment: r.environment, Site: r.site, Kind: "workbook", LUID: string(selector.LUID), Name: selector.Name, ProjectLUID: string(selector.ProjectLUID), ProjectPath: selector.ProjectPath, Limit: 2})
+	result, err := r.store.ReadResources(ctx, cache.ResourceQuery{Environment: r.environment, Site: r.site, Kind: "workbook", LUID: string(selector.LUID), Name: selector.Name, ProjectLUID: string(selector.ProjectLUID), ProjectPath: selector.ProjectPath, Limit: 2, ExactlyOne: true})
 	if err != nil {
 		return workbookinspect.Workbook{}, cacheReadError("workbook.inspect", r.environment, r.site, err)
 	}
@@ -250,7 +250,7 @@ type cacheDatasourceGetResolver struct {
 }
 
 func (r *cacheDatasourceGetResolver) ResolveDatasource(ctx context.Context, selector identity.Selector) (datasourceinspect.Datasource, error) {
-	result, err := r.store.ReadResources(ctx, cache.ResourceQuery{Environment: r.environment, Site: r.site, Kind: "datasource", LUID: string(selector.LUID), Name: selector.Name, ProjectLUID: string(selector.ProjectLUID), ProjectPath: selector.ProjectPath, Limit: 2})
+	result, err := r.store.ReadResources(ctx, cache.ResourceQuery{Environment: r.environment, Site: r.site, Kind: "datasource", LUID: string(selector.LUID), Name: selector.Name, ProjectLUID: string(selector.ProjectLUID), ProjectPath: selector.ProjectPath, Limit: 2, ExactlyOne: true})
 	if err != nil {
 		return datasourceinspect.Datasource{}, cacheReadError("datasource.inspect", r.environment, r.site, err)
 	}
@@ -297,7 +297,7 @@ type cacheFlowGetResolver struct {
 }
 
 func (r *cacheFlowGetResolver) ResolveFlow(ctx context.Context, selector identity.Selector) (flowinspect.Flow, error) {
-	result, err := r.store.ReadResources(ctx, cache.ResourceQuery{Environment: r.environment, Site: r.site, Kind: "flow", LUID: string(selector.LUID), Name: selector.Name, ProjectPath: selector.ProjectPath, ProjectLUID: string(selector.ProjectLUID), Limit: 2})
+	result, err := r.store.ReadResources(ctx, cache.ResourceQuery{Environment: r.environment, Site: r.site, Kind: "flow", LUID: string(selector.LUID), Name: selector.Name, ProjectPath: selector.ProjectPath, ProjectLUID: string(selector.ProjectLUID), Limit: 2, ExactlyOne: true})
 	if err != nil {
 		return flowinspect.Flow{}, cacheReadError("flow.inspect", r.environment, r.site, err)
 	}
