@@ -414,7 +414,6 @@ func (in Installer) Install(ctx context.Context, target string, preview, force b
 		if plan.backup != "" {
 			plan.skill.Status = "replaced"
 			plan.skill.Backup = plan.backup
-			result.Warnings = append(result.Warnings, "Previous "+plan.skill.Name+" package retained as a backup; use --full for its home-relative path")
 		}
 	}
 	packages := map[string]string{}
