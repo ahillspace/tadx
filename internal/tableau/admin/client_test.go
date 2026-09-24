@@ -2,6 +2,7 @@ package admin_test
 
 import (
 	"context"
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -12,6 +13,33 @@ import (
 	"github.com/ahillspace/tadx/internal/tableau"
 	admin "github.com/ahillspace/tadx/internal/tableau/admin"
 )
+
+func TestCreateTransportFailureAfterHTTPExecutionPreservesUnknown(t *testing.T) {
+	var posts int
+	client := admin.NewClient(tableau.NewTransport(&http.Client{Transport: roundTrip(func(r *http.Request) (*http.Response, error) {
+		posts++
+		return nil, errors.New("connection dropped after request")
+	})}, "3.29", nil), session{}, "https://tableau.example")
+	user, err := client.CreateUser(t.Context(), admin.CreateUserRequest{Name: "alex", SiteRole: "Viewer"})
+	if err == nil || user.MutationStatus != "unknown" || user.Name != "alex" || user.RequestID != "" || !tableau.SubmissionAttempted(err) {
+		t.Fatalf("CreateUser() = %#v, %v", user, err)
+	}
+	group, err := client.CreateGroup(t.Context(), admin.CreateGroupRequest{Name: "Authors"})
+	if err == nil || group.MutationStatus != "unknown" || group.Name != "Authors" || group.RequestID != "" || !tableau.SubmissionAttempted(err) {
+		t.Fatalf("CreateGroup() = %#v, %v", group, err)
+	}
+	if posts != 2 {
+		t.Fatalf("HTTP calls = %d, want 2", posts)
+	}
+	user, err = client.CreateUser(t.Context(), admin.CreateUserRequest{SiteRole: "Viewer"})
+	if err == nil || user.MutationStatus != "" || tableau.SubmissionAttempted(err) || posts != 2 {
+		t.Fatalf("invalid local user create = %#v, %v, HTTP calls = %d", user, err, posts)
+	}
+	group, err = client.CreateGroup(t.Context(), admin.CreateGroupRequest{})
+	if err == nil || group.MutationStatus != "" || tableau.SubmissionAttempted(err) || posts != 2 {
+		t.Fatalf("invalid local group create = %#v, %v, HTTP calls = %d", group, err, posts)
+	}
+}
 
 func TestClientRejectsWrongSuccessfulReadStatusWithRequestID(t *testing.T) {
 	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {

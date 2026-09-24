@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -85,6 +86,33 @@ func TestFailedCommandCanNotifyFromCache(t *testing.T) {
 	}
 }
 
+func TestRefreshPreservesDelayedNoticeCadence(t *testing.T) {
+	now := time.Date(2026, 9, 23, 12, 0, 0, 0, time.UTC)
+	options := testOptions(t.TempDir(), now)
+	options.Latest = func(context.Context) (version.Release, error) {
+		return version.Release{Version: "2.0.0", URL: "https://github.com/ahillspace/tadx/releases/tag/v2.0.0"}, nil
+	}
+	check := Start(t.Context(), options)
+	<-check.Done()
+	if notice := check.Finish(false); notice != "" {
+		t.Fatalf("failed command notice = %q", notice)
+	}
+	options.Now = func() time.Time { return now.Add(23 * time.Hour) }
+	if notice := Start(t.Context(), options).Finish(true); notice == "" {
+		t.Fatal("expected first notice from cached release")
+	}
+	options.Now = func() time.Time { return now.Add(25 * time.Hour) }
+	check = Start(t.Context(), options)
+	<-check.Done()
+	if notice := check.Finish(true); notice != "" {
+		t.Fatalf("refresh repeated notice after only two hours: %q", notice)
+	}
+	options.Now = func() time.Time { return now.Add(47 * time.Hour) }
+	if notice := Start(t.Context(), options).Finish(true); notice == "" {
+		t.Fatal("expected notice after its independent 24-hour interval")
+	}
+}
+
 func TestCompletedFailureIsThrottled(t *testing.T) {
 	options := testOptions(t.TempDir(), time.Now())
 	calls := 0
@@ -136,6 +164,10 @@ func TestEligibilitySkipsWithoutCacheOrNetwork(t *testing.T) {
 	}{
 		{"bare", func(o *Options) { o.Args = nil }},
 		{"help", func(o *Options) { o.Args = []string{"capability", "list", "--help"} }},
+		{"help explicit true", func(o *Options) { o.Args = []string{"capability", "list", "--help=true"} }},
+		{"help shorthand cluster", func(o *Options) { o.Args = []string{"capability", "list", "-fh"} }},
+		{"preview shorthand cluster", func(o *Options) { o.Args = []string{"admin", "group", "create", "--name", "Example", "-fp"} }},
+		{"preview shorthand cluster explicit true", func(o *Options) { o.Args = []string{"admin", "group", "create", "--name", "Example", "-fp=true"} }},
 		{"help command", func(o *Options) { o.Args = []string{"help", "capability"} }},
 		{"completion", func(o *Options) { o.Args = []string{"completion", "bash"} }},
 		{"preview", func(o *Options) { o.Args = []string{"capability", "list", "--preview"} }},
@@ -172,14 +204,22 @@ func TestEligibilitySkipsWithoutCacheOrNetwork(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			directory := t.TempDir()
 			options := testOptions(directory, time.Now())
+			var calls atomic.Int32
 			options.IsTerminal = func(writer io.Writer) bool { return writer != nil }
 			options.Latest = func(context.Context) (version.Release, error) {
-				t.Fatal("network called")
+				calls.Add(1)
 				return version.Release{}, nil
 			}
 			test.edit(&options)
 			if check := Start(t.Context(), options); check != nil {
+				check.Finish(false)
+				if check.Done() != nil {
+					<-check.Done()
+				}
 				t.Fatal("ineligible check started")
+			}
+			if calls.Load() != 0 {
+				t.Fatal("network called")
 			}
 			if _, err := os.Stat(filepath.Join(directory, "tadx")); !os.IsNotExist(err) {
 				t.Fatalf("cache created: %v", err)

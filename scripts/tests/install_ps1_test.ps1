@@ -15,6 +15,8 @@ $testRoot = Join-Path ([IO.Path]::GetTempPath()) ('tadx-installer-test-' + [Guid
 $originalPath = $env:Path
 $originalReleaseDirectory = $env:TADX_TEST_RELEASES
 $originalLog = $env:TADX_TEST_GH_LOG
+$originalInstallDirectory = $env:TADX_INSTALL_DIR
+$originalLocalAppData = $env:LOCALAPPDATA
 
 try {
     $releaseDirectory = Join-Path $testRoot 'releases'
@@ -97,6 +99,39 @@ copy /Y "%TADX_TEST_RELEASES%\%pattern%" "%destination%" >nul
     New-Item -ItemType Directory -Path (Split-Path -Parent $completionProfile) | Out-Null
     [IO.File]::WriteAllText($completionProfile, "# user profile`r`n")
 
+    # Resolve the default path inside this run's isolated LOCALAPPDATA.
+    $installResolutionRoot = Join-Path $testRoot 'install-dir-precedence'
+    $isolatedLocalAppData = Join-Path $installResolutionRoot 'local-app-data'
+    $defaultInstallDirectory = Join-Path $isolatedLocalAppData 'Programs/tadx/bin'
+    $environmentInstallDirectory = Join-Path $installResolutionRoot 'environment-dir'
+    $explicitInstallDirectory = Join-Path $installResolutionRoot 'explicit-dir'
+    $env:LOCALAPPDATA = $isolatedLocalAppData
+
+    $env:TADX_INSTALL_DIR = $environmentInstallDirectory
+    & $installer -Version 1.2.3 -NoModifyPath -NoCompletion
+    Assert-True -Condition (Test-Path -LiteralPath (Join-Path $environmentInstallDirectory 'tadx.exe')) -Message 'TADX_INSTALL_DIR was not used when -InstallDir was omitted.'
+    Assert-True -Condition (-not (Test-Path -LiteralPath (Join-Path $defaultInstallDirectory 'tadx.exe'))) -Message 'The default install path was used despite TADX_INSTALL_DIR.'
+    & $installer -Action Uninstall -NoModifyPath -NoCompletion -CompletionProfile $completionProfile
+    Assert-True -Condition (-not (Test-Path -LiteralPath (Join-Path $environmentInstallDirectory 'tadx.exe'))) -Message 'Uninstall without -InstallDir did not use TADX_INSTALL_DIR.'
+
+    New-Item -ItemType Directory -Path $environmentInstallDirectory | Out-Null
+    $environmentSentinel = Join-Path $environmentInstallDirectory 'preserve.txt'
+    [IO.File]::WriteAllText($environmentSentinel, 'environment target remains untouched')
+    & $installer -Version 1.2.3 -InstallDir $explicitInstallDirectory -NoModifyPath -NoCompletion
+    Assert-True -Condition (Test-Path -LiteralPath (Join-Path $explicitInstallDirectory 'tadx.exe')) -Message 'Explicit -InstallDir was not used for installation.'
+    Assert-True -Condition (-not (Test-Path -LiteralPath (Join-Path $environmentInstallDirectory 'tadx.exe'))) -Message 'Explicit -InstallDir did not override TADX_INSTALL_DIR.'
+    Assert-True -Condition ([IO.File]::ReadAllText($environmentSentinel) -ceq 'environment target remains untouched') -Message 'Explicit install changed the TADX_INSTALL_DIR directory.'
+    & $installer -Action Uninstall -InstallDir $explicitInstallDirectory -NoModifyPath -NoCompletion -CompletionProfile $completionProfile
+    Assert-True -Condition (-not (Test-Path -LiteralPath (Join-Path $explicitInstallDirectory 'tadx.exe'))) -Message 'Explicit -InstallDir was not used for uninstall.'
+    Assert-True -Condition ([IO.File]::ReadAllText($environmentSentinel) -ceq 'environment target remains untouched') -Message 'Explicit uninstall changed the TADX_INSTALL_DIR directory.'
+
+    Remove-Item Env:TADX_INSTALL_DIR
+    & $installer -Version 1.2.3 -NoModifyPath -NoCompletion
+    Assert-True -Condition (Test-Path -LiteralPath (Join-Path $defaultInstallDirectory 'tadx.exe')) -Message 'Installation without -InstallDir or TADX_INSTALL_DIR did not use the isolated default path.'
+    & $installer -Action Uninstall -NoModifyPath -NoCompletion -CompletionProfile $completionProfile
+    Assert-True -Condition (-not (Test-Path -LiteralPath (Join-Path $defaultInstallDirectory 'tadx.exe'))) -Message 'Default-path uninstall did not remove the isolated default binary.'
+    Assert-True -Condition ([IO.File]::ReadAllText($environmentSentinel) -ceq 'environment target remains untouched') -Message 'Default-path operations changed the TADX_INSTALL_DIR directory.'
+
     # This inert fixture is beside the test binary, never at the system policy path.
     New-Item -ItemType Directory -Path $installDirectory | Out-Null
     $policyFixture = Join-Path $installDirectory 'managed-policy.json'
@@ -139,6 +174,33 @@ copy /Y "%TADX_TEST_RELEASES%\%pattern%" "%destination%" >nul
     & $installer -Action Uninstall -InstallDir $installDirectory -NoModifyPath -CompletionProfile $completionProfile
     Assert-PolicyPreserved
     Assert-True -Condition ([IO.File]::ReadAllText($completionProfile) -eq "# user profile`r`n") -Message 'Uninstall changed unrelated profile content.'
+
+    $noCompletionInstallDirectory = Join-Path $testRoot 'no-completion-uninstall'
+    $noCompletionBinary = Join-Path $noCompletionInstallDirectory 'tadx.exe'
+    New-Item -ItemType Directory -Path $noCompletionInstallDirectory | Out-Null
+    [IO.File]::WriteAllText($noCompletionBinary, 'isolated binary fixture')
+    $noCompletionProfile = Join-Path $testRoot 'no-completion/profile.ps1'
+    New-Item -ItemType Directory -Path (Split-Path -Parent $noCompletionProfile) | Out-Null
+    $managedCompletion = "# before`r`nif (Test-Path -LiteralPath '$noCompletionBinary') { & '$noCompletionBinary' completion powershell | Out-String | Invoke-Expression } # tadx-installer-completion`r`n# after`r`n"
+    [IO.File]::WriteAllText($noCompletionProfile, $managedCompletion)
+    $noCompletionProfileItem = Get-Item -LiteralPath $noCompletionProfile
+    $noCompletionProfileItem.LastWriteTimeUtc = [DateTime]::UtcNow.AddDays(-3)
+    $noCompletionProfileItem = Get-Item -LiteralPath $noCompletionProfile
+    $noCompletionProfileBytes = [Convert]::ToBase64String([IO.File]::ReadAllBytes($noCompletionProfile))
+    $noCompletionProfileMtime = $noCompletionProfileItem.LastWriteTimeUtc.Ticks
+    & $installer -Action Uninstall -InstallDir $noCompletionInstallDirectory -NoModifyPath -NoCompletion -CompletionProfile $noCompletionProfile
+    Assert-True -Condition ([Convert]::ToBase64String([IO.File]::ReadAllBytes($noCompletionProfile)) -ceq $noCompletionProfileBytes) -Message 'NoCompletion uninstall changed existing profile bytes.'
+    Assert-True -Condition ((Get-Item -LiteralPath $noCompletionProfile).LastWriteTimeUtc.Ticks -eq $noCompletionProfileMtime) -Message 'NoCompletion uninstall changed the existing profile mtime.'
+    Assert-True -Condition (-not (Test-Path -LiteralPath "$noCompletionProfile.tadx-backup")) -Message 'NoCompletion uninstall created a profile backup.'
+    Assert-True -Condition (-not (Test-Path -LiteralPath $noCompletionBinary)) -Message 'NoCompletion uninstall skipped ordinary binary cleanup.'
+
+    $missingCompletionProfile = Join-Path $testRoot 'no-completion/missing-profile.ps1'
+    $secondNoCompletionDirectory = Join-Path $testRoot 'no-completion-uninstall-second'
+    New-Item -ItemType Directory -Path $secondNoCompletionDirectory | Out-Null
+    [IO.File]::WriteAllText((Join-Path $secondNoCompletionDirectory 'tadx.exe'), 'isolated binary fixture')
+    & $installer -Action Uninstall -InstallDir $secondNoCompletionDirectory -NoModifyPath -NoCompletion -CompletionProfile $missingCompletionProfile
+    Assert-True -Condition (-not (Test-Path -LiteralPath $missingCompletionProfile)) -Message 'NoCompletion uninstall created a missing profile.'
+    Assert-True -Condition (-not (Test-Path -LiteralPath "$missingCompletionProfile.tadx-backup")) -Message 'NoCompletion uninstall created a backup for a missing profile.'
     & $installer -Version 1.2.3 -InstallDir $installDirectory -NoModifyPath -NoCompletion -CompletionProfile $completionProfile
     Assert-True -Condition ([IO.File]::ReadAllText($completionProfile) -eq "# user profile`r`n") -Message 'Completion opt-out changed the profile.'
 
@@ -204,5 +266,13 @@ finally {
     $env:Path = $originalPath
     $env:TADX_TEST_RELEASES = $originalReleaseDirectory
     $env:TADX_TEST_GH_LOG = $originalLog
-    Remove-Item -LiteralPath $testRoot -Recurse -Force -ErrorAction SilentlyContinue
+    $env:TADX_INSTALL_DIR = $originalInstallDirectory
+    $env:LOCALAPPDATA = $originalLocalAppData
+    $resolvedTestRoot = [IO.Path]::GetFullPath($testRoot)
+    $resolvedTemporaryRoot = [IO.Path]::GetFullPath([IO.Path]::GetTempPath()).TrimEnd([IO.Path]::DirectorySeparatorChar)
+    $temporaryRootPrefix = $resolvedTemporaryRoot + [IO.Path]::DirectorySeparatorChar
+    $testRootLeaf = Split-Path -Leaf $resolvedTestRoot
+    if ($resolvedTestRoot.StartsWith($temporaryRootPrefix, [StringComparison]::OrdinalIgnoreCase) -and $testRootLeaf -match '^tadx-installer-test-[a-f0-9]{32}$') {
+        Remove-Item -LiteralPath $resolvedTestRoot -Recurse -Force -ErrorAction SilentlyContinue
+    }
 }

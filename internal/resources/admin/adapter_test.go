@@ -2,6 +2,7 @@ package admin_test
 
 import (
 	"context"
+	"fmt"
 	"strings"
 	"testing"
 
@@ -16,11 +17,23 @@ type fakeClient struct {
 	userPages   int
 	groupPages  int
 	memberPages int
+	userFilters []string
+	filterUsers bool
 }
 
 func (f *fakeClient) ListUsers(_ context.Context, in tableau.ListUsersRequest) (tableau.UserPage, error) {
 	f.userPages++
-	return userPage(f.users, in.PageNumber, in.PageSize), nil
+	f.userFilters = append(f.userFilters, in.Name)
+	items := f.users
+	if f.filterUsers && in.Name != "" {
+		items = nil
+		for _, user := range f.users {
+			if user.Name == in.Name {
+				items = append(items, user)
+			}
+		}
+	}
+	return userPage(items, in.PageNumber, in.PageSize), nil
 }
 func (f *fakeClient) GetUser(_ context.Context, luid string) (tableau.User, error) {
 	for _, item := range f.users {
@@ -77,6 +90,31 @@ func TestAdapterResolvesExactUsersAndRejectsAmbiguity(t *testing.T) {
 	_, err = adapter.ResolveUser(context.Background(), resource.UserSelector{Username: "shared@example.com"})
 	if err == nil || !strings.Contains(err.Error(), "no resource matches") {
 		t.Fatalf("ResolveUser(non-username) error = %v", err)
+	}
+}
+
+func TestAdapterUsernameFilterCoversAllMatchingPagesAndFallsBackForUnsafeValues(t *testing.T) {
+	users := make([]tableau.User, 1001)
+	for index := range users {
+		users[index] = tableau.User{LUID: fmt.Sprintf("u-%04d", index), Name: "duplicate"}
+	}
+	client := &fakeClient{users: users, filterUsers: true}
+	adapter := resource.NewAdapter(client)
+	if _, err := adapter.ResolveUser(t.Context(), resource.UserSelector{Username: "duplicate"}); err == nil || !strings.Contains(err.Error(), "ambiguous") {
+		t.Fatal("duplicate username was not rejected as ambiguous")
+	}
+	if client.userPages != 2 || fmt.Sprint(client.userFilters) != "[duplicate duplicate]" {
+		t.Fatalf("matching pages=%d filters=%v", client.userPages, client.userFilters)
+	}
+	client.users = []tableau.User{{LUID: "u-sensitive", Name: "user,&"}, {LUID: "u-other", Name: "other", Email: "user,&"}}
+	client.userPages, client.userFilters = 0, nil
+	user, err := adapter.ResolveUser(t.Context(), resource.UserSelector{Username: "user,&"})
+	if err != nil || user.LUID != "u-sensitive" || client.userPages != 1 || fmt.Sprint(client.userFilters) != "[]" {
+		t.Fatalf("filter-sensitive resolution = %#v, error=%v, pages=%d, filters=%v", user, err, client.userPages, client.userFilters)
+	}
+	collisions, err := adapter.FindUsers(t.Context(), "user,&")
+	if err != nil || len(collisions) != 2 || client.userFilters[len(client.userFilters)-1] != "" {
+		t.Fatalf("name/email collision check = %#v, error=%v, filters=%v", collisions, err, client.userFilters)
 	}
 }
 

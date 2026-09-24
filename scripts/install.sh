@@ -161,7 +161,7 @@ add_managed_path() {
 if [ "$action" = 'uninstall' ]; then
     rm -f "${install_dir}/tadx"
     if [ "$modify_path" -eq 1 ]; then remove_managed_path; fi
-    remove_managed_completion
+    if [ "$completion" -eq 1 ]; then remove_managed_completion; fi
     if [ -d "$install_dir" ] && [ -z "$(ls -A "$install_dir")" ]; then
         rmdir "$install_dir"
     fi

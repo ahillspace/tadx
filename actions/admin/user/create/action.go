@@ -152,5 +152,9 @@ func usage(field, message string) error {
 	return &errs.Error{ID: "admin.user.create.usage", Kind: errs.KindUsage, Operation: "admin.user.create", Summary: message, Retryable: errs.Bool(false), CorrectiveAction: "Correct the user create input and review a new preview.", Validation: []errs.ValidationDetail{{Field: field, Code: "invalid", Message: message}}}
 }
 func outcomeUnknown(in Input, luid, requestID string, cause error) error {
-	return &errs.Error{ID: "admin.user.create.outcome_unknown", Kind: errs.KindOperation, Operation: "admin.user.create", Resource: luid, Environment: in.Environment, Site: in.Site, Summary: "The user create outcome could not be determined safely.", Cause: cause, Retryable: errs.Bool(false), CorrectiveAction: "Inspect the exact user and Tableau request before retrying: " + recoveryHint(in, luid), TableauRequestID: requestID, Phase: errs.PhaseSubmission, Outcome: errs.OutcomeUnknown}
+	resource := luid
+	if resource == "" {
+		resource = in.Name
+	}
+	return &errs.Error{ID: "admin.user.create.outcome_unknown", Kind: errs.KindOperation, Operation: "admin.user.create", Resource: resource, Environment: in.Environment, Site: in.Site, Summary: "The user create outcome could not be determined safely.", Cause: cause, Retryable: errs.Bool(false), CorrectiveAction: "Inspect the exact user and Tableau request before retrying: " + recoveryHint(in, luid), TableauRequestID: requestID, Phase: errs.PhaseSubmission, Outcome: errs.OutcomeUnknown}
 }

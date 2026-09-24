@@ -186,7 +186,7 @@ func (s *Store) ReadResources(ctx context.Context, query ResourceQuery) (Resourc
 	if err := rows.Err(); err != nil {
 		return ResourceResult{}, err
 	}
-	if query.ExactlyOne || query.LUID != "" || query.Name != "" {
+	if query.ExactlyOne || query.LUID != "" {
 		if len(result.Entries) == 0 {
 			return ResourceResult{}, resourceNotFoundError{}
 		}

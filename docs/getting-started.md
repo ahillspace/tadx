@@ -313,7 +313,9 @@ curl -fsSL https://tadx.net/install.sh | sh -s -- uninstall
 ```
 
 If you installed TADX in a custom directory, pass that same directory with `-InstallDir` on Windows or `--install-dir` on macOS or Linux.
+An explicit directory takes precedence over `TADX_INSTALL_DIR`, which takes precedence over the platform default for both installation and removal.
 The installer defaults to `%LOCALAPPDATA%\Programs\tadx\bin` on Windows and `$HOME/.local/bin` on macOS or Linux.
+To preserve existing PATH and completion setup during removal, add both `-NoModifyPath -NoCompletion` on Windows or `--no-modify-path --no-completion` on macOS or Linux.
 
 Removing stored credentials or Guidance is optional and must happen before removing the CLI.
 Run only the commands for the items you want removed; replace `ENVIRONMENT_ALIAS` with an environment name and repeat Guidance removal for each installed target:

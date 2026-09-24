@@ -123,7 +123,7 @@ func (check *Check) Finish(success bool) string {
 			if errors.Is(completed.err, context.Canceled) {
 				return ""
 			}
-			check.record = record{Checked: check.now()}
+			check.record = record{Checked: check.now(), Noticed: check.record.Noticed}
 			if completed.err == nil && validRelease(completed.release) {
 				check.record.Version = completed.release.Version
 				check.record.URL = completed.release.URL
@@ -171,6 +171,9 @@ func eligible(options Options) bool {
 	command := ""
 	for index := 0; index < len(options.Args); index++ {
 		arg := options.Args[index]
+		if strings.HasPrefix(arg, "--help=") || (len(arg) > 2 && arg[0] == '-' && arg[1] != '-') {
+			return false
+		}
 		if arg == "--help" || arg == "-h" || arg == "--json" || strings.HasPrefix(arg, "--json=") ||
 			arg == "--jsn" || strings.HasPrefix(arg, "--jsn=") ||
 			arg == "--preview" || strings.HasPrefix(arg, "--preview=") ||

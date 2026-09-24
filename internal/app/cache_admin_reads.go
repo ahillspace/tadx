@@ -72,7 +72,7 @@ func (r *cacheUserGetResolver) ResolveUser(ctx context.Context, selector userins
 			return userinspect.User{}, err
 		}
 	}
-	result, err := r.store.ReadResources(ctx, cache.ResourceQuery{Environment: r.environment, Site: r.site, Kind: "user", LUID: selector.LUID, Name: selector.Username, Limit: 2})
+	result, err := r.store.ReadResources(ctx, cache.ResourceQuery{Environment: r.environment, Site: r.site, Kind: "user", LUID: selector.LUID, Name: selector.Username, Limit: 2, ExactlyOne: true})
 	if err != nil {
 		return userinspect.User{}, cacheReadError("admin.user.inspect", r.environment, r.site, err)
 	}
@@ -131,18 +131,22 @@ func (r *cacheGroupGetResolver) ResolveGroup(ctx context.Context, selector group
 			return groupinspect.Group{}, err
 		}
 	}
-	result, err := r.store.ReadResources(ctx, cache.ResourceQuery{Environment: r.environment, Site: r.site, Kind: "group", LUID: selector.LUID, Name: selector.Name, Limit: 2})
+	result, err := r.store.ReadResources(ctx, cache.ResourceQuery{Environment: r.environment, Site: r.site, Kind: "group", LUID: selector.LUID, Name: selector.Name, Limit: 2, ExactlyOne: true})
 	if err != nil {
 		return groupinspect.Group{}, cacheReadError("admin.group.inspect", r.environment, r.site, err)
 	}
 	entry := result.Entries[0]
-	if members && entry.Coverage != "detail" {
+	var item struct {
+		groupinspect.Group
+		MembersFetched bool `json:"members_fetched"`
+	}
+	decoded := len(entry.Payload) != 0 && json.Unmarshal(entry.Payload, &item) == nil
+	if members && (entry.Coverage != "detail" || !decoded || !item.MembersFetched) {
 		return groupinspect.Group{}, &errs.Error{ID: "cache.detail_not_indexed", Kind: errs.KindUsage, Operation: "admin.group.inspect", Environment: r.environment, Site: r.site, Summary: "Group membership is not indexed for this cache record.", Retryable: errs.Bool(false), CorrectiveAction: "Run the command without --cache to query Tableau and update the cache."}
 	}
-	var item groupinspect.Group
 	r.source = cacheRecordSource(result, entry)
-	if len(entry.Payload) != 0 && json.Unmarshal(entry.Payload, &item) == nil {
-		return item, nil
+	if decoded {
+		return item.Group, nil
 	}
 	return groupinspect.Group{LUID: entry.LUID, Name: entry.Name}, nil
 }

@@ -206,7 +206,7 @@ func assertUnknownOutcome(t *testing.T, err error, wantID, wantRequestID, wantRe
 func TestAdminMutationsSurfaceUnknownOutcome(t *testing.T) {
 	uf := unknownUserFake{}
 	_, err := usercreate.New(uf, uf).Execute(context.Background(), usercreate.Input{Environment: "prod", Site: "site", Name: "alex", SiteRole: "Viewer", AuthSetting: "SAML"}, false)
-	assertUnknownOutcome(t, err, "admin.user.create.outcome_unknown", "req-c", "")
+	assertUnknownOutcome(t, err, "admin.user.create.outcome_unknown", "req-c", "alex")
 
 	full := sp("Alex")
 	_, err = userupdate.New(uf, uf).Execute(context.Background(), userupdate.Input{Environment: "prod", Site: "site", UserLUID: "u1", FullName: full}, false)
@@ -218,7 +218,7 @@ func TestAdminMutationsSurfaceUnknownOutcome(t *testing.T) {
 
 	gc := unknownGroupFake{}
 	_, err = groupcreate.New(gc, gc).Execute(context.Background(), groupcreate.Input{Environment: "prod", Site: "site", Name: "Authors"}, false)
-	assertUnknownOutcome(t, err, "admin.group.create.outcome_unknown", "req-gc", "")
+	assertUnknownOutcome(t, err, "admin.group.create.outcome_unknown", "req-gc", "Authors")
 
 	gu := &unknownGroupUpdateFake{}
 	_, err = groupupdate.New(gu, gu, gu).Execute(context.Background(), groupupdate.Input{Environment: "prod", Site: "site", GroupLUID: "g1", Name: sp("New")}, false)

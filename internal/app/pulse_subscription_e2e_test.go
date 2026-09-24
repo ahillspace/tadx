@@ -99,9 +99,13 @@ func TestPulseSubscriptionHelpNeedsNoConfigurationOrAuthentication(t *testing.T)
 
 func TestPulseSubscriptionInvalidLimitStopsBeforeAuthentication(t *testing.T) {
 	for _, limit := range []string{"0", "-1", "10001"} {
+		expected := "--limit must be between 1 and 10000"
+		if limit == "0" {
+			expected = "--limit must be greater than zero when supplied"
+		}
 		var output bytes.Buffer
 		code := Run(t.Context(), []string{"pulse", "subscription", "list", "--limit", limit, "--json"}, &output, Options{ConfigPath: filepath.Join(t.TempDir(), "missing.yaml"), managedPolicy: fixtureManagedPolicy{state: managedpolicy.StateActive, allowed: map[string]bool{"pulse.subscription.list": true}}})
-		if code == 0 || !strings.Contains(output.String(), "--limit must be between 1 and 10000") || strings.Contains(output.String(), "configuration") {
+		if code == 0 || !strings.Contains(output.String(), expected) || strings.Contains(output.String(), "configuration") {
 			t.Fatalf("limit=%s code=%d output=%s", limit, code, output.String())
 		}
 	}

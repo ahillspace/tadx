@@ -79,6 +79,9 @@ func (c *Client) CreateUser(ctx context.Context, input CreateUserRequest) (User,
 	payload := userWriteXML{Name: optional(input.Name), SiteRole: optional(input.SiteRole), AuthSetting: optional(input.AuthSetting), IdentityPoolName: optional(input.IdentityPoolName), IdPConfigurationID: optional(input.IdPConfigurationID), Email: optional(input.Email), Language: optional(input.Language), Locale: optional(input.Locale)}
 	response, err := c.write(ctx, http.MethodPost, "admin.user.create", []string{"users"}, payload)
 	if err != nil {
+		if tableau.SubmissionAttempted(err) {
+			return User{Name: input.Name, MutationStatus: "unknown", RequestID: tableau.RequestID(err)}, err
+		}
 		return User{}, err
 	}
 	unknown := User{MutationStatus: "unknown", RequestID: response.TableauRequestID}
@@ -184,6 +187,9 @@ func (c *Client) CreateGroup(ctx context.Context, input CreateGroupRequest) (Gro
 	payload := groupWriteXML{Name: optional(input.Name), MinimumSiteRole: optional(input.MinimumSiteRole), ExternalUserEnabled: boolAttr(input.ExternalUserEnabled)}
 	response, err := c.write(ctx, http.MethodPost, "admin.group.create", []string{"groups"}, payload)
 	if err != nil {
+		if tableau.SubmissionAttempted(err) {
+			return Group{Name: input.Name, MutationStatus: "unknown", RequestID: tableau.RequestID(err)}, err
+		}
 		return Group{}, err
 	}
 	unknown := Group{MutationStatus: "unknown", RequestID: response.TableauRequestID}

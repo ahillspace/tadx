@@ -2,11 +2,19 @@
 
 set -eu
 
-test_root=$(mktemp -d "${TMPDIR:-/tmp}/tadx-installer-test.XXXXXXXX")
+temporary_parent=$(cd -- "${TMPDIR:-/tmp}" && pwd)
+test_root=$(mktemp -d "${temporary_parent}/tadx-installer-test.XXXXXXXX")
 cleanup() {
-    rm -rf "$test_root"
+    case "$test_root" in
+        "${temporary_parent}"/tadx-installer-test.*)
+            [ "$test_root" != "$temporary_parent" ] && [ -d "$test_root" ] && rm -rf -- "$test_root"
+            ;;
+        *) printf '%s\n' 'Refusing to remove an unvalidated installer test fixture root.' >&2 ;;
+    esac
 }
 trap cleanup EXIT HUP INT TERM
+
+unset TADX_INSTALL_DIR
 
 CDPATH=''
 export CDPATH
@@ -113,6 +121,13 @@ assert_policy_preserved() {
     cmp "$policy_fixture" "${test_root}/policy-original"
     [ "$(policy_metadata)" = "$policy_original_metadata" ]
 }
+file_mtime() {
+    if stat -c '%y' "$1" >/dev/null 2>&1; then
+        stat -c '%y' "$1"
+    else
+        stat -f '%m' "$1"
+    fi
+}
 
 sh "${repository_root}/scripts/install.sh" install --version latest --install-dir "$install_directory" >/dev/null
 assert_policy_preserved
@@ -178,5 +193,40 @@ for completion_shell in bash zsh fish; do
     sh "${repository_root}/scripts/install.sh" --install-dir "$install_directory" --no-modify-path --no-completion >/dev/null
     [ "$(cat "$completion_profile")" = '# user configuration' ]
 done
+
+# Uninstall with completion disabled must leave even an installer-marked profile byte-for-byte intact.
+no_completion_home="${test_root}/no-completion-home"
+no_completion_install_directory="${no_completion_home}/install space"
+mkdir -p "$no_completion_install_directory"
+export HOME="$no_completion_home"
+export SHELL='/bin/bash'
+no_completion_profile="${HOME}/.bashrc"
+no_completion_binary="${no_completion_install_directory}/tadx"
+printf '%s\n' '# before' "[ ! -x '${no_completion_binary}' ] || source <('${no_completion_binary}' completion bash) # tadx-installer-completion" '# after' > "$no_completion_profile"
+printf '%s\n' '#!/bin/sh' 'exit 0' > "$no_completion_binary"
+chmod 0755 "$no_completion_binary"
+touch -t 200001010000 "$no_completion_profile"
+cp "$no_completion_profile" "${test_root}/no-completion-profile.original"
+no_completion_mtime=$(file_mtime "$no_completion_profile")
+[ ! -e "${no_completion_profile}.tadx-backup" ]
+sh "${repository_root}/scripts/install.sh" uninstall --install-dir "$no_completion_install_directory" --no-modify-path --no-completion >/dev/null
+cmp "$no_completion_profile" "${test_root}/no-completion-profile.original"
+[ "$(file_mtime "$no_completion_profile")" = "$no_completion_mtime" ]
+[ ! -e "${no_completion_profile}.tadx-backup" ]
+[ ! -e "$no_completion_binary" ]
+
+missing_profile_home="${test_root}/no-completion-missing-home"
+mkdir -p "$missing_profile_home"
+export HOME="$missing_profile_home"
+missing_profile="${HOME}/.bashrc"
+missing_profile_install="${test_root}/no-completion-missing-install"
+mkdir -p "$missing_profile_install"
+printf '%s\n' '#!/bin/sh' 'exit 0' > "${missing_profile_install}/tadx"
+chmod 0755 "${missing_profile_install}/tadx"
+[ ! -e "$missing_profile" ]
+sh "${repository_root}/scripts/install.sh" uninstall --install-dir "$missing_profile_install" --no-modify-path --no-completion >/dev/null
+[ ! -e "$missing_profile" ]
+[ ! -e "${missing_profile}.tadx-backup" ]
+[ ! -e "${missing_profile_install}/tadx" ]
 
 printf '%s\n' 'install.sh tests passed'
