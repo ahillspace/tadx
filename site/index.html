@@ -100,7 +100,34 @@
     .tool-call .command { margin: 8px 12px 6px 0; color: #ced9c1; white-space: pre-wrap; overflow-wrap: anywhere; font: inherit; line-height: 1.85; }
     .tool-tick { display: inline-flex; color: var(--accent); }
     .tool-tick .icon { width: 11px; height: 11px; }
-    .response { margin-left: 29px; }
+    .session-role { display: block; margin-bottom: 8px; color: #9aa98e; font: 10px/1.4 var(--mono); letter-spacing: .08em; text-transform: uppercase; }
+    .agent-turn { margin: 23px 0 0 29px; }
+    .agent-plan { margin: 0 0 14px; color: #d7dfce; font-size: 13px; line-height: 1.7; }
+    .tool-hint { margin: 0 0 9px; color: #a7b1a3; font: 10px/1.6 var(--mono); }
+    .agent-turn .tool-call { margin: 0 0 9px; padding: 0; border: 1px solid #ffffff1c; border-radius: 5px; background: #ffffff03; }
+    .agent-turn .tool-call summary { width: 100%; min-height: 44px; padding: 11px 13px; gap: 10px; }
+    .tool-title { min-width: 0; flex: 1; color: #d7dfce; overflow-wrap: anywhere; }
+    .tool-state { color: var(--accent); font: 9px/1.4 var(--mono); }
+    .tool-call.is-blocked { border-color: #a47f4766; background: #a47f4708; }
+    .is-blocked .tool-state, .is-blocked .tool-tick { color: #e4ba7f; }
+    .tool-detail { padding: 0 14px 13px; border-top: 1px solid #ffffff12; }
+    .tool-label { margin: 12px 0 5px; color: #a7b1a3; font: 9px/1.4 var(--mono); text-transform: uppercase; letter-spacing: .08em; }
+    .agent-turn .command { margin: 0; color: #e1e9d8; font-size: 10px; line-height: 1.8; }
+    .tool-output { margin: 0; padding-top: 2px; color: #afbea4; font: 10px/1.8 var(--mono); white-space: pre-wrap; overflow-wrap: anywhere; }
+    .is-blocked .tool-output { color: #e1bf91; }
+    .response { margin-left: 29px; margin-top: 23px; }
+    .blocked-result { display: flex; align-items: center; gap: 9px; margin: 0; padding: 12px 14px; color: #e4ba7f; background: #c89b5510; border: 1px solid #a47f4733; border-radius: 4px; font: 11px/1.6 var(--mono); }
+    @media (max-width: 760px) {
+      .demo-tabs { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 4px 20px; }
+      .demo-tab { justify-content: center; }
+      .agent-turn { margin-left: 24px; }
+    }
+    @media (max-width: 440px) {
+      .agent-turn { margin-left: 22px; }
+      .agent-plan { font-size: 12px; }
+      .agent-turn .tool-call summary { padding-inline: 10px; gap: 7px; }
+      .tool-detail { padding-inline: 10px; }
+    }
     .response-copy { margin: 0 0 15px; color: #e1e7d9; font-size: 14px; font-weight: 420; line-height: 1.65; }
     .workbooks { width: 100%; border-collapse: collapse; font-size: 12px; text-align: left; }
     .workbooks th { padding: 0 0 9px; font: 10px/1.5 var(--mono); font-weight: 400; color: #99a58f; }
@@ -145,6 +172,7 @@
     .agent-line p { color: var(--muted); font-size: 12px; margin: 0; }
     .agents { display: flex; flex-wrap: wrap; justify-content: center; gap: 16px 27px; align-items: center; font-size: 13px; font-weight: 550; letter-spacing: -.01em; }
     .agent-name { display: inline-flex; align-items: center; gap: 7px; }
+    .lower-cta { display: flex; justify-content: center; padding-bottom: 54px; }
     footer { display: flex; align-items: flex-start; justify-content: space-between; gap: 22px; padding: 26px 0 32px; border-top: 1px solid var(--line); }
     .footer-left { display: flex; gap: 15px; align-items: flex-start; }
     .footer-left .wordmark { font-size: 16px; letter-spacing: -.6px; padding-top: 1px; }
@@ -301,7 +329,7 @@
     <section class="hero" aria-labelledby="headline">
       <p class="eyebrow"><span class="dot" aria-hidden="true"></span> The open-source Tableau CLI</p>
       <h1 id="headline"><span>Tableau.</span><span class="second-line">At your command.</span></h1>
-      <p class="intro">Discover, govern, and move Tableau content with deterministic commands.<br> Use your terminal. Or ask your agent.</p>
+      <p class="intro">Discover, create, manage, and govern Tableau content.<br> Use your terminal. Or ask your agent.</p>
       <div class="hero-actions">
         <button type="button" class="primary" data-install>Get TADX <svg class="icon" aria-hidden="true"><use href="#arrow"/></svg></button>
         <a class="text-link" href="https://github.com/ahillspace/tadx" target="_blank" rel="noopener noreferrer">View on GitHub <svg class="icon" aria-hidden="true"><use href="#external"/></svg></a>
@@ -312,6 +340,7 @@
         <button type="button" class="demo-tab" id="tab-find" role="tab" aria-selected="true" aria-controls="demo-panel" tabindex="0" data-demo="find"><span class="tab-index" aria-hidden="true">01</span> Find a workbook</button>
         <button type="button" class="demo-tab" id="tab-metric" role="tab" aria-selected="false" aria-controls="demo-panel" tabindex="-1" data-demo="metric"><span class="tab-index" aria-hidden="true">02</span> Create a metric</button>
         <button type="button" class="demo-tab" id="tab-publish" role="tab" aria-selected="false" aria-controls="demo-panel" tabindex="-1" data-demo="publish"><span class="tab-index" aria-hidden="true">03</span> Publish a change</button>
+        <button type="button" class="demo-tab" id="tab-blocked" role="tab" aria-selected="false" aria-controls="demo-panel" tabindex="-1" data-demo="blocked"><span class="tab-index" aria-hidden="true">04</span> Policy in action</button>
       </div>
       <div class="terminal" id="demo-panel" role="tabpanel" aria-labelledby="tab-find" tabindex="0">
         <div class="terminal-head">
@@ -339,12 +368,12 @@
         </div>
         <div class="terminal-foot"><span class="connection" id="session-context">dev / Tableau Cloud</span><span id="session-status">Read only</span></div>
       </div>
-      <div class="demo-note"><span>Example data. No live connection.</span><span class="support">Tableau Cloud &amp; Server · Pulse on Cloud</span></div>
+      <div class="demo-note"><span class="support">Tableau Cloud &amp; Server · Pulse on Cloud</span></div>
     </section>
     <section class="capabilities" aria-labelledby="capabilities-title">
       <div class="capabilities-head">
-        <div><p class="section-kicker">One CLI · the Tableau lifecycle</p><h2 id="capabilities-title">From finding content to changing it safely.</h2></div>
-        <p>TADX gives people and agents a consistent operational surface across Tableau Cloud and Server.</p>
+        <div><h2 id="capabilities-title">Give your agents Tableau expertise. Keep full control.</h2></div>
+        <p>Managed policies control which commands agents can run and whether they can change Tableau content. Compact output helps reduce agent token usage.</p>
       </div>
       <div class="capability-rail" aria-label="TADX capability categories">
         <div class="capability-track">
@@ -377,6 +406,7 @@
       <p>Bring your own agent.</p>
       <div class="agents"><span class="agent-name">Claude Code</span><span class="agent-name">Codex</span><span class="agent-name">OpenCode</span><span class="agent-name">Cursor</span><span class="agent-name">Pi</span><span class="agent-name">Hermes</span><span class="agent-name">GitHub Copilot</span><span class="agent-name">Gemini CLI</span><span class="agent-name">Cline</span></div>
     </section>
+    <div class="lower-cta"><button type="button" class="primary" data-install>Get TADX <svg class="icon" aria-hidden="true"><use href="#arrow"/></svg></button></div>
   </main>
   <footer class="wrap">
     <div class="footer-left"><a class="wordmark" href="#" aria-label="TADX home">TADX</a><p class="footer-caption">Made for the Tableau community.<span>Independent. Not affiliated with Tableau or Salesforce.</span></p></div>
@@ -404,28 +434,106 @@
     'use strict';
     // All demo data is local and fictional. The page never runs shell commands.
     const demos = {
-      find: {
-        prompt: 'Find the sales workbooks on my dev site.',
-        tool: 'tadx search',
-        command: 'tadx search sales --type workbook --env dev',
-        response: 'Found three sales workbooks on dev.',
-        kind: 'workbooks', context: 'dev / Tableau Cloud', status: 'Read only'
+  "find": {
+    "prompt": "Find the sales workbooks on my dev site.",
+    "plan": "Searching dev for matching workbook names, then checking the Sales Overview workbook.",
+    "steps": [
+      {
+        "title": "Search workbooks",
+        "command": "tadx search sales --type workbook --env dev",
+        "output": "source: live\npage:\n  returned: 3\n  limit: 20\n  more_available: false\nitems[3]{luid,type,name,project_path}:\n  29f76909-0c93-4ec0-b86b-bc373fed391a,workbook,Sales Overview,Executive\n  31a5e370-f827-4104-a024-82a67641f332,workbook,Regional Sales,Sales\n  98f18596-d1f4-419b-87a7-a3056487f322,workbook,Sales Pipeline,Revenue Ops"
       },
-      metric: {
-        prompt: 'Preview a monthly revenue metric for the Orders datasource on dev.',
-        tool: 'tadx pulse definition create --preview',
-        command: 'tadx pulse definition create --env dev --name "Monthly Revenue" --datasource-id "orders-datasource-id" --measure-field "Sales" --aggregation SUM --date-field "Order Date" --dimension "Region" --preview',
-        response: 'Here’s the metric, ready for you to review.',
-        kind: 'metric', context: 'dev / Tableau Cloud', status: 'Preview only'
-      },
-      publish: {
-        prompt: 'Preview publishing my Sales Overview workbook to the Executive project on prod.',
-        tool: 'tadx content workbook publish --preview',
-        command: 'tadx content workbook publish --workspace analytics --id "sales-overview-id" --env prod --project "Executive" --overwrite --preview',
-        response: 'This will replace Sales Overview in the Executive project on prod.',
-        kind: 'publish', context: 'prod / Tableau Cloud', status: 'Preview only'
+      {
+        "title": "Inspect Sales Overview",
+        "command": "tadx content workbook inspect --env dev --id \"29f76909-0c93-4ec0-b86b-bc373fed391a\"",
+        "output": "status: found\nenvironment: dev\nworkbook:\n  luid: 29f76909-0c93-4ec0-b86b-bc373fed391a\n  name: Sales Overview\n  project_path: Executive"
       }
-    };
+    ],
+    "response": "Found three sales workbooks on dev. Sales Overview is in the Executive project.",
+    "kind": "workbooks",
+    "context": "dev / Tableau Cloud",
+    "status": "Read only"
+  },
+  "metric": {
+    "prompt": "Create a Monthly Revenue metric from Orders on dev. Sum Sales by Order Date, with Region available as a filter.",
+    "plan": "Finding Orders and checking its fields before creating the Pulse metric.",
+    "steps": [
+      {
+        "title": "Find the Orders datasource",
+        "command": "tadx search Orders --type datasource --env dev",
+        "output": "source: live\npage:\n  returned: 1\n  more_available: false\nitems[1]{luid,type,name,project_path}:\n  ad1f679c-9a51-4dcf-b70c-1b1ec0bc4a27,datasource,Orders,Sales"
+      },
+      {
+        "title": "Inspect the datasource fields",
+        "command": "tadx content datasource schema --env dev --id \"ad1f679c-9a51-4dcf-b70c-1b1ec0bc4a27\"",
+        "output": "status: listed\ndatasource_luid: ad1f679c-9a51-4dcf-b70c-1b1ec0bc4a27\ndatasource_name: Orders\npage:\n  returned: 3\n  more_available: false\nfields[3]:\n  - id: sales\n    caption: Sales\n    role: measure\n    data_type: number\n    default_aggregation: sum\n  - id: order_date\n    caption: Order Date\n    role: date\n    data_type: date\n  - id: region\n    caption: Region\n    role: dimension\n    data_type: string"
+      },
+      {
+        "title": "Create Monthly Revenue",
+        "before": "Orders has the required fields. Creating the definition with monthly granularity and a default Pulse metric.",
+        "command": "tadx pulse definition create --env dev --name \"Monthly Revenue\" --datasource-id \"ad1f679c-9a51-4dcf-b70c-1b1ec0bc4a27\" --measure-field sales --aggregation SUM --date-field order_date --minimum-granularity MONTH --dimension region",
+        "output": "plan:\n  mode: execute\n  name: Monthly Revenue\n  measure:\n    field: sales\n    aggregation: SUM\n  time_dimension: order_date\n  allowed_dimensions[1]: region\n  minimum_granularity: MONTH\nresult:\n  status: succeeded\n  definition_luid: ad43a7fe-ea36-4f20-8440-f0a62efb73e1\n  default_metric_luid: 817603ad-a55e-4f1d-8f15-d88d10279866\n  default_metric_status: ready"
+      }
+    ],
+    "response": "Created Monthly Revenue in Tableau Pulse. It sums Sales by Order Date, with Region available as a filter.",
+    "kind": "metric",
+    "context": "dev / Tableau Cloud",
+    "status": "Created"
+  },
+  "publish": {
+    "prompt": "Publish my updated Sales Overview workbook from analytics to Executive on prod, replacing the existing version.",
+    "plan": "Checking the local workbook changes and the publish destination before replacing the existing workbook.",
+    "steps": [
+      {
+        "title": "Check the updated local workbook",
+        "command": "tadx workspace status --workspace analytics",
+        "output": "status: attention\nworkspace:\n  name: analytics\nartifacts:\n  dirty: 1\n  artifacts[1]{kind,luid,name,path,state}:\n    workbook,29f76909-0c93-4ec0-b86b-bc373fed391a,Sales Overview,artifacts/workbook/Sales Overview,dirty"
+      },
+      {
+        "title": "Check the publish plan",
+        "command": "tadx content workbook publish --workspace analytics --id \"29f76909-0c93-4ec0-b86b-bc373fed391a\" --env prod --project \"Executive\" --overwrite --preview",
+        "output": "plan:\n  mode: preview\n  operation: workbook.publish\n  source_luid: 29f76909-0c93-4ec0-b86b-bc373fed391a\n  workbook_name: Sales Overview\n  target:\n    environment: prod\n    project_path: Executive\n    existing_workbook_luid: f9f3527e-c1a1-4fbb-b057-0751754fa9cb\n  overwrite: true"
+      },
+      {
+        "title": "Publish the workbook",
+        "before": "The plan targets the existing Sales Overview in Executive on prod. Publishing the local update with overwrite enabled.",
+        "command": "tadx content workbook publish --workspace analytics --id \"29f76909-0c93-4ec0-b86b-bc373fed391a\" --env prod --project \"Executive\" --overwrite",
+        "output": "status: succeeded\noperation: workbook.publish\nenvironment: prod\nproject_path: Executive\nresult:\n  status: succeeded\n  workbook_luid: f9f3527e-c1a1-4fbb-b057-0751754fa9cb\n  workbook_name: Sales Overview"
+      }
+    ],
+    "response": "Published the updated Sales Overview to Executive on prod.",
+    "kind": "publish",
+    "context": "prod / Tableau Cloud",
+    "status": "Published"
+  },
+  "blocked": {
+    "prompt": "Delete Sales Overview from prod. It has been retired.",
+    "plan": "Looking up Sales Overview on prod, then using its exact ID for the requested deletion.",
+    "steps": [
+      {
+        "title": "Find the target workbook",
+        "command": "tadx search \"Sales Overview\" --type workbook --env prod",
+        "output": "source: live\npage:\n  returned: 1\n  limit: 20\n  more_available: false\nitems[1]{luid,type,name,project_path}:\n  29f76909-0c93-4ec0-b86b-bc373fed391a,workbook,Sales Overview,Executive"
+      },
+      {
+        "title": "Delete workbook",
+        "blocked": true,
+        "command": "tadx content workbook delete --env prod --id \"29f76909-0c93-4ec0-b86b-bc373fed391a\"",
+        "output": "error:\n  id: policy.denied\n  operation: workbook.delete\n  summary: The administrator-managed policy blocks this operation.\n  phase: setup\n  outcome: not_attempted\n  retryable: false"
+      },
+      {
+        "title": "Inspect managed policy",
+        "command": "tadx policy status",
+        "output": "state: active\nprotected: true\npath_protected: true\ncandidate_valid: true\nremote_mutations: false"
+      }
+    ],
+    "response": "Your managed policy blocks workbook deletion. No deletion was attempted. An administrator must update the policy before this operation can proceed.",
+    "kind": "blocked",
+    "context": "prod / Tableau Cloud",
+    "status": "Blocked by policy"
+  }
+};
+    const lockIcon = '<svg class="icon" aria-hidden="true" viewBox="0 0 24 24"><rect x="5" y="10" width="14" height="11" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/><path d="M12 14v3"/></svg>';
     const icon = name => `<svg class="icon" aria-hidden="true"><use href="#${name}"/></svg>`;
     const body = document.getElementById('session-body');
     const tabs = Array.from(document.querySelectorAll('[data-demo]'));
@@ -443,11 +551,33 @@
       prompt.className = 'prompt';
       prompt.innerHTML = '<span class="prompt-mark" aria-hidden="true">›</span><p class="prompt-text"></p>';
       prompt.querySelector('p').textContent = d.prompt;
-      const tool = document.createElement('details');
-      tool.className = 'tool-call';
-      tool.innerHTML = `<summary><span class="tool-tick">${icon('check')}</span><span></span><svg class="icon chevron" aria-hidden="true"><use href="#chevron"/></svg></summary><pre class="command"></pre>`;
-      tool.querySelector('summary > span:nth-child(2)').textContent = d.tool;
-      tool.querySelector('pre').textContent = d.command;
+      const userLabel = document.createElement('span');
+      userLabel.className = 'session-role';
+      userLabel.textContent = 'You';
+      prompt.querySelector('p').prepend(userLabel);
+      const tool = document.createElement('div');
+      tool.className = 'agent-turn';
+      tool.innerHTML = '<span class="session-role">Agent</span><p class="agent-plan"></p><p class="tool-hint">Expand a tool call to see the command and output.</p>';
+      tool.querySelector('.agent-plan').textContent = d.plan;
+      for (const [index, step] of d.steps.entries()) {
+        if (step.before) {
+          const note = document.createElement('p');
+          note.className = 'agent-plan';
+          note.style.marginTop = '18px';
+          note.textContent = step.before;
+          tool.append(note);
+        }
+        const call = document.createElement('details');
+        call.className = 'tool-call' + (step.blocked ? ' is-blocked' : '');
+        call.dataset.ohpRef = name + '-tool-' + (index + 1);
+        call.innerHTML = '<summary><span class="tool-tick" aria-hidden="true"></span><span class="tool-title"></span><span class="tool-state"></span><svg class="icon chevron" aria-hidden="true"><use href="#chevron"/></svg></summary><div class="tool-detail"><p class="tool-label">Shell command</p><pre class="command"></pre><p class="tool-label">TADX output excerpt</p><pre class="tool-output"></pre></div>';
+        call.querySelector('.tool-tick').innerHTML = step.blocked ? lockIcon : icon('check');
+        call.querySelector('.tool-title').textContent = step.title;
+        call.querySelector('.tool-state').textContent = step.blocked ? 'Blocked' : 'Complete';
+        call.querySelector('.command').textContent = step.command;
+        call.querySelector('.tool-output').textContent = step.output;
+        tool.append(call);
+      }
       const response = document.createElement('div');
       response.className = 'response';
       const copy = document.createElement('p');
@@ -457,9 +587,13 @@
       if (d.kind === 'workbooks') {
         response.append(table.cloneNode(true));
       } else if (d.kind === 'metric') {
+        const saved = document.createElement('p');
+        saved.className = 'change-title';
+        saved.textContent = 'Saved in Tableau Pulse';
+        response.append(saved);
         const card = document.createElement('div');
         card.className = 'metric-card';
-        for (const [label, value] of [['Metric', 'Monthly Revenue'], ['Measure', 'Sum of Sales'], ['Time period', 'Month to date'], ['Filter by', 'Region']]) {
+        for (const [label, value] of [['Metric', 'Monthly Revenue'], ['Measure', 'Sum of Sales'], ['Minimum granularity', 'Month'], ['Filter by', 'Region']]) {
           const field = document.createElement('div');
           field.className = 'metric-field';
           const caption = document.createElement('span');
@@ -470,10 +604,16 @@
           card.append(field);
         }
         response.append(card);
+      } else if (d.kind === 'blocked') {
+        const notice = document.createElement('p');
+        notice.className = 'blocked-result';
+        notice.innerHTML = lockIcon;
+        notice.append(document.createTextNode('Deletion stopped before reaching Tableau'));
+        response.append(notice);
       } else {
         const change = document.createElement('div');
         change.className = 'change';
-        change.innerHTML = `<p class="change-title">Sales Overview</p><div class="change-path"><span>analytics <strong>/ local</strong></span>${icon('arrow')}<span>prod <strong>/ Executive</strong></span></div>`;
+        change.innerHTML = `<p class="change-title">Sales Overview published</p><div class="change-path"><span>analytics <strong>/ local</strong></span>${icon('arrow')}<span>prod <strong>/ Executive</strong></span></div>`;
         response.append(change);
       }
       body.replaceChildren(prompt, tool, response);
@@ -550,6 +690,8 @@
         }
       }
     });
+
+    selectDemo('find', false);
 
     const dialog = document.getElementById('install-dialog');
     const osTabs = Array.from(document.querySelectorAll('[data-os]'));

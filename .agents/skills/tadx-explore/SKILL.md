@@ -1,11 +1,14 @@
 ---
 name: tadx-explore
-description: Run bounded, free-form Luna exploration of an installed TADX CLI for a selected category, resource, or verb, with scoped fixtures, evidence, cleanup, and handoff.
+description: Explore installed TADX correctness and workflow efficiency with Luna, using bounded scopes, fixtures, evidence, cleanup, and handoff.
 ---
 
 # Explore TADX with Luna
 
 State and reports use ignored `.tadx-explore/`; setup only prepares payloads.
+Assess both correctness and avoidable work, including successful workflows.
+Choose a user outcome within the authorized scope, not only a set of commands to stress.
+Use category or resource scope when that outcome spans verbs; keep focused regressions narrowly scoped.
 
 Choose a scope, set selectors, and prepare:
 
@@ -18,7 +21,7 @@ node .agents/skills/tadx-explore/scripts/explore.mjs prepare --scope "content wo
 Fixture writes need a named environment, while local read-only scopes can use null.
 Pass `--allow-fixture-writes` to `prepare`, never to `init`, when explicit authorization covers the selected environment and disposable fixtures.
 The flag records authority on that run only, and existing authorization can cover later runs in the same scope.
-Pass the returned `spawn` object unchanged to `spawn_agent` with a fresh Luna call, preserving `model: gpt-5.6-luna`, `reasoning_effort: max`, and `fork_turns: none`.
+Pass the returned `spawn` object unchanged to `spawn_agent` with a fresh Luna call, preserving `model: gpt-6-luna`, `reasoning_effort: medium`, and `fork_turns: none`.
 Do not paste custom prompts.
 
 After each worker, run `next --run <run-id>` and pass returned spawns unchanged until a terminal summary or user stop.

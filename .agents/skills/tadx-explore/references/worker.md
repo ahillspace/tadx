@@ -61,7 +61,26 @@ Respect the cleanup reserve in the run manifest and do not broaden cleanup targe
 Read `previous_brief` in the pass manifest and vary coverage without claiming regression evidence that you did not collect.
 Obey `call_limit`, `exploration_calls`, `cleanup_reserve`, and `deadline` from the pass budget.
 Tally setup, help, exploration, reproduction, and cleanup calls against the pass limit.
+Count every TADX invocation, including those launched by helper scripts, within the existing budget.
+Attempt a representative user workflow inside the authorized scope, not only isolated verb and edge-case probes.
+Trace successful completion when possible; otherwise record the blocked stage without claiming success or expanding authority.
+Reserve workflow analysis within the existing exploration budget and do not add tasks, writes, or calls beyond the manifest scope.
 Stop before the deadline or limit, and report the self-accounted count.
+
+## Assess call and workflow efficiency
+
+Look for avoidable discovery, repeated fetches, information already returned but hidden or discarded, excessive output, and CLI workflow or design friction.
+For each call in the representative workflow, keep a compact evidence trace of its purpose and result in coverage notes or a finding.
+Distinguish required safety, identity resolution, freshness, and mutation verification calls from avoidable calls; do not recommend dropping a required check.
+Repeated inspection is still waste when the existing receipt already confirms the identity and postcondition needed for the task.
+Identify information available in earlier responses, expanded output, or local observations, and information that needs another upstream request.
+Claim that the CLI fetched but omitted information only with supporting evidence; otherwise mark its availability unknown for investigation.
+Separate an agent's failure to use already available evidence from a CLI defect or design limitation.
+For each design recommendation, cite the exact calls to remove or combine and the smallest viable alternative.
+Include measured call counts, output size, and latency when available, plus the same before-and-after task and the tradeoffs.
+Label estimates as estimates, not measurements; fewer CLI calls do not by themselves prove fewer network requests or lower cost.
+Do not recommend dumping all fields or adding a generic workflow engine, and do not force a finding quota.
+When a workflow trace needs more room, save it under the existing ignored pass `evidence/` directory and cite it from the existing `coverage.note` or finding fields.
 
 ## Use the generated report contract
 
