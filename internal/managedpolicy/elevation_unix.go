@@ -66,14 +66,12 @@ func elevateUnixInstall(ctx context.Context, out InstallResult) (InstallResult, 
 	if err != nil {
 		return out, fmt.Errorf("cannot verify trusted /usr/bin/sudo: %w", err)
 	}
-	fd, err := unix.Openat(dir, "sudo", unix.O_RDONLY|unix.O_NOFOLLOW|unix.O_CLOEXEC|unix.O_NONBLOCK, 0)
+	opened, err := inspectUnixExecutableAt(dir, "sudo")
 	unix.Close(dir)
 	if err != nil {
-		return out, fmt.Errorf("/usr/bin/sudo is unavailable; run tadx policy install as root: %w", err)
-	}
-	err = inspectUnixFD(fd, true)
-	unix.Close(fd)
-	if err != nil {
+		if !opened {
+			return out, fmt.Errorf("/usr/bin/sudo is unavailable; run tadx policy install as root: %w", err)
+		}
 		return out, fmt.Errorf("/usr/bin/sudo is not protected: %w", err)
 	}
 	executable, err := os.Executable()
@@ -95,6 +93,15 @@ func elevateUnixInstall(ctx context.Context, out InstallResult) (InstallResult, 
 	// Once launched, wait for the committing helper even if the caller cancels.
 	waitErr := cmd.Wait()
 	return decodeUnixInstallReceipt(out, receipt.Bytes(), receipt.overflow, waitErr)
+}
+
+func inspectUnixExecutableAt(dir int, name string) (bool, error) {
+	fd, err := unix.Openat(dir, name, unixExecutableInspectFlags|unix.O_NOFOLLOW|unix.O_CLOEXEC|unix.O_NONBLOCK, 0)
+	if err != nil {
+		return false, err
+	}
+	defer unix.Close(fd)
+	return true, inspectUnixFD(fd, true)
 }
 
 type boundedReceipt struct {

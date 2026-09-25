@@ -13,7 +13,31 @@ import (
 	"strings"
 	"syscall"
 	"testing"
+
+	"golang.org/x/sys/unix"
 )
+
+func TestPrivilegedUnixExecutableInspection(t *testing.T) {
+	base, _, _ := unixInstallFixture(t)
+	path := filepath.Join(base, "executable")
+	if err := os.WriteFile(path, []byte("fixture"), 0111); err != nil {
+		t.Fatal(err)
+	}
+	dir, err := unix.Open(base, unix.O_RDONLY|unix.O_DIRECTORY|unix.O_CLOEXEC, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer unix.Close(dir)
+	if opened, err := inspectUnixExecutableAt(dir, "executable"); !opened || err != nil {
+		t.Fatalf("protected executable: opened=%t error=%v", opened, err)
+	}
+	if err := os.Chmod(path, 0133); err != nil {
+		t.Fatal(err)
+	}
+	if opened, err := inspectUnixExecutableAt(dir, "executable"); !opened || err == nil {
+		t.Fatalf("writable executable accepted: opened=%t error=%v", opened, err)
+	}
+}
 
 func unixInstallFixture(t *testing.T) (string, string, string) {
 	t.Helper()

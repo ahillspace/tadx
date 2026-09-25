@@ -238,10 +238,10 @@ func policyInstallError(output policyinstall.Output, cause error) error {
 		completed = append(completed, "policy_active")
 	}
 	outcome := errs.OutcomeNotAttempted
-	correctiveAction := "Correct the reported setup or validation problem, then rerun the install command. No managed policy change was confirmed."
+	correctiveAction := "Review the reported setup or validation problem and see tadx policy install --help for installation guidance. No managed policy change was confirmed."
 	if len(completed) > 0 || output.Phase == "write" || output.Phase == "verify" || output.Phase == "locator" || output.Phase == "unknown" {
 		outcome = errs.OutcomeUnknown
-		correctiveAction = "Inspect the returned path and run tadx policy status. Retain every confirmed change and do not assume the prior policy or locator was restored."
+		correctiveAction = "Inspect the returned path and run tadx policy status. Retain every confirmed change and do not assume the prior policy or locator was restored. See tadx policy install --help for installation guidance."
 	}
 	return &errs.Error{
 		ID:               "policy.install.failed",

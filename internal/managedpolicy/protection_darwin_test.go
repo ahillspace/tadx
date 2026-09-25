@@ -5,7 +5,24 @@ import (
 	"os/exec"
 	"path/filepath"
 	"testing"
+
+	"golang.org/x/sys/unix"
 )
+
+func TestDarwinSudoExecutableInspection(t *testing.T) {
+	// macOS often makes /usr/bin/sudo execute-only to ordinary users.
+	if os.Geteuid() == 0 {
+		t.Skip("requires an ordinary user")
+	}
+	dir, _, err := openUnixDirectory("/usr/bin", false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer unix.Close(dir)
+	if opened, err := inspectUnixExecutableAt(dir, "sudo"); !opened || err != nil {
+		t.Fatalf("/usr/bin/sudo inspection: opened=%t error=%v", opened, err)
+	}
+}
 
 func TestDarwinNativeExtendedACL(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "policy.json")

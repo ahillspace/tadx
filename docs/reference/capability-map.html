@@ -3312,7 +3312,7 @@ h1 { font-weight: 540; }
   {
     "id": "job.cancel",
     "surface": "tadx job cancel",
-    "outcome": "Request cancellation for documented refresh or flow-run job types and perform bounded exact confirmation.",
+    "outcome": "Request cancellation for supported refresh or flow-run jobs, then check their status.",
     "type": "change",
     "disposition": "ship",
     "owner": "cli",
@@ -3340,7 +3340,7 @@ h1 { font-weight: 540; }
   {
     "id": "job.inspect",
     "surface": "tadx job inspect",
-    "outcome": "Inspect one exact Tableau job or saved local single/batch operation without changing remote work.",
+    "outcome": "Inspect an exact Tableau job or saved operation without changing remote work.",
     "type": "inspect",
     "disposition": "ship",
     "owner": "cli",
@@ -3368,7 +3368,7 @@ h1 { font-weight: 540; }
   {
     "id": "job.wait",
     "surface": "tadx job wait",
-    "outcome": "Recover one accepted job from its durable receipt, or begin exact observation for a supplied job ID, and monitor it without resubmitting work.",
+    "outcome": "Recover an accepted job or observe an exact job ID without resubmitting work.",
     "type": "inspect",
     "disposition": "ship",
     "owner": "cli",

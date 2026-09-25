@@ -5,10 +5,43 @@ package managedpolicy
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"golang.org/x/sys/unix"
 )
+
+func TestUnixExecutableInspection(t *testing.T) {
+	// This fixture has execute permission but no read permission, like sudo
+	// on macOS. An ordinary user's ownership should be rejected after opening.
+	dir := t.TempDir()
+	path := filepath.Join(dir, "executable")
+	if err := os.WriteFile(path, []byte("fixture"), 0111); err != nil {
+		t.Fatal(err)
+	}
+	fd, err := unix.Open(dir, unix.O_RDONLY|unix.O_DIRECTORY|unix.O_CLOEXEC, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer unix.Close(fd)
+	opened, err := inspectUnixExecutableAt(fd, "executable")
+	if os.Geteuid() == 0 {
+		if !opened || err != nil {
+			t.Fatalf("execute-only inspection as root: opened=%t error=%v", opened, err)
+		}
+	} else if !opened || err == nil || !strings.Contains(err.Error(), "owner must be root") {
+		t.Fatalf("execute-only inspection as ordinary user: opened=%t error=%v", opened, err)
+	}
+	if err := os.Symlink(path, filepath.Join(dir, "link")); err != nil {
+		t.Fatal(err)
+	}
+	if opened, err := inspectUnixExecutableAt(fd, "link"); err == nil {
+		t.Fatalf("symlink accepted: opened=%t", opened)
+	}
+	if opened, err := inspectUnixExecutableAt(fd, "missing"); opened || !os.IsNotExist(err) {
+		t.Fatalf("missing executable: opened=%t error=%v", opened, err)
+	}
+}
 
 func TestUnixModeContract(t *testing.T) {
 	for _, tc := range []struct {

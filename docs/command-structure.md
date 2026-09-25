@@ -41,6 +41,8 @@ Apply the same rule structurally across the CLI:
 - `auth -h` and `env -h` already sit above executable actions, so they provide complete operational references with focused subsets at known verbs.
 - `workspace -h` covers its direct actions and includes a navigation entry for `artifact`; `workspace artifact -h` covers artifact actions with focused subsets at known verbs.
 - `mutation -h` covers consent status for configured environments and per-site changes; `policy -h` covers candidate samples, validation, protected-location status recovery, and administrator installation.
+  The policy reference retains template choices, defaults, replacement effects, activation, site consent, and recovery guidance.
+  Platform-specific installation and manual deployment procedures stay in focused `install` and `samples` help.
 - Standalone commands such as `search` show their own complete help.
 
 Bare `tadx` remains the session overview, not an alias for `tadx -h`.

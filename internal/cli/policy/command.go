@@ -50,7 +50,7 @@ type Dependencies struct {
 func New(deps Dependencies) *cobra.Command {
 	root := &cobra.Command{Use: "policy", Short: "Install, inspect, and prepare administrator-managed policy", Long: "Policy install, samples, validate, and status remain available for recovery when the active managed policy is invalid or denies other commands. Installation uses the native administrator boundary and does not change Tableau site consent."}
 	var installDirectory, template string
-	install := &cobra.Command{Use: "install", Short: "Install and activate a protected managed policy", Example: "tadx policy install --template read-only\ntadx policy install --template read-write-no-admin\ntadx policy install --template superuser", Annotations: map[string]string{"tadx.capability": "policy.install"}, Args: noArgs, RunE: func(c *cobra.Command, _ []string) error {
+	install := &cobra.Command{Use: "install", Short: "Install and activate a protected managed policy", Example: "tadx policy install --template read-only\ntadx policy install --template read-write-no-admin\ntadx policy install --template superuser\nsudo \"$(command -v tadx)\" policy install --template read-only", Annotations: map[string]string{"tadx.capability": "policy.install"}, Args: noArgs, RunE: func(c *cobra.Command, _ []string) error {
 		out, err := deps.Installer.Execute(c.Context(), policyinstall.Input{OutputDirectory: installDirectory, Template: template})
 		if err != nil {
 			return clierr.WithOutput(out, err)

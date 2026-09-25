@@ -178,7 +178,11 @@ func writeOperationalReference(out io.Writer, owner, focus *cobra.Command) {
 			}
 		}
 		writeReferenceTerms(out, terms)
-		for _, note := range referenceActionNotes(action) {
+		var notes []string
+		if owner.Name() != "policy" || focus != nil {
+			notes = referenceActionNotes(action)
+		}
+		for _, note := range notes {
 			fmt.Fprintln(out, "    "+note)
 		}
 		fmt.Fprintln(out)
@@ -199,11 +203,14 @@ func writeOperationalReference(out io.Writer, owner, focus *cobra.Command) {
 	if focus != nil && owner.Name() == "workspace" && focus.Name() == "status" {
 		fmt.Fprint(out, "Related:\n  Artifact file operations: tadx workspace artifact -h.\n\n")
 	} else if focus == nil || owner.Name() != "auth" || focus.Name() != "logout" {
-		writeHelpRelatedNotes(out, owner)
+		writeHelpRelatedNotes(out, owner, focus)
 	}
 	writeReferenceBatch(out, actions)
 	var examples []string
 	for _, action := range actions {
+		if owner.Name() == "policy" && focus == nil {
+			continue
+		}
 		for _, line := range strings.Split(action.Example, "\n") {
 			if strings.TrimSpace(line) != "" {
 				examples = appendUnique(examples, strings.TrimSpace(line))
@@ -221,8 +228,8 @@ func writeOperationalReference(out io.Writer, owner, focus *cobra.Command) {
 	}
 }
 
-func writeHelpRelatedNotes(out io.Writer, owner *cobra.Command) {
-	notes := helpRelatedNotes(owner)
+func writeHelpRelatedNotes(out io.Writer, owner, focus *cobra.Command) {
+	notes := helpRelatedNotes(owner, focus)
 	if len(notes) == 0 {
 		return
 	}
@@ -233,7 +240,7 @@ func writeHelpRelatedNotes(out io.Writer, owner *cobra.Command) {
 	fmt.Fprintln(out)
 }
 
-func helpRelatedNotes(owner *cobra.Command) []string {
+func helpRelatedNotes(owner, focus *cobra.Command) []string {
 	path := strings.TrimPrefix(owner.CommandPath(), owner.Root().Name()+" ")
 	switch path {
 	case "content workbook", "content datasource", "content flow", "content project":
@@ -246,15 +253,24 @@ func helpRelatedNotes(owner *cobra.Command) []string {
 	case "catalog label":
 		return []string{"Shared definitions: tadx admin label-value -h; categories: tadx admin label-category -h."}
 	case "auth":
-		return []string{"For noninteractive login setup, use env add/update PAT-variable-reference options; flags take variable names, not secrets."}
+		return []string{"For PAT setup, use env add/update variable-reference flags; they take names, not secrets. Never put PAT values in config."}
 	case "admin permission":
-		return []string{"Permission reads and mutations use exact resource and principal IDs; use the owning content or admin help for the corresponding selector."}
+		return []string{"Find exact resource IDs with content commands and principal IDs with admin user or group commands."}
 	case "workspace":
-		return []string{"Inspect local artifacts with tadx workspace status -h; artifact file operations use tadx workspace artifact -h."}
+		if focus == nil {
+			return []string{"Inspect local artifacts with tadx workspace status -h; artifact file operations use tadx workspace artifact -h."}
+		}
+		if focus.Name() == "clean" {
+			return []string{"Use tadx workspace status -h to inspect local artifacts before cleaning."}
+		}
+		return nil
 	case "workspace artifact":
 		return []string{"Use tadx workspace status -h for the local artifact inventory."}
 	case "pulse definition", "pulse metric", "pulse subscription":
-		return []string{"Saved configuration only; TADX does not retrieve current metric values or generated insights."}
+		if focus == nil || focus.Name() == "list" || focus.Name() == "inspect" {
+			return []string{"Saved configuration only; TADX does not retrieve current metric values or generated insights."}
+		}
+		return nil
 	default:
 		return nil
 	}
@@ -290,6 +306,9 @@ func referenceSharedText(flag *pflag.Flag) string {
 
 func referenceFlagSyntax(flag *pflag.Flag) string {
 	text := helpFlagSyntax(flag, false)
+	if flag.Value.Type() == "bool" && (flag.Name == "enabled" || flag.Name == "external-user-enabled") {
+		text += "=true|false"
+	}
 	if _, repeatable := flag.Value.(pflag.SliceValue); repeatable || helpAnnotationTrue(flag, "tadx.help.repeatable") {
 		text += "..."
 	}
@@ -361,7 +380,11 @@ func writeReferenceBatch(out io.Writer, actions []*cobra.Command) {
 func referenceNotes(owner *cobra.Command, actions []*cobra.Command) []string {
 	var notes []string
 	if owner.Name() == "policy" {
-		notes = append(notes, "Recovery exemption: install, samples, validate, status, and help remain available when managed policy blocks operations.", "Samples and candidate validation never activate policy. Policy install activates the protected system policy; user configuration cannot override it.")
+		if len(actions) > 1 {
+			notes = append(notes, "Default install uses superuser and replaces the policy at its selected destination.", "Policy commands remain available for recovery. Remote mutations require saved consent for the selected site.")
+		} else {
+			notes = append(notes, "Available when managed policy blocks other operations.")
+		}
 	}
 	for _, action := range actions {
 		for _, flag := range helpFlags(action) {
@@ -388,9 +411,13 @@ func referenceNotes(owner *cobra.Command, actions []*cobra.Command) []string {
 		}
 	}
 	if owner.Name() == "user" || owner.Name() == "group" {
-		notes = appendUnique(notes, "Site roles (site/version dependent): Viewer, Explorer, ExplorerCanPublish, Creator, SiteAdministratorExplorer, SiteAdministratorCreator, Unlicensed.")
+		for _, action := range actions {
+			if (action.Name() == "create" || action.Name() == "update") && (action.Flags().Lookup("site-role") != nil || action.Flags().Lookup("minimum-site-role") != nil) {
+				notes = appendUnique(notes, "Site roles (site/version dependent): Viewer, Explorer, ExplorerCanPublish, Creator, SiteAdministratorExplorer, SiteAdministratorCreator, Unlicensed.")
+				break
+			}
+		}
 	}
-	notes = appendUnique(notes, "Booleans: =true|false (bare=true); ... means repeatable.")
 	return notes
 }
 
@@ -400,10 +427,10 @@ func referenceActionNotes(action *cobra.Command) []string {
 	}
 	path := strings.TrimPrefix(action.CommandPath(), action.Root().Name()+" ")
 	notes := map[string][]string{
-		"policy install":            {"Installs one protected policy on Windows, Linux, or macOS. Defaults to superuser in native Program Files/TADX on Windows, /etc/tadx on Linux, or /Library/Application Support/TADX on macOS. Windows uses administrator elevation; Unix uses sudo through a terminal unless already root.", "--template generates and deploys managed-policy.json automatically. --output selects the installation directory and overwrites any installed policy with a generated template; it does not import customized JSON.", "All templates allow reads, including administrative reads. read-only blocks all Tableau mutations; read-write-no-admin blocks administrative mutations; superuser allows all supported operations.", "Remote mutations still require saved consent for the selected Tableau site. Reinstall a template to update an existing policy snapshot. Unix requires a root-owned path without group or world write access, unsafe ACLs, or symlinks; the parent must exist."},
-		"policy samples":            {"--output creates inactive read-only.json, read-write-no-admin.json, and superuser.json candidates without overwriting files.", "Customize one candidate and run tadx policy validate <file>. To deploy it manually, rename it managed-policy.json and place it with administrator rights and protected permissions at the selected path shown by tadx policy status --full.", "Default policy paths: Windows native Program Files/TADX/managed-policy.json; macOS /Library/Application Support/TADX/managed-policy.json; Linux /etc/tadx/managed-policy.json.", "For a standard template, tadx policy install --template read-only creates managed-policy.json and installs it automatically. Install --output selects its directory and overwrites any installed policy with a generated template, not customized JSON."},
-		"policy validate":           {"Checks candidate schema and exact capability IDs only; does not activate policy or verify filesystem protection."},
-		"policy status":             {"Reports the fixed system path, activation state, protection, and effective ceiling; --full includes allowed IDs and protection checks."},
+		"policy install":            {"Installs generated managed-policy.json (default: superuser) in --output or the platform directory: Windows native Program Files/TADX, Linux /etc/tadx, or macOS /Library/Application Support/TADX.", "Replaces any policy there with a generated template; customized JSON is not imported. See tadx policy samples -h for manual deployment.", "All templates allow reads, including administrative reads. read-only blocks Tableau mutations; read-write-no-admin blocks administrative mutations; superuser allows supported operations.", "Remote mutations also require saved consent for the selected site. User configuration cannot override the installed policy.", "Windows requests UAC approval. Unix uses sudo from an interactive terminal unless already root; enter any password only in that terminal, never through an agent.", "On Unix, the parent directory must exist and the path must be root-owned, without group or world write access, unsafe ACLs, or symlinks.", "For manual Unix elevation, use the example below: sudo might not have tadx in its PATH."},
+		"policy samples":            {"--output creates inactive read-only.json, read-write-no-admin.json, and superuser.json without overwriting files.", "Customize a candidate and run tadx policy validate <file>. To deploy it, rename it managed-policy.json and place it at the path shown by tadx policy status with administrator rights and protected permissions.", "Default paths: Windows native Program Files/TADX/managed-policy.json, Linux /etc/tadx/managed-policy.json, and macOS /Library/Application Support/TADX/managed-policy.json."},
+		"policy validate":           {"Checks exact capability IDs; does not activate policy or check file protection."},
+		"policy status":             {"Reports the resolved policy path and effective restrictions; --full adds protection checks and allowed IDs."},
 		"pulse definition create":   {"Fields: raw ID or unique caption. Find them with tadx content datasource schema.", "Omitted: aggregation SUM, granularity DAY, format NUMBER, sentiment NONE, temporality OVER_TIME."},
 		"pulse definition publish":  {"Source --id/--artifact-name refers to a workspace bundle; creates new objects, not updates. Map every datasource."},
 		"pulse definition pull":     {"--overwrite replaces dirty local files. Bundle includes saved variants, not followers."},
@@ -418,23 +445,23 @@ func referenceActionNotes(action *cobra.Command) []string {
 		"catalog column update":     {"Changes upstream column metadata, not the published field override. Empty --description clears."},
 		"cache refresh":             {"Default: all inventory except permissions. --scope permissions opts into per-item permission reads.", "Refresh replaces requested inventory; independent schema/Pulse observations keep their timestamps."},
 		"auth login":                {"Interactive terminal: prompts for PAT name/secret. Configured environment credentials take precedence."},
-		"auth check":                {"Uses the selected environment's configured PAT source for a live check. Set non-secret PAT variable references with env add/update; never put PAT values in config."},
+		"auth check":                {"Uses the selected environment's configured PAT source for a live check."},
 		"auth status":               {"Local readiness only; it does not contact Tableau. Use auth check after the configured PAT source is ready."},
 		"auth logout":               {"Does not revoke the Tableau PAT; configured environment credentials remain usable."},
 		"mutation status":           {"Default: environment and enabled. --full adds canonical server_url, exact site_content_url, and source.", "Enabled reports site consent only. Managed policy restrictions appear separately; other execution checks still apply."},
 		"mutation set":              {"Changes write permission, not credentials. Obtain explicit approval for the requested scope."},
-		"workspace create":          {"Default root: <home>/TADX/workspaces/<name>; --path overrides it."},
-		"workspace clone":           {"Source: registered workspace name; destination root must not exist.", "Default root: <home>/TADX/workspaces/<name>; --path overrides it."},
+		"workspace create":          {"Default root: <home>/TADX/workspaces/<name>."},
+		"workspace clone":           {"Source: registered workspace name; destination root must not exist.", "Default root: <home>/TADX/workspaces/<name>."},
 		"workspace delete":          {"Deletes the registered root; --force acknowledges dirty/invalid artifacts. Unregister keeps files."},
 		"workspace register":        {"Uses existing tadx.yaml identity; optional name must agree."},
 		"workspace clean":           {"Only disposable state; canonical artifact files are preserved."},
-		"admin group inspect":       {"The external-user setting is provider-reported; not reported is distinct from false. Tableau documents it for Embedded Analytics usage-based or capacity-based licensing with Cloud+ or Tableau+; REST may omit the field when the condition is unavailable."},
-		"admin group create":        {"--external-user-enabled requests the documented on-demand external-user setting for Embedded Analytics usage-based or capacity-based licensing with Cloud+ or Tableau+; an omitted provider value is not false."},
+		"admin group inspect":       {"The external-user setting applies to Embedded Analytics usage- or capacity-based licensing with Cloud+ or Tableau+. An omitted provider value is unknown, not false."},
+		"admin group create":        {"--external-user-enabled requests on-demand external users for Embedded Analytics usage- or capacity-based licensing with Cloud+ or Tableau+. If Tableau omits the setting, its value is unknown, not false."},
 		"admin group update":        {"--set-members replaces all direct members. Repeat --member-id with exact returned user LUIDs; --member-id requires --set-members, and omitting member IDs clears membership."},
 		"admin group-member add":    {"Use exact returned group and user LUIDs. The mutation result identifies the affected membership; inspect the group later with --members when a full read is needed."},
 		"admin group-member remove": {"Use exact returned group and user LUIDs. The mutation result identifies the affected membership; inspect the group later with --members when a full read is needed."},
-		"job inspect":               {"Use --operation-id for one saved local single or batch operation, or --id for one exact Tableau job. Repeat --id for remote jobs; operation IDs already cover their saved batch. A live worker is read locally. After submission finishes, operation inspection checks each unfinished remote job once without starting a polling loop."},
-		"job wait":                  {"With --receipt, recover the saved target and accepted identity. With --id and no receipt, TADX performs one exact read, creates a local observation receipt, and monitors it without resubmitting work. Waiting stops after twenty minutes; accepted work continues and the result includes an exact status command."},
+		"job inspect":               {"Use --operation-id for a saved operation, or repeat --id for exact Tableau jobs. Running submissions report local status; after submission, inspection checks each unfinished job once."},
+		"job wait":                  {"Use --receipt to recover an accepted job, or --id to observe an exact job. Waiting never resubmits work and stops after twenty minutes. Accepted work continues; use the returned status command to check it."},
 		"workspace artifact delete": {"Local files only. --force: delete dirty artifacts."},
 		"workspace artifact move":   {"Source/destination: registered workspaces; destination artifact must not exist."},
 		"agent install":             {"--target auto detects installed harnesses. Installs current TADX-owned skills globally; --force is compatibility-only."},
@@ -454,7 +481,7 @@ func referenceActionNotes(action *cobra.Command) []string {
 		"pulse metric list":         {"--all: <=10000; incomplete traversal fails."},
 		"pulse subscription list":   {"Current authenticated user only. Default: 25 subscriptions. --all: <=10000 across 100 pages; continuation is available with --cursor and the same --limit.", "A user-filtered Tableau response does not establish whether group-derived follows are included. Missing metric or definition details retain subscription IDs with a partial warning."},
 		"last":                      {"Displays the last saved result; never repeats its command or writes."},
-		"completion":                {"Writes a shell script to stdout (not JSON). Installers normally enable it automatically.", "Capture and verify: tadx completion bash > tadx-completion.bash; bash -n tadx-completion.bash.", "Session: Bash source <(tadx completion bash); Fish tadx completion fish | source.", "Zsh: autoload -Uz compinit; compinit; source <(tadx completion zsh)", "PowerShell: tadx completion powershell | Out-String | Invoke-Expression. Capture with tadx completion powershell > $env:TEMP\\tadx-completion.ps1; verify with [scriptblock]::Create((Get-Content $env:TEMP\\tadx-completion.ps1 -Raw)).", "For persistence, put the corresponding command in your shell profile."},
+		"completion":                {"Writes a shell script to stdout (not JSON). Installers normally enable it automatically.", "Session: Bash source <(tadx completion bash); Fish tadx completion fish | source.", "Zsh: autoload -Uz compinit; compinit; source <(tadx completion zsh)", "PowerShell: tadx completion powershell | Out-String | Invoke-Expression.", "For persistence, put the corresponding command in your shell profile."},
 	}
 	switch path {
 	case "capability list", "admin label-value list", "admin label-category list", "catalog label list", "env list", "workspace list", "workspace status":
@@ -472,6 +499,7 @@ func referenceActionSummary(action *cobra.Command) string {
 	summaries := map[string]string{
 		"auth check": "Verify live PAT authentication", "auth status": "Report local readiness and credential source",
 		"auth login": "Validate and store a PAT in the OS credential store", "auth logout": "Remove the stored PAT",
+		"policy status":    "Inspect resolved system policy and effective restrictions",
 		"workspace create": "Create a registered local workspace", "workspace clone": "Copy a workspace under a new identity",
 		"workspace delete": "Delete a workspace and its files", "workspace unregister": "Forget registration; keep files",
 		"workspace register": "Register an existing workspace", "workspace status": "Inspect local artifacts and dirty state",

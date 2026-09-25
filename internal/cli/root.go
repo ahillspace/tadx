@@ -210,7 +210,7 @@ func newRoot(deps Dependencies, withBatches bool) *cobra.Command {
 
 Run tadx without arguments for a local, read-only overview of environments, credential configuration, workspaces, and mutation policy.
 Run tadx update to refresh the CLI and bundled agent Guidance together; --check only checks the release.
-Use category help, such as tadx admin group --help, for all commands, flags, and examples in that category, including nested operations.
+Use resource help, such as tadx admin group --help, for that resource's commands, flags, and examples; direct actions use shorter paths.
 Use tadx capability list and tadx capability get for inventory and availability diagnostics, not command syntax.
 TADX returns compact TOON by default. Use --full to show expanded bounded details for the same operation.
 Run tadx --version for installed version information only; it does not check releases, update, authenticate, or contact Tableau.

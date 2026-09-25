@@ -4,6 +4,7 @@ import (
 	"errors"
 	"path/filepath"
 	"slices"
+	"strings"
 	"testing"
 
 	policyinstall "github.com/ahillspace/tadx/actions/policy/install"
@@ -34,7 +35,8 @@ func TestPolicyInstallErrorPreservesConfirmedPartialEffects(t *testing.T) {
 		Active:            true,
 		Phase:             "verify",
 	}
-	err := policyInstallError(output, errors.New("verification failed"))
+	cause := errors.New("verification failed")
+	err := policyInstallError(output, cause)
 	var structured *errs.Error
 	if !errors.As(err, &structured) {
 		t.Fatalf("error=%T %v", err, err)
@@ -45,6 +47,9 @@ func TestPolicyInstallErrorPreservesConfirmedPartialEffects(t *testing.T) {
 	if !slices.Equal(structured.Completed, []string{"directory_protection", "policy_write", "policy_active"}) {
 		t.Fatalf("completed=%v", structured.Completed)
 	}
+	if !errors.Is(err, cause) || !strings.Contains(structured.CorrectiveAction, "tadx policy install --help") || !strings.Contains(structured.CorrectiveAction, "tadx policy status") {
+		t.Fatalf("recovery lost original cause or status guidance: %+v", structured)
+	}
 }
 
 func TestPolicyInstallErrorWithoutChangesIsNotAttempted(t *testing.T) {
@@ -52,6 +57,9 @@ func TestPolicyInstallErrorWithoutChangesIsNotAttempted(t *testing.T) {
 	var structured *errs.Error
 	if !errors.As(err, &structured) || structured.Phase != errs.PhaseValidation || structured.Outcome != errs.OutcomeNotAttempted || len(structured.Completed) != 0 {
 		t.Fatalf("error=%+v", structured)
+	}
+	if !strings.Contains(structured.CorrectiveAction, "tadx policy install --help") || strings.Contains(structured.CorrectiveAction, "rerun") {
+		t.Fatalf("validation recovery=%q", structured.CorrectiveAction)
 	}
 }
 

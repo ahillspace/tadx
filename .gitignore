@@ -12,6 +12,8 @@ __pycache__/
 !/.agents/skills/tadx-build/**
 !/.agents/skills/tadx-explore/
 !/.agents/skills/tadx-explore/**
+/.agents/skills/tadx-feedback
+/.claude/skills/tadx-feedback
 /.tadx-explore/
 /agent-review/
 /openspec/

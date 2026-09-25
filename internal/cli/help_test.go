@@ -46,14 +46,14 @@ func renderedHelp(t *testing.T, command *cobra.Command) string {
 	return output.String()
 }
 
-func TestRootHelpDirectsKnownActionsToVerbHelp(t *testing.T) {
+func TestRootHelpDirectsResourceActionsToVerbHelp(t *testing.T) {
 	root, _, _ := helpTestTree()
 	installCategoryHelp(root)
 	got := renderedHelp(t, root)
 	want := "TADX: discover, inspect, download, and manage Tableau assets.\n\nusage:\n" +
-		"  tadx                              Local session overview\n" +
-		"  tadx -h                           Categories, verbs, and direct commands\n" +
-		"  tadx <category> <verb> --help     Inputs and examples for a known verb\n"
+		"  tadx                                       Local session overview\n" +
+		"  tadx -h                                    Categories, resources, and direct commands\n" +
+		"  tadx <category> <resource> <verb> --help   Inputs and examples for a resource action\n"
 	if !strings.HasPrefix(got, want) {
 		t.Fatalf("unexpected root help opening:\n%s", got)
 	}
@@ -234,11 +234,11 @@ func TestSharedReferenceNotesCoverAcceptedSetupMembershipAndCompletionGuidance(t
 		path string
 		want []string
 	}{
-		{path: "auth check", want: []string{"env add/update", "never put PAT values in config"}},
+		{path: "auth check", want: []string{"configured PAT source"}},
 		{path: "admin user inspect", want: []string{"--id", "--name", "--username", "alias"}},
-		{path: "admin group inspect", want: []string{"provider-reported", "Embedded Analytics", "Cloud+"}},
+		{path: "admin group inspect", want: []string{"Embedded Analytics", "Cloud+", "unknown, not false"}},
 		{path: "admin group update", want: []string{"--set-members replaces all direct members", "--member-id requires --set-members", "clears membership"}},
-		{path: "completion", want: []string{"stdout", "bash -n", "scriptblock"}},
+		{path: "completion", want: []string{"stdout", "source <(tadx completion bash)", "shell profile"}},
 	}
 	for _, test := range tests {
 		t.Run(test.path, func(t *testing.T) {

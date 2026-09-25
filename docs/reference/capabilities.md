@@ -2073,7 +2073,7 @@ Replace the owner of one exact flow, or preview the operation.
 
 ### `job.cancel`
 
-Request cancellation for documented refresh or flow-run job types and perform bounded exact confirmation.
+Request cancellation for supported refresh or flow-run jobs, then check their status.
 
 - Surface: tadx job cancel
 - Operation type: change
@@ -2100,7 +2100,7 @@ Request cancellation for documented refresh or flow-run job types and perform bo
 
 ### `job.inspect`
 
-Inspect one exact Tableau job or saved local single/batch operation without changing remote work.
+Inspect an exact Tableau job or saved operation without changing remote work.
 
 - Surface: tadx job inspect
 - Operation type: inspect
@@ -2127,7 +2127,7 @@ Inspect one exact Tableau job or saved local single/batch operation without chan
 
 ### `job.wait`
 
-Recover one accepted job from its durable receipt, or begin exact observation for a supplied job ID, and monitor it without resubmitting work.
+Recover an accepted job or observe an exact job ID without resubmitting work.
 
 - Surface: tadx job wait
 - Operation type: inspect

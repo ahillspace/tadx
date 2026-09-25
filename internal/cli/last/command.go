@@ -12,7 +12,7 @@ type Reader interface {
 type Renderer interface{ Render(any) error }
 
 func New(reader Reader, renderer Renderer) *cobra.Command {
-	return &cobra.Command{Use: "last", Short: "Display the previous execution's saved full output and timestamp. Never re-execute it.", Annotations: map[string]string{"tadx.capability": "last"}, Args: cobra.NoArgs, RunE: func(c *cobra.Command, _ []string) error {
+	return &cobra.Command{Use: "last", Short: "Display the previous command's saved output and timestamp.", Annotations: map[string]string{"tadx.capability": "last"}, Args: cobra.NoArgs, RunE: func(c *cobra.Command, _ []string) error {
 		out, err := reader.Execute(c.Context())
 		if err != nil {
 			return err

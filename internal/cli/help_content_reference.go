@@ -135,7 +135,7 @@ func writeCompactContentNotes(out io.Writer, resource *cobra.Command, actions []
 	if has("publish") || has("pull") {
 		fmt.Fprintln(out, "  --no-wait: one single/batch status command, no polling. Wait stops at 20m; work continues.")
 		if has("publish") {
-			fmt.Fprintln(out, "  Publish polls: 2s/30s, 5s/10m, then 15s. Save accepted IDs before waiting; never republish on recovery.")
+			fmt.Fprintln(out, "  Save accepted IDs before waiting; use the returned status command to recover. Do not republish.")
 			fmt.Fprintln(out, "  Repeated --artifact excludes --name.")
 			if resource.Name() == "flow" {
 				fmt.Fprintln(out, "  Flow publication can complete synchronously.")
