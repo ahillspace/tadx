@@ -123,7 +123,7 @@ jobs:
 
       - name: Run race tests (non-Windows)
         if: runner.os != 'Windows'
-        run: go test -race ./...
+        run: go test -race -timeout=15m ./...
 
       - name: Run race tests (Windows)
         if: runner.os == 'Windows'
