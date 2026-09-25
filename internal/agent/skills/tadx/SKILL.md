@@ -15,7 +15,7 @@ Skip that overview for help, capabilities, installed version, or local Guidance 
 Go straight to known action help, for example `tadx content datasource inspect -h`; use `tadx -h` only when the route is unknown.
 Category help navigates resources; resource help contains all its verbs, syntax, defaults, constraints, and batch options.
 Categories with direct actions provide their reference there instead.
-Verb `-h` is a sufficient focused subset of the same resource definitions and adds nothing after the complete reference.
+Verb `-h` adds little after resource help; `tadx policy install -h` and `tadx policy samples -h` cover deployment details.
 Reuse help already loaded; capability discovery is for availability diagnostics, not another required step.
 
 Search concepts, list inventory, inspect metadata, and pull files.

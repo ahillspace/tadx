@@ -15,4 +15,3 @@ Commands:
 Rules:
   list: mutually exclusive: --all, --limit
   list: mutually exclusive: --all, --cursor
-  Booleans: =true|false (bare=true); ... means repeatable.

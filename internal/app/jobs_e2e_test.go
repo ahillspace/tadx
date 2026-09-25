@@ -160,8 +160,13 @@ func TestJobHelpAdvertisesExactControls(t *testing.T) {
 		t.Fatalf("inspect help advertises polling controls: %s", inspect.String())
 	}
 	var wait strings.Builder
-	if code := app.Run(context.Background(), []string{"job", "wait", "--help"}, &wait, app.Options{ConfigPath: filepath.Join(t.TempDir(), "config.yaml")}); code != 0 || !strings.Contains(wait.String(), "begin exact observation") {
+	if code := app.Run(context.Background(), []string{"job", "wait", "--help"}, &wait, app.Options{ConfigPath: filepath.Join(t.TempDir(), "config.yaml")}); code != 0 {
 		t.Fatalf("wait help code=%d output=%s", code, wait.String())
+	}
+	for _, want := range []string{"--receipt", "--id", "never resubmits", "twenty minutes", "Accepted work continues", "status command"} {
+		if !strings.Contains(wait.String(), want) {
+			t.Errorf("wait help missing %q: %s", want, wait.String())
+		}
 	}
 	var output strings.Builder
 	if code := app.Run(context.Background(), []string{"job", "cancel", "--help"}, &output, app.Options{ConfigPath: filepath.Join(t.TempDir(), "config.yaml")}); code != 0 {

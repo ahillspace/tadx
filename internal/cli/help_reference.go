@@ -381,7 +381,7 @@ func referenceNotes(owner *cobra.Command, actions []*cobra.Command) []string {
 	var notes []string
 	if owner.Name() == "policy" {
 		if len(actions) > 1 {
-			notes = append(notes, "Default install uses superuser and replaces the policy at its selected destination.", "Policy commands remain available for recovery. Remote mutations require saved consent for the selected site.")
+			notes = append(notes, "Default install uses superuser and replaces the policy at its selected destination.", "All templates allow reads, including administrative reads. read-only blocks Tableau mutations; read-write-no-admin blocks administrative mutations; superuser allows supported operations.", "Policy commands remain available for recovery. Remote mutations require saved consent for the selected site.", "For installation procedures, use tadx policy install -h; for editable candidates and manual deployment, use tadx policy samples -h.")
 		} else {
 			notes = append(notes, "Available when managed policy blocks other operations.")
 		}
