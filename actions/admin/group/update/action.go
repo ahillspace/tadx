@@ -4,10 +4,10 @@ import (
 	"context"
 	"errors"
 	"github.com/ahillspace/tadx/internal/commandhint"
+	"github.com/ahillspace/tadx/internal/errs"
 	"reflect"
 	"sort"
-
-	"github.com/ahillspace/tadx/internal/errs"
+	"strings"
 )
 
 const maxDesiredMembers = 1000
@@ -180,15 +180,12 @@ func (a *Action) Execute(ctx context.Context, in Input, preview bool) (Output, e
 	if a == nil || a.resolver == nil || a.updater == nil || a.members == nil {
 		return Output{}, errors.New("admin group update is not configured")
 	}
-	if err := ValidateInput(in); err != nil {
+	desired, err := validateInput(in)
+	if err != nil {
 		return Output{}, err
 	}
 	if in.Site == "" && !in.TargetResolved {
 		return Output{}, usage("selector", "admin group update requires explicit environment, site, and group LUID")
-	}
-	desired, err := normalizeDesired(in.DesiredMemberLUIDs, in.MembershipSet)
-	if err != nil {
-		return Output{}, err
 	}
 	group, err := a.resolver.ResolveGroup(ctx, in.GroupLUID, in.MembershipSet)
 	if err != nil {
@@ -348,4 +345,20 @@ func groupChanges(g Group, r Request) []Change {
 		}
 	}
 	return v
+}
+
+// ValidateInput checks local options without requiring a resolved site or remote session.
+func ValidateInput(in Input) error {
+	_, err := validateInput(in)
+	return err
+}
+
+func validateInput(in Input) ([]string, error) {
+	if strings.TrimSpace(in.Environment) == "" || strings.TrimSpace(in.GroupLUID) == "" {
+		return nil, usage("selector", "admin group update requires explicit environment and group LUID")
+	}
+	if in.Name == nil && in.MinimumSiteRole == nil && in.ExternalUserEnabled == nil && !in.MembershipSet {
+		return nil, usage("fields", "admin group update requires metadata or an explicit desired membership")
+	}
+	return normalizeDesired(in.DesiredMemberLUIDs, in.MembershipSet)
 }

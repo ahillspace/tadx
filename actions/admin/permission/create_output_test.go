@@ -1,4 +1,4 @@
-package create_test
+package permission_test
 
 import (
 	"bytes"
@@ -7,13 +7,13 @@ import (
 	"strings"
 	"testing"
 
-	action "github.com/ahillspace/tadx/actions/admin/permission/create"
+	action "github.com/ahillspace/tadx/actions/admin/permission"
 	"github.com/ahillspace/tadx/internal/output"
 )
 
-func TestOutputFixtures(t *testing.T) {
-	f := &fake{source: "direct", mode: "", status: "created"}
-	out, err := action.New(f, f).Execute(context.Background(), input(), false)
+func TestCreateOutputFixtures(t *testing.T) {
+	f := &createFake{source: "direct", mode: "", status: "created"}
+	out, err := action.NewCreate(f, f).Execute(context.Background(), createInput(), false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -22,7 +22,7 @@ func TestOutputFixtures(t *testing.T) {
 		if full {
 			name = "full"
 		}
-		expected, err := os.ReadFile("testdata/" + name + ".toon")
+		expected, err := os.ReadFile("create/testdata/" + name + ".toon")
 		if err != nil {
 			t.Fatal(err)
 		}

@@ -4,8 +4,9 @@ import (
 	"context"
 	"errors"
 	"github.com/ahillspace/tadx/internal/commandhint"
-
+	"github.com/ahillspace/tadx/internal/errs"
 	"github.com/ahillspace/tadx/internal/readsource"
+	"strings"
 )
 
 const memberLimit = 100
@@ -117,4 +118,13 @@ func (a *Action) Execute(ctx context.Context, in Input) (Output, error) {
 		help = []string{commandhint.Environment(in.Environment, "admin", "group", "inspect", "--id", g.LUID, "--members")}
 	}
 	return Output{Status: "found", Environment: in.Environment, Site: in.Site, Group: g, membersRequested: in.IncludeMembers, RequestID: g.RequestID, Help: help}, nil
+}
+
+// ValidateInput checks one exact selector before authentication.
+func ValidateInput(input Input) error {
+	id, name := strings.TrimSpace(input.Selector.LUID), strings.TrimSpace(input.Selector.Name)
+	if (id == "") == (name == "") {
+		return &errs.Error{ID: "admin.group.inspect.usage", Kind: errs.KindUsage, Operation: "admin.group.inspect", Summary: "Provide exactly one authoritative LUID or exact group name.", Retryable: errs.Bool(false), CorrectiveAction: "Use --id or --name, but not both.", Validation: []errs.ValidationDetail{{Field: "selector", Code: "invalid", Message: "exactly one selector is required"}}}
+	}
+	return nil
 }

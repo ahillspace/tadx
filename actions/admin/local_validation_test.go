@@ -7,11 +7,9 @@ import (
 	groupdelete "github.com/ahillspace/tadx/actions/admin/group/delete"
 	groupinspect "github.com/ahillspace/tadx/actions/admin/group/inspect"
 	grouplist "github.com/ahillspace/tadx/actions/admin/group/list"
-	groupadd "github.com/ahillspace/tadx/actions/admin/group/member/add"
-	groupremove "github.com/ahillspace/tadx/actions/admin/group/member/remove"
+	groupmember "github.com/ahillspace/tadx/actions/admin/group/member"
 	groupupdate "github.com/ahillspace/tadx/actions/admin/group/update"
-	permissioncreate "github.com/ahillspace/tadx/actions/admin/permission/create"
-	permissiondelete "github.com/ahillspace/tadx/actions/admin/permission/delete"
+	permission "github.com/ahillspace/tadx/actions/admin/permission"
 	permissioninspect "github.com/ahillspace/tadx/actions/admin/permission/inspect"
 	usercreate "github.com/ahillspace/tadx/actions/admin/user/create"
 	userdelete "github.com/ahillspace/tadx/actions/admin/user/delete"
@@ -35,10 +33,10 @@ func TestAdminLocalValidationWithoutResolvedSession(t *testing.T) {
 			return groupdelete.ValidateInput(groupdelete.Input{Environment: "selected", GroupLUID: "g1"})
 		},
 		"add member": func() error {
-			return groupadd.ValidateInput(groupadd.Input{Environment: "selected", GroupLUID: "g1", UserLUID: "u1"})
+			return groupmember.ValidateAddInput(groupmember.Input{Environment: "selected", GroupLUID: "g1", UserLUID: "u1"})
 		},
 		"remove member": func() error {
-			return groupremove.ValidateInput(groupremove.Input{Environment: "selected", GroupLUID: "g1", UserLUID: "u1"})
+			return groupmember.ValidateRemoveInput(groupmember.Input{Environment: "selected", GroupLUID: "g1", UserLUID: "u1"})
 		},
 		"inspect user": func() error {
 			return userinspect.ValidateInput(userinspect.Input{Selector: userinspect.Selector{LUID: "u1"}})
@@ -81,8 +79,8 @@ func TestAdminLocalValidationRejectsInvalidRequests(t *testing.T) {
 		},
 		"user list limit":         func() error { return userlist.ValidateInput(userlist.Input{Limit: -1}) },
 		"group list all conflict": func() error { return grouplist.ValidateInput(grouplist.Input{All: true, Limit: 1}) },
-		"permission create":       func() error { return permissioncreate.ValidateInput(permissioncreate.Input{}) },
-		"permission delete":       func() error { return permissiondelete.ValidateInput(permissiondelete.Input{}) },
+		"permission create":       func() error { return permission.ValidateCreateInput(permission.Input{}) },
+		"permission delete":       func() error { return permission.ValidateDeleteInput(permission.Input{}) },
 		"permission inspect kind": func() error {
 			return permissioninspect.ValidateInput(permissioninspect.Input{ResourceKind: "unknown", ResourceLUID: "r1"})
 		},

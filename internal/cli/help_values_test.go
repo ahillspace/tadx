@@ -9,7 +9,7 @@ import (
 	groupcreate "github.com/ahillspace/tadx/actions/admin/group/create"
 	groupupdate "github.com/ahillspace/tadx/actions/admin/group/update"
 	categorycreate "github.com/ahillspace/tadx/actions/admin/labelcategory/create"
-	permissioncreate "github.com/ahillspace/tadx/actions/admin/permission/create"
+	permission "github.com/ahillspace/tadx/actions/admin/permission"
 	usercreate "github.com/ahillspace/tadx/actions/admin/user/create"
 	cacherefresh "github.com/ahillspace/tadx/actions/cache/refresh"
 	catalogaudit "github.com/ahillspace/tadx/actions/catalog/audit"
@@ -235,7 +235,7 @@ func TestHelpChoicesMatchLocalValidators(t *testing.T) {
 			count      int
 			validate   func(string) error
 		}{"admin permission create", flag, count, func(v string) error {
-			in := permissioncreate.Input{Environment: "dev", ResourceKind: "project", ResourceLUID: "project-id", PrincipalType: "user", PrincipalLUID: "user-id", Capability: "Read", Mode: "Allow"}
+			in := permission.Input{Environment: "dev", ResourceKind: "project", ResourceLUID: "project-id", PrincipalType: "user", PrincipalLUID: "user-id", Capability: "Read", Mode: "Allow"}
 			switch flag {
 			case "kind":
 				in.ResourceKind = v
@@ -246,7 +246,7 @@ func TestHelpChoicesMatchLocalValidators(t *testing.T) {
 			case "default-for":
 				in.DefaultFor = v
 			}
-			return permissioncreate.ValidateInput(in)
+			return permission.ValidateCreateInput(in)
 		}})
 	}
 	for _, tc := range cases {

@@ -3,7 +3,10 @@ package inspect
 import (
 	"context"
 	"errors"
+	"github.com/ahillspace/tadx/internal/commandhint"
+	"github.com/ahillspace/tadx/internal/errs"
 	"sort"
+	"strings"
 )
 
 type Input struct{ Environment, Site, ResourceKind, ResourceLUID, DefaultFor, PrincipalType, PrincipalLUID, PrincipalUsername, Capability string }
@@ -107,4 +110,26 @@ func (a *Action) Execute(ctx context.Context, in Input) (Output, error) {
 		return a.Mode < b.Mode
 	})
 	return Output{Status: "found", Environment: in.Environment, Site: in.Site, Permissions: p, RequestID: p.RequestID, Help: []string{permissionHint(in)}}, nil
+}
+
+func permissionHint(in Input) string {
+	args := []string{"admin", "permission", "inspect", "--kind", in.ResourceKind, "--id", in.ResourceLUID, "--full"}
+	for _, flag := range []struct{ name, value string }{{"--default-for", in.DefaultFor}, {"--principal-type", in.PrincipalType}, {"--principal-id", in.PrincipalLUID}, {"--capability", in.Capability}} {
+		if flag.value != "" {
+			args = append(args, flag.name, flag.value)
+		}
+	}
+	return commandhint.Environment(in.Environment, args...)
+}
+
+// ValidateInput checks local permission filters without a remote session.
+func ValidateInput(in Input) error {
+	validKind := in.ResourceKind == "workbook" || in.ResourceKind == "datasource" || in.ResourceKind == "flow" || in.ResourceKind == "project"
+	validDefault := in.DefaultFor == "" || in.ResourceKind == "project" && (in.DefaultFor == "workbooks" || in.DefaultFor == "datasources" || in.DefaultFor == "flows")
+	validPrincipal := in.PrincipalType == "" || in.PrincipalType == "user" || in.PrincipalType == "group"
+	validUsername := in.PrincipalUsername == "" || (in.PrincipalType == "user" && in.PrincipalLUID == "")
+	if !validKind || strings.TrimSpace(in.ResourceLUID) == "" || !validDefault || !validPrincipal || !validUsername {
+		return &errs.Error{ID: "admin.permission.inspect.usage", Kind: errs.KindUsage, Operation: "admin.permission.inspect", Summary: "Invalid permission inspection selectors.", Retryable: errs.Bool(false), CorrectiveAction: "Use --kind workbook, datasource, flow, or project with an exact --id; --default-for applies only to projects and --principal-type is user or group."}
+	}
+	return nil
 }

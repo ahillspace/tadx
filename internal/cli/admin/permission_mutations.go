@@ -8,20 +8,19 @@ import (
 	"github.com/ahillspace/tadx/internal/errs"
 	"strings"
 
-	permissioncreate "github.com/ahillspace/tadx/actions/admin/permission/create"
-	permissiondelete "github.com/ahillspace/tadx/actions/admin/permission/delete"
+	permission "github.com/ahillspace/tadx/actions/admin/permission"
 	"github.com/spf13/cobra"
 )
 
 type PermissionCreator interface {
-	CreateAdminPermission(context.Context, permissioncreate.Input, bool) (permissioncreate.Output, error)
+	CreateAdminPermission(context.Context, permission.Input, bool) (permission.Output, error)
 }
 type PermissionDeleter interface {
-	DeleteAdminPermission(context.Context, permissiondelete.Input, bool) (permissiondelete.Output, error)
+	DeleteAdminPermission(context.Context, permission.Input, bool) (permission.Output, error)
 }
 
 func newPermissionCreate(deps Dependencies) *cobra.Command {
-	var in permissioncreate.Input
+	var in permission.Input
 	var capabilities []string
 	var preview bool
 	cmd := mutation("create", "Create one explicit capability and mode for an exact principal.", "admin.permission.create", deps.MutationsEnabled, func(cmd *cobra.Command, args []string) error {
@@ -35,9 +34,9 @@ func newPermissionCreate(deps Dependencies) *cobra.Command {
 			return err
 		}
 		in.Capability = capabilities[0]
-		return permissioncreate.Validate(in)
+		return permission.ValidateCreateInput(in)
 	}, func(cmd *cobra.Command) error {
-		return runPermissionCapabilities(cmd.Context(), "admin.permission.create", capabilities, deps.Renderer, func(ctx context.Context, capability string) (permissioncreate.Output, error) {
+		return runPermissionCapabilities(cmd.Context(), "admin.permission.create", capabilities, deps.Renderer, func(ctx context.Context, capability string) (permission.Output, error) {
 			item := in
 			item.Capability = capability
 			return deps.PermissionCreator.CreateAdminPermission(ctx, item, preview)
@@ -59,7 +58,7 @@ func newPermissionCreate(deps Dependencies) *cobra.Command {
 }
 
 func newPermissionDelete(deps Dependencies) *cobra.Command {
-	var in permissiondelete.Input
+	var in permission.Input
 	var capabilities []string
 	var preview bool
 	cmd := mutation("delete", "Delete one explicit capability and mode for an exact principal.", "admin.permission.delete", deps.MutationsEnabled, func(cmd *cobra.Command, args []string) error {
@@ -73,9 +72,9 @@ func newPermissionDelete(deps Dependencies) *cobra.Command {
 			return err
 		}
 		in.Capability = capabilities[0]
-		return permissiondelete.Validate(in)
+		return permission.ValidateDeleteInput(in)
 	}, func(cmd *cobra.Command) error {
-		return runPermissionCapabilities(cmd.Context(), "admin.permission.delete", capabilities, deps.Renderer, func(ctx context.Context, capability string) (permissiondelete.Output, error) {
+		return runPermissionCapabilities(cmd.Context(), "admin.permission.delete", capabilities, deps.Renderer, func(ctx context.Context, capability string) (permission.Output, error) {
 			item := in
 			item.Capability = capability
 			return deps.PermissionDeleter.DeleteAdminPermission(ctx, item, preview)

@@ -1,4 +1,4 @@
-package delete_test
+package permission_test
 
 import (
 	"bytes"
@@ -7,13 +7,13 @@ import (
 	"strings"
 	"testing"
 
-	action "github.com/ahillspace/tadx/actions/admin/permission/delete"
+	action "github.com/ahillspace/tadx/actions/admin/permission"
 	"github.com/ahillspace/tadx/internal/output"
 )
 
-func TestOutputFixtures(t *testing.T) {
-	f := &fake{source: "direct", mode: "Allow", status: "deleted"}
-	out, err := action.New(f, f).Execute(context.Background(), input(), false)
+func TestDeleteOutputFixtures(t *testing.T) {
+	f := &deleteFake{source: "direct", mode: "Allow", status: "deleted"}
+	out, err := action.NewDelete(f, f).Execute(context.Background(), deleteInput(), false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -22,7 +22,7 @@ func TestOutputFixtures(t *testing.T) {
 		if full {
 			name = "full"
 		}
-		expected, err := os.ReadFile("testdata/" + name + ".toon")
+		expected, err := os.ReadFile("delete/testdata/" + name + ".toon")
 		if err != nil {
 			t.Fatal(err)
 		}
