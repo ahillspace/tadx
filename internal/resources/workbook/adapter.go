@@ -5,12 +5,14 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"maps"
 	"reflect"
 	"sort"
 	"strings"
 
 	"github.com/ahillspace/tadx/internal/identity"
 	tableauworkbook "github.com/ahillspace/tadx/internal/tableau/workbook"
+	"github.com/ahillspace/tadx/internal/value"
 )
 
 const adapterPageSize = 1000
@@ -66,11 +68,7 @@ type projectPathValidator interface {
 }
 
 // Workbook is the normalized resource identity.
-type Workbook struct {
-	LUID, Name, ContentURL, ProjectLUID, ProjectPath, OwnerLUID string
-	Description, CreatedAt, UpdatedAt, RequestID                string
-	Tags                                                        []string
-}
+type Workbook = value.Workbook
 
 // Page is one bounded normalized workbook page.
 type Page struct {
@@ -80,11 +78,7 @@ type Page struct {
 }
 
 // Project is a normalized exact destination project.
-type Project struct {
-	LUID string
-	Name string
-	Path string
-}
+type Project = value.ProjectIdentity
 
 // Adapter isolates workbook-specific Tableau API behavior.
 type Adapter struct {
@@ -210,9 +204,6 @@ func (a *Adapter) listWorkbooksByProjectLUID(ctx context.Context, input tableauw
 			return Page{}, errors.New("workbook project filter exceeded the bounded page limit")
 		}
 	}
-	if expectedTotal < 0 {
-		return Page{}, errors.New("workbook project filter returned no page")
-	}
 	start := (input.PageNumber - 1) * input.PageSize
 	if start > len(matches) {
 		return Page{}, fmt.Errorf("workbook project filter page %d exceeds the filtered total %d", input.PageNumber, len(matches))
@@ -336,13 +327,9 @@ func (a *Adapter) ResolveWorkbook(ctx context.Context, selector identity.Selecto
 			return err
 		}
 		if selector.ProjectPath != "" {
-			projectPath := item.ProjectName
-			if item.ProjectLUID != "" {
-				path, err := a.resolveProjectPath(ctx, item.ProjectLUID, paths)
-				if err != nil {
-					return err
-				}
-				projectPath = path
+			projectPath, err := a.resolveProjectPath(ctx, item.ProjectLUID, paths)
+			if err != nil {
+				return err
 			}
 			if projectPath != selector.ProjectPath {
 				return nil
@@ -360,13 +347,17 @@ func (a *Adapter) ResolveWorkbook(ctx context.Context, selector identity.Selecto
 	if err != nil && !errors.Is(err, errWorkbookAmbiguityProven) {
 		return Workbook{}, err
 	}
-	items := make([]tableauworkbook.Workbook, 0, len(itemsByLUID))
-	for _, item := range itemsByLUID {
-		items = append(items, item)
+	candidates := make([]identity.Candidate, 0, len(itemsByLUID))
+	for item := range maps.Values(itemsByLUID) {
+		candidates = append(candidates, identity.Candidate{LUID: identity.LUID(item.LUID), Name: item.Name, ProjectPath: item.ProjectName, ProjectLUID: identity.LUID(item.ProjectLUID)})
 	}
-	workbook, err := resolveWorkbook(selector, items, paths)
-	if err != nil || workbook.ProjectLUID == "" || paths != nil {
-		return workbook, err
+	selected, err := identity.Resolve(selector, candidates)
+	if err != nil {
+		return Workbook{}, err
+	}
+	workbook := normalizeWorkbook(itemsByLUID[string(selected.LUID)], selected.ProjectPath)
+	if paths != nil {
+		return workbook, nil
 	}
 	return a.resolveSelectedProjectPath(ctx, workbook)
 }
@@ -386,31 +377,6 @@ func (a *Adapter) resolveSelectedProjectPath(ctx context.Context, workbook Workb
 		return Workbook{}, err
 	}
 	return workbook, nil
-}
-
-func resolveWorkbook(selector identity.Selector, items []tableauworkbook.Workbook, paths *projectPathIndex) (Workbook, error) {
-	candidates := make([]identity.Candidate, len(items))
-	byCandidate := make(map[identity.Candidate]Workbook, len(items))
-	for index, item := range items {
-		projectPath := item.ProjectName
-		if paths != nil && item.ProjectLUID != "" && (selector.Name == "" || item.Name == selector.Name) {
-			resolvedPath, err := paths.path(item.ProjectLUID, make(map[string]bool))
-			if err != nil {
-				return Workbook{}, err
-			}
-			projectPath = resolvedPath
-		}
-		candidate := identity.Candidate{LUID: identity.LUID(item.LUID), Name: item.Name, ProjectPath: projectPath, ProjectLUID: identity.LUID(item.ProjectLUID)}
-		candidates[index] = candidate
-		if _, exists := byCandidate[candidate]; !exists {
-			byCandidate[candidate] = normalizeWorkbook(item, projectPath)
-		}
-	}
-	resolved, err := identity.Resolve(selector, candidates)
-	if err != nil {
-		return Workbook{}, err
-	}
-	return byCandidate[resolved], nil
 }
 
 // FindWorkbooks returns exact name and project matches for collision checks.

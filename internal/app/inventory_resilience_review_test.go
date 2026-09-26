@@ -13,7 +13,7 @@ import (
 
 	projectinspect "github.com/ahillspace/tadx/actions/project/inspect"
 	projectlist "github.com/ahillspace/tadx/actions/project/list"
-	workbooklist "github.com/ahillspace/tadx/actions/workbook/list"
+	workbookops "github.com/ahillspace/tadx/actions/workbook"
 	"github.com/ahillspace/tadx/internal/cache"
 	"github.com/ahillspace/tadx/internal/identity"
 	"github.com/ahillspace/tadx/internal/readsource"
@@ -44,7 +44,7 @@ func TestIncompleteFullInventoryFailsWithoutReplacingCache(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			first, err := newRemoteContentCommands(runtime).ListWorkbooks(context.Background(), workbooklist.Input{Environment: "production", All: true})
+			first, err := newRemoteContentCommands(runtime).ListWorkbooks(context.Background(), workbookops.ListInput{Environment: "production", All: true})
 			if err == nil {
 				t.Fatal("incomplete --all must fail")
 			}

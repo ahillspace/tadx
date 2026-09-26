@@ -16,9 +16,6 @@ func (r workbookProjectResolver) ResolveProject(ctx context.Context, selector id
 	return resourceworkbook.Project{LUID: item.LUID, Name: item.Name, Path: item.Path}, err
 }
 
-func (a workbookMutationAdapter) BeginProjectResolution(ctx context.Context) context.Context {
-	return a.workbooks.BeginProjectResolution(ctx)
-}
 func (a publishAdapter) BeginProjectResolution(ctx context.Context) context.Context {
 	return a.adapter.BeginProjectResolution(ctx)
 }

@@ -28,21 +28,9 @@ import (
 	a_catalog_table_update "github.com/ahillspace/tadx/actions/catalog/table/update"
 	contentlabel_delete "github.com/ahillspace/tadx/actions/contentlabel/delete"
 	contentlabel_update "github.com/ahillspace/tadx/actions/contentlabel/update"
-	a_datasource_delete "github.com/ahillspace/tadx/actions/datasource/delete"
-	a_datasource_inspect "github.com/ahillspace/tadx/actions/datasource/inspect"
-	a_datasource_list "github.com/ahillspace/tadx/actions/datasource/list"
-	a_datasource_move "github.com/ahillspace/tadx/actions/datasource/move"
-	a_datasource_publish "github.com/ahillspace/tadx/actions/datasource/publish"
-	a_datasource_pull "github.com/ahillspace/tadx/actions/datasource/pull"
-	a_datasource_schema "github.com/ahillspace/tadx/actions/datasource/schema"
-	a_datasource_update "github.com/ahillspace/tadx/actions/datasource/update"
-	a_flow_delete "github.com/ahillspace/tadx/actions/flow/delete"
-	a_flow_inspect "github.com/ahillspace/tadx/actions/flow/inspect"
-	a_flow_list "github.com/ahillspace/tadx/actions/flow/list"
-	a_flow_move "github.com/ahillspace/tadx/actions/flow/move"
-	a_flow_publish "github.com/ahillspace/tadx/actions/flow/publish"
-	a_flow_pull "github.com/ahillspace/tadx/actions/flow/pull"
-	a_flow_update "github.com/ahillspace/tadx/actions/flow/update"
+	datasourceops "github.com/ahillspace/tadx/actions/datasource"
+	flowops "github.com/ahillspace/tadx/actions/flow"
+
 	jobcancel "github.com/ahillspace/tadx/actions/job/cancel"
 	a_lineage_pull "github.com/ahillspace/tadx/actions/lineage/pull"
 	a_project_create "github.com/ahillspace/tadx/actions/project/create"
@@ -64,12 +52,8 @@ import (
 	a_pulse_metric_inspect "github.com/ahillspace/tadx/actions/pulse/metric/inspect"
 	a_pulse_metric_list "github.com/ahillspace/tadx/actions/pulse/metric/list"
 	a_pulse_metric_unfollow "github.com/ahillspace/tadx/actions/pulse/metric/unfollow"
-	a_workbook_delete "github.com/ahillspace/tadx/actions/workbook/delete"
-	a_workbook_inspect "github.com/ahillspace/tadx/actions/workbook/inspect"
-	a_workbook_list "github.com/ahillspace/tadx/actions/workbook/list"
-	a_workbook_move "github.com/ahillspace/tadx/actions/workbook/move"
-	a_workbook_publish "github.com/ahillspace/tadx/actions/workbook/publish"
-	a_workbook_update "github.com/ahillspace/tadx/actions/workbook/update"
+	workbookops "github.com/ahillspace/tadx/actions/workbook"
+
 	"github.com/ahillspace/tadx/internal/capability"
 	"github.com/ahillspace/tadx/internal/cli"
 	admincli "github.com/ahillspace/tadx/internal/cli/admin"
@@ -160,70 +144,70 @@ func (s *previewActionSpy) record(preview bool) {
 	}
 }
 func (s *previewActionSpy) Render(any) error { return nil }
-func (s *previewActionSpy) MoveWorkbook(_ context.Context, input a_workbook_move.Input, preview bool) (a_workbook_move.Output, error) {
+func (s *previewActionSpy) MoveWorkbook(_ context.Context, input workbookops.MoveInput, preview bool) (workbookops.MoveOutput, error) {
 	s.record(preview)
-	return a_workbook_move.Output{}, nil
+	return workbookops.MoveOutput{}, nil
 }
-func (s *previewActionSpy) UpdateWorkbook(_ context.Context, input a_workbook_update.Input, preview bool) (a_workbook_update.Output, error) {
+func (s *previewActionSpy) UpdateWorkbook(_ context.Context, input workbookops.UpdateInput, preview bool) (workbookops.UpdateOutput, error) {
 	s.record(preview)
-	return a_workbook_update.Output{}, nil
+	return workbookops.UpdateOutput{}, nil
 }
-func (s *previewActionSpy) MoveDatasource(_ context.Context, input a_datasource_move.Input, preview bool) (a_datasource_move.Output, error) {
+func (s *previewActionSpy) MoveDatasource(_ context.Context, input datasourceops.MoveInput, preview bool) (datasourceops.MoveOutput, error) {
 	s.record(preview)
-	return a_datasource_move.Output{}, nil
+	return datasourceops.MoveOutput{}, nil
 }
-func (s *previewActionSpy) UpdateDatasource(_ context.Context, input a_datasource_update.Input, preview bool) (a_datasource_update.Output, error) {
+func (s *previewActionSpy) UpdateDatasource(_ context.Context, input datasourceops.UpdateInput, preview bool) (datasourceops.UpdateOutput, error) {
 	s.record(preview)
-	return a_datasource_update.Output{}, nil
+	return datasourceops.UpdateOutput{}, nil
 }
-func (s *previewActionSpy) UpdateFlow(_ context.Context, input a_flow_update.Input, preview bool) (a_flow_update.Output, error) {
+func (s *previewActionSpy) UpdateFlow(_ context.Context, input flowops.UpdateInput, preview bool) (flowops.UpdateOutput, error) {
 	s.record(preview)
-	return a_flow_update.Output{}, nil
+	return flowops.UpdateOutput{}, nil
 }
 func (s *previewActionSpy) MoveProject(_ context.Context, input a_project_move.Input, preview bool) (a_project_move.Output, error) {
 	s.record(preview)
 	return a_project_move.Output{}, nil
 }
-func (s *previewActionSpy) ListDatasources(_ context.Context, input a_datasource_list.Input) (a_datasource_list.Output, error) {
+func (s *previewActionSpy) ListDatasources(_ context.Context, input datasourceops.ListInput) (datasourceops.ListOutput, error) {
 	panic("unexpected read action")
 }
-func (s *previewActionSpy) InspectDatasource(_ context.Context, input a_datasource_inspect.Input) (a_datasource_inspect.Output, error) {
+func (s *previewActionSpy) InspectDatasource(_ context.Context, input datasourceops.InspectInput) (datasourceops.InspectOutput, error) {
 	panic("unexpected read action")
 }
-func (s *previewActionSpy) PullDatasource(_ context.Context, input a_datasource_pull.Input) (a_datasource_pull.Output, error) {
+func (s *previewActionSpy) PullDatasource(_ context.Context, input datasourceops.PullInput) (datasourceops.PullOutput, error) {
 	panic("unexpected read action")
 }
-func (s *previewActionSpy) PublishDatasource(_ context.Context, input a_datasource_publish.Input, preview bool) (a_datasource_publish.Output, error) {
+func (s *previewActionSpy) PublishDatasource(_ context.Context, input datasourceops.PublishInput, preview bool) (datasourceops.PublishOutput, error) {
 	s.record(preview)
-	return a_datasource_publish.Output{}, nil
+	return datasourceops.PublishOutput{}, nil
 }
-func (s *previewActionSpy) DeleteDatasource(_ context.Context, input a_datasource_delete.Input, preview bool) (a_datasource_delete.Output, error) {
+func (s *previewActionSpy) DeleteDatasource(_ context.Context, input datasourceops.DeleteInput, preview bool) (datasourceops.DeleteOutput, error) {
 	s.record(preview)
-	return a_datasource_delete.Output{}, nil
+	return datasourceops.DeleteOutput{}, nil
 }
-func (s *previewActionSpy) GetDatasourceSchema(_ context.Context, input a_datasource_schema.Input) (a_datasource_schema.Output, error) {
+func (s *previewActionSpy) GetDatasourceSchema(_ context.Context, input datasourceops.SchemaInput) (datasourceops.SchemaOutput, error) {
 	panic("unexpected read action")
 }
-func (s *previewActionSpy) ListFlows(_ context.Context, input a_flow_list.Input) (a_flow_list.Output, error) {
+func (s *previewActionSpy) ListFlows(_ context.Context, input flowops.ListInput) (flowops.ListOutput, error) {
 	panic("unexpected read action")
 }
-func (s *previewActionSpy) InspectFlow(_ context.Context, input a_flow_inspect.Input) (a_flow_inspect.Output, error) {
+func (s *previewActionSpy) InspectFlow(_ context.Context, input flowops.InspectInput) (flowops.InspectOutput, error) {
 	panic("unexpected read action")
 }
-func (s *previewActionSpy) PullFlow(_ context.Context, input a_flow_pull.Input) (a_flow_pull.Output, error) {
+func (s *previewActionSpy) PullFlow(_ context.Context, input flowops.PullInput) (flowops.PullOutput, error) {
 	panic("unexpected read action")
 }
-func (s *previewActionSpy) PublishFlow(_ context.Context, input a_flow_publish.Input, preview bool) (a_flow_publish.Output, error) {
+func (s *previewActionSpy) PublishFlow(_ context.Context, input flowops.PublishInput, preview bool) (flowops.PublishOutput, error) {
 	s.record(preview)
-	return a_flow_publish.Output{}, nil
+	return flowops.PublishOutput{}, nil
 }
-func (s *previewActionSpy) MoveFlow(_ context.Context, input a_flow_move.Input, preview bool) (a_flow_move.Output, error) {
+func (s *previewActionSpy) MoveFlow(_ context.Context, input flowops.MoveInput, preview bool) (flowops.MoveOutput, error) {
 	s.record(preview)
-	return a_flow_move.Output{}, nil
+	return flowops.MoveOutput{}, nil
 }
-func (s *previewActionSpy) DeleteFlow(_ context.Context, input a_flow_delete.Input, preview bool) (a_flow_delete.Output, error) {
+func (s *previewActionSpy) DeleteFlow(_ context.Context, input flowops.DeleteInput, preview bool) (flowops.DeleteOutput, error) {
 	s.record(preview)
-	return a_flow_delete.Output{}, nil
+	return flowops.DeleteOutput{}, nil
 }
 func (s *previewActionSpy) PullLineage(_ context.Context, input a_lineage_pull.Input) (a_lineage_pull.Output, error) {
 	panic("unexpected read action")
@@ -246,14 +230,14 @@ func (s *previewActionSpy) DeleteProject(_ context.Context, input a_project_dele
 	s.record(preview)
 	return a_project_delete.Output{}, nil
 }
-func (s *previewActionSpy) DeleteWorkbook(_ context.Context, input a_workbook_delete.Input, preview bool) (a_workbook_delete.Output, error) {
+func (s *previewActionSpy) DeleteWorkbook(_ context.Context, input workbookops.DeleteInput, preview bool) (workbookops.DeleteOutput, error) {
 	s.record(preview)
-	return a_workbook_delete.Output{}, nil
+	return workbookops.DeleteOutput{}, nil
 }
-func (s *previewActionSpy) ListWorkbooks(_ context.Context, input a_workbook_list.Input) (a_workbook_list.Output, error) {
+func (s *previewActionSpy) ListWorkbooks(_ context.Context, input workbookops.ListInput) (workbookops.ListOutput, error) {
 	panic("unexpected read action")
 }
-func (s *previewActionSpy) InspectWorkbook(_ context.Context, input a_workbook_inspect.Input) (a_workbook_inspect.Output, error) {
+func (s *previewActionSpy) InspectWorkbook(_ context.Context, input workbookops.InspectInput) (workbookops.InspectOutput, error) {
 	panic("unexpected read action")
 }
 func (s *previewActionSpy) ListAdminUsers(_ context.Context, input a_admin_user_list.Input) (a_admin_user_list.Output, error) {
@@ -358,9 +342,9 @@ func (s *previewActionSpy) UnfollowPulseMetric(_ context.Context, input a_pulse_
 	s.record(preview)
 	return a_pulse_metric_unfollow.Output{}, nil
 }
-func (s *previewActionSpy) Execute(_ context.Context, _ a_workbook_publish.Input, preview bool) (a_workbook_publish.Output, error) {
+func (s *previewActionSpy) Execute(_ context.Context, _ workbookops.PublishInput, preview bool) (workbookops.PublishOutput, error) {
 	s.record(preview)
-	return a_workbook_publish.Output{}, nil
+	return workbookops.PublishOutput{}, nil
 }
 
 type registryPreviewPolicy struct{}

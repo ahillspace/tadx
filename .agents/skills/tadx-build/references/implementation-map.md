@@ -8,7 +8,7 @@ Read only the layers you need to change, then their focused tests.
 
 | Layer | Bounded read: `workbook.list` | Previewable write: `workbook.delete` |
 | --- | --- | --- |
-| Action input/output and behavior | `actions/workbook/list/types.go`, `action.go` | `actions/workbook/delete/types.go`, `validation.go`, `action.go` |
+| Action input/output and behavior | `actions/workbook/list.go`, `list_types.go` | `actions/workbook/delete.go`, `delete_types.go` |
 | Resource adapter | `internal/resources/workbook/adapter.go` | Same file: exact delete boundary |
 | HTTP provider | `internal/tableau/workbook/client.go` | Same file: delete through shared transport |
 | Cobra plumbing | `internal/cli/content/workbook_inventory.go` | `internal/cli/content/workbook_delete.go` |
@@ -18,7 +18,8 @@ Read only the layers you need to change, then their focused tests.
 For a new action, define its typed input/output and narrow dependency interface in the action package first.
 Write the externally visible failing test, implement provider behavior and resource normalization where needed, then wire the existing seams through the app.
 Do not copy the example's inventory collection or destructive behavior into an unrelated operation.
-Package depth follows the existing domain: `actions/search`, `actions/last`, and `actions/admin/group/member/add` are also valid isolated actions.
+Workbook, datasource, and flow group their operations by resource; share internal records without merging distinct CLI projections.
+Other domains retain their existing boundaries: `actions/search`, `actions/last`, and `actions/admin/group/member/add` remain valid examples.
 
 ## Shared infrastructure
 

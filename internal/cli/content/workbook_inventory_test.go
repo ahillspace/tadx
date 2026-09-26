@@ -2,25 +2,23 @@ package content
 
 import (
 	"context"
+	workbookops "github.com/ahillspace/tadx/actions/workbook"
 	"testing"
-
-	workbookinspect "github.com/ahillspace/tadx/actions/workbook/inspect"
-	workbooklist "github.com/ahillspace/tadx/actions/workbook/list"
 )
 
 type workbookInventoryCommands struct {
-	listInput    workbooklist.Input
-	inspectInput workbookinspect.Input
+	listInput    workbookops.ListInput
+	inspectInput workbookops.InspectInput
 }
 
-func (c *workbookInventoryCommands) ListWorkbooks(_ context.Context, input workbooklist.Input) (workbooklist.Output, error) {
+func (c *workbookInventoryCommands) ListWorkbooks(_ context.Context, input workbookops.ListInput) (workbookops.ListOutput, error) {
 	c.listInput = input
-	return workbooklist.Output{Status: "listed"}, nil
+	return workbookops.ListOutput{Status: "listed"}, nil
 }
 
-func (c *workbookInventoryCommands) InspectWorkbook(_ context.Context, input workbookinspect.Input) (workbookinspect.Output, error) {
+func (c *workbookInventoryCommands) InspectWorkbook(_ context.Context, input workbookops.InspectInput) (workbookops.InspectOutput, error) {
 	c.inspectInput = input
-	return workbookinspect.Output{Status: "found"}, nil
+	return workbookops.InspectOutput{Status: "found"}, nil
 }
 
 type workbookInventoryRenderer struct{ value any }
@@ -42,7 +40,7 @@ func TestWorkbookListParsesEveryBoundedFilter(t *testing.T) {
 	if input.Environment != "dev" || input.Name != "Finance" || input.OwnerName != "Analyst" || input.ProjectLUID != "project-1" || input.ProjectName != "Ops" || input.Tag != "quarterly" || input.Limit != 20 || input.Cursor != "next" || !input.Cache {
 		t.Fatalf("input = %#v", input)
 	}
-	if _, ok := renderer.value.(workbooklist.Output); !ok {
+	if _, ok := renderer.value.(workbookops.ListOutput); !ok {
 		t.Fatalf("rendered value = %T", renderer.value)
 	}
 }
@@ -96,7 +94,7 @@ func TestWorkbookInspectAcceptsOnlyExactSelectorGrammar(t *testing.T) {
 			if test.name == "LUID" && !actions.inspectInput.Cache {
 				t.Fatal("--cache was not forwarded")
 			}
-			if _, ok := renderer.value.(workbookinspect.Output); !ok {
+			if _, ok := renderer.value.(workbookops.InspectOutput); !ok {
 				t.Fatalf("rendered value = %T", renderer.value)
 			}
 		})

@@ -2,55 +2,53 @@ package content
 
 import (
 	"context"
+	datasourceops "github.com/ahillspace/tadx/actions/datasource"
+	flowops "github.com/ahillspace/tadx/actions/flow"
+	projectmove "github.com/ahillspace/tadx/actions/project/move"
+	workbookops "github.com/ahillspace/tadx/actions/workbook"
 	"testing"
 
-	datasourcemove "github.com/ahillspace/tadx/actions/datasource/move"
-	datasourceupdate "github.com/ahillspace/tadx/actions/datasource/update"
-	flowupdate "github.com/ahillspace/tadx/actions/flow/update"
-	projectmove "github.com/ahillspace/tadx/actions/project/move"
-	workbookmove "github.com/ahillspace/tadx/actions/workbook/move"
-	workbookupdate "github.com/ahillspace/tadx/actions/workbook/update"
 	"github.com/spf13/cobra"
 )
 
 type lifecycleMutationCommands struct {
-	workbookMoveInput       workbookmove.Input
+	workbookMoveInput       workbookops.MoveInput
 	workbookMovePreview     bool
-	workbookUpdateInput     workbookupdate.Input
+	workbookUpdateInput     workbookops.UpdateInput
 	workbookUpdatePreview   bool
-	datasourceMoveInput     datasourcemove.Input
+	datasourceMoveInput     datasourceops.MoveInput
 	datasourceMovePreview   bool
-	datasourceUpdateInput   datasourceupdate.Input
+	datasourceUpdateInput   datasourceops.UpdateInput
 	datasourceUpdatePreview bool
-	flowUpdateInput         flowupdate.Input
+	flowUpdateInput         flowops.UpdateInput
 	flowUpdatePreview       bool
 	projectMoveInput        projectmove.Input
 	projectMovePreview      bool
 }
 
-func (c *lifecycleMutationCommands) MoveWorkbook(_ context.Context, input workbookmove.Input, preview bool) (workbookmove.Output, error) {
+func (c *lifecycleMutationCommands) MoveWorkbook(_ context.Context, input workbookops.MoveInput, preview bool) (workbookops.MoveOutput, error) {
 	c.workbookMoveInput, c.workbookMovePreview = input, preview
-	return workbookmove.Output{}, nil
+	return workbookops.MoveOutput{}, nil
 }
 
-func (c *lifecycleMutationCommands) UpdateWorkbook(_ context.Context, input workbookupdate.Input, preview bool) (workbookupdate.Output, error) {
+func (c *lifecycleMutationCommands) UpdateWorkbook(_ context.Context, input workbookops.UpdateInput, preview bool) (workbookops.UpdateOutput, error) {
 	c.workbookUpdateInput, c.workbookUpdatePreview = input, preview
-	return workbookupdate.Output{}, nil
+	return workbookops.UpdateOutput{}, nil
 }
 
-func (c *lifecycleMutationCommands) MoveDatasource(_ context.Context, input datasourcemove.Input, preview bool) (datasourcemove.Output, error) {
+func (c *lifecycleMutationCommands) MoveDatasource(_ context.Context, input datasourceops.MoveInput, preview bool) (datasourceops.MoveOutput, error) {
 	c.datasourceMoveInput, c.datasourceMovePreview = input, preview
-	return datasourcemove.Output{}, nil
+	return datasourceops.MoveOutput{}, nil
 }
 
-func (c *lifecycleMutationCommands) UpdateDatasource(_ context.Context, input datasourceupdate.Input, preview bool) (datasourceupdate.Output, error) {
+func (c *lifecycleMutationCommands) UpdateDatasource(_ context.Context, input datasourceops.UpdateInput, preview bool) (datasourceops.UpdateOutput, error) {
 	c.datasourceUpdateInput, c.datasourceUpdatePreview = input, preview
-	return datasourceupdate.Output{}, nil
+	return datasourceops.UpdateOutput{}, nil
 }
 
-func (c *lifecycleMutationCommands) UpdateFlow(_ context.Context, input flowupdate.Input, preview bool) (flowupdate.Output, error) {
+func (c *lifecycleMutationCommands) UpdateFlow(_ context.Context, input flowops.UpdateInput, preview bool) (flowops.UpdateOutput, error) {
 	c.flowUpdateInput, c.flowUpdatePreview = input, preview
-	return flowupdate.Output{}, nil
+	return flowops.UpdateOutput{}, nil
 }
 
 func (c *lifecycleMutationCommands) MoveProject(_ context.Context, input projectmove.Input, preview bool) (projectmove.Output, error) {

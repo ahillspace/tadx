@@ -4,17 +4,13 @@ package content
 import (
 	"context"
 	"errors"
+	datasourceops "github.com/ahillspace/tadx/actions/datasource"
+	flowops "github.com/ahillspace/tadx/actions/flow"
+	projectmove "github.com/ahillspace/tadx/actions/project/move"
+	workbookops "github.com/ahillspace/tadx/actions/workbook"
 	"path"
 	"strings"
 
-	datasourcemove "github.com/ahillspace/tadx/actions/datasource/move"
-	datasourceupdate "github.com/ahillspace/tadx/actions/datasource/update"
-	flowupdate "github.com/ahillspace/tadx/actions/flow/update"
-	projectmove "github.com/ahillspace/tadx/actions/project/move"
-	workbookmove "github.com/ahillspace/tadx/actions/workbook/move"
-	workbookpublish "github.com/ahillspace/tadx/actions/workbook/publish"
-	workbookpull "github.com/ahillspace/tadx/actions/workbook/pull"
-	workbookupdate "github.com/ahillspace/tadx/actions/workbook/update"
 	"github.com/ahillspace/tadx/internal/cli/clierr"
 	"github.com/ahillspace/tadx/internal/cli/progress"
 	"github.com/ahillspace/tadx/internal/contentbatch"
@@ -24,28 +20,28 @@ import (
 
 // Puller executes workbook.pull.
 type Puller interface {
-	Execute(context.Context, workbookpull.Input) (workbookpull.Output, error)
+	Execute(context.Context, workbookops.PullInput) (workbookops.PullOutput, error)
 }
 
 // Publisher executes workbook.publish or returns a preview.
 type Publisher interface {
-	Execute(context.Context, workbookpublish.Input, bool) (workbookpublish.Output, error)
+	Execute(context.Context, workbookops.PublishInput, bool) (workbookops.PublishOutput, error)
 }
 
 type WorkbookMover interface {
-	MoveWorkbook(context.Context, workbookmove.Input, bool) (workbookmove.Output, error)
+	MoveWorkbook(context.Context, workbookops.MoveInput, bool) (workbookops.MoveOutput, error)
 }
 type WorkbookUpdater interface {
-	UpdateWorkbook(context.Context, workbookupdate.Input, bool) (workbookupdate.Output, error)
+	UpdateWorkbook(context.Context, workbookops.UpdateInput, bool) (workbookops.UpdateOutput, error)
 }
 type DatasourceMover interface {
-	MoveDatasource(context.Context, datasourcemove.Input, bool) (datasourcemove.Output, error)
+	MoveDatasource(context.Context, datasourceops.MoveInput, bool) (datasourceops.MoveOutput, error)
 }
 type DatasourceUpdater interface {
-	UpdateDatasource(context.Context, datasourceupdate.Input, bool) (datasourceupdate.Output, error)
+	UpdateDatasource(context.Context, datasourceops.UpdateInput, bool) (datasourceops.UpdateOutput, error)
 }
 type FlowUpdater interface {
-	UpdateFlow(context.Context, flowupdate.Input, bool) (flowupdate.Output, error)
+	UpdateFlow(context.Context, flowops.UpdateInput, bool) (flowops.UpdateOutput, error)
 }
 type ProjectMover interface {
 	MoveProject(context.Context, projectmove.Input, bool) (projectmove.Output, error)
@@ -150,7 +146,7 @@ func newPull(deps Dependencies) *cobra.Command {
 	if short == "" {
 		short = "Pull workbook artifacts sequentially."
 	}
-	var input workbookpull.Input
+	var input workbookops.PullInput
 	var ids []string
 	var name, project string
 	var includeExtract bool
@@ -185,7 +181,7 @@ func newPull(deps Dependencies) *cobra.Command {
 			return nil
 		},
 		RunE: func(command *cobra.Command, _ []string) error {
-			return runContentSelection(command.Context(), "workbook.pull", ids, deps.Renderer, func(ctx context.Context, id string) (workbookpull.Output, error) {
+			return runContentSelection(command.Context(), "workbook.pull", ids, deps.Renderer, func(ctx context.Context, id string) (workbookops.PullOutput, error) {
 				item := input
 				if id != "" {
 					item.LUID = id
@@ -217,7 +213,7 @@ func newPublish(deps Dependencies) *cobra.Command {
 	if short == "" {
 		short = "Publish workbook artifacts sequentially."
 	}
-	var input workbookpublish.Input
+	var input workbookops.PublishInput
 	var artifacts []string
 	var projectID, projectPath string
 	var preview bool
@@ -243,7 +239,7 @@ func newPublish(deps Dependencies) *cobra.Command {
 		},
 		RunE: func(command *cobra.Command, _ []string) error {
 			reporter := progress.New(command.ErrOrStderr())
-			return runPublishSelection(command.Context(), "workbook.publish", "workbook", artifacts, preview, deps.Renderer, reporter, func(ctx context.Context, artifact string) (workbookpublish.Output, error) {
+			return runPublishSelection(command.Context(), "workbook.publish", "workbook", artifacts, preview, deps.Renderer, reporter, func(ctx context.Context, artifact string) (workbookops.PublishOutput, error) {
 				item := input
 				item.ArtifactPath = artifact
 				return deps.Publisher.Execute(ctx, item, preview)

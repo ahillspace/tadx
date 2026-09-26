@@ -45,9 +45,6 @@ func (a *Action) Execute(ctx context.Context, input Input, preview bool) (Output
 	if input.Environment == "" || (input.Site == "" && !input.TargetResolved) {
 		return Output{}, usage("environment", "project delete requires an explicit resolved environment and site")
 	}
-	if input.ProjectLUID == "" {
-		return Output{}, usage("project_id", "project delete requires an authoritative project LUID")
-	}
 	target, err := a.resolve(ctx, input, "Project resolution failed.", "Review the exact project LUID, then retry.")
 	if err != nil {
 		return Output{}, err
@@ -93,6 +90,17 @@ func (a *Action) resolve(ctx context.Context, input Input, summary, correctiveAc
 
 func runtimeError() error {
 	return &errs.Error{ID: "project.delete.unconfigured", Kind: errs.KindRuntime, Operation: "project.delete", Summary: "Project delete is not configured.", Retryable: errs.Bool(false), CorrectiveAction: "Configure project delete before retrying."}
+}
+
+// ValidateInput checks caller-controlled arguments before dependency setup.
+func ValidateInput(input Input) error {
+	if strings.TrimSpace(input.Environment) == "" {
+		return usage("environment", "project delete requires an explicit environment")
+	}
+	if strings.TrimSpace(input.ProjectLUID) == "" {
+		return usage("project_id", "project delete requires an authoritative project LUID")
+	}
+	return nil
 }
 
 func usage(field, message string) error {

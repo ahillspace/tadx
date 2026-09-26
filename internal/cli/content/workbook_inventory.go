@@ -2,25 +2,24 @@ package content
 
 import (
 	"context"
+	workbookops "github.com/ahillspace/tadx/actions/workbook"
 	"github.com/ahillspace/tadx/internal/cli/clierr"
 
-	workbookinspect "github.com/ahillspace/tadx/actions/workbook/inspect"
-	workbooklist "github.com/ahillspace/tadx/actions/workbook/list"
 	"github.com/spf13/cobra"
 )
 
 // WorkbookLister runs complete remote workbook inventory.
 type WorkbookLister interface {
-	ListWorkbooks(context.Context, workbooklist.Input) (workbooklist.Output, error)
+	ListWorkbooks(context.Context, workbookops.ListInput) (workbookops.ListOutput, error)
 }
 
 // WorkbookInspector inspects one exact remote workbook.
 type WorkbookInspector interface {
-	InspectWorkbook(context.Context, workbookinspect.Input) (workbookinspect.Output, error)
+	InspectWorkbook(context.Context, workbookops.InspectInput) (workbookops.InspectOutput, error)
 }
 
 func newWorkbookList(lister WorkbookLister, renderer Renderer) *cobra.Command {
-	var input workbooklist.Input
+	var input workbookops.ListInput
 	command := &cobra.Command{
 		Use: "list", Short: "List workbooks with bounded live reads or explicit --all.", Annotations: map[string]string{"tadx.capability": "workbook.list"}, Args: noContentArgs("workbook.list"),
 		RunE: func(command *cobra.Command, _ []string) error {
@@ -47,7 +46,7 @@ func newWorkbookList(lister WorkbookLister, renderer Renderer) *cobra.Command {
 }
 
 func newWorkbookInspect(inspector WorkbookInspector, renderer Renderer) *cobra.Command {
-	var input workbookinspect.Input
+	var input workbookops.InspectInput
 	var luid, name, projectPath, projectID string
 	command := &cobra.Command{
 		Use: "inspect", Short: "Inspect one exact workbook.", Annotations: map[string]string{"tadx.capability": "workbook.inspect"}, Args: selectorArgsWithProjectID("workbook.inspect", &luid, &name, &projectPath, &projectID, input.SetSelectorWithProjectLUID),

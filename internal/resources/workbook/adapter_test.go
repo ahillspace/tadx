@@ -439,10 +439,12 @@ func TestAdapterRejectsConflictingDuplicateWorkbookLUIDRowsRegardlessOfOrder(t *
 }
 
 func TestAdapterDeduplicatesEquivalentWorkbookLUIDRows(t *testing.T) {
-	item := tableauworkbook.Workbook{LUID: "wb-1", Name: "Finance", ContentURL: "finance", ProjectLUID: "project-1", ProjectName: "Ops", OwnerLUID: "owner-1"}
+	item := tableauworkbook.Workbook{LUID: "wb-1", Name: "Finance", ContentURL: "finance", ProjectLUID: "project-1", ProjectName: "Ops", OwnerLUID: "owner-1", TableauRequestID: "first-request", Tags: []string{"finance"}}
+	duplicate := item
+	duplicate.TableauRequestID = "second-request"
 	adapter := resource.NewAdapter(client{
 		pages: map[int]tableauworkbook.WorkbookPage{
-			1: {Page: tableauworkbook.Page{Number: 1, Size: 100, Total: 2}, Items: []tableauworkbook.Workbook{item, item}},
+			1: {Page: tableauworkbook.Page{Number: 1, Size: 100, Total: 2}, Items: []tableauworkbook.Workbook{item, duplicate}},
 		},
 		projectPages: map[int]tableauworkbook.ProjectPage{
 			1: {Page: tableauworkbook.Page{Number: 1, Size: 100, Total: 1}, Items: []tableauworkbook.Project{{LUID: "project-1", Name: "Ops"}}},
@@ -454,6 +456,13 @@ func TestAdapterDeduplicatesEquivalentWorkbookLUIDRows(t *testing.T) {
 	}
 	if workbook.LUID != "wb-1" || workbook.ProjectPath != "Ops" {
 		t.Fatalf("workbook = %#v", workbook)
+	}
+	if workbook.RequestID != "first-request" || len(workbook.Tags) != 1 || workbook.Tags[0] != "finance" {
+		t.Fatalf("first record details = %#v", workbook)
+	}
+	workbook.Tags[0] = "changed"
+	if item.Tags[0] != "finance" {
+		t.Fatal("normalized workbook shares tags with the client response")
 	}
 }
 

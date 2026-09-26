@@ -12,10 +12,10 @@ import (
 
 	grouplist "github.com/ahillspace/tadx/actions/admin/group/list"
 	userlist "github.com/ahillspace/tadx/actions/admin/user/list"
-	datasourcelist "github.com/ahillspace/tadx/actions/datasource/list"
-	flowlist "github.com/ahillspace/tadx/actions/flow/list"
+	datasourceops "github.com/ahillspace/tadx/actions/datasource"
+	flowops "github.com/ahillspace/tadx/actions/flow"
 	projectlist "github.com/ahillspace/tadx/actions/project/list"
-	workbooklist "github.com/ahillspace/tadx/actions/workbook/list"
+	workbookops "github.com/ahillspace/tadx/actions/workbook"
 	corecache "github.com/ahillspace/tadx/internal/cache"
 	"github.com/ahillspace/tadx/internal/errs"
 	"github.com/ahillspace/tadx/internal/readsource"
@@ -140,19 +140,19 @@ func decodeInventoryPage[T any](entries []corecache.ResourceEntry) ([]T, error) 
 	return items, nil
 }
 
-func (r inventoryMemoryReader) ListWorkbooks(_ context.Context, input workbooklist.PageRequest) (workbooklist.Page, error) {
-	items, err := decodeInventoryPage[workbooklist.Workbook](r.page(input.PageNumber, input.PageSize))
-	return workbooklist.Page{Number: input.PageNumber, Size: input.PageSize, Total: len(r.entries), Workbooks: items, RequestID: r.requestID, SuppressContinuation: !r.allowContinuation}, err
+func (r inventoryMemoryReader) ListWorkbooks(_ context.Context, input workbookops.ListPageRequest) (workbookops.ListPage, error) {
+	items, err := decodeInventoryPage[workbookops.Record](r.page(input.PageNumber, input.PageSize))
+	return workbookops.ListPage{Number: input.PageNumber, Size: input.PageSize, Total: len(r.entries), Workbooks: items, RequestID: r.requestID, SuppressContinuation: !r.allowContinuation}, err
 }
 
-func (r inventoryMemoryReader) ListDatasources(_ context.Context, input datasourcelist.PageRequest) (datasourcelist.Page, error) {
-	items, err := decodeInventoryPage[datasourcelist.Datasource](r.page(input.PageNumber, input.PageSize))
-	return datasourcelist.Page{Number: input.PageNumber, Size: input.PageSize, Total: len(r.entries), Datasources: items, RequestID: r.requestID, SuppressContinuation: !r.allowContinuation}, err
+func (r inventoryMemoryReader) ListDatasources(_ context.Context, input datasourceops.ListPageRequest) (datasourceops.ListPage, error) {
+	items, err := decodeInventoryPage[datasourceops.Record](r.page(input.PageNumber, input.PageSize))
+	return datasourceops.ListPage{Number: input.PageNumber, Size: input.PageSize, Total: len(r.entries), Datasources: items, RequestID: r.requestID, SuppressContinuation: !r.allowContinuation}, err
 }
 
-func (r inventoryMemoryReader) ListFlows(_ context.Context, input flowlist.PageRequest) (flowlist.Page, error) {
-	items, err := decodeInventoryPage[flowlist.Flow](r.page(input.PageNumber, input.PageSize))
-	return flowlist.Page{Number: input.PageNumber, Size: input.PageSize, Total: len(r.entries), Flows: items, RequestID: r.requestID, SuppressContinuation: !r.allowContinuation}, err
+func (r inventoryMemoryReader) ListFlows(_ context.Context, input flowops.ListPageRequest) (flowops.ListPage, error) {
+	items, err := decodeInventoryPage[flowops.Record](r.page(input.PageNumber, input.PageSize))
+	return flowops.ListPage{Number: input.PageNumber, Size: input.PageSize, Total: len(r.entries), Flows: items, RequestID: r.requestID, SuppressContinuation: !r.allowContinuation}, err
 }
 
 func (r inventoryMemoryReader) ListProjects(_ context.Context, input projectlist.PageRequest) (projectlist.Page, error) {

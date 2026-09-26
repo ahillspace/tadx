@@ -4,15 +4,14 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	datasourceops "github.com/ahillspace/tadx/actions/datasource"
+	"github.com/ahillspace/tadx/internal/app"
+	"github.com/ahillspace/tadx/internal/cache"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
-
-	datasourcelist "github.com/ahillspace/tadx/actions/datasource/list"
-	"github.com/ahillspace/tadx/internal/app"
-	"github.com/ahillspace/tadx/internal/cache"
 )
 
 func TestCacheDatasourceProjectNameThroughCLI(t *testing.T) {
@@ -42,7 +41,7 @@ func TestCacheDatasourceProjectNameThroughCLI(t *testing.T) {
 			}
 			var entries []cache.ResourceEntry
 			for _, project := range projects {
-				item := datasourcelist.Datasource{LUID: "ds-" + project.LUID, Name: "Data-" + project.LUID, ProjectLUID: project.LUID, ProjectName: "untrusted-stale-name", ProjectPath: project.ProjectPath}
+				item := datasourceops.Record{LUID: "ds-" + project.LUID, Name: "Data-" + project.LUID, ProjectLUID: project.LUID, ProjectName: "untrusted-stale-name", ProjectPath: project.ProjectPath}
 				if coverage == "missing-identity" {
 					item.ProjectLUID = ""
 				}

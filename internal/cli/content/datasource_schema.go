@@ -3,19 +3,18 @@ package content
 import (
 	"context"
 	"errors"
-
-	datasourceschema "github.com/ahillspace/tadx/actions/datasource/schema"
+	datasourceops "github.com/ahillspace/tadx/actions/datasource"
 	"github.com/ahillspace/tadx/internal/cli/clierr"
 	"github.com/spf13/cobra"
 )
 
 // DatasourceSchemaGetter lists one datasource's tables and bounded fields.
 type DatasourceSchemaGetter interface {
-	GetDatasourceSchema(context.Context, datasourceschema.Input) (datasourceschema.Output, error)
+	GetDatasourceSchema(context.Context, datasourceops.SchemaInput) (datasourceops.SchemaOutput, error)
 }
 
 func newDatasourceSchema(getter DatasourceSchemaGetter, renderer Renderer) *cobra.Command {
-	var input datasourceschema.Input
+	var input datasourceops.SchemaInput
 	command := &cobra.Command{
 		Use: "schema", Short: "Inspect one datasource's tables and fields.",
 		Annotations: map[string]string{"tadx.capability": "datasource.schema"},

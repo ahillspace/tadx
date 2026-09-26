@@ -12,7 +12,8 @@ The [SVG](architecture/tadx-architecture.svg) and [editable Excalidraw source](a
 | `cmd/tadx` | Process entry point |
 | `internal/app` | Composition root, target and workspace selection, command runtime, and concrete dependency wiring |
 | `internal/cli` | Cobra command tree, argument parsing, and action invocation |
-| `actions/<domain>/<verb>` | One public operation's typed input, output, validation, and orchestration |
+| `actions/workbook`, `actions/datasource`, `actions/flow` | Resource packages with distinct typed lifecycle operations |
+| Other `actions/<domain>/<verb>` packages | Isolated operations until separately assessed |
 | `internal/resources` | Resource adapters, exact identity resolution, and normalized provider results |
 | `internal/tableau` | Tableau API clients, shared HTTP transport, and inventory collectors |
 | `internal/auth` | PAT resolution, native credential storage, authenticated sessions, and credential-scoped coordination |

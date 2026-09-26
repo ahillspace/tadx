@@ -20,15 +20,21 @@ type Action struct{ resolver Resolver }
 // New creates a project inspect action.
 func New(resolver Resolver) *Action { return &Action{resolver: resolver} }
 
+// ValidateInput checks an exact selector before authentication.
+func ValidateInput(input Input) error {
+	if input.Selector.LUID == "" && input.Selector.ProjectPath == "" {
+		return &errs.Error{ID: "project.inspect.usage", Kind: errs.KindUsage, Operation: "project.inspect", Summary: "project LUID or exact project path is required", Retryable: errs.Bool(false), CorrectiveAction: "Provide a project LUID or an exact project path.", Validation: []errs.ValidationDetail{{Field: "selector", Code: "required", Message: "project LUID or exact project path is required"}}}
+	}
+	return nil
+}
+
 // Execute resolves one authoritative project.
 func (a *Action) Execute(ctx context.Context, input Input) (Output, error) {
 	if a == nil || a.resolver == nil {
 		return Output{}, &errs.Error{ID: "project.inspect.unconfigured", Kind: errs.KindRuntime, Operation: "project.inspect", Summary: "Project inspection is not configured.", Retryable: errs.Bool(false), CorrectiveAction: "Configure the project resolver before retrying."}
 	}
-	var validationErr error
-	input, validationErr = normalizeInput(input)
-	if validationErr != nil {
-		return Output{}, validationErr
+	if err := ValidateInput(input); err != nil {
+		return Output{}, err
 	}
 	project, err := a.resolver.ResolveProject(ctx, input.Selector)
 	if err != nil {

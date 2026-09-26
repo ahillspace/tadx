@@ -2,19 +2,17 @@ package content
 
 import (
 	"errors"
-
-	datasourcemove "github.com/ahillspace/tadx/actions/datasource/move"
-	datasourceupdate "github.com/ahillspace/tadx/actions/datasource/update"
-	flowupdate "github.com/ahillspace/tadx/actions/flow/update"
+	datasourceops "github.com/ahillspace/tadx/actions/datasource"
+	flowops "github.com/ahillspace/tadx/actions/flow"
 	projectmove "github.com/ahillspace/tadx/actions/project/move"
-	workbookmove "github.com/ahillspace/tadx/actions/workbook/move"
-	workbookupdate "github.com/ahillspace/tadx/actions/workbook/update"
+	workbookops "github.com/ahillspace/tadx/actions/workbook"
+
 	"github.com/ahillspace/tadx/internal/cli/clierr"
 	"github.com/spf13/cobra"
 )
 
 func newWorkbookMove(deps Dependencies) *cobra.Command {
-	var input workbookmove.Input
+	var input workbookops.MoveInput
 	var luid, name, sourceProject, destinationLUID, destinationPath string
 	var preview bool
 	command := mutationCommand("workbook.move", "move", "Move one exact workbook.", func(command *cobra.Command) error {
@@ -41,7 +39,7 @@ func newWorkbookMove(deps Dependencies) *cobra.Command {
 }
 
 func newWorkbookUpdate(deps Dependencies) *cobra.Command {
-	var input workbookupdate.Input
+	var input workbookops.UpdateInput
 	var luid, name, projectPath, newName, ownerLUID, description string
 	var preview bool
 	command := mutationCommand("workbook.update", "update", "Update one exact workbook.", func(command *cobra.Command) error {
@@ -77,7 +75,7 @@ func newWorkbookUpdate(deps Dependencies) *cobra.Command {
 }
 
 func newDatasourceMove(deps Dependencies) *cobra.Command {
-	var input datasourcemove.Input
+	var input datasourceops.MoveInput
 	var luid, name, sourceProject, destinationLUID, destinationPath string
 	var preview bool
 	command := mutationCommand("datasource.move", "move", "Move one exact published datasource.", func(command *cobra.Command) error {
@@ -104,7 +102,7 @@ func newDatasourceMove(deps Dependencies) *cobra.Command {
 }
 
 func newDatasourceUpdate(deps Dependencies) *cobra.Command {
-	var input datasourceupdate.Input
+	var input datasourceops.UpdateInput
 	var luid, name, projectPath, newName, ownerLUID string
 	var preview bool
 	command := mutationCommand("datasource.update", "update", "Update one exact published datasource.", func(command *cobra.Command) error {
@@ -136,7 +134,7 @@ func newDatasourceUpdate(deps Dependencies) *cobra.Command {
 }
 
 func newFlowUpdate(deps Dependencies) *cobra.Command {
-	var input flowupdate.Input
+	var input flowops.UpdateInput
 	var luid, name, projectPath, ownerLUID string
 	var preview bool
 	command := mutationCommand("flow.update", "update", "Update one exact flow owner.", func(command *cobra.Command) error {

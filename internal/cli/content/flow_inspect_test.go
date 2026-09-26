@@ -2,18 +2,17 @@ package content
 
 import (
 	"context"
+	flowops "github.com/ahillspace/tadx/actions/flow"
 	"testing"
-
-	flowinspect "github.com/ahillspace/tadx/actions/flow/inspect"
 )
 
 type flowInspectCommands struct {
-	input flowinspect.Input
+	input flowops.InspectInput
 }
 
-func (c *flowInspectCommands) InspectFlow(_ context.Context, input flowinspect.Input) (flowinspect.Output, error) {
+func (c *flowInspectCommands) InspectFlow(_ context.Context, input flowops.InspectInput) (flowops.InspectOutput, error) {
 	c.input = input
-	return flowinspect.Output{Status: "found"}, nil
+	return flowops.InspectOutput{Status: "found"}, nil
 }
 
 type flowInspectRenderer struct{}

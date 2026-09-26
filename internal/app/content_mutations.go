@@ -2,14 +2,12 @@ package app
 
 import (
 	"context"
+	datasourceops "github.com/ahillspace/tadx/actions/datasource"
+	flowops "github.com/ahillspace/tadx/actions/flow"
+	projectmove "github.com/ahillspace/tadx/actions/project/move"
+	workbookops "github.com/ahillspace/tadx/actions/workbook"
 	"strings"
 
-	datasourcemove "github.com/ahillspace/tadx/actions/datasource/move"
-	datasourceupdate "github.com/ahillspace/tadx/actions/datasource/update"
-	flowupdate "github.com/ahillspace/tadx/actions/flow/update"
-	projectmove "github.com/ahillspace/tadx/actions/project/move"
-	workbookmove "github.com/ahillspace/tadx/actions/workbook/move"
-	workbookupdate "github.com/ahillspace/tadx/actions/workbook/update"
 	"github.com/ahillspace/tadx/internal/identity"
 	resourcedatasource "github.com/ahillspace/tadx/internal/resources/datasource"
 	resourceflow "github.com/ahillspace/tadx/internal/resources/flow"
@@ -53,74 +51,72 @@ func normalizeSuccessfulProjectMutation(ctx context.Context, projects *resourcep
 	return result
 }
 
-func (c *remoteContentCommands) MoveWorkbook(ctx context.Context, input workbookmove.Input, preview bool) (workbookmove.Output, error) {
-	if err := workbookmove.ValidateInput(input); err != nil {
-		return workbookmove.Output{}, err
+func (c *remoteContentCommands) MoveWorkbook(ctx context.Context, input workbookops.MoveInput, preview bool) (workbookops.MoveOutput, error) {
+	if err := workbookops.ValidateMoveInput(input); err != nil {
+		return workbookops.MoveOutput{}, err
 	}
 	connection, err := c.connect(ctx, input.Environment, true)
 	if err != nil {
-		return workbookmove.Output{}, remoteSetupError("workbook.move", input.Environment, input.Site, connection.environment, err)
+		return workbookops.MoveOutput{}, remoteSetupError("workbook.move", input.Environment, input.Site, connection.environment, err)
 	}
 	input.Environment, input.Site = connection.environment.Alias, connection.environment.SiteContentURL
 	input.TargetResolved = true
-	adapter := workbookMutationAdapter{workbooks: connection.workbooks}
-	return workbookmove.New(adapter, adapter).Execute(ctx, input, preview)
+	return workbookops.Move(ctx, connection.workbooks, workbookMutationAdapter{connection.workbooks}, input, preview)
 }
 
-func (c *remoteContentCommands) UpdateWorkbook(ctx context.Context, input workbookupdate.Input, preview bool) (workbookupdate.Output, error) {
-	if err := workbookupdate.ValidateInput(input); err != nil {
-		return workbookupdate.Output{}, err
+func (c *remoteContentCommands) UpdateWorkbook(ctx context.Context, input workbookops.UpdateInput, preview bool) (workbookops.UpdateOutput, error) {
+	if err := workbookops.ValidateUpdateInput(input); err != nil {
+		return workbookops.UpdateOutput{}, err
 	}
 	connection, err := c.connect(ctx, input.Environment, true)
 	if err != nil {
-		return workbookupdate.Output{}, remoteSetupError("workbook.update", input.Environment, input.Site, connection.environment, err)
+		return workbookops.UpdateOutput{}, remoteSetupError("workbook.update", input.Environment, input.Site, connection.environment, err)
 	}
 	input.Environment, input.Site = connection.environment.Alias, connection.environment.SiteContentURL
 	input.TargetResolved = true
-	adapter := workbookUpdateAdapter{workbooks: connection.workbooks}
-	return workbookupdate.New(adapter, adapter).Execute(ctx, input, preview)
+	return workbookops.Update(ctx, connection.workbooks, workbookMutationAdapter{connection.workbooks}, input, preview)
 }
 
-func (c *remoteContentCommands) MoveDatasource(ctx context.Context, input datasourcemove.Input, preview bool) (datasourcemove.Output, error) {
-	if err := datasourcemove.ValidateInput(input); err != nil {
-		return datasourcemove.Output{}, err
+func (c *remoteContentCommands) MoveDatasource(ctx context.Context, input datasourceops.MoveInput, preview bool) (datasourceops.MoveOutput, error) {
+	if err := datasourceops.ValidateMoveInput(input); err != nil {
+		return datasourceops.MoveOutput{}, err
 	}
 	connection, err := c.connect(ctx, input.Environment, true)
 	if err != nil {
-		return datasourcemove.Output{}, remoteSetupError("datasource.move", input.Environment, input.Site, connection.environment, err)
+		return datasourceops.MoveOutput{}, remoteSetupError("datasource.move", input.Environment, input.Site, connection.environment, err)
 	}
 	input.Environment, input.Site = connection.environment.Alias, connection.environment.SiteContentURL
 	input.TargetResolved = true
-	adapter := datasourceMutationAdapter{datasources: connection.datasources, projects: connection.projects, changes: connection.datasourceChanges}
-	return datasourcemove.New(adapter, adapter).Execute(ctx, input, preview)
+	adapter := datasourceMutationAdapter{Adapter: connection.datasources, projects: connection.projects, changes: connection.datasourceChanges}
+	return datasourceops.Move(ctx, adapter, adapter, input, preview)
 }
 
-func (c *remoteContentCommands) UpdateDatasource(ctx context.Context, input datasourceupdate.Input, preview bool) (datasourceupdate.Output, error) {
-	if err := datasourceupdate.ValidateInput(input); err != nil {
-		return datasourceupdate.Output{}, err
+func (c *remoteContentCommands) UpdateDatasource(ctx context.Context, input datasourceops.UpdateInput, preview bool) (datasourceops.UpdateOutput, error) {
+	if err := datasourceops.ValidateUpdateInput(input); err != nil {
+		return datasourceops.UpdateOutput{}, err
 	}
 	connection, err := c.connect(ctx, input.Environment, true)
 	if err != nil {
-		return datasourceupdate.Output{}, remoteSetupError("datasource.update", input.Environment, input.Site, connection.environment, err)
+		return datasourceops.UpdateOutput{}, remoteSetupError("datasource.update", input.Environment, input.Site, connection.environment, err)
 	}
 	input.Environment, input.Site = connection.environment.Alias, connection.environment.SiteContentURL
 	input.TargetResolved = true
-	adapter := datasourceUpdateAdapter{datasources: connection.datasources, changes: connection.datasourceChanges}
-	return datasourceupdate.New(adapter, adapter).Execute(ctx, input, preview)
+	adapter := datasourceMutationAdapter{Adapter: connection.datasources, changes: connection.datasourceChanges}
+	return datasourceops.Update(ctx, adapter, adapter, input, preview)
 }
 
-func (c *remoteContentCommands) UpdateFlow(ctx context.Context, input flowupdate.Input, preview bool) (flowupdate.Output, error) {
-	if err := flowupdate.ValidateInput(input); err != nil {
-		return flowupdate.Output{}, err
+func (c *remoteContentCommands) UpdateFlow(ctx context.Context, input flowops.UpdateInput, preview bool) (flowops.UpdateOutput, error) {
+	if err := flowops.ValidateUpdateInput(input); err != nil {
+		return flowops.UpdateOutput{}, err
 	}
 	connection, err := c.connect(ctx, input.Environment, true)
 	if err != nil {
-		return flowupdate.Output{}, remoteSetupError("flow.update", input.Environment, input.Site, connection.environment, err)
+		return flowops.UpdateOutput{}, remoteSetupError("flow.update", input.Environment, input.Site, connection.environment, err)
 	}
 	input.Environment, input.Site = connection.environment.Alias, connection.environment.SiteContentURL
 	input.TargetResolved = true
 	adapter := &flowUpdateAdapter{flows: connection.flows, changes: connection.flowChanges}
-	return flowupdate.New(adapter, adapter).Execute(ctx, input, preview)
+	return flowops.Update(ctx, adapter, adapter, input, preview)
 }
 
 func (c *remoteContentCommands) MoveProject(ctx context.Context, input projectmove.Input, preview bool) (projectmove.Output, error) {
@@ -143,123 +139,54 @@ func (c *remoteContentCommands) MoveProject(ctx context.Context, input projectmo
 
 type workbookMutationAdapter struct{ workbooks *resourceworkbook.Adapter }
 
-func (a workbookMutationAdapter) ResolveWorkbook(ctx context.Context, selector identity.Selector) (workbookmove.Workbook, error) {
-	item, err := a.workbooks.ResolveWorkbook(ctx, selector)
-	return workbookmove.Workbook{LUID: item.LUID, Name: item.Name, ProjectLUID: item.ProjectLUID, ProjectPath: item.ProjectPath, OwnerLUID: item.OwnerLUID}, err
-}
-
-func (a workbookMutationAdapter) ResolveProject(ctx context.Context, selector identity.Selector) (workbookmove.Project, error) {
-	item, err := a.workbooks.ResolveProject(ctx, selector)
-	return workbookmove.Project{LUID: item.LUID, Name: item.Name, Path: item.Path}, err
-}
-
-func (a workbookMutationAdapter) FindWorkbooks(ctx context.Context, name, projectLUID string) ([]workbookmove.Workbook, error) {
-	items, err := a.workbooks.FindWorkbooks(ctx, name, projectLUID)
-	result := make([]workbookmove.Workbook, len(items))
-	for index, item := range items {
-		result[index] = workbookmove.Workbook{LUID: item.LUID, Name: item.Name, ProjectLUID: item.ProjectLUID, ProjectPath: item.ProjectPath, OwnerLUID: item.OwnerLUID}
-	}
-	return result, err
-}
-
-func (a workbookMutationAdapter) MoveWorkbook(ctx context.Context, luid, projectLUID string) (workbookmove.Result, error) {
+func (a workbookMutationAdapter) MoveWorkbook(ctx context.Context, luid, projectLUID string) (workbookops.MoveResult, error) {
 	result, err := a.workbooks.UpdateWorkbook(ctx, tableauworkbook.UpdateRequest{LUID: luid, ProjectLUID: &projectLUID})
-	return workbookmove.Result{Status: result.Status, WorkbookLUID: result.WorkbookLUID, ProjectLUID: result.ProjectLUID, TableauRequestID: result.TableauRequestID}, err
+	return workbookops.MoveResult{Status: result.Status, WorkbookLUID: result.WorkbookLUID, ProjectLUID: result.ProjectLUID, TableauRequestID: result.TableauRequestID}, err
 }
 
-type workbookUpdateAdapter struct{ workbooks *resourceworkbook.Adapter }
-
-func (a workbookUpdateAdapter) ResolveWorkbook(ctx context.Context, selector identity.Selector) (workbookupdate.Workbook, error) {
-	item, err := a.workbooks.ResolveWorkbook(ctx, selector)
-	return workbookupdate.Workbook{LUID: item.LUID, Name: item.Name, ProjectLUID: item.ProjectLUID, ProjectPath: item.ProjectPath, OwnerLUID: item.OwnerLUID, Description: item.Description}, err
-}
-
-func (a workbookUpdateAdapter) FindWorkbooks(ctx context.Context, name, projectLUID string) ([]workbookupdate.Workbook, error) {
-	items, err := a.workbooks.FindWorkbooks(ctx, name, projectLUID)
-	result := make([]workbookupdate.Workbook, len(items))
-	for index, item := range items {
-		result[index] = workbookupdate.Workbook{LUID: item.LUID, Name: item.Name, ProjectLUID: item.ProjectLUID, ProjectPath: item.ProjectPath, OwnerLUID: item.OwnerLUID, Description: item.Description}
-	}
-	return result, err
-}
-
-func (a workbookUpdateAdapter) UpdateWorkbook(ctx context.Context, input workbookupdate.Request) (workbookupdate.Result, error) {
+func (a workbookMutationAdapter) UpdateWorkbook(ctx context.Context, input workbookops.UpdateRequest) (workbookops.UpdateResult, error) {
 	result, err := a.workbooks.UpdateWorkbook(ctx, tableauworkbook.UpdateRequest{LUID: input.LUID, Name: input.Name, OwnerLUID: input.OwnerLUID, Description: input.Description})
-	return workbookupdate.Result{Status: result.Status, WorkbookLUID: result.WorkbookLUID, WorkbookName: result.WorkbookName, ProjectLUID: result.ProjectLUID, OwnerLUID: result.OwnerLUID, Description: result.Description, EvidenceSource: result.EvidenceSource, TableauRequestID: result.TableauRequestID}, err
+	return workbookops.UpdateResult{Status: result.Status, WorkbookLUID: result.WorkbookLUID, WorkbookName: result.WorkbookName, ProjectLUID: result.ProjectLUID, OwnerLUID: result.OwnerLUID, Description: result.Description, EvidenceSource: result.EvidenceSource, TableauRequestID: result.TableauRequestID}, err
 }
 
 type datasourceMutationAdapter struct {
-	datasources *resourcedatasource.Adapter
-	projects    *resourceproject.Adapter
-	changes     *resourcedatasource.MutationAdapter
+	*resourcedatasource.Adapter
+	projects *resourceproject.Adapter
+	changes  *resourcedatasource.MutationAdapter
 }
 
-func (a datasourceMutationAdapter) ResolveDatasource(ctx context.Context, selector identity.Selector) (datasourcemove.Datasource, error) {
-	item, err := a.datasources.ResolveDatasource(ctx, selector)
-	return datasourcemove.Datasource{LUID: item.LUID, Name: item.Name, ProjectLUID: item.ProjectLUID, ProjectPath: item.ProjectPath, OwnerLUID: item.OwnerLUID}, err
-}
-
-func (a datasourceMutationAdapter) ResolveProject(ctx context.Context, selector identity.Selector) (datasourcemove.Project, error) {
+func (a datasourceMutationAdapter) ResolveProject(ctx context.Context, selector identity.Selector) (datasourceops.Project, error) {
 	item, err := a.projects.ResolveProject(ctx, selector)
-	return datasourcemove.Project{LUID: item.LUID, Name: item.Name, Path: item.Path}, err
+	return datasourceops.Project{LUID: item.LUID, Name: item.Name, Path: item.Path}, err
 }
 
-func (a datasourceMutationAdapter) FindDatasources(ctx context.Context, name, projectLUID string) ([]datasourcemove.Datasource, error) {
-	items, err := a.datasources.FindDatasources(ctx, name, projectLUID)
-	result := make([]datasourcemove.Datasource, len(items))
-	for index, item := range items {
-		result[index] = datasourcemove.Datasource{LUID: item.LUID, Name: item.Name, ProjectLUID: item.ProjectLUID, ProjectPath: item.ProjectPath, OwnerLUID: item.OwnerLUID}
-	}
-	return result, err
-}
-
-func (a datasourceMutationAdapter) MoveDatasource(ctx context.Context, luid, projectLUID string) (datasourcemove.Result, error) {
+func (a datasourceMutationAdapter) MoveDatasource(ctx context.Context, luid, projectLUID string) (datasourceops.MoveResult, error) {
 	result, err := a.changes.UpdateDatasource(ctx, tableaudatasource.UpdateRequest{LUID: luid, ProjectLUID: &projectLUID})
-	return datasourcemove.Result{Status: result.Status, DatasourceLUID: result.DatasourceLUID, ProjectLUID: result.ProjectLUID, TableauRequestID: result.TableauRequestID}, err
+	return datasourceops.MoveResult{Status: result.Status, DatasourceLUID: result.DatasourceLUID, ProjectLUID: result.ProjectLUID, TableauRequestID: result.TableauRequestID}, err
 }
 
-type datasourceUpdateAdapter struct {
-	datasources *resourcedatasource.Adapter
-	changes     *resourcedatasource.MutationAdapter
-}
-
-func (a datasourceUpdateAdapter) ResolveDatasource(ctx context.Context, selector identity.Selector) (datasourceupdate.Datasource, error) {
-	item, err := a.datasources.ResolveDatasource(ctx, selector)
-	return datasourceupdate.Datasource{LUID: item.LUID, Name: item.Name, ProjectLUID: item.ProjectLUID, ProjectPath: item.ProjectPath, OwnerLUID: item.OwnerLUID}, err
-}
-
-func (a datasourceUpdateAdapter) FindDatasources(ctx context.Context, name, projectLUID string) ([]datasourceupdate.Datasource, error) {
-	items, err := a.datasources.FindDatasources(ctx, name, projectLUID)
-	result := make([]datasourceupdate.Datasource, len(items))
-	for index, item := range items {
-		result[index] = datasourceupdate.Datasource{LUID: item.LUID, Name: item.Name, ProjectLUID: item.ProjectLUID, ProjectPath: item.ProjectPath, OwnerLUID: item.OwnerLUID}
-	}
-	return result, err
-}
-
-func (a datasourceUpdateAdapter) UpdateDatasource(ctx context.Context, input datasourceupdate.Request) (datasourceupdate.Result, error) {
+func (a datasourceMutationAdapter) UpdateDatasource(ctx context.Context, input datasourceops.UpdateRequest) (datasourceops.UpdateResult, error) {
 	result, err := a.changes.UpdateDatasource(ctx, tableaudatasource.UpdateRequest{LUID: input.LUID, Name: input.Name, OwnerLUID: input.OwnerLUID})
-	return datasourceupdate.Result{Status: result.Status, DatasourceLUID: result.DatasourceLUID, DatasourceName: result.DatasourceName, ProjectLUID: result.ProjectLUID, OwnerLUID: result.OwnerLUID, TableauRequestID: result.TableauRequestID}, err
+	return datasourceops.UpdateResult{Status: result.Status, DatasourceLUID: result.DatasourceLUID, DatasourceName: result.DatasourceName, ProjectLUID: result.ProjectLUID, OwnerLUID: result.OwnerLUID, TableauRequestID: result.TableauRequestID}, err
 }
 
 type flowUpdateAdapter struct {
 	flows    *resourceflow.Adapter
 	changes  *resourceflow.MutationAdapter
-	resolved *flowupdate.Flow
+	resolved *flowops.Record
 }
 
-func (a *flowUpdateAdapter) ResolveFlow(ctx context.Context, selector identity.Selector) (flowupdate.Flow, error) {
+func (a *flowUpdateAdapter) ResolveFlow(ctx context.Context, selector identity.Selector) (flowops.Record, error) {
 	item, err := a.flows.ResolveFlow(ctx, selector)
-	result := flowupdate.Flow{LUID: item.LUID, Name: item.Name, ProjectLUID: item.ProjectLUID, ProjectPath: item.ProjectPath, OwnerLUID: item.OwnerLUID}
 	if err == nil {
-		a.resolved = &result
+		a.resolved = &item
 	}
-	return result, err
+	return item, err
 }
 
-func (a *flowUpdateAdapter) UpdateFlow(ctx context.Context, input flowupdate.Request) (flowupdate.Result, error) {
+func (a *flowUpdateAdapter) UpdateFlow(ctx context.Context, input flowops.UpdateRequest) (flowops.UpdateResult, error) {
 	result, err := a.changes.UpdateFlow(ctx, tableauflow.UpdateRequest{LUID: input.LUID, OwnerLUID: input.OwnerLUID})
-	output := flowupdate.Result{Status: result.Status, FlowLUID: result.FlowLUID, OwnerLUID: result.OwnerLUID, TableauRequestID: result.TableauRequestID}
+	output := flowops.UpdateResult{Status: result.Status, FlowLUID: result.FlowLUID, OwnerLUID: result.OwnerLUID, TableauRequestID: result.TableauRequestID}
 	if a.resolved != nil && a.resolved.LUID == result.FlowLUID {
 		output.FlowName = a.resolved.Name
 		output.ProjectLUID = a.resolved.ProjectLUID
@@ -269,7 +196,7 @@ func (a *flowUpdateAdapter) UpdateFlow(ctx context.Context, input flowupdate.Req
 
 type projectMoveAdapter struct {
 	projects *resourceproject.Adapter
-	changes  *resourceproject.MutationAdapter
+	changes  projectMutationClient
 	resolved map[string]resourceproject.Project
 }
 
@@ -291,7 +218,7 @@ func (a projectMoveAdapter) FindProjectCollisions(ctx context.Context, name, par
 }
 
 func (a projectMoveAdapter) MoveProject(ctx context.Context, luid string, parentLUID *string) (projectmove.Result, error) {
-	result, err := a.changes.UpdateProject(ctx, tableauproject.UpdateRequest{LUID: luid, ParentLUID: parentLUID})
+	result, err := a.changes.Update(ctx, tableauproject.UpdateRequest{LUID: luid, ParentLUID: parentLUID})
 	if err != nil {
 		return projectmove.Result{}, err
 	}

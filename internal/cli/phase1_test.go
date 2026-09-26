@@ -7,8 +7,8 @@ import (
 
 	authcheck "github.com/ahillspace/tadx/actions/auth/check"
 	searchaction "github.com/ahillspace/tadx/actions/search"
-	workbookpublish "github.com/ahillspace/tadx/actions/workbook/publish"
-	workbookpull "github.com/ahillspace/tadx/actions/workbook/pull"
+	workbookops "github.com/ahillspace/tadx/actions/workbook"
+
 	"github.com/ahillspace/tadx/internal/cli"
 )
 
@@ -26,21 +26,21 @@ func (s *searcher) Execute(_ context.Context, input searchaction.Input) (searcha
 	return searchaction.Output{Items: []searchaction.Item{}, Help: []string{}}, nil
 }
 
-type puller struct{ input workbookpull.Input }
+type puller struct{ input workbookops.PullInput }
 
-func (p *puller) Execute(_ context.Context, input workbookpull.Input) (workbookpull.Output, error) {
+func (p *puller) Execute(_ context.Context, input workbookops.PullInput) (workbookops.PullOutput, error) {
 	p.input = input
-	return workbookpull.Output{Status: "pulled"}, nil
+	return workbookops.PullOutput{Status: "pulled"}, nil
 }
 
 type publisher struct {
-	input   workbookpublish.Input
+	input   workbookops.PublishInput
 	preview bool
 }
 
-func (p *publisher) Execute(_ context.Context, input workbookpublish.Input, preview bool) (workbookpublish.Output, error) {
+func (p *publisher) Execute(_ context.Context, input workbookops.PublishInput, preview bool) (workbookops.PublishOutput, error) {
 	p.input, p.preview = input, preview
-	return workbookpublish.Output{Plan: workbookpublish.Plan{Mode: "preview"}}, nil
+	return workbookops.PublishOutput{Plan: workbookops.PublishPlan{Mode: "preview"}}, nil
 }
 
 func TestRootRegistersPhaseOneCapabilities(t *testing.T) {
@@ -154,7 +154,7 @@ func TestWorkbookPullPassesIncludePublishedDatasourcesChoice(t *testing.T) {
 }
 
 func TestFullChangesPresentationStateWithoutChangingWorkbookPullInput(t *testing.T) {
-	var inputs []workbookpull.Input
+	var inputs []workbookops.PullInput
 	for _, full := range []bool{false, true} {
 		p := &puller{}
 		mode := &cli.RenderOptions{}

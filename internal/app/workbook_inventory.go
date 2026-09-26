@@ -3,26 +3,24 @@ package app
 import (
 	"context"
 	"fmt"
+	workbookops "github.com/ahillspace/tadx/actions/workbook"
 
-	workbookinspect "github.com/ahillspace/tadx/actions/workbook/inspect"
-	workbooklist "github.com/ahillspace/tadx/actions/workbook/list"
 	"github.com/ahillspace/tadx/internal/cache"
-	"github.com/ahillspace/tadx/internal/identity"
 	resourceworkbook "github.com/ahillspace/tadx/internal/resources/workbook"
 	tableaucache "github.com/ahillspace/tadx/internal/tableau/cache"
 	tableauworkbook "github.com/ahillspace/tadx/internal/tableau/workbook"
 )
 
-func (c *remoteContentCommands) ListWorkbooks(ctx context.Context, input workbooklist.Input) (result workbooklist.Output, resultErr error) {
+func (c *remoteContentCommands) ListWorkbooks(ctx context.Context, input workbookops.ListInput) (result workbookops.ListOutput, resultErr error) {
 	if input.Cursor != "" {
 		_, environment, err := c.runtime.environment(input.Environment, false)
 		if err != nil {
-			return workbooklist.Output{}, err
+			return workbookops.ListOutput{}, err
 		}
 		input.Environment, input.Site = environment.Alias, environment.SiteContentURL
 	}
-	if err := workbooklist.ValidateInput(input); err != nil {
-		return workbooklist.Output{}, err
+	if err := workbookops.ValidateListInput(input); err != nil {
+		return workbookops.ListOutput{}, err
 	}
 	defer func() {
 		if resultErr == nil {
@@ -32,11 +30,11 @@ func (c *remoteContentCommands) ListWorkbooks(ctx context.Context, input workboo
 	if input.Cache || legacyInventorySnapshot(input.Cursor) {
 		environment, site, err := c.resolveCacheTarget(input.Environment)
 		if err != nil {
-			return workbooklist.Output{}, err
+			return workbookops.ListOutput{}, err
 		}
 		input.Environment, input.Site = environment, site
 		reader := &cacheWorkbookListReader{store: c.cacheStore(input.Environment), environment: environment, site: site}
-		output, err := workbooklist.New(reader).Execute(ctx, input)
+		output, err := workbookops.List(ctx, reader, input)
 		if err == nil {
 			output.Source = reader.source
 		}
@@ -44,20 +42,20 @@ func (c *remoteContentCommands) ListWorkbooks(ctx context.Context, input workboo
 	}
 	filter, err := tableauworkbook.ListFilter(tableauworkbook.ListRequest{Name: input.Name, OwnerName: input.OwnerName, ProjectLUID: input.ProjectLUID, ProjectName: input.ProjectName, Tag: input.Tag})
 	if err != nil {
-		return workbooklist.Output{}, err
+		return workbookops.ListOutput{}, err
 	}
 	connection, err := c.connect(ctx, input.Environment, false)
 	if err != nil {
-		return workbooklist.Output{}, remoteSetupError("workbook.list", input.Environment, input.Site, connection.environment, err)
+		return workbookops.ListOutput{}, remoteSetupError("workbook.list", input.Environment, input.Site, connection.environment, err)
 	}
 	input.Environment, input.Site = connection.environment.Alias, connection.environment.SiteContentURL
 
 	if input.All && input.ProjectLUID != "" {
 		snapshot, err := connection.workbooks.CollectProjectWorkbooks(ctx, tableauworkbook.ListRequest{Name: input.Name, OwnerName: input.OwnerName, ProjectLUID: input.ProjectLUID, ProjectName: input.ProjectName, Tag: input.Tag})
 		if err != nil {
-			return workbooklist.Output{}, inventoryRefreshError("workbook.list", input.Environment, input.Site, err)
+			return workbookops.ListOutput{}, inventoryRefreshError("workbook.list", input.Environment, input.Site, err)
 		}
-		output, err := workbooklist.New(workbookListReader{snapshot: &snapshot}).Execute(ctx, input)
+		output, err := workbookops.List(ctx, workbookListReader{snapshot: &snapshot}, input)
 		if err != nil {
 			return output, err
 		}
@@ -68,11 +66,11 @@ func (c *remoteContentCommands) ListWorkbooks(ctx context.Context, input workboo
 		observedAt := c.runtime.now().UTC()
 		inventory, err := collectResourceInventory(ctx, connection.inventory, c.cacheStore(input.Environment), tableaucache.ScopeWorkbooks, input.Environment, input.Site, observedAt, inventoryCollectionOptions{MaxConcurrency: connection.environment.CacheMaxConcurrency, Filter: filter})
 		if err != nil {
-			return workbooklist.Output{}, inventoryRefreshError("workbook.list", input.Environment, input.Site, err)
+			return workbookops.ListOutput{}, inventoryRefreshError("workbook.list", input.Environment, input.Site, err)
 		}
 		reader := inventory.memoryReader()
 		reader.allowContinuation = true
-		output, err := workbooklist.New(reader).Execute(ctx, input)
+		output, err := workbookops.List(ctx, reader, input)
 		if err != nil {
 			return output, err
 		}
@@ -87,7 +85,7 @@ func (c *remoteContentCommands) ListWorkbooks(ctx context.Context, input workboo
 		output.RequestID = finalRequestID(inventory.requestIDs)
 		return output, nil
 	}
-	output, err := workbooklist.New(workbookListReader{adapter: connection.workbooks}).Execute(ctx, input)
+	output, err := workbookops.List(ctx, workbookListReader{adapter: connection.workbooks}, input)
 	if err != nil {
 		return output, err
 	}
@@ -95,22 +93,18 @@ func (c *remoteContentCommands) ListWorkbooks(ctx context.Context, input workboo
 	return output, nil
 }
 
-func workbookListIsUnfiltered(input workbooklist.Input) bool {
-	return input.Name == "" && input.OwnerName == "" && input.ProjectLUID == "" && input.ProjectName == "" && input.Tag == ""
-}
-
-func (c *remoteContentCommands) InspectWorkbook(ctx context.Context, input workbookinspect.Input) (workbookinspect.Output, error) {
-	if err := workbookinspect.ValidateInput(input); err != nil {
-		return workbookinspect.Output{}, err
+func (c *remoteContentCommands) InspectWorkbook(ctx context.Context, input workbookops.InspectInput) (workbookops.InspectOutput, error) {
+	if err := workbookops.ValidateInspectInput(input); err != nil {
+		return workbookops.InspectOutput{}, err
 	}
 	if input.Cache {
 		environment, site, err := c.resolveCacheTarget(input.Environment)
 		if err != nil {
-			return workbookinspect.Output{}, err
+			return workbookops.InspectOutput{}, err
 		}
 		input.Environment, input.Site = environment, site
 		resolver := &cacheWorkbookGetResolver{store: c.cacheStore(input.Environment), environment: environment, site: site}
-		output, err := workbookinspect.New(resolver).Execute(ctx, input)
+		output, err := workbookops.Inspect(ctx, resolver, input)
 		if err == nil {
 			output.Source = resolver.source
 		}
@@ -118,10 +112,10 @@ func (c *remoteContentCommands) InspectWorkbook(ctx context.Context, input workb
 	}
 	connection, err := c.connect(ctx, input.Environment, false)
 	if err != nil {
-		return workbookinspect.Output{}, remoteSetupError("workbook.inspect", input.Environment, input.Site, connection.environment, err)
+		return workbookops.InspectOutput{}, remoteSetupError("workbook.inspect", input.Environment, input.Site, connection.environment, err)
 	}
 	input.Environment, input.Site = connection.environment.Alias, connection.environment.SiteContentURL
-	output, err := workbookinspect.New(workbookGetResolver{adapter: connection.workbooks}).Execute(ctx, input)
+	output, err := workbookops.Inspect(ctx, connection.workbooks, input)
 	if err != nil {
 		return output, err
 	}
@@ -136,7 +130,6 @@ func (c *remoteContentCommands) InspectWorkbook(ctx context.Context, input workb
 
 type workbookInventoryAdapter interface {
 	ListWorkbooks(context.Context, tableauworkbook.ListRequest) (resourceworkbook.Page, error)
-	ResolveWorkbook(context.Context, identity.Selector) (resourceworkbook.Workbook, error)
 }
 
 type workbookListReader struct {
@@ -144,32 +137,26 @@ type workbookListReader struct {
 	snapshot *resourceworkbook.Page
 }
 
-func (r workbookListReader) ListWorkbooks(ctx context.Context, input workbooklist.PageRequest) (workbooklist.Page, error) {
+func (r workbookListReader) ListWorkbooks(ctx context.Context, input workbookops.ListPageRequest) (workbookops.ListPage, error) {
 	var page resourceworkbook.Page
 	var err error
 	if r.snapshot != nil {
 		if input.PageNumber < 1 || input.PageSize < 1 {
-			return workbooklist.Page{}, fmt.Errorf("invalid workbook snapshot page")
+			return workbookops.ListPage{}, fmt.Errorf("invalid workbook snapshot page")
 		}
 		start := (input.PageNumber - 1) * input.PageSize
 		if start > len(r.snapshot.Items) {
-			return workbooklist.Page{}, fmt.Errorf("workbook snapshot page exceeds the collected total")
+			return workbookops.ListPage{}, fmt.Errorf("workbook snapshot page exceeds the collected total")
 		}
 		end := min(start+input.PageSize, len(r.snapshot.Items))
 		page = resourceworkbook.Page{Number: input.PageNumber, Size: input.PageSize, Total: r.snapshot.Total, Items: r.snapshot.Items[start:end], RequestID: r.snapshot.RequestID}
 	} else {
 		page, err = r.adapter.ListWorkbooks(ctx, tableauworkbook.ListRequest{PageNumber: input.PageNumber, PageSize: input.PageSize, Name: input.Name, OwnerName: input.OwnerName, ProjectLUID: input.ProjectLUID, ProjectName: input.ProjectName, Tag: input.Tag})
 	}
-	items := make([]workbooklist.Workbook, len(page.Items))
+	items := make([]workbookops.Record, len(page.Items))
 	for index, item := range page.Items {
-		items[index] = workbooklist.Workbook{LUID: item.LUID, Name: item.Name, ProjectLUID: item.ProjectLUID, ProjectPath: item.ProjectPath, ContentURL: item.ContentURL, UpdatedAt: item.UpdatedAt, Description: item.Description, OwnerLUID: item.OwnerLUID, CreatedAt: item.CreatedAt, Tags: append([]string(nil), item.Tags...)}
+		items[index] = item
+		items[index].Tags = append([]string(nil), item.Tags...)
 	}
-	return workbooklist.Page{Number: page.Number, Size: page.Size, Total: page.Total, Workbooks: items, RequestID: page.RequestID}, err
-}
-
-type workbookGetResolver struct{ adapter workbookInventoryAdapter }
-
-func (r workbookGetResolver) ResolveWorkbook(ctx context.Context, selector identity.Selector) (workbookinspect.Workbook, error) {
-	item, err := r.adapter.ResolveWorkbook(ctx, selector)
-	return workbookinspect.Workbook{LUID: item.LUID, Name: item.Name, ProjectLUID: item.ProjectLUID, ProjectPath: item.ProjectPath, ContentURL: item.ContentURL, UpdatedAt: item.UpdatedAt, Description: item.Description, OwnerLUID: item.OwnerLUID, CreatedAt: item.CreatedAt, Tags: append([]string(nil), item.Tags...), RequestID: item.RequestID}, err
+	return workbookops.ListPage{Number: page.Number, Size: page.Size, Total: page.Total, Workbooks: items, RequestID: page.RequestID}, err
 }

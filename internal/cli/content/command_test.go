@@ -2,26 +2,25 @@ package content_test
 
 import (
 	"context"
+	workbookops "github.com/ahillspace/tadx/actions/workbook"
 	"testing"
 
-	workbookpublish "github.com/ahillspace/tadx/actions/workbook/publish"
-	workbookpull "github.com/ahillspace/tadx/actions/workbook/pull"
 	contentcli "github.com/ahillspace/tadx/internal/cli/content"
 )
 
 type contentActions struct {
-	publishInputs []workbookpublish.Input
+	publishInputs []workbookops.PublishInput
 }
 
-func (a *contentActions) Execute(_ context.Context, input workbookpull.Input) (workbookpull.Output, error) {
-	return workbookpull.Output{}, nil
+func (a *contentActions) Execute(_ context.Context, input workbookops.PullInput) (workbookops.PullOutput, error) {
+	return workbookops.PullOutput{}, nil
 }
 
 type publisher struct{ actions *contentActions }
 
-func (p publisher) Execute(_ context.Context, input workbookpublish.Input, _ bool) (workbookpublish.Output, error) {
+func (p publisher) Execute(_ context.Context, input workbookops.PublishInput, _ bool) (workbookops.PublishOutput, error) {
 	p.actions.publishInputs = append(p.actions.publishInputs, input)
-	return workbookpublish.Output{}, nil
+	return workbookops.PublishOutput{}, nil
 }
 
 type renderer struct{}

@@ -5,18 +5,16 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	datasourceops "github.com/ahillspace/tadx/actions/datasource"
+	flowops "github.com/ahillspace/tadx/actions/flow"
 	"io"
 	"reflect"
 	"strings"
 	"testing"
 	"time"
 
-	dspublish "github.com/ahillspace/tadx/actions/datasource/publish"
-	dspull "github.com/ahillspace/tadx/actions/datasource/pull"
-	fpublish "github.com/ahillspace/tadx/actions/flow/publish"
-	fpull "github.com/ahillspace/tadx/actions/flow/pull"
-	wpublish "github.com/ahillspace/tadx/actions/workbook/publish"
-	wpull "github.com/ahillspace/tadx/actions/workbook/pull"
+	workbookops "github.com/ahillspace/tadx/actions/workbook"
+
 	"github.com/ahillspace/tadx/internal/cli/clierr"
 	"github.com/ahillspace/tadx/internal/cli/progress"
 	"github.com/ahillspace/tadx/internal/contentbatch"
@@ -42,29 +40,29 @@ func (b *batchCalls) call(selector, env, workspace string) error {
 	}
 	return nil
 }
-func (b *batchCalls) Execute(_ context.Context, in wpull.Input) (wpull.Output, error) {
-	return wpull.Output{}, b.call(in.LUID, in.Environment, in.Workspace)
+func (b *batchCalls) Execute(_ context.Context, in workbookops.PullInput) (workbookops.PullOutput, error) {
+	return workbookops.PullOutput{}, b.call(in.LUID, in.Environment, in.Workspace)
 }
 
 type batchWorkbookPublisher struct{ b *batchCalls }
 
-func (p batchWorkbookPublisher) Execute(_ context.Context, in wpublish.Input, preview bool) (wpublish.Output, error) {
+func (p batchWorkbookPublisher) Execute(_ context.Context, in workbookops.PublishInput, preview bool) (workbookops.PublishOutput, error) {
 	p.b.previews = append(p.b.previews, preview)
-	return wpublish.Output{Plan: wpublish.Plan{Operation: "workbook.publish", ArtifactPath: in.ArtifactPath}}, p.b.call(in.ArtifactPath, in.Environment, in.Workspace)
+	return workbookops.PublishOutput{Plan: workbookops.PublishPlan{Operation: "workbook.publish", ArtifactPath: in.ArtifactPath}}, p.b.call(in.ArtifactPath, in.Environment, in.Workspace)
 }
-func (b *batchCalls) PullDatasource(_ context.Context, in dspull.Input) (dspull.Output, error) {
-	return dspull.Output{}, b.call(string(in.Selector.LUID), in.Environment, in.Workspace)
+func (b *batchCalls) PullDatasource(_ context.Context, in datasourceops.PullInput) (datasourceops.PullOutput, error) {
+	return datasourceops.PullOutput{}, b.call(string(in.Selector.LUID), in.Environment, in.Workspace)
 }
-func (b *batchCalls) PublishDatasource(_ context.Context, in dspublish.Input, preview bool) (dspublish.Output, error) {
+func (b *batchCalls) PublishDatasource(_ context.Context, in datasourceops.PublishInput, preview bool) (datasourceops.PublishOutput, error) {
 	b.previews = append(b.previews, preview)
-	return dspublish.Output{Plan: dspublish.Plan{Operation: "datasource.publish", ArtifactPath: in.ArtifactPath}}, b.call(in.ArtifactPath, in.Environment, in.Workspace)
+	return datasourceops.PublishOutput{Plan: datasourceops.PublishPlan{Operation: "datasource.publish", ArtifactPath: in.ArtifactPath}}, b.call(in.ArtifactPath, in.Environment, in.Workspace)
 }
-func (b *batchCalls) PullFlow(_ context.Context, in fpull.Input) (fpull.Output, error) {
-	return fpull.Output{}, b.call(string(in.Selector.LUID), in.Environment, in.Workspace)
+func (b *batchCalls) PullFlow(_ context.Context, in flowops.PullInput) (flowops.PullOutput, error) {
+	return flowops.PullOutput{}, b.call(string(in.Selector.LUID), in.Environment, in.Workspace)
 }
-func (b *batchCalls) PublishFlow(_ context.Context, in fpublish.Input, preview bool) (fpublish.Output, error) {
+func (b *batchCalls) PublishFlow(_ context.Context, in flowops.PublishInput, preview bool) (flowops.PublishOutput, error) {
 	b.previews = append(b.previews, preview)
-	return fpublish.Output{Plan: fpublish.Plan{Operation: "flow.publish", ArtifactPath: in.ArtifactPath}}, b.call(in.ArtifactPath, in.Environment, in.Workspace)
+	return flowops.PublishOutput{Plan: flowops.PublishPlan{Operation: "flow.publish", ArtifactPath: in.ArtifactPath}}, b.call(in.ArtifactPath, in.Environment, in.Workspace)
 }
 
 type batchRenderer struct{ values []any }
@@ -148,9 +146,9 @@ func TestContentBatchProcessesEverySelectorAndPreservesSharedFlags(t *testing.T)
 
 func TestContentSelectionPreservesSingleOutputAndSuccessfulBatch(t *testing.T) {
 	for operation, want := range map[string]any{
-		"workbook.pull": wpull.Output{}, "workbook.publish": wpublish.Output{Plan: wpublish.Plan{Operation: "workbook.publish", ArtifactPath: "artifacts/workbook/0"}},
-		"datasource.pull": dspull.Output{}, "datasource.publish": dspublish.Output{Plan: dspublish.Plan{Operation: "datasource.publish", ArtifactPath: "artifacts/datasource/0"}},
-		"flow.pull": fpull.Output{}, "flow.publish": fpublish.Output{Plan: fpublish.Plan{Operation: "flow.publish", ArtifactPath: "artifacts/flow/0"}},
+		"workbook.pull": workbookops.PullOutput{}, "workbook.publish": workbookops.PublishOutput{Plan: workbookops.PublishPlan{Operation: "workbook.publish", ArtifactPath: "artifacts/workbook/0"}},
+		"datasource.pull": datasourceops.PullOutput{}, "datasource.publish": datasourceops.PublishOutput{Plan: datasourceops.PublishPlan{Operation: "datasource.publish", ArtifactPath: "artifacts/datasource/0"}},
+		"flow.pull": flowops.PullOutput{}, "flow.publish": flowops.PublishOutput{Plan: flowops.PublishPlan{Operation: "flow.publish", ArtifactPath: "artifacts/flow/0"}},
 	} {
 		for _, count := range []int{1, 2} {
 			t.Run(fmt.Sprintf("%s/%d", operation, count), func(t *testing.T) {

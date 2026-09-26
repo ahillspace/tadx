@@ -14,8 +14,8 @@ import (
 	capabilitylist "github.com/ahillspace/tadx/actions/capability/list"
 	searchaction "github.com/ahillspace/tadx/actions/search"
 	sessionoverview "github.com/ahillspace/tadx/actions/session/overview"
-	workbookpublish "github.com/ahillspace/tadx/actions/workbook/publish"
-	workbookpull "github.com/ahillspace/tadx/actions/workbook/pull"
+	workbookops "github.com/ahillspace/tadx/actions/workbook"
+
 	"github.com/ahillspace/tadx/internal/batchspec"
 	admincli "github.com/ahillspace/tadx/internal/cli/admin"
 	agentcli "github.com/ahillspace/tadx/internal/cli/agent"
@@ -81,10 +81,10 @@ type SessionOverview interface {
 	Execute(context.Context) (sessionoverview.Output, error)
 }
 type WorkbookPuller interface {
-	Execute(context.Context, workbookpull.Input) (workbookpull.Output, error)
+	Execute(context.Context, workbookops.PullInput) (workbookops.PullOutput, error)
 }
 type WorkbookPublisher interface {
-	Execute(context.Context, workbookpublish.Input, bool) (workbookpublish.Output, error)
+	Execute(context.Context, workbookops.PublishInput, bool) (workbookops.PublishOutput, error)
 }
 
 // Renderer writes structured command output.

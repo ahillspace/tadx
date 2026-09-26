@@ -2,21 +2,20 @@ package content
 
 import (
 	"context"
+	datasourceops "github.com/ahillspace/tadx/actions/datasource"
 	"github.com/ahillspace/tadx/internal/cli/clierr"
 
-	datasourceinspect "github.com/ahillspace/tadx/actions/datasource/inspect"
-	datasourcelist "github.com/ahillspace/tadx/actions/datasource/list"
 	"github.com/spf13/cobra"
 )
 
 // DatasourceLister lists a complete published datasource inventory.
 type DatasourceLister interface {
-	ListDatasources(context.Context, datasourcelist.Input) (datasourcelist.Output, error)
+	ListDatasources(context.Context, datasourceops.ListInput) (datasourceops.ListOutput, error)
 }
 
 // DatasourceInspector inspects one exact published datasource.
 type DatasourceInspector interface {
-	InspectDatasource(context.Context, datasourceinspect.Input) (datasourceinspect.Output, error)
+	InspectDatasource(context.Context, datasourceops.InspectInput) (datasourceops.InspectOutput, error)
 }
 
 type datasourceInventoryDependencies struct {
@@ -38,7 +37,7 @@ func newDatasourceInventory(lister DatasourceLister, inspector DatasourceInspect
 }
 
 func newDatasourceList(deps datasourceInventoryDependencies) *cobra.Command {
-	var input datasourcelist.Input
+	var input datasourceops.ListInput
 	command := &cobra.Command{
 		Use: "list", Short: "List datasources with bounded live reads or explicit --all.",
 		Annotations: map[string]string{"tadx.capability": "datasource.list"},
@@ -70,7 +69,7 @@ func newDatasourceList(deps datasourceInventoryDependencies) *cobra.Command {
 }
 
 func newDatasourceInspect(deps datasourceInventoryDependencies) *cobra.Command {
-	var input datasourceinspect.Input
+	var input datasourceops.InspectInput
 	var luid, name, projectPath, projectID string
 	command := &cobra.Command{
 		Use: "inspect", Short: "Inspect one exact published datasource.",

@@ -11,7 +11,9 @@ Invoke `$tadx-build` only when the user explicitly requests it for a named build
 Free-form installed-CLI exploration uses the [.agents/skills/tadx-explore/SKILL.md](.agents/skills/tadx-explore/SKILL.md) workflow and ignored `.tadx-explore/` run state.
 Keep repository-wide agent instructions here and task-specific development instructions in that skill, not in plans or parallel agent files.
 
-Every executable command is one isolated action package.
+Content workbook, datasource, and flow operations use one cohesive action package per resource as they migrate under the [resource refactoring playbook](docs/resource-refactoring-playbook.md).
+Other executable commands retain their isolated action packages until separately assessed.
+Keep distinct operation contracts and mutation sequences explicit; share mechanisms only where their behavior matches.
 Cobra is thin plumbing, actions own narrow interfaces, resource adapters isolate Tableau APIs, and the composition root performs wiring.
 Tests define externally visible behavior before implementation.
 Blocked and docs-only capabilities remain non-executable until bounded upstream evidence closes the gate.

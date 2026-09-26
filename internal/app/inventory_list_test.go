@@ -3,6 +3,10 @@ package app
 import (
 	"context"
 	"fmt"
+	workbookops "github.com/ahillspace/tadx/actions/workbook"
+	"github.com/ahillspace/tadx/internal/cache"
+	"github.com/ahillspace/tadx/internal/readsource"
+	tableaucache "github.com/ahillspace/tadx/internal/tableau/cache"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -12,11 +16,6 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
-
-	workbooklist "github.com/ahillspace/tadx/actions/workbook/list"
-	"github.com/ahillspace/tadx/internal/cache"
-	"github.com/ahillspace/tadx/internal/readsource"
-	tableaucache "github.com/ahillspace/tadx/internal/tableau/cache"
 )
 
 func TestFullLiveWorkbookListRefreshesSnapshotAndCacheContinuesWithoutTableau(t *testing.T) {
@@ -48,7 +47,7 @@ func TestFullLiveWorkbookListRefreshesSnapshotAndCacheContinuesWithoutTableau(t 
 	if err := seedStore.UpsertResources(context.Background(), []cache.ResourceEntry{{Environment: "production", Site: "team-site", Kind: "workbook", LUID: "workbook-a", Name: "Old", Coverage: "detail", ObservedAt: runtime.now().Add(-48 * time.Hour), Payload: []byte(`{"luid":"workbook-a","name":"Old","obsolete_detail":"stale"}`)}}); err != nil {
 		t.Fatal(err)
 	}
-	first, err := commands.ListWorkbooks(context.Background(), workbooklist.Input{Environment: "production", All: true})
+	first, err := commands.ListWorkbooks(context.Background(), workbookops.ListInput{Environment: "production", All: true})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -69,11 +68,11 @@ func TestFullLiveWorkbookListRefreshesSnapshotAndCacheContinuesWithoutTableau(t 
 		t.Fatalf("refreshed summary retains stale detail: %#v, %v", refreshed, err)
 	}
 
-	cachedFirst, err := commands.ListWorkbooks(context.Background(), workbooklist.Input{Environment: "production", Cache: true, Limit: 1})
+	cachedFirst, err := commands.ListWorkbooks(context.Background(), workbookops.ListInput{Environment: "production", Cache: true, Limit: 1})
 	if err != nil || cachedFirst.Page.NextCursor == "" {
 		t.Fatalf("cache first page = %#v, %v", cachedFirst, err)
 	}
-	second, err := commands.ListWorkbooks(context.Background(), workbooklist.Input{Environment: "production", Cache: true, Limit: 1, Cursor: cachedFirst.Page.NextCursor})
+	second, err := commands.ListWorkbooks(context.Background(), workbookops.ListInput{Environment: "production", Cache: true, Limit: 1, Cursor: cachedFirst.Page.NextCursor})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -89,7 +88,7 @@ func TestFullLiveWorkbookListRefreshesSnapshotAndCacheContinuesWithoutTableau(t 
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, err = commands.ListWorkbooks(context.Background(), workbooklist.Input{Environment: "production", Cache: true, Limit: 1, Cursor: cachedFirst.Page.NextCursor})
+	_, err = commands.ListWorkbooks(context.Background(), workbookops.ListInput{Environment: "production", Cache: true, Limit: 1, Cursor: cachedFirst.Page.NextCursor})
 	if err == nil || !strings.Contains(err.Error(), "continuation cursor no longer identifies") {
 		t.Fatalf("replaced snapshot continuation error = %v", err)
 	}
@@ -125,7 +124,7 @@ func TestFullLiveWorkbookListRejectsInvalidProjectCoverageAndPreservesCache(t *t
 		t.Fatal(err)
 	}
 
-	output, err := newRemoteContentCommands(runtime).ListWorkbooks(context.Background(), workbooklist.Input{Environment: "production", All: true})
+	output, err := newRemoteContentCommands(runtime).ListWorkbooks(context.Background(), workbookops.ListInput{Environment: "production", All: true})
 	if err == nil {
 		t.Fatal("incomplete --all inventory must fail")
 	}

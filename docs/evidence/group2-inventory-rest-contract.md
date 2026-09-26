@@ -52,10 +52,10 @@ Only explicit refresh rebuilds recognized older cache schemas.
 
 `internal/tableau/workbook/client_test.go` locks workbook routes, filters, pagination, metadata, tags, bounds, and request IDs.
 `internal/resources/workbook/adapter_test.go` locks canonical project paths, stable pages, exact LUID resolution, and deterministic ambiguity failures.
-`actions/workbook/list` and `actions/workbook/inspect` cover compact and full TOON projections and bounded result metadata.
+The list and inspect tests in `actions/workbook` cover compact and full TOON projections and bounded result metadata.
 `internal/tableau/datasource/client_test.go` locks datasource routes, filters, pagination, lifecycle metadata, tags, bounds, and request IDs.
 `internal/resources/datasource/adapter_test.go` locks canonical project paths, stable pages, exact LUID resolution, and deterministic ambiguity failures.
-`actions/datasource/list` and `actions/datasource/inspect` cover compact and full TOON projections and bounded result metadata.
+The list and inspect tests in `actions/datasource` cover compact and full TOON projections and bounded result metadata.
 `internal/tableau/cache` locks selectable collectors, concurrent pagination, adaptive limits, bounded queues, strict XML parsing, permission fanout, stable totals, duplicate rejection, and request IDs.
 `internal/tableau/search` locks native request construction, supported type filters, version availability, response normalization, authoritative identity, bounded pagination, and request ID and error preservation.
 `internal/tableau/datasource` locks bounded batch translation from native datasource content URLs to classic REST LUIDs.

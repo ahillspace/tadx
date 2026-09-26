@@ -4,21 +4,20 @@ import (
 	"bytes"
 	"context"
 	"errors"
-	"strings"
-	"testing"
-
-	publish "github.com/ahillspace/tadx/actions/workbook/publish"
+	workbookops "github.com/ahillspace/tadx/actions/workbook"
 	"github.com/ahillspace/tadx/internal/cli/clierr"
 	"github.com/ahillspace/tadx/internal/errs"
 	"github.com/ahillspace/tadx/internal/output"
+	"strings"
+	"testing"
 )
 
 type partialPublisher struct{ unknown bool }
 
 type warningPublisher struct{}
 
-func (warningPublisher) Execute(_ context.Context, _ publish.Input, _ bool) (publish.Output, error) {
-	return publish.Output{Plan: publish.Plan{Mode: "preview", Operation: "workbook.publish", ArtifactFingerprint: "diagnostic-fingerprint", Warnings: []string{"Workbook retains published datasource bindings to its source site."}}}, nil
+func (warningPublisher) Execute(_ context.Context, _ workbookops.PublishInput, _ bool) (workbookops.PublishOutput, error) {
+	return workbookops.PublishOutput{Plan: workbookops.PublishPlan{Mode: "preview", Operation: "workbook.publish", ArtifactFingerprint: "diagnostic-fingerprint", Warnings: []string{"Workbook retains published datasource bindings to its source site."}}}, nil
 }
 
 func TestPublishPreviewDisplaysConsequentialWarningWithoutFull(t *testing.T) {
@@ -33,12 +32,12 @@ func TestPublishPreviewDisplaysConsequentialWarningWithoutFull(t *testing.T) {
 	}
 }
 
-func (p partialPublisher) Execute(_ context.Context, input publish.Input, _ bool) (publish.Output, error) {
-	result := &publish.Result{Status: "created", WorkbookLUID: "created-workbook", TableauRequestID: "readback-request"}
+func (p partialPublisher) Execute(_ context.Context, input workbookops.PublishInput, _ bool) (workbookops.PublishOutput, error) {
+	result := &workbookops.PublishResult{Status: "created", WorkbookLUID: "created-workbook", TableauRequestID: "readback-request"}
 	if p.unknown {
-		result = &publish.Result{Status: "unknown", JobID: "accepted-job"}
+		result = &workbookops.PublishResult{Status: "unknown", JobID: "accepted-job"}
 	}
-	return publish.Output{Plan: publish.Plan{Operation: "workbook.publish", ArtifactPath: input.ArtifactPath}, Result: result},
+	return workbookops.PublishOutput{Plan: workbookops.PublishPlan{Operation: "workbook.publish", ArtifactPath: input.ArtifactPath}, Result: result},
 		&errs.Error{ID: "workbook.publish.verify", Kind: errs.KindOperation, Summary: "Verification failed.", Retryable: errs.Bool(false)}
 }
 

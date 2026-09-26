@@ -3,9 +3,8 @@ package app
 import (
 	"context"
 	"errors"
-
-	datasourcepublish "github.com/ahillspace/tadx/actions/datasource/publish"
-	workbookpublish "github.com/ahillspace/tadx/actions/workbook/publish"
+	datasourceops "github.com/ahillspace/tadx/actions/datasource"
+	workbookops "github.com/ahillspace/tadx/actions/workbook"
 	"github.com/ahillspace/tadx/internal/cli/progress"
 	"github.com/ahillspace/tadx/internal/identity"
 	"github.com/ahillspace/tadx/internal/jobmonitor"
@@ -55,7 +54,7 @@ func (p *publication) destination(ctx context.Context, r jobmonitor.Receipt) (st
 	return id, name, project, err
 }
 
-func (p *publication) completeWorkbook(ctx context.Context, action *workbookpublish.Action, out workbookpublish.Output) (workbookpublish.Output, error) {
+func (p *publication) completeWorkbook(ctx context.Context, action *workbookops.Publisher, out workbookops.PublishOutput) (workbookops.PublishOutput, error) {
 	accepted := p.base
 	accepted.Observation.ID = out.Result.JobID
 	r, err := p.wait(ctx, accepted)
@@ -79,7 +78,7 @@ func (p *publication) completeWorkbook(ctx context.Context, action *workbookpubl
 	return out, err
 }
 
-func (p *publication) completeDatasource(ctx context.Context, action *datasourcepublish.Action, out datasourcepublish.Output) (datasourcepublish.Output, error) {
+func (p *publication) completeDatasource(ctx context.Context, action *datasourceops.Publisher, out datasourceops.PublishOutput) (datasourceops.PublishOutput, error) {
 	accepted := p.base
 	accepted.Observation.ID = out.Result.JobID
 	r, err := p.wait(ctx, accepted)

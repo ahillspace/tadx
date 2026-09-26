@@ -2,33 +2,31 @@ package content
 
 import (
 	"context"
+	datasourceops "github.com/ahillspace/tadx/actions/datasource"
 	"testing"
 
-	datasourcedelete "github.com/ahillspace/tadx/actions/datasource/delete"
-	datasourcepublish "github.com/ahillspace/tadx/actions/datasource/publish"
-	datasourcepull "github.com/ahillspace/tadx/actions/datasource/pull"
 	"github.com/spf13/cobra"
 )
 
 type datasourceLifecycleCommands struct {
-	pullInput      datasourcepull.Input
-	publishInput   datasourcepublish.Input
+	pullInput      datasourceops.PullInput
+	publishInput   datasourceops.PublishInput
 	publishPreview bool
-	deleteInput    datasourcedelete.Input
+	deleteInput    datasourceops.DeleteInput
 	deletePreview  bool
 }
 
-func (c *datasourceLifecycleCommands) PullDatasource(_ context.Context, input datasourcepull.Input) (datasourcepull.Output, error) {
+func (c *datasourceLifecycleCommands) PullDatasource(_ context.Context, input datasourceops.PullInput) (datasourceops.PullOutput, error) {
 	c.pullInput = input
-	return datasourcepull.Output{}, nil
+	return datasourceops.PullOutput{}, nil
 }
-func (c *datasourceLifecycleCommands) PublishDatasource(_ context.Context, input datasourcepublish.Input, preview bool) (datasourcepublish.Output, error) {
+func (c *datasourceLifecycleCommands) PublishDatasource(_ context.Context, input datasourceops.PublishInput, preview bool) (datasourceops.PublishOutput, error) {
 	c.publishInput, c.publishPreview = input, preview
-	return datasourcepublish.Output{}, nil
+	return datasourceops.PublishOutput{}, nil
 }
-func (c *datasourceLifecycleCommands) DeleteDatasource(_ context.Context, input datasourcedelete.Input, preview bool) (datasourcedelete.Output, error) {
+func (c *datasourceLifecycleCommands) DeleteDatasource(_ context.Context, input datasourceops.DeleteInput, preview bool) (datasourceops.DeleteOutput, error) {
 	c.deleteInput, c.deletePreview = input, preview
-	return datasourcedelete.Output{}, nil
+	return datasourceops.DeleteOutput{}, nil
 }
 
 type datasourceLifecycleRenderer struct{ calls int }
@@ -62,7 +60,7 @@ func TestDatasourcePublishKeepsSourceIndependentOfDestination(t *testing.T) {
 	if err := command.ExecuteContext(context.Background()); err != nil {
 		t.Fatal(err)
 	}
-	if actions.publishInput.SourceDefaulted || actions.publishInput.Mode != datasourcepublish.ModeOverwrite || actions.publishInput.Workspace != "analytics" || actions.publishInput.ArtifactPath != "artifacts/datasource/Sales" || actions.publishPreview || renderer.calls != 1 {
+	if actions.publishInput.SourceDefaulted || actions.publishInput.Mode != datasourceops.ModeOverwrite || actions.publishInput.Workspace != "analytics" || actions.publishInput.ArtifactPath != "artifacts/datasource/Sales" || actions.publishPreview || renderer.calls != 1 {
 		t.Fatalf("input = %#v, preview = %t, renders = %d", actions.publishInput, actions.publishPreview, renderer.calls)
 	}
 }
@@ -74,7 +72,7 @@ func TestDatasourcePublishParsesExplicitDestinationModeAndPreview(t *testing.T) 
 	if err := command.ExecuteContext(context.Background()); err != nil {
 		t.Fatal(err)
 	}
-	if actions.publishInput.SourceDefaulted || actions.publishInput.Environment != "prod" || actions.publishInput.ProjectSelector.LUID != "project-1" || actions.publishInput.Mode != datasourcepublish.ModeCreate || !actions.publishPreview {
+	if actions.publishInput.SourceDefaulted || actions.publishInput.Environment != "prod" || actions.publishInput.ProjectSelector.LUID != "project-1" || actions.publishInput.Mode != datasourceops.ModeCreate || !actions.publishPreview {
 		t.Fatalf("input = %#v, preview = %t", actions.publishInput, actions.publishPreview)
 	}
 }
@@ -82,8 +80,8 @@ func TestDatasourcePublishParsesExplicitDestinationModeAndPreview(t *testing.T) 
 func TestDatasourcePublishMapsEveryExplicitModeWithoutInference(t *testing.T) {
 	tests := []struct {
 		flag string
-		mode datasourcepublish.Mode
-	}{{"--create", datasourcepublish.ModeCreate}, {"--overwrite", datasourcepublish.ModeOverwrite}, {"--append", datasourcepublish.ModeAppend}, {"--replace", datasourcepublish.ModeReplace}}
+		mode datasourceops.Mode
+	}{{"--create", datasourceops.ModeCreate}, {"--overwrite", datasourceops.ModeOverwrite}, {"--append", datasourceops.ModeAppend}, {"--replace", datasourceops.ModeReplace}}
 	for _, test := range tests {
 		actions := &datasourceLifecycleCommands{}
 		command := datasourceLifecycleRoot(actions, &datasourceLifecycleRenderer{}, true)

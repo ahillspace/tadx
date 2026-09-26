@@ -3,19 +3,18 @@ package content
 import (
 	"context"
 	"errors"
-
-	workbookdelete "github.com/ahillspace/tadx/actions/workbook/delete"
+	workbookops "github.com/ahillspace/tadx/actions/workbook"
 	"github.com/ahillspace/tadx/internal/cli/clierr"
 	"github.com/spf13/cobra"
 )
 
 // WorkbookDeleter previews or applies one exact remote workbook deletion.
 type WorkbookDeleter interface {
-	DeleteWorkbook(context.Context, workbookdelete.Input, bool) (workbookdelete.Output, error)
+	DeleteWorkbook(context.Context, workbookops.DeleteInput, bool) (workbookops.DeleteOutput, error)
 }
 
 func newWorkbookDelete(deleter WorkbookDeleter, renderer Renderer, _ bool) *cobra.Command {
-	var input workbookdelete.Input
+	var input workbookops.DeleteInput
 	var luid, name, projectPath string
 	var preview bool
 	command := &cobra.Command{

@@ -1,0 +1,341 @@
+package workbook
+
+import "github.com/ahillspace/tadx/internal/value"
+
+import "github.com/ahillspace/tadx/internal/identity"
+
+const (
+	pullMaxFullPublishedDatasourceDetails = 50
+	pullMaxOutputWarnings                 = 20
+	pullMaxLineageNodes                   = 500
+	pullMaxLineageEdges                   = 1000
+	pullMaxLineageWarningBytes            = 512
+)
+
+// PullInput selects one remote workbook and explicit existing workspace.
+type PullInput struct {
+	Preview bool
+	// WorkspaceName is the resolved logical workspace alias used in follow-up commands.
+	WorkspaceName  string
+	Environment    string
+	Site           string
+	ServerOrigin   string
+	SiteLUID       string
+	Workspace      string
+	Selector       identity.Selector
+	LUID           string
+	Name           string
+	ProjectPath    string
+	IncludeExtract *bool
+	IncludePDS     bool
+	Overwrite      bool
+}
+
+// Download preserves native bytes before local storage.
+type Download struct {
+	Filename         string
+	Content          []byte
+	TableauRequestID string
+}
+
+// LineageRequest selects the automatic bounded workbook lineage capture.
+type LineageRequest struct {
+	RESTLUID  string
+	Direction string
+	Depth     int
+}
+
+// LineageNode preserves distinct Metadata and REST identities.
+type LineageNode struct {
+	MetadataID string `json:"metadata_id"`
+	Kind       string `json:"kind"`
+	RESTLUID   string `json:"rest_luid,omitempty"`
+	Name       string `json:"name,omitempty"`
+}
+
+// LineageEdge is one factual directed relationship.
+type LineageEdge struct {
+	FromMetadataID string `json:"from_metadata_id"`
+	ToMetadataID   string `json:"to_metadata_id"`
+	Relationship   string `json:"relationship"`
+}
+
+// LineageCapture is one bounded best-effort workbook graph.
+type LineageCapture struct {
+	RootMetadataID string                `json:"root_metadata_id,omitempty"`
+	Complete       bool                  `json:"complete"`
+	Direction      string                `json:"direction"`
+	Depth          int                   `json:"depth"`
+	Failure        *value.LineageFailure `json:"failure,omitempty"`
+	Nodes          []LineageNode         `json:"nodes"`
+	Edges          []LineageEdge         `json:"edges"`
+	Warnings       []string              `json:"warnings,omitempty"`
+}
+
+// PublishedDatasource is one direct dependency discovered through authoritative metadata.
+type PublishedDatasource struct {
+	LUID string `json:"luid"`
+	Name string `json:"name,omitempty"`
+}
+
+// PublishedDatasourceRef is the provenance recorded on the workbook artifact.
+type PublishedDatasourceRef struct {
+	LUID                string `json:"luid"`
+	Name                string `json:"name,omitempty"`
+	SourceSite          string `json:"source_site,omitempty"`
+	LocalArtifactPath   string `json:"local_artifact_path,omitempty"`
+	CanonicalPath       string `json:"canonical_path,omitempty"`
+	BaselineFingerprint string `json:"baseline_fingerprint,omitempty"`
+}
+
+// DatasourceDownload preserves one direct published datasource dependency.
+type DatasourceDownload struct {
+	LUID             string
+	Name             string
+	ProjectLUID      string
+	ProjectPath      string
+	Filename         string
+	Content          []byte
+	TableauRequestID string
+}
+
+// DatasourceArtifact is one dependency persistence request.
+type DatasourceArtifact struct {
+	Workspace        string
+	Filename         string
+	Content          []byte
+	Name             string
+	TableauID        string
+	Environment      string
+	Site             string
+	ServerOrigin     string
+	SiteLUID         string
+	ProjectName      string
+	ProjectID        string
+	Overwrite        bool
+	TableauRequestID string
+}
+
+// DependencyArtifactResult is one materialized datasource sibling.
+type DependencyArtifactResult struct {
+	LUID                string   `json:"luid"`
+	Name                string   `json:"name,omitempty"`
+	Path                string   `json:"path"`
+	CanonicalPath       string   `json:"canonical_path,omitempty"`
+	BaselineFingerprint string   `json:"baseline_fingerprint"`
+	Warnings            []string `json:"-"`
+}
+
+// PullArtifact is the complete local write request.
+type PullArtifact struct {
+	Workspace            string
+	Filename             string
+	Content              []byte
+	Name                 string
+	TableauID            string
+	Environment          string
+	Site                 string
+	ServerOrigin         string
+	SiteLUID             string
+	ProjectName          string
+	ProjectID            string
+	Portability          string
+	PublishedDatasources []PublishedDatasourceRef
+	DependenciesAcquired bool
+	Lineage              LineageCapture
+	LineageCountsKnown   bool
+	Overwrite            bool
+	TableauRequestID     string
+}
+
+// PullArtifactResult is the local manager result.
+type PullArtifactResult struct {
+	Path                 string                     `json:"path"`
+	CanonicalPath        string                     `json:"canonical_path,omitempty"`
+	BaselineFingerprint  string                     `json:"baseline_fingerprint"`
+	Portability          string                     `json:"portability,omitempty"`
+	PublishedDatasources []PublishedDatasourceRef   `json:"published_datasources,omitempty"`
+	DependenciesAcquired bool                       `json:"dependencies_acquired"`
+	LineagePath          string                     `json:"lineage_path,omitempty"`
+	LineageStatus        string                     `json:"lineage_status,omitempty"`
+	LineageNodeCount     *int                       `json:"lineage_node_count,omitempty"`
+	LineageEdgeCount     *int                       `json:"lineage_edge_count,omitempty"`
+	Dependencies         []DependencyArtifactResult `json:"-"`
+	Warnings             []string                   `json:"-"`
+}
+
+// PullOutput is the stable pull result.
+type PullOutput struct {
+	Source    *value.SourceContext `json:"source,omitempty"`
+	Preview   *value.AcquisitionPlan
+	Workspace string             `json:"workspace"`
+	Status    string             `json:"status"`
+	Workbook  Record             `json:"workbook"`
+	Artifact  PullArtifactResult `json:"artifact"`
+	Warnings  []string           `json:"warnings,omitempty"`
+	RequestID string             `json:"tableau_request_id,omitempty"`
+	Help      []string           `json:"help"`
+	// compactWarnings excludes optional enrichment while retaining download,
+	// artifact replacement, recovery, and explicitly acquired dependency warnings.
+	// A nil value preserves direct Output construction for callers and fixtures.
+	compactWarnings []string
+}
+
+// PullCompactWorkbook is the authoritative identity needed after a pull.
+type PullCompactWorkbook struct {
+	ProjectLUID string `json:"project_luid,omitempty"`
+	LUID        string `json:"luid"`
+	Name        string `json:"name"`
+	ProjectPath string `json:"project_path,omitempty"`
+}
+
+// PullCompactArtifact is the bounded actionable artifact summary.
+type PullCompactArtifact struct {
+	Workspace                string `json:"workspace"`
+	Kind                     string `json:"kind"`
+	Name                     string `json:"name"`
+	SourceLUID               string `json:"source_luid"`
+	Path                     string `json:"path"`
+	CanonicalPath            string `json:"canonical_path,omitempty"`
+	Portability              string `json:"portability,omitempty"`
+	PublishedDatasourceCount *int   `json:"published_datasource_count,omitempty"`
+	DependenciesAcquired     bool   `json:"dependencies_acquired"`
+}
+
+// PullCompactResult is the standard token-bounded workbook.pull response.
+type PullCompactResult struct {
+	Source          *value.SourceContext `json:"source,omitempty"`
+	Status          string               `json:"status"`
+	Workbook        PullCompactWorkbook  `json:"workbook"`
+	Artifact        PullCompactArtifact  `json:"artifact"`
+	Warnings        []string             `json:"warnings,omitempty"`
+	WarningsOmitted int                  `json:"warnings_omitted,omitempty"`
+	Details         string               `json:"details"`
+	Help            []string             `json:"help"`
+}
+
+// PullFullArtifact is the bounded expanded artifact view.
+type PullFullArtifact struct {
+	Workspace                   string                   `json:"workspace"`
+	Kind                        string                   `json:"kind"`
+	Name                        string                   `json:"name"`
+	SourceLUID                  string                   `json:"source_luid"`
+	Path                        string                   `json:"path"`
+	CanonicalPath               string                   `json:"canonical_path,omitempty"`
+	BaselineFingerprint         string                   `json:"baseline_fingerprint,omitempty"`
+	Portability                 string                   `json:"portability"`
+	PublishedDatasourceCount    *int                     `json:"published_datasource_count,omitempty"`
+	PublishedDatasources        []PublishedDatasourceRef `json:"published_datasources,omitempty"`
+	PublishedDatasourcesOmitted int                      `json:"published_datasources_omitted,omitempty"`
+	DependenciesAcquired        bool                     `json:"dependencies_acquired"`
+	LineagePath                 string                   `json:"lineage_path,omitempty"`
+	LineageStatus               string                   `json:"lineage_status,omitempty"`
+	LineageNodeCount            *int                     `json:"lineage_node_count,omitempty"`
+	LineageEdgeCount            *int                     `json:"lineage_edge_count,omitempty"`
+}
+
+// PullFullResult is the bounded expanded workbook.pull response.
+type PullFullResult struct {
+	Source          *value.SourceContext `json:"source,omitempty"`
+	Status          string               `json:"status"`
+	Workbook        pullWorkbook         `json:"workbook"`
+	Artifact        PullFullArtifact     `json:"artifact"`
+	Warnings        []string             `json:"warnings,omitempty"`
+	WarningsOmitted int                  `json:"warnings_omitted,omitempty"`
+	RequestID       string               `json:"tableau_request_id,omitempty"`
+	Help            []string             `json:"help"`
+}
+
+// CompactOutput returns the standard response without provenance diagnostics.
+func (o PullOutput) CompactOutput() any {
+	if o.Preview != nil {
+		return *o.Preview
+	}
+	publishedDatasourceCount := pullKnownPublishedDatasourceCount(o.Artifact)
+	warningSource := o.compactWarnings
+	if warningSource == nil {
+		warningSource = o.Warnings
+	}
+	warnings, warningsOmitted := pullBoundedWarnings(warningSource)
+	portability := o.Artifact.Portability
+	if portability == "unknown" {
+		portability = ""
+	}
+	return PullCompactResult{
+		Source: o.Source,
+		Status: o.Status,
+		Workbook: PullCompactWorkbook{
+			LUID: o.Workbook.LUID, Name: o.Workbook.Name, ProjectPath: o.Workbook.ProjectPath, ProjectLUID: o.Workbook.ProjectLUID,
+		},
+		Artifact: PullCompactArtifact{Workspace: o.Workspace, Kind: "workbook", Name: o.Workbook.Name, SourceLUID: o.Workbook.LUID,
+			Path: o.Artifact.Path, CanonicalPath: o.Artifact.CanonicalPath, Portability: portability,
+			PublishedDatasourceCount: publishedDatasourceCount,
+			DependenciesAcquired:     o.Artifact.DependenciesAcquired,
+		},
+		Warnings:        warnings,
+		WarningsOmitted: warningsOmitted,
+		Details:         "--full",
+		Help:            o.Help,
+	}
+}
+
+// FullOutput returns bounded provenance and diagnostics for the same pull.
+func (o PullOutput) FullOutput() any {
+	if o.Preview != nil {
+		return *o.Preview
+	}
+	publishedDatasources := o.Artifact.PublishedDatasources
+	publishedDatasourcesOmitted := 0
+	if len(publishedDatasources) > pullMaxFullPublishedDatasourceDetails {
+		publishedDatasourcesOmitted = len(publishedDatasources) - pullMaxFullPublishedDatasourceDetails
+		publishedDatasources = publishedDatasources[:pullMaxFullPublishedDatasourceDetails]
+	}
+	warnings, warningsOmitted := pullBoundedWarnings(o.Warnings)
+	return PullFullResult{
+		Source:   o.Source,
+		Status:   o.Status,
+		Workbook: pullWorkbook{LUID: o.Workbook.LUID, Name: o.Workbook.Name, ProjectLUID: o.Workbook.ProjectLUID, ProjectPath: o.Workbook.ProjectPath},
+		Artifact: PullFullArtifact{Workspace: o.Workspace, Kind: "workbook", Name: o.Workbook.Name, SourceLUID: o.Workbook.LUID,
+			Path: o.Artifact.Path, CanonicalPath: o.Artifact.CanonicalPath,
+			BaselineFingerprint: o.Artifact.BaselineFingerprint, Portability: o.Artifact.Portability,
+			PublishedDatasourceCount: pullKnownPublishedDatasourceCount(o.Artifact),
+			PublishedDatasources:     publishedDatasources, PublishedDatasourcesOmitted: publishedDatasourcesOmitted,
+			DependenciesAcquired: o.Artifact.DependenciesAcquired,
+			LineagePath:          o.Artifact.LineagePath, LineageStatus: o.Artifact.LineageStatus,
+			LineageNodeCount: o.Artifact.LineageNodeCount, LineageEdgeCount: o.Artifact.LineageEdgeCount,
+		},
+		Warnings: warnings, WarningsOmitted: warningsOmitted,
+		RequestID: o.RequestID, Help: o.Help,
+	}
+}
+
+func pullKnownPublishedDatasourceCount(artifact PullArtifactResult) *int {
+	if artifact.Portability == "unknown" {
+		return nil
+	}
+	count := len(artifact.PublishedDatasources)
+	return &count
+}
+
+func pullBoundedWarnings(input []string) ([]string, int) {
+	unique := make([]string, 0, len(input))
+	seen := make(map[string]bool, len(input))
+	for _, warning := range input {
+		if warning == "" || seen[warning] {
+			continue
+		}
+		seen[warning] = true
+		unique = append(unique, warning)
+	}
+	if len(unique) <= pullMaxOutputWarnings {
+		return unique, 0
+	}
+	return unique[:pullMaxOutputWarnings], len(unique) - pullMaxOutputWarnings
+}
+
+type pullWorkbook struct {
+	LUID        string `json:"luid"`
+	Name        string `json:"name"`
+	ProjectLUID string `json:"project_luid,omitempty"`
+	ProjectPath string `json:"project_path,omitempty"`
+}

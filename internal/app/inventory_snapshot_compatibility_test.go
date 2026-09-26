@@ -2,13 +2,12 @@ package app
 
 import (
 	"context"
+	workbookops "github.com/ahillspace/tadx/actions/workbook"
+	"github.com/ahillspace/tadx/internal/cache"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
-
-	workbooklist "github.com/ahillspace/tadx/actions/workbook/list"
-	"github.com/ahillspace/tadx/internal/cache"
 )
 
 func TestLegacyPartialSnapshotRemainsReadableThroughCLI(t *testing.T) {
@@ -32,7 +31,7 @@ func TestLegacyPartialSnapshotRemainsReadableThroughCLI(t *testing.T) {
 	}
 	token := cache.PartialInventoryCursor(id, cache.ResourceQuery{Environment: "production", Site: "team-site", Kind: "workbook", Limit: 1, Offset: 1})
 	// Use the existing action envelope, as an older producer would have done.
-	first, err := workbooklist.New(legacySnapshotPage{token: token}).Execute(ctx, workbooklist.Input{Environment: "production", Site: "team-site", Limit: 1})
+	first, err := workbookops.List(ctx, legacySnapshotPage{token: token}, workbookops.ListInput{Environment: "production", Site: "team-site", Limit: 1})
 	if err != nil || first.Page.NextCursor == "" {
 		t.Fatalf("legacy envelope = %#v, %v", first, err)
 	}
@@ -45,6 +44,6 @@ func TestLegacyPartialSnapshotRemainsReadableThroughCLI(t *testing.T) {
 
 type legacySnapshotPage struct{ token string }
 
-func (p legacySnapshotPage) ListWorkbooks(context.Context, workbooklist.PageRequest) (workbooklist.Page, error) {
-	return workbooklist.Page{Number: 1, Size: 1, Total: 2, Workbooks: []workbooklist.Workbook{{LUID: "a", Name: "Alpha"}}, SnapshotCursor: p.token}, nil
+func (p legacySnapshotPage) ListWorkbooks(context.Context, workbookops.ListPageRequest) (workbookops.ListPage, error) {
+	return workbookops.ListPage{Number: 1, Size: 1, Total: 2, Workbooks: []workbookops.Record{{LUID: "a", Name: "Alpha"}}, SnapshotCursor: p.token}, nil
 }

@@ -2,18 +2,17 @@ package app
 
 import (
 	"encoding/json"
+	datasourceops "github.com/ahillspace/tadx/actions/datasource"
+	flowops "github.com/ahillspace/tadx/actions/flow"
+	workbookops "github.com/ahillspace/tadx/actions/workbook"
 	"testing"
-
-	datasourcepull "github.com/ahillspace/tadx/actions/datasource/pull"
-	flowpull "github.com/ahillspace/tadx/actions/flow/pull"
-	workbookpull "github.com/ahillspace/tadx/actions/workbook/pull"
 )
 
 func TestCompactPullReceiptsRetainUsableKnownPaths(t *testing.T) {
 	for _, result := range []interface{ CompactOutput() any }{
-		workbookpull.Output{Artifact: workbookpull.ArtifactResult{Path: "artifacts/workbook/Book", CanonicalPath: "artifacts/workbook/Book/source.twbx"}},
-		datasourcepull.Output{Artifact: datasourcepull.ArtifactResult{Path: "artifacts/datasource/Data", CanonicalPath: "artifacts/datasource/Data/source.tdsx"}},
-		flowpull.Output{Artifact: flowpull.ArtifactResult{Path: "artifacts/flow/Flow", CanonicalPath: "artifacts/flow/Flow/source.tflx"}},
+		workbookops.PullOutput{Artifact: workbookops.PullArtifactResult{Path: "artifacts/workbook/Book", CanonicalPath: "artifacts/workbook/Book/source.twbx"}},
+		datasourceops.PullOutput{Artifact: datasourceops.PullArtifactResult{Path: "artifacts/datasource/Data", CanonicalPath: "artifacts/datasource/Data/source.tdsx"}},
+		flowops.PullOutput{Artifact: flowops.PullArtifactResult{Path: "artifacts/flow/Flow", CanonicalPath: "artifacts/flow/Flow/source.tflx"}},
 	} {
 		data, err := json.Marshal(result.CompactOutput())
 		if err != nil {

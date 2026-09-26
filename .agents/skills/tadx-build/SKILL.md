@@ -35,7 +35,9 @@ Record bounded behavioral evidence before promoting an evidence level; prose cla
 ## Build with tests first
 
 Write the externally visible behavior tests before implementation and confirm they fail for the expected reason.
-Keep one executable operation in one `actions/<resource>/<verb>` package, or the matching nested domain, with typed input and output.
+Keep workbook, datasource, and flow operations in their cohesive `actions/<resource>` packages as they migrate, with explicitly named inputs, outputs, and operations.
+Other domains retain `actions/<resource>/<verb>` packages until separately assessed.
+For resource consolidation, follow the [resource refactoring playbook](../../../docs/resource-refactoring-playbook.md); preserve differing workflow sequences and remove unnecessary mappings rather than moving them unchanged.
 Define narrow dependency interfaces in the action package that consumes them.
 Actions never import Cobra, `net/http`, another action, or a concrete resource adapter.
 Cobra parses arguments, invokes actions, and renders through the shared output layer; the application maps structured errors to exit codes.

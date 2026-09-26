@@ -2,19 +2,18 @@ package content
 
 import (
 	"context"
+	workbookops "github.com/ahillspace/tadx/actions/workbook"
 	"testing"
-
-	workbookdelete "github.com/ahillspace/tadx/actions/workbook/delete"
 )
 
 type workbookDeleteCommands struct {
-	input   workbookdelete.Input
+	input   workbookops.DeleteInput
 	preview bool
 }
 
-func (c *workbookDeleteCommands) DeleteWorkbook(_ context.Context, input workbookdelete.Input, preview bool) (workbookdelete.Output, error) {
+func (c *workbookDeleteCommands) DeleteWorkbook(_ context.Context, input workbookops.DeleteInput, preview bool) (workbookops.DeleteOutput, error) {
 	c.input, c.preview = input, preview
-	return workbookdelete.Output{}, nil
+	return workbookops.DeleteOutput{}, nil
 }
 
 type workbookDeleteRenderer struct{ calls int }

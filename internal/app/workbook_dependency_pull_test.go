@@ -2,41 +2,40 @@ package app
 
 import (
 	"context"
+	datasourceops "github.com/ahillspace/tadx/actions/datasource"
+	workbookops "github.com/ahillspace/tadx/actions/workbook"
+	"github.com/ahillspace/tadx/internal/artifact"
+	"github.com/ahillspace/tadx/internal/identity"
 	"os"
 	"path/filepath"
 	"testing"
 	"time"
-
-	datasourcepublish "github.com/ahillspace/tadx/actions/datasource/publish"
-	workbookpull "github.com/ahillspace/tadx/actions/workbook/pull"
-	"github.com/ahillspace/tadx/internal/artifact"
-	"github.com/ahillspace/tadx/internal/identity"
 )
 
 type workbookDependencyPullReader struct{}
 
-func (workbookDependencyPullReader) ResolveWorkbook(context.Context, identity.Selector) (workbookpull.Workbook, error) {
-	return workbookpull.Workbook{LUID: "wb-1", Name: "Finance", ProjectLUID: "project-1", ProjectPath: "Analytics"}, nil
+func (workbookDependencyPullReader) ResolveWorkbook(context.Context, identity.Selector) (workbookops.Record, error) {
+	return workbookops.Record{LUID: "wb-1", Name: "Finance", ProjectLUID: "project-1", ProjectPath: "Analytics"}, nil
 }
 
-func (workbookDependencyPullReader) DownloadWorkbook(context.Context, string, *bool) (workbookpull.Download, error) {
-	return workbookpull.Download{Filename: "Finance.twb", Content: []byte(`<workbook/>`)}, nil
+func (workbookDependencyPullReader) DownloadWorkbook(context.Context, string, *bool) (workbookops.Download, error) {
+	return workbookops.Download{Filename: "Finance.twb", Content: []byte(`<workbook/>`)}, nil
 }
 
-func (workbookDependencyPullReader) CaptureWorkbookLineage(context.Context, workbookpull.LineageRequest) (workbookpull.LineageCapture, error) {
-	return workbookpull.LineageCapture{
+func (workbookDependencyPullReader) CaptureWorkbookLineage(context.Context, workbookops.LineageRequest) (workbookops.LineageCapture, error) {
+	return workbookops.LineageCapture{
 		RootMetadataID: "metadata-wb-1",
 		Complete:       true,
-		Nodes:          []workbookpull.LineageNode{{MetadataID: "metadata-wb-1", Kind: "workbook", RESTLUID: "wb-1", Name: "Finance"}},
+		Nodes:          []workbookops.LineageNode{{MetadataID: "metadata-wb-1", Kind: "workbook", RESTLUID: "wb-1", Name: "Finance"}},
 	}, nil
 }
 
-func (workbookDependencyPullReader) PublishedDatasources(context.Context, string) ([]workbookpull.PublishedDatasource, error) {
-	return []workbookpull.PublishedDatasource{{LUID: "ds-1", Name: "Sales"}}, nil
+func (workbookDependencyPullReader) PublishedDatasources(context.Context, string) ([]workbookops.PublishedDatasource, error) {
+	return []workbookops.PublishedDatasource{{LUID: "ds-1", Name: "Sales"}}, nil
 }
 
-func (workbookDependencyPullReader) DownloadPublishedDatasource(context.Context, string) (workbookpull.DatasourceDownload, error) {
-	return workbookpull.DatasourceDownload{
+func (workbookDependencyPullReader) DownloadPublishedDatasource(context.Context, string) (workbookops.DatasourceDownload, error) {
+	return workbookops.DatasourceDownload{
 		LUID: "ds-1", Name: "Sales", ProjectLUID: "project-1", ProjectPath: "Analytics",
 		Filename: "Sales.tds", Content: []byte(`<datasource><connection class="sqlserver"/></datasource>`),
 	}, nil
@@ -44,19 +43,19 @@ func (workbookDependencyPullReader) DownloadPublishedDatasource(context.Context,
 
 type datasourcePublishPreviewDependency struct{}
 
-func (datasourcePublishPreviewDependency) ResolveProject(context.Context, identity.Selector) (datasourcepublish.Project, error) {
-	return datasourcepublish.Project{LUID: "target-project", Name: "Target", Path: "Target"}, nil
+func (datasourcePublishPreviewDependency) ResolveProject(context.Context, identity.Selector) (datasourceops.Project, error) {
+	return datasourceops.Project{LUID: "target-project", Name: "Target", Path: "Target"}, nil
 }
 
-func (datasourcePublishPreviewDependency) FindDatasources(context.Context, string, string) ([]datasourcepublish.Datasource, error) {
+func (datasourcePublishPreviewDependency) FindDatasources(context.Context, string, string) ([]datasourceops.Record, error) {
 	return nil, nil
 }
 
-func (datasourcePublishPreviewDependency) ResolvePublishedDatasource(context.Context, string, string) (datasourcepublish.Datasource, error) {
-	return datasourcepublish.Datasource{}, nil
+func (datasourcePublishPreviewDependency) ResolvePublishedDatasource(context.Context, string, string) (datasourceops.Record, error) {
+	return datasourceops.Record{}, nil
 }
 
-func (datasourcePublishPreviewDependency) Prepare(context.Context, datasourcepublish.PublishRequest) (datasourcepublish.PreparedPublish, error) {
+func (datasourcePublishPreviewDependency) Prepare(context.Context, datasourceops.PublishRequest) (datasourceops.PreparedPublish, error) {
 	return nil, nil
 }
 
@@ -67,10 +66,10 @@ func TestWorkbookPullDependencyArtifactPassesDatasourcePublishPreflight(t *testi
 	}
 	now := func() time.Time { return time.Date(2026, 9, 6, 12, 0, 0, 0, time.UTC) }
 	manager := artifact.NewDatasourceManager(now)
-	pulled, err := workbookpull.New(workbookDependencyPullReader{}, artifactWriter{
+	pulled, err := workbookops.Pull(context.Background(), workbookDependencyPullReader{}, artifactWriter{
 		workbooks: artifact.NewWorkbookManager(now),
 		bundles:   artifact.NewWorkbookBundleManager(now),
-	}).Execute(context.Background(), workbookpull.Input{
+	}, workbookops.PullInput{
 		Environment: "source", Site: "source-site", ServerOrigin: "https://tableau.example.com", SiteLUID: "site-1",
 		Workspace: workspace, Selector: identity.Selector{LUID: "wb-1"}, IncludePDS: true,
 	})
@@ -100,13 +99,13 @@ func TestWorkbookPullDependencyArtifactPassesDatasourcePublishPreflight(t *testi
 	}
 
 	dependency := datasourcePublishPreviewDependency{}
-	preview, err := datasourcepublish.New(
+	preview, err := datasourceops.NewPublish(
 		datasourceArtifactReader{manager: manager, displayPath: pulled.Artifact.Dependencies[0].Path},
 		dependency,
 		dependency,
-	).Execute(context.Background(), datasourcepublish.Input{
+	).Execute(context.Background(), datasourceops.PublishInput{
 		ArtifactPath: dependencyPath, Environment: "target", Site: "target-site",
-		ProjectSelector: identity.Selector{LUID: "target-project"}, Mode: datasourcepublish.ModeCreate,
+		ProjectSelector: identity.Selector{LUID: "target-project"}, Mode: datasourceops.ModeCreate,
 	}, true)
 	if err != nil {
 		t.Fatal(err)
