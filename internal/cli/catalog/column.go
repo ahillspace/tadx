@@ -3,7 +3,7 @@ package catalog
 import (
 	columninspect "github.com/ahillspace/tadx/actions/catalog/column/inspect"
 	columnlist "github.com/ahillspace/tadx/actions/catalog/column/list"
-	columnupdate "github.com/ahillspace/tadx/actions/catalog/column/update"
+	catalogupdate "github.com/ahillspace/tadx/actions/catalog/update"
 	"github.com/spf13/cobra"
 )
 
@@ -47,7 +47,7 @@ func newColumnInspect(d Dependencies) *cobra.Command {
 	return c
 }
 func newColumnUpdate(d Dependencies) *cobra.Command {
-	var in columnupdate.Input
+	var in catalogupdate.ColumnInput
 	var description, contact string
 	var preview bool
 	_ = contact
@@ -61,7 +61,7 @@ func newColumnUpdate(d Dependencies) *cobra.Command {
 	c := &cobra.Command{Use: "update", Short: "Update supported column description, or tags; --preview makes no changes.", Annotations: map[string]string{"tadx.capability": "catalog.column.update"}}
 	c.Args = func(c *cobra.Command, args []string) error {
 		capture(c)
-		return noArgs("catalog.column.update", func() error { return columnupdate.ValidateInput(in) })(c, args)
+		return noArgs("catalog.column.update", func() error { return catalogupdate.ValidateColumnInput(in) })(c, args)
 	}
 	c.RunE = func(c *cobra.Command, _ []string) error {
 		capture(c)

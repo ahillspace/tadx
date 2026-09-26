@@ -77,7 +77,7 @@ HTTP and CLI integration tests verify explicit-empty encoding, omission preserva
 
 ## Reproduction
 
-Run `go test ./actions/catalog/column/update`, `go test ./internal/cli/catalog`, and `go test ./internal/tableau/metadataassets` for isolated fixtures.
+Run `go test ./actions/catalog/update`, `go test ./internal/cli/catalog`, and `go test ./internal/tableau/metadataassets` for isolated fixtures.
 Run the same three packages with `-race` for race coverage.
 Relevant tests cover request XML, omitted properties, read-only label POST, exact attachment and vocabulary addressing, GraphQL parent filtering, malformed coverage, Metadata-only identities and independent upstream-column pagination.
 The CLI catalog fixture also confirms that compact table receipts retain available schema and qualified-name context without issuing an extra read.

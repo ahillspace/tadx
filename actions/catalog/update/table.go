@@ -4,42 +4,37 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
+	"strings"
+
 	"github.com/ahillspace/tadx/internal/commandhint"
 	"github.com/ahillspace/tadx/internal/errs"
 	"github.com/ahillspace/tadx/internal/value"
-	"slices"
-	"strings"
-	"unicode/utf8"
 )
 
-type Input struct {
+type TableInput struct {
 	Environment, Site, ID string
 	TargetResolved        bool
 	Description           *string
 	ContactLUID           *string
 	AddTags, RemoveTags   []string
 }
-type Reader interface {
+type TableReader interface {
 	GetTable(context.Context, string) (value.MetadataTable, error)
 }
-type Writer interface {
+type TableWriter interface {
 	UpdateTable(context.Context, string, value.MetadataUpdate) (value.MetadataTable, error)
 	AddTableTags(context.Context, string, []string) ([]string, error)
 	DeleteTableTag(context.Context, string, string) error
 }
-type Action struct {
-	reader Reader
-	writer Writer
+type TableAction struct {
+	reader TableReader
+	writer TableWriter
 }
 
-func New(r Reader, w Writer) *Action { return &Action{reader: r, writer: w} }
+func NewTable(r TableReader, w TableWriter) *TableAction { return &TableAction{reader: r, writer: w} }
 
-type Change struct {
-	Property string  `json:"property"`
-	Before   *string `json:"before"`
-	After    string  `json:"after"`
-}
-type Plan struct {
+type TablePlan struct {
 	Mode        string                 `json:"mode"`
 	Operation   string                 `json:"operation"`
 	Environment string                 `json:"environment"`
@@ -48,7 +43,7 @@ type Plan struct {
 	Changes     []Change               `json:"changes"`
 	NoOp        bool                   `json:"no_op"`
 }
-type Result struct {
+type TableResult struct {
 	Status       string                 `json:"status"`
 	Identity     value.MetadataIdentity `json:"identity"`
 	Description  *string                `json:"description,omitempty"`
@@ -58,88 +53,74 @@ type Result struct {
 	Completed    []string               `json:"completed"`
 	Failed       string                 `json:"failed,omitempty"`
 }
-type Output struct {
-	Plan   Plan     `json:"plan"`
-	Result *Result  `json:"result,omitempty"`
-	Help   []string `json:"help,omitempty"`
+type TableOutput struct {
+	Plan   TablePlan    `json:"plan"`
+	Result *TableResult `json:"result,omitempty"`
+	Help   []string     `json:"help,omitempty"`
 }
 
-func (o Output) CompactOutput() any { return o }
-func (o Output) FullOutput() any    { return o }
-func ValidateInput(in Input) error {
+func (o TableOutput) CompactOutput() any { return o }
+func (o TableOutput) FullOutput() any    { return o }
+func ValidateTableInput(in TableInput) error {
 	for _, id := range []string{in.ID} {
 		if id != "" && (id != strings.TrimSpace(id) || strings.ContainsAny(id, "\x00\r\n")) {
-			return usage("identities must be exact and contain no surrounding whitespace or control characters")
+			return tableUsage("identities must be exact and contain no surrounding whitespace or control characters")
 		}
 	}
 	if strings.TrimSpace(in.ID) == "" {
-		return usage("an exact REST --id is required")
+		return tableUsage("an exact REST --id is required")
 	}
 
 	if in.Description == nil && in.ContactLUID == nil && len(in.AddTags) == 0 && len(in.RemoveTags) == 0 {
-		return usage("supply a description, supported contact, or tag change")
+		return tableUsage("supply a description, supported contact, or tag change")
 	}
 	if in.Description != nil && (strings.TrimSpace(*in.Description) == "" || len(*in.Description) > 65536) {
-		return usage("description must be nonempty and bounded; clearing is not verified")
+		return tableUsage("description must be nonempty and bounded; clearing is not verified")
 	}
 	if in.ContactLUID != nil && strings.TrimSpace(*in.ContactLUID) == "" {
-		return usage("contact clearing is not verified; supply an exact contact LUID")
+		return tableUsage("contact clearing is not verified; supply an exact contact LUID")
 	}
-	if len(in.AddTags)+len(in.RemoveTags) > 100 {
-		return usage("at most 100 tag changes are allowed per item")
-	}
-	for _, tag := range in.AddTags {
-		if strings.TrimSpace(tag) == "" || utf8.RuneCountInString(tag) > 128 {
-			return usage("added tags must contain 1 to 128 characters")
-		}
-	}
-	for _, tag := range in.RemoveTags {
-		if strings.TrimSpace(tag) == "" || tag != strings.TrimSpace(tag) || strings.ContainsAny(tag, "\x00\r\n") {
-			return usage("removed tags must be exact nonempty selectors without surrounding whitespace or control characters")
-		}
-	}
-	for _, tag := range in.AddTags {
-		if slices.Contains(in.RemoveTags, tag) {
-			return usage("a tag cannot be both added and removed")
-		}
+	if reason := validateTags(in.AddTags, in.RemoveTags); reason != "" {
+		return tableUsage(reason)
 	}
 	return nil
 }
-func (a *Action) Execute(ctx context.Context, in Input, preview bool) (Output, error) {
-	if err := ValidateInput(in); err != nil {
-		return Output{}, err
+
+func (a *TableAction) Execute(ctx context.Context, in TableInput, preview bool) (TableOutput, error) {
+	if err := ValidateTableInput(in); err != nil {
+		return TableOutput{}, err
 	}
 	if strings.TrimSpace(in.Environment) == "" || (!in.TargetResolved && strings.TrimSpace(in.Site) == "") {
-		return Output{}, usage("resolve an explicit mutation environment")
+		return TableOutput{}, tableUsage("resolve an explicit mutation environment")
 	}
 	if a == nil || a.reader == nil || a.writer == nil {
-		return Output{}, usage("catalog table update is not configured")
+		return TableOutput{}, tableUsage("catalog table update is not configured")
 	}
 	target, err := a.reader.GetTable(ctx, in.ID)
 	if err != nil {
-		return Output{}, failure(in, "read", nil, errs.OutcomeNotAttempted, err)
+		return TableOutput{}, tableFailure(in, "read", nil, errs.OutcomeNotAttempted, err)
 	}
-	if err = validTarget(target, in); err != nil {
-		return Output{}, failure(in, "identity", nil, errs.OutcomeNotAttempted, err)
+	if err = tableValidTarget(target, in); err != nil {
+		return TableOutput{}, tableFailure(in, "identity", nil, errs.OutcomeNotAttempted, err)
 	}
-	request, changes, add, remove := changed(target, in)
-	out := Output{Plan: Plan{Mode: "preview", Operation: "catalog.table.update", Environment: in.Environment, Site: in.Site, Target: target.MetadataIdentity, Changes: changes, NoOp: len(changes) == 0}}
+	request, changes, add, remove := tableChanged(target, in)
+	out := TableOutput{Plan: TablePlan{Mode: "preview", Operation: "catalog.table.update", Environment: in.Environment, Site: in.Site, Target: target.MetadataIdentity, Changes: changes, NoOp: len(changes) == 0}}
 	if preview {
 		return out, nil
 	}
 	current, err := a.reader.GetTable(ctx, in.ID)
 	if err != nil {
-		return out, failure(in, "revalidate", nil, errs.OutcomeNotAttempted, err)
+		return out, tableFailure(in, "revalidate", nil, errs.OutcomeNotAttempted, err)
 	}
-	if err = validTarget(current, in); err != nil {
-		return out, failure(in, "identity", nil, errs.OutcomeNotAttempted, err)
+	if err = tableValidTarget(current, in); err != nil {
+		return out, tableFailure(in, "identity", nil, errs.OutcomeNotAttempted, err)
 	}
-	request, changes, add, remove = changed(current, in)
+	request, changes, add, remove = tableChanged(current, in)
 	out.Plan.Mode = "execute"
 	out.Plan.Target = current.MetadataIdentity
 	out.Plan.Changes = changes
 	out.Plan.NoOp = len(changes) == 0
-	out.Result = &Result{Status: "updated", Identity: current.MetadataIdentity, Description: current.Description, ContactLUID: current.ContactLUID, Tags: slices.Clone(current.Tags), TagsObserved: current.TagsObserved, Completed: []string{}}
+	out.Result = &TableResult{Status: "updated", Identity: current.MetadataIdentity, Description: current.Description, ContactLUID: current.ContactLUID, Tags: slices.Clone(current.Tags), TagsObserved: current.TagsObserved, Completed: []string{}}
 	out.Help = []string{commandhint.Environment(in.Environment, "catalog", "table", "inspect", "--id", in.ID)}
 	if out.Plan.NoOp {
 		out.Result.Status = "unchanged"
@@ -159,12 +140,12 @@ func (a *Action) Execute(ctx context.Context, in Input, preview bool) (Output, e
 				out.Result.TagsObserved = updated.TagsObserved
 				outcome = errs.OutcomeConfirmed
 			}
-			return out, failure(in, "properties", out.Result.Completed, outcome, e)
+			return out, tableFailure(in, "properties", out.Result.Completed, outcome, e)
 		}
 		if updated.LUID != in.ID {
 			out.Result.Status = "partial"
 			out.Result.Failed = "properties"
-			return out, failure(in, "properties", out.Result.Completed, errs.OutcomeUnknown, fmt.Errorf("updated identity does not match target"))
+			return out, tableFailure(in, "properties", out.Result.Completed, errs.OutcomeUnknown, fmt.Errorf("updated identity does not match target"))
 		}
 		out.Result.Identity = retainedIdentity(current.MetadataIdentity, updated.MetadataIdentity)
 		out.Result.Description = updated.Description
@@ -174,12 +155,12 @@ func (a *Action) Execute(ctx context.Context, in Input, preview bool) (Output, e
 		if request.Description != nil && (updated.Description == nil || *updated.Description != *request.Description) {
 			out.Result.Status = "partial"
 			out.Result.Failed = "properties"
-			return out, failure(in, "properties", out.Result.Completed, errs.OutcomeConfirmed, propertyVerification("description"))
+			return out, tableFailure(in, "properties", out.Result.Completed, errs.OutcomeConfirmed, propertyVerification("description"))
 		}
 		if request.ContactLUID != nil && updated.ContactLUID != *request.ContactLUID {
 			out.Result.Status = "partial"
 			out.Result.Failed = "properties"
-			return out, failure(in, "properties", out.Result.Completed, errs.OutcomeConfirmed, propertyVerification("contact"))
+			return out, tableFailure(in, "properties", out.Result.Completed, errs.OutcomeConfirmed, propertyVerification("contact"))
 		}
 		if request.Description != nil {
 			out.Result.Completed = append(out.Result.Completed, "description")
@@ -191,17 +172,12 @@ func (a *Action) Execute(ctx context.Context, in Input, preview bool) (Output, e
 	if len(add) > 0 {
 		acknowledged, e := a.writer.AddTableTags(ctx, in.ID, add)
 		if e == nil {
-			for _, tag := range add {
-				if !slices.Contains(acknowledged, tag) {
-					e = &errs.Error{Kind: errs.KindOperation, Summary: "Tag response did not confirm every requested addition.", Phase: errs.PhaseVerification, Retryable: errs.Bool(false)}
-					break
-				}
-			}
+			e = verifyTagAcknowledgment(add, acknowledged)
 		}
 		if e != nil {
 			out.Result.Status = "partial"
 			out.Result.Failed = "add_tags"
-			return out, failure(in, "add_tags", out.Result.Completed, errs.OutcomeUnknown, e)
+			return out, tableFailure(in, "add_tags", out.Result.Completed, errs.OutcomeUnknown, e)
 		}
 		out.Result.Completed = append(out.Result.Completed, "add_tags")
 		out.Result.Tags = slices.Clone(acknowledged)
@@ -211,7 +187,7 @@ func (a *Action) Execute(ctx context.Context, in Input, preview bool) (Output, e
 		if e := a.writer.DeleteTableTag(ctx, in.ID, tag); e != nil {
 			out.Result.Status = "partial"
 			out.Result.Failed = "remove_tag:" + tag
-			return out, failure(in, "remove_tag", out.Result.Completed, errs.OutcomeUnknown, e)
+			return out, tableFailure(in, "remove_tag", out.Result.Completed, errs.OutcomeUnknown, e)
 		}
 		out.Result.Completed = append(out.Result.Completed, "remove_tag:"+tag)
 		out.Result.Tags = nil
@@ -219,69 +195,36 @@ func (a *Action) Execute(ctx context.Context, in Input, preview bool) (Output, e
 	}
 	return out, nil
 }
-func validTarget(v value.MetadataTable, in Input) error {
+func tableValidTarget(v value.MetadataTable, in TableInput) error {
 	if v.LUID != in.ID {
 		return fmt.Errorf("returned table has a different REST identity")
 	}
 	return nil
 }
-func changed(v value.MetadataTable, in Input) (value.MetadataUpdate, []Change, []string, []string) {
+func tableChanged(v value.MetadataTable, in TableInput) (value.MetadataUpdate, []Change, []string, []string) {
 	patch := value.MetadataUpdate{}
 	changes := []Change{}
-	add := []string{}
-	remove := []string{}
 	if in.Description != nil && (v.Description == nil || *v.Description != *in.Description) {
-		s := *in.Description
-		patch.Description = &s
-		changes = append(changes, Change{Property: "description", Before: v.Description, After: s})
+		patch.Description = new(*in.Description)
+		changes = append(changes, Change{Property: "description", Before: v.Description, After: *in.Description})
 	}
 	if in.ContactLUID != nil && v.ContactLUID != *in.ContactLUID {
-		s := *in.ContactLUID
-		before := v.ContactLUID
-		patch.ContactLUID = &s
-		changes = append(changes, Change{Property: "contact", Before: &before, After: s})
+		patch.ContactLUID = new(*in.ContactLUID)
+		changes = append(changes, Change{Property: "contact", Before: new(v.ContactLUID), After: *in.ContactLUID})
 	}
-	for _, tag := range in.AddTags {
-		if !slices.Contains(add, tag) && (!v.TagsObserved || !slices.Contains(v.Tags, tag)) {
-			add = append(add, tag)
-			changes = append(changes, Change{Property: "add_tag", After: tag})
-		}
-	}
-	for _, tag := range in.RemoveTags {
-		if !slices.Contains(remove, tag) && (!v.TagsObserved || slices.Contains(v.Tags, tag)) {
-			remove = append(remove, tag)
-			changes = append(changes, Change{Property: "remove_tag", After: tag})
-		}
-	}
+	tags, add, remove := tagChanges(v.Tags, v.TagsObserved, in.AddTags, in.RemoveTags)
+	changes = append(changes, tags...)
 	return patch, changes, add, remove
 }
-func usage(s string) error {
+func tableUsage(s string) error {
 	return &errs.Error{ID: "catalog.table.update.usage", Kind: errs.KindUsage, Operation: "catalog.table.update", Summary: s, Retryable: errs.Bool(false), CorrectiveAction: "Correct the requested metadata update and preview it."}
 }
-func propertyVerification(property string) error {
-	return &errs.Error{Kind: errs.KindOperation, Summary: "Property response did not confirm requested " + property + ".", Retryable: errs.Bool(false), Phase: errs.PhaseVerification}
-}
-func retainedIdentity(previous, observed value.MetadataIdentity) value.MetadataIdentity {
-	if observed.MetadataID == "" {
-		observed.MetadataID = previous.MetadataID
-	}
-	if observed.LUID == "" {
-		observed.LUID = previous.LUID
-	}
-	if observed.Name == "" {
-		observed.Name = previous.Name
-	}
-	if observed.Type == "" {
-		observed.Type = previous.Type
-	}
-	return observed
-}
-func failure(in Input, step string, completed []string, outcome errs.Outcome, cause error) error {
+func tableFailure(in TableInput, step string, completed []string, outcome errs.Outcome, cause error) error {
 	retry, advice := errs.CompleteRetryAdvice(cause, "Inspect the exact asset before retrying: "+commandhint.Environment(in.Environment, "catalog", "table", "inspect", "--id", in.ID))
 	phase := errs.PhaseSubmission
-	var structured *errs.Error
+	structured, ok := errors.AsType[*errs.Error](cause)
 	var verification interface{ VerificationFailed() bool }
-	if (errors.As(cause, &structured) && structured.Phase == errs.PhaseVerification) || (errors.As(cause, &verification) && verification.VerificationFailed()) {
+	if (ok && structured.Phase == errs.PhaseVerification) || (errors.As(cause, &verification) && verification.VerificationFailed()) {
 		phase = errs.PhaseVerification
 	}
 	if outcome == errs.OutcomeNotAttempted {

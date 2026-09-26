@@ -2,15 +2,16 @@ package catalog
 
 import (
 	"context"
-	databaseupdate "github.com/ahillspace/tadx/actions/catalog/database/update"
-	catalogresource "github.com/ahillspace/tadx/internal/resources/catalog"
-	"github.com/ahillspace/tadx/internal/tableau"
-	"github.com/ahillspace/tadx/internal/tableau/metadataassets"
 	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
+
+	catalogupdate "github.com/ahillspace/tadx/actions/catalog/update"
+	catalogresource "github.com/ahillspace/tadx/internal/resources/catalog"
+	"github.com/ahillspace/tadx/internal/tableau"
+	"github.com/ahillspace/tadx/internal/tableau/metadataassets"
 )
 
 type session struct{}
@@ -21,11 +22,11 @@ func (session) UserLUID() string          { return "user" }
 func (session) String() string            { return "fixture session" }
 
 type updateService struct {
-	action *databaseupdate.Action
-	last   databaseupdate.Output
+	action *catalogupdate.DatabaseAction
+	last   catalogupdate.DatabaseOutput
 }
 
-func (s *updateService) UpdateCatalogDatabase(ctx context.Context, in databaseupdate.Input, preview bool) (databaseupdate.Output, error) {
+func (s *updateService) UpdateCatalogDatabase(ctx context.Context, in catalogupdate.DatabaseInput, preview bool) (catalogupdate.DatabaseOutput, error) {
 	in.Environment = "fixture"
 	in.Site = "site"
 	in.TargetResolved = true
@@ -61,7 +62,7 @@ func TestCLIUpdatePreviewAndPartialMutationHTTP(t *testing.T) {
 	}))
 	defer server.Close()
 	adapter := catalogresource.New(metadataassets.NewClient(tableau.NewTransport(server.Client(), "3.29", nil), session{}, server.URL))
-	service := &updateService{action: databaseupdate.New(adapter, adapter)}
+	service := &updateService{action: catalogupdate.NewDatabase(adapter, adapter)}
 	renderer := &recorder{}
 	command := New(Dependencies{DatabaseUpdater: service, Renderer: renderer})
 	command.SetArgs([]string{"database", "update", "--id", "db", "--description", "After", "--add-tag", "new", "--preview"})

@@ -14,6 +14,7 @@ Project also receives a bounded cleanup audit without requiring package regroupi
 Admin membership and permission mutations share cohesive packages after assessment; distinct inspection contracts remain separate.
 Pulse definition and metric operations use resource packages; environment profiles share a profile package.
 Auth and capability operations retain verb packages, with small contracts and projections beside the operation that owns them.
+Catalog database, table, and column updates share metadata rules in one package while retaining separate mutation sequences.
 
 Resource operations own input rules, planning, resource-specific decisions, error context, and output projections.
 The composition root owns environment, authentication, policy integration, cache selection, workspace selection, and receipt persistence.
@@ -151,3 +152,10 @@ When small files can be combined within an existing package, avoid an unnecessar
 Report file consolidation separately from eliminated logic and duplicate representations.
 Capture stdout, stderr, exit codes, and exact arguments from the first baseline call.
 Use matching cache preconditions in before/after tests, and record fixture-specific differences explicitly.
+
+## Lessons from catalog updates
+
+Shared metadata rules do not require a shared mutation runner.
+Keep resource-specific identity checks, write ordering, partial receipts, and recovery commands beside each operation.
+Tag planning must preserve observation state, stable deduplication, request order, and non-null empty change arrays.
+Test those shared rules before extracting them, and preserve each resource's clearing and parent-identity requirements.

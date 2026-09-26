@@ -24,9 +24,7 @@ import (
 	a_admin_user_inspect "github.com/ahillspace/tadx/actions/admin/user/inspect"
 	a_admin_user_list "github.com/ahillspace/tadx/actions/admin/user/list"
 	a_admin_user_update "github.com/ahillspace/tadx/actions/admin/user/update"
-	a_catalog_column_update "github.com/ahillspace/tadx/actions/catalog/column/update"
-	a_catalog_database_update "github.com/ahillspace/tadx/actions/catalog/database/update"
-	a_catalog_table_update "github.com/ahillspace/tadx/actions/catalog/table/update"
+	catalogupdate "github.com/ahillspace/tadx/actions/catalog/update"
 	contentlabel_delete "github.com/ahillspace/tadx/actions/contentlabel/delete"
 	contentlabel_update "github.com/ahillspace/tadx/actions/contentlabel/update"
 	datasourceops "github.com/ahillspace/tadx/actions/datasource"
@@ -110,17 +108,17 @@ func (s jobCancelPreviewSpy) Execute(_ context.Context, input jobcancel.Input) (
 	return jobcancel.Output{}, nil
 }
 
-func (s *previewActionSpy) UpdateCatalogDatabase(_ context.Context, _ a_catalog_database_update.Input, preview bool) (a_catalog_database_update.Output, error) {
+func (s *previewActionSpy) UpdateCatalogDatabase(_ context.Context, _ catalogupdate.DatabaseInput, preview bool) (catalogupdate.DatabaseOutput, error) {
 	s.record(preview)
-	return a_catalog_database_update.Output{}, nil
+	return catalogupdate.DatabaseOutput{}, nil
 }
-func (s *previewActionSpy) UpdateCatalogTable(_ context.Context, _ a_catalog_table_update.Input, preview bool) (a_catalog_table_update.Output, error) {
+func (s *previewActionSpy) UpdateCatalogTable(_ context.Context, _ catalogupdate.TableInput, preview bool) (catalogupdate.TableOutput, error) {
 	s.record(preview)
-	return a_catalog_table_update.Output{}, nil
+	return catalogupdate.TableOutput{}, nil
 }
-func (s *previewActionSpy) UpdateCatalogColumn(_ context.Context, _ a_catalog_column_update.Input, preview bool) (a_catalog_column_update.Output, error) {
+func (s *previewActionSpy) UpdateCatalogColumn(_ context.Context, _ catalogupdate.ColumnInput, preview bool) (catalogupdate.ColumnOutput, error) {
 	s.record(preview)
-	return a_catalog_column_update.Output{}, nil
+	return catalogupdate.ColumnOutput{}, nil
 }
 
 func (s *previewActionSpy) record(preview bool) {

@@ -4,20 +4,18 @@ package catalog
 import (
 	"context"
 	"errors"
-	columninspect "github.com/ahillspace/tadx/actions/catalog/column/inspect"
-	columnlist "github.com/ahillspace/tadx/actions/catalog/column/list"
-	columnupdate "github.com/ahillspace/tadx/actions/catalog/column/update"
-	databaseinspect "github.com/ahillspace/tadx/actions/catalog/database/inspect"
-	databaselist "github.com/ahillspace/tadx/actions/catalog/database/list"
-	databaseupdate "github.com/ahillspace/tadx/actions/catalog/database/update"
-	tableinspect "github.com/ahillspace/tadx/actions/catalog/table/inspect"
-	tablelist "github.com/ahillspace/tadx/actions/catalog/table/list"
-	tableupdate "github.com/ahillspace/tadx/actions/catalog/table/update"
-	"github.com/ahillspace/tadx/internal/cli/clierr"
-	"github.com/spf13/cobra"
 
 	catalogaudit "github.com/ahillspace/tadx/actions/catalog/audit"
+	columninspect "github.com/ahillspace/tadx/actions/catalog/column/inspect"
+	columnlist "github.com/ahillspace/tadx/actions/catalog/column/list"
+	databaseinspect "github.com/ahillspace/tadx/actions/catalog/database/inspect"
+	databaselist "github.com/ahillspace/tadx/actions/catalog/database/list"
 	catalogsearch "github.com/ahillspace/tadx/actions/catalog/search"
+	tableinspect "github.com/ahillspace/tadx/actions/catalog/table/inspect"
+	tablelist "github.com/ahillspace/tadx/actions/catalog/table/list"
+	catalogupdate "github.com/ahillspace/tadx/actions/catalog/update"
+	"github.com/ahillspace/tadx/internal/cli/clierr"
+	"github.com/spf13/cobra"
 )
 
 type DatabaseLister interface {
@@ -27,7 +25,7 @@ type DatabaseInspector interface {
 	InspectCatalogDatabase(context.Context, databaseinspect.Input) (databaseinspect.Output, error)
 }
 type DatabaseUpdater interface {
-	UpdateCatalogDatabase(context.Context, databaseupdate.Input, bool) (databaseupdate.Output, error)
+	UpdateCatalogDatabase(context.Context, catalogupdate.DatabaseInput, bool) (catalogupdate.DatabaseOutput, error)
 }
 type TableLister interface {
 	ListCatalogTables(context.Context, tablelist.Input) (tablelist.Output, error)
@@ -36,7 +34,7 @@ type TableInspector interface {
 	InspectCatalogTable(context.Context, tableinspect.Input) (tableinspect.Output, error)
 }
 type TableUpdater interface {
-	UpdateCatalogTable(context.Context, tableupdate.Input, bool) (tableupdate.Output, error)
+	UpdateCatalogTable(context.Context, catalogupdate.TableInput, bool) (catalogupdate.TableOutput, error)
 }
 type ColumnLister interface {
 	ListCatalogColumns(context.Context, columnlist.Input) (columnlist.Output, error)
@@ -45,7 +43,7 @@ type ColumnInspector interface {
 	InspectCatalogColumn(context.Context, columninspect.Input) (columninspect.Output, error)
 }
 type ColumnUpdater interface {
-	UpdateCatalogColumn(context.Context, columnupdate.Input, bool) (columnupdate.Output, error)
+	UpdateCatalogColumn(context.Context, catalogupdate.ColumnInput, bool) (catalogupdate.ColumnOutput, error)
 }
 
 type Searcher interface {

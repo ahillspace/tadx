@@ -3,7 +3,7 @@ package catalog
 import (
 	databaseinspect "github.com/ahillspace/tadx/actions/catalog/database/inspect"
 	databaselist "github.com/ahillspace/tadx/actions/catalog/database/list"
-	databaseupdate "github.com/ahillspace/tadx/actions/catalog/database/update"
+	catalogupdate "github.com/ahillspace/tadx/actions/catalog/update"
 	"github.com/spf13/cobra"
 )
 
@@ -46,7 +46,7 @@ func newDatabaseInspect(d Dependencies) *cobra.Command {
 	return c
 }
 func newDatabaseUpdate(d Dependencies) *cobra.Command {
-	var in databaseupdate.Input
+	var in catalogupdate.DatabaseInput
 	var description, contact string
 	var preview bool
 	_ = contact
@@ -65,7 +65,7 @@ func newDatabaseUpdate(d Dependencies) *cobra.Command {
 	c := &cobra.Command{Use: "update", Short: "Update supported database description, contact, or tags; --preview makes no changes.", Annotations: map[string]string{"tadx.capability": "catalog.database.update"}}
 	c.Args = func(c *cobra.Command, args []string) error {
 		capture(c)
-		return noArgs("catalog.database.update", func() error { return databaseupdate.ValidateInput(in) })(c, args)
+		return noArgs("catalog.database.update", func() error { return catalogupdate.ValidateDatabaseInput(in) })(c, args)
 	}
 	c.RunE = func(c *cobra.Command, _ []string) error {
 		capture(c)

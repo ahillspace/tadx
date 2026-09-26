@@ -10,7 +10,7 @@ import (
 	"github.com/ahillspace/tadx/internal/errs"
 )
 
-func TestTagValidationBeforeAnyRemoteRead(t *testing.T) {
+func TestTableTagValidationBeforeAnyRemoteRead(t *testing.T) {
 	for _, tc := range []struct {
 		name, tag string
 		valid     bool
@@ -22,16 +22,16 @@ func TestTagValidationBeforeAnyRemoteRead(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			for _, preview := range []bool{true, false} {
-				f := &fixture{}
-				in := valid()
+				f := &tableFixture{}
+				in := tableValid()
 				in.AddTags = []string{tc.tag}
 				if tc.valid {
-					if err := ValidateInput(in); err != nil {
+					if err := ValidateTableInput(in); err != nil {
 						t.Fatalf("valid Unicode tag rejected: %v", err)
 					}
 					continue
 				}
-				_, err := New(f, f).Execute(context.Background(), in, preview)
+				_, err := NewTable(f, f).Execute(context.Background(), in, preview)
 				if err == nil || f.reads != 0 || f.writes != 0 {
 					t.Fatalf("error=%v reads=%d writes=%d preview=%v", err, f.reads, f.writes, preview)
 				}
@@ -40,36 +40,36 @@ func TestTagValidationBeforeAnyRemoteRead(t *testing.T) {
 	}
 }
 
-func TestTagRemovalUsesExactSelectorRatherThanAdditionLengthLimit(t *testing.T) {
-	in := valid()
+func TestTableTagRemovalUsesExactSelectorRatherThanAdditionLengthLimit(t *testing.T) {
+	in := tableValid()
 	in.RemoveTags = []string{strings.Repeat("界", 129)}
-	if err := ValidateInput(in); err != nil {
+	if err := ValidateTableInput(in); err != nil {
 		t.Fatalf("removal inherited addition limit: %v", err)
 	}
 	for _, tag := range []string{" sales", "sales ", "sales\n", "sales\x00"} {
 		in.RemoveTags = []string{tag}
-		if err := ValidateInput(in); err == nil {
+		if err := ValidateTableInput(in); err == nil {
 			t.Fatalf("invalid removal selector accepted: %q", tag)
 		}
 	}
 }
 
-type incompleteTagWriter struct {
-	*fixture
+type tableIncompleteTagWriter struct {
+	*tableFixture
 	acknowledged []string
 }
 
-func (f *incompleteTagWriter) AddDatabaseTags(context.Context, string, []string) ([]string, error) {
+func (f *tableIncompleteTagWriter) AddTableTags(context.Context, string, []string) ([]string, error) {
 	f.writes++
 	return f.acknowledged, nil
 }
 
-func TestIncompleteTagAcknowledgmentPreservesPartialResult(t *testing.T) {
+func TestTableIncompleteTagAcknowledgmentPreservesPartialResult(t *testing.T) {
 	for _, ack := range [][]string{nil, {"sales"}} {
-		f := &incompleteTagWriter{fixture: &fixture{}, acknowledged: ack}
-		in := valid()
+		f := &tableIncompleteTagWriter{tableFixture: &tableFixture{}, acknowledged: ack}
+		in := tableValid()
 		in.AddTags = []string{"sales", "retail"}
-		out, err := New(f, f).Execute(context.Background(), in, false)
+		out, err := NewTable(f, f).Execute(context.Background(), in, false)
 		var structured *errs.Error
 		if !errors.As(err, &structured) || structured.Phase != errs.PhaseVerification || structured.Outcome != errs.OutcomeUnknown || structured.Resource != "item" || structured.Retryable == nil || *structured.Retryable {
 			t.Fatalf("incorrect failure evidence: %#v %v", structured, err)

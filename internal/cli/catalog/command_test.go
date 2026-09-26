@@ -2,24 +2,25 @@ package catalog
 
 import (
 	"context"
-	databaselist "github.com/ahillspace/tadx/actions/catalog/database/list"
-	databaseupdate "github.com/ahillspace/tadx/actions/catalog/database/update"
 	"testing"
+
+	databaselist "github.com/ahillspace/tadx/actions/catalog/database/list"
+	catalogupdate "github.com/ahillspace/tadx/actions/catalog/update"
 )
 
 type recorder struct {
 	calls   int
 	preview bool
-	update  databaseupdate.Input
+	update  catalogupdate.DatabaseInput
 	list    databaselist.Input
 }
 
 func (r *recorder) Render(any) error { return nil }
-func (r *recorder) UpdateCatalogDatabase(_ context.Context, in databaseupdate.Input, p bool) (databaseupdate.Output, error) {
+func (r *recorder) UpdateCatalogDatabase(_ context.Context, in catalogupdate.DatabaseInput, p bool) (catalogupdate.DatabaseOutput, error) {
 	r.calls++
 	r.update = in
 	r.preview = p
-	return databaseupdate.Output{}, nil
+	return catalogupdate.DatabaseOutput{}, nil
 }
 func (r *recorder) ListCatalogDatabases(_ context.Context, in databaselist.Input) (databaselist.Output, error) {
 	r.calls++

@@ -12,7 +12,7 @@ import (
 	"strings"
 	"testing"
 
-	columnupdate "github.com/ahillspace/tadx/actions/catalog/column/update"
+	catalogupdate "github.com/ahillspace/tadx/actions/catalog/update"
 	"github.com/ahillspace/tadx/internal/errs"
 	catalogresource "github.com/ahillspace/tadx/internal/resources/catalog"
 	"github.com/ahillspace/tadx/internal/tableau"
@@ -20,11 +20,11 @@ import (
 )
 
 type columnDescriptionService struct {
-	action *columnupdate.Action
-	last   columnupdate.Output
+	action *catalogupdate.ColumnAction
+	last   catalogupdate.ColumnOutput
 }
 
-func (s *columnDescriptionService) UpdateCatalogColumn(ctx context.Context, in columnupdate.Input, preview bool) (columnupdate.Output, error) {
+func (s *columnDescriptionService) UpdateCatalogColumn(ctx context.Context, in catalogupdate.ColumnInput, preview bool) (catalogupdate.ColumnOutput, error) {
 	in.Environment, in.Site, in.TargetResolved = "fixture", "site", true
 	out, err := s.action.Execute(ctx, in, preview)
 	s.last = out
@@ -78,7 +78,7 @@ func TestCLIColumnDescriptionClearPreviewAndExecution(t *testing.T) {
 	}))
 	defer server.Close()
 	adapter := catalogresource.New(metadataassets.NewClient(tableau.NewTransport(server.Client(), "3.29", nil), session{}, server.URL))
-	service := &columnDescriptionService{action: columnupdate.New(adapter, adapter)}
+	service := &columnDescriptionService{action: catalogupdate.NewColumn(adapter, adapter)}
 	run := func(preview bool) {
 		t.Helper()
 		command := New(Dependencies{ColumnUpdater: service, Renderer: &recorder{}})
@@ -135,7 +135,7 @@ func TestCLIColumnDescriptionClearReadbackFailureIsConfirmedVerification(t *test
 	defer server.Close()
 
 	adapter := catalogresource.New(metadataassets.NewClient(tableau.NewTransport(server.Client(), "3.29", nil), session{}, server.URL))
-	service := &columnDescriptionService{action: columnupdate.New(adapter, adapter)}
+	service := &columnDescriptionService{action: catalogupdate.NewColumn(adapter, adapter)}
 	command := New(Dependencies{ColumnUpdater: service, Renderer: &recorder{}})
 	command.SetContext(t.Context())
 	command.SetArgs([]string{"column", "update", "--table-id", "table", "--id", "column", "--description="})
