@@ -36,7 +36,7 @@ Record bounded behavioral evidence before promoting an evidence level; prose cla
 
 Write the externally visible behavior tests before implementation and confirm they fail for the expected reason.
 Keep workbook, datasource, and flow operations in their cohesive `actions/<resource>` packages as they migrate, with explicitly named inputs, outputs, and operations.
-Other domains retain `actions/<resource>/<verb>` packages until separately assessed.
+Admin group membership and permission mutations also share cohesive packages; other operations retain their assessed boundaries.
 For resource consolidation, follow the [resource refactoring playbook](../../../docs/resource-refactoring-playbook.md); preserve differing workflow sequences and remove unnecessary mappings rather than moving them unchanged.
 Define narrow dependency interfaces in the action package that consumes them.
 Actions never import Cobra, `net/http`, another action, or a concrete resource adapter.

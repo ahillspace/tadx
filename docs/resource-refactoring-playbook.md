@@ -11,6 +11,7 @@ Group each resource's operations in its own action package.
 Keep substantial pull and publish workflows explicit rather than creating one configurable lifecycle engine.
 Other categories retain their existing package layout until separately assessed.
 Project also receives a bounded cleanup audit without requiring package regrouping.
+Admin membership and permission mutations share cohesive packages after assessment; distinct inspection contracts remain separate.
 
 Resource operations own input rules, planning, resource-specific decisions, error context, and output projections.
 The composition root owns environment, authentication, policy integration, cache selection, workspace selection, and receipt persistence.
@@ -125,3 +126,12 @@ Distinguish pre-connection input checks from checks of the resolved environment 
 Within one action, reuse parsed cursor state rather than validating it and then parsing the same input again.
 Move small validation and phase helpers beside their operation without removing fresh-state boundaries.
 Retire tests that only exercise a deleted forwarding hop, and identify where their meaningful assertions remain covered.
+
+## Lessons from the next categories
+
+Do not replace a partial-result traversal with a collector that discards observations on error.
+Keep resource selectors, operation errors, and output projections outside a shared paging mechanism.
+Removing a JSON round trip can also remove a copy boundary; verify serialized payloads and ownership of nested values.
+Shared cursor encoding must preserve existing tokens while resource-specific fingerprints and resolved-target checks remain explicit.
+Preserve explicit add/remove and create/delete operations even when their records and validation share an owner.
+An assessed category can retain its package layout when regrouping would only rename types and move different projections.

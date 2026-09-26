@@ -19,7 +19,8 @@ For a new action, define its typed input/output and narrow dependency interface 
 Write the externally visible failing test, implement provider behavior and resource normalization where needed, then wire the existing seams through the app.
 Do not copy the example's inventory collection or destructive behavior into an unrelated operation.
 Workbook, datasource, and flow group their operations by resource; share internal records without merging distinct CLI projections.
-Other domains retain their existing boundaries: `actions/search`, `actions/last`, and `actions/admin/group/member/add` remain valid examples.
+Admin membership uses `actions/admin/group/member`, and permission mutations use `actions/admin/permission`; both keep explicit operation entry points.
+Other domains retain assessed boundaries, including `actions/search` and `actions/last`.
 
 ## Shared infrastructure
 
@@ -31,6 +32,7 @@ Other domains retain their existing boundaries: `actions/search`, `actions/last`
 | Structured errors and CLI wrapping | `internal/errs/errs.go`, `internal/cli/clierr/clierr.go` |
 | Shared rendering and page presentation | `internal/output/output.go`, `internal/output/page.go` |
 | Bounded collection and logical result windows | `internal/paging/collect.go`, `internal/paging/window.go` |
+| Metadata traversal retaining partial evidence | `internal/paging/metadata_collect.go` |
 | Exact identity and shared resource records | `internal/identity/identity.go`, `internal/value/` |
 | Safe follow-up commands | `internal/commandhint/command.go` |
 | Live/cache provenance | `internal/readsource/` |

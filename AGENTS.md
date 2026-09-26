@@ -12,7 +12,8 @@ Free-form installed-CLI exploration uses the [.agents/skills/tadx-explore/SKILL.
 Keep repository-wide agent instructions here and task-specific development instructions in that skill, not in plans or parallel agent files.
 
 Content workbook, datasource, and flow operations use one cohesive action package per resource as they migrate under the [resource refactoring playbook](docs/resource-refactoring-playbook.md).
-Other executable commands retain their isolated action packages until separately assessed.
+Admin group membership and permission mutations share packages for their matching records and validation, while keeping explicit operation entry points.
+Other executable commands retain their assessed action boundaries; package regrouping must remove unnecessary responsibilities or handoffs, not merely relocate code.
 Keep distinct operation contracts and mutation sequences explicit; share mechanisms only where their behavior matches.
 Cobra is thin plumbing, actions own narrow interfaces, resource adapters isolate Tableau APIs, and the composition root performs wiring.
 Tests define externally visible behavior before implementation.
