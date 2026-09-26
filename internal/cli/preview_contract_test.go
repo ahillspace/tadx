@@ -7,16 +7,14 @@ import (
 	a_admin_group_delete "github.com/ahillspace/tadx/actions/admin/group/delete"
 	a_admin_group_inspect "github.com/ahillspace/tadx/actions/admin/group/inspect"
 	a_admin_group_list "github.com/ahillspace/tadx/actions/admin/group/list"
-	a_admin_group_member_add "github.com/ahillspace/tadx/actions/admin/group/member/add"
-	a_admin_group_member_remove "github.com/ahillspace/tadx/actions/admin/group/member/remove"
+	groupmember "github.com/ahillspace/tadx/actions/admin/group/member"
 	a_admin_group_update "github.com/ahillspace/tadx/actions/admin/group/update"
 	admin_labelcategory_create "github.com/ahillspace/tadx/actions/admin/labelcategory/create"
 	admin_labelcategory_delete "github.com/ahillspace/tadx/actions/admin/labelcategory/delete"
 	admin_labelcategory_update "github.com/ahillspace/tadx/actions/admin/labelcategory/update"
 	admin_labelvalue_delete "github.com/ahillspace/tadx/actions/admin/labelvalue/delete"
 	admin_labelvalue_update "github.com/ahillspace/tadx/actions/admin/labelvalue/update"
-	a_admin_permission_create "github.com/ahillspace/tadx/actions/admin/permission/create"
-	a_admin_permission_delete "github.com/ahillspace/tadx/actions/admin/permission/delete"
+	permission "github.com/ahillspace/tadx/actions/admin/permission"
 	a_admin_permission_inspect "github.com/ahillspace/tadx/actions/admin/permission/inspect"
 	a_admin_user_create "github.com/ahillspace/tadx/actions/admin/user/create"
 	a_admin_user_delete "github.com/ahillspace/tadx/actions/admin/user/delete"
@@ -276,24 +274,24 @@ func (s *previewActionSpy) DeleteAdminGroup(_ context.Context, input a_admin_gro
 	s.record(preview)
 	return a_admin_group_delete.Output{}, nil
 }
-func (s *previewActionSpy) AddAdminGroupMember(_ context.Context, input a_admin_group_member_add.Input, preview bool) (a_admin_group_member_add.Output, error) {
+func (s *previewActionSpy) AddAdminGroupMember(_ context.Context, input groupmember.Input, preview bool) (groupmember.Output, error) {
 	s.record(preview)
-	return a_admin_group_member_add.Output{}, nil
+	return groupmember.Output{}, nil
 }
-func (s *previewActionSpy) RemoveAdminGroupMember(_ context.Context, input a_admin_group_member_remove.Input, preview bool) (a_admin_group_member_remove.Output, error) {
+func (s *previewActionSpy) RemoveAdminGroupMember(_ context.Context, input groupmember.Input, preview bool) (groupmember.Output, error) {
 	s.record(preview)
-	return a_admin_group_member_remove.Output{}, nil
+	return groupmember.Output{}, nil
 }
 func (s *previewActionSpy) InspectAdminPermission(_ context.Context, input a_admin_permission_inspect.Input) (a_admin_permission_inspect.Output, error) {
 	panic("unexpected read action")
 }
-func (s *previewActionSpy) CreateAdminPermission(_ context.Context, input a_admin_permission_create.Input, preview bool) (a_admin_permission_create.Output, error) {
+func (s *previewActionSpy) CreateAdminPermission(_ context.Context, input permission.Input, preview bool) (permission.Output, error) {
 	s.record(preview)
-	return a_admin_permission_create.Output{}, nil
+	return permission.Output{}, nil
 }
-func (s *previewActionSpy) DeleteAdminPermission(_ context.Context, input a_admin_permission_delete.Input, preview bool) (a_admin_permission_delete.Output, error) {
+func (s *previewActionSpy) DeleteAdminPermission(_ context.Context, input permission.Input, preview bool) (permission.Output, error) {
 	s.record(preview)
-	return a_admin_permission_delete.Output{}, nil
+	return permission.Output{}, nil
 }
 func (s *previewActionSpy) ListPulseDefinitions(_ context.Context, input a_pulse_definition_list.Input) (a_pulse_definition_list.Output, error) {
 	panic("unexpected read action")

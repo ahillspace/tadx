@@ -2,15 +2,11 @@ package list
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/base64"
-	"encoding/json"
 	"errors"
 	"github.com/ahillspace/tadx/internal/commandhint"
+	"github.com/ahillspace/tadx/internal/errs"
 	"github.com/ahillspace/tadx/internal/output"
 	"github.com/ahillspace/tadx/internal/paging"
-
-	"github.com/ahillspace/tadx/internal/errs"
 	"github.com/ahillspace/tadx/internal/readsource"
 )
 
@@ -93,7 +89,8 @@ type Action struct{ reader Reader }
 
 func New(r Reader) *Action { return &Action{reader: r} }
 func (a *Action) Execute(ctx context.Context, in Input) (Output, error) {
-	if err := ValidateInput(in); err != nil {
+	cursor, err := validateInput(in)
+	if err != nil {
 		return Output{}, err
 	}
 	if in.All {
@@ -102,14 +99,14 @@ func (a *Action) Execute(ctx context.Context, in Input) (Output, error) {
 	if a == nil || a.reader == nil {
 		return Output{}, errors.New("admin group list reader is not configured")
 	}
-	fp, err := cursorFingerprint(struct {
+	fp, err := paging.AdminCursorFingerprint(struct {
 		Environment, Site, Name, Domain string
 		Cache                           bool
 	}{in.Environment, in.Site, in.Name, in.Domain, in.Cache})
 	if err != nil {
 		return Output{}, err
 	}
-	n, s, snapshotCursor, err := selectPage(in.Cursor, in.Limit, fp)
+	n, s, snapshotCursor, err := selectPage(in.Cursor, in.Limit, fp, cursor)
 	if err != nil {
 		return Output{}, err
 	}
@@ -122,7 +119,7 @@ func (a *Action) Execute(ctx context.Context, in Input) (Output, error) {
 	}
 	next := ""
 	if !p.SuppressContinuation && (p.SnapshotCursor != "" || p.Number*p.Size < p.Total) {
-		next, err = encodeCursor(p.Number+1, p.Size, fp, p.SnapshotCursor)
+		next, err = paging.EncodeAdminCursor(p.Number+1, p.Size, fp, p.SnapshotCursor)
 		if err != nil {
 			return Output{}, err
 		}
@@ -130,21 +127,7 @@ func (a *Action) Execute(ctx context.Context, in Input) (Output, error) {
 	return Output{Status: "listed", Environment: in.Environment, Site: in.Site, Page: OutputPage{Returned: len(p.Groups), Total: p.Total, Limit: p.Size, NextCursor: next, MoreAvailable: next != "" || (p.SuppressContinuation && len(p.Groups) < p.Total)}, Groups: p.Groups, RequestID: p.RequestID, Help: listHelp(in.Environment, p.Groups)}, nil
 }
 
-type cursorValue struct {
-	Version, Page, Size int
-	Filter              string
-	Snapshot            string
-}
-
-func cursorFingerprint(value any) (string, error) {
-	data, err := json.Marshal(value)
-	if err != nil {
-		return "", err
-	}
-	sum := sha256.Sum256(data)
-	return base64.RawURLEncoding.EncodeToString(sum[:]), nil
-}
-func selectPage(encoded string, requested int, filter string) (int, int, string, error) {
+func selectPage(encoded string, requested int, filter string, v paging.AdminCursor) (int, int, string, error) {
 	if encoded == "" {
 		if requested == 0 {
 			requested = 25
@@ -154,19 +137,13 @@ func selectPage(encoded string, requested int, filter string) (int, int, string,
 		}
 		return 1, requested, "", nil
 	}
-	data, err := base64.RawURLEncoding.DecodeString(encoded)
-	var v cursorValue
-	if len(encoded) > 2048 || err != nil || json.Unmarshal(data, &v) != nil || v.Version != 1 || v.Page < 2 || v.Size < 1 || v.Size > 100 || v.Filter != filter || len(v.Snapshot) > 1024 {
+	if v.Filter != filter {
 		return 0, 0, "", errs.New(errs.KindUsage, "invalid admin group list continuation cursor")
 	}
 	if requested != 0 && requested != v.Size {
 		return 0, 0, "", errs.New(errs.KindUsage, "admin group list limit must match the continuation cursor")
 	}
 	return v.Page, v.Size, v.Snapshot, nil
-}
-func encodeCursor(page, size int, filter, snapshot string) (string, error) {
-	data, err := json.Marshal(cursorValue{Version: 1, Page: page, Size: size, Filter: filter, Snapshot: snapshot})
-	return base64.RawURLEncoding.EncodeToString(data), err
 }
 
 // collectAll follows private bounded pages and fails closed on incomplete inventories.
@@ -194,4 +171,59 @@ func listHelp(environment string, items []Group) []string {
 		return nil
 	}
 	return []string{commandhint.Environment(environment, "admin", "group", "inspect", "--id", items[0].LUID)}
+}
+
+// ValidateInput checks pagination shape; resolved-target cursor binding remains in Execute.
+func ValidateInput(input Input) error { _, err := validateInput(input); return err }
+
+func validateInput(input Input) (paging.AdminCursor, error) {
+	var cursor paging.AdminCursor
+	if input.All {
+		if input.Limit != 0 || input.Cursor != "" {
+			return cursor, errs.New(errs.KindUsage, "--all cannot be combined with --limit or --cursor")
+		}
+		return cursor, nil
+	}
+	if input.Limit < 0 || input.Limit > 10000 {
+		return cursor, errs.New(errs.KindUsage, "admin group list limit must be between 1 and 10000")
+	}
+	if input.Cursor != "" {
+		var valid bool
+		cursor, valid = paging.DecodeAdminCursor(input.Cursor)
+		if !valid || input.Limit != 0 && input.Limit != cursor.Size {
+			return cursor, errs.New(errs.KindUsage, "invalid admin group list continuation cursor")
+		}
+	}
+	return cursor, nil
+}
+
+// ValidateContinuation binds a private cursor after local environment resolution, before authentication.
+func ValidateContinuation(input Input) error {
+	fingerprint, err := paging.AdminCursorFingerprint(struct {
+		Environment, Site, Name, Domain string
+		Cache                           bool
+	}{input.Environment, input.Site, input.Name, input.Domain, input.Cache})
+
+	if err != nil {
+		return err
+	}
+	cursor, valid := paging.DecodeAdminCursor(input.Cursor)
+	if input.Cursor != "" && !valid {
+		return errs.New(errs.KindUsage, "invalid admin group list continuation cursor")
+	}
+	_, _, _, err = selectPage(input.Cursor, input.Limit, fingerprint, cursor)
+	return err
+}
+
+func (a *Action) readPage(ctx context.Context, input PageRequest) (Page, error) {
+	if input.PageSize <= 100 {
+		return a.reader.ListGroups(ctx, input)
+	}
+	requestID := ""
+	window, err := paging.Window(ctx, paging.State{Number: input.PageNumber, Size: input.PageSize, Token: input.SnapshotCursor}, 100, func(ctx context.Context, state paging.State) (paging.Page[Group], error) {
+		page, err := a.reader.ListGroups(ctx, PageRequest{PageNumber: state.Number, PageSize: state.Size, SnapshotCursor: state.Token, Name: input.Name, Domain: input.Domain})
+		requestID = page.RequestID
+		return paging.Page[Group]{Number: page.Number, Size: page.Size, Total: page.Total, Items: page.Groups, Token: page.SnapshotCursor}, err
+	}, func(item Group) string { return item.LUID })
+	return Page{Number: window.Number, Size: window.Size, Total: window.Total, Groups: window.Items, RequestID: requestID, SuppressContinuation: true}, err
 }

@@ -3,8 +3,9 @@ package create
 import (
 	"context"
 	"errors"
-
+	"github.com/ahillspace/tadx/internal/commandhint"
 	"github.com/ahillspace/tadx/internal/errs"
+	"strings"
 )
 
 type Input struct {
@@ -143,4 +144,19 @@ func (a *Action) Execute(ctx context.Context, in Input, preview bool) (Output, e
 		out.Result.UnverifiedSettings = append(out.Result.UnverifiedSettings, "external_user_enabled")
 	}
 	return out, nil
+}
+
+func recoveryHint(input Input, id string) string {
+	if id != "" {
+		return commandhint.Environment(input.Environment, "admin", "group", "inspect", "--id", id)
+	}
+	return commandhint.Environment(input.Environment, "admin", "group", "inspect", "--name", input.Name)
+}
+
+// ValidateInput checks local options without requiring a resolved site or remote session.
+func ValidateInput(in Input) error {
+	if strings.TrimSpace(in.Environment) == "" || strings.TrimSpace(in.Name) == "" {
+		return &errs.Error{ID: "admin.group.create.usage", Kind: errs.KindUsage, Operation: "admin.group.create", Summary: "admin group create requires explicit environment and name", Retryable: errs.Bool(false), CorrectiveAction: "Provide an exact environment and group name.", Validation: []errs.ValidationDetail{{Field: "selector", Code: "required", Message: "admin group create requires explicit environment and name"}}}
+	}
+	return nil
 }

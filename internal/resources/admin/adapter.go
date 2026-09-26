@@ -18,16 +18,12 @@ const (
 	maxResolutionPages = 1000
 )
 
-type Client interface {
-	tableau.ClientContract
-}
-
 type Adapter struct {
-	client          Client
+	client          tableau.ClientContract
 	checkCapability func(string) error
 }
 
-func NewAdapter(client Client, checks ...func(string) error) *Adapter {
+func NewAdapter(client tableau.ClientContract, checks ...func(string) error) *Adapter {
 	a := &Adapter{client: client}
 	if len(checks) > 0 {
 		a.checkCapability = checks[0]
@@ -36,8 +32,8 @@ func NewAdapter(client Client, checks ...func(string) error) *Adapter {
 }
 
 func (a *Adapter) authorize(id string) error {
-	if err := a.configured(); err != nil {
-		return err
+	if a == nil || a.client == nil {
+		return errors.New("administration resource adapter is not configured")
 	}
 	if a.checkCapability != nil {
 		return a.checkCapability(id)
@@ -58,9 +54,6 @@ func (a *Adapter) ListUsers(ctx context.Context, input tableau.ListUsersRequest)
 	if err := a.authorize("admin.user.list"); err != nil {
 		return tableau.UserPage{}, err
 	}
-	if err := a.configured(); err != nil {
-		return tableau.UserPage{}, err
-	}
 	page, err := a.client.ListUsers(ctx, input)
 	if err != nil {
 		return tableau.UserPage{}, err
@@ -68,7 +61,7 @@ func (a *Adapter) ListUsers(ctx context.Context, input tableau.ListUsersRequest)
 	if err := validatePage(page.Number, page.Size, page.Total, len(page.Items), input.PageNumber, input.PageSize); err != nil {
 		return tableau.UserPage{}, err
 	}
-	if err := validateUsers(page.Items); err != nil {
+	if err := mergeUsers(make(map[string]tableau.User), page.Items); err != nil {
 		return tableau.UserPage{}, err
 	}
 	return page, nil
@@ -76,9 +69,6 @@ func (a *Adapter) ListUsers(ctx context.Context, input tableau.ListUsersRequest)
 
 func (a *Adapter) ResolveUser(ctx context.Context, selector UserSelector) (tableau.User, error) {
 	if err := a.authorize("admin.user.inspect"); err != nil {
-		return tableau.User{}, err
-	}
-	if err := a.configured(); err != nil {
 		return tableau.User{}, err
 	}
 	if selector.LUID != "" {
@@ -122,7 +112,7 @@ func (a *Adapter) FindUsers(ctx context.Context, exactNameOrEmail string) ([]tab
 	if err := a.authorize("admin.user.inspect"); err != nil {
 		return nil, err
 	}
-	items, err := a.allUsers(ctx)
+	items, err := a.userInventory(ctx, "")
 	if err != nil {
 		return nil, err
 	}
@@ -140,9 +130,6 @@ func (a *Adapter) ListGroups(ctx context.Context, input tableau.ListGroupsReques
 	if err := a.authorize("admin.group.list"); err != nil {
 		return tableau.GroupPage{}, err
 	}
-	if err := a.configured(); err != nil {
-		return tableau.GroupPage{}, err
-	}
 	page, err := a.client.ListGroups(ctx, input)
 	if err != nil {
 		return tableau.GroupPage{}, err
@@ -150,7 +137,7 @@ func (a *Adapter) ListGroups(ctx context.Context, input tableau.ListGroupsReques
 	if err := validatePage(page.Number, page.Size, page.Total, len(page.Items), input.PageNumber, input.PageSize); err != nil {
 		return tableau.GroupPage{}, err
 	}
-	if err := validateGroups(page.Items); err != nil {
+	if err := mergeGroups(make(map[string]tableau.Group), page.Items); err != nil {
 		return tableau.GroupPage{}, err
 	}
 	return page, nil
@@ -206,9 +193,6 @@ func (a *Adapter) GetPermissions(ctx context.Context, input tableau.PermissionRe
 	if err := a.authorize("admin.permission.inspect"); err != nil {
 		return tableau.PermissionSet{}, err
 	}
-	if err := a.configured(); err != nil {
-		return tableau.PermissionSet{}, err
-	}
 	return a.client.GetPermissions(ctx, input)
 }
 
@@ -261,14 +245,7 @@ func (a *Adapter) RemoveGroupUser(ctx context.Context, groupLUID, userLUID strin
 	return a.client.RemoveGroupUser(ctx, groupLUID, userLUID)
 }
 
-func (a *Adapter) allUsers(ctx context.Context) ([]tableau.User, error) {
-	return a.userInventory(ctx, "")
-}
-
 func (a *Adapter) userInventory(ctx context.Context, name string) ([]tableau.User, error) {
-	if err := a.configured(); err != nil {
-		return nil, err
-	}
 	byID := make(map[string]tableau.User)
 	for number := 1; number <= maxResolutionPages; number++ {
 		page, err := a.client.ListUsers(ctx, tableau.ListUsersRequest{PageNumber: number, PageSize: resolutionPageSize, Name: name})
@@ -289,9 +266,6 @@ func (a *Adapter) userInventory(ctx context.Context, name string) ([]tableau.Use
 }
 
 func (a *Adapter) allGroups(ctx context.Context) ([]tableau.Group, error) {
-	if err := a.configured(); err != nil {
-		return nil, err
-	}
 	byID := make(map[string]tableau.Group)
 	for number := 1; number <= maxResolutionPages; number++ {
 		page, err := a.client.ListGroups(ctx, tableau.ListGroupsRequest{PageNumber: number, PageSize: resolutionPageSize})
@@ -336,23 +310,11 @@ func (a *Adapter) allMembers(ctx context.Context, groupLUID string) ([]tableau.U
 	return nil, errors.New("group membership exceeded the 1000-page resolution bound")
 }
 
-func (a *Adapter) configured() error {
-	if a == nil || a.client == nil {
-		return errors.New("administration resource adapter is not configured")
-	}
-	return nil
-}
 func validatePage(number, size, total, count, expectedNumber, maxSize int) error {
 	if number != expectedNumber || size <= 0 || size > maxSize || total < 0 || count > size || (number-1)*size+count > total {
 		return fmt.Errorf("administration reader returned inconsistent pagination number=%d size=%d total=%d count=%d", number, size, total, count)
 	}
 	return nil
-}
-func validateUsers(items []tableau.User) error {
-	return mergeUsers(make(map[string]tableau.User), items)
-}
-func validateGroups(items []tableau.Group) error {
-	return mergeGroups(make(map[string]tableau.Group), items)
 }
 func mergeUsers(target map[string]tableau.User, items []tableau.User) error {
 	for _, item := range items {

@@ -48,9 +48,6 @@ func (a *Adapter) GetPermissionRule(ctx context.Context, in tableau.PermissionMu
 	if err := a.authorize("admin.permission.inspect"); err != nil {
 		return tableau.PermissionSet{}, err
 	}
-	if err := a.configured(); err != nil {
-		return tableau.PermissionSet{}, err
-	}
 	if err := tableau.ValidatePermissionMutation(in); err != nil {
 		return tableau.PermissionSet{}, err
 	}
@@ -91,9 +88,6 @@ func (a *Adapter) CreatePermission(ctx context.Context, in tableau.PermissionMut
 	if err := a.authorize("admin.permission.create"); err != nil {
 		return tableau.MutationResult{}, err
 	}
-	if err := a.configured(); err != nil {
-		return tableau.MutationResult{}, err
-	}
 	writer, ok := a.client.(tableau.PermissionMutationClient)
 	if !ok {
 		return tableau.MutationResult{}, errors.New("permission mutation client is not configured")
@@ -102,9 +96,6 @@ func (a *Adapter) CreatePermission(ctx context.Context, in tableau.PermissionMut
 }
 func (a *Adapter) DeletePermission(ctx context.Context, in tableau.PermissionMutationRequest) (tableau.MutationResult, error) {
 	if err := a.authorize("admin.permission.delete"); err != nil {
-		return tableau.MutationResult{}, err
-	}
-	if err := a.configured(); err != nil {
 		return tableau.MutationResult{}, err
 	}
 	writer, ok := a.client.(tableau.PermissionMutationClient)

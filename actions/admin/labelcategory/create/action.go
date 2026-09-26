@@ -82,15 +82,10 @@ func (a *Action) Execute(ctx context.Context, in Input, preview bool) (Output, e
 	}
 	desired := value.LabelCategory{Name: in.Name, Description: in.Description}
 	out.Plan.Desired = desired
-	out.Plan.NoOp = before != nil && equal(*before, desired)
 	if preview {
 		return out, nil
 	}
 	out.Plan.Mode = "perform"
-	if out.Plan.NoOp {
-		out.Result = &Result{Status: "unchanged", Item: *before}
-		return out, nil
-	}
 	if a.writer == nil {
 		return out, usage("label category writer is not configured")
 	}
@@ -98,7 +93,7 @@ func (a *Action) Execute(ctx context.Context, in Input, preview bool) (Output, e
 	if err != nil {
 		return out, fail(in, "recheck", errs.OutcomeNotAttempted, err)
 	}
-	if (before == nil) != (current == nil) || (before != nil && !equal(*before, *current)) {
+	if current != nil {
 		return out, fail(in, "conflict", errs.OutcomeNotAttempted, fmt.Errorf("label category changed after its baseline was read"))
 	}
 	saved, err := a.writer.CreateLabelCategory(ctx, desired)

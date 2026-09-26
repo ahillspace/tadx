@@ -4,8 +4,9 @@ import (
 	"context"
 	"errors"
 	"github.com/ahillspace/tadx/internal/commandhint"
-
+	"github.com/ahillspace/tadx/internal/errs"
 	"github.com/ahillspace/tadx/internal/readsource"
+	"strings"
 )
 
 type Selector struct{ LUID, Username string }
@@ -91,4 +92,13 @@ func (a *Action) Execute(ctx context.Context, input Input) (Output, error) {
 		return Output{}, err
 	}
 	return Output{Status: "found", Environment: input.Environment, Site: input.Site, User: user, RequestID: user.RequestID, Help: []string{commandhint.Environment(input.Environment, "admin", "user", "inspect", "--id", user.LUID, "--full")}}, nil
+}
+
+// ValidateInput checks one exact selector before authentication.
+func ValidateInput(input Input) error {
+	id, name := strings.TrimSpace(input.Selector.LUID), strings.TrimSpace(input.Selector.Username)
+	if (id == "") == (name == "") {
+		return &errs.Error{ID: "admin.user.inspect.usage", Kind: errs.KindUsage, Operation: "admin.user.inspect", Summary: "Provide exactly one authoritative LUID or exact user name.", Retryable: errs.Bool(false), CorrectiveAction: "Use --id or --name, but not both.", Validation: []errs.ValidationDetail{{Field: "selector", Code: "invalid", Message: "exactly one selector is required"}}}
+	}
+	return nil
 }

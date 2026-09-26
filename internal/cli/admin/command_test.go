@@ -11,11 +11,9 @@ import (
 	groupdelete "github.com/ahillspace/tadx/actions/admin/group/delete"
 	groupinspect "github.com/ahillspace/tadx/actions/admin/group/inspect"
 	grouplist "github.com/ahillspace/tadx/actions/admin/group/list"
-	groupmemberadd "github.com/ahillspace/tadx/actions/admin/group/member/add"
-	groupmemberremove "github.com/ahillspace/tadx/actions/admin/group/member/remove"
+	groupmember "github.com/ahillspace/tadx/actions/admin/group/member"
 	groupupdate "github.com/ahillspace/tadx/actions/admin/group/update"
-	permissioncreate "github.com/ahillspace/tadx/actions/admin/permission/create"
-	permissiondelete "github.com/ahillspace/tadx/actions/admin/permission/delete"
+	permission "github.com/ahillspace/tadx/actions/admin/permission"
 	permissioninspect "github.com/ahillspace/tadx/actions/admin/permission/inspect"
 	usercreate "github.com/ahillspace/tadx/actions/admin/user/create"
 	userdelete "github.com/ahillspace/tadx/actions/admin/user/delete"
@@ -33,9 +31,9 @@ type fake struct {
 	userPreview  bool
 	groupUpdate  groupupdate.Input
 	groupPreview bool
-	memberAdd    groupmemberadd.Input
-	memberRemove groupmemberremove.Input
-	permissions  []permissioncreate.Input
+	memberAdd    groupmember.Input
+	memberRemove groupmember.Input
+	permissions  []permission.Input
 }
 
 func (f *fake) Render(any) error { f.rendered++; return nil }
@@ -91,23 +89,23 @@ func (f *fake) UpdateAdminGroup(_ context.Context, in groupupdate.Input, preview
 func (f *fake) DeleteAdminGroup(context.Context, groupdelete.Input, bool) (groupdelete.Output, error) {
 	return groupdelete.Output{}, nil
 }
-func (f *fake) AddAdminGroupMember(_ context.Context, input groupmemberadd.Input, _ bool) (groupmemberadd.Output, error) {
+func (f *fake) AddAdminGroupMember(_ context.Context, input groupmember.Input, _ bool) (groupmember.Output, error) {
 	f.memberAdd = input
-	return groupmemberadd.Output{}, nil
+	return groupmember.Output{}, nil
 }
-func (f *fake) RemoveAdminGroupMember(_ context.Context, input groupmemberremove.Input, _ bool) (groupmemberremove.Output, error) {
+func (f *fake) RemoveAdminGroupMember(_ context.Context, input groupmember.Input, _ bool) (groupmember.Output, error) {
 	f.memberRemove = input
-	return groupmemberremove.Output{}, nil
+	return groupmember.Output{}, nil
 }
 func (f *fake) InspectAdminPermission(context.Context, permissioninspect.Input) (permissioninspect.Output, error) {
 	return permissioninspect.Output{}, nil
 }
-func (f *fake) CreateAdminPermission(_ context.Context, in permissioncreate.Input, _ bool) (permissioncreate.Output, error) {
+func (f *fake) CreateAdminPermission(_ context.Context, in permission.Input, _ bool) (permission.Output, error) {
 	f.permissions = append(f.permissions, in)
-	return permissioncreate.Output{}, nil
+	return permission.Output{}, nil
 }
-func (f *fake) DeleteAdminPermission(context.Context, permissiondelete.Input, bool) (permissiondelete.Output, error) {
-	return permissiondelete.Output{}, nil
+func (f *fake) DeleteAdminPermission(context.Context, permission.Input, bool) (permission.Output, error) {
+	return permission.Output{}, nil
 }
 
 func deps(f *fake, enabled bool) cli.Dependencies {

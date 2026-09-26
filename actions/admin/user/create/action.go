@@ -3,9 +3,10 @@ package create
 import (
 	"context"
 	"errors"
-	"sort"
-
+	"github.com/ahillspace/tadx/internal/commandhint"
 	"github.com/ahillspace/tadx/internal/errs"
+	"sort"
+	"strings"
 )
 
 type Input struct {
@@ -157,4 +158,29 @@ func outcomeUnknown(in Input, luid, requestID string, cause error) error {
 		resource = in.Name
 	}
 	return &errs.Error{ID: "admin.user.create.outcome_unknown", Kind: errs.KindOperation, Operation: "admin.user.create", Resource: resource, Environment: in.Environment, Site: in.Site, Summary: "The user create outcome could not be determined safely.", Cause: cause, Retryable: errs.Bool(false), CorrectiveAction: "Inspect the exact user and Tableau request before retrying: " + recoveryHint(in, luid), TableauRequestID: requestID, Phase: errs.PhaseSubmission, Outcome: errs.OutcomeUnknown}
+}
+
+func recoveryHint(input Input, id string) string {
+	if id != "" {
+		return commandhint.Environment(input.Environment, "admin", "user", "inspect", "--id", id)
+	}
+	return commandhint.Environment(input.Environment, "admin", "user", "inspect", "--name", input.Name)
+}
+
+// ValidateInput checks local options without requiring a resolved site or remote session.
+func ValidateInput(in Input) error {
+	if strings.TrimSpace(in.Environment) == "" || strings.TrimSpace(in.Name) == "" || strings.TrimSpace(in.SiteRole) == "" {
+		return usage("selector", "admin user create requires --environment, --name, and --site-role; the environment selects the site")
+	}
+	if (in.AuthSetting == "") == (in.IdPConfigurationID == "") {
+		return usage("auth_setting", "admin user create requires exactly one explicit auth setting or IdP configuration ID")
+	}
+	if in.AuthSetting != "" {
+		switch in.AuthSetting {
+		case "ServerDefault", "SAML", "OpenID", "TableauIDWithMFA":
+		default:
+			return usage("auth_setting", "Supported --auth-setting values: ServerDefault, SAML, OpenID, TableauIDWithMFA. Use --idp-configuration-id for an exact authentication configuration.")
+		}
+	}
+	return nil
 }

@@ -2,15 +2,11 @@ package list
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/base64"
-	"encoding/json"
 	"errors"
 	"github.com/ahillspace/tadx/internal/commandhint"
+	"github.com/ahillspace/tadx/internal/errs"
 	"github.com/ahillspace/tadx/internal/output"
 	"github.com/ahillspace/tadx/internal/paging"
-
-	"github.com/ahillspace/tadx/internal/errs"
 	"github.com/ahillspace/tadx/internal/readsource"
 )
 
@@ -95,7 +91,8 @@ type Action struct{ reader Reader }
 
 func New(reader Reader) *Action { return &Action{reader: reader} }
 func (a *Action) Execute(ctx context.Context, input Input) (Output, error) {
-	if err := ValidateInput(input); err != nil {
+	cursor, err := validateInput(input)
+	if err != nil {
 		return Output{}, err
 	}
 	if input.All {
@@ -104,14 +101,14 @@ func (a *Action) Execute(ctx context.Context, input Input) (Output, error) {
 	if a == nil || a.reader == nil {
 		return Output{}, errors.New("admin user list reader is not configured")
 	}
-	fingerprint, err := cursorFingerprint(struct {
+	fingerprint, err := paging.AdminCursorFingerprint(struct {
 		Environment, Site, Name, SiteRole string
 		Cache                             bool
 	}{input.Environment, input.Site, input.Name, input.SiteRole, input.Cache})
 	if err != nil {
 		return Output{}, err
 	}
-	number, size, snapshotCursor, err := selectPage(input.Cursor, input.Limit, fingerprint)
+	number, size, snapshotCursor, err := selectPage(input.Cursor, input.Limit, fingerprint, cursor)
 	if err != nil {
 		return Output{}, err
 	}
@@ -124,7 +121,7 @@ func (a *Action) Execute(ctx context.Context, input Input) (Output, error) {
 	}
 	next := ""
 	if !page.SuppressContinuation && (page.SnapshotCursor != "" || page.Number*page.Size < page.Total) {
-		next, err = encodeCursor(page.Number+1, page.Size, fingerprint, page.SnapshotCursor)
+		next, err = paging.EncodeAdminCursor(page.Number+1, page.Size, fingerprint, page.SnapshotCursor)
 		if err != nil {
 			return Output{}, err
 		}
@@ -132,21 +129,7 @@ func (a *Action) Execute(ctx context.Context, input Input) (Output, error) {
 	return Output{Status: "listed", Environment: input.Environment, Site: input.Site, Page: OutputPage{Returned: len(page.Users), Total: page.Total, Limit: page.Size, NextCursor: next, MoreAvailable: next != "" || (page.SuppressContinuation && len(page.Users) < page.Total)}, Users: page.Users, RequestID: page.RequestID, Help: listHelp(input.Environment, page.Users)}, nil
 }
 
-type cursorValue struct {
-	Version, Page, Size int
-	Filter              string
-	Snapshot            string
-}
-
-func cursorFingerprint(value any) (string, error) {
-	data, err := json.Marshal(value)
-	if err != nil {
-		return "", err
-	}
-	sum := sha256.Sum256(data)
-	return base64.RawURLEncoding.EncodeToString(sum[:]), nil
-}
-func selectPage(encoded string, requested int, filter string) (int, int, string, error) {
+func selectPage(encoded string, requested int, filter string, v paging.AdminCursor) (int, int, string, error) {
 	if encoded == "" {
 		if requested == 0 {
 			requested = 25
@@ -156,19 +139,13 @@ func selectPage(encoded string, requested int, filter string) (int, int, string,
 		}
 		return 1, requested, "", nil
 	}
-	data, err := base64.RawURLEncoding.DecodeString(encoded)
-	var v cursorValue
-	if len(encoded) > 2048 || err != nil || json.Unmarshal(data, &v) != nil || v.Version != 1 || v.Page < 2 || v.Size < 1 || v.Size > 100 || v.Filter != filter || len(v.Snapshot) > 1024 {
+	if v.Filter != filter {
 		return 0, 0, "", errs.New(errs.KindUsage, "invalid admin user list continuation cursor")
 	}
 	if requested != 0 && requested != v.Size {
 		return 0, 0, "", errs.New(errs.KindUsage, "admin user list limit must match the continuation cursor")
 	}
 	return v.Page, v.Size, v.Snapshot, nil
-}
-func encodeCursor(page, size int, filter, snapshot string) (string, error) {
-	data, err := json.Marshal(cursorValue{Version: 1, Page: page, Size: size, Filter: filter, Snapshot: snapshot})
-	return base64.RawURLEncoding.EncodeToString(data), err
 }
 
 // collectAll follows private bounded pages and fails closed on incomplete inventories.
@@ -196,4 +173,58 @@ func listHelp(environment string, items []User) []string {
 		return nil
 	}
 	return []string{commandhint.Environment(environment, "admin", "user", "inspect", "--id", items[0].LUID)}
+}
+
+// ValidateInput checks pagination shape; resolved-target cursor binding remains in Execute.
+func ValidateInput(input Input) error { _, err := validateInput(input); return err }
+
+func validateInput(input Input) (paging.AdminCursor, error) {
+	var cursor paging.AdminCursor
+	if input.All {
+		if input.Limit != 0 || input.Cursor != "" {
+			return cursor, errs.New(errs.KindUsage, "--all cannot be combined with --limit or --cursor")
+		}
+		return cursor, nil
+	}
+	if input.Limit < 0 || input.Limit > 10000 {
+		return cursor, errs.New(errs.KindUsage, "admin user list limit must be between 1 and 10000")
+	}
+	if input.Cursor != "" {
+		var valid bool
+		cursor, valid = paging.DecodeAdminCursor(input.Cursor)
+		if !valid || input.Limit != 0 && input.Limit != cursor.Size {
+			return cursor, errs.New(errs.KindUsage, "invalid admin user list continuation cursor")
+		}
+	}
+	return cursor, nil
+}
+
+// ValidateContinuation binds a private cursor after local environment resolution, before authentication.
+func ValidateContinuation(input Input) error {
+	fingerprint, err := paging.AdminCursorFingerprint(struct {
+		Environment, Site, Name, SiteRole string
+		Cache                             bool
+	}{input.Environment, input.Site, input.Name, input.SiteRole, input.Cache})
+	if err != nil {
+		return err
+	}
+	cursor, valid := paging.DecodeAdminCursor(input.Cursor)
+	if input.Cursor != "" && !valid {
+		return errs.New(errs.KindUsage, "invalid admin user list continuation cursor")
+	}
+	_, _, _, err = selectPage(input.Cursor, input.Limit, fingerprint, cursor)
+	return err
+}
+
+func (a *Action) readPage(ctx context.Context, input PageRequest) (Page, error) {
+	if input.PageSize <= 100 {
+		return a.reader.ListUsers(ctx, input)
+	}
+	requestID := ""
+	window, err := paging.Window(ctx, paging.State{Number: input.PageNumber, Size: input.PageSize, Token: input.SnapshotCursor}, 100, func(ctx context.Context, state paging.State) (paging.Page[User], error) {
+		page, err := a.reader.ListUsers(ctx, PageRequest{PageNumber: state.Number, PageSize: state.Size, SnapshotCursor: state.Token, Name: input.Name, SiteRole: input.SiteRole})
+		requestID = page.RequestID
+		return paging.Page[User]{Number: page.Number, Size: page.Size, Total: page.Total, Items: page.Users, Token: page.SnapshotCursor}, err
+	}, func(item User) string { return item.LUID })
+	return Page{Number: window.Number, Size: window.Size, Total: window.Total, Users: window.Items, RequestID: requestID, SuppressContinuation: true}, err
 }

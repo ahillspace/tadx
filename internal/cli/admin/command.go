@@ -9,8 +9,7 @@ import (
 	groupdelete "github.com/ahillspace/tadx/actions/admin/group/delete"
 	groupinspect "github.com/ahillspace/tadx/actions/admin/group/inspect"
 	grouplist "github.com/ahillspace/tadx/actions/admin/group/list"
-	groupmemberadd "github.com/ahillspace/tadx/actions/admin/group/member/add"
-	groupmemberremove "github.com/ahillspace/tadx/actions/admin/group/member/remove"
+	groupmember "github.com/ahillspace/tadx/actions/admin/group/member"
 	groupupdate "github.com/ahillspace/tadx/actions/admin/group/update"
 	permissioninspect "github.com/ahillspace/tadx/actions/admin/permission/inspect"
 	usercreate "github.com/ahillspace/tadx/actions/admin/user/create"
@@ -54,10 +53,10 @@ type GroupDeleter interface {
 	DeleteAdminGroup(context.Context, groupdelete.Input, bool) (groupdelete.Output, error)
 }
 type GroupMemberAdder interface {
-	AddAdminGroupMember(context.Context, groupmemberadd.Input, bool) (groupmemberadd.Output, error)
+	AddAdminGroupMember(context.Context, groupmember.Input, bool) (groupmember.Output, error)
 }
 type GroupMemberRemover interface {
-	RemoveAdminGroupMember(context.Context, groupmemberremove.Input, bool) (groupmemberremove.Output, error)
+	RemoveAdminGroupMember(context.Context, groupmember.Input, bool) (groupmember.Output, error)
 }
 type PermissionInspector interface {
 	InspectAdminPermission(context.Context, permissioninspect.Input) (permissioninspect.Output, error)
@@ -99,7 +98,7 @@ func New(deps Dependencies) *cobra.Command {
 }
 
 func newGroupMemberAdd(deps Dependencies) *cobra.Command {
-	var in groupmemberadd.Input
+	var in groupmember.Input
 	var preview bool
 	cmd := mutation("add", "Add one user to one group.", "admin.group.member.add", deps.MutationsEnabled, func(cmd *cobra.Command, args []string) error {
 		if err := noArgs("admin.group.member.add")(cmd, args); err != nil {
@@ -128,7 +127,7 @@ func newGroupMemberAdd(deps Dependencies) *cobra.Command {
 }
 
 func newGroupMemberRemove(deps Dependencies) *cobra.Command {
-	var in groupmemberremove.Input
+	var in groupmember.Input
 	var preview bool
 	cmd := mutation("remove", "Remove one user from one group.", "admin.group.member.remove", deps.MutationsEnabled, func(cmd *cobra.Command, args []string) error {
 		if err := noArgs("admin.group.member.remove")(cmd, args); err != nil {
