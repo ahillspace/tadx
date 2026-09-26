@@ -24,9 +24,6 @@ func (a *Action) Execute(ctx context.Context, input Input) (Output, error) {
 		return Output{}, fail("pulse.metric.inspect.unconfigured", errs.KindRuntime, input, "Pulse metric retrieval is not configured.", nil)
 	}
 	input.LUID = strings.TrimSpace(input.LUID)
-	if input.LUID == "" {
-		return Output{}, fail("pulse.metric.inspect.usage", errs.KindUsage, input, "Pulse metric inspect requires an exact LUID.", nil)
-	}
 	metric, err := a.reader.GetMetric(ctx, input.LUID)
 	if err != nil {
 		var structured *errs.Error

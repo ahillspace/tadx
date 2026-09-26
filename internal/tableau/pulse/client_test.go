@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -137,9 +138,17 @@ func TestCreateDefinitionUsesProvenMediaTypesAndResolvesExplicitDefaultMetric(t 
 	}))
 	defer server.Close()
 	client := newPulseClient(t, tableau.NewTransport(server.Client(), "3.29", nil), session{}, server.URL)
-	result, err := client.CreateDefinition(context.Background(), createRequest())
+	input := createRequest()
+	falseValue := false
+	input.Specification.BasicSpecification.Filters = []tableaupulse.Filter{{Field: "Region", Operator: "IN", CategoricalValues: []tableaupulse.CategoricalValue{{BoolValue: &falseValue}}}}
+	wantInput := createRequest()
+	wantInput.Specification.BasicSpecification.Filters = []tableaupulse.Filter{{Field: "Region", Operator: "IN", CategoricalValues: []tableaupulse.CategoricalValue{{BoolValue: &falseValue}}}}
+	result, err := client.CreateDefinition(context.Background(), input)
 	if err != nil {
 		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(input, wantInput) {
+		t.Fatalf("client mutated create request: %#v", input)
 	}
 	if result.DefinitionLUID != "definition-1" || result.DefaultMetricLUID != "metric-default" || result.DefaultMetricStatus != "resolved" || result.TableauRequestID != "create-request" || result.PollRequestID != "poll-request" {
 		t.Fatalf("result=%#v", result)

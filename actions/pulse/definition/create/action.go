@@ -48,15 +48,12 @@ func New(validator FieldValidator, finder CollisionFinder, creator Creator) *Act
 
 // Plan validates the small intent and resolves live field and collision state.
 func (a *Action) Plan(ctx context.Context, input Input) (Plan, error) {
-	if err := ValidateInput(input); err != nil {
+	request, err := validatedRequest(input)
+	if err != nil {
 		return Plan{}, err
 	}
 	if a == nil || a.validator == nil || a.finder == nil || a.creator == nil {
 		return Plan{}, createError("pulse.definition.create.unconfigured", errs.KindRuntime, input, "Pulse definition creation is not configured.", nil)
-	}
-	request, err := requestFromIntent(input.Intent)
-	if err != nil {
-		return Plan{}, createError("pulse.definition.create.usage", errs.KindUsage, input, "Pulse definition intent is invalid.", err)
 	}
 	references := FieldReferences{
 		DatasourceLUID:    request.Specification.Datasource.ID,

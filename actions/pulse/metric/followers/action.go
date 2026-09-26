@@ -25,9 +25,6 @@ func (a *Action) Execute(ctx context.Context, input Input) (Output, error) {
 		return Output{}, fail("pulse.metric.followers.unconfigured", errs.KindRuntime, input, "Pulse metric follower listing is not configured.", nil)
 	}
 	input.MetricLUID = strings.TrimSpace(input.MetricLUID)
-	if input.MetricLUID == "" {
-		return Output{}, fail("pulse.metric.followers.usage", errs.KindUsage, input, "Pulse metric followers requires an exact metric LUID.", nil)
-	}
 	metric, err := a.reader.GetMetric(ctx, input.MetricLUID)
 	if err != nil {
 		return Output{}, readError(input, err)

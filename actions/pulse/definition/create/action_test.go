@@ -78,6 +78,24 @@ func TestCreateCanonicalizesFieldReferencesBeforePreviewAndWrite(t *testing.T) {
 	}
 }
 
+func TestCreatePlanOwnsNormalizedInput(t *testing.T) {
+	dimensions := []string{"Region"}
+	resolved := definitioncreate.FieldReferences{DatasourceLUID: "datasource-1", MeasureField: "Sales", Aggregation: "AGGREGATION_SUM", TimeDimension: "Order Date", AllowedDimensions: []string{"[Region]"}}
+	input := definitioncreate.Input{Intent: definitioncreate.Intent{Name: "Revenue", DatasourceLUID: "datasource-1", MeasureField: "Sales", TimeDimension: "Order Date", AllowedDimensions: dimensions}}
+	plan, err := definitioncreate.New(&validator{resolved: &resolved}, &finder{}, &creator{}).Plan(context.Background(), input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	dimensions[0] = "Changed"
+	resolved.AllowedDimensions[0] = "Changed"
+	if got := plan.Request.ExtensionOptions.AllowedDimensions; len(got) != 1 || got[0] != "[Region]" {
+		t.Fatalf("plan retained caller-owned dimensions: %v", got)
+	}
+	if got := plan.Dimensions; len(got) != 1 || got[0] != "[Region]" {
+		t.Fatalf("projection retained caller-owned dimensions: %v", got)
+	}
+}
+
 func (v *validator) ValidateDefinitionFields(_ context.Context, input definitioncreate.FieldReferences) error {
 	v.calls++
 	v.input = input

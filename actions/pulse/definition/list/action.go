@@ -43,9 +43,6 @@ func (a *Action) Execute(ctx context.Context, input Input) (Output, error) {
 	if limit == 0 {
 		limit = defaultLimit
 	}
-	if limit < 1 || limit > maxLimit {
-		return Output{}, listError("pulse.definition.list.usage", errs.KindUsage, input, "Pulse definition list limit must be between 1 and 10000.", nil)
-	}
 	fingerprint := targetFingerprint(input.Environment, input.Site, input.Name, limit, input.Cache)
 	if input.DatasourceLUID != "" {
 		fingerprint = targetFingerprint(fingerprint, input.DatasourceLUID, "", limit, input.Cache)
@@ -55,9 +52,6 @@ func (a *Action) Execute(ctx context.Context, input Input) (Output, error) {
 		return Output{}, listError("pulse.definition.list.usage", errs.KindUsage, input, "Pulse definition cursor does not match the selected target, name, and limit.", err)
 	}
 	if input.All {
-		if input.Limit != 0 || input.Cursor != "" {
-			return Output{}, listError("pulse.definition.list.usage", errs.KindUsage, input, "--all cannot be combined with --limit or --cursor.", nil)
-		}
 		limit = 10000
 	}
 	pageSize := min(limit, 100)

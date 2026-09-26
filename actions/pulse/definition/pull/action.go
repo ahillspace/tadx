@@ -39,7 +39,7 @@ func (a *Action) Execute(ctx context.Context, input Input) (Output, error) {
 		return Output{}, pullError("pulse.definition.pull.unconfigured", errs.KindRuntime, input, "Pulse definition pull is not configured.", nil)
 	}
 	input.LUID = strings.TrimSpace(input.LUID)
-	if strings.TrimSpace(input.Workspace) == "" || input.LUID == "" {
+	if strings.TrimSpace(input.Workspace) == "" {
 		return Output{}, pullError("pulse.definition.pull.usage", errs.KindUsage, input, "Pulse definition pull requires a workspace and exact definition LUID.", nil)
 	}
 	definition, err := a.reader.GetDefinition(ctx, input.LUID)

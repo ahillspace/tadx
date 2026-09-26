@@ -29,9 +29,6 @@ func (a *Action) Execute(ctx context.Context, input Input, preview bool) (Output
 	input.MetricLUID = strings.TrimSpace(input.MetricLUID)
 	input.UserLUID = strings.TrimSpace(input.UserLUID)
 	input.GroupLUID = strings.TrimSpace(input.GroupLUID)
-	if input.MetricLUID == "" || (input.UserLUID == "") == (input.GroupLUID == "") {
-		return Output{}, fail("pulse.metric.follow.usage", errs.KindUsage, input, "Pulse metric follow requires an exact metric and exactly one user or group LUID.", nil)
-	}
 	typeName, luid := "USER", input.UserLUID
 	if input.GroupLUID != "" {
 		typeName, luid = "GROUP", input.GroupLUID

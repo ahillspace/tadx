@@ -31,11 +31,7 @@ func (a *Action) Execute(ctx context.Context, input Input, preview bool) (Output
 	trim(&input.MetricLUID)
 	trim(&input.UserLUID)
 	trim(&input.GroupLUID)
-	direct := input.SubscriptionLUID != "" && input.MetricLUID == "" && input.UserLUID == "" && input.GroupLUID == ""
 	relation := input.SubscriptionLUID == "" && input.MetricLUID != "" && (input.UserLUID != "") != (input.GroupLUID != "")
-	if !direct && !relation {
-		return Output{}, fail("pulse.metric.unfollow.usage", errs.KindUsage, input, "Use either one exact subscription LUID or one exact metric and follower pair.", nil)
-	}
 	plan := Plan{Mode: "preview", Operation: "pulse.metric.unfollow", Environment: input.Environment, Site: input.Site, SubscriptionLUID: input.SubscriptionLUID}
 	if relation {
 		sub, err := a.resolve(ctx, input)
