@@ -2,6 +2,7 @@ package update
 
 import (
 	"cmp"
+	"errors"
 	"slices"
 	"strings"
 	"unicode/utf8"
@@ -74,4 +75,17 @@ func retainedIdentity(previous, observed value.MetadataIdentity) value.MetadataI
 	observed.Name = cmp.Or(observed.Name, previous.Name)
 	observed.Type = cmp.Or(observed.Type, previous.Type)
 	return observed
+}
+
+func failurePhase(cause error, outcome errs.Outcome) errs.Phase {
+	phase := errs.PhaseSubmission
+	structured, ok := errors.AsType[*errs.Error](cause)
+	var verification interface{ VerificationFailed() bool }
+	if (ok && structured.Phase == errs.PhaseVerification) || (errors.As(cause, &verification) && verification.VerificationFailed()) {
+		phase = errs.PhaseVerification
+	}
+	if outcome == errs.OutcomeNotAttempted {
+		phase = errs.PhaseValidation
+	}
+	return phase
 }

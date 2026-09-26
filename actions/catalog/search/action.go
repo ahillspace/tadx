@@ -24,9 +24,6 @@ type Reader interface {
 	DiscoverTables(context.Context, value.MetadataQuery) (value.MetadataPage[value.MetadataTable], error)
 	DiscoverColumns(context.Context, value.MetadataQuery) (value.MetadataPage[value.MetadataColumn], error)
 }
-type Action struct{ reader Reader }
-
-func New(r Reader) *Action { return &Action{reader: r} }
 
 type Item struct {
 	value.MetadataIdentity
@@ -101,7 +98,7 @@ func ValidateInput(in Input) error {
 	}
 	return nil
 }
-func (a *Action) Execute(ctx context.Context, in Input) (out Output, err error) {
+func Execute(ctx context.Context, reader Reader, in Input) (out Output, err error) {
 	defer func() {
 		if err != nil && out.Status != "" {
 			out.Status, out.Complete, out.Page.MoreAvailable = "partial", false, true
@@ -111,7 +108,7 @@ func (a *Action) Execute(ctx context.Context, in Input) (out Output, err error) 
 	if err := ValidateInput(in); err != nil {
 		return Output{}, err
 	}
-	if a == nil || a.reader == nil {
+	if reader == nil {
 		return Output{}, usage("catalog search is not configured")
 	}
 	limit := in.Limit
@@ -154,13 +151,13 @@ func (a *Action) Execute(ctx context.Context, in Input) (out Output, err error) 
 			switch kind {
 			case "database":
 				var p value.MetadataPage[value.MetadataDatabase]
-				p, err = a.reader.DiscoverDatabases(ctx, query)
+				p, err = reader.DiscoverDatabases(ctx, query)
 				page = mapPage(p, func(v value.MetadataDatabase) Item {
 					return Item{MetadataIdentity: v.MetadataIdentity, Description: v.Description}
 				})
 			case "table":
 				var p value.MetadataPage[value.MetadataTable]
-				p, err = a.reader.DiscoverTables(ctx, query)
+				p, err = reader.DiscoverTables(ctx, query)
 				page = mapPage(p, func(v value.MetadataTable) Item {
 					return Item{MetadataIdentity: v.MetadataIdentity, Parent: v.Database, Description: v.Description, FullName: v.FullName, Schema: v.Schema}
 				})
@@ -168,7 +165,7 @@ func (a *Action) Execute(ctx context.Context, in Input) (out Output, err error) 
 				query.Text = ""
 				query.ParentLUID = in.TableID
 				var p value.MetadataPage[value.MetadataColumn]
-				p, err = a.reader.DiscoverColumns(ctx, query)
+				p, err = reader.DiscoverColumns(ctx, query)
 				page = mapPage(p, func(v value.MetadataColumn) Item {
 					return Item{MetadataIdentity: v.MetadataIdentity, Parent: v.Table, Description: v.Description}
 				})

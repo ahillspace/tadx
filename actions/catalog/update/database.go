@@ -2,7 +2,6 @@ package update
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"slices"
 	"strings"
@@ -223,14 +222,5 @@ func databaseUsage(s string) error {
 }
 func databaseFailure(in DatabaseInput, step string, completed []string, outcome errs.Outcome, cause error) error {
 	retry, advice := errs.CompleteRetryAdvice(cause, "Inspect the exact asset before retrying: "+commandhint.Environment(in.Environment, "catalog", "database", "inspect", "--id", in.ID))
-	phase := errs.PhaseSubmission
-	structured, ok := errors.AsType[*errs.Error](cause)
-	var verification interface{ VerificationFailed() bool }
-	if (ok && structured.Phase == errs.PhaseVerification) || (errors.As(cause, &verification) && verification.VerificationFailed()) {
-		phase = errs.PhaseVerification
-	}
-	if outcome == errs.OutcomeNotAttempted {
-		phase = errs.PhaseValidation
-	}
-	return &errs.Error{ID: "catalog.database.update." + step, Kind: errs.KindOperation, Operation: "catalog.database.update", Environment: in.Environment, Site: in.Site, Resource: in.ID, Summary: "Catalog database metadata update failed.", Cause: cause, Retryable: retry, CorrectiveAction: advice, TableauRequestID: errs.TableauRequestID(cause), Completed: completed, Failed: step, Phase: phase, Outcome: outcome}
+	return &errs.Error{ID: "catalog.database.update." + step, Kind: errs.KindOperation, Operation: "catalog.database.update", Environment: in.Environment, Site: in.Site, Resource: in.ID, Summary: "Catalog database metadata update failed.", Cause: cause, Retryable: retry, CorrectiveAction: advice, TableauRequestID: errs.TableauRequestID(cause), Completed: completed, Failed: step, Phase: failurePhase(cause, outcome), Outcome: outcome}
 }

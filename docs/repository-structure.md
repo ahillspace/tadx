@@ -17,6 +17,7 @@ The [SVG](architecture/tadx-architecture.svg) and [editable Excalidraw source](a
 | `actions/pulse/definition`, `actions/pulse/metric` | Explicit Pulse operations with shared resource observations and separate output contracts |
 | `actions/env/profile` | Environment profile operations and their shared profile representation |
 | `actions/catalog/update` | Explicit database, table, and column updates sharing matching metadata rules |
+| `actions/catalog/read` | Database, table, and column lists and inspections with shared input rules and distinct projections |
 | Other `actions/<domain>/<verb>` packages | Separate operations where their contracts or responsibilities differ |
 | `internal/resources` | Resource adapters, exact identity resolution, and normalized provider results |
 | `internal/tableau` | Tableau API clients, shared HTTP transport, and inventory collectors |

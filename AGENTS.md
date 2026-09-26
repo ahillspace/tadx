@@ -15,6 +15,7 @@ Content workbook, datasource, and flow operations use one cohesive action packag
 Admin group membership and permission mutations share packages for their matching records and validation, while keeping explicit operation entry points.
 Pulse definitions and metrics each use a resource package; environment profiles share one profile package.
 Catalog database, table, and column updates share matching metadata rules in `actions/catalog/update`, with separate mutation sequences.
+Their list and inspect operations share `actions/catalog/read`; search and audit retain separate traversal contracts.
 Keep operation-specific projections and mutation sequences explicit within those packages.
 Other executable commands retain their assessed action boundaries; package regrouping must remove unnecessary responsibilities or handoffs, not merely relocate code.
 Keep distinct operation contracts and mutation sequences explicit; share mechanisms only where their behavior matches.

@@ -31,11 +31,3 @@ type DatasourceDescriptions = value.MetadataDatasourceDescriptions
 type ConstraintError struct{ Reason string }
 
 func (e *ConstraintError) Error() string { return e.Reason }
-
-// MutationEvidence retains known identity after a successful HTTP write with invalid read-back.
-type MutationEvidence struct {
-	LUID             string
-	Name             string
-	TableauRequestID string
-	Outcome          string
-}

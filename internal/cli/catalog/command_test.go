@@ -2,17 +2,21 @@ package catalog
 
 import (
 	"context"
+	"errors"
+	"io"
+	"strings"
 	"testing"
 
-	databaselist "github.com/ahillspace/tadx/actions/catalog/database/list"
+	catalogread "github.com/ahillspace/tadx/actions/catalog/read"
 	catalogupdate "github.com/ahillspace/tadx/actions/catalog/update"
+	"github.com/ahillspace/tadx/internal/errs"
 )
 
 type recorder struct {
 	calls   int
 	preview bool
 	update  catalogupdate.DatabaseInput
-	list    databaselist.Input
+	list    catalogread.DatabaseListInput
 }
 
 func (r *recorder) Render(any) error { return nil }
@@ -22,10 +26,10 @@ func (r *recorder) UpdateCatalogDatabase(_ context.Context, in catalogupdate.Dat
 	r.preview = p
 	return catalogupdate.DatabaseOutput{}, nil
 }
-func (r *recorder) ListCatalogDatabases(_ context.Context, in databaselist.Input) (databaselist.Output, error) {
+func (r *recorder) ListCatalogDatabases(_ context.Context, in catalogread.DatabaseListInput) (catalogread.DatabaseListOutput, error) {
 	r.calls++
 	r.list = in
-	return databaselist.Output{}, nil
+	return catalogread.DatabaseListOutput{}, nil
 }
 func TestPreviewFalseAndRepeatedTags(t *testing.T) {
 	r := &recorder{}
@@ -55,5 +59,99 @@ func TestCapabilitiesPresent(t *testing.T) {
 				t.Fatal(kind, verb, e)
 			}
 		}
+	}
+}
+
+type captureRecorder struct {
+	description, contact *string
+	calls                int
+}
+
+func (r *captureRecorder) UpdateCatalogDatabase(_ context.Context, in catalogupdate.DatabaseInput, _ bool) (catalogupdate.DatabaseOutput, error) {
+	r.description, r.contact = in.Description, in.ContactLUID
+	r.calls++
+	return catalogupdate.DatabaseOutput{}, nil
+}
+func (r *captureRecorder) UpdateCatalogTable(_ context.Context, in catalogupdate.TableInput, _ bool) (catalogupdate.TableOutput, error) {
+	r.description, r.contact = in.Description, in.ContactLUID
+	r.calls++
+	return catalogupdate.TableOutput{}, nil
+}
+func (r *captureRecorder) UpdateCatalogColumn(_ context.Context, in catalogupdate.ColumnInput, _ bool) (catalogupdate.ColumnOutput, error) {
+	r.description = in.Description
+	r.calls++
+	return catalogupdate.ColumnOutput{}, nil
+}
+func TestRepeatedUpdateFlagCapture(t *testing.T) {
+	for _, kind := range []string{"database", "table", "column"} {
+		t.Run(kind, func(t *testing.T) {
+			r := &captureRecorder{}
+			c := New(Dependencies{DatabaseUpdater: r, TableUpdater: r, ColumnUpdater: r, Renderer: &recorder{}})
+			c.SetOut(io.Discard)
+			c.SetErr(io.Discard)
+			base := []string{kind, "update", "--id", "asset", "--add-tag", "tag"}
+			if kind == "column" {
+				base = append(base, "--table-id", "parent")
+			}
+			run := func(extra ...string) {
+				t.Helper()
+				c.SetArgs(append(append([]string{}, base...), extra...))
+				if err := c.Execute(); err != nil {
+					t.Fatal(err)
+				}
+			}
+			run()
+			if r.description != nil || r.contact != nil {
+				t.Fatal("omission became a supplied property")
+			}
+			run("--description", "first")
+			first := r.description
+			run("--description", "second")
+			if first == nil || *first != "first" || r.description == nil || *r.description != "second" {
+				t.Fatal("repeated capture lost value or changed prior input")
+			}
+			// Cobra preserves Changed and bound values when a constructed command is reused.
+			run()
+			if r.description == nil || *r.description != "second" {
+				t.Fatal("reused command flag state changed")
+			}
+			if kind == "column" {
+				run("--description=")
+				if r.description == nil || *r.description != "" {
+					t.Fatal("explicit empty description lost")
+				}
+			} else {
+				run("--contact-id", "contact")
+				if r.contact == nil || *r.contact != "contact" {
+					t.Fatal("contact presence lost")
+				}
+			}
+			if r.calls != 5 {
+				t.Fatalf("calls=%d", r.calls)
+			}
+		})
+	}
+}
+func TestUpdateValidationBeforeMissingCapability(t *testing.T) {
+	for _, kind := range []string{"database", "table", "column"} {
+		t.Run(kind, func(t *testing.T) {
+			c := New(Dependencies{})
+			c.SetOut(io.Discard)
+			c.SetErr(io.Discard)
+			base := []string{kind, "update", "--id", "asset"}
+			if kind == "column" {
+				base = append(base, "--table-id", "parent")
+			}
+			c.SetArgs(base)
+			err := c.Execute()
+			structured, ok := errors.AsType[*errs.Error](err)
+			if !ok || structured.ID != "catalog."+kind+".update.usage" || strings.Contains(err.Error(), "capability is not configured") {
+				t.Fatalf("validation ordering: %v", err)
+			}
+			c.SetArgs(append(base, "--description", "valid"))
+			if err = c.Execute(); err == nil || !strings.Contains(err.Error(), "catalog capability is not configured") {
+				t.Fatalf("missing capability: %v", err)
+			}
+		})
 	}
 }

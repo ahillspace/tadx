@@ -44,7 +44,7 @@ import _ "example.test/tadx/internal/value"
 func TestPagingImportsOnlySharedValues(t *testing.T) {
 	for _, dependency := range []string{
 		"internal/value", "internal/value/helpers", "internal/config", "internal/output",
-		"actions/catalog/database/list", "internal/app", "internal/cli/catalog",
+		"actions/catalog/read", "internal/app", "internal/cli/catalog",
 		"internal/resources/catalog", "internal/tableau/metadataassets",
 	} {
 		t.Run(dependency, func(t *testing.T) {

@@ -6,41 +6,36 @@ import (
 	"errors"
 
 	catalogaudit "github.com/ahillspace/tadx/actions/catalog/audit"
-	columninspect "github.com/ahillspace/tadx/actions/catalog/column/inspect"
-	columnlist "github.com/ahillspace/tadx/actions/catalog/column/list"
-	databaseinspect "github.com/ahillspace/tadx/actions/catalog/database/inspect"
-	databaselist "github.com/ahillspace/tadx/actions/catalog/database/list"
+	catalogread "github.com/ahillspace/tadx/actions/catalog/read"
 	catalogsearch "github.com/ahillspace/tadx/actions/catalog/search"
-	tableinspect "github.com/ahillspace/tadx/actions/catalog/table/inspect"
-	tablelist "github.com/ahillspace/tadx/actions/catalog/table/list"
 	catalogupdate "github.com/ahillspace/tadx/actions/catalog/update"
 	"github.com/ahillspace/tadx/internal/cli/clierr"
 	"github.com/spf13/cobra"
 )
 
 type DatabaseLister interface {
-	ListCatalogDatabases(context.Context, databaselist.Input) (databaselist.Output, error)
+	ListCatalogDatabases(context.Context, catalogread.DatabaseListInput) (catalogread.DatabaseListOutput, error)
 }
 type DatabaseInspector interface {
-	InspectCatalogDatabase(context.Context, databaseinspect.Input) (databaseinspect.Output, error)
+	InspectCatalogDatabase(context.Context, catalogread.DatabaseInspectInput) (catalogread.DatabaseInspectOutput, error)
 }
 type DatabaseUpdater interface {
 	UpdateCatalogDatabase(context.Context, catalogupdate.DatabaseInput, bool) (catalogupdate.DatabaseOutput, error)
 }
 type TableLister interface {
-	ListCatalogTables(context.Context, tablelist.Input) (tablelist.Output, error)
+	ListCatalogTables(context.Context, catalogread.TableListInput) (catalogread.TableListOutput, error)
 }
 type TableInspector interface {
-	InspectCatalogTable(context.Context, tableinspect.Input) (tableinspect.Output, error)
+	InspectCatalogTable(context.Context, catalogread.TableInspectInput) (catalogread.TableInspectOutput, error)
 }
 type TableUpdater interface {
 	UpdateCatalogTable(context.Context, catalogupdate.TableInput, bool) (catalogupdate.TableOutput, error)
 }
 type ColumnLister interface {
-	ListCatalogColumns(context.Context, columnlist.Input) (columnlist.Output, error)
+	ListCatalogColumns(context.Context, catalogread.ColumnListInput) (catalogread.ColumnListOutput, error)
 }
 type ColumnInspector interface {
-	InspectCatalogColumn(context.Context, columninspect.Input) (columninspect.Output, error)
+	InspectCatalogColumn(context.Context, catalogread.ColumnInspectInput) (catalogread.ColumnInspectOutput, error)
 }
 type ColumnUpdater interface {
 	UpdateCatalogColumn(context.Context, catalogupdate.ColumnInput, bool) (catalogupdate.ColumnOutput, error)

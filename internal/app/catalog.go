@@ -4,13 +4,8 @@ import (
 	"context"
 
 	catalogaudit "github.com/ahillspace/tadx/actions/catalog/audit"
-	columninspect "github.com/ahillspace/tadx/actions/catalog/column/inspect"
-	columnlist "github.com/ahillspace/tadx/actions/catalog/column/list"
-	databaseinspect "github.com/ahillspace/tadx/actions/catalog/database/inspect"
-	databaselist "github.com/ahillspace/tadx/actions/catalog/database/list"
+	catalogread "github.com/ahillspace/tadx/actions/catalog/read"
 	catalogsearch "github.com/ahillspace/tadx/actions/catalog/search"
-	tableinspect "github.com/ahillspace/tadx/actions/catalog/table/inspect"
-	tablelist "github.com/ahillspace/tadx/actions/catalog/table/list"
 	catalogupdate "github.com/ahillspace/tadx/actions/catalog/update"
 	catalogcli "github.com/ahillspace/tadx/internal/cli/catalog"
 	resourcecatalog "github.com/ahillspace/tadx/internal/resources/catalog"
@@ -22,156 +17,112 @@ func (c *catalogCommands) dependencies() *catalogcli.Dependencies {
 	return &catalogcli.Dependencies{DatabaseLister: c, DatabaseInspector: c, DatabaseUpdater: c, TableLister: c, TableInspector: c, TableUpdater: c, ColumnLister: c, ColumnInspector: c, ColumnUpdater: c, Searcher: c, Auditor: c}
 }
 
-func (c *catalogCommands) ListCatalogDatabases(ctx context.Context, input databaselist.Input) (databaselist.Output, error) {
-	if err := databaselist.ValidateInput(input); err != nil {
-		return databaselist.Output{}, err
-	}
-	connection, err := c.runtime.tableauConnection(ctx, input.Environment, false)
+func (c *catalogCommands) ListCatalogDatabases(ctx context.Context, input catalogread.DatabaseListInput) (catalogread.DatabaseListOutput, error) {
+	connection, adapter, err := c.setup(ctx, "catalog.database.list", input.Environment, false)
 	if err != nil {
-		return databaselist.Output{}, capabilitySetupError("catalog.database.list.setup", "catalog.database.list", input.Environment, connection.environment.SiteContentURL, "Catalog operation setup failed.", "Verify the environment and Tableau metadata access.", err)
+		return catalogread.DatabaseListOutput{}, err
 	}
 	input.Environment, input.Site = connection.environment.Alias, connection.environment.SiteContentURL
-
-	adapter := resourcecatalog.New(c.runtime.clients(connection).metadataAssets)
-	return databaselist.New(adapter).Execute(ctx, input)
+	return catalogread.ListDatabases(ctx, adapter, input)
 }
 
-func (c *catalogCommands) InspectCatalogDatabase(ctx context.Context, input databaseinspect.Input) (databaseinspect.Output, error) {
-	if err := databaseinspect.ValidateInput(input); err != nil {
-		return databaseinspect.Output{}, err
-	}
-	connection, err := c.runtime.tableauConnection(ctx, input.Environment, false)
+func (c *catalogCommands) InspectCatalogDatabase(ctx context.Context, input catalogread.DatabaseInspectInput) (catalogread.DatabaseInspectOutput, error) {
+	connection, adapter, err := c.setup(ctx, "catalog.database.inspect", input.Environment, false)
 	if err != nil {
-		return databaseinspect.Output{}, capabilitySetupError("catalog.database.inspect.setup", "catalog.database.inspect", input.Environment, connection.environment.SiteContentURL, "Catalog operation setup failed.", "Verify the environment and Tableau metadata access.", err)
+		return catalogread.DatabaseInspectOutput{}, err
 	}
 	input.Environment, input.Site = connection.environment.Alias, connection.environment.SiteContentURL
-
-	adapter := resourcecatalog.New(c.runtime.clients(connection).metadataAssets)
-	return databaseinspect.New(adapter).Execute(ctx, input)
+	return catalogread.InspectDatabase(ctx, adapter, input)
 }
 
 func (c *catalogCommands) UpdateCatalogDatabase(ctx context.Context, input catalogupdate.DatabaseInput, preview bool) (catalogupdate.DatabaseOutput, error) {
-	if err := catalogupdate.ValidateDatabaseInput(input); err != nil {
-		return catalogupdate.DatabaseOutput{}, err
-	}
-	connection, err := c.runtime.tableauConnection(ctx, input.Environment, true)
+	connection, adapter, err := c.setup(ctx, "catalog.database.update", input.Environment, true)
 	if err != nil {
-		return catalogupdate.DatabaseOutput{}, capabilitySetupError("catalog.database.update.setup", "catalog.database.update", input.Environment, connection.environment.SiteContentURL, "Catalog operation setup failed.", "Verify the environment and Tableau metadata access.", err)
+		return catalogupdate.DatabaseOutput{}, err
 	}
 	input.Environment, input.Site = connection.environment.Alias, connection.environment.SiteContentURL
 	input.TargetResolved = true
-	adapter := resourcecatalog.New(c.runtime.clients(connection).metadataAssets)
 	return catalogupdate.NewDatabase(adapter, adapter).Execute(ctx, input, preview)
 }
 
-func (c *catalogCommands) ListCatalogTables(ctx context.Context, input tablelist.Input) (tablelist.Output, error) {
-	if err := tablelist.ValidateInput(input); err != nil {
-		return tablelist.Output{}, err
-	}
-	connection, err := c.runtime.tableauConnection(ctx, input.Environment, false)
+func (c *catalogCommands) ListCatalogTables(ctx context.Context, input catalogread.TableListInput) (catalogread.TableListOutput, error) {
+	connection, adapter, err := c.setup(ctx, "catalog.table.list", input.Environment, false)
 	if err != nil {
-		return tablelist.Output{}, capabilitySetupError("catalog.table.list.setup", "catalog.table.list", input.Environment, connection.environment.SiteContentURL, "Catalog operation setup failed.", "Verify the environment and Tableau metadata access.", err)
+		return catalogread.TableListOutput{}, err
 	}
 	input.Environment, input.Site = connection.environment.Alias, connection.environment.SiteContentURL
-
-	adapter := resourcecatalog.New(c.runtime.clients(connection).metadataAssets)
-	return tablelist.New(adapter).Execute(ctx, input)
+	return catalogread.ListTables(ctx, adapter, input)
 }
 
-func (c *catalogCommands) InspectCatalogTable(ctx context.Context, input tableinspect.Input) (tableinspect.Output, error) {
-	if err := tableinspect.ValidateInput(input); err != nil {
-		return tableinspect.Output{}, err
-	}
-	connection, err := c.runtime.tableauConnection(ctx, input.Environment, false)
+func (c *catalogCommands) InspectCatalogTable(ctx context.Context, input catalogread.TableInspectInput) (catalogread.TableInspectOutput, error) {
+	connection, adapter, err := c.setup(ctx, "catalog.table.inspect", input.Environment, false)
 	if err != nil {
-		return tableinspect.Output{}, capabilitySetupError("catalog.table.inspect.setup", "catalog.table.inspect", input.Environment, connection.environment.SiteContentURL, "Catalog operation setup failed.", "Verify the environment and Tableau metadata access.", err)
+		return catalogread.TableInspectOutput{}, err
 	}
 	input.Environment, input.Site = connection.environment.Alias, connection.environment.SiteContentURL
-
-	adapter := resourcecatalog.New(c.runtime.clients(connection).metadataAssets)
-	return tableinspect.New(adapter).Execute(ctx, input)
+	return catalogread.InspectTable(ctx, adapter, input)
 }
 
 func (c *catalogCommands) UpdateCatalogTable(ctx context.Context, input catalogupdate.TableInput, preview bool) (catalogupdate.TableOutput, error) {
-	if err := catalogupdate.ValidateTableInput(input); err != nil {
-		return catalogupdate.TableOutput{}, err
-	}
-	connection, err := c.runtime.tableauConnection(ctx, input.Environment, true)
+	connection, adapter, err := c.setup(ctx, "catalog.table.update", input.Environment, true)
 	if err != nil {
-		return catalogupdate.TableOutput{}, capabilitySetupError("catalog.table.update.setup", "catalog.table.update", input.Environment, connection.environment.SiteContentURL, "Catalog operation setup failed.", "Verify the environment and Tableau metadata access.", err)
+		return catalogupdate.TableOutput{}, err
 	}
 	input.Environment, input.Site = connection.environment.Alias, connection.environment.SiteContentURL
 	input.TargetResolved = true
-	adapter := resourcecatalog.New(c.runtime.clients(connection).metadataAssets)
 	return catalogupdate.NewTable(adapter, adapter).Execute(ctx, input, preview)
 }
 
-func (c *catalogCommands) ListCatalogColumns(ctx context.Context, input columnlist.Input) (columnlist.Output, error) {
-	if err := columnlist.ValidateInput(input); err != nil {
-		return columnlist.Output{}, err
-	}
-	connection, err := c.runtime.tableauConnection(ctx, input.Environment, false)
+func (c *catalogCommands) ListCatalogColumns(ctx context.Context, input catalogread.ColumnListInput) (catalogread.ColumnListOutput, error) {
+	connection, adapter, err := c.setup(ctx, "catalog.column.list", input.Environment, false)
 	if err != nil {
-		return columnlist.Output{}, capabilitySetupError("catalog.column.list.setup", "catalog.column.list", input.Environment, connection.environment.SiteContentURL, "Catalog operation setup failed.", "Verify the environment and Tableau metadata access.", err)
+		return catalogread.ColumnListOutput{}, err
 	}
 	input.Environment, input.Site = connection.environment.Alias, connection.environment.SiteContentURL
-
-	adapter := resourcecatalog.New(c.runtime.clients(connection).metadataAssets)
-	return columnlist.New(adapter).Execute(ctx, input)
+	return catalogread.ListColumns(ctx, adapter, input)
 }
 
-func (c *catalogCommands) InspectCatalogColumn(ctx context.Context, input columninspect.Input) (columninspect.Output, error) {
-	if err := columninspect.ValidateInput(input); err != nil {
-		return columninspect.Output{}, err
-	}
-	connection, err := c.runtime.tableauConnection(ctx, input.Environment, false)
+func (c *catalogCommands) InspectCatalogColumn(ctx context.Context, input catalogread.ColumnInspectInput) (catalogread.ColumnInspectOutput, error) {
+	connection, adapter, err := c.setup(ctx, "catalog.column.inspect", input.Environment, false)
 	if err != nil {
-		return columninspect.Output{}, capabilitySetupError("catalog.column.inspect.setup", "catalog.column.inspect", input.Environment, connection.environment.SiteContentURL, "Catalog operation setup failed.", "Verify the environment and Tableau metadata access.", err)
+		return catalogread.ColumnInspectOutput{}, err
 	}
 	input.Environment, input.Site = connection.environment.Alias, connection.environment.SiteContentURL
-
-	adapter := resourcecatalog.New(c.runtime.clients(connection).metadataAssets)
-	return columninspect.New(adapter).Execute(ctx, input)
+	return catalogread.InspectColumn(ctx, adapter, input)
 }
 
 func (c *catalogCommands) UpdateCatalogColumn(ctx context.Context, input catalogupdate.ColumnInput, preview bool) (catalogupdate.ColumnOutput, error) {
-	if err := catalogupdate.ValidateColumnInput(input); err != nil {
-		return catalogupdate.ColumnOutput{}, err
-	}
-	connection, err := c.runtime.tableauConnection(ctx, input.Environment, true)
+	connection, adapter, err := c.setup(ctx, "catalog.column.update", input.Environment, true)
 	if err != nil {
-		return catalogupdate.ColumnOutput{}, capabilitySetupError("catalog.column.update.setup", "catalog.column.update", input.Environment, connection.environment.SiteContentURL, "Catalog operation setup failed.", "Verify the environment and Tableau metadata access.", err)
+		return catalogupdate.ColumnOutput{}, err
 	}
 	input.Environment, input.Site = connection.environment.Alias, connection.environment.SiteContentURL
 	input.TargetResolved = true
-	adapter := resourcecatalog.New(c.runtime.clients(connection).metadataAssets)
 	return catalogupdate.NewColumn(adapter, adapter).Execute(ctx, input, preview)
 }
 
 func (c *catalogCommands) SearchCatalog(ctx context.Context, input catalogsearch.Input) (catalogsearch.Output, error) {
-	if err := catalogsearch.ValidateInput(input); err != nil {
+	connection, adapter, err := c.setup(ctx, "catalog.search", input.Environment, false)
+	if err != nil {
 		return catalogsearch.Output{}, err
 	}
-	connection, err := c.runtime.tableauConnection(ctx, input.Environment, false)
-	if err != nil {
-		return catalogsearch.Output{}, capabilitySetupError("catalog.search.setup", "catalog.search", input.Environment, connection.environment.SiteContentURL, "Catalog operation setup failed.", "Verify the environment and Tableau metadata access.", err)
-	}
 	input.Environment, input.Site = connection.environment.Alias, connection.environment.SiteContentURL
-
-	adapter := resourcecatalog.New(c.runtime.clients(connection).metadataAssets)
-	return catalogsearch.New(adapter).Execute(ctx, input)
+	return catalogsearch.Execute(ctx, adapter, input)
 }
 
 func (c *catalogCommands) AuditCatalog(ctx context.Context, input catalogaudit.Input) (catalogaudit.Output, error) {
-	if err := catalogaudit.ValidateInput(input); err != nil {
+	connection, adapter, err := c.setup(ctx, "catalog.audit", input.Environment, false)
+	if err != nil {
 		return catalogaudit.Output{}, err
 	}
-	connection, err := c.runtime.tableauConnection(ctx, input.Environment, false)
-	if err != nil {
-		return catalogaudit.Output{}, capabilitySetupError("catalog.audit.setup", "catalog.audit", input.Environment, connection.environment.SiteContentURL, "Catalog operation setup failed.", "Verify the environment and Tableau metadata access.", err)
-	}
 	input.Environment, input.Site = connection.environment.Alias, connection.environment.SiteContentURL
+	return catalogaudit.Execute(ctx, adapter, input)
+}
 
-	adapter := resourcecatalog.New(c.runtime.clients(connection).metadataAssets)
-	return catalogaudit.New(adapter).Execute(ctx, input)
+func (c *catalogCommands) setup(ctx context.Context, operation, environment string, explicit bool) (authenticatedTableau, *resourcecatalog.Adapter, error) {
+	connection, err := c.runtime.tableauConnection(ctx, environment, explicit)
+	if err != nil {
+		return connection, nil, capabilitySetupError(operation+".setup", operation, environment, connection.environment.SiteContentURL, "Catalog operation setup failed.", "Verify the environment and Tableau metadata access.", err)
+	}
+	return connection, resourcecatalog.New(c.runtime.clients(connection).metadataAssets), nil
 }

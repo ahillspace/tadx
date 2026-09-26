@@ -5,13 +5,14 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/ahillspace/tadx/internal/app"
 	"io"
 	"net/http"
 	"net/http/httptest"
 	"reflect"
 	"strings"
 	"testing"
+
+	"github.com/ahillspace/tadx/internal/app"
 )
 
 func catalogMetadataOptions(t *testing.T, s *httptest.Server, mutations bool) app.Options {
@@ -171,7 +172,21 @@ func TestCatalogMetadataRejectsLocalErrorsBeforeAuth(t *testing.T) {
 	s := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { calls++; w.WriteHeader(500) }))
 	defer s.Close()
 	opts := catalogMetadataOptions(t, s, true)
-	cases := [][]string{{"database", "list", "--limit", "-1"}, {"database", "inspect", "--id", "one", "--metadata-id", "two"}, {"column", "update", "--id", "column", "--description", "Text"}, {"database", "update", "--id", "db", "--description", ""}}
+	cases := [][]string{
+		{"database", "list", "--limit", "-1"},
+		{"database", "inspect", "--id", "one", "--metadata-id", "two"},
+		{"column", "update", "--id", "column", "--description", "Text"},
+		{"database", "update", "--id", "db", "--description", ""},
+		{"table", "list", "--database-id", " parent"},
+		{"table", "inspect", "--id", " table"},
+		{"table", "update", "--id", "table", "--description", ""},
+		{"column", "list", "--table-id", "parent", "--limit", "-1"},
+		{"column", "inspect", "--id", "column"},
+		{"search", ""},
+		{"audit", "--id", "asset", "--type", "invalid"},
+		{"database", "update", "--id", "one", "--id", "two", "--description", ""},
+		{"column", "update", "--id", "one", "--id", "two", "--table-id", "parent", "--remove-tag", " tag"},
+	}
 	for _, args := range cases {
 		var out bytes.Buffer
 		code := app.Run(context.Background(), append([]string{"catalog"}, args...), &out, opts)
@@ -197,5 +212,31 @@ func TestCatalogMetadataWrongIdentityNeverWrites(t *testing.T) {
 	code := app.Run(context.Background(), []string{"catalog", "database", "update", "--env", "production", "--id", "expected", "--description", "After"}, &out, opts)
 	if code == 0 || writes != 0 {
 		t.Fatalf("code%d writes%d %s", code, writes, &out)
+	}
+}
+
+func TestCatalogMetadataSetupErrorsRetainOperation(t *testing.T) {
+	calls := 0
+	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { calls++; w.WriteHeader(http.StatusUnauthorized) }))
+	defer server.Close()
+	options := catalogMetadataOptions(t, server, true)
+	for _, args := range [][]string{
+		{"database", "list"}, {"database", "inspect", "--id", "asset"}, {"database", "update", "--id", "asset", "--add-tag", "tag", "--preview"},
+		{"table", "list"}, {"table", "inspect", "--id", "asset"}, {"table", "update", "--id", "asset", "--add-tag", "tag", "--preview"},
+		{"column", "list", "--table-id", "parent"}, {"column", "inspect", "--id", "asset", "--table-id", "parent"}, {"column", "update", "--id", "asset", "--table-id", "parent", "--add-tag", "tag", "--preview"},
+		{"search", "match"}, {"audit", "--id", "asset", "--type", "database"},
+	} {
+		t.Run(strings.Join(args, " "), func(t *testing.T) {
+			operation := "catalog." + args[0]
+			if args[0] != "search" && args[0] != "audit" {
+				operation += "." + args[1]
+			}
+			var out bytes.Buffer
+			before := calls
+			code := app.Run(t.Context(), append([]string{"--json", "catalog"}, args...), &out, options)
+			if code == 0 || calls != before+1 || !strings.Contains(out.String(), operation+".setup") {
+				t.Fatalf("setup code=%d calls=%d output=%s", code, calls-before, &out)
+			}
+		})
 	}
 }

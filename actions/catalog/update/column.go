@@ -2,7 +2,6 @@ package update
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"slices"
 	"strings"
@@ -212,14 +211,5 @@ func columnUsage(s string) error {
 }
 func columnFailure(in ColumnInput, step string, completed []string, outcome errs.Outcome, cause error) error {
 	retry, advice := errs.CompleteRetryAdvice(cause, "Inspect the exact asset before retrying: "+commandhint.Environment(in.Environment, "catalog", "column", "inspect", "--table-id", in.TableID, "--id", in.ID))
-	phase := errs.PhaseSubmission
-	structured, ok := errors.AsType[*errs.Error](cause)
-	var verification interface{ VerificationFailed() bool }
-	if (ok && structured.Phase == errs.PhaseVerification) || (errors.As(cause, &verification) && verification.VerificationFailed()) {
-		phase = errs.PhaseVerification
-	}
-	if outcome == errs.OutcomeNotAttempted {
-		phase = errs.PhaseValidation
-	}
-	return &errs.Error{ID: "catalog.column.update." + step, Kind: errs.KindOperation, Operation: "catalog.column.update", Environment: in.Environment, Site: in.Site, Resource: in.ID, Summary: "Catalog column metadata update failed.", Cause: cause, Retryable: retry, CorrectiveAction: advice, TableauRequestID: errs.TableauRequestID(cause), Completed: completed, Failed: step, Phase: phase, Outcome: outcome}
+	return &errs.Error{ID: "catalog.column.update." + step, Kind: errs.KindOperation, Operation: "catalog.column.update", Environment: in.Environment, Site: in.Site, Resource: in.ID, Summary: "Catalog column metadata update failed.", Cause: cause, Retryable: retry, CorrectiveAction: advice, TableauRequestID: errs.TableauRequestID(cause), Completed: completed, Failed: step, Phase: failurePhase(cause, outcome), Outcome: outcome}
 }

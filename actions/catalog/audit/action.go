@@ -25,11 +25,8 @@ type Reader interface {
 	DiscoverColumns(context.Context, value.MetadataQuery) (value.MetadataPage[value.MetadataColumn], error)
 	DatasourceFieldDescriptions(context.Context, string) (value.MetadataDatasourceDescriptions, error)
 }
-type Action struct{ reader Reader }
 
 var errAssessmentBound = errors.New("audit assessment bound reached")
-
-func New(r Reader) *Action { return &Action{reader: r} }
 
 type Finding struct {
 	Type            string `json:"type"`
@@ -95,11 +92,11 @@ func ValidateInput(in Input) error {
 	}
 	return nil
 }
-func (a *Action) Execute(ctx context.Context, in Input) (Output, error) {
+func Execute(ctx context.Context, reader Reader, in Input) (Output, error) {
 	if e := ValidateInput(in); e != nil {
 		return Output{}, e
 	}
-	if a == nil || a.reader == nil {
+	if reader == nil {
 		return Output{}, usage("catalog audit is not configured")
 	}
 	checks := in.Checks
@@ -158,7 +155,7 @@ func (a *Action) Execute(ctx context.Context, in Input) (Output, error) {
 			out.Complete = false
 			return nil
 		}
-		complete, e := walk(ctx, limit-out.Scanned, value.MetadataQuery{ParentLUID: tableID}, a.reader.DiscoverColumns, func(v value.MetadataColumn) string {
+		complete, e := walk(ctx, limit-out.Scanned, value.MetadataQuery{ParentLUID: tableID}, reader.DiscoverColumns, func(v value.MetadataColumn) string {
 			if v.MetadataID != "" {
 				return v.MetadataID
 			}
@@ -178,7 +175,7 @@ func (a *Action) Execute(ctx context.Context, in Input) (Output, error) {
 	switch in.Type {
 	case "database":
 		var v value.MetadataDatabase
-		v, err = a.reader.GetDatabase(ctx, in.ID)
+		v, err = reader.GetDatabase(ctx, in.ID)
 		if err != nil {
 			break
 		}
@@ -191,7 +188,7 @@ func (a *Action) Execute(ctx context.Context, in Input) (Output, error) {
 		}
 		record(v.MetadataIdentity, "", v.Description, v.Tags, v.TagsObserved, nil, false, false)
 		var complete bool
-		complete, err = walk(ctx, limit-out.Scanned, value.MetadataQuery{ParentLUID: in.ID}, a.reader.DiscoverTables, func(v value.MetadataTable) string {
+		complete, err = walk(ctx, limit-out.Scanned, value.MetadataQuery{ParentLUID: in.ID}, reader.DiscoverTables, func(v value.MetadataTable) string {
 			if v.MetadataID != "" {
 				return v.MetadataID
 			}
@@ -210,7 +207,7 @@ func (a *Action) Execute(ctx context.Context, in Input) (Output, error) {
 		out.Complete = out.Complete && complete
 	case "table":
 		var v value.MetadataTable
-		v, err = a.reader.GetTable(ctx, in.ID)
+		v, err = reader.GetTable(ctx, in.ID)
 		if err != nil {
 			break
 		}
@@ -223,7 +220,7 @@ func (a *Action) Execute(ctx context.Context, in Input) (Output, error) {
 		err = columns(v.LUID)
 	case "datasource":
 		var v value.MetadataDatasourceDescriptions
-		v, err = a.reader.DatasourceFieldDescriptions(ctx, in.ID)
+		v, err = reader.DatasourceFieldDescriptions(ctx, in.ID)
 		if err != nil && v.Identity.MetadataID == "" {
 			break
 		}

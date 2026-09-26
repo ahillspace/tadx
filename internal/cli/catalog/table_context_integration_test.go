@@ -7,20 +7,20 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	tablelist "github.com/ahillspace/tadx/actions/catalog/table/list"
+	catalogread "github.com/ahillspace/tadx/actions/catalog/read"
 	catalogresource "github.com/ahillspace/tadx/internal/resources/catalog"
 	"github.com/ahillspace/tadx/internal/tableau"
 	"github.com/ahillspace/tadx/internal/tableau/metadataassets"
 )
 
 type tableListService struct {
-	action *tablelist.Action
-	last   tablelist.Output
+	reader catalogread.TableListReader
+	last   catalogread.TableListOutput
 }
 
-func (s *tableListService) ListCatalogTables(ctx context.Context, in tablelist.Input) (tablelist.Output, error) {
+func (s *tableListService) ListCatalogTables(ctx context.Context, in catalogread.TableListInput) (catalogread.TableListOutput, error) {
 	in.Environment, in.Site = "fixture", "site"
-	out, err := s.action.Execute(ctx, in)
+	out, err := catalogread.ListTables(ctx, s.reader, in)
 	s.last = out
 	return out, err
 }
@@ -43,7 +43,7 @@ func TestCLITableListRetainsSchemaContextInCompactReceipt(t *testing.T) {
 	defer server.Close()
 
 	adapter := catalogresource.New(metadataassets.NewClient(tableau.NewTransport(server.Client(), "3.29", nil), session{}, server.URL))
-	service := &tableListService{action: tablelist.New(adapter)}
+	service := &tableListService{reader: adapter}
 	renderer := &tableListRenderer{}
 	command := New(Dependencies{TableLister: service, Renderer: renderer})
 	command.SetContext(t.Context())

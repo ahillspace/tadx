@@ -15,6 +15,7 @@ Admin membership and permission mutations share cohesive packages after assessme
 Pulse definition and metric operations use resource packages; environment profiles share a profile package.
 Auth and capability operations retain verb packages, with small contracts and projections beside the operation that owns them.
 Catalog database, table, and column updates share metadata rules in one package while retaining separate mutation sequences.
+Their lists and inspections share a focused read package; search and audit retain separate traversal contracts.
 
 Resource operations own input rules, planning, resource-specific decisions, error context, and output projections.
 The composition root owns environment, authentication, policy integration, cache selection, workspace selection, and receipt persistence.
@@ -54,6 +55,7 @@ Potential defects discovered during comparison require a separate finding rather
 Different external projections can coexist with one internal resource record.
 Do not expose fields accidentally by serializing a newly shared internal record directly.
 Keep interfaces that isolate real external dependencies or provide useful test seams.
+Stateless operations can accept those interfaces directly instead of storing them in constructor-only action objects.
 A single consumer is a reason to examine an interface, not automatic evidence that it is unnecessary.
 Recheck fresh API responses and mutable files at their actual trust boundaries.
 Do not remove a reread merely because it resembles an earlier read.
@@ -61,11 +63,15 @@ Do not remove a reread merely because it resembles an earlier read.
 For every proposed removal, identify the callers and the responsibility that remains elsewhere.
 For repeated checks, establish whether the checked fact can change between them.
 Existing patterns and passing tests do not by themselves justify an abstraction.
+Trace production callers before treating direct calls from unit tests as a separate trust boundary.
+An internal composition method reached only after CLI validation need not revalidate unchanged input fields.
+Preserve error ordering on real command and batch paths rather than adding tests for unsupported entrypoints to justify repeated checks.
 Treat simplification evidence separately from correctness review; both are needed to assess the result.
 
 ## Share mechanisms deliberately
 
 Share code when at least two real consumers have the same invariant and execution contract.
+An adapter can embed a normalized client when its forwarded methods add no behavior; retain explicit methods that translate resource-specific scope.
 Prefer existing focused packages over a new generic utility layer.
 Keep resource-specific fingerprint inputs, errors, outputs, and mutation sequences with their operations.
 Avoid resource-kind switches, configuration matrices, or callback-heavy frameworks that conceal different workflows.
