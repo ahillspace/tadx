@@ -1,10 +1,11 @@
+// Package check implements the PAT-only auth.check capability.
 package check
 
 import (
 	"context"
 	"errors"
-	"github.com/ahillspace/tadx/internal/commandhint"
 
+	"github.com/ahillspace/tadx/internal/commandhint"
 	"github.com/ahillspace/tadx/internal/errs"
 )
 
@@ -56,4 +57,39 @@ func (a *Action) Execute(ctx context.Context, input Input) (Output, error) {
 		return out, failure
 	}
 	return Output{Status: "authenticated", Environment: target.Environment, ServerURL: target.ServerURL, SiteContentURL: target.SiteContentURL, SiteLUID: result.SiteLUID, UserLUID: result.UserLUID, CredentialSource: result.CredentialSource, Help: []string{commandhint.Environment(target.Environment, "search", "--type", "content")}}, nil
+}
+
+// Input selects one configured Tableau environment.
+type Input struct {
+	Environment string
+}
+
+// Target contains non-secret sign-in context.
+type Target struct {
+	Environment         string
+	ServerURL           string
+	SiteContentURL      string
+	APIVersion          string
+	PATNameVariable     string
+	PATSecretVariable   string
+	CredentialReference string
+}
+
+// Authentication is the non-secret result of PAT sign-in.
+type Authentication struct {
+	SiteLUID         string
+	UserLUID         string
+	CredentialSource string
+}
+
+// Output is the stable authenticated target result.
+type Output struct {
+	Status           string   `json:"status"`
+	Environment      string   `json:"environment"`
+	ServerURL        string   `json:"server_url"`
+	SiteContentURL   string   `json:"site_content_url"`
+	SiteLUID         string   `json:"site_luid,omitempty"`
+	UserLUID         string   `json:"user_luid,omitempty"`
+	CredentialSource string   `json:"credential_source,omitempty"`
+	Help             []string `json:"help"`
 }

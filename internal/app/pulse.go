@@ -9,18 +9,8 @@ import (
 	"strconv"
 	"strings"
 
-	definitioncreate "github.com/ahillspace/tadx/actions/pulse/definition/create"
-	definitiondelete "github.com/ahillspace/tadx/actions/pulse/definition/delete"
-	definitioninspect "github.com/ahillspace/tadx/actions/pulse/definition/inspect"
-	definitionlist "github.com/ahillspace/tadx/actions/pulse/definition/list"
-	definitionpull "github.com/ahillspace/tadx/actions/pulse/definition/pull"
-	metricdelete "github.com/ahillspace/tadx/actions/pulse/metric/delete"
-	metricfollow "github.com/ahillspace/tadx/actions/pulse/metric/follow"
-	metricfollowers "github.com/ahillspace/tadx/actions/pulse/metric/followers"
-	metricfork "github.com/ahillspace/tadx/actions/pulse/metric/fork"
-	metricinspect "github.com/ahillspace/tadx/actions/pulse/metric/inspect"
-	metriclist "github.com/ahillspace/tadx/actions/pulse/metric/list"
-	metricunfollow "github.com/ahillspace/tadx/actions/pulse/metric/unfollow"
+	pulsedefinition "github.com/ahillspace/tadx/actions/pulse/definition"
+	pulsemetric "github.com/ahillspace/tadx/actions/pulse/metric"
 	subscriptionlist "github.com/ahillspace/tadx/actions/pulse/subscription/list"
 	"github.com/ahillspace/tadx/internal/artifact"
 	"github.com/ahillspace/tadx/internal/cache"
@@ -139,28 +129,28 @@ func (c *pulseCommands) cacheContent() *remoteContentCommands {
 	return newRemoteContentCommands(c.runtime)
 }
 
-func (c *pulseCommands) ListPulseDefinitions(ctx context.Context, input definitionlist.Input) (definitionlist.Output, error) {
-	if err := definitionlist.ValidateInput(input); err != nil {
-		return definitionlist.Output{}, err
+func (c *pulseCommands) ListPulseDefinitions(ctx context.Context, input pulsedefinition.ListInput) (pulsedefinition.ListOutput, error) {
+	if err := pulsedefinition.ListValidateInput(input); err != nil {
+		return pulsedefinition.ListOutput{}, err
 	}
 	if input.Cursor != "" {
 		_, environment, err := c.runtime.environment(input.Environment, false)
 		if err != nil {
-			return definitionlist.Output{}, err
+			return pulsedefinition.ListOutput{}, err
 		}
 		input.Environment, input.Site = environment.Alias, environment.SiteContentURL
-		if err := definitionlist.ValidateContinuation(input); err != nil {
-			return definitionlist.Output{}, err
+		if err := pulsedefinition.ListValidateContinuation(input); err != nil {
+			return pulsedefinition.ListOutput{}, err
 		}
 	}
 	if input.Cache {
 		environment, site, err := c.cacheContent().resolveCacheTarget(input.Environment)
 		if err != nil {
-			return definitionlist.Output{}, capabilitySetupError("pulse.definition.list.cache.setup", "pulse.definition.list", input.Environment, "", "Cache Pulse definition setup failed.", "Verify the selected environment and cache configuration.", err)
+			return pulsedefinition.ListOutput{}, capabilitySetupError("pulse.definition.list.cache.setup", "pulse.definition.list", input.Environment, "", "Cache Pulse definition setup failed.", "Verify the selected environment and cache configuration.", err)
 		}
 		input.Environment, input.Site = environment, site
 		reader := &cachePulseDefinitionListReader{store: c.cacheContent().cacheStore(environment), environment: environment, site: site}
-		output, err := definitionlist.New(reader).Execute(ctx, input)
+		output, err := pulsedefinition.List(ctx, reader, input)
 		if err == nil {
 			output.Source = reader.source
 		}
@@ -168,11 +158,11 @@ func (c *pulseCommands) ListPulseDefinitions(ctx context.Context, input definiti
 	}
 	connection, err := c.connect(ctx, input.Environment, false)
 	if err != nil {
-		return definitionlist.Output{}, remoteSetupError("pulse.definition.list", input.Environment, input.Site, connection.environment, err)
+		return pulsedefinition.ListOutput{}, remoteSetupError("pulse.definition.list", input.Environment, input.Site, connection.environment, err)
 	}
 	input.Environment, input.Site = connection.environment.Alias, connection.environment.SiteContentURL
 	reader := &pulseDefinitionListAdapter{client: connection.client}
-	output, err := definitionlist.New(reader).Execute(ctx, input)
+	output, err := pulsedefinition.List(ctx, reader, input)
 	if err != nil {
 		return output, err
 	}
@@ -181,18 +171,18 @@ func (c *pulseCommands) ListPulseDefinitions(ctx context.Context, input definiti
 	return output, nil
 }
 
-func (c *pulseCommands) InspectPulseDefinition(ctx context.Context, input definitioninspect.Input) (definitioninspect.Output, error) {
-	if err := definitioninspect.ValidateInput(input); err != nil {
-		return definitioninspect.Output{}, err
+func (c *pulseCommands) InspectPulseDefinition(ctx context.Context, input pulsedefinition.InspectInput) (pulsedefinition.InspectOutput, error) {
+	if err := pulsedefinition.InspectValidateInput(input); err != nil {
+		return pulsedefinition.InspectOutput{}, err
 	}
 	if input.Cache {
 		environment, site, err := c.cacheContent().resolveCacheTarget(input.Environment)
 		if err != nil {
-			return definitioninspect.Output{}, capabilitySetupError("pulse.definition.inspect.cache.setup", "pulse.definition.inspect", input.Environment, "", "Cache Pulse definition setup failed.", "Verify the selected environment and cache configuration.", err)
+			return pulsedefinition.InspectOutput{}, capabilitySetupError("pulse.definition.inspect.cache.setup", "pulse.definition.inspect", input.Environment, "", "Cache Pulse definition setup failed.", "Verify the selected environment and cache configuration.", err)
 		}
 		input.Environment, input.Site = environment, site
 		reader := &cachePulseDefinitionGetReader{store: c.cacheContent().cacheStore(environment), environment: environment, site: site}
-		output, err := definitioninspect.New(reader).Execute(ctx, input)
+		output, err := pulsedefinition.Inspect(ctx, reader, input)
 		if err == nil {
 			output.Source = reader.source
 			output.RequestID = ""
@@ -202,11 +192,11 @@ func (c *pulseCommands) InspectPulseDefinition(ctx context.Context, input defini
 	}
 	connection, err := c.connect(ctx, input.Environment, false)
 	if err != nil {
-		return definitioninspect.Output{}, remoteSetupError("pulse.definition.inspect", input.Environment, input.Site, connection.environment, err)
+		return pulsedefinition.InspectOutput{}, remoteSetupError("pulse.definition.inspect", input.Environment, input.Site, connection.environment, err)
 	}
 	input.Environment, input.Site = connection.environment.Alias, connection.environment.SiteContentURL
 	reader := &pulseDefinitionGetAdapter{client: connection.client}
-	output, err := definitioninspect.New(reader).Execute(ctx, input)
+	output, err := pulsedefinition.Inspect(ctx, reader, input)
 	if err != nil {
 		return output, err
 	}
@@ -215,81 +205,81 @@ func (c *pulseCommands) InspectPulseDefinition(ctx context.Context, input defini
 	return output, nil
 }
 
-func (c *pulseCommands) PullPulseDefinition(ctx context.Context, input definitionpull.Input) (definitionpull.Output, error) {
-	if err := definitionpull.ValidateInput(input); err != nil {
-		return definitionpull.Output{}, err
+func (c *pulseCommands) PullPulseDefinition(ctx context.Context, input pulsedefinition.PullInput) (pulsedefinition.PullOutput, error) {
+	if err := pulsedefinition.PullValidateInput(input); err != nil {
+		return pulsedefinition.PullOutput{}, err
 	}
 	workspace, err := (&workspaceRuntime{runtime: c.runtime}).resolveForEnvironment(ctx, input.Workspace, input.Environment)
 	if err != nil {
-		return definitionpull.Output{}, capabilitySetupError("pulse.definition.pull.workspace", "pulse.definition.pull", input.Environment, input.Site, "Pulse definition workspace resolution failed.", "Select or configure an exact workspace, then retry.", err)
+		return pulsedefinition.PullOutput{}, capabilitySetupError("pulse.definition.pull.workspace", "pulse.definition.pull", input.Environment, input.Site, "Pulse definition workspace resolution failed.", "Select or configure an exact workspace, then retry.", err)
 	}
 	input.Workspace = workspace.Root
 	input.WorkspaceName = workspace.Name
 	connection, err := c.connect(ctx, input.Environment, false)
 	if err != nil {
-		return definitionpull.Output{}, remoteSetupError("pulse.definition.pull", input.Environment, input.Site, connection.environment, err)
+		return pulsedefinition.PullOutput{}, remoteSetupError("pulse.definition.pull", input.Environment, input.Site, connection.environment, err)
 	}
 	input.Environment, input.Site = connection.environment.Alias, connection.environment.SiteContentURL
 	input.SiteLUID = connection.siteLUID
 	input.ServerOrigin, err = artifact.NormalizeServerOrigin(connection.environment.URL)
 	if err != nil {
-		return definitionpull.Output{}, remoteSetupError("pulse.definition.pull", input.Environment, input.Site, connection.environment, err)
+		return pulsedefinition.PullOutput{}, remoteSetupError("pulse.definition.pull", input.Environment, input.Site, connection.environment, err)
 	}
 
 	reader := &pulseDefinitionPullReader{client: connection.client}
-	return definitionpull.New(reader, pulseDefinitionArtifactWriter{manager: artifact.NewPulseDefinitionManager(c.runtime.now)}).Execute(ctx, input)
+	return pulsedefinition.Pull(ctx, reader, pulseDefinitionArtifactWriter{manager: artifact.NewPulseDefinitionManager(c.runtime.now)}, input)
 }
 
-func (c *pulseCommands) CreatePulseDefinition(ctx context.Context, input definitioncreate.Input, preview bool) (definitioncreate.Output, error) {
-	if err := definitioncreate.ValidateInput(input); err != nil {
-		return definitioncreate.Output{}, err
+func (c *pulseCommands) CreatePulseDefinition(ctx context.Context, input pulsedefinition.CreateInput, preview bool) (pulsedefinition.CreateOutput, error) {
+	if err := pulsedefinition.CreateValidateInput(input); err != nil {
+		return pulsedefinition.CreateOutput{}, err
 	}
 	connection, err := c.connect(ctx, input.Environment, true)
 	if err != nil {
-		return definitioncreate.Output{}, remoteSetupError("pulse.definition.create", input.Environment, input.Site, connection.environment, err)
+		return pulsedefinition.CreateOutput{}, remoteSetupError("pulse.definition.create", input.Environment, input.Site, connection.environment, err)
 	}
 	input.Environment, input.Site = connection.environment.Alias, connection.environment.SiteContentURL
 	validator := &pulseDefinitionFieldValidator{schema: connection.schema, aggregation: input.Intent.Aggregation}
 	adapter := &pulseDefinitionMutationAdapter{client: connection.client}
-	return definitioncreate.New(validator, adapter, adapter).Execute(ctx, input, preview)
+	return pulsedefinition.NewCreate(validator, adapter, adapter).Execute(ctx, input, preview)
 }
 
-func (c *pulseCommands) DeletePulseDefinition(ctx context.Context, input definitiondelete.Input) (definitiondelete.Output, error) {
-	if err := definitiondelete.ValidateInput(input); err != nil {
-		return definitiondelete.Output{}, err
+func (c *pulseCommands) DeletePulseDefinition(ctx context.Context, input pulsedefinition.DeleteInput) (pulsedefinition.DeleteOutput, error) {
+	if err := pulsedefinition.DeleteValidateInput(input); err != nil {
+		return pulsedefinition.DeleteOutput{}, err
 	}
 	connection, err := c.connect(ctx, input.Environment, true)
 	if err != nil {
-		return definitiondelete.Output{}, remoteSetupError("pulse.definition.delete", input.Environment, input.Site, connection.environment, err)
+		return pulsedefinition.DeleteOutput{}, remoteSetupError("pulse.definition.delete", input.Environment, input.Site, connection.environment, err)
 	}
 	input.Environment, input.Site = connection.environment.Alias, connection.environment.SiteContentURL
 	input.TargetResolved = true
 	adapter := pulseDefinitionDeleteAdapter{client: connection.client}
-	return definitiondelete.New(adapter, adapter).Execute(ctx, input)
+	return pulsedefinition.Delete(ctx, adapter, adapter, input)
 }
 
-func (c *pulseCommands) ListPulseMetrics(ctx context.Context, input metriclist.Input) (metriclist.Output, error) {
-	if err := metriclist.ValidateInput(input); err != nil {
-		return metriclist.Output{}, err
+func (c *pulseCommands) ListPulseMetrics(ctx context.Context, input pulsemetric.ListInput) (pulsemetric.ListOutput, error) {
+	if err := pulsemetric.ListValidateInput(input); err != nil {
+		return pulsemetric.ListOutput{}, err
 	}
 	if input.Cursor != "" {
 		_, environment, err := c.runtime.environment(input.Environment, false)
 		if err != nil {
-			return metriclist.Output{}, err
+			return pulsemetric.ListOutput{}, err
 		}
 		input.Environment, input.Site = environment.Alias, environment.SiteContentURL
-		if err := metriclist.ValidateContinuation(input); err != nil {
-			return metriclist.Output{}, err
+		if err := pulsemetric.ListValidateContinuation(input); err != nil {
+			return pulsemetric.ListOutput{}, err
 		}
 	}
 	if input.Cache {
 		environment, site, err := c.cacheContent().resolveCacheTarget(input.Environment)
 		if err != nil {
-			return metriclist.Output{}, capabilitySetupError("pulse.metric.list.cache.setup", "pulse.metric.list", input.Environment, "", "Cache Pulse metric setup failed.", "Verify the selected environment and cache configuration.", err)
+			return pulsemetric.ListOutput{}, capabilitySetupError("pulse.metric.list.cache.setup", "pulse.metric.list", input.Environment, "", "Cache Pulse metric setup failed.", "Verify the selected environment and cache configuration.", err)
 		}
 		input.Environment, input.Site = environment, site
 		reader := &cachePulseMetricListReader{store: c.cacheContent().cacheStore(environment), environment: environment, site: site}
-		output, err := metriclist.New(reader).Execute(ctx, input)
+		output, err := pulsemetric.List(ctx, reader, input)
 		if err == nil {
 			output.Source = reader.source
 		}
@@ -297,11 +287,11 @@ func (c *pulseCommands) ListPulseMetrics(ctx context.Context, input metriclist.I
 	}
 	connection, err := c.connect(ctx, input.Environment, false)
 	if err != nil {
-		return metriclist.Output{}, remoteSetupError("pulse.metric.list", input.Environment, input.Site, connection.environment, err)
+		return pulsemetric.ListOutput{}, remoteSetupError("pulse.metric.list", input.Environment, input.Site, connection.environment, err)
 	}
 	input.Environment, input.Site = connection.environment.Alias, connection.environment.SiteContentURL
 	reader := &pulseMetricListAdapter{client: connection.client}
-	output, err := metriclist.New(reader).Execute(ctx, input)
+	output, err := pulsemetric.List(ctx, reader, input)
 	if err != nil {
 		return output, err
 	}
@@ -310,18 +300,18 @@ func (c *pulseCommands) ListPulseMetrics(ctx context.Context, input metriclist.I
 	return output, nil
 }
 
-func (c *pulseCommands) InspectPulseMetric(ctx context.Context, input metricinspect.Input) (metricinspect.Output, error) {
-	if err := metricinspect.ValidateInput(input); err != nil {
-		return metricinspect.Output{}, err
+func (c *pulseCommands) InspectPulseMetric(ctx context.Context, input pulsemetric.InspectInput) (pulsemetric.InspectOutput, error) {
+	if err := pulsemetric.InspectValidateInput(input); err != nil {
+		return pulsemetric.InspectOutput{}, err
 	}
 	if input.Cache {
 		environment, site, err := c.cacheContent().resolveCacheTarget(input.Environment)
 		if err != nil {
-			return metricinspect.Output{}, capabilitySetupError("pulse.metric.inspect.cache.setup", "pulse.metric.inspect", input.Environment, "", "Cache Pulse metric setup failed.", "Verify the selected environment and cache configuration.", err)
+			return pulsemetric.InspectOutput{}, capabilitySetupError("pulse.metric.inspect.cache.setup", "pulse.metric.inspect", input.Environment, "", "Cache Pulse metric setup failed.", "Verify the selected environment and cache configuration.", err)
 		}
 		input.Environment, input.Site = environment, site
 		reader := &cachePulseMetricGetReader{store: c.cacheContent().cacheStore(environment), environment: environment, site: site}
-		output, err := metricinspect.New(reader).Execute(ctx, input)
+		output, err := pulsemetric.Inspect(ctx, reader, input)
 		if err == nil {
 			output.Source = reader.source
 			output.RequestID = ""
@@ -331,11 +321,11 @@ func (c *pulseCommands) InspectPulseMetric(ctx context.Context, input metricinsp
 	}
 	connection, err := c.connect(ctx, input.Environment, false)
 	if err != nil {
-		return metricinspect.Output{}, remoteSetupError("pulse.metric.inspect", input.Environment, input.Site, connection.environment, err)
+		return pulsemetric.InspectOutput{}, remoteSetupError("pulse.metric.inspect", input.Environment, input.Site, connection.environment, err)
 	}
 	input.Environment, input.Site = connection.environment.Alias, connection.environment.SiteContentURL
 	reader := &pulseMetricGetAdapter{client: connection.client}
-	output, err := metricinspect.New(reader).Execute(ctx, input)
+	output, err := pulsemetric.Inspect(ctx, reader, input)
 	if err != nil {
 		return output, err
 	}
@@ -344,31 +334,31 @@ func (c *pulseCommands) InspectPulseMetric(ctx context.Context, input metricinsp
 	return output, nil
 }
 
-func (c *pulseCommands) ForkPulseMetric(ctx context.Context, input metricfork.Input, preview bool) (metricfork.Output, error) {
-	if err := metricfork.ValidateInput(input); err != nil {
-		return metricfork.Output{}, err
+func (c *pulseCommands) ForkPulseMetric(ctx context.Context, input pulsemetric.ForkInput, preview bool) (pulsemetric.ForkOutput, error) {
+	if err := pulsemetric.ForkValidateInput(input); err != nil {
+		return pulsemetric.ForkOutput{}, err
 	}
 	connection, err := c.connect(ctx, input.Environment, true)
 	if err != nil {
-		return metricfork.Output{}, remoteSetupError("pulse.metric.fork", input.Environment, input.Site, connection.environment, err)
+		return pulsemetric.ForkOutput{}, remoteSetupError("pulse.metric.fork", input.Environment, input.Site, connection.environment, err)
 	}
 	input.Environment, input.Site, input.SiteLUID = connection.environment.Alias, connection.environment.SiteContentURL, connection.siteLUID
-	adapter := &pulseMetricMutationAdapter{client: connection.client, schema: connection.schema}
-	return metricfork.New(adapter, adapter, adapter).Execute(ctx, input, preview)
+	adapter := &pulseMetricMutationAdapter{pulseMetricGetAdapter: &pulseMetricGetAdapter{client: connection.client}, schema: connection.schema}
+	return pulsemetric.NewFork(adapter, adapter, adapter).Execute(ctx, input, preview)
 }
 
-func (c *pulseCommands) ListPulseMetricFollowers(ctx context.Context, input metricfollowers.Input) (metricfollowers.Output, error) {
-	if err := metricfollowers.ValidateInput(input); err != nil {
-		return metricfollowers.Output{}, err
+func (c *pulseCommands) ListPulseMetricFollowers(ctx context.Context, input pulsemetric.FollowersInput) (pulsemetric.FollowersOutput, error) {
+	if err := pulsemetric.FollowersValidateInput(input); err != nil {
+		return pulsemetric.FollowersOutput{}, err
 	}
 	if input.Cache {
 		environment, site, err := c.cacheContent().resolveCacheTarget(input.Environment)
 		if err != nil {
-			return metricfollowers.Output{}, capabilitySetupError("pulse.metric.followers.cache.setup", "pulse.metric.followers", input.Environment, "", "Cache Pulse follower setup failed.", "Verify the selected environment and cache configuration.", err)
+			return pulsemetric.FollowersOutput{}, capabilitySetupError("pulse.metric.followers.cache.setup", "pulse.metric.followers", input.Environment, "", "Cache Pulse follower setup failed.", "Verify the selected environment and cache configuration.", err)
 		}
 		input.Environment, input.Site = environment, site
 		reader := &cachePulseFollowerReader{store: c.cacheContent().cacheStore(environment), environment: environment, site: site}
-		output, err := metricfollowers.New(reader).Execute(ctx, input)
+		output, err := pulsemetric.Followers(ctx, reader, input)
 		if err == nil {
 			output.Source = reader.source
 			output.RequestID = ""
@@ -377,11 +367,11 @@ func (c *pulseCommands) ListPulseMetricFollowers(ctx context.Context, input metr
 	}
 	connection, err := c.connect(ctx, input.Environment, false)
 	if err != nil {
-		return metricfollowers.Output{}, remoteSetupError("pulse.metric.followers", input.Environment, input.Site, connection.environment, err)
+		return pulsemetric.FollowersOutput{}, remoteSetupError("pulse.metric.followers", input.Environment, input.Site, connection.environment, err)
 	}
 	input.Environment, input.Site = connection.environment.Alias, connection.environment.SiteContentURL
-	reader := &pulseFollowerAdapter{client: connection.client}
-	output, err := metricfollowers.New(reader).Execute(ctx, input)
+	reader := &pulseFollowerAdapter{pulseMetricGetAdapter: &pulseMetricGetAdapter{client: connection.client}}
+	output, err := pulsemetric.Followers(ctx, reader, input)
 	if err != nil {
 		return output, err
 	}
@@ -392,51 +382,51 @@ func (c *pulseCommands) ListPulseMetricFollowers(ctx context.Context, input metr
 	return output, nil
 }
 
-func (c *pulseCommands) FollowPulseMetric(ctx context.Context, input metricfollow.Input, preview bool) (metricfollow.Output, error) {
-	if err := metricfollow.ValidateInput(input); err != nil {
-		return metricfollow.Output{}, err
+func (c *pulseCommands) FollowPulseMetric(ctx context.Context, input pulsemetric.FollowInput, preview bool) (pulsemetric.FollowOutput, error) {
+	if err := pulsemetric.FollowValidateInput(input); err != nil {
+		return pulsemetric.FollowOutput{}, err
 	}
 	principalCapability := "admin.user.inspect"
 	if input.GroupLUID != "" {
 		principalCapability = "admin.group.inspect"
 	}
 	if err := c.runtime.checkManagedCapability(principalCapability); err != nil {
-		return metricfollow.Output{}, err
+		return pulsemetric.FollowOutput{}, err
 	}
 	connection, err := c.connect(ctx, input.Environment, true)
 	if err != nil {
-		return metricfollow.Output{}, remoteSetupError("pulse.metric.follow", input.Environment, input.Site, connection.environment, err)
+		return pulsemetric.FollowOutput{}, remoteSetupError("pulse.metric.follow", input.Environment, input.Site, connection.environment, err)
 	}
 	input.Environment, input.Site = connection.environment.Alias, connection.environment.SiteContentURL
-	adapter := &pulseFollowerAdapter{client: connection.client, adminClient: connection.adminClient, checkCapability: c.runtime.checkManagedCapability}
-	return metricfollow.New(adapter, adapter).Execute(ctx, input, preview)
+	adapter := &pulseFollowerAdapter{pulseMetricGetAdapter: &pulseMetricGetAdapter{client: connection.client}, adminClient: connection.adminClient, checkCapability: c.runtime.checkManagedCapability}
+	return pulsemetric.Follow(ctx, adapter, adapter, input, preview)
 }
 
-func (c *pulseCommands) UnfollowPulseMetric(ctx context.Context, input metricunfollow.Input, preview bool) (metricunfollow.Output, error) {
-	if err := metricunfollow.ValidateInput(input); err != nil {
-		return metricunfollow.Output{}, err
+func (c *pulseCommands) UnfollowPulseMetric(ctx context.Context, input pulsemetric.UnfollowInput, preview bool) (pulsemetric.UnfollowOutput, error) {
+	if err := pulsemetric.UnfollowValidateInput(input); err != nil {
+		return pulsemetric.UnfollowOutput{}, err
 	}
 	connection, err := c.connect(ctx, input.Environment, true)
 	if err != nil {
-		return metricunfollow.Output{}, remoteSetupError("pulse.metric.unfollow", input.Environment, input.Site, connection.environment, err)
+		return pulsemetric.UnfollowOutput{}, remoteSetupError("pulse.metric.unfollow", input.Environment, input.Site, connection.environment, err)
 	}
 	input.Environment, input.Site = connection.environment.Alias, connection.environment.SiteContentURL
-	adapter := &pulseUnfollowAdapter{client: connection.client}
-	return metricunfollow.New(adapter, connection.client).Execute(ctx, input, preview)
+	adapter := &pulseFollowerAdapter{pulseMetricGetAdapter: &pulseMetricGetAdapter{client: connection.client}}
+	return pulsemetric.Unfollow(ctx, adapter, connection.client, input, preview)
 }
 
-func (c *pulseCommands) DeletePulseMetric(ctx context.Context, input metricdelete.Input) (metricdelete.Output, error) {
-	if err := metricdelete.ValidateInput(input); err != nil {
-		return metricdelete.Output{}, err
+func (c *pulseCommands) DeletePulseMetric(ctx context.Context, input pulsemetric.DeleteInput) (pulsemetric.DeleteOutput, error) {
+	if err := pulsemetric.DeleteValidateInput(input); err != nil {
+		return pulsemetric.DeleteOutput{}, err
 	}
 	connection, err := c.connect(ctx, input.Environment, true)
 	if err != nil {
-		return metricdelete.Output{}, remoteSetupError("pulse.metric.delete", input.Environment, input.Site, connection.environment, err)
+		return pulsemetric.DeleteOutput{}, remoteSetupError("pulse.metric.delete", input.Environment, input.Site, connection.environment, err)
 	}
 	input.Environment, input.Site = connection.environment.Alias, connection.environment.SiteContentURL
 	input.TargetResolved = true
-	adapter := pulseMetricDeleteAdapter{client: connection.client}
-	return metricdelete.New(adapter, adapter).Execute(ctx, input)
+	adapter := &pulseMetricGetAdapter{client: connection.client}
+	return pulsemetric.Delete(ctx, adapter, adapter, input)
 }
 
 type pulseDefinitionListAdapter struct {
@@ -444,17 +434,17 @@ type pulseDefinitionListAdapter struct {
 	items  []tableaupulse.Definition
 }
 
-func (a *pulseDefinitionListAdapter) ListDefinitions(ctx context.Context, request definitionlist.PageRequest) (definitionlist.Page, error) {
+func (a *pulseDefinitionListAdapter) ListDefinitions(ctx context.Context, request pulsedefinition.ListPageRequest) (pulsedefinition.ListPage, error) {
 	page, err := a.client.ListDefinitions(ctx, tableaupulse.PageRequest{PageSize: request.PageSize, PageToken: request.PageToken})
 	if err != nil {
-		return definitionlist.Page{}, err
+		return pulsedefinition.ListPage{}, err
 	}
 	a.items = append(a.items, page.Definitions...)
-	items := make([]definitionlist.Definition, len(page.Definitions))
+	items := make([]pulsedefinition.ListDefinition, len(page.Definitions))
 	for index, item := range page.Definitions {
 		items[index] = definitionListItem(item)
 	}
-	return definitionlist.Page{Definitions: items, NextPageToken: page.NextPageToken, RequestID: page.TableauRequestID}, nil
+	return pulsedefinition.ListPage{Definitions: items, NextPageToken: page.NextPageToken, RequestID: page.TableauRequestID}, nil
 }
 
 type pulseDefinitionGetAdapter struct {
@@ -462,10 +452,10 @@ type pulseDefinitionGetAdapter struct {
 	item   tableaupulse.Definition
 }
 
-func (a *pulseDefinitionGetAdapter) GetDefinition(ctx context.Context, luid string) (definitioninspect.Definition, error) {
+func (a *pulseDefinitionGetAdapter) GetDefinition(ctx context.Context, luid string) (pulsedefinition.Definition, error) {
 	item, err := a.client.GetDefinition(ctx, luid)
 	if err != nil {
-		return definitioninspect.Definition{}, err
+		return pulsedefinition.Definition{}, err
 	}
 	a.item = item
 	return definitionGetItem(item)
@@ -473,12 +463,12 @@ func (a *pulseDefinitionGetAdapter) GetDefinition(ctx context.Context, luid stri
 
 type pulseDefinitionPullReader struct{ client *tableaupulse.Client }
 
-func (r *pulseDefinitionPullReader) GetDefinition(ctx context.Context, luid string) (definitionpull.Definition, error) {
+func (r *pulseDefinitionPullReader) GetDefinition(ctx context.Context, luid string) (pulsedefinition.PullDefinition, error) {
 	item, err := r.client.GetDefinition(ctx, luid)
 	if err != nil {
-		return definitionpull.Definition{}, err
+		return pulsedefinition.PullDefinition{}, err
 	}
-	result := definitionpull.Definition{LUID: item.LUID, Name: item.Name, DatasourceLUID: item.DatasourceLUID, Configuration: append([]byte(nil), item.Configuration...), RequestID: item.TableauRequestID}
+	result := pulsedefinition.PullDefinition{LUID: item.LUID, Name: item.Name, DatasourceLUID: item.DatasourceLUID, Configuration: append([]byte(nil), item.Configuration...), RequestID: item.TableauRequestID}
 	totalBytes := len(item.Configuration)
 	seenIDs, seenTokens := map[string]bool{}, map[string]bool{"": true}
 	token := ""
@@ -510,7 +500,7 @@ func (r *pulseDefinitionPullReader) GetDefinition(ctx context.Context, luid stri
 			if totalBytes > artifact.MaxPulseBundleBytes {
 				return result, errors.New("Pulse bundle exceeds its 32 MiB bound; no artifact was written")
 			}
-			result.Metrics = append(result.Metrics, definitionpull.Metric{LUID: metric.LUID, DefinitionLUID: luid, IsDefault: summary.IsDefault || metric.IsDefault, Specification: specification})
+			result.Metrics = append(result.Metrics, pulsedefinition.PullMetric{LUID: metric.LUID, DefinitionLUID: luid, IsDefault: summary.IsDefault || metric.IsDefault, Specification: specification})
 		}
 		if page.NextPageToken == "" {
 			result.MetricsComplete = true
@@ -529,29 +519,29 @@ type pulseDefinitionArtifactWriter struct {
 	manager *artifact.PulseDefinitionManager
 }
 
-func (w pulseDefinitionArtifactWriter) WriteDefinition(ctx context.Context, input definitionpull.Artifact) (definitionpull.ArtifactResult, error) {
+func (w pulseDefinitionArtifactWriter) WriteDefinition(ctx context.Context, input pulsedefinition.PullArtifact) (pulsedefinition.PullArtifactResult, error) {
 	bundle := artifact.PulseBundle{Version: 1, SourceServerOrigin: input.ServerOrigin, SourceSiteLUID: input.SiteLUID, DefinitionLUID: input.DefinitionLUID, DatasourceReferences: []string{input.DatasourceLUID}, Definition: input.Configuration, Metrics: make([]artifact.PulseBundleMetric, 0, len(input.Metrics))}
 	for _, metric := range input.Metrics {
 		bundle.Metrics = append(bundle.Metrics, artifact.PulseBundleMetric{LUID: metric.LUID, DefinitionLUID: metric.DefinitionLUID, IsDefault: metric.IsDefault, Specification: metric.Specification})
 	}
 	data, err := json.MarshalIndent(bundle, "", "  ")
 	if err != nil {
-		return definitionpull.ArtifactResult{}, err
+		return pulsedefinition.PullArtifactResult{}, err
 	}
 	result, err := w.manager.Pull(ctx, artifact.PulseDefinitionPull{
 		Workspace: input.Workspace, Configuration: input.Configuration, Bundle: append(data, '\n'), Overwrite: input.Overwrite,
 		Metadata: artifact.PulseDefinitionMetadata{Kind: "pulse-definition", Name: input.Name, TableauID: input.DefinitionLUID, DatasourceLUID: input.DatasourceLUID, SourceServerOrigin: input.ServerOrigin, SourceSiteLUID: input.SiteLUID, SourceEnvironment: input.Environment, SourceSite: input.Site},
 	})
 	if err != nil {
-		return definitionpull.ArtifactResult{}, err
+		return pulsedefinition.PullArtifactResult{}, err
 	}
-	return definitionpull.ArtifactResult{Path: result.WorkspaceRelativePath, CanonicalPath: result.CanonicalPath, BaselineFingerprint: result.BaselineFingerprint}, nil
+	return pulsedefinition.PullArtifactResult{Path: result.WorkspaceRelativePath, CanonicalPath: result.CanonicalPath, BaselineFingerprint: result.BaselineFingerprint}, nil
 }
 
 type pulseDefinitionMutationAdapter struct{ client *tableaupulse.Client }
 
-func (a *pulseDefinitionMutationAdapter) FindDefinitions(ctx context.Context, name, datasourceLUID string) ([]definitioncreate.ExistingDefinition, error) {
-	result := []definitioncreate.ExistingDefinition{}
+func (a *pulseDefinitionMutationAdapter) FindDefinitions(ctx context.Context, name, datasourceLUID string) ([]pulsedefinition.Definition, error) {
+	result := []pulsedefinition.Definition{}
 	token := ""
 	for pageNumber := 0; pageNumber < 100; pageNumber++ {
 		page, err := a.client.ListDefinitions(ctx, tableaupulse.PageRequest{PageSize: 100, PageToken: token})
@@ -560,7 +550,7 @@ func (a *pulseDefinitionMutationAdapter) FindDefinitions(ctx context.Context, na
 		}
 		for _, item := range page.Definitions {
 			if item.Name == name && item.DatasourceLUID == datasourceLUID {
-				result = append(result, definitioncreate.ExistingDefinition{LUID: item.LUID, Name: item.Name, DatasourceLUID: item.DatasourceLUID})
+				result = append(result, pulsedefinition.Definition{LUID: item.LUID, Name: item.Name, DatasourceLUID: item.DatasourceLUID})
 			}
 		}
 		if page.NextPageToken == "" {
@@ -573,19 +563,19 @@ func (a *pulseDefinitionMutationAdapter) FindDefinitions(ctx context.Context, na
 
 type pulseDefinitionDeleteAdapter struct{ client *tableaupulse.Client }
 
-func (a pulseDefinitionDeleteAdapter) GetDefinition(ctx context.Context, luid string) (definitiondelete.Definition, error) {
+func (a pulseDefinitionDeleteAdapter) GetDefinition(ctx context.Context, luid string) (pulsedefinition.Definition, error) {
 	item, err := a.client.GetDefinition(ctx, luid)
-	return definitiondelete.Definition{LUID: item.LUID, Name: item.Name, DatasourceLUID: item.DatasourceLUID}, err
+	return definitionObservation(item), err
 }
 
-func (a pulseDefinitionDeleteAdapter) DeleteDefinition(ctx context.Context, luid string) (definitiondelete.Result, error) {
+func (a pulseDefinitionDeleteAdapter) DeleteDefinition(ctx context.Context, luid string) (pulsedefinition.DeleteResult, error) {
 	item, err := a.client.DeleteDefinition(ctx, luid)
-	return definitiondelete.Result{Status: item.Status, DefinitionLUID: item.LUID, HTTPStatus: item.HTTPStatus, TableauRequestID: item.TableauRequestID}, err
+	return pulsedefinition.DeleteResult{Status: item.Status, DefinitionLUID: item.LUID, HTTPStatus: item.HTTPStatus, TableauRequestID: item.TableauRequestID}, err
 }
 
-func (a *pulseDefinitionMutationAdapter) CreateDefinition(ctx context.Context, request definitioncreate.CreateRequest) (definitioncreate.CreateResult, error) {
+func (a *pulseDefinitionMutationAdapter) CreateDefinition(ctx context.Context, request pulsedefinition.CreateRequest) (pulsedefinition.CreateResult, error) {
 	result, err := a.client.CreateDefinition(ctx, request)
-	return definitioncreate.CreateResult{Status: result.Status, DefinitionLUID: result.DefinitionLUID, DefaultMetricLUID: result.DefaultMetricLUID, DefaultMetricStatus: result.DefaultMetricStatus, TableauRequestID: result.TableauRequestID, PollRequestID: result.PollRequestID}, err
+	return pulsedefinition.CreateResult{Status: result.Status, DefinitionLUID: result.DefinitionLUID, DefaultMetricLUID: result.DefaultMetricLUID, DefaultMetricStatus: result.DefaultMetricStatus, TableauRequestID: result.TableauRequestID, PollRequestID: result.PollRequestID}, err
 }
 
 type pulseDefinitionFieldValidator struct {
@@ -593,16 +583,16 @@ type pulseDefinitionFieldValidator struct {
 	aggregation string
 }
 
-func (v *pulseDefinitionFieldValidator) ValidateDefinitionFields(ctx context.Context, references definitioncreate.FieldReferences) error {
+func (v *pulseDefinitionFieldValidator) ValidateDefinitionFields(ctx context.Context, references pulsedefinition.CreateFieldReferences) error {
 	_, err := v.definitionFields(ctx, references, false)
 	return err
 }
 
-func (v *pulseDefinitionFieldValidator) ResolveDefinitionFields(ctx context.Context, references definitioncreate.FieldReferences) (definitioncreate.FieldReferences, error) {
+func (v *pulseDefinitionFieldValidator) ResolveDefinitionFields(ctx context.Context, references pulsedefinition.CreateFieldReferences) (pulsedefinition.CreateFieldReferences, error) {
 	return v.definitionFields(ctx, references, true)
 }
 
-func (v *pulseDefinitionFieldValidator) definitionFields(ctx context.Context, references definitioncreate.FieldReferences, resolve bool) (definitioncreate.FieldReferences, error) {
+func (v *pulseDefinitionFieldValidator) definitionFields(ctx context.Context, references pulsedefinition.CreateFieldReferences, resolve bool) (pulsedefinition.CreateFieldReferences, error) {
 	if v == nil || v.schema == nil {
 		return references, errors.New("Pulse definition field validator is not configured")
 	}
@@ -631,7 +621,7 @@ func (v *pulseDefinitionFieldValidator) definitionFields(ctx context.Context, re
 	return references, v.validateFields(fields, references)
 }
 
-func (v *pulseDefinitionFieldValidator) validateFields(fields map[string][]fieldcatalog.Field, references definitioncreate.FieldReferences) error {
+func (v *pulseDefinitionFieldValidator) validateFields(fields map[string][]fieldcatalog.Field, references pulsedefinition.CreateFieldReferences) error {
 	aggregation := strings.ToUpper(strings.TrimSpace(references.Aggregation))
 	if aggregation == "" {
 		aggregation = strings.ToUpper(strings.TrimSpace(v.aggregation))
@@ -702,17 +692,17 @@ type pulseMetricListAdapter struct {
 	items  []tableaupulse.Metric
 }
 
-func (a *pulseMetricListAdapter) ListMetrics(ctx context.Context, definitionLUID string, request metriclist.PageRequest) (metriclist.Page, error) {
+func (a *pulseMetricListAdapter) ListMetrics(ctx context.Context, definitionLUID string, request pulsemetric.ListPageRequest) (pulsemetric.ListPage, error) {
 	page, err := a.client.ListMetrics(ctx, definitionLUID, tableaupulse.PageRequest{PageSize: request.PageSize, PageToken: request.PageToken})
 	if err != nil {
-		return metriclist.Page{}, err
+		return pulsemetric.ListPage{}, err
 	}
 	a.items = append(a.items, page.Metrics...)
-	items := make([]metriclist.Metric, len(page.Metrics))
+	items := make([]pulsemetric.ListMetric, len(page.Metrics))
 	for index, item := range page.Metrics {
 		items[index] = metricListItem(item)
 	}
-	return metriclist.Page{Metrics: items, NextPageToken: page.NextPageToken, RequestID: page.TableauRequestID}, nil
+	return pulsemetric.ListPage{Metrics: items, NextPageToken: page.NextPageToken, RequestID: page.TableauRequestID}, nil
 }
 
 type pulseMetricGetAdapter struct {
@@ -720,17 +710,17 @@ type pulseMetricGetAdapter struct {
 	item   tableaupulse.Metric
 }
 
-func (a *pulseMetricGetAdapter) GetMetric(ctx context.Context, luid string) (metricinspect.Metric, error) {
+func (a *pulseMetricGetAdapter) GetMetric(ctx context.Context, luid string) (pulsemetric.Metric, error) {
 	item, err := a.client.GetMetric(ctx, luid)
 	if err != nil {
-		return metricinspect.Metric{}, err
+		return pulsemetric.Metric{}, err
 	}
 	a.item = item
 	return metricGetItem(item), nil
 }
 
 type pulseMetricMutationAdapter struct {
-	client *tableaupulse.Client
+	*pulseMetricGetAdapter
 	schema *resourcedatasource.SchemaAdapter
 }
 
@@ -756,149 +746,114 @@ func (a *pulseMetricMutationAdapter) ResolveFilterFields(ctx context.Context, da
 	return resolved, nil
 }
 
-func (a *pulseMetricMutationAdapter) GetMetric(ctx context.Context, luid string) (metricfork.Metric, error) {
-	item, err := a.client.GetMetric(ctx, luid)
-	if err != nil {
-		return metricfork.Metric{}, err
-	}
-	return metricfork.Metric{LUID: item.LUID, DefinitionLUID: item.DefinitionLUID, SiteLUID: item.SiteLUID, Specification: cloneJSONMap(item.Specification)}, nil
-}
-
-type pulseMetricDeleteAdapter struct{ client *tableaupulse.Client }
-
-func (a pulseMetricDeleteAdapter) GetMetric(ctx context.Context, luid string) (metricdelete.Metric, error) {
-	item, err := a.client.GetMetric(ctx, luid)
-	var isDefault *bool
-	if item.DefaultKnown {
-		value := item.IsDefault
-		isDefault = &value
-	}
-	return metricdelete.Metric{LUID: item.LUID, Name: item.Name, DefinitionLUID: item.DefinitionLUID, IsDefault: isDefault}, err
-}
-
-func (a pulseMetricDeleteAdapter) DeleteMetric(ctx context.Context, luid string) (metricdelete.Result, error) {
+func (a *pulseMetricGetAdapter) DeleteMetric(ctx context.Context, luid string) (pulsemetric.DeleteResult, error) {
 	item, err := a.client.DeleteMetric(ctx, luid)
-	return metricdelete.Result{Status: item.Status, MetricLUID: item.LUID, HTTPStatus: item.HTTPStatus, TableauRequestID: item.TableauRequestID}, err
+	return pulsemetric.DeleteResult{Status: item.Status, MetricLUID: item.LUID, HTTPStatus: item.HTTPStatus, TableauRequestID: item.TableauRequestID}, err
 }
 
-func (a *pulseMetricMutationAdapter) GetDefinition(ctx context.Context, luid string) (metricfork.Definition, error) {
+func (a *pulseMetricMutationAdapter) GetDefinition(ctx context.Context, luid string) (pulsemetric.ForkDefinition, error) {
 	item, err := a.client.GetDefinition(ctx, luid)
 	if err != nil {
-		return metricfork.Definition{}, err
+		return pulsemetric.ForkDefinition{}, err
 	}
-	return metricfork.Definition{LUID: item.LUID, DatasourceLUID: item.DatasourceLUID, AllowedDimensions: append([]string(nil), item.AllowedDimensions...), AllowedGranularities: append([]string(nil), item.AllowedGranularities...), FixedFilters: append([]any(nil), item.FixedFilters...), FixedFiltersKnown: item.FixedFiltersKnown}, nil
+	return pulsemetric.ForkDefinition{LUID: item.LUID, DatasourceLUID: item.DatasourceLUID, AllowedDimensions: append([]string(nil), item.AllowedDimensions...), AllowedGranularities: append([]string(nil), item.AllowedGranularities...), FixedFilters: append([]any(nil), item.FixedFilters...), FixedFiltersKnown: item.FixedFiltersKnown}, nil
 }
 
-func (a *pulseMetricMutationAdapter) GetOrCreateMetric(ctx context.Context, request metricfork.CreateRequest) (metricfork.CreateResult, error) {
+func (a *pulseMetricMutationAdapter) GetOrCreateMetric(ctx context.Context, request pulsemetric.ForkCreateRequest) (pulsemetric.ForkCreateResult, error) {
 	result, err := a.client.GetOrCreateMetric(ctx, tableaupulse.GetOrCreateRequest{DefinitionLUID: request.DefinitionLUID, Specification: cloneJSONMap(request.Specification)})
-	return metricfork.CreateResult{MetricLUID: result.MetricLUID, MetricName: result.MetricName, Created: result.Created, RequestID: result.TableauRequestID}, err
+	return pulsemetric.ForkCreateResult{MetricLUID: result.MetricLUID, MetricName: result.MetricName, Created: result.Created, RequestID: result.TableauRequestID}, err
 }
 
-func (a *pulseMetricMutationAdapter) ReconcileMetric(ctx context.Context, expected metricfork.ExpectedMetric) (metricfork.Reconciliation, error) {
+func (a *pulseMetricMutationAdapter) ReconcileMetric(ctx context.Context, expected pulsemetric.ForkExpectedMetric) (pulsemetric.ForkReconciliation, error) {
 	result, err := a.client.ReconcileMetric(ctx, tableaupulse.ExpectedMetric{MetricLUID: expected.MetricLUID, DefinitionLUID: expected.DefinitionLUID, DatasourceLUID: expected.DatasourceLUID, SiteLUID: expected.SiteLUID, Specification: cloneJSONMap(expected.Specification)})
-	return metricfork.Reconciliation{Status: result.Status, Attempts: result.Attempts, OwnershipVerified: result.OwnershipVerified, RequestID: result.TableauRequestID, SpecificationVerified: result.SpecificationVerified, SavedSpecification: cloneJSONMap(result.Metric.Specification), MetricRequestID: result.Metric.TableauRequestID, DefinitionRequestID: result.Definition.TableauRequestID, SavedDefinition: metricfork.SavedDefinition{LUID: result.Definition.LUID, Name: result.Definition.Name, DatasourceLUID: result.Definition.DatasourceLUID}}, err
+	return pulsemetric.ForkReconciliation{Status: result.Status, Attempts: result.Attempts, OwnershipVerified: result.OwnershipVerified, RequestID: result.TableauRequestID, SpecificationVerified: result.SpecificationVerified, SavedSpecification: cloneJSONMap(result.Metric.Specification), MetricRequestID: result.Metric.TableauRequestID, DefinitionRequestID: result.Definition.TableauRequestID, SavedDefinition: pulsemetric.ForkSavedDefinition{LUID: result.Definition.LUID, Name: result.Definition.Name, DatasourceLUID: result.Definition.DatasourceLUID}}, err
 }
 
 type pulseFollowerAdapter struct {
+	*pulseMetricGetAdapter
 	checkCapability func(string) error
-	client          *tableaupulse.Client
 	adminClient     *tableauadmin.Client
 	items           []tableaupulse.Subscription
 }
 
-func (a *pulseFollowerAdapter) ResolveMetric(ctx context.Context, luid string) (metricfollow.Metric, error) {
+func (a *pulseFollowerAdapter) ResolveMetric(ctx context.Context, luid string) (pulsemetric.FollowMetric, error) {
 	item, err := a.client.GetMetric(ctx, luid)
 	if err != nil {
-		return metricfollow.Metric{}, err
+		return pulsemetric.FollowMetric{}, err
 	}
-	return metricfollow.Metric{LUID: item.LUID}, nil
+	return pulsemetric.FollowMetric{LUID: item.LUID}, nil
 }
 
-func (a *pulseFollowerAdapter) ResolveUser(ctx context.Context, luid string) (metricfollow.User, error) {
+func (a *pulseFollowerAdapter) ResolveUser(ctx context.Context, luid string) (pulsemetric.FollowUser, error) {
 	if a.checkCapability != nil {
 		if err := a.checkCapability("admin.user.inspect"); err != nil {
-			return metricfollow.User{}, err
+			return pulsemetric.FollowUser{}, err
 		}
 	}
 	item, err := a.adminClient.GetUser(ctx, luid)
 	if err != nil {
-		return metricfollow.User{}, err
+		return pulsemetric.FollowUser{}, err
 	}
-	return metricfollow.User{LUID: item.LUID}, nil
+	return pulsemetric.FollowUser{LUID: item.LUID}, nil
 }
 
-func (a *pulseFollowerAdapter) ResolveGroup(ctx context.Context, luid string) (metricfollow.Group, error) {
+func (a *pulseFollowerAdapter) ResolveGroup(ctx context.Context, luid string) (pulsemetric.FollowGroup, error) {
 	if a.checkCapability != nil {
 		if err := a.checkCapability("admin.group.inspect"); err != nil {
-			return metricfollow.Group{}, err
+			return pulsemetric.FollowGroup{}, err
 		}
 	}
 	if _, err := a.adminClient.ListGroupUsers(ctx, luid, tableauadmin.PageRequest{PageNumber: 1, PageSize: 1}); err != nil {
-		return metricfollow.Group{}, err
+		return pulsemetric.FollowGroup{}, err
 	}
-	return metricfollow.Group{LUID: luid}, nil
+	return pulsemetric.FollowGroup{LUID: luid}, nil
 }
 
-func (a *pulseFollowerAdapter) GetMetric(ctx context.Context, luid string) (metricfollowers.Metric, error) {
-	item, err := a.client.GetMetric(ctx, luid)
-	if err != nil {
-		return metricfollowers.Metric{}, err
-	}
-	return metricfollowers.Metric{LUID: item.LUID, RequestID: item.TableauRequestID}, nil
-}
-
-func (a *pulseFollowerAdapter) ListSubscriptions(ctx context.Context, metricLUID string) ([]metricfollowers.Subscription, error) {
+func (a *pulseFollowerAdapter) ListSubscriptions(ctx context.Context, metricLUID string) ([]pulsemetric.Subscription, error) {
 	items, err := a.client.ListSubscriptions(ctx, metricLUID)
 	if err != nil {
 		return nil, err
 	}
 	a.items = append([]tableaupulse.Subscription(nil), items...)
-	result := make([]metricfollowers.Subscription, len(items))
+	result := make([]pulsemetric.Subscription, len(items))
 	for index, item := range items {
-		result[index] = metricfollowers.Subscription{LUID: item.LUID, MetricLUID: item.MetricLUID, FollowerType: item.FollowerType, FollowerLUID: item.FollowerLUID, FollowerName: item.FollowerName, RequestID: item.TableauRequestID}
+		result[index] = pulsemetric.Subscription{LUID: item.LUID, MetricLUID: item.MetricLUID, FollowerType: item.FollowerType, FollowerLUID: item.FollowerLUID, FollowerName: item.FollowerName, RequestID: item.TableauRequestID}
 	}
 	return result, nil
 }
 
-func (a *pulseFollowerAdapter) CreateSubscription(ctx context.Context, request metricfollow.CreateRequest) (metricfollow.CreateResult, error) {
+func (a *pulseFollowerAdapter) CreateSubscription(ctx context.Context, request pulsemetric.FollowCreateRequest) (pulsemetric.FollowCreateResult, error) {
 	result, err := a.client.CreateSubscription(ctx, tableaupulse.CreateSubscriptionRequest{MetricLUID: request.MetricLUID, FollowerType: request.FollowerType, FollowerLUID: request.FollowerLUID})
-	return metricfollow.CreateResult{Status: result.Status, SubscriptionLUID: result.SubscriptionLUID, RequestID: result.TableauRequestID}, err
+	return pulsemetric.FollowCreateResult{Status: result.Status, SubscriptionLUID: result.SubscriptionLUID, RequestID: result.TableauRequestID}, err
 }
 
-type pulseUnfollowAdapter struct{ client *tableaupulse.Client }
-
-func (a *pulseUnfollowAdapter) ListSubscriptions(ctx context.Context, metricLUID string) ([]metricunfollow.Subscription, error) {
-	items, err := a.client.ListSubscriptions(ctx, metricLUID)
-	if err != nil {
-		return nil, err
-	}
-	result := make([]metricunfollow.Subscription, len(items))
-	for index, item := range items {
-		result[index] = metricunfollow.Subscription{LUID: item.LUID, MetricLUID: item.MetricLUID, FollowerType: item.FollowerType, FollowerLUID: item.FollowerLUID, FollowerName: item.FollowerName}
-	}
-	return result, nil
+func definitionListItem(item tableaupulse.Definition) pulsedefinition.ListDefinition {
+	return pulsedefinition.ListDefinition{LUID: item.LUID, Name: item.Name, Description: item.Description, DatasourceLUID: item.DatasourceLUID, MeasureField: item.MeasureField, Aggregation: item.Aggregation, TimeDimension: item.TimeDimension, AllowedDimensions: append([]string(nil), item.AllowedDimensions...)}
 }
 
-func definitionListItem(item tableaupulse.Definition) definitionlist.Definition {
-	return definitionlist.Definition{LUID: item.LUID, Name: item.Name, Description: item.Description, DatasourceLUID: item.DatasourceLUID, MeasureField: item.MeasureField, Aggregation: item.Aggregation, TimeDimension: item.TimeDimension, AllowedDimensions: append([]string(nil), item.AllowedDimensions...)}
-}
-
-func definitionGetItem(item tableaupulse.Definition) (definitioninspect.Definition, error) {
+func definitionGetItem(item tableaupulse.Definition) (pulsedefinition.Definition, error) {
 	configuration := map[string]any{}
 	if len(item.Configuration) != 0 {
 		if err := json.Unmarshal(item.Configuration, &configuration); err != nil {
-			return definitioninspect.Definition{}, fmt.Errorf("decode Pulse definition configuration: %w", err)
+			return pulsedefinition.Definition{}, fmt.Errorf("decode Pulse definition configuration: %w", err)
 		}
 	}
-	return definitioninspect.Definition{LUID: item.LUID, Name: item.Name, Description: item.Description, DatasourceLUID: item.DatasourceLUID, MeasureField: item.MeasureField, Aggregation: item.Aggregation, TimeDimension: item.TimeDimension, RunningTotal: item.RunningTotal, Temporality: item.Temporality, AllowedDimensions: append([]string(nil), item.AllowedDimensions...), AllowedGranularities: append([]string(nil), item.AllowedGranularities...), Configuration: configuration, RequestID: item.TableauRequestID}, nil
+	result := definitionObservation(item)
+	result.Configuration = configuration
+	return result, nil
 }
 
-func metricListItem(item tableaupulse.Metric) metriclist.Metric {
-	return metriclist.Metric{LUID: item.LUID, Name: item.Name, DefinitionLUID: item.DefinitionLUID, IsDefault: item.IsDefault, Specification: cloneJSONMap(item.Specification)}
+// definitionObservation preserves facts without imposing inspect's decoding contract on deletion.
+func definitionObservation(item tableaupulse.Definition) pulsedefinition.Definition {
+	return pulsedefinition.Definition{LUID: item.LUID, Name: item.Name, Description: item.Description, DatasourceLUID: item.DatasourceLUID, MeasureField: item.MeasureField, Aggregation: item.Aggregation, TimeDimension: item.TimeDimension, RunningTotal: item.RunningTotal, Temporality: item.Temporality, AllowedDimensions: append([]string(nil), item.AllowedDimensions...), AllowedGranularities: append([]string(nil), item.AllowedGranularities...), RequestID: item.TableauRequestID}
 }
 
-func metricGetItem(item tableaupulse.Metric) metricinspect.Metric {
-	return metricinspect.Metric{LUID: item.LUID, Name: item.Name, DefinitionLUID: item.DefinitionLUID, SiteLUID: item.SiteLUID, IsDefault: item.IsDefault, Specification: cloneJSONMap(item.Specification), Configuration: append([]byte(nil), item.Configuration...), RequestID: item.TableauRequestID}
+func metricListItem(item tableaupulse.Metric) pulsemetric.ListMetric {
+	return pulsemetric.ListMetric{LUID: item.LUID, Name: item.Name, DefinitionLUID: item.DefinitionLUID, IsDefault: item.IsDefault, Specification: cloneJSONMap(item.Specification)}
+}
+
+func metricGetItem(item tableaupulse.Metric) pulsemetric.Metric {
+	return pulsemetric.Metric{LUID: item.LUID, Name: item.Name, DefinitionLUID: item.DefinitionLUID, SiteLUID: item.SiteLUID, IsDefault: item.IsDefault, DefaultKnown: item.DefaultKnown, Specification: cloneJSONMap(item.Specification), Configuration: append([]byte(nil), item.Configuration...), RequestID: item.TableauRequestID}
 }
 
 type cachePulseDefinitionListReader struct {
@@ -908,25 +863,25 @@ type cachePulseDefinitionListReader struct {
 	source      *readsource.Metadata
 }
 
-func (r *cachePulseDefinitionListReader) ListDefinitions(ctx context.Context, request definitionlist.PageRequest) (definitionlist.Page, error) {
+func (r *cachePulseDefinitionListReader) ListDefinitions(ctx context.Context, request pulsedefinition.ListPageRequest) (pulsedefinition.ListPage, error) {
 	offset, err := pulseCacheOffset(request.PageToken)
 	if err != nil {
-		return definitionlist.Page{}, err
+		return pulsedefinition.ListPage{}, err
 	}
 	result, err := r.store.ReadResources(ctx, cache.ResourceQuery{Environment: r.environment, Site: r.site, Kind: pulseDefinitionKind, Offset: offset, Limit: request.PageSize})
 	if err != nil {
-		return definitionlist.Page{}, cacheReadError("pulse.definition.list", r.environment, r.site, err)
+		return pulsedefinition.ListPage{}, cacheReadError("pulse.definition.list", r.environment, r.site, err)
 	}
 	r.source = cacheReadSource(result)
-	items := make([]definitionlist.Definition, len(result.Entries))
+	items := make([]pulsedefinition.ListDefinition, len(result.Entries))
 	for index, entry := range result.Entries {
 		var item tableaupulse.Definition
 		if err := json.Unmarshal(entry.Payload, &item); err != nil {
-			return definitionlist.Page{}, fmt.Errorf("decode cache Pulse definition %q: %w", entry.LUID, err)
+			return pulsedefinition.ListPage{}, fmt.Errorf("decode cache Pulse definition %q: %w", entry.LUID, err)
 		}
 		items[index] = definitionListItem(item)
 	}
-	return definitionlist.Page{Definitions: items, NextPageToken: nextPulseCacheOffset(offset, len(items), result.Total)}, nil
+	return pulsedefinition.ListPage{Definitions: items, NextPageToken: nextPulseCacheOffset(offset, len(items), result.Total)}, nil
 }
 
 type cachePulseDefinitionGetReader struct {
@@ -936,15 +891,15 @@ type cachePulseDefinitionGetReader struct {
 	source      *readsource.Metadata
 }
 
-func (r *cachePulseDefinitionGetReader) GetDefinition(ctx context.Context, luid string) (definitioninspect.Definition, error) {
+func (r *cachePulseDefinitionGetReader) GetDefinition(ctx context.Context, luid string) (pulsedefinition.Definition, error) {
 	result, err := r.store.ReadResources(ctx, cache.ResourceQuery{Environment: r.environment, Site: r.site, Kind: pulseDefinitionKind, LUID: luid, Limit: 1})
 	if err != nil {
-		return definitioninspect.Definition{}, cacheReadError("pulse.definition.inspect", r.environment, r.site, err)
+		return pulsedefinition.Definition{}, cacheReadError("pulse.definition.inspect", r.environment, r.site, err)
 	}
 	r.source = cacheRecordSource(result, result.Entries[0])
 	var item tableaupulse.Definition
 	if err := json.Unmarshal(result.Entries[0].Payload, &item); err != nil {
-		return definitioninspect.Definition{}, fmt.Errorf("decode cache Pulse definition %q: %w", luid, err)
+		return pulsedefinition.Definition{}, fmt.Errorf("decode cache Pulse definition %q: %w", luid, err)
 	}
 	item.TableauRequestID = ""
 	return definitionGetItem(item)
@@ -957,25 +912,25 @@ type cachePulseMetricListReader struct {
 	source      *readsource.Metadata
 }
 
-func (r *cachePulseMetricListReader) ListMetrics(ctx context.Context, definitionLUID string, request metriclist.PageRequest) (metriclist.Page, error) {
+func (r *cachePulseMetricListReader) ListMetrics(ctx context.Context, definitionLUID string, request pulsemetric.ListPageRequest) (pulsemetric.ListPage, error) {
 	offset, err := pulseCacheOffset(request.PageToken)
 	if err != nil {
-		return metriclist.Page{}, err
+		return pulsemetric.ListPage{}, err
 	}
 	result, err := r.store.ReadResources(ctx, cache.ResourceQuery{Environment: r.environment, Site: r.site, Kind: pulseMetricKind, ProjectPath: definitionLUID, Offset: offset, Limit: request.PageSize})
 	if err != nil {
-		return metriclist.Page{}, cacheReadError("pulse.metric.list", r.environment, r.site, err)
+		return pulsemetric.ListPage{}, cacheReadError("pulse.metric.list", r.environment, r.site, err)
 	}
 	r.source = cacheReadSource(result)
-	items := make([]metriclist.Metric, len(result.Entries))
+	items := make([]pulsemetric.ListMetric, len(result.Entries))
 	for index, entry := range result.Entries {
 		var item tableaupulse.Metric
 		if err := json.Unmarshal(entry.Payload, &item); err != nil {
-			return metriclist.Page{}, fmt.Errorf("decode cache Pulse metric %q: %w", entry.LUID, err)
+			return pulsemetric.ListPage{}, fmt.Errorf("decode cache Pulse metric %q: %w", entry.LUID, err)
 		}
 		items[index] = metricListItem(item)
 	}
-	return metriclist.Page{Metrics: items, NextPageToken: nextPulseCacheOffset(offset, len(items), result.Total)}, nil
+	return pulsemetric.ListPage{Metrics: items, NextPageToken: nextPulseCacheOffset(offset, len(items), result.Total)}, nil
 }
 
 type cachePulseMetricGetReader struct {
@@ -985,15 +940,15 @@ type cachePulseMetricGetReader struct {
 	source      *readsource.Metadata
 }
 
-func (r *cachePulseMetricGetReader) GetMetric(ctx context.Context, luid string) (metricinspect.Metric, error) {
+func (r *cachePulseMetricGetReader) GetMetric(ctx context.Context, luid string) (pulsemetric.Metric, error) {
 	result, err := r.store.ReadResources(ctx, cache.ResourceQuery{Environment: r.environment, Site: r.site, Kind: pulseMetricKind, LUID: luid, Limit: 1})
 	if err != nil {
-		return metricinspect.Metric{}, cacheReadError("pulse.metric.inspect", r.environment, r.site, err)
+		return pulsemetric.Metric{}, cacheReadError("pulse.metric.inspect", r.environment, r.site, err)
 	}
 	r.source = cacheRecordSource(result, result.Entries[0])
 	var item tableaupulse.Metric
 	if err := json.Unmarshal(result.Entries[0].Payload, &item); err != nil {
-		return metricinspect.Metric{}, fmt.Errorf("decode cache Pulse metric %q: %w", luid, err)
+		return pulsemetric.Metric{}, fmt.Errorf("decode cache Pulse metric %q: %w", luid, err)
 	}
 	item.TableauRequestID = ""
 	return metricGetItem(item), nil
@@ -1007,30 +962,30 @@ type cachePulseFollowerReader struct {
 	snapshot    *pulseFollowerSnapshot
 }
 
-func (r *cachePulseFollowerReader) GetMetric(ctx context.Context, luid string) (metricfollowers.Metric, error) {
+func (r *cachePulseFollowerReader) GetMetric(ctx context.Context, luid string) (pulsemetric.Metric, error) {
 	result, err := r.store.ReadResources(ctx, cache.ResourceQuery{Environment: r.environment, Site: r.site, Kind: pulseFollowerSnapshotKind, LUID: luid, Limit: 1})
 	if err != nil {
-		return metricfollowers.Metric{}, cacheReadError("pulse.metric.followers", r.environment, r.site, err)
+		return pulsemetric.Metric{}, cacheReadError("pulse.metric.followers", r.environment, r.site, err)
 	}
 	r.source = cacheRecordSource(result, result.Entries[0])
 	var snapshot pulseFollowerSnapshot
 	if err := json.Unmarshal(result.Entries[0].Payload, &snapshot); err != nil {
-		return metricfollowers.Metric{}, fmt.Errorf("decode cache Pulse follower snapshot: %w", err)
+		return pulsemetric.Metric{}, fmt.Errorf("decode cache Pulse follower snapshot: %w", err)
 	}
 	if snapshot.Version != 1 || snapshot.MetricLUID != luid || snapshot.Subscriptions == nil {
-		return metricfollowers.Metric{}, errors.New("cache Pulse follower snapshot is incomplete or has an unsupported version; run the exact follower command without --cache to replace it")
+		return pulsemetric.Metric{}, errors.New("cache Pulse follower snapshot is incomplete or has an unsupported version; run the exact follower command without --cache to replace it")
 	}
 	r.snapshot = &snapshot
-	return metricfollowers.Metric{LUID: snapshot.MetricLUID}, nil
+	return pulsemetric.Metric{LUID: snapshot.MetricLUID}, nil
 }
 
-func (r *cachePulseFollowerReader) ListSubscriptions(ctx context.Context, metricLUID string) ([]metricfollowers.Subscription, error) {
+func (r *cachePulseFollowerReader) ListSubscriptions(ctx context.Context, metricLUID string) ([]pulsemetric.Subscription, error) {
 	if r.snapshot == nil || r.snapshot.MetricLUID != metricLUID {
 		if _, err := r.GetMetric(ctx, metricLUID); err != nil {
 			return nil, err
 		}
 	}
-	items := make([]metricfollowers.Subscription, len(r.snapshot.Subscriptions))
+	items := make([]pulsemetric.Subscription, len(r.snapshot.Subscriptions))
 	copy(items, r.snapshot.Subscriptions)
 	return items, nil
 }
@@ -1064,16 +1019,16 @@ func (c *pulseCommands) writePulseMetrics(environment config.Environment, items 
 }
 
 type pulseFollowerSnapshot struct {
-	Version       int                            `json:"version"`
-	MetricLUID    string                         `json:"metric_luid"`
-	Subscriptions []metricfollowers.Subscription `json:"subscriptions"`
+	Version       int                        `json:"version"`
+	MetricLUID    string                     `json:"metric_luid"`
+	Subscriptions []pulsemetric.Subscription `json:"subscriptions"`
 }
 
 func (c *pulseCommands) writePulseFollowers(ctx context.Context, environment config.Environment, metricLUID string, items []tableaupulse.Subscription) error {
 	observedAt := c.runtime.now().UTC()
-	snapshot := pulseFollowerSnapshot{Version: 1, MetricLUID: metricLUID, Subscriptions: make([]metricfollowers.Subscription, 0, len(items))}
+	snapshot := pulseFollowerSnapshot{Version: 1, MetricLUID: metricLUID, Subscriptions: make([]pulsemetric.Subscription, 0, len(items))}
 	for _, item := range items {
-		snapshot.Subscriptions = append(snapshot.Subscriptions, metricfollowers.Subscription{LUID: item.LUID, MetricLUID: item.MetricLUID, FollowerType: item.FollowerType, FollowerLUID: item.FollowerLUID, FollowerName: item.FollowerName})
+		snapshot.Subscriptions = append(snapshot.Subscriptions, pulsemetric.Subscription{LUID: item.LUID, MetricLUID: item.MetricLUID, FollowerType: item.FollowerType, FollowerLUID: item.FollowerLUID, FollowerName: item.FollowerName})
 	}
 	entry, err := resourceEntry(environment.Alias, environment.SiteContentURL, pulseFollowerSnapshotKind, metricLUID, metricLUID, "", "", "detail", observedAt, snapshot)
 	if err != nil {

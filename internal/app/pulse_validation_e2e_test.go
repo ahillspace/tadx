@@ -14,7 +14,7 @@ import (
 	"strings"
 	"testing"
 
-	definitioncreate "github.com/ahillspace/tadx/actions/pulse/definition/create"
+	pulsedefinition "github.com/ahillspace/tadx/actions/pulse/definition"
 	"github.com/ahillspace/tadx/internal/app"
 )
 
@@ -47,7 +47,7 @@ func TestPulseCreateValidationThroughCLI(t *testing.T) {
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			var creates, fieldReads, collisionReads int
-			var created definitioncreate.CreateRequest
+			var created pulsedefinition.CreateRequest
 			server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				w.Header().Set("Content-Type", "application/json")
 				switch {

@@ -8,60 +8,59 @@ import (
 	"fmt"
 	"path/filepath"
 
-	definitioncreate "github.com/ahillspace/tadx/actions/pulse/definition/create"
-	definitionpublish "github.com/ahillspace/tadx/actions/pulse/definition/publish"
+	pulsedefinition "github.com/ahillspace/tadx/actions/pulse/definition"
 	"github.com/ahillspace/tadx/internal/artifact"
 	"github.com/ahillspace/tadx/internal/tableau/fieldcatalog"
 	tableaupulse "github.com/ahillspace/tadx/internal/tableau/pulse"
 )
 
-func (c *pulseCommands) PublishPulseDefinition(ctx context.Context, input definitionpublish.Input) (definitionpublish.Output, error) {
-	if err := definitionpublish.ValidateInput(input); err != nil {
-		return definitionpublish.Output{}, err
+func (c *pulseCommands) PublishPulseDefinition(ctx context.Context, input pulsedefinition.PublishInput) (pulsedefinition.PublishOutput, error) {
+	if err := pulsedefinition.PublishValidateInput(input); err != nil {
+		return pulsedefinition.PublishOutput{}, err
 	}
 	workspace, err := (&workspaceRuntime{runtime: c.runtime}).resolveForEnvironment(ctx, input.Workspace, input.Environment)
 	if err != nil {
-		return definitionpublish.Output{}, capabilitySetupError("pulse.definition.publish.workspace", "pulse.definition.publish", input.Environment, "", "Pulse bundle workspace resolution failed.", "Select an exact logical workspace.", err)
+		return pulsedefinition.PublishOutput{}, capabilitySetupError("pulse.definition.publish.workspace", "pulse.definition.publish", input.Environment, "", "Pulse bundle workspace resolution failed.", "Select an exact logical workspace.", err)
 	}
 	managed, err := artifact.Resolve(ctx, workspace.Root, artifact.Selector{Kind: "pulse-definition", Path: input.Artifact, LUID: input.ArtifactID, Name: input.ArtifactName})
 	if err != nil {
 		if _, ambiguous := errors.AsType[*artifact.AmbiguousSelectorError](err); ambiguous {
-			return definitionpublish.Output{}, mapArtifactResolutionError("pulse.definition.publish", workspace.Name, input.ArtifactID, err)
+			return pulsedefinition.PublishOutput{}, mapArtifactResolutionError("pulse.definition.publish", workspace.Name, input.ArtifactID, err)
 		}
-		return definitionpublish.Output{}, capabilitySetupError("pulse.definition.publish.artifact", "pulse.definition.publish", input.Environment, "", "Pulse bundle artifact resolution failed.", "Select an exact workspace-relative Pulse artifact.", err)
+		return pulsedefinition.PublishOutput{}, capabilitySetupError("pulse.definition.publish.artifact", "pulse.definition.publish", input.Environment, "", "Pulse bundle artifact resolution failed.", "Select an exact workspace-relative Pulse artifact.", err)
 	}
 	bundle, err := artifact.ReadPulseBundle(ctx, filepath.Join(workspace.Root, filepath.FromSlash(managed.Path)))
 	if err != nil {
-		return definitionpublish.Output{}, capabilitySetupError("pulse.definition.publish.bundle", "pulse.definition.publish", input.Environment, "", "Portable Pulse bundle validation failed.", "Pull a complete Pulse bundle before publishing.", err)
+		return pulsedefinition.PublishOutput{}, capabilitySetupError("pulse.definition.publish.bundle", "pulse.definition.publish", input.Environment, "", "Portable Pulse bundle validation failed.", "Pull a complete Pulse bundle before publishing.", err)
 	}
 	input.Artifact = managed.Path
 	input.ArtifactID, input.ArtifactName = "", ""
 	input.WorkspaceName = workspace.Name
-	reader := pulseBundleReader{bundle: definitionpublish.Bundle{DefinitionLUID: bundle.DefinitionLUID, DatasourceLUID: bundle.DatasourceReferences[0], Configuration: bundle.Definition, Metrics: make([]definitionpublish.Metric, len(bundle.Metrics))}}
+	reader := pulseBundleReader{bundle: pulsedefinition.PublishBundle{DefinitionLUID: bundle.DefinitionLUID, DatasourceLUID: bundle.DatasourceReferences[0], Configuration: bundle.Definition, Metrics: make([]pulsedefinition.PublishMetric, len(bundle.Metrics))}}
 	for i, metric := range bundle.Metrics {
-		reader.bundle.Metrics[i] = definitionpublish.Metric{LUID: metric.LUID, IsDefault: metric.IsDefault, Specification: metric.Specification}
+		reader.bundle.Metrics[i] = pulsedefinition.PublishMetric{LUID: metric.LUID, IsDefault: metric.IsDefault, Specification: metric.Specification}
 	}
-	if _, err := definitionpublish.PrepareBundle(input, reader.bundle); err != nil {
-		return definitionpublish.Output{}, err
+	if _, err := pulsedefinition.PublishPrepareBundle(input, reader.bundle); err != nil {
+		return pulsedefinition.PublishOutput{}, err
 	}
 	connection, err := c.connect(ctx, input.Environment, true)
 	if err != nil {
-		return definitionpublish.Output{}, remoteSetupError("pulse.definition.publish", input.Environment, input.Site, connection.environment, err)
+		return pulsedefinition.PublishOutput{}, remoteSetupError("pulse.definition.publish", input.Environment, input.Site, connection.environment, err)
 	}
 	input.Environment, input.Site, input.SiteLUID = connection.environment.Alias, connection.environment.SiteContentURL, connection.siteLUID
 	adapter := pulseBundleAdapter{connection: connection}
-	return definitionpublish.New(reader, adapter, adapter).Execute(ctx, input)
+	return pulsedefinition.Publish(ctx, reader, adapter, adapter, input)
 }
 
-type pulseBundleReader struct{ bundle definitionpublish.Bundle }
+type pulseBundleReader struct{ bundle pulsedefinition.PublishBundle }
 
-func (r pulseBundleReader) ReadBundle(context.Context, string) (definitionpublish.Bundle, error) {
+func (r pulseBundleReader) ReadBundle(context.Context, string) (pulsedefinition.PublishBundle, error) {
 	return r.bundle, nil
 }
 
 type pulseBundleAdapter struct{ connection pulseConnection }
 
-func (a pulseBundleAdapter) ValidateDefinition(ctx context.Context, data json.RawMessage, metrics []definitionpublish.Metric) error {
+func (a pulseBundleAdapter) ValidateDefinition(ctx context.Context, data json.RawMessage, metrics []pulsedefinition.PublishMetric) error {
 	// The raw contract validates saved business sections before this boundary.
 	// Decode only destination-validation inputs without narrowing unrelated wire shapes.
 	var request struct {
@@ -90,7 +89,7 @@ func (a pulseBundleAdapter) ValidateDefinition(ctx context.Context, data json.Ra
 		fields[field.ID] = append(fields[field.ID], field)
 	}
 	validator := pulseDefinitionFieldValidator{}
-	if err := validator.validateFields(fields, definitioncreate.FieldReferences{DatasourceLUID: request.Specification.Datasource.ID, MeasureField: request.Specification.BasicSpecification.Measure.Field, Aggregation: request.Specification.BasicSpecification.Measure.Aggregation, TimeDimension: request.Specification.BasicSpecification.TimeDimension.Field, AllowedDimensions: request.ExtensionOptions.AllowedDimensions}); err != nil {
+	if err := validator.validateFields(fields, pulsedefinition.CreateFieldReferences{DatasourceLUID: request.Specification.Datasource.ID, MeasureField: request.Specification.BasicSpecification.Measure.Field, Aggregation: request.Specification.BasicSpecification.Measure.Aggregation, TimeDimension: request.Specification.BasicSpecification.TimeDimension.Field, AllowedDimensions: request.ExtensionOptions.AllowedDimensions}); err != nil {
 		return err
 	}
 	if err := validatePulseBundleFilters(fields, request.Specification.BasicSpecification.Filters); err != nil {
@@ -157,9 +156,9 @@ func validatePulseBundleFilters(fields map[string][]fieldcatalog.Field, raw json
 	return nil
 }
 
-func (a pulseBundleAdapter) CreateDefinition(ctx context.Context, data json.RawMessage) (definitionpublish.DefinitionResult, error) {
+func (a pulseBundleAdapter) CreateDefinition(ctx context.Context, data json.RawMessage) (pulsedefinition.PublishDefinitionResult, error) {
 	result, err := a.connection.client.CreateDefinitionDocument(ctx, data)
-	return definitionpublish.DefinitionResult{LUID: result.DefinitionLUID, DefaultMetricLUID: result.DefaultMetricLUID, RequestID: result.TableauRequestID}, err
+	return pulsedefinition.PublishDefinitionResult{LUID: result.DefinitionLUID, DefaultMetricLUID: result.DefaultMetricLUID, RequestID: result.TableauRequestID}, err
 }
 
 func pulseBundleSpecification(data json.RawMessage) (map[string]any, error) {
@@ -170,13 +169,13 @@ func pulseBundleSpecification(data json.RawMessage) (map[string]any, error) {
 	return result, err
 }
 
-func (a pulseBundleAdapter) CreateMetric(ctx context.Context, definition string, data json.RawMessage) (definitionpublish.MetricResult, error) {
+func (a pulseBundleAdapter) CreateMetric(ctx context.Context, definition string, data json.RawMessage) (pulsedefinition.PublishMetricResult, error) {
 	specification, err := pulseBundleSpecification(data)
 	if err != nil {
-		return definitionpublish.MetricResult{}, err
+		return pulsedefinition.PublishMetricResult{}, err
 	}
 	result, err := a.connection.client.GetOrCreateMetric(ctx, tableaupulse.GetOrCreateRequest{DefinitionLUID: definition, Specification: specification})
-	return definitionpublish.MetricResult{LUID: result.MetricLUID, RequestID: result.TableauRequestID}, err
+	return pulsedefinition.PublishMetricResult{LUID: result.MetricLUID, RequestID: result.TableauRequestID}, err
 }
 
 func (a pulseBundleAdapter) VerifyMetric(ctx context.Context, metric, definition, datasource, site string, data json.RawMessage) error {

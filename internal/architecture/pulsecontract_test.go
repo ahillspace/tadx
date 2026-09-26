@@ -11,9 +11,9 @@ func TestPulseContractIsAvailableOnlyToPulseActions(t *testing.T) {
 		file    string
 		allowed bool
 	}{
-		{"actions/pulse/definition/create/action.go", true},
-		{"actions/pulse/definition/publish/action.go", true},
-		{"actions/pulse/metric/fork/action.go", true},
+		{"actions/pulse/definition/create.go", true},
+		{"actions/pulse/definition/publish.go", true},
+		{"actions/pulse/metric/fork.go", true},
 		{"actions/workbook/publish.go", false},
 		{"actions/pulsex/create/action.go", false},
 		{"internal/app/pulse.go", false},
@@ -40,7 +40,7 @@ func TestPulseContractPermitsOnlyStandardLibraryImports(t *testing.T) {
 import (
  _ "encoding/json"
  _ "math/big"
- _ "example.test/tadx/actions/pulse/definition/create"
+ _ "example.test/tadx/actions/pulse/definition"
  _ "example.test/tadx/internal/app"
  _ "example.test/tadx/internal/tableau/pulse"
  _ "example.test/tadx/internal/value"
@@ -53,7 +53,7 @@ import (
 		t.Fatal(err)
 	}
 	assertViolationStrings(t, violations, []string{
-		"internal/pulsecontract/validation.go imports example.test/tadx/actions/pulse/definition/create: Pulse contracts must depend only on the standard library",
+		"internal/pulsecontract/validation.go imports example.test/tadx/actions/pulse/definition: Pulse contracts must depend only on the standard library",
 		"internal/pulsecontract/validation.go imports example.test/tadx/internal/app: Pulse contracts must depend only on the standard library",
 		"internal/pulsecontract/validation.go imports example.test/tadx/internal/pulsecontract/helper: Pulse contracts must depend only on the standard library",
 		"internal/pulsecontract/validation.go imports example.test/tadx/internal/tableau/pulse: Pulse contracts must depend only on the standard library",

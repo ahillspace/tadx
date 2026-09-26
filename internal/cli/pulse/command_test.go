@@ -5,100 +5,89 @@ import (
 	"strings"
 	"testing"
 
-	definitioncreate "github.com/ahillspace/tadx/actions/pulse/definition/create"
-	definitiondelete "github.com/ahillspace/tadx/actions/pulse/definition/delete"
-	definitioninspect "github.com/ahillspace/tadx/actions/pulse/definition/inspect"
-	definitionlist "github.com/ahillspace/tadx/actions/pulse/definition/list"
-	definitionpublish "github.com/ahillspace/tadx/actions/pulse/definition/publish"
-	definitionpull "github.com/ahillspace/tadx/actions/pulse/definition/pull"
-	metricdelete "github.com/ahillspace/tadx/actions/pulse/metric/delete"
-	metricfollow "github.com/ahillspace/tadx/actions/pulse/metric/follow"
-	metricfollowers "github.com/ahillspace/tadx/actions/pulse/metric/followers"
-	metricfork "github.com/ahillspace/tadx/actions/pulse/metric/fork"
-	metricinspect "github.com/ahillspace/tadx/actions/pulse/metric/inspect"
-	metriclist "github.com/ahillspace/tadx/actions/pulse/metric/list"
-	metricunfollow "github.com/ahillspace/tadx/actions/pulse/metric/unfollow"
+	pulsedefinition "github.com/ahillspace/tadx/actions/pulse/definition"
+	pulsemetric "github.com/ahillspace/tadx/actions/pulse/metric"
 	pulsecli "github.com/ahillspace/tadx/internal/cli/pulse"
 	"github.com/spf13/cobra"
 )
 
 type actions struct {
-	definitionListInput     definitionlist.Input
-	definitionCreateInput   definitioncreate.Input
+	definitionListInput     pulsedefinition.ListInput
+	definitionCreateInput   pulsedefinition.CreateInput
 	definitionCreatePreview bool
-	definitionDeleteInput   definitiondelete.Input
-	definitionPublishInput  definitionpublish.Input
-	metricForkInput         metricfork.Input
+	definitionDeleteInput   pulsedefinition.DeleteInput
+	definitionPublishInput  pulsedefinition.PublishInput
+	metricForkInput         pulsemetric.ForkInput
 	metricForkPreview       bool
-	metricDeleteInput       metricdelete.Input
-	metricFollowInput       metricfollow.Input
+	metricDeleteInput       pulsemetric.DeleteInput
+	metricFollowInput       pulsemetric.FollowInput
 	metricFollowPreview     bool
-	metricUnfollowInput     metricunfollow.Input
+	metricUnfollowInput     pulsemetric.UnfollowInput
 	metricUnfollowPreview   bool
 }
 
-func (a *actions) ListPulseDefinitions(_ context.Context, input definitionlist.Input) (definitionlist.Output, error) {
+func (a *actions) ListPulseDefinitions(_ context.Context, input pulsedefinition.ListInput) (pulsedefinition.ListOutput, error) {
 	a.definitionListInput = input
-	return definitionlist.Output{}, nil
+	return pulsedefinition.ListOutput{}, nil
 }
 
-func (*actions) InspectPulseDefinition(context.Context, definitioninspect.Input) (definitioninspect.Output, error) {
-	return definitioninspect.Output{}, nil
+func (*actions) InspectPulseDefinition(context.Context, pulsedefinition.InspectInput) (pulsedefinition.InspectOutput, error) {
+	return pulsedefinition.InspectOutput{}, nil
 }
 
-func (*actions) PullPulseDefinition(context.Context, definitionpull.Input) (definitionpull.Output, error) {
-	return definitionpull.Output{}, nil
+func (*actions) PullPulseDefinition(context.Context, pulsedefinition.PullInput) (pulsedefinition.PullOutput, error) {
+	return pulsedefinition.PullOutput{}, nil
 }
 
-func (a *actions) PublishPulseDefinition(_ context.Context, input definitionpublish.Input) (definitionpublish.Output, error) {
+func (a *actions) PublishPulseDefinition(_ context.Context, input pulsedefinition.PublishInput) (pulsedefinition.PublishOutput, error) {
 	a.definitionPublishInput = input
-	return definitionpublish.Output{}, nil
+	return pulsedefinition.PublishOutput{}, nil
 }
 
-func (a *actions) CreatePulseDefinition(_ context.Context, input definitioncreate.Input, preview bool) (definitioncreate.Output, error) {
+func (a *actions) CreatePulseDefinition(_ context.Context, input pulsedefinition.CreateInput, preview bool) (pulsedefinition.CreateOutput, error) {
 	a.definitionCreateInput = input
 	a.definitionCreatePreview = preview
-	return definitioncreate.Output{}, nil
+	return pulsedefinition.CreateOutput{}, nil
 }
 
-func (a *actions) DeletePulseDefinition(_ context.Context, input definitiondelete.Input) (definitiondelete.Output, error) {
+func (a *actions) DeletePulseDefinition(_ context.Context, input pulsedefinition.DeleteInput) (pulsedefinition.DeleteOutput, error) {
 	a.definitionDeleteInput = input
-	return definitiondelete.Output{}, nil
+	return pulsedefinition.DeleteOutput{}, nil
 }
 
-func (*actions) ListPulseMetrics(context.Context, metriclist.Input) (metriclist.Output, error) {
-	return metriclist.Output{}, nil
+func (*actions) ListPulseMetrics(context.Context, pulsemetric.ListInput) (pulsemetric.ListOutput, error) {
+	return pulsemetric.ListOutput{}, nil
 }
 
-func (*actions) InspectPulseMetric(context.Context, metricinspect.Input) (metricinspect.Output, error) {
-	return metricinspect.Output{}, nil
+func (*actions) InspectPulseMetric(context.Context, pulsemetric.InspectInput) (pulsemetric.InspectOutput, error) {
+	return pulsemetric.InspectOutput{}, nil
 }
 
-func (a *actions) ForkPulseMetric(_ context.Context, input metricfork.Input, preview bool) (metricfork.Output, error) {
+func (a *actions) ForkPulseMetric(_ context.Context, input pulsemetric.ForkInput, preview bool) (pulsemetric.ForkOutput, error) {
 	a.metricForkInput = input
 	a.metricForkPreview = preview
-	return metricfork.Output{}, nil
+	return pulsemetric.ForkOutput{}, nil
 }
 
-func (a *actions) DeletePulseMetric(_ context.Context, input metricdelete.Input) (metricdelete.Output, error) {
+func (a *actions) DeletePulseMetric(_ context.Context, input pulsemetric.DeleteInput) (pulsemetric.DeleteOutput, error) {
 	a.metricDeleteInput = input
-	return metricdelete.Output{}, nil
+	return pulsemetric.DeleteOutput{}, nil
 }
 
-func (*actions) ListPulseMetricFollowers(context.Context, metricfollowers.Input) (metricfollowers.Output, error) {
-	return metricfollowers.Output{}, nil
+func (*actions) ListPulseMetricFollowers(context.Context, pulsemetric.FollowersInput) (pulsemetric.FollowersOutput, error) {
+	return pulsemetric.FollowersOutput{}, nil
 }
 
-func (a *actions) FollowPulseMetric(_ context.Context, input metricfollow.Input, preview bool) (metricfollow.Output, error) {
+func (a *actions) FollowPulseMetric(_ context.Context, input pulsemetric.FollowInput, preview bool) (pulsemetric.FollowOutput, error) {
 	a.metricFollowInput = input
 	a.metricFollowPreview = preview
-	return metricfollow.Output{}, nil
+	return pulsemetric.FollowOutput{}, nil
 }
 
-func (a *actions) UnfollowPulseMetric(_ context.Context, input metricunfollow.Input, preview bool) (metricunfollow.Output, error) {
+func (a *actions) UnfollowPulseMetric(_ context.Context, input pulsemetric.UnfollowInput, preview bool) (pulsemetric.UnfollowOutput, error) {
 	a.metricUnfollowInput = input
 	a.metricUnfollowPreview = preview
-	return metricunfollow.Output{}, nil
+	return pulsemetric.UnfollowOutput{}, nil
 }
 
 type renderer struct{}
@@ -207,7 +196,7 @@ func TestDefinitionListMapsCacheInput(t *testing.T) {
 	if err := command.Execute(); err != nil {
 		t.Fatal(err)
 	}
-	want := definitionlist.Input{Environment: "development", Limit: 12, Cursor: "next", Cache: true}
+	want := pulsedefinition.ListInput{Environment: "development", Limit: 12, Cursor: "next", Cache: true}
 	if a.definitionListInput != want {
 		t.Fatalf("list input = %#v, want %#v", a.definitionListInput, want)
 	}
@@ -297,7 +286,7 @@ func TestMetricUnfollowRejectsMixedAndIncompleteSelectorFlags(t *testing.T) {
 		if err := command.Execute(); err == nil {
 			t.Fatalf("invalid selectors accepted: %v", flags)
 		}
-		if a.metricUnfollowInput != (metricunfollow.Input{}) {
+		if a.metricUnfollowInput != (pulsemetric.UnfollowInput{}) {
 			t.Fatalf("invalid selectors reached action: flags=%v input=%#v", flags, a.metricUnfollowInput)
 		}
 	}
@@ -319,7 +308,7 @@ func TestMetricForkGroupsRepeatedFilters(t *testing.T) {
 	if err := command.Execute(); err != nil {
 		t.Fatal(err)
 	}
-	want := []metricfork.Filter{
+	want := []pulsemetric.ForkFilter{
 		{Field: "[Category]", Values: []string{"Furniture"}, Exclude: true},
 		{Field: "[Region]", Values: []string{"East", "West"}},
 	}

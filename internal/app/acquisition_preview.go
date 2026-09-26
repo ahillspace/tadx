@@ -3,10 +3,11 @@ package app
 import (
 	"context"
 	"encoding/json"
+
 	datasourceops "github.com/ahillspace/tadx/actions/datasource"
 	flowops "github.com/ahillspace/tadx/actions/flow"
 	lineagepull "github.com/ahillspace/tadx/actions/lineage/pull"
-	definitionpull "github.com/ahillspace/tadx/actions/pulse/definition/pull"
+	pulsedefinition "github.com/ahillspace/tadx/actions/pulse/definition"
 	workbookops "github.com/ahillspace/tadx/actions/workbook"
 	"github.com/ahillspace/tadx/internal/artifact"
 	"github.com/ahillspace/tadx/internal/errs"
@@ -77,7 +78,7 @@ func (w lineageArtifactWriter) PreviewLineage(ctx context.Context, input lineage
 	return plan, nil
 }
 
-func (w pulseDefinitionArtifactWriter) PreviewDefinition(ctx context.Context, input definitionpull.Input, item definitionpull.Definition) (value.AcquisitionPlan, error) {
+func (w pulseDefinitionArtifactWriter) PreviewDefinition(ctx context.Context, input pulsedefinition.PullInput, item pulsedefinition.PullDefinition) (value.AcquisitionPlan, error) {
 	if input.Environment == "" || input.Site == "" {
 		return value.AcquisitionPlan{}, capabilitySetupError("pulse.definition.pull.preview", "pulse.definition.pull", input.Environment, input.Site, "Pulse definition artifact requires source environment and site identity.", "Configure a complete Pulse source target before pulling.", nil)
 	}

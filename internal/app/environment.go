@@ -5,34 +5,29 @@ import (
 	"context"
 	"fmt"
 	"os"
-	"sort"
+	"slices"
 
 	authstatus "github.com/ahillspace/tadx/actions/auth/status"
-	profileadd "github.com/ahillspace/tadx/actions/env/profile/add"
-	profileget "github.com/ahillspace/tadx/actions/env/profile/get"
-	profilelist "github.com/ahillspace/tadx/actions/env/profile/list"
-	profileremove "github.com/ahillspace/tadx/actions/env/profile/remove"
-	profilesetdefault "github.com/ahillspace/tadx/actions/env/profile/setdefault"
-	profileupdate "github.com/ahillspace/tadx/actions/env/profile/update"
+	"github.com/ahillspace/tadx/actions/env/profile"
 	envcli "github.com/ahillspace/tadx/internal/cli/env"
 	"github.com/ahillspace/tadx/internal/config"
 	tableaucache "github.com/ahillspace/tadx/internal/tableau/cache"
 )
 
 type environmentCommands struct {
-	list       *profilelist.Action
-	get        *profileget.Action
-	add        *profileadd.Action
-	update     *profileupdate.Action
-	remove     *profileremove.Action
-	setDefault *profilesetdefault.Action
+	list       *profile.ListAction
+	get        *profile.GetAction
+	add        *profile.AddAction
+	update     *profile.UpdateAction
+	remove     *profile.RemoveAction
+	setDefault *profile.SetDefaultAction
 }
 
 func newEnvironmentCommands(runtime *runtimeDependencies) *environmentCommands {
 	store := configProfileStore{path: &runtime.configPath}
 	return &environmentCommands{
-		list: profilelist.New(store), get: profileget.New(store), add: profileadd.New(store),
-		update: profileupdate.New(store), remove: profileremove.New(store), setDefault: profilesetdefault.New(store),
+		list: profile.NewList(store), get: profile.NewGet(store), add: profile.NewAdd(store),
+		update: profile.NewUpdate(store), remove: profile.NewRemove(store), setDefault: profile.NewSetDefault(store),
 	}
 }
 
@@ -44,22 +39,22 @@ func (c *environmentCommands) dependencies() *envcli.Dependencies {
 	}
 }
 
-func (c *environmentCommands) List(ctx context.Context, input profilelist.Input) (profilelist.Output, error) {
+func (c *environmentCommands) List(ctx context.Context, input profile.ListInput) (profile.ListOutput, error) {
 	return c.list.Execute(ctx, input)
 }
-func (c *environmentCommands) Get(ctx context.Context, input profileget.Input) (profileget.Output, error) {
+func (c *environmentCommands) Get(ctx context.Context, input profile.GetInput) (profile.GetOutput, error) {
 	return c.get.Execute(ctx, input)
 }
-func (c *environmentCommands) Add(ctx context.Context, input profileadd.Input) (profileadd.Output, error) {
+func (c *environmentCommands) Add(ctx context.Context, input profile.AddInput) (profile.AddOutput, error) {
 	return c.add.Execute(ctx, input)
 }
-func (c *environmentCommands) Update(ctx context.Context, input profileupdate.Input) (profileupdate.Output, error) {
+func (c *environmentCommands) Update(ctx context.Context, input profile.UpdateInput) (profile.UpdateOutput, error) {
 	return c.update.Execute(ctx, input)
 }
-func (c *environmentCommands) Remove(ctx context.Context, input profileremove.Input) (profileremove.Output, error) {
+func (c *environmentCommands) Remove(ctx context.Context, input profile.RemoveInput) (profile.RemoveOutput, error) {
 	return c.remove.Execute(ctx, input)
 }
-func (c *environmentCommands) SetDefault(ctx context.Context, input profilesetdefault.Input) (profilesetdefault.Output, error) {
+func (c *environmentCommands) SetDefault(ctx context.Context, input profile.SetDefaultInput) (profile.SetDefaultOutput, error) {
 	return c.setDefault.Execute(ctx, input)
 }
 
@@ -75,11 +70,11 @@ func (s configProfileStore) updateConfig(createIfMissing bool, mutate func(confi
 	return config.Update(*s.path, createIfMissing, mutate)
 }
 
-func (s configProfileStore) PreviewAdd(ctx context.Context, input profileadd.Profile) (profileadd.Profile, error) {
+func (s configProfileStore) PreviewAdd(ctx context.Context, input profile.AddProfile) (profile.AddProfile, error) {
 	s.preview = true
 	return s.Add(ctx, input)
 }
-func (s configProfileStore) PreviewUpdate(ctx context.Context, alias string, patch profileupdate.Patch) (profileupdate.UpdateResult, error) {
+func (s configProfileStore) PreviewUpdate(ctx context.Context, alias string, patch profile.Patch) (profile.UpdateResult, error) {
 	s.preview = true
 	return s.Update(ctx, alias, patch)
 }
@@ -92,7 +87,7 @@ func (s configProfileStore) PreviewSetDefault(ctx context.Context, alias string)
 	return s.SetDefault(ctx, alias)
 }
 
-func (s configProfileStore) List(_ context.Context) ([]profilelist.Profile, error) {
+func (s configProfileStore) List(_ context.Context) ([]profile.Profile, error) {
 	configuration, err := config.Load(*s.path)
 	if err != nil {
 		return nil, err
@@ -101,27 +96,30 @@ func (s configProfileStore) List(_ context.Context) ([]profilelist.Profile, erro
 	for alias := range configuration.Environments {
 		aliases = append(aliases, alias)
 	}
-	sort.Strings(aliases)
-	profiles := make([]profilelist.Profile, 0, len(aliases))
+	slices.Sort(aliases)
+	profiles := make([]profile.Profile, 0, len(aliases))
 	for _, alias := range aliases {
 		environment, resolveErr := configuration.ResolveEnvironment(alias)
 		if resolveErr != nil {
 			return nil, resolveErr
 		}
-		profiles = append(profiles, listProfile(configuration, environment))
+		profiles = append(profiles, profileFromConfig(configuration, environment))
 	}
 	return profiles, nil
 }
 
-func (s configProfileStore) Get(_ context.Context, alias string) (profileget.Profile, error) {
+func (s configProfileStore) Get(_ context.Context, alias string) (profile.Profile, error) {
 	configuration, environment, err := s.resolve(alias)
 	if err != nil {
-		return profileget.Profile{}, err
+		return profile.Profile{}, err
 	}
-	return profileget.Profile{Alias: environment.Alias, Default: environment.Alias == configuration.DefaultEnvironment, ServerURL: environment.URL, SiteContentURL: environment.SiteContentURL, APIVersion: environment.APIVersion, AuthType: environment.Auth.Type, PATNameEnv: environment.Auth.PATNameEnv, PATSecretEnv: environment.Auth.PATSecretEnv, DefaultWorkspace: cmp.Or(environment.DefaultWorkspace, configuration.DefaultWorkspace), CacheMaxConcurrency: cmp.Or(environment.CacheMaxConcurrency, tableaucache.DefaultMaxConcurrency)}, nil
+	result := profileFromConfig(configuration, environment)
+	result.DefaultWorkspace = cmp.Or(environment.DefaultWorkspace, configuration.DefaultWorkspace)
+	result.CacheMaxConcurrency = cmp.Or(environment.CacheMaxConcurrency, tableaucache.DefaultMaxConcurrency)
+	return result, nil
 }
 
-func (s configProfileStore) Add(_ context.Context, input profileadd.Profile) (profileadd.Profile, error) {
+func (s configProfileStore) Add(_ context.Context, input profile.AddProfile) (profile.AddProfile, error) {
 	updated, err := s.updateConfig(true, func(configuration config.Config) (config.Config, error) {
 		if _, exists := configuration.Environments[input.Alias]; exists {
 			return config.Config{}, fmt.Errorf("environment %q already exists", input.Alias)
@@ -133,18 +131,18 @@ func (s configProfileStore) Add(_ context.Context, input profileadd.Profile) (pr
 		return configuration, nil
 	})
 	if err != nil {
-		return profileadd.Profile{}, err
+		return profile.AddProfile{}, err
 	}
 	environment, err := updated.ResolveEnvironment(input.Alias)
 	if err != nil {
-		return profileadd.Profile{}, err
+		return profile.AddProfile{}, err
 	}
 	profile := addProfile(environment)
 	profile.MultipleEnvironments = len(updated.Environments) == 2
 	return profile, nil
 }
 
-func (s configProfileStore) Update(_ context.Context, alias string, patch profileupdate.Patch) (profileupdate.UpdateResult, error) {
+func (s configProfileStore) Update(_ context.Context, alias string, patch profile.Patch) (profile.UpdateResult, error) {
 	var changed []string
 	updated, err := s.updateConfig(false, func(configuration config.Config) (config.Config, error) {
 		environment, exists := configuration.Environments[alias]
@@ -157,7 +155,7 @@ func (s configProfileStore) Update(_ context.Context, alias string, patch profil
 			return config.Config{}, fmt.Errorf("environment %q has a stored PAT; run tadx auth logout --environment %s before changing its Tableau target", alias, alias)
 		}
 		changed = make([]string, 0, 6)
-		apply := func(field profileupdate.StringField, name string, target *string) {
+		apply := func(field profile.StringField, name string, target *string) {
 			if field.Set && *target != field.Value {
 				*target = field.Value
 				changed = append(changed, name)
@@ -180,13 +178,13 @@ func (s configProfileStore) Update(_ context.Context, alias string, patch profil
 		return configuration, nil
 	})
 	if err != nil {
-		return profileupdate.UpdateResult{}, err
+		return profile.UpdateResult{}, err
 	}
 	effective, err := updated.ResolveEnvironment(alias)
 	if err != nil {
-		return profileupdate.UpdateResult{}, err
+		return profile.UpdateResult{}, err
 	}
-	return profileupdate.UpdateResult{Profile: profileupdate.Profile{Alias: effective.Alias, Default: effective.Alias == updated.DefaultEnvironment, ServerURL: effective.URL, SiteContentURL: effective.SiteContentURL, APIVersion: effective.APIVersion, AuthType: effective.Auth.Type, PATNameEnv: effective.Auth.PATNameEnv, PATSecretEnv: effective.Auth.PATSecretEnv, DefaultWorkspace: effective.DefaultWorkspace, CacheMaxConcurrency: effective.CacheMaxConcurrency}, ChangedFields: changed}, nil
+	return profile.UpdateResult{Profile: profile.UpdateProfile{Alias: effective.Alias, Default: effective.Alias == updated.DefaultEnvironment, ServerURL: effective.URL, SiteContentURL: effective.SiteContentURL, APIVersion: effective.APIVersion, AuthType: effective.Auth.Type, PATNameEnv: effective.Auth.PATNameEnv, PATSecretEnv: effective.Auth.PATSecretEnv, DefaultWorkspace: effective.DefaultWorkspace, CacheMaxConcurrency: effective.CacheMaxConcurrency}, ChangedFields: changed}, nil
 }
 
 func (s configProfileStore) Remove(_ context.Context, alias string) error {
@@ -235,11 +233,11 @@ func (s configProfileStore) resolve(alias string) (config.Config, config.Environ
 	return configuration, environment, err
 }
 
-func listProfile(configuration config.Config, environment config.Environment) profilelist.Profile {
-	return profilelist.Profile{Alias: environment.Alias, Default: environment.Alias == configuration.DefaultEnvironment, ServerURL: environment.URL, SiteContentURL: environment.SiteContentURL, APIVersion: environment.APIVersion, AuthType: environment.Auth.Type, PATNameEnv: environment.Auth.PATNameEnv, PATSecretEnv: environment.Auth.PATSecretEnv, DefaultWorkspace: environment.DefaultWorkspace, CacheMaxConcurrency: environment.CacheMaxConcurrency}
+func profileFromConfig(configuration config.Config, environment config.Environment) profile.Profile {
+	return profile.Profile{Alias: environment.Alias, Default: environment.Alias == configuration.DefaultEnvironment, ServerURL: environment.URL, SiteContentURL: environment.SiteContentURL, APIVersion: environment.APIVersion, AuthType: environment.Auth.Type, PATNameEnv: environment.Auth.PATNameEnv, PATSecretEnv: environment.Auth.PATSecretEnv, DefaultWorkspace: environment.DefaultWorkspace, CacheMaxConcurrency: environment.CacheMaxConcurrency}
 }
-func addProfile(environment config.Environment) profileadd.Profile {
-	return profileadd.Profile{Alias: environment.Alias, ServerURL: environment.URL, SiteContentURL: environment.SiteContentURL, APIVersion: environment.APIVersion, AuthType: environment.Auth.Type, PATNameEnv: environment.Auth.PATNameEnv, PATSecretEnv: environment.Auth.PATSecretEnv, DefaultWorkspace: environment.DefaultWorkspace, CacheMaxConcurrency: environment.CacheMaxConcurrency}
+func addProfile(environment config.Environment) profile.AddProfile {
+	return profile.AddProfile{Alias: environment.Alias, ServerURL: environment.URL, SiteContentURL: environment.SiteContentURL, APIVersion: environment.APIVersion, AuthType: environment.Auth.Type, PATNameEnv: environment.Auth.PATNameEnv, PATSecretEnv: environment.Auth.PATSecretEnv, DefaultWorkspace: environment.DefaultWorkspace, CacheMaxConcurrency: environment.CacheMaxConcurrency}
 }
 
 type authStatusResolver struct{ runtime *runtimeDependencies }

@@ -3,6 +3,9 @@ package cli_test
 import (
 	"context"
 	"errors"
+	"strings"
+	"testing"
+
 	a_admin_group_create "github.com/ahillspace/tadx/actions/admin/group/create"
 	a_admin_group_delete "github.com/ahillspace/tadx/actions/admin/group/delete"
 	a_admin_group_inspect "github.com/ahillspace/tadx/actions/admin/group/inspect"
@@ -28,7 +31,6 @@ import (
 	contentlabel_update "github.com/ahillspace/tadx/actions/contentlabel/update"
 	datasourceops "github.com/ahillspace/tadx/actions/datasource"
 	flowops "github.com/ahillspace/tadx/actions/flow"
-
 	jobcancel "github.com/ahillspace/tadx/actions/job/cancel"
 	a_lineage_pull "github.com/ahillspace/tadx/actions/lineage/pull"
 	a_project_create "github.com/ahillspace/tadx/actions/project/create"
@@ -37,21 +39,9 @@ import (
 	a_project_list "github.com/ahillspace/tadx/actions/project/list"
 	a_project_move "github.com/ahillspace/tadx/actions/project/move"
 	a_project_update "github.com/ahillspace/tadx/actions/project/update"
-	a_pulse_definition_create "github.com/ahillspace/tadx/actions/pulse/definition/create"
-	a_pulse_definition_delete "github.com/ahillspace/tadx/actions/pulse/definition/delete"
-	a_pulse_definition_inspect "github.com/ahillspace/tadx/actions/pulse/definition/inspect"
-	a_pulse_definition_list "github.com/ahillspace/tadx/actions/pulse/definition/list"
-	a_pulse_definition_publish "github.com/ahillspace/tadx/actions/pulse/definition/publish"
-	a_pulse_definition_pull "github.com/ahillspace/tadx/actions/pulse/definition/pull"
-	a_pulse_metric_delete "github.com/ahillspace/tadx/actions/pulse/metric/delete"
-	a_pulse_metric_follow "github.com/ahillspace/tadx/actions/pulse/metric/follow"
-	a_pulse_metric_followers "github.com/ahillspace/tadx/actions/pulse/metric/followers"
-	a_pulse_metric_fork "github.com/ahillspace/tadx/actions/pulse/metric/fork"
-	a_pulse_metric_inspect "github.com/ahillspace/tadx/actions/pulse/metric/inspect"
-	a_pulse_metric_list "github.com/ahillspace/tadx/actions/pulse/metric/list"
-	a_pulse_metric_unfollow "github.com/ahillspace/tadx/actions/pulse/metric/unfollow"
+	pulsedefinition "github.com/ahillspace/tadx/actions/pulse/definition"
+	pulsemetric "github.com/ahillspace/tadx/actions/pulse/metric"
 	workbookops "github.com/ahillspace/tadx/actions/workbook"
-
 	"github.com/ahillspace/tadx/internal/capability"
 	"github.com/ahillspace/tadx/internal/cli"
 	admincli "github.com/ahillspace/tadx/internal/cli/admin"
@@ -60,8 +50,6 @@ import (
 	jobcli "github.com/ahillspace/tadx/internal/cli/job"
 	pulsecli "github.com/ahillspace/tadx/internal/cli/pulse"
 	"github.com/ahillspace/tadx/internal/errs"
-	"strings"
-	"testing"
 )
 
 type contentlabel_updateSpy struct{ spy *previewActionSpy }
@@ -293,52 +281,52 @@ func (s *previewActionSpy) DeleteAdminPermission(_ context.Context, input permis
 	s.record(preview)
 	return permission.Output{}, nil
 }
-func (s *previewActionSpy) ListPulseDefinitions(_ context.Context, input a_pulse_definition_list.Input) (a_pulse_definition_list.Output, error) {
+func (s *previewActionSpy) ListPulseDefinitions(_ context.Context, input pulsedefinition.ListInput) (pulsedefinition.ListOutput, error) {
 	panic("unexpected read action")
 }
-func (s *previewActionSpy) InspectPulseDefinition(_ context.Context, input a_pulse_definition_inspect.Input) (a_pulse_definition_inspect.Output, error) {
+func (s *previewActionSpy) InspectPulseDefinition(_ context.Context, input pulsedefinition.InspectInput) (pulsedefinition.InspectOutput, error) {
 	panic("unexpected read action")
 }
-func (s *previewActionSpy) PullPulseDefinition(_ context.Context, input a_pulse_definition_pull.Input) (a_pulse_definition_pull.Output, error) {
+func (s *previewActionSpy) PullPulseDefinition(_ context.Context, input pulsedefinition.PullInput) (pulsedefinition.PullOutput, error) {
 	panic("unexpected read action")
 }
 
-func (s *previewActionSpy) PublishPulseDefinition(_ context.Context, input a_pulse_definition_publish.Input) (a_pulse_definition_publish.Output, error) {
+func (s *previewActionSpy) PublishPulseDefinition(_ context.Context, input pulsedefinition.PublishInput) (pulsedefinition.PublishOutput, error) {
 	s.record(input.Preview)
-	return a_pulse_definition_publish.Output{}, nil
+	return pulsedefinition.PublishOutput{}, nil
 }
-func (s *previewActionSpy) CreatePulseDefinition(_ context.Context, input a_pulse_definition_create.Input, preview bool) (a_pulse_definition_create.Output, error) {
+func (s *previewActionSpy) CreatePulseDefinition(_ context.Context, input pulsedefinition.CreateInput, preview bool) (pulsedefinition.CreateOutput, error) {
 	s.record(preview)
-	return a_pulse_definition_create.Output{}, nil
+	return pulsedefinition.CreateOutput{}, nil
 }
-func (s *previewActionSpy) DeletePulseDefinition(_ context.Context, input a_pulse_definition_delete.Input) (a_pulse_definition_delete.Output, error) {
+func (s *previewActionSpy) DeletePulseDefinition(_ context.Context, input pulsedefinition.DeleteInput) (pulsedefinition.DeleteOutput, error) {
 	s.record(input.Preview)
-	return a_pulse_definition_delete.Output{}, nil
+	return pulsedefinition.DeleteOutput{}, nil
 }
-func (s *previewActionSpy) ListPulseMetrics(_ context.Context, input a_pulse_metric_list.Input) (a_pulse_metric_list.Output, error) {
+func (s *previewActionSpy) ListPulseMetrics(_ context.Context, input pulsemetric.ListInput) (pulsemetric.ListOutput, error) {
 	panic("unexpected read action")
 }
-func (s *previewActionSpy) InspectPulseMetric(_ context.Context, input a_pulse_metric_inspect.Input) (a_pulse_metric_inspect.Output, error) {
+func (s *previewActionSpy) InspectPulseMetric(_ context.Context, input pulsemetric.InspectInput) (pulsemetric.InspectOutput, error) {
 	panic("unexpected read action")
 }
-func (s *previewActionSpy) ForkPulseMetric(_ context.Context, input a_pulse_metric_fork.Input, preview bool) (a_pulse_metric_fork.Output, error) {
+func (s *previewActionSpy) ForkPulseMetric(_ context.Context, input pulsemetric.ForkInput, preview bool) (pulsemetric.ForkOutput, error) {
 	s.record(preview)
-	return a_pulse_metric_fork.Output{}, nil
+	return pulsemetric.ForkOutput{}, nil
 }
-func (s *previewActionSpy) DeletePulseMetric(_ context.Context, input a_pulse_metric_delete.Input) (a_pulse_metric_delete.Output, error) {
+func (s *previewActionSpy) DeletePulseMetric(_ context.Context, input pulsemetric.DeleteInput) (pulsemetric.DeleteOutput, error) {
 	s.record(input.Preview)
-	return a_pulse_metric_delete.Output{}, nil
+	return pulsemetric.DeleteOutput{}, nil
 }
-func (s *previewActionSpy) ListPulseMetricFollowers(_ context.Context, input a_pulse_metric_followers.Input) (a_pulse_metric_followers.Output, error) {
+func (s *previewActionSpy) ListPulseMetricFollowers(_ context.Context, input pulsemetric.FollowersInput) (pulsemetric.FollowersOutput, error) {
 	panic("unexpected read action")
 }
-func (s *previewActionSpy) FollowPulseMetric(_ context.Context, input a_pulse_metric_follow.Input, preview bool) (a_pulse_metric_follow.Output, error) {
+func (s *previewActionSpy) FollowPulseMetric(_ context.Context, input pulsemetric.FollowInput, preview bool) (pulsemetric.FollowOutput, error) {
 	s.record(preview)
-	return a_pulse_metric_follow.Output{}, nil
+	return pulsemetric.FollowOutput{}, nil
 }
-func (s *previewActionSpy) UnfollowPulseMetric(_ context.Context, input a_pulse_metric_unfollow.Input, preview bool) (a_pulse_metric_unfollow.Output, error) {
+func (s *previewActionSpy) UnfollowPulseMetric(_ context.Context, input pulsemetric.UnfollowInput, preview bool) (pulsemetric.UnfollowOutput, error) {
 	s.record(preview)
-	return a_pulse_metric_unfollow.Output{}, nil
+	return pulsemetric.UnfollowOutput{}, nil
 }
 func (s *previewActionSpy) Execute(_ context.Context, _ workbookops.PublishInput, preview bool) (workbookops.PublishOutput, error) {
 	s.record(preview)

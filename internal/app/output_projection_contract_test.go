@@ -9,7 +9,7 @@ import (
 	authcheck "github.com/ahillspace/tadx/actions/auth/check"
 	columninspect "github.com/ahillspace/tadx/actions/catalog/column/inspect"
 	tableinspect "github.com/ahillspace/tadx/actions/catalog/table/inspect"
-	envupdate "github.com/ahillspace/tadx/actions/env/profile/update"
+	envupdate "github.com/ahillspace/tadx/actions/env/profile"
 	jobinspect "github.com/ahillspace/tadx/actions/job/inspect"
 	"github.com/ahillspace/tadx/internal/output"
 	"github.com/ahillspace/tadx/internal/toon"
@@ -19,7 +19,7 @@ import (
 func TestCrossFamilyProjectionEncodingContracts(t *testing.T) {
 	for name, result := range map[string]any{
 		"auth":   authcheck.Output{Status: "authenticated", Environment: "dev", SiteContentURL: "site", UserLUID: "user"},
-		"env":    envupdate.Output{Status: "updated", Profile: envupdate.Profile{Alias: "dev", ServerURL: "https://example.invalid", SiteContentURL: "site"}, ChangedFields: []string{"site_content_url"}},
+		"env":    envupdate.UpdateOutput{Status: "updated", Profile: envupdate.UpdateProfile{Alias: "dev", ServerURL: "https://example.invalid", SiteContentURL: "site"}, ChangedFields: []string{"site_content_url"}},
 		"table":  tableinspect.Output{Status: "inspected", Environment: "dev", Site: "site", Item: &value.MetadataTable{MetadataIdentity: value.MetadataIdentity{LUID: "table-1"}, Database: value.MetadataIdentity{LUID: "database-1"}}},
 		"column": columninspect.Output{Status: "inspected", Environment: "dev", Site: "site", Item: &value.MetadataColumn{MetadataIdentity: value.MetadataIdentity{LUID: "column-1"}, Table: value.MetadataIdentity{LUID: "table-1"}}},
 		"job":    jobinspect.Output{Status: "running", Environment: "dev", Site: "site", Job: value.JobStatus{ID: "job-1", Status: "running"}},

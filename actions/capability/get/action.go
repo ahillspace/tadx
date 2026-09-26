@@ -1,3 +1,4 @@
+// Package get implements exact capability discovery.
 package get
 
 import (
@@ -6,6 +7,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/ahillspace/tadx/internal/capability"
 	"github.com/ahillspace/tadx/internal/errs"
 )
 
@@ -63,3 +65,38 @@ func (a *Action) Execute(ctx context.Context, input Input) (Output, error) {
 	item.ExecutionEnabled = !item.PolicyDenied && item.ImplementationState == "implemented" && (!item.RemoteMutation || input.MutationsEnabled)
 	return Output{Capability: item, Help: []string{"tadx capability list"}}, nil
 }
+
+// Input selects one capability by its exact registry ID.
+type Input struct {
+	ID               string `json:"id"`
+	MutationsEnabled bool   `json:"-"`
+}
+
+// Capability is the detailed discovery view of one registry entry.
+//
+// The neutral representation is shared with capability.list full output so
+// that the two commands cannot drift in their contract fields.
+type Capability = capability.Discovery
+
+// Output is the stable capability detail result.
+type Output struct {
+	Capability Capability `json:"capability"`
+	Help       []string   `json:"help"`
+}
+
+type visibleOutput Output
+
+func (o Output) CompactOutput() any {
+	if o.Capability.Disposition == "delegated" {
+		o.Capability.Disposition = "Out of scope"
+		o.Capability.ImplementationState = "out_of_scope"
+		o.Capability.Command = ""
+		o.Capability.Surface = "Out of scope"
+		o.Capability.SafetyGuard = "Out of scope. TADX does not execute or hand off this operation."
+	}
+	return visibleOutput(o)
+}
+
+// FullOutput retains the complete bounded contract, including delegated
+// capabilities, without applying the compact out-of-scope projection.
+func (o Output) FullOutput() any { return visibleOutput(o) }

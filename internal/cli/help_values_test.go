@@ -17,8 +17,8 @@ import (
 	datasourceops "github.com/ahillspace/tadx/actions/datasource"
 	lineagepull "github.com/ahillspace/tadx/actions/lineage/pull"
 	projectcreate "github.com/ahillspace/tadx/actions/project/create"
-	definitioncreate "github.com/ahillspace/tadx/actions/pulse/definition/create"
-	metricfork "github.com/ahillspace/tadx/actions/pulse/metric/fork"
+	pulsedefinition "github.com/ahillspace/tadx/actions/pulse/definition"
+	pulsemetric "github.com/ahillspace/tadx/actions/pulse/metric"
 	searchaction "github.com/ahillspace/tadx/actions/search"
 	"github.com/ahillspace/tadx/internal/agenttarget"
 	admincli "github.com/ahillspace/tadx/internal/cli/admin"
@@ -80,7 +80,7 @@ func TestRequiredHelpFactsMatchActionValidation(t *testing.T) {
 			return catalogaudit.ValidateInput(in)
 		}},
 		{"pulse definition create", []string{"name", "datasource-id", "measure-field", "date-field", "dimension"}, func(omit string) error {
-			in := definitioncreate.Input{Intent: definitioncreate.Intent{Name: "Revenue", DatasourceLUID: "datasource-id", MeasureField: "Sales", TimeDimension: "Date", AllowedDimensions: []string{"Region"}}}
+			in := pulsedefinition.CreateInput{Intent: pulsedefinition.CreateIntent{Name: "Revenue", DatasourceLUID: "datasource-id", MeasureField: "Sales", TimeDimension: "Date", AllowedDimensions: []string{"Region"}}}
 			switch omit {
 			case "name":
 				in.Intent.Name = ""
@@ -93,7 +93,7 @@ func TestRequiredHelpFactsMatchActionValidation(t *testing.T) {
 			case "dimension":
 				in.Intent.AllowedDimensions = nil
 			}
-			return definitioncreate.ValidateInput(in)
+			return pulsedefinition.CreateValidateInput(in)
 		}},
 	} {
 		t.Run(test.path, func(t *testing.T) {
@@ -222,11 +222,11 @@ func TestHelpChoicesMatchLocalValidators(t *testing.T) {
 			return usercreate.ValidateInput(usercreate.Input{Environment: "dev", Name: "analyst", SiteRole: "Viewer", AuthSetting: v})
 		}},
 		{"pulse metric fork", "period", 16, func(v string) error {
-			in := metricfork.Input{MetricLUID: "metric-id", Timeframe: v}
+			in := pulsemetric.ForkInput{MetricLUID: "metric-id", Timeframe: v}
 			if v == "CUSTOM_N_DAYS" {
 				in.CustomDays = 30
 			}
-			return metricfork.ValidateInput(in)
+			return pulsemetric.ForkValidateInput(in)
 		}},
 	}
 	for flag, count := range map[string]int{"kind": 4, "principal-type": 2, "mode": 2, "default-for": 3} {
@@ -273,7 +273,7 @@ func TestHelpChoicesMatchLocalValidators(t *testing.T) {
 			t.Fatalf("incomplete %s choices: %v", flag, values)
 		}
 		for _, value := range values {
-			intent := definitioncreate.Intent{Name: "Revenue", DatasourceLUID: "datasource-id", MeasureField: "Sales", TimeDimension: "Date", AllowedDimensions: []string{"Region"}}
+			intent := pulsedefinition.CreateIntent{Name: "Revenue", DatasourceLUID: "datasource-id", MeasureField: "Sales", TimeDimension: "Date", AllowedDimensions: []string{"Region"}}
 			switch flag {
 			case "aggregation":
 				intent.Aggregation = value
@@ -286,7 +286,7 @@ func TestHelpChoicesMatchLocalValidators(t *testing.T) {
 			case "temporality":
 				intent.Temporality = value
 			}
-			if err := definitioncreate.ValidateInput(definitioncreate.Input{Intent: intent}); err != nil {
+			if err := pulsedefinition.CreateValidateInput(pulsedefinition.CreateInput{Intent: intent}); err != nil {
 				t.Errorf("%s=%s rejected: %v", flag, value, err)
 			}
 		}

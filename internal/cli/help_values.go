@@ -4,7 +4,7 @@ import (
 	"strconv"
 	"strings"
 
-	metricfork "github.com/ahillspace/tadx/actions/pulse/metric/fork"
+	pulsemetric "github.com/ahillspace/tadx/actions/pulse/metric"
 	searchaction "github.com/ahillspace/tadx/actions/search"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
@@ -76,7 +76,7 @@ func applyHelpValues(root *cobra.Command) {
 		case "pulse metric fork":
 			choices("period", "TODAY", "THIS_WEEK", "MONTH_TO_DATE", "QUARTER_TO_DATE", "YEAR_TO_DATE", "YESTERDAY", "LAST_WEEK", "LAST_MONTH", "LAST_QUARTER", "LAST_YEAR", "LAST_7_DAYS", "LAST_14_DAYS", "LAST_30_DAYS", "LAST_60_DAYS", "LAST_90_DAYS", "CUSTOM_N_DAYS")
 			var days []string
-			for _, day := range metricfork.SupportedCustomDays() {
+			for _, day := range pulsemetric.ForkSupportedCustomDays() {
 				days = append(days, strconv.Itoa(day))
 			}
 			choices("days", days...)

@@ -14,6 +14,8 @@ The [SVG](architecture/tadx-architecture.svg) and [editable Excalidraw source](a
 | `internal/cli` | Cobra command tree, argument parsing, and action invocation |
 | `actions/workbook`, `actions/datasource`, `actions/flow` | Resource packages with distinct typed lifecycle operations |
 | `actions/admin/group/member`, `actions/admin/permission` | Explicit paired mutations sharing matching records and validation |
+| `actions/pulse/definition`, `actions/pulse/metric` | Explicit Pulse operations with shared resource observations and separate output contracts |
+| `actions/env/profile` | Environment profile operations and their shared profile representation |
 | Other `actions/<domain>/<verb>` packages | Separate operations where their contracts or responsibilities differ |
 | `internal/resources` | Resource adapters, exact identity resolution, and normalized provider results |
 | `internal/tableau` | Tableau API clients, shared HTTP transport, and inventory collectors |

@@ -8,19 +8,8 @@ import (
 	"sort"
 	"strings"
 
-	definitioncreate "github.com/ahillspace/tadx/actions/pulse/definition/create"
-	definitiondelete "github.com/ahillspace/tadx/actions/pulse/definition/delete"
-	definitioninspect "github.com/ahillspace/tadx/actions/pulse/definition/inspect"
-	definitionlist "github.com/ahillspace/tadx/actions/pulse/definition/list"
-	definitionpublish "github.com/ahillspace/tadx/actions/pulse/definition/publish"
-	definitionpull "github.com/ahillspace/tadx/actions/pulse/definition/pull"
-	metricdelete "github.com/ahillspace/tadx/actions/pulse/metric/delete"
-	metricfollow "github.com/ahillspace/tadx/actions/pulse/metric/follow"
-	metricfollowers "github.com/ahillspace/tadx/actions/pulse/metric/followers"
-	metricfork "github.com/ahillspace/tadx/actions/pulse/metric/fork"
-	metricinspect "github.com/ahillspace/tadx/actions/pulse/metric/inspect"
-	metriclist "github.com/ahillspace/tadx/actions/pulse/metric/list"
-	metricunfollow "github.com/ahillspace/tadx/actions/pulse/metric/unfollow"
+	pulsedefinition "github.com/ahillspace/tadx/actions/pulse/definition"
+	pulsemetric "github.com/ahillspace/tadx/actions/pulse/metric"
 	subscriptionlist "github.com/ahillspace/tadx/actions/pulse/subscription/list"
 	"github.com/ahillspace/tadx/internal/cli/clierr"
 	"github.com/spf13/cobra"
@@ -31,66 +20,66 @@ type Renderer interface{ Render(any) error }
 
 // DefinitionLister lists Pulse definitions.
 type DefinitionLister interface {
-	ListPulseDefinitions(context.Context, definitionlist.Input) (definitionlist.Output, error)
+	ListPulseDefinitions(context.Context, pulsedefinition.ListInput) (pulsedefinition.ListOutput, error)
 }
 
 // DefinitionInspector inspects one Pulse definition.
 type DefinitionInspector interface {
-	InspectPulseDefinition(context.Context, definitioninspect.Input) (definitioninspect.Output, error)
+	InspectPulseDefinition(context.Context, pulsedefinition.InspectInput) (pulsedefinition.InspectOutput, error)
 }
 
 // DefinitionPuller pulls one Pulse definition artifact.
 type DefinitionPuller interface {
-	PullPulseDefinition(context.Context, definitionpull.Input) (definitionpull.Output, error)
+	PullPulseDefinition(context.Context, pulsedefinition.PullInput) (pulsedefinition.PullOutput, error)
 }
 
 type DefinitionPublisher interface {
-	PublishPulseDefinition(context.Context, definitionpublish.Input) (definitionpublish.Output, error)
+	PublishPulseDefinition(context.Context, pulsedefinition.PublishInput) (pulsedefinition.PublishOutput, error)
 }
 
 // DefinitionCreator creates one Pulse definition or returns a preview.
 type DefinitionCreator interface {
-	CreatePulseDefinition(context.Context, definitioncreate.Input, bool) (definitioncreate.Output, error)
+	CreatePulseDefinition(context.Context, pulsedefinition.CreateInput, bool) (pulsedefinition.CreateOutput, error)
 }
 
 // DefinitionDeleter deletes one Pulse definition or returns a preview.
 type DefinitionDeleter interface {
-	DeletePulseDefinition(context.Context, definitiondelete.Input) (definitiondelete.Output, error)
+	DeletePulseDefinition(context.Context, pulsedefinition.DeleteInput) (pulsedefinition.DeleteOutput, error)
 }
 
 // MetricLister lists the metrics for one definition.
 type MetricLister interface {
-	ListPulseMetrics(context.Context, metriclist.Input) (metriclist.Output, error)
+	ListPulseMetrics(context.Context, pulsemetric.ListInput) (pulsemetric.ListOutput, error)
 }
 
 // MetricInspector inspects one Pulse metric.
 type MetricInspector interface {
-	InspectPulseMetric(context.Context, metricinspect.Input) (metricinspect.Output, error)
+	InspectPulseMetric(context.Context, pulsemetric.InspectInput) (pulsemetric.InspectOutput, error)
 }
 
 // MetricForker creates one Pulse metric variant or returns a preview.
 type MetricForker interface {
-	ForkPulseMetric(context.Context, metricfork.Input, bool) (metricfork.Output, error)
+	ForkPulseMetric(context.Context, pulsemetric.ForkInput, bool) (pulsemetric.ForkOutput, error)
 }
 
 // MetricDeleter deletes one Pulse metric or returns a preview.
 type MetricDeleter interface {
-	DeletePulseMetric(context.Context, metricdelete.Input) (metricdelete.Output, error)
+	DeletePulseMetric(context.Context, pulsemetric.DeleteInput) (pulsemetric.DeleteOutput, error)
 }
 
 // MetricFollowers lists one metric's subscriptions.
 type MetricFollowers interface {
-	ListPulseMetricFollowers(context.Context, metricfollowers.Input) (metricfollowers.Output, error)
+	ListPulseMetricFollowers(context.Context, pulsemetric.FollowersInput) (pulsemetric.FollowersOutput, error)
 }
 
 // MetricFollower creates one Pulse subscription or returns a preview.
 type MetricFollower interface {
-	FollowPulseMetric(context.Context, metricfollow.Input, bool) (metricfollow.Output, error)
+	FollowPulseMetric(context.Context, pulsemetric.FollowInput, bool) (pulsemetric.FollowOutput, error)
 }
 
 // MetricUnfollower removes one Pulse subscription or returns a preview.
 type MetricUnfollower interface {
-	UnfollowPulseMetric(context.Context, metricunfollow.Input, bool) (metricunfollow.Output, error)
+	UnfollowPulseMetric(context.Context, pulsemetric.UnfollowInput, bool) (pulsemetric.UnfollowOutput, error)
 }
 
 // SubscriptionLister lists the authenticated user's Pulse subscriptions.
@@ -174,7 +163,7 @@ func newSubscriptionList(deps Dependencies) *cobra.Command {
 }
 
 func newDefinitionDelete(deps Dependencies) *cobra.Command {
-	var input definitiondelete.Input
+	var input pulsedefinition.DeleteInput
 	command := exactIDCommand("delete", "Delete one exact Pulse definition.", "pulse.definition.delete", &input.LUID, func(command *cobra.Command) error {
 		if input.Environment == "" {
 			return usage("pulse.definition.delete", "--environment is required")
@@ -191,7 +180,7 @@ func newDefinitionDelete(deps Dependencies) *cobra.Command {
 }
 
 func newMetricDelete(deps Dependencies) *cobra.Command {
-	var input metricdelete.Input
+	var input pulsemetric.DeleteInput
 	command := exactIDCommand("delete", "Delete one exact Pulse metric.", "pulse.metric.delete", &input.LUID, func(command *cobra.Command) error {
 		if input.Environment == "" {
 			return usage("pulse.metric.delete", "--environment is required")
@@ -208,7 +197,7 @@ func newMetricDelete(deps Dependencies) *cobra.Command {
 }
 
 func newDefinitionList(deps Dependencies) *cobra.Command {
-	var input definitionlist.Input
+	var input pulsedefinition.ListInput
 	command := actionCommand("list", "List Pulse definitions.", "pulse.definition.list", func(command *cobra.Command) error {
 		result, err := deps.DefinitionLister.ListPulseDefinitions(command.Context(), input)
 		if err != nil {
@@ -229,7 +218,7 @@ func newDefinitionList(deps Dependencies) *cobra.Command {
 }
 
 func newDefinitionInspect(deps Dependencies) *cobra.Command {
-	var input definitioninspect.Input
+	var input pulsedefinition.InspectInput
 	command := exactIDCommand("inspect", "Inspect one exact Pulse definition.", "pulse.definition.inspect", &input.LUID, func(command *cobra.Command) error {
 		result, err := deps.DefinitionInspector.InspectPulseDefinition(command.Context(), input)
 		if err != nil {
@@ -242,7 +231,7 @@ func newDefinitionInspect(deps Dependencies) *cobra.Command {
 }
 
 func newDefinitionPull(deps Dependencies) *cobra.Command {
-	var input definitionpull.Input
+	var input pulsedefinition.PullInput
 	command := exactIDCommand("pull", "Pull a portable definition bundle with every saved metric variant.", "pulse.definition.pull", &input.LUID, func(command *cobra.Command) error {
 		result, err := deps.DefinitionPuller.PullPulseDefinition(command.Context(), input)
 		if err != nil {
@@ -258,9 +247,9 @@ func newDefinitionPull(deps Dependencies) *cobra.Command {
 }
 
 func newDefinitionPublish(deps Dependencies) *cobra.Command {
-	var input definitionpublish.Input
+	var input pulsedefinition.PublishInput
 	command := actionCommand("publish", "Recreate a portable Pulse bundle as new definitions and metrics.", "pulse.definition.publish", func(command *cobra.Command) error {
-		if err := definitionpublish.ValidateInput(input); err != nil {
+		if err := pulsedefinition.PublishValidateInput(input); err != nil {
 			return err
 		}
 		if deps.DefinitionPublisher == nil {
@@ -283,7 +272,7 @@ func newDefinitionPublish(deps Dependencies) *cobra.Command {
 }
 
 func newDefinitionCreate(deps Dependencies) *cobra.Command {
-	var input definitioncreate.Input
+	var input pulsedefinition.CreateInput
 	var preview bool
 	command := &cobra.Command{
 		Use:         "create",
@@ -325,7 +314,7 @@ func newDefinitionCreate(deps Dependencies) *cobra.Command {
 }
 
 func newMetricList(deps Dependencies) *cobra.Command {
-	var input metriclist.Input
+	var input pulsemetric.ListInput
 	command := &cobra.Command{
 		Use:         "list",
 		Short:       "List one definition's Pulse metrics.",
@@ -359,7 +348,7 @@ func newMetricList(deps Dependencies) *cobra.Command {
 }
 
 func newMetricInspect(deps Dependencies) *cobra.Command {
-	var input metricinspect.Input
+	var input pulsemetric.InspectInput
 	command := exactIDCommand("inspect", "Inspect one exact Pulse metric.", "pulse.metric.inspect", &input.LUID, func(command *cobra.Command) error {
 		result, err := deps.MetricInspector.InspectPulseMetric(command.Context(), input)
 		if err != nil {
@@ -372,7 +361,7 @@ func newMetricInspect(deps Dependencies) *cobra.Command {
 }
 
 func newMetricFork(deps Dependencies) *cobra.Command {
-	var input metricfork.Input
+	var input pulsemetric.ForkInput
 	var includeFilters, excludeFilters []string
 	var preview bool
 	command := &cobra.Command{
@@ -404,7 +393,7 @@ func newMetricFork(deps Dependencies) *cobra.Command {
 			if period == "CUSTOM_N_DAYS" && !input.CustomDaysSet {
 				return usage("pulse.metric.fork", "--period CUSTOM_N_DAYS requires --days")
 			}
-			if input.CustomDaysSet && !metricfork.IsSupportedCustomDays(input.CustomDays) {
+			if input.CustomDaysSet && !pulsemetric.ForkIsSupportedCustomDays(input.CustomDays) {
 				return usage("pulse.metric.fork", "--days must be one of 7, 14, 30, 60, or 90")
 			}
 			return nil
@@ -428,7 +417,7 @@ func newMetricFork(deps Dependencies) *cobra.Command {
 }
 
 func newMetricFollowers(deps Dependencies) *cobra.Command {
-	var input metricfollowers.Input
+	var input pulsemetric.FollowersInput
 	command := exactIDCommand("followers", "List one Pulse metric's followers.", "pulse.metric.followers", &input.MetricLUID, func(command *cobra.Command) error {
 		result, err := deps.MetricFollowers.ListPulseMetricFollowers(command.Context(), input)
 		if err != nil {
@@ -441,7 +430,7 @@ func newMetricFollowers(deps Dependencies) *cobra.Command {
 }
 
 func newMetricFollow(deps Dependencies) *cobra.Command {
-	var input metricfollow.Input
+	var input pulsemetric.FollowInput
 	var preview bool
 	command := &cobra.Command{
 		Use:         "follow",
@@ -473,7 +462,7 @@ func newMetricFollow(deps Dependencies) *cobra.Command {
 }
 
 func newMetricUnfollow(deps Dependencies) *cobra.Command {
-	var input metricunfollow.Input
+	var input pulsemetric.UnfollowInput
 	var preview bool
 	command := &cobra.Command{
 		Use:   "unfollow",
@@ -570,7 +559,7 @@ type filterKey struct {
 	exclude bool
 }
 
-func parseFilters(included, excluded []string) ([]metricfork.Filter, error) {
+func parseFilters(included, excluded []string) ([]pulsemetric.ForkFilter, error) {
 	grouped := make(map[filterKey][]string, len(included)+len(excluded))
 	modes := make(map[string]bool, len(included)+len(excluded))
 	for _, group := range []struct {
@@ -591,10 +580,10 @@ func parseFilters(included, excluded []string) ([]metricfork.Filter, error) {
 			grouped[key] = append(grouped[key], value)
 		}
 	}
-	filters := make([]metricfork.Filter, 0, len(grouped))
+	filters := make([]pulsemetric.ForkFilter, 0, len(grouped))
 	for key, values := range grouped {
 		sort.Strings(values)
-		filters = append(filters, metricfork.Filter{Field: key.field, Values: values, Exclude: key.exclude})
+		filters = append(filters, pulsemetric.ForkFilter{Field: key.field, Values: values, Exclude: key.exclude})
 	}
 	sort.Slice(filters, func(i, j int) bool { return filters[i].Field < filters[j].Field })
 	return filters, nil

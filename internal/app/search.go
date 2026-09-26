@@ -17,7 +17,7 @@ import (
 	datasourceops "github.com/ahillspace/tadx/actions/datasource"
 	flowops "github.com/ahillspace/tadx/actions/flow"
 	projectlist "github.com/ahillspace/tadx/actions/project/list"
-	definitionlist "github.com/ahillspace/tadx/actions/pulse/definition/list"
+	pulsedefinition "github.com/ahillspace/tadx/actions/pulse/definition"
 	searchaction "github.com/ahillspace/tadx/actions/search"
 	workbookops "github.com/ahillspace/tadx/actions/workbook"
 	"github.com/ahillspace/tadx/internal/cache"
@@ -763,7 +763,7 @@ func (s *liveSearchLister) List(ctx context.Context, resourceType, cursor string
 		}
 		return resourcesearch.Page{Items: items, NextCursor: out.Page.NextCursor, MoreAvailable: out.Page.MoreAvailable, Total: out.Page.Total}, err
 	case "definition":
-		out, err := definitionlist.New(&pulseDefinitionListAdapter{client: s.pulse}).Execute(ctx, definitionlist.Input{Environment: s.environment, Site: s.site, Cursor: cursor, Limit: limit})
+		out, err := pulsedefinition.List(ctx, &pulseDefinitionListAdapter{client: s.pulse}, pulsedefinition.ListInput{Environment: s.environment, Site: s.site, Cursor: cursor, Limit: limit})
 		items := make([]resourcesearch.Item, len(out.Definitions))
 		for i, item := range out.Definitions {
 			items[i] = resourcesearch.Item{LUID: item.LUID, Type: resourceType, Name: item.Name}

@@ -12,6 +12,8 @@ Keep substantial pull and publish workflows explicit rather than creating one co
 Other categories retain their existing package layout until separately assessed.
 Project also receives a bounded cleanup audit without requiring package regrouping.
 Admin membership and permission mutations share cohesive packages after assessment; distinct inspection contracts remain separate.
+Pulse definition and metric operations use resource packages; environment profiles share a profile package.
+Auth and capability operations retain verb packages, with small contracts and projections beside the operation that owns them.
 
 Resource operations own input rules, planning, resource-specific decisions, error context, and output projections.
 The composition root owns environment, authentication, policy integration, cache selection, workspace selection, and receipt persistence.
@@ -136,3 +138,16 @@ Removing a JSON round trip can also remove a copy boundary; verify serialized pa
 Shared cursor encoding must preserve existing tokens while resource-specific fingerprints and resolved-target checks remain explicit.
 Preserve explicit add/remove and create/delete operations even when their records and validation share an owner.
 An assessed category can retain its package layout when regrouping would only rename types and move different projections.
+
+## Lessons from operation file consolidation
+
+Different output contracts do not require different packages or separate files for every type and validator.
+Colocate small contracts with their operation without removing narrow dependency interfaces or hiding the operation sequence.
+Use shared observations only where field meanings match; preserve unknown values and operation-specific output omissions.
+Sharing a profile type must not make listing apply effective defaults that only inspection previously resolved.
+Do not make a delete depend on configuration parsing that only inspection previously required.
+Keep raw bundle construction and cache observation capture separate from terminal projections.
+When small files can be combined within an existing package, avoid an unnecessary package migration.
+Report file consolidation separately from eliminated logic and duplicate representations.
+Capture stdout, stderr, exit codes, and exact arguments from the first baseline call.
+Use matching cache preconditions in before/after tests, and record fixture-specific differences explicitly.

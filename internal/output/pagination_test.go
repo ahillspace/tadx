@@ -9,7 +9,7 @@ import (
 	userlist "github.com/ahillspace/tadx/actions/admin/user/list"
 	capabilitylist "github.com/ahillspace/tadx/actions/capability/list"
 	datasourceops "github.com/ahillspace/tadx/actions/datasource"
-	envlist "github.com/ahillspace/tadx/actions/env/profile/list"
+	envlist "github.com/ahillspace/tadx/actions/env/profile"
 	flowops "github.com/ahillspace/tadx/actions/flow"
 	projectlist "github.com/ahillspace/tadx/actions/project/list"
 	workbookops "github.com/ahillspace/tadx/actions/workbook"
@@ -27,7 +27,7 @@ func TestAllInventoryProjectionsHideCursors(t *testing.T) {
 		"users":            userlist.Output{Page: userlist.OutputPage{Returned: 1, Total: 2, Limit: 1, NextCursor: "private-cursor"}},
 		"groups":           grouplist.Output{Page: grouplist.OutputPage{Returned: 1, Total: 2, Limit: 1, NextCursor: "private-cursor"}},
 		"capabilities":     capabilitylist.Output{Page: capabilitylist.Pagination{Returned: 1, Total: 2, Limit: 1, NextCursor: "private-cursor"}},
-		"environments":     envlist.Output{Page: envlist.Page{Returned: 1, Total: 2, Limit: 1, NextCursor: "private-cursor"}},
+		"environments":     envlist.ListOutput{Page: envlist.Page{Returned: 1, Total: 2, Limit: 1, NextCursor: "private-cursor"}},
 		"workspaces":       workspacelist.Output{Page: workspacelist.Page{Returned: 1, Total: 2, Limit: 1, NextCursor: "private-cursor"}},
 		"workspace status": workspacestatus.Output{Inventory: workspacestatus.Inventory{Returned: 1, Total: 2, Limit: 1, NextCursor: "private-cursor"}},
 	} {
