@@ -239,6 +239,10 @@ func localImportAllowed(file, imported string) bool {
 	case layerTableau:
 		return matchesExact(imported, "internal/auth", "internal/tableau", "internal/tableau/cache/tabxml", "internal/value")
 	case layerFoundation:
+		// Metadata traversal consumes shared page records, never providers or actions.
+		if hasPathPrefix(file, "internal/paging") {
+			return imported == "internal/value"
+		}
 		if hasPathPrefix(file, "internal/managedpolicy") {
 			return matchesExact(imported, "internal/capability", "internal/value")
 		}

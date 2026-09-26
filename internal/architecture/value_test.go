@@ -40,3 +40,24 @@ import _ "example.test/tadx/internal/value"
 	}
 	assertViolationStrings(t, violations, nil)
 }
+
+func TestPagingImportsOnlySharedValues(t *testing.T) {
+	for _, dependency := range []string{
+		"internal/value", "internal/value/helpers", "internal/config", "internal/output",
+		"actions/catalog/database/list", "internal/app", "internal/cli/catalog",
+		"internal/resources/catalog", "internal/tableau/metadataassets",
+	} {
+		t.Run(dependency, func(t *testing.T) {
+			root := moduleFixture(t)
+			writeGo(t, root, "internal/paging/metadata.go", "package paging\nimport _ \"example.test/tadx/"+dependency+"\"\n")
+			violations, err := architecture.Check(root)
+			if err != nil {
+				t.Fatal(err)
+			}
+			allowed := dependency == "internal/value"
+			if (len(violations) == 0) != allowed {
+				t.Fatalf("dependency %s: allowed=%t, violations=%v", dependency, allowed, violations)
+			}
+		})
+	}
+}

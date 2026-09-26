@@ -131,6 +131,7 @@ Retire tests that only exercise a deleted forwarding hop, and identify where the
 
 Do not replace a partial-result traversal with a collector that discards observations on error.
 Keep resource selectors, operation errors, and output projections outside a shared paging mechanism.
+Declare any new shared-value dependency in the architecture allowlist and retain tests rejecting higher-layer imports.
 Removing a JSON round trip can also remove a copy boundary; verify serialized payloads and ownership of nested values.
 Shared cursor encoding must preserve existing tokens while resource-specific fingerprints and resolved-target checks remain explicit.
 Preserve explicit add/remove and create/delete operations even when their records and validation share an owner.
