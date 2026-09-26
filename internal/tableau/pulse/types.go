@@ -1,6 +1,10 @@
 package pulse
 
-import "encoding/json"
+import (
+	"encoding/json"
+
+	"github.com/ahillspace/tadx/internal/value"
+)
 
 // PageRequest selects one bounded Pulse page.
 type PageRequest struct {
@@ -122,84 +126,23 @@ type CreateSubscriptionResult struct {
 	TableauRequestID string
 }
 
-// Definition creation request contracts.
-type CreateRequest struct {
-	Name                  string                `json:"name"`
-	Description           string                `json:"description"`
-	Specification         Specification         `json:"specification"`
-	ExtensionOptions      ExtensionOptions      `json:"extension_options"`
-	RepresentationOptions RepresentationOptions `json:"representation_options"`
-	InsightsOptions       InsightsOptions       `json:"insights_options"`
-	Comparisons           Comparisons           `json:"comparisons"`
-	DatasourceGoals       []map[string]any      `json:"datasource_goals"`
-	RelatedLinks          []map[string]any      `json:"related_links"`
-	Certification         Certification         `json:"certification"`
-}
-
-type Specification struct {
-	Datasource         Datasource         `json:"datasource"`
-	BasicSpecification BasicSpecification `json:"basic_specification"`
-	RunningTotal       bool               `json:"is_running_total"`
-	Temporality        string             `json:"temporality"`
-}
-type Datasource struct {
-	ID string `json:"id"`
-}
-type BasicSpecification struct {
-	Measure       Measure       `json:"measure"`
-	TimeDimension TimeDimension `json:"time_dimension"`
-	Filters       []Filter      `json:"filters"`
-}
-type Measure struct {
-	Field       string `json:"field"`
-	Aggregation string `json:"aggregation"`
-}
-type TimeDimension struct {
-	Field string `json:"field"`
-}
-type Filter struct {
-	Field             string             `json:"field"`
-	Operator          string             `json:"operator"`
-	CategoricalValues []CategoricalValue `json:"categorical_values"`
-	IncludeNull       bool               `json:"include_null"`
-}
-type CategoricalValue struct {
-	StringValue *string `json:"string_value,omitempty"`
-	BoolValue   *bool   `json:"bool_value,omitempty"`
-	NullValue   *string `json:"null_value,omitempty"`
-}
-type ExtensionOptions struct {
-	AllowedDimensions    []string `json:"allowed_dimensions"`
-	AllowedGranularities []string `json:"allowed_granularities"`
-	OffsetFromToday      int      `json:"offset_from_today"`
-	UseDynamicOffset     bool     `json:"use_dynamic_offset"`
-}
-type RepresentationOptions struct {
-	Type          string `json:"type"`
-	SentimentType string `json:"sentiment_type"`
-	CurrencyCode  string `json:"currency_code,omitempty"`
-}
-type InsightsOptions struct {
-	ShowInsights bool             `json:"show_insights"`
-	Settings     []InsightSetting `json:"settings"`
-}
-type InsightSetting struct {
-	Type     string `json:"type"`
-	Disabled bool   `json:"disabled"`
-}
-type Comparisons struct {
-	Comparisons []Comparison `json:"comparisons"`
-}
-type Comparison struct {
-	CompareConfig CompareConfig `json:"compare_config"`
-	Index         int           `json:"index"`
-}
-type CompareConfig struct {
-	Comparison string `json:"comparison"`
-}
-type Certification struct {
-	IsCertified bool `json:"is_certified"`
-}
+// The typed definition request is shared with the authoring action.
+type CreateRequest = value.PulseDefinitionCreateRequest
+type Specification = value.PulseSpecification
+type Datasource = value.PulseDatasource
+type BasicSpecification = value.PulseBasicSpecification
+type Measure = value.PulseMeasure
+type TimeDimension = value.PulseTimeDimension
+type Filter = value.PulseFilter
+type CategoricalValue = value.PulseCategoricalValue
+type ExtensionOptions = value.PulseExtensionOptions
+type RepresentationOptions = value.PulseRepresentationOptions
+type InsightsOptions = value.PulseInsightsOptions
+type InsightSetting = value.PulseInsightSetting
+type Comparisons = value.PulseComparisons
+type Comparison = value.PulseComparison
+type CompareConfig = value.PulseCompareConfig
+type Certification = value.PulseCertification
 
 type CreateResult struct {
 	Status              string

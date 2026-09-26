@@ -422,7 +422,7 @@ func (c *pulseCommands) UnfollowPulseMetric(ctx context.Context, input metricunf
 	}
 	input.Environment, input.Site = connection.environment.Alias, connection.environment.SiteContentURL
 	adapter := &pulseUnfollowAdapter{client: connection.client}
-	return metricunfollow.New(adapter, adapter).Execute(ctx, input, preview)
+	return metricunfollow.New(adapter, connection.client).Execute(ctx, input, preview)
 }
 
 func (c *pulseCommands) DeletePulseMetric(ctx context.Context, input metricdelete.Input) (metricdelete.Output, error) {
@@ -584,11 +584,7 @@ func (a pulseDefinitionDeleteAdapter) DeleteDefinition(ctx context.Context, luid
 }
 
 func (a *pulseDefinitionMutationAdapter) CreateDefinition(ctx context.Context, request definitioncreate.CreateRequest) (definitioncreate.CreateResult, error) {
-	var provider tableaupulse.CreateRequest
-	if err := convertJSON(request, &provider); err != nil {
-		return definitioncreate.CreateResult{}, fmt.Errorf("map Pulse definition create request: %w", err)
-	}
-	result, err := a.client.CreateDefinition(ctx, provider)
+	result, err := a.client.CreateDefinition(ctx, request)
 	return definitioncreate.CreateResult{Status: result.Status, DefinitionLUID: result.DefinitionLUID, DefaultMetricLUID: result.DefaultMetricLUID, DefaultMetricStatus: result.DefaultMetricStatus, TableauRequestID: result.TableauRequestID, PollRequestID: result.PollRequestID}, err
 }
 
@@ -869,10 +865,6 @@ func (a *pulseFollowerAdapter) CreateSubscription(ctx context.Context, request m
 	return metricfollow.CreateResult{Status: result.Status, SubscriptionLUID: result.SubscriptionLUID, RequestID: result.TableauRequestID}, err
 }
 
-func (a *pulseFollowerAdapter) DeleteSubscription(ctx context.Context, luid string) error {
-	return a.client.DeleteSubscription(ctx, luid)
-}
-
 type pulseUnfollowAdapter struct{ client *tableaupulse.Client }
 
 func (a *pulseUnfollowAdapter) ListSubscriptions(ctx context.Context, metricLUID string) ([]metricunfollow.Subscription, error) {
@@ -885,10 +877,6 @@ func (a *pulseUnfollowAdapter) ListSubscriptions(ctx context.Context, metricLUID
 		result[index] = metricunfollow.Subscription{LUID: item.LUID, MetricLUID: item.MetricLUID, FollowerType: item.FollowerType, FollowerLUID: item.FollowerLUID, FollowerName: item.FollowerName}
 	}
 	return result, nil
-}
-
-func (a *pulseUnfollowAdapter) DeleteSubscription(ctx context.Context, luid string) error {
-	return a.client.DeleteSubscription(ctx, luid)
 }
 
 func definitionListItem(item tableaupulse.Definition) definitionlist.Definition {
@@ -1110,14 +1098,6 @@ func nextPulseCacheOffset(offset, returned, total int) string {
 		return ""
 	}
 	return strconv.Itoa(offset + returned)
-}
-
-func convertJSON(input, output any) error {
-	data, err := json.Marshal(input)
-	if err != nil {
-		return err
-	}
-	return json.Unmarshal(data, output)
 }
 
 func cloneJSONMap(input map[string]any) map[string]any {

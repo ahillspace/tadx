@@ -1,5 +1,7 @@
 package create
 
+import "github.com/ahillspace/tadx/internal/value"
+
 // Input contains one small definition-authoring intent.
 type Input struct {
 	Environment string
@@ -41,113 +43,23 @@ type ExistingDefinition struct {
 	DatasourceLUID string
 }
 
-// CreateRequest is the exact, normalized provider request owned by this action.
-type CreateRequest struct {
-	Name                  string                `json:"name"`
-	Description           string                `json:"description"`
-	Specification         Specification         `json:"specification"`
-	ExtensionOptions      ExtensionOptions      `json:"extension_options"`
-	RepresentationOptions RepresentationOptions `json:"representation_options"`
-	InsightsOptions       InsightsOptions       `json:"insights_options"`
-	Comparisons           Comparisons           `json:"comparisons"`
-	DatasourceGoals       []map[string]any      `json:"datasource_goals"`
-	RelatedLinks          []map[string]any      `json:"related_links"`
-	Certification         Certification         `json:"certification"`
-}
-
-// Specification identifies the datasource and metric semantics.
-type Specification struct {
-	Datasource         Datasource         `json:"datasource"`
-	BasicSpecification BasicSpecification `json:"basic_specification"`
-	RunningTotal       bool               `json:"is_running_total"`
-	Temporality        string             `json:"temporality"`
-}
-
-// Datasource identifies one published datasource.
-type Datasource struct {
-	ID string `json:"id"`
-}
-
-// BasicSpecification contains the initial default metric query.
-type BasicSpecification struct {
-	Measure       Measure       `json:"measure"`
-	TimeDimension TimeDimension `json:"time_dimension"`
-	Filters       []Filter      `json:"filters"`
-}
-
-// Measure identifies one exact measure and aggregation.
-type Measure struct {
-	Field       string `json:"field"`
-	Aggregation string `json:"aggregation"`
-}
-
-// TimeDimension identifies one exact temporal field.
-type TimeDimension struct {
-	Field string `json:"field"`
-}
-
-// Filter remains empty for definition creation. Scoped filters belong to metric fork.
-type Filter struct {
-	Field             string             `json:"field"`
-	Operator          string             `json:"operator"`
-	CategoricalValues []CategoricalValue `json:"categorical_values"`
-	IncludeNull       bool               `json:"include_null"`
-}
-
-// CategoricalValue is retained for exact provider serialization.
-type CategoricalValue struct {
-	StringValue *string `json:"string_value,omitempty"`
-	BoolValue   *bool   `json:"bool_value,omitempty"`
-	NullValue   *string `json:"null_value,omitempty"`
-}
-
-// ExtensionOptions controls available dimensions and time grains.
-type ExtensionOptions struct {
-	AllowedDimensions    []string `json:"allowed_dimensions"`
-	AllowedGranularities []string `json:"allowed_granularities"`
-	OffsetFromToday      int      `json:"offset_from_today"`
-	UseDynamicOffset     bool     `json:"use_dynamic_offset"`
-}
-
-// RepresentationOptions controls display semantics.
-type RepresentationOptions struct {
-	Type          string `json:"type"`
-	SentimentType string `json:"sentiment_type"`
-	CurrencyCode  string `json:"currency_code,omitempty"`
-}
-
-// InsightsOptions contains the proven default insight configuration.
-type InsightsOptions struct {
-	ShowInsights bool             `json:"show_insights"`
-	Settings     []InsightSetting `json:"settings"`
-}
-
-// InsightSetting enables or disables one supported insight.
-type InsightSetting struct {
-	Type     string `json:"type"`
-	Disabled bool   `json:"disabled"`
-}
-
-// Comparisons contains ordered comparison settings.
-type Comparisons struct {
-	Comparisons []Comparison `json:"comparisons"`
-}
-
-// Comparison identifies one comparison and its display index.
-type Comparison struct {
-	CompareConfig CompareConfig `json:"compare_config"`
-	Index         int           `json:"index"`
-}
-
-// CompareConfig contains one Tableau comparison enum.
-type CompareConfig struct {
-	Comparison string `json:"comparison"`
-}
-
-// Certification explicitly creates an uncertified definition.
-type Certification struct {
-	IsCertified bool `json:"is_certified"`
-}
+// These aliases preserve the action's authoring vocabulary and output types.
+type CreateRequest = value.PulseDefinitionCreateRequest
+type Specification = value.PulseSpecification
+type Datasource = value.PulseDatasource
+type BasicSpecification = value.PulseBasicSpecification
+type Measure = value.PulseMeasure
+type TimeDimension = value.PulseTimeDimension
+type Filter = value.PulseFilter
+type CategoricalValue = value.PulseCategoricalValue
+type ExtensionOptions = value.PulseExtensionOptions
+type RepresentationOptions = value.PulseRepresentationOptions
+type InsightsOptions = value.PulseInsightsOptions
+type InsightSetting = value.PulseInsightSetting
+type Comparisons = value.PulseComparisons
+type Comparison = value.PulseComparison
+type CompareConfig = value.PulseCompareConfig
+type Certification = value.PulseCertification
 
 // Plan is the deterministic preview and the only value Apply accepts.
 type Plan struct {

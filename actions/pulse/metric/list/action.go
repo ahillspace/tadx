@@ -27,24 +27,15 @@ func (a *Action) Execute(ctx context.Context, input Input) (Output, error) {
 		return Output{}, fail("pulse.metric.list.unconfigured", errs.KindRuntime, input, "Pulse metric listing is not configured.", nil)
 	}
 	input.DefinitionLUID = strings.TrimSpace(input.DefinitionLUID)
-	if input.DefinitionLUID == "" {
-		return Output{}, fail("pulse.metric.list.usage", errs.KindUsage, input, "Pulse metric list requires an exact definition LUID.", nil)
-	}
 	limit := input.Limit
 	if limit == 0 {
 		limit = defaultLimit
-	}
-	if limit < 1 || limit > 10000 {
-		return Output{}, fail("pulse.metric.list.usage", errs.KindUsage, input, "Pulse metric list limit must be between 1 and 10000.", nil)
 	}
 	token, err := decodeCursor(input.Cursor, input.Environment, input.Site, input.DefinitionLUID, limit, input.Cache)
 	if err != nil {
 		return Output{}, fail("pulse.metric.list.usage", errs.KindUsage, input, "Pulse metric cursor does not match this definition, limit, and source.", err)
 	}
 	if input.All {
-		if input.Limit != 0 || input.Cursor != "" {
-			return Output{}, fail("pulse.metric.list.usage", errs.KindUsage, input, "--all cannot be combined with --limit or --cursor.", nil)
-		}
 		limit = 10000
 	}
 	pageSize := min(limit, 100)

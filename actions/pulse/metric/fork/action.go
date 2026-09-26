@@ -45,12 +45,6 @@ func (a *Action) Execute(ctx context.Context, input Input, preview bool) (Output
 	}
 	input.MetricLUID = strings.TrimSpace(input.MetricLUID)
 	input.Timeframe = strings.TrimSpace(strings.ToUpper(input.Timeframe))
-	if input.MetricLUID == "" {
-		return Output{}, fail("pulse.metric.fork.usage", errs.KindUsage, input, "Pulse metric fork requires an exact source metric LUID.", nil)
-	}
-	if input.Timeframe == "" && len(input.Filters) == 0 {
-		return Output{}, fail("pulse.metric.fork.usage", errs.KindUsage, input, "Pulse metric fork requires a timeframe or dimensional filter.", nil)
-	}
 	plan, err := a.plan(ctx, input)
 	if err != nil {
 		return Output{}, err

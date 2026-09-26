@@ -29,9 +29,6 @@ func (a *Action) Execute(ctx context.Context, input Input) (Output, error) {
 		return Output{}, definitionError("pulse.definition.inspect.unconfigured", errs.KindRuntime, input, "Pulse definition retrieval is not configured.", nil)
 	}
 	input.LUID = strings.TrimSpace(input.LUID)
-	if input.LUID == "" {
-		return Output{}, definitionError("pulse.definition.inspect.usage", errs.KindUsage, input, "Pulse definition inspect requires an exact LUID.", nil)
-	}
 	definition, err := a.reader.GetDefinition(ctx, input.LUID)
 	if err != nil {
 		var structured *errs.Error
