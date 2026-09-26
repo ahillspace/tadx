@@ -2,14 +2,11 @@ package list
 
 import (
 	"context"
-	"fmt"
 	"github.com/ahillspace/tadx/internal/commandhint"
 	"github.com/ahillspace/tadx/internal/errs"
 	"github.com/ahillspace/tadx/internal/output"
 	"github.com/ahillspace/tadx/internal/paging"
 	"github.com/ahillspace/tadx/internal/value"
-	"reflect"
-	"strings"
 )
 
 type Input struct {
@@ -99,66 +96,28 @@ func (a *Action) Execute(ctx context.Context, in Input) (out Output, err error) 
 		limit = 10000
 	}
 	out.Page.Limit = limit
-	cursor := ""
-	seen := map[string]bool{}
-	identities := map[string]value.MetadataDatabase{}
-	var coverage paging.MetadataCoverage
-	for pageNumber := 0; pageNumber < 1000; pageNumber++ {
-		size := limit - len(out.Items)
-		if size > 100 {
-			size = 100
+	result, readErr := paging.CollectMetadata(ctx, limit, func(ctx context.Context, size int, cursor string) (value.MetadataPage[value.MetadataDatabase], error) {
+		return a.reader.DiscoverDatabases(ctx, value.MetadataQuery{Name: in.Name, Limit: size, Cursor: cursor})
+	}, func(item value.MetadataDatabase) string {
+		if item.MetadataID != "" {
+			return item.MetadataID
 		}
-		page, err := a.reader.DiscoverDatabases(ctx, value.MetadataQuery{Name: in.Name, Limit: size, Cursor: cursor})
-		if err != nil {
-			out.Status = "partial"
-			return out, failure(in, err)
-		}
-		out.ObservedAt = page.ObservedAt
-		out.RequestID = page.TableauRequestID
-		if len(page.Items) > size || page.Total < 0 {
-			return out, failure(in, fmt.Errorf("inconsistent metadata page"))
-		}
-		for _, item := range page.Items {
-			key := item.MetadataID
-			if key == "" {
-				key = item.LUID
-			}
-			if strings.TrimSpace(key) == "" {
-				return out, failure(in, fmt.Errorf("metadata item has no authoritative identity"))
-			}
-			if prior, ok := identities[key]; ok {
-				if !reflect.DeepEqual(prior, item) {
-					return out, failure(in, fmt.Errorf("conflicting duplicate metadata identity"))
-				}
-				continue
-			}
-			identities[key] = item
-			out.Items = append(out.Items, item)
-		}
-		out.Page.Returned = len(out.Items)
-		out.Page.Total = page.Total
-		if e := coverage.Page(page.Total, len(identities), page.NextCursor == ""); e != nil {
-			return out, failure(in, e)
-		}
-		out.Complete = page.Complete && page.NextCursor == ""
-		out.Page.MoreAvailable = page.NextCursor != "" || !page.Complete
-		if page.NextCursor == "" {
-			if !out.Complete {
-				out.Status = "partial"
-			}
-			return out, nil
-		}
-		if seen[page.NextCursor] {
-			return out, failure(in, fmt.Errorf("repeated metadata continuation"))
-		}
-		seen[page.NextCursor] = true
-		if len(out.Items) >= limit {
-			return out, nil
-		}
-		cursor = page.NextCursor
+		return item.LUID
+	})
+	out.Items = result.Items
+	out.Page.Returned = len(result.Items)
+	out.Page.Total = result.Total
+	out.Page.MoreAvailable = result.MoreAvailable
+	out.Complete = result.Complete
+	out.ObservedAt = result.ObservedAt
+	out.RequestID = result.TableauRequestID
+	if readErr != nil {
+		return out, failure(in, readErr)
 	}
-	out.Status = "partial"
-	return out, failure(in, fmt.Errorf("metadata traversal exceeded page bound"))
+	if !out.Complete && !out.Page.MoreAvailable {
+		out.Status = "partial"
+	}
+	return out, nil
 }
 
 func nextCommand(in Input) string {
