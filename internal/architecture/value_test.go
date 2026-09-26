@@ -29,7 +29,7 @@ import (
 
 func TestSharedValuesAreAllowedAcrossBehaviorLayers(t *testing.T) {
 	root := moduleFixture(t)
-	for _, file := range []string{"actions/workbook/move/types.go", "internal/app/mapping.go", "internal/resources/lineage/adapter.go", "internal/tableau/fieldcatalog/types.go"} {
+	for _, file := range []string{"actions/workbook/workbook.go", "internal/app/mapping.go", "internal/resources/lineage/adapter.go", "internal/tableau/fieldcatalog/types.go"} {
 		writeGo(t, root, file, `package fixture
 import _ "example.test/tadx/internal/value"
 `)

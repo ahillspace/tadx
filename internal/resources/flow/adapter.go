@@ -12,6 +12,7 @@ import (
 
 	"github.com/ahillspace/tadx/internal/identity"
 	tableauflow "github.com/ahillspace/tadx/internal/tableau/flow"
+	"github.com/ahillspace/tadx/internal/value"
 )
 
 const resolutionPageSize = 1000
@@ -44,13 +45,7 @@ func NewAdapter(client Client, projects ProjectPathResolver) *Adapter {
 }
 
 // Flow is one normalized authoritative flow.
-type Flow struct {
-	LUID, Name, Description, FileType, ProjectLUID, ProjectName, ProjectPath, OwnerLUID, CreatedAt, UpdatedAt string
-	Tags                                                                                                      []string
-	Parameters                                                                                                []tableauflow.Parameter
-	OutputSteps                                                                                               []tableauflow.OutputStep
-	RequestID                                                                                                 string
-}
+type Flow = value.Flow
 
 // Page is one bounded normalized page.
 type Page struct {
@@ -273,5 +268,13 @@ func validatePage(page tableauflow.Page, number, size int) error {
 }
 
 func normalize(item tableauflow.Flow, path string) Flow {
-	return Flow{LUID: item.LUID, Name: item.Name, Description: item.Description, FileType: item.FileType, ProjectLUID: item.ProjectLUID, ProjectName: item.ProjectName, ProjectPath: path, OwnerLUID: item.OwnerLUID, CreatedAt: item.CreatedAt, UpdatedAt: item.UpdatedAt, Tags: item.Tags, Parameters: item.Parameters, OutputSteps: item.OutputSteps, RequestID: item.TableauRequestID}
+	parameters := make([]value.FlowParameter, len(item.Parameters))
+	for index, parameter := range item.Parameters {
+		parameters[index] = value.FlowParameter{LUID: parameter.LUID, Name: parameter.Name, Type: parameter.Type, Description: parameter.Description, Value: parameter.Value, Required: parameter.Required}
+	}
+	steps := make([]value.FlowOutputStep, len(item.OutputSteps))
+	for index, step := range item.OutputSteps {
+		steps[index] = value.FlowOutputStep{LUID: step.LUID, Name: step.Name}
+	}
+	return Flow{LUID: item.LUID, Name: item.Name, Description: item.Description, FileType: item.FileType, ProjectLUID: item.ProjectLUID, ProjectName: item.ProjectName, ProjectPath: path, OwnerLUID: item.OwnerLUID, CreatedAt: item.CreatedAt, UpdatedAt: item.UpdatedAt, Tags: item.Tags, Parameters: parameters, OutputSteps: steps, RequestID: item.TableauRequestID}
 }

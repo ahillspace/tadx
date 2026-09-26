@@ -4,16 +4,15 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	datasourceops "github.com/ahillspace/tadx/actions/datasource"
+	"github.com/ahillspace/tadx/internal/app"
+	"github.com/ahillspace/tadx/internal/toon"
 	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"sync/atomic"
 	"testing"
-
-	schema "github.com/ahillspace/tadx/actions/datasource/schema"
-	"github.com/ahillspace/tadx/internal/app"
-	"github.com/ahillspace/tadx/internal/toon"
 )
 
 func TestRepeatedDatasourceFieldSelectionThroughCLI(t *testing.T) {
@@ -28,7 +27,7 @@ func TestRepeatedDatasourceFieldSelectionThroughCLI(t *testing.T) {
 	if output.Page.Returned != 3 || output.Page.Total != 3 || output.Page.MoreAvailable || len(output.Fields) != 3 {
 		t.Fatalf("repeated selection lost fields: %#v", output)
 	}
-	fields := map[string]schema.Field{}
+	fields := map[string]datasourceops.Field{}
 	for _, field := range output.Fields {
 		fields[field.ID] = field
 	}
@@ -123,7 +122,7 @@ func schemaSelectionServer(t *testing.T) (*httptest.Server, *schemaSelectionCall
 	return server, calls
 }
 
-func runSchemaSelection(t *testing.T, options app.Options, args ...string) schema.FullResult {
+func runSchemaSelection(t *testing.T, options app.Options, args ...string) datasourceops.SchemaFullResult {
 	t.Helper()
 	output := runGroupOneCLI(t, options, args...)
 	decoded, err := toon.Decode([]byte(output))
@@ -134,7 +133,7 @@ func runSchemaSelection(t *testing.T, options app.Options, args ...string) schem
 	if err != nil {
 		t.Fatal(err)
 	}
-	var result schema.FullResult
+	var result datasourceops.SchemaFullResult
 	if err := json.Unmarshal(encoded, &result); err != nil {
 		t.Fatal(err)
 	}

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	datasourceops "github.com/ahillspace/tadx/actions/datasource"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -14,9 +15,6 @@ import (
 	"testing"
 	"time"
 
-	datasourcedelete "github.com/ahillspace/tadx/actions/datasource/delete"
-	datasourcepublish "github.com/ahillspace/tadx/actions/datasource/publish"
-	datasourcepull "github.com/ahillspace/tadx/actions/datasource/pull"
 	"github.com/ahillspace/tadx/internal/artifact"
 	"github.com/ahillspace/tadx/internal/errs"
 	"github.com/ahillspace/tadx/internal/identity"
@@ -53,7 +51,7 @@ func TestDatasourceLifecycleCompositionPreservesCompositionIdentityAndRelativePa
 
 	runtime, workspace := datasourceLifecycleRuntime(t, server)
 	commands := newRemoteContentCommands(runtime)
-	pulled, err := commands.PullDatasource(context.Background(), datasourcepull.Input{Environment: "production", Workspace: "analytics", Selector: identity.Selector{LUID: "ds-1"}})
+	pulled, err := commands.PullDatasource(context.Background(), datasourceops.PullInput{Environment: "production", Workspace: "analytics", Selector: identity.Selector{LUID: "ds-1"}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -73,7 +71,7 @@ func TestDatasourceLifecycleCompositionPreservesCompositionIdentityAndRelativePa
 		t.Fatalf("stored artifact = %#v", stored)
 	}
 
-	preview, err := commands.PublishDatasource(context.Background(), datasourcepublish.Input{Workspace: "analytics", ArtifactPath: pulled.Artifact.Path, Environment: "production", ProjectSelector: identity.Selector{LUID: "project-1"}, Mode: datasourcepublish.ModeOverwrite}, true)
+	preview, err := commands.PublishDatasource(context.Background(), datasourceops.PublishInput{Workspace: "analytics", ArtifactPath: pulled.Artifact.Path, Environment: "production", ProjectSelector: identity.Selector{LUID: "project-1"}, Mode: datasourceops.ModeOverwrite}, true)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -81,7 +79,7 @@ func TestDatasourceLifecycleCompositionPreservesCompositionIdentityAndRelativePa
 		t.Fatalf("publish preview = %#v", preview)
 	}
 
-	deleted, err := commands.DeleteDatasource(context.Background(), datasourcedelete.Input{Environment: "production", Selector: identity.Selector{LUID: "ds-1"}}, false)
+	deleted, err := commands.DeleteDatasource(context.Background(), datasourceops.DeleteInput{Environment: "production", Selector: identity.Selector{LUID: "ds-1"}}, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -92,7 +90,7 @@ func TestDatasourceLifecycleCompositionPreservesCompositionIdentityAndRelativePa
 
 func TestDatasourceLifecycleReturnsStructuredSetupErrors(t *testing.T) {
 	commands := newRemoteContentCommands(&runtimeDependencies{configPath: filepath.Join(t.TempDir(), "missing.yaml"), httpClient: http.DefaultClient, now: time.Now, correlationID: "datasource-test"})
-	_, err := commands.PullDatasource(context.Background(), datasourcepull.Input{Environment: "production", Workspace: "analytics", Selector: identity.Selector{LUID: "ds-1"}})
+	_, err := commands.PullDatasource(context.Background(), datasourceops.PullInput{Environment: "production", Workspace: "analytics", Selector: identity.Selector{LUID: "ds-1"}})
 	var structured *errs.Error
 	if err == nil || !errors.As(err, &structured) || structured.ID != "datasource.pull.workspace" || structured.Operation != "datasource.pull" || structured.Environment != "production" {
 		t.Fatalf("error = %#v", err)
@@ -100,7 +98,7 @@ func TestDatasourceLifecycleReturnsStructuredSetupErrors(t *testing.T) {
 }
 
 func TestDatasourcePublishModeMappingIsExhaustive(t *testing.T) {
-	for _, mode := range []datasourcepublish.Mode{datasourcepublish.ModeCreate, datasourcepublish.ModeOverwrite, datasourcepublish.ModeAppend, datasourcepublish.ModeReplace} {
+	for _, mode := range []datasourceops.Mode{datasourceops.ModeCreate, datasourceops.ModeOverwrite, datasourceops.ModeAppend, datasourceops.ModeReplace} {
 		if _, err := datasourcePublishMode(mode); err != nil {
 			t.Fatalf("mode %q: %v", mode, err)
 		}

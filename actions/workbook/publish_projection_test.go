@@ -1,0 +1,66 @@
+package workbook_test
+
+import (
+	"bytes"
+	workbookops "github.com/ahillspace/tadx/actions/workbook"
+	"github.com/ahillspace/tadx/internal/output"
+	"strings"
+	"testing"
+)
+
+func TestPublishCompactExecutionProjectionKeepsOutcomeContextWithoutPlan(t *testing.T) {
+	value := workbookops.PublishOutput{
+		Plan: workbookops.PublishPlan{
+			Mode:         "execute",
+			Operation:    "workbook.publish",
+			Workspace:    "analytics",
+			ArtifactPath: "artifacts/workbook/Sales--id",
+			Target:       workbookops.PublishTarget{Environment: "production", Site: "marketing", ProjectLUID: "project-1", ProjectPath: "Ops"},
+			Warnings:     []string{"A significant portability warning."},
+		},
+		Result: &workbookops.PublishResult{
+			Status:       "succeeded",
+			WorkbookLUID: "wb-1",
+			WorkbookName: "Sales",
+			ProjectLUID:  "project-1",
+			JobID:        "job-1",
+			ReceiptPath:  "jobs/job-1.json",
+			Verification: "destination_unavailable",
+		},
+	}
+
+	compact := value.CompactOutput().(workbookops.PublishCompactResult)
+	if compact.Plan != nil || compact.Status != "succeeded" || compact.Environment != "production" || compact.Site != "marketing" || compact.ProjectPath != "Ops" || compact.Workspace != "analytics" || compact.ArtifactPath == "" {
+		t.Fatalf("compact execution context = %#v", compact)
+	}
+	if compact.Result == nil || compact.Result.WorkbookLUID != "wb-1" || compact.Result.WorkbookName != "Sales" || compact.Result.ProjectLUID != "project-1" || compact.Result.ReceiptPath == "" || compact.Result.Verification != "destination_unavailable" {
+		t.Fatalf("compact execution result = %#v", compact.Result)
+	}
+}
+
+func TestPublishCompactPreviewProjectionRetainsPlan(t *testing.T) {
+	value := workbookops.PublishOutput{Plan: workbookops.PublishPlan{Mode: "preview", Operation: "workbook.publish", ArtifactPath: "artifacts/workbook/Sales"}}
+	compact := value.CompactOutput().(workbookops.PublishCompactResult)
+	if compact.Plan == nil || compact.Plan.Mode != "preview" || compact.Status != "" {
+		t.Fatalf("compact preview = %#v", compact)
+	}
+}
+
+func TestPublishCompactExecutionProjectionIsSharedByTOONAndJSON(t *testing.T) {
+	value := workbookops.PublishOutput{
+		Plan:   workbookops.PublishPlan{Mode: "execute", Operation: "workbook.publish", ArtifactPath: "artifacts/workbook/Sales", Target: workbookops.PublishTarget{Environment: "production", Site: "marketing"}},
+		Result: &workbookops.PublishResult{Status: "succeeded", WorkbookLUID: "wb-1", WorkbookName: "Sales", ProjectLUID: "project-1"},
+	}
+	var toon, json bytes.Buffer
+	if err := output.Render(&toon, value); err != nil {
+		t.Fatal(err)
+	}
+	if err := output.RenderWithOptions(&json, value, output.Options{JSON: true}); err != nil {
+		t.Fatal(err)
+	}
+	for _, rendered := range []string{toon.String(), json.String()} {
+		if strings.Contains(rendered, "plan") || !strings.Contains(rendered, "production") || !strings.Contains(rendered, "wb-1") {
+			t.Fatalf("compact projection = %q", rendered)
+		}
+	}
+}

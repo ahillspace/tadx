@@ -3,35 +3,30 @@ package content
 import (
 	"context"
 	"errors"
+	flowops "github.com/ahillspace/tadx/actions/flow"
 
-	flowdelete "github.com/ahillspace/tadx/actions/flow/delete"
-	flowinspect "github.com/ahillspace/tadx/actions/flow/inspect"
-	flowlist "github.com/ahillspace/tadx/actions/flow/list"
-	flowmove "github.com/ahillspace/tadx/actions/flow/move"
-	flowpublish "github.com/ahillspace/tadx/actions/flow/publish"
-	flowpull "github.com/ahillspace/tadx/actions/flow/pull"
 	"github.com/ahillspace/tadx/internal/cli/clierr"
 	"github.com/ahillspace/tadx/internal/cli/progress"
 	"github.com/spf13/cobra"
 )
 
 type FlowLister interface {
-	ListFlows(context.Context, flowlist.Input) (flowlist.Output, error)
+	ListFlows(context.Context, flowops.ListInput) (flowops.ListOutput, error)
 }
 type FlowInspector interface {
-	InspectFlow(context.Context, flowinspect.Input) (flowinspect.Output, error)
+	InspectFlow(context.Context, flowops.InspectInput) (flowops.InspectOutput, error)
 }
 type FlowPuller interface {
-	PullFlow(context.Context, flowpull.Input) (flowpull.Output, error)
+	PullFlow(context.Context, flowops.PullInput) (flowops.PullOutput, error)
 }
 type FlowPublisher interface {
-	PublishFlow(context.Context, flowpublish.Input, bool) (flowpublish.Output, error)
+	PublishFlow(context.Context, flowops.PublishInput, bool) (flowops.PublishOutput, error)
 }
 type FlowMover interface {
-	MoveFlow(context.Context, flowmove.Input, bool) (flowmove.Output, error)
+	MoveFlow(context.Context, flowops.MoveInput, bool) (flowops.MoveOutput, error)
 }
 type FlowDeleter interface {
-	DeleteFlow(context.Context, flowdelete.Input, bool) (flowdelete.Output, error)
+	DeleteFlow(context.Context, flowops.DeleteInput, bool) (flowops.DeleteOutput, error)
 }
 
 func newFlow(deps Dependencies) *cobra.Command {
@@ -44,7 +39,7 @@ func newFlow(deps Dependencies) *cobra.Command {
 }
 
 func newFlowList(deps Dependencies) *cobra.Command {
-	var input flowlist.Input
+	var input flowops.ListInput
 	command := &cobra.Command{Use: "list", Short: "List flows with bounded live reads or explicit --all.", Annotations: map[string]string{"tadx.capability": "flow.list"}, Args: noContentArgs("flow.list"), RunE: func(command *cobra.Command, _ []string) error {
 		result, err := deps.FlowLister.ListFlows(command.Context(), input)
 		if err != nil {
@@ -67,7 +62,7 @@ func newFlowList(deps Dependencies) *cobra.Command {
 }
 
 func newFlowInspect(deps Dependencies) *cobra.Command {
-	var input flowinspect.Input
+	var input flowops.InspectInput
 	var luid, name, projectPath, projectID string
 	command := &cobra.Command{Use: "inspect", Short: "Inspect one exact flow.", Annotations: map[string]string{"tadx.capability": "flow.inspect"}, Args: selectorArgsWithProjectID("flow.inspect", &luid, &name, &projectPath, &projectID, input.SetSelectorWithProjectLUID), RunE: func(command *cobra.Command, _ []string) error {
 		result, err := deps.FlowInspector.InspectFlow(command.Context(), input)
@@ -86,11 +81,11 @@ func newFlowInspect(deps Dependencies) *cobra.Command {
 }
 
 func newFlowPull(deps Dependencies) *cobra.Command {
-	var input flowpull.Input
+	var input flowops.PullInput
 	var ids []string
 	var name, projectPath string
 	command := &cobra.Command{Use: "pull", Short: "Pull unchanged native flow artifacts sequentially.", Annotations: map[string]string{"tadx.capability": "flow.pull"}, Args: batchPullArgs("flow.pull", &ids, &name, &projectPath, input.SetSelector), RunE: func(command *cobra.Command, _ []string) error {
-		return runContentSelection(command.Context(), "flow.pull", ids, deps.Renderer, func(ctx context.Context, id string) (flowpull.Output, error) {
+		return runContentSelection(command.Context(), "flow.pull", ids, deps.Renderer, func(ctx context.Context, id string) (flowops.PullOutput, error) {
 			item := input
 			if id != "" {
 				item.SetSelector(id, "", "")
@@ -111,7 +106,7 @@ func newFlowPull(deps Dependencies) *cobra.Command {
 }
 
 func newFlowPublish(deps Dependencies) *cobra.Command {
-	var input flowpublish.Input
+	var input flowops.PublishInput
 	var artifacts []string
 	var projectLUID, projectPath string
 	var preview bool
@@ -135,7 +130,7 @@ func newFlowPublish(deps Dependencies) *cobra.Command {
 		return nil
 	}, RunE: func(command *cobra.Command, _ []string) error {
 		reporter := progress.New(command.ErrOrStderr())
-		return runPublishSelection(command.Context(), "flow.publish", "flow", artifacts, preview, deps.Renderer, reporter, func(ctx context.Context, artifact string) (flowpublish.Output, error) {
+		return runPublishSelection(command.Context(), "flow.publish", "flow", artifacts, preview, deps.Renderer, reporter, func(ctx context.Context, artifact string) (flowops.PublishOutput, error) {
 			item := input
 			item.ArtifactPath = artifact
 			return deps.FlowPublisher.PublishFlow(ctx, item, preview)
@@ -158,7 +153,7 @@ func newFlowPublish(deps Dependencies) *cobra.Command {
 }
 
 func newFlowMove(deps Dependencies) *cobra.Command {
-	var input flowmove.Input
+	var input flowops.MoveInput
 	var flowLUID, name, sourceProject, projectLUID, projectPath string
 	var preview bool
 	command := &cobra.Command{Use: "move", Short: "Move one exact flow.", Annotations: map[string]string{"tadx.capability": "flow.move"}, Args: func(command *cobra.Command, args []string) error {
@@ -188,7 +183,7 @@ func newFlowMove(deps Dependencies) *cobra.Command {
 }
 
 func newFlowDelete(deps Dependencies) *cobra.Command {
-	var input flowdelete.Input
+	var input flowops.DeleteInput
 	var luid, name, projectPath string
 	var preview bool
 	command := &cobra.Command{Use: "delete", Short: "Delete one exact remote flow.", Annotations: map[string]string{"tadx.capability": "flow.delete"}, Args: func(command *cobra.Command, args []string) error {

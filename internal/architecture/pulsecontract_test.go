@@ -14,7 +14,7 @@ func TestPulseContractIsAvailableOnlyToPulseActions(t *testing.T) {
 		{"actions/pulse/definition/create/action.go", true},
 		{"actions/pulse/definition/publish/action.go", true},
 		{"actions/pulse/metric/fork/action.go", true},
-		{"actions/workbook/publish/action.go", false},
+		{"actions/workbook/publish.go", false},
 		{"actions/pulsex/create/action.go", false},
 		{"internal/app/pulse.go", false},
 		{"internal/tableau/pulse/client.go", false},

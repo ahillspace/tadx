@@ -14,7 +14,7 @@ import (
 	cacherefresh "github.com/ahillspace/tadx/actions/cache/refresh"
 	catalogaudit "github.com/ahillspace/tadx/actions/catalog/audit"
 	catalogsearch "github.com/ahillspace/tadx/actions/catalog/search"
-	datasourceschema "github.com/ahillspace/tadx/actions/datasource/schema"
+	datasourceops "github.com/ahillspace/tadx/actions/datasource"
 	lineagepull "github.com/ahillspace/tadx/actions/lineage/pull"
 	projectcreate "github.com/ahillspace/tadx/actions/project/create"
 	definitioncreate "github.com/ahillspace/tadx/actions/pulse/definition/create"
@@ -347,7 +347,7 @@ func TestHelpValuesForIsolatedCommandPaths(t *testing.T) {
 		validate   func(string) error
 	}{
 		{"content datasource schema", "role", 4, func(v string) error {
-			_, err := datasourceschema.NormalizeInput(datasourceschema.Input{DatasourceLUID: "datasource-id", Role: v})
+			_, err := datasourceops.SchemaNormalizeInput(datasourceops.SchemaInput{DatasourceLUID: "datasource-id", Role: v})
 			return err
 		}},
 		{"cache refresh", "scope", 8, func(v string) error { return cacherefresh.ValidateInput(cacherefresh.Input{Scopes: []string{v}}) }},

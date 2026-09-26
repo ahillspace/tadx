@@ -3,12 +3,10 @@ package app
 import (
 	"context"
 	"errors"
+	datasourceops "github.com/ahillspace/tadx/actions/datasource"
 	"path/filepath"
 	"strings"
 
-	datasourcedelete "github.com/ahillspace/tadx/actions/datasource/delete"
-	datasourcepublish "github.com/ahillspace/tadx/actions/datasource/publish"
-	datasourcepull "github.com/ahillspace/tadx/actions/datasource/pull"
 	"github.com/ahillspace/tadx/internal/artifact"
 	"github.com/ahillspace/tadx/internal/cli/progress"
 	"github.com/ahillspace/tadx/internal/contentbatch"
@@ -19,60 +17,60 @@ import (
 	tableaudatasource "github.com/ahillspace/tadx/internal/tableau/datasource"
 )
 
-func (c *remoteContentCommands) PullDatasource(ctx context.Context, input datasourcepull.Input) (datasourcepull.Output, error) {
-	if err := datasourcepull.ValidateInput(input); err != nil {
-		return datasourcepull.Output{}, err
+func (c *remoteContentCommands) PullDatasource(ctx context.Context, input datasourceops.PullInput) (datasourceops.PullOutput, error) {
+	if err := datasourceops.ValidatePullInput(input); err != nil {
+		return datasourceops.PullOutput{}, err
 	}
 	workspace, err := (&workspaceRuntime{runtime: c.runtime}).resolveForEnvironment(ctx, input.Workspace, input.Environment)
 	if err != nil {
-		return datasourcepull.Output{}, capabilitySetupError("datasource.pull.workspace", "datasource.pull", input.Environment, input.Site, "Datasource workspace resolution failed.", "Select or configure an exact workspace, then retry.", err)
+		return datasourceops.PullOutput{}, capabilitySetupError("datasource.pull.workspace", "datasource.pull", input.Environment, input.Site, "Datasource workspace resolution failed.", "Select or configure an exact workspace, then retry.", err)
 	}
 	input.Workspace = workspace.Root
 	input.WorkspaceName = workspace.Name
 	connection, err := c.connect(ctx, input.Environment, false)
 	if err != nil {
-		return datasourcepull.Output{}, remoteSetupError("datasource.pull", input.Environment, input.Site, connection.environment, err)
+		return datasourceops.PullOutput{}, remoteSetupError("datasource.pull", input.Environment, input.Site, connection.environment, err)
 	}
 	input.Environment, input.Site = connection.environment.Alias, connection.environment.SiteContentURL
 	input.SiteLUID = connection.siteLUID
 	input.ServerOrigin, err = artifact.NormalizeServerOrigin(connection.environment.URL)
 	if err != nil {
-		return datasourcepull.Output{}, remoteSetupError("datasource.pull", input.Environment, input.Site, connection.environment, err)
+		return datasourceops.PullOutput{}, remoteSetupError("datasource.pull", input.Environment, input.Site, connection.environment, err)
 	}
 
 	reader := datasourcePullReader{datasources: connection.datasources, lineage: connection.lineage}
-	return datasourcepull.New(reader, datasourceArtifactWriter{artifact.NewDatasourceManager(c.runtime.now)}).Execute(ctx, input)
+	return datasourceops.Pull(ctx, reader, datasourceArtifactWriter{artifact.NewDatasourceManager(c.runtime.now)}, input)
 }
 
-func (c *remoteContentCommands) PublishDatasource(ctx context.Context, input datasourcepublish.Input, preview bool) (datasourcepublish.Output, error) {
-	if err := datasourcepublish.ValidateInput(input); err != nil {
-		return datasourcepublish.Output{}, err
+func (c *remoteContentCommands) PublishDatasource(ctx context.Context, input datasourceops.PublishInput, preview bool) (datasourceops.PublishOutput, error) {
+	if err := datasourceops.ValidatePublishInput(input); err != nil {
+		return datasourceops.PublishOutput{}, err
 	}
 	manager := artifact.NewDatasourceManager(c.runtime.now)
-	var reader datasourcepublish.ArtifactReader
+	var reader datasourceops.ArtifactReader
 	if input.File != "" {
 		if _, err := artifact.ReadNative(ctx, input.File, "datasource"); err != nil {
-			return datasourcepublish.Output{}, capabilitySetupError("datasource.publish.file", "datasource.publish", input.Environment, input.Site, "Native datasource validation failed.", "Select a valid native datasource file, then retry.", err)
+			return datasourceops.PublishOutput{}, capabilitySetupError("datasource.publish.file", "datasource.publish", input.Environment, input.Site, "Native datasource validation failed.", "Select a valid native datasource file, then retry.", err)
 		}
 		input.ArtifactPath = input.File
 		reader = nativeDatasourceArtifactReader{}
 	} else {
 		workspace, err := (&workspaceRuntime{runtime: c.runtime}).resolveForEnvironment(ctx, input.Workspace, input.Environment)
 		if err != nil {
-			return datasourcepublish.Output{}, capabilitySetupError("datasource.publish.workspace", "datasource.publish", input.Environment, input.Site, "Datasource workspace resolution failed.", "Select or configure the logical workspace containing the exact managed datasource artifact, then retry.", err)
+			return datasourceops.PublishOutput{}, capabilitySetupError("datasource.publish.workspace", "datasource.publish", input.Environment, input.Site, "Datasource workspace resolution failed.", "Select or configure the logical workspace containing the exact managed datasource artifact, then retry.", err)
 		}
 		managed, err := artifact.Resolve(ctx, workspace.Root, artifact.Selector{Kind: "datasource", Path: input.ArtifactPath, LUID: input.ArtifactID, Name: input.ArtifactName})
 		if err != nil {
 			if _, ambiguous := errors.AsType[*artifact.AmbiguousSelectorError](err); ambiguous {
-				return datasourcepublish.Output{}, mapArtifactResolutionError("datasource.publish", workspace.Name, input.ArtifactID, err)
+				return datasourceops.PublishOutput{}, mapArtifactResolutionError("datasource.publish", workspace.Name, input.ArtifactID, err)
 			}
-			return datasourcepublish.Output{}, capabilitySetupError("datasource.publish.artifact", "datasource.publish", input.Environment, input.Site, "Datasource artifact resolution failed.", "Select one exact workspace-relative managed datasource artifact, then retry.", err)
+			return datasourceops.PublishOutput{}, capabilitySetupError("datasource.publish.artifact", "datasource.publish", input.Environment, input.Site, "Datasource artifact resolution failed.", "Select one exact workspace-relative managed datasource artifact, then retry.", err)
 		}
 		absolutePath := filepath.Join(workspace.Root, filepath.FromSlash(managed.Path))
 		input.WorkspaceName = workspace.Name
 		_, err = manager.Read(ctx, absolutePath)
 		if err != nil {
-			return datasourcepublish.Output{}, capabilitySetupError("datasource.publish.artifact", "datasource.publish", input.Environment, input.Site, "Datasource artifact read failed.", "Repair or pull the exact datasource artifact, then retry.", err)
+			return datasourceops.PublishOutput{}, capabilitySetupError("datasource.publish.artifact", "datasource.publish", input.Environment, input.Site, "Datasource artifact read failed.", "Repair or pull the exact datasource artifact, then retry.", err)
 		}
 		input.ArtifactPath = absolutePath
 		reader = datasourceArtifactReader{manager: manager, displayPath: managed.Path}
@@ -80,7 +78,7 @@ func (c *remoteContentCommands) PublishDatasource(ctx context.Context, input dat
 	input.SourceDefaulted = false
 	connection, err := c.connect(ctx, input.Environment, true)
 	if err != nil {
-		return datasourcepublish.Output{}, remoteSetupError("datasource.publish", input.Environment, input.Site, connection.environment, err)
+		return datasourceops.PublishOutput{}, remoteSetupError("datasource.publish", input.Environment, input.Site, connection.environment, err)
 	}
 	input.Environment, input.Site = connection.environment.Alias, connection.environment.SiteContentURL
 	input.TargetResolved = true
@@ -89,7 +87,7 @@ func (c *remoteContentCommands) PublishDatasource(ctx context.Context, input dat
 	if managed, ok := reader.(datasourceArtifactReader); ok {
 		adapter.sourcePath = managed.displayPath
 	}
-	action := datasourcepublish.New(reader, adapter, adapter)
+	action := datasourceops.NewPublish(reader, adapter, adapter)
 	out, err := action.Execute(ctx, input, preview)
 	if out.Result != nil && out.Result.Status != "" && lifecycle != nil {
 		var saveErr error
@@ -102,18 +100,18 @@ func (c *remoteContentCommands) PublishDatasource(ctx context.Context, input dat
 	return out, err
 }
 
-func (c *remoteContentCommands) DeleteDatasource(ctx context.Context, input datasourcedelete.Input, preview bool) (datasourcedelete.Output, error) {
-	if err := datasourcedelete.ValidateInput(input); err != nil {
-		return datasourcedelete.Output{}, err
+func (c *remoteContentCommands) DeleteDatasource(ctx context.Context, input datasourceops.DeleteInput, preview bool) (datasourceops.DeleteOutput, error) {
+	if err := datasourceops.ValidateDeleteInput(input); err != nil {
+		return datasourceops.DeleteOutput{}, err
 	}
 	connection, err := c.connect(ctx, input.Environment, true)
 	if err != nil {
-		return datasourcedelete.Output{}, remoteSetupError("datasource.delete", input.Environment, input.Site, connection.environment, err)
+		return datasourceops.DeleteOutput{}, remoteSetupError("datasource.delete", input.Environment, input.Site, connection.environment, err)
 	}
 	input.Environment, input.Site = connection.environment.Alias, connection.environment.SiteContentURL
 	input.TargetResolved = true
-	adapter := datasourceDeleteAdapter{datasources: connection.datasources, changes: connection.datasourceChanges}
-	return datasourcedelete.New(adapter, adapter).Execute(ctx, input, preview)
+	adapter := datasourceMutationAdapter{Adapter: connection.datasources, changes: connection.datasourceChanges}
+	return datasourceops.Delete(ctx, adapter, adapter, input, preview)
 }
 
 type datasourcePullReader struct {
@@ -121,34 +119,29 @@ type datasourcePullReader struct {
 	lineage     *resourcelineage.Adapter
 }
 
-func (r datasourcePullReader) ResolveDatasource(ctx context.Context, selector identity.Selector) (datasourcepull.Datasource, error) {
-	item, err := r.datasources.ResolveDatasource(ctx, selector)
-	return datasourcepull.Datasource{LUID: item.LUID, Name: item.Name, ProjectLUID: item.ProjectLUID, ProjectPath: item.ProjectPath}, err
+func (r datasourcePullReader) ResolveDatasource(ctx context.Context, selector identity.Selector) (datasourceops.Record, error) {
+	return r.datasources.ResolveDatasource(ctx, selector)
 }
 
-func (r datasourcePullReader) DownloadDatasource(ctx context.Context, luid string) (datasourcepull.Download, error) {
+func (r datasourcePullReader) DownloadDatasource(ctx context.Context, luid string) (datasourceops.Download, error) {
 	progress.SetLabel(ctx, "Downloading datasource")
 	item, err := r.datasources.DownloadDatasource(ctx, luid)
-	return datasourcepull.Download{Filename: item.Filename, Content: item.Content, TableauRequestID: item.TableauRequestID}, err
+	return datasourceops.Download{Filename: item.Filename, Content: item.Content, TableauRequestID: item.TableauRequestID}, err
 }
 
-func (r datasourcePullReader) CaptureLineage(ctx context.Context, input datasourcepull.LineageRequest) (datasourcepull.Lineage, error) {
+func (r datasourcePullReader) CaptureLineage(ctx context.Context, input datasourceops.LineageRequest) (datasourceops.Lineage, error) {
 	progress.SetLabel(ctx, "Reading datasource metadata")
 	graph, err := r.lineage.Capture(ctx, resourcelineage.Request{Kind: input.Kind, RESTLUID: input.RESTLUID, Direction: input.Direction, Depth: input.Depth})
-	nodes := make([]datasourcepull.LineageNode, len(graph.Nodes))
-	for index, node := range graph.Nodes {
-		nodes[index] = datasourcepull.LineageNode{MetadataID: node.MetadataID, Kind: node.Kind, RESTLUID: node.RESTLUID, Name: node.Name}
-	}
-	edges := make([]datasourcepull.LineageEdge, len(graph.Edges))
-	for index, edge := range graph.Edges {
-		edges[index] = datasourcepull.LineageEdge{FromMetadataID: edge.FromMetadataID, ToMetadataID: edge.ToMetadataID, Relationship: edge.Relationship}
-	}
-	return datasourcepull.Lineage{Complete: graph.Complete, Direction: graph.Direction, Depth: graph.Depth, Failure: graph.Failure, Nodes: nodes, Edges: edges, Warnings: append([]string(nil), graph.Warnings...)}, err
+	nodes := make([]datasourceops.LineageNode, len(graph.Nodes))
+	copy(nodes, graph.Nodes)
+	edges := make([]datasourceops.LineageEdge, len(graph.Edges))
+	copy(edges, graph.Edges)
+	return datasourceops.Lineage{Complete: graph.Complete, Direction: graph.Direction, Depth: graph.Depth, Failure: graph.Failure, Nodes: nodes, Edges: edges, Warnings: append([]string(nil), graph.Warnings...)}, err
 }
 
 type datasourceArtifactWriter struct{ manager *artifact.DatasourceManager }
 
-func (w datasourceArtifactWriter) WriteDatasource(ctx context.Context, input datasourcepull.Artifact) (datasourcepull.ArtifactResult, error) {
+func (w datasourceArtifactWriter) WriteDatasource(ctx context.Context, input datasourceops.PullArtifact) (datasourceops.PullArtifactResult, error) {
 	progress.SetLabel(ctx, "Saving datasource files")
 	nodes := make([]artifact.LineageNode, len(input.Lineage.Nodes))
 	for index, node := range input.Lineage.Nodes {
@@ -171,19 +164,19 @@ func (w datasourceArtifactWriter) WriteDatasource(ctx context.Context, input dat
 		Lineage:  artifact.LineageDocument{Complete: input.Lineage.Complete, Direction: direction, Depth: depth, Failure: artifactLineageFailure(input.Lineage.Failure), Nodes: nodes, Edges: edges, Warnings: append([]string(nil), input.Lineage.Warnings...)},
 	})
 	if err != nil {
-		return datasourcepull.ArtifactResult{}, err
+		return datasourceops.PullArtifactResult{}, err
 	}
 	canonicalPath, err := containDatasourceWorkspacePath(input.Workspace, result.CanonicalPath, "canonical path")
 	if err != nil {
-		return datasourcepull.ArtifactResult{}, err
+		return datasourceops.PullArtifactResult{}, err
 	}
 	lineagePath, err := containDatasourceWorkspacePath(input.Workspace, filepath.Join(input.Workspace, filepath.FromSlash(result.LineagePath)), "lineage path")
 	if err != nil {
-		return datasourcepull.ArtifactResult{}, err
+		return datasourceops.PullArtifactResult{}, err
 	}
 	// LineageStatus and CountsKnown are single-sourced from lineage completeness in the
 	// pull action; leave LineageStatus unset here so the two fields cannot diverge.
-	return datasourcepull.ArtifactResult{Path: result.WorkspaceRelativePath, CanonicalPath: canonicalPath, BaselineFingerprint: result.BaselineFingerprint, LineagePath: lineagePath, CompositionStatus: result.CompositionStatus, ParentDataSourceURLs: append([]string(nil), result.ParentDataSourceURLs...), Warnings: append([]string(nil), result.Warnings...)}, nil
+	return datasourceops.PullArtifactResult{Path: result.WorkspaceRelativePath, CanonicalPath: canonicalPath, BaselineFingerprint: result.BaselineFingerprint, LineagePath: lineagePath, CompositionStatus: result.CompositionStatus, ParentDataSourceURLs: append([]string(nil), result.ParentDataSourceURLs...), Warnings: append([]string(nil), result.Warnings...)}, nil
 }
 
 func containDatasourceWorkspacePath(workspace, absolute, label string) (string, error) {
@@ -203,9 +196,9 @@ type datasourceArtifactReader struct {
 	displayPath string
 }
 
-func (r datasourceArtifactReader) ReadDatasource(ctx context.Context, path string) (datasourcepublish.Artifact, error) {
+func (r datasourceArtifactReader) ReadDatasource(ctx context.Context, path string) (datasourceops.PublishArtifact, error) {
 	item, err := r.manager.Read(ctx, path)
-	return datasourcepublish.Artifact{Path: r.displayPath, PayloadPath: item.PayloadPath, Filename: item.Filename, Name: item.Name, TableauID: item.TableauID, Fingerprint: item.Fingerprint, SourceEnvironment: item.SourceEnvironment, SourceSite: item.SourceSite, SourceProjectName: item.SourceProjectName, SourceProjectID: item.SourceProjectID, Size: item.Size, CompositionStatus: item.CompositionStatus, ParentDataSourceURLs: append([]string(nil), item.ParentDataSourceURLs...)}, err
+	return datasourceops.PublishArtifact{Path: r.displayPath, PayloadPath: item.PayloadPath, Filename: item.Filename, Name: item.Name, TableauID: item.TableauID, Fingerprint: item.Fingerprint, SourceEnvironment: item.SourceEnvironment, SourceSite: item.SourceSite, SourceProjectName: item.SourceProjectName, SourceProjectID: item.SourceProjectID, Size: item.Size, CompositionStatus: item.CompositionStatus, ParentDataSourceURLs: append([]string(nil), item.ParentDataSourceURLs...)}, err
 }
 
 type datasourcePublishAdapter struct {
@@ -217,36 +210,31 @@ type datasourcePublishAdapter struct {
 	lifecycle               **publication
 }
 
-func (a datasourcePublishAdapter) ResolveProject(ctx context.Context, selector identity.Selector) (datasourcepublish.Project, error) {
+func (a datasourcePublishAdapter) ResolveProject(ctx context.Context, selector identity.Selector) (datasourceops.Project, error) {
 	item, err := a.projects.ResolveProject(ctx, selector)
-	return datasourcepublish.Project{LUID: item.LUID, Name: item.Name, Path: item.Path}, err
+	return datasourceops.Project{LUID: item.LUID, Name: item.Name, Path: item.Path}, err
 }
 
-func (a datasourcePublishAdapter) FindDatasources(ctx context.Context, name, projectLUID string) ([]datasourcepublish.Datasource, error) {
-	items, err := a.datasources.FindDatasources(ctx, name, projectLUID)
-	result := make([]datasourcepublish.Datasource, len(items))
-	for index, item := range items {
-		result[index] = datasourcepublish.Datasource{LUID: item.LUID, Name: item.Name, ProjectLUID: item.ProjectLUID}
-	}
-	return result, err
+func (a datasourcePublishAdapter) FindDatasources(ctx context.Context, name, projectLUID string) ([]datasourceops.Record, error) {
+	return a.datasources.FindDatasources(ctx, name, projectLUID)
 }
 
-func (a datasourcePublishAdapter) ResolvePublishedDatasource(ctx context.Context, name, projectLUID string) (datasourcepublish.Datasource, error) {
+func (a datasourcePublishAdapter) ResolvePublishedDatasource(ctx context.Context, name, projectLUID string) (datasourceops.Record, error) {
 	if a.runtime != nil {
 		fresh, err := newRemoteContentCommands(a.runtime).connect(ctx, a.environment, true)
 		if err != nil {
-			return datasourcepublish.Datasource{}, err
+			return datasourceops.Record{}, err
 		}
 		a.datasources = fresh.datasources
 	}
 	item, err := a.datasources.ResolvePublishedDatasource(ctx, name, projectLUID)
 	if _, notVisible := errors.AsType[*resourcedatasource.PublishedDatasourceNotVisibleError](err); notVisible {
-		return datasourcepublish.Datasource{}, datasourcepublish.ErrPublishedDatasourceNotVisible
+		return datasourceops.Record{}, datasourceops.PublishErrPublishedDatasourceNotVisible
 	}
-	return datasourcepublish.Datasource{LUID: item.LUID, Name: item.Name, ProjectLUID: item.ProjectLUID}, err
+	return item, err
 }
 
-func (a datasourcePublishAdapter) Prepare(ctx context.Context, input datasourcepublish.PublishRequest) (datasourcepublish.PreparedPublish, error) {
+func (a datasourcePublishAdapter) Prepare(ctx context.Context, input datasourceops.PublishRequest) (datasourceops.PreparedPublish, error) {
 	mode, err := datasourcePublishMode(input.Mode)
 	if err != nil {
 		return nil, err
@@ -269,15 +257,15 @@ func (a datasourcePublishAdapter) Prepare(ctx context.Context, input datasourcep
 	return preparedDatasourcePublish{prepared: prepared}, nil
 }
 
-func datasourcePublishMode(mode datasourcepublish.Mode) (tableaudatasource.PublishMode, error) {
+func datasourcePublishMode(mode datasourceops.Mode) (tableaudatasource.PublishMode, error) {
 	switch mode {
-	case datasourcepublish.ModeCreate:
+	case datasourceops.ModeCreate:
 		return tableaudatasource.PublishCreate, nil
-	case datasourcepublish.ModeOverwrite:
+	case datasourceops.ModeOverwrite:
 		return tableaudatasource.PublishOverwrite, nil
-	case datasourcepublish.ModeAppend:
+	case datasourceops.ModeAppend:
 		return tableaudatasource.PublishAppend, nil
-	case datasourcepublish.ModeReplace:
+	case datasourceops.ModeReplace:
 		return tableaudatasource.PublishReplace, nil
 	default:
 		return "", errors.New("unsupported datasource publish mode")
@@ -288,23 +276,13 @@ type preparedDatasourcePublish struct {
 	prepared tableaudatasource.PreparedPublish
 }
 
-func (p preparedDatasourcePublish) Commit(ctx context.Context) (datasourcepublish.Result, error) {
+func (p preparedDatasourcePublish) Commit(ctx context.Context) (datasourceops.PublishResult, error) {
 	progress.SetLabel(ctx, "Uploading and submitting datasource")
 	result, err := p.prepared.Commit(ctx)
-	return datasourcepublish.Result{Status: result.Status, DatasourceLUID: result.DatasourceLUID, DatasourceName: result.DatasourceName, ProjectLUID: result.ProjectLUID, JobID: result.JobID, TableauRequestID: result.TableauRequestID, ReceiptPath: result.ReceiptPath}, err
+	return datasourceops.PublishResult{Status: result.Status, DatasourceLUID: result.DatasourceLUID, DatasourceName: result.DatasourceName, ProjectLUID: result.ProjectLUID, JobID: result.JobID, TableauRequestID: result.TableauRequestID, ReceiptPath: result.ReceiptPath}, err
 }
 
-type datasourceDeleteAdapter struct {
-	datasources *resourcedatasource.Adapter
-	changes     *resourcedatasource.MutationAdapter
-}
-
-func (a datasourceDeleteAdapter) ResolveDatasource(ctx context.Context, selector identity.Selector) (datasourcedelete.Datasource, error) {
-	item, err := a.datasources.ResolveDatasource(ctx, selector)
-	return datasourcedelete.Datasource{LUID: item.LUID, Name: item.Name, ProjectLUID: item.ProjectLUID, ProjectPath: item.ProjectPath}, err
-}
-
-func (a datasourceDeleteAdapter) DeleteDatasource(ctx context.Context, luid string) (datasourcedelete.Result, error) {
+func (a datasourceMutationAdapter) DeleteDatasource(ctx context.Context, luid string) (datasourceops.DeleteResult, error) {
 	result, err := a.changes.DeleteDatasource(ctx, luid)
-	return datasourcedelete.Result{Status: result.Status, DatasourceLUID: result.DatasourceLUID, TableauRequestID: result.TableauRequestID}, err
+	return datasourceops.DeleteResult{Status: result.Status, DatasourceLUID: result.DatasourceLUID, TableauRequestID: result.TableauRequestID}, err
 }

@@ -33,6 +33,21 @@ func New(resolver Resolver, creator Creator) *Action {
 	return &Action{resolver: resolver, creator: creator}
 }
 
+// A resolver may share project reads within one explicit validation phase.
+// Each prewrite phase starts again, never inheriting the planning snapshot.
+type projectResolutionPhase interface {
+	BeginProjectResolution(context.Context) context.Context
+}
+
+func (a *Action) beginProjectResolution(ctx context.Context) context.Context {
+	if a != nil {
+		if resolver, ok := a.resolver.(projectResolutionPhase); ok {
+			return resolver.BeginProjectResolution(ctx)
+		}
+	}
+	return ctx
+}
+
 // Execute previews or creates one exact project.
 func (a *Action) Execute(ctx context.Context, input Input, preview bool) (Output, error) {
 	ctx = a.beginProjectResolution(ctx)
@@ -115,6 +130,26 @@ func validateInput(input Input) error {
 		return usage("environment", "project create requires an explicit resolved environment and site")
 	}
 	return ValidateInput(input)
+}
+
+// ValidateInput checks caller-controlled arguments before local or remote setup.
+func ValidateInput(input Input) error {
+	if strings.TrimSpace(input.Environment) == "" {
+		return usage("environment", "project create requires an explicit environment")
+	}
+	if strings.TrimSpace(input.Name) == "" {
+		return usage("name", "project create requires a name")
+	}
+	if strings.Contains(input.Name, "/") {
+		return usage("name", "project create name cannot contain a slash")
+	}
+	if input.ParentSelector.Name != "" || (input.ParentSelector.LUID != "" && strings.TrimSpace(input.ParentSelector.ProjectPath) != "") {
+		return usage("parent", "use either a parent LUID or an exact parent project path")
+	}
+	if !validContentPermissions(input.ContentPermissions) {
+		return usage("content_permissions", "project create content permissions are invalid")
+	}
+	return nil
 }
 
 func validContentPermissions(value string) bool {

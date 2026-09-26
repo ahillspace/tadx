@@ -1,6 +1,7 @@
 # Build an action for TADX
 
-TADX contributions are small, isolated actions built on shared Tableau adapters and CLI infrastructure.
+TADX contributions are typed operations built on shared Tableau adapters and CLI infrastructure.
+Workbook, datasource, and flow operations migrate to cohesive resource packages under the [resource refactoring playbook](docs/resource-refactoring-playbook.md).
 The maintained engineering standards now live in the repository-local [tadx-build skill](.agents/skills/tadx-build/SKILL.md), rather than a second copy here.
 It covers package boundaries, adapters, output, identity, authentication, mutation policy, registry integration, and verification.
 It requires no OpenSpec, Superpowers, or agent-review plugin.

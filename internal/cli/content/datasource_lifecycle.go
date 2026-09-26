@@ -3,10 +3,8 @@ package content
 import (
 	"context"
 	"errors"
+	datasourceops "github.com/ahillspace/tadx/actions/datasource"
 
-	datasourcedelete "github.com/ahillspace/tadx/actions/datasource/delete"
-	datasourcepublish "github.com/ahillspace/tadx/actions/datasource/publish"
-	datasourcepull "github.com/ahillspace/tadx/actions/datasource/pull"
 	"github.com/ahillspace/tadx/internal/cli/clierr"
 	"github.com/ahillspace/tadx/internal/cli/progress"
 	"github.com/spf13/cobra"
@@ -14,17 +12,17 @@ import (
 
 // DatasourcePuller pulls one unchanged native datasource artifact.
 type DatasourcePuller interface {
-	PullDatasource(context.Context, datasourcepull.Input) (datasourcepull.Output, error)
+	PullDatasource(context.Context, datasourceops.PullInput) (datasourceops.PullOutput, error)
 }
 
 // DatasourcePublisher previews or applies one datasource publication.
 type DatasourcePublisher interface {
-	PublishDatasource(context.Context, datasourcepublish.Input, bool) (datasourcepublish.Output, error)
+	PublishDatasource(context.Context, datasourceops.PublishInput, bool) (datasourceops.PublishOutput, error)
 }
 
 // DatasourceDeleter previews or applies one exact datasource deletion.
 type DatasourceDeleter interface {
-	DeleteDatasource(context.Context, datasourcedelete.Input, bool) (datasourcedelete.Output, error)
+	DeleteDatasource(context.Context, datasourceops.DeleteInput, bool) (datasourceops.DeleteOutput, error)
 }
 
 type datasourceLifecycleDependencies struct {
@@ -41,7 +39,7 @@ func addDatasourceLifecycle(command *cobra.Command, deps datasourceLifecycleDepe
 }
 
 func newDatasourcePull(deps datasourceLifecycleDependencies) *cobra.Command {
-	var input datasourcepull.Input
+	var input datasourceops.PullInput
 	var ids []string
 	var name, projectPath string
 	command := &cobra.Command{
@@ -49,7 +47,7 @@ func newDatasourcePull(deps datasourceLifecycleDependencies) *cobra.Command {
 		Annotations: map[string]string{"tadx.capability": "datasource.pull"},
 		Args:        batchPullArgs("datasource.pull", &ids, &name, &projectPath, input.SetSelector),
 		RunE: func(command *cobra.Command, _ []string) error {
-			return runContentSelection(command.Context(), "datasource.pull", ids, deps.renderer, func(ctx context.Context, id string) (datasourcepull.Output, error) {
+			return runContentSelection(command.Context(), "datasource.pull", ids, deps.renderer, func(ctx context.Context, id string) (datasourceops.PullOutput, error) {
 				item := input
 				if id != "" {
 					item.SetSelector(id, "", "")
@@ -71,7 +69,7 @@ func newDatasourcePull(deps datasourceLifecycleDependencies) *cobra.Command {
 }
 
 func newDatasourcePublish(deps datasourceLifecycleDependencies) *cobra.Command {
-	var input datasourcepublish.Input
+	var input datasourceops.PublishInput
 	var artifacts []string
 	var projectLUID, projectPath string
 	var create, overwrite, appendMode, replace bool
@@ -104,19 +102,19 @@ func newDatasourcePublish(deps datasourceLifecycleDependencies) *cobra.Command {
 			}
 			switch {
 			case create:
-				input.Mode = datasourcepublish.ModeCreate
+				input.Mode = datasourceops.ModeCreate
 			case overwrite:
-				input.Mode = datasourcepublish.ModeOverwrite
+				input.Mode = datasourceops.ModeOverwrite
 			case appendMode:
-				input.Mode = datasourcepublish.ModeAppend
+				input.Mode = datasourceops.ModeAppend
 			case replace:
-				input.Mode = datasourcepublish.ModeReplace
+				input.Mode = datasourceops.ModeReplace
 			}
-			return datasourcepublish.ValidateInput(input)
+			return datasourceops.ValidatePublishInput(input)
 		},
 		RunE: func(command *cobra.Command, _ []string) error {
 			reporter := progress.New(command.ErrOrStderr())
-			return runPublishSelection(command.Context(), "datasource.publish", "datasource", artifacts, preview, deps.renderer, reporter, func(ctx context.Context, artifact string) (datasourcepublish.Output, error) {
+			return runPublishSelection(command.Context(), "datasource.publish", "datasource", artifacts, preview, deps.renderer, reporter, func(ctx context.Context, artifact string) (datasourceops.PublishOutput, error) {
 				item := input
 				item.ArtifactPath = artifact
 				return deps.publisher.PublishDatasource(ctx, item, preview)
@@ -143,7 +141,7 @@ func newDatasourcePublish(deps datasourceLifecycleDependencies) *cobra.Command {
 }
 
 func newDatasourceDelete(deps datasourceLifecycleDependencies) *cobra.Command {
-	var input datasourcedelete.Input
+	var input datasourceops.DeleteInput
 	var luid, name, projectPath string
 	var preview bool
 	command := &cobra.Command{

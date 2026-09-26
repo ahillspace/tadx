@@ -1,11 +1,10 @@
 package app
 
 import (
-	"testing"
-
-	workbookupdate "github.com/ahillspace/tadx/actions/workbook/update"
+	workbookops "github.com/ahillspace/tadx/actions/workbook"
 	resourceworkbook "github.com/ahillspace/tadx/internal/resources/workbook"
 	tableauworkbook "github.com/ahillspace/tadx/internal/tableau/workbook"
+	"testing"
 )
 
 func TestWorkbookUpdateAdapterPreservesResponseDescriptionEvidence(t *testing.T) {
@@ -20,7 +19,7 @@ func TestWorkbookUpdateAdapterPreservesResponseDescriptionEvidence(t *testing.T)
 			EvidenceSource:   "tableau_update_response",
 			TableauRequestID: "request-update",
 		}}
-		result, err := (workbookUpdateAdapter{workbooks: resourceworkbook.NewAdapter(client)}).UpdateWorkbook(t.Context(), workbookupdate.Request{LUID: "wb-1", Description: description})
+		result, err := (workbookMutationAdapter{workbooks: resourceworkbook.NewAdapter(client)}).UpdateWorkbook(t.Context(), workbookops.UpdateRequest{LUID: "wb-1", Description: description})
 		if err != nil {
 			t.Fatal(err)
 		}

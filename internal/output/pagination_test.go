@@ -8,11 +8,11 @@ import (
 	grouplist "github.com/ahillspace/tadx/actions/admin/group/list"
 	userlist "github.com/ahillspace/tadx/actions/admin/user/list"
 	capabilitylist "github.com/ahillspace/tadx/actions/capability/list"
-	datasourcelist "github.com/ahillspace/tadx/actions/datasource/list"
+	datasourceops "github.com/ahillspace/tadx/actions/datasource"
 	envlist "github.com/ahillspace/tadx/actions/env/profile/list"
-	flowlist "github.com/ahillspace/tadx/actions/flow/list"
+	flowops "github.com/ahillspace/tadx/actions/flow"
 	projectlist "github.com/ahillspace/tadx/actions/project/list"
-	workbooklist "github.com/ahillspace/tadx/actions/workbook/list"
+	workbookops "github.com/ahillspace/tadx/actions/workbook"
 	workspacelist "github.com/ahillspace/tadx/actions/workspace/list"
 	workspacestatus "github.com/ahillspace/tadx/actions/workspace/status"
 	"github.com/ahillspace/tadx/internal/output"
@@ -20,9 +20,9 @@ import (
 
 func TestAllInventoryProjectionsHideCursors(t *testing.T) {
 	for name, value := range map[string]any{
-		"workbooks":        workbooklist.Output{Page: workbooklist.OutputPage{Returned: 1, Total: 2, Limit: 1, NextCursor: "private-cursor"}},
-		"datasources":      datasourcelist.Output{Page: datasourcelist.OutputPage{Returned: 1, Total: 2, Limit: 1, NextCursor: "private-cursor"}},
-		"flows":            flowlist.Output{Page: flowlist.OutputPage{Returned: 1, Total: 2, Limit: 1, NextCursor: "private-cursor"}},
+		"workbooks":        workbookops.ListOutput{Page: workbookops.ListOutputPage{Returned: 1, Total: 2, Limit: 1, NextCursor: "private-cursor"}},
+		"datasources":      datasourceops.ListOutput{Page: datasourceops.ListOutputPage{Returned: 1, Total: 2, Limit: 1, NextCursor: "private-cursor"}},
+		"flows":            flowops.ListOutput{Page: flowops.ListOutputPage{Returned: 1, Total: 2, Limit: 1, NextCursor: "private-cursor"}},
 		"projects":         projectlist.Output{Page: projectlist.OutputPage{Returned: 1, Total: 2, Limit: 1, NextCursor: "private-cursor"}},
 		"users":            userlist.Output{Page: userlist.OutputPage{Returned: 1, Total: 2, Limit: 1, NextCursor: "private-cursor"}},
 		"groups":           grouplist.Output{Page: grouplist.OutputPage{Returned: 1, Total: 2, Limit: 1, NextCursor: "private-cursor"}},

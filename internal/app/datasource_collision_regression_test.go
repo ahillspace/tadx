@@ -4,15 +4,14 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	datasourceops "github.com/ahillspace/tadx/actions/datasource"
+	"github.com/ahillspace/tadx/internal/identity"
 	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"sync/atomic"
 	"testing"
-
-	datasourcepull "github.com/ahillspace/tadx/actions/datasource/pull"
-	"github.com/ahillspace/tadx/internal/identity"
 )
 
 func TestDatasourcePublishPreviewFindsSpecialCharacterCollisionThroughRemoteComposition(t *testing.T) {
@@ -48,7 +47,7 @@ func TestDatasourcePublishPreviewFindsSpecialCharacterCollisionThroughRemoteComp
 
 	runtime, _ := datasourceLifecycleRuntime(t, server)
 	commands := newRemoteContentCommands(runtime)
-	pulled, err := commands.PullDatasource(context.Background(), datasourcepull.Input{Environment: "production", Workspace: "analytics", Selector: identity.Selector{LUID: "ds-special"}})
+	pulled, err := commands.PullDatasource(context.Background(), datasourceops.PullInput{Environment: "production", Workspace: "analytics", Selector: identity.Selector{LUID: "ds-special"}})
 	if err != nil {
 		t.Fatal(err)
 	}

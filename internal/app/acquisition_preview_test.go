@@ -2,13 +2,12 @@ package app
 
 import (
 	"context"
+	workbookops "github.com/ahillspace/tadx/actions/workbook"
+	"github.com/ahillspace/tadx/internal/artifact"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
-
-	workbookpull "github.com/ahillspace/tadx/actions/workbook/pull"
-	"github.com/ahillspace/tadx/internal/artifact"
 )
 
 type workbookPreviewReader struct {
@@ -16,17 +15,17 @@ type workbookPreviewReader struct {
 	t *testing.T
 }
 
-func (r workbookPreviewReader) DownloadWorkbook(context.Context, string, *bool) (workbookpull.Download, error) {
+func (r workbookPreviewReader) DownloadWorkbook(context.Context, string, *bool) (workbookops.Download, error) {
 	r.t.Fatal("preview downloaded workbook")
-	return workbookpull.Download{}, nil
+	return workbookops.Download{}, nil
 }
-func (r workbookPreviewReader) DownloadPublishedDatasource(context.Context, string) (workbookpull.DatasourceDownload, error) {
+func (r workbookPreviewReader) DownloadPublishedDatasource(context.Context, string) (workbookops.DatasourceDownload, error) {
 	r.t.Fatal("preview downloaded dependency")
-	return workbookpull.DatasourceDownload{}, nil
+	return workbookops.DatasourceDownload{}, nil
 }
-func (r workbookPreviewReader) CaptureWorkbookLineage(context.Context, workbookpull.LineageRequest) (workbookpull.LineageCapture, error) {
+func (r workbookPreviewReader) CaptureWorkbookLineage(context.Context, workbookops.LineageRequest) (workbookops.LineageCapture, error) {
 	r.t.Fatal("preview captured optional lineage")
-	return workbookpull.LineageCapture{}, nil
+	return workbookops.LineageCapture{}, nil
 }
 
 func TestWorkbookAcquisitionPreviewPreservesDependencyOverwriteScope(t *testing.T) {
@@ -34,9 +33,9 @@ func TestWorkbookAcquisitionPreviewPreservesDependencyOverwriteScope(t *testing.
 	if err := os.WriteFile(filepath.Join(root, "tadx.yaml"), []byte("version: 1\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	input := workbookpull.Input{Preview: true, Workspace: root, WorkspaceName: "work", Environment: "source", Site: "source-site", ServerOrigin: "https://tableau.example.com", SiteLUID: "site-1", LUID: "wb-1", IncludePDS: true, Overwrite: true}
-	action := workbookpull.New(workbookPreviewReader{t: t}, artifactWriter{})
-	preview, err := action.Execute(context.Background(), input)
+	input := workbookops.PullInput{Preview: true, Workspace: root, WorkspaceName: "work", Environment: "source", Site: "source-site", ServerOrigin: "https://tableau.example.com", SiteLUID: "site-1", LUID: "wb-1", IncludePDS: true, Overwrite: true}
+	actionReader, actionWriter := workbookPreviewReader{t: t}, artifactWriter{}
+	preview, err := workbookops.Pull(context.Background(), actionReader, actionWriter, input)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -53,11 +52,11 @@ func TestWorkbookAcquisitionPreviewPreservesDependencyOverwriteScope(t *testing.
 	if err := os.WriteFile(dependency.CanonicalPath, []byte("local dependency edit"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := action.Execute(context.Background(), input); err == nil || !strings.Contains(err.Error(), "dirty") {
+	if _, err := workbookops.Pull(context.Background(), actionReader, actionWriter, input); err == nil || !strings.Contains(err.Error(), "dirty") {
 		t.Fatalf("parent overwrite bypassed dependency dirty guard: %v", err)
 	}
 	input.IncludePDS = false
-	preview, err = action.Execute(context.Background(), input)
+	preview, err = workbookops.Pull(context.Background(), actionReader, actionWriter, input)
 	if err != nil || preview.Preview == nil || len(preview.Preview.Dependencies) != 0 {
 		t.Fatalf("unrequested dependencies included: %#v %v", preview.Preview, err)
 	}

@@ -22,6 +22,22 @@ type Action struct {
 }
 
 func New(r Resolver, m Mover) *Action { return &Action{r, m} }
+
+// A resolver may share project reads within one explicit validation phase.
+// Each prewrite phase starts again, never inheriting the planning snapshot.
+type projectResolutionPhase interface {
+	BeginProjectResolution(context.Context) context.Context
+}
+
+func (a *Action) beginProjectResolution(ctx context.Context) context.Context {
+	if a != nil {
+		if resolver, ok := a.resolver.(projectResolutionPhase); ok {
+			return resolver.BeginProjectResolution(ctx)
+		}
+	}
+	return ctx
+}
+
 func (a *Action) Execute(ctx context.Context, in Input, preview bool) (Output, error) {
 	ctx = a.beginProjectResolution(ctx)
 	if a == nil || a.resolver == nil || a.mover == nil {
@@ -122,6 +138,27 @@ func validate(in Input) error {
 		return usage("environment", "project move requires an explicit resolved environment and site")
 	}
 	return ValidateInput(in)
+}
+
+// ValidateInput checks caller-controlled arguments before local or remote setup.
+func ValidateInput(in Input) error {
+	if strings.TrimSpace(in.Environment) == "" {
+		return usage("environment", "project move requires an explicit environment")
+	}
+	if in.ProjectSelector.LUID == "" && strings.TrimSpace(in.ProjectSelector.ProjectPath) == "" {
+		return usage("selector", "project move requires a project LUID or exact path")
+	}
+	if in.ProjectSelector.LUID != "" && strings.TrimSpace(in.ProjectSelector.ProjectPath) != "" {
+		return usage("selector", "a project LUID cannot be combined with a project path")
+	}
+	hasParent := in.ParentSelector.LUID != "" || strings.TrimSpace(in.ParentSelector.ProjectPath) != ""
+	if hasParent == in.TopLevel {
+		return usage("parent", "use exactly one parent project selector or --top-level")
+	}
+	if in.ParentSelector.LUID != "" && strings.TrimSpace(in.ParentSelector.ProjectPath) != "" {
+		return usage("parent", "a parent project LUID cannot be combined with a project path")
+	}
+	return nil
 }
 func usage(field, message string) error {
 	return &errs.Error{ID: "project.move.usage", Kind: errs.KindUsage, Operation: "project.move", Summary: message, Retryable: errs.Bool(false), CorrectiveAction: "Correct the project move input and review a new preview.", Validation: []errs.ValidationDetail{{Field: field, Code: "invalid", Message: message}}}

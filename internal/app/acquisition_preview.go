@@ -3,12 +3,11 @@ package app
 import (
 	"context"
 	"encoding/json"
-
-	datasourcepull "github.com/ahillspace/tadx/actions/datasource/pull"
-	flowpull "github.com/ahillspace/tadx/actions/flow/pull"
+	datasourceops "github.com/ahillspace/tadx/actions/datasource"
+	flowops "github.com/ahillspace/tadx/actions/flow"
 	lineagepull "github.com/ahillspace/tadx/actions/lineage/pull"
 	definitionpull "github.com/ahillspace/tadx/actions/pulse/definition/pull"
-	workbookpull "github.com/ahillspace/tadx/actions/workbook/pull"
+	workbookops "github.com/ahillspace/tadx/actions/workbook"
 	"github.com/ahillspace/tadx/internal/artifact"
 	"github.com/ahillspace/tadx/internal/errs"
 	"github.com/ahillspace/tadx/internal/value"
@@ -26,7 +25,7 @@ func acquisitionPlan(operation, workspace, environment, site string, target valu
 	return value.AcquisitionPlan{Status: "preview", Operation: operation, Workspace: workspace, Environment: environment, Site: site, Target: target, Limitations: []string{"Execution rechecks local conflicts. Native payload validity, download permission, optional lineage availability, and filesystem write permission are not verified by this preview."}}
 }
 
-func (w artifactWriter) PreviewWorkbook(ctx context.Context, input workbookpull.Input, item workbookpull.Workbook, references []workbookpull.PublishedDatasource) (value.AcquisitionPlan, error) {
+func (w artifactWriter) PreviewWorkbook(ctx context.Context, input workbookops.PullInput, item workbookops.Record, references []workbookops.PublishedDatasource) (value.AcquisitionPlan, error) {
 	target, err := acquisitionTarget(ctx, "workbook.pull", artifact.PullPreview{Workspace: input.Workspace, Kind: "workbook", Name: item.Name, LUID: item.LUID, ServerOrigin: input.ServerOrigin, SiteLUID: input.SiteLUID, Overwrite: input.Overwrite})
 	if err != nil {
 		return value.AcquisitionPlan{}, err
@@ -44,7 +43,7 @@ func (w artifactWriter) PreviewWorkbook(ctx context.Context, input workbookpull.
 	return plan, nil
 }
 
-func (w datasourceArtifactWriter) PreviewDatasource(ctx context.Context, input datasourcepull.Input, item datasourcepull.Datasource) (value.AcquisitionPlan, error) {
+func (w datasourceArtifactWriter) PreviewDatasource(ctx context.Context, input datasourceops.PullInput, item datasourceops.Record) (value.AcquisitionPlan, error) {
 	target, err := acquisitionTarget(ctx, "datasource.pull", artifact.PullPreview{Workspace: input.Workspace, Kind: "datasource", Name: item.Name, LUID: item.LUID, ServerOrigin: input.ServerOrigin, SiteLUID: input.SiteLUID, Overwrite: input.Overwrite})
 	if err != nil {
 		return value.AcquisitionPlan{}, err
@@ -54,7 +53,7 @@ func (w datasourceArtifactWriter) PreviewDatasource(ctx context.Context, input d
 	return plan, nil
 }
 
-func (w flowArtifactWriter) PreviewFlow(ctx context.Context, input flowpull.Input, item flowpull.Flow) (value.AcquisitionPlan, error) {
+func (w flowArtifactWriter) PreviewFlow(ctx context.Context, input flowops.PullInput, item flowops.Record) (value.AcquisitionPlan, error) {
 	if item.ProjectLUID == "" || item.ProjectPath == "" {
 		return value.AcquisitionPlan{}, capabilitySetupError("flow.pull.preview", "flow.pull", input.Environment, input.Site, "Flow artifact requires complete source project identity.", "Resolve the source project before pulling.", nil)
 	}

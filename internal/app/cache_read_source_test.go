@@ -4,14 +4,13 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	workbookops "github.com/ahillspace/tadx/actions/workbook"
+	"github.com/ahillspace/tadx/internal/cache"
 	"net/http"
 	"os"
 	"path/filepath"
 	"testing"
 	"time"
-
-	workbookget "github.com/ahillspace/tadx/actions/workbook/inspect"
-	"github.com/ahillspace/tadx/internal/cache"
 )
 
 type failNetworkTransport struct{ calls int }
@@ -40,7 +39,7 @@ environments:
 		t.Fatal(err)
 	}
 	now := time.Date(2026, 9, 4, 12, 0, 0, 0, time.UTC)
-	item := workbookget.Workbook{LUID: "wb-1", Name: "Finance", ProjectLUID: "project-1", ProjectPath: "Operations", Description: "cache copy"}
+	item := workbookops.Record{LUID: "wb-1", Name: "Finance", ProjectLUID: "project-1", ProjectPath: "Operations", Description: "cache copy"}
 	payload, err := json.Marshal(item)
 	if err != nil {
 		t.Fatal(err)
@@ -55,7 +54,7 @@ environments:
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = runtime.Close() })
-	input := workbookget.Input{Cache: true}
+	input := workbookops.InspectInput{Cache: true}
 	input.SetSelector("wb-1", "", "")
 	output, err := newRemoteContentCommands(runtime).InspectWorkbook(context.Background(), input)
 	if err != nil {

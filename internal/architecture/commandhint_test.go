@@ -15,7 +15,7 @@ import (
  _ "github.com/example/shell"
 )
 `)
-	for _, file := range []string{"actions/workbook/move/action.go", "internal/app/hints.go", "internal/cli/root.go"} {
+	for _, file := range []string{"actions/workbook/move.go", "internal/app/hints.go", "internal/cli/root.go"} {
 		writeGo(t, root, file, "package fixture\nimport _ \"example.test/tadx/internal/commandhint\"\n")
 	}
 	violations, err := architecture.Check(root)

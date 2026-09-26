@@ -4,15 +4,14 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	workbookops "github.com/ahillspace/tadx/actions/workbook"
+	"github.com/ahillspace/tadx/internal/cache"
+	"github.com/ahillspace/tadx/internal/config"
 	"net/http"
 	"path/filepath"
 	"strings"
 	"testing"
 	"time"
-
-	workbookinspect "github.com/ahillspace/tadx/actions/workbook/inspect"
-	"github.com/ahillspace/tadx/internal/cache"
-	"github.com/ahillspace/tadx/internal/config"
 )
 
 func TestCachedSummaryExplainsCoverageWithoutInventingPermissionDenial(t *testing.T) {
@@ -22,7 +21,7 @@ func TestCachedSummaryExplainsCoverageWithoutInventingPermissionDenial(t *testin
 	}
 	now := time.Now().UTC()
 	store := targetCacheFixture(t, path, func() time.Time { return now })
-	payload, _ := json.Marshal(workbookinspect.Workbook{LUID: "wb-1", Name: "Sales", ProjectLUID: "p-1", ProjectPath: "Reports"})
+	payload, _ := json.Marshal(workbookops.Record{LUID: "wb-1", Name: "Sales", ProjectLUID: "p-1", ProjectPath: "Reports"})
 	if err := store.UpsertResources(context.Background(), []cache.ResourceEntry{{Environment: "work", Site: "test", Kind: "workbook", LUID: "wb-1", Name: "Sales", Coverage: "summary", ObservedAt: now, Payload: payload}}); err != nil {
 		t.Fatal(err)
 	}

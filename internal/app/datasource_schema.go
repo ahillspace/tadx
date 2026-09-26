@@ -3,10 +3,7 @@ package app
 import (
 	"context"
 	"encoding/json"
-	"strings"
-	"time"
-
-	datasourceschema "github.com/ahillspace/tadx/actions/datasource/schema"
+	datasourceops "github.com/ahillspace/tadx/actions/datasource"
 	"github.com/ahillspace/tadx/internal/cache"
 	"github.com/ahillspace/tadx/internal/config"
 	"github.com/ahillspace/tadx/internal/errs"
@@ -14,22 +11,24 @@ import (
 	resourcedatasource "github.com/ahillspace/tadx/internal/resources/datasource"
 	"github.com/ahillspace/tadx/internal/tableau/fieldcatalog"
 	"github.com/ahillspace/tadx/internal/tableau/metadataassets"
+	"strings"
+	"time"
 )
 
-func (c *remoteContentCommands) GetDatasourceSchema(ctx context.Context, input datasourceschema.Input) (datasourceschema.Output, error) {
+func (c *remoteContentCommands) GetDatasourceSchema(ctx context.Context, input datasourceops.SchemaInput) (datasourceops.SchemaOutput, error) {
 	var validationErr error
-	input, validationErr = datasourceschema.NormalizeInput(input)
+	input, validationErr = datasourceops.SchemaNormalizeInput(input)
 	if validationErr != nil {
-		return datasourceschema.Output{}, validationErr
+		return datasourceops.SchemaOutput{}, validationErr
 	}
 	if input.Cursor != "" {
 		_, environment, err := c.runtime.environment(input.Environment, false)
 		if err != nil {
-			return datasourceschema.Output{}, err
+			return datasourceops.SchemaOutput{}, err
 		}
 		input.Environment, input.Site = environment.Alias, environment.SiteContentURL
-		if err := datasourceschema.ValidateContinuation(input); err != nil {
-			return datasourceschema.Output{}, err
+		if err := datasourceops.SchemaValidateContinuation(input); err != nil {
+			return datasourceops.SchemaOutput{}, err
 		}
 	}
 	if input.Cache {
@@ -37,7 +36,7 @@ func (c *remoteContentCommands) GetDatasourceSchema(ctx context.Context, input d
 	}
 	connection, err := c.runtime.tableauConnection(ctx, input.Environment, false)
 	if err != nil {
-		return datasourceschema.Output{}, capabilitySetupError("datasource.schema.setup", "datasource.schema", input.Environment, connection.environment.SiteContentURL, "Datasource schema setup failed.", "Verify the selected environment, PAT variables, and Tableau connectivity.", err)
+		return datasourceops.SchemaOutput{}, capabilitySetupError("datasource.schema.setup", "datasource.schema", input.Environment, connection.environment.SiteContentURL, "Datasource schema setup failed.", "Verify the selected environment, PAT variables, and Tableau connectivity.", err)
 	}
 	input.Environment = connection.environment.Alias
 	input.Site = connection.environment.SiteContentURL
@@ -46,9 +45,9 @@ func (c *remoteContentCommands) GetDatasourceSchema(ctx context.Context, input d
 	if input.Descriptions || input.Tags {
 		reader.metadata = c.runtime.clients(connection).metadataAssets
 	}
-	output, err := datasourceschema.New(reader, c.runtime.now).Execute(ctx, input)
+	output, err := datasourceops.Schema(ctx, reader, c.runtime.now, input)
 	if err != nil {
-		return datasourceschema.Output{}, err
+		return datasourceops.SchemaOutput{}, err
 	}
 	if warning := c.storeLiveDatasourceSchema(ctx, connection.environment, reader.result); warning != "" {
 		output.Warnings = append(output.Warnings, warning)
@@ -60,27 +59,27 @@ type datasourceSchemaReader struct {
 	metadata *metadataassets.Client
 	adapter  *resourcedatasource.SchemaAdapter
 	now      func() time.Time
-	result   datasourceschema.Schema
+	result   datasourceops.SchemaRecord
 }
 
-func (r *datasourceSchemaReader) ReadDatasourceSchema(ctx context.Context, luid string) (datasourceschema.Schema, error) {
+func (r *datasourceSchemaReader) ReadDatasourceSchema(ctx context.Context, luid string) (datasourceops.SchemaRecord, error) {
 	result, err := r.adapter.ReadDatasourceSchema(ctx, luid)
 	if err != nil {
-		return datasourceschema.Schema{}, err
+		return datasourceops.SchemaRecord{}, err
 	}
-	tables := make([]datasourceschema.Table, len(result.Tables))
+	tables := make([]datasourceops.Table, len(result.Tables))
 	copy(tables, result.Tables)
-	fields := make([]datasourceschema.Field, len(result.Fields))
+	fields := make([]datasourceops.Field, len(result.Fields))
 	copy(fields, result.Fields)
 	observedAt := ""
 	if r.now != nil {
 		observedAt = r.now().UTC().Format(time.RFC3339Nano)
 	}
-	r.result = datasourceschema.Schema{DatasourceLUID: result.DatasourceLUID, DatasourceName: result.DatasourceName, Tables: tables, Fields: fields, Warnings: append([]string(nil), result.Warnings...), ObservedAt: observedAt, RequestID: result.RequestID}
+	r.result = datasourceops.SchemaRecord{DatasourceLUID: result.DatasourceLUID, DatasourceName: result.DatasourceName, Tables: tables, Fields: fields, Warnings: append([]string(nil), result.Warnings...), ObservedAt: observedAt, RequestID: result.RequestID}
 	if r.metadata != nil {
 		metadata, err := r.metadata.DatasourceFieldDescriptions(ctx, luid)
 		if err != nil {
-			return datasourceschema.Schema{}, err
+			return datasourceops.SchemaRecord{}, err
 		}
 		r.result.Fields = resourcedatasource.EnrichFields(fields, metadata.Fields)
 		r.result.DescriptionsObserved, r.result.TagsObserved = true, true
@@ -92,20 +91,20 @@ func (r *datasourceSchemaReader) ReadDatasourceSchema(ctx context.Context, luid 
 }
 
 type datasourceSchemaDocument struct {
-	Version int                     `json:"version"`
-	Schema  datasourceschema.Schema `json:"schema"`
+	Version int                        `json:"version"`
+	Schema  datasourceops.SchemaRecord `json:"schema"`
 }
 
-type cachedDatasourceSchemaReader struct{ schema datasourceschema.Schema }
+type cachedDatasourceSchemaReader struct{ schema datasourceops.SchemaRecord }
 
-func (r cachedDatasourceSchemaReader) ReadDatasourceSchema(context.Context, string) (datasourceschema.Schema, error) {
+func (r cachedDatasourceSchemaReader) ReadDatasourceSchema(context.Context, string) (datasourceops.SchemaRecord, error) {
 	return r.schema, nil
 }
 
-func (c *remoteContentCommands) getCacheDatasourceSchema(ctx context.Context, input datasourceschema.Input) (datasourceschema.Output, error) {
+func (c *remoteContentCommands) getCacheDatasourceSchema(ctx context.Context, input datasourceops.SchemaInput) (datasourceops.SchemaOutput, error) {
 	environment, site, err := c.resolveCacheTarget(input.Environment)
 	if err != nil {
-		return datasourceschema.Output{}, capabilitySetupError("datasource.schema.cache.setup", "datasource.schema", input.Environment, "", "Cache datasource schema setup failed.", "Verify the selected environment and cache configuration.", err)
+		return datasourceops.SchemaOutput{}, capabilitySetupError("datasource.schema.cache.setup", "datasource.schema", input.Environment, "", "Cache datasource schema setup failed.", "Verify the selected environment and cache configuration.", err)
 	}
 	input.Environment, input.Site = environment, site
 	kind := "datasource_schema"
@@ -114,15 +113,15 @@ func (c *remoteContentCommands) getCacheDatasourceSchema(ctx context.Context, in
 	}
 	result, err := c.cacheStore(input.Environment).ReadResources(ctx, cache.ResourceQuery{Environment: environment, Site: site, Kind: kind, LUID: strings.TrimSpace(input.DatasourceLUID), Limit: 1})
 	if err != nil {
-		return datasourceschema.Output{}, cacheReadError("datasource.schema", environment, site, err)
+		return datasourceops.SchemaOutput{}, cacheReadError("datasource.schema", environment, site, err)
 	}
 	var document datasourceSchemaDocument
 	if len(result.Entries) != 1 || json.Unmarshal(result.Entries[0].Payload, &document) != nil || document.Version != 1 {
-		return datasourceschema.Output{}, &errs.Error{ID: "cache.detail_not_indexed", Kind: errs.KindOperation, Operation: "datasource.schema", Environment: environment, Site: site, Summary: "The cache does not contain a usable datasource schema projection.", Retryable: errs.Bool(false), CorrectiveAction: "Run the command without --cache to query Tableau and update the cache."}
+		return datasourceops.SchemaOutput{}, &errs.Error{ID: "cache.detail_not_indexed", Kind: errs.KindOperation, Operation: "datasource.schema", Environment: environment, Site: site, Summary: "The cache does not contain a usable datasource schema projection.", Retryable: errs.Bool(false), CorrectiveAction: "Run the command without --cache to query Tableau and update the cache."}
 	}
-	output, err := datasourceschema.New(cachedDatasourceSchemaReader{schema: document.Schema}, c.runtime.now).Execute(ctx, input)
+	output, err := datasourceops.Schema(ctx, cachedDatasourceSchemaReader{schema: document.Schema}, c.runtime.now, input)
 	if err != nil {
-		return datasourceschema.Output{}, err
+		return datasourceops.SchemaOutput{}, err
 	}
 	observed := result.NewestObserved
 	if observed.IsZero() {
@@ -134,7 +133,7 @@ func (c *remoteContentCommands) getCacheDatasourceSchema(ctx context.Context, in
 	return output, nil
 }
 
-func (c *remoteContentCommands) storeLiveDatasourceSchema(ctx context.Context, environment config.Environment, schema datasourceschema.Schema) string {
+func (c *remoteContentCommands) storeLiveDatasourceSchema(ctx context.Context, environment config.Environment, schema datasourceops.SchemaRecord) string {
 	if strings.TrimSpace(schema.DatasourceLUID) == "" || strings.TrimSpace(schema.DatasourceName) == "" {
 		return "Cache write-through skipped because the datasource schema identity was incomplete."
 	}
@@ -153,7 +152,7 @@ func (c *remoteContentCommands) storeLiveDatasourceSchema(ctx context.Context, e
 		enriched := entry
 		enriched.Kind = "datasource_schema_metadata"
 		schema.DescriptionsObserved, schema.TagsObserved = false, false
-		schema.Fields = append([]datasourceschema.Field(nil), schema.Fields...)
+		schema.Fields = append([]datasourceops.Field(nil), schema.Fields...)
 		for i := range schema.Fields {
 			schema.Fields[i].Metadata = nil
 			schema.Fields[i].MetadataMatch = ""

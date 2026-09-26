@@ -39,46 +39,64 @@ type Action struct{ reader Reader }
 // New creates a project list action.
 func New(reader Reader) *Action { return &Action{reader: reader} }
 
+// ValidateInput validates bounds and continuation identity without a reader.
+func ValidateInput(input Input) error {
+	_, err := parseInput(input)
+	return err
+}
+
+type selection struct {
+	fingerprint string
+	pageNumber  int
+	pageSize    int
+	snapshot    string
+}
+
+func parseInput(input Input) (selection, error) {
+	if input.All {
+		if input.Limit != 0 || input.Cursor != "" {
+			return selection{}, errs.New(errs.KindUsage, "--all cannot be combined with --limit or --cursor")
+		}
+		return selection{}, nil
+	}
+	fingerprint := projectFilterFingerprint(input)
+	pageNumber, pageSize, snapshot, err := pageSelection(input.Cursor, input.Limit, fingerprint)
+	if err != nil {
+		return selection{}, errs.New(errs.KindUsage, err.Error())
+	}
+	return selection{fingerprint: fingerprint, pageNumber: pageNumber, pageSize: pageSize, snapshot: snapshot}, nil
+}
+
 // Execute lists one page without hidden continuation reads.
 func (a *Action) Execute(ctx context.Context, input Input) (Output, error) {
-	if err := ValidateInput(input); err != nil {
+	selected, err := parseInput(input)
+	if err != nil {
 		return Output{}, err
 	}
 	if input.All {
 		out, err := a.collectAll(ctx, input)
 		if err == nil && len(out.Projects) == 0 && ownerLUIDPattern.MatchString(input.OwnerName) {
-			return a.listByOwnerLUID(ctx, input)
+			return a.listByOwnerLUID(ctx, input, selected)
 		}
 		return out, err
 	}
 	if a == nil || a.reader == nil {
 		return Output{}, errors.New("project list reader is not configured")
 	}
-	filterFingerprint, err := projectFilterFingerprint(input)
-	if err != nil {
-		return Output{}, fmt.Errorf("build project continuation cursor: %w", err)
+	if selected.snapshot == ownerLUIDCursor && ownerLUIDPattern.MatchString(input.OwnerName) {
+		return a.listByOwnerLUID(ctx, input, selected)
 	}
-	pageNumber, pageSize, snapshotCursor, err := pageSelection(input.Cursor, input.Limit, filterFingerprint)
-	if err != nil {
-		return Output{}, err
-	}
-	if snapshotCursor == ownerLUIDCursor && ownerLUIDPattern.MatchString(input.OwnerName) {
-		return a.listByOwnerLUID(ctx, input)
-	}
-	request := PageRequest{PageNumber: pageNumber, PageSize: pageSize, Name: input.Name, ParentLUID: input.ParentLUID, OwnerName: input.OwnerName, TopLevel: input.TopLevel, SnapshotCursor: snapshotCursor}
+	request := PageRequest{PageNumber: selected.pageNumber, PageSize: selected.pageSize, Name: input.Name, ParentLUID: input.ParentLUID, OwnerName: input.OwnerName, TopLevel: input.TopLevel, SnapshotCursor: selected.snapshot}
 	page, err := a.readWindow(ctx, request)
 	if err != nil {
 		return Output{}, err
 	}
-	if page.Number != pageNumber || page.Size <= 0 || page.Total < 0 || len(page.Projects) > page.Size {
+	if page.Number != selected.pageNumber || page.Size <= 0 || page.Total < 0 || len(page.Projects) > page.Size {
 		return Output{}, errors.New("project list reader returned inconsistent pagination")
 	}
 	next := ""
 	if !page.SuppressContinuation && (page.SnapshotCursor != "" || page.Number*page.Size < page.Total) {
-		next, err = encodeCursor(page.Number+1, page.Size, filterFingerprint, page.SnapshotCursor)
-		if err != nil {
-			return Output{}, err
-		}
+		next = encodeCursor(page.Number+1, page.Size, selected.fingerprint, page.SnapshotCursor)
 	}
 	out := Output{
 		Status: "listed", Environment: input.Environment, Site: input.Site, Projects: page.Projects,
@@ -87,7 +105,7 @@ func (a *Action) Execute(ctx context.Context, input Input) (Output, error) {
 		Help:      listHelp(input.Environment, page.Projects),
 	}
 	if page.Total == 0 && ownerLUIDPattern.MatchString(input.OwnerName) {
-		return a.listByOwnerLUID(ctx, input)
+		return a.listByOwnerLUID(ctx, input, selected)
 	}
 	return out, nil
 }
@@ -95,20 +113,12 @@ func (a *Action) Execute(ctx context.Context, input Input) (Output, error) {
 // Tableau's project list supports ownerName but not owner LUID filtering.
 // When the documented name filter finds no rows, a UUID-shaped selector is
 // resolved against a complete inventory using authoritative owner LUIDs.
-func (a *Action) listByOwnerLUID(ctx context.Context, input Input) (Output, error) {
+func (a *Action) listByOwnerLUID(ctx context.Context, input Input, selected selection) (Output, error) {
 	if a == nil || a.reader == nil {
 		return Output{}, errors.New("project list reader is not configured")
 	}
 	if input.Cache {
 		return Output{}, errs.New(errs.KindUsage, "owner LUID filtering requires live project inventory; remove --cache")
-	}
-	filterFingerprint, err := projectFilterFingerprint(input)
-	if err != nil {
-		return Output{}, err
-	}
-	pageNumber, pageSize, _, err := pageSelection(input.Cursor, input.Limit, filterFingerprint)
-	if err != nil && !input.All {
-		return Output{}, err
 	}
 	requestID := ""
 	items, err := paging.Collect(ctx, func(ctx context.Context, state paging.State) (paging.Page[Project], error) {
@@ -129,19 +139,16 @@ func (a *Action) listByOwnerLUID(ctx context.Context, input Input) (Output, erro
 		return Output{Status: "listed", Environment: input.Environment, Site: input.Site, Projects: owned, Page: OutputPage{Returned: len(owned), Total: len(owned), Limit: maxLimit}, RequestID: requestID, Help: listHelp(input.Environment, owned)}, nil
 	}
 	start := len(owned)
-	if pageNumber <= len(owned)/pageSize+1 {
-		start = min((pageNumber-1)*pageSize, len(owned))
+	if selected.pageNumber <= len(owned)/selected.pageSize+1 {
+		start = min((selected.pageNumber-1)*selected.pageSize, len(owned))
 	}
-	end := min(start+pageSize, len(owned))
+	end := min(start+selected.pageSize, len(owned))
 	page := owned[start:end]
 	next := ""
 	if end < len(owned) {
-		next, err = encodeCursor(pageNumber+1, pageSize, filterFingerprint, ownerLUIDCursor)
-		if err != nil {
-			return Output{}, err
-		}
+		next = encodeCursor(selected.pageNumber+1, selected.pageSize, selected.fingerprint, ownerLUIDCursor)
 	}
-	return Output{Status: "listed", Environment: input.Environment, Site: input.Site, Projects: page, Page: OutputPage{Returned: len(page), Total: len(owned), Limit: pageSize, NextCursor: next, MoreAvailable: next != ""}, RequestID: requestID, Help: listHelp(input.Environment, page)}, nil
+	return Output{Status: "listed", Environment: input.Environment, Site: input.Site, Projects: page, Page: OutputPage{Returned: len(page), Total: len(owned), Limit: selected.pageSize, NextCursor: next, MoreAvailable: next != ""}, RequestID: requestID, Help: listHelp(input.Environment, page)}, nil
 }
 
 func pageSelection(value string, requested int, expectedFilter string) (int, int, string, error) {
@@ -174,12 +181,9 @@ func pageSelection(value string, requested int, expectedFilter string) (int, int
 	return cursor.Page, cursor.Size, cursor.Snapshot, nil
 }
 
-func encodeCursor(page, size int, filter, snapshot string) (string, error) {
-	data, err := json.Marshal(cursorValue{Version: cursorVersion, Page: page, Size: size, Filter: filter, Snapshot: snapshot})
-	if err != nil {
-		return "", err
-	}
-	return base64.RawURLEncoding.EncodeToString(data), nil
+func encodeCursor(page, size int, filter, snapshot string) string {
+	data, _ := json.Marshal(cursorValue{Version: cursorVersion, Page: page, Size: size, Filter: filter, Snapshot: snapshot})
+	return base64.RawURLEncoding.EncodeToString(data)
 }
 
 type cursorValue struct {
@@ -190,8 +194,8 @@ type cursorValue struct {
 	Snapshot string `json:"c,omitempty"`
 }
 
-func projectFilterFingerprint(input Input) (string, error) {
-	data, err := json.Marshal(struct {
+func projectFilterFingerprint(input Input) string {
+	data, _ := json.Marshal(struct {
 		Environment string `json:"environment"`
 		Site        string `json:"site"`
 		Name        string `json:"name"`
@@ -200,18 +204,12 @@ func projectFilterFingerprint(input Input) (string, error) {
 		TopLevel    *bool  `json:"top_level"`
 		Cache       bool   `json:"cache"`
 	}{Environment: input.Environment, Site: input.Site, Name: input.Name, ParentLUID: input.ParentLUID, OwnerName: input.OwnerName, TopLevel: input.TopLevel, Cache: input.Cache})
-	if err != nil {
-		return "", err
-	}
 	sum := sha256.Sum256(data)
-	return base64.RawURLEncoding.EncodeToString(sum[:]), nil
+	return base64.RawURLEncoding.EncodeToString(sum[:])
 }
 
 // collectAll follows private bounded pages and fails closed on incomplete inventories.
 func (a *Action) collectAll(ctx context.Context, input Input) (Output, error) {
-	if input.Limit != 0 || input.Cursor != "" {
-		return Output{}, errs.New(errs.KindUsage, "--all cannot be combined with --limit or --cursor")
-	}
 	if a == nil || a.reader == nil {
 		return Output{}, errors.New("inventory reader is not configured")
 	}

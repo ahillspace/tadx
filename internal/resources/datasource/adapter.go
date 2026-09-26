@@ -12,6 +12,7 @@ import (
 
 	"github.com/ahillspace/tadx/internal/identity"
 	tableaudatasource "github.com/ahillspace/tadx/internal/tableau/datasource"
+	"github.com/ahillspace/tadx/internal/value"
 )
 
 // Client is the narrow Tableau datasource client used by inventory, identity resolution, and dependency acquisition.
@@ -33,29 +34,7 @@ type ProjectSelectorPathResolver interface {
 }
 
 // Datasource is one normalized authoritative published datasource identity.
-type Datasource struct {
-	LUID                string
-	Name                string
-	ProjectLUID         string
-	ProjectName         string
-	ProjectPath         string
-	Description         string
-	Type                string
-	ContentURL          string
-	OwnerLUID           string
-	CreatedAt           string
-	UpdatedAt           string
-	Size                *int64
-	EncryptExtracts     *bool
-	HasExtracts         *bool
-	IsCertified         *bool
-	CertificationNote   string
-	UseRemoteQueryAgent *bool
-	WebpageURL          string
-	Tags                []string
-	AskDataEnablement   string
-	RequestID           string
-}
+type Datasource = value.Datasource
 
 // ErrPublishedDatasourceNotVisible identifies a completed publish whose exact
 // destination is not yet exposed by Tableau's name index.

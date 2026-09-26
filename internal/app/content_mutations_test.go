@@ -2,14 +2,12 @@ package app
 
 import (
 	"context"
+	datasourceops "github.com/ahillspace/tadx/actions/datasource"
+	flowops "github.com/ahillspace/tadx/actions/flow"
+	projectmove "github.com/ahillspace/tadx/actions/project/move"
+	workbookops "github.com/ahillspace/tadx/actions/workbook"
 	"testing"
 
-	datasourcemove "github.com/ahillspace/tadx/actions/datasource/move"
-	datasourceupdate "github.com/ahillspace/tadx/actions/datasource/update"
-	flowupdate "github.com/ahillspace/tadx/actions/flow/update"
-	projectmove "github.com/ahillspace/tadx/actions/project/move"
-	workbookmove "github.com/ahillspace/tadx/actions/workbook/move"
-	workbookupdate "github.com/ahillspace/tadx/actions/workbook/update"
 	"github.com/ahillspace/tadx/internal/identity"
 	resourcedatasource "github.com/ahillspace/tadx/internal/resources/datasource"
 	resourceflow "github.com/ahillspace/tadx/internal/resources/flow"
@@ -22,18 +20,18 @@ import (
 )
 
 var (
-	_ workbookmove.Resolver     = workbookMutationAdapter{}
-	_ workbookmove.Mover        = workbookMutationAdapter{}
-	_ workbookupdate.Resolver   = workbookUpdateAdapter{}
-	_ workbookupdate.Updater    = workbookUpdateAdapter{}
-	_ datasourcemove.Resolver   = datasourceMutationAdapter{}
-	_ datasourcemove.Mover      = datasourceMutationAdapter{}
-	_ datasourceupdate.Resolver = datasourceUpdateAdapter{}
-	_ datasourceupdate.Updater  = datasourceUpdateAdapter{}
-	_ flowupdate.Resolver       = (*flowUpdateAdapter)(nil)
-	_ flowupdate.Updater        = (*flowUpdateAdapter)(nil)
-	_ projectmove.Resolver      = projectMoveAdapter{}
-	_ projectmove.Mover         = projectMoveAdapter{}
+	_ workbookops.MoveResolver     = (*resourceworkbook.Adapter)(nil)
+	_ workbookops.Mover            = workbookMutationAdapter{}
+	_ workbookops.UpdateResolver   = (*resourceworkbook.Adapter)(nil)
+	_ workbookops.Updater          = workbookMutationAdapter{}
+	_ datasourceops.MoveResolver   = datasourceMutationAdapter{}
+	_ datasourceops.Mover          = datasourceMutationAdapter{}
+	_ datasourceops.UpdateResolver = datasourceMutationAdapter{}
+	_ datasourceops.Updater        = datasourceMutationAdapter{}
+	_ flowops.Resolver             = (*flowUpdateAdapter)(nil)
+	_ flowops.Updater              = (*flowUpdateAdapter)(nil)
+	_ projectmove.Resolver         = projectMoveAdapter{}
+	_ projectmove.Mover            = projectMoveAdapter{}
 )
 
 type contentMutationWorkbookClient struct {
@@ -143,7 +141,7 @@ func TestContentMutationAdaptersPreserveAuthoritativeResults(t *testing.T) {
 		t.Fatalf("workbook move=%#v err=%v", moveResult, err)
 	}
 	name, owner := "Renamed", "owner-2"
-	updateResult, err := (workbookUpdateAdapter{workbooks: workbooks}).UpdateWorkbook(ctx, workbookupdate.Request{LUID: "wb-1", Name: &name, OwnerLUID: &owner})
+	updateResult, err := (workbookMutationAdapter{workbooks: workbooks}).UpdateWorkbook(ctx, workbookops.UpdateRequest{LUID: "wb-1", Name: &name, OwnerLUID: &owner})
 	if err != nil || updateResult.WorkbookName != name || updateResult.OwnerLUID != owner {
 		t.Fatalf("workbook update=%#v err=%v", updateResult, err)
 	}
@@ -151,11 +149,11 @@ func TestContentMutationAdaptersPreserveAuthoritativeResults(t *testing.T) {
 	datasourceClient := &contentMutationDatasourceClient{result: tableaudatasource.MutationResult{Status: "succeeded", DatasourceLUID: "ds-1", DatasourceName: "Renamed", ProjectLUID: "project-2", OwnerLUID: "owner-2", TableauRequestID: "request-ds"}}
 	datasources := resourcedatasource.NewAdapter(datasourceClient)
 	datasourceChanges := resourcedatasource.NewMutationAdapter(datasourceClient)
-	datasourceMoveResult, err := (datasourceMutationAdapter{datasources: datasources, changes: datasourceChanges}).MoveDatasource(ctx, "ds-1", projectLUID)
+	datasourceMoveResult, err := (datasourceMutationAdapter{Adapter: datasources, changes: datasourceChanges}).MoveDatasource(ctx, "ds-1", projectLUID)
 	if err != nil || datasourceMoveResult.DatasourceLUID != "ds-1" || datasourceMoveResult.ProjectLUID != projectLUID || datasourceMoveResult.TableauRequestID != "request-ds" {
 		t.Fatalf("datasource move=%#v err=%v", datasourceMoveResult, err)
 	}
-	datasourceUpdateResult, err := (datasourceUpdateAdapter{datasources: datasources, changes: datasourceChanges}).UpdateDatasource(ctx, datasourceupdate.Request{LUID: "ds-1", Name: &name, OwnerLUID: &owner})
+	datasourceUpdateResult, err := (datasourceMutationAdapter{Adapter: datasources, changes: datasourceChanges}).UpdateDatasource(ctx, datasourceops.UpdateRequest{LUID: "ds-1", Name: &name, OwnerLUID: &owner})
 	if err != nil || datasourceUpdateResult.DatasourceName != name || datasourceUpdateResult.OwnerLUID != owner {
 		t.Fatalf("datasource update=%#v err=%v", datasourceUpdateResult, err)
 	}
@@ -173,7 +171,7 @@ func TestFlowUpdateAdapterEnrichesOnlyFromResolvedAuthoritativeFlow(t *testing.T
 	if err != nil || resolved.Name != "Daily Prep" {
 		t.Fatalf("resolved=%#v err=%v", resolved, err)
 	}
-	result, err := adapter.UpdateFlow(context.Background(), flowupdate.Request{LUID: "flow-1", OwnerLUID: &owner})
+	result, err := adapter.UpdateFlow(context.Background(), flowops.UpdateRequest{LUID: "flow-1", OwnerLUID: &owner})
 	if err != nil || result.FlowLUID != "flow-1" || result.FlowName != "Daily Prep" || result.ProjectLUID != "project-1" || result.OwnerLUID != owner || result.TableauRequestID != "request-flow" {
 		t.Fatalf("result=%#v err=%v", result, err)
 	}
@@ -186,7 +184,7 @@ func TestProjectMoveAdapterNormalizesReturnedHierarchyPath(t *testing.T) {
 		result: tableauproject.MutationResult{Status: "succeeded", Project: tableauproject.Project{LUID: "project-1", Name: "Operations", ParentLUID: parent}, TableauRequestID: "request-project"},
 	}
 	projects := resourceproject.NewAdapter(client)
-	adapter := projectMoveAdapter{projects: projects, changes: resourceproject.NewMutationAdapter(client)}
+	adapter := projectMoveAdapter{projects: projects, changes: client}
 	result, err := adapter.MoveProject(context.Background(), "project-1", &parent)
 	if err != nil || result.Project.Path != "Department/Operations" || result.Project.ParentLUID != parent || result.TableauRequestID != "request-project" {
 		t.Fatalf("result=%#v err=%v", result, err)
@@ -199,7 +197,7 @@ func TestProjectMoveAdapterReportsLiteralSlashPathUnavailable(t *testing.T) {
 		page:   tableauproject.Page{Number: 1, Size: 1, Total: 1, Items: []tableauproject.Project{{LUID: parent, Name: "Department"}}},
 		result: tableauproject.MutationResult{Status: "succeeded", Project: tableauproject.Project{LUID: "project-1", Name: "Ops/Reports", ParentLUID: parent}, TableauRequestID: "request-project"},
 	}
-	adapter := projectMoveAdapter{projects: resourceproject.NewAdapter(client), changes: resourceproject.NewMutationAdapter(client)}
+	adapter := projectMoveAdapter{projects: resourceproject.NewAdapter(client), changes: client}
 	result, err := adapter.MoveProject(context.Background(), "project-1", &parent)
 	if err != nil {
 		t.Fatal(err)

@@ -3,6 +3,12 @@ package app
 import (
 	"context"
 	"fmt"
+	datasourceops "github.com/ahillspace/tadx/actions/datasource"
+	flowops "github.com/ahillspace/tadx/actions/flow"
+	projectcreate "github.com/ahillspace/tadx/actions/project/create"
+	projectmove "github.com/ahillspace/tadx/actions/project/move"
+	projectupdate "github.com/ahillspace/tadx/actions/project/update"
+	searchaction "github.com/ahillspace/tadx/actions/search"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -10,13 +16,6 @@ import (
 	"strings"
 	"sync/atomic"
 	"testing"
-
-	datasourcelist "github.com/ahillspace/tadx/actions/datasource/list"
-	flowlist "github.com/ahillspace/tadx/actions/flow/list"
-	projectcreate "github.com/ahillspace/tadx/actions/project/create"
-	projectmove "github.com/ahillspace/tadx/actions/project/move"
-	projectupdate "github.com/ahillspace/tadx/actions/project/update"
-	searchaction "github.com/ahillspace/tadx/actions/search"
 )
 
 func TestFilteredContentListsRetainCacheProjectPaths(t *testing.T) {
@@ -39,9 +38,9 @@ func TestFilteredContentListsRetainCacheProjectPaths(t *testing.T) {
 			commands := newRemoteContentCommands(runtime)
 			var err error
 			if kind == "datasource" {
-				_, err = commands.ListDatasources(context.Background(), datasourcelist.Input{Environment: "production", Name: "Sales", All: true})
+				_, err = commands.ListDatasources(context.Background(), datasourceops.ListInput{Environment: "production", Name: "Sales", All: true})
 			} else {
-				_, err = commands.ListFlows(context.Background(), flowlist.Input{Environment: "production", Name: "Sales", All: true})
+				_, err = commands.ListFlows(context.Background(), flowops.ListInput{Environment: "production", Name: "Sales", All: true})
 			}
 			if err != nil {
 				t.Fatal(err)

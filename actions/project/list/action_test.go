@@ -204,6 +204,27 @@ func TestActionRejectsProjectCursorVersionAndLimitMismatch(t *testing.T) {
 	}
 }
 
+func TestActionRejectsInvalidProjectPagingBeforeReading(t *testing.T) {
+	for _, test := range []struct {
+		name    string
+		input   projectlist.Input
+		message string
+	}{
+		{name: "malformed cursor", input: projectlist.Input{Cursor: "not-base64!"}, message: "invalid project continuation cursor"},
+		{name: "all with limit", input: projectlist.Input{All: true, Limit: 1}, message: "--all cannot be combined with --limit or --cursor"},
+		{name: "all with cursor", input: projectlist.Input{All: true, Cursor: "not-base64!"}, message: "--all cannot be combined with --limit or --cursor"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			r := &reader{}
+			_, err := projectlist.New(r).Execute(t.Context(), test.input)
+			assertUsageError(t, err, test.message)
+			if r.calls != 0 {
+				t.Fatalf("reader calls = %d", r.calls)
+			}
+		})
+	}
+}
+
 func assertUsageError(t *testing.T, err error, message string) {
 	t.Helper()
 	if err == nil || err.Error() != message {

@@ -2,10 +2,10 @@ package app
 
 import (
 	"context"
+	"encoding/json"
+	workbookops "github.com/ahillspace/tadx/actions/workbook"
 	"testing"
 
-	workbookget "github.com/ahillspace/tadx/actions/workbook/inspect"
-	workbooklist "github.com/ahillspace/tadx/actions/workbook/list"
 	"github.com/ahillspace/tadx/internal/identity"
 	resourceworkbook "github.com/ahillspace/tadx/internal/resources/workbook"
 	tableauworkbook "github.com/ahillspace/tadx/internal/tableau/workbook"
@@ -33,7 +33,7 @@ func TestWorkbookListReaderMapsActionAndResourceTypes(t *testing.T) {
 		Number: 1, Size: 25, Total: 1, RequestID: "request-1",
 		Items: []resourceworkbook.Workbook{{LUID: "wb-1", Name: "Finance", ProjectLUID: "project-1", ProjectPath: "Department/Ops", ContentURL: "Finance", Description: "Finance reporting", OwnerLUID: "user-1", CreatedAt: "2026-08-01T00:00:00Z", UpdatedAt: "2026-09-01T00:00:00Z", Tags: []string{"finance"}}},
 	}}
-	page, err := (workbookListReader{adapter: adapter}).ListWorkbooks(context.Background(), workbooklist.PageRequest{PageNumber: 1, PageSize: 25, Name: "Finance", OwnerName: "Analyst", ProjectLUID: "project-1", ProjectName: "Ops", Tag: "finance"})
+	page, err := (workbookListReader{adapter: adapter}).ListWorkbooks(context.Background(), workbookops.ListPageRequest{PageNumber: 1, PageSize: 25, Name: "Finance", OwnerName: "Analyst", ProjectLUID: "project-1", ProjectName: "Ops", Tag: "finance"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -45,18 +45,28 @@ func TestWorkbookListReaderMapsActionAndResourceTypes(t *testing.T) {
 	}
 }
 
-func TestWorkbookGetResolverMapsExactWorkbook(t *testing.T) {
+func TestWorkbookInspectUsesResourceRecordDirectly(t *testing.T) {
 	adapter := &workbookInventoryAdapterStub{workbook: resourceworkbook.Workbook{LUID: "wb-1", Name: "Finance", ProjectLUID: "project-1", ProjectPath: "Department/Ops", ContentURL: "Finance", Description: "Finance reporting", OwnerLUID: "user-1", CreatedAt: "2026-08-01T00:00:00Z", UpdatedAt: "2026-09-01T00:00:00Z", Tags: []string{"finance"}, RequestID: "request-1"}}
 	selector := identity.Selector{Name: "Finance", ProjectPath: "Department/Ops"}
-	item, err := (workbookGetResolver{adapter: adapter}).ResolveWorkbook(context.Background(), selector)
+	output, err := workbookops.Inspect(t.Context(), adapter, workbookops.InspectInput{Selector: selector})
+	item := output.Workbook
 	if err != nil {
 		t.Fatal(err)
 	}
 	if adapter.selector != selector {
 		t.Fatalf("selector = %#v", adapter.selector)
 	}
-	want := workbookget.Workbook{LUID: "wb-1", Name: "Finance", ProjectLUID: "project-1", ProjectPath: "Department/Ops", ContentURL: "Finance", Description: "Finance reporting", OwnerLUID: "user-1", CreatedAt: "2026-08-01T00:00:00Z", UpdatedAt: "2026-09-01T00:00:00Z", Tags: []string{"finance"}, RequestID: "request-1"}
+	want := workbookops.Record{LUID: "wb-1", Name: "Finance", ProjectLUID: "project-1", ProjectPath: "Department/Ops", ContentURL: "Finance", Description: "Finance reporting", OwnerLUID: "user-1", CreatedAt: "2026-08-01T00:00:00Z", UpdatedAt: "2026-09-01T00:00:00Z", Tags: []string{"finance"}, RequestID: "request-1"}
 	if item.LUID != want.LUID || item.ProjectPath != want.ProjectPath || item.RequestID != want.RequestID || item.Description != want.Description || len(item.Tags) != 1 {
 		t.Fatalf("workbook = %#v", item)
+	}
+}
+
+func TestWorkbookRecordPreservesCachedInspectPayload(t *testing.T) {
+	item := workbookops.Record{LUID: "wb-1", Name: "Finance", ProjectLUID: "p-1", OwnerLUID: "owner", Tags: []string{"finance"}, RequestID: "private-request"}
+	encoded, err := json.Marshal(item)
+	want := `{"luid":"wb-1","name":"Finance","project_luid":"p-1","project_path":"","owner_luid":"owner","tags":["finance"]}`
+	if err != nil || string(encoded) != want {
+		t.Fatalf("cache payload=%s err=%v, want %s", encoded, err, want)
 	}
 }
