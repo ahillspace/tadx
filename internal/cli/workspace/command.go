@@ -6,54 +6,44 @@ import (
 	"errors"
 	"strings"
 
-	artifactdelete "github.com/ahillspace/tadx/actions/workspace/artifact/delete"
-	workspaceclean "github.com/ahillspace/tadx/actions/workspace/clean"
-	workspaceclone "github.com/ahillspace/tadx/actions/workspace/clone"
-	workspacecreate "github.com/ahillspace/tadx/actions/workspace/create"
-	workspacedelete "github.com/ahillspace/tadx/actions/workspace/delete"
-	workspacelist "github.com/ahillspace/tadx/actions/workspace/list"
-	workspacemove "github.com/ahillspace/tadx/actions/workspace/move"
-	workspaceregister "github.com/ahillspace/tadx/actions/workspace/register"
-	workspacesetdefault "github.com/ahillspace/tadx/actions/workspace/setdefault"
-	workspacestatus "github.com/ahillspace/tadx/actions/workspace/status"
-	workspaceunregister "github.com/ahillspace/tadx/actions/workspace/unregister"
+	workspaceaction "github.com/ahillspace/tadx/actions/workspace"
 	"github.com/ahillspace/tadx/internal/cli/clierr"
 	"github.com/ahillspace/tadx/internal/pathspec"
 	"github.com/spf13/cobra"
 )
 
 type Creator interface {
-	Create(context.Context, workspacecreate.Input) (workspacecreate.Output, error)
+	Create(context.Context, workspaceaction.CreateInput) (workspaceaction.CreateOutput, error)
 }
 type Registrar interface {
-	Register(context.Context, workspaceregister.Input) (workspaceregister.Output, error)
+	Register(context.Context, workspaceaction.RegisterInput) (workspaceaction.RegisterOutput, error)
 }
 type Cloner interface {
-	Clone(context.Context, workspaceclone.Input) (workspaceclone.Output, error)
+	Clone(context.Context, workspaceaction.CloneInput) (workspaceaction.CloneOutput, error)
 }
 type Lister interface {
-	List(context.Context, workspacelist.Input) (workspacelist.Output, error)
+	List(context.Context, workspaceaction.ListInput) (workspaceaction.ListOutput, error)
 }
 type Statuser interface {
-	Status(context.Context, workspacestatus.Input) (workspacestatus.Output, error)
+	Status(context.Context, workspaceaction.StatusInput) (workspaceaction.StatusOutput, error)
 }
 type Mover interface {
-	Move(context.Context, workspacemove.Input) (workspacemove.Output, error)
+	Move(context.Context, workspaceaction.MoveInput) (workspaceaction.MoveOutput, error)
 }
 type Deleter interface {
-	Delete(context.Context, artifactdelete.Input, bool) (artifactdelete.Output, error)
+	DeleteArtifact(context.Context, workspaceaction.DeleteArtifactInput, bool) (workspaceaction.DeleteArtifactOutput, error)
 }
 type Cleaner interface {
-	Clean(context.Context, workspaceclean.Input) (workspaceclean.Output, error)
+	Clean(context.Context, workspaceaction.CleanInput) (workspaceaction.CleanOutput, error)
 }
 type DefaultSetter interface {
-	SetDefault(context.Context, workspacesetdefault.Input) (workspacesetdefault.Output, error)
+	SetDefault(context.Context, workspaceaction.SetDefaultInput) (workspaceaction.SetDefaultOutput, error)
 }
 type Unregistrar interface {
-	Unregister(context.Context, workspaceunregister.Input) (workspaceunregister.Output, error)
+	Unregister(context.Context, workspaceaction.UnregisterInput) (workspaceaction.UnregisterOutput, error)
 }
 type WorkspaceDeleter interface {
-	DeleteWorkspace(context.Context, workspacedelete.Input, bool) (workspacedelete.Output, error)
+	DeleteWorkspace(context.Context, workspaceaction.DeleteWorkspaceInput, bool) (workspaceaction.DeleteWorkspaceOutput, error)
 }
 type Renderer interface{ Render(any) error }
 
@@ -81,7 +71,7 @@ func New(deps Dependencies) *cobra.Command {
 }
 
 func newSetDefault(deps Dependencies) *cobra.Command {
-	var input workspacesetdefault.Input
+	var input workspaceaction.SetDefaultInput
 	command := &cobra.Command{Use: use(deps, "workspace.set-default", "set-default <name>"), Short: short(deps, "workspace.set-default", "Set the default workspace."), Annotations: map[string]string{"tadx.capability": "workspace.set-default"}, Args: func(command *cobra.Command, args []string) error {
 		if err := exactArgs("workspace.set-default", 1)(command, args); err != nil {
 			return err
@@ -100,7 +90,7 @@ func newSetDefault(deps Dependencies) *cobra.Command {
 }
 
 func newUnregister(deps Dependencies) *cobra.Command {
-	var input workspaceunregister.Input
+	var input workspaceaction.UnregisterInput
 	command := &cobra.Command{Use: use(deps, "workspace.unregister", "unregister <name>"), Short: short(deps, "workspace.unregister", "Unregister a workspace and preserve its files."), Annotations: map[string]string{"tadx.capability": "workspace.unregister"}, Args: func(command *cobra.Command, args []string) error {
 		if err := exactArgs("workspace.unregister", 1)(command, args); err != nil {
 			return err
@@ -119,7 +109,7 @@ func newUnregister(deps Dependencies) *cobra.Command {
 }
 
 func newDeleteWorkspace(deps Dependencies) *cobra.Command {
-	var input workspacedelete.Input
+	var input workspaceaction.DeleteWorkspaceInput
 	var preview bool
 	command := &cobra.Command{Use: use(deps, "workspace.delete", "delete <name>"), Short: short(deps, "workspace.delete", "Delete one exact registered workspace and its files."), Annotations: map[string]string{"tadx.capability": "workspace.delete"}, Args: func(command *cobra.Command, args []string) error {
 		if err := exactArgs("workspace.delete", 1)(command, args); err != nil {
@@ -140,7 +130,7 @@ func newDeleteWorkspace(deps Dependencies) *cobra.Command {
 }
 
 func newClean(deps Dependencies) *cobra.Command {
-	var input workspaceclean.Input
+	var input workspaceaction.CleanInput
 	command := &cobra.Command{
 		Use: use(deps, "workspace.clean", "clean"), Short: short(deps, "workspace.clean", "Remove selected disposable workspace state."),
 		Annotations: map[string]string{"tadx.capability": "workspace.clean"},
@@ -168,7 +158,7 @@ func newClean(deps Dependencies) *cobra.Command {
 }
 
 func newCreate(deps Dependencies) *cobra.Command {
-	var input workspacecreate.Input
+	var input workspaceaction.CreateInput
 	command := &cobra.Command{
 		Use: use(deps, "workspace.create", "create <name>"), Short: short(deps, "workspace.create", "Create and register a named workspace."),
 		Annotations: map[string]string{"tadx.capability": "workspace.create"},
@@ -193,7 +183,7 @@ func newCreate(deps Dependencies) *cobra.Command {
 }
 
 func newRegister(deps Dependencies) *cobra.Command {
-	var input workspaceregister.Input
+	var input workspaceaction.RegisterInput
 	command := &cobra.Command{
 		Use: use(deps, "workspace.register", "register [name]"), Short: short(deps, "workspace.register", "Adopt an existing workspace directory."),
 		Annotations: map[string]string{"tadx.capability": "workspace.register"},
@@ -223,7 +213,7 @@ func newRegister(deps Dependencies) *cobra.Command {
 }
 
 func newClone(deps Dependencies) *cobra.Command {
-	var input workspaceclone.Input
+	var input workspaceaction.CloneInput
 	command := &cobra.Command{
 		Use: use(deps, "workspace.clone", "clone <source>"), Short: short(deps, "workspace.clone", "Copy a workspace to a new root."),
 		Annotations: map[string]string{"tadx.capability": "workspace.clone"},
@@ -252,7 +242,7 @@ func newClone(deps Dependencies) *cobra.Command {
 }
 
 func newList(deps Dependencies) *cobra.Command {
-	var input workspacelist.Input
+	var input workspaceaction.ListInput
 	command := &cobra.Command{
 		Use: use(deps, "workspace.list", "list"), Short: short(deps, "workspace.list", "List registered workspaces."),
 		Annotations: map[string]string{"tadx.capability": "workspace.list"}, Args: noArgs("workspace.list"),
@@ -273,7 +263,7 @@ func newList(deps Dependencies) *cobra.Command {
 }
 
 func newStatus(deps Dependencies) *cobra.Command {
-	var input workspacestatus.Input
+	var input workspaceaction.StatusInput
 	command := &cobra.Command{
 		Use: use(deps, "workspace.status", "status"), Short: short(deps, "workspace.status", "Inspect a named workspace."),
 		Annotations: map[string]string{"tadx.capability": "workspace.status"}, Args: noArgs("workspace.status"),
@@ -295,7 +285,7 @@ func newStatus(deps Dependencies) *cobra.Command {
 }
 
 func newMove(deps Dependencies, hidden bool) *cobra.Command {
-	var input workspacemove.Input
+	var input workspaceaction.MoveInput
 	command := &cobra.Command{
 		Use: use(deps, "workspace.move", "move"), Short: short(deps, "workspace.move", "Move one exact managed artifact."),
 		Hidden: hidden,
@@ -330,7 +320,7 @@ func newMove(deps Dependencies, hidden bool) *cobra.Command {
 
 func newArtifact(deps Dependencies) *cobra.Command {
 	artifact := &cobra.Command{Use: "artifact", Short: "Manage exact local artifacts"}
-	var input artifactdelete.Input
+	var input workspaceaction.DeleteArtifactInput
 	var preview bool
 	command := &cobra.Command{
 		Use: use(deps, "workspace.artifact.delete", "delete"), Short: short(deps, "workspace.artifact.delete", "Delete one exact managed artifact."),
@@ -345,7 +335,7 @@ func newArtifact(deps Dependencies) *cobra.Command {
 			return validateSelector("workspace.artifact.delete", input.Path, input.Kind, input.LUID)
 		},
 		RunE: func(command *cobra.Command, _ []string) error {
-			result, err := deps.Deleter.Delete(command.Context(), input, preview)
+			result, err := deps.Deleter.DeleteArtifact(command.Context(), input, preview)
 			if err != nil {
 				return clierr.WithOutput(result, err)
 			}

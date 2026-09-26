@@ -1,0 +1,91 @@
+package workspace
+
+import (
+	"context"
+	"errors"
+
+	"github.com/ahillspace/tadx/internal/commandhint"
+	"github.com/ahillspace/tadx/internal/errs"
+)
+
+// CloneInput names an existing source workspace, the new logical name, and an
+// optional machine-local root override for its copy.
+type CloneInput struct {
+	Preview bool
+	Source  string
+	Name    string
+	Path    string
+}
+
+// CloneOutput is the stable clone result.
+type CloneOutput struct {
+	Status    string           `json:"status"`
+	Source    string           `json:"source,omitempty"`
+	Workspace CreatedWorkspace `json:"workspace"`
+	Help      []string         `json:"help"`
+}
+
+type cloneCompactOutput struct {
+	Status    string    `json:"status"`
+	Workspace Workspace `json:"workspace"`
+	Details   string    `json:"details"`
+	Help      []string  `json:"help"`
+}
+
+// CompactOutput returns the token-bounded clone result.
+func (o CloneOutput) CompactOutput() any {
+	if o.Status == "preview" {
+		return o.previewOutput()
+	}
+	return cloneCompactOutput{Status: o.Status, Workspace: o.Workspace.Workspace, Details: "--full", Help: o.Help}
+}
+
+// FullOutput returns bounded workspace identity details.
+func (o CloneOutput) FullOutput() any {
+	if o.Status == "preview" {
+		return o.previewOutput()
+	}
+	return o
+}
+
+func (o CloneOutput) previewOutput() any {
+	return struct {
+		Status       string `json:"status"`
+		Source       string `json:"source"`
+		Name         string `json:"name"`
+		Root         string `json:"root"`
+		WillRegister bool   `json:"will_register"`
+	}{o.Status, o.Source, o.Workspace.Name, o.Workspace.Root, true}
+}
+
+// Cloner copies one existing workspace to a new root under a new identity.
+type Cloner interface {
+	Clone(context.Context, CloneInput) (Registration, error)
+}
+
+// Clone copies one existing workspace under a new identity.
+func (a *Service) Clone(ctx context.Context, input CloneInput) (CloneOutput, error) {
+	if input.Source == "" {
+		return CloneOutput{}, cloneUsage("source and name are required")
+	}
+	cloned, err := a.Cloner.Clone(ctx, input)
+	if err != nil {
+		retryable, correctiveAction := errs.CompleteRetryAdvice(err, "Review the exact workspace collision with tadx workspace list --full; do not overwrite or re-register it automatically. Otherwise confirm the source workspace exists and the destination path is empty, then retry.")
+		return CloneOutput{}, &errs.Error{ID: "workspace.clone.failed", Kind: errs.KindOperation, Operation: "workspace.clone", Resource: input.Name, Summary: "Workspace clone failed.", Cause: err, Retryable: retryable, CorrectiveAction: correctiveAction}
+	}
+	if input.Preview {
+		return CloneOutput{Status: "preview", Source: input.Source, Workspace: createdWorkspace(cloned), Help: []string{"Preview only; no files or configuration changed."}}, nil
+	}
+	if cloned.Name == "" || cloned.ID == "" || cloned.Root == "" || !cloned.Registered {
+		return CloneOutput{}, cloneRuntimeError("workspace clone returned an incomplete identity")
+	}
+	return CloneOutput{Status: "cloned", Workspace: createdWorkspace(cloned), Help: []string{commandhint.Command("workspace", "status", "--workspace", cloned.Name)}}, nil
+}
+
+func cloneUsage(message string) error {
+	return &errs.Error{ID: "workspace.clone.usage", Kind: errs.KindUsage, Operation: "workspace.clone", Summary: message, Cause: errors.New(message), Retryable: errs.Bool(false), CorrectiveAction: "Provide one existing source workspace and one new logical name. Use --path only to override the default location."}
+}
+
+func cloneRuntimeError(message string) error {
+	return &errs.Error{ID: "workspace.clone.runtime", Kind: errs.KindRuntime, Operation: "workspace.clone", Summary: message, Retryable: errs.Bool(false), CorrectiveAction: "Configure named workspace storage before retrying."}
+}

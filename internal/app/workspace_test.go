@@ -3,6 +3,7 @@ package app
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -39,12 +40,39 @@ func TestWorkspaceDeletionInspectionTreatsUnmanagedFilesAsDirty(t *testing.T) {
 }
 
 func TestWorkspaceArtifactAdaptersPreserveCleanupWarnings(t *testing.T) {
-	item := artifact.Item{Warnings: []string{"cleanup remains"}}
-	if got := moveArtifact(item).Warnings; !reflect.DeepEqual(got, item.Warnings) {
+	item := artifact.Item{TreeFingerprint: "private-tree-fingerprint", Warnings: []string{"cleanup remains", "second warning"}}
+	moved, deleted := moveArtifact(item), deleteArtifact(item)
+	if got := moved.Warnings; !reflect.DeepEqual(got, item.Warnings) {
 		t.Fatalf("move warnings = %#v", got)
 	}
-	if got := deleteArtifact(item).Warnings; !reflect.DeepEqual(got, item.Warnings) {
+	if got := deleted.Warnings; !reflect.DeepEqual(got, item.Warnings) {
 		t.Fatalf("delete warnings = %#v", got)
+	}
+	moved.Warnings[0], deleted.Warnings[1] = "changed move", "changed delete"
+	if !reflect.DeepEqual(item.Warnings, []string{"cleanup remains", "second warning"}) {
+		t.Fatalf("projections modified the source warnings: %v", item.Warnings)
+	}
+	if got := statusArtifact(item).Diagnostic; got != "cleanup remains" {
+		t.Fatalf("status diagnostic = %q", got)
+	}
+	encoded, err := json.Marshal(deleted)
+	if err != nil || bytes.Contains(encoded, []byte("private-tree-fingerprint")) || deleted.TreeFingerprint != item.TreeFingerprint {
+		t.Fatalf("delete fingerprint projection: JSON=%s target=%#v error=%v", encoded, deleted, err)
+	}
+}
+
+func TestWorkspaceRegistrationProjectionRequiresAvailableValidManifest(t *testing.T) {
+	for _, available := range []bool{false, true} {
+		for _, valid := range []bool{false, true} {
+			registration := workspaceRegistration(workspacecore.Record{Name: "example", ID: "ws_1", Root: "root", Available: available, ManifestValid: valid})
+			if registration.Registered != (available && valid) {
+				t.Fatalf("available=%t valid=%t registration=%#v", available, valid, registration)
+			}
+			encoded, err := json.Marshal(registration)
+			if err != nil || bytes.Contains(encoded, []byte("created_entries")) {
+				t.Fatalf("registration JSON=%s error=%v", encoded, err)
+			}
+		}
 	}
 }
 
@@ -112,5 +140,27 @@ func TestWorkspaceStatusSetupFailureRetainsCapabilityContext(t *testing.T) {
 	exit := Run(context.Background(), []string{"--config", filepath.Join(t.TempDir(), "missing.yaml"), "workspace", "status"}, &output, Options{})
 	if exit == 0 || !strings.Contains(output.String(), "operation: workspace.status") || !strings.Contains(output.String(), "corrective_action:") {
 		t.Fatalf("exit = %d, output = %s", exit, output.String())
+	}
+}
+
+func TestWorkspaceEmptyPositionalsRetainActionUsageErrors(t *testing.T) {
+	for _, test := range []struct {
+		args []string
+		want string
+	}{
+		{[]string{"create", ""}, "name is required"},
+		{[]string{"clone", "", "--name", "copy"}, "source and name are required"},
+		{[]string{"set-default", ""}, "workspace name is required"},
+		{[]string{"unregister", ""}, "workspace name is required"},
+		{[]string{"delete", ""}, "workspace name is required"},
+	} {
+		opts := overviewOptions(t, t.TempDir())
+		code, output := runPreviewCommand(t, append([]string{"workspace"}, test.args...), opts)
+		if code == 0 || !strings.Contains(output, test.want) {
+			t.Fatalf("%v: code=%d output=%s", test.args, code, output)
+		}
+		if _, err := os.Stat(opts.ConfigPath); !os.IsNotExist(err) {
+			t.Fatalf("invalid input created configuration: %v", err)
+		}
 	}
 }

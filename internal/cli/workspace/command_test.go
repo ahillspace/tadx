@@ -3,78 +3,71 @@ package workspace_test
 import (
 	"bytes"
 	"context"
+	"errors"
 	"reflect"
 	"strings"
 	"testing"
 
-	artifactdelete "github.com/ahillspace/tadx/actions/workspace/artifact/delete"
-	workspaceclean "github.com/ahillspace/tadx/actions/workspace/clean"
-	workspaceclone "github.com/ahillspace/tadx/actions/workspace/clone"
-	workspacecreate "github.com/ahillspace/tadx/actions/workspace/create"
-	workspacedelete "github.com/ahillspace/tadx/actions/workspace/delete"
-	workspacelist "github.com/ahillspace/tadx/actions/workspace/list"
-	workspacemove "github.com/ahillspace/tadx/actions/workspace/move"
-	workspacesetdefault "github.com/ahillspace/tadx/actions/workspace/setdefault"
-	workspacestatus "github.com/ahillspace/tadx/actions/workspace/status"
-	workspaceunregister "github.com/ahillspace/tadx/actions/workspace/unregister"
+	workspaceaction "github.com/ahillspace/tadx/actions/workspace"
 	workspacecli "github.com/ahillspace/tadx/internal/cli/workspace"
+	"github.com/ahillspace/tadx/internal/errs"
 )
 
 type actions struct {
-	create          []workspacecreate.Input
-	clone           []workspaceclone.Input
-	list            []workspacelist.Input
-	status          []workspacestatus.Input
-	move            []workspacemove.Input
-	delete          []artifactdelete.Input
-	clean           []workspaceclean.Input
+	create          []workspaceaction.CreateInput
+	clone           []workspaceaction.CloneInput
+	list            []workspaceaction.ListInput
+	status          []workspaceaction.StatusInput
+	move            []workspaceaction.MoveInput
+	delete          []workspaceaction.DeleteArtifactInput
+	clean           []workspaceaction.CleanInput
 	preview         []bool
-	setDefault      []workspacesetdefault.Input
-	unregister      []workspaceunregister.Input
-	deleteWorkspace []workspacedelete.Input
+	setDefault      []workspaceaction.SetDefaultInput
+	unregister      []workspaceaction.UnregisterInput
+	deleteWorkspace []workspaceaction.DeleteWorkspaceInput
 }
 
-func (a *actions) Create(_ context.Context, input workspacecreate.Input) (workspacecreate.Output, error) {
+func (a *actions) Create(_ context.Context, input workspaceaction.CreateInput) (workspaceaction.CreateOutput, error) {
 	a.create = append(a.create, input)
-	return workspacecreate.Output{}, nil
+	return workspaceaction.CreateOutput{}, nil
 }
-func (a *actions) Clone(_ context.Context, input workspaceclone.Input) (workspaceclone.Output, error) {
+func (a *actions) Clone(_ context.Context, input workspaceaction.CloneInput) (workspaceaction.CloneOutput, error) {
 	a.clone = append(a.clone, input)
-	return workspaceclone.Output{}, nil
+	return workspaceaction.CloneOutput{}, nil
 }
-func (a *actions) List(_ context.Context, input workspacelist.Input) (workspacelist.Output, error) {
+func (a *actions) List(_ context.Context, input workspaceaction.ListInput) (workspaceaction.ListOutput, error) {
 	a.list = append(a.list, input)
-	return workspacelist.Output{}, nil
+	return workspaceaction.ListOutput{}, nil
 }
-func (a *actions) Status(_ context.Context, input workspacestatus.Input) (workspacestatus.Output, error) {
+func (a *actions) Status(_ context.Context, input workspaceaction.StatusInput) (workspaceaction.StatusOutput, error) {
 	a.status = append(a.status, input)
-	return workspacestatus.Output{}, nil
+	return workspaceaction.StatusOutput{}, nil
 }
-func (a *actions) Move(_ context.Context, input workspacemove.Input) (workspacemove.Output, error) {
+func (a *actions) Move(_ context.Context, input workspaceaction.MoveInput) (workspaceaction.MoveOutput, error) {
 	a.move = append(a.move, input)
-	return workspacemove.Output{}, nil
+	return workspaceaction.MoveOutput{}, nil
 }
-func (a *actions) Delete(_ context.Context, input artifactdelete.Input, preview bool) (artifactdelete.Output, error) {
+func (a *actions) DeleteArtifact(_ context.Context, input workspaceaction.DeleteArtifactInput, preview bool) (workspaceaction.DeleteArtifactOutput, error) {
 	a.delete = append(a.delete, input)
 	a.preview = append(a.preview, preview)
-	return artifactdelete.Output{}, nil
+	return workspaceaction.DeleteArtifactOutput{}, nil
 }
-func (a *actions) Clean(_ context.Context, input workspaceclean.Input) (workspaceclean.Output, error) {
+func (a *actions) Clean(_ context.Context, input workspaceaction.CleanInput) (workspaceaction.CleanOutput, error) {
 	a.clean = append(a.clean, input)
-	return workspaceclean.Output{}, nil
+	return workspaceaction.CleanOutput{}, nil
 }
-func (a *actions) SetDefault(_ context.Context, input workspacesetdefault.Input) (workspacesetdefault.Output, error) {
+func (a *actions) SetDefault(_ context.Context, input workspaceaction.SetDefaultInput) (workspaceaction.SetDefaultOutput, error) {
 	a.setDefault = append(a.setDefault, input)
-	return workspacesetdefault.Output{}, nil
+	return workspaceaction.SetDefaultOutput{}, nil
 }
-func (a *actions) Unregister(_ context.Context, input workspaceunregister.Input) (workspaceunregister.Output, error) {
+func (a *actions) Unregister(_ context.Context, input workspaceaction.UnregisterInput) (workspaceaction.UnregisterOutput, error) {
 	a.unregister = append(a.unregister, input)
-	return workspaceunregister.Output{}, nil
+	return workspaceaction.UnregisterOutput{}, nil
 }
-func (a *actions) DeleteWorkspace(_ context.Context, input workspacedelete.Input, preview bool) (workspacedelete.Output, error) {
+func (a *actions) DeleteWorkspace(_ context.Context, input workspaceaction.DeleteWorkspaceInput, preview bool) (workspaceaction.DeleteWorkspaceOutput, error) {
 	a.deleteWorkspace = append(a.deleteWorkspace, input)
 	a.preview = append(a.preview, preview)
-	return workspacedelete.Output{}, nil
+	return workspaceaction.DeleteWorkspaceOutput{}, nil
 }
 
 type renderer struct{ calls int }
@@ -102,31 +95,31 @@ func TestWorkspaceCommandsMapExactInputs(t *testing.T) {
 			t.Fatalf("Execute(%v) error = %v", args, err)
 		}
 	}
-	if !reflect.DeepEqual(a.create, []workspacecreate.Input{{Name: "development"}}) {
+	if !reflect.DeepEqual(a.create, []workspaceaction.CreateInput{{Name: "development"}}) {
 		t.Fatalf("create = %#v", a.create)
 	}
-	if !reflect.DeepEqual(a.list, []workspacelist.Input{{Limit: 5, Cursor: "10"}}) {
+	if !reflect.DeepEqual(a.list, []workspaceaction.ListInput{{Limit: 5, Cursor: "10"}}) {
 		t.Fatalf("list = %#v", a.list)
 	}
-	if !reflect.DeepEqual(a.status, []workspacestatus.Input{{Workspace: "development", Limit: 7, Cursor: "3"}}) {
+	if !reflect.DeepEqual(a.status, []workspaceaction.StatusInput{{Workspace: "development", Limit: 7, Cursor: "3"}}) {
 		t.Fatalf("status = %#v", a.status)
 	}
-	if !reflect.DeepEqual(a.setDefault, []workspacesetdefault.Input{{Name: "development"}}) {
+	if !reflect.DeepEqual(a.setDefault, []workspaceaction.SetDefaultInput{{Name: "development"}}) {
 		t.Fatalf("set default = %#v", a.setDefault)
 	}
-	if !reflect.DeepEqual(a.unregister, []workspaceunregister.Input{{Name: "old"}}) {
+	if !reflect.DeepEqual(a.unregister, []workspaceaction.UnregisterInput{{Name: "old"}}) {
 		t.Fatalf("unregister = %#v", a.unregister)
 	}
-	if !reflect.DeepEqual(a.deleteWorkspace, []workspacedelete.Input{{Name: "throwaway", Force: true}}) {
+	if !reflect.DeepEqual(a.deleteWorkspace, []workspaceaction.DeleteWorkspaceInput{{Name: "throwaway", Force: true}}) {
 		t.Fatalf("delete workspace = %#v", a.deleteWorkspace)
 	}
-	if !reflect.DeepEqual(a.move, []workspacemove.Input{{SourceWorkspace: "development", DestinationWorkspace: "archive", Kind: "workbook", LUID: "wb-1"}}) {
+	if !reflect.DeepEqual(a.move, []workspaceaction.MoveInput{{SourceWorkspace: "development", DestinationWorkspace: "archive", Kind: "workbook", LUID: "wb-1"}}) {
 		t.Fatalf("move = %#v", a.move)
 	}
-	if !reflect.DeepEqual(a.delete, []artifactdelete.Input{{Workspace: "archive", Path: "artifacts/workbook/Finance", Force: true}}) || !reflect.DeepEqual(a.preview, []bool{true, true}) {
+	if !reflect.DeepEqual(a.delete, []workspaceaction.DeleteArtifactInput{{Workspace: "archive", Path: "artifacts/workbook/Finance", Force: true}}) || !reflect.DeepEqual(a.preview, []bool{true, true}) {
 		t.Fatalf("delete = %#v preview = %#v", a.delete, a.preview)
 	}
-	if !reflect.DeepEqual(a.clean, []workspaceclean.Input{{Workspace: "archive", Class: "temporary"}}) {
+	if !reflect.DeepEqual(a.clean, []workspaceaction.CleanInput{{Workspace: "archive", Class: "temporary"}}) {
 		t.Fatalf("clean = %#v", a.clean)
 	}
 	if r.calls != len(commands) {
@@ -145,7 +138,7 @@ func TestWorkspaceListAndStatusAllCarryCompleteInventoryMode(t *testing.T) {
 	if err := command.Execute(); err != nil {
 		t.Fatal(err)
 	}
-	if !reflect.DeepEqual(a.list, []workspacelist.Input{{All: true}}) || !reflect.DeepEqual(a.status, []workspacestatus.Input{{All: true, Workspace: "development"}}) {
+	if !reflect.DeepEqual(a.list, []workspaceaction.ListInput{{All: true}}) || !reflect.DeepEqual(a.status, []workspaceaction.StatusInput{{All: true, Workspace: "development"}}) {
 		t.Fatalf("list=%#v status=%#v", a.list, a.status)
 	}
 }
@@ -192,14 +185,14 @@ func TestWorkspaceCreateAndClonePreserveExplicitPaths(t *testing.T) {
 	if err := command.Execute(); err != nil {
 		t.Fatal(err)
 	}
-	if !reflect.DeepEqual(a.create, []workspacecreate.Input{{Name: "development", Path: "relative/workspace"}}) {
+	if !reflect.DeepEqual(a.create, []workspaceaction.CreateInput{{Name: "development", Path: "relative/workspace"}}) {
 		t.Fatalf("create = %#v", a.create)
 	}
 	command.SetArgs([]string{"clone", "development", "--name", "experiment"})
 	if err := command.Execute(); err != nil {
 		t.Fatal(err)
 	}
-	if !reflect.DeepEqual(a.clone, []workspaceclone.Input{{Source: "development", Name: "experiment"}}) {
+	if !reflect.DeepEqual(a.clone, []workspaceaction.CloneInput{{Source: "development", Name: "experiment"}}) {
 		t.Fatalf("clone = %#v", a.clone)
 	}
 }
@@ -259,5 +252,46 @@ func TestWorkspaceArtifactMoveIsCanonicalAndLegacyAliasIsHidden(t *testing.T) {
 	}
 	if !legacyMove.Hidden {
 		t.Fatal("legacy workspace move alias is visible")
+	}
+}
+
+func TestWorkspaceMoveAliasDispatchesTheSameInput(t *testing.T) {
+	for _, prefix := range [][]string{{"move"}, {"artifact", "move"}} {
+		a := &actions{}
+		command := workspacecli.New(workspacecli.Dependencies{Mover: a, Renderer: &renderer{}})
+		command.SetArgs(append(prefix, "--source", "source", "--destination", "destination", "--artifact", "artifacts/workbook/Sales", "--preview"))
+		if err := command.Execute(); err != nil {
+			t.Fatal(err)
+		}
+		want := []workspaceaction.MoveInput{{SourceWorkspace: "source", DestinationWorkspace: "destination", Path: "artifacts/workbook/Sales", Preview: true}}
+		if !reflect.DeepEqual(a.move, want) {
+			t.Fatalf("%v input = %#v", prefix, a.move)
+		}
+	}
+}
+
+func TestWorkspaceValidationErrorsPrecedeDispatch(t *testing.T) {
+	for _, test := range []struct {
+		args []string
+		want string
+	}{
+		{[]string{"register"}, "--path is required"},
+		{[]string{"clone", "source"}, "--name is required"},
+		{[]string{"artifact", "move", "--artifact", "../escape"}, "--source and --destination are required"},
+		{[]string{"move", "--source", "source", "--destination", "destination", "--artifact", "../escape"}, "--artifact must be a workspace-relative managed path"},
+		{[]string{"artifact", "delete", "--artifact", "../escape"}, "--workspace is required"},
+		{[]string{"artifact", "delete", "--workspace", "source", "--artifact", "artifacts/workbook/Sales", "--kind", "workbook"}, "use either --artifact or both --kind and --id"},
+	} {
+		a := &actions{}
+		command := workspacecli.New(workspacecli.Dependencies{Mover: a, Deleter: a, Renderer: &renderer{}})
+		command.SetArgs(test.args)
+		err := command.Execute()
+		structured, ok := errors.AsType[*errs.Error](err)
+		if !ok || structured.Kind != errs.KindUsage || errs.ExitCode(err) != 2 {
+			t.Fatalf("%v: usage error = %#v", test.args, err)
+		}
+		if err == nil || !strings.Contains(err.Error(), test.want) || len(a.move) != 0 || len(a.delete) != 0 {
+			t.Fatalf("%v: error=%v move=%v delete=%v", test.args, err, a.move, a.delete)
+		}
 	}
 }

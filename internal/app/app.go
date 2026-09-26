@@ -168,7 +168,7 @@ func Run(ctx context.Context, args []string, stdout io.Writer, options Options) 
 		WorkbookPublisher:   &publishService{runtime: runtime},
 		Content:             remoteContent.dependencies(),
 		EnvironmentProfiles: environmentCommands.dependencies(),
-		Workspaces:          workspaceCommands.dependencies(),
+		Workspaces:          workspaceCommands,
 		Admin:               remoteAdmin.dependencies(),
 		Agent:               newAgentCommands(runtime),
 		Pulse:               pulseActions.dependencies(),

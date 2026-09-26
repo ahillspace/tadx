@@ -5,10 +5,37 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"testing"
 
 	workspacecore "github.com/ahillspace/tadx/internal/workspace"
 )
+
+func TestPreviewCleanMeasuresFixedClassesWithoutRemovingThem(t *testing.T) {
+	root := t.TempDir()
+	for _, name := range []string{"tmp", "staging", "cache", "logs"} {
+		path := filepath.Join(root, ".tadx", name, "entry")
+		if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, []byte("x"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	result, err := workspacecore.PreviewClean(t.Context(), root, "all")
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []string{".tadx/cache", ".tadx/logs", ".tadx/staging", ".tadx/tmp"}
+	if result.EntriesRemoved != 8 || result.BytesRemoved != 4 || !slices.Equal(result.Removed, want) {
+		t.Fatalf("preview = %#v, want paths %q", result, want)
+	}
+	for _, name := range []string{"tmp", "staging", "cache", "logs"} {
+		if _, err := os.Stat(filepath.Join(root, ".tadx", name, "entry")); err != nil {
+			t.Fatalf("preview changed %s: %v", name, err)
+		}
+	}
+}
 
 func TestCleanDisposableStatePreservesManagedArtifactsAndManifest(t *testing.T) {
 	root := t.TempDir()

@@ -13,8 +13,7 @@ import (
 	flowops "github.com/ahillspace/tadx/actions/flow"
 	projectlist "github.com/ahillspace/tadx/actions/project/list"
 	workbookops "github.com/ahillspace/tadx/actions/workbook"
-	workspacelist "github.com/ahillspace/tadx/actions/workspace/list"
-	workspacestatus "github.com/ahillspace/tadx/actions/workspace/status"
+	workspaceaction "github.com/ahillspace/tadx/actions/workspace"
 	"github.com/ahillspace/tadx/internal/output"
 )
 
@@ -28,8 +27,8 @@ func TestAllInventoryProjectionsHideCursors(t *testing.T) {
 		"groups":           grouplist.Output{Page: grouplist.OutputPage{Returned: 1, Total: 2, Limit: 1, NextCursor: "private-cursor"}},
 		"capabilities":     capabilitylist.Output{Page: capabilitylist.Pagination{Returned: 1, Total: 2, Limit: 1, NextCursor: "private-cursor"}},
 		"environments":     envlist.ListOutput{Page: envlist.Page{Returned: 1, Total: 2, Limit: 1, NextCursor: "private-cursor"}},
-		"workspaces":       workspacelist.Output{Page: workspacelist.Page{Returned: 1, Total: 2, Limit: 1, NextCursor: "private-cursor"}},
-		"workspace status": workspacestatus.Output{Inventory: workspacestatus.Inventory{Returned: 1, Total: 2, Limit: 1, NextCursor: "private-cursor"}},
+		"workspaces":       workspaceaction.ListOutput{Page: workspaceaction.ListPage{Returned: 1, Total: 2, Limit: 1, NextCursor: "private-cursor"}},
+		"workspace status": workspaceaction.StatusOutput{Inventory: workspaceaction.StatusInventory{Returned: 1, Total: 2, Limit: 1, NextCursor: "private-cursor"}},
 	} {
 		t.Run(name, func(t *testing.T) {
 			for _, full := range []bool{false, true} {

@@ -272,7 +272,8 @@ func scanManagedArtifacts(ctx context.Context, workspace string, scanLimit int) 
 			}
 			item, itemErr := inspectArtifact(ctx, workspace, kind, filepath.Join(kindRoot, entry.Name()))
 			if itemErr != nil {
-				items = append(items, Item{Kind: kind, Path: relative, State: StateInvalid, Reason: invalidArtifactReason(itemErr), Warnings: []string{invalidArtifactWarning(itemErr)}})
+				reason, warning := invalidArtifactDiagnostic(itemErr)
+				items = append(items, Item{Kind: kind, Path: relative, State: StateInvalid, Reason: reason, Warnings: []string{warning}})
 				continue
 			}
 			items = append(items, item)
@@ -320,7 +321,8 @@ func scanManagedArtifacts(ctx context.Context, workspace string, scanLimit int) 
 			}
 			item, itemErr := inspectArtifact(ctx, workspace, "lineage", filepath.Join(kindRoot, entry.Name()))
 			if itemErr != nil {
-				items = append(items, Item{Kind: "lineage", Path: relative, State: StateInvalid, Reason: invalidArtifactReason(itemErr), Warnings: []string{invalidArtifactWarning(itemErr)}})
+				reason, warning := invalidArtifactDiagnostic(itemErr)
+				items = append(items, Item{Kind: "lineage", Path: relative, State: StateInvalid, Reason: reason, Warnings: []string{warning}})
 				continue
 			}
 			items = append(items, item)
@@ -518,35 +520,19 @@ func isDirectManagedArtifactKind(kind string) bool {
 	return false
 }
 
-func invalidArtifactWarning(err error) string {
+func invalidArtifactDiagnostic(err error) (reason, warning string) {
 	message := strings.ToLower(err.Error())
 	switch {
 	case strings.Contains(message, "metadata"):
-		return "Artifact metadata failed validation."
+		return "metadata_invalid", "Artifact metadata failed validation."
 	case strings.Contains(message, "canonical") || strings.Contains(message, "payload"):
-		return "Artifact canonical payload failed validation."
+		return "canonical_payload_invalid", "Artifact canonical payload failed validation."
 	case strings.Contains(message, "lineage"):
-		return "Artifact lineage sidecar failed validation."
+		return "lineage_invalid", "Artifact lineage sidecar failed validation."
 	case strings.Contains(message, "symbolic link") || strings.Contains(message, "escapes"):
-		return "Artifact containment failed validation."
+		return "containment_invalid", "Artifact containment failed validation."
 	default:
-		return "Managed artifact structure failed validation."
-	}
-}
-
-func invalidArtifactReason(err error) string {
-	message := strings.ToLower(err.Error())
-	switch {
-	case strings.Contains(message, "metadata"):
-		return "metadata_invalid"
-	case strings.Contains(message, "canonical") || strings.Contains(message, "payload"):
-		return "canonical_payload_invalid"
-	case strings.Contains(message, "lineage"):
-		return "lineage_invalid"
-	case strings.Contains(message, "symbolic link") || strings.Contains(message, "escapes"):
-		return "containment_invalid"
-	default:
-		return "structure_invalid"
+		return "structure_invalid", "Managed artifact structure failed validation."
 	}
 }
 

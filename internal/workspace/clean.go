@@ -8,7 +8,6 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
-	"strings"
 )
 
 // CleanResult is a bounded receipt for disposable workspace state removal.
@@ -45,9 +44,6 @@ func clean(ctx context.Context, root, class string, preview bool) (CleanResult, 
 		return CleanResult{}, fmt.Errorf("resolve workspace root: %w", err)
 	}
 	control := filepath.Join(absoluteRoot, ".tadx")
-	if !containedPath(absoluteRoot, control) {
-		return CleanResult{}, errors.New("workspace control directory escapes workspace root")
-	}
 	info, err := os.Lstat(control)
 	if os.IsNotExist(err) {
 		return CleanResult{}, nil
@@ -65,9 +61,6 @@ func clean(ctx context.Context, root, class string, preview bool) (CleanResult, 
 			return CleanResult{}, err
 		}
 		target := filepath.Join(control, child)
-		if !containedPath(control, target) {
-			return CleanResult{}, errors.New("workspace cleanup target escapes control directory")
-		}
 		entries, bytes, exists, err := measureDisposable(ctx, target)
 		if err != nil {
 			return CleanResult{}, err
@@ -115,9 +108,4 @@ func measureDisposable(ctx context.Context, target string) (entries int, bytes i
 		return 0, 0, true, fmt.Errorf("measure disposable workspace state: %w", err)
 	}
 	return entries, bytes, true, nil
-}
-
-func containedPath(root, target string) bool {
-	relative, err := filepath.Rel(root, target)
-	return err == nil && relative != ".." && !strings.HasPrefix(relative, ".."+string(filepath.Separator)) && !filepath.IsAbs(relative)
 }
