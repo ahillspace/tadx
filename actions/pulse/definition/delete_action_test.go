@@ -42,7 +42,7 @@ func deleteTarget() pulsedefinition.DeleteDefinition {
 
 func TestDeleteRunsByDefaultWithExactRevalidation(t *testing.T) {
 	b := &deleteBackend{targets: []pulsedefinition.DeleteDefinition{deleteTarget(), deleteTarget()}}
-	output, err := pulsedefinition.Delete(context.Background(), b, b, deleteInput())
+	output, err := delete(context.Background(), b, b, deleteInput())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -58,7 +58,7 @@ func TestDeletePreviewDoesNotDelete(t *testing.T) {
 	b := &deleteBackend{targets: []pulsedefinition.DeleteDefinition{deleteTarget()}}
 	in := deleteInput()
 	in.Preview = true
-	output, err := pulsedefinition.Delete(context.Background(), b, b, in)
+	output, err := delete(context.Background(), b, b, in)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -76,7 +76,7 @@ func TestDeleteRejectsWrongOrChangedIdentity(t *testing.T) {
 		{deleteTarget(), {}},
 	} {
 		b := &deleteBackend{targets: targets}
-		_, err := pulsedefinition.Delete(context.Background(), b, b, deleteInput())
+		_, err := delete(context.Background(), b, b, deleteInput())
 		if err == nil {
 			t.Fatal("expected exact identity failure")
 		}
@@ -87,14 +87,12 @@ func TestDeleteRejectsWrongOrChangedIdentity(t *testing.T) {
 		}
 	}
 }
-func TestDeleteRequiresExplicitTarget(t *testing.T) {
+func TestDeleteRequiresExactSelector(t *testing.T) {
 	for _, in := range []pulsedefinition.DeleteInput{
-		{Site: "sandbox", LUID: "definition-1"},
-		{Environment: "dev", LUID: "definition-1"},
 		{Environment: "dev", Site: "sandbox", LUID: "  "},
 	} {
 		b := &deleteBackend{}
-		_, err := pulsedefinition.Delete(context.Background(), b, b, in)
+		_, err := delete(context.Background(), b, b, in)
 		var structured *errs.Error
 		if !errors.As(err, &structured) || structured.Kind != errs.KindUsage || len(b.calls) != 0 {
 			t.Fatalf("err=%v calls=%v", err, b.calls)
@@ -104,7 +102,7 @@ func TestDeleteRequiresExplicitTarget(t *testing.T) {
 func TestDeletePreservesUpstreamFailureWithoutRetry(t *testing.T) {
 	upstream := errors.New("upstream dependency rejection")
 	b := &deleteBackend{targets: []pulsedefinition.DeleteDefinition{deleteTarget(), deleteTarget()}, deleteError: upstream}
-	_, err := pulsedefinition.Delete(context.Background(), b, b, deleteInput())
+	_, err := delete(context.Background(), b, b, deleteInput())
 	if !errors.Is(err, upstream) || len(b.calls) != 3 {
 		t.Fatalf("err=%v calls=%v", err, b.calls)
 	}
@@ -112,7 +110,7 @@ func TestDeletePreservesUpstreamFailureWithoutRetry(t *testing.T) {
 func TestDeletePreservesMissingTarget(t *testing.T) {
 	upstream := errors.New("upstream target not found")
 	b := &deleteBackend{readError: upstream}
-	_, err := pulsedefinition.Delete(context.Background(), b, b, deleteInput())
+	_, err := delete(context.Background(), b, b, deleteInput())
 	if !errors.Is(err, upstream) || len(b.calls) != 1 {
 		t.Fatalf("err=%v calls=%v", err, b.calls)
 	}

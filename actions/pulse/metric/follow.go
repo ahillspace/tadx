@@ -15,12 +15,6 @@ type FollowCreator interface {
 }
 
 func Follow(ctx context.Context, resolver FollowResolver, creator FollowCreator, input FollowInput, preview bool) (FollowOutput, error) {
-	if err := FollowValidateInput(input); err != nil {
-		return FollowOutput{}, err
-	}
-	if resolver == nil || creator == nil {
-		return FollowOutput{}, followFail("pulse.metric.follow.unconfigured", errs.KindRuntime, input, "Pulse metric follow is not configured.", nil)
-	}
 	input.MetricLUID = strings.TrimSpace(input.MetricLUID)
 	input.UserLUID = strings.TrimSpace(input.UserLUID)
 	input.GroupLUID = strings.TrimSpace(input.GroupLUID)

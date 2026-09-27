@@ -249,7 +249,7 @@ func newDefinitionPull(deps Dependencies) *cobra.Command {
 func newDefinitionPublish(deps Dependencies) *cobra.Command {
 	var input pulsedefinition.PublishInput
 	command := actionCommand("publish", "Recreate a portable Pulse bundle as new definitions and metrics.", "pulse.definition.publish", func(command *cobra.Command) error {
-		if err := pulsedefinition.PublishValidateInput(input); err != nil {
+		if err := pulsedefinition.PublishValidateInput(&input); err != nil {
 			return err
 		}
 		if deps.DefinitionPublisher == nil {

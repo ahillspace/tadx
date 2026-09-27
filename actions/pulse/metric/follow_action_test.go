@@ -35,11 +35,11 @@ func TestFollowPreviewsAndTreatsDuplicateAsConverged(t *testing.T) {
 	c := &followCreator{}
 	r := &followResolver{}
 	input := pulsemetric.FollowInput{MetricLUID: "metric-1", UserLUID: "user-1"}
-	preview, err := pulsemetric.Follow(context.Background(), r, c, input, true)
+	preview, err := follow(context.Background(), r, c, input, true)
 	if err != nil || preview.Result != nil || c.calls != 0 || r.metrics != 1 || r.users != 1 {
 		t.Fatalf("preview=%#v creator=%d resolver=%#v err=%v", preview, c.calls, r, err)
 	}
-	result, err := pulsemetric.Follow(context.Background(), r, c, input, false)
+	result, err := follow(context.Background(), r, c, input, false)
 	if err != nil || result.Result.Status != "already_following" {
 		t.Fatalf("output=%#v err=%v", result, err)
 	}
@@ -47,7 +47,7 @@ func TestFollowPreviewsAndTreatsDuplicateAsConverged(t *testing.T) {
 
 func TestFollowRequiresExactlyOneFollower(t *testing.T) {
 	for _, input := range []pulsemetric.FollowInput{{MetricLUID: "metric-1"}, {MetricLUID: "metric-1", UserLUID: "u", GroupLUID: "g"}} {
-		if _, err := pulsemetric.Follow(context.Background(), &followResolver{}, &followCreator{}, input, false); err == nil {
+		if _, err := follow(context.Background(), &followResolver{}, &followCreator{}, input, false); err == nil {
 			t.Fatalf("input accepted: %#v", input)
 		}
 	}
@@ -60,7 +60,7 @@ func (followMissingUserResolver) ResolveUser(context.Context, string) (pulsemetr
 }
 
 func TestFollowUserResolutionReportsRecoveryFacts(t *testing.T) {
-	_, err := pulsemetric.Follow(context.Background(), &followMissingUserResolver{}, &followCreator{}, pulsemetric.FollowInput{Environment: "production", Site: "marketing", MetricLUID: "metric-1", UserLUID: "user-1"}, true)
+	_, err := follow(context.Background(), &followMissingUserResolver{}, &followCreator{}, pulsemetric.FollowInput{Environment: "production", Site: "marketing", MetricLUID: "metric-1", UserLUID: "user-1"}, true)
 	var structured *errs.Error
 	if !errors.As(err, &structured) {
 		t.Fatalf("error = %v", err)

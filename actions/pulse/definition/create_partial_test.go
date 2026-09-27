@@ -25,7 +25,7 @@ func TestCreateConfirmedCreateRemainsTypedWhileUnknownWriteDoesNotBecomeSuccess(
 	for _, id := range []string{"confirmed", ""} {
 		creator := &createPartialCreator{result: pulsedefinition.CreateResult{DefinitionLUID: id, TableauRequestID: "write-request"}, err: errors.New("readback unavailable")}
 		input := pulsedefinition.CreateInput{Environment: "selected", Intent: pulsedefinition.CreateIntent{Name: "Revenue", DatasourceLUID: "source", MeasureField: "Sales", TimeDimension: "Date", AllowedDimensions: []string{"Region"}}}
-		output, err := pulsedefinition.NewCreate(&createValidator{}, &createFinder{}, creator).Execute(context.Background(), input, false)
+		output, err := create(context.Background(), &createValidator{}, &createFinder{}, creator, input, false)
 		var structured *errs.Error
 		if !errors.As(err, &structured) || creator.calls != 1 || structured.Retryable == nil || *structured.Retryable {
 			t.Fatalf("err=%v calls=%d", err, creator.calls)
@@ -48,7 +48,7 @@ func TestCreateCompactCreateDimensionsAreBoundedWithoutChangingRequest(t *testin
 		dimensions[i] = fmt.Sprintf("Dimension %d", i)
 	}
 	input := pulsedefinition.CreateInput{Intent: pulsedefinition.CreateIntent{Name: "Revenue", DatasourceLUID: "source", MeasureField: "Sales", TimeDimension: "Date", AllowedDimensions: dimensions}}
-	output, err := pulsedefinition.NewCreate(&createValidator{}, &createFinder{}, &createCreator{}).Execute(context.Background(), input, true)
+	output, err := create(context.Background(), &createValidator{}, &createFinder{}, &createCreator{}, input, true)
 	if err != nil {
 		t.Fatal(err)
 	}

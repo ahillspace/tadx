@@ -17,12 +17,6 @@ type InspectReader interface {
 }
 
 func Inspect(ctx context.Context, reader InspectReader, input InspectInput) (InspectOutput, error) {
-	if err := InspectValidateInput(input); err != nil {
-		return InspectOutput{}, err
-	}
-	if reader == nil {
-		return InspectOutput{}, inspectFail("pulse.metric.inspect.unconfigured", errs.KindRuntime, input, "Pulse metric retrieval is not configured.", nil)
-	}
 	input.LUID = strings.TrimSpace(input.LUID)
 	metric, err := reader.GetMetric(ctx, input.LUID)
 	if err != nil {

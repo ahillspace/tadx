@@ -38,9 +38,6 @@ type DefinitionPage struct {
 	TableauRequestID string
 }
 
-// Page retains the definition-list contract name used by action adapters.
-type Page = DefinitionPage
-
 // Metric is one normalized exact Pulse metric specification.
 type Metric struct {
 	LUID             string
@@ -152,9 +149,3 @@ type CreateResult struct {
 	TableauRequestID    string
 	PollRequestID       string
 }
-
-// CreateDefinitionRequest names the definition-specific create contract.
-type CreateDefinitionRequest = CreateRequest
-
-// CreateDefinitionResult names the definition-specific create result.
-type CreateDefinitionResult = CreateResult

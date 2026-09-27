@@ -31,6 +31,50 @@ func pulseEfficiencyOptions(t *testing.T, server *httptest.Server) app.Options {
 	return withSiteMutationConsent(t, app.Options{ConfigPath: path, HTTPClient: server.Client()}, true)
 }
 
+func TestPulseDeletePreviewResolvesDefaultSiteBeforeAction(t *testing.T) {
+	var reads, writes int
+	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/3.29/auth/signin":
+			_, _ = io.WriteString(w, `{"credentials":{"token":"fixture-session","site":{"id":"site-1"},"user":{"id":"user-1"}}}`)
+		case "/api/-/pulse/definitions/definition-1":
+			reads++
+			_, _ = io.WriteString(w, `{"metadata":{"id":"definition-1","name":"Revenue"},"specification":{"datasource":{"id":"datasource-1"}}}`)
+		case "/api/-/pulse/metrics/metric-1":
+			reads++
+			_, _ = io.WriteString(w, `{"id":"metric-1","definition_id":"definition-1","is_default":false,"specification":{}}`)
+		default:
+			t.Errorf("unexpected request %s %s", r.Method, r.URL.Path)
+		}
+		if r.Method == http.MethodDelete {
+			writes++
+		}
+	}))
+	defer server.Close()
+	options := pulseEfficiencyOptions(t, server)
+	configuration, err := os.ReadFile(options.ConfigPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	configuration = bytes.ReplaceAll(configuration, []byte("site_content_url: test"), []byte(`site_content_url: ""`))
+	if !bytes.Contains(configuration, []byte(`site_content_url: ""`)) {
+		t.Fatal("default-site fixture was not configured")
+	}
+	if err := os.WriteFile(options.ConfigPath, configuration, 0600); err != nil {
+		t.Fatal(err)
+	}
+	for _, resource := range []string{"definition", "metric"} {
+		var output bytes.Buffer
+		code := app.Run(t.Context(), []string{"pulse", resource, "delete", "--environment", "test", "--id", resource + "-1", "--preview", "--json"}, &output, options)
+		if code != 0 || !strings.Contains(output.String(), `"mode":"preview"`) {
+			t.Fatalf("%s code=%d output=%s", resource, code, output.String())
+		}
+	}
+	if reads != 2 || writes != 0 {
+		t.Fatalf("reads=%d writes=%d", reads, writes)
+	}
+}
+
 func TestPulseDefinitionDatasourceFilterCacheMultipageThroughCLI(t *testing.T) {
 	requests := 0
 	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { requests++; w.WriteHeader(403) }))

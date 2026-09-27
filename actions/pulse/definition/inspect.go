@@ -17,12 +17,6 @@ type InspectReader interface {
 
 // Inspect inspects and verifies one exact definition identity.
 func Inspect(ctx context.Context, reader InspectReader, input InspectInput) (InspectOutput, error) {
-	if err := InspectValidateInput(input); err != nil {
-		return InspectOutput{}, err
-	}
-	if reader == nil {
-		return InspectOutput{}, inspectDefinitionError("pulse.definition.inspect.unconfigured", errs.KindRuntime, input, "Pulse definition retrieval is not configured.", nil)
-	}
 	input.LUID = strings.TrimSpace(input.LUID)
 	definition, err := reader.GetDefinition(ctx, input.LUID)
 	if err != nil {

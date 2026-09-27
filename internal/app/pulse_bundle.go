@@ -15,9 +15,6 @@ import (
 )
 
 func (c *pulseCommands) PublishPulseDefinition(ctx context.Context, input pulsedefinition.PublishInput) (pulsedefinition.PublishOutput, error) {
-	if err := pulsedefinition.PublishValidateInput(input); err != nil {
-		return pulsedefinition.PublishOutput{}, err
-	}
 	workspace, err := (&workspaceRuntime{runtime: c.runtime}).resolveForEnvironment(ctx, input.Workspace, input.Environment)
 	if err != nil {
 		return pulsedefinition.PublishOutput{}, capabilitySetupError("pulse.definition.publish.workspace", "pulse.definition.publish", input.Environment, "", "Pulse bundle workspace resolution failed.", "Select an exact logical workspace.", err)
@@ -36,11 +33,12 @@ func (c *pulseCommands) PublishPulseDefinition(ctx context.Context, input pulsed
 	input.Artifact = managed.Path
 	input.ArtifactID, input.ArtifactName = "", ""
 	input.WorkspaceName = workspace.Name
-	reader := pulseBundleReader{bundle: pulsedefinition.PublishBundle{DefinitionLUID: bundle.DefinitionLUID, DatasourceLUID: bundle.DatasourceReferences[0], Configuration: bundle.Definition, Metrics: make([]pulsedefinition.PublishMetric, len(bundle.Metrics))}}
+	loaded := pulsedefinition.PublishBundle{DefinitionLUID: bundle.DefinitionLUID, DatasourceLUID: bundle.DatasourceReferences[0], Configuration: bundle.Definition, Metrics: make([]pulsedefinition.PublishMetric, len(bundle.Metrics))}
 	for i, metric := range bundle.Metrics {
-		reader.bundle.Metrics[i] = pulsedefinition.PublishMetric{LUID: metric.LUID, IsDefault: metric.IsDefault, Specification: metric.Specification}
+		loaded.Metrics[i] = pulsedefinition.PublishMetric{LUID: metric.LUID, IsDefault: metric.IsDefault, Specification: metric.Specification}
 	}
-	if _, err := pulsedefinition.PublishPrepareBundle(input, reader.bundle); err != nil {
+	plan, err := pulsedefinition.PublishPrepareBundle(input, loaded)
+	if err != nil {
 		return pulsedefinition.PublishOutput{}, err
 	}
 	connection, err := c.connect(ctx, input.Environment, true)
@@ -49,13 +47,7 @@ func (c *pulseCommands) PublishPulseDefinition(ctx context.Context, input pulsed
 	}
 	input.Environment, input.Site, input.SiteLUID = connection.environment.Alias, connection.environment.SiteContentURL, connection.siteLUID
 	adapter := pulseBundleAdapter{connection: connection}
-	return pulsedefinition.Publish(ctx, reader, adapter, adapter, input)
-}
-
-type pulseBundleReader struct{ bundle pulsedefinition.PublishBundle }
-
-func (r pulseBundleReader) ReadBundle(context.Context, string) (pulsedefinition.PublishBundle, error) {
-	return r.bundle, nil
+	return pulsedefinition.Publish(ctx, adapter, adapter, input, plan)
 }
 
 type pulseBundleAdapter struct{ connection pulseConnection }

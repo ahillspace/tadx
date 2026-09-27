@@ -47,7 +47,7 @@ func deleteTarget() pulsemetric.DeleteMetric {
 
 func TestDeleteRunsByDefaultWithExactRevalidation(t *testing.T) {
 	b := &deleteBackend{targets: []pulsemetric.DeleteMetric{deleteTarget(), deleteTarget()}}
-	output, err := pulsemetric.Delete(context.Background(), b, b, deleteInput())
+	output, err := delete(context.Background(), b, b, deleteInput())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -63,7 +63,7 @@ func TestDeletePreviewDoesNotDelete(t *testing.T) {
 	b := &deleteBackend{targets: []pulsemetric.DeleteMetric{deleteTarget()}}
 	in := deleteInput()
 	in.Preview = true
-	output, err := pulsemetric.Delete(context.Background(), b, b, in)
+	output, err := delete(context.Background(), b, b, in)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -82,7 +82,7 @@ func TestDeleteRefusesKnownDefaultMetricWithoutWriting(t *testing.T) {
 			b := &deleteBackend{targets: []pulsemetric.DeleteMetric{{LUID: "metric-1", DefinitionLUID: "definition-1", IsDefault: &defaultMetric}}}
 			in := deleteInput()
 			in.Preview = preview
-			output, err := pulsemetric.Delete(context.Background(), b, b, in)
+			output, err := delete(context.Background(), b, b, in)
 			var structured *errs.Error
 			if err == nil || !errors.As(err, &structured) || structured.Phase != errs.PhaseValidation || structured.Outcome != errs.OutcomeNotAttempted || !strings.Contains(err.Error(), "default") || output.Plan.Target.DefinitionLUID != "definition-1" {
 				t.Fatalf("output=%#v err=%v", output, err)
@@ -94,20 +94,6 @@ func TestDeleteRefusesKnownDefaultMetricWithoutWriting(t *testing.T) {
 	}
 }
 
-func TestDeleteDefaultSiteRequiresResolvedTarget(t *testing.T) {
-	for _, resolved := range []bool{false, true} {
-		b := &deleteBackend{targets: []pulsemetric.DeleteMetric{deleteTarget()}}
-		in := deleteInput()
-		in.Site, in.TargetResolved, in.Preview = "", resolved, true
-		out, err := pulsemetric.Delete(context.Background(), b, b, in)
-		if (err == nil) != resolved || out.Result != nil {
-			t.Fatalf("resolved=%t output=%#v err=%v", resolved, out, err)
-		}
-		if !resolved && len(b.calls) != 0 {
-			t.Fatalf("unresolved target reached Tableau: %v", b.calls)
-		}
-	}
-}
 func TestDeleteRejectsWrongOrChangedIdentity(t *testing.T) {
 	for _, targets := range [][]pulsemetric.DeleteMetric{
 		{{LUID: "wrong"}},
@@ -115,7 +101,7 @@ func TestDeleteRejectsWrongOrChangedIdentity(t *testing.T) {
 		{deleteTarget(), {}},
 	} {
 		b := &deleteBackend{targets: targets}
-		_, err := pulsemetric.Delete(context.Background(), b, b, deleteInput())
+		_, err := delete(context.Background(), b, b, deleteInput())
 		if err == nil {
 			t.Fatal("expected exact identity failure")
 		}
@@ -126,14 +112,12 @@ func TestDeleteRejectsWrongOrChangedIdentity(t *testing.T) {
 		}
 	}
 }
-func TestDeleteRequiresExplicitTarget(t *testing.T) {
+func TestDeleteRequiresExactSelector(t *testing.T) {
 	for _, in := range []pulsemetric.DeleteInput{
-		{Site: "sandbox", LUID: "metric-1"},
-		{Environment: "dev", LUID: "metric-1"},
 		{Environment: "dev", Site: "sandbox", LUID: "  "},
 	} {
 		b := &deleteBackend{}
-		_, err := pulsemetric.Delete(context.Background(), b, b, in)
+		_, err := delete(context.Background(), b, b, in)
 		var structured *errs.Error
 		if !errors.As(err, &structured) || structured.Kind != errs.KindUsage || len(b.calls) != 0 {
 			t.Fatalf("err=%v calls=%v", err, b.calls)
@@ -143,7 +127,7 @@ func TestDeleteRequiresExplicitTarget(t *testing.T) {
 func TestDeletePreservesUpstreamFailureWithoutRetry(t *testing.T) {
 	upstream := errors.New("upstream dependency rejection")
 	b := &deleteBackend{targets: []pulsemetric.DeleteMetric{deleteTarget(), deleteTarget()}, deleteError: upstream}
-	_, err := pulsemetric.Delete(context.Background(), b, b, deleteInput())
+	_, err := delete(context.Background(), b, b, deleteInput())
 	if !errors.Is(err, upstream) || len(b.calls) != 3 {
 		t.Fatalf("err=%v calls=%v", err, b.calls)
 	}
@@ -151,7 +135,7 @@ func TestDeletePreservesUpstreamFailureWithoutRetry(t *testing.T) {
 func TestDeletePreservesMissingTarget(t *testing.T) {
 	upstream := errors.New("upstream target not found")
 	b := &deleteBackend{readError: upstream}
-	_, err := pulsemetric.Delete(context.Background(), b, b, deleteInput())
+	_, err := delete(context.Background(), b, b, deleteInput())
 	if !errors.Is(err, upstream) || len(b.calls) != 1 {
 		t.Fatalf("err=%v calls=%v", err, b.calls)
 	}

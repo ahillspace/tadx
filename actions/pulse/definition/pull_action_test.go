@@ -12,6 +12,7 @@ import (
 	pulsedefinition "github.com/ahillspace/tadx/actions/pulse/definition"
 	"github.com/ahillspace/tadx/internal/errs"
 	render "github.com/ahillspace/tadx/internal/output"
+	"github.com/ahillspace/tadx/internal/value"
 )
 
 func TestPullOutputGolden(t *testing.T) {
@@ -61,6 +62,10 @@ type pullWriter struct {
 	err    error
 }
 
+func (w *pullWriter) PreviewDefinition(context.Context, pulsedefinition.PullInput, pulsedefinition.PullDefinition) (value.AcquisitionPlan, error) {
+	return value.AcquisitionPlan{}, errors.New("unexpected acquisition preview")
+}
+
 func (w *pullWriter) WriteDefinition(_ context.Context, input pulsedefinition.PullArtifact) (pulsedefinition.PullArtifactResult, error) {
 	w.input = input
 	if w.result.Path == "" {
@@ -72,7 +77,7 @@ func (w *pullWriter) WriteDefinition(_ context.Context, input pulsedefinition.Pu
 func TestPullWritesCanonicalDefinitionArtifact(t *testing.T) {
 	definition := pulsedefinition.PullDefinition{LUID: "definition-1", Name: "Revenue", DatasourceLUID: "datasource-1", Configuration: []byte(`{"name":"Revenue"}`), RequestID: "request-1", MetricsComplete: true, Metrics: []pulsedefinition.PullMetric{{LUID: "metric-1"}}}
 	w := &pullWriter{}
-	output, err := pulsedefinition.Pull(context.Background(), pullReader{definition: definition}, w, pulsedefinition.PullInput{
+	output, err := pull(context.Background(), pullReader{definition: definition}, w, pulsedefinition.PullInput{
 		Environment: "dev", Site: "sales", ServerOrigin: "https://example.test", SiteLUID: "site-1", Workspace: "workspace", WorkspaceName: "workspace", LUID: "definition-1",
 	})
 	if err != nil {
@@ -93,7 +98,7 @@ func TestPullWritesCanonicalDefinitionArtifact(t *testing.T) {
 func TestPullRejectsAbsoluteWriterPath(t *testing.T) {
 	w := &pullWriter{result: pulsedefinition.PullArtifactResult{Path: `C:\outside`}}
 	definition := pulsedefinition.PullDefinition{LUID: "definition-1", Name: "Revenue", DatasourceLUID: "datasource-1", Configuration: []byte(`{"metadata":{"id":"definition-1"}}`), MetricsComplete: true, Metrics: []pulsedefinition.PullMetric{{LUID: "metric-1"}}}
-	_, err := pulsedefinition.Pull(context.Background(), pullReader{definition: definition}, w, pulsedefinition.PullInput{Workspace: "workspace", LUID: "definition-1"})
+	_, err := pull(context.Background(), pullReader{definition: definition}, w, pulsedefinition.PullInput{Workspace: "workspace", LUID: "definition-1"})
 	var structured *errs.Error
 	if !errors.As(err, &structured) || structured.Kind != errs.KindOperation || structured.ID != "pulse.definition.pull.normalize" {
 		t.Fatalf("error=%#v", err)

@@ -39,17 +39,17 @@ func (inspectMissingMetricError) TableauDetail() string  { return "metric is not
 
 func TestInspectRequiresAndVerifiesExactMetric(t *testing.T) {
 	metric := pulsemetric.Metric{LUID: "metric-1", Name: "Revenue", DefinitionLUID: "definition-1", Specification: map[string]any{"provider_extension": map[string]any{"keep": true}}}
-	output, err := pulsemetric.Inspect(context.Background(), inspectReader{metric}, pulsemetric.InspectInput{Environment: "dev", Site: "sandbox", LUID: "metric-1"})
+	output, err := inspect(context.Background(), inspectReader{metric}, pulsemetric.InspectInput{Environment: "dev", Site: "sandbox", LUID: "metric-1"})
 	if err != nil || output.Metric.Specification["provider_extension"] == nil {
 		t.Fatalf("output=%#v err=%v", output, err)
 	}
-	if _, err := pulsemetric.Inspect(context.Background(), inspectReader{metric}, pulsemetric.InspectInput{LUID: "other"}); err == nil {
+	if _, err := inspect(context.Background(), inspectReader{metric}, pulsemetric.InspectInput{LUID: "other"}); err == nil {
 		t.Fatal("mismatched metric accepted")
 	}
 }
 
 func TestInspectUsesResourceSpecificRecoveryForMissingMetric(t *testing.T) {
-	_, err := pulsemetric.Inspect(context.Background(), inspectMissingMetricReader{}, pulsemetric.InspectInput{Environment: "production", Site: "marketing", LUID: "metric-1"})
+	_, err := inspect(context.Background(), inspectMissingMetricReader{}, pulsemetric.InspectInput{Environment: "production", Site: "marketing", LUID: "metric-1"})
 	var structured *errs.Error
 	if err == nil || !errors.As(err, &structured) || structured.ID != "pulse.metric.inspect.not_found" || structured.Resource != "metric-1" || structured.Phase != errs.PhaseVerification || structured.Outcome != errs.OutcomeNotAttempted {
 		t.Fatalf("error=%#v", err)

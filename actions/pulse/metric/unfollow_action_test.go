@@ -28,11 +28,11 @@ func (s *unfollowService) DeleteSubscription(_ context.Context, luid string) err
 func TestUnfollowResolvesOneExactRelationshipAndRevalidates(t *testing.T) {
 	s := &unfollowService{subscriptions: []pulsemetric.Subscription{{LUID: "sub-1", MetricLUID: "metric-1", FollowerType: "GROUP", FollowerLUID: "group-1"}}}
 	input := pulsemetric.UnfollowInput{MetricLUID: "metric-1", GroupLUID: "group-1"}
-	preview, err := pulsemetric.Unfollow(context.Background(), s, s, input, true)
+	preview, err := unfollow(context.Background(), s, s, input, true)
 	if err != nil || preview.Plan.SubscriptionLUID != "sub-1" || len(s.deleted) != 0 {
 		t.Fatalf("preview=%#v err=%v", preview, err)
 	}
-	result, err := pulsemetric.Unfollow(context.Background(), s, s, input, false)
+	result, err := unfollow(context.Background(), s, s, input, false)
 	if err != nil || result.Result == nil || len(s.deleted) != 1 || s.deleted[0] != "sub-1" {
 		t.Fatalf("output=%#v deleted=%#v err=%v", result, s.deleted, err)
 	}
@@ -50,14 +50,14 @@ func TestUnfollowResolvesOneExactRelationshipAndRevalidates(t *testing.T) {
 
 func TestUnfollowRejectsAmbiguousRelationship(t *testing.T) {
 	s := &unfollowService{subscriptions: []pulsemetric.Subscription{{LUID: "sub-1", FollowerType: "USER", FollowerLUID: "user-1"}, {LUID: "sub-2", FollowerType: "USER", FollowerLUID: "user-1"}}}
-	if _, err := pulsemetric.Unfollow(context.Background(), s, s, pulsemetric.UnfollowInput{MetricLUID: "metric-1", UserLUID: "user-1"}, false); err == nil {
+	if _, err := unfollow(context.Background(), s, s, pulsemetric.UnfollowInput{MetricLUID: "metric-1", UserLUID: "user-1"}, false); err == nil {
 		t.Fatal("ambiguous relationship accepted")
 	}
 }
 
 func TestUnfollowAcceptsExactSubscriptionWithoutResolution(t *testing.T) {
 	s := &unfollowService{}
-	output, err := pulsemetric.Unfollow(context.Background(), s, s, pulsemetric.UnfollowInput{SubscriptionLUID: "sub-1"}, false)
+	output, err := unfollow(context.Background(), s, s, pulsemetric.UnfollowInput{SubscriptionLUID: "sub-1"}, false)
 	if err != nil || output.Result == nil || len(s.deleted) != 1 || s.deleted[0] != "sub-1" {
 		t.Fatalf("output=%#v deleted=%#v err=%v", output, s.deleted, err)
 	}
@@ -89,7 +89,7 @@ func TestUnfollowRejectsMixedAndIncompleteSelectorsBeforeRemoteCalls(t *testing.
 	}
 	for _, input := range tests {
 		s := &unfollowService{}
-		if _, err := pulsemetric.Unfollow(context.Background(), s, s, input, false); err == nil {
+		if _, err := unfollow(context.Background(), s, s, input, false); err == nil {
 			t.Fatalf("invalid selectors accepted: %#v", input)
 		}
 		if s.listed != 0 || len(s.deleted) != 0 {

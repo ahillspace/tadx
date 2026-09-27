@@ -40,6 +40,7 @@ func createCompactPlan(plan CreatePlan) CreateCompactPlan {
 
 // Input contains one small definition-authoring intent.
 type CreateInput struct {
+	request     CreateRequest
 	Environment string
 	Site        string
 	Intent      CreateIntent
@@ -90,7 +91,7 @@ type CreateComparison = value.PulseComparison
 type CreateCompareConfig = value.PulseCompareConfig
 type CreateCertification = value.PulseCertification
 
-// Plan is the deterministic preview and the only value Apply accepts.
+// Plan is the deterministic projection of a fresh create operation.
 type CreatePlan struct {
 	Mode        string        `json:"mode"`
 	Operation   string        `json:"operation"`
@@ -103,7 +104,6 @@ type CreatePlan struct {
 	Dimensions  []string      `json:"allowed_dimensions"`
 	Fingerprint string        `json:"request_fingerprint"`
 	Request     CreateRequest `json:"request"`
-	planned     bool
 }
 
 // CreateResult is the authoritative result after bounded default-metric resolution.

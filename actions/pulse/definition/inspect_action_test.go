@@ -53,7 +53,7 @@ func (r *inspectReader) GetDefinition(_ context.Context, luid string) (pulsedefi
 
 func TestInspectRequiresAndVerifiesExactLUID(t *testing.T) {
 	r := &inspectReader{definition: pulsedefinition.Definition{LUID: "definition-1", Name: "Revenue", DatasourceLUID: "datasource-1", MeasureField: "Sales"}}
-	output, err := pulsedefinition.Inspect(context.Background(), r, pulsedefinition.InspectInput{Environment: "dev", Site: "sales", LUID: " definition-1 "})
+	output, err := inspect(context.Background(), r, pulsedefinition.InspectInput{Environment: "dev", Site: "sales", LUID: " definition-1 "})
 	if err != nil || r.luid != "definition-1" || output.Definition.LUID != "definition-1" {
 		t.Fatalf("luid=%q output=%#v err=%v", r.luid, output, err)
 	}
@@ -95,7 +95,7 @@ func TestInspectRejectsMissingOrMismatchedLUID(t *testing.T) {
 		{name: "mismatch", input: pulsedefinition.InspectInput{LUID: "definition-1"}, result: pulsedefinition.Definition{LUID: "definition-2"}, kind: errs.KindOperation},
 	} {
 		t.Run(test.name, func(t *testing.T) {
-			_, err := pulsedefinition.Inspect(context.Background(), &inspectReader{definition: test.result}, test.input)
+			_, err := inspect(context.Background(), &inspectReader{definition: test.result}, test.input)
 			var structured *errs.Error
 			if !errors.As(err, &structured) || structured.Kind != test.kind {
 				t.Fatalf("error=%#v", err)

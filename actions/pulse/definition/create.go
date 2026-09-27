@@ -21,7 +21,6 @@ var createCurrencyCodePattern = regexp.MustCompile(`^[A-Z]{3}$`)
 // FieldValidator verifies exact field identities against current datasource metadata.
 type CreateFieldValidator interface {
 	ResolveDefinitionFields(context.Context, CreateFieldReferences) (CreateFieldReferences, error)
-	ValidateDefinitionFields(context.Context, CreateFieldReferences) error
 }
 
 // CollisionFinder finds exact name collisions within one datasource.
@@ -34,27 +33,9 @@ type CreateCreator interface {
 	CreateDefinition(context.Context, CreateRequest) (CreateResult, error)
 }
 
-// Action previews and creates one Pulse definition.
-type CreateAction struct {
-	validator CreateFieldValidator
-	finder    CreateCollisionFinder
-	creator   CreateCreator
-}
-
-// New creates a Pulse definition create action.
-func NewCreate(validator CreateFieldValidator, finder CreateCollisionFinder, creator CreateCreator) *CreateAction {
-	return &CreateAction{validator: validator, finder: finder, creator: creator}
-}
-
-// Plan validates the small intent and resolves live field and collision state.
-func (a *CreateAction) Plan(ctx context.Context, input CreateInput) (CreatePlan, error) {
-	request, err := createValidatedRequest(input)
-	if err != nil {
-		return CreatePlan{}, err
-	}
-	if a == nil || a.validator == nil || a.finder == nil || a.creator == nil {
-		return CreatePlan{}, createError("pulse.definition.create.unconfigured", errs.KindRuntime, input, "Pulse definition creation is not configured.", nil)
-	}
+// createPlan resolves live field and collision state for the validated request.
+func createPlan(ctx context.Context, validator CreateFieldValidator, finder CreateCollisionFinder, input CreateInput) (CreatePlan, error) {
+	request := input.request
 	references := CreateFieldReferences{
 		DatasourceLUID:    request.Specification.Datasource.ID,
 		MeasureField:      request.Specification.BasicSpecification.Measure.Field,
@@ -62,7 +43,7 @@ func (a *CreateAction) Plan(ctx context.Context, input CreateInput) (CreatePlan,
 		TimeDimension:     request.Specification.BasicSpecification.TimeDimension.Field,
 		AllowedDimensions: append([]string(nil), request.ExtensionOptions.AllowedDimensions...),
 	}
-	references, err = a.validator.ResolveDefinitionFields(ctx, references)
+	references, err := validator.ResolveDefinitionFields(ctx, references)
 	if err != nil {
 		retryable, corrective := errs.CompleteRetryAdvice(err, "Inspect current datasource fields, then review a new definition preview.")
 		return CreatePlan{}, &errs.Error{ID: "pulse.definition.create.fields", Kind: errs.KindOperation, Operation: "pulse.definition.create", Environment: input.Environment, Site: input.Site, Summary: "Pulse definition field validation failed.", Cause: err, Retryable: retryable, CorrectiveAction: corrective, TableauRequestID: errs.TableauRequestID(err), Phase: errs.PhaseVerification, Outcome: errs.OutcomeNotAttempted}
@@ -73,7 +54,7 @@ func (a *CreateAction) Plan(ctx context.Context, input CreateInput) (CreatePlan,
 	if err != nil {
 		return CreatePlan{}, createError("pulse.definition.create.fields", errs.KindOperation, input, "Resolved Pulse dimensions are invalid.", err)
 	}
-	if err := a.checkCollision(ctx, input, request); err != nil {
+	if err := createCheckCollision(ctx, finder, input, request); err != nil {
 		return CreatePlan{}, err
 	}
 	fingerprint, err := createRequestFingerprint(request)
@@ -85,45 +66,15 @@ func (a *CreateAction) Plan(ctx context.Context, input CreateInput) (CreatePlan,
 		Datasource: request.Specification.Datasource.ID, Measure: request.Specification.BasicSpecification.Measure,
 		TimeField:   request.Specification.BasicSpecification.TimeDimension.Field,
 		Dimensions:  append(make([]string, 0, len(request.ExtensionOptions.AllowedDimensions)), request.ExtensionOptions.AllowedDimensions...),
-		Fingerprint: fingerprint, Request: request, planned: true,
+		Fingerprint: fingerprint, Request: request,
 	}, nil
 }
 
-// Apply revalidates live state and performs the exact planned request.
-func (a *CreateAction) Apply(ctx context.Context, input CreateInput, plan CreatePlan) (CreateResult, error) {
-	if a == nil || a.validator == nil || a.finder == nil || a.creator == nil {
-		return CreateResult{}, createError("pulse.definition.create.unconfigured", errs.KindRuntime, input, "Pulse definition creation is not configured.", nil)
-	}
-	if !plan.planned || plan.Operation != "pulse.definition.create" || plan.Request.Name == "" || plan.Fingerprint == "" {
-		return CreateResult{}, createError("pulse.definition.create.usage", errs.KindUsage, input, "Pulse definition apply requires a plan produced by this action.", nil)
-	}
-	fingerprint, err := createRequestFingerprint(plan.Request)
-	if err != nil || fingerprint != plan.Fingerprint {
-		return CreateResult{}, createError("pulse.definition.create.usage", errs.KindUsage, input, "Pulse definition apply requires an unchanged plan produced by this action.", err)
-	}
-	references := CreateFieldReferences{
-		DatasourceLUID:    plan.Request.Specification.Datasource.ID,
-		MeasureField:      plan.Request.Specification.BasicSpecification.Measure.Field,
-		Aggregation:       plan.Request.Specification.BasicSpecification.Measure.Aggregation,
-		TimeDimension:     plan.Request.Specification.BasicSpecification.TimeDimension.Field,
-		AllowedDimensions: append([]string(nil), plan.Request.ExtensionOptions.AllowedDimensions...),
-	}
-	if err := a.validator.ValidateDefinitionFields(ctx, references); err != nil {
-		return CreateResult{}, &errs.Error{ID: "pulse.definition.create.target_changed", Kind: errs.KindOperation, Operation: "pulse.definition.create", Environment: input.Environment, Site: input.Site, Summary: "Pulse definition field state changed during revalidation.", Cause: err, Retryable: errs.Bool(false), CorrectiveAction: "Inspect current datasource fields, then review a new definition preview.", TableauRequestID: errs.TableauRequestID(err), Phase: errs.PhaseVerification, Outcome: errs.OutcomeNotAttempted}
-	}
-	if err := a.checkCollision(ctx, input, plan.Request); err != nil {
-		return CreateResult{}, err
-	}
-	return a.createValidated(ctx, input, plan.Request)
-}
-
-// createValidated is private to fresh Plan/Execute and revalidated Apply flows.
-// It never accepts a caller-supplied retained plan without Apply's drift checks.
-func (a *CreateAction) createValidated(ctx context.Context, input CreateInput, request CreateRequest) (CreateResult, error) {
+func createValidated(ctx context.Context, creator CreateCreator, input CreateInput, request CreateRequest) (CreateResult, error) {
 	if err := ctx.Err(); err != nil {
 		return CreateResult{}, err
 	}
-	result, err := a.creator.CreateDefinition(ctx, request)
+	result, err := creator.CreateDefinition(ctx, request)
 	if err != nil {
 		if result.DefinitionLUID != "" {
 			result.Status = "created"
@@ -160,9 +111,9 @@ func createFailureAdvice(input CreateInput, cause error) string {
 	return "Reconcile the remote outcome before attempting another create. " + lookup
 }
 
-// Execute plans every call and creates unless preview is requested.
-func (a *CreateAction) Execute(ctx context.Context, input CreateInput, preview bool) (CreateOutput, error) {
-	plan, err := a.Plan(ctx, input)
+// Create plans every call and creates unless preview is requested.
+func Create(ctx context.Context, validator CreateFieldValidator, finder CreateCollisionFinder, creator CreateCreator, input CreateInput, preview bool) (CreateOutput, error) {
+	plan, err := createPlan(ctx, validator, finder, input)
 	if err != nil {
 		return CreateOutput{}, err
 	}
@@ -174,9 +125,7 @@ func (a *CreateAction) Execute(ctx context.Context, input CreateInput, preview b
 		return output, nil
 	}
 	output.Plan.Mode = "execute"
-	// No asynchronous work or external caller intervenes after this fresh Plan.
-	// Retained plans must still use public Apply and its current-state validation.
-	result, err := a.createValidated(ctx, input, plan.Request)
+	result, err := createValidated(ctx, creator, input, plan.Request)
 	if err != nil {
 		if result.DefinitionLUID != "" {
 			output.Result = &result
@@ -190,8 +139,8 @@ func (a *CreateAction) Execute(ctx context.Context, input CreateInput, preview b
 	return output, nil
 }
 
-func (a *CreateAction) checkCollision(ctx context.Context, input CreateInput, request CreateRequest) error {
-	items, err := a.finder.FindDefinitions(ctx, request.Name, request.Specification.Datasource.ID)
+func createCheckCollision(ctx context.Context, finder CreateCollisionFinder, input CreateInput, request CreateRequest) error {
+	items, err := finder.FindDefinitions(ctx, request.Name, request.Specification.Datasource.ID)
 	if err != nil {
 		retryable, corrective := errs.CompleteRetryAdvice(err, "Review current Pulse definitions, then request a new preview.")
 		return &errs.Error{ID: "pulse.definition.create.collision", Kind: errs.KindOperation, Operation: "pulse.definition.create", Environment: input.Environment, Site: input.Site, Summary: "Pulse definition collision check failed.", Cause: err, Retryable: retryable, CorrectiveAction: corrective, TableauRequestID: errs.TableauRequestID(err), Phase: errs.PhaseVerification, Outcome: errs.OutcomeNotAttempted}
@@ -349,23 +298,15 @@ func createDefaultInsightSettings() []CreateInsightSetting {
 }
 
 func createError(id string, kind errs.Kind, input CreateInput, summary string, cause error) error {
-	phase := errs.PhaseValidation
-	if kind == errs.KindRuntime {
-		phase = errs.PhaseSetup
-	}
-	return &errs.Error{ID: id, Kind: kind, Operation: "pulse.definition.create", Environment: input.Environment, Site: input.Site, Summary: summary, Cause: cause, Retryable: errs.Bool(false), CorrectiveAction: "Correct the Pulse definition intent and review a new preview.", Phase: phase, Outcome: errs.OutcomeNotAttempted}
+	return &errs.Error{ID: id, Kind: kind, Operation: "pulse.definition.create", Environment: input.Environment, Site: input.Site, Summary: summary, Cause: cause, Retryable: errs.Bool(false), CorrectiveAction: "Correct the Pulse definition intent and review a new preview.", Phase: errs.PhaseValidation, Outcome: errs.OutcomeNotAttempted}
 }
 
 // ValidateInput checks the complete authoring intent without live field validation.
-func CreateValidateInput(input CreateInput) error {
-	_, err := createValidatedRequest(input)
-	return err
-}
-
-func createValidatedRequest(input CreateInput) (CreateRequest, error) {
+func CreateValidateInput(input *CreateInput) error {
 	request, err := createRequestFromIntent(input.Intent)
 	if err != nil {
-		return CreateRequest{}, createError("pulse.definition.create.usage", errs.KindUsage, input, "Pulse definition intent is invalid.", err)
+		return createError("pulse.definition.create.usage", errs.KindUsage, *input, "Pulse definition intent is invalid.", err)
 	}
-	return request, nil
+	input.request = request
+	return nil
 }

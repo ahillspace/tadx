@@ -196,3 +196,12 @@ Attach the selected binary, configuration, fixture authority, and replay task to
 Trace async publication and recovery consumers before removing copied observation fields or action wrappers.
 An action projection can omit unused state without deleting fields from the durable operation record.
 Retain monitor polling, cancellation, timeout, and fresh-state behavior when replacing composition adapters with direct operation callbacks.
+
+## Lessons from complete Pulse workflows
+
+Retain parsed local inputs and prepared bundles instead of validating them and discarding the useful result.
+Trace direct search consumers before changing resource-list preparation.
+Remove unsupported retained-plan APIs when production always plans and runs within one call; preserve the serialized plan and confirmed mutation receipts.
+Keep fresh remote schema checks separate from repeated local payload preparation.
+Retain one deliberate copy boundary for mutable metric specifications, including number-preserving decoding and null-versus-empty distinctions.
+Share bundle assembly without changing preview validation, artifact bytes, or filesystem replacement rules.

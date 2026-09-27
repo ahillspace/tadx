@@ -40,7 +40,7 @@ func TestFollowersReturnsExactRelationships(t *testing.T) {
 		metric:        pulsemetric.Metric{LUID: "metric-1"},
 		subscriptions: []pulsemetric.Subscription{{LUID: "sub-1", MetricLUID: "metric-1", FollowerType: "USER", FollowerLUID: "user-1"}},
 	}
-	output, err := pulsemetric.Followers(context.Background(), reader, pulsemetric.FollowersInput{MetricLUID: "metric-1"})
+	output, err := followers(context.Background(), reader, pulsemetric.FollowersInput{MetricLUID: "metric-1"})
 	if err != nil || output.Count != 1 || output.Subscriptions[0].LUID != "sub-1" {
 		t.Fatalf("output=%#v err=%v", output, err)
 	}
@@ -51,7 +51,7 @@ func TestFollowersReturnsExactRelationships(t *testing.T) {
 
 func TestFollowersNormalizesSuccessfulEmptySubscriptions(t *testing.T) {
 	reader := &followersReader{metric: pulsemetric.Metric{LUID: "metric-1"}}
-	output, err := pulsemetric.Followers(context.Background(), reader, pulsemetric.FollowersInput{MetricLUID: "metric-1"})
+	output, err := followers(context.Background(), reader, pulsemetric.FollowersInput{MetricLUID: "metric-1"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -66,7 +66,7 @@ func TestFollowersNormalizesSuccessfulEmptySubscriptions(t *testing.T) {
 
 func TestFollowersRejectsMalformedMetricSelectorBeforeReading(t *testing.T) {
 	reader := &followersReader{}
-	_, err := pulsemetric.Followers(context.Background(), reader, pulsemetric.FollowersInput{MetricLUID: "metric with spaces"})
+	_, err := followers(context.Background(), reader, pulsemetric.FollowersInput{MetricLUID: "metric with spaces"})
 	if err == nil {
 		t.Fatal("expected malformed metric selector error")
 	}
@@ -82,7 +82,7 @@ func TestFollowersRejectsMalformedMetricSelectorBeforeReading(t *testing.T) {
 func TestFollowersRejectsMissingMetricBeforeListingSubscriptions(t *testing.T) {
 	reader := &followersReader{metricErr: followersLiveError{}}
 
-	_, err := pulsemetric.Followers(context.Background(), reader, pulsemetric.FollowersInput{
+	_, err := followers(context.Background(), reader, pulsemetric.FollowersInput{
 		Environment: "dev",
 		Site:        "test-site",
 		MetricLUID:  "missing-metric",

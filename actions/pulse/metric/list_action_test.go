@@ -41,7 +41,7 @@ func TestListAllRejectsBrokenPaginationAndScanOverflow(t *testing.T) {
 	} {
 		t.Run(name, func(t *testing.T) {
 			r := &listPageReader{pages: pages}
-			if _, err := pulsemetric.List(context.Background(), r, pulsemetric.ListInput{DefinitionLUID: "def", All: true}); err == nil {
+			if _, err := list(context.Background(), r, pulsemetric.ListInput{DefinitionLUID: "def", All: true}); err == nil {
 				t.Fatal("broken pagination accepted")
 			}
 		})
@@ -51,7 +51,7 @@ func TestListAllRejectsBrokenPaginationAndScanOverflow(t *testing.T) {
 		pages[index].NextPageToken = fmt.Sprintf("next-%d", index)
 	}
 	r := &listPageReader{pages: pages}
-	_, err := pulsemetric.List(context.Background(), r, pulsemetric.ListInput{DefinitionLUID: "def", All: true})
+	_, err := list(context.Background(), r, pulsemetric.ListInput{DefinitionLUID: "def", All: true})
 	var structured *errs.Error
 	if !errors.As(err, &structured) || structured.ID != "pulse.metric.list.incomplete" || r.calls != 100 {
 		t.Fatalf("err=%v calls=%d", err, r.calls)
@@ -65,7 +65,7 @@ func (r *listReader) ListMetrics(_ context.Context, definition string, request p
 
 func TestListReturnsOneBoundedDefinitionPage(t *testing.T) {
 	r := &listReader{}
-	output, err := pulsemetric.List(context.Background(), r, pulsemetric.ListInput{Environment: "dev", Site: "sandbox", DefinitionLUID: "definition-1", Limit: 10})
+	output, err := list(context.Background(), r, pulsemetric.ListInput{Environment: "dev", Site: "sandbox", DefinitionLUID: "definition-1", Limit: 10})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -107,13 +107,13 @@ func listAssertGolden(t *testing.T, name string, value any, full bool) {
 }
 
 func TestListRejectsMissingDefinition(t *testing.T) {
-	if _, err := pulsemetric.List(context.Background(), &listReader{}, pulsemetric.ListInput{}); err == nil {
+	if _, err := list(context.Background(), &listReader{}, pulsemetric.ListInput{}); err == nil {
 		t.Fatal("missing definition accepted")
 	}
 }
 
 func TestListAllCorrectionExplainsLimitChoice(t *testing.T) {
-	_, err := pulsemetric.List(context.Background(), &listReader{}, pulsemetric.ListInput{DefinitionLUID: "definition-1", All: true, Limit: 10})
+	_, err := list(context.Background(), &listReader{}, pulsemetric.ListInput{DefinitionLUID: "definition-1", All: true, Limit: 10})
 	if err == nil || !strings.Contains(err.Error(), "remove --limit") || !strings.Contains(err.Error(), "remove --all") {
 		t.Fatalf("error=%v", err)
 	}
@@ -121,14 +121,14 @@ func TestListAllCorrectionExplainsLimitChoice(t *testing.T) {
 
 func TestListCursorCannotSwitchBetweenTableauAndCache(t *testing.T) {
 	r := &listReader{}
-	output, err := pulsemetric.List(context.Background(), r, pulsemetric.ListInput{Environment: "dev", Site: "sandbox", DefinitionLUID: "definition-1", Limit: 10})
+	output, err := list(context.Background(), r, pulsemetric.ListInput{Environment: "dev", Site: "sandbox", DefinitionLUID: "definition-1", Limit: 10})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := pulsemetric.List(context.Background(), r, pulsemetric.ListInput{Environment: "dev", Site: "sandbox", DefinitionLUID: "definition-1", Limit: 10, Cursor: output.Page.NextCursor, Cache: true}); err == nil {
+	if _, err := list(context.Background(), r, pulsemetric.ListInput{Environment: "dev", Site: "sandbox", DefinitionLUID: "definition-1", Limit: 10, Cursor: output.Page.NextCursor, Cache: true}); err == nil {
 		t.Fatal("cursor accepted after source switch")
 	}
-	if _, err := pulsemetric.List(context.Background(), r, pulsemetric.ListInput{Environment: "prod", Site: "sandbox", DefinitionLUID: "definition-1", Limit: 10, Cursor: output.Page.NextCursor}); err == nil {
+	if _, err := list(context.Background(), r, pulsemetric.ListInput{Environment: "prod", Site: "sandbox", DefinitionLUID: "definition-1", Limit: 10, Cursor: output.Page.NextCursor}); err == nil {
 		t.Fatal("cursor accepted after environment switch")
 	}
 }

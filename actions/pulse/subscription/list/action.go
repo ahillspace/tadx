@@ -137,11 +137,7 @@ func (o Output) CompactOutput() any {
 
 func (o Output) FullOutput() any { return o }
 
-type Action struct{ reader Reader }
-
-func New(reader Reader) *Action { return &Action{reader: reader} }
-
-func (a *Action) Execute(ctx context.Context, input Input) (Output, error) {
+func List(ctx context.Context, reader Reader, input Input) (Output, error) {
 	limit := input.Limit
 	if limit == 0 {
 		limit = defaultLimit
@@ -159,15 +155,12 @@ func (a *Action) Execute(ctx context.Context, input Input) (Output, error) {
 	if err != nil {
 		return Output{}, usage(input, "Pulse subscription cursor does not match this user, environment, site, and limit.")
 	}
-	if a == nil || a.reader == nil {
-		return Output{}, errors.New("Pulse subscription listing is not configured")
-	}
 	output := Output{Status: "listed", Environment: input.Environment, Site: input.Site, UserLUID: input.UserLUID, Subscriptions: []Item{}, Coverage: Coverage{Scope: "authenticated_user_filter", GroupDerived: "unverified"}}
 	seenIDs := map[string]bool{}
 	seenTokens := map[string]bool{}
 	for page := 0; page < 100 && len(output.Subscriptions) < limit; page++ {
 		pageSize := min(100, limit-len(output.Subscriptions))
-		result, err := a.reader.ListUserSubscriptions(ctx, input.UserLUID, PageRequest{PageSize: pageSize, PageToken: token})
+		result, err := reader.ListUserSubscriptions(ctx, input.UserLUID, PageRequest{PageSize: pageSize, PageToken: token})
 		if err != nil {
 			output.Warnings = append(output.Warnings, "Subscription inventory could not be completed.")
 			return partialFailure(output, &errs.Error{ID: "pulse.subscription.list.failed", Kind: errs.KindOperation, Operation: "pulse.subscription.list", Environment: input.Environment, Site: input.Site, Summary: "Pulse subscription listing failed.", Cause: err, TableauRequestID: errs.TableauRequestID(err)})
@@ -226,7 +219,7 @@ func (a *Action) Execute(ctx context.Context, input Input) (Output, error) {
 		for _, id := range ids {
 			batchIDs[id] = true
 		}
-		batch, err := a.reader.GetMetrics(ctx, ids)
+		batch, err := reader.GetMetrics(ctx, ids)
 		if err != nil {
 			output.Warnings = append(output.Warnings, "A bounded metric batch could not be read; subscription identities are retained.")
 			continue
@@ -255,7 +248,7 @@ func (a *Action) Execute(ctx context.Context, input Input) (Output, error) {
 		for _, id := range ids {
 			batchIDs[id] = true
 		}
-		batch, err := a.reader.GetDefinitions(ctx, ids)
+		batch, err := reader.GetDefinitions(ctx, ids)
 		if err != nil {
 			output.Warnings = append(output.Warnings, "A bounded definition batch could not be read; metric identities are retained.")
 			continue

@@ -19,12 +19,6 @@ type FollowersReader interface {
 }
 
 func Followers(ctx context.Context, reader FollowersReader, input FollowersInput) (FollowersOutput, error) {
-	if err := FollowersValidateInput(input); err != nil {
-		return FollowersOutput{}, err
-	}
-	if reader == nil {
-		return FollowersOutput{}, followersFail("pulse.metric.followers.unconfigured", errs.KindRuntime, input, "Pulse metric follower listing is not configured.", nil)
-	}
 	input.MetricLUID = strings.TrimSpace(input.MetricLUID)
 	metric, err := reader.GetMetric(ctx, input.MetricLUID)
 	if err != nil {

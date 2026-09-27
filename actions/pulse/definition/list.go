@@ -27,26 +27,11 @@ type ListReader interface {
 	ListDefinitions(context.Context, ListPageRequest) (ListPage, error)
 }
 
-// List reads a bounded view, scanning internally for all results or exact names.
+// List consumes validated input and reads a bounded view, scanning for exact names.
 func List(ctx context.Context, reader ListReader, input ListInput) (ListOutput, error) {
-	if err := ListValidateInput(input); err != nil {
-		return ListOutput{}, err
-	}
-	if reader == nil {
-		return ListOutput{}, listError("pulse.definition.list.unconfigured", errs.KindRuntime, input, "Pulse definition listing is not configured.", nil)
-	}
-	limit := input.Limit
-	if limit == 0 {
-		limit = listDefaultLimit
-	}
-	fingerprint := listTargetFingerprint(input.Environment, input.Site, input.Name, limit, input.Cache)
-	if input.DatasourceLUID != "" {
-		fingerprint = listTargetFingerprint(fingerprint, input.DatasourceLUID, "", limit, input.Cache)
-	}
-	token, err := listDecodeCursor(input.Cursor, fingerprint)
-	if err != nil {
-		return ListOutput{}, listError("pulse.definition.list.usage", errs.KindUsage, input, "Pulse definition cursor does not match the selected target, name, and limit.", err)
-	}
+	limit := input.limit
+	fingerprint := listInputFingerprint(input)
+	token := input.cursor.PageToken
 	if input.All {
 		limit = 10000
 	}
@@ -136,27 +121,14 @@ func listEncodeCursor(token, fingerprint string) (string, error) {
 	return base64.RawURLEncoding.EncodeToString(data), nil
 }
 
-func listDecodeCursor(value, fingerprint string) (string, error) {
-	if value == "" {
-		return "", nil
-	}
-	if len(value) > listMaxCursorLength {
-		return "", errors.New("cursor exceeds its byte limit")
-	}
-	data, err := base64.RawURLEncoding.DecodeString(value)
-	var cursor listCursorValue
-	if err != nil || json.Unmarshal(data, &cursor) != nil || cursor.Version != listCursorVersion || cursor.PageToken == "" || cursor.Fingerprint != fingerprint {
-		return "", errors.New("invalid Pulse definition cursor")
-	}
-	return cursor.PageToken, nil
-}
-
 func listError(id string, kind errs.Kind, input ListInput, summary string, cause error) error {
 	return &errs.Error{ID: id, Kind: kind, Operation: "pulse.definition.list", Environment: input.Environment, Site: input.Site, Summary: summary, Cause: cause, Retryable: errs.Bool(false), CorrectiveAction: "Review the definition list input and request a new page."}
 }
 
 // Input selects one bounded Pulse definition page.
 type ListInput struct {
+	cursor         listCursorValue
+	limit          int
 	Environment    string
 	Site           string
 	Name           string
@@ -262,35 +234,41 @@ func (o ListOutput) FullOutput() any {
 }
 
 // ValidateInput checks bounded list inputs; resolved cursor ownership is checked later.
-func ListValidateInput(input ListInput) error {
+func ListValidateInput(input *ListInput) error {
 	if input.Limit < 0 || input.Limit > listMaxLimit {
-		return listError("pulse.definition.list.usage", errs.KindUsage, input, "Pulse definition list limit must be between 1 and 10000.", nil)
+		return listError("pulse.definition.list.usage", errs.KindUsage, *input, "Pulse definition list limit must be between 1 and 10000.", nil)
 	}
 	if input.All && (input.Limit != 0 || input.Cursor != "") {
-		return listError("pulse.definition.list.usage", errs.KindUsage, input, "--all cannot be combined with --limit or --cursor; remove --limit and --cursor for all rows, or remove --all for a bounded result.", nil)
+		return listError("pulse.definition.list.usage", errs.KindUsage, *input, "--all cannot be combined with --limit or --cursor; remove --limit and --cursor for all rows, or remove --all for a bounded result.", nil)
+	}
+	input.cursor = listCursorValue{}
+	input.limit = input.Limit
+	if input.limit == 0 {
+		input.limit = listDefaultLimit
 	}
 	if input.Cursor != "" {
 		data, err := base64.RawURLEncoding.DecodeString(input.Cursor)
 		var value listCursorValue
 		if len(input.Cursor) > listMaxCursorLength || err != nil || json.Unmarshal(data, &value) != nil || value.Version != listCursorVersion || value.PageToken == "" || value.Fingerprint == "" {
-			return listError("pulse.definition.list.usage", errs.KindUsage, input, "Invalid Pulse definition cursor.", nil)
+			return listError("pulse.definition.list.usage", errs.KindUsage, *input, "Invalid Pulse definition cursor.", nil)
 		}
+		input.cursor = value
 	}
 	return nil
 }
 
 // ValidateContinuation binds a cursor to a locally resolved target before sign-in.
 func ListValidateContinuation(input ListInput) error {
-	limit := input.Limit
-	if limit == 0 {
-		limit = listDefaultLimit
-	}
-	fingerprint := listTargetFingerprint(input.Environment, input.Site, input.Name, limit, input.Cache)
-	if input.DatasourceLUID != "" {
-		fingerprint = listTargetFingerprint(fingerprint, input.DatasourceLUID, "", limit, input.Cache)
-	}
-	if _, err := listDecodeCursor(input.Cursor, fingerprint); err != nil {
-		return listError("pulse.definition.list.usage", errs.KindUsage, input, "Pulse definition cursor does not match the selected target, name, and limit.", err)
+	if input.Cursor != "" && input.cursor.Fingerprint != listInputFingerprint(input) {
+		return listError("pulse.definition.list.usage", errs.KindUsage, input, "Pulse definition cursor does not match the selected target, name, and limit.", errors.New("invalid Pulse definition cursor"))
 	}
 	return nil
+}
+
+func listInputFingerprint(input ListInput) string {
+	fingerprint := listTargetFingerprint(input.Environment, input.Site, input.Name, input.limit, input.Cache)
+	if input.DatasourceLUID != "" {
+		fingerprint = listTargetFingerprint(fingerprint, input.DatasourceLUID, "", input.limit, input.Cache)
+	}
+	return fingerprint
 }

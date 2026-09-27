@@ -11,7 +11,7 @@ import (
 )
 
 func TestPublishOutputGolden(t *testing.T) {
-	plan, err := pulsedefinition.PublishPrepareBundle(publishInputFixture(), publishBundleFixture())
+	plan, err := preparePublish(publishInputFixture(), publishBundleFixture())
 	if err != nil {
 		t.Fatal(err)
 	}

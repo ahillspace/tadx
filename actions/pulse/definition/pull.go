@@ -18,16 +18,11 @@ type PullReader interface {
 // Writer is the action-owned managed artifact seam.
 type PullWriter interface {
 	WriteDefinition(context.Context, PullArtifact) (PullArtifactResult, error)
+	PreviewDefinition(context.Context, PullInput, PullDefinition) (value.AcquisitionPlan, error)
 }
 
 // Pull retrieves and atomically materializes one definition.
 func Pull(ctx context.Context, reader PullReader, writer PullWriter, input PullInput) (PullOutput, error) {
-	if err := PullValidateInput(input); err != nil {
-		return PullOutput{}, err
-	}
-	if reader == nil || writer == nil {
-		return PullOutput{}, pullError("pulse.definition.pull.unconfigured", errs.KindRuntime, input, "Pulse definition pull is not configured.", nil)
-	}
 	input.LUID = strings.TrimSpace(input.LUID)
 	if strings.TrimSpace(input.Workspace) == "" {
 		return PullOutput{}, pullError("pulse.definition.pull.usage", errs.KindUsage, input, "Pulse definition pull requires a workspace and exact definition LUID.", nil)
@@ -44,13 +39,7 @@ func Pull(ctx context.Context, reader PullReader, writer PullWriter, input PullI
 		return PullOutput{}, pullError("pulse.definition.pull.incomplete", errs.KindOperation, input, "A complete Pulse metric inventory is required for a portable bundle.", nil)
 	}
 	if input.Preview {
-		previewer, ok := writer.(interface {
-			PreviewDefinition(context.Context, PullInput, PullDefinition) (value.AcquisitionPlan, error)
-		})
-		if !ok {
-			return PullOutput{}, pullError("pulse.definition.pull.preview", errs.KindRuntime, input, "Acquisition preview is not configured.", nil)
-		}
-		plan, err := previewer.PreviewDefinition(ctx, input, definition)
+		plan, err := writer.PreviewDefinition(ctx, input, definition)
 		if err != nil {
 			return PullOutput{}, err
 		}

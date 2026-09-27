@@ -1,7 +1,6 @@
 package definition
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -13,9 +12,6 @@ import (
 	"github.com/ahillspace/tadx/internal/pulsecontract"
 )
 
-type PublishReader interface {
-	ReadBundle(context.Context, string) (PublishBundle, error)
-}
 type PublishValidator interface {
 	ValidateDefinition(context.Context, json.RawMessage, []PublishMetric) error
 }
@@ -26,7 +22,7 @@ type PublishWriter interface {
 	VerifyMetric(context.Context, string, string, string, string, json.RawMessage) error
 }
 
-func PublishValidateInput(input PublishInput) error {
+func PublishValidateInput(input *PublishInput) error {
 	selectors := 0
 	for _, value := range []string{input.Artifact, input.ArtifactID, input.ArtifactName} {
 		if strings.TrimSpace(value) != "" {
@@ -34,15 +30,16 @@ func PublishValidateInput(input PublishInput) error {
 		}
 	}
 	if strings.TrimSpace(input.Environment) == "" || selectors != 1 {
-		return publishFailure(input, "usage", errs.KindUsage, "Pulse bundle publish requires a target environment and exactly one artifact selector: --id, --artifact-name, or --artifact.", nil)
+		return publishFailure(*input, "usage", errs.KindUsage, "Pulse bundle publish requires a target environment and exactly one artifact selector: --id, --artifact-name, or --artifact.", nil)
 	}
 	if len(input.DatasourceMap) == 0 || len(input.DatasourceMap) > 100 {
-		return publishFailure(input, "usage", errs.KindUsage, "Provide an explicit --datasource-map source=destination for every bundle datasource, including same-site publishing.", nil)
+		return publishFailure(*input, "usage", errs.KindUsage, "Provide an explicit --datasource-map source=destination for every bundle datasource, including same-site publishing.", nil)
 	}
-	_, err := publishDatasourceMappings(input.DatasourceMap)
+	mappings, err := publishDatasourceMappings(input.DatasourceMap)
 	if err != nil {
-		return publishFailure(input, "usage", errs.KindUsage, "Invalid explicit datasource mapping.", err)
+		return publishFailure(*input, "usage", errs.KindUsage, "Invalid explicit datasource mapping.", err)
 	}
+	input.mappings = mappings
 	return nil
 }
 
@@ -61,25 +58,12 @@ func publishDatasourceMappings(values []string) (map[string]string, error) {
 	return result, nil
 }
 
-func Publish(ctx context.Context, reader PublishReader, validator PublishValidator, writer PublishWriter, input PublishInput) (PublishOutput, error) {
-	if err := PublishValidateInput(input); err != nil {
-		return PublishOutput{}, err
-	}
-	if reader == nil || validator == nil || writer == nil {
-		return PublishOutput{}, publishFailure(input, "unconfigured", errs.KindRuntime, "Pulse bundle publish is not configured.", nil)
-	}
-	bundle, err := reader.ReadBundle(ctx, input.Artifact)
-	if err != nil {
-		return PublishOutput{}, publishFailure(input, "artifact", errs.KindUsage, "Portable Pulse bundle validation failed.", err)
-	}
-	plan, err := PublishPrepareBundle(input, bundle)
-	if err != nil {
-		return PublishOutput{}, err
-	}
+// Publish uses the locally prepared bundle after composition resolves the destination.
+func Publish(ctx context.Context, validator PublishValidator, writer PublishWriter, input PublishInput, plan PublishPlan) (PublishOutput, error) {
+	plan.Environment, plan.Site = input.Environment, input.Site
 	document, destination := plan.DefinitionConfiguration, plan.DestinationDatasourceLUID
-	bundle.Metrics = plan.Metrics
 	output := PublishOutput{Status: "preview", Plan: plan, Mappings: []PublishMapping{}, Complete: true, Help: []string{"Publishing creates new Pulse objects; existing definitions and metrics are never overwritten. Followers, users, values, and generated insights are not copied."}}
-	if err := validator.ValidateDefinition(ctx, document, bundle.Metrics); err != nil {
+	if err := validator.ValidateDefinition(ctx, document, plan.Metrics); err != nil {
 		output.Status = "invalid"
 		output.Complete = false
 		return output, publishFailureState(input, "validation", errs.KindOperation, "Destination datasource field validation failed; no objects were created.", err, errs.PhaseValidation, errs.OutcomeNotAttempted)
@@ -87,7 +71,7 @@ func Publish(ctx context.Context, reader PublishReader, validator PublishValidat
 	if input.Preview {
 		return output, nil
 	}
-	if err := validator.ValidateDefinition(ctx, document, bundle.Metrics); err != nil {
+	if err := validator.ValidateDefinition(ctx, document, plan.Metrics); err != nil {
 		output.Status = "invalid"
 		output.Complete = false
 		return output, publishFailureState(input, "revalidation", errs.KindOperation, "Destination datasource field revalidation failed; no objects were created.", err, errs.PhaseValidation, errs.OutcomeNotAttempted)
@@ -96,7 +80,7 @@ func Publish(ctx context.Context, reader PublishReader, validator PublishValidat
 	output.Complete = false
 	created, err := writer.CreateDefinition(ctx, document)
 	if created.LUID != "" {
-		output.Mappings = append(output.Mappings, PublishMapping{Kind: "definition", SourceLUID: bundle.DefinitionLUID, DestinationLUID: created.LUID})
+		output.Mappings = append(output.Mappings, PublishMapping{Kind: "definition", SourceLUID: plan.SourceDefinitionLUID, DestinationLUID: created.LUID})
 		output.Status = "partial"
 		output.Help = []string{commandhint.Environment(input.Environment, "pulse", "definition", "inspect", "--id", created.LUID)}
 	}
@@ -107,13 +91,13 @@ func Publish(ctx context.Context, reader PublishReader, validator PublishValidat
 		}
 		return output, publishFailureState(input, "create", errs.KindOperation, "Pulse definition creation or default-metric resolution failed. Inspect confirmed identities before retrying; publishing again creates another definition.", err, errs.PhaseSubmission, outcome)
 	}
-	if created.LUID == "" || created.LUID == bundle.DefinitionLUID {
+	if created.LUID == "" || created.LUID == plan.SourceDefinitionLUID {
 		return output, publishFailureState(input, "identity", errs.KindOperation, "The provider did not return a new authoritative Pulse definition identity.", nil, errs.PhaseSubmission, errs.OutcomeUnknown)
 	}
 	if err := writer.VerifyDefinition(ctx, created.LUID, destination, input.SiteLUID, document); err != nil {
 		return output, publishFailureState(input, "definition_reconciliation", errs.KindOperation, "The created definition could not be verified against its submitted configuration. Confirmed identity is retained; no bundle metrics were requested.", err, errs.PhaseVerification, errs.OutcomeConfirmed)
 	}
-	for _, metric := range bundle.Metrics {
+	for _, metric := range plan.Metrics {
 		result, err := writer.CreateMetric(ctx, created.LUID, metric.Specification)
 		if result.LUID != "" {
 			output.Mappings = append(output.Mappings, PublishMapping{Kind: "metric", SourceLUID: metric.LUID, DestinationLUID: result.LUID})
@@ -142,10 +126,7 @@ func Publish(ctx context.Context, reader PublishReader, validator PublishValidat
 
 // PrepareBundle performs local payload and mapping checks before authentication.
 func PublishPrepareBundle(input PublishInput, bundle PublishBundle) (PublishPlan, error) {
-	if err := PublishValidateInput(input); err != nil {
-		return PublishPlan{}, err
-	}
-	mappings, _ := publishDatasourceMappings(input.DatasourceMap)
+	mappings := input.mappings
 	destination, ok := mappings[bundle.DatasourceLUID]
 	if !ok || len(mappings) != 1 {
 		return PublishPlan{}, publishFailure(input, "mapping", errs.KindUsage, "Every bundle datasource requires exactly one explicit mapping; unrelated mappings are not accepted.", nil)
@@ -222,18 +203,11 @@ func publishCreateDocument(configuration []byte, destination string) (json.RawMe
 	specification["datasource"], _ = json.Marshal(datasource)
 	source["specification"], _ = json.Marshal(specification)
 	data, err := json.Marshal(source)
-	if err == nil && bytes.Equal(data, []byte("null")) {
-		err = errors.New("empty create document")
-	}
 	return data, metadata.Name, err
 }
 
 func publishFailure(input PublishInput, id string, kind errs.Kind, summary string, cause error) error {
-	phase := errs.PhaseValidation
-	if kind == errs.KindRuntime {
-		phase = errs.PhaseSetup
-	}
-	return &errs.Error{ID: "pulse.definition.publish." + id, Kind: kind, Operation: "pulse.definition.publish", Environment: input.Environment, Site: input.Site, Summary: summary, Cause: cause, TableauRequestID: errs.TableauRequestID(cause), Retryable: errs.Bool(false), CorrectiveAction: "Inspect any confirmed destination identities. Correct the bundle or explicit datasource mapping and preview before publishing; never blindly retry an uncertain create.", Phase: phase, Outcome: errs.OutcomeNotAttempted}
+	return &errs.Error{ID: "pulse.definition.publish." + id, Kind: kind, Operation: "pulse.definition.publish", Environment: input.Environment, Site: input.Site, Summary: summary, Cause: cause, TableauRequestID: errs.TableauRequestID(cause), Retryable: errs.Bool(false), CorrectiveAction: "Inspect any confirmed destination identities. Correct the bundle or explicit datasource mapping and preview before publishing; never blindly retry an uncertain create.", Phase: errs.PhaseValidation, Outcome: errs.OutcomeNotAttempted}
 }
 
 func publishFailureState(input PublishInput, id string, kind errs.Kind, summary string, cause error, phase errs.Phase, outcome errs.Outcome) error {
@@ -244,6 +218,7 @@ func publishFailureState(input PublishInput, id string, kind errs.Kind, summary 
 }
 
 type PublishInput struct {
+	mappings      map[string]string
 	Environment   string
 	Site          string
 	SiteLUID      string

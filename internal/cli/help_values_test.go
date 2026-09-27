@@ -92,7 +92,7 @@ func TestRequiredHelpFactsMatchActionValidation(t *testing.T) {
 			case "dimension":
 				in.Intent.AllowedDimensions = nil
 			}
-			return pulsedefinition.CreateValidateInput(in)
+			return pulsedefinition.CreateValidateInput(&in)
 		}},
 	} {
 		t.Run(test.path, func(t *testing.T) {
@@ -225,7 +225,7 @@ func TestHelpChoicesMatchLocalValidators(t *testing.T) {
 			if v == "CUSTOM_N_DAYS" {
 				in.CustomDays = 30
 			}
-			return pulsemetric.ForkValidateInput(in)
+			return pulsemetric.ForkValidateInput(&in)
 		}},
 	}
 	for flag, count := range map[string]int{"kind": 4, "principal-type": 2, "mode": 2, "default-for": 3} {
@@ -285,7 +285,7 @@ func TestHelpChoicesMatchLocalValidators(t *testing.T) {
 			case "temporality":
 				intent.Temporality = value
 			}
-			if err := pulsedefinition.CreateValidateInput(pulsedefinition.CreateInput{Intent: intent}); err != nil {
+			if err := pulsedefinition.CreateValidateInput(&pulsedefinition.CreateInput{Intent: intent}); err != nil {
 				t.Errorf("%s=%s rejected: %v", flag, value, err)
 			}
 		}

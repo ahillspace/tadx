@@ -19,21 +19,9 @@ type ListReader interface {
 }
 
 func List(ctx context.Context, reader ListReader, input ListInput) (ListOutput, error) {
-	if err := ListValidateInput(input); err != nil {
-		return ListOutput{}, err
-	}
-	if reader == nil {
-		return ListOutput{}, listFail("pulse.metric.list.unconfigured", errs.KindRuntime, input, "Pulse metric listing is not configured.", nil)
-	}
 	input.DefinitionLUID = strings.TrimSpace(input.DefinitionLUID)
-	limit := input.Limit
-	if limit == 0 {
-		limit = listDefaultLimit
-	}
-	token, err := listDecodeCursor(input.Cursor, input.Environment, input.Site, input.DefinitionLUID, limit, input.Cache)
-	if err != nil {
-		return ListOutput{}, listFail("pulse.metric.list.usage", errs.KindUsage, input, "Pulse metric cursor does not match this definition, limit, and source.", err)
-	}
+	limit := input.limit
+	token := input.cursor.Token
 	if input.All {
 		limit = 10000
 	}
@@ -111,25 +99,13 @@ func listEncodeCursor(token, environment, site, definition string, limit int, ca
 	data, err := json.Marshal(listCursor{Version: 1, Token: token, Definition: definition, Environment: environment, Site: site, Limit: limit, Cache: cache})
 	return base64.RawURLEncoding.EncodeToString(data), err
 }
-func listDecodeCursor(value, environment, site, definition string, limit int, cache bool) (string, error) {
-	if value == "" {
-		return "", nil
-	}
-	if len(value) > 4096 {
-		return "", errors.New("cursor too long")
-	}
-	data, err := base64.RawURLEncoding.DecodeString(value)
-	var c listCursor
-	if err != nil || json.Unmarshal(data, &c) != nil || c.Version != 1 || c.Token == "" || c.Definition != definition || c.Environment != environment || c.Site != site || c.Limit != limit || c.Cache != cache {
-		return "", errors.New("invalid cursor")
-	}
-	return c.Token, nil
-}
 func listFail(id string, kind errs.Kind, input ListInput, summary string, cause error) error {
 	return &errs.Error{ID: id, Kind: kind, Operation: "pulse.metric.list", Resource: input.DefinitionLUID, Environment: input.Environment, Site: input.Site, Summary: summary, Cause: cause, Retryable: errs.Bool(false), CorrectiveAction: "Provide an exact definition LUID and request one bounded page."}
 }
 
 type ListInput struct {
+	cursor         listCursor
+	limit          int
 	Environment    string
 	Site           string
 	DefinitionLUID string
@@ -211,34 +187,37 @@ func (o ListOutput) FullOutput() any {
 }
 
 // ValidateInput checks bounded list inputs; resolved cursor ownership is checked later.
-func ListValidateInput(input ListInput) error {
+func ListValidateInput(input *ListInput) error {
 	if strings.TrimSpace(input.DefinitionLUID) == "" {
-		return listFail("pulse.metric.list.usage", errs.KindUsage, input, "Pulse metric list requires an exact definition LUID.", nil)
+		return listFail("pulse.metric.list.usage", errs.KindUsage, *input, "Pulse metric list requires an exact definition LUID.", nil)
 	}
 	if input.Limit < 0 || input.Limit > 10000 {
-		return listFail("pulse.metric.list.usage", errs.KindUsage, input, "Pulse metric list limit must be between 1 and 10000.", nil)
+		return listFail("pulse.metric.list.usage", errs.KindUsage, *input, "Pulse metric list limit must be between 1 and 10000.", nil)
 	}
 	if input.All && (input.Limit != 0 || input.Cursor != "") {
-		return listFail("pulse.metric.list.usage", errs.KindUsage, input, "--all cannot be combined with --limit or --cursor; remove --limit and --cursor for all rows, or remove --all for a bounded result.", nil)
+		return listFail("pulse.metric.list.usage", errs.KindUsage, *input, "--all cannot be combined with --limit or --cursor; remove --limit and --cursor for all rows, or remove --all for a bounded result.", nil)
+	}
+	input.cursor = listCursor{}
+	input.limit = input.Limit
+	if input.limit == 0 {
+		input.limit = listDefaultLimit
 	}
 	if input.Cursor != "" {
 		data, err := base64.RawURLEncoding.DecodeString(input.Cursor)
 		var value listCursor
 		if len(input.Cursor) > 4096 || err != nil || json.Unmarshal(data, &value) != nil || value.Version != 1 || value.Token == "" || value.Definition != strings.TrimSpace(input.DefinitionLUID) || value.Limit < 1 || value.Limit > 10000 {
-			return listFail("pulse.metric.list.usage", errs.KindUsage, input, "Invalid Pulse metric cursor.", nil)
+			return listFail("pulse.metric.list.usage", errs.KindUsage, *input, "Invalid Pulse metric cursor.", nil)
 		}
+		input.cursor = value
 	}
 	return nil
 }
 
 // ValidateContinuation binds a cursor to a locally resolved target before sign-in.
 func ListValidateContinuation(input ListInput) error {
-	limit := input.Limit
-	if limit == 0 {
-		limit = listDefaultLimit
-	}
-	if _, err := listDecodeCursor(input.Cursor, input.Environment, input.Site, strings.TrimSpace(input.DefinitionLUID), limit, input.Cache); err != nil {
-		return listFail("pulse.metric.list.usage", errs.KindUsage, input, "Pulse metric cursor does not match this definition, limit, and source.", err)
+	cursor := input.cursor
+	if input.Cursor != "" && (cursor.Definition != strings.TrimSpace(input.DefinitionLUID) || cursor.Environment != input.Environment || cursor.Site != input.Site || cursor.Limit != input.limit || cursor.Cache != input.Cache) {
+		return listFail("pulse.metric.list.usage", errs.KindUsage, input, "Pulse metric cursor does not match this definition, limit, and source.", errors.New("invalid cursor"))
 	}
 	return nil
 }

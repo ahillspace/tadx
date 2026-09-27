@@ -2,6 +2,7 @@ package metric
 
 import (
 	"bytes"
+	"cmp"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
@@ -9,7 +10,6 @@ import (
 	"errors"
 	"fmt"
 	"slices"
-	"sort"
 	"strings"
 
 	"github.com/ahillspace/tadx/internal/commandhint"
@@ -28,25 +28,9 @@ type ForkCreator interface {
 type ForkReconciler interface {
 	ReconcileMetric(context.Context, ForkExpectedMetric) (ForkReconciliation, error)
 }
-type ForkAction struct {
-	reader     ForkReader
-	creator    ForkCreator
-	reconciler ForkReconciler
-}
 
-func NewFork(reader ForkReader, creator ForkCreator, reconciler ForkReconciler) *ForkAction {
-	return &ForkAction{reader: reader, creator: creator, reconciler: reconciler}
-}
-func (a *ForkAction) Execute(ctx context.Context, input ForkInput, preview bool) (ForkOutput, error) {
-	if err := ForkValidateInput(input); err != nil {
-		return ForkOutput{}, err
-	}
-	if a == nil || a.reader == nil || a.creator == nil || a.reconciler == nil {
-		return ForkOutput{}, forkFail("pulse.metric.fork.unconfigured", errs.KindRuntime, input, "Pulse metric fork is not configured.", nil)
-	}
-	input.MetricLUID = strings.TrimSpace(input.MetricLUID)
-	input.Timeframe = strings.TrimSpace(strings.ToUpper(input.Timeframe))
-	plan, err := a.plan(ctx, input)
+func Fork(ctx context.Context, reader ForkReader, creator ForkCreator, reconciler ForkReconciler, input ForkInput, preview bool) (ForkOutput, error) {
+	plan, err := forkPlan(ctx, reader, input)
 	if err != nil {
 		return ForkOutput{}, err
 	}
@@ -56,14 +40,14 @@ func (a *ForkAction) Execute(ctx context.Context, input ForkInput, preview bool)
 		return output, nil
 	}
 	output.Plan.Mode = "execute"
-	current, err := a.plan(ctx, input)
+	current, err := forkPlan(ctx, reader, input)
 	if err != nil {
 		return ForkOutput{}, err
 	}
 	if current.Fingerprint != plan.Fingerprint {
 		return ForkOutput{}, forkFail("pulse.metric.fork.changed", errs.KindOperation, input, "The source Pulse metric changed during revalidation.", errors.New("planned specification fingerprint changed"))
 	}
-	created, err := a.creator.GetOrCreateMetric(ctx, ForkCreateRequest{DefinitionLUID: plan.DefinitionLUID, Specification: forkCloneMap(plan.Specification)})
+	created, err := creator.GetOrCreateMetric(ctx, ForkCreateRequest{DefinitionLUID: plan.DefinitionLUID, Specification: forkCloneMap(plan.Specification)})
 	if err != nil {
 		if created.MetricLUID != "" {
 			output.Result = &ForkResult{Status: forkStatus(created.Created), MetricLUID: created.MetricLUID, MetricName: created.MetricName, Created: created.Created, RequestID: created.RequestID}
@@ -76,7 +60,7 @@ func (a *ForkAction) Execute(ctx context.Context, input ForkInput, preview bool)
 		output.Help = forkExecutionRecoveryHelp(input, "")
 		return output, &errs.Error{ID: "pulse.metric.fork.invalid_response", Kind: errs.KindOperation, Operation: "pulse.metric.fork", Resource: input.MetricLUID, Environment: input.Environment, Site: input.Site, Summary: "Tableau returned no metric identity for the fork.", Retryable: errs.Bool(false), CorrectiveAction: "Reconcile the remote fork outcome before retrying; no authoritative metric identity was returned.", Phase: errs.PhaseSubmission, Outcome: errs.OutcomeUnknown}
 	}
-	reconciled, err := a.reconciler.ReconcileMetric(ctx, ForkExpectedMetric{MetricLUID: created.MetricLUID, DefinitionLUID: plan.DefinitionLUID, DatasourceLUID: plan.DatasourceLUID, SiteLUID: input.SiteLUID, Specification: forkCloneMap(plan.Specification)})
+	reconciled, err := reconciler.ReconcileMetric(ctx, ForkExpectedMetric{MetricLUID: created.MetricLUID, DefinitionLUID: plan.DefinitionLUID, DatasourceLUID: plan.DatasourceLUID, SiteLUID: input.SiteLUID, Specification: forkCloneMap(plan.Specification)})
 	if err != nil {
 		output.Result = &ForkResult{Status: forkStatus(created.Created), MetricLUID: created.MetricLUID, MetricName: created.MetricName, Created: created.Created, ReconciliationStatus: "unknown", RequestID: created.RequestID}
 		output.Help = forkExecutionRecoveryHelp(input, created.MetricLUID)
@@ -111,8 +95,8 @@ func forkStatus(created bool) string {
 	}
 	return "existing"
 }
-func (a *ForkAction) plan(ctx context.Context, input ForkInput) (ForkPlan, error) {
-	metric, err := a.reader.GetMetric(ctx, input.MetricLUID)
+func forkPlan(ctx context.Context, reader ForkReader, input ForkInput) (ForkPlan, error) {
+	metric, err := reader.GetMetric(ctx, input.MetricLUID)
 	if err != nil {
 		return ForkPlan{}, forkReadFail(input, "Pulse source metric retrieval failed.", err)
 	}
@@ -122,7 +106,7 @@ func (a *ForkAction) plan(ctx context.Context, input ForkInput) (ForkPlan, error
 	if input.SiteLUID != "" && metric.SiteLUID != "" && metric.SiteLUID != input.SiteLUID {
 		return ForkPlan{}, forkFail("pulse.metric.fork.ownership", errs.KindOperation, input, "The source metric belongs to a different Tableau site.", nil)
 	}
-	definition, err := a.reader.GetDefinition(ctx, metric.DefinitionLUID)
+	definition, err := reader.GetDefinition(ctx, metric.DefinitionLUID)
 	if err != nil {
 		return ForkPlan{}, forkReadFail(input, "Pulse source definition retrieval failed.", err)
 	}
@@ -132,11 +116,7 @@ func (a *ForkAction) plan(ctx context.Context, input ForkInput) (ForkPlan, error
 	spec := forkCloneMap(metric.Specification)
 	delete(spec, "datasource")
 	if input.Timeframe != "" {
-		period, ok := forkMeasurementPeriod(input.Timeframe, input.CustomDays)
-		if !ok {
-			return ForkPlan{}, forkFail("pulse.metric.fork.usage", errs.KindUsage, input, "Pulse metric fork timeframe is not supported.", nil)
-		}
-		spec["measurement_period"] = period
+		spec["measurement_period"] = input.period
 	}
 	if len(definition.AllowedGranularities) == 0 {
 		return ForkPlan{}, forkFail("pulse.metric.fork.invalid_source", errs.KindOperation, input, "The source definition omitted allowed granularities; its supported periods cannot be validated.", nil)
@@ -153,7 +133,10 @@ func (a *ForkAction) plan(ctx context.Context, input ForkInput) (ForkPlan, error
 	for _, field := range definition.AllowedDimensions {
 		allowed[field] = true
 	}
-	filters := forkCanonicalFilters(input.Filters)
+	filters := slices.Clone(input.Filters)
+	for i := range filters {
+		filters[i].Values = slices.Clone(filters[i].Values)
+	}
 	selectors := make([]string, len(filters))
 	needsResolution := false
 	for i, filter := range filters {
@@ -161,7 +144,7 @@ func (a *ForkAction) plan(ctx context.Context, input ForkInput) (ForkPlan, error
 		needsResolution = needsResolution || !allowed[filter.Field]
 	}
 	if needsResolution {
-		resolved, resolveErr := a.reader.ResolveFilterFields(ctx, definition.DatasourceLUID, selectors)
+		resolved, resolveErr := reader.ResolveFilterFields(ctx, definition.DatasourceLUID, selectors)
 		if resolveErr != nil {
 			return ForkPlan{}, forkFail("pulse.metric.fork.fields", errs.KindOperation, input, "Pulse filter field resolution failed.", resolveErr)
 		}
@@ -248,11 +231,11 @@ func forkCanonicalFilters(values []ForkFilter) []ForkFilter {
 				clean = append(clean, entry)
 			}
 		}
-		sort.Strings(clean)
+		slices.Sort(clean)
 		value.Values = clean
 		out = append(out, value)
 	}
-	sort.Slice(out, func(i, j int) bool { return out[i].Field < out[j].Field })
+	slices.SortFunc(out, func(left, right ForkFilter) int { return cmp.Compare(left.Field, right.Field) })
 	return out
 }
 func forkMergeFilter(spec map[string]any, filter ForkFilter) (map[string]any, error) {
@@ -325,37 +308,42 @@ func forkFail(id string, kind errs.Kind, input ForkInput, summary string, cause 
 }
 
 // ValidateInput validates local changes; allowed fields and grains require live evidence.
-func ForkValidateInput(input ForkInput) error {
+func ForkValidateInput(input *ForkInput) error {
 	timeframe := strings.ToUpper(strings.TrimSpace(input.Timeframe))
 	if strings.TrimSpace(input.MetricLUID) == "" {
-		return forkFail("pulse.metric.fork.usage", errs.KindUsage, input, "Pulse metric fork requires an exact source metric LUID.", nil)
+		return forkFail("pulse.metric.fork.usage", errs.KindUsage, *input, "Pulse metric fork requires an exact source metric LUID.", nil)
 	}
 	if err := pulsecontract.ValidateLUIDShape("metric", input.MetricLUID); err != nil {
-		return forkFail("pulse.metric.fork.usage", errs.KindUsage, input, "Pulse metric fork requires a well-formed exact source metric LUID.", err)
+		return forkFail("pulse.metric.fork.usage", errs.KindUsage, *input, "Pulse metric fork requires a well-formed exact source metric LUID.", err)
 	}
 	if timeframe == "" && len(input.Filters) == 0 {
-		return forkFail("pulse.metric.fork.usage", errs.KindUsage, input, "Pulse metric fork requires a timeframe or dimensional filter.", nil)
+		return forkFail("pulse.metric.fork.usage", errs.KindUsage, *input, "Pulse metric fork requires a timeframe or dimensional filter.", nil)
 	}
 	daysSet := input.CustomDaysSet || input.CustomDays != 0
 	if timeframe == "CUSTOM_N_DAYS" && !daysSet {
-		return forkFail("pulse.metric.fork.usage", errs.KindUsage, input, "--period CUSTOM_N_DAYS requires --days.", nil)
+		return forkFail("pulse.metric.fork.usage", errs.KindUsage, *input, "--period CUSTOM_N_DAYS requires --days.", nil)
 	}
 	if daysSet && timeframe != "CUSTOM_N_DAYS" {
-		return forkFail("pulse.metric.fork.usage", errs.KindUsage, input, "--days requires CUSTOM_N_DAYS.", nil)
+		return forkFail("pulse.metric.fork.usage", errs.KindUsage, *input, "--days requires CUSTOM_N_DAYS.", nil)
 	}
 	if daysSet && !ForkIsSupportedCustomDays(input.CustomDays) {
-		return forkFail("pulse.metric.fork.usage", errs.KindUsage, input, "--days must be one of 7, 14, 30, 60, or 90.", nil)
+		return forkFail("pulse.metric.fork.usage", errs.KindUsage, *input, "--days must be one of 7, 14, 30, 60, or 90.", nil)
 	}
+	var period map[string]any
 	if timeframe != "" {
-		if _, ok := forkMeasurementPeriod(timeframe, input.CustomDays); !ok {
-			return forkFail("pulse.metric.fork.usage", errs.KindUsage, input, "Pulse metric fork timeframe is not supported.", nil)
+		var ok bool
+		if period, ok = forkMeasurementPeriod(timeframe, input.CustomDays); !ok {
+			return forkFail("pulse.metric.fork.usage", errs.KindUsage, *input, "Pulse metric fork timeframe is not supported.", nil)
 		}
 	}
-	for _, filter := range forkCanonicalFilters(input.Filters) {
+	filters := forkCanonicalFilters(input.Filters)
+	for _, filter := range filters {
 		if filter.Field == "" || len(filter.Values) == 0 || !forkValidFilterValues(filter.Values) {
-			return forkFail("pulse.metric.fork.usage", errs.KindUsage, input, "Every dimensional filter must name a field and bounded nonempty values.", nil)
+			return forkFail("pulse.metric.fork.usage", errs.KindUsage, *input, "Every dimensional filter must name a field and bounded nonempty values.", nil)
 		}
 	}
+	input.MetricLUID = strings.TrimSpace(input.MetricLUID)
+	input.Timeframe, input.Filters, input.period = timeframe, filters, period
 	return nil
 }
 

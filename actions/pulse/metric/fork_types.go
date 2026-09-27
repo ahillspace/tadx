@@ -1,6 +1,7 @@
 package metric
 
 type ForkInput struct {
+	period        map[string]any
 	Environment   string
 	Site          string
 	SiteLUID      string

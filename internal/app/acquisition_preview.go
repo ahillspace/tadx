@@ -82,10 +82,7 @@ func (w pulseDefinitionArtifactWriter) PreviewDefinition(ctx context.Context, in
 	if input.Environment == "" || input.Site == "" {
 		return value.AcquisitionPlan{}, capabilitySetupError("pulse.definition.pull.preview", "pulse.definition.pull", input.Environment, input.Site, "Pulse definition artifact requires source environment and site identity.", "Configure a complete Pulse source target before pulling.", nil)
 	}
-	bundle := artifact.PulseBundle{Version: 1, SourceServerOrigin: input.ServerOrigin, SourceSiteLUID: input.SiteLUID, DefinitionLUID: item.LUID, DatasourceReferences: []string{item.DatasourceLUID}, Definition: item.Configuration}
-	for _, metric := range item.Metrics {
-		bundle.Metrics = append(bundle.Metrics, artifact.PulseBundleMetric{LUID: metric.LUID, DefinitionLUID: metric.DefinitionLUID, IsDefault: metric.IsDefault, Specification: metric.Specification})
-	}
+	bundle := pulseDefinitionBundle(pulsedefinition.PullArtifact{ServerOrigin: input.ServerOrigin, SiteLUID: input.SiteLUID, DefinitionLUID: item.LUID, DatasourceLUID: item.DatasourceLUID, Configuration: item.Configuration, Metrics: item.Metrics})
 	encoded, err := json.Marshal(bundle)
 	if err == nil {
 		_, err = artifact.DecodePulseBundle(encoded)

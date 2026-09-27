@@ -13,7 +13,7 @@ import (
 
 func TestDeleteOutputGolden(t *testing.T) {
 	b := &deleteBackend{targets: []pulsemetric.DeleteMetric{deleteTarget(), deleteTarget()}}
-	output, err := pulsemetric.Delete(context.Background(), b, b, deleteInput())
+	output, err := delete(context.Background(), b, b, deleteInput())
 	if err != nil {
 		t.Fatal(err)
 	}

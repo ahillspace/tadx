@@ -200,9 +200,13 @@ func TestPulseDefinitionFieldValidatorUsesExactRawIDsAndAggregationRules(t *test
 	}
 	adapter := resourcedatasource.NewSchemaAdapter(pulseSchemaIdentityStub{}, pulseSchemaStub{schema: schema})
 	validator := &pulseDefinitionFieldValidator{schema: adapter}
+	fields := make(map[string][]fieldcatalog.Field, len(schema.Fields))
+	for _, field := range schema.Fields {
+		fields[field.ID] = append(fields[field.ID], field)
+	}
 
 	valid := pulsedefinition.CreateFieldReferences{DatasourceLUID: schema.DatasourceLUID, MeasureField: "[Revenue]", Aggregation: "AGGREGATION_SUM", TimeDimension: "[Order Date]", AllowedDimensions: []string{"[Region]"}}
-	if err := validator.ValidateDefinitionFields(context.Background(), valid); err != nil {
+	if err := validator.validateFields(fields, valid); err != nil {
 		t.Fatal(err)
 	}
 	for name, test := range map[string]struct {
@@ -217,7 +221,7 @@ func TestPulseDefinitionFieldValidatorUsesExactRawIDsAndAggregationRules(t *test
 		"unexpected user aggregation":    {input: pulsedefinition.CreateFieldReferences{DatasourceLUID: schema.DatasourceLUID, MeasureField: "[Revenue]", Aggregation: "AGGREGATION_USER", TimeDimension: "[Order Date]"}},
 	} {
 		t.Run(name, func(t *testing.T) {
-			err := validator.ValidateDefinitionFields(context.Background(), test.input)
+			err := validator.validateFields(fields, test.input)
 			if err == nil {
 				t.Fatal("expected validation failure")
 			}
@@ -236,14 +240,14 @@ func TestPulseDefinitionFieldValidatorUsesExactRawIDsAndAggregationRules(t *test
 		t.Run(name, func(t *testing.T) {
 			valid.MeasureField = measure.field
 			valid.Aggregation = measure.aggregation
-			if err := validator.ValidateDefinitionFields(context.Background(), valid); err != nil {
+			if err := validator.validateFields(fields, valid); err != nil {
 				t.Fatal(err)
 			}
 		})
 	}
 }
 
-func TestPulseFieldResolutionPreservesCanonicalIdentityOnRevalidation(t *testing.T) {
+func TestPulseFieldResolutionAndBundleValidationPreserveCanonicalIdentity(t *testing.T) {
 	schema := fieldcatalog.Schema{DatasourceLUID: "datasource-1", DatasourceName: "Orders", Fields: []fieldcatalog.Field{
 		{ID: "[count_raw]", Caption: "People", Role: "dimension", DataType: "STRING"},
 		{ID: "[date_raw]", Caption: "Order Date", Role: "date", DataType: "DATE"},
@@ -257,8 +261,11 @@ func TestPulseFieldResolutionPreservesCanonicalIdentityOnRevalidation(t *testing
 	// A disappeared canonical ID must not be reinterpreted as another field's caption.
 	schema.Fields[0].ID = "[replacement]"
 	schema.Fields[0].Caption = "[count_raw]"
-	v.schema = resourcedatasource.NewSchemaAdapter(pulseSchemaIdentityStub{}, pulseSchemaStub{schema: schema})
-	if err := v.ValidateDefinitionFields(context.Background(), refs); err == nil {
+	fields := make(map[string][]fieldcatalog.Field, len(schema.Fields))
+	for _, field := range schema.Fields {
+		fields[field.ID] = append(fields[field.ID], field)
+	}
+	if err := v.validateFields(fields, refs); err == nil {
 		t.Fatal("canonical field disappearance silently retargeted to a caption")
 	}
 }

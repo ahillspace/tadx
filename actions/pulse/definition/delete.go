@@ -11,16 +11,7 @@ import (
 
 // Delete reads and revalidates the exact target before deletion.
 func Delete(ctx context.Context, reader DeleteReader, deleter Deleter, input DeleteInput) (DeleteOutput, error) {
-	if err := DeleteValidateInput(input); err != nil {
-		return DeleteOutput{}, err
-	}
-	if reader == nil || deleter == nil {
-		return DeleteOutput{}, deleteFailure("unconfigured", errs.KindRuntime, input, "Pulse definition delete is not configured.", nil)
-	}
 	input.LUID = strings.TrimSpace(input.LUID)
-	if strings.TrimSpace(input.Environment) == "" || (strings.TrimSpace(input.Site) == "" && !input.TargetResolved) {
-		return DeleteOutput{}, deleteFailure("usage", errs.KindUsage, input, "Pulse definition delete requires an environment, site, and exact LUID.", nil)
-	}
 	target, err := reader.GetDefinition(ctx, input.LUID)
 	if err != nil {
 		return DeleteOutput{}, deleteFailure("resolve", errs.KindOperation, input, "Pulse definition resolution failed.", err)
@@ -65,9 +56,6 @@ func deleteFailure(suffix string, kind errs.Kind, input DeleteInput, summary str
 	if suffix == "usage" {
 		phase = errs.PhaseValidation
 	}
-	if suffix == "unconfigured" {
-		phase = errs.PhaseSetup
-	}
 	if suffix == "failed" {
 		phase, outcome = errs.PhaseSubmission, errs.OutcomeUnknown
 	}
@@ -80,12 +68,10 @@ func deleteFailure(suffix string, kind errs.Kind, input DeleteInput, summary str
 
 // Input identifies one authoritative target. Preview disables the mutation.
 type DeleteInput struct {
-	// TargetResolved confirms authenticated target selection, including the Default site.
-	TargetResolved bool
-	Environment    string
-	Site           string
-	LUID           string
-	Preview        bool
+	Environment string
+	Site        string
+	LUID        string
+	Preview     bool
 }
 
 // Definition contains bounded authoritative target facts.

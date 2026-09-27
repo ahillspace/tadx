@@ -18,16 +18,10 @@ type UnfollowDeleter interface {
 }
 
 func Unfollow(ctx context.Context, reader UnfollowReader, deleter UnfollowDeleter, input UnfollowInput, preview bool) (UnfollowOutput, error) {
-	if err := UnfollowValidateInput(input); err != nil {
-		return UnfollowOutput{}, err
-	}
-	if reader == nil || deleter == nil {
-		return UnfollowOutput{}, unfollowFail("pulse.metric.unfollow.unconfigured", errs.KindRuntime, input, "Pulse metric unfollow is not configured.", nil)
-	}
-	unfollowTrim(&input.SubscriptionLUID)
-	unfollowTrim(&input.MetricLUID)
-	unfollowTrim(&input.UserLUID)
-	unfollowTrim(&input.GroupLUID)
+	input.SubscriptionLUID = strings.TrimSpace(input.SubscriptionLUID)
+	input.MetricLUID = strings.TrimSpace(input.MetricLUID)
+	input.UserLUID = strings.TrimSpace(input.UserLUID)
+	input.GroupLUID = strings.TrimSpace(input.GroupLUID)
 	relation := input.SubscriptionLUID == "" && input.MetricLUID != "" && (input.UserLUID != "") != (input.GroupLUID != "")
 	plan := UnfollowPlan{Mode: "preview", Operation: "pulse.metric.unfollow", Environment: input.Environment, Site: input.Site, SubscriptionLUID: input.SubscriptionLUID}
 	if relation {
@@ -89,7 +83,6 @@ func unfollowResolve(ctx context.Context, reader UnfollowReader, input UnfollowI
 	}
 	return matches[0], nil
 }
-func unfollowTrim(value *string) { *value = strings.TrimSpace(*value) }
 func unfollowFail(id string, kind errs.Kind, input UnfollowInput, summary string, cause error) error {
 	return &errs.Error{ID: id, Kind: kind, Operation: "pulse.metric.unfollow", Resource: unfollowFirst(input.SubscriptionLUID, input.MetricLUID), Environment: input.Environment, Site: input.Site, Summary: summary, Cause: cause, Retryable: errs.Bool(false), CorrectiveAction: "Provide one exact subscription or an exact metric and follower pair, then review a new preview.", Phase: errs.PhaseValidation, Outcome: errs.OutcomeNotAttempted}
 }

@@ -777,7 +777,14 @@ func (s *liveSearchLister) List(ctx context.Context, resourceType, cursor string
 		}
 		return resourcesearch.Page{Items: items, NextCursor: out.Page.NextCursor, MoreAvailable: out.Page.MoreAvailable, Total: out.Page.Total}, err
 	case "definition":
-		out, err := pulsedefinition.List(ctx, &pulseDefinitionListAdapter{client: s.pulse}, pulsedefinition.ListInput{Environment: s.environment, Site: s.site, Cursor: cursor, Limit: limit})
+		input := pulsedefinition.ListInput{Environment: s.environment, Site: s.site, Cursor: cursor, Limit: limit}
+		if err := pulsedefinition.ListValidateInput(&input); err != nil {
+			return resourcesearch.Page{}, err
+		}
+		if err := pulsedefinition.ListValidateContinuation(input); err != nil {
+			return resourcesearch.Page{}, err
+		}
+		out, err := pulsedefinition.List(ctx, &pulseDefinitionListAdapter{client: s.pulse}, input)
 		items := make([]resourcesearch.Item, len(out.Definitions))
 		for i, item := range out.Definitions {
 			items[i] = resourcesearch.Item{LUID: item.LUID, Type: resourceType, Name: item.Name}
