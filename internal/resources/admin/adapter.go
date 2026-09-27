@@ -2,11 +2,12 @@
 package admin
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
 	"reflect"
-	"sort"
+	"slices"
 	"strings"
 
 	"github.com/ahillspace/tadx/internal/identity"
@@ -32,9 +33,6 @@ func NewAdapter(client tableau.ClientContract, checks ...func(string) error) *Ad
 }
 
 func (a *Adapter) authorize(id string) error {
-	if a == nil || a.client == nil {
-		return errors.New("administration resource adapter is not configured")
-	}
 	if a.checkCapability != nil {
 		return a.checkCapability(id)
 	}
@@ -58,9 +56,6 @@ func (a *Adapter) ListUsers(ctx context.Context, input tableau.ListUsersRequest)
 	if err != nil {
 		return tableau.UserPage{}, err
 	}
-	if err := validatePage(page.Number, page.Size, page.Total, len(page.Items), input.PageNumber, input.PageSize); err != nil {
-		return tableau.UserPage{}, err
-	}
 	if err := mergeUsers(make(map[string]tableau.User), page.Items); err != nil {
 		return tableau.UserPage{}, err
 	}
@@ -72,14 +67,7 @@ func (a *Adapter) ResolveUser(ctx context.Context, selector UserSelector) (table
 		return tableau.User{}, err
 	}
 	if selector.LUID != "" {
-		user, err := a.client.GetUser(ctx, selector.LUID)
-		if err != nil {
-			return tableau.User{}, err
-		}
-		if user.LUID != selector.LUID || strings.TrimSpace(user.Name) == "" {
-			return tableau.User{}, errors.New("user get returned an inconsistent authoritative identity")
-		}
-		return user, nil
+		return a.client.GetUser(ctx, selector.LUID)
 	}
 	if strings.TrimSpace(selector.Username) == "" {
 		return tableau.User{}, &identity.ResolutionError{Kind: identity.ResolutionInvalidSelector}
@@ -108,22 +96,20 @@ func (a *Adapter) ResolveUser(ctx context.Context, selector UserSelector) (table
 	return byLUID[resolved.LUID], nil
 }
 
-func (a *Adapter) FindUsers(ctx context.Context, exactNameOrEmail string) ([]tableau.User, error) {
+func (a *Adapter) UserExists(ctx context.Context, exactNameOrEmail string) (bool, error) {
 	if err := a.authorize("admin.user.inspect"); err != nil {
-		return nil, err
+		return false, err
 	}
 	items, err := a.userInventory(ctx, "")
 	if err != nil {
-		return nil, err
+		return false, err
 	}
-	result := make([]tableau.User, 0)
 	for _, item := range items {
 		if item.Name == exactNameOrEmail || item.Email == exactNameOrEmail {
-			result = append(result, item)
+			return true, nil
 		}
 	}
-	sort.Slice(result, func(i, j int) bool { return result[i].LUID < result[j].LUID })
-	return result, nil
+	return false, nil
 }
 
 func (a *Adapter) ListGroups(ctx context.Context, input tableau.ListGroupsRequest) (tableau.GroupPage, error) {
@@ -132,9 +118,6 @@ func (a *Adapter) ListGroups(ctx context.Context, input tableau.ListGroupsReques
 	}
 	page, err := a.client.ListGroups(ctx, input)
 	if err != nil {
-		return tableau.GroupPage{}, err
-	}
-	if err := validatePage(page.Number, page.Size, page.Total, len(page.Items), input.PageNumber, input.PageSize); err != nil {
 		return tableau.GroupPage{}, err
 	}
 	if err := mergeGroups(make(map[string]tableau.Group), page.Items); err != nil {
@@ -171,22 +154,20 @@ func (a *Adapter) ResolveGroup(ctx context.Context, selector GroupSelector, incl
 	return detail, nil
 }
 
-func (a *Adapter) FindGroups(ctx context.Context, exactName string) ([]tableau.Group, error) {
+func (a *Adapter) GroupExists(ctx context.Context, exactName string) (bool, error) {
 	if err := a.authorize("admin.group.inspect"); err != nil {
-		return nil, err
+		return false, err
 	}
 	items, err := a.allGroups(ctx)
 	if err != nil {
-		return nil, err
+		return false, err
 	}
-	result := make([]tableau.Group, 0)
 	for _, item := range items {
 		if item.Name == exactName {
-			result = append(result, item)
+			return true, nil
 		}
 	}
-	sort.Slice(result, func(i, j int) bool { return result[i].LUID < result[j].LUID })
-	return result, nil
+	return false, nil
 }
 
 func (a *Adapter) GetPermissions(ctx context.Context, input tableau.PermissionRequest) (tableau.PermissionSet, error) {
@@ -252,9 +233,6 @@ func (a *Adapter) userInventory(ctx context.Context, name string) ([]tableau.Use
 		if err != nil {
 			return nil, err
 		}
-		if err := validatePage(page.Number, page.Size, page.Total, len(page.Items), number, resolutionPageSize); err != nil {
-			return nil, err
-		}
 		if err := mergeUsers(byID, page.Items); err != nil {
 			return nil, err
 		}
@@ -272,9 +250,6 @@ func (a *Adapter) allGroups(ctx context.Context) ([]tableau.Group, error) {
 		if err != nil {
 			return nil, err
 		}
-		if err := validatePage(page.Number, page.Size, page.Total, len(page.Items), number, resolutionPageSize); err != nil {
-			return nil, err
-		}
 		if err := mergeGroups(byID, page.Items); err != nil {
 			return nil, err
 		}
@@ -283,7 +258,7 @@ func (a *Adapter) allGroups(ctx context.Context) ([]tableau.Group, error) {
 			for _, item := range byID {
 				result = append(result, item)
 			}
-			sort.Slice(result, func(i, j int) bool { return result[i].LUID < result[j].LUID })
+			slices.SortFunc(result, func(a, b tableau.Group) int { return cmp.Compare(a.LUID, b.LUID) })
 			return result, nil
 		}
 	}
@@ -297,9 +272,6 @@ func (a *Adapter) allMembers(ctx context.Context, groupLUID string) ([]tableau.U
 		if err != nil {
 			return nil, err
 		}
-		if err := validatePage(page.Number, page.Size, page.Total, len(page.Items), number, resolutionPageSize); err != nil {
-			return nil, err
-		}
 		if err := mergeUsers(byID, page.Items); err != nil {
 			return nil, err
 		}
@@ -310,18 +282,8 @@ func (a *Adapter) allMembers(ctx context.Context, groupLUID string) ([]tableau.U
 	return nil, errors.New("group membership exceeded the 1000-page resolution bound")
 }
 
-func validatePage(number, size, total, count, expectedNumber, maxSize int) error {
-	if number != expectedNumber || size <= 0 || size > maxSize || total < 0 || count > size || (number-1)*size+count > total {
-		return fmt.Errorf("administration reader returned inconsistent pagination number=%d size=%d total=%d count=%d", number, size, total, count)
-	}
-	return nil
-}
 func mergeUsers(target map[string]tableau.User, items []tableau.User) error {
 	for _, item := range items {
-		item.LUID, item.Name = strings.TrimSpace(item.LUID), strings.TrimSpace(item.Name)
-		if item.LUID == "" || item.Name == "" {
-			return errors.New("user inventory omitted authoritative identity")
-		}
 		if current, ok := target[item.LUID]; ok && !reflect.DeepEqual(current, item) {
 			return fmt.Errorf("user inventory returned conflicting records for LUID %q", item.LUID)
 		}
@@ -331,10 +293,6 @@ func mergeUsers(target map[string]tableau.User, items []tableau.User) error {
 }
 func mergeGroups(target map[string]tableau.Group, items []tableau.Group) error {
 	for _, item := range items {
-		item.LUID, item.Name = strings.TrimSpace(item.LUID), strings.TrimSpace(item.Name)
-		if item.LUID == "" || item.Name == "" {
-			return errors.New("group inventory omitted authoritative identity")
-		}
 		if current, ok := target[item.LUID]; ok && !reflect.DeepEqual(current, item) {
 			return fmt.Errorf("group inventory returned conflicting records for LUID %q", item.LUID)
 		}
@@ -347,6 +305,6 @@ func sortedUsers(byID map[string]tableau.User) []tableau.User {
 	for _, item := range byID {
 		result = append(result, item)
 	}
-	sort.Slice(result, func(i, j int) bool { return result[i].LUID < result[j].LUID })
+	slices.SortFunc(result, func(a, b tableau.User) int { return cmp.Compare(a.LUID, b.LUID) })
 	return result
 }

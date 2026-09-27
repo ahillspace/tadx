@@ -96,7 +96,7 @@ func TestClientRejectsWrongMutationStatusesAsUnknown(t *testing.T) {
 	if err == nil || user.MutationStatus != "unknown" || user.RequestID != "mutation-uncertain" || tableau.RequestID(err) != "mutation-uncertain" {
 		t.Fatalf("CreateUser() = %#v, %v", user, err)
 	}
-	user, err = client.UpdateUser(context.Background(), "user-1", admin.UpdateUserRequest{SiteRole: admin.String("Explorer")})
+	user, err = client.UpdateUser(context.Background(), "user-1", admin.UpdateUserRequest{SiteRole: new("Explorer")})
 	if err == nil || user.MutationStatus != "unknown" || user.RequestID != "mutation-uncertain" {
 		t.Fatalf("UpdateUser() = %#v, %v", user, err)
 	}
@@ -108,7 +108,7 @@ func TestClientRejectsWrongMutationStatusesAsUnknown(t *testing.T) {
 	if err == nil || group.MutationStatus != "unknown" || group.RequestID != "mutation-uncertain" {
 		t.Fatalf("CreateGroup() = %#v, %v", group, err)
 	}
-	group, err = client.UpdateGroup(context.Background(), "group-1", admin.UpdateGroupRequest{Name: admin.String("Writers")})
+	group, err = client.UpdateGroup(context.Background(), "group-1", admin.UpdateGroupRequest{Name: new("Writers")})
 	if err == nil || group.MutationStatus != "unknown" || group.RequestID != "mutation-uncertain" {
 		t.Fatalf("UpdateGroup() = %#v, %v", group, err)
 	}
@@ -279,7 +279,7 @@ func TestClientWritesExplicitUsersAndGroups(t *testing.T) {
 	if _, err := client.CreateUser(context.Background(), admin.CreateUserRequest{Name: "alex@example.com", SiteRole: "Viewer", AuthSetting: "SAML"}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := client.UpdateUser(context.Background(), "user-1", admin.UpdateUserRequest{FullName: admin.String("Alex"), SiteRole: admin.String("Explorer")}); err != nil {
+	if _, err := client.UpdateUser(context.Background(), "user-1", admin.UpdateUserRequest{FullName: new("Alex"), SiteRole: new("Explorer")}); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := client.DeleteUser(context.Background(), "user-1"); err != nil {
@@ -288,7 +288,7 @@ func TestClientWritesExplicitUsersAndGroups(t *testing.T) {
 	if _, err := client.CreateGroup(context.Background(), admin.CreateGroupRequest{Name: "Authors", MinimumSiteRole: "Viewer"}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := client.UpdateGroup(context.Background(), "group-1", admin.UpdateGroupRequest{Name: admin.String("Writers")}); err != nil {
+	if _, err := client.UpdateGroup(context.Background(), "group-1", admin.UpdateGroupRequest{Name: new("Writers")}); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := client.AddGroupUser(context.Background(), "group-1", "user-1"); err != nil {
@@ -321,7 +321,7 @@ func TestClientUpdateUserSendsExplicitFieldClear(t *testing.T) {
 	defer server.Close()
 	client := admin.NewClient(tableau.NewTransport(server.Client(), "3.29", nil), session{}, server.URL)
 	// A clear-only update (explicit empty email) must be valid and must serialize email="".
-	if _, err := client.UpdateUser(context.Background(), "user-1", admin.UpdateUserRequest{Email: admin.String("")}); err != nil {
+	if _, err := client.UpdateUser(context.Background(), "user-1", admin.UpdateUserRequest{Email: new("")}); err != nil {
 		t.Fatalf("clear-only update returned error: %v", err)
 	}
 	if !strings.Contains(body, `email=""`) {

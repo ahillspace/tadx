@@ -6,24 +6,13 @@ import (
 	"strings"
 	"testing"
 
-	a_admin_group_create "github.com/ahillspace/tadx/actions/admin/group/create"
-	a_admin_group_delete "github.com/ahillspace/tadx/actions/admin/group/delete"
-	a_admin_group_inspect "github.com/ahillspace/tadx/actions/admin/group/inspect"
-	a_admin_group_list "github.com/ahillspace/tadx/actions/admin/group/list"
+	groupops "github.com/ahillspace/tadx/actions/admin/group"
 	groupmember "github.com/ahillspace/tadx/actions/admin/group/member"
-	a_admin_group_update "github.com/ahillspace/tadx/actions/admin/group/update"
-	admin_labelcategory_create "github.com/ahillspace/tadx/actions/admin/labelcategory/create"
-	admin_labelcategory_delete "github.com/ahillspace/tadx/actions/admin/labelcategory/delete"
-	admin_labelcategory_update "github.com/ahillspace/tadx/actions/admin/labelcategory/update"
-	admin_labelvalue_delete "github.com/ahillspace/tadx/actions/admin/labelvalue/delete"
-	admin_labelvalue_update "github.com/ahillspace/tadx/actions/admin/labelvalue/update"
+	labelcategoryops "github.com/ahillspace/tadx/actions/admin/labelcategory"
+	labelvalueops "github.com/ahillspace/tadx/actions/admin/labelvalue"
 	permission "github.com/ahillspace/tadx/actions/admin/permission"
 	a_admin_permission_inspect "github.com/ahillspace/tadx/actions/admin/permission/inspect"
-	a_admin_user_create "github.com/ahillspace/tadx/actions/admin/user/create"
-	a_admin_user_delete "github.com/ahillspace/tadx/actions/admin/user/delete"
-	a_admin_user_inspect "github.com/ahillspace/tadx/actions/admin/user/inspect"
-	a_admin_user_list "github.com/ahillspace/tadx/actions/admin/user/list"
-	a_admin_user_update "github.com/ahillspace/tadx/actions/admin/user/update"
+	userops "github.com/ahillspace/tadx/actions/admin/user"
 	catalogupdate "github.com/ahillspace/tadx/actions/catalog/update"
 	contentlabel_delete "github.com/ahillspace/tadx/actions/contentlabel/delete"
 	contentlabel_update "github.com/ahillspace/tadx/actions/contentlabel/update"
@@ -66,37 +55,37 @@ func (s contentlabel_deleteSpy) Execute(_ context.Context, _ contentlabel_delete
 
 type admin_labelvalue_updateSpy struct{ spy *previewActionSpy }
 
-func (s admin_labelvalue_updateSpy) Execute(_ context.Context, _ admin_labelvalue_update.Input, preview bool) (admin_labelvalue_update.Output, error) {
+func (s admin_labelvalue_updateSpy) UpdateLabelValue(_ context.Context, _ labelvalueops.UpdateInput, preview bool) (labelvalueops.UpdateOutput, error) {
 	s.spy.record(preview)
-	return admin_labelvalue_update.Output{}, nil
+	return labelvalueops.UpdateOutput{}, nil
 }
 
 type admin_labelvalue_deleteSpy struct{ spy *previewActionSpy }
 
-func (s admin_labelvalue_deleteSpy) Execute(_ context.Context, _ admin_labelvalue_delete.Input, preview bool) (admin_labelvalue_delete.Output, error) {
+func (s admin_labelvalue_deleteSpy) DeleteLabelValue(_ context.Context, _ labelvalueops.DeleteInput, preview bool) (labelvalueops.DeleteOutput, error) {
 	s.spy.record(preview)
-	return admin_labelvalue_delete.Output{}, nil
+	return labelvalueops.DeleteOutput{}, nil
 }
 
 type admin_labelcategory_createSpy struct{ spy *previewActionSpy }
 
-func (s admin_labelcategory_createSpy) Execute(_ context.Context, _ admin_labelcategory_create.Input, preview bool) (admin_labelcategory_create.Output, error) {
+func (s admin_labelcategory_createSpy) CreateLabelCategory(_ context.Context, _ labelcategoryops.CreateInput, preview bool) (labelcategoryops.WriteOutput, error) {
 	s.spy.record(preview)
-	return admin_labelcategory_create.Output{}, nil
+	return labelcategoryops.WriteOutput{}, nil
 }
 
 type admin_labelcategory_updateSpy struct{ spy *previewActionSpy }
 
-func (s admin_labelcategory_updateSpy) Execute(_ context.Context, _ admin_labelcategory_update.Input, preview bool) (admin_labelcategory_update.Output, error) {
+func (s admin_labelcategory_updateSpy) UpdateLabelCategory(_ context.Context, _ labelcategoryops.UpdateInput, preview bool) (labelcategoryops.WriteOutput, error) {
 	s.spy.record(preview)
-	return admin_labelcategory_update.Output{}, nil
+	return labelcategoryops.WriteOutput{}, nil
 }
 
 type admin_labelcategory_deleteSpy struct{ spy *previewActionSpy }
 
-func (s admin_labelcategory_deleteSpy) Execute(_ context.Context, _ admin_labelcategory_delete.Input, preview bool) (admin_labelcategory_delete.Output, error) {
+func (s admin_labelcategory_deleteSpy) DeleteLabelCategory(_ context.Context, _ labelcategoryops.DeleteInput, preview bool) (labelcategoryops.DeleteOutput, error) {
 	s.spy.record(preview)
-	return admin_labelcategory_delete.Output{}, nil
+	return labelcategoryops.DeleteOutput{}, nil
 }
 
 type previewActionSpy struct{ calls, writes int }
@@ -224,41 +213,41 @@ func (s *previewActionSpy) ListWorkbooks(_ context.Context, input workbookops.Li
 func (s *previewActionSpy) InspectWorkbook(_ context.Context, input workbookops.InspectInput) (workbookops.InspectOutput, error) {
 	panic("unexpected read action")
 }
-func (s *previewActionSpy) ListAdminUsers(_ context.Context, input a_admin_user_list.Input) (a_admin_user_list.Output, error) {
+func (s *previewActionSpy) ListAdminUsers(_ context.Context, input userops.ListInput) (userops.ListOutput, error) {
 	panic("unexpected read action")
 }
-func (s *previewActionSpy) InspectAdminUser(_ context.Context, input a_admin_user_inspect.Input) (a_admin_user_inspect.Output, error) {
+func (s *previewActionSpy) InspectAdminUser(_ context.Context, input userops.InspectInput) (userops.InspectOutput, error) {
 	panic("unexpected read action")
 }
-func (s *previewActionSpy) CreateAdminUser(_ context.Context, input a_admin_user_create.Input, preview bool) (a_admin_user_create.Output, error) {
+func (s *previewActionSpy) CreateAdminUser(_ context.Context, input userops.CreateInput, preview bool) (userops.CreateOutput, error) {
 	s.record(preview)
-	return a_admin_user_create.Output{}, nil
+	return userops.CreateOutput{}, nil
 }
-func (s *previewActionSpy) UpdateAdminUser(_ context.Context, input a_admin_user_update.Input, preview bool) (a_admin_user_update.Output, error) {
+func (s *previewActionSpy) UpdateAdminUser(_ context.Context, input userops.UpdateInput, preview bool) (userops.UpdateOutput, error) {
 	s.record(preview)
-	return a_admin_user_update.Output{}, nil
+	return userops.UpdateOutput{}, nil
 }
-func (s *previewActionSpy) DeleteAdminUser(_ context.Context, input a_admin_user_delete.Input, preview bool) (a_admin_user_delete.Output, error) {
+func (s *previewActionSpy) DeleteAdminUser(_ context.Context, input userops.DeleteInput, preview bool) (userops.DeleteOutput, error) {
 	s.record(preview)
-	return a_admin_user_delete.Output{}, nil
+	return userops.DeleteOutput{}, nil
 }
-func (s *previewActionSpy) ListAdminGroups(_ context.Context, input a_admin_group_list.Input) (a_admin_group_list.Output, error) {
+func (s *previewActionSpy) ListAdminGroups(_ context.Context, input groupops.ListInput) (groupops.ListOutput, error) {
 	panic("unexpected read action")
 }
-func (s *previewActionSpy) InspectAdminGroup(_ context.Context, input a_admin_group_inspect.Input) (a_admin_group_inspect.Output, error) {
+func (s *previewActionSpy) InspectAdminGroup(_ context.Context, input groupops.InspectInput) (groupops.InspectOutput, error) {
 	panic("unexpected read action")
 }
-func (s *previewActionSpy) CreateAdminGroup(_ context.Context, input a_admin_group_create.Input, preview bool) (a_admin_group_create.Output, error) {
+func (s *previewActionSpy) CreateAdminGroup(_ context.Context, input groupops.CreateInput, preview bool) (groupops.CreateOutput, error) {
 	s.record(preview)
-	return a_admin_group_create.Output{}, nil
+	return groupops.CreateOutput{}, nil
 }
-func (s *previewActionSpy) UpdateAdminGroup(_ context.Context, input a_admin_group_update.Input, preview bool) (a_admin_group_update.Output, error) {
+func (s *previewActionSpy) UpdateAdminGroup(_ context.Context, input groupops.UpdateInput, preview bool) (groupops.UpdateOutput, error) {
 	s.record(preview)
-	return a_admin_group_update.Output{}, nil
+	return groupops.UpdateOutput{}, nil
 }
-func (s *previewActionSpy) DeleteAdminGroup(_ context.Context, input a_admin_group_delete.Input, preview bool) (a_admin_group_delete.Output, error) {
+func (s *previewActionSpy) DeleteAdminGroup(_ context.Context, input groupops.DeleteInput, preview bool) (groupops.DeleteOutput, error) {
 	s.record(preview)
-	return a_admin_group_delete.Output{}, nil
+	return groupops.DeleteOutput{}, nil
 }
 func (s *previewActionSpy) AddAdminGroupMember(_ context.Context, input groupmember.Input, preview bool) (groupmember.Output, error) {
 	s.record(preview)

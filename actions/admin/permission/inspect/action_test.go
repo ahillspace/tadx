@@ -28,7 +28,7 @@ func TestExecuteDoesNotMutateReaderRules(t *testing.T) {
 
 	// Filter to only user principals so the filter drops at least one rule.
 	in := permissionget.Input{ResourceKind: "workbook", ResourceLUID: "wb-1", PrincipalType: "user"}
-	out, err := permissionget.New(reader{set: set}).Execute(context.Background(), in)
+	out, err := permissionget.Inspect(context.Background(), reader{set: set}, in)
 	if err != nil {
 		t.Fatalf("Execute() error = %v", err)
 	}
@@ -50,7 +50,7 @@ func TestFullOutputKeepsAllFetchedRules(t *testing.T) {
 	for i := range rules {
 		rules[i] = permissionget.Rule{PrincipalType: "user", PrincipalLUID: "u-" + string(rune(i+1)), Capability: "Read", Mode: "Allow"}
 	}
-	out, err := permissionget.New(reader{set: permissionget.PermissionSet{ResourceKind: "workbook", ResourceLUID: "wb-1", Source: "explicit", Rules: rules}}).Execute(context.Background(), permissionget.Input{ResourceKind: "workbook", ResourceLUID: "wb-1"})
+	out, err := permissionget.Inspect(context.Background(), reader{set: permissionget.PermissionSet{ResourceKind: "workbook", ResourceLUID: "wb-1", Source: "explicit", Rules: rules}}, permissionget.Input{ResourceKind: "workbook", ResourceLUID: "wb-1"})
 	if err != nil {
 		t.Fatal(err)
 	}

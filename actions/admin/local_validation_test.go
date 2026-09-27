@@ -3,34 +3,26 @@ package admin_test
 import (
 	"testing"
 
-	groupcreate "github.com/ahillspace/tadx/actions/admin/group/create"
-	groupdelete "github.com/ahillspace/tadx/actions/admin/group/delete"
-	groupinspect "github.com/ahillspace/tadx/actions/admin/group/inspect"
-	grouplist "github.com/ahillspace/tadx/actions/admin/group/list"
+	groupops "github.com/ahillspace/tadx/actions/admin/group"
 	groupmember "github.com/ahillspace/tadx/actions/admin/group/member"
-	groupupdate "github.com/ahillspace/tadx/actions/admin/group/update"
 	permission "github.com/ahillspace/tadx/actions/admin/permission"
 	permissioninspect "github.com/ahillspace/tadx/actions/admin/permission/inspect"
-	usercreate "github.com/ahillspace/tadx/actions/admin/user/create"
-	userdelete "github.com/ahillspace/tadx/actions/admin/user/delete"
-	userinspect "github.com/ahillspace/tadx/actions/admin/user/inspect"
-	userlist "github.com/ahillspace/tadx/actions/admin/user/list"
-	userupdate "github.com/ahillspace/tadx/actions/admin/user/update"
+	userops "github.com/ahillspace/tadx/actions/admin/user"
 )
 
 func TestAdminLocalValidationWithoutResolvedSession(t *testing.T) {
 	for name, validate := range map[string]func() error{
 		"create user": func() error {
-			return usercreate.ValidateInput(usercreate.Input{Environment: "selected", Name: "author", SiteRole: "Creator", AuthSetting: "ServerDefault"})
+			return userops.ValidateCreateInput(userops.CreateInput{Environment: "selected", Name: "author", SiteRole: "Creator", AuthSetting: "ServerDefault"})
 		},
 		"delete user": func() error {
-			return userdelete.ValidateInput(userdelete.Input{Environment: "selected", UserLUID: "u1"})
+			return userops.ValidateDeleteInput(userops.DeleteInput{Environment: "selected", UserLUID: "u1"})
 		},
 		"create group": func() error {
-			return groupcreate.ValidateInput(groupcreate.Input{Environment: "selected", Name: "Authors"})
+			return groupops.ValidateCreateInput(groupops.CreateInput{Environment: "selected", Name: "Authors"})
 		},
 		"delete group": func() error {
-			return groupdelete.ValidateInput(groupdelete.Input{Environment: "selected", GroupLUID: "g1"})
+			return groupops.ValidateDeleteInput(groupops.DeleteInput{Environment: "selected", GroupLUID: "g1"})
 		},
 		"add member": func() error {
 			return groupmember.ValidateAddInput(groupmember.Input{Environment: "selected", GroupLUID: "g1", UserLUID: "u1"})
@@ -39,10 +31,10 @@ func TestAdminLocalValidationWithoutResolvedSession(t *testing.T) {
 			return groupmember.ValidateRemoveInput(groupmember.Input{Environment: "selected", GroupLUID: "g1", UserLUID: "u1"})
 		},
 		"inspect user": func() error {
-			return userinspect.ValidateInput(userinspect.Input{Selector: userinspect.Selector{LUID: "u1"}})
+			return userops.ValidateInspectInput(userops.InspectInput{Selector: userops.Selector{LUID: "u1"}})
 		},
 		"inspect group": func() error {
-			return groupinspect.ValidateInput(groupinspect.Input{Selector: groupinspect.Selector{LUID: "g1"}})
+			return groupops.ValidateInspectInput(groupops.InspectInput{Selector: groupops.Selector{LUID: "g1"}})
 		},
 	} {
 		t.Run(name, func(t *testing.T) {
@@ -57,28 +49,28 @@ func TestAdminLocalValidationRejectsInvalidRequests(t *testing.T) {
 	invalidAuth := "Creator"
 	for name, validate := range map[string]func() error{
 		"create user auth": func() error {
-			return usercreate.ValidateInput(usercreate.Input{Environment: "selected", Name: "author", SiteRole: "Creator", AuthSetting: invalidAuth})
+			return userops.ValidateCreateInput(userops.CreateInput{Environment: "selected", Name: "author", SiteRole: "Creator", AuthSetting: invalidAuth})
 		},
 		"update user auth": func() error {
-			return userupdate.ValidateInput(userupdate.Input{Environment: "selected", UserLUID: "u1", AuthSetting: &invalidAuth})
+			return userops.ValidateUpdateInput(userops.UpdateInput{Environment: "selected", UserLUID: "u1", AuthSetting: &invalidAuth})
 		},
 		"update user empty": func() error {
-			return userupdate.ValidateInput(userupdate.Input{Environment: "selected", UserLUID: "u1"})
+			return userops.ValidateUpdateInput(userops.UpdateInput{Environment: "selected", UserLUID: "u1"})
 		},
 		"group metadata empty": func() error {
-			return groupupdate.ValidateInput(groupupdate.Input{Environment: "selected", GroupLUID: "g1"})
+			return groupops.ValidateUpdateInput(&groupops.UpdateInput{Environment: "selected", GroupLUID: "g1"})
 		},
 		"duplicate desired members": func() error {
-			return groupupdate.ValidateInput(groupupdate.Input{Environment: "selected", GroupLUID: "g1", MembershipSet: true, DesiredMemberLUIDs: []string{"u1", "u1"}})
+			return groupops.ValidateUpdateInput(&groupops.UpdateInput{Environment: "selected", GroupLUID: "g1", MembershipSet: true, DesiredMemberLUIDs: []string{"u1", "u1"}})
 		},
 		"user selector conflict": func() error {
-			return userinspect.ValidateInput(userinspect.Input{Selector: userinspect.Selector{LUID: "u1", Username: "author"}})
+			return userops.ValidateInspectInput(userops.InspectInput{Selector: userops.Selector{LUID: "u1", Username: "author"}})
 		},
 		"group selector conflict": func() error {
-			return groupinspect.ValidateInput(groupinspect.Input{Selector: groupinspect.Selector{LUID: "g1", Name: "Authors"}})
+			return groupops.ValidateInspectInput(groupops.InspectInput{Selector: groupops.Selector{LUID: "g1", Name: "Authors"}})
 		},
-		"user list limit":         func() error { return userlist.ValidateInput(userlist.Input{Limit: -1}) },
-		"group list all conflict": func() error { return grouplist.ValidateInput(grouplist.Input{All: true, Limit: 1}) },
+		"user list limit":         func() error { return userops.ValidateListInput(&userops.ListInput{Limit: -1}) },
+		"group list all conflict": func() error { return groupops.ValidateListInput(&groupops.ListInput{All: true, Limit: 1}) },
 		"permission create":       func() error { return permission.ValidateCreateInput(permission.Input{}) },
 		"permission delete":       func() error { return permission.ValidateDeleteInput(permission.Input{}) },
 		"permission inspect kind": func() error {

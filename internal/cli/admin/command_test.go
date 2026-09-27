@@ -7,29 +7,21 @@ import (
 	"strings"
 	"testing"
 
-	groupcreate "github.com/ahillspace/tadx/actions/admin/group/create"
-	groupdelete "github.com/ahillspace/tadx/actions/admin/group/delete"
-	groupinspect "github.com/ahillspace/tadx/actions/admin/group/inspect"
-	grouplist "github.com/ahillspace/tadx/actions/admin/group/list"
+	groupops "github.com/ahillspace/tadx/actions/admin/group"
 	groupmember "github.com/ahillspace/tadx/actions/admin/group/member"
-	groupupdate "github.com/ahillspace/tadx/actions/admin/group/update"
 	permission "github.com/ahillspace/tadx/actions/admin/permission"
 	permissioninspect "github.com/ahillspace/tadx/actions/admin/permission/inspect"
-	usercreate "github.com/ahillspace/tadx/actions/admin/user/create"
-	userdelete "github.com/ahillspace/tadx/actions/admin/user/delete"
-	userinspect "github.com/ahillspace/tadx/actions/admin/user/inspect"
-	userlist "github.com/ahillspace/tadx/actions/admin/user/list"
-	userupdate "github.com/ahillspace/tadx/actions/admin/user/update"
+	userops "github.com/ahillspace/tadx/actions/admin/user"
 	cli "github.com/ahillspace/tadx/internal/cli/admin"
 	"github.com/spf13/cobra"
 )
 
 type fake struct {
-	userInspect  userinspect.Input
+	userInspect  userops.InspectInput
 	rendered     int
-	userCreate   usercreate.Input
+	userCreate   userops.CreateInput
 	userPreview  bool
-	groupUpdate  groupupdate.Input
+	groupUpdate  groupops.UpdateInput
 	groupPreview bool
 	memberAdd    groupmember.Input
 	memberRemove groupmember.Input
@@ -37,18 +29,18 @@ type fake struct {
 }
 
 func (f *fake) Render(any) error { f.rendered++; return nil }
-func (f *fake) ListAdminUsers(context.Context, userlist.Input) (userlist.Output, error) {
-	return userlist.Output{}, nil
+func (f *fake) ListAdminUsers(context.Context, userops.ListInput) (userops.ListOutput, error) {
+	return userops.ListOutput{}, nil
 }
-func (f *fake) InspectAdminUser(_ context.Context, input userinspect.Input) (userinspect.Output, error) {
+func (f *fake) InspectAdminUser(_ context.Context, input userops.InspectInput) (userops.InspectOutput, error) {
 	f.userInspect = input
-	return userinspect.Output{}, nil
+	return userops.InspectOutput{}, nil
 }
 
 func TestUserInspectUsernameAliasAndConflicts(t *testing.T) {
 	for _, tail := range [][]string{{"--username", "exact-login"}, {"--username", "exact-login", "--name", "exact-login"}, {"--username", "exact-login", "--id", "user-id"}} {
 		f := &fake{}
-		cmd := cli.New(deps(f, false))
+		cmd := cli.New(deps(f))
 		cmd.SilenceUsage, cmd.SilenceErrors = true, true
 		cmd.SetArgs(append([]string{"user", "inspect"}, tail...))
 		err := cmd.ExecuteContext(t.Context())
@@ -61,33 +53,33 @@ func TestUserInspectUsernameAliasAndConflicts(t *testing.T) {
 		}
 	}
 }
-func (f *fake) CreateAdminUser(_ context.Context, in usercreate.Input, preview bool) (usercreate.Output, error) {
+func (f *fake) CreateAdminUser(_ context.Context, in userops.CreateInput, preview bool) (userops.CreateOutput, error) {
 	f.userCreate = in
 	f.userPreview = preview
-	return usercreate.Output{}, nil
+	return userops.CreateOutput{}, nil
 }
-func (f *fake) UpdateAdminUser(context.Context, userupdate.Input, bool) (userupdate.Output, error) {
-	return userupdate.Output{}, nil
+func (f *fake) UpdateAdminUser(context.Context, userops.UpdateInput, bool) (userops.UpdateOutput, error) {
+	return userops.UpdateOutput{}, nil
 }
-func (f *fake) DeleteAdminUser(context.Context, userdelete.Input, bool) (userdelete.Output, error) {
-	return userdelete.Output{}, nil
+func (f *fake) DeleteAdminUser(context.Context, userops.DeleteInput, bool) (userops.DeleteOutput, error) {
+	return userops.DeleteOutput{}, nil
 }
-func (f *fake) ListAdminGroups(context.Context, grouplist.Input) (grouplist.Output, error) {
-	return grouplist.Output{}, nil
+func (f *fake) ListAdminGroups(context.Context, groupops.ListInput) (groupops.ListOutput, error) {
+	return groupops.ListOutput{}, nil
 }
-func (f *fake) InspectAdminGroup(context.Context, groupinspect.Input) (groupinspect.Output, error) {
-	return groupinspect.Output{}, nil
+func (f *fake) InspectAdminGroup(context.Context, groupops.InspectInput) (groupops.InspectOutput, error) {
+	return groupops.InspectOutput{}, nil
 }
-func (f *fake) CreateAdminGroup(context.Context, groupcreate.Input, bool) (groupcreate.Output, error) {
-	return groupcreate.Output{}, nil
+func (f *fake) CreateAdminGroup(context.Context, groupops.CreateInput, bool) (groupops.CreateOutput, error) {
+	return groupops.CreateOutput{}, nil
 }
-func (f *fake) UpdateAdminGroup(_ context.Context, in groupupdate.Input, preview bool) (groupupdate.Output, error) {
+func (f *fake) UpdateAdminGroup(_ context.Context, in groupops.UpdateInput, preview bool) (groupops.UpdateOutput, error) {
 	f.groupUpdate = in
 	f.groupPreview = preview
-	return groupupdate.Output{}, nil
+	return groupops.UpdateOutput{}, nil
 }
-func (f *fake) DeleteAdminGroup(context.Context, groupdelete.Input, bool) (groupdelete.Output, error) {
-	return groupdelete.Output{}, nil
+func (f *fake) DeleteAdminGroup(context.Context, groupops.DeleteInput, bool) (groupops.DeleteOutput, error) {
+	return groupops.DeleteOutput{}, nil
 }
 func (f *fake) AddAdminGroupMember(_ context.Context, input groupmember.Input, _ bool) (groupmember.Output, error) {
 	f.memberAdd = input
@@ -108,13 +100,13 @@ func (f *fake) DeleteAdminPermission(context.Context, permission.Input, bool) (p
 	return permission.Output{}, nil
 }
 
-func deps(f *fake, enabled bool) cli.Dependencies {
-	return cli.Dependencies{UserLister: f, UserInspector: f, UserCreator: f, UserUpdater: f, UserDeleter: f, GroupLister: f, GroupInspector: f, GroupCreator: f, GroupUpdater: f, GroupDeleter: f, GroupMemberAdder: f, GroupMemberRemover: f, PermissionInspector: f, PermissionCreator: f, PermissionDeleter: f, Renderer: f, MutationsEnabled: enabled}
+func deps(f *fake) cli.Dependencies {
+	return cli.Dependencies{UserLister: f, UserInspector: f, UserCreator: f, UserUpdater: f, UserDeleter: f, GroupLister: f, GroupInspector: f, GroupCreator: f, GroupUpdater: f, GroupDeleter: f, GroupMemberAdder: f, GroupMemberRemover: f, PermissionInspector: f, PermissionCreator: f, PermissionDeleter: f, Renderer: f}
 }
 
 func TestCommandMountsAllCapabilitiesAndShowsMutations(t *testing.T) {
 	f := &fake{}
-	root := cli.New(deps(f, false))
+	root := cli.New(deps(f))
 	var got []string
 	var walk func(*cobra.Command)
 	walk = func(parent *cobra.Command) {
@@ -139,7 +131,7 @@ func TestCommandMountsAllCapabilitiesAndShowsMutations(t *testing.T) {
 
 func TestGroupMemberCommandsMapExactIdentities(t *testing.T) {
 	f := &fake{}
-	cmd := cli.New(deps(f, true))
+	cmd := cli.New(deps(f))
 	cmd.SetArgs([]string{"group-member", "add", "--environment", "dev", "--group-id", "g1", "--user-id", "u1", "--preview"})
 	if err := cmd.Execute(); err != nil {
 		t.Fatal(err)
@@ -155,13 +147,13 @@ func TestGroupMemberCommandsMapExactIdentities(t *testing.T) {
 
 func TestUserCreateRequiresEnvironmentAndSupportsPreview(t *testing.T) {
 	f := &fake{}
-	cmd := cli.New(deps(f, true))
+	cmd := cli.New(deps(f))
 	cmd.SetArgs([]string{"user", "create", "--name", "alex@example.com", "--site-role", "Viewer", "--auth-setting", "SAML"})
 	if err := cmd.Execute(); err == nil || !strings.Contains(err.Error(), "--environment") {
 		t.Fatalf("missing environment error = %v", err)
 	}
 	f = &fake{}
-	cmd = cli.New(deps(f, true))
+	cmd = cli.New(deps(f))
 	cmd.SetArgs([]string{"user", "create", "--environment", "prod", "--name", "alex@example.com", "--site-role", "Viewer", "--auth-setting", "SAML"})
 	if err := cmd.Execute(); err != nil {
 		t.Fatal(err)
@@ -170,7 +162,7 @@ func TestUserCreateRequiresEnvironmentAndSupportsPreview(t *testing.T) {
 		t.Fatalf("input = %#v preview=%v rendered=%d", f.userCreate, f.userPreview, f.rendered)
 	}
 	f = &fake{}
-	cmd = cli.New(deps(f, true))
+	cmd = cli.New(deps(f))
 	cmd.SetArgs([]string{"user", "create", "--environment", "prod", "--name", "alex@example.com", "--site-role", "Viewer", "--auth-setting", "SAML", "--preview"})
 	if err := cmd.Execute(); err != nil {
 		t.Fatal(err)
@@ -182,7 +174,7 @@ func TestUserCreateRequiresEnvironmentAndSupportsPreview(t *testing.T) {
 
 func TestUserCreateHelpExplainsAuthenticationSelectorRule(t *testing.T) {
 	var stdout bytes.Buffer
-	cmd := cli.New(deps(&fake{}, true))
+	cmd := cli.New(deps(&fake{}))
 	cmd.SetOut(&stdout)
 	cmd.SetArgs([]string{"user", "create", "--help"})
 	if err := cmd.Execute(); err != nil {
@@ -195,13 +187,13 @@ func TestUserCreateHelpExplainsAuthenticationSelectorRule(t *testing.T) {
 
 func TestGroupUpdateDistinguishesOmittedAndExplicitEmptyMembership(t *testing.T) {
 	f := &fake{}
-	cmd := cli.New(deps(f, true))
+	cmd := cli.New(deps(f))
 	cmd.SetArgs([]string{"group", "update", "--environment", "prod", "--id", "g1", "--member-id", "u1"})
 	if err := cmd.Execute(); err == nil || !strings.Contains(err.Error(), "--set-members") {
 		t.Fatalf("member without set error = %v", err)
 	}
 	f = &fake{}
-	cmd = cli.New(deps(f, true))
+	cmd = cli.New(deps(f))
 	cmd.SetArgs([]string{"group", "update", "--environment", "prod", "--id", "g1", "--set-members", "--preview"})
 	if err := cmd.Execute(); err != nil {
 		t.Fatal(err)
@@ -214,7 +206,7 @@ func TestGroupUpdateDistinguishesOmittedAndExplicitEmptyMembership(t *testing.T)
 func TestGroupRenameUsesNewNameAndProtectsAliasConflict(t *testing.T) {
 	for _, flag := range []string{"--new-name", "--name"} {
 		f := &fake{}
-		cmd := cli.New(deps(f, true))
+		cmd := cli.New(deps(f))
 		cmd.SetArgs([]string{"group", "update", "--environment", "prod", "--id", "group", "--preview", flag, "Renamed"})
 		if err := cmd.Execute(); err != nil {
 			t.Fatal(err)
@@ -224,7 +216,7 @@ func TestGroupRenameUsesNewNameAndProtectsAliasConflict(t *testing.T) {
 		}
 	}
 	f := &fake{}
-	cmd := cli.New(deps(f, true))
+	cmd := cli.New(deps(f))
 	cmd.SetArgs([]string{"group", "update", "--environment", "prod", "--id", "group", "--preview", "--new-name", "One", "--name", "Two"})
 	if err := cmd.Execute(); err == nil {
 		t.Fatal("conflicting rename aliases accepted")
@@ -233,7 +225,7 @@ func TestGroupRenameUsesNewNameAndProtectsAliasConflict(t *testing.T) {
 
 func TestExactInspectSelectorsRejectMultipleSelectors(t *testing.T) {
 	f := &fake{}
-	cmd := cli.New(deps(f, true))
+	cmd := cli.New(deps(f))
 	cmd.SetArgs([]string{"user", "inspect", "--id", "u1", "--name", "alex"})
 	err := cmd.Execute()
 	if err == nil {
@@ -243,7 +235,7 @@ func TestExactInspectSelectorsRejectMultipleSelectors(t *testing.T) {
 
 func TestUserMutationAcceptsExactUsernameSelector(t *testing.T) {
 	f := &fake{}
-	cmd := cli.New(deps(f, true))
+	cmd := cli.New(deps(f))
 	cmd.SetArgs([]string{"user", "update", "--environment", "prod", "--username", "alex@example.com", "--site-role", "Viewer", "--preview"})
 	if err := cmd.Execute(); err != nil {
 		t.Fatal(err)
@@ -260,7 +252,7 @@ func TestUserMutationAcceptsExactUsernameSelector(t *testing.T) {
 
 func TestPermissionCreateRepeatsCapabilitiesSequentially(t *testing.T) {
 	f := &fake{}
-	cmd := cli.New(deps(f, true))
+	cmd := cli.New(deps(f))
 	cmd.SetArgs([]string{"permission", "create", "--environment", "prod", "--kind", "workbook", "--id", "w1", "--principal-type", "group", "--principal-id", "g1", "--mode", "Allow", "--capability", "Read", "--capability", "Write", "--preview"})
 	if err := cmd.Execute(); err != nil {
 		t.Fatal(err)
@@ -269,7 +261,7 @@ func TestPermissionCreateRepeatsCapabilitiesSequentially(t *testing.T) {
 		t.Fatalf("permissions = %#v", f.permissions)
 	}
 	f = &fake{}
-	cmd = cli.New(deps(f, true))
+	cmd = cli.New(deps(f))
 	cmd.SetArgs([]string{"permission", "create", "--environment", "prod", "--kind", "workbook", "--id", "w1", "--principal-type", "group", "--principal-id", "g1", "--mode", "Allow", "--capability", "Read", "--capability", "Read"})
 	if err := cmd.Execute(); err == nil || len(f.permissions) != 0 {
 		t.Fatalf("duplicate capability result = %v calls=%d", err, len(f.permissions))
@@ -278,7 +270,7 @@ func TestPermissionCreateRepeatsCapabilitiesSequentially(t *testing.T) {
 
 func TestPermissionCapabilitiesValidateEntireSelectionBeforeWork(t *testing.T) {
 	f := &fake{}
-	d := deps(f, true)
+	d := deps(f)
 	d.PermissionCapabilities = func(kind string) []string {
 		if kind == "workbook" {
 			return []string{"Read"}

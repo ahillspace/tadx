@@ -2,7 +2,6 @@ package permission
 
 import (
 	"context"
-	"errors"
 	"fmt"
 
 	"github.com/ahillspace/tadx/internal/errs"
@@ -13,21 +12,9 @@ const createOperation = "admin.permission.create"
 type CreateWriter interface {
 	CreatePermission(context.Context, Input) (Result, error)
 }
-type CreateAction struct {
-	reader Reader
-	writer CreateWriter
-}
 
-func NewCreate(r Reader, w CreateWriter) *CreateAction { return &CreateAction{reader: r, writer: w} }
-
-func (a *CreateAction) Execute(ctx context.Context, in Input, preview bool) (Output, error) {
-	if err := ValidateCreateInput(in); err != nil {
-		return Output{}, err
-	}
-	if a == nil || a.reader == nil || a.writer == nil {
-		return Output{}, errors.New("permission create is not configured")
-	}
-	initial, err := a.reader.GetPermission(ctx, in)
+func Create(ctx context.Context, reader Reader, writer CreateWriter, in Input, preview bool) (Output, error) {
+	initial, err := reader.GetPermission(ctx, in)
 	if err != nil {
 		return Output{}, err
 	}
@@ -45,7 +32,7 @@ func (a *CreateAction) Execute(ctx context.Context, in Input, preview bool) (Out
 		return out, nil
 	}
 	out.Plan.Mode = "execute"
-	current, err := a.reader.GetPermission(ctx, in)
+	current, err := reader.GetPermission(ctx, in)
 	if err != nil {
 		return Output{}, err
 	}
@@ -59,7 +46,7 @@ func (a *CreateAction) Execute(ctx context.Context, in Input, preview bool) (Out
 		out.Result = &Result{Status: "unchanged", ResourceLUID: in.ResourceLUID, Rule: observedRule(in, initial.Mode)}
 		return out, nil
 	}
-	result, err := a.writer.CreatePermission(ctx, in)
+	result, err := writer.CreatePermission(ctx, in)
 	if err != nil {
 		if result.Status == "unknown" {
 			e := failure(createOperation, in, "outcome_unknown", errs.KindOperation, "The permission mutation outcome could not be determined safely.", "Inspect the exact rule and Tableau request before retrying.")
@@ -69,13 +56,8 @@ func (a *CreateAction) Execute(ctx context.Context, in Input, preview bool) (Out
 		}
 		return Output{}, err
 	}
-	if result.Status != "created" || result.ResourceLUID != in.ResourceLUID {
-		e := failure(createOperation, in, "outcome_unknown", errs.KindOperation, "Permission mutation returned an inconsistent result.", "Inspect the exact rule and Tableau request before retrying.")
-		e.TableauRequestID = result.TableauRequestID
-		return Output{}, e
-	}
 	out.Result = &result
-	observed, err := a.reader.GetPermission(ctx, in)
+	observed, err := reader.GetPermission(ctx, in)
 	if err != nil {
 		return out, createConfirmationFailure(in, result, err)
 	}

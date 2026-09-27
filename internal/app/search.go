@@ -12,8 +12,8 @@ import (
 	"strings"
 	"time"
 
-	adminlist "github.com/ahillspace/tadx/actions/admin/group/list"
-	userlist "github.com/ahillspace/tadx/actions/admin/user/list"
+	groupops "github.com/ahillspace/tadx/actions/admin/group"
+	userops "github.com/ahillspace/tadx/actions/admin/user"
 	datasourceops "github.com/ahillspace/tadx/actions/datasource"
 	flowops "github.com/ahillspace/tadx/actions/flow"
 	projectlist "github.com/ahillspace/tadx/actions/project/list"
@@ -648,14 +648,14 @@ func (s *completeLiveSearchLister) searchPage(ctx context.Context, resourceType,
 		}
 		return completeListSearchPage(items, out.Page.Total, out.Page.NextCursor, out.Page.MoreAvailable, out.RequestID, out.Source), err
 	case "user":
-		out, err := s.admin.ListAdminUsers(ctx, userlist.Input{Environment: s.environment, Cursor: cursor, Limit: limit})
+		out, err := s.admin.ListAdminUsers(ctx, userops.ListInput{Environment: s.environment, Cursor: cursor, Limit: limit})
 		items := make([]resourcesearch.Item, len(out.Users))
 		for i, item := range out.Users {
 			items[i] = resourcesearch.Item{LUID: item.LUID, Type: resourceType, Name: item.Name}
 		}
 		return completeListSearchPage(items, out.Page.Total, out.Page.NextCursor, out.Page.MoreAvailable, out.RequestID, out.Source), err
 	case "group":
-		out, err := s.admin.ListAdminGroups(ctx, adminlist.Input{Environment: s.environment, Cursor: cursor, Limit: limit})
+		out, err := s.admin.ListAdminGroups(ctx, groupops.ListInput{Environment: s.environment, Cursor: cursor, Limit: limit})
 		items := make([]resourcesearch.Item, len(out.Groups))
 		for i, item := range out.Groups {
 			items[i] = resourcesearch.Item{LUID: item.LUID, Type: resourceType, Name: item.Name}
@@ -688,8 +688,8 @@ type liveSearchLister struct {
 	datasources       datasourceops.ListReader
 	flows             flowops.ListReader
 	projects          projectlist.Reader
-	users             userlist.Reader
-	groups            adminlist.Reader
+	users             userops.ListReader
+	groups            groupops.ListReader
 	pulse             *tableaupulse.Client
 	definitionPages   map[string]tableaupulse.DefinitionPage
 }
@@ -711,8 +711,8 @@ func newLiveSearchLister(connection authenticatedTableau, checks ...func(string)
 		datasources:     datasourceListReader{adapter: resourcedatasource.NewAdapterWithProjectResolver(datasourceClient, projects), projects: resourceproject.NewDiscoveryPaths(projects)},
 		flows:           flowListReader{adapter: resourceflow.NewAdapter(flowClient, projects)},
 		projects:        projectListReader{adapter: projects},
-		users:           adminUserListReader{adapter: resourceadmin.NewAdapter(adminClient, checks...)},
-		groups:          adminGroupListReader{adapter: resourceadmin.NewAdapter(adminClient, checks...)},
+		users:           adminUserAdapter{Adapter: resourceadmin.NewAdapter(adminClient, checks...)},
+		groups:          adminGroupAdapter{Adapter: resourceadmin.NewAdapter(adminClient, checks...)},
 		pulse:           pulseClient,
 		definitionPages: make(map[string]tableaupulse.DefinitionPage),
 	}, nil
@@ -749,14 +749,28 @@ func (s *liveSearchLister) List(ctx context.Context, resourceType, cursor string
 		}
 		return resourcesearch.Page{Items: items, NextCursor: out.Page.NextCursor, MoreAvailable: out.Page.MoreAvailable, Total: out.Page.Total}, err
 	case "user":
-		out, err := userlist.New(s.users).Execute(ctx, userlist.Input{Environment: s.environment, Site: s.site, Cursor: cursor, Limit: limit})
+		input := userops.ListInput{Environment: s.environment, Site: s.site, Cursor: cursor, Limit: limit}
+		if err := userops.ValidateListInput(&input); err != nil {
+			return resourcesearch.Page{}, err
+		}
+		if err := userops.ValidateListContinuation(&input); err != nil {
+			return resourcesearch.Page{}, err
+		}
+		out, err := userops.List(ctx, s.users, input)
 		items := make([]resourcesearch.Item, len(out.Users))
 		for i, item := range out.Users {
 			items[i] = resourcesearch.Item{LUID: item.LUID, Type: resourceType, Name: item.Name}
 		}
 		return resourcesearch.Page{Items: items, NextCursor: out.Page.NextCursor, MoreAvailable: out.Page.MoreAvailable, Total: out.Page.Total}, err
 	case "group":
-		out, err := adminlist.New(s.groups).Execute(ctx, adminlist.Input{Environment: s.environment, Site: s.site, Cursor: cursor, Limit: limit})
+		input := groupops.ListInput{Environment: s.environment, Site: s.site, Cursor: cursor, Limit: limit}
+		if err := groupops.ValidateListInput(&input); err != nil {
+			return resourcesearch.Page{}, err
+		}
+		if err := groupops.ValidateListContinuation(&input); err != nil {
+			return resourcesearch.Page{}, err
+		}
+		out, err := groupops.List(ctx, s.groups, input)
 		items := make([]resourcesearch.Item, len(out.Groups))
 		for i, item := range out.Groups {
 			items[i] = resourcesearch.Item{LUID: item.LUID, Type: resourceType, Name: item.Name}

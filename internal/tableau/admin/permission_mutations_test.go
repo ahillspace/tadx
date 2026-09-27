@@ -126,6 +126,7 @@ func TestPermissionReadRejectsInvalidSnapshotBeforePlanning(t *testing.T) {
 		"<tsResponse><permissions/><permissions/></tsResponse>",
 		"<tsResponse><permissions><workbook id=\"other\"/></permissions></tsResponse>",
 		"<tsResponse><permissions><granteeCapabilities><group id=\"g1\"/><capabilities><capability name=\"Read\" mode=\"Allow\"/><capability name=\"Read\" mode=\"Deny\"/></capabilities></granteeCapabilities></permissions></tsResponse>",
+		"<tsResponse><permissions><granteeCapabilities><group id=\"g1\"/><capabilities><capability name=\"Read\" mode=\"Allow\"/><capability name=\"Read\" mode=\"Allow\"/></capabilities></granteeCapabilities></permissions></tsResponse>",
 	} {
 		server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			io.WriteString(w, body)
@@ -136,5 +137,34 @@ func TestPermissionReadRejectsInvalidSnapshotBeforePlanning(t *testing.T) {
 		if err == nil {
 			t.Fatalf("invalid snapshot accepted: %s", body)
 		}
+	}
+}
+
+func TestPermissionParentPrecedenceAndMutationDuplicateIdentity(t *testing.T) {
+	for _, tc := range []struct{ name, body, parent string }{
+		{"root", `<tsResponse><parent id="root"/><permissions/></tsResponse>`, "root"},
+		{"nested", `<tsResponse><permissions><parent id="nested"/></permissions></tsResponse>`, "nested"},
+		{"nested wins", `<tsResponse><parent id="root"/><permissions><parent id="nested"/></permissions></tsResponse>`, "nested"},
+		{"empty nested", `<tsResponse><parent id="root"/><permissions><parent/></permissions></tsResponse>`, "root"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { _, _ = io.WriteString(w, tc.body) }))
+			t.Cleanup(server.Close)
+			client := admin.NewClient(tableau.NewTransport(server.Client(), "3.29", nil), session{}, server.URL)
+			set, err := client.GetPermissions(t.Context(), admin.PermissionRequest{ResourceKind: "workbook", ResourceLUID: "w1"})
+			if err != nil || set.Source != "inherited" || set.ParentProjectLUID != tc.parent {
+				t.Fatalf("set=%#v error=%v", set, err)
+			}
+		})
+	}
+	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("X-Tableau-Request-Id", "duplicate-request")
+		_, _ = io.WriteString(w, `<tsResponse><permissions><granteeCapabilities><user id="u1"/><capabilities><capability name="Read" mode="Allow"/><capability name="Read" mode="Allow"/></capabilities></granteeCapabilities></permissions></tsResponse>`)
+	}))
+	t.Cleanup(server.Close)
+	client := admin.NewClient(tableau.NewTransport(server.Client(), "3.29", nil), session{}, server.URL)
+	result, err := client.CreatePermission(t.Context(), admin.PermissionMutationRequest{PermissionRequest: admin.PermissionRequest{ResourceKind: "workbook", ResourceLUID: "w1"}, Rule: admin.PermissionRule{PrincipalType: "user", PrincipalLUID: "u1", Capability: "Read", Mode: "Allow"}})
+	if err == nil || result.Status != "unknown" || result.RequestID != "duplicate-request" {
+		t.Fatalf("result=%#v error=%v", result, err)
 	}
 }

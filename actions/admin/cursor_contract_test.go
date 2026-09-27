@@ -7,8 +7,8 @@ import (
 	"strings"
 	"testing"
 
-	grouplist "github.com/ahillspace/tadx/actions/admin/group/list"
-	userlist "github.com/ahillspace/tadx/actions/admin/user/list"
+	groupops "github.com/ahillspace/tadx/actions/admin/group"
+	userops "github.com/ahillspace/tadx/actions/admin/user"
 )
 
 func TestAdminCursorCompatibility(t *testing.T) {
@@ -29,11 +29,19 @@ func TestAdminCursorCompatibility(t *testing.T) {
 			}
 			check := func(encoded string, limit int, all bool, site string) (error, error) {
 				if kind == "user" {
-					in := userlist.Input{Environment: "dev", Site: site, Cursor: encoded, Limit: limit, All: all}
-					return userlist.ValidateInput(in), userlist.ValidateContinuation(in)
+					in := userops.ListInput{Environment: "dev", Site: site, Cursor: encoded, Limit: limit, All: all}
+					shape := userops.ValidateListInput(&in)
+					if shape != nil {
+						return shape, nil
+					}
+					return nil, userops.ValidateListContinuation(&in)
 				}
-				in := grouplist.Input{Environment: "dev", Site: site, Cursor: encoded, Limit: limit, All: all}
-				return grouplist.ValidateInput(in), grouplist.ValidateContinuation(in)
+				in := groupops.ListInput{Environment: "dev", Site: site, Cursor: encoded, Limit: limit, All: all}
+				shape := groupops.ValidateListInput(&in)
+				if shape != nil {
+					return shape, nil
+				}
+				return nil, groupops.ValidateListContinuation(&in)
 			}
 			for _, tc := range []struct {
 				name, token, site string
@@ -45,9 +53,9 @@ func TestAdminCursorCompatibility(t *testing.T) {
 				{name: "default limit", site: "site"},
 				{name: "maximum initial limit", limit: 10000, site: "site"},
 				{name: "changed target", token: cursor(25, fingerprint, ""), site: "other", bound: "invalid admin " + kind + " list continuation cursor"},
-				{name: "changed limit", token: cursor(25, fingerprint, ""), limit: 10, site: "site", shape: "invalid admin " + kind + " list continuation cursor", bound: "admin " + kind + " list limit must match the continuation cursor"},
-				{name: "oversized continuation", token: cursor(101, fingerprint, ""), site: "site", shape: "invalid admin " + kind + " list continuation cursor", bound: "invalid admin " + kind + " list continuation cursor"},
-				{name: "invalid encoding", token: "!", site: "site", shape: "invalid admin " + kind + " list continuation cursor", bound: "invalid admin " + kind + " list continuation cursor"},
+				{name: "changed limit", token: cursor(25, fingerprint, ""), limit: 10, site: "site", shape: "invalid admin " + kind + " list continuation cursor"},
+				{name: "oversized continuation", token: cursor(101, fingerprint, ""), site: "site", shape: "invalid admin " + kind + " list continuation cursor"},
+				{name: "invalid encoding", token: "!", site: "site", shape: "invalid admin " + kind + " list continuation cursor"},
 				{name: "all conflict", limit: 1, all: true, site: "site", shape: "--all cannot be combined with --limit or --cursor"},
 			} {
 				t.Run(tc.name, func(t *testing.T) {

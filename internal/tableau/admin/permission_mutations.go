@@ -17,33 +17,28 @@ type PermissionMutationRequest struct {
 	Rule PermissionRule
 }
 
-// PermissionMutationClient keeps permission writes separate from inventory clients.
-type PermissionMutationClient interface {
-	CreatePermission(context.Context, PermissionMutationRequest) (MutationResult, error)
-	DeletePermission(context.Context, PermissionMutationRequest) (MutationResult, error)
-}
-
-func ValidatePermissionMutation(in PermissionMutationRequest) error {
-	if _, _, err := permissionPath(in.PermissionRequest); err != nil {
-		return err
+func permissionMutationPath(in PermissionMutationRequest) ([]string, error) {
+	parts, _, err := permissionPath(in.PermissionRequest)
+	if err != nil {
+		return nil, err
 	}
 	if in.Rule.PrincipalType != "user" && in.Rule.PrincipalType != "group" {
-		return errors.New("permission principal type must be user or group")
+		return nil, errors.New("permission principal type must be user or group")
 	}
 	if strings.TrimSpace(in.Rule.PrincipalLUID) == "" {
-		return errors.New("permission principal LUID is required")
+		return nil, errors.New("permission principal LUID is required")
 	}
 	if in.Rule.Mode != "Allow" && in.Rule.Mode != "Deny" {
-		return errors.New("permission mode must be Allow or Deny")
+		return nil, errors.New("permission mode must be Allow or Deny")
 	}
 	kind := in.ResourceKind
 	if in.DefaultFor != "" {
 		kind = strings.TrimSuffix(in.DefaultFor, "s")
 	}
 	if !slices.Contains(PermissionCapabilities(kind), in.Rule.Capability) {
-		return &permissionCapabilityError{kind: kind, capability: in.Rule.Capability}
+		return nil, &permissionCapabilityError{kind: kind, capability: in.Rule.Capability}
 	}
-	return nil
+	return parts, nil
 }
 
 // PermissionCapabilities returns the supported capability names for one resource kind.
@@ -70,10 +65,10 @@ func (e *permissionCapabilityError) CorrectiveAction() string {
 
 func (c *Client) CreatePermission(ctx context.Context, in PermissionMutationRequest) (MutationResult, error) {
 	const operation = "admin.permission.create"
-	if err := ValidatePermissionMutation(in); err != nil {
+	parts, err := permissionMutationPath(in)
+	if err != nil {
 		return MutationResult{}, err
 	}
-	parts, _, _ := permissionPath(in.PermissionRequest)
 	payload := permissionWriteXML{}
 	if in.ResourceKind == "flow" && in.DefaultFor == "" {
 		payload.Flow = &idXML{ID: in.ResourceLUID}
@@ -94,14 +89,14 @@ func (c *Client) CreatePermission(ctx context.Context, in PermissionMutationRequ
 	if err := exactStatus(operation, response, http.StatusOK); err != nil {
 		return unknown, err
 	}
-	rules, err := decodePermissionRules(operation, response, in.PermissionRequest, false)
+	rules, _, err := decodePermissionRules(operation, response, in.PermissionRequest, false)
 	if err != nil {
 		return unknown, err
 	}
 	found := false
 	for _, rule := range rules {
 		if rule.PrincipalType == in.Rule.PrincipalType && rule.PrincipalLUID == in.Rule.PrincipalLUID && rule.Capability == in.Rule.Capability {
-			if found || rule.Mode != in.Rule.Mode {
+			if rule.Mode != in.Rule.Mode {
 				return unknown, mutationProtocol(operation, response, errors.New("permission mutation returned a conflicting capability"))
 			}
 			found = true
@@ -114,10 +109,10 @@ func (c *Client) CreatePermission(ctx context.Context, in PermissionMutationRequ
 }
 
 func (c *Client) DeletePermission(ctx context.Context, in PermissionMutationRequest) (MutationResult, error) {
-	if err := ValidatePermissionMutation(in); err != nil {
+	parts, err := permissionMutationPath(in)
+	if err != nil {
 		return MutationResult{}, err
 	}
-	parts, _, _ := permissionPath(in.PermissionRequest)
 	parts = append(parts, in.Rule.PrincipalType+"s", in.Rule.PrincipalLUID, in.Rule.Capability, in.Rule.Mode)
 	result, err := c.delete(ctx, "admin.permission.delete", parts, in.ResourceLUID)
 	if err != nil && result.Status == "" {
@@ -127,8 +122,7 @@ func (c *Client) DeletePermission(ctx context.Context, in PermissionMutationRequ
 }
 
 func permissionWriteFailure(in PermissionMutationRequest, err error) (MutationResult, error) {
-	var upstream *tableau.UpstreamError
-	if errors.As(err, &upstream) {
+	if _, ok := errors.AsType[*tableau.UpstreamError](err); ok {
 		return MutationResult{}, err
 	}
 	return MutationResult{Status: "unknown", ResourceLUID: in.ResourceLUID, RequestID: tableau.RequestID(err)}, err
@@ -149,13 +143,15 @@ type permissionGranteeWriteXML struct {
 
 // decodePermissionRules validates identity when present; default permission responses
 // do not consistently contain a resource identity in the documented contract.
-func decodePermissionRules(operation string, response tableau.Response, in PermissionRequest, read bool) ([]PermissionRule, error) {
-	fail := func(err error) ([]PermissionRule, error) {
-		return nil, tableau.NewProtocolError(operation, response, err, read)
+func decodePermissionRules(operation string, response tableau.Response, in PermissionRequest, read bool) ([]PermissionRule, string, error) {
+	fail := func(err error) ([]PermissionRule, string, error) {
+		return nil, "", tableau.NewProtocolError(operation, response, err, read)
 	}
 	var envelope struct {
 		XMLName     xml.Name `xml:"tsResponse"`
+		Parent      idXML    `xml:"parent"`
 		Permissions []struct {
+			Parent     idXML        `xml:"parent"`
 			Workbook   idXML        `xml:"workbook"`
 			Datasource idXML        `xml:"datasource"`
 			Flow       idXML        `xml:"flow"`
@@ -203,5 +199,9 @@ func decodePermissionRules(operation string, response tableau.Response, in Permi
 			rules = append(rules, PermissionRule{PrincipalType: principal, PrincipalLUID: luid, Capability: c.Name, Mode: c.Mode})
 		}
 	}
-	return rules, nil
+	parent := envelope.Parent.ID
+	if p.Parent.ID != "" {
+		parent = p.Parent.ID
+	}
+	return rules, parent, nil
 }

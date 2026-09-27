@@ -5,12 +5,6 @@ import "context"
 
 const MaxPageSize = 1000
 
-// String returns a pointer for an explicitly selected string field.
-func String(value string) *string { return &value }
-
-// Bool returns a pointer for an explicitly selected Boolean field.
-func Bool(value bool) *bool { return &value }
-
 type PageRequest struct{ PageNumber, PageSize int }
 
 type ListUsersRequest struct {
@@ -100,4 +94,6 @@ type ClientContract interface {
 	AddGroupUser(context.Context, string, string) (MutationResult, error)
 	RemoveGroupUser(context.Context, string, string) (MutationResult, error)
 	GetPermissions(context.Context, PermissionRequest) (PermissionSet, error)
+	CreatePermission(context.Context, PermissionMutationRequest) (MutationResult, error)
+	DeletePermission(context.Context, PermissionMutationRequest) (MutationResult, error)
 }

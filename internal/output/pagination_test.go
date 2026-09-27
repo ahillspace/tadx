@@ -5,8 +5,8 @@ import (
 	"strings"
 	"testing"
 
-	grouplist "github.com/ahillspace/tadx/actions/admin/group/list"
-	userlist "github.com/ahillspace/tadx/actions/admin/user/list"
+	groupops "github.com/ahillspace/tadx/actions/admin/group"
+	userops "github.com/ahillspace/tadx/actions/admin/user"
 	capabilitylist "github.com/ahillspace/tadx/actions/capability/list"
 	datasourceops "github.com/ahillspace/tadx/actions/datasource"
 	envlist "github.com/ahillspace/tadx/actions/env/profile"
@@ -23,8 +23,8 @@ func TestAllInventoryProjectionsHideCursors(t *testing.T) {
 		"datasources":      datasourceops.ListOutput{Page: datasourceops.ListOutputPage{Returned: 1, Total: 2, Limit: 1, NextCursor: "private-cursor"}},
 		"flows":            flowops.ListOutput{Page: flowops.ListOutputPage{Returned: 1, Total: 2, Limit: 1, NextCursor: "private-cursor"}},
 		"projects":         projectlist.Output{Page: projectlist.OutputPage{Returned: 1, Total: 2, Limit: 1, NextCursor: "private-cursor"}},
-		"users":            userlist.Output{Page: userlist.OutputPage{Returned: 1, Total: 2, Limit: 1, NextCursor: "private-cursor"}},
-		"groups":           grouplist.Output{Page: grouplist.OutputPage{Returned: 1, Total: 2, Limit: 1, NextCursor: "private-cursor"}},
+		"users":            userops.ListOutput{Page: userops.ListOutputPage{Returned: 1, Total: 2, Limit: 1, NextCursor: "private-cursor"}},
+		"groups":           groupops.ListOutput{Page: groupops.ListOutputPage{Returned: 1, Total: 2, Limit: 1, NextCursor: "private-cursor"}},
 		"capabilities":     capabilitylist.Output{Page: capabilitylist.Pagination{Returned: 1, Total: 2, Limit: 1, NextCursor: "private-cursor"}},
 		"environments":     envlist.ListOutput{Page: envlist.Page{Returned: 1, Total: 2, Limit: 1, NextCursor: "private-cursor"}},
 		"workspaces":       workspaceaction.ListOutput{Page: workspaceaction.ListPage{Returned: 1, Total: 2, Limit: 1, NextCursor: "private-cursor"}},

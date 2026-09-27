@@ -2,13 +2,9 @@ package admin_test
 
 import (
 	"context"
+	groupops "github.com/ahillspace/tadx/actions/admin/group"
+	userops "github.com/ahillspace/tadx/actions/admin/user"
 	"testing"
-
-	groupcreate "github.com/ahillspace/tadx/actions/admin/group/create"
-	groupdelete "github.com/ahillspace/tadx/actions/admin/group/delete"
-	groupupdate "github.com/ahillspace/tadx/actions/admin/group/update"
-	userdelete "github.com/ahillspace/tadx/actions/admin/user/delete"
-	userupdate "github.com/ahillspace/tadx/actions/admin/user/update"
 )
 
 type previewUserUpdate struct {
@@ -16,9 +12,9 @@ type previewUserUpdate struct {
 	writes int
 }
 
-func (f *previewUserUpdate) UpdateUser(context.Context, string, userupdate.Request) (userupdate.User, error) {
+func (f *previewUserUpdate) UpdateUser(context.Context, string, userops.UpdateRequest) (userops.Record, error) {
 	f.writes++
-	return userupdate.User{}, nil
+	return userops.Record{}, nil
 }
 
 type previewUserDelete struct {
@@ -26,9 +22,9 @@ type previewUserDelete struct {
 	writes int
 }
 
-func (f *previewUserDelete) DeleteUser(context.Context, string) (userdelete.Result, error) {
+func (f *previewUserDelete) DeleteUser(context.Context, string) (userops.DeleteResult, error) {
 	f.writes++
-	return userdelete.Result{}, nil
+	return userops.DeleteResult{}, nil
 }
 
 type previewGroupCreate struct {
@@ -36,9 +32,9 @@ type previewGroupCreate struct {
 	writes int
 }
 
-func (f *previewGroupCreate) CreateGroup(context.Context, groupcreate.Request) (groupcreate.Group, error) {
+func (f *previewGroupCreate) CreateGroup(context.Context, groupops.CreateRequest) (groupops.Record, error) {
 	f.writes++
-	return groupcreate.Group{}, nil
+	return groupops.Record{}, nil
 }
 
 type previewGroupDelete struct {
@@ -46,43 +42,43 @@ type previewGroupDelete struct {
 	writes int
 }
 
-func (f *previewGroupDelete) DeleteGroup(context.Context, string) (groupdelete.Result, error) {
+func (f *previewGroupDelete) DeleteGroup(context.Context, string) (groupops.DeleteResult, error) {
 	f.writes++
-	return groupdelete.Result{}, nil
+	return groupops.DeleteResult{}, nil
 }
 
 func TestAdminPreviewDoesNotCallMutationDependencies(t *testing.T) {
 	t.Run("user.update", func(t *testing.T) {
 		f := &previewUserUpdate{}
-		out, err := userupdate.New(f, f).Execute(context.Background(), userupdate.Input{Environment: "prod", Site: "site", UserLUID: "u1", FullName: sp("New name")}, true)
+		out, err := userops.Update(context.Background(), f, f, userops.UpdateInput{Environment: "prod", Site: "site", UserLUID: "u1", FullName: sp("New name")}, true)
 		if err != nil || out.Plan.Mode != "preview" || out.Result != nil || f.writes != 0 {
 			t.Fatalf("preview=%#v err=%v writes=%d", out, err, f.writes)
 		}
 	})
 	t.Run("user.delete", func(t *testing.T) {
 		f := &previewUserDelete{}
-		out, err := userdelete.New(f, f).Execute(context.Background(), userdelete.Input{Environment: "prod", Site: "site", UserLUID: "u1"}, true)
+		out, err := userops.Delete(context.Background(), f, f, userops.DeleteInput{Environment: "prod", Site: "site", UserLUID: "u1"}, true)
 		if err != nil || out.Plan.Mode != "preview" || out.Result != nil || f.writes != 0 {
 			t.Fatalf("preview=%#v err=%v writes=%d", out, err, f.writes)
 		}
 	})
 	t.Run("group.create", func(t *testing.T) {
 		f := &previewGroupCreate{}
-		out, err := groupcreate.New(f, f).Execute(context.Background(), groupcreate.Input{Environment: "prod", Site: "site", Name: "Authors"}, true)
+		out, err := groupops.Create(context.Background(), f, f, groupops.CreateInput{Environment: "prod", Site: "site", Name: "Authors"}, true)
 		if err != nil || out.Plan.Mode != "preview" || out.Result != nil || f.writes != 0 {
 			t.Fatalf("preview=%#v err=%v writes=%d", out, err, f.writes)
 		}
 	})
 	t.Run("group.delete", func(t *testing.T) {
 		f := &previewGroupDelete{}
-		out, err := groupdelete.New(f, f).Execute(context.Background(), groupdelete.Input{Environment: "prod", Site: "site", GroupLUID: "g1"}, true)
+		out, err := groupops.Delete(context.Background(), f, f, groupops.DeleteInput{Environment: "prod", Site: "site", GroupLUID: "g1"}, true)
 		if err != nil || out.Plan.Mode != "preview" || out.Result != nil || f.writes != 0 {
 			t.Fatalf("preview=%#v err=%v writes=%d", out, err, f.writes)
 		}
 	})
 	t.Run("group.update.metadata-and-membership", func(t *testing.T) {
-		f := &groupUpdateFake{group: groupupdate.Group{LUID: "g1", Name: "Old", Members: []groupupdate.Member{{LUID: "u1"}}}}
-		out, err := groupupdate.New(f, f, f).Execute(context.Background(), groupupdate.Input{Environment: "prod", Site: "site", GroupLUID: "g1", Name: sp("New"), MembershipSet: true, DesiredMemberLUIDs: []string{"u2"}}, true)
+		f := &groupUpdateFake{group: groupops.Record{LUID: "g1", Name: "Old", Members: []groupops.Member{{LUID: "u1"}}}}
+		out, err := runGroupUpdate(context.Background(), f, f, f, groupops.UpdateInput{Environment: "prod", Site: "site", GroupLUID: "g1", Name: sp("New"), MembershipSet: true, DesiredMemberLUIDs: []string{"u2"}}, true)
 		if err != nil || out.Plan.Mode != "preview" || out.Result != nil || len(f.calls) != 0 {
 			t.Fatalf("preview=%#v err=%v calls=%v", out, err, f.calls)
 		}

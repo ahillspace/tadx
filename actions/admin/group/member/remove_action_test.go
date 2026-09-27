@@ -2,8 +2,9 @@ package member_test
 
 import (
 	"context"
-	remove "github.com/ahillspace/tadx/actions/admin/group/member"
 	"testing"
+
+	remove "github.com/ahillspace/tadx/actions/admin/group/member"
 )
 
 type removeAdapter struct {
@@ -17,7 +18,7 @@ type removeAdapter struct {
 
 func TestRemovePreviewDoesNotRemoveMember(t *testing.T) {
 	a := &removeAdapter{members: []remove.Member{{LUID: "user-1"}, {LUID: "other"}}}
-	out, err := remove.NewRemove(a, a).Execute(context.Background(), remove.Input{Environment: "dev", GroupLUID: "group-1", UserLUID: "user-1"}, true)
+	out, err := remove.Remove(context.Background(), a, a, remove.Input{Environment: "dev", GroupLUID: "group-1", UserLUID: "user-1"}, true)
 	if err != nil || out.Plan.Mode != "preview" || out.Plan.NoOp || out.Result != nil || a.writes != 0 {
 		t.Fatalf("preview=%#v err=%v writes=%d", out, err, a.writes)
 	}
@@ -33,7 +34,7 @@ func (a *removeAdapter) ResolveGroup(context.Context, string) (remove.Group, err
 
 func TestRemoveExecuteRevalidatesPlannedNoOpAfterMembershipDrift(t *testing.T) {
 	a := &removeAdapter{members: []remove.Member{{LUID: "other"}}, drift: true}
-	out, err := remove.NewRemove(a, a).Execute(context.Background(), remove.Input{Environment: "dev", GroupLUID: "group-1", UserLUID: "user-1"}, false)
+	out, err := remove.Remove(context.Background(), a, a, remove.Input{Environment: "dev", GroupLUID: "group-1", UserLUID: "user-1"}, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -54,7 +55,7 @@ func (a *removeAdapter) ResolveUsername(_ context.Context, username string) (rem
 
 func TestRemoveUsernameResolutionUsesReturnedIdentityAndReceiptWithoutPostRead(t *testing.T) {
 	a := &removeAdapter{members: []remove.Member{{LUID: "user-1"}, {LUID: "other"}}}
-	out, err := remove.NewRemove(a, a).Execute(context.Background(), remove.Input{Environment: "dev", GroupLUID: "group-1", Username: "analyst@example.test"}, false)
+	out, err := remove.Remove(context.Background(), a, a, remove.Input{Environment: "dev", GroupLUID: "group-1", Username: "analyst@example.test"}, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -65,14 +66,14 @@ func TestRemoveUsernameResolutionUsesReturnedIdentityAndReceiptWithoutPostRead(t
 
 func TestRemoveMembershipRejectsAmbiguousUserSelectorsBeforeReads(t *testing.T) {
 	a := &removeAdapter{}
-	_, err := remove.NewRemove(a, a).Execute(context.Background(), remove.Input{Environment: "dev", GroupLUID: "group-1", UserLUID: "user-1", Username: "analyst@example.test"}, false)
+	err := remove.ValidateRemoveInput(remove.Input{Environment: "dev", GroupLUID: "group-1", UserLUID: "user-1", Username: "analyst@example.test"})
 	if err == nil || a.reads != 0 || a.usernameReads != 0 || a.writes != 0 {
 		t.Fatalf("conflicting selectors were resolved: %v %#v", err, a)
 	}
 }
 func TestRemoveRemoveIsIdempotentAndPreservesUnrelatedMembers(t *testing.T) {
 	a := &removeAdapter{members: []remove.Member{{LUID: "other"}, {LUID: "user-1"}}}
-	out, err := remove.NewRemove(a, a).Execute(context.Background(), remove.Input{Environment: "dev", GroupLUID: "group-1", UserLUID: "user-1"}, false)
+	out, err := remove.Remove(context.Background(), a, a, remove.Input{Environment: "dev", GroupLUID: "group-1", UserLUID: "user-1"}, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -80,7 +81,7 @@ func TestRemoveRemoveIsIdempotentAndPreservesUnrelatedMembers(t *testing.T) {
 		t.Fatalf("out=%#v writes=%d", out, a.writes)
 	}
 	a.members = []remove.Member{{LUID: "other"}}
-	out, err = remove.NewRemove(a, a).Execute(context.Background(), remove.Input{Environment: "dev", GroupLUID: "group-1", UserLUID: "user-1"}, false)
+	out, err = remove.Remove(context.Background(), a, a, remove.Input{Environment: "dev", GroupLUID: "group-1", UserLUID: "user-1"}, false)
 	if err != nil {
 		t.Fatal(err)
 	}

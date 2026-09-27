@@ -5,12 +5,13 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/ahillspace/tadx/internal/app"
 	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
+
+	"github.com/ahillspace/tadx/internal/app"
 )
 
 const labelFixtureBefore = `<label id="label-1" contentId="table-1" contentType="table" value="Warning" category="Custom" message="Before" active="true" elevated="true"/>`
@@ -197,5 +198,32 @@ func TestLabelsMetadataLocalErrorsBeforeAuthentication(t *testing.T) {
 		if code := app.Run(context.Background(), args, &out, opts); code == 0 || calls != 0 {
 			t.Fatalf("code=%d calls=%d %s", code, calls, &out)
 		}
+	}
+}
+
+func TestAllAdminLabelValidationPrecedesAuthentication(t *testing.T) {
+	calls := 0
+	s := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { calls++; w.WriteHeader(500) }))
+	defer s.Close()
+	opts := catalogMetadataOptions(t, s, true)
+	for _, args := range [][]string{
+		{"label-category", "list", "--limit", "-1"},
+		{"label-category", "inspect", "--name", " "},
+		{"label-category", "create", "--name", "Category", "--description", " "},
+		{"label-category", "update", "--name", "Category"},
+		{"label-category", "delete", "--name", " Category"},
+		{"label-value", "list", "--limit", "10001"},
+		{"label-value", "inspect", "--name", ""},
+		{"label-value", "update", "--name", "Value", "--description", ""},
+		{"label-value", "delete", "--name", strings.Repeat("界", 129)},
+	} {
+		t.Run(strings.Join(args[:2], "/"), func(t *testing.T) {
+			var out bytes.Buffer
+			argv := append([]string{"admin"}, args...)
+			argv = append(argv, "--environment", "production", "--json")
+			if code := app.Run(t.Context(), argv, &out, opts); code == 0 || calls != 0 {
+				t.Fatalf("code=%d authentication calls=%d output=%s", code, calls, &out)
+			}
+		})
 	}
 }

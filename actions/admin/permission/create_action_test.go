@@ -23,7 +23,7 @@ func TestCreateProjectDefaultPreviewRetainsContentKind(t *testing.T) {
 	in := createInput()
 	in.ResourceKind, in.ResourceLUID, in.DefaultFor = "project", "p1", "flows"
 	f := &createFake{source: "default", mode: ""}
-	out, err := action.NewCreate(f, f).Execute(context.Background(), in, true)
+	out, err := action.Create(context.Background(), f, f, in, true)
 	if err != nil || out.Plan.Target.DefaultFor != "flows" || !strings.Contains(out.Help[0], "--default-for flows") || f.writes != 0 {
 		t.Fatalf("out=%+v err=%v writes=%d", out, err, f.writes)
 	}
@@ -53,7 +53,7 @@ func createInput() action.Input {
 func TestCreatePreviewAndExecution(t *testing.T) {
 	for _, preview := range []bool{true, false} {
 		f := &createFake{source: "direct", mode: "", status: "created"}
-		out, err := action.NewCreate(f, f).Execute(context.Background(), createInput(), preview)
+		out, err := action.Create(context.Background(), f, f, createInput(), preview)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -70,7 +70,7 @@ func TestCreatePreviewAndExecution(t *testing.T) {
 }
 func TestCreateRejectsChangedAndInheritedState(t *testing.T) {
 	for _, f := range []*createFake{{source: "direct", mode: "", changed: true}, {source: "inherited", mode: ""}, {source: "unknown", mode: ""}} {
-		_, err := action.NewCreate(f, f).Execute(context.Background(), createInput(), false)
+		_, err := action.Create(context.Background(), f, f, createInput(), false)
 		var structured *errs.Error
 		if !errors.As(err, &structured) || f.writes != 0 {
 			t.Fatalf("err=%v createFake=%+v", err, f)
@@ -97,7 +97,7 @@ func TestCreateRequiresExplicitSelectors(t *testing.T) {
 			in.Mode = "allow"
 		}
 		f := &createFake{source: "direct"}
-		_, err := action.NewCreate(f, f).Execute(context.Background(), in, true)
+		err := action.ValidateCreateInput(in)
 		var structured *errs.Error
 		if !errors.As(err, &structured) || structured.Kind != errs.KindUsage || f.reads != 0 {
 			t.Fatalf("%s err=%v createFake=%+v", field, err, f)
@@ -106,7 +106,7 @@ func TestCreateRequiresExplicitSelectors(t *testing.T) {
 }
 func TestCreateUnknownOutcomeRetainsRequestID(t *testing.T) {
 	f := &createFake{source: "direct", mode: "", status: "unknown", writeErr: errors.New("response incomplete")}
-	_, err := action.NewCreate(f, f).Execute(context.Background(), createInput(), false)
+	_, err := action.Create(context.Background(), f, f, createInput(), false)
 	var structured *errs.Error
 	if !errors.As(err, &structured) || structured.ID != "admin.permission.create.outcome_unknown" || structured.TableauRequestID != "request-1" || *structured.Retryable {
 		t.Fatalf("err=%+v", err)
@@ -116,7 +116,7 @@ func TestCreateUnknownOutcomeRetainsRequestID(t *testing.T) {
 func TestCreateAcknowledgedWriteReportsVerificationFailureWithResult(t *testing.T) {
 	mode := ""
 	f := &createFake{source: "direct", status: "created", postMode: &mode}
-	out, err := action.NewCreate(f, f).Execute(context.Background(), createInput(), false)
+	out, err := action.Create(context.Background(), f, f, createInput(), false)
 	var structured *errs.Error
 	if !errors.As(err, &structured) || structured.Phase != errs.PhaseVerification || structured.Outcome != errs.OutcomeConfirmed || structured.TableauRequestID != "request-1" || out.Result == nil || out.Result.Rule != nil {
 		t.Fatalf("out=%+v err=%v", out, err)

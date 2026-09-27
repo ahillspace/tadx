@@ -2,8 +2,9 @@ package member_test
 
 import (
 	"context"
-	add "github.com/ahillspace/tadx/actions/admin/group/member"
 	"testing"
+
+	add "github.com/ahillspace/tadx/actions/admin/group/member"
 )
 
 type addAdapter struct {
@@ -17,7 +18,7 @@ type addAdapter struct {
 
 func TestAddPreviewDoesNotAddMember(t *testing.T) {
 	a := &addAdapter{members: []add.Member{{LUID: "other"}}}
-	out, err := add.NewAdd(a, a).Execute(context.Background(), add.Input{Environment: "dev", GroupLUID: "group-1", UserLUID: "user-1"}, true)
+	out, err := add.Add(context.Background(), a, a, add.Input{Environment: "dev", GroupLUID: "group-1", UserLUID: "user-1"}, true)
 	if err != nil || out.Plan.Mode != "preview" || out.Plan.NoOp || out.Result != nil || a.writes != 0 {
 		t.Fatalf("preview=%#v err=%v writes=%d", out, err, a.writes)
 	}
@@ -33,7 +34,7 @@ func (a *addAdapter) ResolveGroup(context.Context, string) (add.Group, error) {
 
 func TestAddExecuteRevalidatesPlannedNoOpAfterMembershipDrift(t *testing.T) {
 	a := &addAdapter{members: []add.Member{{LUID: "other"}, {LUID: "user-1"}}, drift: true}
-	out, err := add.NewAdd(a, a).Execute(context.Background(), add.Input{Environment: "dev", GroupLUID: "group-1", UserLUID: "user-1"}, false)
+	out, err := add.Add(context.Background(), a, a, add.Input{Environment: "dev", GroupLUID: "group-1", UserLUID: "user-1"}, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -44,7 +45,7 @@ func TestAddExecuteRevalidatesPlannedNoOpAfterMembershipDrift(t *testing.T) {
 func (a *addAdapter) AddGroupUser(_ context.Context, _ string, user string) (add.Result, error) {
 	a.writes++
 	a.writtenUser = user
-	return add.Result{Status: "added"}, nil
+	return add.Result{Status: "added", GroupLUID: "group-1", UserLUID: user}, nil
 }
 
 func (a *addAdapter) ResolveUsername(_ context.Context, username string) (add.Member, error) {
@@ -54,7 +55,7 @@ func (a *addAdapter) ResolveUsername(_ context.Context, username string) (add.Me
 
 func TestAddUsernameResolutionUsesReturnedIdentityAndReceiptWithoutPostRead(t *testing.T) {
 	a := &addAdapter{members: []add.Member{{LUID: "other"}}}
-	out, err := add.NewAdd(a, a).Execute(context.Background(), add.Input{Environment: "dev", GroupLUID: "group-1", Username: "analyst@example.test"}, false)
+	out, err := add.Add(context.Background(), a, a, add.Input{Environment: "dev", GroupLUID: "group-1", Username: "analyst@example.test"}, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -65,14 +66,14 @@ func TestAddUsernameResolutionUsesReturnedIdentityAndReceiptWithoutPostRead(t *t
 
 func TestAddMembershipRejectsAmbiguousUserSelectorsBeforeReads(t *testing.T) {
 	a := &addAdapter{}
-	_, err := add.NewAdd(a, a).Execute(context.Background(), add.Input{Environment: "dev", GroupLUID: "group-1", UserLUID: "user-1", Username: "analyst@example.test"}, false)
+	err := add.ValidateAddInput(add.Input{Environment: "dev", GroupLUID: "group-1", UserLUID: "user-1", Username: "analyst@example.test"})
 	if err == nil || a.reads != 0 || a.usernameReads != 0 || a.writes != 0 {
 		t.Fatalf("conflicting selectors were resolved: %v %#v", err, a)
 	}
 }
 func TestAddAddIsIdempotentAndPreservesUnrelatedMembers(t *testing.T) {
 	a := &addAdapter{members: []add.Member{{LUID: "other"}}}
-	out, err := add.NewAdd(a, a).Execute(context.Background(), add.Input{Environment: "dev", GroupLUID: "group-1", UserLUID: "user-1"}, false)
+	out, err := add.Add(context.Background(), a, a, add.Input{Environment: "dev", GroupLUID: "group-1", UserLUID: "user-1"}, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -80,7 +81,7 @@ func TestAddAddIsIdempotentAndPreservesUnrelatedMembers(t *testing.T) {
 		t.Fatalf("out=%#v writes=%d", out, a.writes)
 	}
 	a.members = append(a.members, add.Member{LUID: "user-1"})
-	out, err = add.NewAdd(a, a).Execute(context.Background(), add.Input{Environment: "dev", GroupLUID: "group-1", UserLUID: "user-1"}, false)
+	out, err = add.Add(context.Background(), a, a, add.Input{Environment: "dev", GroupLUID: "group-1", UserLUID: "user-1"}, false)
 	if err != nil {
 		t.Fatal(err)
 	}

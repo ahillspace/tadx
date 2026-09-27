@@ -12,6 +12,7 @@ Keep substantial pull and publish workflows explicit rather than creating one co
 Other categories retain their existing package layout until separately assessed.
 Project also receives a bounded cleanup audit without requiring package regrouping.
 Admin membership and permission mutations share cohesive packages after assessment; distinct inspection contracts remain separate.
+Admin user, group, label category, and label value lifecycle operations use one cohesive package per resource after a complete caller assessment.
 Pulse definition and metric operations use resource packages; environment profiles share a profile package.
 Auth and capability operations retain verb packages, with small contracts and projections beside the operation that owns them.
 Catalog database, table, and column updates share metadata rules in one package while retaining separate mutation sequences.
@@ -177,3 +178,14 @@ Shared workspace identity records must not broaden create, register, list, or de
 Private plan and apply helpers do not require public misuse contracts, but fresh filesystem checks still protect mutable state.
 Distinguish lexical containment of fixed path segments from symlink and filesystem containment checks.
 Test local lifecycle changes through the CLI with an isolated configuration and disposable workspaces; remote API calls provide no additional evidence for those operations.
+
+## Lessons from Admin workflows
+
+Trace direct search callers as well as resource commands before removing action-level input checks.
+Preserve pre-authentication validation where CLI argument handlers establish only part of the input contract.
+Retain parsed cursors and normalized desired members instead of discarding those results and computing them again during execution.
+Resolved-target cursor binding remains a separate check; reuse the parsed token without skipping that binding.
+A normalized client can own per-response identity and pagination checks, while its resource adapter retains cross-page conflicts and capability authorization.
+Keep separate remote rereads and readback verification even when their comparison helpers are shared.
+Do not broaden mutation equality or cache payloads when replacing per-verb records with a shared observation.
+Attach the selected binary, configuration, fixture authority, and replay task to the exploration manifest before starting a worker.

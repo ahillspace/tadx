@@ -3,6 +3,7 @@ package admin_test
 import (
 	"context"
 	"errors"
+	"slices"
 	"testing"
 
 	resource "github.com/ahillspace/tadx/internal/resources/admin"
@@ -48,7 +49,8 @@ func (f *permissionClient) DeletePermission(_ context.Context, in tableau.Permis
 func TestPermissionMutationReadValidatesPrincipalBeforeResource(t *testing.T) {
 	for _, principal := range []string{"user", "group"} {
 		f := &permissionClient{}
-		adapter := resource.NewAdapter(f)
+		var authorized []string
+		adapter := resource.NewAdapter(f, func(id string) error { authorized = append(authorized, id); return nil })
 		id := "u1"
 		if principal == "group" {
 			id = "g1"
@@ -58,6 +60,9 @@ func TestPermissionMutationReadValidatesPrincipalBeforeResource(t *testing.T) {
 		if err != nil || set.ResourceLUID != "w1" || f.permissionCalls != 1 || f.userCalls+f.memberCalls != 1 || f.groupCalls != 0 || f.writes != 0 {
 			t.Fatalf("set=%+v err=%v fake=%+v", set, err, f)
 		}
+		if !slices.Equal(authorized, []string{"admin.permission.inspect", "admin." + principal + ".inspect"}) {
+			t.Fatalf("authorization order = %v", authorized)
+		}
 		if _, err := adapter.CreatePermission(context.Background(), in); err != nil {
 			t.Fatal(err)
 		}
@@ -66,16 +71,17 @@ func TestPermissionMutationReadValidatesPrincipalBeforeResource(t *testing.T) {
 		}
 	}
 }
-func TestPermissionMutationReadRejectsInvalidOrMissingPrincipal(t *testing.T) {
-	for _, missing := range []bool{true, false} {
-		f := &permissionClient{missing: missing}
-		in := tableau.PermissionMutationRequest{PermissionRequest: tableau.PermissionRequest{ResourceKind: "workbook", ResourceLUID: "w1"}, Rule: tableau.PermissionRule{PrincipalType: "user", PrincipalLUID: "u1", Capability: "Read", Mode: "Allow"}}
-		if !missing {
-			in.Rule.Capability = "MadeUp"
-		}
+func TestPermissionMutationReadRejectsMissingPrincipal(t *testing.T) {
+	for _, principal := range []string{"user", "group"} {
+		f := &permissionClient{missing: true}
+		in := tableau.PermissionMutationRequest{PermissionRequest: tableau.PermissionRequest{ResourceKind: "workbook", ResourceLUID: "w1"}, Rule: tableau.PermissionRule{PrincipalType: principal, PrincipalLUID: "missing", Capability: "Read", Mode: "Allow"}}
 		_, err := resource.NewAdapter(f).GetPermissionRule(context.Background(), in)
 		if err == nil || f.permissionCalls != 0 || f.writes != 0 {
 			t.Fatalf("err=%v fake=%+v", err, f)
+		}
+		resolution, ok := errors.AsType[*resource.PrincipalResolutionError](err)
+		if !ok || resolution.PrerequisiteKind() != principal || resolution.PrerequisiteResource() != "missing" || resolution.PrerequisiteSummary() == "" || resolution.Unwrap() == nil {
+			t.Fatalf("lost principal prerequisite: %v", err)
 		}
 	}
 }

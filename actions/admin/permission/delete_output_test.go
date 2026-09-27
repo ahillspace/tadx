@@ -13,7 +13,7 @@ import (
 
 func TestDeleteOutputFixtures(t *testing.T) {
 	f := &deleteFake{source: "direct", mode: "Allow", status: "deleted"}
-	out, err := action.NewDelete(f, f).Execute(context.Background(), deleteInput(), false)
+	out, err := action.Delete(context.Background(), f, f, deleteInput(), false)
 	if err != nil {
 		t.Fatal(err)
 	}

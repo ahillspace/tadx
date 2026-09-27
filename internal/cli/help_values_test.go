@@ -6,11 +6,10 @@ import (
 	"strings"
 	"testing"
 
-	groupcreate "github.com/ahillspace/tadx/actions/admin/group/create"
-	groupupdate "github.com/ahillspace/tadx/actions/admin/group/update"
-	categorycreate "github.com/ahillspace/tadx/actions/admin/labelcategory/create"
+	groupops "github.com/ahillspace/tadx/actions/admin/group"
+	labelcategoryops "github.com/ahillspace/tadx/actions/admin/labelcategory"
 	permission "github.com/ahillspace/tadx/actions/admin/permission"
-	usercreate "github.com/ahillspace/tadx/actions/admin/user/create"
+	userops "github.com/ahillspace/tadx/actions/admin/user"
 	cacherefresh "github.com/ahillspace/tadx/actions/cache/refresh"
 	catalogaudit "github.com/ahillspace/tadx/actions/catalog/audit"
 	catalogsearch "github.com/ahillspace/tadx/actions/catalog/search"
@@ -43,31 +42,31 @@ func TestRequiredHelpFactsMatchActionValidation(t *testing.T) {
 		validate func(string) error
 	}{
 		{"admin group create", []string{"name"}, func(omit string) error {
-			in := groupcreate.Input{Environment: "dev", Name: "analysts"}
+			in := groupops.CreateInput{Environment: "dev", Name: "analysts"}
 			if omit == "name" {
 				in.Name = ""
 			}
-			return groupcreate.ValidateInput(in)
+			return groupops.ValidateCreateInput(in)
 		}},
 		{"admin user create", []string{"name", "site-role"}, func(omit string) error {
-			in := usercreate.Input{Environment: "dev", Name: "analyst", SiteRole: "Viewer", AuthSetting: "ServerDefault"}
+			in := userops.CreateInput{Environment: "dev", Name: "analyst", SiteRole: "Viewer", AuthSetting: "ServerDefault"}
 			if omit == "name" {
 				in.Name = ""
 			}
 			if omit == "site-role" {
 				in.SiteRole = ""
 			}
-			return usercreate.ValidateInput(in)
+			return userops.ValidateCreateInput(in)
 		}},
 		{"admin label-category create", []string{"name", "description"}, func(omit string) error {
-			in := categorycreate.Input{Name: "certified", Description: "Reviewed data"}
+			in := labelcategoryops.CreateInput{Name: "certified", Description: "Reviewed data"}
 			if omit == "name" {
 				in.Name = ""
 			}
 			if omit == "description" {
 				in.Description = ""
 			}
-			return categorycreate.ValidateInput(in)
+			return labelcategoryops.ValidateCreateInput(in)
 		}},
 		{"catalog audit", []string{"type", "id"}, func(omit string) error {
 			in := catalogaudit.Input{Type: "datasource", ID: "datasource-id"}
@@ -116,10 +115,10 @@ func TestHelpUpdateOmissionAndChangeRequirementsMatchValidation(t *testing.T) {
 	root := helpValuesTree()
 	applyHelpValues(root)
 	command, _, _ := root.Find([]string{"admin", "group", "update"})
-	if err := groupupdate.ValidateInput(groupupdate.Input{Environment: "dev", GroupLUID: "group-id"}); err == nil {
+	if err := groupops.ValidateUpdateInput(&groupops.UpdateInput{Environment: "dev", GroupLUID: "group-id"}); err == nil {
 		t.Fatal("empty update unexpectedly accepted")
 	}
-	if err := groupupdate.ValidateInput(groupupdate.Input{Environment: "dev", GroupLUID: "group-id", MembershipSet: true}); err != nil {
+	if err := groupops.ValidateUpdateInput(&groupops.UpdateInput{Environment: "dev", GroupLUID: "group-id", MembershipSet: true}); err != nil {
 		t.Fatalf("explicit empty desired membership rejected: %v", err)
 	}
 	flag := command.Flags().Lookup("external-user-enabled")
@@ -219,7 +218,7 @@ func TestHelpChoicesMatchLocalValidators(t *testing.T) {
 			return catalogaudit.ValidateInput(catalogaudit.Input{Type: "table", ID: "scope-id", Checks: []string{v}})
 		}},
 		{"admin user create", "auth-setting", 4, func(v string) error {
-			return usercreate.ValidateInput(usercreate.Input{Environment: "dev", Name: "analyst", SiteRole: "Viewer", AuthSetting: v})
+			return userops.ValidateCreateInput(userops.CreateInput{Environment: "dev", Name: "analyst", SiteRole: "Viewer", AuthSetting: v})
 		}},
 		{"pulse metric fork", "period", 16, func(v string) error {
 			in := pulsemetric.ForkInput{MetricLUID: "metric-id", Timeframe: v}

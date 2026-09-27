@@ -13,7 +13,7 @@ import (
 
 func TestCreateOutputFixtures(t *testing.T) {
 	f := &createFake{source: "direct", mode: "", status: "created"}
-	out, err := action.NewCreate(f, f).Execute(context.Background(), createInput(), false)
+	out, err := action.Create(context.Background(), f, f, createInput(), false)
 	if err != nil {
 		t.Fatal(err)
 	}

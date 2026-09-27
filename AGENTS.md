@@ -13,6 +13,7 @@ Keep repository-wide agent instructions here and task-specific development instr
 
 Content workbook, datasource, and flow operations use one cohesive action package per resource as they migrate under the [resource refactoring playbook](docs/resource-refactoring-playbook.md).
 Admin group membership and permission mutations share packages for their matching records and validation, while keeping explicit operation entry points.
+Admin user, group, label category, and label value lifecycle operations each use a cohesive action package with explicit projections and mutation sequences.
 Pulse definitions and metrics each use a resource package; environment profiles share one profile package.
 Catalog database, table, and column updates share matching metadata rules in `actions/catalog/update`, with separate mutation sequences.
 Their list and inspect operations share `actions/catalog/read`; search and audit retain separate traversal contracts.

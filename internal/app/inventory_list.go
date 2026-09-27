@@ -10,8 +10,8 @@ import (
 	"strings"
 	"time"
 
-	grouplist "github.com/ahillspace/tadx/actions/admin/group/list"
-	userlist "github.com/ahillspace/tadx/actions/admin/user/list"
+	groupops "github.com/ahillspace/tadx/actions/admin/group"
+	userops "github.com/ahillspace/tadx/actions/admin/user"
 	datasourceops "github.com/ahillspace/tadx/actions/datasource"
 	flowops "github.com/ahillspace/tadx/actions/flow"
 	projectlist "github.com/ahillspace/tadx/actions/project/list"
@@ -160,14 +160,14 @@ func (r inventoryMemoryReader) ListProjects(_ context.Context, input projectlist
 	return projectlist.Page{Number: input.PageNumber, Size: input.PageSize, Total: len(r.entries), Projects: items, RequestID: r.requestID, SuppressContinuation: !r.allowContinuation}, err
 }
 
-func (r inventoryMemoryReader) ListUsers(_ context.Context, input userlist.PageRequest) (userlist.Page, error) {
-	items, err := decodeInventoryPage[userlist.User](r.page(input.PageNumber, input.PageSize))
-	return userlist.Page{Number: input.PageNumber, Size: input.PageSize, Total: len(r.entries), Users: items, RequestID: r.requestID, SuppressContinuation: !r.allowContinuation}, err
+func (r inventoryMemoryReader) ListUsers(_ context.Context, input userops.ListPageRequest) (userops.ListPage, error) {
+	items, err := decodeInventoryPage[userops.Record](r.page(input.PageNumber, input.PageSize))
+	return userops.ListPage{Number: input.PageNumber, Size: input.PageSize, Total: len(r.entries), Users: items, RequestID: r.requestID, SuppressContinuation: !r.allowContinuation}, err
 }
 
-func (r inventoryMemoryReader) ListGroups(_ context.Context, input grouplist.PageRequest) (grouplist.Page, error) {
-	items, err := decodeInventoryPage[grouplist.Group](r.page(input.PageNumber, input.PageSize))
-	return grouplist.Page{Number: input.PageNumber, Size: input.PageSize, Total: len(r.entries), Groups: items, RequestID: r.requestID, SuppressContinuation: !r.allowContinuation}, err
+func (r inventoryMemoryReader) ListGroups(_ context.Context, input groupops.ListPageRequest) (groupops.ListPage, error) {
+	items, err := decodeInventoryPage[groupops.Record](r.page(input.PageNumber, input.PageSize))
+	return groupops.ListPage{Number: input.PageNumber, Size: input.PageSize, Total: len(r.entries), Groups: items, RequestID: r.requestID, SuppressContinuation: !r.allowContinuation}, err
 }
 
 func inventoryResourceEntries(snapshot tableaucache.InventorySnapshot, environment, site string, observedAt time.Time) ([]corecache.ResourceEntry, int, error) {

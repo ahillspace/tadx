@@ -2,11 +2,11 @@ package inspect
 
 import (
 	"context"
-	"errors"
-	"github.com/ahillspace/tadx/internal/commandhint"
-	"github.com/ahillspace/tadx/internal/errs"
 	"sort"
 	"strings"
+
+	"github.com/ahillspace/tadx/internal/commandhint"
+	"github.com/ahillspace/tadx/internal/errs"
 )
 
 type Input struct{ Environment, Site, ResourceKind, ResourceLUID, DefaultFor, PrincipalType, PrincipalLUID, PrincipalUsername, Capability string }
@@ -67,17 +67,9 @@ func (o Output) FullOutput() any {
 type Reader interface {
 	GetPermissions(context.Context, Input) (PermissionSet, error)
 }
-type Action struct{ reader Reader }
 
-func New(r Reader) *Action { return &Action{reader: r} }
-func (a *Action) Execute(ctx context.Context, in Input) (Output, error) {
-	if a == nil || a.reader == nil {
-		return Output{}, errors.New("admin permission reader is not configured")
-	}
-	if err := ValidateInput(in); err != nil {
-		return Output{}, err
-	}
-	p, err := a.reader.GetPermissions(ctx, in)
+func Inspect(ctx context.Context, reader Reader, in Input) (Output, error) {
+	p, err := reader.GetPermissions(ctx, in)
 	if err != nil {
 		return Output{}, err
 	}

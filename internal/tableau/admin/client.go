@@ -272,22 +272,14 @@ func (c *Client) GetPermissions(ctx context.Context, input PermissionRequest) (P
 	if err := exactStatus("admin.permission.get", response, http.StatusOK); err != nil {
 		return PermissionSet{}, err
 	}
-	rules, err := decodePermissionRules("admin.permission.get", response, input, true)
+	rules, parent, err := decodePermissionRules("admin.permission.get", response, input, true)
 	if err != nil {
 		return PermissionSet{}, err
 	}
-	var envelope permissionEnvelope
-	if err := xml.Unmarshal(response.Body, &envelope); err != nil {
-		return PermissionSet{}, protocol("admin.permission.get", response, err)
-	}
-	parent := envelope.Parent
-	if envelope.Permissions.Parent.ID != "" {
-		parent = envelope.Permissions.Parent
-	}
-	if parent.ID != "" {
+	if parent != "" {
 		source = "inherited"
 	}
-	return PermissionSet{ResourceKind: input.ResourceKind, ResourceLUID: input.ResourceLUID, Source: source, ParentProjectLUID: parent.ID, Rules: rules, RequestID: response.TableauRequestID}, nil
+	return PermissionSet{ResourceKind: input.ResourceKind, ResourceLUID: input.ResourceLUID, Source: source, ParentProjectLUID: parent, Rules: rules, RequestID: response.TableauRequestID}, nil
 }
 
 func (c *Client) write(ctx context.Context, method, operation string, parts []string, value any) (tableau.Response, error) {
@@ -602,15 +594,4 @@ type granteeXML struct {
 	Capabilities struct {
 		Items []capabilityXML `xml:"capability"`
 	} `xml:"capabilities"`
-}
-type permissionParentXML struct {
-	Type string `xml:"type,attr"`
-	ID   string `xml:"id,attr"`
-}
-type permissionEnvelope struct {
-	Parent      permissionParentXML `xml:"parent"`
-	Permissions struct {
-		Parent   permissionParentXML `xml:"parent"`
-		Grantees []granteeXML        `xml:"granteeCapabilities"`
-	} `xml:"permissions"`
 }

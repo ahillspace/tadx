@@ -3,12 +3,12 @@ package admin
 import (
 	"context"
 	"fmt"
-	"github.com/ahillspace/tadx/internal/cli/clierr"
-	"github.com/ahillspace/tadx/internal/contentbatch"
-	"github.com/ahillspace/tadx/internal/errs"
 	"strings"
 
 	permission "github.com/ahillspace/tadx/actions/admin/permission"
+	"github.com/ahillspace/tadx/internal/cli/clierr"
+	"github.com/ahillspace/tadx/internal/contentbatch"
+	"github.com/ahillspace/tadx/internal/errs"
 	"github.com/spf13/cobra"
 )
 
@@ -23,7 +23,7 @@ func newPermissionCreate(deps Dependencies) *cobra.Command {
 	var in permission.Input
 	var capabilities []string
 	var preview bool
-	cmd := mutation("create", "Create one explicit capability and mode for an exact principal.", "admin.permission.create", deps.MutationsEnabled, func(cmd *cobra.Command, args []string) error {
+	cmd := mutation("create", "Create one explicit capability and mode for an exact principal.", "admin.permission.create", func(cmd *cobra.Command, args []string) error {
 		if err := noArgs("admin.permission.create")(cmd, args); err != nil {
 			return err
 		}
@@ -61,7 +61,7 @@ func newPermissionDelete(deps Dependencies) *cobra.Command {
 	var in permission.Input
 	var capabilities []string
 	var preview bool
-	cmd := mutation("delete", "Delete one explicit capability and mode for an exact principal.", "admin.permission.delete", deps.MutationsEnabled, func(cmd *cobra.Command, args []string) error {
+	cmd := mutation("delete", "Delete one explicit capability and mode for an exact principal.", "admin.permission.delete", func(cmd *cobra.Command, args []string) error {
 		if err := noArgs("admin.permission.delete")(cmd, args); err != nil {
 			return err
 		}

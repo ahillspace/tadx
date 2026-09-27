@@ -8,7 +8,7 @@ import (
 )
 
 func TestCacheFlagIsLimitedToEligibleAdminReads(t *testing.T) {
-	root := cli.New(deps(&fake{}, true))
+	root := cli.New(deps(&fake{}))
 	for _, path := range [][]string{{"user", "list"}, {"user", "inspect"}, {"group", "list"}, {"group", "inspect"}} {
 		if commandAt(root, path...).Flags().Lookup("cache") == nil {
 			t.Errorf("%v is missing --cache", path)

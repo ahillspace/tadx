@@ -79,6 +79,12 @@ func (f *fakeClient) RemoveGroupUser(context.Context, string, string) (tableau.M
 func (f *fakeClient) GetPermissions(context.Context, tableau.PermissionRequest) (tableau.PermissionSet, error) {
 	return tableau.PermissionSet{}, nil
 }
+func (f *fakeClient) CreatePermission(context.Context, tableau.PermissionMutationRequest) (tableau.MutationResult, error) {
+	return tableau.MutationResult{}, nil
+}
+func (f *fakeClient) DeletePermission(context.Context, tableau.PermissionMutationRequest) (tableau.MutationResult, error) {
+	return tableau.MutationResult{}, nil
+}
 
 func TestAdapterResolvesExactUsersAndRejectsAmbiguity(t *testing.T) {
 	client := &fakeClient{users: []tableau.User{{LUID: "u1", Name: "alex", Email: "shared@example.com"}, {LUID: "u2", Name: "jules", Email: "shared@example.com"}}}
@@ -112,9 +118,13 @@ func TestAdapterUsernameFilterCoversAllMatchingPagesAndFallsBackForUnsafeValues(
 	if err != nil || user.LUID != "u-sensitive" || client.userPages != 1 || fmt.Sprint(client.userFilters) != "[]" {
 		t.Fatalf("filter-sensitive resolution = %#v, error=%v, pages=%d, filters=%v", user, err, client.userPages, client.userFilters)
 	}
-	collisions, err := adapter.FindUsers(t.Context(), "user,&")
-	if err != nil || len(collisions) != 2 || client.userFilters[len(client.userFilters)-1] != "" {
-		t.Fatalf("name/email collision check = %#v, error=%v, filters=%v", collisions, err, client.userFilters)
+	exists, err := adapter.UserExists(t.Context(), "user,&")
+	if err != nil || !exists || client.userFilters[len(client.userFilters)-1] != "" {
+		t.Fatalf("name/email collision check = %t, error=%v, filters=%v", exists, err, client.userFilters)
+	}
+	client.users = client.users[1:]
+	if exists, err := adapter.UserExists(t.Context(), "user,&"); err != nil || !exists {
+		t.Fatalf("email-only collision = %t, error=%v", exists, err)
 	}
 }
 
@@ -127,6 +137,36 @@ func TestAdapterResolvesGroupsAndAllDirectMembers(t *testing.T) {
 	}
 	if client.groupPages != 1 || client.memberPages != 1 {
 		t.Fatalf("pages = group %d, member %d", client.groupPages, client.memberPages)
+	}
+}
+
+func TestAdapterKeepsCrossPageConflictsBeforeCollisionDecisions(t *testing.T) {
+	users := make([]tableau.User, 1001)
+	groups := make([]tableau.Group, 1001)
+	for i := range users {
+		users[i] = tableau.User{LUID: fmt.Sprintf("u-%04d", i), Name: "target"}
+		groups[i] = tableau.Group{LUID: fmt.Sprintf("g-%04d", i), Name: "target"}
+	}
+	users[1000] = tableau.User{LUID: users[0].LUID, Name: "changed"}
+	groups[1000] = tableau.Group{LUID: groups[0].LUID, Name: "changed"}
+	for _, kind := range []string{"user", "group", "member"} {
+		t.Run(kind, func(t *testing.T) {
+			client := &fakeClient{users: users, groups: groups, members: users}
+			adapter := resource.NewAdapter(client)
+			var err error
+			switch kind {
+			case "user":
+				_, err = adapter.UserExists(t.Context(), "target")
+			case "group":
+				_, err = adapter.GroupExists(t.Context(), "target")
+			case "member":
+				client.groups = groups[:1]
+				_, err = adapter.ResolveGroup(t.Context(), resource.GroupSelector{LUID: groups[0].LUID}, true)
+			}
+			if err == nil || !strings.Contains(err.Error(), "conflicting records") {
+				t.Fatalf("conflicting later page was lost: %v", err)
+			}
+		})
 	}
 }
 

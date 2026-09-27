@@ -15,7 +15,7 @@ import (
 	"sync/atomic"
 	"testing"
 
-	userlist "github.com/ahillspace/tadx/actions/admin/user/list"
+	userops "github.com/ahillspace/tadx/actions/admin/user"
 	"github.com/ahillspace/tadx/internal/capability"
 	"github.com/ahillspace/tadx/internal/managedpolicy"
 )
@@ -188,7 +188,7 @@ func TestManagedCacheNonAdminScopeRemainsUsable(t *testing.T) {
 func TestManagedCachedAdminReadersCheckBeforeStoreAccess(t *testing.T) {
 	denied := errors.New("denied before cache access")
 	reader := &cacheUserListReader{checkCapability: func(string) error { return denied }}
-	_, err := reader.ListUsers(t.Context(), userlist.PageRequest{PageNumber: 1, PageSize: 100})
+	_, err := reader.ListUsers(t.Context(), userops.ListPageRequest{PageNumber: 1, PageSize: 100})
 	if !errors.Is(err, denied) {
 		t.Fatalf("error=%v", err)
 	}

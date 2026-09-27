@@ -15,7 +15,6 @@ import (
 	searchaction "github.com/ahillspace/tadx/actions/search"
 	sessionoverview "github.com/ahillspace/tadx/actions/session/overview"
 	workbookops "github.com/ahillspace/tadx/actions/workbook"
-
 	"github.com/ahillspace/tadx/internal/batchspec"
 	admincli "github.com/ahillspace/tadx/internal/cli/admin"
 	agentcli "github.com/ahillspace/tadx/internal/cli/agent"
@@ -302,7 +301,6 @@ Other connected tools remain independent; TADX does not configure, select, proxy
 	if deps.Admin != nil {
 		admin := *deps.Admin
 		admin.Renderer = deps.Renderer
-		admin.MutationsEnabled = deps.MutationsEnabled
 		node := admincli.New(admin)
 		if deps.AdminLabels != nil {
 			labels := *deps.AdminLabels

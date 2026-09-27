@@ -23,7 +23,7 @@ func TestDeleteProjectDefaultPreviewRetainsContentKind(t *testing.T) {
 	in := deleteInput()
 	in.ResourceKind, in.ResourceLUID, in.DefaultFor = "project", "p1", "flows"
 	f := &deleteFake{source: "default", mode: "Allow"}
-	out, err := action.NewDelete(f, f).Execute(context.Background(), in, true)
+	out, err := action.Delete(context.Background(), f, f, in, true)
 	if err != nil || out.Plan.Target.DefaultFor != "flows" || !strings.Contains(out.Help[0], "--default-for flows") || f.writes != 0 {
 		t.Fatalf("out=%+v err=%v writes=%d", out, err, f.writes)
 	}
@@ -53,7 +53,7 @@ func deleteInput() action.Input {
 func TestDeletePreviewAndExecution(t *testing.T) {
 	for _, preview := range []bool{true, false} {
 		f := &deleteFake{source: "direct", mode: "Allow", status: "deleted"}
-		out, err := action.NewDelete(f, f).Execute(context.Background(), deleteInput(), preview)
+		out, err := action.Delete(context.Background(), f, f, deleteInput(), preview)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -70,7 +70,7 @@ func TestDeletePreviewAndExecution(t *testing.T) {
 }
 func TestDeleteRejectsChangedAndInheritedState(t *testing.T) {
 	for _, f := range []*deleteFake{{source: "direct", mode: "Allow", changed: true}, {source: "inherited", mode: "Allow"}, {source: "unknown", mode: "Allow"}} {
-		_, err := action.NewDelete(f, f).Execute(context.Background(), deleteInput(), false)
+		_, err := action.Delete(context.Background(), f, f, deleteInput(), false)
 		var structured *errs.Error
 		if !errors.As(err, &structured) || f.writes != 0 {
 			t.Fatalf("err=%v deleteFake=%+v", err, f)
@@ -97,7 +97,7 @@ func TestDeleteRequiresExplicitSelectors(t *testing.T) {
 			in.Mode = "allow"
 		}
 		f := &deleteFake{source: "direct"}
-		_, err := action.NewDelete(f, f).Execute(context.Background(), in, true)
+		err := action.ValidateDeleteInput(in)
 		var structured *errs.Error
 		if !errors.As(err, &structured) || structured.Kind != errs.KindUsage || f.reads != 0 {
 			t.Fatalf("%s err=%v deleteFake=%+v", field, err, f)
@@ -106,7 +106,7 @@ func TestDeleteRequiresExplicitSelectors(t *testing.T) {
 }
 func TestDeleteUnknownOutcomeRetainsRequestID(t *testing.T) {
 	f := &deleteFake{source: "direct", mode: "Allow", status: "unknown", writeErr: errors.New("response incomplete")}
-	_, err := action.NewDelete(f, f).Execute(context.Background(), deleteInput(), false)
+	_, err := action.Delete(context.Background(), f, f, deleteInput(), false)
 	var structured *errs.Error
 	if !errors.As(err, &structured) || structured.ID != "admin.permission.delete.outcome_unknown" || structured.TableauRequestID != "request-1" || *structured.Retryable {
 		t.Fatalf("err=%+v", err)
@@ -116,7 +116,7 @@ func TestDeleteUnknownOutcomeRetainsRequestID(t *testing.T) {
 func TestDeleteAcknowledgedDeleteReportsVerificationFailureWithObservedRule(t *testing.T) {
 	mode := "Allow"
 	f := &deleteFake{source: "direct", mode: "Allow", status: "deleted", postMode: &mode}
-	out, err := action.NewDelete(f, f).Execute(context.Background(), deleteInput(), false)
+	out, err := action.Delete(context.Background(), f, f, deleteInput(), false)
 	var structured *errs.Error
 	if !errors.As(err, &structured) || structured.Phase != errs.PhaseVerification || structured.Outcome != errs.OutcomeConfirmed || structured.TableauRequestID != "request-1" || out.Result == nil || out.Result.Rule == nil || out.Result.Rule.Mode != mode {
 		t.Fatalf("out=%+v err=%v", out, err)

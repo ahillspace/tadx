@@ -2,7 +2,6 @@ package member
 
 import (
 	"context"
-	"errors"
 	"slices"
 	"strings"
 )
@@ -33,7 +32,6 @@ type Plan struct {
 	UserLUID    string `json:"user_luid"`
 	Username    string `json:"username,omitempty"`
 	NoOp        bool   `json:"no_op"`
-	planned     bool
 }
 type Result struct {
 	Status           string `json:"status"`
@@ -54,26 +52,9 @@ func (o Output) FullOutput() any    { return o }
 
 type Resolver interface {
 	ResolveGroup(context.Context, string) (Group, error)
-}
-
-// UsernameResolver resolves only an exact site username to an authoritative user.
-type UsernameResolver interface {
 	ResolveUsername(context.Context, string) (Member, error)
 }
 
-func validateGroup(group Group, expected string) error {
-	if group.LUID != expected || strings.TrimSpace(group.Name) == "" {
-		return errors.New("group resolution returned an inconsistent authoritative identity")
-	}
-	seen := map[string]bool{}
-	for _, m := range group.Members {
-		if strings.TrimSpace(m.LUID) == "" || seen[m.LUID] {
-			return errors.New("group membership returned an incomplete or duplicate identity")
-		}
-		seen[m.LUID] = true
-	}
-	return nil
-}
 func contains(items []Member, luid string) bool {
 	return slices.ContainsFunc(items, func(item Member) bool { return item.LUID == luid })
 }

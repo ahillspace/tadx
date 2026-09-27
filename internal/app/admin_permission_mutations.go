@@ -12,9 +12,6 @@ import (
 )
 
 func (c *remoteAdminCommands) CreateAdminPermission(ctx context.Context, in permission.Input, preview bool) (permission.Output, error) {
-	if err := permission.ValidateCreateInput(in); err != nil {
-		return permission.Output{}, err
-	}
 	connection, err := c.connect(ctx, in.Environment, true)
 	if err != nil {
 		return permission.Output{}, remoteSetupError("admin.permission.create", in.Environment, in.Site, connection.environment, err)
@@ -28,7 +25,7 @@ func (c *remoteAdminCommands) CreateAdminPermission(ctx context.Context, in perm
 		in.PrincipalLUID, in.PrincipalUsername = user.LUID, ""
 	}
 	adapter := adminPermissionMutationAdapter{connection.adapter}
-	out, err := permission.NewCreate(adapter, adapter).Execute(ctx, in, preview)
+	out, err := permission.Create(ctx, adapter, adapter, in, preview)
 	return out, permissionMutationError("admin.permission.create", in.Environment, in.Site, err)
 }
 
@@ -39,8 +36,8 @@ func (a adminPermissionMutationAdapter) GetPermission(ctx context.Context, in pe
 	if err != nil {
 		return permission.Snapshot{}, err
 	}
-	mode, err := permissionRuleMode(set, in.PrincipalType, in.PrincipalLUID, in.Capability)
-	return permission.Snapshot{ResourceKind: set.ResourceKind, ResourceLUID: set.ResourceLUID, Source: set.Source, ParentProjectLUID: set.ParentProjectLUID, Mode: mode}, err
+	mode := permissionRuleMode(set, in.PrincipalType, in.PrincipalLUID, in.Capability)
+	return permission.Snapshot{ResourceKind: set.ResourceKind, ResourceLUID: set.ResourceLUID, Source: set.Source, ParentProjectLUID: set.ParentProjectLUID, Mode: mode}, nil
 }
 func (a adminPermissionMutationAdapter) CreatePermission(ctx context.Context, in permission.Input) (permission.Result, error) {
 	result, err := a.adapter.CreatePermission(ctx, permissionMutationRequest(in))
@@ -51,9 +48,6 @@ func permissionMutationRequest(in permission.Input) tableauadmin.PermissionMutat
 }
 
 func (c *remoteAdminCommands) DeleteAdminPermission(ctx context.Context, in permission.Input, preview bool) (permission.Output, error) {
-	if err := permission.ValidateDeleteInput(in); err != nil {
-		return permission.Output{}, err
-	}
 	connection, err := c.connect(ctx, in.Environment, true)
 	if err != nil {
 		return permission.Output{}, remoteSetupError("admin.permission.delete", in.Environment, in.Site, connection.environment, err)
@@ -67,7 +61,7 @@ func (c *remoteAdminCommands) DeleteAdminPermission(ctx context.Context, in perm
 		in.PrincipalLUID, in.PrincipalUsername = user.LUID, ""
 	}
 	adapter := adminPermissionMutationAdapter{connection.adapter}
-	out, err := permission.NewDelete(adapter, adapter).Execute(ctx, in, preview)
+	out, err := permission.Delete(ctx, adapter, adapter, in, preview)
 	return out, permissionMutationError("admin.permission.delete", in.Environment, in.Site, err)
 }
 
@@ -75,12 +69,12 @@ func permissionMutationError(operation, environment, site string, err error) err
 	if err == nil {
 		return nil
 	}
-	var resolution *resourceadmin.PrincipalResolutionError
-	if !errors.As(err, &resolution) {
+	resolution, ok := errors.AsType[*resourceadmin.PrincipalResolutionError](err)
+	if !ok {
 		return adminActionError(operation, environment, site, err)
 	}
 	retryable, _ := errs.CompleteRetryAdvice(err, "Review the exact principal before retrying.")
-	hint := principalInspectHint(environment, resolution.PrincipalType, resolution.PrincipalLUID)
+	hint := commandhint.Environment(environment, "admin", resolution.PrincipalType, "inspect", "--id", resolution.PrincipalLUID)
 	return &errs.Error{
 		ID:               operation + ".principal.resolve",
 		Kind:             errs.KindOperation,
@@ -99,25 +93,15 @@ func permissionMutationError(operation, environment, site string, err error) err
 	}
 }
 
-func principalInspectHint(environment, principalType, principalLUID string) string {
-	return commandhint.Environment(environment, "admin", principalType, "inspect", "--id", principalLUID)
-}
-
 func (a adminPermissionMutationAdapter) DeletePermission(ctx context.Context, in permission.Input) (permission.Result, error) {
 	result, err := a.adapter.DeletePermission(ctx, permissionMutationRequest(in))
 	return permission.Result{Status: result.Status, ResourceLUID: result.ResourceLUID, TableauRequestID: result.RequestID}, err
 }
-func permissionRuleMode(set tableauadmin.PermissionSet, principalType, principalLUID, capability string) (string, error) {
-	mode := ""
-	found := false
+func permissionRuleMode(set tableauadmin.PermissionSet, principalType, principalLUID, capability string) string {
 	for _, rule := range set.Rules {
 		if rule.PrincipalType == principalType && rule.PrincipalLUID == principalLUID && rule.Capability == capability {
-			if found || rule.Mode == "" {
-				return "", errors.New("permission response contains an inconsistent capability identity")
-			}
-			found = true
-			mode = rule.Mode
+			return rule.Mode
 		}
 	}
-	return mode, nil
+	return ""
 }

@@ -2,9 +2,10 @@ package permission
 
 import (
 	"context"
+	"strings"
+
 	"github.com/ahillspace/tadx/internal/commandhint"
 	"github.com/ahillspace/tadx/internal/errs"
-	"strings"
 )
 
 type Input struct{ Environment, Site, ResourceKind, ResourceLUID, DefaultFor, PrincipalType, PrincipalLUID, PrincipalUsername, Capability, Mode string }
@@ -98,14 +99,8 @@ func validateSnapshot(operation string, in Input, s Snapshot) error {
 	if in.DefaultFor != "" {
 		expectedSource = "default"
 	}
-	if s.ResourceKind != in.ResourceKind || s.ResourceLUID != in.ResourceLUID {
-		return failure(operation, in, "identity_mismatch", errs.KindOperation, "Permission read returned a different resource identity.", "Inspect the exact resource before retrying.")
-	}
 	if s.Source != expectedSource || s.ParentProjectLUID != "" {
 		return failure(operation, in, "inherited_or_unknown", errs.KindOperation, "The permission rule is inherited or its source is unknown.", "Inspect the controlling project and target its explicit default permissions.")
-	}
-	if s.Mode != "" && s.Mode != "Allow" && s.Mode != "Deny" {
-		return failure(operation, in, "invalid_rule", errs.KindOperation, "Permission read returned an invalid rule mode.", "Inspect the upstream permission response before retrying.")
 	}
 	return nil
 }

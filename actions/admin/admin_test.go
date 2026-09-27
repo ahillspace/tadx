@@ -4,23 +4,36 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"testing"
-
-	groupcreate "github.com/ahillspace/tadx/actions/admin/group/create"
-	groupdelete "github.com/ahillspace/tadx/actions/admin/group/delete"
-	groupupdate "github.com/ahillspace/tadx/actions/admin/group/update"
+	groupops "github.com/ahillspace/tadx/actions/admin/group"
 	permissionget "github.com/ahillspace/tadx/actions/admin/permission/inspect"
-	usercreate "github.com/ahillspace/tadx/actions/admin/user/create"
-	userdelete "github.com/ahillspace/tadx/actions/admin/user/delete"
-	userlist "github.com/ahillspace/tadx/actions/admin/user/list"
-	userupdate "github.com/ahillspace/tadx/actions/admin/user/update"
+	userops "github.com/ahillspace/tadx/actions/admin/user"
 	"github.com/ahillspace/tadx/internal/errs"
+	"testing"
 )
 
 type userListReader struct{}
 
-func (userListReader) ListUsers(_ context.Context, in userlist.PageRequest) (userlist.Page, error) {
-	return userlist.Page{Number: in.PageNumber, Size: in.PageSize, Total: 26, Users: []userlist.User{{LUID: "u1", Name: "alex", SiteRole: "Viewer"}}}, nil
+func runUserList(ctx context.Context, reader userops.ListReader, input userops.ListInput) (userops.ListOutput, error) {
+	if err := userops.ValidateListInput(&input); err != nil {
+		return userops.ListOutput{}, err
+	}
+	if input.Cursor != "" {
+		if err := userops.ValidateListContinuation(&input); err != nil {
+			return userops.ListOutput{}, err
+		}
+	}
+	return userops.List(ctx, reader, input)
+}
+
+func runGroupUpdate(ctx context.Context, resolver groupops.Resolver, writer groupops.UpdateWriter, members groupops.MembershipWriter, input groupops.UpdateInput, preview bool) (groupops.UpdateOutput, error) {
+	if err := groupops.ValidateUpdateInput(&input); err != nil {
+		return groupops.UpdateOutput{}, err
+	}
+	return groupops.Update(ctx, resolver, writer, members, input, preview)
+}
+
+func (userListReader) ListUsers(_ context.Context, in userops.ListPageRequest) (userops.ListPage, error) {
+	return userops.ListPage{Number: in.PageNumber, Size: in.PageSize, Total: 26, Users: []userops.Record{{LUID: "u1", Name: "alex", SiteRole: "Viewer"}}}, nil
 }
 
 func TestMutationCompactProjectionsOmitRequestIDs(t *testing.T) {
@@ -28,10 +41,10 @@ func TestMutationCompactProjectionsOmitRequestIDs(t *testing.T) {
 		CompactOutput() any
 		FullOutput() any
 	}{
-		groupcreate.Output{Plan: groupcreate.Plan{Mode: "execute", Operation: "admin.group.create", Environment: "prod", Site: "site", Name: "Authors"}, Result: &groupcreate.Result{Status: "created", GroupLUID: "g1", TableauRequestID: "secret-request"}},
-		groupdelete.Output{Plan: groupdelete.Plan{Mode: "execute", Operation: "admin.group.delete", Environment: "prod", Site: "site", Target: groupdelete.Group{LUID: "g1"}, PermissionImpact: "unknown"}, Result: &groupdelete.Result{Status: "deleted", GroupLUID: "g1", TableauRequestID: "secret-request"}},
-		userdelete.Output{Plan: userdelete.Plan{Mode: "execute", Operation: "admin.user.delete", Environment: "prod", Site: "site", Target: userdelete.User{LUID: "u1"}}, Result: &userdelete.Result{Status: "deleted", UserLUID: "u1", TableauRequestID: "secret-request"}},
-		groupupdate.Output{Plan: groupupdate.Plan{Mode: "execute", Operation: "admin.group.update", Environment: "prod", Site: "site", Target: groupupdate.Group{LUID: "g1"}}, Result: &groupupdate.Result{Status: "updated", GroupLUID: "g1", TableauRequestIDs: []string{"secret-request"}}},
+		groupops.CreateOutput{Plan: groupops.CreatePlan{Mode: "execute", Operation: "admin.group.create", Environment: "prod", Site: "site", Name: "Authors"}, Result: &groupops.CreateResult{Status: "created", GroupLUID: "g1", TableauRequestID: "secret-request"}},
+		groupops.DeleteOutput{Plan: groupops.DeletePlan{Mode: "execute", Operation: "admin.group.delete", Environment: "prod", Site: "site", Target: groupops.DeleteGroup{LUID: "g1"}, PermissionImpact: "unknown"}, Result: &groupops.DeleteResult{Status: "deleted", GroupLUID: "g1", TableauRequestID: "secret-request"}},
+		userops.DeleteOutput{Plan: userops.DeletePlan{Mode: "execute", Operation: "admin.user.delete", Environment: "prod", Site: "site", Target: userops.DeleteUser{LUID: "u1"}}, Result: &userops.DeleteResult{Status: "deleted", UserLUID: "u1", TableauRequestID: "secret-request"}},
+		groupops.UpdateOutput{Plan: groupops.UpdatePlan{Mode: "execute", Operation: "admin.group.update", Environment: "prod", Site: "site", Target: groupops.UpdateGroup{LUID: "g1"}}, Result: &groupops.UpdateResult{Status: "updated", GroupLUID: "g1", TableauRequestIDs: []string{"secret-request"}}},
 	}
 	for i, value := range values {
 		compact, _ := json.Marshal(value.CompactOutput())
@@ -55,11 +68,11 @@ func contains(value, fragment string) bool {
 
 type partialGroupUpdateFake struct{ calls int }
 
-func (*partialGroupUpdateFake) ResolveGroup(context.Context, string, bool) (groupupdate.Group, error) {
-	return groupupdate.Group{LUID: "g1", Name: "Authors"}, nil
+func (*partialGroupUpdateFake) ResolveGroup(context.Context, groupops.Selector, bool) (groupops.Record, error) {
+	return groupops.Record{LUID: "g1", Name: "Authors"}, nil
 }
-func (*partialGroupUpdateFake) UpdateGroup(context.Context, string, groupupdate.Request) (groupupdate.Group, error) {
-	return groupupdate.Group{}, nil
+func (*partialGroupUpdateFake) UpdateGroup(context.Context, string, groupops.UpdateRequest) (groupops.Record, error) {
+	return groupops.Record{}, nil
 }
 func (f *partialGroupUpdateFake) AddGroupUser(_ context.Context, _, user string) (string, error) {
 	f.calls++
@@ -73,7 +86,7 @@ func (*partialGroupUpdateFake) RemoveGroupUser(context.Context, string, string) 
 }
 func TestGroupUpdateReportsExactPartialProgress(t *testing.T) {
 	fake := &partialGroupUpdateFake{}
-	_, err := groupupdate.New(fake, fake, fake).Execute(context.Background(), groupupdate.Input{Environment: "prod", Site: "site", GroupLUID: "g1", MembershipSet: true, DesiredMemberLUIDs: []string{"u1", "u2"}}, false)
+	_, err := runGroupUpdate(context.Background(), fake, fake, fake, groupops.UpdateInput{Environment: "prod", Site: "site", GroupLUID: "g1", MembershipSet: true, DesiredMemberLUIDs: []string{"u1", "u2"}}, false)
 	var structured *errs.Error
 	if !errors.As(err, &structured) {
 		t.Fatalf("error = %v", err)
@@ -83,47 +96,48 @@ func TestGroupUpdateReportsExactPartialProgress(t *testing.T) {
 	}
 }
 func TestUserListIsBoundedAndAdvertisesFull(t *testing.T) {
-	out, err := userlist.New(userListReader{}).Execute(context.Background(), userlist.Input{Limit: 25})
+	out, err := runUserList(context.Background(), userListReader{}, userops.ListInput{Limit: 25})
 	if err != nil || out.Page.Returned != 1 || out.Page.NextCursor == "" {
 		t.Fatalf("Execute() = %#v, %v", out, err)
 	}
-	if out.CompactOutput().(userlist.CompactResult).Details != "--full" {
+	if out.CompactOutput().(userops.ListCompactResult).Details != "--full" {
 		t.Fatal("compact output omitted --full disclosure")
 	}
 }
 
 type userCreateFake struct{ created int }
 
-func (f *userCreateFake) FindUsers(context.Context, string) ([]usercreate.User, error) {
-	return nil, nil
+func (f *userCreateFake) UserExists(context.Context, string) (bool, error) {
+	return false, nil
+
 }
-func (f *userCreateFake) CreateUser(_ context.Context, r usercreate.Request) (usercreate.User, error) {
+func (f *userCreateFake) CreateUser(_ context.Context, r userops.CreateRequest) (userops.Record, error) {
 	f.created++
-	return usercreate.User{LUID: "u1", Name: r.Name, SiteRole: r.SiteRole, RequestID: "request-1"}, nil
+	return userops.Record{LUID: "u1", Name: r.Name, SiteRole: r.SiteRole, RequestID: "request-1"}, nil
 }
 func TestUserCreateSupportsExplicitPreview(t *testing.T) {
 	fake := &userCreateFake{}
-	action := usercreate.New(fake, fake)
-	in := usercreate.Input{Environment: "prod", Site: "site", Name: "alex@example.com", SiteRole: "Viewer", AuthSetting: "SAML"}
-	out, err := action.Execute(context.Background(), in, true)
+
+	in := userops.CreateInput{Environment: "prod", Site: "site", Name: "alex@example.com", SiteRole: "Viewer", AuthSetting: "SAML"}
+	out, err := userops.Create(context.Background(), fake, fake, in, true)
 	if err != nil || out.Result != nil || fake.created != 0 {
 		t.Fatalf("preview = %#v, %v, calls %d", out, err, fake.created)
 	}
-	out, err = action.Execute(context.Background(), in, false)
+	out, err = userops.Create(context.Background(), fake, fake, in, false)
 	if err != nil || out.Result == nil || fake.created != 1 {
 		t.Fatalf("result = %#v, %v, calls %d", out, err, fake.created)
 	}
 }
 
 type groupUpdateFake struct {
-	group groupupdate.Group
+	group groupops.Record
 	calls []string
 }
 
-func (f *groupUpdateFake) ResolveGroup(context.Context, string, bool) (groupupdate.Group, error) {
+func (f *groupUpdateFake) ResolveGroup(context.Context, groupops.Selector, bool) (groupops.Record, error) {
 	return f.group, nil
 }
-func (f *groupUpdateFake) UpdateGroup(context.Context, string, groupupdate.Request) (groupupdate.Group, error) {
+func (f *groupUpdateFake) UpdateGroup(context.Context, string, groupops.UpdateRequest) (groupops.Record, error) {
 	f.calls = append(f.calls, "metadata")
 	return f.group, nil
 }
@@ -136,13 +150,13 @@ func (f *groupUpdateFake) RemoveGroupUser(_ context.Context, _, u string) (strin
 	return "remove-request", nil
 }
 func TestGroupUpdatePlansAndOrdersMembershipDiff(t *testing.T) {
-	fake := &groupUpdateFake{group: groupupdate.Group{LUID: "g1", Name: "Authors", Members: []groupupdate.Member{{LUID: "u2"}, {LUID: "u1"}}}}
-	action := groupupdate.New(fake, fake, fake)
-	out, err := action.Execute(context.Background(), groupupdate.Input{Environment: "prod", Site: "site", GroupLUID: "g1", MembershipSet: true, DesiredMemberLUIDs: []string{"u2", "u3"}}, true)
+	fake := &groupUpdateFake{group: groupops.Record{LUID: "g1", Name: "Authors", Members: []groupops.Member{{LUID: "u2"}, {LUID: "u1"}}}}
+
+	out, err := runGroupUpdate(context.Background(), fake, fake, fake, groupops.UpdateInput{Environment: "prod", Site: "site", GroupLUID: "g1", MembershipSet: true, DesiredMemberLUIDs: []string{"u2", "u3"}}, true)
 	if err != nil || out.Plan.Membership == nil || len(out.Plan.Membership.Add) != 1 || len(out.Plan.Membership.Remove) != 1 || len(fake.calls) != 0 {
 		t.Fatalf("preview = %#v, %v, calls %#v", out, err, fake.calls)
 	}
-	out, err = action.Execute(context.Background(), groupupdate.Input{Environment: "prod", Site: "site", GroupLUID: "g1", MembershipSet: true, DesiredMemberLUIDs: []string{"u2", "u3"}}, false)
+	out, err = runGroupUpdate(context.Background(), fake, fake, fake, groupops.UpdateInput{Environment: "prod", Site: "site", GroupLUID: "g1", MembershipSet: true, DesiredMemberLUIDs: []string{"u2", "u3"}}, false)
 	if err != nil || out.Result == nil || len(fake.calls) != 2 || fake.calls[0] != "add:u3" || fake.calls[1] != "remove:u1" {
 		t.Fatalf("result = %#v, %v, calls %#v", out, err, fake.calls)
 	}
@@ -150,8 +164,8 @@ func TestGroupUpdatePlansAndOrdersMembershipDiff(t *testing.T) {
 
 func TestUserCreatePlanReflectsAppliedFields(t *testing.T) {
 	fake := &userCreateFake{}
-	in := usercreate.Input{Environment: "prod", Site: "site", Name: "alex@example.com", SiteRole: "Viewer", AuthSetting: "SAML", IdentityPoolName: "pool-a", Email: "notify@example.com", Language: "en", Locale: "en_US"}
-	out, err := usercreate.New(fake, fake).Execute(context.Background(), in, true)
+	in := userops.CreateInput{Environment: "prod", Site: "site", Name: "alex@example.com", SiteRole: "Viewer", AuthSetting: "SAML", IdentityPoolName: "pool-a", Email: "notify@example.com", Language: "en", Locale: "en_US"}
+	out, err := userops.Create(context.Background(), fake, fake, in, true)
 	if err != nil {
 		t.Fatalf("Execute() error = %v", err)
 	}
@@ -167,24 +181,27 @@ func TestUserCreatePlanReflectsAppliedFields(t *testing.T) {
 
 type unknownUserFake struct{}
 
-func (unknownUserFake) FindUsers(context.Context, string) ([]usercreate.User, error) { return nil, nil }
-func (unknownUserFake) CreateUser(context.Context, usercreate.Request) (usercreate.User, error) {
-	return usercreate.User{RequestID: "req-c", MutationStatus: "unknown"}, errors.New("post-mutation status mismatch")
+func (unknownUserFake) UserExists(context.Context, string) (bool, error) {
+	return false, nil
+
 }
-func (unknownUserFake) ResolveUser(context.Context, string) (userupdate.User, error) {
-	return userupdate.User{LUID: "u1"}, nil
+func (unknownUserFake) CreateUser(context.Context, userops.CreateRequest) (userops.Record, error) {
+	return userops.Record{RequestID: "req-c", MutationStatus: "unknown"}, errors.New("post-mutation status mismatch")
 }
-func (unknownUserFake) UpdateUser(context.Context, string, userupdate.Request) (userupdate.User, error) {
-	return userupdate.User{LUID: "u1", RequestID: "req-u", MutationStatus: "unknown"}, errors.New("post-mutation status mismatch")
+func (unknownUserFake) ResolveUser(context.Context, userops.Selector) (userops.Record, error) {
+	return userops.Record{LUID: "u1"}, nil
+}
+func (unknownUserFake) UpdateUser(context.Context, string, userops.UpdateRequest) (userops.Record, error) {
+	return userops.Record{LUID: "u1", RequestID: "req-u", MutationStatus: "unknown"}, errors.New("post-mutation status mismatch")
 }
 
 type unknownUserDeleteFake struct{}
 
-func (unknownUserDeleteFake) ResolveUser(context.Context, string) (userdelete.User, error) {
-	return userdelete.User{LUID: "u1"}, nil
+func (unknownUserDeleteFake) ResolveUser(context.Context, userops.Selector) (userops.Record, error) {
+	return userops.Record{LUID: "u1"}, nil
 }
-func (unknownUserDeleteFake) DeleteUser(context.Context, string) (userdelete.Result, error) {
-	return userdelete.Result{Status: "unknown", UserLUID: "u1", TableauRequestID: "req-d"}, errors.New("delete outcome uncertain")
+func (unknownUserDeleteFake) DeleteUser(context.Context, string) (userops.DeleteResult, error) {
+	return userops.DeleteResult{Status: "unknown", UserLUID: "u1", TableauRequestID: "req-d"}, errors.New("delete outcome uncertain")
 }
 
 func sp(value string) *string { return &value }
@@ -205,46 +222,47 @@ func assertUnknownOutcome(t *testing.T, err error, wantID, wantRequestID, wantRe
 
 func TestAdminMutationsSurfaceUnknownOutcome(t *testing.T) {
 	uf := unknownUserFake{}
-	_, err := usercreate.New(uf, uf).Execute(context.Background(), usercreate.Input{Environment: "prod", Site: "site", Name: "alex", SiteRole: "Viewer", AuthSetting: "SAML"}, false)
+	_, err := userops.Create(context.Background(), uf, uf, userops.CreateInput{Environment: "prod", Site: "site", Name: "alex", SiteRole: "Viewer", AuthSetting: "SAML"}, false)
 	assertUnknownOutcome(t, err, "admin.user.create.outcome_unknown", "req-c", "alex")
 
 	full := sp("Alex")
-	_, err = userupdate.New(uf, uf).Execute(context.Background(), userupdate.Input{Environment: "prod", Site: "site", UserLUID: "u1", FullName: full}, false)
+	_, err = userops.Update(context.Background(), uf, uf, userops.UpdateInput{Environment: "prod", Site: "site", UserLUID: "u1", FullName: full}, false)
 	assertUnknownOutcome(t, err, "admin.user.update.outcome_unknown", "req-u", "u1")
 
 	df := unknownUserDeleteFake{}
-	_, err = userdelete.New(df, df).Execute(context.Background(), userdelete.Input{Environment: "prod", Site: "site", UserLUID: "u1"}, false)
+	_, err = userops.Delete(context.Background(), df, df, userops.DeleteInput{Environment: "prod", Site: "site", UserLUID: "u1"}, false)
 	assertUnknownOutcome(t, err, "admin.user.delete.outcome_unknown", "req-d", "u1")
 
 	gc := unknownGroupFake{}
-	_, err = groupcreate.New(gc, gc).Execute(context.Background(), groupcreate.Input{Environment: "prod", Site: "site", Name: "Authors"}, false)
+	_, err = groupops.Create(context.Background(), gc, gc, groupops.CreateInput{Environment: "prod", Site: "site", Name: "Authors"}, false)
 	assertUnknownOutcome(t, err, "admin.group.create.outcome_unknown", "req-gc", "Authors")
 
 	gu := &unknownGroupUpdateFake{}
-	_, err = groupupdate.New(gu, gu, gu).Execute(context.Background(), groupupdate.Input{Environment: "prod", Site: "site", GroupLUID: "g1", Name: sp("New")}, false)
+	_, err = runGroupUpdate(context.Background(), gu, gu, gu, groupops.UpdateInput{Environment: "prod", Site: "site", GroupLUID: "g1", Name: sp("New")}, false)
 	assertUnknownOutcome(t, err, "admin.group.update.outcome_unknown", "req-gu", "g1")
 
 	gd := unknownGroupDeleteFake{}
-	_, err = groupdelete.New(gd, gd).Execute(context.Background(), groupdelete.Input{Environment: "prod", Site: "site", GroupLUID: "g1"}, false)
+	_, err = groupops.Delete(context.Background(), gd, gd, groupops.DeleteInput{Environment: "prod", Site: "site", GroupLUID: "g1"}, false)
 	assertUnknownOutcome(t, err, "admin.group.delete.outcome_unknown", "req-gd", "g1")
 }
 
 type unknownGroupFake struct{}
 
-func (unknownGroupFake) FindGroups(context.Context, string) ([]groupcreate.Group, error) {
-	return nil, nil
+func (unknownGroupFake) GroupExists(context.Context, string) (bool, error) {
+	return false, nil
+
 }
-func (unknownGroupFake) CreateGroup(context.Context, groupcreate.Request) (groupcreate.Group, error) {
-	return groupcreate.Group{RequestID: "req-gc", MutationStatus: "unknown"}, errors.New("post-mutation status mismatch")
+func (unknownGroupFake) CreateGroup(context.Context, groupops.CreateRequest) (groupops.Record, error) {
+	return groupops.Record{RequestID: "req-gc", MutationStatus: "unknown"}, errors.New("post-mutation status mismatch")
 }
 
 type unknownGroupUpdateFake struct{}
 
-func (*unknownGroupUpdateFake) ResolveGroup(context.Context, string, bool) (groupupdate.Group, error) {
-	return groupupdate.Group{LUID: "g1", Name: "Old"}, nil
+func (*unknownGroupUpdateFake) ResolveGroup(context.Context, groupops.Selector, bool) (groupops.Record, error) {
+	return groupops.Record{LUID: "g1", Name: "Old"}, nil
 }
-func (*unknownGroupUpdateFake) UpdateGroup(context.Context, string, groupupdate.Request) (groupupdate.Group, error) {
-	return groupupdate.Group{LUID: "g1", RequestID: "req-gu", MutationStatus: "unknown"}, errors.New("post-mutation status mismatch")
+func (*unknownGroupUpdateFake) UpdateGroup(context.Context, string, groupops.UpdateRequest) (groupops.Record, error) {
+	return groupops.Record{LUID: "g1", RequestID: "req-gu", MutationStatus: "unknown"}, errors.New("post-mutation status mismatch")
 }
 func (*unknownGroupUpdateFake) AddGroupUser(context.Context, string, string) (string, error) {
 	return "", nil
@@ -255,36 +273,29 @@ func (*unknownGroupUpdateFake) RemoveGroupUser(context.Context, string, string) 
 
 type unknownGroupDeleteFake struct{}
 
-func (unknownGroupDeleteFake) ResolveGroup(context.Context, string) (groupdelete.Group, error) {
-	return groupdelete.Group{LUID: "g1"}, nil
+func (unknownGroupDeleteFake) ResolveGroup(context.Context, groupops.Selector, bool) (groupops.Record, error) {
+	return groupops.Record{LUID: "g1"}, nil
 }
-func (unknownGroupDeleteFake) DeleteGroup(context.Context, string) (groupdelete.Result, error) {
-	return groupdelete.Result{Status: "unknown", GroupLUID: "g1", TableauRequestID: "req-gd"}, errors.New("delete outcome uncertain")
+func (unknownGroupDeleteFake) DeleteGroup(context.Context, string) (groupops.DeleteResult, error) {
+	return groupops.DeleteResult{Status: "unknown", GroupLUID: "g1", TableauRequestID: "req-gd"}, errors.New("delete outcome uncertain")
 }
 
 func TestAdminUsageValidationIsKindUsage(t *testing.T) {
-	uf := &userCreateFake{}
 	cases := []func() error{
 		func() error {
-			_, err := usercreate.New(uf, uf).Execute(context.Background(), usercreate.Input{Environment: "prod", Site: "site", Name: "a", SiteRole: "Viewer", AuthSetting: "SAML", IdPConfigurationID: "idp-1"}, false)
-			return err
+			return userops.ValidateCreateInput(userops.CreateInput{Environment: "prod", Site: "site", Name: "a", SiteRole: "Viewer", AuthSetting: "SAML", IdPConfigurationID: "idp-1"})
 		},
 		func() error {
-			_, err := usercreate.New(uf, uf).Execute(context.Background(), usercreate.Input{Environment: "prod", Site: "site", Name: "a"}, false)
-			return err
+			return userops.ValidateCreateInput(userops.CreateInput{Environment: "prod", Site: "site", Name: "a"})
 		},
 		func() error {
-			f := unknownUserFake{}
-			_, err := userupdate.New(f, f).Execute(context.Background(), userupdate.Input{Environment: "prod", Site: "site", UserLUID: "u1"}, false)
-			return err
+			return userops.ValidateUpdateInput(userops.UpdateInput{Environment: "prod", Site: "site", UserLUID: "u1"})
 		},
 		func() error {
-			f := unknownUserFake{}
-			_, err := userupdate.New(f, f).Execute(context.Background(), userupdate.Input{Environment: "prod", Site: "site", UserLUID: "u1", AuthSetting: sp("SAML"), IdPConfigurationID: sp("idp-1")}, false)
-			return err
+			return userops.ValidateUpdateInput(userops.UpdateInput{Environment: "prod", Site: "site", UserLUID: "u1", AuthSetting: sp("SAML"), IdPConfigurationID: sp("idp-1")})
 		},
 		func() error {
-			_, err := userlist.New(userListReader{}).Execute(context.Background(), userlist.Input{Limit: 10001})
+			_, err := runUserList(context.Background(), userListReader{}, userops.ListInput{Limit: 10001})
 			return err
 		},
 	}
@@ -303,7 +314,7 @@ func (permissionReader) GetPermissions(_ context.Context, in permissionget.Input
 	return permissionget.PermissionSet{ResourceKind: in.ResourceKind, ResourceLUID: in.ResourceLUID, Source: "direct", Rules: []permissionget.Rule{{PrincipalType: "group", PrincipalLUID: "g1", Capability: "Read", Mode: "Allow"}, {PrincipalType: "user", PrincipalLUID: "u1", Capability: "Write", Mode: "Deny"}}}, nil
 }
 func TestPermissionGetFiltersWithoutClaimingEffectiveAccess(t *testing.T) {
-	out, err := permissionget.New(permissionReader{}).Execute(context.Background(), permissionget.Input{ResourceKind: "workbook", ResourceLUID: "w1", PrincipalType: "group"})
+	out, err := permissionget.Inspect(context.Background(), permissionReader{}, permissionget.Input{ResourceKind: "workbook", ResourceLUID: "w1", PrincipalType: "group"})
 	if err != nil || len(out.Permissions.Rules) != 1 || out.Permissions.Rules[0].Source != "direct" {
 		t.Fatalf("Execute() = %#v, %v", out, err)
 	}
