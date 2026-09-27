@@ -20,8 +20,6 @@ func unixLocatorPath() string {
 	return "/etc/tadx-policy-location.json"
 }
 
-func SystemPath() (string, error) { path, _, err := systemPolicyLocation(); return path, err }
-
 func systemPolicyLocation() (string, bool, error) {
 	return readUnixLocation(unixLocatorPath(), defaultUnixPolicyPath())
 }

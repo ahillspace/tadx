@@ -2395,7 +2395,7 @@
     "safety_guard": "Native elevated helper protects the destination before replacing policy, verifies protection, then publishes the machine locator; partial changes remain explicit; never changes Tableau site consent",
     "artifact_effect": "Writes managed-policy.json under a protected administrator directory and publishes the native machine locator",
     "upstream_operation": "Windows UAC, filesystem ACLs, and HKLM native registry view; Unix sudo, root ownership, protected modes and ACLs, and fixed system locator",
-    "evidence": "internal/managedpolicy/install_test.go; internal/managedpolicy/install_privileged_unix_test.go; actions/policy/install/action_test.go; internal/cli/policy/command_test.go",
+    "evidence": "internal/managedpolicy/install_test.go; internal/managedpolicy/install_privileged_unix_test.go; actions/policy/install_test.go; internal/cli/policy/command_test.go",
     "evidence_level": "local-contract",
     "verification": "ready",
     "implementation": "implemented",

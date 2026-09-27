@@ -39,15 +39,15 @@ func TestWindowsSecurityDescriptors(t *testing.T) {
 }
 
 func TestWindowsSystemPathIgnoresEnvironment(t *testing.T) {
-	before, err := SystemPath()
+	before, beforeRequired, err := systemPolicyLocation()
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Setenv("ProgramFiles", t.TempDir())
 	t.Setenv("PROGRAMW6432", t.TempDir())
 	t.Setenv("TADX_MANAGED_POLICY", filepath.Join(t.TempDir(), "policy.json"))
-	after, err := SystemPath()
-	if err != nil || before != after {
+	after, afterRequired, err := systemPolicyLocation()
+	if err != nil || before != after || beforeRequired != afterRequired {
 		t.Fatalf("discovery changed: %q %q %v", before, after, err)
 	}
 }

@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	policyinstall "github.com/ahillspace/tadx/actions/policy/install"
+	policyops "github.com/ahillspace/tadx/actions/policy"
 	"github.com/ahillspace/tadx/internal/errs"
 	"github.com/ahillspace/tadx/internal/managedpolicy"
 )
@@ -27,9 +27,9 @@ func TestPolicyInstallIsAlwaysARecoveryOperation(t *testing.T) {
 }
 
 func TestPolicyInstallErrorPreservesConfirmedPartialEffects(t *testing.T) {
-	output := policyinstall.Output{
+	output := policyops.InstallOutput{
 		Path:              "C:/Program Files/TADX/managed-policy.json",
-		Template:          policyinstall.TemplateSuperuser,
+		Template:          policyops.TemplateSuperuser,
 		ProtectionChanged: true,
 		PolicyWritten:     true,
 		Active:            true,
@@ -53,7 +53,7 @@ func TestPolicyInstallErrorPreservesConfirmedPartialEffects(t *testing.T) {
 }
 
 func TestPolicyInstallErrorWithoutChangesIsNotAttempted(t *testing.T) {
-	err := policyInstallError(policyinstall.Output{Phase: "validation"}, errors.New("unsupported platform"))
+	err := policyInstallError(policyops.InstallOutput{Phase: "validation"}, errors.New("unsupported platform"))
 	var structured *errs.Error
 	if !errors.As(err, &structured) || structured.Phase != errs.PhaseValidation || structured.Outcome != errs.OutcomeNotAttempted || len(structured.Completed) != 0 {
 		t.Fatalf("error=%+v", structured)
@@ -65,7 +65,7 @@ func TestPolicyInstallErrorWithoutChangesIsNotAttempted(t *testing.T) {
 
 func TestPolicyInstallUnknownOrLocatorFailureDoesNotClaimNoMutation(t *testing.T) {
 	for _, phase := range []string{"unknown", "locator"} {
-		err := policyInstallError(policyinstall.Output{Phase: phase}, errors.New("helper stopped"))
+		err := policyInstallError(policyops.InstallOutput{Phase: phase}, errors.New("helper stopped"))
 		var structured *errs.Error
 		if !errors.As(err, &structured) || structured.Outcome != errs.OutcomeUnknown {
 			t.Fatalf("phase=%s error=%+v", phase, structured)

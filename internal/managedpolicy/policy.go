@@ -138,11 +138,8 @@ func Template(name string, definitions []capability.Definition) (Document, error
 		}
 		doc.AllowedCapabilities = append(doc.AllowedCapabilities, definition.ID)
 	}
-	data, err := json.Marshal(doc)
-	if err != nil {
-		return Document{}, err
-	}
-	return Parse(data, definitions)
+	slices.Sort(doc.AllowedCapabilities)
+	return doc, nil
 }
 
 // Load never consults environment variables or user configuration for discovery.
@@ -153,15 +150,19 @@ func Load(definitions []capability.Definition) *Policy {
 
 // InstallationWarnings inspect only a confirmed written destination.
 // They do not infer locator publication or change the installation receipt.
-func InstallationWarnings(result InstallResult, definitions []capability.Definition) []string {
-	return installationWarnings(result, definitions, loadPath)
+func InstallationWarnings(result InstallResult) []string {
+	return installationWarnings(result, secureRead)
 }
 
-func installationWarnings(result InstallResult, definitions []capability.Definition, load func(string, []capability.Definition) *Policy) []string {
+func installationWarnings(result InstallResult, read func(string) ([]byte, []ProtectionCheck, error)) []string {
 	if !result.PolicyWritten || result.Path == "" {
 		return nil
 	}
-	return load(result.Path, definitions).Status().Warnings
+	_, checks, err := read(result.Path)
+	if errors.Is(err, os.ErrNotExist) {
+		return nil
+	}
+	return ancestorWarnings(checks)
 }
 
 func loadResolved(path string, required bool, err error, definitions []capability.Definition) *Policy {

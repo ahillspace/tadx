@@ -3,10 +3,9 @@ package managedpolicy
 import (
 	"context"
 	"errors"
+	"os"
 	"reflect"
 	"testing"
-
-	"github.com/ahillspace/tadx/internal/capability"
 )
 
 type fixtureInstaller struct {
@@ -76,15 +75,15 @@ func TestInstallCancelledBeforeMutation(t *testing.T) {
 func TestInstallationWarningsInspectConfirmedDestinationOnly(t *testing.T) {
 	const destination = "chosen/managed-policy.json"
 	called := 0
-	load := func(path string, _ []capability.Definition) *Policy {
+	read := func(path string) ([]byte, []ProtectionCheck, error) {
 		called++
 		if path != destination {
 			t.Fatalf("inspected %q instead of destination", path)
 		}
-		return &Policy{status: Status{Warnings: []string{"ancestor permits policy substitution"}}}
+		return []byte("malformed installed JSON"), []ProtectionCheck{{Kind: "ancestor-owner-acl-and-links", Reason: "unprotected"}}, nil
 	}
 	for _, result := range []InstallResult{{Path: destination}, {PolicyWritten: true}} {
-		if warnings := installationWarnings(result, testCatalog(), load); len(warnings) != 0 {
+		if warnings := installationWarnings(result, read); len(warnings) != 0 {
 			t.Fatalf("unconfirmed destination warnings=%v", warnings)
 		}
 	}
@@ -92,7 +91,36 @@ func TestInstallationWarningsInspectConfirmedDestinationOnly(t *testing.T) {
 		t.Fatalf("unconfirmed destination inspected %d times", called)
 	}
 	result := InstallResult{Path: destination, PolicyWritten: true, Phase: "locator"}
-	if warnings := installationWarnings(result, testCatalog(), load); len(warnings) != 1 || called != 1 {
+	if warnings := installationWarnings(result, read); len(warnings) != 1 || called != 1 {
 		t.Fatalf("confirmed destination warnings=%v calls=%d", warnings, called)
+	}
+	if warnings := installationWarnings(result, read); len(warnings) != 1 || called != 2 {
+		t.Fatalf("destination warning read was reused: warnings=%v calls=%d", warnings, called)
+	}
+}
+
+func TestInstallationWarningsPreserveReadOutcomes(t *testing.T) {
+	for _, test := range []struct {
+		name     string
+		err      error
+		ancestor bool
+		warnings int
+	}{
+		{"malformed document with ancestor warning", nil, true, 1},
+		{"malformed document with protected ancestor", nil, false, 0},
+		{"mandatory leaf failure retains ancestor warning", errors.New("unsafe policy file"), true, 1},
+		{"mandatory leaf failure is not an ancestor warning", errors.New("unsafe policy file"), false, 0},
+		{"missing destination suppresses earlier warnings", os.ErrNotExist, true, 0},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			result := InstallResult{Path: "chosen/managed-policy.json", PolicyWritten: true, Phase: "verify"}
+			checks := []ProtectionCheck{{Kind: "ancestor-owner-acl-and-links", Passed: !test.ancestor}, {Kind: "owner-acl-and-links", Passed: false}}
+			warnings := installationWarnings(result, func(string) ([]byte, []ProtectionCheck, error) {
+				return []byte("not JSON"), checks, test.err
+			})
+			if len(warnings) != test.warnings || result.Active || result.LocatorPublished || result.Phase != "verify" {
+				t.Fatalf("warnings=%v receipt=%+v", warnings, result)
+			}
+		})
 	}
 }

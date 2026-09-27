@@ -1,39 +1,25 @@
-// Package status reports the fixed machine policy and effective ceiling.
-package status
+package policy
 
 import (
-	"context"
-	"github.com/ahillspace/tadx/internal/errs"
 	"github.com/ahillspace/tadx/internal/value"
 )
 
-type Output struct {
+type StatusOutput struct {
 	Policy  value.ManagedPolicyStatus `json:"policy"`
 	Allowed int                       `json:"allowed_capabilities"`
 	Denied  int                       `json:"denied_capabilities"`
 	Help    []string                  `json:"help"`
 }
-type Reader interface {
-	ReadPolicy(context.Context) (Output, error)
-}
-type Action struct{ reader Reader }
 
-func New(reader Reader) *Action { return &Action{reader: reader} }
-func (a *Action) Execute(ctx context.Context) (Output, error) {
-	if a == nil || a.reader == nil {
-		return Output{}, &errs.Error{ID: "policy.status.unconfigured", Kind: errs.KindRuntime, Operation: "policy.status", Summary: "Managed policy status is not configured.", Phase: errs.PhaseSetup, Outcome: errs.OutcomeNotAttempted}
-	}
-	return a.reader.ReadPolicy(ctx)
-}
-func (o Output) CompactOutput() any {
+func (o StatusOutput) CompactOutput() any {
 	return o.render(false)
 }
-func (o Output) FullOutput() any { return o.render(true) }
+func (o StatusOutput) FullOutput() any { return o.render(true) }
 
 // DetailCommand keeps policy diagnostics available when last is disallowed.
-func (o Output) DetailCommand() []string { return []string{"policy", "status", "--full"} }
+func (o StatusOutput) DetailCommand() []string { return []string{"policy", "status", "--full"} }
 
-func (o Output) render(full bool) any {
+func (o StatusOutput) render(full bool) any {
 	result := struct {
 		State           string                               `json:"state"`
 		Path            string                               `json:"path"`

@@ -9,19 +9,19 @@ import (
 	"strings"
 	"testing"
 
-	policyinstall "github.com/ahillspace/tadx/actions/policy/install"
+	policyops "github.com/ahillspace/tadx/actions/policy"
 	policycli "github.com/ahillspace/tadx/internal/cli/policy"
 	"github.com/ahillspace/tadx/internal/output"
 )
 
 type installer struct {
-	input  policyinstall.Input
-	output policyinstall.Output
+	input  policyops.InstallInput
+	output policyops.InstallOutput
 	err    error
 	calls  int
 }
 
-func (i *installer) Execute(_ context.Context, input policyinstall.Input) (policyinstall.Output, error) {
+func (i *installer) InstallManagedPolicy(_ context.Context, input policyops.InstallInput) (policyops.InstallOutput, error) {
 	i.calls++
 	i.input = input
 	return i.output, i.err
@@ -39,7 +39,7 @@ func (r *renderer) Render(value any) error {
 }
 
 func TestInstallCommandDefaultsToSuperuserAndRendersReceipt(t *testing.T) {
-	want := policyinstall.Output{Template: policyinstall.TemplateSuperuser, Phase: "complete", Active: true}
+	want := policyops.InstallOutput{Template: policyops.TemplateSuperuser, Phase: "complete", Active: true}
 	install := &installer{output: want}
 	render := new(renderer)
 	command := policycli.New(policycli.Dependencies{Installer: install, Renderer: render})
@@ -48,7 +48,7 @@ func TestInstallCommandDefaultsToSuperuserAndRendersReceipt(t *testing.T) {
 	if err := command.ExecuteContext(t.Context()); err != nil {
 		t.Fatal(err)
 	}
-	if install.calls != 1 || install.input.Template != policyinstall.TemplateSuperuser || install.input.OutputDirectory != "" {
+	if install.calls != 1 || install.input.Template != policyops.TemplateSuperuser || install.input.OutputDirectory != "" {
 		t.Fatalf("installer calls=%d input=%+v", install.calls, install.input)
 	}
 	if render.calls != 1 || !reflect.DeepEqual(render.value, want) {
@@ -60,22 +60,22 @@ func TestInstallCommandPassesExplicitOutputAndTemplate(t *testing.T) {
 	install := new(installer)
 	render := new(renderer)
 	command := policycli.New(policycli.Dependencies{Installer: install, Renderer: render})
-	command.SetArgs([]string{"install", "--output", `D:\Managed TADX`, "--template", policyinstall.TemplateReadWriteNoAdmin})
+	command.SetArgs([]string{"install", "--output", `D:\Managed TADX`, "--template", policyops.TemplateReadWriteNoAdmin})
 
 	if err := command.ExecuteContext(t.Context()); err != nil {
 		t.Fatal(err)
 	}
-	if install.calls != 1 || install.input.OutputDirectory != `D:\Managed TADX` || install.input.Template != policyinstall.TemplateReadWriteNoAdmin {
+	if install.calls != 1 || install.input.OutputDirectory != `D:\Managed TADX` || install.input.Template != policyops.TemplateReadWriteNoAdmin {
 		t.Fatalf("installer calls=%d input=%+v", install.calls, install.input)
 	}
 }
 
 func TestInstallCommandPreservesPartialOutputOnFailure(t *testing.T) {
 	wantErr := errors.New("verification failed")
-	want := policyinstall.Output{Template: policyinstall.TemplateReadOnly, PolicyWritten: true, Phase: "verify"}
+	want := policyops.InstallOutput{Template: policyops.TemplateReadOnly, PolicyWritten: true, Phase: "verify"}
 	install := &installer{output: want, err: wantErr}
 	command := policycli.New(policycli.Dependencies{Installer: install, Renderer: new(renderer)})
-	command.SetArgs([]string{"install", "--template", policyinstall.TemplateReadOnly})
+	command.SetArgs([]string{"install", "--template", policyops.TemplateReadOnly})
 
 	err := command.ExecuteContext(t.Context())
 	if !errors.Is(err, wantErr) {
@@ -89,7 +89,7 @@ func TestInstallCommandPreservesPartialOutputOnFailure(t *testing.T) {
 
 func TestInstallPartialWarningRendersInCompactAndFullTOONAndJSON(t *testing.T) {
 	wantErr := errors.New("locator publication failed")
-	want := policyinstall.Output{Path: `C:/selected/managed-policy.json`, Template: policyinstall.TemplateReadOnly, PolicyWritten: true, Phase: "locator", Warnings: []string{"destination ancestor permits policy substitution"}}
+	want := policyops.InstallOutput{Path: `C:/selected/managed-policy.json`, Template: policyops.TemplateReadOnly, PolicyWritten: true, Phase: "locator", Warnings: []string{"destination ancestor permits policy substitution"}}
 	for _, full := range []bool{false, true} {
 		for _, asJSON := range []bool{false, true} {
 			command := policycli.New(policycli.Dependencies{Installer: &installer{output: want, err: wantErr}, Renderer: new(renderer)})
@@ -109,7 +109,7 @@ func TestInstallPartialWarningRendersInCompactAndFullTOONAndJSON(t *testing.T) {
 			}
 			if asJSON {
 				var payload struct {
-					Output policyinstall.Output `json:"output"`
+					Output policyops.InstallOutput `json:"output"`
 				}
 				if err := json.Unmarshal(rendered.Bytes(), &payload); err != nil || !reflect.DeepEqual(payload.Output, want) {
 					t.Fatalf("full=%t JSON partial output=%s error=%v", full, &rendered, err)

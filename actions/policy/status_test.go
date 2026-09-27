@@ -1,4 +1,4 @@
-package status
+package policy
 
 import (
 	"encoding/json"
@@ -8,7 +8,7 @@ import (
 )
 
 func TestStatusReportsActivePolicyWithUnsafeAncestor(t *testing.T) {
-	out := Output{Policy: value.ManagedPolicyStatus{
+	out := StatusOutput{Policy: value.ManagedPolicyStatus{
 		State:          "active",
 		Protected:      true,
 		PathProtected:  false,

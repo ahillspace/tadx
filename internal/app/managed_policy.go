@@ -11,10 +11,7 @@ import (
 	"slices"
 	"sync"
 
-	policyinstall "github.com/ahillspace/tadx/actions/policy/install"
-	policysamples "github.com/ahillspace/tadx/actions/policy/samples"
-	policystatus "github.com/ahillspace/tadx/actions/policy/status"
-	policyvalidate "github.com/ahillspace/tadx/actions/policy/validate"
+	policyops "github.com/ahillspace/tadx/actions/policy"
 	"github.com/ahillspace/tadx/internal/capability"
 	"github.com/ahillspace/tadx/internal/cli"
 	policycli "github.com/ahillspace/tadx/internal/cli/policy"
@@ -188,17 +185,21 @@ func bindManagedPolicy(root *cobra.Command, r *runtimeDependencies) {
 }
 
 func (r *runtimeDependencies) policyDependencies() *policycli.Dependencies {
-	return &policycli.Dependencies{Installer: policyinstall.New(r), Sampler: policysamples.New(r), Validator: policyvalidate.New(r), Statuser: policystatus.New(r)}
+	return &policycli.Dependencies{Installer: r, Sampler: r, Validator: r, Statuser: r}
 }
 
-func (r *runtimeDependencies) InstallManagedPolicy(ctx context.Context, input policyinstall.Input) (policyinstall.Output, error) {
+func (r *runtimeDependencies) InstallManagedPolicy(ctx context.Context, input policyops.InstallInput) (policyops.InstallOutput, error) {
+	input, err := policyops.NormalizeInstall(input)
+	if err != nil {
+		return policyops.InstallOutput{}, err
+	}
 	definitions := capability.All()
 	result, err := managedpolicy.Install(ctx, managedpolicy.InstallOptions{Directory: input.OutputDirectory, Template: input.Template}, definitions)
-	return installedPolicyOutput(result, err, managedpolicy.InstallationWarnings(result, definitions))
+	return installedPolicyOutput(result, err, managedpolicy.InstallationWarnings(result))
 }
 
-func installedPolicyOutput(result managedpolicy.InstallResult, installErr error, warnings []string) (policyinstall.Output, error) {
-	output := policyinstall.Output{
+func installedPolicyOutput(result managedpolicy.InstallResult, installErr error, warnings []string) (policyops.InstallOutput, error) {
+	output := policyops.InstallOutput{
 		Path:              filepath.ToSlash(result.Path),
 		Template:          result.Template,
 		ProtectionChanged: result.ProtectionChanged,
@@ -214,7 +215,7 @@ func installedPolicyOutput(result managedpolicy.InstallResult, installErr error,
 	return output, nil
 }
 
-func policyInstallError(output policyinstall.Output, cause error) error {
+func policyInstallError(output policyops.InstallOutput, cause error) error {
 	phase := errs.PhaseSetup
 	switch output.Phase {
 	case "validation":
@@ -258,38 +259,45 @@ func policyInstallError(output policyinstall.Output, cause error) error {
 	}
 }
 
-func (r *runtimeDependencies) ReadPolicy(context.Context) (policystatus.Output, error) {
+func (r *runtimeDependencies) ReadPolicy(context.Context) (policyops.StatusOutput, error) {
 	state := r.managedPolicy.Status()
+	definitions := capability.All()
 	allowed := 0
-	for _, definition := range capability.All() {
+	for _, definition := range definitions {
 		if policyRecoveryOperation(definition.ID) || r.managedPolicy.CheckCapability(definition.ID) == nil {
 			allowed++
 		}
 	}
-	return policystatus.Output{Policy: state, Allowed: allowed, Denied: len(capability.All()) - allowed, Help: []string{"Policy samples, validate, and status remain available for recovery. Candidate validation does not activate policy or verify protection.", "Remote mutations also require saved consent for the selected Tableau site."}}, nil
+	return policyops.StatusOutput{Policy: state, Allowed: allowed, Denied: len(definitions) - allowed, Help: []string{"Policy samples, validate, and status remain available for recovery. Candidate validation does not activate policy or verify protection.", "Remote mutations also require saved consent for the selected Tableau site."}}, nil
 }
 
-func (r *runtimeDependencies) ValidateCandidate(ctx context.Context, path string) (policyvalidate.Output, error) {
+func (r *runtimeDependencies) ValidateCandidate(ctx context.Context, path string) (policyops.ValidationOutput, error) {
+	if err := policyops.ValidateCandidatePath(path); err != nil {
+		return policyops.ValidationOutput{}, err
+	}
 	if err := ctx.Err(); err != nil {
-		return policyvalidate.Output{}, err
+		return policyops.ValidationOutput{}, err
 	}
 	file, err := os.Open(path)
 	if err != nil {
-		return policyvalidate.Output{}, policyToolError("policy.validate", "Candidate policy could not be read.", err)
+		return policyops.ValidationOutput{}, policyToolError("policy.validate", "Candidate policy could not be read.", err)
 	}
 	defer file.Close()
 	data, err := io.ReadAll(io.LimitReader(file, (1<<20)+1))
 	if err != nil {
-		return policyvalidate.Output{}, policyToolError("policy.validate", "Candidate policy could not be read.", err)
+		return policyops.ValidationOutput{}, policyToolError("policy.validate", "Candidate policy could not be read.", err)
 	}
 	doc, err := managedpolicy.Parse(data, capability.All())
 	if err != nil {
-		return policyvalidate.Output{}, &errs.Error{ID: "policy.validate.invalid", Kind: errs.KindUsage, Operation: "policy.validate", Resource: filepath.ToSlash(path), Summary: "Candidate policy is invalid.", Cause: err, Phase: errs.PhaseValidation, Outcome: errs.OutcomeNotAttempted, Retryable: errs.Bool(false), CorrectiveAction: "Correct the candidate schema or capability IDs. No policy was activated."}
+		return policyops.ValidationOutput{}, &errs.Error{ID: "policy.validate.invalid", Kind: errs.KindUsage, Operation: "policy.validate", Resource: filepath.ToSlash(path), Summary: "Candidate policy is invalid.", Cause: err, Phase: errs.PhaseValidation, Outcome: errs.OutcomeNotAttempted, Retryable: errs.Bool(false), CorrectiveAction: "Correct the candidate schema or capability IDs. No policy was activated."}
 	}
-	return policyvalidate.Output{Status: "valid", Candidate: filepath.ToSlash(path), AllowedCapabilities: len(doc.AllowedCapabilities), RemoteMutations: doc.RemoteMutations, Help: []string{"Schema and capability IDs are valid. This file is not activated or trusted; an administrator must deploy it with protected ownership and permissions.", "tadx policy status"}}, nil
+	return policyops.ValidationOutput{Status: "valid", Candidate: filepath.ToSlash(path), AllowedCapabilities: len(doc.AllowedCapabilities), RemoteMutations: doc.RemoteMutations, Help: []string{"Schema and capability IDs are valid. This file is not activated or trusted; an administrator must deploy it with protected ownership and permissions.", "tadx policy status"}}, nil
 }
 
-func (r *runtimeDependencies) WriteSamples(ctx context.Context, directory string) (policysamples.Output, error) {
+func (r *runtimeDependencies) WriteSamples(ctx context.Context, directory string) (policyops.SamplesOutput, error) {
+	if err := policyops.ValidateSamplesDirectory(directory); err != nil {
+		return policyops.SamplesOutput{}, err
+	}
 	path := ""
 	if r.managedPolicy != nil {
 		path = r.managedPolicy.Status().Path
@@ -301,7 +309,7 @@ func (r *runtimeDependencies) WriteSamples(ctx context.Context, directory string
 		instructions = append(instructions, "An administrator deploys the selected JSON document at system_path and protects the file and its parent directories against non-administrator changes.")
 	}
 	instructions = append(instructions, "On Windows, use the native administrator-owned policy location with a protected DACL. On Unix, use root ownership and remove group and other write permissions from the file and its parent directories.", "Run tadx policy status after deployment. These samples do not install or activate policy; local mutation consent remains separate.")
-	out := policysamples.Output{Status: "not_created", Files: []string{}, SystemPath: path, Instructions: instructions}
+	out := policyops.SamplesOutput{Status: "not_created", Files: []string{}, SystemPath: path, Instructions: instructions}
 	if err := os.MkdirAll(directory, 0700); err != nil {
 		return out, policyToolError("policy.samples", "The output directory could not be created.", err)
 	}
@@ -316,11 +324,12 @@ func (r *runtimeDependencies) WriteSamples(ctx context.Context, directory string
 			return out, policyToolError("policy.samples", "Existing sample files are never overwritten.", err)
 		}
 	}
+	definitions := capability.All()
 	for _, name := range names {
 		if err := ctx.Err(); err != nil {
 			return out, policySampleWriteError(out, err)
 		}
-		doc, err := managedpolicy.Template(name, capability.All())
+		doc, err := managedpolicy.Template(name, definitions)
 		if err != nil {
 			return out, policySampleWriteError(out, err)
 		}
@@ -347,6 +356,6 @@ func (r *runtimeDependencies) WriteSamples(ctx context.Context, directory string
 func policyToolError(operation, summary string, cause error) error {
 	return &errs.Error{ID: operation + ".failed", Kind: errs.KindOperation, Operation: operation, Summary: summary, Cause: cause, Phase: errs.PhaseSetup, Outcome: errs.OutcomeNotAttempted, Retryable: errs.Bool(false), CorrectiveAction: "Review the candidate path and reported error; no active managed policy was changed."}
 }
-func policySampleWriteError(out policysamples.Output, cause error) error {
+func policySampleWriteError(out policyops.SamplesOutput, cause error) error {
 	return &errs.Error{ID: "policy.samples.write", Kind: errs.KindOperation, Operation: "policy.samples", Summary: "Policy sample creation stopped.", Cause: cause, Completed: out.Files, Phase: errs.PhasePersistence, Outcome: errs.OutcomeUnknown, Retryable: errs.Bool(false), CorrectiveAction: "Inspect the returned files and output directory before retrying; existing files are never overwritten."}
 }

@@ -15,9 +15,6 @@ const locatorKey = `SOFTWARE\TADX\ManagedPolicy`
 const protectedSDDL = "O:BAG:BAD:P(A;OICI;FA;;;SY)(A;OICI;FA;;;BA)(A;OICI;GRGX;;;BU)"
 const registrySDDL = "O:BAG:BAD:P(A;CI;KA;;;SY)(A;CI;KA;;;BA)(A;CI;KR;;;BU)"
 
-func windowsRegistryRoot() registry.Key { return registry.LOCAL_MACHINE }
-
-func SystemPath() (string, error) { path, _, err := systemPolicyLocation(); return path, err }
 func systemPolicyLocation() (string, bool, error) {
 	return readLocation(registry.LOCAL_MACHINE, locatorKey)
 }

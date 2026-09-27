@@ -112,7 +112,7 @@ func TestPrivilegedWindowsInstallLocationsAndOverwrite(t *testing.T) {
 		t.Fatal(err)
 	}
 	pending, err = installWith(t.Context(), pending, data, failingPublishInstaller{w})
-	if err == nil || pending.Phase != "locator" || !pending.PolicyWritten || pending.Active || pending.LocatorPublished || len(InstallationWarnings(pending, testCatalog())) == 0 {
+	if err == nil || pending.Phase != "locator" || !pending.PolicyWritten || pending.Active || pending.LocatorPublished || len(InstallationWarnings(pending)) == 0 {
 		t.Fatalf("partial destination warning receipt=%+v error=%v", pending, err)
 	}
 	if selected, _, err := readLocation(w.root, w.key); err != nil || !sameInstallPath(selected, first.Path) {

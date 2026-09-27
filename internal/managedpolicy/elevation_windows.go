@@ -13,6 +13,7 @@ import (
 
 	"github.com/ahillspace/tadx/internal/capability"
 	"golang.org/x/sys/windows"
+	"golang.org/x/sys/windows/registry"
 )
 
 const installHelperArgument = "__tadx-policy-install"
@@ -28,7 +29,7 @@ func RunInstallHelper(args []string, definitions []capability.Definition) (bool,
 	}
 	out, data, err := prepareInstall(InstallOptions{Directory: args[1], Template: args[2]}, definitions)
 	if err == nil {
-		out, err = installWith(context.Background(), out, data, &windowsInstaller{root: windowsRegistryRoot(), key: locatorKey, definitions: definitions})
+		out, err = installWith(context.Background(), out, data, &windowsInstaller{root: registry.LOCAL_MACHINE, key: locatorKey, definitions: definitions})
 	}
 	return true, encodeInstallExit(out, err)
 }

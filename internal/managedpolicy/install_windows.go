@@ -94,9 +94,8 @@ func (w *windowsInstaller) publish(dir string) (bool, error) {
 	return publishLocation(w.root, w.key, dir)
 }
 func (w *windowsInstaller) verify(path string) error {
-	policy := loadPath(path, w.definitions)
-	if policy.Status().State != StateActive {
-		return fmt.Errorf("installed policy verification failed: %s", policy.Status().Reason)
+	if status := loadPath(path, w.definitions).Status(); status.State != StateActive {
+		return fmt.Errorf("installed policy verification failed: %s", status.Reason)
 	}
 	return nil
 }
