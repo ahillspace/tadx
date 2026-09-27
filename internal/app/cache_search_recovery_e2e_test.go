@@ -156,7 +156,7 @@ func TestCachedSearchRecoveryOmitsCommandForUnrepresentableFilters(t *testing.T)
 	if err := store.UpsertResources(t.Context(), []cache.ResourceEntry{{Environment: "dev", Site: "test-site", Kind: "datasource", LUID: "ds-1", Name: "Boeing", Owner: "owner-1", ProjectPath: "Ops", Coverage: "summary", ObservedAt: now}}); err != nil {
 		t.Fatal(err)
 	}
-	_, err := searchaction.New(cacheGlobalSearchSource{store: store}).Execute(t.Context(), searchaction.Input{
+	_, err := executeSearchAction(t.Context(), cacheGlobalSearchSource{store: store}, searchaction.Input{
 		Terms:        "Boeing",
 		Type:         "content",
 		Environment:  "dev",
@@ -269,12 +269,12 @@ func TestCachedSearchRecoveryProtectsLeadingFlagTerm(t *testing.T) {
 
 type absentCacheRecoverySource struct{}
 
-func (absentCacheRecoverySource) Search(context.Context, searchaction.Input) (searchaction.Result, error) {
+func (absentCacheRecoverySource) Search(context.Context, searchaction.Input, []string) (searchaction.Result, error) {
 	return searchaction.Result{}, cacheSearchScopeUnavailable{resourceType: "flow", cause: errors.New("read failed")}
 }
 
 func TestCachedSearchRecoveryRetainsGenericAdviceWithoutObservedEvidence(t *testing.T) {
-	_, err := searchaction.New(absentCacheRecoverySource{}).Execute(t.Context(), searchaction.Input{Type: "content", Environment: "dev", Site: "test-site", SiteResolved: true, Cache: true, Limit: 20})
+	_, err := executeSearchAction(t.Context(), absentCacheRecoverySource{}, searchaction.Input{Type: "content", Environment: "dev", Site: "test-site", SiteResolved: true, Cache: true, Limit: 20})
 	var structured *errs.Error
 	if !errors.As(err, &structured) || structured.CorrectiveAction != "Review the search source and filters, then retry." || structured.Resource != "" {
 		t.Fatalf("error=%#v", structured)

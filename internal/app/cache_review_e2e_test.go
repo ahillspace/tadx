@@ -46,7 +46,7 @@ func TestFilteredContentListsRetainCacheProjectPaths(t *testing.T) {
 				t.Fatal(err)
 			}
 			store := targetCacheFixture(t, runtime.configPath, runtime.now)
-			out, err := searchaction.New(cacheGlobalSearchSource{store: store}).Execute(context.Background(), searchaction.Input{Type: kind, Environment: "production", Site: "team-site", SiteResolved: true, Cache: true, ProjectPath: "Department/Ops"})
+			out, err := executeSearchAction(context.Background(), cacheGlobalSearchSource{store: store}, searchaction.Input{Type: kind, Environment: "production", Site: "team-site", SiteResolved: true, Cache: true, ProjectPath: "Department/Ops"})
 			if err != nil || len(out.Items) != 1 || out.Items[0].ProjectPath != "Department/Ops" {
 				t.Fatalf("cached filtered search = %#v, %v", out, err)
 			}

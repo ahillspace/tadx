@@ -45,10 +45,7 @@ func newSearchCommands(runtime *runtimeDependencies) *searchCommands {
 }
 
 func (c *searchCommands) Execute(ctx context.Context, input searchaction.Input) (searchaction.Output, error) {
-	if err := searchaction.ValidateInput(input); err != nil {
-		return searchaction.Output{}, err
-	}
-	types, err := searchaction.Types(input.Type)
+	types, err := searchaction.ValidateInput(input)
 	if err != nil {
 		return searchaction.Output{}, err
 	}
@@ -81,7 +78,7 @@ func (c *searchCommands) Execute(ctx context.Context, input searchaction.Input) 
 		}
 		input.SiteResolved = true
 		store := c.runtime.cacheStore(environment)
-		return searchaction.New(cacheGlobalSearchSource{store: store}).Execute(ctx, input)
+		return searchaction.Execute(ctx, cacheGlobalSearchSource{store: store}, input, types)
 	}
 	if strings.TrimSpace(input.Terms) == "" && completeListSearchSelector(input.Type) {
 		_, environment, err := c.runtime.environment(input.Environment, false)
@@ -94,7 +91,7 @@ func (c *searchCommands) Execute(ctx context.Context, input searchaction.Input) 
 			content:     newRemoteContentCommands(c.runtime),
 			admin:       newRemoteAdminCommands(c.runtime),
 		}
-		return searchaction.New(globalSearchSource{lists: &completeLiveSearchAdapter{lister: lister}}).Execute(ctx, input)
+		return searchaction.Execute(ctx, globalSearchSource{lists: &completeLiveSearchAdapter{lister: lister}}, input, types)
 	}
 
 	connection, err := c.runtime.tableauConnection(ctx, input.Environment, false)
@@ -111,7 +108,7 @@ func (c *searchCommands) Execute(ctx context.Context, input searchaction.Input) 
 		return searchaction.Output{}, remoteSetupError("search", input.Environment, input.Site, connection.environment, err)
 	}
 	datasourceResolver := tableaudatasource.NewClient(connection.transport, connection.session, connection.environment.URL)
-	return searchaction.New(globalSearchSource{native: resourcesearch.NewNativeAdapter(nativeClient, datasourceResolver), dedicated: resourcesearch.NewAdapter(lister)}).Execute(ctx, input)
+	return searchaction.Execute(ctx, globalSearchSource{native: resourcesearch.NewNativeAdapter(nativeClient, datasourceResolver), dedicated: resourcesearch.NewAdapter(lister)}, input, types)
 }
 
 type appSearchAdapter interface {
@@ -128,11 +125,7 @@ type globalSearchSource struct {
 	dedicated appSearchAdapter
 }
 
-func (s globalSearchSource) Search(ctx context.Context, input searchaction.Input) (searchaction.Result, error) {
-	types, err := searchaction.Types(input.Type)
-	if err != nil {
-		return searchaction.Result{}, err
-	}
+func (s globalSearchSource) Search(ctx context.Context, input searchaction.Input, types []string) (searchaction.Result, error) {
 	resourceInput := resourcesearch.Input{Types: types, Terms: input.Terms, ProjectPath: input.ProjectPath, Owner: input.Owner, Cursor: input.Cursor, Limit: input.Limit}
 	if strings.TrimSpace(input.Terms) == "" {
 		if completeListSearchSelector(input.Type) {
@@ -145,9 +138,6 @@ func (s globalSearchSource) Search(ctx context.Context, input searchaction.Input
 	}
 	if contentSearchSelector(input.Type) {
 		return executeAppSearch(ctx, s.native, resourceInput)
-	}
-	if input.Type != "" {
-		return searchaction.Result{}, fmt.Errorf("unsupported live search selector %q", input.Type)
 	}
 	return s.searchAll(ctx, input)
 }
@@ -330,11 +320,7 @@ type cacheGlobalSearchSource struct {
 	store *cache.Store
 }
 
-func (s cacheGlobalSearchSource) Search(ctx context.Context, input searchaction.Input) (searchaction.Result, error) {
-	types, err := searchaction.Types(input.Type)
-	if err != nil {
-		return searchaction.Result{}, err
-	}
+func (s cacheGlobalSearchSource) Search(ctx context.Context, input searchaction.Input, types []string) (searchaction.Result, error) {
 	lister := &cacheSearchLister{store: s.store, environment: input.Environment, site: input.Site, skipUnavailable: input.Type == "", observations: make(map[string]cacheSearchObservation)}
 	adapter := resourcesearch.NewAdapter(lister)
 	page, err := adapter.Search(ctx, resourcesearch.Input{Types: types, Terms: input.Terms, ProjectPath: input.ProjectPath, Owner: input.Owner, Cursor: input.Cursor, Limit: input.Limit})

@@ -225,3 +225,9 @@ Treat recorded authorization prerequisites as an observable contract, including 
 Removing a repeated permission check requires proving that the surviving check records the complete actual scope before requests begin.
 Do not merge different default scope policies or move a denial across environment resolution merely to share preparation.
 Preserve plan agreement checks where independently constructed action and collector requests meet.
+
+## Lessons from Global Search workflows
+
+Return useful normalized values from preflight instead of recomputing them at each handoff.
+Before removing an apparently redundant input field, check whether existing continuation fingerprints serialize it.
+Keep target binding and upstream cursor extraction explicit even when both inspect the same token.

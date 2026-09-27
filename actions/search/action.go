@@ -31,11 +31,8 @@ type CacheRecovery struct {
 }
 
 type Source interface {
-	Search(context.Context, Input) (Result, error)
+	Search(context.Context, Input, []string) (Result, error)
 }
-type Action struct{ source Source }
-
-func New(source Source) *Action { return &Action{source: source} }
 
 // Types expands a public type selector in a stable order.
 func Types(selector string) ([]string, error) {
@@ -55,30 +52,18 @@ func Types(selector string) ([]string, error) {
 	}
 }
 
-func (a *Action) Execute(ctx context.Context, input Input) (Output, error) {
-	if err := ValidateInput(input); err != nil {
-		return Output{}, err
-	}
+func Execute(ctx context.Context, source Source, input Input, types []string) (Output, error) {
 	input.Terms = strings.TrimSpace(input.Terms)
-	types, err := Types(input.Type)
-	if err != nil {
-		return Output{}, &errs.Error{ID: "search.usage", Kind: errs.KindUsage, Operation: "search", Summary: "Search type is not supported.", Cause: err, Retryable: errs.Bool(false), CorrectiveAction: "Use --type workbook, datasource, flow, project, user, group, definition, metric, content, admin, or pulse; omit --type to search all types."}
-	}
-	if (input.Terms == "" && input.Type == "") || input.Limit < 0 || input.Limit > 2000 || (input.Environment != "" && !input.SiteResolved) || (input.Limit > 100 && input.Cursor != "") {
-		return Output{}, searchError(errs.KindUsage, input, "Search requires a term or type and a limit from 0 through 2000; legacy cursors support limits up to 100.", nil)
-	}
-	if a == nil || a.source == nil {
-		return Output{}, searchError(errs.KindRuntime, input, "Search is not configured.", nil)
-	}
 	if input.Limit == 0 {
 		input.Limit = 20
 	}
 	request := input
+	var err error
 	request.Cursor, err = decodeCursor(input.Cursor, input)
 	if err != nil {
 		return Output{}, searchError(errs.KindUsage, input, "Search cursor does not match the selected source and filters.", err)
 	}
-	result, err := a.search(ctx, request)
+	result, err := searchPages(ctx, source, request, types)
 	if err != nil {
 		var invalid interface{ InvalidCacheCursor() bool }
 		var invalidSearch interface{ InvalidSearchCursor() bool }
@@ -145,12 +130,12 @@ func searchHelp(environment string, items []Item) []string {
 	return []string{commandhint.Command("capability", "list")}
 }
 
-// search expands a larger result bound using stable 100-record source pages.
+// searchPages expands a larger result bound using stable 100-record source pages.
 // Existing small-page cursors remain compatible; larger searches restart from
 // the beginning when the caller increases --limit.
-func (a *Action) search(ctx context.Context, input Input) (Result, error) {
+func searchPages(ctx context.Context, source Source, input Input, types []string) (Result, error) {
 	if input.Limit <= 100 {
-		result, err := a.source.Search(ctx, input)
+		result, err := source.Search(ctx, input, types)
 		if err == nil && result.Page.NextCursor != "" && (strings.TrimSpace(result.Page.NextCursor) == "" || result.Page.NextCursor == input.Cursor) {
 			return Result{}, errors.New("search source returned an invalid or repeated continuation token")
 		}
@@ -164,7 +149,7 @@ func (a *Action) search(ctx context.Context, input Input) (Result, error) {
 		if err := ctx.Err(); err != nil {
 			return Result{}, err
 		}
-		page, err := a.source.Search(ctx, request)
+		page, err := source.Search(ctx, request, types)
 		if err != nil {
 			return Result{}, err
 		}

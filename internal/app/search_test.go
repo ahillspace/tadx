@@ -21,13 +21,29 @@ import (
 	resourcesearch "github.com/ahillspace/tadx/internal/resources/search"
 )
 
+func executeSearchAction(ctx context.Context, source searchaction.Source, input searchaction.Input) (searchaction.Output, error) {
+	types, err := searchaction.ValidateInput(input)
+	if err != nil {
+		return searchaction.Output{}, err
+	}
+	return searchaction.Execute(ctx, source, input, types)
+}
+
+func searchWithTypes(ctx context.Context, source globalSearchSource, input searchaction.Input) (searchaction.Result, error) {
+	types, err := searchaction.ValidateInput(input)
+	if err != nil {
+		return searchaction.Result{}, err
+	}
+	return source.Search(ctx, input, types)
+}
+
 func TestCacheGlobalSearchIncludesReadThroughResourcesWithoutGeneration(t *testing.T) {
 	now := time.Date(2026, 9, 4, 12, 0, 0, 0, time.UTC)
 	store := cache.NewStore(t.TempDir(), func() time.Time { return now })
 	if err := store.UpsertResources(context.Background(), []cache.ResourceEntry{{Environment: "dev", Site: "site", Kind: "workbook", LUID: "wb-1", Name: "Sales", Coverage: "summary", ObservedAt: now}}); err != nil {
 		t.Fatal(err)
 	}
-	out, err := searchaction.New(cacheGlobalSearchSource{store: store}).Execute(context.Background(), searchaction.Input{Terms: "sales", Type: "workbook", Environment: "dev", Site: "site", SiteResolved: true, Cache: true})
+	out, err := executeSearchAction(context.Background(), cacheGlobalSearchSource{store: store}, searchaction.Input{Terms: "sales", Type: "workbook", Environment: "dev", Site: "site", SiteResolved: true, Cache: true})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -38,7 +54,7 @@ func TestCacheGlobalSearchIncludesReadThroughResourcesWithoutGeneration(t *testi
 
 func TestCacheGlobalSearchRejectsExplicitUnavailableType(t *testing.T) {
 	store := cache.NewStore(t.TempDir(), time.Now)
-	_, err := searchaction.New(cacheGlobalSearchSource{store: store}).Execute(context.Background(), searchaction.Input{Type: "metric", Environment: "dev", Site: "site", SiteResolved: true, Cache: true})
+	_, err := executeSearchAction(context.Background(), cacheGlobalSearchSource{store: store}, searchaction.Input{Type: "metric", Environment: "dev", Site: "site", SiteResolved: true, Cache: true})
 	var structured *errs.Error
 	if !errors.As(err, &structured) || structured.Kind != errs.KindUsage {
 		t.Fatalf("error=%v", err)
@@ -102,7 +118,7 @@ func TestLiveGlobalSearchRoutesNonemptyContentTermsToNativeSearch(t *testing.T) 
 		native := &appSearchFake{pages: []resourcesearch.Page{{Items: []resourcesearch.Item{{LUID: "wb-1", Type: "workbook", Name: "Sales"}}}}}
 		dedicated := &appSearchFake{}
 		source := globalSearchSource{native: native, dedicated: dedicated}
-		result, err := source.Search(context.Background(), searchaction.Input{Terms: "sales", Type: test.selector, Limit: 20})
+		result, err := searchWithTypes(context.Background(), source, searchaction.Input{Terms: "sales", Type: test.selector, Limit: 20})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -120,7 +136,7 @@ func TestLiveGlobalSearchRetainsDedicatedRoutesForAdminAndPulse(t *testing.T) {
 		native := &appSearchFake{}
 		dedicated := &appSearchFake{pages: []resourcesearch.Page{{}}}
 		source := globalSearchSource{native: native, dedicated: dedicated}
-		if _, err := source.Search(context.Background(), searchaction.Input{Terms: "sales", Type: selector, Limit: 20}); err != nil {
+		if _, err := searchWithTypes(context.Background(), source, searchaction.Input{Terms: "sales", Type: selector, Limit: 20}); err != nil {
 			t.Fatalf("selector=%s error=%v", selector, err)
 		}
 		if len(native.inputs) != 0 || len(dedicated.inputs) != 1 {
@@ -135,7 +151,7 @@ func TestLiveGlobalSearchRetainsListSemanticsForBlankTypedSearch(t *testing.T) {
 		lists := &appSearchFake{pages: []resourcesearch.Page{{}}}
 		dedicated := &appSearchFake{}
 		source := globalSearchSource{native: native, lists: lists, dedicated: dedicated}
-		result, err := source.Search(context.Background(), searchaction.Input{Type: selector, Limit: 20})
+		result, err := searchWithTypes(context.Background(), source, searchaction.Input{Type: selector, Limit: 20})
 		if err != nil || len(result.Items) != 0 || len(native.inputs) != 0 || len(lists.inputs) != 1 || len(dedicated.inputs) != 0 {
 			t.Fatalf("selector=%s result=%+v error=%v native=%d lists=%d dedicated=%d", selector, result, err, len(native.inputs), len(lists.inputs), len(dedicated.inputs))
 		}
@@ -148,7 +164,7 @@ func TestLiveGlobalSearchRetainsDedicatedListSemanticsForBlankPulseSearch(t *tes
 		lists := &appSearchFake{}
 		dedicated := &appSearchFake{pages: []resourcesearch.Page{{}}}
 		source := globalSearchSource{native: native, lists: lists, dedicated: dedicated}
-		if _, err := source.Search(context.Background(), searchaction.Input{Type: selector, Limit: 20}); err != nil {
+		if _, err := searchWithTypes(context.Background(), source, searchaction.Input{Type: selector, Limit: 20}); err != nil {
 			t.Fatalf("selector=%s error=%v", selector, err)
 		}
 		if len(native.inputs) != 0 || len(lists.inputs) != 0 || len(dedicated.inputs) != 1 {
@@ -191,12 +207,12 @@ func TestUntypedLiveSearchReturnsNativeContentBeforeDedicatedResults(t *testing.
 	source := globalSearchSource{native: native, dedicated: dedicated}
 	input := searchaction.Input{Terms: "sales", Limit: 2}
 
-	first, err := source.Search(context.Background(), input)
+	first, err := searchWithTypes(context.Background(), source, input)
 	if err != nil || len(first.Items) != 2 || first.Items[0].Type != "workbook" || first.Items[1].Type != "user" || first.Page.NextCursor == "" || len(dedicated.inputs) != 1 || !reflect.DeepEqual(dedicated.budgets, []int{1}) {
 		t.Fatalf("first=%+v error=%v dedicated=%d budgets=%v", first, err, len(dedicated.inputs), dedicated.budgets)
 	}
 	input.Cursor = first.Page.NextCursor
-	second, err := source.Search(context.Background(), input)
+	second, err := searchWithTypes(context.Background(), source, input)
 	if err != nil || len(second.Items) != 1 || second.Items[0].LUID != "user-2" || second.Page.NextCursor != "" || len(native.inputs) != 1 || len(dedicated.inputs) != 2 {
 		t.Fatalf("second=%+v error=%v native=%d dedicated=%d", second, err, len(native.inputs), len(dedicated.inputs))
 	}
@@ -211,12 +227,12 @@ func TestUntypedLiveSearchExactNativeLimitReturnsDedicatedPhaseCursor(t *testing
 	dedicated := &appSearchFake{pages: []resourcesearch.Page{{Items: []resourcesearch.Item{{LUID: "group-1", Type: "group", Name: "Sales"}}}}}
 	source := globalSearchSource{native: native, dedicated: dedicated}
 	input := searchaction.Input{Terms: "sales", Limit: 1}
-	first, err := source.Search(context.Background(), input)
+	first, err := searchWithTypes(context.Background(), source, input)
 	if err != nil || len(first.Items) != 1 || first.Page.NextCursor == "" || len(dedicated.inputs) != 0 {
 		t.Fatalf("first=%+v error=%v dedicated=%d", first, err, len(dedicated.inputs))
 	}
 	input.Cursor = first.Page.NextCursor
-	second, err := source.Search(context.Background(), input)
+	second, err := searchWithTypes(context.Background(), source, input)
 	if err != nil || len(second.Items) != 1 || second.Items[0].Type != "group" {
 		t.Fatalf("second=%+v error=%v", second, err)
 	}
@@ -226,7 +242,7 @@ func TestUntypedLiveSearchWithNoNativeMatchesReturnsDedicatedPageImmediately(t *
 	native := &appSearchFake{pages: []resourcesearch.Page{{Items: []resourcesearch.Item{}}}}
 	dedicated := &appSearchFake{pages: []resourcesearch.Page{{Items: []resourcesearch.Item{{LUID: "user-1", Type: "user", Name: "Sales"}}}}}
 	source := globalSearchSource{native: native, dedicated: dedicated}
-	result, err := source.Search(context.Background(), searchaction.Input{Terms: "sales", Limit: 20})
+	result, err := searchWithTypes(context.Background(), source, searchaction.Input{Terms: "sales", Limit: 20})
 	if err != nil || len(result.Items) != 1 || result.Items[0].Type != "user" || len(native.inputs) != 1 || len(dedicated.inputs) != 1 || len(dedicated.budgets) != 0 {
 		t.Fatalf("result=%+v error=%v native=%d dedicated=%d budgets=%v", result, err, len(native.inputs), len(dedicated.inputs), dedicated.budgets)
 	}
@@ -241,12 +257,12 @@ func TestUntypedLiveSearchPreservesNativeContinuationBeforePhaseChange(t *testin
 	source := globalSearchSource{native: native, dedicated: dedicated}
 	input := searchaction.Input{Terms: "sales", Limit: 1}
 
-	first, err := source.Search(context.Background(), input)
+	first, err := searchWithTypes(context.Background(), source, input)
 	if err != nil || first.Page.NextCursor == "" {
 		t.Fatalf("first=%+v error=%v", first, err)
 	}
 	input.Cursor = first.Page.NextCursor
-	second, err := source.Search(context.Background(), input)
+	second, err := searchWithTypes(context.Background(), source, input)
 	if err != nil || second.Items[0].LUID != "wb-2" || second.Page.NextCursor == "" || native.inputs[1].Cursor != "native-page-2" || len(dedicated.inputs) != 0 {
 		t.Fatalf("second=%+v error=%v native=%+v", second, err, native.inputs)
 	}
@@ -256,13 +272,13 @@ func TestUntypedLiveSearchRejectsChangedCompositeCursor(t *testing.T) {
 	native := &appSearchFake{pages: []resourcesearch.Page{{Items: []resourcesearch.Item{{LUID: "wb-1", Type: "workbook", Name: "Sales"}}}}}
 	source := globalSearchSource{native: native, dedicated: &appSearchFake{}}
 	input := searchaction.Input{Terms: "sales", Limit: 1}
-	first, err := source.Search(context.Background(), input)
+	first, err := searchWithTypes(context.Background(), source, input)
 	if err != nil {
 		t.Fatal(err)
 	}
 	input.Cursor = first.Page.NextCursor
 	input.Terms = "changed"
-	_, err = source.Search(context.Background(), input)
+	_, err = searchWithTypes(context.Background(), source, input)
 	var invalid interface{ InvalidSearchCursor() bool }
 	if !errors.As(err, &invalid) {
 		t.Fatalf("error=%v", err)
@@ -272,15 +288,15 @@ func TestUntypedLiveSearchRejectsChangedCompositeCursor(t *testing.T) {
 func TestUntypedLiveSearchContinuationRoundTripsThroughActionCursor(t *testing.T) {
 	native := &appSearchFake{pages: []resourcesearch.Page{{Items: []resourcesearch.Item{{LUID: "wb-1", Type: "workbook", Name: "Sales"}}}}}
 	dedicated := &appSearchFake{pages: []resourcesearch.Page{{Items: []resourcesearch.Item{{LUID: "group-1", Type: "group", Name: "Sales Team"}}}}}
-	action := searchaction.New(globalSearchSource{native: native, dedicated: dedicated})
+	source := globalSearchSource{native: native, dedicated: dedicated}
 	input := searchaction.Input{Terms: "sales", Environment: "dev", Site: "site", SiteResolved: true, Limit: 1}
 
-	first, err := action.Execute(context.Background(), input)
+	first, err := executeSearchAction(context.Background(), source, input)
 	if err != nil || first.Page.NextCursor == "" || first.Items[0].Type != "workbook" {
 		t.Fatalf("first=%+v error=%v", first, err)
 	}
 	input.Cursor = first.Page.NextCursor
-	second, err := action.Execute(context.Background(), input)
+	second, err := executeSearchAction(context.Background(), source, input)
 	if err != nil || second.Page.NextCursor != "" || second.Items[0].Type != "group" {
 		t.Fatalf("second=%+v error=%v", second, err)
 	}
@@ -289,7 +305,7 @@ func TestUntypedLiveSearchContinuationRoundTripsThroughActionCursor(t *testing.T
 func TestUntypedLiveSearchRejectsOversizedNestedContinuation(t *testing.T) {
 	native := &appSearchFake{pages: []resourcesearch.Page{{NextCursor: string(make([]byte, maxCombinedSourceBytes+1))}}}
 	source := globalSearchSource{native: native, dedicated: &appSearchFake{}}
-	if _, err := source.Search(context.Background(), searchaction.Input{Terms: "sales", Limit: 20}); err == nil {
+	if _, err := searchWithTypes(context.Background(), source, searchaction.Input{Terms: "sales", Limit: 20}); err == nil {
 		t.Fatal("accepted an oversized nested continuation")
 	}
 }

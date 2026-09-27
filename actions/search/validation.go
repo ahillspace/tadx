@@ -5,16 +5,17 @@ import (
 	"strings"
 )
 
-// ValidateInput checks search arguments without asserting remote target state.
-func ValidateInput(input Input) error {
+// ValidateInput checks search arguments and expands the accepted type selector.
+func ValidateInput(input Input) ([]string, error) {
 	input.Terms = strings.TrimSpace(input.Terms)
-	if _, err := Types(input.Type); err != nil {
-		return &errs.Error{ID: "search.usage", Kind: errs.KindUsage, Operation: "search", Summary: "Search type is not supported.", Cause: err, Retryable: errs.Bool(false), CorrectiveAction: "Use --type workbook, datasource, flow, project, user, group, definition, metric, content, admin, or pulse; omit --type to search all types."}
+	types, err := Types(input.Type)
+	if err != nil {
+		return nil, &errs.Error{ID: "search.usage", Kind: errs.KindUsage, Operation: "search", Summary: "Search type is not supported.", Cause: err, Retryable: errs.Bool(false), CorrectiveAction: "Use --type workbook, datasource, flow, project, user, group, definition, metric, content, admin, or pulse; omit --type to search all types."}
 	}
 	if (input.Terms == "" && input.Type == "") || input.Limit < 0 || input.Limit > 2000 || (input.Limit > 100 && input.Cursor != "") {
-		return searchError(errs.KindUsage, input, "Search requires a term or type and a limit from 0 through 2000; legacy cursors support limits up to 100.", nil)
+		return nil, searchError(errs.KindUsage, input, "Search requires a term or type and a limit from 0 through 2000; legacy cursors support limits up to 100.", nil)
 	}
-	return nil
+	return types, nil
 }
 
 // ValidateContinuation checks cursor ownership after local target resolution.
