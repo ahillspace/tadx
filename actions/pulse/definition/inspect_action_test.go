@@ -57,7 +57,7 @@ func TestInspectRequiresAndVerifiesExactLUID(t *testing.T) {
 	if err != nil || r.luid != "definition-1" || output.Definition.LUID != "definition-1" {
 		t.Fatalf("luid=%q output=%#v err=%v", r.luid, output, err)
 	}
-	full := output.FullOutput().(pulsedefinition.InspectFullResult)
+	full := output.FullOutput().(pulsedefinition.InspectOutput)
 	if full.Definition.MeasureField != "Sales" {
 		t.Fatalf("full=%#v", full)
 	}

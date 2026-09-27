@@ -51,13 +51,13 @@ type InspectInput struct {
 
 // Output retains complete details before projection.
 type InspectOutput struct {
-	Status      string
-	Environment string
-	Site        string
-	Definition  Definition
-	RequestID   string
-	Help        []string
-	Source      *readsource.Metadata
+	Status      string               `json:"status"`
+	Environment string               `json:"environment,omitempty"`
+	Site        string               `json:"site,omitempty"`
+	Definition  Definition           `json:"definition"`
+	RequestID   string               `json:"tableau_request_id,omitempty"`
+	Help        []string             `json:"help"`
+	Source      *readsource.Metadata `json:"source,omitempty"`
 }
 
 // CompactDefinition identifies the exact Pulse definition.
@@ -87,17 +87,6 @@ type InspectCompactResult struct {
 	Source      *readsource.Metadata     `json:"source,omitempty"`
 }
 
-// FullResult is the expanded bounded projection.
-type InspectFullResult struct {
-	Status      string               `json:"status"`
-	Environment string               `json:"environment,omitempty"`
-	Site        string               `json:"site,omitempty"`
-	Definition  Definition           `json:"definition"`
-	RequestID   string               `json:"tableau_request_id,omitempty"`
-	Help        []string             `json:"help"`
-	Source      *readsource.Metadata `json:"source,omitempty"`
-}
-
 // CompactOutput returns stable identity fields.
 func (o InspectOutput) CompactOutput() any {
 	return InspectCompactResult{Status: o.Status, Environment: o.Environment, Site: o.Site, Definition: inspectCompactDefinition(o.Definition), Details: "--full", Help: o.Help, Source: o.Source}
@@ -120,10 +109,9 @@ func inspectCompactDefinition(definition Definition) InspectCompactDefinition {
 
 // FullOutput returns the normalized released configuration.
 func (o InspectOutput) FullOutput() any {
-	item := o.Definition
-	item.AllowedDimensions = append([]string(nil), item.AllowedDimensions...)
-	item.AllowedGranularities = append([]string(nil), item.AllowedGranularities...)
-	return InspectFullResult{Status: o.Status, Environment: o.Environment, Site: o.Site, Definition: item, RequestID: o.RequestID, Help: o.Help, Source: o.Source}
+	o.Definition.AllowedDimensions = append([]string(nil), o.Definition.AllowedDimensions...)
+	o.Definition.AllowedGranularities = append([]string(nil), o.Definition.AllowedGranularities...)
+	return o
 }
 
 // ValidateInput checks local selectors without resolving a site or contacting Tableau.

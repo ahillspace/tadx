@@ -52,13 +52,13 @@ type InspectInput struct {
 	Cache       bool
 }
 type InspectOutput struct {
-	Status      string
-	Environment string
-	Site        string
-	Metric      Metric
-	RequestID   string
-	Help        []string
-	Source      *readsource.Metadata
+	Status      string               `json:"status"`
+	Environment string               `json:"environment,omitempty"`
+	Site        string               `json:"site,omitempty"`
+	Metric      Metric               `json:"metric"`
+	RequestID   string               `json:"tableau_request_id,omitempty"`
+	Help        []string             `json:"help"`
+	Source      *readsource.Metadata `json:"source,omitempty"`
 }
 type InspectCompactMetric struct {
 	LUID           string `json:"luid"`
@@ -75,21 +75,12 @@ type InspectCompactResult struct {
 	Help        []string             `json:"help"`
 	Source      *readsource.Metadata `json:"source,omitempty"`
 }
-type InspectFullResult struct {
-	Status      string               `json:"status"`
-	Environment string               `json:"environment,omitempty"`
-	Site        string               `json:"site,omitempty"`
-	Metric      Metric               `json:"metric"`
-	RequestID   string               `json:"tableau_request_id,omitempty"`
-	Help        []string             `json:"help"`
-	Source      *readsource.Metadata `json:"source,omitempty"`
-}
 
 func (o InspectOutput) CompactOutput() any {
 	return InspectCompactResult{Status: o.Status, Environment: o.Environment, Site: o.Site, Metric: InspectCompactMetric{LUID: o.Metric.LUID, Name: o.Metric.Name, DefinitionLUID: o.Metric.DefinitionLUID, IsDefault: o.Metric.IsDefault}, Details: "--full", Help: o.Help, Source: o.Source}
 }
 func (o InspectOutput) FullOutput() any {
-	return InspectFullResult{Status: o.Status, Environment: o.Environment, Site: o.Site, Metric: o.Metric, RequestID: o.RequestID, Help: o.Help, Source: o.Source}
+	return o
 }
 
 // ValidateInput checks local selectors without resolving a site or contacting Tableau.

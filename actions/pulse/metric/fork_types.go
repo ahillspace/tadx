@@ -1,5 +1,7 @@
 package metric
 
+import "github.com/ahillspace/tadx/internal/value"
+
 type ForkInput struct {
 	period        map[string]any
 	Environment   string
@@ -24,23 +26,14 @@ type ForkDefinition struct {
 	FixedFilters         []any
 	FixedFiltersKnown    bool
 }
-type ForkCreateRequest struct {
-	DefinitionLUID string
-	Specification  map[string]any
-}
+type ForkCreateRequest = value.PulseMetricRequest
 type ForkCreateResult struct {
 	MetricLUID string
 	MetricName string
 	Created    bool
 	RequestID  string
 }
-type ForkExpectedMetric struct {
-	MetricLUID     string
-	DefinitionLUID string
-	DatasourceLUID string
-	SiteLUID       string
-	Specification  map[string]any
-}
+type ForkExpectedMetric = value.PulseExpectedMetric
 type ForkReconciliation struct {
 	Status                string
 	Attempts              int

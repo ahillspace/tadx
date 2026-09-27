@@ -174,14 +174,14 @@ type ListOutputPage struct {
 
 // Output retains complete details before projection.
 type ListOutput struct {
-	Status      string
-	Environment string
-	Site        string
-	Page        ListOutputPage
-	Definitions []ListDefinition
-	RequestID   string
-	Help        []string
-	Source      *readsource.Metadata
+	Status      string               `json:"status"`
+	Environment string               `json:"environment,omitempty"`
+	Site        string               `json:"site,omitempty"`
+	Page        ListOutputPage       `json:"page"`
+	Definitions []ListDefinition     `json:"definitions"`
+	RequestID   string               `json:"tableau_request_id,omitempty"`
+	Help        []string             `json:"help"`
+	Source      *readsource.Metadata `json:"source,omitempty"`
 }
 
 // CompactDefinition identifies one definition and its datasource.
@@ -203,18 +203,6 @@ type ListCompactResult struct {
 	Source      *readsource.Metadata    `json:"source,omitempty"`
 }
 
-// FullResult is the expanded bounded projection.
-type ListFullResult struct {
-	Status      string               `json:"status"`
-	Environment string               `json:"environment,omitempty"`
-	Site        string               `json:"site,omitempty"`
-	Page        ListOutputPage       `json:"page"`
-	Definitions []ListDefinition     `json:"definitions"`
-	RequestID   string               `json:"tableau_request_id,omitempty"`
-	Help        []string             `json:"help"`
-	Source      *readsource.Metadata `json:"source,omitempty"`
-}
-
 // CompactOutput returns stable definition identities.
 func (o ListOutput) CompactOutput() any {
 	items := make([]ListCompactDefinition, len(o.Definitions))
@@ -230,7 +218,8 @@ func (o ListOutput) FullOutput() any {
 	for index := range items {
 		items[index].AllowedDimensions = append([]string(nil), items[index].AllowedDimensions...)
 	}
-	return ListFullResult{Status: o.Status, Environment: o.Environment, Site: o.Site, Page: o.Page, Definitions: items, RequestID: o.RequestID, Help: o.Help, Source: o.Source}
+	o.Definitions = items
+	return o
 }
 
 // ValidateInput checks bounded list inputs; resolved cursor ownership is checked later.

@@ -646,7 +646,7 @@ func decodeSubscription(raw json.RawMessage, metricLUID, requestID string) (Subs
 	if luid == "" {
 		return Subscription{}, errors.New("Pulse subscription follower omitted identity")
 	}
-	return Subscription{LUID: first(stringValue(data["id"]), stringValue(data["subscription_id"]), stringValue(nested["id"])), MetricLUID: metricLUID, FollowerType: typeName, FollowerLUID: luid, FollowerName: first(stringValue(follower["name"]), stringValue(user["name"]), stringValue(group["name"])), TableauRequestID: requestID}, nil
+	return Subscription{LUID: first(stringValue(data["id"]), stringValue(data["subscription_id"]), stringValue(nested["id"])), MetricLUID: metricLUID, FollowerType: typeName, FollowerLUID: luid, FollowerName: first(stringValue(follower["name"]), stringValue(user["name"]), stringValue(group["name"])), RequestID: requestID}, nil
 }
 
 func protocol(operation string, response tableau.Response, cause error, retryable bool) error {

@@ -137,15 +137,15 @@ type ListOutputPage struct {
 	MoreAvailable bool   `json:"more_available"`
 }
 type ListOutput struct {
-	Status         string
-	Environment    string
-	Site           string
-	DefinitionLUID string
-	Page           ListOutputPage
-	Metrics        []ListMetric
-	RequestID      string
-	Help           []string
-	Source         *readsource.Metadata
+	Status         string               `json:"status"`
+	Environment    string               `json:"environment,omitempty"`
+	Site           string               `json:"site,omitempty"`
+	DefinitionLUID string               `json:"definition_luid"`
+	Page           ListOutputPage       `json:"page"`
+	Metrics        []ListMetric         `json:"metrics"`
+	RequestID      string               `json:"tableau_request_id,omitempty"`
+	Help           []string             `json:"help"`
+	Source         *readsource.Metadata `json:"source,omitempty"`
 }
 type ListCompactMetric struct {
 	LUID      string `json:"luid"`
@@ -163,17 +163,6 @@ type ListCompactResult struct {
 	Help           []string             `json:"help"`
 	Source         *readsource.Metadata `json:"source,omitempty"`
 }
-type ListFullResult struct {
-	Status         string               `json:"status"`
-	Environment    string               `json:"environment,omitempty"`
-	Site           string               `json:"site,omitempty"`
-	DefinitionLUID string               `json:"definition_luid"`
-	Page           ListOutputPage       `json:"page"`
-	Metrics        []ListMetric         `json:"metrics"`
-	RequestID      string               `json:"tableau_request_id,omitempty"`
-	Help           []string             `json:"help"`
-	Source         *readsource.Metadata `json:"source,omitempty"`
-}
 
 func (o ListOutput) CompactOutput() any {
 	items := make([]ListCompactMetric, len(o.Metrics))
@@ -183,7 +172,7 @@ func (o ListOutput) CompactOutput() any {
 	return ListCompactResult{Status: o.Status, Environment: o.Environment, Site: o.Site, DefinitionLUID: o.DefinitionLUID, Page: o.Page, Metrics: items, Details: "--full", Help: o.Help, Source: o.Source}
 }
 func (o ListOutput) FullOutput() any {
-	return ListFullResult{Status: o.Status, Environment: o.Environment, Site: o.Site, DefinitionLUID: o.DefinitionLUID, Page: o.Page, Metrics: o.Metrics, RequestID: o.RequestID, Help: o.Help, Source: o.Source}
+	return o
 }
 
 // ValidateInput checks bounded list inputs; resolved cursor ownership is checked later.

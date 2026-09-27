@@ -8,6 +8,7 @@ import (
 	"github.com/ahillspace/tadx/internal/commandhint"
 	"github.com/ahillspace/tadx/internal/errs"
 	"github.com/ahillspace/tadx/internal/pulsecontract"
+	"github.com/ahillspace/tadx/internal/value"
 )
 
 type FollowCreator interface {
@@ -85,11 +86,7 @@ type FollowInput struct {
 	UserLUID    string
 	GroupLUID   string
 }
-type FollowCreateRequest struct {
-	MetricLUID   string
-	FollowerType string
-	FollowerLUID string
-}
+type FollowCreateRequest = value.PulseSubscriptionRequest
 type FollowCreateResult struct {
 	Status           string `json:"status"`
 	SubscriptionLUID string `json:"subscription_luid,omitempty"`

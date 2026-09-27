@@ -737,12 +737,12 @@ func (a *pulseMetricMutationAdapter) GetDefinition(ctx context.Context, luid str
 }
 
 func (a *pulseMetricMutationAdapter) GetOrCreateMetric(ctx context.Context, request pulsemetric.ForkCreateRequest) (pulsemetric.ForkCreateResult, error) {
-	result, err := a.client.GetOrCreateMetric(ctx, tableaupulse.GetOrCreateRequest{DefinitionLUID: request.DefinitionLUID, Specification: request.Specification})
+	result, err := a.client.GetOrCreateMetric(ctx, request)
 	return pulsemetric.ForkCreateResult{MetricLUID: result.MetricLUID, MetricName: result.MetricName, Created: result.Created, RequestID: result.TableauRequestID}, err
 }
 
 func (a *pulseMetricMutationAdapter) ReconcileMetric(ctx context.Context, expected pulsemetric.ForkExpectedMetric) (pulsemetric.ForkReconciliation, error) {
-	result, err := a.client.ReconcileMetric(ctx, tableaupulse.ExpectedMetric{MetricLUID: expected.MetricLUID, DefinitionLUID: expected.DefinitionLUID, DatasourceLUID: expected.DatasourceLUID, SiteLUID: expected.SiteLUID, Specification: expected.Specification})
+	result, err := a.client.ReconcileMetric(ctx, expected)
 	return pulsemetric.ForkReconciliation{Status: result.Status, Attempts: result.Attempts, OwnershipVerified: result.OwnershipVerified, RequestID: result.TableauRequestID, SpecificationVerified: result.SpecificationVerified, SavedSpecification: result.Metric.Specification, MetricRequestID: result.Metric.TableauRequestID, DefinitionRequestID: result.Definition.TableauRequestID, SavedDefinition: pulsemetric.ForkSavedDefinition{LUID: result.Definition.LUID, Name: result.Definition.Name, DatasourceLUID: result.Definition.DatasourceLUID}}, err
 }
 
@@ -793,14 +793,12 @@ func (a *pulseFollowerAdapter) ListSubscriptions(ctx context.Context, metricLUID
 	}
 	a.items = append([]tableaupulse.Subscription(nil), items...)
 	result := make([]pulsemetric.Subscription, len(items))
-	for index, item := range items {
-		result[index] = pulsemetric.Subscription{LUID: item.LUID, MetricLUID: item.MetricLUID, FollowerType: item.FollowerType, FollowerLUID: item.FollowerLUID, FollowerName: item.FollowerName, RequestID: item.TableauRequestID}
-	}
+	copy(result, items)
 	return result, nil
 }
 
 func (a *pulseFollowerAdapter) CreateSubscription(ctx context.Context, request pulsemetric.FollowCreateRequest) (pulsemetric.FollowCreateResult, error) {
-	result, err := a.client.CreateSubscription(ctx, tableaupulse.CreateSubscriptionRequest{MetricLUID: request.MetricLUID, FollowerType: request.FollowerType, FollowerLUID: request.FollowerLUID})
+	result, err := a.client.CreateSubscription(ctx, request)
 	return pulsemetric.FollowCreateResult{Status: result.Status, SubscriptionLUID: result.SubscriptionLUID, RequestID: result.TableauRequestID}, err
 }
 
@@ -998,10 +996,9 @@ type pulseFollowerSnapshot struct {
 
 func (c *pulseCommands) writePulseFollowers(ctx context.Context, environment config.Environment, metricLUID string, items []tableaupulse.Subscription) error {
 	observedAt := c.runtime.now().UTC()
-	snapshot := pulseFollowerSnapshot{Version: 1, MetricLUID: metricLUID, Subscriptions: make([]pulsemetric.Subscription, 0, len(items))}
-	for _, item := range items {
-		snapshot.Subscriptions = append(snapshot.Subscriptions, pulsemetric.Subscription{LUID: item.LUID, MetricLUID: item.MetricLUID, FollowerType: item.FollowerType, FollowerLUID: item.FollowerLUID, FollowerName: item.FollowerName})
-	}
+	subscriptions := make([]pulsemetric.Subscription, len(items))
+	copy(subscriptions, items)
+	snapshot := pulseFollowerSnapshot{Version: 1, MetricLUID: metricLUID, Subscriptions: subscriptions}
 	entry, err := resourceEntry(environment.Alias, environment.SiteContentURL, pulseFollowerSnapshotKind, metricLUID, metricLUID, "", "", "detail", observedAt, snapshot)
 	if err != nil {
 		return err

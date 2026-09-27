@@ -59,10 +59,7 @@ type MetricPage struct {
 }
 
 // GetOrCreateRequest is the exact desired-state metric payload.
-type GetOrCreateRequest struct {
-	DefinitionLUID string
-	Specification  map[string]any
-}
+type GetOrCreateRequest = value.PulseMetricRequest
 
 // GetOrCreateResult is the authoritative get-or-create outcome.
 type GetOrCreateResult struct {
@@ -73,13 +70,7 @@ type GetOrCreateResult struct {
 }
 
 // ExpectedMetric contains the authoritative ownership expected after get-or-create.
-type ExpectedMetric struct {
-	MetricLUID     string
-	DefinitionLUID string
-	DatasourceLUID string
-	SiteLUID       string
-	Specification  map[string]any
-}
+type ExpectedMetric = value.PulseExpectedMetric
 
 // Reconciliation reports verified saved configuration, not numerical metric values.
 type Reconciliation struct {
@@ -93,14 +84,7 @@ type Reconciliation struct {
 }
 
 // Subscription is one exact metric follower relationship.
-type Subscription struct {
-	LUID             string
-	MetricLUID       string
-	FollowerType     string
-	FollowerLUID     string
-	FollowerName     string
-	TableauRequestID string
-}
+type Subscription = value.PulseSubscription
 
 // SubscriptionPage is one bounded user-filtered subscription page.
 type SubscriptionPage struct {
@@ -110,11 +94,7 @@ type SubscriptionPage struct {
 }
 
 // CreateSubscriptionRequest identifies one exact desired follower relationship.
-type CreateSubscriptionRequest struct {
-	MetricLUID   string
-	FollowerType string
-	FollowerLUID string
-}
+type CreateSubscriptionRequest = value.PulseSubscriptionRequest
 
 // CreateSubscriptionResult reports whether the desired relationship changed.
 type CreateSubscriptionResult struct {

@@ -74,7 +74,7 @@ func TestListReturnsBoundedDefinitionPage(t *testing.T) {
 		t.Fatalf("request=%#v output=%#v", r.input, output)
 	}
 	compact := output.CompactOutput().(pulsedefinition.ListCompactResult)
-	full := output.FullOutput().(pulsedefinition.ListFullResult)
+	full := output.FullOutput().(pulsedefinition.ListOutput)
 	if compact.Definitions[0].LUID != "definition-1" || compact.Details != "--full" || full.Definitions[0].MeasureField != "Sales" {
 		t.Fatalf("compact=%#v full=%#v", compact, full)
 	}

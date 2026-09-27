@@ -6,7 +6,7 @@ import (
 )
 
 func TestListExplorationFullProjectionDistinguishesKnownEmptyFromUnknown(t *testing.T) {
-	known := ListOutput{Definitions: []ListDefinition{}}.FullOutput().(ListFullResult)
+	known := ListOutput{Definitions: []ListDefinition{}}.FullOutput().(ListOutput)
 	if known.Definitions == nil {
 		t.Fatal("known-empty definitions became nil")
 	}
@@ -19,7 +19,7 @@ func TestListExplorationFullProjectionDistinguishesKnownEmptyFromUnknown(t *test
 		t.Fatalf("known-empty JSON = %s, %v", knownJSON, err)
 	}
 
-	unknown := ListOutput{}.FullOutput().(ListFullResult)
+	unknown := ListOutput{}.FullOutput().(ListOutput)
 	if unknown.Definitions != nil {
 		t.Fatalf("unknown definitions became known-empty: %#v", unknown.Definitions)
 	}

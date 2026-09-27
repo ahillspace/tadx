@@ -118,9 +118,9 @@ type CreateResult struct {
 
 // Output keeps a result attached to its exact preview.
 type CreateOutput struct {
-	Plan   CreatePlan
-	Result *CreateResult
-	Help   []string
+	Plan   CreatePlan    `json:"plan"`
+	Result *CreateResult `json:"result,omitempty"`
+	Help   []string      `json:"help"`
 }
 
 // CompactPlan contains the safety-critical target and references.
@@ -170,13 +170,6 @@ type CreateCompactResult struct {
 	Help    []string                   `json:"help"`
 }
 
-// FullResult contains the exact normalized request and bounded diagnostics.
-type CreateFullResult struct {
-	Plan   CreatePlan    `json:"plan"`
-	Result *CreateResult `json:"result,omitempty"`
-	Help   []string      `json:"help"`
-}
-
 // CompactOutput returns the safety-critical plan and identities.
 func (o CreateOutput) CompactOutput() any {
 	plan := createCompactPlan(o.Plan)
@@ -189,5 +182,5 @@ func (o CreateOutput) CompactOutput() any {
 
 // FullOutput returns the exact normalized request.
 func (o CreateOutput) FullOutput() any {
-	return CreateFullResult{Plan: o.Plan, Result: o.Result, Help: o.Help}
+	return o
 }

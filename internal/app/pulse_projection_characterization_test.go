@@ -24,7 +24,8 @@ func TestPulseProjectionRequiredEmptyFields(t *testing.T) {
 	}{
 		{"metric list", metricListItem(tableaupulse.Metric{}), `{"luid":"","definition_luid":"","is_default":false}`},
 		{"metric inspect", metricGetItem(tableaupulse.Metric{}), `{"luid":"","definition_luid":"","is_default":false,"specification":null}`},
-		{"follower snapshot", pulseFollowerSnapshot{Version: 1, MetricLUID: "metric", Subscriptions: []pulsemetric.Subscription{{LUID: "subscription"}}}, `{"version":1,"metric_luid":"metric","subscriptions":[{"luid":"subscription","metric_luid":"","follower_type":"","follower_luid":""}]}`},
+		{"follower snapshot", pulseFollowerSnapshot{Version: 1, MetricLUID: "metric", Subscriptions: []pulsemetric.Subscription{{LUID: "subscription", RequestID: "private-request"}}}, `{"version":1,"metric_luid":"metric","subscriptions":[{"luid":"subscription","metric_luid":"","follower_type":"","follower_luid":""}]}`},
+		{"empty follower snapshot", pulseFollowerSnapshot{Version: 1, MetricLUID: "metric", Subscriptions: []pulsemetric.Subscription{}}, `{"version":1,"metric_luid":"metric","subscriptions":[]}`},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			got, err := json.Marshal(tc.value)
