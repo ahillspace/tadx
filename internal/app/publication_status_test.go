@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	jobinspect "github.com/ahillspace/tadx/actions/job/inspect"
+	jobactions "github.com/ahillspace/tadx/actions/job"
 	"github.com/ahillspace/tadx/internal/jobmonitor"
 	"github.com/ahillspace/tadx/internal/operationrun"
 	"github.com/ahillspace/tadx/internal/value"
@@ -34,7 +34,7 @@ func TestInspectPublicationOperationUsesLocalStateForLiveWorker(t *testing.T) {
 	}
 
 	runtime := &runtimeDependencies{operationDirectory: operationDirectory, configPath: filepath.Join(operationDirectory, "config.yml")}
-	result, err := runtime.inspectPublicationOperation(context.Background(), jobinspect.Input{OperationID: record.ID})
+	result, err := runtime.inspectPublicationOperation(context.Background(), jobactions.InspectInput{OperationID: record.ID})
 	if err != nil {
 		t.Fatalf("inspectPublicationOperation() error = %v", err)
 	}
@@ -76,7 +76,7 @@ func TestInspectPublicationOperationChecksFinishedReceiptOnceWithoutPoolRegistra
 		t.Fatalf("Update() error = %v", err)
 	}
 	runtime := &runtimeDependencies{operationDirectory: operationDirectory, jobDirectory: receiptDirectory}
-	result, err := runtime.inspectPublicationOperation(context.Background(), jobinspect.Input{OperationID: record.ID})
+	result, err := runtime.inspectPublicationOperation(context.Background(), jobactions.InspectInput{OperationID: record.ID})
 	if err != nil {
 		t.Fatalf("inspectPublicationOperation() error = %v", err)
 	}
@@ -105,10 +105,10 @@ func TestInspectPublicationOperationRejectsExplicitTargetMismatch(t *testing.T) 
 		t.Fatalf("Update() error = %v", err)
 	}
 	runtime := &runtimeDependencies{operationDirectory: operationDirectory}
-	if _, err := runtime.inspectPublicationOperation(context.Background(), jobinspect.Input{OperationID: record.ID, Environment: "dev"}); err == nil {
+	if _, err := runtime.inspectPublicationOperation(context.Background(), jobactions.InspectInput{OperationID: record.ID, Environment: "dev"}); err == nil {
 		t.Fatal("inspectPublicationOperation() error = nil, want environment mismatch")
 	}
-	if _, err := runtime.inspectPublicationOperation(context.Background(), jobinspect.Input{OperationID: record.ID, Site: "other"}); err == nil {
+	if _, err := runtime.inspectPublicationOperation(context.Background(), jobactions.InspectInput{OperationID: record.ID, Site: "other"}); err == nil {
 		t.Fatal("inspectPublicationOperation() error = nil, want site mismatch")
 	}
 }
@@ -148,7 +148,7 @@ func TestInspectPublicationOperationPreservesSubmissionFailureWhenAcceptedItemSu
 		t.Fatalf("Update() error = %v", err)
 	}
 	runtime := &runtimeDependencies{operationDirectory: operationDirectory, jobDirectory: receiptDirectory}
-	result, err := runtime.inspectPublicationOperation(context.Background(), jobinspect.Input{OperationID: record.ID})
+	result, err := runtime.inspectPublicationOperation(context.Background(), jobactions.InspectInput{OperationID: record.ID})
 	if err != nil {
 		t.Fatalf("inspectPublicationOperation() error = %v", err)
 	}
@@ -200,7 +200,7 @@ func TestInspectPublicationOperationReconcilesNestedJobIdentity(t *testing.T) {
 		t.Fatalf("Update() error = %v", err)
 	}
 	runtime := &runtimeDependencies{operationDirectory: operationDirectory, jobDirectory: receiptDirectory}
-	result, err := runtime.inspectPublicationOperation(context.Background(), jobinspect.Input{OperationID: record.ID})
+	result, err := runtime.inspectPublicationOperation(context.Background(), jobactions.InspectInput{OperationID: record.ID})
 	if err != nil {
 		t.Fatalf("inspectPublicationOperation() error = %v", err)
 	}
@@ -253,7 +253,7 @@ func TestInspectPublicationOperationPersistsPartialReceiptProgress(t *testing.T)
 		t.Fatalf("Update() error = %v", err)
 	}
 	runtime := &runtimeDependencies{operationDirectory: operationDirectory, jobDirectory: receiptDirectory}
-	if _, err := runtime.inspectPublicationOperation(context.Background(), jobinspect.Input{OperationID: record.ID}); err != nil {
+	if _, err := runtime.inspectPublicationOperation(context.Background(), jobactions.InspectInput{OperationID: record.ID}); err != nil {
 		t.Fatalf("inspectPublicationOperation() error = %v", err)
 	}
 	saved, err := operationStore.Read(record.ID)

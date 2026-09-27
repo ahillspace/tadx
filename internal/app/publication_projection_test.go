@@ -5,13 +5,13 @@ import (
 	"strings"
 	"testing"
 
-	jobinspect "github.com/ahillspace/tadx/actions/job/inspect"
+	jobactions "github.com/ahillspace/tadx/actions/job"
 	"github.com/ahillspace/tadx/internal/operationrun"
 )
 
 func TestFullPublicationBatchReconciliationCrossesResultWrappers(t *testing.T) {
 	data := []byte(`{"status":"running","operation":"workbook.publish","items":[{"status":"pending","result":{"plan":{"operation":"workbook.publish"},"result":{"status":"pending","receipt_path":"jobs/a.json","tableau_job_id":"a"}}}]}`)
-	items := []jobinspect.OperationItem{{Status: "succeeded", ResourceID: "published-a", ReceiptPath: "jobs/a.json", JobID: "a"}}
+	items := []jobactions.OperationItem{{Status: "succeeded", ResourceID: "published-a", ReceiptPath: "jobs/a.json", JobID: "a"}}
 	merged := mergePublicationResult(data, items, "succeeded", "workbook.publish")
 	if publicationHasPending(merged) || !strings.Contains(string(merged), `"succeeded":1`) {
 		t.Fatalf("terminal receipt left pending wrappers: %s", merged)
@@ -64,7 +64,7 @@ func TestPublicationBatchReconciliationClassifiesAllFailuresAndMixedOutcomes(t *
 				t.Fatalf("Update() error = %v", err)
 			}
 
-			items := []jobinspect.OperationItem{
+			items := []jobactions.OperationItem{
 				{Status: test.itemStatuses[0], ReceiptPath: receiptPaths[0], JobID: "job-a"},
 				{Status: test.itemStatuses[1], ReceiptPath: receiptPaths[1], JobID: "job-b"},
 			}

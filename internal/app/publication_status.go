@@ -10,7 +10,7 @@ import (
 	"strings"
 	"time"
 
-	jobinspect "github.com/ahillspace/tadx/actions/job/inspect"
+	jobactions "github.com/ahillspace/tadx/actions/job"
 	"github.com/ahillspace/tadx/internal/identity"
 	"github.com/ahillspace/tadx/internal/jobmonitor"
 	"github.com/ahillspace/tadx/internal/operationrun"
@@ -24,21 +24,21 @@ const maxOperationReceiptChecks = 100
 // inspectPublicationOperation reads one exact local operation record. A live
 // worker is never authenticated or disturbed. A finished remote-pending run
 // may perform one bounded exact read per unfinished saved receipt.
-func (r *runtimeDependencies) inspectPublicationOperation(ctx context.Context, input jobinspect.Input) (jobinspect.Result, error) {
+func (r *runtimeDependencies) inspectPublicationOperation(ctx context.Context, input jobactions.InspectInput) (jobactions.InspectResult, error) {
 	store, err := publicationOperationStore(r.operationDirectory)
 	if err != nil {
-		return jobinspect.Result{}, err
+		return jobactions.InspectResult{}, err
 	}
 	record, err := store.Read(input.OperationID)
 	if err != nil {
-		return jobinspect.Result{}, err
+		return jobactions.InspectResult{}, err
 	}
 	if !nativeLongOperation(record.Operation) {
-		return jobinspect.Result{}, fmt.Errorf("operation %q is not a supported native publish or download operation", record.ID)
+		return jobactions.InspectResult{}, fmt.Errorf("operation %q is not a supported native publish or download operation", record.ID)
 	}
 	alive, err := store.Alive(record.ID)
 	if err != nil {
-		return jobinspect.Result{}, err
+		return jobactions.InspectResult{}, err
 	}
 	view := operationView(record, alive)
 	if view.Environment == "" || view.Site == "" {
@@ -51,12 +51,12 @@ func (r *runtimeDependencies) inspectPublicationOperation(ctx context.Context, i
 		}
 	}
 	if input.Environment != "" && view.Environment != "" && input.Environment != view.Environment {
-		return jobinspect.Result{}, fmt.Errorf("operation %q belongs to environment %q, not %q", record.ID, view.Environment, input.Environment)
+		return jobactions.InspectResult{}, fmt.Errorf("operation %q belongs to environment %q, not %q", record.ID, view.Environment, input.Environment)
 	}
 	if input.Site != "" && view.Environment != "" && input.Site != view.Site {
-		return jobinspect.Result{}, fmt.Errorf("operation %q belongs to site %q, not %q", record.ID, view.Site, input.Site)
+		return jobactions.InspectResult{}, fmt.Errorf("operation %q belongs to site %q, not %q", record.ID, view.Site, input.Site)
 	}
-	result := jobinspect.Result{Environment: view.Environment, Site: view.Site, Operation: view}
+	result := jobactions.InspectResult{Environment: view.Environment, Site: view.Site, Operation: view}
 	if record.Phase == operationrun.PhaseCompleted || record.Phase == operationrun.PhaseFailed {
 		warnings, items := r.readSavedPublicationReceipts(ctx, record)
 		if updated, updateWarnings := r.reconcilePublicationReceipts(ctx, record, items); updated != nil {
@@ -68,7 +68,6 @@ func (r *runtimeDependencies) inspectPublicationOperation(ctx context.Context, i
 		} else {
 			warnings = append(warnings, updateWarnings...)
 		}
-		view.Warnings = append(view.Warnings, warnings...)
 		view.Items = items
 		result.Warnings = append(result.Warnings, warnings...)
 	}
@@ -83,10 +82,10 @@ func (r *runtimeDependencies) inspectPublicationOperation(ctx context.Context, i
 			result.Site = site
 		}
 		if input.Environment != "" && environment != "" && input.Environment != environment {
-			return jobinspect.Result{}, fmt.Errorf("operation %q belongs to environment %q, not %q", record.ID, environment, input.Environment)
+			return jobactions.InspectResult{}, fmt.Errorf("operation %q belongs to environment %q, not %q", record.ID, environment, input.Environment)
 		}
 		if input.Site != "" && site != "" && input.Site != site {
-			return jobinspect.Result{}, fmt.Errorf("operation %q belongs to site %q, not %q", record.ID, site, input.Site)
+			return jobactions.InspectResult{}, fmt.Errorf("operation %q belongs to site %q, not %q", record.ID, site, input.Site)
 		}
 		if record.Phase == operationrun.PhaseRemotePending {
 			if updated, updateWarnings := r.reconcilePublicationReceipts(ctx, record, items); updated != nil {
@@ -99,20 +98,19 @@ func (r *runtimeDependencies) inspectPublicationOperation(ctx context.Context, i
 				warnings = append(warnings, updateWarnings...)
 			}
 		}
-		view.Warnings = append(view.Warnings, warnings...)
 		view.Items = items
 		result.Warnings = append(result.Warnings, warnings...)
 	}
 	return result, nil
 }
 
-func (r *runtimeDependencies) readSavedPublicationReceipts(ctx context.Context, record operationrun.Record) ([]string, []jobinspect.OperationItem) {
+func (r *runtimeDependencies) readSavedPublicationReceipts(ctx context.Context, record operationrun.Record) ([]string, []jobactions.OperationItem) {
 	receiptStore, err := r.publicationReceiptStore()
 	if err != nil {
 		return []string{err.Error()}, nil
 	}
 	warnings := make([]string, 0)
-	items := make([]jobinspect.OperationItem, 0, min(len(record.ReceiptPaths), maxOperationReceiptChecks))
+	items := make([]jobactions.OperationItem, 0, min(len(record.ReceiptPaths), maxOperationReceiptChecks))
 	connections := make(map[string]authenticatedTableau)
 	for index, rawPath := range record.ReceiptPaths {
 		if index >= maxOperationReceiptChecks {
@@ -123,7 +121,7 @@ func (r *runtimeDependencies) readSavedPublicationReceipts(ctx context.Context, 
 		if !filepath.IsAbs(path) {
 			path = filepath.Join(receiptStore.Directory, path)
 		}
-		item := jobinspect.OperationItem{Key: receiptKey(index, path), ReceiptPath: filepath.ToSlash(path)}
+		item := jobactions.OperationItem{Key: receiptKey(index, path), ReceiptPath: filepath.ToSlash(path)}
 		receipt, readErr := receiptStore.ReadPath(path)
 		if readErr != nil {
 			item.Status, item.Error = "unknown", readErr.Error()
@@ -166,34 +164,29 @@ func (r *runtimeDependencies) savedPublicationTarget(record operationrun.Record)
 	return "", ""
 }
 
-func operationView(record operationrun.Record, alive bool) *jobinspect.OperationView {
+func operationView(record operationrun.Record, alive bool) *jobactions.OperationView {
 	status := operationStatus(record.Phase, alive)
 	if record.Phase == operationrun.PhaseFailed && publicationSnapshotStatus(record) == "partial_failure" {
 		status = "partial_failure"
 	}
 	stopped := record.Detached || (record.Phase == operationrun.PhaseRunning && !alive)
-	view := &jobinspect.OperationView{
+	view := &jobactions.OperationView{
 		ID:           record.ID,
 		Operation:    record.Operation,
 		Status:       status,
 		Phase:        string(record.Phase),
 		Alive:        alive,
-		Detached:     record.Detached,
 		Activity:     record.Activity,
 		RequestedAt:  record.RequestedAt,
 		StartedAt:    record.StartedAt,
 		FinishedAt:   record.FinishedAt,
-		WorkerPID:    record.WorkerPID,
 		ExitCode:     record.ExitCode,
 		Snapshot:     publicationSnapshot(record, false, stopped),
 		FullSnapshot: publicationSnapshot(record, true, stopped),
-		LiveResults:  append([]byte(nil), record.LiveResults...),
-		ReceiptPaths: append([]string(nil), record.ReceiptPaths...),
 	}
 	view.Environment, view.Site = publicationTarget(record)
 	if record.Phase != operationrun.PhaseCompleted || publicationNeedsDestination(record.FullResult) {
 		view.CheckStatus = publicationCheckCommand(record)
-		view.Details = []string{view.CheckStatus}
 	}
 	return view
 }
@@ -218,13 +211,13 @@ func operationStatus(phase operationrun.Phase, alive bool) string {
 	}
 }
 
-func (r *runtimeDependencies) inspectPublicationReceipts(ctx context.Context, record operationrun.Record) ([]string, []jobinspect.OperationItem, string, string) {
+func (r *runtimeDependencies) inspectPublicationReceipts(ctx context.Context, record operationrun.Record) ([]string, []jobactions.OperationItem, string, string) {
 	receiptStore, err := r.publicationReceiptStore()
 	if err != nil {
 		return []string{err.Error()}, nil, "", ""
 	}
 	warnings := make([]string, 0)
-	items := make([]jobinspect.OperationItem, 0, min(len(record.ReceiptPaths), maxOperationReceiptChecks))
+	items := make([]jobactions.OperationItem, 0, min(len(record.ReceiptPaths), maxOperationReceiptChecks))
 	environment, site := "", ""
 	if len(record.ReceiptPaths) > maxOperationReceiptChecks {
 		warnings = append(warnings, fmt.Sprintf("receipt checks limited to %d of %d saved paths", maxOperationReceiptChecks, len(record.ReceiptPaths)))
@@ -239,7 +232,7 @@ func (r *runtimeDependencies) inspectPublicationReceipts(ctx context.Context, re
 			path = filepath.Join(receiptStore.Directory, path)
 		}
 		receipt, readErr := receiptStore.ReadPath(path)
-		item := jobinspect.OperationItem{Key: receiptKey(index, path), ReceiptPath: filepath.ToSlash(path)}
+		item := jobactions.OperationItem{Key: receiptKey(index, path), ReceiptPath: filepath.ToSlash(path)}
 		if readErr != nil {
 			item.Status = "unknown"
 			item.Error = readErr.Error()
@@ -279,7 +272,7 @@ func (r *runtimeDependencies) inspectPublicationReceipts(ctx context.Context, re
 	return warnings, items, environment, site
 }
 
-func (r *runtimeDependencies) resolveReceiptItem(ctx context.Context, item jobinspect.OperationItem, receipt jobmonitor.Receipt, connections map[string]authenticatedTableau, warnings []string) (jobinspect.OperationItem, jobmonitor.Receipt, []string) {
+func (r *runtimeDependencies) resolveReceiptItem(ctx context.Context, item jobactions.OperationItem, receipt jobmonitor.Receipt, connections map[string]authenticatedTableau, warnings []string) (jobactions.OperationItem, jobmonitor.Receipt, []string) {
 	if receipt.Observation.Status != "succeeded" {
 		return item, receipt, warnings
 	}
@@ -434,7 +427,7 @@ func (r *runtimeDependencies) receiptConnection(ctx context.Context, receipt job
 	return connection, nil
 }
 
-func (r *runtimeDependencies) reconcilePublicationReceipts(ctx context.Context, record operationrun.Record, items []jobinspect.OperationItem) (*operationrun.Record, []string) {
+func (r *runtimeDependencies) reconcilePublicationReceipts(ctx context.Context, record operationrun.Record, items []jobactions.OperationItem) (*operationrun.Record, []string) {
 	if len(items) == 0 || len(items) != len(record.ReceiptPaths) {
 		return nil, nil
 	}
@@ -507,7 +500,7 @@ func (r *runtimeDependencies) reconcilePublicationReceipts(ctx context.Context, 
 	return &result, nil
 }
 
-func mergePublicationResult(data []byte, items []jobinspect.OperationItem, status, operation string) []byte {
+func mergePublicationResult(data []byte, items []jobactions.OperationItem, status, operation string) []byte {
 	if len(data) == 0 {
 		return data
 	}
@@ -527,7 +520,7 @@ func mergePublicationResult(data []byte, items []jobinspect.OperationItem, statu
 	return merged
 }
 
-func mergePublicationValue(value any, items []jobinspect.OperationItem, operation string) any {
+func mergePublicationValue(value any, items []jobactions.OperationItem, operation string) any {
 	switch typed := value.(type) {
 	case map[string]any:
 		for key, child := range typed {
@@ -551,7 +544,7 @@ func mergePublicationValue(value any, items []jobinspect.OperationItem, operatio
 	return value
 }
 
-func matchingPublicationItem(object map[string]any, items []jobinspect.OperationItem) (jobinspect.OperationItem, bool) {
+func matchingPublicationItem(object map[string]any, items []jobactions.OperationItem) (jobactions.OperationItem, bool) {
 	path, _ := object["receipt_path"].(string)
 	jobID := ""
 	for _, key := range []string{"tableau_job_id", "job_id"} {
@@ -561,7 +554,7 @@ func matchingPublicationItem(object map[string]any, items []jobinspect.Operation
 		}
 	}
 	if path == "" && jobID == "" {
-		return jobinspect.OperationItem{}, false
+		return jobactions.OperationItem{}, false
 	}
 	for _, item := range items {
 		if path != "" && filepath.ToSlash(path) == filepath.ToSlash(item.ReceiptPath) {
@@ -571,10 +564,10 @@ func matchingPublicationItem(object map[string]any, items []jobinspect.Operation
 			return item, true
 		}
 	}
-	return jobinspect.OperationItem{}, false
+	return jobactions.OperationItem{}, false
 }
 
-func setPublicationIdentity(object map[string]any, item jobinspect.OperationItem, operation string) {
+func setPublicationIdentity(object map[string]any, item jobactions.OperationItem, operation string) {
 	if item.ResourceID != "" {
 		switch operation {
 		case "workbook.publish":

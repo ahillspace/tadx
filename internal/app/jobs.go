@@ -9,9 +9,7 @@ import (
 	"strings"
 	"time"
 
-	jobcancel "github.com/ahillspace/tadx/actions/job/cancel"
-	jobinspect "github.com/ahillspace/tadx/actions/job/inspect"
-	jobwait "github.com/ahillspace/tadx/actions/job/wait"
+	jobactions "github.com/ahillspace/tadx/actions/job"
 	jobcli "github.com/ahillspace/tadx/internal/cli/job"
 	"github.com/ahillspace/tadx/internal/commandhint"
 	"github.com/ahillspace/tadx/internal/errs"
@@ -22,91 +20,68 @@ import (
 
 type jobCommands struct {
 	runtime *runtimeDependencies
-	inspect *jobinspect.Action
-	wait    *jobwait.Action
-	cancel  *jobcancel.Action
-}
-
-func newJobCommands(runtime *runtimeDependencies) *jobCommands {
-	commands := &jobCommands{runtime: runtime}
-	commands.inspect = jobinspect.New(commands)
-	commands.wait = jobwait.New(commands)
-	commands.cancel = jobcancel.New(commands)
-	return commands
 }
 
 func (c *jobCommands) dependencies() *jobcli.Dependencies {
 	return &jobcli.Dependencies{
-		Inspector:  commandsInspector{action: c.inspect},
-		Waiter:     commandsWaiter{action: c.wait},
-		Canceller:  commandsCanceller{action: c.cancel},
+		Inspect: func(ctx context.Context, input jobactions.InspectInput) (jobactions.InspectOutput, error) {
+			return jobactions.Inspect(ctx, c.Inspect, input)
+		},
+		Wait: func(ctx context.Context, input jobactions.WaitInput) (jobactions.WaitOutput, error) {
+			return jobactions.Wait(ctx, c.Wait, input)
+		},
+		Cancel: func(ctx context.Context, input jobactions.CancelInput) (jobactions.CancelOutput, error) {
+			return jobactions.Cancel(ctx, c.Cancel, input)
+		},
 		InspectUse: registryLeafUse("job.inspect"), InspectShort: registryShort("job.inspect"),
 		WaitUse: registryLeafUse("job.wait"), WaitShort: registryShort("job.wait"),
 		CancelUse: registryLeafUse("job.cancel"), CancelShort: registryShort("job.cancel"),
 	}
 }
 
-type commandsInspector struct{ action *jobinspect.Action }
-
-func (c commandsInspector) Execute(ctx context.Context, input jobinspect.Input) (jobinspect.Output, error) {
-	return c.action.Execute(ctx, input)
-}
-
-type commandsWaiter struct{ action *jobwait.Action }
-
-func (c commandsWaiter) Execute(ctx context.Context, input jobwait.Input) (jobwait.Output, error) {
-	return c.action.Execute(ctx, input)
-}
-
-type commandsCanceller struct{ action *jobcancel.Action }
-
-func (c commandsCanceller) Execute(ctx context.Context, input jobcancel.Input) (jobcancel.Output, error) {
-	return c.action.Execute(ctx, input)
-}
-
-func (c *jobCommands) Inspect(ctx context.Context, input jobinspect.Input) (jobinspect.Result, error) {
+func (c *jobCommands) Inspect(ctx context.Context, input jobactions.InspectInput) (jobactions.InspectResult, error) {
 	if input.OperationID != "" {
 		return c.runtime.inspectPublicationOperation(ctx, input)
 	}
 	connection, err := c.connection(ctx, input.Environment, input.Site, "job.inspect", input.ID)
 	if err != nil {
-		return jobinspect.Result{}, err
+		return jobactions.InspectResult{}, err
 	}
 	client := tableaujob.NewClient(connection.transport, connection.session, connection.environment.URL)
 	status, err := client.Inspect(ctx, input.ID)
 	if err != nil {
-		return jobinspect.Result{Status: status, Environment: connection.environment.Alias, Site: connection.environment.SiteContentURL, Attempts: 1}, c.observationError("job.inspect", connection.environment.Alias, connection.environment.SiteContentURL, input.ID, "Job status could not be read.", err)
+		return jobactions.InspectResult{Status: status, Environment: connection.environment.Alias, Site: connection.environment.SiteContentURL, Attempts: 1}, c.observationError("job.inspect", connection.environment.Alias, connection.environment.SiteContentURL, input.ID, "Job status could not be read.", err)
 	}
-	return jobinspect.Result{Status: status, Environment: connection.environment.Alias, Site: connection.environment.SiteContentURL, Attempts: 1}, nil
+	return jobactions.InspectResult{Status: status, Environment: connection.environment.Alias, Site: connection.environment.SiteContentURL, Attempts: 1}, nil
 }
 
-func (c *jobCommands) Wait(ctx context.Context, input jobwait.Input) (jobwait.Result, error) {
+func (c *jobCommands) Wait(ctx context.Context, input jobactions.WaitInput) (jobactions.WaitResult, error) {
 	store, err := c.store()
 	if err != nil {
-		return jobwait.Result{}, err
+		return jobactions.WaitResult{}, err
 	}
 	receipt, path, err := c.resolveReceipt(ctx, store, input)
 	if err != nil && input.Receipt == "" && errors.Is(err, os.ErrNotExist) {
 		receipt, path, err = c.startObservation(ctx, store, input)
 	}
 	if err != nil {
-		return jobwait.Result{}, &errs.Error{ID: "job.wait.receipt", Kind: errs.KindOperation, Operation: "job.wait", Resource: input.ID, Environment: input.Environment, Site: input.Site, Summary: "The accepted job receipt could not be recovered.", Cause: err, Retryable: errs.Bool(false), CorrectiveAction: "Provide the exact durable receipt path or job ID returned by the accepted operation.", Phase: errs.PhaseSetup, Outcome: errs.OutcomeNotAttempted}
+		return jobactions.WaitResult{}, &errs.Error{ID: "job.wait.receipt", Kind: errs.KindOperation, Operation: "job.wait", Resource: input.ID, Environment: input.Environment, Site: input.Site, Summary: "The accepted job receipt could not be recovered.", Cause: err, Retryable: errs.Bool(false), CorrectiveAction: "Provide the exact durable receipt path or job ID returned by the accepted operation.", Phase: errs.PhaseSetup, Outcome: errs.OutcomeNotAttempted}
 	}
 	if input.Environment != "" && input.Environment != receipt.Environment {
-		return jobwait.Result{Status: receipt.Observation, Environment: receipt.Environment, Site: receipt.Site, ReceiptPath: filepath.ToSlash(path)}, c.receiptTargetError(receipt, path, input.Environment, input.Site, "The requested environment does not match the durable job target.", nil)
+		return jobactions.WaitResult{Status: receipt.Observation, Environment: receipt.Environment, Site: receipt.Site, ReceiptPath: filepath.ToSlash(path)}, c.receiptTargetError(receipt, path, input.Environment, input.Site, "The requested environment does not match the durable job target.", nil)
 	}
 	if input.Site != "" && input.Site != receipt.Site {
-		return jobwait.Result{Status: receipt.Observation, Environment: receipt.Environment, Site: receipt.Site, ReceiptPath: filepath.ToSlash(path)}, c.receiptTargetError(receipt, path, receipt.Environment, input.Site, "The requested site does not match the durable job target.", nil)
+		return jobactions.WaitResult{Status: receipt.Observation, Environment: receipt.Environment, Site: receipt.Site, ReceiptPath: filepath.ToSlash(path)}, c.receiptTargetError(receipt, path, receipt.Environment, input.Site, "The requested site does not match the durable job target.", nil)
 	}
 	if receipt.Observation.Terminal() {
-		return jobwait.Result{Status: receipt.Observation, Environment: receipt.Environment, Site: receipt.Site, ReceiptPath: filepath.ToSlash(path)}, nil
+		return jobactions.WaitResult{Status: receipt.Observation, Environment: receipt.Environment, Site: receipt.Site, ReceiptPath: filepath.ToSlash(path)}, nil
 	}
 	connection, err := c.runtime.tableauConnection(ctx, receipt.Environment, false)
 	if err != nil {
-		return jobwait.Result{Status: receipt.Observation, Environment: receipt.Environment, Site: receipt.Site, ReceiptPath: filepath.ToSlash(path)}, c.receiptRecoveryError(receipt, path, "The saved job target could not be authenticated for recovery.", err, errs.PhaseSetup, errs.OutcomeNotAttempted)
+		return jobactions.WaitResult{Status: receipt.Observation, Environment: receipt.Environment, Site: receipt.Site, ReceiptPath: filepath.ToSlash(path)}, c.receiptRecoveryError(receipt, path, "The saved job target could not be authenticated for recovery.", err, errs.PhaseSetup, errs.OutcomeNotAttempted)
 	}
 	if err := verifyReceiptTarget(connection, receipt); err != nil {
-		return jobwait.Result{Status: receipt.Observation, Environment: receipt.Environment, Site: receipt.Site, ReceiptPath: filepath.ToSlash(path)}, c.receiptTargetError(receipt, path, receipt.Environment, receipt.Site, "The saved job receipt does not match the authenticated environment and site.", err)
+		return jobactions.WaitResult{Status: receipt.Observation, Environment: receipt.Environment, Site: receipt.Site, ReceiptPath: filepath.ToSlash(path)}, c.receiptTargetError(receipt, path, receipt.Environment, receipt.Site, "The saved job receipt does not match the authenticated environment and site.", err)
 	}
 	// An explicit recovery request is a deliberate fresh-read authorization.
 	// Clear only local backoff/error state; the accepted remote identity and
@@ -121,53 +96,53 @@ func (c *jobCommands) Wait(ctx context.Context, input jobwait.Input) (jobwait.Re
 	receipt.ManualOnly = false
 	receipt.WaitUntil = time.Now().Add(publicationWaitLimit)
 	if _, err := store.Register(ctx, receipt); err != nil {
-		return jobwait.Result{Status: receipt.Observation, Environment: receipt.Environment, Site: receipt.Site, ReceiptPath: filepath.ToSlash(path)}, &errs.Error{ID: "job.wait.register", Kind: errs.KindOperation, Operation: "job.wait", Resource: receipt.Observation.ID, Environment: receipt.Environment, Site: receipt.Site, TableauJobID: receipt.Observation.ID, Summary: "The accepted job could not be restored to the local monitoring pool.", Cause: err, Retryable: errs.Bool(false), CorrectiveAction: c.receiptRecoveryHint(receipt, path), Phase: errs.PhasePersistence, Outcome: errs.OutcomeUnknown}
+		return jobactions.WaitResult{Status: receipt.Observation, Environment: receipt.Environment, Site: receipt.Site, ReceiptPath: filepath.ToSlash(path)}, &errs.Error{ID: "job.wait.register", Kind: errs.KindOperation, Operation: "job.wait", Resource: receipt.Observation.ID, Environment: receipt.Environment, Site: receipt.Site, TableauJobID: receipt.Observation.ID, Summary: "The accepted job could not be restored to the local monitoring pool.", Cause: err, Retryable: errs.Bool(false), CorrectiveAction: c.receiptRecoveryHint(receipt, path), Phase: errs.PhasePersistence, Outcome: errs.OutcomeUnknown}
 	}
 	if err := c.runtime.commandSessions().Suspend(ctx); err != nil {
-		return jobwait.Result{Status: receipt.Observation, Environment: receipt.Environment, Site: receipt.Site, ReceiptPath: filepath.ToSlash(path)}, c.receiptRecoveryError(receipt, path, "Credential coordination could not be released before job monitoring.", err, errs.PhaseSetup, errs.OutcomeUnknown)
+		return jobactions.WaitResult{Status: receipt.Observation, Environment: receipt.Environment, Site: receipt.Site, ReceiptPath: filepath.ToSlash(path)}, c.receiptRecoveryError(receipt, path, "Credential coordination could not be released before job monitoring.", err, errs.PhaseSetup, errs.OutcomeUnknown)
 	}
 	monitor := jobmonitor.Monitor{Store: store, Deadline: receipt.WaitUntil, Observe: c.observer(connection)}
 	latest, err := monitor.Wait(ctx, receipt)
-	result := jobwait.Result{Status: latest.Observation, Environment: latest.Environment, Site: latest.Site, ReceiptPath: filepath.ToSlash(path)}
+	result := jobactions.WaitResult{Status: latest.Observation, Environment: latest.Environment, Site: latest.Site, ReceiptPath: filepath.ToSlash(path)}
 	if err != nil && !errors.Is(err, jobmonitor.ErrWaitLimit) {
 		return result, c.receiptRecoveryError(receipt, path, "Job monitoring stopped without establishing the remote terminal outcome.", err, errs.PhaseVerification, errs.OutcomeUnknown)
 	}
 	return result, nil
 }
 
-func (c *jobCommands) Cancel(ctx context.Context, input jobcancel.Input) (jobcancel.Result, error) {
+func (c *jobCommands) Cancel(ctx context.Context, input jobactions.CancelInput) (jobactions.CancelResult, error) {
 	connection, err := c.connection(ctx, input.Environment, input.Site, "job.cancel", input.ID)
 	if err != nil {
-		return jobcancel.Result{}, err
+		return jobactions.CancelResult{}, err
 	}
 	client := tableaujob.NewClient(connection.transport, connection.session, connection.environment.URL)
 	status, err := client.Inspect(ctx, input.ID)
 	if err != nil {
-		return jobcancel.Result{}, &errs.Error{ID: "job.cancel.inspect", Kind: errs.KindOperation, Operation: "job.cancel", Resource: input.ID, Environment: connection.environment.Alias, Site: connection.environment.SiteContentURL, TableauJobID: input.ID, Summary: "The exact job could not be inspected before cancellation.", Cause: err, Retryable: errs.Bool(false), CorrectiveAction: "Inspect the exact job before attempting cancellation again.", Phase: errs.PhaseSetup, Outcome: errs.OutcomeNotAttempted}
+		return jobactions.CancelResult{}, &errs.Error{ID: "job.cancel.inspect", Kind: errs.KindOperation, Operation: "job.cancel", Resource: input.ID, Environment: connection.environment.Alias, Site: connection.environment.SiteContentURL, TableauJobID: input.ID, Summary: "The exact job could not be inspected before cancellation.", Cause: err, Retryable: errs.Bool(false), CorrectiveAction: "Inspect the exact job before attempting cancellation again.", Phase: errs.PhaseSetup, Outcome: errs.OutcomeNotAttempted}
 	}
 	if !supportedCancellation(status.Type) {
-		return jobcancel.Result{}, &errs.Error{ID: "job.cancel.unsupported", Kind: errs.KindOperation, Operation: "job.cancel", Resource: input.ID, Environment: connection.environment.Alias, Site: connection.environment.SiteContentURL, TableauJobID: input.ID, Summary: "Tableau does not document cancellation for this job type.", Retryable: errs.Bool(false), CorrectiveAction: "Use job inspect or job wait for this job; cancellation is limited to documented refresh and flow-run job types.", Phase: errs.PhaseValidation, Outcome: errs.OutcomeNotAttempted}
+		return jobactions.CancelResult{}, &errs.Error{ID: "job.cancel.unsupported", Kind: errs.KindOperation, Operation: "job.cancel", Resource: input.ID, Environment: connection.environment.Alias, Site: connection.environment.SiteContentURL, TableauJobID: input.ID, Summary: "Tableau does not document cancellation for this job type.", Retryable: errs.Bool(false), CorrectiveAction: "Use job inspect or job wait for this job; cancellation is limited to documented refresh and flow-run job types.", Phase: errs.PhaseValidation, Outcome: errs.OutcomeNotAttempted}
 	}
 	if status.Terminal() {
-		return jobcancel.Result{}, &errs.Error{ID: "job.cancel.terminal", Kind: errs.KindOperation, Operation: "job.cancel", Resource: input.ID, Environment: connection.environment.Alias, Site: connection.environment.SiteContentURL, TableauJobID: input.ID, Summary: "The exact job is already terminal and was not cancelled.", Retryable: errs.Bool(false), CorrectiveAction: "Use the authoritative terminal status; do not repeat cancellation.", Phase: errs.PhaseValidation, Outcome: errs.OutcomeConfirmed}
+		return jobactions.CancelResult{}, &errs.Error{ID: "job.cancel.terminal", Kind: errs.KindOperation, Operation: "job.cancel", Resource: input.ID, Environment: connection.environment.Alias, Site: connection.environment.SiteContentURL, TableauJobID: input.ID, Summary: "The exact job is already terminal and was not cancelled.", Retryable: errs.Bool(false), CorrectiveAction: "Use the authoritative terminal status; do not repeat cancellation.", Phase: errs.PhaseValidation, Outcome: errs.OutcomeConfirmed}
 	}
 	if input.Preview {
-		return jobcancel.Result{Status: status, Environment: connection.environment.Alias, Site: connection.environment.SiteContentURL, Warnings: []string{"Preview only; Tableau was not asked to cancel the job."}}, nil
+		return jobactions.CancelResult{Status: status, Environment: connection.environment.Alias, Site: connection.environment.SiteContentURL, Warnings: []string{"Preview only; Tableau was not asked to cancel the job."}}, nil
 	}
 	requestID, err := client.Cancel(ctx, input.ID)
 	if err != nil {
-		return jobcancel.Result{Status: status, Environment: connection.environment.Alias, Site: connection.environment.SiteContentURL, RequestID: requestID}, &errs.Error{ID: "job.cancel.request", Kind: errs.KindOperation, Operation: "job.cancel", Resource: input.ID, Environment: connection.environment.Alias, Site: connection.environment.SiteContentURL, TableauJobID: input.ID, TableauRequestID: requestID, Summary: "Tableau did not acknowledge the cancellation request.", Cause: err, Retryable: errs.Bool(false), CorrectiveAction: "Inspect the exact job before attempting cancellation again.", Phase: errs.PhaseSubmission, Outcome: errs.OutcomeUnknown}
+		return jobactions.CancelResult{Status: status, Environment: connection.environment.Alias, Site: connection.environment.SiteContentURL, RequestID: requestID}, &errs.Error{ID: "job.cancel.request", Kind: errs.KindOperation, Operation: "job.cancel", Resource: input.ID, Environment: connection.environment.Alias, Site: connection.environment.SiteContentURL, TableauJobID: input.ID, TableauRequestID: requestID, Summary: "Tableau did not acknowledge the cancellation request.", Cause: err, Retryable: errs.Bool(false), CorrectiveAction: "Inspect the exact job before attempting cancellation again.", Phase: errs.PhaseSubmission, Outcome: errs.OutcomeUnknown}
 	}
 	confirmCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
 	confirmed, err := client.Inspect(confirmCtx, input.ID)
 	if err != nil {
-		return jobcancel.Result{Status: status, Environment: connection.environment.Alias, Site: connection.environment.SiteContentURL, RequestID: requestID}, &errs.Error{ID: "job.cancel.confirmation", Kind: errs.KindOperation, Operation: "job.cancel", Resource: input.ID, Environment: connection.environment.Alias, Site: connection.environment.SiteContentURL, TableauJobID: input.ID, TableauRequestID: requestID, Summary: "Tableau accepted cancellation, but bounded confirmation could not read the exact job state.", Cause: err, Retryable: errs.Bool(false), CorrectiveAction: "Retain the cancellation request ID and inspect the exact job; do not submit a replacement job.", Phase: errs.PhaseVerification, Outcome: errs.OutcomeUnknown}
+		return jobactions.CancelResult{Status: status, Environment: connection.environment.Alias, Site: connection.environment.SiteContentURL, RequestID: requestID}, &errs.Error{ID: "job.cancel.confirmation", Kind: errs.KindOperation, Operation: "job.cancel", Resource: input.ID, Environment: connection.environment.Alias, Site: connection.environment.SiteContentURL, TableauJobID: input.ID, TableauRequestID: requestID, Summary: "Tableau accepted cancellation, but bounded confirmation could not read the exact job state.", Cause: err, Retryable: errs.Bool(false), CorrectiveAction: "Retain the cancellation request ID and inspect the exact job; do not submit a replacement job.", Phase: errs.PhaseVerification, Outcome: errs.OutcomeUnknown}
 	}
 	if confirmed.Status == "cancelled" {
-		return jobcancel.Result{Status: confirmed, Environment: connection.environment.Alias, Site: connection.environment.SiteContentURL, RequestID: requestID, Confirmed: true}, nil
+		return jobactions.CancelResult{Status: confirmed, Environment: connection.environment.Alias, Site: connection.environment.SiteContentURL, RequestID: requestID, Confirmed: true}, nil
 	}
-	return jobcancel.Result{Status: confirmed, Environment: connection.environment.Alias, Site: connection.environment.SiteContentURL, RequestID: requestID, Warnings: []string{"Cancellation was acknowledged, but the exact job is not yet cancelled; inspect the exact job again before taking further action."}}, nil
+	return jobactions.CancelResult{Status: confirmed, Environment: connection.environment.Alias, Site: connection.environment.SiteContentURL, RequestID: requestID, Warnings: []string{"Cancellation was acknowledged, but the exact job is not yet cancelled; inspect the exact job again before taking further action."}}, nil
 }
 
 func (c *jobCommands) connection(ctx context.Context, environment, site, operation, id string) (authenticatedTableau, error) {
@@ -195,7 +170,7 @@ func (c *jobCommands) store() (jobmonitor.Store, error) {
 	return jobmonitor.Store{Directory: directory}, nil
 }
 
-func (c *jobCommands) resolveReceipt(ctx context.Context, store jobmonitor.Store, input jobwait.Input) (jobmonitor.Receipt, string, error) {
+func (c *jobCommands) resolveReceipt(ctx context.Context, store jobmonitor.Store, input jobactions.WaitInput) (jobmonitor.Receipt, string, error) {
 	if input.Receipt != "" {
 		receipt, err := store.ReadPath(input.Receipt)
 		return receipt, filepath.Clean(input.Receipt), err
@@ -203,7 +178,7 @@ func (c *jobCommands) resolveReceipt(ctx context.Context, store jobmonitor.Store
 	return store.FindByJobID(ctx, input.ID, input.Environment, input.Site)
 }
 
-func (c *jobCommands) startObservation(ctx context.Context, store jobmonitor.Store, input jobwait.Input) (jobmonitor.Receipt, string, error) {
+func (c *jobCommands) startObservation(ctx context.Context, store jobmonitor.Store, input jobactions.WaitInput) (jobmonitor.Receipt, string, error) {
 	connection, err := c.connection(ctx, input.Environment, input.Site, "job.wait", input.ID)
 	if err != nil {
 		return jobmonitor.Receipt{}, "", err
@@ -302,7 +277,3 @@ func supportedCancellation(jobType string) bool {
 		return false
 	}
 }
-
-var _ jobinspect.Source = (*jobCommands)(nil)
-var _ jobwait.Source = (*jobCommands)(nil)
-var _ jobcancel.Source = (*jobCommands)(nil)

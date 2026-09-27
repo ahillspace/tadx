@@ -18,7 +18,7 @@ import (
 	contentlabel_update "github.com/ahillspace/tadx/actions/contentlabel/update"
 	datasourceops "github.com/ahillspace/tadx/actions/datasource"
 	flowops "github.com/ahillspace/tadx/actions/flow"
-	jobcancel "github.com/ahillspace/tadx/actions/job/cancel"
+	jobactions "github.com/ahillspace/tadx/actions/job"
 	a_lineage_pull "github.com/ahillspace/tadx/actions/lineage/pull"
 	a_project_create "github.com/ahillspace/tadx/actions/project/create"
 	a_project_delete "github.com/ahillspace/tadx/actions/project/delete"
@@ -92,9 +92,9 @@ type previewActionSpy struct{ calls, writes int }
 
 type jobCancelPreviewSpy struct{ spy *previewActionSpy }
 
-func (s jobCancelPreviewSpy) Execute(_ context.Context, input jobcancel.Input) (jobcancel.Output, error) {
+func (s jobCancelPreviewSpy) Execute(_ context.Context, input jobactions.CancelInput) (jobactions.CancelOutput, error) {
 	s.spy.record(input.Preview)
-	return jobcancel.Output{}, nil
+	return jobactions.CancelOutput{}, nil
 }
 
 func (s *previewActionSpy) UpdateCatalogDatabase(_ context.Context, _ catalogupdate.DatabaseInput, preview bool) (catalogupdate.DatabaseOutput, error) {
@@ -332,7 +332,7 @@ func (registryPreviewPolicy) IsRemoteMutation(id string) bool {
 }
 func previewDependencies(spy *previewActionSpy) cli.Dependencies {
 	return cli.Dependencies{MutationPolicy: registryPreviewPolicy{}, Renderer: spy, WorkbookPublisher: spy, WorkbookPuller: &puller{},
-		Jobs:          &jobcli.Dependencies{Canceller: jobCancelPreviewSpy{spy: spy}},
+		Jobs:          &jobcli.Dependencies{Cancel: (jobCancelPreviewSpy{spy: spy}).Execute},
 		ContentLabels: &contentcli.LabelDependencies{Renderer: spy, Updater: contentlabel_updateSpy{spy}, Deleter: contentlabel_deleteSpy{spy}},
 		AdminLabels:   &admincli.LabelDependencies{Renderer: spy, ValueUpdater: admin_labelvalue_updateSpy{spy}, ValueDeleter: admin_labelvalue_deleteSpy{spy}, CategoryCreator: admin_labelcategory_createSpy{spy}, CategoryUpdater: admin_labelcategory_updateSpy{spy}, CategoryDeleter: admin_labelcategory_deleteSpy{spy}},
 		Catalog:       &catalogcli.Dependencies{Renderer: spy, DatabaseUpdater: spy, TableUpdater: spy, ColumnUpdater: spy},

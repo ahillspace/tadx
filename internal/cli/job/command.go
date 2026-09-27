@@ -4,36 +4,19 @@ package job
 import (
 	"context"
 
-	jobcancel "github.com/ahillspace/tadx/actions/job/cancel"
-	jobinspect "github.com/ahillspace/tadx/actions/job/inspect"
-	jobwait "github.com/ahillspace/tadx/actions/job/wait"
+	jobactions "github.com/ahillspace/tadx/actions/job"
 	"github.com/ahillspace/tadx/internal/cli/clierr"
 	"github.com/spf13/cobra"
 )
-
-// Inspector executes job.inspect.
-type Inspector interface {
-	Execute(context.Context, jobinspect.Input) (jobinspect.Output, error)
-}
-
-// Waiter executes job.wait.
-type Waiter interface {
-	Execute(context.Context, jobwait.Input) (jobwait.Output, error)
-}
-
-// Canceller executes job.cancel.
-type Canceller interface {
-	Execute(context.Context, jobcancel.Input) (jobcancel.Output, error)
-}
 
 // Renderer writes one structured result.
 type Renderer interface{ Render(any) error }
 
 // Dependencies contains exact-job command wiring.
 type Dependencies struct {
-	Inspector                Inspector
-	Waiter                   Waiter
-	Canceller                Canceller
+	Inspect                  func(context.Context, jobactions.InspectInput) (jobactions.InspectOutput, error)
+	Wait                     func(context.Context, jobactions.WaitInput) (jobactions.WaitOutput, error)
+	Cancel                   func(context.Context, jobactions.CancelInput) (jobactions.CancelOutput, error)
 	Renderer                 Renderer
 	InspectUse, InspectShort string
 	WaitUse, WaitShort       string
@@ -43,20 +26,20 @@ type Dependencies struct {
 // New creates the top-level job command and only exposes configured actions.
 func New(deps Dependencies) *cobra.Command {
 	command := &cobra.Command{Use: "job", Short: "Inspect, recover, and control supported Tableau jobs"}
-	if deps.Inspector != nil {
+	if deps.Inspect != nil {
 		command.AddCommand(newInspectCommand(deps))
 	}
-	if deps.Waiter != nil {
+	if deps.Wait != nil {
 		command.AddCommand(newWaitCommand(deps))
 	}
-	if deps.Canceller != nil {
+	if deps.Cancel != nil {
 		command.AddCommand(newCancelCommand(deps))
 	}
 	return command
 }
 
 func newInspectCommand(deps Dependencies) *cobra.Command {
-	input := jobinspect.Input{}
+	input := jobactions.InspectInput{}
 	use, short := deps.InspectUse, deps.InspectShort
 	if use == "" {
 		use = "inspect"
@@ -73,10 +56,7 @@ func newInspectCommand(deps Dependencies) *cobra.Command {
 			return nil
 		},
 		RunE: func(command *cobra.Command, _ []string) error {
-			if err := jobinspect.ValidateInput(input); err != nil {
-				return err
-			}
-			result, err := deps.Inspector.Execute(command.Context(), input)
+			result, err := deps.Inspect(command.Context(), input)
 			if err != nil {
 				return err
 			}
@@ -91,7 +71,7 @@ func newInspectCommand(deps Dependencies) *cobra.Command {
 }
 
 func newWaitCommand(deps Dependencies) *cobra.Command {
-	input := jobwait.Input{}
+	input := jobactions.WaitInput{}
 	use, short := deps.WaitUse, deps.WaitShort
 	if use == "" {
 		use = "wait"
@@ -108,7 +88,7 @@ func newWaitCommand(deps Dependencies) *cobra.Command {
 			return nil
 		},
 		RunE: func(command *cobra.Command, _ []string) error {
-			result, err := deps.Waiter.Execute(command.Context(), input)
+			result, err := deps.Wait(command.Context(), input)
 			if err != nil {
 				if result.Job.ID != "" {
 					return clierr.WithOutput(result, err)
@@ -126,7 +106,7 @@ func newWaitCommand(deps Dependencies) *cobra.Command {
 }
 
 func newCancelCommand(deps Dependencies) *cobra.Command {
-	input := jobcancel.Input{}
+	input := jobactions.CancelInput{}
 	use, short := deps.CancelUse, deps.CancelShort
 	if use == "" {
 		use = "cancel"
@@ -143,7 +123,7 @@ func newCancelCommand(deps Dependencies) *cobra.Command {
 			return nil
 		},
 		RunE: func(command *cobra.Command, _ []string) error {
-			result, err := deps.Canceller.Execute(command.Context(), input)
+			result, err := deps.Cancel(command.Context(), input)
 			if err != nil {
 				if result.Job.ID != "" {
 					return clierr.WithOutput(result, err)

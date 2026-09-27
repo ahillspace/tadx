@@ -147,7 +147,7 @@ func Run(ctx context.Context, args []string, stdout io.Writer, options Options) 
 		MutationStatus:        mutationstatus.New(runtime),
 		MutationSetter:        mutationset.New(runtime),
 		LastReader:            lastaction.New(managedLastReader{store: capture.store, runtime: runtime}),
-		Jobs:                  newJobCommands(runtime).dependencies(),
+		Jobs:                  (&jobCommands{runtime: runtime}).dependencies(),
 		ResolveWriteTarget: func(alias string) (string, error) {
 			_, environment, err := runtime.environment(alias, true)
 			var pathError *os.PathError

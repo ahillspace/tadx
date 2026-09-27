@@ -178,3 +178,11 @@ func TestJobHelpAdvertisesExactControls(t *testing.T) {
 		}
 	}
 }
+
+func TestJobInspectRejectsConflictingSelectorsBeforeSetup(t *testing.T) {
+	var output strings.Builder
+	code := app.Run(t.Context(), []string{"job", "inspect", "--id", "job-1", "--operation-id", "run-1"}, &output, app.Options{ConfigPath: filepath.Join(t.TempDir(), "config.yaml")})
+	if code == 0 || !strings.Contains(output.String(), "job.inspect.selector") {
+		t.Fatalf("code=%d output=%s", code, output.String())
+	}
+}

@@ -19,6 +19,7 @@ Catalog database, table, and column updates share metadata rules in one package 
 Their lists and inspections share a focused read package; search and audit retain separate traversal contracts.
 Workspace operations share one action package and one app-owned runtime adapter, with narrow dependencies for each operation.
 The workspace manager and artifact packages retain their distinct filesystem responsibilities.
+Job inspection, waiting, and cancellation share one action package with explicit functions; monitoring and durable operation state remain separate dependencies.
 
 Resource operations own input rules, planning, resource-specific decisions, error context, and output projections.
 The composition root owns environment, authentication, policy integration, cache selection, workspace selection, and receipt persistence.
@@ -189,3 +190,9 @@ A normalized client can own per-response identity and pagination checks, while i
 Keep separate remote rereads and readback verification even when their comparison helpers are shared.
 Do not broaden mutation equality or cache payloads when replacing per-verb records with a shared observation.
 Attach the selected binary, configuration, fixture authority, and replay task to the exploration manifest before starting a worker.
+
+## Lessons from Job workflows
+
+Trace async publication and recovery consumers before removing copied observation fields or action wrappers.
+An action projection can omit unused state without deleting fields from the durable operation record.
+Retain monitor polling, cancellation, timeout, and fresh-state behavior when replacing composition adapters with direct operation callbacks.

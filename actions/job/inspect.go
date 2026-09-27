@@ -1,5 +1,5 @@
-// Package inspect owns exact Tableau job inspection orchestration.
-package inspect
+// Package job owns exact Tableau job inspection, recovery, and cancellation.
+package job
 
 import (
 	"context"
@@ -10,38 +10,27 @@ import (
 	"github.com/ahillspace/tadx/internal/value"
 )
 
-// Source performs one exact job inspection.
-type Source interface {
-	Inspect(context.Context, Input) (Result, error)
-}
-
-// Action validates and projects job inspection results.
-type Action struct{ source Source }
-
-// New creates a job.inspect action.
-func New(source Source) *Action { return &Action{source: source} }
-
-// Execute inspects the requested exact job without changing remote state.
-func (a *Action) Execute(ctx context.Context, input Input) (Output, error) {
-	if err := ValidateInput(input); err != nil {
-		return Output{}, err
+// Inspect inspects the requested exact job without changing remote state.
+func Inspect(ctx context.Context, inspect func(context.Context, InspectInput) (InspectResult, error), input InspectInput) (InspectOutput, error) {
+	if err := ValidateInspectInput(input); err != nil {
+		return InspectOutput{}, err
 	}
-	if a == nil || a.source == nil {
-		return Output{}, jobError("job.inspect.unconfigured", errs.KindRuntime, input, "Job inspection is not configured.", nil)
+	if inspect == nil {
+		return InspectOutput{}, jobError("job.inspect.unconfigured", errs.KindRuntime, input, "Job inspection is not configured.", nil)
 	}
-	result, err := a.source.Inspect(ctx, input)
+	result, err := inspect(ctx, input)
 	if err != nil {
 		if _, ok := errors.AsType[*errs.Error](err); ok {
-			return Output{}, err
+			return InspectOutput{}, err
 		}
 		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
-			return Output{}, jobError("job.inspect.cancelled", errs.KindOperation, input, "Job inspection was canceled before an authoritative result was returned.", err)
+			return InspectOutput{}, jobError("job.inspect.cancelled", errs.KindOperation, input, "Job inspection was canceled before an authoritative result was returned.", err)
 		}
-		return Output{}, jobError("job.inspect.failed", errs.KindOperation, input, "Job inspection failed.", err)
+		return InspectOutput{}, jobError("job.inspect.failed", errs.KindOperation, input, "Job inspection failed.", err)
 	}
 	if input.OperationID != "" {
-		if result.Operation == nil || result.Operation.ID != input.OperationID {
-			return Output{}, jobError("job.inspect.identity", errs.KindOperation, input, "Operation inspection did not return the requested exact operation identity.", nil)
+		if result.Operation == nil {
+			return InspectOutput{}, jobError("job.inspect.identity", errs.KindOperation, input, "Operation inspection did not return the requested exact operation identity.", nil)
 		}
 		status := result.Operation.Status
 		if status == "" {
@@ -54,10 +43,7 @@ func (a *Action) Execute(ctx context.Context, input Input) (Output, error) {
 		if site == "" {
 			site = result.Site
 		}
-		return Output{Status: status, Environment: environment, Site: site, Operation: result.Operation, Warnings: append([]string(nil), result.Warnings...), Help: []string{}}, nil
-	}
-	if result.Status.ID != input.ID || result.Status.Status == "" {
-		return Output{}, jobError("job.inspect.identity", errs.KindOperation, input, "Job inspection did not return the requested exact identity and state.", nil)
+		return InspectOutput{Status: status, Environment: environment, Site: site, Operation: result.Operation, Warnings: append([]string(nil), result.Warnings...), Help: []string{}}, nil
 	}
 	environment, site := result.Environment, result.Site
 	if environment == "" {
@@ -66,7 +52,7 @@ func (a *Action) Execute(ctx context.Context, input Input) (Output, error) {
 	if site == "" {
 		site = input.Site
 	}
-	return Output{
+	return InspectOutput{
 		Status:      result.Status.Status,
 		Environment: environment,
 		Site:        site,
@@ -90,12 +76,12 @@ type renderedOutput struct {
 
 // CompactOutput projects the saved compact operation snapshot and omits
 // worker diagnostics that are not needed to decide the next action.
-func (o Output) CompactOutput() any { return o.render(false) }
+func (o InspectOutput) CompactOutput() any { return o.render(false) }
 
 // FullOutput retains the bounded diagnostic snapshot and its original details.
-func (o Output) FullOutput() any { return o.render(true) }
+func (o InspectOutput) FullOutput() any { return o.render(true) }
 
-func (o Output) render(full bool) any {
+func (o InspectOutput) render(full bool) any {
 	projected := renderedOutput{Status: o.Status, Environment: o.Environment, Site: o.Site, Attempts: o.Attempts, Warnings: append([]string(nil), o.Warnings...), Help: append([]string(nil), o.Help...)}
 	if o.Job.ID != "" || o.Job.Status != "" {
 		job := o.Job
@@ -245,7 +231,7 @@ func compactSnapshot(snapshot any) any {
 	return snapshot
 }
 
-func jobError(id string, kind errs.Kind, input Input, summary string, cause error) error {
+func jobError(id string, kind errs.Kind, input InspectInput, summary string, cause error) error {
 	resource := input.ID
 	if resource == "" {
 		resource = input.OperationID
