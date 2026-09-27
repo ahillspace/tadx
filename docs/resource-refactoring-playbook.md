@@ -71,6 +71,12 @@ Record a discovered defect separately, then make any correction as a deliberate 
 Trace production and shared callers before removing an interface, adapter, field, validation, or copy.
 For each removal, identify the surviving owner and the contract it preserves.
 Remove wrappers that only translate equivalent representations or forward calls without behavior.
+Share identical normalized observations and requests only after checking their consumers, serialization tags, and ownership.
+Use dependency-free value types rather than making actions depend on a provider or making providers depend on actions.
+Keep protocol fields, enrichment, and public projections distinct when their meanings differ.
+If full output repeats the canonical action result, reuse that result while preserving field order, omissions, and necessary copies.
+Do not store a presentation hint that rendering already supplies independently.
+Check serialized cursor inputs before sharing apparently identical records; a tag difference can invalidate existing continuations.
 Retain adapters that normalize responses, enforce request checks, or preserve resource-specific scope and timing.
 Remove duplicate validation only when the same fact remains unchanged between checks.
 Argument count checks do not establish nonempty positional values.
@@ -111,6 +117,7 @@ The maintainer runs agent-based code reviews separately; do not add a mandatory 
 ## Report the result
 
 Completion means fewer unnecessary concepts and handoffs, with observable behavior and independent boundaries preserved.
+For a representative field change, identify how many definitions and mappings remain to update.
 Report actual package, file, and line changes without an arbitrary line-count target.
 Separate relocation and file consolidation from eliminated logic or duplicate representations.
 Record remaining duplication, behavioral findings, tests, CLI comparisons, and verification limits.

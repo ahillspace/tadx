@@ -20,6 +20,7 @@ The [SVG](architecture/tadx-architecture.svg) and [editable Excalidraw source](a
 | `actions/catalog/update`, `actions/catalog/read` | Related database, table, and column operations with shared rules and explicit projections or mutation sequences |
 | Other `actions/<domain>/<operation>` packages | Standalone boundaries where operation contracts or responsibilities differ |
 | `internal/resources` | Resource adapters, exact identity resolution, and normalized provider results |
+| `internal/value` | Shared typed observations and requests without behavior or provider dependencies |
 | `internal/tableau` | Tableau API clients, shared HTTP transport, and inventory collectors |
 | `internal/auth` | PAT resolution, native credential storage, authenticated sessions, and credential-scoped coordination |
 | `internal/operationrun` | Durable local operation records, detached worker launch, and process-lifetime coordination |
@@ -41,6 +42,10 @@ Actions do not import concrete resource adapters, Tableau clients, Cobra, or `ne
 Resource adapters do not import actions or use HTTP directly.
 Tableau clients own request and response mechanics.
 Shared value types in `internal/value` depend only on the standard library.
+Actions and providers can share identical normalized observations and typed requests without a composition-layer field map.
+Artifact lineage uses the same node, edge, and failure values while retaining its storage envelope and independent collection copies.
+Raw protocol payloads, enriched inspection results, and distinct public projections remain separate.
+An action result also serves as its full output when the representations match; compact output remains independently bounded.
 
 The [architecture checker](../internal/architecture/architecture.go) defines allowed production Go imports.
 Unknown local package dependencies fail the check.

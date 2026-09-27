@@ -65,7 +65,9 @@ Put released Tableau HTTP behavior in `internal/tableau/<resource>` through the 
 Put provider adaptation and exact identity resolution in `internal/resources/<resource>`; resource adapters do not import actions, Cobra, or `net/http`.
 Use typed bounded provider pages; actions own requested result windows and traversal policy through shared paging helpers.
 Wire concrete dependencies in the composition root; add a bridge only when it performs necessary adaptation.
-Share genuinely identical identity, schema, and lineage records through dependency-free `internal/value`, not a universal resource object or generic CRUD service.
+Share genuinely identical observations and typed requests through dependency-free `internal/value`; keep protocol payloads and operation-specific enrichment with their owners.
+Remove the corresponding conversion methods; moving a field map or retaining a forwarding wrapper does not simplify the boundary.
+An action output can be its full projection when serialization and ownership match; keep compact projections and meaningful full-output transformations separate.
 Reuse shared transport, authentication, errors, output, and identity machinery instead of parallel implementations.
 Reuse command-scoped configuration, workspace, and authenticated clients, including batches; retain locked rereads and explicit fresh-state phases.
 Reuse sessions only for the same server, site, and actual credential identity; retain the local credential lock until session use ends.
