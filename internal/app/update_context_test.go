@@ -11,7 +11,6 @@ import (
 
 type failedUpdateRuntime struct{ updateTestRuntime }
 
-func (*failedUpdateRuntime) InstallationTarget() (string, error) { return "/opt/tadx/bin/tadx", nil }
 func (f *failedUpdateRuntime) Install(context.Context, action.Release, []string) error {
 	f.installs++
 	return errors.New("installation fixture refused replacement")
@@ -19,7 +18,7 @@ func (f *failedUpdateRuntime) Install(context.Context, action.Release, []string)
 
 func TestUpdateFailureRetainsKnownContextThroughCLI(t *testing.T) {
 	execution := &failedUpdateRuntime{}
-	deps := newUpdateCommand(nil, execution)
+	deps := newUpdateCommand(execution)
 	deps.Renderer = &updateTestRenderer{}
 	cmd := updatecli.New(*deps)
 	cmd.SilenceErrors, cmd.SilenceUsage = true, true

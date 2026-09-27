@@ -16,7 +16,8 @@ type updateTestRuntime struct {
 	targets          []string
 }
 
-func (*updateTestRuntime) Current() string { return "1.0.0" }
+func (*updateTestRuntime) Current() string                     { return "1.0.0" }
+func (*updateTestRuntime) InstallationTarget() (string, error) { return "/opt/tadx/bin/tadx", nil }
 func (f *updateTestRuntime) ValidateTargets(targets []string) error {
 	f.targets = targets
 	for _, target := range targets {
@@ -43,7 +44,7 @@ func TestUpdateAppCommandCheckAndValidation(t *testing.T) {
 		t.Run(map[bool]string{false: "check", true: "invalid"}[invalid], func(t *testing.T) {
 			execution := &updateTestRuntime{}
 			renderer := &updateTestRenderer{}
-			deps := newUpdateCommand(nil, execution)
+			deps := newUpdateCommand(execution)
 			deps.Renderer = renderer
 			cmd := updatecli.New(*deps)
 			args := []string{"--check", "--target", "codex"}
@@ -51,7 +52,7 @@ func TestUpdateAppCommandCheckAndValidation(t *testing.T) {
 				args = []string{"--target", "invalid"}
 			}
 			cmd.SetArgs(args)
-			err := cmd.Execute()
+			err := cmd.ExecuteContext(t.Context())
 			if invalid {
 				if err == nil || execution.checks != 0 || execution.installs != 0 {
 					t.Fatalf("invalid: %v %+v", err, execution)
@@ -72,7 +73,7 @@ func TestUpdateRootRoutesWithoutReleaseCalls(t *testing.T) {
 		t.Run(strings.Join(args, "-"), func(t *testing.T) {
 			temp := t.TempDir()
 			var out bytes.Buffer
-			code := Run(context.Background(), args, &out, Options{ConfigPath: filepath.Join(temp, "config.yaml"), UserHomeDir: func() (string, error) { return temp, nil }})
+			code := Run(t.Context(), args, &out, Options{ConfigPath: filepath.Join(temp, "config.yaml"), UserHomeDir: func() (string, error) { return temp, nil }})
 			if args[0] == "update" && args[1] == "--target" {
 				if code == 0 || !strings.Contains(out.String(), "update.validate.failed") {
 					t.Fatalf("%d %s", code, out.String())

@@ -90,9 +90,6 @@ func (Runtime) Install(ctx context.Context, release action.Release, targets []st
 type runner func(context.Context, time.Duration, string, ...string) ([]byte, error)
 
 func install(ctx context.Context, platform, directory string, release action.Release, targets []string, execute runner) error {
-	if !releaseVersion.MatchString(release.Version) {
-		return errors.New("invalid release version")
-	}
 	if len(targets) == 0 {
 		targets = []string{"auto"}
 	}

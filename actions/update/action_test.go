@@ -12,8 +12,9 @@ type fake struct {
 	latest string
 }
 
-func (*fake) Current() string                { return "1.0.0" }
-func (*fake) ValidateTargets([]string) error { return nil }
+func (*fake) Current() string                     { return "1.0.0" }
+func (*fake) ValidateTargets([]string) error      { return nil }
+func (*fake) InstallationTarget() (string, error) { return "/fixture/tadx", nil }
 func (f *fake) Latest(context.Context) (Release, error) {
 	if f.latest != "" {
 		return Release{Version: f.latest}, nil
@@ -29,21 +30,21 @@ func (f *fake) Install(context.Context, Release, []string) error {
 }
 func TestCheckDoesNotInstall(t *testing.T) {
 	f := &fake{}
-	out, err := New(f).Execute(context.Background(), Input{Check: true})
+	out, err := New(f).Execute(t.Context(), Input{Check: true})
 	if err != nil || f.calls != 0 || out.Status != "checked" {
 		t.Fatalf("%+v %v calls=%d", out, err, f.calls)
 	}
 }
 func TestSameVersionStillRefreshesGuidance(t *testing.T) {
 	f := &fake{latest: "1.0.0"}
-	out, err := New(f).Execute(context.Background(), Input{})
+	out, err := New(f).Execute(t.Context(), Input{})
 	if err != nil || f.calls != 1 || out.Guidance != "refreshed" {
 		t.Fatalf("%+v %v", out, err)
 	}
 }
 func TestFailureDoesNotClaimSuccess(t *testing.T) {
 	f := &fake{fail: true}
-	out, err := New(f).Execute(context.Background(), Input{})
+	out, err := New(f).Execute(t.Context(), Input{})
 	if err == nil || out.Status == "updated" {
 		t.Fatalf("%+v %v", out, err)
 	}

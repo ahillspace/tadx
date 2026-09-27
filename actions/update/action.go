@@ -31,6 +31,7 @@ func (o Output) FullOutput() any    { return o }
 type Runtime interface {
 	Current() string
 	ValidateTargets([]string) error
+	InstallationTarget() (string, error)
 	Latest(context.Context) (Release, error)
 	Install(context.Context, Release, []string) error
 }
@@ -50,9 +51,6 @@ func (a *Action) Execute(ctx context.Context, in Input) (Output, error) {
 		}
 		return out, &errs.Error{ID: "update." + phase + ".failed", Kind: errs.KindOperation, Operation: "update", Resource: out.InstallationPath, Summary: "TADX update did not complete.", Cause: cause, Retryable: errs.Bool(false), CorrectiveAction: advice, Phase: failurePhase, Outcome: outcome}
 	}
-	if a == nil || a.runtime == nil {
-		return fail("runtime", fmt.Errorf("update runtime is unavailable"))
-	}
 	out.Version = a.runtime.Current()
 	if len(in.Targets) > 32 {
 		return fail("validate", fmt.Errorf("at most 32 targets are supported"))
@@ -60,12 +58,10 @@ func (a *Action) Execute(ctx context.Context, in Input) (Output, error) {
 	if err := a.runtime.ValidateTargets(in.Targets); err != nil {
 		return fail("validate", err)
 	}
-	if target, ok := a.runtime.(interface{ InstallationTarget() (string, error) }); ok {
-		path, err := target.InstallationTarget()
-		out.InstallationPath = path
-		if err != nil {
-			return fail("target", err)
-		}
+	path, err := a.runtime.InstallationTarget()
+	out.InstallationPath = path
+	if err != nil {
+		return fail("target", err)
 	}
 	release, err := a.runtime.Latest(ctx)
 	if err != nil {

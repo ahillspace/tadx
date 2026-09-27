@@ -258,3 +258,10 @@ Canonical registry observations should have one set of state fields, not hidden 
 Let the registry own ordering and transfer fresh observations to discovery actions; avoid sorting and copying the same inventory again.
 Keep list's partial policy-error output distinct from exact inspection's error-only path.
 Discovery metadata describes permission state but never substitutes for execution authorization.
+
+## Lessons from Update workflows
+
+Make dependencies required when every production implementation supplies them, while retaining injection for real CLI failure-path tests.
+Validate release metadata once inside its trusted command path; independently invoked installer scripts retain their own checks.
+Keep executable discovery separate from the fresh path and basename checks immediately before replacement.
+Preserve uncertain installation outcomes and partial Guidance effects even when composition becomes simpler.

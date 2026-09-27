@@ -12,6 +12,21 @@ import (
 	"time"
 )
 
+func TestInstallationTargetAcceptsArbitraryExecutableBasename(t *testing.T) {
+	executable, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	want, err := filepath.EvalSymlinks(executable)
+	if err != nil {
+		t.Fatal(err)
+	}
+	path, err := (Runtime{}).InstallationTarget()
+	if err != nil || path != filepath.ToSlash(want) {
+		t.Fatalf("path=%q error=%v want=%q", path, err, filepath.ToSlash(want))
+	}
+}
+
 func TestUpdaterCancellationStopsDescendants(t *testing.T) {
 	dir := t.TempDir()
 	ready := filepath.Join(dir, "ready")

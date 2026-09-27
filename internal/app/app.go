@@ -43,6 +43,7 @@ import (
 	"github.com/ahillspace/tadx/internal/tableau"
 	tableauauth "github.com/ahillspace/tadx/internal/tableau/auth"
 	tableauworkbook "github.com/ahillspace/tadx/internal/tableau/workbook"
+	updater "github.com/ahillspace/tadx/internal/update"
 	"github.com/ahillspace/tadx/internal/value"
 )
 
@@ -125,7 +126,7 @@ func Run(ctx context.Context, args []string, stdout io.Writer, options Options) 
 	credentialStore := authCredentialStore{runtime: runtime}
 	root := cli.NewRoot(cli.Dependencies{
 		SessionOverview:       sessionoverview.New(sessionOverviewReader{runtime: runtime}),
-		Update:                newUpdateCommand(runtime),
+		Update:                newUpdateCommand(updater.Runtime{}),
 		Catalog:               (&catalogCommands{runtime: runtime}).dependencies(),
 		ContentLabels:         contentLabelDependencies(runtime),
 		AdminLabels:           adminLabelDependencies(runtime),
