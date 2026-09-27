@@ -265,3 +265,11 @@ Make dependencies required when every production implementation supplies them, w
 Validate release metadata once inside its trusted command path; independently invoked installer scripts retain their own checks.
 Keep executable discovery separate from the fresh path and basename checks immediately before replacement.
 Preserve uncertain installation outcomes and partial Guidance effects even when composition becomes simpler.
+
+## Lessons from Doctor workflows
+
+Distinguish internal probe observations from publicly serialized detail before removing redundant state.
+An error-only probe can replace success booleans when every real success sets them identically; externally visible fields still retain their contract.
+Compose the operation directly with its probe adapter instead of keeping a self-referential forwarding object.
+Keep independent checks, prerequisite blocking, fresh configuration reads and diagnostic redaction explicit.
+Replace tests of incomplete internal wiring with actual CLI failure paths, without dropping CLI-level missing-dependency checks.

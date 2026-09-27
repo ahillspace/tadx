@@ -25,11 +25,9 @@ type Scope struct {
 
 // ConfigurationState is the non-secret configuration observation.
 type ConfigurationState struct {
-	Present             bool
-	Valid               bool
-	EnvironmentResolved bool
-	Cause               string
-	ConfigPath          string
+	Present    bool
+	Cause      string
+	ConfigPath string
 }
 
 // PATState reports non-secret reference names and presence, never values.
@@ -43,12 +41,6 @@ type PATState struct {
 	Source                  string `json:"source,omitempty"`
 }
 
-// ConnectivityState reports the result of a read-only PAT authentication probe.
-type ConnectivityState struct {
-	Reachable     bool
-	Authenticated bool
-}
-
 // CacheState reports bounded local cache health.
 type CacheState struct {
 	Present  bool
@@ -58,7 +50,6 @@ type CacheState struct {
 
 // WorkspaceState reports bounded logical workspace health.
 type WorkspaceState struct {
-	Selected       bool
 	Available      bool
 	ManifestValid  bool
 	DirtyArtifacts int

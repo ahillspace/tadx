@@ -13,29 +13,23 @@ import (
 	"github.com/ahillspace/tadx/internal/config"
 )
 
-type doctorCommands struct {
+type doctorRuntime struct {
 	runtime *runtimeDependencies
-	action  *doctorrun.Action
 }
 
-func newDoctorCommands(runtime *runtimeDependencies) *doctorCommands {
-	commands := &doctorCommands{runtime: runtime}
-	commands.action = doctorrun.New(doctorrun.Dependencies{
-		Configuration: commands,
-		PAT:           commands,
-		Connectivity:  commands,
-		Cache:         commands,
-		Workspace:     commands,
-		Logging:       commands,
+func newDoctorAction(runtime *runtimeDependencies) *doctorrun.Action {
+	probes := &doctorRuntime{runtime: runtime}
+	return doctorrun.New(doctorrun.Dependencies{
+		Configuration: probes,
+		PAT:           probes,
+		Connectivity:  probes,
+		Cache:         probes,
+		Workspace:     probes,
+		Logging:       probes,
 	})
-	return commands
 }
 
-func (c *doctorCommands) Execute(ctx context.Context, input doctorrun.Input) (doctorrun.Output, error) {
-	return c.action.Execute(ctx, input)
-}
-
-func (c *doctorCommands) CheckConfiguration(_ context.Context, scope doctorrun.Scope) (doctorrun.ConfigurationState, error) {
+func (c *doctorRuntime) CheckConfiguration(_ context.Context, scope doctorrun.Scope) (doctorrun.ConfigurationState, error) {
 	configuration, err := config.Load(c.runtime.configPath)
 	if errors.Is(err, os.ErrNotExist) {
 		return doctorrun.ConfigurationState{}, nil
@@ -44,14 +38,14 @@ func (c *doctorCommands) CheckConfiguration(_ context.Context, scope doctorrun.S
 		return doctorrun.ConfigurationState{Present: true, Cause: err.Error(), ConfigPath: c.runtime.configPath}, err
 	}
 	_, err = configuration.ResolveEnvironment(scope.Environment)
-	state := doctorrun.ConfigurationState{Present: true, Valid: true, EnvironmentResolved: err == nil}
+	state := doctorrun.ConfigurationState{Present: true}
 	if err != nil {
 		state.Cause, state.ConfigPath = err.Error(), c.runtime.configPath
 	}
 	return state, err
 }
 
-func (c *doctorCommands) CheckPATReferences(_ context.Context, scope doctorrun.Scope) (doctorrun.PATState, error) {
+func (c *doctorRuntime) CheckPATReferences(_ context.Context, scope doctorrun.Scope) (doctorrun.PATState, error) {
 	configuration, err := config.Load(c.runtime.configPath)
 	if err != nil {
 		return doctorrun.PATState{}, err
@@ -63,7 +57,7 @@ func (c *doctorCommands) CheckPATReferences(_ context.Context, scope doctorrun.S
 	name, namePresent := os.LookupEnv(environment.Auth.PATNameEnv)
 	secret, secretPresent := os.LookupEnv(environment.Auth.PATSecretEnv)
 	state := doctorrun.PATState{
-		ReferencesConfigured:    environment.Auth.PATNameEnv != "" && environment.Auth.PATSecretEnv != "",
+		ReferencesConfigured:    true,
 		NameVariablePresent:     namePresent && name != "",
 		SecretVariablePresent:   secretPresent && secret != "",
 		StoredCredentialPresent: environment.Auth.CredentialRef != "",
@@ -83,15 +77,12 @@ func (c *doctorCommands) CheckPATReferences(_ context.Context, scope doctorrun.S
 	return state, nil
 }
 
-func (c *doctorCommands) CheckConnectivity(ctx context.Context, scope doctorrun.Scope) (doctorrun.ConnectivityState, error) {
+func (c *doctorRuntime) CheckConnectivity(ctx context.Context, scope doctorrun.Scope) error {
 	_, err := c.runtime.tableauConnection(ctx, scope.Environment, false)
-	if err != nil {
-		return doctorrun.ConnectivityState{}, err
-	}
-	return doctorrun.ConnectivityState{Reachable: true, Authenticated: true}, nil
+	return err
 }
 
-func (c *doctorCommands) CheckCache(ctx context.Context, scope doctorrun.Scope) (doctorrun.CacheState, error) {
+func (c *doctorRuntime) CheckCache(ctx context.Context, scope doctorrun.Scope) (doctorrun.CacheState, error) {
 	_, environment, err := c.runtime.environment(scope.Environment, false)
 	if err != nil {
 		return doctorrun.CacheState{}, err
@@ -110,12 +101,12 @@ func (c *doctorCommands) CheckCache(ctx context.Context, scope doctorrun.Scope) 
 	return doctorrun.CacheState{Present: true, Complete: status.Complete, Stale: status.Stale}, nil
 }
 
-func (c *doctorCommands) CheckWorkspace(ctx context.Context, scope doctorrun.Scope) (doctorrun.WorkspaceState, error) {
+func (c *doctorRuntime) CheckWorkspace(ctx context.Context, scope doctorrun.Scope) (doctorrun.WorkspaceState, error) {
 	workspace, err := (&workspaceRuntime{runtime: c.runtime}).resolveForEnvironment(ctx, scope.Workspace, scope.Environment)
 	if err != nil {
 		return doctorrun.WorkspaceState{}, err
 	}
-	state := doctorrun.WorkspaceState{Selected: true, Available: workspace.Available, ManifestValid: workspace.ManifestValid}
+	state := doctorrun.WorkspaceState{Available: workspace.Available, ManifestValid: workspace.ManifestValid}
 	if !workspace.Available || !workspace.ManifestValid {
 		return state, nil
 	}
@@ -127,7 +118,7 @@ func (c *doctorCommands) CheckWorkspace(ctx context.Context, scope doctorrun.Sco
 	return state, nil
 }
 
-func (*doctorCommands) CheckLogging(_ context.Context, _ doctorrun.Scope) (doctorrun.LoggingState, error) {
+func (*doctorRuntime) CheckLogging(_ context.Context, _ doctorrun.Scope) (doctorrun.LoggingState, error) {
 	value, enabled := os.LookupEnv("TADX_LOG_LEVEL")
 	return doctorrun.LoggingState{Enabled: enabled, Valid: !enabled || strings.TrimSpace(value) != ""}, nil
 }

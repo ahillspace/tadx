@@ -37,14 +37,13 @@ func (c *patChecker) CheckPATReferences(context.Context, doctorrun.Scope) (docto
 }
 
 type connectivityChecker struct {
-	state doctorrun.ConnectivityState
 	err   error
 	calls int
 }
 
-func (c *connectivityChecker) CheckConnectivity(context.Context, doctorrun.Scope) (doctorrun.ConnectivityState, error) {
+func (c *connectivityChecker) CheckConnectivity(context.Context, doctorrun.Scope) error {
 	c.calls++
-	return c.state, c.err
+	return c.err
 }
 
 type cacheChecker struct {
@@ -83,15 +82,15 @@ func (c *loggingChecker) CheckLogging(context.Context, doctorrun.Scope) (doctorr
 func TestDoctorRunsEveryIndependentCheckAndRedactsDependencyErrors(t *testing.T) {
 	secret := "super-secret-pat"
 	privatePath := strings.Join([]string{"private", "config.yaml"}, string(os.PathSeparator))
-	configuration := &configurationChecker{state: doctorrun.ConfigurationState{Present: true, Valid: true, EnvironmentResolved: true}}
+	configuration := &configurationChecker{state: doctorrun.ConfigurationState{Present: true}}
 	pat := &patChecker{err: errors.New(secret + " at " + privatePath)}
-	connectivity := &connectivityChecker{state: doctorrun.ConnectivityState{Reachable: true, Authenticated: true}}
+	connectivity := &connectivityChecker{}
 	cache := &cacheChecker{state: doctorrun.CacheState{Present: true, Complete: true, Stale: true}}
-	workspace := &workspaceChecker{state: doctorrun.WorkspaceState{Selected: true, Available: false}}
+	workspace := &workspaceChecker{state: doctorrun.WorkspaceState{Available: false}}
 	logging := &loggingChecker{state: doctorrun.LoggingState{Valid: true}}
 	action := doctorrun.New(doctorrun.Dependencies{Configuration: configuration, PAT: pat, Connectivity: connectivity, Cache: cache, Workspace: workspace, Logging: logging})
 
-	output, err := action.Execute(context.Background(), doctorrun.Input{Environment: "dev", Workspace: "development"})
+	output, err := action.Execute(t.Context(), doctorrun.Input{Environment: "dev", Workspace: "development"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -115,14 +114,14 @@ func TestDoctorRunsEveryIndependentCheckAndRedactsDependencyErrors(t *testing.T)
 
 func TestDoctorTreatsDisabledLoggingAsPass(t *testing.T) {
 	action := doctorrun.New(doctorrun.Dependencies{
-		Configuration: &configurationChecker{state: doctorrun.ConfigurationState{Present: true, Valid: true, EnvironmentResolved: true}},
+		Configuration: &configurationChecker{state: doctorrun.ConfigurationState{Present: true}},
 		PAT:           &patChecker{state: doctorrun.PATState{ReferencesConfigured: true, NameVariablePresent: true, SecretVariablePresent: true}},
-		Connectivity:  &connectivityChecker{state: doctorrun.ConnectivityState{Reachable: true, Authenticated: true}},
+		Connectivity:  &connectivityChecker{},
 		Cache:         &cacheChecker{state: doctorrun.CacheState{Present: true, Complete: true}},
-		Workspace:     &workspaceChecker{state: doctorrun.WorkspaceState{Selected: true, Available: true, ManifestValid: true}},
+		Workspace:     &workspaceChecker{state: doctorrun.WorkspaceState{Available: true, ManifestValid: true}},
 		Logging:       &loggingChecker{state: doctorrun.LoggingState{Valid: true, Enabled: false}},
 	})
-	output, err := action.Execute(context.Background(), doctorrun.Input{})
+	output, err := action.Execute(t.Context(), doctorrun.Input{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -136,15 +135,15 @@ func TestDoctorTreatsDisabledLoggingAsPass(t *testing.T) {
 
 func TestDoctorAcceptsStoredPATWithoutEnvironmentValues(t *testing.T) {
 	action := doctorrun.New(doctorrun.Dependencies{
-		Configuration: &configurationChecker{state: doctorrun.ConfigurationState{Present: true, Valid: true, EnvironmentResolved: true}},
+		Configuration: &configurationChecker{state: doctorrun.ConfigurationState{Present: true}},
 		PAT:           &patChecker{state: doctorrun.PATState{ReferencesConfigured: true, StoredCredentialPresent: true}},
-		Connectivity:  &connectivityChecker{state: doctorrun.ConnectivityState{Reachable: true, Authenticated: true}},
+		Connectivity:  &connectivityChecker{},
 		Cache:         &cacheChecker{state: doctorrun.CacheState{Present: true, Complete: true}},
-		Workspace:     &workspaceChecker{state: doctorrun.WorkspaceState{Selected: true, Available: true, ManifestValid: true}},
+		Workspace:     &workspaceChecker{state: doctorrun.WorkspaceState{Available: true, ManifestValid: true}},
 		Logging:       &loggingChecker{state: doctorrun.LoggingState{Valid: true}},
 	})
 
-	output, err := action.Execute(context.Background(), doctorrun.Input{})
+	output, err := action.Execute(t.Context(), doctorrun.Input{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -155,14 +154,14 @@ func TestDoctorAcceptsStoredPATWithoutEnvironmentValues(t *testing.T) {
 
 func TestDoctorDoesNotInspectOrReportTableauMCP(t *testing.T) {
 	action := doctorrun.New(doctorrun.Dependencies{
-		Configuration: &configurationChecker{state: doctorrun.ConfigurationState{Present: true, Valid: true, EnvironmentResolved: true}},
+		Configuration: &configurationChecker{state: doctorrun.ConfigurationState{Present: true}},
 		PAT:           &patChecker{state: doctorrun.PATState{ReferencesConfigured: true, NameVariablePresent: true, SecretVariablePresent: true}},
-		Connectivity:  &connectivityChecker{state: doctorrun.ConnectivityState{Reachable: true, Authenticated: true}},
+		Connectivity:  &connectivityChecker{},
 		Cache:         &cacheChecker{state: doctorrun.CacheState{Present: true, Complete: true}},
-		Workspace:     &workspaceChecker{state: doctorrun.WorkspaceState{Selected: true, Available: true, ManifestValid: true}},
+		Workspace:     &workspaceChecker{state: doctorrun.WorkspaceState{Available: true, ManifestValid: true}},
 		Logging:       &loggingChecker{state: doctorrun.LoggingState{Valid: true}},
 	})
-	output, err := action.Execute(context.Background(), doctorrun.Input{})
+	output, err := action.Execute(t.Context(), doctorrun.Input{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -175,21 +174,11 @@ func TestDoctorDoesNotInspectOrReportTableauMCP(t *testing.T) {
 	}
 }
 
-func TestDoctorMissingDependenciesStillReturnEveryCheck(t *testing.T) {
-	output, err := doctorrun.New(doctorrun.Dependencies{}).Execute(context.Background(), doctorrun.Input{})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(output.Checks) != 6 || output.Counts.Fail != 1 || output.Counts.Warn != 1 || output.Counts.Blocked != 4 {
-		t.Fatalf("output = %#v", output)
-	}
-}
-
 func TestDoctorRejectsPathLikeScopesBeforeChecks(t *testing.T) {
 	configuration := &configurationChecker{}
 	action := doctorrun.New(doctorrun.Dependencies{Configuration: configuration})
 	for _, input := range []doctorrun.Input{{Environment: strings.Join([]string{"private", "config"}, string(os.PathSeparator))}, {Workspace: "private/../config"}} {
-		if _, err := action.Execute(context.Background(), input); err == nil {
+		if _, err := action.Execute(t.Context(), input); err == nil {
 			t.Fatalf("input accepted: %#v", input)
 		}
 	}
@@ -212,14 +201,14 @@ func TestDoctorCompactProjectionOmitsCorrectiveActions(t *testing.T) {
 
 func TestDoctorOutputGolden(t *testing.T) {
 	action := doctorrun.New(doctorrun.Dependencies{
-		Configuration: &configurationChecker{state: doctorrun.ConfigurationState{Present: true, Valid: true, EnvironmentResolved: true}},
+		Configuration: &configurationChecker{state: doctorrun.ConfigurationState{Present: true}},
 		PAT:           &patChecker{state: doctorrun.PATState{ReferencesConfigured: true, NameVariablePresent: true, SecretVariablePresent: true}},
-		Connectivity:  &connectivityChecker{state: doctorrun.ConnectivityState{Reachable: true, Authenticated: true}},
+		Connectivity:  &connectivityChecker{},
 		Cache:         &cacheChecker{state: doctorrun.CacheState{Present: true, Complete: true}},
-		Workspace:     &workspaceChecker{state: doctorrun.WorkspaceState{Selected: true, Available: true, ManifestValid: true}},
+		Workspace:     &workspaceChecker{state: doctorrun.WorkspaceState{Available: true, ManifestValid: true}},
 		Logging:       &loggingChecker{state: doctorrun.LoggingState{Valid: true, Enabled: true}},
 	})
-	output, err := action.Execute(context.Background(), doctorrun.Input{Environment: "dev", Workspace: "development"})
+	output, err := action.Execute(t.Context(), doctorrun.Input{Environment: "dev", Workspace: "development"})
 	if err != nil {
 		t.Fatal(err)
 	}

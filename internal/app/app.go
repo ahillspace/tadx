@@ -122,7 +122,6 @@ func Run(ctx context.Context, args []string, stdout io.Writer, options Options) 
 	remoteContent := newRemoteContentCommands(runtime)
 	remoteAdmin := newRemoteAdminCommands(runtime)
 	pulseActions := newPulseCommands(runtime)
-	doctorCommands := newDoctorCommands(runtime)
 	credentialStore := authCredentialStore{runtime: runtime}
 	root := cli.NewRoot(cli.Dependencies{
 		SessionOverview:       sessionoverview.New(sessionOverviewReader{runtime: runtime}),
@@ -170,7 +169,7 @@ func Run(ctx context.Context, args []string, stdout io.Writer, options Options) 
 		Agent:               newAgentCommands(runtime),
 		Pulse:               pulseActions.dependencies(),
 		Version:             newVersionCommand(runtime),
-		DoctorRunner:        doctorCommands,
+		DoctorRunner:        newDoctorAction(runtime),
 		DoctorUse:           registryLeafUse("doctor.run"),
 		DoctorShort:         registryShort("doctor.run"),
 		AuthUse:             registryLeafUse("auth.check"), AuthShort: registryShort("auth.check"),
