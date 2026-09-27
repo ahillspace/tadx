@@ -212,3 +212,9 @@ Share local readiness inspection without conflating it with verified authenticat
 Reuse an existing command-scoped configuration snapshot for local overview rows, but retain post-prompt and locked-transaction target resolution before storing credentials.
 Derive effective credential-variable names from the current configuration resolver instead of maintaining parallel fallback rules.
 Preserve useful injected credential and configuration seams; removing an action object is not useful if it only replaces the same responsibility with adapter closures.
+
+## Lessons from Lineage workflows
+
+After removing a copy, trace rendered output, saved results, and persisted artifacts rather than requiring identical internal slice representation.
+Keep nil-versus-empty distinctions where those boundaries expose them, and test malformed upstream responses as well as successful graphs.
+Do not replace an unnecessary copy with normalization guards when every real consumer already owns the required projection.

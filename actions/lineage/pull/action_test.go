@@ -43,7 +43,11 @@ func TestOutputReportsUnknownCountsAndBoundOmissions(t *testing.T) {
 		warnings[index] = fmt.Sprintf("warning-%02d", index)
 		requests[index] = fmt.Sprintf("request-%02d", index)
 	}
-	output, err := lineagepull.New(resolver{resource: lineagepull.Resource{Kind: "flow", LUID: "flow-1", Name: "Daily"}}, reader{graph: lineagepull.Graph{Complete: true, Warnings: warnings, RequestIDs: requests}}, &writer{}).Execute(context.Background(), lineagepull.Input{Workspace: "workspace", Kind: "flow", Selector: identity.Selector{LUID: "flow-1"}})
+	input, err := lineagepull.NormalizeInput(lineagepull.Input{Workspace: "workspace", Kind: "flow", Selector: identity.Selector{LUID: "flow-1"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	output, err := lineagepull.Execute(t.Context(), resolver{resource: lineagepull.Resource{Kind: "flow", LUID: "flow-1", Name: "Daily"}}, reader{graph: lineagepull.Graph{Complete: true, Warnings: warnings, RequestIDs: requests}}, &writer{}, input)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -96,9 +100,13 @@ func TestActionCreatesCompactAndBoundedFullProjections(t *testing.T) {
 	nodes[0].RESTLUID = "flow-1"
 	graph := lineagepull.Graph{RootMetadataID: nodes[0].MetadataID, Complete: true, Nodes: nodes, RequestIDs: []string{"request-1"}}
 	w := &writer{}
-	output, err := lineagepull.New(resolver{resource: lineagepull.Resource{Kind: "flow", LUID: "flow-1", Name: "Daily", ProjectPath: "Department/Ops"}}, reader{graph: graph}, w).Execute(context.Background(), lineagepull.Input{
+	input, err := lineagepull.NormalizeInput(lineagepull.Input{
 		Environment: "dev", Site: "sandbox", ServerOrigin: "https://tableau.example.com", SiteLUID: "site-1", Workspace: "workspace", Kind: "flow", Selector: identity.Selector{LUID: "flow-1"},
 	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	output, err := lineagepull.Execute(t.Context(), resolver{resource: lineagepull.Resource{Kind: "flow", LUID: "flow-1", Name: "Daily", ProjectPath: "Department/Ops"}}, reader{graph: graph}, w, input)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -117,7 +125,11 @@ func TestActionCreatesCompactAndBoundedFullProjections(t *testing.T) {
 
 func TestActionPersistsExplicitIncompleteCapture(t *testing.T) {
 	w := &writer{}
-	output, err := lineagepull.New(resolver{resource: lineagepull.Resource{Kind: "workbook", LUID: "wb-1", Name: "Book"}}, reader{err: errors.New("permission limited")}, w).Execute(context.Background(), lineagepull.Input{Workspace: "workspace", Kind: "workbook", Selector: identity.Selector{LUID: "wb-1"}, Direction: "upstream", Depth: 2})
+	input, err := lineagepull.NormalizeInput(lineagepull.Input{Workspace: "workspace", Kind: "workbook", Selector: identity.Selector{LUID: "wb-1"}, Direction: "upstream", Depth: 2})
+	if err != nil {
+		t.Fatal(err)
+	}
+	output, err := lineagepull.Execute(t.Context(), resolver{resource: lineagepull.Resource{Kind: "workbook", LUID: "wb-1", Name: "Book"}}, reader{err: errors.New("permission limited")}, w, input)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -135,7 +147,11 @@ func TestActionPersistsPartialCaptureAfterProviderFailure(t *testing.T) {
 		}, Edges: []lineagepull.Edge{{FromMetadataID: "metadata-ds-1", ToMetadataID: "metadata-wb-1", Relationship: "upstream"}},
 		Warnings: []string{"Lineage relationship upstreamDatabasesConnection could not be captured; the graph is incomplete."},
 	}
-	output, err := lineagepull.New(resolver{resource: lineagepull.Resource{Kind: "workbook", LUID: "wb-1", Name: "Book"}}, reader{graph: partial, err: errors.New("provider relation failure")}, w).Execute(context.Background(), lineagepull.Input{Workspace: "workspace", Kind: "workbook", Selector: identity.Selector{LUID: "wb-1"}, Direction: "upstream"})
+	input, err := lineagepull.NormalizeInput(lineagepull.Input{Workspace: "workspace", Kind: "workbook", Selector: identity.Selector{LUID: "wb-1"}, Direction: "upstream"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	output, err := lineagepull.Execute(t.Context(), resolver{resource: lineagepull.Resource{Kind: "workbook", LUID: "wb-1", Name: "Book"}}, reader{graph: partial, err: errors.New("provider relation failure")}, w, input)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -148,15 +164,14 @@ func TestActionPersistsPartialCaptureAfterProviderFailure(t *testing.T) {
 	}
 }
 
-func TestActionValidatesRootDirectionAndDepthBeforeDependencies(t *testing.T) {
-	action := lineagepull.New(resolver{}, reader{}, &writer{})
+func TestPreflightValidatesRootDirectionAndDepthBeforeDependencies(t *testing.T) {
 	for _, input := range []lineagepull.Input{
 		{Workspace: "workspace", Kind: "sheet", Selector: identity.Selector{LUID: "x"}},
 		{Workspace: "workspace", Kind: "flow"},
 		{Workspace: "workspace", Kind: "flow", Selector: identity.Selector{LUID: "x"}, Direction: "sideways"},
 		{Workspace: "workspace", Kind: "flow", Selector: identity.Selector{LUID: "x"}, Depth: 4},
 	} {
-		if _, err := action.Execute(context.Background(), input); err == nil {
+		if _, err := lineagepull.NormalizeInput(input); err == nil {
 			t.Fatalf("expected validation error for %#v", input)
 		}
 	}

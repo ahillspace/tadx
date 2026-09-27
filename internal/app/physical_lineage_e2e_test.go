@@ -14,6 +14,109 @@ import (
 	"github.com/ahillspace/tadx/internal/artifact"
 )
 
+func TestLineageInvalidInputPrecedesWorkspaceSetup(t *testing.T) {
+	missing := filepath.Join(t.TempDir(), "missing-config.yaml")
+	for _, tc := range []struct {
+		name string
+		args []string
+	}{
+		{"kind", []string{"--kind", "sheet", "--id", "item-1"}},
+		{"direction", []string{"--kind", "flow", "--id", "item-1", "--direction", "sideways"}},
+		{"depth", []string{"--kind", "flow", "--id", "item-1", "--depth", "4"}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var out strings.Builder
+			args := append([]string{"catalog", "lineage", "pull"}, tc.args...)
+			args = append(args, "--json")
+			if code := app.Run(t.Context(), args, &out, app.Options{ConfigPath: missing}); code == 0 || strings.Contains(out.String(), "lineage.pull.workspace") {
+				t.Fatalf("code=%d output=%s", code, out.String())
+			}
+		})
+	}
+	var out strings.Builder
+	if code := app.Run(t.Context(), []string{"catalog", "lineage", "pull", "--kind", "flow", "--id", "item-1", "--json"}, &out, app.Options{ConfigPath: missing}); code == 0 || !strings.Contains(out.String(), "lineage.pull.workspace") {
+		t.Fatalf("valid input setup: code=%d output=%s", code, out.String())
+	}
+}
+
+func TestMalformedLineageRootKeepsObservableEmptyGraphContracts(t *testing.T) {
+	base, mutations := newGroupOneTableauServer(t)
+	defer base.Close()
+	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/metadata/graphql" {
+			base.Config.Handler.ServeHTTP(w, r)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = fmt.Fprint(w, `{"data":{"flowsConnection":{"totalCount":1,"nodes":[{"id":"flow-meta","luid":"wrong-flow","name":"Daily Prep"}],"pageInfo":{"hasNextPage":false,"endCursor":null}}}}`)
+	}))
+	defer server.Close()
+	config := writePhaseOneConfigWithSite(t, server.URL, "team-site")
+	workspace := createNamedWorkspace(t, config, "malformed-lineage")
+	t.Setenv("PROD_PAT_NAME", "fixture-name")
+	t.Setenv("PROD_PAT_SECRET", "fixture-secret")
+	options := app.Options{ConfigPath: config, HTTPClient: server.Client(), JobDirectory: t.TempDir()}
+	var out strings.Builder
+	args := []string{"catalog", "lineage", "pull", "--workspace", "malformed-lineage", "--kind", "flow", "--id", "flow-1", "--full", "--json"}
+	if code := app.Run(t.Context(), args, &out, options); code != 0 {
+		t.Fatalf("partial pull: code=%d output=%s", code, out.String())
+	}
+	var receipt struct {
+		Status   string                     `json:"status"`
+		Artifact map[string]json.RawMessage `json:"artifact"`
+		Nodes    json.RawMessage            `json:"nodes"`
+		Edges    json.RawMessage            `json:"edges"`
+	}
+	if err := json.Unmarshal([]byte(out.String()), &receipt); err != nil {
+		t.Fatal(err)
+	}
+	if receipt.Status != "pulled" || string(receipt.Nodes) != "null" || string(receipt.Edges) != "null" || string(receipt.Artifact["complete"]) != "false" {
+		t.Fatalf("partial receipt = %s", out.String())
+	}
+	if _, ok := receipt.Artifact["node_count"]; ok {
+		t.Fatalf("unknown node count appeared: %s", out.String())
+	}
+	if _, ok := receipt.Artifact["edge_count"]; ok {
+		t.Fatalf("unknown edge count appeared: %s", out.String())
+	}
+	var sidecarPath string
+	if err := json.Unmarshal(receipt.Artifact["lineage_path"], &sidecarPath); err != nil {
+		t.Fatal(err)
+	}
+	sidecar, err := os.ReadFile(filepath.Join(workspace, filepath.FromSlash(sidecarPath)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var graph map[string]json.RawMessage
+	if err := json.Unmarshal(sidecar, &graph); err != nil {
+		t.Fatal(err)
+	}
+	if string(graph["nodes"]) != "[]" || string(graph["edges"]) != "[]" || string(graph["complete"]) != "false" {
+		t.Fatalf("partial sidecar = %s", sidecar)
+	}
+	var last strings.Builder
+	if code := app.Run(t.Context(), []string{"last", "--full", "--json"}, &last, options); code != 0 {
+		t.Fatalf("saved result: code=%d output=%s", code, last.String())
+	}
+	var saved struct {
+		Operation string          `json:"operation"`
+		Result    json.RawMessage `json:"result"`
+	}
+	if err := json.Unmarshal([]byte(last.String()), &saved); err != nil {
+		t.Fatal(err)
+	}
+	var savedResult map[string]json.RawMessage
+	if err := json.Unmarshal(saved.Result, &savedResult); err != nil {
+		t.Fatal(err)
+	}
+	if saved.Operation != "lineage.pull" || string(savedResult["nodes"]) != "null" || string(savedResult["edges"]) != "null" {
+		t.Fatalf("saved partial result = %s", last.String())
+	}
+	if mutations.Load() != 0 {
+		t.Fatalf("lineage made %d remote mutations", mutations.Load())
+	}
+}
+
 // Exercise the user-visible failure: Tableau has physical upstream assets but
 // no published-content neighbors, so the former query returned zero edges.
 func TestPhysicalFlowLineageThroughCLIAndAutomaticPull(t *testing.T) {

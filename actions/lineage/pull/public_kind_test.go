@@ -1,7 +1,6 @@
 package pull_test
 
 import (
-	"context"
 	"encoding/json"
 	lineagepull "github.com/ahillspace/tadx/actions/lineage/pull"
 	"github.com/ahillspace/tadx/internal/identity"
@@ -11,8 +10,11 @@ import (
 
 func TestDatasourceKindAcceptsPublicAndLegacyNames(t *testing.T) {
 	for _, kind := range []string{"datasource", "published_datasource"} {
-		action := lineagepull.New(resolver{resource: lineagepull.Resource{Kind: "published_datasource", LUID: "ds-1", Name: "Sales"}}, reader{graph: lineagepull.Graph{Complete: true}}, &writer{})
-		output, err := action.Execute(context.Background(), lineagepull.Input{Workspace: "workspace", Kind: kind, Selector: identity.Selector{LUID: "ds-1"}})
+		input, err := lineagepull.NormalizeInput(lineagepull.Input{Workspace: "workspace", Kind: kind, Selector: identity.Selector{LUID: "ds-1"}})
+		if err != nil || input.Kind != "published_datasource" || input.Direction != "both" || input.Depth != 1 {
+			t.Fatalf("normalized input = %#v, err = %v", input, err)
+		}
+		output, err := lineagepull.Execute(t.Context(), resolver{resource: lineagepull.Resource{Kind: "published_datasource", LUID: "ds-1", Name: "Sales"}}, reader{graph: lineagepull.Graph{Complete: true}}, &writer{}, input)
 		if err != nil {
 			t.Fatal(err)
 		}

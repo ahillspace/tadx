@@ -61,6 +61,41 @@ func TestNativeAcquisitionPreviewResolvesWithoutDownloadingOrWriting(t *testing.
 	}
 }
 
+func TestLineageDatasourcePublicKindPreviewUsesNormalizedRoot(t *testing.T) {
+	var unexpected []string
+	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if diagnosticSignIn(w, r) {
+			return
+		}
+		switch r.URL.Path {
+		case "/api/3.29/sites/site-1/datasources/item-1":
+			_, _ = fmt.Fprint(w, `<tsResponse><datasource id="item-1" name="Example"><project id="project-1" name="Shared"/></datasource></tsResponse>`)
+		case "/api/3.29/sites/site-1/projects":
+			_, _ = fmt.Fprintf(w, `<tsResponse><pagination pageNumber="1" pageSize="%s" totalAvailable="1"/><projects><project id="project-1" name="Shared"/></projects></tsResponse>`, r.URL.Query().Get("pageSize"))
+		default:
+			unexpected = append(unexpected, r.Method+" "+r.URL.Path)
+			http.Error(w, "unexpected lineage preview request", http.StatusBadRequest)
+		}
+	}))
+	defer server.Close()
+	options := diagnosticOptions(t, server)
+	root := filepath.Join(t.TempDir(), "workspace")
+	runGroupOneCLI(t, options, "workspace", "create", "work", "--path", root)
+	before := acquisitionSnapshot(t, root)
+	out := runGroupOneCLI(t, options, "catalog", "lineage", "pull", "--id", "item-1", "--kind", "datasource", "--workspace", "work", "--environment", "test", "--preview")
+	for _, want := range []string{"status: preview", "resource_kind: published_datasource", "direction: both", "depth: 1"} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("preview missing %q: %s", want, out)
+		}
+	}
+	if len(unexpected) != 0 {
+		t.Fatalf("unexpected requests: %v", unexpected)
+	}
+	if after := acquisitionSnapshot(t, root); !reflect.DeepEqual(before, after) {
+		t.Fatalf("preview changed workspace: before=%v after=%v", before, after)
+	}
+}
+
 func TestPulseAcquisitionPreviewChecksCompleteBundleWithoutWriting(t *testing.T) {
 	incomplete := false
 	var unexpected []string

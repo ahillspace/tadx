@@ -1,17 +1,16 @@
 package pull
 
-import "github.com/ahillspace/tadx/internal/value"
-
 import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/ahillspace/tadx/internal/commandhint"
-	"sort"
+	"slices"
 	"strings"
 
+	"github.com/ahillspace/tadx/internal/commandhint"
 	"github.com/ahillspace/tadx/internal/errs"
 	"github.com/ahillspace/tadx/internal/identity"
+	"github.com/ahillspace/tadx/internal/value"
 )
 
 const maxWarnings = 20
@@ -31,50 +30,37 @@ type Writer interface {
 	WriteLineage(context.Context, Artifact) (ArtifactResult, error)
 }
 
-// Action pulls one bounded metadata-only lineage graph.
-type Action struct {
-	resolver Resolver
-	reader   Reader
-	writer   Writer
-}
-
-// New creates a lineage pull action.
-func New(resolver Resolver, reader Reader, writer Writer) *Action {
-	return &Action{resolver: resolver, reader: reader, writer: writer}
-}
-
 // Execute resolves, captures, and persists one metadata-only graph.
-func (a *Action) Execute(ctx context.Context, input Input) (Output, error) {
-	if a == nil || a.resolver == nil || a.reader == nil || a.writer == nil {
+func Execute(ctx context.Context, resolver Resolver, reader Reader, writer Writer, input Input) (Output, error) {
+	if resolver == nil || reader == nil || writer == nil {
 		return Output{}, &errs.Error{ID: "lineage.pull.unconfigured", Kind: errs.KindRuntime, Operation: "lineage.pull", Summary: "Lineage pull is not configured.", Retryable: errs.Bool(false), CorrectiveAction: "Configure lineage pull before retrying."}
 	}
-	normalized, err := validateInput(input)
-	if err != nil {
-		return Output{}, err
+	if strings.TrimSpace(input.Workspace) == "" {
+		return Output{}, usage("workspace", "lineage pull requires a workspace")
 	}
-	resource, err := a.resolver.ResolveLineageResource(ctx, normalized.Kind, normalized.Selector)
+	resource, err := resolver.ResolveLineageResource(ctx, input.Kind, input.Selector)
 	if err != nil {
 		retryable, correctiveAction := errs.CompleteRetryAdvice(err, "Review the exact lineage root selector, then retry.")
-		return Output{}, &errs.Error{ID: "lineage.pull.resolve", Kind: errs.KindOperation, Operation: "lineage.pull", Environment: normalized.Environment, Site: normalized.Site, Summary: "Lineage root resolution failed.", Cause: err, Retryable: retryable, CorrectiveAction: correctiveAction, TableauRequestID: errs.TableauRequestID(err)}
+		return Output{}, &errs.Error{ID: "lineage.pull.resolve", Kind: errs.KindOperation, Operation: "lineage.pull", Environment: input.Environment, Site: input.Site, Summary: "Lineage root resolution failed.", Cause: err, Retryable: retryable, CorrectiveAction: correctiveAction, TableauRequestID: errs.TableauRequestID(err)}
 	}
-	if err := validateResolvedResource(normalized, resource); err != nil {
+	if err := validateResolvedResource(input, resource); err != nil {
 		return Output{}, err
 	}
-	if normalized.Preview {
-		previewer, ok := a.writer.(interface {
+	if input.Preview {
+		previewer, ok := writer.(interface {
 			PreviewLineage(context.Context, Input, Resource) (value.AcquisitionPlan, error)
 		})
 		if !ok {
 			return Output{}, &errs.Error{ID: "lineage.pull.preview", Kind: errs.KindRuntime, Operation: "lineage.pull", Summary: "Acquisition preview is not configured.", Retryable: errs.Bool(false), CorrectiveAction: "Configure read-only artifact preflight."}
 		}
-		plan, err := previewer.PreviewLineage(ctx, normalized, resource)
+		plan, err := previewer.PreviewLineage(ctx, input, resource)
 		if err != nil {
 			return Output{}, err
 		}
 		return Output{Status: "preview", Resource: resource, Preview: &plan}, nil
 	}
-	request := CaptureRequest{Kind: resource.Kind, RESTLUID: resource.LUID, Direction: normalized.Direction, Depth: normalized.Depth}
-	graph, captureErr := a.reader.CaptureLineage(ctx, request)
+	request := CaptureRequest{Kind: resource.Kind, RESTLUID: resource.LUID, Direction: input.Direction, Depth: input.Depth}
+	graph, captureErr := reader.CaptureLineage(ctx, request)
 	countsKnown := captureErr == nil
 	if captureErr != nil {
 		graph.Complete = false
@@ -83,10 +69,10 @@ func (a *Action) Execute(ctx context.Context, input Input) (Output, error) {
 			graph.Failure = &failure
 		}
 		if graph.Direction == "" {
-			graph.Direction = normalized.Direction
+			graph.Direction = input.Direction
 		}
 		if graph.Depth == 0 {
-			graph.Depth = normalized.Depth
+			graph.Depth = input.Depth
 		}
 		if len(graph.Warnings) == 0 {
 			graph.Warnings = []string{"Lineage capture was incomplete. Review the selected environment and Metadata API permissions; confirmed graph evidence was retained."}
@@ -96,32 +82,25 @@ func (a *Action) Execute(ctx context.Context, input Input) (Output, error) {
 	warnings, warningsOmitted := boundedStrings(graph.Warnings, maxWarnings)
 	requestIDs, requestIDsOmitted := boundedStrings(graph.RequestIDs, maxWarnings)
 	artifact := Artifact{
-		Workspace: normalized.Workspace, Resource: resource, Environment: normalized.Environment, Site: normalized.Site,
-		ServerOrigin: normalized.ServerOrigin, SiteLUID: normalized.SiteLUID, Direction: normalized.Direction, Depth: normalized.Depth,
+		Workspace: input.Workspace, Resource: resource, Environment: input.Environment, Site: input.Site,
+		ServerOrigin: input.ServerOrigin, SiteLUID: input.SiteLUID, Direction: input.Direction, Depth: input.Depth,
 		Complete: graph.Complete, CountsKnown: countsKnown, Nodes: graph.Nodes, Edges: graph.Edges,
 		Failure:  graph.Failure,
-		Warnings: warnings, WarningsOmitted: warningsOmitted, RequestIDs: requestIDs, Overwrite: normalized.Overwrite,
+		Warnings: warnings, WarningsOmitted: warningsOmitted, RequestIDs: requestIDs, Overwrite: input.Overwrite,
 	}
-	result, err := a.writer.WriteLineage(ctx, artifact)
+	result, err := writer.WriteLineage(ctx, artifact)
 	if err != nil {
 		retryable, correctiveAction := errs.CompleteRetryAdvice(err, "Review the workspace and artifact target, then pull again.")
-		return Output{}, &errs.Error{ID: "lineage.pull.write", Kind: errs.KindOperation, Operation: "lineage.pull", Resource: resource.LUID, Environment: normalized.Environment, Site: normalized.Site, Summary: "Lineage artifact write failed.", Cause: err, Retryable: retryable, CorrectiveAction: correctiveAction}
+		return Output{}, &errs.Error{ID: "lineage.pull.write", Kind: errs.KindOperation, Operation: "lineage.pull", Resource: resource.LUID, Environment: input.Environment, Site: input.Site, Summary: "Lineage artifact write failed.", Cause: err, Retryable: retryable, CorrectiveAction: correctiveAction}
 	}
 	return Output{
-		Status: "pulled", Resource: resource, Artifact: result, Direction: normalized.Direction, Depth: normalized.Depth,
+		Status: "pulled", Resource: resource, Artifact: result, Direction: input.Direction, Depth: input.Depth,
 		Complete: graph.Complete, CountsKnown: countsKnown, Nodes: graph.Nodes, Edges: graph.Edges, Failure: graph.Failure,
 		Warnings: warnings, WarningsOmitted: warningsOmitted,
-		Provenance: Provenance{Environment: normalized.Environment, Site: normalized.Site, ServerOrigin: normalized.ServerOrigin, SiteLUID: normalized.SiteLUID},
+		Provenance: Provenance{Environment: input.Environment, Site: input.Site, ServerOrigin: input.ServerOrigin, SiteLUID: input.SiteLUID},
 		RequestIDs: requestIDs, RequestIDsOmitted: requestIDsOmitted,
-		Help: []string{commandhint.Target(normalized.Environment, normalized.WorkspaceName, "catalog", "lineage", "pull", "--kind", publicKind(resource.Kind), "--id", resource.LUID, "--direction", normalized.Direction, "--depth", fmt.Sprint(normalized.Depth))},
+		Help: []string{commandhint.Target(input.Environment, input.WorkspaceName, "catalog", "lineage", "pull", "--kind", publicKind(resource.Kind), "--id", resource.LUID, "--direction", input.Direction, "--depth", fmt.Sprint(input.Depth))},
 	}, nil
-}
-
-func validateInput(input Input) (Input, error) {
-	if strings.TrimSpace(input.Workspace) == "" {
-		return Input{}, usage("workspace", "lineage pull requires a workspace")
-	}
-	return NormalizeInput(input)
 }
 
 func validateResolvedResource(input Input, resource Resource) error {
@@ -159,7 +138,7 @@ func boundedStrings(values []string, limit int) ([]string, int) {
 		seen[value] = struct{}{}
 		result = append(result, value)
 	}
-	sort.Strings(result)
+	slices.Sort(result)
 	omitted := 0
 	if len(result) > limit {
 		omitted = len(result) - limit

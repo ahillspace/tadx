@@ -356,7 +356,8 @@ func TestHelpValuesForIsolatedCommandPaths(t *testing.T) {
 		{"catalog lineage pull", "kind", 4, func(v string) error {
 			in := lineagepull.Input{Kind: v}
 			in.Selector.LUID = "resource-id"
-			return lineagepull.ValidateInput(in)
+			_, err := lineagepull.NormalizeInput(in)
+			return err
 		}},
 	} {
 		root := &cobra.Command{Use: "tadx"}

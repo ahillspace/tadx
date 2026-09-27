@@ -32,5 +32,3 @@ func NormalizeInput(input Input) (Input, error) {
 	}
 	return input, nil
 }
-
-func ValidateInput(input Input) error { _, err := NormalizeInput(input); return err }

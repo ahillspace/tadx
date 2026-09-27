@@ -481,7 +481,8 @@ func (c *remoteContentCommands) DeleteWorkbook(ctx context.Context, input workbo
 }
 
 func (c *remoteContentCommands) PullLineage(ctx context.Context, input lineagepull.Input) (lineagepull.Output, error) {
-	if err := lineagepull.ValidateInput(input); err != nil {
+	input, err := lineagepull.NormalizeInput(input)
+	if err != nil {
 		return lineagepull.Output{}, err
 	}
 	workspace, err := (&workspaceRuntime{runtime: c.runtime}).resolveForEnvironment(ctx, input.Workspace, input.Environment)
@@ -502,7 +503,7 @@ func (c *remoteContentCommands) PullLineage(ctx context.Context, input lineagepu
 	}
 
 	resolver := lineageResolver{workbooks: connection.workbooks, flows: connection.flows, datasources: connection.datasources, projects: connection.projects}
-	return lineagepull.New(resolver, lineageReader{connection.lineage}, lineageArtifactWriter{artifact.NewLineageManager(c.runtime.now)}).Execute(ctx, input)
+	return lineagepull.Execute(ctx, resolver, lineageReader{connection.lineage}, lineageArtifactWriter{artifact.NewLineageManager(c.runtime.now)}, input)
 }
 
 func remoteSetupError(operation, environment, site string, resolved config.Environment, err error) error {
@@ -809,11 +810,7 @@ type lineageReader struct{ adapter *resourcelineage.Adapter }
 
 func (r lineageReader) CaptureLineage(ctx context.Context, input lineagepull.CaptureRequest) (lineagepull.Graph, error) {
 	graph, err := r.adapter.Capture(ctx, resourcelineage.Request{Kind: input.Kind, RESTLUID: input.RESTLUID, Direction: input.Direction, Depth: input.Depth})
-	nodes := make([]lineagepull.Node, len(graph.Nodes))
-	copy(nodes, graph.Nodes)
-	edges := make([]lineagepull.Edge, len(graph.Edges))
-	copy(edges, graph.Edges)
-	return lineagepull.Graph{RootMetadataID: graph.RootMetadataID, Direction: graph.Direction, Depth: graph.Depth, Complete: graph.Complete, Failure: graph.Failure, Nodes: nodes, Edges: edges, Warnings: append([]string(nil), graph.Warnings...), RequestIDs: append([]string(nil), graph.RequestIDs...)}, err
+	return lineagepull.Graph{RootMetadataID: graph.RootMetadataID, Direction: graph.Direction, Depth: graph.Depth, Complete: graph.Complete, Failure: graph.Failure, Nodes: graph.Nodes, Edges: graph.Edges, Warnings: graph.Warnings, RequestIDs: graph.RequestIDs}, err
 }
 
 type lineageArtifactWriter struct{ manager *artifact.LineageManager }
