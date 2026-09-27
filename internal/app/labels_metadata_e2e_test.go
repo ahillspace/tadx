@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -197,6 +198,27 @@ func TestLabelsMetadataLocalErrorsBeforeAuthentication(t *testing.T) {
 		args = append(args, "--env", "production", "--json")
 		if code := app.Run(context.Background(), args, &out, opts); code == 0 || calls != 0 {
 			t.Fatalf("code=%d calls=%d %s", code, calls, &out)
+		}
+	}
+}
+
+func TestContentLabelInvalidSelectionPrecedesMissingConfiguration(t *testing.T) {
+	missing := filepath.Join(t.TempDir(), "missing-config.yaml")
+	for _, test := range []struct {
+		verb string
+		args []string
+	}{
+		{"list", []string{"list", "--type", "workbook", "--target-id", "book"}},
+		{"inspect", []string{"inspect", "--id", "label", "--type", "workbook", "--target-id", "book"}},
+		{"update", []string{"update", "--id", "label", "--type", "workbook", "--target-id", "book", "--value", "Warning"}},
+		{"delete", []string{"delete", "--id", "label", "--type", "workbook", "--target-id", "book"}},
+	} {
+		var out bytes.Buffer
+		args := append([]string{"catalog", "label"}, test.args...)
+		args = append(args, "--env", "dev", "--json")
+		code := app.Run(t.Context(), args, &out, app.Options{ConfigPath: missing})
+		if code == 0 || !strings.Contains(out.String(), "content.label."+test.verb+".usage") || strings.Contains(out.String(), "configuration.load") {
+			t.Fatalf("verb=%s exit=%d output=%s", test.verb, code, out.String())
 		}
 	}
 }

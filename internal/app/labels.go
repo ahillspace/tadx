@@ -5,82 +5,77 @@ import (
 
 	labelcategoryops "github.com/ahillspace/tadx/actions/admin/labelcategory"
 	labelvalueops "github.com/ahillspace/tadx/actions/admin/labelvalue"
-	contentLabeldelete "github.com/ahillspace/tadx/actions/contentlabel/delete"
-	contentLabelinspect "github.com/ahillspace/tadx/actions/contentlabel/inspect"
-	contentLabellist "github.com/ahillspace/tadx/actions/contentlabel/list"
-	contentLabelupdate "github.com/ahillspace/tadx/actions/contentlabel/update"
+	contentlabel "github.com/ahillspace/tadx/actions/contentlabel"
 	admincli "github.com/ahillspace/tadx/internal/cli/admin"
 	contentcli "github.com/ahillspace/tadx/internal/cli/content"
 )
 
 type contentLabellistService struct{ runtime *runtimeDependencies }
 
-func (c contentLabellistService) Execute(ctx context.Context, input contentLabellist.Input) (contentLabellist.Output, error) {
-	if err := contentLabellist.ValidateInput(input); err != nil {
-		return contentLabellist.Output{}, err
+func (c contentLabellistService) Execute(ctx context.Context, input contentlabel.ListInput) (contentlabel.ListOutput, error) {
+	if err := contentlabel.ValidateListInput(input); err != nil {
+		return contentlabel.ListOutput{}, err
 	}
 	connection, err := c.runtime.tableauConnection(ctx, input.Environment, false)
 	if err != nil {
-		return contentLabellist.Output{}, capabilitySetupError("content.label.list.setup", "content.label.list", input.Environment, connection.environment.SiteContentURL, "Label operation setup failed.", "Verify the target environment and Tableau label access.", err)
+		return contentlabel.ListOutput{}, capabilitySetupError("content.label.list.setup", "content.label.list", input.Environment, connection.environment.SiteContentURL, "Label operation setup failed.", "Verify the target environment and Tableau label access.", err)
 	}
 	input.Environment, input.Site = connection.environment.Alias, connection.environment.SiteContentURL
 
 	provider := c.runtime.clients(connection).metadataAssets
-	return contentLabellist.New(provider).Execute(ctx, input)
+	return contentlabel.List(ctx, provider, input)
 }
 
 type contentLabelinspectService struct{ runtime *runtimeDependencies }
 
-func (c contentLabelinspectService) Execute(ctx context.Context, input contentLabelinspect.Input) (contentLabelinspect.Output, error) {
-	if err := contentLabelinspect.ValidateInput(input); err != nil {
-		return contentLabelinspect.Output{}, err
+func (c contentLabelinspectService) Execute(ctx context.Context, input contentlabel.InspectInput) (contentlabel.InspectOutput, error) {
+	if err := contentlabel.ValidateInspectInput(input); err != nil {
+		return contentlabel.InspectOutput{}, err
 	}
 	connection, err := c.runtime.tableauConnection(ctx, input.Environment, false)
 	if err != nil {
-		return contentLabelinspect.Output{}, capabilitySetupError("content.label.inspect.setup", "content.label.inspect", input.Environment, connection.environment.SiteContentURL, "Label operation setup failed.", "Verify the target environment and Tableau label access.", err)
+		return contentlabel.InspectOutput{}, capabilitySetupError("content.label.inspect.setup", "content.label.inspect", input.Environment, connection.environment.SiteContentURL, "Label operation setup failed.", "Verify the target environment and Tableau label access.", err)
 	}
 	input.Environment, input.Site = connection.environment.Alias, connection.environment.SiteContentURL
 
 	provider := c.runtime.clients(connection).metadataAssets
-	return contentLabelinspect.New(provider).Execute(ctx, input)
+	return contentlabel.Inspect(ctx, provider, input)
 }
 
 type contentLabelupdateService struct{ runtime *runtimeDependencies }
 
-func (c contentLabelupdateService) Execute(ctx context.Context, input contentLabelupdate.Input, preview bool) (contentLabelupdate.Output, error) {
-	if err := contentLabelupdate.ValidateInput(input); err != nil {
-		return contentLabelupdate.Output{}, err
+func (c contentLabelupdateService) Execute(ctx context.Context, input contentlabel.UpdateInput, preview bool) (contentlabel.UpdateOutput, error) {
+	if err := contentlabel.ValidateUpdateInput(input); err != nil {
+		return contentlabel.UpdateOutput{}, err
 	}
 	if err := c.runtime.checkManagedCapability("admin.label.value.inspect"); err != nil {
-		return contentLabelupdate.Output{}, err
+		return contentlabel.UpdateOutput{}, err
 	}
 	connection, err := c.runtime.tableauConnection(ctx, input.Environment, true)
 	if err != nil {
-		return contentLabelupdate.Output{}, capabilitySetupError("content.label.update.setup", "content.label.update", input.Environment, connection.environment.SiteContentURL, "Label operation setup failed.", "Verify the target environment and Tableau label access.", err)
+		return contentlabel.UpdateOutput{}, capabilitySetupError("content.label.update.setup", "content.label.update", input.Environment, connection.environment.SiteContentURL, "Label operation setup failed.", "Verify the target environment and Tableau label access.", err)
 	}
 	input.Environment, input.Site = connection.environment.Alias, connection.environment.SiteContentURL
-	input.TargetResolved = true
 	provider := c.runtime.clients(connection).metadataAssets
-	return contentLabelupdate.New(provider, provider).Execute(ctx, input, preview)
+	return contentlabel.Update(ctx, provider, provider, input, preview)
 }
 
 type contentLabeldeleteService struct{ runtime *runtimeDependencies }
 
-func (c contentLabeldeleteService) Execute(ctx context.Context, input contentLabeldelete.Input, preview bool) (contentLabeldelete.Output, error) {
-	if err := contentLabeldelete.ValidateInput(input); err != nil {
-		return contentLabeldelete.Output{}, err
+func (c contentLabeldeleteService) Execute(ctx context.Context, input contentlabel.DeleteInput, preview bool) (contentlabel.DeleteOutput, error) {
+	if err := contentlabel.ValidateDeleteInput(input); err != nil {
+		return contentlabel.DeleteOutput{}, err
 	}
 	if err := c.runtime.checkManagedCapability("admin.label.value.inspect"); err != nil {
-		return contentLabeldelete.Output{}, err
+		return contentlabel.DeleteOutput{}, err
 	}
 	connection, err := c.runtime.tableauConnection(ctx, input.Environment, true)
 	if err != nil {
-		return contentLabeldelete.Output{}, capabilitySetupError("content.label.delete.setup", "content.label.delete", input.Environment, connection.environment.SiteContentURL, "Label operation setup failed.", "Verify the target environment and Tableau label access.", err)
+		return contentlabel.DeleteOutput{}, capabilitySetupError("content.label.delete.setup", "content.label.delete", input.Environment, connection.environment.SiteContentURL, "Label operation setup failed.", "Verify the target environment and Tableau label access.", err)
 	}
 	input.Environment, input.Site = connection.environment.Alias, connection.environment.SiteContentURL
-	input.TargetResolved = true
 	provider := c.runtime.clients(connection).metadataAssets
-	return contentLabeldelete.New(provider, provider).Execute(ctx, input, preview)
+	return contentlabel.Delete(ctx, provider, provider, input, preview)
 }
 
 type adminLabelService struct{ runtime *runtimeDependencies }

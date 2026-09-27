@@ -3,25 +3,22 @@ package content
 import (
 	"context"
 	"errors"
-	labeldelete "github.com/ahillspace/tadx/actions/contentlabel/delete"
-	labelinspect "github.com/ahillspace/tadx/actions/contentlabel/inspect"
-	labellist "github.com/ahillspace/tadx/actions/contentlabel/list"
-	labelupdate "github.com/ahillspace/tadx/actions/contentlabel/update"
+	"github.com/ahillspace/tadx/actions/contentlabel"
 	"github.com/ahillspace/tadx/internal/cli/clierr"
 	"github.com/spf13/cobra"
 )
 
 type LabelLister interface {
-	Execute(context.Context, labellist.Input) (labellist.Output, error)
+	Execute(context.Context, contentlabel.ListInput) (contentlabel.ListOutput, error)
 }
 type LabelInspector interface {
-	Execute(context.Context, labelinspect.Input) (labelinspect.Output, error)
+	Execute(context.Context, contentlabel.InspectInput) (contentlabel.InspectOutput, error)
 }
 type LabelUpdater interface {
-	Execute(context.Context, labelupdate.Input, bool) (labelupdate.Output, error)
+	Execute(context.Context, contentlabel.UpdateInput, bool) (contentlabel.UpdateOutput, error)
 }
 type LabelDeleter interface {
-	Execute(context.Context, labeldelete.Input, bool) (labeldelete.Output, error)
+	Execute(context.Context, contentlabel.DeleteInput, bool) (contentlabel.DeleteOutput, error)
 }
 type LabelDependencies struct {
 	Lister    LabelLister
@@ -40,12 +37,12 @@ func NewLabels(deps LabelDependencies) *cobra.Command {
 	return root
 }
 func newLabelLister(deps LabelDependencies) *cobra.Command {
-	var in labellist.Input
+	var in contentlabel.ListInput
 	cmd := &cobra.Command{Use: "list", Short: "List asset labels", Annotations: map[string]string{"tadx.capability": "content.label.list"}, Args: func(cmd *cobra.Command, args []string) error {
 		if err := cobra.NoArgs(cmd, args); err != nil {
 			return clierr.Usage("content.label.list", err)
 		}
-		return labellist.ValidateInput(in)
+		return contentlabel.ValidateListInput(in)
 	}, RunE: func(cmd *cobra.Command, _ []string) error {
 		if deps.Lister == nil || deps.Renderer == nil {
 			return clierr.Usage("content.label.list", errors.New("label command dependencies are not configured"))
@@ -66,12 +63,12 @@ func newLabelLister(deps LabelDependencies) *cobra.Command {
 	return cmd
 }
 func newLabelInspector(deps LabelDependencies) *cobra.Command {
-	var in labelinspect.Input
+	var in contentlabel.InspectInput
 	cmd := &cobra.Command{Use: "inspect", Short: "Inspect asset labels", Annotations: map[string]string{"tadx.capability": "content.label.inspect"}, Args: func(cmd *cobra.Command, args []string) error {
 		if err := cobra.NoArgs(cmd, args); err != nil {
 			return clierr.Usage("content.label.inspect", err)
 		}
-		return labelinspect.ValidateInput(in)
+		return contentlabel.ValidateInspectInput(in)
 	}, RunE: func(cmd *cobra.Command, _ []string) error {
 		if deps.Inspector == nil || deps.Renderer == nil {
 			return clierr.Usage("content.label.inspect", errors.New("label command dependencies are not configured"))
@@ -89,7 +86,7 @@ func newLabelInspector(deps LabelDependencies) *cobra.Command {
 	return cmd
 }
 func newLabelUpdater(deps LabelDependencies) *cobra.Command {
-	var in labelupdate.Input
+	var in contentlabel.UpdateInput
 	var value string
 	var message string
 	var active bool
@@ -111,7 +108,7 @@ func newLabelUpdater(deps LabelDependencies) *cobra.Command {
 		if cmd.Flags().Changed("elevated") {
 			in.Elevated = &elevated
 		}
-		return labelupdate.ValidateInput(in)
+		return contentlabel.ValidateUpdateInput(in)
 	}, RunE: func(cmd *cobra.Command, _ []string) error {
 		if deps.Updater == nil || deps.Renderer == nil {
 			return clierr.Usage("content.label.update", errors.New("label command dependencies are not configured"))
@@ -134,13 +131,13 @@ func newLabelUpdater(deps LabelDependencies) *cobra.Command {
 	return cmd
 }
 func newLabelDeleter(deps LabelDependencies) *cobra.Command {
-	var in labeldelete.Input
+	var in contentlabel.DeleteInput
 	var preview bool
 	cmd := &cobra.Command{Use: "delete", Short: "Delete asset labels", Annotations: map[string]string{"tadx.capability": "content.label.delete"}, Args: func(cmd *cobra.Command, args []string) error {
 		if err := cobra.NoArgs(cmd, args); err != nil {
 			return clierr.Usage("content.label.delete", err)
 		}
-		return labeldelete.ValidateInput(in)
+		return contentlabel.ValidateDeleteInput(in)
 	}, RunE: func(cmd *cobra.Command, _ []string) error {
 		if deps.Deleter == nil || deps.Renderer == nil {
 			return clierr.Usage("content.label.delete", errors.New("label command dependencies are not configured"))

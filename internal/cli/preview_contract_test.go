@@ -14,8 +14,7 @@ import (
 	a_admin_permission_inspect "github.com/ahillspace/tadx/actions/admin/permission/inspect"
 	userops "github.com/ahillspace/tadx/actions/admin/user"
 	catalogupdate "github.com/ahillspace/tadx/actions/catalog/update"
-	contentlabel_delete "github.com/ahillspace/tadx/actions/contentlabel/delete"
-	contentlabel_update "github.com/ahillspace/tadx/actions/contentlabel/update"
+	"github.com/ahillspace/tadx/actions/contentlabel"
 	datasourceops "github.com/ahillspace/tadx/actions/datasource"
 	flowops "github.com/ahillspace/tadx/actions/flow"
 	jobactions "github.com/ahillspace/tadx/actions/job"
@@ -41,16 +40,16 @@ import (
 
 type contentlabel_updateSpy struct{ spy *previewActionSpy }
 
-func (s contentlabel_updateSpy) Execute(_ context.Context, _ contentlabel_update.Input, preview bool) (contentlabel_update.Output, error) {
+func (s contentlabel_updateSpy) Execute(_ context.Context, _ contentlabel.UpdateInput, preview bool) (contentlabel.UpdateOutput, error) {
 	s.spy.record(preview)
-	return contentlabel_update.Output{}, nil
+	return contentlabel.UpdateOutput{}, nil
 }
 
 type contentlabel_deleteSpy struct{ spy *previewActionSpy }
 
-func (s contentlabel_deleteSpy) Execute(_ context.Context, _ contentlabel_delete.Input, preview bool) (contentlabel_delete.Output, error) {
+func (s contentlabel_deleteSpy) Execute(_ context.Context, _ contentlabel.DeleteInput, preview bool) (contentlabel.DeleteOutput, error) {
 	s.spy.record(preview)
-	return contentlabel_delete.Output{}, nil
+	return contentlabel.DeleteOutput{}, nil
 }
 
 type admin_labelvalue_updateSpy struct{ spy *previewActionSpy }

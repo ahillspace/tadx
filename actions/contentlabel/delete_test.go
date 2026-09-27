@@ -1,8 +1,9 @@
-package delete
+package contentlabel_test
 
 import (
 	"context"
 	"errors"
+	"github.com/ahillspace/tadx/actions/contentlabel"
 	"github.com/ahillspace/tadx/internal/errs"
 	"github.com/ahillspace/tadx/internal/value"
 	"testing"
@@ -29,18 +30,18 @@ func (s *deleteStub) DeleteLabel(context.Context, string) error {
 	return nil
 }
 func TestPreviewPerformAndUnknownSubmission(t *testing.T) {
-	in := Input{Environment: "test", TargetResolved: true, ID: "label-1"}
+	in := contentlabel.DeleteInput{Environment: "test", ID: "label-1"}
 	s := &deleteStub{}
-	out, e := New(s, s).Execute(context.Background(), in, true)
+	out, e := contentlabel.Delete(context.Background(), s, s, in, true)
 	if e != nil || s.writes != 0 || out.Mode != "preview" {
 		t.Fatalf("preview: %+v %v", out, e)
 	}
-	out, e = New(s, s).Execute(context.Background(), in, false)
+	out, e = contentlabel.Delete(context.Background(), s, s, in, false)
 	if e != nil || s.writes != 1 || out.Status != "deleted" {
 		t.Fatalf("delete: %+v %v", out, e)
 	}
 	s.writeErr = true
-	out, e = New(s, s).Execute(context.Background(), in, false)
+	out, e = contentlabel.Delete(context.Background(), s, s, in, false)
 	var classified *errs.Error
 	if !errors.As(e, &classified) || classified.Outcome != errs.OutcomeUnknown || out.Status != "unknown" {
 		t.Fatalf("unknown: %+v %v", out, e)
@@ -48,7 +49,7 @@ func TestPreviewPerformAndUnknownSubmission(t *testing.T) {
 }
 func TestInvalidInputCannotWrite(t *testing.T) {
 	s := &deleteStub{}
-	if _, e := New(s, s).Execute(context.Background(), Input{}, false); e == nil || s.writes != 0 {
+	if e := contentlabel.ValidateDeleteInput(contentlabel.DeleteInput{}); e == nil || s.writes != 0 {
 		t.Fatal("invalid write")
 	}
 }
