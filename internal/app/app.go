@@ -20,8 +20,6 @@ import (
 	capabilityget "github.com/ahillspace/tadx/actions/capability/get"
 	capabilitylist "github.com/ahillspace/tadx/actions/capability/list"
 	lastaction "github.com/ahillspace/tadx/actions/last"
-	mutationset "github.com/ahillspace/tadx/actions/mutation/set"
-	mutationstatus "github.com/ahillspace/tadx/actions/mutation/status"
 	sessionoverview "github.com/ahillspace/tadx/actions/session/overview"
 	workbookops "github.com/ahillspace/tadx/actions/workbook"
 
@@ -142,8 +140,8 @@ func Run(ctx context.Context, args []string, stdout io.Writer, options Options) 
 		MutationPolicy:        registryMutationPolicy{},
 		Policy:                runtime.policyDependencies(),
 		ResolveMutationPolicy: runtime.mutationPolicy,
-		MutationStatus:        mutationstatus.New(runtime),
-		MutationSetter:        mutationset.New(runtime),
+		MutationStatus:        runtime,
+		MutationSetter:        runtime,
 		LastReader:            lastaction.New(managedLastReader{store: capture.store, runtime: runtime}),
 		Jobs:                  (&jobCommands{runtime: runtime}).dependencies(),
 		ResolveWriteTarget: func(alias string) (string, error) {

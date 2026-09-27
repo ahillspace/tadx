@@ -244,3 +244,10 @@ Trusted internal construction does not need a serialization-and-parse round trip
 Keep strict parsing at external-file and privileged-process boundaries.
 Diagnostic extraction can omit unrelated document parsing while retaining a fresh protected read and the same missing-path behavior.
 Do not merge records with different serialized field order merely because their fields have similar meanings.
+
+## Lessons from Mutation consent workflows
+
+Remove forwarding action packages when the existing runtime methods already own the operation and its error contract.
+Keep the CLI bound to narrow value interfaces rather than exposing configuration internals.
+Reuse a validated identity index without returning early before all saved settings have been checked.
+Preserve locked rereads, persistence verification, and exact site matching as separate boundaries.

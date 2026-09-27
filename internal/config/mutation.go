@@ -40,19 +40,24 @@ func CanonicalMutationServer(server string) (string, error) {
 }
 
 func validateSiteMutations(settings []SiteMutation) error {
-	seen := map[[2]string]bool{}
-	for _, setting := range settings {
+	_, err := validatedSiteMutationIndex(settings)
+	return err
+}
+
+func validatedSiteMutationIndex(settings []SiteMutation) (map[[2]string]int, error) {
+	index := make(map[[2]string]int, len(settings))
+	for i, setting := range settings {
 		server, err := CanonicalMutationServer(setting.ServerURL)
 		if err != nil {
-			return fmt.Errorf("site mutation server: %w", err)
+			return nil, fmt.Errorf("site mutation server: %w", err)
 		}
 		key := [2]string{server, setting.SiteContentURL}
-		if seen[key] {
-			return fmt.Errorf("duplicate site mutation setting for server %q and site %q", server, setting.SiteContentURL)
+		if _, exists := index[key]; exists {
+			return nil, fmt.Errorf("duplicate site mutation setting for server %q and site %q", server, setting.SiteContentURL)
 		}
-		seen[key] = true
+		index[key] = i
 	}
-	return nil
+	return index, nil
 }
 
 // MutationSetting returns only consent matching the selected server and site.
@@ -61,14 +66,12 @@ func (c Config) MutationSetting(environment Environment) (*bool, error) {
 	if err != nil {
 		return nil, err
 	}
-	if err := validateSiteMutations(c.SiteMutations); err != nil {
+	index, err := validatedSiteMutationIndex(c.SiteMutations)
+	if err != nil {
 		return nil, err
 	}
-	for _, setting := range c.SiteMutations {
-		canonical, _ := CanonicalMutationServer(setting.ServerURL)
-		if canonical == server && setting.SiteContentURL == environment.SiteContentURL {
-			return new(setting.Enabled), nil
-		}
+	if i, ok := index[[2]string{server, environment.SiteContentURL}]; ok {
+		return new(c.SiteMutations[i].Enabled), nil
 	}
 	return nil, nil
 }
@@ -79,16 +82,14 @@ func (c *Config) SetMutationSetting(environment Environment, enabled bool) error
 	if err != nil {
 		return err
 	}
-	if err := validateSiteMutations(c.SiteMutations); err != nil {
+	index, err := validatedSiteMutationIndex(c.SiteMutations)
+	if err != nil {
 		return err
 	}
-	for i, setting := range c.SiteMutations {
-		canonical, _ := CanonicalMutationServer(setting.ServerURL)
-		if canonical == server && setting.SiteContentURL == environment.SiteContentURL {
-			c.SiteMutations[i].Enabled = enabled
-			c.SiteMutations[i].ServerURL = server
-			return nil
-		}
+	if i, ok := index[[2]string{server, environment.SiteContentURL}]; ok {
+		c.SiteMutations[i].Enabled = enabled
+		c.SiteMutations[i].ServerURL = server
+		return nil
 	}
 	c.SiteMutations = append(c.SiteMutations, SiteMutation{ServerURL: server, SiteContentURL: environment.SiteContentURL, Enabled: enabled})
 	return nil

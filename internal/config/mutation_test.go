@@ -1,6 +1,9 @@
 package config
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 func TestSiteMutationIdentity(t *testing.T) {
 	cfg := Config{MutationsEnabled: new(true)}
@@ -48,6 +51,35 @@ func TestSiteMutationDuplicateCanonicalIdentityRejected(t *testing.T) {
 	}}
 	if err := cfg.Validate(); err == nil {
 		t.Fatal("conflicting canonical identities accepted")
+	}
+}
+
+func TestSiteMutationValidatesWholeListBeforeMatching(t *testing.T) {
+	target := Environment{URL: "https://tableau.example.com", SiteContentURL: "Sales"}
+	for _, tt := range []struct {
+		name, laterServer, laterSite, wantError string
+	}{
+		{"invalid later server", "://invalid", "Other", "site mutation server:"},
+		{"duplicate later identity", "https://TABLEAU.example.com:443/", "Sales", "duplicate site mutation setting"},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := Config{SiteMutations: []SiteMutation{
+				{ServerURL: target.URL, SiteContentURL: target.SiteContentURL, Enabled: true},
+				{ServerURL: tt.laterServer, SiteContentURL: tt.laterSite, Enabled: false},
+			}}
+			if got, err := cfg.MutationSetting(target); got != nil || err == nil || !strings.Contains(err.Error(), tt.wantError) {
+				t.Fatalf("read got=%v err=%v, want %q", got, err, tt.wantError)
+			}
+			before := append([]SiteMutation(nil), cfg.SiteMutations...)
+			if err := cfg.SetMutationSetting(target, false); err == nil || !strings.Contains(err.Error(), tt.wantError) {
+				t.Fatalf("write err=%v, want %q", err, tt.wantError)
+			}
+			for i, setting := range cfg.SiteMutations {
+				if setting != before[i] {
+					t.Fatalf("write changed setting %d after validation error", i)
+				}
+			}
+		})
 	}
 }
 

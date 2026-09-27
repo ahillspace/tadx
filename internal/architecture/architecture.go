@@ -233,6 +233,9 @@ func localImportAllowed(file, imported string) bool {
 		if hasPathPrefix(file, "internal/cli/agent") && imported == "internal/agenttarget" {
 			return true
 		}
+		if hasPathPrefix(file, "internal/cli/mutation") && imported == "internal/value" {
+			return true
+		}
 		return matchesPrefix(imported, "actions", "internal/cli") || matchesExact(imported, "internal/errs", "internal/pathspec", "internal/contentbatch", "internal/commandhint", "internal/batchspec")
 	case layerResource:
 		return matchesExact(imported, "internal/identity", "internal/value") || matchesPrefix(imported, "internal/tableau")

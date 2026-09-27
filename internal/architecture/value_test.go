@@ -41,6 +41,23 @@ import _ "example.test/tadx/internal/value"
 	assertViolationStrings(t, violations, nil)
 }
 
+func TestMutationCLIUsesOnlySharedValues(t *testing.T) {
+	root := moduleFixture(t)
+	writeGo(t, root, "internal/cli/mutation/command.go", `package mutation
+import (
+	_ "example.test/tadx/internal/value"
+	_ "example.test/tadx/internal/config"
+)
+`)
+	violations, err := architecture.Check(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertViolationStrings(t, violations, []string{
+		"internal/cli/mutation/command.go imports example.test/tadx/internal/config: CLI plumbing must not import unapproved local packages",
+	})
+}
+
 func TestPagingImportsOnlySharedValues(t *testing.T) {
 	for _, dependency := range []string{
 		"internal/value", "internal/value/helpers", "internal/config", "internal/output",

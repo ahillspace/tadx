@@ -2,17 +2,16 @@ package mutation
 
 import (
 	"context"
-	mutationset "github.com/ahillspace/tadx/actions/mutation/set"
-	mutationstatus "github.com/ahillspace/tadx/actions/mutation/status"
 	"github.com/ahillspace/tadx/internal/cli/clierr"
+	"github.com/ahillspace/tadx/internal/value"
 	"github.com/spf13/cobra"
 )
 
 type Status interface {
-	Execute(context.Context, string) (mutationstatus.Output, error)
+	ReadMutationStatus(context.Context, string) (value.MutationStatus, error)
 }
 type Setter interface {
-	Execute(context.Context, string, bool) (mutationset.Output, error)
+	WriteMutationSetting(context.Context, string, bool) (value.MutationSetting, error)
 }
 type Renderer interface{ Render(any) error }
 
@@ -21,7 +20,7 @@ func New(status Status, set Setter, renderer Renderer) *cobra.Command {
 	var environment string
 	root.PersistentFlags().StringVar(&environment, "environment", "", "configured environment selecting the Tableau site")
 	get := &cobra.Command{Use: "status", Short: "Show site mutation settings.", Annotations: map[string]string{"tadx.capability": "mutation.status"}, Args: cobra.NoArgs, RunE: func(c *cobra.Command, _ []string) error {
-		out, err := status.Execute(c.Context(), environment)
+		out, err := status.ReadMutationStatus(c.Context(), environment)
 		if err != nil {
 			return err
 		}
@@ -34,7 +33,7 @@ func New(status Status, set Setter, renderer Renderer) *cobra.Command {
 		}
 		return nil
 	}, RunE: func(c *cobra.Command, _ []string) error {
-		out, err := set.Execute(c.Context(), environment, enabled)
+		out, err := set.WriteMutationSetting(c.Context(), environment, enabled)
 		if err != nil {
 			return clierr.WithOutput(out, err)
 		}

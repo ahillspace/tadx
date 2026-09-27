@@ -20,6 +20,7 @@ Their list and inspect operations share `actions/catalog/read`; search and audit
 Workspace operations share `actions/workspace`, with explicit operation methods and narrow dependencies.
 The workspace manager and artifact packages retain filesystem, locking, and fresh-state checks.
 Job operations share `actions/job`; job monitoring, durable operation records, and Tableau HTTP normalization retain their separate owners.
+Mutation consent commands bind directly to runtime methods through narrow shared-value interfaces; configuration owns validated site identity and persistence.
 Keep operation-specific projections and mutation sequences explicit within those packages.
 Other executable commands retain their assessed action boundaries; package regrouping must remove unnecessary responsibilities or handoffs, not merely relocate code.
 Keep distinct operation contracts and mutation sequences explicit; share mechanisms only where their behavior matches.
