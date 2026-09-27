@@ -29,6 +29,13 @@ func TestFlowRecordCacheShapeAndOperationProjections(t *testing.T) {
 	if strings.Contains(string(list), "parameters") || strings.Contains(string(list), "output_steps") || strings.Contains(string(list), "private-request") {
 		t.Fatalf("list projection leaked inspect fields: %s", list)
 	}
+	compactList, err := json.Marshal(ListOutput{Flows: []Record{record}}.CompactOutput())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(compactList), "parameters") || strings.Contains(string(compactList), "output_steps") || strings.Contains(string(compactList), "private-request") {
+		t.Fatalf("compact list projection leaked inspect fields: %s", compactList)
+	}
 	pull, err := json.Marshal(PullOutput{Flow: record}.FullOutput())
 	if err != nil {
 		t.Fatal(err)

@@ -1,6 +1,9 @@
 package update
 
-import "github.com/ahillspace/tadx/internal/identity"
+import (
+	"github.com/ahillspace/tadx/internal/identity"
+	"github.com/ahillspace/tadx/internal/value"
+)
 
 // Input selects one project and explicit bounded metadata changes.
 type Input struct {
@@ -20,15 +23,7 @@ func (i *Input) SetSelector(luid, projectPath string) {
 }
 
 // Project is one authoritative project identity and bounded metadata projection.
-type Project struct {
-	LUID                            string `json:"luid"`
-	Name                            string `json:"name"`
-	Path                            string `json:"path"`
-	ParentLUID                      string `json:"parent_luid,omitempty"`
-	Description                     string `json:"description,omitempty"`
-	ContentPermissions              string `json:"content_permissions,omitempty"`
-	ControllingPermissionsProjectID string `json:"controlling_permissions_project_luid,omitempty"`
-}
+type Project = value.ProjectMutationObservation
 
 // Changes contains only explicit requested metadata fields.
 type Changes struct {

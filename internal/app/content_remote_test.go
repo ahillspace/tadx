@@ -2,13 +2,44 @@ package app
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"testing"
 
+	workbookops "github.com/ahillspace/tadx/actions/workbook"
 	"github.com/ahillspace/tadx/internal/identity"
 	resourcedatasource "github.com/ahillspace/tadx/internal/resources/datasource"
 	tableaudatasource "github.com/ahillspace/tadx/internal/tableau/datasource"
+	"github.com/ahillspace/tadx/internal/value"
 )
+
+func TestWorkbookLineageDocumentPreservesStorageShapeAndOwnership(t *testing.T) {
+	empty := workbookLineageDocument(workbookops.LineageCapture{Direction: "both", Depth: 1})
+	encoded, err := json.Marshal(empty)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, want := string(encoded), `{"complete":false,"direction":"both","depth":1,"nodes":[],"edges":[]}`; got != want {
+		t.Fatalf("empty persisted lineage = %s, want %s", got, want)
+	}
+
+	input := workbookops.LineageCapture{
+		Direction: "both",
+		Depth:     1,
+		Nodes:     []workbookops.LineageNode{{MetadataID: "node", Kind: "workbook", RESTLUID: "workbook", Name: "Sales"}},
+		Edges:     []workbookops.LineageEdge{{FromMetadataID: "node", ToMetadataID: "upstream", Relationship: "uses"}},
+		Failure:   &value.LineageFailure{Provider: "metadata", RootKind: "workbook", RootRESTLUID: "workbook", RequestID: "request"},
+		Warnings:  []string{"partial"},
+	}
+	document := workbookLineageDocument(input)
+	document.Nodes[0].Name = "changed"
+	document.Edges[0].Relationship = "changed"
+	document.Failure.RequestID = "changed"
+	document.Warnings[0] = "changed"
+	if input.Nodes[0].Name != "Sales" || input.Edges[0].Relationship != "uses" || input.Failure.RequestID != "request" || input.Warnings[0] != "partial" {
+		t.Fatalf("persisted lineage aliases mutable input: %#v", input)
+	}
+}
 
 type lineageDatasourceClient struct {
 	page tableaudatasource.Page

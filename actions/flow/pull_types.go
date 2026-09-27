@@ -30,11 +30,7 @@ type pullFlow struct {
 	FileType    string `json:"file_type,omitempty"`
 }
 
-type PullDownload struct {
-	Filename         string
-	Content          []byte
-	TableauRequestID string
-}
+type PullDownload = value.NativeDownload
 type PullLineageRequest struct {
 	Kind, RESTLUID, Direction string
 	Depth                     int

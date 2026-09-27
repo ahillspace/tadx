@@ -144,13 +144,9 @@ type datasourceArtifactWriter struct{ manager *artifact.DatasourceManager }
 func (w datasourceArtifactWriter) WriteDatasource(ctx context.Context, input datasourceops.PullArtifact) (datasourceops.PullArtifactResult, error) {
 	progress.SetLabel(ctx, "Saving datasource files")
 	nodes := make([]artifact.LineageNode, len(input.Lineage.Nodes))
-	for index, node := range input.Lineage.Nodes {
-		nodes[index] = artifact.LineageNode{MetadataID: node.MetadataID, Kind: node.Kind, RESTLUID: node.RESTLUID, Name: node.Name}
-	}
+	copy(nodes, input.Lineage.Nodes)
 	edges := make([]artifact.LineageEdge, len(input.Lineage.Edges))
-	for index, edge := range input.Lineage.Edges {
-		edges[index] = artifact.LineageEdge{FromMetadataID: edge.FromMetadataID, ToMetadataID: edge.ToMetadataID, Relationship: edge.Relationship}
-	}
+	copy(edges, input.Lineage.Edges)
 	direction, depth := input.Lineage.Direction, input.Lineage.Depth
 	if direction == "" {
 		direction = "both"

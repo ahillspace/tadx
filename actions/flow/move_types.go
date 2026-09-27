@@ -54,11 +54,6 @@ type MoveCompactResult struct {
 	Details string                 `json:"details"`
 	Help    []string               `json:"help"`
 }
-type MoveFullResult struct {
-	Plan   MovePlan    `json:"plan"`
-	Result *MoveResult `json:"result,omitempty"`
-	Help   []string    `json:"help"`
-}
 
 func (o MoveOutput) CompactOutput() any {
 	var result *MoveCompactMoveResult
@@ -73,5 +68,5 @@ func (o MoveOutput) CompactOutput() any {
 }
 
 func (o MoveOutput) FullOutput() any {
-	return MoveFullResult{Plan: o.Plan, Result: o.Result, Help: o.Help}
+	return o
 }

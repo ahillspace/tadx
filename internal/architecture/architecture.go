@@ -306,7 +306,7 @@ func localImportAllowed(file, imported string) bool {
 		// paths cannot escape the workspace root, using the OS-independent pathspec
 		// predicates as defense in depth over the upstream Resolve invariant.
 		if hasPathPrefix(file, "internal/artifact") {
-			return matchesExact(imported, "internal/lock", "internal/pathspec")
+			return matchesExact(imported, "internal/lock", "internal/pathspec", "internal/value")
 		}
 		// The config package owns the user-configuration read-modify-write
 		// critical section and serializes it against other tadx processes via

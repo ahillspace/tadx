@@ -50,12 +50,12 @@ type Generation struct {
 
 // Output is the stable cache.status document.
 type Output struct {
-	Retained   []value.CachedObservation
-	Status     string
-	Generation Generation
-	Path       string
-	Warnings   []string
-	Help       []string
+	Retained   []value.CachedObservation `json:"retained_observations,omitempty"`
+	Status     string                    `json:"status"`
+	Generation Generation                `json:"generation"`
+	Path       string                    `json:"path,omitempty"`
+	Warnings   []string                  `json:"warnings,omitempty"`
+	Help       []string                  `json:"help"`
 }
 
 // CompactGeneration contains status decision fields.
@@ -77,16 +77,6 @@ type CompactResult struct {
 	Generation CompactGeneration         `json:"generation"`
 	Warnings   []string                  `json:"warnings,omitempty"`
 	Details    string                    `json:"details"`
-	Help       []string                  `json:"help"`
-}
-
-// FullResult is the expanded bounded status projection.
-type FullResult struct {
-	Retained   []value.CachedObservation `json:"retained_observations,omitempty"`
-	Status     string                    `json:"status"`
-	Generation Generation                `json:"generation"`
-	Path       string                    `json:"path,omitempty"`
-	Warnings   []string                  `json:"warnings,omitempty"`
 	Help       []string                  `json:"help"`
 }
 
@@ -113,7 +103,7 @@ func (o Output) FullOutput() any {
 	if o.Status == "uninitialized" {
 		return UninitializedResult{Retained: o.Retained, Status: o.Status, Environment: o.Generation.Environment, Site: o.Generation.Site, Help: o.Help}
 	}
-	return FullResult{Retained: o.Retained, Status: o.Status, Generation: o.Generation, Path: o.Path, Warnings: o.Warnings, Help: o.Help}
+	return o
 }
 
 func (o Output) compactRetained() []value.CachedObservation {

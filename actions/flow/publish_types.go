@@ -100,11 +100,6 @@ type PublishCompactResult struct {
 	Details      string                       `json:"details"`
 	Help         []string                     `json:"help"`
 }
-type PublishFullResult struct {
-	Plan   PublishPlan    `json:"plan"`
-	Result *PublishResult `json:"result,omitempty"`
-	Help   []string       `json:"help"`
-}
 
 func (o PublishOutput) CompactOutput() any {
 	var result *PublishCompactPublishResult
@@ -128,7 +123,7 @@ func (o PublishOutput) CompactOutput() any {
 }
 func (o PublishOutput) FullOutput() any {
 	o.Plan.Kind = "flow"
-	return PublishFullResult{Plan: o.Plan, Result: o.Result, Help: o.Help}
+	return o
 }
 
 type PublishCompactPlan struct {

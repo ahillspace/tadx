@@ -1,7 +1,11 @@
 // Package flow defines the docs-only Tableau flow client seam.
 package flow
 
-import "context"
+import (
+	"context"
+
+	"github.com/ahillspace/tadx/internal/value"
+)
 
 // Parameter is one bounded flow parameter projection.
 type Parameter struct {
@@ -56,11 +60,7 @@ type Page struct {
 }
 
 // Download is one unchanged TFL or TFLX response.
-type Download struct {
-	Filename         string
-	Content          []byte
-	TableauRequestID string
-}
+type Download = value.NativeDownload
 
 // Client is the docs-only read seam implemented after live evidence closes the gate.
 type Client interface {

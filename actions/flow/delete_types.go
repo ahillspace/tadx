@@ -45,11 +45,6 @@ type DeleteCompactResult struct {
 	Details string                     `json:"details"`
 	Help    []string                   `json:"help"`
 }
-type DeleteFullResult struct {
-	Plan   DeletePlan    `json:"plan"`
-	Result *DeleteResult `json:"result,omitempty"`
-	Help   []string      `json:"help"`
-}
 
 func (o DeleteOutput) CompactOutput() any {
 	var result *DeleteCompactDeleteResult
@@ -60,5 +55,5 @@ func (o DeleteOutput) CompactOutput() any {
 }
 
 func (o DeleteOutput) FullOutput() any {
-	return DeleteFullResult{Plan: o.Plan, Result: o.Result, Help: o.Help}
+	return o
 }

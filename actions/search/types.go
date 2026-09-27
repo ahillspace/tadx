@@ -48,13 +48,13 @@ type Result struct {
 
 // Output is the stable search document.
 type Output struct {
-	Scope      *Scope
-	Source     string
-	Page       Page
-	Items      []Item
-	Warnings   []string
-	Generation *Generation
-	Help       []string
+	Scope      *Scope      `json:"scope,omitempty"`
+	Source     string      `json:"source"`
+	Page       Page        `json:"page"`
+	Generation *Generation `json:"generation,omitempty"`
+	Items      []Item      `json:"items"`
+	Warnings   []string    `json:"warnings,omitempty"`
+	Help       []string    `json:"help"`
 }
 
 // Scope identifies a resolved live target once, including the default site's empty URL.
@@ -79,15 +79,6 @@ type CompactResult struct {
 	Details    string        `json:"details"`
 	Help       []string      `json:"help"`
 }
-type FullResult struct {
-	Scope      *Scope      `json:"scope,omitempty"`
-	Source     string      `json:"source"`
-	Page       Page        `json:"page"`
-	Generation *Generation `json:"generation,omitempty"`
-	Items      []Item      `json:"items"`
-	Warnings   []string    `json:"warnings,omitempty"`
-	Help       []string    `json:"help"`
-}
 
 func (o Output) CompactOutput() any {
 	items := make([]CompactItem, len(o.Items))
@@ -97,5 +88,5 @@ func (o Output) CompactOutput() any {
 	return CompactResult{Scope: o.Scope, Source: o.Source, Page: o.Page, Generation: o.Generation, Items: items, Warnings: o.Warnings, Details: "--full", Help: o.Help}
 }
 func (o Output) FullOutput() any {
-	return FullResult{Scope: o.Scope, Source: o.Source, Page: o.Page, Generation: o.Generation, Items: o.Items, Warnings: o.Warnings, Help: o.Help}
+	return o
 }

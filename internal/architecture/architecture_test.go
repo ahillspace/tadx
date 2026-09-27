@@ -232,6 +232,9 @@ import (
 	writeGo(t, root, "internal/workspace/manager.go", `package workspace
 import _ "example.test/tadx/internal/config"
 `)
+	writeGo(t, root, "internal/artifact/lineage.go", `package artifact
+import _ "example.test/tadx/internal/value"
+`)
 	writeGo(t, root, "internal/operationrun/store.go", `package operationrun
 import _ "example.test/tadx/internal/lock"
 `)

@@ -80,13 +80,13 @@ type GenerationOutput struct {
 
 // Output is the stable cache.refresh document.
 type Output struct {
-	Plan        *Plan
-	Status      string
-	Generation  GenerationOutput
-	Path        string
-	Warnings    []string
-	Diagnostics Diagnostics
-	Help        []string
+	Plan        *Plan            `json:"-"`
+	Status      string           `json:"status"`
+	Generation  GenerationOutput `json:"generation"`
+	Path        string           `json:"path"`
+	Warnings    []string         `json:"warnings,omitempty"`
+	Diagnostics Diagnostics      `json:"diagnostics"`
+	Help        []string         `json:"help"`
 }
 
 // Plan identifies the inventory generation request without hydrating or publishing it.
@@ -124,16 +124,6 @@ type CompactResult struct {
 	Help       []string          `json:"help"`
 }
 
-// FullResult is the expanded bounded refresh projection.
-type FullResult struct {
-	Status      string           `json:"status"`
-	Generation  GenerationOutput `json:"generation"`
-	Path        string           `json:"path"`
-	Warnings    []string         `json:"warnings,omitempty"`
-	Diagnostics Diagnostics      `json:"diagnostics"`
-	Help        []string         `json:"help"`
-}
-
 // CompactOutput returns a row-free operational receipt.
 func (o Output) CompactOutput() any {
 	if o.Plan != nil {
@@ -148,7 +138,7 @@ func (o Output) FullOutput() any {
 	if o.Plan != nil {
 		return PreviewResult{Status: o.Status, Plan: *o.Plan, Help: o.Help}
 	}
-	return FullResult{Status: o.Status, Generation: o.Generation, Path: o.Path, Warnings: o.Warnings, Diagnostics: o.Diagnostics, Help: o.Help}
+	return o
 }
 
 // ValidateInput checks scopes without requiring resolved credentials or a site.

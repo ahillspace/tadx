@@ -66,7 +66,7 @@ func TestActionGetsExactProject(t *testing.T) {
 	if compact.Project.Path != "Department/Ops" || compact.Details != "--full" {
 		t.Fatalf("compact = %#v", compact)
 	}
-	if output.FullOutput().(projectget.FullResult).Project.Description != "Operations" {
+	if output.FullOutput().(projectget.Output).Project.Description != "Operations" {
 		t.Fatalf("full = %#v", output.FullOutput())
 	}
 }

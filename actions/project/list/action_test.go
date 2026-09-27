@@ -91,7 +91,7 @@ func TestActionListsBoundedProjectPage(t *testing.T) {
 	if !reflect.DeepEqual(r.input, projectlist.PageRequest{PageNumber: 1, PageSize: 2}) {
 		t.Fatalf("reader input = %#v", r.input)
 	}
-	full := output.FullOutput().(projectlist.FullResult)
+	full := output.FullOutput().(projectlist.Output)
 	if full.Projects[1].Description != "Operations" || full.Projects[1].OwnerLUID != "u-1" {
 		t.Fatalf("full = %#v", full)
 	}
@@ -246,7 +246,7 @@ func TestFullProjectOutputIsBoundedToCurrentPage(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := len(output.FullOutput().(projectlist.FullResult).Projects); got != 100 {
+	if got := len(output.FullOutput().(projectlist.Output).Projects); got != 100 {
 		t.Fatalf("full projects = %d", got)
 	}
 }

@@ -544,14 +544,14 @@ func (a projectCreateAdapter) ResolveProject(ctx context.Context, selector ident
 	if err == nil && a.resolved != nil {
 		a.resolved[item.LUID] = item
 	}
-	return toProjectCreate(item), err
+	return projectMutationObservation(item), err
 }
 
 func (a projectCreateAdapter) FindProjectCollisions(ctx context.Context, name, parentLUID string) ([]projectcreate.Project, error) {
 	items, err := a.projects.FindProjectCollisions(ctx, name, parentLUID)
 	result := make([]projectcreate.Project, len(items))
 	for index, item := range items {
-		result[index] = toProjectCreate(item)
+		result[index] = projectMutationObservation(item)
 	}
 	return result, err
 }
@@ -562,10 +562,10 @@ func (a projectCreateAdapter) CreateProject(ctx context.Context, input projectcr
 		return projectcreate.Result{}, err
 	}
 	item := normalizeSuccessfulProjectMutation(ctx, a.projects, a.resolved, result.Project)
-	return projectcreate.Result{Status: result.Status, Project: toProjectCreate(item), TableauRequestID: result.TableauRequestID}, nil
+	return projectcreate.Result{Status: result.Status, Project: projectMutationObservation(item), TableauRequestID: result.TableauRequestID}, nil
 }
 
-func toProjectCreate(item resourceproject.Project) projectcreate.Project {
+func projectMutationObservation(item resourceproject.Project) projectcreate.Project {
 	return projectcreate.Project{LUID: item.LUID, Name: item.Name, Path: item.Path, ParentLUID: item.ParentLUID, Description: item.Description, ContentPermissions: item.ContentPermissions, ControllingPermissionsProjectID: item.ControllingPermissionsProjectID}
 }
 
@@ -580,7 +580,7 @@ func (a projectUpdateAdapter) ResolveProject(ctx context.Context, selector ident
 	if err == nil && a.resolved != nil {
 		a.resolved[item.LUID] = item
 	}
-	return toProjectUpdate(item), err
+	return projectMutationObservation(item), err
 }
 
 func (a projectUpdateAdapter) UpdateProject(ctx context.Context, input projectupdate.UpdateRequest) (projectupdate.Result, error) {
@@ -589,11 +589,7 @@ func (a projectUpdateAdapter) UpdateProject(ctx context.Context, input projectup
 		return projectupdate.Result{}, err
 	}
 	item := normalizeSuccessfulProjectMutation(ctx, a.projects, a.resolved, result.Project)
-	return projectupdate.Result{Status: result.Status, Project: toProjectUpdate(item), TableauRequestID: result.TableauRequestID}, nil
-}
-
-func toProjectUpdate(item resourceproject.Project) projectupdate.Project {
-	return projectupdate.Project{LUID: item.LUID, Name: item.Name, Path: item.Path, ParentLUID: item.ParentLUID, Description: item.Description, ContentPermissions: item.ContentPermissions, ControllingPermissionsProjectID: item.ControllingPermissionsProjectID}
+	return projectupdate.Result{Status: result.Status, Project: projectMutationObservation(item), TableauRequestID: result.TableauRequestID}, nil
 }
 
 type projectDeleteAdapter struct {
@@ -617,7 +613,8 @@ func (r flowListReader) ListFlows(ctx context.Context, input flowops.ListPageReq
 	page, err := r.adapter.ListFlows(ctx, tableauflow.ListRequest{PageNumber: input.PageNumber, PageSize: input.PageSize, Name: input.Name, OwnerName: input.OwnerName, ProjectLUID: input.ProjectLUID, ProjectName: input.ProjectName})
 	items := make([]flowops.Record, len(page.Items))
 	for index, item := range page.Items {
-		items[index] = flowops.Record{LUID: item.LUID, Name: item.Name, ProjectLUID: item.ProjectLUID, ProjectName: item.ProjectName, ProjectPath: item.ProjectPath, FileType: item.FileType, UpdatedAt: item.UpdatedAt, Description: item.Description, OwnerLUID: item.OwnerLUID, CreatedAt: item.CreatedAt, Tags: append([]string(nil), item.Tags...)}
+		items[index] = item
+		items[index].Tags = append([]string(nil), item.Tags...)
 	}
 	return flowops.ListPage{Number: page.Number, Size: page.Size, Total: page.Total, Flows: items, RequestID: page.RequestID}, err
 }
@@ -629,8 +626,7 @@ type flowPullReader struct {
 
 func (r flowPullReader) DownloadFlow(ctx context.Context, luid string) (flowops.PullDownload, error) {
 	progress.SetLabel(ctx, "Downloading flow")
-	item, err := r.Adapter.DownloadFlow(ctx, luid)
-	return flowops.PullDownload{Filename: item.Filename, Content: item.Content, TableauRequestID: item.TableauRequestID}, err
+	return r.Adapter.DownloadFlow(ctx, luid)
 }
 
 func (r flowPullReader) CaptureLineage(ctx context.Context, input flowops.PullLineageRequest) (flowops.PullLineage, error) {
@@ -641,13 +637,9 @@ func (r flowPullReader) CaptureLineage(ctx context.Context, input flowops.PullLi
 
 func flowPullLineage(graph resourcelineage.Graph) flowops.PullLineage {
 	nodes := make([]flowops.PullLineageNode, len(graph.Nodes))
-	for index, node := range graph.Nodes {
-		nodes[index] = flowops.PullLineageNode{MetadataID: node.MetadataID, Kind: node.Kind, RESTLUID: node.RESTLUID, Name: node.Name}
-	}
+	copy(nodes, graph.Nodes)
 	edges := make([]flowops.PullLineageEdge, len(graph.Edges))
-	for index, edge := range graph.Edges {
-		edges[index] = flowops.PullLineageEdge{FromMetadataID: edge.FromMetadataID, ToMetadataID: edge.ToMetadataID, Relationship: edge.Relationship}
-	}
+	copy(edges, graph.Edges)
 	return flowops.PullLineage{Complete: graph.Complete, Direction: graph.Direction, Depth: graph.Depth, Failure: graph.Failure, Nodes: nodes, Edges: edges, Warnings: append([]string(nil), graph.Warnings...)}
 }
 
@@ -656,13 +648,9 @@ type flowArtifactWriter struct{ manager *artifact.FlowManager }
 func (w flowArtifactWriter) WriteFlow(ctx context.Context, input flowops.PullArtifact) (flowops.PullArtifactResult, error) {
 	progress.SetLabel(ctx, "Saving flow files")
 	nodes := make([]artifact.LineageNode, len(input.Lineage.Nodes))
-	for index, node := range input.Lineage.Nodes {
-		nodes[index] = artifact.LineageNode{MetadataID: node.MetadataID, Kind: node.Kind, RESTLUID: node.RESTLUID, Name: node.Name}
-	}
+	copy(nodes, input.Lineage.Nodes)
 	edges := make([]artifact.LineageEdge, len(input.Lineage.Edges))
-	for index, edge := range input.Lineage.Edges {
-		edges[index] = artifact.LineageEdge{FromMetadataID: edge.FromMetadataID, ToMetadataID: edge.ToMetadataID, Relationship: edge.Relationship}
-	}
+	copy(edges, input.Lineage.Edges)
 	direction, depth := input.Lineage.Direction, input.Lineage.Depth
 	if direction == "" {
 		direction = "both"
@@ -817,13 +805,9 @@ type lineageArtifactWriter struct{ manager *artifact.LineageManager }
 
 func (w lineageArtifactWriter) WriteLineage(ctx context.Context, input lineagepull.Artifact) (lineagepull.ArtifactResult, error) {
 	nodes := make([]artifact.LineageNode, len(input.Nodes))
-	for index, node := range input.Nodes {
-		nodes[index] = artifact.LineageNode{MetadataID: node.MetadataID, Kind: node.Kind, RESTLUID: node.RESTLUID, Name: node.Name}
-	}
+	copy(nodes, input.Nodes)
 	edges := make([]artifact.LineageEdge, len(input.Edges))
-	for index, edge := range input.Edges {
-		edges[index] = artifact.LineageEdge{FromMetadataID: edge.FromMetadataID, ToMetadataID: edge.ToMetadataID, Relationship: edge.Relationship}
-	}
+	copy(edges, input.Edges)
 	result, err := w.manager.Pull(ctx, artifact.LineagePull{Workspace: input.Workspace, CountsKnown: input.CountsKnown, Overwrite: input.Overwrite, Metadata: artifact.LineageMetadata{ResourceKind: input.Resource.Kind, Name: input.Resource.Name, TableauID: input.Resource.LUID, MetadataID: input.Resource.MetadataID, ProjectPath: input.Resource.ProjectPath, SourceServerOrigin: input.ServerOrigin, SourceSiteLUID: input.SiteLUID, SourceEnvironment: input.Environment, SourceSite: input.Site}, Lineage: artifact.LineageDocument{Complete: input.Complete, Direction: input.Direction, Depth: input.Depth, Failure: artifactLineageFailure(input.Failure), Nodes: nodes, Edges: edges, Warnings: append([]string(nil), input.Warnings...)}})
 	return lineagepull.ArtifactResult{Path: result.Path, LineagePath: result.LineagePath, Fingerprint: result.Fingerprint}, err
 }

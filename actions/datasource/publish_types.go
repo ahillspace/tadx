@@ -142,12 +142,6 @@ type PublishCompactResult struct {
 	Help         []string                     `json:"help"`
 }
 
-type PublishFullResult struct {
-	Plan   PublishPlan    `json:"plan"`
-	Result *PublishResult `json:"result,omitempty"`
-	Help   []string       `json:"help"`
-}
-
 func (o PublishOutput) CompactOutput() any {
 	plan := &PublishCompactPlan{Workspace: o.Plan.Workspace, Kind: "datasource", SourceLUID: o.Plan.SourceLUID,
 		Mode:           o.Plan.Mode,
@@ -187,7 +181,7 @@ func (o PublishOutput) CompactOutput() any {
 
 func (o PublishOutput) FullOutput() any {
 	o.Plan.Kind = "datasource"
-	return PublishFullResult{Plan: o.Plan, Result: o.Result, Help: o.Help}
+	return o
 }
 
 type PreparedPublish interface {

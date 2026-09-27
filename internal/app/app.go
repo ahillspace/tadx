@@ -553,13 +553,9 @@ func (r pullReader) CaptureWorkbookLineage(ctx context.Context, input workbookop
 	progress.SetLabel(ctx, "Reading workbook metadata")
 	graph, err := r.lineage.Capture(ctx, resourcelineage.Request{Kind: "workbook", RESTLUID: input.RESTLUID, Direction: input.Direction, Depth: input.Depth})
 	nodes := make([]workbookops.LineageNode, len(graph.Nodes))
-	for index, node := range graph.Nodes {
-		nodes[index] = workbookops.LineageNode{MetadataID: node.MetadataID, Kind: node.Kind, RESTLUID: node.RESTLUID, Name: node.Name}
-	}
+	copy(nodes, graph.Nodes)
 	edges := make([]workbookops.LineageEdge, len(graph.Edges))
-	for index, edge := range graph.Edges {
-		edges[index] = workbookops.LineageEdge{FromMetadataID: edge.FromMetadataID, ToMetadataID: edge.ToMetadataID, Relationship: edge.Relationship}
-	}
+	copy(edges, graph.Edges)
 	return workbookops.LineageCapture{RootMetadataID: graph.RootMetadataID, Complete: graph.Complete, Direction: graph.Direction, Depth: graph.Depth, Failure: graph.Failure, Nodes: nodes, Edges: edges, Warnings: append([]string(nil), graph.Warnings...)}, err
 }
 
@@ -612,13 +608,9 @@ func (w artifactWriter) WriteBundle(ctx context.Context, workbook workbookops.Pu
 
 func workbookLineageDocument(input workbookops.LineageCapture) artifact.LineageDocument {
 	nodes := make([]artifact.LineageNode, len(input.Nodes))
-	for index, node := range input.Nodes {
-		nodes[index] = artifact.LineageNode{MetadataID: node.MetadataID, Kind: node.Kind, RESTLUID: node.RESTLUID, Name: node.Name}
-	}
+	copy(nodes, input.Nodes)
 	edges := make([]artifact.LineageEdge, len(input.Edges))
-	for index, edge := range input.Edges {
-		edges[index] = artifact.LineageEdge{FromMetadataID: edge.FromMetadataID, ToMetadataID: edge.ToMetadataID, Relationship: edge.Relationship}
-	}
+	copy(edges, input.Edges)
 	return artifact.LineageDocument{Complete: input.Complete, Direction: input.Direction, Depth: input.Depth, Failure: artifactLineageFailure(input.Failure), Nodes: nodes, Edges: edges, Warnings: append([]string(nil), input.Warnings...)}
 }
 
@@ -626,7 +618,7 @@ func artifactLineageFailure(failure *value.LineageFailure) *artifact.LineageFail
 	if failure == nil {
 		return nil
 	}
-	return &artifact.LineageFailure{Provider: failure.Provider, Relation: failure.Relation, RootKind: failure.RootKind, RootRESTLUID: failure.RootRESTLUID, RequestID: failure.RequestID}
+	return new(*failure)
 }
 
 type publishService struct{ runtime *runtimeDependencies }

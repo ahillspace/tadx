@@ -32,11 +32,7 @@ type PullInput struct {
 }
 
 // Download preserves native bytes before local storage.
-type Download struct {
-	Filename         string
-	Content          []byte
-	TableauRequestID string
-}
+type Download = value.NativeDownload
 
 // LineageRequest selects the automatic bounded workbook lineage capture.
 type LineageRequest struct {
@@ -46,19 +42,10 @@ type LineageRequest struct {
 }
 
 // LineageNode preserves distinct Metadata and REST identities.
-type LineageNode struct {
-	MetadataID string `json:"metadata_id"`
-	Kind       string `json:"kind"`
-	RESTLUID   string `json:"rest_luid,omitempty"`
-	Name       string `json:"name,omitempty"`
-}
+type LineageNode = value.LineageNode
 
 // LineageEdge is one factual directed relationship.
-type LineageEdge struct {
-	FromMetadataID string `json:"from_metadata_id"`
-	ToMetadataID   string `json:"to_metadata_id"`
-	Relationship   string `json:"relationship"`
-}
+type LineageEdge = value.LineageEdge
 
 // LineageCapture is one bounded best-effort workbook graph.
 type LineageCapture struct {

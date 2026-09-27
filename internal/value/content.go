@@ -1,6 +1,14 @@
 // Package value contains dependency-free, shared identity and normalized metadata values.
-// Action inputs, outputs, behavior, and provider payloads remain in their owning packages.
+// Operation behavior, public projections, and protocol payloads stay with their owners.
 package value
+
+// NativeDownload retains native package bytes and their source request identity.
+// It is an internal transfer value, not a rendered or persisted artifact result.
+type NativeDownload struct {
+	Filename         string
+	Content          []byte
+	TableauRequestID string
+}
 
 // ContentIdentity identifies exact REST content and its containing project.
 type ContentIdentity struct {
@@ -24,6 +32,18 @@ type ProjectIdentity struct {
 	LUID string `json:"luid"`
 	Name string `json:"name"`
 	Path string `json:"path"`
+}
+
+// ProjectMutationObservation is the bounded project state used by create and
+// update. It intentionally excludes inventory counts and unrelated ownership.
+type ProjectMutationObservation struct {
+	LUID                            string `json:"luid"`
+	Name                            string `json:"name"`
+	Path                            string `json:"path"`
+	ParentLUID                      string `json:"parent_luid,omitempty"`
+	Description                     string `json:"description,omitempty"`
+	ContentPermissions              string `json:"content_permissions,omitempty"`
+	ControllingPermissionsProjectID string `json:"controlling_permissions_project_luid,omitempty"`
 }
 
 // Workbook is the normalized workbook record shared by lifecycle operations and

@@ -24,11 +24,7 @@ func (i *PullInput) SetSelector(luid, name, projectPath string) {
 }
 
 // Download contains unchanged native datasource bytes.
-type Download struct {
-	Filename         string
-	Content          []byte
-	TableauRequestID string
-}
+type Download = value.NativeDownload
 
 // LineageRequest selects one bounded Metadata API capture.
 type LineageRequest struct {

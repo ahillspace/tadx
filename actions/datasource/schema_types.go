@@ -59,18 +59,18 @@ type SchemaPage struct {
 
 // SchemaOutput retains the complete bounded result before compact or full rendering.
 type SchemaOutput struct {
-	Status         string
-	Environment    string
-	Site           string
-	DatasourceLUID string
-	DatasourceName string
-	Tables         []Table
-	Page           SchemaPage
-	Fields         []Field
-	Warnings       []string
-	Source         *readsource.Metadata
-	RequestID      string
-	Help           []string
+	Status         string               `json:"status"`
+	Environment    string               `json:"environment,omitempty"`
+	Site           string               `json:"site,omitempty"`
+	DatasourceLUID string               `json:"datasource_luid"`
+	DatasourceName string               `json:"datasource_name"`
+	Source         *readsource.Metadata `json:"source,omitempty"`
+	Tables         []Table              `json:"tables"`
+	Page           SchemaPage           `json:"page"`
+	Fields         []Field              `json:"fields"`
+	Warnings       []string             `json:"warnings,omitempty"`
+	RequestID      string               `json:"tableau_request_id,omitempty"`
+	Help           []string             `json:"help,omitempty"`
 }
 
 // SchemaCompactField contains everything needed to select a field for authoring.
@@ -102,21 +102,8 @@ type SchemaCompactResult struct {
 	Help           []string             `json:"help,omitempty"`
 }
 
-// SchemaFullResult is the expanded bounded output.
-type SchemaFullResult struct {
-	Status         string               `json:"status"`
-	Environment    string               `json:"environment,omitempty"`
-	Site           string               `json:"site,omitempty"`
-	DatasourceLUID string               `json:"datasource_luid"`
-	DatasourceName string               `json:"datasource_name"`
-	Source         *readsource.Metadata `json:"source,omitempty"`
-	Tables         []Table              `json:"tables"`
-	Page           SchemaPage           `json:"page"`
-	Fields         []Field              `json:"fields"`
-	Warnings       []string             `json:"warnings,omitempty"`
-	RequestID      string               `json:"tableau_request_id,omitempty"`
-	Help           []string             `json:"help,omitempty"`
-}
+// SchemaFullResult names the complete output for callers decoding expanded results.
+type SchemaFullResult = SchemaOutput
 
 // CompactOutput returns bounded field-selection details.
 func (o SchemaOutput) CompactOutput() any {
@@ -129,5 +116,9 @@ func (o SchemaOutput) CompactOutput() any {
 
 // FullOutput returns bounded field metadata.
 func (o SchemaOutput) FullOutput() any {
-	return SchemaFullResult{Status: o.Status, Environment: o.Environment, Site: o.Site, DatasourceLUID: o.DatasourceLUID, DatasourceName: o.DatasourceName, Source: o.Source, Tables: append([]Table(nil), o.Tables...), Page: o.Page, Fields: append([]Field(nil), o.Fields...), Warnings: append([]string(nil), o.Warnings...), RequestID: o.RequestID, Help: append([]string(nil), o.Help...)}
+	o.Tables = append([]Table(nil), o.Tables...)
+	o.Fields = append([]Field(nil), o.Fields...)
+	o.Warnings = append([]string(nil), o.Warnings...)
+	o.Help = append([]string(nil), o.Help...)
+	return o
 }

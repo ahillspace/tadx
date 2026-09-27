@@ -64,14 +64,14 @@ type OutputPage = output.Page
 
 // Output is the complete result before projection.
 type Output struct {
-	Status      string
-	Environment string
-	Site        string
-	Page        OutputPage
-	Projects    []Project
-	RequestID   string
-	Help        []string
-	Source      *readsource.Metadata
+	Status      string               `json:"status"`
+	Environment string               `json:"environment,omitempty"`
+	Site        string               `json:"site,omitempty"`
+	Page        OutputPage           `json:"page"`
+	Projects    []Project            `json:"projects"`
+	RequestID   string               `json:"tableau_request_id,omitempty"`
+	Help        []string             `json:"help"`
+	Source      *readsource.Metadata `json:"source,omitempty"`
 }
 
 // CompactProject identifies one project and its direct parent.
@@ -95,18 +95,6 @@ type CompactResult struct {
 	Source      *readsource.Metadata `json:"source,omitempty"`
 }
 
-// FullResult is the bounded expanded current page.
-type FullResult struct {
-	Status      string               `json:"status"`
-	Environment string               `json:"environment,omitempty"`
-	Site        string               `json:"site,omitempty"`
-	Page        OutputPage           `json:"page"`
-	Projects    []Project            `json:"projects"`
-	RequestID   string               `json:"tableau_request_id,omitempty"`
-	Help        []string             `json:"help"`
-	Source      *readsource.Metadata `json:"source,omitempty"`
-}
-
 // CompactOutput returns explicit compact fields.
 func (o Output) CompactOutput() any {
 	projects := make([]CompactProject, len(o.Projects))
@@ -125,5 +113,6 @@ func (o Output) FullOutput() any {
 			projects[index].TopLevel = new(true)
 		}
 	}
-	return FullResult{Status: o.Status, Environment: o.Environment, Site: o.Site, Page: o.Page, Projects: projects, RequestID: o.RequestID, Help: o.Help, Source: o.Source}
+	o.Projects = projects
+	return o
 }

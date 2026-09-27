@@ -40,13 +40,13 @@ type Project struct {
 
 // Output retains complete details before projection.
 type Output struct {
-	Status      string
-	Environment string
-	Site        string
-	Project     Project
-	RequestID   string
-	Help        []string
-	Source      *readsource.Metadata
+	Status      string               `json:"status"`
+	Environment string               `json:"environment,omitempty"`
+	Site        string               `json:"site,omitempty"`
+	Project     Project              `json:"project"`
+	RequestID   string               `json:"tableau_request_id,omitempty"`
+	Help        []string             `json:"help"`
+	Source      *readsource.Metadata `json:"source,omitempty"`
 }
 
 // CompactProject is the exact identity needed for another action.
@@ -70,17 +70,6 @@ type CompactResult struct {
 	Source      *readsource.Metadata `json:"source,omitempty"`
 }
 
-// FullResult is the expanded projection.
-type FullResult struct {
-	Status      string               `json:"status"`
-	Environment string               `json:"environment,omitempty"`
-	Site        string               `json:"site,omitempty"`
-	Project     Project              `json:"project"`
-	RequestID   string               `json:"tableau_request_id,omitempty"`
-	Help        []string             `json:"help"`
-	Source      *readsource.Metadata `json:"source,omitempty"`
-}
-
 // CompactOutput returns exact identity fields.
 func (o Output) CompactOutput() any {
 	return CompactResult{Status: o.Status, Environment: o.Environment, Site: o.Site, Project: CompactProject{LUID: o.Project.LUID, Name: o.Project.Name, Path: o.Project.Path, ParentLUID: o.Project.ParentLUID, ContentPermissions: o.Project.ContentPermissions, ControllingPermissionsProjectID: o.Project.ControllingPermissionsProjectID}, Details: "--full", Help: o.Help, Source: o.Source}
@@ -88,9 +77,8 @@ func (o Output) CompactOutput() any {
 
 // FullOutput returns bounded lifecycle details.
 func (o Output) FullOutput() any {
-	project := o.Project
-	if project.TopLevel == nil && project.ParentLUID == "" {
-		project.TopLevel = new(true)
+	if o.Project.TopLevel == nil && o.Project.ParentLUID == "" {
+		o.Project.TopLevel = new(true)
 	}
-	return FullResult{Status: o.Status, Environment: o.Environment, Site: o.Site, Project: project, RequestID: o.RequestID, Help: o.Help, Source: o.Source}
+	return o
 }
