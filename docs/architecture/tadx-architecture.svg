@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 2090 1130" role="img" aria-labelledby="title desc">
 <title id="title">TADX: the main parts</title>
-<desc id="desc">Command handling, resource or verb actions, remote adapters, Tableau clients, local state, and structured output, with a numbered source-file legend.</desc>
+<desc id="desc">Command handling, related operation packages, remote integrations, Tableau clients, local state, and structured output, with a numbered source-file legend.</desc>
 <defs><marker id="arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8" fill="none" stroke="#315ca8"/></marker><marker id="wiring" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8" fill="none" stroke="#6840b7"/></marker></defs>
 <rect width="2090" height="1130" fill="#f3f5f7"/>
 <text x="32" y="57" font-family="Arial, sans-serif" font-size="32" fill="#0b2538"><tspan x="32" dy="0">TADX: the main parts</tspan></text>
@@ -18,14 +18,14 @@
 <text x="998" y="303" font-family="Arial, sans-serif" font-size="22" fill="#0b2538"><tspan x="998" dy="0">4  Composition root</tspan></text>
 <text x="998" y="337" font-family="Arial, sans-serif" font-size="17" fill="#465666"><tspan x="998" dy="0">Select target, workspace, read source.</tspan><tspan x="998" dy="21.25">Supply dependencies per command.</tspan></text>
 <rect x="510" y="470" width="340" height="155" rx="12" fill="#d9f3ec" stroke="#b9c5ce"/>
-<text x="528" y="508" font-family="Arial, sans-serif" font-size="22" fill="#0b2538"><tspan x="528" dy="0">5  Resource or verb actions</tspan></text>
-<text x="528" y="542" font-family="Arial, sans-serif" font-size="17" fill="#465666"><tspan x="528" dy="0">Validate and perform one operation.</tspan><tspan x="528" dy="21.25">Call narrow interfaces, not HTTP.</tspan></text>
+<text x="528" y="508" font-family="Arial, sans-serif" font-size="22" fill="#0b2538"><tspan x="528" dy="0">5  Operation packages</tspan></text>
+<text x="528" y="542" font-family="Arial, sans-serif" font-size="17" fill="#465666"><tspan x="528" dy="0">Group related operations when useful.</tspan><tspan x="528" dy="21.25">Keep operation contracts explicit.</tspan></text>
 <rect x="40" y="470" width="340" height="155" rx="12" fill="#e2ebfb" stroke="#b9c5ce"/>
 <text x="58" y="508" font-family="Arial, sans-serif" font-size="22" fill="#0b2538"><tspan x="58" dy="0">6  Resource adapters</tspan></text>
 <text x="58" y="542" font-family="Arial, sans-serif" font-size="17" fill="#465666"><tspan x="58" dy="0">Resolve exact content identities.</tspan><tspan x="58" dy="21.25">Normalize resource reads.</tspan></text>
 <rect x="980" y="470" width="340" height="155" rx="12" fill="#e2ebfb" stroke="#b9c5ce"/>
-<text x="998" y="508" font-family="Arial, sans-serif" font-size="22" fill="#0b2538"><tspan x="998" dy="0">7  Local adapters</tspan></text>
-<text x="998" y="542" font-family="Arial, sans-serif" font-size="17" fill="#465666"><tspan x="998" dy="0">Bridge action interfaces to</tspan><tspan x="998" dy="21.25">workspace, artifact, and cache code.</tspan></text>
+<text x="998" y="508" font-family="Arial, sans-serif" font-size="22" fill="#0b2538"><tspan x="998" dy="0">7  Local dependencies</tspan></text>
+<text x="998" y="542" font-family="Arial, sans-serif" font-size="17" fill="#465666"><tspan x="998" dy="0">Workspace, artifact, cache, and config.</tspan><tspan x="998" dy="21.25">Use adapters where they add ownership.</tspan></text>
 <rect x="40" y="695" width="340" height="150" rx="12" fill="#e2ebfb" stroke="#b9c5ce"/>
 <text x="58" y="733" font-family="Arial, sans-serif" font-size="22" fill="#0b2538"><tspan x="58" dy="0">8  Tableau clients + auth</tspan></text>
 <text x="58" y="767" font-family="Arial, sans-serif" font-size="17" fill="#465666"><tspan x="58" dy="0">REST, Metadata, VDS, Pulse.</tspan><tspan x="58" dy="21.25">Reuse sessions within a command.</tspan><tspan x="58" dy="21.25">Bound requests and redact secrets.</tspan></text>
@@ -51,7 +51,7 @@
 <polyline points="680,625 680,695" fill="none" stroke="#315ca8" stroke-width="2" marker-end="url(#arrow)"/>
 <polyline points="210,845 210,915" fill="none" stroke="#315ca8" stroke-width="2" marker-end="url(#arrow)"/>
 <text x="32" y="1077" font-family="Arial, sans-serif" font-size="17" fill="#5e6b78"><tspan x="32" dy="0">Solid arrows: simplified runtime flow (returns omitted).   Dashed arrows: metadata and dependency wiring.</tspan></text>
-<text x="32" y="1105" font-family="Arial, sans-serif" font-size="17" fill="#5e6b78"><tspan x="32" dy="0">Actions depend on interfaces. The composition root supplies implementations; this is not a Go import graph.</tspan></text>
+<text x="32" y="1105" font-family="Arial, sans-serif" font-size="17" fill="#5e6b78"><tspan x="32" dy="0">Dependency shapes vary by operation. Arrows summarize runtime flow and wiring; this is not a Go import graph.</tspan></text>
 <rect x="1390" y="22" width="660" height="1075" rx="12" fill="#ffffff" stroke="#d8e0e6"/>
 <text x="1415" y="70" font-family="Arial, sans-serif" font-size="28" fill="#0b2538"><tspan x="1415" dy="0">Source references</tspan></text>
 <text x="1415" y="103" font-family="Arial, sans-serif" font-size="17" fill="#465666"><tspan x="1415" dy="0">Numbers match the diagram. Paths are relative to the repo.</tspan><tspan x="1415" dy="21.25">Linked paths open the corresponding file on GitHub main.</tspan></text>
@@ -87,7 +87,7 @@
 <a href="https://github.com/ahillspace/tadx/blob/main/actions/workbook/pull_types.go">
 <text x="1427" y="557" font-family="Arial, sans-serif" font-size="17" fill="#0067a3"><tspan x="1427" dy="0">actions/workbook/pull_types.go</tspan></text>
 </a>
-<text x="1415" y="598" font-family="Arial, sans-serif" font-size="19" fill="#0b2538"><tspan x="1415" dy="0">6  Example resource adapter</tspan></text>
+<text x="1415" y="598" font-family="Arial, sans-serif" font-size="19" fill="#0b2538"><tspan x="1415" dy="0">6  Workbook resource adapter</tspan></text>
 <a href="https://github.com/ahillspace/tadx/blob/main/internal/resources/workbook/adapter.go">
 <text x="1427" y="625" font-family="Arial, sans-serif" font-size="17" fill="#0067a3"><tspan x="1427" dy="0">internal/resources/workbook/adapter.go</tspan></text>
 </a>

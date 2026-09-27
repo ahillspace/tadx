@@ -1,77 +1,49 @@
-# Build an action for TADX
+# Contribute to TADX
 
-TADX contributions are typed operations built on shared Tableau adapters and CLI infrastructure.
-Workbook, datasource, and flow operations migrate to cohesive resource packages under the [resource refactoring playbook](docs/resource-refactoring-playbook.md).
-The maintained engineering standards now live in the repository-local [tadx-build skill](.agents/skills/tadx-build/SKILL.md), rather than a second copy here.
-It covers package boundaries, adapters, output, identity, authentication, mutation policy, registry integration, and verification.
-It requires no OpenSpec, Superpowers, or agent-review plugin.
+Use the repository-local [tadx-build skill](.agents/skills/tadx-build/SKILL.md) for implementation standards, architecture guidance, examples, and verification.
+Select the skill's guidance that matches your change.
 
 ## Start with your agent
 
-Open a checkout of this repository in your coding agent and invoke:
+Ask your coding agent to use the build skill for a named task and state the outcome, scope, and stopping point.
+For example:
 
 ```text
 $tadx-build Build [the action you need]. The user outcome is [outcome].
 Include [scope], exclude [scope], and stop after implementation and automated tests.
 ```
 
-If your agent does not discover repo-local skills, give it the explicit entry point:
+If your agent does not discover repository-local skills, give it the explicit entry point:
 
 ```text
 Read .agents/skills/tadx-build/SKILL.md and use it to build [the action you need] in this repository.
 ```
 
-The complete skill directory is tracked in Git, with its references alongside it.
-All implementation paths in the skill are relative to the repository root.
-It is opt-in and does not replace instructions for unrelated tasks.
-`tadx agent install` installs end-user operating Guidance, not this development skill.
-
 ## Run the current source
 
 With the Go version specified in `go.mod` installed, build a local executable:
 
-```text
+```sh
 go build -trimpath -o ./bin/ ./cmd/tadx
 ```
 
-This creates `bin/tadx` on macOS/Linux or `bin/tadx.exe` on Windows.
-Run that executable directly to test unreleased changes; a release installer and `tadx update` use published releases, not this checkout.
-Use the newly built executable's `agent install --target auto` command if you also want its bundled operating Guidance installed.
+Run the resulting executable to use unreleased changes from this checkout.
+The build creates `bin/tadx` on macOS/Linux or `bin/tadx.exe` on Windows.
+Release installers and `tadx update` use published releases, not this source tree.
 
-## Human contributors
+## Keep changes maintainable
 
-Read the [build standard](.agents/skills/tadx-build/SKILL.md) and choose one relevant example from its [implementation map](.agents/skills/tadx-build/references/implementation-map.md).
-Only inventory and cache changes need the [inventory contracts](.agents/skills/tadx-build/references/inventory-and-cache.md).
-Start from updated `main` on a feature branch; shared agents use disjoint files in one checkout.
-Keep tests and bounded evidence with the implementation, and use the skill's verification checklist before handoff.
-Follow the [command structure and help standard](docs/command-structure.md): navigation at root/category levels, complete resource references, and sufficient focused verb subsets generated from the same definitions.
-Apply this pattern throughout the CLI; direct-action categories provide their operational reference without adding an artificial resource level.
-Verify required help facts against local action validation, and verify that `-h`, `--help`, and `help <path>` never run actions or read credentials.
-For batch changes, test one varying selector, positional `args` rows where supported, empty overrides, and the 100-selection bound.
-For previews, verify planned scope and that files, configuration, credentials, and remote resources remain unchanged as applicable.
-Capability list/get serve feature inventory and availability diagnostics, without being a prerequisite for learning command syntax.
-Live tests require separately authorized targets and remain outside the standard suite.
-The maintainer handles agent-based review; a build request does not automatically authorize a push, PR, merge, or release.
+- Keep command plumbing, action behavior, Tableau adapters, and composition wiring within their established responsibilities.
+- Preserve distinct operation contracts and mutation sequences, and share mechanisms only when their behavior matches.
+- Keep user-facing behavior documented alongside the source of truth, and regenerate generated references with their documented tools.
+- Keep credentials, private configuration, downloaded Tableau content, and local test output out of commits.
+
+Use the build skill's [implementation map](.agents/skills/tadx-build/references/implementation-map.md) to find focused references and examples.
+Start new work from updated `main`, unless continuing an assigned branch or authorized stack.
+Coordinate shared files when multiple contributors work in the checkout.
+Use the build skill's verification checklist before handoff.
+The maintainer runs agent-based reviews; a build request does not authorize a push, pull request, merge, or release.
 
 ## Explore the installed CLI
 
-Use the repo-local [tadx-explore skill](.agents/skills/tadx-explore/SKILL.md) for bounded, free-form Luna testing of a selected category, resource, or verb.
-Initialize local selectors, then prepare a run:
-
-```text
-node .agents/skills/tadx-explore/scripts/explore.mjs init --environment <alias>
-node .agents/skills/tadx-explore/scripts/explore.mjs prepare --scope "content workbook move"
-```
-
-Pass the returned spawn object unchanged to Luna after confirming authorization covers the selected environment and disposable fixtures.
-Run `node .agents/skills/tadx-explore/scripts/explore.mjs next --run <run-id>` after each worker and continue only when it returns another spawn object.
-Use `node .agents/skills/tadx-explore/scripts/explore.mjs summarize --run <run-id>` for aggregate counts.
-The helper does not launch workers, and the workflow keeps run outputs in ignored `.tadx-explore/`.
-
-## Repository hygiene
-
-Keep reusable tests, fixtures, build tooling, and current public documentation with the source.
-Move one-off plans, review transcripts, local experiments, and obsolete reports into the gitignored `archived/` directory instead of treating them as current guidance.
-Keep archived Go experiments in a separate module so ordinary `go test ./...` and `go vet ./...` do not include them.
-Compiled binaries, test outputs, private configuration, and downloaded Tableau content do not belong in commits.
-Local archives are not distributed or backed up by Git; retain an independent backup when their contents matter.
+Use the repository-local [tadx-explore skill](.agents/skills/tadx-explore/SKILL.md) for bounded exploration of a selected installed CLI category, resource, or verb.

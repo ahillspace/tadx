@@ -1,7 +1,5 @@
 # Search architecture
 
-Updated: 2026-09-14.
-Status: identity repair implemented and validated in the working tree; not released.
 Scope: the `search.run` command, its live and local sources, and the separate catalog metadata search.
 This is a compact source map; update it when routing, identity, or source contracts change.
 
@@ -56,7 +54,7 @@ The OpenAPI contract lists no collapse/grouping parameter or published-datasourc
 | Additional source | Internal implementation | Endpoint |
 | --- | --- | --- |
 | Users and groups | `internal/app/search.go:liveSearchLister`, `internal/resources/admin`, `internal/tableau/admin/client.go` | `GET /api/{version}/sites/{site}/users` and `/groups` |
-| Pulse definitions | `actions/pulse/definition/list`, `internal/tableau/pulse/client.go` | `GET /api/-/pulse/definitions` |
+| Pulse definitions | `actions/pulse/definition/list.go`, `internal/tableau/pulse/client.go` | `GET /api/-/pulse/definitions` |
 | Pulse metrics | `internal/app/search.go:listMetrics`, Pulse client | List definitions, then `GET /api/-/pulse/definitions/{id}/metrics` for each definition. |
 | Native datasource identity | `internal/tableau/datasource/client.go:ResolveContentURLs` | Classic REST datasource listing filtered by content URL, in batches of at most 25 URLs. |
 | No-term inventories | `internal/app/{workbook_inventory,datasource_inventory,content_remote,admin}.go` | Corresponding classic REST workbook, datasource, flow, project, user, or group list. |
@@ -65,26 +63,19 @@ Metric names fall back to the definition name when the metric has none.
 Definition pages are memoized within the command, and metric continuation records both definition and metric progress.
 These calls retrieve Pulse identities/configuration, not metric values or insights, and search never delegates to Tableau MCP.
 
-## Identity boundary and the federated datasource defect
+## Identity boundary
 
 Public results identify resources by `(type, LUID)`, never by display name; equally named datasources in separate projects must remain separate.
 Tableau search's datasource hit LUID can identify an indexed connection rather than the published datasource used by classic REST.
 The decoder maps `unifieddatasource` to `datasource` and preserves publication, parent identity/name, and datasource update time; the resource adapter resolves `repositoryUrl` into a classic REST datasource LUID and checks explicit parent/datasource IDs against that mapping.
 
-The investigated failure involved two connection hits for one published federated datasource, each with a different search hit LUID but the same published `datasourceLuid` and parent identity.
-The mixed-type request returned both inputs; the datasource-only request returned a collapsed hit with `collapseCount: 2`.
-Previously, the decoder discarded publication and parent identity, and the adapter rejected the repeated resolved LUID, failing the entire search.
-This evidence establishes a connection-to-content normalization bug, not that separate published datasources should be combined by name.
-The repair preserves mixed Tableau ranking, including its future semantic relevance: retain each canonical content identity's first occurrence, without local sorting or separate type queries.
+The adapter retains the first occurrence of each canonical content identity without local sorting or separate type queries.
 Explicit unpublished datasource hits and hits with a non-Datasource parent are omitted; conflicting canonical name/project metadata still fails rather than silently selecting one version.
 Ranked raw pages are scanned for the requested unique count plus one unique lookahead, so trailing duplicates or omitted connections do not falsely imply more content.
 Version 2 cursors store raw page/offset and a prefix digest; replay reconstructs previously seen identities across pages, while command-local page and REST-ID caches avoid refetching during internal aggregation.
 Legacy page cursors remain accepted.
 Raw-hit totals are not presented as unique datasource/content totals; complete totals are supplied only when established, and the 2,000-hit provider cap remains.
 Consistent raw hits repeated across native pages are retained once with a completeness warning and unresolved `more_available`; duplicate raw identities within one page remain invalid.
-Validation on the updated date: focused tests passed, a fresh build completed the previously failing mixed search, the federated datasource appeared once, and distinct same-name datasources remained separate.
-The full `go test ./...` suite and `go vet` for the search packages and app passed.
-Cached search retained its independent results.
 
 ## Bounds, cache, and failures
 

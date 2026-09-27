@@ -1,9 +1,9 @@
 ---
 name: tadx-build
-description: Implement or extend TADX actions and Tableau adapters using repository architecture, output contracts, safety rules, integration points, and tests. Use when explicitly asked to build with tadx-build, not to operate Tableau through the installed CLI.
+description: Build or refactor TADX operations with clear responsibility ownership, minimal indirection, and preserved output and safety contracts. Use when explicitly asked to use tadx-build, not to operate Tableau through the installed CLI.
 ---
 
-# Build a TADX action
+# Build and maintain TADX
 
 This package is the maintained development standard for TADX contributors.
 It has no dependency on a developer's installed skills and requires no OpenSpec, Superpowers, or review plugin.
@@ -32,25 +32,45 @@ Search only for the required operation, type, or field; never load whole API man
 If evidence is docs-only or blocked, stop at the adapter seam and do not make the capability executable.
 Record bounded behavioral evidence before promoting an evidence level; prose claims alone are insufficient.
 
-## Build with tests first
+## Choose the smallest useful design
 
-Write the externally visible behavior tests before implementation and confirm they fail for the expected reason.
-Keep workbook, datasource, and flow operations in their cohesive `actions/<resource>` packages as they migrate, with explicitly named inputs, outputs, and operations.
-Admin group membership and permission mutations also share cohesive packages; other operations retain their assessed boundaries.
-For resource consolidation, follow the [resource refactoring playbook](../../../docs/resource-refactoring-playbook.md); preserve differing workflow sequences and remove unnecessary mappings rather than moving them unchanged.
-Define narrow dependency interfaces in the action package that consumes them.
+Assess the affected resource or category and its shared callers before choosing an implementation boundary.
+Extend a cohesive existing package when responsibilities match; a new verb does not require a new package, adapter, interface, or types file.
+Keep small inputs, outputs, and helpers beside their operation unless a separate file improves navigation.
+Use the [implementation map](references/implementation-map.md) for current locations and the [refactoring playbook](../../../docs/resource-refactoring-playbook.md) for behavior-preserving changes.
+
+Assign one owner to validation, normalization, preview planning, path handling, error translation, and output shaping at each real boundary.
+Reuse parsed and validated values instead of checking them and discarding the result.
+Do not repeat checks of unchanged trusted input; trace CLI, batch, search, and other production callers before relying on an upstream guarantee.
+Fresh remote state, mutable files, external documents, and privileged subprocess input remain independent trust boundaries.
+Preserve their checks, error ordering, and authorization prerequisites even when earlier checks look similar.
+
+Prefer direct calls over wrappers that only forward arguments or map equivalent records.
+Keep an interface when it isolates a dependency or supports meaningful failure-path testing, not merely because a neighboring operation has one.
+Do not add optional dependencies, fallback paths, or misuse guards for states production construction cannot produce.
+Share mechanisms when real consumers have matching contracts; keep different publication, recovery, and mutation sequences explicit.
+Avoid generic runners, resource-kind switches, and callback frameworks that obscure those differences.
+Keep distinct public projections and mutation comparisons even when operations share an internal record.
+Judge the result by fewer responsibilities to track and fewer places to change, not file or line quotas.
+
+## Implement at the owning boundary
+
+For new behavior and bug fixes, write externally visible tests first and confirm the expected failure.
+For refactors, establish passing baseline behavior, adapt existing tests, and add characterization tests only for uncovered contracts at risk.
+Do not maintain parallel test suites or compatibility packages solely to preserve deleted internal structures.
+Define necessary dependency interfaces at their consumer; reuse existing contracts when their meaning matches.
 Actions never import Cobra, `net/http`, another action, or a concrete resource adapter.
 Cobra parses arguments, invokes actions, and renders through the shared output layer; the application maps structured errors to exit codes.
 Put released Tableau HTTP behavior in `internal/tableau/<resource>` through the shared transport.
 Put provider adaptation and exact identity resolution in `internal/resources/<resource>`; resource adapters do not import actions, Cobra, or `net/http`.
 Use typed bounded provider pages; actions own requested result windows and traversal policy through shared paging helpers.
-Bridge concrete adapters to action-owned interfaces only in the composition root.
+Wire concrete dependencies in the composition root; add a bridge only when it performs necessary adaptation.
 Share genuinely identical identity, schema, and lineage records through dependency-free `internal/value`, not a universal resource object or generic CRUD service.
 Reuse shared transport, authentication, errors, output, and identity machinery instead of parallel implementations.
-Resolve configuration, workspace, and authenticated clients once per command, including batches.
+Reuse command-scoped configuration, workspace, and authenticated clients, including batches; retain locked rereads and explicit fresh-state phases.
 Reuse sessions only for the same server, site, and actual credential identity; retain the local credential lock until session use ends.
 Preserve sequential batch order and per-item failures.
-Validate local inputs, bounds, selectors, and artifact prerequisites before authentication, then validate remote state.
+Keep local input and artifact prerequisite validation before authentication, with one owner for each unchanged fact; then validate remote state.
 Reuse a project index within one validation phase, but obtain fresh evidence for a separate pre-write phase.
 Do not introduce persisted sessions, generic retries, or implicit remote-to-cache fallback as shortcuts.
 
@@ -91,7 +111,7 @@ Resolve machine-local roots only at runtime; expose them only where the output c
 Never hardcode developer paths, usernames, private site names, or unrelated local project names in tracked files or fixtures.
 Keep capabilities outside TADX distinct from executable commands; do not teach or proxy external MCP tools.
 
-For inventory, search, cache, or cache work, read [references/inventory-and-cache.md](references/inventory-and-cache.md).
+For inventory, search, or cache work, read [references/inventory-and-cache.md](references/inventory-and-cache.md).
 Do not load that reference for an unrelated action.
 
 ## Integrate without generated drift
@@ -101,7 +121,7 @@ Do not resurrect Markdown compilation, a separate implementation manifest, or `r
 Preserve canonical capability annotations and actual command-tree binding tests.
 Reuse canonical selectors/flags and add collision-free shorthand in `internal/cli/shorthand.go` for new names longer than three characters, or document a justified exception.
 When changing arguments, test canonical and alias state, repeated values, and explicit Boolean false.
-Follow [the command structure standard](../../../docs/command-structure.md) for root/category navigation and complete resource help; verb help mirrors its owning reference.
+Follow [the command structure standard](../../../docs/command-structure.md) for navigation and resource help, including focused policy installation guidance.
 Keep syntax, flags, constraints, defaults, and examples in help, not duplicated in installed Guidance.
 The root skill teaches efficient discovery; optional references explain Tableau concepts and task-specific judgment, not command manuals or workarounds for CLI defects.
 For every new or materially changed command, use [the command integration checklist](references/command-integration.md) to update all affected registrations, help, documentation, Guidance, generated capability outputs, website packaging, policy coverage, and acceptance checks.
@@ -118,6 +138,8 @@ The generator directive updates `docs/reference/capabilities.md`, `docs/referenc
 For bugs, reproduce the user command through app/HTTP fixtures or a subprocess, not just a helper unit test.
 Run focused action, adapter, contract, CLI, and architecture tests while building.
 Cover applicable invalid inputs, ambiguous identities, paging bounds, partial failures, preview/no-write behavior, and compact/full output.
+When changing shared records, verify cached payloads, saved results, artifact metadata, and mutation comparisons separately from terminal output.
+Tests should cover reachable failures and external contracts, not invent invalid internal wiring to justify defensive production code.
 Evidence claims must match the tested behavior, including multipart upload blocks and async terminal outcomes where implemented.
 Run `gofmt` on changed Go files and verify regeneration leaves no unexplained diff.
 
@@ -131,8 +153,13 @@ go test ./internal/architecture -count=1
 Run live tests only when the user authorizes the exact disposable target and usable credentials are present.
 Keep live tests outside the standard suite, use run-scoped disposable resources, and clean up only what the run created.
 Attempt cleanup of disposable content and report uncertain outcomes without unsafe retries.
+For workflow refactors, compare pinned baseline and candidate executables with fresh Luna agents at medium reasoning through `tadx-explore`.
+Match configuration, cache state, and disposable fixtures; record commands, outcomes, and verification limits without replacing the installed CLI.
+Use isolated local CLI tasks for local-only behavior; use authorized live Tableau tasks for remote behavior.
+Do not claim improved user efficiency from passing code tests or reduced source size alone.
 
 Report changed files, focused checks, integration changes, live-test status, and unresolved evidence or contract conflicts.
+For refactors, identify removed responsibilities or handoffs and report production size separately from tests, generated files, and documentation.
 Stop for the build owner's manual testing and review.
 Do not start agent reviews, no-mistakes, pushes, PRs, merges, or releases without authorization.
 When a push is authorized, include repo, branch, base/head commits, focused review scope, and verification limits in a concise review prompt.

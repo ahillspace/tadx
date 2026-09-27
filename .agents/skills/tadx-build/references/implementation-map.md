@@ -15,12 +15,18 @@ Read only the layers you need to change, then their focused tests.
 | Composition | `internal/app/workbook_inventory.go`, `content_remote.go` | `internal/app/content_remote.go` |
 | App/HTTP regression | `internal/app/inventory_all_e2e_test.go` | `internal/app/group3_workbook_delete_e2e_test.go` |
 
-For a new action, define its typed input/output and narrow dependency interface in the action package first.
-Write the externally visible failing test, implement provider behavior and resource normalization where needed, then wire the existing seams through the app.
+These paths show responsibilities, not a requirement to add a file or forwarding layer at every step.
+For a new operation, locate the existing owner and define only the contracts it needs.
+For new behavior, write the externally visible failing test, then extend provider behavior and resource normalization where needed.
+For refactors, reuse existing tests and characterize uncovered behavior before changing it.
 Do not copy the example's inventory collection or destructive behavior into an unrelated operation.
 Workbook, datasource, and flow group their operations by resource; share internal records without merging distinct CLI projections.
 Admin membership uses `actions/admin/group/member`, and permission mutations use `actions/admin/permission`; both keep explicit operation entry points.
+Pulse definitions and metrics, environment profiles, Workspace, and Jobs also use cohesive operation packages.
+Catalog reads and updates share matching mechanisms while keeping search and audit traversal separate.
 Other domains retain assessed boundaries, including `actions/search` and `actions/last`.
+Mutation consent binds CLI interfaces directly to runtime methods; do not recreate a forwarding action package for symmetry.
+Consult [the repository structure](../../../../docs/repository-structure.md) for the full layout.
 
 ## Shared infrastructure
 

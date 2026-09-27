@@ -11,21 +11,16 @@ Invoke `$tadx-build` only when the user explicitly requests it for a named build
 Free-form installed-CLI exploration uses the [.agents/skills/tadx-explore/SKILL.md](.agents/skills/tadx-explore/SKILL.md) workflow and ignored `.tadx-explore/` run state.
 Keep repository-wide agent instructions here and task-specific development instructions in that skill, not in plans or parallel agent files.
 
-Content workbook, datasource, and flow operations use one cohesive action package per resource as they migrate under the [resource refactoring playbook](docs/resource-refactoring-playbook.md).
-Admin group membership and permission mutations share packages for their matching records and validation, while keeping explicit operation entry points.
-Admin user, group, label category, and label value lifecycle operations each use a cohesive action package with explicit projections and mutation sequences.
-Pulse definitions and metrics each use a resource package; environment profiles share one profile package.
-Catalog database, table, and column updates share matching metadata rules in `actions/catalog/update`, with separate mutation sequences.
-Their list and inspect operations share `actions/catalog/read`; search and audit retain separate traversal contracts.
-Workspace operations share `actions/workspace`, with explicit operation methods and narrow dependencies.
-The workspace manager and artifact packages retain filesystem, locking, and fresh-state checks.
-Job operations share `actions/job`; job monitoring, durable operation records, and Tableau HTTP normalization retain their separate owners.
-Mutation consent commands bind directly to runtime methods through narrow shared-value interfaces; configuration owns validated site identity and persistence.
-Keep operation-specific projections and mutation sequences explicit within those packages.
-Other executable commands retain their assessed action boundaries; package regrouping must remove unnecessary responsibilities or handoffs, not merely relocate code.
-Keep distinct operation contracts and mutation sequences explicit; share mechanisms only where their behavior matches.
+Use the [repository structure](docs/repository-structure.md) for current package locations and the [refactoring playbook](docs/resource-refactoring-playbook.md) for behavior-preserving changes.
+Assess related workflows and shared consumers before choosing a boundary; extend cohesive resource packages rather than creating a package per verb.
+Give each responsibility one owner at each real boundary, and reuse validated values instead of repeating unchanged-input checks.
+Keep external-input validation, authorization, filesystem protection, and fresh-state checks where the facts can change.
+Remove forwarding layers and duplicate records that add no behavior; retain interfaces that isolate real dependencies or meaningful test seams.
+Keep operation-specific output, mutation comparisons, and recovery sequences explicit instead of hiding differences in a configurable workflow runner.
+Do not add files, helpers, interfaces, or fallback states solely for symmetry or hypothetical reuse.
+Package regrouping must remove unnecessary responsibilities or handoffs, not merely relocate code.
 Cobra is thin plumbing, actions own narrow interfaces, resource adapters isolate Tableau APIs, and the composition root performs wiring.
-Tests define externally visible behavior before implementation.
+Tests define externally visible behavior before implementation; refactors adapt existing coverage instead of preserving deleted internal scaffolding.
 Blocked and docs-only capabilities remain non-executable until bounded upstream evidence closes the gate.
 Do not weaken an enforcement gate to make work pass; flag a gate that blocks correct work.
 
@@ -53,7 +48,7 @@ PATs and session tokens never appear in configuration values, output, logs, arti
 Persist and render artifact paths relative to the resolved workspace with forward slashes.
 Never put a developer username, home directory, checkout path, private site name, or unrelated local project name in tracked files or fixtures.
 
-Start builds from updated `main` on one feature branch shared by all assigned agents.
+Start new builds from updated `main` on one feature branch shared by all assigned agents, unless continuing an assigned branch or authorized stack.
 Assign disjoint paths and reserve shared integration files for one coordinator.
 Do not create per-agent worktrees unless the user requests them.
 Do not read `archived/` for current guidance.

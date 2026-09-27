@@ -12,13 +12,13 @@ The [SVG](architecture/tadx-architecture.svg) and [editable Excalidraw source](a
 | `cmd/tadx` | Process entry point |
 | `internal/app` | Composition root, target and workspace selection, command runtime, and concrete dependency wiring |
 | `internal/cli` | Cobra command tree, argument parsing, and action invocation |
-| `actions/workbook`, `actions/datasource`, `actions/flow` | Resource packages with distinct typed lifecycle operations |
-| `actions/admin/group/member`, `actions/admin/permission` | Explicit paired mutations sharing matching records and validation |
-| `actions/pulse/definition`, `actions/pulse/metric` | Explicit Pulse operations with shared resource observations and separate output contracts |
-| `actions/env/profile` | Environment profile operations and their shared profile representation |
-| `actions/catalog/update` | Explicit database, table, and column updates sharing matching metadata rules |
-| `actions/catalog/read` | Database, table, and column lists and inspections with shared input rules and distinct projections |
-| Other `actions/<domain>/<verb>` packages | Separate operations where their contracts or responsibilities differ |
+| `actions/workbook`, `actions/datasource`, `actions/flow` | Cohesive resource packages for related lifecycle operations |
+| `actions/workspace`, `actions/job` | Shared operation packages with explicit methods and operation-specific contracts |
+| `actions/admin` subpackages | Related lifecycle or paired mutation packages where records and validation match |
+| `actions/pulse/definition`, `actions/pulse/metric` | Resource packages with explicit operations and distinct output contracts |
+| `actions/env/profile` | Profile operations with a shared profile representation |
+| `actions/catalog/update`, `actions/catalog/read` | Related database, table, and column operations with shared rules and explicit projections or mutation sequences |
+| Other `actions/<domain>/<operation>` packages | Standalone boundaries where operation contracts or responsibilities differ |
 | `internal/resources` | Resource adapters, exact identity resolution, and normalized provider results |
 | `internal/tableau` | Tableau API clients, shared HTTP transport, and inventory collectors |
 | `internal/auth` | PAT resolution, native credential storage, authenticated sessions, and credential-scoped coordination |
@@ -33,17 +33,19 @@ The [SVG](architecture/tadx-architecture.svg) and [editable Excalidraw source](a
 
 ## Dependency boundaries
 
-Actions own the narrow interfaces they consume.
-The composition root supplies resource adapters and local implementations through those interfaces.
-Actions do not import concrete adapters, Tableau clients, Cobra, or `net/http`.
-Resource adapters normalize provider behavior without importing actions or using HTTP directly.
+Action packages keep operation rules near related operations, sharing a package when their responsibilities match.
+Some actions use focused interfaces; others use direct function or service calls.
+Choose the dependency shape that preserves clear ownership without adding forwarding layers for each command.
+`internal/app` composes command dependencies, including resource adapters where remote identity resolution or provider normalization needs a distinct owner.
+Actions do not import concrete resource adapters, Tableau clients, Cobra, or `net/http`.
+Resource adapters do not import actions or use HTTP directly.
 Tableau clients own request and response mechanics.
 Shared value types in `internal/value` depend only on the standard library.
 
-The [architecture checker](../internal/architecture/architecture.go) defines the complete import allowlist for production Go files.
+The [architecture checker](../internal/architecture/architecture.go) defines allowed production Go imports.
 Unknown local package dependencies fail the check.
 Additional external-import rules keep Cobra out of action, adapter, client, and foundation layers and HTTP out of actions, adapters, and CLI plumbing.
-The allowlist remains authoritative as individual foundation packages evolve.
+These boundaries constrain package dependencies; they do not require an adapter or forwarding interface for every operation.
 
 ## Runtime and local state
 

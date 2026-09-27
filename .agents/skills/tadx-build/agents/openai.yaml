@@ -1,7 +1,7 @@
 interface:
   display_name: "TADX build"
-  short_description: "Build TADX actions and Tableau adapters"
-  default_prompt: "Use $tadx-build to implement the requested TADX action with its adapter, CLI wiring, and automated tests."
+  short_description: "Build and simplify TADX without redundant layers"
+  default_prompt: "Use $tadx-build for the requested TADX change, reusing existing owners and preserving behavior without unnecessary layers."
 
 policy:
   allow_implicit_invocation: false

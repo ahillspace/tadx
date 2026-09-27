@@ -1,6 +1,9 @@
 # Command integration checklist
 
 Use this checklist for a new command or a change to its user-visible capability, policy, or discovery behavior.
+For behavior-preserving refactors, keep existing IDs, command bindings, policy classifications, and help contracts unchanged.
+Update architecture and build guidance when ownership or paths change; user-facing docs need changes only when their claims become inaccurate.
+Do not add registry entries, regenerate unchanged inventories, or broaden policy samples to document an internal package move.
 
 - Add or update canonical facts and implementation metadata in `internal/capability/definitions.go` or `metadata_definitions.go`, including the stable capability ID, command path, disposition, safety, selectors, availability, and evidence.
 - Register the actual Cobra command and composition wiring, annotate it with the canonical capability ID, and retain command-tree binding coverage.
