@@ -3,6 +3,7 @@ package status_test
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"os"
 	"strings"
@@ -97,6 +98,29 @@ func TestOutputGoldens(t *testing.T) {
 	got, _ := authstatus.New(resolver{target: fixture()}, lookup{"PROD_PAT_NAME": "name", "PROD_PAT_SECRET": "secret"}).Execute(context.Background(), authstatus.Input{})
 	assertGolden(t, got, false, "testdata/output.toon")
 	assertGolden(t, got, true, "testdata/output_full.toon")
+}
+
+func TestInspectAndFullOutputKeepTheResolvedContract(t *testing.T) {
+	target := fixture()
+	values := lookup{"PROD_PAT_NAME": "name", "PROD_PAT_SECRET": "secret"}
+	fromAction, err := authstatus.New(resolver{target: target}, values).Execute(t.Context(), authstatus.Input{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if fromInspect := authstatus.Inspect(target, values); fromInspect.Status != fromAction.Status || fromInspect.CredentialSource != fromAction.CredentialSource {
+		t.Fatalf("local readiness drift: action = %#v, inspect = %#v", fromAction, fromInspect)
+	}
+	full, err := json.Marshal(fromAction.FullOutput())
+	if err != nil {
+		t.Fatal(err)
+	}
+	canonical, err := json.Marshal(fromAction)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(full, canonical) {
+		t.Fatalf("full output differs from canonical output: %s versus %s", full, canonical)
+	}
 }
 
 func fixture() authstatus.Target {

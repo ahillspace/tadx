@@ -4,7 +4,6 @@ package login
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"strings"
 
@@ -52,9 +51,6 @@ func (a *Action) Execute(ctx context.Context, input Input) (Output, error) {
 	if a == nil || a.resolver == nil || a.authenticator == nil || a.store == nil {
 		return Output{}, &errs.Error{ID: "auth.login.unconfigured", Kind: errs.KindRuntime, Operation: "auth.login", Summary: "PAT login is not configured.", Retryable: errs.Bool(false), CorrectiveAction: "Configure PAT validation and OS credential storage before retrying."}
 	}
-	if strings.TrimSpace(input.Environment) == "" {
-		return Output{}, usage("--environment is required")
-	}
 	if strings.TrimSpace(input.PATName) == "" {
 		return Output{}, usage("PAT name is required")
 	}
@@ -67,10 +63,6 @@ func (a *Action) Execute(ctx context.Context, input Input) (Output, error) {
 		retryable, advice := errs.CompleteRetryAdvice(err, "Review the exact environment alias, then retry.")
 		return Output{}, &errs.Error{ID: "auth.login.resolve", Kind: errs.KindOperation, Operation: "auth.login", Environment: input.Environment, Summary: "Environment resolution failed.", Cause: err, Retryable: retryable, CorrectiveAction: advice}
 	}
-	if strings.TrimSpace(target.Environment) == "" || strings.TrimSpace(target.ServerURL) == "" {
-		return Output{}, &errs.Error{ID: "auth.login.target", Kind: errs.KindOperation, Operation: "auth.login", Environment: input.Environment, Summary: "Selected environment is incomplete.", Cause: errors.New("environment and server URL are required"), Retryable: errs.Bool(false), CorrectiveAction: "Complete the selected environment profile before retrying."}
-	}
-
 	credential := Credential{PATName: input.PATName, PATSecret: input.PATSecret}
 	identity, err := a.authenticator.Authenticate(ctx, target, credential)
 	if err != nil {

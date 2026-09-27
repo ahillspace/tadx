@@ -247,7 +247,11 @@ func (r authStatusResolver) Resolve(_ context.Context, alias string) (authstatus
 	if err != nil {
 		return authstatus.Target{}, err
 	}
-	return authstatus.Target{Environment: environment.Alias, Default: environment.Alias == configuration.DefaultEnvironment, ServerURL: environment.URL, SiteContentURL: environment.SiteContentURL, APIVersion: environment.APIVersion, AuthType: environment.Auth.Type, PATNameVariable: environment.Auth.PATNameEnv, PATSecretVariable: environment.Auth.PATSecretEnv, StoredCredentialReferencePresent: environment.Auth.CredentialRef != "", DefaultWorkspace: environment.DefaultWorkspace}, nil
+	return authStatusTarget(configuration, environment), nil
+}
+
+func authStatusTarget(configuration config.Config, environment config.Environment) authstatus.Target {
+	return authstatus.Target{Environment: environment.Alias, Default: environment.Alias == configuration.DefaultEnvironment, ServerURL: environment.URL, SiteContentURL: environment.SiteContentURL, APIVersion: environment.APIVersion, AuthType: environment.Auth.Type, PATNameVariable: environment.Auth.PATNameEnv, PATSecretVariable: environment.Auth.PATSecretEnv, StoredCredentialReferencePresent: environment.Auth.CredentialRef != "", DefaultWorkspace: environment.DefaultWorkspace}
 }
 
 type processEnvironment struct{}

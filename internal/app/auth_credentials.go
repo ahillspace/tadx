@@ -79,8 +79,12 @@ func (s authCredentialStore) Store(ctx context.Context, target authlogin.Target,
 		if environment.URL != target.ServerURL || environment.SiteContentURL != target.SiteContentURL {
 			return config.Config{}, nil, errors.New("environment target changed after PAT validation")
 		}
-		name, namePresent := os.LookupEnv(effectivePATNameVariable(target.Environment, environment.Auth.PATNameEnv))
-		secret, secretPresent := os.LookupEnv(effectivePATSecretVariable(target.Environment, environment.Auth.PATSecretEnv))
+		resolved, resolveErr := configuration.ResolveEnvironment(target.Environment)
+		if resolveErr != nil {
+			return config.Config{}, nil, resolveErr
+		}
+		name, namePresent := os.LookupEnv(resolved.Auth.PATNameEnv)
+		secret, secretPresent := os.LookupEnv(resolved.Auth.PATSecretEnv)
 		environmentVariablesOverride = namePresent && strings.TrimSpace(name) != "" && secretPresent && strings.TrimSpace(secret) != ""
 		if environment.Auth.CredentialRef != "" {
 			reference := coreauth.CredentialReference(environment.Auth.CredentialRef)
@@ -139,20 +143,4 @@ func (s authCredentialStore) Remove(ctx context.Context, target authlogout.Targe
 func credentialNotFound(err error) bool {
 	var storeError *coreauth.CredentialStoreError
 	return errors.As(err, &storeError) && storeError.Kind == coreauth.CredentialStoreNotFound
-}
-
-func effectivePATNameVariable(alias, configured string) string {
-	if configured != "" {
-		return configured
-	}
-	name, _ := config.DefaultPATVariableNames(alias)
-	return name
-}
-
-func effectivePATSecretVariable(alias, configured string) string {
-	if configured != "" {
-		return configured
-	}
-	_, secret := config.DefaultPATVariableNames(alias)
-	return secret
 }

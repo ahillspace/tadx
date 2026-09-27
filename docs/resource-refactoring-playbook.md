@@ -205,3 +205,10 @@ Remove unsupported retained-plan APIs when production always plans and runs with
 Keep fresh remote schema checks separate from repeated local payload preparation.
 Retain one deliberate copy boundary for mutable metric specifications, including number-preserving decoding and null-versus-empty distinctions.
 Share bundle assembly without changing preview validation, artifact bytes, or filesystem replacement rules.
+
+## Lessons from Authentication workflows
+
+Share local readiness inspection without conflating it with verified authentication or native credential availability.
+Reuse an existing command-scoped configuration snapshot for local overview rows, but retain post-prompt and locked-transaction target resolution before storing credentials.
+Derive effective credential-variable names from the current configuration resolver instead of maintaining parallel fallback rules.
+Preserve useful injected credential and configuration seams; removing an action object is not useful if it only replaces the same responsibility with adapter closures.

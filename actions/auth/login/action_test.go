@@ -108,10 +108,9 @@ func TestExecuteReportsValidatedButUnstoredCredential(t *testing.T) {
 	}
 }
 
-func TestExecuteRequiresExplicitCompleteInput(t *testing.T) {
+func TestExecuteRequiresCompletePATInput(t *testing.T) {
 	valid := login.Input{Environment: "dev", PATName: "name", PATSecret: "secret"}
 	tests := []login.Input{
-		{PATName: valid.PATName, PATSecret: valid.PATSecret},
 		{Environment: valid.Environment, PATSecret: valid.PATSecret},
 		{Environment: valid.Environment, PATName: valid.PATName},
 		{Environment: valid.Environment, PATName: "   ", PATSecret: valid.PATSecret},

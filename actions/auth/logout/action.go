@@ -34,16 +34,10 @@ func (a *Action) Execute(ctx context.Context, input Input) (Output, error) {
 	if a == nil || a.resolver == nil || a.store == nil {
 		return Output{}, &errs.Error{ID: "auth.logout.unconfigured", Kind: errs.KindRuntime, Operation: "auth.logout", Summary: "PAT logout is not configured.", Retryable: errs.Bool(false), CorrectiveAction: "Configure environment resolution and OS credential storage before retrying."}
 	}
-	if strings.TrimSpace(input.Environment) == "" {
-		return Output{}, &errs.Error{ID: "auth.logout.usage", Kind: errs.KindUsage, Operation: "auth.logout", Summary: "--environment is required", Retryable: errs.Bool(false), CorrectiveAction: "Provide the exact environment whose stored PAT should be removed."}
-	}
 	target, err := a.resolver.Resolve(ctx, input.Environment)
 	if err != nil {
 		retryable, advice := errs.CompleteRetryAdvice(err, "Review the exact environment alias, then retry.")
 		return Output{}, &errs.Error{ID: "auth.logout.resolve", Kind: errs.KindOperation, Operation: "auth.logout", Environment: input.Environment, Summary: "Environment resolution failed.", Cause: err, Retryable: retryable, CorrectiveAction: advice, Phase: errs.PhaseSetup, Outcome: errs.OutcomeNotAttempted}
-	}
-	if strings.TrimSpace(target.Environment) == "" {
-		return Output{}, &errs.Error{ID: "auth.logout.target", Kind: errs.KindOperation, Operation: "auth.logout", Environment: input.Environment, Summary: "Selected environment is incomplete.", Retryable: errs.Bool(false), CorrectiveAction: "Complete the selected environment profile before retrying."}
 	}
 	if input.Preview {
 		var warnings []string

@@ -45,15 +45,15 @@ func (r sessionOverviewReader) ReadOverview(ctx context.Context) (sessionovervie
 		state.WriteTarget = "environment_setup_required"
 		state.ReadSelection = "environment_setup_required"
 	}
-	auth := newAuthStatus(r.runtime)
 	for name, environment := range cfg.Environments {
 		if err := ctx.Err(); err != nil {
 			return state, err
 		}
-		status, err := auth.Execute(ctx, authstatus.Input{Environment: name})
+		resolved, err := cfg.ResolveEnvironment(name)
 		if err != nil {
 			return state, err
 		}
+		status := authstatus.Inspect(authStatusTarget(cfg, resolved), processEnvironment{})
 		credentials := "missing"
 		if status.CredentialSource == "os_credential_store" {
 			credentials = "stored_reference_unverified"

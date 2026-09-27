@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"strings"
 	"testing"
 
@@ -36,6 +37,27 @@ func (p *rejectCredentialPrompter) ReadPATName(context.Context) (string, error) 
 func (p *rejectCredentialPrompter) ReadPATSecret(context.Context) (string, error) {
 	p.calls++
 	return "new-secret", nil
+}
+
+func TestAuthSetupRejectsInvalidTargetBeforePromptOrSignIn(t *testing.T) {
+	path := authConfig(t, "")
+	invalid := "version: 1\nenvironments:\n  dev:\n    url: http://tableau.example.test\n    auth:\n      type: pat\n"
+	if err := os.WriteFile(path, []byte(invalid), 0600); err != nil {
+		t.Fatal(err)
+	}
+	prompter := &rejectCredentialPrompter{}
+	for _, args := range [][]string{
+		{"auth", "check", "--environment", "dev", "--json"},
+		{"auth", "status", "--environment", "dev", "--json"},
+		{"auth", "login", "--environment", "dev", "--json"},
+		{"auth", "logout", "--environment", "dev", "--preview", "--json"},
+	} {
+		var out bytes.Buffer
+		code := Run(t.Context(), args, &out, Options{ConfigPath: path, AuthPrompter: prompter})
+		if code == 0 || !strings.Contains(out.String(), "scheme must be https") || prompter.calls != 0 {
+			t.Fatalf("args=%v code=%d prompts=%d output=%s", args, code, prompter.calls, out.String())
+		}
+	}
 }
 
 func TestAuthLoginEnvironmentOverrideStopsBeforePrompt(t *testing.T) {

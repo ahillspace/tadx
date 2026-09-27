@@ -65,11 +65,12 @@ func TestExecuteMissingStoredCredentialIsNoOp(t *testing.T) {
 	}
 }
 
-func TestExecuteRequiresExplicitEnvironment(t *testing.T) {
-	_, err := logout.New(&resolver{}, &store{}).Execute(context.Background(), logout.Input{})
+func TestExecuteStopsOnFreshResolutionFailure(t *testing.T) {
+	storage := &store{}
+	_, err := logout.New(&resolver{err: errors.New("configuration changed")}, storage).Execute(context.Background(), logout.Input{Environment: "dev"})
 	var structured *errs.Error
-	if !errors.As(err, &structured) || structured.Kind != errs.KindUsage {
-		t.Fatalf("error = %#v", err)
+	if !errors.As(err, &structured) || structured.ID != "auth.logout.resolve" || storage.calls != 0 {
+		t.Fatalf("error = %#v, store calls = %d", err, storage.calls)
 	}
 }
 

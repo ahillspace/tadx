@@ -40,9 +40,6 @@ func (a *Action) Execute(ctx context.Context, input Input) (Output, error) {
 		retryable, correctiveAction := errs.CompleteRetryAdvice(err, "Review the selected environment configuration, then retry.")
 		return Output{}, &errs.Error{ID: "auth.check.resolve", Kind: errs.KindOperation, Operation: "auth.check", Environment: input.Environment, Summary: "Environment resolution failed.", Cause: err, Retryable: retryable, CorrectiveAction: correctiveAction, Phase: errs.PhaseSetup, Outcome: errs.OutcomeNotAttempted}
 	}
-	if target.Environment == "" || target.ServerURL == "" {
-		return Output{}, &errs.Error{ID: "auth.check.validate", Kind: errs.KindOperation, Operation: "auth.check", Environment: input.Environment, Summary: "Selected environment is incomplete.", Cause: errors.New("environment and server URL are required"), Retryable: errs.Bool(false), CorrectiveAction: "Configure the environment name and Tableau server URL before retrying."}
-	}
 	result, err := a.authenticator.Authenticate(ctx, target)
 	if err != nil {
 		retryable, correctiveAction := errs.CompleteRetryAdvice(err, "Verify the environment, site content URL, and PAT variable references.")
