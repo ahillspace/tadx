@@ -36,6 +36,23 @@ func TestCanonicalRegistryIsValidAndComplete(t *testing.T) {
 	}
 }
 
+func TestDiscoveriesAreFreshAndSorted(t *testing.T) {
+	items := AllDiscoveries()
+	if len(items) == 0 {
+		t.Fatal("empty capability registry")
+	}
+	for i := 1; i < len(items); i++ {
+		if items[i-1].ID >= items[i].ID {
+			t.Fatalf("capabilities are not in exact ID order at %d: %q, %q", i, items[i-1].ID, items[i].ID)
+		}
+	}
+	firstID := items[0].ID
+	items[0].ID = "changed"
+	if got := AllDiscoveries()[0].ID; got != firstID {
+		t.Fatalf("discovery source retained caller mutation: %q, want %q", got, firstID)
+	}
+}
+
 func TestCanonicalExecutableBindingsIncludeImplementedSlices(t *testing.T) {
 	definitions := Executable()
 	ids := make([]string, 0, len(definitions))

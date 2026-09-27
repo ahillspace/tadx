@@ -4,10 +4,6 @@ import "strings"
 
 // Discovery is the neutral, bounded contract representation shared by
 // capability discovery actions.
-//
-// State, Blocked, and Product are compatibility inputs for list sources.
-// They are derived from the contract fields for registry-backed discoveries
-// and are deliberately omitted from the detailed JSON representation.
 type Discovery struct {
 	ID                    string   `json:"id"`
 	Domain                string   `json:"domain"`
@@ -40,12 +36,6 @@ type Discovery struct {
 	SupportsBatch         bool     `json:"supports_batch"`
 	LocalWrite            bool     `json:"local_write"`
 	RawCapable            bool     `json:"raw_capable"`
-
-	// Legacy list-source fields remain available to keep custom list sources
-	// source-compatible while they migrate to the detailed contract shape.
-	State   string `json:"-"`
-	Blocked bool   `json:"-"`
-	Product string `json:"-"`
 }
 
 // Summary is the bounded compact view of one capability.
@@ -63,18 +53,13 @@ type Summary struct {
 // Summary returns the compact representation without exposing contract-only
 // fields such as selectors, safety constraints, or evidence.
 func (d Discovery) Summary() Summary {
-	state := d.ImplementationState
-	if state == "" {
-		state = d.State
-	}
-	blocked := d.VerificationReadiness == string(VerificationBlocked) || d.Blocked
 	return Summary{
 		ID:               d.ID,
 		Owner:            d.Owner,
 		Disposition:      d.Disposition,
-		State:            state,
+		State:            d.ImplementationState,
 		Command:          d.Command,
-		Blocked:          blocked,
+		Blocked:          d.VerificationReadiness == string(VerificationBlocked),
 		ExecutionEnabled: d.ExecutionEnabled,
 		PolicyDenied:     d.PolicyDenied,
 	}
@@ -118,9 +103,6 @@ func FromDefinition(definition Definition) Discovery {
 		SupportsBatch:         definition.SupportsBatch,
 		LocalWrite:            definition.LocalWrite,
 		RawCapable:            definition.RawCapable,
-		State:                 string(definition.Implementation),
-		Blocked:               definition.Verification == VerificationBlocked,
-		Product:               definition.Availability,
 	}
 }
 

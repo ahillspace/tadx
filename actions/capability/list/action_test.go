@@ -26,10 +26,10 @@ func (s source) List(context.Context) ([]capabilitylist.Capability, error) {
 	return append([]capabilitylist.Capability(nil), s.items...), s.err
 }
 
-func TestExecuteSortsAndReturnsBoundedDiscovery(t *testing.T) {
+func TestExecuteReturnsBoundedDiscoveryInSourceOrder(t *testing.T) {
 	action := capabilitylist.New(source{items: []capabilitylist.Capability{
-		{ID: "workbook.publish", Owner: "cli", State: "planned"},
-		{ID: "capability.get", Owner: "cli", State: "implemented", Command: "capability get"},
+		{ID: "capability.get", Owner: "cli", ImplementationState: "implemented", Command: "capability get"},
+		{ID: "workbook.publish", Owner: "cli", ImplementationState: "planned"},
 	}})
 
 	got, err := action.Execute(context.Background(), capabilitylist.Input{})
@@ -50,21 +50,6 @@ func TestExecuteSortsAndReturnsBoundedDiscovery(t *testing.T) {
 	}
 }
 
-func TestExecuteGuardsUnconfiguredSourceWithoutPanic(t *testing.T) {
-	for name, action := range map[string]*capabilitylist.Action{
-		"nil action": nil,
-		"nil source": capabilitylist.New(nil),
-	} {
-		t.Run(name, func(t *testing.T) {
-			_, err := action.Execute(context.Background(), capabilitylist.Input{})
-			var structured *errs.Error
-			if !errors.As(err, &structured) || structured.Kind != errs.KindRuntime || structured.ID != "capability.list.unconfigured" {
-				t.Fatalf("Execute() error = %#v", err)
-			}
-		})
-	}
-}
-
 func TestExecuteReturnsDefinitiveEmptyState(t *testing.T) {
 	got, err := capabilitylist.New(source{}).Execute(context.Background(), capabilitylist.Input{})
 	if err != nil {
@@ -73,13 +58,20 @@ func TestExecuteReturnsDefinitiveEmptyState(t *testing.T) {
 	if got.Page.Returned != 0 || got.Page.Total != 0 || got.Capabilities == nil {
 		t.Fatalf("empty output = %#v", got)
 	}
+	encoded, err := json.Marshal(got.FullOutput())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Contains(encoded, []byte(`"capabilities":[]`)) {
+		t.Fatalf("empty capabilities changed JSON shape: %s", encoded)
+	}
 }
 
 func TestExecuteFiltersAndPaginatesDeterministically(t *testing.T) {
 	action := capabilitylist.New(source{items: []capabilitylist.Capability{
-		{ID: "content.workbook.list", Owner: "cli", Domain: "content", Resource: "workbook", Product: "cloud/server"},
-		{ID: "content.datasource.list", Owner: "cli", Domain: "content", Resource: "datasource", Product: "cloud/server"},
-		{ID: "pulse.metric.list", Owner: "cli", Domain: "pulse", Resource: "metric", Product: "pulse"},
+		{ID: "content.datasource.list", Owner: "cli", Domain: "content", Resource: "datasource", Availability: "cloud/server"},
+		{ID: "content.workbook.list", Owner: "cli", Domain: "content", Resource: "workbook", Availability: "cloud/server"},
+		{ID: "pulse.metric.list", Owner: "cli", Domain: "pulse", Resource: "metric", Availability: "pulse"},
 	}})
 
 	got, err := action.Execute(context.Background(), capabilitylist.Input{Domain: "content", Owner: "cli", Product: "cloud", Limit: 1})
@@ -157,7 +149,7 @@ func TestExecuteMutationFilterDoesNotAuthorizeOrHideDiscovery(t *testing.T) {
 		t.Fatalf("capabilities = %#v", got.Capabilities)
 	}
 
-	got, err = capabilitylist.New(source{items: []capabilitylist.Capability{{ID: "workbook.publish", State: "implemented", RemoteMutation: true}}}).Execute(context.Background(), capabilitylist.Input{MutationsEnabled: true})
+	got, err = capabilitylist.New(source{items: []capabilitylist.Capability{{ID: "workbook.publish", ImplementationState: "implemented", RemoteMutation: true}}}).Execute(context.Background(), capabilitylist.Input{MutationsEnabled: true})
 	if err != nil || len(got.Capabilities) != 1 || !got.Capabilities[0].ExecutionEnabled {
 		t.Fatalf("enabled capabilities = %#v, error = %v", got.Capabilities, err)
 	}
@@ -173,8 +165,8 @@ func TestExecuteRejectsInvalidPagination(t *testing.T) {
 
 func TestOutputGoldenIsBoundedAndUsesExactIdentity(t *testing.T) {
 	action := capabilitylist.New(source{items: []capabilitylist.Capability{
-		{ID: "content.workbook.list", Owner: "cli", Disposition: "ship", State: "planned", Domain: "content"},
-		{ID: "content.datasource.list", Owner: "cli", Disposition: "ship", State: "planned", Domain: "content"},
+		{ID: "content.datasource.list", Owner: "cli", Disposition: "ship", ImplementationState: "planned", Domain: "content"},
+		{ID: "content.workbook.list", Owner: "cli", Disposition: "ship", ImplementationState: "planned", Domain: "content"},
 	}})
 	result, err := action.Execute(context.Background(), capabilitylist.Input{Domain: "content", Limit: 1})
 	if err != nil {
@@ -218,6 +210,13 @@ func TestFullOutputRetainsGetContractForEveryReturnedRow(t *testing.T) {
 	full, err := json.Marshal(result.FullOutput())
 	if err != nil {
 		t.Fatal(err)
+	}
+	direct, err := json.Marshal(result)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(full, direct) {
+		t.Fatalf("full projection changed field order or values: %s != %s", full, direct)
 	}
 	var document struct {
 		Capabilities []capabilitylist.Capability `json:"capabilities"`

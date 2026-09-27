@@ -99,7 +99,7 @@ func TestListReturnsStaticRowsWhenMutationPolicyIsUnavailable(t *testing.T) {
 	if err == nil || !errors.Is(err, policyErr) {
 		t.Fatalf("error = %v, want policy error", err)
 	}
-	if a.input.MutationsEnabled || a.input.MutationPolicyUnavailable {
+	if a.input.MutationsEnabled {
 		t.Fatalf("partial input = %#v", a.input)
 	}
 	carrier, ok := err.(interface{ OperationOutput() any })

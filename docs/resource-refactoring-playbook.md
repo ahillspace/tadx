@@ -251,3 +251,10 @@ Remove forwarding action packages when the existing runtime methods already own 
 Keep the CLI bound to narrow value interfaces rather than exposing configuration internals.
 Reuse a validated identity index without returning early before all saved settings have been checked.
 Preserve locked rereads, persistence verification, and exact site matching as separate boundaries.
+
+## Lessons from Capability discovery workflows
+
+Canonical registry observations should have one set of state fields, not hidden legacy mirrors maintained only for test fakes.
+Let the registry own ordering and transfer fresh observations to discovery actions; avoid sorting and copying the same inventory again.
+Keep list's partial policy-error output distinct from exact inspection's error-only path.
+Discovery metadata describes permission state but never substitutes for execution authorization.

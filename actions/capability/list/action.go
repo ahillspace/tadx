@@ -2,9 +2,7 @@
 package list
 
 import (
-	"cmp"
 	"context"
-	"slices"
 	"strconv"
 	"strings"
 
@@ -21,7 +19,7 @@ const (
 	MaxLimit = 10000
 )
 
-// Source supplies registry discovery views.
+// Source supplies fresh registry discovery views in stable ID order.
 type Source interface {
 	List(context.Context) ([]Capability, error)
 }
@@ -38,9 +36,6 @@ func New(source Source) *Action {
 
 // Execute returns a deterministic, bounded capability inventory.
 func (a *Action) Execute(ctx context.Context, input Input) (Output, error) {
-	if a == nil || a.source == nil {
-		return Output{}, &errs.Error{ID: "capability.list.unconfigured", Kind: errs.KindRuntime, Operation: "capability.list", Summary: "Capability list is not configured.", Retryable: errs.Bool(false), CorrectiveAction: "Configure a capability source before retrying."}
-	}
 	if input.All && (input.Limit != 0 || input.Cursor != "") {
 		return Output{}, usageError("--all cannot be combined with --limit or --cursor")
 	}
@@ -70,10 +65,8 @@ func (a *Action) Execute(ctx context.Context, input Input) (Output, error) {
 		items = []Capability{}
 	}
 	for index := range items {
-		items[index] = normalize(items[index])
 		items[index].ExecutionEnabled = !items[index].PolicyDenied && items[index].ImplementationState == "implemented" && (!items[index].RemoteMutation || input.MutationsEnabled)
 	}
-	slices.SortFunc(items, func(left, right Capability) int { return cmp.Compare(left.ID, right.ID) })
 	filtered := items[:0]
 	for _, item := range items {
 		if matches(input, item) {
@@ -87,10 +80,7 @@ func (a *Action) Execute(ctx context.Context, input Input) (Output, error) {
 		return Output{}, usageError("cursor is past the end of the filtered result")
 	}
 	end := min(offset+limit, len(filtered))
-	pageItems := append([]Capability(nil), filtered[offset:end]...)
-	if pageItems == nil {
-		pageItems = []Capability{}
-	}
+	pageItems := filtered[offset:end]
 	nextCursor := ""
 	if !input.All && end < len(filtered) {
 		nextCursor = strconv.Itoa(end)
@@ -102,48 +92,20 @@ func (a *Action) Execute(ctx context.Context, input Input) (Output, error) {
 		}
 	}
 	help, nextCommand := help(input, limit, nextCursor, end, pageItems)
-	policy := ""
-	if input.MutationPolicyUnavailable {
-		policy = "unavailable"
-	}
 	return Output{
-		Page:           Pagination{Returned: len(pageItems), Total: len(filtered), Limit: limit, NextCursor: nextCursor},
-		Capabilities:   pageItems,
-		Counts:         Counts{Returned: len(pageItems), Matched: len(filtered), OutOfScope: outOfScope},
-		MutationPolicy: policy,
-		NextCommand:    nextCommand,
-		Help:           help,
+		Page:         Pagination{Returned: len(pageItems), Total: len(filtered), Limit: limit, NextCursor: nextCursor},
+		Capabilities: pageItems,
+		Counts:       Counts{Returned: len(pageItems), Matched: len(filtered), OutOfScope: outOfScope},
+		NextCommand:  nextCommand,
+		Help:         help,
 	}, nil
-}
-
-func normalize(item Capability) Capability {
-	if item.ImplementationState == "" {
-		item.ImplementationState = item.State
-	}
-	if item.State == "" {
-		item.State = item.ImplementationState
-	}
-	if item.VerificationReadiness == "" && item.Blocked {
-		item.VerificationReadiness = "blocked"
-	}
-	if item.Availability == "" {
-		item.Availability = item.Product
-	}
-	if item.Product == "" {
-		item.Product = item.Availability
-	}
-	return item
 }
 
 func matches(input Input, item Capability) bool {
 	if !equalFilter(input.Domain, item.Domain) || !equalFilter(input.Resource, item.Resource) || !equalFilter(input.Owner, item.Owner) {
 		return false
 	}
-	product := item.Availability
-	if product == "" {
-		product = item.Product
-	}
-	if input.Product != "" && !strings.Contains(strings.ToLower(product), strings.ToLower(input.Product)) {
+	if input.Product != "" && !strings.Contains(strings.ToLower(item.Availability), strings.ToLower(input.Product)) {
 		return false
 	}
 	return input.Mutation == nil || item.RemoteMutation == *input.Mutation
@@ -190,19 +152,18 @@ func usageError(summary string) error {
 
 // Input controls capability discovery.
 type Input struct {
-	Environment               string `json:"environment,omitempty"`
-	Domain                    string `json:"domain,omitempty"`
-	Resource                  string `json:"resource,omitempty"`
-	Owner                     string `json:"owner,omitempty"`
-	Product                   string `json:"product,omitempty"`
-	Mutation                  *bool  `json:"mutation,omitempty"`
-	All                       bool   `json:"all,omitzero"`
-	Cursor                    string `json:"cursor,omitempty"`
-	Limit                     int    `json:"limit,omitempty"`
-	Full                      bool   `json:"-"`
-	JSON                      bool   `json:"-"`
-	MutationsEnabled          bool   `json:"-"`
-	MutationPolicyUnavailable bool   `json:"-"`
+	Environment      string `json:"environment,omitempty"`
+	Domain           string `json:"domain,omitempty"`
+	Resource         string `json:"resource,omitempty"`
+	Owner            string `json:"owner,omitempty"`
+	Product          string `json:"product,omitempty"`
+	Mutation         *bool  `json:"mutation,omitempty"`
+	All              bool   `json:"all,omitzero"`
+	Cursor           string `json:"cursor,omitempty"`
+	Limit            int    `json:"limit,omitempty"`
+	Full             bool   `json:"-"`
+	JSON             bool   `json:"-"`
+	MutationsEnabled bool   `json:"-"`
 }
 
 // Capability is the detailed discovery view retained for full output and
@@ -262,15 +223,5 @@ func (o Output) CompactOutput() any {
 // FullOutput retains the same bounded page and expands each row to the
 // contract representation shared by capability get.
 func (o Output) FullOutput() any {
-	return struct {
-		Page           Pagination   `json:"page"`
-		Capabilities   []Capability `json:"capabilities"`
-		Counts         Counts       `json:"counts"`
-		MutationPolicy string       `json:"mutation_policy,omitempty"`
-		NextCommand    string       `json:"next_command,omitempty"`
-		Help           []string     `json:"help"`
-	}{
-		Page: o.Page, Capabilities: o.Capabilities, Counts: o.Counts,
-		MutationPolicy: o.MutationPolicy, NextCommand: o.NextCommand, Help: o.Help,
-	}
+	return o
 }

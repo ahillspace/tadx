@@ -9,7 +9,6 @@ import (
 	"testing"
 
 	capabilityget "github.com/ahillspace/tadx/actions/capability/get"
-	"github.com/ahillspace/tadx/internal/errs"
 	"github.com/ahillspace/tadx/internal/output"
 )
 
@@ -47,21 +46,6 @@ func TestExecuteReportsMutationExecutionState(t *testing.T) {
 		if got.Capability.ExecutionEnabled != test.want {
 			t.Fatalf("enabled = %t, execution_enabled = %t", test.enabled, got.Capability.ExecutionEnabled)
 		}
-	}
-}
-
-func TestExecuteGuardsUnconfiguredSourceWithoutPanic(t *testing.T) {
-	for name, action := range map[string]*capabilityget.Action{
-		"nil action": nil,
-		"nil source": capabilityget.New(nil),
-	} {
-		t.Run(name, func(t *testing.T) {
-			_, err := action.Execute(context.Background(), capabilityget.Input{ID: "capability.get"})
-			var structured *errs.Error
-			if !errors.As(err, &structured) || structured.Kind != errs.KindRuntime || structured.ID != "capability.get.unconfigured" {
-				t.Fatalf("Execute() error = %#v", err)
-			}
-		})
 	}
 }
 
@@ -131,5 +115,15 @@ func TestFullOutputRetainsDelegatedContract(t *testing.T) {
 	}
 	if bytes.Contains(compact, []byte(`"disposition":"delegated"`)) || !bytes.Contains(compact, []byte(`"disposition":"Out of scope"`)) {
 		t.Fatalf("compact delegated output = %s", compact)
+	}
+	if result.Capability.Disposition != "delegated" {
+		t.Fatal("compact projection changed the full result")
+	}
+	direct, err := json.Marshal(result)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(full, direct) {
+		t.Fatalf("full projection changed field order or values: %s != %s", full, direct)
 	}
 }

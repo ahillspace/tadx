@@ -35,9 +35,6 @@ func New(source Source) *Action {
 
 // Execute returns one exact capability definition.
 func (a *Action) Execute(ctx context.Context, input Input) (Output, error) {
-	if a == nil || a.source == nil {
-		return Output{}, &errs.Error{ID: "capability.get.unconfigured", Kind: errs.KindRuntime, Operation: "capability.get", Summary: "Capability get is not configured.", Retryable: errs.Bool(false), CorrectiveAction: "Configure a capability source before retrying."}
-	}
 	id := strings.TrimSpace(input.ID)
 	if id == "" {
 		return Output{}, &errs.Error{
@@ -84,8 +81,6 @@ type Output struct {
 	Help       []string   `json:"help"`
 }
 
-type visibleOutput Output
-
 func (o Output) CompactOutput() any {
 	if o.Capability.Disposition == "delegated" {
 		o.Capability.Disposition = "Out of scope"
@@ -94,9 +89,9 @@ func (o Output) CompactOutput() any {
 		o.Capability.Surface = "Out of scope"
 		o.Capability.SafetyGuard = "Out of scope. TADX does not execute or hand off this operation."
 	}
-	return visibleOutput(o)
+	return o
 }
 
 // FullOutput retains the complete bounded contract, including delegated
 // capabilities, without applying the compact out-of-scope projection.
-func (o Output) FullOutput() any { return visibleOutput(o) }
+func (o Output) FullOutput() any { return o }
