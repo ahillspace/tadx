@@ -7,16 +7,14 @@ import (
 
 	"github.com/ahillspace/tadx/internal/commandhint"
 	"github.com/ahillspace/tadx/internal/errs"
+	"github.com/ahillspace/tadx/internal/value"
 )
 
 type CreateInput struct {
 	Environment, Site, Name, MinimumSiteRole string
 	ExternalUserEnabled                      *bool
 }
-type CreateRequest struct {
-	Name, MinimumSiteRole string
-	ExternalUserEnabled   *bool
-}
+type CreateRequest = value.AdminCreateGroupRequest
 type CreatePlan struct {
 	Mode                string `json:"mode"`
 	Operation           string `json:"operation"`
@@ -35,10 +33,9 @@ type CreateResult struct {
 	TableauRequestID    string   `json:"tableau_request_id,omitempty"`
 }
 type CreateOutput struct {
-	Plan    CreatePlan    `json:"plan"`
-	Result  *CreateResult `json:"result,omitempty"`
-	Details string        `json:"details"`
-	Help    []string      `json:"help"`
+	Plan   CreatePlan    `json:"plan"`
+	Result *CreateResult `json:"result,omitempty"`
+	Help   []string      `json:"help"`
 }
 type CreateCompactMutationResult struct {
 	UnverifiedSettings  []string `json:"unverified_settings,omitempty"`
@@ -53,11 +50,6 @@ type CreateCompactResult struct {
 	Details string                       `json:"details"`
 	Help    []string                     `json:"help"`
 }
-type CreateFullResult struct {
-	Plan   CreatePlan    `json:"plan"`
-	Result *CreateResult `json:"result,omitempty"`
-	Help   []string      `json:"help"`
-}
 
 func (o CreateOutput) CompactOutput() any {
 	var result *CreateCompactMutationResult
@@ -67,14 +59,14 @@ func (o CreateOutput) CompactOutput() any {
 	return CreateCompactResult{Plan: o.Plan, Result: result, Details: "--full", Help: o.Help}
 }
 func (o CreateOutput) FullOutput() any {
-	return CreateFullResult{Plan: o.Plan, Result: o.Result, Help: o.Help}
+	return o
 }
 
 type CreateFinder interface {
 	GroupExists(context.Context, string) (bool, error)
 }
 type CreateWriter interface {
-	CreateGroup(context.Context, CreateRequest) (Record, error)
+	CreateGroup(context.Context, CreateRequest) (value.AdminGroup, error)
 }
 
 func Create(ctx context.Context, finder CreateFinder, creator CreateWriter, in CreateInput, preview bool) (CreateOutput, error) {
@@ -85,7 +77,7 @@ func Create(ctx context.Context, finder CreateFinder, creator CreateWriter, in C
 	if found {
 		return CreateOutput{}, errors.New("an exact group name collision exists")
 	}
-	out := CreateOutput{Plan: CreatePlan{Mode: "preview", Operation: "admin.group.create", Environment: in.Environment, Site: in.Site, Name: in.Name, MinimumSiteRole: in.MinimumSiteRole, ExternalUserEnabled: in.ExternalUserEnabled}, Details: "--full", Help: []string{"Run without --preview to create this exact group."}}
+	out := CreateOutput{Plan: CreatePlan{Mode: "preview", Operation: "admin.group.create", Environment: in.Environment, Site: in.Site, Name: in.Name, MinimumSiteRole: in.MinimumSiteRole, ExternalUserEnabled: in.ExternalUserEnabled}, Help: []string{"Run without --preview to create this exact group."}}
 	if preview {
 		return out, nil
 	}

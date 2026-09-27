@@ -4,6 +4,7 @@ import (
 	"context"
 	groupops "github.com/ahillspace/tadx/actions/admin/group"
 	userops "github.com/ahillspace/tadx/actions/admin/user"
+	"github.com/ahillspace/tadx/internal/value"
 	"testing"
 )
 
@@ -32,9 +33,9 @@ type previewGroupCreate struct {
 	writes int
 }
 
-func (f *previewGroupCreate) CreateGroup(context.Context, groupops.CreateRequest) (groupops.Record, error) {
+func (f *previewGroupCreate) CreateGroup(context.Context, groupops.CreateRequest) (value.AdminGroup, error) {
 	f.writes++
-	return groupops.Record{}, nil
+	return value.AdminGroup{}, nil
 }
 
 type previewGroupDelete struct {
@@ -77,7 +78,7 @@ func TestAdminPreviewDoesNotCallMutationDependencies(t *testing.T) {
 		}
 	})
 	t.Run("group.update.metadata-and-membership", func(t *testing.T) {
-		f := &groupUpdateFake{group: groupops.Record{LUID: "g1", Name: "Old", Members: []groupops.Member{{LUID: "u1"}}}}
+		f := &groupUpdateFake{group: groupops.Record{AdminGroup: value.AdminGroup{LUID: "g1", Name: "Old"}, Members: []groupops.Member{{LUID: "u1"}}}}
 		out, err := runGroupUpdate(context.Background(), f, f, f, groupops.UpdateInput{Environment: "prod", Site: "site", GroupLUID: "g1", Name: sp("New"), MembershipSet: true, DesiredMemberLUIDs: []string{"u2"}}, true)
 		if err != nil || out.Plan.Mode != "preview" || out.Result != nil || len(f.calls) != 0 {
 			t.Fatalf("preview=%#v err=%v calls=%v", out, err, f.calls)

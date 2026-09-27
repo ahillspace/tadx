@@ -2,6 +2,7 @@ package group
 
 import (
 	"context"
+	"github.com/ahillspace/tadx/internal/value"
 	"testing"
 )
 
@@ -12,9 +13,9 @@ func (b *defaultSiteBackend) GroupExists(context.Context, string) (bool, error) 
 	return false, nil
 }
 
-func (b *defaultSiteBackend) CreateGroup(context.Context, CreateRequest) (Record, error) {
+func (b *defaultSiteBackend) CreateGroup(context.Context, CreateRequest) (value.AdminGroup, error) {
 	b.writes++
-	return Record{LUID: "group-1"}, nil
+	return value.AdminGroup{LUID: "group-1"}, nil
 }
 
 func TestDefaultSiteCreatePreviewKeepsEmptyContentURL(t *testing.T) {

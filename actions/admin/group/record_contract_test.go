@@ -3,6 +3,7 @@ package group
 import (
 	"context"
 	"encoding/json"
+	"github.com/ahillspace/tadx/internal/value"
 	"testing"
 )
 
@@ -16,9 +17,9 @@ func (b *recordBackend) ResolveGroup(context.Context, Selector, bool) (Record, e
 	b.observations = b.observations[1:]
 	return r, nil
 }
-func (b *recordBackend) UpdateGroup(context.Context, string, UpdateRequest) (Record, error) {
+func (b *recordBackend) UpdateGroup(context.Context, string, UpdateRequest) (value.AdminGroup, error) {
 	b.writes++
-	return Record{LUID: "g", Name: "after", RequestID: "write"}, nil
+	return value.AdminGroup{LUID: "g", Name: "after", RequestID: "write"}, nil
 }
 func (b *recordBackend) DeleteGroup(context.Context, string) (DeleteResult, error) {
 	b.writes++
@@ -35,7 +36,7 @@ func TestMutationRevalidationKeepsOperationSnapshotScope(t *testing.T) {
 	for _, operation := range []string{"update", "delete"} {
 		for _, relevant := range []bool{false, true} {
 			t.Run(operation+map[bool]string{false: "/unrelated", true: "/changed-identity"}[relevant], func(t *testing.T) {
-				before := Record{LUID: "g", Name: "before", Domain: "local", Members: []Member{{LUID: "u", Name: "login", SiteRole: "Viewer"}}}
+				before := Record{AdminGroup: value.AdminGroup{LUID: "g", Name: "before", Domain: "local"}, Members: []Member{{LUID: "u", Name: "login", SiteRole: "Viewer"}}}
 				current := before
 				current.GrantLicenseMode = "changed-mode"
 				current.RequestID = "new-read"
@@ -70,7 +71,7 @@ func TestMutationRevalidationKeepsOperationSnapshotScope(t *testing.T) {
 type richListReader struct{}
 
 func (richListReader) ListGroups(_ context.Context, in ListPageRequest) (ListPage, error) {
-	return ListPage{Number: in.PageNumber, Size: in.PageSize, Total: 1, Groups: []Record{{LUID: "g", Name: "Group", GrantLicenseMode: "onLogin", ExternalUserEnabled: new(false), Members: []Member{{LUID: "hidden"}}, ExternalUserEnabledState: "hidden", MembersOmitted: 2, RequestID: "hidden", MutationStatus: "hidden"}}}, nil
+	return ListPage{Number: in.PageNumber, Size: in.PageSize, Total: 1, Groups: []Record{{AdminGroup: value.AdminGroup{LUID: "g", Name: "Group", GrantLicenseMode: "onLogin", ExternalUserEnabled: new(false), RequestID: "hidden", MutationStatus: "hidden"}, Members: []Member{{LUID: "hidden"}}, ExternalUserEnabledState: "hidden", MembersOmitted: 2}}}, nil
 }
 func TestListProjectsSharedRecordWithoutInspectFields(t *testing.T) {
 	out, err := runGroupList(t.Context(), richListReader{}, ListInput{})

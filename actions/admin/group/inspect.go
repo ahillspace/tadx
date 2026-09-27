@@ -7,6 +7,7 @@ import (
 	"github.com/ahillspace/tadx/internal/commandhint"
 	"github.com/ahillspace/tadx/internal/errs"
 	"github.com/ahillspace/tadx/internal/readsource"
+	"github.com/ahillspace/tadx/internal/value"
 )
 
 const memberLimit = 100
@@ -25,17 +26,10 @@ type Member struct {
 	SiteRole string `json:"site_role,omitempty"`
 }
 type Record struct {
-	LUID                     string   `json:"luid"`
-	Name                     string   `json:"name"`
-	Domain                   string   `json:"domain,omitempty"`
-	MinimumSiteRole          string   `json:"minimum_site_role,omitempty"`
-	GrantLicenseMode         string   `json:"grant_license_mode,omitempty"`
-	ExternalUserEnabled      *bool    `json:"external_user_enabled,omitempty"`
+	value.AdminGroup
 	ExternalUserEnabledState string   `json:"external_user_enabled_state,omitempty"`
 	Members                  []Member `json:"members"`
 	MembersOmitted           int      `json:"members_omitted,omitempty"`
-	RequestID                string   `json:"-"`
-	MutationStatus           string   `json:"-"`
 }
 type InspectOutput struct {
 	Status, Environment, Site string

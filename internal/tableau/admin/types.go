@@ -1,7 +1,11 @@
 // Package admin implements released Tableau administration REST operations.
 package admin
 
-import "context"
+import (
+	"context"
+
+	"github.com/ahillspace/tadx/internal/value"
+)
 
 const MaxPageSize = 1000
 
@@ -12,12 +16,7 @@ type ListUsersRequest struct {
 	Name, SiteRole       string
 }
 
-type User struct {
-	LUID, Name, FullName, Email, SiteRole, LastLogin, ExternalAuthUserID string
-	AuthSetting, IdentityPoolName, IdPConfigurationID, Language, Locale  string
-	Domain, RequestID                                                    string
-	MutationStatus                                                       string
-}
+type User = value.AdminUser
 
 type UserPage struct {
 	Number, Size, Total int
@@ -25,27 +24,15 @@ type UserPage struct {
 	RequestID           string
 }
 
-type CreateUserRequest struct {
-	Name, SiteRole, AuthSetting, IdentityPoolName, IdPConfigurationID string
-	Email, Language, Locale                                           string
-}
-
-type UpdateUserRequest struct {
-	FullName, Email, SiteRole, AuthSetting, IdentityPoolName *string
-	IdPConfigurationID, Language, Locale                     *string
-}
+type CreateUserRequest = value.AdminCreateUserRequest
+type UpdateUserRequest = value.AdminUpdateUserRequest
 
 type ListGroupsRequest struct {
 	PageNumber, PageSize int
 	Name, Domain         string
 }
 
-type Group struct {
-	LUID, Name, Domain, MinimumSiteRole, GrantLicenseMode string
-	ExternalUserEnabled                                   *bool
-	RequestID                                             string
-	MutationStatus                                        string
-}
+type Group = value.AdminGroup
 
 type GroupPage struct {
 	Number, Size, Total int
@@ -53,15 +40,8 @@ type GroupPage struct {
 	RequestID           string
 }
 
-type CreateGroupRequest struct {
-	Name, MinimumSiteRole string
-	ExternalUserEnabled   *bool
-}
-
-type UpdateGroupRequest struct {
-	Name, MinimumSiteRole *string
-	ExternalUserEnabled   *bool
-}
+type CreateGroupRequest = value.AdminCreateGroupRequest
+type UpdateGroupRequest = value.AdminUpdateGroupRequest
 
 type MutationResult struct {
 	Status, ResourceLUID, RequestID string

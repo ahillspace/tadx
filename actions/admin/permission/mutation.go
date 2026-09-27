@@ -36,20 +36,15 @@ type Result struct {
 	TableauRequestID string `json:"tableau_request_id,omitempty"`
 }
 type Output struct {
-	Plan   Plan
-	Result *Result
-	Help   []string
+	Plan   Plan     `json:"plan"`
+	Result *Result  `json:"result,omitempty"`
+	Help   []string `json:"help"`
 }
 type CompactResult struct {
 	Plan    Plan     `json:"plan"`
 	Result  *Result  `json:"result,omitempty"`
 	Details string   `json:"details"`
 	Help    []string `json:"help"`
-}
-type FullResult struct {
-	Plan   Plan     `json:"plan"`
-	Result *Result  `json:"result,omitempty"`
-	Help   []string `json:"help"`
 }
 
 func (o Output) CompactOutput() any {
@@ -61,7 +56,7 @@ func (o Output) CompactOutput() any {
 	}
 	return CompactResult{Plan: o.Plan, Result: result, Details: "--full", Help: o.Help}
 }
-func (o Output) FullOutput() any { return FullResult{Plan: o.Plan, Result: o.Result, Help: o.Help} }
+func (o Output) FullOutput() any { return o }
 
 type Reader interface {
 	GetPermission(context.Context, Input) (Snapshot, error)

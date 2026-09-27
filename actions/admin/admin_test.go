@@ -8,6 +8,7 @@ import (
 	permissionget "github.com/ahillspace/tadx/actions/admin/permission/inspect"
 	userops "github.com/ahillspace/tadx/actions/admin/user"
 	"github.com/ahillspace/tadx/internal/errs"
+	"github.com/ahillspace/tadx/internal/value"
 	"testing"
 )
 
@@ -69,10 +70,10 @@ func contains(value, fragment string) bool {
 type partialGroupUpdateFake struct{ calls int }
 
 func (*partialGroupUpdateFake) ResolveGroup(context.Context, groupops.Selector, bool) (groupops.Record, error) {
-	return groupops.Record{LUID: "g1", Name: "Authors"}, nil
+	return groupops.Record{AdminGroup: value.AdminGroup{LUID: "g1", Name: "Authors"}}, nil
 }
-func (*partialGroupUpdateFake) UpdateGroup(context.Context, string, groupops.UpdateRequest) (groupops.Record, error) {
-	return groupops.Record{}, nil
+func (*partialGroupUpdateFake) UpdateGroup(context.Context, string, groupops.UpdateRequest) (value.AdminGroup, error) {
+	return value.AdminGroup{}, nil
 }
 func (f *partialGroupUpdateFake) AddGroupUser(_ context.Context, _, user string) (string, error) {
 	f.calls++
@@ -137,9 +138,9 @@ type groupUpdateFake struct {
 func (f *groupUpdateFake) ResolveGroup(context.Context, groupops.Selector, bool) (groupops.Record, error) {
 	return f.group, nil
 }
-func (f *groupUpdateFake) UpdateGroup(context.Context, string, groupops.UpdateRequest) (groupops.Record, error) {
+func (f *groupUpdateFake) UpdateGroup(context.Context, string, groupops.UpdateRequest) (value.AdminGroup, error) {
 	f.calls = append(f.calls, "metadata")
-	return f.group, nil
+	return f.group.AdminGroup, nil
 }
 func (f *groupUpdateFake) AddGroupUser(_ context.Context, _, u string) (string, error) {
 	f.calls = append(f.calls, "add:"+u)
@@ -150,7 +151,7 @@ func (f *groupUpdateFake) RemoveGroupUser(_ context.Context, _, u string) (strin
 	return "remove-request", nil
 }
 func TestGroupUpdatePlansAndOrdersMembershipDiff(t *testing.T) {
-	fake := &groupUpdateFake{group: groupops.Record{LUID: "g1", Name: "Authors", Members: []groupops.Member{{LUID: "u2"}, {LUID: "u1"}}}}
+	fake := &groupUpdateFake{group: groupops.Record{AdminGroup: value.AdminGroup{LUID: "g1", Name: "Authors"}, Members: []groupops.Member{{LUID: "u2"}, {LUID: "u1"}}}}
 
 	out, err := runGroupUpdate(context.Background(), fake, fake, fake, groupops.UpdateInput{Environment: "prod", Site: "site", GroupLUID: "g1", MembershipSet: true, DesiredMemberLUIDs: []string{"u2", "u3"}}, true)
 	if err != nil || out.Plan.Membership == nil || len(out.Plan.Membership.Add) != 1 || len(out.Plan.Membership.Remove) != 1 || len(fake.calls) != 0 {
@@ -252,17 +253,17 @@ func (unknownGroupFake) GroupExists(context.Context, string) (bool, error) {
 	return false, nil
 
 }
-func (unknownGroupFake) CreateGroup(context.Context, groupops.CreateRequest) (groupops.Record, error) {
-	return groupops.Record{RequestID: "req-gc", MutationStatus: "unknown"}, errors.New("post-mutation status mismatch")
+func (unknownGroupFake) CreateGroup(context.Context, groupops.CreateRequest) (value.AdminGroup, error) {
+	return value.AdminGroup{RequestID: "req-gc", MutationStatus: "unknown"}, errors.New("post-mutation status mismatch")
 }
 
 type unknownGroupUpdateFake struct{}
 
 func (*unknownGroupUpdateFake) ResolveGroup(context.Context, groupops.Selector, bool) (groupops.Record, error) {
-	return groupops.Record{LUID: "g1", Name: "Old"}, nil
+	return groupops.Record{AdminGroup: value.AdminGroup{LUID: "g1", Name: "Old"}}, nil
 }
-func (*unknownGroupUpdateFake) UpdateGroup(context.Context, string, groupops.UpdateRequest) (groupops.Record, error) {
-	return groupops.Record{LUID: "g1", RequestID: "req-gu", MutationStatus: "unknown"}, errors.New("post-mutation status mismatch")
+func (*unknownGroupUpdateFake) UpdateGroup(context.Context, string, groupops.UpdateRequest) (value.AdminGroup, error) {
+	return value.AdminGroup{LUID: "g1", RequestID: "req-gu", MutationStatus: "unknown"}, errors.New("post-mutation status mismatch")
 }
 func (*unknownGroupUpdateFake) AddGroupUser(context.Context, string, string) (string, error) {
 	return "", nil
@@ -274,7 +275,7 @@ func (*unknownGroupUpdateFake) RemoveGroupUser(context.Context, string, string) 
 type unknownGroupDeleteFake struct{}
 
 func (unknownGroupDeleteFake) ResolveGroup(context.Context, groupops.Selector, bool) (groupops.Record, error) {
-	return groupops.Record{LUID: "g1"}, nil
+	return groupops.Record{AdminGroup: value.AdminGroup{LUID: "g1"}}, nil
 }
 func (unknownGroupDeleteFake) DeleteGroup(context.Context, string) (groupops.DeleteResult, error) {
 	return groupops.DeleteResult{Status: "unknown", GroupLUID: "g1", TableauRequestID: "req-gd"}, errors.New("delete outcome uncertain")

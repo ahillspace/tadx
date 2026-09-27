@@ -3,6 +3,7 @@ package group
 import (
 	"context"
 	"fmt"
+	"github.com/ahillspace/tadx/internal/value"
 	"strings"
 	"testing"
 )
@@ -32,7 +33,7 @@ func (r *allInventoryReader) ListGroups(_ context.Context, input ListPageRequest
 		if r.duplicate {
 			id = "duplicate"
 		}
-		page.Groups = append(page.Groups, Record{LUID: id})
+		page.Groups = append(page.Groups, Record{AdminGroup: value.AdminGroup{LUID: id}})
 	}
 	return page, nil
 }

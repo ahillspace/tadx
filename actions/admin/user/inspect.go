@@ -7,6 +7,7 @@ import (
 	"github.com/ahillspace/tadx/internal/commandhint"
 	"github.com/ahillspace/tadx/internal/errs"
 	"github.com/ahillspace/tadx/internal/readsource"
+	"github.com/ahillspace/tadx/internal/value"
 )
 
 type Selector struct{ LUID, Username string }
@@ -16,23 +17,7 @@ type InspectInput struct {
 	Cache             bool
 }
 
-type Record struct {
-	LUID               string `json:"luid"`
-	Name               string `json:"name"`
-	FullName           string `json:"full_name,omitempty"`
-	Email              string `json:"email,omitempty"`
-	SiteRole           string `json:"site_role,omitempty"`
-	LastLogin          string `json:"last_login,omitempty"`
-	ExternalAuthUserID string `json:"external_auth_user_id,omitempty"`
-	AuthSetting        string `json:"auth_setting,omitempty"`
-	IdentityPoolName   string `json:"identity_pool_name,omitempty"`
-	IdPConfigurationID string `json:"idp_configuration_id,omitempty"`
-	Language           string `json:"language,omitempty"`
-	Locale             string `json:"locale,omitempty"`
-	Domain             string `json:"domain,omitempty"`
-	RequestID          string `json:"-"`
-	MutationStatus     string `json:"-"`
-}
+type Record = value.AdminUser
 type InspectOutput struct {
 	Status, Environment, Site string
 	User                      Record

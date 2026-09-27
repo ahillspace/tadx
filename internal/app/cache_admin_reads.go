@@ -9,6 +9,7 @@ import (
 	"github.com/ahillspace/tadx/internal/cache"
 	"github.com/ahillspace/tadx/internal/errs"
 	"github.com/ahillspace/tadx/internal/readsource"
+	"github.com/ahillspace/tadx/internal/value"
 )
 
 func (c *remoteAdminCommands) cacheStore(alias string) *cache.Store {
@@ -110,7 +111,7 @@ func (r *cacheGroupListReader) ListGroups(ctx context.Context, input groupops.Li
 		if len(entry.Payload) != 0 && json.Unmarshal(entry.Payload, &items[index]) == nil {
 			continue
 		}
-		items[index] = groupops.Record{LUID: entry.LUID, Name: entry.Name}
+		items[index] = groupops.Record{AdminGroup: value.AdminGroup{LUID: entry.LUID, Name: entry.Name}}
 	}
 	return groupops.ListPage{Number: input.PageNumber, Size: input.PageSize, Total: result.Total, Groups: items, SnapshotCursor: result.NextCursor}, nil
 }
@@ -146,5 +147,5 @@ func (r *cacheGroupGetResolver) ResolveGroup(ctx context.Context, selector group
 	if decoded {
 		return item.Record, nil
 	}
-	return groupops.Record{LUID: entry.LUID, Name: entry.Name}, nil
+	return groupops.Record{AdminGroup: value.AdminGroup{LUID: entry.LUID, Name: entry.Name}}, nil
 }

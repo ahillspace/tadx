@@ -34,10 +34,9 @@ type DeleteResult struct {
 	TableauRequestID string `json:"tableau_request_id,omitempty"`
 }
 type DeleteOutput struct {
-	Plan    DeletePlan    `json:"plan"`
-	Result  *DeleteResult `json:"result,omitempty"`
-	Details string        `json:"details"`
-	Help    []string      `json:"help"`
+	Plan   DeletePlan    `json:"plan"`
+	Result *DeleteResult `json:"result,omitempty"`
+	Help   []string      `json:"help"`
 }
 type DeleteCompactMutationResult struct {
 	Status        string `json:"status"`
@@ -51,11 +50,6 @@ type DeleteCompactResult struct {
 	Details string                       `json:"details"`
 	Help    []string                     `json:"help"`
 }
-type DeleteFullResult struct {
-	Plan   DeletePlan    `json:"plan"`
-	Result *DeleteResult `json:"result,omitempty"`
-	Help   []string      `json:"help"`
-}
 
 func (o DeleteOutput) CompactOutput() any {
 	var result *DeleteCompactMutationResult
@@ -65,7 +59,7 @@ func (o DeleteOutput) CompactOutput() any {
 	return DeleteCompactResult{Plan: o.Plan, Result: result, Details: "--full", Help: o.Help}
 }
 func (o DeleteOutput) FullOutput() any {
-	return DeleteFullResult{Plan: o.Plan, Result: o.Result, Help: o.Help}
+	return o
 }
 
 type DeleteWriter interface {
@@ -78,7 +72,7 @@ func Delete(ctx context.Context, resolver Resolver, deleter DeleteWriter, in Del
 		return DeleteOutput{}, err
 	}
 	user := deleteUser(record)
-	out := DeleteOutput{Plan: DeletePlan{Mode: "preview", Operation: "admin.user.delete", Environment: in.Environment, Site: in.Site, Target: user, OwnershipReassignment: false}, Details: "--full", Help: []string{"Run without --preview to remove this exact site user without ownership reassignment."}}
+	out := DeleteOutput{Plan: DeletePlan{Mode: "preview", Operation: "admin.user.delete", Environment: in.Environment, Site: in.Site, Target: user, OwnershipReassignment: false}, Help: []string{"Run without --preview to remove this exact site user without ownership reassignment."}}
 	if preview {
 		return out, nil
 	}

@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/ahillspace/tadx/internal/errs"
+	"github.com/ahillspace/tadx/internal/value"
 )
 
 type receiptAdapter struct{ reads, writes int }
@@ -20,11 +21,11 @@ func runGroupUpdate(ctx context.Context, resolver Resolver, writer UpdateWriter,
 
 func (a *receiptAdapter) ResolveGroup(context.Context, Selector, bool) (Record, error) {
 	a.reads++
-	return Record{LUID: "group-1", Name: "Before", Members: []Member{{LUID: "old-user"}}}, nil
+	return Record{AdminGroup: value.AdminGroup{LUID: "group-1", Name: "Before"}, Members: []Member{{LUID: "old-user"}}}, nil
 }
-func (a *receiptAdapter) UpdateGroup(context.Context, string, UpdateRequest) (Record, error) {
+func (a *receiptAdapter) UpdateGroup(context.Context, string, UpdateRequest) (value.AdminGroup, error) {
 	a.writes++
-	return Record{LUID: "group-1", Name: "Confirmed", RequestID: "metadata-request", Members: []Member{{LUID: "should-not-leak"}}}, nil
+	return value.AdminGroup{LUID: "group-1", Name: "Confirmed", RequestID: "metadata-request"}, nil
 }
 func (a *receiptAdapter) AddGroupUser(context.Context, string, string) (string, error) {
 	a.writes++

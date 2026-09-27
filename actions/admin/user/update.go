@@ -8,6 +8,7 @@ import (
 
 	"github.com/ahillspace/tadx/internal/commandhint"
 	"github.com/ahillspace/tadx/internal/errs"
+	"github.com/ahillspace/tadx/internal/value"
 )
 
 type UpdateInput struct {
@@ -28,7 +29,7 @@ type UpdateUser struct {
 	RequestID          string `json:"-"`
 	MutationStatus     string `json:"-"`
 }
-type UpdateRequest struct{ FullName, Email, SiteRole, AuthSetting, IdentityPoolName, IdPConfigurationID, Language, Locale *string }
+type UpdateRequest = value.AdminUpdateUserRequest
 type UpdateChange struct {
 	Field  string `json:"field"`
 	Before string `json:"before,omitempty"`
@@ -83,7 +84,7 @@ type UpdateWriter interface {
 }
 
 func Update(ctx context.Context, resolver Resolver, updater UpdateWriter, in UpdateInput, preview bool) (UpdateOutput, error) {
-	req := UpdateRequest{in.FullName, in.Email, in.SiteRole, in.AuthSetting, in.IdentityPoolName, in.IdPConfigurationID, in.Language, in.Locale}
+	req := UpdateRequest{FullName: in.FullName, Email: in.Email, SiteRole: in.SiteRole, AuthSetting: in.AuthSetting, IdentityPoolName: in.IdentityPoolName, IdPConfigurationID: in.IdPConfigurationID, Language: in.Language, Locale: in.Locale}
 	record, err := resolver.ResolveUser(ctx, Selector{LUID: in.UserLUID})
 	if err != nil {
 		return UpdateOutput{}, err
@@ -160,7 +161,7 @@ func ValidateUpdateInput(in UpdateInput) error {
 	if in.AuthSetting != nil && !validAuthSetting(*in.AuthSetting) {
 		return updateUsage("auth_setting", authSettingGuidance)
 	}
-	req := UpdateRequest{in.FullName, in.Email, in.SiteRole, in.AuthSetting, in.IdentityPoolName, in.IdPConfigurationID, in.Language, in.Locale}
+	req := UpdateRequest{FullName: in.FullName, Email: in.Email, SiteRole: in.SiteRole, AuthSetting: in.AuthSetting, IdentityPoolName: in.IdentityPoolName, IdPConfigurationID: in.IdPConfigurationID, Language: in.Language, Locale: in.Locale}
 	if reflect.DeepEqual(req, UpdateRequest{}) {
 		return updateUsage("fields", "admin user update requires at least one explicit field")
 	}

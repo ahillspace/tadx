@@ -9,6 +9,7 @@ import (
 
 	"github.com/ahillspace/tadx/internal/commandhint"
 	"github.com/ahillspace/tadx/internal/errs"
+	"github.com/ahillspace/tadx/internal/value"
 )
 
 const maxDesiredMembers = 1000
@@ -34,11 +35,7 @@ type UpdateGroup struct {
 	RequestID           string         `json:"-"`
 	MutationStatus      string         `json:"-"`
 }
-type UpdateRequest struct {
-	Name                *string `json:"name,omitempty"`
-	MinimumSiteRole     *string `json:"minimum_site_role,omitempty"`
-	ExternalUserEnabled *bool   `json:"external_user_enabled,omitempty"`
-}
+type UpdateRequest = value.AdminUpdateGroupRequest
 type UpdateChange struct {
 	Field  string `json:"field"`
 	Before string `json:"before,omitempty"`
@@ -157,7 +154,7 @@ func (o UpdateOutput) FullOutput() any {
 }
 
 type UpdateWriter interface {
-	UpdateGroup(context.Context, string, UpdateRequest) (Record, error)
+	UpdateGroup(context.Context, string, UpdateRequest) (value.AdminGroup, error)
 }
 type MembershipWriter interface {
 	AddGroupUser(context.Context, string, string) (string, error)
@@ -173,14 +170,15 @@ func Update(ctx context.Context, resolver Resolver, updater UpdateWriter, member
 	if in.MembershipSet && len(group.Members) > maxDesiredMembers {
 		return UpdateOutput{}, errors.New("current group membership exceeds the 1000-member action bound")
 	}
-	changes := groupChanges(group, UpdateRequest{in.Name, in.MinimumSiteRole, in.ExternalUserEnabled})
+	request := UpdateRequest{Name: in.Name, MinimumSiteRole: in.MinimumSiteRole, ExternalUserEnabled: in.ExternalUserEnabled}
+	changes := groupChanges(group, request)
 	var membership *MembershipDiff
 	if in.MembershipSet {
 		diff := membershipDiff(group.Members, in.DesiredMemberLUIDs)
 		membership = &diff
 	}
 	noOp := len(changes) == 0 && (membership == nil || (len(membership.Add) == 0 && len(membership.Remove) == 0))
-	out := UpdateOutput{Plan: UpdatePlan{Mode: "preview", Operation: "admin.group.update", Environment: in.Environment, Site: in.Site, Target: group, Requested: UpdateRequest{in.Name, in.MinimumSiteRole, in.ExternalUserEnabled}, Changes: changes, Membership: membership, NoOp: noOp}, Help: []string{"Run without --preview to update this exact group and converge direct membership."}}
+	out := UpdateOutput{Plan: UpdatePlan{Mode: "preview", Operation: "admin.group.update", Environment: in.Environment, Site: in.Site, Target: group, Requested: request, Changes: changes, Membership: membership, NoOp: noOp}, Help: []string{"Run without --preview to update this exact group and converge direct membership."}}
 	if preview {
 		return out, nil
 	}
@@ -198,7 +196,7 @@ func Update(ctx context.Context, resolver Resolver, updater UpdateWriter, member
 		return out, nil
 	}
 	if len(changes) > 0 {
-		updated, err := updater.UpdateGroup(ctx, group.LUID, UpdateRequest{in.Name, in.MinimumSiteRole, in.ExternalUserEnabled})
+		updated, err := updater.UpdateGroup(ctx, group.LUID, request)
 		if err != nil {
 			if updated.MutationStatus == "unknown" {
 				return UpdateOutput{}, updateOutcomeUnknown(in, group.LUID, updated.RequestID, err)

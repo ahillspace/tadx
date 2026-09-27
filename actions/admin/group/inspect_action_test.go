@@ -7,12 +7,13 @@ import (
 	"testing"
 
 	action "github.com/ahillspace/tadx/actions/admin/group"
+	"github.com/ahillspace/tadx/internal/value"
 )
 
 type resolver struct{ members []action.Member }
 
 func (r resolver) ResolveGroup(context.Context, action.Selector, bool) (action.Record, error) {
-	return action.Record{LUID: "group-1", Name: "Authors", Members: r.members}, nil
+	return action.Record{AdminGroup: value.AdminGroup{LUID: "group-1", Name: "Authors"}, Members: r.members}, nil
 }
 
 func TestFullOutputKeepsExplicitlyRequestedMembers(t *testing.T) {

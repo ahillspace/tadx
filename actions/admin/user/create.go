@@ -7,6 +7,7 @@ import (
 
 	"github.com/ahillspace/tadx/internal/commandhint"
 	"github.com/ahillspace/tadx/internal/errs"
+	"github.com/ahillspace/tadx/internal/value"
 )
 
 type CreateInput struct {
@@ -25,7 +26,7 @@ type CreateUser struct {
 	RequestID          string `json:"-"`
 	MutationStatus     string `json:"-"`
 }
-type CreateRequest struct{ Name, SiteRole, AuthSetting, IdentityPoolName, IdPConfigurationID, Email, Language, Locale string }
+type CreateRequest = value.AdminCreateUserRequest
 type CreatePlan struct {
 	Mode               string `json:"mode"`
 	Operation          string `json:"operation"`
