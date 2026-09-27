@@ -2,8 +2,9 @@
 package overview
 
 import (
+	"cmp"
 	"context"
-	"sort"
+	"slices"
 
 	"github.com/ahillspace/tadx/internal/value"
 )
@@ -13,6 +14,7 @@ const (
 	fullLimit    = 100
 )
 
+// Reader transfers ownership of the returned observation slices to the action.
 type Reader interface {
 	ReadOverview(context.Context) (State, error)
 }
@@ -101,10 +103,8 @@ func (a *Action) Execute(ctx context.Context) (Output, error) {
 	if err != nil {
 		return Output{}, err
 	}
-	state.Environments = append([]Environment(nil), state.Environments...)
-	state.Workspaces = append([]Workspace(nil), state.Workspaces...)
-	sort.Slice(state.Environments, func(i, j int) bool { return state.Environments[i].Name < state.Environments[j].Name })
-	sort.Slice(state.Workspaces, func(i, j int) bool { return state.Workspaces[i].Name < state.Workspaces[j].Name })
+	slices.SortFunc(state.Environments, func(left, right Environment) int { return cmp.Compare(left.Name, right.Name) })
+	slices.SortFunc(state.Workspaces, func(left, right Workspace) int { return cmp.Compare(left.Name, right.Name) })
 	return Output{state: state}, nil
 }
 
