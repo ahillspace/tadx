@@ -28,34 +28,24 @@ type Output struct {
 func (o Output) CompactOutput() any { return o }
 func (o Output) FullOutput() any    { return o }
 
-type CurrentProvider interface{ Current() string }
 type ReleaseChecker interface {
 	Latest(context.Context) (Release, error)
 }
 type Action struct {
-	current CurrentProvider
+	current string
 	checker ReleaseChecker
 }
 
-func New(current CurrentProvider, checker ReleaseChecker) *Action {
+func New(current string, checker ReleaseChecker) *Action {
 	return &Action{current: current, checker: checker}
 }
 func (a *Action) Execute(ctx context.Context, in Input) (Output, error) {
-	if a == nil || a.current == nil {
-		return Output{}, &errs.Error{ID: "version.get.runtime", Kind: errs.KindRuntime, Operation: "version.get", Summary: "Version inspection is not configured.", Retryable: errs.Bool(false)}
-	}
-	current := strings.TrimSpace(a.current.Current())
-	if current == "" {
-		return Output{}, &errs.Error{ID: "version.get.runtime", Kind: errs.KindRuntime, Operation: "version.get", Summary: "Current version identity is empty.", Retryable: errs.Bool(false)}
-	}
+	current := a.current
 	out := Output{Status: "installed", Version: current, Help: []string{"tadx version --check"}}
 	if !in.Check {
 		return out, nil
 	}
 	out.Status, out.Help = "check_unavailable", nil
-	if a.checker == nil {
-		return out, &errs.Error{ID: "version.get.check.runtime", Kind: errs.KindRuntime, Operation: "version.get", Summary: "Release checking is not configured.", Retryable: errs.Bool(false)}
-	}
 	release, err := a.checker.Latest(ctx)
 	if err != nil {
 		return out, &errs.Error{ID: "version.get.check.failed", Kind: errs.KindOperation, Operation: "version.get", Summary: "Release check failed; installed version is retained in the result.", Cause: err, Retryable: errs.Bool(true), CorrectiveAction: "Retry the release check later if current release information is needed."}

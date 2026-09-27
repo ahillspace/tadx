@@ -2,14 +2,11 @@ package get_test
 
 import (
 	"context"
-	get "github.com/ahillspace/tadx/actions/version/get"
 	"testing"
 	"time"
+
+	get "github.com/ahillspace/tadx/actions/version/get"
 )
-
-type current string
-
-func (c current) Current() string { return string(c) }
 
 type checker struct{ calls int }
 
@@ -19,7 +16,7 @@ func (c *checker) Latest(context.Context) (get.Release, error) {
 }
 func TestOfflineByDefault(t *testing.T) {
 	c := &checker{}
-	out, err := get.New(current("1.1.0"), c).Execute(context.Background(), get.Input{})
+	out, err := get.New("1.1.0", c).Execute(t.Context(), get.Input{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -30,7 +27,7 @@ func TestOfflineByDefault(t *testing.T) {
 
 func TestCheckReportsCurrentVersion(t *testing.T) {
 	c := &checker{}
-	out, err := get.New(current("1.2.0"), c).Execute(context.Background(), get.Input{Check: true})
+	out, err := get.New("1.2.0", c).Execute(t.Context(), get.Input{Check: true})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -40,11 +37,22 @@ func TestCheckReportsCurrentVersion(t *testing.T) {
 }
 func TestCheckReportsUpdate(t *testing.T) {
 	c := &checker{}
-	out, err := get.New(current("1.1.0"), c).Execute(context.Background(), get.Input{Check: true})
+	out, err := get.New("1.1.0", c).Execute(t.Context(), get.Input{Check: true})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if c.calls != 1 || !out.UpdateAvailable || out.Status != "update-available" {
+		t.Fatalf("out=%#v calls=%d", out, c.calls)
+	}
+}
+
+func TestCheckDoesNotClaimUpdateForDevelopmentVersion(t *testing.T) {
+	c := &checker{}
+	out, err := get.New("dev", c).Execute(t.Context(), get.Input{Check: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if c.calls != 1 || out.Version != "dev" || out.LatestVersion != "1.2.0" || out.UpdateAvailable || out.Status != "current" {
 		t.Fatalf("out=%#v calls=%d", out, c.calls)
 	}
 }
