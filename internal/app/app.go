@@ -119,7 +119,6 @@ func Run(ctx context.Context, args []string, stdout io.Writer, options Options) 
 		capture.renderError = true
 		return errs.ExitCode(err)
 	}
-	environmentCommands := newEnvironmentCommands(runtime)
 	workspaceCommands := newWorkspaceCommands(runtime)
 	remoteContent := newRemoteContentCommands(runtime)
 	remoteAdmin := newRemoteAdminCommands(runtime)
@@ -167,7 +166,7 @@ func Run(ctx context.Context, args []string, stdout io.Writer, options Options) 
 		WorkbookPuller:      &pullService{runtime: runtime},
 		WorkbookPublisher:   &publishService{runtime: runtime},
 		Content:             remoteContent.dependencies(),
-		EnvironmentProfiles: environmentCommands.dependencies(),
+		EnvironmentProfiles: newEnvironmentDependencies(runtime),
 		Workspaces:          workspaceCommands,
 		Admin:               remoteAdmin.dependencies(),
 		Agent:               newAgentCommands(runtime),

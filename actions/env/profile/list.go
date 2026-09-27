@@ -112,12 +112,6 @@ type ListCompactResult struct {
 	Help     []string             `json:"help"`
 }
 
-type ListFullResult struct {
-	Page     Page      `json:"page"`
-	Profiles []Profile `json:"environments"`
-	Help     []string  `json:"help"`
-}
-
 func (o ListOutput) CompactOutput() any {
 	profiles := make([]ListCompactProfile, len(o.Profiles))
 	for index, profile := range o.Profiles {
@@ -126,6 +120,4 @@ func (o ListOutput) CompactOutput() any {
 	return ListCompactResult{Page: o.Page, Profiles: profiles, Details: "--full", Help: o.Help}
 }
 
-func (o ListOutput) FullOutput() any {
-	return ListFullResult{Page: o.Page, Profiles: o.Profiles, Help: o.Help}
-}
+func (o ListOutput) FullOutput() any { return o }

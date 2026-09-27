@@ -40,6 +40,10 @@ func (r *removeTestStore) Remove(_ context.Context, alias string) error {
 	return r.err
 }
 
+func (r *removeTestStore) PreviewRemove(ctx context.Context, alias string) error {
+	return r.Remove(ctx, alias)
+}
+
 func TestRemoveExecuteRequiresAliasAndReturnsRemovedStatus(t *testing.T) {
 	store := &removeTestStore{}
 	_, err := profileremove.NewRemove(store).Execute(context.Background(), profileremove.RemoveInput{})

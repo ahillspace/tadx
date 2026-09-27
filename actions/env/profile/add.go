@@ -11,6 +11,7 @@ import (
 
 type Adder interface {
 	Add(context.Context, AddProfile) (AddProfile, error)
+	PreviewAdd(context.Context, AddProfile) (AddProfile, error)
 }
 
 type AddAction struct{ adder Adder }
@@ -24,8 +25,8 @@ func (a *AddAction) Execute(ctx context.Context, input AddInput) (AddOutput, err
 	if strings.TrimSpace(input.Alias) == "" {
 		return AddOutput{}, addUsageError("environment alias is required")
 	}
-	if err := validateServerURL(input.ServerURL); err != nil {
-		return AddOutput{}, addUsageError(err.Error())
+	if !validServerURL(input.ServerURL) {
+		return AddOutput{}, addUsageError("server URL must be an absolute HTTPS URL without credentials, query, or fragment")
 	}
 	if input.PATNameEnv != "" && strings.EqualFold(input.PATNameEnv, input.PATSecretEnv) {
 		return AddOutput{}, addUsageError("PAT name and secret must use different environment variables")
@@ -35,13 +36,7 @@ func (a *AddAction) Execute(ctx context.Context, input AddInput) (AddOutput, err
 	}
 	add := a.adder.Add
 	if input.Preview {
-		previewer, ok := a.adder.(interface {
-			PreviewAdd(context.Context, AddProfile) (AddProfile, error)
-		})
-		if !ok {
-			return AddOutput{}, &errs.Error{ID: "env.profile.add.preview", Kind: errs.KindRuntime, Operation: "env.profile.add", Summary: "Profile preview is not configured.", Retryable: errs.Bool(false), CorrectiveAction: "Configure a read-only profile preview store."}
-		}
-		add = previewer.PreviewAdd
+		add = a.adder.PreviewAdd
 	}
 	profile, err := add(ctx, AddProfile{Alias: input.Alias, ServerURL: input.ServerURL, SiteContentURL: input.SiteContentURL, APIVersion: input.APIVersion, AuthType: "pat", PATNameEnv: input.PATNameEnv, PATSecretEnv: input.PATSecretEnv, DefaultWorkspace: input.DefaultWorkspace, CacheMaxConcurrency: input.CacheMaxConcurrency})
 	if err != nil {
@@ -62,17 +57,11 @@ func (a *AddAction) Execute(ctx context.Context, input AddInput) (AddOutput, err
 	return AddOutput{Warnings: warnings, Status: "added", Profile: profile, Help: []string{commandhint.Environment(profile.Alias, "auth", "status")}}, nil
 }
 
-func validateServerURL(value string) error {
+func validServerURL(value string) bool {
 	parsed, err := url.Parse(value)
-	if err != nil || !strings.EqualFold(parsed.Scheme, "https") || parsed.Host == "" || parsed.User != nil || parsed.RawQuery != "" || parsed.Fragment != "" {
-		return &validationError{"server URL must be an absolute HTTPS URL without credentials, query, or fragment"}
-	}
-	return nil
+	return err == nil && strings.EqualFold(parsed.Scheme, "https") && parsed.Host != "" && parsed.User == nil && parsed.RawQuery == "" && parsed.Fragment == ""
 }
 
-type validationError struct{ message string }
-
-func (e *validationError) Error() string { return e.message }
 func addUsageError(summary string) error {
 	return &errs.Error{ID: "env.profile.add.usage", Kind: errs.KindUsage, Operation: "env.profile.add", Summary: summary}
 }
@@ -121,16 +110,8 @@ type AddCompactResult struct {
 	Details  string            `json:"details"`
 	Help     []string          `json:"help"`
 }
-type AddFullResult struct {
-	Warnings []string   `json:"warnings,omitempty"`
-	Status   string     `json:"status"`
-	Profile  AddProfile `json:"environment"`
-	Help     []string   `json:"help"`
-}
 
 func (o AddOutput) CompactOutput() any {
 	return AddCompactResult{Warnings: o.Warnings, Status: o.Status, Profile: AddCompactProfile{Alias: o.Profile.Alias, ServerURL: o.Profile.ServerURL, SiteContentURL: o.Profile.SiteContentURL}, Details: "--full", Help: o.Help}
 }
-func (o AddOutput) FullOutput() any {
-	return AddFullResult{Warnings: o.Warnings, Status: o.Status, Profile: o.Profile, Help: o.Help}
-}
+func (o AddOutput) FullOutput() any { return o }

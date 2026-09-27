@@ -40,16 +40,9 @@ type GetOutput struct {
 	Help    []string `json:"help"`
 }
 
-type GetCompactProfile = Profile
-
 type GetCompactResult struct {
-	Profile GetCompactProfile `json:"environment"`
-	Details string            `json:"details"`
-	Help    []string          `json:"help"`
-}
-
-type GetFullResult struct {
 	Profile Profile  `json:"environment"`
+	Details string   `json:"details"`
 	Help    []string `json:"help"`
 }
 
@@ -57,4 +50,4 @@ func (o GetOutput) CompactOutput() any {
 	return GetCompactResult{Profile: o.Profile, Details: "--full", Help: o.Help}
 }
 
-func (o GetOutput) FullOutput() any { return GetFullResult{Profile: o.Profile, Help: o.Help} }
+func (o GetOutput) FullOutput() any { return o }

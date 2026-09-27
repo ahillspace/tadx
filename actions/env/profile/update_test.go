@@ -25,6 +25,10 @@ func (u *updateTestStore) Update(_ context.Context, alias string, patch profileu
 	return u.result, u.err
 }
 
+func (u *updateTestStore) PreviewUpdate(ctx context.Context, alias string, patch profileupdate.Patch) (profileupdate.UpdateResult, error) {
+	return u.Update(ctx, alias, patch)
+}
+
 type retryableStoreError struct{}
 
 func TestUpdateCacheConcurrencyValidatedAndPassedToStore(t *testing.T) {
@@ -79,8 +83,8 @@ func TestUpdateExecutePreservesExactAliasAndStructuredUpdaterAdvice(t *testing.T
 	}
 }
 
-func TestUpdateExecutePreservesDeterministicChangedFields(t *testing.T) {
-	result := profileupdate.UpdateResult{Profile: updateFixture(), ChangedFields: []string{"api_version", "site_content_url", "api_version"}}
+func TestUpdateExecutePreservesStoreChangedFields(t *testing.T) {
+	result := profileupdate.UpdateResult{Profile: updateFixture(), ChangedFields: []string{"site_content_url", "api_version"}}
 	store := &updateTestStore{result: result}
 	patch := profileupdate.Patch{SiteContentURL: profileupdate.StringField{Set: true, Value: "marketing"}, APIVersion: profileupdate.StringField{Set: true, Value: "3.29"}}
 	got, err := profileupdate.NewUpdate(store).Execute(context.Background(), profileupdate.UpdateInput{Alias: "production", Patch: patch})

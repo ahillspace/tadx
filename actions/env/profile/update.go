@@ -2,8 +2,6 @@ package profile
 
 import (
 	"context"
-	"net/url"
-	"slices"
 	"strings"
 
 	"github.com/ahillspace/tadx/internal/commandhint"
@@ -12,6 +10,7 @@ import (
 
 type Updater interface {
 	Update(context.Context, string, Patch) (UpdateResult, error)
+	PreviewUpdate(context.Context, string, Patch) (UpdateResult, error)
 }
 
 type UpdateAction struct{ updater Updater }
@@ -39,13 +38,7 @@ func (a *UpdateAction) Execute(ctx context.Context, input UpdateInput) (UpdateOu
 	}
 	update := a.updater.Update
 	if input.Preview {
-		previewer, ok := a.updater.(interface {
-			PreviewUpdate(context.Context, string, Patch) (UpdateResult, error)
-		})
-		if !ok {
-			return UpdateOutput{}, &errs.Error{ID: "env.profile.update.preview", Kind: errs.KindRuntime, Operation: "env.profile.update", Summary: "Profile preview is not configured.", Retryable: errs.Bool(false), CorrectiveAction: "Configure a read-only profile preview store."}
-		}
-		update = previewer.PreviewUpdate
+		update = a.updater.PreviewUpdate
 	}
 	result, err := update(ctx, input.Alias, input.Patch)
 	if err != nil {
@@ -56,7 +49,7 @@ func (a *UpdateAction) Execute(ctx context.Context, input UpdateInput) (UpdateOu
 		}
 		return UpdateOutput{}, &errs.Error{ID: id, Kind: errs.KindOperation, Operation: "env.profile.update", Environment: input.Alias, Summary: summary, Cause: err, Retryable: retryable, CorrectiveAction: advice}
 	}
-	changedFields := normalizeChangedFields(result.ChangedFields)
+	changedFields := result.ChangedFields
 	if input.Preview {
 		return UpdateOutput{Status: "preview", Profile: result.Profile, ChangedFields: changedFields, Help: []string{"Execution applies these changed fields after rechecking the configuration. The configuration has not been saved."}}, nil
 	}
@@ -65,33 +58,6 @@ func (a *UpdateAction) Execute(ctx context.Context, input UpdateInput) (UpdateOu
 		status = "updated"
 	}
 	return UpdateOutput{Status: status, Profile: result.Profile, ChangedFields: changedFields, Help: []string{commandhint.Command("env", "get", result.Profile.Alias)}}, nil
-}
-
-func validServerURL(value string) bool {
-	parsed, err := url.Parse(value)
-	return err == nil && strings.EqualFold(parsed.Scheme, "https") && parsed.Host != "" && parsed.User == nil && parsed.RawQuery == "" && parsed.Fragment == ""
-}
-
-func normalizeChangedFields(fields []string) []string {
-	seen := make(map[string]bool, len(fields))
-	for _, field := range fields {
-		if field != "" {
-			seen[field] = true
-		}
-	}
-	result := make([]string, 0, len(seen))
-	for _, field := range []string{"server_url", "site_content_url", "api_version", "pat_name_env", "pat_secret_env", "default_workspace"} {
-		if seen[field] {
-			result = append(result, field)
-			delete(seen, field)
-		}
-	}
-	unknown := make([]string, 0, len(seen))
-	for field := range seen {
-		unknown = append(unknown, field)
-	}
-	slices.Sort(unknown)
-	return append(result, unknown...)
 }
 
 func updateUsageError(summary string) error {
@@ -160,12 +126,6 @@ type UpdateCompactResult struct {
 	Details       string         `json:"details"`
 	Help          []string       `json:"help"`
 }
-type UpdateFullResult struct {
-	Status        string        `json:"status"`
-	Profile       UpdateProfile `json:"environment"`
-	ChangedFields []string      `json:"changed_fields,omitempty"`
-	Help          []string      `json:"help"`
-}
 
 func (o UpdateOutput) CompactOutput() any {
 	profile := map[string]any{"alias": o.Profile.Alias, "server_url": o.Profile.ServerURL, "site_content_url": o.Profile.SiteContentURL}
@@ -183,6 +143,4 @@ func (o UpdateOutput) CompactOutput() any {
 	}
 	return UpdateCompactResult{Status: o.Status, Environment: profile, ChangedFields: o.ChangedFields, Details: "--full", Help: o.Help}
 }
-func (o UpdateOutput) FullOutput() any {
-	return UpdateFullResult{Status: o.Status, Profile: o.Profile, ChangedFields: o.ChangedFields, Help: o.Help}
-}
+func (o UpdateOutput) FullOutput() any { return o }

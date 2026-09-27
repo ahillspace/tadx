@@ -10,6 +10,7 @@ import (
 
 type DefaultSetter interface {
 	SetDefault(context.Context, string) (bool, error)
+	PreviewSetDefault(context.Context, string) (bool, error)
 }
 type SetDefaultAction struct{ setter DefaultSetter }
 
@@ -24,13 +25,7 @@ func (a *SetDefaultAction) Execute(ctx context.Context, input SetDefaultInput) (
 	}
 	setDefault := a.setter.SetDefault
 	if input.Preview {
-		previewer, ok := a.setter.(interface {
-			PreviewSetDefault(context.Context, string) (bool, error)
-		})
-		if !ok {
-			return SetDefaultOutput{}, &errs.Error{ID: "env.profile.set-default.preview", Kind: errs.KindRuntime, Operation: "env.profile.set-default", Summary: "Profile preview is not configured.", Retryable: errs.Bool(false), CorrectiveAction: "Configure a read-only profile preview store."}
-		}
-		setDefault = previewer.PreviewSetDefault
+		setDefault = a.setter.PreviewSetDefault
 	}
 	changed, err := setDefault(ctx, input.Alias)
 	if err != nil {

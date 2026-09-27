@@ -14,48 +14,14 @@ import (
 	tableaucache "github.com/ahillspace/tadx/internal/tableau/cache"
 )
 
-type environmentCommands struct {
-	list       *profile.ListAction
-	get        *profile.GetAction
-	add        *profile.AddAction
-	update     *profile.UpdateAction
-	remove     *profile.RemoveAction
-	setDefault *profile.SetDefaultAction
-}
-
-func newEnvironmentCommands(runtime *runtimeDependencies) *environmentCommands {
+func newEnvironmentDependencies(runtime *runtimeDependencies) *envcli.Dependencies {
 	store := configProfileStore{path: &runtime.configPath}
-	return &environmentCommands{
-		list: profile.NewList(store), get: profile.NewGet(store), add: profile.NewAdd(store),
-		update: profile.NewUpdate(store), remove: profile.NewRemove(store), setDefault: profile.NewSetDefault(store),
-	}
-}
-
-func (c *environmentCommands) dependencies() *envcli.Dependencies {
 	return &envcli.Dependencies{
-		Lister: c, Getter: c, Adder: c, Updater: c, Remover: c, DefaultSetter: c,
+		Lister: profile.NewList(store).Execute, Getter: profile.NewGet(store).Execute, Adder: profile.NewAdd(store).Execute,
+		Updater: profile.NewUpdate(store).Execute, Remover: profile.NewRemove(store).Execute, DefaultSetter: profile.NewSetDefault(store).Execute,
 		Uses:   registryUses("env.profile.list", "env.profile.get", "env.profile.add", "env.profile.update", "env.profile.remove", "env.profile.set-default"),
 		Shorts: registryShorts("env.profile.list", "env.profile.get", "env.profile.add", "env.profile.update", "env.profile.remove", "env.profile.set-default"),
 	}
-}
-
-func (c *environmentCommands) List(ctx context.Context, input profile.ListInput) (profile.ListOutput, error) {
-	return c.list.Execute(ctx, input)
-}
-func (c *environmentCommands) Get(ctx context.Context, input profile.GetInput) (profile.GetOutput, error) {
-	return c.get.Execute(ctx, input)
-}
-func (c *environmentCommands) Add(ctx context.Context, input profile.AddInput) (profile.AddOutput, error) {
-	return c.add.Execute(ctx, input)
-}
-func (c *environmentCommands) Update(ctx context.Context, input profile.UpdateInput) (profile.UpdateOutput, error) {
-	return c.update.Execute(ctx, input)
-}
-func (c *environmentCommands) Remove(ctx context.Context, input profile.RemoveInput) (profile.RemoveOutput, error) {
-	return c.remove.Execute(ctx, input)
-}
-func (c *environmentCommands) SetDefault(ctx context.Context, input profile.SetDefaultInput) (profile.SetDefaultOutput, error) {
-	return c.setDefault.Execute(ctx, input)
 }
 
 type configProfileStore struct {

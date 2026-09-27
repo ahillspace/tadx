@@ -120,7 +120,7 @@ func TestListOutputProjectionsAndGoldens(t *testing.T) {
 	listAssertGolden(t, value, false, "testdata/list/output.toon")
 	listAssertGolden(t, value, true, "testdata/list/output_full.toon")
 	compact := value.CompactOutput().(profilelist.ListCompactResult)
-	full := value.FullOutput().(profilelist.ListFullResult)
+	full := value.FullOutput().(profilelist.ListOutput)
 	if compact.Details != "--full" || full.Profiles[0].PATSecretEnv != "PROD_PAT_SECRET" || compact.Profiles[0].Alias != "production" {
 		t.Fatalf("compact = %#v, full = %#v", compact, full)
 	}

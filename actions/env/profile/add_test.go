@@ -23,6 +23,10 @@ func (a *addTestStore) Add(_ context.Context, profile profileadd.AddProfile) (pr
 	return a.result, a.err
 }
 
+func (a *addTestStore) PreviewAdd(ctx context.Context, profile profileadd.AddProfile) (profileadd.AddProfile, error) {
+	return a.Add(ctx, profile)
+}
+
 func TestAddExecuteValidatesRequiredInputBeforeWriting(t *testing.T) {
 	store := &addTestStore{}
 	for _, input := range []profileadd.AddInput{{}, {Alias: "production"}, {Alias: "production", ServerURL: "http://example.test"}} {

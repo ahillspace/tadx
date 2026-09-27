@@ -9,6 +9,7 @@ import (
 
 type Remover interface {
 	Remove(context.Context, string) error
+	PreviewRemove(context.Context, string) error
 }
 type RemoveAction struct{ remover Remover }
 
@@ -23,13 +24,7 @@ func (a *RemoveAction) Execute(ctx context.Context, input RemoveInput) (RemoveOu
 	}
 	remove := a.remover.Remove
 	if input.Preview {
-		previewer, ok := a.remover.(interface {
-			PreviewRemove(context.Context, string) error
-		})
-		if !ok {
-			return RemoveOutput{}, &errs.Error{ID: "env.profile.remove.preview", Kind: errs.KindRuntime, Operation: "env.profile.remove", Summary: "Profile preview is not configured.", Retryable: errs.Bool(false), CorrectiveAction: "Configure a read-only profile preview store."}
-		}
-		remove = previewer.PreviewRemove
+		remove = a.remover.PreviewRemove
 	}
 	if err := remove(ctx, input.Alias); err != nil {
 		retryable, advice := errs.CompleteRetryAdvice(err, "Review the exact environment alias and default-environment guard, then retry.")

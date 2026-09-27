@@ -41,6 +41,10 @@ func (s *defaultTestStore) SetDefault(_ context.Context, alias string) (bool, er
 	return s.changed, s.err
 }
 
+func (s *defaultTestStore) PreviewSetDefault(ctx context.Context, alias string) (bool, error) {
+	return s.SetDefault(ctx, alias)
+}
+
 func TestSetDefaultExecuteRequiresAliasAndReportsChangeState(t *testing.T) {
 	store := &defaultTestStore{changed: true}
 	_, err := setdefault.NewSetDefault(store).Execute(context.Background(), setdefault.SetDefaultInput{})
