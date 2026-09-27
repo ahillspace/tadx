@@ -4,26 +4,66 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"os"
 	"testing"
 
 	"github.com/ahillspace/tadx/actions/agent/install"
 	"github.com/ahillspace/tadx/internal/agenttarget"
+	"github.com/ahillspace/tadx/internal/errs"
 	"github.com/ahillspace/tadx/internal/output"
+	"github.com/ahillspace/tadx/internal/value"
 )
 
 type installer struct {
-	calls int
-	input install.Input
+	calls  int
+	input  install.Input
+	result value.AgentGuidanceResult
+	err    error
 }
 
-func (i *installer) Install(_ context.Context, input install.Input) (install.Result, error) {
+func (i *installer) Install(_ context.Context, target string, preview, force bool) (value.AgentGuidanceResult, error) {
 	i.calls++
-	i.input = input
-	return install.Result{Status: "preview", Skills: []install.Skill{
+	i.input = install.Input{Target: target, Preview: preview, Force: force}
+	if i.err != nil {
+		return i.result, i.err
+	}
+	return value.AgentGuidanceResult{Status: "preview", Skills: []value.AgentGuidanceSkill{
 		{Name: "tadx", Status: "install", Path: ".codex/skills/tadx", SHA256: "bundle-tadx", Files: 4},
 		{Name: "tadx-pulse", Status: "install", Path: ".codex/skills/tadx-pulse", SHA256: "bundle-pulse", Files: 2},
 	}}, nil
+}
+
+func TestInstallPartialFailureKeepsCompletedTargetsAndFieldTags(t *testing.T) {
+	cause := errors.New("second target locked")
+	dependency := &installer{result: value.AgentGuidanceResult{
+		Targets: []string{"claude", "codex"}, Status: "partial",
+		Skills: []value.AgentGuidanceSkill{
+			{Target: "claude", Name: "tadx", Status: "installed", Path: ".claude/skills/tadx", SHA256: "digest", Files: 2},
+			{Target: "codex", Name: "tadx", Status: "failed"},
+		},
+	}, err: cause}
+	result, err := install.New(dependency).Execute(t.Context(), install.Input{Target: "auto"})
+	var structured *errs.Error
+	if !errors.As(err, &structured) || structured.ID != "agent.install.failed" || !errors.Is(err, cause) {
+		t.Fatalf("error=%v", err)
+	}
+	full, err := json.Marshal(result.FullOutput())
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantFull := `{"targets":["claude","codex"],"status":"partial","target":"auto","skills":[{"target":"claude","name":"tadx","status":"installed","path":".claude/skills/tadx","sha256":"digest","files":2},{"target":"codex","name":"tadx","status":"failed","path":"","sha256":"","files":0}],"help":["tadx capability list","tadx capability get agent.install --full"]}`
+	if string(full) != wantFull {
+		t.Fatalf("full=%s", full)
+	}
+	compact, err := json.Marshal(result.CompactOutput())
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantCompact := `{"targets":["claude","codex"],"status":"partial","target":"auto","skills":[{"target":"claude","name":"tadx","status":"installed","path":".claude/skills/tadx"},{"target":"codex","name":"tadx","status":"failed","path":""}],"details":"--full","help":["tadx capability list","tadx capability get agent.install --full"]}`
+	if string(compact) != wantCompact {
+		t.Fatalf("compact=%s", compact)
+	}
 }
 
 func TestExecuteValidatesTargetBeforeSideEffects(t *testing.T) {

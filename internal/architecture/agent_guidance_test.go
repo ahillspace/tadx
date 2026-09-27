@@ -15,6 +15,7 @@ func TestAgentGuidanceImportBoundaries(t *testing.T) {
 		{"actions/agent/uninstall/action.go", "internal/agenttarget", true},
 		{"internal/cli/agent/command.go", "internal/agenttarget", true},
 		{"internal/agent/install.go", "internal/agenttarget", true},
+		{"internal/agent/install.go", "internal/value", true},
 		{"internal/guidancenotice/notice.go", "internal/agenttarget", true},
 		{"cmd/tadx/main.go", "internal/guidancenotice", true},
 		{"actions/workbook/pull.go", "internal/agenttarget", false},

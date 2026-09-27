@@ -251,8 +251,11 @@ func localImportAllowed(file, imported string) bool {
 		if hasPathPrefix(file, "internal/capability") {
 			return imported == "internal/batchspec"
 		}
-		// Installer and startup discovery share directory facts, never auth or actions.
-		if hasPathPrefix(file, "internal/agent") || hasPathPrefix(file, "internal/guidancenotice") {
+		// The installer shares bounded observations with its actions and target roots with startup discovery.
+		if hasPathPrefix(file, "internal/agent") {
+			return matchesExact(imported, "internal/agenttarget", "internal/value")
+		}
+		if hasPathPrefix(file, "internal/guidancenotice") {
 			return imported == "internal/agenttarget"
 		}
 		// The passive release notice reads only public version metadata.

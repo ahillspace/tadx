@@ -231,3 +231,9 @@ Preserve plan agreement checks where independently constructed action and collec
 Return useful normalized values from preflight instead of recomputing them at each handoff.
 Before removing an apparently redundant input field, check whether existing continuation fingerprints serialize it.
 Keep target binding and upstream cursor extraction explicit even when both inspect the same token.
+
+## Lessons from Agent Guidance workflows
+
+A shared observation can remove a composition adapter without sharing external output records.
+Keep distinct projections where operations expose different fields or preserve different partial-error receipts.
+Retain a small action object when replacing it would only introduce an equivalent callback wrapper for the CLI.

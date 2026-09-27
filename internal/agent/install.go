@@ -17,25 +17,17 @@ import (
 	"strings"
 
 	"github.com/ahillspace/tadx/internal/agenttarget"
+	"github.com/ahillspace/tadx/internal/value"
 )
 
 //go:embed skills
 var bundles embed.FS
 
 // Skill describes one package without exposing machine-specific paths.
-type Skill struct {
-	Target                             string
-	Name, Status, Path, SHA256, Backup string
-	Files                              int
-}
+type Skill = value.AgentGuidanceSkill
 
 // Result describes both packages and any recoverable backups.
-type Result struct {
-	Targets  []string
-	Status   string
-	Skills   []Skill
-	Warnings []string
-}
+type Result = value.AgentGuidanceResult
 
 // Installer resolves the user home directory at runtime.
 type Installer struct {
