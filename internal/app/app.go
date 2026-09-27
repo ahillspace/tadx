@@ -124,7 +124,6 @@ func Run(ctx context.Context, args []string, stdout io.Writer, options Options) 
 	remoteAdmin := newRemoteAdminCommands(runtime)
 	pulseActions := newPulseCommands(runtime)
 	doctorCommands := newDoctorCommands(runtime)
-	cacheGroup2 := newCacheGroup2Commands(runtime)
 	credentialStore := authCredentialStore{runtime: runtime}
 	root := cli.NewRoot(cli.Dependencies{
 		SessionOverview:       sessionoverview.New(sessionOverviewReader{runtime: runtime}),
@@ -161,8 +160,8 @@ func Run(ctx context.Context, args []string, stdout io.Writer, options Options) 
 		GetShort:            registryShort("capability.get"),
 		AuthChecker:         authcheck.New(runtime, runtime),
 		Searcher:            newSearchCommands(runtime),
-		CacheRefresher:      cacheGroup2.refresher(),
-		CacheStatuser:       cacheGroup2.statuser(),
+		CacheRefresher:      runtime,
+		CacheStatuser:       runtime,
 		WorkbookPuller:      &pullService{runtime: runtime},
 		WorkbookPublisher:   &publishService{runtime: runtime},
 		Content:             remoteContent.dependencies(),

@@ -12,12 +12,12 @@ import (
 
 // Refresher executes cache.refresh.
 type Refresher interface {
-	Execute(context.Context, cacherefresh.Input) (cacherefresh.Output, error)
+	RefreshCache(context.Context, cacherefresh.Input) (cacherefresh.Output, error)
 }
 
 // Statuser executes cache.status.
 type Statuser interface {
-	Execute(context.Context, cachestatus.Input) (cachestatus.Output, error)
+	ReadCacheStatus(context.Context, cachestatus.Input) (cachestatus.Output, error)
 }
 
 // Renderer writes one structured result.
@@ -64,7 +64,7 @@ func newRefreshCommand(deps Dependencies) *cobra.Command {
 			return cacherefresh.ValidateInput(input)
 		},
 		RunE: func(command *cobra.Command, _ []string) error {
-			result, err := deps.Refresher.Execute(command.Context(), input)
+			result, err := deps.Refresher.RefreshCache(command.Context(), input)
 			if err != nil {
 				return err
 			}
@@ -91,7 +91,7 @@ func newStatusCommand(deps Dependencies) *cobra.Command {
 	command := &cobra.Command{
 		Use: use, Short: short, Annotations: map[string]string{"tadx.capability": "cache.status"}, Args: noArgs("cache.status"),
 		RunE: func(command *cobra.Command, _ []string) error {
-			result, err := deps.Statuser.Execute(command.Context(), input)
+			result, err := deps.Statuser.ReadCacheStatus(command.Context(), input)
 			if err != nil {
 				return err
 			}

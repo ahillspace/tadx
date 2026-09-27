@@ -39,13 +39,7 @@ type cacheHydrator struct {
 }
 
 func (h cacheHydrator) Hydrate(ctx context.Context, input cacherefresh.HydrationRequest) (cacherefresh.HydrationResult, error) {
-	if h.store == nil || h.executorFor == nil || h.newRunner == nil {
-		return cacherefresh.HydrationResult{}, errors.New("cache hydrator is not configured")
-	}
-	requested, err := cacheScopes(input.RequestedScopes)
-	if err != nil {
-		return cacherefresh.HydrationResult{}, err
-	}
+	requested := cacheScopes(input.RequestedScopes)
 	plan, err := tableaucache.PlanScopes(requested)
 	if err != nil {
 		return cacherefresh.HydrationResult{}, err
@@ -118,16 +112,12 @@ func (h cacheHydrator) Hydrate(ctx context.Context, input cacherefresh.Hydration
 	}, nil
 }
 
-func cacheScopes(values []string) ([]tableaucache.Scope, error) {
+func cacheScopes(values []string) []tableaucache.Scope {
 	result := make([]tableaucache.Scope, len(values))
 	for index, value := range values {
-		scope := tableaucache.Scope(value)
-		if _, ok := tableaucache.ColumnsForScope(scope); !ok {
-			return nil, fmt.Errorf("cache scope %q is unsupported", value)
-		}
-		result[index] = scope
+		result[index] = tableaucache.Scope(value)
 	}
-	return result, nil
+	return result
 }
 
 func scopeStrings(values []tableaucache.Scope) []string {
@@ -155,9 +145,6 @@ func cacheScopeCounts(scopes []tableaucache.Scope, counts map[tableaucache.Scope
 type cacheBatchWriter struct{ writer *corecache.GenerationWriter }
 
 func (w cacheBatchWriter) WriteBatch(ctx context.Context, batch tableaucache.Batch) error {
-	if w.writer == nil {
-		return errors.New("cache generation writer is not configured")
-	}
 	columns := make([]string, len(batch.Columns))
 	for index, column := range batch.Columns {
 		columns[index] = column.Name
@@ -194,7 +181,7 @@ func (e cacheTableauExecutor) Do(ctx context.Context, input tableaucache.Request
 type cacheStoreStatuser struct{ store *corecache.Store }
 
 func (s cacheStoreStatuser) Status(ctx context.Context, input cachestatus.Input) (cachestatus.Result, error) {
-	result, err := s.store.Status(ctx, corecache.Selection{Environment: input.Environment, Site: input.Site, SiteSelected: input.SiteResolved})
+	result, err := s.store.Status(ctx, corecache.Selection{Environment: input.Environment, Site: input.Site, SiteSelected: true})
 	if err != nil {
 		return cachestatus.Result{}, err
 	}
@@ -212,18 +199,8 @@ func (s cacheStoreStatuser) Status(ctx context.Context, input cachestatus.Input)
 	return cachestatus.Result{Retained: retained, Coverage: coverage, ID: result.GenerationID, Environment: result.Environment, Site: result.Site, GeneratedAt: result.GeneratedAt.UTC().Format(time.RFC3339Nano), Age: result.Age.String(), Complete: result.Complete, Stale: result.Stale, Source: result.Source, Path: result.Path, Records: result.RecordCount, Warnings: append([]string(nil), result.Warnings...)}, nil
 }
 
-type cacheGroup2Commands struct{ runtime *runtimeDependencies }
-
-func newCacheGroup2Commands(runtime *runtimeDependencies) *cacheGroup2Commands {
-	return &cacheGroup2Commands{runtime: runtime}
-}
-
-func (c *cacheGroup2Commands) store(environment config.Environment) *corecache.Store {
-	return c.runtime.cacheStore(environment)
-}
-
-func (c *cacheGroup2Commands) resolve(inputEnvironment, inputSite, operation string) (config.Environment, error) {
-	_, environment, err := c.runtime.environment(inputEnvironment, false)
+func (r *runtimeDependencies) resolveCacheEnvironment(inputEnvironment, inputSite, operation string) (config.Environment, error) {
+	_, environment, err := r.environment(inputEnvironment, false)
 	if err != nil {
 		return environment, capabilitySetupError(operation+".setup", operation, inputEnvironment, inputSite, "Cache operation setup failed.", "Review the selected environment and cache configuration.", err)
 	}
@@ -233,61 +210,48 @@ func (c *cacheGroup2Commands) resolve(inputEnvironment, inputSite, operation str
 	return environment, nil
 }
 
-func (c *cacheGroup2Commands) refresher() *cacheRefreshService {
-	return &cacheRefreshService{commands: c}
-}
-func (c *cacheGroup2Commands) statuser() *cacheStatusService {
-	return &cacheStatusService{commands: c}
-}
-
-type cacheRefreshService struct{ commands *cacheGroup2Commands }
-
-func (s *cacheRefreshService) Execute(ctx context.Context, input cacherefresh.Input) (cacherefresh.Output, error) {
-	if err := cacherefresh.ValidateInput(input); err != nil {
-		return cacherefresh.Output{}, err
-	}
+func (r *runtimeDependencies) RefreshCache(ctx context.Context, input cacherefresh.Input) (cacherefresh.Output, error) {
 	if !input.Preview {
-		requested, err := cacheScopes(input.Scopes)
+		plan, err := tableaucache.PlanScopes(cacheScopes(input.Scopes))
 		if err != nil {
 			return cacherefresh.Output{}, err
 		}
-		plan, err := tableaucache.PlanScopes(requested)
-		if err != nil {
-			return cacherefresh.Output{}, err
-		}
-		if err := checkCacheScopeCapabilities(s.commands.runtime.checkManagedCapability, plan.Collected); err != nil {
+		if err := checkCacheScopeCapabilities(r.checkManagedCapability, plan.Collected); err != nil {
 			return cacherefresh.Output{}, err
 		}
 	}
-	environment, err := s.commands.resolve(input.Environment, input.Site, "cache.refresh")
+	environment, err := r.resolveCacheEnvironment(input.Environment, input.Site, "cache.refresh")
 	if err != nil {
 		return cacherefresh.Output{}, err
 	}
-	input.Environment, input.Site, input.SiteResolved = environment.Alias, environment.SiteContentURL, true
+	input.Environment, input.Site = environment.Alias, environment.SiteContentURL
 	if input.Preview {
-		return cacherefresh.New(nil).Execute(ctx, input)
+		return cacherefresh.Refresh(ctx, nil, input)
 	}
 	hydrator := cacheHydrator{
-		checkCapability: s.commands.runtime.checkManagedCapability,
-		store:           s.commands.store(environment), now: s.commands.runtime.now,
+		store: r.cacheStore(environment), now: r.now,
 		executorFor: func(ctx context.Context, alias, site string) (tableaucache.Executor, error) {
-			connection, err := s.commands.runtime.tableauConnection(ctx, alias, false)
+			connection, err := r.tableauConnection(ctx, alias, false)
 			if err != nil {
 				return nil, remoteSetupError("cache.refresh", alias, site, connection.environment, err)
 			}
 			if connection.environment.SiteContentURL != site {
 				return nil, errors.New("cache refresh authenticated to a different site")
 			}
-			return cacheTableauExecutor{checkCapability: s.commands.runtime.checkManagedCapability, transport: connection.transport, session: connection.session, serverURL: connection.environment.URL, siteLUID: connection.session.SiteLUID()}, nil
+			return cacheTableauExecutor{transport: connection.transport, session: connection.session, serverURL: connection.environment.URL, siteLUID: connection.session.SiteLUID()}, nil
 		},
 		newRunner: func(executor tableaucache.Executor) (cacheRunner, error) {
 			return tableaucache.NewEngine(executor, tableaucache.Config{MaxConcurrency: environment.CacheMaxConcurrency})
 		},
 	}
-	return cacherefresh.New(hydrator).Execute(ctx, input)
+	if len(input.Scopes) == 0 {
+		// Default action scopes include permissions; the service preflight's
+		// collector defaults do not. Preserve this check after target resolution
+		// and record the permission prerequisite before any collection request.
+		hydrator.checkCapability = r.checkManagedCapability
+	}
+	return cacherefresh.Refresh(ctx, hydrator, input)
 }
-
-type cacheStatusService struct{ commands *cacheGroup2Commands }
 
 func checkCacheScopeCapabilities(check func(string) error, scopes []tableaucache.Scope) error {
 	if check == nil {
@@ -312,11 +276,11 @@ func checkCacheScopeCapabilities(check func(string) error, scopes []tableaucache
 	return nil
 }
 
-func (s *cacheStatusService) Execute(ctx context.Context, input cachestatus.Input) (cachestatus.Output, error) {
-	environment, err := s.commands.resolve(input.Environment, input.Site, "cache.status")
+func (r *runtimeDependencies) ReadCacheStatus(ctx context.Context, input cachestatus.Input) (cachestatus.Output, error) {
+	environment, err := r.resolveCacheEnvironment(input.Environment, input.Site, "cache.status")
 	if err != nil {
 		return cachestatus.Output{}, err
 	}
-	input.Environment, input.Site, input.SiteResolved = environment.Alias, environment.SiteContentURL, true
-	return cachestatus.New(cacheStoreStatuser{store: s.commands.store(environment)}).Execute(ctx, input)
+	input.Environment, input.Site = environment.Alias, environment.SiteContentURL
+	return cachestatus.Read(ctx, cacheStoreStatuser{store: r.cacheStore(environment)}, input)
 }

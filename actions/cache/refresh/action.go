@@ -4,16 +4,161 @@ package refresh
 import (
 	"context"
 	"errors"
-	"github.com/ahillspace/tadx/internal/commandhint"
 	"path/filepath"
 	"slices"
 	"strings"
+	"time"
 	"unicode/utf8"
 
+	"github.com/ahillspace/tadx/internal/commandhint"
 	"github.com/ahillspace/tadx/internal/errs"
 	"github.com/ahillspace/tadx/internal/output"
 	"github.com/ahillspace/tadx/internal/value"
 )
+
+// Input selects one resolved site and the cache scopes to hydrate.
+type Input struct {
+	Environment string
+	Site        string
+	Scopes      []string
+	Preview     bool
+}
+
+// HydrationRequest is the normalized action-owned request passed to storage-backed hydration.
+type HydrationRequest struct {
+	Environment     string
+	Site            string
+	RequestedScopes []string
+	ImplicitScopes  []string
+}
+
+// ScopeCount is one bounded per-scope hydration count.
+type ScopeCount struct {
+	Scope   string `json:"scope"`
+	Records int    `json:"records"`
+}
+
+// Diagnostics contains bounded operational hydration measurements.
+type Diagnostics struct {
+	Requests       int    `json:"requests"`
+	FailedRequests int    `json:"failed_requests"`
+	Duration       string `json:"duration,omitempty"`
+}
+
+// HydrationResult is a row-free receipt for one internally persisted generation.
+type HydrationResult struct {
+	GenerationID        string
+	GeneratedAt         time.Time
+	Complete            bool
+	Source              string
+	Path                string
+	RecordCount         int
+	HydratedRecordCount int
+	RequestedScopes     []string
+	ImplicitScopes      []string
+	ScopeCounts         []ScopeCount
+	Diagnostics         Diagnostics
+	Warnings            []string
+	DeniedPermissions   int
+}
+
+// GenerationOutput is the bounded refresh generation projection.
+type GenerationOutput struct {
+	Coverage        []value.CacheCoverage `json:"coverage,omitempty"`
+	Complete        bool                  `json:"complete"`
+	ID              string                `json:"id"`
+	Environment     string                `json:"environment"`
+	Site            string                `json:"site"`
+	GeneratedAt     string                `json:"generated_at"`
+	Records         int                   `json:"records"`
+	HydratedRecords int                   `json:"hydrated_records,omitzero"`
+	Source          string                `json:"source,omitempty"`
+	Scopes          []string              `json:"scopes,omitempty"`
+	ImplicitScopes  []string              `json:"implicit_scopes,omitempty"`
+	ScopeCounts     []ScopeCount          `json:"scope_counts,omitempty"`
+}
+
+// Output is the stable cache.refresh document.
+type Output struct {
+	Plan        *Plan
+	Status      string
+	Generation  GenerationOutput
+	Path        string
+	Warnings    []string
+	Diagnostics Diagnostics
+	Help        []string
+}
+
+// Plan identifies the inventory generation request without hydrating or publishing it.
+type Plan struct {
+	Environment     string   `json:"environment"`
+	Site            string   `json:"site"`
+	RequestedScopes []string `json:"requested_scopes"`
+	ImplicitScopes  []string `json:"implicit_scopes"`
+}
+
+type PreviewResult struct {
+	Status string   `json:"status"`
+	Plan   Plan     `json:"plan"`
+	Help   []string `json:"help"`
+}
+
+// CompactGeneration contains refresh decision fields.
+type CompactGeneration struct {
+	Coverage    []value.CacheCoverage `json:"coverage,omitempty"`
+	Complete    bool                  `json:"complete"`
+	ID          string                `json:"id"`
+	Environment string                `json:"environment"`
+	Site        string                `json:"site"`
+	GeneratedAt string                `json:"generated_at"`
+	Records     int                   `json:"records"`
+}
+
+// CompactResult is the default bounded refresh projection.
+type CompactResult struct {
+	Status     string            `json:"status"`
+	Generation CompactGeneration `json:"generation"`
+	Path       string            `json:"path"`
+	Warnings   []string          `json:"warnings,omitempty"`
+	Details    string            `json:"details"`
+	Help       []string          `json:"help"`
+}
+
+// FullResult is the expanded bounded refresh projection.
+type FullResult struct {
+	Status      string           `json:"status"`
+	Generation  GenerationOutput `json:"generation"`
+	Path        string           `json:"path"`
+	Warnings    []string         `json:"warnings,omitempty"`
+	Diagnostics Diagnostics      `json:"diagnostics"`
+	Help        []string         `json:"help"`
+}
+
+// CompactOutput returns a row-free operational receipt.
+func (o Output) CompactOutput() any {
+	if o.Plan != nil {
+		return PreviewResult{Status: o.Status, Plan: *o.Plan, Help: o.Help}
+	}
+	g := o.Generation
+	return CompactResult{Status: o.Status, Generation: CompactGeneration{Coverage: g.Coverage, Complete: g.Complete, ID: g.ID, Environment: g.Environment, Site: g.Site, GeneratedAt: g.GeneratedAt, Records: g.Records}, Path: o.Path, Warnings: o.Warnings, Details: "--full", Help: o.Help}
+}
+
+// FullOutput returns bounded generation provenance and diagnostics.
+func (o Output) FullOutput() any {
+	if o.Plan != nil {
+		return PreviewResult{Status: o.Status, Plan: *o.Plan, Help: o.Help}
+	}
+	return FullResult{Status: o.Status, Generation: o.Generation, Path: o.Path, Warnings: o.Warnings, Diagnostics: o.Diagnostics, Help: o.Help}
+}
+
+// ValidateInput checks scopes without requiring resolved credentials or a site.
+func ValidateInput(input Input) error {
+	_, _, err := normalizeScopes(input.Scopes)
+	if err != nil {
+		return failure("cache.refresh.usage", errs.KindUsage, input, err.Error(), err)
+	}
+	return nil
+}
 
 const (
 	maxReceiptRunes = 512
@@ -26,23 +171,8 @@ type Hydrator interface {
 	Hydrate(context.Context, HydrationRequest) (HydrationResult, error)
 }
 
-// Action orchestrates cache.refresh.
-type Action struct{ hydrator Hydrator }
-
-// New creates cache.refresh.
-func New(hydrator Hydrator) *Action { return &Action{hydrator: hydrator} }
-
-// Execute validates one bounded hydration request and returns a row-free operational receipt.
-func (a *Action) Execute(ctx context.Context, input Input) (Output, error) {
-	if err := ValidateInput(input); err != nil {
-		return Output{}, err
-	}
-	if a == nil || (!input.Preview && a.hydrator == nil) {
-		return Output{}, failure("cache.refresh.unconfigured", errs.KindRuntime, input, "Cache refresh is not configured.", nil)
-	}
-	if strings.TrimSpace(input.Environment) == "" || !input.SiteResolved {
-		return Output{}, failure("cache.refresh.usage", errs.KindUsage, input, "Cache refresh requires a resolved environment and site.", nil)
-	}
+// Refresh plans a resolved cache target and returns a row-free hydration receipt.
+func Refresh(ctx context.Context, hydrator Hydrator, input Input) (Output, error) {
 	requested, implicit, err := normalizeScopes(input.Scopes)
 	if err != nil {
 		return Output{}, failure("cache.refresh.usage", errs.KindUsage, input, err.Error(), err)
@@ -56,7 +186,7 @@ func (a *Action) Execute(ctx context.Context, input Input) (Output, error) {
 	if input.Preview {
 		return Output{Status: "preview", Plan: &Plan{Environment: input.Environment, Site: input.Site, RequestedScopes: requested, ImplicitScopes: implicit}, Help: []string{"Run without --preview to hydrate and publish this local inventory generation. Preview validates configuration and scopes; provider access and inventory completeness are checked during refresh."}}, nil
 	}
-	result, err := a.hydrator.Hydrate(ctx, request)
+	result, err := hydrator.Hydrate(ctx, request)
 	if err != nil {
 		return Output{}, classify(err, input)
 	}
@@ -191,8 +321,10 @@ func validateRelativePath(value string) error {
 }
 
 func classify(err error, input Input) error {
-	var incompatible interface{ CacheSchemaIncompatible() bool }
-	if errors.As(err, &incompatible) && incompatible.CacheSchemaIncompatible() {
+	if incompatible, ok := errors.AsType[interface {
+		error
+		CacheSchemaIncompatible() bool
+	}](err); ok && incompatible.CacheSchemaIncompatible() {
 		return &errs.Error{ID: "cache.refresh.schema_incompatible", Kind: errs.KindOperation, Operation: "cache.refresh", Environment: input.Environment, Site: input.Site, Summary: "The selected cache schema is inconsistent or unsupported; no replacement was published.", Cause: err, Retryable: errs.Bool(false), CorrectiveAction: "Preserve this cache and repair its schema or use a compatible TADX build. Use explicit live reads in the meantime; do not repeat this refresh unchanged.", Phase: errs.PhasePersistence, Outcome: errs.OutcomeNotAttempted}
 	}
 	if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {

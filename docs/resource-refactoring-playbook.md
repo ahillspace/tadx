@@ -218,3 +218,10 @@ Preserve useful injected credential and configuration seams; removing an action 
 After removing a copy, trace rendered output, saved results, and persisted artifacts rather than requiring identical internal slice representation.
 Keep nil-versus-empty distinctions where those boundaries expose them, and test malformed upstream responses as well as successful graphs.
 Do not replace an unnecessary copy with normalization guards when every real consumer already owns the required projection.
+
+## Lessons from Cache workflows
+
+Treat recorded authorization prerequisites as an observable contract, including failed and partial operations.
+Removing a repeated permission check requires proving that the surviving check records the complete actual scope before requests begin.
+Do not merge different default scope policies or move a denial across environment resolution merely to share preparation.
+Preserve plan agreement checks where independently constructed action and collector requests meet.

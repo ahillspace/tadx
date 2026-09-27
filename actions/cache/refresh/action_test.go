@@ -57,7 +57,7 @@ func completeResult() refresh.HydrationResult {
 
 func TestActionDefaultsToFullHydration(t *testing.T) {
 	hydrator := &recordingHydrator{result: completeResult()}
-	if _, err := refresh.New(hydrator).Execute(context.Background(), refresh.Input{Environment: "production", Site: "marketing", SiteResolved: true}); err != nil {
+	if _, err := refresh.Refresh(t.Context(), hydrator, refresh.Input{Environment: "production", Site: "marketing"}); err != nil {
 		t.Fatal(err)
 	}
 	want := []string{"users", "groups", "projects", "workbooks", "datasources", "flows", "views", "permissions"}
@@ -66,24 +66,10 @@ func TestActionDefaultsToFullHydration(t *testing.T) {
 	}
 }
 
-func TestActionRequiresResolvedEnvironmentAndSiteBeforeHydration(t *testing.T) {
-	for _, input := range []refresh.Input{
-		{Site: "marketing", SiteResolved: true},
-		{Environment: "production", Site: "marketing", SiteResolved: false},
-	} {
-		hydrator := &recordingHydrator{result: completeResult()}
-		_, err := refresh.New(hydrator).Execute(context.Background(), input)
-		var structured *errs.Error
-		if !errors.As(err, &structured) || structured.ID != "cache.refresh.usage" || len(hydrator.requests) != 0 {
-			t.Fatalf("input = %#v, error = %#v, requests = %#v", input, err, hydrator.requests)
-		}
-	}
-}
-
 func TestActionNormalizesRequestedScopesAndDependencyClosure(t *testing.T) {
 	hydrator := &recordingHydrator{result: completeResult()}
-	_, err := refresh.New(hydrator).Execute(context.Background(), refresh.Input{
-		Environment: "production", Site: "marketing", SiteResolved: true,
+	_, err := refresh.Refresh(t.Context(), hydrator, refresh.Input{
+		Environment: "production", Site: "marketing",
 		Scopes: []string{"permissions", "views", "datasources"},
 	})
 	if err != nil {
@@ -109,7 +95,7 @@ func TestActionRejectsDuplicateAndUnknownScopesBeforeHydration(t *testing.T) {
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			hydrator := &recordingHydrator{result: completeResult()}
-			_, err := refresh.New(hydrator).Execute(context.Background(), refresh.Input{Environment: "production", Site: "marketing", SiteResolved: true, Scopes: test.scopes})
+			_, err := refresh.Refresh(t.Context(), hydrator, refresh.Input{Environment: "production", Site: "marketing", Scopes: test.scopes})
 			var structured *errs.Error
 			if !errors.As(err, &structured) || structured.ID != "cache.refresh.usage" || structured.Kind != errs.KindUsage {
 				t.Fatalf("Execute() error = %#v", err)
@@ -124,7 +110,7 @@ func TestActionRejectsDuplicateAndUnknownScopesBeforeHydration(t *testing.T) {
 func TestActionRejectsIncompleteHydrationReceipt(t *testing.T) {
 	result := completeResult()
 	result.Complete = false
-	_, err := refresh.New(&recordingHydrator{result: result}).Execute(context.Background(), refresh.Input{Environment: "production", Site: "marketing", SiteResolved: true})
+	_, err := refresh.Refresh(t.Context(), &recordingHydrator{result: result}, refresh.Input{Environment: "production", Site: "marketing"})
 	var structured *errs.Error
 	if !errors.As(err, &structured) || structured.ID != "cache.refresh.incomplete" {
 		t.Fatalf("Execute() error = %#v", err)
@@ -153,7 +139,7 @@ func TestActionRejectsInvalidHydrationReceipts(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			result := completeResult()
 			test.mutate(&result)
-			_, err := refresh.New(&recordingHydrator{result: result}).Execute(context.Background(), refresh.Input{Environment: "production", Site: "marketing", SiteResolved: true, Scopes: []string{"workbooks"}})
+			_, err := refresh.Refresh(t.Context(), &recordingHydrator{result: result}, refresh.Input{Environment: "production", Site: "marketing", Scopes: []string{"workbooks"}})
 			var structured *errs.Error
 			if !errors.As(err, &structured) || structured.ID != "cache.refresh.incomplete" {
 				t.Fatalf("Execute() error = %#v", err)
@@ -163,7 +149,7 @@ func TestActionRejectsInvalidHydrationReceipts(t *testing.T) {
 }
 
 func TestActionPreservesHydrationRetryAdviceAndRequestID(t *testing.T) {
-	_, err := refresh.New(&recordingHydrator{err: retryableHydrationError{}}).Execute(context.Background(), refresh.Input{Environment: "production", Site: "marketing", SiteResolved: true})
+	_, err := refresh.Refresh(t.Context(), &recordingHydrator{err: retryableHydrationError{}}, refresh.Input{Environment: "production", Site: "marketing"})
 	var structured *errs.Error
 	if !errors.As(err, &structured) || structured.ID != "cache.refresh.failed" || structured.Retryable == nil || !*structured.Retryable || structured.CorrectiveAction != "Retry after Tableau recovers." || structured.TableauRequestID != "request-1" {
 		t.Fatalf("Execute() error = %#v", err)
@@ -173,13 +159,13 @@ func TestActionPreservesHydrationRetryAdviceAndRequestID(t *testing.T) {
 func TestActionCompactAndFullOutputContainOnlyBoundedOperationalMetadata(t *testing.T) {
 	result := completeResult()
 	result.Warnings = []string{"Requested scopes replace the previous cache generation."}
-	action := refresh.New(&recordingHydrator{result: result})
+	hydrator := &recordingHydrator{result: result}
 	for _, test := range []struct {
 		name, golden string
 		full         bool
 	}{{"compact", "testdata/compact.toon", false}, {"full", "testdata/full.toon", true}} {
 		t.Run(test.name, func(t *testing.T) {
-			value, err := action.Execute(context.Background(), refresh.Input{Environment: "production", Site: "marketing", SiteResolved: true, Scopes: []string{"workbooks"}})
+			value, err := refresh.Refresh(t.Context(), hydrator, refresh.Input{Environment: "production", Site: "marketing", Scopes: []string{"workbooks"}})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -200,8 +186,8 @@ func TestActionSeparatesSearchableRecordsFromWiderHydrationCounts(t *testing.T) 
 	result.HydratedRecordCount = 3
 	hydrator := &recordingHydrator{result: result}
 
-	value, err := refresh.New(hydrator).Execute(context.Background(), refresh.Input{
-		Environment: "production", Site: "marketing", SiteResolved: true, Scopes: []string{"workbooks"},
+	value, err := refresh.Refresh(t.Context(), hydrator, refresh.Input{
+		Environment: "production", Site: "marketing", Scopes: []string{"workbooks"},
 	})
 	if err != nil {
 		t.Fatal(err)

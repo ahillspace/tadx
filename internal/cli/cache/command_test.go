@@ -17,14 +17,14 @@ type actions struct {
 
 type refresher struct{ actions *actions }
 
-func (r refresher) Execute(_ context.Context, input cacherefresh.Input) (cacherefresh.Output, error) {
+func (r refresher) RefreshCache(_ context.Context, input cacherefresh.Input) (cacherefresh.Output, error) {
 	r.actions.refreshInputs = append(r.actions.refreshInputs, input)
 	return cacherefresh.Output{}, nil
 }
 
 type statuser struct{ actions *actions }
 
-func (s statuser) Execute(_ context.Context, input cachestatus.Input) (cachestatus.Output, error) {
+func (s statuser) ReadCacheStatus(_ context.Context, input cachestatus.Input) (cachestatus.Output, error) {
 	s.actions.statusInputs = append(s.actions.statusInputs, input)
 	return cachestatus.Output{}, nil
 }

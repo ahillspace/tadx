@@ -57,8 +57,8 @@ func TestCacheHydratorStreamsSQLiteAndReturnsOnlyReceipt(t *testing.T) {
 			return tableaucache.NewEngine(executor, tableaucache.Config{MaxConcurrency: 2})
 		},
 	}
-	output, err := cacherefresh.New(hydrator).Execute(context.Background(), cacherefresh.Input{
-		Environment: "production", Site: "marketing", SiteResolved: true, Scopes: []string{"workbooks"},
+	output, err := cacherefresh.Refresh(t.Context(), hydrator, cacherefresh.Input{
+		Environment: "production", Site: "marketing", Scopes: []string{"workbooks"},
 	})
 	if err != nil {
 		t.Fatal(err)

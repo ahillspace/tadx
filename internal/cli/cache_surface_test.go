@@ -12,13 +12,13 @@ import (
 
 type cacheRefreshStub struct{}
 
-func (cacheRefreshStub) Execute(context.Context, cacherefresh.Input) (cacherefresh.Output, error) {
+func (cacheRefreshStub) RefreshCache(context.Context, cacherefresh.Input) (cacherefresh.Output, error) {
 	return cacherefresh.Output{}, nil
 }
 
 type cacheStatusStub struct{}
 
-func (cacheStatusStub) Execute(context.Context, cachestatus.Input) (cachestatus.Output, error) {
+func (cacheStatusStub) ReadCacheStatus(context.Context, cachestatus.Input) (cachestatus.Output, error) {
 	return cachestatus.Output{}, nil
 }
 
