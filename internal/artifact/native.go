@@ -55,33 +55,33 @@ func ReadNative(ctx context.Context, path, kind string) (Native, error) {
 			}
 			definition, err = io.ReadAll(io.LimitReader(file, maxDatasourceDefinitionBytes+1))
 		} else {
-			var archive *zip.Reader
-			archive, err = zip.NewReader(file, info.Size())
+			archive, archiveErr := zip.NewReader(file, info.Size())
+			if archiveErr != nil {
+				return Native{}, errors.New("native definition could not be read within its bound")
+			}
+			if len(archive.File) > 10000 {
+				return Native{}, errors.New("native package exceeds 10000 entries")
+			}
+			var selected *zip.File
+			for _, entry := range archive.File {
+				if strings.EqualFold(filepath.Ext(entry.Name), primary) || (kind == "flow" && entry.Name == "flow") {
+					if selected != nil {
+						return Native{}, errors.New("native package has ambiguous primary definitions")
+					}
+					selected = entry
+				}
+			}
+			if selected == nil || selected.UncompressedSize64 > maxDatasourceDefinitionBytes {
+				return Native{}, errors.New("native package requires one primary definition no larger than 16 MiB")
+			}
+			stream, openErr := selected.Open()
+			if openErr != nil {
+				return Native{}, errors.New("native definition could not be read within its bound")
+			}
+			definition, err = io.ReadAll(io.LimitReader(stream, maxDatasourceDefinitionBytes+1))
+			closeErr := stream.Close()
 			if err == nil {
-				if len(archive.File) > 10000 {
-					return Native{}, errors.New("native package exceeds 10000 entries")
-				}
-				var selected *zip.File
-				for _, entry := range archive.File {
-					if strings.EqualFold(filepath.Ext(entry.Name), primary) || (kind == "flow" && entry.Name == "flow") {
-						if selected != nil {
-							return Native{}, errors.New("native package has ambiguous primary definitions")
-						}
-						selected = entry
-					}
-				}
-				if selected == nil || selected.UncompressedSize64 > maxDatasourceDefinitionBytes {
-					return Native{}, errors.New("native package requires one primary definition no larger than 16 MiB")
-				}
-				var stream io.ReadCloser
-				stream, err = selected.Open()
-				if err == nil {
-					definition, err = io.ReadAll(io.LimitReader(stream, maxDatasourceDefinitionBytes+1))
-					closeErr := stream.Close()
-					if err == nil {
-						err = closeErr
-					}
-				}
+				err = closeErr
 			}
 		}
 		if err != nil || len(definition) > maxDatasourceDefinitionBytes {

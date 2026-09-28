@@ -476,12 +476,13 @@ func (a *Adapter) ResolveProject(ctx context.Context, selector identity.Selector
 
 // BeginProjectResolution forwards an explicit validation phase when configured.
 func (a *Adapter) BeginProjectResolution(ctx context.Context) context.Context {
-	if a != nil {
-		if resolver, ok := a.projects.(interface {
-			BeginProjectResolution(context.Context) context.Context
-		}); ok {
-			return resolver.BeginProjectResolution(ctx)
-		}
+	if a == nil {
+		return ctx
+	}
+	if resolver, ok := a.projects.(interface {
+		BeginProjectResolution(context.Context) context.Context
+	}); ok {
+		return resolver.BeginProjectResolution(ctx)
 	}
 	return ctx
 }

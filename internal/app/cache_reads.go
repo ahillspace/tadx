@@ -157,11 +157,12 @@ func resourceEntry(environment, site, kind, luid, name, projectPath, owner, cove
 }
 
 func writeThrough(store *cache.Store, entries []cache.ResourceEntry) {
-	if store != nil {
-		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
-		defer cancel()
-		_ = store.UpsertResources(ctx, entries)
+	if store == nil {
+		return
 	}
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	_ = store.UpsertResources(ctx, entries)
 }
 
 type cacheWorkbookListReader struct {

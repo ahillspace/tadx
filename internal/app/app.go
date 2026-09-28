@@ -302,14 +302,15 @@ func hasJSONFlag(args []string) bool {
 		if arg == "--" {
 			break
 		}
+		if index > 0 && strings.HasPrefix(args[index-1], "-") && !isBooleanFlag(args[index-1]) && isValueFlag(args[index-1]) {
+			continue
+		}
 		if arg == "--json" || arg == "--jsn" {
-			if index == 0 || !strings.HasPrefix(args[index-1], "-") || isBooleanFlag(args[index-1]) || !isValueFlag(args[index-1]) {
-				enabled = true
-			}
+			enabled = true
 			continue
 		}
 		for _, name := range []string{"--json=", "--jsn="} {
-			if strings.HasPrefix(arg, name) && (index == 0 || !strings.HasPrefix(args[index-1], "-") || isBooleanFlag(args[index-1]) || !isValueFlag(args[index-1])) {
+			if strings.HasPrefix(arg, name) {
 				if value, err := strconv.ParseBool(strings.TrimPrefix(arg, name)); err == nil {
 					enabled = value
 				}

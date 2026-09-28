@@ -344,17 +344,18 @@ func writeReferenceBatch(out io.Writer, actions []*cobra.Command) {
 	selectorActions := map[string][]string{}
 	var positional []string
 	for _, action := range actions {
-		if action.Annotations["tadx.batch.file"] == "true" {
-			names = append(names, action.Name())
-			if key := action.Annotations["tadx.batch.selectors"]; key != "" {
-				if selectorActions[key] == nil {
-					selectors = append(selectors, key)
-				}
-				selectorActions[key] = append(selectorActions[key], action.Name())
+		if action.Annotations["tadx.batch.file"] != "true" {
+			continue
+		}
+		names = append(names, action.Name())
+		if key := action.Annotations["tadx.batch.selectors"]; key != "" {
+			if selectorActions[key] == nil {
+				selectors = append(selectors, key)
 			}
-			if action.Annotations["tadx.batch.positional"] == "true" {
-				positional = append(positional, action.Name())
-			}
+			selectorActions[key] = append(selectorActions[key], action.Name())
+		}
+		if action.Annotations["tadx.batch.positional"] == "true" {
+			positional = append(positional, action.Name())
 		}
 	}
 	if len(names) == 0 {
@@ -398,14 +399,17 @@ func referenceNotes(owner *cobra.Command, actions []*cobra.Command) []string {
 	}
 	if owner.CommandPath() == owner.Root().Name()+" admin permission" {
 		for _, action := range actions {
-			if action.Name() == "create" {
-				if _, tail, ok := strings.Cut(action.Long, "Supported capability names by resource kind:"); ok {
-					notes = appendUnique(notes, "Capabilities by kind:")
-					for _, line := range strings.Split(tail, "\n") {
-						if line = strings.TrimSpace(line); line != "" {
-							notes = appendUnique(notes, line)
-						}
-					}
+			if action.Name() != "create" {
+				continue
+			}
+			_, tail, ok := strings.Cut(action.Long, "Supported capability names by resource kind:")
+			if !ok {
+				continue
+			}
+			notes = appendUnique(notes, "Capabilities by kind:")
+			for line := range strings.SplitSeq(tail, "\n") {
+				if line = strings.TrimSpace(line); line != "" {
+					notes = appendUnique(notes, line)
 				}
 			}
 		}

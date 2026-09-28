@@ -267,10 +267,11 @@ func checkCacheScopeCapabilities(check func(string) error, scopes []tableaucache
 		case tableaucache.ScopePermissions:
 			id = "admin.permission.inspect"
 		}
-		if id != "" {
-			if err := check(id); err != nil {
-				return err
-			}
+		if id == "" {
+			continue
+		}
+		if err := check(id); err != nil {
+			return err
 		}
 	}
 	return nil

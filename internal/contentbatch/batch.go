@@ -64,10 +64,10 @@ func (o Output) project(full bool) Output {
 			if p, ok := o.Items[i].Result.(interface{ FullOutput() any }); ok {
 				o.Items[i].Result = p.FullOutput()
 			}
-		} else {
-			if p, ok := o.Items[i].Result.(interface{ CompactOutput() any }); ok {
-				o.Items[i].Result = p.CompactOutput()
-			}
+			continue
+		}
+		if p, ok := o.Items[i].Result.(interface{ CompactOutput() any }); ok {
+			o.Items[i].Result = p.CompactOutput()
 		}
 	}
 	if full {
