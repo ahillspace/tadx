@@ -44,10 +44,17 @@ type UpdatePlan struct {
 	NoOp        bool           `json:"no_op"`
 }
 type UpdateResult struct {
-	Status           string     `json:"status"`
-	UserLUID         string     `json:"user_luid"`
-	User             UpdateUser `json:"user"`
-	TableauRequestID string     `json:"tableau_request_id,omitempty"`
+	Status           string              `json:"status"`
+	UserLUID         string              `json:"user_luid"`
+	User             *UpdateUser         `json:"user,omitempty"`
+	TableauRequestID string              `json:"tableau_request_id,omitempty"`
+	FieldResults     []UpdateFieldResult `json:"field_results,omitempty"`
+}
+type UpdateFieldResult struct {
+	Field     string  `json:"field"`
+	Status    string  `json:"status"`
+	Requested string  `json:"requested"`
+	Actual    *string `json:"actual,omitempty"`
 }
 type UpdateOutput struct {
 	Plan   UpdatePlan    `json:"plan"`
@@ -57,9 +64,10 @@ type UpdateOutput struct {
 type UpdateCompactResult struct {
 	Plan   UpdatePlan `json:"plan"`
 	Result *struct {
-		Status   string     `json:"status"`
-		UserLUID string     `json:"user_luid"`
-		User     UpdateUser `json:"user"`
+		Status       string              `json:"status"`
+		UserLUID     string              `json:"user_luid"`
+		User         *UpdateUser         `json:"user,omitempty"`
+		FieldResults []UpdateFieldResult `json:"field_results,omitempty"`
 	} `json:"result,omitempty"`
 	Details string   `json:"details"`
 	Help    []string `json:"help"`
@@ -69,10 +77,11 @@ func (o UpdateOutput) CompactOutput() any {
 	v := UpdateCompactResult{Plan: o.Plan, Details: "--full", Help: o.Help}
 	if o.Result != nil {
 		v.Result = &struct {
-			Status   string     `json:"status"`
-			UserLUID string     `json:"user_luid"`
-			User     UpdateUser `json:"user"`
-		}{o.Result.Status, o.Result.UserLUID, o.Result.User}
+			Status       string              `json:"status"`
+			UserLUID     string              `json:"user_luid"`
+			User         *UpdateUser         `json:"user,omitempty"`
+			FieldResults []UpdateFieldResult `json:"field_results,omitempty"`
+		}{o.Result.Status, o.Result.UserLUID, o.Result.User, o.Result.FieldResults}
 	}
 	return v
 }
@@ -80,6 +89,9 @@ func (o UpdateOutput) FullOutput() any { return o }
 
 type UpdateWriter interface {
 	UpdateUser(context.Context, string, UpdateRequest) (Record, error)
+}
+type UpdateValidator interface {
+	ValidateUpdate(context.Context, UpdateRequest) error
 }
 
 func Update(ctx context.Context, resolver Resolver, updater UpdateWriter, in UpdateInput, preview bool) (UpdateOutput, error) {
@@ -89,7 +101,7 @@ func Update(ctx context.Context, resolver Resolver, updater UpdateWriter, in Upd
 		return UpdateOutput{}, err
 	}
 	user := updateUser(record)
-	changes := userChanges(user, req)
+	changes := userChanges(user, record.PresentFields, req)
 	plan := UpdatePlan{Mode: "preview", Operation: "admin.user.update", Environment: in.Environment, Site: in.Site, Target: user, Changes: changes, NoOp: len(changes) == 0}
 	out := UpdateOutput{Plan: plan, Help: []string{"Run without --preview to update this exact user."}}
 	if preview {
@@ -100,12 +112,25 @@ func Update(ctx context.Context, resolver Resolver, updater UpdateWriter, in Upd
 	if err != nil {
 		return UpdateOutput{}, err
 	}
-	if !reflect.DeepEqual(updateUser(current), user) {
+	if !reflect.DeepEqual(updateUser(current), user) || !reflect.DeepEqual(userChanges(updateUser(current), current.PresentFields, req), changes) {
 		return UpdateOutput{}, errors.New("the user update target changed during revalidation")
 	}
 	if plan.NoOp {
-		out.Result = &UpdateResult{Status: "unchanged", UserLUID: user.LUID, User: user}
+		out.Result = &UpdateResult{Status: "unchanged", UserLUID: user.LUID, User: new(user)}
 		return out, nil
+	}
+	if validator, ok := updater.(UpdateValidator); ok {
+		validationRequest := req
+		validationRequest.FullName = nil
+		for _, change := range changes {
+			if change.Field == "full_name" {
+				validationRequest.FullName = req.FullName
+				break
+			}
+		}
+		if err := validator.ValidateUpdate(ctx, validationRequest); err != nil {
+			return out, err
+		}
 	}
 	updatedRecord, err := updater.UpdateUser(ctx, user.LUID, req)
 	updated := updateUser(updatedRecord)
@@ -116,25 +141,139 @@ func Update(ctx context.Context, resolver Resolver, updater UpdateWriter, in Upd
 			if luid == "" {
 				luid = user.LUID
 			}
-			return UpdateOutput{}, updateOutcomeUnknown(in, luid, updated.RequestID, err)
+			out.Result = &UpdateResult{Status: "unknown", UserLUID: luid, TableauRequestID: updated.RequestID}
+			out.Help = []string{commandhint.Environment(in.Environment, "admin", "user", "inspect", "--id", luid)}
+			return out, updateOutcomeUnknown(in, luid, updated.RequestID, err)
 		}
 		return UpdateOutput{}, err
 	}
-	out.Result = &UpdateResult{Status: "updated", UserLUID: updated.LUID, User: updated, TableauRequestID: updated.RequestID}
+	fieldResults, confirmed, failed, unknown := verifyUserUpdate(updatedRecord, req, changes)
+	status := "updated"
+	if len(failed)+len(unknown) > 0 {
+		status = "unverified"
+		if len(confirmed) > 0 {
+			status = "partial"
+		} else if len(unknown) == 0 {
+			status = "not_applied"
+		}
+	}
+	out.Result = &UpdateResult{Status: status, UserLUID: updated.LUID, User: new(updated), TableauRequestID: updated.RequestID, FieldResults: fieldResults}
 	out.Help = []string{commandhint.Environment(in.Environment, "admin", "user", "inspect", "--id", updated.LUID)}
+	if status != "updated" {
+		firstFailed := ""
+		if len(failed) > 0 {
+			firstFailed = failed[0]
+		} else {
+			firstFailed = unknown[0]
+		}
+		outcome := errs.OutcomeUnknown
+		if len(confirmed) > 0 && len(unknown) == 0 {
+			outcome = errs.OutcomeConfirmed
+		}
+		return out, &errs.Error{
+			ID: "admin.user.update.partial", Kind: errs.KindOperation, Operation: "admin.user.update",
+			Resource: updated.LUID, Environment: in.Environment, Site: in.Site,
+			Summary:   "The user update response did not confirm every requested change.",
+			Retryable: errs.Bool(false), CorrectiveAction: "Inspect the exact user and Tableau request before reviewing a new update plan: " + out.Help[0],
+			TableauRequestID: updated.RequestID, Completed: confirmed, Failed: firstFailed,
+			Phase: errs.PhaseVerification, Outcome: outcome,
+		}
+	}
 	return out, nil
+}
+
+func verifyUserUpdate(updated Record, req UpdateRequest, changes []UpdateChange) ([]UpdateFieldResult, []string, []string, []string) {
+	requested := []struct {
+		field string
+		value *string
+	}{
+		{"full_name", req.FullName}, {"email", req.Email}, {"site_role", req.SiteRole}, {"auth_setting", req.AuthSetting},
+		{"identity_pool_name", req.IdentityPoolName}, {"idp_configuration_id", req.IdPConfigurationID}, {"language", req.Language}, {"locale", req.Locale},
+	}
+	results := make([]UpdateFieldResult, 0, len(requested))
+	var confirmed, failed, unknown []string
+	for _, item := range requested {
+		if item.value == nil {
+			continue
+		}
+		attribute, actual := userField(updated, item.field)
+		result := UpdateFieldResult{Field: item.field, Requested: *item.value, Status: "unknown"}
+		if updated.PresentFields[attribute] {
+			result.Actual = new(actual)
+			if userFieldMatches(item.field, actual, *item.value) {
+				result.Status = "matched"
+				for _, change := range changes {
+					if change.Field == item.field {
+						result.Status = "confirmed"
+						confirmed = append(confirmed, item.field)
+						break
+					}
+				}
+			} else {
+				result.Status = "mismatch"
+				failed = append(failed, item.field)
+			}
+		} else {
+			unknown = append(unknown, item.field)
+		}
+		results = append(results, result)
+	}
+	return results, confirmed, failed, unknown
+}
+
+func userField(u Record, field string) (string, string) {
+	switch field {
+	case "full_name":
+		return "fullName", u.FullName
+	case "email":
+		return "email", u.Email
+	case "site_role":
+		return "siteRole", u.SiteRole
+	case "auth_setting":
+		return "authSetting", u.AuthSetting
+	case "identity_pool_name":
+		return "identityPoolName", u.IdentityPoolName
+	case "idp_configuration_id":
+		return "idpConfigurationId", u.IdPConfigurationID
+	case "language":
+		return "language", u.Language
+	case "locale":
+		return "locale", u.Locale
+	default:
+		return "", ""
+	}
+}
+
+func userFieldMatches(field, actual, requested string) bool {
+	if field == "auth_setting" {
+		// Tableau documents both spellings for the same authentication setting.
+		if actual == "TableauIdWithMFA" {
+			actual = "TableauIDWithMFA"
+		}
+		if requested == "TableauIdWithMFA" {
+			requested = "TableauIDWithMFA"
+		}
+	}
+	return actual == requested
 }
 
 func updateUsage(field, message string) error {
 	return &errs.Error{ID: "admin.user.update.usage", Kind: errs.KindUsage, Operation: "admin.user.update", Summary: message, Retryable: errs.Bool(false), CorrectiveAction: "Correct the user update input and review a new preview.", Validation: []errs.ValidationDetail{{Field: field, Code: "invalid", Message: message}}}
 }
 func updateOutcomeUnknown(in UpdateInput, luid, requestID string, cause error) error {
-	return &errs.Error{ID: "admin.user.update.outcome_unknown", Kind: errs.KindOperation, Operation: "admin.user.update", Resource: luid, Environment: in.Environment, Site: in.Site, Summary: "The user update outcome could not be determined safely.", Cause: cause, Retryable: errs.Bool(false), CorrectiveAction: "Inspect the exact user and Tableau request before retrying: " + commandhint.Environment(in.Environment, "admin", "user", "inspect", "--id", luid), TableauRequestID: requestID}
+	return &errs.Error{
+		ID: "admin.user.update.outcome_unknown", Kind: errs.KindOperation, Operation: "admin.user.update",
+		Resource: luid, Environment: in.Environment, Site: in.Site,
+		Summary: "The user update outcome could not be determined safely.", Cause: cause,
+		Retryable: errs.Bool(false), CorrectiveAction: "Inspect the exact user and Tableau request before retrying: " + commandhint.Environment(in.Environment, "admin", "user", "inspect", "--id", luid),
+		TableauRequestID: requestID, Phase: errs.PhaseSubmission, Outcome: errs.OutcomeUnknown,
+	}
 }
-func userChanges(u UpdateUser, r UpdateRequest) []UpdateChange {
+func userChanges(u UpdateUser, present map[string]bool, r UpdateRequest) []UpdateChange {
 	v := []UpdateChange{}
 	add := func(field, before string, after *string) {
-		if after != nil && *after != before {
+		attribute, _ := userField(Record{}, field)
+		if after != nil && (!userFieldMatches(field, before, *after) || (*after == "" && !present[attribute])) {
 			v = append(v, UpdateChange{field, before, *after})
 		}
 	}

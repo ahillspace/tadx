@@ -2,14 +2,50 @@ package app
 
 import (
 	"context"
+	"net/url"
+	"strings"
 
 	groupops "github.com/ahillspace/tadx/actions/admin/group"
 	userops "github.com/ahillspace/tadx/actions/admin/user"
+	"github.com/ahillspace/tadx/internal/errs"
 	resourceadmin "github.com/ahillspace/tadx/internal/resources/admin"
 	tableauadmin "github.com/ahillspace/tadx/internal/tableau/admin"
 )
 
-type adminUserAdapter struct{ *resourceadmin.Adapter }
+type adminUserAdapter struct {
+	*resourceadmin.Adapter
+	serverURL  string
+	callerLUID string
+}
+
+func (a adminUserAdapter) ValidateUpdate(ctx context.Context, input userops.UpdateRequest) error {
+	if input.FullName == nil {
+		return nil
+	}
+	server, err := url.Parse(a.serverURL)
+	if err != nil {
+		return err
+	}
+	host := strings.ToLower(server.Hostname())
+	if host == "online.tableau.com" || strings.HasSuffix(host, ".online.tableau.com") {
+		return unsupportedUserFullName("Tableau Cloud does not support updating a user's full name.")
+	}
+	if a.callerLUID == "" {
+		return nil
+	}
+	caller, err := a.Adapter.ResolveUser(ctx, resourceadmin.UserSelector{LUID: a.callerLUID})
+	if err != nil {
+		return nil
+	}
+	if caller.SiteRole == "SiteAdministratorCreator" || caller.SiteRole == "SiteAdministratorExplorer" {
+		return unsupportedUserFullName("A site administrator cannot update a user's full name.")
+	}
+	return nil
+}
+
+func unsupportedUserFullName(summary string) error {
+	return &errs.Error{ID: "admin.user.update.unsupported_full_name", Kind: errs.KindUsage, Operation: "admin.user.update", Summary: summary, Retryable: errs.Bool(false), CorrectiveAction: "Remove --full-name and review a new preview.", Phase: errs.PhaseValidation, Outcome: errs.OutcomeNotAttempted}
+}
 
 func (a adminUserAdapter) ListUsers(ctx context.Context, input userops.ListPageRequest) (userops.ListPage, error) {
 	page, err := a.Adapter.ListUsers(ctx, tableauadmin.ListUsersRequest{PageNumber: input.PageNumber, PageSize: input.PageSize, Name: input.Name, SiteRole: input.SiteRole})
@@ -26,7 +62,7 @@ func (a adminUserAdapter) ResolveUser(ctx context.Context, selector userops.Sele
 }
 
 func adminUserRecord(item tableauadmin.User) userops.Record {
-	return userops.Record{LUID: item.LUID, Name: item.Name, FullName: item.FullName, Email: item.Email, SiteRole: item.SiteRole, LastLogin: item.LastLogin, ExternalAuthUserID: item.ExternalAuthUserID, AuthSetting: item.AuthSetting, IdentityPoolName: item.IdentityPoolName, IdPConfigurationID: item.IdPConfigurationID, Language: item.Language, Locale: item.Locale, Domain: item.Domain, RequestID: item.RequestID, MutationStatus: item.MutationStatus}
+	return userops.Record{LUID: item.LUID, Name: item.Name, FullName: item.FullName, Email: item.Email, SiteRole: item.SiteRole, LastLogin: item.LastLogin, ExternalAuthUserID: item.ExternalAuthUserID, AuthSetting: item.AuthSetting, IdentityPoolName: item.IdentityPoolName, IdPConfigurationID: item.IdPConfigurationID, Language: item.Language, Locale: item.Locale, Domain: item.Domain, RequestID: item.RequestID, MutationStatus: item.MutationStatus, PresentFields: item.PresentFields}
 }
 
 func (a adminUserAdapter) CreateUser(ctx context.Context, input userops.CreateRequest) (userops.Record, error) {

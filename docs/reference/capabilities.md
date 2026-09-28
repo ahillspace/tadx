@@ -794,11 +794,11 @@ Update supported attributes of one exact user, or preview the operation.
 - Supports `--preview`: Yes
 - Supports `--batch-file`: Yes
 - Raw capable: No
-- Safety and guard: Equal values no-op when authoritative pre-read exists
+- Safety and guard: Evidence-backed no-op; requested fields verified against the response
 - Artifact effect: None
 - Upstream operation: PUT /api/{version}/sites/{site-id}/users/{user-id}
 - Evidence: docs/evidence/admin-rest-contract.md
-- Validation or blocker: Contract-verified bounded user update and no-op behavior
+- Validation or blocker: Contract-verified user update, partial application, missing evidence, and no-op behavior
 - Blocker ID: None
 - Command binding: `tadx admin user update`
 

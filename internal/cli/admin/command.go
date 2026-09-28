@@ -262,7 +262,7 @@ func newUserUpdate(deps Dependencies) *cobra.Command {
 	cmd.Flags().StringVar(&in.UserLUID, "id", "", "authoritative user LUID")
 	cmd.Flags().StringVar(&in.Username, "username", "", "exact Tableau username")
 	cmd.MarkFlagsMutuallyExclusive("id", "username")
-	cmd.Flags().StringVar(&fullName, "full-name", "", "explicit full name")
+	cmd.Flags().StringVar(&fullName, "full-name", "", "full name (Tableau Server, server administrators only)")
 	cmd.Flags().StringVar(&email, "email", "", "explicit notification email")
 	cmd.Flags().StringVar(&siteRole, "site-role", "", "explicit site role")
 	cmd.Flags().StringVar(&auth, "auth-setting", "", "authentication setting: ServerDefault, SAML, OpenID, or TableauIDWithMFA (availability depends on the site)")

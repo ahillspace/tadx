@@ -38,6 +38,24 @@ Delete uses `DELETE /api/{version}/sites/{site-luid}/users/{user-luid}` without 
 Reads and updates require HTTP 200, creates require HTTP 201, and deletes require an empty HTTP 204 response.
 Unexpected successful status or body shapes are treated as unknown mutation outcomes and retain the Tableau request ID.
 
+### User update verification
+
+The official [Update User contract](https://help.tableau.com/current/api/rest_api/en-us/REST/rest_api_ref_users_and_groups.htm#update_user) was checked on 2026-09-28.
+Full-name updates require Tableau Server and server-administrator permissions; Tableau Cloud does not support this field through Update User.
+Cloud supports notification-email updates starting with REST API 3.26, and language and locale updates starting with 3.28.
+These restrictions do not make notification email equivalent to the user's sign-in name.
+
+HTTP 200 and a matching user identity do not establish that every requested field changed.
+TADX compares explicitly requested fields with returned values and distinguishes absent attributes from confirmed empty values.
+The documented `TableauIDWithMFA` and `TableauIdWithMFA` spellings compare equally; names, email addresses, and locale codes are not case-folded or trimmed.
+An unmet request returns a verification error with the affected identity, available request ID, confirmed fields, and mismatched or unverified fields.
+Recovery directs the caller to inspect the exact user before planning another update, not to replay the entire request.
+Known unsupported full-name updates are rejected before submission when platform or caller-role evidence establishes the restriction.
+Preview remains read-only.
+
+Controlled CLI tests cover complete, partial, unchanged, and insufficient-evidence responses in JSON and TOON.
+These tests do not establish fresh live Tableau behavior.
+
 ## Frozen group contract
 
 Group listing uses `GET /api/{version}/sites/{site-luid}/groups` with classic pagination.

@@ -106,6 +106,9 @@ func (c *Client) UpdateUser(ctx context.Context, luid string, input UpdateUserRe
 	}
 	response, err := c.write(ctx, http.MethodPut, "admin.user.update", []string{"users", luid}, payload)
 	if err != nil {
+		if tableau.SubmissionAttempted(err) {
+			return User{LUID: luid, MutationStatus: "unknown", RequestID: tableau.RequestID(err)}, err
+		}
 		return User{}, err
 	}
 	unknown := User{LUID: luid, MutationStatus: "unknown", RequestID: response.TableauRequestID}
@@ -403,7 +406,13 @@ func normalizeUserPage(operation string, response tableau.Response, envelope use
 }
 
 func normalizeUser(item userXML) User {
-	return User{LUID: strings.TrimSpace(item.ID), Name: strings.TrimSpace(item.Name), FullName: item.FullName, Email: item.Email, SiteRole: item.SiteRole, LastLogin: item.LastLogin, ExternalAuthUserID: item.ExternalAuthUserID, AuthSetting: item.AuthSetting, IdentityPoolName: item.IdentityPoolName, IdPConfigurationID: item.IdPConfigurationID, Language: item.Language, Locale: item.Locale, Domain: item.Domain.Name}
+	return User{LUID: strings.TrimSpace(item.ID), Name: strings.TrimSpace(item.Name), FullName: value(item.FullName), Email: value(item.Email), SiteRole: value(item.SiteRole), LastLogin: item.LastLogin, ExternalAuthUserID: item.ExternalAuthUserID, AuthSetting: value(item.AuthSetting), IdentityPoolName: value(item.IdentityPoolName), IdPConfigurationID: value(item.IdPConfigurationID), Language: value(item.Language), Locale: value(item.Locale), Domain: item.Domain.Name, PresentFields: map[string]bool{"fullName": item.FullName != nil, "email": item.Email != nil, "siteRole": item.SiteRole != nil, "authSetting": item.AuthSetting != nil, "identityPoolName": item.IdentityPoolName != nil, "idpConfigurationId": item.IdPConfigurationID != nil, "language": item.Language != nil, "locale": item.Locale != nil}}
+}
+func value(item *string) string {
+	if item == nil {
+		return ""
+	}
+	return *item
 }
 func normalizeGroup(item groupXML) Group {
 	return Group{LUID: strings.TrimSpace(item.ID), Name: strings.TrimSpace(item.Name), Domain: item.Domain.Name, MinimumSiteRole: first(item.MinimumSiteRole, item.Import.SiteRole), GrantLicenseMode: item.Import.GrantLicenseMode, ExternalUserEnabled: item.ExternalUserEnabled}
@@ -505,16 +514,16 @@ type domainXML struct {
 type userXML struct {
 	ID                 string    `xml:"id,attr"`
 	Name               string    `xml:"name,attr"`
-	FullName           string    `xml:"fullName,attr"`
-	Email              string    `xml:"email,attr"`
-	SiteRole           string    `xml:"siteRole,attr"`
+	FullName           *string   `xml:"fullName,attr"`
+	Email              *string   `xml:"email,attr"`
+	SiteRole           *string   `xml:"siteRole,attr"`
 	LastLogin          string    `xml:"lastLogin,attr"`
 	ExternalAuthUserID string    `xml:"externalAuthUserId,attr"`
-	AuthSetting        string    `xml:"authSetting,attr"`
-	IdentityPoolName   string    `xml:"identityPoolName,attr"`
-	IdPConfigurationID string    `xml:"idpConfigurationId,attr"`
-	Language           string    `xml:"language,attr"`
-	Locale             string    `xml:"locale,attr"`
+	AuthSetting        *string   `xml:"authSetting,attr"`
+	IdentityPoolName   *string   `xml:"identityPoolName,attr"`
+	IdPConfigurationID *string   `xml:"idpConfigurationId,attr"`
+	Language           *string   `xml:"language,attr"`
+	Locale             *string   `xml:"locale,attr"`
 	Domain             domainXML `xml:"domain"`
 }
 type usersEnvelope struct {

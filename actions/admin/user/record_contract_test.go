@@ -18,7 +18,7 @@ func (b *recordBackend) ResolveUser(context.Context, Selector) (Record, error) {
 }
 func (b *recordBackend) UpdateUser(context.Context, string, UpdateRequest) (Record, error) {
 	b.writes++
-	return Record{LUID: "u", Name: "login", FullName: "after", RequestID: "write"}, nil
+	return Record{LUID: "u", Name: "login", FullName: "after", RequestID: "write", PresentFields: map[string]bool{"fullName": true}}, nil
 }
 func (b *recordBackend) DeleteUser(context.Context, string) (DeleteResult, error) {
 	b.writes++

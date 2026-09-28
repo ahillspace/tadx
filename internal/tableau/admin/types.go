@@ -17,6 +17,8 @@ type User struct {
 	AuthSetting, IdentityPoolName, IdPConfigurationID, Language, Locale  string
 	Domain, RequestID                                                    string
 	MutationStatus                                                       string
+	// PresentFields records attributes included in the user response, including explicit empty values.
+	PresentFields map[string]bool
 }
 
 type UserPage struct {

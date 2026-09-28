@@ -40,6 +40,7 @@ type adminConnection struct {
 	environment config.Environment
 	adapter     *resourceadmin.Adapter
 	inventory   tableaucache.Executor
+	callerLUID  string
 }
 
 func (c *remoteAdminCommands) connect(ctx context.Context, alias string, explicit bool) (adminConnection, error) {
@@ -48,7 +49,7 @@ func (c *remoteAdminCommands) connect(ctx context.Context, alias string, explici
 		return adminConnection{environment: connection.environment}, err
 	}
 	client := tableauadmin.NewClient(connection.transport, connection.session, connection.environment.URL)
-	return adminConnection{environment: connection.environment, adapter: resourceadmin.NewAdapter(client, c.runtime.checkManagedCapability), inventory: cacheTableauExecutor{checkCapability: c.runtime.checkManagedCapability, transport: connection.transport, session: connection.session, serverURL: connection.environment.URL, siteLUID: connection.session.SiteLUID()}}, nil
+	return adminConnection{environment: connection.environment, adapter: resourceadmin.NewAdapter(client, c.runtime.checkManagedCapability), inventory: cacheTableauExecutor{checkCapability: c.runtime.checkManagedCapability, transport: connection.transport, session: connection.session, serverURL: connection.environment.URL, siteLUID: connection.session.SiteLUID()}, callerLUID: connection.session.UserLUID()}, nil
 }
 
 func (c *remoteAdminCommands) ListAdminUsers(ctx context.Context, input userops.ListInput) (result userops.ListOutput, resultErr error) {
@@ -116,7 +117,7 @@ func (c *remoteAdminCommands) ListAdminUsers(ctx context.Context, input userops.
 		output.RequestID = finalRequestID(inventory.requestIDs)
 		return output, nil
 	}
-	output, err := userops.List(ctx, adminUserAdapter{connection.adapter}, input)
+	output, err := userops.List(ctx, adminUserAdapter{Adapter: connection.adapter}, input)
 	if err != nil {
 		return output, err
 	}
@@ -146,7 +147,7 @@ func (c *remoteAdminCommands) InspectAdminUser(ctx context.Context, input userop
 		return userops.InspectOutput{}, remoteSetupError("admin.user.inspect", input.Environment, input.Site, connection.environment, err)
 	}
 	input.Environment, input.Site = connection.environment.Alias, connection.environment.SiteContentURL
-	output, err := userops.Inspect(ctx, adminUserAdapter{connection.adapter}, input)
+	output, err := userops.Inspect(ctx, adminUserAdapter{Adapter: connection.adapter}, input)
 	if err != nil {
 		return output, adminActionError("admin.user.inspect", input.Environment, input.Site, err)
 	}
@@ -168,7 +169,7 @@ func (c *remoteAdminCommands) CreateAdminUser(ctx context.Context, input userops
 		return userops.CreateOutput{}, remoteSetupError("admin.user.create", input.Environment, input.Site, connection.environment, err)
 	}
 	input.Environment, input.Site = connection.environment.Alias, connection.environment.SiteContentURL
-	adapter := adminUserAdapter{connection.adapter}
+	adapter := adminUserAdapter{Adapter: connection.adapter}
 	output, err := userops.Create(ctx, adapter, adapter, input, preview)
 	return output, adminActionError("admin.user.create", input.Environment, input.Site, err)
 }
@@ -189,7 +190,7 @@ func (c *remoteAdminCommands) UpdateAdminUser(ctx context.Context, input userops
 		}
 		input.UserLUID, input.Username = user.LUID, ""
 	}
-	adapter := adminUserAdapter{connection.adapter}
+	adapter := adminUserAdapter{Adapter: connection.adapter, serverURL: connection.environment.URL, callerLUID: connection.callerLUID}
 	output, err := userops.Update(ctx, adapter, adapter, input, preview)
 	return output, adminActionError("admin.user.update", input.Environment, input.Site, err)
 }
@@ -210,7 +211,7 @@ func (c *remoteAdminCommands) DeleteAdminUser(ctx context.Context, input userops
 		}
 		input.UserLUID, input.Username = user.LUID, ""
 	}
-	adapter := adminUserAdapter{connection.adapter}
+	adapter := adminUserAdapter{Adapter: connection.adapter}
 	output, err := userops.Delete(ctx, adapter, adapter, input, preview)
 	return output, adminActionError("admin.user.delete", input.Environment, input.Site, err)
 }
