@@ -19,6 +19,8 @@ import (
 	"strings"
 	"time"
 	"unicode/utf8"
+
+	"github.com/ahillspace/tadx/internal/fsreplace"
 )
 
 // WorkbookMetadata is the frozen workbook provenance contract.
@@ -882,11 +884,11 @@ type directoryOperations struct {
 func defaultDirectoryOperations() directoryOperations {
 	return directoryOperations{
 		stat:      os.Stat,
-		rename:    os.Rename,
+		rename:    fsreplace.Rename,
 		link:      os.Link,
 		removeAll: os.RemoveAll,
 		writeFile: writeFileSync,
-		syncDir:   fsyncDir,
+		syncDir:   fsreplace.SyncDir,
 	}
 }
 
@@ -897,7 +899,7 @@ func (o directoryOperations) withDefaults() directoryOperations {
 		o.stat = os.Stat
 	}
 	if o.rename == nil {
-		o.rename = os.Rename
+		o.rename = fsreplace.Rename
 	}
 	if o.link == nil {
 		o.link = os.Link
@@ -909,7 +911,7 @@ func (o directoryOperations) withDefaults() directoryOperations {
 		o.writeFile = writeFileSync
 	}
 	if o.syncDir == nil {
-		o.syncDir = fsyncDir
+		o.syncDir = fsreplace.SyncDir
 	}
 	return o
 }

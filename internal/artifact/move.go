@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/ahillspace/tadx/internal/fsreplace"
 	"github.com/ahillspace/tadx/internal/pathspec"
 )
 
@@ -26,7 +27,7 @@ type moveOperations struct {
 }
 
 func defaultMoveOperations() moveOperations {
-	return moveOperations{rename: os.Rename, removeAll: os.RemoveAll}
+	return moveOperations{rename: fsreplace.Rename, removeAll: os.RemoveAll}
 }
 
 // Move preserves one managed artifact's bytes and identity.
@@ -95,7 +96,7 @@ func PreviewMove(ctx context.Context, request MoveRequest) (Item, error) {
 
 func moveWithOperations(ctx context.Context, request MoveRequest, operations moveOperations) (Item, error) {
 	if operations.rename == nil {
-		operations.rename = os.Rename
+		operations.rename = fsreplace.Rename
 	}
 	if operations.removeAll == nil {
 		operations.removeAll = os.RemoveAll
