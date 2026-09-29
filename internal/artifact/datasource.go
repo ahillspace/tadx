@@ -670,8 +670,12 @@ func recoverDatasourceRoot(root string, operations directoryOperations) ([]strin
 		return nil, err
 	}
 	live := map[string]bool{}
-	var backups, stages []string
+	var backups, stages, warnings []string
 	for _, entry := range entries {
+		if (strings.HasPrefix(entry.Name(), datasourceBackupPrefix) || strings.HasPrefix(entry.Name(), datasourceStagePrefix)) && !isRealDirectory(entry) {
+			warnings = append(warnings, fmt.Sprintf("datasource recovery entry %q is not a real directory and was left in place", entry.Name()))
+			continue
+		}
 		switch {
 		case strings.HasPrefix(entry.Name(), datasourceBackupPrefix):
 			backups = append(backups, entry.Name())
@@ -686,7 +690,6 @@ func recoverDatasourceRoot(root string, operations directoryOperations) ([]strin
 			}
 		}
 	}
-	var warnings []string
 	for _, name := range stages {
 		if err := operations.removeAll(filepath.Join(root, name)); err != nil {
 			warnings = append(warnings, fmt.Sprintf("stale datasource staging directory %q could not be removed: %v", name, err))

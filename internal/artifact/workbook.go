@@ -10,6 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"net"
 	"net/url"
 	"os"
@@ -582,9 +583,13 @@ func recoverWorkbookRoot(root string, operations directoryOperations) ([]string,
 		return nil, err
 	}
 	live := map[string]bool{}
-	var backups, stages []string
+	var backups, stages, warnings []string
 	for _, entry := range entries {
 		name := entry.Name()
+		if (strings.HasPrefix(name, backupPrefix) || strings.HasPrefix(name, stagePrefix)) && !isRealDirectory(entry) {
+			warnings = append(warnings, fmt.Sprintf("recovery entry %q is not a real directory and was left in place", name))
+			continue
+		}
 		switch {
 		case strings.HasPrefix(name, backupPrefix):
 			backups = append(backups, name)
@@ -604,7 +609,6 @@ func recoverWorkbookRoot(root string, operations directoryOperations) ([]string,
 		}
 		live[identityKey(metadata)] = true
 	}
-	var warnings []string
 	for _, name := range stages {
 		if err := operations.removeAll(filepath.Join(root, name)); err != nil {
 			warnings = append(warnings, fmt.Sprintf("stale staging directory %q could not be removed: %v", name, err))
@@ -645,6 +649,13 @@ func recoverWorkbookRoot(root string, operations directoryOperations) ([]string,
 		}
 	}
 	return warnings, nil
+}
+
+// isRealDirectory reports whether a directory entry is a plain directory. It
+// rejects symbolic links and, on Windows, junctions and other reparse points,
+// which Go reports with ModeIrregular alongside ModeDir.
+func isRealDirectory(entry fs.DirEntry) bool {
+	return entry.Type() == fs.ModeDir
 }
 
 func identityKey(metadata WorkbookMetadata) string {
