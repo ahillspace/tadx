@@ -74,7 +74,10 @@ func (in Installer) installAuto(ctx context.Context, preview, force bool) (Resul
 		result.Warnings = append(result.Warnings, installed.Warnings...)
 		if err != nil {
 			failures = append(failures, fmt.Errorf("%s: %w", target, err))
-			result.Skills = append(result.Skills, Skill{Target: target, Name: "tadx", Status: "failed"})
+			// A target that stopped with packages changed reports them instead.
+			if len(installed.Skills) == 0 {
+				result.Skills = append(result.Skills, Skill{Target: target, Name: "tadx", Status: "failed"})
+			}
 		} else if installed.Status == "installed" {
 			result.Status = "installed"
 		}

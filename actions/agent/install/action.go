@@ -85,13 +85,17 @@ func (a *Action) Execute(ctx context.Context, input Input) (Output, error) {
 		return Output{}, &errs.Error{ID: "agent.install.usage", Kind: errs.KindUsage, Operation: "agent.install", Summary: fmt.Sprintf("--target must be auto or %s.", agenttarget.Summary()), Retryable: errs.Bool(false), CorrectiveAction: "Choose one supported target, for example: tadx agent install --target opencode."}
 	}
 	result, err := a.installer.Install(ctx, input.Target, input.Preview, input.Force)
+	var failure error
+	if err != nil {
+		failure = &errs.Error{ID: "agent.install.failed", Kind: errs.KindOperation, Operation: "agent.install", Summary: "Agent skill installation failed.", Cause: err, Retryable: errs.Bool(false), CorrectiveAction: "Inspect the reported target and operating-system cause. Close programs holding skill files open and check directory permissions; use --preview before retrying."}
+		// Only packages the installer reports as changed or failed accompany the error.
+		if len(result.Skills) == 0 {
+			return Output{}, failure
+		}
+	}
 	skills := make([]Skill, len(result.Skills))
 	for index, skill := range result.Skills {
 		skills[index] = Skill{Target: skill.Target, Name: skill.Name, Status: skill.Status, Path: skill.Path, SHA256: skill.SHA256, Files: skill.Files, Backup: skill.Backup}
 	}
-	output := Output{Targets: result.Targets, Status: result.Status, Target: input.Target, Skills: skills, Warnings: result.Warnings, Help: []string{"tadx capability list", "tadx capability get agent.install --full"}}
-	if err != nil {
-		return output, &errs.Error{ID: "agent.install.failed", Kind: errs.KindOperation, Operation: "agent.install", Summary: "Agent skill installation failed.", Cause: err, Retryable: errs.Bool(false), CorrectiveAction: "Inspect the reported target and operating-system cause. Close programs holding skill files open and check directory permissions; use --preview before retrying."}
-	}
-	return output, nil
+	return Output{Targets: result.Targets, Status: result.Status, Target: input.Target, Skills: skills, Warnings: result.Warnings, Help: []string{"tadx capability list", "tadx capability get agent.install --full"}}, failure
 }

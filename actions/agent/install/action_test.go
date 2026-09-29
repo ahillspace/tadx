@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"os"
+	"reflect"
 	"testing"
 
 	"github.com/ahillspace/tadx/actions/agent/install"
@@ -63,6 +64,19 @@ func TestInstallPartialFailureKeepsCompletedTargetsAndFieldTags(t *testing.T) {
 	wantCompact := `{"targets":["claude","codex"],"status":"partial","target":"auto","skills":[{"target":"claude","name":"tadx","status":"installed","path":".claude/skills/tadx"},{"target":"codex","name":"tadx","status":"failed","path":""}],"details":"--full","help":["tadx capability list","tadx capability get agent.install --full"]}`
 	if string(compact) != wantCompact {
 		t.Fatalf("compact=%s", compact)
+	}
+}
+
+func TestInstallFailureWithoutPackageStateReturnsOnlyTheError(t *testing.T) {
+	cause := errors.New("target skill directory must contain only real directories inside the user home")
+	dependency := &installer{err: cause}
+	result, err := install.New(dependency).Execute(t.Context(), install.Input{Target: "claude"})
+	var structured *errs.Error
+	if !errors.As(err, &structured) || structured.ID != "agent.install.failed" || !errors.Is(err, cause) {
+		t.Fatalf("error=%v", err)
+	}
+	if !reflect.ValueOf(result).IsZero() {
+		t.Fatalf("failure returned a success-shaped result: %#v", result)
 	}
 }
 

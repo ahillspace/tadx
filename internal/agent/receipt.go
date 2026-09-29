@@ -10,6 +10,8 @@ import (
 	"io/fs"
 	"os"
 	"path"
+
+	"github.com/ahillspace/tadx/internal/fsreplace"
 )
 
 type installationReceipt struct {
@@ -82,7 +84,7 @@ func (in Installer) writeReceipt(root *os.Root, base string, packages map[string
 	}
 	commit := in.commitReceipt
 	if commit == nil {
-		commit = func(root *os.Root, from, to string) error { return root.Rename(from, to) }
+		commit = fsreplace.RenameIn
 	}
 	if err := commit(root, stage, location); err != nil {
 		return errors.New("cannot commit skill ownership receipt; previous packages restored")
