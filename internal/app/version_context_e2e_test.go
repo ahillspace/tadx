@@ -1,13 +1,17 @@
 package app
 
 import (
+	"encoding/json"
 	"errors"
 	"io"
 	"net/http"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 
+	"github.com/ahillspace/tadx/internal/commandhint"
+	"github.com/ahillspace/tadx/internal/toon"
 	"github.com/ahillspace/tadx/internal/version"
 )
 
@@ -48,13 +52,25 @@ func TestVersionCheckRendersOnlyContextualFollowUpsThroughCLI(t *testing.T) {
 	previous := version.BuildVersion
 	version.BuildVersion = "0.1.0"
 	t.Cleanup(func() { version.BuildVersion = previous })
-	// Shared rendering binds the selected configuration into the follow-up command.
-	for encoding, want := range map[string][2]string{"compact": {"help[1]: tadx ", " update\n"}, "full": {"help[1]: tadx ", " update\n"}, "json": {`"help":["tadx `, ` update"]`}} {
+	// Shared rendering binds the selected configuration into the follow-up
+	// command. Decode before comparing because TOON quotes the hint when the
+	// configuration path contains characters such as Windows backslashes.
+	for encoding, flags := range encodings {
 		t.Run("update-available/"+encoding, func(t *testing.T) {
 			var out strings.Builder
-			exit := Run(t.Context(), append([]string{"version", "--check"}, encodings[encoding]...), &out, Options{ConfigPath: filepath.Join(t.TempDir(), "config.yaml"), HTTPClient: &http.Client{Transport: latestReleaseTransport{}}})
-			if exit != 0 || !strings.Contains(out.String(), "update-available") || !strings.Contains(out.String(), want[0]) || !strings.Contains(out.String(), want[1]) {
-				t.Fatalf("exit=%d output=%s, want tadx update follow-up", exit, out.String())
+			configPath := filepath.Join(t.TempDir(), "config.yaml")
+			exit := Run(t.Context(), append([]string{"version", "--check"}, flags...), &out, Options{ConfigPath: configPath, HTTPClient: &http.Client{Transport: latestReleaseTransport{}}})
+			var decoded any
+			var err error
+			if encoding == "json" {
+				err = json.Unmarshal([]byte(out.String()), &decoded)
+			} else {
+				decoded, err = toon.Decode([]byte(out.String()))
+			}
+			result, _ := decoded.(map[string]any)
+			want := []any{commandhint.Command("--config", configPath, "update")}
+			if exit != 0 || err != nil || result["status"] != "update-available" || !reflect.DeepEqual(result["help"], want) {
+				t.Fatalf("exit=%d output=%s, want help %v", exit, out.String(), want)
 			}
 		})
 	}
