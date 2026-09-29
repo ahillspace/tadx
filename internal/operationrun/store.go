@@ -22,6 +22,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/ahillspace/tadx/internal/fsreplace"
 	"github.com/ahillspace/tadx/internal/lock"
 )
 
@@ -542,7 +543,7 @@ func writeAtomic(path string, record Record) error {
 	if err := temporary.Close(); err != nil {
 		return fmt.Errorf("close operation run temporary record: %w", err)
 	}
-	if err := replaceRecord(temporaryName, path); err != nil {
+	if err := fsreplace.Replace(temporaryName, path); err != nil {
 		return fmt.Errorf("replace operation run record: %w", err)
 	}
 	return nil

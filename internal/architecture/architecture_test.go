@@ -265,6 +265,42 @@ import _ "example.test/tadx/internal/lock"
 	assertViolationStrings(t, violations, nil)
 }
 
+func TestCheckAllowsLocalStateWritersToUseReplaceLeaf(t *testing.T) {
+	root := moduleFixture(t)
+	for _, file := range []string{
+		"internal/artifact/workbook.go",
+		"internal/config/config.go",
+		"internal/jobmonitor/store.go",
+		"internal/lastcommand/store.go",
+		"internal/operationrun/store.go",
+		"internal/workspace/manager.go",
+	} {
+		name := strings.Split(file, "/")[1]
+		writeGo(t, root, file, "package "+name+"\nimport _ \"example.test/tadx/internal/fsreplace\"\n")
+	}
+
+	violations, err := architecture.Check(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertViolationStrings(t, violations, nil)
+}
+
+func TestCheckKeepsReplaceLeafFreeOfLocalImports(t *testing.T) {
+	root := moduleFixture(t)
+	writeGo(t, root, "internal/fsreplace/fsreplace.go", `package fsreplace
+import _ "example.test/tadx/internal/lock"
+`)
+
+	violations, err := architecture.Check(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertViolationStrings(t, violations, []string{
+		"internal/fsreplace/fsreplace.go imports example.test/tadx/internal/lock: foundation packages must not import unapproved local packages",
+	})
+}
+
 func TestCheckRejectsOperationRunBoundaryBypass(t *testing.T) {
 	root := moduleFixture(t)
 	writeGo(t, root, "internal/app/worker.go", `package app
@@ -280,7 +316,7 @@ import _ "example.test/tadx/internal/config"
 	}
 	assertViolationStrings(t, violations, []string{
 		"internal/app/worker.go imports example.test/tadx/internal/lock: the composition root must not import unapproved local packages",
-		"internal/operationrun/store.go imports example.test/tadx/internal/config: operation-run infrastructure must import only the lock boundary",
+		"internal/operationrun/store.go imports example.test/tadx/internal/config: operation-run infrastructure must import only the lock and replace boundaries",
 	})
 }
 
@@ -294,6 +330,7 @@ func TestCheckRejectsImportsFromEveryFoundationPackage(t *testing.T) {
 		{path: "internal/capability", name: "capability"},
 		{path: "internal/config", name: "config"},
 		{path: "internal/errs", name: "errs"},
+		{path: "internal/fsreplace", name: "fsreplace"},
 		{path: "internal/identity", name: "identity"},
 		{path: "internal/output", name: "output"},
 		{path: "internal/workspace", name: "workspace"},
