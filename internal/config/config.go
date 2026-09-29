@@ -3,6 +3,7 @@ package config
 
 import (
 	"bytes"
+	"context"
 	"crypto/sha256"
 	"errors"
 	"fmt"
@@ -14,6 +15,7 @@ import (
 	"slices"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/ahillspace/tadx/internal/fsreplace"
 	"github.com/ahillspace/tadx/internal/lock"
@@ -662,6 +664,26 @@ var ErrNoChange = errors.New("configuration unchanged")
 
 const configLockSuffix = ".lock"
 
+// lockWait bounds how long a configuration writer waits for another tadx
+// process to finish its own configuration update.
+var lockWait = 30 * time.Second
+
+// LockTimeoutError reports that another tadx process held the configuration
+// lock for longer than a writer waits. The configuration was not changed.
+type LockTimeoutError struct{ Wait time.Duration }
+
+func (e *LockTimeoutError) Error() string {
+	return fmt.Sprintf("another tadx process held the configuration lock for more than %s; the configuration was not changed", e.Wait)
+}
+
+// Retryable reports that the same update can run after the other process finishes.
+func (*LockTimeoutError) Retryable() bool { return true }
+
+// CorrectiveAction tells the caller how to proceed.
+func (*LockTimeoutError) CorrectiveAction() string {
+	return "Wait for the other tadx command to finish, then retry."
+}
+
 // Update performs one serialized read-modify-write of the user configuration.
 // It holds an advisory interprocess lock across the load, the mutation, and the
 // atomic save so concurrent env or workspace updates in separate tadx processes
@@ -705,7 +727,13 @@ func updateTransaction(path string, createIfMissing bool, mutate func(Config) (C
 	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		return Config{}, fmt.Errorf("create configuration directory: %w", err)
 	}
-	handle, err := lock.Acquire(path + configLockSuffix)
+	wait := lockWait
+	ctx, cancel := context.WithTimeout(context.Background(), wait)
+	handle, err := lock.AcquireContext(ctx, path+configLockSuffix)
+	cancel()
+	if errors.Is(err, context.DeadlineExceeded) {
+		return Config{}, &LockTimeoutError{Wait: wait}
+	}
 	if err != nil {
 		return Config{}, fmt.Errorf("acquire configuration lock: %w", err)
 	}
