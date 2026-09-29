@@ -173,6 +173,7 @@ func (c Config) Validate() error {
 		if environment.Auth.Type != AuthTypePAT {
 			violations = append(violations, fmt.Sprintf("environment %q auth type must be %q", alias, AuthTypePAT))
 		}
+		violations = append(violations, variableReferenceViolations(alias, environment.Auth)...)
 		if reference := environment.Auth.CredentialRef; reference != "" {
 			if !credentialRefPattern.MatchString(reference) {
 				violations = append(violations, fmt.Sprintf("environment %q credential reference must match cred_<32 lowercase hex>", alias))
