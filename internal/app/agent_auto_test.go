@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/ahillspace/tadx/internal/app"
+	"github.com/ahillspace/tadx/internal/lock"
 )
 
 func TestAgentAutoInstallCLIReportsPortableTargetAndRefreshesEditedPackages(t *testing.T) {
@@ -52,9 +53,17 @@ func TestAgentAutoInstallCLIPreservesCompletedTargetsOnFailure(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	if err := os.WriteFile(filepath.Join(home, ".codex", "skills", ".tadx-install.lock"), []byte("busy"), 0600); err != nil {
+	// Another running installer holds the codex skill lock.
+	root, err := os.OpenRoot(filepath.Join(home, ".codex", "skills"))
+	if err != nil {
 		t.Fatal(err)
 	}
+	defer root.Close()
+	held, err := lock.TryAcquireIn(root, ".tadx-install.lock")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer held.Release()
 	configPath := filepath.Join(t.TempDir(), "missing.yaml")
 	opts := app.Options{ConfigPath: configPath, UserHomeDir: func() (string, error) { return home, nil }}
 	var out bytes.Buffer

@@ -8,6 +8,8 @@ import (
 	"io/fs"
 	"os"
 	"path"
+
+	"github.com/ahillspace/tadx/internal/lock"
 )
 
 const legacyCodexBase = ".agents/skills"
@@ -113,10 +115,10 @@ func lockPackages(root *os.Root, target, base string) (func(), error) {
 	if target == "codex" {
 		bases = append(bases, legacyCodexBase)
 	}
-	var locks []string
+	var locks []*lock.Handle
 	unlock := func() {
 		for index := len(locks) - 1; index >= 0; index-- {
-			_ = root.Remove(locks[index])
+			_ = locks[index].Release()
 		}
 	}
 	for _, directory := range bases {
@@ -130,17 +132,18 @@ func lockPackages(root *os.Root, target, base string) (func(), error) {
 			unlock()
 			return nil, errors.New("cannot inspect the skill lock directory")
 		}
-		lock := path.Join(directory, ".tadx-install.lock")
-		file, err := root.OpenFile(lock, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o600)
+		// The operating system releases an advisory lock when its holder exits,
+		// so a lock file left by an interrupted install never blocks later ones.
+		held, err := lock.TryAcquireIn(root, path.Join(directory, ".tadx-install.lock"))
+		if errors.Is(err, lock.ErrLocked) {
+			unlock()
+			return nil, errors.New("cannot acquire the skill installation lock; another TADX Guidance install or uninstall is running; retry after it finishes")
+		}
 		if err != nil {
 			unlock()
-			return nil, errors.New("cannot acquire the skill installation lock; another install or a stale .tadx-install.lock requires attention")
+			return nil, errors.New("cannot acquire the skill installation lock; " + directory + "/.tadx-install.lock must be a regular file the current user can open")
 		}
-		locks = append(locks, lock)
-		if err := file.Close(); err != nil {
-			unlock()
-			return nil, errors.New("cannot close the installation lock")
-		}
+		locks = append(locks, held)
 	}
 	return unlock, nil
 }

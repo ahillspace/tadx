@@ -114,15 +114,12 @@ func TestInstallRejectsCancellationAndConcurrentInstall(t *testing.T) {
 	if err := os.MkdirAll(base, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	lock := filepath.Join(base, ".tadx-install.lock")
-	if err := os.WriteFile(lock, []byte("another installer"), 0o600); err != nil {
-		t.Fatal(err)
-	}
+	holdPackageLock(t, base)
 	if _, err := installer.Install(context.Background(), "codex", false, true); err == nil {
 		t.Fatal("ignored concurrent install")
 	}
-	if data, err := os.ReadFile(lock); err != nil || string(data) != "another installer" {
-		t.Fatal("changed another install lock")
+	if _, err := os.Stat(filepath.Join(base, ".tadx-install.lock")); err != nil {
+		t.Fatalf("removed another install lock: %v", err)
 	}
 }
 
