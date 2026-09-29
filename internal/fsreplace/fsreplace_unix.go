@@ -15,6 +15,12 @@ func Rename(from, to string) error {
 	return os.Rename(from, to)
 }
 
+// RenameIn renames from to to within root, which confines both paths to an
+// opened directory. Like Rename, it never retries.
+func RenameIn(root *os.Root, from, to string) error {
+	return root.Rename(from, to)
+}
+
 // SyncDir flushes a directory's own metadata (its entry list) to stable
 // storage so that renames and creations within it survive power loss.
 // Filesystems that cannot sync a directory report EINVAL or ENOTSUP; those

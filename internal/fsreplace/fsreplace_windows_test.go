@@ -101,3 +101,30 @@ func releaseAfter(t *testing.T, holder *os.File, delay time.Duration) {
 	}()
 	t.Cleanup(func() { <-done })
 }
+
+func TestRenameInMovesDirectoryAfterTransientHandleInsideCloses(t *testing.T) {
+	parent := t.TempDir()
+	if err := os.Mkdir(filepath.Join(parent, "skill"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	inside := filepath.Join(parent, "skill", "SKILL.md")
+	writeFile(t, inside, "content")
+	holder, err := os.Open(inside)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer holder.Close()
+	releaseAfter(t, holder, 200*time.Millisecond)
+	root, err := os.OpenRoot(parent)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer root.Close()
+
+	if err := RenameIn(root, "skill", ".backup"); err != nil {
+		t.Fatalf("RenameIn() error = %v", err)
+	}
+	if got := readFile(t, filepath.Join(parent, ".backup", "SKILL.md")); got != "content" {
+		t.Fatalf("moved file = %q, want content", got)
+	}
+}

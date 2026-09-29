@@ -24,10 +24,20 @@ const retryLimit = 2 * time.Second
 // paths unchanged, so retrying cannot reorder or duplicate updates. A handle
 // that outlasts the bound still fails the rename.
 func Rename(from, to string) error {
+	return retrySharing(func() error { return os.Rename(from, to) })
+}
+
+// RenameIn renames from to to within root, with the same bounded retry as
+// Rename, for writers that confine every path to an opened directory.
+func RenameIn(root *os.Root, from, to string) error {
+	return retrySharing(func() error { return root.Rename(from, to) })
+}
+
+func retrySharing(rename func() error) error {
 	deadline := time.Now().Add(retryLimit)
 	delay := time.Millisecond
 	for {
-		err := os.Rename(from, to)
+		err := rename()
 		transient := errors.Is(err, windows.ERROR_ACCESS_DENIED) || errors.Is(err, windows.ERROR_SHARING_VIOLATION)
 		if !transient || time.Now().Add(delay).After(deadline) {
 			return err

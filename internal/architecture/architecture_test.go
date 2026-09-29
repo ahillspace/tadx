@@ -268,6 +268,7 @@ import _ "example.test/tadx/internal/lock"
 func TestCheckAllowsLocalStateWritersToUseReplaceLeaf(t *testing.T) {
 	root := moduleFixture(t)
 	for _, file := range []string{
+		"internal/agent/install.go",
 		"internal/artifact/workbook.go",
 		"internal/config/config.go",
 		"internal/jobmonitor/store.go",

@@ -123,3 +123,30 @@ func readFile(t *testing.T, path string) string {
 	}
 	return string(data)
 }
+
+func TestRenameInStaysInsideRoot(t *testing.T) {
+	parent := t.TempDir()
+	directory := filepath.Join(parent, "home")
+	if err := os.Mkdir(directory, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	writeFile(t, filepath.Join(directory, ".staged"), "new")
+	root, err := os.OpenRoot(directory)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer root.Close()
+
+	if err := RenameIn(root, ".staged", "record.json"); err != nil {
+		t.Fatalf("RenameIn() error = %v", err)
+	}
+	if got := readFile(t, filepath.Join(directory, "record.json")); got != "new" {
+		t.Fatalf("destination = %q, want new", got)
+	}
+	if err := RenameIn(root, "record.json", "../escaped.json"); err == nil {
+		t.Fatal("RenameIn() moved an entry outside its root")
+	}
+	if _, err := os.Lstat(filepath.Join(parent, "escaped.json")); !errors.Is(err, fs.ErrNotExist) {
+		t.Fatalf("escaped entry Lstat error = %v, want not exist", err)
+	}
+}

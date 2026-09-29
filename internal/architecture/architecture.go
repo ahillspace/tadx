@@ -256,7 +256,7 @@ func localImportAllowed(file, imported string) bool {
 		}
 		// The installer shares bounded observations with its actions and target roots with startup discovery.
 		if hasPathPrefix(file, "internal/agent") {
-			return matchesExact(imported, "internal/agenttarget", "internal/value")
+			return matchesExact(imported, "internal/agenttarget", "internal/fsreplace", "internal/value")
 		}
 		if hasPathPrefix(file, "internal/guidancenotice") {
 			return imported == "internal/agenttarget"
