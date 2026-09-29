@@ -245,28 +245,32 @@ lock_install="${test_root}/lock-install"
 lock_path="${lock_install}/.tadx-install.lock"
 lock_host=$(uname -n)
 mkdir -p "$lock_install"
+# Installers never move or remove an existing lock; an abandoned one is only diagnosed.
 expect_lock_respected() {
+    lock_record=$(cat "${lock_path}/owner" 2>/dev/null || printf '%s' missing)
     if sh "${repository_root}/scripts/install.sh" --version 1.2.3 --install-dir "$lock_install" --no-modify-path --no-completion >/dev/null 2>"${test_root}/lock-error"; then
         printf '%s\n' "Installer ignored a lock it must respect: $1" >&2
         exit 1
     fi
-    grep -Fq 'Another installer is using this directory.' "${test_root}/lock-error"
+    if ! grep -Fq "$2" "${test_root}/lock-error"; then
+        printf '%s\n' "Installer reported the wrong lock state for $1:" >&2
+        cat "${test_root}/lock-error" >&2
+        exit 1
+    fi
     [ -d "$lock_path" ]
-}
-expect_lock_reclaimed() {
-    sh "${repository_root}/scripts/install.sh" --version 1.2.3 --install-dir "$lock_install" --no-modify-path --no-completion >/dev/null
-    [ ! -e "$lock_path" ]
+    [ "$(cat "${lock_path}/owner" 2>/dev/null || printf '%s' missing)" = "$lock_record" ]
     if ls -A "$lock_install" | grep -q '^\.tadx-install\.stale\.'; then
-        printf '%s\n' "Stale lock remnants were left behind: $1" >&2
+        printf '%s\n' "Lock remnants were left behind: $1" >&2
         exit 1
     fi
 }
+in_use='Another installer is using this directory.'
+abandoned='A previous installer exited without releasing this directory.'
 
 # This test shell is a live owner.
 mkdir "$lock_path"
 printf '%s %s\n' "$$" "$lock_host" > "${lock_path}/owner"
-expect_lock_respected 'live owner'
-[ "$(cat "${lock_path}/owner")" = "$$ $lock_host" ]
+expect_lock_respected 'live owner' "$in_use"
 rm -rf "$lock_path"
 
 sh -c 'exit 0' &
@@ -274,21 +278,27 @@ exited_pid=$!
 wait "$exited_pid"
 mkdir "$lock_path"
 printf '%s %s\n' "$exited_pid" "$lock_host" > "${lock_path}/owner"
-expect_lock_reclaimed 'exited owner'
+expect_lock_respected 'exited owner' "$abandoned"
+rm -rf "$lock_path"
 
 mkdir "$lock_path"
 printf '%s %s\n' "$exited_pid" 'another-host' > "${lock_path}/owner"
-expect_lock_respected 'owner on another host'
+expect_lock_respected 'owner on another host' "$in_use"
 rm -rf "$lock_path"
 
 mkdir "$lock_path"
 printf '%s\n' 'not a pid' > "${lock_path}/owner"
-expect_lock_respected 'recent lock with an unreadable owner'
+expect_lock_respected 'recent lock with an unreadable owner' "$in_use"
 rm -rf "$lock_path"
 
 mkdir "$lock_path"
-expect_lock_respected 'recent lock without an owner'
+expect_lock_respected 'recent lock without an owner' "$in_use"
 touch -t 200001010000 "$lock_path"
-expect_lock_reclaimed 'old lock without an owner'
+expect_lock_respected 'old lock without an owner' "$abandoned"
+rm -rf "$lock_path"
+
+# After the lock is removed by hand, the next installer acquires and releases it.
+sh "${repository_root}/scripts/install.sh" --version 1.2.3 --install-dir "$lock_install" --no-modify-path --no-completion >/dev/null
+[ ! -e "$lock_path" ]
 
 printf '%s\n' 'install.sh tests passed'

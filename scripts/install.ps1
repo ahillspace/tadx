@@ -294,9 +294,11 @@ function Get-InstallLockOwner {
     return "$PID $([Environment]::MachineName)"
 }
 
-# A lock is stale when its recorded owner process on this computer has exited.
-# Without a usable owner on this computer, only a lock older than 30 minutes is stale.
-function Test-StaleInstallLock {
+# A lock is abandoned when its recorded owner process on this computer has exited.
+# Without a usable owner on this computer, only a lock older than 30 minutes is abandoned.
+# This only chooses the failure message: moving or removing a lock another
+# installer could be acquiring at the same moment would admit two owners.
+function Test-AbandonedInstallLock {
     param([Parameter(Mandatory = $true)][string]$Path)
 
     if (-not (Test-Path -LiteralPath $Path -PathType Container)) { return $false }
@@ -314,30 +316,22 @@ function Enter-InstallLock {
 
     try { New-Item -ItemType Directory -Path $Path -ErrorAction Stop | Out-Null }
     catch {
-        if (-not (Test-StaleInstallLock -Path $Path)) { return $false }
-        # Rename first so concurrent reclaimers cannot both remove one lock.
-        $staleLock = Join-Path (Split-Path -Parent $Path) ('.tadx-install.stale.' + [Guid]::NewGuid().ToString('N'))
-        try { [IO.Directory]::Move($Path, $staleLock) } catch { return $false }
-        if (-not (Test-StaleInstallLock -Path $staleLock)) {
-            # Another installer reclaimed it first; restore its live lock.
-            try { [IO.Directory]::Move($staleLock, $Path) } catch { }
-            return $false
+        if (Test-AbandonedInstallLock -Path $Path) {
+            throw "A previous installer exited without releasing this directory. No replacement occurred; confirm no installer is running, then remove '$Path' and retry."
         }
-        Remove-Item -LiteralPath $staleLock -Recurse -Force -ErrorAction SilentlyContinue
-        try { New-Item -ItemType Directory -Path $Path -ErrorAction Stop | Out-Null } catch { return $false }
+        throw 'Another installer is using this directory. Wait for it to finish; remove .tadx-install.lock only after confirming no installer is running.'
     }
     try { [IO.File]::WriteAllText((Join-Path $Path 'owner'), (Get-InstallLockOwner)) }
     catch {
         Remove-Item -LiteralPath $Path -Recurse -Force -ErrorAction SilentlyContinue
         throw
     }
-    return $true
 }
 
 function Exit-InstallLock {
     param([Parameter(Mandatory = $true)][string]$Path)
 
-    # Never remove a lock that another installer reclaimed and now owns.
+    # Never remove a lock that another installer acquired after a manual removal.
     $record = ''
     try { $record = [IO.File]::ReadAllText((Join-Path $Path 'owner')) } catch { $record = '' }
     if ([string]::IsNullOrEmpty($record) -or $record -ceq (Get-InstallLockOwner)) {
@@ -533,9 +527,7 @@ try {
 
     try { New-Item -ItemType Directory -Force -Path $InstallDir -ErrorAction Stop | Out-Null }
     catch { throw (New-InstallerWriteFailure -Stage 'create the resolved install directory' -Target $InstallDir) }
-    if (-not (Enter-InstallLock -Path $installLock)) {
-        throw 'Another installer is using this directory. Wait for it to finish; remove .tadx-install.lock only after confirming no installer is running.'
-    }
+    Enter-InstallLock -Path $installLock
     $ownsInstallLock = $true
     Install-TadxBinary -Source $binaries[0].FullName -Directory $InstallDir
     if (-not $NoModifyPath) {
