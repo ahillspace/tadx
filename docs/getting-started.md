@@ -70,6 +70,7 @@ tadx env update dev --pat-name-env TADX_DEV_PAT_NAME --pat-secret-env TADX_DEV_P
 ```
 
 A complete variable pair overrides an OS-stored PAT for that process, and TADX does not combine partial credentials from different sources.
+The flags take variable names, never the PAT name or secret; TADX rejects a value that is not a variable name without saving or showing it.
 
 ## Pull other project assets
 
