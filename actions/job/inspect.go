@@ -87,42 +87,42 @@ func (o InspectOutput) render(full bool) any {
 		job := o.Job
 		projected.Job = &job
 	}
-	if o.Operation != nil {
-		snapshot := o.Operation.Snapshot
-		if full && o.Operation.FullSnapshot != nil {
-			snapshot = o.Operation.FullSnapshot
-		}
-		result := operationSnapshot(snapshot, *o.Operation, full)
-		if object, ok := result.(map[string]any); ok {
-			_, sourceContext := object["source"].(map[string]any)
-			if o.Environment != "" && !sourceContext {
-				object["environment"] = o.Environment
-			}
-			if o.Site != "" && !sourceContext {
-				object["site"] = o.Site
-			}
-			if len(o.Warnings) > 0 {
-				object["warnings"] = o.Warnings
-			}
-			if o.Operation.Alive && o.Operation.Activity != "" {
-				object["activity"] = o.Operation.Activity
-			}
-			if o.Status == "interrupted" {
-				object["status"] = o.Status
-				// Acceptance can be saved before a batch item result. Preserve
-				// these independently confirmed jobs even if the last aggregate
-				// still shows an unfinished item; never infer whole-run success.
-				if len(o.Operation.Items) > 0 {
-					object["accepted_jobs"] = renderOperationItems(o.Operation.Items, o.Operation.Operation, full)
-				}
-			}
-			if full {
-				object["tracking"] = map[string]any{"phase": o.Operation.Phase, "worker_alive": o.Operation.Alive, "requested_at": o.Operation.RequestedAt, "started_at": o.Operation.StartedAt, "worker_finished_at": o.Operation.FinishedAt, "worker_exit_code": o.Operation.ExitCode}
-			}
-		}
-		return result
+	if o.Operation == nil {
+		return projected
 	}
-	return projected
+	snapshot := o.Operation.Snapshot
+	if full && o.Operation.FullSnapshot != nil {
+		snapshot = o.Operation.FullSnapshot
+	}
+	result := operationSnapshot(snapshot, *o.Operation, full)
+	if object, ok := result.(map[string]any); ok {
+		_, sourceContext := object["source"].(map[string]any)
+		if o.Environment != "" && !sourceContext {
+			object["environment"] = o.Environment
+		}
+		if o.Site != "" && !sourceContext {
+			object["site"] = o.Site
+		}
+		if len(o.Warnings) > 0 {
+			object["warnings"] = o.Warnings
+		}
+		if o.Operation.Alive && o.Operation.Activity != "" {
+			object["activity"] = o.Operation.Activity
+		}
+		if o.Status == "interrupted" {
+			object["status"] = o.Status
+			// Acceptance can be saved before a batch item result. Preserve
+			// these independently confirmed jobs even if the last aggregate
+			// still shows an unfinished item; never infer whole-run success.
+			if len(o.Operation.Items) > 0 {
+				object["accepted_jobs"] = renderOperationItems(o.Operation.Items, o.Operation.Operation, full)
+			}
+		}
+		if full {
+			object["tracking"] = map[string]any{"phase": o.Operation.Phase, "worker_alive": o.Operation.Alive, "requested_at": o.Operation.RequestedAt, "started_at": o.Operation.StartedAt, "worker_finished_at": o.Operation.FinishedAt, "worker_exit_code": o.Operation.ExitCode}
+		}
+	}
+	return result
 }
 
 func operationSnapshot(snapshot any, operation OperationView, full bool) any {

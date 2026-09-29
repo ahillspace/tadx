@@ -180,14 +180,12 @@ func (a *Adapter) listDatasourcesByProjectLUID(ctx context.Context, input tablea
 		}
 		requestID = page.TableauRequestID
 		for _, item := range page.Items {
-			if _, alreadySeen := seen[item.LUID]; alreadySeen {
-				if err := recordDatasource(seen, item); err != nil {
-					return Page{}, err
-				}
-				continue
-			}
+			_, alreadySeen := seen[item.LUID]
 			if err := recordDatasource(seen, item); err != nil {
 				return Page{}, err
+			}
+			if alreadySeen {
+				continue
 			}
 			if item.ProjectLUID == input.ProjectLUID &&
 				(input.Name == "" || item.Name == input.Name) &&

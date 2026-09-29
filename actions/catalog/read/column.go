@@ -216,10 +216,8 @@ func InspectColumn(ctx context.Context, reader ColumnInspectReader, in ColumnIns
 		if len(page.Items) == 1 && page.Items[0].MetadataID == in.MetadataID {
 			out.Item = &page.Items[0]
 		}
-		if err == nil {
-			if out.Item == nil || !page.Complete || page.NextCursor != "" {
-				err = fmt.Errorf("metadata selector did not resolve exactly one complete identity")
-			}
+		if err == nil && (out.Item == nil || !page.Complete || page.NextCursor != "") {
+			err = fmt.Errorf("metadata selector did not resolve exactly one complete identity")
 		}
 	}
 	if err != nil {

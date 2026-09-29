@@ -150,18 +150,23 @@ func compareBundleDefinition(saved Definition, submitted json.RawMessage) error 
 func normalizeBundleSection(section string, value any) error {
 	object, ok := value.(map[string]any)
 	if !ok {
-		if section == "datasource_goals" {
-			if goals, ok := value.([]any); ok {
-				for _, goal := range goals {
-					if object, ok := goal.(map[string]any); ok {
-						if err := normalizeBundleFilters(object["basic_specification"]); err != nil {
-							return err
-						}
-						if err := normalizeBundleFilters(object["threshold_basic_specification"]); err != nil {
-							return err
-						}
-					}
-				}
+		if section != "datasource_goals" {
+			return nil
+		}
+		goals, ok := value.([]any)
+		if !ok {
+			return nil
+		}
+		for _, goal := range goals {
+			object, ok := goal.(map[string]any)
+			if !ok {
+				continue
+			}
+			if err := normalizeBundleFilters(object["basic_specification"]); err != nil {
+				return err
+			}
+			if err := normalizeBundleFilters(object["threshold_basic_specification"]); err != nil {
+				return err
 			}
 		}
 		return nil
@@ -189,10 +194,12 @@ func normalizeBundleSection(section string, value any) error {
 	case "insights_options":
 		if settings, ok := object["settings"].([]any); ok {
 			for _, setting := range settings {
-				if entry, ok := setting.(map[string]any); ok {
-					if _, exists := entry["disabled"]; !exists {
-						entry["disabled"] = false
-					}
+				entry, ok := setting.(map[string]any)
+				if !ok {
+					continue
+				}
+				if _, exists := entry["disabled"]; !exists {
+					entry["disabled"] = false
 				}
 			}
 		}

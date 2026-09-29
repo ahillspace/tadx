@@ -40,10 +40,11 @@ type projectResolutionPhase interface {
 }
 
 func (a *Action) beginProjectResolution(ctx context.Context) context.Context {
-	if a != nil {
-		if resolver, ok := a.resolver.(projectResolutionPhase); ok {
-			return resolver.BeginProjectResolution(ctx)
-		}
+	if a == nil {
+		return ctx
+	}
+	if resolver, ok := a.resolver.(projectResolutionPhase); ok {
+		return resolver.BeginProjectResolution(ctx)
 	}
 	return ctx
 }

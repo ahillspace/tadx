@@ -444,12 +444,13 @@ func ListFilter(input ListRequest) (string, error) {
 	}
 	filters := make([]string, 0, len(fields))
 	for _, field := range fields {
-		if field.value != "" {
-			if strings.ContainsAny(field.value, "&,") {
-				return "", fmt.Errorf("flow filter %s cannot contain ampersand or comma", field.name)
-			}
-			filters = append(filters, field.name+":eq:"+field.value)
+		if field.value == "" {
+			continue
 		}
+		if strings.ContainsAny(field.value, "&,") {
+			return "", fmt.Errorf("flow filter %s cannot contain ampersand or comma", field.name)
+		}
+		filters = append(filters, field.name+":eq:"+field.value)
 	}
 	return strings.Join(filters, ","), nil
 }

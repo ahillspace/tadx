@@ -132,37 +132,32 @@ func (a *Publisher) Complete(ctx context.Context, out PublishOutput) (PublishOut
 		return out, nil
 	}
 	plan, result := out.Plan, *out.Result
-	input := PublishInput{Environment: plan.Target.Environment, Site: plan.Target.Site}
-	if result.Status == "succeeded" {
-		if result.DatasourceLUID == "" {
-			resolved, resolveErr := a.resolver.ResolvePublishedDatasource(ctx, plan.DatasourceName, plan.Target.ProjectLUID)
-			if resolveErr != nil {
-				if errors.Is(resolveErr, PublishErrPublishedDatasourceNotVisible) {
-					result.Verification = "destination_pending"
-					out.Result = &result
-					out.Help = []string{"Publication succeeded; its destination is not yet visible in the name index. Do not repeat publication.", publishPublishInspectionHint(plan, result)}
-					return out, nil
-				}
-				result.Verification = "destination_unavailable"
-				out.Result = &result
-				return out, publishUnknownOutcomeError(plan, input, result, fmt.Errorf("resolve completed datasource identity: %w", resolveErr))
-			}
-			if strings.TrimSpace(resolved.LUID) == "" || resolved.Name != plan.DatasourceName || resolved.ProjectLUID != plan.Target.ProjectLUID {
-				result.Verification = "destination_unavailable"
-				out.Result = &result
-				return out, publishUnknownOutcomeError(plan, input, result, errors.New("completed datasource resolution returned incomplete or conflicting authoritative identity"))
-			}
-			result.DatasourceLUID, result.DatasourceName, result.ProjectLUID = resolved.LUID, resolved.Name, resolved.ProjectLUID
-		} else if result.DatasourceName != plan.DatasourceName || result.ProjectLUID != plan.Target.ProjectLUID {
-			result.Verification = "destination_mismatch"
-			out.Result = &result
-			return out, publishUnknownOutcomeError(plan, input, result, errors.New("completed datasource job returned identity conflicting with the exact publish target"))
-		}
-	}
 	out.Result = &result
-	if result.Status == "succeeded" {
-		out.Result.Verification = "confirmed"
+	if result.Status != "succeeded" {
+		return out, nil
 	}
+	input := PublishInput{Environment: plan.Target.Environment, Site: plan.Target.Site}
+	if result.DatasourceLUID == "" {
+		resolved, resolveErr := a.resolver.ResolvePublishedDatasource(ctx, plan.DatasourceName, plan.Target.ProjectLUID)
+		if resolveErr != nil {
+			if errors.Is(resolveErr, PublishErrPublishedDatasourceNotVisible) {
+				result.Verification = "destination_pending"
+				out.Help = []string{"Publication succeeded; its destination is not yet visible in the name index. Do not repeat publication.", publishPublishInspectionHint(plan, result)}
+				return out, nil
+			}
+			result.Verification = "destination_unavailable"
+			return out, publishUnknownOutcomeError(plan, input, result, fmt.Errorf("resolve completed datasource identity: %w", resolveErr))
+		}
+		if strings.TrimSpace(resolved.LUID) == "" || resolved.Name != plan.DatasourceName || resolved.ProjectLUID != plan.Target.ProjectLUID {
+			result.Verification = "destination_unavailable"
+			return out, publishUnknownOutcomeError(plan, input, result, errors.New("completed datasource resolution returned incomplete or conflicting authoritative identity"))
+		}
+		result.DatasourceLUID, result.DatasourceName, result.ProjectLUID = resolved.LUID, resolved.Name, resolved.ProjectLUID
+	} else if result.DatasourceName != plan.DatasourceName || result.ProjectLUID != plan.Target.ProjectLUID {
+		result.Verification = "destination_mismatch"
+		return out, publishUnknownOutcomeError(plan, input, result, errors.New("completed datasource job returned identity conflicting with the exact publish target"))
+	}
+	result.Verification = "confirmed"
 	return out, nil
 }
 
