@@ -152,8 +152,9 @@ func (in Installer) Uninstall(ctx context.Context, target string, preview, force
 			plan := plans[index]
 			if plan.stage != "" {
 				if err := in.renamePackage(root, plan.stage, plan.skill.Path); err != nil {
-					return Result{}, errors.New("uninstall failed and rollback is incomplete; inspect target packages")
+					return Result{Status: "partial", Skills: uninstallRollbackStates(plans), Warnings: result.Warnings}, errors.New("uninstall failed and rollback is incomplete; inspect target packages")
 				}
+				plan.stage = ""
 			}
 		}
 		return Result{}, cause
@@ -472,6 +473,29 @@ func rollbackStates(plans []*packagePlan) []Skill {
 			skill.Status, skill.Backup, skill.SHA256, skill.Files = "absent", "", "", 0
 		default:
 			skill.Status, skill.Backup, skill.SHA256, skill.Files = "unchanged", "", plan.before, 0
+		}
+		skills = append(skills, skill)
+	}
+	return skills
+}
+
+// uninstallRollbackStates reports where each visible package stands when an
+// uninstall rollback stops early: a package still staged for removal is out of
+// discovery and kept at its staging path; every other package is in place.
+func uninstallRollbackStates(plans []*packagePlan) []Skill {
+	var skills []Skill
+	for _, plan := range plans {
+		if plan.hidden {
+			continue
+		}
+		skill := plan.skill
+		switch {
+		case plan.stage != "":
+			skill.Status, skill.Backup = "backed-up", plan.stage
+		case plan.before == "":
+			skill.Status, skill.Backup = "absent", ""
+		default:
+			skill.Status, skill.Backup = "unchanged", ""
 		}
 		skills = append(skills, skill)
 	}

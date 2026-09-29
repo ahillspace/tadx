@@ -72,7 +72,7 @@ func newUninstall(deps Dependencies) *cobra.Command {
 	}, RunE: func(command *cobra.Command, _ []string) error {
 		result, err := deps.Uninstaller.Execute(command.Context(), input)
 		if err != nil {
-			return err
+			return clierr.WithOutput(result, err)
 		}
 		return deps.Renderer.Render(result)
 	}}
