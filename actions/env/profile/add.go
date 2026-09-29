@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/ahillspace/tadx/internal/commandhint"
+	"github.com/ahillspace/tadx/internal/config"
 	"github.com/ahillspace/tadx/internal/errs"
 )
 
@@ -27,6 +28,9 @@ func (a *AddAction) Execute(ctx context.Context, input AddInput) (AddOutput, err
 	}
 	if !validServerURL(input.ServerURL) {
 		return AddOutput{}, addUsageError("server URL must be an absolute HTTPS URL without credentials, query, or fragment")
+	}
+	if summary := variableReferenceProblem(input.PATNameEnv, input.PATSecretEnv); summary != "" {
+		return AddOutput{}, variableReferenceError("env.profile.add.usage", "env.profile.add", summary)
 	}
 	if input.PATNameEnv != "" && strings.EqualFold(input.PATNameEnv, input.PATSecretEnv) {
 		return AddOutput{}, addUsageError("PAT name and secret must use different environment variables")
@@ -60,6 +64,25 @@ func (a *AddAction) Execute(ctx context.Context, input AddInput) (AddOutput, err
 func validServerURL(value string) bool {
 	parsed, err := url.Parse(value)
 	return err == nil && strings.EqualFold(parsed.Scheme, "https") && parsed.Host != "" && parsed.User == nil && parsed.RawQuery == "" && parsed.Fragment == ""
+}
+
+// variableReferenceProblem rejects PAT references that are not variable names
+// before any write. The summary never contains the rejected value, because such
+// a value is most likely a pasted PAT name or secret.
+func variableReferenceProblem(name, secret string) string {
+	for _, reference := range []struct{ label, value string }{
+		{label: "PAT name", value: name},
+		{label: "PAT secret", value: secret},
+	} {
+		if reference.value != "" && !config.ValidVariableReference(reference.value) {
+			return reference.label + " environment-variable reference " + config.VariableReferenceRule + "; the value is not shown because it may be a secret"
+		}
+	}
+	return ""
+}
+
+func variableReferenceError(id, operation, summary string) error {
+	return &errs.Error{ID: id, Kind: errs.KindUsage, Operation: operation, Summary: summary, CorrectiveAction: "Pass the name of the environment variable that holds the value, never the PAT name or secret itself. Nothing was saved."}
 }
 
 func addUsageError(summary string) error {
