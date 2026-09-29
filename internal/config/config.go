@@ -15,6 +15,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/ahillspace/tadx/internal/fsreplace"
 	"github.com/ahillspace/tadx/internal/lock"
 	"gopkg.in/yaml.v3"
 )
@@ -649,7 +650,7 @@ func Save(path string, configuration Config) error {
 	if err := temporary.Close(); err != nil {
 		return fmt.Errorf("close configuration staging file: %w", err)
 	}
-	if err := os.Rename(temporaryPath, path); err != nil {
+	if err := fsreplace.Replace(temporaryPath, path); err != nil {
 		return fmt.Errorf("install configuration: %w", err)
 	}
 	return nil

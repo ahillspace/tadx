@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/ahillspace/tadx/internal/fsreplace"
 	"github.com/ahillspace/tadx/internal/lock"
 	"github.com/ahillspace/tadx/internal/value"
 	"io"
@@ -94,5 +95,5 @@ func (s Store) Save(ctx context.Context, out value.SavedExecution) error {
 	if closeErr != nil {
 		return closeErr
 	}
-	return os.Rename(tmp, s.Path)
+	return fsreplace.Replace(tmp, s.Path)
 }

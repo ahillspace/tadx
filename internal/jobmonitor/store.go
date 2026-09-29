@@ -13,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/ahillspace/tadx/internal/fsreplace"
 	"github.com/ahillspace/tadx/internal/lock"
 	"github.com/ahillspace/tadx/internal/value"
 )
@@ -232,5 +233,5 @@ func atomicWrite(path string, data []byte) error {
 	if closeErr != nil {
 		return closeErr
 	}
-	return os.Rename(f.Name(), path)
+	return fsreplace.Replace(f.Name(), path)
 }

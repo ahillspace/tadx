@@ -16,6 +16,7 @@ import (
 
 	"github.com/ahillspace/tadx/internal/commandhint"
 	"github.com/ahillspace/tadx/internal/config"
+	"github.com/ahillspace/tadx/internal/fsreplace"
 	"gopkg.in/yaml.v3"
 )
 
@@ -279,11 +280,11 @@ func (m *Manager) Delete(ctx context.Context, expected Record) (Record, error) {
 			}
 			return config.Config{}, nil, err
 		}
-		if err := os.Rename(root, tombstone); err != nil {
+		if err := fsreplace.Rename(root, tombstone); err != nil {
 			return config.Config{}, nil, fmt.Errorf("stage workspace deletion: %w", err)
 		}
 		removeRegistration(&current, name)
-		return current, func() error { return os.Rename(tombstone, root) }, nil
+		return current, func() error { return fsreplace.Rename(tombstone, root) }, nil
 	})
 	if err != nil {
 		return Record{}, err
@@ -691,7 +692,7 @@ func upgradeLegacyManifest(root string, replacement Manifest) (bool, error) {
 	if !bytes.Equal(current, data) {
 		return false, errors.New("workspace manifest changed during migration")
 	}
-	if err := os.Rename(temporaryPath, path); err != nil {
+	if err := fsreplace.Replace(temporaryPath, path); err != nil {
 		return false, err
 	}
 	return true, nil
@@ -786,7 +787,7 @@ func cloneRoot(ctx context.Context, sourceRoot, root string, manifest Manifest) 
 	if err := os.WriteFile(filepath.Join(stage, config.WorkspaceConfigName), data, 0o600); err != nil {
 		return err
 	}
-	if err := os.Rename(stage, root); err != nil {
+	if err := fsreplace.Rename(stage, root); err != nil {
 		return fmt.Errorf("install workspace root: %w", err)
 	}
 	return nil
