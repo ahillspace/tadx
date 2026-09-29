@@ -114,6 +114,8 @@ The platform installers do not verify those attestations.
 Checksum matching is not provenance verification, and provenance verification does not establish that the source code or build workflow is secure.
 See [GitHub's artifact-attestation documentation](https://docs.github.com/en/actions/concepts/security/artifact-attestations) for the scope of those claims.
 The updater installs the selected release and refreshes TADX-owned Guidance with recovery behavior described in the [website and installer guide](website.md).
+Updater child processes do not receive conventional `TADX_*_PAT_NAME` or `TADX_*_PAT_SECRET` variables, or the PAT variables named by the selected configuration.
+When the selected configuration cannot be read, only the conventional names are withheld so that update can still repair an installation.
 
 The automatic update notifier reads public release metadata from the GitHub API without GitHub authentication or Tableau credentials.
 It does not send Tableau information, download release binaries, or install updates.

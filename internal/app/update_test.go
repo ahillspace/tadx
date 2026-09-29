@@ -8,6 +8,7 @@ import (
 	updatecli "github.com/ahillspace/tadx/internal/cli/update"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 )
@@ -94,11 +95,64 @@ func TestUpdaterWithholdsConfiguredPATVariables(t *testing.T) {
 	if err := os.WriteFile(path, []byte(contents), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	got := strings.Join(configuredPATVariables(path)(), ",")
+	got := strings.Join((&runtimeDependencies{configPath: path}).configuredPATVariables(), ",")
 	if got != "PROD_UPDATE_PAT_NAME,PROD_UPDATE_PAT_SECRET" {
 		t.Fatalf("configured PAT variables = %q", got)
 	}
-	if missing := configuredPATVariables(filepath.Join(t.TempDir(), "missing.yaml"))(); len(missing) != 0 {
+	if missing := (&runtimeDependencies{configPath: filepath.Join(t.TempDir(), "missing.yaml")}).configuredPATVariables(); len(missing) != 0 {
 		t.Fatalf("missing configuration listed %q", missing)
+	}
+}
+
+// A config selected by flag is parsed after the command tree is built, so the
+// updater must read the selected file when it starts a child, not at wiring time.
+func TestUpdaterWithholdsPATVariablesFromFlagSelectedConfig(t *testing.T) {
+	for _, flag := range []string{"--config", "--cfg"} {
+		t.Run(flag, func(t *testing.T) {
+			temp := t.TempDir()
+			configuration := func(name, secret string) string {
+				return "version: 1\nenvironments:\n  production:\n    url: https://tableau.example.com\n    site_content_url: ''\n    api_version: \"3.29\"\n    auth:\n      type: pat\n      pat_name_env: " + name + "\n      pat_secret_env: " + secret + "\n"
+			}
+			defaultPath := filepath.Join(temp, "default.yaml")
+			selectedPath := filepath.Join(temp, "selected.yaml")
+			if err := os.WriteFile(defaultPath, []byte(configuration("DEFAULT_UPDATE_PAT_NAME", "DEFAULT_UPDATE_PAT_SECRET")), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(selectedPath, []byte(configuration("SELECTED_UPDATE_PAT_NAME", "SELECTED_UPDATE_PAT_SECRET")), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			bin := filepath.Join(temp, "bin")
+			if err := os.Mkdir(bin, 0o700); err != nil {
+				t.Fatal(err)
+			}
+			captured := filepath.Join(temp, "gh-environment")
+			if runtime.GOOS == "windows" {
+				if err := os.WriteFile(filepath.Join(bin, "gh.bat"), []byte("@set > \"%UPDATE_FAKE_GH_CAPTURE%\"\r\n"), 0o700); err != nil {
+					t.Fatal(err)
+				}
+			} else if err := os.WriteFile(filepath.Join(bin, "gh"), []byte("#!/bin/sh\nexport -p > \"$UPDATE_FAKE_GH_CAPTURE\"\n"), 0o700); err != nil {
+				t.Fatal(err)
+			}
+			t.Setenv("PATH", bin)
+			t.Setenv("UPDATE_FAKE_GH_CAPTURE", captured)
+			t.Setenv("SELECTED_UPDATE_PAT_NAME", "fixture-name")
+			t.Setenv("SELECTED_UPDATE_PAT_SECRET", "fixture-secret")
+			t.Setenv("UPDATE_FIXTURE_KEPT", "kept")
+			var out bytes.Buffer
+			Run(t.Context(), []string{flag, selectedPath, "update", "--check"}, &out, Options{ConfigPath: defaultPath, UserHomeDir: func() (string, error) { return temp, nil }})
+			environment, err := os.ReadFile(captured)
+			if err != nil {
+				t.Fatalf("fake gh was not run: %v\n%s", err, out.String())
+			}
+			upper := strings.ToUpper(string(environment))
+			for _, withheld := range []string{"SELECTED_UPDATE_PAT_NAME", "SELECTED_UPDATE_PAT_SECRET"} {
+				if strings.Contains(upper, withheld) {
+					t.Errorf("updater child received %s", withheld)
+				}
+			}
+			if !strings.Contains(upper, "UPDATE_FIXTURE_KEPT") {
+				t.Fatalf("updater child lost ordinary variables: %s", environment)
+			}
+		})
 	}
 }
