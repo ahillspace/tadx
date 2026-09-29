@@ -2,6 +2,7 @@ package get_test
 
 import (
 	"context"
+	"reflect"
 	"testing"
 	"time"
 
@@ -31,7 +32,7 @@ func TestCheckReportsCurrentVersion(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if c.calls != 1 || out.UpdateAvailable || out.Status != "current" {
+	if c.calls != 1 || out.UpdateAvailable || out.Status != "current" || len(out.Help) != 0 {
 		t.Fatalf("out=%#v calls=%d", out, c.calls)
 	}
 }
@@ -41,7 +42,7 @@ func TestCheckReportsUpdate(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if c.calls != 1 || !out.UpdateAvailable || out.Status != "update-available" {
+	if c.calls != 1 || !out.UpdateAvailable || out.Status != "update-available" || !reflect.DeepEqual(out.Help, []string{"tadx update"}) {
 		t.Fatalf("out=%#v calls=%d", out, c.calls)
 	}
 }

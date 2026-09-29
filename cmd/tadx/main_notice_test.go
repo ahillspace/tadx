@@ -54,6 +54,34 @@ func TestCLIGuidanceNoticeIsSessionBoundAndLeavesStdoutAlone(t *testing.T) {
 	}
 }
 
+func TestCLIGuidanceInstallationDoesNotPrintGuidanceNotice(t *testing.T) {
+	binary := buildNoticeCLI(t)
+	directory := t.TempDir()
+	for _, name := range []string{".git", "home"} {
+		if err := os.Mkdir(filepath.Join(directory, name), 0o700); err != nil {
+			t.Fatal(err)
+		}
+	}
+	environment := noticeEnvironment(directory, "session-one")
+	preview := runNoticeCLI(t, binary, directory, environment, []string{"agt", "ist", "--target", "generic", "--preview"})
+	if preview.stderr != "" {
+		t.Fatalf("install preview stderr = %q, want no guidance notice", preview.stderr)
+	}
+	if later := runNoticeCLI(t, binary, directory, environment, []string{"capability", "list", "--domain", "capability"}); !strings.Contains(later.stderr, "Guidance was not detected") {
+		t.Fatalf("stderr after preview = %q, want the unclaimed session notice", later.stderr)
+	}
+	installed := runNoticeCLI(t, binary, directory, noticeEnvironment(directory, "session-two"), []string{"agent", "install", "--target", "generic"})
+	if installed.stderr != "" {
+		t.Fatalf("install stderr = %q, want no guidance notice", installed.stderr)
+	}
+	if !strings.Contains(installed.stdout, "status: installed") {
+		t.Fatalf("install stdout = %q, want installed Guidance", installed.stdout)
+	}
+	if later := runNoticeCLI(t, binary, directory, noticeEnvironment(directory, "session-three"), []string{"capability", "list", "--domain", "capability"}); later.stderr != "" {
+		t.Fatalf("stderr after install = %q, want no guidance notice", later.stderr)
+	}
+}
+
 func buildNoticeCLI(t *testing.T) string {
 	t.Helper()
 	name := "tadx"

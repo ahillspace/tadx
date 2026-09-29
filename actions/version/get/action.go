@@ -22,7 +22,7 @@ type Output struct {
 	UpdateAvailable bool     `json:"update_available,omitempty"`
 	ReleaseURL      string   `json:"release_url,omitempty"`
 	PublishedAt     string   `json:"published_at,omitempty"`
-	Help            []string `json:"help"`
+	Help            []string `json:"help,omitempty"`
 }
 
 func (o Output) CompactOutput() any { return o }
@@ -57,11 +57,10 @@ func (a *Action) Execute(ctx context.Context, in Input) (Output, error) {
 	}
 	out.UpdateAvailable = current != "dev" && compare(current, release.Version) < 0
 	if out.UpdateAvailable {
-		out.Status = "update-available"
+		out.Status, out.Help = "update-available", []string{"tadx update"}
 	} else {
 		out.Status = "current"
 	}
-	out.Help = nil
 	return out, nil
 }
 func compare(left, right string) int {
