@@ -1143,3 +1143,39 @@ func TestClientRejectsMismatchedUploadAppendIdentity(t *testing.T) {
 		t.Fatalf("publish calls = %d", publishCalls)
 	}
 }
+
+func TestClientDecodesAndValidatesWorkbookDownloadFilename(t *testing.T) {
+	tests := []struct {
+		name        string
+		disposition string
+		want        string
+		wantErr     string
+	}{
+		{name: "form encoded", disposition: `name="tableau_workbook"; filename="Market+Basket+-+Supply+%26+Demand.twbx"`, want: "Market Basket - Supply & Demand.twbx"},
+		{name: "directory path", disposition: `name="tableau_workbook"; filename="../Finance.twbx"`, wantErr: `invalid filename "../Finance.twbx"`},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+				writer.Header().Set("Content-Disposition", test.disposition)
+				_, _ = writer.Write([]byte("twbx-bytes"))
+			}))
+			defer server.Close()
+
+			client := tableauworkbook.NewClient(tableau.NewTransport(server.Client(), "3.29", nil), session{}, server.URL)
+			download, err := client.Download(context.Background(), "wb-1", nil)
+			if test.wantErr != "" {
+				if err == nil || !strings.Contains(err.Error(), test.wantErr) {
+					t.Fatalf("error = %v, want substring %q", err, test.wantErr)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			if download.Filename != test.want {
+				t.Fatalf("filename = %q, want %q", download.Filename, test.want)
+			}
+		})
+	}
+}

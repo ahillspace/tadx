@@ -588,7 +588,7 @@ func (c *Client) uploadDatasource(ctx context.Context, filename string, source i
 }
 
 func validateMutationPublish(input PublishRequest) (string, error) {
-	if input.Name == "" || input.ProjectLUID == "" || !validFilename(input.Filename) || input.ContentPath == "" || input.ContentSize <= 0 || input.ExpectedFingerprint == "" {
+	if input.Name == "" || input.ProjectLUID == "" || !tableau.ValidFilename(input.Filename) || input.ContentPath == "" || input.ContentSize <= 0 || input.ExpectedFingerprint == "" {
 		return "", errors.New("datasource publish requires authoritative identity and a planned native payload")
 	}
 	extension := strings.TrimPrefix(strings.ToLower(filepath.Ext(input.Filename)), ".")

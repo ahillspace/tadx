@@ -476,3 +476,20 @@ func fingerprint(content []byte) string {
 type roundTripFunc func(*http.Request) (*http.Response, error)
 
 func (f roundTripFunc) RoundTrip(request *http.Request) (*http.Response, error) { return f(request) }
+
+func TestClientDecodesFormEncodedFlowDownloadFilename(t *testing.T) {
+	server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+		writer.Header().Set("Content-Disposition", `name="tableau_flow"; filename="Daily+Prep+%26+Clean.tflx"`)
+		_, _ = writer.Write([]byte("native-flow"))
+	}))
+	defer server.Close()
+
+	client := tableauflow.NewClient(tableau.NewTransport(server.Client(), "3.29", nil), session{}, server.URL)
+	download, err := client.Download(context.Background(), "flow-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if download.Filename != "Daily Prep & Clean.tflx" {
+		t.Fatalf("filename = %q", download.Filename)
+	}
+}
