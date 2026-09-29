@@ -536,3 +536,41 @@ func assertJSONEqual(t *testing.T, wantJSON string, got any) {
 		t.Fatalf("JSON mismatch\nwant: %s\ngot:  %s", wantBytes, gotBytes)
 	}
 }
+
+func TestEncodeEscapesDisplayControls(t *testing.T) {
+	t.Parallel()
+
+	for _, value := range []string{"a\u007fb", "a\u0085b", "a\u009b31mb", "a‮b", "a‪b", "a⁦b", "a⁩b"} {
+		encoded, err := toon.Encode(map[string]any{value: value})
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, r := range string(encoded) {
+			if toon.IsDisplayControl(r) {
+				t.Fatalf("Encode(%q) = %q, emits display control %U raw", value, encoded, r)
+			}
+		}
+		decoded, err := toon.Decode(encoded)
+		if err != nil {
+			t.Fatalf("Decode(%q) error = %v", encoded, err)
+		}
+		if got, ok := decoded.(map[string]any)[value]; !ok || got != value {
+			t.Fatalf("round trip of %q = %#v", value, decoded)
+		}
+	}
+}
+
+func TestIsDisplayControlKeepsOrdinaryText(t *testing.T) {
+	t.Parallel()
+
+	for _, r := range "Aé ü ‍ 日本" {
+		if toon.IsDisplayControl(r) {
+			t.Fatalf("IsDisplayControl(%U) = true, want ordinary text", r)
+		}
+	}
+	for _, r := range []rune{0x7f, 0x80, 0x9f, 0x202a, 0x202e, 0x2066, 0x2069} {
+		if !toon.IsDisplayControl(r) {
+			t.Fatalf("IsDisplayControl(%U) = false, want display control", r)
+		}
+	}
+}

@@ -12,6 +12,7 @@ Decimal values outside Go's finite `float64` range remain decimal `json.Number` 
 Encoding normalizes decimal spelling while preserving mathematical value.
 Objects use indentation, and uniform arrays can use tabular headers with declared lengths and fields.
 Quoting preserves strings that would otherwise be ambiguous with keys, delimiters, or scalar values.
+TOON and `--json` output escape DEL, C1 control characters, and bidirectional embedding, override, and isolate characters as `\uXXXX`, so names from Tableau or local packages cannot drive the terminal or display differently from their content; decoding restores the original text.
 
 The maintained [conformance tests](../internal/toon/conformance_test.go) exercise the pinned upstream encoding, strict decoding, and non-strict decoding fixtures.
 [Codec tests](../internal/toon/toon_test.go) and [fuzz targets](../internal/toon/fuzz_test.go) cover local regressions and round trips.
