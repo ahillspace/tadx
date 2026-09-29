@@ -105,7 +105,8 @@ func NewDatasourceManager(now func() time.Time) *DatasourceManager {
 }
 
 // Pull creates or safely refreshes one identity-matched datasource artifact.
-func (m *DatasourceManager) Pull(ctx context.Context, input DatasourcePull) (DatasourcePullResult, error) {
+func (m *DatasourceManager) Pull(ctx context.Context, input DatasourcePull) (_ DatasourcePullResult, err error) {
+	defer func() { err = withWorkspaceRelativePaths(err, input.Workspace) }()
 	if err := ctx.Err(); err != nil {
 		return DatasourcePullResult{}, err
 	}

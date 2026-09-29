@@ -32,12 +32,14 @@ func defaultMoveOperations() moveOperations {
 
 // Move preserves one managed artifact's bytes and identity.
 func Move(ctx context.Context, request MoveRequest) (Item, error) {
-	return moveWithOperations(ctx, request, defaultMoveOperations())
+	item, err := moveWithOperations(ctx, request, defaultMoveOperations())
+	return item, withWorkspaceRelativePaths(err, request.SourceWorkspace, request.DestinationWorkspace)
 }
 
 // PreviewMove validates source identity and destination containment/collision
 // without locks, staging directories, copies, or renames.
-func PreviewMove(ctx context.Context, request MoveRequest) (Item, error) {
+func PreviewMove(ctx context.Context, request MoveRequest) (_ Item, err error) {
+	defer func() { err = withWorkspaceRelativePaths(err, request.SourceWorkspace, request.DestinationWorkspace) }()
 	sourceRoot, err := validateWorkspaceRoot(request.SourceWorkspace)
 	if err != nil {
 		return Item{}, err

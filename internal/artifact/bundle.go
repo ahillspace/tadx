@@ -67,7 +67,8 @@ type bundleJournalEntry struct {
 
 // Pull preflights and stages every artifact before installing any artifact.
 // If an installation fails, Pull restores every prior target in reverse order.
-func (m *WorkbookBundleManager) Pull(ctx context.Context, input WorkbookBundlePull) (WorkbookBundlePullResult, error) {
+func (m *WorkbookBundleManager) Pull(ctx context.Context, input WorkbookBundlePull) (_ WorkbookBundlePullResult, err error) {
+	defer func() { err = withWorkspaceRelativePaths(err, bundleWorkspaces(input)...) }()
 	if err := ctx.Err(); err != nil {
 		return WorkbookBundlePullResult{}, err
 	}

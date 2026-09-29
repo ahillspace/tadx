@@ -79,7 +79,8 @@ func NewPulseDefinitionManager(now func() time.Time) *PulseDefinitionManager {
 }
 
 // Pull creates or safely refreshes one identity-matched definition artifact.
-func (m *PulseDefinitionManager) Pull(ctx context.Context, input PulseDefinitionPull) (PulseDefinitionPullResult, error) {
+func (m *PulseDefinitionManager) Pull(ctx context.Context, input PulseDefinitionPull) (_ PulseDefinitionPullResult, err error) {
+	defer func() { err = withWorkspaceRelativePaths(err, input.Workspace) }()
 	if err := ctx.Err(); err != nil {
 		return PulseDefinitionPullResult{}, err
 	}

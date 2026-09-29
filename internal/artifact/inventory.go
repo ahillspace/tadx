@@ -111,7 +111,8 @@ type InventoryPage struct {
 
 // Inventory enumerates only known managed artifact roots.
 func Inventory(ctx context.Context, workspace string, options InventoryOptions) (InventoryPage, error) {
-	return inventoryWithScanLimit(ctx, workspace, options, maxInventoryScan)
+	page, err := inventoryWithScanLimit(ctx, workspace, options, maxInventoryScan)
+	return page, withWorkspaceRelativePaths(err, workspace)
 }
 
 func inventoryWithScanLimit(ctx context.Context, workspace string, options InventoryOptions, scanLimit int) (InventoryPage, error) {
@@ -187,7 +188,8 @@ func inventoryWithScanLimit(ctx context.Context, workspace string, options Inven
 }
 
 // Resolve returns one exact valid managed artifact.
-func Resolve(ctx context.Context, workspace string, selector Selector) (Item, error) {
+func Resolve(ctx context.Context, workspace string, selector Selector) (_ Item, err error) {
+	defer func() { err = withWorkspaceRelativePaths(err, workspace) }()
 	root, err := validateWorkspaceRoot(workspace)
 	if err != nil {
 		return Item{}, err

@@ -120,7 +120,8 @@ func NewFlowManager(now func() time.Time) *FlowManager {
 }
 
 // Pull creates or replaces one identity-bound flow artifact.
-func (m *FlowManager) Pull(ctx context.Context, input FlowPull) (FlowPullResult, error) {
+func (m *FlowManager) Pull(ctx context.Context, input FlowPull) (_ FlowPullResult, err error) {
+	defer func() { err = withWorkspaceRelativePaths(err, input.Workspace) }()
 	if err := ctx.Err(); err != nil {
 		return FlowPullResult{}, err
 	}

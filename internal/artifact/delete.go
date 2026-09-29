@@ -28,7 +28,8 @@ func defaultDeleteOperations() deleteOperations {
 
 // Delete revalidates and removes one exact managed artifact.
 func Delete(ctx context.Context, request DeleteRequest) (Item, error) {
-	return deleteWithOperations(ctx, request, defaultDeleteOperations())
+	item, err := deleteWithOperations(ctx, request, defaultDeleteOperations())
+	return item, withWorkspaceRelativePaths(err, request.Workspace)
 }
 
 func deleteWithOperations(ctx context.Context, request DeleteRequest, operations deleteOperations) (Item, error) {

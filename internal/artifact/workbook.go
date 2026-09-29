@@ -128,7 +128,8 @@ func NewWorkbookManager(now func() time.Time) *WorkbookManager {
 }
 
 // Pull creates or safely replaces one identity-matched artifact.
-func (m *WorkbookManager) Pull(ctx context.Context, input WorkbookPull) (WorkbookPullResult, error) {
+func (m *WorkbookManager) Pull(ctx context.Context, input WorkbookPull) (_ WorkbookPullResult, err error) {
+	defer func() { err = withWorkspaceRelativePaths(err, input.Workspace) }()
 	if err := ctx.Err(); err != nil {
 		return WorkbookPullResult{}, err
 	}
