@@ -118,6 +118,35 @@ func TestShouldPrintSuppressesOptOutAndCompletion(t *testing.T) {
 	}
 }
 
+func TestGuidanceInstallationNeverClaimsNotice(t *testing.T) {
+	for _, args := range [][]string{
+		{"agent", "install", "--target", "generic"},
+		{"agt", "ist", "--target", "auto"},
+		{"agent", "ist", "--preview"},
+		{"agt", "install", "--help"},
+		{"--config", "config.yaml", "agent", "install"},
+		{"agent", "--cfg", "config.yaml", "install"},
+		{"--full", "agent", "--json", "install", "--target", "codex"},
+		{"update"},
+		{"upd", "--target", "codex"},
+		{"--cfg=config.yaml", "update", "--check"},
+	} {
+		options := testOptions(t, t.TempDir())
+		options.Args = args
+		options.MkdirAll = func(string, os.FileMode) error { t.Fatalf("args %q attempted a notice write", args); return nil }
+		if ShouldPrint(options) {
+			t.Fatalf("args %q install or refresh Guidance and should not print", args)
+		}
+	}
+	for _, args := range [][]string{{"agent"}, {"agent", "uninstall"}, {"agt", "uni", "--target", "codex"}, {"install"}, {"policy", "install"}, {"version", "--check"}} {
+		options := testOptions(t, t.TempDir())
+		options.Args = args
+		if !ShouldPrint(options) {
+			t.Fatalf("args %q do not install Guidance and should print", args)
+		}
+	}
+}
+
 func TestShouldPrintFailsSilentWhenCacheCannotBeWritten(t *testing.T) {
 	options := testOptions(t, t.TempDir())
 	options.MkdirAll = func(string, os.FileMode) error { return errors.New("read only") }

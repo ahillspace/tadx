@@ -262,7 +262,7 @@ These are local installations; installing for Copilot does not configure a hoste
 When TADX does not detect its root skill in a supported location, it prints a short installation notice to stderr on the first invocation in a shell session.
 Structured command output on stdout remains unchanged.
 Detection checks local files, not whether the agent has actually read them.
-Completion requests and the bare `tadx` overview do not emit the notice or write its session marker.
+Completion requests, the bare `tadx` overview, and the Guidance installation and refresh commands, `tadx agent install` and `tadx update`, do not emit the notice or write its session marker.
 If session identification or the local notice cache is unavailable, the notice is skipped without failing your command.
 
 Set `TADX_GUIDANCE_NOTICE=0` to suppress the notice for human-only or automated use.
