@@ -229,4 +229,66 @@ sh "${repository_root}/scripts/install.sh" uninstall --install-dir "$missing_pro
 [ ! -e "${missing_profile}.tadx-backup" ]
 [ ! -e "${missing_profile_install}/tadx" ]
 
+# Planted links at the former PID-based staging and backup names must not receive the binary.
+planted_install="${test_root}/planted-install"
+mkdir -p "$planted_install"
+printf '%s\n' '#!/bin/sh' 'exit 0' > "${planted_install}/tadx"
+chmod 0755 "${planted_install}/tadx"
+printf '%s\n' sentinel > "${test_root}/planted-sentinel"
+# The inner shell keeps its PID through exec, so $$ is the installer PID.
+# shellcheck disable=SC2016
+sh -c 'ln -s "$1" "$2/.tadx.new.$$"; ln -s "$1" "$2/.tadx.backup.$$"; exec sh "$3" --version 1.2.3 --install-dir "$2" --no-modify-path --no-completion' sh "${test_root}/planted-sentinel" "$planted_install" "${repository_root}/scripts/install.sh" >/dev/null
+[ "$(cat "${test_root}/planted-sentinel")" = sentinel ]
+[ "$("${planted_install}/tadx")" = 'tadx test 1.2.3' ]
+
+lock_install="${test_root}/lock-install"
+lock_path="${lock_install}/.tadx-install.lock"
+lock_host=$(uname -n)
+mkdir -p "$lock_install"
+expect_lock_respected() {
+    if sh "${repository_root}/scripts/install.sh" --version 1.2.3 --install-dir "$lock_install" --no-modify-path --no-completion >/dev/null 2>"${test_root}/lock-error"; then
+        printf '%s\n' "Installer ignored a lock it must respect: $1" >&2
+        exit 1
+    fi
+    grep -Fq 'Another installer is using this directory.' "${test_root}/lock-error"
+    [ -d "$lock_path" ]
+}
+expect_lock_reclaimed() {
+    sh "${repository_root}/scripts/install.sh" --version 1.2.3 --install-dir "$lock_install" --no-modify-path --no-completion >/dev/null
+    [ ! -e "$lock_path" ]
+    if ls -A "$lock_install" | grep -q '^\.tadx-install\.stale\.'; then
+        printf '%s\n' "Stale lock remnants were left behind: $1" >&2
+        exit 1
+    fi
+}
+
+# This test shell is a live owner.
+mkdir "$lock_path"
+printf '%s %s\n' "$$" "$lock_host" > "${lock_path}/owner"
+expect_lock_respected 'live owner'
+[ "$(cat "${lock_path}/owner")" = "$$ $lock_host" ]
+rm -rf "$lock_path"
+
+sh -c 'exit 0' &
+exited_pid=$!
+wait "$exited_pid"
+mkdir "$lock_path"
+printf '%s %s\n' "$exited_pid" "$lock_host" > "${lock_path}/owner"
+expect_lock_reclaimed 'exited owner'
+
+mkdir "$lock_path"
+printf '%s %s\n' "$exited_pid" 'another-host' > "${lock_path}/owner"
+expect_lock_respected 'owner on another host'
+rm -rf "$lock_path"
+
+mkdir "$lock_path"
+printf '%s\n' 'not a pid' > "${lock_path}/owner"
+expect_lock_respected 'recent lock with an unreadable owner'
+rm -rf "$lock_path"
+
+mkdir "$lock_path"
+expect_lock_respected 'recent lock without an owner'
+touch -t 200001010000 "$lock_path"
+expect_lock_reclaimed 'old lock without an owner'
+
 printf '%s\n' 'install.sh tests passed'
