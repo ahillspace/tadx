@@ -108,7 +108,8 @@ func TestUpdateKeepsExternalStateWithInstalledConfigurationWhenRestoreFails(t *t
 	next, err := UpdateWithPostSave(path, false, func(current Config) (Config, func() error, error) {
 		return clearedReference(current), func() error { committed = true; return nil }, nil
 	})
-	if !isInstalled(err) || !committed || next.Environments["dev"].Auth.CredentialRef != "" {
+	var installed *InstalledError
+	if !isInstalled(err) || !errors.As(err, &installed) || !installed.ExternalCommitConfirmed() || !committed || next.Environments["dev"].Auth.CredentialRef != "" {
 		t.Fatalf("UpdateWithPostSave() error = %v, committed = %t, returned %+v; want InstalledError with the external commit completed", err, committed, next.Environments["dev"].Auth)
 	}
 	loaded, loadErr := Load(path)
@@ -120,4 +121,22 @@ func TestUpdateKeepsExternalStateWithInstalledConfigurationWhenRestoreFails(t *t
 func isInstalled(err error) bool {
 	var installed *InstalledError
 	return errors.As(err, &installed) && installed.ConfigurationInstalled()
+}
+
+func TestUpdateReportsUnconfirmedExternalCommitWhenRestoreAndCommitFail(t *testing.T) {
+	path, _ := durabilityFixture(t)
+	replaceFileSequence(t, installedWithoutSync, func(string, string) error { return errors.New("rename failed") })
+	commitErr := errors.New("credential delete denied")
+
+	_, err := UpdateWithPostSave(path, false, func(current Config) (Config, func() error, error) {
+		return clearedReference(current), func() error { return commitErr }, nil
+	})
+	var installed *InstalledError
+	if !errors.As(err, &installed) || !installed.ConfigurationInstalled() || installed.ExternalCommitConfirmed() || !errors.Is(err, commitErr) {
+		t.Fatalf("UpdateWithPostSave() error = %v; want InstalledError with an unconfirmed external commit", err)
+	}
+	loaded, loadErr := Load(path)
+	if loadErr != nil || loaded.Environments["dev"].Auth.CredentialRef != "" {
+		t.Fatalf("installed configuration = %+v, %v", loaded.Environments["dev"].Auth, loadErr)
+	}
 }

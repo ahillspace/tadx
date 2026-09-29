@@ -66,6 +66,9 @@ func (a *Service) Create(ctx context.Context, input CreateInput) (CreateOutput, 
 		return CreateOutput{}, createUsage("name is required")
 	}
 	created, err := a.Creator.Create(ctx, input)
+	if configurationInstalled(err) {
+		return CreateOutput{}, installedConfigurationError("workspace.create.failed", "workspace.create", created.ID, "The workspace was created and registered, but the configuration could not be made durable.", err)
+	}
 	if err != nil {
 		retryable, correctiveAction := errs.CompleteRetryAdvice(err, "Review the exact workspace collision with tadx workspace list --full; do not overwrite or re-register it automatically. Otherwise review the exact workspace name and root, then retry.")
 		return CreateOutput{}, &errs.Error{ID: "workspace.create.failed", Kind: errs.KindOperation, Operation: "workspace.create", Resource: input.Name, Summary: "Workspace creation failed.", Cause: err, Retryable: retryable, CorrectiveAction: correctiveAction}
@@ -77,6 +80,18 @@ func (a *Service) Create(ctx context.Context, input CreateInput) (CreateOutput, 
 		return CreateOutput{}, createRuntimeError("workspace creation returned an incomplete identity")
 	}
 	return CreateOutput{Status: "created", Workspace: createdWorkspace(created), Help: []string{commandhint.Command("workspace", "status", "--workspace", created.Name)}}, nil
+}
+
+// configurationInstalled reports a failure after the registry change took
+// effect, so the workspace change is confirmed even though the update failed.
+func configurationInstalled(err error) bool {
+	var installed interface{ ConfigurationInstalled() bool }
+	return errors.As(err, &installed) && installed.ConfigurationInstalled()
+}
+
+func installedConfigurationError(id, operation, resource, summary string, err error) error {
+	retryable, correctiveAction := errs.CompleteRetryAdvice(err, "Repair access to the configuration directory, then confirm the workspace with tadx workspace list --full.")
+	return &errs.Error{ID: id, Kind: errs.KindOperation, Operation: operation, Resource: resource, Summary: summary, Cause: err, Retryable: retryable, CorrectiveAction: correctiveAction, Phase: errs.PhasePersistence, Outcome: errs.OutcomeConfirmed}
 }
 
 func createUsage(message string) error {

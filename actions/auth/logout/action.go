@@ -48,7 +48,11 @@ func (a *Action) Execute(ctx context.Context, input Input) (Output, error) {
 		return Output{Status: "preview", Environment: target.Environment, CredentialSource: CredentialSourceOS, Plan: &Plan{StoredCredentialReferencePresent: target.StoredCredentialReferencePresent, EnvironmentCredentialsAvailable: target.EnvironmentCredentialsAvailable}, Warnings: warnings, Help: []string{"Run without --preview to remove the selected environment's stored credential reference and credential. The Tableau PAT will not be revoked."}}, nil
 	}
 	removed, err := a.store.Remove(ctx, target)
-	if configurationInstalled(err) {
+	if installed, ok := installedConfiguration(err); ok {
+		if !installed.ExternalCommitConfirmed() {
+			retryable, advice := errs.CompleteRetryAdvice(err, "Remove the orphaned TADX entry from the OS credential store by hand; logout no longer references it.")
+			return Output{}, &errs.Error{ID: "auth.logout.remove", Kind: errs.KindOperation, Operation: "auth.logout", Environment: target.Environment, Summary: "The stored credential reference was cleared, but the stored PAT could not be deleted.", Cause: err, Retryable: retryable, CorrectiveAction: ensureNotRevokedAdvice(advice), Phase: errs.PhasePersistence, Outcome: errs.OutcomeUnknown}
+		}
 		retryable, advice := errs.CompleteRetryAdvice(err, "Repair access to the configuration directory, then confirm the removal.")
 		return Output{}, &errs.Error{ID: "auth.logout.remove", Kind: errs.KindOperation, Operation: "auth.logout", Environment: target.Environment, Summary: "The stored PAT was removed, but the configuration could not be made durable.", Cause: err, Retryable: retryable, CorrectiveAction: ensureNotRevokedAdvice(advice), Phase: errs.PhasePersistence, Outcome: errs.OutcomeConfirmed}
 	}
@@ -71,11 +75,18 @@ func (a *Action) Execute(ctx context.Context, input Input) (Output, error) {
 	}, nil
 }
 
-// configurationInstalled reports a store failure after the configuration change
-// took effect, so the stored credential was removed even though the update failed.
-func configurationInstalled(err error) bool {
-	var installed interface{ ConfigurationInstalled() bool }
-	return errors.As(err, &installed) && installed.ConfigurationInstalled()
+// installedConfiguration reports a store failure after the configuration change
+// took effect. Credential deletion is confirmed separately, because an
+// installed configuration does not prove the stored PAT was deleted.
+func installedConfiguration(err error) (interface{ ExternalCommitConfirmed() bool }, bool) {
+	var installed interface {
+		ConfigurationInstalled() bool
+		ExternalCommitConfirmed() bool
+	}
+	if errors.As(err, &installed) && installed.ConfigurationInstalled() {
+		return installed, true
+	}
+	return nil, false
 }
 
 func ensureNotRevokedAdvice(value string) string {

@@ -663,25 +663,39 @@ func Save(path string, configuration Config) error {
 var replaceFile = fsreplace.Replace
 
 // InstalledError reports that an update installed the new configuration but
-// could neither make it durable nor reinstall the prior configuration. External
-// state was kept consistent with the installed configuration, so the change took
-// effect even though the update reports an error.
-type InstalledError struct{ Err error }
-
-func (e *InstalledError) Error() string {
-	return "the updated configuration took effect but may not survive power loss, and the prior configuration could not be reinstalled: " + e.Err.Error()
+// could neither make it durable nor reinstall the prior configuration. The
+// external commit then runs so external state matches the installed
+// configuration; ExternalErr records its failure, if any.
+type InstalledError struct {
+	Err         error
+	ExternalErr error
 }
 
-func (e *InstalledError) Unwrap() error { return e.Err }
+func (e *InstalledError) Error() string {
+	message := "the updated configuration took effect but may not survive power loss, and the prior configuration could not be reinstalled: " + e.Err.Error()
+	if e.ExternalErr != nil {
+		message += "; the external commit also failed: " + e.ExternalErr.Error()
+	}
+	return message
+}
+
+func (e *InstalledError) Unwrap() []error { return []error{e.Err, e.ExternalErr} }
 
 // ConfigurationInstalled reports that the new configuration is in effect.
 func (*InstalledError) ConfigurationInstalled() bool { return true }
+
+// ExternalCommitConfirmed reports whether external state was confirmed to match
+// the installed configuration. It is false when the external commit failed.
+func (e *InstalledError) ExternalCommitConfirmed() bool { return e.ExternalErr == nil }
 
 // Retryable reports that rerunning the update is not the recovery.
 func (*InstalledError) Retryable() bool { return false }
 
 // CorrectiveAction tells the caller how to proceed.
-func (*InstalledError) CorrectiveAction() string {
+func (e *InstalledError) CorrectiveAction() string {
+	if e.ExternalErr != nil {
+		return "The configuration change took effect, but the matching external change failed. Repair access to the configuration directory and complete the external change by hand."
+	}
 	return "The configuration change took effect. Repair access to the configuration directory, then rerun the command to confirm its state."
 }
 
@@ -827,13 +841,11 @@ func updateTransaction(path string, createIfMissing bool, mutate func(Config) (C
 		if restoreErr := restore(); restoreErr != nil && !isDurabilityError(restoreErr) {
 			// The new configuration stays in effect, so external state must match it.
 			committed = true
-			installed := errors.Join(err, fmt.Errorf("restore configuration: %w", restoreErr))
+			installed := &InstalledError{Err: errors.Join(err, fmt.Errorf("restore configuration: %w", restoreErr))}
 			if postSave != nil {
-				if postErr := postSave(); postErr != nil {
-					installed = errors.Join(installed, fmt.Errorf("complete external commit: %w", postErr))
-				}
+				installed.ExternalErr = postSave()
 			}
-			return next, &InstalledError{Err: installed}
+			return next, installed
 		}
 		return Config{}, fmt.Errorf("%w; the prior configuration was reinstalled", err)
 	}
