@@ -166,3 +166,23 @@ func TestCredentialInputsRedactFormattingAndJSON(t *testing.T) {
 		t.Fatalf("credential formatting leaked a value: %s", rendered)
 	}
 }
+
+type installedConfigurationError struct{}
+
+func (installedConfigurationError) Error() string {
+	return "configuration took effect but was not synced"
+}
+func (installedConfigurationError) ConfigurationInstalled() bool { return true }
+
+func TestExecuteReportsSavedCredentialWhenConfigurationIsNotDurable(t *testing.T) {
+	action := login.New(
+		&resolver{target: login.Target{Environment: "dev", ServerURL: "https://example.test"}},
+		&authenticator{result: login.Authentication{SiteLUID: "site-1", UserLUID: "user-1"}},
+		&store{err: fmt.Errorf("install configuration: %w", installedConfigurationError{})},
+	)
+	_, err := action.Execute(context.Background(), login.Input{Environment: "dev", PATName: "name", PATSecret: "secret"})
+	payload := errs.Structure(err).Error
+	if payload.ID != "auth.login.store" || payload.Outcome != errs.OutcomeConfirmed || payload.Phase != errs.PhasePersistence || strings.Contains(payload.Summary+payload.CorrectiveAction, "not saved") {
+		t.Fatalf("error = %#v", payload)
+	}
+}

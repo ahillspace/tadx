@@ -4,6 +4,7 @@ package login
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 
@@ -74,6 +75,10 @@ func (a *Action) Execute(ctx context.Context, input Input) (Output, error) {
 	}
 
 	stored, err := a.store.Store(ctx, target, credential)
+	if configurationInstalled(err) {
+		retryable, advice := errs.CompleteRetryAdvice(err, "The PAT was saved. Repair access to the configuration directory, then confirm the stored credential.")
+		return Output{}, &errs.Error{ID: "auth.login.store", Kind: errs.KindOperation, Operation: "auth.login", Environment: target.Environment, Site: target.SiteContentURL, Summary: "The PAT was saved, but the configuration could not be made durable.", Cause: err, Retryable: retryable, CorrectiveAction: advice, Phase: errs.PhasePersistence, Outcome: errs.OutcomeConfirmed}
+	}
 	if err != nil {
 		retryable, advice := errs.CompleteRetryAdvice(err, "Repair the OS credential store, then retry. The PAT was validated but not saved.")
 		return Output{}, &errs.Error{ID: "auth.login.store", Kind: errs.KindOperation, Operation: "auth.login", Environment: target.Environment, Site: target.SiteContentURL, Summary: "The PAT was validated, but credential storage failed.", Cause: err, Retryable: retryable, CorrectiveAction: ensureNotSavedAdvice(advice)}
@@ -88,6 +93,13 @@ func (a *Action) Execute(ctx context.Context, input Input) (Output, error) {
 		SiteLUID: identity.SiteLUID, UserLUID: identity.UserLUID, Warnings: warnings,
 		Help: []string{},
 	}, nil
+}
+
+// configurationInstalled reports a store failure after the configuration change
+// took effect, so the credential is saved even though the update failed.
+func configurationInstalled(err error) bool {
+	var installed interface{ ConfigurationInstalled() bool }
+	return errors.As(err, &installed) && installed.ConfigurationInstalled()
 }
 
 func usage(summary string) error {

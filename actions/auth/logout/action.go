@@ -3,6 +3,7 @@ package logout
 
 import (
 	"context"
+	"errors"
 	"strings"
 
 	"github.com/ahillspace/tadx/internal/errs"
@@ -47,6 +48,10 @@ func (a *Action) Execute(ctx context.Context, input Input) (Output, error) {
 		return Output{Status: "preview", Environment: target.Environment, CredentialSource: CredentialSourceOS, Plan: &Plan{StoredCredentialReferencePresent: target.StoredCredentialReferencePresent, EnvironmentCredentialsAvailable: target.EnvironmentCredentialsAvailable}, Warnings: warnings, Help: []string{"Run without --preview to remove the selected environment's stored credential reference and credential. The Tableau PAT will not be revoked."}}, nil
 	}
 	removed, err := a.store.Remove(ctx, target)
+	if configurationInstalled(err) {
+		retryable, advice := errs.CompleteRetryAdvice(err, "Repair access to the configuration directory, then confirm the removal.")
+		return Output{}, &errs.Error{ID: "auth.logout.remove", Kind: errs.KindOperation, Operation: "auth.logout", Environment: target.Environment, Summary: "The stored PAT was removed, but the configuration could not be made durable.", Cause: err, Retryable: retryable, CorrectiveAction: ensureNotRevokedAdvice(advice), Phase: errs.PhasePersistence, Outcome: errs.OutcomeConfirmed}
+	}
 	if err != nil {
 		retryable, advice := errs.CompleteRetryAdvice(err, "Repair the OS credential store, then retry. The Tableau PAT was not revoked.")
 		return Output{}, &errs.Error{ID: "auth.logout.remove", Kind: errs.KindOperation, Operation: "auth.logout", Environment: target.Environment, Summary: "Stored PAT removal failed.", Cause: err, Retryable: retryable, CorrectiveAction: ensureNotRevokedAdvice(advice)}
@@ -64,6 +69,13 @@ func (a *Action) Execute(ctx context.Context, input Input) (Output, error) {
 		Status:   status, Environment: target.Environment, CredentialSource: CredentialSourceOS, TableauPATRevoked: false,
 		Help: []string{"The Tableau PAT remains valid until you revoke it in Tableau."},
 	}, nil
+}
+
+// configurationInstalled reports a store failure after the configuration change
+// took effect, so the stored credential was removed even though the update failed.
+func configurationInstalled(err error) bool {
+	var installed interface{ ConfigurationInstalled() bool }
+	return errors.As(err, &installed) && installed.ConfigurationInstalled()
 }
 
 func ensureNotRevokedAdvice(value string) string {

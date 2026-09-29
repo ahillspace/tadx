@@ -85,8 +85,16 @@ func TestReplaceReportsParentSyncFailure(t *testing.T) {
 	restore := replaceSyncDir(func(string) error { return failure })
 	defer restore()
 
-	if err := Replace(from, to); !errors.Is(err, failure) {
+	err := Replace(from, to)
+	if !errors.Is(err, failure) {
 		t.Fatalf("Replace() error = %v, want the sync failure", err)
+	}
+	var durability *DurabilityError
+	if !errors.As(err, &durability) || durability.Dir != directory {
+		t.Fatalf("Replace() error = %#v, want a DurabilityError for %s", err, directory)
+	}
+	if got := readFile(t, to); got != "new" {
+		t.Fatalf("destination = %q, want the installed replacement", got)
 	}
 }
 

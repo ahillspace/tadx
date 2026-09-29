@@ -653,10 +653,36 @@ func Save(path string, configuration Config) error {
 	if err := temporary.Close(); err != nil {
 		return fmt.Errorf("close configuration staging file: %w", err)
 	}
-	if err := fsreplace.Replace(temporaryPath, path); err != nil {
+	if err := replaceFile(temporaryPath, path); err != nil {
 		return fmt.Errorf("install configuration: %w", err)
 	}
 	return nil
+}
+
+// replaceFile is replaceable so tests can fail the replacement after it installs.
+var replaceFile = fsreplace.Replace
+
+// InstalledError reports that an update installed the new configuration but
+// could neither make it durable nor reinstall the prior configuration. External
+// state was kept consistent with the installed configuration, so the change took
+// effect even though the update reports an error.
+type InstalledError struct{ Err error }
+
+func (e *InstalledError) Error() string {
+	return "the updated configuration took effect but may not survive power loss, and the prior configuration could not be reinstalled: " + e.Err.Error()
+}
+
+func (e *InstalledError) Unwrap() error { return e.Err }
+
+// ConfigurationInstalled reports that the new configuration is in effect.
+func (*InstalledError) ConfigurationInstalled() bool { return true }
+
+// Retryable reports that rerunning the update is not the recovery.
+func (*InstalledError) Retryable() bool { return false }
+
+// CorrectiveAction tells the caller how to proceed.
+func (*InstalledError) CorrectiveAction() string {
+	return "The configuration change took effect. Repair access to the configuration directory, then rerun the command to confirm its state."
 }
 
 // ErrNoChange lets an Update mutator report that the configuration is already
@@ -702,7 +728,11 @@ func Update(path string, createIfMissing bool, mutate func(Config) (Config, erro
 // UpdateWithRollback serializes a configuration mutation and its filesystem
 // staging. The mutator can return a rollback function, including on error.
 // If the mutation or save fails, rollback runs before releasing the configuration
-// lock. A successful save commits the staging and does not invoke rollback.
+// lock. A save that installs the new configuration but cannot sync its directory
+// reinstalls the prior configuration before rollback runs; if that also fails,
+// the new configuration stays in effect, rollback is skipped, and the update
+// returns an *InstalledError. A successful save commits the staging and does not
+// invoke rollback.
 func UpdateWithRollback(path string, createIfMissing bool, mutate func(Config) (Config, func() error, error)) (result Config, resultErr error) {
 	return updateTransaction(path, createIfMissing, func(current Config) (Config, func() error, func() error, error) {
 		next, rollback, err := mutate(current)
@@ -713,7 +743,9 @@ func UpdateWithRollback(path string, createIfMissing bool, mutate func(Config) (
 // UpdateWithPostSave serializes a configuration mutation and an irreversible
 // external commit. The callback runs after the new configuration is durable
 // while the configuration lock remains held. If the callback fails, the prior
-// configuration is restored before the lock is released.
+// configuration is restored before the lock is released. A save that cannot sync
+// its directory reinstalls the prior configuration and skips the callback; if
+// that also fails, the callback runs and the update returns an *InstalledError.
 func UpdateWithPostSave(path string, createIfMissing bool, mutate func(Config) (Config, func() error, error)) (result Config, resultErr error) {
 	return updateTransaction(path, createIfMissing, func(current Config) (Config, func() error, func() error, error) {
 		next, postSave, err := mutate(current)
@@ -749,11 +781,18 @@ func updateTransaction(path string, createIfMissing bool, mutate func(Config) (C
 		}
 	}()
 	current, original, migrated, err := load(path)
+	existed := true
 	if err != nil {
 		if !(createIfMissing && errors.Is(err, os.ErrNotExist)) {
 			return Config{}, err
 		}
-		current, original, migrated = Config{Version: CurrentVersion}, nil, false
+		current, original, migrated, existed = Config{Version: CurrentVersion}, nil, false, false
+	}
+	restore := func() error {
+		if !existed {
+			return os.Remove(path)
+		}
+		return Save(path, current)
 	}
 	next, rollback, postSave, err := mutate(cloneConfig(current))
 	if err != nil {
@@ -780,11 +819,27 @@ func updateTransaction(path string, createIfMissing bool, mutate func(Config) (C
 		}
 	}
 	if err := Save(path, next); err != nil {
-		return Config{}, err
+		if !isDurabilityError(err) {
+			return Config{}, err
+		}
+		// The new configuration is in effect but not durable. Reinstall the prior
+		// configuration before external state is rolled back so the two agree.
+		if restoreErr := restore(); restoreErr != nil && !isDurabilityError(restoreErr) {
+			// The new configuration stays in effect, so external state must match it.
+			committed = true
+			installed := errors.Join(err, fmt.Errorf("restore configuration: %w", restoreErr))
+			if postSave != nil {
+				if postErr := postSave(); postErr != nil {
+					installed = errors.Join(installed, fmt.Errorf("complete external commit: %w", postErr))
+				}
+			}
+			return next, &InstalledError{Err: installed}
+		}
+		return Config{}, fmt.Errorf("%w; the prior configuration was reinstalled", err)
 	}
 	if postSave != nil {
 		if err := postSave(); err != nil {
-			restoreErr := Save(path, current)
+			restoreErr := restore()
 			if restoreErr != nil {
 				return Config{}, errors.Join(err, fmt.Errorf("restore configuration after external commit failure: %w", restoreErr))
 			}
@@ -793,6 +848,11 @@ func updateTransaction(path string, createIfMissing bool, mutate func(Config) (C
 	}
 	committed = true
 	return next, nil
+}
+
+func isDurabilityError(err error) bool {
+	var durability *fsreplace.DurabilityError
+	return errors.As(err, &durability)
 }
 
 func cloneConfig(configuration Config) Config {
