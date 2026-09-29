@@ -658,7 +658,7 @@ func replaceDatasourceDirectory(staging, target string, operations directoryOper
 		return nil, fmt.Errorf("sync datasource artifact root: %w", err)
 	}
 	if err := operations.removeAll(backup); err != nil {
-		return []string{fmt.Sprintf("datasource artifact replacement committed, but backup %q could not be removed: %v", backup, err)}, nil
+		return []string{fmt.Sprintf("datasource artifact replacement committed, but backup %q could not be removed: %s", filepath.Base(backup), warningCause(err, "unexpected error"))}, nil
 	}
 	return nil, nil
 }
@@ -692,7 +692,7 @@ func recoverDatasourceRoot(root string, operations directoryOperations) ([]strin
 	}
 	for _, name := range stages {
 		if err := operations.removeAll(filepath.Join(root, name)); err != nil {
-			warnings = append(warnings, fmt.Sprintf("stale datasource staging directory %q could not be removed: %v", name, err))
+			warnings = append(warnings, fmt.Sprintf("stale datasource staging directory %q could not be removed: %s", name, warningCause(err, "unexpected error")))
 		}
 	}
 	changed := false
@@ -700,13 +700,13 @@ func recoverDatasourceRoot(root string, operations directoryOperations) ([]strin
 		backup := filepath.Join(root, name)
 		metadata, err := readDatasourceMetadata(backup)
 		if err != nil {
-			warnings = append(warnings, fmt.Sprintf("orphaned datasource backup %q could not be read and was left in place: %v", name, err))
+			warnings = append(warnings, fmt.Sprintf("orphaned datasource backup %q could not be read and was left in place: %s", name, warningCause(err, "its metadata is invalid")))
 			continue
 		}
 		key := datasourceIdentityKey(metadata.SourceServerOrigin, metadata.SourceSiteLUID, metadata.TableauID)
 		if live[key] {
 			if err := operations.removeAll(backup); err != nil {
-				warnings = append(warnings, fmt.Sprintf("committed datasource backup %q could not be removed: %v", name, err))
+				warnings = append(warnings, fmt.Sprintf("committed datasource backup %q could not be removed: %s", name, warningCause(err, "unexpected error")))
 			}
 			continue
 		}

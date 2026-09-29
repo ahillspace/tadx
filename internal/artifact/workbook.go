@@ -613,7 +613,7 @@ func recoverWorkbookRoot(root string, operations directoryOperations) ([]string,
 	}
 	for _, name := range stages {
 		if err := operations.removeAll(filepath.Join(root, name)); err != nil {
-			warnings = append(warnings, fmt.Sprintf("stale staging directory %q could not be removed: %v", name, err))
+			warnings = append(warnings, fmt.Sprintf("stale staging directory %q could not be removed: %s", name, warningCause(err, "unexpected error")))
 		}
 	}
 	changed := false
@@ -621,13 +621,13 @@ func recoverWorkbookRoot(root string, operations directoryOperations) ([]string,
 		backupPath := filepath.Join(root, name)
 		metadata, err := readMetadata(backupPath)
 		if err != nil {
-			warnings = append(warnings, fmt.Sprintf("orphaned backup %q could not be read and was left in place: %v", name, err))
+			warnings = append(warnings, fmt.Sprintf("orphaned backup %q could not be read and was left in place: %s", name, warningCause(err, "its metadata is invalid")))
 			continue
 		}
 		key := identityKey(metadata)
 		if live[key] {
 			if err := operations.removeAll(backupPath); err != nil {
-				warnings = append(warnings, fmt.Sprintf("committed backup %q could not be removed: %v", name, err))
+				warnings = append(warnings, fmt.Sprintf("committed backup %q could not be removed: %s", name, warningCause(err, "unexpected error")))
 			}
 			continue
 		}
@@ -985,7 +985,7 @@ func replaceDirectoryWithOperations(staging, target string, operations directory
 		return nil, fmt.Errorf("sync workbook artifact root: %w", err)
 	}
 	if err := operations.removeAll(backup); err != nil {
-		return []string{fmt.Sprintf("workbook artifact replacement committed, but backup %q could not be removed: %v", backup, err)}, nil
+		return []string{fmt.Sprintf("workbook artifact replacement committed, but backup %q could not be removed: %s", filepath.Base(backup), warningCause(err, "unexpected error"))}, nil
 	}
 	return nil, nil
 }

@@ -477,12 +477,16 @@ func commitPreparedDirectories(workspace string, prepared []preparedDirectory, o
 			continue
 		}
 		if err := operations.removeAll(item.backup); err != nil {
-			warnings = append(warnings, fmt.Sprintf("artifact transaction committed, but backup %q could not be removed: %v", item.backup, err))
+			backup := filepath.Base(item.backup)
+			if relative, relErr := filepath.Rel(workspace, item.backup); relErr == nil {
+				backup = filepath.ToSlash(relative)
+			}
+			warnings = append(warnings, fmt.Sprintf("artifact transaction committed, but backup %q could not be removed: %s", backup, warningCause(err, "unexpected error")))
 		}
 	}
 	if len(warnings) == 0 {
 		if err := removeBundleJournal(workspace, operations); err != nil {
-			warnings = append(warnings, fmt.Sprintf("artifact transaction committed, but its recovery journal could not be removed: %v", err))
+			warnings = append(warnings, fmt.Sprintf("artifact transaction committed, but its recovery journal could not be removed: %s", warningCause(err, "unexpected error")))
 		}
 	}
 	return warnings, nil
