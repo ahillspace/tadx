@@ -474,23 +474,229 @@ func TestTransportRejectsPlaintextAuthenticatedRequest(t *testing.T) {
 	}
 }
 
-func TestTransportDefaultTimeoutBoundsDeadlinelessRequests(t *testing.T) {
+func TestTransportStallTimeoutBoundsMissingResponseHeaders(t *testing.T) {
 	release := make(chan struct{})
 	server := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) { <-release }))
 	defer server.Close()
 	defer close(release)
 
 	transport := NewTransport(server.Client(), "3.29", nil)
-	transport.SetRequestTimeout(20 * time.Millisecond)
+	transport.SetStallTimeout(20 * time.Millisecond)
 	started := time.Now()
 	_, err := transport.Do(context.Background(), nil, Request{
 		Method: http.MethodGet, ServerURL: server.URL, Path: "/hang", Operation: "workbook.list",
 	})
-	if err == nil {
-		t.Fatal("expected the default request timeout to fire")
+	if err == nil || !strings.Contains(err.Error(), "no response headers within 20ms") {
+		t.Fatalf("error = %v", err)
 	}
-	if time.Since(started) > time.Second {
-		t.Fatalf("request was not bounded by the default timeout: %s", time.Since(started))
+	if elapsed := time.Since(started); elapsed > time.Second {
+		t.Fatalf("request was not bounded by the stall timeout: %s", elapsed)
+	}
+	var advice interface{ Retryable() bool }
+	if !errors.As(err, &advice) || !advice.Retryable() {
+		t.Fatalf("a stalled read should be retryable: %#v", advice)
+	}
+}
+
+func TestTransportCompletesSlowButSteadyResponseBody(t *testing.T) {
+	const chunks = 12
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+		writer.WriteHeader(http.StatusOK)
+		for range chunks {
+			_, _ = writer.Write(bytes.Repeat([]byte("x"), 1024))
+			writer.(http.Flusher).Flush()
+			time.Sleep(25 * time.Millisecond)
+		}
+	}))
+	defer server.Close()
+
+	transport := NewTransport(server.Client(), "3.29", nil)
+	transport.SetStallTimeout(200 * time.Millisecond)
+	started := time.Now()
+	response, err := transport.Do(context.Background(), nil, Request{
+		Method: http.MethodGet, ServerURL: server.URL, Path: "/content", Operation: "workbook.pull",
+	})
+	if err != nil {
+		t.Fatalf("a progressing download failed after %s: %v", time.Since(started), err)
+	}
+	if len(response.Body) != chunks*1024 {
+		t.Fatalf("body length = %d", len(response.Body))
+	}
+	if elapsed := time.Since(started); elapsed <= 200*time.Millisecond {
+		t.Fatalf("download finished in %s, so it did not outlast the stall timeout", elapsed)
+	}
+}
+
+func TestTransportIgnoresWholeRequestClientTimeout(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+		writer.WriteHeader(http.StatusOK)
+		for range 8 {
+			_, _ = writer.Write([]byte("chunk"))
+			writer.(http.Flusher).Flush()
+			time.Sleep(25 * time.Millisecond)
+		}
+	}))
+	defer server.Close()
+
+	client := server.Client()
+	client.Timeout = 50 * time.Millisecond
+	transport := NewTransport(client, "3.29", nil)
+	transport.SetStallTimeout(200 * time.Millisecond)
+	if _, err := transport.Do(context.Background(), nil, Request{
+		Method: http.MethodGet, ServerURL: server.URL, Path: "/content", Operation: "workbook.pull",
+	}); err != nil {
+		t.Fatalf("a whole-request client timeout cut off a progressing download: %v", err)
+	}
+	if client.Timeout != 50*time.Millisecond {
+		t.Fatalf("NewTransport modified the caller's client: %s", client.Timeout)
+	}
+}
+
+func TestTransportStallTimeoutBoundsStalledResponseBody(t *testing.T) {
+	release := make(chan struct{})
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+		writer.WriteHeader(http.StatusOK)
+		_, _ = writer.Write([]byte("partial"))
+		writer.(http.Flusher).Flush()
+		<-release
+	}))
+	defer server.Close()
+	defer close(release)
+
+	transport := NewTransport(server.Client(), "3.29", nil)
+	transport.SetStallTimeout(50 * time.Millisecond)
+	started := time.Now()
+	_, err := transport.Do(context.Background(), nil, Request{
+		Method: http.MethodGet, ServerURL: server.URL, Path: "/content", Operation: "workbook.pull",
+	})
+	if err == nil || !strings.Contains(err.Error(), "read Tableau workbook.pull response: no response body progress for 50ms") {
+		t.Fatalf("error = %v", err)
+	}
+	if elapsed := time.Since(started); elapsed > time.Second {
+		t.Fatalf("stalled body was not bounded: %s", elapsed)
+	}
+	var advice interface{ Retryable() bool }
+	if !errors.As(err, &advice) || !advice.Retryable() {
+		t.Fatalf("a stalled read should be retryable: %#v", advice)
+	}
+}
+
+// slowUploadTransport reads the request body in small paced chunks, standing in
+// for a slow network link without depending on kernel socket buffer sizes.
+func slowUploadTransport(chunk int, pause time.Duration, stallAfter int) roundTripFunc {
+	return func(request *http.Request) (*http.Response, error) {
+		buffer := make([]byte, chunk)
+		for reads := 0; ; reads++ {
+			if stallAfter >= 0 && reads == stallAfter {
+				<-request.Context().Done()
+				return nil, request.Context().Err()
+			}
+			if _, err := request.Body.Read(buffer); errors.Is(err, io.EOF) {
+				break
+			} else if err != nil {
+				return nil, err
+			}
+			select {
+			case <-request.Context().Done():
+				return nil, request.Context().Err()
+			case <-time.After(pause):
+			}
+		}
+		_ = request.Body.Close()
+		return &http.Response{StatusCode: http.StatusCreated, Header: make(http.Header), Body: io.NopCloser(strings.NewReader("{}"))}, nil
+	}
+}
+
+func TestTransportCompletesSlowButSteadyRequestBody(t *testing.T) {
+	transport := NewTransport(&http.Client{Transport: slowUploadTransport(1024, 20*time.Millisecond, -1)}, "3.29", nil)
+	transport.SetStallTimeout(150 * time.Millisecond)
+	started := time.Now()
+	_, err := transport.Do(context.Background(), nil, Request{
+		Method: http.MethodPut, ServerURL: "https://tableau.example", Path: "/fileUploads/id",
+		Operation: "workbook.publish.upload", Body: bytes.Repeat([]byte("u"), 16*1024),
+	})
+	if err != nil {
+		t.Fatalf("a progressing upload failed after %s: %v", time.Since(started), err)
+	}
+	if elapsed := time.Since(started); elapsed <= 150*time.Millisecond {
+		t.Fatalf("upload finished in %s, so it did not outlast the stall timeout", elapsed)
+	}
+}
+
+func TestTransportStallTimeoutBoundsStalledRequestBody(t *testing.T) {
+	transport := NewTransport(&http.Client{Transport: slowUploadTransport(1024, time.Millisecond, 2)}, "3.29", nil)
+	transport.SetStallTimeout(50 * time.Millisecond)
+	started := time.Now()
+	_, err := transport.Do(context.Background(), nil, Request{
+		Method: http.MethodPut, ServerURL: "https://tableau.example", Path: "/fileUploads/id",
+		Operation: "workbook.publish.upload", Body: bytes.Repeat([]byte("u"), 16*1024),
+	})
+	if err == nil || !strings.Contains(err.Error(), "Tableau workbook.publish.upload request: no request body progress for 50ms") {
+		t.Fatalf("error = %v", err)
+	}
+	if elapsed := time.Since(started); elapsed > time.Second {
+		t.Fatalf("stalled upload was not bounded: %s", elapsed)
+	}
+	var advice interface {
+		Retryable() bool
+		CorrectiveAction() string
+	}
+	if !errors.As(err, &advice) || advice.Retryable() || advice.CorrectiveAction() != "Inspect the remote operation outcome before retrying." {
+		t.Fatalf("a stalled mutation must not be retryable: %#v", advice)
+	}
+	if !SubmissionAttempted(err) {
+		t.Fatal("a stalled upload must report that submission was attempted")
+	}
+}
+
+func TestTransportPreservesRequestBodyLengthAndReplay(t *testing.T) {
+	var lengths []int64
+	var bodies []string
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		lengths = append(lengths, request.ContentLength)
+		body, _ := io.ReadAll(request.Body)
+		bodies = append(bodies, string(body))
+		if request.URL.Path == "/first" {
+			http.Redirect(writer, request, "/second", http.StatusTemporaryRedirect)
+		}
+	}))
+	defer server.Close()
+
+	transport := NewTransport(server.Client(), "3.29", nil)
+	if _, err := transport.Do(context.Background(), nil, Request{
+		Method: http.MethodPost, ServerURL: server.URL, Path: "/first", Operation: "auth.check", Body: []byte("payload"),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if len(lengths) != 2 || lengths[0] != 7 || lengths[1] != 7 || bodies[0] != "payload" || bodies[1] != "payload" {
+		t.Fatalf("lengths = %v, bodies = %q", lengths, bodies)
+	}
+}
+
+func TestTransportCallerCancellationDuringBodyIsNotAStall(t *testing.T) {
+	release := make(chan struct{})
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+		writer.WriteHeader(http.StatusOK)
+		_, _ = writer.Write([]byte("partial"))
+		writer.(http.Flusher).Flush()
+		<-release
+	}))
+	defer server.Close()
+	defer close(release)
+
+	transport := NewTransport(server.Client(), "3.29", nil)
+	transport.SetStallTimeout(time.Minute)
+	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
+	defer cancel()
+	_, err := transport.Do(ctx, nil, Request{
+		Method: http.MethodGet, ServerURL: server.URL, Path: "/content", Operation: "workbook.pull",
+	})
+	if err == nil || strings.Contains(err.Error(), "progress") {
+		t.Fatalf("error = %v", err)
+	}
+	var advice interface{ Retryable() bool }
+	if !errors.As(err, &advice) || advice.Retryable() {
+		t.Fatalf("caller cancellation must stay nonretryable: %#v", advice)
 	}
 }
 

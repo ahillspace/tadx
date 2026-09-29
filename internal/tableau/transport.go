@@ -14,6 +14,7 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 	"unicode/utf8"
 
@@ -24,9 +25,11 @@ const (
 	defaultAPIVersion          = "3.29"
 	defaultMaxResponseBytes    = 256 * 1024 * 1024
 	maxUpstreamDiagnosticBytes = 16 * 1024
-	// defaultRequestTimeout bounds a single request when the caller supplies a
-	// context without its own deadline, so a stalled server cannot hang forever.
-	defaultRequestTimeout = 120 * time.Second
+	// defaultStallTimeout bounds how long one request may go without progress:
+	// sending body bytes, receiving response headers, or reading body bytes. A
+	// stalled server cannot hang forever, while a slow but steady transfer of a
+	// large package or upload chunk is never cut off for its total duration.
+	defaultStallTimeout = 120 * time.Second
 )
 
 // Request describes one released Tableau REST request.
@@ -272,18 +275,21 @@ func RequestID(err error) string {
 
 // Transport applies standard headers, authorization, response capture, and errors.
 type Transport struct {
-	client         *http.Client
-	apiVersion     string
-	correlationID  func() string
-	requestTimeout time.Duration
+	client        *http.Client
+	apiVersion    string
+	correlationID func() string
+	stallTimeout  time.Duration
 }
 
-// NewTransport creates the shared Tableau REST transport.
+// NewTransport creates the shared Tableau REST transport. The transport owns
+// request timing through its stall timeout, so its copy of the client drops any
+// whole-request Timeout that would otherwise cut off long transfers.
 func NewTransport(client *http.Client, apiVersion string, correlationID func() string) *Transport {
 	if client == nil {
 		client = http.DefaultClient
 	}
 	clientCopy := *client
+	clientCopy.Timeout = 0
 	previousCheckRedirect := clientCopy.CheckRedirect
 	clientCopy.CheckRedirect = func(request *http.Request, via []*http.Request) error {
 		if len(via) > 0 {
@@ -309,19 +315,19 @@ func NewTransport(client *http.Client, apiVersion string, correlationID func() s
 	if apiVersion == "" {
 		apiVersion = defaultAPIVersion
 	}
-	return &Transport{client: &clientCopy, apiVersion: apiVersion, correlationID: correlationID, requestTimeout: defaultRequestTimeout}
+	return &Transport{client: &clientCopy, apiVersion: apiVersion, correlationID: correlationID, stallTimeout: defaultStallTimeout}
 }
 
 // APIVersion returns the configured optimistic REST API version.
 func (t *Transport) APIVersion() string { return t.apiVersion }
 
-// SetRequestTimeout overrides the default per-request timeout applied when the
-// caller's context carries no deadline. A non-positive value disables the net.
-func (t *Transport) SetRequestTimeout(timeout time.Duration) {
+// SetStallTimeout overrides how long one request may go without progress
+// before it fails. A non-positive value disables the bound.
+func (t *Transport) SetStallTimeout(timeout time.Duration) {
 	if t == nil {
 		return
 	}
-	t.requestTimeout = timeout
+	t.stallTimeout = timeout
 }
 
 // Do performs one request without automatic retries.
@@ -353,14 +359,26 @@ func (t *Transport) Do(ctx context.Context, session auth.Session, input Request)
 	// (e.g. an escaped slash in a LUID segment) round-trip instead of decoding.
 	base.RawPath = baseEscaped + "/" + strings.TrimLeft(path.EscapedPath(), "/")
 	base.RawQuery = input.Query.Encode()
-	if _, hasDeadline := ctx.Deadline(); !hasDeadline && t.requestTimeout > 0 {
-		var cancel context.CancelFunc
-		ctx, cancel = context.WithTimeout(ctx, t.requestTimeout)
-		defer cancel()
-	}
-	request, err := http.NewRequestWithContext(ctx, input.Method, base.String(), bytes.NewReader(input.Body))
+	// Caller deadlines and cancellation still bound the whole operation; the
+	// watchdog only fails a request that stops making progress.
+	requestCtx, cancel := context.WithCancelCause(ctx)
+	defer cancel(nil)
+	request, err := http.NewRequestWithContext(requestCtx, input.Method, base.String(), bytes.NewReader(input.Body))
 	if err != nil {
 		return Response{}, fmt.Errorf("create Tableau request: %w", err)
+	}
+	watchdog := startStallWatchdog(t.stallTimeout, cancel, len(input.Body) > 0)
+	defer watchdog.stop()
+	if len(input.Body) > 0 {
+		request.Body = progressBody{ReadCloser: request.Body, watchdog: watchdog}
+		getBody := request.GetBody
+		request.GetBody = func() (io.ReadCloser, error) {
+			body, err := getBody()
+			if err != nil {
+				return nil, err
+			}
+			return progressBody{ReadCloser: body, watchdog: watchdog}, nil
+		}
 	}
 	for name, values := range input.Header {
 		for _, value := range values {
@@ -387,13 +405,20 @@ func (t *Transport) Do(ctx context.Context, session auth.Session, input Request)
 	effectiveSecrets = append(effectiveSecrets, request.Header.Values(auth.TableauAuthHeader)...)
 	response, err := t.client.Do(request)
 	if err != nil {
+		if stall := watchdog.expired(); stall != nil {
+			err = stall
+		}
 		retryable, correctiveAction := requestAdvice(ctx, input.Method, input.Operation, err)
 		return Response{}, &requestError{operation: input.Operation, cause: redact(err, effectiveSecrets), retryable: retryable, correctiveAction: correctiveAction}
 	}
 	defer response.Body.Close()
+	watchdog.enter(stallReadingResponse)
 	requestID := sanitizeDiagnostic(tableauRequestID(response.Header), effectiveSecrets)
-	body, err := io.ReadAll(io.LimitReader(response.Body, maxResponseBytes+1))
+	body, err := io.ReadAll(io.LimitReader(progressBody{ReadCloser: response.Body, watchdog: watchdog}, maxResponseBytes+1))
 	if err != nil {
+		if stall := watchdog.expired(); stall != nil {
+			err = stall
+		}
 		retryable, correctiveAction := responseReadAdvice(ctx, input.Method, input.Operation, response.StatusCode)
 		return Response{}, &responseReadError{operation: input.Operation, requestID: requestID, statusCode: response.StatusCode, cause: redact(err, effectiveSecrets), retryable: retryable, correctiveAction: correctiveAction}
 	}
@@ -415,6 +440,137 @@ func (t *Transport) Do(ctx context.Context, session auth.Session, input Request)
 		Summary: summary, Detail: detail, TableauRequestID: requestID,
 		retryAfter: retryAfter, retryAfterSet: retryAfterSet,
 	}
+}
+
+type stallPhase int
+
+const (
+	stallSendingRequest stallPhase = iota
+	stallAwaitingResponse
+	stallReadingResponse
+)
+
+// stallError reports which part of a request stopped making progress. It
+// deliberately does not wrap context errors, so a stall is classified as a
+// transfer failure rather than as caller cancellation.
+type stallError struct {
+	phase   stallPhase
+	timeout time.Duration
+}
+
+func (e *stallError) Error() string {
+	switch e.phase {
+	case stallSendingRequest:
+		return fmt.Sprintf("no request body progress for %s", e.timeout)
+	case stallAwaitingResponse:
+		return fmt.Sprintf("no response headers within %s", e.timeout)
+	default:
+		return fmt.Sprintf("no response body progress for %s", e.timeout)
+	}
+}
+
+func (*stallError) Timeout() bool { return true }
+
+// stallWatchdog cancels one request when no progress arrives within the stall
+// timeout. Progress only moves a deadline; the timer re-arms itself for the
+// remaining time, so frequent body reads do not churn timers.
+type stallWatchdog struct {
+	mu       sync.Mutex
+	timeout  time.Duration
+	cancel   context.CancelCauseFunc
+	timer    *time.Timer
+	deadline time.Time
+	phase    stallPhase
+	fired    *stallError
+	stopped  bool
+}
+
+func startStallWatchdog(timeout time.Duration, cancel context.CancelCauseFunc, sendsBody bool) *stallWatchdog {
+	watchdog := &stallWatchdog{timeout: timeout, cancel: cancel, phase: stallAwaitingResponse}
+	if sendsBody {
+		watchdog.phase = stallSendingRequest
+	}
+	if timeout <= 0 {
+		watchdog.stopped = true
+		return watchdog
+	}
+	watchdog.deadline = time.Now().Add(timeout)
+	watchdog.timer = time.AfterFunc(timeout, watchdog.check)
+	return watchdog
+}
+
+func (w *stallWatchdog) check() {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	if w.stopped {
+		return
+	}
+	if remaining := time.Until(w.deadline); remaining > 0 {
+		w.timer.Reset(remaining)
+		return
+	}
+	w.stopped = true
+	w.fired = &stallError{phase: w.phase, timeout: w.timeout}
+	w.cancel(w.fired)
+}
+
+// progress records transferred bytes and restarts the stall window.
+func (w *stallWatchdog) progress() {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	if !w.stopped {
+		w.deadline = time.Now().Add(w.timeout)
+	}
+}
+
+// enter advances to a later request phase and restarts the stall window.
+// Phases never move backward, so a replayed redirect body cannot mislabel a
+// response stall as a request stall.
+func (w *stallWatchdog) enter(phase stallPhase) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	if w.stopped || phase <= w.phase {
+		return
+	}
+	w.phase = phase
+	w.deadline = time.Now().Add(w.timeout)
+}
+
+// expired returns the stall that cancelled the request, if any.
+func (w *stallWatchdog) expired() error {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	if w.fired == nil {
+		return nil
+	}
+	return w.fired
+}
+
+func (w *stallWatchdog) stop() {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	w.stopped = true
+	if w.timer != nil {
+		w.timer.Stop()
+	}
+}
+
+// progressBody reports each successful read to the stall watchdog. Reaching the
+// end of a request body moves the watchdog to waiting for response headers.
+type progressBody struct {
+	io.ReadCloser
+	watchdog *stallWatchdog
+}
+
+func (b progressBody) Read(buffer []byte) (int, error) {
+	n, err := b.ReadCloser.Read(buffer)
+	if n > 0 {
+		b.watchdog.progress()
+	}
+	if errors.Is(err, io.EOF) {
+		b.watchdog.enter(stallAwaitingResponse)
+	}
+	return n, err
 }
 
 // parseRetryAfter interprets the Retry-After header as delta-seconds or an HTTP
