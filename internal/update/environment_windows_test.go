@@ -35,7 +35,11 @@ func TestWindowsPowerShellRebuildsItsModulePath(t *testing.T) {
 	command := "$ErrorActionPreference='Stop'; $hash=(Get-FileHash -Algorithm SHA256 -LiteralPath $env:TADX_UPDATER_HASH_TEST).Hash; $archive=(Get-Command Expand-Archive -ErrorAction Stop).Name; [Console]::WriteLine('{0}|{1}|{2}', $hash, $archive, $env:TADX_UPDATER_ENV_TEST)"
 	// Cold Windows PowerShell module loading competes with the full package suite
 	// on CI. This is a test harness bound; the real installer has five minutes.
-	output, err := run(t.Context(), 30*time.Second, "powershell.exe", "-NoProfile", "-NonInteractive", "-Command", command)
+	program, err := installerProgram()
+	if err != nil {
+		t.Fatal(err)
+	}
+	output, err := (Runtime{}).runner()(t.Context(), 30*time.Second, program, "-NoProfile", "-NonInteractive", "-Command", command)
 	if err != nil {
 		t.Fatalf("Windows PowerShell cannot load its built-in installer commands: %v: %s", err, output)
 	}

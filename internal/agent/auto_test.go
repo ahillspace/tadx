@@ -71,9 +71,7 @@ func TestAutoInstallPortableFallbackAndPartialFailure(t *testing.T) {
 				t.Fatal(err)
 			}
 		}
-		if err := os.WriteFile(filepath.Join(home, ".codex", "skills", ".tadx-install.lock"), []byte("busy"), 0600); err != nil {
-			t.Fatal(err)
-		}
+		holdPackageLock(t, filepath.Join(home, ".codex", "skills"))
 		in := Installer{Home: func() (string, error) { return home, nil }}
 		result, err := in.Install(context.Background(), "auto", false, false)
 		if err == nil || result.Status != "partial" || len(result.Skills) != 3 || result.Skills[0].Target != "claude" || result.Skills[2].Status != "failed" {

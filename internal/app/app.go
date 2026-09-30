@@ -125,7 +125,7 @@ func Run(ctx context.Context, args []string, stdout io.Writer, options Options) 
 	credentialStore := authCredentialStore{runtime: runtime}
 	root := cli.NewRoot(cli.Dependencies{
 		SessionOverview:       sessionoverview.New(sessionOverviewReader{runtime: runtime}),
-		Update:                newUpdateCommand(updater.Runtime{}),
+		Update:                newUpdateCommand(updater.Runtime{CredentialVariables: runtime.configuredPATVariables}),
 		Catalog:               (&catalogCommands{runtime: runtime}).dependencies(),
 		ContentLabels:         contentLabelDependencies(runtime),
 		AdminLabels:           adminLabelDependencies(runtime),

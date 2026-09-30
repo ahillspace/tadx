@@ -2,13 +2,16 @@ package app
 
 import (
 	"context"
+	"errors"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	authlogin "github.com/ahillspace/tadx/actions/auth/login"
 	authlogout "github.com/ahillspace/tadx/actions/auth/logout"
 	coreauth "github.com/ahillspace/tadx/internal/auth"
 	"github.com/ahillspace/tadx/internal/config"
+	"github.com/ahillspace/tadx/internal/errs"
 )
 
 type fakePATStore struct {
@@ -172,4 +175,18 @@ func authConfig(t *testing.T, credentialReference string) string {
 		t.Fatalf("Save() error = %v", err)
 	}
 	return path
+}
+
+func TestAuthCredentialStoreNamesOrphanedEntryWhenDeletionFailsAfterInstall(t *testing.T) {
+	reference := coreauth.CredentialReference("cred_88888888888888888888888888888888")
+	failed := orphanedCredentialError(&config.InstalledError{Err: errors.New("sync failed"), ExternalErr: errors.New("delete denied")}, reference)
+	_, advice := errs.RetryAdvice(failed)
+	if !strings.Contains(advice, coreauth.CredentialStoreEntry(reference)) {
+		t.Fatalf("corrective action = %q, want the orphaned entry", advice)
+	}
+	for _, err := range []error{errors.New("plain failure"), &config.InstalledError{Err: errors.New("sync failed")}} {
+		if got := orphanedCredentialError(err, reference); got != err {
+			t.Fatalf("orphanedCredentialError(%v) = %v, want unchanged", err, got)
+		}
+	}
 }

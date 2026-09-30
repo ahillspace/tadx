@@ -24,7 +24,7 @@ func classifyDatasourcePackage(filename string, content []byte) (string, []strin
 		}
 		var selected *zip.File
 		for _, file := range reader.File {
-			if strings.EqualFold(filepath.Ext(file.Name), ".tds") {
+			if topLevelPackageEntry(file.Name) && strings.EqualFold(filepath.Ext(file.Name), ".tds") {
 				if selected != nil {
 					return CompositionStatusUnknown, nil
 				}

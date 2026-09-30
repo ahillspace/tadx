@@ -64,15 +64,18 @@ func ReadNative(ctx context.Context, path, kind string) (Native, error) {
 			}
 			var selected *zip.File
 			for _, entry := range archive.File {
+				if !topLevelPackageEntry(entry.Name) {
+					continue
+				}
 				if strings.EqualFold(filepath.Ext(entry.Name), primary) || (kind == "flow" && entry.Name == "flow") {
 					if selected != nil {
-						return Native{}, errors.New("native package has ambiguous primary definitions")
+						return Native{}, errors.New("native package has ambiguous top-level primary definitions")
 					}
 					selected = entry
 				}
 			}
 			if selected == nil || selected.UncompressedSize64 > maxDatasourceDefinitionBytes {
-				return Native{}, errors.New("native package requires one primary definition no larger than 16 MiB")
+				return Native{}, errors.New("native package requires one top-level primary definition no larger than 16 MiB")
 			}
 			stream, openErr := selected.Open()
 			if openErr != nil {
@@ -161,4 +164,11 @@ func ReadNative(ctx context.Context, path, kind string) (Native, error) {
 		result.CompositionStatus, result.ParentDataSourceURLs = classifyDatasourcePackage("definition.tds", definition)
 	}
 	return result, nil
+}
+
+// topLevelPackageEntry reports whether a package entry sits at the archive root.
+// Tableau packages keep their primary definition there; nested definitions are
+// ordinary package content and neither satisfy nor block primary selection.
+func topLevelPackageEntry(name string) bool {
+	return name != "" && !strings.ContainsAny(name, `/\`)
 }

@@ -1,11 +1,12 @@
-// Package lock provides a cross-platform, workspace-scoped advisory file lock
-// used to serialize mutating tadx operations across concurrent processes.
+// Package lock provides cross-platform advisory file locks used to serialize
+// mutating tadx operations across concurrent processes.
 package lock
 
 import (
 	"context"
 	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"time"
 )
@@ -16,6 +17,9 @@ var ErrLocked = errors.New("workspace lock is held by another process")
 // Handle is an acquired advisory lock. Release it exactly once with Release.
 type Handle struct {
 	file *os.File
+	// root and name identify a lock file that Release removes.
+	root *os.Root
+	name string
 }
 
 // Acquire opens (creating if necessary) the lock file at path and blocks until
@@ -87,6 +91,14 @@ func (h *Handle) Release() error {
 	if h == nil || h.file == nil {
 		return nil
 	}
+	var removeErr error
+	if h.root != nil {
+		// Remove the name while still holding the lock, so a caller that opened
+		// the file before the removal sees it replaced once it gets the lock.
+		if err := h.root.Remove(h.name); err != nil && !errors.Is(err, fs.ErrNotExist) {
+			removeErr = fmt.Errorf("remove lock file: %w", err)
+		}
+	}
 	unlockErr := unlockFile(h.file)
 	closeErr := h.file.Close()
 	h.file = nil
@@ -96,5 +108,5 @@ func (h *Handle) Release() error {
 	if closeErr != nil {
 		return fmt.Errorf("close workspace lock: %w", closeErr)
 	}
-	return nil
+	return removeErr
 }

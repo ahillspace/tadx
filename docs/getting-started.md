@@ -70,6 +70,7 @@ tadx env update dev --pat-name-env TADX_DEV_PAT_NAME --pat-secret-env TADX_DEV_P
 ```
 
 A complete variable pair overrides an OS-stored PAT for that process, and TADX does not combine partial credentials from different sources.
+The flags take variable names, never the PAT name or secret; TADX rejects a value that is not a variable name without saving or showing it.
 
 ## Pull other project assets
 
@@ -262,7 +263,7 @@ These are local installations; installing for Copilot does not configure a hoste
 When TADX does not detect its root skill in a supported location, it prints a short installation notice to stderr on the first invocation in a shell session.
 Structured command output on stdout remains unchanged.
 Detection checks local files, not whether the agent has actually read them.
-Completion requests, the bare `tadx` overview, and the Guidance installation and refresh commands, `tadx agent install` and `tadx update`, do not emit the notice or write its session marker.
+Completion requests, the bare `tadx` overview, and the commands that install, refresh, or remove Guidance, `tadx agent install`, `tadx update`, and `tadx agent uninstall`, do not emit the notice or write its session marker.
 If session identification or the local notice cache is unavailable, the notice is skipped without failing your command.
 
 Set `TADX_GUIDANCE_NOTICE=0` to suppress the notice for human-only or automated use.

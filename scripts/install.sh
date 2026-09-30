@@ -222,9 +222,18 @@ case "$(uname -m)" in
 esac
 
 temporary_directory=$(mktemp -d "${TMPDIR:-/tmp}/tadx-install.XXXXXXXX")
+install_lock="${install_dir}/.tadx-install.lock"
+install_lock_owner="$$ $(uname -n 2>/dev/null || printf '%s' unknown)"
 owns_install_lock=0
 cleanup() {
-    if [ "$owns_install_lock" -eq 1 ]; then rmdir "${install_dir}/.tadx-install.lock"; fi
+    if [ "$owns_install_lock" -eq 1 ]; then
+        # Never remove a lock that another installer acquired after a manual removal.
+        lock_record=$(cat "${install_lock}/owner" 2>/dev/null || true)
+        if [ -z "$lock_record" ] || [ "$lock_record" = "$install_lock_owner" ]; then
+            rm -f "${install_lock}/owner"
+            rmdir "$install_lock" 2>/dev/null || true
+        fi
+    fi
     rm -rf "$temporary_directory"
 }
 trap cleanup EXIT HUP INT TERM
@@ -332,13 +341,44 @@ binary_count=$(printf '%s\n' "$binary_paths" | awk 'NF { count++ } END { print c
 [ "$binary_count" -eq 1 ] || fail 'The verified release archive must contain exactly one tadx file.'
 
 mkdir -p "$install_dir" || fail "Could not create the resolved install directory '$install_dir'. No replacement occurred; choose another --install-dir or check directory permissions."
-mkdir "${install_dir}/.tadx-install.lock" 2>/dev/null || fail 'Another installer is using this directory. Wait for it to finish; remove .tadx-install.lock only after confirming no installer is running.'
+# A lock is abandoned when its recorded owner process on this host has exited.
+# Without a usable owner on this host, only a lock older than 30 minutes is abandoned.
+# This only chooses the failure message: moving or removing a lock another
+# installer could be acquiring at the same moment would admit two owners.
+install_lock_is_abandoned() {
+    [ -d "$install_lock" ] || return 1
+    lock_pid=''
+    lock_host=''
+    if [ -f "${install_lock}/owner" ]; then read -r lock_pid lock_host < "${install_lock}/owner" || true; fi
+    case "$lock_pid" in
+        ''|*[!0-9]*) ;;
+        *)
+            if [ "$lock_host" = "${install_lock_owner#* }" ]; then
+                kill -0 "$lock_pid" 2>/dev/null && return 1
+                # kill -0 also fails for another account's live process.
+                ps -p "$lock_pid" >/dev/null 2>&1 && return 1
+                return 0
+            fi
+            ;;
+    esac
+    [ -n "$(find "$install_lock" -maxdepth 0 -mmin +30 2>/dev/null)" ]
+}
+
+if ! mkdir "$install_lock" 2>/dev/null; then
+    if install_lock_is_abandoned; then
+        fail "A previous installer exited without releasing this directory. No replacement occurred; confirm no installer is running, then remove '$install_lock' and retry."
+    fi
+    fail 'Another installer is using this directory. Wait for it to finish; remove .tadx-install.lock only after confirming no installer is running.'
+fi
 owns_install_lock=1
-staged_binary="${install_dir}/.tadx.new.$$"
+printf '%s\n' "$install_lock_owner" > "${install_lock}/owner"
+# Unique names keep a planted file or symlink from receiving the binary.
+staged_binary=$(mktemp "${install_dir}/.tadx.new.XXXXXXXX") || fail "Could not stage the release binary in '$install_dir'. No replacement occurred; choose another --install-dir or check directory permissions."
 cp "$binary_paths" "$staged_binary" || { rm -f "$staged_binary"; fail "Could not stage the release binary at '$staged_binary'. No replacement occurred; choose another --install-dir or check directory permissions."; }
 chmod 0755 "$staged_binary" || { rm -f "$staged_binary"; fail "Could not set executable permissions for the staged binary at '$staged_binary'. No replacement occurred; choose another --install-dir or check directory permissions."; }
-backup_binary="${install_dir}/.tadx.backup.$$"
+backup_binary=''
 if [ -e "${install_dir}/tadx" ]; then
+    backup_binary=$(mktemp "${install_dir}/.tadx.backup.XXXXXXXX") || { rm -f "$staged_binary"; fail "Could not preserve the existing binary at '${install_dir}/tadx'. No replacement occurred; choose another --install-dir or check directory permissions."; }
     cp -p "${install_dir}/tadx" "$backup_binary" || { rm -f "$backup_binary" "$staged_binary"; fail "Could not preserve the existing binary at '${install_dir}/tadx'. No replacement occurred; choose another --install-dir or check directory permissions."; }
 fi
 mv -f "$staged_binary" "${install_dir}/tadx" || {

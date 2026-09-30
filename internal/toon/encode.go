@@ -305,11 +305,19 @@ func requiresQuote(value string, delimiter rune) bool {
 		return true
 	}
 	for _, r := range value {
-		if r <= 0x1f || r == ':' || r == '"' || r == '\\' || r == '[' || r == ']' || r == '{' || r == '}' || r == delimiter {
+		if r <= 0x1f || r == ':' || r == '"' || r == '\\' || r == '[' || r == ']' || r == '{' || r == '}' || r == delimiter || IsDisplayControl(r) {
 			return true
 		}
 	}
 	return false
+}
+
+// IsDisplayControl reports DEL, C1 control characters, and bidirectional
+// embedding, override, and isolate characters. TOON allows them unescaped, but
+// terminals can execute C1 controls such as CSI and bidirectional controls can
+// make output display differently from its content, so encoders escape them.
+func IsDisplayControl(r rune) bool {
+	return (r >= 0x7f && r <= 0x9f) || (r >= 0x202a && r <= 0x202e) || (r >= 0x2066 && r <= 0x2069)
 }
 
 func quote(value string) string {
@@ -328,7 +336,7 @@ func quote(value string) string {
 		case '\t':
 			builder.WriteString(`\t`)
 		default:
-			if r < 0x20 {
+			if r < 0x20 || IsDisplayControl(r) {
 				fmt.Fprintf(&builder, `\u%04x`, r)
 			} else {
 				builder.WriteRune(r)

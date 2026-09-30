@@ -33,6 +33,9 @@ func (a *UpdateAction) Execute(ctx context.Context, input UpdateInput) (UpdateOu
 	if input.Patch.ServerURL.Set && !validServerURL(input.Patch.ServerURL.Value) {
 		return UpdateOutput{}, updateUsageError("server URL must be an absolute HTTPS URL without credentials, query, or fragment")
 	}
+	if summary := variableReferenceProblem(input.Patch.PATNameEnv.Value, input.Patch.PATSecretEnv.Value); summary != "" {
+		return UpdateOutput{}, variableReferenceError("env.profile.update.usage", "env.profile.update", summary)
+	}
 	if input.Patch.PATNameEnv.Set && input.Patch.PATSecretEnv.Set && input.Patch.PATNameEnv.Value != "" && strings.EqualFold(input.Patch.PATNameEnv.Value, input.Patch.PATSecretEnv.Value) {
 		return UpdateOutput{}, updateUsageError("PAT name and secret must use different environment variables")
 	}

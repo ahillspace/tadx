@@ -22,7 +22,8 @@ type PullPreviewResult struct {
 
 // PreviewPull checks existing managed artifacts without locks, recovery, or writes.
 // Remote payload validation and write permissions remain execution prerequisites.
-func PreviewPull(ctx context.Context, input PullPreview) (PullPreviewResult, error) {
+func PreviewPull(ctx context.Context, input PullPreview) (_ PullPreviewResult, err error) {
+	defer func() { err = withWorkspaceRelativePaths(err, input.Workspace) }()
 	if err := ctx.Err(); err != nil {
 		return PullPreviewResult{}, err
 	}

@@ -12,6 +12,16 @@ import (
 	"unsafe"
 )
 
+// installerProgram names Windows PowerShell under the system directory so
+// PATH and the current directory cannot substitute another powershell.exe.
+func installerProgram() (string, error) {
+	system, err := windows.GetSystemDirectory()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(system, "WindowsPowerShell", "v1.0", "powershell.exe"), nil
+}
+
 // Start suspended so no installer subprocess can escape before job assignment.
 type processScope struct {
 	cmd *exec.Cmd

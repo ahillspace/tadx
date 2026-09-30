@@ -62,12 +62,17 @@ func (a *Action) Execute(ctx context.Context, in Input) (Output, error) {
 		return Output{}, &errs.Error{ID: "agent.uninstall.usage", Kind: errs.KindUsage, Operation: "agent.uninstall", Summary: fmt.Sprintf("--target must be %s.", agenttarget.Summary()), Retryable: errs.Bool(false), CorrectiveAction: "Choose one supported target, for example: tadx agent uninstall --target opencode --preview."}
 	}
 	result, err := a.uninstaller.Uninstall(ctx, in.Target, in.Preview, in.Force)
+	var failure error
 	if err != nil {
-		return Output{}, &errs.Error{ID: "agent.uninstall.failed", Kind: errs.KindOperation, Operation: "agent.uninstall", Summary: "Agent Guidance uninstall failed.", Cause: err, Retryable: errs.Bool(false), CorrectiveAction: "Inspect the target directory and permissions. Use --preview first; edited TADX-owned packages are retained as backups."}
+		failure = &errs.Error{ID: "agent.uninstall.failed", Kind: errs.KindOperation, Operation: "agent.uninstall", Summary: "Agent Guidance uninstall failed.", Cause: err, Retryable: errs.Bool(false), CorrectiveAction: "Inspect the target directory and permissions. Use --preview first; edited TADX-owned packages are retained as backups."}
+		// Only package state the uninstaller confirms after an incomplete rollback accompanies the error.
+		if len(result.Skills) == 0 {
+			return Output{}, failure
+		}
 	}
 	skills := make([]Skill, len(result.Skills))
 	for index, skill := range result.Skills {
 		skills[index] = Skill{Name: skill.Name, Status: skill.Status, Path: skill.Path, SHA256: skill.SHA256, Backup: skill.Backup}
 	}
-	return Output{Status: result.Status, Target: in.Target, Skills: skills, Warnings: result.Warnings, Help: []string{"tadx agent install --target " + in.Target + " --preview"}}, nil
+	return Output{Status: result.Status, Target: in.Target, Skills: skills, Warnings: result.Warnings, Help: []string{"tadx agent install --target " + in.Target + " --preview"}}, failure
 }

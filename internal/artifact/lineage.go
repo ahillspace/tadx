@@ -69,7 +69,8 @@ func NewLineageManager(now func() time.Time) *LineageManager {
 }
 
 // Pull creates or replaces one identity-bound metadata-only lineage artifact.
-func (m *LineageManager) Pull(ctx context.Context, input LineagePull) (LineagePullResult, error) {
+func (m *LineageManager) Pull(ctx context.Context, input LineagePull) (_ LineagePullResult, err error) {
+	defer func() { err = withWorkspaceRelativePaths(err, input.Workspace) }()
 	if err := ctx.Err(); err != nil {
 		return LineagePullResult{}, err
 	}

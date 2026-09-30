@@ -260,6 +260,61 @@ copy /Y "%TADX_TEST_RELEASES%\%pattern%" "%destination%" >nul
         Assert-True -Condition ([Convert]::ToBase64String([IO.File]::ReadAllBytes($caseProfile)) -ceq [Convert]::ToBase64String($uninstalledBytes)) -Message ($case.Name + ': repeated uninstall changed profile bytes.')
     }
 
+    # Installers never move or remove an existing lock; an abandoned one is only diagnosed.
+    $lockInstallDirectory = Join-Path $testRoot 'lock-install'
+    $lockPath = Join-Path $lockInstallDirectory '.tadx-install.lock'
+    $lockOwnerPath = Join-Path $lockPath 'owner'
+    New-Item -ItemType Directory -Path $lockInstallDirectory | Out-Null
+    $inUse = 'Another installer is using this directory.'
+    $abandoned = 'A previous installer exited without releasing this directory.'
+    function Invoke-LockedInstall {
+        param(
+            [Parameter(Mandatory = $true)][string]$Case,
+            [Parameter(Mandatory = $true)][string]$Expected
+        )
+        $record = if (Test-Path -LiteralPath $lockOwnerPath) { [IO.File]::ReadAllText($lockOwnerPath) } else { 'missing' }
+        $failure = $null
+        try { & $installer -Version 1.2.3 -InstallDir $lockInstallDirectory -NoModifyPath -NoCompletion | Out-Null }
+        catch { $failure = $_.Exception.Message }
+        Assert-True -Condition ($null -ne $failure -and $failure.Contains($Expected)) -Message "${Case}: the installer reported '$failure' instead of '$Expected'."
+        Assert-True -Condition (Test-Path -LiteralPath $lockPath) -Message "${Case}: the respected lock was removed."
+        $after = if (Test-Path -LiteralPath $lockOwnerPath) { [IO.File]::ReadAllText($lockOwnerPath) } else { 'missing' }
+        Assert-True -Condition ($after -ceq $record) -Message "${Case}: the lock owner changed."
+        Assert-True -Condition (@(Get-ChildItem -LiteralPath $lockInstallDirectory -Force -Filter '.tadx-install.stale.*').Count -eq 0) -Message "${Case}: lock remnants were left behind."
+    }
+    $machine = [Environment]::MachineName
+    New-Item -ItemType Directory -Path $lockPath | Out-Null
+    [IO.File]::WriteAllText($lockOwnerPath, "$PID $machine")
+    Invoke-LockedInstall -Case 'live owner' -Expected $inUse
+    Remove-Item -LiteralPath $lockPath -Recurse -Force
+
+    $exited = Start-Process -FilePath 'cmd.exe' -ArgumentList '/c', 'exit 0' -PassThru -WindowStyle Hidden
+    $exited.WaitForExit()
+    New-Item -ItemType Directory -Path $lockPath | Out-Null
+    [IO.File]::WriteAllText($lockOwnerPath, "$($exited.Id) $machine")
+    Invoke-LockedInstall -Case 'exited owner' -Expected $abandoned
+    Remove-Item -LiteralPath $lockPath -Recurse -Force
+
+    New-Item -ItemType Directory -Path $lockPath | Out-Null
+    [IO.File]::WriteAllText($lockOwnerPath, "$($exited.Id) another-computer")
+    Invoke-LockedInstall -Case 'owner on another computer' -Expected $inUse
+    Remove-Item -LiteralPath $lockPath -Recurse -Force
+
+    New-Item -ItemType Directory -Path $lockPath | Out-Null
+    [IO.File]::WriteAllText($lockOwnerPath, 'not a pid')
+    Invoke-LockedInstall -Case 'recent lock with an unreadable owner' -Expected $inUse
+    Remove-Item -LiteralPath $lockPath -Recurse -Force
+
+    New-Item -ItemType Directory -Path $lockPath | Out-Null
+    Invoke-LockedInstall -Case 'recent lock without an owner' -Expected $inUse
+    (Get-Item -LiteralPath $lockPath).LastWriteTimeUtc = [DateTime]::UtcNow.AddDays(-1)
+    Invoke-LockedInstall -Case 'old lock without an owner' -Expected $abandoned
+    Remove-Item -LiteralPath $lockPath -Recurse -Force
+
+    # After the lock is removed by hand, the next installer acquires and releases it.
+    & $installer -Version 1.2.3 -InstallDir $lockInstallDirectory -NoModifyPath -NoCompletion | Out-Null
+    Assert-True -Condition (-not (Test-Path -LiteralPath $lockPath)) -Message 'manual removal: the next installer did not release its lock.'
+
     Write-Output 'install.ps1 tests passed'
 }
 finally {

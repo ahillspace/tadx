@@ -116,6 +116,7 @@ func RenderWithOptions(writer io.Writer, value any, options Options) error {
 	var encoded []byte
 	if options.JSON {
 		encoded, err = json.Marshal(normalized)
+		encoded = escapeDisplayControls(encoded)
 	} else {
 		encoded, err = toon.EncodeWithOptions(normalized, options.TOON)
 	}
@@ -278,13 +279,32 @@ func renderRaw(writer io.Writer, value any, options Options) error {
 		if err != nil {
 			return fmt.Errorf("render raw JSON: %w", err)
 		}
-		return writeDocument(writer, raw)
+		return writeDocument(writer, escapeDisplayControls(raw))
 	}
 	text := redactor(string(raw))
 	if !options.Full && limit > 0 {
 		text = truncate(text, limit)
 	}
 	return writeDocument(writer, []byte(text))
+}
+
+// escapeDisplayControls rewrites the display controls that TOON escapes as
+// JSON \u escapes. encoding/json leaves them raw, and they can only occur
+// inside JSON strings, so the rewrite keeps the document valid and decodes to
+// the same values.
+func escapeDisplayControls(encoded []byte) []byte {
+	if !bytes.ContainsFunc(encoded, toon.IsDisplayControl) {
+		return encoded
+	}
+	escaped := make([]byte, 0, len(encoded)+16)
+	for _, r := range string(encoded) {
+		if toon.IsDisplayControl(r) {
+			escaped = fmt.Appendf(escaped, `\u%04x`, r)
+			continue
+		}
+		escaped = utf8.AppendRune(escaped, r)
+	}
+	return escaped
 }
 
 func writeDocument(writer io.Writer, document []byte) error {

@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/ahillspace/tadx/internal/fsreplace"
 	"github.com/ahillspace/tadx/internal/pathspec"
 )
 
@@ -22,17 +23,18 @@ type deleteOperations struct {
 }
 
 func defaultDeleteOperations() deleteOperations {
-	return deleteOperations{rename: os.Rename, removeAll: os.RemoveAll}
+	return deleteOperations{rename: fsreplace.Rename, removeAll: os.RemoveAll}
 }
 
 // Delete revalidates and removes one exact managed artifact.
 func Delete(ctx context.Context, request DeleteRequest) (Item, error) {
-	return deleteWithOperations(ctx, request, defaultDeleteOperations())
+	item, err := deleteWithOperations(ctx, request, defaultDeleteOperations())
+	return item, withWorkspaceRelativePaths(err, request.Workspace)
 }
 
 func deleteWithOperations(ctx context.Context, request DeleteRequest, operations deleteOperations) (Item, error) {
 	if operations.rename == nil {
-		operations.rename = os.Rename
+		operations.rename = fsreplace.Rename
 	}
 	if operations.removeAll == nil {
 		operations.removeAll = os.RemoveAll

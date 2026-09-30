@@ -448,15 +448,18 @@ func (c *Client) Download(ctx context.Context, workbookLUID string, includeExtra
 	if err != nil {
 		return Download{}, err
 	}
-	filename := dispositionFilename(response.Header.Get("Content-Disposition"))
+	filename := tableau.DispositionFilename(response.Header.Get("Content-Disposition"))
 	if filename == "" {
 		return Download{}, tableau.NewProtocolError("workbook.pull", response, errors.New("workbook download response omitted filename"), true)
+	}
+	if !tableau.ValidFilename(filename) {
+		return Download{}, tableau.NewProtocolError("workbook.pull", response, fmt.Errorf("workbook download returned invalid filename %q", filename), true)
 	}
 	extension := strings.ToLower(filepath.Ext(filename))
 	if extension != ".twb" && extension != ".twbx" {
 		return Download{}, tableau.NewProtocolError("workbook.pull", response, fmt.Errorf("workbook download returned unsupported filename %q", filename), true)
 	}
-	return Download{Filename: filepath.Base(filename), ContentType: response.Header.Get("Content-Type"), Content: response.Body, TableauRequestID: response.TableauRequestID}, nil
+	return Download{Filename: filename, ContentType: response.Header.Get("Content-Type"), Content: response.Body, TableauRequestID: response.TableauRequestID}, nil
 }
 
 // Publish uploads and publishes a workbook, then polls an explicit async job to a bounded terminal result.
@@ -911,20 +914,6 @@ func (c *Client) sitePath(parts ...string) string {
 		segments[index] = url.PathEscape(segments[index])
 	}
 	return "/" + strings.Join(segments, "/")
-}
-
-func dispositionFilename(value string) string {
-	_, parameters, err := mime.ParseMediaType("attachment; " + value)
-	if err == nil {
-		return parameters["filename"]
-	}
-	for _, part := range strings.Split(value, ";") {
-		name, filename, ok := strings.Cut(strings.TrimSpace(part), "=")
-		if ok && strings.EqualFold(name, "filename") {
-			return strings.Trim(filename, `"`)
-		}
-	}
-	return ""
 }
 
 func publishBody(input PublishRequest, includeFile bool) ([]byte, string, error) {

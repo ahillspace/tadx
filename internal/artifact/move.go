@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/ahillspace/tadx/internal/fsreplace"
 	"github.com/ahillspace/tadx/internal/pathspec"
 )
 
@@ -26,17 +27,19 @@ type moveOperations struct {
 }
 
 func defaultMoveOperations() moveOperations {
-	return moveOperations{rename: os.Rename, removeAll: os.RemoveAll}
+	return moveOperations{rename: fsreplace.Rename, removeAll: os.RemoveAll}
 }
 
 // Move preserves one managed artifact's bytes and identity.
 func Move(ctx context.Context, request MoveRequest) (Item, error) {
-	return moveWithOperations(ctx, request, defaultMoveOperations())
+	item, err := moveWithOperations(ctx, request, defaultMoveOperations())
+	return item, withWorkspaceRelativePaths(err, request.SourceWorkspace, request.DestinationWorkspace)
 }
 
 // PreviewMove validates source identity and destination containment/collision
 // without locks, staging directories, copies, or renames.
-func PreviewMove(ctx context.Context, request MoveRequest) (Item, error) {
+func PreviewMove(ctx context.Context, request MoveRequest) (_ Item, err error) {
+	defer func() { err = withWorkspaceRelativePaths(err, request.SourceWorkspace, request.DestinationWorkspace) }()
 	sourceRoot, err := validateWorkspaceRoot(request.SourceWorkspace)
 	if err != nil {
 		return Item{}, err
@@ -95,7 +98,7 @@ func PreviewMove(ctx context.Context, request MoveRequest) (Item, error) {
 
 func moveWithOperations(ctx context.Context, request MoveRequest, operations moveOperations) (Item, error) {
 	if operations.rename == nil {
-		operations.rename = os.Rename
+		operations.rename = fsreplace.Rename
 	}
 	if operations.removeAll == nil {
 		operations.removeAll = os.RemoveAll

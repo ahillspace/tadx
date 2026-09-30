@@ -79,7 +79,8 @@ func disabled(lookup func(string) (string, bool)) bool {
 func suppressed(args []string) bool {
 	// The local overview (including global presentation/config flags) must not
 	// create a once-per-session notice marker as a side effect. Commands that
-	// install or refresh Guidance must not advise running the installation.
+	// install, refresh, or remove Guidance must not advise running the
+	// installation.
 	var command []string
 	for index := 0; index < len(args) && len(command) < 2; index++ {
 		argument := args[index]
@@ -99,7 +100,7 @@ func suppressed(args []string) bool {
 	case "completion", "cmp", "update", "upd":
 		return true
 	case "agent", "agt":
-		return len(command) == 2 && (command[1] == "install" || command[1] == "ist")
+		return len(command) == 2 && (command[1] == "install" || command[1] == "ist" || command[1] == "uninstall" || command[1] == "uni")
 	}
 	return strings.HasPrefix(command[0], "__complete")
 }

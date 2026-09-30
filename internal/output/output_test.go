@@ -2,6 +2,7 @@ package output_test
 
 import (
 	"bytes"
+	"encoding/json"
 	"errors"
 	"os"
 	"reflect"
@@ -287,5 +288,25 @@ func TestConfigPathBindsSharedPointerEachOccurrence(t *testing.T) {
 	}
 	if strings.Count(buffer.String(), "--config") != 2 {
 		t.Fatalf("shared pointers were not independently bound: %s", buffer.String())
+	}
+}
+
+func TestRenderJSONEscapesDisplayControls(t *testing.T) {
+	t.Parallel()
+
+	value := map[string]string{"name‮": "a\u009b31m\u007fb⁦"}
+	var buffer bytes.Buffer
+	if err := output.RenderWithOptions(&buffer, value, output.Options{JSON: true, Full: true}); err != nil {
+		t.Fatal(err)
+	}
+	if got, want := buffer.String(), "{\"name\\u202e\":\"a\\u009b31m\\u007fb\\u2066\"}\n"; got != want {
+		t.Fatalf("JSON output = %q, want %q", got, want)
+	}
+	var decoded map[string]string
+	if err := json.Unmarshal(buffer.Bytes(), &decoded); err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(decoded, value) {
+		t.Fatalf("decoded = %q, want %q", decoded, value)
 	}
 }

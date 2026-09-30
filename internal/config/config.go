@@ -3,6 +3,7 @@ package config
 
 import (
 	"bytes"
+	"context"
 	"crypto/sha256"
 	"errors"
 	"fmt"
@@ -14,7 +15,9 @@ import (
 	"slices"
 	"sort"
 	"strings"
+	"time"
 
+	"github.com/ahillspace/tadx/internal/fsreplace"
 	"github.com/ahillspace/tadx/internal/lock"
 	"gopkg.in/yaml.v3"
 )
@@ -170,6 +173,7 @@ func (c Config) Validate() error {
 		if environment.Auth.Type != AuthTypePAT {
 			violations = append(violations, fmt.Sprintf("environment %q auth type must be %q", alias, AuthTypePAT))
 		}
+		violations = append(violations, variableReferenceViolations(alias, environment.Auth)...)
 		if reference := environment.Auth.CredentialRef; reference != "" {
 			if !credentialRefPattern.MatchString(reference) {
 				violations = append(violations, fmt.Sprintf("environment %q credential reference must match cred_<32 lowercase hex>", alias))
@@ -649,10 +653,50 @@ func Save(path string, configuration Config) error {
 	if err := temporary.Close(); err != nil {
 		return fmt.Errorf("close configuration staging file: %w", err)
 	}
-	if err := os.Rename(temporaryPath, path); err != nil {
+	if err := replaceFile(temporaryPath, path); err != nil {
 		return fmt.Errorf("install configuration: %w", err)
 	}
 	return nil
+}
+
+// replaceFile is replaceable so tests can fail the replacement after it installs.
+var replaceFile = fsreplace.Replace
+
+// InstalledError reports that an update installed the new configuration but
+// could neither make it durable nor reinstall the prior configuration. The
+// external commit then runs so external state matches the installed
+// configuration; ExternalErr records its failure, if any.
+type InstalledError struct {
+	Err         error
+	ExternalErr error
+}
+
+func (e *InstalledError) Error() string {
+	message := "the updated configuration took effect but may not survive power loss, and the prior configuration could not be reinstalled: " + e.Err.Error()
+	if e.ExternalErr != nil {
+		message += "; the external commit also failed: " + e.ExternalErr.Error()
+	}
+	return message
+}
+
+func (e *InstalledError) Unwrap() []error { return []error{e.Err, e.ExternalErr} }
+
+// ConfigurationInstalled reports that the new configuration is in effect.
+func (*InstalledError) ConfigurationInstalled() bool { return true }
+
+// ExternalCommitConfirmed reports whether external state was confirmed to match
+// the installed configuration. It is false when the external commit failed.
+func (e *InstalledError) ExternalCommitConfirmed() bool { return e.ExternalErr == nil }
+
+// Retryable reports that rerunning the update is not the recovery.
+func (*InstalledError) Retryable() bool { return false }
+
+// CorrectiveAction tells the caller how to proceed.
+func (e *InstalledError) CorrectiveAction() string {
+	if e.ExternalErr != nil {
+		return "The configuration change took effect, but the matching external change failed. Repair access to the configuration directory and complete the external change by hand."
+	}
+	return "The configuration change took effect. Repair access to the configuration directory, then rerun the command to confirm its state."
 }
 
 // ErrNoChange lets an Update mutator report that the configuration is already
@@ -660,6 +704,26 @@ func Save(path string, configuration Config) error {
 var ErrNoChange = errors.New("configuration unchanged")
 
 const configLockSuffix = ".lock"
+
+// lockWait bounds how long a configuration writer waits for another tadx
+// process to finish its own configuration update.
+var lockWait = 30 * time.Second
+
+// LockTimeoutError reports that another tadx process held the configuration
+// lock for longer than a writer waits. The configuration was not changed.
+type LockTimeoutError struct{ Wait time.Duration }
+
+func (e *LockTimeoutError) Error() string {
+	return fmt.Sprintf("another tadx process held the configuration lock for more than %s; the configuration was not changed", e.Wait)
+}
+
+// Retryable reports that the same update can run after the other process finishes.
+func (*LockTimeoutError) Retryable() bool { return true }
+
+// CorrectiveAction tells the caller how to proceed.
+func (*LockTimeoutError) CorrectiveAction() string {
+	return "Wait for the other tadx command to finish, then retry."
+}
 
 // Update performs one serialized read-modify-write of the user configuration.
 // It holds an advisory interprocess lock across the load, the mutation, and the
@@ -678,7 +742,11 @@ func Update(path string, createIfMissing bool, mutate func(Config) (Config, erro
 // UpdateWithRollback serializes a configuration mutation and its filesystem
 // staging. The mutator can return a rollback function, including on error.
 // If the mutation or save fails, rollback runs before releasing the configuration
-// lock. A successful save commits the staging and does not invoke rollback.
+// lock. A save that installs the new configuration but cannot sync its directory
+// reinstalls the prior configuration before rollback runs; if that also fails,
+// the new configuration stays in effect, rollback is skipped, and the update
+// returns an *InstalledError. A successful save commits the staging and does not
+// invoke rollback.
 func UpdateWithRollback(path string, createIfMissing bool, mutate func(Config) (Config, func() error, error)) (result Config, resultErr error) {
 	return updateTransaction(path, createIfMissing, func(current Config) (Config, func() error, func() error, error) {
 		next, rollback, err := mutate(current)
@@ -689,7 +757,9 @@ func UpdateWithRollback(path string, createIfMissing bool, mutate func(Config) (
 // UpdateWithPostSave serializes a configuration mutation and an irreversible
 // external commit. The callback runs after the new configuration is durable
 // while the configuration lock remains held. If the callback fails, the prior
-// configuration is restored before the lock is released.
+// configuration is restored before the lock is released. A save that cannot sync
+// its directory reinstalls the prior configuration and skips the callback; if
+// that also fails, the callback runs and the update returns an *InstalledError.
 func UpdateWithPostSave(path string, createIfMissing bool, mutate func(Config) (Config, func() error, error)) (result Config, resultErr error) {
 	return updateTransaction(path, createIfMissing, func(current Config) (Config, func() error, func() error, error) {
 		next, postSave, err := mutate(current)
@@ -704,7 +774,13 @@ func updateTransaction(path string, createIfMissing bool, mutate func(Config) (C
 	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		return Config{}, fmt.Errorf("create configuration directory: %w", err)
 	}
-	handle, err := lock.Acquire(path + configLockSuffix)
+	wait := lockWait
+	ctx, cancel := context.WithTimeout(context.Background(), wait)
+	handle, err := lock.AcquireContext(ctx, path+configLockSuffix)
+	cancel()
+	if errors.Is(err, context.DeadlineExceeded) {
+		return Config{}, &LockTimeoutError{Wait: wait}
+	}
 	if err != nil {
 		return Config{}, fmt.Errorf("acquire configuration lock: %w", err)
 	}
@@ -719,11 +795,18 @@ func updateTransaction(path string, createIfMissing bool, mutate func(Config) (C
 		}
 	}()
 	current, original, migrated, err := load(path)
+	existed := true
 	if err != nil {
 		if !(createIfMissing && errors.Is(err, os.ErrNotExist)) {
 			return Config{}, err
 		}
-		current, original, migrated = Config{Version: CurrentVersion}, nil, false
+		current, original, migrated, existed = Config{Version: CurrentVersion}, nil, false, false
+	}
+	restore := func() error {
+		if !existed {
+			return os.Remove(path)
+		}
+		return Save(path, current)
 	}
 	next, rollback, postSave, err := mutate(cloneConfig(current))
 	if err != nil {
@@ -750,11 +833,25 @@ func updateTransaction(path string, createIfMissing bool, mutate func(Config) (C
 		}
 	}
 	if err := Save(path, next); err != nil {
-		return Config{}, err
+		if !isDurabilityError(err) {
+			return Config{}, err
+		}
+		// The new configuration is in effect but not durable. Reinstall the prior
+		// configuration before external state is rolled back so the two agree.
+		if restoreErr := restore(); restoreErr != nil && !isDurabilityError(restoreErr) {
+			// The new configuration stays in effect, so external state must match it.
+			committed = true
+			installed := &InstalledError{Err: errors.Join(err, fmt.Errorf("restore configuration: %w", restoreErr))}
+			if postSave != nil {
+				installed.ExternalErr = postSave()
+			}
+			return next, installed
+		}
+		return Config{}, fmt.Errorf("%w; the prior configuration was reinstalled", err)
 	}
 	if postSave != nil {
 		if err := postSave(); err != nil {
-			restoreErr := Save(path, current)
+			restoreErr := restore()
 			if restoreErr != nil {
 				return Config{}, errors.Join(err, fmt.Errorf("restore configuration after external commit failure: %w", restoreErr))
 			}
@@ -763,6 +860,11 @@ func updateTransaction(path string, createIfMissing bool, mutate func(Config) (C
 	}
 	committed = true
 	return next, nil
+}
+
+func isDurabilityError(err error) bool {
+	var durability *fsreplace.DurabilityError
+	return errors.As(err, &durability)
 }
 
 func cloneConfig(configuration Config) Config {

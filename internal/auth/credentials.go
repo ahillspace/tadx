@@ -354,6 +354,12 @@ func validCredentialReference(reference CredentialReference) bool {
 	return credentialReferencePattern.MatchString(string(reference))
 }
 
+// CredentialStoreEntry names the OS credential store entry for a reference so a
+// user can remove an entry TADX no longer references. It contains no secret.
+func CredentialStoreEntry(reference CredentialReference) string {
+	return fmt.Sprintf("service %q, account %q", credentialService, credentialAccount(reference))
+}
+
 func credentialAccount(reference CredentialReference) string {
 	return "pat:v1:" + strings.TrimPrefix(string(reference), "cred_")
 }

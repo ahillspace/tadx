@@ -65,7 +65,11 @@ func (a *Service) applyDeleteWorkspace(ctx context.Context, plan DeleteWorkspace
 	if plan.Workspace.Dirty && !plan.Force {
 		return DeleteWorkspaceResult{}, &errs.Error{ID: "workspace.delete.dirty", Kind: errs.KindOperation, Operation: "workspace.delete", Resource: plan.Workspace.ID, Summary: "Dirty workspace deletion requires explicit force.", Cause: errors.New("the workspace contains dirty or invalid managed artifacts"), Retryable: errs.Bool(false), CorrectiveAction: "Review local changes, then add --force only when deletion is intended."}
 	}
-	if err := a.WorkspaceStore.DeleteWorkspace(ctx, WorkspaceDeleteRequest{Expected: plan.Workspace, Force: plan.Force}); err != nil {
+	err := a.WorkspaceStore.DeleteWorkspace(ctx, WorkspaceDeleteRequest{Expected: plan.Workspace, Force: plan.Force})
+	if configurationInstalled(err) {
+		return DeleteWorkspaceResult{}, installedConfigurationError("workspace.delete.failed", "workspace.delete", plan.Workspace.ID, "The workspace was unregistered, but the configuration could not be made durable.", err)
+	}
+	if err != nil {
 		retryable, correctiveAction := errs.CompleteRetryAdvice(err, "Resolve the exact workspace again and review a new deletion preview.")
 		return DeleteWorkspaceResult{}, &errs.Error{ID: "workspace.delete.failed", Kind: errs.KindOperation, Operation: "workspace.delete", Resource: plan.Workspace.ID, Summary: "Workspace deletion failed.", Cause: err, Retryable: retryable, CorrectiveAction: correctiveAction}
 	}

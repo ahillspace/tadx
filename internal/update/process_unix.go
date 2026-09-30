@@ -9,6 +9,9 @@ import (
 	"syscall"
 )
 
+// installerProgram names the POSIX shell by path so PATH cannot substitute it.
+func installerProgram() (string, error) { return "/bin/sh", nil }
+
 type processScope struct{ cmd *exec.Cmd }
 
 func newProcessScope(cmd *exec.Cmd) (*processScope, error) {

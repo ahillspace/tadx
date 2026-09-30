@@ -439,3 +439,20 @@ func assertProtocolContext(t *testing.T, err error, statusCode int, requestID st
 		t.Fatalf("protocol error = %#v", err)
 	}
 }
+
+func TestClientDecodesFormEncodedDatasourceDownloadFilename(t *testing.T) {
+	server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+		writer.Header().Set("Content-Disposition", `name="tableau_datasource"; filename="Global+Sales+%26+Pipeline+Final.tdsx"`)
+		_, _ = writer.Write([]byte("native-datasource"))
+	}))
+	defer server.Close()
+
+	client := tableaudatasource.NewClient(tableau.NewTransport(server.Client(), "3.29", nil), session{}, server.URL)
+	download, err := client.Download(context.Background(), "ds-1", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if download.Filename != "Global Sales & Pipeline Final.tdsx" {
+		t.Fatalf("filename = %q", download.Filename)
+	}
+}

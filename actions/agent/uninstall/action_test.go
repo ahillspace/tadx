@@ -5,10 +5,12 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"reflect"
 	"testing"
 
 	uninstall "github.com/ahillspace/tadx/actions/agent/uninstall"
 	"github.com/ahillspace/tadx/internal/agenttarget"
+	"github.com/ahillspace/tadx/internal/errs"
 	"github.com/ahillspace/tadx/internal/value"
 )
 
@@ -34,18 +36,38 @@ func TestExecute(t *testing.T) {
 	}
 }
 
-func TestUninstallFailureOmitsPartialOutput(t *testing.T) {
+func TestUninstallFailureWithoutPackageStateReturnsOnlyTheError(t *testing.T) {
 	cause := errors.New("target locked")
 	result, err := uninstall.New(failedService{err: cause}).Execute(t.Context(), uninstall.Input{Target: "codex"})
-	if err == nil || !errors.Is(err, cause) || result.Status != "" || result.Skills != nil {
-		t.Fatalf("result=%+v error=%v", result, err)
+	var structured *errs.Error
+	if !errors.As(err, &structured) || structured.ID != "agent.uninstall.failed" || !errors.Is(err, cause) {
+		t.Fatalf("error=%v", err)
+	}
+	if !reflect.ValueOf(result).IsZero() {
+		t.Fatalf("failure returned a success-shaped result: %#v", result)
 	}
 }
 
-type failedService struct{ err error }
+func TestUninstallIncompleteRollbackKeepsConfirmedPackageState(t *testing.T) {
+	cause := errors.New("uninstall failed and rollback is incomplete; inspect target packages")
+	state := value.AgentGuidanceResult{Status: "partial", Skills: []value.AgentGuidanceSkill{{Name: "tadx", Status: "backed-up", Path: ".codex/skills/tadx", Backup: ".codex/.tadx-skill-staging/tadx-A"}, {Name: "tadx-pulse", Status: "unchanged", Path: ".codex/skills/tadx-pulse"}}}
+	result, err := uninstall.New(failedService{result: state, err: cause}).Execute(t.Context(), uninstall.Input{Target: "codex"})
+	var structured *errs.Error
+	if !errors.As(err, &structured) || structured.ID != "agent.uninstall.failed" || !errors.Is(err, cause) {
+		t.Fatalf("error=%v", err)
+	}
+	if result.Status != "partial" || len(result.Skills) != 2 || result.Skills[0].Backup != ".codex/.tadx-skill-staging/tadx-A" || result.Skills[1].Status != "unchanged" {
+		t.Fatalf("confirmed package state was not kept: %#v", result)
+	}
+}
+
+type failedService struct {
+	result value.AgentGuidanceResult
+	err    error
+}
 
 func (s failedService) Uninstall(context.Context, string, bool, bool) (value.AgentGuidanceResult, error) {
-	return value.AgentGuidanceResult{Status: "partial", Skills: []value.AgentGuidanceSkill{{Name: "tadx", Status: "removed"}}}, s.err
+	return s.result, s.err
 }
 
 func TestCompactProjectionRetainsDestinationAndBackup(t *testing.T) {

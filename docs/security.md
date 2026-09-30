@@ -19,11 +19,25 @@ The credential record contains the PAT name, PAT secret, and a fingerprint for t
 TADX configuration stores an opaque credential reference, not the PAT values.
 When credentials are loaded, TADX checks that the record matches the configured server and site.
 A complete PAT environment-variable pair takes precedence over the stored record; TADX does not combine a partial pair with stored credentials.
+Environment-variable references must be variable names; TADX rejects any other value without saving or showing it, because such a value is most likely a pasted PAT name or secret.
 
 The native backend depends on the operating system: Windows uses Windows Credential Manager, macOS uses the `security` generic-password service, and Linux uses Secret Service over D-Bus and its login collection.
 Linux therefore requires an available Secret Service and an unlockable collection.
 These integrations do not promise hardware-backed storage or protection from a compromised account or host.
 `tadx auth logout` removes the locally stored TADX record; it does not revoke the PAT in Tableau.
+
+The credential stores protect a stored PAT from other local accounts, not from other programs running as the same user.
+On macOS, TADX writes the record through `/usr/bin/security`, so macOS trusts that tool for the item.
+Any process running as the same user can therefore read the stored PAT name and secret with `security find-generic-password` while the login keychain is unlocked, and macOS does not prompt.
+Windows Credential Manager returns generic credentials to any process of the same user, and an unlocked Linux Secret Service collection typically returns secrets to any client in the user's session.
+This includes coding agents, scripts, and tools that run alongside TADX under the same account.
+Treat every program you run under that account as able to use a stored PAT.
+
+To limit exposure, create PATs for a Tableau user whose site role and permissions match the intended work, and revoke PATs you no longer need in Tableau.
+Run agents or tools you do not trust with a stored PAT under a separate operating-system account, or do not store a PAT for that environment.
+A configured PAT environment-variable pair avoids a persistent credential store record, because TADX reads the pair only from the calling process.
+Environment variables do not add isolation, because same-user processes can often read another process's environment, so supply the pair only to the processes that need it.
+To remove a stored PAT, run `tadx auth logout` for the environment, then revoke the PAT in Tableau if another program might have read it.
 
 Session tokens and credential reuse are scoped to a command's in-memory session state.
 TADX redacts PATs and session tokens from its controlled configuration, ordinary output, and diagnostics.
@@ -100,6 +114,8 @@ The platform installers do not verify those attestations.
 Checksum matching is not provenance verification, and provenance verification does not establish that the source code or build workflow is secure.
 See [GitHub's artifact-attestation documentation](https://docs.github.com/en/actions/concepts/security/artifact-attestations) for the scope of those claims.
 The updater installs the selected release and refreshes TADX-owned Guidance with recovery behavior described in the [website and installer guide](website.md).
+Updater child processes do not receive conventional `TADX_*_PAT_NAME` or `TADX_*_PAT_SECRET` variables, or the PAT variables named by the selected configuration.
+When the selected configuration cannot be read, only the conventional names are withheld so that update can still repair an installation.
 
 The automatic update notifier reads public release metadata from the GitHub API without GitHub authentication or Tableau credentials.
 It does not send Tableau information, download release binaries, or install updates.

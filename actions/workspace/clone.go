@@ -69,6 +69,9 @@ func (a *Service) Clone(ctx context.Context, input CloneInput) (CloneOutput, err
 		return CloneOutput{}, cloneUsage("source and name are required")
 	}
 	cloned, err := a.Cloner.Clone(ctx, input)
+	if configurationInstalled(err) {
+		return CloneOutput{}, installedConfigurationError("workspace.clone.failed", "workspace.clone", cloned.ID, "The workspace was cloned and registered, but the configuration could not be made durable.", err)
+	}
 	if err != nil {
 		retryable, correctiveAction := errs.CompleteRetryAdvice(err, "Review the exact workspace collision with tadx workspace list --full; do not overwrite or re-register it automatically. Otherwise confirm the source workspace exists and the destination path is empty, then retry.")
 		return CloneOutput{}, &errs.Error{ID: "workspace.clone.failed", Kind: errs.KindOperation, Operation: "workspace.clone", Resource: input.Name, Summary: "Workspace clone failed.", Cause: err, Retryable: retryable, CorrectiveAction: correctiveAction}

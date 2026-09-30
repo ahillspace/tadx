@@ -10,6 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"net"
 	"net/url"
 	"os"
@@ -18,6 +19,8 @@ import (
 	"strings"
 	"time"
 	"unicode/utf8"
+
+	"github.com/ahillspace/tadx/internal/fsreplace"
 )
 
 // WorkbookMetadata is the frozen workbook provenance contract.
@@ -125,7 +128,8 @@ func NewWorkbookManager(now func() time.Time) *WorkbookManager {
 }
 
 // Pull creates or safely replaces one identity-matched artifact.
-func (m *WorkbookManager) Pull(ctx context.Context, input WorkbookPull) (WorkbookPullResult, error) {
+func (m *WorkbookManager) Pull(ctx context.Context, input WorkbookPull) (_ WorkbookPullResult, err error) {
+	defer func() { err = withWorkspaceRelativePaths(err, input.Workspace) }()
 	if err := ctx.Err(); err != nil {
 		return WorkbookPullResult{}, err
 	}
@@ -582,9 +586,13 @@ func recoverWorkbookRoot(root string, operations directoryOperations) ([]string,
 		return nil, err
 	}
 	live := map[string]bool{}
-	var backups, stages []string
+	var backups, stages, warnings []string
 	for _, entry := range entries {
 		name := entry.Name()
+		if (strings.HasPrefix(name, backupPrefix) || strings.HasPrefix(name, stagePrefix)) && !isRealDirectory(entry) {
+			warnings = append(warnings, fmt.Sprintf("recovery entry %q is not a real directory and was left in place", name))
+			continue
+		}
 		switch {
 		case strings.HasPrefix(name, backupPrefix):
 			backups = append(backups, name)
@@ -604,10 +612,9 @@ func recoverWorkbookRoot(root string, operations directoryOperations) ([]string,
 		}
 		live[identityKey(metadata)] = true
 	}
-	var warnings []string
 	for _, name := range stages {
 		if err := operations.removeAll(filepath.Join(root, name)); err != nil {
-			warnings = append(warnings, fmt.Sprintf("stale staging directory %q could not be removed: %v", name, err))
+			warnings = append(warnings, fmt.Sprintf("stale staging directory %q could not be removed: %s", name, warningCause(err, "unexpected error")))
 		}
 	}
 	changed := false
@@ -615,13 +622,13 @@ func recoverWorkbookRoot(root string, operations directoryOperations) ([]string,
 		backupPath := filepath.Join(root, name)
 		metadata, err := readMetadata(backupPath)
 		if err != nil {
-			warnings = append(warnings, fmt.Sprintf("orphaned backup %q could not be read and was left in place: %v", name, err))
+			warnings = append(warnings, fmt.Sprintf("orphaned backup %q could not be read and was left in place: %s", name, warningCause(err, "its metadata is invalid")))
 			continue
 		}
 		key := identityKey(metadata)
 		if live[key] {
 			if err := operations.removeAll(backupPath); err != nil {
-				warnings = append(warnings, fmt.Sprintf("committed backup %q could not be removed: %v", name, err))
+				warnings = append(warnings, fmt.Sprintf("committed backup %q could not be removed: %s", name, warningCause(err, "unexpected error")))
 			}
 			continue
 		}
@@ -645,6 +652,13 @@ func recoverWorkbookRoot(root string, operations directoryOperations) ([]string,
 		}
 	}
 	return warnings, nil
+}
+
+// isRealDirectory reports whether a directory entry is a plain directory. It
+// rejects symbolic links and, on Windows, junctions and other reparse points,
+// which Go reports with ModeIrregular alongside ModeDir.
+func isRealDirectory(entry fs.DirEntry) bool {
+	return entry.Type() == fs.ModeDir
 }
 
 func identityKey(metadata WorkbookMetadata) string {
@@ -871,11 +885,11 @@ type directoryOperations struct {
 func defaultDirectoryOperations() directoryOperations {
 	return directoryOperations{
 		stat:      os.Stat,
-		rename:    os.Rename,
+		rename:    fsreplace.Rename,
 		link:      os.Link,
 		removeAll: os.RemoveAll,
 		writeFile: writeFileSync,
-		syncDir:   fsyncDir,
+		syncDir:   fsreplace.SyncDir,
 	}
 }
 
@@ -886,7 +900,7 @@ func (o directoryOperations) withDefaults() directoryOperations {
 		o.stat = os.Stat
 	}
 	if o.rename == nil {
-		o.rename = os.Rename
+		o.rename = fsreplace.Rename
 	}
 	if o.link == nil {
 		o.link = os.Link
@@ -898,7 +912,7 @@ func (o directoryOperations) withDefaults() directoryOperations {
 		o.writeFile = writeFileSync
 	}
 	if o.syncDir == nil {
-		o.syncDir = fsyncDir
+		o.syncDir = fsreplace.SyncDir
 	}
 	return o
 }
@@ -972,7 +986,7 @@ func replaceDirectoryWithOperations(staging, target string, operations directory
 		return nil, fmt.Errorf("sync workbook artifact root: %w", err)
 	}
 	if err := operations.removeAll(backup); err != nil {
-		return []string{fmt.Sprintf("workbook artifact replacement committed, but backup %q could not be removed: %v", backup, err)}, nil
+		return []string{fmt.Sprintf("workbook artifact replacement committed, but backup %q could not be removed: %s", filepath.Base(backup), warningCause(err, "unexpected error"))}, nil
 	}
 	return nil, nil
 }

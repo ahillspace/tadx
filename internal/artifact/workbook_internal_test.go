@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"testing"
 )
 
@@ -268,12 +269,12 @@ func TestReplaceDirectoryReportsCleanupFailureAsWarning(t *testing.T) {
 
 	warnings, err := replaceDirectoryWithOperations(staging, target, directoryOperations{
 		stat: os.Stat, rename: os.Rename,
-		removeAll: func(string) error { return errors.New("cleanup denied") },
+		removeAll: func(path string) error { return deniedAt(path) },
 	})
 	if err != nil {
 		t.Fatalf("replaceDirectoryWithOperations() error = %v", err)
 	}
-	if len(warnings) != 1 || !strings.Contains(warnings[0], "replacement committed") || !strings.Contains(warnings[0], "cleanup denied") {
+	if len(warnings) != 1 || !strings.Contains(warnings[0], "replacement committed") || !strings.Contains(warnings[0], syscall.EACCES.Error()) {
 		t.Fatalf("warnings = %#v", warnings)
 	}
 	entries, err := os.ReadDir(root)

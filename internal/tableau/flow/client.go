@@ -156,11 +156,11 @@ func (c *RESTClient) Download(ctx context.Context, flowLUID string) (Download, e
 	if err != nil {
 		return Download{}, err
 	}
-	filename := dispositionFilename(response.Header.Get("Content-Disposition"))
+	filename := tableau.DispositionFilename(response.Header.Get("Content-Disposition"))
 	if filename == "" {
 		return Download{}, tableau.NewProtocolError("flow.pull", response, errors.New("flow download response omitted filename"), true)
 	}
-	if !validFilename(filename) {
+	if !tableau.ValidFilename(filename) {
 		return Download{}, tableau.NewProtocolError("flow.pull", response, fmt.Errorf("flow download returned invalid filename %q", filename), true)
 	}
 	extension := strings.ToLower(filepath.Ext(filename))
@@ -489,7 +489,7 @@ func validatePublishRequest(input PublishRequest) (string, error) {
 	if strings.TrimSpace(input.Name) == "" || strings.TrimSpace(input.ProjectLUID) == "" || strings.TrimSpace(input.Filename) == "" {
 		return "", errors.New("flow publish requires name, project LUID, and filename")
 	}
-	if !validFilename(input.Filename) {
+	if !tableau.ValidFilename(input.Filename) {
 		return "", fmt.Errorf("flow publish filename %q is invalid", input.Filename)
 	}
 	extension := strings.TrimPrefix(strings.ToLower(filepath.Ext(input.Filename)), ".")
@@ -694,20 +694,6 @@ func moveBody(projectLUID string) ([]byte, error) {
 	}{Project: struct {
 		ID string `xml:"id,attr"`
 	}{ID: projectLUID}}})
-}
-
-func dispositionFilename(value string) string {
-	for _, candidate := range []string{value, "attachment; " + value} {
-		_, parameters, err := mime.ParseMediaType(candidate)
-		if err == nil && parameters["filename"] != "" {
-			return parameters["filename"]
-		}
-	}
-	return ""
-}
-
-func validFilename(filename string) bool {
-	return filename != "." && filename != ".." && !strings.ContainsAny(filename, `/\`) && filepath.Base(filename) == filename
 }
 
 func uncertainMutation(flowLUID, projectLUID string, err error) (MutationResult, error) {

@@ -16,6 +16,7 @@ import (
 
 	"github.com/ahillspace/tadx/internal/commandhint"
 	"github.com/ahillspace/tadx/internal/config"
+	"github.com/ahillspace/tadx/internal/fsreplace"
 	"gopkg.in/yaml.v3"
 )
 
@@ -61,6 +62,24 @@ type ManifestWorkspace struct {
 type Manager struct {
 	configPath string
 	random     io.Reader
+	// update and updateWithRollback replace the configuration transaction in
+	// tests that need its rare installed-but-not-durable outcome.
+	update             func(string, bool, func(config.Config) (config.Config, error)) (config.Config, error)
+	updateWithRollback func(string, bool, func(config.Config) (config.Config, func() error, error)) (config.Config, error)
+}
+
+func (m *Manager) updateConfig(createIfMissing bool, mutate func(config.Config) (config.Config, error)) (config.Config, error) {
+	if m.update != nil {
+		return m.update(m.configPath, createIfMissing, mutate)
+	}
+	return config.Update(m.configPath, createIfMissing, mutate)
+}
+
+func (m *Manager) updateConfigWithRollback(createIfMissing bool, mutate func(config.Config) (config.Config, func() error, error)) (config.Config, error) {
+	if m.updateWithRollback != nil {
+		return m.updateWithRollback(m.configPath, createIfMissing, mutate)
+	}
+	return config.UpdateWithRollback(m.configPath, createIfMissing, mutate)
 }
 
 // NewManager creates a workspace manager backed by one user configuration.
@@ -110,17 +129,18 @@ func (m *Manager) Create(ctx context.Context, name, root string) (record Record,
 	// collision checks and the write are one atomic transaction; a concurrent
 	// tadx process cannot slip a colliding registration between the check and
 	// the save.
-	updated, err := config.Update(m.configPath, true, func(configuration config.Config) (config.Config, error) {
+	updated, err := m.updateConfig(true, func(configuration config.Config) (config.Config, error) {
 		if err := ctx.Err(); err != nil {
 			return config.Config{}, err
 		}
 		return applyRegistration(configuration, name, id, storedRoot)
 	})
-	if err != nil {
+	if err != nil && !registrationInstalled(err) {
 		return Record{}, err
 	}
+	// An installed registration must keep the workspace it names.
 	rollback = false
-	return Record{Name: name, ID: id, Root: storedRoot, Default: strings.EqualFold(updated.DefaultWorkspace, name), Available: true, ManifestValid: true}, nil
+	return Record{Name: name, ID: id, Root: storedRoot, Default: strings.EqualFold(updated.DefaultWorkspace, name), Available: true, ManifestValid: true}, err
 }
 
 // Register adopts one existing on-disk workspace into the registry using the
@@ -164,7 +184,7 @@ func (m *Manager) Register(ctx context.Context, name, root string) (Record, erro
 	if err != nil {
 		return Record{}, err
 	}
-	updated, err := config.Update(m.configPath, true, func(configuration config.Config) (config.Config, error) {
+	updated, err := m.updateConfig(true, func(configuration config.Config) (config.Config, error) {
 		return applyRegistration(configuration, name, id, storedRoot)
 	})
 	if err != nil {
@@ -185,7 +205,7 @@ func (m *Manager) SetDefault(ctx context.Context, name string) (Record, error) {
 	if err != nil {
 		return Record{}, err
 	}
-	updated, err := config.Update(m.configPath, false, func(configuration config.Config) (config.Config, error) {
+	updated, err := m.updateConfig(false, func(configuration config.Config) (config.Config, error) {
 		registeredName, registration, ok := exactRegistration(configuration, resolved.Name)
 		if !ok || registration.ID != resolved.ID || !samePath(registration.Path, resolved.Root) {
 			return config.Config{}, errors.New("workspace registration changed during default selection")
@@ -212,7 +232,7 @@ func (m *Manager) Unregister(ctx context.Context, name string) (Record, error) {
 		return Record{}, errors.New("workspace manager is not configured")
 	}
 	var removed Record
-	_, err := config.Update(m.configPath, false, func(configuration config.Config) (config.Config, error) {
+	_, err := m.updateConfig(false, func(configuration config.Config) (config.Config, error) {
 		registeredName, registration, ok := exactRegistration(configuration, name)
 		if !ok {
 			return config.Config{}, fmt.Errorf("workspace %q is not registered", name)
@@ -241,7 +261,7 @@ func (m *Manager) Delete(ctx context.Context, expected Record) (Record, error) {
 	}
 	var removed Record
 	var tombstone string
-	_, err := config.UpdateWithRollback(m.configPath, false, func(current config.Config) (config.Config, func() error, error) {
+	_, err := m.updateConfigWithRollback(false, func(current config.Config) (config.Config, func() error, error) {
 		if err := ctx.Err(); err != nil {
 			return config.Config{}, nil, err
 		}
@@ -279,19 +299,20 @@ func (m *Manager) Delete(ctx context.Context, expected Record) (Record, error) {
 			}
 			return config.Config{}, nil, err
 		}
-		if err := os.Rename(root, tombstone); err != nil {
+		if err := fsreplace.Rename(root, tombstone); err != nil {
 			return config.Config{}, nil, fmt.Errorf("stage workspace deletion: %w", err)
 		}
 		removeRegistration(&current, name)
-		return current, func() error { return os.Rename(tombstone, root) }, nil
+		return current, func() error { return fsreplace.Rename(tombstone, root) }, nil
 	})
-	if err != nil {
+	if err != nil && !registrationInstalled(err) {
 		return Record{}, err
 	}
-	if err := os.RemoveAll(tombstone); err != nil {
-		return Record{}, fmt.Errorf("workspace was unregistered but staged files remain at %q: %w", tombstone, err)
+	// An installed unregistration finishes removing the files it no longer names.
+	if removeErr := os.RemoveAll(tombstone); removeErr != nil {
+		return Record{}, errors.Join(err, fmt.Errorf("workspace was unregistered but staged files remain at %q: %w", tombstone, removeErr))
 	}
-	return removed, nil
+	return removed, err
 }
 
 func exactRegistration(configuration config.Config, selector string) (string, config.WorkspaceRegistration, bool) {
@@ -415,14 +436,22 @@ func (m *Manager) Clone(ctx context.Context, source, newName, newRoot string) (R
 			_ = os.RemoveAll(resolvedRoot)
 		}
 	}()
-	updated, err := config.Update(m.configPath, true, func(configuration config.Config) (config.Config, error) {
+	updated, err := m.updateConfig(true, func(configuration config.Config) (config.Config, error) {
 		return applyRegistration(configuration, newName, id, storedRoot)
 	})
-	if err != nil {
+	if err != nil && !registrationInstalled(err) {
 		return Record{}, err
 	}
+	// An installed registration must keep the workspace it names.
 	rollback = false
-	return Record{Name: newName, ID: id, Root: storedRoot, Default: strings.EqualFold(updated.DefaultWorkspace, newName), Available: true, ManifestValid: true}, nil
+	return Record{Name: newName, ID: id, Root: storedRoot, Default: strings.EqualFold(updated.DefaultWorkspace, newName), Available: true, ManifestValid: true}, err
+}
+
+// registrationInstalled reports a configuration failure after the new
+// registry state took effect, so workspace files must match it.
+func registrationInstalled(err error) bool {
+	var installed *config.InstalledError
+	return errors.As(err, &installed)
 }
 
 // applyRegistration performs the name, identity, and root collision checks and
@@ -691,7 +720,7 @@ func upgradeLegacyManifest(root string, replacement Manifest) (bool, error) {
 	if !bytes.Equal(current, data) {
 		return false, errors.New("workspace manifest changed during migration")
 	}
-	if err := os.Rename(temporaryPath, path); err != nil {
+	if err := fsreplace.Replace(temporaryPath, path); err != nil {
 		return false, err
 	}
 	return true, nil
@@ -786,7 +815,7 @@ func cloneRoot(ctx context.Context, sourceRoot, root string, manifest Manifest) 
 	if err := os.WriteFile(filepath.Join(stage, config.WorkspaceConfigName), data, 0o600); err != nil {
 		return err
 	}
-	if err := os.Rename(stage, root); err != nil {
+	if err := fsreplace.Rename(stage, root); err != nil {
 		return fmt.Errorf("install workspace root: %w", err)
 	}
 	return nil

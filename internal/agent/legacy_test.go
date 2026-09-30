@@ -154,16 +154,13 @@ func TestLegacyLockBlocksBothOperations(t *testing.T) {
 		t.Run(operation, func(t *testing.T) {
 			home := t.TempDir()
 			writeTestBundle(t, home, legacyCodexBase, "tadx")
-			lock := filepath.Join(home, ".agents", "skills", ".tadx-install.lock")
-			if err := os.WriteFile(lock, []byte("owned by another installer"), 0o600); err != nil {
-				t.Fatal(err)
-			}
+			holdPackageLock(t, filepath.Join(home, ".agents", "skills"))
 			in := Installer{Home: func() (string, error) { return home, nil }}
 			if _, err := runOperation(in, operation, false, true); err == nil || !strings.Contains(err.Error(), "lock") {
 				t.Fatalf("legacy lock ignored: %v", err)
 			}
-			if data, err := os.ReadFile(lock); err != nil || string(data) != "owned by another installer" {
-				t.Fatalf("legacy lock changed: %q, %v", data, err)
+			if _, err := os.Stat(filepath.Join(home, ".agents", "skills", ".tadx-install.lock")); err != nil {
+				t.Fatalf("legacy lock removed: %v", err)
 			}
 			if _, err := os.Stat(filepath.Join(home, ".codex", "skills", ".tadx-install.lock")); !os.IsNotExist(err) {
 				t.Fatalf("canonical lock retained after rejection: %v", err)

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 	"testing"
 
@@ -78,6 +79,33 @@ func TestExecuteWrapsRemovalFailure(t *testing.T) {
 	_, err := logout.New(&resolver{target: logout.Target{Environment: "dev"}}, &store{err: errors.New("unavailable")}).Execute(context.Background(), logout.Input{Environment: "dev"})
 	payload := errs.Structure(err).Error
 	if payload.ID != "auth.logout.remove" || payload.Environment != "dev" || !strings.Contains(payload.CorrectiveAction, "not revoked") {
+		t.Fatalf("error = %#v", payload)
+	}
+}
+
+type installedConfigurationError struct{ deleteFailed bool }
+
+func (installedConfigurationError) Error() string {
+	return "configuration took effect but was not synced"
+}
+
+func (installedConfigurationError) ConfigurationInstalled() bool { return true }
+
+func (e installedConfigurationError) ExternalCommitConfirmed() bool { return !e.deleteFailed }
+
+func TestExecuteReportsRemovalWhenConfigurationIsNotDurable(t *testing.T) {
+	_, err := logout.New(&resolver{target: logout.Target{Environment: "dev"}}, &store{err: fmt.Errorf("install configuration: %w", installedConfigurationError{})}).Execute(context.Background(), logout.Input{Environment: "dev"})
+	payload := errs.Structure(err).Error
+	if payload.ID != "auth.logout.remove" || payload.Outcome != errs.OutcomeConfirmed || payload.Phase != errs.PhasePersistence || strings.Contains(payload.Summary, "failed") || !strings.Contains(payload.CorrectiveAction, "not revoked") {
+		t.Fatalf("error = %#v", payload)
+	}
+}
+
+func TestExecuteDoesNotConfirmRemovalWhenCredentialDeletionFailedAfterInstall(t *testing.T) {
+	cause := &errs.Error{Kind: errs.KindOperation, Summary: "credential delete denied", CorrectiveAction: "Delete the orphaned entry by hand."}
+	_, err := logout.New(&resolver{target: logout.Target{Environment: "dev"}}, &store{err: errors.Join(cause, installedConfigurationError{deleteFailed: true})}).Execute(context.Background(), logout.Input{Environment: "dev"})
+	payload := errs.Structure(err).Error
+	if payload.ID != "auth.logout.remove" || payload.Outcome == errs.OutcomeConfirmed || payload.Phase != errs.PhasePersistence || strings.Contains(payload.Summary, "was removed") || !strings.Contains(payload.CorrectiveAction, "orphaned entry") || !strings.Contains(payload.CorrectiveAction, "not revoked") {
 		t.Fatalf("error = %#v", payload)
 	}
 }

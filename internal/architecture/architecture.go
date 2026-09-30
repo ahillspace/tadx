@@ -256,7 +256,7 @@ func localImportAllowed(file, imported string) bool {
 		}
 		// The installer shares bounded observations with its actions and target roots with startup discovery.
 		if hasPathPrefix(file, "internal/agent") {
-			return matchesExact(imported, "internal/agenttarget", "internal/value")
+			return matchesExact(imported, "internal/agenttarget", "internal/fsreplace", "internal/lock", "internal/value")
 		}
 		if hasPathPrefix(file, "internal/guidancenotice") {
 			return imported == "internal/agenttarget"
@@ -266,18 +266,19 @@ func localImportAllowed(file, imported string) bool {
 			return imported == "internal/version"
 		}
 		if hasPathPrefix(file, "internal/lastcommand") {
-			return matchesExact(imported, "internal/lock", "internal/value")
+			return matchesExact(imported, "internal/fsreplace", "internal/lock", "internal/value")
 		}
 		// Job coordination persists observations and uses leaf locks; it has no
 		// knowledge of transport, credentials, executable actions, or the CLI.
 		if hasPathPrefix(file, "internal/jobmonitor") {
-			return matchesExact(imported, "internal/lock", "internal/value")
+			return matchesExact(imported, "internal/fsreplace", "internal/lock", "internal/value")
 		}
 		// Detached operations persist bounded worker state and use the leaf lock
-		// package for cross-process coordination. The composition root is the
-		// only higher layer allowed to consume this durable boundary.
+		// package for cross-process coordination and the leaf replace package to
+		// install records. The composition root is the only higher layer allowed
+		// to consume this durable boundary.
 		if hasPathPrefix(file, "internal/operationrun") {
-			return matchesExact(imported, "internal/lock")
+			return matchesExact(imported, "internal/fsreplace", "internal/lock")
 		}
 		// Authentication holds the leaf advisory lock for a command's PAT session.
 		if hasPathPrefix(file, "internal/auth") {
@@ -298,22 +299,23 @@ func localImportAllowed(file, imported string) bool {
 		}
 		if hasPathPrefix(file, "internal/workspace") {
 			// Workspace recovery quotes local selectors with the same leaf helper.
-			return matchesExact(imported, "internal/config", "internal/commandhint")
+			return matchesExact(imported, "internal/config", "internal/commandhint", "internal/fsreplace")
 		}
 		// The artifact manager owns the workspace mutation critical section and
 		// serializes it against other tadx processes via the leaf lock package. It
 		// also asserts, at the destructive mutation boundary, that resolved artifact
 		// paths cannot escape the workspace root, using the OS-independent pathspec
-		// predicates as defense in depth over the upstream Resolve invariant.
+		// predicates as defense in depth over the upstream Resolve invariant. It
+		// installs staged directories through the leaf replace package.
 		if hasPathPrefix(file, "internal/artifact") {
-			return matchesExact(imported, "internal/lock", "internal/pathspec")
+			return matchesExact(imported, "internal/fsreplace", "internal/lock", "internal/pathspec")
 		}
 		// The config package owns the user-configuration read-modify-write
 		// critical section and serializes it against other tadx processes via
 		// the leaf lock package so concurrent env/workspace updates cannot lose
-		// writes.
+		// writes. It installs the saved file through the leaf replace package.
 		if hasPathPrefix(file, "internal/config") {
-			return matchesExact(imported, "internal/lock")
+			return matchesExact(imported, "internal/fsreplace", "internal/lock")
 		}
 		return false
 	case layerTADXCommand:
@@ -430,7 +432,7 @@ func disallowedLocalImportReason(file, imported string) string {
 		}
 	case layerFoundation:
 		if hasPathPrefix(file, "internal/operationrun") {
-			return "operation-run infrastructure must import only the lock boundary"
+			return "operation-run infrastructure must import only the lock and replace boundaries"
 		}
 		if hasPathPrefix(imported, "actions") ||
 			hasPathPrefix(imported, "internal/app") ||
@@ -465,6 +467,7 @@ func isFoundationPackage(file string) bool {
 		hasPathPrefix(file, "internal/capability") ||
 		hasPathPrefix(file, "internal/managedpolicy") ||
 		hasPathPrefix(file, "internal/errs") ||
+		hasPathPrefix(file, "internal/fsreplace") ||
 		hasPathPrefix(file, "internal/lock") ||
 		hasPathPrefix(file, "internal/jobmonitor") ||
 		hasPathPrefix(file, "internal/operationrun") ||

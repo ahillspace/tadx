@@ -17,6 +17,7 @@ import (
 	"strings"
 
 	"github.com/ahillspace/tadx/internal/agenttarget"
+	"github.com/ahillspace/tadx/internal/fsreplace"
 	"github.com/ahillspace/tadx/internal/value"
 )
 
@@ -133,6 +134,7 @@ func (in Installer) Uninstall(ctx context.Context, target string, preview, force
 		return Result{}, err
 	}
 	defer unlock()
+	result.Warnings = append(result.Warnings, removeAbandonedStages(root, base)...)
 	if err := legacyOwnershipUnchanged(root, plans); err != nil {
 		return Result{}, err
 	}
@@ -149,9 +151,10 @@ func (in Installer) Uninstall(ctx context.Context, target string, preview, force
 		for index := len(plans) - 1; index >= 0; index-- {
 			plan := plans[index]
 			if plan.stage != "" {
-				if err := root.Rename(plan.stage, plan.skill.Path); err != nil {
-					return Result{}, errors.New("uninstall failed and rollback is incomplete; inspect target packages")
+				if err := in.renamePackage(root, plan.stage, plan.skill.Path); err != nil {
+					return Result{Status: "partial", Skills: uninstallRollbackStates(plans), Warnings: result.Warnings}, errors.New("uninstall failed and rollback is incomplete; inspect target packages")
 				}
+				plan.stage = ""
 			}
 		}
 		return Result{}, cause
@@ -167,7 +170,7 @@ func (in Installer) Uninstall(ctx context.Context, target string, preview, force
 		if err != nil {
 			return rollback(err)
 		}
-		if err := root.Rename(plan.skill.Path, stage); err != nil {
+		if err := in.renamePackage(root, plan.skill.Path, stage); err != nil {
 			return rollback(packageFilesystemError("stage the installed skill for removal", plan.skill.Name, err))
 		}
 		plan.stage = stage
@@ -291,6 +294,7 @@ func (in Installer) Install(ctx context.Context, target string, preview, force b
 		return Result{}, err
 	}
 	defer unlock()
+	result.Warnings = append(result.Warnings, removeAbandonedStages(root, base)...)
 	if err := legacyOwnershipUnchanged(root, plans); err != nil {
 		return Result{}, err
 	}
@@ -311,7 +315,7 @@ func (in Installer) Install(ctx context.Context, target string, preview, force b
 		if err := ctx.Err(); err != nil {
 			return Result{}, err
 		}
-		plan.stage = path.Join(base, ".tadx-stage-"+rand.Text())
+		plan.stage = path.Join(base, stagePrefix+rand.Text())
 		if err := root.Mkdir(plan.stage, 0o700); err != nil {
 			return Result{}, errors.New("cannot create a skill staging directory")
 		}
@@ -336,18 +340,21 @@ func (in Installer) Install(ctx context.Context, target string, preview, force b
 		}
 	}
 	rollback := func(cause error) (Result, error) {
+		incomplete := errors.New("installation failed and rollback is incomplete; inspect target packages and .tadx-skill-backups")
 		for index := len(plans) - 1; index >= 0; index-- {
 			plan := plans[index]
 			if plan.committed {
 				// Move the new package back into its owned staging location.
-				if err := root.Rename(plan.skill.Path, plan.stage); err != nil {
-					return Result{}, errors.New("installation failed and rollback is incomplete; inspect target packages and .tadx-skill-backups")
+				if err := in.renamePackage(root, plan.skill.Path, plan.stage); err != nil {
+					return Result{Status: "partial", Skills: rollbackStates(plans), Warnings: result.Warnings}, incomplete
 				}
+				plan.committed = false
 			}
 			if plan.backup != "" {
-				if err := root.Rename(plan.backup, plan.skill.Path); err != nil {
-					return Result{}, errors.New("installation failed and rollback is incomplete; inspect target packages and .tadx-skill-backups")
+				if err := in.renamePackage(root, plan.backup, plan.skill.Path); err != nil {
+					return Result{Status: "partial", Skills: rollbackStates(plans), Warnings: result.Warnings}, incomplete
 				}
+				plan.backup = ""
 			}
 		}
 		return Result{}, cause
@@ -367,7 +374,7 @@ func (in Installer) Install(ctx context.Context, target string, preview, force b
 			if err != nil {
 				return rollback(err)
 			}
-			if err := root.Rename(plan.skill.Path, backup); err != nil {
+			if err := in.renamePackage(root, plan.skill.Path, backup); err != nil {
 				return rollback(packageFilesystemError("stage legacy skill removal", plan.skill.Name, err))
 			}
 			plan.backup = backup
@@ -444,7 +451,92 @@ func (in Installer) renamePackage(root *os.Root, from, to string) error {
 	if in.rename != nil {
 		return in.rename(root, from, to)
 	}
-	return root.Rename(from, to)
+	return fsreplace.RenameIn(root, from, to)
+}
+
+// rollbackStates reports where each visible package stands when a rollback
+// stops early: its new version is live, its previous version survives only as
+// a backup, or it matches what was there before the install began.
+func rollbackStates(plans []*packagePlan) []Skill {
+	var skills []Skill
+	for _, plan := range plans {
+		if plan.hidden {
+			continue
+		}
+		skill := plan.skill
+		switch {
+		case plan.committed:
+			// The commit already recorded installed or replaced and its backup.
+		case plan.backup != "":
+			skill.Status, skill.Backup, skill.SHA256, skill.Files = "backed-up", plan.backup, plan.before, 0
+		case plan.before == "":
+			skill.Status, skill.Backup, skill.SHA256, skill.Files = "absent", "", "", 0
+		default:
+			skill.Status, skill.Backup, skill.SHA256, skill.Files = "unchanged", "", plan.before, 0
+		}
+		skills = append(skills, skill)
+	}
+	return skills
+}
+
+// uninstallRollbackStates reports where each visible package stands when an
+// uninstall rollback stops early: a package still staged for removal is out of
+// discovery and kept at its staging path; every other package is in place.
+func uninstallRollbackStates(plans []*packagePlan) []Skill {
+	var skills []Skill
+	for _, plan := range plans {
+		if plan.hidden {
+			continue
+		}
+		skill := plan.skill
+		switch {
+		case plan.stage != "":
+			skill.Status, skill.Backup = "backed-up", plan.stage
+		case plan.before == "":
+			skill.Status, skill.Backup = "absent", ""
+		default:
+			skill.Status, skill.Backup = "unchanged", ""
+		}
+		skills = append(skills, skill)
+	}
+	return skills
+}
+
+// stagePrefix names install staging directories inside a skill directory.
+const stagePrefix = ".tadx-stage-"
+
+// removeAbandonedStages deletes staging directories left in a skill directory
+// by an interrupted install. The caller holds the package lock, so no other
+// installer owns them. Entries that are not plain directories, including links
+// and Windows junctions, are left in place and reported.
+func removeAbandonedStages(root *os.Root, base string) []string {
+	directory, err := root.Open(base)
+	if errors.Is(err, fs.ErrNotExist) {
+		return nil
+	}
+	if err != nil {
+		return []string{"cannot inspect " + base + " for abandoned staging directories"}
+	}
+	entries, err := directory.ReadDir(-1)
+	_ = directory.Close()
+	if err != nil {
+		return []string{"cannot inspect " + base + " for abandoned staging directories"}
+	}
+	var warnings []string
+	for _, entry := range entries {
+		if !strings.HasPrefix(entry.Name(), stagePrefix) {
+			continue
+		}
+		location := path.Join(base, entry.Name())
+		if entry.Type() != fs.ModeDir {
+			warnings = append(warnings, location+" is not a real directory and was left in place")
+			continue
+		}
+		if err := root.RemoveAll(location); err != nil {
+			warnings = append(warnings, "abandoned staging directory "+location+" could not be removed")
+		}
+	}
+	return warnings
 }
 
 // Keep the operating-system cause, but not machine-specific absolute paths.

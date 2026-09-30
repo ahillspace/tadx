@@ -7,7 +7,6 @@ import (
 	"errors"
 	"fmt"
 	"math"
-	"mime"
 	"net/http"
 	"net/url"
 	"path/filepath"
@@ -285,11 +284,11 @@ func (c *Client) Download(ctx context.Context, datasourceLUID string, includeExt
 	if err != nil {
 		return Download{}, err
 	}
-	filename := dispositionFilename(response.Header.Get("Content-Disposition"))
+	filename := tableau.DispositionFilename(response.Header.Get("Content-Disposition"))
 	if filename == "" {
 		return Download{}, tableau.NewProtocolError("datasource.pull", response, errors.New("datasource download response omitted filename"), true)
 	}
-	if !validFilename(filename) {
+	if !tableau.ValidFilename(filename) {
 		return Download{}, tableau.NewProtocolError("datasource.pull", response, fmt.Errorf("datasource download returned invalid filename %q", filename), true)
 	}
 	extension := strings.ToLower(filepath.Ext(filename))
@@ -333,21 +332,6 @@ func (c *Client) sitePath(parts ...string) string {
 		segments[index] = url.PathEscape(segments[index])
 	}
 	return "/" + strings.Join(segments, "/")
-}
-
-func dispositionFilename(value string) string {
-	for _, candidate := range []string{value, "attachment; " + value} {
-		_, parameters, err := mime.ParseMediaType(candidate)
-		if err == nil && parameters["filename"] != "" {
-			return parameters["filename"]
-		}
-	}
-	return ""
-}
-
-func validFilename(filename string) bool {
-	return filename != "." && filename != ".." &&
-		!strings.ContainsAny(filename, `/\`) && filepath.Base(filename) == filename
 }
 
 type datasourceGetEnvelope struct {
