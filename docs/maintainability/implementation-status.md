@@ -1,6 +1,6 @@
 # Architecture implementation status
 
-Status: baseline corrections committed; standard checks pass, an existing race-test failure remains unresolved, and final live coverage needs additional fixture authority.
+Status: baseline corrections and deterministic authentication test synchronization committed; integrated verification continues and final live coverage needs additional fixture authority.
 Approval date: 2026-10-03.
 Baseline: `dd22c33bd1d123066f25ec09e2d612cd95717400`.
 Shared branch: `refactor/cohesive-cli`.
@@ -138,6 +138,10 @@ Its fixed sleep does not establish that the foreground waiter registered before 
 Twenty focused repetitions pass, but that result does not cure the load-sensitive failure.
 Independent review rejects a proposed readiness-helper substitution because a monitor's transient lock can satisfy the same probe.
 That uncommitted test edit is restored; authentication production code remains unchanged and the race gate remains unresolved.
+Subsequent correction `b4ed1f112f0242f66ee29c93cf938b702c553f87` uses a test-owned admission lease and foreground-specific wait signals to establish the ordering premise.
+It preserves the foreground-priority assertion and changes no production authentication code.
+Twenty focused race repetitions, three auth-package race runs, vet, and independent Sol review pass.
+The corrected fixture still requires full integrated race verification; focused success does not retroactively pass the failed run.
 The maintainer's updated model boundary excludes Astra from testing, validation, research, and judging runs.
 Subsequent implementation verification and review assignments explicitly use Sol; task-driven live targets remain Luna at medium reasoning.
 
@@ -222,7 +226,9 @@ Saved site consent does not expand fixture authority.
 Changing persisted consent or persisting PATs requires separate explicit permission.
 Missing task mappings, installer stages, and runtime qualification are technical gaps, not substitute authority.
 No broader mutations, model tasks, or pushes have occurred.
-Further execution awaits fixture-scope direction; no incomplete gate is waived or reported as passing.
+The maintainer directs continued offline implementation and verification while broader live-fixture scope remains unresolved.
+A subsequent read-only consent check confirms that the previously selected site's saved mutation consent is already enabled; no setting changes occur.
+No incomplete gate is waived or reported as passing.
 
 ## Completion rule
 
