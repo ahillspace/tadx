@@ -103,7 +103,7 @@ func (p *publication) record(ctx context.Context, jobID, status, resourceID, req
 		if status == "succeeded" {
 			outcome = errs.OutcomeConfirmed
 		}
-		return path, &errs.Error{ID: p.base.Operation + ".receipt", Kind: errs.KindOperation, Operation: p.base.Operation, Environment: p.base.Environment, Site: p.base.Site, Resource: resourceID, TableauJobID: jobID, Summary: "Publication returned a result, but its recovery receipt could not be saved.", Cause: err, Phase: errs.PhasePersistence, Outcome: outcome, Retryable: errs.Bool(false), CorrectiveAction: "Preserve the returned identities. Do not repeat publication to repair local receipt storage."}
+		return path, &errs.Error{ID: p.base.Operation + ".receipt", Kind: errs.KindOperation, Operation: p.base.Operation, Environment: p.base.Environment, Site: p.base.Site, Resource: resourceID, TableauJobID: jobID, TableauRequestID: r.Observation.RequestID, Summary: "Publication returned a result, but its recovery receipt could not be saved.", Cause: err, Phase: errs.PhasePersistence, Outcome: outcome, Retryable: errs.Bool(false), CorrectiveAction: "Preserve the returned identities. Do not repeat publication to repair local receipt storage."}
 	}
 	if execution := p.runtime.publicationExecution; execution != nil && execution.accepted != nil {
 		if err := execution.accepted(saveCtx, path); err != nil {
