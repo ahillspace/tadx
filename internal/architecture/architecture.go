@@ -9,6 +9,7 @@ import (
 	"go/token"
 	"io/fs"
 	"os"
+	"path"
 	"path/filepath"
 	"sort"
 	"strconv"
@@ -238,7 +239,8 @@ func localImportAllowed(file, imported string) bool {
 		}
 		return matchesPrefix(imported, "actions", "internal/cli") || matchesExact(imported, "internal/errs", "internal/pathspec", "internal/contentbatch", "internal/commandhint", "internal/batchspec")
 	case layerResource:
-		return matchesExact(imported, "internal/identity", "internal/value") || matchesPrefix(imported, "internal/tableau")
+		return adapterConsumerImportAllowed(file, imported) ||
+			matchesExact(imported, "internal/identity", "internal/value") || matchesPrefix(imported, "internal/tableau")
 	case layerTableau:
 		return matchesExact(imported, "internal/auth", "internal/tableau", "internal/tableau/cache/tabxml", "internal/value")
 	case layerFoundation:
@@ -327,6 +329,23 @@ func localImportAllowed(file, imported string) bool {
 	}
 }
 
+// adapterConsumerImportAllowed permits the approved consumer contracts only.
+// Import permission does not authorize adapters to run action workflows.
+func adapterConsumerImportAllowed(file, imported string) bool {
+	owner := path.Dir(file)
+	switch owner {
+	case "internal/resources/workbook", "internal/resources/datasource", "internal/resources/flow", "internal/resources/project",
+		"internal/resources/search", "internal/resources/lineage", "internal/resources/job", "internal/resources/contentlabel":
+		return imported == "actions/"+strings.TrimPrefix(owner, "internal/resources/")
+	case "internal/resources/admin":
+		return matchesExact(imported, "actions/admin/user", "actions/admin/group", "actions/admin/permission", "actions/admin/labelcategory", "actions/admin/labelvalue")
+	case "internal/resources/pulse":
+		return matchesExact(imported, "actions/pulse/definition", "actions/pulse/metric", "actions/pulse/subscription")
+	default:
+		return false
+	}
+}
+
 func matchesExact(path string, allowed ...string) bool {
 	for _, candidate := range allowed {
 		if path == candidate {
@@ -407,7 +426,7 @@ func disallowedLocalImportReason(file, imported string) string {
 	case layerResource:
 		switch {
 		case hasPathPrefix(imported, "actions"):
-			return "resource adapters must not import action packages"
+			return "resource adapters must import only approved consumer action contracts"
 		case hasPathPrefix(imported, "internal/app"):
 			return "resource adapters must not import the composition root"
 		case hasPathPrefix(imported, "internal/auth"):

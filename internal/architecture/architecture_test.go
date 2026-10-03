@@ -432,7 +432,7 @@ var _ = workbook.Adapter{}
 		t.Fatal(err)
 	}
 	assertReasons(t, violations, []string{
-		"resource adapters must not import action packages",
+		"resource adapters must import only approved consumer action contracts",
 		"resource adapters must not import the composition root",
 		"resource adapters must not import authentication logic",
 		"resource adapters must not import CLI packages",

@@ -1,0 +1,115 @@
+package architecture_test
+
+import (
+	"fmt"
+	"testing"
+
+	"github.com/ahillspace/tadx/internal/architecture"
+)
+
+func TestCheckAllowsMappedAdapterConsumerContracts(t *testing.T) {
+	pairs := []struct {
+		adapter  string
+		consumer string
+	}{
+		{"workbook", "workbook"},
+		{"datasource", "datasource"},
+		{"flow", "flow"},
+		{"project", "project"},
+		{"search", "search"},
+		{"lineage", "lineage"},
+		{"job", "job"},
+		{"contentlabel", "contentlabel"},
+		{"admin", "admin/user"},
+		{"admin", "admin/group"},
+		{"admin", "admin/permission"},
+		{"admin", "admin/labelcategory"},
+		{"admin", "admin/labelvalue"},
+		{"pulse", "pulse/definition"},
+		{"pulse", "pulse/metric"},
+		{"pulse", "pulse/subscription"},
+	}
+	for _, pair := range pairs {
+		t.Run(pair.adapter+"/"+pair.consumer, func(t *testing.T) {
+			root := moduleFixture(t)
+			writeGo(t, root, "internal/resources/"+pair.adapter+"/adapter.go", fmt.Sprintf(`package adapter
+import consumer "example.test/tadx/actions/%s"
+var _ consumer.Reader
+`, pair.consumer))
+			violations, err := architecture.Check(root)
+			if err != nil {
+				t.Fatal(err)
+			}
+			assertViolationStrings(t, violations, nil)
+		})
+	}
+}
+
+func TestCheckRejectsUnmappedAdapterActionImports(t *testing.T) {
+	tests := []struct {
+		name     string
+		file     string
+		consumer string
+	}{
+		{"different resource", "internal/resources/workbook/adapter.go", "datasource"},
+		{"different domain", "internal/resources/admin/adapter.go", "pulse/metric"},
+		{"unlisted admin consumer", "internal/resources/admin/adapter.go", "admin/audit"},
+		{"unlisted pulse consumer", "internal/resources/pulse/adapter.go", "pulse/insight"},
+		{"obsolete project verb", "internal/resources/project/adapter.go", "project/move"},
+		{"obsolete permission verb", "internal/resources/admin/adapter.go", "admin/permission/inspect"},
+		{"obsolete subscription verb", "internal/resources/pulse/adapter.go", "pulse/subscription/list"},
+		{"action prefix lookalike", "internal/resources/workbook/adapter.go", "workbookextra"},
+		{"adapter prefix lookalike", "internal/resources/workbookextra/adapter.go", "workbook"},
+		{"nested adapter package", "internal/resources/workbook/nested/adapter.go", "workbook"},
+		{"unmapped adapter", "internal/resources/unknown/adapter.go", "workbook"},
+		{"removed forwarding adapter", "internal/resources/catalog/adapter.go", "catalog"},
+		{"action namespace", "internal/resources/admin/adapter.go", "admin"},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			root := moduleFixture(t)
+			imported := "example.test/tadx/actions/" + test.consumer
+			writeGo(t, root, test.file, fmt.Sprintf("package adapter\nimport consumer %q\nvar _ consumer.Reader\n", imported))
+			violations, err := architecture.Check(root)
+			if err != nil {
+				t.Fatal(err)
+			}
+			assertViolationStrings(t, violations, []string{
+				test.file + " imports " + imported + ": resource adapters must import only approved consumer action contracts",
+			})
+		})
+	}
+}
+
+func TestCheckAdapterContractAllowancePreservesForbiddenDirections(t *testing.T) {
+	tests := []struct {
+		name     string
+		file     string
+		imported string
+		reason   string
+	}{
+		{"action to adapter", "actions/workbook/action.go", "example.test/tadx/internal/resources/workbook", "actions must not import resource adapters"},
+		{"action to native client", "actions/workbook/action.go", "example.test/tadx/internal/tableau/workbook", "actions must not import Tableau clients"},
+		{"action to action", "actions/workbook/action.go", "example.test/tadx/actions/datasource", "actions must not import another action package"},
+		{"native client to action", "internal/tableau/workbook/client.go", "example.test/tadx/actions/workbook", "Tableau clients must not import action packages"},
+		{"native client to adapter", "internal/tableau/workbook/client.go", "example.test/tadx/internal/resources/workbook", "Tableau clients must not import resource adapters"},
+		{"adapter to app", "internal/resources/workbook/adapter.go", "example.test/tadx/internal/app", "resource adapters must not import the composition root"},
+		{"adapter to cli", "internal/resources/workbook/adapter.go", "example.test/tadx/internal/cli/content", "resource adapters must not import CLI packages"},
+		{"adapter to auth", "internal/resources/workbook/adapter.go", "example.test/tadx/internal/auth", "resource adapters must not import authentication logic"},
+		{"adapter to http", "internal/resources/workbook/adapter.go", "net/http", "resource adapters must not use net/http directly"},
+		{"adapter to cobra", "internal/resources/workbook/adapter.go", "github.com/spf13/cobra", "resource adapters must not import Cobra"},
+		{"adapter to unmapped mechanism", "internal/resources/workbook/adapter.go", "example.test/tadx/internal/operationrun", "resource adapters must not import unapproved local packages"},
+		{"cli to adapter", "internal/cli/content/command.go", "example.test/tadx/internal/resources/workbook", "CLI plumbing must not import resource adapters"},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			root := moduleFixture(t)
+			writeGo(t, root, test.file, fmt.Sprintf("package fixture\nimport _ %q\n", test.imported))
+			violations, err := architecture.Check(root)
+			if err != nil {
+				t.Fatal(err)
+			}
+			assertViolationStrings(t, violations, []string{test.file + " imports " + test.imported + ": " + test.reason})
+		})
+	}
+}
