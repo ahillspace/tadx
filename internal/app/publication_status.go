@@ -117,12 +117,15 @@ func (r *runtimeDependencies) recoverPublicationReceiptLinks(ctx context.Context
 		return record, []string{err.Error()}
 	}
 	linked := make(map[string]bool, len(record.ReceiptPaths))
+	pathsByID := make(map[string]string, len(record.ReceiptPaths))
 	for _, path := range record.ReceiptPaths {
+		rawPath := path
 		if !filepath.IsAbs(path) {
 			path = filepath.Join(receiptStore.Directory, path)
 		}
 		if receipt, readErr := receiptStore.ReadPath(path); readErr == nil {
 			linked[receipt.ReceiptID] = true
+			pathsByID[receipt.ReceiptID] = rawPath
 		}
 	}
 	intents := make([]operationrun.ReceiptIntent, 0, len(record.ReceiptIntents))
@@ -153,6 +156,7 @@ func (r *runtimeDependencies) recoverPublicationReceiptLinks(ctx context.Context
 			continue
 		}
 		paths = append(paths, located.Path)
+		pathsByID[intent.ID] = located.Path
 	}
 	if len(paths) == 0 {
 		return record, warnings
@@ -163,6 +167,26 @@ func (r *runtimeDependencies) recoverPublicationReceiptLinks(ctx context.Context
 				current.ReceiptPaths = append(current.ReceiptPaths, path)
 			}
 		}
+		// Intents were registered before each write in batch order. Preserve
+		// that exact order among known receipts and retain other saved paths.
+		ordered := make([]string, 0, len(current.ReceiptPaths))
+		present := make(map[string]bool, len(current.ReceiptPaths))
+		for _, path := range current.ReceiptPaths {
+			present[path] = true
+		}
+		used := make(map[string]bool, len(current.ReceiptPaths))
+		for _, intent := range current.ReceiptIntents {
+			if path, ok := pathsByID[intent.ID]; ok && present[path] && !used[path] {
+				ordered = append(ordered, path)
+				used[path] = true
+			}
+		}
+		for _, path := range current.ReceiptPaths {
+			if !used[path] {
+				ordered = append(ordered, path)
+			}
+		}
+		current.ReceiptPaths = ordered
 		return nil
 	})
 	if err != nil {
