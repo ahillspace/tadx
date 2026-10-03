@@ -16,7 +16,7 @@ import (
 	userops "github.com/ahillspace/tadx/actions/admin/user"
 	datasourceops "github.com/ahillspace/tadx/actions/datasource"
 	flowops "github.com/ahillspace/tadx/actions/flow"
-	projectlist "github.com/ahillspace/tadx/actions/project/list"
+	projectops "github.com/ahillspace/tadx/actions/project"
 	pulsedefinition "github.com/ahillspace/tadx/actions/pulse/definition"
 	searchaction "github.com/ahillspace/tadx/actions/search"
 	workbookops "github.com/ahillspace/tadx/actions/workbook"
@@ -91,6 +91,7 @@ func (c *searchCommands) Execute(ctx context.Context, input searchaction.Input) 
 			content:     newRemoteContentCommands(c.runtime),
 			admin:       newRemoteAdminCommands(c.runtime),
 		}
+		lister.projects = projectops.New(projectops.Ports{Provider: projectProvider{commands: lister.content}})
 		return searchaction.Execute(ctx, globalSearchSource{lists: &completeLiveSearchAdapter{lister: lister}}, input, types)
 	}
 
@@ -502,6 +503,7 @@ func searchResult(page resourcesearch.Page, generation *searchaction.Generation)
 type completeLiveSearchLister struct {
 	environment         string
 	content             *remoteContentCommands
+	projects            *projectops.Service
 	admin               *remoteAdminCommands
 	datasourceDiscovery datasourceDiscovery
 }
@@ -627,7 +629,7 @@ func (s *completeLiveSearchLister) searchPage(ctx context.Context, resourceType,
 		}
 		return completeListSearchPage(items, out.Page.Total, out.Page.NextCursor, out.Page.MoreAvailable, out.RequestID, out.Source), err
 	case "project":
-		out, err := s.content.ListProjects(ctx, projectlist.Input{Environment: s.environment, Cursor: cursor, Limit: limit, OwnerName: searchInput.Owner})
+		out, err := s.projects.ListProjects(ctx, projectops.ListInput{Environment: s.environment, Cursor: cursor, Limit: limit, OwnerName: searchInput.Owner})
 		items := make([]resourcesearch.Item, len(out.Projects))
 		for i, item := range out.Projects {
 			items[i] = resourcesearch.Item{LUID: item.LUID, Type: resourceType, Name: item.Name, Owner: item.OwnerLUID, ModifiedAt: item.UpdatedAt}
@@ -673,7 +675,7 @@ type liveSearchLister struct {
 	workbooks         workbookops.ListReader
 	datasources       datasourceops.ListReader
 	flows             flowops.ListReader
-	projects          projectlist.Reader
+	projects          projectops.ListReader
 	users             userops.ListReader
 	groups            groupops.ListReader
 	pulse             *tableaupulse.Client
@@ -696,7 +698,7 @@ func newLiveSearchLister(connection authenticatedTableau, checks ...func(string)
 		workbooks:       workbookListReader{adapter: resourceworkbook.NewAdapterWithProjectResolver(tableauworkbook.NewClient(connection.transport, connection.session, connection.environment.URL), projects)},
 		datasources:     datasourceListReader{adapter: resourcedatasource.NewAdapterWithProjectResolver(datasourceClient, projects), projects: resourceproject.NewDiscoveryPaths(projects)},
 		flows:           flowListReader{adapter: resourceflow.NewAdapter(flowClient, projects)},
-		projects:        projectListReader{adapter: projects},
+		projects:        resourceproject.ListPort{Adapter: projects},
 		users:           adminUserAdapter{Adapter: resourceadmin.NewAdapter(adminClient, checks...)},
 		groups:          adminGroupAdapter{Adapter: resourceadmin.NewAdapter(adminClient, checks...)},
 		pulse:           pulseClient,
@@ -728,7 +730,7 @@ func (s *liveSearchLister) List(ctx context.Context, resourceType, cursor string
 		}
 		return resourcesearch.Page{Items: items, NextCursor: out.Page.NextCursor, MoreAvailable: out.Page.MoreAvailable, Total: out.Page.Total}, err
 	case "project":
-		out, err := projectlist.New(s.projects).Execute(ctx, projectlist.Input{Environment: s.environment, Site: s.site, Cursor: cursor, Limit: limit})
+		out, err := projectops.New(projectops.Ports{ListReader: s.projects}).List(ctx, projectops.ListInput{Environment: s.environment, Site: s.site, Cursor: cursor, Limit: limit})
 		items := make([]resourcesearch.Item, len(out.Projects))
 		for i, item := range out.Projects {
 			items[i] = resourcesearch.Item{LUID: item.LUID, Type: resourceType, Name: item.Name, Owner: item.OwnerLUID, ModifiedAt: item.UpdatedAt}

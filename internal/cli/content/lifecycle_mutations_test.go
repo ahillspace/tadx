@@ -4,7 +4,7 @@ import (
 	"context"
 	datasourceops "github.com/ahillspace/tadx/actions/datasource"
 	flowops "github.com/ahillspace/tadx/actions/flow"
-	projectmove "github.com/ahillspace/tadx/actions/project/move"
+	projectops "github.com/ahillspace/tadx/actions/project"
 	workbookops "github.com/ahillspace/tadx/actions/workbook"
 	"testing"
 
@@ -22,7 +22,7 @@ type lifecycleMutationCommands struct {
 	datasourceUpdatePreview bool
 	flowUpdateInput         flowops.UpdateInput
 	flowUpdatePreview       bool
-	projectMoveInput        projectmove.Input
+	projectMoveInput        projectops.MoveInput
 	projectMovePreview      bool
 }
 
@@ -51,9 +51,9 @@ func (c *lifecycleMutationCommands) UpdateFlow(_ context.Context, input flowops.
 	return flowops.UpdateOutput{}, nil
 }
 
-func (c *lifecycleMutationCommands) MoveProject(_ context.Context, input projectmove.Input, preview bool) (projectmove.Output, error) {
+func (c *lifecycleMutationCommands) MoveProject(_ context.Context, input projectops.MoveInput, preview bool) (projectops.MoveOutput, error) {
 	c.projectMoveInput, c.projectMovePreview = input, preview
-	return projectmove.Output{}, nil
+	return projectops.MoveOutput{}, nil
 }
 
 func lifecycleMutationDependencies(actions *lifecycleMutationCommands) Dependencies {

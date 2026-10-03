@@ -1,9 +1,9 @@
-package create
+package project
 
 import "github.com/ahillspace/tadx/internal/identity"
 
 // Input describes one project creation and its optional exact parent.
-type Input struct {
+type CreateInput struct {
 	// TargetResolved confirms authenticated target selection, including the Default site.
 	TargetResolved     bool
 	Environment        string
@@ -15,12 +15,12 @@ type Input struct {
 }
 
 // SetParentSelector records an optional exact parent selector.
-func (i *Input) SetParentSelector(luid, projectPath string) {
+func (i *CreateInput) SetParentSelector(luid, projectPath string) {
 	i.ParentSelector = identity.Selector{LUID: identity.LUID(luid), ProjectPath: projectPath}
 }
 
-// Project is one authoritative project identity and bounded metadata projection.
-type Project struct {
+// MutationProject is the common identity and metadata observation for create and update.
+type MutationProject struct {
 	LUID                            string `json:"luid"`
 	Name                            string `json:"name"`
 	Path                            string `json:"path"`
@@ -29,6 +29,9 @@ type Project struct {
 	ContentPermissions              string `json:"content_permissions,omitempty"`
 	ControllingPermissionsProjectID string `json:"controlling_permissions_project_luid,omitempty"`
 }
+
+// CreateProject is the create operation's project observation.
+type CreateProject = MutationProject
 
 // CreateRequest carries the exact admitted V1 mutation fields.
 type CreateRequest struct {
@@ -39,38 +42,38 @@ type CreateRequest struct {
 }
 
 // ProjectSpec is the requested project metadata shown in preview.
-type ProjectSpec struct {
+type CreateProjectSpec struct {
 	Name               string `json:"name"`
 	Description        string `json:"description,omitempty"`
 	ContentPermissions string `json:"content_permissions,omitempty"`
 }
 
 // Plan is the complete bounded project-create preview.
-type Plan struct {
-	Mode        string      `json:"mode"`
-	Operation   string      `json:"operation"`
-	Environment string      `json:"environment"`
-	Site        string      `json:"site"`
-	Project     ProjectSpec `json:"project"`
-	Parent      *Project    `json:"parent,omitempty"`
+type CreatePlan struct {
+	Mode        string            `json:"mode"`
+	Operation   string            `json:"operation"`
+	Environment string            `json:"environment"`
+	Site        string            `json:"site"`
+	Project     CreateProjectSpec `json:"project"`
+	Parent      *CreateProject    `json:"parent,omitempty"`
 }
 
 // Result is the authoritative project-create result.
-type Result struct {
-	Status           string  `json:"status"`
-	Project          Project `json:"project"`
-	TableauRequestID string  `json:"tableau_request_id,omitempty"`
+type CreateResult struct {
+	Status           string        `json:"status"`
+	Project          CreateProject `json:"project"`
+	TableauRequestID string        `json:"tableau_request_id,omitempty"`
 }
 
 // Output retains complete details before projection.
-type Output struct {
-	Plan   Plan     `json:"plan"`
-	Result *Result  `json:"result,omitempty"`
-	Help   []string `json:"help"`
+type CreateOutput struct {
+	Plan   CreatePlan    `json:"plan"`
+	Result *CreateResult `json:"result,omitempty"`
+	Help   []string      `json:"help"`
 }
 
 // CompactProject is the exact identity needed by a later action.
-type CompactProject struct {
+type CreateCompactProject struct {
 	LUID                            string `json:"luid"`
 	Name                            string `json:"name"`
 	Path                            string `json:"path"`
@@ -80,30 +83,30 @@ type CompactProject struct {
 }
 
 // CompactMutationResult omits successful request diagnostics.
-type CompactMutationResult struct {
-	Status  string         `json:"status"`
-	Project CompactProject `json:"project"`
+type CreateCompactMutationResult struct {
+	Status  string               `json:"status"`
+	Project CreateCompactProject `json:"project"`
 }
 
 // CompactResult is the default projection.
-type CompactResult struct {
-	Plan    Plan                   `json:"plan"`
-	Result  *CompactMutationResult `json:"result,omitempty"`
-	Details string                 `json:"details"`
-	Help    []string               `json:"help"`
+type CreateCompactResult struct {
+	Plan    CreatePlan                   `json:"plan"`
+	Result  *CreateCompactMutationResult `json:"result,omitempty"`
+	Details string                       `json:"details"`
+	Help    []string                     `json:"help"`
 }
 
 // FullResult is the expanded projection.
-type FullResult = Output
+type CreateFullResult = CreateOutput
 
 // CompactOutput returns exact mutation identity without the successful request ID.
-func (o Output) CompactOutput() any {
-	var result *CompactMutationResult
+func (o CreateOutput) CompactOutput() any {
+	var result *CreateCompactMutationResult
 	if o.Result != nil {
-		result = &CompactMutationResult{Status: o.Result.Status, Project: CompactProject{LUID: o.Result.Project.LUID, Name: o.Result.Project.Name, Path: o.Result.Project.Path, ParentLUID: o.Result.Project.ParentLUID, ContentPermissions: o.Result.Project.ContentPermissions, ControllingPermissionsProjectID: o.Result.Project.ControllingPermissionsProjectID}}
+		result = &CreateCompactMutationResult{Status: o.Result.Status, Project: CreateCompactProject{LUID: o.Result.Project.LUID, Name: o.Result.Project.Name, Path: o.Result.Project.Path, ParentLUID: o.Result.Project.ParentLUID, ContentPermissions: o.Result.Project.ContentPermissions, ControllingPermissionsProjectID: o.Result.Project.ControllingPermissionsProjectID}}
 	}
-	return CompactResult{Plan: o.Plan, Result: result, Details: "--full", Help: o.Help}
+	return CreateCompactResult{Plan: o.Plan, Result: result, Details: "--full", Help: o.Help}
 }
 
 // FullOutput returns bounded mutation details.
-func (o Output) FullOutput() any { return FullResult(o) }
+func (o CreateOutput) FullOutput() any { return CreateFullResult(o) }

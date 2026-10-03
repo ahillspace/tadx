@@ -45,6 +45,41 @@ var _ consumer.Reader
 	}
 }
 
+func TestProjectCachePortAllowsOnlyItsRequiredInfrastructure(t *testing.T) {
+	for _, imported := range []string{"internal/cache", "internal/readsource"} {
+		t.Run(imported, func(t *testing.T) {
+			root := moduleFixture(t)
+			writeGo(t, root, "internal/resources/project/cache.go", fmt.Sprintf("package project\nimport _ %q\n", "example.test/tadx/"+imported))
+			violations, err := architecture.Check(root)
+			if err != nil {
+				t.Fatal(err)
+			}
+			assertViolationStrings(t, violations, nil)
+		})
+	}
+	for _, tc := range []struct {
+		name     string
+		file     string
+		imported string
+	}{
+		{"other resource cache", "internal/resources/workbook/cache.go", "internal/cache"},
+		{"other resource read coverage", "internal/resources/workbook/cache.go", "internal/readsource"},
+		{"nested project package", "internal/resources/project/nested/cache.go", "internal/cache"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			root := moduleFixture(t)
+			writeGo(t, root, tc.file, fmt.Sprintf("package adapter\nimport _ %q\n", "example.test/tadx/"+tc.imported))
+			violations, err := architecture.Check(root)
+			if err != nil {
+				t.Fatal(err)
+			}
+			assertViolationStrings(t, violations, []string{
+				tc.file + " imports example.test/tadx/" + tc.imported + ": resource adapters must not import unapproved local packages",
+			})
+		})
+	}
+}
+
 func TestCheckRejectsUnmappedAdapterActionImports(t *testing.T) {
 	tests := []struct {
 		name     string

@@ -19,12 +19,8 @@ import (
 	flowops "github.com/ahillspace/tadx/actions/flow"
 	jobactions "github.com/ahillspace/tadx/actions/job"
 	a_lineage_pull "github.com/ahillspace/tadx/actions/lineage/pull"
-	a_project_create "github.com/ahillspace/tadx/actions/project/create"
-	a_project_delete "github.com/ahillspace/tadx/actions/project/delete"
-	a_project_inspect "github.com/ahillspace/tadx/actions/project/inspect"
-	a_project_list "github.com/ahillspace/tadx/actions/project/list"
-	a_project_move "github.com/ahillspace/tadx/actions/project/move"
-	a_project_update "github.com/ahillspace/tadx/actions/project/update"
+	projectops "github.com/ahillspace/tadx/actions/project"
+
 	pulsedefinition "github.com/ahillspace/tadx/actions/pulse/definition"
 	pulsemetric "github.com/ahillspace/tadx/actions/pulse/metric"
 	workbookops "github.com/ahillspace/tadx/actions/workbook"
@@ -136,9 +132,9 @@ func (s *previewActionSpy) UpdateFlow(_ context.Context, input flowops.UpdateInp
 	s.record(preview)
 	return flowops.UpdateOutput{}, nil
 }
-func (s *previewActionSpy) MoveProject(_ context.Context, input a_project_move.Input, preview bool) (a_project_move.Output, error) {
+func (s *previewActionSpy) MoveProject(_ context.Context, input projectops.MoveInput, preview bool) (projectops.MoveOutput, error) {
 	s.record(preview)
-	return a_project_move.Output{}, nil
+	return projectops.MoveOutput{}, nil
 }
 func (s *previewActionSpy) ListDatasources(_ context.Context, input datasourceops.ListInput) (datasourceops.ListOutput, error) {
 	panic("unexpected read action")
@@ -184,23 +180,23 @@ func (s *previewActionSpy) DeleteFlow(_ context.Context, input flowops.DeleteInp
 func (s *previewActionSpy) PullLineage(_ context.Context, input a_lineage_pull.Input) (a_lineage_pull.Output, error) {
 	panic("unexpected read action")
 }
-func (s *previewActionSpy) ListProjects(_ context.Context, input a_project_list.Input) (a_project_list.Output, error) {
+func (s *previewActionSpy) ListProjects(_ context.Context, input projectops.ListInput) (projectops.ListOutput, error) {
 	panic("unexpected read action")
 }
-func (s *previewActionSpy) InspectProject(_ context.Context, input a_project_inspect.Input) (a_project_inspect.Output, error) {
+func (s *previewActionSpy) InspectProject(_ context.Context, input projectops.InspectInput) (projectops.InspectOutput, error) {
 	panic("unexpected read action")
 }
-func (s *previewActionSpy) CreateProject(_ context.Context, input a_project_create.Input, preview bool) (a_project_create.Output, error) {
+func (s *previewActionSpy) CreateProject(_ context.Context, input projectops.CreateInput, preview bool) (projectops.CreateOutput, error) {
 	s.record(preview)
-	return a_project_create.Output{}, nil
+	return projectops.CreateOutput{}, nil
 }
-func (s *previewActionSpy) UpdateProject(_ context.Context, input a_project_update.Input, preview bool) (a_project_update.Output, error) {
+func (s *previewActionSpy) UpdateProject(_ context.Context, input projectops.UpdateInput, preview bool) (projectops.UpdateOutput, error) {
 	s.record(preview)
-	return a_project_update.Output{}, nil
+	return projectops.UpdateOutput{}, nil
 }
-func (s *previewActionSpy) DeleteProject(_ context.Context, input a_project_delete.Input, preview bool) (a_project_delete.Output, error) {
+func (s *previewActionSpy) DeleteProject(_ context.Context, input projectops.DeleteInput, preview bool) (projectops.DeleteOutput, error) {
 	s.record(preview)
-	return a_project_delete.Output{}, nil
+	return projectops.DeleteOutput{}, nil
 }
 func (s *previewActionSpy) DeleteWorkbook(_ context.Context, input workbookops.DeleteInput, preview bool) (workbookops.DeleteOutput, error) {
 	s.record(preview)

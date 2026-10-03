@@ -10,8 +10,8 @@ import (
 	catalogread "github.com/ahillspace/tadx/actions/catalog/read"
 	envupdate "github.com/ahillspace/tadx/actions/env/profile"
 	jobactions "github.com/ahillspace/tadx/actions/job"
-	projectcreate "github.com/ahillspace/tadx/actions/project/create"
-	projectmove "github.com/ahillspace/tadx/actions/project/move"
+	projectops "github.com/ahillspace/tadx/actions/project"
+
 	"github.com/ahillspace/tadx/internal/output"
 	"github.com/ahillspace/tadx/internal/toon"
 	"github.com/ahillspace/tadx/internal/value"
@@ -25,9 +25,9 @@ func TestProjectMutationProjectionEncodingContracts(t *testing.T) {
 	}{
 		{
 			name: "create",
-			value: projectcreate.Output{
-				Plan:   projectcreate.Plan{Mode: "execute", Operation: "project.create", Environment: "dev", Site: "site", Project: projectcreate.ProjectSpec{Name: "Created"}},
-				Result: &projectcreate.Result{Status: "succeeded", Project: projectcreate.Project{LUID: "created", Name: "Created", Path: "Created", Description: "Full details"}, TableauRequestID: "request"},
+			value: projectops.CreateOutput{
+				Plan:   projectops.CreatePlan{Mode: "execute", Operation: "project.create", Environment: "dev", Site: "site", Project: projectops.CreateProjectSpec{Name: "Created"}},
+				Result: &projectops.CreateResult{Status: "succeeded", Project: projectops.CreateProject{LUID: "created", Name: "Created", Path: "Created", Description: "Full details"}, TableauRequestID: "request"},
 				Help:   []string{"inspect"},
 			},
 			compact: `{"plan":{"mode":"execute","operation":"project.create","environment":"dev","site":"site","project":{"name":"Created"}},"result":{"status":"succeeded","project":{"luid":"created","name":"Created","path":"Created"}},"details":"--full","help":["inspect"]}`,
@@ -35,9 +35,9 @@ func TestProjectMutationProjectionEncodingContracts(t *testing.T) {
 		},
 		{
 			name: "move",
-			value: projectmove.Output{
-				Plan:   projectmove.Plan{Mode: "execute", Operation: "project.move", Environment: "dev", Site: "site", Source: projectmove.Project{LUID: "moved", Name: "Moved", Path: "Parent/Moved", ParentLUID: "parent"}, TopLevel: true},
-				Result: &projectmove.Result{Status: "succeeded", Project: projectmove.Project{LUID: "moved", Name: "Moved", Path: "Moved"}, TableauRequestID: "request"},
+			value: projectops.MoveOutput{
+				Plan:   projectops.MovePlan{Mode: "execute", Operation: "project.move", Environment: "dev", Site: "site", Source: projectops.MoveProject{LUID: "moved", Name: "Moved", Path: "Parent/Moved", ParentLUID: "parent"}, TopLevel: true},
+				Result: &projectops.MoveResult{Status: "succeeded", Project: projectops.MoveProject{LUID: "moved", Name: "Moved", Path: "Moved"}, TableauRequestID: "request"},
 				Help:   []string{"inspect"},
 			},
 			compact: `{"plan":{"mode":"execute","operation":"project.move","environment":"dev","site":"site","source":{"luid":"moved","name":"Moved","path":"Parent/Moved","parent_luid":"parent"},"top_level":true,"no_op":false},"result":{"status":"succeeded","project":{"luid":"moved","name":"Moved","path":"Moved"}},"details":"--full","help":["inspect"]}`,

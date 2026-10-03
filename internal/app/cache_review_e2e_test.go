@@ -5,9 +5,8 @@ import (
 	"fmt"
 	datasourceops "github.com/ahillspace/tadx/actions/datasource"
 	flowops "github.com/ahillspace/tadx/actions/flow"
-	projectcreate "github.com/ahillspace/tadx/actions/project/create"
-	projectmove "github.com/ahillspace/tadx/actions/project/move"
-	projectupdate "github.com/ahillspace/tadx/actions/project/update"
+	projectops "github.com/ahillspace/tadx/actions/project"
+
 	searchaction "github.com/ahillspace/tadx/actions/search"
 	"io"
 	"net/http"
@@ -119,28 +118,28 @@ func TestProjectMutationsSucceedWhenPostMutationHierarchyIsUnavailable(t *testin
 			var err error
 			switch operation {
 			case "create":
-				in := projectcreate.Input{Environment: "production", Name: "New"}
+				in := projectops.CreateInput{Environment: "production", Name: "New"}
 				in.SetParentSelector("parent", "")
-				out, callErr := commands.CreateProject(context.Background(), in, false)
+				out, callErr := commands.dependencies().ProjectCreator.CreateProject(context.Background(), in, false)
 				err = callErr
 				if out.Result != nil {
 					path, requestID = out.Result.Project.Path, out.Result.TableauRequestID
 				}
 			case "update", "update-unconfirmed-parent":
 				name := "New"
-				in := projectupdate.Input{Environment: "production", Name: &name}
+				in := projectops.UpdateInput{Environment: "production", Name: &name}
 				in.SetSelector("project-1", "")
-				out, callErr := commands.UpdateProject(context.Background(), in, false)
+				out, callErr := commands.dependencies().ProjectUpdater.UpdateProject(context.Background(), in, false)
 				err = callErr
 				help = out.Help
 				if out.Result != nil {
 					path, requestID = out.Result.Project.Path, out.Result.TableauRequestID
 				}
 			case "move":
-				in := projectmove.Input{Environment: "production"}
+				in := projectops.MoveInput{Environment: "production"}
 				in.SetProjectSelector("project-1", "")
 				in.SetParentSelector("destination", "")
-				out, callErr := commands.MoveProject(context.Background(), in, false)
+				out, callErr := commands.dependencies().ProjectMover.MoveProject(context.Background(), in, false)
 				err = callErr
 				if out.Result != nil {
 					path, requestID = out.Result.Project.Path, out.Result.TableauRequestID
@@ -148,7 +147,7 @@ func TestProjectMutationsSucceedWhenPostMutationHierarchyIsUnavailable(t *testin
 			}
 			want := "Department/New"
 			if operation == "update-unconfirmed-parent" {
-				if err != nil || path != "" || requestID != "mutation-evidence" || !containsString(help, projectMutationPathWarning) || postReads.Load() != 1 {
+				if err != nil || path != "" || requestID != "mutation-evidence" || !containsString(help, projectops.MutationPathWarning) || postReads.Load() != 1 {
 					t.Fatalf("unconfirmed mutation: path=%q request=%q help=%v reads=%d err=%v", path, requestID, help, postReads.Load(), err)
 				}
 				return

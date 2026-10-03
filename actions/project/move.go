@@ -1,0 +1,153 @@
+package project
+
+import (
+	"context"
+	"errors"
+	"github.com/ahillspace/tadx/internal/commandhint"
+	"github.com/ahillspace/tadx/internal/errs"
+	"github.com/ahillspace/tadx/internal/identity"
+	"strings"
+)
+
+type MoveResolver interface {
+	ResolveProject(context.Context, identity.Selector) (MoveProject, error)
+	FindProjectCollisions(context.Context, string, string) ([]MoveProject, error)
+	BeginProjectResolution(context.Context) context.Context
+}
+type Mover interface {
+	MoveProject(context.Context, string, *string) (MoveResult, error)
+}
+
+func (a *Service) beginMoveResolution(ctx context.Context) context.Context {
+	return a.MoveResolver.BeginProjectResolution(ctx)
+}
+
+func (a *Service) Move(ctx context.Context, in MoveInput, preview bool) (MoveOutput, error) {
+	if a == nil || a.MoveResolver == nil || a.Mover == nil {
+		return MoveOutput{}, &errs.Error{ID: "project.move.unconfigured", Kind: errs.KindRuntime, Operation: "project.move", Summary: "Project move is not configured.", Retryable: errs.Bool(false), CorrectiveAction: "Configure project move before retrying."}
+	}
+	if err := moveValidate(in); err != nil {
+		return MoveOutput{}, err
+	}
+	ctx = a.beginMoveResolution(ctx)
+	source, err := a.MoveResolver.ResolveProject(ctx, in.ProjectSelector)
+	if err != nil {
+		return MoveOutput{}, moveOperationError("project.move.resolve", in, "", "Project resolution failed.", "Review the exact project selector, then retry.", err)
+	}
+	destination, parentLUID, err := a.destination(ctx, in, source)
+	if err != nil {
+		return MoveOutput{}, err
+	}
+	if err = a.validateMove(ctx, in, source, destination, parentLUID); err != nil {
+		return MoveOutput{}, err
+	}
+	out := MoveOutput{Plan: MovePlan{Mode: "preview", Operation: "project.move", Environment: in.Environment, Site: in.Site, Source: source, Destination: destination, TopLevel: in.TopLevel, NoOp: source.ParentLUID == *parentLUID}, Help: []string{"Run without --preview to move this exact project."}}
+	if preview {
+		return out, nil
+	}
+	out.Plan.Mode = "execute"
+	ctx = a.beginMoveResolution(ctx)
+	current, err := a.MoveResolver.ResolveProject(ctx, identity.Selector{LUID: identity.LUID(source.LUID)})
+	if err != nil {
+		return MoveOutput{}, moveOperationError("project.move.resolve", in, source.LUID, "Project revalidation failed.", "Review a new preview before moving.", err)
+	}
+	if current.Name != source.Name || current.Path != source.Path || current.ParentLUID != source.ParentLUID {
+		return MoveOutput{}, moveOperationError("project.move.target_changed", in, source.LUID, "The project changed during revalidation.", "Review a new preview before moving.", errors.New("project identity changed during revalidation"))
+	}
+	destination, parentLUID, err = a.destinationByLUID(ctx, in, current, destination)
+	if err != nil {
+		return MoveOutput{}, err
+	}
+	if err = a.validateMove(ctx, in, current, destination, parentLUID); err != nil {
+		return MoveOutput{}, err
+	}
+	out.Plan.Source, out.Plan.Destination, out.Plan.NoOp = current, destination, current.ParentLUID == *parentLUID
+	if out.Plan.NoOp {
+		out.Result = &MoveResult{Status: "unchanged", Project: current}
+		return out, nil
+	}
+	result, err := a.Mover.MoveProject(ctx, current.LUID, parentLUID)
+	if err != nil {
+		return MoveOutput{}, moveOperationError("project.move.failed", in, current.LUID, "Project move failed.", "Inspect the exact project before retrying: "+commandhint.Environment(in.Environment, "content", "project", "inspect", "--project-id", current.LUID), err)
+	}
+	out.Result = &result
+	out.Help = []string{commandhint.Environment(in.Environment, "content", "project", "inspect", "--project-id", current.LUID)}
+	return out, nil
+}
+func (a *Service) destination(ctx context.Context, in MoveInput, source MoveProject) (*MoveProject, *string, error) {
+	if in.TopLevel {
+		parent := ""
+		return nil, &parent, nil
+	}
+	project, err := a.MoveResolver.ResolveProject(ctx, in.ParentSelector)
+	if err != nil {
+		return nil, nil, moveOperationError("project.move.parent", in, source.LUID, "Parent project resolution failed.", "Review the exact parent project, then retry.", err)
+	}
+	return &project, &project.LUID, nil
+}
+func (a *Service) destinationByLUID(ctx context.Context, in MoveInput, source MoveProject, destination *MoveProject) (*MoveProject, *string, error) {
+	if in.TopLevel {
+		return a.destination(ctx, in, source)
+	}
+	copy := in
+	copy.ParentSelector = identity.Selector{LUID: identity.LUID(destination.LUID)}
+	return a.destination(ctx, copy, source)
+}
+func (a *Service) validateMove(ctx context.Context, in MoveInput, source MoveProject, destination *MoveProject, parentLUID *string) error {
+	if parentLUID == nil {
+		return moveUsage("parent", "project move requires an exact parent or --top-level")
+	}
+	if *parentLUID == source.LUID {
+		return moveOperationError("project.move.cycle", in, source.LUID, "A project cannot be its own parent.", "Choose another parent project.", errors.New("project hierarchy cycle"))
+	}
+	if destination != nil && (destination.Path == source.Path || strings.HasPrefix(destination.Path, source.Path+"/")) {
+		return moveOperationError("project.move.cycle", in, source.LUID, "A project cannot move under its descendant.", "Choose a project outside the source hierarchy.", errors.New("project hierarchy cycle"))
+	}
+	if source.ParentLUID == *parentLUID {
+		return nil
+	}
+	matches, err := a.MoveResolver.FindProjectCollisions(ctx, source.Name, *parentLUID)
+	if err != nil {
+		return moveOperationError("project.move.collision", in, source.LUID, "Project collision check failed.", "Review the destination hierarchy before moving.", err)
+	}
+	for _, match := range matches {
+		if match.LUID != source.LUID {
+			return moveOperationError("project.move.collision", in, source.LUID, "The destination already contains this project name.", "Rename the project or choose another parent.", errors.New("exact sibling project name collision"))
+		}
+	}
+	return nil
+}
+func moveValidate(in MoveInput) error {
+	if strings.TrimSpace(in.Environment) == "" || (strings.TrimSpace(in.Site) == "" && !in.TargetResolved) {
+		return moveUsage("environment", "project move requires an explicit resolved environment and site")
+	}
+	return ValidateMoveInput(in)
+}
+
+// ValidateInput checks caller-controlled arguments before local or remote setup.
+func ValidateMoveInput(in MoveInput) error {
+	if strings.TrimSpace(in.Environment) == "" {
+		return moveUsage("environment", "project move requires an explicit environment")
+	}
+	if in.ProjectSelector.LUID == "" && strings.TrimSpace(in.ProjectSelector.ProjectPath) == "" {
+		return moveUsage("selector", "project move requires a project LUID or exact path")
+	}
+	if in.ProjectSelector.LUID != "" && strings.TrimSpace(in.ProjectSelector.ProjectPath) != "" {
+		return moveUsage("selector", "a project LUID cannot be combined with a project path")
+	}
+	hasParent := in.ParentSelector.LUID != "" || strings.TrimSpace(in.ParentSelector.ProjectPath) != ""
+	if hasParent == in.TopLevel {
+		return moveUsage("parent", "use exactly one parent project selector or --top-level")
+	}
+	if in.ParentSelector.LUID != "" && strings.TrimSpace(in.ParentSelector.ProjectPath) != "" {
+		return moveUsage("parent", "a parent project LUID cannot be combined with a project path")
+	}
+	return nil
+}
+func moveUsage(field, message string) error {
+	return &errs.Error{ID: "project.move.usage", Kind: errs.KindUsage, Operation: "project.move", Summary: message, Retryable: errs.Bool(false), CorrectiveAction: "Correct the project move input and review a new preview.", Validation: []errs.ValidationDetail{{Field: field, Code: "invalid", Message: message}}}
+}
+func moveOperationError(id string, in MoveInput, resource, summary, fallback string, cause error) error {
+	retryable, action := errs.CompleteRetryAdvice(cause, fallback)
+	return &errs.Error{ID: id, Kind: errs.KindOperation, Operation: "project.move", Resource: resource, Environment: in.Environment, Site: in.Site, Summary: summary, Cause: cause, Retryable: retryable, CorrectiveAction: action, TableauRequestID: errs.TableauRequestID(cause)}
+}

@@ -113,7 +113,7 @@
       "id": "seed-identity-drift",
       "control": "g2-cli",
       "test": "TestProjectMoveUsesOneHierarchyPerValidationPhase",
-      "path": "actions/project/move/action.go",
+      "path": "actions/project/move.go",
       "before": "if current.Name != source.Name || current.Path != source.Path || current.ParentLUID != source.ParentLUID {",
       "after": "if false && (current.Name != source.Name || current.Path != source.Path || current.ParentLUID != source.ParentLUID) {",
       "failure_contains": "drift exit="

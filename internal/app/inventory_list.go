@@ -14,7 +14,6 @@ import (
 	userops "github.com/ahillspace/tadx/actions/admin/user"
 	datasourceops "github.com/ahillspace/tadx/actions/datasource"
 	flowops "github.com/ahillspace/tadx/actions/flow"
-	projectlist "github.com/ahillspace/tadx/actions/project/list"
 	workbookops "github.com/ahillspace/tadx/actions/workbook"
 	corecache "github.com/ahillspace/tadx/internal/cache"
 	"github.com/ahillspace/tadx/internal/errs"
@@ -106,6 +105,16 @@ func (i collectedResourceInventory) warningHelp() string {
 	return i.incompleteWarning() + " Retry the live command or use narrower filters for the available records."
 }
 
+func (i collectedResourceInventory) sourceAndHelp(observedAt time.Time, now func() time.Time) (*readsource.Metadata, string) {
+	if i.cacheErr != nil {
+		return i.warningSource(observedAt), i.warningHelp()
+	}
+	if i.filtered {
+		return liveSource(now), ""
+	}
+	return liveInventorySource(observedAt, i.published.GenerationID), ""
+}
+
 func (i collectedResourceInventory) incompleteWarning() string {
 	record := i.kind + " record"
 	if i.skippedRows != 1 {
@@ -153,11 +162,6 @@ func (r inventoryMemoryReader) ListDatasources(_ context.Context, input datasour
 func (r inventoryMemoryReader) ListFlows(_ context.Context, input flowops.ListPageRequest) (flowops.ListPage, error) {
 	items, err := decodeInventoryPage[flowops.Record](r.page(input.PageNumber, input.PageSize))
 	return flowops.ListPage{Number: input.PageNumber, Size: input.PageSize, Total: len(r.entries), Flows: items, RequestID: r.requestID, SuppressContinuation: !r.allowContinuation}, err
-}
-
-func (r inventoryMemoryReader) ListProjects(_ context.Context, input projectlist.PageRequest) (projectlist.Page, error) {
-	items, err := decodeInventoryPage[projectlist.Project](r.page(input.PageNumber, input.PageSize))
-	return projectlist.Page{Number: input.PageNumber, Size: input.PageSize, Total: len(r.entries), Projects: items, RequestID: r.requestID, SuppressContinuation: !r.allowContinuation}, err
 }
 
 func (r inventoryMemoryReader) ListUsers(_ context.Context, input userops.ListPageRequest) (userops.ListPage, error) {

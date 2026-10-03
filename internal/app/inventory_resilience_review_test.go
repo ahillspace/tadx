@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"fmt"
+	projectops "github.com/ahillspace/tadx/actions/project"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -11,8 +12,6 @@ import (
 	"testing"
 	"time"
 
-	projectinspect "github.com/ahillspace/tadx/actions/project/inspect"
-	projectlist "github.com/ahillspace/tadx/actions/project/list"
 	workbookops "github.com/ahillspace/tadx/actions/workbook"
 	"github.com/ahillspace/tadx/internal/cache"
 	"github.com/ahillspace/tadx/internal/identity"
@@ -76,10 +75,10 @@ func TestProjectInspectCacheRetainsCanonicalPathAfterLiveList(t *testing.T) {
 	}))
 	defer server.Close()
 	commands := newRemoteContentCommands(inventoryListRuntime(t, server))
-	if _, err := commands.ListProjects(context.Background(), projectlist.Input{Environment: "production", All: true}); err != nil {
+	if _, err := commands.dependencies().ProjectLister.ListProjects(context.Background(), projectops.ListInput{Environment: "production", All: true}); err != nil {
 		t.Fatal(err)
 	}
-	got, err := commands.InspectProject(context.Background(), projectinspect.Input{Environment: "production", Cache: true, Selector: identity.Selector{LUID: "child"}})
+	got, err := commands.dependencies().ProjectInspector.InspectProject(context.Background(), projectops.InspectInput{Environment: "production", Cache: true, Selector: identity.Selector{LUID: "child"}})
 	if err != nil || got.Project.Path != "Department/Ops" || got.Project.Description != "Keep this detail" {
 		t.Fatalf("cache inspect = %#v %v", got, err)
 	}
@@ -108,7 +107,7 @@ func TestProjectInspectCacheRetainsCanonicalPathAfterFullRefresh(t *testing.T) {
 	if _, err := writer.Publish(ctx); err != nil {
 		t.Fatal(err)
 	}
-	got, err := newRemoteContentCommands(runtime).InspectProject(ctx, projectinspect.Input{Environment: "production", Cache: true, Selector: identity.Selector{LUID: "child"}})
+	got, err := newRemoteContentCommands(runtime).dependencies().ProjectInspector.InspectProject(ctx, projectops.InspectInput{Environment: "production", Cache: true, Selector: identity.Selector{LUID: "child"}})
 	if err != nil || got.Project.Path != "Department/Ops" || got.Project.Description != "Keep this detail" || got.Project.OwnerLUID != "owner" {
 		t.Fatalf("cache inspect = %#v %v", got, err)
 	}

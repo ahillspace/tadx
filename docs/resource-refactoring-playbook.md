@@ -12,8 +12,9 @@ Assign one owner to each fact and responsibility before moving code.
 Choose one owner for each validation, normalization, error, preview, and output rule; add only the layers an operation needs.
 Keep operation entry points, projections, plans, mutation sequences, errors, and recovery context explicit.
 Resource actions own input rules and resource decisions.
-The composition root selects environment, authentication, policy, cache, workspace, and receipt persistence.
-Adapters normalize Tableau access; clients own HTTP and API representations.
+The composition root wires environment, authentication, policy, cache, workspace, and receipt dependencies.
+Each operation keeps its cache-versus-live decision at its current owner.
+Adapters implement narrow action-owned ports and normalize Tableau access; clients own HTTP and API representations.
 Artifact and workspace packages own their filesystem and locking boundaries.
 Existing identity and paging packages own matching shared mechanisms.
 Keep narrow dependency interfaces where they isolate external behavior or support meaningful failure tests.

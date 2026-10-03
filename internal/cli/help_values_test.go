@@ -15,7 +15,7 @@ import (
 	catalogsearch "github.com/ahillspace/tadx/actions/catalog/search"
 	datasourceops "github.com/ahillspace/tadx/actions/datasource"
 	lineagepull "github.com/ahillspace/tadx/actions/lineage/pull"
-	projectcreate "github.com/ahillspace/tadx/actions/project/create"
+	projectops "github.com/ahillspace/tadx/actions/project"
 	pulsedefinition "github.com/ahillspace/tadx/actions/pulse/definition"
 	pulsemetric "github.com/ahillspace/tadx/actions/pulse/metric"
 	searchaction "github.com/ahillspace/tadx/actions/search"
@@ -351,7 +351,7 @@ func TestHelpValuesForIsolatedCommandPaths(t *testing.T) {
 		}},
 		{"cache refresh", "scope", 8, func(v string) error { return cacherefresh.ValidateInput(cacherefresh.Input{Scopes: []string{v}}) }},
 		{"content project create", "content-permissions", 3, func(v string) error {
-			return projectcreate.ValidateInput(projectcreate.Input{Environment: "dev", Name: "Project", ContentPermissions: v})
+			return projectops.ValidateCreateInput(projectops.CreateInput{Environment: "dev", Name: "Project", ContentPermissions: v})
 		}},
 		{"catalog lineage pull", "kind", 4, func(v string) error {
 			in := lineagepull.Input{Kind: v}

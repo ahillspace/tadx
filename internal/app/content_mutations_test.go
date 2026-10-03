@@ -4,18 +4,15 @@ import (
 	"context"
 	datasourceops "github.com/ahillspace/tadx/actions/datasource"
 	flowops "github.com/ahillspace/tadx/actions/flow"
-	projectmove "github.com/ahillspace/tadx/actions/project/move"
 	workbookops "github.com/ahillspace/tadx/actions/workbook"
 	"testing"
 
 	"github.com/ahillspace/tadx/internal/identity"
 	resourcedatasource "github.com/ahillspace/tadx/internal/resources/datasource"
 	resourceflow "github.com/ahillspace/tadx/internal/resources/flow"
-	resourceproject "github.com/ahillspace/tadx/internal/resources/project"
 	resourceworkbook "github.com/ahillspace/tadx/internal/resources/workbook"
 	tableaudatasource "github.com/ahillspace/tadx/internal/tableau/datasource"
 	tableauflow "github.com/ahillspace/tadx/internal/tableau/flow"
-	tableauproject "github.com/ahillspace/tadx/internal/tableau/project"
 	tableauworkbook "github.com/ahillspace/tadx/internal/tableau/workbook"
 )
 
@@ -30,8 +27,6 @@ var (
 	_ datasourceops.Updater        = datasourceMutationAdapter{}
 	_ flowops.Resolver             = (*flowUpdateAdapter)(nil)
 	_ flowops.Updater              = (*flowUpdateAdapter)(nil)
-	_ projectmove.Resolver         = projectMoveAdapter{}
-	_ projectmove.Mover            = projectMoveAdapter{}
 )
 
 type contentMutationWorkbookClient struct {
@@ -113,24 +108,6 @@ func (c *contentMutationFlowClient) Update(context.Context, tableauflow.UpdateRe
 	return c.result, nil
 }
 
-type contentMutationProjectClient struct {
-	page   tableauproject.Page
-	result tableauproject.MutationResult
-}
-
-func (c *contentMutationProjectClient) List(context.Context, tableauproject.ListRequest) (tableauproject.Page, error) {
-	return c.page, nil
-}
-func (c *contentMutationProjectClient) Create(context.Context, tableauproject.CreateRequest) (tableauproject.MutationResult, error) {
-	return tableauproject.MutationResult{}, nil
-}
-func (c *contentMutationProjectClient) Update(context.Context, tableauproject.UpdateRequest) (tableauproject.MutationResult, error) {
-	return c.result, nil
-}
-func (c *contentMutationProjectClient) Delete(context.Context, string) (tableauproject.DeleteResult, error) {
-	return tableauproject.DeleteResult{}, nil
-}
-
 func TestContentMutationAdaptersPreserveAuthoritativeResults(t *testing.T) {
 	ctx := context.Background()
 	workbookClient := &contentMutationWorkbookClient{result: tableauworkbook.MutationResult{Status: "succeeded", WorkbookLUID: "wb-1", WorkbookName: "Renamed", ProjectLUID: "project-2", OwnerLUID: "owner-2", TableauRequestID: "request-wb"}}
@@ -174,35 +151,5 @@ func TestFlowUpdateAdapterEnrichesOnlyFromResolvedAuthoritativeFlow(t *testing.T
 	result, err := adapter.UpdateFlow(context.Background(), flowops.UpdateRequest{LUID: "flow-1", OwnerLUID: &owner})
 	if err != nil || result.FlowLUID != "flow-1" || result.FlowName != "Daily Prep" || result.ProjectLUID != "project-1" || result.OwnerLUID != owner || result.TableauRequestID != "request-flow" {
 		t.Fatalf("result=%#v err=%v", result, err)
-	}
-}
-
-func TestProjectMoveAdapterNormalizesReturnedHierarchyPath(t *testing.T) {
-	parent := "parent-2"
-	client := &contentMutationProjectClient{
-		page:   tableauproject.Page{Number: 1, Size: 1, Total: 1, Items: []tableauproject.Project{{LUID: parent, Name: "Department"}}},
-		result: tableauproject.MutationResult{Status: "succeeded", Project: tableauproject.Project{LUID: "project-1", Name: "Operations", ParentLUID: parent}, TableauRequestID: "request-project"},
-	}
-	projects := resourceproject.NewAdapter(client)
-	adapter := projectMoveAdapter{projects: projects, changes: client}
-	result, err := adapter.MoveProject(context.Background(), "project-1", &parent)
-	if err != nil || result.Project.Path != "Department/Operations" || result.Project.ParentLUID != parent || result.TableauRequestID != "request-project" {
-		t.Fatalf("result=%#v err=%v", result, err)
-	}
-}
-
-func TestProjectMoveAdapterReportsLiteralSlashPathUnavailable(t *testing.T) {
-	parent := "parent-2"
-	client := &contentMutationProjectClient{
-		page:   tableauproject.Page{Number: 1, Size: 1, Total: 1, Items: []tableauproject.Project{{LUID: parent, Name: "Department"}}},
-		result: tableauproject.MutationResult{Status: "succeeded", Project: tableauproject.Project{LUID: "project-1", Name: "Ops/Reports", ParentLUID: parent}, TableauRequestID: "request-project"},
-	}
-	adapter := projectMoveAdapter{projects: resourceproject.NewAdapter(client), changes: client}
-	result, err := adapter.MoveProject(context.Background(), "project-1", &parent)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if result.Project.Path != "" || result.Project.PathUnavailableReason != literalSlashProjectPathUnavailable {
-		t.Fatalf("result=%#v", result)
 	}
 }

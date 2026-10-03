@@ -4,9 +4,7 @@ import (
 	"context"
 	datasourceops "github.com/ahillspace/tadx/actions/datasource"
 	flowops "github.com/ahillspace/tadx/actions/flow"
-	projectmove "github.com/ahillspace/tadx/actions/project/move"
 	workbookops "github.com/ahillspace/tadx/actions/workbook"
-	"strings"
 
 	"github.com/ahillspace/tadx/internal/identity"
 	resourcedatasource "github.com/ahillspace/tadx/internal/resources/datasource"
@@ -15,41 +13,8 @@ import (
 	resourceworkbook "github.com/ahillspace/tadx/internal/resources/workbook"
 	tableaudatasource "github.com/ahillspace/tadx/internal/tableau/datasource"
 	tableauflow "github.com/ahillspace/tadx/internal/tableau/flow"
-	tableauproject "github.com/ahillspace/tadx/internal/tableau/project"
 	tableauworkbook "github.com/ahillspace/tadx/internal/tableau/workbook"
 )
-
-const projectMutationPathWarning = "Project mutation succeeded, but its canonical hierarchy path could not be confirmed; inspect the project by LUID."
-const literalSlashProjectPathUnavailable = "project name contains a literal slash; canonical hierarchy path is unavailable"
-
-func normalizeSuccessfulProjectMutation(ctx context.Context, projects *resourceproject.Adapter, resolved map[string]resourceproject.Project, item tableauproject.Project) resourceproject.Project {
-	result := resourceproject.Project{LUID: item.LUID, Name: item.Name, ParentLUID: item.ParentLUID, Description: item.Description, ContentPermissions: item.ContentPermissions, ControllingPermissionsProjectID: item.ControllingPermissionsProjectID}
-	if item.Name == "" {
-		return result
-	}
-	if strings.Contains(item.Name, "/") {
-		result.PathUnavailableReason = literalSlashProjectPathUnavailable
-		return result
-	}
-	if item.ParentLUID == "" {
-		result.Path = item.Name
-		return result
-	}
-	if parent, ok := resolved[item.ParentLUID]; ok && parent.Path != "" {
-		result.Path = parent.Path + "/" + item.Name
-		return result
-	}
-	if source, ok := resolved[item.LUID]; ok && source.ParentLUID == item.ParentLUID && strings.HasSuffix(source.Path, "/"+source.Name) {
-		result.Path = strings.TrimSuffix(source.Path, source.Name) + item.Name
-		return result
-	}
-	if projects != nil {
-		if enriched, err := projects.NormalizeMutationProject(ctx, item); err == nil {
-			return enriched
-		}
-	}
-	return result
-}
 
 func (c *remoteContentCommands) MoveWorkbook(ctx context.Context, input workbookops.MoveInput, preview bool) (workbookops.MoveOutput, error) {
 	if err := workbookops.ValidateMoveInput(input); err != nil {
@@ -119,24 +84,6 @@ func (c *remoteContentCommands) UpdateFlow(ctx context.Context, input flowops.Up
 	return flowops.Update(ctx, adapter, adapter, input, preview)
 }
 
-func (c *remoteContentCommands) MoveProject(ctx context.Context, input projectmove.Input, preview bool) (projectmove.Output, error) {
-	if err := projectmove.ValidateInput(input); err != nil {
-		return projectmove.Output{}, err
-	}
-	connection, err := c.connect(ctx, input.Environment, true)
-	if err != nil {
-		return projectmove.Output{}, remoteSetupError("project.move", input.Environment, input.Site, connection.environment, err)
-	}
-	input.Environment, input.Site = connection.environment.Alias, connection.environment.SiteContentURL
-	input.TargetResolved = true
-	adapter := projectMoveAdapter{projects: connection.projects, changes: connection.projectChanges, resolved: make(map[string]resourceproject.Project)}
-	out, err := projectmove.New(adapter, adapter).Execute(ctx, input, preview)
-	if err == nil && out.Result != nil && out.Result.Project.Path == "" {
-		out.Help = append(out.Help, projectMutationPathWarning)
-	}
-	return out, err
-}
-
 type workbookMutationAdapter struct{ workbooks *resourceworkbook.Adapter }
 
 func (a workbookMutationAdapter) MoveWorkbook(ctx context.Context, luid, projectLUID string) (workbookops.MoveResult, error) {
@@ -192,40 +139,4 @@ func (a *flowUpdateAdapter) UpdateFlow(ctx context.Context, input flowops.Update
 		output.ProjectLUID = a.resolved.ProjectLUID
 	}
 	return output, err
-}
-
-type projectMoveAdapter struct {
-	projects *resourceproject.Adapter
-	changes  projectMutationClient
-	resolved map[string]resourceproject.Project
-}
-
-func (a projectMoveAdapter) ResolveProject(ctx context.Context, selector identity.Selector) (projectmove.Project, error) {
-	item, err := a.projects.ResolveProject(ctx, selector)
-	if err == nil && a.resolved != nil {
-		a.resolved[item.LUID] = item
-	}
-	return toProjectMove(item), err
-}
-
-func (a projectMoveAdapter) FindProjectCollisions(ctx context.Context, name, parentLUID string) ([]projectmove.Project, error) {
-	items, err := a.projects.FindProjectCollisions(ctx, name, parentLUID)
-	result := make([]projectmove.Project, len(items))
-	for index, item := range items {
-		result[index] = toProjectMove(item)
-	}
-	return result, err
-}
-
-func (a projectMoveAdapter) MoveProject(ctx context.Context, luid string, parentLUID *string) (projectmove.Result, error) {
-	result, err := a.changes.Update(ctx, tableauproject.UpdateRequest{LUID: luid, ParentLUID: parentLUID})
-	if err != nil {
-		return projectmove.Result{}, err
-	}
-	item := normalizeSuccessfulProjectMutation(ctx, a.projects, a.resolved, result.Project)
-	return projectmove.Result{Status: result.Status, Project: toProjectMove(item), TableauRequestID: result.TableauRequestID}, nil
-}
-
-func toProjectMove(item resourceproject.Project) projectmove.Project {
-	return projectmove.Project{LUID: item.LUID, Name: item.Name, Path: item.Path, PathUnavailableReason: item.PathUnavailableReason, ParentLUID: item.ParentLUID, ContentPermissions: item.ContentPermissions, ControllingPermissionsProjectID: item.ControllingPermissionsProjectID}
 }

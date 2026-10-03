@@ -13,6 +13,7 @@ The [SVG](architecture/tadx-architecture.svg) and [editable Excalidraw source](a
 | `internal/app` | Composition root, target and workspace selection, command runtime, and concrete dependency wiring |
 | `internal/cli` | Cobra command tree, argument parsing, and action invocation |
 | `actions/workbook`, `actions/datasource`, `actions/flow` | Cohesive resource packages for related lifecycle operations |
+| `actions/project` | Project list, inspect, create, update, delete, and move workflows with distinct operation contracts |
 | `actions/workspace`, `actions/job` | Shared operation packages with explicit methods and operation-specific contracts |
 | `actions/admin` subpackages | Related lifecycle or paired mutation packages where records and validation match |
 | `actions/pulse/definition`, `actions/pulse/metric` | Resource packages with explicit operations and distinct output contracts |
@@ -38,9 +39,15 @@ Some actions use focused interfaces; others use direct function or service calls
 Choose the dependency shape that preserves clear ownership without adding forwarding layers for each command.
 `internal/app` composes command dependencies, including resource adapters where remote identity resolution or provider normalization needs a distinct owner.
 Actions do not import concrete resource adapters, Tableau clients, Cobra, or `net/http`.
-Resource adapters do not import actions or use HTTP directly.
+Resource adapters can implement narrow action-owned ports, but cannot call action workflow entry points or use HTTP directly.
 Tableau clients own request and response mechanics.
 Shared value types in `internal/value` depend only on the standard library.
+
+For project commands, `internal/cli/content` calls the named operation in `actions/project`.
+The project service validates input before `internal/app` opens a target-bound provider.
+`internal/resources/project` implements the live, cached, and inventory-read ports that the service consumes.
+Complete live search uses the composed project service; bounded live search uses its list action with a direct resource list port.
+Shared inventory collection, cache publication, and read-source policy currently remain in `internal/app`.
 
 The [architecture checker](../internal/architecture/architecture.go) defines allowed production Go imports.
 Unknown local package dependencies fail the check.

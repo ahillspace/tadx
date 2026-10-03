@@ -1,4 +1,4 @@
-package list
+package project
 
 import (
 	"github.com/ahillspace/tadx/internal/output"
@@ -6,7 +6,7 @@ import (
 )
 
 // Input selects one bounded project page.
-type Input struct {
+type ListInput struct {
 	All         bool
 	Environment string
 	Site        string
@@ -20,7 +20,7 @@ type Input struct {
 }
 
 // PageRequest is the action-owned read request.
-type PageRequest struct {
+type ListPageRequest struct {
 	PageNumber     int
 	PageSize       int
 	Name           string
@@ -31,7 +31,7 @@ type PageRequest struct {
 }
 
 // Project is one complete project projection.
-type Project struct {
+type ListProject struct {
 	LUID                            string `json:"luid"`
 	Name                            string `json:"name"`
 	ParentLUID                      string `json:"parent_luid"`
@@ -49,33 +49,33 @@ type Project struct {
 }
 
 // Page is one complete page returned by the reader.
-type Page struct {
+type ListPage struct {
 	Number               int
 	Size                 int
 	Total                int
-	Projects             []Project
+	Projects             []ListProject
 	RequestID            string
 	SnapshotCursor       string
 	SuppressContinuation bool
 }
 
 // OutputPage is bounded continuation metadata.
-type OutputPage = output.Page
+type ListOutputPage = output.Page
 
 // Output is the complete result before projection.
-type Output struct {
+type ListOutput struct {
 	Status      string
 	Environment string
 	Site        string
-	Page        OutputPage
-	Projects    []Project
+	Page        ListOutputPage
+	Projects    []ListProject
 	RequestID   string
 	Help        []string
 	Source      *readsource.Metadata
 }
 
 // CompactProject identifies one project and its direct parent.
-type CompactProject struct {
+type ListCompactProject struct {
 	LUID                            string `json:"luid"`
 	Name                            string `json:"name"`
 	ParentLUID                      string `json:"parent_luid"`
@@ -84,46 +84,46 @@ type CompactProject struct {
 }
 
 // CompactResult is the default bounded projection.
-type CompactResult struct {
+type ListCompactResult struct {
 	Status      string               `json:"status"`
 	Environment string               `json:"environment,omitempty"`
 	Site        string               `json:"site,omitempty"`
-	Page        OutputPage           `json:"page"`
-	Projects    []CompactProject     `json:"projects"`
+	Page        ListOutputPage       `json:"page"`
+	Projects    []ListCompactProject `json:"projects"`
 	Details     string               `json:"details"`
 	Help        []string             `json:"help"`
 	Source      *readsource.Metadata `json:"source,omitempty"`
 }
 
 // FullResult is the bounded expanded current page.
-type FullResult struct {
+type ListFullResult struct {
 	Status      string               `json:"status"`
 	Environment string               `json:"environment,omitempty"`
 	Site        string               `json:"site,omitempty"`
-	Page        OutputPage           `json:"page"`
-	Projects    []Project            `json:"projects"`
+	Page        ListOutputPage       `json:"page"`
+	Projects    []ListProject        `json:"projects"`
 	RequestID   string               `json:"tableau_request_id,omitempty"`
 	Help        []string             `json:"help"`
 	Source      *readsource.Metadata `json:"source,omitempty"`
 }
 
 // CompactOutput returns explicit compact fields.
-func (o Output) CompactOutput() any {
-	projects := make([]CompactProject, len(o.Projects))
+func (o ListOutput) CompactOutput() any {
+	projects := make([]ListCompactProject, len(o.Projects))
 	for index, project := range o.Projects {
-		projects[index] = CompactProject{LUID: project.LUID, Name: project.Name, ParentLUID: project.ParentLUID, ContentPermissions: project.ContentPermissions, ControllingPermissionsProjectID: project.ControllingPermissionsProjectID}
+		projects[index] = ListCompactProject{LUID: project.LUID, Name: project.Name, ParentLUID: project.ParentLUID, ContentPermissions: project.ContentPermissions, ControllingPermissionsProjectID: project.ControllingPermissionsProjectID}
 	}
-	return CompactResult{Status: o.Status, Environment: o.Environment, Site: o.Site, Page: o.Page, Projects: projects, Details: "--full", Help: o.Help, Source: o.Source}
+	return ListCompactResult{Status: o.Status, Environment: o.Environment, Site: o.Site, Page: o.Page, Projects: projects, Details: "--full", Help: o.Help, Source: o.Source}
 }
 
 // FullOutput returns the same page with bounded lifecycle fields.
-func (o Output) FullOutput() any {
-	projects := make([]Project, len(o.Projects))
+func (o ListOutput) FullOutput() any {
+	projects := make([]ListProject, len(o.Projects))
 	copy(projects, o.Projects)
 	for index := range projects {
 		if projects[index].TopLevel == nil && projects[index].ParentLUID == "" {
 			projects[index].TopLevel = new(true)
 		}
 	}
-	return FullResult{Status: o.Status, Environment: o.Environment, Site: o.Site, Page: o.Page, Projects: projects, RequestID: o.RequestID, Help: o.Help, Source: o.Source}
+	return ListFullResult{Status: o.Status, Environment: o.Environment, Site: o.Site, Page: o.Page, Projects: projects, RequestID: o.RequestID, Help: o.Help, Source: o.Source}
 }

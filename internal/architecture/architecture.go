@@ -239,6 +239,11 @@ func localImportAllowed(file, imported string) bool {
 		}
 		return matchesPrefix(imported, "actions", "internal/cli") || matchesExact(imported, "internal/errs", "internal/pathspec", "internal/contentbatch", "internal/commandhint", "internal/batchspec")
 	case layerResource:
+		// Project cache ports translate indexed records and preserve read coverage.
+		// This exact dependency does not authorize other adapters to own caches.
+		if path.Dir(file) == "internal/resources/project" && matchesExact(imported, "internal/cache", "internal/readsource") {
+			return true
+		}
 		return adapterConsumerImportAllowed(file, imported) ||
 			matchesExact(imported, "internal/identity", "internal/value") || matchesPrefix(imported, "internal/tableau")
 	case layerTableau:

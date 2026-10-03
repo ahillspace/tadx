@@ -3,46 +3,43 @@ package content
 import (
 	"bytes"
 	"context"
+	projectops "github.com/ahillspace/tadx/actions/project"
 	"strings"
 	"testing"
 
-	projectcreate "github.com/ahillspace/tadx/actions/project/create"
-	projectdelete "github.com/ahillspace/tadx/actions/project/delete"
-	projectinspect "github.com/ahillspace/tadx/actions/project/inspect"
-	projectupdate "github.com/ahillspace/tadx/actions/project/update"
 	"github.com/spf13/cobra"
 )
 
 type projectMutationCommands struct {
 	inspectCalls  int
-	inspectInput  projectinspect.Input
-	createInput   projectcreate.Input
+	inspectInput  projectops.InspectInput
+	createInput   projectops.CreateInput
 	createPreview bool
-	updateInput   projectupdate.Input
+	updateInput   projectops.UpdateInput
 	updatePreview bool
-	deleteInput   projectdelete.Input
+	deleteInput   projectops.DeleteInput
 	deletePreview bool
 }
 
-func (c *projectMutationCommands) InspectProject(_ context.Context, input projectinspect.Input) (projectinspect.Output, error) {
+func (c *projectMutationCommands) InspectProject(_ context.Context, input projectops.InspectInput) (projectops.InspectOutput, error) {
 	c.inspectCalls++
 	c.inspectInput = input
-	return projectinspect.Output{Status: "found", Project: projectinspect.Project{LUID: "project-1", Name: "Operations", Path: "Department/Operations"}}, nil
+	return projectops.InspectOutput{Status: "found", Project: projectops.InspectProject{LUID: "project-1", Name: "Operations", Path: "Department/Operations"}}, nil
 }
 
-func (c *projectMutationCommands) CreateProject(_ context.Context, input projectcreate.Input, preview bool) (projectcreate.Output, error) {
+func (c *projectMutationCommands) CreateProject(_ context.Context, input projectops.CreateInput, preview bool) (projectops.CreateOutput, error) {
 	c.createInput, c.createPreview = input, preview
-	return projectcreate.Output{}, nil
+	return projectops.CreateOutput{}, nil
 }
 
-func (c *projectMutationCommands) UpdateProject(_ context.Context, input projectupdate.Input, preview bool) (projectupdate.Output, error) {
+func (c *projectMutationCommands) UpdateProject(_ context.Context, input projectops.UpdateInput, preview bool) (projectops.UpdateOutput, error) {
 	c.updateInput, c.updatePreview = input, preview
-	return projectupdate.Output{}, nil
+	return projectops.UpdateOutput{}, nil
 }
 
-func (c *projectMutationCommands) DeleteProject(_ context.Context, input projectdelete.Input, preview bool) (projectdelete.Output, error) {
+func (c *projectMutationCommands) DeleteProject(_ context.Context, input projectops.DeleteInput, preview bool) (projectops.DeleteOutput, error) {
 	c.deleteInput, c.deletePreview = input, preview
-	return projectdelete.Output{}, nil
+	return projectops.DeleteOutput{}, nil
 }
 
 func TestProjectCreateParsesExplicitParentAndMutation(t *testing.T) {

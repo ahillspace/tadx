@@ -55,3 +55,53 @@ func TestAdapterNormalizesMutationProjectWithoutRequeryingNewIdentity(t *testing
 		t.Fatalf("root = %#v", root)
 	}
 }
+
+type mutationClient struct {
+	*projectClient
+	result tableauproject.MutationResult
+}
+
+func (c *mutationClient) Create(context.Context, tableauproject.CreateRequest) (tableauproject.MutationResult, error) {
+	return tableauproject.MutationResult{}, nil
+}
+
+func (c *mutationClient) Update(context.Context, tableauproject.UpdateRequest) (tableauproject.MutationResult, error) {
+	return c.result, nil
+}
+
+func (c *mutationClient) Delete(context.Context, string) (tableauproject.DeleteResult, error) {
+	return tableauproject.DeleteResult{}, nil
+}
+
+func TestMovePortNormalizesReturnedHierarchyPath(t *testing.T) {
+	parent := "parent-2"
+	client := &mutationClient{
+		projectClient: &projectClient{pages: map[int]tableauproject.Page{1: {
+			Number: 1, Size: 1000, Total: 1, Items: []tableauproject.Project{{LUID: parent, Name: "Department"}},
+		}}},
+		result: tableauproject.MutationResult{Status: "succeeded", Project: tableauproject.Project{LUID: "project-1", Name: "Operations", ParentLUID: parent}, TableauRequestID: "request-project"},
+	}
+	port := resourceproject.NewMovePort(resourceproject.NewAdapter(client), client)
+	result, err := port.MoveProject(t.Context(), "project-1", &parent)
+	if err != nil || result.Project.Path != "Department/Operations" || result.Project.ParentLUID != parent || result.TableauRequestID != "request-project" {
+		t.Fatalf("result=%#v err=%v", result, err)
+	}
+}
+
+func TestMovePortReportsLiteralSlashPathUnavailable(t *testing.T) {
+	parent := "parent-2"
+	client := &mutationClient{
+		projectClient: &projectClient{pages: map[int]tableauproject.Page{1: {
+			Number: 1, Size: 1000, Total: 1, Items: []tableauproject.Project{{LUID: parent, Name: "Department"}},
+		}}},
+		result: tableauproject.MutationResult{Status: "succeeded", Project: tableauproject.Project{LUID: "project-1", Name: "Ops/Reports", ParentLUID: parent}, TableauRequestID: "request-project"},
+	}
+	port := resourceproject.NewMovePort(resourceproject.NewAdapter(client), client)
+	result, err := port.MoveProject(t.Context(), "project-1", &parent)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Project.Path != "" || result.Project.PathUnavailableReason != resourceproject.LiteralSlashPathUnavailable {
+		t.Fatalf("result=%#v", result)
+	}
+}

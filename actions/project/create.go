@@ -1,4 +1,4 @@
-package create
+package project
 
 import (
 	"context"
@@ -12,85 +12,63 @@ import (
 )
 
 // Resolver owns exact parent resolution and sibling collision checks.
-type Resolver interface {
-	ResolveProject(context.Context, identity.Selector) (Project, error)
-	FindProjectCollisions(context.Context, string, string) ([]Project, error)
-}
-
-// Creator performs one exact released project create request.
-type Creator interface {
-	CreateProject(context.Context, CreateRequest) (Result, error)
-}
-
-// Action creates one project after immediate revalidation.
-type Action struct {
-	resolver Resolver
-	creator  Creator
-}
-
-// New creates a project-create action.
-func New(resolver Resolver, creator Creator) *Action {
-	return &Action{resolver: resolver, creator: creator}
-}
-
-// A resolver may share project reads within one explicit validation phase.
-// Each prewrite phase starts again, never inheriting the planning snapshot.
-type projectResolutionPhase interface {
+type CreateResolver interface {
+	ResolveProject(context.Context, identity.Selector) (CreateProject, error)
+	FindProjectCollisions(context.Context, string, string) ([]CreateProject, error)
 	BeginProjectResolution(context.Context) context.Context
 }
 
-func (a *Action) beginProjectResolution(ctx context.Context) context.Context {
-	if a == nil {
-		return ctx
-	}
-	if resolver, ok := a.resolver.(projectResolutionPhase); ok {
-		return resolver.BeginProjectResolution(ctx)
-	}
-	return ctx
+// Creator performs one exact released project create request.
+type CreateCreator interface {
+	CreateProject(context.Context, CreateRequest) (CreateResult, error)
 }
 
-// Execute previews or creates one exact project.
-func (a *Action) Execute(ctx context.Context, input Input, preview bool) (Output, error) {
-	ctx = a.beginProjectResolution(ctx)
-	if a == nil || a.resolver == nil || a.creator == nil {
-		return Output{}, &errs.Error{ID: "project.create.unconfigured", Kind: errs.KindRuntime, Operation: "project.create", Summary: "Project create is not configured.", Retryable: errs.Bool(false), CorrectiveAction: "Configure project creation before retrying."}
+func (a *Service) beginCreateResolution(ctx context.Context) context.Context {
+	return a.CreateResolver.BeginProjectResolution(ctx)
+}
+
+// Create previews or creates one exact project after immediate revalidation.
+func (a *Service) Create(ctx context.Context, input CreateInput, preview bool) (CreateOutput, error) {
+	if a == nil || a.CreateResolver == nil || a.Creator == nil {
+		return CreateOutput{}, &errs.Error{ID: "project.create.unconfigured", Kind: errs.KindRuntime, Operation: "project.create", Summary: "Project create is not configured.", Retryable: errs.Bool(false), CorrectiveAction: "Configure project creation before retrying."}
 	}
-	if err := validateInput(input); err != nil {
-		return Output{}, err
+	if err := createValidateInput(input); err != nil {
+		return CreateOutput{}, err
 	}
+	ctx = a.beginCreateResolution(ctx)
 	parent, err := a.resolveParent(ctx, input.ParentSelector)
 	if err != nil {
-		return Output{}, resolutionError(input, "Parent project resolution failed.", err)
+		return CreateOutput{}, createResolutionError(input, "Parent project resolution failed.", err)
 	}
 	parentLUID := ""
 	if parent != nil {
 		parentLUID = parent.LUID
 	}
 	if err := a.rejectCollision(ctx, input, parentLUID); err != nil {
-		return Output{}, err
+		return CreateOutput{}, err
 	}
-	plan := Plan{Mode: "preview", Operation: "project.create", Environment: input.Environment, Site: input.Site, Project: ProjectSpec{Name: input.Name, Description: input.Description, ContentPermissions: input.ContentPermissions}, Parent: parent}
-	output := Output{Plan: plan, Help: []string{"Run without --preview to create this exact project."}}
+	plan := CreatePlan{Mode: "preview", Operation: "project.create", Environment: input.Environment, Site: input.Site, Project: CreateProjectSpec{Name: input.Name, Description: input.Description, ContentPermissions: input.ContentPermissions}, Parent: parent}
+	output := CreateOutput{Plan: plan, Help: []string{"Run without --preview to create this exact project."}}
 	if preview {
 		return output, nil
 	}
 	output.Plan.Mode = "execute"
-	ctx = a.beginProjectResolution(ctx)
+	ctx = a.beginCreateResolution(ctx)
 	currentParent, err := a.resolveParent(ctx, input.ParentSelector)
 	if err != nil {
-		return Output{}, resolutionError(input, "Parent project revalidation failed.", err)
+		return CreateOutput{}, createResolutionError(input, "Parent project revalidation failed.", err)
 	}
 	currentParentLUID := ""
 	if currentParent != nil {
 		currentParentLUID = currentParent.LUID
 	}
 	if currentParentLUID != parentLUID {
-		return Output{}, &errs.Error{ID: "project.create.parent_changed", Kind: errs.KindOperation, Operation: "project.create", Environment: input.Environment, Site: input.Site, Summary: "The project parent identity changed during revalidation.", Cause: errors.New("project parent LUID changed during revalidation"), Retryable: errs.Bool(false), CorrectiveAction: "Review a new preview before creating the project."}
+		return CreateOutput{}, &errs.Error{ID: "project.create.parent_changed", Kind: errs.KindOperation, Operation: "project.create", Environment: input.Environment, Site: input.Site, Summary: "The project parent identity changed during revalidation.", Cause: errors.New("project parent LUID changed during revalidation"), Retryable: errs.Bool(false), CorrectiveAction: "Review a new preview before creating the project."}
 	}
 	if err := a.rejectCollision(ctx, input, currentParentLUID); err != nil {
-		return Output{}, err
+		return CreateOutput{}, err
 	}
-	result, err := a.creator.CreateProject(ctx, CreateRequest{Name: input.Name, Description: input.Description, ParentLUID: currentParentLUID, ContentPermissions: input.ContentPermissions})
+	result, err := a.Creator.CreateProject(ctx, CreateRequest{Name: input.Name, Description: input.Description, ParentLUID: currentParentLUID, ContentPermissions: input.ContentPermissions})
 	if err != nil {
 		retryable, correctiveAction := errs.CompleteRetryAdvice(err, "Inspect the remote project create outcome before retrying.")
 		failure := &errs.Error{ID: "project.create.failed", Kind: errs.KindOperation, Operation: "project.create", Environment: input.Environment, Site: input.Site, Summary: "Project create failed.", Cause: err, Retryable: retryable, CorrectiveAction: correctiveAction, TableauRequestID: errs.TableauRequestID(err)}
@@ -120,11 +98,11 @@ func (a *Action) Execute(ctx context.Context, input Input, preview bool) (Output
 	return output, nil
 }
 
-func (a *Action) resolveParent(ctx context.Context, selector identity.Selector) (*Project, error) {
+func (a *Service) resolveParent(ctx context.Context, selector identity.Selector) (*CreateProject, error) {
 	if selector.LUID == "" && strings.TrimSpace(selector.ProjectPath) == "" {
 		return nil, nil
 	}
-	project, err := a.resolver.ResolveProject(ctx, selector)
+	project, err := a.CreateResolver.ResolveProject(ctx, selector)
 	if err != nil {
 		return nil, err
 	}
@@ -134,10 +112,10 @@ func (a *Action) resolveParent(ctx context.Context, selector identity.Selector) 
 	return &project, nil
 }
 
-func (a *Action) rejectCollision(ctx context.Context, input Input, parentLUID string) error {
-	matches, err := a.resolver.FindProjectCollisions(ctx, input.Name, parentLUID)
+func (a *Service) rejectCollision(ctx context.Context, input CreateInput, parentLUID string) error {
+	matches, err := a.CreateResolver.FindProjectCollisions(ctx, input.Name, parentLUID)
 	if err != nil {
-		return resolutionError(input, "Project collision check failed.", err)
+		return createResolutionError(input, "Project collision check failed.", err)
 	}
 	if len(matches) == 0 {
 		return nil
@@ -145,42 +123,42 @@ func (a *Action) rejectCollision(ctx context.Context, input Input, parentLUID st
 	return &errs.Error{ID: "project.create.collision", Kind: errs.KindOperation, Operation: "project.create", Resource: matches[0].LUID, Environment: input.Environment, Site: input.Site, Summary: "A sibling project with the same case-insensitive name already exists.", Cause: fmt.Errorf("project %q already exists under the selected parent", matches[0].LUID), Retryable: errs.Bool(false), CorrectiveAction: "Choose a different name or exact parent, then review a new preview."}
 }
 
-func validateInput(input Input) error {
+func createValidateInput(input CreateInput) error {
 	if strings.TrimSpace(input.Environment) == "" || (strings.TrimSpace(input.Site) == "" && !input.TargetResolved) {
-		return usage("environment", "project create requires an explicit resolved environment and site")
+		return createUsage("environment", "project create requires an explicit resolved environment and site")
 	}
-	return ValidateInput(input)
+	return ValidateCreateInput(input)
 }
 
 // ValidateInput checks caller-controlled arguments before local or remote setup.
-func ValidateInput(input Input) error {
+func ValidateCreateInput(input CreateInput) error {
 	if strings.TrimSpace(input.Environment) == "" {
-		return usage("environment", "project create requires an explicit environment")
+		return createUsage("environment", "project create requires an explicit environment")
 	}
 	if strings.TrimSpace(input.Name) == "" {
-		return usage("name", "project create requires a name")
+		return createUsage("name", "project create requires a name")
 	}
 	if strings.Contains(input.Name, "/") {
-		return usage("name", "project create name cannot contain a slash")
+		return createUsage("name", "project create name cannot contain a slash")
 	}
 	if input.ParentSelector.Name != "" || (input.ParentSelector.LUID != "" && strings.TrimSpace(input.ParentSelector.ProjectPath) != "") {
-		return usage("parent", "use either a parent LUID or an exact parent project path")
+		return createUsage("parent", "use either a parent LUID or an exact parent project path")
 	}
-	if !validContentPermissions(input.ContentPermissions) {
-		return usage("content_permissions", "project create content permissions are invalid")
+	if !createValidContentPermissions(input.ContentPermissions) {
+		return createUsage("content_permissions", "project create content permissions are invalid")
 	}
 	return nil
 }
 
-func validContentPermissions(value string) bool {
+func createValidContentPermissions(value string) bool {
 	return value == "" || value == "ManagedByOwner" || value == "LockedToProject" || value == "LockedToProjectWithoutNested"
 }
 
-func resolutionError(input Input, summary string, err error) error {
+func createResolutionError(input CreateInput, summary string, err error) error {
 	retryable, correctiveAction := errs.CompleteRetryAdvice(err, "Review the exact project selector, then retry.")
 	return &errs.Error{ID: "project.create.resolve", Kind: errs.KindOperation, Operation: "project.create", Environment: input.Environment, Site: input.Site, Summary: summary, Cause: err, Retryable: retryable, CorrectiveAction: correctiveAction, TableauRequestID: errs.TableauRequestID(err)}
 }
 
-func usage(field, message string) error {
+func createUsage(field, message string) error {
 	return &errs.Error{ID: "project.create.usage", Kind: errs.KindUsage, Operation: "project.create", Summary: message, Retryable: errs.Bool(false), CorrectiveAction: "Correct the project create input and review a new preview.", Validation: []errs.ValidationDetail{{Field: field, Code: "invalid", Message: message}}}
 }

@@ -31,9 +31,3 @@ func (a flowMoveAdapter) BeginProjectResolution(ctx context.Context) context.Con
 func (a flowPublishAdapter) BeginProjectResolution(ctx context.Context) context.Context {
 	return a.projects.BeginProjectResolution(ctx)
 }
-func (a projectMoveAdapter) BeginProjectResolution(ctx context.Context) context.Context {
-	return a.projects.BeginProjectResolution(ctx)
-}
-func (a projectCreateAdapter) BeginProjectResolution(ctx context.Context) context.Context {
-	return a.projects.BeginProjectResolution(ctx)
-}

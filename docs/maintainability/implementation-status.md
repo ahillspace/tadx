@@ -46,14 +46,15 @@ The built binary SHA-256 is `6348e1d28b36acac44078c05b711014ee83a3510a049f1c422f
 Native process-containment and junction rejection tests use mocked branches; they do not establish full native isolation verification.
 The archived snapshot materializes two tracked Claude skill symlinks as exact link-text files, recorded by the gate; this run does not verify symlink installation behavior.
 
-Structural workflow migration has not started.
+The first project structural candidate is integrated after the corrected baseline passes local and hosted checks.
+Its own verification remains pending; integration is not checkpoint acceptance.
 The separately approved reporting correction changes only accepted-publication error reporting.
 The architecture checker now permits the approved exact adapter-to-consumer import pairs, with positive and negative fixtures.
 New publication characterization tests expose the baseline reporting failures described below.
-No model tasks, Tableau mutations, credential-store operations, or changes to saved consent have run.
+No live CLI model tasks, Tableau mutations, credential-store operations, or changes to saved consent have run.
 Read-only environment, consent, and project inspection resolved the authorized live scope.
 The separately approved reporting correction has local commit `4d3b6180cce3bcb8ba715615f9e02510619f60a8`.
-No pushes have occurred.
+The reviewed baseline and gate tooling are pushed to the shared feature branch; no merge or release has occurred.
 Existing unrelated work remains unmodified and unstaged.
 
 ## Compatibility and recovery preparation
@@ -142,6 +143,11 @@ Subsequent correction `b4ed1f112f0242f66ee29c93cf938b702c553f87` uses a test-own
 It preserves the foreground-priority assertion and changes no production authentication code.
 Twenty focused race repetitions, three auth-package race runs, vet, and independent Sol review pass.
 The corrected fixture still requires full integrated race verification; focused success does not retroactively pass the failed run.
+Exact baseline `a9ccd924d83767b415f96306ae986a128eed4f45` subsequently passes the full local race suite, vet, formatting, module checks, and all three defect-detection manifests.
+Its extracted source manifest SHA-256 is `3e2b077126666fa405f1dc6ebd645f72e49b12d3915de5aeffbc4b500728a8a6`, unchanged after verification.
+Hosted [CI run 37156195315](https://github.com/ahillspace/tadx/actions/runs/37156195315) passes all nine jobs, including Linux and Windows standard/race checks and native policy checks on three operating systems.
+Hosted [gate-tooling run 37156195258](https://github.com/ahillspace/tadx/actions/runs/37156195258) passes both operating-system jobs.
+These results establish corrected-baseline offline verification, not live acceptance or verification of later structural candidates.
 The maintainer's updated model boundary excludes Astra from testing, validation, research, and judging runs.
 Subsequent implementation verification and review assignments explicitly use Sol; task-driven live targets remain Luna at medium reasoning.
 
@@ -165,10 +171,19 @@ Successful native operations and output projections remain unchanged.
 The typed shared consumer is `search.run` through project inventory; `cache.refresh` remains a conservative fixture compatibility scenario rather than a proven typed consumer of this package move.
 A subsequent isolated project draft consolidates six packages into one service and moves native conversion ports from app to the project resource adapter.
 Focused tests, compilation, and independent review find no demonstrated behavior regression in that draft.
-The draft is not integrated or accepted.
-Project operation facades remain in app, with substantive provider selection and warning handling still requiring extraction under D3.
-Two adapter normalization tests should move to their resource owner while app composition tests remain at the CLI boundary.
-The draft has no complete candidate, native-platform, or live acceptance evidence.
+The subsequent reviewed D3 draft removes all six app project operation facades and project-specific cache and inventory conversion adapters.
+One project service owns validation, provider selection, inspect write-through decisions, and mutation warnings.
+CLI operations and complete search use that service; bounded live search uses the direct resource list port.
+App constructs lazy providers and temporarily retains the shared inventory mechanism and shared source/coverage/error helpers.
+The separately approved inventory extraction is the bounded exit condition for that remaining shared app ownership.
+Two adapter normalization tests move to the resource owner; app composition assertions remain at the CLI boundary.
+The exact resource-project imports of cache and readsource have positive and negative architecture fixtures under the approved D7 ownership change.
+Independent Sol review passes focused action, resource, architecture, CLI, and full app package tests.
+The reviewed draft preserves 38 existing action tests and eight byte-identical TOON goldens, and adds two workflow tests.
+Its reviewed source fingerprint is `bbe7c8774192d7b464cc98dbb35349b0621daf8b23e68e1ade5ee25fefd5673d` against base `12b20c101550ee4fabd19f2fd474e62cbcfb296d`.
+Mechanical integration verifies all 83 changed paths, preserves unrelated edits, and removes only 28 obsolete tracked per-verb files recoverable from Git.
+The integrated candidate still requires its own complete gates and live verification; it is not an accepted checkpoint or repository-wide D3 completion.
+Auth consolidation proceeds in a separate isolated draft, not in this project candidate.
 
 ## Acceptance dependencies
 
@@ -205,6 +220,11 @@ This preparation does not establish actual runtime qualification or authorize by
 Commit `de823b8` adds independently reviewed prebuilt capture checks with seven passing offline tests.
 Capture verifies all committed source bytes, including embedded installer scripts, rejects extra files, and requires clean native build metadata.
 No accepted real capture, qualified worker image, or same-session Luna execution evidence exists yet.
+Two bounded networked text-only setup probes use the pinned runtime with no TADX, repository, or Tableau access.
+Both fail before completion and establish no successful model access or live verification.
+Same-thread rollout records expose provider, model, and effort as effective per-turn configuration; requested settings alone remain insufficient evidence.
+The final probe reports an availability/access-related phrase without a retained structured code or HTTP status; the precise cause is unproven.
+Further speculative probes are deferred while offline implementation continues.
 The OpenAI Docs check confirms [Luna supports medium reasoning](https://developers.openai.com/api/docs/models/gpt-6-luna), but requested flags alone do not establish actual runtime configuration.
 The [documented noninteractive JSON event stream](https://learn.chatgpt.com/docs/non-interactive-mode) does not establish those actual values by itself.
 
@@ -225,7 +245,7 @@ Account and metadata fixtures need designated identities, allowed changes, and c
 Saved site consent does not expand fixture authority.
 Changing persisted consent or persisting PATs requires separate explicit permission.
 Missing task mappings, installer stages, and runtime qualification are technical gaps, not substitute authority.
-No broader mutations, model tasks, or pushes have occurred.
+No broader mutations or live CLI model tasks have occurred; baseline feature-branch pushes and the two text-only setup probes are recorded above.
 The maintainer directs continued offline implementation and verification while broader live-fixture scope remains unresolved.
 A subsequent read-only consent check confirms that the previously selected site's saved mutation consent is already enabled; no setting changes occur.
 No incomplete gate is waived or reported as passing.

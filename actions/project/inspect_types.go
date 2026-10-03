@@ -1,4 +1,4 @@
-package inspect
+package project
 
 import (
 	"github.com/ahillspace/tadx/internal/identity"
@@ -6,7 +6,7 @@ import (
 )
 
 // Input selects one exact project.
-type Input struct {
+type InspectInput struct {
 	Environment string
 	Site        string
 	Selector    identity.Selector
@@ -14,12 +14,12 @@ type Input struct {
 }
 
 // SetSelector records one exact CLI selector without exposing identity plumbing to Cobra.
-func (i *Input) SetSelector(luid, projectPath string) {
+func (i *InspectInput) SetSelector(luid, projectPath string) {
 	i.Selector = identity.Selector{LUID: identity.LUID(luid), ProjectPath: projectPath}
 }
 
 // Project is one complete project projection.
-type Project struct {
+type InspectProject struct {
 	LUID                            string `json:"luid"`
 	Name                            string `json:"name"`
 	Path                            string `json:"path"`
@@ -39,18 +39,18 @@ type Project struct {
 }
 
 // Output retains complete details before projection.
-type Output struct {
+type InspectOutput struct {
 	Status      string
 	Environment string
 	Site        string
-	Project     Project
+	Project     InspectProject
 	RequestID   string
 	Help        []string
 	Source      *readsource.Metadata
 }
 
 // CompactProject is the exact identity needed for another action.
-type CompactProject struct {
+type InspectCompactProject struct {
 	LUID                            string `json:"luid"`
 	Name                            string `json:"name"`
 	Path                            string `json:"path"`
@@ -60,37 +60,37 @@ type CompactProject struct {
 }
 
 // CompactResult is the default projection.
-type CompactResult struct {
-	Status      string               `json:"status"`
-	Environment string               `json:"environment,omitempty"`
-	Site        string               `json:"site,omitempty"`
-	Project     CompactProject       `json:"project"`
-	Details     string               `json:"details"`
-	Help        []string             `json:"help"`
-	Source      *readsource.Metadata `json:"source,omitempty"`
+type InspectCompactResult struct {
+	Status      string                `json:"status"`
+	Environment string                `json:"environment,omitempty"`
+	Site        string                `json:"site,omitempty"`
+	Project     InspectCompactProject `json:"project"`
+	Details     string                `json:"details"`
+	Help        []string              `json:"help"`
+	Source      *readsource.Metadata  `json:"source,omitempty"`
 }
 
 // FullResult is the expanded projection.
-type FullResult struct {
+type InspectFullResult struct {
 	Status      string               `json:"status"`
 	Environment string               `json:"environment,omitempty"`
 	Site        string               `json:"site,omitempty"`
-	Project     Project              `json:"project"`
+	Project     InspectProject       `json:"project"`
 	RequestID   string               `json:"tableau_request_id,omitempty"`
 	Help        []string             `json:"help"`
 	Source      *readsource.Metadata `json:"source,omitempty"`
 }
 
 // CompactOutput returns exact identity fields.
-func (o Output) CompactOutput() any {
-	return CompactResult{Status: o.Status, Environment: o.Environment, Site: o.Site, Project: CompactProject{LUID: o.Project.LUID, Name: o.Project.Name, Path: o.Project.Path, ParentLUID: o.Project.ParentLUID, ContentPermissions: o.Project.ContentPermissions, ControllingPermissionsProjectID: o.Project.ControllingPermissionsProjectID}, Details: "--full", Help: o.Help, Source: o.Source}
+func (o InspectOutput) CompactOutput() any {
+	return InspectCompactResult{Status: o.Status, Environment: o.Environment, Site: o.Site, Project: InspectCompactProject{LUID: o.Project.LUID, Name: o.Project.Name, Path: o.Project.Path, ParentLUID: o.Project.ParentLUID, ContentPermissions: o.Project.ContentPermissions, ControllingPermissionsProjectID: o.Project.ControllingPermissionsProjectID}, Details: "--full", Help: o.Help, Source: o.Source}
 }
 
 // FullOutput returns bounded lifecycle details.
-func (o Output) FullOutput() any {
+func (o InspectOutput) FullOutput() any {
 	project := o.Project
 	if project.TopLevel == nil && project.ParentLUID == "" {
 		project.TopLevel = new(true)
 	}
-	return FullResult{Status: o.Status, Environment: o.Environment, Site: o.Site, Project: project, RequestID: o.RequestID, Help: o.Help, Source: o.Source}
+	return InspectFullResult{Status: o.Status, Environment: o.Environment, Site: o.Site, Project: project, RequestID: o.RequestID, Help: o.Help, Source: o.Source}
 }
