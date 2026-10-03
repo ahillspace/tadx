@@ -1,0 +1,1697 @@
+{
+  "schema_version": 1,
+  "generated_by": "validate_assessment.py; do not edit manually",
+  "source_revision": "dd22c33bd1d123066f25ec09e2d612cd95717400",
+  "inventory": "inventory-dd22c33.json",
+  "pilots": [
+    "project-pilot.json",
+    "workbook-pilot.json",
+    "auth-pilot.json"
+  ],
+  "default_file_status": "inventory-only; no semantic judgment",
+  "default_test_status": "unassessed",
+  "limits": [
+    "Pilot test references can cover selected subcases, not the entire declaration.",
+    "Sampled paths can be partially read; exact scope is in each pilot ledger.",
+    "Neither source review nor lexical counts establish execution or behavioral coverage.",
+    "No area is approved as fully assessed or ready for migration."
+  ],
+  "summary": {
+    "inventory_areas": 67,
+    "fully_assessed_areas": 0,
+    "sampled_paths": 46,
+    "test_groups": 37,
+    "test_declarations_with_pilot_references": 92,
+    "test_declarations_without_pilot_references": 2272
+  },
+  "areas": [
+    {
+      "area": ".agents",
+      "status": "inventory-only",
+      "inventory": {
+        "files": 10,
+        "go_non_test": 0,
+        "go_test": 0,
+        "go_lines": 0,
+        "test_declarations": 0
+      },
+      "sampled_paths": [],
+      "test_declarations_with_pilot_references": 0
+    },
+    {
+      "area": ".claude",
+      "status": "inventory-only",
+      "inventory": {
+        "files": 2,
+        "go_non_test": 0,
+        "go_test": 0,
+        "go_lines": 0,
+        "test_declarations": 0
+      },
+      "sampled_paths": [],
+      "test_declarations_with_pilot_references": 0
+    },
+    {
+      "area": ".github",
+      "status": "inventory-only",
+      "inventory": {
+        "files": 4,
+        "go_non_test": 0,
+        "go_test": 0,
+        "go_lines": 0,
+        "test_declarations": 0
+      },
+      "sampled_paths": [],
+      "test_declarations_with_pilot_references": 0
+    },
+    {
+      "area": "actions.admin",
+      "status": "inventory-only",
+      "inventory": {
+        "files": 66,
+        "go_non_test": 26,
+        "go_test": 36,
+        "go_lines": 5872,
+        "test_declarations": 86
+      },
+      "sampled_paths": [],
+      "test_declarations_with_pilot_references": 0
+    },
+    {
+      "area": "actions.agent",
+      "status": "inventory-only",
+      "inventory": {
+        "files": 6,
+        "go_non_test": 2,
+        "go_test": 2,
+        "go_lines": 439,
+        "test_declarations": 11
+      },
+      "sampled_paths": [],
+      "test_declarations_with_pilot_references": 0
+    },
+    {
+      "area": "actions.auth",
+      "status": "pilot-sampled-not-complete",
+      "inventory": {
+        "files": 11,
+        "go_non_test": 4,
+        "go_test": 4,
+        "go_lines": 1109,
+        "test_declarations": 26
+      },
+      "sampled_paths": [
+        "actions/auth/login/action.go",
+        "actions/auth/logout/action.go"
+      ],
+      "test_declarations_with_pilot_references": 13
+    },
+    {
+      "area": "actions.cache",
+      "status": "inventory-only",
+      "inventory": {
+        "files": 8,
+        "go_non_test": 2,
+        "go_test": 2,
+        "go_lines": 803,
+        "test_declarations": 9
+      },
+      "sampled_paths": [],
+      "test_declarations_with_pilot_references": 0
+    },
+    {
+      "area": "actions.capability",
+      "status": "inventory-only",
+      "inventory": {
+        "files": 6,
+        "go_non_test": 2,
+        "go_test": 2,
+        "go_lines": 733,
+        "test_declarations": 18
+      },
+      "sampled_paths": [],
+      "test_declarations_with_pilot_references": 0
+    },
+    {
+      "area": "actions.catalog",
+      "status": "inventory-only",
+      "inventory": {
+        "files": 24,
+        "go_non_test": 10,
+        "go_test": 14,
+        "go_lines": 3388,
+        "test_declarations": 59
+      },
+      "sampled_paths": [],
+      "test_declarations_with_pilot_references": 0
+    },
+    {
+      "area": "actions.contentlabel",
+      "status": "inventory-only",
+      "inventory": {
+        "files": 8,
+        "go_non_test": 4,
+        "go_test": 4,
+        "go_lines": 900,
+        "test_declarations": 15
+      },
+      "sampled_paths": [],
+      "test_declarations_with_pilot_references": 0
+    },
+    {
+      "area": "actions.datasource",
+      "status": "inventory-only",
+      "inventory": {
+        "files": 39,
+        "go_non_test": 19,
+        "go_test": 12,
+        "go_lines": 3896,
+        "test_declarations": 56
+      },
+      "sampled_paths": [],
+      "test_declarations_with_pilot_references": 0
+    },
+    {
+      "area": "actions.doctor",
+      "status": "inventory-only",
+      "inventory": {
+        "files": 5,
+        "go_non_test": 2,
+        "go_test": 1,
+        "go_lines": 578,
+        "test_declarations": 7
+      },
+      "sampled_paths": [],
+      "test_declarations_with_pilot_references": 0
+    },
+    {
+      "area": "actions.env",
+      "status": "inventory-only",
+      "inventory": {
+        "files": 26,
+        "go_non_test": 7,
+        "go_test": 9,
+        "go_lines": 1314,
+        "test_declarations": 32
+      },
+      "sampled_paths": [],
+      "test_declarations_with_pilot_references": 0
+    },
+    {
+      "area": "actions.flow",
+      "status": "inventory-only",
+      "inventory": {
+        "files": 38,
+        "go_non_test": 15,
+        "go_test": 11,
+        "go_lines": 2635,
+        "test_declarations": 38
+      },
+      "sampled_paths": [],
+      "test_declarations_with_pilot_references": 0
+    },
+    {
+      "area": "actions.job",
+      "status": "inventory-only",
+      "inventory": {
+        "files": 7,
+        "go_non_test": 4,
+        "go_test": 3,
+        "go_lines": 662,
+        "test_declarations": 6
+      },
+      "sampled_paths": [],
+      "test_declarations_with_pilot_references": 0
+    },
+    {
+      "area": "actions.last",
+      "status": "inventory-only",
+      "inventory": {
+        "files": 1,
+        "go_non_test": 1,
+        "go_test": 0,
+        "go_lines": 23,
+        "test_declarations": 0
+      },
+      "sampled_paths": [],
+      "test_declarations_with_pilot_references": 0
+    },
+    {
+      "area": "actions.lineage",
+      "status": "inventory-only",
+      "inventory": {
+        "files": 7,
+        "go_non_test": 3,
+        "go_test": 2,
+        "go_lines": 640,
+        "test_declarations": 7
+      },
+      "sampled_paths": [],
+      "test_declarations_with_pilot_references": 0
+    },
+    {
+      "area": "actions.policy",
+      "status": "inventory-only",
+      "inventory": {
+        "files": 6,
+        "go_non_test": 4,
+        "go_test": 2,
+        "go_lines": 217,
+        "test_declarations": 4
+      },
+      "sampled_paths": [],
+      "test_declarations_with_pilot_references": 0
+    },
+    {
+      "area": "actions.project",
+      "status": "pilot-sampled-not-complete",
+      "inventory": {
+        "files": 28,
+        "go_non_test": 12,
+        "go_test": 8,
+        "go_lines": 2353,
+        "test_declarations": 35
+      },
+      "sampled_paths": [
+        "actions/project/create/action.go",
+        "actions/project/create/action_test.go",
+        "actions/project/create/types.go",
+        "actions/project/move/action.go",
+        "actions/project/move/action_test.go",
+        "actions/project/move/types.go"
+      ],
+      "test_declarations_with_pilot_references": 8
+    },
+    {
+      "area": "actions.pulse",
+      "status": "inventory-only",
+      "inventory": {
+        "files": 62,
+        "go_non_test": 19,
+        "go_test": 23,
+        "go_lines": 6015,
+        "test_declarations": 92
+      },
+      "sampled_paths": [],
+      "test_declarations_with_pilot_references": 0
+    },
+    {
+      "area": "actions.search",
+      "status": "inventory-only",
+      "inventory": {
+        "files": 6,
+        "go_non_test": 3,
+        "go_test": 1,
+        "go_lines": 677,
+        "test_declarations": 13
+      },
+      "sampled_paths": [],
+      "test_declarations_with_pilot_references": 0
+    },
+    {
+      "area": "actions.session",
+      "status": "inventory-only",
+      "inventory": {
+        "files": 2,
+        "go_non_test": 1,
+        "go_test": 1,
+        "go_lines": 247,
+        "test_declarations": 3
+      },
+      "sampled_paths": [],
+      "test_declarations_with_pilot_references": 0
+    },
+    {
+      "area": "actions.update",
+      "status": "inventory-only",
+      "inventory": {
+        "files": 3,
+        "go_non_test": 1,
+        "go_test": 2,
+        "go_lines": 243,
+        "test_declarations": 5
+      },
+      "sampled_paths": [],
+      "test_declarations_with_pilot_references": 0
+    },
+    {
+      "area": "actions.version",
+      "status": "inventory-only",
+      "inventory": {
+        "files": 2,
+        "go_non_test": 1,
+        "go_test": 1,
+        "go_lines": 149,
+        "test_declarations": 4
+      },
+      "sampled_paths": [],
+      "test_declarations_with_pilot_references": 0
+    },
+    {
+      "area": "actions.workbook",
+      "status": "pilot-sampled-not-complete",
+      "inventory": {
+        "files": 43,
+        "go_non_test": 16,
+        "go_test": 15,
+        "go_lines": 4504,
+        "test_declarations": 70
+      },
+      "sampled_paths": [
+        "actions/workbook/move.go",
+        "actions/workbook/move_test.go",
+        "actions/workbook/move_types.go",
+        "actions/workbook/record_projection_test.go",
+        "actions/workbook/workbook.go"
+      ],
+      "test_declarations_with_pilot_references": 4
+    },
+    {
+      "area": "actions.workspace",
+      "status": "inventory-only",
+      "inventory": {
+        "files": 40,
+        "go_non_test": 12,
+        "go_test": 12,
+        "go_lines": 1990,
+        "test_declarations": 31
+      },
+      "sampled_paths": [],
+      "test_declarations_with_pilot_references": 0
+    },
+    {
+      "area": "cmd.gencapdocs",
+      "status": "inventory-only",
+      "inventory": {
+        "files": 2,
+        "go_non_test": 1,
+        "go_test": 1,
+        "go_lines": 134,
+        "test_declarations": 2
+      },
+      "sampled_paths": [],
+      "test_declarations_with_pilot_references": 0
+    },
+    {
+      "area": "cmd.tadx",
+      "status": "inventory-only",
+      "inventory": {
+        "files": 4,
+        "go_non_test": 1,
+        "go_test": 3,
+        "go_lines": 588,
+        "test_declarations": 12
+      },
+      "sampled_paths": [],
+      "test_declarations_with_pilot_references": 0
+    },
+    {
+      "area": "docs",
+      "status": "inventory-only",
+      "inventory": {
+        "files": 31,
+        "go_non_test": 0,
+        "go_test": 0,
+        "go_lines": 0,
+        "test_declarations": 0
+      },
+      "sampled_paths": [],
+      "test_declarations_with_pilot_references": 0
+    },
+    {
+      "area": "internal.agent",
+      "status": "inventory-only",
+      "inventory": {
+        "files": 28,
+        "go_non_test": 4,
+        "go_test": 9,
+        "go_lines": 2367,
+        "test_declarations": 35
+      },
+      "sampled_paths": [],
+      "test_declarations_with_pilot_references": 0
+    },
+    {
+      "area": "internal.agenttarget",
+      "status": "inventory-only",
+      "inventory": {
+        "files": 2,
+        "go_non_test": 1,
+        "go_test": 1,
+        "go_lines": 88,
+        "test_declarations": 1
+      },
+      "sampled_paths": [],
+      "test_declarations_with_pilot_references": 0
+    },
+    {
+      "area": "internal.app",
+      "status": "pilot-sampled-not-complete",
+      "inventory": {
+        "files": 226,
+        "go_non_test": 42,
+        "go_test": 181,
+        "go_lines": 34213,
+        "test_declarations": 456
+      },
+      "sampled_paths": [
+        "internal/app/app.go",
+        "internal/app/auth_credentials.go",
+        "internal/app/auth_prompt.go",
+        "internal/app/cache_review_e2e_test.go",
+        "internal/app/command_runtime.go",
+        "internal/app/command_runtime_e2e_test.go",
+        "internal/app/content_mutations.go",
+        "internal/app/content_mutations_test.go",
+        "internal/app/content_remote.go",
+        "internal/app/project_resolution_phase.go",
+        "internal/app/sole_target_e2e_test.go"
+      ],
+      "test_declarations_with_pilot_references": 21
+    },
+    {
+      "area": "internal.architecture",
+      "status": "inventory-only",
+      "inventory": {
+        "files": 10,
+        "go_non_test": 1,
+        "go_test": 9,
+        "go_lines": 1406,
+        "test_declarations": 26
+      },
+      "sampled_paths": [],
+      "test_declarations_with_pilot_references": 0
+    },
+    {
+      "area": "internal.artifact",
+      "status": "inventory-only",
+      "inventory": {
+        "files": 38,
+        "go_non_test": 17,
+        "go_test": 21,
+        "go_lines": 9644,
+        "test_declarations": 123
+      },
+      "sampled_paths": [],
+      "test_declarations_with_pilot_references": 0
+    },
+    {
+      "area": "internal.auth",
+      "status": "pilot-sampled-not-complete",
+      "inventory": {
+        "files": 9,
+        "go_non_test": 3,
+        "go_test": 6,
+        "go_lines": 3107,
+        "test_declarations": 46
+      },
+      "sampled_paths": [
+        "internal/auth/credentials.go",
+        "internal/auth/credentials_test.go"
+      ],
+      "test_declarations_with_pilot_references": 2
+    },
+    {
+      "area": "internal.batchspec",
+      "status": "inventory-only",
+      "inventory": {
+        "files": 1,
+        "go_non_test": 1,
+        "go_test": 0,
+        "go_lines": 15,
+        "test_declarations": 0
+      },
+      "sampled_paths": [],
+      "test_declarations_with_pilot_references": 0
+    },
+    {
+      "area": "internal.cache",
+      "status": "inventory-only",
+      "inventory": {
+        "files": 22,
+        "go_non_test": 10,
+        "go_test": 12,
+        "go_lines": 4276,
+        "test_declarations": 46
+      },
+      "sampled_paths": [],
+      "test_declarations_with_pilot_references": 0
+    },
+    {
+      "area": "internal.capability",
+      "status": "inventory-only",
+      "inventory": {
+        "files": 14,
+        "go_non_test": 8,
+        "go_test": 6,
+        "go_lines": 3787,
+        "test_declarations": 21
+      },
+      "sampled_paths": [],
+      "test_declarations_with_pilot_references": 0
+    },
+    {
+      "area": "internal.cli",
+      "status": "pilot-sampled-not-complete",
+      "inventory": {
+        "files": 105,
+        "go_non_test": 51,
+        "go_test": 54,
+        "go_lines": 17305,
+        "test_declarations": 231
+      },
+      "sampled_paths": [
+        "internal/cli/auth/command.go",
+        "internal/cli/content/lifecycle_mutations.go",
+        "internal/cli/content/lifecycle_mutations_test.go",
+        "internal/cli/content/project.go",
+        "internal/cli/content/project_mutation_test.go",
+        "internal/cli/root.go"
+      ],
+      "test_declarations_with_pilot_references": 14
+    },
+    {
+      "area": "internal.commandhint",
+      "status": "inventory-only",
+      "inventory": {
+        "files": 4,
+        "go_non_test": 2,
+        "go_test": 2,
+        "go_lines": 334,
+        "test_declarations": 8
+      },
+      "sampled_paths": [],
+      "test_declarations_with_pilot_references": 0
+    },
+    {
+      "area": "internal.config",
+      "status": "pilot-sampled-not-complete",
+      "inventory": {
+        "files": 17,
+        "go_non_test": 7,
+        "go_test": 10,
+        "go_lines": 2461,
+        "test_declarations": 44
+      },
+      "sampled_paths": [
+        "internal/config/config.go",
+        "internal/config/write_target.go"
+      ],
+      "test_declarations_with_pilot_references": 11
+    },
+    {
+      "area": "internal.contentbatch",
+      "status": "inventory-only",
+      "inventory": {
+        "files": 6,
+        "go_non_test": 3,
+        "go_test": 3,
+        "go_lines": 439,
+        "test_declarations": 10
+      },
+      "sampled_paths": [],
+      "test_declarations_with_pilot_references": 0
+    },
+    {
+      "area": "internal.errs",
+      "status": "inventory-only",
+      "inventory": {
+        "files": 2,
+        "go_non_test": 1,
+        "go_test": 1,
+        "go_lines": 563,
+        "test_declarations": 12
+      },
+      "sampled_paths": [],
+      "test_declarations_with_pilot_references": 0
+    },
+    {
+      "area": "internal.fsreplace",
+      "status": "pilot-sampled-not-complete",
+      "inventory": {
+        "files": 6,
+        "go_non_test": 3,
+        "go_test": 3,
+        "go_lines": 441,
+        "test_declarations": 11
+      },
+      "sampled_paths": [
+        "internal/fsreplace/fsreplace.go",
+        "internal/fsreplace/fsreplace_windows.go"
+      ],
+      "test_declarations_with_pilot_references": 4
+    },
+    {
+      "area": "internal.guidancenotice",
+      "status": "inventory-only",
+      "inventory": {
+        "files": 6,
+        "go_non_test": 5,
+        "go_test": 1,
+        "go_lines": 513,
+        "test_declarations": 10
+      },
+      "sampled_paths": [],
+      "test_declarations_with_pilot_references": 0
+    },
+    {
+      "area": "internal.identity",
+      "status": "inventory-only",
+      "inventory": {
+        "files": 4,
+        "go_non_test": 2,
+        "go_test": 2,
+        "go_lines": 321,
+        "test_declarations": 9
+      },
+      "sampled_paths": [],
+      "test_declarations_with_pilot_references": 0
+    },
+    {
+      "area": "internal.jobmonitor",
+      "status": "inventory-only",
+      "inventory": {
+        "files": 7,
+        "go_non_test": 3,
+        "go_test": 4,
+        "go_lines": 814,
+        "test_declarations": 10
+      },
+      "sampled_paths": [],
+      "test_declarations_with_pilot_references": 0
+    },
+    {
+      "area": "internal.lastcommand",
+      "status": "inventory-only",
+      "inventory": {
+        "files": 3,
+        "go_non_test": 1,
+        "go_test": 2,
+        "go_lines": 173,
+        "test_declarations": 2
+      },
+      "sampled_paths": [],
+      "test_declarations_with_pilot_references": 0
+    },
+    {
+      "area": "internal.lock",
+      "status": "inventory-only",
+      "inventory": {
+        "files": 7,
+        "go_non_test": 4,
+        "go_test": 3,
+        "go_lines": 676,
+        "test_declarations": 10
+      },
+      "sampled_paths": [],
+      "test_declarations_with_pilot_references": 0
+    },
+    {
+      "area": "internal.managedpolicy",
+      "status": "inventory-only",
+      "inventory": {
+        "files": 30,
+        "go_non_test": 15,
+        "go_test": 15,
+        "go_lines": 3374,
+        "test_declarations": 44
+      },
+      "sampled_paths": [],
+      "test_declarations_with_pilot_references": 0
+    },
+    {
+      "area": "internal.operationrun",
+      "status": "inventory-only",
+      "inventory": {
+        "files": 6,
+        "go_non_test": 4,
+        "go_test": 2,
+        "go_lines": 1147,
+        "test_declarations": 12
+      },
+      "sampled_paths": [],
+      "test_declarations_with_pilot_references": 0
+    },
+    {
+      "area": "internal.output",
+      "status": "inventory-only",
+      "inventory": {
+        "files": 13,
+        "go_non_test": 5,
+        "go_test": 6,
+        "go_lines": 1173,
+        "test_declarations": 24
+      },
+      "sampled_paths": [],
+      "test_declarations_with_pilot_references": 0
+    },
+    {
+      "area": "internal.paging",
+      "status": "inventory-only",
+      "inventory": {
+        "files": 10,
+        "go_non_test": 5,
+        "go_test": 5,
+        "go_lines": 544,
+        "test_declarations": 7
+      },
+      "sampled_paths": [],
+      "test_declarations_with_pilot_references": 0
+    },
+    {
+      "area": "internal.pathspec",
+      "status": "inventory-only",
+      "inventory": {
+        "files": 2,
+        "go_non_test": 1,
+        "go_test": 1,
+        "go_lines": 109,
+        "test_declarations": 2
+      },
+      "sampled_paths": [],
+      "test_declarations_with_pilot_references": 0
+    },
+    {
+      "area": "internal.pulsecontract",
+      "status": "inventory-only",
+      "inventory": {
+        "files": 4,
+        "go_non_test": 2,
+        "go_test": 2,
+        "go_lines": 568,
+        "test_declarations": 7
+      },
+      "sampled_paths": [],
+      "test_declarations_with_pilot_references": 0
+    },
+    {
+      "area": "internal.readsource",
+      "status": "inventory-only",
+      "inventory": {
+        "files": 1,
+        "go_non_test": 1,
+        "go_test": 0,
+        "go_lines": 79,
+        "test_declarations": 0
+      },
+      "sampled_paths": [],
+      "test_declarations_with_pilot_references": 0
+    },
+    {
+      "area": "internal.releasenotice",
+      "status": "inventory-only",
+      "inventory": {
+        "files": 3,
+        "go_non_test": 1,
+        "go_test": 2,
+        "go_lines": 595,
+        "test_declarations": 10
+      },
+      "sampled_paths": [],
+      "test_declarations_with_pilot_references": 0
+    },
+    {
+      "area": "internal.resources",
+      "status": "pilot-sampled-not-complete",
+      "inventory": {
+        "files": 36,
+        "go_non_test": 15,
+        "go_test": 21,
+        "go_lines": 6044,
+        "test_declarations": 108
+      },
+      "sampled_paths": [
+        "internal/resources/project/adapter.go",
+        "internal/resources/project/discovery_paths_test.go",
+        "internal/resources/project/mutation_test.go",
+        "internal/resources/workbook/adapter.go"
+      ],
+      "test_declarations_with_pilot_references": 4
+    },
+    {
+      "area": "internal.tableau",
+      "status": "pilot-sampled-not-complete",
+      "inventory": {
+        "files": 89,
+        "go_non_test": 39,
+        "go_test": 50,
+        "go_lines": 23552,
+        "test_declarations": 315
+      },
+      "sampled_paths": [
+        "internal/tableau/project/client.go",
+        "internal/tableau/project/mutation_test.go",
+        "internal/tableau/workbook/client.go",
+        "internal/tableau/workbook/client_test.go"
+      ],
+      "test_declarations_with_pilot_references": 6
+    },
+    {
+      "area": "internal.toon",
+      "status": "inventory-only",
+      "inventory": {
+        "files": 36,
+        "go_non_test": 4,
+        "go_test": 3,
+        "go_lines": 2784,
+        "test_declarations": 30
+      },
+      "sampled_paths": [],
+      "test_declarations_with_pilot_references": 0
+    },
+    {
+      "area": "internal.update",
+      "status": "inventory-only",
+      "inventory": {
+        "files": 5,
+        "go_non_test": 3,
+        "go_test": 2,
+        "go_lines": 638,
+        "test_declarations": 13
+      },
+      "sampled_paths": [],
+      "test_declarations_with_pilot_references": 0
+    },
+    {
+      "area": "internal.value",
+      "status": "inventory-only",
+      "inventory": {
+        "files": 15,
+        "go_non_test": 13,
+        "go_test": 2,
+        "go_lines": 692,
+        "test_declarations": 3
+      },
+      "sampled_paths": [],
+      "test_declarations_with_pilot_references": 0
+    },
+    {
+      "area": "internal.version",
+      "status": "inventory-only",
+      "inventory": {
+        "files": 2,
+        "go_non_test": 1,
+        "go_test": 1,
+        "go_lines": 155,
+        "test_declarations": 2
+      },
+      "sampled_paths": [],
+      "test_declarations_with_pilot_references": 0
+    },
+    {
+      "area": "internal.workspace",
+      "status": "pilot-sampled-not-complete",
+      "inventory": {
+        "files": 9,
+        "go_non_test": 4,
+        "go_test": 5,
+        "go_lines": 2505,
+        "test_declarations": 35
+      },
+      "sampled_paths": [
+        "internal/workspace/manager.go",
+        "internal/workspace/recovery.go"
+      ],
+      "test_declarations_with_pilot_references": 5
+    },
+    {
+      "area": "repository-root",
+      "status": "inventory-only",
+      "inventory": {
+        "files": 10,
+        "go_non_test": 0,
+        "go_test": 0,
+        "go_lines": 0,
+        "test_declarations": 0
+      },
+      "sampled_paths": [],
+      "test_declarations_with_pilot_references": 0
+    },
+    {
+      "area": "scripts",
+      "status": "inventory-only",
+      "inventory": {
+        "files": 11,
+        "go_non_test": 1,
+        "go_test": 0,
+        "go_lines": 10,
+        "test_declarations": 0
+      },
+      "sampled_paths": [],
+      "test_declarations_with_pilot_references": 0
+    },
+    {
+      "area": "site",
+      "status": "inventory-only",
+      "inventory": {
+        "files": 2,
+        "go_non_test": 0,
+        "go_test": 0,
+        "go_lines": 0,
+        "test_declarations": 0
+      },
+      "sampled_paths": [],
+      "test_declarations_with_pilot_references": 0
+    }
+  ],
+  "test_references": [
+    {
+      "path": "actions/auth/login/action_test.go",
+      "symbol": "TestCredentialInputsRedactFormattingAndJSON",
+      "groups": [
+        "AUTH-T02"
+      ],
+      "status": "pilot-source-sampled"
+    },
+    {
+      "path": "actions/auth/login/action_test.go",
+      "symbol": "TestExecuteDoesNotStoreWhenValidationFails",
+      "groups": [
+        "AUTH-T02"
+      ],
+      "status": "pilot-source-sampled"
+    },
+    {
+      "path": "actions/auth/login/action_test.go",
+      "symbol": "TestExecuteReportsSavedCredentialWhenConfigurationIsNotDurable",
+      "groups": [
+        "AUTH-T02"
+      ],
+      "status": "pilot-source-sampled"
+    },
+    {
+      "path": "actions/auth/login/action_test.go",
+      "symbol": "TestExecuteReportsValidatedButUnstoredCredential",
+      "groups": [
+        "AUTH-T02"
+      ],
+      "status": "pilot-source-sampled"
+    },
+    {
+      "path": "actions/auth/login/action_test.go",
+      "symbol": "TestExecuteRequiresCompletePATInput",
+      "groups": [
+        "AUTH-T02"
+      ],
+      "status": "pilot-source-sampled"
+    },
+    {
+      "path": "actions/auth/login/action_test.go",
+      "symbol": "TestExecuteValidatesThenStoresCredential",
+      "groups": [
+        "AUTH-T02"
+      ],
+      "status": "pilot-source-sampled"
+    },
+    {
+      "path": "actions/auth/login/action_test.go",
+      "symbol": "TestOutputNeverContainsCredentialValues",
+      "groups": [
+        "AUTH-T02"
+      ],
+      "status": "pilot-source-sampled"
+    },
+    {
+      "path": "actions/auth/logout/action_test.go",
+      "symbol": "TestExecuteDoesNotConfirmRemovalWhenCredentialDeletionFailedAfterInstall",
+      "groups": [
+        "AUTH-T03"
+      ],
+      "status": "pilot-source-sampled"
+    },
+    {
+      "path": "actions/auth/logout/action_test.go",
+      "symbol": "TestExecuteMissingStoredCredentialIsNoOp",
+      "groups": [
+        "AUTH-T03"
+      ],
+      "status": "pilot-source-sampled"
+    },
+    {
+      "path": "actions/auth/logout/action_test.go",
+      "symbol": "TestExecuteRemovesOnlyStoredCredential",
+      "groups": [
+        "AUTH-T03"
+      ],
+      "status": "pilot-source-sampled"
+    },
+    {
+      "path": "actions/auth/logout/action_test.go",
+      "symbol": "TestExecuteReportsRemovalWhenConfigurationIsNotDurable",
+      "groups": [
+        "AUTH-T03"
+      ],
+      "status": "pilot-source-sampled"
+    },
+    {
+      "path": "actions/auth/logout/action_test.go",
+      "symbol": "TestExecuteStopsOnFreshResolutionFailure",
+      "groups": [
+        "AUTH-T03"
+      ],
+      "status": "pilot-source-sampled"
+    },
+    {
+      "path": "actions/auth/logout/action_test.go",
+      "symbol": "TestExecuteWrapsRemovalFailure",
+      "groups": [
+        "AUTH-T03"
+      ],
+      "status": "pilot-source-sampled"
+    },
+    {
+      "path": "actions/project/create/action_test.go",
+      "symbol": "TestCreateCompactOutputOmitsSuccessfulRequestID",
+      "groups": [
+        "PROJECT-T05"
+      ],
+      "status": "pilot-source-sampled"
+    },
+    {
+      "path": "actions/project/create/action_test.go",
+      "symbol": "TestCreatePreviewsThenRevalidatesParentAndCollisionOnApply",
+      "groups": [
+        "PROJECT-T02"
+      ],
+      "status": "pilot-source-sampled"
+    },
+    {
+      "path": "actions/project/create/action_test.go",
+      "symbol": "TestCreateRejectsCollisionAndChangedParentIdentity",
+      "groups": [
+        "PROJECT-T03"
+      ],
+      "status": "pilot-source-sampled"
+    },
+    {
+      "path": "actions/project/create/action_test.go",
+      "symbol": "TestCreateRequiresExplicitTargetAndValidFields",
+      "groups": [
+        "PROJECT-T04"
+      ],
+      "status": "pilot-source-sampled"
+    },
+    {
+      "path": "actions/project/create/action_test.go",
+      "symbol": "TestCreateRootDoesNotResolveOrInferParent",
+      "groups": [
+        "PROJECT-T03"
+      ],
+      "status": "pilot-source-sampled"
+    },
+    {
+      "path": "actions/project/create/action_test.go",
+      "symbol": "TestOutputGolden",
+      "groups": [
+        "PROJECT-T05"
+      ],
+      "status": "pilot-source-sampled"
+    },
+    {
+      "path": "actions/project/move/action_test.go",
+      "symbol": "TestMovePreviewsThenRevalidatesParent",
+      "groups": [
+        "PROJECT-T01"
+      ],
+      "status": "pilot-source-sampled"
+    },
+    {
+      "path": "actions/project/move/action_test.go",
+      "symbol": "TestMoveRejectsDescendantParent",
+      "groups": [
+        "PROJECT-T01"
+      ],
+      "status": "pilot-source-sampled"
+    },
+    {
+      "path": "actions/workbook/move_test.go",
+      "symbol": "TestMoveDefaultSiteRequiresResolvedTarget",
+      "groups": [
+        "WB-T02"
+      ],
+      "status": "pilot-source-sampled"
+    },
+    {
+      "path": "actions/workbook/move_test.go",
+      "symbol": "TestMovePreviewsThenRevalidatesAndMoves",
+      "groups": [
+        "WB-T01"
+      ],
+      "status": "pilot-source-sampled"
+    },
+    {
+      "path": "actions/workbook/move_test.go",
+      "symbol": "TestMoveRejectsDestinationCollision",
+      "groups": [
+        "WB-T02"
+      ],
+      "status": "pilot-source-sampled"
+    },
+    {
+      "path": "actions/workbook/record_projection_test.go",
+      "symbol": "TestSharedRecordDoesNotWidenMutationOrPullProjections",
+      "groups": [
+        "WB-T07"
+      ],
+      "status": "pilot-source-sampled"
+    },
+    {
+      "path": "internal/app/auth_credentials_durability_test.go",
+      "symbol": "TestAuthCredentialStoreLoginKeepsStoresConsistentWhenDirectorySyncFails",
+      "groups": [
+        "AUTH-T10"
+      ],
+      "status": "pilot-source-sampled"
+    },
+    {
+      "path": "internal/app/auth_credentials_durability_test.go",
+      "symbol": "TestAuthCredentialStoreLogoutKeepsStoresConsistentWhenDirectorySyncFails",
+      "groups": [
+        "AUTH-T10"
+      ],
+      "status": "pilot-source-sampled"
+    },
+    {
+      "path": "internal/app/auth_credentials_e2e_test.go",
+      "symbol": "TestAuthCheckFailureRetainsChosenSource",
+      "groups": [
+        "AUTH-T05"
+      ],
+      "status": "pilot-source-sampled"
+    },
+    {
+      "path": "internal/app/auth_credentials_e2e_test.go",
+      "symbol": "TestAuthLoginCheckAndLogoutThroughCLI",
+      "groups": [
+        "AUTH-T05"
+      ],
+      "status": "pilot-source-sampled"
+    },
+    {
+      "path": "internal/app/auth_credentials_e2e_test.go",
+      "symbol": "TestAuthLoginEnvironmentOverrideStopsBeforePrompt",
+      "groups": [
+        "AUTH-T05"
+      ],
+      "status": "pilot-source-sampled"
+    },
+    {
+      "path": "internal/app/auth_credentials_e2e_test.go",
+      "symbol": "TestAuthSetupRejectsInvalidTargetBeforePromptOrSignIn",
+      "groups": [
+        "AUTH-T05"
+      ],
+      "status": "pilot-source-sampled"
+    },
+    {
+      "path": "internal/app/auth_credentials_test.go",
+      "symbol": "TestAuthCredentialStoreLogoutClearsStaleReference",
+      "groups": [
+        "AUTH-T04"
+      ],
+      "status": "pilot-source-sampled"
+    },
+    {
+      "path": "internal/app/auth_credentials_test.go",
+      "symbol": "TestAuthCredentialStoreLogoutDeletesPATAndReference",
+      "groups": [
+        "AUTH-T04"
+      ],
+      "status": "pilot-source-sampled"
+    },
+    {
+      "path": "internal/app/auth_credentials_test.go",
+      "symbol": "TestAuthCredentialStoreLogoutRestoresReferenceWhenDeletionFails",
+      "groups": [
+        "AUTH-T04"
+      ],
+      "status": "pilot-source-sampled"
+    },
+    {
+      "path": "internal/app/auth_credentials_test.go",
+      "symbol": "TestAuthCredentialStoreNamesOrphanedEntryWhenDeletionFailsAfterInstall",
+      "groups": [
+        "AUTH-T04"
+      ],
+      "status": "pilot-source-sampled"
+    },
+    {
+      "path": "internal/app/auth_credentials_test.go",
+      "symbol": "TestAuthCredentialStorePersistsOpaqueReferenceAndReplacesOldPAT",
+      "groups": [
+        "AUTH-T04"
+      ],
+      "status": "pilot-source-sampled"
+    },
+    {
+      "path": "internal/app/cache_review_e2e_test.go",
+      "symbol": "TestProjectMutationsSucceedWhenPostMutationHierarchyIsUnavailable",
+      "groups": [
+        "PROJECT-T09"
+      ],
+      "status": "pilot-source-sampled"
+    },
+    {
+      "path": "internal/app/command_runtime_e2e_test.go",
+      "symbol": "TestContentMovesShareSourceAndDestinationHierarchyWithinPhase",
+      "groups": [
+        "WB-T05"
+      ],
+      "status": "pilot-source-sampled"
+    },
+    {
+      "path": "internal/app/command_runtime_e2e_test.go",
+      "symbol": "TestProjectMoveUsesOneHierarchyPerValidationPhase",
+      "groups": [
+        "PROJECT-T06"
+      ],
+      "status": "pilot-source-sampled"
+    },
+    {
+      "path": "internal/app/content_mutations_test.go",
+      "symbol": "TestContentMutationAdaptersPreserveAuthoritativeResults",
+      "groups": [
+        "WB-T04"
+      ],
+      "status": "pilot-source-sampled"
+    },
+    {
+      "path": "internal/app/content_mutations_test.go",
+      "symbol": "TestProjectMoveAdapterNormalizesReturnedHierarchyPath",
+      "groups": [
+        "PROJECT-T10"
+      ],
+      "status": "pilot-source-sampled"
+    },
+    {
+      "path": "internal/app/content_mutations_test.go",
+      "symbol": "TestProjectMoveAdapterReportsLiteralSlashPathUnavailable",
+      "groups": [
+        "PROJECT-T10"
+      ],
+      "status": "pilot-source-sampled"
+    },
+    {
+      "path": "internal/app/environment_credentials_test.go",
+      "symbol": "TestEnvironmentRemoveRejectsStoredCredential",
+      "groups": [
+        "AUTH-T16"
+      ],
+      "status": "pilot-source-sampled"
+    },
+    {
+      "path": "internal/app/environment_credentials_test.go",
+      "symbol": "TestEnvironmentUpdateRejectsCredentialTargetChange",
+      "groups": [
+        "AUTH-T16"
+      ],
+      "status": "pilot-source-sampled"
+    },
+    {
+      "path": "internal/app/sole_target_e2e_test.go",
+      "symbol": "TestSoleEnvironmentProjectCreateWithoutEnvironmentExecutesExactTarget",
+      "groups": [
+        "PROJECT-T14"
+      ],
+      "status": "pilot-source-sampled"
+    },
+    {
+      "path": "internal/app/utility_batch_preview_test.go",
+      "symbol": "TestAuthLogoutPreviewPreservesCredentialsThenExecutionRemovesOnlySelectedReference",
+      "groups": [
+        "AUTH-T06"
+      ],
+      "status": "pilot-source-sampled"
+    },
+    {
+      "path": "internal/auth/credentials_test.go",
+      "symbol": "TestPATStoreUsesOpaqueReferenceAndBoundedTargetBoundRecord",
+      "groups": [
+        "AUTH-T15"
+      ],
+      "status": "pilot-source-sampled"
+    },
+    {
+      "path": "internal/auth/keyring_smoke_test.go",
+      "symbol": "TestLiveOSPATStoreRoundTrip",
+      "groups": [
+        "AUTH-T14"
+      ],
+      "status": "pilot-source-sampled"
+    },
+    {
+      "path": "internal/cli/auth/command_test.go",
+      "symbol": "TestAuthCheckAndStatusMapEnvironment",
+      "groups": [
+        "AUTH-T01"
+      ],
+      "status": "pilot-source-sampled"
+    },
+    {
+      "path": "internal/cli/auth/command_test.go",
+      "symbol": "TestLoginDoesNotExposeCredentialFlags",
+      "groups": [
+        "AUTH-T01"
+      ],
+      "status": "pilot-source-sampled"
+    },
+    {
+      "path": "internal/cli/auth/command_test.go",
+      "symbol": "TestLoginPromptFailureDoesNotCallAction",
+      "groups": [
+        "AUTH-T01"
+      ],
+      "status": "pilot-source-sampled"
+    },
+    {
+      "path": "internal/cli/auth/command_test.go",
+      "symbol": "TestLoginRejectsMissingEnvironmentBeforePrompt",
+      "groups": [
+        "AUTH-T01"
+      ],
+      "status": "pilot-source-sampled"
+    },
+    {
+      "path": "internal/cli/auth/command_test.go",
+      "symbol": "TestLoginRejectsNonTerminalInputWithoutReading",
+      "groups": [
+        "AUTH-T01"
+      ],
+      "status": "pilot-source-sampled"
+    },
+    {
+      "path": "internal/cli/auth/command_test.go",
+      "symbol": "TestLoginRequiresTerminalAndMapsPromptedCredentials",
+      "groups": [
+        "AUTH-T01"
+      ],
+      "status": "pilot-source-sampled"
+    },
+    {
+      "path": "internal/cli/auth/command_test.go",
+      "symbol": "TestLogoutIsNoninteractiveAndMapsEnvironment",
+      "groups": [
+        "AUTH-T01"
+      ],
+      "status": "pilot-source-sampled"
+    },
+    {
+      "path": "internal/cli/auth/command_test.go",
+      "symbol": "TestLogoutRequiresExplicitEnvironment",
+      "groups": [
+        "AUTH-T01"
+      ],
+      "status": "pilot-source-sampled"
+    },
+    {
+      "path": "internal/cli/content/lifecycle_mutations_test.go",
+      "symbol": "TestLifecycleMutationCommandsExposeExactCapabilityAnnotations",
+      "groups": [
+        "WB-T03"
+      ],
+      "status": "pilot-source-sampled"
+    },
+    {
+      "path": "internal/cli/content/lifecycle_mutations_test.go",
+      "symbol": "TestLifecycleMutationCommandsProjectFlagsAndPreview",
+      "groups": [
+        "PROJECT-T13",
+        "WB-T03"
+      ],
+      "status": "pilot-source-sampled"
+    },
+    {
+      "path": "internal/cli/content/lifecycle_mutations_test.go",
+      "symbol": "TestLifecycleMutationCommandsRequireEnvironmentAndExactSelectors",
+      "groups": [
+        "PROJECT-T13",
+        "WB-T03"
+      ],
+      "status": "pilot-source-sampled"
+    },
+    {
+      "path": "internal/cli/content/lifecycle_mutations_test.go",
+      "symbol": "TestProjectMoveCommandProjectsTopLevelFlag",
+      "groups": [
+        "PROJECT-T13"
+      ],
+      "status": "pilot-source-sampled"
+    },
+    {
+      "path": "internal/cli/content/project_mutation_test.go",
+      "symbol": "TestProjectCreateParsesExplicitParentAndMutation",
+      "groups": [
+        "PROJECT-T13"
+      ],
+      "status": "pilot-source-sampled"
+    },
+    {
+      "path": "internal/cli/content/project_mutation_test.go",
+      "symbol": "TestProjectMutationsRequireExplicitEnvironment",
+      "groups": [
+        "PROJECT-T13"
+      ],
+      "status": "pilot-source-sampled"
+    },
+    {
+      "path": "internal/config/save_windows_test.go",
+      "symbol": "TestSaveReplacesConfigurationAfterTransientReaderCloses",
+      "groups": [
+        "AUTH-T13"
+      ],
+      "status": "pilot-source-sampled"
+    },
+    {
+      "path": "internal/config/update_durability_test.go",
+      "symbol": "TestUpdateKeepsExternalStateWithInstalledConfigurationWhenRestoreFails",
+      "groups": [
+        "AUTH-T08"
+      ],
+      "status": "pilot-source-sampled"
+    },
+    {
+      "path": "internal/config/update_durability_test.go",
+      "symbol": "TestUpdateReinstallsPriorConfigurationBeforeRollbackWhenSyncFails",
+      "groups": [
+        "AUTH-T08"
+      ],
+      "status": "pilot-source-sampled"
+    },
+    {
+      "path": "internal/config/update_durability_test.go",
+      "symbol": "TestUpdateReportsUnconfirmedExternalCommitWhenRestoreAndCommitFail",
+      "groups": [
+        "AUTH-T08"
+      ],
+      "status": "pilot-source-sampled"
+    },
+    {
+      "path": "internal/config/update_durability_test.go",
+      "symbol": "TestUpdateWithPostSaveSkipsExternalCommitWhenSyncFails",
+      "groups": [
+        "AUTH-T08"
+      ],
+      "status": "pilot-source-sampled"
+    },
+    {
+      "path": "internal/config/update_lock_test.go",
+      "symbol": "TestUpdateProceedsWhenTheConfigurationLockIsReleasedInTime",
+      "groups": [
+        "AUTH-T09"
+      ],
+      "status": "pilot-source-sampled"
+    },
+    {
+      "path": "internal/config/update_lock_test.go",
+      "symbol": "TestUpdateStopsWaitingForAHeldConfigurationLock",
+      "groups": [
+        "AUTH-T09"
+      ],
+      "status": "pilot-source-sampled"
+    },
+    {
+      "path": "internal/config/update_rollback_test.go",
+      "symbol": "TestUpdateWithPostSaveRestoresConfigurationWhenExternalCommitFails",
+      "groups": [
+        "AUTH-T07"
+      ],
+      "status": "pilot-source-sampled"
+    },
+    {
+      "path": "internal/config/update_rollback_test.go",
+      "symbol": "TestUpdateWithRollbackDoesNotRestoreAfterCommit",
+      "groups": [
+        "AUTH-T07"
+      ],
+      "status": "pilot-source-sampled"
+    },
+    {
+      "path": "internal/config/update_rollback_test.go",
+      "symbol": "TestUpdateWithRollbackPreservesBothErrors",
+      "groups": [
+        "AUTH-T07"
+      ],
+      "status": "pilot-source-sampled"
+    },
+    {
+      "path": "internal/config/update_rollback_test.go",
+      "symbol": "TestUpdateWithRollbackRestoresStagedFilesBeforeUnlockOnSaveFailure",
+      "groups": [
+        "AUTH-T07"
+      ],
+      "status": "pilot-source-sampled"
+    },
+    {
+      "path": "internal/fsreplace/fsreplace_test.go",
+      "symbol": "TestReplaceInstallsDirectory",
+      "groups": [
+        "AUTH-T12"
+      ],
+      "status": "pilot-source-sampled"
+    },
+    {
+      "path": "internal/fsreplace/fsreplace_test.go",
+      "symbol": "TestReplaceInstallsFileAndSyncsParentDirectory",
+      "groups": [
+        "AUTH-T12"
+      ],
+      "status": "pilot-source-sampled"
+    },
+    {
+      "path": "internal/fsreplace/fsreplace_test.go",
+      "symbol": "TestReplaceReportsParentSyncFailure",
+      "groups": [
+        "AUTH-T12"
+      ],
+      "status": "pilot-source-sampled"
+    },
+    {
+      "path": "internal/fsreplace/fsreplace_test.go",
+      "symbol": "TestReplaceSkipsSyncWhenRenameFails",
+      "groups": [
+        "AUTH-T12"
+      ],
+      "status": "pilot-source-sampled"
+    },
+    {
+      "path": "internal/resources/project/discovery_paths_test.go",
+      "symbol": "TestDiscoveryHierarchyIsLazyImmutableAndNeverChangesLiveResolution",
+      "groups": [
+        "PROJECT-T07"
+      ],
+      "status": "pilot-source-sampled"
+    },
+    {
+      "path": "internal/resources/project/discovery_paths_test.go",
+      "symbol": "TestExplicitProjectPhaseSharesIndexAndFreshPhaseObservesDrift",
+      "groups": [
+        "PROJECT-T07"
+      ],
+      "status": "pilot-source-sampled"
+    },
+    {
+      "path": "internal/resources/project/mutation_test.go",
+      "symbol": "TestAdapterFindsCaseInsensitiveSiblingCollisionOnly",
+      "groups": [
+        "PROJECT-T08"
+      ],
+      "status": "pilot-source-sampled"
+    },
+    {
+      "path": "internal/resources/project/mutation_test.go",
+      "symbol": "TestAdapterNormalizesMutationProjectWithoutRequeryingNewIdentity",
+      "groups": [
+        "PROJECT-T08"
+      ],
+      "status": "pilot-source-sampled"
+    },
+    {
+      "path": "internal/tableau/project/mutation_test.go",
+      "symbol": "TestClientCreatesAndUpdatesProjectsWithExactContracts",
+      "groups": [
+        "PROJECT-T11"
+      ],
+      "status": "pilot-source-sampled"
+    },
+    {
+      "path": "internal/tableau/project/mutation_test.go",
+      "symbol": "TestClientMovesProjectToParentAndTopLevel",
+      "groups": [
+        "PROJECT-T11"
+      ],
+      "status": "pilot-source-sampled"
+    },
+    {
+      "path": "internal/tableau/project/mutation_test.go",
+      "symbol": "TestClientRejectsInvalidProjectMutationsBeforeSending",
+      "groups": [
+        "PROJECT-T12"
+      ],
+      "status": "pilot-source-sampled"
+    },
+    {
+      "path": "internal/tableau/project/mutation_test.go",
+      "symbol": "TestClientRejectsMalformedProjectMutationResponses",
+      "groups": [
+        "PROJECT-T12"
+      ],
+      "status": "pilot-source-sampled"
+    },
+    {
+      "path": "internal/tableau/workbook/client_test.go",
+      "symbol": "TestClientRejectsIncompleteWorkbookUpdatesBeforeSending",
+      "groups": [
+        "WB-T06"
+      ],
+      "status": "pilot-source-sampled"
+    },
+    {
+      "path": "internal/tableau/workbook/client_test.go",
+      "symbol": "TestClientUpdatesOnlyExplicitWorkbookFields",
+      "groups": [
+        "WB-T06"
+      ],
+      "status": "pilot-source-sampled"
+    },
+    {
+      "path": "internal/workspace/installed_config_test.go",
+      "symbol": "TestCloneKeepsDestinationWhenRegistrationStaysInstalled",
+      "groups": [
+        "AUTH-T11"
+      ],
+      "status": "pilot-source-sampled"
+    },
+    {
+      "path": "internal/workspace/installed_config_test.go",
+      "symbol": "TestCloneRemovesDestinationWhenPriorConfigurationWasRestored",
+      "groups": [
+        "AUTH-T11"
+      ],
+      "status": "pilot-source-sampled"
+    },
+    {
+      "path": "internal/workspace/installed_config_test.go",
+      "symbol": "TestCreateKeepsWorkspaceWhenRegistrationStaysInstalled",
+      "groups": [
+        "AUTH-T11"
+      ],
+      "status": "pilot-source-sampled"
+    },
+    {
+      "path": "internal/workspace/installed_config_test.go",
+      "symbol": "TestCreateRemovesWorkspaceWhenPriorConfigurationWasRestored",
+      "groups": [
+        "AUTH-T11"
+      ],
+      "status": "pilot-source-sampled"
+    },
+    {
+      "path": "internal/workspace/installed_config_test.go",
+      "symbol": "TestDeleteFinishesWhenUnregistrationStaysInstalled",
+      "groups": [
+        "AUTH-T11"
+      ],
+      "status": "pilot-source-sampled"
+    }
+  ]
+}

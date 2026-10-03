@@ -1,0 +1,1644 @@
+{
+  "source_revision": "dd22c33bd1d123066f25ec09e2d612cd95717400",
+  "scope": {
+    "status": "architecture-proposal-source-reviewed",
+    "execution": "not-run",
+    "action_packages": 18,
+    "description": "Admin, Pulse, Catalog, content labels, lineage, global search, and jobs. Package/import-shape inventory plus selected workflow and test bodies, not an exhaustive code review.",
+    "dependency_rule": "Resources can import consumer action contracts and implement ports, but cannot run workflows. Actions cannot import resources or Tableau. App owns construction and command-scoped binding.",
+    "catalog_service_rationale": "Catalog is an existing cross-resource metadata service. Audit traverses database/table/column and datasource descriptions; search spans metadata kinds; edits share tag and observation invariants. Keep typed operations, not a new generic kind-switched lifecycle runner.",
+    "proposal_status": "Targets are design recommendations requiring compatibility and regression gates, not implemented migrations."
+  },
+  "reviewed_paths": [
+    {
+      "path": "actions/admin/group/create.go",
+      "scope": "Import and declaration shape only; body and tests not exhaustively assessed."
+    },
+    {
+      "path": "actions/admin/group/delete.go",
+      "scope": "Import and declaration shape only; body and tests not exhaustively assessed."
+    },
+    {
+      "path": "actions/admin/group/inspect.go",
+      "scope": "Import and declaration shape only; body and tests not exhaustively assessed."
+    },
+    {
+      "path": "actions/admin/group/list.go",
+      "scope": "Import and declaration shape only; body and tests not exhaustively assessed."
+    },
+    {
+      "path": "actions/admin/group/member/add.go",
+      "scope": "Full membership mutation body."
+    },
+    {
+      "path": "actions/admin/group/member/membership.go",
+      "scope": "Full membership shared contracts."
+    },
+    {
+      "path": "actions/admin/group/member/remove.go",
+      "scope": "Import and declaration shape only; body and tests not exhaustively assessed."
+    },
+    {
+      "path": "actions/admin/group/update.go",
+      "scope": "Import and declaration shape only; body and tests not exhaustively assessed."
+    },
+    {
+      "path": "actions/admin/labelcategory/create.go",
+      "scope": "Import and declaration shape only; body and tests not exhaustively assessed."
+    },
+    {
+      "path": "actions/admin/labelcategory/delete.go",
+      "scope": "Import and declaration shape only; body and tests not exhaustively assessed."
+    },
+    {
+      "path": "actions/admin/labelcategory/inspect.go",
+      "scope": "Import and declaration shape only; body and tests not exhaustively assessed."
+    },
+    {
+      "path": "actions/admin/labelcategory/list.go",
+      "scope": "Import and declaration shape only; body and tests not exhaustively assessed."
+    },
+    {
+      "path": "actions/admin/labelcategory/update.go",
+      "scope": "Import and declaration shape only; body and tests not exhaustively assessed."
+    },
+    {
+      "path": "actions/admin/labelvalue/delete.go",
+      "scope": "Import and declaration shape only; body and tests not exhaustively assessed."
+    },
+    {
+      "path": "actions/admin/labelvalue/inspect.go",
+      "scope": "Import and declaration shape only; body and tests not exhaustively assessed."
+    },
+    {
+      "path": "actions/admin/labelvalue/list.go",
+      "scope": "Import and declaration shape only; body and tests not exhaustively assessed."
+    },
+    {
+      "path": "actions/admin/labelvalue/update.go",
+      "scope": "Import and declaration shape only; body and tests not exhaustively assessed."
+    },
+    {
+      "path": "actions/admin/permission/create.go",
+      "scope": "Full workflow body."
+    },
+    {
+      "path": "actions/admin/permission/delete.go",
+      "scope": "Import and declaration shape only; body and tests not exhaustively assessed."
+    },
+    {
+      "path": "actions/admin/permission/inspect/action.go",
+      "scope": "Full inspection body and projections."
+    },
+    {
+      "path": "actions/admin/permission/mutation.go",
+      "scope": "Import and declaration shape only; body and tests not exhaustively assessed."
+    },
+    {
+      "path": "actions/admin/user/create.go",
+      "scope": "Import and declaration shape only; body and tests not exhaustively assessed."
+    },
+    {
+      "path": "actions/admin/user/delete.go",
+      "scope": "Import and declaration shape only; body and tests not exhaustively assessed."
+    },
+    {
+      "path": "actions/admin/user/inspect.go",
+      "scope": "Import and declaration shape only; body and tests not exhaustively assessed."
+    },
+    {
+      "path": "actions/admin/user/list.go",
+      "scope": "Import and declaration shape only; body and tests not exhaustively assessed."
+    },
+    {
+      "path": "actions/admin/user/update.go",
+      "scope": "Full workflow body."
+    },
+    {
+      "path": "actions/catalog/audit/action.go",
+      "scope": "Full audit and bounded traversal body."
+    },
+    {
+      "path": "actions/catalog/read/column.go",
+      "scope": "Import and declaration shape only; body and tests not exhaustively assessed."
+    },
+    {
+      "path": "actions/catalog/read/database.go",
+      "scope": "Full database read workflows."
+    },
+    {
+      "path": "actions/catalog/read/rules.go",
+      "scope": "Import and declaration shape only; body and tests not exhaustively assessed."
+    },
+    {
+      "path": "actions/catalog/read/table.go",
+      "scope": "Import and declaration shape only; body and tests not exhaustively assessed."
+    },
+    {
+      "path": "actions/catalog/search/action.go",
+      "scope": "Validation and main execution through line 180; remaining shape only."
+    },
+    {
+      "path": "actions/catalog/update/column.go",
+      "scope": "Import and declaration shape only; body and tests not exhaustively assessed."
+    },
+    {
+      "path": "actions/catalog/update/database.go",
+      "scope": "Full database mutation workflow."
+    },
+    {
+      "path": "actions/catalog/update/metadata.go",
+      "scope": "Full common metadata mutation mechanisms."
+    },
+    {
+      "path": "actions/catalog/update/table.go",
+      "scope": "Import and declaration shape only; body and tests not exhaustively assessed."
+    },
+    {
+      "path": "actions/contentlabel/delete.go",
+      "scope": "Import and declaration shape only; body and tests not exhaustively assessed."
+    },
+    {
+      "path": "actions/contentlabel/inspect.go",
+      "scope": "Import and declaration shape only; body and tests not exhaustively assessed."
+    },
+    {
+      "path": "actions/contentlabel/list.go",
+      "scope": "Import and declaration shape only; body and tests not exhaustively assessed."
+    },
+    {
+      "path": "actions/contentlabel/update.go",
+      "scope": "Full update workflow and baseline helpers."
+    },
+    {
+      "path": "actions/job/cancel.go",
+      "scope": "Import and declaration shape only; body and tests not exhaustively assessed."
+    },
+    {
+      "path": "actions/job/inspect.go",
+      "scope": "Import and declaration shape only; body and tests not exhaustively assessed."
+    },
+    {
+      "path": "actions/job/inspect_types.go",
+      "scope": "Import and declaration shape only; body and tests not exhaustively assessed."
+    },
+    {
+      "path": "actions/job/wait.go",
+      "scope": "Full action callback and error projection."
+    },
+    {
+      "path": "actions/lineage/pull/action.go",
+      "scope": "Full capture/persist workflow."
+    },
+    {
+      "path": "actions/lineage/pull/types.go",
+      "scope": "Import and declaration shape only; body and tests not exhaustively assessed."
+    },
+    {
+      "path": "actions/lineage/pull/validation.go",
+      "scope": "Import and declaration shape only; body and tests not exhaustively assessed."
+    },
+    {
+      "path": "actions/pulse/definition/create.go",
+      "scope": "Full definition create workflow."
+    },
+    {
+      "path": "actions/pulse/definition/create_types.go",
+      "scope": "Import and declaration shape only; body and tests not exhaustively assessed."
+    },
+    {
+      "path": "actions/pulse/definition/definition.go",
+      "scope": "Import and declaration shape only; body and tests not exhaustively assessed."
+    },
+    {
+      "path": "actions/pulse/definition/delete.go",
+      "scope": "Import and declaration shape only; body and tests not exhaustively assessed."
+    },
+    {
+      "path": "actions/pulse/definition/inspect.go",
+      "scope": "Import and declaration shape only; body and tests not exhaustively assessed."
+    },
+    {
+      "path": "actions/pulse/definition/list.go",
+      "scope": "Import and declaration shape only; body and tests not exhaustively assessed."
+    },
+    {
+      "path": "actions/pulse/definition/publish.go",
+      "scope": "Import and declaration shape only; body and tests not exhaustively assessed."
+    },
+    {
+      "path": "actions/pulse/definition/pull.go",
+      "scope": "Import and declaration shape only; body and tests not exhaustively assessed."
+    },
+    {
+      "path": "actions/pulse/metric/delete.go",
+      "scope": "Import and declaration shape only; body and tests not exhaustively assessed."
+    },
+    {
+      "path": "actions/pulse/metric/follow.go",
+      "scope": "Import and declaration shape only; body and tests not exhaustively assessed."
+    },
+    {
+      "path": "actions/pulse/metric/followers.go",
+      "scope": "Import and declaration shape only; body and tests not exhaustively assessed."
+    },
+    {
+      "path": "actions/pulse/metric/fork.go",
+      "scope": "Import and declaration shape only; body and tests not exhaustively assessed."
+    },
+    {
+      "path": "actions/pulse/metric/fork_compact.go",
+      "scope": "Import and declaration shape only; body and tests not exhaustively assessed."
+    },
+    {
+      "path": "actions/pulse/metric/fork_types.go",
+      "scope": "Import and declaration shape only; body and tests not exhaustively assessed."
+    },
+    {
+      "path": "actions/pulse/metric/inspect.go",
+      "scope": "Import and declaration shape only; body and tests not exhaustively assessed."
+    },
+    {
+      "path": "actions/pulse/metric/list.go",
+      "scope": "Import and declaration shape only; body and tests not exhaustively assessed."
+    },
+    {
+      "path": "actions/pulse/metric/metric.go",
+      "scope": "Import and declaration shape only; body and tests not exhaustively assessed."
+    },
+    {
+      "path": "actions/pulse/metric/unfollow.go",
+      "scope": "Import and declaration shape only; body and tests not exhaustively assessed."
+    },
+    {
+      "path": "actions/pulse/subscription/list/action.go",
+      "scope": "Main List body lines 140-289; remaining contracts and symbols."
+    },
+    {
+      "path": "actions/search/action.go",
+      "scope": "Main workflow lines 1-180; remaining symbols."
+    },
+    {
+      "path": "actions/search/types.go",
+      "scope": "Import and declaration shape only; body and tests not exhaustively assessed."
+    },
+    {
+      "path": "actions/search/validation.go",
+      "scope": "Import and declaration shape only; body and tests not exhaustively assessed."
+    },
+    {
+      "path": "internal/cli/admin/command.go",
+      "scope": "Import and declaration shape only; body and tests not exhaustively assessed."
+    },
+    {
+      "path": "internal/cli/admin/labels.go",
+      "scope": "Import and declaration shape only; body and tests not exhaustively assessed."
+    },
+    {
+      "path": "internal/cli/admin/permission_mutations.go",
+      "scope": "Import and declaration shape only; body and tests not exhaustively assessed."
+    },
+    {
+      "path": "internal/cli/catalog/column.go",
+      "scope": "Import and declaration shape only; body and tests not exhaustively assessed."
+    },
+    {
+      "path": "internal/cli/catalog/command.go",
+      "scope": "Import and declaration shape only; body and tests not exhaustively assessed."
+    },
+    {
+      "path": "internal/cli/catalog/database.go",
+      "scope": "Import and declaration shape only; body and tests not exhaustively assessed."
+    },
+    {
+      "path": "internal/cli/catalog/discovery.go",
+      "scope": "Import and declaration shape only; body and tests not exhaustively assessed."
+    },
+    {
+      "path": "internal/cli/catalog/table.go",
+      "scope": "Import and declaration shape only; body and tests not exhaustively assessed."
+    },
+    {
+      "path": "internal/cli/job/command.go",
+      "scope": "Import and declaration shape only; body and tests not exhaustively assessed."
+    },
+    {
+      "path": "internal/cli/pulse/command.go",
+      "scope": "Import and declaration shape only; body and tests not exhaustively assessed."
+    },
+    {
+      "path": "internal/resources/admin/adapter.go",
+      "scope": "Import and declaration shape only; body and tests not exhaustively assessed."
+    },
+    {
+      "path": "internal/resources/admin/permission_mutations.go",
+      "scope": "Import and declaration shape only; body and tests not exhaustively assessed."
+    },
+    {
+      "path": "internal/resources/catalog/adapter.go",
+      "scope": "Full adapter: client embedding and six tag-target wrappers."
+    },
+    {
+      "path": "internal/resources/lineage/adapter.go",
+      "scope": "Import and declaration shape only; body and tests not exhaustively assessed."
+    },
+    {
+      "path": "internal/resources/search/adapter.go",
+      "scope": "Import and declaration shape only; body and tests not exhaustively assessed."
+    },
+    {
+      "path": "internal/resources/search/native.go",
+      "scope": "Import and declaration shape only; body and tests not exhaustively assessed."
+    },
+    {
+      "path": "internal/tableau/admin/client.go",
+      "scope": "Import and declaration shape only; body and tests not exhaustively assessed."
+    },
+    {
+      "path": "internal/tableau/admin/permission_mutations.go",
+      "scope": "Import and declaration shape only; body and tests not exhaustively assessed."
+    },
+    {
+      "path": "internal/tableau/admin/types.go",
+      "scope": "Import and declaration shape only; body and tests not exhaustively assessed."
+    },
+    {
+      "path": "internal/tableau/fieldcatalog/client.go",
+      "scope": "Import and declaration shape only; body and tests not exhaustively assessed."
+    },
+    {
+      "path": "internal/tableau/fieldcatalog/graphql.go",
+      "scope": "Import and declaration shape only; body and tests not exhaustively assessed."
+    },
+    {
+      "path": "internal/tableau/fieldcatalog/normalize.go",
+      "scope": "Import and declaration shape only; body and tests not exhaustively assessed."
+    },
+    {
+      "path": "internal/tableau/fieldcatalog/resolve.go",
+      "scope": "Import and declaration shape only; body and tests not exhaustively assessed."
+    },
+    {
+      "path": "internal/tableau/fieldcatalog/types.go",
+      "scope": "Import and declaration shape only; body and tests not exhaustively assessed."
+    },
+    {
+      "path": "internal/tableau/job/client.go",
+      "scope": "Import and declaration shape only; body and tests not exhaustively assessed."
+    },
+    {
+      "path": "internal/tableau/metadata/client.go",
+      "scope": "Import and declaration shape only; body and tests not exhaustively assessed."
+    },
+    {
+      "path": "internal/tableau/metadata/lineage.go",
+      "scope": "Import and declaration shape only; body and tests not exhaustively assessed."
+    },
+    {
+      "path": "internal/tableau/metadataassets/client.go",
+      "scope": "Import and declaration shape only; body and tests not exhaustively assessed."
+    },
+    {
+      "path": "internal/tableau/metadataassets/graphql.go",
+      "scope": "Import and declaration shape only; body and tests not exhaustively assessed."
+    },
+    {
+      "path": "internal/tableau/metadataassets/labels.go",
+      "scope": "Import and declaration shape only; body and tests not exhaustively assessed."
+    },
+    {
+      "path": "internal/tableau/metadataassets/types.go",
+      "scope": "Import and declaration shape only; body and tests not exhaustively assessed."
+    },
+    {
+      "path": "internal/tableau/pulse/bundle_reconcile.go",
+      "scope": "Import and declaration shape only; body and tests not exhaustively assessed."
+    },
+    {
+      "path": "internal/tableau/pulse/client.go",
+      "scope": "Import and declaration shape only; body and tests not exhaustively assessed."
+    },
+    {
+      "path": "internal/tableau/pulse/delete.go",
+      "scope": "Import and declaration shape only; body and tests not exhaustively assessed."
+    },
+    {
+      "path": "internal/tableau/pulse/metric_reconcile.go",
+      "scope": "Import and declaration shape only; body and tests not exhaustively assessed."
+    },
+    {
+      "path": "internal/tableau/pulse/types.go",
+      "scope": "Import and declaration shape only; body and tests not exhaustively assessed."
+    },
+    {
+      "path": "internal/tableau/search/client.go",
+      "scope": "Import and declaration shape only; body and tests not exhaustively assessed."
+    },
+    {
+      "path": "internal/app/admin_adapters.go",
+      "scope": "Full user/group adapter body and Cloud eligibility policy."
+    },
+    {
+      "path": "internal/app/admin_permission_mutations.go",
+      "scope": "Full permission runtime binding, principal lookup, and bridge."
+    },
+    {
+      "path": "internal/app/catalog.go",
+      "scope": "Full setup and forwarding service bodies."
+    },
+    {
+      "path": "internal/app/labels.go",
+      "scope": "Full content attachment and Admin vocabulary binding."
+    },
+    {
+      "path": "internal/app/pulse.go",
+      "scope": "Selected bodies: setup 57-74, subscription adapter 77-126, create 228-239, collision/deletion/field validation 541-640; remaining symbols."
+    },
+    {
+      "path": "internal/app/pulse_bundle.go",
+      "scope": "Import and symbol shape only."
+    },
+    {
+      "path": "internal/app/jobs.go",
+      "scope": "Workflow bodies 25-145; remaining symbols."
+    },
+    {
+      "path": "internal/app/search.go",
+      "scope": "Setup and source routing bodies 47-173; remaining symbols including composite and complete-list providers."
+    },
+    {
+      "path": "internal/app/content_remote.go",
+      "scope": "Lineage binding and adapter symbol locations only; other content workflows outside scope."
+    },
+    {
+      "path": "internal/cli/content/labels.go",
+      "scope": "Import and dependency declaration shape only."
+    },
+    {
+      "path": "internal/cli/content/lineage.go",
+      "scope": "Import and dependency declaration shape only."
+    },
+    {
+      "path": "internal/cli/root.go",
+      "scope": "Catalog command mounting, lines 350-364: labels and lineage constructors currently come from the content CLI package."
+    },
+    {
+      "path": "internal/cli/search.go",
+      "scope": "Import and declaration shape only."
+    },
+    {
+      "path": "actions/admin/permission/create_action_test.go",
+      "scope": "Full selected unit test file and fake behavior."
+    },
+    {
+      "path": "actions/pulse/definition/create_partial_test.go",
+      "scope": "Full selected unit test file and fake behavior."
+    },
+    {
+      "path": "actions/catalog/update/failure_characterization_test.go",
+      "scope": "Full error-contract matrix; not mutation state verification."
+    },
+    {
+      "path": "actions/job/wait_test.go",
+      "scope": "Full wrapper outcome test and fixed callback fake."
+    },
+    {
+      "path": "actions/contentlabel/update_test.go",
+      "scope": "Full stateful fake and all five tests."
+    },
+    {
+      "path": "actions/pulse/subscription/list/action_test.go",
+      "scope": "Full reader fake and all six tests."
+    },
+    {
+      "path": "actions/catalog/read/workflows_characterization_test.go",
+      "scope": "Nil readers and database/table pagination test bodies; column counterpart declaration and initial portion."
+    }
+  ],
+  "package_decisions": [
+    {
+      "source": "actions/admin/user",
+      "target": "actions/admin/user",
+      "decision": "retain-and-complete-ownership",
+      "rationale": "Already a cohesive resource package. Move Cloud full-name eligibility policy from the app adapter into the workflow, with an explicit caller/platform observation port.",
+      "evidence": [
+        {
+          "path": "actions/admin/user/update.go",
+          "line": 1
+        },
+        {
+          "path": "internal/app/admin_adapters.go",
+          "line": 21
+        }
+      ],
+      "preserve": [
+        "Requested-field presence, fresh baseline, per-field verification, partial and unknown outcomes, auth-setting normalization."
+      ]
+    },
+    {
+      "source": "actions/admin/group",
+      "target": "actions/admin/group",
+      "decision": "retain-and-merge-membership",
+      "rationale": "Keep group lifecycle and membership workflows together without combining their operation contracts.",
+      "evidence": [
+        {
+          "path": "actions/admin/group/inspect.go",
+          "line": 98
+        }
+      ],
+      "preserve": [
+        "Bounded user/group resolution, membership versus group lifecycle semantics."
+      ]
+    },
+    {
+      "source": "actions/admin/group/member",
+      "target": "actions/admin/group",
+      "decision": "merge",
+      "rationale": "Membership is a group operation. Remove this nested package and retain explicit AddMember and RemoveMember inputs, plans, and result types.",
+      "evidence": [
+        {
+          "path": "actions/admin/group/member/add.go",
+          "line": 44
+        },
+        {
+          "path": "actions/admin/group/member/membership.go",
+          "line": 1
+        }
+      ],
+      "preserve": [
+        "Username resolution, exact group identity, fresh membership check, no-op outcomes."
+      ]
+    },
+    {
+      "source": "actions/admin/labelcategory",
+      "target": "actions/admin/labelcategory",
+      "decision": "retain",
+      "rationale": "Vocabulary category lifecycle already has a cohesive owner. Sharing the metadataassets client does not make it content attachment lifecycle.",
+      "evidence": [
+        {
+          "path": "actions/admin/labelcategory/update.go",
+          "line": 64
+        }
+      ],
+      "preserve": [
+        "Category identities, validation, mutation acknowledgement, and baseline checks."
+      ]
+    },
+    {
+      "source": "actions/admin/labelvalue",
+      "target": "actions/admin/labelvalue",
+      "decision": "retain",
+      "rationale": "Vocabulary value lifecycle is distinct from attachment state. Keep its operation contracts together.",
+      "evidence": [
+        {
+          "path": "actions/admin/labelvalue/update.go",
+          "line": 68
+        }
+      ],
+      "preserve": [
+        "System-managed values, category association, observation and mutation semantics."
+      ]
+    },
+    {
+      "source": "actions/admin/permission",
+      "target": "actions/admin/permission",
+      "decision": "retain-and-merge-inspect",
+      "rationale": "Keep permission read and mutation operations together. Move principal selection and prerequisite outcome handling from app to explicit workflow dependencies.",
+      "evidence": [
+        {
+          "path": "actions/admin/permission/create.go",
+          "line": 16
+        },
+        {
+          "path": "internal/app/admin_permission_mutations.go",
+          "line": 14
+        }
+      ],
+      "preserve": [
+        "Inherited versus explicit rules, content-kind and default scope, fresh snapshot, acknowledged writes with failed verification."
+      ]
+    },
+    {
+      "source": "actions/admin/permission/inspect",
+      "target": "actions/admin/permission",
+      "decision": "merge",
+      "rationale": "Inspection is another permission operation. Keep InspectInput and inspect projections distinct from mutation requests.",
+      "evidence": [
+        {
+          "path": "actions/admin/permission/inspect/action.go",
+          "line": 12
+        }
+      ],
+      "preserve": [
+        "Principal and capability filters, stable sorting, compact counts, full rules."
+      ]
+    },
+    {
+      "source": "actions/pulse/definition",
+      "target": "actions/pulse/definition",
+      "decision": "retain-and-complete-ownership",
+      "rationale": "Keep definition lifecycle cohesive. Move semantic field-role rules from app to action rules using schema observations, not a Tableau client.",
+      "evidence": [
+        {
+          "path": "actions/pulse/definition/create.go",
+          "line": 115
+        },
+        {
+          "path": "internal/app/pulse.go",
+          "line": 583
+        }
+      ],
+      "preserve": [
+        "Collision scope, exact fields, aggregate/date/dimension restrictions, created identity when default-metric verification fails."
+      ]
+    },
+    {
+      "source": "actions/pulse/metric",
+      "target": "actions/pulse/metric",
+      "decision": "retain",
+      "rationale": "Metric variants, followers, and forks remain distinct from definition lifecycle despite sharing Pulse protocol clients.",
+      "evidence": [
+        {
+          "path": "actions/pulse/metric/fork.go",
+          "line": 20
+        }
+      ],
+      "preserve": [
+        "Explicit fork reader, creator, and reconciliation contracts; distinct definition and metric identities."
+      ]
+    },
+    {
+      "source": "actions/pulse/subscription/list",
+      "target": "actions/pulse/subscription",
+      "decision": "move-and-remove-verb-layer",
+      "rationale": "This is authenticated-user subscription inventory, not metric-follower lifecycle. Keep its own cohesive resource package without a list subpackage.",
+      "evidence": [
+        {
+          "path": "actions/pulse/subscription/list/action.go",
+          "line": 140
+        }
+      ],
+      "preserve": [
+        "User-bound cursor, direct versus group-derived subscriptions, partial coverage, batched enrichment of observed IDs only."
+      ]
+    },
+    {
+      "source": "actions/catalog/read",
+      "target": "actions/catalog",
+      "decision": "merge-into-semantic-service",
+      "rationale": "Catalog reads already share MetadataQuery, MetadataPage, MetadataIdentity, and coverage rules. Keep typed database, table, and column functions within the service.",
+      "evidence": [
+        {
+          "path": "actions/catalog/read/database.go",
+          "line": 15
+        },
+        {
+          "path": "actions/catalog/read/workflows_characterization_test.go",
+          "line": 77
+        }
+      ],
+      "preserve": [
+        "REST versus Metadata identities, parent selectors, bounded lists, partial evidence."
+      ]
+    },
+    {
+      "source": "actions/catalog/update",
+      "target": "actions/catalog",
+      "decision": "merge-into-semantic-service",
+      "rationale": "Metadata edits share tag planning, acknowledgement checks, retained identity, and failure-phase rules. Preserve explicit resource-specific mutation sequences.",
+      "evidence": [
+        {
+          "path": "actions/catalog/update/metadata.go",
+          "line": 20
+        },
+        {
+          "path": "actions/catalog/update/database.go",
+          "line": 21
+        }
+      ],
+      "preserve": [
+        "Property write then tag additions/removals, fresh baseline, nil description, tagsObserved, completed steps and partial outcomes."
+      ]
+    },
+    {
+      "source": "actions/catalog/search",
+      "target": "actions/catalog",
+      "decision": "merge-into-semantic-service",
+      "rationale": "Existing search spans database, table, and column observations. A catalog service avoids sibling-resource coordination exports without adding a generic runner.",
+      "evidence": [
+        {
+          "path": "actions/catalog/search/action.go",
+          "line": 22
+        },
+        {
+          "path": "actions/catalog/search/action.go",
+          "line": 101
+        }
+      ],
+      "preserve": [
+        "Column parent scope, bounded substring scan, search-specific coverage and continuation."
+      ]
+    },
+    {
+      "source": "actions/catalog/audit",
+      "target": "actions/catalog",
+      "decision": "merge-into-semantic-service",
+      "rationale": "Existing audit traverses database-to-table-to-column and datasource descriptions with one present/missing/unknown model. This is a cross-resource metadata service.",
+      "evidence": [
+        {
+          "path": "actions/catalog/audit/action.go",
+          "line": 21
+        },
+        {
+          "path": "actions/catalog/audit/action.go",
+          "line": 175
+        }
+      ],
+      "preserve": [
+        "Inherited versus direct descriptions, unknown observations, total assessment bound, parent verification, audit-specific traversal."
+      ]
+    },
+    {
+      "source": "actions/contentlabel",
+      "target": "actions/contentlabel",
+      "decision": "retain",
+      "rationale": "Content label attachments have separate target, baseline, and acknowledgement contracts from Admin label vocabulary.",
+      "evidence": [
+        {
+          "path": "actions/contentlabel/update.go",
+          "line": 77
+        }
+      ],
+      "preserve": [
+        "Explicit clear versus omitted flags, system-managed refusal, acknowledged-write marker, readback verification and retained identity."
+      ]
+    },
+    {
+      "source": "actions/lineage/pull",
+      "target": "actions/lineage",
+      "decision": "move-and-remove-verb-layer",
+      "rationale": "Keep lineage capture and artifact outcome ownership together without an isolated pull package.",
+      "evidence": [
+        {
+          "path": "actions/lineage/pull/action.go",
+          "line": 19
+        },
+        {
+          "path": "actions/lineage/pull/action.go",
+          "line": 34
+        }
+      ],
+      "preserve": [
+        "Exact root, partial graph persisted after provider failure, preview, countsUnknown, artifact containment."
+      ]
+    },
+    {
+      "source": "actions/search",
+      "target": "actions/search",
+      "decision": "retain-and-absorb-routing",
+      "rationale": "Move globalSearchSource routing and composite continuation ownership from app into the search service. Resource adapters supply native, complete-list, and cached observations.",
+      "evidence": [
+        {
+          "path": "actions/search/action.go",
+          "line": 55
+        },
+        {
+          "path": "internal/app/search.go",
+          "line": 128
+        }
+      ],
+      "preserve": [
+        "Blank-query complete inventory, native search limitations, administrative policy, cursor fingerprints, requested type scope, bounded pagination."
+      ]
+    },
+    {
+      "source": "actions/job",
+      "target": "actions/job",
+      "decision": "retain-and-absorb-workflow",
+      "rationale": "Wait and cancel currently call back into app-owned sequencing. Move orchestration into this service with narrow receipt, remote-job, monitor, and session-release ports.",
+      "evidence": [
+        {
+          "path": "actions/job/wait.go",
+          "line": 60
+        },
+        {
+          "path": "internal/app/jobs.go",
+          "line": 58
+        },
+        {
+          "path": "internal/app/jobs.go",
+          "line": 113
+        }
+      ],
+      "preserve": [
+        "Exact target match, accepted receipt identity, terminal local result, credential coordination, cancellation acceptance distinct from terminal state."
+      ]
+    },
+    {
+      "source": "internal/resources/admin",
+      "target": "internal/resources/admin",
+      "decision": "retain-and-implement-action-ports",
+      "rationale": "Inventory, exact identity resolution, and authorization are substantive shared adapter work. Let adapters import consumer action contracts and remove mandatory app conversion bridges.",
+      "evidence": [
+        {
+          "path": "internal/resources/admin/adapter.go",
+          "line": 65
+        },
+        {
+          "path": "internal/resources/admin/adapter.go",
+          "line": 129
+        },
+        {
+          "path": "internal/resources/admin/permission_mutations.go",
+          "line": 44
+        }
+      ],
+      "preserve": [
+        "LUID authority, ambiguity refusal, pagination, capability checks, principal-resolution evidence; convert native API records once at this boundary."
+      ]
+    },
+    {
+      "source": "internal/resources/catalog",
+      "target": null,
+      "decision": "remove-after-port-adjustment",
+      "rationale": "The adapter embeds metadataassets.Client and adds six tag-target wrappers. Use its existing typed LabelTarget AddTags/DeleteTag port directly, with targets built by explicit Catalog workflows.",
+      "evidence": [
+        {
+          "path": "internal/resources/catalog/adapter.go",
+          "line": 10
+        },
+        {
+          "path": "internal/resources/catalog/adapter.go",
+          "line": 14
+        },
+        {
+          "path": "internal/tableau/metadataassets/types.go",
+          "line": 16
+        }
+      ],
+      "preserve": [
+        "Exact database/table/column target types, capability checks and native acknowledgement remain in the client; do not create a replacement forwarding adapter."
+      ]
+    },
+    {
+      "source": "internal/resources/lineage",
+      "target": "internal/resources/lineage",
+      "decision": "retain-and-implement-action-port",
+      "rationale": "Graph normalization serves standalone lineage and content capture. Share a narrow internal graph observation shape where equivalent, removing app-only copying.",
+      "evidence": [
+        {
+          "path": "internal/resources/lineage/adapter.go",
+          "line": 64
+        },
+        {
+          "path": "internal/resources/lineage/adapter.go",
+          "line": 91
+        }
+      ],
+      "preserve": [
+        "Canonical nodes/edges, exact root, diagnostics, incomplete capture; graph observations are not artifact output projections."
+      ]
+    },
+    {
+      "source": "internal/resources/search",
+      "target": "internal/resources/search",
+      "decision": "retain-and-implement-action-ports",
+      "rationale": "Native endpoint identity normalization and bounded dedicated listings are real provider differences. Remove app DTO bridges, not these mechanisms.",
+      "evidence": [
+        {
+          "path": "internal/resources/search/adapter.go",
+          "line": 65
+        },
+        {
+          "path": "internal/resources/search/native.go",
+          "line": 55
+        },
+        {
+          "path": "internal/resources/search/native.go",
+          "line": 254
+        }
+      ],
+      "preserve": [
+        "Datasource identity checks, native availability errors, pagination and coverage; workflow routing belongs in actions/search."
+      ]
+    },
+    {
+      "source": "internal/app/pulse.go provider sections; internal/app/pulse_bundle.go provider sections",
+      "target": "internal/resources/pulse",
+      "decision": "extract-substantive-provider-adapter",
+      "rationale": "Create one Pulse provider package from current app adapters. It owns native response translation, schema acquisition, and provider readback mechanics, not user outcome sequencing.",
+      "evidence": [
+        {
+          "path": "internal/app/pulse.go",
+          "line": 77
+        },
+        {
+          "path": "internal/app/pulse.go",
+          "line": 541
+        },
+        {
+          "path": "internal/app/pulse.go",
+          "line": 583
+        },
+        {
+          "path": "internal/app/pulse_bundle.go",
+          "line": 151
+        }
+      ],
+      "preserve": [
+        "Action-owned narrow ports, batch bounds, exact identity, protocol normalization; semantic field rules remain in definition/metric actions."
+      ]
+    },
+    {
+      "source": "internal/app/admin_adapters.go; internal/app/admin_permission_mutations.go bridge sections",
+      "target": "internal/resources/admin and actions/admin/{user,permission}",
+      "decision": "remove-bridges-and-distribute-real-policy",
+      "rationale": "Replace per-operation app adapters with direct resource implementations. Move caller/platform eligibility and principal prerequisite outcomes to workflow owners. Keep only runtime construction and scope binding.",
+      "evidence": [
+        {
+          "path": "internal/app/admin_adapters.go",
+          "line": 64
+        },
+        {
+          "path": "internal/app/admin_permission_mutations.go",
+          "line": 32
+        }
+      ],
+      "preserve": [
+        "One meaningful native-to-action conversion, not aliases between inequivalent API and public output records."
+      ]
+    },
+    {
+      "source": "internal/app/catalog.go",
+      "target": "internal/app/catalog.go wiring only",
+      "decision": "remove-forwarding-service-objects",
+      "rationale": "Bind the shared metadata client directly to typed Catalog operations. Retain authentication, target binding, and capability enforcement in runtime wiring.",
+      "evidence": [
+        {
+          "path": "internal/app/catalog.go",
+          "line": 1
+        }
+      ],
+      "preserve": [
+        "No raw Tableau client in Cobra; dependency construction is not an action responsibility."
+      ]
+    },
+    {
+      "source": "internal/app/labels.go",
+      "target": "internal/app/labels.go wiring only",
+      "decision": "consolidate-command-binding",
+      "rationale": "Replace four content-label service forwarding types with one command-scoped binding surface. Metadataassets already satisfies vocabulary and attachment ports.",
+      "evidence": [
+        {
+          "path": "internal/app/labels.go",
+          "line": 1
+        }
+      ],
+      "preserve": [
+        "Managed capability checks before setup, separate vocabulary versus attachment actions, credential/session lifetime."
+      ]
+    },
+    {
+      "source": "internal/app/jobs.go workflow sections",
+      "target": "actions/job",
+      "decision": "move-outcome-orchestration",
+      "rationale": "Remove app-to-action-to-app callbacks. Retain factory wiring in app and shared durable implementation in jobmonitor.",
+      "evidence": [
+        {
+          "path": "internal/app/jobs.go",
+          "line": 25
+        },
+        {
+          "path": "internal/app/jobs.go",
+          "line": 58
+        },
+        {
+          "path": "internal/app/jobs.go",
+          "line": 113
+        }
+      ],
+      "preserve": [
+        "Receipt target verification, timeout handling, recovery, cancellation support, cleanup/session hooks."
+      ]
+    },
+    {
+      "source": "internal/app/search.go routing and composite source sections",
+      "target": "actions/search and internal/resources/search",
+      "decision": "move-workflow-and-provider-ownership",
+      "rationale": "Action owns category/source selection and composite continuation. Resources own source-specific querying and normalization. Runtime constructs sources once.",
+      "evidence": [
+        {
+          "path": "internal/app/search.go",
+          "line": 47
+        },
+        {
+          "path": "internal/app/search.go",
+          "line": 128
+        }
+      ],
+      "preserve": [
+        "Existing continuation compatibility and exact coverage require characterization before movement."
+      ]
+    },
+    {
+      "source": "internal/app/content_remote.go lineage bridge sections",
+      "target": "actions/lineage and internal/resources/lineage",
+      "decision": "remove-copying-bridge",
+      "rationale": "Keep runtime binding and artifact writer injection. Let substantive lineage provider implement the action port directly with compatible internal observations.",
+      "evidence": [
+        {
+          "path": "internal/app/content_remote.go",
+          "line": 483
+        },
+        {
+          "path": "internal/app/content_remote.go",
+          "line": 809
+        }
+      ],
+      "preserve": [
+        "No whole-file deletion: content_remote.go also wires unrelated content workflows."
+      ]
+    },
+    {
+      "source": "internal/tableau/admin",
+      "target": "internal/tableau/admin",
+      "decision": "retain-protocol",
+      "rationale": "Keep endpoint requests, native contracts, and acknowledgement decoding separate from group/user/permission outcomes.",
+      "evidence": [
+        {
+          "path": "internal/tableau/admin/client.go",
+          "line": 99
+        },
+        {
+          "path": "internal/tableau/admin/permission_mutations.go",
+          "line": 20
+        }
+      ],
+      "preserve": [
+        "Returned attribute presence and permission scope; do not alias native wire DTOs to public projections."
+      ]
+    },
+    {
+      "source": "internal/tableau/pulse",
+      "target": "internal/tableau/pulse",
+      "decision": "retain-protocol-and-review-reconciliation-boundary",
+      "rationale": "Retain native requests and representation decoding. Move multi-request provider readback mechanics to resources/pulse when isolated; action determines requested outcome.",
+      "evidence": [
+        {
+          "path": "internal/tableau/pulse/client.go",
+          "line": 68
+        },
+        {
+          "path": "internal/tableau/pulse/bundle_reconcile.go",
+          "line": 17
+        },
+        {
+          "path": "internal/tableau/pulse/metric_reconcile.go",
+          "line": 14
+        }
+      ],
+      "preserve": [
+        "Polling bounds, canonical comparison, accepted identities and unknown outcome. Reconciliation bodies were not fully audited in this pass."
+      ]
+    },
+    {
+      "source": "internal/tableau/metadataassets",
+      "target": "internal/tableau/metadataassets",
+      "decision": "retain-shared-protocol",
+      "rationale": "One native API client legitimately serves Catalog metadata, Admin vocabulary, and content attachments. This sharing does not justify merging their action owners.",
+      "evidence": [
+        {
+          "path": "internal/tableau/metadataassets/types.go",
+          "line": 7
+        },
+        {
+          "path": "internal/tableau/metadataassets/labels.go",
+          "line": 24
+        }
+      ],
+      "preserve": [
+        "REST/GraphQL mapping, write acknowledgement marker, capability checks, nil versus observed values."
+      ]
+    },
+    {
+      "source": "internal/tableau/metadata",
+      "target": "internal/tableau/metadata",
+      "decision": "retain-shared-protocol",
+      "rationale": "Keep native Metadata API capture separate from shared graph normalization and lineage artifact outcomes.",
+      "evidence": [
+        {
+          "path": "internal/tableau/metadata/lineage.go",
+          "line": 51
+        }
+      ],
+      "preserve": [
+        "Bounded upstream capture, authoritative identities, partial native evidence; protocol bodies not exhaustively reviewed."
+      ]
+    },
+    {
+      "source": "internal/tableau/fieldcatalog",
+      "target": "internal/tableau/fieldcatalog",
+      "decision": "retain-shared-boundary-pending-provider-normalization-assessment",
+      "rationale": "Fieldcatalog supplies datasource and Pulse schema observations. Do not absorb shared schema decoding into Pulse or duplicate exact-field resolution.",
+      "evidence": [
+        {
+          "path": "internal/tableau/fieldcatalog/client.go",
+          "line": 30
+        },
+        {
+          "path": "internal/tableau/fieldcatalog/types.go",
+          "line": 17
+        },
+        {
+          "path": "internal/tableau/fieldcatalog/resolve.go",
+          "line": 8
+        }
+      ],
+      "preserve": [
+        "Shared schema representation and exact selector rules; shape-only review does not justify moving every normalization helper."
+      ]
+    },
+    {
+      "source": "internal/tableau/search",
+      "target": "internal/tableau/search",
+      "decision": "retain-protocol",
+      "rationale": "Keep native search availability, endpoint, and wire contracts separate from complete inventory fallback and mixed-source continuation.",
+      "evidence": [
+        {
+          "path": "internal/tableau/search/client.go",
+          "line": 28
+        },
+        {
+          "path": "internal/tableau/search/client.go",
+          "line": 75
+        }
+      ],
+      "preserve": [
+        "Native endpoint limits and availability must remain observable."
+      ]
+    },
+    {
+      "source": "internal/tableau/job",
+      "target": "internal/tableau/job",
+      "decision": "retain-protocol",
+      "rationale": "Native job inspection and cancellation remain protocol operations consumed by the job workflow.",
+      "evidence": [
+        {
+          "path": "internal/tableau/job/client.go",
+          "line": 39
+        },
+        {
+          "path": "internal/tableau/job/client.go",
+          "line": 76
+        }
+      ],
+      "preserve": [
+        "Cancellation acknowledgement is not proof of terminal cancellation."
+      ]
+    },
+    {
+      "source": "internal/cli/admin",
+      "target": "internal/cli/admin",
+      "decision": "retain-thin-category-plumbing",
+      "rationale": "Keep command discovery, flags, required argument checks, and rendering; update action imports and use one typed dependency-binding convention.",
+      "evidence": [
+        {
+          "path": "internal/cli/admin/command.go",
+          "line": 17
+        },
+        {
+          "path": "internal/cli/admin/permission_mutations.go",
+          "line": 22
+        }
+      ],
+      "preserve": [
+        "CLI vocabulary, same-action permission batching, preview, and error rendering."
+      ]
+    },
+    {
+      "source": "internal/cli/catalog",
+      "target": "internal/cli/catalog",
+      "decision": "retain-thin-category-plumbing",
+      "rationale": "Change imports to the cohesive Catalog service, keeping typed database/table/column command builders and audit/search flags.",
+      "evidence": [
+        {
+          "path": "internal/cli/catalog/command.go",
+          "line": 16
+        },
+        {
+          "path": "internal/cli/catalog/discovery.go",
+          "line": 35
+        }
+      ],
+      "preserve": [
+        "Command IDs, flags, selectors, category discovery and output contracts."
+      ]
+    },
+    {
+      "source": "internal/cli/pulse",
+      "target": "internal/cli/pulse",
+      "decision": "retain-thin-category-plumbing",
+      "rationale": "Keep existing category registration and typed resource command dependencies; remove only verb-layer imports and redundant service types.",
+      "evidence": [
+        {
+          "path": "internal/cli/pulse/command.go",
+          "line": 22
+        }
+      ],
+      "preserve": [
+        "Definition, metric, subscription, and publishing distinctions."
+      ]
+    },
+    {
+      "source": "internal/cli/job",
+      "target": "internal/cli/job",
+      "decision": "retain-thin-category-plumbing",
+      "rationale": "Bind action-owned job workflows directly through typed functions; keep Cobra arguments and rendering.",
+      "evidence": [
+        {
+          "path": "internal/cli/job/command.go",
+          "line": 16
+        },
+        {
+          "path": "internal/cli/job/command.go",
+          "line": 73
+        }
+      ],
+      "preserve": [
+        "Exact selectors and timeout/preview flags."
+      ]
+    },
+    {
+      "source": "internal/cli/search.go",
+      "target": "internal/cli/search.go",
+      "decision": "retain-command-plumbing",
+      "rationale": "Root search placement reflects the command surface, not ownership of source routing.",
+      "evidence": [
+        {
+          "path": "internal/cli/search.go",
+          "line": 11
+        }
+      ],
+      "preserve": [
+        "Type filters, bounds, cursor, rendering."
+      ]
+    },
+    {
+      "source": "internal/cli/content/labels.go",
+      "target": "internal/cli/catalog/labels.go",
+      "decision": "move-constructor-to-owning-cli-category",
+      "rationale": "Root already mounts label commands under catalog. Move constructor ownership to the Catalog CLI package without changing the public route or the contentlabel action owner.",
+      "evidence": [
+        {
+          "path": "internal/cli/content/labels.go",
+          "line": 23
+        },
+        {
+          "path": "internal/cli/root.go",
+          "line": 363
+        }
+      ],
+      "preserve": [
+        "Existing catalog label route, attachment selectors, and omitted versus explicit flags."
+      ]
+    },
+    {
+      "source": "internal/cli/content/lineage.go",
+      "target": "internal/cli/catalog/lineage.go",
+      "decision": "move-constructor-to-owning-cli-category",
+      "rationale": "Root already mounts lineage under catalog. Move constructor ownership to the Catalog CLI package and update the action import; graph logic remains outside Cobra.",
+      "evidence": [
+        {
+          "path": "internal/cli/content/lineage.go",
+          "line": 12
+        },
+        {
+          "path": "internal/cli/root.go",
+          "line": 358
+        }
+      ],
+      "preserve": [
+        "Existing catalog lineage route, artifact destination, bounded scope, and preview."
+      ]
+    }
+  ],
+  "workflow_examples": [
+    {
+      "id": "admin-user-update",
+      "trace": [
+        {
+          "path": "internal/cli/admin/command.go",
+          "line": 26
+        },
+        {
+          "path": "internal/app/admin_adapters.go",
+          "line": 21
+        },
+        {
+          "path": "actions/admin/user/update.go",
+          "line": 1
+        },
+        {
+          "path": "internal/resources/admin/adapter.go",
+          "line": 186
+        },
+        {
+          "path": "internal/tableau/admin/client.go",
+          "line": 99
+        }
+      ],
+      "ownership": "CLI binds requested flags. App currently supplies Cloud/caller eligibility and record conversion. Action resolves, plans, rechecks, writes, and verifies requested fields. Resources resolve identities; Tableau handles the endpoint.",
+      "change": "Move eligibility into the user workflow with explicit observations; let resources/admin satisfy the user action ports directly. Keep response-presence and per-field verification.",
+      "evidence_limit": "Full action and app adapter inspected. CLI and protocol declarations inspected; no execution or claim about current upstream behavior."
+    },
+    {
+      "id": "permission-create",
+      "trace": [
+        {
+          "path": "internal/cli/admin/permission_mutations.go",
+          "line": 22
+        },
+        {
+          "path": "internal/app/admin_permission_mutations.go",
+          "line": 14
+        },
+        {
+          "path": "actions/admin/permission/create.go",
+          "line": 16
+        },
+        {
+          "path": "internal/resources/admin/permission_mutations.go",
+          "line": 44
+        },
+        {
+          "path": "internal/tableau/admin/permission_mutations.go",
+          "line": 20
+        }
+      ],
+      "ownership": "App resolves username and maps prerequisite errors. Action checks initial and fresh snapshots, writes, and verifies. Resources validate principals and capability; protocol builds the native scope.",
+      "change": "One permission action owner includes inspect and create/delete. Consumer-owned ports expose principal resolution and snapshots, eliminating app mutation bridges.",
+      "evidence_limit": "Selected creation flow and fake-based failure tests inspected. Delete implementation and all protocol tests not audited."
+    },
+    {
+      "id": "catalog-read-update",
+      "trace": [
+        {
+          "path": "internal/cli/catalog/database.go",
+          "line": 14
+        },
+        {
+          "path": "internal/app/catalog.go",
+          "line": 1
+        },
+        {
+          "path": "actions/catalog/read/database.go",
+          "line": 74
+        },
+        {
+          "path": "actions/catalog/update/database.go",
+          "line": 21
+        },
+        {
+          "path": "internal/resources/catalog/adapter.go",
+          "line": 14
+        },
+        {
+          "path": "internal/tableau/metadataassets/client.go",
+          "line": 449
+        }
+      ],
+      "ownership": "Action reads bounded metadata or performs explicit property/tag mutation phases. Resource adapter only adds tag target type. Client already uses shared value contracts.",
+      "change": "Cohesive Catalog service keeps typed database/table/column methods. Remove catalog adapter by using a narrow typed tag port. Audit/search retain their separate algorithms.",
+      "evidence_limit": "Database workflow body and shared mechanisms reviewed. Table/column operation bodies received shape review, not full mutation equivalence proof."
+    },
+    {
+      "id": "pulse-definition-and-subscription",
+      "trace": [
+        {
+          "path": "internal/cli/pulse/command.go",
+          "line": 22
+        },
+        {
+          "path": "internal/app/pulse.go",
+          "line": 228
+        },
+        {
+          "path": "actions/pulse/definition/create.go",
+          "line": 115
+        },
+        {
+          "path": "internal/app/pulse.go",
+          "line": 583
+        },
+        {
+          "path": "internal/tableau/pulse/client.go",
+          "line": 68
+        },
+        {
+          "path": "actions/pulse/subscription/list/action.go",
+          "line": 140
+        }
+      ],
+      "ownership": "Definition action plans collision and creation outcomes. App currently validates schema roles and maps protocol results. Subscription action bounds authenticated-user pages and joins only observed metric/definition IDs.",
+      "change": "Definition/metric/subscription stay separate action owners. Move actual provider adaptation into resources/pulse; move semantic field rules into actions. Eliminate subscription list package nesting and per-verb app forwarding.",
+      "evidence_limit": "Create and subscription representative workflows reviewed. Fork/publish and reconciliation received declaration-level inspection only."
+    },
+    {
+      "id": "job-wait-cancel",
+      "trace": [
+        {
+          "path": "internal/cli/job/command.go",
+          "line": 73
+        },
+        {
+          "path": "internal/app/jobs.go",
+          "line": 25
+        },
+        {
+          "path": "actions/job/wait.go",
+          "line": 60
+        },
+        {
+          "path": "internal/app/jobs.go",
+          "line": 58
+        },
+        {
+          "path": "internal/app/jobs.go",
+          "line": 113
+        },
+        {
+          "path": "internal/tableau/job/client.go",
+          "line": 76
+        }
+      ],
+      "ownership": "Current action wait wrapper delegates real sequencing back into app. App owns receipt loading, exact target verification, recovery, monitoring, and cancellation readback.",
+      "change": "Move sequencing to actions/job; app constructs authenticated remote client, receipt store, monitor, and session hooks. Preserve accepted versus terminal outcome distinction.",
+      "evidence_limit": "App main wait/cancel body and wait wrapper test reviewed. Shared monitor internals and wider app E2E bodies not audited."
+    },
+    {
+      "id": "label-attachment-update",
+      "trace": [
+        {
+          "path": "internal/cli/content/labels.go",
+          "line": 23
+        },
+        {
+          "path": "internal/app/labels.go",
+          "line": 1
+        },
+        {
+          "path": "actions/contentlabel/update.go",
+          "line": 77
+        },
+        {
+          "path": "internal/tableau/metadataassets/labels.go",
+          "line": 24
+        }
+      ],
+      "ownership": "Action owns omitted flags, baseline conflict, system-managed refusal, native acknowledgement, and affected-state verification. Client exposes an acknowledgement marker. App service objects primarily forward after policy and setup.",
+      "change": "Keep this cohesive action package and separate Admin vocabulary packages. Consolidate app binding and use compatible client ports directly; do not add a resource wrapper.",
+      "evidence_limit": "Full attachment update and stateful fake tests reviewed. All label API transport behavior not revalidated."
+    },
+    {
+      "id": "search-and-lineage",
+      "trace": [
+        {
+          "path": "internal/app/search.go",
+          "line": 128
+        },
+        {
+          "path": "actions/search/action.go",
+          "line": 55
+        },
+        {
+          "path": "internal/resources/search/native.go",
+          "line": 55
+        },
+        {
+          "path": "actions/lineage/pull/action.go",
+          "line": 34
+        },
+        {
+          "path": "internal/resources/lineage/adapter.go",
+          "line": 91
+        }
+      ],
+      "ownership": "Search app chooses mixed providers while action handles common result and cursor contracts. Lineage action owns capture and artifact outcomes; shared resource normalization supports multiple content workflows.",
+      "change": "Put search routing and composite continuation in actions/search, provider specifics in resources/search. Keep shared lineage normalization, remove copying bridge, and move pull package to actions/lineage.",
+      "evidence_limit": "Search primary routing and lineage action inspected. Composite cursor bodies, artifact implementation, and all provider bodies require focused migration characterization."
+    }
+  ],
+  "test_findings": [
+    {
+      "id": "permission-state-machine",
+      "paths": [
+        "actions/admin/permission/create_action_test.go"
+      ],
+      "tests": [
+        "TestCreateProjectDefaultPreviewRetainsContentKind",
+        "TestCreatePreviewAndExecution",
+        "TestCreateRejectsChangedAndInheritedState",
+        "TestCreateRequiresExplicitSelectors",
+        "TestCreateUnknownOutcomeRetainsRequestID",
+        "TestCreateAcknowledgedWriteReportsVerificationFailureWithResult"
+      ],
+      "mechanism": "Fake snapshots can change between reads or return an unexpected post-write mode. Tests assert zero writes for inherited/changed state, call counts, preview content scope, retained request ID, and confirmed verification failure.",
+      "disposition": "Keep and relocate with permission package. Strengthen TestCreateRequiresExplicitSelectors if used as evidence of remote-call suppression: its fake is never passed into the validator.",
+      "limitations": "Useful action behavior checks, not proof of native endpoint scope or actual principal resolution."
+    },
+    {
+      "id": "definition-partial-create",
+      "paths": [
+        "actions/pulse/definition/create_partial_test.go"
+      ],
+      "tests": [
+        "TestCreateConfirmedCreateRemainsTypedWhileUnknownWriteDoesNotBecomeSuccess",
+        "TestCreateCompactCreateDimensionsAreBoundedWithoutChangingRequest"
+      ],
+      "mechanism": "Stub returns a created identity plus error or an unknown write. Tests assert typed confirmed result, one create call, nonretryable classification, and compact bounds without modifying 51 requested dimensions.",
+      "disposition": "Keep. Pair with provider readback and CLI partial-result tests during adapter migration.",
+      "limitations": "Fixed stub responses do not verify actual native default-metric polling or submitted protocol payload."
+    },
+    {
+      "id": "catalog-partial-pages",
+      "paths": [
+        "actions/catalog/read/workflows_characterization_test.go"
+      ],
+      "tests": [
+        "TestNilCatalogReaders",
+        "TestDatabaseListBoundsAndPartialEvidence",
+        "TestTableListBoundsAndPartialEvidence"
+      ],
+      "mechanism": "Page fake records requested bounds and fails the second page. Assertions retain first-page identity, request ID, observation timestamp, partial coverage, and returned continuation.",
+      "disposition": "Keep and relocate into Catalog. Shared test scaffolding can consolidate repeated setup while preserving each typed resource contract.",
+      "limitations": "Column counterpart exists but was not fully read in this pass. No assumption that action fakes validate GraphQL decoding."
+    },
+    {
+      "id": "catalog-failure-contract",
+      "paths": [
+        "actions/catalog/update/failure_characterization_test.go"
+      ],
+      "tests": [
+        "TestResourceFailurePhaseAndRecovery"
+      ],
+      "mechanism": "Error-constructor matrix checks operation IDs, phase, mutation outcome, retained identity, completed steps, recovery scope, and wrapped cause.",
+      "disposition": "Keep as one common Catalog contract matrix. Do not count it as a mutation-state test or remove resource-specific mutation tests.",
+      "limitations": "It calls error constructors, not native writes or affected-state verification."
+    },
+    {
+      "id": "attachment-state-and-acknowledgement",
+      "paths": [
+        "actions/contentlabel/update_test.go"
+      ],
+      "tests": [
+        "TestWriteResponseFailureDistinguishesAcknowledgementFromTransport",
+        "TestPreviewPreservesOmittedFlagsAndExplicitClear",
+        "TestAcknowledgedWriteSurvivesReadbackFailure",
+        "TestConflictAndSystemManagedValueNeverWrite",
+        "TestNewAttachmentDefaults"
+      ],
+      "mechanism": "Stateful fake updates its saved attachment, can alter the fresh baseline, fail post-write reads, or signal acknowledged/unknown response failure. Assertions check zero or one write, flags, retained identity, status, and structured mutation outcome.",
+      "disposition": "Keep. Add exact submitted ID/target assertions where migration changes ports; UpdateLabel fake currently ignores its ID argument.",
+      "limitations": "Stateful behavior is valuable, but the fake updates state even on injected write errors and does not validate native wire identity."
+    },
+    {
+      "id": "subscription-boundaries",
+      "paths": [
+        "actions/pulse/subscription/list/action_test.go"
+      ],
+      "tests": [
+        "TestListContinuesOnlyReturnedIDs",
+        "TestListCursorBindsAuthenticatedUser",
+        "TestListRejectsMismatchedDirectFollowerAndDuplicate",
+        "TestListMalformedLaterRowRetainsPartialCoverage",
+        "TestListDistinguishesConfirmedEmptyFromUnreadable",
+        "TestListEmptyUserNeverRequestsUnfilteredSubscriptions"
+      ],
+      "mechanism": "Reader queues pages, records page requests and enrichment IDs, and can fail reads. Tests assert cursor user binding, zero reads for empty user, mismatched follower refusal, retained partial rows, and empty versus unavailable distinction.",
+      "disposition": "Keep and relocate to subscription. Strengthen the fake to record the actual user argument and assert exact enrichment IDs, not only batch lengths.",
+      "limitations": "The fake discards the user argument. Existing tests prove pre-request empty/cursor checks, not that the provider receives the correct user selector."
+    },
+    {
+      "id": "job-wrapper-outcome",
+      "paths": [
+        "actions/job/wait_test.go"
+      ],
+      "tests": [
+        "TestExecutePreservesAcceptedIdentityWhenRecoveryFails"
+      ],
+      "mechanism": "A callback returns a fixed accepted job result and recovery error. Assertions retain receipt identity, status, and follow-up help.",
+      "disposition": "Keep outcome characterization while moving real wait orchestration into the action. Add stateful receipt/monitor sequence tests, retaining existing app integration coverage.",
+      "limitations": "Current callback fake cannot verify the app-owned receipt recovery sequence. No claim that wider app tests lack this coverage."
+    }
+  ],
+  "limits": [
+    "No Go tests, live Tableau calls, model tasks, checkout changes, or production edits.",
+    "Every scoped action package received role/import-shape review. Only listed detailed scopes received body-level review.",
+    "Not an exhaustive test audit. Unread tests and integration coverage can already cover identified gaps.",
+    "No whole-file deletion claim for multi-domain app files.",
+    "Shared jobmonitor, publication status, pulsecontract, paging, identity, output, schema, capability, and artifact internals require their own assessments.",
+    "Reconciliation movement, cursor compatibility, and direct interface satisfaction require compile-time and behavior checks before implementation.",
+    "No evidence that folder count or per-verb directories alone cause a correctness failure.",
+    "Retain native-to-internal observation translation where semantics differ; do not collapse compact/full projections, cache state, or wire DTOs merely because fields overlap."
+  ]
+}

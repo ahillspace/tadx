@@ -1,0 +1,1454 @@
+{
+  "source_revision": "dd22c33bd1d123066f25ec09e2d612cd95717400",
+  "scope": {
+    "status": "proposal-evidence",
+    "execution": "not-run",
+    "families": [
+      "auth",
+      "env",
+      "cache",
+      "workspace",
+      "agent",
+      "update",
+      "doctor",
+      "policy",
+      "capability",
+      "version",
+      "last",
+      "session"
+    ],
+    "action_package_count": 18,
+    "method": "Pinned Git blobs only. Package/import inventory plus selected workflows and tests; not an exhaustive correctness audit.",
+    "model": "Cohesive actions/<service> packages own explicit workflows and projections. CLI owns command UX, app constructs dependencies, and internal mechanisms retain real safety or integration boundaries. No universal runner or action-to-action dependencies."
+  },
+  "reviewed_paths": [
+    {
+      "path": "actions/auth/check/action.go",
+      "scope": "Package role, imports, contracts, and representative operation behavior; not every branch."
+    },
+    {
+      "path": "actions/auth/login/action.go",
+      "scope": "Package role, imports, contracts, and representative operation behavior; not every branch."
+    },
+    {
+      "path": "actions/auth/logout/action.go",
+      "scope": "Package role, imports, contracts, and representative operation behavior; not every branch."
+    },
+    {
+      "path": "actions/auth/status/action.go",
+      "scope": "Package role, imports, contracts, and representative operation behavior; not every branch."
+    },
+    {
+      "path": "actions/env/profile/profile.go",
+      "scope": "Package role, imports, contracts, and representative operation behavior; not every branch."
+    },
+    {
+      "path": "actions/cache/refresh/action.go",
+      "scope": "Package role, imports, contracts, and representative operation behavior; not every branch."
+    },
+    {
+      "path": "actions/cache/status/action.go",
+      "scope": "Package role, imports, contracts, and representative operation behavior; not every branch."
+    },
+    {
+      "path": "actions/workspace/workspace.go",
+      "scope": "Package role, imports, contracts, and representative operation behavior; not every branch."
+    },
+    {
+      "path": "actions/agent/install/action.go",
+      "scope": "Package role, imports, contracts, and representative operation behavior; not every branch."
+    },
+    {
+      "path": "actions/agent/uninstall/action.go",
+      "scope": "Package role, imports, contracts, and representative operation behavior; not every branch."
+    },
+    {
+      "path": "actions/update/action.go",
+      "scope": "Package role, imports, contracts, and representative operation behavior; not every branch."
+    },
+    {
+      "path": "actions/doctor/run/action.go",
+      "scope": "Package role, imports, contracts, and representative operation behavior; not every branch."
+    },
+    {
+      "path": "actions/policy/install.go",
+      "scope": "Package role, imports, contracts, and representative operation behavior; not every branch."
+    },
+    {
+      "path": "actions/capability/get/action.go",
+      "scope": "Package role, imports, contracts, and representative operation behavior; not every branch."
+    },
+    {
+      "path": "actions/capability/list/action.go",
+      "scope": "Package role, imports, contracts, and representative operation behavior; not every branch."
+    },
+    {
+      "path": "actions/version/get/action.go",
+      "scope": "Package role, imports, contracts, and representative operation behavior; not every branch."
+    },
+    {
+      "path": "actions/last/action.go",
+      "scope": "Package role, imports, contracts, and representative operation behavior; not every branch."
+    },
+    {
+      "path": "actions/session/overview/action.go",
+      "scope": "Package role, imports, contracts, and representative operation behavior; not every branch."
+    },
+    {
+      "path": "internal/app/auth_credentials.go",
+      "scope": "Representative behavior and dependency construction."
+    },
+    {
+      "path": "internal/app/auth_prompt.go",
+      "scope": "Representative behavior and dependency construction."
+    },
+    {
+      "path": "internal/app/environment.go",
+      "scope": "Representative behavior and dependency construction."
+    },
+    {
+      "path": "internal/app/cache_group2.go",
+      "scope": "Representative behavior and dependency construction."
+    },
+    {
+      "path": "internal/app/doctor.go",
+      "scope": "Representative behavior and dependency construction."
+    },
+    {
+      "path": "internal/app/session_overview.go",
+      "scope": "Representative behavior and dependency construction."
+    },
+    {
+      "path": "actions/auth/status/action.go",
+      "scope": "Inspect readiness portion"
+    },
+    {
+      "path": "internal/app/workspace.go",
+      "scope": "Representative behavior and dependency construction."
+    },
+    {
+      "path": "internal/app/workspace.go",
+      "scope": "workspaceHasUnmanagedEntries"
+    },
+    {
+      "path": "internal/app/managed_policy.go",
+      "scope": "policy tool operations"
+    },
+    {
+      "path": "internal/app/managed_policy.go",
+      "scope": "managedLastReader"
+    },
+    {
+      "path": "internal/app/managed_policy.go",
+      "scope": "bindManagedPolicy"
+    },
+    {
+      "path": "internal/app/app.go",
+      "scope": "registrySource"
+    },
+    {
+      "path": "internal/app/version.go",
+      "scope": "releaseChecker"
+    },
+    {
+      "path": "internal/app/last_result.go",
+      "scope": "Representative behavior and dependency construction."
+    },
+    {
+      "path": "internal/app/update.go",
+      "scope": "configuredPATVariables"
+    },
+    {
+      "path": "internal/app/policy_install_helper.go",
+      "scope": "Representative behavior and dependency construction."
+    },
+    {
+      "path": "internal/auth/credentials.go",
+      "scope": "Infrastructure boundary and representative entrypoints/imports; not exhaustive implementation audit."
+    },
+    {
+      "path": "internal/config/config.go",
+      "scope": "Infrastructure boundary and representative entrypoints/imports; not exhaustive implementation audit."
+    },
+    {
+      "path": "internal/workspace/manager.go",
+      "scope": "Infrastructure boundary and representative entrypoints/imports; not exhaustive implementation audit."
+    },
+    {
+      "path": "internal/app/workspace.go",
+      "scope": "Infrastructure boundary and representative entrypoints/imports; not exhaustive implementation audit."
+    },
+    {
+      "path": "internal/cache/store.go",
+      "scope": "Infrastructure boundary and representative entrypoints/imports; not exhaustive implementation audit."
+    },
+    {
+      "path": "internal/app/cache_group2.go",
+      "scope": "Infrastructure boundary and representative entrypoints/imports; not exhaustive implementation audit."
+    },
+    {
+      "path": "internal/agent/install.go",
+      "scope": "Infrastructure boundary and representative entrypoints/imports; not exhaustive implementation audit."
+    },
+    {
+      "path": "internal/agenttarget/targets.go",
+      "scope": "Infrastructure boundary and representative entrypoints/imports; not exhaustive implementation audit."
+    },
+    {
+      "path": "internal/update/runtime.go",
+      "scope": "Infrastructure boundary and representative entrypoints/imports; not exhaustive implementation audit."
+    },
+    {
+      "path": "internal/version/version.go",
+      "scope": "Infrastructure boundary and representative entrypoints/imports; not exhaustive implementation audit."
+    },
+    {
+      "path": "internal/managedpolicy/install.go",
+      "scope": "Infrastructure boundary and representative entrypoints/imports; not exhaustive implementation audit."
+    },
+    {
+      "path": "internal/capability/registry.go",
+      "scope": "Infrastructure boundary and representative entrypoints/imports; not exhaustive implementation audit."
+    },
+    {
+      "path": "internal/lastcommand/store.go",
+      "scope": "Infrastructure boundary and representative entrypoints/imports; not exhaustive implementation audit."
+    },
+    {
+      "path": "internal/guidancenotice/notice.go",
+      "scope": "Infrastructure boundary and representative entrypoints/imports; not exhaustive implementation audit."
+    },
+    {
+      "path": "internal/releasenotice/notice.go",
+      "scope": "Infrastructure boundary and representative entrypoints/imports; not exhaustive implementation audit."
+    },
+    {
+      "path": "internal/fsreplace/fsreplace.go",
+      "scope": "Infrastructure boundary and representative entrypoints/imports; not exhaustive implementation audit."
+    },
+    {
+      "path": "scripts/embed.go",
+      "scope": "Infrastructure boundary and representative entrypoints/imports; not exhaustive implementation audit."
+    },
+    {
+      "path": "internal/app/environment_preview_e2e_test.go",
+      "scope": "Selected test TestEnvironmentPreviewValidatesWithoutChangingConfiguration and necessary fixture context only."
+    },
+    {
+      "path": "actions/cache/refresh/action_test.go",
+      "scope": "Selected test TestActionRejectsInvalidHydrationReceipts and necessary fixture context only."
+    },
+    {
+      "path": "internal/app/cache_staging_test.go",
+      "scope": "Selected test TestCacheCollectionDoesNotLockUnrelatedEnvironmentWrites and necessary fixture context only."
+    },
+    {
+      "path": "actions/agent/install/action_test.go",
+      "scope": "Selected test TestInstallPartialFailureKeepsCompletedTargetsAndFieldTags and necessary fixture context only."
+    },
+    {
+      "path": "internal/agent/install_recovery_test.go",
+      "scope": "Selected test TestInstallReportsPackageStateWhenRollbackIsIncomplete and necessary fixture context only."
+    },
+    {
+      "path": "actions/update/contract_test.go",
+      "scope": "Selected test TestUpdateOrderingAndFailureContext and necessary fixture context only."
+    },
+    {
+      "path": "internal/update/runtime_test.go",
+      "scope": "Selected test TestUpdaterChildrenDoNotReceivePATVariables and necessary fixture context only."
+    },
+    {
+      "path": "actions/doctor/run/action_test.go",
+      "scope": "Selected test TestDoctorRunsEveryIndependentCheckAndRedactsDependencyErrors and necessary fixture context only."
+    },
+    {
+      "path": "internal/app/managed_policy_install_test.go",
+      "scope": "Selected test TestPolicyInstallErrorPreservesConfirmedPartialEffects and necessary fixture context only."
+    },
+    {
+      "path": "actions/capability/list/action_test.go",
+      "scope": "Selected test TestExecuteMutationFilterDoesNotAuthorizeOrHideDiscovery and necessary fixture context only."
+    },
+    {
+      "path": "actions/version/get/action_test.go",
+      "scope": "Selected test TestOfflineByDefault and necessary fixture context only."
+    },
+    {
+      "path": "internal/app/last_e2e_test.go",
+      "scope": "Selected test TestLastJSONDoesNotReplayNetworkOrChangeSavedDocument and necessary fixture context only."
+    },
+    {
+      "path": "actions/session/overview/action_test.go",
+      "scope": "Selected test TestOverviewBoundsBothProjectionsAndPreservesTruthfulTotals and necessary fixture context only."
+    },
+    {
+      "path": "internal/app/session_overview_test.go",
+      "scope": "Selected test TestBareOverviewFirstRunAndHelpAreReadOnly and necessary fixture context only."
+    },
+    {
+      "path": "internal/workspace/installed_config_test.go",
+      "scope": "Selected test TestCreateKeepsWorkspaceWhenRegistrationStaysInstalled and necessary fixture context only."
+    }
+  ],
+  "package_decisions": [
+    {
+      "source": "actions/auth/check",
+      "target": "actions/auth",
+      "decision": "merge",
+      "role": "Command service facade; destination entry file actions/auth/check.go.",
+      "import_shape": "errs and commandhint; consumer-owned environment/authenticator interfaces.",
+      "rationale": "Explicit live PAT verification; retain source provenance and failure output.",
+      "evidence": [
+        {
+          "path": "actions/auth/check/action.go",
+          "line": 34
+        }
+      ],
+      "preserve": "Live sign-in, no automatic persistence, request IDs, exact target."
+    },
+    {
+      "source": "actions/auth/login",
+      "target": "actions/auth",
+      "decision": "merge",
+      "role": "Command service facade; destination entry file actions/auth/login.go.",
+      "import_shape": "errs plus bounded resolver/authenticator/store interfaces.",
+      "rationale": "Login shares a service owner with check, status, and logout without sharing their mutation sequence.",
+      "evidence": [
+        {
+          "path": "actions/auth/login/action.go",
+          "line": 51
+        }
+      ],
+      "preserve": "Terminal boundary, authenticated identity, keyring/config ordering, redacted input, installed-state reporting."
+    },
+    {
+      "source": "actions/auth/logout",
+      "target": "actions/auth",
+      "decision": "merge",
+      "role": "Command service facade; destination entry file actions/auth/logout.go.",
+      "import_shape": "errs; resolver and credential-removal interfaces.",
+      "rationale": "Local credential removal belongs in the same auth facade, with distinct preview and compensation.",
+      "evidence": [
+        {
+          "path": "actions/auth/logout/action.go",
+          "line": 34
+        }
+      ],
+      "preserve": "No Tableau revocation, selected reference only, orphan recovery, post-save deletion."
+    },
+    {
+      "source": "actions/auth/status",
+      "target": "actions/auth",
+      "decision": "merge",
+      "role": "Command service facade; destination entry file actions/auth/status.go.",
+      "import_shape": "errs and commandhint; config resolver and environment lookup.",
+      "rationale": "Local readiness is an auth operation, not an independent package boundary.",
+      "evidence": [
+        {
+          "path": "actions/auth/status/action.go",
+          "line": 40
+        }
+      ],
+      "preserve": "No network/keyring read, unverified stored reference, partial environment pair semantics."
+    },
+    {
+      "source": "actions/env/profile",
+      "target": "actions/env",
+      "decision": "move",
+      "role": "Command service facade; destination entry file actions/env/profile.go.",
+      "import_shape": "config for external variable validation, errs/output/commandhint; per-consumer store ports.",
+      "rationale": "Already cohesive across profile verbs; remove the extra namespace level rather than recreate verb packages.",
+      "evidence": [
+        {
+          "path": "actions/env/profile/profile.go",
+          "line": 1
+        }
+      ],
+      "preserve": "Stored versus effective defaults, exact aliases, ordered changed fields, preview non-mutation."
+    },
+    {
+      "source": "actions/cache/refresh",
+      "target": "actions/cache",
+      "decision": "merge",
+      "role": "Command service facade; destination entry file actions/cache/refresh.go.",
+      "import_shape": "errs/output/value/commandhint; Hydrator port.",
+      "rationale": "Refresh and status share generation/readiness vocabulary; keep collection and inspection distinct.",
+      "evidence": [
+        {
+          "path": "actions/cache/refresh/action.go",
+          "line": 175
+        }
+      ],
+      "preserve": "Scope closure, scope-plan agreement, permission gaps, bounded receipt validation, read-only preview."
+    },
+    {
+      "source": "actions/cache/status",
+      "target": "actions/cache",
+      "decision": "merge",
+      "role": "Command service facade; destination entry file actions/cache/status.go.",
+      "import_shape": "errs/output/value/commandhint; Source port.",
+      "rationale": "Status belongs beside refresh; merging packages does not imply shared HTTP behavior.",
+      "evidence": [
+        {
+          "path": "actions/cache/status/action.go",
+          "line": 140
+        }
+      ],
+      "preserve": "Uninitialized state, retained observations, stale/incomplete distinctions, projection bounds."
+    },
+    {
+      "source": "actions/workspace",
+      "target": "actions/workspace",
+      "decision": "retain",
+      "role": "Command service facade; destination entry file actions/workspace/workspace.go.",
+      "import_shape": "errs/output/commandhint and narrow filesystem/registry ports; no concrete manager dependency.",
+      "rationale": "Already a cohesive service. Replace excessive app coordination, not this package with verb folders.",
+      "evidence": [
+        {
+          "path": "actions/workspace/workspace.go",
+          "line": 4
+        }
+      ],
+      "preserve": "Workspace/artifact identity, dirty checks, partial persistence, operation-specific projections."
+    },
+    {
+      "source": "actions/agent/install",
+      "target": "actions/agent",
+      "decision": "merge",
+      "role": "Command service facade; destination entry file actions/agent/install.go.",
+      "import_shape": "agenttarget/errs/value; Installer port.",
+      "rationale": "Guidance installation/uninstallation share supported-target and result vocabulary.",
+      "evidence": [
+        {
+          "path": "actions/agent/install/action.go",
+          "line": 74
+        }
+      ],
+      "preserve": "Auto install only, home-relative backup paths, retained partial package state, explicit force semantics."
+    },
+    {
+      "source": "actions/agent/uninstall",
+      "target": "actions/agent",
+      "decision": "merge",
+      "role": "Command service facade; destination entry file actions/agent/uninstall.go.",
+      "import_shape": "agenttarget/errs/value; Uninstaller port.",
+      "rationale": "Place uninstall beside install but keep narrower supported target and output contract.",
+      "evidence": [
+        {
+          "path": "actions/agent/uninstall/action.go",
+          "line": 53
+        }
+      ],
+      "preserve": "No auto uninstall, preservation of edited packages, incomplete rollback evidence."
+    },
+    {
+      "source": "actions/update",
+      "target": "actions/update",
+      "decision": "retain",
+      "role": "Command service facade; destination entry file actions/update/action.go.",
+      "import_shape": "errs and Runtime port; does not call agent/version actions.",
+      "rationale": "Already one cohesive update facade. It coordinates binary plus Guidance update, not just release lookup.",
+      "evidence": [
+        {
+          "path": "actions/update/action.go",
+          "line": 34
+        }
+      ],
+      "preserve": "Check-only mode, same-version Guidance refresh, target order, partial install uncertainty."
+    },
+    {
+      "source": "actions/doctor/run",
+      "target": "actions/doctor",
+      "decision": "move",
+      "role": "Command service facade; destination entry file actions/doctor/run.go.",
+      "import_shape": "errs/commandhint; six probe interfaces with independent behavior.",
+      "rationale": "Flatten the single run package; keep explicit prerequisite graph and independent probes.",
+      "evidence": [
+        {
+          "path": "actions/doctor/run/action.go",
+          "line": 54
+        }
+      ],
+      "preserve": "Blocked versus failed probes, secret-safe diagnostics, connectivity distinct from local readiness."
+    },
+    {
+      "source": "actions/policy",
+      "target": "actions/policy",
+      "decision": "retain-expand",
+      "role": "Command service facade; destination entry file actions/policy/install.go.",
+      "import_shape": "errs/value now; inject managed-policy mechanism and definitions without importing capability actions.",
+      "rationale": "Cohesive folder currently owns validation/projections while actual tool workflows remain in app. Move those workflows here.",
+      "evidence": [
+        {
+          "path": "actions/policy/install.go",
+          "line": 1
+        }
+      ],
+      "preserve": "Privilege boundary, recovery exemptions, no activation by validate/samples, partial effects."
+    },
+    {
+      "source": "actions/capability/get",
+      "target": "actions/capability",
+      "decision": "merge",
+      "role": "Command service facade; destination entry file actions/capability/get.go.",
+      "import_shape": "internal/capability plus errs; source port.",
+      "rationale": "Exact lookup and bounded listing are one discovery service.",
+      "evidence": [
+        {
+          "path": "actions/capability/get/action.go",
+          "line": 1
+        }
+      ],
+      "preserve": "Exact IDs, delegated contracts, policy overlay, discovery never authorizes execution."
+    },
+    {
+      "source": "actions/capability/list",
+      "target": "actions/capability",
+      "decision": "merge",
+      "role": "Command service facade; destination entry file actions/capability/list.go.",
+      "import_shape": "internal/capability/output/errs/commandhint; source port.",
+      "rationale": "Share discovery ownership and types; retain list-specific paging/filter behavior.",
+      "evidence": [
+        {
+          "path": "actions/capability/list/action.go",
+          "line": 1
+        }
+      ],
+      "preserve": "Source order, bounded all mode, filter-preserving continuation, truthful totals."
+    },
+    {
+      "source": "actions/version/get",
+      "target": "actions/version",
+      "decision": "move",
+      "role": "Command service facade; destination entry file actions/version/get.go.",
+      "import_shape": "errs and ReleaseChecker port.",
+      "rationale": "Flatten single operation; do not merge passive version query with active update.",
+      "evidence": [
+        {
+          "path": "actions/version/get/action.go",
+          "line": 37
+        }
+      ],
+      "preserve": "Offline default, dev-version behavior, installed version on lookup failure."
+    },
+    {
+      "source": "actions/last",
+      "target": "actions/last",
+      "decision": "retain-expand",
+      "role": "Command service facade; destination entry file actions/last/action.go.",
+      "import_shape": "errs/value and Reader; no action-to-action calls.",
+      "rationale": "Keep saved-result replay facade and bring replay authorization out of app.",
+      "evidence": [
+        {
+          "path": "actions/last/action.go",
+          "line": 17
+        }
+      ],
+      "preserve": "No operation/network replay, saved full document, policy checks for original and prerequisite capabilities."
+    },
+    {
+      "source": "actions/session/overview",
+      "target": "actions/session",
+      "decision": "move-expand",
+      "role": "Command service facade; destination entry file actions/session/overview.go.",
+      "import_shape": "value and Reader now; explicit local config/workspace/readiness dependencies after migration.",
+      "rationale": "Flatten the overview package and give it ownership of local overview assembly currently in app.",
+      "evidence": [
+        {
+          "path": "actions/session/overview/action.go",
+          "line": 98
+        }
+      ],
+      "preserve": "No authentication claim, bounded projections, deterministic order, no setup writes."
+    },
+    {
+      "source": "internal/app/auth_credentials.go",
+      "target": "actions/auth/persistence.go",
+      "decision": "move-behavior",
+      "role": "Focused ownership change, not whole-package relocation.",
+      "import_shape": "config and internal/auth infrastructure; no other action service.",
+      "rationale": "Move credential/config coordination and target checks into the auth service with explicit transaction and PATStore dependencies; retain core keyring/session implementation.",
+      "evidence": [
+        {
+          "path": "internal/app/auth_credentials.go",
+          "line": 69
+        }
+      ],
+      "preserve": "Keep rollback before unlock, post-save deletion, cancellation-resistant cleanup, fresh persisted target comparison."
+    },
+    {
+      "source": "internal/app/auth_prompt.go",
+      "target": "internal/cli/auth/prompt.go",
+      "decision": "move",
+      "role": "Focused ownership change, not whole-package relocation.",
+      "import_shape": "golang.org/x/term and IO only.",
+      "rationale": "Terminal prompting is command UX, not composition or credential storage.",
+      "evidence": [
+        {
+          "path": "internal/app/auth_prompt.go",
+          "line": 45
+        }
+      ],
+      "preserve": "Hidden secret entry and stderr prompts; never introduce secret flags."
+    },
+    {
+      "source": "internal/app/environment.go",
+      "target": "actions/env/store.go",
+      "decision": "split-move",
+      "role": "Focused ownership change, not whole-package relocation.",
+      "import_shape": "config persistence and service-owned records; avoid importing auth actions from env.",
+      "rationale": "Move configProfileStore CRUD/default rules and profile projections into env with explicit config access. Keep construction and registry labels in app; authStatusResolver moves to auth.",
+      "evidence": [
+        {
+          "path": "internal/app/environment.go",
+          "line": 88
+        }
+      ],
+      "preserve": "Preview uses no write/lock; stored credential target/removal guards; get/list default distinction."
+    },
+    {
+      "source": "internal/app/cache_group2.go:RefreshCache",
+      "target": "actions/cache/refresh_runtime.go",
+      "decision": "split-move",
+      "role": "Focused ownership change, not whole-package relocation.",
+      "import_shape": "Named cache workflow with an injected inventory port; no actions import of internal/tableau or resources.",
+      "rationale": "Move requested refresh policy and the named refresh workflow to actions/cache. Internal/inventory owns neutral generation, collection, and publication coordination. App constructs the authenticated executor and binds dependencies without retaining refresh policy.",
+      "evidence": [
+        {
+          "path": "internal/app/cache_group2.go",
+          "line": 213
+        }
+      ],
+      "preserve": "Permission checks before requests and after default scope expansion, requested/actual scope distinctions, and operation-specific output."
+    },
+    {
+      "source": "internal/app/cache_group2.go:cacheHydrator.Hydrate",
+      "target": "internal/inventory/refresh.go",
+      "decision": "move-mechanism",
+      "role": "Neutral generation, collection, and publication coordination shared below action workflows.",
+      "import_shape": "Injected native collector and core cache store; no action types or domain action imports. App constructs the authenticated executor.",
+      "rationale": "Keep generation staging, collection-plan validation, collected coverage, publication, and rollback in internal/inventory. The native collector retains Tableau protocol behavior, and internal/cache retains storage. Consumers use explicit ports without importing Tableau from actions.",
+      "evidence": [
+        {
+          "path": "internal/app/cache_group2.go",
+          "line": 41
+        }
+      ],
+      "preserve": "Checks before requests, actual scope ledger, staged publication/rollback, incomplete permissions not empty rules, per-environment concurrency."
+    },
+    {
+      "source": "internal/app/doctor.go",
+      "target": "actions/doctor/probes.go",
+      "decision": "split-move",
+      "role": "Focused ownership change, not whole-package relocation.",
+      "import_shape": "config/cache/workspace/artifact mechanisms; no actions/auth or actions/workspace imports.",
+      "rationale": "Move local probe implementations alongside their doctor workflow with explicit config/cache/workspace dependencies. Inject connectivity rather than invoking auth action.",
+      "evidence": [
+        {
+          "path": "internal/app/doctor.go",
+          "line": 32
+        }
+      ],
+      "preserve": "Independent checks, prerequisite ordering, local presence versus authenticated access, bounded inventory."
+    },
+    {
+      "source": "internal/app/session_overview.go",
+      "target": "actions/session/overview.go",
+      "decision": "move-behavior",
+      "role": "Focused ownership change, not whole-package relocation.",
+      "import_shape": "config, internal/auth readiness, workspace selection, value records.",
+      "rationale": "Move local overview aggregation out of runtimeDependencies. Use lower-level readiness and workspace selection dependencies, not auth/status action output as a service API.",
+      "evidence": [
+        {
+          "path": "internal/app/session_overview.go",
+          "line": 19
+        }
+      ],
+      "preserve": "Missing config stays local, no writes/sign-in, exact site consent, unverified credential reference."
+    },
+    {
+      "source": "actions/auth/status/action.go:Inspect readiness portion",
+      "target": "internal/auth/readiness.go",
+      "decision": "extract-mechanism",
+      "role": "Focused ownership change, not whole-package relocation.",
+      "import_shape": "Environment lookup and nonsecret reference facts only; no keyring read or action imports.",
+      "rationale": "Extract nonsecret source-presence observation shared by auth status, session, and doctor. Leave command help and output assembly in actions/auth. This removes the existing session-to-auth facade dependency without a generic service graph.",
+      "evidence": [
+        {
+          "path": "actions/auth/status/action.go",
+          "line": 40
+        }
+      ],
+      "preserve": "Do not silently harmonize different diagnostic wording or whitespace policies during movement; characterize each consumer."
+    },
+    {
+      "source": "internal/app/workspace.go",
+      "target": "actions/workspace/runtime.go",
+      "decision": "split-move",
+      "role": "Focused ownership change, not whole-package relocation.",
+      "import_shape": "internal/workspace and internal/artifact mechanisms through explicit dependencies.",
+      "rationale": "Move default-root choice, inventory/dirty policy, and operation outcome composition to workspace service with explicit manager/artifact ports. Keep immutable record projections local rather than app-owned adapters.",
+      "evidence": [
+        {
+          "path": "internal/app/workspace.go",
+          "line": 60
+        }
+      ],
+      "preserve": "Fresh root/ID and dirty-state revalidation before deletion, force semantics, partial outcomes, relative artifacts."
+    },
+    {
+      "source": "internal/app/workspace.go:workspaceHasUnmanagedEntries",
+      "target": "internal/workspace/inventory.go",
+      "decision": "move-mechanism",
+      "role": "Focused ownership change, not whole-package relocation.",
+      "import_shape": "Filesystem and path primitives; no action imports.",
+      "rationale": "Place bounded rooted traversal and unmanaged-entry classification with filesystem workspace mechanics, accepting managed relative paths from the caller.",
+      "evidence": [
+        {
+          "path": "internal/app/workspace.go",
+          "line": 231
+        }
+      ],
+      "preserve": "Traversal bound, symlink/root protection, cancellation, existing recognized artifact paths."
+    },
+    {
+      "source": "internal/app/managed_policy.go:policy tool operations",
+      "target": "actions/policy/operations.go",
+      "decision": "split-move",
+      "role": "Focused ownership change, not whole-package relocation.",
+      "import_shape": "internal/managedpolicy and internal/capability definitions; no capability action dependency.",
+      "rationale": "Move InstallManagedPolicy, status counts, candidate validation, sample writing, and error/outcome mapping to policy service.",
+      "evidence": [
+        {
+          "path": "internal/app/managed_policy.go",
+          "line": 191
+        }
+      ],
+      "preserve": "Protected installation phases, recovery usability, bounded candidate reads, exclusive sample creation, confirmed partial writes."
+    },
+    {
+      "source": "internal/app/managed_policy.go:managedLastReader",
+      "target": "actions/last/read.go",
+      "decision": "split-move",
+      "role": "Focused ownership change, not whole-package relocation.",
+      "import_shape": "internal/lastcommand and value; policy checker port rather than actions/policy.",
+      "rationale": "Move replay prerequisite authorization and legacy snapshot checks into last workflow using injected capability checks.",
+      "evidence": [
+        {
+          "path": "internal/app/managed_policy.go",
+          "line": 58
+        }
+      ],
+      "preserve": "Check original operation plus captured prerequisites; do not weaken historical search snapshot handling."
+    },
+    {
+      "source": "internal/app/managed_policy.go:bindManagedPolicy",
+      "target": "internal/cli/managed_policy.go",
+      "decision": "split-move",
+      "role": "Focused ownership change, not whole-package relocation.",
+      "import_shape": "Cobra plus checker and capability metadata dependencies; policy evaluation stays below CLI.",
+      "rationale": "Place Cobra dispatch wrapper with command execution boundary; app installs it in the existing order and supplies policy evaluator/ledger.",
+      "evidence": [
+        {
+          "path": "internal/app/managed_policy.go",
+          "line": 149
+        }
+      ],
+      "preserve": "Deny before launching workers; independently load policy in workers; preserve recovery operations and preview allowance."
+    },
+    {
+      "source": "internal/app/app.go:registrySource",
+      "target": "actions/capability/source.go",
+      "decision": "split-move",
+      "role": "Focused ownership change, not whole-package relocation.",
+      "import_shape": "internal/capability and checker port; no actions/policy imports.",
+      "rationale": "Move discovery overlay from runtime-bound adapter to discovery service with injected definitions and policy checks. Keep registry binding/bootstrap in app.",
+      "evidence": [
+        {
+          "path": "internal/app/app.go",
+          "line": 779
+        }
+      ],
+      "preserve": "List/get use same managed overlay; blocked discovery remains visible; discovery is not authorization."
+    },
+    {
+      "source": "internal/app/version.go:releaseChecker",
+      "target": "actions/version ReleaseChecker contract + internal/version.Release",
+      "decision": "remove-copy-adapter",
+      "role": "Focused ownership change, not whole-package relocation.",
+      "import_shape": "internal/version is already shared by updater and notices; no new leaf package needed.",
+      "rationale": "Use the existing internal/version.Release as the checker result contract, eliminating field-for-field releaseChecker.Latest mapping. Keep external version output operation-owned.",
+      "evidence": [
+        {
+          "path": "internal/app/version.go",
+          "line": 13
+        }
+      ],
+      "preserve": "Version/URL/published-time fields and timestamps; no broadened serialized output."
+    },
+    {
+      "source": "internal/app/last_result.go",
+      "target": "internal/lastcommand/capture.go",
+      "decision": "split-move",
+      "role": "Focused ownership change, not whole-package relocation.",
+      "import_shape": "lastcommand/output/value; no app/runtime dependency.",
+      "rationale": "Move bounded snapshot/capture persistence to saved-execution infrastructure with explicit clock, prerequisite snapshot, and config-hint inputs. Keep command completion hookup in app.",
+      "evidence": [
+        {
+          "path": "internal/app/last_result.go",
+          "line": 44
+        }
+      ],
+      "preserve": "Save failure does not reverse completed operation; receipt bound, two-second cleanup context, no stale expansion claim."
+    },
+    {
+      "source": "internal/app/update.go:configuredPATVariables",
+      "target": "internal/config/credential_references.go",
+      "decision": "move-mechanism",
+      "role": "Focused ownership change, not whole-package relocation.",
+      "import_shape": "config only; internal/update retains environment filtering and process execution.",
+      "rationale": "Expose configured variable-name enumeration from config; app binds it to updater callback after root config flags resolve.",
+      "evidence": [
+        {
+          "path": "internal/app/update.go",
+          "line": 17
+        }
+      ],
+      "preserve": "Load names at child startup, never load values, unreadable config fallback remains explicit."
+    },
+    {
+      "source": "internal/app/policy_install_helper.go",
+      "target": "internal/app/policy_install_helper.go",
+      "decision": "retain-wiring",
+      "role": "Focused ownership change, not whole-package relocation.",
+      "import_shape": "capability definitions and managedpolicy helper only.",
+      "rationale": "This entry point is already a small composition boundary wiring definitions to the scoped privileged helper.",
+      "evidence": [
+        {
+          "path": "internal/app/policy_install_helper.go",
+          "line": 10
+        }
+      ],
+      "preserve": "Do not initialize ordinary config, saved credentials, sessions, or publication workers."
+    },
+    {
+      "source": "internal/auth",
+      "target": "internal/auth",
+      "decision": "retain",
+      "role": "PAT references, native credential storage, session lifetime and source resolution.",
+      "import_shape": "Infrastructure below action services; see evidence for sampled dependencies.",
+      "rationale": "Keep facade actions/auth distinct from credential/session infrastructure. Add only shared nonsecret readiness here.",
+      "evidence": [
+        {
+          "path": "internal/auth/credentials.go",
+          "line": 77
+        }
+      ],
+      "preserve": "Target binding, redaction, native failure classification, session isolation."
+    },
+    {
+      "source": "internal/config",
+      "target": "internal/config",
+      "decision": "retain",
+      "role": "Schema, locked update, preview, migration, and persistence outcome primitive.",
+      "import_shape": "Infrastructure below action services; see evidence for sampled dependencies.",
+      "rationale": "Shared by auth/env/workspace; not an actions/env implementation detail.",
+      "evidence": [
+        {
+          "path": "internal/config/config.go",
+          "line": 770
+        }
+      ],
+      "preserve": "Fresh reads, lock ordering, rollback, installed-but-not-durable markers."
+    },
+    {
+      "source": "internal/workspace",
+      "target": "internal/workspace",
+      "decision": "retain",
+      "role": "Rooted filesystem and registry transaction mechanics.",
+      "import_shape": "Infrastructure below action services; see evidence for sampled dependencies.",
+      "rationale": "Distinct from actions/workspace UX/workflow/projections; retain both with explicit interfaces.",
+      "evidence": [
+        {
+          "path": "internal/workspace/manager.go",
+          "line": 63
+        }
+      ],
+      "preserve": "Symlink protection, stable manifest identity, rollback consistency."
+    },
+    {
+      "source": "internal/artifact",
+      "target": "internal/artifact",
+      "decision": "retain",
+      "role": "Artifact inventory, manifests, and file operations shared with content workflows.",
+      "import_shape": "Infrastructure below action services; see evidence for sampled dependencies.",
+      "rationale": "Retain mechanism; do not import workspace action for artifact handling.",
+      "evidence": [
+        {
+          "path": "internal/app/workspace.go",
+          "line": 132
+        }
+      ],
+      "preserve": "Resource-specific artifact contracts and containment; full package audit deferred."
+    },
+    {
+      "source": "internal/cache",
+      "target": "internal/cache",
+      "decision": "retain",
+      "role": "SQLite generation, staging, resource snapshots, and persistence.",
+      "import_shape": "Infrastructure below action services; see evidence for sampled dependencies.",
+      "rationale": "Keep shared store below cache command and resource read consumers.",
+      "evidence": [
+        {
+          "path": "internal/cache/store.go",
+          "line": 374
+        }
+      ],
+      "preserve": "Generation atomicity, bounded queries, partial coverage, unrelated-environment write progress."
+    },
+    {
+      "source": "internal/tableau/cache",
+      "target": "internal/tableau/cache",
+      "decision": "retain",
+      "role": "Collector scope plan and remote collection engine.",
+      "import_shape": "Infrastructure below action services; see evidence for sampled dependencies.",
+      "rationale": "Keep API traversal below actions/cache; do not merge remote collector and SQLite implementation.",
+      "evidence": [
+        {
+          "path": "internal/app/cache_group2.go",
+          "line": 44
+        }
+      ],
+      "preserve": "Collected/requested/implicit scope differences and policy preconditions."
+    },
+    {
+      "source": "internal/agent",
+      "target": "internal/agent",
+      "decision": "retain",
+      "role": "Guidance package plan, backups, rooted installation/uninstallation and rollback.",
+      "import_shape": "Infrastructure below action services; see evidence for sampled dependencies.",
+      "rationale": "Retain meaningful filesystem engine rather than relocating all installation into actions/agent.",
+      "evidence": [
+        {
+          "path": "internal/agent/install.go",
+          "line": 57
+        }
+      ],
+      "preserve": "Edited package backups, partial rollback states, staged commits, no unrelated deletions."
+    },
+    {
+      "source": "internal/agenttarget",
+      "target": "internal/agenttarget",
+      "decision": "retain",
+      "role": "Shared supported agent names and destination conventions.",
+      "import_shape": "Infrastructure below action services; see evidence for sampled dependencies.",
+      "rationale": "Used by Guidance install, update target validation, and notices; do not place under an action.",
+      "evidence": [
+        {
+          "path": "internal/agenttarget/targets.go",
+          "line": 25
+        }
+      ],
+      "preserve": "Exact supported target names and target paths."
+    },
+    {
+      "source": "internal/update",
+      "target": "internal/update",
+      "decision": "retain",
+      "role": "Release resolution, installer invocation, bounded process execution and child environment isolation.",
+      "import_shape": "Infrastructure below action services; see evidence for sampled dependencies.",
+      "rationale": "Retain updater infrastructure; actions/update owns user-facing sequence/outcomes. Existing inward use of action.Release must be aligned to common record convention, not hidden with forwarding packages.",
+      "evidence": [
+        {
+          "path": "internal/update/runtime.go",
+          "line": 77
+        }
+      ],
+      "preserve": "Pinned release, absolute system executable, PAT filtering, process-tree cancellation, partial rollback honesty."
+    },
+    {
+      "source": "internal/version",
+      "target": "internal/version",
+      "decision": "retain",
+      "role": "Installed build identity and remote release lookup.",
+      "import_shape": "Infrastructure below action services; see evidence for sampled dependencies.",
+      "rationale": "Retain shared release mechanism and Release record; passive version, active update, and notices remain separate consumers.",
+      "evidence": [
+        {
+          "path": "internal/version/version.go",
+          "line": 52
+        }
+      ],
+      "preserve": "Offline installed identity, dirty provenance, bounded release fetch."
+    },
+    {
+      "source": "internal/managedpolicy",
+      "target": "internal/managedpolicy",
+      "decision": "retain",
+      "role": "Protected policy parsing, native trust checks, elevation, locator and install transaction.",
+      "import_shape": "Infrastructure below action services; see evidence for sampled dependencies.",
+      "rationale": "Retain platform-specific trust boundary; actions/policy adds operation sequencing/presentation, not OS ACL implementations.",
+      "evidence": [
+        {
+          "path": "internal/managedpolicy/install.go",
+          "line": 34
+        }
+      ],
+      "preserve": "Privilege separation, lock/prepare/write/verify/publish order, confirmed effect receipts."
+    },
+    {
+      "source": "internal/capability",
+      "target": "internal/capability",
+      "decision": "retain",
+      "role": "Capability definitions, discovery records, generation, and binding validation.",
+      "import_shape": "Infrastructure below action services; see evidence for sampled dependencies.",
+      "rationale": "Retain registry mechanism below CLI/policy/discovery consumers.",
+      "evidence": [
+        {
+          "path": "internal/capability/registry.go",
+          "line": 110
+        }
+      ],
+      "preserve": "Missing/duplicate/nonimplemented command checks; generated outputs are not manually edited."
+    },
+    {
+      "source": "internal/lastcommand",
+      "target": "internal/lastcommand",
+      "decision": "retain",
+      "role": "Bounded saved-execution read/write and atomic replacement.",
+      "import_shape": "Infrastructure below action services; see evidence for sampled dependencies.",
+      "rationale": "Retain persistence distinct from actions/last replay decisions; absorb explicit capture mechanism.",
+      "evidence": [
+        {
+          "path": "internal/lastcommand/store.go",
+          "line": 21
+        }
+      ],
+      "preserve": "Locks, byte limits, saved prerequisite ledger, original results."
+    },
+    {
+      "source": "internal/guidancenotice",
+      "target": "internal/guidancenotice",
+      "decision": "retain",
+      "role": "Session-scoped missing-Guidance notice eligibility and detection.",
+      "import_shape": "Infrastructure below action services; see evidence for sampled dependencies.",
+      "rationale": "Retain cross-cutting notice mechanism; it does not install Guidance or call actions/agent.",
+      "evidence": [
+        {
+          "path": "internal/guidancenotice/notice.go",
+          "line": 46
+        }
+      ],
+      "preserve": "Suppression rules and per-session behavior; only public entrypoints/imports sampled."
+    },
+    {
+      "source": "internal/releasenotice",
+      "target": "internal/releasenotice",
+      "decision": "retain",
+      "role": "Optional asynchronous release-notice lifecycle.",
+      "import_shape": "Infrastructure below action services; see evidence for sampled dependencies.",
+      "rationale": "Retain separately from explicit version/update commands.",
+      "evidence": [
+        {
+          "path": "internal/releasenotice/notice.go",
+          "line": 64
+        }
+      ],
+      "preserve": "Eligibility, bounded cached lookup, success-gated notice; full behavior review deferred."
+    },
+    {
+      "source": "internal/fsreplace",
+      "target": "internal/fsreplace",
+      "decision": "retain",
+      "role": "Atomic filesystem replacement and installed-but-not-durable distinction.",
+      "import_shape": "Infrastructure below action services; see evidence for sampled dependencies.",
+      "rationale": "Retain shared leaf used by config, keyring coordination consumers, Guidance, and saved results.",
+      "evidence": [
+        {
+          "path": "internal/fsreplace/fsreplace.go",
+          "line": 31
+        }
+      ],
+      "preserve": "Windows sharing retries and Unix directory sync; never merge into one service."
+    },
+    {
+      "source": "scripts",
+      "target": "scripts",
+      "decision": "retain",
+      "role": "Embedded supported bootstrap installers and their test harnesses.",
+      "import_shape": "Infrastructure below action services; see evidence for sampled dependencies.",
+      "rationale": "Retain bootstrappers and embedding entrypoint; updater must reuse them rather than introduce a second installer.",
+      "evidence": [
+        {
+          "path": "scripts/embed.go",
+          "line": 6
+        }
+      ],
+      "preserve": "Same release installer path and platform scripts; script internals not reassessed."
+    }
+  ],
+  "workflow_examples": [
+    {
+      "id": "LOCAL-W01",
+      "service": "auth",
+      "trace": [
+        "internal/cli/auth/command.go:newLogin",
+        "actions/auth/login/action.go:Action.Execute",
+        "internal/app/auth_credentials.go:authCredentialStore.Store",
+        "internal/config/config.go:updateTransaction"
+      ],
+      "observation": "Authentication and local persistence are separate effects. Shared config outcome is consumed by workspace too.",
+      "proposal": "One actions/auth facade with explicit persistence coordinator; preserve distinct infra ownership.",
+      "evidence": [
+        {
+          "path": "internal/app/auth_credentials.go",
+          "line": 69
+        },
+        {
+          "path": "internal/config/config.go",
+          "line": 770
+        }
+      ],
+      "prior_evidence": "docs/maintainability/auth-pilot.json"
+    },
+    {
+      "id": "LOCAL-W02",
+      "service": "env",
+      "trace": [
+        "internal/app/environment.go:newEnvironmentDependencies",
+        "actions/env/profile/update.go:UpdateAction.Execute",
+        "internal/app/environment.go:configProfileStore.Update"
+      ],
+      "observation": "App owns field changes, stored-credential target guard, defaults, and locked persistence despite action facade.",
+      "proposal": "actions/env owns profile rules and store coordination; internal/config owns transaction. Remove verb package namespace but retain projections.",
+      "evidence": [
+        {
+          "path": "internal/app/environment.go",
+          "line": 111
+        },
+        {
+          "path": "internal/app/environment.go",
+          "line": 77
+        }
+      ]
+    },
+    {
+      "id": "LOCAL-W03",
+      "service": "cache",
+      "trace": [
+        "internal/app/cache_group2.go:RefreshCache",
+        "actions/cache/refresh/action.go:Refresh",
+        "internal/app/cache_group2.go:cacheHydrator.Hydrate"
+      ],
+      "observation": "Collection has two scope-plan trust boundaries and staged database publication. Network collection must not lock unrelated writes.",
+      "proposal": "Actions/cache owns refresh policy and the named workflow. Internal/inventory owns neutral generation, collection, and publication through injected native collector and core store dependencies. App constructs the authenticated executor; content actions never import actions/cache or Tableau.",
+      "evidence": [
+        {
+          "path": "internal/app/cache_group2.go",
+          "line": 41
+        },
+        {
+          "path": "internal/app/cache_group2.go",
+          "line": 213
+        }
+      ]
+    },
+    {
+      "id": "LOCAL-W04",
+      "service": "agent/update",
+      "trace": [
+        "actions/agent/install/action.go:Action.Execute",
+        "internal/agent/install.go:Installer.Install",
+        "actions/update/action.go:Action.Execute",
+        "internal/update/runtime.go:install"
+      ],
+      "observation": "Guidance package preservation and binary installer execution are distinct mechanisms. Update reuses embedded scripts and refreshes Guidance even at same version.",
+      "proposal": "Merge Guidance action packages only; retain package installer, updater process boundary, and common target metadata.",
+      "evidence": [
+        {
+          "path": "internal/agent/install.go",
+          "line": 212
+        },
+        {
+          "path": "internal/update/runtime.go",
+          "line": 135
+        }
+      ]
+    },
+    {
+      "id": "LOCAL-W05",
+      "service": "policy",
+      "trace": [
+        "internal/app/managed_policy.go:InstallManagedPolicy",
+        "internal/managedpolicy/install.go:installWith",
+        "internal/app/managed_policy.go:policyInstallError"
+      ],
+      "observation": "App converts native phases into confirmed effects and recovery while action package mostly validates input.",
+      "proposal": "Move operation and outcome ownership to actions/policy, keep native elevation/ACL/locator machinery in internal/managedpolicy.",
+      "evidence": [
+        {
+          "path": "internal/app/managed_policy.go",
+          "line": 218
+        },
+        {
+          "path": "internal/managedpolicy/install.go",
+          "line": 34
+        }
+      ]
+    },
+    {
+      "id": "LOCAL-W06",
+      "service": "session/doctor",
+      "trace": [
+        "internal/app/session_overview.go:ReadOverview",
+        "actions/auth/status/action.go:Inspect",
+        "actions/doctor/run/action.go:Action.Execute",
+        "internal/app/doctor.go:doctorRuntime"
+      ],
+      "observation": "Session imports another action for local readiness; doctor independently derives source readiness. Doctor connectivity is intentional; bare overview is local-only.",
+      "proposal": "Share nonsecret readiness observation below both facades; retain service-specific projection and probe prerequisites.",
+      "evidence": [
+        {
+          "path": "internal/app/session_overview.go",
+          "line": 10
+        },
+        {
+          "path": "internal/app/doctor.go",
+          "line": 48
+        }
+      ]
+    },
+    {
+      "id": "LOCAL-W07",
+      "service": "last/capability",
+      "trace": [
+        "actions/last/action.go:Action.Execute",
+        "internal/app/managed_policy.go:managedLastReader.Read",
+        "internal/lastcommand/store.go:Store.Read",
+        "internal/app/app.go:registrySource"
+      ],
+      "observation": "Saved results must recheck capability prerequisites without rerunning the original task. Discovery overlays describe policy but do not authorize.",
+      "proposal": "actions/last owns replay policy through a checker; actions/capability owns discovery overlay; shared registry/policy remain infrastructure.",
+      "evidence": [
+        {
+          "path": "internal/app/managed_policy.go",
+          "line": 58
+        },
+        {
+          "path": "internal/app/app.go",
+          "line": 781
+        }
+      ]
+    }
+  ],
+  "test_findings": [
+    {
+      "id": "LOCAL-T01",
+      "tests": [
+        {
+          "path": "internal/app/environment_preview_e2e_test.go",
+          "symbol": "TestEnvironmentPreviewValidatesWithoutChangingConfiguration"
+        }
+      ],
+      "contract": "Preview validates add/update/remove/default including credential guards without changing config/cache/lock state.",
+      "assertions": "Actual CLI and temporary filesystem snapshot; excludes operational last-result receipt from comparison.",
+      "limitations": "Local snapshots do not establish concurrent writer behavior.",
+      "disposition": "keep; move focused store tests with actions/env, retain CLI integration"
+    },
+    {
+      "id": "LOCAL-T02",
+      "tests": [
+        {
+          "path": "actions/cache/refresh/action_test.go",
+          "symbol": "TestActionRejectsInvalidHydrationReceipts"
+        }
+      ],
+      "contract": "Reject scope mismatch, absolute paths, inconsistent counts, and failed requests.",
+      "assertions": "Controlled Hydrator results must yield cache.refresh.incomplete.",
+      "limitations": "Fake receipt test does not prove collector or store creates correct receipt.",
+      "disposition": "keep in actions/cache"
+    },
+    {
+      "id": "LOCAL-T03",
+      "tests": [
+        {
+          "path": "internal/app/cache_staging_test.go",
+          "symbol": "TestCacheCollectionDoesNotLockUnrelatedEnvironmentWrites"
+        }
+      ],
+      "contract": "Network collection must not hold the active cache write lock.",
+      "assertions": "Paused fake collector, real temporary store, concurrent other-environment write must finish before collection resumes.",
+      "limitations": "Timed local test, not full distributed contention proof.",
+      "disposition": "relocate with neutral collection/publication coordination in internal/inventory; retain store-level coverage"
+    },
+    {
+      "id": "LOCAL-T04",
+      "tests": [
+        {
+          "path": "actions/agent/install/action_test.go",
+          "symbol": "TestInstallPartialFailureKeepsCompletedTargetsAndFieldTags"
+        }
+      ],
+      "contract": "Partial failure retains completed targets and exact full/compact output.",
+      "assertions": "Fake partial installer result plus error; checks structured cause and exact serialized fields.",
+      "limitations": "Does not prove filesystem state; pair with installer recovery test.",
+      "disposition": "keep and move to actions/agent"
+    },
+    {
+      "id": "LOCAL-T05",
+      "tests": [
+        {
+          "path": "internal/agent/install_recovery_test.go",
+          "symbol": "TestInstallReportsPackageStateWhenRollbackIsIncomplete"
+        }
+      ],
+      "contract": "Failed commit and rollback preserve edited packages at reported backup paths.",
+      "assertions": "Real temporary filesystem with selected rename failures; asserts status and restored/backup file bytes.",
+      "limitations": "Injected OS error, not native lock reproduction on every platform.",
+      "disposition": "keep in internal/agent"
+    },
+    {
+      "id": "LOCAL-T06",
+      "tests": [
+        {
+          "path": "actions/update/contract_test.go",
+          "symbol": "TestUpdateOrderingAndFailureContext"
+        }
+      ],
+      "contract": "Validate before release/install, retain target/version and honest failure phase.",
+      "assertions": "Recording runtime asserts exact call sequence, not-attempted versus incomplete status, error cause/outcome.",
+      "limitations": "Fake runtime does not prove binary installation.",
+      "disposition": "keep in actions/update"
+    },
+    {
+      "id": "LOCAL-T07",
+      "tests": [
+        {
+          "path": "internal/update/runtime_test.go",
+          "symbol": "TestUpdaterChildrenDoNotReceivePATVariables"
+        }
+      ],
+      "contract": "Updater child excludes configured/conventional PAT variables while retaining needed environment.",
+      "assertions": "Real helper subprocess records variable names; asserts withheld and retained sets.",
+      "limitations": "Helper subprocess is not installer execution or every platform.",
+      "disposition": "keep in internal/update"
+    },
+    {
+      "id": "LOCAL-T08",
+      "tests": [
+        {
+          "path": "actions/doctor/run/action_test.go",
+          "symbol": "TestDoctorRunsEveryIndependentCheckAndRedactsDependencyErrors"
+        }
+      ],
+      "contract": "Failed PAT prerequisite blocks connectivity but not independent checks; diagnostics omit secrets.",
+      "assertions": "Fake probes track calls and inject secret-bearing error; asserts counts and serialized redaction.",
+      "limitations": "Does not prove native probe behavior.",
+      "disposition": "keep and move to actions/doctor"
+    },
+    {
+      "id": "LOCAL-T09",
+      "tests": [
+        {
+          "path": "internal/app/managed_policy_install_test.go",
+          "symbol": "TestPolicyInstallErrorPreservesConfirmedPartialEffects"
+        }
+      ],
+      "contract": "Verification failure must preserve confirmed protection/write/active effects and recovery.",
+      "assertions": "Constructed native outcome mapped to structured error; asserts phase, unknown outcome, completed fields, cause.",
+      "limitations": "Projection-only test does not prove native ACL/elevation/locator behavior.",
+      "disposition": "relocate with actions/policy outcome mapping"
+    },
+    {
+      "id": "LOCAL-T10",
+      "tests": [
+        {
+          "path": "actions/capability/list/action_test.go",
+          "symbol": "TestExecuteMutationFilterDoesNotAuthorizeOrHideDiscovery"
+        }
+      ],
+      "contract": "Mutation discovery remains visible without enabling execution.",
+      "assertions": "Fake registry records; asserts filtered identity and ExecutionEnabled metadata.",
+      "limitations": "Does not prove runtime policy enforcement; retain binding and enforcement suites.",
+      "disposition": "keep and move to actions/capability"
+    },
+    {
+      "id": "LOCAL-T11",
+      "tests": [
+        {
+          "path": "actions/version/get/action_test.go",
+          "symbol": "TestOfflineByDefault"
+        }
+      ],
+      "contract": "Ordinary version lookup does not contact release provider.",
+      "assertions": "Checker call count zero and installed version/status.",
+      "limitations": "Does not validate release HTTP behavior.",
+      "disposition": "keep and move to actions/version"
+    },
+    {
+      "id": "LOCAL-T12",
+      "tests": [
+        {
+          "path": "internal/app/last_e2e_test.go",
+          "symbol": "TestLastJSONDoesNotReplayNetworkOrChangeSavedDocument"
+        }
+      ],
+      "contract": "Saved-result expansion cannot rerun network work or alter subsequent replay.",
+      "assertions": "Actual command path and network spy; parses JSON and checks repeated full replay equality.",
+      "limitations": "Initial firstDocument is parsed but not compared to lastDocument; title does not prove equality with original output. Operational saved schema differs from compact output.",
+      "disposition": "keep; clarify exact assertion scope"
+    },
+    {
+      "id": "LOCAL-T13",
+      "tests": [
+        {
+          "path": "actions/session/overview/action_test.go",
+          "symbol": "TestOverviewBoundsBothProjectionsAndPreservesTruthfulTotals"
+        }
+      ],
+      "contract": "Overview bounded projections remain sorted and truthful without authentication claim.",
+      "assertions": "Fake state with 111 environments/workspaces; asserts 10/100 return bounds, 111 totals, not_checked and single read.",
+      "limitations": "Does not prove reader has no network or filesystem side effects.",
+      "disposition": "keep and move to actions/session"
+    },
+    {
+      "id": "LOCAL-T14",
+      "tests": [
+        {
+          "path": "internal/app/session_overview_test.go",
+          "symbol": "TestBareOverviewFirstRunAndHelpAreReadOnly"
+        }
+      ],
+      "contract": "First-run bare command reports local missing setup and help remains distinct.",
+      "assertions": "CLI fixture across encodings checks local_overview, missing, not_checked and parseable JSON.",
+      "limitations": "Fixture helper and broader side-effect assertions need separate full review before claiming complete readonly proof.",
+      "disposition": "keep as CLI integration"
+    },
+    {
+      "id": "LOCAL-T15",
+      "tests": [
+        {
+          "path": "internal/workspace/installed_config_test.go",
+          "symbol": "TestCreateKeepsWorkspaceWhenRegistrationStaysInstalled"
+        }
+      ],
+      "contract": "Installed registration retains usable workspace despite durability failure.",
+      "assertions": "Previously reviewed real config/file state plus injected InstalledError; resolves expected manifest identity.",
+      "limitations": "Injected transaction outcome; underlying durability proof belongs to config tests.",
+      "disposition": "keep; detailed auth-pilot shared-consumer ledger applies"
+    }
+  ],
+  "limits": [
+    "Proposed architecture, not approved implementation. No tests, live services, production edits, source checkout, or installer/keyring operations performed.",
+    "All 18 action packages across 12 requested families have role/import mappings. Supporting package review is selective, not complete coverage of every file or test.",
+    "Auth persistence detail reuses the pinned auth-pilot ledger. AUTH-03 remains an unconfirmed correctness concern, not an architecture justification or silently approved fix.",
+    "Flatten package namespaces by adapting real callers/tests and removing old packages, not compatibility forwarding packages. Prefix operation-specific types as needed; do not unify externally different projections.",
+    "App source files containing multiple responsibilities require symbol-level splits. Unrelated app code is outside these mappings.",
+    "Resource-specific cached read adapters in internal/app/cache_reads.go are inventoried but not reassessed end-to-end here. The common proposal places neutral read-through and multi-resource inventory orchestration in internal/inventory without action types, and typed consumer projection in resources/<resource>. Keep these mechanisms below actions/cache and avoid action-to-action imports. This placement is a coordinated proposal, not independently verified end-to-end by this assessment.",
+    "Existing internal/update imports actions/update for Release. Prefer a shared lower-level release record under internal/version when adapting this seam; verify URL/version validation remains unchanged and do not create a reverse action dependency.",
+    "Guidance and release notice internals, bootstrap script internals, native policy platform implementations, terminal behavior, and all native credential/permission matrices remain separately assessed work.",
+    "Shared readiness extraction must preserve current consumer-specific meanings and input normalization. Any correction of inconsistent whitespace or source labels requires a deliberate behavior change.",
+    "Retain architecture/security checks unless revised as an explicit approved design decision; counts and fewer files are not acceptance criteria."
+  ]
+}

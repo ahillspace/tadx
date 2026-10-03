@@ -1,0 +1,116 @@
+{
+  "source_revision": "dd22c33bd1d123066f25ec09e2d612cd95717400",
+  "area": "content.workbook",
+  "status": "pilot-source-reviewed",
+  "execution": "not-run",
+  "workflow_trace": [
+    {"path":"internal/cli/content/lifecycle_mutations.go","line":14,"symbol":"newWorkbookMove","role":"Parse and validate flags; invoke dependency; render operation output."},
+    {"path":"internal/app/content_mutations.go","line":54,"symbol":"remoteContentCommands.MoveWorkbook","role":"Validate before setup; connect; bind resolved target; invoke workflow."},
+    {"path":"actions/workbook/move.go","line":23,"symbol":"Move","role":"Plan, check collisions, preview, revalidate pinned identities, mutate, and return operation outcome."},
+    {"path":"internal/app/content_mutations.go","line":142,"symbol":"workbookMutationAdapter.MoveWorkbook","role":"Translate move into client Update request and copy result fields."},
+    {"path":"internal/resources/workbook/adapter.go","line":46,"symbol":"Adapter.UpdateWorkbook","role":"Check configured update capability and forward client request."},
+    {"path":"internal/tableau/workbook/client.go","line":209,"symbol":"Client.Update","role":"Encode exact HTTP request and validate returned identity and requested fields."},
+    {"path":"actions/workbook/move_types.go","line":55,"symbol":"MoveOutput.CompactOutput","role":"Preserve operation-specific compact projection."}
+  ],
+  "reviewed_paths": [
+    {"path":"actions/workbook/move.go","scope":"full"},
+    {"path":"actions/workbook/move_types.go","scope":"full"},
+    {"path":"actions/workbook/workbook.go","scope":"full"},
+    {"path":"actions/workbook/move_test.go","scope":"full"},
+    {"path":"actions/workbook/record_projection_test.go","scope":"full"},
+    {"path":"internal/cli/content/lifecycle_mutations.go","scope":"workbook move/update entry points"},
+    {"path":"internal/cli/content/lifecycle_mutations_test.go","scope":"workbook flag, annotation, and invalid-input cases"},
+    {"path":"internal/app/content_mutations.go","scope":"workbook setup and mutation adapters; cross-resource comparison"},
+    {"path":"internal/app/content_remote.go","scope":"connection, delete adapter, shared resource construction"},
+    {"path":"internal/app/content_mutations_test.go","scope":"workbook authoritative-result test and its fake"},
+    {"path":"internal/app/command_runtime_e2e_test.go","scope":"TestContentMovesShareSourceAndDestinationHierarchyWithinPhase"},
+    {"path":"internal/resources/workbook/adapter.go","scope":"client interfaces, update forwarding, identity aliases, exact resolution and collision traversal"},
+    {"path":"internal/tableau/workbook/client.go","scope":"Update request, response, and requested-field verification"},
+    {"path":"internal/tableau/workbook/client_test.go","scope":"first two update contract tests"}
+  ],
+  "findings": [
+    {
+      "id":"WORKBOOK-01","kind":"ownership-and-dependency-clarity","confidence":"high",
+      "evidence":[{"path":"internal/app/content_mutations.go","line":142},{"path":"internal/resources/workbook/adapter.go","line":23},{"path":"internal/resources/workbook/adapter.go","line":46}],
+      "observation":"Move-to-Update translation lives in app. The resource adapter then accepts a client-owned request, checks an optional updateClient capability, and forwards it. Its constructor Client interface includes unrelated download/publish methods but omits Update.",
+      "impact":"A maintainer must cross composition and resource files to understand request translation; mutation capability is discovered at runtime rather than expressed by construction.",
+      "recommendation":"Use the same explicitly injected workflow-port convention across resources. Give request translation one boundary owner, without mandatory pass-through app adapters.",
+      "verification":"Preserve exact source/destination request fields, native response checks, request IDs, errors, and operation projections. Do not replace narrow ports with a universal client interface."
+    },
+    {
+      "id":"WORKBOOK-02","kind":"test-fidelity","confidence":"high",
+      "evidence":[{"path":"actions/workbook/move_test.go","line":17},{"path":"actions/workbook/move_test.go","line":30},{"path":"actions/workbook/move_test.go","line":35}],
+      "observation":"The test named PreviewsThenRevalidatesAndMoves uses immutable observations. The mover ignores both arguments and returns hardcoded IDs. Assertions check preview suppression and one mutation, not revalidation, pinned selectors, or the actual target.",
+      "impact":"The test alone can pass despite losing the revalidation step or supplying wrong mutation IDs. This is not a claim that the entire suite misses those failures.",
+      "recommendation":"Retain preview coverage and strengthen with changing observations, captured request identities, late collisions, and precise failure assertions.",
+      "verification":"Seed omission of prewrite validation and a wrong destination in isolated candidates; verify the corresponding tests fail."
+    },
+    {
+      "id":"WORKBOOK-03","kind":"contract-to-preserve","confidence":"high",
+      "evidence":[{"path":"actions/workbook/workbook.go","line":12},{"path":"actions/workbook/move.go","line":44},{"path":"actions/workbook/record_projection_test.go","line":12}],
+      "observation":"Actions and resource adapters already reuse the normalized workbook record. Move pins resolved LUIDs, checks changed source fields, and repeats collision checks. Output deliberately exposes a smaller operation projection.",
+      "impact":"Removing all projection types or sharing a generic lifecycle runner can widen output or change safety semantics despite reducing file count.",
+      "recommendation":"Keep shared internal observations, explicit per-operation projections, and explicit freshness rules under the common architecture.",
+      "verification":"Preserve mutation suppression on drift and collision; verify field presence and omission independently for compact/full JSON and TOON."
+    }
+  ],
+  "test_groups": [
+    {
+      "id":"WB-T01","tests":[{"path":"actions/workbook/move_test.go","symbol":"TestMovePreviewsThenRevalidatesAndMoves"}],
+      "contract":"Preview does not mutate; execution targets the planned workbook and destination after fresh checks.",
+      "failure_mechanism":"Preview writes; wrong mutation arguments; stale observations bypass revalidation.",
+      "assertions":"Preview has no result and zero calls; execution has result and one call.",
+      "limitations":"Immutable resolver; call counter not asserted; mover discards arguments. Does not independently prove revalidation or target correctness.",
+      "disposition":"strengthen"
+    },
+    {
+      "id":"WB-T02","tests":[{"path":"actions/workbook/move_test.go","symbol":"TestMoveRejectsDestinationCollision"},{"path":"actions/workbook/move_test.go","symbol":"TestMoveDefaultSiteRequiresResolvedTarget"}],
+      "contract":"Collisions stop moves; unresolved target or missing environment must not reach resource reads.",
+      "failure_mechanism":"Overwrites or cross-site work caused by accepting a collision or unbound target.",
+      "assertions":"Collision returns error; unresolved cases return error with zero workbook lookups; resolved default site accepted.",
+      "limitations":"Collision test lacks zero-write and exact error assertions; no collision introduced only at prewrite.",
+      "disposition":"strengthen"
+    },
+    {
+      "id":"WB-T03","tests":[{"path":"internal/cli/content/lifecycle_mutations_test.go","symbol":"TestLifecycleMutationCommandsProjectFlagsAndPreview"},{"path":"internal/cli/content/lifecycle_mutations_test.go","symbol":"TestLifecycleMutationCommandsExposeExactCapabilityAnnotations"},{"path":"internal/cli/content/lifecycle_mutations_test.go","symbol":"TestLifecycleMutationCommandsRequireEnvironmentAndExactSelectors"}],
+      "contract":"CLI maps exact selectors, requested values, preview, and capability IDs correctly.",
+      "failure_mechanism":"Wrong flag binding or capability annotation changes selected action or authorization identity.",
+      "assertions":"Captured typed inputs and preview match flags; capability annotation matches ID; invalid input returns error.",
+      "limitations":"Workbook subcases reviewed. Spy actions do not prove authorization, HTTP, or affected state; invalid-input cases do not assert invocation count.",
+      "disposition":"keep"
+    },
+    {
+      "id":"WB-T04","tests":[{"path":"internal/app/content_mutations_test.go","symbol":"TestContentMutationAdaptersPreserveAuthoritativeResults"}],
+      "contract":"Returned authoritative identities and request IDs survive the boundary mapping.",
+      "failure_mechanism":"Copy adapter drops a field used for recovery or follow-up work.",
+      "assertions":"Workbook move result IDs/request ID and update name/owner match the supplied native result.",
+      "limitations":"Workbook portion reviewed. Fake ignores request and always succeeds; no result-plus-error assertion. Removing an adapter requires relocating these behavioral assertions, not preserving obsolete wiring.",
+      "disposition":"relocate"
+    },
+    {
+      "id":"WB-T05","tests":[{"path":"internal/app/command_runtime_e2e_test.go","symbol":"TestContentMovesShareSourceAndDestinationHierarchyWithinPhase"}],
+      "contract":"One hierarchy observation per validation phase; preview never writes; execution uses a new phase.",
+      "failure_mechanism":"Repeated inventory within one phase, stale hierarchy reuse, or preview mutation.",
+      "assertions":"Real app.Run against a TLS fixture: one hierarchy read and zero writes for preview; two reads and one write for execution, across three resource kinds.",
+      "limitations":"Fixed resource state; generic PUT response does not validate exact request body. This is local integration, not live Tableau evidence.",
+      "disposition":"keep"
+    },
+    {
+      "id":"WB-T06","tests":[{"path":"internal/tableau/workbook/client_test.go","symbol":"TestClientUpdatesOnlyExplicitWorkbookFields"},{"path":"internal/tableau/workbook/client_test.go","symbol":"TestClientRejectsIncompleteWorkbookUpdatesBeforeSending"}],
+      "contract":"Exact REST path/body and only explicit update fields; invalid updates send no requests.",
+      "failure_mechanism":"Wrong resource, unexpected field writes, or invalid input reaching Tableau.",
+      "assertions":"TLS handler verifies method, path, query, exact XML and absent project field; result verifies requested name/owner and request ID; invalid cases leave request count zero.",
+      "limitations":"Name/owner cases do not establish move destination serialization or real Tableau state. Other client tests remain unassessed.",
+      "disposition":"keep"
+    },
+    {
+      "id":"WB-T07","tests":[{"path":"actions/workbook/record_projection_test.go","symbol":"TestSharedRecordDoesNotWidenMutationOrPullProjections"}],
+      "contract":"Sharing an internal record does not expose richer fields through operation output.",
+      "failure_mechanism":"Direct serialization of shared records broadens external output contracts.",
+      "assertions":"JSON excludes content URL, tags, internal request ID, and operation-specific description/owner fields.",
+      "limitations":"Full-output field omission only; does not establish all compact/TOON contracts or state changes.",
+      "disposition":"keep"
+    }
+  ],
+  "unassessed":["Complete workbook list, inspect, delete, update, publish, and pull workflows","All authorization and transport error paths","Complete resource/client test inventory","Live Tableau and platform behavior","Mutation testing and baseline/candidate execution"]
+}

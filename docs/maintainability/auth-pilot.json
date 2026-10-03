@@ -1,0 +1,289 @@
+{
+  "source_revision": "dd22c33bd1d123066f25ec09e2d612cd95717400",
+  "area": "Authentication login/logout and configuration persistence, with selected workspace consumers",
+  "status": "pilot-source-reviewed",
+  "execution": "not-run",
+  "workflow_trace": [
+    {"path":"internal/app/app.go","line":177,"symbol":"authlogin.New/authlogout.New wiring","role":"Construct action dependencies."},
+    {"path":"internal/cli/auth/command.go","line":135,"symbol":"newLogin","role":"Parse environment, preflight, require terminal, prompt, invoke action, render."},
+    {"path":"internal/app/auth_prompt.go","line":45,"symbol":"terminalCredentialPrompter.ReadPATSecret","role":"Read secret without terminal echo."},
+    {"path":"actions/auth/login/action.go","line":51,"symbol":"Action.Execute","role":"Resolve, authenticate, require complete identity, persist, map outcomes."},
+    {"path":"internal/app/auth_credentials.go","line":53,"symbol":"loginAuthenticator.Authenticate","role":"Authenticate through command-scoped sessions and project identity."},
+    {"path":"internal/app/auth_credentials.go","line":69,"symbol":"authCredentialStore.Store","role":"Recheck persisted target under lock and coordinate keyring storage with configuration rollback."},
+    {"path":"actions/auth/logout/action.go","line":34,"symbol":"Action.Execute","role":"Preview or remove local credentials and distinguish confirmed from uncertain effects."},
+    {"path":"internal/app/auth_credentials.go","line":111,"symbol":"authCredentialStore.Remove","role":"Clear configuration reference, delete credential after save, and compensate failure."},
+    {"path":"internal/config/config.go","line":770,"symbol":"updateTransaction","role":"Lock, reload, mutate, save, compensate, and report installed configuration."},
+    {"path":"internal/fsreplace/fsreplace.go","line":31,"symbol":"Replace","role":"Distinguish failed rename from installed replacement with durability failure."},
+    {"path":"internal/workspace/manager.go","line":452,"symbol":"registrationInstalled","role":"Keep workspace files consistent with installed registration despite a reported persistence error."}
+  ],
+  "reviewed_paths": [
+    {"path":"internal/cli/auth/command.go","scope":"Login/logout command construction and declared dependencies; check/status inspected for context."},
+    {"path":"actions/auth/login/action.go","scope":"Complete login action and credential/output representations."},
+    {"path":"actions/auth/logout/action.go","scope":"Complete logout action and installed-state mapping."},
+    {"path":"internal/app/app.go","scope":"Auth construction and environment resolution only."},
+    {"path":"internal/app/command_runtime.go","scope":"configuration cache, command sessions, and transport construction only."},
+    {"path":"internal/app/auth_credentials.go","scope":"Complete credential resolver, authenticator, storage coordination, and orphan guidance."},
+    {"path":"internal/app/auth_prompt.go","scope":"Complete terminal prompter."},
+    {"path":"internal/config/config.go","scope":"Save, transaction entry points, installed outcome, lock, rollback, and post-save branches; not complete configuration validation or migration review."},
+    {"path":"internal/config/write_target.go","scope":"Explicit write-environment selection."},
+    {"path":"internal/fsreplace/fsreplace.go","scope":"Complete replacement and durability contract."},
+    {"path":"internal/fsreplace/fsreplace_windows.go","scope":"Sharing retries and platform durability boundary."},
+    {"path":"internal/workspace/manager.go","scope":"Transaction dependency hooks, create, clone completion, installed-state recognition, and registration freshness; not full workspace lifecycle."},
+    {"path":"internal/workspace/recovery.go","scope":"Workspace creation and preservation-aware rollback."},
+    {"path":"internal/auth/credentials.go","scope":"Credential/store contracts and redaction-bearing types only."},
+    {"path":"internal/auth/credentials_test.go","scope":"Recording keyring fixture and TestPATStoreUsesOpaqueReferenceAndBoundedTargetBoundRecord only; other test declarations inventoried, not substantively assessed."}
+  ],
+  "findings": [
+    {
+      "id":"AUTH-01","kind":"workflow-ownership","confidence":"high",
+      "evidence":[{"path":"internal/app/auth_credentials.go","line":69},{"path":"internal/app/auth_credentials.go","line":111}],
+      "observation":"Credential persistence coordination in app owns target freshness, cross-store ordering, compensation, and orphan recovery. It is not a copy-only adapter and depends on the entire runtime object.",
+      "impact":"Maintainers must enter the composition package to understand persistence behavior; the dependency object obscures the smaller required configuration and credential-store boundaries.",
+      "recommendation":"Under the repository-wide convention, assign this coordination one explicit boundary owner with explicit dependencies and keep app responsible for construction. Preserve different login and logout sequences.",
+      "verification":"Characterize target changes, rollback, installed-but-not-durable outcomes, and failed deletion before migration. Retain command integration, transaction, and shared-consumer tests."
+    },
+    {
+      "id":"AUTH-02","kind":"implicit-dependency-contract","confidence":"high",
+      "evidence":[{"path":"internal/cli/auth/command.go","line":157},{"path":"actions/auth/login/action.go","line":42},{"path":"internal/app/command_runtime.go","line":90},{"path":"internal/app/auth_credentials.go","line":80}],
+      "observation":"Login discovers required pre-prompt behavior through an optional anonymous Preflight interface. The declared Login dependency requires only Execute. Normal resolver calls share cached command configuration; locked storage performs the fresh target check.",
+      "impact":"Future implementations can omit preflight without a compile-time failure, and repeated resolution can be mistaken for independent fresh-state protection.",
+      "recommendation":"Make required command phases explicit using the agreed dependency convention. Do not remove the later locked target check or treat it as duplicate preflight.",
+      "verification":"Preserve rejection before prompts and add focused coverage for configuration target changes between authentication and persistence."
+    },
+    {
+      "id":"AUTH-03","kind":"unconfirmed-correctness-concern","confidence":"medium",
+      "evidence":[{"path":"internal/config/config.go","line":852},{"path":"internal/config/config.go","line":856},{"path":"internal/app/auth_credentials.go","line":145}],
+      "observation":"After a successful configuration save, a failed post-save callback followed by a failed restore returns generic joined errors. Unlike the earlier durability-plus-restore-failure branch, it does not return InstalledError. If restore fails before installation, logout can leave its reference cleared and credential present without triggering orphan-specific guidance.",
+      "impact":"The caller can lose installed-state classification and the exact orphan-entry recovery advice. This is a source-supported concern, not a reproduced defect.",
+      "recommendation":"Track separately from behavior-preserving refactoring. Reproduce the specific ordering using isolated transaction fault injection before deciding on a correction.",
+      "verification":"Force successful initial save, failed external deletion, and restore failure before replacement. Assert actual config and credential state, structured outcome, and recoverable entry identity. Existing neighboring tests do not establish this sequence."
+    },
+    {
+      "id":"AUTH-04","kind":"test-navigation","confidence":"high",
+      "evidence":[{"path":"internal/app/utility_batch_preview_test.go","line":83}],
+      "observation":"A substantial auth logout contract test resides in a broad utility/batch file rather than beside auth behavior tests.",
+      "impact":"A maintainer following the auth command can miss preview, selected-target, and secret-output coverage.",
+      "recommendation":"Relocate the test under the common behavioral test naming convention without deleting its assertions.",
+      "verification":"Preserve preview non-mutation, exact selected-reference deletion, unrelated-reference preservation, batch rejection, and redaction assertions."
+    }
+  ],
+  "test_groups": [
+    {
+      "id":"AUTH-T01",
+      "tests":[
+        {"path":"internal/cli/auth/command_test.go","symbol":"TestAuthCheckAndStatusMapEnvironment"},
+        {"path":"internal/cli/auth/command_test.go","symbol":"TestLoginRequiresTerminalAndMapsPromptedCredentials"},
+        {"path":"internal/cli/auth/command_test.go","symbol":"TestLoginRejectsMissingEnvironmentBeforePrompt"},
+        {"path":"internal/cli/auth/command_test.go","symbol":"TestLoginRejectsNonTerminalInputWithoutReading"},
+        {"path":"internal/cli/auth/command_test.go","symbol":"TestLoginDoesNotExposeCredentialFlags"},
+        {"path":"internal/cli/auth/command_test.go","symbol":"TestLoginPromptFailureDoesNotCallAction"},
+        {"path":"internal/cli/auth/command_test.go","symbol":"TestLogoutIsNoninteractiveAndMapsEnvironment"},
+        {"path":"internal/cli/auth/command_test.go","symbol":"TestLogoutRequiresExplicitEnvironment"}
+      ],
+      "contract":"Command input mapping, explicit target selection, interactive-only secret entry, and noninteractive logout.",
+      "failure_mechanism":"Missing target, nonterminal input, prompt failure, or credential supplied through unsupported flags.",
+      "assertions":"Prompt/action call counts, mapped values, structured usage errors, rejected flags, and render counts.",
+      "limitations":"Fake prompter does not establish actual terminal echo suppression; fake actions do not exercise persistence.",
+      "disposition":"keep"
+    },
+    {
+      "id":"AUTH-T02",
+      "tests":[
+        {"path":"actions/auth/login/action_test.go","symbol":"TestExecuteValidatesThenStoresCredential"},
+        {"path":"actions/auth/login/action_test.go","symbol":"TestExecuteDoesNotStoreWhenValidationFails"},
+        {"path":"actions/auth/login/action_test.go","symbol":"TestExecuteReportsValidatedButUnstoredCredential"},
+        {"path":"actions/auth/login/action_test.go","symbol":"TestExecuteRequiresCompletePATInput"},
+        {"path":"actions/auth/login/action_test.go","symbol":"TestOutputNeverContainsCredentialValues"},
+        {"path":"actions/auth/login/action_test.go","symbol":"TestCredentialInputsRedactFormattingAndJSON"},
+        {"path":"actions/auth/login/action_test.go","symbol":"TestExecuteReportsSavedCredentialWhenConfigurationIsNotDurable"}
+      ],
+      "contract":"Authenticate before saving, preserve safe error semantics, and never serialize credentials.",
+      "failure_mechanism":"Authentication denial, unavailable storage, incomplete PAT input, accidental formatting, and installed-but-not-durable configuration.",
+      "assertions":"Failed authentication produces zero store calls; outputs carry expected identity/status; formatted and rendered values omit secrets; installed-state error has confirmed persistence outcome.",
+      "limitations":"Fakes do not exercise keyring or filesystem. No inspected test injects successful authentication with incomplete returned identity.",
+      "disposition":"strengthen"
+    },
+    {
+      "id":"AUTH-T03",
+      "tests":[
+        {"path":"actions/auth/logout/action_test.go","symbol":"TestExecuteRemovesOnlyStoredCredential"},
+        {"path":"actions/auth/logout/action_test.go","symbol":"TestExecuteMissingStoredCredentialIsNoOp"},
+        {"path":"actions/auth/logout/action_test.go","symbol":"TestExecuteStopsOnFreshResolutionFailure"},
+        {"path":"actions/auth/logout/action_test.go","symbol":"TestExecuteWrapsRemovalFailure"},
+        {"path":"actions/auth/logout/action_test.go","symbol":"TestExecuteReportsRemovalWhenConfigurationIsNotDurable"},
+        {"path":"actions/auth/logout/action_test.go","symbol":"TestExecuteDoesNotConfirmRemovalWhenCredentialDeletionFailedAfterInstall"}
+      ],
+      "contract":"Local-only removal, idempotent absence, and honest confirmed versus uncertain effects.",
+      "failure_mechanism":"Resolution failure, removal failure, durability failure, or failed external deletion after installation.",
+      "assertions":"Failed resolution prevents store calls; output does not claim remote revocation; installed errors map to the correct persistence outcome and advice.",
+      "limitations":"Synthesized error interfaces do not prove configuration code emits the marker for every relevant sequence.",
+      "disposition":"keep"
+    },
+    {
+      "id":"AUTH-T04",
+      "tests":[
+        {"path":"internal/app/auth_credentials_test.go","symbol":"TestAuthCredentialStoreLogoutRestoresReferenceWhenDeletionFails"},
+        {"path":"internal/app/auth_credentials_test.go","symbol":"TestAuthCredentialStorePersistsOpaqueReferenceAndReplacesOldPAT"},
+        {"path":"internal/app/auth_credentials_test.go","symbol":"TestAuthCredentialStoreLogoutDeletesPATAndReference"},
+        {"path":"internal/app/auth_credentials_test.go","symbol":"TestAuthCredentialStoreLogoutClearsStaleReference"},
+        {"path":"internal/app/auth_credentials_test.go","symbol":"TestAuthCredentialStoreNamesOrphanedEntryWhenDeletionFailsAfterInstall"}
+      ],
+      "contract":"Configuration references and stored credentials remain consistent through replacement, deletion, and recovery.",
+      "failure_mechanism":"Denied credential deletion, stale reference, replacement, and installed configuration with orphaned credential.",
+      "assertions":"Reloaded configuration restores or clears the expected reference; in-memory credentials change accordingly; orphan advice names the recoverable entry.",
+      "limitations":"PAT fake ignores target binding and cannot fail StorePAT or ReplacePAT. Orphan guidance test calls the helper directly, not the full transaction.",
+      "disposition":"strengthen"
+    },
+    {
+      "id":"AUTH-T05",
+      "tests":[
+        {"path":"internal/app/auth_credentials_e2e_test.go","symbol":"TestAuthSetupRejectsInvalidTargetBeforePromptOrSignIn"},
+        {"path":"internal/app/auth_credentials_e2e_test.go","symbol":"TestAuthLoginEnvironmentOverrideStopsBeforePrompt"},
+        {"path":"internal/app/auth_credentials_e2e_test.go","symbol":"TestAuthCheckFailureRetainsChosenSource"},
+        {"path":"internal/app/auth_credentials_e2e_test.go","symbol":"TestAuthLoginCheckAndLogoutThroughCLI"}
+      ],
+      "contract":"Actual command integration rejects unsafe setup before prompting and preserves credential provenance and redaction through login/status/check/logout.",
+      "failure_mechanism":"Invalid HTTP target, environment override, failed sign-in, or incorrect integration wiring.",
+      "assertions":"Exit codes, prompt counts, sign-in payload/call checks, credential-source/status fields, and secret absence.",
+      "limitations":"TLS test server, fake terminal, and fake PAT store; not live Tableau or native keyring evidence. Invalid-target test does not independently spy on network calls.",
+      "disposition":"keep"
+    },
+    {
+      "id":"AUTH-T06",
+      "tests":[{"path":"internal/app/utility_batch_preview_test.go","symbol":"TestAuthLogoutPreviewPreservesCredentialsThenExecutionRemovesOnlySelectedReference"}],
+      "contract":"Preview is read-only and logout affects only the selected environment.",
+      "failure_mechanism":"Accidental preview deletion, wrong-reference deletion, unsupported batch acceptance, or credential leakage.",
+      "assertions":"Both config references survive preview; execution deletes exactly one selected credential/reference and preserves the other; batch flag rejected; secret/reference not rendered.",
+      "limitations":"Stateful keyring fake does not model native backend behavior.",
+      "disposition":"relocate"
+    },
+    {
+      "id":"AUTH-T07",
+      "tests":[
+        {"path":"internal/config/update_rollback_test.go","symbol":"TestUpdateWithRollbackRestoresStagedFilesBeforeUnlockOnSaveFailure"},
+        {"path":"internal/config/update_rollback_test.go","symbol":"TestUpdateWithRollbackPreservesBothErrors"},
+        {"path":"internal/config/update_rollback_test.go","symbol":"TestUpdateWithRollbackDoesNotRestoreAfterCommit"},
+        {"path":"internal/config/update_rollback_test.go","symbol":"TestUpdateWithPostSaveRestoresConfigurationWhenExternalCommitFails"}
+      ],
+      "contract":"Transaction compensation preserves state and errors while holding the configuration lock.",
+      "failure_mechanism":"A directory blocks replacement; rollback itself fails; external post-save operation fails.",
+      "assertions":"Actual staged paths restored, lock remains held during rollback, both causes survive errors.Is, successful save does not roll back, old reference restored after external failure.",
+      "limitations":"No covered sequence combines a successful initial save, failed external operation, and failed restore.",
+      "disposition":"strengthen"
+    },
+    {
+      "id":"AUTH-T08",
+      "tests":[
+        {"path":"internal/config/update_durability_test.go","symbol":"TestUpdateReinstallsPriorConfigurationBeforeRollbackWhenSyncFails"},
+        {"path":"internal/config/update_durability_test.go","symbol":"TestUpdateWithPostSaveSkipsExternalCommitWhenSyncFails"},
+        {"path":"internal/config/update_durability_test.go","symbol":"TestUpdateKeepsExternalStateWithInstalledConfigurationWhenRestoreFails"},
+        {"path":"internal/config/update_durability_test.go","symbol":"TestUpdateReportsUnconfirmedExternalCommitWhenRestoreAndCommitFail"}
+      ],
+      "contract":"Visible installed state, durability, and external commit confirmation are distinct facts.",
+      "failure_mechanism":"Real rename followed by scripted durability error, then optional restore and external-commit failures.",
+      "assertions":"Reloaded bytes/reference, rollback order, skipped or completed callbacks, InstalledError markers, and preserved error causes.",
+      "limitations":"Injected return values do not simulate power loss. Package-level replacement hook requires coordinated, nonparallel use.",
+      "disposition":"keep"
+    },
+    {
+      "id":"AUTH-T09",
+      "tests":[
+        {"path":"internal/config/update_lock_test.go","symbol":"TestUpdateStopsWaitingForAHeldConfigurationLock"},
+        {"path":"internal/config/update_lock_test.go","symbol":"TestUpdateProceedsWhenTheConfigurationLockIsReleasedInTime"}
+      ],
+      "contract":"No mutator runs without the lock; contention is bounded and recoverable.",
+      "failure_mechanism":"A held lock outlasts the wait or is released in time.",
+      "assertions":"Mutator calls, unchanged bytes after timeout, structured retry guidance, and file presence after successful update.",
+      "limitations":"Timed same-process contention, not a multi-process stress or crash test.",
+      "disposition":"keep"
+    },
+    {
+      "id":"AUTH-T10",
+      "tests":[
+        {"path":"internal/app/auth_credentials_durability_test.go","symbol":"TestAuthCredentialStoreLoginKeepsStoresConsistentWhenDirectorySyncFails"},
+        {"path":"internal/app/auth_credentials_durability_test.go","symbol":"TestAuthCredentialStoreLogoutKeepsStoresConsistentWhenDirectorySyncFails"}
+      ],
+      "contract":"Credential state agrees with restored configuration after real directory-sync failure.",
+      "failure_mechanism":"Directory permissions permit rename but prevent subsequent directory open for sync.",
+      "assertions":"Reloaded configuration and PAT fake jointly retain old state or remove newly staged credentials.",
+      "limitations":"Unix build tag, skips root, and uses a fake keyring. Not a Windows durability proof.",
+      "disposition":"keep"
+    },
+    {
+      "id":"AUTH-T11",
+      "tests":[
+        {"path":"internal/workspace/installed_config_test.go","symbol":"TestCreateKeepsWorkspaceWhenRegistrationStaysInstalled"},
+        {"path":"internal/workspace/installed_config_test.go","symbol":"TestCreateRemovesWorkspaceWhenPriorConfigurationWasRestored"},
+        {"path":"internal/workspace/installed_config_test.go","symbol":"TestCloneKeepsDestinationWhenRegistrationStaysInstalled"},
+        {"path":"internal/workspace/installed_config_test.go","symbol":"TestCloneRemovesDestinationWhenPriorConfigurationWasRestored"},
+        {"path":"internal/workspace/installed_config_test.go","symbol":"TestDeleteFinishesWhenUnregistrationStaysInstalled"}
+      ],
+      "contract":"Workspace files must agree with installed registration even when persistence reports an error.",
+      "failure_mechanism":"Injected installed-but-not-durable or restored transaction outcomes.",
+      "assertions":"Usable manifest-backed registration preserved, unwanted destination removed, clone source bytes unchanged, deleted workspace no longer resolves.",
+      "limitations":"Injects transaction outcomes rather than reproducing sync failures; protects consumer response separately from transaction implementation.",
+      "disposition":"keep"
+    },
+    {
+      "id":"AUTH-T12",
+      "tests":[
+        {"path":"internal/fsreplace/fsreplace_test.go","symbol":"TestReplaceInstallsFileAndSyncsParentDirectory"},
+        {"path":"internal/fsreplace/fsreplace_test.go","symbol":"TestReplaceInstallsDirectory"},
+        {"path":"internal/fsreplace/fsreplace_test.go","symbol":"TestReplaceSkipsSyncWhenRenameFails"},
+        {"path":"internal/fsreplace/fsreplace_test.go","symbol":"TestReplaceReportsParentSyncFailure"}
+      ],
+      "contract":"Failed rename leaves old state; failed sync follows a visible replacement and reports durability uncertainty.",
+      "failure_mechanism":"Missing rename source or injected sync error.",
+      "assertions":"Actual destination bytes, source disappearance, sync calls, and typed durability error.",
+      "limitations":"Sync hook validates contract propagation, not hardware durability or power-loss recovery.",
+      "disposition":"keep"
+    },
+    {
+      "id":"AUTH-T13",
+      "tests":[{"path":"internal/config/save_windows_test.go","symbol":"TestSaveReplacesConfigurationAfterTransientReaderCloses"}],
+      "contract":"Configuration replacement tolerates a transient reader handle on Windows.",
+      "failure_mechanism":"File remains open until a timed close.",
+      "assertions":"Save succeeds while the reader initially holds the file.",
+      "limitations":"Windows-specific; does not prove power-loss durability or every sharing failure. No execution evidence collected.",
+      "disposition":"keep"
+    },
+    {
+      "id":"AUTH-T14",
+      "tests":[{"path":"internal/auth/keyring_smoke_test.go","symbol":"TestLiveOSPATStoreRoundTrip"}],
+      "contract":"Native keyring supports storing, loading, replacing, and deleting a synthetic PAT record.",
+      "failure_mechanism":"Unavailable backend or incorrect native persistence behavior.",
+      "assertions":"Round-trip values/source, replacement values, and failed load after deletion.",
+      "limitations":"Requires opt-in livekeyring build tag and real credential-store access; not run during this assessment.",
+      "disposition":"keep"
+    },
+    {
+      "id":"AUTH-T15",
+      "tests":[{"path":"internal/auth/credentials_test.go","symbol":"TestPATStoreUsesOpaqueReferenceAndBoundedTargetBoundRecord"}],
+      "contract":"Credential-store records use opaque identifiers, bounded encoding, and redacted presentation.",
+      "failure_mechanism":"Identifier exposes target information, record exceeds bound, or serialization leaks credentials.",
+      "assertions":"Recorded keyring address, bounded record bytes, round-trip credential values/source, and formatting/JSON omission of credentials.",
+      "limitations":"Recording keyring is not a native backend; this selected test alone does not prove rejection of a mismatched target.",
+      "disposition":"keep"
+    },
+    {
+      "id":"AUTH-T16",
+      "tests":[
+        {"path":"internal/app/environment_credentials_test.go","symbol":"TestEnvironmentUpdateRejectsCredentialTargetChange"},
+        {"path":"internal/app/environment_credentials_test.go","symbol":"TestEnvironmentRemoveRejectsStoredCredential"}
+      ],
+      "contract":"Environment edits must not silently strand or retarget stored credentials.",
+      "failure_mechanism":"Change server/site or remove an environment while it retains a credential reference.",
+      "assertions":"Store operation rejects each change and directs the user to auth logout.",
+      "limitations":"Inspected tests assert error/guidance but do not independently assert unchanged file bytes; environment workflow is outside this bounded pilot.",
+      "disposition":"keep"
+    }
+  ],
+  "unassessed": [
+    "This is selected login/logout persistence coverage, not a completed assessment of Auth, configuration, or workspace categories.",
+    "Native session pooling, cross-site session behavior, most credential source-resolution tests, and full Tableau authentication client contracts.",
+    "Complete configuration validation, migration, environment commands, mutation consent, and remaining workspace operations/tests.",
+    "Current test results, platform execution matrix, terminal echo behavior, real keyring availability, and power-loss recovery.",
+    "Reproduction of AUTH-03 and full command-level failure injection for target changes between authentication and persistence.",
+    "Approval of final repository-wide target conventions; proposed ownership improvements are not an approved architecture."
+  ]
+}

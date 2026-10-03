@@ -1,0 +1,199 @@
+{
+  "source_revision": "dd22c33bd1d123066f25ec09e2d612cd95717400",
+  "scope": {
+    "areas": ["actions.workbook", "actions.datasource", "actions.flow", "actions.project", "associated resource adapters, Tableau clients, and app bridges"],
+    "method": "Pinned Git object source review, plus reuse of workbook-pilot.json and project-pilot.json for the same revision.",
+    "execution": "No production changes, Go tests, live operations, or benchmark reruns.",
+    "recommendation": "Keep one action package per resource with explicit operations and narrow ports. Merge project verbs. Let meaningful resource adapters implement their resource's action ports directly, removing app copy bridges and forwarding-only mutation wrappers.",
+    "dependency_choice": {
+      "preferred": "app imports actions and concrete adapters; resources/<resource> imports its matching actions/<resource> port types, neutral values, and Tableau clients; actions import neither resources nor Tableau; Tableau imports neither actions nor resources.",
+      "shared_project_resolution": "Keep the hierarchy implementation in resources/project and the observed Project record in internal/value. Inject consumer-owned resolver interfaces into content adapters. Do not make workbook, datasource, or flow actions import actions/project.",
+      "alternative_colocation": "Moving provider adapters into actions/<resource>/tableau_adapter.go is technically acyclic if Tableau remains independent. It removes the resources package boundary but gives every file in the Go action package access to provider types and helpers. File naming does not enforce the old boundary. Shared hierarchy resolution still needs an independently owned service, or action-to-action imports appear.",
+      "comparison": "Both options remove the redundant app bridge and forwarding object. Keeping meaningful resource adapters achieves that call-chain reduction without adding Tableau dependencies to workflow packages. Merely moving every current wrapper into either location would preserve the redundant chain and is not the recommendation.",
+      "gate_change": "The preferred dependency direction is a proposed architecture change. The pinned resource allowlist rejects action imports. Replace that rule with matching-resource action imports, compile-time port assertions, and continued reverse-dependency prohibitions; do not bypass the gate.",
+      "evidence": [
+        {"path": "internal/architecture/architecture.go", "line": 185},
+        {"path": "internal/architecture/architecture.go", "line": 240},
+        {"path": "internal/app/content_mutations.go", "line": 163},
+        {"path": "internal/resources/datasource/mutation.go", "line": 20}
+      ]
+    }
+  },
+  "reused_assessment_artifacts": [
+    {"path": "docs/maintainability/workbook-pilot.json", "scope": "Reused pinned workbook move trace, findings, and test assessment; not a fresh review of all referenced files."},
+    {"path": "docs/maintainability/project-pilot.json", "scope": "Reused pinned create/move trace and findings; remaining project verbs are package-level proposals, not complete workflow reviews."}
+  ],
+  "reviewed_paths": [
+    {"path": "actions/workbook/workbook.go", "scope": "Full shared record, ports, projections, and phase helper."},
+    {"path": "actions/datasource/datasource.go", "scope": "Full shared record, ports, projections, and phase helper."},
+    {"path": "actions/flow/flow.go", "scope": "Full shared record, ports, projections, and phase helper."},
+    {"path": "actions/datasource/publish.go", "scope": "Execute and Complete, lines 1-161; declarations for remaining functions."},
+    {"path": "actions/flow/publish.go", "scope": "Ports, Execute, plan, and collision handling, lines 1-153."},
+    {"path": "actions/datasource/schema.go", "scope": "Imports, SchemaReader seam, opening workflow, and function declarations."},
+    {"path": "actions/project/create/types.go", "scope": "Input, observation, mutation request, plan, result, and output, lines 1-75."},
+    {"path": "actions/project/move/types.go", "scope": "Full operation types and projections."},
+    {"path": "internal/value/content.go", "scope": "Full shared normalized content records and identities."},
+    {"path": "internal/resources/datasource/adapter.go", "scope": "Package shape; project-LUID filtered pagination, lines 152-215; completion identity resolution, lines 371-418."},
+    {"path": "internal/resources/datasource/mutation.go", "scope": "Full mutation forwarding and runtime capability assertion."},
+    {"path": "internal/resources/datasource/schema.go", "scope": "Full authoritative identity and schema validation sequence."},
+    {"path": "internal/resources/datasource/metadata.go", "scope": "Exact identifier join and ambiguity handling, lines 1-44."},
+    {"path": "internal/resources/flow/adapter.go", "scope": "List normalization, exact resolution, download validation, collision scan, and record normalization."},
+    {"path": "internal/resources/flow/mutation.go", "scope": "Full mutation forwarding and runtime capability assertion."},
+    {"path": "internal/resources/project/adapter.go", "scope": "Fresh review of record, paging, and phase state, lines 1-120; remaining behavior reused from project pilot."},
+    {"path": "internal/app/content_mutations.go", "scope": "Bridge implementations, lines 140-231; opening project normalization and operation declarations."},
+    {"path": "internal/app/datasource_lifecycle.go", "scope": "Package shape, pull setup, and publication adapter implementations, lines 204-288."},
+    {"path": "internal/app/content_remote.go", "scope": "Imports and declarations; flow list, pull, artifact, publication, move/delete, and lineage adapters, lines 614-828."},
+    {"path": "internal/app/datasource_schema.go", "scope": "Package shape and datasourceSchemaReader, lines 58-90."},
+    {"path": "internal/tableau/datasource/mutation.go", "scope": "Imports and type/function inventory only; no complete native publication protocol review."},
+    {"path": "internal/tableau/flow/client.go", "scope": "Type/function inventory only; no complete native publication protocol review."},
+    {"path": "internal/architecture/architecture.go", "scope": "Action, app, CLI, and resource import allowlists, lines 178-242."},
+    {"path": "actions/datasource/publish_test.go", "scope": "Cases at lines 149-237 and function inventory elsewhere; no test execution."},
+    {"path": "actions/flow/publish_test.go", "scope": "Full 148-line file; no test execution."},
+    {"path": "actions/flow/publish_typed_error_test.go", "scope": "Full 50-line file; no test execution."},
+    {"path": "internal/resources/datasource/schema_test.go", "scope": "Full 54-line file; no test execution."}
+  ],
+  "package_decisions": [
+    {
+      "source": ["actions/workbook", "actions/datasource", "actions/flow"],
+      "target": ["actions/workbook", "actions/datasource", "actions/flow"],
+      "decision": "retain",
+      "rationale": "These packages already consolidate resource operations and share normalized records. Keep explicit operation files, inputs, outputs, and injected ports. Further merging across resources would obscure different publication and verification contracts.",
+      "evidence": [{"path": "actions/workbook/workbook.go", "line": 12}, {"path": "actions/datasource/datasource.go", "line": 11}, {"path": "actions/flow/flow.go", "line": 12}, {"path": "actions/datasource/publish.go", "line": 129}, {"path": "actions/flow/publish.go", "line": 56}],
+      "preserve": ["Explicit read/plan/preview/revalidation/mutation sequences", "Per-operation projections", "Datasource composition and completion checks", "Flow pre-upload gates", "Partial results and typed phases"]
+    },
+    {
+      "source": ["actions/project/create", "actions/project/delete", "actions/project/inspect", "actions/project/list", "actions/project/move", "actions/project/update"],
+      "target": "actions/project",
+      "decision": "merge",
+      "rationale": "Use CreateInput, MoveInput, and other named operation types in one project package. Share resolver and collision contracts once. Remove verb-package bridges while keeping create, move, update, delete, list, and inspect as explicit workflows. Create/move provide reviewed evidence; review the remaining verbs during migration.",
+      "evidence": [{"path": "actions/project/create/types.go", "line": 23}, {"path": "actions/project/move/types.go", "line": 20}, {"path": "internal/app/content_remote.go", "line": 536}, {"path": "internal/app/content_mutations.go", "line": 197}],
+      "preserve": ["Root versus explicit parent semantics", "Cycle and sibling collision checks", "Fresh prewrite hierarchy observations", "Permission inheritance metadata", "Confirmed mutation success when optional path enrichment fails"]
+    },
+    {
+      "source": ["internal/app/content_mutations.go:workbookMutationAdapter", "internal/app/content_mutations.go:datasourceMutationAdapter", "internal/app/content_remote.go:flowMoveAdapter", "internal/app/content_remote.go:flowDeleteAdapter", "internal/resources/datasource/mutation.go", "internal/resources/flow/mutation.go"],
+      "target": ["internal/resources/workbook", "internal/resources/datasource", "internal/resources/flow"],
+      "decision": "merge-and-remove-forwarders",
+      "rationale": "Each resource boundary translates action requests into native requests and maps results once. Replace action -> app bridge -> MutationAdapter -> client with action -> resource port implementation -> client. Delete the separate forwarding MutationAdapter object where it contributes only checks and delegation. Inject the exact required native update/prepare/delete interfaces explicitly instead of discovering Update through a runtime assertion.",
+      "evidence": [{"path": "internal/app/content_mutations.go", "line": 142}, {"path": "internal/app/content_mutations.go", "line": 163}, {"path": "internal/resources/datasource/mutation.go", "line": 11}, {"path": "internal/resources/datasource/mutation.go", "line": 24}, {"path": "internal/resources/flow/mutation.go", "line": 28}, {"path": "internal/app/content_remote.go", "line": 763}],
+      "preserve": ["Exact native field selection and omitted-field semantics", "Validation before native writes", "Authoritative identities and request IDs even with errors", "Narrow ports rather than a universal lifecycle client", "No native HTTP logic in actions"]
+    },
+    {
+      "source": ["internal/resources/workbook", "internal/resources/datasource", "internal/resources/flow"],
+      "target": ["internal/resources/workbook", "internal/resources/datasource", "internal/resources/flow"],
+      "decision": "retain-and-absorb-port-mapping",
+      "rationale": "Exact identity resolution, pagination consistency, ambiguity rejection, normalization, and extension checks are substantive behavior. Datasource project filtering collects and validates upstream pages before slicing the filtered result. These are meaningful provider boundaries, unlike the mutation forwarding objects. Implement action-owned interfaces directly at this boundary.",
+      "evidence": [{"path": "internal/resources/datasource/adapter.go", "line": 152}, {"path": "internal/resources/datasource/adapter.go", "line": 190}, {"path": "internal/resources/flow/adapter.go", "line": 81}, {"path": "internal/resources/flow/adapter.go", "line": 180}, {"path": "internal/resources/flow/adapter.go", "line": 248}],
+      "preserve": ["Bounded scans and total/size consistency", "Conflicting duplicate rejection", "Exact LUID and project-scoped name resolution", "No fuzzy selectors", "Datasource-specific pagination semantics"]
+    },
+    {
+      "source": ["internal/app/content_mutations.go:flowUpdateAdapter", "internal/app/content_mutations.go:projectMoveAdapter", "internal/app/content_remote.go:projectCreateAdapter", "internal/app/content_mutations.go:normalizeSuccessfulProjectMutation"],
+      "target": ["actions/flow", "actions/project", "internal/resources/project"],
+      "decision": "split-semantic-ownership-and-remove-app-state",
+      "rationale": "These bridges are not all disposable copies. Flow update retains a previously resolved record to fill response fields. Project adapters retain observations and enrich a successful response with a hierarchy path. Keep native request/result translation in resource adapters. Make retained observation use and optional enrichment policy explicit in the resource workflow, using an injected project-path capability. Remove hidden remembered workflow state from app.",
+      "evidence": [{"path": "internal/app/content_mutations.go", "line": 173}, {"path": "internal/app/content_mutations.go", "line": 190}, {"path": "internal/app/content_mutations.go", "line": 203}, {"path": "internal/app/content_mutations.go", "line": 225}, {"path": "internal/app/content_mutations.go", "line": 25}],
+      "preserve": ["Only enrich the matching returned LUID", "Distinguish observations from confirmed mutation fields", "Do not turn successful writes into failures when an optional path cannot be reconstructed", "Preserve literal-slash path ambiguity"]
+    },
+    {
+      "source": ["internal/resources/project/adapter.go:Project", "actions/project/*:Project", "internal/app/content_remote.go:flowListReader"],
+      "target": ["internal/value/content.go", "actions/project", "internal/resources/flow"],
+      "decision": "merge-observations-and-remove-identity-copies",
+      "rationale": "Add one neutral normalized Project record, following existing Workbook, Datasource, and Flow records. Use aliases for internal observations while keeping explicit operation output projections. Return the existing value.Flow records directly at the resource boundary instead of rebuilding another value.Flow in app. Keep deliberate slice isolation where callers can mutate data.",
+      "evidence": [{"path": "internal/value/content.go", "line": 23}, {"path": "internal/value/content.go", "line": 31}, {"path": "internal/value/content.go", "line": 84}, {"path": "internal/resources/project/adapter.go", "line": 27}, {"path": "actions/project/create/types.go", "line": 23}, {"path": "actions/project/move/types.go", "line": 20}, {"path": "internal/app/content_remote.go", "line": 620}],
+      "preserve": ["Separate create and move projections: Description and PathUnavailableReason differ", "RequestID remains internal except where an operation exposes it", "Shared observations are not direct public serialization contracts", "No content action imports another content action"]
+    },
+    {
+      "source": ["internal/resources/project/adapter.go", "actions/workbook/workbook.go:beginProjectResolution", "actions/datasource/datasource.go:beginProjectResolution", "actions/flow/flow.go:beginProjectResolution"],
+      "target": ["internal/resources/project", "consumer-owned narrow project resolver interfaces"],
+      "decision": "retain-shared-mechanism",
+      "rationale": "Keep one phase-scoped hierarchy implementation with neutral observations. Consumer operations explicitly start planning and prewrite phases; adapter construction supplies the same hierarchy service. The short phase helpers can remain local until an explicit neutral phase contract replaces optional capability discovery. Do not create a generic workflow runner to remove a few identical lines.",
+      "evidence": [{"path": "internal/resources/project/adapter.go", "line": 63}, {"path": "internal/resources/project/adapter.go", "line": 75}, {"path": "internal/resources/project/adapter.go", "line": 83}, {"path": "actions/workbook/workbook.go", "line": 44}, {"path": "actions/datasource/publish.go", "line": 63}, {"path": "actions/flow/publish.go", "line": 56}],
+      "preserve": ["One lazy hierarchy snapshot within a phase", "New observation phase before mutation", "No global cache substituting for prewrite reads", "Action-independent shared hierarchy service"]
+    },
+    {
+      "source": ["internal/app/datasource_schema.go:datasourceSchemaReader", "internal/resources/datasource/schema.go", "internal/resources/datasource/metadata.go"],
+      "target": "internal/resources/datasource",
+      "decision": "merge-provider-sequencing",
+      "rationale": "Have one resource SchemaReader implement the action-owned port. Merge authoritative REST identity, field-catalog read, native record conversion, optional metadata enrichment, and observation timestamp handling at that boundary. The action retains field selection, cursor validation, bounded output, and coverage semantics. Keep cache storage and its orchestration out of the provider adapter.",
+      "evidence": [{"path": "actions/datasource/schema.go", "line": 16}, {"path": "internal/resources/datasource/schema.go", "line": 43}, {"path": "internal/resources/datasource/schema.go", "line": 54}, {"path": "internal/app/datasource_schema.go", "line": 65}, {"path": "internal/app/datasource_schema.go", "line": 79}, {"path": "internal/resources/datasource/metadata.go", "line": 10}],
+      "preserve": ["Authoritative identity before fields", "Exact provider identity joins, with ambiguous and unmatched results retained", "Requested metadata failures stay visible", "Incomplete metadata is not absence", "Copy semantics for mutable slices"]
+    },
+    {
+      "source": ["internal/app/datasource_lifecycle.go:datasourcePublishAdapter", "internal/app/content_remote.go:flowPublishAdapter", "internal/app/datasource_lifecycle.go:preparedDatasourcePublish", "internal/app/content_remote.go:preparedFlowPublish"],
+      "target": ["internal/resources/datasource", "internal/resources/flow", "shared publication lifecycle owner outside app"],
+      "decision": "split-protocol-mapping-from-shared-lifecycle",
+      "rationale": "Move native publish mode/request/prepared-result conversion into the resource boundary. The adapters currently also create app publication state, capture lifecycle pointers, and reconnect through runtimeDependencies. Replace those app dependencies with explicit injected lifecycle/session capabilities supplied by the shared publication owner. App then constructs capabilities and invokes workflows. Cross-resource lifecycle design is assigned to the coordinating assessment.",
+      "evidence": [{"path": "internal/app/datasource_lifecycle.go", "line": 222}, {"path": "internal/app/datasource_lifecycle.go", "line": 237}, {"path": "internal/app/datasource_lifecycle.go", "line": 244}, {"path": "internal/app/datasource_lifecycle.go", "line": 279}, {"path": "internal/app/content_remote.go", "line": 713}, {"path": "internal/app/content_remote.go", "line": 727}],
+      "preserve": ["Fresh authenticated completion resolution", "Datasource create/overwrite/append/replace modes", "Exact parent datasource URL ordering", "Accepted job/receipt evidence", "Result plus error propagation", "No app imports from actions or resources"]
+    },
+    {
+      "source": ["internal/tableau/workbook", "internal/tableau/datasource", "internal/tableau/flow", "internal/tableau/project"],
+      "target": ["internal/tableau/workbook", "internal/tableau/datasource", "internal/tableau/flow", "internal/tableau/project"],
+      "decision": "retain-native-protocol-boundary",
+      "rationale": "Retain native HTTP/XML, pagination payloads, upload mechanics, request serialization, and response verification in Tableau clients. Action request types and normalized observations should not replace native payload types merely because some fields match. The resource adapter owns the single necessary translation.",
+      "evidence": [{"path": "internal/tableau/datasource/mutation.go", "line": 8}, {"path": "internal/tableau/datasource/mutation.go", "line": 13}, {"path": "internal/tableau/flow/client.go", "line": 174}, {"path": "internal/tableau/flow/client.go", "line": 323}, {"path": "internal/tableau/workbook/client.go", "line": 209}, {"path": "internal/tableau/project/client.go", "line": 95}],
+      "preserve": ["Exact paths, request bodies, and requested-field verification", "Provider-specific upload and job semantics", "Native uncertainty and authoritative response evidence", "Protocol tests independent of workflow tests"]
+    }
+  ],
+  "workflow_examples": [
+    {
+      "operation": "datasource.publish",
+      "current": "Publisher.Execute validates and plans, rereads the artifact, checks composition references, revalidates destination and collision, prepares, commits, and completes identity verification. App's publication adapter translates through a forwarding MutationAdapter and also owns lifecycle/session coupling.",
+      "target": "Keep Execute and Complete in actions/datasource. A direct resource implementation satisfies PublishPreparer and publication resolution ports, using injected session/lifecycle capabilities. Preserve the separate completion phase and do not share it with flow solely because both publish.",
+      "evidence": [{"path": "actions/datasource/publish.go", "line": 39}, {"path": "actions/datasource/publish.go", "line": 68}, {"path": "actions/datasource/publish.go", "line": 89}, {"path": "actions/datasource/publish.go", "line": 129}, {"path": "internal/app/datasource_lifecycle.go", "line": 237}]
+    },
+    {
+      "operation": "flow.publish",
+      "current": "Prepare can upload server-side data. The workflow finishes every fallible artifact, destination, and collision gate before Prepare, then immediately commits. Typed commit errors retain confirmed outcomes.",
+      "target": "Keep this order explicit in actions/flow. Implement native request conversion and PreparedPublish at one resources/flow boundary. Share upload/session mechanics only where contracts match; do not impose datasource's completion-lookup sequence on flow.",
+      "evidence": [{"path": "actions/flow/publish.go", "line": 56}, {"path": "actions/flow/publish.go", "line": 85}, {"path": "actions/flow/publish.go", "line": 92}, {"path": "internal/app/content_remote.go", "line": 737}]
+    },
+    {
+      "operation": "workbook.move and project.create/move",
+      "current": "The reused pilots trace operation-owned revalidation and native verification. Workbook movement translates to a native Update request in app. Project bridges duplicate observations and preserve path enrichment evidence.",
+      "target": "Move workbook request translation into its resource port implementation. Merge project actions and centralize their observation contract, while keeping cycle, parent, no-op, and post-mutation path rules operation-specific.",
+      "evidence": [{"path": "internal/app/content_mutations.go", "line": 142}, {"path": "internal/app/content_mutations.go", "line": 220}, {"path": "actions/project/move/action.go", "line": 42}, {"path": "actions/project/create/action.go", "line": 53}]
+    }
+  ],
+  "test_findings": [
+    {
+      "disposition": "keep-and-strengthen",
+      "evidence": [{"path": "actions/flow/publish_test.go", "line": 103}, {"path": "actions/flow/publish_test.go", "line": 134}],
+      "finding": "The happy path counts two resolutions and collisions, one prepare, and a commit. A separate drifting resolver verifies no Prepare when the destination changes and checks the exact error ID.",
+      "limit": "The happy-path publisher ignores the PublishRequest. Preserve drift coverage and add exact request capture and event-order assertions when replacing its adapters; call counts alone do not establish ordering."
+    },
+    {
+      "disposition": "keep",
+      "evidence": [{"path": "actions/flow/publish_typed_error_test.go", "line": 29}],
+      "finding": "Typed commit persistence errors retain confirmed phase/outcome and the successful flow LUID. This guards result-plus-error propagation across the new boundary.",
+      "limit": "The fake proves action propagation, not native protocol behavior or receipt durability."
+    },
+    {
+      "disposition": "keep",
+      "evidence": [{"path": "actions/datasource/publish_test.go", "line": 149}, {"path": "actions/datasource/publish_test.go", "line": 171}, {"path": "actions/datasource/publish_test.go", "line": 198}, {"path": "actions/datasource/publish_test.go", "line": 214}],
+      "finding": "Reviewed cases capture parent datasource URL order and mode, preserve job IDs on unknown outcomes, distinguish index delay from failure, and retain confirmed completion when identity verification is unavailable.",
+      "limit": "These are action fakes. They do not prove adapter mode conversion, exact HTTP requests, or real server indexing behavior."
+    },
+    {
+      "disposition": "keep-and-strengthen",
+      "evidence": [{"path": "internal/resources/datasource/schema_test.go", "line": 33}, {"path": "internal/resources/datasource/schema_test.go", "line": 45}],
+      "finding": "Tests verify that the authoritative datasource name reaches the field client and identity failure prevents a populated field-client name.",
+      "limit": "The stop assertion uses an empty name rather than a call count, so a wrongly invoked field client with an empty name could evade it. Use a call counter and capture the exact LUID during migration."
+    },
+    {
+      "disposition": "reuse-pilot-gates",
+      "evidence": [{"path": "actions/workbook/move_test.go", "line": 17}, {"path": "internal/app/content_mutations_test.go", "line": 134}, {"path": "internal/app/command_runtime_e2e_test.go", "line": 163}],
+      "finding": "Retain the pilots' exact-selector, projection, phase snapshot, and authoritative-result checks. Relocate behavioral assertions with removed bridges instead of preserving tests of obsolete wiring.",
+      "limit": "Pilot evidence remains bounded to its named cases. No new full test audit or execution supports this assessment."
+    }
+  ],
+  "limits": [
+    "The working checkout is old or dirty. Source conclusions refer only to the pinned revision, not current worktree behavior.",
+    "This is an architecture assessment, not an implementation or a claim that tests pass.",
+    "Package discovery used pinned Git tree/import metadata. Source bodies were read from pinned git show output; production worktree files were not used as evidence.",
+    "Workbook and project pilot findings are reused for their documented scope. Remaining project verbs, complete resource tests, and complete native client bodies are not exhaustively reviewed.",
+    "No actual performance benefit is measured. The claimed reduction is an explicit call-chain and ownership reduction, not a runtime benchmark result.",
+    "Cross-resource publication lifecycle, caches, artifact storage, progress reporting, and session owners require coordination with the separate runtime assessment before migration.",
+    "The chosen port dependency rule requires an explicit architecture-gate change. The proposal does not authorize ignoring current enforcement.",
+    "Keep existing public output projections and semantics even when internal records or packages merge. Similar fields do not prove interchangeable contracts."
+  ]
+}

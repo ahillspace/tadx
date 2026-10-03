@@ -1,0 +1,229 @@
+{
+  "source_revision": "dd22c33bd1d123066f25ec09e2d612cd95717400",
+  "area": "content.project.create-and-move",
+  "status": "pilot-source-reviewed",
+  "execution": "not-run",
+  "workflow_trace": [
+    {"path": "internal/cli/content/project.go", "line": 54, "symbol": "newProjectCreate", "role": "Create flags, selectors, preview, invocation, and rendering."},
+    {"path": "internal/cli/content/lifecycle_mutations.go", "line": 163, "symbol": "newProjectMove", "role": "Move flags, selectors, preview, invocation, and rendering."},
+    {"path": "internal/cli/root.go", "line": 475, "symbol": "applyMutationExecutionPolicy", "role": "Capability-driven mutation policy and selected-site consent, with an explicit-preview exception."},
+    {"path": "internal/app/content_remote.go", "line": 205, "symbol": "remoteContentCommands.CreateProject", "role": "Preconnection validation, connection, target binding, dependencies, and missing-path warning."},
+    {"path": "internal/app/content_mutations.go", "line": 122, "symbol": "remoteContentCommands.MoveProject", "role": "Preconnection validation, connection, target binding, dependencies, and missing-path warning."},
+    {"path": "internal/app/content_remote.go", "line": 71, "symbol": "remoteContentCommands.connect", "role": "Construct concrete clients and resource adapters."},
+    {"path": "internal/app/app.go", "line": 469, "symbol": "runtimeDependencies.tableauConnection", "role": "Resolve environment and authenticate the selected target."},
+    {"path": "actions/project/create/action.go", "line": 53, "symbol": "Action.Execute", "role": "Plan, revalidate parent and collisions, mutate, and construct create outcome."},
+    {"path": "actions/project/move/action.go", "line": 42, "symbol": "Action.Execute", "role": "Plan, revalidate source and destination, reject cycles/collisions, handle no-op, and mutate."},
+    {"path": "internal/app/content_remote.go", "line": 536, "symbol": "projectCreateAdapter", "role": "Translate records, remember resolved identities, invoke create, and enrich successful results."},
+    {"path": "internal/app/content_mutations.go", "line": 197, "symbol": "projectMoveAdapter", "role": "Translate records, remember resolved identities, invoke update, and enrich successful results."},
+    {"path": "internal/resources/project/adapter.go", "line": 75, "symbol": "Adapter.BeginProjectResolution", "role": "Start a lazy per-phase hierarchy snapshot."},
+    {"path": "internal/resources/project/adapter.go", "line": 118, "symbol": "Adapter.ResolveProject", "role": "Resolve authoritative identity and hierarchy path."},
+    {"path": "internal/resources/project/adapter.go", "line": 291, "symbol": "Adapter.FindProjectCollisions", "role": "Find case-insensitive sibling collisions within the hierarchy snapshot."},
+    {"path": "internal/tableau/project/client.go", "line": 95, "symbol": "Client.Create", "role": "Serialize native create request and validate returned identity and requested fields."},
+    {"path": "internal/tableau/project/client.go", "line": 141, "symbol": "Client.Update", "role": "Serialize native update/move request and validate returned identity and requested fields."},
+    {"path": "internal/app/content_mutations.go", "line": 25, "symbol": "normalizeSuccessfulProjectMutation", "role": "Retain successful native evidence when optional hierarchy enrichment is unavailable."}
+  ],
+  "reviewed_paths": [
+    {"path": "actions/project/create/action.go", "scope": "full"},
+    {"path": "actions/project/create/types.go", "scope": "full"},
+    {"path": "actions/project/create/action_test.go", "scope": "full"},
+    {"path": "actions/project/move/action.go", "scope": "full"},
+    {"path": "actions/project/move/types.go", "scope": "full"},
+    {"path": "actions/project/move/action_test.go", "scope": "full"},
+    {"path": "internal/resources/project/adapter.go", "scope": "full source; no complete shared-consumer assessment"},
+    {"path": "internal/resources/project/discovery_paths_test.go", "scope": "full"},
+    {"path": "internal/resources/project/mutation_test.go", "scope": "full"},
+    {"path": "internal/app/project_resolution_phase.go", "scope": "full"},
+    {"path": "internal/app/content_mutations_test.go", "scope": "full read; assessment limited to Project cases"},
+    {"path": "internal/tableau/project/mutation_test.go", "scope": "full read; assessment limited to create/move and shared native contracts"},
+    {"path": "internal/cli/content/project.go", "scope": "full read; non-create commands not traced end to end"},
+    {"path": "internal/app/content_remote.go", "scope": "Project dependency setup, connection, create runtime, and create bridge"},
+    {"path": "internal/app/content_mutations.go", "scope": "Project normalization, move runtime, and move bridge"},
+    {"path": "internal/tableau/project/client.go", "scope": "Mutation methods, validation, decoding, and supporting representations"},
+    {"path": "internal/cli/content/lifecycle_mutations.go", "scope": "Project move constructor and shared command helpers"},
+    {"path": "internal/cli/root.go", "scope": "Mutation execution policy only"},
+    {"path": "internal/app/app.go", "scope": "tableauConnection only"},
+    {"path": "internal/app/command_runtime_e2e_test.go", "scope": "Full read; Project phase test assessed"},
+    {"path": "internal/app/cache_review_e2e_test.go", "scope": "TestProjectMutationsSucceedWhenPostMutationHierarchyIsUnavailable"},
+    {"path": "internal/app/sole_target_e2e_test.go", "scope": "TestSoleEnvironmentProjectCreateWithoutEnvironmentExecutesExactTarget"},
+    {"path": "internal/cli/content/project_mutation_test.go", "scope": "Project create parsing and explicit-environment cases"},
+    {"path": "internal/cli/content/lifecycle_mutations_test.go", "scope": "Project move parsing, preview, top-level, and invalid-input cases"}
+  ],
+  "findings": [
+    {
+      "id": "PROJECT-01",
+      "kind": "unnecessary-complexity-and-structural-inconsistency",
+      "confidence": "high",
+      "evidence": [{"path": "actions/project/create/action.go", "line": 15}, {"path": "actions/project/move/action.go", "line": 12}, {"path": "internal/app/content_remote.go", "line": 536}, {"path": "internal/app/content_mutations.go", "line": 197}],
+      "observation": "Create and move use equivalent resolver methods with operation-owned Project records. Their bridges repeat resolution, resolved-map tracking, collision-list conversion, and result conversion.",
+      "impact": "Shared project evidence changes require coordinated edits across similar records and adapters. Composition also owns result-enrichment behavior.",
+      "recommendation": "Consider one internal project observation/resolution contract and explicit create/move workflows. Keep operation-specific output projections. A cohesive resource package or shared contract across separate packages can remove the duplication; folder count is not the criterion.",
+      "verification": "Preserve create description, move path-unavailable evidence, permission metadata, compact request-ID omission, nil/empty encoding, and successful mutation evidence. Compare navigation and dependency conventions against the other pilots before selecting a target."
+    },
+    {
+      "id": "PROJECT-02",
+      "kind": "implicit-dependency-lifetime",
+      "confidence": "high",
+      "evidence": [{"path": "actions/project/create/action.go", "line": 36}, {"path": "actions/project/move/action.go", "line": 26}, {"path": "internal/app/project_resolution_phase.go", "line": 34}, {"path": "internal/resources/project/adapter.go", "line": 63}],
+      "observation": "Actions discover BeginProjectResolution through an optional interface assertion. Bridges forward it, and the resource adapter stores a lazy inventory/index in context values. The declared Resolver interface does not describe snapshot lifetime.",
+      "impact": "A replacement resolver can silently change observation consistency and hierarchy-read counts. Maintainers must discover a separate interface and context protocol.",
+      "recommendation": "Make fresh planning/prewrite phases an explicit injected dependency contract. Context storage can remain an implementation detail. Retain the two phases rather than merging their observations.",
+      "verification": "Keep one hierarchy read per phase, fresh prewrite observations, effective cancellation, and invocation isolation. Preserve TestProjectMoveUsesOneHierarchyPerValidationPhase and shared hierarchy tests."
+    },
+    {
+      "id": "PROJECT-03",
+      "kind": "static-outcome-hypothesis-separate-from-refactor",
+      "confidence": "high-for-source-observation-not-runtime-consequence",
+      "evidence": [{"path": "internal/tableau/project/client.go", "line": 118}, {"path": "internal/tableau/project/client.go", "line": 170}, {"path": "internal/app/content_remote.go", "line": 559}, {"path": "internal/app/content_mutations.go", "line": 220}, {"path": "actions/project/move/action.go", "line": 86}],
+      "observation": "The client can return an unknown mutation result alongside a transport error. Bridges discard that result, and actions return zero Output. Requested-field mismatch checks also return zero results after decoding an identity. Move errors still retain the source LUID and request ID through the error contract.",
+      "impact": "Structured result/plan evidence does not survive every layer. The user-visible consequence has not been reproduced, and total identity loss is not established.",
+      "recommendation": "Assess a common mutation-outcome contract independently of structural migration. Preserve baseline behavior until a separately approved correction has characterization evidence.",
+      "verification": "Inject accepted-request transport failure and correct-identity/wrong-field responses. Assert outcome, affected identity, request ID, recovery advice, and no success claim. Review shared error finalization before declaring a defect or suite-wide gap."
+    },
+    {
+      "id": "PROJECT-04",
+      "kind": "test-fidelity-and-assertion-gap",
+      "confidence": "high",
+      "evidence": [{"path": "actions/project/move/action_test.go", "line": 15}, {"path": "actions/project/move/action_test.go", "line": 35}, {"path": "actions/project/create/action_test.go", "line": 78}, {"path": "actions/project/create/action_test.go", "line": 147}],
+      "observation": "The move revalidation test uses immutable resolution results without phase/call assertions. Create's combined test uses static collisions. Its compact request-ID test does not directly assert serialized omission. Other reviewed integration and golden tests protect some of these contracts.",
+      "impact": "Individual test names imply stronger evidence than their fakes and assertions provide; this is not proof of absent repository-wide coverage.",
+      "recommendation": "Retain useful tests and strengthen them with phase-specific state, exact rejection/outcome assertions, and serialized projection checks. Map replacement coverage before any consolidation or removal.",
+      "verification": "Controlled changes to source/destination/collision observations must prevent writes. Mutation of serialized compact request-ID behavior must fail the relevant output test. No mutation testing has run."
+    }
+  ],
+  "test_groups": [
+    {
+      "id": "PROJECT-T01",
+      "tests": [{"path": "actions/project/move/action_test.go", "symbol": "TestMovePreviewsThenRevalidatesParent"}, {"path": "actions/project/move/action_test.go", "symbol": "TestMoveRejectsDescendantParent"}],
+      "contract": "Preview never mutates; move selects exact parent; descendant moves are rejected.",
+      "failure_mechanism": "Unexpected write during preview, wrong destination, or hierarchy cycle.",
+      "assertions": "Preview nil result/zero calls; execution one call and exact parent; descendant case requires an error.",
+      "limitations": "Resolver is immutable and ignores most selectors. No assertion establishes phase freshness, exact source ID, cycle error ID, or zero writes in the cycle case.",
+      "disposition": "strengthen"
+    },
+    {
+      "id": "PROJECT-T02",
+      "tests": [{"path": "actions/project/create/action_test.go", "symbol": "TestCreatePreviewsThenRevalidatesParentAndCollisionOnApply"}],
+      "contract": "Preview never creates; execution revalidates parent and collisions before creating.",
+      "failure_mechanism": "Changed parent or new sibling collision between planning and mutation.",
+      "assertions": "Preview parent and zero writes; execution one create with parent and returned identity.",
+      "limitations": "Parent changes between separate preview/execute invocations, then repeats within execution. Collision results never change. Does not prove late-collision rejection.",
+      "disposition": "strengthen"
+    },
+    {
+      "id": "PROJECT-T03",
+      "tests": [{"path": "actions/project/create/action_test.go", "symbol": "TestCreateRejectsCollisionAndChangedParentIdentity"}, {"path": "actions/project/create/action_test.go", "symbol": "TestCreateRootDoesNotResolveOrInferParent"}],
+      "contract": "Reject conflicting sibling/parent identity; root creation does not invent a parent.",
+      "failure_mechanism": "Sequential resolver changes authoritative parent ID or reports existing sibling; parent inference changes root scope.",
+      "assertions": "Error and zero creator calls for rejection; zero parent lookups, empty request parent, and nil plan parent for root.",
+      "limitations": "In-process fakes, not native hierarchy behavior. Rejection test does not assert exact error ID.",
+      "disposition": "keep; strengthen exact rejection assertions"
+    },
+    {
+      "id": "PROJECT-T04",
+      "tests": [{"path": "actions/project/create/action_test.go", "symbol": "TestCreateRequiresExplicitTargetAndValidFields"}],
+      "contract": "Reject absent target/name, invalid permission mode, slash name, and conflicting parent selectors.",
+      "failure_mechanism": "Invalid typed input reaches workflow execution.",
+      "assertions": "Each invalid input must return an error.",
+      "limitations": "No exact validation/error assertion or explicit no-read/no-write assertion. Full CLI can supply a sole configured target before this boundary.",
+      "disposition": "keep; strengthen boundary assertions"
+    },
+    {
+      "id": "PROJECT-T05",
+      "tests": [{"path": "actions/project/create/action_test.go", "symbol": "TestOutputGolden"}, {"path": "actions/project/create/action_test.go", "symbol": "TestCreateCompactOutputOmitsSuccessfulRequestID"}],
+      "contract": "Stable compact/full rendering and omission of successful request diagnostics from compact output.",
+      "failure_mechanism": "Projection field omission, addition, or encoding drift.",
+      "assertions": "Golden test compares compact/full TOON; compact test checks identity and details marker.",
+      "limitations": "Constructed output does not exercise workflow. Compact test never explicitly asserts request-ID omission. Referenced golden fixture contents were not independently inspected.",
+      "disposition": "keep golden and relocate with projection owner if moved; strengthen compact assertion or consolidate only with explicit replacement coverage"
+    },
+    {
+      "id": "PROJECT-T06",
+      "tests": [{"path": "internal/app/command_runtime_e2e_test.go", "symbol": "TestProjectMoveUsesOneHierarchyPerValidationPhase"}],
+      "contract": "One hierarchy per validation phase and fresh source evidence before mutation.",
+      "failure_mechanism": "TLS server changes source name on the second hierarchy response.",
+      "assertions": "Changed source produces target_changed, nonzero exit, and zero writes; stable source writes once; both cases read twice.",
+      "limitations": "Full app.Run with local TLS, not live Tableau. PUT branch does not validate exact request path/body. No destination/collision drift variant in this test.",
+      "disposition": "keep; strengthen request and additional drift assertions"
+    },
+    {
+      "id": "PROJECT-T07",
+      "tests": [{"path": "internal/resources/project/discovery_paths_test.go", "symbol": "TestExplicitProjectPhaseSharesIndexAndFreshPhaseObservesDrift"}, {"path": "internal/resources/project/discovery_paths_test.go", "symbol": "TestDiscoveryHierarchyIsLazyImmutableAndNeverChangesLiveResolution"}],
+      "contract": "Phase reuse, fresh-phase drift, cancellation, discovery immutability, and live/discovery separation.",
+      "failure_mechanism": "Mutable client changes root name; caller mutates returned map; canceled context reaches cached phase.",
+      "assertions": "Twelve concurrent resolutions use one read; fresh phase sees changed path and second read; canceled lookup errors; discovery remains immutable while live/new invocation sees changes.",
+      "limitations": "Stateful in-process client, not HTTP pagination or production race execution. Tests inspected, not run.",
+      "disposition": "keep"
+    },
+    {
+      "id": "PROJECT-T08",
+      "tests": [{"path": "internal/resources/project/mutation_test.go", "symbol": "TestAdapterFindsCaseInsensitiveSiblingCollisionOnly"}, {"path": "internal/resources/project/mutation_test.go", "symbol": "TestAdapterNormalizesMutationProjectWithoutRequeryingNewIdentity"}],
+      "contract": "Sibling-specific case-insensitive collisions and normalization of new identities absent from inventory.",
+      "failure_mechanism": "Same name under another parent; mutation response is newer than inventory.",
+      "assertions": "Exact matching sibling/path; retained mutation identity, description, nested path, and root path.",
+      "limitations": "Fixed inventory pages model identity absence, not eventual-consistency timing or HTTP failures.",
+      "disposition": "keep"
+    },
+    {
+      "id": "PROJECT-T09",
+      "tests": [{"path": "internal/app/cache_review_e2e_test.go", "symbol": "TestProjectMutationsSucceedWhenPostMutationHierarchyIsUnavailable"}],
+      "contract": "Successful mutation evidence survives unavailable optional hierarchy enrichment.",
+      "failure_mechanism": "TLS fixture marks mutation, then rejects later hierarchy reads with 403; one variant returns an unconfirmed parent.",
+      "assertions": "Create/move preserve path and request ID without postwrite reads; unconfirmed-parent update retains success, empty path, warning, and one failed enrichment read.",
+      "limitations": "Calls runtime methods rather than full CLI/policy/rendering. Scripted native responses, not Tableau state.",
+      "disposition": "keep"
+    },
+    {
+      "id": "PROJECT-T10",
+      "tests": [{"path": "internal/app/content_mutations_test.go", "symbol": "TestProjectMoveAdapterNormalizesReturnedHierarchyPath"}, {"path": "internal/app/content_mutations_test.go", "symbol": "TestProjectMoveAdapterReportsLiteralSlashPathUnavailable"}],
+      "contract": "Return canonical parent path when available and explicit unavailable-path evidence for literal slash names.",
+      "failure_mechanism": "Mutation result needs hierarchy enrichment or contains an ambiguous display-path name.",
+      "assertions": "Parent path, parent identity, request ID, or empty path with precise reason.",
+      "limitations": "Fixed client response, not a modeled state mutation or verification failure.",
+      "disposition": "keep; relocate with enrichment owner if moved"
+    },
+    {
+      "id": "PROJECT-T11",
+      "tests": [{"path": "internal/tableau/project/mutation_test.go", "symbol": "TestClientCreatesAndUpdatesProjectsWithExactContracts"}, {"path": "internal/tableau/project/mutation_test.go", "symbol": "TestClientMovesProjectToParentAndTopLevel"}],
+      "contract": "Exact native request target/fields and preservation of returned mutation evidence.",
+      "failure_mechanism": "Wrong HTTP method/path, XML payload, unintended field, or lost explicit empty parent.",
+      "assertions": "Create/update exact escaped paths, XML and headers; absent unrelated fields; request IDs; move parent and top-level XML plus returned parent.",
+      "limitations": "Local TLS with scripted responses, not affected-state storage. Move-specific test lacks path and final request-count assertions.",
+      "disposition": "keep; strengthen move target/count assertions"
+    },
+    {
+      "id": "PROJECT-T12",
+      "tests": [{"path": "internal/tableau/project/mutation_test.go", "symbol": "TestClientRejectsInvalidProjectMutationsBeforeSending"}, {"path": "internal/tableau/project/mutation_test.go", "symbol": "TestClientRejectsMalformedProjectMutationResponses"}],
+      "contract": "Invalid mutation inputs send no request; malformed or contradictory create responses fail without retry advice.",
+      "failure_mechanism": "Missing name/identity/fields, slash names, wrong status, missing project/identity, or mismatched name/parent.",
+      "assertions": "Errors and zero request count for invalid input; protocol error, status, request ID, and nonretryability for bad create responses.",
+      "limitations": "Malformed-response table exercises create only. Unknown or partial structured outcomes across the full CLI are not established by these tests; broader suite coverage remains unassessed.",
+      "disposition": "keep; extend relevant update/move response and outcome cases"
+    },
+    {
+      "id": "PROJECT-T13",
+      "tests": [{"path": "internal/cli/content/project_mutation_test.go", "symbol": "TestProjectCreateParsesExplicitParentAndMutation"}, {"path": "internal/cli/content/project_mutation_test.go", "symbol": "TestProjectMutationsRequireExplicitEnvironment"}, {"path": "internal/cli/content/lifecycle_mutations_test.go", "symbol": "TestLifecycleMutationCommandsProjectFlagsAndPreview"}, {"path": "internal/cli/content/lifecycle_mutations_test.go", "symbol": "TestProjectMoveCommandProjectsTopLevelFlag"}, {"path": "internal/cli/content/lifecycle_mutations_test.go", "symbol": "TestLifecycleMutationCommandsRequireEnvironmentAndExactSelectors"}],
+      "contract": "CLI flags map to typed inputs, preview and top-level remain distinct, and standalone command constructors reject absent required inputs.",
+      "failure_mechanism": "Flag wiring drift, selector mixing, or dropped preview flag.",
+      "assertions": "Exact environment/name/parent/permission/preview values, top-level with empty parent selector, and invalid-input errors. Cross-resource tables assessed only for Project cases.",
+      "limitations": "Command spies do not establish global policy, HTTP behavior, or remote effect. Full CLI sole-target preparation is outside standalone constructor tests.",
+      "disposition": "keep at parsing boundary; relocate Project cases only if navigation improves without duplication"
+    },
+    {
+      "id": "PROJECT-T14",
+      "tests": [{"path": "internal/app/sole_target_e2e_test.go", "symbol": "TestSoleEnvironmentProjectCreateWithoutEnvironmentExecutesExactTarget"}],
+      "contract": "Full CLI selects the sole configured target before executing create without an environment flag.",
+      "failure_mechanism": "Wrong site binding, repeated setup, or incorrect CLI result identity.",
+      "assertions": "Sign-in site, exact native path, one sign-in, two reads, one create, and rendered environment/site/created identity.",
+      "limitations": "TLS fixture checks body name by substring; no persistent Tableau state. Consent setup helper internals were not assessed here.",
+      "disposition": "keep; strengthen payload assertion"
+    }
+  ],
+  "unassessed": [
+    "Complete Project list, inspect, update, and delete workflows.",
+    "Full authorization, authentication, configuration, transport, error-finalization, and saved-result persistence internals and tests.",
+    "Entire hierarchy adapter test inventory, live-contract tests, golden fixture contents, and all shared hierarchy consumers.",
+    "Architecture-checker implications and repository-wide compatibility of proposed target conventions.",
+    "Runtime reproduction, controlled fault injection, mutation testing, and actual test pass/fail state.",
+    "No test is approved for immediate removal; absence from reviewed tests does not establish absence across the suite."
+  ]
+}

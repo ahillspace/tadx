@@ -1,0 +1,98 @@
+{
+  "source_revision": "dd22c33bd1d123066f25ec09e2d612cd95717400",
+  "scope": "Composition, shared inventory/publication mechanisms, CLI navigation, import enforcement, and contributor entry points.",
+  "execution": "not-run",
+  "reviewed_paths": [
+    {"path": "internal/app/app.go", "scope": "Run, dependency construction, output capture, target/session setup, workbook pull construction"},
+    {"path": "internal/app/command_runtime.go", "scope": "full"},
+    {"path": "internal/app/inventory_list.go", "scope": "collection, normalization entry, scope publication, action-typed page readers"},
+    {"path": "internal/app/cache_reads.go", "scope": "function/ownership inventory; pilot-linked readers, not every branch"},
+    {"path": "internal/app/cache_admin_reads.go", "scope": "function/ownership inventory; full branch audit pending"},
+    {"path": "internal/app/publication.go", "scope": "full"},
+    {"path": "internal/app/publication_results.go", "scope": "full"},
+    {"path": "internal/app/publication_execution.go", "scope": "full"},
+    {"path": "internal/app/publication_worker.go", "scope": "symbol/role inventory; detailed worker state-machine audit pending"},
+    {"path": "internal/app/publication_status.go", "scope": "symbol/role inventory; detailed reconciliation audit pending"},
+    {"path": "internal/app/last_result.go", "scope": "full"},
+    {"path": "internal/architecture/architecture.go", "scope": "import allowlists, layer detection, and special cases"},
+    {"path": "internal/architecture/architecture_test.go", "scope": "fixture mechanisms and boundary assertions; not complete runtime verification"},
+    {"path": "internal/architecture/value_test.go", "scope": "full"},
+    {"path": "internal/architecture/repository_guidance_test.go", "scope": "full"},
+    {"path": "internal/cli/root.go", "scope": "command registration, category wiring, policy/target decoration, argument handling"},
+    {"path": "internal/cli/batch.go", "scope": "batch argument parsing/prevalidation, child invocation, aggregation, and progress boundary"},
+    {"path": "internal/cli/help_examples.go", "scope": "centralized category/resource command facts and examples"},
+    {"path": "internal/cli/help_content_reference.go", "scope": "content-specific syntax/value/notes rendering"},
+    {"path": "internal/capability/definition.go", "scope": "full capability metadata contract"},
+    {"path": "cmd/gencapdocs/main.go", "scope": "full"},
+    {"path": "internal/readsource/readsource.go", "scope": "full"},
+    {"path": "internal/tableau/cache/engine.go", "scope": "engine dependencies, bounded request configuration, and entry points"},
+    {"path": "CONTRIBUTING.md", "scope": "full"},
+    {"path": "go.mod", "scope": "full"}
+  ],
+  "findings": [
+    {
+      "id": "SHARED-01",
+      "evidence": [{"path": "internal/architecture/architecture.go", "line": 240}],
+      "observation": "Resource adapters cannot import action-owned contracts under the current allowlist. Composition can import both and implements intermediate translation.",
+      "decision": "Permit resources to implement their consumer action contracts directly, without executing actions; continue banning action imports of resources/Tableau and action-to-action dependencies.",
+      "alternative": "Colocate concrete adapters with actions, but that couples the entire Go workflow package to provider packages without removing required normalization behavior.",
+      "preserve": "Fail-closed import enforcement, meaningful lower-level boundaries, explicit narrow ports, and no cycles.",
+      "verification": "Replace exact import fixtures through an approved architecture change; demonstrate allowed consumer-port imports and rejected reverse/CLI/HTTP dependencies. No gate changes made now."
+    },
+    {
+      "id": "SHARED-02",
+      "evidence": [{"path": "internal/app/inventory_list.go", "line": 38}, {"path": "internal/app/inventory_list.go", "line": 143}],
+      "observation": "Shared app inventory code combines bounded native collection, cache publication policy, and six resource-specific action page adapters.",
+      "decision": "Create internal/inventory for action-neutral collection/publication orchestration; retain typed readers with existing resource adapters and native collection in tableau/cache.",
+      "preserve": "Partial inventory never replaces complete cache scope; filtered results upsert rather than replace; exact target scope, stable order, freshness evidence, and existing bounds survive.",
+      "verification": "Map inventory snapshot compatibility, cache staging, partial coverage, filter parity, and list result tests before extraction. Existing tests are not all semantically audited."
+    },
+    {
+      "id": "SHARED-03",
+      "evidence": [{"path": "internal/app/publication.go", "line": 25}, {"path": "internal/app/publication_results.go", "line": 57}, {"path": "internal/app/publication_status.go", "line": 27}, {"path": "internal/app/publication_worker.go", "line": 215}],
+      "observation": "Composition owns accepted-write receipt persistence, monitoring, resource completion, detached-worker dispatch, and later recovery reconciliation.",
+      "decision": "Extend existing jobmonitor and operationrun mechanism owners with injected observers; move typed resource completion to resource workflows/adapters and user recovery to actions/job. App retains process dispatch only.",
+      "preserve": "Native job identity is not worker identity; accepted writes survive cancellation; monitoring cannot resubmit writes; exact site and destination verification remain explicit.",
+      "verification": "Detailed state-machine characterization and shared-consumer tests are prerequisites for this high-risk slice; symbol-level role mapping is not runtime proof."
+    },
+    {
+      "id": "SHARED-04",
+      "evidence": [{"path": "internal/app/command_runtime.go", "line": 24}, {"path": "internal/app/command_runtime.go", "line": 90}],
+      "observation": "Invocation-scoped setup reuses configuration, sessions, transports, clients, workspaces, and discovery paths. Comments distinguish setup snapshots from mutation validation evidence.",
+      "decision": "Keep construction and lifetime ownership in app while removing per-operation facades; move phase forwarding into the substantive project adapter.",
+      "preserve": "No new connection per batch item, no cached mutation observation substituted for fresh validation, no process-global user/runtime state.",
+      "verification": "Retain session sharing, phase read counts, cancellation/cleanup, target isolation, and constructor-only startup behavior."
+    },
+    {
+      "id": "SHARED-05",
+      "evidence": [{"path": "internal/cli/help_examples.go", "line": 16}, {"path": "internal/cli/help_content_reference.go", "line": 15}, {"path": "internal/cli/root.go", "line": 358}],
+      "observation": "Command facts live partly in global help switches and examples. Catalog-mounted lineage and labels are constructed from content CLI code.",
+      "decision": "Colocate resource help/flag metadata with command constructors, keep common rendering in CLI, and move catalog-mounted command construction into cli/catalog without changing public routes.",
+      "preserve": "Existing help/output syntax, aliases, flags/defaults, capability bindings, parsing, preview policy, and batch controls.",
+      "verification": "Compare registered command trees, help fixtures, aliases, capability bindings, and invalid-input behavior. Do not regenerate goldens merely to accept drift."
+    },
+    {
+      "id": "SHARED-06",
+      "evidence": [{"path": "internal/app/last_result.go", "line": 44}, {"path": "internal/cli/batch.go", "line": 97}, {"path": "internal/capability/definition.go", "line": 67}],
+      "observation": "Result capture, batch parsing, and capability metadata serve different responsibilities despite crossing many commands.",
+      "decision": "Retain separate output/lastcommand, CLI/contentbatch, and capability owners; move reusable capture coordination through injected snapshots rather than merging everything into a runtime utility package.",
+      "preserve": "Actual user outcome survives saved-result failure, mixed batch outcomes remain ordered, and discovery/readiness remains distinct from executable command syntax.",
+      "verification": "Shared contracts require affected-consumer checks across categories; app.Run integration stays at the process boundary."
+    },
+    {
+      "id": "SHARED-07",
+      "evidence": [{"path": "CONTRIBUTING.md", "line": 3}, {"path": "cmd/gencapdocs/main.go", "line": 16}],
+      "observation": "The human contribution entry point delegates detailed engineering guidance to a skill; generated references consume capability metadata.",
+      "decision": "Add a human-readable architecture/navigation guide and repeatable resource addition walkthrough, linked from CONTRIBUTING; align agent guidance and regenerate generated references through their tools.",
+      "preserve": "One maintained architecture, no competing hidden instructions, no manually edited generated artifacts, and no claim of Tableau endorsement.",
+      "verification": "Cold-maintainer navigation exercises use content, administration, Pulse, and local-state commands; no coaching or reliance on historical review phases."
+    }
+  ],
+  "limits": [
+    "Structural recommendations are concrete but not approved implementation instructions.",
+    "No tests, native fixture operations, installed CLI commands, source checkout, pushes, or external mutations ran.",
+    "No claim of exhaustive test audit or complete worker/recovery state-machine review.",
+    "The package decision map deliberately retains meaningful infrastructure even where detailed implementation review remains pending.",
+    "Existing pilot test-effectiveness gaps and correctness hypotheses remain separate from structural consolidation."
+  ]
+}
