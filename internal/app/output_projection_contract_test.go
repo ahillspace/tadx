@@ -10,10 +10,73 @@ import (
 	catalogread "github.com/ahillspace/tadx/actions/catalog/read"
 	envupdate "github.com/ahillspace/tadx/actions/env/profile"
 	jobactions "github.com/ahillspace/tadx/actions/job"
+	projectcreate "github.com/ahillspace/tadx/actions/project/create"
+	projectmove "github.com/ahillspace/tadx/actions/project/move"
 	"github.com/ahillspace/tadx/internal/output"
 	"github.com/ahillspace/tadx/internal/toon"
 	"github.com/ahillspace/tadx/internal/value"
 )
+
+func TestProjectMutationProjectionEncodingContracts(t *testing.T) {
+	for _, test := range []struct {
+		name          string
+		value         any
+		compact, full string
+	}{
+		{
+			name: "create",
+			value: projectcreate.Output{
+				Plan:   projectcreate.Plan{Mode: "execute", Operation: "project.create", Environment: "dev", Site: "site", Project: projectcreate.ProjectSpec{Name: "Created"}},
+				Result: &projectcreate.Result{Status: "succeeded", Project: projectcreate.Project{LUID: "created", Name: "Created", Path: "Created", Description: "Full details"}, TableauRequestID: "request"},
+				Help:   []string{"inspect"},
+			},
+			compact: `{"plan":{"mode":"execute","operation":"project.create","environment":"dev","site":"site","project":{"name":"Created"}},"result":{"status":"succeeded","project":{"luid":"created","name":"Created","path":"Created"}},"details":"--full","help":["inspect"]}`,
+			full:    `{"plan":{"mode":"execute","operation":"project.create","environment":"dev","site":"site","project":{"name":"Created"}},"result":{"status":"succeeded","project":{"luid":"created","name":"Created","path":"Created","description":"Full details"},"tableau_request_id":"request"},"help":["inspect"]}`,
+		},
+		{
+			name: "move",
+			value: projectmove.Output{
+				Plan:   projectmove.Plan{Mode: "execute", Operation: "project.move", Environment: "dev", Site: "site", Source: projectmove.Project{LUID: "moved", Name: "Moved", Path: "Parent/Moved", ParentLUID: "parent"}, TopLevel: true},
+				Result: &projectmove.Result{Status: "succeeded", Project: projectmove.Project{LUID: "moved", Name: "Moved", Path: "Moved"}, TableauRequestID: "request"},
+				Help:   []string{"inspect"},
+			},
+			compact: `{"plan":{"mode":"execute","operation":"project.move","environment":"dev","site":"site","source":{"luid":"moved","name":"Moved","path":"Parent/Moved","parent_luid":"parent"},"top_level":true,"no_op":false},"result":{"status":"succeeded","project":{"luid":"moved","name":"Moved","path":"Moved"}},"details":"--full","help":["inspect"]}`,
+			full:    `{"plan":{"mode":"execute","operation":"project.move","environment":"dev","site":"site","source":{"luid":"moved","name":"Moved","path":"Parent/Moved","parent_luid":"parent"},"top_level":true,"no_op":false},"result":{"status":"succeeded","project":{"luid":"moved","name":"Moved","path":"Moved"},"tableau_request_id":"request"},"help":["inspect"]}`,
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			for _, full := range []bool{false, true} {
+				wantJSON := test.compact
+				if full {
+					wantJSON = test.full
+				}
+				var want any
+				if err := json.Unmarshal([]byte(wantJSON), &want); err != nil {
+					t.Fatal(err)
+				}
+				for _, asJSON := range []bool{false, true} {
+					var rendered bytes.Buffer
+					if err := output.RenderWithOptions(&rendered, test.value, output.Options{Full: full, JSON: asJSON}); err != nil {
+						t.Fatal(err)
+					}
+					var decoded any
+					var err error
+					if asJSON {
+						err = json.Unmarshal(rendered.Bytes(), &decoded)
+					} else {
+						decoded, err = toon.Decode(rendered.Bytes())
+					}
+					if err != nil {
+						t.Fatal(err)
+					}
+					if !reflect.DeepEqual(want, decoded) {
+						t.Errorf("full=%t json=%t projection keys/values differ: got=%#v want=%#v", full, asJSON, decoded, want)
+					}
+				}
+			}
+		})
+	}
+}
 
 func TestCrossFamilyProjectionEncodingContracts(t *testing.T) {
 	for name, result := range map[string]any{
