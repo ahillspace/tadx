@@ -135,7 +135,14 @@ func (p *publication) accepted(ctx context.Context, id, requestID, jobType strin
 		path, err = p.store.Register(saveCtx, r)
 	}
 	if err != nil {
-		return r, path, err
+		return r, path, &errs.Error{
+			ID: p.base.Operation + ".receipt", Kind: errs.KindOperation, Operation: p.base.Operation,
+			Environment: p.base.Environment, Site: p.base.Site,
+			TableauJobID: id, TableauRequestID: requestID,
+			Summary: "Publication was accepted, but saving or registering its recovery receipt failed.",
+			Cause:   err, Phase: errs.PhasePersistence, Outcome: errs.OutcomeUnknown,
+			Retryable: new(false), CorrectiveAction: "Preserve the returned identities. Do not repeat publication to repair local receipt storage.",
+		}
 	}
 	if execution := p.runtime.publicationExecution; execution != nil && execution.accepted != nil {
 		if err := execution.accepted(saveCtx, path); err != nil {
@@ -206,6 +213,9 @@ func (p *publication) wait(ctx context.Context, r jobmonitor.Receipt) (jobmonito
 func publicationError(operation, environment, site, id string, status string, cause error) error {
 	if cause == nil {
 		return nil
+	}
+	if known, ok := errors.AsType[*errs.Error](cause); ok && known.Phase == errs.PhasePersistence {
+		return cause
 	}
 	state := errs.OutcomeUnknown
 	summary := "Publication was accepted, but local monitoring did not establish its final outcome."
