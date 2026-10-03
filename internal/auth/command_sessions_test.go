@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/ahillspace/tadx/internal/auth"
+	"github.com/ahillspace/tadx/internal/lock"
 )
 
 type commandSigner struct{ calls atomic.Int32 }
@@ -200,6 +201,30 @@ func TestCommandSessionForegroundAuthenticationPrecedesWaitingMonitor(t *testing
 	})
 }
 
+type observedWaitContext struct {
+	context.Context
+	waited chan struct{}
+}
+
+func (c observedWaitContext) Done() <-chan struct{} {
+	select {
+	case c.waited <- struct{}{}:
+	default:
+	}
+	return c.Context.Done()
+}
+
+func waitForAuthenticationWait(t *testing.T, ctx context.Context, waited <-chan struct{}, done <-chan error, stage string) {
+	t.Helper()
+	select {
+	case <-waited:
+	case err := <-done:
+		t.Fatalf("%s completed before waiting: %v", stage, err)
+	case <-ctx.Done():
+		t.Fatalf("%s did not wait: %v", stage, ctx.Err())
+	}
+}
+
 func testForegroundAuthenticationPrecedesWaitingMonitor(t *testing.T, sameManager bool) {
 	t.Helper()
 	directory := t.TempDir()
@@ -210,11 +235,16 @@ func testForegroundAuthenticationPrecedesWaitingMonitor(t *testing.T, sameManage
 	if _, err := holder.AuthenticateCredentials(context.Background(), target, commandCredential(), &commandSigner{}); err != nil {
 		t.Fatal(err)
 	}
-	var lookups atomic.Int32
+	monitorLookupReached := make(chan struct{})
+	monitorLookupRelease := make(chan struct{})
+	releaseMonitorLookup := sync.OnceFunc(func() { close(monitorLookupRelease) })
 	manager := auth.NewCommandSessions(auth.LookupEnvFunc(func(name string) (string, bool) {
-		lookups.Add(1)
 		if name == "PAT_NAME" {
 			return "test-name", true
+		}
+		if sameManager && name == "PAT_SECRET" {
+			close(monitorLookupReached)
+			<-monitorLookupRelease
 		}
 		return "test-secret", true
 	}), nil, directory)
@@ -224,6 +254,7 @@ func testForegroundAuthenticationPrecedesWaitingMonitor(t *testing.T, sameManage
 		foregroundManager = auth.NewCommandSessions(nil, nil, directory)
 		defer foregroundManager.Close()
 	}
+	defer releaseMonitorLookup()
 	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
 	defer cancel()
 	monitorTarget := commandTarget()
@@ -231,31 +262,67 @@ func testForegroundAuthenticationPrecedesWaitingMonitor(t *testing.T, sameManage
 	monitorTarget.PATNameVariable, monitorTarget.PATSecretVariable = "PAT_NAME", "PAT_SECRET"
 	signer := &orderedSigner{}
 	monitorDone := make(chan error, 1)
+	monitorWaited := make(chan struct{}, 1)
+	monitorCtx := observedWaitContext{Context: ctx, waited: monitorWaited}
 	go func() {
-		_, err := manager.AuthenticateMonitor(ctx, monitorTarget, signer)
+		_, err := manager.AuthenticateMonitor(monitorCtx, monitorTarget, signer)
 		if err == nil {
 			err = manager.Suspend(ctx)
 		}
 		monitorDone <- err
 	}()
-	deadline := time.Now().Add(time.Second)
-	for lookups.Load() < 2 && time.Now().Before(deadline) {
-		time.Sleep(time.Millisecond)
+	if sameManager {
+		select {
+		case <-monitorLookupReached:
+		case err := <-monitorDone:
+			t.Fatalf("monitor completed before resolving its PAT: %v", err)
+		case <-ctx.Done():
+			t.Fatalf("monitor did not resolve its PAT: %v", ctx.Err())
+		}
+	} else {
+		// The monitor has resolved its PAT and reached its retry only after
+		// finding the holder's credential lock busy.
+		waitForAuthenticationWait(t, ctx, monitorWaited, monitorDone, "monitor retry")
 	}
-	if lookups.Load() < 2 {
-		t.Fatal("monitor did not resolve its PAT before foreground request")
+	paths, err := filepath.Glob(filepath.Join(directory, "*.admission.lock"))
+	if err != nil {
+		t.Fatal(err)
 	}
+	if len(paths) != 1 {
+		t.Fatalf("admission lock paths=%v, want one holder lock", paths)
+	}
+	// A shared test lease excludes the monitor's transient exclusive admission
+	// while allowing the foreground to register its own shared admission.
+	admission, err := lock.AcquireSharedContext(ctx, paths[0])
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer admission.Release()
 	foregroundDone := make(chan error, 1)
+	foregroundWaited := make(chan struct{}, 2)
+	foregroundCtx := observedWaitContext{Context: ctx, waited: foregroundWaited}
 	go func() {
 		foregroundTarget := commandTarget()
 		foregroundTarget.SiteContentURL = "foreground-site"
-		_, err := foregroundManager.AuthenticateCredentials(ctx, foregroundTarget, commandCredential(), signer)
+		_, err := foregroundManager.AuthenticateCredentials(foregroundCtx, foregroundTarget, commandCredential(), signer)
 		if err == nil {
 			err = foregroundManager.Suspend(ctx)
 		}
 		foregroundDone <- err
 	}()
-	time.Sleep(75 * time.Millisecond)
+	if sameManager {
+		// The monitor holds this manager's gate in its lookup. The first
+		// foreground wait is therefore on that gate, not on the credential.
+		waitForAuthenticationWait(t, ctx, foregroundWaited, foregroundDone, "foreground gate")
+		releaseMonitorLookup()
+	}
+	// With monitor exclusive admission excluded, the next foreground wait
+	// can only be for the holder's credential lock. Its own shared admission
+	// is now registered, so the test lease may be released safely.
+	waitForAuthenticationWait(t, ctx, foregroundWaited, foregroundDone, "foreground credential")
+	if err := admission.Release(); err != nil {
+		t.Fatal(err)
+	}
 	if err := holder.Close(); err != nil {
 		t.Fatal(err)
 	}
