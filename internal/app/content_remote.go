@@ -559,7 +559,7 @@ func (a projectCreateAdapter) FindProjectCollisions(ctx context.Context, name, p
 func (a projectCreateAdapter) CreateProject(ctx context.Context, input projectcreate.CreateRequest) (projectcreate.Result, error) {
 	result, err := a.changes.Create(ctx, tableauproject.CreateRequest{Name: input.Name, Description: input.Description, ParentLUID: input.ParentLUID, ContentPermissions: input.ContentPermissions})
 	if err != nil {
-		return projectcreate.Result{}, err
+		return projectcreate.Result{Status: result.Status, Project: projectcreate.Project{LUID: result.Project.LUID, Name: result.Project.Name, ParentLUID: result.Project.ParentLUID, Description: result.Project.Description, ContentPermissions: result.Project.ContentPermissions, ControllingPermissionsProjectID: result.Project.ControllingPermissionsProjectID}, TableauRequestID: result.TableauRequestID}, err
 	}
 	item := normalizeSuccessfulProjectMutation(ctx, a.projects, a.resolved, result.Project)
 	return projectcreate.Result{Status: result.Status, Project: toProjectCreate(item), TableauRequestID: result.TableauRequestID}, nil

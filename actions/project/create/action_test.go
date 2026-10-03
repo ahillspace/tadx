@@ -6,17 +6,21 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	projectcreate "github.com/ahillspace/tadx/actions/project/create"
+	"github.com/ahillspace/tadx/internal/errs"
 	"github.com/ahillspace/tadx/internal/identity"
 	render "github.com/ahillspace/tadx/internal/output"
 )
 
 type resolver struct {
-	parents    []projectcreate.Project
-	collisions []projectcreate.Project
-	parentCall int
+	parents        []projectcreate.Project
+	collisions     []projectcreate.Project
+	parentCall     int
+	lateCollisions []projectcreate.Project
+	collisionCalls int
 }
 
 func (r *resolver) ResolveProject(context.Context, identity.Selector) (projectcreate.Project, error) {
@@ -32,12 +36,74 @@ func (r *resolver) ResolveProject(context.Context, identity.Selector) (projectcr
 }
 
 func (r *resolver) FindProjectCollisions(context.Context, string, string) ([]projectcreate.Project, error) {
+	r.collisionCalls++
+	if r.collisionCalls > 1 && r.lateCollisions != nil {
+		return r.lateCollisions, nil
+	}
 	return append([]projectcreate.Project(nil), r.collisions...), nil
+}
+
+func TestCreateRejectsLateSiblingCollisionBeforeWriting(t *testing.T) {
+	r := &resolver{lateCollisions: []projectcreate.Project{{LUID: "other", Name: "Operations"}}}
+	c := &creator{}
+	_, err := projectcreate.New(r, c).Execute(t.Context(), projectcreate.Input{Environment: "dev", Site: "sandbox", Name: "Operations"}, false)
+	if err == nil || !strings.Contains(err.Error(), "already") || r.collisionCalls != 2 || c.calls != 0 {
+		t.Fatalf("error=%v collision_reads=%d writes=%d", err, r.collisionCalls, c.calls)
+	}
 }
 
 type creator struct {
 	calls int
 	input projectcreate.CreateRequest
+}
+
+type failedCreator struct {
+	result projectcreate.Result
+	err    error
+}
+
+func (c failedCreator) CreateProject(context.Context, projectcreate.CreateRequest) (projectcreate.Result, error) {
+	return c.result, c.err
+}
+
+type retryableCreateError struct{}
+
+func (retryableCreateError) Error() string            { return "upstream unavailable" }
+func (retryableCreateError) Retryable() bool          { return true }
+func (retryableCreateError) CorrectiveAction() string { return "Retry now." }
+
+func TestCreatePreservesUnverifiedResultEvidence(t *testing.T) {
+	for _, test := range []struct {
+		name    string
+		result  projectcreate.Result
+		phase   errs.Phase
+		outcome errs.Outcome
+	}{
+		{name: "observed identity", result: projectcreate.Result{Status: "unknown", Project: projectcreate.Project{LUID: "created-project", Name: "Unexpected"}, TableauRequestID: "accepted-request"}, phase: errs.PhaseVerification, outcome: errs.OutcomeUnknown},
+		{name: "unreadable accepted response", result: projectcreate.Result{Status: "unknown", TableauRequestID: "accepted-request"}, phase: errs.PhaseSubmission, outcome: errs.OutcomeUnknown},
+		{name: "pre-submission failure"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			output, err := projectcreate.New(&resolver{}, failedCreator{result: test.result, err: retryableCreateError{}}).Execute(t.Context(), projectcreate.Input{Environment: "dev", Site: "sandbox", Name: "Requested"}, false)
+			if err == nil {
+				t.Fatal("expected create failure")
+			}
+			payload := errs.Structure(err).Error
+			if payload.Phase != test.phase || payload.Outcome != test.outcome || payload.Resource != test.result.Project.LUID || payload.TableauRequestID != test.result.TableauRequestID {
+				t.Fatalf("payload = %#v", payload)
+			}
+			if test.outcome == errs.OutcomeUnknown {
+				if payload.Retryable == nil || *payload.Retryable || payload.CorrectiveAction == "Retry now." || output.Result == nil || output.Result.Status != "unknown" {
+					t.Fatalf("unsafe or lost outcome: payload=%#v output=%#v", payload, output)
+				}
+			} else if output.Result != nil {
+				t.Fatalf("pre-submission output = %#v", output)
+			}
+			if test.result.Project.LUID != "" && !strings.Contains(payload.CorrectiveAction, "--project-id created-project") {
+				t.Fatalf("missing exact inspect command: %#v", payload)
+			}
+		})
+	}
 }
 
 func TestOutputGolden(t *testing.T) {

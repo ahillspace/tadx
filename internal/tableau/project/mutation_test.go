@@ -190,12 +190,13 @@ func TestClientRejectsMalformedProjectMutationResponses(t *testing.T) {
 		name       string
 		statusCode int
 		body       string
+		observedID string
 	}{
 		{name: "wrong status", statusCode: http.StatusOK, body: `<tsResponse><project id="project-1" name="Operations"/></tsResponse>`},
 		{name: "missing project", statusCode: http.StatusCreated, body: `<tsResponse/>`},
 		{name: "missing LUID", statusCode: http.StatusCreated, body: `<tsResponse><project name="Operations"/></tsResponse>`},
-		{name: "wrong name", statusCode: http.StatusCreated, body: `<tsResponse><project id="project-1" name="Other"/></tsResponse>`},
-		{name: "wrong parent", statusCode: http.StatusCreated, body: `<tsResponse><project id="project-1" name="Operations" parentProjectId="other"/></tsResponse>`},
+		{name: "wrong name", statusCode: http.StatusCreated, body: `<tsResponse><project id="project-1" name="Other"/></tsResponse>`, observedID: "project-1"},
+		{name: "wrong parent", statusCode: http.StatusCreated, body: `<tsResponse><project id="project-1" name="Operations" parentProjectId="other"/></tsResponse>`, observedID: "project-1"},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -206,11 +207,35 @@ func TestClientRejectsMalformedProjectMutationResponses(t *testing.T) {
 			}))
 			defer server.Close()
 			client := tableauproject.NewClient(tableau.NewTransport(server.Client(), "3.29", nil), session{}, server.URL)
-			_, err := client.Create(context.Background(), tableauproject.CreateRequest{Name: "Operations", ParentLUID: "parent-1"})
+			result, err := client.Create(t.Context(), tableauproject.CreateRequest{Name: "Operations", ParentLUID: "parent-1"})
 			var protocol *tableau.ProtocolError
 			if !errors.As(err, &protocol) || protocol.HTTPStatus() != test.statusCode || tableau.RequestID(err) != "project-protocol-request" || protocol.Retryable() {
 				t.Fatalf("protocol error = %#v", err)
 			}
+			if result.Status != "unknown" || result.Project.LUID != test.observedID || result.TableauRequestID != "project-protocol-request" {
+				t.Fatalf("result = %#v", result)
+			}
 		})
+	}
+}
+
+func TestClientKeepsExplicitProjectCreateRejectionSeparateFromUnknownOutcome(t *testing.T) {
+	server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		if request.Method != http.MethodPost {
+			t.Errorf("method = %s", request.Method)
+		}
+		writer.Header().Set("X-Tableau-Request-Id", "rejected-request")
+		writer.WriteHeader(http.StatusForbidden)
+		_, _ = io.WriteString(writer, `<tsResponse><error code="403004"><summary>Forbidden</summary></error></tsResponse>`)
+	}))
+	defer server.Close()
+	client := tableauproject.NewClient(tableau.NewTransport(server.Client(), "3.29", nil), session{}, server.URL)
+	result, err := client.Create(t.Context(), tableauproject.CreateRequest{Name: "Operations"})
+	upstream, ok := errors.AsType[*tableau.UpstreamError](err)
+	if !ok || upstream.StatusCode != http.StatusForbidden || tableau.RequestID(err) != "rejected-request" {
+		t.Fatalf("rejection = %#v", err)
+	}
+	if result.Status != "" || result.Project.LUID != "" || result.TableauRequestID != "" {
+		t.Fatalf("rejection represented as an accepted create: %#v", result)
 	}
 }

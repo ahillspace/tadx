@@ -93,7 +93,26 @@ func (a *Action) Execute(ctx context.Context, input Input, preview bool) (Output
 	result, err := a.creator.CreateProject(ctx, CreateRequest{Name: input.Name, Description: input.Description, ParentLUID: currentParentLUID, ContentPermissions: input.ContentPermissions})
 	if err != nil {
 		retryable, correctiveAction := errs.CompleteRetryAdvice(err, "Inspect the remote project create outcome before retrying.")
-		return Output{}, &errs.Error{ID: "project.create.failed", Kind: errs.KindOperation, Operation: "project.create", Environment: input.Environment, Site: input.Site, Summary: "Project create failed.", Cause: err, Retryable: retryable, CorrectiveAction: correctiveAction, TableauRequestID: errs.TableauRequestID(err)}
+		failure := &errs.Error{ID: "project.create.failed", Kind: errs.KindOperation, Operation: "project.create", Environment: input.Environment, Site: input.Site, Summary: "Project create failed.", Cause: err, Retryable: retryable, CorrectiveAction: correctiveAction, TableauRequestID: errs.TableauRequestID(err)}
+		if result.TableauRequestID != "" {
+			failure.TableauRequestID = result.TableauRequestID
+		}
+		if result.Status == "unknown" {
+			failure.Phase = errs.PhaseSubmission
+			failure.Outcome = errs.OutcomeUnknown
+			failure.Retryable = errs.Bool(false)
+			failure.CorrectiveAction = "Inspect the remote project create outcome before retrying."
+			output.Plan.Parent = currentParent
+			output.Result = &result
+			if result.Project.LUID != "" {
+				failure.Resource = result.Project.LUID
+				failure.Phase = errs.PhaseVerification
+				inspect := commandhint.Environment(input.Environment, "content", "project", "inspect", "--project-id", result.Project.LUID)
+				failure.CorrectiveAction = "Inspect the project with " + inspect + " before another mutation."
+				output.Help = []string{inspect}
+			}
+		}
+		return output, failure
 	}
 	output.Plan.Parent = currentParent
 	output.Result = &result
