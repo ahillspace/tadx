@@ -1,0 +1,57 @@
+{
+  "schema_version": 1,
+  "source_baseline": "dd22c33bd1d123066f25ec09e2d612cd95717400",
+  "scope": "Approved flow, project-create, and interrupted-publication recovery corrections; selected offline controls and seeded defect demonstrations only.",
+  "checks": [
+    {
+      "id": "g3-flow-persistence",
+      "gate": "G3",
+      "package": "./internal/app",
+      "tests": ["TestFlowPublicationPersistenceFailureRetainsConfirmedIdentity"],
+      "contract": "A confirmed flow publication retains its accepted request ID when receipt persistence fails."
+    },
+    {
+      "id": "g3-project-create",
+      "gate": "G3",
+      "package": "./internal/tableau/project",
+      "tests": ["TestClientRejectsMalformedProjectMutationResponses"],
+      "contract": "An accepted but malformed project-create response retains the decoded project LUID in an unknown result."
+    },
+    {
+      "id": "g3-receipt-recovery",
+      "gate": "G3",
+      "package": "./internal/app",
+      "tests": ["TestRecoverPublicationReceiptLinksRequiresRegisteredExactScope"],
+      "contract": "Interrupted publication recovery links only receipts matching the registered exact intent scope."
+    }
+  ],
+  "seeds": [
+    {
+      "id": "seed-flow-request-identity",
+      "control": "g3-flow-persistence",
+      "test": "TestFlowPublicationPersistenceFailureRetainsConfirmedIdentity",
+      "path": "internal/app/content_remote.go",
+      "before": "lifecycle.record(ctx, \"\", out.Result.Status, out.Result.FlowLUID, out.Result.TableauRequestID, \"\")",
+      "after": "lifecycle.record(ctx, \"\", out.Result.Status, out.Result.FlowLUID, \"\", \"\")",
+      "failure_contains": "confirmed flow request identity lost from error contract"
+    },
+    {
+      "id": "seed-project-decoded-identity",
+      "control": "g3-project-create",
+      "test": "TestClientRejectsMalformedProjectMutationResponses",
+      "path": "internal/tableau/project/client.go",
+      "before": "result.Project = project",
+      "after": "result.Project = Project{Name: project.Name, ParentLUID: project.ParentLUID}",
+      "failure_contains": "result ="
+    },
+    {
+      "id": "seed-receipt-intent-scope",
+      "control": "g3-receipt-recovery",
+      "test": "TestRecoverPublicationReceiptLinksRequiresRegisteredExactScope",
+      "path": "internal/app/publication_status.go",
+      "before": " || publicationReceiptScope(receipt) != intent.Scope",
+      "after": "",
+      "failure_contains": "mismatched receipt was adopted"
+    }
+  ]
+}

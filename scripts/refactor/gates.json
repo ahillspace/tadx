@@ -1,0 +1,140 @@
+{
+  "schema_version": 1,
+  "source_baseline": "dd22c33bd1d123066f25ec09e2d612cd95717400",
+  "scope": "Initial selected G1-G4 contract checks with isolated defect demonstrations; not full refactor acceptance.",
+  "checks": [
+    {
+      "id": "g1-cli",
+      "gate": "G1",
+      "package": "./internal/app",
+      "tests": [
+        "TestRunCapabilityListRendersTOON",
+        "TestRunCapabilityListRendersJSON",
+        "TestRunJSONUsageErrorIsOneDocumentWithoutNotice",
+        "TestRunJSONFlagLastValueAndAlias"
+      ],
+      "contract": "Existing TOON golden, JSON parseability, nonzero usage exit, exactly one JSON error document, and flag precedence. JSON parseability is not an exact key-set assertion."
+    },
+    {
+      "id": "g1-projection",
+      "gate": "G1",
+      "package": "./actions/workbook",
+      "tests": [
+        "TestDeleteOutputGolden"
+      ],
+      "contract": "Exact compact and full TOON projections, including field omission."
+    },
+    {
+      "id": "g2-cli",
+      "gate": "G2",
+      "package": "./internal/app",
+      "tests": [
+        "TestWorkbookDeletePreviewAndApplyThroughCLI",
+        "TestProjectMoveUsesOneHierarchyPerValidationPhase",
+        "TestContentMovesShareSourceAndDestinationHierarchyWithinPhase",
+        "TestManagedPolicyPreviewNeedsCapabilityButNotRemotePermission"
+      ],
+      "contract": "Fake native HTTP delete/write counts, plan/prewrite hierarchy phases, changed source refusal, and managed policy preview behavior."
+    },
+    {
+      "id": "g2-action",
+      "gate": "G2",
+      "package": "./actions/workbook",
+      "tests": [
+        "TestDeleteDeletePreviewsWithoutMutation",
+        "TestDeleteDeleteRejectsAuthoritativeIdentityChange"
+      ],
+      "contract": "Preview performs one resolution and no writes; changed authoritative LUID prevents deletion."
+    },
+    {
+      "id": "g3-cli",
+      "gate": "G3",
+      "package": "./internal/app",
+      "tests": [
+        "TestAdminUserUpdateRejectsPartialAcknowledgementThroughCLI",
+        "TestAdminUserUpdateVerificationCasesThroughCLI",
+        "TestAdminUserUpdatePartialReceiptFormatsThroughCLI",
+        "TestAdminUserUpdateSubmittedFailureRetainsUnknownOutcomeThroughCLI"
+      ],
+      "contract": "HTTP success with unchanged requested attributes is not full success. Preserve partial/unknown outcomes, confirmed identity, request ID, and failed field."
+    },
+    {
+      "id": "g4-state",
+      "gate": "G4",
+      "package": "./internal/app",
+      "tests": [
+        "TestAuthCredentialStoreLogoutRestoresReferenceWhenDeletionFails",
+        "TestAuthCredentialStorePersistsOpaqueReferenceAndReplacesOldPAT",
+        "TestAuthCredentialStoreLogoutDeletesPATAndReference",
+        "TestEnvironmentPreviewValidatesWithoutChangingConfiguration",
+        "TestAuthLogoutPreviewPreservesCredentialsThenExecutionRemovesOnlySelectedReference"
+      ],
+      "contract": "Real test-owned config plus fake credential store state; compensation and preview effects. Does not establish OS keyring or Unix durability-failure behavior."
+    }
+  ],
+  "seeds": [
+    {
+      "id": "seed-missing-output-field",
+      "control": "g1-projection",
+      "test": "TestDeleteOutputGolden",
+      "path": "actions/workbook/delete_types.go",
+      "before": "`json:\"operation\"`",
+      "after": "`json:\"operation_seeded\"`",
+      "failure_contains": "mismatch"
+    },
+    {
+      "id": "seed-extra-output-field",
+      "control": "g1-projection",
+      "test": "TestDeleteOutputGolden",
+      "path": "actions/workbook/delete_types.go",
+      "before": "type DeletePlan struct {",
+      "after": "type DeletePlan struct {\n\tSeededLeak string `json:\"seeded_leak\"`",
+      "failure_contains": "mismatch"
+    },
+    {
+      "id": "seed-wrong-success-exit",
+      "control": "g1-cli",
+      "test": "TestRunCapabilityListRendersTOON",
+      "path": "internal/app/app.go",
+      "before": "\treturn 0\n}\n\nfunc renderError(",
+      "after": "\treturn 1\n}\n\nfunc renderError(",
+      "failure_contains": "exit code = 1"
+    },
+    {
+      "id": "seed-preview-write",
+      "control": "g2-action",
+      "test": "TestDeleteDeletePreviewsWithoutMutation",
+      "path": "actions/workbook/delete.go",
+      "before": "\tif preview {\n\t\treturn output, nil\n\t}",
+      "after": "\tif preview {\n\t\t_, _ = deleter.DeleteWorkbook(ctx, target.LUID)\n\t\treturn output, nil\n\t}",
+      "failure_contains": "delete_calls="
+    },
+    {
+      "id": "seed-identity-drift",
+      "control": "g2-cli",
+      "test": "TestProjectMoveUsesOneHierarchyPerValidationPhase",
+      "path": "actions/project/move/action.go",
+      "before": "if current.Name != source.Name || current.Path != source.Path || current.ParentLUID != source.ParentLUID {",
+      "after": "if false && (current.Name != source.Name || current.Path != source.Path || current.ParentLUID != source.ParentLUID) {",
+      "failure_contains": "drift exit="
+    },
+    {
+      "id": "seed-false-success",
+      "control": "g3-cli",
+      "test": "TestAdminUserUpdateRejectsPartialAcknowledgementThroughCLI",
+      "path": "actions/admin/user/update.go",
+      "before": "if userFieldMatches(item.field, actual, *item.value) {",
+      "after": "if true {",
+      "failure_contains": "code=0"
+    },
+    {
+      "id": "seed-skipped-restoration",
+      "control": "g4-state",
+      "test": "TestAuthCredentialStoreLogoutRestoresReferenceWhenDeletionFails",
+      "path": "internal/config/config.go",
+      "before": "\t\tif err := postSave(); err != nil {\n\t\t\trestoreErr := restore()",
+      "after": "\t\tif err := postSave(); err != nil {\n\t\t\tvar restoreErr error",
+      "failure_contains": "want restored"
+    }
+  ]
+}

@@ -1,0 +1,38 @@
+{
+  "schema_version": 1,
+  "source_baseline": "dd22c33bd1d123066f25ec09e2d612cd95717400",
+  "scope": "Separately approved accepted-publication reporting corrections and datasource recovery characterization.",
+  "checks": [
+    {
+      "id": "g3-publication-reporting",
+      "gate": "G3",
+      "package": "./internal/app",
+      "tests": [
+        "TestAsyncPublicationReceiptPersistenceFailurePreservesAcceptedIdentity",
+        "TestPublicationAcceptedReceiptPersistenceFailureBeforeObservation",
+        "TestDatasourcePublicationDelayedDestinationRecoveryThroughCLI"
+      ],
+      "contract": "Accepted workbook and datasource receipt failures preserve job/request IDs, persistence phase, pending unknown outcome, and non-retry guidance without additional native requests. Datasource delayed visibility recovery does not resubmit or invent destination identity."
+    }
+  ],
+  "seeds": [
+    {
+      "id": "seed-receipt-phase",
+      "control": "g3-publication-reporting",
+      "test": "TestAsyncPublicationReceiptPersistenceFailurePreservesAcceptedIdentity",
+      "path": "internal/app/publication.go",
+      "before": "Cause:   err, Phase: errs.PhasePersistence, Outcome: errs.OutcomeUnknown,",
+      "after": "Cause:   err, Phase: errs.PhaseVerification, Outcome: errs.OutcomeUnknown,",
+      "failure_contains": "receipt failure must preserve pending remote outcome and identify persistence phase"
+    },
+    {
+      "id": "seed-receipt-request-identity",
+      "control": "g3-publication-reporting",
+      "test": "TestAsyncPublicationReceiptPersistenceFailurePreservesAcceptedIdentity",
+      "path": "internal/app/publication.go",
+      "before": "TableauJobID: id, TableauRequestID: requestID,",
+      "after": "TableauJobID: id, TableauRequestID: \"\",",
+      "failure_contains": "accepted request identity lost from the error contract"
+    }
+  ]
+}

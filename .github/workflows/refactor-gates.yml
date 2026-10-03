@@ -1,0 +1,41 @@
+name: Refactor gate tooling
+
+on:
+  pull_request:
+  push:
+
+permissions:
+  contents: read
+
+jobs:
+  offline-gates:
+    name: Offline gate tests (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: '3.11'
+
+      - name: Test contract runner
+        run: python -B -m unittest discover -s scripts/refactor -p "test_*.py"
+
+      - name: Test live evidence validation
+        run: python -B -m unittest discover -s scripts/refactor/live -p "test_*.py"
+
+      - name: Set up Node for broker tests
+        uses: actions/setup-node@v7
+        with:
+          node-version: '24'
+          package-manager-cache: false
+
+      - name: Test isolated harness preparation
+        run: python -B -m unittest discover -s scripts/refactor/harness -p "test_*.py"
