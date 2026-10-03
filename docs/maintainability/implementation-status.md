@@ -1,6 +1,6 @@
 # Architecture implementation status
 
-Status: separately approved baseline corrections and batch-order compatibility correction committed and independently reviewed; final baseline verification precedes structural migration.
+Status: baseline corrections committed; standard checks pass, an existing race-test failure remains unresolved, and final live coverage needs additional fixture authority.
 Approval date: 2026-10-03.
 Baseline: `dd22c33bd1d123066f25ec09e2d612cd95717400`.
 Shared branch: `refactor/cohesive-cli`.
@@ -130,6 +130,14 @@ A CLI regression reproduces that gap, and correction `6af94e1` restores intent o
 Focused clean-snapshot tests and independent Sol review pass for that correction.
 Commit `12b20c1` adds independently reviewed project freshness and exact output contracts.
 These later commits still require integrated verification; the earlier full-suite result does not establish their acceptance.
+Subsequent exact-source verification on `acfa9a72a3046cdab5cb407948531da8d8c94c22` passes the standard Go suite, vet, formatting, module consistency, and all three defect-detection manifests.
+Its source manifest SHA-256 is `7e9ef772fa7df8242f7de13bf2edf6d28b601791a79ff1ffb42430f695c7a682`.
+Runner, live-validator, harness, and assessment unit suites pass with 23, 29, 27, and 20 tests respectively.
+The race suite fails the existing authentication foreground-priority test under concurrent load.
+Its fixed sleep does not establish that the foreground waiter registered before releasing the current holder.
+Twenty focused repetitions pass, but that result does not cure the load-sensitive failure.
+Independent review rejects a proposed readiness-helper substitution because a monitor's transient lock can satisfy the same probe.
+That uncommitted test edit is restored; authentication production code remains unchanged and the race gate remains unresolved.
 The maintainer's updated model boundary excludes Astra from testing, validation, research, and judging runs.
 Subsequent implementation verification and review assignments explicitly use Sol; task-driven live targets remain Luna at medium reasoning.
 
@@ -151,6 +159,12 @@ The project correction is committed separately as `8f2c9b136b1d48bde1258ce59639e
 It preserves observed identity on malformed acceptance, reports unknown outcomes for ambiguous attempted writes, and retains explicit rejection for complete nontransient HTTP 4xx responses.
 Successful native operations and output projections remain unchanged.
 The typed shared consumer is `search.run` through project inventory; `cache.refresh` remains a conservative fixture compatibility scenario rather than a proven typed consumer of this package move.
+A subsequent isolated project draft consolidates six packages into one service and moves native conversion ports from app to the project resource adapter.
+Focused tests, compilation, and independent review find no demonstrated behavior regression in that draft.
+The draft is not integrated or accepted.
+Project operation facades remain in app, with substantive provider selection and warning handling still requiring extraction under D3.
+Two adapter normalization tests should move to their resource owner while app composition tests remain at the CLI boundary.
+The draft has no complete candidate, native-platform, or live acceptance evidence.
 
 ## Acceptance dependencies
 
@@ -184,6 +198,9 @@ The latest offline preparation closes the selected runtime source set at 118 loc
 Independent Sol review verifies that closure and reports no actionable findings.
 Both copied entry points remain blocked until accepted build captures, immutable image identity, and actual-session model qualification are available.
 This preparation does not establish actual runtime qualification or authorize bypassing preceding gates.
+Commit `de823b8` adds independently reviewed prebuilt capture checks with seven passing offline tests.
+Capture verifies all committed source bytes, including embedded installer scripts, rejects extra files, and requires clean native build metadata.
+No accepted real capture, qualified worker image, or same-session Luna execution evidence exists yet.
 The OpenAI Docs check confirms [Luna supports medium reasoning](https://developers.openai.com/api/docs/models/gpt-6-luna), but requested flags alone do not establish actual runtime configuration.
 The [documented noninteractive JSON event stream](https://learn.chatgpt.com/docs/non-interactive-mode) does not establish those actual values by itself.
 
@@ -195,6 +212,17 @@ Local Linux containers are available.
 The current Windows process is not elevated, and native macOS is unavailable locally.
 Required native platform evidence needs hosted checks or another suitable authorized environment.
 Cross-compilation and historical baseline CI do not satisfy candidate native runtime verification.
+
+### Additional fixture authority required
+
+The existing authority covers run-owned project fixtures, not the complete executable action catalog.
+Full live acceptance additionally requires approved disposable content and jobs, site users and groups, membership and owned-content permissions, labels, Pulse resources, and upstream metadata targets.
+Account and metadata fixtures need designated identities, allowed changes, and cleanup boundaries before use.
+Saved site consent does not expand fixture authority.
+Changing persisted consent or persisting PATs requires separate explicit permission.
+Missing task mappings, installer stages, and runtime qualification are technical gaps, not substitute authority.
+No broader mutations, model tasks, or pushes have occurred.
+Further execution awaits fixture-scope direction; no incomplete gate is waived or reported as passing.
 
 ## Completion rule
 
