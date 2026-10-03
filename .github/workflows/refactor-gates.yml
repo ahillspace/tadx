@@ -31,6 +31,9 @@ jobs:
       - name: Test live evidence validation
         run: python -B -m unittest discover -s scripts/refactor/live -p "test_*.py"
 
+      - name: Test accepted CLI capture
+        run: python -B -m unittest discover -s scripts/refactor/capture -p "test_*.py"
+
       - name: Set up Node for broker tests
         uses: actions/setup-node@v7
         with:

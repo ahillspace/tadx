@@ -53,7 +53,7 @@ This runner does not replace those checks or the existing benchmark harness.
 
 ## Test the runner
 
-The `Refactor gate tooling` workflow runs these offline unit tests, the live evidence validator tests, and the harness preparer tests on Linux and Windows.
+The `Refactor gate tooling` workflow runs these offline unit tests, the live evidence validator tests, the accepted CLI capture tests, and the harness preparer tests on Linux and Windows.
 It does not contact Tableau or a model provider and does not replace candidate contract, native platform, or live gates.
 
 ```powershell
