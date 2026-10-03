@@ -115,7 +115,7 @@ func (o InspectOutput) render(full bool) any {
 			// these independently confirmed jobs even if the last aggregate
 			// still shows an unfinished item; never infer whole-run success.
 			if len(o.Operation.Items) > 0 {
-				object["accepted_jobs"] = renderOperationItems(o.Operation.Items, o.Operation.Operation, full)
+				object["accepted_jobs"] = renderOperationItems(o.Operation.Items, o.Operation.Operation, full, true)
 			}
 		}
 		if full {
@@ -150,7 +150,7 @@ func operationSnapshot(snapshot any, operation OperationView, full bool) any {
 	}
 	if _, ok := result["items"]; !ok && len(operation.Items) > 0 {
 		if _, hasResult := result["result"]; !hasResult {
-			result["items"] = renderOperationItems(operation.Items, operation.Operation, full)
+			result["items"] = renderOperationItems(operation.Items, operation.Operation, full, false)
 		}
 	}
 	if !full {
@@ -159,7 +159,7 @@ func operationSnapshot(snapshot any, operation OperationView, full bool) any {
 	return result
 }
 
-func renderOperationItems(items []OperationItem, operation string, full bool) []map[string]any {
+func renderOperationItems(items []OperationItem, operation string, full, recoveryEvidence bool) []map[string]any {
 	projected := make([]map[string]any, len(items))
 	for index, item := range items {
 		value := map[string]any{}
@@ -171,6 +171,9 @@ func renderOperationItems(items []OperationItem, operation string, full bool) []
 		}
 		if full && item.JobID != "" {
 			value["tableau_job_id"] = item.JobID
+		}
+		if recoveryEvidence && item.TableauRequestID != "" {
+			value["tableau_request_id"] = item.TableauRequestID
 		}
 		if item.ResourceID != "" {
 			resourceKey := "resource_id"

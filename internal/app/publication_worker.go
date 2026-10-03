@@ -18,6 +18,7 @@ import (
 	"github.com/ahillspace/tadx/internal/commandhint"
 	"github.com/ahillspace/tadx/internal/contentbatch"
 	"github.com/ahillspace/tadx/internal/errs"
+	"github.com/ahillspace/tadx/internal/jobmonitor"
 	"github.com/ahillspace/tadx/internal/operationrun"
 	"github.com/ahillspace/tadx/internal/output"
 	"github.com/spf13/cobra"
@@ -226,7 +227,17 @@ func runPublicationWorker(ctx context.Context, directory, id string, options Opt
 		return 1
 	}
 	defer lease.Release()
-	control := &publicationExecution{operation: record.Operation, noWait: record.Request.NoWait, deadline: record.RequestedAt.Add(publicationWaitLimit)}
+	control := &publicationExecution{operation: record.Operation, operationID: record.ID, noWait: record.Request.NoWait, deadline: record.RequestedAt.Add(publicationWaitLimit)}
+	control.prepare = func(_ context.Context, receipt jobmonitor.Receipt) error {
+		_, err := lease.Update(func(r *operationrun.Record) error {
+			if receipt.OperationID != r.ID || receipt.Operation != r.Operation || receipt.ReceiptID == "" {
+				return errors.New("publication receipt intent does not match its operation")
+			}
+			r.ReceiptIntents = append(r.ReceiptIntents, operationrun.ReceiptIntent{ID: receipt.ReceiptID, Scope: publicationReceiptScope(receipt), RegisteredAt: time.Now().UTC()})
+			return nil
+		})
+		return err
+	}
 	control.detached = func() bool {
 		current, err := store.Read(id)
 		if err != nil || current.Detached {

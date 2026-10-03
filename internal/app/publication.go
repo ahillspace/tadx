@@ -76,7 +76,14 @@ func (r *runtimeDependencies) publication(ctx context.Context, environment, kind
 		}
 		async = known
 	}
-	return &publication{runtime: r, connection: c, store: jobmonitor.Store{Directory: directory}, asJob: async, base: jobmonitor.Receipt{ReceiptID: rand.Text(), Version: 1, Operation: kind + ".publish", Environment: c.environment.Alias, Server: c.environment.URL, Site: c.environment.SiteContentURL, SiteID: c.session.SiteLUID(), ConfigPath: r.configPath, SourcePath: filepath.ToSlash(source), ProjectID: project, Name: name, CoordinationKey: key}}, nil
+	p := &publication{runtime: r, connection: c, store: jobmonitor.Store{Directory: directory}, asJob: async, base: jobmonitor.Receipt{ReceiptID: rand.Text(), Version: 1, Operation: kind + ".publish", Environment: c.environment.Alias, Server: c.environment.URL, Site: c.environment.SiteContentURL, SiteID: c.session.SiteLUID(), ConfigPath: r.configPath, SourcePath: filepath.ToSlash(source), ProjectID: project, Name: name, CoordinationKey: key}}
+	if execution := r.publicationExecution; execution != nil && execution.prepare != nil {
+		p.base.OperationID = execution.operationID
+		if err := execution.prepare(ctx, p.base); err != nil {
+			return nil, fmt.Errorf("record publication receipt intent before submission: %w", err)
+		}
+	}
+	return p, nil
 }
 
 func (p *publication) record(ctx context.Context, jobID, status, resourceID, requestID, verification string) (string, error) {

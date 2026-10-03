@@ -25,6 +25,7 @@ const maxReceiptEntries = 10000
 // CoordinationKey is an opaque credential/site hash, never a PAT or session.
 type Receipt struct {
 	ReceiptID         string          `json:"receipt_id,omitempty"`
+	OperationID       string          `json:"operation_id,omitempty"`
 	Version           int             `json:"version"`
 	Operation         string          `json:"operation"`
 	Environment       string          `json:"environment"`
@@ -50,6 +51,59 @@ type Receipt struct {
 
 // Store contains no credentials and is shared by cooperating processes.
 type Store struct{ Directory string }
+
+// LocatedReceipt is one exact durable receipt found in the configured store.
+type LocatedReceipt struct {
+	Receipt Receipt
+	Path    string
+}
+
+// FindByReceiptIDs scans the bounded store once for pre-registered IDs.
+// A duplicate ID is ambiguous and cannot be adopted by an operation.
+func (s Store) FindByReceiptIDs(ctx context.Context, ids []string) (map[string]LocatedReceipt, error) {
+	if s.Directory == "" {
+		return nil, errors.New("job receipt store is not configured")
+	}
+	wanted := make(map[string]bool, len(ids))
+	for _, id := range ids {
+		if id == "" {
+			return nil, errors.New("job receipt ID is empty")
+		}
+		wanted[id] = true
+	}
+	found := make(map[string]LocatedReceipt)
+	if len(wanted) == 0 {
+		return found, nil
+	}
+	entries, err := os.ReadDir(s.Directory)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return found, nil
+		}
+		return nil, err
+	}
+	for index, entry := range entries {
+		if index >= maxReceiptEntries {
+			return nil, errors.New("job receipt store exceeds its recovery scan bound")
+		}
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
+		if entry.IsDir() || filepath.Ext(entry.Name()) != ".json" {
+			continue
+		}
+		path := filepath.Join(s.Directory, entry.Name())
+		receipt, err := readReceipt(path)
+		if err != nil || !wanted[receipt.ReceiptID] {
+			continue
+		}
+		if _, duplicate := found[receipt.ReceiptID]; duplicate {
+			return nil, errors.New("receipt ID matches more than one durable receipt")
+		}
+		found[receipt.ReceiptID] = LocatedReceipt{Receipt: receipt, Path: path}
+	}
+	return found, nil
+}
 
 // ReadPath reads one receipt only when it is contained by this store's
 // directory. Receipt paths are local recovery inputs, never remote commands.

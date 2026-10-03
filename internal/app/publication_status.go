@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"time"
 
@@ -40,6 +41,10 @@ func (r *runtimeDependencies) inspectPublicationOperation(ctx context.Context, i
 	if err != nil {
 		return jobactions.InspectResult{}, err
 	}
+	var recoveryWarnings []string
+	if !alive && len(record.ReceiptIntents) != 0 {
+		record, recoveryWarnings = r.recoverPublicationReceiptLinks(ctx, store, record)
+	}
 	view := operationView(record, alive)
 	if view.Environment == "" || view.Site == "" {
 		environment, site := r.savedPublicationTarget(record)
@@ -56,7 +61,7 @@ func (r *runtimeDependencies) inspectPublicationOperation(ctx context.Context, i
 	if input.Site != "" && view.Environment != "" && input.Site != view.Site {
 		return jobactions.InspectResult{}, fmt.Errorf("operation %q belongs to site %q, not %q", record.ID, view.Site, input.Site)
 	}
-	result := jobactions.InspectResult{Environment: view.Environment, Site: view.Site, Operation: view}
+	result := jobactions.InspectResult{Environment: view.Environment, Site: view.Site, Operation: view, Warnings: recoveryWarnings}
 	if record.Phase == operationrun.PhaseCompleted || record.Phase == operationrun.PhaseFailed {
 		warnings, items := r.readSavedPublicationReceipts(ctx, record)
 		if updated, updateWarnings := r.reconcilePublicationReceipts(ctx, record, items); updated != nil {
@@ -104,6 +109,68 @@ func (r *runtimeDependencies) inspectPublicationOperation(ctx context.Context, i
 	return result, nil
 }
 
+// recoverPublicationReceiptLinks attaches only receipts that the worker
+// registered before submission and that still match the exact saved scope.
+func (r *runtimeDependencies) recoverPublicationReceiptLinks(ctx context.Context, store operationrun.Store, record operationrun.Record) (operationrun.Record, []string) {
+	receiptStore, err := r.publicationReceiptStore()
+	if err != nil {
+		return record, []string{err.Error()}
+	}
+	linked := make(map[string]bool, len(record.ReceiptPaths))
+	for _, path := range record.ReceiptPaths {
+		if !filepath.IsAbs(path) {
+			path = filepath.Join(receiptStore.Directory, path)
+		}
+		if receipt, readErr := receiptStore.ReadPath(path); readErr == nil {
+			linked[receipt.ReceiptID] = true
+		}
+	}
+	intents := make([]operationrun.ReceiptIntent, 0, len(record.ReceiptIntents))
+	ids := make([]string, 0, len(record.ReceiptIntents))
+	for _, intent := range record.ReceiptIntents {
+		if !linked[intent.ID] {
+			intents = append(intents, intent)
+			ids = append(ids, intent.ID)
+		}
+	}
+	if len(ids) == 0 {
+		return record, nil
+	}
+	found, err := receiptStore.FindByReceiptIDs(ctx, ids)
+	if err != nil {
+		return record, []string{fmt.Sprintf("registered publication receipts could not be located: %v", err)}
+	}
+	var paths, warnings []string
+	for _, intent := range intents {
+		located, ok := found[intent.ID]
+		if !ok {
+			continue
+		}
+		receipt := located.Receipt
+		recoverableReceipt := receipt.Observation.ID != "" || (receipt.Observation.Status == "succeeded" && receipt.Observation.ResourceID != "") || receipt.Observation.Status == "unknown"
+		if receipt.OperationID != record.ID || receipt.Operation != record.Operation || publicationReceiptScope(receipt) != intent.Scope || receipt.AcceptedAt.Before(intent.RegisteredAt) || !recoverableReceipt || filepath.Clean(located.Path) != filepath.Clean(receiptStore.Path(receipt)) {
+			warnings = append(warnings, fmt.Sprintf("registered receipt %q does not match its saved operation intent", intent.ID))
+			continue
+		}
+		paths = append(paths, located.Path)
+	}
+	if len(paths) == 0 {
+		return record, warnings
+	}
+	updated, err := store.Update(record.ID, func(current *operationrun.Record) error {
+		for _, path := range paths {
+			if !slices.Contains(current.ReceiptPaths, path) {
+				current.ReceiptPaths = append(current.ReceiptPaths, path)
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		return record, append(warnings, fmt.Sprintf("registered publication receipts could not be linked: %v", err))
+	}
+	return updated, warnings
+}
+
 func (r *runtimeDependencies) readSavedPublicationReceipts(ctx context.Context, record operationrun.Record) ([]string, []jobactions.OperationItem) {
 	receiptStore, err := r.publicationReceiptStore()
 	if err != nil {
@@ -130,6 +197,7 @@ func (r *runtimeDependencies) readSavedPublicationReceipts(ctx context.Context, 
 			item.Name, item.Project = receipt.Name, receipt.ProjectID
 			item.Status, item.ResourceID = receipt.Observation.Status, receipt.Observation.ResourceID
 			item.JobID = receipt.Observation.ID
+			item.TableauRequestID = receipt.Observation.RequestID
 			item.Verification = receipt.Verification
 			if item.Status == "succeeded" && receipt.Verification != "confirmed" {
 				item, receipt, warnings = r.resolveReceiptItem(ctx, item, receipt, connections, warnings)
@@ -242,6 +310,7 @@ func (r *runtimeDependencies) inspectPublicationReceipts(ctx context.Context, re
 		}
 		item.Name, item.Project = receipt.Name, receipt.ProjectID
 		item.JobID = receipt.Observation.ID
+		item.TableauRequestID = receipt.Observation.RequestID
 		if environment == "" {
 			environment, site = receipt.Environment, receipt.Site
 		}
@@ -251,6 +320,11 @@ func (r *runtimeDependencies) inspectPublicationReceipts(ctx context.Context, re
 			if _, saveErr := receiptStore.Save(ctx, receipt); saveErr != nil {
 				warnings = append(warnings, fmt.Sprintf("confirmed destination could not be saved: %v", saveErr))
 			}
+			items = append(items, item)
+			continue
+		}
+		if receipt.Observation.ID == "" {
+			// Synchronous publish outcomes have no Tableau job to inspect.
 			items = append(items, item)
 			continue
 		}

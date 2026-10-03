@@ -75,3 +75,37 @@ func TestOperationOutputProjectsCompactAndFullSnapshots(t *testing.T) {
 		t.Fatalf("full snapshot = %#v", full)
 	}
 }
+
+func TestOperationRequestIDAppearsOnlyInInterruptedRecovery(t *testing.T) {
+	item := jobactions.OperationItem{Status: "pending", JobID: "job-1", TableauRequestID: "request-1"}
+	for _, test := range []struct {
+		name, status, phase string
+		wantRequestID       bool
+	}{
+		{name: "completed", status: "succeeded", phase: "completed"},
+		{name: "interrupted", status: "interrupted", phase: "running", wantRequestID: true},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			view := &jobactions.OperationView{ID: "run-1", Operation: "workbook.publish", Status: test.status, Phase: test.phase, Items: []jobactions.OperationItem{item}}
+			output := jobactions.InspectOutput{Status: test.status, Operation: view}
+			projected, ok := output.FullOutput().(map[string]any)
+			if !ok {
+				t.Fatalf("full projection is not an object: %#v", output.FullOutput())
+			}
+			items, ok := projected["items"].([]map[string]any)
+			if !ok || len(items) != 1 || items[0]["status"] != "pending" {
+				t.Fatalf("saved item projection = %#v", projected["items"])
+			}
+			if _, present := items[0]["tableau_request_id"]; present {
+				t.Fatalf("normal item projection widened: %#v", items[0])
+			}
+			accepted, present := projected["accepted_jobs"].([]map[string]any)
+			if present != test.wantRequestID {
+				t.Fatalf("accepted recovery presence=%t projection=%#v", present, projected)
+			}
+			if test.wantRequestID && (len(accepted) != 1 || accepted[0]["tableau_request_id"] != "request-1" || accepted[0]["tableau_job_id"] != "job-1" || accepted[0]["status"] != "pending") {
+				t.Fatalf("uncertain recovery evidence = %#v", accepted)
+			}
+		})
+	}
+}

@@ -86,22 +86,31 @@ type Request struct {
 // Version is a monotonic record revision. It starts at one and increments for
 // every successful Update, including a worker lease acknowledgement.
 type Record struct {
-	ID            string          `json:"id"`
-	Version       uint64          `json:"version"`
-	Operation     string          `json:"operation"`
-	RequestedAt   time.Time       `json:"requested_at"`
-	StartedAt     time.Time       `json:"started_at,omitzero"`
-	FinishedAt    time.Time       `json:"finished_at,omitzero"`
-	Phase         Phase           `json:"phase"`
-	WorkerPID     int             `json:"worker_pid,omitzero"`
-	Detached      bool            `json:"detached,omitzero"`
-	Activity      string          `json:"activity,omitempty"`
-	Request       Request         `json:"request"`
-	CompactResult json.RawMessage `json:"compact_result,omitempty"`
-	FullResult    json.RawMessage `json:"full_result,omitempty"`
-	ExitCode      *int            `json:"exit_code,omitzero"`
-	LiveResults   json.RawMessage `json:"live_results,omitempty"`
-	ReceiptPaths  []string        `json:"receipt_paths,omitempty"`
+	ID             string          `json:"id"`
+	Version        uint64          `json:"version"`
+	Operation      string          `json:"operation"`
+	RequestedAt    time.Time       `json:"requested_at"`
+	StartedAt      time.Time       `json:"started_at,omitzero"`
+	FinishedAt     time.Time       `json:"finished_at,omitzero"`
+	Phase          Phase           `json:"phase"`
+	WorkerPID      int             `json:"worker_pid,omitzero"`
+	Detached       bool            `json:"detached,omitzero"`
+	Activity       string          `json:"activity,omitempty"`
+	Request        Request         `json:"request"`
+	CompactResult  json.RawMessage `json:"compact_result,omitempty"`
+	FullResult     json.RawMessage `json:"full_result,omitempty"`
+	ExitCode       *int            `json:"exit_code,omitzero"`
+	LiveResults    json.RawMessage `json:"live_results,omitempty"`
+	ReceiptPaths   []string        `json:"receipt_paths,omitempty"`
+	ReceiptIntents []ReceiptIntent `json:"receipt_intents,omitempty"`
+}
+
+// ReceiptIntent identifies a receipt before its remote write is submitted.
+// Scope is a digest of the immutable publication target and source.
+type ReceiptIntent struct {
+	ID           string    `json:"id"`
+	Scope        string    `json:"scope"`
+	RegisteredAt time.Time `json:"registered_at"`
 }
 
 // UpdateFunc mutates a record while the run's update lock is held.
@@ -442,6 +451,16 @@ func validateRecord(record Record) error {
 	if len(record.ReceiptPaths) > 4096 {
 		return errors.New("operation run has too many receipt paths")
 	}
+	if len(record.ReceiptIntents) > 4096 {
+		return errors.New("operation run has too many receipt intents")
+	}
+	seen := make(map[string]bool, len(record.ReceiptIntents))
+	for _, intent := range record.ReceiptIntents {
+		if intent.ID == "" || len(intent.ID) > 128 || len(intent.Scope) != 64 || intent.RegisteredAt.IsZero() || seen[intent.ID] {
+			return errors.New("operation run has an invalid or duplicate receipt intent")
+		}
+		seen[intent.ID] = true
+	}
 	return nil
 }
 
@@ -561,6 +580,7 @@ func cloneRecord(record Record) Record {
 	record.FullResult = append(json.RawMessage(nil), record.FullResult...)
 	record.LiveResults = append(json.RawMessage(nil), record.LiveResults...)
 	record.ReceiptPaths = append([]string(nil), record.ReceiptPaths...)
+	record.ReceiptIntents = append([]ReceiptIntent(nil), record.ReceiptIntents...)
 	if record.ExitCode != nil {
 		code := *record.ExitCode
 		record.ExitCode = &code
