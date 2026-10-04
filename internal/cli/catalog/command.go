@@ -5,47 +5,44 @@ import (
 	"context"
 	"errors"
 
-	catalogaudit "github.com/ahillspace/tadx/actions/catalog/audit"
-	catalogread "github.com/ahillspace/tadx/actions/catalog/read"
-	catalogsearch "github.com/ahillspace/tadx/actions/catalog/search"
-	catalogupdate "github.com/ahillspace/tadx/actions/catalog/update"
+	catalogaction "github.com/ahillspace/tadx/actions/catalog"
 	"github.com/ahillspace/tadx/internal/cli/clierr"
 	"github.com/spf13/cobra"
 )
 
 type DatabaseLister interface {
-	ListCatalogDatabases(context.Context, catalogread.DatabaseListInput) (catalogread.DatabaseListOutput, error)
+	ListCatalogDatabases(context.Context, catalogaction.DatabaseListInput) (catalogaction.DatabaseListOutput, error)
 }
 type DatabaseInspector interface {
-	InspectCatalogDatabase(context.Context, catalogread.DatabaseInspectInput) (catalogread.DatabaseInspectOutput, error)
+	InspectCatalogDatabase(context.Context, catalogaction.DatabaseInspectInput) (catalogaction.DatabaseInspectOutput, error)
 }
 type DatabaseUpdater interface {
-	UpdateCatalogDatabase(context.Context, catalogupdate.DatabaseInput, bool) (catalogupdate.DatabaseOutput, error)
+	UpdateCatalogDatabase(context.Context, catalogaction.DatabaseInput, bool) (catalogaction.DatabaseOutput, error)
 }
 type TableLister interface {
-	ListCatalogTables(context.Context, catalogread.TableListInput) (catalogread.TableListOutput, error)
+	ListCatalogTables(context.Context, catalogaction.TableListInput) (catalogaction.TableListOutput, error)
 }
 type TableInspector interface {
-	InspectCatalogTable(context.Context, catalogread.TableInspectInput) (catalogread.TableInspectOutput, error)
+	InspectCatalogTable(context.Context, catalogaction.TableInspectInput) (catalogaction.TableInspectOutput, error)
 }
 type TableUpdater interface {
-	UpdateCatalogTable(context.Context, catalogupdate.TableInput, bool) (catalogupdate.TableOutput, error)
+	UpdateCatalogTable(context.Context, catalogaction.TableInput, bool) (catalogaction.TableOutput, error)
 }
 type ColumnLister interface {
-	ListCatalogColumns(context.Context, catalogread.ColumnListInput) (catalogread.ColumnListOutput, error)
+	ListCatalogColumns(context.Context, catalogaction.ColumnListInput) (catalogaction.ColumnListOutput, error)
 }
 type ColumnInspector interface {
-	InspectCatalogColumn(context.Context, catalogread.ColumnInspectInput) (catalogread.ColumnInspectOutput, error)
+	InspectCatalogColumn(context.Context, catalogaction.ColumnInspectInput) (catalogaction.ColumnInspectOutput, error)
 }
 type ColumnUpdater interface {
-	UpdateCatalogColumn(context.Context, catalogupdate.ColumnInput, bool) (catalogupdate.ColumnOutput, error)
+	UpdateCatalogColumn(context.Context, catalogaction.ColumnInput, bool) (catalogaction.ColumnOutput, error)
 }
 
 type Searcher interface {
-	SearchCatalog(context.Context, catalogsearch.Input) (catalogsearch.Output, error)
+	SearchCatalog(context.Context, catalogaction.SearchInput) (catalogaction.SearchOutput, error)
 }
 type Auditor interface {
-	AuditCatalog(context.Context, catalogaudit.Input) (catalogaudit.Output, error)
+	AuditCatalog(context.Context, catalogaction.AuditInput) (catalogaction.AuditOutput, error)
 }
 type Renderer interface{ Render(any) error }
 type Dependencies struct {

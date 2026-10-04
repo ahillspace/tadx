@@ -1,4 +1,4 @@
-package read
+package catalog
 
 import (
 	"context"
@@ -71,7 +71,7 @@ func (o TableListOutput) CompactOutput() any {
 	}{o.Status, o.Environment, o.Site, o.Page, rows, o.Complete, o.ObservedAt, "--full", o.NextCommand}
 }
 func (o TableListOutput) FullOutput() any { return o }
-func ListTables(ctx context.Context, reader TableListReader, in TableListInput) (out TableListOutput, err error) {
+func listTablesValidated(ctx context.Context, reader TableListReader, in TableListInput) (out TableListOutput, err error) {
 	defer func() {
 		if err != nil && out.Status != "" {
 			out.Status = "partial"
@@ -80,9 +80,6 @@ func ListTables(ctx context.Context, reader TableListReader, in TableListInput) 
 			out.Page.Returned = len(out.Items)
 		}
 	}()
-	if err := ValidateTableListInput(in); err != nil {
-		return TableListOutput{}, err
-	}
 	defer func() {
 		if err == nil && out.Page.MoreAvailable {
 			out.NextCommand = tableListNextCommand(in)
@@ -189,10 +186,7 @@ func compactTableInspect(v *value.MetadataTable) *tableInspectItem {
 	}
 	return &tableInspectItem{MetadataIdentity: v.MetadataIdentity, Description: v.Description, ContactLUID: v.ContactLUID, Database: v.Database, FullName: v.FullName, Schema: v.Schema, Tags: v.Tags, TagsObserved: v.TagsObserved}
 }
-func InspectTable(ctx context.Context, reader TableInspectReader, in TableInspectInput) (TableInspectOutput, error) {
-	if err := ValidateTableInspectInput(in); err != nil {
-		return TableInspectOutput{}, err
-	}
+func inspectTableValidated(ctx context.Context, reader TableInspectReader, in TableInspectInput) (TableInspectOutput, error) {
 	out := TableInspectOutput{Status: "failed", Environment: in.Environment, Site: in.Site}
 	if reader == nil {
 		return out, tableInspectUsage("catalog table inspection is not configured")

@@ -1,4 +1,4 @@
-package update
+package catalog
 
 import (
 	"context"
@@ -12,6 +12,7 @@ import (
 type columnFixture struct {
 	reads, writes   int
 	failTag         bool
+	lastTagTarget   value.LabelTarget
 	description     *string
 	lastUpdate      value.MetadataUpdate
 	omitDescription bool
@@ -30,15 +31,17 @@ func (f *columnFixture) UpdateColumn(_ context.Context, _, _ string, patch value
 	}
 	return value.MetadataColumn{MetadataIdentity: value.MetadataIdentity{LUID: "item"}, Table: value.MetadataIdentity{LUID: "table"}, Description: description, TagsObserved: true}, nil
 }
-func (f *columnFixture) AddColumnTags(context.Context, string, []string) ([]string, error) {
+func (f *columnFixture) AddTags(_ context.Context, target value.LabelTarget, _ []string) ([]string, error) {
 	f.writes++
+	f.lastTagTarget = target
 	if f.failTag {
 		return nil, errors.New("tag failed")
 	}
 	return []string{"test"}, nil
 }
-func (f *columnFixture) DeleteColumnTag(context.Context, string, string) error {
+func (f *columnFixture) DeleteTag(_ context.Context, target value.LabelTarget, _ string) error {
 	f.writes++
+	f.lastTagTarget = target
 	return nil
 }
 func columnValid() ColumnInput {
@@ -47,7 +50,7 @@ func columnValid() ColumnInput {
 }
 func TestColumnPreviewDoesNotWrite(t *testing.T) {
 	f := &columnFixture{}
-	out, err := NewColumn(f, f).Execute(context.Background(), columnValid(), true)
+	out, err := newColumnRunner(f, f).Execute(context.Background(), columnValid(), true)
 	if err != nil || f.writes != 0 || len(out.Plan.Changes) != 1 {
 		t.Fatalf("%+v %v writes%d", out, err, f.writes)
 	}
@@ -57,7 +60,7 @@ func TestColumnLocalValidationDoesNotRead(t *testing.T) {
 		f := &columnFixture{}
 		in := columnValid()
 		in.Description = &invalid
-		_, err := NewColumn(f, f).Execute(context.Background(), in, false)
+		_, err := newColumnRunner(f, f).Execute(context.Background(), in, false)
 		if err == nil || f.reads != 0 {
 			t.Fatal("invalid description reached read")
 		}
@@ -71,7 +74,7 @@ func TestColumnExplicitEmptyDescriptionClearsAndPreviews(t *testing.T) {
 			f := &columnFixture{description: &original}
 			in := columnValid()
 			in.Description = &empty
-			out, err := NewColumn(f, f).Execute(context.Background(), in, preview)
+			out, err := newColumnRunner(f, f).Execute(context.Background(), in, preview)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -94,7 +97,7 @@ func TestColumnEmptyDescriptionAlreadyObservedIsNoOp(t *testing.T) {
 	f := &columnFixture{description: &empty}
 	in := columnValid()
 	in.Description = &empty
-	out, err := NewColumn(f, f).Execute(context.Background(), in, false)
+	out, err := newColumnRunner(f, f).Execute(context.Background(), in, false)
 	if err != nil || !out.Plan.NoOp || out.Result == nil || out.Result.Status != "unchanged" || f.writes != 0 {
 		t.Fatalf("%+v %v writes=%d", out, err, f.writes)
 	}
@@ -103,7 +106,7 @@ func TestColumnEmptyDescriptionAlreadyObservedIsNoOp(t *testing.T) {
 func TestColumnMissingReturnedDescriptionIsConfirmedVerificationFailure(t *testing.T) {
 	f := &columnFixture{omitDescription: true}
 	in := columnValid()
-	out, err := NewColumn(f, f).Execute(context.Background(), in, false)
+	out, err := newColumnRunner(f, f).Execute(context.Background(), in, false)
 	var structured *errs.Error
 	if !errors.As(err, &structured) || structured.Phase != errs.PhaseVerification || structured.Outcome != errs.OutcomeConfirmed || out.Result == nil || out.Result.Identity.LUID != "item" || out.Result.Description != nil {
 		t.Fatalf("missing returned property was treated as success or plan echo: %+v %v", out, err)
@@ -115,11 +118,11 @@ func TestColumnOmittedDescriptionIsNotAClear(t *testing.T) {
 	f := &columnFixture{description: &original}
 	in := columnValid()
 	in.Description = nil
-	if _, err := NewColumn(f, f).Execute(context.Background(), in, false); err == nil || f.reads != 0 {
+	if _, err := newColumnRunner(f, f).Execute(context.Background(), in, false); err == nil || f.reads != 0 {
 		t.Fatal("omitting every requested change must fail without reading")
 	}
 	in.AddTags = []string{"test"}
-	out, err := NewColumn(f, f).Execute(context.Background(), in, false)
+	out, err := newColumnRunner(f, f).Execute(context.Background(), in, false)
 	if err != nil || f.lastUpdate.Description != nil || f.writes != 1 || len(out.Plan.Changes) != 1 || out.Plan.Changes[0].Property != "add_tag" {
 		t.Fatalf("tag-only update changed description: %+v %v patch=%+v", out, err, f.lastUpdate)
 	}
@@ -128,7 +131,7 @@ func TestColumnPartialSuccessRetainsIdentity(t *testing.T) {
 	f := &columnFixture{failTag: true}
 	in := columnValid()
 	in.AddTags = []string{"test"}
-	out, err := NewColumn(f, f).Execute(context.Background(), in, false)
+	out, err := newColumnRunner(f, f).Execute(context.Background(), in, false)
 	if err == nil || out.Result == nil || out.Result.Identity.LUID != "item" || len(out.Result.Completed) != 1 || out.Result.Status != "partial" {
 		t.Fatalf("%+v %v", out, err)
 	}
@@ -138,7 +141,7 @@ func TestColumnConflictingTagsRejected(t *testing.T) {
 	in := columnValid()
 	in.AddTags = []string{"x"}
 	in.RemoveTags = []string{"x"}
-	_, err := NewColumn(f, f).Execute(context.Background(), in, false)
+	_, err := newColumnRunner(f, f).Execute(context.Background(), in, false)
 	if err == nil || f.reads != 0 {
 		t.Fatal("conflicting tags accepted")
 	}

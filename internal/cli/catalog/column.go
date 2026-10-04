@@ -1,8 +1,7 @@
 package catalog
 
 import (
-	catalogread "github.com/ahillspace/tadx/actions/catalog/read"
-	catalogupdate "github.com/ahillspace/tadx/actions/catalog/update"
+	catalogaction "github.com/ahillspace/tadx/actions/catalog"
 	"github.com/spf13/cobra"
 )
 
@@ -12,8 +11,8 @@ func newColumn(d Dependencies) *cobra.Command {
 	return c
 }
 func newColumnList(d Dependencies) *cobra.Command {
-	var in catalogread.ColumnListInput
-	c := &cobra.Command{Use: "list", Short: "List bounded upstream column identities.", Annotations: map[string]string{"tadx.capability": "catalog.column.list"}, Args: noArgs("catalog.column.list", func() error { return catalogread.ValidateColumnListInput(in) }), RunE: func(c *cobra.Command, _ []string) error {
+	var in catalogaction.ColumnListInput
+	c := &cobra.Command{Use: "list", Short: "List bounded upstream column identities.", Annotations: map[string]string{"tadx.capability": "catalog.column.list"}, Args: noArgs("catalog.column.list", func() error { return catalogaction.ValidateColumnListInput(in) }), RunE: func(c *cobra.Command, _ []string) error {
 		if d.ColumnLister == nil {
 			return missing("catalog.column.list")
 		}
@@ -30,8 +29,8 @@ func newColumnList(d Dependencies) *cobra.Command {
 	return c
 }
 func newColumnInspect(d Dependencies) *cobra.Command {
-	var in catalogread.ColumnInspectInput
-	c := &cobra.Command{Use: "inspect", Short: "Inspect one exact upstream column; --full expands fetched metadata.", Annotations: map[string]string{"tadx.capability": "catalog.column.inspect"}, Args: noArgs("catalog.column.inspect", func() error { return catalogread.ValidateColumnInspectInput(in) }), RunE: func(c *cobra.Command, _ []string) error {
+	var in catalogaction.ColumnInspectInput
+	c := &cobra.Command{Use: "inspect", Short: "Inspect one exact upstream column; --full expands fetched metadata.", Annotations: map[string]string{"tadx.capability": "catalog.column.inspect"}, Args: noArgs("catalog.column.inspect", func() error { return catalogaction.ValidateColumnInspectInput(in) }), RunE: func(c *cobra.Command, _ []string) error {
 		if d.ColumnInspector == nil {
 			return missing("catalog.column.inspect")
 		}
@@ -46,7 +45,7 @@ func newColumnInspect(d Dependencies) *cobra.Command {
 	return c
 }
 func newColumnUpdate(d Dependencies) *cobra.Command {
-	var in catalogupdate.ColumnInput
+	var in catalogaction.ColumnInput
 	var description string
 	var preview bool
 	capture := func(c *cobra.Command) {
@@ -58,7 +57,7 @@ func newColumnUpdate(d Dependencies) *cobra.Command {
 	c := &cobra.Command{Use: "update", Short: "Update supported column description, or tags; --preview makes no changes.", Annotations: map[string]string{"tadx.capability": "catalog.column.update"}}
 	c.Args = func(c *cobra.Command, args []string) error {
 		capture(c)
-		return noArgs("catalog.column.update", func() error { return catalogupdate.ValidateColumnInput(in) })(c, args)
+		return noArgs("catalog.column.update", func() error { return catalogaction.ValidateColumnInput(in) })(c, args)
 	}
 	c.RunE = func(c *cobra.Command, _ []string) error {
 		if d.ColumnUpdater == nil {

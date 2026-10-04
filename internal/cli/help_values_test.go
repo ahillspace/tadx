@@ -11,8 +11,8 @@ import (
 	permission "github.com/ahillspace/tadx/actions/admin/permission"
 	userops "github.com/ahillspace/tadx/actions/admin/user"
 	cacherefresh "github.com/ahillspace/tadx/actions/cache/refresh"
-	catalogaudit "github.com/ahillspace/tadx/actions/catalog/audit"
-	catalogsearch "github.com/ahillspace/tadx/actions/catalog/search"
+	catalogaudit "github.com/ahillspace/tadx/actions/catalog"
+	catalogsearch "github.com/ahillspace/tadx/actions/catalog"
 	datasourceops "github.com/ahillspace/tadx/actions/datasource"
 	lineagepull "github.com/ahillspace/tadx/actions/lineage/pull"
 	projectops "github.com/ahillspace/tadx/actions/project"
@@ -69,14 +69,14 @@ func TestRequiredHelpFactsMatchActionValidation(t *testing.T) {
 			return labelcategoryops.ValidateCreateInput(in)
 		}},
 		{"catalog audit", []string{"type", "id"}, func(omit string) error {
-			in := catalogaudit.Input{Type: "datasource", ID: "datasource-id"}
+			in := catalogaudit.AuditInput{Type: "datasource", ID: "datasource-id"}
 			if omit == "type" {
 				in.Type = ""
 			}
 			if omit == "id" {
 				in.ID = ""
 			}
-			return catalogaudit.ValidateInput(in)
+			return catalogaudit.ValidateAuditInput(in)
 		}},
 		{"pulse definition create", []string{"name", "datasource-id", "measure-field", "date-field", "dimension"}, func(omit string) error {
 			in := pulsedefinition.CreateInput{Intent: pulsedefinition.CreateIntent{Name: "Revenue", DatasourceLUID: "datasource-id", MeasureField: "Sales", TimeDimension: "Date", AllowedDimensions: []string{"Region"}}}
@@ -211,11 +211,11 @@ func TestHelpChoicesMatchLocalValidators(t *testing.T) {
 	}{
 		{"search", "type", 11, func(v string) error { _, err := searchaction.Types(v); return err }},
 		{"catalog search", "type", 3, func(v string) error {
-			return catalogsearch.ValidateInput(catalogsearch.Input{Query: "sales", Types: []string{v}, TableID: "table-id"})
+			return catalogsearch.ValidateSearchInput(catalogsearch.SearchInput{Query: "sales", Types: []string{v}, TableID: "table-id"})
 		}},
-		{"catalog audit", "type", 3, func(v string) error { return catalogaudit.ValidateInput(catalogaudit.Input{Type: v, ID: "scope-id"}) }},
+		{"catalog audit", "type", 3, func(v string) error { return catalogaudit.ValidateAuditInput(catalogaudit.AuditInput{Type: v, ID: "scope-id"}) }},
 		{"catalog audit", "check", 2, func(v string) error {
-			return catalogaudit.ValidateInput(catalogaudit.Input{Type: "table", ID: "scope-id", Checks: []string{v}})
+			return catalogaudit.ValidateAuditInput(catalogaudit.AuditInput{Type: "table", ID: "scope-id", Checks: []string{v}})
 		}},
 		{"admin user create", "auth-setting", 4, func(v string) error {
 			return userops.ValidateCreateInput(userops.CreateInput{Environment: "dev", Name: "analyst", SiteRole: "Viewer", AuthSetting: v})

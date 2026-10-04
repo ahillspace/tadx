@@ -12,21 +12,19 @@ import (
 	"strings"
 	"testing"
 
-	catalogupdate "github.com/ahillspace/tadx/actions/catalog/update"
+	catalogaction "github.com/ahillspace/tadx/actions/catalog"
 	"github.com/ahillspace/tadx/internal/errs"
-	catalogresource "github.com/ahillspace/tadx/internal/resources/catalog"
 	"github.com/ahillspace/tadx/internal/tableau"
 	"github.com/ahillspace/tadx/internal/tableau/metadataassets"
 )
 
 type columnDescriptionService struct {
-	action *catalogupdate.ColumnAction
-	last   catalogupdate.ColumnOutput
+	action *catalogaction.Service
+	last   catalogaction.ColumnOutput
 }
 
-func (s *columnDescriptionService) UpdateCatalogColumn(ctx context.Context, in catalogupdate.ColumnInput, preview bool) (catalogupdate.ColumnOutput, error) {
-	in.Environment, in.Site, in.TargetResolved = "fixture", "site", true
-	out, err := s.action.Execute(ctx, in, preview)
+func (s *columnDescriptionService) UpdateCatalogColumn(ctx context.Context, in catalogaction.ColumnInput, preview bool) (catalogaction.ColumnOutput, error) {
+	out, err := s.action.UpdateCatalogColumn(ctx, in, preview)
 	s.last = out
 	return out, err
 }
@@ -77,8 +75,8 @@ func TestCLIColumnDescriptionClearPreviewAndExecution(t *testing.T) {
 		fmt.Fprintf(w, `<tsResponse><column id="column" name="Category" parentTableId="table" description="%s" remoteType="WSTR"><tags><tag label="keep-tag"/></tags></column></tsResponse>`, description)
 	}))
 	defer server.Close()
-	adapter := catalogresource.New(metadataassets.NewClient(tableau.NewTransport(server.Client(), "3.29", nil), session{}, server.URL))
-	service := &columnDescriptionService{action: catalogupdate.NewColumn(adapter, adapter)}
+	adapter := metadataassets.NewClient(tableau.NewTransport(server.Client(), "3.29", nil), session{}, server.URL)
+	service := &columnDescriptionService{action: catalogaction.New(staticCatalogProvider{assets: adapter})}
 	run := func(preview bool) {
 		t.Helper()
 		command := New(Dependencies{ColumnUpdater: service, Renderer: &recorder{}})
@@ -134,8 +132,8 @@ func TestCLIColumnDescriptionClearReadbackFailureIsConfirmedVerification(t *test
 	}))
 	defer server.Close()
 
-	adapter := catalogresource.New(metadataassets.NewClient(tableau.NewTransport(server.Client(), "3.29", nil), session{}, server.URL))
-	service := &columnDescriptionService{action: catalogupdate.NewColumn(adapter, adapter)}
+	adapter := metadataassets.NewClient(tableau.NewTransport(server.Client(), "3.29", nil), session{}, server.URL)
+	service := &columnDescriptionService{action: catalogaction.New(staticCatalogProvider{assets: adapter})}
 	command := New(Dependencies{ColumnUpdater: service, Renderer: &recorder{}})
 	command.SetContext(t.Context())
 	command.SetArgs([]string{"column", "update", "--table-id", "table", "--id", "column", "--description="})

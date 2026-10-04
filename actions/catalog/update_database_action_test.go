@@ -1,4 +1,4 @@
-package update
+package catalog
 
 import (
 	"context"
@@ -10,6 +10,7 @@ import (
 type databaseFixture struct {
 	reads, writes int
 	failTag       bool
+	lastTagTarget value.LabelTarget
 }
 
 func (f *databaseFixture) GetDatabase(context.Context, string) (value.MetadataDatabase, error) {
@@ -26,15 +27,17 @@ func databaseDeref(v *string) string {
 	}
 	return *v
 }
-func (f *databaseFixture) AddDatabaseTags(context.Context, string, []string) ([]string, error) {
+func (f *databaseFixture) AddTags(_ context.Context, target value.LabelTarget, _ []string) ([]string, error) {
 	f.writes++
+	f.lastTagTarget = target
 	if f.failTag {
 		return nil, errors.New("tag failed")
 	}
 	return []string{"test"}, nil
 }
-func (f *databaseFixture) DeleteDatabaseTag(context.Context, string, string) error {
+func (f *databaseFixture) DeleteTag(_ context.Context, target value.LabelTarget, _ string) error {
 	f.writes++
+	f.lastTagTarget = target
 	return nil
 }
 func databaseValid() DatabaseInput {
@@ -43,7 +46,7 @@ func databaseValid() DatabaseInput {
 }
 func TestDatabasePreviewDoesNotWrite(t *testing.T) {
 	f := &databaseFixture{}
-	out, err := NewDatabase(f, f).Execute(context.Background(), databaseValid(), true)
+	out, err := newDatabaseRunner(f, f).Execute(context.Background(), databaseValid(), true)
 	if err != nil || f.writes != 0 || len(out.Plan.Changes) != 1 {
 		t.Fatalf("%+v %v writes%d", out, err, f.writes)
 	}
@@ -53,7 +56,7 @@ func TestDatabaseLocalValidationDoesNotRead(t *testing.T) {
 	in := databaseValid()
 	v := ""
 	in.Description = &v
-	_, err := NewDatabase(f, f).Execute(context.Background(), in, false)
+	_, err := newDatabaseRunner(f, f).Execute(context.Background(), in, false)
 	if err == nil || f.reads != 0 {
 		t.Fatal("unverified clear reached read")
 	}
@@ -62,7 +65,7 @@ func TestDatabasePartialSuccessRetainsIdentity(t *testing.T) {
 	f := &databaseFixture{failTag: true}
 	in := databaseValid()
 	in.AddTags = []string{"test"}
-	out, err := NewDatabase(f, f).Execute(context.Background(), in, false)
+	out, err := newDatabaseRunner(f, f).Execute(context.Background(), in, false)
 	if err == nil || out.Result == nil || out.Result.Identity.LUID != "item" || len(out.Result.Completed) != 1 || out.Result.Status != "partial" {
 		t.Fatalf("%+v %v", out, err)
 	}
@@ -72,7 +75,7 @@ func TestDatabaseConflictingTagsRejected(t *testing.T) {
 	in := databaseValid()
 	in.AddTags = []string{"x"}
 	in.RemoveTags = []string{"x"}
-	_, err := NewDatabase(f, f).Execute(context.Background(), in, false)
+	_, err := newDatabaseRunner(f, f).Execute(context.Background(), in, false)
 	if err == nil || f.reads != 0 {
 		t.Fatal("conflicting tags accepted")
 	}

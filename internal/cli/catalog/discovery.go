@@ -1,21 +1,20 @@
 package catalog
 
 import (
-	catalogaudit "github.com/ahillspace/tadx/actions/catalog/audit"
-	catalogsearch "github.com/ahillspace/tadx/actions/catalog/search"
+	catalogaction "github.com/ahillspace/tadx/actions/catalog"
 	"github.com/ahillspace/tadx/internal/cli/clierr"
 	"github.com/spf13/cobra"
 )
 
 func newSearch(d Dependencies) *cobra.Command {
-	var in catalogsearch.Input
+	var in catalogaction.SearchInput
 	c := &cobra.Command{Use: "search <query>", Short: "Search upstream database/table metadata; column search uses a bounded table scan.", Annotations: map[string]string{"tadx.capability": "catalog.search"}}
 	c.Args = func(c *cobra.Command, args []string) error {
 		if e := cobra.ExactArgs(1)(c, args); e != nil {
 			return clierr.Usage("catalog.search", e)
 		}
 		in.Query = args[0]
-		return catalogsearch.ValidateInput(in)
+		return catalogaction.ValidateSearchInput(in)
 	}
 	c.RunE = func(c *cobra.Command, _ []string) error {
 		if d.Searcher == nil {
@@ -33,8 +32,8 @@ func newSearch(d Dependencies) *cobra.Command {
 	return c
 }
 func newAudit(d Dependencies) *cobra.Command {
-	var in catalogaudit.Input
-	c := &cobra.Command{Use: "audit", Short: "Audit descriptions and tags inside one exact database, table, or datasource scope.", Annotations: map[string]string{"tadx.capability": "catalog.audit"}, Args: noArgs("catalog.audit", func() error { return catalogaudit.ValidateInput(in) }), RunE: func(c *cobra.Command, _ []string) error {
+	var in catalogaction.AuditInput
+	c := &cobra.Command{Use: "audit", Short: "Audit descriptions and tags inside one exact database, table, or datasource scope.", Annotations: map[string]string{"tadx.capability": "catalog.audit"}, Args: noArgs("catalog.audit", func() error { return catalogaction.ValidateAuditInput(in) }), RunE: func(c *cobra.Command, _ []string) error {
 		if d.Auditor == nil {
 			return missing("catalog.audit")
 		}

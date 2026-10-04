@@ -1,4 +1,4 @@
-package read
+package catalog
 
 import (
 	"context"
@@ -18,14 +18,14 @@ func (r *tableListReaderStub) DiscoverTables(context.Context, value.MetadataQuer
 }
 func TestTableListValidationBeforeRead(t *testing.T) {
 	r := &tableListReaderStub{}
-	_, err := ListTables(context.Background(), r, TableListInput{Limit: -1})
+	_, err := tableListService(r).ListCatalogTables(context.Background(), TableListInput{Limit: -1})
 	if err == nil || r.calls != 0 {
 		t.Fatal("invalid bound reached reader")
 	}
 }
 func TestTableListBoundedPagesAndProjection(t *testing.T) {
 	r := &tableListReaderStub{pages: []value.MetadataPage[value.MetadataTable]{{Items: []value.MetadataTable{{MetadataIdentity: value.MetadataIdentity{LUID: "one", Name: "One", Type: "table"}}}, NextCursor: "opaque", Total: 2}, {Items: []value.MetadataTable{{MetadataIdentity: value.MetadataIdentity{LUID: "two", Name: "Two", Type: "table"}}}, Complete: true, Total: 2}}}
-	out, err := ListTables(context.Background(), r, TableListInput{All: true, DatabaseID: "parent"})
+	out, err := tableListService(r).ListCatalogTables(context.Background(), TableListInput{All: true, DatabaseID: "parent"})
 	if err != nil || len(out.Items) != 2 || !out.Complete {
 		t.Fatalf("%+v %v", out, err)
 	}
@@ -37,7 +37,7 @@ func TestTableListBoundedPagesAndProjection(t *testing.T) {
 }
 func TestTableListRepeatedCursorFails(t *testing.T) {
 	r := &tableListReaderStub{pages: []value.MetadataPage[value.MetadataTable]{{NextCursor: "x"}, {NextCursor: "x"}}}
-	_, err := ListTables(context.Background(), r, TableListInput{All: true, DatabaseID: "parent"})
+	_, err := tableListService(r).ListCatalogTables(context.Background(), TableListInput{All: true, DatabaseID: "parent"})
 	if err == nil {
 		t.Fatal("repeated cursor accepted")
 	}
@@ -58,21 +58,21 @@ func (r *tableInspectReaderStub) DiscoverTables(context.Context, value.MetadataQ
 }
 func TestTableInspectExactSelectorBeforeRead(t *testing.T) {
 	r := &tableInspectReaderStub{}
-	_, e := InspectTable(context.Background(), r, TableInspectInput{ID: "x", MetadataID: "y"})
+	_, e := tableInspectService(r).InspectCatalogTable(context.Background(), TableInspectInput{ID: "x", MetadataID: "y"})
 	if e == nil || r.calls != 0 {
 		t.Fatal("conflicting selectors reached provider")
 	}
 }
 func TestTableInspectRejectWrongIdentity(t *testing.T) {
 	r := &tableInspectReaderStub{item: value.MetadataTable{MetadataIdentity: value.MetadataIdentity{LUID: "wrong"}}}
-	_, e := InspectTable(context.Background(), r, TableInspectInput{ID: "expected"})
+	_, e := tableInspectService(r).InspectCatalogTable(context.Background(), TableInspectInput{ID: "expected"})
 	if e == nil {
 		t.Fatal("mismatched identity accepted")
 	}
 }
 func TestTableInspectReadMetadataIdentity(t *testing.T) {
 	r := &tableInspectReaderStub{item: value.MetadataTable{MetadataIdentity: value.MetadataIdentity{MetadataID: "meta", Name: "fixture"}}}
-	o, e := InspectTable(context.Background(), r, TableInspectInput{MetadataID: "meta"})
+	o, e := tableInspectService(r).InspectCatalogTable(context.Background(), TableInspectInput{MetadataID: "meta"})
 	if e != nil {
 		t.Fatal(e)
 	}

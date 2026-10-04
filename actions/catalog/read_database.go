@@ -1,4 +1,4 @@
-package read
+package catalog
 
 import (
 	"context"
@@ -64,7 +64,7 @@ func (o DatabaseListOutput) CompactOutput() any {
 	}{o.Status, o.Environment, o.Site, o.Page, rows, o.Complete, o.ObservedAt, "--full", o.NextCommand}
 }
 func (o DatabaseListOutput) FullOutput() any { return o }
-func ListDatabases(ctx context.Context, reader DatabaseListReader, in DatabaseListInput) (out DatabaseListOutput, err error) {
+func listDatabasesValidated(ctx context.Context, reader DatabaseListReader, in DatabaseListInput) (out DatabaseListOutput, err error) {
 	defer func() {
 		if err != nil && out.Status != "" {
 			out.Status = "partial"
@@ -73,9 +73,6 @@ func ListDatabases(ctx context.Context, reader DatabaseListReader, in DatabaseLi
 			out.Page.Returned = len(out.Items)
 		}
 	}()
-	if err := ValidateDatabaseListInput(in); err != nil {
-		return DatabaseListOutput{}, err
-	}
 	defer func() {
 		if err == nil && out.Page.MoreAvailable {
 			out.NextCommand = databaseListNextCommand(in)
@@ -179,10 +176,7 @@ func compactDatabaseInspect(v *value.MetadataDatabase) *databaseInspectItem {
 	}
 	return &databaseInspectItem{MetadataIdentity: v.MetadataIdentity, Description: v.Description, ContactLUID: v.ContactLUID, ConnectionType: v.ConnectionType, FilePath: v.FilePath, Embedded: v.Embedded, Tags: v.Tags, TagsObserved: v.TagsObserved}
 }
-func InspectDatabase(ctx context.Context, reader DatabaseInspectReader, in DatabaseInspectInput) (DatabaseInspectOutput, error) {
-	if err := ValidateDatabaseInspectInput(in); err != nil {
-		return DatabaseInspectOutput{}, err
-	}
+func inspectDatabaseValidated(ctx context.Context, reader DatabaseInspectReader, in DatabaseInspectInput) (DatabaseInspectOutput, error) {
 	out := DatabaseInspectOutput{Status: "failed", Environment: in.Environment, Site: in.Site}
 	if reader == nil {
 		return out, databaseInspectUsage("catalog database inspection is not configured")

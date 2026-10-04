@@ -1,8 +1,7 @@
 package catalog
 
 import (
-	catalogread "github.com/ahillspace/tadx/actions/catalog/read"
-	catalogupdate "github.com/ahillspace/tadx/actions/catalog/update"
+	catalogaction "github.com/ahillspace/tadx/actions/catalog"
 	"github.com/spf13/cobra"
 )
 
@@ -12,8 +11,8 @@ func newDatabase(d Dependencies) *cobra.Command {
 	return c
 }
 func newDatabaseList(d Dependencies) *cobra.Command {
-	var in catalogread.DatabaseListInput
-	c := &cobra.Command{Use: "list", Short: "List bounded upstream database identities.", Annotations: map[string]string{"tadx.capability": "catalog.database.list"}, Args: noArgs("catalog.database.list", func() error { return catalogread.ValidateDatabaseListInput(in) }), RunE: func(c *cobra.Command, _ []string) error {
+	var in catalogaction.DatabaseListInput
+	c := &cobra.Command{Use: "list", Short: "List bounded upstream database identities.", Annotations: map[string]string{"tadx.capability": "catalog.database.list"}, Args: noArgs("catalog.database.list", func() error { return catalogaction.ValidateDatabaseListInput(in) }), RunE: func(c *cobra.Command, _ []string) error {
 		if d.DatabaseLister == nil {
 			return missing("catalog.database.list")
 		}
@@ -29,8 +28,8 @@ func newDatabaseList(d Dependencies) *cobra.Command {
 	return c
 }
 func newDatabaseInspect(d Dependencies) *cobra.Command {
-	var in catalogread.DatabaseInspectInput
-	c := &cobra.Command{Use: "inspect", Short: "Inspect one exact upstream database; --full expands fetched metadata.", Annotations: map[string]string{"tadx.capability": "catalog.database.inspect"}, Args: noArgs("catalog.database.inspect", func() error { return catalogread.ValidateDatabaseInspectInput(in) }), RunE: func(c *cobra.Command, _ []string) error {
+	var in catalogaction.DatabaseInspectInput
+	c := &cobra.Command{Use: "inspect", Short: "Inspect one exact upstream database; --full expands fetched metadata.", Annotations: map[string]string{"tadx.capability": "catalog.database.inspect"}, Args: noArgs("catalog.database.inspect", func() error { return catalogaction.ValidateDatabaseInspectInput(in) }), RunE: func(c *cobra.Command, _ []string) error {
 		if d.DatabaseInspector == nil {
 			return missing("catalog.database.inspect")
 		}
@@ -45,7 +44,7 @@ func newDatabaseInspect(d Dependencies) *cobra.Command {
 	return c
 }
 func newDatabaseUpdate(d Dependencies) *cobra.Command {
-	var in catalogupdate.DatabaseInput
+	var in catalogaction.DatabaseInput
 	var description, contact string
 	var preview bool
 	capture := func(c *cobra.Command) {
@@ -61,7 +60,7 @@ func newDatabaseUpdate(d Dependencies) *cobra.Command {
 	c := &cobra.Command{Use: "update", Short: "Update supported database description, contact, or tags; --preview makes no changes.", Annotations: map[string]string{"tadx.capability": "catalog.database.update"}}
 	c.Args = func(c *cobra.Command, args []string) error {
 		capture(c)
-		return noArgs("catalog.database.update", func() error { return catalogupdate.ValidateDatabaseInput(in) })(c, args)
+		return noArgs("catalog.database.update", func() error { return catalogaction.ValidateDatabaseInput(in) })(c, args)
 	}
 	c.RunE = func(c *cobra.Command, _ []string) error {
 		if d.DatabaseUpdater == nil {

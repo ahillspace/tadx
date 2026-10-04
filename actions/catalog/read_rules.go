@@ -1,4 +1,4 @@
-package read
+package catalog
 
 import "strings"
 

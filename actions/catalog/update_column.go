@@ -1,4 +1,4 @@
-package update
+package catalog
 
 import (
 	"context"
@@ -22,16 +22,11 @@ type ColumnReader interface {
 }
 type ColumnWriter interface {
 	UpdateColumn(context.Context, string, string, value.MetadataUpdate) (value.MetadataColumn, error)
-	AddColumnTags(context.Context, string, []string) ([]string, error)
-	DeleteColumnTag(context.Context, string, string) error
+	TagWriter
 }
-type ColumnAction struct {
+type columnUpdate struct {
 	reader ColumnReader
 	writer ColumnWriter
-}
-
-func NewColumn(r ColumnReader, w ColumnWriter) *ColumnAction {
-	return &ColumnAction{reader: r, writer: w}
 }
 
 type ColumnPlan struct {
@@ -86,10 +81,7 @@ func ValidateColumnInput(in ColumnInput) error {
 	return nil
 }
 
-func (a *ColumnAction) Execute(ctx context.Context, in ColumnInput, preview bool) (ColumnOutput, error) {
-	if err := ValidateColumnInput(in); err != nil {
-		return ColumnOutput{}, err
-	}
+func (a *columnUpdate) executeValidated(ctx context.Context, in ColumnInput, preview bool) (ColumnOutput, error) {
 	if strings.TrimSpace(in.Environment) == "" || (!in.TargetResolved && strings.TrimSpace(in.Site) == "") {
 		return ColumnOutput{}, columnUsage("resolve an explicit mutation environment")
 	}
@@ -160,7 +152,7 @@ func (a *ColumnAction) Execute(ctx context.Context, in ColumnInput, preview bool
 		}
 	}
 	if len(add) > 0 {
-		acknowledged, e := a.writer.AddColumnTags(ctx, in.ID, add)
+		acknowledged, e := a.writer.AddTags(ctx, value.LabelTarget{Type: "column", LUID: in.ID}, add)
 		if e == nil {
 			e = verifyTagAcknowledgment(add, acknowledged)
 		}
@@ -174,7 +166,7 @@ func (a *ColumnAction) Execute(ctx context.Context, in ColumnInput, preview bool
 		out.Result.TagsObserved = true
 	}
 	for _, tag := range remove {
-		if e := a.writer.DeleteColumnTag(ctx, in.ID, tag); e != nil {
+		if e := a.writer.DeleteTag(ctx, value.LabelTarget{Type: "column", LUID: in.ID}, tag); e != nil {
 			out.Result.Status = "partial"
 			out.Result.Failed = "remove_tag:" + tag
 			return out, columnFailure(in, "remove_tag", out.Result.Completed, errs.OutcomeUnknown, e)

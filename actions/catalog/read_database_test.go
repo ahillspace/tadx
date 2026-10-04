@@ -1,4 +1,4 @@
-package read
+package catalog
 
 import (
 	"context"
@@ -19,14 +19,14 @@ func (r *databaseListReaderStub) DiscoverDatabases(context.Context, value.Metada
 }
 func TestDatabaseListValidationBeforeRead(t *testing.T) {
 	r := &databaseListReaderStub{}
-	_, err := ListDatabases(context.Background(), r, DatabaseListInput{Limit: -1})
+	_, err := databaseListService(r).ListCatalogDatabases(context.Background(), DatabaseListInput{Limit: -1})
 	if err == nil || r.calls != 0 {
 		t.Fatal("invalid bound reached reader")
 	}
 }
 func TestDatabaseListBoundedPagesAndProjection(t *testing.T) {
 	r := &databaseListReaderStub{pages: []value.MetadataPage[value.MetadataDatabase]{{Items: []value.MetadataDatabase{{MetadataIdentity: value.MetadataIdentity{LUID: "one", Name: "One", Type: "database"}}}, NextCursor: "opaque", Total: 2}, {Items: []value.MetadataDatabase{{MetadataIdentity: value.MetadataIdentity{LUID: "two", Name: "Two", Type: "database"}}}, Complete: true, Total: 2}}}
-	out, err := ListDatabases(context.Background(), r, DatabaseListInput{All: true})
+	out, err := databaseListService(r).ListCatalogDatabases(context.Background(), DatabaseListInput{All: true})
 	if err != nil || len(out.Items) != 2 || !out.Complete {
 		t.Fatalf("%+v %v", out, err)
 	}
@@ -38,7 +38,7 @@ func TestDatabaseListBoundedPagesAndProjection(t *testing.T) {
 }
 func TestDatabaseListRepeatedCursorFails(t *testing.T) {
 	r := &databaseListReaderStub{pages: []value.MetadataPage[value.MetadataDatabase]{{NextCursor: "x"}, {NextCursor: "x"}}}
-	_, err := ListDatabases(context.Background(), r, DatabaseListInput{All: true})
+	_, err := databaseListService(r).ListCatalogDatabases(context.Background(), DatabaseListInput{All: true})
 	if err == nil {
 		t.Fatal("repeated cursor accepted")
 	}
@@ -59,21 +59,21 @@ func (r *databaseInspectReaderStub) DiscoverDatabases(context.Context, value.Met
 }
 func TestDatabaseInspectExactSelectorBeforeRead(t *testing.T) {
 	r := &databaseInspectReaderStub{}
-	_, e := InspectDatabase(context.Background(), r, DatabaseInspectInput{ID: "x", MetadataID: "y"})
+	_, e := databaseInspectService(r).InspectCatalogDatabase(context.Background(), DatabaseInspectInput{ID: "x", MetadataID: "y"})
 	if e == nil || r.calls != 0 {
 		t.Fatal("conflicting selectors reached provider")
 	}
 }
 func TestDatabaseInspectRejectWrongIdentity(t *testing.T) {
 	r := &databaseInspectReaderStub{item: value.MetadataDatabase{MetadataIdentity: value.MetadataIdentity{LUID: "wrong"}}}
-	_, e := InspectDatabase(context.Background(), r, DatabaseInspectInput{ID: "expected"})
+	_, e := databaseInspectService(r).InspectCatalogDatabase(context.Background(), DatabaseInspectInput{ID: "expected"})
 	if e == nil {
 		t.Fatal("mismatched identity accepted")
 	}
 }
 func TestDatabaseInspectReadMetadataIdentity(t *testing.T) {
 	r := &databaseInspectReaderStub{item: value.MetadataDatabase{MetadataIdentity: value.MetadataIdentity{MetadataID: "meta", Name: "fixture"}}}
-	o, e := InspectDatabase(context.Background(), r, DatabaseInspectInput{MetadataID: "meta"})
+	o, e := databaseInspectService(r).InspectCatalogDatabase(context.Background(), DatabaseInspectInput{MetadataID: "meta"})
 	if e != nil {
 		t.Fatal(e)
 	}
@@ -95,7 +95,7 @@ func (explorationPartialDatabaseReader) DiscoverDatabases(context.Context, value
 }
 
 func TestDatabaseInspectExplorationCatalogConfirmedItemRemainsPartial(t *testing.T) {
-	out, err := InspectDatabase(t.Context(), explorationPartialDatabaseReader{}, DatabaseInspectInput{MetadataID: "metadata-db"})
+	out, err := databaseInspectService(explorationPartialDatabaseReader{}).InspectCatalogDatabase(t.Context(), DatabaseInspectInput{MetadataID: "metadata-db"})
 	if err == nil || out.Status != "partial" || out.Item == nil || out.Item.Name != "Confirmed" {
 		t.Fatalf("partial inspection evidence: %#v, %v", out, err)
 	}

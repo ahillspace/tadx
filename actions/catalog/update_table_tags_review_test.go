@@ -1,4 +1,4 @@
-package update
+package catalog
 
 import (
 	"context"
@@ -8,9 +8,10 @@ import (
 	"testing"
 
 	"github.com/ahillspace/tadx/internal/errs"
+	"github.com/ahillspace/tadx/internal/value"
 )
 
-func TestColumnTagValidationBeforeAnyRemoteRead(t *testing.T) {
+func TestTableTagValidationBeforeAnyRemoteRead(t *testing.T) {
 	for _, tc := range []struct {
 		name, tag string
 		valid     bool
@@ -22,16 +23,16 @@ func TestColumnTagValidationBeforeAnyRemoteRead(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			for _, preview := range []bool{true, false} {
-				f := &columnFixture{}
-				in := columnValid()
+				f := &tableFixture{}
+				in := tableValid()
 				in.AddTags = []string{tc.tag}
 				if tc.valid {
-					if err := ValidateColumnInput(in); err != nil {
+					if err := ValidateTableInput(in); err != nil {
 						t.Fatalf("valid Unicode tag rejected: %v", err)
 					}
 					continue
 				}
-				_, err := NewColumn(f, f).Execute(context.Background(), in, preview)
+				_, err := newTableRunner(f, f).Execute(context.Background(), in, preview)
 				if err == nil || f.reads != 0 || f.writes != 0 {
 					t.Fatalf("error=%v reads=%d writes=%d preview=%v", err, f.reads, f.writes, preview)
 				}
@@ -40,36 +41,36 @@ func TestColumnTagValidationBeforeAnyRemoteRead(t *testing.T) {
 	}
 }
 
-func TestColumnTagRemovalUsesExactSelectorRatherThanAdditionLengthLimit(t *testing.T) {
-	in := columnValid()
+func TestTableTagRemovalUsesExactSelectorRatherThanAdditionLengthLimit(t *testing.T) {
+	in := tableValid()
 	in.RemoveTags = []string{strings.Repeat("界", 129)}
-	if err := ValidateColumnInput(in); err != nil {
+	if err := ValidateTableInput(in); err != nil {
 		t.Fatalf("removal inherited addition limit: %v", err)
 	}
 	for _, tag := range []string{" sales", "sales ", "sales\n", "sales\x00"} {
 		in.RemoveTags = []string{tag}
-		if err := ValidateColumnInput(in); err == nil {
+		if err := ValidateTableInput(in); err == nil {
 			t.Fatalf("invalid removal selector accepted: %q", tag)
 		}
 	}
 }
 
-type columnIncompleteTagWriter struct {
-	*columnFixture
+type tableIncompleteTagWriter struct {
+	*tableFixture
 	acknowledged []string
 }
 
-func (f *columnIncompleteTagWriter) AddColumnTags(context.Context, string, []string) ([]string, error) {
+func (f *tableIncompleteTagWriter) AddTags(context.Context, value.LabelTarget, []string) ([]string, error) {
 	f.writes++
 	return f.acknowledged, nil
 }
 
-func TestColumnIncompleteTagAcknowledgmentPreservesPartialResult(t *testing.T) {
+func TestTableIncompleteTagAcknowledgmentPreservesPartialResult(t *testing.T) {
 	for _, ack := range [][]string{nil, {"sales"}} {
-		f := &columnIncompleteTagWriter{columnFixture: &columnFixture{}, acknowledged: ack}
-		in := columnValid()
+		f := &tableIncompleteTagWriter{tableFixture: &tableFixture{}, acknowledged: ack}
+		in := tableValid()
 		in.AddTags = []string{"sales", "retail"}
-		out, err := NewColumn(f, f).Execute(context.Background(), in, false)
+		out, err := newTableRunner(f, f).Execute(context.Background(), in, false)
 		var structured *errs.Error
 		if !errors.As(err, &structured) || structured.Phase != errs.PhaseVerification || structured.Outcome != errs.OutcomeUnknown || structured.Resource != "item" || structured.Retryable == nil || *structured.Retryable {
 			t.Fatalf("incorrect failure evidence: %#v %v", structured, err)

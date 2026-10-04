@@ -13,7 +13,7 @@ import (
 	permission "github.com/ahillspace/tadx/actions/admin/permission"
 	a_admin_permission_inspect "github.com/ahillspace/tadx/actions/admin/permission/inspect"
 	userops "github.com/ahillspace/tadx/actions/admin/user"
-	catalogupdate "github.com/ahillspace/tadx/actions/catalog/update"
+	catalogupdate "github.com/ahillspace/tadx/actions/catalog"
 	"github.com/ahillspace/tadx/actions/contentlabel"
 	datasourceops "github.com/ahillspace/tadx/actions/datasource"
 	flowops "github.com/ahillspace/tadx/actions/flow"

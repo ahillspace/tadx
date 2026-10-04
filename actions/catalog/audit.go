@@ -1,4 +1,4 @@
-package audit
+package catalog
 
 import (
 	"context"
@@ -12,13 +12,13 @@ import (
 	"strings"
 )
 
-type Input struct {
+type AuditInput struct {
 	Environment, Site, Type, ID string
 	Checks                      []string
 	DirectOnly                  bool
 	Limit                       int
 }
-type Reader interface {
+type AuditReader interface {
 	GetDatabase(context.Context, string) (value.MetadataDatabase, error)
 	GetTable(context.Context, string) (value.MetadataTable, error)
 	DiscoverTables(context.Context, value.MetadataQuery) (value.MetadataPage[value.MetadataTable], error)
@@ -28,7 +28,7 @@ type Reader interface {
 
 var errAssessmentBound = errors.New("audit assessment bound reached")
 
-type Finding struct {
+type AuditFinding struct {
 	Type            string `json:"type"`
 	LUID            string `json:"luid"`
 	MetadataID      string `json:"metadata_id"`
@@ -38,66 +38,63 @@ type Finding struct {
 	State           string `json:"state"`
 	Source          string `json:"source"`
 }
-type Summary struct {
+type AuditSummary struct {
 	Present int `json:"present"`
 	Missing int `json:"missing"`
 	Unknown int `json:"unknown"`
 }
-type Output struct {
-	Status      string    `json:"status"`
-	Environment string    `json:"environment,omitempty"`
-	Site        string    `json:"site,omitempty"`
-	Type        string    `json:"type"`
-	ID          string    `json:"id"`
-	Checks      []string  `json:"checks"`
-	DirectOnly  bool      `json:"direct_only"`
-	Scanned     int       `json:"scanned"`
-	Complete    bool      `json:"complete"`
-	Summary     Summary   `json:"summary"`
-	Findings    []Finding `json:"findings"`
-	ObservedAt  string    `json:"observed_at,omitempty"`
-	RequestID   string    `json:"tableau_request_id,omitempty"`
+type AuditOutput struct {
+	Status      string         `json:"status"`
+	Environment string         `json:"environment,omitempty"`
+	Site        string         `json:"site,omitempty"`
+	Type        string         `json:"type"`
+	ID          string         `json:"id"`
+	Checks      []string       `json:"checks"`
+	DirectOnly  bool           `json:"direct_only"`
+	Scanned     int            `json:"scanned"`
+	Complete    bool           `json:"complete"`
+	Summary     AuditSummary   `json:"summary"`
+	Findings    []AuditFinding `json:"findings"`
+	ObservedAt  string         `json:"observed_at,omitempty"`
+	RequestID   string         `json:"tableau_request_id,omitempty"`
 }
 
-func (o Output) CompactOutput() any {
+func (o AuditOutput) CompactOutput() any {
 	copy := o
-	copy.Findings = make([]Finding, 0)
+	copy.Findings = make([]AuditFinding, 0)
 	for _, f := range o.Findings {
 		if f.State != "present" {
 			copy.Findings = append(copy.Findings, f)
 		}
 	}
 	return struct {
-		Output
+		AuditOutput
 		Details string `json:"details"`
 	}{copy, "--full"}
 }
-func (o Output) FullOutput() any { return o }
-func ValidateInput(in Input) error {
+func (o AuditOutput) FullOutput() any { return o }
+func ValidateAuditInput(in AuditInput) error {
 	if in.ID != strings.TrimSpace(in.ID) || strings.ContainsAny(in.ID, "\x00\r\n") {
-		return usage("audit identity must be exact and contain no whitespace or control characters")
+		return auditUsage("audit identity must be exact and contain no whitespace or control characters")
 	}
 	if strings.TrimSpace(in.ID) == "" || !slices.Contains([]string{"database", "table", "datasource"}, in.Type) {
-		return usage("audit requires one exact --id and --type database, table, or datasource")
+		return auditUsage("audit requires one exact --id and --type database, table, or datasource")
 	}
 	if in.Limit < 0 || in.Limit > 10000 {
-		return usage("audit limit must be between 1 and 10000")
+		return auditUsage("audit limit must be between 1 and 10000")
 	}
 	seen := map[string]bool{}
 	for _, check := range in.Checks {
 		if !slices.Contains([]string{"descriptions", "tags"}, check) || seen[check] {
-			return usage("checks must be unique descriptions or tags values")
+			return auditUsage("checks must be unique descriptions or tags values")
 		}
 		seen[check] = true
 	}
 	return nil
 }
-func Execute(ctx context.Context, reader Reader, in Input) (Output, error) {
-	if e := ValidateInput(in); e != nil {
-		return Output{}, e
-	}
+func auditCatalogValidated(ctx context.Context, reader AuditReader, in AuditInput) (AuditOutput, error) {
 	if reader == nil {
-		return Output{}, usage("catalog audit is not configured")
+		return AuditOutput{}, auditUsage("catalog audit is not configured")
 	}
 	checks := in.Checks
 	if len(checks) == 0 {
@@ -107,7 +104,7 @@ func Execute(ctx context.Context, reader Reader, in Input) (Output, error) {
 	if limit == 0 {
 		limit = 1000
 	}
-	out := Output{Status: "audited", Environment: in.Environment, Site: in.Site, Type: in.Type, ID: in.ID, Checks: checks, DirectOnly: in.DirectOnly, Complete: true, Findings: []Finding{}}
+	out := AuditOutput{Status: "audited", Environment: in.Environment, Site: in.Site, Type: in.Type, ID: in.ID, Checks: checks, DirectOnly: in.DirectOnly, Complete: true, Findings: []AuditFinding{}}
 	record := func(id value.MetadataIdentity, parentTableLUID string, description *string, tags []string, tagsObserved bool, inherited []value.DescriptionObservation, inheritedObserved bool, field bool) {
 		if out.Scanned >= limit {
 			out.Complete = false
@@ -155,7 +152,7 @@ func Execute(ctx context.Context, reader Reader, in Input) (Output, error) {
 			out.Complete = false
 			return nil
 		}
-		complete, e := walk(ctx, limit-out.Scanned, value.MetadataQuery{ParentLUID: tableID}, reader.DiscoverColumns, func(v value.MetadataColumn) string {
+		complete, e := auditWalk(ctx, limit-out.Scanned, value.MetadataQuery{ParentLUID: tableID}, reader.DiscoverColumns, func(v value.MetadataColumn) string {
 			if v.MetadataID != "" {
 				return v.MetadataID
 			}
@@ -188,7 +185,7 @@ func Execute(ctx context.Context, reader Reader, in Input) (Output, error) {
 		}
 		record(v.MetadataIdentity, "", v.Description, v.Tags, v.TagsObserved, nil, false, false)
 		var complete bool
-		complete, err = walk(ctx, limit-out.Scanned, value.MetadataQuery{ParentLUID: in.ID}, reader.DiscoverTables, func(v value.MetadataTable) string {
+		complete, err = auditWalk(ctx, limit-out.Scanned, value.MetadataQuery{ParentLUID: in.ID}, reader.DiscoverTables, func(v value.MetadataTable) string {
 			if v.MetadataID != "" {
 				return v.MetadataID
 			}
@@ -250,7 +247,7 @@ func Execute(ctx context.Context, reader Reader, in Input) (Output, error) {
 	if err != nil {
 		out.Status = "partial"
 		out.Complete = false
-		return out, failure(in, err)
+		return out, auditFailure(in, err)
 	}
 	if out.Summary.Unknown > 0 {
 		out.Complete = false
@@ -260,8 +257,8 @@ func Execute(ctx context.Context, reader Reader, in Input) (Output, error) {
 	}
 	return out, nil
 }
-func (o *Output) add(id value.MetadataIdentity, parentTableLUID, check, state, source string) {
-	o.Findings = append(o.Findings, Finding{Type: id.Type, LUID: id.LUID, MetadataID: id.MetadataID, Name: id.Name, ParentTableLUID: parentTableLUID, Check: check, State: state, Source: source})
+func (o *AuditOutput) add(id value.MetadataIdentity, parentTableLUID, check, state, source string) {
+	o.Findings = append(o.Findings, AuditFinding{Type: id.Type, LUID: id.LUID, MetadataID: id.MetadataID, Name: id.Name, ParentTableLUID: parentTableLUID, Check: check, State: state, Source: source})
 	switch state {
 	case "present":
 		o.Summary.Present++
@@ -271,7 +268,7 @@ func (o *Output) add(id value.MetadataIdentity, parentTableLUID, check, state, s
 		o.Summary.Unknown++
 	}
 }
-func walk[T any](ctx context.Context, limit int, q value.MetadataQuery, read func(context.Context, value.MetadataQuery) (value.MetadataPage[T], error), identity func(T) string, visit func(T) error, observed func(string, string)) (bool, error) {
+func auditWalk[T any](ctx context.Context, limit int, q value.MetadataQuery, read func(context.Context, value.MetadataQuery) (value.MetadataPage[T], error), identity func(T) string, visit func(T) error, observed func(string, string)) (bool, error) {
 	if limit <= 0 {
 		return false, nil
 	}
@@ -326,10 +323,10 @@ func walk[T any](ctx context.Context, limit int, q value.MetadataQuery, read fun
 	}
 	return false, fmt.Errorf("audit page bound exceeded")
 }
-func usage(s string) error {
+func auditUsage(s string) error {
 	return &errs.Error{ID: "catalog.audit.usage", Kind: errs.KindUsage, Operation: "catalog.audit", Summary: s, Retryable: errs.Bool(false), CorrectiveAction: "Select one exact audit scope and supported checks."}
 }
-func failure(in Input, cause error) error {
+func auditFailure(in AuditInput, cause error) error {
 	retry, advice := errs.CompleteRetryAdvice(cause, "Review the audit scope and permissions; inaccessible data is not missing metadata.")
 	return &errs.Error{ID: "catalog.audit.failed", Kind: errs.KindOperation, Operation: "catalog.audit", Environment: in.Environment, Site: in.Site, Resource: in.ID, Summary: "Catalog audit could not complete the selected scope.", Cause: cause, Retryable: retry, CorrectiveAction: advice, TableauRequestID: errs.TableauRequestID(cause)}
 }

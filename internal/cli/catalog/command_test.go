@@ -7,29 +7,28 @@ import (
 	"strings"
 	"testing"
 
-	catalogread "github.com/ahillspace/tadx/actions/catalog/read"
-	catalogupdate "github.com/ahillspace/tadx/actions/catalog/update"
+	catalogaction "github.com/ahillspace/tadx/actions/catalog"
 	"github.com/ahillspace/tadx/internal/errs"
 )
 
 type recorder struct {
 	calls   int
 	preview bool
-	update  catalogupdate.DatabaseInput
-	list    catalogread.DatabaseListInput
+	update  catalogaction.DatabaseInput
+	list    catalogaction.DatabaseListInput
 }
 
 func (r *recorder) Render(any) error { return nil }
-func (r *recorder) UpdateCatalogDatabase(_ context.Context, in catalogupdate.DatabaseInput, p bool) (catalogupdate.DatabaseOutput, error) {
+func (r *recorder) UpdateCatalogDatabase(_ context.Context, in catalogaction.DatabaseInput, p bool) (catalogaction.DatabaseOutput, error) {
 	r.calls++
 	r.update = in
 	r.preview = p
-	return catalogupdate.DatabaseOutput{}, nil
+	return catalogaction.DatabaseOutput{}, nil
 }
-func (r *recorder) ListCatalogDatabases(_ context.Context, in catalogread.DatabaseListInput) (catalogread.DatabaseListOutput, error) {
+func (r *recorder) ListCatalogDatabases(_ context.Context, in catalogaction.DatabaseListInput) (catalogaction.DatabaseListOutput, error) {
 	r.calls++
 	r.list = in
-	return catalogread.DatabaseListOutput{}, nil
+	return catalogaction.DatabaseListOutput{}, nil
 }
 func TestPreviewFalseAndRepeatedTags(t *testing.T) {
 	r := &recorder{}
@@ -67,20 +66,20 @@ type captureRecorder struct {
 	calls                int
 }
 
-func (r *captureRecorder) UpdateCatalogDatabase(_ context.Context, in catalogupdate.DatabaseInput, _ bool) (catalogupdate.DatabaseOutput, error) {
+func (r *captureRecorder) UpdateCatalogDatabase(_ context.Context, in catalogaction.DatabaseInput, _ bool) (catalogaction.DatabaseOutput, error) {
 	r.description, r.contact = in.Description, in.ContactLUID
 	r.calls++
-	return catalogupdate.DatabaseOutput{}, nil
+	return catalogaction.DatabaseOutput{}, nil
 }
-func (r *captureRecorder) UpdateCatalogTable(_ context.Context, in catalogupdate.TableInput, _ bool) (catalogupdate.TableOutput, error) {
+func (r *captureRecorder) UpdateCatalogTable(_ context.Context, in catalogaction.TableInput, _ bool) (catalogaction.TableOutput, error) {
 	r.description, r.contact = in.Description, in.ContactLUID
 	r.calls++
-	return catalogupdate.TableOutput{}, nil
+	return catalogaction.TableOutput{}, nil
 }
-func (r *captureRecorder) UpdateCatalogColumn(_ context.Context, in catalogupdate.ColumnInput, _ bool) (catalogupdate.ColumnOutput, error) {
+func (r *captureRecorder) UpdateCatalogColumn(_ context.Context, in catalogaction.ColumnInput, _ bool) (catalogaction.ColumnOutput, error) {
 	r.description = in.Description
 	r.calls++
-	return catalogupdate.ColumnOutput{}, nil
+	return catalogaction.ColumnOutput{}, nil
 }
 func TestRepeatedUpdateFlagCapture(t *testing.T) {
 	for _, kind := range []string{"database", "table", "column"} {

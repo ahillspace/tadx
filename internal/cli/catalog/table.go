@@ -1,8 +1,7 @@
 package catalog
 
 import (
-	catalogread "github.com/ahillspace/tadx/actions/catalog/read"
-	catalogupdate "github.com/ahillspace/tadx/actions/catalog/update"
+	catalogaction "github.com/ahillspace/tadx/actions/catalog"
 	"github.com/spf13/cobra"
 )
 
@@ -12,8 +11,8 @@ func newTable(d Dependencies) *cobra.Command {
 	return c
 }
 func newTableList(d Dependencies) *cobra.Command {
-	var in catalogread.TableListInput
-	c := &cobra.Command{Use: "list", Short: "List bounded upstream table identities.", Annotations: map[string]string{"tadx.capability": "catalog.table.list"}, Args: noArgs("catalog.table.list", func() error { return catalogread.ValidateTableListInput(in) }), RunE: func(c *cobra.Command, _ []string) error {
+	var in catalogaction.TableListInput
+	c := &cobra.Command{Use: "list", Short: "List bounded upstream table identities.", Annotations: map[string]string{"tadx.capability": "catalog.table.list"}, Args: noArgs("catalog.table.list", func() error { return catalogaction.ValidateTableListInput(in) }), RunE: func(c *cobra.Command, _ []string) error {
 		if d.TableLister == nil {
 			return missing("catalog.table.list")
 		}
@@ -30,8 +29,8 @@ func newTableList(d Dependencies) *cobra.Command {
 	return c
 }
 func newTableInspect(d Dependencies) *cobra.Command {
-	var in catalogread.TableInspectInput
-	c := &cobra.Command{Use: "inspect", Short: "Inspect one exact upstream table; --full expands fetched metadata.", Annotations: map[string]string{"tadx.capability": "catalog.table.inspect"}, Args: noArgs("catalog.table.inspect", func() error { return catalogread.ValidateTableInspectInput(in) }), RunE: func(c *cobra.Command, _ []string) error {
+	var in catalogaction.TableInspectInput
+	c := &cobra.Command{Use: "inspect", Short: "Inspect one exact upstream table; --full expands fetched metadata.", Annotations: map[string]string{"tadx.capability": "catalog.table.inspect"}, Args: noArgs("catalog.table.inspect", func() error { return catalogaction.ValidateTableInspectInput(in) }), RunE: func(c *cobra.Command, _ []string) error {
 		if d.TableInspector == nil {
 			return missing("catalog.table.inspect")
 		}
@@ -46,7 +45,7 @@ func newTableInspect(d Dependencies) *cobra.Command {
 	return c
 }
 func newTableUpdate(d Dependencies) *cobra.Command {
-	var in catalogupdate.TableInput
+	var in catalogaction.TableInput
 	var description, contact string
 	var preview bool
 	capture := func(c *cobra.Command) {
@@ -62,7 +61,7 @@ func newTableUpdate(d Dependencies) *cobra.Command {
 	c := &cobra.Command{Use: "update", Short: "Update supported table description, contact, or tags; --preview makes no changes.", Annotations: map[string]string{"tadx.capability": "catalog.table.update"}}
 	c.Args = func(c *cobra.Command, args []string) error {
 		capture(c)
-		return noArgs("catalog.table.update", func() error { return catalogupdate.ValidateTableInput(in) })(c, args)
+		return noArgs("catalog.table.update", func() error { return catalogaction.ValidateTableInput(in) })(c, args)
 	}
 	c.RunE = func(c *cobra.Command, _ []string) error {
 		if d.TableUpdater == nil {

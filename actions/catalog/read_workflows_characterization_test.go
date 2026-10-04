@@ -1,15 +1,11 @@
-package read_test
+package catalog
 
 import (
 	"context"
 	"errors"
-	"testing"
-
-	catalogaudit "github.com/ahillspace/tadx/actions/catalog/audit"
-	catalogread "github.com/ahillspace/tadx/actions/catalog/read"
-	catalogsearch "github.com/ahillspace/tadx/actions/catalog/search"
 	"github.com/ahillspace/tadx/internal/errs"
 	"github.com/ahillspace/tadx/internal/value"
+	"testing"
 )
 
 func TestNilCatalogReaders(t *testing.T) {
@@ -18,35 +14,35 @@ func TestNilCatalogReaders(t *testing.T) {
 		run       func() error
 	}{
 		{"catalog.database.list", func() error {
-			_, err := catalogread.ListDatabases(t.Context(), nil, catalogread.DatabaseListInput{})
+			_, err := databaseListService(nil).ListCatalogDatabases(t.Context(), DatabaseListInput{})
 			return err
 		}},
 		{"catalog.database.inspect", func() error {
-			_, err := catalogread.InspectDatabase(t.Context(), nil, catalogread.DatabaseInspectInput{ID: "rest"})
+			_, err := databaseInspectService(nil).InspectCatalogDatabase(t.Context(), DatabaseInspectInput{ID: "rest"})
 			return err
 		}},
 		{"catalog.table.list", func() error {
-			_, err := catalogread.ListTables(t.Context(), nil, catalogread.TableListInput{})
+			_, err := tableListService(nil).ListCatalogTables(t.Context(), TableListInput{})
 			return err
 		}},
 		{"catalog.table.inspect", func() error {
-			_, err := catalogread.InspectTable(t.Context(), nil, catalogread.TableInspectInput{ID: "rest"})
+			_, err := tableInspectService(nil).InspectCatalogTable(t.Context(), TableInspectInput{ID: "rest"})
 			return err
 		}},
 		{"catalog.column.list", func() error {
-			_, err := catalogread.ListColumns(t.Context(), nil, catalogread.ColumnListInput{TableID: "parent"})
+			_, err := columnListService(nil).ListCatalogColumns(t.Context(), ColumnListInput{TableID: "parent"})
 			return err
 		}},
 		{"catalog.column.inspect", func() error {
-			_, err := catalogread.InspectColumn(t.Context(), nil, catalogread.ColumnInspectInput{ID: "rest", TableID: "parent"})
+			_, err := columnInspectService(nil).InspectCatalogColumn(t.Context(), ColumnInspectInput{ID: "rest", TableID: "parent"})
 			return err
 		}},
 		{"catalog.search", func() error {
-			_, err := catalogsearch.Execute(t.Context(), nil, catalogsearch.Input{Query: "match"})
+			_, err := searchService(nil).SearchCatalog(t.Context(), SearchInput{Query: "match"})
 			return err
 		}},
 		{"catalog.audit", func() error {
-			_, err := catalogaudit.Execute(t.Context(), nil, catalogaudit.Input{Type: "database", ID: "rest"})
+			_, err := auditService(nil).AuditCatalog(t.Context(), AuditInput{Type: "database", ID: "rest"})
 			return err
 		}},
 	}
@@ -85,14 +81,14 @@ func TestDatabaseListBoundsAndPartialEvidence(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			r := &databasePages{pages: []value.MetadataPage[value.MetadataDatabase]{{Complete: true}}}
-			out, err := catalogread.ListDatabases(t.Context(), r, catalogread.DatabaseListInput{Limit: tc.limit, All: tc.all})
+			out, err := databaseListService(r).ListCatalogDatabases(t.Context(), DatabaseListInput{Limit: tc.limit, All: tc.all})
 			if err != nil || out.Page.Limit != tc.want || len(r.queries) != 1 || r.queries[0].Limit != min(100, tc.want) || !out.Complete {
 				t.Fatalf("bounds: %+v %+v %v", out, r.queries, err)
 			}
 		})
 	}
 	r := &databasePages{fail: true, pages: []value.MetadataPage[value.MetadataDatabase]{{Items: []value.MetadataDatabase{{MetadataIdentity: value.MetadataIdentity{LUID: "rest", MetadataID: "meta"}}}, NextCursor: "next", Total: 2, ObservedAt: "observed", TableauRequestID: "request"}}}
-	out, err := catalogread.ListDatabases(t.Context(), r, catalogread.DatabaseListInput{All: true})
+	out, err := databaseListService(r).ListCatalogDatabases(t.Context(), DatabaseListInput{All: true})
 	if err == nil || out.Status != "partial" || out.Complete || !out.Page.MoreAvailable || out.Page.Returned != 1 || len(out.Items) != 1 || out.Items[0].MetadataID != "meta" || out.ObservedAt != "observed" || out.RequestID != "request" || len(r.queries) != 2 || r.queries[1].Cursor != "next" {
 		t.Fatalf("partial evidence: %+v %+v %v", out, r.queries, err)
 	}
@@ -122,14 +118,14 @@ func TestTableListBoundsAndPartialEvidence(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			r := &tablePages{pages: []value.MetadataPage[value.MetadataTable]{{Complete: true}}}
-			out, err := catalogread.ListTables(t.Context(), r, catalogread.TableListInput{DatabaseID: "parent", Limit: tc.limit, All: tc.all})
+			out, err := tableListService(r).ListCatalogTables(t.Context(), TableListInput{DatabaseID: "parent", Limit: tc.limit, All: tc.all})
 			if err != nil || out.Page.Limit != tc.want || len(r.queries) != 1 || r.queries[0].Limit != min(100, tc.want) || !out.Complete {
 				t.Fatalf("bounds: %+v %+v %v", out, r.queries, err)
 			}
 		})
 	}
 	r := &tablePages{fail: true, pages: []value.MetadataPage[value.MetadataTable]{{Items: []value.MetadataTable{{MetadataIdentity: value.MetadataIdentity{LUID: "rest", MetadataID: "meta"}}}, NextCursor: "next", Total: 2, ObservedAt: "observed", TableauRequestID: "request"}}}
-	out, err := catalogread.ListTables(t.Context(), r, catalogread.TableListInput{DatabaseID: "parent", All: true})
+	out, err := tableListService(r).ListCatalogTables(t.Context(), TableListInput{DatabaseID: "parent", All: true})
 	if err == nil || out.Status != "partial" || out.Complete || !out.Page.MoreAvailable || out.Page.Returned != 1 || len(out.Items) != 1 || out.Items[0].MetadataID != "meta" || out.ObservedAt != "observed" || out.RequestID != "request" || len(r.queries) != 2 || r.queries[1].Cursor != "next" {
 		t.Fatalf("partial evidence: %+v %+v %v", out, r.queries, err)
 	}
@@ -159,14 +155,14 @@ func TestColumnListBoundsAndPartialEvidence(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			r := &columnPages{pages: []value.MetadataPage[value.MetadataColumn]{{Complete: true}}}
-			out, err := catalogread.ListColumns(t.Context(), r, catalogread.ColumnListInput{TableID: "parent", Limit: tc.limit, All: tc.all})
+			out, err := columnListService(r).ListCatalogColumns(t.Context(), ColumnListInput{TableID: "parent", Limit: tc.limit, All: tc.all})
 			if err != nil || out.Page.Limit != tc.want || len(r.queries) != 1 || r.queries[0].Limit != min(100, tc.want) || !out.Complete {
 				t.Fatalf("bounds: %+v %+v %v", out, r.queries, err)
 			}
 		})
 	}
 	r := &columnPages{fail: true, pages: []value.MetadataPage[value.MetadataColumn]{{Items: []value.MetadataColumn{{MetadataIdentity: value.MetadataIdentity{LUID: "rest", MetadataID: "meta"}}}, NextCursor: "next", Total: 2, ObservedAt: "observed", TableauRequestID: "request"}}}
-	out, err := catalogread.ListColumns(t.Context(), r, catalogread.ColumnListInput{TableID: "parent", All: true})
+	out, err := columnListService(r).ListCatalogColumns(t.Context(), ColumnListInput{TableID: "parent", All: true})
 	if err == nil || out.Status != "partial" || out.Complete || !out.Page.MoreAvailable || out.Page.Returned != 1 || len(out.Items) != 1 || out.Items[0].MetadataID != "meta" || out.ObservedAt != "observed" || out.RequestID != "request" || len(r.queries) != 2 || r.queries[1].Cursor != "next" {
 		t.Fatalf("partial evidence: %+v %+v %v", out, r.queries, err)
 	}

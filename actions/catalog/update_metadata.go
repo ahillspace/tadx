@@ -1,7 +1,8 @@
-package update
+package catalog
 
 import (
 	"cmp"
+	"context"
 	"errors"
 	"slices"
 	"strings"
@@ -10,6 +11,12 @@ import (
 	"github.com/ahillspace/tadx/internal/errs"
 	"github.com/ahillspace/tadx/internal/value"
 )
+
+// TagWriter is the native value-based tag port shared by explicit catalog edits.
+type TagWriter interface {
+	AddTags(context.Context, value.LabelTarget, []string) ([]string, error)
+	DeleteTag(context.Context, value.LabelTarget, string) error
+}
 
 type Change struct {
 	Property string  `json:"property"`

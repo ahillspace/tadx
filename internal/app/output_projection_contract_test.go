@@ -7,7 +7,7 @@ import (
 	"testing"
 
 	authcheck "github.com/ahillspace/tadx/actions/auth/check"
-	catalogread "github.com/ahillspace/tadx/actions/catalog/read"
+	catalogread "github.com/ahillspace/tadx/actions/catalog"
 	envupdate "github.com/ahillspace/tadx/actions/env/profile"
 	jobactions "github.com/ahillspace/tadx/actions/job"
 	projectops "github.com/ahillspace/tadx/actions/project"

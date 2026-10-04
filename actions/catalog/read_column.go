@@ -1,4 +1,4 @@
-package read
+package catalog
 
 import (
 	"context"
@@ -72,7 +72,7 @@ func (o ColumnListOutput) CompactOutput() any {
 	}{o.Status, o.Environment, o.Site, o.Page, rows, o.Complete, o.ObservedAt, "--full", o.NextCommand}
 }
 func (o ColumnListOutput) FullOutput() any { return o }
-func ListColumns(ctx context.Context, reader ColumnListReader, in ColumnListInput) (out ColumnListOutput, err error) {
+func listColumnsValidated(ctx context.Context, reader ColumnListReader, in ColumnListInput) (out ColumnListOutput, err error) {
 	defer func() {
 		if err != nil && out.Status != "" {
 			out.Status = "partial"
@@ -81,9 +81,6 @@ func ListColumns(ctx context.Context, reader ColumnListReader, in ColumnListInpu
 			out.Page.Returned = len(out.Items)
 		}
 	}()
-	if err := ValidateColumnListInput(in); err != nil {
-		return ColumnListOutput{}, err
-	}
 	defer func() {
 		if err == nil && out.Page.MoreAvailable {
 			out.NextCommand = columnListNextCommand(in)
@@ -188,10 +185,7 @@ func compactColumnInspect(v *value.MetadataColumn) *columnInspectItem {
 	}
 	return &columnInspectItem{MetadataIdentity: v.MetadataIdentity, Description: v.Description, Table: v.Table, RemoteType: v.RemoteType, Nullable: v.Nullable, Tags: v.Tags, TagsObserved: v.TagsObserved}
 }
-func InspectColumn(ctx context.Context, reader ColumnInspectReader, in ColumnInspectInput) (ColumnInspectOutput, error) {
-	if err := ValidateColumnInspectInput(in); err != nil {
-		return ColumnInspectOutput{}, err
-	}
+func inspectColumnValidated(ctx context.Context, reader ColumnInspectReader, in ColumnInspectInput) (ColumnInspectOutput, error) {
 	out := ColumnInspectOutput{Status: "failed", Environment: in.Environment, Site: in.Site}
 	if reader == nil {
 		return out, columnInspectUsage("catalog column inspection is not configured")

@@ -1,4 +1,4 @@
-package read
+package catalog
 
 import (
 	"context"
@@ -18,14 +18,14 @@ func (r *columnListReaderStub) DiscoverColumns(context.Context, value.MetadataQu
 }
 func TestColumnListValidationBeforeRead(t *testing.T) {
 	r := &columnListReaderStub{}
-	_, err := ListColumns(context.Background(), r, ColumnListInput{Limit: -1})
+	_, err := columnListService(r).ListCatalogColumns(context.Background(), ColumnListInput{Limit: -1})
 	if err == nil || r.calls != 0 {
 		t.Fatal("invalid bound reached reader")
 	}
 }
 func TestColumnListBoundedPagesAndProjection(t *testing.T) {
 	r := &columnListReaderStub{pages: []value.MetadataPage[value.MetadataColumn]{{Items: []value.MetadataColumn{{MetadataIdentity: value.MetadataIdentity{LUID: "one", Name: "One", Type: "column"}}}, NextCursor: "opaque", Total: 2}, {Items: []value.MetadataColumn{{MetadataIdentity: value.MetadataIdentity{LUID: "two", Name: "Two", Type: "column"}}}, Complete: true, Total: 2}}}
-	out, err := ListColumns(context.Background(), r, ColumnListInput{All: true, TableID: "parent"})
+	out, err := columnListService(r).ListCatalogColumns(context.Background(), ColumnListInput{All: true, TableID: "parent"})
 	if err != nil || len(out.Items) != 2 || !out.Complete {
 		t.Fatalf("%+v %v", out, err)
 	}
@@ -37,7 +37,7 @@ func TestColumnListBoundedPagesAndProjection(t *testing.T) {
 }
 func TestColumnListRepeatedCursorFails(t *testing.T) {
 	r := &columnListReaderStub{pages: []value.MetadataPage[value.MetadataColumn]{{NextCursor: "x"}, {NextCursor: "x"}}}
-	_, err := ListColumns(context.Background(), r, ColumnListInput{All: true, TableID: "parent"})
+	_, err := columnListService(r).ListCatalogColumns(context.Background(), ColumnListInput{All: true, TableID: "parent"})
 	if err == nil {
 		t.Fatal("repeated cursor accepted")
 	}
@@ -58,21 +58,21 @@ func (r *columnInspectReaderStub) DiscoverColumns(context.Context, value.Metadat
 }
 func TestColumnInspectExactSelectorBeforeRead(t *testing.T) {
 	r := &columnInspectReaderStub{}
-	_, e := InspectColumn(context.Background(), r, ColumnInspectInput{ID: "x", MetadataID: "y"})
+	_, e := columnInspectService(r).InspectCatalogColumn(context.Background(), ColumnInspectInput{ID: "x", MetadataID: "y"})
 	if e == nil || r.calls != 0 {
 		t.Fatal("conflicting selectors reached provider")
 	}
 }
 func TestColumnInspectRejectWrongIdentity(t *testing.T) {
 	r := &columnInspectReaderStub{item: value.MetadataColumn{MetadataIdentity: value.MetadataIdentity{LUID: "wrong"}}}
-	_, e := InspectColumn(context.Background(), r, ColumnInspectInput{ID: "expected", TableID: "table"})
+	_, e := columnInspectService(r).InspectCatalogColumn(context.Background(), ColumnInspectInput{ID: "expected", TableID: "table"})
 	if e == nil {
 		t.Fatal("mismatched identity accepted")
 	}
 }
 func TestColumnInspectReadMetadataIdentity(t *testing.T) {
 	r := &columnInspectReaderStub{item: value.MetadataColumn{MetadataIdentity: value.MetadataIdentity{MetadataID: "meta", Name: "fixture"}}}
-	o, e := InspectColumn(context.Background(), r, ColumnInspectInput{MetadataID: "meta"})
+	o, e := columnInspectService(r).InspectCatalogColumn(context.Background(), ColumnInspectInput{MetadataID: "meta"})
 	if e != nil {
 		t.Fatal(e)
 	}

@@ -18,7 +18,7 @@ The [SVG](architecture/tadx-architecture.svg) and [editable Excalidraw source](a
 | `actions/admin` subpackages | Related lifecycle or paired mutation packages where records and validation match |
 | `actions/pulse/definition`, `actions/pulse/metric` | Resource packages with explicit operations and distinct output contracts |
 | `actions/env/profile` | Profile operations with a shared profile representation |
-| `actions/catalog/update`, `actions/catalog/read` | Related database, table, and column operations with shared rules and explicit projections or mutation sequences |
+| `actions/catalog` | One metadata service with typed database, table, column, search, and audit operations |
 | Other `actions/<domain>/<operation>` packages | Standalone boundaries where operation contracts or responsibilities differ |
 | `internal/resources` | Resource adapters, exact identity resolution, and normalized provider results |
 | `internal/tableau` | Tableau API clients, shared HTTP transport, and inventory collectors |
@@ -48,6 +48,10 @@ The project service validates input before `internal/app` opens a target-bound p
 `internal/resources/project` implements the live, cached, and inventory-read ports that the service consumes.
 Complete live search uses the composed project service; bounded live search uses its list action with a direct resource list port.
 Shared inventory collection, cache publication, and read-source policy currently remain in `internal/app`.
+
+For catalog commands, `internal/cli/catalog` calls one service in `actions/catalog`.
+The service validates input before opening its target-bound provider and retains separate typed read and mutation sequences.
+App binds native metadata clients directly to those narrow ports, including the shared label-target contract; no forwarding-only catalog resource adapter remains.
 
 The [architecture checker](../internal/architecture/architecture.go) defines allowed production Go imports.
 Unknown local package dependencies fail the check.

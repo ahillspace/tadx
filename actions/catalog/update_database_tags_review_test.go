@@ -1,4 +1,4 @@
-package update
+package catalog
 
 import (
 	"context"
@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/ahillspace/tadx/internal/errs"
+	"github.com/ahillspace/tadx/internal/value"
 )
 
 func TestDatabaseTagValidationBeforeAnyRemoteRead(t *testing.T) {
@@ -31,7 +32,7 @@ func TestDatabaseTagValidationBeforeAnyRemoteRead(t *testing.T) {
 					}
 					continue
 				}
-				_, err := NewDatabase(f, f).Execute(context.Background(), in, preview)
+				_, err := newDatabaseRunner(f, f).Execute(context.Background(), in, preview)
 				if err == nil || f.reads != 0 || f.writes != 0 {
 					t.Fatalf("error=%v reads=%d writes=%d preview=%v", err, f.reads, f.writes, preview)
 				}
@@ -59,7 +60,7 @@ type databaseIncompleteTagWriter struct {
 	acknowledged []string
 }
 
-func (f *databaseIncompleteTagWriter) AddDatabaseTags(context.Context, string, []string) ([]string, error) {
+func (f *databaseIncompleteTagWriter) AddTags(context.Context, value.LabelTarget, []string) ([]string, error) {
 	f.writes++
 	return f.acknowledged, nil
 }
@@ -69,7 +70,7 @@ func TestDatabaseIncompleteTagAcknowledgmentPreservesPartialResult(t *testing.T)
 		f := &databaseIncompleteTagWriter{databaseFixture: &databaseFixture{}, acknowledged: ack}
 		in := databaseValid()
 		in.AddTags = []string{"sales", "retail"}
-		out, err := NewDatabase(f, f).Execute(context.Background(), in, false)
+		out, err := newDatabaseRunner(f, f).Execute(context.Background(), in, false)
 		var structured *errs.Error
 		if !errors.As(err, &structured) || structured.Phase != errs.PhaseVerification || structured.Outcome != errs.OutcomeUnknown || structured.Resource != "item" || structured.Retryable == nil || *structured.Retryable {
 			t.Fatalf("incorrect failure evidence: %#v %v", structured, err)

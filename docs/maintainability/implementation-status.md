@@ -1,6 +1,6 @@
 # Architecture implementation status
 
-Status: the first project candidate passes local and hosted offline checks; follow-up review, other ownership moves, and live acceptance remain incomplete.
+Status: project follow-up and catalog consolidation are integrated; other ownership moves and live acceptance remain incomplete.
 Approval date: 2026-10-03.
 Baseline: `dd22c33bd1d123066f25ec09e2d612cd95717400`.
 Shared branch: `refactor/cohesive-cli`.
@@ -210,9 +210,17 @@ Its focused project and search checks pass, and all eight project output goldens
 Mechanical integration copies exactly its 20 reviewed paths after source-fingerprint and existing-edit checks; complete integrated gates remain pending.
 The committed candidate does not contain this draft regression.
 
-Authentication and catalog consolidation remain isolated drafts with focused verification, not integrated or accepted checkpoints.
-Authentication still needs a disposition for the required external-deletion failure followed by failed-restoration scenario.
-Catalog review must also resolve redundant public entry points retained only for tests.
+Authentication consolidation remains an isolated draft with focused verification, not an integrated or accepted checkpoint.
+The required authentication external-deletion failure followed by failed restoration reproduces a pre-existing reporting defect on both exact baseline `1346e591` and the isolated auth draft.
+Fake-store CLI execution returns nonzero with the configuration reference cleared and the credential retained, but omits persistence phase, unknown outcome, and orphan recovery guidance.
+Independent review confirms the state and reporting gap; no real credential store is used.
+The generic joined error does not preserve whether failed restoration left the replacement configuration installed.
+A separate correction receives explicit maintainer approval with regression tests and must distinguish restoration failure before replacement from failure after installation.
+Catalog revision `556a1fdc5bedf7e2e0f9cdd3d2042aedbd4825a5d223a5bf061c4f31b519f56b` removes eight redundant public entry points used only by tests.
+Their surviving assertions use the service boundary, and the action test count remains 62.
+Independent review and focused catalog, CLI, architecture, and native-client tests pass.
+Mechanical integration verifies the complete draft fingerprint and all 68 changed paths against their baseline, then copies 43 files and removes 25 obsolete tracked files.
+Those deletions remain recoverable from Git; the combined candidate still requires integrated gates.
 Shared inventory extraction is prepared separately and has no integrated implementation yet.
 
 ## Acceptance dependencies
@@ -267,16 +275,18 @@ The current Windows process is not elevated, and native macOS is unavailable loc
 Required native platform evidence needs hosted checks or another suitable authorized environment.
 Cross-compilation and historical baseline CI do not satisfy candidate native runtime verification.
 
-### Additional fixture authority required
+### Additional fixture authority
 
-The existing authority covers run-owned project fixtures, not the complete executable action catalog.
-Full live acceptance additionally requires approved disposable content and jobs, site users and groups, membership and owned-content permissions, labels, Pulse resources, and upstream metadata targets.
-Account and metadata fixtures need designated identities, allowed changes, and cleanup boundaries before use.
+The initial authority covers run-owned project fixtures, not the complete executable action catalog.
+The maintainer subsequently explicitly approves changes across the additional fixture categories requested for the selected site.
+That approval covers disposable content and jobs, site users and groups, membership and owned-content permissions, labels, Pulse resources, and upstream metadata targets.
+Prefer run-owned resources; any necessary existing target needs an exact identity, recorded initial state, bounded changes, and restoration plan before use.
+Fixture preparation must still establish usable identities and cleanup evidence; authorization alone does not demonstrate runtime readiness or passed coverage.
 Saved site consent does not expand fixture authority.
 Changing persisted consent or persisting PATs requires separate explicit permission.
 Missing task mappings, installer stages, and runtime qualification are technical gaps, not substitute authority.
 No broader mutations or live CLI model tasks have occurred; baseline feature-branch pushes and the two text-only setup probes are recorded above.
-The maintainer directs continued offline implementation and verification while broader live-fixture scope remains unresolved.
+The maintainer directs continued implementation and verification; broader fixture authority is now recorded, while runtime qualification and candidate gates remain unresolved.
 A subsequent read-only consent check confirms that the previously selected site's saved mutation consent is already enabled; no setting changes occur.
 No incomplete gate is waived or reported as passing.
 
