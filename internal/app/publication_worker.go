@@ -15,7 +15,6 @@ import (
 	"github.com/ahillspace/tadx/internal/cli"
 	"github.com/ahillspace/tadx/internal/cli/clierr"
 	"github.com/ahillspace/tadx/internal/cli/progress"
-	"github.com/ahillspace/tadx/internal/commandhint"
 	"github.com/ahillspace/tadx/internal/contentbatch"
 	"github.com/ahillspace/tadx/internal/errs"
 	"github.com/ahillspace/tadx/internal/jobmonitor"
@@ -141,13 +140,13 @@ func beginPublicationWorker(command *cobra.Command, runtime *runtimeDependencies
 		}
 	}
 	if err := launch(command.Context(), store.Directory, record.ID); err != nil {
-		return clierr.WithOutput(publicationRunOutput{record: record}, publicationWorkerError("start", "The worker launch was not confirmed. Check this operation before submitting again.", err))
+		return clierr.WithOutput(output.OperationRun{Record: record.OutputRecord()}, publicationWorkerError("start", "The worker launch was not confirmed. Check this operation before submitting again.", err))
 	}
 	// This is a local startup acknowledgement, not a Tableau completion probe.
 	ackDeadline := time.Now().Add(5 * time.Second)
 	for record.StartedAt.IsZero() {
 		if !time.Now().Before(ackDeadline) || command.Context().Err() != nil {
-			return clierr.WithOutput(publicationRunOutput{record: record}, publicationWorkerError("start_unknown", "Worker startup was not confirmed. Check this operation before submitting again.", command.Context().Err()))
+			return clierr.WithOutput(output.OperationRun{Record: record.OutputRecord()}, publicationWorkerError("start_unknown", "Worker startup was not confirmed. Check this operation before submitting again.", command.Context().Err()))
 		}
 		timer := time.NewTimer(10 * time.Millisecond)
 		select {
@@ -161,7 +160,7 @@ func beginPublicationWorker(command *cobra.Command, runtime *runtimeDependencies
 		}
 	}
 	if noWait {
-		capture.value = publicationRunOutput{record: record}
+		capture.value = output.OperationRun{Record: record.OutputRecord()}
 		return nil
 	}
 	activity := progress.New(command.ErrOrStderr()).Start(command.Context(), operationActivity(record.Operation))
@@ -169,7 +168,7 @@ func beginPublicationWorker(command *cobra.Command, runtime *runtimeDependencies
 	deadline := record.RequestedAt.Add(publicationWaitLimit)
 	for {
 		if !record.FinishedAt.IsZero() {
-			capture.value = publicationRunOutput{record: record}
+			capture.value = output.OperationRun{Record: record.OutputRecord()}
 			if record.ExitCode != nil && *record.ExitCode != 0 {
 				return clierr.Rendered(publicationWorkerError("failed", "The operation has one or more unsuccessful outcomes; inspect the saved results.", nil))
 			}
@@ -180,7 +179,7 @@ func beginPublicationWorker(command *cobra.Command, runtime *runtimeDependencies
 			if err != nil {
 				return err
 			}
-			capture.value = publicationRunOutput{record: record, stopped: true}
+			capture.value = output.OperationRun{Record: record.OutputRecord(), Stopped: true}
 			return nil
 		}
 		alive, err := store.Alive(record.ID)
@@ -195,7 +194,7 @@ func beginPublicationWorker(command *cobra.Command, runtime *runtimeDependencies
 			if !record.FinishedAt.IsZero() {
 				continue
 			}
-			return clierr.WithOutput(publicationRunOutput{record: record, stopped: true}, publicationWorkerError("interrupted", "The worker stopped without a final result. Preserve known effects and check status before repeating the operation.", nil))
+			return clierr.WithOutput(output.OperationRun{Record: record.OutputRecord(), Stopped: true}, publicationWorkerError("interrupted", "The worker stopped without a final result. Preserve known effects and check status before repeating the operation.", nil))
 		}
 		if record.Activity != "" {
 			activity.SetLabel(record.Activity)
@@ -265,7 +264,7 @@ func runPublicationWorker(ctx context.Context, directory, id string, options Opt
 	options.publicationExecution = control
 	options.Stderr = io.Discard
 	options.publicationResult = func(value any, _ bool, exit int) error {
-		compact, full, err := publicationSnapshots(value, options.ConfigPath)
+		compact, full, err := output.CaptureOperationSnapshots(value, options.ConfigPath, int(operationrun.MaxRecordBytes)/3)
 		if err != nil {
 			// Preserve the independently saved receipts and latest bounded batch
 			// snapshot even when the final expanded result exceeds storage bounds.
@@ -286,7 +285,7 @@ func runPublicationWorker(ctx context.Context, directory, id string, options Opt
 			r.ExitCode = new(exit)
 			r.FinishedAt = time.Now().UTC()
 			r.Phase = operationrun.PhaseCompleted
-			if containsUnfinished(full) {
+			if output.OperationContainsUnfinished(full) {
 				r.Phase = operationrun.PhaseRemotePending
 			} else if exit != 0 {
 				r.Phase = operationrun.PhaseFailed
@@ -296,7 +295,7 @@ func runPublicationWorker(ctx context.Context, directory, id string, options Opt
 		return err
 	}
 	ctx = contentbatch.WithObserver(ctx, func(out contentbatch.Output) {
-		compact, _, err := publicationSnapshots(out, options.ConfigPath)
+		compact, _, err := output.CaptureOperationSnapshots(out, options.ConfigPath, int(operationrun.MaxRecordBytes)/3)
 		if err != nil {
 			return
 		}
@@ -334,188 +333,6 @@ func replacePublicationBatchPath(args []string, path string) []string {
 		}
 	}
 	return args
-}
-
-func publicationSnapshots(value any, configPath string) (json.RawMessage, json.RawMessage, error) {
-	full, err := output.SnapshotWithConfig(value, int(operationrun.MaxRecordBytes)/3, configPath)
-	if err != nil {
-		return nil, nil, err
-	}
-	if projector, ok := value.(output.CompactProjector); ok {
-		value = projector.CompactOutput()
-	}
-	if carried, ok := value.(error); ok {
-		if partial, ok := errors.AsType[interface {
-			error
-			OperationOutput() any
-		}](carried); ok {
-			v := partial.OperationOutput()
-			if p, ok := v.(output.CompactProjector); ok {
-				v = p.CompactOutput()
-			}
-			value = map[string]any{"output": v, "error": errs.Structure(carried).Error}
-		}
-	}
-	compact, err := output.SnapshotWithConfig(value, int(operationrun.MaxRecordBytes)/3, configPath)
-	return compact, full, err
-}
-
-func containsUnfinished(data json.RawMessage) bool {
-	var value any
-	if json.Unmarshal(data, &value) != nil {
-		return false
-	}
-	var pending func(any) bool
-	pending = func(value any) bool {
-		switch v := value.(type) {
-		case map[string]any:
-			if state, _ := v["status"].(string); state == "pending" || state == "running" || state == "queued" || state == "accepted" {
-				return true
-			}
-			for _, child := range v {
-				if pending(child) {
-					return true
-				}
-			}
-		case []any:
-			for _, child := range v {
-				if pending(child) {
-					return true
-				}
-			}
-		}
-		return false
-	}
-	return pending(value)
-}
-
-func publicationCheckCommand(record operationrun.Record) string {
-	args := []string{"job", "inspect", "--operation-id", record.ID}
-	if record.Request.ConfigPath != "" {
-		args = append(args, "--config", record.Request.ConfigPath)
-	}
-	return commandhint.Command(args...)
-}
-
-type publicationRunOutput struct {
-	record  operationrun.Record
-	stopped bool
-}
-
-func (o publicationRunOutput) CompactOutput() any {
-	return publicationSnapshot(o.record, false, o.stopped)
-}
-func (o publicationRunOutput) FullOutput() any { return publicationSnapshot(o.record, true, o.stopped) }
-
-func publicationSnapshot(record operationrun.Record, full, stopped bool) any {
-	data := record.CompactResult
-	if full {
-		data = record.FullResult
-	}
-	if len(data) == 0 {
-		data = record.LiveResults
-	}
-	result := map[string]any{}
-	if len(data) > 0 {
-		_ = json.Unmarshal(data, &result)
-	}
-	if result == nil {
-		result = map[string]any{}
-	}
-	result["operation_id"], result["operation"] = record.ID, record.Operation
-	if _, ok := result["status"]; !ok {
-		state := "running"
-		if record.Phase == operationrun.PhaseRequested {
-			state = "starting"
-		}
-		if record.Phase == operationrun.PhaseCompleted {
-			state = "succeeded"
-		}
-		if record.Phase == operationrun.PhaseFailed {
-			state = "failed"
-		}
-		result["status"] = state
-	}
-	if record.Phase != operationrun.PhaseCompleted || containsUnfinished(record.FullResult) || publicationNeedsDestination(record.FullResult) {
-		result["check_status"] = publicationCheckCommand(record)
-	}
-	if stopped {
-		result["waiting_stopped"] = true
-	}
-	if !full {
-		compactPublicationSnapshot(result)
-		if _, checking := result["check_status"]; !checking {
-			result["details"] = publicationCheckCommand(record) + " --full"
-		}
-	}
-	return result
-}
-
-// The operation handle replaces per-item recovery paths in compact output.
-// Saved full results retain the original action contracts and receipt paths.
-func compactPublicationSnapshot(result map[string]any) {
-	items, batch := result["items"].([]any)
-	if batch {
-		for _, field := range []string{"environment", "site", "workspace", "project_path", "kind"} {
-			common := ""
-			shared := len(items) > 0
-			for index, raw := range items {
-				item, _ := raw.(map[string]any)
-				value, _ := item["result"].(map[string]any)
-				candidate, _ := value[field].(string)
-				if candidate == "" || (index > 0 && common != candidate) {
-					shared = false
-					break
-				}
-				common = candidate
-			}
-			if shared {
-				result[field] = common
-				for _, raw := range items {
-					item := raw.(map[string]any)
-					delete(item["result"].(map[string]any), field)
-				}
-			}
-		}
-		for _, raw := range items {
-			item, _ := raw.(map[string]any)
-			value, _ := item["result"].(map[string]any)
-			if value == nil {
-				continue
-			}
-			if native, ok := value["result"].(map[string]any); ok {
-				delete(value, "result")
-				for key, v := range native {
-					value[key] = v
-				}
-			}
-			if value["status"] == item["status"] {
-				delete(value, "status")
-			}
-			if value["operation"] == result["operation"] {
-				delete(value, "operation")
-			}
-		}
-	}
-	var trim func(any)
-	trim = func(value any) {
-		switch v := value.(type) {
-		case map[string]any:
-			delete(v, "receipt_path")
-			delete(v, "details")
-			if help, ok := v["help"].([]any); ok && len(help) == 0 {
-				delete(v, "help")
-			}
-			for _, child := range v {
-				trim(child)
-			}
-		case []any:
-			for _, child := range v {
-				trim(child)
-			}
-		}
-	}
-	trim(result)
 }
 
 func publicationWorkerError(id, summary string, cause error) error {

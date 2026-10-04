@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"encoding/json"
+	"github.com/ahillspace/tadx/internal/output"
 	"path/filepath"
 	"testing"
 	"time"
@@ -159,7 +160,7 @@ func TestInspectPublicationOperationPreservesSubmissionFailureWhenAcceptedItemSu
 	if err != nil {
 		t.Fatalf("Read() reconciled record error = %v", err)
 	}
-	if saved.Phase != operationrun.PhaseFailed || !publicationHasFailure(saved.FullResult) {
+	if saved.Phase != operationrun.PhaseFailed || !output.OperationHasFailure(saved.FullResult) {
 		t.Fatalf("reconciled record = %#v", saved)
 	}
 	var decoded map[string]any

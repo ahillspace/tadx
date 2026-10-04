@@ -332,7 +332,8 @@ func localImportAllowed(file, imported string) bool {
 		// install records. The composition root is the only higher layer allowed
 		// to consume this durable boundary.
 		if hasPathPrefix(file, "internal/operationrun") {
-			return matchesExact(imported, "internal/fsreplace", "internal/lock")
+			return (path.Dir(file) == "internal/operationrun" && imported == "internal/value") ||
+				matchesExact(imported, "internal/fsreplace", "internal/lock")
 		}
 		// Authentication holds the leaf advisory lock for a command's PAT session.
 		if hasPathPrefix(file, "internal/auth") {
@@ -344,6 +345,9 @@ func localImportAllowed(file, imported string) bool {
 			return matchesExact(imported, "internal/errs")
 		}
 		if hasPathPrefix(file, "internal/output") {
+			if path.Dir(file) == "internal/output" && imported == "internal/value" {
+				return true
+			}
 			// Output binds command context through the standard-library-only
 			// quoting leaf; it still cannot access CLI dispatch or runtime state.
 			return matchesExact(imported, "internal/errs", "internal/toon", "internal/commandhint")

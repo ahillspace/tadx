@@ -6,6 +6,21 @@ Approval date: 2026-10-03.
 Baseline: `dd22c33bd1d123066f25ec09e2d612cd95717400`.
 Shared branch: `refactor/cohesive-cli`.
 
+## Detached-operation output ownership
+
+Output owns saved-operation snapshot projection, bounded compact/full capture, receipt-result merging, and recovery-state predicates.
+The operation store exposes neutral snapshot records without depending on rendering.
+Job outputs use the same neutral item record, with unchanged serialized fields.
+App no longer contains copy-only projection helpers; stateful receipt reconciliation remains a pending workflow move.
+
+Independent review rejects an unused import in the first current-build merge and passes the corrected immutable revision.
+The 13-path revision is based on `e1aa36078337e9d66bb6ae6334462392ca592b38`.
+Its 1,478-file fingerprint is `2a9d011810a6e7f599cfd96f47fd7f38413cee848f118bd9144cfe858ab8ae4a`.
+Output, operation storage, value, job, monitoring, architecture, and focused app publication/operation tests pass, along with full compilation and scoped vet.
+Tests preserve distinct accepted-versus-pending predicates, invalid saved evidence, nil values, and compact/full projection behavior.
+Evidence remains in `.tadx-refactor/operation-output-revision-e1a/`.
+Final integrated and live acceptance remain outstanding.
+
 ## Job service and shared observation
 
 The job Service owns exact inspection, cancellation, and durable receipt recovery.
