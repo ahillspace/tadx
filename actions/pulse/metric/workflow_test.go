@@ -2,27 +2,48 @@ package metric_test
 
 import (
 	"context"
+	"time"
 
 	pulsemetric "github.com/ahillspace/tadx/actions/pulse/metric"
+	"github.com/ahillspace/tadx/internal/readsource"
 )
 
 // These helpers follow composition's input-validation boundary before invoking operations.
 func list(ctx context.Context, reader pulsemetric.ListReader, input pulsemetric.ListInput) (pulsemetric.ListOutput, error) {
-	if err := pulsemetric.ListValidateInput(&input); err != nil {
-		return pulsemetric.ListOutput{}, err
-	}
-	if err := pulsemetric.ListValidateContinuation(input); err != nil {
-		return pulsemetric.ListOutput{}, err
-	}
-	return pulsemetric.List(ctx, reader, input)
+	return pulsemetric.New(workflowMetricProvider{target: pulsemetric.ReadTarget{Environment: input.Environment, Site: input.Site}, port: workflowMetricPort{ListReader: reader}}).ListPulseMetrics(ctx, input)
 }
 
 func inspect(ctx context.Context, reader pulsemetric.InspectReader, input pulsemetric.InspectInput) (pulsemetric.InspectOutput, error) {
-	if err := pulsemetric.InspectValidateInput(input); err != nil {
-		return pulsemetric.InspectOutput{}, err
-	}
-	return pulsemetric.Inspect(ctx, reader, input)
+	return pulsemetric.New(workflowMetricProvider{target: pulsemetric.ReadTarget{Environment: input.Environment, Site: input.Site}, port: workflowMetricPort{InspectReader: reader}}).InspectPulseMetric(ctx, input)
 }
+
+type workflowMetricPort struct {
+	pulsemetric.ListReader
+	pulsemetric.InspectReader
+}
+
+func (workflowMetricPort) Source() *readsource.Metadata { return nil }
+func (workflowMetricPort) Publish()                     {}
+
+type workflowMetricProvider struct {
+	target pulsemetric.ReadTarget
+	port   workflowMetricPort
+}
+
+func (p workflowMetricProvider) CacheTarget(string) (pulsemetric.ReadTarget, error) {
+	return p.target, nil
+}
+func (p workflowMetricProvider) CachedList(pulsemetric.ReadTarget) pulsemetric.CachedListPort {
+	return p.port
+}
+func (p workflowMetricProvider) CachedInspect(pulsemetric.ReadTarget) pulsemetric.CachedInspectPort {
+	return p.port
+}
+func (p workflowMetricProvider) Open(context.Context, string, string, string) (pulsemetric.ReadSession, error) {
+	return pulsemetric.ReadSession{ReadTarget: p.target, List: p.port, Inspect: p.port}, nil
+}
+func (workflowMetricProvider) CacheSetupError(_, _ string, err error) error { return err }
+func (workflowMetricProvider) Now() time.Time                               { return time.Now() }
 
 func delete(ctx context.Context, reader pulsemetric.DeleteReader, deleter pulsemetric.Deleter, input pulsemetric.DeleteInput) (pulsemetric.DeleteOutput, error) {
 	if err := pulsemetric.DeleteValidateInput(input); err != nil {

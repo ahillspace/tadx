@@ -16,7 +16,7 @@ type InspectReader interface {
 	GetMetric(context.Context, string) (Metric, error)
 }
 
-func Inspect(ctx context.Context, reader InspectReader, input InspectInput) (InspectOutput, error) {
+func inspectValidated(ctx context.Context, reader InspectReader, input InspectInput) (InspectOutput, error) {
 	input.LUID = strings.TrimSpace(input.LUID)
 	metric, err := reader.GetMetric(ctx, input.LUID)
 	if err != nil {
@@ -93,7 +93,7 @@ func (o InspectOutput) FullOutput() any {
 }
 
 // ValidateInput checks local selectors without resolving a site or contacting Tableau.
-func InspectValidateInput(input InspectInput) error {
+func inspectValidateInput(input InspectInput) error {
 	if strings.TrimSpace(input.LUID) == "" {
 		return inspectFail("pulse.metric.inspect.usage", errs.KindUsage, input, "Pulse metric inspect requires an exact LUID.", nil)
 	}

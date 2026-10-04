@@ -158,7 +158,7 @@ func TestContentReadPortsAllowOnlyExactInfrastructureEdges(t *testing.T) {
 	}
 	for _, tc := range []struct{ file, imported string }{
 		{"internal/resources/lineage/read_ports.go", "internal/inventory"},
-		{"internal/resources/pulse/read_ports.go", "internal/cache"},
+		{"internal/resources/pulse/nested/read_ports.go", "internal/cache"},
 		{"internal/resources/workbook/nested/read_ports.go", "internal/cache"},
 		{"internal/resources/datasource/nested/read_ports.go", "internal/readsource"},
 		{"internal/resources/flow/nested/read_ports.go", "internal/inventory"},
@@ -174,6 +174,20 @@ func TestContentReadPortsAllowOnlyExactInfrastructureEdges(t *testing.T) {
 			if len(violations) != 1 || violations[0].File != tc.file {
 				t.Fatalf("violations=%v", violations)
 			}
+		})
+	}
+}
+
+func TestPulseReadPortsAllowOnlyExactInfrastructureEdges(t *testing.T) {
+	for _, imported := range []string{"internal/cache", "internal/readsource", "internal/inventory"} {
+		t.Run(imported, func(t *testing.T) {
+			root := moduleFixture(t)
+			writeGo(t, root, "internal/resources/pulse/definition_read.go", fmt.Sprintf("package pulse\nimport _ %q\n", "example.test/tadx/"+imported))
+			violations, err := architecture.Check(root)
+			if err != nil {
+				t.Fatal(err)
+			}
+			assertViolationStrings(t, violations, nil)
 		})
 	}
 }

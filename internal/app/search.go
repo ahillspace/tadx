@@ -2,15 +2,8 @@ package app
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/base64"
-	"encoding/hex"
-	"encoding/json"
 	"errors"
 	"fmt"
-	"sort"
-	"strings"
-	"time"
 
 	groupops "github.com/ahillspace/tadx/actions/admin/group"
 	userops "github.com/ahillspace/tadx/actions/admin/user"
@@ -20,12 +13,12 @@ import (
 	pulsedefinition "github.com/ahillspace/tadx/actions/pulse/definition"
 	searchaction "github.com/ahillspace/tadx/actions/search"
 	workbookops "github.com/ahillspace/tadx/actions/workbook"
-	"github.com/ahillspace/tadx/internal/cache"
 	"github.com/ahillspace/tadx/internal/readsource"
 	resourceadmin "github.com/ahillspace/tadx/internal/resources/admin"
 	resourcedatasource "github.com/ahillspace/tadx/internal/resources/datasource"
 	resourceflow "github.com/ahillspace/tadx/internal/resources/flow"
 	resourceproject "github.com/ahillspace/tadx/internal/resources/project"
+	resourcepulse "github.com/ahillspace/tadx/internal/resources/pulse"
 	resourcesearch "github.com/ahillspace/tadx/internal/resources/search"
 	resourceworkbook "github.com/ahillspace/tadx/internal/resources/workbook"
 	tableauadmin "github.com/ahillspace/tadx/internal/tableau/admin"
@@ -57,7 +50,7 @@ func (p searchProvider) Cached(alias string) (searchaction.Session, error) {
 	if err != nil {
 		return session, err
 	}
-	session.Source = cacheGlobalSearchSource{store: p.runtime.cacheStore(environment)}
+	session.Source = resourcesearch.CacheSource{Store: p.runtime.cacheStore(environment)}
 	return session, nil
 }
 
@@ -76,7 +69,7 @@ func (p searchProvider) Complete(alias string) (searchaction.Session, error) {
 	lister.workbooks = workbookops.New(workbookops.Ports{Read: workbookReadProvider{commands: lister.content}})
 	lister.datasources = datasourceops.New(datasourceops.Ports{Read: &datasourceReadProvider{commands: lister.content}})
 	lister.flows = flowops.New(flowops.Ports{Read: flowReadProvider{commands: lister.content}})
-	session.Source = searchaction.LiveSource{Lists: &completeLiveSearchAdapter{lister: lister}}
+	session.Source = searchaction.LiveSource{Lists: &searchaction.CompleteLists{Lister: lister}}
 	return session, nil
 }
 
@@ -99,179 +92,6 @@ func (p searchProvider) Live(ctx context.Context, alias string) (searchaction.Se
 	return session, nil
 }
 
-type cacheGlobalSearchSource struct {
-	store *cache.Store
-}
-
-func (s cacheGlobalSearchSource) Search(ctx context.Context, input searchaction.Input, types []string) (searchaction.Result, error) {
-	lister := &cacheSearchLister{store: s.store, environment: input.Environment, site: input.Site, skipUnavailable: input.Type == "", observations: make(map[string]cacheSearchObservation)}
-	adapter := resourcesearch.NewAdapter(lister)
-	page, err := adapter.Search(ctx, resourcesearch.Input{Types: types, Terms: input.Terms, ProjectPath: input.ProjectPath, Owner: input.Owner, Cursor: input.Cursor, Limit: input.Limit})
-	if err != nil {
-		if unavailable, ok := errors.AsType[cacheSearchScopeUnavailable](err); ok {
-			recovery, observeErr := s.observeCacheRecovery(ctx, input, types)
-			if observeErr == nil {
-				unavailable.recovery = recovery
-				return searchaction.Result{}, unavailable
-			}
-		}
-		return searchaction.Result{}, err
-	}
-	var generation *searchaction.Generation
-	shared := len(lister.observations) > 0
-	for _, observation := range lister.observations {
-		after, err := s.store.ReadResources(ctx, observation.query)
-		if err != nil || cacheResourceFingerprint(after) != cacheResourceFingerprint(observation.result) {
-			return searchaction.Result{}, invalidCacheResourceCursor{}
-		}
-		result := observation.result
-		if result.Coverage != "complete" || result.GenerationID == "" {
-			shared = false
-			continue
-		}
-		if generation == nil {
-			generation = &searchaction.Generation{ID: result.GenerationID, Environment: input.Environment, Site: input.Site, GeneratedAt: result.GeneratedAt.UTC().Format(time.RFC3339Nano), Stale: result.Stale}
-		} else if generation.ID != result.GenerationID {
-			shared = false
-		}
-	}
-	if shared {
-		return searchaction.SourceResult(page, generation), nil
-	}
-	page.Warnings = append(page.Warnings, "Search used partial cache records or independently refreshed resource snapshots; no shared complete generation describes this page.")
-	return searchaction.SourceResult(page, nil), nil
-}
-
-func (s cacheGlobalSearchSource) observeCacheRecovery(ctx context.Context, input searchaction.Input, required []string) (searchaction.CacheRecovery, error) {
-	recovery := searchaction.CacheRecovery{Required: append([]string(nil), required...)}
-	for _, resourceType := range required {
-		result, err := s.store.ReadResources(ctx, cache.ResourceQuery{Environment: input.Environment, Site: input.Site, Kind: resourceType, Limit: 1})
-		if err == nil {
-			recovery.Available = append(recovery.Available, searchaction.CacheTypeObservation{Type: resourceType, Coverage: result.Coverage, Stale: result.Stale, Count: result.Total})
-			continue
-		}
-		var unavailable interface{ CacheScopeUnavailable() bool }
-		var uninitialized interface{ CacheUninitialized() bool }
-		if errors.As(err, &unavailable) && unavailable.CacheScopeUnavailable() || errors.As(err, &uninitialized) && uninitialized.CacheUninitialized() {
-			recovery.Missing = append(recovery.Missing, resourceType)
-			continue
-		}
-		return searchaction.CacheRecovery{}, err
-	}
-	return recovery, nil
-}
-
-type cacheSearchObservation struct {
-	query  cache.ResourceQuery
-	result cache.ResourceResult
-}
-
-type cacheSearchLister struct {
-	store             *cache.Store
-	environment, site string
-	skipUnavailable   bool
-	observations      map[string]cacheSearchObservation
-}
-
-func (s *cacheSearchLister) List(ctx context.Context, resourceType, cursor string, limit int) (resourcesearch.Page, error) {
-	state, err := decodeCacheResourceCursor(cursor)
-	if err != nil {
-		return resourcesearch.Page{}, err
-	}
-	query := cache.ResourceQuery{Environment: s.environment, Site: s.site, Kind: resourceType, Offset: state.Offset, Limit: limit}
-	result, err := s.store.ReadResources(ctx, query)
-	if err != nil {
-		var unavailable interface{ CacheScopeUnavailable() bool }
-		var uninitialized interface{ CacheUninitialized() bool }
-		missing := (errors.As(err, &unavailable) && unavailable.CacheScopeUnavailable()) || (errors.As(err, &uninitialized) && uninitialized.CacheUninitialized())
-		if missing {
-			if s.skipUnavailable {
-				return resourcesearch.Page{Warnings: []string{"Cache does not contain " + resourceType + " resources; that type was omitted."}}, nil
-			}
-			return resourcesearch.Page{}, cacheSearchScopeUnavailable{resourceType: resourceType, cause: err}
-		}
-		return resourcesearch.Page{}, err
-	}
-	fingerprint := cacheResourceFingerprint(result)
-	if s.observations != nil {
-		if previous, ok := s.observations[resourceType]; ok && cacheResourceFingerprint(previous.result) != fingerprint {
-			return resourcesearch.Page{}, invalidCacheResourceCursor{}
-		}
-		s.observations[resourceType] = cacheSearchObservation{query: query, result: result}
-	}
-	if state.Fingerprint != "" && state.Fingerprint != fingerprint {
-		return resourcesearch.Page{}, invalidCacheResourceCursor{}
-	}
-	items := make([]resourcesearch.Item, len(result.Entries))
-	for index, item := range result.Entries {
-		items[index] = resourcesearch.Item{LUID: item.LUID, Type: item.Kind, Name: item.Name, ProjectPath: item.ProjectPath, Owner: item.Owner}
-	}
-	next := ""
-	if state.Offset+len(result.Entries) < result.Total {
-		next = encodeCacheResourceCursor(cacheResourceCursor{Offset: state.Offset + len(result.Entries), Fingerprint: fingerprint})
-	}
-	return resourcesearch.Page{Items: items, NextCursor: next, Total: result.Total}, nil
-}
-
-type cacheSearchScopeUnavailable struct {
-	resourceType string
-	cause        error
-	recovery     searchaction.CacheRecovery
-}
-
-func (e cacheSearchScopeUnavailable) Error() string {
-	return fmt.Sprintf("cache does not contain %s resources", e.resourceType)
-}
-func (e cacheSearchScopeUnavailable) Unwrap() error             { return e.cause }
-func (cacheSearchScopeUnavailable) CacheScopeUnavailable() bool { return true }
-func (e cacheSearchScopeUnavailable) CacheSearchRecovery() searchaction.CacheRecovery {
-	return e.recovery
-}
-
-type cacheResourceCursor struct {
-	Offset      int    `json:"o"`
-	Fingerprint string `json:"f"`
-}
-
-type invalidCacheResourceCursor struct{}
-
-func (invalidCacheResourceCursor) Error() string {
-	return "cache resource cursor is invalid or stale"
-}
-func (invalidCacheResourceCursor) InvalidSearchCursor() bool { return true }
-
-func decodeCacheResourceCursor(value string) (cacheResourceCursor, error) {
-	if value == "" {
-		return cacheResourceCursor{}, nil
-	}
-	if len(value) > 4096 {
-		return cacheResourceCursor{}, invalidCacheResourceCursor{}
-	}
-	data, err := base64.RawURLEncoding.DecodeString(value)
-	var cursor cacheResourceCursor
-	if err != nil || json.Unmarshal(data, &cursor) != nil || cursor.Offset < 1 || cursor.Fingerprint == "" {
-		return cacheResourceCursor{}, invalidCacheResourceCursor{}
-	}
-	return cursor, nil
-}
-
-func encodeCacheResourceCursor(cursor cacheResourceCursor) string {
-	data, _ := json.Marshal(cursor)
-	return base64.RawURLEncoding.EncodeToString(data)
-}
-
-func cacheResourceFingerprint(result cache.ResourceResult) string {
-	data, _ := json.Marshal(struct {
-		Total          int    `json:"total"`
-		Coverage       string `json:"coverage"`
-		GenerationID   string `json:"generation_id"`
-		GeneratedAt    string `json:"generated_at"`
-		NewestObserved string `json:"newest_observed"`
-	}{result.Total, result.Coverage, result.GenerationID, result.GeneratedAt.UTC().Format(time.RFC3339Nano), result.NewestObserved.UTC().Format(time.RFC3339Nano)})
-	sum := sha256.Sum256(data)
-	return hex.EncodeToString(sum[:])
-}
-
 // completeLiveSearchLister routes blank typed searches through the same
 // complete-inventory services as the public list commands.
 type completeLiveSearchLister struct {
@@ -284,101 +104,7 @@ type completeLiveSearchLister struct {
 	flows       *flowops.Service
 }
 
-type completeListSearchPager interface {
-	searchPage(context.Context, string, string, int, resourcesearch.Input) (resourcesearch.Page, error)
-}
-
-type completeLiveSearchAdapter struct{ lister completeListSearchPager }
-
-type completeListSearchCursor struct {
-	Version      int    `json:"v"`
-	Fingerprint  string `json:"f"`
-	TypeIndex    int    `json:"t"`
-	SourceCursor string `json:"c,omitempty"`
-	SourceLimit  int    `json:"l,omitempty"`
-}
-
-type invalidCompleteListSearchCursor struct{}
-
-func (invalidCompleteListSearchCursor) Error() string {
-	return "complete list search cursor is invalid"
-}
-func (invalidCompleteListSearchCursor) InvalidSearchCursor() bool { return true }
-
-func (a *completeLiveSearchAdapter) Search(ctx context.Context, input resourcesearch.Input) (resourcesearch.Page, error) {
-	if a == nil || a.lister == nil || len(input.Types) == 0 || input.Limit < 1 || input.Limit > 100 {
-		return resourcesearch.Page{}, errors.New("complete live search requires configured list services, types, and a bounded limit")
-	}
-	types := append([]string(nil), input.Types...)
-	if len(types) == 1 {
-		return a.lister.searchPage(ctx, types[0], input.Cursor, input.Limit, input)
-	}
-	sort.Strings(types)
-	state := completeListSearchCursor{Version: 1, Fingerprint: completeListSearchFingerprint(input)}
-	if input.Cursor != "" {
-		data, err := base64.RawURLEncoding.DecodeString(input.Cursor)
-		if len(input.Cursor) > 12000 || err != nil || json.Unmarshal(data, &state) != nil || state.Version != 1 || state.Fingerprint != completeListSearchFingerprint(input) || state.TypeIndex < 0 || state.TypeIndex >= len(types) || (state.SourceCursor != "" && (state.SourceLimit < 1 || state.SourceLimit > input.Limit)) || (state.SourceCursor == "" && state.SourceLimit != 0) {
-			return resourcesearch.Page{}, invalidCompleteListSearchCursor{}
-		}
-	}
-	result := resourcesearch.Page{Items: []resourcesearch.Item{}}
-	for state.TypeIndex < len(types) && len(result.Items) < input.Limit {
-		remaining := input.Limit - len(result.Items)
-		sourceLimit := remaining
-		if state.SourceCursor != "" {
-			sourceLimit = state.SourceLimit
-		}
-		page, err := a.lister.searchPage(ctx, types[state.TypeIndex], state.SourceCursor, sourceLimit, input)
-		if err != nil {
-			return resourcesearch.Page{}, err
-		}
-		if len(page.Items) > remaining {
-			return resourcesearch.Page{}, errors.New("complete live search list service exceeded the requested result bound")
-		}
-		result.UnresolvedMoreAvailable = result.UnresolvedMoreAvailable || page.UnresolvedMoreAvailable || (page.MoreAvailable && page.NextCursor == "")
-		result.MoreAvailable = result.UnresolvedMoreAvailable
-		result.Items = append(result.Items, page.Items...)
-		if len(types) == 1 {
-			result.Total = page.Total
-		}
-		result.Warnings = append(result.Warnings, page.Warnings...)
-		if result.Source == "" {
-			result.Source = page.Source
-		} else if page.Source != "" && result.Source != page.Source {
-			result.Source = "mixed"
-		}
-		if page.TableauRequestID != "" {
-			result.TableauRequestID = page.TableauRequestID
-		}
-		if page.NextCursor != "" {
-			state.SourceCursor = page.NextCursor
-			state.SourceLimit = sourceLimit
-			result.NextCursor = encodeCompleteListSearchCursor(state)
-			return result, nil
-		}
-		state.TypeIndex++
-		state.SourceCursor = ""
-		state.SourceLimit = 0
-	}
-	if state.TypeIndex < len(types) {
-		result.NextCursor = encodeCompleteListSearchCursor(state)
-	}
-	return result, nil
-}
-
-func completeListSearchFingerprint(input resourcesearch.Input) string {
-	input.Cursor = ""
-	data, _ := json.Marshal(input)
-	sum := sha256.Sum256(data)
-	return hex.EncodeToString(sum[:])
-}
-
-func encodeCompleteListSearchCursor(state completeListSearchCursor) string {
-	data, _ := json.Marshal(state)
-	return base64.RawURLEncoding.EncodeToString(data)
-}
-
-func (s *completeLiveSearchLister) searchPage(ctx context.Context, resourceType, cursor string, limit int, searchInput resourcesearch.Input) (resourcesearch.Page, error) {
+func (s *completeLiveSearchLister) SearchPage(ctx context.Context, resourceType, cursor string, limit int, searchInput resourcesearch.Input) (resourcesearch.Page, error) {
 	if s == nil || s.content == nil || s.admin == nil {
 		return resourcesearch.Page{}, errors.New("complete live search list services are not configured")
 	}
@@ -455,7 +181,7 @@ type liveSearchLister struct {
 	users             userops.ListReader
 	groups            groupops.ListReader
 	pulse             *tableaupulse.Client
-	definitionPages   map[string]tableaupulse.DefinitionPage
+	metrics           *resourcepulse.MetricSearch
 }
 
 func newLiveSearchLister(connection authenticatedTableau, checks ...func(string) error) (*liveSearchLister, error) {
@@ -469,16 +195,16 @@ func newLiveSearchLister(connection authenticatedTableau, checks ...func(string)
 		return nil, fmt.Errorf("configure authenticated Pulse search client: %w", err)
 	}
 	return &liveSearchLister{
-		environment:     connection.environment.Alias,
-		site:            connection.environment.SiteContentURL,
-		workbooks:       resourceworkbook.ReadPorts{Adapter: resourceworkbook.NewAdapterWithProjectResolver(tableauworkbook.NewClient(connection.transport, connection.session, connection.environment.URL), projects)},
-		datasources:     resourcedatasource.ReadPorts{Adapter: resourcedatasource.NewAdapterWithProjectResolver(datasourceClient, projects), Projects: resourceproject.NewDiscoveryPaths(projects)},
-		flows:           resourceflow.ReadPorts{Adapter: resourceflow.NewAdapter(flowClient, projects)},
-		projects:        resourceproject.ListPort{Adapter: projects},
-		users:           resourceadmin.UserPorts{Adapter: resourceadmin.NewAdapter(adminClient, checks...)},
-		groups:          resourceadmin.GroupPorts{Adapter: resourceadmin.NewAdapter(adminClient, checks...)},
-		pulse:           pulseClient,
-		definitionPages: make(map[string]tableaupulse.DefinitionPage),
+		environment: connection.environment.Alias,
+		site:        connection.environment.SiteContentURL,
+		workbooks:   resourceworkbook.ReadPorts{Adapter: resourceworkbook.NewAdapterWithProjectResolver(tableauworkbook.NewClient(connection.transport, connection.session, connection.environment.URL), projects)},
+		datasources: resourcedatasource.ReadPorts{Adapter: resourcedatasource.NewAdapterWithProjectResolver(datasourceClient, projects), Projects: resourceproject.NewDiscoveryPaths(projects)},
+		flows:       resourceflow.ReadPorts{Adapter: resourceflow.NewAdapter(flowClient, projects)},
+		projects:    resourceproject.ListPort{Adapter: projects},
+		users:       resourceadmin.UserPorts{Adapter: resourceadmin.NewAdapter(adminClient, checks...)},
+		groups:      resourceadmin.GroupPorts{Adapter: resourceadmin.NewAdapter(adminClient, checks...)},
+		pulse:       pulseClient,
+		metrics:     resourcepulse.NewMetricSearch(pulseClient),
 	}, nil
 }
 
@@ -548,106 +274,15 @@ func (s *liveSearchLister) List(ctx context.Context, resourceType, cursor string
 		if err := pulsedefinition.ListValidateContinuation(input); err != nil {
 			return resourcesearch.Page{}, err
 		}
-		out, err := pulsedefinition.List(ctx, &pulseDefinitionListAdapter{client: s.pulse}, input)
+		out, err := pulsedefinition.List(ctx, &resourcepulse.DefinitionListPort{Client: s.pulse}, input)
 		items := make([]resourcesearch.Item, len(out.Definitions))
 		for i, item := range out.Definitions {
 			items[i] = resourcesearch.Item{LUID: item.LUID, Type: resourceType, Name: item.Name}
 		}
 		return resourcesearch.Page{Items: items, NextCursor: out.Page.NextCursor}, err
 	case "metric":
-		return s.listMetrics(ctx, cursor, limit)
+		return s.metrics.List(ctx, cursor, limit)
 	default:
 		return resourcesearch.Page{}, fmt.Errorf("unsupported search type %q", resourceType)
 	}
-}
-
-type metricSearchCursor struct {
-	Version             int    `json:"v"`
-	DefinitionPageToken string `json:"d,omitempty"`
-	DefinitionIndex     int    `json:"i,omitempty"`
-	MetricPageToken     string `json:"m,omitempty"`
-	DefinitionDigest    string `json:"s,omitempty"`
-}
-
-func (s *liveSearchLister) listMetrics(ctx context.Context, encoded string, limit int) (resourcesearch.Page, error) {
-	state := metricSearchCursor{Version: 1}
-	if encoded != "" {
-		data, err := base64.RawURLEncoding.DecodeString(encoded)
-		if err != nil || json.Unmarshal(data, &state) != nil || state.Version != 1 || state.DefinitionIndex < 0 || (state.DefinitionDigest == "" && (state.DefinitionIndex != 0 || state.MetricPageToken != "")) {
-			return resourcesearch.Page{}, errors.New("invalid Pulse metric search cursor")
-		}
-	}
-	definitions, ok := s.definitionPages[state.DefinitionPageToken]
-	if !ok {
-		var err error
-		definitions, err = s.pulse.ListDefinitions(ctx, tableaupulse.PageRequest{PageSize: 100, PageToken: state.DefinitionPageToken})
-		if err != nil {
-			return resourcesearch.Page{}, err
-		}
-		s.definitionPages[state.DefinitionPageToken] = definitions
-	}
-	digest := definitionPageDigest(definitions)
-	if state.DefinitionDigest != "" && state.DefinitionDigest != digest {
-		return resourcesearch.Page{}, errors.New("Pulse definition inventory changed during metric search")
-	}
-	state.DefinitionDigest = digest
-	if state.DefinitionIndex > len(definitions.Definitions) {
-		return resourcesearch.Page{}, errors.New("invalid Pulse metric search cursor")
-	}
-	if state.DefinitionIndex == len(definitions.Definitions) {
-		if definitions.NextPageToken == "" {
-			return resourcesearch.Page{Items: []resourcesearch.Item{}}, nil
-		}
-		state.DefinitionPageToken = definitions.NextPageToken
-		state.DefinitionIndex = 0
-		state.DefinitionDigest = ""
-		return resourcesearch.Page{Items: []resourcesearch.Item{}, NextCursor: encodeMetricSearchCursor(state)}, nil
-	}
-	definition := definitions.Definitions[state.DefinitionIndex]
-	metrics, err := s.pulse.ListMetrics(ctx, definition.LUID, tableaupulse.PageRequest{PageSize: limit, PageToken: state.MetricPageToken})
-	if err != nil {
-		return resourcesearch.Page{}, err
-	}
-	result := resourcesearch.Page{Items: make([]resourcesearch.Item, len(metrics.Metrics))}
-	for index, metric := range metrics.Metrics {
-		name := metric.Name
-		if strings.TrimSpace(name) == "" {
-			name = definition.Name
-		}
-		result.Items[index] = resourcesearch.Item{LUID: metric.LUID, Type: "metric", Name: name}
-	}
-	if metrics.NextPageToken != "" {
-		state.MetricPageToken = metrics.NextPageToken
-		result.NextCursor = encodeMetricSearchCursor(state)
-		return result, nil
-	}
-	state.DefinitionIndex++
-	state.MetricPageToken = ""
-	if state.DefinitionIndex < len(definitions.Definitions) {
-		result.NextCursor = encodeMetricSearchCursor(state)
-	} else if definitions.NextPageToken != "" {
-		state.DefinitionPageToken = definitions.NextPageToken
-		state.DefinitionIndex = 0
-		state.DefinitionDigest = ""
-		result.NextCursor = encodeMetricSearchCursor(state)
-	}
-	return result, nil
-}
-
-func definitionPageDigest(page tableaupulse.DefinitionPage) string {
-	identities := make([]string, len(page.Definitions))
-	for i, item := range page.Definitions {
-		identities[i] = item.LUID
-	}
-	data, _ := json.Marshal(struct {
-		Items []string `json:"items"`
-		Next  string   `json:"next"`
-	}{identities, page.NextPageToken})
-	sum := sha256.Sum256(data)
-	return hex.EncodeToString(sum[:])
-}
-
-func encodeMetricSearchCursor(cursor metricSearchCursor) string {
-	data, _ := json.Marshal(cursor)
-	return base64.RawURLEncoding.EncodeToString(data)
 }

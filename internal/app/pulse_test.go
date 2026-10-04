@@ -128,8 +128,8 @@ environments:
 	metric := tableaupulse.Metric{LUID: "metric-1", Name: "Revenue this month", DefinitionLUID: definition.LUID, SiteLUID: "site-1", Specification: map[string]any{"measurement_period": map[string]any{"range": "RANGE_CURRENT_PARTIAL"}}}
 	follower := tableaupulse.Subscription{LUID: "subscription-1", MetricLUID: metric.LUID, FollowerType: "USER", FollowerLUID: "user-1", FollowerName: "User One"}
 	entries := []cache.ResourceEntry{
-		pulseCacheEntry(t, now, pulseDefinitionKind, definition.LUID, definition.Name, "", "", definition),
-		pulseCacheEntry(t, now, pulseMetricKind, metric.LUID, metric.Name, definition.LUID, "", metric),
+		pulseCacheEntry(t, now, "definition", definition.LUID, definition.Name, "", "", definition),
+		pulseCacheEntry(t, now, "metric", metric.LUID, metric.Name, definition.LUID, "", metric),
 		pulseCacheEntry(t, now, pulseFollowerSnapshotKind, metric.LUID, metric.LUID, "", "", pulseFollowerSnapshot{Version: 1, MetricLUID: metric.LUID, Subscriptions: []pulsemetric.Subscription{{LUID: follower.LUID, MetricLUID: metric.LUID, FollowerType: follower.FollowerType, FollowerLUID: follower.FollowerLUID, FollowerName: follower.FollowerName}}}),
 	}
 	if err := targetCacheFixture(t, configPath, func() time.Time { return now }).UpsertResources(context.Background(), entries); err != nil {
@@ -143,19 +143,19 @@ environments:
 	t.Cleanup(func() { _ = runtime.Close() })
 	commands := newPulseCommands(runtime)
 
-	definitions, err := commands.ListPulseDefinitions(context.Background(), pulsedefinition.ListInput{Cache: true, Limit: 10})
+	definitions, err := commands.dependencies().DefinitionLister.ListPulseDefinitions(context.Background(), pulsedefinition.ListInput{Cache: true, Limit: 10})
 	if err != nil {
 		t.Fatal(err)
 	}
-	gotDefinition, err := commands.InspectPulseDefinition(context.Background(), pulsedefinition.InspectInput{Cache: true, LUID: definition.LUID})
+	gotDefinition, err := commands.dependencies().DefinitionInspector.InspectPulseDefinition(context.Background(), pulsedefinition.InspectInput{Cache: true, LUID: definition.LUID})
 	if err != nil {
 		t.Fatal(err)
 	}
-	metrics, err := commands.ListPulseMetrics(context.Background(), pulsemetric.ListInput{Cache: true, DefinitionLUID: definition.LUID, Limit: 10})
+	metrics, err := commands.dependencies().MetricLister.ListPulseMetrics(context.Background(), pulsemetric.ListInput{Cache: true, DefinitionLUID: definition.LUID, Limit: 10})
 	if err != nil {
 		t.Fatal(err)
 	}
-	gotMetric, err := commands.InspectPulseMetric(context.Background(), pulsemetric.InspectInput{Cache: true, LUID: metric.LUID})
+	gotMetric, err := commands.dependencies().MetricInspector.InspectPulseMetric(context.Background(), pulsemetric.InspectInput{Cache: true, LUID: metric.LUID})
 	if err != nil {
 		t.Fatal(err)
 	}

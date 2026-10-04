@@ -2,8 +2,11 @@ package definition_test
 
 import (
 	"context"
+	"errors"
+	"time"
 
 	pulsedefinition "github.com/ahillspace/tadx/actions/pulse/definition"
+	"github.com/ahillspace/tadx/internal/readsource"
 )
 
 // These helpers follow composition's input-validation boundary before invoking operations.
@@ -18,11 +21,36 @@ func list(ctx context.Context, reader pulsedefinition.ListReader, input pulsedef
 }
 
 func inspect(ctx context.Context, reader pulsedefinition.InspectReader, input pulsedefinition.InspectInput) (pulsedefinition.InspectOutput, error) {
-	if err := pulsedefinition.InspectValidateInput(input); err != nil {
-		return pulsedefinition.InspectOutput{}, err
-	}
-	return pulsedefinition.Inspect(ctx, reader, input)
+	return pulsedefinition.New(workflowDefinitionProvider{target: pulsedefinition.ReadTarget{Environment: input.Environment, Site: input.Site}, port: workflowDefinitionPort{InspectReader: reader}}).InspectPulseDefinition(ctx, input)
 }
+
+type workflowDefinitionPort struct{ pulsedefinition.InspectReader }
+
+func (workflowDefinitionPort) ListDefinitions(context.Context, pulsedefinition.ListPageRequest) (pulsedefinition.ListPage, error) {
+	return pulsedefinition.ListPage{}, errors.New("unexpected definition list")
+}
+func (workflowDefinitionPort) Source() *readsource.Metadata { return nil }
+func (workflowDefinitionPort) Publish()                     {}
+
+type workflowDefinitionProvider struct {
+	target pulsedefinition.ReadTarget
+	port   workflowDefinitionPort
+}
+
+func (p workflowDefinitionProvider) CacheTarget(string) (pulsedefinition.ReadTarget, error) {
+	return p.target, nil
+}
+func (p workflowDefinitionProvider) CachedList(pulsedefinition.ReadTarget) pulsedefinition.CachedListPort {
+	return p.port
+}
+func (p workflowDefinitionProvider) CachedInspect(pulsedefinition.ReadTarget) pulsedefinition.CachedInspectPort {
+	return p.port
+}
+func (p workflowDefinitionProvider) Open(context.Context, string, string, string) (pulsedefinition.ReadSession, error) {
+	return pulsedefinition.ReadSession{ReadTarget: p.target, List: p.port, Inspect: p.port}, nil
+}
+func (workflowDefinitionProvider) CacheSetupError(_, _ string, err error) error { return err }
+func (workflowDefinitionProvider) Now() time.Time                               { return time.Now() }
 
 func delete(ctx context.Context, reader pulsedefinition.DeleteReader, deleter pulsedefinition.Deleter, input pulsedefinition.DeleteInput) (pulsedefinition.DeleteOutput, error) {
 	if err := pulsedefinition.DeleteValidateInput(input); err != nil {

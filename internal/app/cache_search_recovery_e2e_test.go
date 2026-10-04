@@ -6,6 +6,7 @@ import (
 	"crypto/sha256"
 	"encoding/json"
 	"errors"
+	resourcesearch "github.com/ahillspace/tadx/internal/resources/search"
 	"net/http"
 	"os"
 	"os/exec"
@@ -156,7 +157,7 @@ func TestCachedSearchRecoveryOmitsCommandForUnrepresentableFilters(t *testing.T)
 	if err := store.UpsertResources(t.Context(), []cache.ResourceEntry{{Environment: "dev", Site: "test-site", Kind: "datasource", LUID: "ds-1", Name: "Boeing", Owner: "owner-1", ProjectPath: "Ops", Coverage: "summary", ObservedAt: now}}); err != nil {
 		t.Fatal(err)
 	}
-	_, err := executeSearchAction(t.Context(), cacheGlobalSearchSource{store: store}, searchaction.Input{
+	_, err := executeSearchAction(t.Context(), resourcesearch.CacheSource{Store: store}, searchaction.Input{
 		Terms:        "Boeing",
 		Type:         "content",
 		Environment:  "dev",
@@ -264,20 +265,6 @@ func TestCachedSearchRecoveryProtectsLeadingFlagTerm(t *testing.T) {
 				t.Fatalf("recovery item=%#v want luid %q", items[0], test.luid)
 			}
 		})
-	}
-}
-
-type absentCacheRecoverySource struct{}
-
-func (absentCacheRecoverySource) Search(context.Context, searchaction.Input, []string) (searchaction.Result, error) {
-	return searchaction.Result{}, cacheSearchScopeUnavailable{resourceType: "flow", cause: errors.New("read failed")}
-}
-
-func TestCachedSearchRecoveryRetainsGenericAdviceWithoutObservedEvidence(t *testing.T) {
-	_, err := executeSearchAction(t.Context(), absentCacheRecoverySource{}, searchaction.Input{Type: "content", Environment: "dev", Site: "test-site", SiteResolved: true, Cache: true, Limit: 20})
-	var structured *errs.Error
-	if !errors.As(err, &structured) || structured.CorrectiveAction != "Review the search source and filters, then retry." || structured.Resource != "" {
-		t.Fatalf("error=%#v", structured)
 	}
 }
 

@@ -18,7 +18,7 @@ type ListReader interface {
 	ListMetrics(context.Context, string, ListPageRequest) (ListPage, error)
 }
 
-func List(ctx context.Context, reader ListReader, input ListInput) (ListOutput, error) {
+func listValidated(ctx context.Context, reader ListReader, input ListInput) (ListOutput, error) {
 	input.DefinitionLUID = strings.TrimSpace(input.DefinitionLUID)
 	limit := input.limit
 	token := input.cursor.Token
@@ -186,8 +186,8 @@ func (o ListOutput) FullOutput() any {
 	return ListFullResult{Status: o.Status, Environment: o.Environment, Site: o.Site, DefinitionLUID: o.DefinitionLUID, Page: o.Page, Metrics: o.Metrics, RequestID: o.RequestID, Help: o.Help, Source: o.Source}
 }
 
-// ValidateInput checks bounded list inputs; resolved cursor ownership is checked later.
-func ListValidateInput(input *ListInput) error {
+// listValidateInput checks bounded list inputs; resolved cursor ownership is checked later.
+func listValidateInput(input *ListInput) error {
 	if strings.TrimSpace(input.DefinitionLUID) == "" {
 		return listFail("pulse.metric.list.usage", errs.KindUsage, *input, "Pulse metric list requires an exact definition LUID.", nil)
 	}
@@ -213,8 +213,8 @@ func ListValidateInput(input *ListInput) error {
 	return nil
 }
 
-// ValidateContinuation binds a cursor to a locally resolved target before sign-in.
-func ListValidateContinuation(input ListInput) error {
+// listValidateContinuation binds a cursor to a locally resolved target before sign-in.
+func listValidateContinuation(input ListInput) error {
 	cursor := input.cursor
 	if input.Cursor != "" && (cursor.Definition != strings.TrimSpace(input.DefinitionLUID) || cursor.Environment != input.Environment || cursor.Site != input.Site || cursor.Limit != input.limit || cursor.Cache != input.Cache) {
 		return listFail("pulse.metric.list.usage", errs.KindUsage, input, "Pulse metric cursor does not match this definition, limit, and source.", errors.New("invalid cursor"))

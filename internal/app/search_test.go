@@ -3,7 +3,6 @@ package app
 import (
 	"bytes"
 	"context"
-	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -12,12 +11,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
-	"time"
 
 	searchaction "github.com/ahillspace/tadx/actions/search"
-	"github.com/ahillspace/tadx/internal/cache"
-	"github.com/ahillspace/tadx/internal/errs"
-	resourcesearch "github.com/ahillspace/tadx/internal/resources/search"
 )
 
 func executeSearchAction(ctx context.Context, source searchaction.Source, input searchaction.Input) (searchaction.Output, error) {
@@ -26,80 +21,6 @@ func executeSearchAction(ctx context.Context, source searchaction.Source, input 
 		return searchaction.Output{}, err
 	}
 	return searchaction.Execute(ctx, source, input, types)
-}
-
-func TestCacheGlobalSearchIncludesReadThroughResourcesWithoutGeneration(t *testing.T) {
-	now := time.Date(2026, 9, 4, 12, 0, 0, 0, time.UTC)
-	store := cache.NewStore(t.TempDir(), func() time.Time { return now })
-	if err := store.UpsertResources(context.Background(), []cache.ResourceEntry{{Environment: "dev", Site: "site", Kind: "workbook", LUID: "wb-1", Name: "Sales", Coverage: "summary", ObservedAt: now}}); err != nil {
-		t.Fatal(err)
-	}
-	out, err := executeSearchAction(context.Background(), cacheGlobalSearchSource{store: store}, searchaction.Input{Terms: "sales", Type: "workbook", Environment: "dev", Site: "site", SiteResolved: true, Cache: true})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(out.Items) != 1 || out.Items[0].LUID != "wb-1" || out.Generation != nil {
-		t.Fatalf("output=%+v", out)
-	}
-}
-
-func TestCacheGlobalSearchRejectsExplicitUnavailableType(t *testing.T) {
-	store := cache.NewStore(t.TempDir(), time.Now)
-	_, err := executeSearchAction(context.Background(), cacheGlobalSearchSource{store: store}, searchaction.Input{Type: "metric", Environment: "dev", Site: "site", SiteResolved: true, Cache: true})
-	var structured *errs.Error
-	if !errors.As(err, &structured) || structured.Kind != errs.KindUsage {
-		t.Fatalf("error=%v", err)
-	}
-}
-
-type completeListPagerCall struct {
-	resourceType string
-	cursor       string
-	limit        int
-	input        resourcesearch.Input
-}
-
-type completeListPagerFake struct {
-	pages []resourcesearch.Page
-	calls []completeListPagerCall
-}
-
-func (f *completeListPagerFake) searchPage(_ context.Context, resourceType, cursor string, limit int, input resourcesearch.Input) (resourcesearch.Page, error) {
-	f.calls = append(f.calls, completeListPagerCall{resourceType: resourceType, cursor: cursor, limit: limit, input: input})
-	if len(f.pages) == 0 {
-		return resourcesearch.Page{}, errors.New("unexpected complete list page call")
-	}
-	page := f.pages[0]
-	f.pages = f.pages[1:]
-	return page, nil
-}
-
-func TestCompleteListSearchFamilyContinuationPreservesChildLimitAndPhase(t *testing.T) {
-	pager := &completeListPagerFake{pages: []resourcesearch.Page{
-		{Items: []resourcesearch.Item{{LUID: "datasource-1", Type: "datasource", Name: "Datasource"}}, Source: "live"},
-		{Items: []resourcesearch.Item{{LUID: "flow-1", Type: "flow", Name: "Flow A"}}, NextCursor: "flow-next", Source: "live"},
-		{Items: []resourcesearch.Item{{LUID: "flow-2", Type: "flow", Name: "Flow B"}}, Source: "cache"},
-		{Items: []resourcesearch.Item{{LUID: "project-1", Type: "project", Name: "Project"}}, Source: "live"},
-	}}
-	adapter := &completeLiveSearchAdapter{lister: pager}
-	input := resourcesearch.Input{Types: []string{"datasource", "flow", "project", "workbook"}, ProjectPath: "Sales/Ops", Owner: "owner-1", Limit: 2}
-	first, err := adapter.Search(context.Background(), input)
-	if err != nil || len(first.Items) != 2 || first.NextCursor == "" || first.Source != "live" {
-		t.Fatalf("first=%+v error=%v", first, err)
-	}
-	input.Cursor = first.NextCursor
-	second, err := adapter.Search(context.Background(), input)
-	if err != nil || len(second.Items) != 2 || second.Items[0].LUID != "flow-2" || second.Items[1].LUID != "project-1" || second.NextCursor == "" || second.Source != "mixed" {
-		t.Fatalf("second=%+v error=%v", second, err)
-	}
-	if len(pager.calls) != 4 || pager.calls[1].limit != 1 || pager.calls[2].limit != 1 || pager.calls[2].cursor != "flow-next" {
-		t.Fatalf("calls=%+v", pager.calls)
-	}
-	for _, call := range pager.calls {
-		if call.input.ProjectPath != "Sales/Ops" || call.input.Owner != "owner-1" {
-			t.Fatalf("filtered input was not preserved: %+v", call)
-		}
-	}
 }
 
 func TestSearchCommandsUseNativeEndpointForContentTerms(t *testing.T) {

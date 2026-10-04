@@ -15,8 +15,8 @@ type InspectReader interface {
 	GetDefinition(context.Context, string) (Definition, error)
 }
 
-// Inspect inspects and verifies one exact definition identity.
-func Inspect(ctx context.Context, reader InspectReader, input InspectInput) (InspectOutput, error) {
+// inspectValidated inspects and verifies one exact definition identity.
+func inspectValidated(ctx context.Context, reader InspectReader, input InspectInput) (InspectOutput, error) {
 	input.LUID = strings.TrimSpace(input.LUID)
 	definition, err := reader.GetDefinition(ctx, input.LUID)
 	if err != nil {
@@ -126,8 +126,8 @@ func (o InspectOutput) FullOutput() any {
 	return InspectFullResult{Status: o.Status, Environment: o.Environment, Site: o.Site, Definition: item, RequestID: o.RequestID, Help: o.Help, Source: o.Source}
 }
 
-// ValidateInput checks local selectors without resolving a site or contacting Tableau.
-func InspectValidateInput(input InspectInput) error {
+// inspectValidateInput checks local selectors without resolving a site or contacting Tableau.
+func inspectValidateInput(input InspectInput) error {
 	if strings.TrimSpace(input.LUID) == "" {
 		return inspectDefinitionError("pulse.definition.inspect.usage", errs.KindUsage, input, "Pulse definition inspect requires an exact LUID.", nil)
 	}

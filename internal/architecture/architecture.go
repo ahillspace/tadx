@@ -265,6 +265,10 @@ func localImportAllowed(file, imported string) bool {
 		}
 		return matchesPrefix(imported, "actions", "internal/cli") || matchesExact(imported, "internal/errs", "internal/pathspec", "internal/contentbatch", "internal/commandhint", "internal/batchspec")
 	case layerResource:
+		// Search translates indexed cache observations and cursor consistency.
+		if path.Dir(file) == "internal/resources/search" && imported == "internal/cache" {
+			return true
+		}
 		// Project cache ports translate indexed records and preserve read coverage.
 		// This exact dependency does not authorize other adapters to own caches.
 		if path.Dir(file) == "internal/resources/project" && matchesExact(imported, "internal/cache", "internal/readsource") {
@@ -273,6 +277,10 @@ func localImportAllowed(file, imported string) bool {
 		// Admin cache ports translate indexed user/group records, while the
 		// shared inventory package retains neutral collection and publication.
 		if path.Dir(file) == "internal/resources/admin" && matchesExact(imported, "internal/cache", "internal/readsource", "internal/inventory", "internal/errs") {
+			return true
+		}
+		// Pulse ports translate typed cache records and publish observed reads.
+		if path.Dir(file) == "internal/resources/pulse" && matchesExact(imported, "internal/cache", "internal/readsource", "internal/inventory") {
 			return true
 		}
 		// Lineage owns the metadata-only artifact port and its local preview error.

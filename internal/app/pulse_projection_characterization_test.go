@@ -13,7 +13,6 @@ import (
 
 	pulsedefinition "github.com/ahillspace/tadx/actions/pulse/definition"
 	pulsemetric "github.com/ahillspace/tadx/actions/pulse/metric"
-	tableaupulse "github.com/ahillspace/tadx/internal/tableau/pulse"
 )
 
 func TestPulseProjectionRequiredEmptyFields(t *testing.T) {
@@ -22,8 +21,6 @@ func TestPulseProjectionRequiredEmptyFields(t *testing.T) {
 		value any
 		want  string
 	}{
-		{"metric list", metricListItem(tableaupulse.Metric{}), `{"luid":"","definition_luid":"","is_default":false}`},
-		{"metric inspect", metricGetItem(tableaupulse.Metric{}), `{"luid":"","definition_luid":"","is_default":false,"specification":null}`},
 		{"follower snapshot", pulseFollowerSnapshot{Version: 1, MetricLUID: "metric", Subscriptions: []pulsemetric.Subscription{{LUID: "subscription"}}}, `{"version":1,"metric_luid":"metric","subscriptions":[{"luid":"subscription","metric_luid":"","follower_type":"","follower_luid":""}]}`},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -69,7 +66,7 @@ func TestPulseLiveObservationKeepsOperationSpecificProjections(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = runtime.Close() })
 	commands := newPulseCommands(runtime)
-	if _, err := commands.InspectPulseDefinition(t.Context(), pulsedefinition.InspectInput{LUID: "definition-1"}); err == nil {
+	if _, err := commands.dependencies().DefinitionInspector.InspectPulseDefinition(t.Context(), pulsedefinition.InspectInput{LUID: "definition-1"}); err == nil {
 		t.Fatal("inspect unexpectedly accepted a configuration number outside float64")
 	}
 	definition, err := commands.DeletePulseDefinition(t.Context(), pulsedefinition.DeleteInput{LUID: "definition-1", Preview: true})
@@ -100,18 +97,5 @@ func TestPulseLiveObservationKeepsOperationSpecificProjections(t *testing.T) {
 	wantRequests := []string{"POST /api/3.29/auth/signin", "GET /api/-/pulse/definitions/definition-1", "GET /api/-/pulse/definitions/definition-1", "GET /api/-/pulse/metrics/unknown", "GET /api/-/pulse/metrics/known"}
 	if !reflect.DeepEqual(requests, wantRequests) {
 		t.Fatalf("requests = %v; want %v", requests, wantRequests)
-	}
-}
-
-func TestPulseInspectConversionPreservesCopyAndDecodeBoundaries(t *testing.T) {
-	if _, err := definitionGetItem(tableaupulse.Definition{Configuration: []byte(`invalid`)}); err == nil {
-		t.Fatal("inspect accepted malformed definition configuration")
-	}
-	original := tableaupulse.Metric{Specification: map[string]any{"nested": map[string]any{"value": "original"}}, Configuration: []byte(`{}`)}
-	converted := metricGetItem(original)
-	converted.Specification["nested"].(map[string]any)["value"] = "changed"
-	converted.Configuration[0] = '['
-	if original.Specification["nested"].(map[string]any)["value"] != "original" || string(original.Configuration) != `{}` {
-		t.Fatal("metric conversion lost its independent nested values")
 	}
 }

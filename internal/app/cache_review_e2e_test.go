@@ -6,6 +6,7 @@ import (
 	datasourceops "github.com/ahillspace/tadx/actions/datasource"
 	flowops "github.com/ahillspace/tadx/actions/flow"
 	projectops "github.com/ahillspace/tadx/actions/project"
+	resourcesearch "github.com/ahillspace/tadx/internal/resources/search"
 
 	searchaction "github.com/ahillspace/tadx/actions/search"
 	"io"
@@ -45,7 +46,7 @@ func TestFilteredContentListsRetainCacheProjectPaths(t *testing.T) {
 				t.Fatal(err)
 			}
 			store := targetCacheFixture(t, runtime.configPath, runtime.now)
-			out, err := executeSearchAction(context.Background(), cacheGlobalSearchSource{store: store}, searchaction.Input{Type: kind, Environment: "production", Site: "team-site", SiteResolved: true, Cache: true, ProjectPath: "Department/Ops"})
+			out, err := executeSearchAction(context.Background(), resourcesearch.CacheSource{Store: store}, searchaction.Input{Type: kind, Environment: "production", Site: "team-site", SiteResolved: true, Cache: true, ProjectPath: "Department/Ops"})
 			if err != nil || len(out.Items) != 1 || out.Items[0].ProjectPath != "Department/Ops" {
 				t.Fatalf("cached filtered search = %#v, %v", out, err)
 			}

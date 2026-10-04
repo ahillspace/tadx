@@ -6,6 +6,23 @@ Approval date: 2026-10-03.
 Baseline: `dd22c33bd1d123066f25ec09e2d612cd95717400`.
 Shared branch: `refactor/cohesive-cli`.
 
+## Pulse reads and search source ownership
+
+Pulse definition and metric Services own read validation and operation sequencing.
+Resource Pulse ports own native and cached translations; app retains construction rather than read workflows.
+Search complete-list pagination, cache observations and recovery advice, and metric continuation now have explicit action or resource owners.
+Shared search records retain their existing serialized cursor shape.
+The remaining typed list routing and projections in app are still pending, so this checkpoint does not declare search complete.
+
+Independent review accepts the combined 34-path integration against `46fd98ee4c07357a56b557c09dbc22102f9f3634`.
+The 1,500-file source fingerprint is `ce4aa5e53e0c6afeef7c9cf0593ff7e38188a26b4ee5fb0845ce65a45ff19fa0`.
+The archive SHA-256 is `febd41a7c6f16b2e21baa8a044d728ee61ff88542d4cb33e6326ca780f59cd94`.
+Focused Pulse, search, resource, CLI, app, and architecture tests, full compilation, and scoped vet pass.
+The integration preserves existing job/output edges and admits only the reviewed exact Pulse and search cache dependencies.
+The app cache test is relocated to its resource owner; its protected assertion remains.
+Evidence remains in `.tadx-refactor/pulse-search-merge-46f/`.
+Final live acceptance and whole-architecture review remain pending.
+
 ## Datasource schema ownership
 
 The datasource Service owns schema validation, continuation target selection, cache/live choice, and output sequencing.
